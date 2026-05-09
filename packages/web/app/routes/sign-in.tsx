@@ -8,6 +8,7 @@ import {
   setSessionCookie,
 } from "~/lib/session";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
+import { EvaloMark } from "~/components/evalo-mark";
 
 export function loader({ request }: { request: Request }) {
   if (getMode() !== "host") {
@@ -41,7 +42,7 @@ export default function SignIn({ loaderData }: { loaderData: Awaited<ReturnType<
       <header className="border-b border-border bg-card">
         <div className="mx-auto flex max-w-6xl items-center gap-4 px-6 py-3">
           <Link to="/" className="inline-flex items-center hover:opacity-80" aria-label="Evalo home">
-            <img src="/wordmark.svg" alt="Evalo" className="block h-7 w-auto" />
+            <EvaloMark height={28} />
           </Link>
           <span className="text-xs text-muted-foreground">/ {host.name}</span>
         </div>

@@ -3,6 +3,7 @@ import { getEvaloSlug, getMode, openDb } from "~/lib/db";
 import { listAllEvalos, listOrgs, listUsers, loadHostConfig } from "~/lib/host";
 import { type CurrentPrincipal, getCurrentPrincipal } from "~/lib/session";
 import { SiteHeader } from "~/components/site-header";
+import { EvaloMark } from "~/components/evalo-mark";
 import { Badge } from "~/components/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "~/components/table";
@@ -83,7 +84,7 @@ function HostLanding({
       <header className="border-b border-border bg-card">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-6 py-3">
           <Link to="/" className="inline-flex items-center hover:opacity-80" aria-label="Evalo home">
-            <img src="/wordmark.svg" alt="Evalo" className="block h-7 w-auto" />
+            <EvaloMark height={28} />
           </Link>
           <Link
             to="/sign-in"
@@ -95,7 +96,7 @@ function HostLanding({
       </header>
       <main className="flex flex-1 flex-col items-center justify-center px-6 py-16">
         <div className="flex max-w-2xl flex-col items-center gap-6 text-center">
-          <img src="/wordmark.svg" alt="Evalo" className="h-32 w-auto" />
+          <EvaloMark height={128} />
           <h1 className="text-2xl font-bold tracking-tight">
             Alignment framework + runtime checking
           </h1>
@@ -140,7 +141,7 @@ function HostDashboard({
       <SiteHeader context={host.name} mode="host" me={me} />
       <main className="mx-auto max-w-6xl px-6 py-6 space-y-4">
         <section className="mb-4 flex flex-col items-center gap-3 py-8">
-          <img src="/wordmark.svg" alt="Evalo" className="h-20 w-auto" />
+          <EvaloMark height={80} />
           <p className="max-w-xl text-center text-xs text-muted-foreground">
             {host.name} — multi-tenant Evalo host. Anyone can create an Evalo; users can create
             organizations; Evalos are owned by users or organizations.
@@ -244,7 +245,7 @@ function SingleEvaloRecent({
       <SiteHeader context={data.evaloSlug} mode="single-evalo" />
       <main className="mx-auto max-w-6xl px-6 py-6">
         <section className="mb-6 flex flex-col items-center gap-3 py-8">
-          <img src="/wordmark.svg" alt="Evalo" className="h-20 w-auto" />
+          <EvaloMark height={80} />
           <p className="max-w-xl text-center text-xs text-muted-foreground">
             Alignment framework + runtime checking. Documents and verifies user intent, agent
             reasoning, and agent actions — for {data.evaloSlug}.

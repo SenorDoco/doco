@@ -1,5 +1,6 @@
 import { Form, NavLink } from "react-router";
 import { cn } from "~/lib/cn";
+import { EvaloMark } from "~/components/evalo-mark";
 import type { CurrentPrincipal } from "~/lib/session";
 
 interface SiteHeaderProps {
@@ -35,7 +36,7 @@ export function SiteHeader({ context, evaloScope, mode, me }: SiteHeaderProps) {
       <div className="mx-auto flex max-w-6xl items-center gap-6 px-6 py-3">
         <h1 className="m-0 leading-none tracking-tight">
           <NavLink to="/" className="inline-flex items-center hover:opacity-80" aria-label="Evalo home">
-            <img src="/wordmark.svg" alt="Evalo" className="block h-7 w-auto" />
+            <EvaloMark height={28} />
           </NavLink>
           <span className="ml-3 font-normal text-xs text-muted-foreground align-middle">
             / {context}
