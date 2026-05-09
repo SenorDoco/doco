@@ -46,6 +46,14 @@ export default function Recent({ loaderData }: { loaderData: Awaited<ReturnType<
     <div>
       <SiteHeader evaloSlug={loaderData.evaloSlug} />
       <main className="mx-auto max-w-6xl px-6 py-6">
+        <section className="mb-6 flex flex-col items-center gap-3 py-8">
+          <img src="/wordmark.svg" alt="Evalo" className="h-20 w-auto" />
+          <p className="max-w-xl text-center text-xs text-muted-foreground">
+            Alignment framework + runtime checking. Documents and verifies user intent, agent
+            reasoning, and agent actions — for {loaderData.evaloSlug}.
+          </p>
+        </section>
+
         <Card className="mb-4">
           <CardHeader>
             <CardTitle>Recent activity</CardTitle>

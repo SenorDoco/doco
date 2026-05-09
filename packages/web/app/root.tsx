@@ -10,6 +10,13 @@ import {
 
 import "./app.css";
 
+export function links() {
+  return [
+    { rel: "icon", type: "image/svg+xml", href: "/favicon.svg" },
+    { rel: "alternate icon", type: "image/svg+xml", href: "/favicon.svg" },
+  ];
+}
+
 export function Layout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">

@@ -19,11 +19,11 @@ export function SiteHeader({ evaloSlug }: SiteHeaderProps) {
   return (
     <header className="border-b border-border bg-card">
       <div className="mx-auto flex max-w-6xl items-center gap-6 px-6 py-3">
-        <h1 className="text-base font-bold tracking-tight">
-          <NavLink to="/" className="text-foreground hover:text-primary">
-            Evalo
+        <h1 className="m-0 leading-none tracking-tight">
+          <NavLink to="/" className="inline-flex items-center hover:opacity-80" aria-label="Evalo home">
+            <img src="/wordmark.svg" alt="Evalo" className="block h-7 w-auto" />
           </NavLink>
-          <span className="ml-2 font-normal text-xs text-muted-foreground">/ {evaloSlug}</span>
+          <span className="ml-3 font-normal text-xs text-muted-foreground align-middle">/ {evaloSlug}</span>
         </h1>
         <nav className="flex items-center gap-4 text-xs">
           {NAV.map((n) => (
