@@ -1,6 +1,6 @@
 import { Form, Link, useSearchParams } from "react-router";
 import { findRules, Glossary } from "@evalo/discovery";
-import { evaloRoot, getEvaloSlug, openDb } from "~/lib/db";
+import { rootDir, getEvaloSlug, openDb } from "~/lib/db";
 import { SiteHeader } from "~/components/site-header";
 import { Badge } from "~/components/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
@@ -16,7 +16,7 @@ export async function loader({ request }: { request: Request }) {
     const fts = db
       .prepare(`SELECT id, node_type, summary FROM fts WHERE fts MATCH ? ORDER BY rank LIMIT 20`)
       .all(q) as { id: string; node_type: string; summary: string }[];
-    const glossary = await Glossary.load(evaloRoot());
+    const glossary = await Glossary.load(rootDir());
     const findRulesResult = findRules(db, glossary, { description: q });
     return { q, fts, findRulesResult, evaloSlug };
   } finally {
@@ -33,7 +33,7 @@ export default function Search({ loaderData }: { loaderData: Awaited<ReturnType<
   const q = searchParams.get("q") ?? "";
   return (
     <div>
-      <SiteHeader evaloSlug={loaderData.evaloSlug} />
+      <SiteHeader context={loaderData.evaloSlug} mode="single-evalo" />
       <main className="mx-auto max-w-6xl px-6 py-6 space-y-4">
         <Form method="get" className="flex gap-2">
           <input

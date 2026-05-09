@@ -24,7 +24,7 @@ export default function LintRoute({ loaderData }: { loaderData: Awaited<ReturnTy
   const { report } = loaderData;
   return (
     <div>
-      <SiteHeader evaloSlug={loaderData.evaloSlug} />
+      <SiteHeader context={loaderData.evaloSlug} mode="single-evalo" />
       <main className="mx-auto max-w-6xl px-6 py-6 space-y-4">
         <Card>
           <CardHeader>

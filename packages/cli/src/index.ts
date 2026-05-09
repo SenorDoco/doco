@@ -2,6 +2,7 @@
 import { defineCommand, runMain } from "citty";
 import { checkCmd } from "./commands/check.js";
 import { findRulesCmd } from "./commands/find-rules.js";
+import { hostCmd } from "./commands/host.js";
 import { initCmd } from "./commands/init.js";
 import { lintCmd } from "./commands/lint.js";
 import { queryCmd } from "./commands/query.js";
@@ -26,6 +27,7 @@ const main = defineCommand({
     lint: lintCmd,
     "find-rules": findRulesCmd,
     serve: serveCmd,
+    host: hostCmd,
   },
 });
 

@@ -15,6 +15,7 @@ export interface EntityDirSpec {
  */
 export const ENTITY_DIRS: Record<Exclude<NodeType, "evalo">, EntityDirSpec> = {
   principal: { dir: "principals", format: "yaml" },
+  organization: { dir: "organizations", format: "yaml" },
   intent: { dir: "intents", format: "md" },
   rule: { dir: "rules", format: "md" },
   decision: { dir: "decisions", format: "md" },

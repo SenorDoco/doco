@@ -54,7 +54,7 @@ export default function ListByType({
   const { type, items } = loaderData;
   return (
     <div>
-      <SiteHeader evaloSlug={loaderData.evaloSlug} />
+      <SiteHeader context={loaderData.evaloSlug} mode="single-evalo" />
       <main className="mx-auto max-w-6xl px-6 py-6">
         <Card className="mb-4">
           <CardHeader>

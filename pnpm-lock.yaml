@@ -66,6 +66,9 @@ importers:
       '@evalo/discovery':
         specifier: workspace:*
         version: link:../discovery
+      '@evalo/host':
+        specifier: workspace:*
+        version: link:../host
       '@evalo/index':
         specifier: workspace:*
         version: link:../index
@@ -127,6 +130,18 @@ importers:
       '@types/better-sqlite3':
         specifier: ^7.6.12
         version: 7.6.13
+
+  packages/host:
+    dependencies:
+      '@evalo/core':
+        specifier: workspace:*
+        version: link:../core
+      '@evalo/shared':
+        specifier: workspace:*
+        version: link:../shared
+      yaml:
+        specifier: ^2.6.1
+        version: 2.8.4
 
   packages/index:
     dependencies:
@@ -228,6 +243,9 @@ importers:
       tailwind-merge:
         specifier: ^2.5.5
         version: 2.6.1
+      yaml:
+        specifier: ^2.6.1
+        version: 2.8.4
     devDependencies:
       '@react-router/dev':
         specifier: ^7.0.2

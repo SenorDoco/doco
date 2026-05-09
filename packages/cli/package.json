@@ -21,6 +21,7 @@
     "@evalo/api": "workspace:*",
     "@evalo/core": "workspace:*",
     "@evalo/discovery": "workspace:*",
+    "@evalo/host": "workspace:*",
     "@evalo/index": "workspace:*",
     "@evalo/lints": "workspace:*",
     "@evalo/runtime": "workspace:*",

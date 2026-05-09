@@ -11,7 +11,7 @@
     "id": {
       "type": "string",
       "description": "'<node_type>_<ULID>' — entity ID prefixed by its node_type (D-004, D-005).",
-      "pattern": "^(intent|rule|decision|action|reasoning|evaluation|reference|tag|principal|evalo)_[0-9A-HJKMNP-TV-Z]{26}$"
+      "pattern": "^(intent|rule|decision|action|reasoning|evaluation|reference|tag|principal|evalo|organization)_[0-9A-HJKMNP-TV-Z]{26}$"
     },
     "evalo_id": {
       "type": "string",
@@ -21,6 +21,17 @@
       "type": "string",
       "pattern": "^principal_[0-9A-HJKMNP-TV-Z]{26}$"
     },
+    "organization_id": {
+      "type": "string",
+      "pattern": "^organization_[0-9A-HJKMNP-TV-Z]{26}$"
+    },
+    "owner_ref": {
+      "description": "Polymorphic Evalo owner: a Principal (user/agent) or an Organization (ADR-063).",
+      "anyOf": [
+        { "$ref": "#/definitions/principal_id" },
+        { "$ref": "#/definitions/organization_id" }
+      ]
+    },
     "tag_id": {
       "type": "string",
       "pattern": "^tag_[0-9A-HJKMNP-TV-Z]{26}$"
@@ -28,7 +39,7 @@
     "namespaced_id": {
       "type": "string",
       "description": "Within-Evalo bare ID, or cross-Evalo '<namespace>:<id>' (D-029).",
-      "pattern": "^([a-z][a-z0-9_-]*:)?(intent|rule|decision|action|reasoning|evaluation|reference|tag|principal|evalo)_[0-9A-HJKMNP-TV-Z]{26}$"
+      "pattern": "^([a-z][a-z0-9_-]*:)?(intent|rule|decision|action|reasoning|evaluation|reference|tag|principal|evalo|organization)_[0-9A-HJKMNP-TV-Z]{26}$"
     },
     "datetime": { "type": "string", "format": "date-time" },
     "lifecycle": {
@@ -73,7 +84,7 @@
         "display_name": { "type": "string" },
         "visibility": { "type": "string", "enum": ["private", "public"] },
         "default_branch": { "type": "string" },
-        "owner_id": { "$ref": "#/definitions/principal_id" },
+        "owner_id": { "$ref": "#/definitions/owner_ref" },
         "description": { "type": "string" },
         "summary": { "type": "string", "maxLength": 240 },
         "created_at": { "$ref": "#/definitions/datetime" },
@@ -316,11 +327,40 @@
           }
         }
       ]
+    },
+    "organization_entity": {
+      "allOf": [
+        { "$ref": "#/definitions/common_fields" },
+        {
+          "type": "object",
+          "required": ["slug", "display_name"],
+          "properties": {
+            "node_type": { "const": "organization" },
+            "slug": { "type": "string", "pattern": "^[a-z0-9_-]+$" },
+            "display_name": { "type": "string" },
+            "description": { "type": "string" },
+            "visibility": { "type": "string", "enum": ["private", "public"] },
+            "members": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["principal_id", "role"],
+                "properties": {
+                  "principal_id": { "$ref": "#/definitions/principal_id" },
+                  "role": { "type": "string", "enum": ["owner", "admin", "member", "viewer"] },
+                  "permissions": { "type": "array", "items": { "type": "string", "enum": ["read", "write", "execute", "admin"] } }
+                }
+              }
+            }
+          }
+        }
+      ]
     }
   },
   "oneOf": [
     { "$ref": "#/definitions/evalo_entity" },
     { "$ref": "#/definitions/principal_entity" },
+    { "$ref": "#/definitions/organization_entity" },
     { "$ref": "#/definitions/intent_entity" },
     { "$ref": "#/definitions/rule_entity" },
     { "$ref": "#/definitions/decision_entity" },

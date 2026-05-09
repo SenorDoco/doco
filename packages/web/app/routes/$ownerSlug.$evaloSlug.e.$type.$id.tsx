@@ -1,12 +1,14 @@
 import { Link } from "react-router";
-import { openDb, getEvaloSlug } from "~/lib/db";
+import { openEvaloDb } from "~/lib/db";
+import { loadHostConfig } from "~/lib/host";
 import { SiteHeader } from "~/components/site-header";
 import { Badge } from "~/components/badge";
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "~/components/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "~/components/table";
 
 const KNOWN = new Set([
   "principal",
+  "organization",
   "intent",
   "rule",
   "decision",
@@ -17,11 +19,14 @@ const KNOWN = new Set([
   "tag",
 ]);
 
-export function loader({ params }: { params: { type: string; id: string } }) {
-  const type = params.type;
-  const id = params.id;
+export function loader({
+  params,
+}: {
+  params: { ownerSlug: string; evaloSlug: string; type: string; id: string };
+}) {
+  const { ownerSlug, evaloSlug, type, id } = params;
   if (!KNOWN.has(type)) throw new Response("Unknown type", { status: 404 });
-  const db = openDb();
+  const db = openEvaloDb(ownerSlug, evaloSlug);
   try {
     const row = db.prepare(`SELECT raw_json FROM ${type} WHERE id = ?`).get(id) as
       | { raw_json: string }
@@ -29,16 +34,12 @@ export function loader({ params }: { params: { type: string; id: string } }) {
     if (!row) throw new Response(`Not found: ${id}`, { status: 404 });
     const ent = JSON.parse(row.raw_json) as Record<string, unknown>;
     const outgoing = db
-      .prepare(
-        "SELECT to_id, to_node_type, edge_type FROM edges WHERE from_id = ? ORDER BY edge_type, to_id",
-      )
+      .prepare("SELECT to_id, to_node_type, edge_type FROM edges WHERE from_id = ? ORDER BY edge_type, to_id")
       .all(id) as { to_id: string; to_node_type: string; edge_type: string }[];
     const incoming = db
-      .prepare(
-        "SELECT from_id, from_node_type, edge_type FROM edges WHERE to_id = ? ORDER BY edge_type, from_id",
-      )
+      .prepare("SELECT from_id, from_node_type, edge_type FROM edges WHERE to_id = ? ORDER BY edge_type, from_id")
       .all(id) as { from_id: string; from_node_type: string; edge_type: string }[];
-    return { ent, outgoing, incoming, type, id, evaloSlug: getEvaloSlug() };
+    return { ent, outgoing, incoming, type, id, ownerSlug, evaloSlug, host: loadHostConfig() };
   } finally {
     db.close();
   }
@@ -59,15 +60,17 @@ export default function EntityDetail({
 }: {
   loaderData: Awaited<ReturnType<typeof loader>>;
 }) {
-  const { ent, type, id, outgoing, incoming } = loaderData;
+  const { ent, type, id, outgoing, incoming, ownerSlug, evaloSlug, host } = loaderData;
   const display =
     (ent.slug as string | undefined) ??
     (ent.title as string | undefined) ??
     (ent.name as string | undefined) ??
     id;
+  const linkTo = (kind: string, otherId: string) => `/${ownerSlug}/${evaloSlug}/e/${kind}/${otherId}`;
+
   return (
     <div>
-      <SiteHeader context={loaderData.evaloSlug} mode="single-evalo" />
+      <SiteHeader context={host.name} mode="host" evaloScope={{ ownerSlug, evaloSlug }} />
       <main className="mx-auto max-w-6xl px-6 py-6 space-y-4">
         <Card>
           <CardHeader>
@@ -105,7 +108,7 @@ export default function EntityDetail({
                     <TableRow key={`${e.edge_type}-${e.to_id}`}>
                       <TableCell className="font-mono text-xs">{e.edge_type}</TableCell>
                       <TableCell>
-                        <Link to={`/e/${e.to_node_type}/${e.to_id}`} className="text-primary hover:underline">
+                        <Link to={linkTo(e.to_node_type, e.to_id)} className="text-primary hover:underline">
                           {e.to_id}
                         </Link>
                         <span className="ml-2 text-xs text-muted-foreground">({e.to_node_type})</span>
@@ -136,7 +139,7 @@ export default function EntityDetail({
                     <TableRow key={`${e.edge_type}-${e.from_id}`}>
                       <TableCell className="font-mono text-xs">{e.edge_type}</TableCell>
                       <TableCell>
-                        <Link to={`/e/${e.from_node_type}/${e.from_id}`} className="text-primary hover:underline">
+                        <Link to={linkTo(e.from_node_type, e.from_id)} className="text-primary hover:underline">
                           {e.from_id}
                         </Link>
                         <span className="ml-2 text-xs text-muted-foreground">({e.from_node_type})</span>
