@@ -49,9 +49,6 @@ outputs:
       - "Repo rename /Users/torrenegra/Evalo → /Users/torrenegra/Aligno (or stays per user preference)"
       - "Git history preserved (git supports directory rename via mv + commit)"
 
-started_at: null
-ended_at: null
-
 created_at: 2026-05-09T03:15:00Z
 created_by: principal_01KR441EA259F7EE420Z4VWFPJ
 revision: 1
