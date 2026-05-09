@@ -8,6 +8,10 @@ dist/
 .turbo/
 coverage/
 
+# Remix / React Router framework outputs
+build/
+.react-router/
+
 # OS / editor
 .DS_Store
 *.swp
