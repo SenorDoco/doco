@@ -31,9 +31,6 @@ outputs:
     - "Update header (28 px nominal), hero (128 px), dashboard (80 px) to taste"
     - "Re-verify in Chrome that proportions look balanced at all sizes"
 
-started_at: null
-ended_at: null
-
 created_at: 2026-05-09T03:00:00Z
 created_by: principal_01KR441EA259F7EE420Z4VWFPJ
 revision: 1
