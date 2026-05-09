@@ -1,28 +1,29 @@
+@import url("https://fonts.googleapis.com/css2?family=Ubuntu+Mono:ital,wght@0,400;0,700;1,400;1,700&display=swap");
 @import "tailwindcss";
 
-/* shadcn-style theme tokens (dark default) */
+/* shadcn-style theme tokens — light theme + Ubuntu Mono everywhere */
 @theme {
-  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, system-ui, sans-serif;
-  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  --font-sans: "Ubuntu Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --font-mono: "Ubuntu Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
-  --color-background: oklch(0.16 0.012 248);
-  --color-foreground: oklch(0.96 0.005 240);
-  --color-muted: oklch(0.32 0.01 248);
-  --color-muted-foreground: oklch(0.65 0.015 248);
-  --color-card: oklch(0.20 0.012 248);
-  --color-card-foreground: oklch(0.96 0.005 240);
-  --color-border: oklch(0.27 0.012 248);
-  --color-input: oklch(0.24 0.012 248);
-  --color-primary: oklch(0.71 0.16 245);
-  --color-primary-foreground: oklch(0.16 0.012 248);
-  --color-accent: oklch(0.83 0.13 88);
-  --color-accent-foreground: oklch(0.16 0.012 248);
-  --color-destructive: oklch(0.66 0.22 25);
-  --color-destructive-foreground: oklch(0.96 0.005 240);
-  --color-success: oklch(0.74 0.14 170);
-  --color-success-foreground: oklch(0.16 0.012 248);
-  --color-warning: oklch(0.83 0.13 88);
-  --color-warning-foreground: oklch(0.16 0.012 248);
+  --color-background: oklch(0.99 0.002 240);
+  --color-foreground: oklch(0.20 0.015 248);
+  --color-muted: oklch(0.96 0.005 248);
+  --color-muted-foreground: oklch(0.46 0.012 248);
+  --color-card: oklch(1.00 0 0);
+  --color-card-foreground: oklch(0.20 0.015 248);
+  --color-border: oklch(0.91 0.006 248);
+  --color-input: oklch(0.97 0.004 248);
+  --color-primary: oklch(0.52 0.18 248);
+  --color-primary-foreground: oklch(0.99 0.002 240);
+  --color-accent: oklch(0.55 0.16 70);
+  --color-accent-foreground: oklch(0.99 0.002 240);
+  --color-destructive: oklch(0.55 0.22 25);
+  --color-destructive-foreground: oklch(0.99 0.002 240);
+  --color-success: oklch(0.50 0.14 165);
+  --color-success-foreground: oklch(0.99 0.002 240);
+  --color-warning: oklch(0.62 0.15 75);
+  --color-warning-foreground: oklch(0.20 0.015 248);
 
   --radius-sm: 4px;
   --radius: 6px;
@@ -38,7 +39,7 @@ html, body {
 }
 
 ::selection {
-  background-color: color-mix(in oklch, var(--color-primary) 30%, transparent);
+  background-color: color-mix(in oklch, var(--color-primary) 25%, transparent);
 }
 
 .body-md p { margin: 0.5em 0; }
@@ -47,7 +48,7 @@ html, body {
   padding: 1px 6px;
   border-radius: var(--radius-sm);
   font-family: var(--font-mono);
-  font-size: 0.85em;
+  font-size: 0.9em;
 }
 .body-md pre {
   background-color: var(--color-input);
@@ -61,5 +62,5 @@ html, body {
 }
 .body-md h1, .body-md h2, .body-md h3 {
   margin: 1em 0 0.5em;
-  font-weight: 600;
+  font-weight: 700;
 }
