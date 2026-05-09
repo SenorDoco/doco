@@ -1,0 +1,16 @@
+id: reference_01KR441EC50G9DX1QEAMQ96YW5
+evalo_id: evalo_01KR441EA0ZDMF0N5DY38GSVS3
+node_type: reference
+schema_version: "0.1"
+summary: "DECISIONS.md — consolidated log of 45 settled design decisions plus 12 open questions."
+
+ref_type: file
+locator: DECISIONS.md
+content_hash: null
+
+created_at: 2026-05-08T15:31:00Z
+created_by: principal_01KR441EA199MZCP7RDMADFZW9
+revision: 1
+lifecycle: active
+status: active
+tags: []

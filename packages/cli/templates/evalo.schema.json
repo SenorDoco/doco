@@ -1,0 +1,333 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://evalo.dev/schemas/v0.1/evalo.schema.json",
+  "title": "Evalo entity schema (v0.1)",
+  "description": "Validates the structured fields of every entity in an Evalo. Entities are stored as YAML (.yaml) or Markdown-with-frontmatter (.md); the YAML / frontmatter is the part this schema covers. See SCHEMA.md §3-§4 for prose definitions and worked examples.",
+  "definitions": {
+    "ulid": {
+      "type": "string",
+      "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$"
+    },
+    "id": {
+      "type": "string",
+      "description": "'<node_type>_<ULID>' — entity ID prefixed by its node_type (D-004, D-005).",
+      "pattern": "^(intent|rule|decision|action|reasoning|evaluation|reference|tag|principal|evalo)_[0-9A-HJKMNP-TV-Z]{26}$"
+    },
+    "evalo_id": {
+      "type": "string",
+      "pattern": "^evalo_[0-9A-HJKMNP-TV-Z]{26}$"
+    },
+    "principal_id": {
+      "type": "string",
+      "pattern": "^principal_[0-9A-HJKMNP-TV-Z]{26}$"
+    },
+    "tag_id": {
+      "type": "string",
+      "pattern": "^tag_[0-9A-HJKMNP-TV-Z]{26}$"
+    },
+    "namespaced_id": {
+      "type": "string",
+      "description": "Within-Evalo bare ID, or cross-Evalo '<namespace>:<id>' (D-029).",
+      "pattern": "^([a-z][a-z0-9_-]*:)?(intent|rule|decision|action|reasoning|evaluation|reference|tag|principal|evalo)_[0-9A-HJKMNP-TV-Z]{26}$"
+    },
+    "datetime": { "type": "string", "format": "date-time" },
+    "lifecycle": {
+      "type": "string",
+      "description": "Canonical state across stateful entities (D-007).",
+      "enum": ["proposed", "active", "succeeded", "failed", "superseded", "abandoned"]
+    },
+    "common_fields": {
+      "type": "object",
+      "description": "Fields that appear on every entity (SCHEMA.md §3 / D-006).",
+      "required": ["id", "evalo_id", "node_type", "schema_version", "summary", "created_at", "created_by"],
+      "properties": {
+        "id": { "$ref": "#/definitions/id" },
+        "evalo_id": { "$ref": "#/definitions/evalo_id" },
+        "node_type": { "type": "string" },
+        "schema_version": { "type": "string" },
+        "summary": { "type": "string", "maxLength": 240 },
+        "created_at": { "$ref": "#/definitions/datetime" },
+        "created_by": { "$ref": "#/definitions/principal_id" },
+        "updated_at": { "$ref": "#/definitions/datetime" },
+        "updated_by": { "$ref": "#/definitions/principal_id" },
+        "revision": { "type": "integer", "minimum": 1 },
+        "lifecycle": { "$ref": "#/definitions/lifecycle" },
+        "status": { "type": "string" },
+        "tags": { "type": "array", "items": { "$ref": "#/definitions/tag_id" } },
+        "born_from": { "$ref": "#/definitions/id" }
+      }
+    },
+    "scope_selector": {
+      "type": "object",
+      "description": "Predicate over entities (SCHEMA.md §5). Free-form for v0.1; tighter validation deferred until usage shows the right shape.",
+      "additionalProperties": true
+    },
+    "evalo_entity": {
+      "type": "object",
+      "required": ["id", "node_type", "schema_version", "slug", "display_name", "visibility", "owner_id"],
+      "properties": {
+        "id": { "$ref": "#/definitions/evalo_id" },
+        "node_type": { "const": "evalo" },
+        "schema_version": { "type": "string" },
+        "slug": { "type": "string", "pattern": "^[a-z0-9_-]+/[a-z0-9_-]+$" },
+        "display_name": { "type": "string" },
+        "visibility": { "type": "string", "enum": ["private", "public"] },
+        "default_branch": { "type": "string" },
+        "owner_id": { "$ref": "#/definitions/principal_id" },
+        "description": { "type": "string" },
+        "summary": { "type": "string", "maxLength": 240 },
+        "created_at": { "$ref": "#/definitions/datetime" },
+        "created_by": { "$ref": "#/definitions/principal_id" },
+        "updated_at": { "$ref": "#/definitions/datetime" },
+        "updated_by": { "$ref": "#/definitions/principal_id" },
+        "revision": { "type": "integer", "minimum": 1 },
+        "lifecycle": { "$ref": "#/definitions/lifecycle" },
+        "status": { "type": "string" },
+        "tags": { "type": "array", "items": { "$ref": "#/definitions/tag_id" } },
+        "members": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["principal_id", "role", "permissions"],
+            "properties": {
+              "principal_id": { "$ref": "#/definitions/principal_id" },
+              "role": { "type": "string", "enum": ["owner", "maintainer", "contributor", "viewer"] },
+              "permissions": { "type": "array", "items": { "type": "string", "enum": ["read", "write", "execute", "admin"] } }
+            }
+          }
+        },
+        "imports": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["evalo", "ref", "as"],
+            "properties": {
+              "evalo": { "type": "string" },
+              "ref": { "type": "string" },
+              "as": { "type": "string" },
+              "include": { "type": "array", "items": { "type": "string" } }
+            }
+          }
+        }
+      }
+    },
+    "principal_entity": {
+      "allOf": [
+        { "$ref": "#/definitions/common_fields" },
+        {
+          "type": "object",
+          "required": ["type", "username", "display_name"],
+          "properties": {
+            "node_type": { "const": "principal" },
+            "type": { "type": "string", "enum": ["human", "agent"], "description": "Open question DECISIONS.md §13 #2 — may rename to is_agent: bool." },
+            "username": { "type": "string" },
+            "display_name": { "type": "string" },
+            "github_identity": {
+              "type": "object",
+              "properties": {
+                "github_id": { "type": "string" },
+                "github_login": { "type": "string" },
+                "email": { "type": "string", "format": "email" }
+              }
+            },
+            "owner_id": { "$ref": "#/definitions/principal_id" },
+            "agent_metadata": {
+              "type": "object",
+              "properties": {
+                "provider": { "type": "string" },
+                "model": { "type": "string" },
+                "capabilities": { "type": "array", "items": { "type": "string" } },
+                "created_at": { "$ref": "#/definitions/datetime" }
+              }
+            },
+            "public_key": { "type": "string" }
+          }
+        }
+      ]
+    },
+    "intent_entity": {
+      "allOf": [
+        { "$ref": "#/definitions/common_fields" },
+        {
+          "type": "object",
+          "required": ["title"],
+          "properties": {
+            "node_type": { "const": "intent" },
+            "slug": { "type": "string" },
+            "title": { "type": "string" },
+            "parent_intent_id": {
+              "anyOf": [{ "$ref": "#/definitions/id" }, { "type": "null" }]
+            },
+            "priority": { "type": "string", "enum": ["p0", "p1", "p2", "p3"] },
+            "non_goals": { "type": "array", "items": { "type": "string" } },
+            "acceptance": { "type": "array", "items": { "type": "string" } },
+            "stakeholders": { "type": "array", "items": { "$ref": "#/definitions/principal_id" } },
+            "applies_to": { "$ref": "#/definitions/scope_selector" }
+          }
+        }
+      ]
+    },
+    "rule_entity": {
+      "allOf": [
+        { "$ref": "#/definitions/common_fields" },
+        {
+          "type": "object",
+          "required": ["modality", "phase", "applies_to"],
+          "properties": {
+            "node_type": { "const": "rule" },
+            "slug": { "type": "string" },
+            "modality": { "type": "string", "enum": ["must", "must_not", "should", "should_not"] },
+            "severity": { "type": "string", "enum": ["blocker", "warning", "info"] },
+            "phase": { "type": "string", "enum": ["declared", "pre", "post", "invariant"] },
+            "applies_to": { "$ref": "#/definitions/scope_selector" },
+            "predicate": { "type": "string" },
+            "expected": {},
+            "on_violation": { "type": "string", "enum": ["block", "warn", "log"] }
+          }
+        }
+      ]
+    },
+    "decision_entity": {
+      "allOf": [
+        { "$ref": "#/definitions/common_fields" },
+        {
+          "type": "object",
+          "required": ["question", "chosen", "decided_by", "decided_at"],
+          "properties": {
+            "node_type": { "const": "decision" },
+            "slug": { "type": "string" },
+            "number": { "type": "string", "description": "Optional ADR-style number, set when tag_adr is applied (D-022)." },
+            "intent_ids": { "type": "array", "items": { "$ref": "#/definitions/id" } },
+            "question": { "type": "string" },
+            "chosen": { "type": "string" },
+            "alternatives": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "name": { "type": "string" },
+                  "rejected_because": { "type": "string" }
+                }
+              }
+            },
+            "rules_consulted": { "type": "array", "items": { "$ref": "#/definitions/id" } },
+            "decided_by": { "$ref": "#/definitions/principal_id" },
+            "decided_at": { "$ref": "#/definitions/datetime" },
+            "superseded_by": { "$ref": "#/definitions/id" }
+          }
+        }
+      ]
+    },
+    "action_entity": {
+      "allOf": [
+        { "$ref": "#/definitions/common_fields" },
+        {
+          "type": "object",
+          "required": ["actor_id", "verb"],
+          "properties": {
+            "node_type": { "const": "action" },
+            "actor_id": { "$ref": "#/definitions/principal_id" },
+            "verb": { "type": "string" },
+            "target": { "$ref": "#/definitions/id" },
+            "intent_ids": { "type": "array", "items": { "$ref": "#/definitions/id" } },
+            "decision_ids": { "type": "array", "items": { "$ref": "#/definitions/id" } },
+            "inputs": { "type": "object", "additionalProperties": true },
+            "outputs": { "type": "object", "additionalProperties": true },
+            "started_at": { "$ref": "#/definitions/datetime" },
+            "ended_at": { "$ref": "#/definitions/datetime" },
+            "attestation": { "type": "string" }
+          }
+        }
+      ]
+    },
+    "reasoning_entity": {
+      "allOf": [
+        { "$ref": "#/definitions/common_fields" },
+        {
+          "type": "object",
+          "required": ["author_id", "premises", "inference"],
+          "properties": {
+            "node_type": { "const": "reasoning" },
+            "author_id": { "$ref": "#/definitions/principal_id" },
+            "premises": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["node_type", "ref", "as"],
+                "properties": {
+                  "node_type": { "type": "string" },
+                  "ref": { "$ref": "#/definitions/id" },
+                  "as": { "type": "string" }
+                }
+              }
+            },
+            "inference": { "type": "string" },
+            "conclusion_ref": { "$ref": "#/definitions/id" },
+            "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+            "uncertainty": { "type": "array", "items": { "type": "string" } }
+          }
+        }
+      ]
+    },
+    "evaluation_entity": {
+      "allOf": [
+        { "$ref": "#/definitions/common_fields" },
+        {
+          "type": "object",
+          "required": ["rule_id", "result", "ran_at", "ran_by"],
+          "properties": {
+            "node_type": { "const": "evaluation" },
+            "rule_id": { "$ref": "#/definitions/id" },
+            "target_id": { "type": "string" },
+            "result": { "type": "string", "enum": ["pass", "fail", "error"] },
+            "evidence": { "type": "object", "additionalProperties": true },
+            "ran_at": { "$ref": "#/definitions/datetime" },
+            "ran_by": { "$ref": "#/definitions/principal_id" },
+            "duration_ms": { "type": "integer", "minimum": 0 }
+          }
+        }
+      ]
+    },
+    "reference_entity": {
+      "allOf": [
+        { "$ref": "#/definitions/common_fields" },
+        {
+          "type": "object",
+          "required": ["ref_type", "locator"],
+          "properties": {
+            "node_type": { "const": "reference" },
+            "ref_type": { "type": "string", "enum": ["file", "url", "ticket", "commit", "document", "other"] },
+            "locator": { "type": "string" },
+            "content_hash": { "type": ["string", "null"] }
+          }
+        }
+      ]
+    },
+    "tag_entity": {
+      "allOf": [
+        { "$ref": "#/definitions/common_fields" },
+        {
+          "type": "object",
+          "required": ["name"],
+          "properties": {
+            "node_type": { "const": "tag" },
+            "name": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+            "description": { "type": "string" }
+          }
+        }
+      ]
+    }
+  },
+  "oneOf": [
+    { "$ref": "#/definitions/evalo_entity" },
+    { "$ref": "#/definitions/principal_entity" },
+    { "$ref": "#/definitions/intent_entity" },
+    { "$ref": "#/definitions/rule_entity" },
+    { "$ref": "#/definitions/decision_entity" },
+    { "$ref": "#/definitions/action_entity" },
+    { "$ref": "#/definitions/reasoning_entity" },
+    { "$ref": "#/definitions/evaluation_entity" },
+    { "$ref": "#/definitions/reference_entity" },
+    { "$ref": "#/definitions/tag_entity" }
+  ]
+}

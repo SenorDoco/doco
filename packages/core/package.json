@@ -1,0 +1,30 @@
+{
+  "name": "@evalo/core",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "Source-of-truth layer: read, write, and validate Evalo entity files.",
+  "license": "Apache-2.0",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@evalo/shared": "workspace:*",
+    "ajv": "^8.17.1",
+    "ajv-formats": "^3.0.1",
+    "gray-matter": "^4.0.3",
+    "yaml": "^2.6.1"
+  }
+}

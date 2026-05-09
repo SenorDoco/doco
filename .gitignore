@@ -1,0 +1,24 @@
+# Local index cache — per-clone, regenerable, never source-of-truth (D-023).
+.evalo/
+
+# Node / TypeScript
+node_modules/
+dist/
+*.tsbuildinfo
+.turbo/
+coverage/
+
+# OS / editor
+.DS_Store
+*.swp
+*.swo
+.vscode/
+.idea/
+
+# Env
+.env
+.env.local
+.env.*.local
+
+# Scratch
+/tmp/

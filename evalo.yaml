@@ -1,0 +1,45 @@
+# Evalo — root identity for this Evalo.
+# An Evalo IS a git repository (D-002). This file marks the root.
+# Conforms to schema/evalo.schema.json (definition `evalo_entity`).
+
+id: evalo_01KR441EA0ZDMF0N5DY38GSVS3
+node_type: evalo
+schema_version: "0.1"
+
+slug: torrenegra/evalo
+display_name: Evalo
+visibility: private
+default_branch: main
+
+owner_id: principal_01KR441EA199MZCP7RDMADFZW9   # torrenegra (human)
+
+description: |
+  Alignment framework and runtime checking system. Documents and verifies
+  the relationships between user intent, agent reasoning, and agent actions —
+  to reduce misalignment between users and AI agents, and between collaborating
+  agents.
+
+  This repository is itself an Evalo (self-hosting per intent_01KR441EABD6SB4FGNSK9KEV81).
+  Original prose design lives in PLANNING.md, SCHEMA.md, DECISIONS.md and is
+  mirrored as entities under intents/, rules/, decisions/, etc.
+
+summary: "Alignment framework and runtime checking system; this repo is its own first Evalo."
+created_at: 2026-05-08T15:18:00Z
+created_by: principal_01KR441EA199MZCP7RDMADFZW9
+updated_at: 2026-05-08T15:42:00Z
+updated_by: principal_01KR441EA259F7EE420Z4VWFPJ
+revision: 2
+lifecycle: active
+status: active
+tags: []
+
+members:
+  - principal_id: principal_01KR441EA199MZCP7RDMADFZW9   # torrenegra
+    role: owner
+    permissions: [read, write, execute, admin]
+  - principal_id: principal_01KR441EA259F7EE420Z4VWFPJ   # claude-opus-4-7 (agent, invited 2026-05-08)
+    role: contributor
+    permissions: [read, write]
+
+# Cross-Evalo imports — none yet (this is the seed Evalo).
+imports: []

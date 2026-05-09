@@ -1,0 +1,634 @@
+# Evalo Data Schema — v0.1 (proposal)
+
+## 1. Design philosophy → priority mapping
+
+Every choice below is justified by Evalo's strict-priority optimizations:
+
+| Priority | How the schema serves it |
+|---|---|
+| 1. AI agent comprehension | Self-describing entities, predictable names, explicit node_type+ID prefixes, schema-of-the-Evalo embedded inside every Evalo so an agent can read structure without external context. |
+| 2. AI agent updates | One file per entity (small, predictable diffs), additive evolution (new fields don't invalidate old data), stable IDs (inserts don't renumber peers), upsert-by-path semantics. |
+| 3. Human comprehension | Every entity has a `summary` field and a Markdown narrative body alongside its structured fields. |
+| 4. Scoping | Three levels: Evalo > namespace (entity directory) > entity. Rules carry an explicit `applies_to` scope selector. |
+| 5. Version control | Each Evalo IS a git repository. Revisions are commits; diffs are file diffs; branches are branches. |
+| 6. Performance | References are flat IDs (no inlined data). Generated `index/` directory holds derived lookups (not source of truth). |
+| 7. Automated issue detection | Every Rule can carry a `predicate`; runtime-phase Rules produce Evaluations. The schema itself is lintable (orphan refs, broken `applies_to`, status conflicts). |
+
+When two priorities conflict, the higher-priority one wins.
+
+## 2. Storage model
+
+An Evalo is a **git repository** with this layout:
+
+```
+my-evalo/
+  evalo.yaml                       # Evalo identity, visibility, schema version
+  schema/
+    evalo.schema.json              # JSON Schema for all entities (embedded for agent self-comprehension)
+  principals/
+    {principal-id}.yaml            # Members of this Evalo (or all known principals)
+  intents/
+    {intent-id}.md
+  rules/
+    {rule-id}.md
+  decisions/
+    {decision-id}.md
+  actions/
+    {action-id}.md
+  reasoning/
+    {reasoning-id}.md
+  evaluations/
+    {YYYY-MM}/{evaluation-id}.json # append-only, partitioned by month
+  references/
+    {reference-id}.yaml
+  tags/
+    {tag-id}.yaml
+  index/                           # generated; not source of truth
+    by-intent.json
+    by-action.json
+    orphans.json
+```
+
+Markdown entities use **YAML frontmatter** (structured fields, agent-parseable) plus a **Markdown body** (narrative, human-friendly). Both audiences served by one file.
+
+## 3. Common fields (every entity)
+
+```yaml
+id: intent_01H8XYZ...              # ULID, prefixed by node type
+evalo_id: evalo_01H...
+node_type: intent                       # entity discriminator (matches directory name)
+schema_version: "0.1"
+summary: "One-line summary."       # priority 3: human comprehension
+created_at: 2026-05-08T15:42:00Z
+created_by: principal_...
+updated_at: 2026-05-08T15:42:00Z
+updated_by: principal_...
+revision: 3                        # logical revision; git carries physical history
+lifecycle: proposed | active | succeeded | superseded | abandoned | failed   # canonical state machine across stateful entities (see §3.1)
+status: active                     # type-specific alias of lifecycle
+tags: [tag_..., tag_...]
+born_from: decision_... | null     # optional provenance: this entity exists because of another (e.g., regression Rule born from a bugfix Decision)
+```
+
+### 3.1 Lifecycle — canonical states across stateful entities
+
+Every stateful entity moves through a shared lifecycle:
+
+```
+proposed → active → succeeded
+                 ↘ failed
+                 ↘ superseded
+                 ↘ abandoned
+```
+
+Each node type keeps a type-specific `status` alias for readability; the underlying `lifecycle` value is one of the canonical six. This makes "show me everything currently *active*" one query across node types.
+
+| Entity | proposed | active | succeeded | superseded | abandoned | failed |
+|---|---|---|---|---|---|---|
+| Intent | proposed | active | achieved | deprecated | abandoned | — |
+| Decision | proposed | active | accepted | superseded | reverted | — |
+| Action | planned | in_progress | completed | — | blocked | failed |
+| Rule | proposed | active | — | superseded | retired | — |
+| Reasoning | (typically captured at a moment; lifecycle optional) |
+| Evaluation | (single-shot result; not stateful) |
+
+Tooling and queries should use `lifecycle` as the canonical key; UI can render the type-specific alias.
+
+## 4. Entities
+
+### 4.1 Principal — a user (human or agent)
+
+Same shape for both, so they get the same affordances.
+
+```yaml
+id: principal_...
+node_type: principal
+type: human | agent
+username: "torrenegra"             # GitHub login (humans) or "{owner_username}/{creation_timestamp}" (agents) — see PLANNING.md §2.3
+display_name: "..."
+github_identity:                   # only when type=human; humans sign in exclusively via GitHub (PLANNING.md §2.1)
+  github_id: "12345"
+  github_login: "torrenegra"
+  email: "a@torre.ai"
+owner_id: principal_...             # only when type=agent — the Principal that invited this agent (chain terminates at a human; PLANNING.md §3.4)
+agent_metadata:                     # only when type=agent
+  provider: anthropic
+  model: claude-opus-4-7
+  capabilities: [read, write, execute]
+  created_at: 2026-05-08T15:42:00Z   # forms the latter half of the agent's username
+public_key: ...                     # for action attestation (future)
+```
+
+### 4.2 Evalo — the repo-equivalent (root entity)
+
+Stored in `evalo.yaml` at repo root.
+
+```yaml
+id: evalo_...
+node_type: evalo
+slug: torre/alignment-runtime
+display_name: "Alignment Runtime"
+visibility: private | public
+owner_id: principal_...
+default_branch: main
+description: "..."
+members:
+  - { principal_id: principal_..., role: owner | maintainer | contributor | viewer, permissions: [read, write, execute, admin] }
+imports:                              # cross-Evalo rule sharing — see §9.4
+  - { evalo: torre/shared-policy, ref: "v2.3.1", as: policy, include: [rules, tags] }
+```
+
+### 4.3 Intent — what someone wants
+
+Decomposable: an intent can have a parent intent.
+
+```yaml
+id: intent_...
+node_type: intent
+parent_intent_id: intent_... | null
+title: "Ship feature X to production"
+status: proposed | active | achieved | abandoned | deprecated
+priority: p0 | p1 | p2 | p3
+non_goals:                         # explicit "not this" — alignment-critical
+  - "Refactor auth in the same PR"
+acceptance:                        # how we know it's satisfied
+  - "Feature flag toggleable in prod"
+  - "p99 latency unchanged"
+stakeholders: [principal_...]
+applies_to: <scope_selector>       # see §5
+```
+
+Markdown body: motivation, examples, expected user-visible behavior.
+
+### 4.4 Rule — a statement of correctness (declarative or runtime-checked)
+
+A Rule subsumes what v0.1 called *Constraint* and *Assertion*. Both are statements about correctness that can be evaluated against entities; they differ only in `phase` — `declared` Rules express policy that always holds, while `pre`/`post`/`invariant` Rules are runtime evaluation points.
+
+```yaml
+id: rule_...
+node_type: rule
+modality: must | must_not | should | should_not
+severity: blocker | warning | info
+phase: declared | pre | post | invariant   # declared = policy / always holds; pre|post|invariant = runtime evaluation point
+applies_to: <scope_selector>       # what this Rule covers; a single-id selector targets one specific entity (replaces the old Assertion.target shape)
+predicate: "..."                   # machine-checkable expression (optional when phase=declared)
+expected: true                     # what counts as passing (default true)
+on_violation: block | warn | log
+```
+
+Markdown body: canonical prose statement; examples of compliance and violation.
+
+### 4.5 Decision — a recorded choice at a decision point
+
+```yaml
+id: decision_...
+node_type: decision
+number: "ADR-0042"                 # optional: sequential identifier when the Decision is promoted to ADR (set when tag_adr applied)
+intent_ids: [intent_...]           # what intents this serves
+question: "Which database for the events store?"
+chosen: "Postgres with logical replication"
+alternatives:
+  - { name: "Kafka", rejected_because: "..." }
+  - { name: "DynamoDB", rejected_because: "..." }
+rules_consulted: [rule_...]
+decided_by: principal_...
+decided_at: 2026-05-08T...
+status: proposed | accepted | superseded | reverted
+superseded_by: decision_... | null
+```
+
+### 4.6 Action — a planned or executed action by a principal
+
+```yaml
+id: action_...
+node_type: action
+actor_id: principal_...
+verb: edit_file | send_message | deploy | call_api | ...
+target: reference_...
+intent_ids: [intent_...]
+decision_ids: [decision_...]
+status: planned | in_progress | completed | failed | blocked
+inputs: { ... }                    # verb-specific
+outputs: { ... }
+started_at: ...
+ended_at: ...
+attestation: ...                   # signed payload (future)
+```
+
+Markdown body: human description, post-hoc commentary.
+
+### 4.7 Reasoning — the inferential bridge
+
+First-class so multiple reasonings can attach to one decision (agent's vs reviewer's vs revised), and so reasoning itself is queryable and reviewable.
+
+```yaml
+id: reasoning_...
+node_type: reasoning
+author_id: principal_...
+premises:
+  - { node_type: intent,     ref: intent_...,     as: "user wants to ship feature X" }
+  - { node_type: rule,       ref: rule_...,       as: "no schema migrations during freeze" }
+  - { node_type: fact,       ref: reference_...,  as: "current schema lacks column Y" }
+inference: "Therefore we should defer column Y until after the freeze and ..."
+conclusion_node_type: decision | action | claim
+conclusion_ref: decision_... | action_... | null
+confidence: 0.0..1.0
+uncertainty:                       # known unknowns
+  - "Whether Y is needed before X ships"
+```
+
+Markdown body: free-form reasoning narrative, written by the principal.
+
+### 4.8 Evaluation — result of running a Rule
+
+Append-only; partitioned by month for performance.
+
+```json
+{
+  "id": "evaluation_...",
+  "node_type": "evaluation",
+  "rule_id": "rule_...",
+  "target_id": "...",
+  "result": "pass" | "fail" | "error",
+  "evidence": { "...": "..." },
+  "ran_at": "2026-05-08T15:43:00Z",
+  "ran_by": "principal_...",
+  "duration_ms": 12
+}
+```
+
+### 4.9 Reference — typed pointer to external resource
+
+```yaml
+id: reference_...
+node_type: reference
+ref_type: file | url | ticket | commit | document | other
+locator: "src/foo.ts:42" | "https://..." | "linear/ENG-123"
+content_hash: sha256:...           # optional, for immutability checks
+```
+
+### 4.10 Tag — flexible categorization
+
+```yaml
+id: tag_...
+node_type: tag
+name: "auth"
+description: "..."
+```
+
+#### Reserved tag conventions
+
+A small set of tag names carries semantic meaning that tooling and lints recognize:
+
+| Tag | Applied to | Meaning |
+|---|---|---|
+| `tag_adr` | Decision | Decision is published as an Architecture Decision Record; sets the `number` field |
+| `tag_bugfix` | Decision | Decision resolves a bug; expected to spawn a `tag_regression_guard` Rule via `BornFrom` |
+| `tag_regression_guard` | Rule | Born from a bugfix Decision; prevents recurrence of a class of bug |
+| `tag_adr_consequence` | Rule | Born from an ADR's stated consequence (machine-checkable form of the ADR's "Consequences" section) |
+| `tag_userflow` | Decision | Part of a user-flow design chain (queryable as a single chain via this tag) |
+
+Lints can enforce conventions — e.g., "every `tag_bugfix` Decision must have at least one `BornFrom` edge from a `tag_regression_guard` Rule."
+
+## 5. Scope selector
+
+Used by Intent.`applies_to` and Rule.`applies_to`. A predicate over entities. The grammar accepts both *broad* matches (node_type/tag/property) and *single-id* matches (replacing the old Assertion.target shape).
+
+```yaml
+applies_to:
+  any_of:
+    - tag: "auth"
+    - { node_type: action, verb: deploy }
+    - { intent_id: intent_... }
+    - { id: action_01H... }              # single-entity target
+    - { all: true }                      # wildcard: every entity in this Evalo (used by global Rules — §9.1)
+    - { all_of: [ { node_type: action }, { actor_type: agent } ] }
+```
+
+## 6. Relationships at a glance
+
+```
+Principal --owns--> Evalo --contains--> { Intent, Rule, Decision,
+                                          Action, Reasoning,
+                                          Evaluation, Reference, Tag }
+Principal --member_of--> Evalo           # with role + permissions edge properties
+Principal --owned_by--> Principal        # agent → inviter (chain terminates at a human; PLANNING.md §3)
+Evalo     --imports--> Evalo             # with ref + namespace + include edge properties (§9.4)
+
+Intent       --decomposes_into--> Intent
+Decision     --serves--> Intent
+             --consults--> Rule
+Action       --enacts--> Decision
+             --attempts--> Intent
+Reasoning    --concludes--> Decision | Action | Claim
+Rule         --applies_to--> Intent | Decision | Action | Reasoning | Rule
+Evaluation   --runs--> Rule
+*            --born_from--> *            # provenance; canonical use: Rule born from a fix Decision
+```
+
+The **alignment graph** is the path: `Intent → Reasoning → (Decision →) Action`, with `Rule` overlaid as the boundary and runtime check.
+
+### 6.1 The fields-as-edges convention
+
+Any field on an entity whose value is an entity ID (or list of IDs) is **automatically materialized as an edge** in the index, with the field name mapping to the edge type. The frontmatter file is the source-of-truth; the index re-derives edges on each update.
+
+| Source field | Edge type |
+|---|---|
+| `Decision.intent_ids` | Serves |
+| `Decision.rules_consulted` | Consults |
+| `Decision.superseded_by` | SupersededBy |
+| `Action.intent_ids` | Attempts |
+| `Action.decision_ids` | Enacts |
+| `Action.target` | ActsOn |
+| `Reasoning.premises[].ref` | Premise (with `as` carried as edge property) |
+| `Reasoning.conclusion_ref` | Concludes (traversable in both directions; replaces the v0.1 `Decision.reasoning_id` / `Action.reasoning_id` source fields) |
+| `Rule.applies_to` | AppliesTo |
+| `Evaluation.rule_id` | RunsRule |
+| `Evaluation.target_id` | EvaluatedOn |
+| `Intent.parent_intent_id` | HasSubintent (reverse: parent → child) |
+| `Principal.owner_id` | OwnedBy (agent → inviter; chain terminates at a human — PLANNING.md §3.4) |
+| `Evalo.members[].principal_id` | MemberOf (with `role` and `permissions` as edge properties) |
+| `Evalo.imports[].evalo` | Imports (with `ref`, `as`, `include` as edge properties — §9.4) |
+| `*.tags[]` | Tagged |
+| `*.created_by` / `*.updated_by` | CreatedBy / UpdatedBy |
+| `*.born_from` | BornFrom |
+
+Adding a new ID-valued field automatically gets it picked up by the index — agents reading the schema can infer the edge graph without a separate edge-schema document. This is what keeps the source-of-truth files and the queryable graph in lockstep.
+
+## 7. ID convention
+
+`{node_type}_{ULID}` — e.g., `intent_01H8XYZK6F...`. ULIDs sort by creation time, are URL-safe, and need no central coordinator. The node_type prefix lets agents identify the type from IDs alone (priority 1).
+
+## 8. Query model — fast queries at 10k+ entities
+
+File-per-entity serves priorities 1–5. For priority 6, add a **derived index** alongside the source. The index is rebuildable, never authoritative — it can be wiped and regenerated at any time without losing data.
+
+### 8.1 Tiered layout
+
+```
+working-tree/                  # source of truth (git-tracked)
+  evalo.yaml
+  intents/...
+  ...
+.evalo/                        # local cache (NOT git-tracked, in .gitignore)
+  cache.db                     # SQLite + FTS5
+  cache.version                # full reindex on mismatch
+```
+
+`.evalo/` is per-clone, regenerated locally. `evalo reindex` rebuilds from source in seconds at 10k.
+
+### 8.2 Index schema (SQLite)
+
+One table per node type, mirroring its frontmatter (so column names match field names — agent-comprehensible). Plus three cross-cutting tables:
+
+```sql
+-- Every reference between entities, forward + reverse.
+CREATE TABLE edges (
+  from_id    TEXT NOT NULL,
+  from_node_type  TEXT NOT NULL,
+  to_id      TEXT NOT NULL,
+  to_node_type    TEXT NOT NULL,
+  edge_type  TEXT NOT NULL,    -- serves, enacts, consults, concludes, applies_to, runs_rule, tagged, decomposes_into, born_from, ...
+  PRIMARY KEY (from_id, to_id, edge_type)
+);
+CREATE INDEX edges_to ON edges(to_id, edge_type);
+
+-- Full-text over summary + Markdown body of every entity.
+CREATE VIRTUAL TABLE fts USING fts5(
+  id UNINDEXED, node_type UNINDEXED, summary, body
+);
+
+-- Denormalized: which entities a scope selector currently matches.
+CREATE TABLE scope_match (
+  source_id    TEXT NOT NULL,  -- rule/intent with applies_to
+  target_id    TEXT NOT NULL,  -- matched entity
+  selector_rev INTEGER NOT NULL,
+  PRIMARY KEY (source_id, target_id)
+);
+CREATE INDEX scope_match_target ON scope_match(target_id);
+```
+
+### 8.3 How common queries get served
+
+| Question | Mechanism | Latency at 10k |
+|---|---|---|
+| "Active intents tagged 'auth'" | indexed SELECT | sub-ms |
+| "All decisions serving intent X" | `SELECT FROM edges WHERE to_id=X AND edge_type='serves'` | sub-ms |
+| "Which rules apply to this action?" | `SELECT FROM scope_match WHERE target_id=...` | O(1) |
+| "Path from action back to originating intent" | recursive CTE over `edges` | tens of ms |
+| "Anything mentioning 'session token'" | FTS5 | tens of ms |
+| "Failing rule evaluations on agent X's actions last 7 days" | join across actions × evaluations × rules | sub-10 ms |
+| "Orphan reasonings (no conclusion attached)" | anti-join on `edges` | sub-ms |
+| "Rules violated in the last commit" | join evaluations × edges with time range filter | sub-10 ms |
+
+### 8.4 Incremental updates
+
+- **post-commit git hook**: diff `HEAD~1..HEAD`, re-index only the touched files.
+- **file watcher** (active while `evalo` daemon runs): same logic for working-tree edits.
+- **schema-version bump or detected corruption**: `evalo reindex` does a full rebuild.
+
+A 10k-entity full reindex is bound by file I/O (parsing YAML), not SQL — single-digit seconds on typical hardware.
+
+### 8.5 Scope-selector caching
+
+`Rule.applies_to` (whether broad selector or single-id form) is evaluated **on write**, not on read:
+
+- When a Rule is created or its selector changes, evaluate once and store matches in `scope_match`. Bump `selector_rev`.
+- When a new entity is created, evaluate active selectors against it once. Most selectors filter by `node_type` first, so the candidate set is small.
+- Lookups ("which rules apply to X?") become a single index hit.
+
+Alternative is evaluate-on-read — simpler but linear in selectors × entities. Denormalize wins because rules are read-heavy and rarely change.
+
+### 8.6 Query surface
+
+Three layers, all backed by the same index:
+
+1. **Direct file access** — source of truth, always works, slow at scale.
+2. **SQL** — primary surface. Schema is self-describing via `schema/evalo.schema.json` embedded in every Evalo. SQL is universal — no DSL for an agent to learn.
+3. **High-level DSL** *(future)* — `evalo query "actions by claude-opus-4-7 last 7d that violate any rule"`, compiled to SQL.
+
+Priority 1 (agent comprehension) argues for SQL over a custom DSL: SQL is already known by virtually every agent, and the schema is discoverable from inside the Evalo.
+
+### 8.7 Where this stops working
+
+- **10k–1M entities per Evalo**: SQLite + FTS5 sweet spot.
+- **> 1M**: switch the local cache to DuckDB (columnar) or an embedded graph DB (Kuzu — see §8.8).
+- **Cross-Evalo queries** (search across all my Evalos): need a fan-out indexer — out of scope for v0.x.
+
+### 8.8 Why SQLite, not a graph database?
+
+The data is graph-shaped. Every entity is a node; every reference is an edge. The alignment graph (Intent → Reasoning → Decision → Action, with Rules overlaid) IS Evalo's central data structure. Storing it relationally is a deliberate, reversible trade — the index isn't source-of-truth, so swapping is cheap.
+
+| Option | Pros | Cons | Verdict |
+|---|---|---|---|
+| **SQLite + `edges` table** (proposed) | Embedded, zero-ops; universal SQL (priority 1); FTS5 built-in; ubiquitous tooling | Recursive CTEs slow on dense graphs past ~1M entities at depth 5+ | Best fit for v0.x |
+| **Kuzu** | Embedded, native Cypher, columnar/fast traversal, no server | Newer (less battle-tested), C++ deps, smaller ecosystem | Strongest swap if perf bites |
+| **Memgraph / Neo4j** | Mature graph DBs, max perf, rich tooling | Separate server, ops cost, less embedded-friendly | Overkill at v0.x scale |
+| **TerminusDB** | Git-like branching/merging *natively* on a graph DB; conceptually aligned with Evalo's repo model | Smaller ecosystem; would replace files-as-source-of-truth — much bigger architectural commitment | Revisit if we ever go DB-as-source-of-truth |
+
+**The dominant factor is priority 1 (agent comprehension)**: SQL appears in orders of magnitude more agent training data than Cypher. Agents speak SQL fluently and stumble on Cypher noticeably more often. SQLite's `edges` adjacency table + recursive CTEs is a standard graph-on-relational pattern, so we lose nothing conceptually — only verbosity, which agents pay (not humans).
+
+**Trade we're accepting**: slower graph queries at extreme scale (1M+ entities with deep traversal) in exchange for zero-ops, universal SQL, and a tiny dependency footprint.
+
+**Swap path**: the index is rebuildable from source files. Replacing SQLite with Kuzu is a couple of weeks of engineering work and zero source-data migration. We do this if and only if profiling at real scale shows recursive-CTE traversal as the bottleneck.
+
+## 9. Scoping — global, local, hierarchical, cross-Evalo
+
+`applies_to` selectors and Evalo membership give the building blocks; this section formalizes the four practical cases.
+
+### 9.1 Global (within an Evalo)
+
+A Rule that applies to every entity in its Evalo uses the wildcard scope-selector form:
+
+```yaml
+applies_to: { all: true }            # matches every entity in this Evalo
+```
+
+This is the catch-all baseline: privacy policies, organization-wide audit logging, Evalo-wide naming conventions.
+
+### 9.2 Scope-specific (local) — via reserved tag convention
+
+Reserve the tag-name prefix `scope_*` for bounded sub-areas of an Evalo (`scope_auth`, `scope_payments`, `scope_infrastructure`, ...). Rules target a scope by referencing the tag:
+
+```yaml
+# rules/rule_01H...md
+applies_to:
+  any_of:
+    - tag: "scope_auth"
+```
+
+Entities tagged with the matching scope inherit the Rule. Agents declare which scope an Intent or Action belongs to by tagging it. **No new node type required.**
+
+### 9.3 Hierarchical scopes (deferred — promote only if tag convention proves insufficient)
+
+If sub-scope inheritance becomes important (e.g., `scope_payments_subscriptions` should automatically inherit Rules for `scope_payments`), promote `Scope` to a first-class entity:
+
+```yaml
+id: scope_payments_subscriptions
+node_type: scope
+name: "payments/subscriptions"
+parent_scope_id: scope_payments
+description: "..."
+```
+
+Resolution: a Rule applying to a Scope also applies to its descendants. Defer until v0.x usage shows the tag-only model running out of road.
+
+### 9.4 Cross-Evalo — `imports`
+
+Shared Rule sets (compliance baselines, organization-wide policies, vendor SDKs that ship with their own constraints) live in dedicated Evalos and are pulled in via `evalo.yaml`:
+
+```yaml
+# evalo.yaml
+imports:
+  - evalo: torre/shared-policy
+    ref: "v2.3.1"               # git tag, branch, or commit (pinned)
+    as: policy                   # local namespace prefix
+    include: [rules, tags]       # which node types to import (default: rules)
+```
+
+Imported entities get **namespaced IDs**: `policy:rule_01H...`. They're materialized into the local cache alongside native entities and evaluated against local entities.
+
+**Resolution semantics:**
+
+| Concern | Behavior |
+|---|---|
+| Matching | **Additive** — local + imported Rules all apply to matching entities. Conservative; nothing silently disappears. |
+| Override | **Explicit** — a local Rule with `superseded_by: policy:rule_01H...` removes the imported one from the active set. |
+| Versioning | **Pinned** — `imports[].ref` is a git ref. Bumping it produces a diff showing which Rules entered, left, or changed. |
+| Transitive imports | **One level by default** — imports of imports do not cascade unless explicitly re-imported. Avoids surprise rule pulls. |
+
+This puts shared rules on the same footing as code in a package manager: versioned, explicit, overrideable, auditable.
+
+## 10. Rule discovery — finding relevant Rules across vocabulary mismatch
+
+Agents starting work often don't know the local vocabulary. The agent might describe their task as *"validate user-provided email addresses"* while the relevant Rule is titled *"input sanitization at request boundary"* — same concept, different words. Pure keyword search misses this.
+
+The discovery layer combines **five retrieval strategies**, ranked by precision. Strategies 1–3 are structural (zero false positives); strategies 4–5 are inferential (advisory only).
+
+### 10.1 Five-strategy retrieval
+
+| # | Strategy | Mechanism | Precision |
+|---|---|---|---|
+| 1 | **Structural match** | `scope_match` index (§8.5) — Rules whose `applies_to` definitively matches the work item's `node_type`, `verb`, `tag`, or specific entity ID | Highest. **Blocks** on `must` violations. |
+| 2 | **Tag overlap** | Rules tagged with any tag carried by the work item (or its parent Intent / target Reference) | High. Cheap and symmetric. |
+| 3 | **Reference-graph expansion** | Rules attached to neighbors of the target Reference: same directory, same content-hash family, same parent module | Medium-high. |
+| 4 | **Semantic search** | Vector embedding NN-search over each Rule's `summary` + Markdown body, against an embedding of the agent's working context (Intent + draft Action + target content) | Medium. The lever for vocabulary-tolerance. |
+| 5 | **Glossary expansion** | Agent's keywords expanded through the Evalo's `glossary.yaml` synonyms before search runs | Medium. Also drives consistent vocabulary among Rule authors. |
+
+**Hard vs. soft separation matters.** Structural matches *block* (precision-tight, no false positives). Semantic / tag / reference matches are *advisory* — surfaced as context, never enforced. The runtime gate stays precise; the discovery layer stays generous.
+
+### 10.2 Schema additions
+
+**Vector embedding index** alongside FTS5 in `.evalo/cache.db`:
+
+```sql
+-- sqlite-vec or sqlite-vss extension
+CREATE VIRTUAL TABLE rule_embeddings USING vec0(
+  rule_id   TEXT PRIMARY KEY,
+  embedding FLOAT[1536]            -- model-dependent dimension
+);
+```
+
+A `cache.embedding_version` field tracks the embedding model; bumping it invalidates the embeddings and triggers re-embedding. Re-embedding is incremental (only changed Rules re-embed).
+
+**Optional `glossary.yaml`** at Evalo root:
+
+```yaml
+# glossary.yaml
+- term: "input sanitization"
+  synonyms: ["validation", "scrubbing", "boundary check"]
+  description: "Any check applied to data crossing a trust boundary"
+- term: "session token"
+  synonyms: ["auth token", "session cookie", "bearer token"]
+- term: "PII"
+  synonyms: ["personal information", "personal data", "user data"]
+```
+
+A flat config file rather than a new node type — promote to first-class entity if per-term version control becomes valuable.
+
+### 10.3 Discovery API
+
+```
+evalo find-rules \
+  --intent intent_01H... \
+  --verb edit_file \
+  --target src/auth/login.ts \
+  --description "validate user-provided email addresses"
+```
+
+Output groups results by precision tier:
+
+```
+PRECISE (structural):
+  rule_01H... [must]   applies_to scope_auth
+                       — your Action is scope_auth-tagged
+
+RELATED (tag overlap):
+  rule_01H... [should] tagged auth, validation
+
+RELATED (reference-graph neighbor):
+  rule_01H... [must]   applies_to src/auth/session.ts (same directory)
+
+POSSIBLY RELEVANT (semantic, similarity 0.84):
+  rule_01H... "Input sanitization at request boundary"
+              — matched on: 'validate', 'user-provided', 'request'
+              — glossary: 'sanitization' ↔ 'validation'
+
+POSSIBLY RELEVANT (semantic, similarity 0.71):
+  rule_01H... ...
+```
+
+Agents and humans get the same output. Agents typically ingest the PRECISE + RELATED tiers as immediate context and treat POSSIBLY RELEVANT as suggestions worth consulting — a deliberate split that keeps blocking precise while making discovery generous.
+
+## 11. Open questions (where I made judgment calls — feel free to redirect)
+
+1. **Reasoning as a first-class entity** — I made it separate rather than a `rationale` field on Decision/Action. Pro: multi-author reasoning, contested reasoning, agent-vs-human reasoning all become queryable. Con: more entities to manage. Collapse if multi-author reasoning isn't a target use case.
+2. **Predicate language** — I left `predicate` as a string with the language deferred. Candidates: CEL, a Lisp-like S-expr, or a small JSON DSL. Suggest deferring until we have 3–5 real Rules to test against.
+3. **Storage = git repo** — I committed to "an Evalo IS a git repo" because it gives version control, branching, and diffs for free. The alternative is an abstracted backend (DB) with git as one possible projection. The git-native choice is cheaper to start but harder to scale to enterprise workflows later.
+4. **YAML frontmatter + Markdown body** — chosen because it serves both agents (structured) and humans (narrative) in one file. Alternative: pure JSON (cleaner for agents, worse for humans). Worth revisiting if agents struggle with mixed format.
+5. **Evaluations as file-per-result** — better for git diffs, worse than JSONL for high-volume runs. Monthly partitioning mitigates. Could move to JSONL if eval throughput becomes a real constraint.
+6. **Per-Evalo `schema_version`** — lets Evalos migrate at their own pace; cross-Evalo tooling has to handle multiple versions. Alternative: single global schema that's only ever additive. I'd lean toward additive-only for v0.x and keep `schema_version` as a forward-compat hatch.
+7. **Visibility only at Evalo level** — no per-entity visibility yet. Adding "private intent in a public Evalo" later is doable but non-trivial.
+8. **No `Plan` entity** — a plan is emergent from Intent + Decision + Action chains. Could be added later if a higher-level grouping is needed.
+9. **No `Question` entity** — folded into Decision's `question` field. If questions need to live before being decided (e.g., open RFCs), promote to an entity.
+10. **SQLite vs embedded graph DB (Kuzu) for the index** — see §8.8 for the full trade matrix. SQLite chosen because priority 1 (agent comprehension) favors SQL's vastly larger training-data presence over Cypher; zero-ops embedded model also wins at v0.x scale. Reversible because the index isn't authoritative — swap to Kuzu (or Memgraph for server-based deploys) if profiling shows recursive-CTE traversal as the bottleneck. **TerminusDB is the only option that would force a deeper architectural rethink** (DB-as-source-of-truth), so it's a separate decision from the index swap.
