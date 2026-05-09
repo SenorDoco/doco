@@ -1,0 +1,32 @@
+{
+  "name": "@evalo/discovery",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "Five-strategy Rule discovery (D-030): structural, tag, reference-graph, semantic, glossary expansion.",
+  "license": "Apache-2.0",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@evalo/index": "workspace:*",
+    "@evalo/runtime": "workspace:*",
+    "@evalo/shared": "workspace:*",
+    "better-sqlite3": "^11.7.0",
+    "yaml": "^2.6.1"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.12"
+  }
+}

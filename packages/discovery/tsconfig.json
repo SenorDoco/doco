@@ -8,12 +8,7 @@
   "exclude": ["src/**/__tests__/**", "src/**/*.test.ts"],
   "references": [
     { "path": "../shared" },
-    { "path": "../core" },
     { "path": "../index" },
-    { "path": "../runtime" },
-    { "path": "../lints" },
-    { "path": "../api" },
-    { "path": "../web" },
-    { "path": "../discovery" }
+    { "path": "../runtime" }
   ]
 }

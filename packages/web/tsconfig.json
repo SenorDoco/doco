@@ -2,18 +2,16 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "rootDir": "./src",
-    "outDir": "./dist"
+    "outDir": "./dist",
+    "jsx": "react-jsx",
+    "jsxImportSource": "hono/jsx"
   },
   "include": ["src/**/*"],
-  "exclude": ["src/**/__tests__/**", "src/**/*.test.ts"],
+  "exclude": ["src/**/__tests__/**", "src/**/*.test.tsx"],
   "references": [
     { "path": "../shared" },
-    { "path": "../core" },
     { "path": "../index" },
-    { "path": "../runtime" },
     { "path": "../lints" },
-    { "path": "../api" },
-    { "path": "../web" },
     { "path": "../discovery" }
   ]
 }

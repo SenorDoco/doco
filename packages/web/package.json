@@ -1,0 +1,33 @@
+{
+  "name": "@evalo/web",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "Evalo web UI — SSR via Hono + JSX. Recent-changes feed, list views, entity detail, search, lint (D-045).",
+  "license": "Apache-2.0",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@evalo/discovery": "workspace:*",
+    "@evalo/index": "workspace:*",
+    "@evalo/lints": "workspace:*",
+    "@evalo/shared": "workspace:*",
+    "better-sqlite3": "^11.7.0",
+    "hono": "^4.6.14"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.12"
+  }
+}

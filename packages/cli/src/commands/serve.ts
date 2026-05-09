@@ -1,6 +1,8 @@
 import { defineCommand } from "citty";
+import { Hono } from "hono";
 import { serve } from "@hono/node-server";
 import { makeApp } from "@evalo/api";
+import { makeWebApp } from "@evalo/web";
 import { findEvaloRoot } from "../find-root.js";
 import { c, checkmark, cross, header, rule } from "../output.js";
 
@@ -36,12 +38,16 @@ export const serveCmd = defineCommand({
     const requireToken = args["require-token"] as boolean;
     const defaultPrincipal = (args["as-principal"] as string | undefined) ?? undefined;
 
-    const app = makeApp({
+    const apiApp = makeApp({
       evaloRoot: root,
       requireToken,
       ...(defaultPrincipal !== undefined ? { defaultPrincipalId: defaultPrincipal } : {}),
       log: true,
     });
+    const webApp = makeWebApp({ evaloRoot: root });
+    const app = new Hono();
+    app.route("/", webApp);
+    app.route("/", apiApp);
 
     console.log();
     console.log(header(`Evalo API`));
