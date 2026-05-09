@@ -1,8 +1,6 @@
 import { defineCommand } from "citty";
-import { Hono } from "hono";
 import { serve } from "@hono/node-server";
 import { makeApp } from "@evalo/api";
-import { makeWebApp } from "@evalo/web";
 import { findEvaloRoot } from "../find-root.js";
 import { c, checkmark, cross, header, rule } from "../output.js";
 
@@ -38,16 +36,12 @@ export const serveCmd = defineCommand({
     const requireToken = args["require-token"] as boolean;
     const defaultPrincipal = (args["as-principal"] as string | undefined) ?? undefined;
 
-    const apiApp = makeApp({
+    const app = makeApp({
       evaloRoot: root,
       requireToken,
       ...(defaultPrincipal !== undefined ? { defaultPrincipalId: defaultPrincipal } : {}),
       log: true,
     });
-    const webApp = makeWebApp({ evaloRoot: root });
-    const app = new Hono();
-    app.route("/", webApp);
-    app.route("/", apiApp);
 
     console.log();
     console.log(header(`Evalo API`));
@@ -57,7 +51,8 @@ export const serveCmd = defineCommand({
     console.log(checkmark(`Auth:         ${requireToken ? "Bearer required" : "open (local dev)"}`));
     if (defaultPrincipal) console.log(checkmark(`Acting as:    ${defaultPrincipal}`));
     console.log(rule());
-    console.log(c.dim(`Try:  curl http://${host}:${port}/api/v1/evalo`));
+    console.log(c.dim(`API:  curl http://${host}:${port}/api/v1/evalo`));
+    console.log(c.dim(`Web:  pnpm --filter @evalo/web dev   (Remix on http://127.0.0.1:5173)`));
     console.log();
 
     serve({ fetch: app.fetch, hostname: host, port });

@@ -25,10 +25,8 @@
     "@evalo/lints": "workspace:*",
     "@evalo/runtime": "workspace:*",
     "@evalo/shared": "workspace:*",
-    "@evalo/web": "workspace:*",
     "@hono/node-server": "^1.13.7",
     "citty": "^0.1.6",
-    "hono": "^4.6.14",
     "kleur": "^4.1.5"
   }
 }

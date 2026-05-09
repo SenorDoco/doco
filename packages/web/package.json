@@ -3,31 +3,40 @@
   "version": "0.0.1",
   "private": true,
   "type": "module",
-  "description": "Evalo web UI — SSR via Hono + JSX. Recent-changes feed, list views, entity detail, search, lint (D-045).",
+  "description": "Evalo web UI — Remix v7 (React Router 7) + Tailwind v4 + shadcn-style components.",
   "license": "Apache-2.0",
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
-    }
-  },
-  "files": ["dist"],
   "scripts": {
-    "build": "tsc -p tsconfig.json",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run"
+    "dev": "react-router dev --port 5173",
+    "build": "react-router build",
+    "start": "react-router-serve ./build/server/index.js",
+    "typecheck": "react-router typegen && tsc -p tsconfig.json --noEmit",
+    "test": "echo 'web tests run via Chrome E2E'"
   },
   "dependencies": {
     "@evalo/discovery": "workspace:*",
     "@evalo/index": "workspace:*",
     "@evalo/lints": "workspace:*",
     "@evalo/shared": "workspace:*",
+    "@react-router/node": "^7.0.2",
+    "@react-router/serve": "^7.0.2",
     "better-sqlite3": "^11.7.0",
-    "hono": "^4.6.14"
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "isbot": "^5.1.17",
+    "lucide-react": "^0.469.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-router": "^7.0.2",
+    "tailwind-merge": "^2.5.5"
   },
   "devDependencies": {
-    "@types/better-sqlite3": "^7.6.12"
+    "@react-router/dev": "^7.0.2",
+    "@tailwindcss/vite": "^4.0.0-beta.7",
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/react": "^19.0.1",
+    "@types/react-dom": "^19.0.2",
+    "tailwindcss": "^4.0.0-beta.7",
+    "vite": "^6.0.3",
+    "vite-tsconfig-paths": "^5.1.4"
   }
 }

@@ -13,7 +13,6 @@
     { "path": "../runtime" },
     { "path": "../lints" },
     { "path": "../api" },
-    { "path": "../web" },
     { "path": "../discovery" }
   ]
 }
