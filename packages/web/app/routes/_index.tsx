@@ -1,6 +1,7 @@
 import { Link } from "react-router";
 import { getEvaloSlug, getMode, openDb } from "~/lib/db";
 import { listAllEvalos, listOrgs, listUsers, loadHostConfig } from "~/lib/host";
+import { type CurrentPrincipal, getCurrentPrincipal } from "~/lib/session";
 import { SiteHeader } from "~/components/site-header";
 import { Badge } from "~/components/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
@@ -16,7 +17,7 @@ interface RecentItem {
   title: string | null;
 }
 
-export function loader() {
+export function loader({ request }: { request: Request }) {
   const mode = getMode();
   if (mode === "single-evalo") {
     const db = openDb();
@@ -42,11 +43,16 @@ export function loader() {
       db.close();
     }
   }
-  // host mode
+  // host mode — branch on session
   const host = loadHostConfig();
+  const me = getCurrentPrincipal(request);
+  if (!me) {
+    return { mode: "host-anonymous" as const, host };
+  }
   return {
     mode: "host" as const,
     host,
+    me,
     users: listUsers(),
     orgs: listOrgs(),
     evalos: listAllEvalos(),
@@ -55,22 +61,83 @@ export function loader() {
 
 export function meta({ data }: { data: Awaited<ReturnType<typeof loader>> | undefined }) {
   if (!data) return [{ title: "Evalo" }];
-  if (data.mode === "host") return [{ title: `${data.host.name} · Evalo` }];
+  if (data.mode === "host" || data.mode === "host-anonymous") {
+    return [{ title: `${data.host.name} · Evalo` }];
+  }
   return [{ title: "Recent · Evalo" }];
 }
 
 export default function Home({ loaderData }: { loaderData: Awaited<ReturnType<typeof loader>> }) {
-  if (loaderData.mode === "host") {
-    return <HostHome data={loaderData} />;
-  }
+  if (loaderData.mode === "host") return <HostDashboard data={loaderData} />;
+  if (loaderData.mode === "host-anonymous") return <HostLanding data={loaderData} />;
   return <SingleEvaloRecent data={loaderData} />;
 }
 
-function HostHome({ data }: { data: Extract<Awaited<ReturnType<typeof loader>>, { mode: "host" }> }) {
-  const { host, users, orgs, evalos } = data;
+function HostLanding({
+  data,
+}: {
+  data: Extract<Awaited<ReturnType<typeof loader>>, { mode: "host-anonymous" }>;
+}) {
+  return (
+    <div className="min-h-screen flex flex-col">
+      <header className="border-b border-border bg-card">
+        <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-6 py-3">
+          <Link to="/" className="inline-flex items-center hover:opacity-80" aria-label="Evalo home">
+            <img src="/wordmark.svg" alt="Evalo" className="block h-7 w-auto" />
+          </Link>
+          <Link
+            to="/sign-in"
+            className="rounded-md bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground hover:opacity-90"
+          >
+            Sign in
+          </Link>
+        </div>
+      </header>
+      <main className="flex flex-1 flex-col items-center justify-center px-6 py-16">
+        <div className="flex max-w-2xl flex-col items-center gap-6 text-center">
+          <img src="/wordmark.svg" alt="Evalo" className="h-32 w-auto" />
+          <h1 className="text-2xl font-bold tracking-tight">
+            Alignment framework + runtime checking
+          </h1>
+          <p className="max-w-lg text-sm text-muted-foreground leading-relaxed">
+            Document and verify the relationships between user intent, agent reasoning, and agent
+            actions — to reduce misalignment between users and AI agents, and between collaborating
+            agents.
+          </p>
+          <div className="flex items-center gap-3 pt-2">
+            <Link
+              to="/sign-in"
+              className="rounded-md bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground hover:opacity-90"
+            >
+              Sign in
+            </Link>
+            <a
+              href="https://github.com"
+              className="rounded-md border border-border px-5 py-2.5 text-sm font-semibold hover:bg-input"
+              target="_blank"
+              rel="noreferrer"
+            >
+              Learn more
+            </a>
+          </div>
+          <p className="pt-6 text-[11px] text-muted-foreground">
+            Hosted by <span className="font-semibold">{data.host.name}</span>
+          </p>
+        </div>
+      </main>
+    </div>
+  );
+}
+
+function HostDashboard({
+  data,
+}: {
+  data: Extract<Awaited<ReturnType<typeof loader>>, { mode: "host" }>;
+}) {
+  const { host, me, users, orgs, evalos } = data;
   return (
     <div>
-      <SiteHeader context={host.name} mode="host" />
+      <SiteHeader context={host.name} mode="host" me={me} />
       <main className="mx-auto max-w-6xl px-6 py-6 space-y-4">
         <section className="mb-4 flex flex-col items-center gap-3 py-8">
           <img src="/wordmark.svg" alt="Evalo" className="h-20 w-auto" />
@@ -218,3 +285,6 @@ function SingleEvaloRecent({
     </div>
   );
 }
+
+// Suppress unused-import warning for CurrentPrincipal — used via `me` prop.
+export type _ = CurrentPrincipal;
