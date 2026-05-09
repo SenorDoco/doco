@@ -17,6 +17,11 @@ export function SiteHeader({ context, evaloScope, mode, me }: SiteHeaderProps) {
   const nav = evaloScope
     ? [
         { to: `/${evaloScope.ownerSlug}/${evaloScope.evaloSlug}`, label: "Recent" },
+        { to: `/${evaloScope.ownerSlug}/${evaloScope.evaloSlug}/e/intent`, label: "Intents" },
+        { to: `/${evaloScope.ownerSlug}/${evaloScope.evaloSlug}/e/rule`, label: "Rules" },
+        { to: `/${evaloScope.ownerSlug}/${evaloScope.evaloSlug}/e/decision`, label: "Decisions" },
+        { to: `/${evaloScope.ownerSlug}/${evaloScope.evaloSlug}/e/action`, label: "Actions" },
+        { to: `/${evaloScope.ownerSlug}/${evaloScope.evaloSlug}/search`, label: "Search" },
         { to: `/${evaloScope.ownerSlug}/${evaloScope.evaloSlug}/lint`, label: "Lint" },
       ]
     : mode === "host"
@@ -78,9 +83,24 @@ export function SiteHeader({ context, evaloScope, mode, me }: SiteHeaderProps) {
           {mode === "host" ? (
             me ? (
               <>
-                <span className="rounded-full border border-border bg-input px-3 py-1 font-semibold text-foreground">
+                <NavLink
+                  to="/new-evalo"
+                  className="rounded-md border border-border px-3 py-1.5 font-semibold hover:bg-input"
+                >
+                  + Evalo
+                </NavLink>
+                <NavLink
+                  to="/new-org"
+                  className="rounded-md border border-border px-3 py-1.5 font-semibold hover:bg-input"
+                >
+                  + Org
+                </NavLink>
+                <NavLink
+                  to={`/${me.username}`}
+                  className="rounded-full border border-border bg-input px-3 py-1 font-semibold text-foreground hover:border-primary"
+                >
                   {me.username}
-                </span>
+                </NavLink>
                 <Form method="post" action="/sign-out">
                   <button
                     type="submit"

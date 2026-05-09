@@ -14,6 +14,7 @@
   },
   "dependencies": {
     "@evalo/discovery": "workspace:*",
+    "@evalo/host": "workspace:*",
     "@evalo/index": "workspace:*",
     "@evalo/lints": "workspace:*",
     "@evalo/shared": "workspace:*",

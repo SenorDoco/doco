@@ -78,6 +78,30 @@ export function listOrgs(): HostOrg[] {
   return out;
 }
 
+/** Return organizations where the given Principal is owner or admin. */
+export function listOrgsOwnedOrAdminedBy(principalId: string): HostOrg[] {
+  const dir = join(rootDir(), "organizations");
+  if (!existsSync(dir)) return [];
+  const out: HostOrg[] = [];
+  for (const name of readdirSync(dir)) {
+    if (!name.startsWith("organization_") || !name.endsWith(".yaml")) continue;
+    const e = parseYaml(readFileSync(join(dir, name), "utf8")) as Record<string, unknown>;
+    const members = (e.members as { principal_id: string; role: string }[] | undefined) ?? [];
+    const mine = members.find(
+      (m) => m.principal_id === principalId && (m.role === "owner" || m.role === "admin"),
+    );
+    if (!mine) continue;
+    out.push({
+      id: e.id as string,
+      slug: e.slug as string,
+      display_name: (e.display_name as string) ?? (e.slug as string),
+      ...(e.description !== undefined ? { description: e.description as string } : {}),
+      member_count: members.length,
+    });
+  }
+  return out;
+}
+
 export function listAllEvalos(): HostEvalo[] {
   const evalosDir = join(rootDir(), "evalos");
   if (!existsSync(evalosDir)) return [];

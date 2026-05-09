@@ -58,8 +58,10 @@ export default function SignIn({ loaderData }: { loaderData: Awaited<ReturnType<
           <CardContent>
             {users.length === 0 ? (
               <p className="text-xs text-muted-foreground">
-                No users registered yet. Run{" "}
-                <code className="rounded bg-input px-1">evalo host user create &lt;name&gt;</code>.
+                No users yet.{" "}
+                <Link to="/sign-up" className="text-primary hover:underline">
+                  Create the first one →
+                </Link>
               </p>
             ) : (
               <ul className="space-y-2">
@@ -81,6 +83,12 @@ export default function SignIn({ loaderData }: { loaderData: Awaited<ReturnType<
                 ))}
               </ul>
             )}
+            <p className="mt-4 text-xs text-muted-foreground">
+              New here?{" "}
+              <Link to="/sign-up" className="text-primary hover:underline">
+                Create an account
+              </Link>
+            </p>
           </CardContent>
         </Card>
       </main>

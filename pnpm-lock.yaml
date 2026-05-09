@@ -201,6 +201,9 @@ importers:
       '@evalo/discovery':
         specifier: workspace:*
         version: link:../discovery
+      '@evalo/host':
+        specifier: workspace:*
+        version: link:../host
       '@evalo/index':
         specifier: workspace:*
         version: link:../index

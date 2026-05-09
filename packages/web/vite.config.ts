@@ -12,6 +12,13 @@ export default defineConfig({
   // better-sqlite3 is a native module and cannot be bundled into the SSR build
   ssr: {
     external: ["better-sqlite3"],
-    noExternal: ["@evalo/index", "@evalo/lints", "@evalo/discovery", "@evalo/shared"],
+    noExternal: [
+      "@evalo/core",
+      "@evalo/discovery",
+      "@evalo/host",
+      "@evalo/index",
+      "@evalo/lints",
+      "@evalo/shared",
+    ],
   },
 });
