@@ -32,6 +32,12 @@ importers:
       '@evalo/index':
         specifier: workspace:*
         version: link:../index
+      '@evalo/lints':
+        specifier: workspace:*
+        version: link:../lints
+      '@evalo/runtime':
+        specifier: workspace:*
+        version: link:../runtime
       '@evalo/shared':
         specifier: workspace:*
         version: link:../shared
@@ -65,6 +71,41 @@ importers:
       '@evalo/core':
         specifier: workspace:*
         version: link:../core
+      '@evalo/shared':
+        specifier: workspace:*
+        version: link:../shared
+      better-sqlite3:
+        specifier: ^11.7.0
+        version: 11.10.0
+    devDependencies:
+      '@types/better-sqlite3':
+        specifier: ^7.6.12
+        version: 7.6.13
+
+  packages/lints:
+    dependencies:
+      '@evalo/index':
+        specifier: workspace:*
+        version: link:../index
+      '@evalo/shared':
+        specifier: workspace:*
+        version: link:../shared
+      better-sqlite3:
+        specifier: ^11.7.0
+        version: 11.10.0
+    devDependencies:
+      '@types/better-sqlite3':
+        specifier: ^7.6.12
+        version: 7.6.13
+
+  packages/runtime:
+    dependencies:
+      '@evalo/core':
+        specifier: workspace:*
+        version: link:../core
+      '@evalo/index':
+        specifier: workspace:*
+        version: link:../index
       '@evalo/shared':
         specifier: workspace:*
         version: link:../shared

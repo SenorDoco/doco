@@ -13,7 +13,7 @@ phase: pre
 applies_to:
   node_type: action
   verb: delete_evalo
-predicate: "actor.type == 'human'"
+predicate: '{"op": "eq", "left": {"path": "actor.type"}, "right": "human"}'
 expected: true
 on_violation: block
 

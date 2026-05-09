@@ -9,8 +9,6 @@
   "references": [
     { "path": "../shared" },
     { "path": "../core" },
-    { "path": "../index" },
-    { "path": "../runtime" },
-    { "path": "../lints" }
+    { "path": "../index" }
   ]
 }

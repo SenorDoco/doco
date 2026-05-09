@@ -6,11 +6,5 @@
   },
   "include": ["src/**/*"],
   "exclude": ["src/**/__tests__/**", "src/**/*.test.ts"],
-  "references": [
-    { "path": "../shared" },
-    { "path": "../core" },
-    { "path": "../index" },
-    { "path": "../runtime" },
-    { "path": "../lints" }
-  ]
+  "references": [{ "path": "../shared" }, { "path": "../index" }]
 }
