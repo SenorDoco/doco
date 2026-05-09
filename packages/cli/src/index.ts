@@ -5,6 +5,7 @@ import { initCmd } from "./commands/init.js";
 import { lintCmd } from "./commands/lint.js";
 import { queryCmd } from "./commands/query.js";
 import { reindexCmd } from "./commands/reindex.js";
+import { serveCmd } from "./commands/serve.js";
 import { showCmd } from "./commands/show.js";
 import { validateCmd } from "./commands/validate.js";
 
@@ -22,6 +23,7 @@ const main = defineCommand({
     query: queryCmd,
     check: checkCmd,
     lint: lintCmd,
+    serve: serveCmd,
   },
 });
 
