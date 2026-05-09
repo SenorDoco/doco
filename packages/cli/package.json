@@ -19,6 +19,7 @@
   },
   "dependencies": {
     "@evalo/core": "workspace:*",
+    "@evalo/index": "workspace:*",
     "@evalo/shared": "workspace:*",
     "citty": "^0.1.6",
     "kleur": "^4.1.5"

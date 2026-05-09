@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 import { defineCommand, runMain } from "citty";
 import { initCmd } from "./commands/init.js";
+import { queryCmd } from "./commands/query.js";
+import { reindexCmd } from "./commands/reindex.js";
 import { showCmd } from "./commands/show.js";
 import { validateCmd } from "./commands/validate.js";
 
@@ -14,6 +16,8 @@ const main = defineCommand({
     init: initCmd,
     show: showCmd,
     validate: validateCmd,
+    reindex: reindexCmd,
+    query: queryCmd,
   },
 });
 

@@ -3,3 +3,4 @@ packages:
 allowBuilds:
   '@biomejs/biome': false
   esbuild: false
+  better-sqlite3: true
