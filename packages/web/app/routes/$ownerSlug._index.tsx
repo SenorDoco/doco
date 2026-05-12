@@ -2,7 +2,7 @@ import { Link } from "react-router";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { parse as parseYaml } from "yaml";
-import { rootDir, getMode } from "~/lib/db";
+import { rootDir } from "~/lib/db";
 import { listAllDocos, loadHostConfig } from "~/lib/host";
 import { getCurrentPrincipal } from "~/lib/session";
 import { SiteHeader } from "~/components/site-header";
@@ -78,7 +78,6 @@ function findOwnerBySlug(slug: string): UserView | OrgView | null {
 }
 
 export function loader({ params, request }: { params: { ownerSlug: string }; request: Request }) {
-  if (getMode() !== "host") throw new Response("Host mode only.", { status: 404 });
   const owner = findOwnerBySlug(params.ownerSlug);
   if (!owner) throw new Response(`Owner "${params.ownerSlug}" not found.`, { status: 404 });
   const allDocos = listAllDocos();

@@ -10,7 +10,7 @@ import { useState } from "react";
 import { Form, Link, redirect, useFetcher } from "react-router";
 import type { EntityId } from "@doco/shared";
 import { DEFAULT_SCOPE_TEMPLATES, findScopeTemplate } from "@doco/host";
-import { docoPath, getMode } from "~/lib/db";
+import { docoPath } from "~/lib/db";
 import { loadHostConfig } from "~/lib/host";
 import {
   materializeScopeTree,
@@ -30,7 +30,6 @@ export function loader({
   request: Request;
   params: { ownerSlug: string; docoSlug: string };
 }) {
-  if (getMode() !== "host") throw new Response("Host mode only.", { status: 404 });
   const { ownerSlug, docoSlug } = params;
   const dir = docoPath(ownerSlug, docoSlug);
   const meta = readDocoMetadata(dir);
@@ -66,7 +65,6 @@ export async function action({
   request: Request;
   params: { ownerSlug: string; docoSlug: string };
 }) {
-  if (getMode() !== "host") throw new Response("Host mode only.", { status: 404 });
   const { ownerSlug, docoSlug } = params;
   const me = getCurrentPrincipal(request);
   // Allow anonymous access only on unclaimed Docos so the agent-create flow

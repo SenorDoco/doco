@@ -1,7 +1,7 @@
 import { computeCoverage } from "@doco/lints";
 import { docoPath, readDocoFullSlug } from "~/lib/db";
 import { type CurrentPrincipal, getCurrentPrincipal } from "~/lib/session";
-import { CoverageView } from "./coverage";
+import { CoverageView } from "~/components/coverage-view";
 
 /**
  * /<owner>/<doco>/coverage — per-Doco drift detection (ADR-090) in host mode.

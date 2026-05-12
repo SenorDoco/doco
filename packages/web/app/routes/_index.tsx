@@ -1,5 +1,4 @@
 import { Link } from "react-router";
-import { getDocoSlug, getMode, openDb } from "~/lib/db";
 import { listAllDocos, listOrgs, listUsers, loadHostConfig } from "~/lib/host";
 import { type CurrentPrincipal, getCurrentPrincipal } from "~/lib/session";
 import { SiteHeader } from "~/components/site-header";
@@ -8,52 +7,14 @@ import { Badge } from "~/components/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "~/components/table";
 
-interface RecentItem {
-  id: string;
-  node_type: string;
-  summary: string;
-  created_at: string;
-  slug: string | null;
-  number: string | null;
-  title: string | null;
-}
-
+/**
+ * Host home — anonymous landing OR signed-in dashboard. Per ADR-067 +
+ * ADR-093 (single-doco mode is gone; only the host shape exists).
+ */
 export function loader({ request }: { request: Request }) {
-  const mode = getMode();
-  if (mode === "single-doco") {
-    const db = openDb();
-    try {
-      const items = db
-        .prepare(
-          `SELECT id, node_type, summary, created_at, slug, number, title FROM (
-             SELECT id, 'decision' AS node_type, summary, created_at, slug, number, NULL AS title FROM decision
-             UNION ALL
-             SELECT id, 'intent' AS node_type, summary, created_at, slug, NULL, title FROM intent
-             UNION ALL
-             SELECT id, 'idea' AS node_type, summary, created_at, NULL, NULL, NULL FROM idea
-             UNION ALL
-             SELECT id, 'rule' AS node_type, summary, created_at, slug, NULL, NULL FROM rule
-             UNION ALL
-             SELECT id, 'action' AS node_type, summary, created_at, NULL, NULL, NULL FROM action
-             UNION ALL
-             SELECT id, 'reasoning' AS node_type, summary, created_at, NULL, NULL, NULL FROM reasoning
-             UNION ALL
-             SELECT id, 'scope' AS node_type, summary, created_at, NULL, NULL, name AS title FROM scope
-           )
-           ORDER BY created_at DESC LIMIT 30`,
-        )
-        .all() as RecentItem[];
-      return { mode: "single-doco" as const, items, docoSlug: getDocoSlug() };
-    } finally {
-      db.close();
-    }
-  }
-  // host mode — branch on session
   const host = loadHostConfig();
   const me = getCurrentPrincipal(request);
-  if (!me) {
-    return { mode: "host-anonymous" as const, host };
-  }
+  if (!me) return { mode: "host-anonymous" as const, host };
   return {
     mode: "host" as const,
     host,
@@ -66,16 +27,12 @@ export function loader({ request }: { request: Request }) {
 
 export function meta({ data }: { data: Awaited<ReturnType<typeof loader>> | undefined }) {
   if (!data) return [{ title: "Doco" }];
-  if (data.mode === "host" || data.mode === "host-anonymous") {
-    return [{ title: `${data.host.name} · Doco` }];
-  }
-  return [{ title: "Recent · Doco" }];
+  return [{ title: `${data.host.name} · Doco` }];
 }
 
 export default function Home({ loaderData }: { loaderData: Awaited<ReturnType<typeof loader>> }) {
   if (loaderData.mode === "host") return <HostDashboard data={loaderData} />;
-  if (loaderData.mode === "host-anonymous") return <HostLanding data={loaderData} />;
-  return <SingleDocoRecent data={loaderData} />;
+  return <HostLanding data={loaderData} />;
 }
 
 function HostLanding({
@@ -83,7 +40,6 @@ function HostLanding({
 }: {
   data: Extract<Awaited<ReturnType<typeof loader>>, { mode: "host-anonymous" }>;
 }) {
-  // Onboarding wizard step 1 — pick intent. Per ADR-073.
   return (
     <div className="min-h-screen flex flex-col">
       <header className="border-b border-border bg-card">
@@ -242,58 +198,6 @@ function HostDashboard({
             </CardContent>
           </Card>
         </div>
-      </main>
-    </div>
-  );
-}
-
-function SingleDocoRecent({
-  data,
-}: {
-  data: Extract<Awaited<ReturnType<typeof loader>>, { mode: "single-doco" }>;
-}) {
-  return (
-    <div>
-      <SiteHeader context={data.docoSlug} mode="single-doco" />
-      <main className="mx-auto max-w-6xl px-6 py-6">
-        <section className="mb-6 flex flex-col items-center gap-3 py-8">
-          <DocoMark height={80} />
-          <p className="max-w-xl text-center text-xs text-muted-foreground">
-            Alignment framework + runtime checking. Documents and verifies user intent, agent
-            reasoning, and agent actions — for {data.docoSlug}.
-          </p>
-        </section>
-
-        <Card className="mb-4">
-          <CardHeader>
-            <CardTitle>Recent activity</CardTitle>
-            <CardDescription>
-              Last 30 entities across decisions, intents, rules, actions, reasonings — chronological. (D-045)
-            </CardDescription>
-          </CardHeader>
-        </Card>
-
-        <Card>
-          <div className="divide-y divide-border">
-            {data.items.map((it) => (
-              <div key={it.id} className="px-5 py-3.5">
-                <div className="mb-0.5 flex flex-wrap items-baseline gap-2">
-                  <Badge variant={it.node_type === "decision" ? "accent" : "default"}>{it.node_type}</Badge>
-                  {it.number ? <Badge variant="accent">{it.number}</Badge> : null}
-                  <Link
-                    to={`/e/${it.node_type}/${it.id}`}
-                    className="text-sm font-semibold text-foreground hover:text-primary"
-                  >
-                    {it.title ?? it.slug ?? it.id}
-                  </Link>
-                </div>
-                <div className="text-xs text-muted-foreground">
-                  {it.summary} <span className="ml-1 font-mono">· {it.created_at}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </Card>
       </main>
     </div>
   );

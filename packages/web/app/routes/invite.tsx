@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { redirect, useFetcher } from "react-router";
 import type { EntityId } from "@doco/shared";
-import { rootDir, getMode } from "~/lib/db";
+import { rootDir } from "~/lib/db";
 import { loadHostConfig } from "~/lib/host";
 import { getCurrentPrincipal } from "~/lib/session";
 import { TokenStore } from "~/lib/tokens.server";
@@ -10,7 +10,6 @@ import { SiteHeader } from "~/components/site-header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 
 export async function loader({ request }: { request: Request }) {
-  if (getMode() !== "host") throw new Response("Host mode only.", { status: 404 });
   const me = getCurrentPrincipal(request);
   if (!me) throw redirect("/sign-in");
   const store = TokenStore.forDoco(rootDir());

@@ -3,7 +3,7 @@ import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { Link, redirect } from "react-router";
 import { parse as parseYaml } from "yaml";
-import { rootDir, getMode } from "~/lib/db";
+import { rootDir } from "~/lib/db";
 import { loadHostConfig } from "~/lib/host";
 import { getCurrentPrincipal } from "~/lib/session";
 import { SiteHeader } from "~/components/site-header";
@@ -19,7 +19,6 @@ interface AgentRow {
 }
 
 export async function loader({ request }: { request: Request }) {
-  if (getMode() !== "host") throw new Response("Host mode only.", { status: 404 });
   const me = getCurrentPrincipal(request);
   if (!me) throw redirect("/sign-in");
 

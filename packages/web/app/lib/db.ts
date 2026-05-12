@@ -6,19 +6,20 @@ import { dirname, join, resolve } from "node:path";
 let cachedRoot: string | null = null;
 
 /**
- * Find the configured root: DOCO_ROOT env var first (must contain doco.yaml
- * OR host.yaml), otherwise walk upward from cwd looking for either marker.
+ * Find the host root. DOCO_ROOT env var first (must contain host.yaml),
+ * otherwise walk upward from cwd. Per ADR-093 the host is the only shape;
+ * single-doco mode is gone.
  */
 export function rootDir(): string {
   if (cachedRoot) return cachedRoot;
   const fromEnv = process.env.DOCO_ROOT;
-  if (fromEnv && (existsSync(join(fromEnv, "doco.yaml")) || existsSync(join(fromEnv, "host.yaml")))) {
+  if (fromEnv && existsSync(join(fromEnv, "host.yaml"))) {
     cachedRoot = resolve(fromEnv);
     return cachedRoot;
   }
   let dir = process.cwd();
   for (let i = 0; i < 12; i++) {
-    if (existsSync(join(dir, "doco.yaml")) || existsSync(join(dir, "host.yaml"))) {
+    if (existsSync(join(dir, "host.yaml"))) {
       cachedRoot = dir;
       return dir;
     }
@@ -27,41 +28,12 @@ export function rootDir(): string {
     dir = parent;
   }
   throw new Error(
-    "Could not find doco.yaml or host.yaml. Set DOCO_ROOT or run `react-router dev` from inside an Doco or Host.",
+    "Could not find host.yaml. Set DOCO_ROOT or run from inside a Doco host.",
   );
 }
 
-/** ADR-061 dual-mode detection. */
-export function getMode(): "host" | "single-doco" {
-  const root = rootDir();
-  if (existsSync(join(root, "host.yaml"))) return "host";
-  return "single-doco";
-}
-
-/** Single-Doco mode: open .doco/cache.db at the root. */
-export function openDb(): Database {
-  const root = rootDir();
-  return new BetterSqlite3(join(root, ".doco", "cache.db"), {
-    readonly: true,
-    fileMustExist: true,
-  });
-}
-
-export function getDocoSlug(): string {
-  const db = openDb();
-  try {
-    const row = db.prepare("SELECT slug FROM doco_root LIMIT 1").get() as
-      | { slug: string }
-      | undefined;
-    return row?.slug ?? "?";
-  } finally {
-    db.close();
-  }
-}
-
 /**
- * Host mode: resolve a per-Doco cache db. The Doco lives at
- * `<host-root>/docos/<owner>/<slug>/`.
+ * Resolve a per-Doco cache. The Doco lives at `<host-root>/docos/<owner>/<slug>/`.
  */
 export function docoPath(ownerSlug: string, docoSlug: string): string {
   return join(rootDir(), "docos", ownerSlug, docoSlug);
@@ -79,7 +51,6 @@ export function openDocoDb(ownerSlug: string, docoSlug: string): Database {
   return new BetterSqlite3(cache, { readonly: true, fileMustExist: true });
 }
 
-/** Read doco.yaml.slug from the Doco's source files (no db needed). */
 export function readDocoFullSlug(ownerSlug: string, docoSlug: string): string {
   return `${ownerSlug}/${docoSlug}`;
 }

@@ -11,7 +11,7 @@ import { join } from "node:path";
 import { mkdirSync } from "node:fs";
 import { Form, Link, redirect, useActionData, useLoaderData } from "react-router";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
-import { rootDir, getMode } from "~/lib/db";
+import { rootDir } from "~/lib/db";
 import { loadHostConfig } from "~/lib/host";
 import { getCurrentPrincipal } from "~/lib/session";
 import { TokenStore } from "~/lib/tokens.server";
@@ -19,7 +19,6 @@ import { DocoMark } from "~/components/doco-mark";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 
 export async function loader({ request, params }: { request: Request; params: { token: string } }) {
-  if (getMode() !== "host") throw new Response("Host mode only.", { status: 404 });
   const root = rootDir();
   const me = getCurrentPrincipal(request);
   const store = TokenStore.forDoco(root);
@@ -39,7 +38,6 @@ export async function loader({ request, params }: { request: Request; params: { 
 }
 
 export async function action({ request, params }: { request: Request; params: { token: string } }) {
-  if (getMode() !== "host") throw new Response("Host mode only.", { status: 404 });
   const me = getCurrentPrincipal(request);
   if (!me) {
     return redirect(`/sign-in?next=${encodeURIComponent(`/claim/${params.token}`)}`);

@@ -3,14 +3,13 @@
 //
 // Same data as the JSON-LD block embedded in the HTML page at /invite/:token,
 // but available at a stable .json URL for agents that prefer pure JSON access.
-import { rootDir, getMode } from "~/lib/db";
+import { rootDir } from "~/lib/db";
 import { loadHostConfig } from "~/lib/host";
 import { TokenStore } from "~/lib/tokens.server";
 import { findPrincipalById, redeemInvitation } from "~/lib/redeem.server";
 import { getPublicBaseUrl } from "~/lib/public-url";
 
 export async function loader({ request, params }: { request: Request; params: { token: string } }) {
-  if (getMode() !== "host") throw new Response("Host mode only.", { status: 404 });
   const root = rootDir();
   const host = loadHostConfig();
   const store = TokenStore.forDoco(root);
@@ -80,12 +79,6 @@ export async function loader({ request, params }: { request: Request; params: { 
 }
 
 export async function action({ request, params }: { request: Request; params: { token: string } }) {
-  if (getMode() !== "host") {
-    return new Response(JSON.stringify({ error: { kind: "host_mode_only" } }), {
-      status: 404,
-      headers: { "content-type": "application/json; charset=utf-8" },
-    });
-  }
   const ct = request.headers.get("content-type") ?? "";
   let body: { display_name?: string; model?: string; provider?: string; capabilities?: string[] };
   if (ct.includes("application/json")) {

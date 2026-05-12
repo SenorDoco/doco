@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Form, useActionData, useLoaderData } from "react-router";
-import { rootDir, getMode } from "~/lib/db";
+import { rootDir } from "~/lib/db";
 import { loadHostConfig } from "~/lib/host";
 import { TokenStore } from "~/lib/tokens.server";
 import { redeemInvitation, findPrincipalById } from "~/lib/redeem.server";
@@ -43,7 +43,6 @@ interface InvitationManifest {
 }
 
 export async function loader({ request, params }: { request: Request; params: { token: string } }) {
-  if (getMode() !== "host") throw new Response("Host mode only.", { status: 404 });
   const root = rootDir();
   const host = loadHostConfig();
   const store = TokenStore.forDoco(root);
@@ -104,7 +103,6 @@ export async function loader({ request, params }: { request: Request; params: { 
 }
 
 export async function action({ request, params }: { request: Request; params: { token: string } }) {
-  if (getMode() !== "host") throw new Response("Host mode only.", { status: 404 });
   const ct = request.headers.get("content-type") ?? "";
   let body: { display_name?: string; model?: string; provider?: string; capabilities?: string[] };
   if (ct.includes("application/json")) {

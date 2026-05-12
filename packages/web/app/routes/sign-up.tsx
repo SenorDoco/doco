@@ -1,15 +1,12 @@
 import { Form, Link, redirect } from "react-router";
 import { addPrincipal } from "@doco/host";
-import { rootDir, getMode } from "~/lib/db";
+import { rootDir } from "~/lib/db";
 import { loadHostConfig } from "~/lib/host";
 import { getCurrentPrincipal, setSessionCookie } from "~/lib/session";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { DocoMark } from "~/components/doco-mark";
 
 export function loader({ request }: { request: Request }) {
-  if (getMode() !== "host") {
-    throw new Response("Sign-up is only available in host mode.", { status: 404 });
-  }
   if (getCurrentPrincipal(request)) throw redirect("/");
   return { host: loadHostConfig() };
 }

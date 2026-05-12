@@ -1,5 +1,5 @@
 import { Form, Link, redirect } from "react-router";
-import { getMode } from "~/lib/db";
+
 import { loadHostConfig } from "~/lib/host";
 import {
   findPrincipalById,
@@ -11,9 +11,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/com
 import { DocoMark } from "~/components/doco-mark";
 
 export function loader({ request }: { request: Request }) {
-  if (getMode() !== "host") {
-    throw new Response("Sign-in is only available in host mode.", { status: 404 });
-  }
   // Already signed in? bounce home.
   const id = getSessionPrincipalId(request);
   if (id && findPrincipalById(id)) {

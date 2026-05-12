@@ -1,10 +1,9 @@
 // /onboarding/create — role question (Human vs Agent). Per ADR-073.
-import { getMode } from "~/lib/db";
+
 import { loadHostConfig } from "~/lib/host";
 import { RoleSplitPage } from "./onboarding.join._index";
 
 export function loader() {
-  if (getMode() !== "host") throw new Response("Host mode only.", { status: 404 });
   return { host: loadHostConfig() };
 }
 

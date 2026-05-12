@@ -189,7 +189,6 @@ export function makeApp(opts: ServerOptions): Hono<{ Variables: Variables }> {
   // (deferred — for now host-mode reads happen via the web's per-Doco loaders).
 
   app.get("/api/v1/doco", (c) => {
-    if (mode !== "single-doco") return c.json({ error: "single_doco_only" }, 400);
     const db = openDbReadonly(opts.docoRoot);
     try {
       const root = db.prepare("SELECT raw_json FROM doco_root LIMIT 1").get() as
@@ -204,7 +203,6 @@ export function makeApp(opts: ServerOptions): Hono<{ Variables: Variables }> {
   });
 
   app.get("/api/v1/doco/:type/:id", (c) => {
-    if (mode !== "single-doco") return c.json({ error: "single_doco_only" }, 400);
     const { type, id } = c.req.param();
     if (!isKnownType(type)) return c.json({ error: "unknown_type" }, 400);
     const db = openDbReadonly(opts.docoRoot);
@@ -220,7 +218,6 @@ export function makeApp(opts: ServerOptions): Hono<{ Variables: Variables }> {
   });
 
   app.get("/api/v1/doco/:type", (c) => {
-    if (mode !== "single-doco") return c.json({ error: "single_doco_only" }, 400);
     const { type } = c.req.param();
     if (!isKnownType(type)) return c.json({ error: "unknown_type" }, 400);
     const limit = Math.min(Number(c.req.query("limit") ?? 100), 1000);
@@ -236,7 +233,6 @@ export function makeApp(opts: ServerOptions): Hono<{ Variables: Variables }> {
   });
 
   app.post("/api/v1/query", async (c) => {
-    if (mode !== "single-doco") return c.json({ error: "single_doco_only" }, 400);
     const body = (await c.req.json()) as { sql?: string };
     if (!body.sql) return c.json({ error: "missing_sql" }, 400);
     const db = openDbReadonly(opts.docoRoot);
@@ -253,7 +249,6 @@ export function makeApp(opts: ServerOptions): Hono<{ Variables: Variables }> {
   });
 
   app.post("/api/v1/check", async (c) => {
-    if (mode !== "single-doco") return c.json({ error: "single_doco_only" }, 400);
     const action = (await c.req.json()) as Action;
     const db = openDbReadonly(opts.docoRoot);
     try {
@@ -273,7 +268,6 @@ export function makeApp(opts: ServerOptions): Hono<{ Variables: Variables }> {
    * find existing nodes that overlap so the new node can link them.
    */
   app.post("/api/v1/suggest", async (c) => {
-    if (mode !== "single-doco") return c.json({ error: "single_doco_only" }, 400);
     const body = (await c.req.json().catch(() => ({}))) as {
       summary?: string;
       body?: string;
@@ -322,7 +316,6 @@ export function makeApp(opts: ServerOptions): Hono<{ Variables: Variables }> {
   });
 
   app.get("/api/v1/lint", (c) => {
-    if (mode !== "single-doco") return c.json({ error: "single_doco_only" }, 400);
     const db = openDbReadonly(opts.docoRoot);
     try {
       const report = runAllLints(db, { docoRoot: opts.docoRoot });
@@ -356,7 +349,6 @@ export function makeApp(opts: ServerOptions): Hono<{ Variables: Variables }> {
    * /api/v1/<owner>/<doco>/agent-bootstrap (deferred — ADR-080 §what's deferred).
    */
   app.get("/api/v1/agent-bootstrap", (c) => {
-    if (mode !== "single-doco") return c.json({ error: "single_doco_only" }, 400);
     const db = openDbReadonly(opts.docoRoot);
     try {
       // The Doco itself.

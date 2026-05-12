@@ -7,7 +7,7 @@
 import { useState } from "react";
 import { Form, Link, useActionData } from "react-router";
 import type { EntityId } from "@doco/shared";
-import { getMode, rootDir } from "~/lib/db";
+import { rootDir } from "~/lib/db";
 import { loadHostConfig } from "~/lib/host";
 import { TokenStore } from "~/lib/tokens.server";
 import { addAgentPrincipal, createDocoInHost, reindex } from "~/lib/redeem.server";
@@ -21,7 +21,6 @@ import { DocoMark } from "~/components/doco-mark";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 
 export function loader({ request }: { request: Request }) {
-  if (getMode() !== "host") throw new Response("Host mode only.", { status: 404 });
   return {
     host: loadHostConfig(),
     baseUrl: getPublicBaseUrl(request),
@@ -29,7 +28,6 @@ export function loader({ request }: { request: Request }) {
 }
 
 export async function action({ request }: { request: Request }) {
-  if (getMode() !== "host") throw new Response("Host mode only.", { status: 404 });
   const root = rootDir();
   const baseUrl = getPublicBaseUrl(request);
 
