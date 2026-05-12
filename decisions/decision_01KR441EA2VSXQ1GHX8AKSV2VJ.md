@@ -1,6 +1,6 @@
 ---
 id: decision_01KR441EA2VSXQ1GHX8AKSV2VJ
-evalo_id: evalo_01KR441EA0ZDMF0N5DY38GSVS3
+doco_id: doco_01KR441EA0ZDMF0N5DY38GSVS3
 node_type: decision
 schema_version: "0.1"
 summary: "Predicate language for v0 is a tiny JSON DSL; CEL is the documented future migration target once 5+ real Rules exist."
@@ -36,9 +36,9 @@ created_by: principal_01KR441EA259F7EE420Z4VWFPJ
 revision: 1
 lifecycle: active
 status: accepted
-tags:
-  - tag_01KR441EA37E3M5V0ZV6ZRB97D
-  - tag_01KR441EA8BTTB99H928Z0NQQW
+scopes:
+  - scope_01KR441EA37E3M5V0ZV6ZRB97D
+  - scope_01KR441EA8BTTB99H928Z0NQQW
 ---
 
 # ADR-048 — Predicate language v0 = JSON DSL
@@ -46,7 +46,7 @@ tags:
 Resolves [open question #1](../DECISIONS.md). Implemented in `packages/runtime`
 (phase 3). Existing Rule predicates currently written in prose
 ([rule_priority_order](../rules/rule_01KR441EAF7M5QPF65BXGD1ET1.md),
-[rule_only_humans_delete_evalo](../rules/rule_01KR441EAH8KJZ2F4TMP8YPQPB.md),
+[rule_only_humans_delete_doco](../rules/rule_01KR441EAH8KJZ2F4TMP8YPQPB.md),
 etc.) will be migrated to the JSON DSL during phase 3.
 
 ## Migration path to CEL

@@ -1,5 +1,5 @@
 {
-  "name": "@evalo/monorepo",
+  "name": "@doco/monorepo",
   "version": "0.0.1",
   "private": true,
   "type": "module",
@@ -16,7 +16,7 @@
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
     "format": "biome format --write .",
-    "evalo": "pnpm --filter @evalo/cli evalo"
+    "doco": "pnpm --filter @doco/cli doco"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",

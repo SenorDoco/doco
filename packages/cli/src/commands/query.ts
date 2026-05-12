@@ -1,6 +1,6 @@
 import { defineCommand } from "citty";
-import { openDb } from "@evalo/index";
-import { findEvaloRoot } from "../find-root.js";
+import { openDb } from "@doco/index";
+import { findDocoRoot } from "../find-root.js";
 import { c, cross } from "../output.js";
 
 export const queryCmd = defineCommand({
@@ -11,10 +11,10 @@ export const queryCmd = defineCommand({
   args: {
     sql: {
       type: "positional",
-      description: "SQL statement (read-only). Use 'evalo query --tables' to list available tables.",
+      description: "SQL statement (read-only). Use 'doco query --tables' to list available tables.",
       required: false,
     },
-    root: { type: "string", description: "Path to the Evalo root (default: walk upward from cwd)." },
+    root: { type: "string", description: "Path to the Doco root (default: walk upward from cwd)." },
     tables: {
       type: "boolean",
       description: "List the index's tables and column schemas instead of running a query.",
@@ -28,9 +28,9 @@ export const queryCmd = defineCommand({
   },
   async run({ args }) {
     const rootArg = (args.root as string | undefined) ?? undefined;
-    const root = rootArg ?? (await findEvaloRoot());
+    const root = rootArg ?? (await findDocoRoot());
     if (!root) {
-      console.error(cross("Could not find evalo.yaml in this directory or any parent."));
+      console.error(cross("Could not find doco.yaml in this directory or any parent."));
       process.exitCode = 2;
       return;
     }

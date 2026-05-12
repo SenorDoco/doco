@@ -1,9 +1,9 @@
 ---
 id: action_01KR441EAR39FGBD3KSRBG91AN
-evalo_id: evalo_01KR441EA0ZDMF0N5DY38GSVS3
+doco_id: doco_01KR441EA0ZDMF0N5DY38GSVS3
 node_type: action
 schema_version: "0.1"
-summary: "Implemented Phase 4: @evalo/api (Hono REST + token-store auth) and `evalo serve`. 8 endpoints, agent delete_evalo blocked via API returns HTTP 422."
+summary: "Implemented Phase 4: @doco/api (Hono REST + token-store auth) and `doco serve`. 8 endpoints, agent delete_doco blocked via API returns HTTP 422."
 
 actor_id: principal_01KR441EA259F7EE420Z4VWFPJ
 verb: implement_phase
@@ -29,9 +29,9 @@ outputs:
   cli_added: [serve]
   endpoints: [
     "GET /api/v1/health",
-    "GET /api/v1/evalo",
-    "GET /api/v1/evalo/:type/:id",
-    "GET /api/v1/evalo/:type",
+    "GET /api/v1/doco",
+    "GET /api/v1/doco/:type/:id",
+    "GET /api/v1/doco/:type",
     "POST /api/v1/query",
     "POST /api/v1/check",
     "GET /api/v1/lint",
@@ -39,7 +39,7 @@ outputs:
   test_files: 1
   tests_pass: 8
   phase_end_demo: |
-    - curl POST /api/v1/check (agent delete_evalo) → HTTP 422, blocked: true
+    - curl POST /api/v1/check (agent delete_doco) → HTTP 422, blocked: true
     - curl /api/v1/query SELECT decision LIMIT 5 → 1.98 ms
     - curl /api/v1/lint → errors: 0
   commit: 8cfedf9
@@ -52,13 +52,13 @@ created_by: principal_01KR441EA259F7EE420Z4VWFPJ
 revision: 1
 lifecycle: succeeded
 status: completed
-tags:
-  - tag_01KR441EA8BTTB99H928Z0NQQW
+scopes:
+  - scope_01KR441EA8BTTB99H928Z0NQQW
 ---
 
 # Phase 4 — Hono REST + token-store auth
 
-@evalo/api exports `makeApp({evaloRoot, requireToken, defaultPrincipalId})`
+@doco/api exports `makeApp({docoRoot, requireToken, defaultPrincipalId})`
 returning a Hono instance with auth middleware that resolves Bearer →
 Principal via TokenStore. Local-dev mode uses `--as-principal` to act as a
 named principal without a token (per ADR-057). All endpoints are stateless;

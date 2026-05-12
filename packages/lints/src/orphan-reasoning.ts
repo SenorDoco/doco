@@ -42,12 +42,13 @@ function anyTableHasId(db: Database, id: string): boolean {
     "decision",
     "action",
     "intent",
+    "idea",
     "rule",
     "reasoning",
     "evaluation",
     "principal",
     "reference",
-    "tag",
+    "scope",
   ]) {
     const row = db.prepare(`SELECT 1 FROM ${t} WHERE id = ?`).get(id);
     if (row) return true;

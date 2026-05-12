@@ -1,6 +1,6 @@
 ---
 id: decision_01KR441EA09QKWEH0J9ZY1XFBB
-evalo_id: evalo_01KR441EA0ZDMF0N5DY38GSVS3
+doco_id: doco_01KR441EA0ZDMF0N5DY38GSVS3
 node_type: decision
 schema_version: "0.1"
 summary: "Implementation in TypeScript on Node 22 LTS; pnpm workspaces monorepo; Bun for compiled CLI; Hono API; Remix web; better-sqlite3 index; vitest tests."
@@ -9,7 +9,7 @@ slug: tech-stack-typescript-monorepo
 number: "ADR-046"
 intent_ids:
   - intent_01KR441EAEM5NQBM160763TDDT   # implementation-v0
-question: "What language and stack do we use to implement Evalo?"
+question: "What language and stack do we use to implement Doco?"
 chosen: |
   TypeScript on Node 22 LTS. pnpm workspaces monorepo. Bun for compiled-binary
   CLI distribution. vitest for tests. Hono for the API. Remix (React Router 7)
@@ -32,9 +32,9 @@ created_by: principal_01KR441EA259F7EE420Z4VWFPJ
 revision: 1
 lifecycle: active
 status: accepted
-tags:
-  - tag_01KR441EA37E3M5V0ZV6ZRB97D
-  - tag_01KR441EA8BTTB99H928Z0NQQW
+scopes:
+  - scope_01KR441EA37E3M5V0ZV6ZRB97D
+  - scope_01KR441EA8BTTB99H928Z0NQQW
 ---
 
 # ADR-046 — Tech stack: TypeScript / pnpm monorepo
@@ -48,7 +48,7 @@ packages/
   index/       # SQLite + FTS5 cache, edges adjacency, scope_match
   runtime/     # predicate evaluator + check engine
   lints/       # 4 system lints
-  cli/         # `evalo` command — phase 1+
+  cli/         # `doco` command — phase 1+
   api/         # Hono REST API — phase 4
   web/         # Remix web app — phase 5
   discovery/   # embeddings + glossary expansion — phase 5

@@ -1,6 +1,6 @@
 ---
 id: intent_01KR441EAA9Y78V8DEKYDB4CWP
-evalo_id: evalo_01KR441EA0ZDMF0N5DY38GSVS3
+doco_id: doco_01KR441EA0ZDMF0N5DY38GSVS3
 node_type: intent
 schema_version: "0.1"
 summary: "Verify alignment at runtime: must-rules are checked before actions take effect, not only audited after."
@@ -32,17 +32,17 @@ created_by: principal_01KR441EA199MZCP7RDMADFZW9
 revision: 1
 lifecycle: active
 status: active
-tags:
-  - tag_01KR441EA8BTTB99H928Z0NQQW   # scope_meta
+scopes:
+  - scope_01KR441EA8BTTB99H928Z0NQQW   # scope_meta
 ---
 
 # Verify Rules at runtime
 
-The framework is not just documentation. An Evalo's Rules — especially those
+The framework is not just documentation. An Doco's Rules — especially those
 with `phase: pre | invariant` — are checked at runtime, so misalignment is
 caught before Actions take effect rather than only audited after.
 
-This is what distinguishes Evalo from a typical ADR repository. Every Action
+This is what distinguishes Doco from a typical ADR repository. Every Action
 is gated by the matching `must` Rules in its scope; violations block (default)
 or warn, and produce queryable `Evaluation` records.
 

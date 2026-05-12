@@ -1,9 +1,9 @@
 {
-  "name": "@evalo/api",
+  "name": "@doco/api",
   "version": "0.0.1",
   "private": true,
   "type": "module",
-  "description": "Evalo REST API (Hono). Phases 4-5 are localhost-only; phase 6 deploys evalo.to.",
+  "description": "Doco REST API (Hono). Phases 4-5 are localhost-only; phase 6 deploys doco.to.",
   "license": "Apache-2.0",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -21,14 +21,16 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@evalo/core": "workspace:*",
-    "@evalo/index": "workspace:*",
-    "@evalo/lints": "workspace:*",
-    "@evalo/runtime": "workspace:*",
-    "@evalo/shared": "workspace:*",
+    "@doco/core": "workspace:*",
+    "@doco/host": "workspace:*",
+    "@doco/index": "workspace:*",
+    "@doco/lints": "workspace:*",
+    "@doco/runtime": "workspace:*",
+    "@doco/shared": "workspace:*",
     "@hono/node-server": "^1.13.7",
     "better-sqlite3": "^11.7.0",
-    "hono": "^4.6.14"
+    "hono": "^4.6.14",
+    "yaml": "^2.6.1"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.12"

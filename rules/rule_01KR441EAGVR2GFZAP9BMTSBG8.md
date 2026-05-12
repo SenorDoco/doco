@@ -1,6 +1,6 @@
 ---
 id: rule_01KR441EAGVR2GFZAP9BMTSBG8
-evalo_id: evalo_01KR441EA0ZDMF0N5DY38GSVS3
+doco_id: doco_01KR441EA0ZDMF0N5DY38GSVS3
 node_type: rule
 schema_version: "0.1"
 summary: "Intent, reasoning, and actions that affect future decisions must be expressible as entities — no implicit knowledge."
@@ -14,7 +14,7 @@ applies_to:
     - tag: scope_meta
 predicate: |
   If a fact about the project's intent, reasoning, or action affects future
-  decisions, it must be expressible as an entity in some Evalo. Implicit
+  decisions, it must be expressible as an entity in some Doco. Implicit
   knowledge that lives only in chat, comments, or commit messages is misaligned
   with the framework's purpose.
 expected: true
@@ -25,14 +25,14 @@ created_by: principal_01KR441EA199MZCP7RDMADFZW9
 revision: 1
 lifecycle: active
 status: active
-tags:
-  - tag_01KR441EA8BTTB99H928Z0NQQW   # scope_meta
+scopes:
+  - scope_01KR441EA8BTTB99H928Z0NQQW   # scope_meta
 ---
 
 # Make intent, reasoning, and actions explicit
 
 If a fact about the project's intent, reasoning, or action affects future
-decisions, it must be expressible as an entity in some Evalo.
+decisions, it must be expressible as an entity in some Doco.
 
 This does NOT mean every trivial action becomes an `action` entity. The bar is:
 **would a future user, human or agent, need this to align their work?** If yes,

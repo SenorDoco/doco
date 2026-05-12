@@ -1,19 +1,19 @@
 ---
 id: decision_01KR441EA3123BT1YV4ZKAFM9C
-evalo_id: evalo_01KR441EA0ZDMF0N5DY38GSVS3
+doco_id: doco_01KR441EA0ZDMF0N5DY38GSVS3
 node_type: decision
 schema_version: "0.1"
-summary: "v0 scale target is Tier B: 1k-100k entities per Evalo, ≤1M edges; sub-second runtime checks at the upper bound; all analytics in-process."
+summary: "v0 scale target is Tier B: 1k-100k entities per Doco, ≤1M edges; sub-second runtime checks at the upper bound; all analytics in-process."
 
 slug: v0-scale-target-tier-b
 number: "ADR-049"
 intent_ids:
   - intent_01KR441EAEM5NQBM160763TDDT
-question: "What scale (entities, edges, latency budgets) does Evalo target for v0.x?"
+question: "What scale (entities, edges, latency budgets) does Doco target for v0.x?"
 chosen: |
-  **Tier B**: 1k-100k entities per Evalo, ≤1M edges (~5-10× entity count),
+  **Tier B**: 1k-100k entities per Doco, ≤1M edges (~5-10× entity count),
   sub-second per runtime check at the upper bound, single-digit ms for
-  one-hop queries, single-digit seconds for full-Evalo PageRank/centrality
+  one-hop queries, single-digit seconds for full-Doco PageRank/centrality
   in-process via igraph or NetworkX.
 
   Scaling above Tier B is explicitly out of v0 scope. The D-024 swap-trigger
@@ -34,9 +34,9 @@ created_by: principal_01KR441EA259F7EE420Z4VWFPJ
 revision: 1
 lifecycle: active
 status: accepted
-tags:
-  - tag_01KR441EA37E3M5V0ZV6ZRB97D
-  - tag_01KR441EA8BTTB99H928Z0NQQW
+scopes:
+  - scope_01KR441EA37E3M5V0ZV6ZRB97D
+  - scope_01KR441EA8BTTB99H928Z0NQQW
 ---
 
 # ADR-049 — v0 scale target = Tier B (1k-100k entities)
@@ -54,5 +54,5 @@ profiling at >100k entities shows recursive-CTE traversal as the bottleneck.
 | One-hop edge query | <10 ms | edges adjacency, indexed |
 | `find-rules` precise tier | <50 ms | scope_match denormalization (D-026) |
 | `find-rules` semantic tier | <500 ms | sqlite-vec NN search |
-| Full `evalo lint` pass | <5 s | every invariant Rule × every entity |
+| Full `doco lint` pass | <5 s | every invariant Rule × every entity |
 | PageRank refresh (when added) | <30 s | offline; written into centrality_scores table |

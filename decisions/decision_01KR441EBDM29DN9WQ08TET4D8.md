@@ -1,6 +1,6 @@
 ---
 id: decision_01KR441EBDM29DN9WQ08TET4D8
-evalo_id: evalo_01KR441EA0ZDMF0N5DY38GSVS3
+doco_id: doco_01KR441EA0ZDMF0N5DY38GSVS3
 node_type: decision
 schema_version: "0.1"
 summary: "When a Rule's applies_to selector changes, evaluate it once and store matches in `scope_match`. Lookups become a single index hit."
@@ -28,9 +28,9 @@ created_by: principal_01KR441EA199MZCP7RDMADFZW9
 revision: 1
 lifecycle: active
 status: accepted
-tags:
-  - tag_01KR441EA37E3M5V0ZV6ZRB97D
-  - tag_01KR441EA8BTTB99H928Z0NQQW
+scopes:
+  - scope_01KR441EA37E3M5V0ZV6ZRB97D
+  - scope_01KR441EA8BTTB99H928Z0NQQW
 ---
 
 # ADR-026 — Denormalized scope-selector caching

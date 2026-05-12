@@ -1,21 +1,21 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200" aria-label="Evalo">
-  <title>Evalo</title>
-  <g fill="#707A23" stroke="#707A23">
-    <line x1="62.5" y1="35.048" x2="137.5" y2="35.048" stroke-width="16" stroke-linecap="round"/>
-    <line x1="25" y1="100" x2="62.5" y2="35.048" stroke-width="16" stroke-linecap="round"/>
-    <line x1="25" y1="100" x2="62.5" y2="35.048" stroke-width="16" stroke-linecap="round"/>
-    <line x1="25" y1="100" x2="100" y2="100" stroke-width="16" stroke-linecap="round"/>
-    <line x1="100" y1="100" x2="175" y2="100" stroke-width="16" stroke-linecap="round"/>
-    <line x1="25" y1="100" x2="62.5" y2="164.952" stroke-width="16" stroke-linecap="round"/>
-    <line x1="62.5" y1="164.952" x2="137.5" y2="164.952" stroke-width="16" stroke-linecap="round"/>
-    <line x1="62.5" y1="35.048" x2="100" y2="100" stroke-width="16" stroke-linecap="round"/>
-    <line x1="62.5" y1="164.952" x2="100" y2="100" stroke-width="16" stroke-linecap="round"/>
-    <circle cx="175" cy="100" r="22"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200" aria-label="Doco">
+  <title>Doco</title>
+  <g stroke="#707A23" stroke-width="16" stroke-linecap="round">
+    <line x1="62.5"  y1="35.048"  x2="137.5" y2="35.048"/>
+    <line x1="137.5" y1="35.048"  x2="175"   y2="100"/>
+    <line x1="175"   y1="100"     x2="137.5" y2="164.952"/>
+    <line x1="137.5" y1="164.952" x2="62.5"  y2="164.952"/>
+    <line x1="62.5"  y1="164.952" x2="100"   y2="100"/>
+    <line x1="62.5"  y1="35.048"  x2="100"   y2="100"/>
+    <line x1="25"    y1="100"     x2="100"   y2="100"/>
+  </g>
+  <g fill="#707A23">
+    <circle cx="175"   cy="100"     r="22"/>
     <circle cx="137.5" cy="164.952" r="22"/>
-    <circle cx="62.5" cy="164.952" r="22"/>
-    <circle cx="25" cy="100" r="22"/>
-    <circle cx="62.5" cy="35.048" r="22"/>
-    <circle cx="137.5" cy="35.048" r="22"/>
-    <circle cx="100" cy="100" r="22"/>
+    <circle cx="62.5"  cy="164.952" r="22"/>
+    <circle cx="25"    cy="100"     r="22"/>
+    <circle cx="62.5"  cy="35.048"  r="22"/>
+    <circle cx="137.5" cy="35.048"  r="22"/>
+    <circle cx="100"   cy="100"     r="22"/>
   </g>
 </svg>

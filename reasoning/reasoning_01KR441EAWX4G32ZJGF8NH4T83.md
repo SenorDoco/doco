@@ -1,6 +1,6 @@
 ---
 id: reasoning_01KR441EAWX4G32ZJGF8NH4T83
-evalo_id: evalo_01KR441EA0ZDMF0N5DY38GSVS3
+doco_id: doco_01KR441EA0ZDMF0N5DY38GSVS3
 node_type: reasoning
 schema_version: "0.1"
 summary: "Premises (ADR-046 names Remix; Phase 5 shipped Hono+JSX for time; founder explicitly redirected) → conclusion (migrate web to Remix v7 + Tailwind v4 + shadcn-style)."
@@ -28,8 +28,8 @@ inference: |
 
   Mechanically, the migration is mostly a rewrite of `packages/web/src/server.tsx`
   (~370 lines of Hono JSX) into Remix conventions (root.tsx + 5 routes +
-  components). Data layer (@evalo/discovery, @evalo/index, @evalo/lints)
-  is unchanged — loaders read the same SQLite db. CLI's `evalo serve` drops
+  components). Data layer (@doco/discovery, @doco/index, @doco/lints)
+  is unchanged — loaders read the same SQLite db. CLI's `doco serve` drops
   web mounting; web becomes its own dev server on :5173.
 
 conclusion_ref: action_01KR441EAT66CAM5X3QRFF8QM9
@@ -43,8 +43,8 @@ created_by: principal_01KR441EA259F7EE420Z4VWFPJ
 revision: 1
 lifecycle: active
 status: active
-tags:
-  - tag_01KR441EA8BTTB99H928Z0NQQW
+scopes:
+  - scope_01KR441EA8BTTB99H928Z0NQQW
 ---
 
 # Reasoning for the Remix migration

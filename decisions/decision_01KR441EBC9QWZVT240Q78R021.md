@@ -1,6 +1,6 @@
 ---
 id: decision_01KR441EBC9QWZVT240Q78R021
-evalo_id: evalo_01KR441EA0ZDMF0N5DY38GSVS3
+doco_id: doco_01KR441EA0ZDMF0N5DY38GSVS3
 node_type: decision
 schema_version: "0.1"
 summary: "Edges materialized as a single adjacency table: `edges(from_id, from_node_type, to_id, to_node_type, edge_type)`. Recursive CTEs for traversal."
@@ -29,9 +29,9 @@ created_by: principal_01KR441EA199MZCP7RDMADFZW9
 revision: 1
 lifecycle: active
 status: accepted
-tags:
-  - tag_01KR441EA37E3M5V0ZV6ZRB97D
-  - tag_01KR441EA8BTTB99H928Z0NQQW
+scopes:
+  - scope_01KR441EA37E3M5V0ZV6ZRB97D
+  - scope_01KR441EA8BTTB99H928Z0NQQW
 ---
 
 # ADR-025 — Edges as adjacency table

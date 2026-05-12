@@ -1,5 +1,5 @@
 {
-  "name": "@evalo/lints",
+  "name": "@doco/lints",
   "version": "0.0.1",
   "private": true,
   "type": "module",
@@ -21,8 +21,8 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@evalo/index": "workspace:*",
-    "@evalo/shared": "workspace:*",
+    "@doco/index": "workspace:*",
+    "@doco/shared": "workspace:*",
     "better-sqlite3": "^11.7.0"
   },
   "devDependencies": {

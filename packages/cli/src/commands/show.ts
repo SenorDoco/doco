@@ -1,7 +1,7 @@
 import { defineCommand } from "citty";
-import { type Entity, type EntityId, isEntityId } from "@evalo/shared";
-import { loadEvalo } from "@evalo/core";
-import { findEvaloRoot } from "../find-root.js";
+import { type Entity, type EntityId, isEntityId } from "@doco/shared";
+import { loadDoco } from "@doco/core";
+import { findDocoRoot } from "../find-root.js";
 import { c, cross, header, rule } from "../output.js";
 
 export const showCmd = defineCommand({
@@ -17,7 +17,7 @@ export const showCmd = defineCommand({
     },
     root: {
       type: "string",
-      description: "Path to the Evalo root (default: walk upward from cwd).",
+      description: "Path to the Doco root (default: walk upward from cwd).",
     },
     json: {
       type: "boolean",
@@ -28,14 +28,14 @@ export const showCmd = defineCommand({
   async run({ args }) {
     const target = args.target as string;
     const rootArg = (args.root as string | undefined) ?? undefined;
-    const root = rootArg ?? (await findEvaloRoot());
+    const root = rootArg ?? (await findDocoRoot());
     if (!root) {
-      console.error(cross("Could not find evalo.yaml in this directory or any parent."));
+      console.error(cross("Could not find doco.yaml in this directory or any parent."));
       process.exitCode = 2;
       return;
     }
 
-    const loaded = await loadEvalo(root);
+    const loaded = await loadDoco(root);
 
     let entity: Entity | undefined;
     if (isEntityId(target)) {

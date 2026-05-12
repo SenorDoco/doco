@@ -1,9 +1,9 @@
 ---
 id: action_01KR441EAQ4NFGD2HX8QE9RP84
-evalo_id: evalo_01KR441EA0ZDMF0N5DY38GSVS3
+doco_id: doco_01KR441EA0ZDMF0N5DY38GSVS3
 node_type: action
 schema_version: "0.1"
-summary: "Implemented Phase 3: @evalo/runtime (predicate + scope + check engine), @evalo/lints (4 system lints), `evalo check` and `evalo lint`. The alignment loop closes."
+summary: "Implemented Phase 3: @doco/runtime (predicate + scope + check engine), @doco/lints (4 system lints), `doco check` and `doco lint`. The alignment loop closes."
 
 actor_id: principal_01KR441EA259F7EE420Z4VWFPJ
 verb: implement_phase
@@ -21,7 +21,7 @@ decision_ids:
 
 inputs:
   phase: 3
-  rule_migrated_to_json_dsl: rule_01KR441EAH8KJZ2F4TMP8YPQPB   # only-humans-delete-evalo
+  rule_migrated_to_json_dsl: rule_01KR441EAH8KJZ2F4TMP8YPQPB   # only-humans-delete-doco
 
 outputs:
   packages_created: [runtime, lints]
@@ -30,9 +30,9 @@ outputs:
   tests_pass: 10
   rules_added_in_backfill_pass: 3   # see action_01KR441EAVAACD014TK7XH49WK
   phase_end_demo: |
-    - draft Action (agent delete_evalo) → BLOCKED with `"agent" == "human" is false`
-    - draft Action (human delete_evalo) → passes
-    - `evalo lint` reports 0 errors / 0 warnings against this Evalo
+    - draft Action (agent delete_doco) → BLOCKED with `"agent" == "human" is false`
+    - draft Action (human delete_doco) → passes
+    - `doco lint` reports 0 errors / 0 warnings against this Doco
   commit: 8e94122
 
 started_at: 2026-05-08T17:25:00Z
@@ -43,8 +43,8 @@ created_by: principal_01KR441EA259F7EE420Z4VWFPJ
 revision: 1
 lifecycle: succeeded
 status: completed
-tags:
-  - tag_01KR441EA8BTTB99H928Z0NQQW
+scopes:
+  - scope_01KR441EA8BTTB99H928Z0NQQW
 ---
 
 # Phase 3 — runtime check + lints; alignment loop closes
@@ -57,11 +57,11 @@ engine pulls active pre/invariant Rules, evaluates each, builds a
 CheckReport with .blocked = any must/must_not failure.
 
 Critical loop demonstrated: Intent (dual-user-model) → Decision (ADR-040
-only humans delete) → Rule (rule_only_humans_delete_evalo with JSON DSL
+only humans delete) → Rule (rule_only_humans_delete_doco with JSON DSL
 `{"op":"eq","left":{"path":"actor.type"},"right":"human"}`) → runtime check
 gates the draft Action.
 
 The 4 lints (orphan-Reasoning, agent-ancestry, bugfix-guard,
-pii-display-name) ship as TypeScript functions in @evalo/lints. Three of
+pii-display-name) ship as TypeScript functions in @doco/lints. Three of
 them lacked corresponding Rule entities at Phase 3 close — backfilled later
 (see [action_backfill](action_01KR441EAVAACD014TK7XH49WK.md)).

@@ -1,6 +1,6 @@
 ---
 id: action_01KR441EAVAACD014TK7XH49WK
-evalo_id: evalo_01KR441EA0ZDMF0N5DY38GSVS3
+doco_id: doco_01KR441EA0ZDMF0N5DY38GSVS3
 node_type: action
 schema_version: "0.1"
 summary: "Switched UI to light theme + Ubuntu Mono everywhere per founder direction; backfilled the 7 phase Decisions/Actions and 3 missing Rules surfaced by the explicit-over-implicit Rule."
@@ -47,8 +47,8 @@ created_by: principal_01KR441EA259F7EE420Z4VWFPJ
 revision: 1
 lifecycle: succeeded
 status: completed
-tags:
-  - tag_01KR441EA8BTTB99H928Z0NQQW
+scopes:
+  - scope_01KR441EA8BTTB99H928Z0NQQW
 ---
 
 # Backfill: implementation-time decisions, rules, and actions
@@ -76,6 +76,6 @@ the first:
 ## Lesson (worth a follow-up Decision later)
 
 Capturing entities by hand during implementation is friction-heavy enough
-that even the project's author skipped it. A future `evalo capture` CLI
+that even the project's author skipped it. A future `doco capture` CLI
 that prompts for the fields, auto-generates the ULID + timestamps, and
 drops a draft file would close this gap. Open question — not yet promoted.

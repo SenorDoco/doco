@@ -1,6 +1,6 @@
 ---
 id: decision_01KR441EBB0R991A2P0XXV0VR1
-evalo_id: evalo_01KR441EA0ZDMF0N5DY38GSVS3
+doco_id: doco_01KR441EA0ZDMF0N5DY38GSVS3
 node_type: decision
 schema_version: "0.1"
 summary: "Index = SQLite + FTS5. Recursive CTEs for graph traversal. Kuzu deferred — swap if profiling shows recursive-CTE traversal as the bottleneck."
@@ -31,9 +31,9 @@ created_by: principal_01KR441EA199MZCP7RDMADFZW9
 revision: 1
 lifecycle: active
 status: accepted
-tags:
-  - tag_01KR441EA37E3M5V0ZV6ZRB97D
-  - tag_01KR441EA8BTTB99H928Z0NQQW
+scopes:
+  - scope_01KR441EA37E3M5V0ZV6ZRB97D
+  - scope_01KR441EA8BTTB99H928Z0NQQW
 ---
 
 # ADR-024 — Index = SQLite + FTS5 (Kuzu deferred)

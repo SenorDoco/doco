@@ -1,10 +1,10 @@
 import { Form, Link, redirect } from "react-router";
-import { addPrincipal } from "@evalo/host";
+import { addPrincipal } from "@doco/host";
 import { rootDir, getMode } from "~/lib/db";
 import { loadHostConfig } from "~/lib/host";
 import { getCurrentPrincipal, setSessionCookie } from "~/lib/session";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
-import { EvaloMark } from "~/components/evalo-mark";
+import { DocoMark } from "~/components/doco-mark";
 
 export function loader({ request }: { request: Request }) {
   if (getMode() !== "host") {
@@ -28,7 +28,7 @@ export async function action({ request }: { request: Request }) {
 }
 
 export function meta() {
-  return [{ title: "Sign up · Evalo" }];
+  return [{ title: "Sign up · Doco" }];
 }
 
 export default function SignUp({ loaderData, actionData }: { loaderData: Awaited<ReturnType<typeof loader>>; actionData?: { error?: string } | undefined }) {
@@ -36,8 +36,8 @@ export default function SignUp({ loaderData, actionData }: { loaderData: Awaited
     <div>
       <header className="border-b border-border bg-card">
         <div className="mx-auto flex max-w-6xl items-center gap-4 px-6 py-3">
-          <Link to="/" className="inline-flex items-center hover:opacity-80" aria-label="Evalo home">
-            <EvaloMark height={28} />
+          <Link to="/" className="inline-flex items-center hover:opacity-80" aria-label="Doco home">
+            <DocoMark height={28} />
           </Link>
           <span className="text-xs text-muted-foreground">/ {loaderData.host.name}</span>
         </div>

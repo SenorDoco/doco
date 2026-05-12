@@ -1,6 +1,6 @@
 ---
 id: decision_01KR441EBR170TWHVZMZG0SVZS
-evalo_id: evalo_01KR441EA0ZDMF0N5DY38GSVS3
+doco_id: doco_01KR441EA0ZDMF0N5DY38GSVS3
 node_type: decision
 schema_version: "0.1"
 summary: "Two-phase token lifecycle: 5-minute invitation token (single-use, URL-shareable) bootstraps a long-lived session token (no default expiry, env-stored, revocable)."
@@ -14,7 +14,7 @@ chosen: |
   Two-phase tokens:
     - **Invitation token** — 5-minute, single-use, URL-shareable. Used once
       to create the agent's `Principal` and exchange for a session token.
-    - **Session token** — no default expiry, stored in `EVALO_TOKEN`
+    - **Session token** — no default expiry, stored in `DOCO_TOKEN`
       environment variable, always revocable. Long-lived agent access.
 alternatives:
   - name: Single token type
@@ -30,9 +30,9 @@ created_by: principal_01KR441EA199MZCP7RDMADFZW9
 revision: 1
 lifecycle: active
 status: accepted
-tags:
-  - tag_01KR441EA37E3M5V0ZV6ZRB97D
-  - tag_01KR441EA8BTTB99H928Z0NQQW
+scopes:
+  - scope_01KR441EA37E3M5V0ZV6ZRB97D
+  - scope_01KR441EA8BTTB99H928Z0NQQW
 ---
 
 # ADR-037 — Token lifecycle: 5-min invitation → long-lived session

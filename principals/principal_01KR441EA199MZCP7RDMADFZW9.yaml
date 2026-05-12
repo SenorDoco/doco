@@ -1,8 +1,8 @@
 id: principal_01KR441EA199MZCP7RDMADFZW9
-evalo_id: evalo_01KR441EA0ZDMF0N5DY38GSVS3
+doco_id: doco_01KR441EA0ZDMF0N5DY38GSVS3
 node_type: principal
 schema_version: "0.1"
-summary: "Andrés Torrenegra — Evalo founder and architect. Owner of this Evalo."
+summary: "Andrés Torrenegra — Doco founder and architect. Owner of this Doco."
 
 type: human
 username: torrenegra
@@ -17,4 +17,4 @@ created_by: principal_01KR441EA199MZCP7RDMADFZW9   # self — bootstrap principa
 revision: 1
 lifecycle: active
 status: active
-tags: []
+scopes: []

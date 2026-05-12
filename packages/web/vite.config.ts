@@ -13,12 +13,13 @@ export default defineConfig({
   ssr: {
     external: ["better-sqlite3"],
     noExternal: [
-      "@evalo/core",
-      "@evalo/discovery",
-      "@evalo/host",
-      "@evalo/index",
-      "@evalo/lints",
-      "@evalo/shared",
+      "@doco/api",
+      "@doco/core",
+      "@doco/discovery",
+      "@doco/host",
+      "@doco/index",
+      "@doco/lints",
+      "@doco/shared",
     ],
   },
 });

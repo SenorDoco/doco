@@ -1,6 +1,6 @@
 ---
 id: rule_01KR441EAK3RCPHYQZ86J5AM4B
-evalo_id: evalo_01KR441EA0ZDMF0N5DY38GSVS3
+doco_id: doco_01KR441EA0ZDMF0N5DY38GSVS3
 node_type: rule
 schema_version: "0.1"
 summary: "Every Decision tagged `tag_bugfix` should spawn at least one Rule tagged `tag_regression_guard` via `born_from`."
@@ -24,12 +24,12 @@ created_by: principal_01KR441EA259F7EE420Z4VWFPJ
 revision: 1
 lifecycle: active
 status: active
-tags: []
+scopes: []
 ---
 
 # Bug-fix without regression guard
 
-Implemented in [@evalo/lints](../packages/lints/src/bugfix-guard.ts).
+Implemented in [@doco/lints](../packages/lints/src/bugfix-guard.ts).
 A bug fix that doesn't spawn a guard against the bug recurring is missing
 half of the alignment loop — fixing the symptom without preventing the
 class. Convention from ADR-021 / D-016.

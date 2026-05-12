@@ -1,12 +1,12 @@
 /**
  * EmbeddingProvider interface per ADR-052. Default: no-op (FTS only). When
- * EVALO_EMBEDDING_PROVIDER=openai is set with EVALO_EMBEDDING_API_KEY, an
- * OpenAI provider is wired in. Self-hosted users can swap to a local
- * sentence-transformers process.
+ * `OPENAI_API_KEY` is set, the OpenAI provider with text-embedding-3-small
+ * is used. Self-hosted users can extend with a local sentence-transformers
+ * process — add a new Provider class and a switch in
+ * getDefaultEmbeddingProvider.
  *
- * For phase 5, the OpenAI provider is implemented as a stub — fetch wiring
- * lands when the key is supplied. Until then, semantic discovery degrades
- * to FTS5 (still useful, just less recall).
+ * Env-var convention matches Speco: `OPENAI_API_KEY`. No Doco-prefixed
+ * variant.
  */
 
 export interface EmbeddingProvider {
@@ -56,9 +56,8 @@ export class OpenAIEmbeddingProvider implements EmbeddingProvider {
 }
 
 export function getDefaultEmbeddingProvider(): EmbeddingProvider {
-  const provider = process.env.EVALO_EMBEDDING_PROVIDER ?? "noop";
-  const apiKey = process.env.EVALO_EMBEDDING_API_KEY ?? "";
-  if (provider === "openai" && apiKey) {
+  const apiKey = process.env.OPENAI_API_KEY ?? "";
+  if (apiKey) {
     return new OpenAIEmbeddingProvider(apiKey);
   }
   return new NoopEmbeddingProvider();

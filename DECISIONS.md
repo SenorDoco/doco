@@ -1,4 +1,4 @@
-# Evalo — Design Decisions Log
+# Doco — Design Decisions Log
 
 A consolidated record of every meaningful design decision made to date, intended as a hand-off to an implementing agent. Each entry: the choice made, alternatives rejected, why, and where the resulting design lives in [SCHEMA.md](SCHEMA.md) or [PLANNING.md](PLANNING.md).
 
@@ -16,7 +16,7 @@ A consolidated record of every meaningful design decision made to date, intended
 
 ### D-002 — Storage = git repository (one file per entity)
 
-- **Chosen:** An Evalo *is* a git repository. Each entity is a single file in a kind-named directory (`intents/`, `rules/`, ...). Source-of-truth is the file tree.
+- **Chosen:** An Doco *is* a git repository. Each entity is a single file in a kind-named directory (`intents/`, `rules/`, ...). Source-of-truth is the file tree.
 - **Alternatives rejected:** Database-backed primary store (loses git-native VC); content-addressed object store (heavier; less developer-mental-model friendly).
 - **Why:** Version control, branching, diffs, and merge are free. Matches priority 5 cheaply. Supports per-clone local index without contaminating the source.
 - **Ref:** SCHEMA.md §2.
@@ -31,7 +31,7 @@ A consolidated record of every meaningful design decision made to date, intended
 ### D-004 — IDs = `{node_type}_{ULID}`
 
 - **Chosen:** Every entity gets a ULID prefixed by its `node_type`. ULIDs sort by creation time, are URL-safe, and need no central coordinator.
-- **Alternatives rejected:** UUIDv4 (no time order; longer); auto-increment per Evalo (forces coordination on writes — bad for agent updates).
+- **Alternatives rejected:** UUIDv4 (no time order; longer); auto-increment per Doco (forces coordination on writes — bad for agent updates).
 - **Why:** No coordination, time-sortable, type discoverable from ID alone (priority 1).
 - **Ref:** SCHEMA.md §7.
 
@@ -39,7 +39,7 @@ A consolidated record of every meaningful design decision made to date, intended
 
 - **Chosen:** Every entity has a `node_type:` field in its frontmatter. The umbrella noun for entities is **node**.
 - **Alternatives rejected:** `kind:` (unclear — "kind of what?"); `type:` (collides with `User.type`); `entity_type:` (more verbose, less aligned with "graph" framing).
-- **Why:** Reads as "type of node" — unambiguous; aligns with the graph framing of Evalo's data model.
+- **Why:** Reads as "type of node" — unambiguous; aligns with the graph framing of Doco's data model.
 - **Ref:** SCHEMA.md §3 + every §4 entity.
 
 ---
@@ -48,7 +48,7 @@ A consolidated record of every meaningful design decision made to date, intended
 
 ### D-006 — Common fields on every entity
 
-- **Chosen:** `id`, `evalo_id`, `node_type`, `schema_version`, `summary`, `created_at`/`by`, `updated_at`/`by`, `revision`, `lifecycle`, `status`, `tags`, `born_from` (optional).
+- **Chosen:** `id`, `doco_id`, `node_type`, `schema_version`, `summary`, `created_at`/`by`, `updated_at`/`by`, `revision`, `lifecycle`, `status`, `tags`, `born_from` (optional).
 - **Why:** Common fields are the API surface every consumer can rely on. `summary` serves human-readability (priority 3); `lifecycle` standardizes state across all stateful entities.
 - **Ref:** SCHEMA.md §3.
 
@@ -59,10 +59,10 @@ A consolidated record of every meaningful design decision made to date, intended
 - **Why:** Cross-kind queries become trivial; tooling builds against `lifecycle`, UI renders the alias.
 - **Ref:** SCHEMA.md §3.1.
 
-### D-008 — Per-Evalo `schema_version` (additive evolution)
+### D-008 — Per-Doco `schema_version` (additive evolution)
 
-- **Chosen:** Each Evalo records `schema_version`. Schema evolution is additive (new fields don't invalidate old data); breaking changes require an explicit version bump.
-- **Why:** Different Evalos can adopt new features at their own pace. Forward-compat hatch.
+- **Chosen:** Each Doco records `schema_version`. Schema evolution is additive (new fields don't invalidate old data); breaking changes require an explicit version bump.
+- **Why:** Different Docos can adopt new features at their own pace. Forward-compat hatch.
 - **Open:** Whether to allow only-additive forever vs explicit migrations. (See §13.)
 - **Ref:** SCHEMA.md §3, §11 open questions.
 
@@ -72,7 +72,7 @@ A consolidated record of every meaningful design decision made to date, intended
 
 ### D-009 — Final node type list
 
-- **Chosen:** `principal`, `evalo`, `intent`, `rule`, `decision`, `action`, `reasoning`, `evaluation`, `reference`, `tag`. (10 kinds total.)
+- **Chosen:** `principal`, `doco`, `intent`, `rule`, `decision`, `action`, `reasoning`, `evaluation`, `reference`, `tag`. (10 kinds total.)
 - **Alternatives rejected:** Separate `Constraint` + `Assertion` (collapsed → Rule); `Membership` as a node (collapsed → MemberOf edge); `Plan`, `Question`, `Claim`, `Scope` as first-class entities (deferred — emergent or covered by simpler mechanisms).
 - **Why:** Each kind earns its place by having distinct shape and lifecycle. Aggressive consolidation kept the surface narrow.
 - **Ref:** SCHEMA.md §4.
@@ -86,10 +86,10 @@ A consolidated record of every meaningful design decision made to date, intended
 
 ### D-011 — Membership as edge, not node
 
-- **Chosen:** `Evalo.members[]` array carries `{principal_id, role, permissions}` structs. The index materializes these as `MemberOf` edges with role and permissions as edge properties.
+- **Chosen:** `Doco.members[]` array carries `{principal_id, role, permissions}` structs. The index materializes these as `MemberOf` edges with role and permissions as edge properties.
 - **Alternatives rejected:** First-class `Membership` entity with its own ID and lifecycle (no genuine independent lifecycle worth a node).
 - **Why:** Graph-native; reduces node-type count from 11 → 10; aligns with Kuzu mapping when we adopt it.
-- **Ref:** SCHEMA.md §4.2 (Evalo entity), §6.1 fields-as-edges.
+- **Ref:** SCHEMA.md §4.2 (Doco entity), §6.1 fields-as-edges.
 
 ### D-012 — Reasoning is a first-class entity (multi-author capable)
 
@@ -143,7 +143,7 @@ A consolidated record of every meaningful design decision made to date, intended
 
 - **Chosen:** Each node kind has a stable, human-readable handle alongside its ULID. Conventions:
   - `Principal.username` — GitHub login (humans) or `{owner_username}/{ISO_timestamp}` (agents).
-  - `Evalo.slug` — `{owner_username}/{evalo_name}`.
+  - `Doco.slug` — `{owner_username}/{doco_name}`.
   - `Intent / Rule / Decision`: `slug` (kebab-case, derived from primary content, deduped).
   - `Reference.locator` — the external URL/path itself.
   - `Tag.name` — kebab-case.
@@ -159,7 +159,7 @@ A consolidated record of every meaningful design decision made to date, intended
 
 ### D-020 — URL form
 
-- **Chosen:** `evalo://{evalo_slug}/{node_type}/{slug_or_id}`. Both slug and ID resolve.
+- **Chosen:** `doco://{doco_slug}/{node_type}/{slug_or_id}`. Both slug and ID resolve.
 - **Why:** Agents link by ID (forever-stable); humans link by slug (readable).
 - **Ref:** Conversation.
 
@@ -187,7 +187,7 @@ A consolidated record of every meaningful design decision made to date, intended
 
 ### D-023 — Tiered architecture: source files + derived index
 
-- **Chosen:** Source files (`intents/`, `rules/`, ...) are git-tracked and authoritative. A local `.evalo/cache.db` SQLite index is per-clone, regenerable, *not* git-tracked.
+- **Chosen:** Source files (`intents/`, `rules/`, ...) are git-tracked and authoritative. A local `.doco/cache.db` SQLite index is per-clone, regenerable, *not* git-tracked.
 - **Why:** Source is durable + diffable; index is fast. Wiping the index never loses data. Each clone rebuilds locally.
 - **Ref:** SCHEMA.md §8.1.
 
@@ -214,9 +214,9 @@ A consolidated record of every meaningful design decision made to date, intended
 
 ### D-027 — SQL is the primary agent query surface
 
-- **Chosen:** Agents query the index via SQL. The schema is self-describing via `schema/evalo.schema.json`.
-- **Alternatives rejected:** Custom Evalo DSL as primary (one more thing to teach); Cypher (less SQL-like, less ubiquitous).
-- **Why:** Priority 1 — SQL is universally trained; no DSL to learn; the schema is discoverable from inside the Evalo.
+- **Chosen:** Agents query the index via SQL. The schema is self-describing via `schema/doco.schema.json`.
+- **Alternatives rejected:** Custom Doco DSL as primary (one more thing to teach); Cypher (less SQL-like, less ubiquitous).
+- **Why:** Priority 1 — SQL is universally trained; no DSL to learn; the schema is discoverable from inside the Doco.
 - **Future:** A high-level NL→SQL helper is welcome but not the primary surface.
 - **Ref:** SCHEMA.md §8.6.
 
@@ -227,16 +227,16 @@ A consolidated record of every meaningful design decision made to date, intended
 ### D-028 — Four scope cases, three mechanisms
 
 - **Chosen:**
-  - **Global within Evalo** — `applies_to: { all: true }`.
+  - **Global within Doco** — `applies_to: { all: true }`.
   - **Local sub-scope** — reserved `scope_*` tag prefix (`scope_auth`, `scope_payments`, ...).
   - **Hierarchical scopes** — *deferred*; promote `Scope` to first-class entity only if tag-only proves insufficient.
-  - **Cross-Evalo** — `imports` field in `evalo.yaml`.
-- **Why:** The first two cases are handled without new entity types. Hierarchical is deferred to avoid premature complexity. Cross-Evalo gets a real mechanism.
+  - **Cross-Doco** — `imports` field in `doco.yaml`.
+- **Why:** The first two cases are handled without new entity types. Hierarchical is deferred to avoid premature complexity. Cross-Doco gets a real mechanism.
 - **Ref:** SCHEMA.md §9.
 
-### D-029 — Cross-Evalo imports: pinned, namespaced, additive
+### D-029 — Cross-Doco imports: pinned, namespaced, additive
 
-- **Chosen:** `imports[].evalo` references another Evalo at a pinned `ref` (git tag/branch/commit), under a local namespace (`as: policy`). Imported entities get namespaced IDs (`policy:rule_01H...`).
+- **Chosen:** `imports[].doco` references another Doco at a pinned `ref` (git tag/branch/commit), under a local namespace (`as: policy`). Imported entities get namespaced IDs (`policy:rule_01H...`).
 - **Resolution:** Matching is **additive** (local + imported Rules all apply); override is **explicit** (local Rule with `superseded_by: policy:rule_...`).
 - **Why:** Same model as code package managers — versioned, explicit, overrideable, auditable. Nothing silently disappears.
 - **Ref:** SCHEMA.md §9.4.
@@ -253,13 +253,13 @@ A consolidated record of every meaningful design decision made to date, intended
 
 ### D-031 — Vector embedding index alongside FTS5
 
-- **Chosen:** `rule_embeddings` virtual table (sqlite-vec) lives in the same `.evalo/cache.db` as the SQL tables. `cache.embedding_version` tracks model version; bumping triggers re-embedding.
+- **Chosen:** `rule_embeddings` virtual table (sqlite-vec) lives in the same `.doco/cache.db` as the SQL tables. `cache.embedding_version` tracks model version; bumping triggers re-embedding.
 - **Why:** Embedded with the index; one cache to manage; same rebuild story.
 - **Ref:** SCHEMA.md §10.2.
 
 ### D-032 — `glossary.yaml` as flat config
 
-- **Chosen:** Optional `glossary.yaml` at Evalo root with term → synonyms mapping. Not a node type.
+- **Chosen:** Optional `glossary.yaml` at Doco root with term → synonyms mapping. Not a node type.
 - **Alternatives rejected:** First-class `GlossaryEntry` entity (overkill; per-term version control isn't yet a need).
 - **Why:** Simple file, easy to author, easy to import; promote to entity if per-term lineage becomes valuable.
 - **Ref:** SCHEMA.md §10.2.
@@ -296,27 +296,27 @@ A consolidated record of every meaningful design decision made to date, intended
 
 ### D-037 — Token lifecycle: 5-min invitation → long-lived session
 
-- **Chosen:** Two-phase tokens: invitation token (5-minute single-use, URL-shareable) → session token (no default expiry, stored in `EVALO_TOKEN` env var, revocable).
+- **Chosen:** Two-phase tokens: invitation token (5-minute single-use, URL-shareable) → session token (no default expiry, stored in `DOCO_TOKEN` env var, revocable).
 - **Alternatives rejected:** Single token type (loses bootstrap-vs-runtime separation); session tokens with default TTL (operational toil for long-running agents).
 - **Why:** Narrow blast radius for leaked invite URLs; agents can persist session tokens for ongoing work.
 - **Ref:** PLANNING.md §3.1, §3.2.
 
 ### D-038 — Token revocation cascades strictly (default)
 
-- **Chosen:** Revoking a session token invalidates all session tokens whose ancestry chain passes through it. Per-Evalo override flag for "scoped" mode (only revoke the named token).
+- **Chosen:** Revoking a session token invalidates all session tokens whose ancestry chain passes through it. Per-Doco override flag for "scoped" mode (only revoke the named token).
 - **Why:** Strict-by-default is safer for security incidents.
-- **Open:** Per-Evalo override is real but not deeply specified yet (§13).
+- **Open:** Per-Doco override is real but not deeply specified yet (§13).
 - **Ref:** PLANNING.md §3.3, §6.
 
-### D-039 — Tokens are stored externally, not in the Evalo
+### D-039 — Tokens are stored externally, not in the Doco
 
-- **Chosen:** Token *values* live in the API server's encrypted database. The Evalo records *which* Principals exist and the lineage; the index reflects edges.
+- **Chosen:** Token *values* live in the API server's encrypted database. The Doco records *which* Principals exist and the lineage; the index reflects edges.
 - **Why:** Source-controlled secrets are bad practice; tokens shouldn't be in git.
 - **Ref:** PLANNING.md §3.3.
 
-### D-040 — Only humans can delete Evalos
+### D-040 — Only humans can delete Docos
 
-- **Chosen:** Built-in system Rule (`rule_system_only_humans_delete`) blocks `delete_evalo` Actions when `actor.is_agent == true` (or `actor.type == 'human'` in current schema).
+- **Chosen:** Built-in system Rule (`rule_system_only_humans_delete`) blocks `delete_doco` Actions when `actor.is_agent == true` (or `actor.type == 'human'` in current schema).
 - **Why:** Single human-only operation; everything else (create, edit, archive, transfer) is open to both.
 - **Ref:** PLANNING.md §2.4.
 
@@ -326,7 +326,7 @@ A consolidated record of every meaningful design decision made to date, intended
 
 ### D-041 — Two onboarding paths: greenfield and brownfield
 
-- **Chosen:** `evalo init` (greenfield) and `evalo init --existing` (brownfield). Brownfield asks an explicit fork: backfill past decisions, or document forward-only.
+- **Chosen:** `doco init` (greenfield) and `doco init --existing` (brownfield). Brownfield asks an explicit fork: backfill past decisions, or document forward-only.
 - **Why:** The brownfield case is half of real adoption; surfacing the choice early avoids regret.
 - **Ref:** PLANNING.md §1.
 
@@ -371,14 +371,14 @@ These are conventions that emerged but aren't separate decisions — they're ins
 
 Roughly, in implementation-order:
 
-1. **CLI core** — `evalo init`, `evalo init --existing`, `evalo show`, `evalo query`. (PLANNING.md §1.)
-2. **Source-of-truth layer** — file readers/writers for entity YAML+Markdown; schema validation against `evalo.schema.json`. (SCHEMA.md §2, §3, §4.)
+1. **CLI core** — `doco init`, `doco init --existing`, `doco show`, `doco query`. (PLANNING.md §1.)
+2. **Source-of-truth layer** — file readers/writers for entity YAML+Markdown; schema validation against `doco.schema.json`. (SCHEMA.md §2, §3, §4.)
 3. **Index layer** — SQLite + FTS5 cache builder; `edges` adjacency table; `scope_match` denormalization; incremental updater on file change / git commit. (SCHEMA.md §8.)
-4. **Identity** — GitHub OAuth for humans; invitation-token + session-token issuance for agents; `EVALO_TOKEN` env-var consumption; token revocation. (PLANNING.md §2, §3.)
+4. **Identity** — GitHub OAuth for humans; invitation-token + session-token issuance for agents; `DOCO_TOKEN` env-var consumption; token revocation. (PLANNING.md §2, §3.)
 5. **API server** — REST CRUD + query + discovery + events stream; OpenAPI generation. (PLANNING.md §5.2.)
 6. **Web app** — recent-changes feed, list-by-kind, search (Cmd-K + full page), entity detail page with neighborhood preview, graph view as secondary. (PLANNING.md §5.3.)
 7. **Importers** — Slack, email, Figma, Notion, GitHub PRs, agent transcripts. Each runs idempotently and emits `lifecycle: proposed` entities with Reference back-pointers. (PLANNING.md §4.)
-8. **Rule discovery** — `evalo find-rules` CLI + API endpoint; vector embedding index; `glossary.yaml` expansion. (SCHEMA.md §10.)
+8. **Rule discovery** — `doco find-rules` CLI + API endpoint; vector embedding index; `glossary.yaml` expansion. (SCHEMA.md §10.)
 9. **System Rules + lints** — `rule_system_only_humans_delete`; orphan-Reasoning lint; bug-fix-without-regression-guard lint; agent-without-human-ancestor lint. (PLANNING.md §2.4, §11 above.)
 
 ---
@@ -412,16 +412,16 @@ Original question framings are preserved below for historical reference.
 2. **`is_agent` boolean vs `actor_kind` enum on User/Principal.** Currently the schema still has `Principal.type: human | agent`. Conversation suggested renaming to `is_agent: bool` for clarity, but the rename hasn't been applied. Pick one and apply uniformly.
 3. **Rename `principal` → `user`?** Discussed in conversation; not applied. Same for `evaluation → check`, `reference → source`. Decide whether to apply, and if so, do it consistently across SCHEMA.md, PLANNING.md, file paths, and ID prefixes.
 4. **Schema versioning policy.** Strict additive-only forever, or allow breaking changes with explicit migration tooling? (SCHEMA.md §11 #6.)
-5. **Per-entity visibility.** Currently visibility is Evalo-level only (public/private). Allowing per-entity visibility (e.g., private Intent in a public Evalo) is doable but non-trivial. (SCHEMA.md §11 #7.)
+5. **Per-entity visibility.** Currently visibility is Doco-level only (public/private). Allowing per-entity visibility (e.g., private Intent in a public Doco) is doable but non-trivial. (SCHEMA.md §11 #7.)
 6. **Token revocation cascade override.** Strict-cascade is the default (D-038). The "scoped" override flag is mentioned but not specified — define semantics, persistence, and audit trail. (PLANNING.md §6 #2.)
 7. **GitHub-only sign-in: hard constraint or v0 simplification?** OIDC/SAML support is deferred but not killed. Decide when adoption signal demands broader support. (PLANNING.md §6 #1.)
-8. **`Token` as a first-class entity?** Currently kept external (server DB). Promote to entity if Evalo-internal queries on token metadata become valuable. (PLANNING.md §6 #6.)
+8. **`Token` as a first-class entity?** Currently kept external (server DB). Promote to entity if Doco-internal queries on token metadata become valuable. (PLANNING.md §6 #6.)
 9. **Hierarchical Scope entity.** Deferred. Promote only when tag-only model proves insufficient. (SCHEMA.md §9.3.)
 10. **`conclusion_node_type` on Reasoning is redundant** (the conclusion's ID prefix carries the type). Could be dropped. Mentioned in conversation; not yet acted on.
 11. **`Plan` and `Question` as entities.** Both deferred; Plan is emergent, Question is folded into Decision. Promote only if real use cases demand. (SCHEMA.md §11 #8, #9.)
-12. **Public-Evalo PII leakage in agent ancestry chain.** Confirm `Principal.identifier` and `display_name` can't leak email patterns. Add a Rule. (PLANNING.md §6 #4.)
+12. **Public-Doco PII leakage in agent ancestry chain.** Confirm `Principal.identifier` and `display_name` can't leak email patterns. Add a Rule. (PLANNING.md §6 #4.)
 
-13. **v0 scale target.** What scale (entities, edges, latency budgets) does Evalo target for v0.x, and what are the swap triggers between scale tiers? Tentative direction: **Tier B (1k–100k entities, ≤ 1M edges)** — covers the team-sized brownfield-backfill case (D-042) without committing to Tier C engineering ahead of demand. Specifically blocks: centrality compute architecture (in-process `igraph`/NetworkX vs. server-based graph DB), the D-024 swap-trigger framing (currently "1M+ entities, 5+ hop traversals" — but is that what we *target*, or what we *tolerate*?), runtime-check latency budgets (sub-10ms per Action stated in §8.3 — at what tier?), and analytics cadence (per-commit / on-demand / periodic). Raised 2026-05-08 during PageRank-compute discussion.
+13. **v0 scale target.** What scale (entities, edges, latency budgets) does Doco target for v0.x, and what are the swap triggers between scale tiers? Tentative direction: **Tier B (1k–100k entities, ≤ 1M edges)** — covers the team-sized brownfield-backfill case (D-042) without committing to Tier C engineering ahead of demand. Specifically blocks: centrality compute architecture (in-process `igraph`/NetworkX vs. server-based graph DB), the D-024 swap-trigger framing (currently "1M+ entities, 5+ hop traversals" — but is that what we *target*, or what we *tolerate*?), runtime-check latency budgets (sub-10ms per Action stated in §8.3 — at what tier?), and analytics cadence (per-commit / on-demand / periodic). Raised 2026-05-08 during PageRank-compute discussion.
 
 ---
 

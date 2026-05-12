@@ -1,5 +1,5 @@
 import type { Database } from "better-sqlite3";
-import { matches } from "@evalo/runtime";
+import { matches } from "@doco/runtime";
 import type { Glossary } from "./glossary.js";
 
 export type DiscoveryTier = "precise" | "related" | "possibly-relevant";

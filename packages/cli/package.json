@@ -1,13 +1,13 @@
 {
-  "name": "@evalo/cli",
+  "name": "@doco/cli",
   "version": "0.0.1",
   "private": true,
   "type": "module",
-  "description": "Evalo CLI — init, show, validate, query, check, lint.",
+  "description": "Doco CLI — init, show, validate, query, check, lint.",
   "license": "Apache-2.0",
   "main": "./dist/index.js",
   "bin": {
-    "evalo": "./dist/index.js"
+    "doco": "./dist/index.js"
   },
   "files": ["dist"],
   "scripts": {
@@ -15,17 +15,17 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "evalo": "tsx src/index.ts"
+    "doco": "tsx src/index.ts"
   },
   "dependencies": {
-    "@evalo/api": "workspace:*",
-    "@evalo/core": "workspace:*",
-    "@evalo/discovery": "workspace:*",
-    "@evalo/host": "workspace:*",
-    "@evalo/index": "workspace:*",
-    "@evalo/lints": "workspace:*",
-    "@evalo/runtime": "workspace:*",
-    "@evalo/shared": "workspace:*",
+    "@doco/api": "workspace:*",
+    "@doco/core": "workspace:*",
+    "@doco/discovery": "workspace:*",
+    "@doco/host": "workspace:*",
+    "@doco/index": "workspace:*",
+    "@doco/lints": "workspace:*",
+    "@doco/runtime": "workspace:*",
+    "@doco/shared": "workspace:*",
     "@hono/node-server": "^1.13.7",
     "citty": "^0.1.6",
     "kleur": "^4.1.5"

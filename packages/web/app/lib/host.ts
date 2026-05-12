@@ -24,12 +24,12 @@ export interface HostOrg {
   member_count: number;
 }
 
-export interface HostEvalo {
+export interface HostDoco {
   ownerSlug: string;
-  evaloSlug: string;
+  docoSlug: string;
   ownerKind: "principal" | "organization";
   ownerId: string;
-  evaloId: string;
+  docoId: string;
   description?: string;
   hasIndex: boolean;
 }
@@ -47,6 +47,8 @@ export function listUsers(): HostUser[] {
   for (const name of readdirSync(dir)) {
     if (!name.startsWith("principal_") || !name.endsWith(".yaml")) continue;
     const e = parseYaml(readFileSync(join(dir, name), "utf8")) as Record<string, unknown>;
+    if (e.type !== "human") continue;
+    if (e.bootstrap_placeholder === true) continue; // ADR-073: hide from listings
     out.push({
       id: e.id as string,
       username: e.username as string,
@@ -102,28 +104,28 @@ export function listOrgsOwnedOrAdminedBy(principalId: string): HostOrg[] {
   return out;
 }
 
-export function listAllEvalos(): HostEvalo[] {
-  const evalosDir = join(rootDir(), "evalos");
-  if (!existsSync(evalosDir)) return [];
-  const out: HostEvalo[] = [];
-  for (const ownerSlug of readdirSync(evalosDir)) {
-    const ownerDir = join(evalosDir, ownerSlug);
+export function listAllDocos(): HostDoco[] {
+  const docosDir = join(rootDir(), "docos");
+  if (!existsSync(docosDir)) return [];
+  const out: HostDoco[] = [];
+  for (const ownerSlug of readdirSync(docosDir)) {
+    const ownerDir = join(docosDir, ownerSlug);
     if (!existsSync(ownerDir)) continue;
-    for (const evaloSlug of readdirSync(ownerDir)) {
-      const dir = join(ownerDir, evaloSlug);
-      const yamlPath = join(dir, "evalo.yaml");
+    for (const docoSlug of readdirSync(ownerDir)) {
+      const dir = join(ownerDir, docoSlug);
+      const yamlPath = join(dir, "doco.yaml");
       if (!existsSync(yamlPath)) continue;
       const e = parseYaml(readFileSync(yamlPath, "utf8")) as Record<string, unknown>;
       const ownerId = e.owner_id as string;
       const ownerKind = ownerId.startsWith("organization_") ? "organization" : "principal";
       out.push({
         ownerSlug,
-        evaloSlug,
+        docoSlug,
         ownerKind,
         ownerId,
-        evaloId: e.id as string,
+        docoId: e.id as string,
         ...(e.description !== undefined ? { description: e.description as string } : {}),
-        hasIndex: existsSync(join(dir, ".evalo", "cache.db")),
+        hasIndex: existsSync(join(dir, ".doco", "cache.db")),
       });
     }
   }

@@ -1,6 +1,6 @@
 ---
 id: rule_01KR441EAJCPF378ZGM9DMDFH0
-evalo_id: evalo_01KR441EA0ZDMF0N5DY38GSVS3
+doco_id: doco_01KR441EA0ZDMF0N5DY38GSVS3
 node_type: rule
 schema_version: "0.1"
 summary: "Every agent's owner_id chain terminates at a human Principal — the trust invariant."
@@ -26,12 +26,12 @@ created_by: principal_01KR441EA199MZCP7RDMADFZW9
 revision: 1
 lifecycle: active
 status: active
-tags: []
+scopes: []
 ---
 
 # Agent ancestry chain terminates at a human
 
-This is the **core trust property** of Evalo's identity model (PLANNING.md
+This is the **core trust property** of Doco's identity model (PLANNING.md
 §2.2, §3.4 / D-035). Every agent Principal traces back, via `owner_id`, to a
 human Principal in a finite number of steps.
 

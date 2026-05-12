@@ -3,18 +3,18 @@ import { join } from "node:path";
 import {
   type EntityId,
   type Entity,
-  type Evalo,
+  type Doco,
   NODE_TYPES,
   type NodeType,
   isEntityId,
   isNodeType,
-} from "@evalo/shared";
+} from "@doco/shared";
 import { type ParsedEntityFile, readEntityFile } from "./files.js";
 import {
   ENTITY_DIRS,
   entityDirPath,
   entityFilenameRegex,
-  evaloYamlPath,
+  docoYamlPath,
 } from "./paths.js";
 
 /** A loaded entity together with its on-disk source. */
@@ -30,31 +30,31 @@ export interface LoadFailure {
   reason: string;
 }
 
-export interface LoadedEvalo {
+export interface LoadedDoco {
   root: string;
-  evalo: Evalo;
+  doco: Doco;
   entities: Map<EntityId, LoadedEntity>;
   byType: Map<NodeType, LoadedEntity[]>;
   failures: LoadFailure[];
 }
 
 /**
- * Walk `<root>/evalo.yaml` plus every entity directory and load every `.md`/`.yaml`/`.json`
+ * Walk `<root>/doco.yaml` plus every entity directory and load every `.md`/`.yaml`/`.json`
  * file matching the `<type>_<ulid>.<ext>` filename pattern. README.md and other navigation
  * aids are silently skipped.
  *
  * This loader does *not* run schema validation — it produces structurally-typed entities.
- * Run `validateEvalo(loaded)` separately for full schema + cross-reference validation.
+ * Run `validateDoco(loaded)` separately for full schema + cross-reference validation.
  */
-export async function loadEvalo(root: string): Promise<LoadedEvalo> {
+export async function loadDoco(root: string): Promise<LoadedDoco> {
   const failures: LoadFailure[] = [];
 
-  // 1. Load the root evalo.yaml.
-  const evaloFile = await readEntityFile(evaloYamlPath(root));
-  const evaloData = evaloFile.data as unknown as Evalo;
-  if (evaloData?.node_type !== "evalo") {
+  // 1. Load the root doco.yaml.
+  const docoFile = await readEntityFile(docoYamlPath(root));
+  const docoData = docoFile.data as unknown as Doco;
+  if (docoData?.node_type !== "doco") {
     throw new Error(
-      `evalo.yaml at ${root} does not have node_type: "evalo" (got: ${evaloData?.node_type})`,
+      `doco.yaml at ${root} does not have node_type: "doco" (got: ${docoData?.node_type})`,
     );
   }
 
@@ -64,7 +64,7 @@ export async function loadEvalo(root: string): Promise<LoadedEvalo> {
   for (const t of NODE_TYPES) byType.set(t, []);
 
   for (const type of NODE_TYPES) {
-    if (type === "evalo") continue;
+    if (type === "doco") continue;
     const spec = ENTITY_DIRS[type];
     const dir = entityDirPath(root, type);
     let exists: boolean;
@@ -115,7 +115,7 @@ export async function loadEvalo(root: string): Promise<LoadedEvalo> {
     }
   }
 
-  return { root, evalo: evaloData, entities, byType, failures };
+  return { root, doco: docoData, entities, byType, failures };
 }
 
 async function listDirect(dir: string, filenameRe: RegExp): Promise<string[]> {

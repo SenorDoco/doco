@@ -1,12 +1,12 @@
 import { defineCommand } from "citty";
-import { SchemaValidator, loadEvalo, validateEvalo } from "@evalo/core";
-import { findEvaloRoot } from "../find-root.js";
+import { SchemaValidator, loadDoco, validateDoco } from "@doco/core";
+import { findDocoRoot } from "../find-root.js";
 import { bullet, c, checkmark, cross, header, rule } from "../output.js";
 
 export const validateCmd = defineCommand({
   meta: {
     name: "validate",
-    description: "Validate every entity in the current Evalo against schema and cross-references.",
+    description: "Validate every entity in the current Doco against schema and cross-references.",
   },
   args: {
     json: {
@@ -16,21 +16,21 @@ export const validateCmd = defineCommand({
     },
     root: {
       type: "string",
-      description: "Path to the Evalo root (default: walk upward from cwd).",
+      description: "Path to the Doco root (default: walk upward from cwd).",
     },
   },
   async run({ args }) {
     const rootArg = (args.root as string | undefined) ?? undefined;
-    const root = rootArg ?? (await findEvaloRoot());
+    const root = rootArg ?? (await findDocoRoot());
     if (!root) {
-      console.error(cross("Could not find evalo.yaml in this directory or any parent."));
+      console.error(cross("Could not find doco.yaml in this directory or any parent."));
       process.exitCode = 2;
       return;
     }
 
-    const loaded = await loadEvalo(root);
+    const loaded = await loadDoco(root);
     const validator = await SchemaValidator.load(root);
-    const report = await validateEvalo(loaded, validator);
+    const report = await validateDoco(loaded, validator);
 
     if (args.json) {
       console.log(JSON.stringify(report, null, 2));
@@ -39,7 +39,7 @@ export const validateCmd = defineCommand({
     }
 
     console.log();
-    console.log(header(`Evalo: ${loaded.evalo.slug}  ${c.dim(`(${root})`)}`));
+    console.log(header(`Doco: ${loaded.doco.slug}  ${c.dim(`(${root})`)}`));
     console.log(rule());
     console.log(bullet(`Total entities: ${c.bold(String(report.totalEntities))}`));
     for (const [type, count] of Object.entries(report.entitiesByType)) {

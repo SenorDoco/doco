@@ -1,17 +1,17 @@
 ---
 id: decision_01KR441EBG1VMFYTCPP1YPXGS8
-evalo_id: evalo_01KR441EA0ZDMF0N5DY38GSVS3
+doco_id: doco_01KR441EA0ZDMF0N5DY38GSVS3
 node_type: decision
 schema_version: "0.1"
-summary: "Cross-Evalo imports are pinned (git ref), namespaced (`as: policy`), additive (local + imported Rules co-apply), and explicitly overridable via `superseded_by`."
+summary: "Cross-Doco imports are pinned (git ref), namespaced (`as: policy`), additive (local + imported Rules co-apply), and explicitly overridable via `superseded_by`."
 
-slug: cross-evalo-imports-pinned-namespaced-additive
+slug: cross-doco-imports-pinned-namespaced-additive
 number: "ADR-029"
 intent_ids:
   - intent_01KR441EA92V53H22ZN087YMRM
-question: "How does an Evalo pull in Rules from another Evalo (compliance baselines, vendor SDKs, organization-wide policy)?"
+question: "How does an Doco pull in Rules from another Doco (compliance baselines, vendor SDKs, organization-wide policy)?"
 chosen: |
-  `imports[].evalo` references another Evalo at a pinned `ref` (git tag/branch/commit),
+  `imports[].doco` references another Doco at a pinned `ref` (git tag/branch/commit),
   under a local namespace (`as: policy`). Imported entities get namespaced IDs
   (`policy:rule_01H...`).
 
@@ -20,7 +20,7 @@ chosen: |
   - **Versioning**: pinned `ref`; bumping it produces a diff.
   - **Transitive imports**: one level by default — no surprise rule cascades.
 alternatives:
-  - name: Floating refs (track main of imported Evalo)
+  - name: Floating refs (track main of imported Doco)
     rejected_because: "Surprise rule changes flow in without review. Imports must be auditable."
   - name: Imported Rules silently override local
     rejected_because: "Nothing should silently disappear. Override is explicit."
@@ -33,12 +33,12 @@ created_by: principal_01KR441EA199MZCP7RDMADFZW9
 revision: 1
 lifecycle: active
 status: accepted
-tags:
-  - tag_01KR441EA37E3M5V0ZV6ZRB97D
-  - tag_01KR441EA8BTTB99H928Z0NQQW
+scopes:
+  - scope_01KR441EA37E3M5V0ZV6ZRB97D
+  - scope_01KR441EA8BTTB99H928Z0NQQW
 ---
 
-# ADR-029 — Cross-Evalo imports: pinned, namespaced, additive
+# ADR-029 — Cross-Doco imports: pinned, namespaced, additive
 
 Same model as code package managers — versioned, explicit, overrideable,
 auditable.

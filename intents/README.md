@@ -17,6 +17,6 @@ alignment-framework (p0)
 ├── dual-user-model (p1)
 └── agent-comprehension-first (p0)
 
-self-hosting (p1)        ← peer; about how Evalo is built
+self-hosting (p1)        ← peer; about how Doco is built
 implementation-v0 (p0)   ← peer; commitment to deliver a working v0
 ```

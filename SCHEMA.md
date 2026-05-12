@@ -1,16 +1,16 @@
-# Evalo Data Schema — v0.1 (proposal)
+# Doco Data Schema — v0.1 (proposal)
 
 ## 1. Design philosophy → priority mapping
 
-Every choice below is justified by Evalo's strict-priority optimizations:
+Every choice below is justified by Doco's strict-priority optimizations:
 
 | Priority | How the schema serves it |
 |---|---|
-| 1. AI agent comprehension | Self-describing entities, predictable names, explicit node_type+ID prefixes, schema-of-the-Evalo embedded inside every Evalo so an agent can read structure without external context. |
+| 1. AI agent comprehension | Self-describing entities, predictable names, explicit node_type+ID prefixes, schema-of-the-Doco embedded inside every Doco so an agent can read structure without external context. |
 | 2. AI agent updates | One file per entity (small, predictable diffs), additive evolution (new fields don't invalidate old data), stable IDs (inserts don't renumber peers), upsert-by-path semantics. |
 | 3. Human comprehension | Every entity has a `summary` field and a Markdown narrative body alongside its structured fields. |
-| 4. Scoping | Three levels: Evalo > namespace (entity directory) > entity. Rules carry an explicit `applies_to` scope selector. |
-| 5. Version control | Each Evalo IS a git repository. Revisions are commits; diffs are file diffs; branches are branches. |
+| 4. Scoping | Three levels: Doco > namespace (entity directory) > entity. Rules carry an explicit `applies_to` scope selector. |
+| 5. Version control | Each Doco IS a git repository. Revisions are commits; diffs are file diffs; branches are branches. |
 | 6. Performance | References are flat IDs (no inlined data). Generated `index/` directory holds derived lookups (not source of truth). |
 | 7. Automated issue detection | Every Rule can carry a `predicate`; runtime-phase Rules produce Evaluations. The schema itself is lintable (orphan refs, broken `applies_to`, status conflicts). |
 
@@ -18,15 +18,15 @@ When two priorities conflict, the higher-priority one wins.
 
 ## 2. Storage model
 
-An Evalo is a **git repository** with this layout:
+An Doco is a **git repository** with this layout:
 
 ```
-my-evalo/
-  evalo.yaml                       # Evalo identity, visibility, schema version
+my-doco/
+  doco.yaml                       # Doco identity, visibility, schema version
   schema/
-    evalo.schema.json              # JSON Schema for all entities (embedded for agent self-comprehension)
+    doco.schema.json              # JSON Schema for all entities (embedded for agent self-comprehension)
   principals/
-    {principal-id}.yaml            # Members of this Evalo (or all known principals)
+    {principal-id}.yaml            # Members of this Doco (or all known principals)
   intents/
     {intent-id}.md
   rules/
@@ -55,7 +55,7 @@ Markdown entities use **YAML frontmatter** (structured fields, agent-parseable) 
 
 ```yaml
 id: intent_01H8XYZ...              # ULID, prefixed by node type
-evalo_id: evalo_01H...
+doco_id: doco_01H...
 node_type: intent                       # entity discriminator (matches directory name)
 schema_version: "0.1"
 summary: "One-line summary."       # priority 3: human comprehension
@@ -119,13 +119,13 @@ agent_metadata:                     # only when type=agent
 public_key: ...                     # for action attestation (future)
 ```
 
-### 4.2 Evalo — the repo-equivalent (root entity)
+### 4.2 Doco — the repo-equivalent (root entity)
 
-Stored in `evalo.yaml` at repo root.
+Stored in `doco.yaml` at repo root.
 
 ```yaml
-id: evalo_...
-node_type: evalo
+id: doco_...
+node_type: doco
 slug: torre/alignment-runtime
 display_name: "Alignment Runtime"
 visibility: private | public
@@ -134,8 +134,8 @@ default_branch: main
 description: "..."
 members:
   - { principal_id: principal_..., role: owner | maintainer | contributor | viewer, permissions: [read, write, execute, admin] }
-imports:                              # cross-Evalo rule sharing — see §9.4
-  - { evalo: torre/shared-policy, ref: "v2.3.1", as: policy, include: [rules, tags] }
+imports:                              # cross-Doco rule sharing — see §9.4
+  - { doco: torre/shared-policy, ref: "v2.3.1", as: policy, include: [rules, tags] }
 ```
 
 ### 4.3 Intent — what someone wants
@@ -301,19 +301,19 @@ applies_to:
     - { node_type: action, verb: deploy }
     - { intent_id: intent_... }
     - { id: action_01H... }              # single-entity target
-    - { all: true }                      # wildcard: every entity in this Evalo (used by global Rules — §9.1)
+    - { all: true }                      # wildcard: every entity in this Doco (used by global Rules — §9.1)
     - { all_of: [ { node_type: action }, { actor_type: agent } ] }
 ```
 
 ## 6. Relationships at a glance
 
 ```
-Principal --owns--> Evalo --contains--> { Intent, Rule, Decision,
+Principal --owns--> Doco --contains--> { Intent, Rule, Decision,
                                           Action, Reasoning,
                                           Evaluation, Reference, Tag }
-Principal --member_of--> Evalo           # with role + permissions edge properties
+Principal --member_of--> Doco           # with role + permissions edge properties
 Principal --owned_by--> Principal        # agent → inviter (chain terminates at a human; PLANNING.md §3)
-Evalo     --imports--> Evalo             # with ref + namespace + include edge properties (§9.4)
+Doco     --imports--> Doco             # with ref + namespace + include edge properties (§9.4)
 
 Intent       --decomposes_into--> Intent
 Decision     --serves--> Intent
@@ -324,6 +324,7 @@ Reasoning    --concludes--> Decision | Action | Claim
 Rule         --applies_to--> Intent | Decision | Action | Reasoning | Rule
 Evaluation   --runs--> Rule
 *            --born_from--> *            # provenance; canonical use: Rule born from a fix Decision
+*            --follows--> *              # ordering / dependency; lint forbids cycles (ADR-077)
 ```
 
 The **alignment graph** is the path: `Intent → Reasoning → (Decision →) Action`, with `Rule` overlaid as the boundary and runtime check.
@@ -347,11 +348,12 @@ Any field on an entity whose value is an entity ID (or list of IDs) is **automat
 | `Evaluation.target_id` | EvaluatedOn |
 | `Intent.parent_intent_id` | HasSubintent (reverse: parent → child) |
 | `Principal.owner_id` | OwnedBy (agent → inviter; chain terminates at a human — PLANNING.md §3.4) |
-| `Evalo.members[].principal_id` | MemberOf (with `role` and `permissions` as edge properties) |
-| `Evalo.imports[].evalo` | Imports (with `ref`, `as`, `include` as edge properties — §9.4) |
+| `Doco.members[].principal_id` | MemberOf (with `role` and `permissions` as edge properties) |
+| `Doco.imports[].doco` | Imports (with `ref`, `as`, `include` as edge properties — §9.4) |
 | `*.tags[]` | Tagged |
 | `*.created_by` / `*.updated_by` | CreatedBy / UpdatedBy |
 | `*.born_from` | BornFrom |
+| `*.follows[]` | Follows (ordering / dependency; lint forbids cycles — ADR-077) |
 
 Adding a new ID-valued field automatically gets it picked up by the index — agents reading the schema can infer the edge graph without a separate edge-schema document. This is what keeps the source-of-truth files and the queryable graph in lockstep.
 
@@ -367,15 +369,15 @@ File-per-entity serves priorities 1–5. For priority 6, add a **derived index**
 
 ```
 working-tree/                  # source of truth (git-tracked)
-  evalo.yaml
+  doco.yaml
   intents/...
   ...
-.evalo/                        # local cache (NOT git-tracked, in .gitignore)
+.doco/                        # local cache (NOT git-tracked, in .gitignore)
   cache.db                     # SQLite + FTS5
   cache.version                # full reindex on mismatch
 ```
 
-`.evalo/` is per-clone, regenerated locally. `evalo reindex` rebuilds from source in seconds at 10k.
+`.doco/` is per-clone, regenerated locally. `doco reindex` rebuilds from source in seconds at 10k.
 
 ### 8.2 Index schema (SQLite)
 
@@ -388,7 +390,7 @@ CREATE TABLE edges (
   from_node_type  TEXT NOT NULL,
   to_id      TEXT NOT NULL,
   to_node_type    TEXT NOT NULL,
-  edge_type  TEXT NOT NULL,    -- serves, enacts, consults, concludes, applies_to, runs_rule, tagged, decomposes_into, born_from, ...
+  edge_type  TEXT NOT NULL,    -- serves, enacts, consults, concludes, applies_to, runs_rule, tagged, decomposes_into, born_from, follows, ...
   PRIMARY KEY (from_id, to_id, edge_type)
 );
 CREATE INDEX edges_to ON edges(to_id, edge_type);
@@ -424,8 +426,8 @@ CREATE INDEX scope_match_target ON scope_match(target_id);
 ### 8.4 Incremental updates
 
 - **post-commit git hook**: diff `HEAD~1..HEAD`, re-index only the touched files.
-- **file watcher** (active while `evalo` daemon runs): same logic for working-tree edits.
-- **schema-version bump or detected corruption**: `evalo reindex` does a full rebuild.
+- **file watcher** (active while `doco` daemon runs): same logic for working-tree edits.
+- **schema-version bump or detected corruption**: `doco reindex` does a full rebuild.
 
 A 10k-entity full reindex is bound by file I/O (parsing YAML), not SQL — single-digit seconds on typical hardware.
 
@@ -444,27 +446,27 @@ Alternative is evaluate-on-read — simpler but linear in selectors × entities.
 Three layers, all backed by the same index:
 
 1. **Direct file access** — source of truth, always works, slow at scale.
-2. **SQL** — primary surface. Schema is self-describing via `schema/evalo.schema.json` embedded in every Evalo. SQL is universal — no DSL for an agent to learn.
-3. **High-level DSL** *(future)* — `evalo query "actions by claude-opus-4-7 last 7d that violate any rule"`, compiled to SQL.
+2. **SQL** — primary surface. Schema is self-describing via `schema/doco.schema.json` embedded in every Doco. SQL is universal — no DSL for an agent to learn.
+3. **High-level DSL** *(future)* — `doco query "actions by claude-opus-4-7 last 7d that violate any rule"`, compiled to SQL.
 
-Priority 1 (agent comprehension) argues for SQL over a custom DSL: SQL is already known by virtually every agent, and the schema is discoverable from inside the Evalo.
+Priority 1 (agent comprehension) argues for SQL over a custom DSL: SQL is already known by virtually every agent, and the schema is discoverable from inside the Doco.
 
 ### 8.7 Where this stops working
 
-- **10k–1M entities per Evalo**: SQLite + FTS5 sweet spot.
+- **10k–1M entities per Doco**: SQLite + FTS5 sweet spot.
 - **> 1M**: switch the local cache to DuckDB (columnar) or an embedded graph DB (Kuzu — see §8.8).
-- **Cross-Evalo queries** (search across all my Evalos): need a fan-out indexer — out of scope for v0.x.
+- **Cross-Doco queries** (search across all my Docos): need a fan-out indexer — out of scope for v0.x.
 
 ### 8.8 Why SQLite, not a graph database?
 
-The data is graph-shaped. Every entity is a node; every reference is an edge. The alignment graph (Intent → Reasoning → Decision → Action, with Rules overlaid) IS Evalo's central data structure. Storing it relationally is a deliberate, reversible trade — the index isn't source-of-truth, so swapping is cheap.
+The data is graph-shaped. Every entity is a node; every reference is an edge. The alignment graph (Intent → Reasoning → Decision → Action, with Rules overlaid) IS Doco's central data structure. Storing it relationally is a deliberate, reversible trade — the index isn't source-of-truth, so swapping is cheap.
 
 | Option | Pros | Cons | Verdict |
 |---|---|---|---|
 | **SQLite + `edges` table** (proposed) | Embedded, zero-ops; universal SQL (priority 1); FTS5 built-in; ubiquitous tooling | Recursive CTEs slow on dense graphs past ~1M entities at depth 5+ | Best fit for v0.x |
 | **Kuzu** | Embedded, native Cypher, columnar/fast traversal, no server | Newer (less battle-tested), C++ deps, smaller ecosystem | Strongest swap if perf bites |
 | **Memgraph / Neo4j** | Mature graph DBs, max perf, rich tooling | Separate server, ops cost, less embedded-friendly | Overkill at v0.x scale |
-| **TerminusDB** | Git-like branching/merging *natively* on a graph DB; conceptually aligned with Evalo's repo model | Smaller ecosystem; would replace files-as-source-of-truth — much bigger architectural commitment | Revisit if we ever go DB-as-source-of-truth |
+| **TerminusDB** | Git-like branching/merging *natively* on a graph DB; conceptually aligned with Doco's repo model | Smaller ecosystem; would replace files-as-source-of-truth — much bigger architectural commitment | Revisit if we ever go DB-as-source-of-truth |
 
 **The dominant factor is priority 1 (agent comprehension)**: SQL appears in orders of magnitude more agent training data than Cypher. Agents speak SQL fluently and stumble on Cypher noticeably more often. SQLite's `edges` adjacency table + recursive CTEs is a standard graph-on-relational pattern, so we lose nothing conceptually — only verbosity, which agents pay (not humans).
 
@@ -472,23 +474,23 @@ The data is graph-shaped. Every entity is a node; every reference is an edge. Th
 
 **Swap path**: the index is rebuildable from source files. Replacing SQLite with Kuzu is a couple of weeks of engineering work and zero source-data migration. We do this if and only if profiling at real scale shows recursive-CTE traversal as the bottleneck.
 
-## 9. Scoping — global, local, hierarchical, cross-Evalo
+## 9. Scoping — global, local, hierarchical, cross-Doco
 
-`applies_to` selectors and Evalo membership give the building blocks; this section formalizes the four practical cases.
+`applies_to` selectors and Doco membership give the building blocks; this section formalizes the four practical cases.
 
-### 9.1 Global (within an Evalo)
+### 9.1 Global (within an Doco)
 
-A Rule that applies to every entity in its Evalo uses the wildcard scope-selector form:
+A Rule that applies to every entity in its Doco uses the wildcard scope-selector form:
 
 ```yaml
-applies_to: { all: true }            # matches every entity in this Evalo
+applies_to: { all: true }            # matches every entity in this Doco
 ```
 
-This is the catch-all baseline: privacy policies, organization-wide audit logging, Evalo-wide naming conventions.
+This is the catch-all baseline: privacy policies, organization-wide audit logging, Doco-wide naming conventions.
 
 ### 9.2 Scope-specific (local) — via reserved tag convention
 
-Reserve the tag-name prefix `scope_*` for bounded sub-areas of an Evalo (`scope_auth`, `scope_payments`, `scope_infrastructure`, ...). Rules target a scope by referencing the tag:
+Reserve the tag-name prefix `scope_*` for bounded sub-areas of an Doco (`scope_auth`, `scope_payments`, `scope_infrastructure`, ...). Rules target a scope by referencing the tag:
 
 ```yaml
 # rules/rule_01H...md
@@ -513,14 +515,14 @@ description: "..."
 
 Resolution: a Rule applying to a Scope also applies to its descendants. Defer until v0.x usage shows the tag-only model running out of road.
 
-### 9.4 Cross-Evalo — `imports`
+### 9.4 Cross-Doco — `imports`
 
-Shared Rule sets (compliance baselines, organization-wide policies, vendor SDKs that ship with their own constraints) live in dedicated Evalos and are pulled in via `evalo.yaml`:
+Shared Rule sets (compliance baselines, organization-wide policies, vendor SDKs that ship with their own constraints) live in dedicated Docos and are pulled in via `doco.yaml`:
 
 ```yaml
-# evalo.yaml
+# doco.yaml
 imports:
-  - evalo: torre/shared-policy
+  - doco: torre/shared-policy
     ref: "v2.3.1"               # git tag, branch, or commit (pinned)
     as: policy                   # local namespace prefix
     include: [rules, tags]       # which node types to import (default: rules)
@@ -553,13 +555,13 @@ The discovery layer combines **five retrieval strategies**, ranked by precision.
 | 2 | **Tag overlap** | Rules tagged with any tag carried by the work item (or its parent Intent / target Reference) | High. Cheap and symmetric. |
 | 3 | **Reference-graph expansion** | Rules attached to neighbors of the target Reference: same directory, same content-hash family, same parent module | Medium-high. |
 | 4 | **Semantic search** | Vector embedding NN-search over each Rule's `summary` + Markdown body, against an embedding of the agent's working context (Intent + draft Action + target content) | Medium. The lever for vocabulary-tolerance. |
-| 5 | **Glossary expansion** | Agent's keywords expanded through the Evalo's `glossary.yaml` synonyms before search runs | Medium. Also drives consistent vocabulary among Rule authors. |
+| 5 | **Glossary expansion** | Agent's keywords expanded through the Doco's `glossary.yaml` synonyms before search runs | Medium. Also drives consistent vocabulary among Rule authors. |
 
 **Hard vs. soft separation matters.** Structural matches *block* (precision-tight, no false positives). Semantic / tag / reference matches are *advisory* — surfaced as context, never enforced. The runtime gate stays precise; the discovery layer stays generous.
 
 ### 10.2 Schema additions
 
-**Vector embedding index** alongside FTS5 in `.evalo/cache.db`:
+**Vector embedding index** alongside FTS5 in `.doco/cache.db`:
 
 ```sql
 -- sqlite-vec or sqlite-vss extension
@@ -571,7 +573,7 @@ CREATE VIRTUAL TABLE rule_embeddings USING vec0(
 
 A `cache.embedding_version` field tracks the embedding model; bumping it invalidates the embeddings and triggers re-embedding. Re-embedding is incremental (only changed Rules re-embed).
 
-**Optional `glossary.yaml`** at Evalo root:
+**Optional `glossary.yaml`** at Doco root:
 
 ```yaml
 # glossary.yaml
@@ -589,7 +591,7 @@ A flat config file rather than a new node type — promote to first-class entity
 ### 10.3 Discovery API
 
 ```
-evalo find-rules \
+doco find-rules \
   --intent intent_01H... \
   --verb edit_file \
   --target src/auth/login.ts \
@@ -624,11 +626,11 @@ Agents and humans get the same output. Agents typically ingest the PRECISE + REL
 
 1. **Reasoning as a first-class entity** — I made it separate rather than a `rationale` field on Decision/Action. Pro: multi-author reasoning, contested reasoning, agent-vs-human reasoning all become queryable. Con: more entities to manage. Collapse if multi-author reasoning isn't a target use case.
 2. **Predicate language** — I left `predicate` as a string with the language deferred. Candidates: CEL, a Lisp-like S-expr, or a small JSON DSL. Suggest deferring until we have 3–5 real Rules to test against.
-3. **Storage = git repo** — I committed to "an Evalo IS a git repo" because it gives version control, branching, and diffs for free. The alternative is an abstracted backend (DB) with git as one possible projection. The git-native choice is cheaper to start but harder to scale to enterprise workflows later.
+3. **Storage = git repo** — I committed to "an Doco IS a git repo" because it gives version control, branching, and diffs for free. The alternative is an abstracted backend (DB) with git as one possible projection. The git-native choice is cheaper to start but harder to scale to enterprise workflows later.
 4. **YAML frontmatter + Markdown body** — chosen because it serves both agents (structured) and humans (narrative) in one file. Alternative: pure JSON (cleaner for agents, worse for humans). Worth revisiting if agents struggle with mixed format.
 5. **Evaluations as file-per-result** — better for git diffs, worse than JSONL for high-volume runs. Monthly partitioning mitigates. Could move to JSONL if eval throughput becomes a real constraint.
-6. **Per-Evalo `schema_version`** — lets Evalos migrate at their own pace; cross-Evalo tooling has to handle multiple versions. Alternative: single global schema that's only ever additive. I'd lean toward additive-only for v0.x and keep `schema_version` as a forward-compat hatch.
-7. **Visibility only at Evalo level** — no per-entity visibility yet. Adding "private intent in a public Evalo" later is doable but non-trivial.
+6. **Per-Doco `schema_version`** — lets Docos migrate at their own pace; cross-Doco tooling has to handle multiple versions. Alternative: single global schema that's only ever additive. I'd lean toward additive-only for v0.x and keep `schema_version` as a forward-compat hatch.
+7. **Visibility only at Doco level** — no per-entity visibility yet. Adding "private intent in a public Doco" later is doable but non-trivial.
 8. **No `Plan` entity** — a plan is emergent from Intent + Decision + Action chains. Could be added later if a higher-level grouping is needed.
 9. **No `Question` entity** — folded into Decision's `question` field. If questions need to live before being decided (e.g., open RFCs), promote to an entity.
 10. **SQLite vs embedded graph DB (Kuzu) for the index** — see §8.8 for the full trade matrix. SQLite chosen because priority 1 (agent comprehension) favors SQL's vastly larger training-data presence over Cypher; zero-ops embedded model also wins at v0.x scale. Reversible because the index isn't authoritative — swap to Kuzu (or Memgraph for server-based deploys) if profiling shows recursive-CTE traversal as the bottleneck. **TerminusDB is the only option that would force a deeper architectural rethink** (DB-as-source-of-truth), so it's a separate decision from the index swap.

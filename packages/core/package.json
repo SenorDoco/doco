@@ -1,9 +1,9 @@
 {
-  "name": "@evalo/core",
+  "name": "@doco/core",
   "version": "0.0.1",
   "private": true,
   "type": "module",
-  "description": "Source-of-truth layer: read, write, and validate Evalo entity files.",
+  "description": "Source-of-truth layer: read, write, and validate Doco entity files.",
   "license": "Apache-2.0",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -21,7 +21,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@evalo/shared": "workspace:*",
+    "@doco/shared": "workspace:*",
     "ajv": "^8.17.1",
     "ajv-formats": "^3.0.1",
     "gray-matter": "^4.0.3",

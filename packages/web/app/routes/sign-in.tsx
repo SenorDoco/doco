@@ -8,7 +8,7 @@ import {
   setSessionCookie,
 } from "~/lib/session";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
-import { EvaloMark } from "~/components/evalo-mark";
+import { DocoMark } from "~/components/doco-mark";
 
 export function loader({ request }: { request: Request }) {
   if (getMode() !== "host") {
@@ -32,7 +32,7 @@ export async function action({ request }: { request: Request }) {
 }
 
 export function meta() {
-  return [{ title: "Sign in · Evalo" }];
+  return [{ title: "Sign in · Doco" }];
 }
 
 export default function SignIn({ loaderData }: { loaderData: Awaited<ReturnType<typeof loader>> }) {
@@ -41,8 +41,8 @@ export default function SignIn({ loaderData }: { loaderData: Awaited<ReturnType<
     <div>
       <header className="border-b border-border bg-card">
         <div className="mx-auto flex max-w-6xl items-center gap-4 px-6 py-3">
-          <Link to="/" className="inline-flex items-center hover:opacity-80" aria-label="Evalo home">
-            <EvaloMark height={28} />
+          <Link to="/" className="inline-flex items-center hover:opacity-80" aria-label="Doco home">
+            <DocoMark height={28} />
           </Link>
           <span className="text-xs text-muted-foreground">/ {host.name}</span>
         </div>

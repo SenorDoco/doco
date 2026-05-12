@@ -4,7 +4,7 @@ import { parse as parseYaml } from "yaml";
 import { rootDir } from "./db";
 import type { HostUser } from "./host";
 
-const COOKIE_NAME = "evalo_session";
+const COOKIE_NAME = "doco_session";
 
 export function getSessionPrincipalId(request: Request): string | null {
   const header = request.headers.get("cookie");
@@ -72,6 +72,7 @@ export function listSignInCandidates(): HostUser[] {
     if (!name.startsWith("principal_") || !name.endsWith(".yaml")) continue;
     const e = parseYaml(readFileSync(join(dir, name), "utf8")) as Record<string, unknown>;
     if (e.type !== "human") continue;
+    if (e.bootstrap_placeholder === true) continue; // ADR-073: not a real user
     const email = (e.github_identity as { email?: string } | undefined)?.email;
     out.push({
       id: e.id as string,

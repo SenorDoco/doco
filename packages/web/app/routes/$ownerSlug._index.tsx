@@ -3,7 +3,7 @@ import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { parse as parseYaml } from "yaml";
 import { rootDir, getMode } from "~/lib/db";
-import { listAllEvalos, loadHostConfig } from "~/lib/host";
+import { listAllDocos, loadHostConfig } from "~/lib/host";
 import { getCurrentPrincipal } from "~/lib/session";
 import { SiteHeader } from "~/components/site-header";
 import { Badge } from "~/components/badge";
@@ -81,18 +81,18 @@ export function loader({ params, request }: { params: { ownerSlug: string }; req
   if (getMode() !== "host") throw new Response("Host mode only.", { status: 404 });
   const owner = findOwnerBySlug(params.ownerSlug);
   if (!owner) throw new Response(`Owner "${params.ownerSlug}" not found.`, { status: 404 });
-  const allEvalos = listAllEvalos();
-  const evalos = allEvalos.filter((e) => e.ownerSlug === params.ownerSlug);
+  const allDocos = listAllDocos();
+  const docos = allDocos.filter((e) => e.ownerSlug === params.ownerSlug);
   return {
     owner,
-    evalos,
+    docos,
     host: loadHostConfig(),
     me: getCurrentPrincipal(request),
   };
 }
 
 export function meta({ params }: { params: { ownerSlug: string } }) {
-  return [{ title: `${params.ownerSlug} · Evalo` }];
+  return [{ title: `${params.ownerSlug} · Doco` }];
 }
 
 export default function OwnerProfile({
@@ -100,7 +100,7 @@ export default function OwnerProfile({
 }: {
   loaderData: Awaited<ReturnType<typeof loader>>;
 }) {
-  const { owner, evalos, host, me } = loaderData;
+  const { owner, docos, host, me } = loaderData;
   return (
     <div>
       <SiteHeader context={host.name} mode="host" me={me} />
@@ -134,11 +134,11 @@ export default function OwnerProfile({
 
         <Card>
           <CardHeader>
-            <CardTitle>Evalos ({evalos.length})</CardTitle>
+            <CardTitle>Docos ({docos.length})</CardTitle>
           </CardHeader>
           <CardContent>
-            {evalos.length === 0 ? (
-              <p className="text-xs text-muted-foreground">No Evalos yet.</p>
+            {docos.length === 0 ? (
+              <p className="text-xs text-muted-foreground">No Docos yet.</p>
             ) : (
               <Table>
                 <TableHeader>
@@ -148,11 +148,11 @@ export default function OwnerProfile({
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {evalos.map((e) => (
-                    <TableRow key={e.evaloId}>
+                  {docos.map((e) => (
+                    <TableRow key={e.docoId}>
                       <TableCell>
-                        <Link to={`/${e.ownerSlug}/${e.evaloSlug}`} className="text-primary hover:underline">
-                          {e.ownerSlug}/{e.evaloSlug}
+                        <Link to={`/${e.ownerSlug}/${e.docoSlug}`} className="text-primary hover:underline">
+                          {e.ownerSlug}/{e.docoSlug}
                         </Link>
                       </TableCell>
                       <TableCell>

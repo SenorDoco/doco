@@ -1,12 +1,12 @@
 ---
 id: rule_01KR441EAK6MKGDZZWH5TRZ9HQ
-evalo_id: evalo_01KR441EA0ZDMF0N5DY38GSVS3
+doco_id: doco_01KR441EA0ZDMF0N5DY38GSVS3
 node_type: rule
 schema_version: "0.1"
-summary: "No secrets (tokens, keys, credentials) may be committed to an Evalo's git tree."
+summary: "No secrets (tokens, keys, credentials) may be committed to an Doco's git tree."
 
 born_from: decision_01KR441EBTZDSJC0PEDTX4QHNE   # ADR-039 (tokens stored externally)
-slug: no-secrets-in-evalo
+slug: no-secrets-in-doco
 modality: must_not
 severity: blocker
 phase: pre
@@ -15,7 +15,7 @@ applies_to:
   verb: commit
 predicate: |
   No file in the commit may contain a string matching the secret-pattern set
-  (private keys, tokens, API keys, EVALO_TOKEN values, GitHub PATs, etc.).
+  (private keys, tokens, API keys, DOCO_TOKEN values, GitHub PATs, etc.).
 expected: true
 on_violation: block
 
@@ -24,24 +24,24 @@ created_by: principal_01KR441EA199MZCP7RDMADFZW9
 revision: 1
 lifecycle: active
 status: active
-tags: []
+scopes: []
 ---
 
-# No secrets in the Evalo
+# No secrets in the Doco
 
-Token *values* live in the API server's encrypted database (D-039). The Evalo
+Token *values* live in the API server's encrypted database (D-039). The Doco
 records *which* Principals exist and the lineage; the index reflects edges.
 Token values must never be committed to git.
 
 This Rule is the runtime check at `commit` time. The predicate scans staged
 content for known secret patterns (matching common formats: `ghp_*`, `sk-*`,
-`-----BEGIN ... PRIVATE KEY-----`, `EVALO_TOKEN=...`, etc.) and blocks the
+`-----BEGIN ... PRIVATE KEY-----`, `DOCO_TOKEN=...`, etc.) and blocks the
 Action if any match.
 
-For the Evalo itself (this repository), the same rule applies: no GitHub
+For the Doco itself (this repository), the same rule applies: no GitHub
 tokens, no Anthropic keys, no anything. Memory files at
-`/Users/torrenegra/.claude/projects/-Users-torrenegra-Evalo/memory/` live
-outside this Evalo and are not subject to this Rule.
+`/Users/torrenegra/.claude/projects/-Users-torrenegra-Doco/memory/` live
+outside this Doco and are not subject to this Rule.
 
 ## Predicate language
 

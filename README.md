@@ -1,16 +1,16 @@
-# Evalo
+# Doco
 
 Alignment framework and runtime checking system. Documents and verifies the
 relationships between user intent, agent reasoning, and agent actions.
 
-This repository is itself an Evalo — see [evalo.yaml](evalo.yaml). The project's
+This repository is itself an Doco — see [doco.yaml](doco.yaml). The project's
 own intents, rules, decisions, action, and reasoning are expressed in the schema
 the project defines.
 
 ## Quick links
 
-- [evalo.yaml](evalo.yaml) — root identity for this Evalo.
-- [schema/evalo.schema.json](schema/evalo.schema.json) — JSON Schema for every entity. Agents introspect this directly.
+- [doco.yaml](doco.yaml) — root identity for this Doco.
+- [schema/doco.schema.json](schema/doco.schema.json) — JSON Schema for every entity. Agents introspect this directly.
 - [glossary.yaml](glossary.yaml) — term ↔ synonyms for Rule discovery.
 - [SCHEMA.md](SCHEMA.md), [PLANNING.md](PLANNING.md), [DECISIONS.md](DECISIONS.md) — original prose design (kept; the per-entity files mirror them).
 
@@ -18,10 +18,10 @@ the project defines.
 
 ```
 .
-├── evalo.yaml                # Marks this directory as an Evalo (D-002)
+├── doco.yaml                # Marks this directory as an Doco (D-002)
 ├── glossary.yaml             # Term → synonyms (D-032)
 ├── schema/
-│   └── evalo.schema.json     # JSON Schema for entities (embedded for self-comprehension)
+│   └── doco.schema.json     # JSON Schema for entities (embedded for self-comprehension)
 ├── principals/               # Humans + agents (D-018, D-034..D-036)
 ├── intents/                  # What the project intends (6 entities)
 ├── rules/                    # Constraints / invariants / runtime checks (5 entities)
@@ -50,20 +50,20 @@ authorized by the foundational ADRs (ADR-002, ADR-003, ADR-009).
 Per [intent_01KR441EAEM5NQBM160763TDDT.md](intents/intent_01KR441EAEM5NQBM160763TDDT.md)
 (implementation-v0):
 
-1. CLI core (`evalo init`, `init --existing`, `show`, `query`).
+1. CLI core (`doco init`, `init --existing`, `show`, `query`).
 2. Source-of-truth layer — readers/writers + JSON-Schema validation.
 3. Index layer — SQLite + FTS5 cache, `edges` adjacency, `scope_match`.
 4. Identity — GitHub OAuth + invitation/session tokens.
 5. API server (REST + OpenAPI).
 6. Web app — recent-changes feed, list views, entity detail, graph as drill-down.
 7. Importers — Slack, GitHub PRs, agent transcripts.
-8. Rule discovery — `evalo find-rules` + embedding index.
+8. Rule discovery — `doco find-rules` + embedding index.
 9. System Rules + lints.
 
 ## Reading order for a new agent
 
-1. [evalo.yaml](evalo.yaml) — what this Evalo is.
-2. [schema/evalo.schema.json](schema/evalo.schema.json) — entity shapes.
+1. [doco.yaml](doco.yaml) — what this Doco is.
+2. [schema/doco.schema.json](schema/doco.schema.json) — entity shapes.
 3. [intents/](intents/) — what the project intends to accomplish.
 4. [rules/](rules/) — what must hold.
 5. [decisions/](decisions/) — settled choices and their rationale.

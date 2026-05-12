@@ -23,7 +23,7 @@ the human-side handles ([ADR-018](decision_01KR441EB5JDWDYQ4JP4KS33EX.md),
 |---|---|---|
 | ADR-006 | common-fields-on-every-entity | [decision_01KR441EAS39KJC9RN9WCD648W.md](decision_01KR441EAS39KJC9RN9WCD648W.md) |
 | ADR-007 | canonical-lifecycle | [decision_01KR441EATN151XB3HV6FWT0ZQ.md](decision_01KR441EATN151XB3HV6FWT0ZQ.md) |
-| ADR-008 | per-evalo-schema-version | [decision_01KR441EAVQJCFXJV7PVY5NPAJ.md](decision_01KR441EAVQJCFXJV7PVY5NPAJ.md) |
+| ADR-008 | per-doco-schema-version | [decision_01KR441EAVQJCFXJV7PVY5NPAJ.md](decision_01KR441EAVQJCFXJV7PVY5NPAJ.md) |
 
 ### Node types (D-009 … D-013)
 
@@ -69,7 +69,7 @@ the human-side handles ([ADR-018](decision_01KR441EB5JDWDYQ4JP4KS33EX.md),
 | ADR | Slug | File |
 |---|---|---|
 | ADR-028 | four-scope-cases-three-mechanisms | [decision_01KR441EBFN04DA4BBAKWC0QDY.md](decision_01KR441EBFN04DA4BBAKWC0QDY.md) |
-| ADR-029 | cross-evalo-imports-pinned-namespaced-additive | [decision_01KR441EBG1VMFYTCPP1YPXGS8.md](decision_01KR441EBG1VMFYTCPP1YPXGS8.md) |
+| ADR-029 | cross-doco-imports-pinned-namespaced-additive | [decision_01KR441EBG1VMFYTCPP1YPXGS8.md](decision_01KR441EBG1VMFYTCPP1YPXGS8.md) |
 
 ### Rule discovery (D-030 … D-033)
 
@@ -90,7 +90,7 @@ the human-side handles ([ADR-018](decision_01KR441EB5JDWDYQ4JP4KS33EX.md),
 | ADR-037 | token-lifecycle-invitation-then-session | [decision_01KR441EBR170TWHVZMZG0SVZS.md](decision_01KR441EBR170TWHVZMZG0SVZS.md) |
 | ADR-038 | token-revocation-cascades-strictly | [decision_01KR441EBSMYJB6YMTGCRKTVZS.md](decision_01KR441EBSMYJB6YMTGCRKTVZS.md) |
 | ADR-039 | tokens-stored-externally | [decision_01KR441EBTZDSJC0PEDTX4QHNE.md](decision_01KR441EBTZDSJC0PEDTX4QHNE.md) |
-| ADR-040 | only-humans-can-delete-evalos | [decision_01KR441EBVNSWGHVP39KMWE1ZT.md](decision_01KR441EBVNSWGHVP39KMWE1ZT.md) |
+| ADR-040 | only-humans-can-delete-docos | [decision_01KR441EBVNSWGHVP39KMWE1ZT.md](decision_01KR441EBVNSWGHVP39KMWE1ZT.md) |
 
 ### Product flows (D-041 … D-045)
 

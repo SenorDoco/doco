@@ -65,5 +65,5 @@ export function ErrorBoundary() {
 }
 
 export function meta() {
-  return [{ title: "Evalo" }];
+  return [{ title: "Doco" }];
 }

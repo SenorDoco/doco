@@ -1,6 +1,6 @@
 ---
 id: decision_01KR441EA55CCPH23ZE3FF1CQC
-evalo_id: evalo_01KR441EA0ZDMF0N5DY38GSVS3
+doco_id: doco_01KR441EA0ZDMF0N5DY38GSVS3
 node_type: decision
 schema_version: "0.1"
 summary: "Drop `conclusion_node_type` from Reasoning — redundant with `conclusion_ref`'s ID prefix."
@@ -26,9 +26,9 @@ created_by: principal_01KR441EA259F7EE420Z4VWFPJ
 revision: 1
 lifecycle: active
 status: accepted
-tags:
-  - tag_01KR441EA37E3M5V0ZV6ZRB97D
-  - tag_01KR441EA8BTTB99H928Z0NQQW
+scopes:
+  - scope_01KR441EA37E3M5V0ZV6ZRB97D
+  - scope_01KR441EA8BTTB99H928Z0NQQW
 ---
 
 # ADR-051 — Drop `conclusion_node_type` from Reasoning

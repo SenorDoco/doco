@@ -1,6 +1,6 @@
 ---
 id: decision_01KR441EBJAPKRA4JNWPZWMXEX
-evalo_id: evalo_01KR441EA0ZDMF0N5DY38GSVS3
+doco_id: doco_01KR441EA0ZDMF0N5DY38GSVS3
 node_type: decision
 schema_version: "0.1"
 summary: "Vector embeddings live in the same SQLite cache as FTS5: `rule_embeddings` virtual table (sqlite-vec). One cache; same rebuild story."
@@ -12,7 +12,7 @@ intent_ids:
 question: "Where does the vector embedding index live?"
 chosen: |
   `rule_embeddings` virtual table (sqlite-vec / sqlite-vss) lives in the same
-  `.evalo/cache.db` as the SQL tables. `cache.embedding_version` tracks the
+  `.doco/cache.db` as the SQL tables. `cache.embedding_version` tracks the
   embedding model; bumping triggers re-embedding (incremental — only changed
   Rules re-embed).
 alternatives:
@@ -27,9 +27,9 @@ created_by: principal_01KR441EA199MZCP7RDMADFZW9
 revision: 1
 lifecycle: active
 status: accepted
-tags:
-  - tag_01KR441EA37E3M5V0ZV6ZRB97D
-  - tag_01KR441EA8BTTB99H928Z0NQQW
+scopes:
+  - scope_01KR441EA37E3M5V0ZV6ZRB97D
+  - scope_01KR441EA8BTTB99H928Z0NQQW
 ---
 
 # ADR-031 — Vector embedding index alongside FTS5

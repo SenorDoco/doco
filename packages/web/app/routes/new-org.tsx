@@ -1,5 +1,5 @@
 import { Form, Link, redirect } from "react-router";
-import { addOrganization } from "@evalo/host";
+import { addOrganization } from "@doco/host";
 import { rootDir, getMode } from "~/lib/db";
 import { loadHostConfig } from "~/lib/host";
 import { getCurrentPrincipal } from "~/lib/session";
@@ -37,7 +37,7 @@ export async function action({ request }: { request: Request }) {
 }
 
 export function meta() {
-  return [{ title: "New organization · Evalo" }];
+  return [{ title: "New organization · Doco" }];
 }
 
 export default function NewOrg({
@@ -57,7 +57,7 @@ export default function NewOrg({
             <CardTitle>New organization</CardTitle>
             <CardDescription>
               You become the owner. Add members later (CLI for now;{" "}
-              <code className="rounded bg-input px-1">evalo host org members add</code> coming).
+              <code className="rounded bg-input px-1">doco host org members add</code> coming).
             </CardDescription>
           </CardHeader>
           <CardContent>

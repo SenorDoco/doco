@@ -1,11 +1,11 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { defineCommand } from "citty";
-import type { Action } from "@evalo/shared";
-import { parseEntityContent } from "@evalo/core";
-import { openDb, reindex } from "@evalo/index";
-import { checkAgainstRules } from "@evalo/runtime";
-import { findEvaloRoot } from "../find-root.js";
+import type { Action } from "@doco/shared";
+import { parseEntityContent } from "@doco/core";
+import { openDb, reindex } from "@doco/index";
+import { checkAgainstRules } from "@doco/runtime";
+import { findDocoRoot } from "../find-root.js";
 import { c, checkmark, cross, header, rule } from "../output.js";
 
 export const checkCmd = defineCommand({
@@ -20,15 +20,15 @@ export const checkCmd = defineCommand({
       description: "Path to a draft Action file (.md or .yaml).",
       required: true,
     },
-    root: { type: "string", description: "Path to the Evalo root (default: walk upward from cwd)." },
+    root: { type: "string", description: "Path to the Doco root (default: walk upward from cwd)." },
     "no-reindex": { type: "boolean", default: false },
     json: { type: "boolean", default: false },
   },
   async run({ args }) {
     const rootArg = (args.root as string | undefined) ?? undefined;
-    const root = rootArg ?? (await findEvaloRoot());
+    const root = rootArg ?? (await findDocoRoot());
     if (!root) {
-      console.error(cross("Could not find evalo.yaml in this directory or any parent."));
+      console.error(cross("Could not find doco.yaml in this directory or any parent."));
       process.exitCode = 2;
       return;
     }

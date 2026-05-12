@@ -1,6 +1,6 @@
 ---
 id: decision_01KR441EAE1W2V5R3GRNB57BN0
-evalo_id: evalo_01KR441EA0ZDMF0N5DY38GSVS3
+doco_id: doco_01KR441EA0ZDMF0N5DY38GSVS3
 node_type: decision
 schema_version: "0.1"
 summary: "gray-matter's frontmatter parser is wired to the spec-compliant `yaml` 2.x package instead of its bundled js-yaml 3.x."
@@ -38,12 +38,12 @@ created_by: principal_01KR441EA259F7EE420Z4VWFPJ
 revision: 1
 lifecycle: active
 status: accepted
-tags:
-  - tag_01KR441EA37E3M5V0ZV6ZRB97D
-  - tag_01KR441EA8BTTB99H928Z0NQQW
+scopes:
+  - scope_01KR441EA37E3M5V0ZV6ZRB97D
+  - scope_01KR441EA8BTTB99H928Z0NQQW
 ---
 
 # ADR-060 — Frontmatter engine = yaml 2.x
 
-Lives in [@evalo/core files.ts](../packages/core/src/files.ts) as the
+Lives in [@doco/core files.ts](../packages/core/src/files.ts) as the
 `matterOptions.engines.yaml` block.

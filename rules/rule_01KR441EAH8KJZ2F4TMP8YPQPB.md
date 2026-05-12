@@ -1,18 +1,18 @@
 ---
 id: rule_01KR441EAH8KJZ2F4TMP8YPQPB
-evalo_id: evalo_01KR441EA0ZDMF0N5DY38GSVS3
+doco_id: doco_01KR441EA0ZDMF0N5DY38GSVS3
 node_type: rule
 schema_version: "0.1"
-summary: "System Rule (built-in, ships with Evalo): only human Principals may delete Evalos."
+summary: "System Rule (built-in, ships with Doco): only human Principals may delete Docos."
 
-born_from: decision_01KR441EBVNSWGHVP39KMWE1ZT   # ADR-040 (only humans delete Evalos)
-slug: only-humans-delete-evalo
+born_from: decision_01KR441EBVNSWGHVP39KMWE1ZT   # ADR-040 (only humans delete Docos)
+slug: only-humans-delete-doco
 modality: must
 severity: blocker
 phase: pre
 applies_to:
   node_type: action
-  verb: delete_evalo
+  verb: delete_doco
 predicate: '{"op": "eq", "left": {"path": "actor.type"}, "right": "human"}'
 expected: true
 on_violation: block
@@ -22,15 +22,15 @@ created_by: principal_01KR441EA199MZCP7RDMADFZW9
 revision: 1
 lifecycle: active
 status: active
-tags: []
+scopes: []
 ---
 
-# Only humans may delete Evalos
+# Only humans may delete Docos
 
-This is the canonical built-in **system Rule** shipped with Evalo (PLANNING.md
-§2.4 / D-040). It ships with every Evalo and is not user-editable.
+This is the canonical built-in **system Rule** shipped with Doco (PLANNING.md
+§2.4 / D-040). It ships with every Doco and is not user-editable.
 
-The motivation is asymmetry of consequence: deletion of an Evalo is the only
+The motivation is asymmetry of consequence: deletion of an Doco is the only
 operation in the system whose blast radius cannot be undone via the alignment
 graph itself. Every other operation (create, edit, archive, transfer) is open
 to both humans and agents subject to Membership permissions.

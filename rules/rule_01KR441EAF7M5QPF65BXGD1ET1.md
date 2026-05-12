@@ -1,9 +1,9 @@
 ---
 id: rule_01KR441EAF7M5QPF65BXGD1ET1
-evalo_id: evalo_01KR441EA0ZDMF0N5DY38GSVS3
+doco_id: doco_01KR441EA0ZDMF0N5DY38GSVS3
 node_type: rule
 schema_version: "0.1"
-summary: "Design tradeoffs follow Evalo's strict priority order; conflicts must be surfaced as Decisions."
+summary: "Design tradeoffs follow Doco's strict priority order; conflicts must be surfaced as Decisions."
 
 born_from: decision_01KR441EAMKYKCEBSEYHGJ8M3Z   # ADR-001 (priority order)
 slug: priority-order
@@ -25,8 +25,8 @@ created_by: principal_01KR441EA199MZCP7RDMADFZW9
 revision: 1
 lifecycle: active
 status: active
-tags:
-  - tag_01KR441EA8BTTB99H928Z0NQQW   # scope_meta
+scopes:
+  - scope_01KR441EA8BTTB99H928Z0NQQW   # scope_meta
 ---
 
 # Design tradeoffs follow the priority order
@@ -47,7 +47,7 @@ If you find yourself trading off priority N for priority N+k where k > 0,
 it silently.
 
 Notably: agent comprehension > human comprehension, and performance is sixth —
-Evalo prefers explicit, queryable structure over runtime speed.
+Doco prefers explicit, queryable structure over runtime speed.
 
 ## Predicate language
 

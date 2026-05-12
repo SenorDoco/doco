@@ -1,6 +1,6 @@
 ---
 id: decision_01KR441EB35F9SKC831F3K2HC5
-evalo_id: evalo_01KR441EA0ZDMF0N5DY38GSVS3
+doco_id: doco_01KR441EA0ZDMF0N5DY38GSVS3
 node_type: decision
 schema_version: "0.1"
 summary: "Any entity may carry `born_from: <other_entity_id>` for provenance ('X exists because of Y'); materialized as a `BornFrom` edge."
@@ -27,9 +27,9 @@ created_by: principal_01KR441EA199MZCP7RDMADFZW9
 revision: 1
 lifecycle: active
 status: accepted
-tags:
-  - tag_01KR441EA37E3M5V0ZV6ZRB97D
-  - tag_01KR441EA8BTTB99H928Z0NQQW
+scopes:
+  - scope_01KR441EA37E3M5V0ZV6ZRB97D
+  - scope_01KR441EA8BTTB99H928Z0NQQW
 ---
 
 # ADR-016 — `born_from` as a generic provenance edge

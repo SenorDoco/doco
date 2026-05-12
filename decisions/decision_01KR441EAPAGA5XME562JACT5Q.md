@@ -1,6 +1,6 @@
 ---
 id: decision_01KR441EAPAGA5XME562JACT5Q
-evalo_id: evalo_01KR441EA0ZDMF0N5DY38GSVS3
+doco_id: doco_01KR441EA0ZDMF0N5DY38GSVS3
 node_type: decision
 schema_version: "0.1"
 summary: "Entities are stored as YAML frontmatter (structured) plus Markdown body (narrative); both audiences in one file."
@@ -30,14 +30,14 @@ created_by: principal_01KR441EA199MZCP7RDMADFZW9
 revision: 1
 lifecycle: active
 status: accepted
-tags:
-  - tag_01KR441EA37E3M5V0ZV6ZRB97D
-  - tag_01KR441EA8BTTB99H928Z0NQQW
+scopes:
+  - scope_01KR441EA37E3M5V0ZV6ZRB97D
+  - scope_01KR441EA8BTTB99H928Z0NQQW
 ---
 
 # ADR-003 — File format = YAML frontmatter + Markdown body
 
-For YAML-only entities (Principal, Tag, Reference, Evaluation, Evalo root),
+For YAML-only entities (Principal, Tag, Reference, Evaluation, Doco root),
 the file is `.yaml`. For entities with a narrative body (Intent, Rule,
 Decision, Action, Reasoning), the file is `.md` with frontmatter.
 

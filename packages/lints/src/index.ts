@@ -1,15 +1,26 @@
 import type { Database } from "better-sqlite3";
 import { lintAgentAncestry } from "./agent-ancestry.js";
 import { lintBugfixGuard } from "./bugfix-guard.js";
+import { lintConnectivity } from "./connectivity.js";
+import { lintFollowsCycle } from "./follows-cycle.js";
 import { lintOrphanReasoning } from "./orphan-reasoning.js";
 import { lintPiiDisplayName } from "./pii-display-name.js";
 import type { Lint, LintIssue } from "./types.js";
 
 export * from "./types.js";
-export { lintAgentAncestry, lintBugfixGuard, lintOrphanReasoning, lintPiiDisplayName };
+export {
+  lintAgentAncestry,
+  lintBugfixGuard,
+  lintConnectivity,
+  lintFollowsCycle,
+  lintOrphanReasoning,
+  lintPiiDisplayName,
+};
 
 export const SYSTEM_LINTS: Record<string, Lint> = {
   "orphan-reasoning": lintOrphanReasoning,
+  "connectivity": lintConnectivity,
+  "follows-cycle": lintFollowsCycle,
   "agent-ancestry": lintAgentAncestry,
   "bugfix-guard": lintBugfixGuard,
   "pii-display-name": lintPiiDisplayName,

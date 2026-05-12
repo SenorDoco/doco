@@ -1,5 +1,5 @@
-import type { EntityId, NodeType } from "@evalo/shared";
-import type { LoadedEvalo } from "./loader.js";
+import type { EntityId, NodeType } from "@doco/shared";
+import type { LoadedDoco } from "./loader.js";
 import { findOrphanRefs, type OrphanRef } from "./refs.js";
 import { type SchemaValidationError, SchemaValidator } from "./schema.js";
 
@@ -7,7 +7,7 @@ export type ValidationSeverity = "error" | "warning";
 
 export interface ValidationIssue {
   severity: ValidationSeverity;
-  source: EntityId | "evalo.yaml" | "load";
+  source: EntityId | "doco.yaml" | "load";
   filePath?: string;
   kind: "schema" | "orphan-ref" | "load" | "duplicate-id" | "node-type-mismatch";
   message: string;
@@ -24,8 +24,8 @@ export interface ValidationReport {
   ok: boolean;
 }
 
-export async function validateEvalo(
-  loaded: LoadedEvalo,
+export async function validateDoco(
+  loaded: LoadedDoco,
   validator: SchemaValidator,
 ): Promise<ValidationReport> {
   const issues: ValidationIssue[] = [];
@@ -41,10 +41,10 @@ export async function validateEvalo(
     });
   }
 
-  // 2. Schema validation of the Evalo entity itself.
-  const evaloErrors = validator.validate(loaded.evalo, "evalo");
-  for (const e of evaloErrors) {
-    issues.push(makeSchemaIssue("evalo.yaml", undefined, e));
+  // 2. Schema validation of the Doco entity itself.
+  const docoErrors = validator.validate(loaded.doco, "doco");
+  for (const e of docoErrors) {
+    issues.push(makeSchemaIssue("doco.yaml", undefined, e));
   }
 
   // 3. Schema validation of every loaded entity.
@@ -83,7 +83,7 @@ export async function validateEvalo(
 }
 
 function makeSchemaIssue(
-  source: EntityId | "evalo.yaml",
+  source: EntityId | "doco.yaml",
   filePath: string | undefined,
   err: SchemaValidationError,
 ): ValidationIssue {

@@ -1,6 +1,6 @@
 ---
 id: decision_01KR441EADYT00NRERTZ1PCPJJ
-evalo_id: evalo_01KR441EA0ZDMF0N5DY38GSVS3
+doco_id: doco_01KR441EA0ZDMF0N5DY38GSVS3
 node_type: decision
 schema_version: "0.1"
 summary: "Use better-sqlite3 (synchronous, native binding) over node:sqlite (Node 22 builtin) for the index — battle-tested + prebuilds available."
@@ -29,9 +29,9 @@ created_by: principal_01KR441EA259F7EE420Z4VWFPJ
 revision: 1
 lifecycle: active
 status: accepted
-tags:
-  - tag_01KR441EA37E3M5V0ZV6ZRB97D
-  - tag_01KR441EA8BTTB99H928Z0NQQW
+scopes:
+  - scope_01KR441EA37E3M5V0ZV6ZRB97D
+  - scope_01KR441EA8BTTB99H928Z0NQQW
 ---
 
 # ADR-059 — Index binding = better-sqlite3

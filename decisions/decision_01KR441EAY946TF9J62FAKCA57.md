@@ -1,9 +1,9 @@
 ---
 id: decision_01KR441EAY946TF9J62FAKCA57
-evalo_id: evalo_01KR441EA0ZDMF0N5DY38GSVS3
+doco_id: doco_01KR441EA0ZDMF0N5DY38GSVS3
 node_type: decision
 schema_version: "0.1"
-summary: "Membership is an edge property on Evalo.members[], not its own entity. Reduces node-type count from 11 to 10."
+summary: "Membership is an edge property on Doco.members[], not its own entity. Reduces node-type count from 11 to 10."
 
 slug: membership-as-edge-not-node
 number: "ADR-011"
@@ -11,7 +11,7 @@ intent_ids:
   - intent_01KR441EACJYB895DWKG7Z25SF
 question: "Is Membership a first-class entity or an edge?"
 chosen: |
-  `Evalo.members[]` carries `{principal_id, role, permissions}` structs. The
+  `Doco.members[]` carries `{principal_id, role, permissions}` structs. The
   index materializes these as `MemberOf` edges with role and permissions as
   edge properties. Graph-native; aligns with Kuzu mapping if/when we adopt
   it (D-024).
@@ -27,11 +27,11 @@ created_by: principal_01KR441EA199MZCP7RDMADFZW9
 revision: 1
 lifecycle: active
 status: accepted
-tags:
-  - tag_01KR441EA37E3M5V0ZV6ZRB97D
-  - tag_01KR441EA8BTTB99H928Z0NQQW
+scopes:
+  - scope_01KR441EA37E3M5V0ZV6ZRB97D
+  - scope_01KR441EA8BTTB99H928Z0NQQW
 ---
 
 # ADR-011 — Membership as edge, not node
 
-Reference: SCHEMA.md §4.2 (Evalo entity), §6.1 (fields-as-edges convention).
+Reference: SCHEMA.md §4.2 (Doco entity), §6.1 (fields-as-edges convention).

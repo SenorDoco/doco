@@ -3,14 +3,14 @@ import { defineCommand } from "citty";
 import {
   addOrganization,
   addPrincipal,
-  createEvaloInHost,
+  createDocoInHost,
   createHost,
   detectMode,
-  listEvalos,
+  listDocos,
   listOrganizations,
   listPrincipals,
   loadHost,
-} from "@evalo/host";
+} from "@doco/host";
 import { c, checkmark, cross, header, rule } from "../output.js";
 
 const initCmd = defineCommand({
@@ -42,7 +42,7 @@ const initCmd = defineCommand({
       console.log(checkmark(`Bootstrap:  user "${args["owner-username"]}" registered`));
     }
     console.log();
-    console.log(c.dim(`Next: cd ${path} && evalo host evalo new <owner>/<evalo-slug>`));
+    console.log(c.dim(`Next: cd ${path} && doco host doco new <owner>/<doco-slug>`));
     console.log();
   },
 });
@@ -119,12 +119,12 @@ const orgCmd = defineCommand({
   subCommands: { create: orgCreateCmd },
 });
 
-const evaloNewCmd = defineCommand({
-  meta: { name: "new", description: "Create a new Evalo in the host owned by a user or org." },
+const docoNewCmd = defineCommand({
+  meta: { name: "new", description: "Create a new Doco in the host owned by a user or org." },
   args: {
     slug: {
       type: "positional",
-      description: "owner_slug/evalo_slug, e.g. alice/my-project",
+      description: "owner_slug/doco_slug, e.g. alice/my-project",
       required: true,
     },
     description: { type: "string" },
@@ -137,34 +137,34 @@ const evaloNewCmd = defineCommand({
     const slug = args.slug as string;
     const parts = slug.split("/");
     if (parts.length !== 2 || !parts[0] || !parts[1]) {
-      console.error(cross(`Invalid slug "${slug}" — expected <owner>/<evalo>.`));
+      console.error(cross(`Invalid slug "${slug}" — expected <owner>/<doco>.`));
       process.exitCode = 2;
       return;
     }
-    const rec = await createEvaloInHost(root, {
+    const rec = await createDocoInHost(root, {
       ownerSlug: parts[0],
-      evaloSlug: parts[1],
+      docoSlug: parts[1],
       ...(args.description !== undefined ? { description: args.description as string } : {}),
       visibility: (args.visibility as "private" | "public") ?? "private",
     });
     console.log();
-    console.log(checkmark(`Evalo created: ${rec.ownerSlug}/${rec.evaloSlug}`));
+    console.log(checkmark(`Doco created: ${rec.ownerSlug}/${rec.docoSlug}`));
     console.log(`  ${c.dim("path:")}      ${rec.path}`);
-    console.log(`  ${c.dim("evalo id:")}  ${rec.evaloId}`);
+    console.log(`  ${c.dim("doco id:")}  ${rec.docoId}`);
     console.log(`  ${c.dim("owner:")}     ${rec.ownerKind} (${rec.ownerId})`);
     console.log();
-    console.log(c.dim(`Next: cd ${rec.path} && evalo validate && evalo reindex`));
+    console.log(c.dim(`Next: cd ${rec.path} && doco validate && doco reindex`));
     console.log();
   },
 });
 
-const evaloCmd = defineCommand({
-  meta: { name: "evalo", description: "Manage Evalos in the host." },
-  subCommands: { new: evaloNewCmd },
+const docoCmd = defineCommand({
+  meta: { name: "doco", description: "Manage Docos in the host." },
+  subCommands: { new: docoNewCmd },
 });
 
 const listCmd = defineCommand({
-  meta: { name: "list", description: "List Users, Organizations, and Evalos in the host." },
+  meta: { name: "list", description: "List Users, Organizations, and Docos in the host." },
   args: {
     root: { type: "string" },
     json: { type: "boolean", default: false },
@@ -173,13 +173,13 @@ const listCmd = defineCommand({
     const root = rootArgOrFind(args);
     if (!root) return failNoHost();
     const host = await loadHost(root);
-    const [users, orgs, evalos] = await Promise.all([
+    const [users, orgs, docos] = await Promise.all([
       listPrincipals(root),
       listOrganizations(root),
-      listEvalos(root),
+      listDocos(root),
     ]);
     if (args.json) {
-      console.log(JSON.stringify({ host, users, organizations: orgs, evalos }, null, 2));
+      console.log(JSON.stringify({ host, users, organizations: orgs, docos }, null, 2));
       return;
     }
     console.log();
@@ -191,9 +191,9 @@ const listCmd = defineCommand({
     console.log(c.bold(`Organizations (${orgs.length})`));
     for (const o of orgs) console.log(`  ${o.slug.padEnd(24)} ${c.dim(o.id)}`);
     console.log();
-    console.log(c.bold(`Evalos (${evalos.length})`));
-    for (const e of evalos) {
-      console.log(`  ${`${e.ownerSlug}/${e.evaloSlug}`.padEnd(36)} ${c.dim(`${e.ownerKind} → ${e.evaloId}`)}`);
+    console.log(c.bold(`Docos (${docos.length})`));
+    for (const e of docos) {
+      console.log(`  ${`${e.ownerSlug}/${e.docoSlug}`.padEnd(36)} ${c.dim(`${e.ownerKind} → ${e.docoId}`)}`);
     }
     console.log();
   },
@@ -201,7 +201,7 @@ const listCmd = defineCommand({
 
 function failNoHost(): void {
   console.error(
-    cross("Could not find host.yaml in this directory or any parent. Run `evalo host init <path>` first."),
+    cross("Could not find host.yaml in this directory or any parent. Run `doco host init <path>` first."),
   );
   process.exitCode = 2;
 }
@@ -209,13 +209,13 @@ function failNoHost(): void {
 export const hostCmd = defineCommand({
   meta: {
     name: "host",
-    description: "Multi-tenant host: many Evalos owned by Users or Organizations (ADR-061).",
+    description: "Multi-tenant host: many Docos owned by Users or Organizations (ADR-061).",
   },
   subCommands: {
     init: initCmd,
     user: userCmd,
     org: orgCmd,
-    evalo: evaloCmd,
+    doco: docoCmd,
     list: listCmd,
   },
 });

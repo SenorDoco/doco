@@ -1,6 +1,6 @@
 ---
 id: decision_01KR441EAAC7TMEQ2WS9DEVYA6
-evalo_id: evalo_01KR441EA0ZDMF0N5DY38GSVS3
+doco_id: doco_01KR441EA0ZDMF0N5DY38GSVS3
 node_type: decision
 schema_version: "0.1"
 summary: "Web UI theme is light by default; the only typeface is Ubuntu Mono — both prose and code surfaces use the same monospace family."
@@ -32,9 +32,9 @@ created_by: principal_01KR441EA259F7EE420Z4VWFPJ
 revision: 1
 lifecycle: active
 status: accepted
-tags:
-  - tag_01KR441EA37E3M5V0ZV6ZRB97D
-  - tag_01KR441EA8BTTB99H928Z0NQQW
+scopes:
+  - scope_01KR441EA37E3M5V0ZV6ZRB97D
+  - scope_01KR441EA8BTTB99H928Z0NQQW
 ---
 
 # ADR-056 — UI theme = light, type = Ubuntu Mono everywhere

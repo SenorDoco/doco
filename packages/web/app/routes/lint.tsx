@@ -1,6 +1,6 @@
 import { Link } from "react-router";
-import { runAllLints } from "@evalo/lints";
-import { getEvaloSlug, openDb } from "~/lib/db";
+import { runAllLints } from "@doco/lints";
+import { getDocoSlug, openDb } from "~/lib/db";
 import { SiteHeader } from "~/components/site-header";
 import { Badge } from "~/components/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
@@ -10,21 +10,21 @@ export function loader() {
   const db = openDb();
   try {
     const report = runAllLints(db);
-    return { report, evaloSlug: getEvaloSlug() };
+    return { report, docoSlug: getDocoSlug() };
   } finally {
     db.close();
   }
 }
 
 export function meta() {
-  return [{ title: "Lint · Evalo" }];
+  return [{ title: "Lint · Doco" }];
 }
 
 export default function LintRoute({ loaderData }: { loaderData: Awaited<ReturnType<typeof loader>> }) {
   const { report } = loaderData;
   return (
     <div>
-      <SiteHeader context={loaderData.evaloSlug} mode="single-evalo" />
+      <SiteHeader context={loaderData.docoSlug} mode="single-doco" />
       <main className="mx-auto max-w-6xl px-6 py-6 space-y-4">
         <Card>
           <CardHeader>

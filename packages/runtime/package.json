@@ -1,5 +1,5 @@
 {
-  "name": "@evalo/runtime",
+  "name": "@doco/runtime",
   "version": "0.0.1",
   "private": true,
   "type": "module",
@@ -21,9 +21,9 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@evalo/core": "workspace:*",
-    "@evalo/index": "workspace:*",
-    "@evalo/shared": "workspace:*",
+    "@doco/core": "workspace:*",
+    "@doco/index": "workspace:*",
+    "@doco/shared": "workspace:*",
     "better-sqlite3": "^11.7.0"
   },
   "devDependencies": {

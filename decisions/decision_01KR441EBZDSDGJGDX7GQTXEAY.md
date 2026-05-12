@@ -1,6 +1,6 @@
 ---
 id: decision_01KR441EBZDSDGJGDX7GQTXEAY
-evalo_id: evalo_01KR441EA0ZDMF0N5DY38GSVS3
+doco_id: doco_01KR441EA0ZDMF0N5DY38GSVS3
 node_type: decision
 schema_version: "0.1"
 summary: "Public REST + JSON API at /api/v1/...; the web app is a consumer of the API. No parallel implementation."
@@ -10,7 +10,7 @@ number: "ADR-044"
 intent_ids:
   - intent_01KR441EACJYB895DWKG7Z25SF
   - intent_01KR441EAEM5NQBM160763TDDT
-question: "Do humans interact with Evalo through a web app and agents through an API, or are they the same surface?"
+question: "Do humans interact with Doco through a web app and agents through an API, or are they the same surface?"
 chosen: |
   Same surface. Public REST + JSON API at `/api/v1/...` is primary. The web
   interface is a consumer of the API — not a parallel implementation. This
@@ -32,9 +32,9 @@ created_by: principal_01KR441EA199MZCP7RDMADFZW9
 revision: 1
 lifecycle: active
 status: accepted
-tags:
-  - tag_01KR441EA37E3M5V0ZV6ZRB97D
-  - tag_01KR441EA8BTTB99H928Z0NQQW
+scopes:
+  - scope_01KR441EA37E3M5V0ZV6ZRB97D
+  - scope_01KR441EA8BTTB99H928Z0NQQW
 ---
 
 # ADR-044 — API-first; web is a consumer

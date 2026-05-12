@@ -1,6 +1,6 @@
 ---
 id: action_01KR441EA8HE7FDFBCWV8KKP17
-evalo_id: evalo_01KR441EA0ZDMF0N5DY38GSVS3
+doco_id: doco_01KR441EA0ZDMF0N5DY38GSVS3
 node_type: action
 schema_version: "0.1"
 summary: "Added cookie-based sign-in to web in host mode: anonymous users see a logo-centered landing; signed-in users see the dashboard. Production swaps to GitHub OAuth (ADR-034)."
@@ -30,7 +30,7 @@ outputs:
     - packages/web/app/components/site-header.tsx    # user pill or "Sign in" CTA in header
     - packages/web/app/routes.ts                     # registers /sign-in + /sign-out
   cookie:
-    name: evalo_session
+    name: doco_session
     value: "principal_<ulid>"
     flags: "HttpOnly; SameSite=Lax; Path=/; Max-Age=2592000"
     signed: false   # local-dev only; production replaces sign-in with GitHub OAuth
@@ -38,7 +38,7 @@ outputs:
     - "anonymous /          → landing, logo 112px, two Sign-in CTAs"
     - "/sign-in             → User picker (3 users + emails)"
     - "POST /sign-in         → 302 redirect with Set-Cookie"
-    - "signed-in /          → dashboard with 'torrenegra' pill + Sign-out + Evalos table"
+    - "signed-in /          → dashboard with 'torrenegra' pill + Sign-out + Docos table"
     - "POST /sign-out        → 302 + cookie cleared; / shows landing again"
 
 started_at: 2026-05-09T00:00:00Z
@@ -49,8 +49,8 @@ created_by: principal_01KR441EA259F7EE420Z4VWFPJ
 revision: 1
 lifecycle: succeeded
 status: completed
-tags:
-  - tag_01KR441EA8BTTB99H928Z0NQQW
+scopes:
+  - scope_01KR441EA8BTTB99H928Z0NQQW
 ---
 
 # Web sign-in (host mode): anonymous landing + signed-in dashboard
@@ -58,11 +58,11 @@ tags:
 Anonymous home in host mode now centers the wordmark (h-32, ~112 px) above
 "Alignment framework + runtime checking" with a primary "Sign in" CTA and a
 secondary "Learn more" link. Signed-in home is the existing dashboard
-(Evalos table, Users, Orgs) plus a username pill in the header with a
+(Docos table, Users, Orgs) plus a username pill in the header with a
 "Sign out" form-post.
 
-The single-Evalo home (the framework's meta-Evalo at /Users/torrenegra/Evalo)
+The single-Doco home (the framework's meta-Doco at /Users/torrenegra/Doco)
 is unchanged — it's not a multi-tenant context, so sign-in there is moot.
 
-Production deploy (Phase 6 / `evalo.to`) swaps `/sign-in` for the GitHub
+Production deploy (Phase 6 / `doco.to`) swaps `/sign-in` for the GitHub
 OAuth callback handler — same cookie shape, no other changes.

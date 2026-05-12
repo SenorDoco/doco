@@ -1,7 +1,7 @@
 import { defineCommand } from "citty";
-import { openDb, reindex } from "@evalo/index";
-import { Glossary, findRules } from "@evalo/discovery";
-import { findEvaloRoot } from "../find-root.js";
+import { openDb, reindex } from "@doco/index";
+import { Glossary, findRules } from "@doco/discovery";
+import { findDocoRoot } from "../find-root.js";
 import { c, cross, header, rule } from "../output.js";
 
 export const findRulesCmd = defineCommand({
@@ -15,19 +15,19 @@ export const findRulesCmd = defineCommand({
       type: "string",
       description: "Free-form description of the work item; FTS + glossary expansion.",
     },
-    verb: { type: "string", description: "Action verb (e.g. delete_evalo, edit_file)." },
+    verb: { type: "string", description: "Action verb (e.g. delete_doco, edit_file)." },
     target: { type: "string", description: "Target entity id." },
     actor: { type: "string", description: "Actor principal id." },
     tags: { type: "string", description: "Comma-separated tag names." },
-    root: { type: "string", description: "Path to the Evalo root." },
+    root: { type: "string", description: "Path to the Doco root." },
     "no-reindex": { type: "boolean", default: false },
     json: { type: "boolean", default: false },
   },
   async run({ args }) {
     const rootArg = (args.root as string | undefined) ?? undefined;
-    const root = rootArg ?? (await findEvaloRoot());
+    const root = rootArg ?? (await findDocoRoot());
     if (!root) {
-      console.error(cross("Could not find evalo.yaml in this directory or any parent."));
+      console.error(cross("Could not find doco.yaml in this directory or any parent."));
       process.exitCode = 2;
       return;
     }

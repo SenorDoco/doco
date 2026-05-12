@@ -1,9 +1,9 @@
 ---
 id: decision_01KR441EBSMYJB6YMTGCRKTVZS
-evalo_id: evalo_01KR441EA0ZDMF0N5DY38GSVS3
+doco_id: doco_01KR441EA0ZDMF0N5DY38GSVS3
 node_type: decision
 schema_version: "0.1"
-summary: "Token revocation cascades strictly by default. Per-Evalo override flag for 'scoped' mode (only revoke the named token)."
+summary: "Token revocation cascades strictly by default. Per-Doco override flag for 'scoped' mode (only revoke the named token)."
 
 slug: token-revocation-cascades-strictly
 number: "ADR-038"
@@ -12,7 +12,7 @@ intent_ids:
 question: "When a session token is revoked, what happens to agents whose ancestry chain passes through it?"
 chosen: |
   Strict cascade: revoking a session token invalidates all session tokens
-  whose ancestry chain passes through it. Per-Evalo override flag for
+  whose ancestry chain passes through it. Per-Doco override flag for
   "scoped" mode (only revoke the named token).
 alternatives:
   - name: Scoped-only (no cascade)
@@ -26,14 +26,14 @@ created_by: principal_01KR441EA199MZCP7RDMADFZW9
 revision: 1
 lifecycle: active
 status: accepted
-tags:
-  - tag_01KR441EA37E3M5V0ZV6ZRB97D
-  - tag_01KR441EA8BTTB99H928Z0NQQW
+scopes:
+  - scope_01KR441EA37E3M5V0ZV6ZRB97D
+  - scope_01KR441EA8BTTB99H928Z0NQQW
 ---
 
 # ADR-038 — Token revocation cascades strictly (default)
 
-Open: per-Evalo override semantics, persistence, audit trail not yet
+Open: per-Doco override semantics, persistence, audit trail not yet
 specified (DECISIONS.md §13 #6).
 
 Reference: PLANNING.md §3.3, §6.

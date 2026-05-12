@@ -1,34 +1,41 @@
 import { Form, NavLink } from "react-router";
 import { cn } from "~/lib/cn";
-import { EvaloMark } from "~/components/evalo-mark";
+import { DocoMark } from "~/components/doco-mark";
 import type { CurrentPrincipal } from "~/lib/session";
 
 interface SiteHeaderProps {
-  /** Used for breadcrumb. In single-evalo mode this is the Evalo slug; in host mode it's the host name. */
+  /** Used for breadcrumb. In single-doco mode this is the Doco slug; in host mode it's the host name. */
   context: string;
-  /** When set, renders the per-Evalo nav scoped to this Evalo (host mode). */
-  evaloScope?: { ownerSlug: string; evaloSlug: string };
-  mode: "host" | "single-evalo";
+  /** When set, renders the per-Doco nav scoped to this Doco (host mode). */
+  docoScope?: { ownerSlug: string; docoSlug: string };
+  mode: "host" | "single-doco";
   /** Currently signed-in Principal (host mode only). */
   me?: CurrentPrincipal | null;
 }
 
-export function SiteHeader({ context, evaloScope, mode, me }: SiteHeaderProps) {
-  const nav = evaloScope
+export function SiteHeader({ context, docoScope, mode, me }: SiteHeaderProps) {
+  const nav = docoScope
     ? [
-        { to: `/${evaloScope.ownerSlug}/${evaloScope.evaloSlug}`, label: "Recent" },
-        { to: `/${evaloScope.ownerSlug}/${evaloScope.evaloSlug}/e/intent`, label: "Intents" },
-        { to: `/${evaloScope.ownerSlug}/${evaloScope.evaloSlug}/e/rule`, label: "Rules" },
-        { to: `/${evaloScope.ownerSlug}/${evaloScope.evaloSlug}/e/decision`, label: "Decisions" },
-        { to: `/${evaloScope.ownerSlug}/${evaloScope.evaloSlug}/e/action`, label: "Actions" },
-        { to: `/${evaloScope.ownerSlug}/${evaloScope.evaloSlug}/search`, label: "Search" },
-        { to: `/${evaloScope.ownerSlug}/${evaloScope.evaloSlug}/lint`, label: "Lint" },
+        { to: `/${docoScope.ownerSlug}/${docoScope.docoSlug}`, label: "Recent" },
+        { to: `/${docoScope.ownerSlug}/${docoScope.docoSlug}/e/scope`, label: "Scopes" },
+        { to: `/${docoScope.ownerSlug}/${docoScope.docoSlug}/e/intent`, label: "Intents" },
+        { to: `/${docoScope.ownerSlug}/${docoScope.docoSlug}/e/idea`, label: "Ideas" },
+        { to: `/${docoScope.ownerSlug}/${docoScope.docoSlug}/e/rule`, label: "Rules" },
+        { to: `/${docoScope.ownerSlug}/${docoScope.docoSlug}/e/decision`, label: "Decisions" },
+        { to: `/${docoScope.ownerSlug}/${docoScope.docoSlug}/e/action`, label: "Actions" },
+        { to: `/${docoScope.ownerSlug}/${docoScope.docoSlug}/search`, label: "Search" },
+        { to: `/${docoScope.ownerSlug}/${docoScope.docoSlug}/lint`, label: "Lint" },
       ]
     : mode === "host"
-      ? [{ to: "/", label: "Evalos" }]
+      ? [
+          { to: "/", label: "Docos" },
+          { to: "/agents", label: "Agents" },
+        ]
       : [
           { to: "/", label: "Recent" },
+          { to: "/e/scope", label: "Scopes" },
           { to: "/e/intent", label: "Intents" },
+          { to: "/e/idea", label: "Ideas" },
           { to: "/e/rule", label: "Rules" },
           { to: "/e/decision", label: "Decisions" },
           { to: "/e/action", label: "Actions" },
@@ -40,23 +47,23 @@ export function SiteHeader({ context, evaloScope, mode, me }: SiteHeaderProps) {
     <header className="border-b border-border bg-card">
       <div className="mx-auto flex max-w-6xl items-center gap-6 px-6 py-3">
         <h1 className="m-0 leading-none tracking-tight">
-          <NavLink to="/" className="inline-flex items-center hover:opacity-80" aria-label="Evalo home">
-            <EvaloMark height={28} />
+          <NavLink to="/" className="inline-flex items-center hover:opacity-80" aria-label="Doco home">
+            <DocoMark height={28} />
           </NavLink>
           <span className="ml-3 font-normal text-xs text-muted-foreground align-middle">
             / {context}
-            {evaloScope ? (
+            {docoScope ? (
               <>
                 {" / "}
-                <NavLink to={`/${evaloScope.ownerSlug}`} className="hover:text-foreground">
-                  {evaloScope.ownerSlug}
+                <NavLink to={`/${docoScope.ownerSlug}`} className="hover:text-foreground">
+                  {docoScope.ownerSlug}
                 </NavLink>
                 {" / "}
                 <NavLink
-                  to={`/${evaloScope.ownerSlug}/${evaloScope.evaloSlug}`}
+                  to={`/${docoScope.ownerSlug}/${docoScope.docoSlug}`}
                   className="hover:text-foreground"
                 >
-                  {evaloScope.evaloSlug}
+                  {docoScope.docoSlug}
                 </NavLink>
               </>
             ) : null}
@@ -67,7 +74,7 @@ export function SiteHeader({ context, evaloScope, mode, me }: SiteHeaderProps) {
             <NavLink
               key={n.to}
               to={n.to}
-              end={n.to === "/" || n.to === `/${evaloScope?.ownerSlug}/${evaloScope?.evaloSlug}`}
+              end={n.to === "/" || n.to === `/${docoScope?.ownerSlug}/${docoScope?.docoSlug}`}
               className={({ isActive }) =>
                 cn(
                   "transition-colors",
@@ -84,10 +91,10 @@ export function SiteHeader({ context, evaloScope, mode, me }: SiteHeaderProps) {
             me ? (
               <>
                 <NavLink
-                  to="/new-evalo"
+                  to="/new-doco"
                   className="rounded-md border border-border px-3 py-1.5 font-semibold hover:bg-input"
                 >
-                  + Evalo
+                  + Doco
                 </NavLink>
                 <NavLink
                   to="/new-org"

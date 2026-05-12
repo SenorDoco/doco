@@ -1,5 +1,5 @@
 import type { Database } from "better-sqlite3";
-import type { Action, Entity, EntityId, Principal, Rule } from "@evalo/shared";
+import type { Action, Entity, EntityId, Principal, Rule } from "@doco/shared";
 import { evaluate, tryParsePredicate } from "./predicate.js";
 import { matches } from "./scope.js";
 
@@ -111,7 +111,7 @@ function await_buildCtx(db: Database, candidate: Action | Entity): Record<string
     }
     if (action.target) {
       const targetRow = (
-        ["principal", "intent", "rule", "decision", "action", "reasoning", "evaluation", "reference", "tag"] as const
+        ["principal", "intent", "idea", "rule", "decision", "action", "reasoning", "evaluation", "reference", "scope"] as const
       )
         .map((t) =>
           db.prepare(`SELECT raw_json FROM ${t} WHERE id = ?`).get(action.target) as { raw_json: string } | undefined,

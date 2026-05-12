@@ -2,40 +2,41 @@ import type { Database } from "better-sqlite3";
 import type { LintIssue } from "./types.js";
 
 /**
- * Every Decision tagged `tag_bugfix` should spawn at least one Rule tagged
- * `tag_regression_guard` via `BornFrom` (D-021 / D-016).
+ * Every Decision in scope `scope_bugfix` should spawn at least one Rule in
+ * scope `scope_regression_guard` via `BornFrom` (D-021 / D-016, ADR-078
+ * tag→scope rename).
  */
 export const lintBugfixGuard = (db: Database): LintIssue[] => {
   const issues: LintIssue[] = [];
 
-  // Look up the tag IDs for tag_bugfix and tag_regression_guard.
-  const bugfixTagId = (db.prepare("SELECT id FROM tag WHERE name = 'tag_bugfix'").get() as
+  // Look up the scope IDs for scope_bugfix and scope_regression_guard.
+  const bugfixScopeId = (db.prepare("SELECT id FROM scope WHERE name = 'scope_bugfix'").get() as
     | { id: string }
     | undefined)?.id;
-  const guardTagId = (db.prepare("SELECT id FROM tag WHERE name = 'tag_regression_guard'").get() as
-    | { id: string }
-    | undefined)?.id;
+  const guardScopeId = (db
+    .prepare("SELECT id FROM scope WHERE name = 'scope_regression_guard'")
+    .get() as { id: string } | undefined)?.id;
 
-  if (!bugfixTagId || !guardTagId) return issues; // tags not present in this Evalo
+  if (!bugfixScopeId || !guardScopeId) return issues; // scopes not present in this Doco
 
-  // All Decisions tagged tag_bugfix.
+  // All Decisions in scope_bugfix.
   const bugfixes = db
     .prepare(
-      "SELECT from_id FROM edges WHERE edge_type = 'tagged' AND to_id = ? AND from_node_type = 'decision'",
+      "SELECT from_id FROM edges WHERE edge_type = 'in_scope_of' AND to_id = ? AND from_node_type = 'decision'",
     )
-    .all(bugfixTagId) as { from_id: string }[];
+    .all(bugfixScopeId) as { from_id: string }[];
 
   for (const fix of bugfixes) {
     const decisionId = fix.from_id;
 
-    // Find Rules born_from this decision.
+    // Find Rules born_from this decision that are in scope_regression_guard.
     const guards = db
       .prepare(
         `SELECT r.id FROM rule r
          JOIN edges b ON b.from_id = r.id AND b.edge_type = 'born_from' AND b.to_id = ?
-         JOIN edges t ON t.from_id = r.id AND t.edge_type = 'tagged' AND t.to_id = ?`,
+         JOIN edges t ON t.from_id = r.id AND t.edge_type = 'in_scope_of' AND t.to_id = ?`,
       )
-      .all(decisionId, guardTagId) as { id: string }[];
+      .all(decisionId, guardScopeId) as { id: string }[];
 
     if (guards.length === 0) {
       issues.push({
@@ -43,7 +44,7 @@ export const lintBugfixGuard = (db: Database): LintIssue[] => {
         severity: "warning",
         source: decisionId,
         message:
-          "Decision tagged tag_bugfix has no Rule born_from it that is tagged tag_regression_guard.",
+          "Decision in scope_bugfix has no Rule born_from it that is in scope_regression_guard.",
       });
     }
   }

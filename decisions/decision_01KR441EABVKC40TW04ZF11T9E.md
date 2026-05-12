@@ -1,9 +1,9 @@
 ---
 id: decision_01KR441EABVKC40TW04ZF11T9E
-evalo_id: evalo_01KR441EA0ZDMF0N5DY38GSVS3
+doco_id: doco_01KR441EA0ZDMF0N5DY38GSVS3
 node_type: decision
 schema_version: "0.1"
-summary: "GitHub OAuth deferred to Phase 6; Phase 4 ships a local-dev auth flow using `evalo serve --as-principal <id>` and a file-backed token store."
+summary: "GitHub OAuth deferred to Phase 6; Phase 4 ships a local-dev auth flow using `doco serve --as-principal <id>` and a file-backed token store."
 
 slug: github-oauth-deferred-local-dev-auth
 number: "ADR-057"
@@ -15,11 +15,11 @@ chosen: |
   Phase 4 ships the auth scaffolding (TokenStore, auth middleware, parseBearer)
   but defers the GitHub OAuth handshake to Phase 6 (deployment). For local
   dev:
-    - `evalo serve --as-principal <principal_id>` accepts unauthenticated
+    - `doco serve --as-principal <principal_id>` accepts unauthenticated
       requests as that principal (trusted-localhost mode).
-    - `evalo serve --require-token` enforces Bearer auth using session tokens
+    - `doco serve --require-token` enforces Bearer auth using session tokens
       issued via TokenStore.issueSessionToken (admin-only for now).
-    - Session tokens stored at `.evalo/tokens.json` (per ADR-058).
+    - Session tokens stored at `.doco/tokens.json` (per ADR-058).
   Production (Phase 6) flips on require-token and registers a GitHub OAuth app.
 alternatives:
   - name: Implement GitHub OAuth in Phase 4
@@ -35,13 +35,13 @@ created_by: principal_01KR441EA259F7EE420Z4VWFPJ
 revision: 1
 lifecycle: active
 status: accepted
-tags:
-  - tag_01KR441EA37E3M5V0ZV6ZRB97D
-  - tag_01KR441EA8BTTB99H928Z0NQQW
+scopes:
+  - scope_01KR441EA37E3M5V0ZV6ZRB97D
+  - scope_01KR441EA8BTTB99H928Z0NQQW
 ---
 
 # ADR-057 — GitHub OAuth deferred; local-dev auth is `--as-principal`
 
 Reference: PLANNING.md §3, ADR-034. The GitHub OAuth flow lands in Phase 6
-when `evalo.to` is deployed and an OAuth app can be registered against a
+when `doco.to` is deployed and an OAuth app can be registered against a
 public callback URL.

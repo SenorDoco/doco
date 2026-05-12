@@ -4,12 +4,12 @@
   "files": {
     "ignore": [
       "dist",
-      ".evalo",
+      ".doco",
       "node_modules",
       "*.md",
       "*.yaml",
       "*.yml",
-      "schema/evalo.schema.json"
+      "schema/doco.schema.json"
     ]
   },
   "organizeImports": { "enabled": true },

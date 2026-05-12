@@ -1,6 +1,6 @@
 ---
 id: decision_01KR441EB8Q0VKHGMK7D1TV8T4
-evalo_id: evalo_01KR441EA0ZDMF0N5DY38GSVS3
+doco_id: doco_01KR441EA0ZDMF0N5DY38GSVS3
 node_type: decision
 schema_version: "0.1"
 summary: "Six reserved tag names with semantic meaning: tag_adr, tag_bugfix, tag_regression_guard, tag_adr_consequence, tag_userflow, plus the scope_* prefix."
@@ -9,7 +9,7 @@ slug: reserved-tag-conventions
 number: "ADR-021"
 intent_ids:
   - intent_01KR441EA92V53H22ZN087YMRM
-question: "How does Evalo encode 'this Decision is an ADR' or 'this Rule guards a fix' without proliferating entity types?"
+question: "How does Doco encode 'this Decision is an ADR' or 'this Rule guards a fix' without proliferating entity types?"
 chosen: |
   Reserved tag names with semantic meaning recognized by tooling/lints:
     - `tag_adr` — Decision is published as an ADR (sets `number` field).
@@ -30,9 +30,9 @@ created_by: principal_01KR441EA199MZCP7RDMADFZW9
 revision: 1
 lifecycle: active
 status: accepted
-tags:
-  - tag_01KR441EA37E3M5V0ZV6ZRB97D
-  - tag_01KR441EA8BTTB99H928Z0NQQW
+scopes:
+  - scope_01KR441EA37E3M5V0ZV6ZRB97D
+  - scope_01KR441EA8BTTB99H928Z0NQQW
 ---
 
 # ADR-021 — Reserved tag conventions

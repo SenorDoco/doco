@@ -6,7 +6,7 @@ import type { Database } from "better-sqlite3";
  * A selector matches a candidate entity. Common forms:
  *   { all: true }                                    // wildcard
  *   { node_type: "action", verb: "deploy" }
- *   { tag: "scope_auth" }
+ *   { scope: "auth" }                                // candidate carries a scope entity with name "auth"
  *   { id: "decision_01H..." }
  *   { intent_id: "intent_01H..." }                   // candidate serves this intent
  *   { actor_type: "agent" }                          // for action candidates
@@ -17,7 +17,7 @@ export type ScopeSelector =
   | { all: true }
   | { id: string }
   | { node_type: string; verb?: string; type?: string; actor_type?: string; [key: string]: unknown }
-  | { tag: string }
+  | { scope: string }
   | { intent_id: string }
   | { actor_type: "human" | "agent" }
   | { any_of: ScopeSelector[] }
@@ -26,7 +26,7 @@ export type ScopeSelector =
 /**
  * Evaluate a scope selector against a candidate entity. The candidate must
  * carry its `node_type`. Optional `db` lets the matcher resolve relational
- * facts (tags, edges, principal lookups).
+ * facts (scopes, edges, principal lookups).
  */
 export function matches(
   selector: unknown,
@@ -49,11 +49,11 @@ export function matches(
     return (sel.all_of as unknown[]).every((s) => matches(s, candidate, db));
   }
 
-  // Tag check (resolves through edges if a db is present).
-  if (typeof sel.tag === "string") {
-    if (!hasTag(candidate, sel.tag, db)) return false;
-    // fall through to remaining keys
-    if (!checkRemaining(sel, candidate, ["tag"], db)) return false;
+  // Scope check (resolves through the indexer's `scope` table if a db is
+  // present). Renamed from "tag" in ADR-078.
+  if (typeof sel.scope === "string") {
+    if (!hasScope(candidate, sel.scope, db)) return false;
+    if (!checkRemaining(sel, candidate, ["scope"], db)) return false;
     return true;
   }
 
@@ -95,16 +95,17 @@ function checkRemaining(
   return true;
 }
 
-function hasTag(candidate: Record<string, unknown>, tagName: string, db: Database | undefined): boolean {
-  // tags field carries tag entity IDs; we resolve their `name` via the db.
-  const tags = candidate.tags;
-  if (!Array.isArray(tags)) return false;
+function hasScope(candidate: Record<string, unknown>, scopeName: string, db: Database | undefined): boolean {
+  // The candidate's `scopes` field carries scope entity IDs; resolve their
+  // `name` via the db. Renamed from hasTag in ADR-078.
+  const scopes = candidate.scopes;
+  if (!Array.isArray(scopes)) return false;
   if (!db) return false;
-  const stmt = db.prepare("SELECT name FROM tag WHERE id = ?");
-  for (const tagId of tags) {
-    if (typeof tagId !== "string") continue;
-    const row = stmt.get(tagId) as { name: string } | undefined;
-    if (row?.name === tagName) return true;
+  const stmt = db.prepare("SELECT name FROM scope WHERE id = ?");
+  for (const scopeId of scopes) {
+    if (typeof scopeId !== "string") continue;
+    const row = stmt.get(scopeId) as { name: string } | undefined;
+    if (row?.name === scopeName) return true;
   }
   return false;
 }

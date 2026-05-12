@@ -3,7 +3,7 @@
 
 - term: alignment
   synonyms: [coherence, congruence, consistency]
-  description: Coherence between intent, reasoning, and action. Evalo's central concept.
+  description: Coherence between intent, reasoning, and action. Doco's central concept.
 
 - term: intent
   synonyms: [goal, objective, purpose, aim, target]
@@ -31,7 +31,7 @@
 
 - term: principal
   synonyms: [user, member, identity, actor, account]
-  description: A human or agent identity within Evalo.
+  description: A human or agent identity within Doco.
 
 - term: agent
   synonyms: [bot, AI, automated principal, assistant]
@@ -39,7 +39,7 @@
 
 - term: scope
   synonyms: [boundary, area, domain, namespace]
-  description: Sub-area of an Evalo, expressed via reserved scope_* tags (D-028).
+  description: Sub-area of an Doco, expressed via reserved scope_* tags (D-028).
 
 - term: evaluation
   synonyms: [check, assertion result, audit, lint result]
@@ -50,7 +50,7 @@
   description: Any check applied to data crossing a trust boundary.
 
 - term: session token
-  synonyms: [auth token, session cookie, bearer token, EVALO_TOKEN]
+  synonyms: [auth token, session cookie, bearer token, DOCO_TOKEN]
   description: Long-lived agent credential (D-037), revocable.
 
 - term: PII

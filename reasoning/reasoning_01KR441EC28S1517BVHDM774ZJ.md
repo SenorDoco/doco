@@ -1,6 +1,6 @@
 ---
 id: reasoning_01KR441EC28S1517BVHDM774ZJ
-evalo_id: evalo_01KR441EA0ZDMF0N5DY38GSVS3
+doco_id: doco_01KR441EA0ZDMF0N5DY38GSVS3
 node_type: reasoning
 schema_version: "0.1"
 summary: "Premises (self-hosting intent + foundational decisions) → conclusion (bootstrap action). Reasoning for action_01KR441EC1HG8M0PGYMR5EQDMM."
@@ -10,19 +10,19 @@ author_id: principal_01KR441EA259F7EE420Z4VWFPJ   # claude-opus-4-7
 premises:
   - node_type: intent
     ref: intent_01KR441EABD6SB4FGNSK9KEV81
-    as: "Evalo describes itself in its own schema (self-hosting)."
+    as: "Doco describes itself in its own schema (self-hosting)."
   - node_type: intent
     ref: intent_01KR441EAEM5NQBM160763TDDT
     as: "Ship a working v0 — and the tightest validation of the schema is migrating an existing 45-decision design into it."
   - node_type: decision
     ref: decision_01KR441EAN4CD2MXV5A2E4TYCB
-    as: "An Evalo is a git repository with one file per entity in node-named directories (ADR-002)."
+    as: "An Doco is a git repository with one file per entity in node-named directories (ADR-002)."
   - node_type: decision
     ref: decision_01KR441EAPAGA5XME562JACT5Q
     as: "Entities are YAML frontmatter + Markdown body (ADR-003) — agent-parseable structure plus human-narrative."
   - node_type: decision
     ref: decision_01KR441EAWNQ4ZAPG0XGA9RJZX
-    as: "Ten node types capture the alignment graph (ADR-009): principal, evalo, intent, rule, decision, action, reasoning, evaluation, reference, tag."
+    as: "Ten node types capture the alignment graph (ADR-009): principal, doco, intent, rule, decision, action, reasoning, evaluation, reference, tag."
   - node_type: decision
     ref: decision_01KR441EAQ1J516HMAMZ66NKRJ
     as: "IDs are `{node_type}_{ULID}` (ADR-004); ULIDs are time-sortable and need no central coordinator."
@@ -30,7 +30,7 @@ premises:
 inference: |
   Given the self-hosting intent and the foundational storage / format / node-type
   decisions, the bootstrap action is mechanical: produce one file per entity in
-  the appropriate directory, with frontmatter conforming to schema/evalo.schema.json
+  the appropriate directory, with frontmatter conforming to schema/doco.schema.json
   and a body adding human-narrative context. ULIDs are generated with a fixed
   bootstrap timestamp (2026-05-08T15:42:00Z) so they sort in a coherent order.
 
@@ -45,15 +45,15 @@ uncertainty:
   - "Whether the migrated decision bodies should be terser (one-paragraph) or fuller (the full DECISIONS.md prose)."
   - "Whether the bootstrap timestamp (2026-05-08T15:42:00Z) is the right canonical for ULIDs vs. using the actual original design time of each decision."
   - "Whether file naming `decision_<ulid>.md` (ID-only) is the right tradeoff vs. `decision_<ulid>__<slug>.md` (ID + human-readable suffix). I went with ID-only per SCHEMA.md §2's literal convention; if humans find the directory unnavigable, this should be revisited."
-  - "Whether `Principal` for the Evalo entity needs `evalo_id` self-referentially. I omitted it on the Evalo entity since the root is structurally special; the JSON Schema accommodates this."
+  - "Whether `Principal` for the Doco entity needs `doco_id` self-referentially. I omitted it on the Doco entity since the root is structurally special; the JSON Schema accommodates this."
 
 created_at: 2026-05-08T15:42:00Z
 created_by: principal_01KR441EA259F7EE420Z4VWFPJ
 revision: 1
 lifecycle: active
 status: active
-tags:
-  - tag_01KR441EA8BTTB99H928Z0NQQW   # scope_meta
+scopes:
+  - scope_01KR441EA8BTTB99H928Z0NQQW   # scope_meta
 ---
 
 # Reasoning for the bootstrap action

@@ -1,17 +1,17 @@
 ---
 id: decision_01KR441EAWNQ4ZAPG0XGA9RJZX
-evalo_id: evalo_01KR441EA0ZDMF0N5DY38GSVS3
+doco_id: doco_01KR441EA0ZDMF0N5DY38GSVS3
 node_type: decision
 schema_version: "0.1"
-summary: "Ten node types: principal, evalo, intent, rule, decision, action, reasoning, evaluation, reference, tag."
+summary: "Ten node types: principal, doco, intent, rule, decision, action, reasoning, evaluation, reference, tag."
 
 slug: final-node-type-list
 number: "ADR-009"
 intent_ids:
   - intent_01KR441EA92V53H22ZN087YMRM
-question: "What set of entity kinds does Evalo support?"
+question: "What set of entity kinds does Doco support?"
 chosen: |
-  10 kinds: `principal`, `evalo`, `intent`, `rule`, `decision`, `action`,
+  10 kinds: `principal`, `doco`, `intent`, `rule`, `decision`, `action`,
   `reasoning`, `evaluation`, `reference`, `tag`. Each earns its place by
   having a distinct shape and lifecycle. Aggressive consolidation kept the
   surface narrow.
@@ -31,9 +31,9 @@ created_by: principal_01KR441EA199MZCP7RDMADFZW9
 revision: 1
 lifecycle: active
 status: accepted
-tags:
-  - tag_01KR441EA37E3M5V0ZV6ZRB97D
-  - tag_01KR441EA8BTTB99H928Z0NQQW
+scopes:
+  - scope_01KR441EA37E3M5V0ZV6ZRB97D
+  - scope_01KR441EA8BTTB99H928Z0NQQW
 ---
 
 # ADR-009 — Final node type list (10 total)

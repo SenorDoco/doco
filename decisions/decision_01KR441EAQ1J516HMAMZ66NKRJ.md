@@ -1,6 +1,6 @@
 ---
 id: decision_01KR441EAQ1J516HMAMZ66NKRJ
-evalo_id: evalo_01KR441EA0ZDMF0N5DY38GSVS3
+doco_id: doco_01KR441EA0ZDMF0N5DY38GSVS3
 node_type: decision
 schema_version: "0.1"
 summary: "IDs are '{node_type}_{ULID}' — type prefix + Crockford ULID. Time-sortable, no central coordination."
@@ -17,7 +17,7 @@ chosen: |
 alternatives:
   - name: UUIDv4
     rejected_because: "No time order; longer; opaque to humans without context."
-  - name: Auto-increment per Evalo
+  - name: Auto-increment per Doco
     rejected_because: "Forces coordination on writes — bad for agent updates (priority 2). Concurrent agents would collide."
   - name: Content hash
     rejected_because: "Mutates on every edit; breaks references (priority 4 scoping)."
@@ -30,9 +30,9 @@ created_by: principal_01KR441EA199MZCP7RDMADFZW9
 revision: 1
 lifecycle: active
 status: accepted
-tags:
-  - tag_01KR441EA37E3M5V0ZV6ZRB97D
-  - tag_01KR441EA8BTTB99H928Z0NQQW
+scopes:
+  - scope_01KR441EA37E3M5V0ZV6ZRB97D
+  - scope_01KR441EA8BTTB99H928Z0NQQW
 ---
 
 # ADR-004 — IDs = `{node_type}_{ULID}`

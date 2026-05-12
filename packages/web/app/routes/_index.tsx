@@ -1,9 +1,9 @@
 import { Link } from "react-router";
-import { getEvaloSlug, getMode, openDb } from "~/lib/db";
-import { listAllEvalos, listOrgs, listUsers, loadHostConfig } from "~/lib/host";
+import { getDocoSlug, getMode, openDb } from "~/lib/db";
+import { listAllDocos, listOrgs, listUsers, loadHostConfig } from "~/lib/host";
 import { type CurrentPrincipal, getCurrentPrincipal } from "~/lib/session";
 import { SiteHeader } from "~/components/site-header";
-import { EvaloMark } from "~/components/evalo-mark";
+import { DocoMark } from "~/components/doco-mark";
 import { Badge } from "~/components/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "~/components/table";
@@ -20,7 +20,7 @@ interface RecentItem {
 
 export function loader({ request }: { request: Request }) {
   const mode = getMode();
-  if (mode === "single-evalo") {
+  if (mode === "single-doco") {
     const db = openDb();
     try {
       const items = db
@@ -30,16 +30,20 @@ export function loader({ request }: { request: Request }) {
              UNION ALL
              SELECT id, 'intent' AS node_type, summary, created_at, slug, NULL, title FROM intent
              UNION ALL
+             SELECT id, 'idea' AS node_type, summary, created_at, NULL, NULL, NULL FROM idea
+             UNION ALL
              SELECT id, 'rule' AS node_type, summary, created_at, slug, NULL, NULL FROM rule
              UNION ALL
              SELECT id, 'action' AS node_type, summary, created_at, NULL, NULL, NULL FROM action
              UNION ALL
              SELECT id, 'reasoning' AS node_type, summary, created_at, NULL, NULL, NULL FROM reasoning
+             UNION ALL
+             SELECT id, 'scope' AS node_type, summary, created_at, NULL, NULL, name AS title FROM scope
            )
            ORDER BY created_at DESC LIMIT 30`,
         )
         .all() as RecentItem[];
-      return { mode: "single-evalo" as const, items, evaloSlug: getEvaloSlug() };
+      return { mode: "single-doco" as const, items, docoSlug: getDocoSlug() };
     } finally {
       db.close();
     }
@@ -56,22 +60,22 @@ export function loader({ request }: { request: Request }) {
     me,
     users: listUsers(),
     orgs: listOrgs(),
-    evalos: listAllEvalos(),
+    docos: listAllDocos(),
   };
 }
 
 export function meta({ data }: { data: Awaited<ReturnType<typeof loader>> | undefined }) {
-  if (!data) return [{ title: "Evalo" }];
+  if (!data) return [{ title: "Doco" }];
   if (data.mode === "host" || data.mode === "host-anonymous") {
-    return [{ title: `${data.host.name} · Evalo` }];
+    return [{ title: `${data.host.name} · Doco` }];
   }
-  return [{ title: "Recent · Evalo" }];
+  return [{ title: "Recent · Doco" }];
 }
 
 export default function Home({ loaderData }: { loaderData: Awaited<ReturnType<typeof loader>> }) {
   if (loaderData.mode === "host") return <HostDashboard data={loaderData} />;
   if (loaderData.mode === "host-anonymous") return <HostLanding data={loaderData} />;
-  return <SingleEvaloRecent data={loaderData} />;
+  return <SingleDocoRecent data={loaderData} />;
 }
 
 function HostLanding({
@@ -79,16 +83,17 @@ function HostLanding({
 }: {
   data: Extract<Awaited<ReturnType<typeof loader>>, { mode: "host-anonymous" }>;
 }) {
+  // Onboarding wizard step 1 — pick intent. Per ADR-073.
   return (
     <div className="min-h-screen flex flex-col">
       <header className="border-b border-border bg-card">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-6 py-3">
-          <Link to="/" className="inline-flex items-center hover:opacity-80" aria-label="Evalo home">
-            <EvaloMark height={28} />
+          <Link to="/" className="inline-flex items-center hover:opacity-80" aria-label="Doco home">
+            <DocoMark height={28} />
           </Link>
           <Link
             to="/sign-in"
-            className="rounded-md bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground hover:opacity-90"
+            className="rounded-md border border-border px-3 py-1.5 text-xs font-semibold hover:bg-input"
           >
             Sign in
           </Link>
@@ -96,32 +101,39 @@ function HostLanding({
       </header>
       <main className="flex flex-1 flex-col items-center justify-center px-6 py-16">
         <div className="flex max-w-2xl flex-col items-center gap-6 text-center">
-          <EvaloMark height={128} />
-          <h1 className="text-2xl font-bold tracking-tight">
-            Alignment framework + runtime checking
-          </h1>
-          <p className="max-w-lg text-sm text-muted-foreground leading-relaxed">
-            Document and verify the relationships between user intent, agent reasoning, and agent
-            actions — to reduce misalignment between users and AI agents, and between collaborating
-            agents.
+          <DocoMark height={96} />
+          <p className="max-w-lg text-sm text-muted-foreground">
+            AI-native documentation of important ideas, decisions, and rules.
           </p>
-          <div className="flex items-center gap-3 pt-2">
+          <h1 className="text-2xl font-bold tracking-tight pt-2">What are you here to do?</h1>
+
+          <div className="grid w-full grid-cols-1 gap-3 md:grid-cols-2 md:gap-4">
             <Link
-              to="/sign-in"
-              className="rounded-md bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground hover:opacity-90"
+              to="/onboarding/join"
+              className="group rounded-lg border border-border bg-card px-6 py-8 text-left transition-colors hover:border-primary"
             >
-              Sign in
+              <div className="text-base font-semibold">Join an existing Doco</div>
+              <div className="mt-2 text-xs text-muted-foreground">
+                Collaborate on a project that's already tracked here.
+              </div>
             </Link>
-            <a
-              href="https://github.com"
-              className="rounded-md border border-border px-5 py-2.5 text-sm font-semibold hover:bg-input"
-              target="_blank"
-              rel="noreferrer"
+            <Link
+              to="/onboarding/create"
+              className="group rounded-lg border border-border bg-card px-6 py-8 text-left transition-colors hover:border-primary"
             >
-              Learn more
-            </a>
+              <div className="text-base font-semibold">Create a new Doco</div>
+              <div className="mt-2 text-xs text-muted-foreground">
+                Start tracking alignment for a new project.
+              </div>
+            </Link>
           </div>
-          <p className="pt-6 text-[11px] text-muted-foreground">
+
+          <p className="max-w-md pt-6 text-xs text-muted-foreground">
+            Are you an AI agent and don't know the answer? Ask whomever prompted you which way
+            to go.
+          </p>
+
+          <p className="pt-2 text-[11px] text-muted-foreground">
             Hosted by <span className="font-semibold">{data.host.name}</span>
           </p>
         </div>
@@ -135,23 +147,23 @@ function HostDashboard({
 }: {
   data: Extract<Awaited<ReturnType<typeof loader>>, { mode: "host" }>;
 }) {
-  const { host, me, users, orgs, evalos } = data;
+  const { host, me, users, orgs, docos } = data;
   return (
     <div>
       <SiteHeader context={host.name} mode="host" me={me} />
       <main className="mx-auto max-w-6xl px-6 py-6 space-y-4">
         <section className="mb-4 flex flex-col items-center gap-3 py-8">
-          <EvaloMark height={80} />
+          <DocoMark height={80} />
           <p className="max-w-xl text-center text-xs text-muted-foreground">
-            {host.name} — multi-tenant Evalo host. Anyone can create an Evalo; users can create
-            organizations; Evalos are owned by users or organizations.
+            {host.name} — multi-tenant Doco host. Anyone can create a Doco; users can create
+            organizations; Docos are owned by users or organizations.
           </p>
         </section>
 
         <Card>
           <CardHeader>
-            <CardTitle>Evalos ({evalos.length})</CardTitle>
-            <CardDescription>All Evalos registered in this host. Click to open.</CardDescription>
+            <CardTitle>Docos ({docos.length})</CardTitle>
+            <CardDescription>All Docos registered in this host. Click to open.</CardDescription>
           </CardHeader>
           <CardContent>
             <Table>
@@ -164,14 +176,14 @@ function HostDashboard({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {evalos.map((e) => (
-                  <TableRow key={e.evaloId}>
+                {docos.map((e) => (
+                  <TableRow key={e.docoId}>
                     <TableCell>
                       <Link
-                        to={`/${e.ownerSlug}/${e.evaloSlug}`}
+                        to={`/${e.ownerSlug}/${e.docoSlug}`}
                         className="text-primary hover:underline"
                       >
-                        {e.ownerSlug}/{e.evaloSlug}
+                        {e.ownerSlug}/{e.docoSlug}
                       </Link>
                     </TableCell>
                     <TableCell>
@@ -180,7 +192,7 @@ function HostDashboard({
                       </Badge>{" "}
                       <span className="text-muted-foreground text-xs">{e.ownerSlug}</span>
                     </TableCell>
-                    <TableCell className="font-mono text-xs text-muted-foreground">{e.evaloId}</TableCell>
+                    <TableCell className="font-mono text-xs text-muted-foreground">{e.docoId}</TableCell>
                     <TableCell>
                       {e.hasIndex ? (
                         <Badge variant="success">indexed</Badge>
@@ -235,20 +247,20 @@ function HostDashboard({
   );
 }
 
-function SingleEvaloRecent({
+function SingleDocoRecent({
   data,
 }: {
-  data: Extract<Awaited<ReturnType<typeof loader>>, { mode: "single-evalo" }>;
+  data: Extract<Awaited<ReturnType<typeof loader>>, { mode: "single-doco" }>;
 }) {
   return (
     <div>
-      <SiteHeader context={data.evaloSlug} mode="single-evalo" />
+      <SiteHeader context={data.docoSlug} mode="single-doco" />
       <main className="mx-auto max-w-6xl px-6 py-6">
         <section className="mb-6 flex flex-col items-center gap-3 py-8">
-          <EvaloMark height={80} />
+          <DocoMark height={80} />
           <p className="max-w-xl text-center text-xs text-muted-foreground">
             Alignment framework + runtime checking. Documents and verifies user intent, agent
-            reasoning, and agent actions — for {data.evaloSlug}.
+            reasoning, and agent actions — for {data.docoSlug}.
           </p>
         </section>
 

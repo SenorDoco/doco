@@ -1,6 +1,6 @@
 import { Form, Link, useSearchParams } from "react-router";
-import { findRules, Glossary } from "@evalo/discovery";
-import { rootDir, getEvaloSlug, openDb } from "~/lib/db";
+import { findRules, Glossary } from "@doco/discovery";
+import { rootDir, getDocoSlug, openDb } from "~/lib/db";
 import { SiteHeader } from "~/components/site-header";
 import { Badge } from "~/components/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
@@ -9,8 +9,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "~
 export async function loader({ request }: { request: Request }) {
   const url = new URL(request.url);
   const q = (url.searchParams.get("q") ?? "").trim();
-  const evaloSlug = getEvaloSlug();
-  if (!q) return { q, fts: [], findRulesResult: null, evaloSlug };
+  const docoSlug = getDocoSlug();
+  if (!q) return { q, fts: [], findRulesResult: null, docoSlug };
   const db = openDb();
   try {
     const fts = db
@@ -18,14 +18,14 @@ export async function loader({ request }: { request: Request }) {
       .all(q) as { id: string; node_type: string; summary: string }[];
     const glossary = await Glossary.load(rootDir());
     const findRulesResult = findRules(db, glossary, { description: q });
-    return { q, fts, findRulesResult, evaloSlug };
+    return { q, fts, findRulesResult, docoSlug };
   } finally {
     db.close();
   }
 }
 
 export function meta({ data }: { data: Awaited<ReturnType<typeof loader>> | undefined }) {
-  return [{ title: data?.q ? `Search: ${data.q} · Evalo` : "Search · Evalo" }];
+  return [{ title: data?.q ? `Search: ${data.q} · Doco` : "Search · Doco" }];
 }
 
 export default function Search({ loaderData }: { loaderData: Awaited<ReturnType<typeof loader>> }) {
@@ -33,7 +33,7 @@ export default function Search({ loaderData }: { loaderData: Awaited<ReturnType<
   const q = searchParams.get("q") ?? "";
   return (
     <div>
-      <SiteHeader context={loaderData.evaloSlug} mode="single-evalo" />
+      <SiteHeader context={loaderData.docoSlug} mode="single-doco" />
       <main className="mx-auto max-w-6xl px-6 py-6 space-y-4">
         <Form method="get" className="flex gap-2">
           <input

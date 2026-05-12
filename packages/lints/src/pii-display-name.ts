@@ -3,7 +3,7 @@ import type { LintIssue } from "./types.js";
 
 /**
  * Resolves DECISIONS.md §13 #12 / ADR-054: Principal.display_name MUST NOT
- * match an email regex. Public Evalos expose principal display_names via the
+ * match an email regex. Public Docos expose principal display_names via the
  * agent-ancestry chain (PLANNING.md §3.4); leaking emails would be a privacy
  * regression.
  */
@@ -21,7 +21,7 @@ export const lintPiiDisplayName = (db: Database): LintIssue[] => {
         lintId: "pii-display-name",
         severity: "warning",
         source: r.id,
-        message: `Principal.display_name "${r.display_name}" looks like an email address — potential PII leak in public Evalos.`,
+        message: `Principal.display_name "${r.display_name}" looks like an email address — potential PII leak in public Docos.`,
       });
     }
   }

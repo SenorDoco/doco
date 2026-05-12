@@ -1,9 +1,9 @@
 ---
 id: action_01KR441EA6Z0S4GD7X08M7X4BY
-evalo_id: evalo_01KR441EA0ZDMF0N5DY38GSVS3
+doco_id: doco_01KR441EA0ZDMF0N5DY38GSVS3
 node_type: action
 schema_version: "0.1"
-summary: "Implemented Phase 7: multi-tenant host with @evalo/host package, evalo host CLI, web dual-mode + host-scoped routes; verified against /tmp/test-host with Chrome MCP."
+summary: "Implemented Phase 7: multi-tenant host with @doco/host package, doco host CLI, web dual-mode + host-scoped routes; verified against /tmp/test-host with Chrome MCP."
 
 actor_id: principal_01KR441EA259F7EE420Z4VWFPJ
 verb: implement_phase
@@ -23,23 +23,23 @@ inputs:
 
 outputs:
   schema_changes:
-    - "schema/evalo.schema.json: id pattern + namespaced_id pattern accept 'organization' prefix"
-    - "schema/evalo.schema.json: new organization_id + owner_ref definitions"
-    - "schema/evalo.schema.json: evalo_entity.owner_id now $ref owner_ref (Principal | Organization)"
-    - "schema/evalo.schema.json: organization_entity definition; added to oneOf"
-    - "@evalo/shared: NODE_TYPES adds 'organization'; new Organization + OrganizationMember + OwnerRef types"
-    - "@evalo/core paths.ts: ENTITY_DIRS adds organization → organizations/"
-    - "@evalo/index migrate.ts: organization table + slug index"
-    - "@evalo/index insert.ts: organization case + delete sweep"
+    - "schema/doco.schema.json: id pattern + namespaced_id pattern accept 'organization' prefix"
+    - "schema/doco.schema.json: new organization_id + owner_ref definitions"
+    - "schema/doco.schema.json: doco_entity.owner_id now $ref owner_ref (Principal | Organization)"
+    - "schema/doco.schema.json: organization_entity definition; added to oneOf"
+    - "@doco/shared: NODE_TYPES adds 'organization'; new Organization + OrganizationMember + OwnerRef types"
+    - "@doco/core paths.ts: ENTITY_DIRS adds organization → organizations/"
+    - "@doco/index migrate.ts: organization table + slug index"
+    - "@doco/index insert.ts: organization case + delete sweep"
   packages_created: [host]
-  cli_added: [host_init, host_user_create, host_org_create, host_evalo_new, host_list]
+  cli_added: [host_init, host_user_create, host_org_create, host_doco_new, host_list]
   web_added:
-    - "app/lib/db.ts: rootDir(), getMode(), openEvaloDb(owner, slug)"
-    - "app/lib/host.ts: loadHostConfig, listUsers, listOrgs, listAllEvalos"
+    - "app/lib/db.ts: rootDir(), getMode(), openDocoDb(owner, slug)"
+    - "app/lib/host.ts: loadHostConfig, listUsers, listOrgs, listAllDocos"
     - "app/components/site-header.tsx: dual-mode nav with breadcrumb"
-    - "app/routes/_index.tsx: branches host vs single-Evalo"
-    - "app/routes/$ownerSlug.$evaloSlug._index.tsx: per-Evalo recent feed in host"
-    - "app/routes/$ownerSlug.$evaloSlug.e.$type.$id.tsx: per-Evalo entity detail"
+    - "app/routes/_index.tsx: branches host vs single-Doco"
+    - "app/routes/$ownerSlug.$docoSlug._index.tsx: per-Doco recent feed in host"
+    - "app/routes/$ownerSlug.$docoSlug.e.$type.$id.tsx: per-Doco entity detail"
   tests:
     host_pkg_tests: 8
     chrome_e2e_routes_verified: ["/", "/alice/personal-research", "/anthropic/internal-policies"]
@@ -52,8 +52,8 @@ created_by: principal_01KR441EA259F7EE420Z4VWFPJ
 revision: 1
 lifecycle: succeeded
 status: completed
-tags:
-  - tag_01KR441EA8BTTB99H928Z0NQQW
+scopes:
+  - scope_01KR441EA8BTTB99H928Z0NQQW
 ---
 
 # Phase 7 — multi-tenant host
@@ -61,35 +61,35 @@ tags:
 End-to-end demo against a fresh host at `/tmp/test-host`:
 
 ```
-$ evalo host init /tmp/test-host --name "Local Test Host" --owner-username torrenegra --owner-email a@torre.ai
-$ evalo host user create alice --email alice@example.com
-$ evalo host user create bob --email bob@example.com
-$ evalo host org create anthropic --owner alice --description "AI safety company"
-$ evalo host evalo new alice/personal-research
-$ evalo host evalo new anthropic/internal-policies
-$ evalo host list
+$ doco host init /tmp/test-host --name "Local Test Host" --owner-username torrenegra --owner-email a@torre.ai
+$ doco host user create alice --email alice@example.com
+$ doco host user create bob --email bob@example.com
+$ doco host org create anthropic --owner alice --description "AI safety company"
+$ doco host doco new alice/personal-research
+$ doco host doco new anthropic/internal-policies
+$ doco host list
   Users (3): torrenegra, alice, bob
   Organizations (1): anthropic
-  Evalos (2):
-    alice/personal-research        principal → evalo_…
-    anthropic/internal-policies    organization → evalo_…
+  Docos (2):
+    alice/personal-research        principal → doco_…
+    anthropic/internal-policies    organization → doco_…
 ```
 
-Web (Remix dev pointed at `/tmp/test-host` via `EVALO_ROOT`) renders:
-- `/` — host home with Evalos table + Users + Orgs panels
-- `/:owner/:evalo` — per-Evalo recent feed (empty state for fresh Evalos)
+Web (Remix dev pointed at `/tmp/test-host` via `DOCO_ROOT`) renders:
+- `/` — host home with Docos table + Users + Orgs panels
+- `/:owner/:doco` — per-Doco recent feed (empty state for fresh Docos)
 
-Single-Evalo mode at `/Users/torrenegra/Evalo` continues to work unchanged
-when `EVALO_ROOT` points at a directory containing `evalo.yaml`.
+Single-Doco mode at `/Users/torrenegra/Doco` continues to work unchanged
+when `DOCO_ROOT` points at a directory containing `doco.yaml`.
 
 ## Deferred for follow-up phases
 
-- Per-Evalo list view (`/:owner/:evalo/e/:type`) and search/lint inside an
-  Evalo. Phase 8 — host UX polish.
-- User and Org profile pages (`/:slug` showing their Evalos).
+- Per-Doco list view (`/:owner/:doco/e/:type`) and search/lint inside an
+  Doco. Phase 8 — host UX polish.
+- User and Org profile pages (`/:slug` showing their Docos).
 - ADR-064 reserved-slug list (currently no protection if a User picks
   `e`, `host`, `api`, etc. as a username — should be enforced in
   addPrincipal/addOrganization).
-- Migration tool: convert an existing single-Evalo into a host with one
-  Evalo inside.
-- Cross-Evalo search across the whole host.
+- Migration tool: convert an existing single-Doco into a host with one
+  Doco inside.
+- Cross-Doco search across the whole host.

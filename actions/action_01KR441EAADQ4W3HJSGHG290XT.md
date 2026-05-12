@@ -1,9 +1,9 @@
 ---
 id: action_01KR441EAADQ4W3HJSGHG290XT
-evalo_id: evalo_01KR441EA0ZDMF0N5DY38GSVS3
+doco_id: doco_01KR441EA0ZDMF0N5DY38GSVS3
 node_type: action
 schema_version: "0.1"
-summary: "Built end-user web self-service: sign-up, create Evalo, create Organization, owner profile pages, per-Evalo list/search/lint inside host mode. ADR-067 reserved-slug enforcement applied."
+summary: "Built end-user web self-service: sign-up, create Doco, create Organization, owner profile pages, per-Doco list/search/lint inside host mode. ADR-067 reserved-slug enforcement applied."
 
 actor_id: principal_01KR441EA259F7EE420Z4VWFPJ
 verb: implement_self_service_flows
@@ -17,31 +17,31 @@ decision_ids:
   - decision_01KR441EA4W857CKWRRWZNT2NW   # ADR-064 shared owner namespace
 
 inputs:
-  trigger: "Founder: 'Build them all' (sign-up + create Evalo + create org + profile pages + per-Evalo nav inside host)."
+  trigger: "Founder: 'Build them all' (sign-up + create Doco + create org + profile pages + per-Doco nav inside host)."
 
 outputs:
   host_pkg_changes:
     - "RESERVED_SLUGS set + assertSlugAllowed (ADR-067)"
-    - "applied to addPrincipal, addOrganization, createEvaloInHost"
+    - "applied to addPrincipal, addOrganization, createDocoInHost"
     - "2 new tests (10 host tests pass total)"
   web_routes_added:
     - "GET/POST /sign-up        — register a new User and auto sign-in"
-    - "GET/POST /new-evalo      — create Evalo under self or any org I own/admin"
+    - "GET/POST /new-doco      — create Doco under self or any org I own/admin"
     - "GET/POST /new-org        — create Organization owned by me"
-    - "GET /:ownerSlug          — owner profile (User or Organization), shows their Evalos + members"
-    - "GET /:owner/:evalo/e/:type            — list entities of a type within an Evalo"
-    - "GET /:owner/:evalo/search             — FTS5 + find-rules within an Evalo"
-    - "GET /:owner/:evalo/lint               — run lints within an Evalo"
+    - "GET /:ownerSlug          — owner profile (User or Organization), shows their Docos + members"
+    - "GET /:owner/:doco/e/:type            — list entities of a type within an Doco"
+    - "GET /:owner/:doco/search             — FTS5 + find-rules within an Doco"
+    - "GET /:owner/:doco/lint               — run lints within an Doco"
   web_lib_added:
-    - "listOrgsOwnedOrAdminedBy(principalId) — owners I can create Evalos under"
+    - "listOrgsOwnedOrAdminedBy(principalId) — owners I can create Docos under"
   web_components_changed:
-    - "site-header: + Evalo / + Org buttons; username pill links to /:slug; per-Evalo nav now mirrors single-Evalo (Intents/Rules/Decisions/Actions/Search/Lint)"
+    - "site-header: + Doco / + Org buttons; username pill links to /:slug; per-Doco nav now mirrors single-Doco (Intents/Rules/Decisions/Actions/Search/Lint)"
     - "sign-in: link to /sign-up"
   e2e_curl:
     - "sign-up creates a User, sets cookie, redirects to /"
-    - "new-evalo creates a per-Evalo subtree at evalos/<owner>/<slug>/ and reindexes"
+    - "new-doco creates a per-Doco subtree at docos/<owner>/<slug>/ and reindexes"
     - "new-org creates org owned by current user, redirects to /:slug profile"
-    - "/:slug profile renders owner info + Evalos + (org) members"
+    - "/:slug profile renders owner info + Docos + (org) members"
 
 started_at: 2026-05-09T01:30:00Z
 ended_at: 2026-05-09T02:30:00Z
@@ -51,8 +51,8 @@ created_by: principal_01KR441EA259F7EE420Z4VWFPJ
 revision: 1
 lifecycle: succeeded
 status: completed
-tags:
-  - tag_01KR441EA8BTTB99H928Z0NQQW
+scopes:
+  - scope_01KR441EA8BTTB99H928Z0NQQW
 ---
 
 # End-user self-service web flows
@@ -61,18 +61,18 @@ What an end user can now do entirely from the web in host mode:
 
 1. **Sign up** at `/sign-up` — pick a username, optional email, immediately
    signed in.
-2. **Create an Evalo** at `/new-evalo` — pick owner (self or any org I own
+2. **Create an Doco** at `/new-doco` — pick owner (self or any org I own
    or admin), enter a slug, choose visibility. Lands at `/:owner/:slug`.
 3. **Create an Organization** at `/new-org` — slug + display name +
    description. I become the org owner. Lands at `/:slug`.
-4. **Browse owner profiles** at `/:slug` — shows Evalos and (for orgs)
+4. **Browse owner profiles** at `/:slug` — shows Docos and (for orgs)
    members.
-5. **Inside an Evalo** — recent feed, list-by-type, entity detail with
-   edges, search (FTS + find-rules), and lint — all scoped to that Evalo.
+5. **Inside an Doco** — recent feed, list-by-type, entity detail with
+   edges, search (FTS + find-rules), and lint — all scoped to that Doco.
 
 Reserved slugs (ADR-067) prevent collisions with the URL routing layer:
 `e`, `host`, `api`, `search`, `lint`, `find-rules`, `sign-in`, `sign-out`,
-`sign-up`, `new-evalo`, `new-org`, `new`, `admin`, `settings`, `profile`,
+`sign-up`, `new-doco`, `new-org`, `new`, `admin`, `settings`, `profile`,
 `help`, `about`. Slug pattern `^[a-z0-9_-]+$` is also enforced.
 
 ## What's still CLI-only

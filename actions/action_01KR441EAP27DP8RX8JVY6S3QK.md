@@ -1,9 +1,9 @@
 ---
 id: action_01KR441EAP27DP8RX8JVY6S3QK
-evalo_id: evalo_01KR441EA0ZDMF0N5DY38GSVS3
+doco_id: doco_01KR441EA0ZDMF0N5DY38GSVS3
 node_type: action
 schema_version: "0.1"
-summary: "Implemented Phase 2: @evalo/index (SQLite + FTS5 + edges + scope_match); reindex 79 entities in 6 ms; one-hop edge query in 0.36 ms."
+summary: "Implemented Phase 2: @doco/index (SQLite + FTS5 + edges + scope_match); reindex 79 entities in 6 ms; one-hop edge query in 0.36 ms."
 
 actor_id: principal_01KR441EA259F7EE420Z4VWFPJ
 verb: implement_phase
@@ -39,8 +39,8 @@ created_by: principal_01KR441EA259F7EE420Z4VWFPJ
 revision: 1
 lifecycle: succeeded
 status: completed
-tags:
-  - tag_01KR441EA8BTTB99H928Z0NQQW
+scopes:
+  - scope_01KR441EA8BTTB99H928Z0NQQW
 ---
 
 # Phase 2 — SQLite + FTS5 query layer

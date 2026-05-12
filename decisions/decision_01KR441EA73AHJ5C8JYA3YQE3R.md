@@ -1,6 +1,6 @@
 ---
 id: decision_01KR441EA73AHJ5C8JYA3YQE3R
-evalo_id: evalo_01KR441EA0ZDMF0N5DY38GSVS3
+doco_id: doco_01KR441EA0ZDMF0N5DY38GSVS3
 node_type: decision
 schema_version: "0.1"
 summary: "Web has a sign-in concept in host mode: not-signed-in users see a logo-centered landing; signed-in users see the dashboard. Local-dev uses a Principal-picker + cookie session; production swaps to GitHub OAuth (ADR-034)."
@@ -15,7 +15,7 @@ chosen: |
 
   - **Local-dev (Phase 7+):** `/sign-in` lists the host's registered Users
     (humans only) and lets the visitor pick one. Picking sets an HttpOnly
-    `evalo_session` cookie carrying the principal_id; the dashboard reads it
+    `doco_session` cookie carrying the principal_id; the dashboard reads it
     via `getCurrentPrincipal(request)`. Sign-out clears the cookie. No
     password / OAuth — purely a "switch identity" affordance for the local
     multi-tenant model.
@@ -26,7 +26,7 @@ chosen: |
   Home page branches:
   - Not signed in → centered hero with the wordmark, brief tagline, and a
     "Sign in" CTA. Logo is the dominant element.
-  - Signed in → existing host dashboard (Evalos / Users / Orgs).
+  - Signed in → existing host dashboard (Docos / Users / Orgs).
 
   Header always shows either a "Sign in" link or the current user's pill
   with a "Sign out" form-post.
@@ -44,9 +44,9 @@ created_by: principal_01KR441EA259F7EE420Z4VWFPJ
 revision: 1
 lifecycle: active
 status: accepted
-tags:
-  - tag_01KR441EA37E3M5V0ZV6ZRB97D
-  - tag_01KR441EA8BTTB99H928Z0NQQW
+scopes:
+  - scope_01KR441EA37E3M5V0ZV6ZRB97D
+  - scope_01KR441EA8BTTB99H928Z0NQQW
 ---
 
 # ADR-066 — Web sign-in (cookie locally; GitHub OAuth in prod)

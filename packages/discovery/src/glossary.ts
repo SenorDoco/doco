@@ -32,8 +32,8 @@ export class Glossary {
     return [...expanded];
   }
 
-  static async load(evaloRoot: string): Promise<Glossary> {
-    const path = join(evaloRoot, "glossary.yaml");
+  static async load(docoRoot: string): Promise<Glossary> {
+    const path = join(docoRoot, "glossary.yaml");
     if (!existsSync(path)) return new Glossary([]);
     const text = await readFile(path, "utf8");
     const parsed = parseYaml(text) as GlossaryTerm[] | null;

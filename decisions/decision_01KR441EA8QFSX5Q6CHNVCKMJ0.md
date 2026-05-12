@@ -1,6 +1,6 @@
 ---
 id: decision_01KR441EA8QFSX5Q6CHNVCKMJ0
-evalo_id: evalo_01KR441EA0ZDMF0N5DY38GSVS3
+doco_id: doco_01KR441EA0ZDMF0N5DY38GSVS3
 node_type: decision
 schema_version: "0.1"
 summary: "Batch resolution of DECISIONS.md §13 open questions #2, #3, #5, #6, #7, #8, #11, #12. Each kept as designed unless noted."
@@ -15,7 +15,7 @@ chosen: |
 
   - **#2 (`is_agent: bool` vs `type: human \| agent`)**: KEEP `type`. No rename.
   - **#3 (rename principal/evaluation/reference to user/check/source)**: KEEP current names. They're precise auth/check/source language and well-trained.
-  - **#5 (per-entity visibility)**: NO. Evalo-level visibility only for v0.
+  - **#5 (per-entity visibility)**: NO. Doco-level visibility only for v0.
   - **#6 (token revocation cascade scoped override)**: NO. Strict cascade always for v0.
   - **#7 (GitHub-only sign-in permanence)**: V0 SIMPLIFICATION. Revisit when adoption demands OIDC/SAML.
   - **#8 (Token as first-class entity)**: NO. Confirms D-039 — tokens stay external.
@@ -33,9 +33,9 @@ created_by: principal_01KR441EA259F7EE420Z4VWFPJ
 revision: 1
 lifecycle: active
 status: accepted
-tags:
-  - tag_01KR441EA37E3M5V0ZV6ZRB97D
-  - tag_01KR441EA8BTTB99H928Z0NQQW
+scopes:
+  - scope_01KR441EA37E3M5V0ZV6ZRB97D
+  - scope_01KR441EA8BTTB99H928Z0NQQW
 ---
 
 # ADR-054 — Batch resolution of open questions #2, #3, #5, #6, #7, #8, #11, #12

@@ -1,5 +1,5 @@
 # Local index cache — per-clone, regenerable, never source-of-truth (D-023).
-.evalo/
+.doco/
 
 # Node / TypeScript
 node_modules/

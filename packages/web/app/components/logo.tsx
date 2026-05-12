@@ -6,7 +6,7 @@ interface LogoProps {
 }
 
 /**
- * Evalo wordmark logo. Uses currentColor so it picks up theme tokens (e.g., text-primary).
+ * Doco wordmark logo. Uses currentColor so it picks up theme tokens (e.g., text-primary).
  * Kept inline so the SiteHeader can color-match without an extra HTTP round-trip;
  * `/favicon.svg` ships the same artwork for the browser tab.
  */
@@ -17,11 +17,11 @@ export function Logo({ className, size = 20 }: LogoProps) {
       viewBox="0 0 200 200"
       width={size}
       height={size}
-      aria-label="Evalo"
+      aria-label="Doco"
       className={cn("inline-block align-[-0.2em]", className)}
       role="img"
     >
-      <title>Evalo</title>
+      <title>Doco</title>
       <g fill="currentColor" stroke="currentColor">
         <line x1="62.5" y1="35.048" x2="137.5" y2="35.048" strokeWidth="16" strokeLinecap="round" />
         <line x1="25" y1="100" x2="62.5" y2="35.048" strokeWidth="16" strokeLinecap="round" />

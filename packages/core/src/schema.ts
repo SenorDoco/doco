@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { Ajv, type ErrorObject, type ValidateFunction } from "ajv";
 import addFormats from "ajv-formats";
-import type { NodeType } from "@evalo/shared";
+import type { NodeType } from "@doco/shared";
 import { schemaPath } from "./paths.js";
 
 export interface SchemaValidationError {
@@ -12,7 +12,7 @@ export interface SchemaValidationError {
 }
 
 /**
- * Wraps the JSON Schema at `<evalo-root>/schema/evalo.schema.json` and validates
+ * Wraps the JSON Schema at `<doco-root>/schema/doco.schema.json` and validates
  * entities against the right per-type sub-schema (e.g., `principal_entity`).
  */
 export class SchemaValidator {
@@ -23,8 +23,8 @@ export class SchemaValidator {
     private readonly ajv: Ajv,
   ) {}
 
-  static async load(evaloRoot: string): Promise<SchemaValidator> {
-    const text = await readFile(schemaPath(evaloRoot), "utf8");
+  static async load(docoRoot: string): Promise<SchemaValidator> {
+    const text = await readFile(schemaPath(docoRoot), "utf8");
     const schema = JSON.parse(text) as Record<string, unknown>;
     return SchemaValidator.fromSchema(schema);
   }
@@ -32,7 +32,7 @@ export class SchemaValidator {
   static fromSchema(schema: Record<string, unknown>): SchemaValidator {
     const ajv = new Ajv({ allErrors: true, strict: false, allowUnionTypes: true });
     addFormats(ajv);
-    ajv.addSchema(schema, "evalo");
+    ajv.addSchema(schema, "doco");
     return new SchemaValidator(schema, ajv);
   }
 
@@ -53,9 +53,9 @@ export class SchemaValidator {
 
     let ref: string;
     if (type === "any") {
-      ref = "evalo";
+      ref = "doco";
     } else {
-      ref = `evalo#/definitions/${type}_entity`;
+      ref = `doco#/definitions/${type}_entity`;
     }
     const fn = this.ajv.getSchema(ref);
     if (!fn) {

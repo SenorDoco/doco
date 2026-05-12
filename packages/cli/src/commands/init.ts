@@ -7,7 +7,7 @@ import {
   generateUlid,
   makeEntityId,
   nowIso,
-} from "@evalo/shared";
+} from "@doco/shared";
 import { c, checkmark, cross, header, rule } from "../output.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -17,12 +17,12 @@ const TEMPLATES_DIR = resolve(__dirname, "..", "..", "templates");
 export const initCmd = defineCommand({
   meta: {
     name: "init",
-    description: "Create a new Evalo at <slug> (under the current directory).",
+    description: "Create a new Doco at <slug> (under the current directory).",
   },
   args: {
     slug: {
       type: "positional",
-      description: "Slug for the new Evalo, e.g. 'torrenegra/my-project'.",
+      description: "Slug for the new Doco, e.g. 'torrenegra/my-project'.",
       required: true,
     },
     "owner-username": {
@@ -41,7 +41,7 @@ export const initCmd = defineCommand({
     },
     existing: {
       type: "boolean",
-      description: "Mark this Evalo as one created for an existing project (brownfield).",
+      description: "Mark this Doco as one created for an existing project (brownfield).",
       default: false,
     },
   },
@@ -64,9 +64,9 @@ export const initCmd = defineCommand({
     const root = resolve(process.cwd(), dirName);
 
     // Generate ULIDs.
-    const evaloUlid = generateUlid();
+    const docoUlid = generateUlid();
     const principalUlid = generateUlid();
-    const evaloId = makeEntityId("evalo", evaloUlid) as EntityId<"evalo">;
+    const docoId = makeEntityId("doco", docoUlid) as EntityId<"doco">;
     const principalId = makeEntityId("principal", principalUlid) as EntityId<"principal">;
 
     const created = nowIso();
@@ -89,13 +89,13 @@ export const initCmd = defineCommand({
     }
 
     // Copy schema/glossary templates.
-    await copyFile(join(TEMPLATES_DIR, "evalo.schema.json"), join(root, "schema", "evalo.schema.json"));
+    await copyFile(join(TEMPLATES_DIR, "doco.schema.json"), join(root, "schema", "doco.schema.json"));
     await copyFile(join(TEMPLATES_DIR, "glossary.yaml"), join(root, "glossary.yaml"));
 
-    // Write evalo.yaml.
-    const evaloYaml = `# Evalo — root identity. See https://evalo.to (eventually) for docs.
-id: ${evaloId}
-node_type: evalo
+    // Write doco.yaml.
+    const docoYaml = `# Doco — root identity. See https://doco.to (eventually) for docs.
+id: ${docoId}
+node_type: doco
 schema_version: "0.1"
 
 slug: ${slug}
@@ -106,9 +106,9 @@ default_branch: main
 owner_id: ${principalId}
 
 description: |
-  ${existing ? "An Evalo for an existing project (brownfield)." : "An Evalo for a new project."}
+  ${existing ? "An Doco for an existing project (brownfield)." : "An Doco for a new project."}
 
-summary: "Created by 'evalo init' on ${created}."
+summary: "Created by 'doco init' on ${created}."
 created_at: ${created}
 created_by: ${principalId}
 revision: 1
@@ -123,14 +123,14 @@ members:
 
 imports: []
 `;
-    await writeFile(join(root, "evalo.yaml"), evaloYaml, "utf8");
+    await writeFile(join(root, "doco.yaml"), docoYaml, "utf8");
 
     // Write the owner Principal stub.
     const githubBlock = ownerEmail
       ? `github_identity:\n  github_login: ${ownerUsername}\n  email: ${ownerEmail}\n`
       : `github_identity:\n  github_login: ${ownerUsername}\n`;
     const principalYaml = `id: ${principalId}
-evalo_id: ${evaloId}
+doco_id: ${docoId}
 node_type: principal
 schema_version: "0.1"
 summary: "Owner of ${slug}."
@@ -156,28 +156,28 @@ tags: []
     // Write a minimal .gitignore.
     await writeFile(
       join(root, ".gitignore"),
-      `# Local index cache — per-clone, regenerable.\n.evalo/\n\n# OS / editor\n.DS_Store\n*.swp\n.vscode/\n.idea/\n`,
+      `# Local index cache — per-clone, regenerable.\n.doco/\n\n# OS / editor\n.DS_Store\n*.swp\n.vscode/\n.idea/\n`,
       "utf8",
     );
 
     // Write a stub README.
     await writeFile(
       join(root, "README.md"),
-      `# ${slug.split("/")[1] ?? slug}\n\nAn Evalo.\n\nNext steps:\n\n1. Declare your top-level Intents.\n2. Add the first few \`must\`/\`must_not\` Rules (privacy, security, compliance).\n3. Record Decisions as work begins.\n\nRun \`evalo validate\` to confirm the structure is correct.\n`,
+      `# ${slug.split("/")[1] ?? slug}\n\nAn Doco.\n\nNext steps:\n\n1. Declare your top-level Intents.\n2. Add the first few \`must\`/\`must_not\` Rules (privacy, security, compliance).\n3. Record Decisions as work begins.\n\nRun \`doco validate\` to confirm the structure is correct.\n`,
       "utf8",
     );
 
     console.log();
-    console.log(header(`Created Evalo: ${slug}`));
+    console.log(header(`Created Doco: ${slug}`));
     console.log(rule());
     console.log(checkmark(`Root:           ${c.dim(root)}`));
-    console.log(checkmark(`Evalo ID:       ${c.dim(evaloId)}`));
+    console.log(checkmark(`Doco ID:       ${c.dim(docoId)}`));
     console.log(checkmark(`Owner:          ${ownerUsername} (${principalId})`));
     if (existing) {
       console.log(checkmark(`Mode:           ${c.warn("brownfield")} (extend with backfill importers in phase 6)`));
     }
     console.log();
-    console.log(c.dim(`Next: cd ${dirName} && evalo validate`));
+    console.log(c.dim(`Next: cd ${dirName} && doco validate`));
     console.log();
   },
 });

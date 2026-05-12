@@ -1,6 +1,6 @@
 ---
 id: rule_01KR441EAJXG9SV4JV25Q7HQZP
-evalo_id: evalo_01KR441EA0ZDMF0N5DY38GSVS3
+doco_id: doco_01KR441EA0ZDMF0N5DY38GSVS3
 node_type: rule
 schema_version: "0.1"
 summary: "Every Reasoning entity must have a `conclusion_ref` that resolves to a real entity — no orphans."
@@ -14,7 +14,7 @@ applies_to:
   node_type: reasoning
 predicate: |
   Reasoning.conclusion_ref MUST be a non-null EntityId that resolves to a
-  loaded entity in this Evalo. Orphan Reasonings — no conclusion or pointing
+  loaded entity in this Doco. Orphan Reasonings — no conclusion or pointing
   to a missing target — fail this Rule.
 expected: true
 on_violation: warn
@@ -24,14 +24,14 @@ created_by: principal_01KR441EA259F7EE420Z4VWFPJ
 revision: 1
 lifecycle: active
 status: active
-tags: []
+scopes: []
 ---
 
 # Orphan-Reasoning lint as a Rule
 
-Implemented in [@evalo/lints](../packages/lints/src/orphan-reasoning.ts);
+Implemented in [@doco/lints](../packages/lints/src/orphan-reasoning.ts);
 this Rule entity makes the policy explicit and queryable. The lint runs on
-every `evalo lint` and on the web's `/lint` page.
+every `doco lint` and on the web's `/lint` page.
 
 Reasoning entities are first-class precisely so multi-author critique is
 possible (ADR-012). An orphan defeats that purpose — the conclusion the

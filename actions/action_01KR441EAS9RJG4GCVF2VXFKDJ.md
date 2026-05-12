@@ -1,9 +1,9 @@
 ---
 id: action_01KR441EAS9RJG4GCVF2VXFKDJ
-evalo_id: evalo_01KR441EA0ZDMF0N5DY38GSVS3
+doco_id: doco_01KR441EA0ZDMF0N5DY38GSVS3
 node_type: action
 schema_version: "0.1"
-summary: "Implemented Phase 5: @evalo/discovery (5-strategy find-rules + glossary + embeddings interface), web layer (initially Hono+JSX SSR; superseded by ADR-055 Remix migration)."
+summary: "Implemented Phase 5: @doco/discovery (5-strategy find-rules + glossary + embeddings interface), web layer (initially Hono+JSX SSR; superseded by ADR-055 Remix migration)."
 
 actor_id: principal_01KR441EA259F7EE420Z4VWFPJ
 verb: implement_phase
@@ -23,7 +23,7 @@ decision_ids:
 
 inputs:
   phase: 5
-  embedding_provider_default: noop   # NoopEmbeddingProvider; OpenAI lands when EVALO_EMBEDDING_API_KEY is set
+  embedding_provider_default: noop   # NoopEmbeddingProvider; OpenAI lands when DOCO_EMBEDDING_API_KEY is set
 
 outputs:
   packages_created: [discovery, web]
@@ -33,7 +33,7 @@ outputs:
   initial_web_stack: "Hono + JSX SSR (later superseded by Remix per ADR-055)"
   phase_end_demo: |
     - Chrome E2E across /, /e/decision/<id>, /lint, /search?q=priority
-    - find-rules with --verb delete_evalo --actor <agent> → PRECISE: only-humans-delete-evalo
+    - find-rules with --verb delete_doco --actor <agent> → PRECISE: only-humans-delete-doco
     - find-rules with --description "validate user input" → 5 FTS hits ranked
   commit: 5d83251
 
@@ -45,8 +45,8 @@ created_by: principal_01KR441EA259F7EE420Z4VWFPJ
 revision: 1
 lifecycle: succeeded
 status: completed
-tags:
-  - tag_01KR441EA8BTTB99H928Z0NQQW
+scopes:
+  - scope_01KR441EA8BTTB99H928Z0NQQW
 ---
 
 # Phase 5 — discovery + web SSR

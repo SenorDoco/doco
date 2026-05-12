@@ -2,14 +2,14 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { SchemaValidator, loadEvalo, validateEvalo } from "@evalo/core";
+import { SchemaValidator, loadDoco, validateDoco } from "@doco/core";
 import { initCmd } from "../commands/init.js";
 
 let tmp: string;
 let originalCwd: string;
 
 beforeEach(async () => {
-  tmp = await mkdtemp(join(tmpdir(), "evalo-init-"));
+  tmp = await mkdtemp(join(tmpdir(), "doco-init-"));
   originalCwd = process.cwd();
   process.chdir(tmp);
 });
@@ -19,8 +19,8 @@ afterEach(async () => {
   await rm(tmp, { recursive: true, force: true });
 });
 
-describe("evalo init + validate end-to-end", () => {
-  it("creates a new Evalo that passes validation", async () => {
+describe("doco init + validate end-to-end", () => {
+  it("creates a new Doco that passes validation", async () => {
     // Run the init command's handler directly (bypassing the CLI parser).
     await initCmd.run!({
       args: {
@@ -37,13 +37,13 @@ describe("evalo init + validate end-to-end", () => {
     });
 
     const root = join(tmp, "my-project");
-    const loaded = await loadEvalo(root);
-    expect(loaded.evalo.slug).toBe("test/my-project");
+    const loaded = await loadDoco(root);
+    expect(loaded.doco.slug).toBe("test/my-project");
     expect(loaded.byType.get("principal")?.length).toBe(1);
     expect(loaded.failures).toEqual([]);
 
     const validator = await SchemaValidator.load(root);
-    const report = await validateEvalo(loaded, validator);
+    const report = await validateDoco(loaded, validator);
     expect(report.ok).toBe(true);
     expect(report.totalEntities).toBe(1); // just the owner Principal
   });

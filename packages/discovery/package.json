@@ -1,5 +1,5 @@
 {
-  "name": "@evalo/discovery",
+  "name": "@doco/discovery",
   "version": "0.0.1",
   "private": true,
   "type": "module",
@@ -20,9 +20,9 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@evalo/index": "workspace:*",
-    "@evalo/runtime": "workspace:*",
-    "@evalo/shared": "workspace:*",
+    "@doco/index": "workspace:*",
+    "@doco/runtime": "workspace:*",
+    "@doco/shared": "workspace:*",
     "better-sqlite3": "^11.7.0",
     "yaml": "^2.6.1"
   },

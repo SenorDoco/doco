@@ -1,18 +1,18 @@
 ---
 id: decision_01KR441EAN4CD2MXV5A2E4TYCB
-evalo_id: evalo_01KR441EA0ZDMF0N5DY38GSVS3
+doco_id: doco_01KR441EA0ZDMF0N5DY38GSVS3
 node_type: decision
 schema_version: "0.1"
-summary: "An Evalo IS a git repository. One file per entity in node-named directories."
+summary: "An Doco IS a git repository. One file per entity in node-named directories."
 
 slug: storage-is-git-repository
 number: "ADR-002"
 intent_ids:
   - intent_01KR441EA92V53H22ZN087YMRM   # alignment-framework
   - intent_01KR441EAEM5NQBM160763TDDT   # implementation-v0
-question: "Where does an Evalo's data live?"
+question: "Where does an Doco's data live?"
 chosen: |
-  An Evalo is a git repository. Each entity is a single file in a node-named
+  An Doco is a git repository. Each entity is a single file in a node-named
   directory (intents/, rules/, decisions/, ...). The file tree IS the
   source-of-truth.
 alternatives:
@@ -29,14 +29,14 @@ created_by: principal_01KR441EA199MZCP7RDMADFZW9
 revision: 1
 lifecycle: active
 status: accepted
-tags:
-  - tag_01KR441EA37E3M5V0ZV6ZRB97D   # tag_adr
-  - tag_01KR441EA8BTTB99H928Z0NQQW   # scope_meta
+scopes:
+  - scope_01KR441EA37E3M5V0ZV6ZRB97D   # tag_adr
+  - scope_01KR441EA8BTTB99H928Z0NQQW   # scope_meta
 ---
 
 # ADR-002 — Storage = git repository (one file per entity)
 
 Version control, branching, diffs, and merge are free. Per-clone local indices
-live in `.evalo/` outside source-of-truth (D-023).
+live in `.doco/` outside source-of-truth (D-023).
 
 Reference: SCHEMA.md §2.

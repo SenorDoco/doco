@@ -1,6 +1,6 @@
 ---
 id: decision_01KR441EA9PY9B1V5H7JRN8DAV
-evalo_id: evalo_01KR441EA0ZDMF0N5DY38GSVS3
+doco_id: doco_01KR441EA0ZDMF0N5DY38GSVS3
 node_type: decision
 schema_version: "0.1"
 summary: "Web layer migrated to Remix v7 (React Router 7) + Tailwind v4 + shadcn-style components, executing ADR-046 after a brief Hono+JSX SSR deviation."
@@ -18,8 +18,8 @@ chosen: |
   better-sqlite3 is marked external in vite.config.ts; workspace deps are
   noExternal so the SSR bundle pulls them in.
 
-  evalo serve no longer mounts web — runs API only on :8787. Web runs as
-  its own dev server: `pnpm --filter @evalo/web dev` on :5173.
+  doco serve no longer mounts web — runs API only on :8787. Web runs as
+  its own dev server: `pnpm --filter @doco/web dev` on :5173.
 alternatives:
   - name: Keep Hono+JSX SSR (don't migrate)
     rejected_because: "Deviates from ADR-046 (which names Remix). Founder explicitly redirected to migrate."
@@ -35,9 +35,9 @@ created_by: principal_01KR441EA259F7EE420Z4VWFPJ
 revision: 1
 lifecycle: active
 status: accepted
-tags:
-  - tag_01KR441EA37E3M5V0ZV6ZRB97D
-  - tag_01KR441EA8BTTB99H928Z0NQQW
+scopes:
+  - scope_01KR441EA37E3M5V0ZV6ZRB97D
+  - scope_01KR441EA8BTTB99H928Z0NQQW
 ---
 
 # ADR-055 — Web migration to Remix v7 / Tailwind v4 / shadcn-style

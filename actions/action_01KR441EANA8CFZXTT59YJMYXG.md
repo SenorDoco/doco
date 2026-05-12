@@ -1,9 +1,9 @@
 ---
 id: action_01KR441EANA8CFZXTT59YJMYXG
-evalo_id: evalo_01KR441EA0ZDMF0N5DY38GSVS3
+doco_id: doco_01KR441EA0ZDMF0N5DY38GSVS3
 node_type: action
 schema_version: "0.1"
-summary: "Implemented Phase 1: @evalo/shared, @evalo/core, @evalo/cli; `evalo validate` against this Evalo passes for 78 entities."
+summary: "Implemented Phase 1: @doco/shared, @doco/core, @doco/cli; `doco validate` against this Doco passes for 78 entities."
 
 actor_id: principal_01KR441EA259F7EE420Z4VWFPJ
 verb: implement_phase
@@ -27,7 +27,7 @@ outputs:
   packages_created: [shared, core, cli]
   test_files: 5
   tests_pass: 36
-  phase_end_demo: "evalo validate → 78 entities, 0 errors"
+  phase_end_demo: "doco validate → 78 entities, 0 errors"
   commit: 02264ff
 
 started_at: 2026-05-08T16:30:00Z
@@ -38,18 +38,18 @@ created_by: principal_01KR441EA259F7EE420Z4VWFPJ
 revision: 1
 lifecycle: succeeded
 status: completed
-tags:
-  - tag_01KR441EA8BTTB99H928Z0NQQW   # scope_meta
+scopes:
+  - scope_01KR441EA8BTTB99H928Z0NQQW   # scope_meta
 ---
 
 # Phase 1 — local-first foundation (CLI you can use solo)
 
-@evalo/shared exports ULID generation, branded EntityId/Ulid types, time
+@doco/shared exports ULID generation, branded EntityId/Ulid types, time
 helpers, and the full discriminated-union of Entity types matching the
-schema. @evalo/core wires AJV against `schema/evalo.schema.json` (with
+schema. @doco/core wires AJV against `schema/doco.schema.json` (with
 yaml 2.x as gray-matter's engine per ADR-060), walks the entity directories,
-detects orphan refs, and produces a ValidationReport. @evalo/cli ships
-`evalo init`, `show`, `validate` via citty.
+detects orphan refs, and produces a ValidationReport. @doco/cli ships
+`doco init`, `show`, `validate` via citty.
 
-Phase-end demo: `evalo validate` against this very repo reports 78 entities,
+Phase-end demo: `doco validate` against this very repo reports 78 entities,
 zero schema errors, zero orphan refs.

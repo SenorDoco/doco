@@ -1,6 +1,6 @@
 ---
 id: action_01KR441EAT66CAM5X3QRFF8QM9
-evalo_id: evalo_01KR441EA0ZDMF0N5DY38GSVS3
+doco_id: doco_01KR441EA0ZDMF0N5DY38GSVS3
 node_type: action
 schema_version: "0.1"
 summary: "Migrated web layer from Hono+JSX SSR to Remix v7 + Tailwind v4 + shadcn-style components per ADR-055; verified via Chrome MCP."
@@ -24,7 +24,7 @@ inputs:
 outputs:
   files_replaced: ["packages/web/src/* → packages/web/app/*"]
   routes: ["/", "/e/:type", "/e/:type/:id", "/search", "/lint"]
-  cli_change: "evalo serve no longer mounts web; runs API only on :8787; web is `pnpm --filter @evalo/web dev` on :5173"
+  cli_change: "doco serve no longer mounts web; runs API only on :8787; web is `pnpm --filter @doco/web dev` on :5173"
   e2e_verification: "Chrome MCP navigated all 5 routes; getComputedStyle confirmed Tailwind tokens applied"
   production_build_verified: true
   commits: [fa8bbb6, d0fbef4]
@@ -37,8 +37,8 @@ created_by: principal_01KR441EA259F7EE420Z4VWFPJ
 revision: 1
 lifecycle: succeeded
 status: completed
-tags:
-  - tag_01KR441EA8BTTB99H928Z0NQQW
+scopes:
+  - scope_01KR441EA8BTTB99H928Z0NQQW
 ---
 
 # Migrate web to Remix v7 / Tailwind v4 / shadcn-style

@@ -1,5 +1,5 @@
-import { type EntityId, isEntityId } from "@evalo/shared";
-import type { LoadedEvalo } from "./loader.js";
+import { type EntityId, isEntityId } from "@doco/shared";
+import type { LoadedDoco } from "./loader.js";
 
 export interface OrphanRef {
   source: EntityId;
@@ -9,20 +9,20 @@ export interface OrphanRef {
 
 /**
  * Walk every loaded entity and find every entity-ID-shaped value that doesn't resolve
- * to a loaded entity. The Evalo's own `id` (self-reference) is allowed.
+ * to a loaded entity. The Doco's own `id` (self-reference) is allowed.
  *
- * Cross-Evalo references with the form `<namespace>:<type>_<ulid>` are skipped — they
+ * Cross-Doco references with the form `<namespace>:<type>_<ulid>` are skipped — they
  * resolve via the imports machinery, which isn't built yet.
  */
-export function findOrphanRefs(loaded: LoadedEvalo): OrphanRef[] {
+export function findOrphanRefs(loaded: LoadedDoco): OrphanRef[] {
   const orphans: OrphanRef[] = [];
   const known = new Set<string>(loaded.entities.keys());
-  known.add(loaded.evalo.id);
+  known.add(loaded.doco.id);
 
   for (const [id, le] of loaded.entities) {
     walk(le.entity, "", (path, value) => {
       if (typeof value !== "string") return;
-      if (value.includes(":")) return; // cross-Evalo, skip
+      if (value.includes(":")) return; // cross-Doco, skip
       if (!isEntityId(value)) return;
       if (known.has(value)) return;
       orphans.push({ source: id, field: path, target: value });

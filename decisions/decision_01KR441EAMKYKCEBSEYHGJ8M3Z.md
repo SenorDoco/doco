@@ -1,6 +1,6 @@
 ---
 id: decision_01KR441EAMKYKCEBSEYHGJ8M3Z
-evalo_id: evalo_01KR441EA0ZDMF0N5DY38GSVS3
+doco_id: doco_01KR441EA0ZDMF0N5DY38GSVS3
 node_type: decision
 schema_version: "0.1"
 summary: "Strict priority order: agent comprehension > agent updates > human comprehension > scoping > version control > performance > issue detection."
@@ -21,9 +21,9 @@ alternatives:
   - name: Equal-weight priorities
     rejected_because: "Lets every tradeoff be relitigated; the schema/api/UX drift over time."
   - name: Performance first
-    rejected_because: "Optimizes for the wrong audience — Evalo's whole point is alignment surface area, not speed."
+    rejected_because: "Optimizes for the wrong audience — Doco's whole point is alignment surface area, not speed."
   - name: Human-comprehension first
-    rejected_because: "Conventional but wrong for Evalo. Agents are first-class users (intent_01KR441EACJYB895DWKG7Z25SF); their comprehension determines whether the framework can be operated at all."
+    rejected_because: "Conventional but wrong for Doco. Agents are first-class users (intent_01KR441EACJYB895DWKG7Z25SF); their comprehension determines whether the framework can be operated at all."
 rules_consulted: []
 decided_by: principal_01KR441EA199MZCP7RDMADFZW9
 decided_at: 2026-05-08T15:18:00Z
@@ -33,9 +33,9 @@ created_by: principal_01KR441EA199MZCP7RDMADFZW9
 revision: 1
 lifecycle: active
 status: accepted
-tags:
-  - tag_01KR441EA37E3M5V0ZV6ZRB97D   # tag_adr
-  - tag_01KR441EA8BTTB99H928Z0NQQW   # scope_meta
+scopes:
+  - scope_01KR441EA37E3M5V0ZV6ZRB97D   # tag_adr
+  - scope_01KR441EA8BTTB99H928Z0NQQW   # scope_meta
 ---
 
 # ADR-001 — Optimization priority order (strict)

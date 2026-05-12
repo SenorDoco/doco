@@ -1,9 +1,9 @@
 ---
 id: action_01KR441EAXS1GPG6CQH75EECD2
-evalo_id: evalo_01KR441EA0ZDMF0N5DY38GSVS3
+doco_id: doco_01KR441EA0ZDMF0N5DY38GSVS3
 node_type: action
 schema_version: "0.1"
-summary: "Added Evalo brand identity to the web UI: favicon (icon-only), wordmark (icon + 'Evalo' text), and a hero on the home page."
+summary: "Added Doco brand identity to the web UI: favicon (icon-only), wordmark (icon + 'Doco' text), and a hero on the home page."
 
 actor_id: principal_01KR441EA259F7EE420Z4VWFPJ
 verb: add_brand_identity
@@ -20,7 +20,7 @@ inputs:
   assets_provided_by: principal_01KR441EA199MZCP7RDMADFZW9
   asset_kind:
     - "icon-only SVG (graph-of-circles motif, 200×200)"
-    - "wordmark SVG (icon + 'Evalo' text, 1012×247)"
+    - "wordmark SVG (icon + 'Doco' text, 1012×247)"
 
 outputs:
   files_added:
@@ -29,7 +29,7 @@ outputs:
     - packages/web/app/components/logo.tsx   # currentColor-themed inline icon (kept for future card / chip uses)
   files_changed:
     - packages/web/app/root.tsx              # links() exports favicon
-    - packages/web/app/components/site-header.tsx  # wordmark replaces text "Evalo"
+    - packages/web/app/components/site-header.tsx  # wordmark replaces text "Doco"
     - packages/web/app/routes/_index.tsx     # hero section with wordmark on home
   e2e_verification:
     favicon_url: "http://127.0.0.1:5173/favicon.svg → HTTP 200, image/svg+xml"
@@ -45,11 +45,11 @@ created_by: principal_01KR441EA259F7EE420Z4VWFPJ
 revision: 1
 lifecycle: succeeded
 status: completed
-tags:
-  - tag_01KR441EA8BTTB99H928Z0NQQW
+scopes:
+  - scope_01KR441EA8BTTB99H928Z0NQQW
 ---
 
-# Add Evalo brand identity to the web UI
+# Add Doco brand identity to the web UI
 
 Two SVG assets shipped in `packages/web/public/`. The wordmark uses the
 brand olive `#707A23`; the icon-only Logo component uses `currentColor` so
