@@ -11,5 +11,6 @@ export default [
   route("e/:type/:id", "routes/e.$type.$id.tsx"),
   route("search", "routes/search.tsx"),
   route("lint", "routes/lint.tsx"),
+  route("coverage", "routes/coverage.tsx"),
   route("api/recent", "routes/api.recent.tsx"),
 ] satisfies RouteConfig;

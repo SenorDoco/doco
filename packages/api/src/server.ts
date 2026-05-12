@@ -4,7 +4,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { logger } from "hono/logger";
 import type { Action } from "@doco/shared";
-import { runAllLints } from "@doco/lints";
+import { computeCoverage, runAllLints } from "@doco/lints";
 import { checkAgainstRules } from "@doco/runtime";
 import { CANONICAL_INSTRUCTIONS } from "./instructions.js";
 
@@ -156,11 +156,17 @@ export function makeApp(opts: ServerOptions): Hono {
   app.get("/api/v1/lint", (c) => {
     const db = openDbReadonly(opts.docoRoot);
     try {
-      const report = runAllLints(db);
+      const report = runAllLints(db, { docoRoot: opts.docoRoot });
       return c.json(report);
     } finally {
       db.close();
     }
+  });
+
+  /** Drift report — what's modified but uncovered (ADR-090). */
+  app.get("/api/v1/coverage", (c) => {
+    const report = computeCoverage(opts.docoRoot);
+    return c.json(report);
   });
 
   /**
@@ -213,7 +219,7 @@ export function makeApp(opts: ServerOptions): Hono {
         };
       });
 
-      const lintReport = runAllLints(db);
+      const lintReport = runAllLints(db, { docoRoot: opts.docoRoot });
       const issuesByLint = new Map<
         string,
         { lintId: string; warnings: number; errors: number; sample?: string }
@@ -254,6 +260,14 @@ export function makeApp(opts: ServerOptions): Hono {
       const host = c.req.header("host") ?? "127.0.0.1:8787";
       const hostUrl = `${proto}://${host}`;
 
+      // Drift signal (ADR-090): how many modified files lack an Action.
+      // The agent sees this on bootstrap and can act before drift compounds.
+      const coverage = computeCoverage(opts.docoRoot);
+      const uncoveredChanges = {
+        count: coverage.uncovered.length,
+        sample: coverage.uncovered.slice(0, 10),
+      };
+
       return c.json({
         canonical_instructions: CANONICAL_INSTRUCTIONS,
         doco: docoEntity
@@ -270,6 +284,7 @@ export function makeApp(opts: ServerOptions): Hono {
         known_issues: Array.from(issuesByLint.values()).sort(
           (a, b) => b.errors - a.errors || b.warnings - a.warnings,
         ),
+        uncovered_changes: uncoveredChanges,
         recent_activity: recentRows,
       });
     } finally {

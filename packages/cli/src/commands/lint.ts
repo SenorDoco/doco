@@ -31,7 +31,7 @@ export const lintCmd = defineCommand({
     }
     const db = await openDb(root, { readonly: true, fileMustExist: true });
     try {
-      const report = runAllLints(db);
+      const report = runAllLints(db, { docoRoot: root });
 
       if (args.json) {
         console.log(JSON.stringify(report, null, 2));

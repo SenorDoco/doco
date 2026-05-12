@@ -29,6 +29,7 @@ export function SiteHeader({ context }: SiteHeaderProps) {
     { to: "/e/action", label: "Actions" },
     { to: "/search", label: "Search" },
     { to: "/lint", label: "Lint" },
+    { to: "/coverage", label: "Coverage" },
   ];
 
   return (
