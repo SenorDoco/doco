@@ -5,7 +5,7 @@ node_type: action
 schema_version: "0.1"
 summary: "Implemented Phase 7: multi-tenant host with @doco/host package, doco host CLI, web dual-mode + host-scoped routes; verified against /tmp/test-host with Chrome MCP."
 
-actor_id: principal_01KR441EA259F7EE420Z4VWFPJ
+actor_id: claude-opus-4-7
 verb: implement_phase
 
 intent_ids:
@@ -48,7 +48,7 @@ started_at: 2026-05-08T18:30:00Z
 ended_at: 2026-05-08T19:30:00Z
 
 created_at: 2026-05-08T19:30:00Z
-created_by: principal_01KR441EA259F7EE420Z4VWFPJ
+created_by: claude-opus-4-7
 revision: 1
 lifecycle: succeeded
 status: completed

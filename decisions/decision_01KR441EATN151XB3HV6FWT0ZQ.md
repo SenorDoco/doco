@@ -20,11 +20,11 @@ alternatives:
   - name: Per-kind status enums only
     rejected_because: "Synonym sprawl — 'achieved' for Intent, 'accepted' for Decision, 'completed' for Action — makes 'show me everything currently active' a multi-query mess."
 rules_consulted: []
-decided_by: principal_01KR441EA199MZCP7RDMADFZW9
+decided_by: torrenegra
 decided_at: 2026-05-08T15:18:00Z
 
 created_at: 2026-05-08T15:18:00Z
-created_by: principal_01KR441EA199MZCP7RDMADFZW9
+created_by: torrenegra
 revision: 1
 lifecycle: active
 status: accepted

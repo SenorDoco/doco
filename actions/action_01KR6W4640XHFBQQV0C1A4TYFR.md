@@ -5,7 +5,7 @@ node_type: action
 schema_version: "0.1"
 summary: "Wired Doco's embedding provider to read OPENAI_API_KEY (matching Speco's convention). Dropped DOCO_EMBEDDING_PROVIDER and DOCO_EMBEDDING_API_KEY — pre-v1, no back-compat."
 
-actor_id: principal_01KR441EA259F7EE420Z4VWFPJ
+actor_id: claude-opus-4-7
 verb: switch_embedding_key_to_openai_api_key
 
 intent_ids:
@@ -41,7 +41,7 @@ started_at: 2026-05-09T17:45:00Z
 ended_at: 2026-05-09T17:48:00Z
 
 created_at: 2026-05-09T17:48:00Z
-created_by: principal_01KR441EA259F7EE420Z4VWFPJ
+created_by: claude-opus-4-7
 revision: 1
 lifecycle: succeeded
 status: completed

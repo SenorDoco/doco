@@ -384,7 +384,7 @@ export default function EntityDetail({
 
   return (
     <div>
-      <SiteHeader context={loaderData.docoSlug} mode="single-doco" />
+      <SiteHeader context={loaderData.docoSlug} />
       <main className="mx-auto max-w-7xl px-6 py-6">
         {/* Mobile tabs (hidden md+) */}
         <div className="md:hidden mb-4 flex gap-2 border-b border-border">

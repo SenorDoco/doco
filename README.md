@@ -37,8 +37,8 @@ the project defines.
 ## Status
 
 **Day 0: 2026-05-08.** The framework is being defined from first principles in
-collaboration between [torrenegra](principals/principal_01KR441EA199MZCP7RDMADFZW9.yaml)
-(human, founder) and [claude-opus-4-7](principals/principal_01KR441EA259F7EE420Z4VWFPJ.yaml)
+collaboration between [torrenegra](principals/torrenegra.yaml)
+(human, founder) and [claude-opus-4-7](principals/claude-opus-4-7.yaml)
 (agent, invited 2026-05-08T15:42:00Z).
 
 The bootstrap action that produced this directory tree is recorded at

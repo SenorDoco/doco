@@ -19,14 +19,12 @@ afterEach(async () => {
   await rm(tmp, { recursive: true, force: true });
 });
 
-describe("doco init + validate end-to-end", () => {
+describe("doco init + validate end-to-end (local-solo, ADR-087)", () => {
   it("creates a new Doco that passes validation", async () => {
-    // Run the init command's handler directly (bypassing the CLI parser).
     await initCmd.run!({
       args: {
-        slug: "test/my-project",
-        "owner-username": "tester",
-        "owner-email": "tester@example.com",
+        slug: "my-project",
+        actor: "tester",
         visibility: "private",
         existing: false,
         _: [],
@@ -38,13 +36,13 @@ describe("doco init + validate end-to-end", () => {
 
     const root = join(tmp, "my-project");
     const loaded = await loadDoco(root);
-    expect(loaded.doco.slug).toBe("test/my-project");
-    expect(loaded.byType.get("principal")?.length).toBe(1);
+    expect(loaded.doco.slug).toBe("my-project");
+    expect(loaded.doco.created_by).toBe("tester");
     expect(loaded.failures).toEqual([]);
 
     const validator = await SchemaValidator.load(root);
     const report = await validateDoco(loaded, validator);
     expect(report.ok).toBe(true);
-    expect(report.totalEntities).toBe(1); // just the owner Principal
+    expect(report.totalEntities).toBe(0); // doco.yaml itself is the root, not an entity in byType
   });
 });

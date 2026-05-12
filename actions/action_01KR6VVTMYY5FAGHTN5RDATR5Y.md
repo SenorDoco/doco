@@ -5,7 +5,7 @@ node_type: action
 schema_version: "0.1"
 summary: "Bugfix: indexer was emitting self-edges from every entity's own `id` field, plus noise edges from `doco_id` (Doco membership). Both fixed in deriveEdges; reindex confirms zero self-edges and zero `id`/`doco_id` edges."
 
-actor_id: principal_01KR441EA259F7EE420Z4VWFPJ
+actor_id: claude-opus-4-7
 verb: fix_self_edge_in_indexer
 
 intent_ids:
@@ -42,7 +42,7 @@ started_at: 2026-05-09T17:25:00Z
 ended_at: 2026-05-09T17:30:00Z
 
 created_at: 2026-05-09T17:30:00Z
-created_by: principal_01KR441EA259F7EE420Z4VWFPJ
+created_by: claude-opus-4-7
 revision: 1
 lifecycle: succeeded
 status: completed

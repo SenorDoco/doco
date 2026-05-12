@@ -5,7 +5,7 @@ node_type: action
 schema_version: "0.1"
 summary: "Backlog: Recent feed renders in real time with new items appended at the bottom. UX hints when new items appear off-screen — both below the current scroll and in the unrendered tail."
 
-actor_id: principal_01KR441EA199MZCP7RDMADFZW9
+actor_id: torrenegra
 verb: realtime_recent_feed
 
 intent_ids:
@@ -43,10 +43,18 @@ outputs:
     - "Multi-instance reality: in host mode, each Doco has its own .doco/cache.db and its own feed. Real-time scopes per-Doco."
 
 created_at: 2026-05-09T17:30:00Z
-created_by: principal_01KR441EA259F7EE420Z4VWFPJ
-revision: 1
-lifecycle: proposed
-status: planned
+created_by: claude-opus-4-7
+revision: 2
+lifecycle: succeeded
+status: completed
+started_at: 2026-05-12T11:00:00Z
+ended_at: 2026-05-12T11:30:00Z
+completion_note: |
+  Shipped via ADR-089 (live Recent feed). RecentFeed component
+  appends new items at the bottom (chronological), polls
+  /api/recent?since=<latest-created_at> every 5 seconds, and surfaces
+  off-screen new items via a sticky "N new ↓" badge that uses an
+  IntersectionObserver. Indexer auto-reindex on file change deferred.
 scopes:
   - scope_01KR441EA8BTTB99H928Z0NQQW
 ---

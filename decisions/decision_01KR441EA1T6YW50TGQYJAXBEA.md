@@ -19,11 +19,11 @@ alternatives:
   - name: Commercial / proprietary
     rejected_because: "Conflicts with intent_01KR441EACJYB895DWKG7Z25SF (dual-user-model implies broad access) and would chill adoption."
 rules_consulted: []
-decided_by: principal_01KR441EA199MZCP7RDMADFZW9
+decided_by: torrenegra
 decided_at: 2026-05-08T16:30:00Z
 
 created_at: 2026-05-08T16:30:00Z
-created_by: principal_01KR441EA259F7EE420Z4VWFPJ
+created_by: claude-opus-4-7
 revision: 1
 lifecycle: active
 status: accepted

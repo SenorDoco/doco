@@ -5,7 +5,7 @@ node_type: action
 schema_version: "0.1"
 summary: "Backlog: rename the project (and the unit-of-scoping entity type) from 'Doco' to 'Aligno'. Major-version schema bump."
 
-actor_id: principal_01KR441EA199MZCP7RDMADFZW9
+actor_id: torrenegra
 verb: rename_project_doco_to_aligno
 
 intent_ids:
@@ -50,7 +50,7 @@ outputs:
       - "Git history preserved (git supports directory rename via mv + commit)"
 
 created_at: 2026-05-09T03:15:00Z
-created_by: principal_01KR441EA259F7EE420Z4VWFPJ
+created_by: claude-opus-4-7
 revision: 1
 lifecycle: abandoned
 status: abandoned

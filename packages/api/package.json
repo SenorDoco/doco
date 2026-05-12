@@ -22,7 +22,6 @@
   },
   "dependencies": {
     "@doco/core": "workspace:*",
-    "@doco/host": "workspace:*",
     "@doco/index": "workspace:*",
     "@doco/lints": "workspace:*",
     "@doco/runtime": "workspace:*",

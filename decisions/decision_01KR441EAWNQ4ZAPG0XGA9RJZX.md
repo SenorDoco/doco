@@ -23,11 +23,11 @@ alternatives:
   - name: Plan, Question, Claim, Scope as first-class entities
     rejected_because: "Plan is emergent from Intent + Decision + Action chains. Question is folded into Decision.question. Claim is Reasoning.conclusion. Scope is reserved-tag-prefix (D-028). Promote any of these only if real use cases demand."
 rules_consulted: []
-decided_by: principal_01KR441EA199MZCP7RDMADFZW9
+decided_by: torrenegra
 decided_at: 2026-05-08T15:18:00Z
 
 created_at: 2026-05-08T15:18:00Z
-created_by: principal_01KR441EA199MZCP7RDMADFZW9
+created_by: torrenegra
 revision: 1
 lifecycle: active
 status: accepted

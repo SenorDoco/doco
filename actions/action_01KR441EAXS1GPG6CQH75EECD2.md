@@ -5,7 +5,7 @@ node_type: action
 schema_version: "0.1"
 summary: "Added Doco brand identity to the web UI: favicon (icon-only), wordmark (icon + 'Doco' text), and a hero on the home page."
 
-actor_id: principal_01KR441EA259F7EE420Z4VWFPJ
+actor_id: claude-opus-4-7
 verb: add_brand_identity
 
 intent_ids:
@@ -17,7 +17,7 @@ decision_ids:
 
 inputs:
   brand_color: "#707A23"
-  assets_provided_by: principal_01KR441EA199MZCP7RDMADFZW9
+  assets_provided_by: torrenegra
   asset_kind:
     - "icon-only SVG (graph-of-circles motif, 200×200)"
     - "wordmark SVG (icon + 'Doco' text, 1012×247)"
@@ -41,7 +41,7 @@ started_at: 2026-05-08T18:15:00Z
 ended_at: 2026-05-08T18:25:00Z
 
 created_at: 2026-05-08T18:25:00Z
-created_by: principal_01KR441EA259F7EE420Z4VWFPJ
+created_by: claude-opus-4-7
 revision: 1
 lifecycle: succeeded
 status: completed

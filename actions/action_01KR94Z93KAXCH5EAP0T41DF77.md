@@ -5,7 +5,7 @@ node_type: action
 schema_version: "0.1"
 summary: "Backlog: make createDocoInHost atomic. Today if any write after mkdir throws, the directory exists in a half-created state and blocks retries with a misleading 'already exists' error."
 
-actor_id: principal_01KR441EA199MZCP7RDMADFZW9
+actor_id: torrenegra
 verb: make_create_doco_in_host_atomic
 
 intent_ids:
@@ -36,10 +36,16 @@ decisions_consulted:
   - decision_01KR8Z7YHGMPD7CJRGSSQG7KRV   # ADR-083 (Phase 20 brand cutover; the migration miss originated here)
 
 created_at: 2026-05-10T08:30:00Z
-created_by: principal_01KR441EA199MZCP7RDMADFZW9
-revision: 1
-lifecycle: proposed
-status: planned
+created_by: torrenegra
+revision: 2
+lifecycle: abandoned
+status: abandoned
+abandoned_reason: |
+  `createDocoInHost` no longer exists. ADR-087 removed the entire
+  packages/host package including this helper. Local-solo uses `doco
+  init` for new-Doco bootstrap. If hosted multi-tenant is later
+  reintroduced, the rollback-vs-detect-half-state advice here remains
+  a useful reference.
 scopes:
   - scope_01KR441EA8BTTB99H928Z0NQQW
 ---

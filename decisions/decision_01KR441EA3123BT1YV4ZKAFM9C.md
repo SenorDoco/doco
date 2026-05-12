@@ -26,11 +26,11 @@ alternatives:
     rejected_because: "Demands engineering for in-memory edge sets approaching ~500MB and PageRank passes in tens of seconds. Premature at v0."
 rules_consulted:
   - rule_01KR441EAF7M5QPF65BXGD1ET1
-decided_by: principal_01KR441EA199MZCP7RDMADFZW9
+decided_by: torrenegra
 decided_at: 2026-05-08T16:30:00Z
 
 created_at: 2026-05-08T16:30:00Z
-created_by: principal_01KR441EA259F7EE420Z4VWFPJ
+created_by: claude-opus-4-7
 revision: 1
 lifecycle: active
 status: accepted

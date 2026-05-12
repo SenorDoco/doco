@@ -22,7 +22,7 @@ expected: true
 on_violation: block
 
 created_at: 2026-05-08T15:18:00Z
-created_by: principal_01KR441EA199MZCP7RDMADFZW9
+created_by: torrenegra
 revision: 1
 lifecycle: active
 status: active

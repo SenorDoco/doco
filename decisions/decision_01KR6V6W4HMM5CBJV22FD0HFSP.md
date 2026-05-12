@@ -81,11 +81,11 @@ alternatives:
     rejected_because: "Adds a network dependency for every authoring action. FTS is cheap, deterministic, and offline. Embeddings layer in once the lexical-only signal stops being enough."
 rules_consulted:
   - rule_01KR441EAGVR2GFZAP9BMTSBG8   # orphan-reasoning rule (the existing pattern this generalizes)
-decided_by: principal_01KR441EA199MZCP7RDMADFZW9
+decided_by: torrenegra
 decided_at: 2026-05-09T17:10:00Z
 
 created_at: 2026-05-09T17:10:00Z
-created_by: principal_01KR441EA259F7EE420Z4VWFPJ
+created_by: claude-opus-4-7
 revision: 1
 lifecycle: active
 status: accepted

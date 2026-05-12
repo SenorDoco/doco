@@ -5,7 +5,7 @@ node_type: action
 schema_version: "0.1"
 summary: "Phase 11 — added `idea` as the 12th node type. Schema, branded types, Entity union, indexer table, API counts, web KNOWN sets, site-nav tab, AGENT.md, first idea entity, ADR-074. Eats its own dog food: the first idea proposed adding ideas."
 
-actor_id: principal_01KR441EA259F7EE420Z4VWFPJ
+actor_id: claude-opus-4-7
 verb: add_idea_node_type
 target: doco_01KR441EA0ZDMF0N5DY38GSVS3
 
@@ -52,7 +52,7 @@ started_at: 2026-05-09T15:50:00Z
 ended_at: 2026-05-09T16:05:00Z
 
 created_at: 2026-05-09T16:05:00Z
-created_by: principal_01KR441EA259F7EE420Z4VWFPJ
+created_by: claude-opus-4-7
 revision: 1
 lifecycle: succeeded
 status: completed

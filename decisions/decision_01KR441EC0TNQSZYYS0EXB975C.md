@@ -21,11 +21,11 @@ alternatives:
   - name: Per-kind list views as primary
     rejected_because: "Doesn't surface alerting items (failed Evaluations, blocked Actions) up-front. Recent-changes does."
 rules_consulted: []
-decided_by: principal_01KR441EA199MZCP7RDMADFZW9
+decided_by: torrenegra
 decided_at: 2026-05-08T15:31:00Z
 
 created_at: 2026-05-08T15:31:00Z
-created_by: principal_01KR441EA199MZCP7RDMADFZW9
+created_by: torrenegra
 revision: 1
 lifecycle: active
 status: accepted

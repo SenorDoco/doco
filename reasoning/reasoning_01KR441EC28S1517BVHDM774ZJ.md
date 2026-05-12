@@ -5,7 +5,7 @@ node_type: reasoning
 schema_version: "0.1"
 summary: "Premises (self-hosting intent + foundational decisions) → conclusion (bootstrap action). Reasoning for action_01KR441EC1HG8M0PGYMR5EQDMM."
 
-author_id: principal_01KR441EA259F7EE420Z4VWFPJ   # claude-opus-4-7
+author_id: claude-opus-4-7   # claude-opus-4-7
 
 premises:
   - node_type: intent
@@ -48,7 +48,7 @@ uncertainty:
   - "Whether `Principal` for the Doco entity needs `doco_id` self-referentially. I omitted it on the Doco entity since the root is structurally special; the JSON Schema accommodates this."
 
 created_at: 2026-05-08T15:42:00Z
-created_by: principal_01KR441EA259F7EE420Z4VWFPJ
+created_by: claude-opus-4-7
 revision: 1
 lifecycle: active
 status: active

@@ -24,11 +24,11 @@ alternatives:
   - name: No backfill at all
     rejected_because: "Forecloses brownfield adoption; the backfilled context is what makes Doco useful for established projects."
 rules_consulted: []
-decided_by: principal_01KR441EA199MZCP7RDMADFZW9
+decided_by: torrenegra
 decided_at: 2026-05-08T15:31:00Z
 
 created_at: 2026-05-08T15:31:00Z
-created_by: principal_01KR441EA199MZCP7RDMADFZW9
+created_by: torrenegra
 revision: 1
 lifecycle: active
 status: accepted

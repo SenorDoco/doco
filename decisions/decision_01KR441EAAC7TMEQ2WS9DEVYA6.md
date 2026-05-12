@@ -24,11 +24,11 @@ alternatives:
   - name: Sans-serif (Inter / system stack) for prose, monospace for code only
     rejected_because: "Founder requested 'monospace Ubuntu' for everything. The unified-monospace look reinforces the 'code editor for alignment data' aesthetic."
 rules_consulted: []
-decided_by: principal_01KR441EA199MZCP7RDMADFZW9
+decided_by: torrenegra
 decided_at: 2026-05-08T17:30:00Z
 
 created_at: 2026-05-08T17:30:00Z
-created_by: principal_01KR441EA259F7EE420Z4VWFPJ
+created_by: claude-opus-4-7
 revision: 1
 lifecycle: active
 status: accepted

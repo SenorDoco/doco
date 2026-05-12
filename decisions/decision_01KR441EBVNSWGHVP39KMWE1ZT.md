@@ -25,11 +25,11 @@ alternatives:
     rejected_because: "Conflicts with intent_01KR441EACJYB895DWKG7Z25SF (dual-user-model). Asymmetry should be exceptional and justified."
 rules_consulted:
   - rule_01KR441EAH8KJZ2F4TMP8YPQPB   # only-humans-delete-doco
-decided_by: principal_01KR441EA199MZCP7RDMADFZW9
+decided_by: torrenegra
 decided_at: 2026-05-08T15:18:00Z
 
 created_at: 2026-05-08T15:18:00Z
-created_by: principal_01KR441EA199MZCP7RDMADFZW9
+created_by: torrenegra
 revision: 1
 lifecycle: active
 status: accepted

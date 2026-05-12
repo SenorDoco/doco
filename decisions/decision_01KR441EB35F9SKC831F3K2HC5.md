@@ -19,11 +19,11 @@ alternatives:
   - name: Per-relationship dedicated edge types
     rejected_because: "'BornFromBugfix', 'BornFromADR' etc. — pattern repeats; one generic edge with semantics filled in by the entity types themselves keeps the schema small."
 rules_consulted: []
-decided_by: principal_01KR441EA199MZCP7RDMADFZW9
+decided_by: torrenegra
 decided_at: 2026-05-08T15:18:00Z
 
 created_at: 2026-05-08T15:18:00Z
-created_by: principal_01KR441EA199MZCP7RDMADFZW9
+created_by: torrenegra
 revision: 1
 lifecycle: active
 status: accepted

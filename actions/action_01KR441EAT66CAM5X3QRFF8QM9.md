@@ -5,7 +5,7 @@ node_type: action
 schema_version: "0.1"
 summary: "Migrated web layer from Hono+JSX SSR to Remix v7 + Tailwind v4 + shadcn-style components per ADR-055; verified via Chrome MCP."
 
-actor_id: principal_01KR441EA259F7EE420Z4VWFPJ
+actor_id: claude-opus-4-7
 verb: migrate_web_stack
 target: intent_01KR441EAEM5NQBM160763TDDT
 
@@ -33,7 +33,7 @@ started_at: 2026-05-08T17:50:00Z
 ended_at: 2026-05-08T17:58:00Z
 
 created_at: 2026-05-08T17:58:00Z
-created_by: principal_01KR441EA259F7EE420Z4VWFPJ
+created_by: claude-opus-4-7
 revision: 1
 lifecycle: succeeded
 status: completed

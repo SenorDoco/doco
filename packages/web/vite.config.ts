@@ -16,7 +16,6 @@ export default defineConfig({
       "@doco/api",
       "@doco/core",
       "@doco/discovery",
-      "@doco/host",
       "@doco/index",
       "@doco/lints",
       "@doco/shared",

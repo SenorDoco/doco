@@ -5,7 +5,7 @@ node_type: action
 schema_version: "0.1"
 summary: "Phase 9.1 — AGENT.md at repo root; success page stripped of technical recipes. Human's job is now: copy token, paste into chat. Agent reads repo's AGENT.md to learn what to do."
 
-actor_id: principal_01KR441EA259F7EE420Z4VWFPJ
+actor_id: claude-opus-4-7
 verb: ship_agent_md_and_simplify_success_page
 
 intent_ids:
@@ -45,7 +45,7 @@ started_at: 2026-05-09T14:30:00Z
 ended_at: 2026-05-09T14:45:00Z
 
 created_at: 2026-05-09T14:45:00Z
-created_by: principal_01KR441EA259F7EE420Z4VWFPJ
+created_by: claude-opus-4-7
 revision: 1
 lifecycle: succeeded
 status: completed

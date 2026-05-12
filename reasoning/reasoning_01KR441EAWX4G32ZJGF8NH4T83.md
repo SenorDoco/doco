@@ -5,7 +5,7 @@ node_type: reasoning
 schema_version: "0.1"
 summary: "Premises (ADR-046 names Remix; Phase 5 shipped Hono+JSX for time; founder explicitly redirected) → conclusion (migrate web to Remix v7 + Tailwind v4 + shadcn-style)."
 
-author_id: principal_01KR441EA259F7EE420Z4VWFPJ
+author_id: claude-opus-4-7
 
 premises:
   - node_type: decision
@@ -39,7 +39,7 @@ uncertainty:
   - "Whether the hand-rolled shadcn-style primitives (Badge/Card/Table/SiteHeader) should be replaced with `npx shadcn@latest add ...` formal copies. Equivalent visually; a follow-up Decision can settle convention."
 
 created_at: 2026-05-08T17:58:00Z
-created_by: principal_01KR441EA259F7EE420Z4VWFPJ
+created_by: claude-opus-4-7
 revision: 1
 lifecycle: active
 status: active

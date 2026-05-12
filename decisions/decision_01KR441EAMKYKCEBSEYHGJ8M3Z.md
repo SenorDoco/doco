@@ -25,11 +25,11 @@ alternatives:
   - name: Human-comprehension first
     rejected_because: "Conventional but wrong for Doco. Agents are first-class users (intent_01KR441EACJYB895DWKG7Z25SF); their comprehension determines whether the framework can be operated at all."
 rules_consulted: []
-decided_by: principal_01KR441EA199MZCP7RDMADFZW9
+decided_by: torrenegra
 decided_at: 2026-05-08T15:18:00Z
 
 created_at: 2026-05-08T15:18:00Z
-created_by: principal_01KR441EA199MZCP7RDMADFZW9
+created_by: torrenegra
 revision: 1
 lifecycle: active
 status: accepted

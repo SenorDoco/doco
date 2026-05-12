@@ -66,11 +66,11 @@ alternatives:
     rejected_because: "A cycle in `follows` makes ordering undefined. There's no useful semantic. Error is correct."
 
 rules_consulted: []
-decided_by: principal_01KR441EA199MZCP7RDMADFZW9
+decided_by: torrenegra
 decided_at: 2026-05-09T18:30:00Z
 
 created_at: 2026-05-09T18:30:00Z
-created_by: principal_01KR441EA259F7EE420Z4VWFPJ
+created_by: claude-opus-4-7
 revision: 1
 lifecycle: active
 status: accepted

@@ -1,11 +1,9 @@
 #!/usr/bin/env node
 import { defineCommand, runMain } from "citty";
-import { agentCmd } from "./commands/agent.js";
 import { checkCmd } from "./commands/check.js";
+import { coverageCmd } from "./commands/coverage.js";
 import { findRulesCmd } from "./commands/find-rules.js";
-import { hostCmd } from "./commands/host.js";
 import { initCmd } from "./commands/init.js";
-import { inviteCmd } from "./commands/invite.js";
 import { lintCmd } from "./commands/lint.js";
 import { queryCmd } from "./commands/query.js";
 import { reindexCmd } from "./commands/reindex.js";
@@ -13,6 +11,7 @@ import { serveCmd } from "./commands/serve.js";
 import { showCmd } from "./commands/show.js";
 import { validateCmd } from "./commands/validate.js";
 
+// Per ADR-087: hosted-multi-tenant subcommands (host, invite, agent) removed.
 const main = defineCommand({
   meta: {
     name: "doco",
@@ -29,9 +28,7 @@ const main = defineCommand({
     lint: lintCmd,
     "find-rules": findRulesCmd,
     serve: serveCmd,
-    host: hostCmd,
-    invite: inviteCmd,
-    agent: agentCmd,
+    coverage: coverageCmd,
   },
 });
 

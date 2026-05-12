@@ -36,14 +36,15 @@ alternatives:
   - name: Implement GitHub OAuth even for localhost
     rejected_because: "Requires app registration + a public callback URL — incompatible with the local-first scope per ADR-053. Defer until Phase 6."
 rules_consulted: []
-decided_by: principal_01KR441EA199MZCP7RDMADFZW9
+decided_by: torrenegra
 decided_at: 2026-05-09T00:00:00Z
+superseded_by: decision_01KREMDWG6SWKFHR5P1RDB64NC
 
 created_at: 2026-05-09T00:00:00Z
-created_by: principal_01KR441EA259F7EE420Z4VWFPJ
+created_by: claude-opus-4-7
 revision: 1
-lifecycle: active
-status: accepted
+lifecycle: superseded
+status: superseded
 scopes:
   - scope_01KR441EA37E3M5V0ZV6ZRB97D
   - scope_01KR441EA8BTTB99H928Z0NQQW

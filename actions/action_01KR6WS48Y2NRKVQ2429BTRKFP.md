@@ -5,7 +5,7 @@ node_type: action
 schema_version: "0.1"
 summary: "Phase 14 — entity-detail graph map. 2-column desktop / mobile-tabbed layout. Force-directed map of the focal node's PPR-ranked neighborhood with type-color filters, drag/zoom/pan, and click-to-navigate."
 
-actor_id: principal_01KR441EA259F7EE420Z4VWFPJ
+actor_id: claude-opus-4-7
 verb: ship_entity_detail_graph_map
 
 intent_ids:
@@ -69,7 +69,7 @@ started_at: 2026-05-09T17:55:00Z
 ended_at: 2026-05-09T18:05:00Z
 
 created_at: 2026-05-09T18:05:00Z
-created_by: principal_01KR441EA259F7EE420Z4VWFPJ
+created_by: claude-opus-4-7
 revision: 1
 lifecycle: succeeded
 status: completed

@@ -23,11 +23,11 @@ alternatives:
   - name: TerminusDB (git-like branching on a graph DB)
     rejected_because: "Conceptually aligned but would replace files-as-source-of-truth — much bigger architectural commitment. Revisit only if we ever go DB-as-source-of-truth."
 rules_consulted: []
-decided_by: principal_01KR441EA199MZCP7RDMADFZW9
+decided_by: torrenegra
 decided_at: 2026-05-08T15:18:00Z
 
 created_at: 2026-05-08T15:18:00Z
-created_by: principal_01KR441EA199MZCP7RDMADFZW9
+created_by: torrenegra
 revision: 1
 lifecycle: active
 status: accepted

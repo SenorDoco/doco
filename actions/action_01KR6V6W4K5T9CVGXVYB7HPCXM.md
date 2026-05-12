@@ -5,7 +5,7 @@ node_type: action
 schema_version: "0.1"
 summary: "Phase 13 — graph quality. Connectivity lint (warns Decisions/Actions/Rules/Ideas/Intents that lack context), 'Referenced by' card on every entity page, and POST /api/v1/suggest for FTS-based write-time discovery."
 
-actor_id: principal_01KR441EA259F7EE420Z4VWFPJ
+actor_id: claude-opus-4-7
 verb: ship_graph_quality_layers
 
 intent_ids:
@@ -47,7 +47,7 @@ started_at: 2026-05-09T17:00:00Z
 ended_at: 2026-05-09T17:15:00Z
 
 created_at: 2026-05-09T17:15:00Z
-created_by: principal_01KR441EA259F7EE420Z4VWFPJ
+created_by: claude-opus-4-7
 revision: 1
 lifecycle: succeeded
 status: completed

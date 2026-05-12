@@ -25,15 +25,15 @@ acceptance:
   - Single-Doco mode (existing /Users/torrenegra/Doco) continues to work unchanged when the root has `doco.yaml` not `host.yaml`.
 
 stakeholders:
-  - principal_01KR441EA199MZCP7RDMADFZW9
-  - principal_01KR441EA259F7EE420Z4VWFPJ
+  - torrenegra
+  - claude-opus-4-7
 
 applies_to:
   any_of:
     - tag: scope_meta
 
 created_at: 2026-05-08T18:30:00Z
-created_by: principal_01KR441EA199MZCP7RDMADFZW9
+created_by: torrenegra
 revision: 1
 lifecycle: active
 status: active

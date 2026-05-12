@@ -20,11 +20,11 @@ alternatives:
   - name: Skip ADR numbers altogether (humans use the slug)
     rejected_because: "ADR teams have years of muscle memory around 'ADR-0042'-style references; supporting it costs little."
 rules_consulted: []
-decided_by: principal_01KR441EA199MZCP7RDMADFZW9
+decided_by: torrenegra
 decided_at: 2026-05-08T15:18:00Z
 
 created_at: 2026-05-08T15:18:00Z
-created_by: principal_01KR441EA199MZCP7RDMADFZW9
+created_by: torrenegra
 revision: 1
 lifecycle: active
 status: accepted

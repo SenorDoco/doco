@@ -96,7 +96,7 @@ export default function ListByType({
   }
   return (
     <div>
-      <SiteHeader context={loaderData.docoSlug} mode="single-doco" />
+      <SiteHeader context={loaderData.docoSlug} />
       <main className="mx-auto max-w-6xl px-6 py-6">
         <Card className="mb-4">
           <CardHeader>

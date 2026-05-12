@@ -20,11 +20,11 @@ alternatives:
   - name: Slug-only URLs
     rejected_because: "Loses cross-Doco stability when slugs evolve (even with aliasing, an agent reading a long-lived link wants the canonical ID form)."
 rules_consulted: []
-decided_by: principal_01KR441EA199MZCP7RDMADFZW9
+decided_by: torrenegra
 decided_at: 2026-05-08T15:18:00Z
 
 created_at: 2026-05-08T15:18:00Z
-created_by: principal_01KR441EA199MZCP7RDMADFZW9
+created_by: torrenegra
 revision: 1
 lifecycle: active
 status: accepted

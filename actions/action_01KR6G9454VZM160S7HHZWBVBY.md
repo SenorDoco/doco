@@ -5,7 +5,7 @@ node_type: action
 schema_version: "0.1"
 summary: "Backlog: ship Aligno brand identity (new isotype + logotype SVGs supplied by founder). Replaces the current Doco wreath/leaf marks. Lands together with the Doco→Aligno rename."
 
-actor_id: principal_01KR441EA199MZCP7RDMADFZW9   # torrenegra (human, founder)
+actor_id: torrenegra   # torrenegra (human, founder)
 verb: stage_aligno_brand_assets
 
 intent_ids:
@@ -37,7 +37,7 @@ outputs:
       - "Logotype: lowercase 'aligno' in geometric sans, same #707A23 (kept the project's existing brand olive). Slightly smaller than the DocoMark wordmark currently uses; revisit logotype-vs-isotype proportions when shipping (also see action_01KR441EABNCVK39BSWQRGTDHX which already calls out this proportion tweak)."
 
 created_at: 2026-05-09T13:55:00Z
-created_by: principal_01KR441EA259F7EE420Z4VWFPJ
+created_by: claude-opus-4-7
 revision: 1
 lifecycle: abandoned
 status: abandoned

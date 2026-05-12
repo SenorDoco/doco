@@ -24,7 +24,7 @@ export default function LintRoute({ loaderData }: { loaderData: Awaited<ReturnTy
   const { report } = loaderData;
   return (
     <div>
-      <SiteHeader context={loaderData.docoSlug} mode="single-doco" />
+      <SiteHeader context={loaderData.docoSlug} />
       <main className="mx-auto max-w-6xl px-6 py-6 space-y-4">
         <Card>
           <CardHeader>

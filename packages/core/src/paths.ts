@@ -14,8 +14,6 @@ export interface EntityDirSpec {
  * `doco` is special-cased — it's at the root as `doco.yaml`, not a subfolder.
  */
 export const ENTITY_DIRS: Record<Exclude<NodeType, "doco">, EntityDirSpec> = {
-  principal: { dir: "principals", format: "yaml" },
-  organization: { dir: "organizations", format: "yaml" },
   intent: { dir: "intents", format: "md" },
   idea: { dir: "ideas", format: "md" },
   rule: { dir: "rules", format: "md" },

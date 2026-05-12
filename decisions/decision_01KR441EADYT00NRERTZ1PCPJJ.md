@@ -21,11 +21,11 @@ alternatives:
     rejected_because: "Async-only API forces every query to await. better-sqlite3's sync model is faster for our workload."
 rules_consulted:
   - rule_01KR441EAF7M5QPF65BXGD1ET1
-decided_by: principal_01KR441EA199MZCP7RDMADFZW9
+decided_by: torrenegra
 decided_at: 2026-05-08T16:00:00Z
 
 created_at: 2026-05-08T16:00:00Z
-created_by: principal_01KR441EA259F7EE420Z4VWFPJ
+created_by: claude-opus-4-7
 revision: 1
 lifecycle: active
 status: accepted

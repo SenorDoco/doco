@@ -14,7 +14,9 @@ describe("loadDoco against the Doco project's self-hosted Doco", () => {
 
   it("loads at least the bootstrap entity counts", async () => {
     const loaded = await loadDoco(REPO_ROOT);
-    expect(loaded.byType.get("principal")?.length).toBe(2);
+    // Principals removed by ADR-087 (local-solo collapse) — actor fields are
+    // now free-form strings, no Principal type.
+    expect(loaded.byType.get("principal")?.length ?? 0).toBe(0);
     expect(loaded.byType.get("scope")?.length).toBe(6);
     expect(loaded.byType.get("reference")?.length).toBe(3);
     expect(loaded.byType.get("intent")?.length).toBe(7);

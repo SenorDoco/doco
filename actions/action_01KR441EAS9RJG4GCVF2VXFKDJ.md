@@ -5,7 +5,7 @@ node_type: action
 schema_version: "0.1"
 summary: "Implemented Phase 5: @doco/discovery (5-strategy find-rules + glossary + embeddings interface), web layer (initially Hono+JSX SSR; superseded by ADR-055 Remix migration)."
 
-actor_id: principal_01KR441EA259F7EE420Z4VWFPJ
+actor_id: claude-opus-4-7
 verb: implement_phase
 target: intent_01KR441EAEM5NQBM160763TDDT
 
@@ -41,7 +41,7 @@ started_at: 2026-05-08T17:45:00Z
 ended_at: 2026-05-08T17:55:00Z
 
 created_at: 2026-05-08T17:55:00Z
-created_by: principal_01KR441EA259F7EE420Z4VWFPJ
+created_by: claude-opus-4-7
 revision: 1
 lifecycle: succeeded
 status: completed

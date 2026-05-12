@@ -5,7 +5,7 @@ node_type: action
 schema_version: "0.1"
 summary: "Phase 9.4 — AGENT.md gets a 'How to ask the user something' section. Don't surface multiple-choice / radio-button questions to humans; default to decide-and-announce or open-ended ask. Generalizes the lessons from 9.2 + 9.3."
 
-actor_id: principal_01KR441EA259F7EE420Z4VWFPJ
+actor_id: claude-opus-4-7
 verb: codify_no_radio_button_questions
 
 intent_ids:
@@ -43,7 +43,7 @@ started_at: 2026-05-09T16:10:00Z
 ended_at: 2026-05-09T16:13:00Z
 
 created_at: 2026-05-09T16:13:00Z
-created_by: principal_01KR441EA259F7EE420Z4VWFPJ
+created_by: claude-opus-4-7
 revision: 1
 lifecycle: succeeded
 status: completed

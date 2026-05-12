@@ -55,11 +55,11 @@ alternatives:
     rejected_because: "Doesn't scale across agents (other LLMs, other tools). Repo-level AGENT.md is universal — any agent can read it; no provider buy-in needed."
 rules_consulted:
   - rule_01KR441EAJCPF378ZGM9DMDFH0   # agent-ancestry-terminates-at-human
-decided_by: principal_01KR441EA199MZCP7RDMADFZW9
+decided_by: torrenegra
 decided_at: 2026-05-09T14:40:00Z
 
 created_at: 2026-05-09T14:40:00Z
-created_by: principal_01KR441EA259F7EE420Z4VWFPJ
+created_by: claude-opus-4-7
 revision: 1
 lifecycle: active
 status: accepted

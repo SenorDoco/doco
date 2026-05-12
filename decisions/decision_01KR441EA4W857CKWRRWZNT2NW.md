@@ -24,11 +24,11 @@ alternatives:
   - name: Separate namespaces for users and orgs
     rejected_because: "URL shape `/:owner/:doco` would need disambiguation (`/u/<username>/...` vs `/o/<orgname>/...`). GitHub's flat namespace is more familiar."
 rules_consulted: []
-decided_by: principal_01KR441EA199MZCP7RDMADFZW9
+decided_by: torrenegra
 decided_at: 2026-05-08T18:30:00Z
 
 created_at: 2026-05-08T18:30:00Z
-created_by: principal_01KR441EA259F7EE420Z4VWFPJ
+created_by: claude-opus-4-7
 revision: 1
 lifecycle: active
 status: accepted

@@ -5,7 +5,7 @@ node_type: action
 schema_version: "0.1"
 summary: "Implemented Phase 1: @doco/shared, @doco/core, @doco/cli; `doco validate` against this Doco passes for 78 entities."
 
-actor_id: principal_01KR441EA259F7EE420Z4VWFPJ
+actor_id: claude-opus-4-7
 verb: implement_phase
 target: intent_01KR441EAEM5NQBM160763TDDT   # implementation-v0
 
@@ -34,7 +34,7 @@ started_at: 2026-05-08T16:30:00Z
 ended_at: 2026-05-08T16:55:00Z
 
 created_at: 2026-05-08T16:55:00Z
-created_by: principal_01KR441EA259F7EE420Z4VWFPJ
+created_by: claude-opus-4-7
 revision: 1
 lifecycle: succeeded
 status: completed

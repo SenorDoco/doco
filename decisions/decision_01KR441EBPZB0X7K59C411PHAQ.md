@@ -21,11 +21,11 @@ alternatives:
     rejected_because: "No human accountability for agent actions. Chain breaks; lints can't enforce trust invariant."
 rules_consulted:
   - rule_01KR441EAJCPF378ZGM9DMDFH0   # agent-ancestry-terminates-at-human
-decided_by: principal_01KR441EA199MZCP7RDMADFZW9
+decided_by: torrenegra
 decided_at: 2026-05-08T15:18:00Z
 
 created_at: 2026-05-08T15:18:00Z
-created_by: principal_01KR441EA199MZCP7RDMADFZW9
+created_by: torrenegra
 revision: 1
 lifecycle: active
 status: accepted

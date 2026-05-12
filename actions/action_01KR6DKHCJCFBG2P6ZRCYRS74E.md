@@ -5,7 +5,7 @@ node_type: action
 schema_version: "0.1"
 summary: "Phase 8 — agent-invitation flow. Built end-to-end issue/redeem/spawn/revoke with strict-cascade revocation per ADR-038, host-level invitation scope per ADR-068, and the human-ancestry invariant per rule_agent_ancestry_terminates_at_human."
 
-actor_id: principal_01KR441EA259F7EE420Z4VWFPJ   # claude-opus-4-7 (agent)
+actor_id: claude-opus-4-7   # claude-opus-4-7 (agent)
 verb: implement_invitation_flow
 target: doco_01KR441EA0ZDMF0N5DY38GSVS3
 
@@ -81,7 +81,7 @@ started_at: 2026-05-09T12:30:00Z
 ended_at: 2026-05-09T13:10:00Z
 
 created_at: 2026-05-09T13:10:00Z
-created_by: principal_01KR441EA259F7EE420Z4VWFPJ
+created_by: claude-opus-4-7
 revision: 1
 lifecycle: succeeded
 status: completed

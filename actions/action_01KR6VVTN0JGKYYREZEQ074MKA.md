@@ -5,7 +5,7 @@ node_type: action
 schema_version: "0.1"
 summary: "Backlog: move the per-Doco menu (Recent / Intents / Ideas / Rules / Decisions / Actions / Search / Lint) out of the app bar into its own row or a sidebar. Today the breadcrumb and nav share one cramped row."
 
-actor_id: principal_01KR441EA199MZCP7RDMADFZW9
+actor_id: torrenegra
 verb: move_menu_outside_app_bar
 
 intent_ids:
@@ -34,11 +34,17 @@ outputs:
       - "Sub-bar vs sidebar — depends on how many sections the Doco eventually has. Today 8 nav items fit in one row at desktop width; a Doco with 12+ sections would benefit from a sidebar."
       - "If sub-bar: should the breadcrumb move to the sub-bar instead of the nav?"
 
+completion_note: |
+  Shipped via ADR-088 (per-Doco navigation as a sub-bar). The header
+  now has two rows: brand + breadcrumb on row 1, nav on row 2,
+  separated by a hairline. Sidebar option deferred.
+started_at: 2026-05-12T11:00:00Z
+ended_at: 2026-05-12T11:30:00Z
 created_at: 2026-05-09T17:30:00Z
-created_by: principal_01KR441EA259F7EE420Z4VWFPJ
-revision: 1
-lifecycle: proposed
-status: planned
+created_by: claude-opus-4-7
+revision: 2
+lifecycle: succeeded
+status: completed
 scopes:
   - scope_01KR441EA8BTTB99H928Z0NQQW
 ---

@@ -5,7 +5,7 @@ node_type: action
 schema_version: "0.1"
 summary: "Implemented Phase 3: @doco/runtime (predicate + scope + check engine), @doco/lints (4 system lints), `doco check` and `doco lint`. The alignment loop closes."
 
-actor_id: principal_01KR441EA259F7EE420Z4VWFPJ
+actor_id: claude-opus-4-7
 verb: implement_phase
 target: intent_01KR441EAA9Y78V8DEKYDB4CWP   # runtime-checking
 
@@ -39,7 +39,7 @@ started_at: 2026-05-08T17:25:00Z
 ended_at: 2026-05-08T17:35:00Z
 
 created_at: 2026-05-08T17:35:00Z
-created_by: principal_01KR441EA259F7EE420Z4VWFPJ
+created_by: claude-opus-4-7
 revision: 1
 lifecycle: succeeded
 status: completed

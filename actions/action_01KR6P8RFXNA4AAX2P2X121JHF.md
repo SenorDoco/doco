@@ -5,7 +5,7 @@ node_type: action
 schema_version: "0.1"
 summary: "Phase 9.2 — AGENT.md tells agents to write the token to .env on their own. Removed the where-do-I-store-it question. Agents shouldn't surface storage choices that have one obvious answer."
 
-actor_id: principal_01KR441EA259F7EE420Z4VWFPJ
+actor_id: claude-opus-4-7
 verb: tighten_agent_md_token_storage_instructions
 
 intent_ids:
@@ -39,7 +39,7 @@ started_at: 2026-05-09T15:35:00Z
 ended_at: 2026-05-09T15:37:00Z
 
 created_at: 2026-05-09T15:37:00Z
-created_by: principal_01KR441EA259F7EE420Z4VWFPJ
+created_by: claude-opus-4-7
 revision: 1
 lifecycle: succeeded
 status: completed

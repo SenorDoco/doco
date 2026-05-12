@@ -5,7 +5,7 @@ node_type: action
 schema_version: "0.1"
 summary: "Phase 10.2 — copyable share messages now point at the homepage URL only, not deep onboarding paths. The wizard self-routes any visitor; no pre-baked path needed in the link."
 
-actor_id: principal_01KR441EA259F7EE420Z4VWFPJ
+actor_id: claude-opus-4-7
 verb: simplify_share_messages_to_homepage_only
 
 intent_ids:
@@ -43,7 +43,7 @@ started_at: 2026-05-09T15:30:00Z
 ended_at: 2026-05-09T15:32:00Z
 
 created_at: 2026-05-09T15:32:00Z
-created_by: principal_01KR441EA259F7EE420Z4VWFPJ
+created_by: claude-opus-4-7
 revision: 1
 lifecycle: succeeded
 status: completed

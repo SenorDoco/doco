@@ -5,7 +5,7 @@ node_type: action
 schema_version: "0.1"
 summary: "Phase 19 — edge-hierarchical scopes (ADR-081); scope purpose + guidelines + 8 curated default templates (ADR-082); existing slash-named scopes migrated; canonical agent instructions updated."
 
-actor_id: principal_01KR441EA259F7EE420Z4VWFPJ
+actor_id: claude-opus-4-7
 verb: edge_hierarchy_purpose_guidelines_defaults
 
 intent_ids:
@@ -122,7 +122,7 @@ started_at: 2026-05-10T05:00:00Z
 ended_at: 2026-05-10T05:50:00Z
 
 created_at: 2026-05-10T05:50:00Z
-created_by: principal_01KR441EA259F7EE420Z4VWFPJ
+created_by: claude-opus-4-7
 revision: 1
 lifecycle: active
 status: completed

@@ -5,7 +5,7 @@ node_type: idea
 schema_version: "0.1"
 summary: "Document ideas. Capture speculative thoughts before they crystallize into intents, decisions, or actions."
 
-proposer_id: principal_01KR441EA199MZCP7RDMADFZW9   # torrenegra
+proposer_id: torrenegra   # torrenegra
 body: |
   We needed a place to put half-formed thoughts — "what if we did X?" —
   that aren't yet wants (Intent), choices (Decision), or tasks (Action).
@@ -16,7 +16,7 @@ body: |
 promoted_to: decision_01KR6QZCH0RSDB22YC5H6M4BKZ   # ADR-074
 
 created_at: 2026-05-09T16:00:00Z
-created_by: principal_01KR441EA259F7EE420Z4VWFPJ
+created_by: claude-opus-4-7
 revision: 1
 lifecycle: succeeded
 status: promoted

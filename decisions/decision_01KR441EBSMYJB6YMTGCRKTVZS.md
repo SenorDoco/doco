@@ -18,14 +18,15 @@ alternatives:
   - name: Scoped-only (no cascade)
     rejected_because: "Less safe for security incidents — a compromised human's downstream agents remain authorized."
 rules_consulted: []
-decided_by: principal_01KR441EA199MZCP7RDMADFZW9
+decided_by: torrenegra
 decided_at: 2026-05-08T15:18:00Z
+superseded_by: decision_01KREMDWG6SWKFHR5P1RDB64NC
 
 created_at: 2026-05-08T15:18:00Z
-created_by: principal_01KR441EA199MZCP7RDMADFZW9
+created_by: torrenegra
 revision: 1
-lifecycle: active
-status: accepted
+lifecycle: superseded
+status: superseded
 scopes:
   - scope_01KR441EA37E3M5V0ZV6ZRB97D
   - scope_01KR441EA8BTTB99H928Z0NQQW

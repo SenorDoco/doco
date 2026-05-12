@@ -25,11 +25,11 @@ alternatives:
   - name: Slugs on every entity including Action/Reasoning/Evaluation
     rejected_because: "Transient or event-shaped entities don't have natural slugs. Forcing one creates noise."
 rules_consulted: []
-decided_by: principal_01KR441EA199MZCP7RDMADFZW9
+decided_by: torrenegra
 decided_at: 2026-05-08T15:18:00Z
 
 created_at: 2026-05-08T15:18:00Z
-created_by: principal_01KR441EA199MZCP7RDMADFZW9
+created_by: torrenegra
 revision: 1
 lifecycle: active
 status: accepted

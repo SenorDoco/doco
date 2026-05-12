@@ -27,11 +27,11 @@ alternatives:
     rejected_because: "Loses Remix's HMR + nested routing convenience. Two-process dev is acceptable for v0 localhost."
 rules_consulted:
   - rule_01KR441EAF7M5QPF65BXGD1ET1   # priority-order
-decided_by: principal_01KR441EA199MZCP7RDMADFZW9
+decided_by: torrenegra
 decided_at: 2026-05-08T17:00:00Z
 
 created_at: 2026-05-08T17:00:00Z
-created_by: principal_01KR441EA259F7EE420Z4VWFPJ
+created_by: claude-opus-4-7
 revision: 1
 lifecycle: active
 status: accepted

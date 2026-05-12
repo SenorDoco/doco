@@ -22,11 +22,11 @@ alternatives:
   - name: SQLite as primary store
     rejected_because: "Bad for agent updates (priority 2): rows in a binary db require tooling vs. a text-file Edit. Also weak for version control (priority 5)."
 rules_consulted: []
-decided_by: principal_01KR441EA199MZCP7RDMADFZW9
+decided_by: torrenegra
 decided_at: 2026-05-08T15:18:00Z
 
 created_at: 2026-05-08T15:18:00Z
-created_by: principal_01KR441EA199MZCP7RDMADFZW9
+created_by: torrenegra
 revision: 1
 lifecycle: active
 status: accepted

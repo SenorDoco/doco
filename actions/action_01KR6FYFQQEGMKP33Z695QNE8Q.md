@@ -5,7 +5,7 @@ node_type: action
 schema_version: "0.1"
 summary: "Agent-side /invite/:token page: self-describing HTML + embedded JSON-LD; .json resource route for headless agents. Closes the 'pasted URL alone confuses an agent' gap."
 
-actor_id: principal_01KR441EA259F7EE420Z4VWFPJ   # claude-opus-4-7 (agent)
+actor_id: claude-opus-4-7   # claude-opus-4-7 (agent)
 verb: implement_agent_side_invitation_page
 target: doco_01KR441EA0ZDMF0N5DY38GSVS3
 
@@ -54,7 +54,7 @@ started_at: 2026-05-09T13:30:00Z
 ended_at: 2026-05-09T13:50:00Z
 
 created_at: 2026-05-09T13:50:00Z
-created_by: principal_01KR441EA259F7EE420Z4VWFPJ
+created_by: claude-opus-4-7
 revision: 1
 lifecycle: succeeded
 status: completed

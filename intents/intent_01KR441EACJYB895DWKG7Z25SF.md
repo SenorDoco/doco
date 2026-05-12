@@ -21,15 +21,15 @@ acceptance:
   - "Every agent's `owner_id` ancestry chain terminates at a human (rule_01KR441EAJCPF378ZGM9DMDFH0)."
 
 stakeholders:
-  - principal_01KR441EA199MZCP7RDMADFZW9
-  - principal_01KR441EA259F7EE420Z4VWFPJ
+  - torrenegra
+  - claude-opus-4-7
 
 applies_to:
   any_of:
     - tag: scope_meta
 
 created_at: 2026-05-08T15:18:00Z
-created_by: principal_01KR441EA199MZCP7RDMADFZW9
+created_by: torrenegra
 revision: 1
 lifecycle: active
 status: active

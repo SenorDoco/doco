@@ -130,11 +130,11 @@ alternatives:
 
 rules_consulted:
   - rule_01KR441EAJCPF378ZGM9DMDFH0
-decided_by: principal_01KR441EA199MZCP7RDMADFZW9
+decided_by: torrenegra
 decided_at: 2026-05-09T19:45:00Z
 
 created_at: 2026-05-09T19:45:00Z
-created_by: principal_01KR441EA259F7EE420Z4VWFPJ
+created_by: claude-opus-4-7
 revision: 1
 lifecycle: active
 status: accepted

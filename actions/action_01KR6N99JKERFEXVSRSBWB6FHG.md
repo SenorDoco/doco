@@ -5,7 +5,7 @@ node_type: action
 schema_version: "0.1"
 summary: "Phase 10.1 — DOCO_PUBLIC_HOST env var. Override the host portion of all shareable URLs (invitation, claim, copyable messages) so off-machine agents can reach the dev server through ngrok or similar."
 
-actor_id: principal_01KR441EA259F7EE420Z4VWFPJ
+actor_id: claude-opus-4-7
 verb: ship_public_host_override
 
 intent_ids:
@@ -49,7 +49,7 @@ started_at: 2026-05-09T15:20:00Z
 ended_at: 2026-05-09T15:25:00Z
 
 created_at: 2026-05-09T15:25:00Z
-created_by: principal_01KR441EA259F7EE420Z4VWFPJ
+created_by: claude-opus-4-7
 revision: 1
 lifecycle: succeeded
 status: completed
