@@ -33,7 +33,7 @@ export default function Search({ loaderData }: { loaderData: Awaited<ReturnType<
   const q = searchParams.get("q") ?? "";
   return (
     <div>
-      <SiteHeader context={loaderData.docoSlug} />
+      <SiteHeader context={loaderData.docoSlug} mode="single-doco" />
       <main className="mx-auto max-w-6xl px-6 py-6 space-y-4">
         <Form method="get" className="flex gap-2">
           <input

@@ -1,5 +1,5 @@
 import type { Database } from "better-sqlite3";
-import type { Action, Entity, EntityId, Rule } from "@doco/shared";
+import type { Action, Entity, EntityId, Principal, Rule } from "@doco/shared";
 import { evaluate, tryParsePredicate } from "./predicate.js";
 import { matches } from "./scope.js";
 
@@ -103,15 +103,15 @@ function await_buildCtx(db: Database, candidate: Action | Entity): Record<string
   const ctx: Record<string, unknown> = { ...(candidate as unknown as Record<string, unknown>) };
   if (candidate.node_type === "action") {
     const action = candidate as Action;
-    // Principal table removed by ADR-087 — actor_id is now a free-form string.
-    // The actor predicate (if any) receives just the string; runtime rules that
-    // wanted to read actor.type === 'human' need a different shape post-collapse.
     if (action.actor_id) {
-      ctx.actor = { id: action.actor_id, type: actorTypeFromString(action.actor_id) };
+      const row = db.prepare("SELECT raw_json FROM principal WHERE id = ?").get(action.actor_id) as
+        | { raw_json: string }
+        | undefined;
+      if (row) ctx.actor = JSON.parse(row.raw_json) as Principal;
     }
     if (action.target) {
       const targetRow = (
-        ["intent", "idea", "rule", "decision", "action", "reasoning", "evaluation", "reference", "scope"] as const
+        ["principal", "intent", "idea", "rule", "decision", "action", "reasoning", "evaluation", "reference", "scope"] as const
       )
         .map((t) =>
           db.prepare(`SELECT raw_json FROM ${t} WHERE id = ?`).get(action.target) as { raw_json: string } | undefined,
@@ -121,19 +121,4 @@ function await_buildCtx(db: Database, candidate: Action | Entity): Record<string
     }
   }
   return ctx;
-}
-
-/**
- * Convention-based actor "type" guess from a free-form actor_id string
- * (post ADR-087). Anything matching `<vendor>-<model>` or `claude-*`, `gpt-*`,
- * `gemini-*`, or containing a slash, is treated as an agent. Everything else
- * is "human". This is a best-effort shim so runtime rules that gated on
- * `actor.type === 'human'` (e.g., the bootstrap "only humans delete Docos"
- * rule) keep working without a Principal table.
- */
-function actorTypeFromString(actor: string): "human" | "agent" {
-  if (/^(claude|gpt|gemini|llama|mistral|grok|qwen|deepseek|opus|sonnet|haiku)-/i.test(actor))
-    return "agent";
-  if (actor.includes("/")) return "agent";
-  return "human";
 }

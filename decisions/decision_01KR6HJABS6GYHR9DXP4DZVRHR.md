@@ -69,15 +69,14 @@ alternatives:
     rejected_because: "Less disruptive but doesn't address the threat-model objection. The URL still looks phishing-shaped to anyone who didn't write the system. E removes the URL entirely from the agent's path, which is cleaner."
 rules_consulted:
   - rule_01KR441EAJCPF378ZGM9DMDFH0   # agent-ancestry-terminates-at-human
-decided_by: torrenegra
+decided_by: principal_01KR441EA199MZCP7RDMADFZW9
 decided_at: 2026-05-09T14:10:00Z
-superseded_by: decision_01KREMDWG6SWKFHR5P1RDB64NC
 
 created_at: 2026-05-09T14:10:00Z
-created_by: claude-opus-4-7
+created_by: principal_01KR441EA259F7EE420Z4VWFPJ
 revision: 1
-lifecycle: superseded
-status: superseded
+lifecycle: active
+status: accepted
 scopes:
   - scope_01KR441EA37E3M5V0ZV6ZRB97D
   - scope_01KR441EA7ABSBBYM1JX3A8429

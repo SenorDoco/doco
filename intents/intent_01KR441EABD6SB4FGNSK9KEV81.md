@@ -21,14 +21,14 @@ acceptance:
   - "When the project later grows implementation code, the meta-Doco coexists with it (likely in `.doco/` — D-002 + D-023)."
 
 stakeholders:
-  - torrenegra
+  - principal_01KR441EA199MZCP7RDMADFZW9
 
 applies_to:
   any_of:
     - tag: scope_meta
 
 created_at: 2026-05-08T15:42:00Z
-created_by: torrenegra
+created_by: principal_01KR441EA199MZCP7RDMADFZW9
 revision: 1
 lifecycle: active
 status: active

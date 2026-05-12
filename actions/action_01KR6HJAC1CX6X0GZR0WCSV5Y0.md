@@ -5,7 +5,7 @@ node_type: action
 schema_version: "0.1"
 summary: "Phase 9 — role-based agent provisioning. /agents/new creates Principal{type:agent} + DOCO_TOKEN in one click; /agents lists owned agents. Replaces invitation ceremony for self-service enrollment."
 
-actor_id: claude-opus-4-7
+actor_id: principal_01KR441EA259F7EE420Z4VWFPJ
 verb: implement_role_based_provisioning
 target: doco_01KR441EA0ZDMF0N5DY38GSVS3
 
@@ -57,7 +57,7 @@ started_at: 2026-05-09T14:05:00Z
 ended_at: 2026-05-09T14:25:00Z
 
 created_at: 2026-05-09T14:25:00Z
-created_by: claude-opus-4-7
+created_by: principal_01KR441EA259F7EE420Z4VWFPJ
 revision: 1
 lifecycle: succeeded
 status: completed

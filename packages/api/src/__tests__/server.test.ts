@@ -56,14 +56,11 @@ describe("Hono REST API", () => {
   });
 
   it("POST /api/v1/check on agent delete_doco returns 422 (BLOCKED)", async () => {
-    // Post-ADR-087: actor_id is a free-form string. Convention: anything starting
-    // with a known model prefix (claude-, gpt-, …) or containing '/' is an agent;
-    // everything else is human (see runtime/src/check.ts:actorTypeFromString).
     const action = {
       id: "action_01TESTAPI",
       node_type: "action" as const,
       verb: "delete_doco",
-      actor_id: "claude-opus-4-7",
+      actor_id: "principal_01KR441EA259F7EE420Z4VWFPJ", // claude (agent)
       target: "doco_01KR441EA0ZDMF0N5DY38GSVS3",
     };
     const res = await app.request("/api/v1/check", {
@@ -82,7 +79,7 @@ describe("Hono REST API", () => {
       id: "action_01TESTAPIHUMAN",
       node_type: "action" as const,
       verb: "delete_doco",
-      actor_id: "torrenegra",
+      actor_id: "principal_01KR441EA199MZCP7RDMADFZW9", // torrenegra (human)
       target: "doco_01KR441EA0ZDMF0N5DY38GSVS3",
     };
     const res = await app.request("/api/v1/check", {

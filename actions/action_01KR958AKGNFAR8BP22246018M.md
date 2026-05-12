@@ -5,7 +5,7 @@ node_type: action
 schema_version: "0.1"
 summary: "Backlog: drift detection + capture-work nudges so Doco users (human + agent) don't ship work without recording it. Demonstrated firsthand this session."
 
-actor_id: torrenegra
+actor_id: principal_01KR441EA199MZCP7RDMADFZW9
 verb: build_drift_detection_and_capture_nudges
 
 intent_ids:
@@ -85,21 +85,10 @@ decisions_consulted:
   - decision_01KR7ABR811V3AQ8JG732A2DGK   # ADR-080 (bootstrap response shape — would extend)
 
 created_at: 2026-05-10T08:45:00Z
-created_by: torrenegra
-revision: 2
-lifecycle: succeeded
-status: completed
-started_at: 2026-05-12T11:30:00Z
-ended_at: 2026-05-12T11:45:00Z
-completion_note: |
-  Shipped via ADR-090. Today: `doco coverage` CLI + a new "Pause and
-  capture: don't drift" section appended to the canonical agent
-  instructions (every agent picks it up on next bootstrap).
-  Deferred to follow-up Actions: `uncovered_changes` on the bootstrap
-  response, `doco install-hooks` pre-commit, `/coverage` web page,
-  `drift-uncovered-changes` lint. The CLI proves the data shape
-  first; the layered surfaces follow once the false-positive
-  envelope is understood.
+created_by: principal_01KR441EA199MZCP7RDMADFZW9
+revision: 1
+lifecycle: proposed
+status: planned
 scopes:
   - scope_01KR441EA8BTTB99H928Z0NQQW
 ---

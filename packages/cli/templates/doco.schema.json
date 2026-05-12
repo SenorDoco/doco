@@ -1,8 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://doco.dev/schemas/v0.2/doco.schema.json",
-  "title": "Doco entity schema (v0.2)",
-  "description": "Validates the structured fields of every entity in a Doco. Entities are stored as YAML (.yaml) or Markdown-with-frontmatter (.md); the YAML / frontmatter is the part this schema covers. See SCHEMA.md §3-§4 for prose definitions and worked examples.\n\nv0.2: hosted-multi-tenant types (principal, organization) removed and actor fields relaxed to free-form strings. Per ADR-087 (local-solo collapse).",
+  "$id": "https://doco.dev/schemas/v0.1/doco.schema.json",
+  "title": "Doco entity schema (v0.1)",
+  "description": "Validates the structured fields of every entity in an Doco. Entities are stored as YAML (.yaml) or Markdown-with-frontmatter (.md); the YAML / frontmatter is the part this schema covers. See SCHEMA.md §3-§4 for prose definitions and worked examples.",
   "definitions": {
     "ulid": {
       "type": "string",
@@ -11,25 +11,35 @@
     "id": {
       "type": "string",
       "description": "'<node_type>_<ULID>' — entity ID prefixed by its node_type (D-004, D-005).",
-      "pattern": "^(intent|idea|rule|decision|action|reasoning|evaluation|reference|scope|doco)_[0-9A-HJKMNP-TV-Z]{26}$"
+      "pattern": "^(intent|idea|rule|decision|action|reasoning|evaluation|reference|scope|principal|doco|organization)_[0-9A-HJKMNP-TV-Z]{26}$"
     },
     "doco_id": {
       "type": "string",
       "pattern": "^doco_[0-9A-HJKMNP-TV-Z]{26}$"
     },
+    "principal_id": {
+      "type": "string",
+      "pattern": "^principal_[0-9A-HJKMNP-TV-Z]{26}$"
+    },
+    "organization_id": {
+      "type": "string",
+      "pattern": "^organization_[0-9A-HJKMNP-TV-Z]{26}$"
+    },
+    "owner_ref": {
+      "description": "Polymorphic Doco owner: a Principal (user/agent) or an Organization (ADR-063).",
+      "anyOf": [
+        { "$ref": "#/definitions/principal_id" },
+        { "$ref": "#/definitions/organization_id" }
+      ]
+    },
     "scope_id": {
       "type": "string",
       "pattern": "^scope_[0-9A-HJKMNP-TV-Z]{26}$"
     },
-    "actor_string": {
-      "type": "string",
-      "minLength": 1,
-      "description": "Free-form actor identifier (e.g., 'torrenegra', 'claude-opus-4-7', 'human:alice'). Per ADR-087 (local-solo collapse): no Principal type, no auth, no enforced format. Conventions encouraged: human GitHub-login-style for humans, '<provider>-<model>' for agents."
-    },
     "namespaced_id": {
       "type": "string",
       "description": "Within-Doco bare ID, or cross-Doco '<namespace>:<id>' (D-029).",
-      "pattern": "^([a-z][a-z0-9_-]*:)?(intent|idea|rule|decision|action|reasoning|evaluation|reference|scope|doco)_[0-9A-HJKMNP-TV-Z]{26}$"
+      "pattern": "^([a-z][a-z0-9_-]*:)?(intent|idea|rule|decision|action|reasoning|evaluation|reference|scope|principal|doco|organization)_[0-9A-HJKMNP-TV-Z]{26}$"
     },
     "datetime": { "type": "string", "format": "date-time" },
     "lifecycle": {
@@ -48,9 +58,9 @@
         "schema_version": { "type": "string" },
         "summary": { "type": "string", "maxLength": 240 },
         "created_at": { "$ref": "#/definitions/datetime" },
-        "created_by": { "$ref": "#/definitions/actor_string" },
+        "created_by": { "$ref": "#/definitions/principal_id" },
         "updated_at": { "$ref": "#/definitions/datetime" },
-        "updated_by": { "$ref": "#/definitions/actor_string" },
+        "updated_by": { "$ref": "#/definitions/principal_id" },
         "revision": { "type": "integer", "minimum": 1 },
         "lifecycle": { "$ref": "#/definitions/lifecycle" },
         "status": { "type": "string" },
@@ -70,25 +80,38 @@
     },
     "doco_entity": {
       "type": "object",
-      "required": ["id", "node_type", "schema_version", "slug", "display_name"],
+      "required": ["id", "node_type", "schema_version", "slug", "display_name", "visibility", "owner_id"],
       "properties": {
         "id": { "$ref": "#/definitions/doco_id" },
         "node_type": { "const": "doco" },
         "schema_version": { "type": "string" },
-        "slug": { "type": "string", "pattern": "^[a-z0-9_-]+(/[a-z0-9_-]+)?$", "description": "Slug. Single-segment for local-solo (v0.2); historical '<owner>/<slug>' two-segment form still accepted." },
+        "slug": { "type": "string", "pattern": "^[a-z0-9_-]+/[a-z0-9_-]+$" },
         "display_name": { "type": "string" },
         "visibility": { "type": "string", "enum": ["private", "public"] },
         "default_branch": { "type": "string" },
+        "owner_id": { "$ref": "#/definitions/owner_ref" },
         "description": { "type": "string" },
         "summary": { "type": "string", "maxLength": 240 },
         "created_at": { "$ref": "#/definitions/datetime" },
-        "created_by": { "$ref": "#/definitions/actor_string" },
+        "created_by": { "$ref": "#/definitions/principal_id" },
         "updated_at": { "$ref": "#/definitions/datetime" },
-        "updated_by": { "$ref": "#/definitions/actor_string" },
+        "updated_by": { "$ref": "#/definitions/principal_id" },
         "revision": { "type": "integer", "minimum": 1 },
         "lifecycle": { "$ref": "#/definitions/lifecycle" },
         "status": { "type": "string" },
         "scopes": { "type": "array", "items": { "$ref": "#/definitions/scope_id" } },
+        "members": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["principal_id", "role", "permissions"],
+            "properties": {
+              "principal_id": { "$ref": "#/definitions/principal_id" },
+              "role": { "type": "string", "enum": ["owner", "maintainer", "contributor", "viewer"] },
+              "permissions": { "type": "array", "items": { "type": "string", "enum": ["read", "write", "execute", "admin"] } }
+            }
+          }
+        },
         "imports": {
           "type": "array",
           "items": {
@@ -103,6 +126,40 @@
           }
         }
       }
+    },
+    "principal_entity": {
+      "allOf": [
+        { "$ref": "#/definitions/common_fields" },
+        {
+          "type": "object",
+          "required": ["type", "username", "display_name"],
+          "properties": {
+            "node_type": { "const": "principal" },
+            "type": { "type": "string", "enum": ["human", "agent"], "description": "Open question DECISIONS.md §13 #2 — may rename to is_agent: bool." },
+            "username": { "type": "string" },
+            "display_name": { "type": "string" },
+            "github_identity": {
+              "type": "object",
+              "properties": {
+                "github_id": { "type": "string" },
+                "github_login": { "type": "string" },
+                "email": { "type": "string", "format": "email" }
+              }
+            },
+            "owner_id": { "$ref": "#/definitions/principal_id" },
+            "agent_metadata": {
+              "type": "object",
+              "properties": {
+                "provider": { "type": "string" },
+                "model": { "type": "string" },
+                "capabilities": { "type": "array", "items": { "type": "string" } },
+                "created_at": { "$ref": "#/definitions/datetime" }
+              }
+            },
+            "public_key": { "type": "string" }
+          }
+        }
+      ]
     },
     "intent_entity": {
       "allOf": [
@@ -120,7 +177,7 @@
             "priority": { "type": "string", "enum": ["p0", "p1", "p2", "p3"] },
             "non_goals": { "type": "array", "items": { "type": "string" } },
             "acceptance": { "type": "array", "items": { "type": "string" } },
-            "stakeholders": { "type": "array", "items": { "$ref": "#/definitions/actor_string" } },
+            "stakeholders": { "type": "array", "items": { "$ref": "#/definitions/principal_id" } },
             "applies_to": { "$ref": "#/definitions/scope_selector" }
           }
         }
@@ -155,7 +212,7 @@
           "properties": {
             "node_type": { "const": "decision" },
             "slug": { "type": "string" },
-            "number": { "type": "string", "description": "Optional ADR-style number, set when scope_adr is applied (D-022)." },
+            "number": { "type": "string", "description": "Optional ADR-style number, set when tag_adr is applied (D-022)." },
             "intent_ids": { "type": "array", "items": { "$ref": "#/definitions/id" } },
             "question": { "type": "string" },
             "chosen": { "type": "string" },
@@ -170,7 +227,7 @@
               }
             },
             "rules_consulted": { "type": "array", "items": { "$ref": "#/definitions/id" } },
-            "decided_by": { "$ref": "#/definitions/actor_string" },
+            "decided_by": { "$ref": "#/definitions/principal_id" },
             "decided_at": { "$ref": "#/definitions/datetime" },
             "superseded_by": { "$ref": "#/definitions/id" }
           }
@@ -185,7 +242,7 @@
           "required": ["actor_id", "verb"],
           "properties": {
             "node_type": { "const": "action" },
-            "actor_id": { "$ref": "#/definitions/actor_string" },
+            "actor_id": { "$ref": "#/definitions/principal_id" },
             "verb": { "type": "string" },
             "target": { "$ref": "#/definitions/id" },
             "intent_ids": { "type": "array", "items": { "$ref": "#/definitions/id" } },
@@ -207,7 +264,7 @@
           "required": ["author_id", "premises", "inference"],
           "properties": {
             "node_type": { "const": "reasoning" },
-            "author_id": { "$ref": "#/definitions/actor_string" },
+            "author_id": { "$ref": "#/definitions/principal_id" },
             "premises": {
               "type": "array",
               "items": {
@@ -241,7 +298,7 @@
             "result": { "type": "string", "enum": ["pass", "fail", "error"] },
             "evidence": { "type": "object", "additionalProperties": true },
             "ran_at": { "$ref": "#/definitions/datetime" },
-            "ran_by": { "$ref": "#/definitions/actor_string" },
+            "ran_by": { "$ref": "#/definitions/principal_id" },
             "duration_ms": { "type": "integer", "minimum": 0 }
           }
         }
@@ -287,8 +344,8 @@
           "properties": {
             "node_type": { "const": "idea" },
             "proposer_id": {
-              "$ref": "#/definitions/actor_string",
-              "description": "Actor string who originated the idea. Often equals created_by; differs when an idea is recorded by someone other than the proposer."
+              "$ref": "#/definitions/principal_id",
+              "description": "Principal who originated the idea. Often equals created_by; differs when an idea is recorded by someone other than the proposer."
             },
             "body": { "type": "string", "description": "Free-form description; treat as the spec for the idea." },
             "promoted_to": {
@@ -299,10 +356,40 @@
           }
         }
       ]
+    },
+    "organization_entity": {
+      "allOf": [
+        { "$ref": "#/definitions/common_fields" },
+        {
+          "type": "object",
+          "required": ["slug", "display_name"],
+          "properties": {
+            "node_type": { "const": "organization" },
+            "slug": { "type": "string", "pattern": "^[a-z0-9_-]+$" },
+            "display_name": { "type": "string" },
+            "description": { "type": "string" },
+            "visibility": { "type": "string", "enum": ["private", "public"] },
+            "members": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["principal_id", "role"],
+                "properties": {
+                  "principal_id": { "$ref": "#/definitions/principal_id" },
+                  "role": { "type": "string", "enum": ["owner", "admin", "member", "viewer"] },
+                  "permissions": { "type": "array", "items": { "type": "string", "enum": ["read", "write", "execute", "admin"] } }
+                }
+              }
+            }
+          }
+        }
+      ]
     }
   },
   "oneOf": [
     { "$ref": "#/definitions/doco_entity" },
+    { "$ref": "#/definitions/principal_entity" },
+    { "$ref": "#/definitions/organization_entity" },
     { "$ref": "#/definitions/intent_entity" },
     { "$ref": "#/definitions/idea_entity" },
     { "$ref": "#/definitions/rule_entity" },

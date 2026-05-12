@@ -5,7 +5,7 @@ node_type: action
 schema_version: "0.1"
 summary: "Teach the memory-vs-Doco boundary to every Doco-using agent: add ADR-086, glossary entries for Doco + meta-doco, and a new 'Doco is the memory' section in the canonical agent bootstrap (packages/api/src/instructions.ts)."
 
-actor_id: claude-opus-4-7
+actor_id: principal_01KR441EA259F7EE420Z4VWFPJ
 verb: teach_agents_to_capture_knowledge_in_doco
 
 intent_ids:
@@ -46,7 +46,7 @@ outputs:
     private memory.
 
 created_at: 2026-05-12T10:00:00Z
-created_by: claude-opus-4-7
+created_by: principal_01KR441EA259F7EE420Z4VWFPJ
 revision: 1
 lifecycle: succeeded
 status: completed

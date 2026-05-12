@@ -19,11 +19,11 @@ alternatives:
   - name: First-class Membership entity with its own ID and lifecycle
     rejected_because: "No genuine independent lifecycle worth a separate node. Membership rarely changes between create and revoke; the few transitions can be tracked as Actions."
 rules_consulted: []
-decided_by: torrenegra
+decided_by: principal_01KR441EA199MZCP7RDMADFZW9
 decided_at: 2026-05-08T15:18:00Z
 
 created_at: 2026-05-08T15:18:00Z
-created_by: torrenegra
+created_by: principal_01KR441EA199MZCP7RDMADFZW9
 revision: 1
 lifecycle: active
 status: accepted

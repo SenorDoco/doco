@@ -39,15 +39,14 @@ alternatives:
   - name: First-class Membership entity
     rejected_because: "Same reasoning as D-011 (Membership-as-edge for Doco.members[]). Memberships rarely have an independent lifecycle worth a node."
 rules_consulted: []
-decided_by: torrenegra
+decided_by: principal_01KR441EA199MZCP7RDMADFZW9
 decided_at: 2026-05-08T18:30:00Z
-superseded_by: decision_01KREMDWG6SWKFHR5P1RDB64NC
 
 created_at: 2026-05-08T18:30:00Z
-created_by: claude-opus-4-7
+created_by: principal_01KR441EA259F7EE420Z4VWFPJ
 revision: 1
-lifecycle: superseded
-status: superseded
+lifecycle: active
+status: accepted
 scopes:
   - scope_01KR441EA37E3M5V0ZV6ZRB97D
   - scope_01KR441EA8BTTB99H928Z0NQQW

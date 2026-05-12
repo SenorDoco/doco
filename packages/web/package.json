@@ -15,6 +15,7 @@
   "dependencies": {
     "@doco/api": "workspace:*",
     "@doco/discovery": "workspace:*",
+    "@doco/host": "workspace:*",
     "@doco/index": "workspace:*",
     "@doco/lints": "workspace:*",
     "@doco/shared": "workspace:*",

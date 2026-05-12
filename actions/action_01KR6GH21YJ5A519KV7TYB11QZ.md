@@ -5,7 +5,7 @@ node_type: action
 schema_version: "0.1"
 summary: "Phase 8.2 — share-message Copy on the issuer page. Default Copy now puts a self-explaining message (with URL embedded) on the clipboard; URL-only is a secondary action. Closes the cold-receiver gap not fixed by ADR-069."
 
-actor_id: claude-opus-4-7
+actor_id: principal_01KR441EA259F7EE420Z4VWFPJ
 verb: implement_share_message_copy
 
 intent_ids:
@@ -44,7 +44,7 @@ started_at: 2026-05-09T13:55:00Z
 ended_at: 2026-05-09T14:00:00Z
 
 created_at: 2026-05-09T14:00:00Z
-created_by: claude-opus-4-7
+created_by: principal_01KR441EA259F7EE420Z4VWFPJ
 revision: 1
 lifecycle: succeeded
 status: completed

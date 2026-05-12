@@ -80,11 +80,11 @@ alternatives:
   - name: Make this a Rule with lint enforcement
     rejected_because: "Private memory is external to the Doco — the lint can't see it. The convention is enforceable only by the agents themselves reading the instructions. Lints catch the inverse (collaboration-shaped notes that leaked *into* Doco) but the predicate is hand-wavy enough not to earn the Rule keep yet."
 rules_consulted: []
-decided_by: torrenegra
+decided_by: principal_01KR441EA199MZCP7RDMADFZW9
 decided_at: 2026-05-12T10:00:00Z
 
 created_at: 2026-05-12T10:00:00Z
-created_by: claude-opus-4-7
+created_by: principal_01KR441EA259F7EE420Z4VWFPJ
 revision: 1
 lifecycle: active
 status: accepted

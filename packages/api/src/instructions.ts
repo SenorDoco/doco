@@ -18,8 +18,7 @@
  *
  * Per ADR-080 (centralized bootstrap), ADR-081 (edge-hierarchical scopes),
  * ADR-082 (scopes carry purpose + guidelines), ADR-086 (knowledge lives in
- * Doco, not in private agent memory), ADR-090 (drift detection via
- * `doco coverage`).
+ * Doco, not in private agent memory).
  */
 export const CANONICAL_INSTRUCTIONS = `# Doco — agent bootstrap
 
@@ -167,18 +166,4 @@ preferences, your past mistakes with this user. Nothing project-shaped.
 When you catch yourself reaching for \`save to memory\`, ask the test
 first. The convenience of memory is real but the cost — invisible,
 unversioned, unshared — is permanent.
-
-## Pause and capture: don't drift (ADR-090)
-
-Every ~5 meaningful tool uses, or whenever you finish a coherent
-cluster of changes, **pause and check whether you owe Doco an Action**.
-The cheap signal: run \`doco coverage\`. It walks your git working tree
-and flags any file you've touched that isn't referenced in any Action
-under \`actions/\`. Exit 0 = clean. Exit 1 = uncovered files; write the
-missing Action before continuing.
-
-The drift this catches isn't laziness — it's invisible work. Without
-the nudge, agents (and humans) reliably ship 5-10 changes between
-Actions, then forget what the cluster was about. \`doco coverage\` makes
-the silent state legible.
 `;

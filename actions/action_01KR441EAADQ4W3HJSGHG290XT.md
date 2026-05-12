@@ -5,7 +5,7 @@ node_type: action
 schema_version: "0.1"
 summary: "Built end-user web self-service: sign-up, create Doco, create Organization, owner profile pages, per-Doco list/search/lint inside host mode. ADR-067 reserved-slug enforcement applied."
 
-actor_id: claude-opus-4-7
+actor_id: principal_01KR441EA259F7EE420Z4VWFPJ
 verb: implement_self_service_flows
 
 intent_ids:
@@ -47,7 +47,7 @@ started_at: 2026-05-09T01:30:00Z
 ended_at: 2026-05-09T02:30:00Z
 
 created_at: 2026-05-09T02:30:00Z
-created_by: claude-opus-4-7
+created_by: principal_01KR441EA259F7EE420Z4VWFPJ
 revision: 1
 lifecycle: succeeded
 status: completed

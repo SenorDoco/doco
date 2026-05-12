@@ -5,7 +5,7 @@ node_type: action
 schema_version: "0.1"
 summary: "Switched UI to light theme + Ubuntu Mono everywhere per founder direction; backfilled the 7 phase Decisions/Actions and 3 missing Rules surfaced by the explicit-over-implicit Rule."
 
-actor_id: claude-opus-4-7
+actor_id: principal_01KR441EA259F7EE420Z4VWFPJ
 verb: backfill_implementation_entities
 target: intent_01KR441EABD6SB4FGNSK9KEV81   # self-hosting
 
@@ -43,7 +43,7 @@ started_at: 2026-05-08T17:30:00Z
 ended_at: 2026-05-08T18:05:00Z
 
 created_at: 2026-05-08T18:05:00Z
-created_by: claude-opus-4-7
+created_by: principal_01KR441EA259F7EE420Z4VWFPJ
 revision: 1
 lifecycle: succeeded
 status: completed

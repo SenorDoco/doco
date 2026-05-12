@@ -5,7 +5,7 @@ node_type: action
 schema_version: "0.1"
 summary: "Phase 17 — six scope-discoverability moves shipped: hierarchical names, multi-scope filter, scope landing pages, suggested_scopes API, tightened connectivity lint, scope-weighted PPR. Per ADR-079."
 
-actor_id: claude-opus-4-7
+actor_id: principal_01KR441EA259F7EE420Z4VWFPJ
 verb: ship_scope_discoverability_bundle
 
 intent_ids:
@@ -62,7 +62,7 @@ started_at: 2026-05-09T19:35:00Z
 ended_at: 2026-05-09T19:55:00Z
 
 created_at: 2026-05-09T19:55:00Z
-created_by: claude-opus-4-7
+created_by: principal_01KR441EA259F7EE420Z4VWFPJ
 revision: 1
 lifecycle: succeeded
 status: completed

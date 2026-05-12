@@ -5,7 +5,7 @@ node_type: action
 schema_version: "0.1"
 summary: "Removed the deep code/schema rename from the backlog. Visible brand stays 'Doco'; technical surface stays 'doco' indefinitely. Updated the Phase 12 Action's framing and superseded earlier rename Actions to abandoned."
 
-actor_id: torrenegra   # torrenegra (founder)
+actor_id: principal_01KR441EA199MZCP7RDMADFZW9   # torrenegra (founder)
 verb: remove_doco_rename_from_backlog
 
 intent_ids:
@@ -35,7 +35,7 @@ started_at: 2026-05-09T16:55:00Z
 ended_at: 2026-05-09T16:58:00Z
 
 created_at: 2026-05-09T16:58:00Z
-created_by: claude-opus-4-7
+created_by: principal_01KR441EA259F7EE420Z4VWFPJ
 revision: 1
 lifecycle: succeeded
 status: completed

@@ -5,7 +5,7 @@ node_type: action
 schema_version: "0.1"
 summary: "Backlog (re-added): rename ALL Doco references to Doco — TS identifiers, package names, env vars, .doco/ → .doco/, doco.yaml → doco.yaml, every entity id doco_<ulid> → doco_<ulid>, cookie name. Schema major bump per ADR-050."
 
-actor_id: torrenegra
+actor_id: principal_01KR441EA199MZCP7RDMADFZW9
 verb: rename_all_doco_references_to_doco
 
 intent_ids:
@@ -107,20 +107,10 @@ implementation_order:
   - "10. Optional: rename the repo on disk."
 
 created_at: 2026-05-09T17:48:00Z
-created_by: claude-opus-4-7
-revision: 2
-lifecycle: succeeded
-status: completed
-started_at: 2026-05-10T08:00:00Z
-ended_at: 2026-05-12T11:30:00Z
-completion_note: |
-  Evalo → Doco code rename is complete as of commit bfdd1e3. Schema,
-  package names, env vars, file paths, entity ID prefixes, CLI binary,
-  cookie, routes/components — all reference 'doco'. No Evalo refs left
-  in code (.ts/.tsx/.json/.yaml/.md). Historical Evalo mentions remain
-  only in Decisions/Actions that describe the rename itself (ADR-083
-  and the Phase 20 Action), which is correct — Decisions are
-  append-only.
+created_by: principal_01KR441EA259F7EE420Z4VWFPJ
+revision: 1
+lifecycle: proposed
+status: planned
 scopes:
   - scope_01KR441EA8BTTB99H928Z0NQQW
 ---

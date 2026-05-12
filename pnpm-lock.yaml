@@ -29,6 +29,9 @@ importers:
       '@doco/core':
         specifier: workspace:*
         version: link:../core
+      '@doco/host':
+        specifier: workspace:*
+        version: link:../host
       '@doco/index':
         specifier: workspace:*
         version: link:../index
@@ -69,6 +72,9 @@ importers:
       '@doco/discovery':
         specifier: workspace:*
         version: link:../discovery
+      '@doco/host':
+        specifier: workspace:*
+        version: link:../host
       '@doco/index':
         specifier: workspace:*
         version: link:../index
@@ -131,6 +137,18 @@ importers:
         specifier: ^7.6.12
         version: 7.6.13
 
+  packages/host:
+    dependencies:
+      '@doco/core':
+        specifier: workspace:*
+        version: link:../core
+      '@doco/shared':
+        specifier: workspace:*
+        version: link:../shared
+      yaml:
+        specifier: ^2.6.1
+        version: 2.8.4
+
   packages/index:
     dependencies:
       '@doco/core':
@@ -192,6 +210,9 @@ importers:
       '@doco/discovery':
         specifier: workspace:*
         version: link:../discovery
+      '@doco/host':
+        specifier: workspace:*
+        version: link:../host
       '@doco/index':
         specifier: workspace:*
         version: link:../index

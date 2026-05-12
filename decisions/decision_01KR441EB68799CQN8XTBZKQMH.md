@@ -18,11 +18,11 @@ alternatives:
   - name: Slugs auto-regenerate from current title
     rejected_because: "Breaks every existing reference each time a title is wordsmithed. Stable handles must be stable."
 rules_consulted: []
-decided_by: torrenegra
+decided_by: principal_01KR441EA199MZCP7RDMADFZW9
 decided_at: 2026-05-08T15:18:00Z
 
 created_at: 2026-05-08T15:18:00Z
-created_by: torrenegra
+created_by: principal_01KR441EA199MZCP7RDMADFZW9
 revision: 1
 lifecycle: active
 status: accepted

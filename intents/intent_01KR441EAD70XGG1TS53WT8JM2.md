@@ -20,14 +20,14 @@ acceptance:
   - "The schema for the Doco is embedded inside the Doco (`schema/doco.schema.json`) so an agent can introspect without external context."
 
 stakeholders:
-  - torrenegra
+  - principal_01KR441EA199MZCP7RDMADFZW9
 
 applies_to:
   any_of:
     - tag: scope_meta
 
 created_at: 2026-05-08T15:18:00Z
-created_by: torrenegra
+created_by: principal_01KR441EA199MZCP7RDMADFZW9
 revision: 1
 lifecycle: active
 status: active

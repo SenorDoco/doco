@@ -5,7 +5,7 @@ node_type: action
 schema_version: "0.1"
 summary: "Implemented Phase 2: @doco/index (SQLite + FTS5 + edges + scope_match); reindex 79 entities in 6 ms; one-hop edge query in 0.36 ms."
 
-actor_id: claude-opus-4-7
+actor_id: principal_01KR441EA259F7EE420Z4VWFPJ
 verb: implement_phase
 target: intent_01KR441EAEM5NQBM160763TDDT
 
@@ -35,7 +35,7 @@ started_at: 2026-05-08T17:15:00Z
 ended_at: 2026-05-08T17:25:00Z
 
 created_at: 2026-05-08T17:25:00Z
-created_by: claude-opus-4-7
+created_by: principal_01KR441EA259F7EE420Z4VWFPJ
 revision: 1
 lifecycle: succeeded
 status: completed

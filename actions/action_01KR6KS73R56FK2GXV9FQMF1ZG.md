@@ -5,7 +5,7 @@ node_type: action
 schema_version: "0.1"
 summary: "Phase 10 — onboarding wizard. Home page becomes Join | Create. Each path splits Human | Agent. Agents can self-create unclaimed Docos and work in full; humans claim ownership later via /claim/<token>."
 
-actor_id: claude-opus-4-7
+actor_id: principal_01KR441EA259F7EE420Z4VWFPJ
 verb: ship_onboarding_wizard
 
 intent_ids:
@@ -64,7 +64,7 @@ started_at: 2026-05-09T15:00:00Z
 ended_at: 2026-05-09T15:15:00Z
 
 created_at: 2026-05-09T15:15:00Z
-created_by: claude-opus-4-7
+created_by: principal_01KR441EA259F7EE420Z4VWFPJ
 revision: 1
 lifecycle: succeeded
 status: completed

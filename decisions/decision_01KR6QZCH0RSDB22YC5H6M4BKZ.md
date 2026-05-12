@@ -56,11 +56,11 @@ alternatives:
     rejected_because: "Not on the table during the brainstorm but worth recording: would force ideas to fit Intent's required fields (title, acceptance) which defeats the lightweight intent."
 
 rules_consulted: []
-decided_by: torrenegra
+decided_by: principal_01KR441EA199MZCP7RDMADFZW9
 decided_at: 2026-05-09T16:00:00Z
 
 created_at: 2026-05-09T16:00:00Z
-created_by: claude-opus-4-7
+created_by: principal_01KR441EA259F7EE420Z4VWFPJ
 revision: 1
 lifecycle: active
 status: accepted

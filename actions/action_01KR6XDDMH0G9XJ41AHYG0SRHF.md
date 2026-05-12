@@ -5,7 +5,7 @@ node_type: action
 schema_version: "0.1"
 summary: "Phase 15 — added `follows` field on common_fields for BPMN-style ordering. Schema, TS type, edges enum, SCHEMA.md diagram + table, cycle-detection lint with 5 unit-test cases. Self-applies via this Action's own `follows` chain."
 
-actor_id: claude-opus-4-7
+actor_id: principal_01KR441EA259F7EE420Z4VWFPJ
 verb: add_follows_field
 
 intent_ids:
@@ -63,7 +63,7 @@ started_at: 2026-05-09T18:20:00Z
 ended_at: 2026-05-09T18:35:00Z
 
 created_at: 2026-05-09T18:35:00Z
-created_by: claude-opus-4-7
+created_by: principal_01KR441EA259F7EE420Z4VWFPJ
 revision: 1
 lifecycle: succeeded
 status: completed

@@ -5,7 +5,7 @@ node_type: action
 schema_version: "0.1"
 summary: "Backlog: until we reach v1.0, no backward-compat code or UX. Sweep and delete superseded paths (today: the /invite flow + invitation tokens) instead of carrying them forward."
 
-actor_id: torrenegra   # torrenegra (human, founder)
+actor_id: principal_01KR441EA199MZCP7RDMADFZW9   # torrenegra (human, founder)
 verb: enforce_no_backcompat_pre_v1
 
 intent_ids:
@@ -56,21 +56,12 @@ outputs:
       - "Optional: capture as a Rule (`rule_no_backcompat_pre_v1`) so the lint surface enforces 'when the lifecycle of a code path is superseded, delete it next change'. Probably overkill for v0; the principle is best held by humans, not lints."
 
 created_at: 2026-05-09T14:50:00Z
-created_by: claude-opus-4-7
-revision: 2
-lifecycle: succeeded
-status: completed
-started_at: 2026-05-12T11:00:00Z
-ended_at: 2026-05-12T11:30:00Z
+created_by: principal_01KR441EA259F7EE420Z4VWFPJ
+revision: 1
+lifecycle: proposed
+status: planned
 scopes:
   - scope_01KR441EA8BTTB99H928Z0NQQW   # scope_meta
-completion_note: |
-  Folded into ADR-087 (local-solo collapse). The /invite flow, invitation
-  tokens, TokenStore, redeem helpers, agent-spawn endpoint, and the
-  invitation test file were all deleted — not preserved as a deprecated
-  branch. Agent self-service (/agents/new) also went away because the
-  hosted-multi-tenant scaffolding it depended on is gone. The "no
-  back-compat pre-v1" principle held: delete, don't shim.
 ---
 
 # Backlog — no backward compat pre-v1.0

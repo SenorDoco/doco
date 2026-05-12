@@ -5,7 +5,7 @@ node_type: action
 schema_version: "0.1"
 summary: "Backlog: reduce the logotype size relative to the isotype (icon) in the DocoMark component."
 
-actor_id: torrenegra   # owner — to be claimed by whoever picks this up
+actor_id: principal_01KR441EA199MZCP7RDMADFZW9   # owner — to be claimed by whoever picks this up
 verb: adjust_brand_mark_proportions
 
 intent_ids:
@@ -32,7 +32,7 @@ outputs:
     - "Re-verify in Chrome that proportions look balanced at all sizes"
 
 created_at: 2026-05-09T03:00:00Z
-created_by: claude-opus-4-7
+created_by: principal_01KR441EA259F7EE420Z4VWFPJ
 revision: 1
 lifecycle: abandoned
 status: abandoned

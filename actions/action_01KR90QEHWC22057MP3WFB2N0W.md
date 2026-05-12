@@ -5,7 +5,7 @@ node_type: action
 schema_version: "0.1"
 summary: "Backlog: remove single-Doco mode entirely. Local solo is the only deployable shape; hosted multi-tenant (Principals, auth, /<owner>/<doco>/ URLs) gets paused as a separate track until there's actual demand."
 
-actor_id: torrenegra
+actor_id: principal_01KR441EA199MZCP7RDMADFZW9
 verb: remove_single_mode_collapse_to_local_only
 
 intent_ids:
@@ -58,19 +58,10 @@ decisions_consulted:
   - decision_01KR8Z7YHGMPD7CJRGSSQG7KRV   # ADR-083 (brand cutover)
 
 created_at: 2026-05-10T07:00:00Z
-created_by: torrenegra
-revision: 2
-lifecycle: succeeded
-status: completed
-started_at: 2026-05-12T10:00:00Z
-ended_at: 2026-05-12T11:30:00Z
-completion_note: |
-  Shipped via ADR-087 (local-solo collapse). All bullets in
-  what_to_do landed: routes deleted, packages/host removed, Principal
-  + Organization entity types removed from schema, owner_id + members
-  removed from doco_entity, $ownerSlug routes deleted, host CLI
-  command removed, dual-mode detection collapsed, ADR-061..ADR-073
-  family marked superseded.
+created_by: principal_01KR441EA199MZCP7RDMADFZW9
+revision: 1
+lifecycle: proposed
+status: planned
 scopes:
   - scope_01KR441EA8BTTB99H928Z0NQQW
 ---

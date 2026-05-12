@@ -24,11 +24,11 @@ alternatives:
   - name: Separate web-only and API-only paths
     rejected_because: "Drift inevitably; agents and humans gain capabilities asymmetrically; conflicts with intent_01KR441EACJYB895DWKG7Z25SF (dual-user-model)."
 rules_consulted: []
-decided_by: torrenegra
+decided_by: principal_01KR441EA199MZCP7RDMADFZW9
 decided_at: 2026-05-08T15:31:00Z
 
 created_at: 2026-05-08T15:31:00Z
-created_by: torrenegra
+created_by: principal_01KR441EA199MZCP7RDMADFZW9
 revision: 1
 lifecycle: active
 status: accepted

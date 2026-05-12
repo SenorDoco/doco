@@ -5,7 +5,7 @@ node_type: action
 schema_version: "0.1"
 summary: "Phase 20 — Doco brand cutover (ADR-083): Evalo → Doco everywhere; hard cutover. Plus scope management UX (ADR-084): tree view, '+ New scope', '+ Add child scope' linking via ?parent=<id>."
 
-actor_id: claude-opus-4-7
+actor_id: principal_01KR441EA259F7EE420Z4VWFPJ
 verb: doco_brand_cutover_and_scope_mgmt_ux
 
 intent_ids:
@@ -82,7 +82,7 @@ started_at: 2026-05-10T06:00:00Z
 ended_at: 2026-05-10T06:35:00Z
 
 created_at: 2026-05-10T06:35:00Z
-created_by: claude-opus-4-7
+created_by: principal_01KR441EA259F7EE420Z4VWFPJ
 revision: 1
 lifecycle: active
 status: completed

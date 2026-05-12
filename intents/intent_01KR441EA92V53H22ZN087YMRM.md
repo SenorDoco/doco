@@ -21,15 +21,15 @@ acceptance:
   - Both humans and AI agents can be Principals with the same affordances.
 
 stakeholders:
-  - torrenegra   # torrenegra
-  - claude-opus-4-7   # claude-opus-4-7
+  - principal_01KR441EA199MZCP7RDMADFZW9   # torrenegra
+  - principal_01KR441EA259F7EE420Z4VWFPJ   # claude-opus-4-7
 
 applies_to:
   any_of:
     - tag: scope_meta
 
 created_at: 2026-05-08T15:18:00Z
-created_by: torrenegra
+created_by: principal_01KR441EA199MZCP7RDMADFZW9
 revision: 1
 lifecycle: active
 status: active

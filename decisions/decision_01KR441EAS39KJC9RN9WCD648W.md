@@ -19,11 +19,11 @@ alternatives:
   - name: Per-kind ad-hoc field sets
     rejected_because: "Forces every consumer to special-case each kind. Loses the cross-kind queryability of `lifecycle`."
 rules_consulted: []
-decided_by: torrenegra
+decided_by: principal_01KR441EA199MZCP7RDMADFZW9
 decided_at: 2026-05-08T15:18:00Z
 
 created_at: 2026-05-08T15:18:00Z
-created_by: torrenegra
+created_by: principal_01KR441EA199MZCP7RDMADFZW9
 revision: 1
 lifecycle: active
 status: accepted

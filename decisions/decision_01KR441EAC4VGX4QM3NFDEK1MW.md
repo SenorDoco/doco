@@ -26,11 +26,11 @@ alternatives:
     rejected_because: "Requires a server. Self-hosted Docos should run with zero infra dependencies."
 rules_consulted:
   - rule_01KR441EAK6MKGDZZWH5TRZ9HQ   # no-secrets-in-doco
-decided_by: torrenegra
+decided_by: principal_01KR441EA199MZCP7RDMADFZW9
 decided_at: 2026-05-08T16:00:00Z
 
 created_at: 2026-05-08T16:00:00Z
-created_by: claude-opus-4-7
+created_by: principal_01KR441EA259F7EE420Z4VWFPJ
 revision: 1
 lifecycle: active
 status: accepted

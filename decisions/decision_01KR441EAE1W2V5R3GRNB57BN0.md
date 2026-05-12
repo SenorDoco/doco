@@ -30,11 +30,11 @@ alternatives:
   - name: Hand-write a tolerant YAML parser
     rejected_because: "Out of scope; reinvents a hard problem badly."
 rules_consulted: []
-decided_by: torrenegra
+decided_by: principal_01KR441EA199MZCP7RDMADFZW9
 decided_at: 2026-05-08T16:00:00Z
 
 created_at: 2026-05-08T16:00:00Z
-created_by: claude-opus-4-7
+created_by: principal_01KR441EA259F7EE420Z4VWFPJ
 revision: 1
 lifecycle: active
 status: accepted

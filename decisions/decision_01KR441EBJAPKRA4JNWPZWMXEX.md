@@ -19,11 +19,11 @@ alternatives:
   - name: Separate vector store (e.g., FAISS, ChromaDB)
     rejected_because: "Two caches to manage; two rebuild stories. Embedded vectors with the rest of the index keeps ops simple."
 rules_consulted: []
-decided_by: torrenegra
+decided_by: principal_01KR441EA199MZCP7RDMADFZW9
 decided_at: 2026-05-08T15:18:00Z
 
 created_at: 2026-05-08T15:18:00Z
-created_by: torrenegra
+created_by: principal_01KR441EA199MZCP7RDMADFZW9
 revision: 1
 lifecycle: active
 status: accepted

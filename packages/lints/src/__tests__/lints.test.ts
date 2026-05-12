@@ -17,6 +17,18 @@ describe("system lints against the Doco project", () => {
     }
   });
 
+  it("agent-ancestry: claude is owned by torrenegra (human) — passes", async () => {
+    await reindex(REPO_ROOT);
+    const db = await openDb(REPO_ROOT, { readonly: true, fileMustExist: true });
+    try {
+      const report = runAllLints(db);
+      const ancestry = report.issuesByLint["agent-ancestry"] ?? [];
+      expect(ancestry).toEqual([]);
+    } finally {
+      db.close();
+    }
+  });
+
   it("orphan-reasoning: bootstrap reasoning has a real conclusion_ref", async () => {
     await reindex(REPO_ROOT);
     const db = await openDb(REPO_ROOT, { readonly: true, fileMustExist: true });

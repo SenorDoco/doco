@@ -5,7 +5,7 @@ node_type: action
 schema_version: "0.1"
 summary: "Phase 16 — bulk rename node_type tag → scope across schema, code, and 149 entity files. Preserves ULIDs; flips prefixes and field names. Per ADR-078."
 
-actor_id: claude-opus-4-7
+actor_id: principal_01KR441EA259F7EE420Z4VWFPJ
 verb: rename_tag_to_scope_everywhere
 
 intent_ids:
@@ -61,7 +61,7 @@ started_at: 2026-05-09T18:50:00Z
 ended_at: 2026-05-09T19:05:00Z
 
 created_at: 2026-05-09T19:05:00Z
-created_by: claude-opus-4-7
+created_by: principal_01KR441EA259F7EE420Z4VWFPJ
 revision: 1
 lifecycle: succeeded
 status: completed

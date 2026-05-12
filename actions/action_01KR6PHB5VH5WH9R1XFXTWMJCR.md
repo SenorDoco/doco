@@ -5,7 +5,7 @@ node_type: action
 schema_version: "0.1"
 summary: "Phase 9.3 — AGENT.md teaches agents to surface the claim URL once, keep working, and remind every ~30 min. No 'should I scaffold?' or 'should I wait?' questions."
 
-actor_id: claude-opus-4-7
+actor_id: principal_01KR441EA259F7EE420Z4VWFPJ
 verb: tighten_agent_md_claim_workflow
 
 intent_ids:
@@ -42,7 +42,7 @@ started_at: 2026-05-09T15:40:00Z
 ended_at: 2026-05-09T15:43:00Z
 
 created_at: 2026-05-09T15:43:00Z
-created_by: claude-opus-4-7
+created_by: principal_01KR441EA259F7EE420Z4VWFPJ
 revision: 1
 lifecycle: succeeded
 status: completed

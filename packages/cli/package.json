@@ -21,6 +21,7 @@
     "@doco/api": "workspace:*",
     "@doco/core": "workspace:*",
     "@doco/discovery": "workspace:*",
+    "@doco/host": "workspace:*",
     "@doco/index": "workspace:*",
     "@doco/lints": "workspace:*",
     "@doco/runtime": "workspace:*",

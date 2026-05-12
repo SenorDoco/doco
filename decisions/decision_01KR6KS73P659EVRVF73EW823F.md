@@ -102,15 +102,14 @@ alternatives:
     rejected_because: "Circular — they don't have one yet. The whole point of agent-create is to bootstrap when no token exists."
 rules_consulted:
   - rule_01KR441EAJCPF378ZGM9DMDFH0   # agent-ancestry-terminates-at-human (kept satisfied by host-bootstrap being type:human)
-decided_by: torrenegra
+decided_by: principal_01KR441EA199MZCP7RDMADFZW9
 decided_at: 2026-05-09T15:00:00Z
-superseded_by: decision_01KREMDWG6SWKFHR5P1RDB64NC
 
 created_at: 2026-05-09T15:00:00Z
-created_by: claude-opus-4-7
+created_by: principal_01KR441EA259F7EE420Z4VWFPJ
 revision: 1
-lifecycle: superseded
-status: superseded
+lifecycle: active
+status: accepted
 scopes:
   - scope_01KR441EA37E3M5V0ZV6ZRB97D
   - scope_01KR441EA7ABSBBYM1JX3A8429

@@ -5,7 +5,7 @@ node_type: action
 schema_version: "0.1"
 summary: "Phase 18 — agent instructions moved to host (GET /api/v1/agent-bootstrap), AGENT.md collapsed to 12-line stub, scope setup as the explicit second step at /<owner>/<slug>/scopes/new. Per ADR-080."
 
-actor_id: claude-opus-4-7
+actor_id: principal_01KR441EA259F7EE420Z4VWFPJ
 verb: centralize_agent_bootstrap
 
 intent_ids:
@@ -116,7 +116,7 @@ started_at: 2026-05-09T21:35:00Z
 ended_at: 2026-05-09T21:50:00Z
 
 created_at: 2026-05-09T21:50:00Z
-created_by: claude-opus-4-7
+created_by: principal_01KR441EA259F7EE420Z4VWFPJ
 revision: 1
 lifecycle: active
 status: completed

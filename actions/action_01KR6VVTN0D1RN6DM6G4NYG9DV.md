@@ -5,7 +5,7 @@ node_type: action
 schema_version: "0.1"
 summary: "Backlog: flip the isotype horizontally. Today the graph mark faces left; mirror it so the open node sits on the leading edge of the wordmark."
 
-actor_id: torrenegra
+actor_id: principal_01KR441EA199MZCP7RDMADFZW9
 verb: flip_isotype_horizontally
 
 intent_ids:
@@ -31,7 +31,7 @@ outputs:
       - "Pure CSS scaleX(-1) flip in the DocoMark component, OR rewrite the SVG so the path data is naturally mirrored. CSS is faster to ship and easy to revert. SVG rewrite is cleaner long-term but needs a designer touch."
 
 created_at: 2026-05-09T17:30:00Z
-created_by: claude-opus-4-7
+created_by: principal_01KR441EA259F7EE420Z4VWFPJ
 revision: 1
 lifecycle: abandoned
 status: abandoned

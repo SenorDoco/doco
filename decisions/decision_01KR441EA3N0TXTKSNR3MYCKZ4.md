@@ -34,15 +34,14 @@ alternatives:
   - name: Force all Docos to be owned by a synthetic Principal that wraps an Organization
     rejected_because: "Adds an indirection layer with no payoff. The org-owned URL `<org>/<repo>` should resolve directly to the Org, not a fake Principal."
 rules_consulted: []
-decided_by: torrenegra
+decided_by: principal_01KR441EA199MZCP7RDMADFZW9
 decided_at: 2026-05-08T18:30:00Z
-superseded_by: decision_01KREMDWG6SWKFHR5P1RDB64NC
 
 created_at: 2026-05-08T18:30:00Z
-created_by: claude-opus-4-7
+created_by: principal_01KR441EA259F7EE420Z4VWFPJ
 revision: 1
-lifecycle: superseded
-status: superseded
+lifecycle: active
+status: accepted
 scopes:
   - scope_01KR441EA37E3M5V0ZV6ZRB97D
   - scope_01KR441EA8BTTB99H928Z0NQQW

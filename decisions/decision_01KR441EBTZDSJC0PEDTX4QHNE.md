@@ -21,11 +21,11 @@ alternatives:
     rejected_because: "Currently kept external. Promote to entity only if Doco-internal queries on token *metadata* (name, scope, revocation history) become valuable (DECISIONS.md §13 #8). Token *values* still live elsewhere."
 rules_consulted:
   - rule_01KR441EAK6MKGDZZWH5TRZ9HQ   # no-secrets-in-doco
-decided_by: torrenegra
+decided_by: principal_01KR441EA199MZCP7RDMADFZW9
 decided_at: 2026-05-08T15:18:00Z
 
 created_at: 2026-05-08T15:18:00Z
-created_by: torrenegra
+created_by: principal_01KR441EA199MZCP7RDMADFZW9
 revision: 1
 lifecycle: active
 status: accepted

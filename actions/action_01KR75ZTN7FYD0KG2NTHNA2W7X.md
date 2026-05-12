@@ -5,7 +5,7 @@ node_type: action
 schema_version: "0.1"
 summary: "Backlog: thorough sweep for code cleanup, better abstractions, simplification opportunities. Apply changes and test thoroughly. Cross-package — touches schema, indexer, lints, web, api, runtime."
 
-actor_id: torrenegra
+actor_id: principal_01KR441EA199MZCP7RDMADFZW9
 verb: code_cleanup_sweep
 
 intent_ids:
@@ -55,32 +55,14 @@ outputs:
     - "Don't change architecture in a cleanup pass. New abstractions earn their place via a Decision, not a sweep."
 
 created_at: 2026-05-09T19:30:00Z
-created_by: claude-opus-4-7
-revision: 2
-lifecycle: succeeded
-status: completed
-started_at: 2026-05-12T10:00:00Z
-ended_at: 2026-05-12T11:45:00Z
-completion_note: |
-  Largely subsumed by ADR-087 (local-solo collapse). The high-leverage
-  candidate from the original scope — duplicated entity-detail routes
-  (`e.$type.$id.tsx` vs `$ownerSlug.$docoSlug.e.$type.$id.tsx`) and
-  list routes — is now moot: the host-mode duplicates were deleted
-  outright. Same for onboarding-pair components. Other targeted
-  cleanups (TokenStore, redeem helpers, session helpers) were folded
-  into the collapse.
-
-  Remaining cleanup candidates from the original scope (FIELD_TO_EDGE_TYPE
-  auto-derivation noise, schema-drift on Decision body fields, shared
-  test helpers for lint setups, missing unit tests on edges.ts /
-  pagerank.ts / ftsSanitize) carry forward as future Actions when the
-  post-collapse surface stabilizes. Filing them now would be premature
-  — Phase 23+ will reshape these areas more.
+created_by: principal_01KR441EA259F7EE420Z4VWFPJ
+revision: 1
+lifecycle: proposed
+status: planned
 follows:
-  - action_01KR74PX3E27FY526AE8AMD3HQ
-  - action_01KREMDWG9203NVJCC4THM3WWS   # Phase 22 (this Action is closed because Phase 22 did most of it)
+  - action_01KR74PX3E27FY526AE8AMD3HQ   # Phase 16 (most recent — this sweep would happen after the rename settles)
 scopes:
-  - scope_01KR441EA8BTTB99H928Z0NQQW
+  - scope_01KR441EA8BTTB99H928Z0NQQW   # scope_meta
 ---
 
 # Backlog — Code cleanup + abstraction sweep

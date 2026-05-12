@@ -5,7 +5,7 @@ node_type: action
 schema_version: "0.1"
 summary: "Backlog: harden the onboarding wizard's claim flow. Edge cases: slug collisions on claim, expired/used token UX, race between two parallel claims, sign-up redirect-back, claim from inside an existing Doco."
 
-actor_id: torrenegra
+actor_id: principal_01KR441EA199MZCP7RDMADFZW9
 verb: harden_claim_flow
 
 intent_ids:
@@ -39,14 +39,10 @@ outputs:
       - "If the field lands, lints can warn (not error) on long-unclaimed Docos. Helpful for hosts that get noisy with abandoned drafts."
 
 created_at: 2026-05-09T15:15:00Z
-created_by: claude-opus-4-7
-revision: 2
-lifecycle: abandoned
-abandoned_reason: |
-  The onboarding wizard's claim flow no longer exists. ADR-087 dropped
-  the entire claim ceremony. If hosted multi-tenant is reintroduced,
-  this Action's edge-case list remains a useful checklist.
-status: abandoned
+created_by: principal_01KR441EA259F7EE420Z4VWFPJ
+revision: 1
+lifecycle: proposed
+status: planned
 scopes:
   - scope_01KR441EA8BTTB99H928Z0NQQW
 ---

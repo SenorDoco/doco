@@ -108,11 +108,11 @@ alternatives:
 
 rules_consulted:
   - rule_01KR441EAJCPF378ZGM9DMDFH0
-decided_by: torrenegra
+decided_by: principal_01KR441EA199MZCP7RDMADFZW9
 decided_at: 2026-05-10T05:30:00Z
 
 created_at: 2026-05-10T05:30:00Z
-created_by: claude-opus-4-7
+created_by: principal_01KR441EA259F7EE420Z4VWFPJ
 revision: 1
 lifecycle: active
 status: accepted

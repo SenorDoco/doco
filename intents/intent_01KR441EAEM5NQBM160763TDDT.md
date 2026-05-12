@@ -27,14 +27,14 @@ acceptance:
   - "System Rules + lints: `rule_system_only_humans_delete`, agent-without-human-ancestor, orphan-Reasoning, bug-fix-without-regression-guard."
 
 stakeholders:
-  - torrenegra
+  - principal_01KR441EA199MZCP7RDMADFZW9
 
 applies_to:
   any_of:
     - tag: scope_meta
 
 created_at: 2026-05-08T15:42:00Z
-created_by: torrenegra
+created_by: principal_01KR441EA199MZCP7RDMADFZW9
 revision: 1
 lifecycle: active
 status: active
