@@ -7,7 +7,7 @@ import { rootDir } from "~/lib/db";
 import { loadHostConfig } from "~/lib/host";
 import { TokenStore } from "~/lib/tokens.server";
 import { findPrincipalById, redeemInvitation } from "~/lib/redeem.server";
-import { getPublicBaseUrl } from "~/lib/public-url";
+import { getPublicBaseUrl } from "@doco/shared";
 
 export async function loader({ request, params }: { request: Request; params: { token: string } }) {
   const root = rootDir();

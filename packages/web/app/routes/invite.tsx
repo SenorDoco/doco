@@ -5,7 +5,7 @@ import { rootDir } from "~/lib/db";
 import { loadHostConfig } from "~/lib/host";
 import { getCurrentPrincipal } from "~/lib/session";
 import { TokenStore } from "~/lib/tokens.server";
-import { getPublicBaseUrl } from "~/lib/public-url";
+import { getPublicBaseUrl } from "@doco/shared";
 import { SiteHeader } from "~/components/site-header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 

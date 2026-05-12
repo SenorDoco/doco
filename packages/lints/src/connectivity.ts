@@ -83,22 +83,24 @@ export const lintConnectivity = (db: Database): LintIssue[] => {
   }
 
   // ── Rules ──────────────────────────────────────────────────────────────
-  // applies_to lives in raw_json; check for non-empty scopes or types arrays.
+  // applies_to is a free-form ScopeSelector (SCHEMA.md §5; runtime/src/scope.ts).
+  // Valid shapes include `{ all: true }`, `{ id: ... }`, `{ scope: ... }`,
+  // `{ node_type: ..., verb: ... }`, `{ any_of: [...] }`, `{ all_of: [...] }`,
+  // and the array forms `{ scopes: [...] }` / `{ types: [...] }`. A Rule is
+  // disconnected only if its applies_to is missing, empty, or carries nothing
+  // a ScopeSelector recognizes.
   const rules = db
     .prepare("SELECT id, raw_json FROM rule")
     .all() as { id: string; raw_json: string }[];
   for (const r of rules) {
     const e = JSON.parse(r.raw_json) as Record<string, unknown>;
-    const applies = (e.applies_to ?? {}) as Record<string, unknown>;
-    const scopes = Array.isArray(applies.scopes) ? applies.scopes.length : 0;
-    const types = Array.isArray(applies.types) ? applies.types.length : 0;
-    if (scopes === 0 && types === 0) {
+    if (!isAppliesToConnected(e.applies_to)) {
       issues.push({
         lintId: "connectivity",
         severity: "warning",
         source: r.id,
         message:
-          "Rule has empty applies_to.scopes AND applies_to.types — it can't be applied to anything. Set at least one.",
+          "Rule has empty applies_to — it can't be applied to anything. Add at least one selector field (scope, node_type, all_of, etc.).",
       });
     }
   }
@@ -157,4 +159,31 @@ function countOutboundEdgesToTypes(
     )
     .get(fromId, ...types) as { n: number };
   return row.n;
+}
+
+/**
+ * Does this `applies_to` selector reach any candidate? True if it carries
+ * any recognized ScopeSelector field. Mirrors the shapes accepted by
+ * `runtime/src/scope.ts:matches`.
+ */
+function isAppliesToConnected(applies: unknown): boolean {
+  if (applies === null || applies === undefined) return false;
+  if (typeof applies !== "object") return false;
+  const sel = applies as Record<string, unknown>;
+  if (sel.all === true) return true;
+  if (typeof sel.id === "string" && sel.id) return true;
+  if (typeof sel.scope === "string" && sel.scope) return true;
+  if (typeof sel.intent_id === "string" && sel.intent_id) return true;
+  if (typeof sel.actor_type === "string" && sel.actor_type) return true;
+  if (typeof sel.node_type === "string" && sel.node_type) return true;
+  if (Array.isArray(sel.any_of) && sel.any_of.length > 0) return true;
+  if (Array.isArray(sel.all_of) && sel.all_of.length > 0) return true;
+  if (Array.isArray(sel.scopes) && sel.scopes.length > 0) return true;
+  if (Array.isArray(sel.types) && sel.types.length > 0) return true;
+  // Catch-all: any other field-value pair is a field-equality selector.
+  for (const [k, v] of Object.entries(sel)) {
+    if (k === "all" || k === "any_of" || k === "all_of") continue;
+    if (v !== undefined && v !== null && v !== "") return true;
+  }
+  return false;
 }

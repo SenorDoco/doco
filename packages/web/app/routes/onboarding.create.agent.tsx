@@ -12,7 +12,7 @@ import { loadHostConfig } from "~/lib/host";
 import { TokenStore } from "~/lib/tokens.server";
 import { addAgentPrincipal, createDocoInHost, reindex } from "~/lib/redeem.server";
 import { getOrCreateHostBootstrap, HOST_BOOTSTRAP_USERNAME } from "~/lib/bootstrap.server";
-import { getPublicBaseUrl } from "~/lib/public-url";
+import { getPublicBaseUrl } from "@doco/shared";
 
 // Repeat the constant so the component (non-server) can reference it without
 // pulling the .server module into the client bundle.

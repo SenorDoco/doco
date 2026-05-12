@@ -10,6 +10,7 @@ import { addAgentPrincipal, findPrincipalById, redeemInvitation } from "./agents
 import { detectMode } from "@doco/host";
 import { TokenStore, parseBearer } from "./auth.js";
 import { CANONICAL_INSTRUCTIONS } from "./instructions.js";
+import { ftsSanitize } from "./fts.js";
 
 export interface ServerOptions {
   docoRoot: string;
@@ -521,22 +522,6 @@ function aggregateSuggestedScopes(
   }
   out.sort((a, b) => b.score - a.score);
   return out.slice(0, topN);
-}
-
-/**
- * Sanitize free-text input into an FTS5 MATCH query. Strips characters that
- * FTS5 treats as operators, splits on whitespace, drops short tokens, ORs
- * the rest. ADR-075 — used by /api/v1/suggest.
- */
-function ftsSanitize(text: string): string {
-  const tokens = text
-    .toLowerCase()
-    .replace(/[^\w\s-]/g, " ")
-    .split(/\s+/)
-    .filter((t) => t.length >= 3 && t.length <= 30);
-  if (tokens.length === 0) return "";
-  // OR the tokens; FTS5 ranks by bm25.
-  return tokens.join(" OR ");
 }
 
 function countByType(db: Database): Record<string, number> {

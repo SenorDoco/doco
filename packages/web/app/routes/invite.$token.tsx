@@ -4,7 +4,7 @@ import { rootDir } from "~/lib/db";
 import { loadHostConfig } from "~/lib/host";
 import { TokenStore } from "~/lib/tokens.server";
 import { redeemInvitation, findPrincipalById } from "~/lib/redeem.server";
-import { getPublicBaseUrl } from "~/lib/public-url";
+import { getPublicBaseUrl } from "@doco/shared";
 import { SiteHeader } from "~/components/site-header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 

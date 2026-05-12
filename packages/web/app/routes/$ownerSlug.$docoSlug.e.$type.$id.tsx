@@ -3,7 +3,7 @@ import { Form, Link, redirect } from "react-router";
 import type { EntityId } from "@doco/shared";
 import { docoPath, openDocoDb } from "~/lib/db";
 import { loadHostConfig } from "~/lib/host";
-import { personalizedPageRank } from "~/lib/pagerank";
+import { personalizedPageRank } from "@doco/index";
 import {
   deleteScopeInDoco,
   reindex,
