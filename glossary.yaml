@@ -1,9 +1,26 @@
 # Glossary — term ↔ synonyms, used by Rule discovery's semantic search (D-032).
 # Flat config for v0.1; promote to first-class entity if per-term lineage becomes valuable.
 
+- term: Doco
+  synonyms: [the product, the framework, the system]
+  description: |
+    The whole product — alignment framework + runtime checking system. When
+    used without qualifier, always refers to the product. A single instance
+    (the repo-equivalent unit of scoping) is "a Doco instance" or just the
+    specific slug; never bare "Doco" for the instance, to avoid conflating
+    product and instance.
+
+- term: meta-doco
+  synonyms: [Doco's Doco, self-hosted Doco, the meta instance]
+  description: |
+    The Doco instance that documents Doco itself — Doco self-hosting. Lives
+    at this repo (slug `torrenegra/doco`). Use "meta-doco" (not "the Doco"
+    or "this Doco") whenever distinguishing the self-hosted instance from
+    the product is load-bearing.
+
 - term: alignment
   synonyms: [coherence, congruence, consistency]
-  description: Coherence between intent, reasoning, and action. Evalo's central concept.
+  description: Coherence between intent, reasoning, and action. Doco's central concept.
 
 - term: intent
   synonyms: [goal, objective, purpose, aim, target]
@@ -31,7 +48,7 @@
 
 - term: principal
   synonyms: [user, member, identity, actor, account]
-  description: A human or agent identity within Evalo.
+  description: A human or agent identity within Doco.
 
 - term: agent
   synonyms: [bot, AI, automated principal, assistant]
@@ -39,7 +56,7 @@
 
 - term: scope
   synonyms: [boundary, area, domain, namespace]
-  description: Sub-area of an Evalo, expressed via reserved scope_* tags (D-028).
+  description: Sub-area of an Doco, expressed via reserved scope_* tags (D-028).
 
 - term: evaluation
   synonyms: [check, assertion result, audit, lint result]
@@ -50,7 +67,7 @@
   description: Any check applied to data crossing a trust boundary.
 
 - term: session token
-  synonyms: [auth token, session cookie, bearer token, EVALO_TOKEN]
+  synonyms: [auth token, session cookie, bearer token, DOCO_TOKEN]
   description: Long-lived agent credential (D-037), revocable.
 
 - term: PII
