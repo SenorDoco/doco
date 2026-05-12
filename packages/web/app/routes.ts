@@ -6,6 +6,8 @@ export default [
   route("e/:type/:id", "routes/e.$type.$id.tsx"),
   route("search", "routes/search.tsx"),
   route("lint", "routes/lint.tsx"),
+  route("coverage", "routes/coverage.tsx"),
+  route("api/recent", "routes/api.recent.tsx"),
   // Auth (host-mode only; ADR-066, ADR-067)
   route("sign-in", "routes/sign-in.tsx"),
   route("sign-out", "routes/sign-out.tsx"),
@@ -42,6 +44,7 @@ export default [
   // ADR-082 follow-up: LLM-based scope suggestions for /scopes/new.
   route("api/suggest-scopes", "routes/api.suggest-scopes.tsx"),
   route(":ownerSlug/:docoSlug/lint", "routes/$ownerSlug.$docoSlug.lint.tsx"),
+  route(":ownerSlug/:docoSlug/coverage", "routes/$ownerSlug.$docoSlug.coverage.tsx"),
   // ADR-080 (rev 2): scope setup as the second step after Doco creation.
   route(
     ":ownerSlug/:docoSlug/scopes/new",

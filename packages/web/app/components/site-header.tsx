@@ -13,6 +13,10 @@ interface SiteHeaderProps {
   me?: CurrentPrincipal | null;
 }
 
+/**
+ * Two-row header (ADR-088): brand + breadcrumb + account on row 1, per-Doco
+ * navigation on row 2 (sub-bar). Keeps the nav uncrowded as it grows.
+ */
 export function SiteHeader({ context, docoScope, mode, me }: SiteHeaderProps) {
   const nav = docoScope
     ? [
@@ -25,6 +29,7 @@ export function SiteHeader({ context, docoScope, mode, me }: SiteHeaderProps) {
         { to: `/${docoScope.ownerSlug}/${docoScope.docoSlug}/e/action`, label: "Actions" },
         { to: `/${docoScope.ownerSlug}/${docoScope.docoSlug}/search`, label: "Search" },
         { to: `/${docoScope.ownerSlug}/${docoScope.docoSlug}/lint`, label: "Lint" },
+        { to: `/${docoScope.ownerSlug}/${docoScope.docoSlug}/coverage`, label: "Coverage" },
       ]
     : mode === "host"
       ? [
@@ -41,10 +46,12 @@ export function SiteHeader({ context, docoScope, mode, me }: SiteHeaderProps) {
           { to: "/e/action", label: "Actions" },
           { to: "/search", label: "Search" },
           { to: "/lint", label: "Lint" },
+          { to: "/coverage", label: "Coverage" },
         ];
 
   return (
     <header className="border-b border-border bg-card">
+      {/* Row 1: brand + breadcrumb + (host-mode) account actions. */}
       <div className="mx-auto flex max-w-6xl items-center gap-6 px-6 py-3">
         <h1 className="m-0 leading-none tracking-tight">
           <NavLink to="/" className="inline-flex items-center hover:opacity-80" aria-label="Doco home">
@@ -69,23 +76,6 @@ export function SiteHeader({ context, docoScope, mode, me }: SiteHeaderProps) {
             ) : null}
           </span>
         </h1>
-        <nav className="flex items-center gap-4 text-xs">
-          {nav.map((n) => (
-            <NavLink
-              key={n.to}
-              to={n.to}
-              end={n.to === "/" || n.to === `/${docoScope?.ownerSlug}/${docoScope?.docoSlug}`}
-              className={({ isActive }) =>
-                cn(
-                  "transition-colors",
-                  isActive ? "text-foreground font-medium" : "text-muted-foreground hover:text-foreground",
-                )
-              }
-            >
-              {n.label}
-            </NavLink>
-          ))}
-        </nav>
         <div className="ml-auto flex items-center gap-3 text-xs">
           {mode === "host" ? (
             me ? (
@@ -127,6 +117,27 @@ export function SiteHeader({ context, docoScope, mode, me }: SiteHeaderProps) {
             )
           ) : null}
         </div>
+      </div>
+
+      {/* Row 2: per-Doco / host nav (sub-bar, ADR-088). */}
+      <div className="border-t border-border/60">
+        <nav className="mx-auto flex max-w-6xl items-center gap-5 px-6 py-2 text-xs">
+          {nav.map((n) => (
+            <NavLink
+              key={n.to}
+              to={n.to}
+              end={n.to === "/" || n.to === `/${docoScope?.ownerSlug}/${docoScope?.docoSlug}`}
+              className={({ isActive }) =>
+                cn(
+                  "transition-colors",
+                  isActive ? "text-foreground font-medium" : "text-muted-foreground hover:text-foreground",
+                )
+              }
+            >
+              {n.label}
+            </NavLink>
+          ))}
+        </nav>
       </div>
     </header>
   );
