@@ -26,6 +26,9 @@ export default [
   route("sign-in", "routes/sign-in.tsx"),
   route("sign-out", "routes/sign-out.tsx"),
   route("sign-up", "routes/sign-up.tsx"),
+  // GitHub OAuth (ADR-095)
+  route("auth/github", "routes/auth.github.tsx"),
+  route("auth/github/callback", "routes/auth.github.callback.tsx"),
   // Self-service create
   route("new-doco", "routes/new-doco.tsx"),
   route("new-org", "routes/new-org.tsx"),

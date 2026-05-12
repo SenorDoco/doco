@@ -10,16 +10,23 @@ import {
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { DocoMark } from "~/components/doco-mark";
 
+/**
+ * /sign-in (ADR-095) — GitHub OAuth is the primary path. A localhost
+ * identity-picker is offered as a switch-account affordance when
+ * DOCO_LOCALHOST_PICKER=1; production-grade hosts leave it off.
+ */
 export function loader({ request }: { request: Request }) {
-  // Already signed in? bounce home.
   const id = getSessionPrincipalId(request);
-  if (id && findPrincipalById(id)) {
-    throw redirect("/");
-  }
-  return { users: listSignInCandidates(), host: loadHostConfig() };
+  if (id && findPrincipalById(id)) throw redirect("/");
+  const pickerEnabled = process.env.DOCO_LOCALHOST_PICKER === "1";
+  const users = pickerEnabled ? listSignInCandidates() : [];
+  return { users, host: loadHostConfig(), pickerEnabled };
 }
 
 export async function action({ request }: { request: Request }) {
+  if (process.env.DOCO_LOCALHOST_PICKER !== "1") {
+    return { error: "Picker sign-in is disabled. Use Continue with GitHub." };
+  }
   const form = await request.formData();
   const principalId = String(form.get("principal_id") ?? "");
   if (!findPrincipalById(principalId)) {
@@ -32,8 +39,14 @@ export function meta() {
   return [{ title: "Sign in · Doco" }];
 }
 
-export default function SignIn({ loaderData }: { loaderData: Awaited<ReturnType<typeof loader>> }) {
-  const { users, host } = loaderData;
+export default function SignIn({
+  loaderData,
+  actionData,
+}: {
+  loaderData: Awaited<ReturnType<typeof loader>>;
+  actionData?: { error?: string } | undefined;
+}) {
+  const { users, host, pickerEnabled } = loaderData;
   return (
     <div>
       <header className="border-b border-border bg-card">
@@ -49,37 +62,54 @@ export default function SignIn({ loaderData }: { loaderData: Awaited<ReturnType<
           <CardHeader>
             <CardTitle>Sign in</CardTitle>
             <CardDescription>
-              Local-dev mode: pick a registered User to act as. Production will swap to GitHub OAuth (ADR-034).
+              Doco accounts are humans verified by GitHub (ADR-095).
             </CardDescription>
           </CardHeader>
           <CardContent>
-            {users.length === 0 ? (
-              <p className="text-xs text-muted-foreground">
-                No users yet.{" "}
-                <Link to="/sign-up" className="text-primary hover:underline">
-                  Create the first one →
-                </Link>
-              </p>
-            ) : (
-              <ul className="space-y-2">
-                {users.map((u) => (
-                  <li key={u.id}>
-                    <Form method="post">
-                      <input type="hidden" name="principal_id" value={u.id} />
-                      <button
-                        type="submit"
-                        className="w-full rounded-md border border-border bg-input px-3 py-2 text-left transition-colors hover:border-primary hover:bg-card"
-                      >
-                        <div className="text-sm font-semibold">{u.username}</div>
-                        {u.email ? (
-                          <div className="text-xs text-muted-foreground">{u.email}</div>
-                        ) : null}
-                      </button>
-                    </Form>
-                  </li>
-                ))}
-              </ul>
-            )}
+            <Link
+              to="/auth/github"
+              className="flex w-full items-center justify-center gap-2 rounded-md bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:opacity-90"
+            >
+              <GitHubMark />
+              Continue with GitHub
+            </Link>
+
+            {pickerEnabled && users.length > 0 ? (
+              <>
+                <div className="my-4 flex items-center gap-2 text-[11px] text-muted-foreground">
+                  <span className="h-px flex-1 bg-border" />
+                  <span>or switch local identity</span>
+                  <span className="h-px flex-1 bg-border" />
+                </div>
+                <ul className="space-y-2">
+                  {users.map((u) => (
+                    <li key={u.id}>
+                      <Form method="post">
+                        <input type="hidden" name="principal_id" value={u.id} />
+                        <button
+                          type="submit"
+                          className="w-full rounded-md border border-border bg-input px-3 py-2 text-left transition-colors hover:border-primary hover:bg-card"
+                        >
+                          <div className="text-sm font-semibold">{u.username}</div>
+                          {u.email ? (
+                            <div className="text-xs text-muted-foreground">{u.email}</div>
+                          ) : null}
+                        </button>
+                      </Form>
+                    </li>
+                  ))}
+                </ul>
+                <p className="mt-3 text-[11px] text-muted-foreground">
+                  This picker is a local-dev convenience (DOCO_LOCALHOST_PICKER=1). Production hosts
+                  leave it off — sign-in is GitHub-only there.
+                </p>
+              </>
+            ) : null}
+
+            {actionData?.error ? (
+              <p className="mt-3 text-xs text-destructive">{actionData.error}</p>
+            ) : null}
+
             <p className="mt-4 text-xs text-muted-foreground">
               New here?{" "}
               <Link to="/sign-up" className="text-primary hover:underline">
@@ -90,5 +120,20 @@ export default function SignIn({ loaderData }: { loaderData: Awaited<ReturnType<
         </Card>
       </main>
     </div>
+  );
+}
+
+function GitHubMark() {
+  return (
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      aria-hidden="true"
+      className="-ml-1"
+    >
+      <path d="M12 .5a11.5 11.5 0 0 0-3.63 22.41c.58.11.79-.25.79-.56v-2c-3.22.7-3.9-1.55-3.9-1.55-.53-1.34-1.3-1.7-1.3-1.7-1.06-.72.08-.71.08-.71 1.17.08 1.79 1.2 1.79 1.2 1.04 1.78 2.74 1.27 3.41.97.11-.76.41-1.27.74-1.56-2.57-.29-5.27-1.29-5.27-5.73 0-1.27.45-2.31 1.2-3.13-.12-.29-.52-1.47.11-3.06 0 0 .98-.31 3.2 1.2a11.1 11.1 0 0 1 5.83 0c2.22-1.51 3.2-1.2 3.2-1.2.63 1.59.23 2.77.11 3.06.75.82 1.2 1.86 1.2 3.13 0 4.46-2.7 5.44-5.28 5.72.42.36.79 1.07.79 2.16v3.21c0 .31.21.68.8.56A11.5 11.5 0 0 0 12 .5Z" />
+    </svg>
   );
 }
