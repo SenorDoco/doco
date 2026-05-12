@@ -3,7 +3,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { openDb, reindex } from "@doco/index";
 import { Glossary, findRules } from "../index.js";
 
-const REPO_ROOT = resolve(__dirname, "../../../..");
+const REPO_ROOT = resolve(__dirname, "../../../../docos/torrenegra/doco");
 
 beforeAll(async () => {
   await reindex(REPO_ROOT);

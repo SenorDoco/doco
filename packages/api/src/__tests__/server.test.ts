@@ -3,7 +3,7 @@ import { describe, expect, it, beforeAll } from "vitest";
 import { reindex } from "@doco/index";
 import { makeApp } from "../server.js";
 
-const REPO_ROOT = resolve(__dirname, "../../../..");
+const REPO_ROOT = resolve(__dirname, "../../../../docos/torrenegra/doco");
 
 beforeAll(async () => {
   await reindex(REPO_ROOT);

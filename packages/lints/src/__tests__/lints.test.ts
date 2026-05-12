@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { reindex, openDb } from "@doco/index";
 import { runAllLints } from "../index.js";
 
-const REPO_ROOT = resolve(__dirname, "../../../..");
+const REPO_ROOT = resolve(__dirname, "../../../../docos/torrenegra/doco");
 
 describe("system lints against the Doco project", () => {
   it("reports a clean Doco (zero errors)", async () => {

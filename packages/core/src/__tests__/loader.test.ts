@@ -2,7 +2,7 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { loadDoco } from "../loader.js";
 
-const REPO_ROOT = resolve(__dirname, "../../../..");
+const REPO_ROOT = resolve(__dirname, "../../../../docos/torrenegra/doco");
 
 describe("loadDoco against the Doco project's self-hosted Doco", () => {
   it("loads the root doco.yaml", async () => {
