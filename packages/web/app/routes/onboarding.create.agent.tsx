@@ -77,6 +77,21 @@ export default function CreateAgent({
               (or invoke ad-hoc with <code className="rounded bg-input px-1 py-0.5 font-mono">npx @doco/cli</code>).
             </p>
 
+            <div className="rounded-md border border-border bg-card p-3 text-xs space-y-1.5">
+              <p className="font-semibold">First-run permissions (Claude Code and similar)</p>
+              <p>
+                Auto-mode classifiers may block the very first <code>doco</code> call as an
+                unverified external CLI. Either click <strong>Allow</strong> when prompted, or
+                pre-authorize once at the user level in <code>~/.claude/settings.json</code>:
+              </p>
+              <pre className="overflow-x-auto rounded bg-input p-2 font-mono text-[11px]">{`{"permissions":{"allow":["Bash(doco:*)","Bash(npx @doco/cli:*)"]}}`}</pre>
+              <p>
+                After the first successful run, the bootstrap installed into this repo's{" "}
+                <code>.claude/settings.json</code> allowlists the same entries, so future
+                calls run unprompted.
+              </p>
+            </div>
+
             <p>
               If the project owner <em>denies</em> the prompt, the CLI exits non-zero and nothing
               is written. Don't retry on a loop — stop and ask what they want to do.
