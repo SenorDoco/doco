@@ -1,7 +1,8 @@
 import type { Config } from "@react-router/dev/config";
+import { vercelPreset } from "@vercel/react-router/vite";
 
 export default {
   appDirectory: "app",
   ssr: true,
-  // SSR-only data routes; no SPA prerender for now.
+  presets: [vercelPreset()],
 } satisfies Config;
