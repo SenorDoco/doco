@@ -34,7 +34,7 @@ html, body {
   background-color: var(--color-background);
   color: var(--color-foreground);
   font-family: var(--font-sans);
-  font-size: 14px;
+  font-size: 16px;
   line-height: 1.55;
   accent-color: var(--color-primary);
 }
@@ -58,7 +58,7 @@ html, body {
   padding: 12px;
   overflow-x: auto;
   font-family: var(--font-mono);
-  font-size: 12.5px;
+  font-size: 14px;
   line-height: 1.45;
 }
 .body-md h1, .body-md h2, .body-md h3 {
