@@ -17,7 +17,7 @@ describe("system lints against the Doco project", () => {
     }
   });
 
-  it("agent-ancestry: claude is owned by torrenegra (human) — passes", async () => {
+  it("agent-ancestry: claude is owned by torrenegra (person) — passes", async () => {
     await reindex(REPO_ROOT);
     const db = await openDb(REPO_ROOT, { readonly: true, fileMustExist: true });
     try {

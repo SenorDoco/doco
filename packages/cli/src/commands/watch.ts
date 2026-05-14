@@ -8,9 +8,9 @@ import { c, checkmark, cross, header, rule } from "../output.js";
  * `doco watch` — keep the cache in sync with entity files on disk.
  *
  * Watches the entity directories (intents/, ideas/, rules/, decisions/,
- * actions/, reasoning/, references/, scopes/, evaluations/) plus
- * doco.yaml and triggers a full reindex on any change. Debounced so a
- * batch of writes doesn't trigger N reindexes.
+ * actions/, reasoning/, references/, scopes/, evals/) plus doco.yaml and
+ * triggers a full reindex on any change. Debounced so a batch of writes
+ * doesn't trigger N reindexes.
  *
  * Per ADR-089 follow-up — pairs with the live Recent feed so new entities
  * surface in the next poll cycle without a manual `doco reindex`.
@@ -46,7 +46,7 @@ export const watchCmd = defineCommand({
       "reasoning",
       "references",
       "scopes",
-      "evaluations",
+      "evals",
     ];
 
     console.log();

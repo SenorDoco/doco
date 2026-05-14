@@ -2,7 +2,7 @@ import type { Database } from "better-sqlite3";
 import type { LintIssue } from "./types.js";
 
 /**
- * Every agent Principal's owner_id chain must terminate at a `type: human`
+ * Every agent Principal's owner_id chain must terminate at a `type: person`
  * Principal in a finite number of steps (PLANNING.md §3.4 / D-035 / R-04).
  *
  * Walks each agent's chain, depth-bounded at 100 to catch cycles.
@@ -20,7 +20,7 @@ export const lintAgentAncestry = (db: Database): LintIssue[] => {
     let cur = a.owner_id;
     let depth = 0;
     const seen = new Set<string>([a.id]);
-    let resolved: "human" | "cycle" | "missing" | "no-owner" = "no-owner";
+    let resolved: "person" | "cycle" | "missing" | "no-owner" = "no-owner";
     while (cur) {
       if (seen.has(cur)) {
         resolved = "cycle";
@@ -37,19 +37,19 @@ export const lintAgentAncestry = (db: Database): LintIssue[] => {
         resolved = "missing";
         break;
       }
-      if (owner.type === "human") {
-        resolved = "human";
+      if (owner.type === "person") {
+        resolved = "person";
         break;
       }
       cur = owner.owner_id;
     }
 
-    if (resolved !== "human") {
+    if (resolved !== "person") {
       issues.push({
         lintId: "agent-ancestry",
         severity: "error",
         source: a.id,
-        message: `Agent ancestry chain does not terminate at a human (${resolved}).`,
+        message: `Agent ancestry chain does not terminate at a person (${resolved}).`,
       });
     }
   }

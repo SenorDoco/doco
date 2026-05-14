@@ -9,9 +9,9 @@ import { DocoMark } from "~/components/doco-mark";
  * Visiting this page shows a single "Continue with GitHub" button that
  * routes through /auth/github.
  */
-export function loader({ request }: { request: Request }) {
-  if (getCurrentPrincipal(request)) throw redirect("/");
-  return { host: loadHostConfig() };
+export async function loader({ request }: { request: Request }) {
+  if (await getCurrentPrincipal(request)) throw redirect("/dashboard");
+  return { host: await loadHostConfig() };
 }
 
 export function meta() {
@@ -38,7 +38,7 @@ export default function SignUp({
           <CardHeader>
             <CardTitle>Create an account</CardTitle>
             <CardDescription>
-              Doco accounts are humans verified by GitHub (ADR-095). One click to sign up.
+              Doco accounts are people verified by GitHub (ADR-095). One click to sign up.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -56,7 +56,7 @@ export default function SignUp({
               </Link>
             </p>
             <p className="mt-3 text-[11px] text-muted-foreground">
-              Only humans can create Doco accounts. Agents are invited by humans through{" "}
+              Only people can create Doco accounts. Agents are invited by people through{" "}
               <Link to="/agents/new" className="text-primary hover:underline">
                 /agents/new
               </Link>

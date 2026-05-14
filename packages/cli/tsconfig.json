@@ -4,16 +4,34 @@
     "rootDir": "./src",
     "outDir": "./dist"
   },
-  "include": ["src/**/*"],
-  "exclude": ["src/**/__tests__/**", "src/**/*.test.ts"],
+  "include": [
+    "src/**/*"
+  ],
+  "exclude": [
+    "src/**/__tests__/**",
+    "src/**/*.test.ts"
+  ],
   "references": [
-    { "path": "../shared" },
-    { "path": "../core" },
-    { "path": "../index" },
-    { "path": "../runtime" },
-    { "path": "../lints" },
-    { "path": "../api" },
-    { "path": "../discovery" },
-    { "path": "../host" }
+    {
+      "path": "../shared"
+    },
+    {
+      "path": "../core"
+    },
+    {
+      "path": "../db"
+    },
+    {
+      "path": "../index"
+    },
+    {
+      "path": "../lints"
+    },
+    {
+      "path": "../api"
+    },
+    {
+      "path": "../host"
+    }
   ]
 }

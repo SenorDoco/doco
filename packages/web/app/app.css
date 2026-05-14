@@ -14,9 +14,9 @@
   --color-card-foreground: oklch(0.20 0.015 248);
   --color-border: oklch(0.91 0.006 248);
   --color-input: oklch(0.97 0.004 248);
-  --color-primary: oklch(0.52 0.18 248);
+  --color-primary: oklch(0.53 0.16 324);
   --color-primary-foreground: oklch(0.99 0.002 240);
-  --color-accent: oklch(0.55 0.16 70);
+  --color-accent: oklch(0.53 0.16 324);
   --color-accent-foreground: oklch(0.99 0.002 240);
   --color-destructive: oklch(0.55 0.22 25);
   --color-destructive-foreground: oklch(0.99 0.002 240);
@@ -36,6 +36,7 @@ html, body {
   font-family: var(--font-sans);
   font-size: 14px;
   line-height: 1.55;
+  accent-color: var(--color-primary);
 }
 
 ::selection {

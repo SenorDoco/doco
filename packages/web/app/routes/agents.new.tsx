@@ -1,9 +1,9 @@
-// /agents/new — human creates a Principal{type:agent} + DOCO_TOKEN in one step.
+// /agents/new — owner creates a Principal{type:agent} + DOCO_TOKEN in one step.
 // Per ADR-071. Replaces the invitation-redemption ceremony for agent enrollment.
 import { useState } from "react";
 import { Form, redirect, useActionData } from "react-router";
 import type { EntityId } from "@doco/shared";
-import { rootDir } from "~/lib/db";
+import { rootDir } from "~/lib/db.server";
 import { loadHostConfig } from "~/lib/host";
 import { getCurrentPrincipal } from "~/lib/session";
 import { TokenStore } from "~/lib/tokens.server";
@@ -12,13 +12,13 @@ import { SiteHeader } from "~/components/site-header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 
 export async function loader({ request }: { request: Request }) {
-  const me = getCurrentPrincipal(request);
+  const me = await getCurrentPrincipal(request);
   if (!me) throw redirect("/sign-in");
-  return { me, host: loadHostConfig() };
+  return { me, host: await loadHostConfig() };
 }
 
 export async function action({ request }: { request: Request }) {
-  const me = getCurrentPrincipal(request);
+  const me = await getCurrentPrincipal(request);
   if (!me) throw redirect("/sign-in");
 
   const form = await request.formData();
@@ -106,7 +106,7 @@ export default function AgentsNew({
     const { session_token, principal } = actionData.ok;
     return (
       <div>
-        <SiteHeader context={host.name} mode="host" me={me} />
+        <SiteHeader mode="host" me={me} />
         <main className="mx-auto max-w-2xl px-6 py-8 space-y-4">
           <Card>
             <CardHeader>
@@ -164,7 +164,7 @@ export default function AgentsNew({
 
   return (
     <div>
-      <SiteHeader context={host.name} mode="host" me={me} />
+      <SiteHeader mode="host" me={me} />
       <main className="mx-auto max-w-2xl px-6 py-8 space-y-4">
         <Card>
           <CardHeader>

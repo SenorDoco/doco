@@ -1,0 +1,33 @@
+id: scope_01KRHMNYX8TKMXJJVNW8FE3TGV
+doco_id: doco_01KRHJQC0YMK6VEPZSMCQVP1QD
+node_type: scope
+summary: "End-to-end user journeys: how a person (or external system) moves
+  through a feature from start to finish."
+name: user-flows
+icon: 🌊
+purpose: "End-to-end user journeys: how a person (or external system) moves
+  through a feature from start to finish."
+guidelines: >-
+  Treat each flow as a sequence. Use BPMN-style decomposition:
+
+
+  - One **Intent** per flow ("user buys a product", "agent claims a Doco").
+
+  - One or more **Actions** per step the user/system performs. Chain them with
+  the `follows` field so the order is explicit and the cycle-lint guards against
+  loops.
+
+  - One **Decision** per branch ("if cart total > $X, require 2FA"). Reference
+  the Decision from the Action that depends on it via `decision_ids`.
+
+  - Use **Reasoning** to justify non-obvious orderings or merges.
+
+
+  Don't try to capture state diagrams here — Doco is process-centric, not
+  state-machine-centric.
+created_at: 2026-05-13T21:42:57.192Z
+created_by: principal_01KRHJQCG3HH5AYBZWEZHCS9MY
+revision: 1
+lifecycle: active
+scopes: []
+watched: true

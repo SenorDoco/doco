@@ -9,13 +9,24 @@ export default defineConfig({
     port: 5173,
     host: "127.0.0.1",
   },
-  // better-sqlite3 is a native module and cannot be bundled into the SSR build
+  // Force a single React copy across dynamic chunks — without this,
+  // @xyflow/react ends up with a duplicate React and crashes with
+  // "Cannot read properties of null (reading 'useState')".
+  resolve: {
+    dedupe: ["react", "react-dom"],
+  },
+  optimizeDeps: {
+    include: ["@xyflow/react", "frimousse"],
+  },
+  // better-sqlite3 is a native module and cannot be bundled into the SSR build.
+  // @xyflow/react and frimousse are client-only — keep them out of the SSR bundle
+  // so they never try to call useRef/useState on a server-side null React.
   ssr: {
-    external: ["better-sqlite3"],
+    external: ["better-sqlite3", "@xyflow/react", "frimousse"],
     noExternal: [
       "@doco/api",
       "@doco/core",
-      "@doco/discovery",
+      "@doco/db",
       "@doco/host",
       "@doco/index",
       "@doco/lints",

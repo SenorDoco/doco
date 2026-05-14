@@ -31,11 +31,11 @@
 
 - term: principal
   synonyms: [user, member, identity, actor, account]
-  description: A human or agent identity within Doco.
+  description: A person or agent identity within Doco.
 
 - term: agent
   synonyms: [bot, AI, automated principal, assistant]
-  description: A non-human principal. Created via invitation token (D-035).
+  description: A principal that is not a person. Created via invitation token (D-035).
 
 - term: scope
   synonyms: [boundary, area, domain, namespace]

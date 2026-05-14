@@ -1,0 +1,31 @@
+id: scope_01KRHMNFV0WZZ5A2HYZG6K53F9
+doco_id: doco_01KRHJQC0YMK6VEPZSMCQVP1QD
+node_type: scope
+summary: "Architecture Decision Records: durable rationale for choices about
+  structure, technology, and tradeoffs."
+name: adrs
+icon: 🏗️
+purpose: "Architecture Decision Records: durable rationale for choices about
+  structure, technology, and tradeoffs."
+guidelines: >-
+  One **Decision** per choice. Required fields: `question`, `chosen`,
+  `alternatives`. Recommended sections:
+
+
+  - **Context** — what forces are in play
+
+  - **Options considered** — list every alternative weighed
+
+  - **Choice** — what was decided
+
+  - **Consequences** — what becomes easier/harder
+
+
+  Number ADRs sequentially using the `number` field ("ADR-042"). Use
+  `supersedes`/`superseded_by` when a new ADR replaces an old one.
+created_at: 2026-05-13T21:42:41.761Z
+created_by: principal_01KRHJQCG3HH5AYBZWEZHCS9MY
+revision: 1
+lifecycle: active
+scopes: []
+watched: true

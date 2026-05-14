@@ -1,7 +1,6 @@
-import type { EntityId, NodeType } from "@doco/shared";
-import type { LoadedDoco } from "./loader.js";
+import type { EntityId } from "@doco/shared";
+import type { LoadedDoco } from "./loaded-doco.js";
 import { findOrphanRefs, type OrphanRef } from "./refs.js";
-import { type SchemaValidationError, SchemaValidator } from "./schema.js";
 
 export type ValidationSeverity = "error" | "warning";
 
@@ -9,7 +8,7 @@ export interface ValidationIssue {
   severity: ValidationSeverity;
   source: EntityId | "doco.yaml" | "load";
   filePath?: string;
-  kind: "schema" | "orphan-ref" | "load" | "duplicate-id" | "node-type-mismatch";
+  kind: "orphan-ref" | "load";
   message: string;
   detail?: Record<string, unknown>;
 }
@@ -17,17 +16,28 @@ export interface ValidationIssue {
 export interface ValidationReport {
   totalEntities: number;
   entitiesByType: Record<string, number>;
-  schemaErrors: number;
   orphanRefs: number;
   loadFailures: number;
   issues: ValidationIssue[];
   ok: boolean;
 }
 
-export async function validateDoco(
-  loaded: LoadedDoco,
-  validator: SchemaValidator,
-): Promise<ValidationReport> {
+/**
+ * Validate a loaded Doco. Two checks:
+ *
+ *   1. Every file in the Doco parsed as YAML/markdown without error
+ *      (the loader records failures; this re-surfaces them).
+ *   2. Every id-shaped reference resolves to a real entity in the Doco
+ *      (orphan-ref detection).
+ *
+ * Per-entity JSON Schema validation was retired — the TypeScript types in
+ * `@doco/shared/entities.ts` are the source of truth for entity shape;
+ * agents/CLI consumers see type errors there. The connectivity check above
+ * catches the only failure that schema-validation actually caught in
+ * practice (a typoed id field). Keeping a parallel JSON Schema in sync
+ * with the TS types was a drift hazard with no offsetting benefit.
+ */
+export async function validateDoco(loaded: LoadedDoco): Promise<ValidationReport> {
   const issues: ValidationIssue[] = [];
 
   // 1. Load failures from the loader.
@@ -41,59 +51,28 @@ export async function validateDoco(
     });
   }
 
-  // 2. Schema validation of the Doco entity itself.
-  const docoErrors = validator.validate(loaded.doco, "doco");
-  for (const e of docoErrors) {
-    issues.push(makeSchemaIssue("doco.yaml", undefined, e));
-  }
-
-  // 3. Schema validation of every loaded entity.
-  for (const [id, le] of loaded.entities) {
-    const errs = validator.validate(le.entity, le.entity.node_type as NodeType);
-    for (const e of errs) {
-      issues.push(makeSchemaIssue(id, le.filePath, e));
-    }
-  }
-
-  // 4. Orphan-ref detection.
+  // 2. Orphan-ref detection.
   const orphans = findOrphanRefs(loaded);
   for (const o of orphans) {
     issues.push(makeOrphanIssue(o));
   }
 
-  // 5. Build report.
+  // 3. Build report.
   const entitiesByType: Record<string, number> = {};
   for (const [t, list] of loaded.byType) {
     entitiesByType[t] = list.length;
   }
 
-  const schemaErrors = issues.filter((i) => i.kind === "schema").length;
   const orphanRefs = issues.filter((i) => i.kind === "orphan-ref").length;
   const loadFailures = issues.filter((i) => i.kind === "load").length;
 
   return {
     totalEntities: loaded.entities.size,
     entitiesByType,
-    schemaErrors,
     orphanRefs,
     loadFailures,
     issues,
     ok: issues.every((i) => i.severity !== "error"),
-  };
-}
-
-function makeSchemaIssue(
-  source: EntityId | "doco.yaml",
-  filePath: string | undefined,
-  err: SchemaValidationError,
-): ValidationIssue {
-  return {
-    severity: "error",
-    source,
-    ...(filePath !== undefined ? { filePath } : {}),
-    kind: "schema",
-    message: `${err.path || "(root)"} ${err.message}`,
-    detail: { keyword: err.keyword, params: err.params },
   };
 }
 

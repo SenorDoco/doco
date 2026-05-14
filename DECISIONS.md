@@ -11,7 +11,7 @@ A consolidated record of every meaningful design decision made to date, intended
 ### D-001 — Optimization priority order (strict)
 
 - **Chosen:** AI agent comprehension > AI agent updates > Human comprehension > Scoping > Version control > Performance > Automated issue identification.
-- **Why:** Drives every other tradeoff. When two design pressures conflict, the higher priority wins. Crucially, agent comprehension is above human comprehension — when the two diverge, schema choices favor what's parseable by agents.
+- **Why:** Drives every other tradeoff. When two design pressures conflict, the higher priority wins. Crucially, agent comprehension is above reader comprehension — when the two diverge, schema choices favor what's parseable by agents.
 - **Ref:** SCHEMA.md §1.
 
 ### D-002 — Storage = git repository (one file per entity)
@@ -24,8 +24,8 @@ A consolidated record of every meaningful design decision made to date, intended
 ### D-003 — File format = YAML frontmatter + Markdown body
 
 - **Chosen:** Structured fields in YAML frontmatter; narrative in Markdown body. Both audiences in one file.
-- **Alternatives rejected:** Pure JSON (cleaner for agents, worse for humans); pure Markdown (worse for agents).
-- **Why:** Agents parse YAML cleanly; humans read Markdown narrative. Single-file model keeps the unit of change atomic.
+- **Alternatives rejected:** Pure JSON (cleaner for agents, worse for people); pure Markdown (worse for agents).
+- **Why:** Agents parse YAML cleanly; people read Markdown narrative. Single-file model keeps the unit of change atomic.
 - **Ref:** SCHEMA.md §2.
 
 ### D-004 — IDs = `{node_type}_{ULID}`
@@ -48,15 +48,15 @@ A consolidated record of every meaningful design decision made to date, intended
 
 ### D-006 — Common fields on every entity
 
-- **Chosen:** `id`, `doco_id`, `node_type`, `schema_version`, `summary`, `created_at`/`by`, `updated_at`/`by`, `revision`, `lifecycle`, `status`, `tags`, `born_from` (optional).
-- **Why:** Common fields are the API surface every consumer can rely on. `summary` serves human-readability (priority 3); `lifecycle` standardizes state across all stateful entities.
+- **Chosen:** `id`, `doco_id`, `node_type`, `summary`, `created_at`/`by`, `updated_at`/`by`, `lifecycle`, `tags`, `born_from` (optional).
+- **Why:** Common fields are the API surface every consumer can rely on. `summary` serves readability (priority 3); `lifecycle` standardizes state across all stateful entities.
 - **Ref:** SCHEMA.md §3.
 
 ### D-007 — Canonical lifecycle across all stateful entities
 
-- **Chosen:** Six canonical states: `proposed → active → succeeded | superseded | abandoned | failed`. Each entity kind keeps a `status` alias (e.g., Intent uses "achieved" for `succeeded`) but the underlying `lifecycle` value is one of the six.
-- **Alternatives rejected:** Per-kind status enums only (synonym sprawl, hard to query "everything currently active" across kinds).
-- **Why:** Cross-kind queries become trivial; tooling builds against `lifecycle`, UI renders the alias.
+- **Chosen:** One canonical state field, `lifecycle`, with six values: `proposed → active → succeeded | superseded | abandoned | failed`. UI can render kind-specific labels at display time (e.g. show "completed" for an Action's `succeeded`) but nothing is stored.
+- **Alternatives rejected:** Per-kind status enums only (synonym sprawl, hard to query "everything currently active" across kinds); dual `lifecycle` + `status` field (originally chosen — superseded because the `status` alias was always set from `lifecycle` and added no information, only coupling).
+- **Why:** Cross-kind queries become trivial; one source of truth instead of two.
 - **Ref:** SCHEMA.md §3.1.
 
 ### D-008 — Per-Doco `schema_version` (additive evolution)
@@ -95,7 +95,7 @@ A consolidated record of every meaningful design decision made to date, intended
 
 - **Chosen:** Reasoning lives in its own file with `premises`, `inference`, `confidence`, `uncertainty` fields. Multiple Reasonings can attach to the same Decision (different authors, contested reasoning, post-hoc revision).
 - **Alternatives rejected:** Collapse Reasoning into a `rationale` string on Decision/Action.
-- **Why:** Multi-author critique is a target use case; agents and humans both produce reasoning chains; contested reasoning is itself queryable evidence.
+- **Why:** Multi-author critique is a target use case; agents and people both produce reasoning chains; contested reasoning is itself queryable evidence.
 - **Ref:** SCHEMA.md §4.7.
 
 ### D-013 — Decision and Rule are distinct (don't unify)
@@ -141,14 +141,14 @@ A consolidated record of every meaningful design decision made to date, intended
 
 ### D-018 — Per-node handle field
 
-- **Chosen:** Each node kind has a stable, human-readable handle alongside its ULID. Conventions:
-  - `Principal.username` — GitHub login (humans) or `{owner_username}/{ISO_timestamp}` (agents).
+- **Chosen:** Each node kind has a stable, readable handle alongside its ULID. Conventions:
+  - `Principal.username` — GitHub login (people) or `{owner_username}/{ISO_timestamp}` (agents).
   - `Doco.slug` — `{owner_username}/{doco_name}`.
   - `Intent / Rule / Decision`: `slug` (kebab-case, derived from primary content, deduped).
   - `Reference.locator` — the external URL/path itself.
   - `Tag.name` — kebab-case.
   - `Action / Reasoning / Evaluation` — *no slug*; refer by ID.
-- **Why:** Humans get readable handles; transient/event-shaped entities (Action, Reasoning, Evaluation) don't need them.
+- **Why:** People get readable handles; transient/event-shaped entities (Action, Reasoning, Evaluation) don't need them.
 - **Ref:** SCHEMA.md §7 (and conversation; not yet a dedicated subsection).
 
 ### D-019 — Slugs are immutable once set
@@ -160,7 +160,7 @@ A consolidated record of every meaningful design decision made to date, intended
 ### D-020 — URL form
 
 - **Chosen:** `doco://{doco_slug}/{node_type}/{slug_or_id}`. Both slug and ID resolve.
-- **Why:** Agents link by ID (forever-stable); humans link by slug (readable).
+- **Why:** Agents link by ID (forever-stable); people link by slug (readable).
 - **Ref:** Conversation.
 
 ### D-021 — Reserved tag conventions
@@ -178,7 +178,7 @@ A consolidated record of every meaningful design decision made to date, intended
 ### D-022 — Optional `number` on Decision (ADR-style)
 
 - **Chosen:** Decisions can carry an optional `number: "ADR-0042"` when promoted to ADR status. Set when `tag_adr` is applied.
-- **Why:** ADR teams care about sequential identifiers; humans get short references; agents keep ULIDs.
+- **Why:** ADR teams care about sequential identifiers; people get short references; agents keep ULIDs.
 - **Ref:** SCHEMA.md §4.5.
 
 ---
@@ -274,9 +274,9 @@ A consolidated record of every meaningful design decision made to date, intended
 
 ## 9. Identity & authentication
 
-### D-034 — Humans sign in exclusively via GitHub
+### D-034 — People sign in exclusively via GitHub
 
-- **Chosen:** GitHub OAuth is the only sign-in for humans. No email/password, no magic links.
+- **Chosen:** GitHub OAuth is the only sign-in for people. No email/password, no magic links.
 - **Alternatives rejected:** OIDC/SAML (deferred — adds complexity for v0.x); email+password (extra surface area to secure).
 - **Why:** Universal among target users (developers, AI-tool teams). Locks identity to a verified external authority. Aligns with git-repo mental model.
 - **Open:** Whether GitHub-only is permanent or v0 simplification (see §13).
@@ -284,8 +284,8 @@ A consolidated record of every meaningful design decision made to date, intended
 
 ### D-035 — Agents can only be created via invitation tokens
 
-- **Chosen:** No agent self-signup. Every agent's `Principal` is created via a token issued by a human (or an agent already invited by a human, transitively).
-- **Why:** Trust invariant: every agent's `owner_id` chain terminates at a human. Lintable, queryable.
+- **Chosen:** No agent self-signup. Every agent's `Principal` is created via a token issued by a person (or an agent already invited by a person, transitively).
+- **Why:** Trust invariant: every agent's `owner_id` chain terminates at a person. Lintable, queryable.
 - **Ref:** PLANNING.md §2.2, §3.
 
 ### D-036 — Username convention
@@ -314,10 +314,10 @@ A consolidated record of every meaningful design decision made to date, intended
 - **Why:** Source-controlled secrets are bad practice; tokens shouldn't be in git.
 - **Ref:** PLANNING.md §3.3.
 
-### D-040 — Only humans can delete Docos
+### D-040 — Only people can delete Docos
 
-- **Chosen:** Built-in system Rule (`rule_system_only_humans_delete`) blocks `delete_doco` Actions when `actor.is_agent == true` (or `actor.type == 'human'` in current schema).
-- **Why:** Single human-only operation; everything else (create, edit, archive, transfer) is open to both.
+- **Chosen:** Built-in system Rule (`rule_system_only_people_delete`) blocks `delete_doco` Actions when `actor.is_agent == true` (or `actor.type == 'person'` in current schema).
+- **Why:** Single people-only operation; everything else (create, edit, archive, transfer) is open to both.
 - **Ref:** PLANNING.md §2.4.
 
 ---
@@ -345,7 +345,7 @@ A consolidated record of every meaningful design decision made to date, intended
 ### D-044 — API-first; web is a consumer
 
 - **Chosen:** Public REST + JSON API at `/api/v1/...`. The web interface consumes it; no parallel implementation.
-- **Why:** Anything a human can do, an agent can do. Feature parity is mechanical. OpenAPI schema is generated and self-documenting.
+- **Why:** Anything a person can do, an agent can do. Feature parity is mechanical. OpenAPI schema is generated and self-documenting.
 - **Ref:** PLANNING.md §5.1, §5.2.
 
 ### D-045 — Recent-changes feed = home; graph = secondary
@@ -363,7 +363,7 @@ These are conventions that emerged but aren't separate decisions — they're ins
 - **Bug fix → regression Rule.** Every meaningful bug-fix Decision should produce at least one `tag_regression_guard` Rule via `born_from`. Lints can flag fix Decisions without a guard. (PLANNING.md §6 item 3, conversation around bug resolution.)
 - **ADR consequence → enforced Rule.** When an ADR has machine-checkable consequences, those become Rules with `tag_adr_consequence` and `born_from: <adr_decision_id>`. (Conversation around ADRs.)
 - **Multi-author Reasoning.** Multiple Reasoning entities can attach to the same Decision (different authors, contested chains). Both are preserved; the team picks based on evidence. (SCHEMA.md §4.7.)
-- **Agent ancestry chain.** `MATCH path = (a:Principal {is_agent:true})-[:OwnedBy*]->(human:Principal {is_agent:false}) RETURN path` should always return a path for every agent. Lint for orphan agents.
+- **Agent ancestry chain.** `MATCH path = (a:Principal {is_agent:true})-[:OwnedBy*]->(person:Principal {is_agent:false}) RETURN path` should always return a path for every agent. Lint for orphan agents.
 
 ---
 
@@ -374,12 +374,12 @@ Roughly, in implementation-order:
 1. **CLI core** — `doco init`, `doco init --existing`, `doco show`, `doco query`. (PLANNING.md §1.)
 2. **Source-of-truth layer** — file readers/writers for entity YAML+Markdown; schema validation against `doco.schema.json`. (SCHEMA.md §2, §3, §4.)
 3. **Index layer** — SQLite + FTS5 cache builder; `edges` adjacency table; `scope_match` denormalization; incremental updater on file change / git commit. (SCHEMA.md §8.)
-4. **Identity** — GitHub OAuth for humans; invitation-token + session-token issuance for agents; `DOCO_TOKEN` env-var consumption; token revocation. (PLANNING.md §2, §3.)
+4. **Identity** — GitHub OAuth for people; invitation-token + session-token issuance for agents; `DOCO_TOKEN` env-var consumption; token revocation. (PLANNING.md §2, §3.)
 5. **API server** — REST CRUD + query + discovery + events stream; OpenAPI generation. (PLANNING.md §5.2.)
 6. **Web app** — recent-changes feed, list-by-kind, search (Cmd-K + full page), entity detail page with neighborhood preview, graph view as secondary. (PLANNING.md §5.3.)
 7. **Importers** — Slack, email, Figma, Notion, GitHub PRs, agent transcripts. Each runs idempotently and emits `lifecycle: proposed` entities with Reference back-pointers. (PLANNING.md §4.)
 8. **Rule discovery** — `doco find-rules` CLI + API endpoint; vector embedding index; `glossary.yaml` expansion. (SCHEMA.md §10.)
-9. **System Rules + lints** — `rule_system_only_humans_delete`; orphan-Reasoning lint; bug-fix-without-regression-guard lint; agent-without-human-ancestor lint. (PLANNING.md §2.4, §11 above.)
+9. **System Rules + lints** — `rule_system_only_people_delete`; orphan-Reasoning lint; bug-fix-without-regression-guard lint; agent-without-person-ancestor lint. (PLANNING.md §2.4, §11 above.)
 
 ---
 
@@ -409,7 +409,7 @@ Original question framings are preserved below for historical reference.
 ---
 
 1. **Predicate language for Rules.** CEL? Lisp-like S-expr? A small JSON DSL? Defer until 3–5 real Rules exist to test against. (SCHEMA.md §11 #2.)
-2. **`is_agent` boolean vs `actor_kind` enum on User/Principal.** Currently the schema still has `Principal.type: human | agent`. Conversation suggested renaming to `is_agent: bool` for clarity, but the rename hasn't been applied. Pick one and apply uniformly.
+2. **`is_agent` boolean vs `actor_kind` enum on User/Principal.** Currently the schema still has `Principal.type: person | agent`. Conversation suggested renaming to `is_agent: bool` for clarity, but the rename hasn't been applied. Pick one and apply uniformly.
 3. **Rename `principal` → `user`?** Discussed in conversation; not applied. Same for `evaluation → check`, `reference → source`. Decide whether to apply, and if so, do it consistently across SCHEMA.md, PLANNING.md, file paths, and ID prefixes.
 4. **Schema versioning policy.** Strict additive-only forever, or allow breaking changes with explicit migration tooling? (SCHEMA.md §11 #6.)
 5. **Per-entity visibility.** Currently visibility is Doco-level only (public/private). Allowing per-entity visibility (e.g., private Intent in a public Doco) is doable but non-trivial. (SCHEMA.md §11 #7.)

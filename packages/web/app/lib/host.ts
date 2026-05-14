@@ -1,7 +1,23 @@
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+// Host-level reads — Phase 3 Postgres-only
+// (rule_01KRKQDHWNWJAF4YKTMCB2A0D9 — alpha forbids back-compat).
+//
+// All filesystem walks of `<root>/host.yaml`, `<root>/principals/`,
+// `<root>/organizations/`, and `<root>/docos/<owner>/<slug>/doco.yaml`
+// have been replaced with Postgres queries via @doco/db.
+//
+// Functions are async because Postgres is async; route loaders that
+// consumed the prior sync versions need an `await` added.
+
+import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { parse as parseYaml } from "yaml";
-import { rootDir } from "./db";
+import {
+  getHostConfig,
+  listAllDocos as _dbListAllDocos,
+  listOrganizations,
+  listOrganizationsForPrincipal,
+  listPrincipals,
+} from "@doco/db";
+import { rootDir } from "./db.server";
 
 export interface HostConfig {
   id: string;
@@ -32,102 +48,81 @@ export interface HostDoco {
   docoId: string;
   description?: string;
   hasIndex: boolean;
+  visibility: "private" | "public";
 }
 
-export function loadHostConfig(): HostConfig {
-  const root = rootDir();
-  const text = readFileSync(join(root, "host.yaml"), "utf8");
-  return parseYaml(text) as HostConfig;
-}
-
-export function listUsers(): HostUser[] {
-  const dir = join(rootDir(), "principals");
-  if (!existsSync(dir)) return [];
-  const out: HostUser[] = [];
-  for (const name of readdirSync(dir)) {
-    if (!name.startsWith("principal_") || !name.endsWith(".yaml")) continue;
-    const e = parseYaml(readFileSync(join(dir, name), "utf8")) as Record<string, unknown>;
-    if (e.type !== "human") continue;
-    if (e.bootstrap_placeholder === true) continue; // ADR-073: hide from listings
-    out.push({
-      id: e.id as string,
-      username: e.username as string,
-      display_name: (e.display_name as string) ?? (e.username as string),
-      ...(typeof (e.github_identity as { email?: string } | undefined)?.email === "string"
-        ? { email: (e.github_identity as { email: string }).email }
-        : {}),
-    });
+export async function loadHostConfig(): Promise<HostConfig> {
+  const row = await getHostConfig();
+  if (!row) {
+    throw new Error("No host config in Postgres. Run host ingestion first.");
   }
-  return out;
+  return { id: row.id, name: row.name, visibility: row.visibility };
 }
 
-export function listOrgs(): HostOrg[] {
-  const dir = join(rootDir(), "organizations");
-  if (!existsSync(dir)) return [];
-  const out: HostOrg[] = [];
-  for (const name of readdirSync(dir)) {
-    if (!name.startsWith("organization_") || !name.endsWith(".yaml")) continue;
-    const e = parseYaml(readFileSync(join(dir, name), "utf8")) as Record<string, unknown>;
-    const members = (e.members as { principal_id: string }[] | undefined) ?? [];
-    out.push({
-      id: e.id as string,
-      slug: e.slug as string,
-      display_name: (e.display_name as string) ?? (e.slug as string),
-      ...(e.description !== undefined ? { description: e.description as string } : {}),
-      member_count: members.length,
-    });
-  }
-  return out;
+export async function listUsers(): Promise<HostUser[]> {
+  const rows = await listPrincipals({ type: "human" });
+  return rows.map((r) => {
+    const fm = JSON.parse(r.raw_yaml) as Record<string, unknown>;
+    const email =
+      r.email ?? (fm.github_identity as { email?: string } | undefined)?.email ?? null;
+    const out: HostUser = {
+      id: r.id,
+      username: r.username,
+      display_name: r.display_name ?? r.username,
+    };
+    if (typeof email === "string") out.email = email;
+    return out;
+  });
+}
+
+export async function listOrgs(): Promise<HostOrg[]> {
+  const rows = await listOrganizations();
+  return rows.map((r) => {
+    const fm = JSON.parse(r.raw_yaml) as Record<string, unknown>;
+    const out: HostOrg = {
+      id: r.id,
+      slug: r.slug,
+      display_name: (fm.display_name as string) ?? r.name,
+      member_count: r.member_count,
+    };
+    if (typeof fm.description === "string") out.description = fm.description;
+    return out;
+  });
 }
 
 /** Return organizations where the given Principal is owner or admin. */
-export function listOrgsOwnedOrAdminedBy(principalId: string): HostOrg[] {
-  const dir = join(rootDir(), "organizations");
-  if (!existsSync(dir)) return [];
-  const out: HostOrg[] = [];
-  for (const name of readdirSync(dir)) {
-    if (!name.startsWith("organization_") || !name.endsWith(".yaml")) continue;
-    const e = parseYaml(readFileSync(join(dir, name), "utf8")) as Record<string, unknown>;
-    const members = (e.members as { principal_id: string; role: string }[] | undefined) ?? [];
-    const mine = members.find(
-      (m) => m.principal_id === principalId && (m.role === "owner" || m.role === "admin"),
-    );
-    if (!mine) continue;
-    out.push({
-      id: e.id as string,
-      slug: e.slug as string,
-      display_name: (e.display_name as string) ?? (e.slug as string),
-      ...(e.description !== undefined ? { description: e.description as string } : {}),
-      member_count: members.length,
-    });
-  }
-  return out;
+export async function listOrgsOwnedOrAdminedBy(principalId: string): Promise<HostOrg[]> {
+  const rows = await listOrganizationsForPrincipal(principalId, ["owner", "admin"]);
+  return rows.map((r) => {
+    const fm = JSON.parse(r.raw_yaml) as Record<string, unknown>;
+    const out: HostOrg = {
+      id: r.id,
+      slug: r.slug,
+      display_name: (fm.display_name as string) ?? r.name,
+      member_count: r.member_count,
+    };
+    if (typeof fm.description === "string") out.description = fm.description;
+    return out;
+  });
 }
 
-export function listAllDocos(): HostDoco[] {
+export async function listAllDocos(): Promise<HostDoco[]> {
+  const rows = await _dbListAllDocos();
   const docosDir = join(rootDir(), "docos");
-  if (!existsSync(docosDir)) return [];
-  const out: HostDoco[] = [];
-  for (const ownerSlug of readdirSync(docosDir)) {
-    const ownerDir = join(docosDir, ownerSlug);
-    if (!existsSync(ownerDir)) continue;
-    for (const docoSlug of readdirSync(ownerDir)) {
-      const dir = join(ownerDir, docoSlug);
-      const yamlPath = join(dir, "doco.yaml");
-      if (!existsSync(yamlPath)) continue;
-      const e = parseYaml(readFileSync(yamlPath, "utf8")) as Record<string, unknown>;
-      const ownerId = e.owner_id as string;
-      const ownerKind = ownerId.startsWith("organization_") ? "organization" : "principal";
-      out.push({
-        ownerSlug,
-        docoSlug,
-        ownerKind,
-        ownerId,
-        docoId: e.id as string,
-        ...(e.description !== undefined ? { description: e.description as string } : {}),
-        hasIndex: existsSync(join(dir, ".doco", "cache.db")),
-      });
-    }
-  }
-  return out;
+  return rows.map((r) => {
+    const fm = JSON.parse(r.raw_yaml) as Record<string, unknown>;
+    const ownerKind: "principal" | "organization" =
+      r.owner_id.startsWith("organization_") ? "organization" : "principal";
+    const out: HostDoco = {
+      ownerSlug: r.owner_slug,
+      docoSlug: r.doco_slug,
+      ownerKind,
+      ownerId: r.owner_id,
+      docoId: r.id,
+      hasIndex: existsSync(join(docosDir, r.owner_slug, r.doco_slug, ".doco", "cache.db")),
+      visibility: r.visibility,
+    };
+    if (typeof fm.description === "string") out.description = fm.description;
+    return out;
+  });
 }

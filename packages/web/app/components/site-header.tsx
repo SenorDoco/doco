@@ -4,84 +4,71 @@ import { DocoMark } from "~/components/doco-mark";
 import type { CurrentPrincipal } from "~/lib/session";
 
 interface SiteHeaderProps {
-  /** Used for breadcrumb. In single-doco mode this is the Doco slug; in host mode it's the host name. */
-  context: string;
-  /** When set, renders the per-Doco nav scoped to this Doco (host mode). */
+  /** When set, renders the breadcrumb (owner / doco) and per-Doco nav. */
   docoScope?: { ownerSlug: string; docoSlug: string };
-  mode: "host" | "single-doco";
-  /** Currently signed-in Principal (host mode only). */
+  /**
+   * Mode parameter — historically toggled host vs. single-doco shape (per ADR-093
+   * single-doco mode is removed). Kept on the props for caller-site compatibility;
+   * the only legal value today is "host". The branch fields a tighter type later.
+   */
+  mode: "host";
+  /** Currently signed-in Principal. */
   me?: CurrentPrincipal | null;
 }
 
 /**
- * Two-row header (ADR-088): brand + breadcrumb + account on row 1, per-Doco
+ * Two-row header: brand + breadcrumb + account on row 1, per-Doco
  * navigation on row 2 (sub-bar). Keeps the nav uncrowded as it grows.
  */
-export function SiteHeader({ context, docoScope, mode, me }: SiteHeaderProps) {
+export function SiteHeader({ docoScope, me }: SiteHeaderProps) {
+  // Per-Doco nav slimmed (5 tabs): per-type entity tabs and Search moved
+  // off the nav bar — the Doco home is the chronological feed AND the
+  // search front door (ADR-120 + the search-input-at-doco-home Decision).
   const nav = docoScope
     ? [
-        { to: `/${docoScope.ownerSlug}/${docoScope.docoSlug}`, label: "Recent" },
-        { to: `/${docoScope.ownerSlug}/${docoScope.docoSlug}/e/scope`, label: "Scopes" },
-        { to: `/${docoScope.ownerSlug}/${docoScope.docoSlug}/e/intent`, label: "Intents" },
-        { to: `/${docoScope.ownerSlug}/${docoScope.docoSlug}/e/idea`, label: "Ideas" },
-        { to: `/${docoScope.ownerSlug}/${docoScope.docoSlug}/e/rule`, label: "Rules" },
-        { to: `/${docoScope.ownerSlug}/${docoScope.docoSlug}/e/decision`, label: "Decisions" },
-        { to: `/${docoScope.ownerSlug}/${docoScope.docoSlug}/e/action`, label: "Actions" },
-        { to: `/${docoScope.ownerSlug}/${docoScope.docoSlug}/search`, label: "Search" },
+        { to: `/${docoScope.ownerSlug}/${docoScope.docoSlug}`, label: "Home" },
+        { to: `/${docoScope.ownerSlug}/${docoScope.docoSlug}/constitution`, label: "Constitution" },
+        { to: `/${docoScope.ownerSlug}/${docoScope.docoSlug}/scopes`, label: "Scopes" },
         { to: `/${docoScope.ownerSlug}/${docoScope.docoSlug}/lint`, label: "Lint" },
         { to: `/${docoScope.ownerSlug}/${docoScope.docoSlug}/coverage`, label: "Coverage" },
+        { to: `/${docoScope.ownerSlug}/${docoScope.docoSlug}/settings`, label: "Settings" },
       ]
-    : mode === "host"
-      ? [
-          { to: "/", label: "Docos" },
-          { to: "/agents", label: "Agents" },
-        ]
-      : [
-          { to: "/", label: "Recent" },
-          { to: "/e/scope", label: "Scopes" },
-          { to: "/e/intent", label: "Intents" },
-          { to: "/e/idea", label: "Ideas" },
-          { to: "/e/rule", label: "Rules" },
-          { to: "/e/decision", label: "Decisions" },
-          { to: "/e/action", label: "Actions" },
-          { to: "/search", label: "Search" },
-          { to: "/lint", label: "Lint" },
-          { to: "/coverage", label: "Coverage" },
-        ];
+    : [
+        { to: "/dashboard", label: "Docos" },
+        { to: "/agents", label: "Agents" },
+      ];
 
   return (
     <header className="border-b border-border bg-card">
       {/* Row 1: brand + breadcrumb + (host-mode) account actions. */}
       <div className="mx-auto flex max-w-6xl items-center gap-6 px-6 py-3">
-        <h1 className="m-0 leading-none tracking-tight">
+        <h1 className="m-0 flex items-center gap-3 leading-none tracking-tight">
           <NavLink to="/" className="inline-flex items-center hover:opacity-80" aria-label="Doco home">
             <DocoMark height={28} />
           </NavLink>
-          <span className="ml-3 font-normal text-xs text-muted-foreground align-middle">
-            / {context}
-            {docoScope ? (
-              <>
-                {" / "}
-                <NavLink to={`/${docoScope.ownerSlug}`} className="hover:text-foreground">
-                  {docoScope.ownerSlug}
-                </NavLink>
-                {" / "}
-                <NavLink
-                  to={`/${docoScope.ownerSlug}/${docoScope.docoSlug}`}
-                  className="hover:text-foreground"
-                >
-                  {docoScope.docoSlug}
-                </NavLink>
-              </>
-            ) : null}
-          </span>
+          {docoScope ? (
+            <span className="font-normal text-xs text-muted-foreground">
+              /{" "}
+              <NavLink to={`/${docoScope.ownerSlug}`} className="hover:text-foreground">
+                {docoScope.ownerSlug}
+              </NavLink>
+              {" / "}
+              <NavLink
+                to={`/${docoScope.ownerSlug}/${docoScope.docoSlug}`}
+                className="hover:text-foreground"
+              >
+                {docoScope.docoSlug}
+              </NavLink>
+            </span>
+          ) : null}
         </h1>
         <div className="ml-auto flex items-center gap-3 text-xs">
-          {mode === "host" ? (
+          {/* mode is always "host" per ADR-093; the conditional remains for future modes. */}
+          {true ? (
             me ? (
               <>
                 <NavLink
-                  to="/new-doco"
+                  to="/onboarding/create"
                   className="rounded-md border border-border px-3 py-1.5 font-semibold hover:bg-input"
                 >
                   + Doco

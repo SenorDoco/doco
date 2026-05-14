@@ -1,0 +1,29 @@
+id: scope_01KRF7VQ4BXA38JM5DPJ2N67SS
+doco_id: doco_01KRF55AR2J8S8CE48FR86NHT7
+node_type: scope
+summary: Reported defects and their fixes. The bridge between symptoms users see
+  and the rationale behind the fix.
+name: bugs
+icon: 🐞
+purpose: Reported defects and their fixes. The bridge between symptoms users see
+  and the rationale behind the fix.
+guidelines: >-
+  Each bug:
+
+
+  1. **Action** capturing the report — `verb: report_bug`, severity, repro
+  steps, link to source (ticket / chat / commit).
+
+  2. **Decision** capturing the fix — what was wrong, why the fix is correct,
+  regression-test added.
+
+  3. The fix Action references the bug Action via `decision_ids` and the
+  Decision; chain via `follows` if the fix depends on prior decisions.
+
+
+  Set `scope_bugfix` (or this scope) on both. Optionally tag a
+  `scope_regression_guard` if a test was added.
+created_at: 2026-05-12T23:20:25.483Z
+created_by: principal_01KRF55AR9H0RDQREGYH7WQWMQ
+lifecycle: active
+scopes: []

@@ -1,17 +1,18 @@
 import { defineCommand } from "citty";
-import { SchemaValidator, loadDoco, validateDoco } from "@doco/core";
+import { validateDoco } from "@doco/core";
 import { findDocoRoot } from "../find-root.js";
+import { loadDocoFromRoot } from "../load-doco.js";
 import { bullet, c, checkmark, cross, header, rule } from "../output.js";
 
 export const validateCmd = defineCommand({
   meta: {
     name: "validate",
-    description: "Validate every entity in the current Doco against schema and cross-references.",
+    description: "Validate every entity in the current Doco loads + cross-references resolve.",
   },
   args: {
     json: {
       type: "boolean",
-      description: "Emit a JSON report instead of human-readable output.",
+      description: "Emit a JSON report instead of readable output.",
       default: false,
     },
     root: {
@@ -28,9 +29,8 @@ export const validateCmd = defineCommand({
       return;
     }
 
-    const loaded = await loadDoco(root);
-    const validator = await SchemaValidator.load(root);
-    const report = await validateDoco(loaded, validator);
+    const loaded = await loadDocoFromRoot(root);
+    const report = await validateDoco(loaded);
 
     if (args.json) {
       console.log(JSON.stringify(report, null, 2));
@@ -48,13 +48,12 @@ export const validateCmd = defineCommand({
     console.log(rule());
 
     if (report.ok) {
-      console.log(checkmark(`All entities valid.`));
+      console.log(checkmark(`All entities loaded; cross-references resolve.`));
       console.log();
       return;
     }
 
     console.log(cross(`${report.issues.length} issue(s) found:`));
-    console.log(`  schema errors:  ${c.err(String(report.schemaErrors))}`);
     console.log(`  orphan refs:    ${c.err(String(report.orphanRefs))}`);
     console.log(`  load failures:  ${c.err(String(report.loadFailures))}`);
     console.log();

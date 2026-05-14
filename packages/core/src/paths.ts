@@ -6,7 +6,7 @@ export type EntityFileFormat = "yaml" | "md" | "json";
 export interface EntityDirSpec {
   dir: string; // relative to doco root
   format: EntityFileFormat;
-  partitioned?: boolean; // evaluations/<YYYY-MM>/<id>.json
+  partitioned?: boolean; // legacy month-partitioned layout
 }
 
 /**
@@ -22,7 +22,9 @@ export const ENTITY_DIRS: Record<Exclude<NodeType, "doco">, EntityDirSpec> = {
   decision: { dir: "decisions", format: "md" },
   action: { dir: "actions", format: "md" },
   reasoning: { dir: "reasoning", format: "md" },
-  evaluation: { dir: "evaluations", format: "json", partitioned: true },
+  /** Eval — test/eval definition. Markdown body for prose description;
+   * structured fields (criterion/input/expected/last_status) in frontmatter. */
+  eval: { dir: "evals", format: "md" },
   reference: { dir: "references", format: "yaml" },
   scope: { dir: "scopes", format: "yaml" },
 };
@@ -34,10 +36,6 @@ export function entityFilenameRegex(type: NodeType, format: EntityFileFormat): R
 
 export function docoYamlPath(root: string): string {
   return join(root, "doco.yaml");
-}
-
-export function schemaPath(root: string): string {
-  return join(root, "schema", "doco.schema.json");
 }
 
 export function entityDirPath(root: string, type: Exclude<NodeType, "doco">): string {

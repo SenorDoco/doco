@@ -1,8 +1,6 @@
 import { Link } from "react-router";
-import { existsSync, readFileSync, readdirSync } from "node:fs";
-import { join } from "node:path";
-import { parse as parseYaml } from "yaml";
-import { rootDir } from "~/lib/db";
+import { resolveOwnerSlug, getPrincipalById } from "@doco/db";
+import { canAccessDoco } from "~/lib/doco-access.server";
 import { listAllDocos, loadHostConfig } from "~/lib/host";
 import { getCurrentPrincipal } from "~/lib/session";
 import { SiteHeader } from "~/components/site-header";
@@ -26,67 +24,62 @@ interface OrgView {
   members: { principal_id: string; role: string; username?: string }[];
 }
 
-function findOwnerBySlug(slug: string): UserView | OrgView | null {
-  const principalsDir = join(rootDir(), "principals");
-  if (existsSync(principalsDir)) {
-    for (const name of readdirSync(principalsDir)) {
-      if (!name.startsWith("principal_") || !name.endsWith(".yaml")) continue;
-      const e = parseYaml(readFileSync(join(principalsDir, name), "utf8")) as Record<string, unknown>;
-      if (e.username === slug) {
-        const email = (e.github_identity as { email?: string } | undefined)?.email;
-        return {
-          kind: "principal",
-          id: e.id as string,
-          username: e.username as string,
-          display_name: (e.display_name as string) ?? slug,
-          ...(typeof email === "string" ? { email } : {}),
-        };
-      }
-    }
+async function findOwnerBySlug(slug: string): Promise<UserView | OrgView | null> {
+  const resolved = await resolveOwnerSlug(slug);
+  if (!resolved) return null;
+  if (resolved.kind === "principal") {
+    const p = resolved.principal;
+    const fm = JSON.parse(p.raw_yaml) as Record<string, unknown>;
+    const email =
+      p.email ?? (fm.github_identity as { email?: string } | undefined)?.email ?? null;
+    const out: UserView = {
+      kind: "principal",
+      id: p.id,
+      username: p.username,
+      display_name: p.display_name ?? slug,
+    };
+    if (typeof email === "string") out.email = email;
+    return out;
   }
-  const orgsDir = join(rootDir(), "organizations");
-  if (existsSync(orgsDir)) {
-    for (const name of readdirSync(orgsDir)) {
-      if (!name.startsWith("organization_") || !name.endsWith(".yaml")) continue;
-      const e = parseYaml(readFileSync(join(orgsDir, name), "utf8")) as Record<string, unknown>;
-      if (e.slug === slug) {
-        const members = ((e.members as { principal_id: string; role: string }[] | undefined) ?? []).map(
-          (m) => ({ ...m }),
-        );
-        // Resolve member usernames.
-        if (existsSync(principalsDir)) {
-          for (const pname of readdirSync(principalsDir)) {
-            if (!pname.startsWith("principal_") || !pname.endsWith(".yaml")) continue;
-            const p = parseYaml(readFileSync(join(principalsDir, pname), "utf8")) as Record<string, unknown>;
-            for (const m of members) {
-              if (m.principal_id === p.id) (m as { username?: string }).username = p.username as string;
-            }
-          }
-        }
-        return {
-          kind: "organization",
-          id: e.id as string,
-          slug: e.slug as string,
-          display_name: (e.display_name as string) ?? slug,
-          ...(e.description !== undefined ? { description: e.description as string } : {}),
-          members,
-        };
-      }
-    }
+  // organization
+  const o = resolved.org;
+  const fm = JSON.parse(o.raw_yaml) as Record<string, unknown>;
+  const members = ((fm.members as { principal_id: string; role: string }[] | undefined) ?? []).map(
+    (m) => ({ ...m }),
+  );
+  // Resolve member usernames from Postgres.
+  for (const m of members) {
+    const p = await getPrincipalById(m.principal_id);
+    if (p) (m as { username?: string }).username = p.username;
   }
-  return null;
+  const out: OrgView = {
+    kind: "organization",
+    id: o.id,
+    slug: o.slug,
+    display_name: (fm.display_name as string) ?? o.name,
+    members,
+  };
+  if (typeof fm.description === "string") out.description = fm.description;
+  return out;
 }
 
-export function loader({ params, request }: { params: { ownerSlug: string }; request: Request }) {
-  const owner = findOwnerBySlug(params.ownerSlug);
+export async function loader({ params, request }: { params: { ownerSlug: string }; request: Request }) {
+  const owner = await findOwnerBySlug(params.ownerSlug);
   if (!owner) throw new Response(`Owner "${params.ownerSlug}" not found.`, { status: 404 });
-  const allDocos = listAllDocos();
-  const docos = allDocos.filter((e) => e.ownerSlug === params.ownerSlug);
+  const me = await getCurrentPrincipal(request);
+  const allDocos = await listAllDocos();
+  const ownDocos = allDocos.filter((e) => e.ownerSlug === params.ownerSlug);
+  const visibility = await Promise.all(
+    ownDocos.map((d) =>
+      canAccessDoco({ ownerId: d.ownerId, visibility: d.visibility }, me?.id ?? null),
+    ),
+  );
+  const docos = ownDocos.filter((_, i) => visibility[i]);
   return {
     owner,
     docos,
-    host: loadHostConfig(),
-    me: getCurrentPrincipal(request),
+    host: await loadHostConfig(),
+    me,
   };
 }
 
@@ -102,7 +95,7 @@ export default function OwnerProfile({
   const { owner, docos, host, me } = loaderData;
   return (
     <div>
-      <SiteHeader context={host.name} mode="host" me={me} />
+      <SiteHeader mode="host" me={me} />
       <main className="mx-auto max-w-6xl px-6 py-6 space-y-4">
         <Card>
           <CardHeader>

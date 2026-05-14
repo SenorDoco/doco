@@ -1,4 +1,4 @@
-// Human + Create. Per ADR-073.
+// Person + Create. Per ADR-073.
 import { useState } from "react";
 import { Link } from "react-router";
 
@@ -7,15 +7,15 @@ import { getPublicBaseUrl } from "@doco/shared";
 import { DocoMark } from "~/components/doco-mark";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 
-export function loader({ request }: { request: Request }) {
+export async function loader({ request }: { request: Request }) {
   return {
-    host: loadHostConfig(),
+    host: await loadHostConfig(),
     baseUrl: getPublicBaseUrl(request),
   };
 }
 
 export function meta() {
-  return [{ title: "Create an Doco · for humans · Doco" }];
+  return [{ title: "Create an Doco · Doco" }];
 }
 
 export default function CreateHuman({
@@ -78,10 +78,10 @@ export default function CreateHuman({
           </CardHeader>
           <CardContent>
             <Link
-              to="/sign-in"
+              to="/new-doco"
               className="rounded-md border border-border px-3 py-1.5 text-xs font-semibold hover:bg-input"
             >
-              Sign in to create manually →
+              Create manually →
             </Link>
           </CardContent>
         </Card>

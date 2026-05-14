@@ -19,14 +19,14 @@ export interface SessionToken {
   principal_id: EntityId<"principal">;
   issued_at: string;
   expires_at: string | null; // null = never (sessions; ADR-037)
-  invited_by: EntityId<"principal"> | null; // chain root reached at a human (ADR-035 invariant)
+  invited_by: EntityId<"principal"> | null; // chain root reached at a person (ADR-035 invariant)
   revoked: boolean;
 }
 
 export interface InvitationToken {
   kind: "invitation";
   token: string;
-  inviter_id: EntityId<"principal">; // human or agent that issued the invite
+  inviter_id: EntityId<"principal">; // person or agent that issued the invite
   issued_at: string;
   expires_at: string; // ALWAYS set; +5 min from issued_at (ADR-037)
   used: boolean; // single-use; flips to true on redemption
@@ -35,10 +35,10 @@ export interface InvitationToken {
 
 /**
  * Claim token (ADR-073). Issued when an agent creates an unclaimed Doco via
- * the onboarding wizard. The human visits `/claim/<token>`, signs in, and
+ * the onboarding wizard. The owner visits `/claim/<token>`, signs in, and
  * takes ownership of the Doco + the bootstrap-owned agent Principal.
  *
- * Long expiry (~30 days) so the human has time to act; single-use.
+ * Long expiry (~30 days) so the owner has time to act; single-use.
  */
 export interface ClaimToken {
   kind: "claim";
@@ -230,6 +230,27 @@ export class TokenStore {
     return t;
   }
 
+  /**
+   * Status of a claim token (for the agent to poll while reminding the
+   * owner). Distinguishes pending / claimed / expired / unknown so the
+   * agent can decide whether to keep reminding, congratulate, or escalate.
+   */
+  async getClaimStatus(token: string): Promise<{
+    status: "pending" | "claimed" | "expired" | "unknown";
+    doco_id?: string;
+    expires_at?: string;
+  }> {
+    const file = await this.load();
+    const t = file.tokens.find((x) => x.token === token && x.kind === "claim") as
+      | ClaimToken
+      | undefined;
+    if (!t) return { status: "unknown" };
+    if (t.used) return { status: "claimed", doco_id: t.doco_id };
+    if (Date.parse(t.expires_at) < Date.now())
+      return { status: "expired", doco_id: t.doco_id, expires_at: t.expires_at };
+    return { status: "pending", doco_id: t.doco_id, expires_at: t.expires_at };
+  }
+
   async markClaimUsed(token: string): Promise<void> {
     const file = await this.load();
     const t = file.tokens.find((x) => x.token === token && x.kind === "claim") as
@@ -240,7 +261,7 @@ export class TokenStore {
     await this.save(file);
   }
 
-  /** Lightweight summary for the human-facing /invite page. */
+  /** Lightweight summary for the browser-facing /invite page. */
   async listOpenInvitations(): Promise<InvitationToken[]> {
     const file = await this.load();
     const now = Date.now();

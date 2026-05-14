@@ -31,14 +31,14 @@ the project defines.
 ├── references/               # Pointers to external resources (incl. PLANNING/SCHEMA/DECISIONS)
 ├── tags/                     # Reserved + custom tags
 ├── evaluations/              # Append-only Rule run results (empty for now)
-└── docs/                     # Reserved for additional human documentation
+└── docs/                     # Reserved for additional reader-facing documentation
 ```
 
 ## Status
 
 **Day 0: 2026-05-08.** The framework is being defined from first principles in
 collaboration between [torrenegra](principals/principal_01KR441EA199MZCP7RDMADFZW9.yaml)
-(human, founder) and [claude-opus-4-7](principals/principal_01KR441EA259F7EE420Z4VWFPJ.yaml)
+(person, founder) and [claude-opus-4-7](principals/principal_01KR441EA259F7EE420Z4VWFPJ.yaml)
 (agent, invited 2026-05-08T15:42:00Z).
 
 The bootstrap action that produced this directory tree is recorded at
@@ -69,7 +69,7 @@ Per [intent_01KR441EAEM5NQBM160763TDDT.md](intents/intent_01KR441EAEM5NQBM160763
 5. [decisions/](decisions/) — settled choices and their rationale.
 6. [actions/](actions/) and [reasoning/](reasoning/) — what happened and why.
 
-## Reading order for a new human
+## Reading order for a new person
 
 1. This README.
 2. [SCHEMA.md](SCHEMA.md) — design narrative for the schema.

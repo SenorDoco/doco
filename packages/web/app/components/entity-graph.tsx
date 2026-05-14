@@ -1,15 +1,25 @@
-// Entity-detail graph view (ADR-076).
-// Renders a force-directed map of the focal node's most-relevant neighborhood.
-// react-force-graph-2d is loaded via dynamic import — it touches `window` and
-// canvas APIs, so it can't run during SSR.
-import { useEffect, useMemo, useRef, useState } from "react";
+// Entity-detail graph view (ADR-076, swapped to react-flow per ADR-113).
+// Each node shows: type · title · how-long-ago · personalized PageRank.
+// Global PageRank is a follow-up (needs a separate globalPageRank function
+// in @doco/index — `personalizedPageRank` requires a single source).
+//
+// react-flow is loaded via dynamic import — it touches the DOM directly,
+// can't run during SSR.
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router";
+import "@xyflow/react/dist/style.css";
 
 export interface GraphNode {
   id: string;
   node_type: string;
   summary: string;
-  /** Whether this is the focal node (centered, highlighted). */
+  /** Scopes carry their `name` here; other entity types leave it null. */
+  name: string | null;
+  created_at: string | null;
+  /** Personalized PageRank from the focal node (1.0 = focal node itself). */
+  ppr: number;
+  /** Global PageRank — uniform-restart PR over the whole Doco graph. */
+  gpr: number;
   is_center?: boolean;
 }
 
@@ -17,45 +27,96 @@ export interface GraphLink {
   source: string;
   target: string;
   edge_type: string;
+  /**
+   * Where the edge came from. Explicit edges render solid; doco-auto
+   * edges render dashed + lighter so the viewer can see which links the
+   * LLM proposed vs. which the source declared. Per the
+   * `llm-auto-edge-detection-on-capture` ADR.
+   */
+  attribution?: "explicit" | "doco-auto";
 }
 
 interface EntityGraphProps {
   centerId: string;
-  /** All nodes to render, including the focal one. */
   nodes: GraphNode[];
-  /** Edges between included nodes (does not include phantom edges to nodes outside the set). */
   links: GraphLink[];
-  /** Function to compute the URL for a clicked node. Falls back to /e/<type>/<id>. */
   hrefFor?: (id: string, nodeType: string) => string;
 }
 
 /**
- * Color palette per node_type. Tailwind brand colors stay consistent with
- * the project's olive-on-light theme; brighter fills here so the graph
- * reads against the neutral page background.
+ * Twelve distinct hues, no two visually adjacent. The four most-visible
+ * types in the entity-detail graph (decision, scope, intent, principal)
+ * occupy widely-separated parts of the wheel so they never read as
+ * "all sort of green-ish."
+ *   decision  → orange     (warm, action-shaped)
+ *   scope     → lime green (categorical neighborhood)
+ *   intent    → magenta    (was emerald — collided with scope/lime)
+ *   principal → cyan       (was blue — collided with organization/indigo)
  */
 const TYPE_COLOR: Record<string, string> = {
-  doco: "#525252",
-  principal: "#3b82f6",
-  organization: "#6366f1",
-  intent: "#16a34a",
-  idea: "#ec4899",
-  rule: "#dc2626",
-  decision: "#f97316",
-  action: "#9333ea",
-  reasoning: "#eab308",
-  evaluation: "#14b8a6",
-  reference: "#a16207",
-  scope: "#84cc16",
+  doco: "#525252", // gray
+  principal: "#06b6d4", // cyan
+  organization: "#6366f1", // indigo
+  intent: "#d946ef", // magenta
+  idea: "#f43f5e", // rose
+  rule: "#dc2626", // red
+  decision: "#f97316", // orange
+  action: "#7c3aed", // purple
+  reasoning: "#eab308", // yellow
+  eval: "#0ea5e9", // sky — Eval is the test-definition node (replaces EVO + Evaluation)
+  reference: "#a16207", // amber/brown
+  scope: "#84cc16", // lime
 };
 const FALLBACK_COLOR = "#525252";
 
+/** Format an ISO timestamp as "Ns / Nm / Nh / Nd ago". */
+function relativeTime(iso: string | null): string {
+  if (!iso) return "—";
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return "—";
+  const deltaMs = Date.now() - t;
+  const s = Math.floor(deltaMs / 1000);
+  if (s < 60) return `${s}s ago`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  const d = Math.floor(h / 24);
+  return `${d}d ago`;
+}
+
+/**
+ * Phyllotaxis (sunflower-spiral) layout: focal node at origin, remaining
+ * nodes placed at angle `i * golden_angle` and radius `step * sqrt(i)`.
+ * Ranks by PPR so highest-ranked sit closest. Deterministic, no overlap
+ * even at 25+ nodes, and react-flow's fitView zooms it to the viewport.
+ *
+ * `step` scales with the node-card width: cards are ~240×130 so the
+ * inter-node distance needs to be at least ~170 to avoid corner overlap
+ * for the inner ring. Higher values give a sparser but more readable layout.
+ */
+function spiralLayout(
+  nodes: GraphNode[],
+  centerId: string,
+): Map<string, { x: number; y: number }> {
+  const positions = new Map<string, { x: number; y: number }>();
+  positions.set(centerId, { x: 0, y: 0 });
+  const others = nodes.filter((n) => n.id !== centerId);
+  others.sort((a, b) => b.ppr - a.ppr); // highest PPR first
+  const goldenAngle = Math.PI * (3 - Math.sqrt(5)); // ~2.4 rad ≈ 137.5°
+  const step = 160; // wider than before — node cards are ~240×130 so we need real breathing room
+  others.forEach((node, i) => {
+    const idx = i + 1;
+    const theta = idx * goldenAngle;
+    const r = step * Math.sqrt(idx);
+    positions.set(node.id, { x: r * Math.cos(theta), y: r * Math.sin(theta) });
+  });
+  return positions;
+}
+
 export function EntityGraph({ centerId, nodes, links, hrefFor }: EntityGraphProps) {
   const navigate = useNavigate();
-  const containerRef = useRef<HTMLDivElement>(null);
-  const fgRef = useRef<unknown>(null);
 
-  // Filter UI: a Set of *hidden* node types. Default empty (all visible).
   const allTypes = useMemo(() => {
     const set = new Set<string>();
     for (const n of nodes) set.add(n.node_type);
@@ -63,70 +124,173 @@ export function EntityGraph({ centerId, nodes, links, hrefFor }: EntityGraphProp
   }, [nodes]);
   const [hiddenTypes, setHiddenTypes] = useState<Set<string>>(new Set());
 
-  // Filtered graph data.
-  const visibleData = useMemo(() => {
-    const visible = nodes.filter(
-      (n) => n.id === centerId || !hiddenTypes.has(n.node_type),
-    );
-    const visibleIds = new Set(visible.map((n) => n.id));
-    const visibleLinks = links.filter(
-      (l) =>
-        visibleIds.has(typeof l.source === "string" ? l.source : (l.source as { id: string }).id) &&
-        visibleIds.has(typeof l.target === "string" ? l.target : (l.target as { id: string }).id),
-    );
-    return { nodes: visible, links: visibleLinks };
+  const visible = useMemo(() => {
+    const v = nodes.filter((n) => n.id === centerId || !hiddenTypes.has(n.node_type));
+    const ids = new Set(v.map((n) => n.id));
+    const vl = links.filter((l) => {
+      const src = typeof l.source === "string" ? l.source : (l.source as { id: string }).id;
+      const tgt = typeof l.target === "string" ? l.target : (l.target as { id: string }).id;
+      return ids.has(src) && ids.has(tgt);
+    });
+    return { nodes: v, links: vl };
   }, [nodes, links, hiddenTypes, centerId]);
 
-  // Lazy-load the canvas-based force graph (uses `window`, can't SSR).
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const [ForceGraph, setForceGraph] = useState<any>(null);
+  const positions = useMemo(
+    () => spiralLayout(visible.nodes, centerId),
+    [visible.nodes, centerId],
+  );
+
+  // Dynamic import — react-flow uses window/document.
+  // biome-ignore lint/suspicious/noExplicitAny: dynamic-import escape hatch
+  const [Flow, setFlow] = useState<any>(null);
   useEffect(() => {
     let canceled = false;
-    import("react-force-graph-2d").then((mod) => {
-      if (!canceled) setForceGraph(() => mod.default);
+    import("@xyflow/react").then((mod) => {
+      if (!canceled) setFlow(() => mod);
     });
     return () => {
       canceled = true;
     };
   }, []);
 
-  // Track container size — react-force-graph needs explicit width/height.
-  const [size, setSize] = useState({ w: 480, h: 480 });
-  useEffect(() => {
-    if (!containerRef.current) return;
-    const ro = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        const { width, height } = entry.contentRect;
-        if (width > 0 && height > 0) {
-          setSize({ w: Math.floor(width), h: Math.floor(height) });
-        }
-      }
-    });
-    ro.observe(containerRef.current);
-    return () => ro.disconnect();
-  }, []);
+  const flowNodes = useMemo(
+    () =>
+      visible.nodes.map((n) => {
+        const pos = positions.get(n.id) ?? { x: 0, y: 0 };
+        const color = TYPE_COLOR[n.node_type] ?? FALLBACK_COLOR;
+        const title = n.name ?? (n.summary.length > 40 ? `${n.summary.slice(0, 40)}…` : n.summary);
+        // Subtitle only adds value when the title is a distinct handle (name).
+        // For nameless nodes the title already IS the summary — showing it
+        // twice (or as a prefix of itself) is noise.
+        const subtitle = n.name
+          ? n.summary.length > 80
+            ? `${n.summary.slice(0, 80)}…`
+            : n.summary
+          : null;
+        const NODE_W = 240;
+        return {
+          id: n.id,
+          position: pos,
+          // Constrain node size at the React-Flow level so labels never
+          // visually leak past the colored border.
+          width: NODE_W,
+          data: {
+            label: (
+              <div
+                className="flex flex-col gap-0.5 overflow-hidden px-3 py-2"
+                style={{ width: NODE_W }}
+              >
+                <div className="flex items-center gap-1.5">
+                  <span
+                    className="inline-block h-2 w-2 shrink-0 rounded-full"
+                    style={{ backgroundColor: color }}
+                  />
+                  <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                    {n.node_type}
+                  </span>
+                  {n.is_center ? (
+                    <span className="ml-auto rounded bg-primary/15 px-1 text-[9px] text-primary">
+                      focal
+                    </span>
+                  ) : null}
+                </div>
+                <div className="truncate font-mono text-xs font-semibold text-foreground">
+                  {title}
+                </div>
+                {subtitle ? (
+                  <div className="overflow-hidden text-[10px] leading-tight text-muted-foreground" style={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" as const }}>
+                    {subtitle}
+                  </div>
+                ) : null}
+                <div className="mt-1 flex items-center justify-between gap-2 text-[9px] text-muted-foreground">
+                  <span className="truncate">{relativeTime(n.created_at)}</span>
+                  <span className="flex shrink-0 items-center gap-2 font-mono">
+                    <span title="Personalized PageRank from focal node">
+                      PPR <span className="text-foreground">{n.ppr.toFixed(3)}</span>
+                    </span>
+                    <span title="Global PageRank (over the whole Doco graph)">
+                      GPR <span className="text-foreground">{n.gpr.toFixed(3)}</span>
+                    </span>
+                  </span>
+                </div>
+              </div>
+            ),
+          },
+          style: {
+            background: "white",
+            border: n.is_center ? `2px solid ${color}` : `1px solid ${color}66`,
+            borderRadius: 8,
+            padding: 0,
+            width: NODE_W,
+            overflow: "hidden",
+          },
+          sourcePosition: "right" as const,
+          targetPosition: "left" as const,
+        };
+      }),
+    [visible.nodes, positions],
+  );
+
+  const flowEdges = useMemo(
+    () =>
+      visible.links.map((l, i) => {
+        const src = typeof l.source === "string" ? l.source : (l.source as { id: string }).id;
+        const tgt = typeof l.target === "string" ? l.target : (l.target as { id: string }).id;
+        const isAuto = l.attribution === "doco-auto";
+        return {
+          id: `${src}-${tgt}-${l.edge_type}-${i}`,
+          source: src,
+          target: tgt,
+          label: isAuto ? `${l.edge_type} (auto)` : l.edge_type,
+          labelStyle: {
+            fontSize: 9,
+            fill: isAuto ? "#a3a3a3" : "#737373",
+            pointerEvents: "none" as const,
+          },
+          labelBgPadding: [2, 4] as [number, number],
+          labelBgBorderRadius: 4,
+          labelBgStyle: { fill: "#f5f5f5", fillOpacity: 0.9, pointerEvents: "none" as const },
+          // Edges are visual only — never the click target. Removing the
+          // invisible hit zone and label pointer-events lets the pan handler
+          // receive drag-mousedowns that happen to start on an edge line or
+          // its label, so the cursor has the whole canvas to grab.
+          selectable: false,
+          focusable: false,
+          interactionWidth: 0,
+          // Auto-detected edges render dashed + lighter so the eye can tell
+          // them apart from explicit (person/agent-authored) ones.
+          style: isAuto
+            ? {
+                stroke: "rgba(112, 122, 35, 0.25)",
+                strokeDasharray: "4 4",
+                pointerEvents: "none" as const,
+              }
+            : { stroke: "rgba(112, 122, 35, 0.5)", pointerEvents: "none" as const },
+        };
+      }),
+    [visible.links],
+  );
 
   return (
     <div className="flex flex-col gap-2">
-      {/* Type filter checkboxes */}
       <div className="flex flex-wrap gap-2 text-xs">
         <span className="text-muted-foreground">Show:</span>
         {allTypes.map((t) => {
-          const visible = !hiddenTypes.has(t);
+          const v = !hiddenTypes.has(t);
           const color = TYPE_COLOR[t] ?? FALLBACK_COLOR;
           return (
             <label
               key={t}
-              className="inline-flex items-center gap-1 cursor-pointer select-none"
+              className="inline-flex cursor-pointer select-none items-center gap-1"
               title={t}
             >
               <input
                 type="checkbox"
-                checked={visible}
+                checked={v}
                 onChange={() => {
                   setHiddenTypes((prev) => {
                     const next = new Set(prev);
-                    if (visible) next.add(t);
+                    if (v) next.add(t);
                     else next.delete(t);
                     return next;
                   });
@@ -144,37 +308,35 @@ export function EntityGraph({ centerId, nodes, links, hrefFor }: EntityGraphProp
         })}
       </div>
 
-      {/* The graph itself */}
-      <div
-        ref={containerRef}
-        className="relative h-[480px] w-full rounded-md border border-border bg-input overflow-hidden"
-      >
-        {ForceGraph ? (
-          <ForceGraph
-            ref={fgRef}
-            graphData={visibleData}
-            width={size.w}
-            height={size.h}
-            backgroundColor="transparent"
-            nodeId="id"
-            nodeColor={(n: GraphNode) => TYPE_COLOR[n.node_type] ?? FALLBACK_COLOR}
-            nodeRelSize={5}
-            nodeVal={(n: GraphNode) => (n.is_center ? 12 : 4)}
-            nodeLabel={(n: GraphNode) => `${n.node_type}: ${n.summary?.slice(0, 80) ?? n.id}`}
-            linkColor={() => "rgba(112, 122, 35, 0.4)"}
-            linkWidth={1}
-            cooldownTicks={120}
-            onNodeClick={(n: GraphNode) => {
-              const href = hrefFor ? hrefFor(n.id, n.node_type) : `/e/${n.node_type}/${n.id}`;
+      <div className="relative h-[50vh] min-h-[360px] w-full overflow-hidden rounded-md border border-border bg-input">
+        {Flow ? (
+          <Flow.ReactFlow
+            nodes={flowNodes}
+            edges={flowEdges}
+            fitView
+            fitViewOptions={{ padding: 0.15, maxZoom: 1 }}
+            onNodeClick={(_e: unknown, n: { id: string }) => {
+              const node = visible.nodes.find((x) => x.id === n.id);
+              if (!node) return;
+              // hrefFor is always provided by callers in production; the fallback exists
+              // only for ad-hoc tests/storybook. Use the short form (no `/e/`).
+              const href = hrefFor ? hrefFor(node.id, node.node_type) : `/${node.node_type}/${node.id}`;
               navigate(href);
             }}
-            // Pin the center node at origin so the layout orbits it.
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            d3VelocityDecay={0.4}
-            enableNodeDrag={true}
-            enableZoomInteraction={true}
-            enablePanInteraction={true}
-          />
+            proOptions={{ hideAttribution: true }}
+          >
+            <Flow.Background gap={20} size={1} />
+            <Flow.Controls showInteractive={false} />
+            <Flow.MiniMap
+              nodeColor={(n: { id: string }) =>
+                TYPE_COLOR[visible.nodes.find((x) => x.id === n.id)?.node_type ?? ""] ??
+                FALLBACK_COLOR
+              }
+              pannable
+              zoomable
+              style={{ width: 120, height: 90 }}
+            />
+          </Flow.ReactFlow>
         ) : (
           <div className="flex h-full w-full items-center justify-center text-xs text-muted-foreground">
             Loading graph…
@@ -183,8 +345,9 @@ export function EntityGraph({ centerId, nodes, links, hrefFor }: EntityGraphProp
       </div>
 
       <p className="text-[11px] text-muted-foreground">
-        Drag to pan, scroll to zoom, click a node to navigate. Neighbors ranked by
-        personalized PageRank from the focal node (ADR-076).
+        Drag to pan, scroll to zoom, click a node to navigate. Neighbors laid out
+        radially around the focal node, closer when their personalized PageRank
+        (ADR-076) is higher.
       </p>
     </div>
   );

@@ -9,10 +9,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/com
  * (DOCO_GITHUB_CLIENT_ID / DOCO_GITHUB_CLIENT_SECRET) are missing, renders
  * a setup page instead of crashing.
  */
-export function loader({ request }: { request: Request }) {
+export async function loader({ request }: { request: Request }) {
   const config = readOAuthConfig(request);
   if (!config) {
-    return { error: "missing_config" as const, host: loadHostConfig() };
+    return { error: "missing_config" as const, host: await loadHostConfig() };
   }
   const { url, setCookie } = startOAuth(config);
   return new Response(null, {
@@ -67,11 +67,18 @@ export default function AuthGitHub({
                 .
               </li>
               <li>
-                Set the Authorization callback URL to{" "}
+                Set the Authorization callback URL to match the host you'll use to reach the dev
+                server. By default Doco derives the callback from the request URL, so if you visit{" "}
+                <code className="rounded bg-input px-1 py-0.5 font-mono">http://localhost:5173</code>{" "}
+                set it to{" "}
                 <code className="rounded bg-input px-1 py-0.5 font-mono">
-                  http://127.0.0.1:5173/auth/github/callback
+                  http://localhost:5173/auth/github/callback
                 </code>
-                .
+                . GitHub does strict host matching, so <code className="rounded bg-input px-1 py-0.5 font-mono">localhost</code>{" "}
+                and <code className="rounded bg-input px-1 py-0.5 font-mono">127.0.0.1</code> are
+                treated as different URLs — pick one and stick with it (or set{" "}
+                <code className="rounded bg-input px-1 py-0.5 font-mono">DOCO_GITHUB_REDIRECT_URI</code>{" "}
+                in <code className="rounded bg-input px-1 py-0.5">.env</code> to override).
               </li>
               <li>
                 Add the credentials to <code className="rounded bg-input px-1 py-0.5">./.env</code>:

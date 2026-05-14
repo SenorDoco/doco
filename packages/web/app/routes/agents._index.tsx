@@ -1,9 +1,6 @@
-// /agents — list the human's owned agent Roles. Per ADR-071.
-import { existsSync, readFileSync, readdirSync } from "node:fs";
-import { join } from "node:path";
+// /agents — list the owner's agent Roles. Per ADR-071.
 import { Link, redirect } from "react-router";
-import { parse as parseYaml } from "yaml";
-import { rootDir } from "~/lib/db";
+import { listPrincipals } from "@doco/db";
 import { loadHostConfig } from "~/lib/host";
 import { getCurrentPrincipal } from "~/lib/session";
 import { SiteHeader } from "~/components/site-header";
@@ -19,31 +16,29 @@ interface AgentRow {
 }
 
 export async function loader({ request }: { request: Request }) {
-  const me = getCurrentPrincipal(request);
+  const me = await getCurrentPrincipal(request);
   if (!me) throw redirect("/sign-in");
 
-  const dir = join(rootDir(), "principals");
+  // Postgres-only — list agents owned by `me`
+  // (rule_01KRKQDHWNWJAF4YKTMCB2A0D9).
+  const rows = await listPrincipals({ type: "agent" });
   const agents: AgentRow[] = [];
-  if (existsSync(dir)) {
-    for (const name of readdirSync(dir)) {
-      if (!name.startsWith("principal_") || !name.endsWith(".yaml")) continue;
-      const e = parseYaml(readFileSync(join(dir, name), "utf8")) as Record<string, unknown>;
-      if (e.type !== "agent") continue;
-      if (e.owner_id !== me.id) continue;
-      const meta = (e.agent_metadata ?? {}) as { model?: string; provider?: string };
-      agents.push({
-        id: e.id as string,
-        username: e.username as string,
-        display_name: (e.display_name as string) ?? (e.username as string),
-        model: meta.model ?? "—",
-        provider: meta.provider ?? "—",
-        created_at: e.created_at as string,
-      });
-    }
-    agents.sort((a, b) => b.created_at.localeCompare(a.created_at));
+  for (const r of rows) {
+    const fm = JSON.parse(r.raw_yaml) as Record<string, unknown>;
+    if (fm.owner_id !== me.id) continue;
+    const m = (fm.agent_metadata ?? {}) as { model?: string; provider?: string };
+    agents.push({
+      id: r.id,
+      username: r.username,
+      display_name: r.display_name ?? r.username,
+      model: m.model ?? "—",
+      provider: m.provider ?? "—",
+      created_at: (fm.created_at as string) ?? "",
+    });
   }
+  agents.sort((a, b) => b.created_at.localeCompare(a.created_at));
 
-  return { me, host: loadHostConfig(), agents };
+  return { me, host: await loadHostConfig(), agents };
 }
 
 export function meta() {
@@ -58,13 +53,13 @@ export default function AgentsList({
   const { me, host, agents } = loaderData;
   return (
     <div>
-      <SiteHeader context={host.name} mode="host" me={me} />
+      <SiteHeader mode="host" me={me} />
       <main className="mx-auto max-w-3xl px-6 py-8 space-y-4">
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-lg font-semibold">Your agents ({agents.length})</h1>
             <p className="text-xs text-muted-foreground">
-              Long-lived non-human Principals you own. Each has its own DOCO_TOKEN.
+              Long-lived agent Principals you own. Each has its own DOCO_TOKEN.
             </p>
           </div>
           <Link

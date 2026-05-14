@@ -1,25 +1,15 @@
 // /onboarding/join — role question (Human vs Agent). Per ADR-073.
 import { Link } from "react-router";
 
-import { loadHostConfig } from "~/lib/host";
 import { DocoMark } from "~/components/doco-mark";
-
-export function loader() {
-  return { host: loadHostConfig() };
-}
 
 export function meta() {
   return [{ title: "Join an Doco · Doco" }];
 }
 
-export default function JoinRoleQuestion({
-  loaderData,
-}: {
-  loaderData: Awaited<ReturnType<typeof loader>>;
-}) {
+export default function JoinRoleQuestion() {
   return (
     <RoleSplitPage
-      hostName={loaderData.host.name}
       title="Joining an Doco. Are you a human or an AI agent?"
       humanHref="/onboarding/join/human"
       agentHref="/onboarding/join/agent"
@@ -29,13 +19,11 @@ export default function JoinRoleQuestion({
 }
 
 export function RoleSplitPage({
-  hostName,
   title,
   humanHref,
   agentHref,
   backHref,
 }: {
-  hostName: string;
   title: string;
   humanHref: string;
   agentHref: string;
@@ -76,9 +64,6 @@ export function RoleSplitPage({
               </div>
             </Link>
           </div>
-          <p className="pt-4 text-[11px] text-muted-foreground">
-            Hosted by <span className="font-semibold">{hostName}</span>
-          </p>
         </div>
       </main>
     </div>

@@ -21,7 +21,7 @@ export interface PrincipalSummary {
   id: string;
   username: string;
   display_name: string;
-  type: "human" | "agent";
+  type: "person" | "agent";
 }
 
 export function findPrincipalById(root: string, id: string): PrincipalSummary | null {
@@ -35,7 +35,7 @@ export function findPrincipalById(root: string, id: string): PrincipalSummary | 
         id: e.id as string,
         username: e.username as string,
         display_name: (e.display_name as string) ?? (e.username as string),
-        type: e.type as "human" | "agent",
+        type: e.type as "person" | "agent",
       };
     }
   }
@@ -56,7 +56,7 @@ export interface AddAgentPrincipalOpts {
 
 /**
  * Wraps host.addPrincipal but passes type='agent' + owner_id + agent_metadata.
- * The host package's existing addPrincipal helper hardcodes type='human',
+ * The host package's existing addPrincipal helper hardcodes type='person',
  * so we hand-roll the agent path here. Once @doco/host gains a dedicated
  * addAgent function this can collapse.
  */
@@ -70,7 +70,6 @@ export async function addAgentPrincipal(
     id,
     doco_id: ("doco_" + generateUlid()) as EntityId<"doco">,
     node_type: "principal",
-    schema_version: "0.1",
     summary: `Agent ${opts.username}.`,
     type: "agent",
     username: opts.username,
@@ -79,9 +78,7 @@ export async function addAgentPrincipal(
     agent_metadata: opts.agent_metadata,
     created_at: created,
     created_by: opts.owner_id, // owner created this agent
-    revision: 1,
     lifecycle: "active",
-    status: "active",
     scopes: [],
   };
   const path = `${root}/principals/${id}.yaml`;

@@ -1,5 +1,5 @@
 import { type EntityId, isEntityId } from "@doco/shared";
-import type { LoadedDoco } from "./loader.js";
+import type { LoadedDoco } from "./loaded-doco.js";
 
 export interface OrphanRef {
   source: EntityId;

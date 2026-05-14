@@ -50,20 +50,20 @@ doco init my-project --existing
 
 ### 1.3 Joining an existing Doco
 
-Two paths depending on whether the joiner is human or agent.
+Two paths depending on whether the joiner is a person or agent.
 
-**Human joining:**
-- The Doco owner adds the human's GitHub login to `members[]` in `doco.yaml` (or via the web members page).
-- The human visits the Doco URL while signed in via GitHub; access is granted automatically.
+**Person joining:**
+- The Doco owner adds the person's GitHub login to `members[]` in `doco.yaml` (or via the web members page).
+- The person visits the Doco URL while signed in via GitHub; access is granted automatically.
 
 **Agent joining:**
 - See §3 — invitation token flow.
 
 ## 2. Identity & authentication
 
-### 2.1 Human accounts — GitHub-only
+### 2.1 Person accounts — GitHub-only
 
-**Humans can only sign in via GitHub.** No email/password, no magic links. GitHub is the sole identity provider for humans.
+**People can only sign in via GitHub.** No email/password, no magic links. GitHub is the sole identity provider for people.
 
 Why:
 - GitHub is universal among the target user base (developers, teams adopting AI agents).
@@ -71,43 +71,43 @@ Why:
 - Aligns with the "Doco is a git-repo-equivalent" mental model.
 - Locks identity to a verified external authority.
 
-A human's `Principal.username` is their GitHub login. Display name and avatar come from the GitHub profile.
+A person's `Principal.username` is their GitHub login. Display name and avatar come from the GitHub profile.
 
 ### 2.2 Agent accounts — invitation-only
 
-**Agents cannot self-create accounts.** Every agent Principal is created via an invitation token issued by a human (or transitively by an agent that was itself invited by a human).
+**Agents cannot self-create accounts.** Every agent Principal is created via an invitation token issued by a person (or transitively by an agent that was itself invited by a person).
 
-This invariant — *every agent traces back to a human invitation* — is the core trust property of the system. It's enforceable by walking `Principal.owner_id` and asserting the chain terminates at a `type: human`.
+This invariant — *every agent traces back to a person's invitation* — is the core trust property of the system. It's enforceable by walking `Principal.owner_id` and asserting the chain terminates at a `type: person`.
 
 ### 2.3 Username convention
 
 | Type | Username format | Example |
 |---|---|---|
-| Human | GitHub login | `torrenegra` |
+| Person | GitHub login | `torrenegra` |
 | Agent | `{owner_username}/{creation_timestamp_ISO_8601}` | `torrenegra/2026-05-08T15:42:00Z` |
 
 The timestamp is the moment the agent's `Principal` entity was created. Lineage is visible at a glance (*"this agent was spawned from `torrenegra` at this time"*), and multiple agents under the same owner get distinct usernames automatically without name collisions.
 
-### 2.4 Permissions: human-only operations
+### 2.4 Permissions: person-only operations
 
-The schema-level expression of "only humans can delete Docos" is a built-in **system Rule** shipped with Doco:
+The schema-level expression of "only people can delete Docos" is a built-in **system Rule** shipped with Doco:
 
 ```yaml
 # Built-in system Rule (shipped with Doco, not user-editable)
-id: rule_system_only_humans_delete
+id: rule_system_only_people_delete
 modality: must
 phase: pre
 applies_to: { node_type: action, verb: delete_doco }
-predicate: "actor.type == 'human'"
+predicate: "actor.type == 'person'"
 on_violation: block
-summary: "Only human Principals may delete Docos"
+summary: "Only person Principals may delete Docos"
 ```
 
-All other operations (create, edit, archive, transfer, etc.) are open to both humans and agents subject to their `permissions` list on the relevant Membership edge.
+All other operations (create, edit, archive, transfer, etc.) are open to both people and agents subject to their `permissions` list on the relevant Membership edge.
 
 ## 3. Agent collaboration via invitation tokens
 
-A human invites an agent by sharing a URL with an embedded token. The token has a deliberate **two-phase lifecycle**: a short-lived **invitation token** that bootstraps a long-lived **session token**.
+A person invites an agent by sharing a URL with an embedded token. The token has a deliberate **two-phase lifecycle**: a short-lived **invitation token** that bootstraps a long-lived **session token**.
 
 ### 3.1 Two token types
 
@@ -119,7 +119,7 @@ A human invites an agent by sharing a URL with an embedded token. The token has 
 ### 3.2 Lifecycle
 
 ```
-1. Human owner generates an invitation URL on the web UI:
+1. Person owner generates an invitation URL on the web UI:
      https://doco.dev/invite/{doco_slug}#token={short_lived_token}
 
 2. URL shared out-of-band (Slack, email, paste).
@@ -142,25 +142,25 @@ A human invites an agent by sharing a URL with an embedded token. The token has 
          Authorization: Bearer {session_token}
          body: { display_name, model, provider, ... }
      — Server creates a new Principal{type:agent} with owner_id pointing to
-       the invoking agent (preserving the human-ancestry chain).
+       the invoking agent (preserving the person-ancestry chain).
      — Server issues each new agent its own session token.
 ```
 
 ### 3.3 Security properties
 
 - **5-minute invitation window** — narrow enough that leaked invite URLs aren't valuable to typical attackers (the breach-to-exploit chain is too slow).
-- **Session tokens never expire by default but are always revocable** by any human with `admin` permission on the Doco.
+- **Session tokens never expire by default but are always revocable** by any person with `admin` permission on the Doco.
 - **Revocation cascades** — revoking a session token invalidates all session tokens whose ancestry chain passes through it. (Default — strict. Alternative considered in §6.)
 - **Audit trail** — each token issuance, use, and revocation produces an Action (`verb: issue_token`, `use_token`, `revoke_token`), visible in the Doco's history.
 - **Tokens are stored in a secure store** (the API server's encrypted DB), never in the Doco's git repo. The Doco records *which* Principals exist and their lineage; token *values* live elsewhere.
 
 ### 3.4 The trust chain in the schema
 
-Every agent's `Principal.owner_id` points at its inviter. Walking the chain back **always** terminates at a human. This is queryable:
+Every agent's `Principal.owner_id` points at its inviter. Walking the chain back **always** terminates at a person. This is queryable:
 
 ```cypher
-// Every agent's path back to a human
-MATCH path = (a:Principal {type:'agent'})-[:OwnedBy*]->(human:Principal {type:'human'})
+// Every agent's path back to a person
+MATCH path = (a:Principal {type:'agent'})-[:OwnedBy*]->(person:Principal {type:'person'})
 WHERE a.id = 'principal_agent_01H...'
 RETURN path
 ```
@@ -176,7 +176,7 @@ When you create an Doco for an existing project (§1.2 path b), Doco helps extra
 | Source | Typical extracted entities |
 |---|---|
 | Agent ↔ agent conversations (transcripts, logs) | Reasoning chains, mid-task Decisions |
-| Human ↔ agent conversations (Claude/ChatGPT/Gemini logs) | Intents (what the human asked for), Decisions (what was chosen), Reasoning (why) |
+| Person ↔ agent conversations (Claude/ChatGPT/Gemini logs) | Intents (what the person asked for), Decisions (what was chosen), Reasoning (why) |
 | Slack groups | Decisions made via thread discussion, Intents from kickoff messages |
 | Slack channels (long-running) | ADR-equivalent threads, Decisions |
 | Email threads | External-facing Decisions (vendor choices, contract terms) |
@@ -202,7 +202,7 @@ For each source, Doco provides an *importer* (CLI plugin or web wizard):
 - **Figma importer** — comments + version history → design decisions extracted from comment threads, with the Figma node as the target Reference.
 - **Notion / Google Docs** — exported via API; document structure mapped (headings → Intents, decision sections → Decisions).
 - **Code commits** — `git log --grep` patterns + GitHub PR API; PR descriptions parsed for "we chose X because Y" patterns.
-- **Conversation transcripts** — agents and humans paste/upload chat logs; the importer LLM extracts Decision/Reasoning candidates.
+- **Conversation transcripts** — agents and people paste/upload chat logs; the importer LLM extracts Decision/Reasoning candidates.
 
 ### 4.4 Review and accept
 
@@ -221,8 +221,8 @@ Importer pipelines must be **idempotent and auditable**: re-running the same sou
 ### 5.1 API is primary; web is a consumer
 
 The web interface is **not** a parallel implementation — it is a consumer of the public API. This guarantees:
-- Anything a human can do, an agent can do.
-- Anything a human can do is documented (the API IS the documentation).
+- Anything a person can do, an agent can do.
+- Anything a person can do is documented (the API IS the documentation).
 - Feature parity is mechanical, not maintained by hand.
 
 ### 5.2 API surface
@@ -239,7 +239,7 @@ OpenAPI schema served at `/api/v1/openapi.json`. Agents consume this directly �
 
 ### 5.3 Web interface — recent changes is the home
 
-Plain truth: graph navigation often **doesn't work well** for browsing. A node-edge spaghetti is not how humans want to start their day. The graph IS the data structure, but it's a **secondary** view, not the primary navigation.
+Plain truth: graph navigation often **doesn't work well** for browsing. A node-edge spaghetti is not how people want to start their day. The graph IS the data structure, but it's a **secondary** view, not the primary navigation.
 
 **Primary navigation:**
 - **Recent changes feed** (the home view) — ordered list of Actions, Decisions, Evaluations across the Doco. Default last 7 days; filter by node type / actor / time. Mirrors the GitHub home dashboard, which users already understand. Surfaces alerting items inline (failed Evaluations, blocked Actions, drift warnings).
@@ -264,9 +264,9 @@ Each item has a "view in graph" affordance — once-clicked-from, never primary.
 
 ## 6. Open product questions
 
-1. **GitHub-only humans — hard constraint or v0 simplification?** Locks out users without GitHub accounts (some PMs, many designers). If broader adoption matters, eventually need OIDC/SAML — but every alternative provider must still resolve to a verified external identity (no Doco-native passwords). Defer until adoption signal demands it.
+1. **GitHub-only people — hard constraint or v0 simplification?** Locks out users without GitHub accounts (some PMs, many designers). If broader adoption matters, eventually need OIDC/SAML — but every alternative provider must still resolve to a verified external identity (no Doco-native passwords). Defer until adoption signal demands it.
 
-2. **Token revocation cascade — strict or scoped?** Strict (proposed): revoking Alice's session token invalidates all agents whose ancestry passes through it. Scoped alternative: tombstone the human, leave agents intact until their *own* tokens are revoked. Strict is safer; scoped is more forgiving. Going strict by default, with a per-Doco override flag.
+2. **Token revocation cascade — strict or scoped?** Strict (proposed): revoking Alice's session token invalidates all agents whose ancestry passes through it. Scoped alternative: tombstone the owner, leave agents intact until their *own* tokens are revoked. Strict is safer; scoped is more forgiving. Going strict by default, with a per-Doco override flag.
 
 3. **Backfill quality.** Extracted entities will be lossy and sometimes wrong. Default `lifecycle: proposed` keeps them out of the active graph until reviewed; require explicit acceptance to flip. A built-in Rule could even prevent backfilled entities from being Premises in active Reasoning until reviewed (lint/check).
 

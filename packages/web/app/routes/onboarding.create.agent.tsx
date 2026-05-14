@@ -3,109 +3,43 @@
 // Self-serve Doco creation without auth. Creates an UNCLAIMED Doco whose
 // owner is the host-bootstrap placeholder Principal, plus a bootstrap-owned
 // agent Principal, plus a session token (DOCO_TOKEN) for the agent to use
-// immediately, plus a claim_token URL for the human to take ownership later.
+// immediately, plus a claim_token URL for the owner to take ownership later.
+//
+// Business logic for the form post lives in
+// `~/lib/onboarding-create-agent.server` (so it stays server-only when this
+// route is bundled for the client).
 import { useState } from "react";
 import { Form, Link, useActionData } from "react-router";
-import type { EntityId } from "@doco/shared";
-import { rootDir } from "~/lib/db";
 import { loadHostConfig } from "~/lib/host";
-import { TokenStore } from "~/lib/tokens.server";
-import { addAgentPrincipal, createDocoInHost, reindex } from "~/lib/redeem.server";
-import { getOrCreateHostBootstrap, HOST_BOOTSTRAP_USERNAME } from "~/lib/bootstrap.server";
+import { createDocoAsAgentFromForm } from "~/lib/onboarding-create-agent.server";
 import { getPublicBaseUrl } from "@doco/shared";
 
-// Repeat the constant so the component (non-server) can reference it without
-// pulling the .server module into the client bundle.
 const BOOTSTRAP_USERNAME_LABEL = "host-bootstrap";
 import { DocoMark } from "~/components/doco-mark";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 
-export function loader({ request }: { request: Request }) {
+export async function loader({ request }: { request: Request }) {
   return {
-    host: loadHostConfig(),
+    host: await loadHostConfig(),
     baseUrl: getPublicBaseUrl(request),
   };
 }
 
 export async function action({ request }: { request: Request }) {
-  const root = rootDir();
-  const baseUrl = getPublicBaseUrl(request);
-
   const form = await request.formData();
-  const docoSlug = String(form.get("doco_slug") ?? "").trim().toLowerCase();
-  const description = String(form.get("description") ?? "").trim();
-  const visibility = (String(form.get("visibility") ?? "private") as "private" | "public");
-  const agentDisplayName = String(form.get("agent_display_name") ?? "").trim() || "my-agent";
-  const model = String(form.get("model") ?? "").trim() || "unknown";
-  const provider = String(form.get("provider") ?? "").trim() || "unknown";
-
-  if (!docoSlug || !/^[a-z0-9_-]+$/.test(docoSlug)) {
-    return { error: "Doco slug is required and must be lowercase kebab-case." };
-  }
-
-  // 1. Ensure host-bootstrap placeholder Principal exists.
-  const bootstrap = getOrCreateHostBootstrap(root);
-
-  // 2. Create the unclaimed Doco, owned by host-bootstrap.
-  let docoRec: { docoId: string; path: string };
-  try {
-    const created = await createDocoInHost(root, {
-      ownerSlug: HOST_BOOTSTRAP_USERNAME,
-      docoSlug,
-      ...(description ? { description } : {}),
-      visibility,
-    });
-    docoRec = { docoId: created.docoId, path: created.path };
-  } catch (e) {
-    return { error: `Failed to create Doco: ${(e as Error).message}` };
-  }
-  await reindex(docoRec.path);
-
-  // 3. Create the bootstrap-owned agent Principal.
-  const isoNow = new Date().toISOString();
-  const agentUsername = `${HOST_BOOTSTRAP_USERNAME}/${isoNow}`;
-  let agentId: EntityId<"principal">;
-  try {
-    agentId = await addAgentPrincipal(root, {
-      username: agentUsername,
-      display_name: agentDisplayName,
-      owner_id: bootstrap.id,
-      agent_metadata: {
-        provider,
-        model,
-        capabilities: [],
-        created_at: isoNow,
-      },
-    });
-  } catch (e) {
-    return { error: `Failed to create agent Principal: ${(e as Error).message}` };
-  }
-
-  // 4. Issue an DOCO_TOKEN for the agent.
-  const store = TokenStore.forDoco(root);
-  const session = await store.issueSessionToken(agentId, bootstrap.id);
-
-  // 5. Issue a claim token bound to (Doco, bootstrap-agent).
-  const claim = await store.issueClaimToken(docoRec.docoId, agentId);
-
-  return {
-    ok: {
-      doco_url: `${baseUrl}/${HOST_BOOTSTRAP_USERNAME}/${docoSlug}`,
-      doco_slug: docoSlug,
-      session_token: session.token,
-      claim_url: `${baseUrl}/claim/${claim.token}`,
-      claim_expires_at: claim.expires_at,
-      principal: {
-        id: agentId,
-        username: agentUsername,
-        display_name: agentDisplayName,
-      },
-    },
-  };
+  const baseUrl = getPublicBaseUrl(request);
+  return createDocoAsAgentFromForm({ form, baseUrl });
 }
 
 export function meta() {
   return [{ title: "Create an Doco · for agents · Doco" }];
+}
+
+export function links() {
+  return [
+    { rel: "alternate", type: "text/plain", href: "/onboarding/create/agent.txt" },
+    { rel: "alternate", type: "application/json", href: "/onboarding/create/agent.json" },
+  ];
 }
 
 export default function CreateAgent({
@@ -143,8 +77,8 @@ export default function CreateAgent({
         <main className="mx-auto max-w-2xl px-6 py-12 space-y-4">
           <h1 className="text-xl font-bold">Doco created · {ok.doco_slug}</h1>
           <p className="text-sm text-muted-foreground">
-            Unclaimed for now. You can start working immediately. The human you're collaborating
-            with should claim ownership using the URL below.
+            Unclaimed for now. You can start working immediately. The owner you're collaborating
+            with should claim it using the URL below.
           </p>
 
           <Card>
@@ -183,9 +117,9 @@ export default function CreateAgent({
 
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Claim message for the human</CardTitle>
+              <CardTitle className="text-base">Claim message for the owner</CardTitle>
               <CardDescription>
-                Paste this into your chat with the human who prompted you. They visit the URL,
+                Paste this into your chat with the owner who prompted you. They visit the URL,
                 sign in or sign up, and take ownership of the Doco.
               </CardDescription>
             </CardHeader>
@@ -216,10 +150,46 @@ export default function CreateAgent({
                 care of this any time.
               </CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-3">
+              <div className="rounded-md border border-border bg-card/50 p-3 text-xs">
+                <p className="mb-2 font-semibold text-foreground">
+                  What to add first
+                </p>
+                <p className="mb-2 text-muted-foreground">
+                  A solid starter set is{" "}
+                  <code className="font-mono text-foreground">adrs</code>{" "}
+                  (architectural choices),{" "}
+                  <code className="font-mono text-foreground">user-flows</code>{" "}
+                  (end-to-end journeys), plus{" "}
+                  <strong>1–2 custom scopes</strong> named for{" "}
+                  <em>this project&apos;s</em> actual subject areas (e.g.{" "}
+                  <code className="font-mono text-foreground">payments</code>,{" "}
+                  <code className="font-mono text-foreground">search</code>,{" "}
+                  <code className="font-mono text-foreground">content-schema</code>).
+                  More templates exist (apis, bugs, runbooks, post-mortems,
+                  glossary, roadmap) but adding them when the need arises beats
+                  adding them all up front.
+                </p>
+                <p className="font-semibold text-foreground">
+                  What &ldquo;watched&rdquo; means
+                </p>
+                <p className="text-muted-foreground">
+                  Each scope carries a <strong>watched</strong> flag — a soft
+                  attention signal. Watched means: when you (or an agent)
+                  capture work later, this scope nudges you to consider whether
+                  the work belongs here. It&apos;s a prompt, not a rule —
+                  nothing blocks a capture that omits a watched scope.{" "}
+                  <strong>
+                    Scopes you add during onboarding default to watched
+                  </strong>{" "}
+                  because you&apos;re picking them on purpose right now. You
+                  can flip any scope&apos;s watched value any time from the
+                  scope&apos;s edit page.
+                </p>
+              </div>
               <Link
                 to={`/${BOOTSTRAP_USERNAME_LABEL}/${ok.doco_slug}/scopes/new?onboarding=1`}
-                className="rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90"
+                className="inline-block rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90"
               >
                 Set up scopes →
               </Link>
@@ -249,7 +219,7 @@ export default function CreateAgent({
             <CardTitle className="text-base">Set up the Doco</CardTitle>
             <CardDescription>
               The Doco will be unclaimed (owned by the host's placeholder Principal) until the
-              human you're collaborating with claims it. You can write to it in full immediately.
+              owner you're collaborating with claims it. You can write to it in full immediately.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -329,6 +299,12 @@ export default function CreateAgent({
             ) : null}
           </CardContent>
         </Card>
+        <p className="text-center text-[11px] text-muted-foreground">
+          Agent? You probably want the plain-text version of this page:{" "}
+          <a href="/onboarding/create/agent.txt" className="text-primary hover:underline">
+            /onboarding/create/agent.txt
+          </a>
+        </p>
       </main>
     </div>
   );

@@ -1,0 +1,22 @@
+id: doco_01KREWWH3PEX9N5GZ0PYJTJ0QG
+node_type: doco
+slug: test-final-flow
+display_name: test-final-flow
+visibility: private
+default_branch: main
+owner_id: principal_01KREVW1FB0H73HQN9C4J0H8JX
+description: Doco created in host (owned by principal "host-bootstrap").
+summary: Created in host on 2026-05-12T20:08:37.750Z.
+created_at: 2026-05-12T20:08:37.750Z
+created_by: principal_01KREVW1FB0H73HQN9C4J0H8JX
+lifecycle: active
+scopes: []
+members:
+  - principal_id: principal_01KREVW1FB0H73HQN9C4J0H8JX
+    role: owner
+    permissions:
+      - read
+      - write
+      - execute
+      - admin
+imports: []

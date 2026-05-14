@@ -74,7 +74,6 @@ export const initCmd = defineCommand({
     // Build the directory layout.
     await mkdir(root, { recursive: true });
     for (const sub of [
-      "schema",
       "principals",
       "intents",
       "rules",
@@ -82,21 +81,18 @@ export const initCmd = defineCommand({
       "actions",
       "reasoning",
       "references",
-      "tags",
-      "evaluations",
+      "scopes",
     ]) {
       await mkdir(join(root, sub), { recursive: true });
     }
 
-    // Copy schema/glossary templates.
-    await copyFile(join(TEMPLATES_DIR, "doco.schema.json"), join(root, "schema", "doco.schema.json"));
+    // Copy glossary template.
     await copyFile(join(TEMPLATES_DIR, "glossary.yaml"), join(root, "glossary.yaml"));
 
     // Write doco.yaml.
     const docoYaml = `# Doco — root identity. See https://doco.to (eventually) for docs.
 id: ${docoId}
 node_type: doco
-schema_version: "0.1"
 
 slug: ${slug}
 display_name: ${slug.split("/")[1] ?? slug}
@@ -111,9 +107,7 @@ description: |
 summary: "Created by 'doco init' on ${created}."
 created_at: ${created}
 created_by: ${principalId}
-revision: 1
 lifecycle: active
-status: active
 tags: []
 
 members:
@@ -132,19 +126,16 @@ imports: []
     const principalYaml = `id: ${principalId}
 doco_id: ${docoId}
 node_type: principal
-schema_version: "0.1"
 summary: "Owner of ${slug}."
 
-type: human
+type: person
 username: ${ownerUsername}
 display_name: ${ownerUsername}
 
 ${githubBlock}
 created_at: ${created}
 created_by: ${principalId}   # self-reference: bootstrap principal
-revision: 1
 lifecycle: active
-status: active
 tags: []
 `;
     await writeFile(
@@ -167,6 +158,21 @@ tags: []
       "utf8",
     );
 
+    // Drop the agent bootstrap files (CLAUDE.md + .claude/settings.json +
+    // bootstrap-fetch.sh + user-prompt-fetch.sh) so any agent that walks
+    // into this repo is forced to fetch the canonical instructions before
+    // responding.
+    const { installAgentBootstrapCmd } = await import("./install-agent-bootstrap.js");
+    // Run silently — captured output muddles `doco init`'s own success block.
+    // The user sees the bootstrap files in the directory listing afterwards.
+    const originalLog = console.log;
+    console.log = () => {};
+    try {
+      await installAgentBootstrapCmd.run!({ args: { root, force: false } } as never);
+    } finally {
+      console.log = originalLog;
+    }
+
     console.log();
     console.log(header(`Created Doco: ${slug}`));
     console.log(rule());
@@ -176,8 +182,14 @@ tags: []
     if (existing) {
       console.log(checkmark(`Mode:           ${c.warn("brownfield")} (extend with backfill importers in phase 6)`));
     }
+    console.log(checkmark(`Agent bootstrap installed (CLAUDE.md + .claude/ + .env.example)`));
     console.log();
-    console.log(c.dim(`Next: cd ${dirName} && doco validate`));
+    console.log(c.dim("Next:"));
+    console.log(c.dim(`  1. cd ${dirName}`));
+    console.log(c.dim(`  2. cp .env.example .env  # fill in DOCO_HOST, DOCO_SLUG=${slug}, DOCO_TOKEN`));
+    console.log(c.dim(`  3. doco validate  # confirm structure`));
+    console.log(c.dim(`  4. Restart your Claude Code session in this directory.`));
+    console.log(c.dim(`  5. In Claude Code, run /hooks → approve the SessionStart + UserPromptSubmit hooks. Claude Code skips unapproved project hooks silently, so the protocol won't auto-load until you approve them once per project (and once per worktree if you use them).`));
     console.log();
   },
 });

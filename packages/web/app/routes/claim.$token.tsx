@@ -1,17 +1,18 @@
-// /claim/<token> — human visits, signs in (or signs up), takes ownership of an
+// /claim/<token> — owner visits, signs in (or signs up), takes ownership of an
 // unclaimed Doco created via the onboarding wizard. Per ADR-073.
 //
 // Atomic transfer:
-//   1. Doco.owner_id = signed-in human
-//   2. Bootstrap-owned agent.owner_id = signed-in human (the agent now belongs
-//      to the claiming human)
+//   1. Doco.owner_id = signed-in user
+//   2. Bootstrap-owned agent.owner_id = signed-in user (the agent now belongs
+//      to the claiming user)
 //   3. Claim token marked used
 import { existsSync, readFileSync, readdirSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { mkdirSync } from "node:fs";
 import { Form, Link, redirect, useActionData, useLoaderData } from "react-router";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
-import { rootDir } from "~/lib/db";
+import { rootDir } from "~/lib/db.server";
+import { recordDocoSlugAlias } from "~/lib/doco-aliases.server";
 import { loadHostConfig } from "~/lib/host";
 import { getCurrentPrincipal } from "~/lib/session";
 import { TokenStore } from "~/lib/tokens.server";
@@ -20,17 +21,17 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/com
 
 export async function loader({ request, params }: { request: Request; params: { token: string } }) {
   const root = rootDir();
-  const me = getCurrentPrincipal(request);
+  const me = await getCurrentPrincipal(request);
   const store = TokenStore.forDoco(root);
   const claim = await store.resolveClaim(params.token);
   if (!claim) {
-    return { status: "invalid" as const, host: loadHostConfig(), me };
+    return { status: "invalid" as const, host: await loadHostConfig(), me };
   }
   // Read the Doco's slug for display. We have doco_id; walk docos/ tree to find it.
   const docoMeta = findDocoByIdInBootstrap(root, claim.doco_id);
   return {
     status: "open" as const,
-    host: loadHostConfig(),
+    host: await loadHostConfig(),
     me,
     docoSlug: docoMeta?.docoSlug ?? "(unknown)",
     expires_at: claim.expires_at,
@@ -38,7 +39,7 @@ export async function loader({ request, params }: { request: Request; params: { 
 }
 
 export async function action({ request, params }: { request: Request; params: { token: string } }) {
-  const me = getCurrentPrincipal(request);
+  const me = await getCurrentPrincipal(request);
   if (!me) {
     return redirect(`/sign-in?next=${encodeURIComponent(`/claim/${params.token}`)}`);
   }
@@ -47,9 +48,23 @@ export async function action({ request, params }: { request: Request; params: { 
   const claim = await store.resolveClaim(params.token);
   if (!claim) return { error: "This claim link is invalid, used, or expired." };
 
-  // 1. Find and rewrite the Doco's doco.yaml: owner_id → me.id; slug fields → me.username/<slug>.
+  // Find the unclaimed Doco.
   const docoRec = findDocoByIdInBootstrap(root, claim.doco_id);
   if (!docoRec) return { error: "The Doco this token refers to is no longer present." };
+
+  // Pre-flight collision check BEFORE any state mutation. If the
+  // destination slot is taken, surface a useful error with the
+  // collision URL instead of leaving a partial-claim turd behind
+  // (owner_id updated in doco.yaml but directory still under
+  // host-bootstrap because the move failed).
+  const newPath = join(root, "docos", me.username, docoRec.docoSlug);
+  if (existsSync(newPath)) {
+    return {
+      error: `You already own a Doco at /${me.username}/${docoRec.docoSlug}. Rename the existing one or pick a different slug for this one before claiming.`,
+    };
+  }
+
+  // 1. Rewrite the Doco's doco.yaml: owner_id → me.id; slug fields → me.username/<slug>.
   try {
     rewriteDocoOwnership(docoRec.path, me.id, me.username, docoRec.docoSlug);
   } catch (e) {
@@ -63,14 +78,35 @@ export async function action({ request, params }: { request: Request; params: { 
     return { error: `Failed to transfer agent ownership: ${(e as Error).message}` };
   }
 
-  // 3. Move the Doco directory: /docos/host-bootstrap/<slug>/ → /docos/<me.username>/<slug>/
+  // 3. Move the Doco directory: /docos/host-bootstrap/<slug>/ → /docos/<me.username>/<slug>/.
+  // The pre-flight check above guarantees this won't collide; this catch is for
+  // truly unexpected fs errors (permissions, disk full, etc.).
   try {
     moveDocoDirectory(root, docoRec.docoSlug, me.username);
   } catch (e) {
     return { error: `Failed to move Doco directory: ${(e as Error).message}` };
   }
 
-  // 4. Mark claim used.
+  // 4. Leave a slug alias: agents and stale URLs that still hold
+  // `host-bootstrap/<slug>` should keep resolving to the canonical
+  // `<me.username>/<slug>`. Per D-019 — old slug becomes an alias.
+  try {
+    recordDocoSlugAlias(
+      "host-bootstrap",
+      docoRec.docoSlug,
+      me.username,
+      docoRec.docoSlug,
+      claim.doco_id,
+    );
+  } catch (e) {
+    // Non-fatal: the claim has already moved the directory and rewritten
+    // ownership. A missing alias only affects agents holding the old
+    // slug in their .env — they'll see a "not found" instead of a
+    // transparent resolution, but the Doco itself is fine.
+    console.error("claim: failed to record slug alias:", e);
+  }
+
+  // 5. Mark claim used.
   await store.markClaimUsed(params.token);
 
   return redirect(`/${me.username}/${docoRec.docoSlug}`);
@@ -205,7 +241,9 @@ function rewriteDocoOwnership(
   const e = parseYaml(readFileSync(yamlPath, "utf8")) as Record<string, unknown>;
   e.owner_id = newOwnerId;
   e.owner_username = newOwnerUsername;
-  e.slug = `${newOwnerUsername}/${docoSlug}`;
+  // Bare slug only — owner segment is implied by the parent directory.
+  // (Per `fix-owner-prefix-duplicated-in-doco-slug` Intent.)
+  e.slug = docoSlug;
   writeFileSync(yamlPath, stringifyYaml(e), "utf8");
 }
 

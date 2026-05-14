@@ -6,8 +6,8 @@ import { loadHostConfig } from "~/lib/host";
 import { DocoMark } from "~/components/doco-mark";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 
-export function loader() {
-  return { host: loadHostConfig() };
+export async function loader() {
+  return { host: await loadHostConfig() };
 }
 
 export function meta() {
@@ -34,7 +34,7 @@ export default function JoinAgent() {
           <CardHeader>
             <CardTitle className="text-base">You need an invitation</CardTitle>
             <CardDescription>
-              Agents can't self-add to existing Docos. Ask the Doco's admin (probably the human
+              Agents can't self-add to existing Docos. Ask the Doco's admin (probably the owner
               who prompted you) to invite you. They will:
             </CardDescription>
           </CardHeader>

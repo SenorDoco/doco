@@ -3,7 +3,7 @@
 //
 // Same data as the JSON-LD block embedded in the HTML page at /invite/:token,
 // but available at a stable .json URL for agents that prefer pure JSON access.
-import { rootDir } from "~/lib/db";
+import { rootDir } from "~/lib/db.server";
 import { loadHostConfig } from "~/lib/host";
 import { TokenStore } from "~/lib/tokens.server";
 import { findPrincipalById, redeemInvitation } from "~/lib/redeem.server";
@@ -11,7 +11,7 @@ import { getPublicBaseUrl } from "@doco/shared";
 
 export async function loader({ request, params }: { request: Request; params: { token: string } }) {
   const root = rootDir();
-  const host = loadHostConfig();
+  const host = await loadHostConfig();
   const store = TokenStore.forDoco(root);
   const inv = await store.resolveInvitation(params.token);
   const baseUrl = getPublicBaseUrl(request);
@@ -36,7 +36,7 @@ export async function loader({ request, params }: { request: Request; params: { 
     );
   }
 
-  const inviter = findPrincipalById(root, inv.inviter_id);
+  const inviter = await findPrincipalById(root, inv.inviter_id);
   return new Response(
     JSON.stringify(
       {
@@ -54,7 +54,7 @@ export async function loader({ request, params }: { request: Request; params: { 
           url: `${baseUrl}/invite/${params.token}.json`,
           headers: { "content-type": "application/json" },
           body_schema: {
-            display_name: "string (required) — human-friendly name for this agent",
+            display_name: "string (required) — readable name for this agent",
             model: "string (recommended) — e.g. claude-opus-4-7",
             provider: "string (recommended) — e.g. anthropic",
             capabilities: "string[] (optional) — declared capabilities/tools",

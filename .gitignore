@@ -1,4 +1,6 @@
 # Local index cache — per-clone, regenerable, never source-of-truth (D-023).
+# Includes seq.json + cache.db. The audit log moved to Postgres
+# (rule_01KRKQDHWNWJAF4YKTMCB2A0D9).
 .doco/
 
 # Node / TypeScript

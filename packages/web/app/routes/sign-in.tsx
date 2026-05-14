@@ -14,13 +14,25 @@ import { DocoMark } from "~/components/doco-mark";
  * /sign-in (ADR-095) — GitHub OAuth is the primary path. A localhost
  * identity-picker is offered as a switch-account affordance when
  * DOCO_LOCALHOST_PICKER=1; production-grade hosts leave it off.
+ *
+ * Accepts `?next=<relative-path>` for deep-link return-after-sign-in
+ * (e.g. private-Doco entity URLs that redirect anonymous visitors here).
+ * Open-redirect guard: `next` must start with a single `/` — protocol
+ * and host-relative URLs (`//evil.com`, `https://…`) are dropped.
  */
-export function loader({ request }: { request: Request }) {
+function safeNext(input: string | null | undefined): string | null {
+  if (!input) return null;
+  if (input.length < 2 || input[0] !== "/" || input[1] === "/") return null;
+  return input;
+}
+
+export async function loader({ request }: { request: Request }) {
+  const next = safeNext(new URL(request.url).searchParams.get("next"));
   const id = getSessionPrincipalId(request);
-  if (id && findPrincipalById(id)) throw redirect("/");
+  if (id && await findPrincipalById(id)) throw redirect(next ?? "/dashboard");
   const pickerEnabled = process.env.DOCO_LOCALHOST_PICKER === "1";
-  const users = pickerEnabled ? listSignInCandidates() : [];
-  return { users, host: loadHostConfig(), pickerEnabled };
+  const users = pickerEnabled ? await listSignInCandidates() : [];
+  return { users, host: await loadHostConfig(), pickerEnabled, next };
 }
 
 export async function action({ request }: { request: Request }) {
@@ -29,10 +41,11 @@ export async function action({ request }: { request: Request }) {
   }
   const form = await request.formData();
   const principalId = String(form.get("principal_id") ?? "");
-  if (!findPrincipalById(principalId)) {
+  if (!await findPrincipalById(principalId)) {
     return { error: "That user no longer exists." };
   }
-  return redirect("/", { headers: { "Set-Cookie": setSessionCookie(principalId) } });
+  const next = safeNext(String(form.get("next") ?? "")) ?? "/dashboard";
+  return redirect(next, { headers: { "Set-Cookie": setSessionCookie(principalId) } });
 }
 
 export function meta() {
@@ -46,7 +59,7 @@ export default function SignIn({
   loaderData: Awaited<ReturnType<typeof loader>>;
   actionData?: { error?: string } | undefined;
 }) {
-  const { users, host, pickerEnabled } = loaderData;
+  const { users, host, pickerEnabled, next } = loaderData;
   return (
     <div>
       <header className="border-b border-border bg-card">
@@ -62,12 +75,12 @@ export default function SignIn({
           <CardHeader>
             <CardTitle>Sign in</CardTitle>
             <CardDescription>
-              Doco accounts are humans verified by GitHub (ADR-095).
+              Doco accounts are people verified by GitHub (ADR-095).
             </CardDescription>
           </CardHeader>
           <CardContent>
             <Link
-              to="/auth/github"
+              to={next ? `/auth/github?next=${encodeURIComponent(next)}` : "/auth/github"}
               className="flex w-full items-center justify-center gap-2 rounded-md bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:opacity-90"
             >
               <GitHubMark />
@@ -86,6 +99,7 @@ export default function SignIn({
                     <li key={u.id}>
                       <Form method="post">
                         <input type="hidden" name="principal_id" value={u.id} />
+                        {next ? <input type="hidden" name="next" value={next} /> : null}
                         <button
                           type="submit"
                           className="w-full rounded-md border border-border bg-input px-3 py-2 text-left transition-colors hover:border-primary hover:bg-card"

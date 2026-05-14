@@ -1,0 +1,33 @@
+{
+  "$schema": "https://claude.com/schemas/settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(doco:*)"
+    ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/bootstrap-fetch.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/user-prompt-fetch.sh",
+            "timeout": 8
+          }
+        ]
+      }
+    ]
+  }
+}

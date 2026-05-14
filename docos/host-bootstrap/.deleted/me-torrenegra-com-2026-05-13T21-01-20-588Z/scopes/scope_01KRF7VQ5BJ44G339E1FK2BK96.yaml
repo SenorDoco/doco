@@ -1,0 +1,15 @@
+id: scope_01KRF7VQ5BJ44G339E1FK2BK96
+doco_id: doco_01KRF55AR2J8S8CE48FR86NHT7
+node_type: scope
+summary: "Conventions for the thought-content schema: posts.json shape,
+  media-block types, bilingual EN/ES fields and fallback, post id + date
+  conventions."
+name: scope_content
+purpose: "Conventions for the thought-content schema: posts.json shape, the four
+  media-block types (image / youtube / vimeo / pdf), bilingual EN/ES fields and
+  fallback behavior, paragraph composition from markdown, post id + date
+  conventions, and what counts as a 'finished' thought vs a draft."
+created_at: 2026-05-12T23:20:25.515Z
+created_by: principal_01KRF55AR9H0RDQREGYH7WQWMQ
+lifecycle: active
+scopes: []

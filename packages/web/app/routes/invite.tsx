@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { redirect, useFetcher } from "react-router";
 import type { EntityId } from "@doco/shared";
-import { rootDir } from "~/lib/db";
+import { rootDir } from "~/lib/db.server";
 import { loadHostConfig } from "~/lib/host";
 import { getCurrentPrincipal } from "~/lib/session";
 import { TokenStore } from "~/lib/tokens.server";
@@ -10,15 +10,15 @@ import { SiteHeader } from "~/components/site-header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 
 export async function loader({ request }: { request: Request }) {
-  const me = getCurrentPrincipal(request);
+  const me = await getCurrentPrincipal(request);
   if (!me) throw redirect("/sign-in");
   const store = TokenStore.forDoco(rootDir());
   const open = await store.listOpenInvitations();
-  return { me, host: loadHostConfig(), open };
+  return { me, host: await loadHostConfig(), open };
 }
 
 export async function action({ request }: { request: Request }) {
-  const me = getCurrentPrincipal(request);
+  const me = await getCurrentPrincipal(request);
   if (!me) throw redirect("/sign-in");
   const store = TokenStore.forDoco(rootDir());
   const inv = await store.issueInvitationToken(me.id as EntityId<"principal">);
@@ -41,7 +41,7 @@ export default function Invite({
   const [copied, setCopied] = useState<string | null>(null);
   return (
     <div>
-      <SiteHeader context={host.name} mode="host" me={me} />
+      <SiteHeader mode="host" me={me} />
       <main className="mx-auto max-w-3xl px-6 py-8 space-y-4">
         <Card>
           <CardHeader>
@@ -120,7 +120,7 @@ ${issued.url}`;
           </CardHeader>
           <CardContent>
             <pre className="overflow-x-auto rounded-md border border-border bg-input p-3 text-[11px]">
-{`# Once the human shares the URL, the agent extracts the token and:
+{`# Once the owner shares the URL, the agent extracts the token and:
 
 curl -X POST \\
      -H "Authorization: Bearer <invitation-token>" \\

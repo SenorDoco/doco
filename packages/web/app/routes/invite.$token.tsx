@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Form, useActionData, useLoaderData } from "react-router";
-import { rootDir } from "~/lib/db";
+import { rootDir } from "~/lib/db.server";
 import { loadHostConfig } from "~/lib/host";
 import { TokenStore } from "~/lib/tokens.server";
 import { redeemInvitation, findPrincipalById } from "~/lib/redeem.server";
@@ -29,7 +29,7 @@ interface InvitationManifest {
   schema_version: "0.1";
   status: "open" | "expired" | "used" | "unknown_token";
   host: { name: string; url: string };
-  inviter?: { id: string; username: string; type: "human" | "agent" };
+  inviter?: { id: string; username: string; type: "person" | "agent" };
   token: string;
   expires_at?: string;
   redeem?: {
@@ -44,7 +44,7 @@ interface InvitationManifest {
 
 export async function loader({ request, params }: { request: Request; params: { token: string } }) {
   const root = rootDir();
-  const host = loadHostConfig();
+  const host = await loadHostConfig();
   const store = TokenStore.forDoco(root);
   const inv = await store.resolveInvitation(params.token);
   const baseUrl = getPublicBaseUrl(request);
@@ -63,7 +63,7 @@ export async function loader({ request, params }: { request: Request; params: { 
       ],
     };
   } else {
-    const inviter = findPrincipalById(root, inv.inviter_id);
+    const inviter = await findPrincipalById(root, inv.inviter_id);
     manifest = {
       kind: "doco_invitation",
       schema_version: "0.1",
@@ -79,7 +79,7 @@ export async function loader({ request, params }: { request: Request; params: { 
         url: `${baseUrl}/invite/${params.token}.json`,
         headers: { "content-type": "application/json" },
         body_schema: {
-          display_name: "string (required) — human-friendly name for this agent",
+          display_name: "string (required) — readable name for this agent",
           model: "string (recommended) — e.g. claude-opus-4-7, gpt-4o, etc.",
           provider: "string (recommended) — e.g. anthropic, openai",
           capabilities: "string[] (optional) — declared capabilities/tools",
@@ -186,7 +186,7 @@ export default function InviteRedeem() {
     return (
       <div>
         {jsonLd}
-        <SiteHeader context={host.name} mode="host" me={null} />
+        <SiteHeader mode="host" me={null} />
         <main className="mx-auto max-w-3xl px-6 py-8 space-y-4">
           <Card>
             <CardHeader>
@@ -240,7 +240,7 @@ curl -X POST -H "Authorization: Bearer $DOCO_TOKEN" \\
     return (
       <div>
         {jsonLd}
-        <SiteHeader context={host.name} mode="host" me={null} />
+        <SiteHeader mode="host" me={null} />
         <main className="mx-auto max-w-3xl px-6 py-8 space-y-4">
           <Card>
             <CardHeader>
@@ -268,7 +268,7 @@ curl ${manifest.redeem!.url.replace(/\\.json$/, ".json")}`;
   return (
     <div>
       {jsonLd}
-      <SiteHeader context={host.name} mode="host" me={null} />
+      <SiteHeader mode="host" me={null} />
       <main className="mx-auto max-w-3xl px-6 py-8 space-y-4">
         <Card>
           <CardHeader>
@@ -283,7 +283,7 @@ curl ${manifest.redeem!.url.replace(/\\.json$/, ".json")}`;
             <div>
               <p className="text-xs font-semibold uppercase text-muted-foreground">What this is</p>
               <p>
-                A 5-minute, single-use invitation token to self-register as a non-human Principal
+                A 5-minute, single-use invitation token to self-register as an agent Principal
                 (type: agent) on {host.name}. Per ADR-037 + ADR-068 of Doco's alignment framework.
               </p>
             </div>
@@ -302,11 +302,11 @@ curl ${manifest.redeem!.url.replace(/\\.json$/, ".json")}`;
                 </li>
                 <li>
                   You receive a long-lived <code>session_token</code>. Store it. Use it to spawn
-                  child agents (chain remains traceable to a human).
+                  child agents (chain remains traceable to a person).
                 </li>
                 <li>
-                  Only humans on this host can delete Docos. Agents cannot — by design (see
-                  rule_only_humans_delete_doco).
+                  Only people on this host can delete Docos. Agents cannot — by design (see
+                  rule_only_people_delete_doco).
                 </li>
               </ul>
             </div>
@@ -325,7 +325,7 @@ curl ${manifest.redeem!.url.replace(/\\.json$/, ".json")}`;
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Redeem (browser)</CardTitle>
-            <CardDescription>For humans clicking through, or agents driving a browser.</CardDescription>
+            <CardDescription>For people clicking through, or agents driving a browser.</CardDescription>
           </CardHeader>
           <CardContent>
             <Form method="post" className="space-y-3">

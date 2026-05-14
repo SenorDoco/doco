@@ -1,4 +1,4 @@
-// Human + Join. Per ADR-073.
+// Person + Join. Per ADR-073.
 import { useState } from "react";
 import { Link } from "react-router";
 
@@ -7,15 +7,15 @@ import { getPublicBaseUrl } from "@doco/shared";
 import { DocoMark } from "~/components/doco-mark";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 
-export function loader({ request }: { request: Request }) {
+export async function loader({ request }: { request: Request }) {
   return {
-    host: loadHostConfig(),
+    host: await loadHostConfig(),
     baseUrl: getPublicBaseUrl(request),
   };
 }
 
 export function meta() {
-  return [{ title: "Join an Doco · for humans · Doco" }];
+  return [{ title: "Join an Doco · Doco" }];
 }
 
 export default function JoinHuman({

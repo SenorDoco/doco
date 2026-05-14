@@ -1,0 +1,471 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { defineCommand } from "citty";
+import { c, cross } from "../output.js";
+
+type Env = { host: string; token: string; slug: string };
+
+function loadDotenv(): void {
+  for (const k of ["DOCO_HOST", "DOCO_TOKEN", "DOCO_SLUG"] as const) {
+    if (process.env[k]) continue;
+    try {
+      const text = readFileSync(resolve(process.cwd(), ".env"), "utf8");
+      for (const raw of text.split(/\r?\n/)) {
+        const line = raw.replace(/^\s*export\s+/, "");
+        const m = line.match(/^([A-Z_][A-Z0-9_]*)\s*=\s*(.*?)\s*$/);
+        if (!m) continue;
+        let v = m[2];
+        if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) {
+          v = v.slice(1, -1);
+        }
+        if (!process.env[m[1]]) process.env[m[1]] = v;
+      }
+      break;
+    } catch {
+      break;
+    }
+  }
+}
+
+function requireEnv(): Env {
+  loadDotenv();
+  const host = (process.env.DOCO_HOST ?? "").replace(/\/+$/, "");
+  const token = process.env.DOCO_TOKEN ?? "";
+  const slug = process.env.DOCO_SLUG ?? "";
+  const missing = Object.entries({ DOCO_HOST: host, DOCO_TOKEN: token, DOCO_SLUG: slug })
+    .filter(([, v]) => !v)
+    .map(([k]) => k);
+  if (missing.length) {
+    console.error(cross(`Missing env: ${missing.join(", ")}. Set in shell or in ./.env.`));
+    process.exit(2);
+  }
+  return { host, token, slug };
+}
+
+function splitList(s: string | undefined): string[] {
+  if (!s) return [];
+  return s
+    .split(",")
+    .map((x) => x.trim())
+    .filter(Boolean);
+}
+
+function parseJson<T>(s: string | undefined, fieldName: string): T | undefined {
+  if (!s) return undefined;
+  try {
+    return JSON.parse(s) as T;
+  } catch (e) {
+    console.error(cross(`--${fieldName} is not valid JSON: ${(e as Error).message}`));
+    process.exit(2);
+  }
+}
+
+function readBody(inline: string | undefined, fromFile: string | undefined): string | undefined {
+  if (inline && fromFile) {
+    console.error(cross("Pass only one of --body-md or --body-md-file."));
+    process.exit(2);
+  }
+  if (fromFile) return readFileSync(resolve(process.cwd(), fromFile), "utf8");
+  return inline;
+}
+
+async function postCapture(
+  type: "intents" | "decisions" | "evals" | "scopes" | "actions" | "rules" | "reasoning",
+  body: Record<string, unknown>,
+): Promise<void> {
+  const { host, token, slug } = requireEnv();
+  const url = `${host}/${slug}/api/${type}.json`;
+  let resp: Response;
+  try {
+    resp = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify(body),
+    });
+  } catch (e) {
+    console.error(cross(`Network error POSTing ${url}: ${(e as Error).message}`));
+    process.exit(1);
+  }
+  const text = await resp.text();
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    parsed = undefined;
+  }
+  if (!resp.ok) {
+    const errMsg =
+      parsed && typeof parsed === "object" && parsed !== null && "error" in parsed
+        ? String((parsed as { error: unknown }).error)
+        : text;
+    console.error(cross(`HTTP ${resp.status}: ${errMsg}`));
+    process.exit(1);
+  }
+  const obj = (parsed ?? {}) as { footer_lines?: string[] };
+  if (Array.isArray(obj.footer_lines) && obj.footer_lines.length > 0) {
+    for (const line of obj.footer_lines) console.log(line);
+  } else {
+    console.log(text);
+  }
+}
+
+const intentCmd = defineCommand({
+  meta: {
+    name: "intent",
+    description: "Capture an Intent (POST /<owner>/<doco>/api/intents.json).",
+  },
+  args: {
+    summary: { type: "string", description: "Required. One-line 'what someone wants' summary.", required: true },
+    scope: { type: "string", description: "Required. Comma-separated scope names (bare, e.g. 'framework,user-flows').", required: true },
+    title: { type: "string", description: "Optional short title (defaults to summary)." },
+    "body-md": { type: "string", description: "Optional markdown body (inline string)." },
+    "body-md-file": { type: "string", description: "Optional path to a file whose contents become body_md." },
+    "wanted-by-username": { type: "string", description: "Optional principal username who wants this." },
+    lifecycle: { type: "string", description: "Optional. Defaults to 'active'." },
+  },
+  async run({ args }) {
+    const body: Record<string, unknown> = {
+      summary: args.summary,
+      scope_names: splitList(args.scope as string),
+    };
+    if (args.title) body.title = args.title;
+    const bodyMd = readBody(args["body-md"] as string | undefined, args["body-md-file"] as string | undefined);
+    if (bodyMd !== undefined) body.body_md = bodyMd;
+    if (args["wanted-by-username"]) body.wanted_by_username = args["wanted-by-username"];
+    if (args.lifecycle) body.lifecycle = args.lifecycle;
+    await postCapture("intents", body);
+  },
+});
+
+const decisionCmd = defineCommand({
+  meta: {
+    name: "decision",
+    description: "Capture a Decision (POST /<owner>/<doco>/api/decisions.json).",
+  },
+  args: {
+    question: { type: "string", description: "Required. The question the Decision answers.", required: true },
+    chosen: { type: "string", description: "Required. The chosen resolution (multi-line ok).", required: true },
+    scope: { type: "string", description: "Required. Comma-separated scope names.", required: true },
+    summary: { type: "string", description: "Optional one-line summary; derived from chosen if absent." },
+    "intent-id": { type: "string", description: "Optional. Comma-separated intent ids to link." },
+    alternatives: {
+      type: "string",
+      description: "Optional JSON: '[{\"name\":\"X\",\"rejected_because\":\"Y\"}]'.",
+    },
+    "decided-by-username": { type: "string", description: "Optional principal username who made the decision." },
+    "body-md": { type: "string", description: "Optional markdown body (inline string)." },
+    "body-md-file": { type: "string", description: "Optional path to a file whose contents become body_md." },
+    "born-from": { type: "string", description: "Optional id of an origin entity (e.g. bugfix Decision)." },
+    lifecycle: { type: "string", description: "Optional. Defaults to 'active'." },
+  },
+  async run({ args }) {
+    const body: Record<string, unknown> = {
+      question: args.question,
+      chosen: args.chosen,
+      scope_names: splitList(args.scope as string),
+    };
+    if (args.summary) body.summary = args.summary;
+    const intents = splitList(args["intent-id"] as string | undefined);
+    if (intents.length) body.intent_ids = intents;
+    const alts = parseJson<{ name: string; rejected_because: string }[]>(
+      args.alternatives as string | undefined,
+      "alternatives",
+    );
+    if (alts) body.alternatives = alts;
+    if (args["decided-by-username"]) body.decided_by_username = args["decided-by-username"];
+    const bodyMd = readBody(args["body-md"] as string | undefined, args["body-md-file"] as string | undefined);
+    if (bodyMd !== undefined) body.body_md = bodyMd;
+    if (args["born-from"]) body.born_from = args["born-from"];
+    if (args.lifecycle) body.lifecycle = args.lifecycle;
+    await postCapture("decisions", body);
+  },
+});
+
+const evalCmd = defineCommand({
+  meta: {
+    name: "eval",
+    description: "Capture an Eval (POST /<owner>/<doco>/api/evals.json).",
+  },
+  args: {
+    name: { type: "string", description: "Required. Human-readable name.", required: true },
+    scope: { type: "string", description: "Required. Comma-separated scope names.", required: true },
+    "criterion-kind": {
+      type: "string",
+      description: "Required. One of: exact | shape | llm-judge.",
+      required: true,
+    },
+    "criterion-spec": { type: "string", description: "Optional spec string accompanying the criterion." },
+    summary: { type: "string", description: "Optional one-line summary." },
+    description: { type: "string", description: "Optional free-form description." },
+    input: { type: "string", description: "Optional JSON for the input value." },
+    expected: { type: "string", description: "Optional JSON for the expected outcome (or prose for llm-judge)." },
+    "target-ref": { type: "string", description: "Optional id of the entity this Eval tests." },
+    "intent-id": { type: "string", description: "Optional comma-separated intent ids." },
+    "authored-by-username": { type: "string", description: "Optional principal username who authored the Eval." },
+    "body-md": { type: "string", description: "Optional markdown body (inline string)." },
+    "body-md-file": { type: "string", description: "Optional path to a file whose contents become body_md." },
+    lifecycle: { type: "string", description: "Optional. Defaults to 'active'." },
+  },
+  async run({ args }) {
+    const kind = args["criterion-kind"] as string;
+    if (!["exact", "shape", "llm-judge"].includes(kind)) {
+      console.error(cross(`--criterion-kind must be one of: exact, shape, llm-judge (got '${kind}').`));
+      process.exit(2);
+    }
+    const criterion: Record<string, unknown> = { kind };
+    if (args["criterion-spec"]) criterion.spec = args["criterion-spec"];
+    const body: Record<string, unknown> = {
+      name: args.name,
+      scope_names: splitList(args.scope as string),
+      criterion,
+    };
+    if (args.summary) body.summary = args.summary;
+    if (args.description) body.description = args.description;
+    const inp = parseJson<unknown>(args.input as string | undefined, "input");
+    if (inp !== undefined) body.input = inp;
+    const exp = parseJson<unknown>(args.expected as string | undefined, "expected");
+    if (exp !== undefined) body.expected = exp;
+    if (args["target-ref"]) body.target_ref = args["target-ref"];
+    const intents = splitList(args["intent-id"] as string | undefined);
+    if (intents.length) body.intent_ids = intents;
+    if (args["authored-by-username"]) body.authored_by_username = args["authored-by-username"];
+    const bodyMd = readBody(args["body-md"] as string | undefined, args["body-md-file"] as string | undefined);
+    if (bodyMd !== undefined) body.body_md = bodyMd;
+    if (args.lifecycle) body.lifecycle = args.lifecycle;
+    await postCapture("evals", body);
+  },
+});
+
+const scopeCmd = defineCommand({
+  meta: {
+    name: "scope",
+    description:
+      "Create a Scope (POST /<owner>/<doco>/api/scopes.json). Per ADR-137bis every scope-creation call must declare --watched true or false — no default.",
+  },
+  args: {
+    watched: {
+      type: "string",
+      description:
+        "Required. 'true' → soft attention signal: contributors should proactively look for opportunities to document into this scope. 'false' → available but no extra prompt. NOT hard enforcement (use mandatory_scope Constitution rules for that). No default per ADR-137bis.",
+      required: true,
+    },
+    "template-name": {
+      type: "string",
+      description:
+        "Optional. Install a default template (e.g. 'user-flows', 'bugs'). Mutually exclusive with --name.",
+    },
+    name: {
+      type: "string",
+      description: "Required if --template-name absent. Lowercase letter-start, no slashes.",
+    },
+    icon: { type: "string", description: "Optional single emoji." },
+    purpose: { type: "string", description: "Optional purpose string." },
+    guidelines: {
+      type: "string",
+      description: "Optional markdown guidelines (use --guidelines-file for a path).",
+    },
+    "guidelines-file": {
+      type: "string",
+      description: "Optional path to a file whose contents become the guidelines.",
+    },
+    "parent-id": {
+      type: "string",
+      description: "Optional id of an existing scope to nest this one under.",
+    },
+    rules: {
+      type: "string",
+      description:
+        "Optional JSON array of pre-seeded membership rules (matches ScopeMembershipRule).",
+    },
+  },
+  async run({ args }) {
+    const watchedRaw = String(args.watched ?? "").toLowerCase();
+    if (watchedRaw !== "true" && watchedRaw !== "false") {
+      console.error(
+        cross("--watched must be 'true' or 'false'. No default per ADR-137bis — pick one."),
+      );
+      process.exit(2);
+    }
+    const watched = watchedRaw === "true";
+    const templateName = (args["template-name"] as string | undefined)?.trim();
+    const name = (args.name as string | undefined)?.trim();
+    if (!templateName && !name) {
+      console.error(cross("Pass either --template-name or --name."));
+      process.exit(2);
+    }
+    if (templateName && name) {
+      console.error(cross("Pass only one of --template-name or --name."));
+      process.exit(2);
+    }
+    const body: Record<string, unknown> = { watched };
+    if (templateName) {
+      body.template_name = templateName;
+    } else {
+      body.name = name;
+      if (args.icon) body.icon = args.icon;
+      if (args.purpose) body.purpose = args.purpose;
+      const guidelines = readBody(
+        args.guidelines as string | undefined,
+        args["guidelines-file"] as string | undefined,
+      );
+      if (guidelines !== undefined) body.guidelines = guidelines;
+      if (args["parent-id"]) body.parent_id = args["parent-id"];
+      const rules = parseJson<unknown[]>(args.rules as string | undefined, "rules");
+      if (rules) body.rules = rules;
+    }
+    await postCapture("scopes", body);
+  },
+});
+
+const actionCmd = defineCommand({
+  meta: {
+    name: "action",
+    description: "Capture an Action (POST /<owner>/<doco>/api/actions.json).",
+  },
+  args: {
+    summary: { type: "string", description: "Required. One-line 'what was done' summary.", required: true },
+    scope: { type: "string", description: "Required. Comma-separated scope names.", required: true },
+    verb: { type: "string", description: "Required. Short verb (e.g. 'refactor', 'migrate').", required: true },
+    "intent-id": { type: "string", description: "Optional. Comma-separated intent ids this action serves." },
+    "decision-id": { type: "string", description: "Optional. Comma-separated decision ids this action enacts (frontmatter `decision_ids`)." },
+    "reasoning-id": { type: "string", description: "Optional. Comma-separated reasoning ids consulted." },
+    follows: { type: "string", description: "Optional. Comma-separated entity ids this action follows." },
+    inputs: { type: "string", description: "Optional JSON for verb-specific inputs." },
+    outputs: { type: "string", description: "Optional JSON for verb-specific outputs." },
+    "performed-by-username": { type: "string", description: "Optional principal username who performed the action." },
+    "body-md": { type: "string", description: "Optional markdown body (inline string)." },
+    "body-md-file": { type: "string", description: "Optional path to a file whose contents become body_md." },
+    lifecycle: { type: "string", description: "Optional. Defaults to 'succeeded'." },
+  },
+  async run({ args }) {
+    const body: Record<string, unknown> = {
+      summary: args.summary,
+      scope_names: splitList(args.scope as string),
+      verb: args.verb,
+    };
+    const intents = splitList(args["intent-id"] as string | undefined);
+    if (intents.length) body.intent_ids = intents;
+    const decisions = splitList(args["decision-id"] as string | undefined);
+    if (decisions.length) body.decision_ids = decisions;
+    const reasonings = splitList(args["reasoning-id"] as string | undefined);
+    if (reasonings.length) body.reasoning_ids = reasonings;
+    const follows = splitList(args.follows as string | undefined);
+    if (follows.length) body.follows = follows;
+    const inputs = parseJson<unknown>(args.inputs as string | undefined, "inputs");
+    if (inputs !== undefined) body.inputs = inputs;
+    const outputs = parseJson<unknown>(args.outputs as string | undefined, "outputs");
+    if (outputs !== undefined) body.outputs = outputs;
+    if (args["performed-by-username"]) body.performed_by_username = args["performed-by-username"];
+    const bodyMd = readBody(args["body-md"] as string | undefined, args["body-md-file"] as string | undefined);
+    if (bodyMd !== undefined) body.body_md = bodyMd;
+    if (args.lifecycle) body.lifecycle = args.lifecycle;
+    await postCapture("actions", body);
+  },
+});
+
+const ruleCmd = defineCommand({
+  meta: {
+    name: "rule",
+    description: "Capture a Rule (POST /<owner>/<doco>/api/rules.json).",
+  },
+  args: {
+    summary: { type: "string", description: "Required. One-line policy summary.", required: true },
+    scope: { type: "string", description: "Required. Comma-separated scope names.", required: true },
+    predicate: { type: "string", description: "Required. The machine-checkable / prose predicate the Rule asserts.", required: true },
+    "intent-id": { type: "string", description: "Optional. Comma-separated intent ids this rule serves." },
+    "enforced-by": {
+      type: "string",
+      description: "Optional. One of: lint | runtime | review | manual.",
+    },
+    "born-from": { type: "string", description: "Optional. Decision id this Rule was born from." },
+    severity: { type: "string", description: "Optional. One of: hard | soft." },
+    "authored-by-username": { type: "string", description: "Optional principal username who authored the Rule." },
+    "body-md": { type: "string", description: "Optional markdown body (inline string)." },
+    "body-md-file": { type: "string", description: "Optional path to a file whose contents become body_md." },
+    lifecycle: { type: "string", description: "Optional. Defaults to 'active'." },
+  },
+  async run({ args }) {
+    const enforced = args["enforced-by"] as string | undefined;
+    if (enforced && !["lint", "runtime", "review", "manual"].includes(enforced)) {
+      console.error(cross(`--enforced-by must be one of: lint, runtime, review, manual (got '${enforced}').`));
+      process.exit(2);
+    }
+    const severity = args.severity as string | undefined;
+    if (severity && !["hard", "soft"].includes(severity)) {
+      console.error(cross(`--severity must be one of: hard, soft (got '${severity}').`));
+      process.exit(2);
+    }
+    const body: Record<string, unknown> = {
+      summary: args.summary,
+      scope_names: splitList(args.scope as string),
+      predicate: args.predicate,
+    };
+    const intents = splitList(args["intent-id"] as string | undefined);
+    if (intents.length) body.intent_ids = intents;
+    if (enforced) body.enforced_by = enforced;
+    if (severity) body.severity = severity;
+    if (args["born-from"]) body.born_from = args["born-from"];
+    if (args["authored-by-username"]) body.authored_by_username = args["authored-by-username"];
+    const bodyMd = readBody(args["body-md"] as string | undefined, args["body-md-file"] as string | undefined);
+    if (bodyMd !== undefined) body.body_md = bodyMd;
+    if (args.lifecycle) body.lifecycle = args.lifecycle;
+    await postCapture("rules", body);
+  },
+});
+
+const reasoningCmd = defineCommand({
+  meta: {
+    name: "reasoning",
+    description: "Capture a Reasoning (POST /<owner>/<doco>/api/reasoning.json).",
+  },
+  args: {
+    claim: { type: "string", description: "Required. The claim / conclusion the reasoning establishes.", required: true },
+    scope: { type: "string", description: "Required. Comma-separated scope names.", required: true },
+    summary: { type: "string", description: "Optional one-line summary; derived from claim if absent." },
+    "intent-id": { type: "string", description: "Optional. Comma-separated intent ids this reasoning serves." },
+    supports: { type: "string", description: "Optional. Comma-separated entity ids supported by this reasoning." },
+    evidence: { type: "string", description: "Optional JSON describing evidence." },
+    "authored-by-username": { type: "string", description: "Optional principal username who authored the reasoning." },
+    "body-md": { type: "string", description: "Optional markdown body (inline string)." },
+    "body-md-file": { type: "string", description: "Optional path to a file whose contents become body_md." },
+    lifecycle: { type: "string", description: "Optional. Defaults to 'active'." },
+  },
+  async run({ args }) {
+    const body: Record<string, unknown> = {
+      claim: args.claim,
+      scope_names: splitList(args.scope as string),
+    };
+    if (args.summary) body.summary = args.summary;
+    const intents = splitList(args["intent-id"] as string | undefined);
+    if (intents.length) body.intent_ids = intents;
+    const supports = splitList(args.supports as string | undefined);
+    if (supports.length) body.supports = supports;
+    const evidence = parseJson<unknown>(args.evidence as string | undefined, "evidence");
+    if (evidence !== undefined) body.evidence = evidence;
+    if (args["authored-by-username"]) body.authored_by_username = args["authored-by-username"];
+    const bodyMd = readBody(args["body-md"] as string | undefined, args["body-md-file"] as string | undefined);
+    if (bodyMd !== undefined) body.body_md = bodyMd;
+    if (args.lifecycle) body.lifecycle = args.lifecycle;
+    await postCapture("reasoning", body);
+  },
+});
+
+export const captureCmd = defineCommand({
+  meta: {
+    name: "capture",
+    description:
+      "Capture a node (Intent / Decision / Action / Rule / Reasoning / Eval / Scope) via the host's POST endpoints. Reads DOCO_HOST/DOCO_TOKEN/DOCO_SLUG from env or ./.env. Prints the response's footer_lines to stdout.",
+  },
+  subCommands: {
+    intent: intentCmd,
+    decision: decisionCmd,
+    action: actionCmd,
+    rule: ruleCmd,
+    reasoning: reasoningCmd,
+    eval: evalCmd,
+    scope: scopeCmd,
+  },
+});
+
+// Touch unused import for compile-time happiness when c is referenced in the future.
+void c;

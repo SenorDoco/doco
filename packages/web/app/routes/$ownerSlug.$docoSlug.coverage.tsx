@@ -1,12 +1,13 @@
 import { computeCoverage } from "@doco/lints";
-import { docoPath, readDocoFullSlug } from "~/lib/db";
+import { docoPath, readDocoFullSlug } from "~/lib/db.server";
+import { loadDocoForRead } from "~/lib/doco-access.server";
 import { type CurrentPrincipal, getCurrentPrincipal } from "~/lib/session";
 import { CoverageView } from "~/components/coverage-view";
 
 /**
  * /<owner>/<doco>/coverage — per-Doco drift detection (ADR-090) in host mode.
  */
-export function loader({
+export async function loader({
   params,
   request,
 }: {
@@ -14,7 +15,8 @@ export function loader({
   request: Request;
 }) {
   const { ownerSlug, docoSlug } = params;
-  const me = getCurrentPrincipal(request);
+  await loadDocoForRead(request, ownerSlug, docoSlug); // 404 if private + non-member
+  const me = await getCurrentPrincipal(request);
   const report = computeCoverage(docoPath(ownerSlug, docoSlug));
   return { report, ownerSlug, docoSlug, fullSlug: readDocoFullSlug(ownerSlug, docoSlug), me };
 }
@@ -33,7 +35,6 @@ export default function DocoCoverage({
   return (
     <CoverageView
       report={report}
-      context={fullSlug}
       docoScope={{ ownerSlug, docoSlug }}
       me={me}
     />

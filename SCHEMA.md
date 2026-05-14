@@ -12,7 +12,7 @@ Every choice below is justified by Doco's strict-priority optimizations:
 | 4. Scoping | Three levels: Doco > namespace (entity directory) > entity. Rules carry an explicit `applies_to` scope selector. |
 | 5. Version control | Each Doco IS a git repository. Revisions are commits; diffs are file diffs; branches are branches. |
 | 6. Performance | References are flat IDs (no inlined data). Generated `index/` directory holds derived lookups (not source of truth). |
-| 7. Automated issue detection | Every Rule can carry a `predicate`; runtime-phase Rules produce Evaluations. The schema itself is lintable (orphan refs, broken `applies_to`, status conflicts). |
+| 7. Automated issue detection | Every Rule can carry a `predicate`; runtime-phase Rules produce Evaluations. The schema itself is lintable (orphan refs, broken `applies_to`, lifecycle conflicts). |
 
 When two priorities conflict, the higher-priority one wins.
 
@@ -37,8 +37,8 @@ my-doco/
     {action-id}.md
   reasoning/
     {reasoning-id}.md
-  evaluations/
-    {YYYY-MM}/{evaluation-id}.json # append-only, partitioned by month
+  evals/
+    {eval-id}.md
   references/
     {reference-id}.yaml
   tags/
@@ -49,7 +49,7 @@ my-doco/
     orphans.json
 ```
 
-Markdown entities use **YAML frontmatter** (structured fields, agent-parseable) plus a **Markdown body** (narrative, human-friendly). Both audiences served by one file.
+Markdown entities use **YAML frontmatter** (structured fields, agent-parseable) plus a **Markdown body** (narrative, readable). Both audiences served by one file.
 
 ## 3. Common fields (every entity)
 
@@ -57,15 +57,12 @@ Markdown entities use **YAML frontmatter** (structured fields, agent-parseable) 
 id: intent_01H8XYZ...              # ULID, prefixed by node type
 doco_id: doco_01H...
 node_type: intent                       # entity discriminator (matches directory name)
-schema_version: "0.1"
-summary: "One-line summary."       # priority 3: human comprehension
+summary: "One-line summary."       # priority 3: reader comprehension
 created_at: 2026-05-08T15:42:00Z
 created_by: principal_...
 updated_at: 2026-05-08T15:42:00Z
 updated_by: principal_...
-revision: 3                        # logical revision; git carries physical history
 lifecycle: proposed | active | succeeded | superseded | abandoned | failed   # canonical state machine across stateful entities (see §3.1)
-status: active                     # type-specific alias of lifecycle
 tags: [tag_..., tag_...]
 born_from: decision_... | null     # optional provenance: this entity exists because of another (e.g., regression Rule born from a bugfix Decision)
 ```
@@ -81,7 +78,9 @@ proposed → active → succeeded
                  ↘ abandoned
 ```
 
-Each node type keeps a type-specific `status` alias for readability; the underlying `lifecycle` value is one of the canonical six. This makes "show me everything currently *active*" one query across node types.
+`lifecycle` is the only stored state field — there's no per-kind alias on disk. "Show me everything currently *active*" is one query across node types. UI may render kind-friendly labels at display time (e.g. "completed" for an Action's `succeeded`), but nothing is persisted alongside `lifecycle`.
+
+Display-only label suggestions (UI may use; not stored):
 
 | Entity | proposed | active | succeeded | superseded | abandoned | failed |
 |---|---|---|---|---|---|---|
@@ -90,33 +89,30 @@ Each node type keeps a type-specific `status` alias for readability; the underly
 | Action | planned | in_progress | completed | — | blocked | failed |
 | Rule | proposed | active | — | superseded | retired | — |
 | Reasoning | (typically captured at a moment; lifecycle optional) |
-| Evaluation | (single-shot result; not stateful) |
-
-Tooling and queries should use `lifecycle` as the canonical key; UI can render the type-specific alias.
+| Eval | proposed | active | passed | superseded | retired | failed |
 
 ## 4. Entities
 
-### 4.1 Principal — a user (human or agent)
+### 4.1 Principal — a user (person or agent)
 
 Same shape for both, so they get the same affordances.
 
 ```yaml
 id: principal_...
 node_type: principal
-type: human | agent
-username: "torrenegra"             # GitHub login (humans) or "{owner_username}/{creation_timestamp}" (agents) — see PLANNING.md §2.3
+type: person | agent
+username: "torrenegra"             # GitHub login (people) or "{owner_username}/{creation_timestamp}" (agents) — see PLANNING.md §2.3
 display_name: "..."
-github_identity:                   # only when type=human; humans sign in exclusively via GitHub (PLANNING.md §2.1)
+github_identity:                   # only when type=person; people sign in exclusively via GitHub (PLANNING.md §2.1)
   github_id: "12345"
   github_login: "torrenegra"
   email: "a@torre.ai"
-owner_id: principal_...             # only when type=agent — the Principal that invited this agent (chain terminates at a human; PLANNING.md §3.4)
+owner_id: principal_...             # only when type=agent — the Principal that invited this agent (chain terminates at a person; PLANNING.md §3.4)
 agent_metadata:                     # only when type=agent
   provider: anthropic
   model: claude-opus-4-7
   capabilities: [read, write, execute]
   created_at: 2026-05-08T15:42:00Z   # forms the latter half of the agent's username
-public_key: ...                     # for action attestation (future)
 ```
 
 ### 4.2 Doco — the repo-equivalent (root entity)
@@ -147,13 +143,7 @@ id: intent_...
 node_type: intent
 parent_intent_id: intent_... | null
 title: "Ship feature X to production"
-status: proposed | active | achieved | abandoned | deprecated
 priority: p0 | p1 | p2 | p3
-non_goals:                         # explicit "not this" — alignment-critical
-  - "Refactor auth in the same PR"
-acceptance:                        # how we know it's satisfied
-  - "Feature flag toggleable in prod"
-  - "p99 latency unchanged"
 stakeholders: [principal_...]
 applies_to: <scope_selector>       # see §5
 ```
@@ -193,7 +183,6 @@ alternatives:
 rules_consulted: [rule_...]
 decided_by: principal_...
 decided_at: 2026-05-08T...
-status: proposed | accepted | superseded | reverted
 superseded_by: decision_... | null
 ```
 
@@ -207,15 +196,13 @@ verb: edit_file | send_message | deploy | call_api | ...
 target: reference_...
 intent_ids: [intent_...]
 decision_ids: [decision_...]
-status: planned | in_progress | completed | failed | blocked
 inputs: { ... }                    # verb-specific
 outputs: { ... }
 started_at: ...
 ended_at: ...
-attestation: ...                   # signed payload (future)
 ```
 
-Markdown body: human description, post-hoc commentary.
+Markdown body: narrative description, post-hoc commentary.
 
 ### 4.7 Reasoning — the inferential bridge
 
@@ -239,25 +226,7 @@ uncertainty:                       # known unknowns
 
 Markdown body: free-form reasoning narrative, written by the principal.
 
-### 4.8 Evaluation — result of running a Rule
-
-Append-only; partitioned by month for performance.
-
-```json
-{
-  "id": "evaluation_...",
-  "node_type": "evaluation",
-  "rule_id": "rule_...",
-  "target_id": "...",
-  "result": "pass" | "fail" | "error",
-  "evidence": { "...": "..." },
-  "ran_at": "2026-05-08T15:43:00Z",
-  "ran_by": "principal_...",
-  "duration_ms": 12
-}
-```
-
-### 4.9 Reference — typed pointer to external resource
+### 4.8 Reference — typed pointer to external resource
 
 ```yaml
 id: reference_...
@@ -312,7 +281,7 @@ Principal --owns--> Doco --contains--> { Intent, Rule, Decision,
                                           Action, Reasoning,
                                           Evaluation, Reference, Tag }
 Principal --member_of--> Doco           # with role + permissions edge properties
-Principal --owned_by--> Principal        # agent → inviter (chain terminates at a human; PLANNING.md §3)
+Principal --owned_by--> Principal        # agent → inviter (chain terminates at a person; PLANNING.md §3)
 Doco     --imports--> Doco             # with ref + namespace + include edge properties (§9.4)
 
 Intent       --decomposes_into--> Intent
@@ -347,7 +316,7 @@ Any field on an entity whose value is an entity ID (or list of IDs) is **automat
 | `Evaluation.rule_id` | RunsRule |
 | `Evaluation.target_id` | EvaluatedOn |
 | `Intent.parent_intent_id` | HasSubintent (reverse: parent → child) |
-| `Principal.owner_id` | OwnedBy (agent → inviter; chain terminates at a human — PLANNING.md §3.4) |
+| `Principal.owner_id` | OwnedBy (agent → inviter; chain terminates at a person — PLANNING.md §3.4) |
 | `Doco.members[].principal_id` | MemberOf (with `role` and `permissions` as edge properties) |
 | `Doco.imports[].doco` | Imports (with `ref`, `as`, `include` as edge properties — §9.4) |
 | `*.tags[]` | Tagged |
@@ -468,7 +437,7 @@ The data is graph-shaped. Every entity is a node; every reference is an edge. Th
 | **Memgraph / Neo4j** | Mature graph DBs, max perf, rich tooling | Separate server, ops cost, less embedded-friendly | Overkill at v0.x scale |
 | **TerminusDB** | Git-like branching/merging *natively* on a graph DB; conceptually aligned with Doco's repo model | Smaller ecosystem; would replace files-as-source-of-truth — much bigger architectural commitment | Revisit if we ever go DB-as-source-of-truth |
 
-**The dominant factor is priority 1 (agent comprehension)**: SQL appears in orders of magnitude more agent training data than Cypher. Agents speak SQL fluently and stumble on Cypher noticeably more often. SQLite's `edges` adjacency table + recursive CTEs is a standard graph-on-relational pattern, so we lose nothing conceptually — only verbosity, which agents pay (not humans).
+**The dominant factor is priority 1 (agent comprehension)**: SQL appears in orders of magnitude more agent training data than Cypher. Agents speak SQL fluently and stumble on Cypher noticeably more often. SQLite's `edges` adjacency table + recursive CTEs is a standard graph-on-relational pattern, so we lose nothing conceptually — only verbosity, which agents pay (not people).
 
 **Trade we're accepting**: slower graph queries at extreme scale (1M+ entities with deep traversal) in exchange for zero-ops, universal SQL, and a tiny dependency footprint.
 
@@ -620,14 +589,14 @@ POSSIBLY RELEVANT (semantic, similarity 0.71):
   rule_01H... ...
 ```
 
-Agents and humans get the same output. Agents typically ingest the PRECISE + RELATED tiers as immediate context and treat POSSIBLY RELEVANT as suggestions worth consulting — a deliberate split that keeps blocking precise while making discovery generous.
+Agents and people get the same output. Agents typically ingest the PRECISE + RELATED tiers as immediate context and treat POSSIBLY RELEVANT as suggestions worth consulting — a deliberate split that keeps blocking precise while making discovery generous.
 
 ## 11. Open questions (where I made judgment calls — feel free to redirect)
 
-1. **Reasoning as a first-class entity** — I made it separate rather than a `rationale` field on Decision/Action. Pro: multi-author reasoning, contested reasoning, agent-vs-human reasoning all become queryable. Con: more entities to manage. Collapse if multi-author reasoning isn't a target use case.
+1. **Reasoning as a first-class entity** — I made it separate rather than a `rationale` field on Decision/Action. Pro: multi-author reasoning, contested reasoning, agent-vs-person reasoning all become queryable. Con: more entities to manage. Collapse if multi-author reasoning isn't a target use case.
 2. **Predicate language** — I left `predicate` as a string with the language deferred. Candidates: CEL, a Lisp-like S-expr, or a small JSON DSL. Suggest deferring until we have 3–5 real Rules to test against.
 3. **Storage = git repo** — I committed to "an Doco IS a git repo" because it gives version control, branching, and diffs for free. The alternative is an abstracted backend (DB) with git as one possible projection. The git-native choice is cheaper to start but harder to scale to enterprise workflows later.
-4. **YAML frontmatter + Markdown body** — chosen because it serves both agents (structured) and humans (narrative) in one file. Alternative: pure JSON (cleaner for agents, worse for humans). Worth revisiting if agents struggle with mixed format.
+4. **YAML frontmatter + Markdown body** — chosen because it serves both agents (structured) and people (narrative) in one file. Alternative: pure JSON (cleaner for agents, worse for people). Worth revisiting if agents struggle with mixed format.
 5. **Evaluations as file-per-result** — better for git diffs, worse than JSONL for high-volume runs. Monthly partitioning mitigates. Could move to JSONL if eval throughput becomes a real constraint.
 6. **Per-Doco `schema_version`** — lets Docos migrate at their own pace; cross-Doco tooling has to handle multiple versions. Alternative: single global schema that's only ever additive. I'd lean toward additive-only for v0.x and keep `schema_version` as a forward-compat hatch.
 7. **Visibility only at Doco level** — no per-entity visibility yet. Adding "private intent in a public Doco" later is doable but non-trivial.

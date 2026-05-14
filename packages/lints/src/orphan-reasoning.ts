@@ -45,7 +45,7 @@ function anyTableHasId(db: Database, id: string): boolean {
     "idea",
     "rule",
     "reasoning",
-    "evaluation",
+    "eval",
     "principal",
     "reference",
     "scope",

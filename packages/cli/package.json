@@ -3,7 +3,7 @@
   "version": "0.0.1",
   "private": true,
   "type": "module",
-  "description": "Doco CLI — init, show, validate, query, check, lint.",
+  "description": "Doco CLI — init, show, validate, capture, lint, query.",
   "license": "Apache-2.0",
   "main": "./dist/index.js",
   "bin": {
@@ -18,16 +18,14 @@
     "doco": "tsx src/index.ts"
   },
   "dependencies": {
-    "@doco/api": "workspace:*",
     "@doco/core": "workspace:*",
-    "@doco/discovery": "workspace:*",
+    "@doco/db": "workspace:*",
     "@doco/host": "workspace:*",
     "@doco/index": "workspace:*",
     "@doco/lints": "workspace:*",
-    "@doco/runtime": "workspace:*",
     "@doco/shared": "workspace:*",
-    "@hono/node-server": "^1.13.7",
     "citty": "^0.1.6",
-    "kleur": "^4.1.5"
+    "kleur": "^4.1.5",
+    "yaml": "^2.6.1"
   }
 }

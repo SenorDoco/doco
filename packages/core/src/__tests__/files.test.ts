@@ -18,7 +18,7 @@ name: tag_adr
     const md = `---
 id: decision_01KR441EAMKYKCEBSEYHGJ8M3Z
 node_type: decision
-slug: optimization-priority-order
+summary: Optimization priority order
 ---
 
 # ADR-001 — Optimization priority order
@@ -26,12 +26,12 @@ slug: optimization-priority-order
     const parsed = parseEntityContent(md, "md");
     expect(parsed.format).toBe("md");
     expect(parsed.data.id).toBe("decision_01KR441EAMKYKCEBSEYHGJ8M3Z");
-    expect(parsed.data.slug).toBe("optimization-priority-order");
+    expect(parsed.data.summary).toBe("Optimization priority order");
     expect(parsed.body).toContain("# ADR-001 — Optimization priority order");
   });
 
-  it("parses JSON files for evaluation entities", () => {
-    const json = `{"id": "evaluation_01KR441EA37E3M5V0ZV6ZRB97D", "node_type": "evaluation", "result": "pass"}`;
+  it("parses JSON files generically", () => {
+    const json = `{"id": "rule_01KR441EA37E3M5V0ZV6ZRB97D", "node_type": "rule", "result": "pass"}`;
     const parsed = parseEntityContent(json, "json");
     expect(parsed.data.result).toBe("pass");
   });

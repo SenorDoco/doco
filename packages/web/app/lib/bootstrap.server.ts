@@ -2,7 +2,7 @@
 // used as the temporary owner of unclaimed Docos created by agents through the
 // onboarding wizard. Per ADR-073.
 //
-// The placeholder is type:human (so the human-ancestry rule is mechanically
+// The placeholder is type:person (so the person-ancestry rule is mechanically
 // satisfied) but flagged via username so we can recognize it. It is NOT a real
 // account — it can't sign in (the sign-in picker filters it out) and it can't
 // own anything other than placeholder Docos.
@@ -47,18 +47,15 @@ export function getOrCreateHostBootstrap(root: string): HostBootstrapPrincipal {
     id,
     doco_id: ("doco_" + generateUlid()) as EntityId<"doco">,
     node_type: "principal",
-    schema_version: "0.1",
     summary:
-      "Placeholder owner for Docos created by agents through the onboarding wizard before a human has claimed ownership.",
-    type: "human", // technically — keeps the human-ancestry rule satisfied
+      "Placeholder owner for Docos created by agents through the onboarding wizard before an owner has claimed ownership.",
+    type: "person", // technically — keeps the person-ancestry rule satisfied
     username: HOST_BOOTSTRAP_USERNAME,
     display_name: "Unclaimed bootstrap",
     github_identity: { github_login: HOST_BOOTSTRAP_USERNAME },
     created_at: created,
     created_by: id,
-    revision: 1,
     lifecycle: "active",
-    status: "active",
     scopes: [],
     bootstrap_placeholder: true, // future: lints/UI can recognize this
   };

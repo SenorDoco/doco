@@ -1,19 +1,19 @@
 import { Form, Link, redirect } from "react-router";
 import { addOrganization } from "@doco/host";
-import { rootDir } from "~/lib/db";
+import { rootDir } from "~/lib/db.server";
 import { loadHostConfig } from "~/lib/host";
 import { getCurrentPrincipal } from "~/lib/session";
 import { SiteHeader } from "~/components/site-header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 
-export function loader({ request }: { request: Request }) {
-  const me = getCurrentPrincipal(request);
+export async function loader({ request }: { request: Request }) {
+  const me = await getCurrentPrincipal(request);
   if (!me) throw redirect("/sign-in");
-  return { me, host: loadHostConfig() };
+  return { me, host: await loadHostConfig() };
 }
 
 export async function action({ request }: { request: Request }) {
-  const me = getCurrentPrincipal(request);
+  const me = await getCurrentPrincipal(request);
   if (!me) throw redirect("/sign-in");
   const form = await request.formData();
   const slug = String(form.get("slug") ?? "").trim().toLowerCase();
@@ -49,7 +49,7 @@ export default function NewOrg({
   const { me, host } = loaderData;
   return (
     <div>
-      <SiteHeader context={host.name} mode="host" me={me} />
+      <SiteHeader mode="host" me={me} />
       <main className="mx-auto max-w-2xl px-6 py-8">
         <Card>
           <CardHeader>
@@ -111,7 +111,7 @@ export default function NewOrg({
                 >
                   Create organization
                 </button>
-                <Link to="/" className="text-xs text-muted-foreground hover:text-foreground">
+                <Link to="/dashboard" className="text-xs text-muted-foreground hover:text-foreground">
                   Cancel
                 </Link>
               </div>

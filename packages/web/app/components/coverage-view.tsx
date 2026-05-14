@@ -12,12 +12,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/com
  */
 export function CoverageView({
   report,
-  context,
   me,
   docoScope,
 }: {
   report: { modified: string[]; covered: string[]; uncovered: string[] };
-  context: string;
   me?: CurrentPrincipal | null;
   docoScope: { ownerSlug: string; docoSlug: string };
 }) {
@@ -26,7 +24,7 @@ export function CoverageView({
   const covered = report.covered.length;
   return (
     <div>
-      <SiteHeader context={context} mode="host" docoScope={docoScope} me={me ?? null} />
+      <SiteHeader mode="host" docoScope={docoScope} me={me ?? null} />
       <main className="mx-auto max-w-6xl px-6 py-6 space-y-4">
         <Card>
           <CardHeader>
@@ -69,7 +67,7 @@ export function CoverageView({
               <CardDescription>
                 Capture the work as an Action under{" "}
                 <Link
-                  to={`/${docoScope.ownerSlug}/${docoScope.docoSlug}/e/action`}
+                  to={`/${docoScope.ownerSlug}/${docoScope.docoSlug}/action`}
                   className="text-primary hover:underline"
                 >
                   actions/

@@ -1,6 +1,6 @@
 import { redirect } from "react-router";
 import { addPrincipal, findPrincipalByGitHubLogin } from "@doco/host";
-import { rootDir } from "~/lib/db";
+import { rootDir } from "~/lib/db.server";
 import {
   clearOAuthStateCookie,
   exchangeCodeForToken,
@@ -13,7 +13,7 @@ import { setSessionCookie } from "~/lib/session";
 
 /**
  * GET /auth/github/callback — finishes the OAuth round-trip (ADR-095).
- * On success: creates a Principal (type:human) if first time, or signs in
+ * On success: creates a Principal (type:person) if first time, or signs in
  * the existing one. Sets the session cookie and redirects home.
  */
 export async function loader({ request }: { request: Request }) {
@@ -60,7 +60,7 @@ export async function loader({ request }: { request: Request }) {
   const headers = new Headers();
   headers.append("Set-Cookie", clearOAuthStateCookie());
   headers.append("Set-Cookie", setSessionCookie(principalId));
-  headers.set("Location", "/");
+  headers.set("Location", "/dashboard");
   return new Response(null, { status: 302, headers });
 }
 

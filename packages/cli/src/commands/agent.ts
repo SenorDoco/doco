@@ -15,7 +15,7 @@ const registerCmd = defineCommand({
     },
     "invite-token": {
       type: "string",
-      description: "The invitation token (from the URL the human shared with you).",
+      description: "The invitation token (from the URL the user shared with you).",
       required: true,
     },
     "display-name": {
