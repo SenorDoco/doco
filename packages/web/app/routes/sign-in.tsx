@@ -74,9 +74,6 @@ export default function SignIn({
         <Card>
           <CardHeader>
             <CardTitle>Sign in</CardTitle>
-            <CardDescription>
-              Doco accounts are people verified by GitHub (ADR-095).
-            </CardDescription>
           </CardHeader>
           <CardContent>
             <Link

@@ -38,7 +38,7 @@ export default function SignUp({
           <CardHeader>
             <CardTitle>Create an account</CardTitle>
             <CardDescription>
-              Doco accounts are people verified by GitHub (ADR-095). One click to sign up.
+              One click to sign up.
             </CardDescription>
           </CardHeader>
           <CardContent>
