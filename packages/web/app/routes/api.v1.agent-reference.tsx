@@ -12,7 +12,7 @@
 //
 // Per the `slim-canonical-and-agent-reference-split` Decision.
 
-import { AGENT_REFERENCE } from "@doco/api";
+import { AGENT_REFERENCE } from "~/lib/instructions.server";
 import { loadHostConfig } from "~/lib/host";
 
 export async function loader() {

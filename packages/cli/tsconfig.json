@@ -16,9 +16,6 @@
       "path": "../shared"
     },
     {
-      "path": "../core"
-    },
-    {
       "path": "../db"
     },
     {
@@ -26,9 +23,6 @@
     },
     {
       "path": "../lints"
-    },
-    {
-      "path": "../api"
     },
     {
       "path": "../host"

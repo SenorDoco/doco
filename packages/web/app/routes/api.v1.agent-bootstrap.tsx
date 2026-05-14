@@ -9,7 +9,7 @@
 // For the long-form reference, fetch `/api/v1/agent-reference`. For
 // per-Doco context (scopes, lint, freshness), `/<owner>/<doco>/status.json`.
 
-import { CANONICAL_INSTRUCTIONS } from "@doco/api";
+import { CANONICAL_INSTRUCTIONS } from "~/lib/instructions.server";
 import type { ScopeRule } from "@doco/shared";
 import { getDocoById, listEntitiesByDoco } from "@doco/db";
 import { docoPath } from "~/lib/db.server";

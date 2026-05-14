@@ -9,7 +9,7 @@ import { stringify as stringifyYaml, parse as parseYaml } from "yaml";
 import { generateUlid } from "@doco/shared";
 import type { Entity, Scope, EngineEdge } from "@doco/shared";
 import { evaluateScopeRules } from "@doco/shared";
-import { suggestImplicitEdges } from "@doco/api";
+import { suggestImplicitEdges } from "./llm.server";
 import { rootDir } from "./db.server";
 import { reindex } from "./redeem.server";
 import { readDocoMetadata, resolveScopeIcons } from "./scope-helpers.server";

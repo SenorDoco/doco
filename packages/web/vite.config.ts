@@ -37,8 +37,6 @@ export default defineConfig({
   ssr: {
     external: ["pg", "@xyflow/react", "frimousse"],
     noExternal: [
-      "@doco/api",
-      "@doco/core",
       "@doco/db",
       "@doco/host",
       "@doco/index",

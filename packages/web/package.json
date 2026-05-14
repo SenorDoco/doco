@@ -14,7 +14,6 @@
     "test": "echo 'web tests run via Chrome E2E'"
   },
   "dependencies": {
-    "@doco/api": "workspace:*",
     "@doco/db": "workspace:*",
     "@doco/host": "workspace:*",
     "@doco/index": "workspace:*",

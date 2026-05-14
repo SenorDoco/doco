@@ -1,10 +1,11 @@
-// Server-only re-export. Keeps `@doco/api`'s server-only chain (pg, hono,
-// etc.) out of the client bundle. See lib/tokens.server.ts.
-export { findPrincipalById, addAgentPrincipal, suggestScopes } from "@doco/api";
+// Server-only re-export. Keeps server-only dependencies (pg, etc.) out of
+// the client bundle. See lib/tokens.server.ts.
+export { findPrincipalById, addAgentPrincipal } from "./agents.server";
+export { suggestScopes } from "./llm.server";
 export type {
   ScopeSuggestion,
   SuggestScopesOptions,
-} from "@doco/api";
+} from "./llm.server";
 export {
   createDocoInHost,
   createScopeInDoco,
