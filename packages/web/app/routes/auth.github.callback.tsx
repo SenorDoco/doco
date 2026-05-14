@@ -1,4 +1,5 @@
 import { redirect } from "react-router";
+import { withClient } from "@doco/db";
 import { addPrincipal, findPrincipalByGitHubLogin } from "@doco/host";
 import { rootDir } from "~/lib/db.server";
 import {
@@ -39,22 +40,42 @@ export async function loader({ request }: { request: Request }) {
   const email = (await fetchGitHubPrimaryEmail(accessToken)) ?? gh.email ?? undefined;
 
   // create-or-find on GitHub login.
-  const root = rootDir();
+  // In Postgres-storage mode, query Postgres directly — the filesystem-based
+  // findPrincipalByGitHubLogin / addPrincipal helpers in @doco/host don't see
+  // anything because there's no docos/ tree on the serverless function.
   let principalId: string;
-  const existing = await findPrincipalByGitHubLogin(root, gh.login);
-  if (existing) {
-    principalId = existing.id;
+  if (process.env.DOCO_STORAGE === "postgres") {
+    const existingRow = await withClient((c) =>
+      c.query<{ id: string }>(
+        "SELECT id FROM principals WHERE LOWER(github_login) = LOWER($1) LIMIT 1",
+        [gh.login],
+      ),
+    );
+    if (existingRow.rows[0]) {
+      principalId = existingRow.rows[0].id;
+    } else {
+      throw new Response(
+        `No Doco principal is linked to GitHub user "${gh.login}". Ask the host owner to add you.`,
+        { status: 403 },
+      );
+    }
   } else {
-    principalId = await addPrincipal(root, {
-      username: gh.login.toLowerCase(),
-      display_name: gh.name ?? gh.login,
-      ...(email ? { email } : {}),
-      github_identity: {
-        github_id: String(gh.id),
-        github_login: gh.login,
+    const root = rootDir();
+    const existing = await findPrincipalByGitHubLogin(root, gh.login);
+    if (existing) {
+      principalId = existing.id;
+    } else {
+      principalId = await addPrincipal(root, {
+        username: gh.login.toLowerCase(),
+        display_name: gh.name ?? gh.login,
         ...(email ? { email } : {}),
-      },
-    });
+        github_identity: {
+          github_id: String(gh.id),
+          github_login: gh.login,
+          ...(email ? { email } : {}),
+        },
+      });
+    }
   }
 
   // Combine cookies in one Set-Cookie response (Remix supports an array via
