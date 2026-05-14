@@ -437,7 +437,7 @@ export default function EntityDetail({
 
   const headerPane = (
     <header className="space-y-2">
-      <h1 className="text-2xl font-semibold tracking-tight text-foreground">{display}</h1>
+      <h1 className="text-lg font-semibold tracking-tight text-foreground">{display}</h1>
       <div className="flex flex-wrap items-center gap-2">
         <Badge>{type}</Badge>
         {ent.lifecycle ? <Badge>lifecycle: {String(ent.lifecycle)}</Badge> : null}

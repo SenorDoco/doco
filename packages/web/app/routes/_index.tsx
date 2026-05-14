@@ -40,7 +40,7 @@ export default function Home({ loaderData }: { loaderData: Awaited<ReturnType<ty
           <p className="max-w-lg text-sm text-muted-foreground">
             AI-native documentation of important ideas, rules, and evals.
           </p>
-          <h1 className="text-2xl font-bold tracking-tight pt-2">What are you here to do?</h1>
+          <h1 className="text-lg font-bold tracking-tight pt-2">What are you here to do?</h1>
 
           <div className="grid w-full grid-cols-1 gap-3 md:grid-cols-2 md:gap-4">
             <Link

@@ -217,7 +217,7 @@ export default function DocoHome({
       />
       <main className="mx-auto max-w-6xl px-6 py-6 space-y-5">
         {/* Bare title — no card wrapper. */}
-        <h1 className="text-2xl font-semibold tracking-tight">
+        <h1 className="text-lg font-semibold tracking-tight">
           {ownerSlug}/{docoSlug}
         </h1>
 
