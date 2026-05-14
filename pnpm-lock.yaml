@@ -127,19 +127,22 @@ importers:
 
   packages/lints:
     dependencies:
-      '@doco/index':
+      '@doco/db':
         specifier: workspace:*
-        version: link:../index
+        version: link:../db
       '@doco/shared':
         specifier: workspace:*
         version: link:../shared
-      better-sqlite3:
-        specifier: ^11.7.0
-        version: 11.10.0
+      pg:
+        specifier: ^8.13.1
+        version: 8.20.0
+      yaml:
+        specifier: ^2.6.1
+        version: 2.8.4
     devDependencies:
-      '@types/better-sqlite3':
-        specifier: ^7.6.12
-        version: 7.6.13
+      '@types/pg':
+        specifier: ^8.11.10
+        version: 8.20.0
 
   packages/shared: {}
 
@@ -193,6 +196,9 @@ importers:
       lucide-react:
         specifier: ^0.469.0
         version: 0.469.0(react@19.2.6)
+      pg:
+        specifier: ^8.13.1
+        version: 8.20.0
       react:
         specifier: ^19.0.0
         version: 19.2.6
@@ -218,6 +224,9 @@ importers:
       '@types/better-sqlite3':
         specifier: ^7.6.12
         version: 7.6.13
+      '@types/pg':
+        specifier: ^8.11.10
+        version: 8.20.0
       '@types/react':
         specifier: ^19.0.1
         version: 19.2.14
