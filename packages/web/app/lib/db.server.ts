@@ -12,6 +12,10 @@ let watcherStarted = false;
 function startAutoReindexOnce(): void {
   if (watcherStarted) return;
   watcherStarted = true;
+  // No-op in Postgres-storage mode: there's no docos/ tree to watch and
+  // Postgres is the source-of-truth, so derived data is reindexed at
+  // write time, not by a filesystem watcher.
+  if (process.env.DOCO_STORAGE === "postgres") return;
   import("./auto-reindex.server")
     .then((m) => m.ensureWatcherStarted())
     .catch((e) => console.error("auto-reindex: failed to start:", e));

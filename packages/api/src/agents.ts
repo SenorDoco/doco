@@ -78,14 +78,20 @@ export async function addAgentPrincipal(
     lifecycle: "active",
     scopes: [],
   };
-  const path = `${root}/principals/${id}.yaml`;
-  await mkdir(dirname(path), { recursive: true });
-  await writeFile(path, stringifyYaml(yamlObj), "utf8");
-  // Also upsert into Postgres so session-token resolution (which reads
+  // Filesystem write is needed only for local-host mode where the YAML on
+  // disk is the source of truth. In Postgres-storage mode the upsertEntity
+  // call below IS the persistence, so we skip the unnecessary writeFile
+  // (which would throw on serverless because <root>/principals/ isn't
+  // there).
+  if (process.env.DOCO_STORAGE !== "postgres") {
+    const path = `${root}/principals/${id}.yaml`;
+    await mkdir(dirname(path), { recursive: true });
+    await writeFile(path, stringifyYaml(yamlObj), "utf8");
+  }
+  // Upsert into Postgres so session-token resolution (which reads
   // `principals` via `getPrincipalById`) finds the row on the next request.
-  // Filesystem-only writes leave the agent unauthenticated until a host
-  // reindex catches up; for the CLI authorize flow the agent uses the
-  // token immediately, so we sync inline here.
+  // In local-host mode this complements the filesystem write above; in
+  // Postgres-storage mode it IS the persistence.
   await upsertEntity({
     id,
     doco_id: yamlObj.doco_id,
