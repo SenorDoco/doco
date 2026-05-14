@@ -692,11 +692,46 @@ This is the Vercel-style browser-authorize flow
    under \`<project-owner-username>/<slug>\` — no temporary
    "host-bootstrap" detour, no follow-up claim URL.
 4. The CLI writes \`DOCO_HOST\` / \`DOCO_TOKEN\` / \`DOCO_SLUG\` to
-   \`./.env\`. Restart the agent session so the bootstrap hooks pick up
-   the new credentials.
+   \`./.env\` and drops the agent-bootstrap files (\`AGENTS.md\`,
+   \`CLAUDE.md\`, \`.claude/settings.json\`, the four hook scripts) into
+   the repo. The hooks themselves \`source ./.env\` on each fire, so a
+   full session restart isn't needed — \`/hooks\` to approve in Claude
+   Code, optionally \`/clear\`, and the next \`UserPromptSubmit\` picks
+   up the fresh credentials.
 
 If the project owner denies, the CLI exits non-zero and \`./.env\` stays
 empty. Don't loop — stop and explain.
+
+### After the Doco exists — onboarding STEP 1 + STEP 2
+
+The bootstrap response from \`/api/v1/agent-bootstrap?slug=<owner>/<doco>\`
+carries an \`onboarding_overlay\` field while the Doco has only the
+framework-seeded Constitution scope (no project-specific scopes yet).
+When that field is non-null you're in **onboarding mode** — work the
+project owner through scope setup AND scope population before treating
+the session as "done":
+
+- **STEP 1 — \`scope_setup\`**: read the project, propose a curated
+  starter set in plain prose (\`adrs\` + \`user-flows\` + 1–2 custom
+  scopes for the project's actual subject areas), wait for the project
+  owner's nod, then materialize with \`watched: true\`. Don't propose
+  all eight built-in templates; don't materialize without consent. A
+  single template scope alone is a smell.
+- **\`watched_explainer\`**: tell the project owner what watched means
+  the first time it comes up — "Watched means: when you (or an agent)
+  capture work later, this scope nudges you to consider whether the
+  work belongs here."
+- **STEP 2 — \`scope_population\`**: for each scope just created, ask
+  the project owner what they want to capture first (concrete asks beat
+  generic ones — "What's the most important architectural choice
+  you've already made that should be the first ADR?"). Drive at least
+  one real node into each scope before declaring onboarding done.
+  Empty scopes are documentation theater.
+
+The overlay drops out of the bootstrap response the moment the project
+owner accepts a first project-specific scope — that's the natural
+"onboarding is progressing" signal. Read the long-form reference at
+\`$DOCO_HOST/api/v1/agent-reference\` for the deep walkthrough.
 
 ## Asking the user
 

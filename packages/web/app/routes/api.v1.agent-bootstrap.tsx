@@ -62,6 +62,51 @@ async function loadConstitution(docoId: string): Promise<ConstitutionSnapshot | 
   return null;
 }
 
+/**
+ * Onboarding overlay (decision_01KRKZM14WNA1685GN0F12WCKM update):
+ * when a Doco only has the framework-seeded Constitution scope and
+ * no project-specific scopes yet, the agent that just fetched the
+ * bootstrap is in onboarding mode — they need to set scopes up + drive
+ * real content into each one. This is the content the old
+ * /onboarding/create/agent.json overlay carried; now it rides on the
+ * regular bootstrap response and decays the moment the project owner
+ * accepts a first non-Constitution scope.
+ */
+interface OnboardingOverlay {
+  scope_setup: string;
+  scope_setup_url: string;
+  watched_explainer: string;
+  scope_population: string;
+}
+
+function buildOnboardingOverlay(args: {
+  baseUrl: string;
+  ownerSlug: string;
+  docoSlug: string;
+}): OnboardingOverlay {
+  const { baseUrl, ownerSlug, docoSlug } = args;
+  return {
+    scope_setup:
+      "STEP 1 of onboarding — set up scopes. DECIDE-AND-CONFIRM, not decide-and-execute. (1) Read the project (files, README, the description). (2) Propose a curated starter set to the project owner in plain prose: 'adrs' (architectural choices) + 'user-flows' (end-to-end journeys) + 1–2 CUSTOM scopes named for this project's actual subject areas (e.g. payments, search, content-schema). Ask them to confirm before materializing: 'For this project I'd start with adrs, user-flows, and a custom scope_<area> for <reason>. Sound right?' Then STOP and wait. (3) If the project is unclear, ASK FIRST — don't guess. Don't propose all eight built-in templates 'just in case' — adrs + user-flows + custom is the right starter shape; apis/bugs/runbooks/post-mortems/glossary/roadmap are available but the project owner adds them when the need arises. (4) Only after the project owner confirms, POST to /<owner>/<doco>/scopes/new or call the scope-creation endpoints. (5) During onboarding ONLY, pass watched=true on every scope you create — see watched_explainer below for what this means and why it's the onboarding default. (6) A single template scope alone is a smell — every onboarding session should produce at least one custom scope. NOTE: scope creation is STEP 1; do NOT stop after scopes exist — keep going to STEP 2 (scope_population).",
+    scope_setup_url: `${baseUrl}/${ownerSlug}/${docoSlug}/scopes/new?onboarding=1`,
+    watched_explainer:
+      "Every scope carries a 'watched' boolean (ADR-137bis). Watched=TRUE means contributors (project owner and agents alike) should proactively scan against this scope at capture time — 'does the thing I'm about to capture also belong here?' It's a soft attention signal, not enforcement. Watched=FALSE means the scope is available but no extra prompting; agents won't get nudged to consider it. During ONBOARDING, every scope you create defaults to watched=true: the project owner is literally in the room picking these scopes on purpose, so the attention signal matches what onboarding is for. After onboarding, ADR-137bis applies again — every scope-creation surface requires the caller (project owner or agent) to pick watched/not-watched explicitly with no default. The project owner can flip any scope's watched value any time from /<owner>/<doco>/scopes/<id>/edit. When you explain watched to the project owner in chat, use these exact words: 'Watched means: when you (or an agent) capture work later, this scope nudges you to consider whether the work belongs here.'",
+    scope_population:
+      "STEP 2 of onboarding — drive real content into each scope. ONBOARDING IS NOT DONE WHEN SCOPES EXIST. For EACH scope you just created, ask the project owner what they want to capture first: for adrs, 'What's the most important architectural choice you've already made that should be the first ADR?'; for user-flows, 'Walk me through the most important user journey in this project — I'll capture it as an Intent + Action chain'; for any custom scope, 'What's the load-bearing thing about <area> that's in your head but not in the repo yet?' Drive at least ONE real node into each scope before treating onboarding as complete. Empty scopes are the failure mode this step exists to prevent — a scope shell with no nodes is documentation theater, not the work. Only stop when EITHER (a) each scope has at least one real node, OR (b) the project owner explicitly says 'defer the rest for now' (acknowledge: 'OK, deferring; remember <scope_a>, <scope_b> are still empty and would benefit from a real node when you have a minute.'). NEVER print 'Onboarding done' if any scope is still empty unless (b) was said.",
+  };
+}
+
+/**
+ * A Doco is "in onboarding" when the only scope it carries is the
+ * framework-seeded Constitution. Once the project owner accepts a
+ * single project-specific scope, the overlay drops out of the
+ * bootstrap response on the very next fetch.
+ */
+function isOnboardingState(scopes: ScopeManifestEntry[]): boolean {
+  const nonConstitution = scopes.filter((s) => s.name !== "constitution");
+  return nonConstitution.length === 0;
+}
+
 export async function loader({ request }: { request: Request }) {
   const url = new URL(request.url);
   const slug = (url.searchParams.get("slug") ?? "").trim();
@@ -72,6 +117,7 @@ export async function loader({ request }: { request: Request }) {
   let docoSlugPath: string | null = null;
   let docoIdPath: string | null = null;
   let warning: string | null = null;
+  let onboardingOverlay: OnboardingOverlay | null = null;
 
   // Accept either `?slug=<owner>/<doco>` or `?id=doco_<ulid>`. The ID
   // is immortal across renames; agents that want a stable identifier
@@ -129,6 +175,15 @@ export async function loader({ request }: { request: Request }) {
           if (resolved.redirected) {
             warning = `Slug "${effectiveOwner}/${effectiveDoco}" is an alias for "${docoSlugPath}". Update DOCO_SLUG in .env to silence this notice.`;
           }
+          if (isOnboardingState(scopes)) {
+            const reqUrl = new URL(request.url);
+            const baseUrl = `${reqUrl.protocol}//${reqUrl.host}`;
+            onboardingOverlay = buildOnboardingOverlay({
+              baseUrl,
+              ownerSlug: resolved.ownerSlug,
+              docoSlug: resolved.docoSlug,
+            });
+          }
         }
       }
     }
@@ -146,8 +201,9 @@ export async function loader({ request }: { request: Request }) {
     code_map: codeMap,
     constitution,
     scopes,
+    onboarding_overlay: onboardingOverlay,
     warning,
     note:
-      "Slim bootstrap. For deep reference fetch /api/v1/agent-reference. For per-Doco lint/status, call $DOCO_HOST/<owner>/<doco>/status.json. Pass ?slug=<owner>/<doco> to receive `code_map` + `constitution` (Doco-specific load-bearing rules enforced at capture time) + `scopes` (manifest with mandatory vs optional flag).",
+      "Slim bootstrap. For deep reference fetch /api/v1/agent-reference. For per-Doco lint/status, call $DOCO_HOST/<owner>/<doco>/status.json. Pass ?slug=<owner>/<doco> to receive `code_map` + `constitution` (Doco-specific load-bearing rules enforced at capture time) + `scopes` (manifest with mandatory vs optional flag). When `onboarding_overlay` is non-null the Doco has only the Constitution scope — run STEP 1 (scope_setup) and STEP 2 (scope_population) before treating onboarding as done; the overlay disappears the moment the project owner accepts a first project-specific scope.",
   });
 }
