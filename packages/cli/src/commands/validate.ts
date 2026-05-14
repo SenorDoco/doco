@@ -1,5 +1,5 @@
 import { defineCommand } from "citty";
-import { validateDoco } from "@doco/core";
+import { validateDoco } from "@doco/shared";
 import { findDocoRoot } from "../find-root.js";
 import { loadDocoFromRoot } from "../load-doco.js";
 import { bullet, c, checkmark, cross, header, rule } from "../output.js";

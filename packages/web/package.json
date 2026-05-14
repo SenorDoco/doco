@@ -15,7 +15,6 @@
   },
   "dependencies": {
     "@doco/api": "workspace:*",
-    "@doco/core": "workspace:*",
     "@doco/db": "workspace:*",
     "@doco/host": "workspace:*",
     "@doco/index": "workspace:*",

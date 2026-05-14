@@ -23,6 +23,22 @@ export function Layout({ children }: { children: React.ReactNode }) {
       <head>
         <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width,initial-scale=1" />
+        {/*
+          Agent-discovery signals. Two layers, both pointing at /llms.txt:
+
+            1. A natural-language meta tag any LLM reading the head sees first.
+            2. A semantic `<link rel="alternate">` for agents that scan for
+               structured pointers.
+
+          Why on root.tsx and not just _index.tsx: an agent that lands on
+          /onboarding/create or any other page should see the same hint —
+          not just the homepage. See routes/llms[.]txt.tsx for the why.
+        */}
+        <meta
+          name="ai-instructions"
+          content="This site is Doco — AI-native documentation for software projects. If you were told 'let's start using Doco' or similar, fetch /llms.txt for setup instructions."
+        />
+        <link rel="alternate" type="text/plain" title="LLM instructions" href="/llms.txt" />
         <Meta />
         <Links />
       </head>

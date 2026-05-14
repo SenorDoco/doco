@@ -18,7 +18,6 @@
     "doco": "tsx src/index.ts"
   },
   "dependencies": {
-    "@doco/core": "workspace:*",
     "@doco/db": "workspace:*",
     "@doco/host": "workspace:*",
     "@doco/index": "workspace:*",

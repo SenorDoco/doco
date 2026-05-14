@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import type { NodeType } from "@doco/shared";
+import type { NodeType } from "./branded.js";
 
 export type EntityFileFormat = "yaml" | "md" | "json";
 

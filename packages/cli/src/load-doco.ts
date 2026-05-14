@@ -9,7 +9,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { parse as parseYaml } from "yaml";
-import type { LoadedDoco } from "@doco/core";
+import type { LoadedDoco } from "@doco/shared";
 import { loadDocoFromPostgres } from "@doco/index";
 
 export async function loadDocoFromRoot(root: string): Promise<LoadedDoco> {

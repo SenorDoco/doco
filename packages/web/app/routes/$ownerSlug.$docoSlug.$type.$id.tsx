@@ -13,7 +13,6 @@ import { loadHostConfig } from "~/lib/host";
 import { globalPageRank, personalizedPageRank } from "@doco/index";
 import { reindex, updateScopeInDoco } from "~/lib/redeem.server";
 import { readEntityHistory, type AuditEvent } from "~/lib/audit-log.server";
-import { isFrozen, nodeClassOf } from "~/lib/mutability.server";
 
 /** External node_type → PG table name. */
 const TABLE_BY_TYPE: Record<string, string> = {
@@ -293,9 +292,6 @@ export async function loader({
         ? (ent as { doco_id: string }).doco_id
         : undefined,
     );
-    const frozen = isFrozen(type, ent.lifecycle as string | undefined);
-    const nodeClass = nodeClassOf(type);
-
     return {
       ent,
       entityScopes,
@@ -312,8 +308,6 @@ export async function loader({
       allScopes,
       me,
       history,
-      frozen,
-      nodeClass,
     };
   });
 }
@@ -408,8 +402,6 @@ export default function EntityDetail({
     allScopes,
     me,
     history,
-    frozen,
-    nodeClass,
   } = loaderData;
   // Per ADR-018 each node type has its own handle field — username, name,
   // title, locator. Fall through to anything that reads as friendly
@@ -889,12 +881,6 @@ export default function EntityDetail({
         {/* 1. Header (no box) — id, title, badges, summary. */}
         {headerPane}
 
-        {/* Frozen-claim affordance: tells the reader that body edits go via
-            supersession (per decision_01KRKEPRAMM9QSSEJ2X5FHPESJ). */}
-        {frozen && nodeClass === "claim" ? (
-          <FrozenBanner type={type} lifecycle={String(ent.lifecycle ?? "active")} />
-        ) : null}
-
         {/* 2. The map — takes ~75% of viewport height (size lives in EntityGraph). */}
         <EntityGraph
           centerId={id}
@@ -912,19 +898,6 @@ export default function EntityDetail({
         {/* 4. Everything else (edges, scope landing, raw, refbacks). */}
         {detailsPane}
       </main>
-    </div>
-  );
-}
-
-function FrozenBanner({ type, lifecycle }: { type: string; lifecycle: string }) {
-  const noun = type.charAt(0).toUpperCase() + type.slice(1);
-  return (
-    <div className="rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-      <span className="font-medium text-foreground">Frozen:</span> this {noun} is{" "}
-      <code className="font-mono">{lifecycle}</code>. Body edits go via supersession —
-      capture a new {noun} that supersedes it (POST <code className="font-mono">/api/{type}s.json</code>),
-      then PATCH the prior with <code className="font-mono">{`{ lifecycle: "superseded" }`}</code>.
-      Lifecycle transitions and additive edge appends are still allowed.
     </div>
   );
 }

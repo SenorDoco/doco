@@ -20,7 +20,7 @@
  * Scope itself enforces on its members.)
  */
 
-import type { Entity, ScopeRule, Scope } from "@doco/shared";
+import type { Entity, ScopeRule, Scope } from "./entities.js";
 
 export interface EngineEdge {
   from_id: string;

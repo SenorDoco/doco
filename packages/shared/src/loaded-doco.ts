@@ -1,11 +1,12 @@
 // Types for a loaded Doco — used by both the Postgres loader
-// (@doco/index/loadDoco) and the validator (@doco/core/validate).
+// (@doco/index/loadDoco) and the validator (@doco/shared/validate).
 //
 // The filesystem-based `loadDoco(root)` is gone — Postgres is the only
 // source-of-truth (rule_01KRKQDHWNWJAF4YKTMCB2A0D9 — alpha forbids
 // back-compat).
 
-import type { Doco, Entity, EntityId, NodeType } from "@doco/shared";
+import type { Doco, Entity } from "./entities.js";
+import type { EntityId, NodeType } from "./branded.js";
 import type { ParsedEntityFile } from "./files.js";
 
 /** A loaded entity, optionally with its on-disk source (legacy export only). */

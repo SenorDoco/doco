@@ -1,4 +1,4 @@
-import type { EntityId } from "@doco/shared";
+import type { EntityId } from "./branded.js";
 import type { LoadedDoco } from "./loaded-doco.js";
 import { findOrphanRefs, type OrphanRef } from "./refs.js";
 

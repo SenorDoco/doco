@@ -28,7 +28,6 @@ import { type RouteConfig, index, route } from "@react-router/dev/routes";
  *   /:owner/:doco                  per-Doco recent + search input
  *   /:owner/:doco/:type            per-Doco entity list (short form; ADR-120)
  *   /:owner/:doco/:type/:id        per-Doco entity detail (id is the ULID; scope also resolves by name)
- *   /:owner/:doco/e/:type[/id]     legacy /e/ shape — 301-redirects to short form
  *   /:owner/:doco/search           per-Doco search (richer results — GPR / age / lifecycle)
  *   /:owner/:doco/lint             per-Doco lint (includes auto-reindex watcher status; ADR-123)
  *   /:owner/:doco/coverage         per-Doco drift (ADR-090)
@@ -47,6 +46,12 @@ import { type RouteConfig, index, route } from "@react-router/dev/routes";
  */
 export default [
   index("routes/_index.tsx"),
+  // Agent-discovery entry points at the host root (decision pending):
+  // an agent told "let's start using Doco" who lands on doco.to with no
+  // prior context probes /llms.txt and /robots.txt before guessing other
+  // paths. Both point at /llms.txt as the canonical agent entry.
+  route("llms.txt", "routes/llms[.]txt.tsx"),
+  route("robots.txt", "routes/robots[.]txt.tsx"),
   route("dashboard", "routes/dashboard.tsx"),
   // Auth
   route("sign-in", "routes/sign-in.tsx"),
@@ -115,10 +120,6 @@ export default [
   // Audit-events log (decision_01KRKESCBTYG4005VMPKYNYR53).
   route(":ownerSlug/:docoSlug/api/audit.json", "routes/$ownerSlug.$docoSlug.api.audit[.]json.tsx"),
   route(":ownerSlug/:docoSlug/activity", "routes/$ownerSlug.$docoSlug.activity.tsx"),
-  // Legacy /e/:type URLs — 301-redirect to the short form below.
-  // Per `ship-short-entity-urls` Intent + ADR.
-  route(":ownerSlug/:docoSlug/e/:type", "routes/$ownerSlug.$docoSlug.e.$type._index.tsx"),
-  route(":ownerSlug/:docoSlug/e/:type/:id", "routes/$ownerSlug.$docoSlug.e.$type.$id.tsx"),
   // Feature routes — registered BEFORE the catch-all :type below so they win
   // the match. (React Router prefers static segments but explicit order is
   // belt-and-suspenders.)

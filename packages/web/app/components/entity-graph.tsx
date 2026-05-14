@@ -343,12 +343,6 @@ export function EntityGraph({ centerId, nodes, links, hrefFor }: EntityGraphProp
           </div>
         )}
       </div>
-
-      <p className="text-[11px] text-muted-foreground">
-        Drag to pan, scroll to zoom, click a node to navigate. Neighbors laid out
-        radially around the focal node, closer when their personalized PageRank
-        (ADR-076) is higher.
-      </p>
     </div>
   );
 }
