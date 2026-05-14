@@ -119,6 +119,10 @@ export function recordDocoSlugAlias(
   const from = `${fromOwner}/${fromSlug}`;
   const to = `${toOwner}/${toSlug}`;
   if (from === to) return;
+  // Postgres mode: silently skip — no rename UI is wired and there's no
+  // docos/_aliases.yaml file. If rename ever gets a UI in production, move
+  // this to a doco_aliases table.
+  if (process.env.DOCO_STORAGE === "postgres") return;
 
   const file = aliasFile();
   let parsed: DocoAliasesFile = { aliases: [] };

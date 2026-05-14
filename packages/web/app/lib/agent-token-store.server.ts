@@ -90,6 +90,24 @@ export class TokenStore {
   }
 
   async load(): Promise<TokenStoreFile> {
+    if (process.env.DOCO_STORAGE === "postgres") {
+      const { withClient } = await import("@doco/db");
+      const r = await withClient((c) =>
+        c.query<{ blob: TokenStoreFile }>(
+          "SELECT blob FROM tokens_blob WHERE key = $1 LIMIT 1",
+          [this.path],
+        ),
+      );
+      if (!r.rows[0]) return { schema_version: 2, tokens: [] };
+      // pg returns jsonb as already-parsed object.
+      const parsed = r.rows[0].blob as unknown as { schema_version: number; tokens: unknown[] };
+      const tokens: StoredToken[] = parsed.tokens.map((t) => {
+        const tok = t as Record<string, unknown>;
+        if (!tok.kind) return { ...tok, kind: "session" } as unknown as SessionToken;
+        return tok as unknown as StoredToken;
+      });
+      return { schema_version: 2, tokens };
+    }
     if (!existsSync(this.path)) {
       return { schema_version: 2, tokens: [] };
     }
@@ -105,6 +123,20 @@ export class TokenStore {
   }
 
   async save(file: TokenStoreFile): Promise<void> {
+    if (process.env.DOCO_STORAGE === "postgres") {
+      const { withClient } = await import("@doco/db");
+      await withClient((c) =>
+        c.query(
+          `INSERT INTO tokens_blob (key, blob, updated_at)
+           VALUES ($1, $2::jsonb, now())
+           ON CONFLICT (key) DO UPDATE
+             SET blob = EXCLUDED.blob,
+                 updated_at = now()`,
+          [this.path, JSON.stringify(file)],
+        ),
+      );
+      return;
+    }
     await mkdir(dirname(this.path), { recursive: true });
     await writeFile(this.path, JSON.stringify(file, null, 2), "utf8");
   }
