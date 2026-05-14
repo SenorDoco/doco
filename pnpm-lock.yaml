@@ -99,6 +99,9 @@ importers:
       '@doco/core':
         specifier: workspace:*
         version: link:../core
+      '@doco/db':
+        specifier: workspace:*
+        version: link:../db
       '@doco/shared':
         specifier: workspace:*
         version: link:../shared
