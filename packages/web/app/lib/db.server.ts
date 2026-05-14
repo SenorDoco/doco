@@ -1,8 +1,7 @@
-// Host-root + per-Doco directory helpers. Postgres has fully replaced
-// the per-clone SQLite cache (ADR-023 / ADR-024 superseded by the
-// SQLite-removal migration). The remaining file-system helpers exist
-// only to locate `doco.yaml` bootstrap stubs and the on-disk
-// markdown/yaml files that round-trip with the PG `raw_yaml` column.
+// Host-root + per-Doco directory helpers. Durable storage is Postgres;
+// the remaining file-system helpers exist only to locate `doco.yaml`
+// bootstrap stubs and the on-disk markdown/yaml files that round-trip
+// with the PG `raw_yaml` column.
 
 import { existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -48,6 +47,15 @@ export function rootDir(): string {
     const parent = dirname(dir);
     if (parent === dir) break;
     dir = parent;
+  }
+  // Postgres-storage mode (serverless functions, no on-disk docos/):
+  // return cwd as a benign placeholder. Downstream filesystem reads
+  // already guard with existsSync and degrade to empty results; the
+  // canonical lookups (principal-by-username, doco-by-slug) happen via
+  // Postgres in this mode and don't need a host root.
+  if (process.env.DOCO_STORAGE === "postgres") {
+    cachedRoot = process.cwd();
+    return cachedRoot;
   }
   throw new Error(
     "Could not find host root. Set DOCO_ROOT or run from inside a directory that contains `docos/`.",
