@@ -101,7 +101,7 @@ export async function getCurrentPrincipalAsync(
     const m = /^Bearer\s+(.+)$/i.exec(auth);
     const token = m ? (m[1] ?? "").trim() : "";
     if (token) {
-      const { TokenStore } = await import("@doco/api");
+      const { TokenStore } = await import("./agent-token-store.server");
       const store = TokenStore.forDoco(rootDir());
       const session = await store.resolve(token);
       if (session?.principal_id) {
