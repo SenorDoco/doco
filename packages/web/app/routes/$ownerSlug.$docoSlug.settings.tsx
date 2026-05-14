@@ -102,8 +102,7 @@ export async function action({
     } catch (e) {
       return { error: (e as Error).message };
     }
-    // Leave a slug alias so the old URL keeps resolving (D-019). Same
-    // helper the claim flow uses for ownership-transfer renames.
+    // Leave a slug alias so the old URL keeps resolving (D-019).
     try {
       recordDocoSlugAlias(ownerSlug, docoSlug, ownerSlug, newSlug, meta.docoId);
     } catch (e) {

@@ -1,3 +1,3 @@
-# cli-e2e-final
+# cli-e2e-final-v2
 
 Owner: principal `torrenegra`.

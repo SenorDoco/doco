@@ -5,13 +5,12 @@ import { randomBytes } from "node:crypto";
 import type { EntityId } from "@doco/shared";
 
 /**
- * Token store. Holds both invitation tokens (5-min single-use, ADR-037) and
- * session tokens (no default expiry, revocable, ADR-038). One file per Host;
- * not committed to git per ADR-039. Phase 6 swaps the file backend for a
- * managed encrypted DB; interface stays the same.
+ * Token store. Holds session tokens (no default expiry, revocable, ADR-038)
+ * and CLI authorization rows (decision_01KRKZM14WNA1685GN0F12WCKM). One
+ * file per Host; not committed to git per ADR-039.
  */
 
-export type StoredToken = SessionToken | InvitationToken | CliAuthorization;
+export type StoredToken = SessionToken | CliAuthorization;
 
 export interface SessionToken {
   kind: "session";
@@ -20,16 +19,6 @@ export interface SessionToken {
   issued_at: string;
   expires_at: string | null; // null = never (sessions; ADR-037)
   invited_by: EntityId<"principal"> | null; // chain root reached at a person (ADR-035 invariant)
-  revoked: boolean;
-}
-
-export interface InvitationToken {
-  kind: "invitation";
-  token: string;
-  inviter_id: EntityId<"principal">; // person or agent that issued the invite
-  issued_at: string;
-  expires_at: string; // ALWAYS set; +5 min from issued_at (ADR-037)
-  used: boolean; // single-use; flips to true on redemption
   revoked: boolean;
 }
 
@@ -80,7 +69,6 @@ interface TokenStoreFile {
 }
 
 const TOKEN_LEN_BYTES = 32; // 256 bits → 64 hex chars
-const INVITATION_TTL_MS = 5 * 60 * 1000; // 5 minutes per ADR-037
 const CLI_AUTH_TTL_MS = 10 * 60 * 1000; // 10 minutes for the project owner to click Approve
 
 const SHORT_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no 0/O/I/1 — easier to read aloud
@@ -119,49 +107,6 @@ export class TokenStore {
   async save(file: TokenStoreFile): Promise<void> {
     await mkdir(dirname(this.path), { recursive: true });
     await writeFile(this.path, JSON.stringify(file, null, 2), "utf8");
-  }
-
-  // ───────────────────────────────────────────── invitation tokens
-
-  /** Issue a 5-minute single-use invitation token (ADR-037). */
-  async issueInvitationToken(inviterId: EntityId<"principal">): Promise<InvitationToken> {
-    const file = await this.load();
-    const now = new Date();
-    const tok: InvitationToken = {
-      kind: "invitation",
-      token: randomBytes(TOKEN_LEN_BYTES).toString("hex"),
-      inviter_id: inviterId,
-      issued_at: now.toISOString(),
-      expires_at: new Date(now.getTime() + INVITATION_TTL_MS).toISOString(),
-      used: false,
-      revoked: false,
-    };
-    file.tokens.push(tok);
-    await this.save(file);
-    return tok;
-  }
-
-  /** Look up an invitation; returns null if missing, expired, used, or revoked. */
-  async resolveInvitation(token: string): Promise<InvitationToken | null> {
-    const file = await this.load();
-    const t = file.tokens.find((x) => x.kind === "invitation" && x.token === token) as
-      | InvitationToken
-      | undefined;
-    if (!t) return null;
-    if (t.used || t.revoked) return null;
-    if (Date.parse(t.expires_at) < Date.now()) return null;
-    return t;
-  }
-
-  /** Mark an invitation token as used (one-shot). */
-  async markInvitationUsed(token: string): Promise<void> {
-    const file = await this.load();
-    const t = file.tokens.find((x) => x.kind === "invitation" && x.token === token) as
-      | InvitationToken
-      | undefined;
-    if (!t) throw new Error("invitation token not found");
-    t.used = true;
-    await this.save(file);
   }
 
   // ───────────────────────────────────────────── session tokens
@@ -376,17 +321,6 @@ export class TokenStore {
     return out;
   }
 
-  // ─────────────────────────────────────────────
-
-  /** Lightweight summary for the browser-facing /invite page. */
-  async listOpenInvitations(): Promise<InvitationToken[]> {
-    const file = await this.load();
-    const now = Date.now();
-    return file.tokens.filter(
-      (t): t is InvitationToken =>
-        t.kind === "invitation" && !t.used && !t.revoked && Date.parse(t.expires_at) >= now,
-    );
-  }
 }
 
 /** Resolve a Bearer token from an Authorization header. */

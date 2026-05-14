@@ -1,6 +1,5 @@
 import type { PoolClient } from "pg";
 import { lintAgentAncestry } from "./agent-ancestry.js";
-import { lintBugfixGuard } from "./bugfix-guard.js";
 import { lintConnectivity } from "./connectivity.js";
 import { lintDriftUncoveredChanges } from "./drift-uncovered-changes.js";
 import { lintFollowsCycle } from "./follows-cycle.js";
@@ -11,7 +10,6 @@ import type { Lint, LintContext, LintIssue } from "./types.js";
 export * from "./types.js";
 export {
   lintAgentAncestry,
-  lintBugfixGuard,
   lintConnectivity,
   lintDriftUncoveredChanges,
   lintFollowsCycle,
@@ -26,7 +24,6 @@ export const SYSTEM_LINTS: Record<string, Lint> = {
   "connectivity": lintConnectivity,
   "follows-cycle": lintFollowsCycle,
   "agent-ancestry": lintAgentAncestry,
-  "bugfix-guard": lintBugfixGuard,
   "pii-display-name": lintPiiDisplayName,
   "drift-uncovered-changes": lintDriftUncoveredChanges,
 };

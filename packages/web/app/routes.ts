@@ -3,6 +3,11 @@ import { type RouteConfig, index, route } from "@react-router/dev/routes";
 /**
  * Doco web routes. Hosted-multi-tenant only (per ADR-092 + ADR-093).
  *
+ * Routing model: this file is the canonical config (RR v7 config-based
+ * routing). File-based routing (`@react-router/fs-routes`) is NOT in
+ * use — the explicit manual table doubles as a prose-readable index
+ * of the URL surface, grouped by area.
+ *
  * Agent-route policy: any route whose path has an `agent` segment MUST also
  * register `<path>.txt` (plain-prose docs for agents) and `<path>.json`
  * (resource route — clean JSON POST endpoint, no document render). Enforced
@@ -18,7 +23,6 @@ import { type RouteConfig, index, route } from "@react-router/dev/routes";
  *   /onboarding/*                  first-run wizard (ADR-073). Agent variants retired by decision_01KRKZM14WNA1685GN0F12WCKM — use /cli/authorize.
  *   /cli/authorize                 Vercel-style browser-authorize handoff for `doco login` (decision_01KRKZM14WNA1685GN0F12WCKM)
  *   /agents, /agents/new           agent self-service (ADR-071)
- *   /invite, /invite/:token        legacy invitation flow (superseded by /agents/new, ADR-068..071)
  *   /new-doco, /new-org            self-service create flows (ADR-067)
  *   /:owner                        owner profile + Docos
  *   /:owner/:doco                  per-Doco recent + search input
@@ -68,10 +72,6 @@ export default [
   // Agents
   route("agents", "routes/agents._index.tsx"),
   route("agents/new", "routes/agents.new.tsx"),
-  // Legacy invitations (superseded by /agents/new)
-  route("invite", "routes/invite.tsx"),
-  route("invite/:token", "routes/invite.$token.tsx"),
-  route("invite/:token.json", "routes/invite.$token[.]json.tsx"),
   // API
   route("api/suggest-scopes", "routes/api.suggest-scopes.tsx"),
   route("api/v1/agent-bootstrap", "routes/api.v1.agent-bootstrap.tsx"),
@@ -91,7 +91,6 @@ export default [
   route(":ownerSlug/:docoSlug/status.json", "routes/$ownerSlug.$docoSlug.status[.]json.tsx"),
   route(":ownerSlug/:docoSlug/settings", "routes/$ownerSlug.$docoSlug.settings.tsx"),
   route(":ownerSlug/:docoSlug/api/decisions.json", "routes/$ownerSlug.$docoSlug.api.decisions[.]json.tsx"),
-  route(":ownerSlug/:docoSlug/api/decisions.txt", "routes/$ownerSlug.$docoSlug.api.decisions[.]txt.tsx"),
   route(":ownerSlug/:docoSlug/api/decisions/:id.json", "routes/$ownerSlug.$docoSlug.api.decisions.$id[.]json.tsx"),
   route(":ownerSlug/:docoSlug/api/intents/:id.json", "routes/$ownerSlug.$docoSlug.api.intents.$id[.]json.tsx"),
   route(":ownerSlug/:docoSlug/api/rules/:id.json", "routes/$ownerSlug.$docoSlug.api.rules.$id[.]json.tsx"),
@@ -100,15 +99,16 @@ export default [
   route(":ownerSlug/:docoSlug/api/references/:id.json", "routes/$ownerSlug.$docoSlug.api.references.$id[.]json.tsx"),
   route(":ownerSlug/:docoSlug/api/scopes/:id.json", "routes/$ownerSlug.$docoSlug.api.scopes.$id[.]json.tsx"),
   route(":ownerSlug/:docoSlug/api/scopes.json", "routes/$ownerSlug.$docoSlug.api.scopes[.]json.tsx"),
-  route(":ownerSlug/:docoSlug/api/scopes.txt", "routes/$ownerSlug.$docoSlug.api.scopes[.]txt.tsx"),
   route(":ownerSlug/:docoSlug/api/intents.json", "routes/$ownerSlug.$docoSlug.api.intents[.]json.tsx"),
-  route(":ownerSlug/:docoSlug/api/intents.txt", "routes/$ownerSlug.$docoSlug.api.intents[.]txt.tsx"),
   route(":ownerSlug/:docoSlug/api/actions.json", "routes/$ownerSlug.$docoSlug.api.actions[.]json.tsx"),
   route(":ownerSlug/:docoSlug/api/rules.json", "routes/$ownerSlug.$docoSlug.api.rules[.]json.tsx"),
   route(":ownerSlug/:docoSlug/api/reasoning.json", "routes/$ownerSlug.$docoSlug.api.reasoning[.]json.tsx"),
+  route(":ownerSlug/:docoSlug/api/references.json", "routes/$ownerSlug.$docoSlug.api.references[.]json.tsx"),
   route(":ownerSlug/:docoSlug/api/evals.json", "routes/$ownerSlug.$docoSlug.api.evals[.]json.tsx"),
   route(":ownerSlug/:docoSlug/api/settings.json", "routes/$ownerSlug.$docoSlug.api.settings[.]json.tsx"),
-  route(":ownerSlug/:docoSlug/api/settings.txt", "routes/$ownerSlug.$docoSlug.api.settings[.]txt.tsx"),
+  // Plain-prose specs for the .json endpoints — one parametrized route handles
+  // decisions / intents / scopes / settings.
+  route(":ownerSlug/:docoSlug/api/:type.txt", "routes/$ownerSlug.$docoSlug.api.$type[.]txt.tsx"),
   // Audit-events log (decision_01KRKESCBTYG4005VMPKYNYR53).
   route(":ownerSlug/:docoSlug/api/audit.json", "routes/$ownerSlug.$docoSlug.api.audit[.]json.tsx"),
   route(":ownerSlug/:docoSlug/activity", "routes/$ownerSlug.$docoSlug.activity.tsx"),

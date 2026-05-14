@@ -2,13 +2,18 @@
 // (decision_01KRKEPRAMM9QSSEJ2X5FHPESJ).
 //
 // Two classes of node:
-//   - Claim: Decision, Intent, Rule, Action, Reasoning, Evaluation, Reference.
+//   - Claim: Decision, Intent, Rule, Action, Reasoning, Eval, Reference.
 //     Mutable while in a draft lifecycle; frozen on activation. On a frozen
 //     claim, only `lifecycle`, `superseded_by`, and additive edge fields
 //     (`*_add`) can be patched. Body, summary, alternatives, and core fields
 //     are locked — editorial fixes happen via supersession.
 //   - Record: Principal, Organization, Scope, Doco metadata, Tag, Idea.
 //     Always mutable via PATCH. They are state, not claims.
+//
+// Frozen lifecycles use the canonical six-value Lifecycle vocabulary
+// (proposed, active, succeeded, failed, superseded, abandoned) — see
+// shared/entities.ts. `proposed` is always mutable (drafting); the rest
+// freeze the claim except for the supersession path.
 
 export type NodeClass = "claim" | "record";
 
@@ -18,7 +23,7 @@ export type ClaimNodeType =
   | "rule"
   | "action"
   | "reasoning"
-  | "evaluation"
+  | "eval"
   | "reference";
 
 export type RecordNodeType =
@@ -35,7 +40,7 @@ const CLAIM_TYPES: ReadonlySet<string> = new Set<ClaimNodeType>([
   "rule",
   "action",
   "reasoning",
-  "evaluation",
+  "eval",
   "reference",
 ]);
 
@@ -44,14 +49,14 @@ export function nodeClassOf(nodeType: string): NodeClass {
 }
 
 // Per-type lifecycle states that put a claim into the frozen state.
-// Claims in any other state (including unset) are still mutable.
+// `proposed` (and unset) leaves the claim mutable for drafting.
 const FROZEN_LIFECYCLES: Record<ClaimNodeType, ReadonlySet<string>> = {
-  decision: new Set(["active", "superseded", "succeeded", "abandoned", "failed"]),
-  intent: new Set(["active", "succeeded", "deprecated", "abandoned"]),
-  rule: new Set(["active", "superseded", "retired"]),
-  action: new Set(["completed", "failed", "blocked"]),
-  reasoning: new Set(["active"]),
-  evaluation: new Set(["active", "succeeded", "failed"]),
+  decision: new Set(["active", "succeeded", "failed", "superseded", "abandoned"]),
+  intent: new Set(["active", "succeeded", "failed", "superseded", "abandoned"]),
+  rule: new Set(["active", "succeeded", "failed", "superseded", "abandoned"]),
+  action: new Set(["active", "succeeded", "failed", "superseded", "abandoned"]),
+  reasoning: new Set(["active", "succeeded", "failed", "superseded", "abandoned"]),
+  eval: new Set(["active", "succeeded", "failed", "superseded", "abandoned"]),
   // Reference has no proposed phase — it is frozen from creation.
   // Sentinel "*" is matched specially below to mean "any lifecycle, including unset".
   reference: new Set(["*"]),

@@ -332,7 +332,7 @@ Adding a new ID-valued field automatically gets it picked up by the index — ag
 
 ## 8. Query model — fast queries at 10k+ entities
 
-File-per-entity serves priorities 1–5. For priority 6, add a **derived index** alongside the source. The index is rebuildable, never authoritative — it can be wiped and regenerated at any time without losing data.
+> **[SUPERSEDED]** — Sections 8.1 through 8.8 below describe the original tiered architecture: source files in git + a per-clone SQLite/FTS5 cache. That layout has been replaced by a single Postgres database that is **both source of truth and read-side index** — see D-023, D-024 in DECISIONS.md (both marked [SUPERSEDED]) and the canonical schema in `packages/db/src/schema.sql`. The motivation and trade-offs below are preserved for context; the implementation details are no longer accurate.
 
 ### 8.1 Tiered layout
 

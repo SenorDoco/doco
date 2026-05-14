@@ -22,7 +22,8 @@ import { Form, Link, redirect, useActionData } from "react-router";
 import { stringify as stringifyYaml, parse as parseYaml } from "yaml";
 import type { EntityId } from "@doco/shared";
 import { validateDocoSlug } from "@doco/shared";
-import { getPrincipalById } from "@doco/db";
+import { readFileSync } from "node:fs";
+import { getPrincipalById, upsertEntity } from "@doco/db";
 import { TokenStore } from "~/lib/tokens.server";
 import { rootDir } from "~/lib/db.server";
 import { addAgentPrincipal, createDocoInHost, reindex } from "~/lib/redeem.server";
@@ -122,6 +123,32 @@ async function ensureOwnerPrincipalOnDisk(root: string, principalId: string): Pr
   await writeFile(path, stringifyYaml(fm), "utf8");
 }
 
+/**
+ * Mirror a freshly-created Doco's `doco.yaml` from disk into the
+ * Postgres `docos` table. Companion to ensureOwnerPrincipalOnDisk —
+ * createDocoInHost only writes the filesystem; the Postgres row is
+ * needed by reindex (which reads from Postgres) and by the per-Doco
+ * routes (which look up Docos via getDocoById / `owner_slug`).
+ *
+ * Workaround for the in-flight Postgres-as-source-of-truth migration.
+ */
+async function mirrorDocoToPostgres(docoPath: string, docoId: string): Promise<void> {
+  const yamlText = readFileSync(join(docoPath, "doco.yaml"), "utf8");
+  const fm = parseYaml(yamlText) as Record<string, unknown>;
+  await upsertEntity({
+    id: docoId,
+    doco_id: docoId,
+    node_type: "doco",
+    raw_yaml: JSON.stringify(fm),
+    summary: typeof fm.summary === "string" ? fm.summary : null,
+    lifecycle: typeof fm.lifecycle === "string" ? fm.lifecycle : "active",
+    created_at: typeof fm.created_at === "string" ? fm.created_at : new Date().toISOString(),
+    created_by: typeof fm.created_by === "string" ? fm.created_by : null,
+    updated_at: typeof fm.created_at === "string" ? fm.created_at : new Date().toISOString(),
+    updated_by: typeof fm.created_by === "string" ? fm.created_by : null,
+  });
+}
+
 function clientIpFrom(request: Request): string {
   // Behind a proxy/edge in production; for dev this falls through to "—".
   const xff = request.headers.get("x-forwarded-for");
@@ -199,6 +226,10 @@ export async function action({ request }: { request: Request }): Promise<ActionR
         autoSuffixOnCollision: false,
         visibility: "private",
       });
+      // createDocoInHost writes only to the filesystem. The reindex
+      // call below loads from Postgres, so the row has to be there
+      // first. Mirror the doco.yaml in.
+      await mirrorDocoToPostgres(created.path, created.docoId);
       await reindex(created.path);
       createdDocoSlug = created.docoSlug;
     } catch (e) {

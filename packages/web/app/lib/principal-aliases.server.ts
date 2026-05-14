@@ -10,14 +10,12 @@
 // exists — but the principals/ dir is keyed by principal_id not
 // username, so we check the cache/db); otherwise walk the alias chain.
 //
-// This module is infrastructure: the host has no Principal-rename
-// route today, so `recordPrincipalUsernameAlias` is unused until
-// someone wires a rename flow. The resolver IS wired into route
-// loaders so URLs survive whenever that rename flow lands.
+// Read-side only. The host has no Principal-rename route today; the
+// writer (`recordPrincipalUsernameAlias`) lands when that flow is built.
 
-import { existsSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
+import { parse as parseYaml } from "yaml";
 import { rootDir } from "./db.server";
 
 interface PrincipalAliasEntry {
@@ -95,42 +93,3 @@ export function resolvePrincipalUsernameAlias(
   return { canonical: cur, redirected: cur !== username };
 }
 
-/**
- * Append a new alias entry. Idempotent — repeated calls with the same
- * (from, to) are no-ops. Atomic via temp + rename.
- */
-export function recordPrincipalUsernameAlias(
-  fromUsername: string,
-  toUsername: string,
-  principalId: string,
-): void {
-  if (fromUsername === toUsername) return;
-  const file = aliasFile();
-  let parsed: PrincipalAliasesFile = { aliases: [] };
-  if (existsSync(file)) {
-    try {
-      const p = parseYaml(readFileSync(file, "utf8")) as PrincipalAliasesFile | null;
-      if (p && Array.isArray(p.aliases)) parsed = p;
-    } catch {
-      // Corrupt or empty — start fresh.
-    }
-  }
-  if (
-    parsed.aliases.some(
-      (a) => a.from === fromUsername && a.to === toUsername,
-    )
-  ) {
-    return;
-  }
-  parsed.aliases.push({
-    from: fromUsername,
-    to: toUsername,
-    principal_id: principalId,
-    created_at: new Date().toISOString(),
-  });
-
-  const tmp = `${file}.tmp.${process.pid}.${Date.now()}`;
-  writeFileSync(tmp, stringifyYaml(parsed));
-  renameSync(tmp, file);
-  cache = null;
-}

@@ -1,6 +1,6 @@
-// Filesystem watcher that keeps the per-Doco SQLite/FTS5 index up to
-// date without agents having to call reindex. Per the
-// `auto-reindex-on-file-changes` Intent + ADR.
+// Filesystem watcher that keeps the Postgres derived-data tables
+// (`edges`, `entity_fts`, `embeddings`) in sync without agents having
+// to call reindex.
 //
 // Implementation:
 //   - One singleton watcher per process, started lazily on first import.
@@ -14,16 +14,10 @@
 //     reindex(docoDir). Burst saves coalesce.
 //   - State is observable via `getWatcherStatus()` — the lint page
 //     surfaces it.
-//
-// Future hardening (tracked in the same Intent):
-//   - Per-file incremental updates instead of full reindex.
-//   - chokidar fallback for Linux recursive coverage.
-//   - Multi-process coordination (lockfile) if we ever run multiple web
-//     servers per host.
 
 import { watch, type FSWatcher } from "node:fs";
 import { existsSync } from "node:fs";
-import { join, relative, sep } from "node:path";
+import { join, sep } from "node:path";
 import { rootDir } from "./db.server";
 import { reindex } from "./redeem.server";
 
@@ -94,7 +88,7 @@ class AutoReindexer {
     if (ownerName.startsWith(".") || docoSlug.startsWith(".")) return; // skip .deleted/ etc.
     // We only care about content changes — md/yaml under known subdirs.
     // The reindex itself filters, so we don't need to be picky here. But
-    // ignore stale .doco/ leftovers (pre-SQLite-removal) to prevent reindex loops.
+    // ignore any stale `.doco/` cache directories to prevent reindex loops.
     if (parts[2] === ".doco") return;
     const docoDir = join(docosRoot, ownerName, docoSlug);
     if (!existsSync(join(docoDir, "doco.yaml"))) return;

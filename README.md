@@ -30,7 +30,7 @@ the project defines.
 ├── reasoning/                # Inferential bridges (Premises → Conclusion)
 ├── references/               # Pointers to external resources (incl. PLANNING/SCHEMA/DECISIONS)
 ├── tags/                     # Reserved + custom tags
-├── evaluations/              # Append-only Rule run results (empty for now)
+├── evals/                    # Eval entities (D-024 / decision_01KRHBZMD0V35NAX94Y7N2MXVA)
 └── docs/                     # Reserved for additional reader-facing documentation
 ```
 
@@ -52,7 +52,7 @@ Per [intent_01KR441EAEM5NQBM160763TDDT.md](intents/intent_01KR441EAEM5NQBM160763
 
 1. CLI core (`doco init`, `init --existing`, `show`, `query`).
 2. Source-of-truth layer — readers/writers + JSON-Schema validation.
-3. Index layer — SQLite + FTS5 cache, `edges` adjacency, `scope_match`.
+3. Index layer — Postgres `entity_fts` (tsvector), `embeddings` (bytea), `edges` adjacency, `scope_match`.
 4. Identity — GitHub OAuth + invitation/session tokens.
 5. API server (REST + OpenAPI).
 6. Web app — recent-changes feed, list views, entity detail, graph as drill-down.

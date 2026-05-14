@@ -6,12 +6,11 @@
 export function loader() {
   return Response.json({
     status: "info",
-    summary: "Agents can't self-add to existing Docos. Ask the owner for an invite token.",
+    summary: "Agents can't self-add to existing Docos. Ask the owner to create your Principal at /agents/new and share the resulting DOCO_TOKEN.",
     next_steps: [
       "Tell the owner to sign in at /sign-in",
-      "They visit /agents/new and create an invite for your principal",
-      "They share the resulting token URL with you",
-      "You GET /invite/<token>.json — the response carries your bearer token",
+      "They visit /agents/new and create your agent Principal",
+      "They paste the resulting DOCO_TOKEN into your chat — use it as the Bearer credential on every write",
     ],
     related_routes: [
       "/onboarding/join/agent",

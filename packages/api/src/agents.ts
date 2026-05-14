@@ -1,9 +1,6 @@
-// Shared invitation-redemption + agent-creation logic.
-//
-// Used by both the API server (POST /api/v1/invitations/redeem) and the web
-// route GET/POST /invite/:token. Extracting the logic here means the web can
-// redeem without depending on the API server being up — they read the same
-// .doco/tokens.json + principals/ tree.
+// Agent-creation logic shared between the web app and the API surface.
+// Used by /agents/new (owner creates an agent + DOCO_TOKEN directly) and
+// /cli/authorize (Vercel-style browser-authorize handoff).
 
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
@@ -16,7 +13,6 @@ import {
   nowIso,
 } from "@doco/shared";
 import { upsertEntity } from "@doco/db";
-import { TokenStore } from "./auth.js";
 
 export interface PrincipalSummary {
   id: string;
@@ -105,81 +101,3 @@ export async function addAgentPrincipal(
   return id;
 }
 
-export interface RedemptionBody {
-  display_name?: string;
-  model?: string;
-  provider?: string;
-  capabilities?: string[];
-}
-
-export interface RedemptionResult {
-  session_token: string;
-  principal: {
-    id: EntityId<"principal">;
-    username: string;
-    display_name: string;
-    type: "agent";
-    owner_id: EntityId<"principal">;
-  };
-}
-
-export type RedemptionError =
-  | { kind: "invalid_or_expired_invitation" }
-  | { kind: "inviter_no_longer_exists" }
-  | { kind: "create_principal_failed"; detail: string };
-
-/**
- * Redeem an invitation token: marks the invitation used, creates a Principal{type:agent}
- * owned by the inviter, and issues a long-lived session token.
- *
- * Idempotent only in the single-use sense: a given invitation token can be redeemed
- * at most once. Subsequent calls return `invalid_or_expired_invitation`.
- */
-export async function redeemInvitation(
-  root: string,
-  inviteToken: string,
-  body: RedemptionBody,
-): Promise<RedemptionResult | { error: RedemptionError }> {
-  const tokenStore = TokenStore.forDoco(root);
-  const inv = await tokenStore.resolveInvitation(inviteToken);
-  if (!inv) return { error: { kind: "invalid_or_expired_invitation" } };
-
-  const inviter = findPrincipalById(root, inv.inviter_id);
-  if (!inviter) return { error: { kind: "inviter_no_longer_exists" } };
-
-  // Username convention per ADR-036: `{inviter_username}/{ISO_timestamp}`.
-  const isoNow = new Date().toISOString();
-  const username = `${inviter.username}/${isoNow}`;
-  const displayName = body.display_name ?? `agent ${username}`;
-
-  let principalId: EntityId<"principal">;
-  try {
-    principalId = await addAgentPrincipal(root, {
-      username,
-      display_name: displayName,
-      owner_id: inv.inviter_id,
-      agent_metadata: {
-        provider: body.provider ?? "unknown",
-        model: body.model ?? "unknown",
-        capabilities: body.capabilities ?? [],
-        created_at: isoNow,
-      },
-    });
-  } catch (e) {
-    return { error: { kind: "create_principal_failed", detail: (e as Error).message } };
-  }
-
-  await tokenStore.markInvitationUsed(inviteToken);
-  const session = await tokenStore.issueSessionToken(principalId, inv.inviter_id);
-
-  return {
-    session_token: session.token,
-    principal: {
-      id: principalId,
-      username,
-      display_name: displayName,
-      type: "agent",
-      owner_id: inv.inviter_id,
-    },
-  };
-}

@@ -1,6 +1,5 @@
 #!/usr/bin/env node
 import { defineCommand, runMain } from "citty";
-import { agentCmd } from "./commands/agent.js";
 import { activityCmd, historyCmd } from "./commands/audit.js";
 import { captureCmd } from "./commands/capture.js";
 import { coverageCmd } from "./commands/coverage.js";
@@ -10,7 +9,6 @@ import { hostCmd } from "./commands/host.js";
 import { initCmd } from "./commands/init.js";
 import { installAgentBootstrapCmd } from "./commands/install-agent-bootstrap.js";
 import { installHooksCmd } from "./commands/install-hooks.js";
-import { inviteCmd } from "./commands/invite.js";
 import { lintCmd } from "./commands/lint.js";
 import { loginCmd } from "./commands/login.js";
 import { patchCmd } from "./commands/patch.js";
@@ -36,8 +34,6 @@ const main = defineCommand({
     query: queryCmd,
     lint: lintCmd,
     host: hostCmd,
-    invite: inviteCmd,
-    agent: agentCmd,
     capture: captureCmd,
     patch: patchCmd,
     supersede: supersedeCmd,

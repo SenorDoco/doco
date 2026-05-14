@@ -3,11 +3,9 @@ import { withClient } from "@doco/db";
 import { cross } from "../output.js";
 
 /**
- * Run a SQL query against Postgres. `doco query` used to read the
- * per-clone SQLite cache (`.doco/cache.db`); after the SQLite-removal
- * migration it goes straight to the durable PG store. Statements run
- * read-only in a transaction that's rolled back at the end — no
- * accidental writes from a typo'd query.
+ * Run a read-only SQL query against the Doco's Postgres database.
+ * Statements run inside a transaction that's rolled back at the end —
+ * no accidental writes from a typo'd query.
  */
 export const queryCmd = defineCommand({
   meta: {

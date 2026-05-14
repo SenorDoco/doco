@@ -1,12 +1,12 @@
 // Slug aliases for Docos. Per D-019: slugs are immutable once set;
-// renames and ownership transfers (e.g. claiming a host-bootstrap Doco)
-// leave the old slug as a permanent alias to the canonical current
-// slug. Same idea as GitHub's repository redirects after rename/transfer
-// — old URLs in agents' .env, cross-references, READMEs keep resolving.
+// renames and ownership transfers leave the old slug as a permanent
+// alias to the canonical current slug. Same idea as GitHub's repository
+// redirects after rename/transfer — old URLs in agents' .env,
+// cross-references, READMEs keep resolving.
 //
 // Storage: a single `<host-root>/docos/_aliases.yaml` file. Writes are
 // atomic (temp + rename). Reads are cached in-memory keyed by file mtime
-// so a stale alias map never lingers after a claim.
+// so a stale alias map never lingers after a rename.
 //
 // Resolution rules:
 //   - Direct match always wins. If `<owner>/<slug>/doco.yaml` exists,
@@ -15,8 +15,8 @@
 //   - Otherwise walk the alias chain up to MAX_HOPS. Each hop must
 //     land on a real `doco.yaml`; if it doesn't, keep walking.
 //   - Defensive cycle bound: return null after MAX_HOPS without
-//     resolution (shouldn't happen in practice — claim flow only
-//     appends new aliases, never overwrites).
+//     resolution (shouldn't happen in practice — rename only appends
+//     new aliases, never overwrites).
 
 import { existsSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";

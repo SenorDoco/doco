@@ -4,7 +4,7 @@
 // daily-use invariants every reply must follow (~1,200 tokens). The
 // AGENT_REFERENCE export at this URL carries everything else — model
 // walkthrough, scope onboarding flow, "don't follow recipes — think",
-// placement examples, the claim flow, ADR-086 "Doco is the memory."
+// placement examples, the CLI device-flow, ADR-086 "Doco is the memory."
 //
 // Agents fetch this on demand when they hit an edge the slim canonical
 // doesn't cover. Caching at the agent side is fine — the reference

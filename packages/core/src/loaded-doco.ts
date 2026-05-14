@@ -1,5 +1,5 @@
 // Types for a loaded Doco — used by both the Postgres loader
-// (@doco/index/loadFromPostgres) and the validator (@doco/core/validate).
+// (@doco/index/loadDoco) and the validator (@doco/core/validate).
 //
 // The filesystem-based `loadDoco(root)` is gone — Postgres is the only
 // source-of-truth (rule_01KRKQDHWNWJAF4YKTMCB2A0D9 — alpha forbids

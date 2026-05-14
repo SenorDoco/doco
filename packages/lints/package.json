@@ -27,6 +27,7 @@
     "yaml": "^2.6.1"
   },
   "devDependencies": {
+    "@doco/index": "workspace:*",
     "@types/pg": "^8.11.10"
   }
 }

@@ -245,7 +245,7 @@ Plain truth: graph navigation often **doesn't work well** for browsing. A node-e
 - **Recent changes feed** (the home view) — ordered list of Actions, Decisions, Evaluations across the Doco. Default last 7 days; filter by node type / actor / time. Mirrors the GitHub home dashboard, which users already understand. Surfaces alerting items inline (failed Evaluations, blocked Actions, drift warnings).
 - **By node type** — list views for Intents, Decisions, Rules, etc., with filters and lifecycle pivots.
 - **By tag** — tag pages aggregating everything tagged with a given tag (including the reserved `scope_*` tags).
-- **Search** — Cmd-K palette + full search page (FTS5 + semantic + scope-aware).
+- **Search** — Cmd-K palette + full search page (Postgres tsvector + semantic + scope-aware).
 
 **Secondary navigation:**
 - **Graph view** — accessed from any entity detail page ("show neighborhood"). Defaults to a **2-hop neighborhood** to avoid the spaghetti problem; filters to limit edge types (e.g., "only `Constrains`," "only `Serves`").

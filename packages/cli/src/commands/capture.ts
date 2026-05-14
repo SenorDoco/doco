@@ -70,7 +70,15 @@ function readBody(inline: string | undefined, fromFile: string | undefined): str
 }
 
 async function postCapture(
-  type: "intents" | "decisions" | "evals" | "scopes" | "actions" | "rules" | "reasoning",
+  type:
+    | "intents"
+    | "decisions"
+    | "evals"
+    | "scopes"
+    | "actions"
+    | "rules"
+    | "reasoning"
+    | "references",
   body: Record<string, unknown>,
 ): Promise<void> {
   const { host, token, slug } = requireEnv();
@@ -450,11 +458,73 @@ const reasoningCmd = defineCommand({
   },
 });
 
+const referenceCmd = defineCommand({
+  meta: {
+    name: "reference",
+    description: "Capture a Reference (POST /<owner>/<doco>/api/references.json).",
+  },
+  args: {
+    "ref-type": {
+      type: "string",
+      description: "Required. One of: file | url | ticket | commit | document | other.",
+      required: true,
+    },
+    locator: {
+      type: "string",
+      description:
+        "Required. The pointer itself — path, URL, ticket id, commit sha, document id.",
+      required: true,
+    },
+    scope: { type: "string", description: "Required. Comma-separated scope names.", required: true },
+    summary: {
+      type: "string",
+      description: "Optional one-line summary; derived from ref-type + locator if absent.",
+    },
+    "content-hash": {
+      type: "string",
+      description: "Optional content hash (e.g. sha256 of a file) for change detection.",
+    },
+    "intent-id": {
+      type: "string",
+      description: "Optional. Comma-separated intent ids this reference serves.",
+    },
+    "created-by-username": {
+      type: "string",
+      description: "Optional principal username who created the reference.",
+    },
+    "body-md": { type: "string", description: "Optional markdown body (inline string)." },
+    "body-md-file": {
+      type: "string",
+      description: "Optional path to a file whose contents become body_md.",
+    },
+    lifecycle: { type: "string", description: "Optional. Defaults to 'active'." },
+  },
+  async run({ args }) {
+    const body: Record<string, unknown> = {
+      ref_type: args["ref-type"],
+      locator: args.locator,
+      scope_names: splitList(args.scope as string),
+    };
+    if (args.summary) body.summary = args.summary;
+    if (args["content-hash"]) body.content_hash = args["content-hash"];
+    const intents = splitList(args["intent-id"] as string | undefined);
+    if (intents.length) body.intent_ids = intents;
+    if (args["created-by-username"]) body.created_by_username = args["created-by-username"];
+    const bodyMd = readBody(
+      args["body-md"] as string | undefined,
+      args["body-md-file"] as string | undefined,
+    );
+    if (bodyMd !== undefined) body.body_md = bodyMd;
+    if (args.lifecycle) body.lifecycle = args.lifecycle;
+    await postCapture("references", body);
+  },
+});
+
 export const captureCmd = defineCommand({
   meta: {
     name: "capture",
     description:
-      "Capture a node (Intent / Decision / Action / Rule / Reasoning / Eval / Scope) via the host's POST endpoints. Reads DOCO_HOST/DOCO_TOKEN/DOCO_SLUG from env or ./.env. Prints the response's footer_lines to stdout.",
+      "Capture a node (Intent / Decision / Action / Rule / Reasoning / Eval / Scope / Reference) via the host's POST endpoints. Reads DOCO_HOST/DOCO_TOKEN/DOCO_SLUG from env or ./.env. Prints the response's footer_lines to stdout.",
   },
   subCommands: {
     intent: intentCmd,
@@ -464,6 +534,7 @@ export const captureCmd = defineCommand({
     reasoning: reasoningCmd,
     eval: evalCmd,
     scope: scopeCmd,
+    reference: referenceCmd,
   },
 });
 

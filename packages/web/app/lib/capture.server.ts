@@ -50,35 +50,68 @@ async function readEntityFromPostgres(
  * (rule_01KRKQDHWNWJAF4YKTMCB2A0D9 — alpha forbids back-compat;
  * filesystem dual-write is gone).
  *
- * Sync-returning so callers don't have to await — the actual upsert
- * fires in the background. Failures log; the in-memory fm and
- * downstream reindex continue. The caller already has the canonical
- * fm in hand.
+ * Returns a promise that resolves once the row is durably written.
+ * Callers MUST await this before scheduling reindex — otherwise the
+ * reindex would race the upsert and may not see the new row.
  */
-function persistEntity(args: {
+async function persistEntity(args: {
   nodeType: string;
   id: string;
   docoId: string;
   fm: Record<string, unknown>;
   body?: string;
-}): void {
+}): Promise<void> {
   const { fm } = args;
-  upsertEntity({
-    id: args.id,
-    doco_id: args.docoId,
-    node_type: args.nodeType,
-    raw_yaml: JSON.stringify(fm),
-    body_md: args.body,
-    summary: typeof fm.summary === "string" ? fm.summary : null,
-    lifecycle: typeof fm.lifecycle === "string" ? fm.lifecycle : null,
-    name: typeof fm.name === "string" ? fm.name : null,
-    created_at: typeof fm.created_at === "string" ? fm.created_at : null,
-    created_by: typeof fm.created_by === "string" ? fm.created_by : null,
-    updated_at: typeof fm.updated_at === "string" ? fm.updated_at : null,
-    updated_by: typeof fm.updated_by === "string" ? fm.updated_by : null,
-  }).catch((err) => {
+  try {
+    await upsertEntity({
+      id: args.id,
+      doco_id: args.docoId,
+      node_type: args.nodeType,
+      raw_yaml: JSON.stringify(fm),
+      body_md: args.body,
+      summary: typeof fm.summary === "string" ? fm.summary : null,
+      lifecycle: typeof fm.lifecycle === "string" ? fm.lifecycle : null,
+      name: typeof fm.name === "string" ? fm.name : null,
+      created_at: typeof fm.created_at === "string" ? fm.created_at : null,
+      created_by: typeof fm.created_by === "string" ? fm.created_by : null,
+      updated_at: typeof fm.updated_at === "string" ? fm.updated_at : null,
+      updated_by: typeof fm.updated_by === "string" ? fm.updated_by : null,
+    });
+  } catch (err) {
     console.error(`postgres persist failed for ${args.nodeType}/${args.id}:`, err);
-  });
+    throw err;
+  }
+}
+
+/**
+ * Run reindex (and optionally `attachImplicitEdges`) after the
+ * user-visible response has already returned. Fire-and-forget; the
+ * caller must have already `await`-ed `persistEntity` so the new row
+ * is durably written before the background work starts. Failures
+ * log but do not surface — the response committed.
+ *
+ * A search issued in the same turn that just captured a node may
+ * briefly miss it until reindex completes (~seconds with embeddings
+ * on). Agents don't re-search what they just wrote, so this is
+ * acceptable.
+ */
+function scheduleBackgroundIndex(
+  docoDir: string,
+  attachOpts?: Parameters<typeof attachImplicitEdges>[0],
+): void {
+  void (async () => {
+    try {
+      await reindex(docoDir);
+    } catch (err) {
+      console.error(`background reindex failed for ${docoDir}:`, err);
+    }
+    if (!attachOpts) return;
+    try {
+      await attachImplicitEdges(attachOpts);
+    } catch (err) {
+      console.error("background attachImplicitEdges failed:", err);
+    }
+  })();
 }
 
 export interface DecisionDraft {
@@ -210,24 +243,30 @@ export function renderOperationLines(opts: {
     const text = trunc(summaryForLine);
     return linkUrl ? `[${mdLinkText(text)}](${linkUrl})` : text;
   };
+  // Mutation lines append `.<field>` after the anchor as dot-notation
+  // (entity.property). If the summary text ends with a period, the
+  // link text's trailing `.` plus the separator `.` render as `..` —
+  // strip the trailing period so the dot-notation stays clean.
+  const mutationAnchor = (): string =>
+    buildAnchor(opts.summary.replace(/\.+$/, ""));
   const lines = opts.ops.map((op) => {
     switch (op.kind) {
       case "added":
         return `[🔮 Doco] ✍️ ${Type} added: ${buildAnchor(op.summary)}${scopeSuffix}`;
       case "set":
-        return `[🔮 Doco] 📝 ${Type} updated: ${buildAnchor(opts.summary)}.${op.field} set to "${trunc(op.value, 100)}"${scopeSuffix}`;
+        return `[🔮 Doco] 📝 ${Type} updated: ${mutationAnchor()}.${op.field} set to "${trunc(op.value, 100)}"${scopeSuffix}`;
       case "cleared":
-        return `[🔮 Doco] 🧹 ${Type} updated: ${buildAnchor(opts.summary)}.${op.field} cleared${scopeSuffix}`;
+        return `[🔮 Doco] 🧹 ${Type} updated: ${mutationAnchor()}.${op.field} cleared${scopeSuffix}`;
       case "added_to":
-        return `[🔮 Doco] ➕ ${Type} updated: ${buildAnchor(opts.summary)}.${op.field} added: ${op.names.join(", ")}${scopeSuffix}`;
+        return `[🔮 Doco] ➕ ${Type} updated: ${mutationAnchor()}.${op.field} added: ${op.names.join(", ")}${scopeSuffix}`;
       case "removed_from":
-        return `[🔮 Doco] ➖ ${Type} updated: ${buildAnchor(opts.summary)}.${op.field} removed: ${op.names.join(", ")}${scopeSuffix}`;
+        return `[🔮 Doco] ➖ ${Type} updated: ${mutationAnchor()}.${op.field} removed: ${op.names.join(", ")}${scopeSuffix}`;
       case "replaced_list":
-        return `[🔮 Doco] 🔁 ${Type} updated: ${buildAnchor(opts.summary)}.${op.field} replaced with: ${op.names.join(", ")}${scopeSuffix}`;
+        return `[🔮 Doco] 🔁 ${Type} updated: ${mutationAnchor()}.${op.field} replaced with: ${op.names.join(", ")}${scopeSuffix}`;
       case "replaced_body":
-        return `[🔮 Doco] 🔁 ${Type} updated: ${buildAnchor(opts.summary)}.body replaced${scopeSuffix}`;
+        return `[🔮 Doco] 🔁 ${Type} updated: ${mutationAnchor()}.body replaced${scopeSuffix}`;
       case "appended_body":
-        return `[🔮 Doco] ➕ ${Type} updated: ${buildAnchor(opts.summary)}.body appended: ${trunc(op.preview, 100)}${scopeSuffix}`;
+        return `[🔮 Doco] ➕ ${Type} updated: ${mutationAnchor()}.body appended: ${trunc(op.preview, 100)}${scopeSuffix}`;
       case "renamed":
         return `[🔮 Doco] 🏷️ ${Type} renamed: ${op.from} → ${buildAnchor(op.to)}${scopeSuffix}`;
       case "deleted":
@@ -514,15 +553,9 @@ async function applyListOp(
 }
 
 /**
- * Look up a host-level Principal by username from the SQLite cache. The
- * cache's `principal` table is populated from Postgres on every reindex
- * (rule_01KRKQDHWNWJAF4YKTMCB2A0D9 — alpha forbids back-compat;
- * filesystem walk of `<root>/principals/` is gone).
- *
- * Returns null when no Doco cache is reachable from the host root —
- * principals live in the cache, and at least one Doco's cache must
- * exist for the lookup to work. Acceptable in alpha; once auth lands
- * fully in Postgres this will read from `principals` directly.
+ * Look up a host-level Principal by username from Postgres. Returns null
+ * if no row matches or the lookup fails (alpha: PG unreachable is a
+ * soft-null, not a throw).
  */
 export async function resolvePrincipalUsername(
   username: string,
@@ -731,7 +764,7 @@ async function attachImplicitEdges(opts: {
       ...prior,
       ...proposed.map((p) => ({ to_id: p.to_id, edge_type: p.edge_type, reason: p.reason })),
     ];
-    persistEntity({
+    await persistEntity({
       nodeType: opts.entityType,
       id: opts.entityId,
       docoId: String(fm.doco_id ?? ""),
@@ -816,14 +849,13 @@ export async function captureDecision(
   const ruleErr = await runScopeRules({ docoDir, ownerSlug, docoSlug, entityFm: fm });
   if (ruleErr) return ruleErr;
 
-  persistEntity({
+  await persistEntity({
     nodeType: "decision",
     id,
     docoId,
     fm,
     body: draft.body_md?.trim() ?? "",
   });
-  await reindex(docoDir);
   emitAuditForCreate({
     docoDir,
     docoId,
@@ -832,7 +864,7 @@ export async function captureDecision(
     entity_id: id,
     summary,
   });
-  await attachImplicitEdges({
+  scheduleBackgroundIndex(docoDir, {
     docoDir,
     ownerSlug,
     docoSlug,
@@ -844,7 +876,7 @@ export async function captureDecision(
       ...scopeIds,
       ...(typeof draft.born_from === "string" ? [draft.born_from] : []),
     ]),
-  }).catch(() => 0);
+  });
   const duration_ms = Math.round(performance.now() - startedAt);
   const footer_lines = renderOperationLines({
     ownerSlug,
@@ -1045,14 +1077,13 @@ export async function updateDecision(
     return { error: "No fields changed." };
   }
 
-  persistEntity({
+  await persistEntity({
     nodeType: "decision",
     id: decisionId,
     docoId,
     fm,
     body: finalBody.trim(),
   });
-  await reindex(docoDir);
   emitAuditForUpdate({
     docoDir,
     docoId,
@@ -1064,6 +1095,7 @@ export async function updateDecision(
     afterFm: fm,
     patchKeys: Object.keys(patch),
   });
+  scheduleBackgroundIndex(docoDir);
   const summary = String(fm.summary ?? decisionId);
   const duration_ms = Math.round(performance.now() - startedAt);
   const finalScopeIds = Array.isArray(fm.scopes) ? (fm.scopes as string[]) : [];
@@ -1276,14 +1308,13 @@ export async function updateEntity(opts: {
       nextBody = existingBody.trim();
     }
   }
-  persistEntity({
+  await persistEntity({
     nodeType,
     id,
     docoId,
     fm,
     body: nextBody,
   });
-  await reindex(docoDir);
   emitAuditForUpdate({
     docoDir,
     docoId,
@@ -1295,6 +1326,7 @@ export async function updateEntity(opts: {
     afterFm: fm,
     patchKeys: Object.keys(patch),
   });
+  scheduleBackgroundIndex(docoDir);
 
   const summary = String(fm.summary ?? fm.name ?? id);
   const duration_ms = Math.round(performance.now() - startedAt);
@@ -1389,14 +1421,13 @@ export async function captureIntent(
   const ruleErr = await runScopeRules({ docoDir, ownerSlug, docoSlug, entityFm: fm });
   if (ruleErr) return ruleErr;
 
-  persistEntity({
+  await persistEntity({
     nodeType: "intent",
     id,
     docoId,
     fm,
     body: draft.body_md?.trim() ?? "",
   });
-  await reindex(docoDir);
   emitAuditForCreate({
     docoDir,
     docoId,
@@ -1405,7 +1436,7 @@ export async function captureIntent(
     entity_id: id,
     summary,
   });
-  await attachImplicitEdges({
+  scheduleBackgroundIndex(docoDir, {
     docoDir,
     ownerSlug,
     docoSlug,
@@ -1413,7 +1444,7 @@ export async function captureIntent(
     entityType: "intent",
     entitySummary: summary,
     alreadyReferenced: new Set([...scopeIds, ...(wantedById ? [wantedById] : [])]),
-  }).catch(() => 0);
+  });
   const duration_ms = Math.round(performance.now() - startedAt);
   const footer_lines = renderOperationLines({
     ownerSlug,
@@ -1528,14 +1559,13 @@ export async function captureEval(
   const ruleErr = await runScopeRules({ docoDir, ownerSlug, docoSlug, entityFm: fm });
   if (ruleErr) return ruleErr;
 
-  persistEntity({
+  await persistEntity({
     nodeType: "eval",
     id,
     docoId,
     fm,
     body: draft.body_md?.trim() ?? "",
   });
-  await reindex(docoDir);
   emitAuditForCreate({
     docoDir,
     docoId,
@@ -1544,7 +1574,7 @@ export async function captureEval(
     entity_id: id,
     summary,
   });
-  await attachImplicitEdges({
+  scheduleBackgroundIndex(docoDir, {
     docoDir,
     ownerSlug,
     docoSlug,
@@ -1555,7 +1585,7 @@ export async function captureEval(
       ...scopeIds,
       ...(draft.target_ref ? [draft.target_ref] : []),
     ]),
-  }).catch(() => 0);
+  });
 
   const duration_ms = Math.round(performance.now() - startedAt);
   const footer_lines = renderOperationLines({
@@ -1679,14 +1709,13 @@ export async function captureAction(
   const ruleErr = await runScopeRules({ docoDir, ownerSlug, docoSlug, entityFm: fm });
   if (ruleErr) return ruleErr;
 
-  persistEntity({
+  await persistEntity({
     nodeType: "action",
     id,
     docoId,
     fm,
     body: draft.body_md?.trim() ?? "",
   });
-  await reindex(docoDir);
   emitAuditForCreate({
     docoDir,
     docoId,
@@ -1695,7 +1724,7 @@ export async function captureAction(
     entity_id: id,
     summary,
   });
-  await attachImplicitEdges({
+  scheduleBackgroundIndex(docoDir, {
     docoDir,
     ownerSlug,
     docoSlug,
@@ -1710,7 +1739,7 @@ export async function captureAction(
       ...scopeIds,
       ...(actorId ? [actorId] : []),
     ]),
-  }).catch(() => 0);
+  });
 
   const duration_ms = Math.round(performance.now() - startedAt);
   const footer_lines = renderOperationLines({
@@ -1851,14 +1880,13 @@ export async function captureRule(
   const ruleErr = await runScopeRules({ docoDir, ownerSlug, docoSlug, entityFm: fm });
   if (ruleErr) return ruleErr;
 
-  persistEntity({
+  await persistEntity({
     nodeType: "rule",
     id,
     docoId,
     fm,
     body: draft.body_md?.trim() ?? "",
   });
-  await reindex(docoDir);
   emitAuditForCreate({
     docoDir,
     docoId,
@@ -1867,7 +1895,7 @@ export async function captureRule(
     entity_id: id,
     summary,
   });
-  await attachImplicitEdges({
+  scheduleBackgroundIndex(docoDir, {
     docoDir,
     ownerSlug,
     docoSlug,
@@ -1880,7 +1908,7 @@ export async function captureRule(
       ...(authorId ? [authorId] : []),
       ...(typeof draft.born_from === "string" ? [draft.born_from] : []),
     ]),
-  }).catch(() => 0);
+  });
 
   const duration_ms = Math.round(performance.now() - startedAt);
   const footer_lines = renderOperationLines({
@@ -1992,14 +2020,13 @@ export async function captureReasoning(
   const ruleErr = await runScopeRules({ docoDir, ownerSlug, docoSlug, entityFm: fm });
   if (ruleErr) return ruleErr;
 
-  persistEntity({
+  await persistEntity({
     nodeType: "reasoning",
     id,
     docoId,
     fm,
     body: draft.body_md?.trim() ?? "",
   });
-  await reindex(docoDir);
   emitAuditForCreate({
     docoDir,
     docoId,
@@ -2008,7 +2035,7 @@ export async function captureReasoning(
     entity_id: id,
     summary,
   });
-  await attachImplicitEdges({
+  scheduleBackgroundIndex(docoDir, {
     docoDir,
     ownerSlug,
     docoSlug,
@@ -2021,7 +2048,7 @@ export async function captureReasoning(
       ...scopeIds,
       ...(authorId ? [authorId] : []),
     ]),
-  }).catch(() => 0);
+  });
 
   const duration_ms = Math.round(performance.now() - startedAt);
   const footer_lines = renderOperationLines({
@@ -2039,6 +2066,122 @@ export async function captureReasoning(
     ok: true,
     id,
     path: syntheticPath("reasoning", id),
+    footer_lines,
+    duration_ms,
+  };
+}
+
+const REF_TYPES = new Set(["file", "url", "ticket", "commit", "document", "other"]);
+
+export interface ReferenceDraft {
+  ref_type: string;
+  locator: string;
+  scope_names: string[];
+  summary?: string;
+  body_md?: string;
+  content_hash?: string | null;
+  intent_ids?: string[];
+  created_by_username?: string;
+  created_by_id?: string;
+  lifecycle?: string;
+}
+
+export async function captureReference(
+  docoDir: string,
+  docoId: string,
+  ownerSlug: string,
+  docoSlug: string,
+  draft: ReferenceDraft,
+  docoHost?: string,
+): Promise<CaptureResult | CaptureError> {
+  const startedAt = performance.now();
+  if (!draft.ref_type || !REF_TYPES.has(draft.ref_type)) {
+    return { error: `ref_type must be one of: ${[...REF_TYPES].join(", ")}.` };
+  }
+  if (!draft.locator?.trim()) return { error: "locator is required." };
+  if (!Array.isArray(draft.scope_names) || draft.scope_names.length === 0) {
+    return { error: "scope_names must be a non-empty array." };
+  }
+
+  const scopeRes = await resolveScopeOrError(docoDir, draft.scope_names, { verb: "tag", nodeKind: "Reference" });
+  if ("error" in scopeRes) return scopeRes;
+  const scopeIds = scopeRes.ids;
+
+  let createdById: string | null = null;
+  if (draft.created_by_username) {
+    createdById = await resolvePrincipalUsername(draft.created_by_username);
+    if (!createdById) {
+      return { error: `Unknown principal username: ${draft.created_by_username}` };
+    }
+  }
+  if (!createdById && draft.created_by_id) createdById = draft.created_by_id;
+
+  const intentIds: string[] = Array.isArray(draft.intent_ids) ? draft.intent_ids : [];
+
+  const id = `reference_${generateUlid()}`;
+  const locator = draft.locator.trim();
+  const summary = draft.summary?.trim() || `${draft.ref_type}: ${locator}`;
+  const now = new Date().toISOString();
+
+  const fm: Record<string, unknown> = {
+    id,
+    doco_id: docoId,
+    node_type: "reference",
+    summary,
+    ref_type: draft.ref_type,
+    locator,
+    ...(draft.content_hash ? { content_hash: draft.content_hash } : {}),
+    ...(intentIds.length > 0 ? { intent_ids: intentIds } : {}),
+    created_at: now,
+    ...(createdById ? { created_by: createdById } : {}),
+    lifecycle: draft.lifecycle ?? "active",
+    scopes: scopeIds,
+  };
+
+  const ruleErr = await runScopeRules({ docoDir, ownerSlug, docoSlug, entityFm: fm });
+  if (ruleErr) return ruleErr;
+
+  await persistEntity({
+    nodeType: "reference",
+    id,
+    docoId,
+    fm,
+    body: draft.body_md?.trim() ?? "",
+  });
+  emitAuditForCreate({
+    docoDir,
+    docoId,
+    actorId: createdById ?? null,
+    entity_type: "reference",
+    entity_id: id,
+    summary,
+  });
+  scheduleBackgroundIndex(docoDir, {
+    docoDir,
+    ownerSlug,
+    docoSlug,
+    entityId: id,
+    entityType: "reference",
+    entitySummary: `${summary} ${locator}`,
+    alreadyReferenced: new Set([...intentIds, ...scopeIds, ...(createdById ? [createdById] : [])]),
+  });
+
+  const duration_ms = Math.round(performance.now() - startedAt);
+  const footer_lines = renderOperationLines({
+    ownerSlug,
+    docoSlug,
+    nodeType: "reference",
+    id,
+    summary,
+    docoHost,
+    ops: [{ kind: "added", summary }],
+    scopes: await resolveScopeIcons(docoDir, scopeIds),
+    duration_ms,
+  });
+  return {
+    ok: true,
+    id,
+    path: syntheticPath("reference", id),
     footer_lines,
     duration_ms,
   };

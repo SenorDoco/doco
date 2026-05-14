@@ -1,5 +1,15 @@
+import { validateDocoSlug } from "@doco/shared";
+import { rootDir } from "~/lib/db.server";
 import { loadDocoForAdmin, loadDocoForRead } from "~/lib/doco-access.server";
-import { applyDocoSettings, type SettingsPatch } from "~/lib/doco-settings.server";
+import { reindex, renameDocoSlug, updateDocoMeta } from "~/lib/redeem.server";
+import { readDocoMetadata } from "~/lib/scope-helpers.server";
+
+interface SettingsPatch {
+  slug?: string;
+  display_name?: string | null;
+  description?: string | null;
+  visibility?: "private" | "public";
+}
 
 /**
  * /<owner>/<doco>/api/settings.json — single-call settings endpoint.
@@ -55,19 +65,47 @@ export async function action({
     return Response.json({ error: `Invalid JSON body: ${(e as Error).message}` }, { status: 400 });
   }
 
-  const result = await applyDocoSettings({ ownerSlug, docoSlug, oldDir, patch });
-  if ("error" in result) {
-    return Response.json({ error: result.error }, { status: 400 });
+  let finalSlug = docoSlug;
+  let finalDir = oldDir;
+  if (patch.slug !== undefined && patch.slug !== docoSlug) {
+    const slugError = validateDocoSlug(patch.slug);
+    if (slugError) return Response.json({ error: slugError }, { status: 400 });
+    try {
+      const { newDir } = await renameDocoSlug({
+        root: rootDir(),
+        ownerSlug,
+        oldSlug: docoSlug,
+        newSlug: patch.slug,
+      });
+      finalSlug = patch.slug;
+      finalDir = newDir;
+    } catch (e) {
+      return Response.json({ error: (e as Error).message }, { status: 400 });
+    }
   }
+
+  try {
+    await updateDocoMeta({
+      docoDir: finalDir,
+      ...(patch.description !== undefined ? { description: patch.description } : {}),
+      ...(patch.display_name !== undefined ? { display_name: patch.display_name } : {}),
+      ...(patch.visibility !== undefined ? { visibility: patch.visibility } : {}),
+    });
+  } catch (e) {
+    return Response.json({ error: (e as Error).message }, { status: 400 });
+  }
+  await reindex(finalDir);
+
+  const updated = readDocoMetadata(finalDir);
   return Response.json(
     {
       ok: true,
       owner_slug: ownerSlug,
-      doco_slug: result.finalSlug,
-      doco_id: result.doco_id,
-      display_name: result.display_name,
-      description: result.description,
-      visibility: result.visibility,
+      doco_slug: finalSlug,
+      doco_id: updated?.docoId ?? null,
+      display_name: updated?.displayName ?? "",
+      description: updated?.description ?? "",
+      visibility: updated?.visibility ?? "private",
     },
     { status: 200 },
   );
