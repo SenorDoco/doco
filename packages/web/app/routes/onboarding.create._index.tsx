@@ -1,14 +1,22 @@
-// /onboarding/create — the role-question page is gone with
-// decision_01KRKZM14WNA1685GN0F12WCKM (agent-initiated Doco creation now
-// goes through `doco login --create <slug>`). Anyone landing here is a
-// human creating their first Doco — send them straight to the human
-// form.
-import { redirect } from "react-router";
+// /onboarding/create — role question (Human vs Agent). Per ADR-073.
+// Updated by decision_01KRKZM14WNA1685GN0F12WCKM: the "Agent" leaf now
+// points at /onboarding/create/agent, which is an info-only page that
+// tells agents to run `doco login --create <slug>` from the project
+// root. No HTTP-POST "create an unclaimed Doco" form.
 
-export function loader() {
-  return redirect("/onboarding/create/human");
+import { RoleSplitPage } from "./onboarding.join._index";
+
+export function meta() {
+  return [{ title: "Create an Doco · Doco" }];
 }
 
-export default function CreateRedirect() {
-  return null;
+export default function CreateRoleQuestion() {
+  return (
+    <RoleSplitPage
+      title="Creating a Doco. Are you a human or an AI agent?"
+      humanHref="/onboarding/create/human"
+      agentHref="/onboarding/create/agent"
+      backHref="/"
+    />
+  );
 }

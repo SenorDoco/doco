@@ -66,9 +66,12 @@ export default [
   route("onboarding/join/agent.json", "routes/onboarding.join.agent[.]json.tsx"),
   route("onboarding/create", "routes/onboarding.create._index.tsx"),
   route("onboarding/create/human", "routes/onboarding.create.human.tsx"),
-  // /onboarding/create/agent.* + /claim/<token> retired by
-  // decision_01KRKZM14WNA1685GN0F12WCKM — agent-initiated Doco creation
-  // now goes through /cli/authorize via `doco login --create <slug>`.
+  // /onboarding/create/agent.* is info-only after
+  // decision_01KRKZM14WNA1685GN0F12WCKM: the page tells agents to run
+  // `doco login --create <slug>` from the project root rather than
+  // POSTing an unclaimed Doco. No claim handoff.
+  route("onboarding/create/agent", "routes/onboarding.create.agent.tsx"),
+  route("onboarding/create/agent.txt", "routes/onboarding.create.agent[.]txt.tsx"),
   // Agents
   route("agents", "routes/agents._index.tsx"),
   route("agents/new", "routes/agents.new.tsx"),

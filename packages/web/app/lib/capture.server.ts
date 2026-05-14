@@ -99,17 +99,23 @@ function scheduleBackgroundIndex(
   docoDir: string,
   attachOpts?: Parameters<typeof attachImplicitEdges>[0],
 ): void {
+  const tag = attachOpts ? `${attachOpts.entityType}/${attachOpts.entityId}` : docoDir;
+  console.log(`[bg-index] scheduling for ${tag}`);
   void (async () => {
+    const t0 = performance.now();
     try {
-      await reindex(docoDir);
+      const r = await reindex(docoDir);
+      console.log(`[bg-index] reindex done for ${tag} in ${Math.round(performance.now() - t0)}ms (inserted=${r.inserted}, embeddings=${JSON.stringify(r.embeddings ?? null)})`);
     } catch (err) {
-      console.error(`background reindex failed for ${docoDir}:`, err);
+      console.error(`[bg-index] reindex failed for ${tag}:`, err);
     }
     if (!attachOpts) return;
+    const t1 = performance.now();
     try {
-      await attachImplicitEdges(attachOpts);
+      const n = await attachImplicitEdges(attachOpts);
+      console.log(`[bg-index] attachImplicitEdges done for ${tag} in ${Math.round(performance.now() - t1)}ms (proposed=${n})`);
     } catch (err) {
-      console.error("background attachImplicitEdges failed:", err);
+      console.error(`[bg-index] attachImplicitEdges failed for ${tag}:`, err);
     }
   })();
 }
@@ -1120,7 +1126,7 @@ export async function updateDecision(
   };
 }
 
-type NodeTypeName =
+export type NodeTypeName =
   | "decision"
   | "intent"
   | "rule"

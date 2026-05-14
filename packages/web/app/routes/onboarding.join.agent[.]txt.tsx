@@ -20,9 +20,9 @@ export function loader() {
     "     credential on every write against this Doco.",
     "",
     "If the owner wants to CREATE a brand-new Doco rather than join an existing",
-    "one, run `doco login --host <DOCO_HOST> --create <slug>` from the repo root.",
-    "The CLI opens a browser tab where the owner approves the session; the new",
-    "Doco is created directly under their account.",
+    "one, see /onboarding/create/agent.txt for the full procedure. Short form:",
+    "run `doco login --host <DOCO_HOST> --create <slug>` from the repo root and",
+    "the owner approves the session in a browser tab.",
   ].join("\n");
   return new Response(body, {
     headers: { "Content-Type": "text/plain; charset=utf-8" },
