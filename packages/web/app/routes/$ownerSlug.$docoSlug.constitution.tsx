@@ -1,10 +1,7 @@
 // /<owner>/<doco>/constitution — the Doco's Constitution scope rendered
-// as a first-class tab. Three cards stack here:
+// as a first-class tab. Two cards stack here:
 //   1. Scope metadata (purpose + guidelines)
-//   2. Checks — the scope's `rules` array on disk (predicates the
-//      engine runs at capture time; renamed in the UI from
-//      "Membership rules" to dodge collision with Rule entities)
-//   3. Rules — Rule entities tagged with this scope. The constitutional
+//   2. Rules — Rule entities tagged with this scope. The constitutional
 //      rules of THIS Doco — the load-bearing claims the project owner
 //      authored. Project-owner-only affordances: an "Add rule" link to
 //      the new-rule form, and inline Deprecate / Reactivate buttons
@@ -21,11 +18,6 @@ import { SiteHeader } from "~/components/site-header";
 import { Badge } from "~/components/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { entityUrl } from "@doco/shared";
-
-interface CheckView {
-  kind: string;
-  description: string;
-}
 
 interface RuleRow {
   id: string;
@@ -60,7 +52,6 @@ export async function loader({
         host: await loadHostConfig(),
         me,
         canEdit,
-        rules: [] as CheckView[],
         constitutionalRules: [] as RuleRow[],
       };
     }
@@ -69,58 +60,10 @@ export async function loader({
     const purpose = typeof scopeJson.purpose === "string" ? scopeJson.purpose : "";
     const guidelines = typeof scopeJson.guidelines === "string" ? scopeJson.guidelines : "";
 
-    // Surface the scope's `rules` array (renamed in the UI to "Checks"
-    // to dodge the collision with Rule entities) as plain-English
-    // descriptions.
-    const rawRules = Array.isArray(scopeJson.rules)
-      ? (scopeJson.rules as Record<string, unknown>[])
-      : [];
-    const readList = (plural: unknown, singular: unknown): string[] => {
-      if (Array.isArray(plural)) return plural.filter((v): v is string => typeof v === "string");
-      if (typeof singular === "string" && singular.length > 0) return [singular];
-      return [];
-    };
-    const rules: CheckView[] = rawRules.map((r) => {
-      const kind = (r.kind as string) ?? "(unknown)";
-      let description = (r.reason as string) ?? "";
-      if (!description) {
-        if (kind === "requires_edge") {
-          description = `Nodes must have an outgoing \`${r.edge_type}\` edge${r.target_node_type ? ` to a ${r.target_node_type}` : ""}.`;
-        } else if (kind === "forbids_edge") {
-          description = `Nodes must NOT have a \`${r.edge_type}\` edge${r.target_node_type ? ` to a ${r.target_node_type}` : ""}.`;
-        } else if (kind === "requires_field") {
-          const fs = readList(r.fields, r.field);
-          description =
-            fs.length <= 1
-              ? `Nodes must declare the \`${fs[0] ?? ""}\` field.`
-              : `Nodes must declare these fields: ${fs.map((f) => `\`${f}\``).join(", ")}.`;
-        } else if (kind === "forbids_field") {
-          const fs = readList(r.fields, r.field);
-          description =
-            fs.length <= 1
-              ? `Nodes must NOT declare the \`${fs[0] ?? ""}\` field.`
-              : `Nodes must NOT declare these fields: ${fs.map((f) => `\`${f}\``).join(", ")}.`;
-        } else if (kind === "mandatory_scope") {
-          const ids = readList(r.scope_ids, r.scope_id);
-          description =
-            ids.length <= 1
-              ? `Every node in this Doco must declare scope \`${ids[0] ?? ""}\`.`
-              : `Every node in this Doco must declare these scopes: ${ids
-                  .map((s) => `\`${s}\``)
-                  .join(", ")}.`;
-        } else if (kind === "probabilistic") {
-          description = `LLM-judged: ${r.spec}`;
-        } else {
-          description = `(${kind})`;
-        }
-      }
-      return { kind, description };
-    });
-
-    // Rule entities tagged with this constitution scope. Listed across
-    // all lifecycle stages so superseded rules stay visible alongside
-    // their successors — the supersession trail is itself part of the
-    // Constitution's history. Active first, then everything else.
+    // Rule entities tagged with this constitution scope. Superseded
+    // rules are filtered out — they've been replaced and aren't
+    // coming back; the active replacement carries the load. Deprecated
+    // entries remain visible so the project owner can Reactivate them.
     const constitutionalRules = (
       await c.query<RuleRow>(
         `SELECT r.id, r.summary, r.lifecycle
@@ -129,6 +72,7 @@ export async function loader({
                        AND e.edge_type = 'in_scope_of'
                        AND e.to_id = $1
           WHERE r.doco_id = $2
+            AND COALESCE(r.lifecycle, 'active') <> 'superseded'
           ORDER BY (CASE WHEN COALESCE(r.lifecycle, 'active') = 'active' THEN 0 ELSE 1 END),
                    r.created_at DESC`,
         [scope.id, ctx.meta.docoId],
@@ -139,7 +83,6 @@ export async function loader({
       ownerSlug,
       docoSlug,
       scope: { id: scope.id, name: scope.name, icon, summary: scope.summary, purpose, guidelines },
-      rules,
       constitutionalRules,
       host: await loadHostConfig(),
       me,
@@ -213,7 +156,7 @@ export default function Constitution({
 }: {
   loaderData: Awaited<ReturnType<typeof loader>>;
 }) {
-  const { ownerSlug, docoSlug, scope, rules, constitutionalRules, me, canEdit } = loaderData;
+  const { ownerSlug, docoSlug, scope, constitutionalRules, me, canEdit } = loaderData;
 
   if (!scope) {
     return (
@@ -290,39 +233,6 @@ export default function Constitution({
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-sm">
-              Checks ({rules.length})
-            </CardTitle>
-            <CardDescription>
-              Predicates the engine evaluates on every capture into this
-              scope. Deterministic checks block writes; probabilistic
-              ones surface as warnings.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {rules.length === 0 ? (
-              <p className="text-xs text-muted-foreground">
-                No checks yet. Edit the scope to add some
-                (mandatory-scope, requires-field, requires-edge, etc.).
-              </p>
-            ) : (
-              <ul className="space-y-2">
-                {rules.map((r, i) => (
-                  <li
-                    key={`${r.kind}-${i}`}
-                    className="flex items-baseline gap-2 rounded-md border border-border p-2 text-xs"
-                  >
-                    <Badge>{r.kind}</Badge>
-                    <span className="text-foreground">{r.description}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
             <CardTitle className="text-sm flex items-center justify-between gap-3">
               <span>Rules ({constitutionalRules.length})</span>
               {canEdit ? (
@@ -337,8 +247,7 @@ export default function Constitution({
             <CardDescription>
               Rule entities the project owner has tagged into this scope
               — the load-bearing claims this Doco is held to. Deprecated
-              and superseded entries are kept so the trail of "what we
-              used to say" stays visible.
+              entries are kept so the project owner can reactivate them.
             </CardDescription>
           </CardHeader>
           <CardContent>
