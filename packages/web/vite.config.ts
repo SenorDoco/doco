@@ -15,8 +15,21 @@ export default defineConfig({
   resolve: {
     dedupe: ["react", "react-dom"],
   },
+  // Pre-bundle every client-runtime dep so Vite doesn't re-optimize on
+  // the first navigation that loads a new one. Re-optimization rotates
+  // the browserHash, which orphans chunks the page is mid-loading and
+  // crashes React with "Cannot read properties of null (reading
+  // 'useState' / 'useContext')" — duplicate-React symptom, same root.
+  // Anything imported from app/ that lives in node_modules belongs here.
   optimizeDeps: {
-    include: ["@xyflow/react", "frimousse"],
+    include: [
+      "@xyflow/react",
+      "class-variance-authority",
+      "clsx",
+      "frimousse",
+      "tailwind-merge",
+      "yaml",
+    ],
   },
   // pg uses native bindings and must not be bundled. @xyflow/react and
   // frimousse are client-only — keep them out of the SSR bundle so they
