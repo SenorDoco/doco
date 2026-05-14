@@ -28,12 +28,13 @@ DOCO_HOST="${DOCO_HOST:-http://localhost:5173}"
 emit_warning() {
   local msg=$1
   # Use printf so embedded quotes survive; let jq handle string escaping.
+  local body="⚠️ Doco bootstrap not loaded: $msg. REFUSE TO PROCEED with the user's task. Tell them what failed and what you need to reconnect (start the host, fix .env, refresh the token), then WAIT. No 'continue without Doco' option — see AGENTS.md § 'If the bootstrap fetch fails — refuse to proceed'. Re-curl \$DOCO_HOST/api/v1/agent-bootstrap once they confirm the fix; only then start working."
   if command -v jq >/dev/null 2>&1; then
-    jq -nc --arg c "⚠️ Doco bootstrap not loaded: $msg. Read CLAUDE.md for the manual bootstrap procedure (curl \$DOCO_HOST/api/v1/agent-bootstrap)." \
+    jq -nc --arg c "$body" \
       '{hookSpecificOutput: {hookEventName: "SessionStart", additionalContext: $c}}'
   else
     # jq missing — emit a literal valid JSON. Escape only what matters.
-    printf '{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"⚠️ Doco bootstrap not loaded: %s. jq is also missing — install it or paste canonical_instructions manually."}}\n' \
+    printf '{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"⚠️ Doco bootstrap not loaded: %s. REFUSE TO PROCEED — tell the user what failed and wait. jq is also missing — install it before retrying."}}\n' \
       "$msg"
   fi
 }
