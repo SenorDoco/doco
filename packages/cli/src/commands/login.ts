@@ -186,12 +186,43 @@ export const loginCmd = defineCommand({
           }
           writeEnvFile(envPath, env, updates);
           console.log(checkmark(`Wrote DOCO_HOST + DOCO_TOKEN${body.doco_slug ? " + DOCO_SLUG" : ""} to ${c.dim("./.env")}.`));
+
+          // Install the agent-bootstrap files (AGENTS.md + CLAUDE.md shim +
+          // .claude/settings.json + the four hook scripts) into the same
+          // repo. Without this the project owner's agent has no protocol
+          // hooks installed — they'd need a separate `doco
+          // install-agent-bootstrap` invocation before the new env vars
+          // take effect. The hooks themselves `source .env` on each fire,
+          // so once they're approved (Claude Code: /hooks) the very next
+          // UserPromptSubmit picks up the fresh DOCO_TOKEN — no full
+          // session restart needed.
+          try {
+            const { installAgentBootstrapCmd } = await import("./install-agent-bootstrap.js");
+            const originalLog = console.log;
+            console.log = () => {};
+            try {
+              await installAgentBootstrapCmd.run!({
+                args: { root: process.cwd(), force: false },
+              } as never);
+            } finally {
+              console.log = originalLog;
+            }
+            console.log(checkmark(`Installed agent bootstrap (${c.dim("AGENTS.md + CLAUDE.md + .claude/")}).`));
+          } catch (e) {
+            console.error(c.dim(`(install-agent-bootstrap failed: ${(e as Error).message}. Run \`doco install-agent-bootstrap\` manually.)`));
+          }
+
           if (body.doco_slug) {
             console.log();
             console.log(c.dim(`Doco URL: ${normalizedHost}/${body.owner_slug}/${body.doco_slug}`));
           }
           console.log();
-          console.log(c.dim("Restart your agent session to pick up the new credentials."));
+          console.log(c.dim("Next, in this Claude Code session (no restart needed):"));
+          console.log(c.dim("  1. /hooks — review and approve the new SessionStart + UserPromptSubmit hooks."));
+          console.log(c.dim("  2. /clear (optional) — fires SessionStart fresh so the canonical_instructions"));
+          console.log(c.dim("     get injected. Without /clear, the per-prompt UserPromptSubmit hook still"));
+          console.log(c.dim("     re-pushes the protocol checklist on the next user message."));
+          console.log(c.dim("Other agents: AGENTS.md is now in place; restart per their convention if needed."));
           return;
         }
         if (body.status === "denied") {
