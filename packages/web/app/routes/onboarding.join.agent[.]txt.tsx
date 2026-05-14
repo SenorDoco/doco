@@ -21,8 +21,9 @@ export function loader() {
     "     bearer token you'll use for all future writes against this Doco.",
     "",
     "If the owner wants to CREATE a brand-new Doco rather than join an existing",
-    "one, see /onboarding/create/agent.txt — that flow lets you bootstrap a Doco",
-    "the owner can later claim.",
+    "one, run `doco login --host <DOCO_HOST> --create <slug>` from the repo root.",
+    "The CLI opens a browser tab where the owner approves the session; the new",
+    "Doco is created directly under their account.",
   ].join("\n");
   return new Response(body, {
     headers: { "Content-Type": "text/plain; charset=utf-8" },

@@ -26,9 +26,11 @@ import { createScopeInDoco, reindex } from "~/lib/redeem.server";
  *   - `guidelines`: string (optional) — markdown guidance for authors.
  *   - `parent_id`: string (optional) — id of an existing scope to nest
  *     this one under.
- *   - `rules`: unknown[] (optional) — pre-seeded membership rules.
+ *   - `rules`: unknown[] (optional) — pre-seeded checks (predicates the
+ *     engine runs on every capture into this scope).
  *   - `watched`: boolean (REQUIRED) — soft attention signal. NOT hard
- *     enforcement (use `mandatory_scope` Constitution rules for that).
+ *     enforcement (use a `mandatory_scope` check on the constitution
+ *     scope for that).
  *     No default.
  */
 
@@ -131,7 +133,7 @@ export async function action({
     if (!tpl) {
       return Response.json({ error: `Unknown template: ${body.template_name}` }, { status: 400 });
     }
-    const existing = listScopeDetails(dir);
+    const existing = await listScopeDetails(dir);
     if (existing.some((s) => s.name === tpl.name)) {
       return Response.json({ error: `Scope "${tpl.name}" already exists.` }, { status: 409 });
     }
@@ -162,7 +164,7 @@ export async function action({
         { status: 400 },
       );
     }
-    const existing = listScopeDetails(dir);
+    const existing = await listScopeDetails(dir);
     if (existing.some((s) => s.name === name)) {
       return Response.json({ error: `Scope "${name}" already exists.` }, { status: 409 });
     }

@@ -1,22 +1,14 @@
 // GET /<owner>/<doco>/search.json — agent-facing query endpoint.
 //
 // Agents call this at the START of every new task to find nodes in the
-// Doco relevant to the user's request. The response carries the count
-// of hits + the wall-clock duration on the server so the agent can
-// render the "Querying… / Connected. NN relevant nodes found (X.Xs)"
-// indicator at the top of their reply.
-//
-// Ranking is vector-only (cosine over entity embeddings, ADR-052,
-// supersedes ADR-030). One provider call per request embeds the query;
-// cosine is computed against every entity in the Doco; the top-N by
-// score is returned ordered descending. No FTS layer, no find_rules
-// sidecar — search is one thing.
-//
+// Doco relevant to the user's request. Vector-only ranking (ADR-052).
 // Resource route — no default export.
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { cosineSimilarity, getAllEmbeddings, globalPageRank } from "@doco/index";
-import { docoPath, openDocoDb } from "~/lib/db.server";
+import type { PoolClient } from "pg";
+import { cosineSimilarity, getAllEmbeddingsForDoco, withClient } from "@doco/db";
+import { globalPageRank } from "@doco/index";
+import { docoPath } from "~/lib/db.server";
 import { etaggedJson } from "~/lib/etag.server";
 import { loadDocoForRead } from "~/lib/doco-access.server";
 import { getDocoEmbeddingProvider } from "~/lib/embedding-provider.server";
@@ -27,11 +19,6 @@ import {
   type SearchFilters,
 } from "~/lib/search-filters.server";
 
-/**
- * Per-node-type directory map (matches the on-disk convention every
- * capture helper writes to). The `reasoning` type has no plural — its
- * dir is `reasoning` not `reasonings`.
- */
 const PLURAL_DIR: Record<string, string> = {
   decision: "decisions",
   intent: "intents",
@@ -46,13 +33,6 @@ const PLURAL_DIR: Record<string, string> = {
   organization: "organizations",
 };
 
-/**
- * Resolve an entity's on-disk file path. Tries `.md` first (Decision,
- * Intent, Rule, Action, Reasoning, Idea, Eval store body in markdown),
- * then `.yaml` (Scope, Reference, Principal, Organization). Returns
- * null if neither exists — usually means the index is stale relative
- * to disk.
- */
 function resolveEntityFilePath(
   docoDir: string,
   nodeType: string,
@@ -69,42 +49,116 @@ function resolveEntityFilePath(
 interface Hit {
   id: string;
   node_type: string;
-  /** Scope hits carry their `name` — the handle agents use in `scopes: [user-flows]`. Other types leave it null. */
   name: string | null;
   summary: string;
   lifecycle: string | null;
   created_at: string | null;
-  /** Global PageRank — graph centrality, attached for downstream consumers. */
   gpr: number;
-  /**
-   * Cosine similarity between the query embedding and this entity's
-   * stored embedding (0..1, rounded to 4 decimals). Always populated
-   * on a successful vector search — hits are ranked by this value.
-   * Per ADR-052.
-   */
   vector_score: number;
-  /**
-   * Absolute path to the entity's YAML/markdown file on disk. Saves the
-   * agent a filesystem grep — they can read the file directly.
-   */
   file_path: string | null;
-  /**
-   * True when this hit was force-included regardless of cosine rank.
-   * Pinned hits: the Constitution scope (per ADR-136 — its rules can
-   * block any capture) and any scope the Constitution names in a
-   * `mandatory_scope` rule.
-   */
   pinned?: boolean;
 }
 
-function pickAvailableColumns(
-  db: import("better-sqlite3").Database,
+interface TypeFetch {
+  table: string;
+  nodeType: string;
+  selectExtra: string;
+  hostLevel: boolean;
+  rowToHit(
+    row: Record<string, unknown>,
+    vectorScore: number,
+    docoDir: string,
+  ): Hit;
+}
+
+const TYPE_FETCHES: TypeFetch[] = [
+  fetchSpec("decisions", "decision", "summary, lifecycle, created_at", false),
+  fetchSpec("intents", "intent", "summary, lifecycle, created_at", false),
+  fetchSpec("rules", "rule", "summary, lifecycle, created_at", false),
+  fetchSpec("actions", "action", "summary, lifecycle, created_at", false),
+  fetchSpec("reasoning", "reasoning", "summary, lifecycle, created_at", false),
+  fetchSpec("reference_entities", "reference", "summary, lifecycle, created_at", false),
+  fetchSpec(
+    "scopes",
+    "scope",
+    "name, summary, lifecycle, created_at",
+    false,
+    (r, vs, docoDir) => ({
+      id: String(r.id),
+      node_type: "scope",
+      name: (r.name as string) ?? null,
+      summary: (r.summary as string) ?? "",
+      lifecycle: (r.lifecycle as string) ?? null,
+      created_at: (r.created_at as string) ?? null,
+      gpr: 0,
+      vector_score: vs,
+      file_path: resolveEntityFilePath(docoDir, "scope", String(r.id)),
+    }),
+  ),
+  fetchSpec("evals", "eval", "summary, lifecycle, created_at", false),
+  fetchSpec("ideas", "idea", "summary, lifecycle, created_at", false),
+  fetchSpec(
+    "principals",
+    "principal",
+    "username, display_name, created_at",
+    true,
+    (r, vs, docoDir) => ({
+      id: String(r.id),
+      node_type: "principal",
+      name: (r.username as string) ?? null,
+      summary: (r.display_name as string) ?? "",
+      lifecycle: null,
+      created_at: (r.created_at as string) ?? null,
+      gpr: 0,
+      vector_score: vs,
+      file_path: resolveEntityFilePath(docoDir, "principal", String(r.id)),
+    }),
+  ),
+  fetchSpec(
+    "organizations",
+    "organization",
+    "slug, name, created_at",
+    true,
+    (r, vs, docoDir) => ({
+      id: String(r.id),
+      node_type: "organization",
+      name: (r.slug as string) ?? null,
+      summary: (r.name as string) ?? "",
+      lifecycle: null,
+      created_at: (r.created_at as string) ?? null,
+      gpr: 0,
+      vector_score: vs,
+      file_path: resolveEntityFilePath(docoDir, "organization", String(r.id)),
+    }),
+  ),
+];
+
+function fetchSpec(
   table: string,
-  wanted: string[],
-): string[] {
-  const rows = db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
-  const have = new Set(rows.map((r) => r.name));
-  return wanted.filter((c) => have.has(c));
+  nodeType: string,
+  selectExtra: string,
+  hostLevel: boolean,
+  custom?: TypeFetch["rowToHit"],
+): TypeFetch {
+  return {
+    table,
+    nodeType,
+    selectExtra,
+    hostLevel,
+    rowToHit:
+      custom ??
+      ((r, vs, docoDir) => ({
+        id: String(r.id),
+        node_type: nodeType,
+        name: null,
+        summary: (r.summary as string) ?? "",
+        lifecycle: (r.lifecycle as string) ?? null,
+        created_at: (r.created_at as string) ?? null,
+        gpr: 0,
+        vector_score: vs,
+        file_path: resolveEntityFilePath(docoDir, nodeType, String(r.id)),
+      })),
+  };
 }
 
 export async function loader({
@@ -116,19 +170,15 @@ export async function loader({
 }) {
   const start = performance.now();
   const { ownerSlug, docoSlug } = params;
-  await loadDocoForRead(request, ownerSlug, docoSlug); // 404 if private + non-member
+  const ctx = await loadDocoForRead(request, ownerSlug, docoSlug);
   const url = new URL(request.url);
   const q = (url.searchParams.get("q") ?? "").trim();
+  const docoDir = docoPath(ownerSlug, docoSlug);
 
-  const db = openDocoDb(ownerSlug, docoSlug);
-  try {
-    // Facets feed `parseSearchFilters` so the lifecycle default adapts
-    // to whatever values are present on disk ("active", "succeeded", …).
-    const facets = computeFilterFacets(db);
+  return withClient(async (c) => {
+    const facets = await computeFilterFacets(c, ctx.meta.docoId);
     const filters: SearchFilters = parseSearchFilters(url.searchParams, facets);
 
-    // Emit the applied filter spec on every response so the caller can see
-    // what was used (helpful when defaults kick in for an omitted param).
     const filtersOut = {
       lifecycle: filters.lifecycle,
       node_type: filters.nodeType,
@@ -157,7 +207,7 @@ export async function loader({
         warning: "Vector search unavailable: no embedding provider configured (OPENAI_API_KEY).",
       });
     }
-    // Step 1: embed the query.
+
     let queryEmbedding: Float32Array;
     try {
       const [v] = await provider.embed([q]);
@@ -183,15 +233,8 @@ export async function loader({
       });
     }
 
-    // Step 2: resolve filter constraints to a candidate id set BEFORE
-    // computing cosine, so we don't waste work on entities the user
-    // filtered out. `null` = no filter (every entity is a candidate).
-    const candidateIds = resolveFilteredCandidates(db, filters);
-
-    // Step 3: cosine against the candidate set (or every entity when
-    // unfiltered). At Tier B scale (≤ 100k entities, ADR-049) full-scan
-    // is fine.
-    const all = getAllEmbeddings(db).filter(
+    const candidateIds = await resolveFilteredCandidates(c, ctx.meta.docoId, filters);
+    const all = (await getAllEmbeddingsForDoco(ctx.meta.docoId)).filter(
       (e) => candidateIds === null || candidateIds.has(e.entity_id),
     );
     if (all.length === 0) {
@@ -207,74 +250,38 @@ export async function loader({
             : "No entities match the active filters.",
       });
     }
-    const scored: { entity_id: string; score: number }[] = [];
-    for (const e of all) {
-      scored.push({
-        entity_id: e.entity_id,
-        score: cosineSimilarity(queryEmbedding, e.embedding),
-      });
-    }
+    const scored = all.map((e) => ({
+      entity_id: e.entity_id,
+      score: cosineSimilarity(queryEmbedding, e.embedding),
+    }));
     scored.sort((a, b) => b.score - a.score);
     const top = scored.slice(0, filters.limit);
-
-    // Step 3: hydrate per-hit metadata + node_type from the per-type tables.
-    // The embeddings table doesn't carry node_type, so we resolve it by
-    // checking each per-type table by id (fast: each top-N entry is one
-    // PK lookup per type until found).
-    const nodeTypes = [
-      "decision",
-      "intent",
-      "rule",
-      "action",
-      "reasoning",
-      "reference",
-      "scope",
-      "eval",
-      "idea",
-      "principal",
-      "organization",
-    ] as const;
     const topById = new Map(top.map((t) => [t.entity_id, t.score]));
-    const hitsByType = new Map<string, Hit[]>();
-    for (const nodeType of nodeTypes) {
-      const cols = pickAvailableColumns(db, nodeType, [
-        "id",
-        "name",
-        "summary",
-        "lifecycle",
-        "created_at",
-      ]);
-      const placeholders = top.map(() => "?").join(",");
-      const rows = db
-        .prepare(`SELECT ${cols.join(", ")} FROM ${nodeType} WHERE id IN (${placeholders})`)
-        .all(...top.map((t) => t.entity_id)) as {
-        id: string;
-        name?: string | null;
-        summary?: string | null;
-        lifecycle?: string | null;
-        created_at?: string | null;
-      }[];
-      if (rows.length === 0) continue;
-      const arr: Hit[] = rows.map((row) => ({
-        id: row.id,
-        node_type: nodeType,
-        name: row.name ?? null,
-        summary: row.summary ?? "",
-        lifecycle: row.lifecycle ?? null,
-        created_at: row.created_at ?? null,
-        gpr: 0,
-        vector_score: Math.round((topById.get(row.id) ?? 0) * 10000) / 10000,
-        file_path: resolveEntityFilePath(docoPath(ownerSlug, docoSlug), nodeType, row.id),
-      }));
-      hitsByType.set(nodeType, arr);
+    const topIds = top.map((t) => t.entity_id);
+
+    const allHits: Hit[] = [];
+    for (const spec of TYPE_FETCHES) {
+      const sql = spec.hostLevel
+        ? `SELECT id, ${spec.selectExtra} FROM ${spec.table} WHERE id = ANY($1::text[])`
+        : `SELECT id, ${spec.selectExtra} FROM ${spec.table} WHERE id = ANY($1::text[]) AND doco_id = $2`;
+      const params = spec.hostLevel ? [topIds] : [topIds, ctx.meta.docoId];
+      const rows = (await c.query(sql, params)).rows;
+      for (const row of rows) {
+        const id = String(row.id);
+        const vs = Math.round((topById.get(id) ?? 0) * 10000) / 10000;
+        allHits.push(spec.rowToHit(row as Record<string, unknown>, vs, docoDir));
+      }
     }
 
-    // Attach Global PageRank.
-    const allEdges = db
-      .prepare("SELECT from_id, to_id, edge_type, attribution FROM edges")
-      .all() as { from_id: string; to_id: string; edge_type: string; attribution: string }[];
+    // Global PageRank — pull all edges for this Doco.
+    const edgeRows = (
+      await c.query<{ from_id: string; to_id: string; edge_type: string; attribution: string }>(
+        `SELECT from_id, to_id, edge_type, attribution FROM edges WHERE doco_id = $1`,
+        [ctx.meta.docoId],
+      )
+    ).rows;
     const gpr = globalPageRank(
-      allEdges.map((e) => ({
+      edgeRows.map((e) => ({
         from: e.from_id,
         to: e.to_id,
         edge_type: e.edge_type,
@@ -284,133 +291,16 @@ export async function loader({
     );
     const gprById = new Map<string, number>();
     for (const p of gpr) gprById.set(p.id, p.score);
-
-    // Step 4: stitch back in the cosine-descending order.
-    const allHits: Hit[] = [];
-    for (const arr of hitsByType.values()) {
-      for (const h of arr) {
-        h.gpr = gprById.get(h.id) ?? 0;
-        allHits.push(h);
-      }
-    }
+    for (const h of allHits) h.gpr = gprById.get(h.id) ?? 0;
     allHits.sort((a, b) => b.vector_score - a.vector_score);
 
-    // Step 5: pin the load-bearing scopes to the top, regardless of
-    // cosine. The Constitution always pins (per ADR-136) — its rules
-    // can block any capture, so agents need it in context on every
-    // prompt-broad search. Mandatory scopes (those the Constitution
-    // names in a `mandatory_scope` rule, per ADR-129) ALSO pin —
-    // capture aborts when a node omits them, so agents need to know
-    // they exist before drafting. We skip the pins when the caller
-    // has narrowed `node_type` to types that exclude `scope` (targeted
-    // lookups respect the caller's narrowing).
+    // Pin Constitution + mandatory scopes (ADR-136, ADR-129).
     const wantsScope =
       filters.nodeType === null || filters.nodeType.includes("scope");
     if (wantsScope) {
-      const scopeCols = pickAvailableColumns(db, "scope", [
-        "id",
-        "name",
-        "summary",
-        "created_at",
-      ]);
-      const constRow = db
-        .prepare(
-          `SELECT ${scopeCols.join(", ")}, raw_json FROM scope WHERE name = 'constitution' LIMIT 1`,
-        )
-        .get() as
-        | {
-            id: string;
-            name?: string | null;
-            summary?: string | null;
-            created_at?: string | null;
-            raw_json?: string | null;
-          }
-        | undefined;
-
-      // Constitution first, then any scope it names in a
-      // `mandatory_scope` rule. Order matters — `pinScope` prepends,
-      // so we apply mandatories before the Constitution to keep the
-      // Constitution at position 0 in the final list.
-      const pinScope = (row: {
-        id: string;
-        name?: string | null;
-        summary?: string | null;
-        created_at?: string | null;
-      }) => {
-        const existingIdx = allHits.findIndex((h) => h.id === row.id);
-        if (existingIdx >= 0) {
-          const [hit] = allHits.splice(existingIdx, 1);
-          hit.pinned = true;
-          allHits.unshift(hit);
-        } else {
-          const scoreEntry = scored.find((s) => s.entity_id === row.id);
-          allHits.unshift({
-            id: row.id,
-            node_type: "scope",
-            name: row.name ?? null,
-            summary: row.summary ?? "",
-            lifecycle: null,
-            created_at: row.created_at ?? null,
-            gpr: gprById.get(row.id) ?? 0,
-            vector_score: scoreEntry
-              ? Math.round(scoreEntry.score * 10000) / 10000
-              : 0,
-            file_path: resolveEntityFilePath(
-              docoPath(ownerSlug, docoSlug),
-              "scope",
-              row.id,
-            ),
-            pinned: true,
-          });
-        }
-      };
-
-      if (constRow) {
-        const mandatoryIds: string[] = [];
-        if (typeof constRow.raw_json === "string") {
-          try {
-            const parsed = JSON.parse(constRow.raw_json) as {
-              rules?: unknown;
-            };
-            const rules = Array.isArray(parsed.rules) ? parsed.rules : [];
-            for (const r of rules as Record<string, unknown>[]) {
-              if (r.kind !== "mandatory_scope") continue;
-              // Plural canonical shape; legacy singular `scope_id` accepted
-              // until any pre-plural YAML is rewritten.
-              if (Array.isArray(r.scope_ids)) {
-                for (const sid of r.scope_ids) {
-                  if (typeof sid === "string") mandatoryIds.push(sid);
-                }
-              } else if (typeof r.scope_id === "string") {
-                mandatoryIds.push(r.scope_id);
-              }
-            }
-          } catch {
-            // Malformed raw_json — skip mandatory pinning.
-          }
-        }
-
-        if (mandatoryIds.length > 0) {
-          const placeholders = mandatoryIds.map(() => "?").join(",");
-          const mandatoryRows = db
-            .prepare(
-              `SELECT ${scopeCols.join(", ")} FROM scope WHERE id IN (${placeholders}) AND id != ?`,
-            )
-            .all(...mandatoryIds, constRow.id) as {
-            id: string;
-            name?: string | null;
-            summary?: string | null;
-            created_at?: string | null;
-          }[];
-          for (const row of mandatoryRows) pinScope(row);
-        }
-
-        pinScope(constRow);
-      }
+      await applyScopePins(c, ctx.meta.docoId, allHits, scored, gprById, docoDir);
     }
 
-    // Stable subset for ETag — exclude `duration_ms` so timing jitter
-    // doesn't bust the cache for an otherwise-identical response.
     const stableData = {
       query: q,
       count: allHits.length,
@@ -425,7 +315,102 @@ export async function loader({
       },
       { stableData },
     );
-  } finally {
-    db.close();
+  });
+}
+
+async function applyScopePins(
+  c: PoolClient,
+  docoId: string,
+  allHits: Hit[],
+  scored: { entity_id: string; score: number }[],
+  gprById: Map<string, number>,
+  docoDir: string,
+): Promise<void> {
+  const constRow = (
+    await c.query<{
+      id: string;
+      name: string;
+      summary: string | null;
+      created_at: string;
+      raw_yaml: string;
+    }>(
+      `SELECT id, name, summary, created_at, raw_yaml
+         FROM scopes WHERE doco_id = $1 AND name = 'constitution' LIMIT 1`,
+      [docoId],
+    )
+  ).rows[0];
+  if (!constRow) return;
+
+  const pinScope = (row: {
+    id: string;
+    name: string;
+    summary: string | null;
+    created_at: string;
+  }) => {
+    const existingIdx = allHits.findIndex((h) => h.id === row.id);
+    if (existingIdx >= 0) {
+      const [hit] = allHits.splice(existingIdx, 1);
+      hit.pinned = true;
+      allHits.unshift(hit);
+    } else {
+      const scoreEntry = scored.find((s) => s.entity_id === row.id);
+      allHits.unshift({
+        id: row.id,
+        node_type: "scope",
+        name: row.name,
+        summary: row.summary ?? "",
+        lifecycle: null,
+        created_at: row.created_at,
+        gpr: gprById.get(row.id) ?? 0,
+        vector_score: scoreEntry
+          ? Math.round(scoreEntry.score * 10000) / 10000
+          : 0,
+        file_path: resolveEntityFilePath(docoDir, "scope", row.id),
+        pinned: true,
+      });
+    }
+  };
+
+  // Parse Constitution YAML for mandatory_scope rules.
+  let mandatoryIds: string[] = [];
+  try {
+    const { parse: parseYaml } = await import("yaml");
+    const parsed = parseYaml(constRow.raw_yaml) as { rules?: unknown };
+    const rules = Array.isArray(parsed.rules) ? parsed.rules : [];
+    for (const r of rules as Record<string, unknown>[]) {
+      if (r.kind !== "mandatory_scope") continue;
+      if (Array.isArray(r.scope_ids)) {
+        for (const sid of r.scope_ids) {
+          if (typeof sid === "string") mandatoryIds.push(sid);
+        }
+      } else if (typeof r.scope_id === "string") {
+        mandatoryIds.push(r.scope_id);
+      }
+    }
+  } catch {
+    mandatoryIds = [];
   }
+
+  if (mandatoryIds.length > 0) {
+    const mandatoryRows = (
+      await c.query<{
+        id: string;
+        name: string;
+        summary: string | null;
+        created_at: string;
+      }>(
+        `SELECT id, name, summary, created_at FROM scopes
+          WHERE doco_id = $1 AND id = ANY($2::text[]) AND id != $3`,
+        [docoId, mandatoryIds, constRow.id],
+      )
+    ).rows;
+    for (const row of mandatoryRows) pinScope(row);
+  }
+
+  pinScope({
+    id: constRow.id,
+    name: constRow.name,
+    summary: constRow.summary,
+    created_at: constRow.created_at,
+  });
 }

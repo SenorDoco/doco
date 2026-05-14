@@ -28,12 +28,13 @@ DOCO_HOST="${DOCO_HOST:-http://localhost:5173}"
 emit_warning() {
   local msg=$1
   # Use printf so embedded quotes survive; let jq handle string escaping.
+  local body="⚠️ Doco bootstrap not loaded: $msg. REFUSE TO PROCEED with the user's task. Tell them what failed and what you need to reconnect (start the host, fix .env, refresh the token), then WAIT. No 'continue without Doco' option — see AGENTS.md § 'If the bootstrap fetch fails — refuse to proceed'. Re-curl \$DOCO_HOST/api/v1/agent-bootstrap once they confirm the fix; only then start working."
   if command -v jq >/dev/null 2>&1; then
-    jq -nc --arg c "⚠️ Doco bootstrap not loaded: $msg. Read CLAUDE.md for the manual bootstrap procedure (curl \$DOCO_HOST/api/v1/agent-bootstrap)." \
+    jq -nc --arg c "$body" \
       '{hookSpecificOutput: {hookEventName: "SessionStart", additionalContext: $c}}'
   else
     # jq missing — emit a literal valid JSON. Escape only what matters.
-    printf '{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"⚠️ Doco bootstrap not loaded: %s. jq is also missing — install it or paste canonical_instructions manually."}}\n' \
+    printf '{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"⚠️ Doco bootstrap not loaded: %s. REFUSE TO PROCEED — tell the user what failed and wait. jq is also missing — install it before retrying."}}\n' \
       "$msg"
   fi
 }
@@ -60,43 +61,7 @@ if [ -n "${DOCO_SLUG:-}" ]; then
   SLUG_PARAM="?slug=$(printf '%s' "$DOCO_SLUG" | jq -sRr @uri 2>/dev/null || printf '%s' "$DOCO_SLUG")"
 fi
 
-# ETag-aware fetch: cache the bootstrap response body + ETag, and on
-# subsequent calls send `If-None-Match: <etag>`. The host returns 304
-# (no body) when the cached version is still fresh, which we replay
-# from the cache. Massively cheaper on long sessions because
-# SessionStart fires on every clear/compact/resume — the canonical
-# is 1k+ tokens and rarely changes between calls.
-CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/doco"
-mkdir -p "$CACHE_DIR" 2>/dev/null || true
-CACHE_KEY=$(printf '%s|%s' "$DOCO_HOST" "${DOCO_SLUG:-}" | shasum -a 256 2>/dev/null | cut -c1-16)
-CACHE_BODY="$CACHE_DIR/bootstrap-$CACHE_KEY.json"
-CACHE_ETAG="$CACHE_DIR/bootstrap-$CACHE_KEY.etag"
-
-ETAG_CURL=""
-if [ -f "$CACHE_ETAG" ]; then
-  CACHED=$(cat "$CACHE_ETAG" 2>/dev/null)
-  if [ -n "$CACHED" ]; then
-    ETAG_CURL="-H 'If-None-Match: $CACHED'"
-  fi
-fi
-
-RESP_BODY_FILE=$(mktemp 2>/dev/null || echo "/tmp/doco-bootstrap-resp.$$")
-RESP_HEADER_FILE=$(mktemp 2>/dev/null || echo "/tmp/doco-bootstrap-hdr.$$")
-HTTP_CODE=$(eval curl -s --max-time 8 -w '%{http_code}' -o "'$RESP_BODY_FILE'" -D "'$RESP_HEADER_FILE'" "$AUTH_CURL" "$ETAG_CURL" "'$DOCO_HOST/api/v1/agent-bootstrap${SLUG_PARAM}'" 2>/dev/null || printf '000')
-
-RESP=""
-if [ "$HTTP_CODE" = "304" ] && [ -f "$CACHE_BODY" ]; then
-  RESP=$(cat "$CACHE_BODY" 2>/dev/null || true)
-elif [ "$HTTP_CODE" = "200" ]; then
-  RESP=$(cat "$RESP_BODY_FILE" 2>/dev/null || true)
-  NEW_ETAG=$(grep -i '^etag:' "$RESP_HEADER_FILE" 2>/dev/null | tail -1 | sed -E 's/^[Ee][Tt][Aa][Gg]:[[:space:]]*//' | tr -d '\r\n')
-  if [ -n "$NEW_ETAG" ] && [ -n "$RESP" ]; then
-    printf '%s' "$RESP" > "$CACHE_BODY" 2>/dev/null || true
-    printf '%s' "$NEW_ETAG" > "$CACHE_ETAG" 2>/dev/null || true
-  fi
-fi
-rm -f "$RESP_BODY_FILE" "$RESP_HEADER_FILE"
-
+RESP=$(eval curl -sf --max-time 8 "$AUTH_CURL" "'$DOCO_HOST/api/v1/agent-bootstrap${SLUG_PARAM}'" 2>/dev/null || true)
 if [ -z "$RESP" ]; then
   emit_warning "could not reach $DOCO_HOST/api/v1/agent-bootstrap (server down? wrong DOCO_HOST?)"
   exit 0
@@ -208,23 +173,11 @@ if [ -n "$WARNING_TEXT" ]; then
   WARNING_BLOCK=$(printf '\n\n---\n\n## ⚠️ Bootstrap warning\n\n%s\n\nThis is not a hard failure — the canonical instructions below are still authoritative. But the per-Doco context (scopes / constitution) was not loaded, so any captures will need correcting once `.env` is fixed. Mention this to the user on your first reply.\n' "$WARNING_TEXT")
 fi
 
-# Pre-build the session-load indicator. Per canonical section 1a, the
-# loading-verb line fires ONCE per session — at the moment the agent
-# loads this canonical — separately from the per-query indicator. We
-# pick the verb at random here so the agent doesn't have to, and
-# instruct it to render the line on its first reply.
-LOADING_VERBS=("Connected to" "Tuned into" "Listening to" "Wired up to" "Synced with" "Plugged into" "Online with" "Reading" "Hooked into" "Linked to" "Eyes on" "Riding shotgun on" "Pinned to" "Threaded into" "Locked onto" "Channel open:" "Live on" "Mind-melded with" "Pulled up" "Holding the file on")
-LOADING_VERB="${LOADING_VERBS[$RANDOM % ${#LOADING_VERBS[@]}]}"
-SESSION_LOAD_BLOCK=""
-if [ -n "${DOCO_SLUG:-}" ]; then
-  SESSION_LOAD_BLOCK=$(printf '\n\n---\n\n## Session-load indicator — emit on your FIRST reply only\n\nPer canonical section 1a, the moment of loading this canonical deserves its own line. Render this ABOVE your first reply\047s per-query indicator, then NEVER again in this session:\n\n```\n[🔮 Doco] %s %s\n```\n\nThe verb is already randomized — emit verbatim, don\047t re-pick.\n' "$LOADING_VERB" "$DOCO_SLUG")
-fi
-
 # Prepend a strong "do not re-fetch" header so the agent recognises the
 # canonical is ALREADY in their context. The previous "if you see this,
 # the hook worked" wording was too soft — agents re-fetched anyway. This
 # version explicitly forbids re-fetching.
 TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 HEADER=$'🔒 Doco canonical_instructions — auto-loaded by SessionStart hook at '"${TIMESTAMP}"$'\n\nThis IS the canonical. **Do NOT re-fetch via `curl $DOCO_HOST/api/v1/agent-bootstrap`** — re-read the block below instead. The protocol applies to every reply (query indicator at top, footer_lines after writes, tally at end). For deep reference (model walkthrough, scope onboarding, placement examples), the long form is at `/api/v1/agent-reference` — fetch only on demand.\n\n---\n\n'
-printf '%s' "$RESP" | jq -nc --arg c "${HEADER}${INSTR}${WARNING_BLOCK}${CODE_MAP_BLOCK}${CONSTITUTION_BLOCK}${SCOPES_BLOCK}${SESSION_LOAD_BLOCK}" \
+printf '%s' "$RESP" | jq -nc --arg c "${HEADER}${INSTR}${WARNING_BLOCK}${CODE_MAP_BLOCK}${CONSTITUTION_BLOCK}${SCOPES_BLOCK}" \
   '{hookSpecificOutput: {hookEventName: "SessionStart", additionalContext: $c}}'

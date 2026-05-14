@@ -1,6 +1,7 @@
 import { Link } from "react-router";
+import { withClient } from "@doco/db";
 import { runAllLints } from "@doco/lints";
-import { openDocoDb } from "~/lib/db.server";
+import { docoPath } from "~/lib/db.server";
 import { loadDocoForRead } from "~/lib/doco-access.server";
 import { loadHostConfig } from "~/lib/host";
 import { getCurrentPrincipal } from "~/lib/session";
@@ -18,32 +19,28 @@ export async function loader({
   params: { ownerSlug: string; docoSlug: string };
 }) {
   const { ownerSlug, docoSlug } = params;
-  await loadDocoForRead(request, ownerSlug, docoSlug); // 404 if private + non-member
-  const db = openDocoDb(ownerSlug, docoSlug);
-  try {
-    const report = runAllLints(db);
-    const watcher = getWatcherStatus();
-    // Filter the watcher's recent-events stream to this Doco only — the
-    // watcher runs host-wide but the lint page is per-Doco.
-    const docoKey = `${ownerSlug}/${docoSlug}`;
-    const watcherForThisDoco = {
-      enabled: watcher.enabled,
-      started_at: watcher.started_at,
-      pending: watcher.pending.filter((p) => p.docoKey === docoKey),
-      recent: watcher.recent.filter((r) => r.docoKey === docoKey).slice(0, 10),
-      total_reindexes: watcher.total_reindexes,
-    };
-    return {
-      report,
-      ownerSlug,
-      docoSlug,
-      host: await loadHostConfig(),
-      me: await getCurrentPrincipal(request),
-      watcher: watcherForThisDoco,
-    };
-  } finally {
-    db.close();
-  }
+  const ctx = await loadDocoForRead(request, ownerSlug, docoSlug); // 404 if private + non-member
+  const docoRoot = docoPath(ownerSlug, docoSlug);
+  const report = await withClient((c) =>
+    runAllLints(c, ctx.meta.docoId, { docoRoot }),
+  );
+  const watcher = getWatcherStatus();
+  const docoKey = `${ownerSlug}/${docoSlug}`;
+  const watcherForThisDoco = {
+    enabled: watcher.enabled,
+    started_at: watcher.started_at,
+    pending: watcher.pending.filter((p) => p.docoKey === docoKey),
+    recent: watcher.recent.filter((r) => r.docoKey === docoKey).slice(0, 10),
+    total_reindexes: watcher.total_reindexes,
+  };
+  return {
+    report,
+    ownerSlug,
+    docoSlug,
+    host: await loadHostConfig(),
+    me: await getCurrentPrincipal(request),
+    watcher: watcherForThisDoco,
+  };
 }
 
 export function meta({ params }: { params: { ownerSlug: string; docoSlug: string } }) {

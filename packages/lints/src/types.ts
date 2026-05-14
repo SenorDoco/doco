@@ -1,3 +1,5 @@
+import type { PoolClient } from "pg";
+
 export interface LintIssue {
   lintId: string;
   severity: "error" | "warning";
@@ -5,14 +7,20 @@ export interface LintIssue {
   message: string;
 }
 
-import type { Database } from "better-sqlite3";
-
 /**
- * Optional per-run context for lints that need more than the cache.
+ * Optional per-run context for lints that need more than the DB.
  * `docoRoot` lets file-system / git-aware lints (like drift coverage) work.
  */
 export interface LintContext {
   docoRoot?: string;
 }
 
-export type Lint = (db: Database, ctx?: LintContext) => LintIssue[];
+/**
+ * Lint signature. Async PG-backed: each lint receives a connection
+ * scoped to one Doco. Lints are read-only.
+ */
+export type Lint = (
+  c: PoolClient,
+  docoId: string,
+  ctx?: LintContext,
+) => Promise<LintIssue[]>;

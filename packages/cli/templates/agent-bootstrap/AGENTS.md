@@ -48,8 +48,30 @@ Check `./.env` (gitignored). The hooks read three vars:
 - `DOCO_SLUG` — `<owner>/<doco>` (e.g. `acme/payments`); tells the
   UserPromptSubmit hook which Doco to query.
 
-If any are missing, ask the user to visit the host, copy them, and
-paste into `./.env`. Don't start work without the bootstrap fetched.
+If they're missing AND the project owner wants you to set up a new
+Doco for this repo, run:
+
+```
+doco login --host <DOCO_HOST> --create <slug>
+```
+
+This is the Vercel-style browser-authorize flow: the CLI opens
+`$DOCO_HOST/cli/authorize` in the project owner's default browser, the
+project owner reviews an identity card (CLI version, hostname, IP,
+timestamp) and clicks Authorize, and the CLI writes `DOCO_HOST` /
+`DOCO_TOKEN` / `DOCO_SLUG` to `./.env` automatically. The Doco is
+created directly under the project owner's account — no temporary
+"unclaimed" state, no follow-up URL to chase.
+
+If `DOCO_HOST` is already known but the token is just stale or missing
+(reconnecting to an existing Doco), run `doco login` without
+`--create`.
+
+If the project owner *denies* the browser prompt, the CLI exits
+non-zero and `./.env` stays empty. Don't loop — stop and ask what they
+want to do.
+
+Don't start work without the bootstrap fetched.
 
 ## If the bootstrap fetch fails — refuse to proceed
 

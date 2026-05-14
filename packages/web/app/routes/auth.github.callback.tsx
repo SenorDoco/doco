@@ -2,11 +2,13 @@ import { redirect } from "react-router";
 import { addPrincipal, findPrincipalByGitHubLogin } from "@doco/host";
 import { rootDir } from "~/lib/db.server";
 import {
+  clearOAuthReturnCookie,
   clearOAuthStateCookie,
   exchangeCodeForToken,
   fetchGitHubPrimaryEmail,
   fetchGitHubUser,
   readOAuthConfig,
+  readOAuthReturnCookie,
   verifyOAuthState,
 } from "~/lib/oauth.server";
 import { setSessionCookie } from "~/lib/session";
@@ -56,11 +58,15 @@ export async function loader({ request }: { request: Request }) {
   }
 
   // Combine cookies in one Set-Cookie response (Remix supports an array via
-  // Headers.append). Clear the OAuth-state cookie and set the session cookie.
+  // Headers.append). Clear the OAuth-state cookie + return cookie and set
+  // the session cookie. Honor `?return=` cookie if a sane same-origin path
+  // is captured; default to /dashboard.
   const headers = new Headers();
   headers.append("Set-Cookie", clearOAuthStateCookie());
+  headers.append("Set-Cookie", clearOAuthReturnCookie());
   headers.append("Set-Cookie", setSessionCookie(principalId));
-  headers.set("Location", "/dashboard");
+  const returnPath = readOAuthReturnCookie(cookieHeader);
+  headers.set("Location", returnPath ?? "/dashboard");
   return new Response(null, { status: 302, headers });
 }
 

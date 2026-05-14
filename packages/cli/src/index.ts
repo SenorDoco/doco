@@ -12,6 +12,7 @@ import { installAgentBootstrapCmd } from "./commands/install-agent-bootstrap.js"
 import { installHooksCmd } from "./commands/install-hooks.js";
 import { inviteCmd } from "./commands/invite.js";
 import { lintCmd } from "./commands/lint.js";
+import { loginCmd } from "./commands/login.js";
 import { patchCmd } from "./commands/patch.js";
 import { queryCmd } from "./commands/query.js";
 import { reindexCmd } from "./commands/reindex.js";
@@ -28,6 +29,7 @@ const main = defineCommand({
   },
   subCommands: {
     init: initCmd,
+    login: loginCmd,
     show: showCmd,
     validate: validateCmd,
     reindex: reindexCmd,

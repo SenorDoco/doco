@@ -15,8 +15,8 @@ import { type RouteConfig, index, route } from "@react-router/dev/routes";
  *   /                              host home (anonymous landing; redirects signed-in to /dashboard)
  *   /dashboard                     signed-in host dashboard (Docos / users / orgs)
  *   /sign-in, /sign-out, /sign-up  auth (cookie locally; OAuth in prod per ADR-066, ADR-094)
- *   /onboarding/*                  first-run wizard (ADR-073)
- *   /claim/:token                  agent-created Doco claim flow
+ *   /onboarding/*                  first-run wizard (ADR-073). Agent variants retired by decision_01KRKZM14WNA1685GN0F12WCKM — use /cli/authorize.
+ *   /cli/authorize                 Vercel-style browser-authorize handoff for `doco login` (decision_01KRKZM14WNA1685GN0F12WCKM)
  *   /agents, /agents/new           agent self-service (ADR-071)
  *   /invite, /invite/:token        legacy invitation flow (superseded by /agents/new, ADR-068..071)
  *   /new-doco, /new-org            self-service create flows (ADR-067)
@@ -62,11 +62,9 @@ export default [
   route("onboarding/join/agent.json", "routes/onboarding.join.agent[.]json.tsx"),
   route("onboarding/create", "routes/onboarding.create._index.tsx"),
   route("onboarding/create/human", "routes/onboarding.create.human.tsx"),
-  route("onboarding/create/agent", "routes/onboarding.create.agent.tsx"),
-  route("onboarding/create/agent.txt", "routes/onboarding.create.agent[.]txt.tsx"),
-  route("onboarding/create/agent.json", "routes/onboarding.create.agent[.]json.tsx"),
-  route("claim/:token", "routes/claim.$token.tsx"),
-  route("claim/:token.json", "routes/claim.$token[.]json.tsx"),
+  // /onboarding/create/agent.* + /claim/<token> retired by
+  // decision_01KRKZM14WNA1685GN0F12WCKM — agent-initiated Doco creation
+  // now goes through /cli/authorize via `doco login --create <slug>`.
   // Agents
   route("agents", "routes/agents._index.tsx"),
   route("agents/new", "routes/agents.new.tsx"),
@@ -78,6 +76,10 @@ export default [
   route("api/suggest-scopes", "routes/api.suggest-scopes.tsx"),
   route("api/v1/agent-bootstrap", "routes/api.v1.agent-bootstrap.tsx"),
   route("api/v1/agent-reference", "routes/api.v1.agent-reference.tsx"),
+  // CLI authorization (decision_01KRKZM14WNA1685GN0F12WCKM).
+  route("api/v1/cli/device-init", "routes/api.v1.cli.device-init.tsx"),
+  route("api/v1/cli/device-exchange", "routes/api.v1.cli.device-exchange.tsx"),
+  route("cli/authorize", "routes/cli.authorize.tsx"),
   // ID-based lookup + redirect: the doco_id is immortal across renames
   // and ownership transfers; the slug is not. Agents that record the
   // ID once can resolve to the current canonical slug at request time.
@@ -125,6 +127,7 @@ export default [
   route(":ownerSlug/:docoSlug/scopes/new", "routes/$ownerSlug.$docoSlug.scopes.new.tsx"),
   route(":ownerSlug/:docoSlug/scopes/:id/edit", "routes/$ownerSlug.$docoSlug.scopes.$id.edit.tsx"),
   route(":ownerSlug/:docoSlug/constitution", "routes/$ownerSlug.$docoSlug.constitution.tsx"),
+  route(":ownerSlug/:docoSlug/rules/new", "routes/$ownerSlug.$docoSlug.rules.new.tsx"),
   // Short-form entity routes. `:type` is validated by the loader; reserved
   // feature slugs above win the match for the static paths.
   route(":ownerSlug/:docoSlug/:type", "routes/$ownerSlug.$docoSlug.$type._index.tsx"),

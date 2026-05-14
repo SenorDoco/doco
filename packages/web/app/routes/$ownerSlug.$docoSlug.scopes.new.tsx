@@ -85,7 +85,7 @@ export async function loader({
   // Active scopes only — retired scopes aren't shown as parent options
   // and don't block re-installing a template with the same name (the
   // installer renames or skips depending on UX; here we just hide them).
-  const allScopes = listScopeDetails(dir);
+  const allScopes = await listScopeDetails(dir);
   const scopes = allScopes.filter((s) => s.lifecycle === "active");
   const existingNames = new Set(scopes.map((s) => s.name));
   const url = new URL(request.url);
@@ -165,7 +165,7 @@ export async function action({
       const tplName = String(form.get("template_name") ?? "").trim();
       const tpl = findScopeTemplate(tplName);
       if (!tpl) return { error: `Unknown template: ${tplName}` };
-      const existing = listScopeDetails(dir);
+      const existing = await listScopeDetails(dir);
       if (existing.some((s) => s.name === tpl.name)) {
         return redirect(afterAdd);
       }
@@ -190,7 +190,7 @@ export async function action({
           error: "Name must start with a letter and use only lowercase letters, digits, hyphens, underscores. No slashes (use the parent dropdown).",
         };
       }
-      const existing = listScopeDetails(dir);
+      const existing = await listScopeDetails(dir);
       if (existing.some((s) => s.name === name)) {
         return { error: `Scope "${name}" already exists.` };
       }

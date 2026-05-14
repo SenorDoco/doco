@@ -11,7 +11,7 @@ import type { EntityId } from "@doco/shared";
  * managed encrypted DB; interface stays the same.
  */
 
-export type StoredToken = SessionToken | InvitationToken | ClaimToken;
+export type StoredToken = SessionToken | InvitationToken | CliAuthorization;
 
 export interface SessionToken {
   kind: "session";
@@ -34,20 +34,44 @@ export interface InvitationToken {
 }
 
 /**
- * Claim token (ADR-073). Issued when an agent creates an unclaimed Doco via
- * the onboarding wizard. The owner visits `/claim/<token>`, signs in, and
- * takes ownership of the Doco + the bootstrap-owned agent Principal.
+ * CLI authorization (decision_01KRKZM14WNA1685GN0F12WCKM). Vercel-style
+ * browser-authorize handoff: a CLI process running on behalf of a project
+ * owner POSTs /api/v1/cli/device-init, gets back a state nonce + short
+ * code, opens the project owner's browser at /cli/authorize?state=<nonce>.
+ * The project owner signs in (if not already), reviews the CLI identity
+ * card, and clicks Authorize. The server mints an agent Principal owned
+ * by the project owner + a session token, and stashes them on this row.
+ * The CLI polls /api/v1/cli/device-exchange with the state nonce and
+ * consumes the row exactly once.
  *
- * Long expiry (~30 days) so the owner has time to act; single-use.
+ * Replaces the host-bootstrap detour + /claim/<token> handoff.
  */
-export interface ClaimToken {
-  kind: "claim";
-  token: string;
-  doco_id: string; // the Doco to be claimed
-  bootstrap_agent_id: EntityId<"principal">; // the agent created at the same time, owner=host-bootstrap
-  issued_at: string;
+export interface CliAuthorization {
+  kind: "cli_authorization";
+  /** ULID-style id for log lookups. */
+  id: string;
+  /** Hex-random nonce in the authorize URL; used by the CLI to poll. */
+  state_nonce: string;
+  /** Short alphanumeric code (8 chars), shown if the CLI's loopback bind failed and the project owner has to paste it. */
+  short_code: string;
+  /** CLI metadata for the authorize screen — modeled on Vercel's card. */
+  cli_version: string;
+  cli_hostname: string;
+  cli_user_agent: string;
+  status: "pending" | "approved" | "denied" | "exchanged" | "expired";
+  /** Set when status flips to "approved" or beyond. */
+  approved_by_principal_id: EntityId<"principal"> | null;
+  /** The agent Principal minted on approval (owner_id = approved_by_principal_id). */
+  issued_principal_id: EntityId<"principal"> | null;
+  /** The session token minted on approval. Cleared on "exchanged". */
+  issued_token: string | null;
+  /** The Doco slug the agent created during approval (if the form requested it). */
+  created_doco_slug: string | null;
+  /** The owner_slug under which Docos created in this session live. */
+  approved_owner_slug: string | null;
+  created_at: string;
+  approved_at: string | null;
   expires_at: string;
-  used: boolean;
 }
 
 interface TokenStoreFile {
@@ -57,7 +81,18 @@ interface TokenStoreFile {
 
 const TOKEN_LEN_BYTES = 32; // 256 bits → 64 hex chars
 const INVITATION_TTL_MS = 5 * 60 * 1000; // 5 minutes per ADR-037
-const CLAIM_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days per ADR-073
+const CLI_AUTH_TTL_MS = 10 * 60 * 1000; // 10 minutes for the project owner to click Approve
+
+const SHORT_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no 0/O/I/1 — easier to read aloud
+const SHORT_CODE_LEN = 8;
+function generateShortCode(): string {
+  const bytes = randomBytes(SHORT_CODE_LEN);
+  let out = "";
+  for (let i = 0; i < SHORT_CODE_LEN; i++) {
+    out += SHORT_CODE_ALPHABET[bytes[i]! % SHORT_CODE_ALPHABET.length];
+  }
+  return out;
+}
 
 export class TokenStore {
   constructor(private readonly path: string) {}
@@ -109,7 +144,7 @@ export class TokenStore {
   /** Look up an invitation; returns null if missing, expired, used, or revoked. */
   async resolveInvitation(token: string): Promise<InvitationToken | null> {
     const file = await this.load();
-    const t = file.tokens.find((x) => x.token === token && x.kind === "invitation") as
+    const t = file.tokens.find((x) => x.kind === "invitation" && x.token === token) as
       | InvitationToken
       | undefined;
     if (!t) return null;
@@ -121,7 +156,7 @@ export class TokenStore {
   /** Mark an invitation token as used (one-shot). */
   async markInvitationUsed(token: string): Promise<void> {
     const file = await this.load();
-    const t = file.tokens.find((x) => x.token === token && x.kind === "invitation") as
+    const t = file.tokens.find((x) => x.kind === "invitation" && x.token === token) as
       | InvitationToken
       | undefined;
     if (!t) throw new Error("invitation token not found");
@@ -153,7 +188,7 @@ export class TokenStore {
   /** Resolve a session token; returns null if missing or revoked. */
   async resolve(token: string): Promise<SessionToken | null> {
     const file = await this.load();
-    const t = file.tokens.find((t) => t.token === token && t.kind === "session") as
+    const t = file.tokens.find((t) => t.kind === "session" && t.token === token) as
       | SessionToken
       | undefined;
     if (!t || t.revoked) return null;
@@ -168,7 +203,7 @@ export class TokenStore {
   async revoke(token: string, cascade: boolean = true): Promise<number> {
     const file = await this.load();
     let count = 0;
-    const target = file.tokens.find((t) => t.token === token && t.kind === "session") as
+    const target = file.tokens.find((t) => t.kind === "session" && t.token === token) as
       | SessionToken
       | undefined;
     if (!target) return 0;
@@ -197,69 +232,151 @@ export class TokenStore {
     return count;
   }
 
-  // ───────────────────────────────────────────── claim tokens (ADR-073)
+  // ───────────────────────────────────────────── CLI authorizations
 
-  async issueClaimToken(
-    docoId: string,
-    bootstrapAgentId: EntityId<"principal">,
-  ): Promise<ClaimToken> {
+  /**
+   * Issue a pending CLI authorization. Returns the row including the
+   * state nonce + short code the CLI needs to drive the rest of the
+   * flow.
+   */
+  async issueCliAuthorization(args: {
+    cli_version: string;
+    cli_hostname: string;
+    cli_user_agent: string;
+  }): Promise<CliAuthorization> {
     const file = await this.load();
     const now = new Date();
-    const tok: ClaimToken = {
-      kind: "claim",
-      token: randomBytes(TOKEN_LEN_BYTES).toString("hex"),
-      doco_id: docoId,
-      bootstrap_agent_id: bootstrapAgentId,
-      issued_at: now.toISOString(),
-      expires_at: new Date(now.getTime() + CLAIM_TTL_MS).toISOString(),
-      used: false,
+    const row: CliAuthorization = {
+      kind: "cli_authorization",
+      id: randomBytes(12).toString("hex"),
+      state_nonce: randomBytes(TOKEN_LEN_BYTES).toString("hex"),
+      short_code: generateShortCode(),
+      cli_version: args.cli_version,
+      cli_hostname: args.cli_hostname,
+      cli_user_agent: args.cli_user_agent,
+      status: "pending",
+      approved_by_principal_id: null,
+      issued_principal_id: null,
+      issued_token: null,
+      created_doco_slug: null,
+      approved_owner_slug: null,
+      created_at: now.toISOString(),
+      approved_at: null,
+      expires_at: new Date(now.getTime() + CLI_AUTH_TTL_MS).toISOString(),
     };
-    file.tokens.push(tok);
+    file.tokens.push(row);
     await this.save(file);
-    return tok;
+    return row;
   }
 
-  async resolveClaim(token: string): Promise<ClaimToken | null> {
+  private async loadAndExpireCliAuthorizations(): Promise<TokenStoreFile> {
     const file = await this.load();
-    const t = file.tokens.find((x) => x.token === token && x.kind === "claim") as
-      | ClaimToken
-      | undefined;
-    if (!t) return null;
-    if (t.used) return null;
-    if (Date.parse(t.expires_at) < Date.now()) return null;
-    return t;
+    const now = Date.now();
+    let mutated = false;
+    for (const t of file.tokens) {
+      if (t.kind !== "cli_authorization") continue;
+      if (t.status === "pending" && Date.parse(t.expires_at) < now) {
+        t.status = "expired";
+        mutated = true;
+      }
+    }
+    if (mutated) await this.save(file);
+    return file;
+  }
+
+  async findCliAuthorizationByState(stateNonce: string): Promise<CliAuthorization | null> {
+    const file = await this.loadAndExpireCliAuthorizations();
+    const row = file.tokens.find(
+      (t) => t.kind === "cli_authorization" && t.state_nonce === stateNonce,
+    ) as CliAuthorization | undefined;
+    return row ?? null;
+  }
+
+  async findCliAuthorizationByShortCode(shortCode: string): Promise<CliAuthorization | null> {
+    const file = await this.loadAndExpireCliAuthorizations();
+    const row = file.tokens.find(
+      (t) => t.kind === "cli_authorization" && t.short_code === shortCode.toUpperCase(),
+    ) as CliAuthorization | undefined;
+    return row ?? null;
   }
 
   /**
-   * Status of a claim token (for the agent to poll while reminding the
-   * owner). Distinguishes pending / claimed / expired / unknown so the
-   * agent can decide whether to keep reminding, congratulate, or escalate.
+   * Project owner clicked "Authorize". Mints a session token bound to
+   * the supplied agent Principal (which the caller created with
+   * owner_id=approvedByPrincipalId), stashes it on the row, and flips
+   * status to "approved". The CLI's next poll consumes the token.
    */
-  async getClaimStatus(token: string): Promise<{
-    status: "pending" | "claimed" | "expired" | "unknown";
-    doco_id?: string;
-    expires_at?: string;
-  }> {
+  async approveCliAuthorization(
+    stateNonce: string,
+    approvedByPrincipalId: EntityId<"principal">,
+    issuedPrincipalId: EntityId<"principal">,
+    sessionTokenValue: string,
+    approvedOwnerSlug: string,
+    createdDocoSlug: string | null,
+  ): Promise<CliAuthorization> {
     const file = await this.load();
-    const t = file.tokens.find((x) => x.token === token && x.kind === "claim") as
-      | ClaimToken
-      | undefined;
-    if (!t) return { status: "unknown" };
-    if (t.used) return { status: "claimed", doco_id: t.doco_id };
-    if (Date.parse(t.expires_at) < Date.now())
-      return { status: "expired", doco_id: t.doco_id, expires_at: t.expires_at };
-    return { status: "pending", doco_id: t.doco_id, expires_at: t.expires_at };
+    const row = file.tokens.find(
+      (t) => t.kind === "cli_authorization" && t.state_nonce === stateNonce,
+    ) as CliAuthorization | undefined;
+    if (!row) throw new Error("cli authorization not found");
+    if (row.status !== "pending") {
+      throw new Error(`cli authorization already in status "${row.status}"`);
+    }
+    row.status = "approved";
+    row.approved_by_principal_id = approvedByPrincipalId;
+    row.issued_principal_id = issuedPrincipalId;
+    row.issued_token = sessionTokenValue;
+    row.approved_owner_slug = approvedOwnerSlug;
+    row.created_doco_slug = createdDocoSlug;
+    row.approved_at = new Date().toISOString();
+    await this.save(file);
+    return row;
   }
 
-  async markClaimUsed(token: string): Promise<void> {
+  async denyCliAuthorization(stateNonce: string): Promise<void> {
     const file = await this.load();
-    const t = file.tokens.find((x) => x.token === token && x.kind === "claim") as
-      | ClaimToken
-      | undefined;
-    if (!t) throw new Error("claim token not found");
-    t.used = true;
+    const row = file.tokens.find(
+      (t) => t.kind === "cli_authorization" && t.state_nonce === stateNonce,
+    ) as CliAuthorization | undefined;
+    if (!row) throw new Error("cli authorization not found");
+    if (row.status !== "pending") return;
+    row.status = "denied";
     await this.save(file);
   }
+
+  /**
+   * Single-use exchange: the CLI passes the state nonce, we hand back
+   * the token + principal_id and flip status to "exchanged" so a
+   * second poll can never re-read the same token.
+   */
+  async consumeCliAuthorization(stateNonce: string): Promise<{
+    token: string;
+    principal_id: EntityId<"principal">;
+    owner_slug: string;
+    created_doco_slug: string | null;
+  } | null> {
+    const file = await this.load();
+    const row = file.tokens.find(
+      (t) => t.kind === "cli_authorization" && t.state_nonce === stateNonce,
+    ) as CliAuthorization | undefined;
+    if (!row) return null;
+    if (row.status !== "approved") return null;
+    if (!row.issued_token || !row.issued_principal_id || !row.approved_owner_slug) {
+      throw new Error("cli authorization approved but missing issued token data");
+    }
+    const out = {
+      token: row.issued_token,
+      principal_id: row.issued_principal_id,
+      owner_slug: row.approved_owner_slug,
+      created_doco_slug: row.created_doco_slug,
+    };
+    row.status = "exchanged";
+    row.issued_token = null; // wipe the secret after handoff
+    await this.save(file);
+    return out;
+  }
+
+  // ─────────────────────────────────────────────
 
   /** Lightweight summary for the browser-facing /invite page. */
   async listOpenInvitations(): Promise<InvitationToken[]> {

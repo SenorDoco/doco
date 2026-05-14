@@ -123,7 +123,7 @@ export async function loader({ request }: { request: Request }) {
           // the field in the response for client compatibility.
           codeMap = null;
           constitution = await loadConstitution(meta.docoId);
-          scopes = listScopeManifest(dir);
+          scopes = await listScopeManifest(dir);
           docoSlugPath = `${resolved.ownerSlug}/${resolved.docoSlug}`;
           docoIdPath = effectiveDocoId ?? meta.docoId;
           if (resolved.redirected) {

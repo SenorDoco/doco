@@ -14,7 +14,10 @@
 // on idle tabs.
 import { useEffect, useState } from "react";
 import { Form, Link, useRevalidator } from "react-router";
-import { docoPath, openDocoDb } from "~/lib/db.server";
+import { parse as parseYaml } from "yaml";
+import type { PoolClient } from "pg";
+import { withClient } from "@doco/db";
+import { docoPath } from "~/lib/db.server";
 import { loadDocoForRead } from "~/lib/doco-access.server";
 import { loadHostConfig } from "~/lib/host";
 import { listScopeDetails } from "~/lib/scope-helpers.server";
@@ -50,45 +53,47 @@ export async function loader({
   params: { ownerSlug: string; docoSlug: string };
 }) {
   const { ownerSlug, docoSlug } = params;
-  const { me } = await loadDocoForRead(request, ownerSlug, docoSlug);
+  const ctx = await loadDocoForRead(request, ownerSlug, docoSlug);
+  const me = ctx.me;
   const dir = docoPath(ownerSlug, docoSlug);
-  const scopeDetails = listScopeDetails(dir);
+  const scopeDetails = await listScopeDetails(dir);
   const scopeById = new Map(scopeDetails.map((s) => [s.id, s]));
-  const db = openDocoDb(ownerSlug, docoSlug);
-  try {
-    const rawItems = db
-      .prepare(
-        `SELECT id, node_type, summary, created_at, title, name FROM (
-           SELECT id, 'decision' AS node_type, summary, created_at, NULL AS title, NULL AS name FROM decision
+  return withClient(async (c) => {
+    const rawItems = (
+      await c.query<Omit<FeedItem, "scopes">>(
+        `SELECT id, node_type, summary, created_at::text, title, name FROM (
+           SELECT id, 'decision' AS node_type, summary, created_at, NULL AS title, NULL AS name FROM decisions WHERE doco_id = $1
            UNION ALL
-           SELECT id, 'intent' AS node_type, summary, created_at, title, NULL FROM intent
+           SELECT id, 'intent' AS node_type, summary, created_at, NULL AS title, NULL FROM intents WHERE doco_id = $1
            UNION ALL
-           SELECT id, 'idea' AS node_type, summary, created_at, NULL, NULL FROM idea
+           SELECT id, 'idea' AS node_type, summary, created_at, NULL, NULL FROM ideas WHERE doco_id = $1
            UNION ALL
-           SELECT id, 'rule' AS node_type, summary, created_at, NULL, NULL FROM rule
+           SELECT id, 'rule' AS node_type, summary, created_at, NULL, NULL FROM rules WHERE doco_id = $1
            UNION ALL
-           SELECT id, 'action' AS node_type, summary, created_at, NULL, NULL FROM action
+           SELECT id, 'action' AS node_type, summary, created_at, NULL, NULL FROM actions WHERE doco_id = $1
            UNION ALL
-           SELECT id, 'reasoning' AS node_type, summary, created_at, NULL, NULL FROM reasoning
+           SELECT id, 'reasoning' AS node_type, summary, created_at, NULL, NULL FROM reasoning WHERE doco_id = $1
            UNION ALL
-           SELECT id, 'eval' AS node_type, summary, created_at, name AS title, NULL FROM eval
+           SELECT id, 'eval' AS node_type, summary, created_at, NULL AS title, NULL FROM evals WHERE doco_id = $1
            UNION ALL
-           SELECT id, 'scope' AS node_type, summary, created_at, NULL, name FROM scope
-         )
-         ORDER BY created_at DESC LIMIT ${FEED_LIMIT}`,
+           SELECT id, 'scope' AS node_type, summary, created_at, NULL, name FROM scopes WHERE doco_id = $1
+         ) t
+         ORDER BY created_at DESC LIMIT $2`,
+        [ctx.meta.docoId, FEED_LIMIT],
       )
-      .all() as Omit<FeedItem, "scopes">[];
+    ).rows;
 
-    // Pull `in_scope_of` edges for the visible items in one shot.
     let scopeEdges: { from_id: string; to_id: string }[] = [];
     if (rawItems.length > 0) {
-      const placeholders = rawItems.map(() => "?").join(",");
-      scopeEdges = db
-        .prepare(
+      scopeEdges = (
+        await c.query<{ from_id: string; to_id: string }>(
           `SELECT from_id, to_id FROM edges
-           WHERE edge_type = 'in_scope_of' AND from_id IN (${placeholders})`,
+            WHERE edge_type = 'in_scope_of'
+              AND doco_id = $1
+              AND from_id = ANY($2::text[])`,
+          [ctx.meta.docoId, rawItems.map((r) => r.id)],
         )
-        .all(...rawItems.map((r) => r.id)) as { from_id: string; to_id: string }[];
+      ).rows;
     }
     const scopeIdsByItem = new Map<string, string[]>();
     for (const e of scopeEdges) {
@@ -105,42 +110,40 @@ export async function loader({
       return { ...it, scopes };
     });
 
-    // Stats: total nodes per type. Listed in the same order as the
-    // capture/footer convention (decisions first, then actions, …).
     const counts: NodeTypeCount[] = [
-      { type: "decision", label: "Decisions", count: countRows(db, "decision") },
-      { type: "action", label: "Actions", count: countRows(db, "action") },
-      { type: "intent", label: "Intents", count: countRows(db, "intent") },
-      { type: "rule", label: "Rules", count: countRows(db, "rule") },
-      { type: "scope", label: "Scopes", count: countRows(db, "scope") },
-      { type: "eval", label: "Evals", count: countRows(db, "eval") },
-      { type: "reference", label: "References", count: countRows(db, "reference") },
-      { type: "reasoning", label: "Reasonings", count: countRows(db, "reasoning") },
-      { type: "idea", label: "Ideas", count: countRows(db, "idea") },
+      { type: "decision", label: "Decisions", count: await countRows(c, "decisions", ctx.meta.docoId) },
+      { type: "action", label: "Actions", count: await countRows(c, "actions", ctx.meta.docoId) },
+      { type: "intent", label: "Intents", count: await countRows(c, "intents", ctx.meta.docoId) },
+      { type: "rule", label: "Rules", count: await countRows(c, "rules", ctx.meta.docoId) },
+      { type: "scope", label: "Scopes", count: await countRows(c, "scopes", ctx.meta.docoId) },
+      { type: "eval", label: "Evals", count: await countRows(c, "evals", ctx.meta.docoId) },
+      { type: "reference", label: "References", count: await countRows(c, "reference_entities", ctx.meta.docoId) },
+      { type: "reasoning", label: "Reasonings", count: await countRows(c, "reasoning", ctx.meta.docoId) },
+      { type: "idea", label: "Ideas", count: await countRows(c, "ideas", ctx.meta.docoId) },
     ];
 
-    // Daily activity for the last HEATMAP_WEEKS weeks.
     const since = new Date();
     since.setDate(since.getDate() - HEATMAP_WEEKS * 7);
-    const sinceIso = `${since.getFullYear()}-${String(since.getMonth() + 1).padStart(2, "0")}-${String(since.getDate()).padStart(2, "0")}`;
-    const activityRows = db
-      .prepare(
-        `SELECT day, COUNT(*) AS n FROM (
-           SELECT substr(created_at, 1, 10) AS day FROM decision
-           UNION ALL SELECT substr(created_at, 1, 10) FROM intent
-           UNION ALL SELECT substr(created_at, 1, 10) FROM idea
-           UNION ALL SELECT substr(created_at, 1, 10) FROM rule
-           UNION ALL SELECT substr(created_at, 1, 10) FROM action
-           UNION ALL SELECT substr(created_at, 1, 10) FROM reasoning
-           UNION ALL SELECT substr(created_at, 1, 10) FROM eval
-           UNION ALL SELECT substr(created_at, 1, 10) FROM scope
-           UNION ALL SELECT substr(created_at, 1, 10) FROM reference
-         ) WHERE day >= ?
+    const sinceIso = since.toISOString();
+    const activityRows = (
+      await c.query<{ day: string; n: string }>(
+        `SELECT day, COUNT(*)::text AS n FROM (
+           SELECT to_char(created_at, 'YYYY-MM-DD') AS day FROM decisions WHERE doco_id = $1
+           UNION ALL SELECT to_char(created_at, 'YYYY-MM-DD') FROM intents WHERE doco_id = $1
+           UNION ALL SELECT to_char(created_at, 'YYYY-MM-DD') FROM ideas WHERE doco_id = $1
+           UNION ALL SELECT to_char(created_at, 'YYYY-MM-DD') FROM rules WHERE doco_id = $1
+           UNION ALL SELECT to_char(created_at, 'YYYY-MM-DD') FROM actions WHERE doco_id = $1
+           UNION ALL SELECT to_char(created_at, 'YYYY-MM-DD') FROM reasoning WHERE doco_id = $1
+           UNION ALL SELECT to_char(created_at, 'YYYY-MM-DD') FROM evals WHERE doco_id = $1
+           UNION ALL SELECT to_char(created_at, 'YYYY-MM-DD') FROM scopes WHERE doco_id = $1
+           UNION ALL SELECT to_char(created_at, 'YYYY-MM-DD') FROM reference_entities WHERE doco_id = $1
+         ) t WHERE day >= $2
          GROUP BY day`,
+        [ctx.meta.docoId, sinceIso.slice(0, 10)],
       )
-      .all(sinceIso) as { day: string; n: number }[];
+    ).rows;
     const byDay: Record<string, number> = {};
-    for (const r of activityRows) byDay[r.day] = r.n;
+    for (const r of activityRows) byDay[r.day] = Number(r.n);
 
     return {
       items,
@@ -151,16 +154,15 @@ export async function loader({
       host: await loadHostConfig(),
       me,
     };
-  } finally {
-    db.close();
-  }
+  });
 }
 
-function countRows(db: ReturnType<typeof openDocoDb>, table: string): number {
-  // Table name is a fixed literal from this module (never user input);
-  // sqlite doesn't allow parameterised identifiers anyway.
-  const row = db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get() as { n: number };
-  return row.n;
+async function countRows(c: PoolClient, table: string, docoId: string): Promise<number> {
+  const r = await c.query<{ n: string }>(
+    `SELECT COUNT(*)::text AS n FROM ${table} WHERE doco_id = $1`,
+    [docoId],
+  );
+  return Number(r.rows[0]?.n ?? 0);
 }
 
 export function meta({ params }: { params: { ownerSlug: string; docoSlug: string } }) {

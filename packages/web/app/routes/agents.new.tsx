@@ -113,7 +113,7 @@ export default function AgentsNew({
               <CardTitle>Agent created · {principal.display_name}</CardTitle>
               <CardDescription>
                 Paste this token into your chat with the agent. They&apos;ll know what to do —
-                their repo&apos;s <code>AGENT.md</code> tells them how to use it. We won&apos;t
+                their repo&apos;s <code>AGENTS.md</code> tells them how to use it. We won&apos;t
                 show it again.
               </CardDescription>
             </CardHeader>

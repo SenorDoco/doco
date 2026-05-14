@@ -44,21 +44,21 @@ DOCO_HOST="${DOCO_HOST:-}"
 DOCO_SLUG="${DOCO_SLUG:-}"
 
 # 3. Build the protocol reminder — short, deterministic, every turn.
-#    Kept under 700 chars so the per-turn token cost stays bounded.
+#    Kept under 800 chars so the per-turn token cost stays bounded.
 read -r -d '' PROTOCOL_REMINDER <<'EOF' || true
 ## Doco protocol — apply this in your reply
 
-1. TOP OF REPLY: render the two-line per-query indicator FIRST:
+1. TOP OF REPLY: render the two-line query indicator FIRST:
    [🔮 Doco] <querying-verb>
-   [🔮 Doco] <N> relevant nodes found (<X.X>s)
+   [🔮 Doco] <loading-verb> <owner>/<doco>. <N> relevant nodes found (<X.X>s)
    (Or "[🔮 Doco] Not querying Doco" on one line if you genuinely don't.)
-   The pre-fetched block below has the verb already picked at random plus real <N>/<X.Xs> — paste it verbatim. See the canonical for the 20-verb list if you ever need to pick yourself. The session-load indicator ("[🔮 Doco] <loading-verb> <owner>/<doco>") is a SEPARATE one-time line — emit it only on the first reply after loading the canonical, then never again in this session.
+   The pre-fetched block below has the verbs already picked at random plus real <N>/<X.Xs> — paste it verbatim. See the canonical for the 20+20 verb lists if you ever need to pick yourself.
 
 2. AFTER EVERY WRITE (POST/PATCH/DELETE on /api/*.json): render footer_lines from the response verbatim, one per line. Shape:
    [🔮 Doco] <op-icon> <Type> <verb>: [<slug>](<url>): <details> — <icon> <scope1>, <icon> <scope2>
    The slug is a markdown link to the entity. Never show the raw ULID — use slug/seq_id only. Scope tail omitted when no scopes. Last line in a batch carries (X.Xs) timing AFTER the scope tail — already there.
 
-3. BEFORE DECLARING DONE: scan capture triggers. Scope names are BARE (no scope_ prefix) and match templates: user-flow changed → `user-flows` Decision. Bug fixed → `bugs` Decision + `bugs` Rule (`born_from: <decision_id>`). Framework touched (CLI / hooks / canonical) → add `framework`. ADR-shaped → `adrs`. POST to /api/decisions.json etc. via the host's capture endpoints.
+3. BEFORE DECLARING DONE: scan capture triggers. Scope names are BARE (no scope_ prefix) and match templates: user-flow changed → `user-flows` Decision. Bug fixed → `bugs` Decision + `bugs` Rule (`born_from: <decision_id>`). Framework touched (CLI / hooks / canonical) → add `framework`. ADR-shaped → `adrs`. POST to /api/decisions.json etc. via the host's capture endpoints. **If instinct says skip, name the existing node you're relying on — "CLI can't capture X" or "too small for a Decision" aren't naming a node. If a high-vector_score hit already governs the change, PATCH it instead of skipping.**
 
 4. LAST LINE OF EVERY MESSAGE (no exceptions, even with 0 writes):
    [🔮 Doco] <owner>/<doco>: **<N>** node(s) added/updated
@@ -89,14 +89,20 @@ if [ -n "$DOCO_HOST" ] && [ -n "$DOCO_SLUG" ] && [ -n "$PROMPT" ] \
       "- " + .node_type + " [" + (.slug // .seq_id // .id) + "]: " +
         (if (.summary | length) > 120 then (.summary[:117] + "...") else .summary end)
     ' 2>/dev/null | head -10)
-    # Random querying-verb — pick one of 20. The variety is the point;
-    # the structured fields (count, timing) stay identical. The loading-verb
-    # is now a separate session-load indicator emitted by the SessionStart
-    # hook, not the per-prompt hook — so we don't pick one here.
+    # Random verbs — pick one of 20 each. The variety is the point;
+    # the structured fields (slug, count, timing) stay identical.
+    LOADING_VERBS=("Connected to" "Tuned into" "Listening to" "Wired up to" "Synced with" "Plugged into" "Online with" "Reading" "Hooked into" "Linked to" "Eyes on" "Riding shotgun on" "Pinned to" "Threaded into" "Locked onto" "Channel open:" "Live on" "Mind-melded with" "Pulled up" "Holding the file on")
     QUERYING_VERBS=("Querying..." "Looking it up..." "Asking around..." "Reading the room..." "Sniffing for hits..." "Flipping through notes..." "Scanning the graph..." "Searching the lore..." "Peering into the orb..." "Combing the archive..." "Hunting for prior art..." "Pinging the memory..." "Cross-referencing..." "Checking what's known..." "Tracing the trail..." "Diving in..." "Polling the Doco..." "Skimming the index..." "Asking the oracle..." "Searching...")
+    LOADING_VERB="${LOADING_VERBS[$RANDOM % ${#LOADING_VERBS[@]}]}"
     QUERYING_VERB="${QUERYING_VERBS[$RANDOM % ${#QUERYING_VERBS[@]}]}"
-    QUERY_BLOCK=$(printf '\n\n## Pre-fetched query for THIS prompt — paste as your top-of-reply indicator\n\n[🔮 Doco] %s\n[🔮 Doco] %s relevant nodes found (%ss)\n\nTop hits:\n%s\n' \
-      "$QUERYING_VERB" "$COUNT" "$SECS" "$HITS")
+    QUERY_BLOCK=$(printf '\n\n## Pre-fetched query for THIS prompt — paste as your top-of-reply indicator\n\n[🔮 Doco] %s\n[🔮 Doco] %s %s. %s relevant nodes found (%ss)\n\nTop hits:\n%s\n' \
+      "$QUERYING_VERB" "$LOADING_VERB" "$DOCO_SLUG" "$COUNT" "$SECS" "$HITS")
+    # Persist the full hits JSON for cross-hook reads (PostToolUse path-match).
+    # Namespace by $PWD hash so concurrent worktrees don't stomp each other.
+    # The PostToolUse hook reads this on every Edit/Write tool call.
+    HITS_KEY=$(printf '%s' "$PWD" | shasum 2>/dev/null | awk '{print $1}' || printf 'default')
+    HITS_FILE="${TMPDIR:-/tmp}/doco-last-hits-${HITS_KEY}.json"
+    printf '%s' "$RESP" > "$HITS_FILE" 2>/dev/null || true
   fi
 fi
 

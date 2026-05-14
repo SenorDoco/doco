@@ -8,6 +8,7 @@ import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
  */
 
 const STATE_COOKIE_NAME = "doco_oauth_state";
+const RETURN_COOKIE_NAME = "doco_oauth_return";
 const STATE_TTL_SECONDS = 600; // 10 minutes
 
 const GITHUB_AUTHORIZE = "https://github.com/login/oauth/authorize";
@@ -92,6 +93,35 @@ export function verifyOAuthState(
 
 export function clearOAuthStateCookie(): string {
   return `${STATE_COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`;
+}
+
+/**
+ * Cookie that captures where to redirect after a successful OAuth
+ * round-trip. Set by /auth/github when called with a `?return=` query
+ * param; read by /auth/github/callback. Only same-origin paths
+ * (starting with "/") are honored — never accept absolute URLs to
+ * prevent open-redirect abuse.
+ */
+export function setOAuthReturnCookie(returnPath: string): string {
+  return `${RETURN_COOKIE_NAME}=${encodeURIComponent(returnPath)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${STATE_TTL_SECONDS}`;
+}
+
+export function clearOAuthReturnCookie(): string {
+  return `${RETURN_COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`;
+}
+
+export function readOAuthReturnCookie(cookieHeader: string | null): string | null {
+  if (!cookieHeader) return null;
+  for (const part of cookieHeader.split(";").map((p) => p.trim())) {
+    const eq = part.indexOf("=");
+    if (eq < 0) continue;
+    if (part.slice(0, eq) !== RETURN_COOKIE_NAME) continue;
+    const value = decodeURIComponent(part.slice(eq + 1));
+    if (!value.startsWith("/")) return null; // same-origin only
+    if (value.startsWith("//")) return null; // protocol-relative — reject
+    return value;
+  }
+  return null;
 }
 
 export interface GitHubUser {

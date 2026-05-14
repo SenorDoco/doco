@@ -4,14 +4,38 @@
 // See `ship-short-entity-urls` Intent + ADR.
 import { useState } from "react";
 import { Form, Link, redirect } from "react-router";
+import { parse as parseYaml } from "yaml";
 import { type EntityId, ENTITY_TYPES, entityUrl, entityListUrl } from "@doco/shared";
-import { docoPath, openDocoDb } from "~/lib/db.server";
+import { withClient } from "@doco/db";
+import { docoPath } from "~/lib/db.server";
 import { loadDocoForAdmin, loadDocoForRead } from "~/lib/doco-access.server";
 import { loadHostConfig } from "~/lib/host";
 import { globalPageRank, personalizedPageRank } from "@doco/index";
 import { reindex, updateScopeInDoco } from "~/lib/redeem.server";
 import { readEntityHistory, type AuditEvent } from "~/lib/audit-log.server";
 import { isFrozen, nodeClassOf } from "~/lib/mutability.server";
+
+/** External node_type → PG table name. */
+const TABLE_BY_TYPE: Record<string, string> = {
+  decision: "decisions",
+  intent: "intents",
+  rule: "rules",
+  action: "actions",
+  reasoning: "reasoning",
+  reference: "reference_entities",
+  scope: "scopes",
+  eval: "evals",
+  idea: "ideas",
+  principal: "principals",
+  organization: "organizations",
+};
+
+function tableFor(nodeType: string): string {
+  return TABLE_BY_TYPE[nodeType] ?? nodeType;
+}
+
+/** Tables that live at host level (no doco_id column). */
+const HOST_LEVEL_TABLES = new Set(["principals", "organizations"]);
 import { SiteHeader } from "~/components/site-header";
 import { Badge } from "~/components/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
@@ -43,58 +67,98 @@ export async function loader({
 }) {
   const { ownerSlug, docoSlug, type, id: idParam } = params;
   if (!KNOWN.has(type)) throw new Response("Unknown type", { status: 404 });
-  const { me } = await loadDocoForRead(request, ownerSlug, docoSlug); // 404s if private + non-member
-  const db = openDocoDb(ownerSlug, docoSlug);
-  try {
-    // The ULID is the only id. Scopes additionally resolve by name (their
-    // readable handle, used in `scopes: [user-flows]` references).
-    let row = db.prepare(`SELECT raw_json, id FROM ${type} WHERE id = ?`).get(idParam) as
-      | { raw_json: string; id: string }
-      | undefined;
-    if (!row && type === "scope") {
-      try {
-        row = db.prepare(`SELECT raw_json, id FROM scope WHERE name = ?`).get(idParam) as
-          | { raw_json: string; id: string }
-          | undefined;
-      } catch {
-        /* shouldn't happen */
+  const ctx = await loadDocoForRead(request, ownerSlug, docoSlug);
+  const me = ctx.me;
+  const docoId = ctx.meta.docoId;
+  const dir = docoPath(ownerSlug, docoSlug);
+
+  return withClient(async (c) => {
+    const table = tableFor(type);
+    const hostLevel = HOST_LEVEL_TABLES.has(table);
+    let row: { raw_yaml: string; id: string } | undefined;
+    if (hostLevel) {
+      row = (
+        await c.query<{ raw_yaml: string; id: string }>(
+          `SELECT raw_yaml, id FROM ${table} WHERE id = $1`,
+          [idParam],
+        )
+      ).rows[0];
+    } else {
+      row = (
+        await c.query<{ raw_yaml: string; id: string }>(
+          `SELECT raw_yaml, id FROM ${table} WHERE id = $1 AND doco_id = $2`,
+          [idParam, docoId],
+        )
+      ).rows[0];
+      if (!row && type === "scope") {
+        row = (
+          await c.query<{ raw_yaml: string; id: string }>(
+            `SELECT raw_yaml, id FROM scopes WHERE name = $1 AND doco_id = $2`,
+            [idParam, docoId],
+          )
+        ).rows[0];
       }
     }
     if (!row) throw new Response(`Not found: ${idParam}`, { status: 404 });
-    const id = row.id; // canonical ULID for edge lookups below
-    const ent = JSON.parse(row.raw_json) as Record<string, unknown>;
+    const id = row.id;
+    const ent = (parseYaml(row.raw_yaml) ?? {}) as Record<string, unknown>;
 
-    // Resolve the entity's `scopes` ids into chip data (name + icon) for the
-    // header. The scope row's icon lives only in raw_json, not as a column.
     const entityScopeIds = Array.isArray(ent.scopes) ? (ent.scopes as string[]) : [];
     const entityScopes: { id: string; name: string; icon: string | null }[] = [];
-    for (const sid of entityScopeIds) {
-      const s = db
-        .prepare("SELECT id, name, raw_json FROM scope WHERE id = ?")
-        .get(sid) as { id: string; name: string; raw_json: string } | undefined;
-      if (!s) continue;
-      let icon: string | null = null;
-      try {
-        const parsed = JSON.parse(s.raw_json) as { icon?: string };
-        if (typeof parsed.icon === "string") icon = parsed.icon;
-      } catch {
-        /* malformed raw_json — skip the icon, keep the name */
+    if (entityScopeIds.length > 0) {
+      const r = await c.query<{ id: string; name: string; raw_yaml: string }>(
+        `SELECT id, name, raw_yaml FROM scopes WHERE doco_id = $1 AND id = ANY($2::text[])`,
+        [docoId, entityScopeIds],
+      );
+      const byId = new Map(r.rows.map((s) => [s.id, s]));
+      for (const sid of entityScopeIds) {
+        const s = byId.get(sid);
+        if (!s) continue;
+        let icon: string | null = null;
+        try {
+          const parsed = parseYaml(s.raw_yaml) as { icon?: string } | null;
+          if (parsed && typeof parsed.icon === "string") icon = parsed.icon;
+        } catch {}
+        entityScopes.push({ id: s.id, name: s.name, icon });
       }
-      entityScopes.push({ id: s.id, name: s.name, icon });
     }
 
-    const outgoing = db
-      .prepare("SELECT to_id, to_node_type, edge_type, attribution FROM edges WHERE from_id = ? ORDER BY edge_type, to_id")
-      .all(id) as { to_id: string; to_node_type: string; edge_type: string; attribution: string }[];
-    const incoming = db
-      .prepare("SELECT from_id, from_node_type, edge_type, attribution FROM edges WHERE to_id = ? ORDER BY edge_type, from_id")
-      .all(id) as { from_id: string; from_node_type: string; edge_type: string; attribution: string }[];
+    const outgoing = (
+      await c.query<{
+        to_id: string;
+        to_node_type: string;
+        edge_type: string;
+        attribution: string;
+      }>(
+        `SELECT to_id, to_node_type, edge_type, attribution
+           FROM edges
+          WHERE from_id = $1 AND doco_id = $2
+          ORDER BY edge_type, to_id`,
+        [id, docoId],
+      )
+    ).rows;
+    const incoming = (
+      await c.query<{
+        from_id: string;
+        from_node_type: string;
+        edge_type: string;
+        attribution: string;
+      }>(
+        `SELECT from_id, from_node_type, edge_type, attribution
+           FROM edges
+          WHERE to_id = $1 AND doco_id = $2
+          ORDER BY edge_type, from_id`,
+        [id, docoId],
+      )
+    ).rows;
 
-    // Personalized PageRank graph view (ADR-076 + the explicit-edge-weighting ADR).
-    const allEdges = db
-      .prepare("SELECT from_id, to_id, edge_type, attribution FROM edges")
-      .all() as { from_id: string; to_id: string; edge_type: string; attribution: string }[];
-    const pprEdges = allEdges.map((e) => ({
+    const allEdgesRows = (
+      await c.query<{ from_id: string; to_id: string; edge_type: string; attribution: string }>(
+        `SELECT from_id, to_id, edge_type, attribution FROM edges WHERE doco_id = $1`,
+        [docoId],
+      )
+    ).rows;
+    const pprEdges = allEdgesRows.map((e) => ({
       from: e.from_id,
       to: e.to_id,
       edge_type: e.edge_type,
@@ -104,48 +168,64 @@ export async function loader({
     const neighborIds = new Set([id, ...ppr.map((p) => p.id)]);
     const pprByid = new Map<string, number>([[id, 1]]);
     for (const p of ppr) pprByid.set(p.id, p.score);
-    // Global PageRank — uniform restart. Computed once over the entire
-    // graph; we only read values for visible neighbors.
     const gpr = globalPageRank(pprEdges, { alpha: 0.85 });
     const gprByid = new Map<string, number>();
     for (const p of gpr) gprByid.set(p.id, p.score);
-    const graphNodes: GraphNode[] = [];
+
+    // Hydrate neighbors. Group ids by table for one query per table.
+    const neighborsByTable = new Map<string, string[]>();
     for (const nid of neighborIds) {
       const m = /^([a-z_]+)_/.exec(nid);
       const nt = m?.[1];
       if (!nt) continue;
-      let summary = nid;
-      let name: string | null = null;
-      let created_at: string | null = null;
+      const tbl = tableFor(nt);
+      const arr = neighborsByTable.get(tbl) ?? [];
+      arr.push(nid);
+      neighborsByTable.set(tbl, arr);
+    }
+    const neighborMeta = new Map<string, { summary: string; name: string | null; created_at: string | null; node_type: string }>();
+    for (const [tbl, ids] of neighborsByTable) {
       try {
-        const r = db
-          .prepare(`SELECT summary, created_at FROM ${nt} WHERE id = ?`)
-          .get(nid) as { summary?: string; created_at?: string } | undefined;
-        if (r?.summary) summary = r.summary;
-        if (r?.created_at) created_at = r.created_at;
-        if (nt === "scope") {
-          try {
-            const s = db.prepare("SELECT name FROM scope WHERE id = ?").get(nid) as
-              | { name?: string }
-              | undefined;
-            if (s?.name) name = s.name;
-          } catch {}
+        const isHost = HOST_LEVEL_TABLES.has(tbl);
+        const isScope = tbl === "scopes";
+        const cols = isScope ? "id, summary, name, created_at::text" : "id, summary, created_at::text";
+        const sql = isHost
+          ? `SELECT ${cols} FROM ${tbl} WHERE id = ANY($1::text[])`
+          : `SELECT ${cols} FROM ${tbl} WHERE id = ANY($1::text[]) AND doco_id = $2`;
+        const params = isHost ? [ids] : [ids, docoId];
+        const r = await c.query<{ id: string; summary: string; name?: string; created_at: string }>(sql, params);
+        for (const row of r.rows) {
+          const m = /^([a-z_]+)_/.exec(row.id);
+          const nt = m?.[1] ?? "";
+          neighborMeta.set(row.id, {
+            node_type: nt,
+            summary: row.summary ?? row.id,
+            name: row.name ?? null,
+            created_at: row.created_at ?? null,
+          });
         }
       } catch {
         /* unknown table */
       }
+    }
+    const graphNodes: GraphNode[] = [];
+    for (const nid of neighborIds) {
+      const meta = neighborMeta.get(nid);
+      const m = /^([a-z_]+)_/.exec(nid);
+      const nt = meta?.node_type ?? m?.[1] ?? "";
+      if (!nt) continue;
       graphNodes.push({
         id: nid,
         node_type: nt,
-        summary,
-        name,
-        created_at,
+        summary: meta?.summary ?? nid,
+        name: meta?.name ?? null,
+        created_at: meta?.created_at ?? null,
         ppr: pprByid.get(nid) ?? 0,
         gpr: gprByid.get(nid) ?? 0,
         is_center: nid === id,
       });
     }
-    const graphLinks: GraphLink[] = allEdges
+    const graphLinks: GraphLink[] = allEdgesRows
       .filter((e) => neighborIds.has(e.from_id) && neighborIds.has(e.to_id))
       .map((e) => ({
         source: e.from_id,
@@ -154,8 +234,6 @@ export async function loader({
         attribution: (e.attribution as "explicit" | "doco-auto") ?? "explicit",
       }));
 
-    // Scope landing — when type === "scope", curate members + sub-scopes
-    // (ADR-079, ADR-081, ADR-082).
     let scopeLanding: {
       members: Record<string, { id: string; summary: string; lifecycle: string | null }[]>;
       subScopes: { id: string; name: string }[];
@@ -167,44 +245,46 @@ export async function loader({
         { id: string; summary: string; lifecycle: string | null }[]
       > = {};
       for (const t of memberTypes) {
-        const rows = db
-          .prepare(
+        const memTable = tableFor(t);
+        const rows = (
+          await c.query<{ id: string; summary: string; lifecycle: string | null }>(
             `SELECT t.id, t.summary, t.lifecycle
-             FROM ${t} t
-             JOIN edges e ON e.from_id = t.id AND e.edge_type = 'in_scope_of' AND e.to_id = ?
-             ORDER BY t.id DESC LIMIT 25`,
+               FROM ${memTable} t
+               JOIN edges e ON e.from_id = t.id
+                           AND e.edge_type = 'in_scope_of'
+                           AND e.to_id = $1
+              WHERE t.doco_id = $2
+              ORDER BY t.id DESC LIMIT 25`,
+            [id, docoId],
           )
-          .all(id) as { id: string; summary: string; lifecycle: string | null }[];
+        ).rows;
         if (rows.length > 0) members[t] = rows;
       }
-      // Sub-scopes from parent edges (ADR-081), not slash matching.
-      const subScopes = db
-        .prepare(
-          `SELECT s.id, s.name FROM scope s
-           JOIN edges e ON e.from_id = s.id
-                       AND e.edge_type = 'in_scope_of'
-                       AND e.from_node_type = 'scope'
-                       AND e.to_id = ?
-           ORDER BY s.name`,
+      const subScopes = (
+        await c.query<{ id: string; name: string }>(
+          `SELECT s.id, s.name FROM scopes s
+             JOIN edges e ON e.from_id = s.id
+                         AND e.edge_type = 'in_scope_of'
+                         AND e.from_node_type = 'scope'
+                         AND e.to_id = $1
+            WHERE s.doco_id = $2
+            ORDER BY s.name`,
+          [id, docoId],
         )
-        .all(id) as { id: string; name: string }[];
+      ).rows;
       scopeLanding = { members, subScopes };
     }
 
-    // ADR-084 follow-up: scope detail page edits purpose/guidelines + reparent.
-    // The reparent picker needs the full list of other scopes. Deletion lives
-    // on /scopes/<id>/edit's Danger Zone, so member/sub-scope counts aren't
-    // computed here.
     let allScopes: { id: string; name: string }[] = [];
     if (type === "scope") {
-      allScopes = db
-        .prepare("SELECT id, name FROM scope WHERE id != ? ORDER BY name")
-        .all(id) as { id: string; name: string }[];
+      allScopes = (
+        await c.query<{ id: string; name: string }>(
+          `SELECT id, name FROM scopes WHERE doco_id = $1 AND id != $2 ORDER BY name`,
+          [docoId, id],
+        )
+      ).rows;
     }
 
-    // Audit history for this entity (latest 50 events, newest-first).
-    // Source: per-Doco audit-events log per decision_01KRKESCBTYG4005VMPKYNYR53.
-    const dir = docoPath(ownerSlug, docoSlug);
     const history = await readEntityHistory(
       dir,
       id,
@@ -213,8 +293,6 @@ export async function loader({
         ? (ent as { doco_id: string }).doco_id
         : undefined,
     );
-    // Frozen-state signal for the UI (per the mutability rule
-    // decision_01KRKEPRAMM9QSSEJ2X5FHPESJ). Records always render frozen=false.
     const frozen = isFrozen(type, ent.lifecycle as string | undefined);
     const nodeClass = nodeClassOf(type);
 
@@ -237,9 +315,7 @@ export async function loader({
       frozen,
       nodeClass,
     };
-  } finally {
-    db.close();
-  }
+  });
 }
 
 export async function action({

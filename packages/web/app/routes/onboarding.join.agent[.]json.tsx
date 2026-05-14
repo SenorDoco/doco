@@ -17,7 +17,7 @@ export function loader() {
       "/onboarding/join/agent",
       "/onboarding/join/agent.txt",
       "/agents/new",
-      "/onboarding/create/agent.json",
+      "/cli/authorize",
     ],
   });
 }

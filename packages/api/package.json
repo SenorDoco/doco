@@ -21,6 +21,7 @@
     "test:watch": "echo 'no tests in @doco/api' && true"
   },
   "dependencies": {
+    "@doco/db": "workspace:*",
     "@doco/host": "workspace:*",
     "@doco/shared": "workspace:*",
     "yaml": "^2.6.1"

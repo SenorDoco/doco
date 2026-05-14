@@ -119,7 +119,7 @@ async function sendPatch(
   if (Object.keys(body).length === 0) {
     console.error(
       cross(
-        "Nothing to patch. Pass at least one of: --append-body / --body / --summary / --scope / --add-scope / --remove-scope / --lifecycle / --add-intent / --remove-intent.",
+        "Nothing to patch. Pass at least one of: --append-body / --body / --summary / --scope / --add-scope / --remove-scope / --lifecycle / --superseded-by / --add-intent / --remove-intent.",
       ),
     );
     process.exit(2);
@@ -188,6 +188,7 @@ function buildPatchBody(args: Record<string, unknown>): Record<string, unknown> 
 
   if (args.summary) body.summary = args.summary;
   if (args.lifecycle) body.lifecycle = args.lifecycle;
+  if (args["superseded-by"] !== undefined) body.superseded_by = args["superseded-by"];
 
   const replaceScopes = splitList(args.scope as string | undefined);
   if (args.scope !== undefined) body.scope_names = replaceScopes;
@@ -229,6 +230,11 @@ const commonArgs = {
   lifecycle: {
     type: "string" as const,
     description: "Set lifecycle (e.g. 'active', 'deprecated', 'superseded', 'abandoned').",
+  },
+  "superseded-by": {
+    type: "string" as const,
+    description:
+      "Record the supersession edge: id of the entity that replaces this one. Allowed on frozen claims (per the mutability gate). Pair with --lifecycle superseded for the full supersession transition.",
   },
   scope: {
     type: "string" as const,

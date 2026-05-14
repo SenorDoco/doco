@@ -1,0 +1,267 @@
+// /<owner>/<doco>/rules/new — minimal capture form for a Rule entity.
+// Linked from /constitution's "Add rule" button (and reusable from
+// anywhere else that wants the same affordance — pass ?scope=<name>
+// to prefill the scope). Admin-only: project owners + org admins.
+import { Form, redirect, useSearchParams } from "react-router";
+import { withClient } from "@doco/db";
+import { docoPath } from "~/lib/db.server";
+import { readDocoMetadata } from "~/lib/scope-helpers.server";
+import { loadDocoForAdmin } from "~/lib/doco-access.server";
+import { loadHostConfig } from "~/lib/host";
+import { captureRule } from "~/lib/capture.server";
+import { SiteHeader } from "~/components/site-header";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
+
+interface IntentOption {
+  id: string;
+  summary: string;
+}
+
+export async function loader({
+  request,
+  params,
+}: {
+  request: Request;
+  params: { ownerSlug: string; docoSlug: string };
+}) {
+  const { ownerSlug, docoSlug } = params;
+  const { meta, me } = await loadDocoForAdmin(request, ownerSlug, docoSlug);
+  const url = new URL(request.url);
+  const prefillScope = url.searchParams.get("scope") ?? "";
+  const intents = await withClient(async (c) => {
+    const rows = (
+      await c.query<IntentOption>(
+        `SELECT id, summary FROM intents
+          WHERE doco_id = $1
+            AND COALESCE(lifecycle, 'active') = 'active'
+          ORDER BY created_at DESC`,
+        [meta.docoId],
+      )
+    ).rows;
+    return rows;
+  });
+  return {
+    ownerSlug,
+    docoSlug,
+    prefillScope,
+    intents,
+    host: await loadHostConfig(),
+    me,
+  };
+}
+
+export async function action({
+  request,
+  params,
+}: {
+  request: Request;
+  params: { ownerSlug: string; docoSlug: string };
+}) {
+  const { ownerSlug, docoSlug } = params;
+  const { me } = await loadDocoForAdmin(request, ownerSlug, docoSlug);
+  const dir = docoPath(ownerSlug, docoSlug);
+  const meta = readDocoMetadata(dir);
+  if (!meta) {
+    return Response.json({ error: "Doco not found." }, { status: 404 });
+  }
+  const form = await request.formData();
+  const summary = String(form.get("summary") ?? "").trim();
+  const predicate = String(form.get("predicate") ?? "").trim();
+  const scopeNamesRaw = String(form.get("scope_names") ?? "").trim();
+  const intentId = String(form.get("intent_id") ?? "").trim();
+  const severityRaw = String(form.get("severity") ?? "hard");
+  const enforcedByRaw = String(form.get("enforced_by") ?? "review");
+
+  const scopeNames = scopeNamesRaw
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (scopeNames.length === 0) {
+    return Response.json({ error: "At least one scope is required." }, { status: 400 });
+  }
+  const severity = severityRaw === "soft" ? "soft" : "hard";
+  const enforcedBy = (["lint", "runtime", "review", "manual"] as const).includes(
+    enforcedByRaw as "lint" | "runtime" | "review" | "manual",
+  )
+    ? (enforcedByRaw as "lint" | "runtime" | "review" | "manual")
+    : "review";
+
+  const result = await captureRule(
+    dir,
+    meta.docoId,
+    ownerSlug,
+    docoSlug,
+    {
+      summary,
+      predicate,
+      scope_names: scopeNames,
+      intent_ids: intentId ? [intentId] : [],
+      severity,
+      enforced_by: enforcedBy,
+      created_by_id: me?.id ?? undefined,
+    },
+    new URL(request.url).origin,
+  );
+  if ("error" in result) {
+    return Response.json(result, { status: result.status ?? 400 });
+  }
+  // After capture, redirect back to constitution if that was the source
+  // scope; otherwise land on the new rule's detail page.
+  if (scopeNames.includes("constitution")) {
+    return redirect(`/${ownerSlug}/${docoSlug}/constitution`);
+  }
+  return redirect(`/${ownerSlug}/${docoSlug}/rule/${result.id}`);
+}
+
+export function meta({ params }: { params: { ownerSlug: string; docoSlug: string } }) {
+  return [{ title: `New Rule · ${params.ownerSlug}/${params.docoSlug} · Doco` }];
+}
+
+export default function NewRule({
+  loaderData,
+}: {
+  loaderData: Awaited<ReturnType<typeof loader>>;
+}) {
+  const { ownerSlug, docoSlug, prefillScope, intents, me } = loaderData;
+  const [searchParams] = useSearchParams();
+  const scopeFromUrl = searchParams.get("scope") ?? prefillScope;
+
+  return (
+    <div>
+      <SiteHeader mode="host" me={me} docoScope={{ ownerSlug, docoSlug }} />
+      <main className="mx-auto max-w-2xl px-6 py-6 space-y-4">
+        <Card>
+          <CardHeader>
+            <CardTitle>New Rule</CardTitle>
+            <CardDescription>
+              Capture a load-bearing claim about how this project operates.
+              Rules tagged with <code>constitution</code> appear on the
+              Constitution page.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Form method="post" className="space-y-4">
+              <label className="block">
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  Summary
+                </span>
+                <input
+                  type="text"
+                  name="summary"
+                  required
+                  maxLength={300}
+                  placeholder="One-line statement of the rule."
+                  className="mt-1 block w-full rounded-md border border-border bg-input px-3 py-2 text-sm"
+                />
+              </label>
+              <label className="block">
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  Predicate
+                </span>
+                <textarea
+                  name="predicate"
+                  required
+                  rows={4}
+                  placeholder="The machine-checkable or prose predicate the rule asserts."
+                  className="mt-1 block w-full rounded-md border border-border bg-input px-3 py-2 text-sm font-mono"
+                />
+              </label>
+              <label className="block">
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  Scopes (comma-separated)
+                </span>
+                <input
+                  type="text"
+                  name="scope_names"
+                  required
+                  defaultValue={scopeFromUrl}
+                  placeholder="constitution"
+                  className="mt-1 block w-full rounded-md border border-border bg-input px-3 py-2 text-sm font-mono"
+                />
+              </label>
+              <label className="block">
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  Intent served
+                </span>
+                <select
+                  name="intent_id"
+                  required={scopeFromUrl === "constitution"}
+                  className="mt-1 block w-full rounded-md border border-border bg-input px-3 py-2 text-sm"
+                  defaultValue=""
+                >
+                  <option value="">(none)</option>
+                  {intents.map((i) => (
+                    <option key={i.id} value={i.id}>
+                      {i.summary.slice(0, 100)}
+                      {i.summary.length > 100 ? "…" : ""}
+                    </option>
+                  ))}
+                </select>
+                {scopeFromUrl === "constitution" ? (
+                  <span className="mt-1 block text-[10px] text-muted-foreground">
+                    The constitution scope requires every node to reference
+                    at least one Intent.
+                  </span>
+                ) : null}
+              </label>
+              <div className="flex gap-6">
+                <fieldset>
+                  <legend className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    Severity
+                  </legend>
+                  <label className="mt-1 flex items-center gap-1 text-xs">
+                    <input type="radio" name="severity" value="hard" defaultChecked />
+                    hard (blocker)
+                  </label>
+                  <label className="mt-1 flex items-center gap-1 text-xs">
+                    <input type="radio" name="severity" value="soft" />
+                    soft (warning)
+                  </label>
+                </fieldset>
+                <fieldset>
+                  <legend className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    Enforced by
+                  </legend>
+                  <label className="mt-1 flex items-center gap-1 text-xs">
+                    <input type="radio" name="enforced_by" value="review" defaultChecked />
+                    review
+                  </label>
+                  <label className="mt-1 flex items-center gap-1 text-xs">
+                    <input type="radio" name="enforced_by" value="lint" />
+                    lint
+                  </label>
+                  <label className="mt-1 flex items-center gap-1 text-xs">
+                    <input type="radio" name="enforced_by" value="runtime" />
+                    runtime
+                  </label>
+                  <label className="mt-1 flex items-center gap-1 text-xs">
+                    <input type="radio" name="enforced_by" value="manual" />
+                    manual
+                  </label>
+                </fieldset>
+              </div>
+              <div className="flex items-center gap-3 pt-2">
+                <button
+                  type="submit"
+                  className="rounded-md border border-primary bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90"
+                >
+                  Capture rule
+                </button>
+                <a
+                  href={
+                    scopeFromUrl === "constitution"
+                      ? `/${ownerSlug}/${docoSlug}/constitution`
+                      : `/${ownerSlug}/${docoSlug}`
+                  }
+                  className="text-xs text-muted-foreground hover:underline"
+                >
+                  Cancel
+                </a>
+              </div>
+            </Form>
+          </CardContent>
+        </Card>
+      </main>
+    </div>
+  );
+}

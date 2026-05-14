@@ -1,75 +1,81 @@
 import { defineCommand } from "citty";
-import { openDb } from "@doco/index";
-import { findDocoRoot } from "../find-root.js";
-import { c, cross } from "../output.js";
+import { withClient } from "@doco/db";
+import { cross } from "../output.js";
 
+/**
+ * Run a SQL query against Postgres. `doco query` used to read the
+ * per-clone SQLite cache (`.doco/cache.db`); after the SQLite-removal
+ * migration it goes straight to the durable PG store. Statements run
+ * read-only in a transaction that's rolled back at the end — no
+ * accidental writes from a typo'd query.
+ */
 export const queryCmd = defineCommand({
   meta: {
     name: "query",
-    description: "Run a SQL query against the local index. Returns JSON rows.",
+    description: "Run a read-only SQL query against the Doco's Postgres database. Returns JSON rows.",
   },
   args: {
     sql: {
       type: "positional",
-      description: "SQL statement (read-only). Use 'doco query --tables' to list available tables.",
+      description: "SQL statement (read-only).",
       required: false,
     },
-    root: { type: "string", description: "Path to the Doco root (default: walk upward from cwd)." },
     tables: {
       type: "boolean",
-      description: "List the index's tables and column schemas instead of running a query.",
+      description: "List Postgres tables and column schemas instead of running a query.",
       default: false,
-    },
-    json: {
-      type: "boolean",
-      description: "Pretty-print as JSON (default).",
-      default: true,
     },
   },
   async run({ args }) {
-    const rootArg = (args.root as string | undefined) ?? undefined;
-    const root = rootArg ?? (await findDocoRoot());
-    if (!root) {
-      console.error(cross("Could not find doco.yaml in this directory or any parent."));
-      process.exitCode = 2;
-      return;
-    }
-    const db = await openDb(root, { readonly: true, fileMustExist: true });
     try {
-      if (args.tables) {
-        const tables = db
-          .prepare(
-            "SELECT name FROM sqlite_master WHERE type IN ('table', 'view') AND name NOT LIKE 'sqlite_%' AND name NOT LIKE 'fts_%' ORDER BY name",
-          )
-          .all() as { name: string }[];
-        for (const t of tables) {
-          const cols = db.prepare(`PRAGMA table_info('${t.name}')`).all() as { name: string; type: string }[];
-          console.log(c.bold(t.name));
-          for (const col of cols) {
-            console.log(`  ${col.name.padEnd(22)} ${c.dim(col.type)}`);
+      await withClient(async (c) => {
+        if (args.tables) {
+          const tables = (
+            await c.query<{ table_name: string }>(
+              `SELECT table_name FROM information_schema.tables
+                WHERE table_schema = 'public'
+                ORDER BY table_name`,
+            )
+          ).rows;
+          for (const t of tables) {
+            console.log(t.table_name);
+            const cols = (
+              await c.query<{ column_name: string; data_type: string }>(
+                `SELECT column_name, data_type FROM information_schema.columns
+                  WHERE table_schema = 'public' AND table_name = $1
+                  ORDER BY ordinal_position`,
+                [t.table_name],
+              )
+            ).rows;
+            for (const col of cols) {
+              console.log(`  ${col.column_name.padEnd(22)} ${col.data_type}`);
+            }
+            console.log();
           }
-          console.log();
+          return;
         }
-        return;
-      }
 
-      const sql = args.sql as string | undefined;
-      if (!sql) {
-        console.error(cross("Provide a SQL statement or pass --tables to list tables."));
-        process.exitCode = 2;
-        return;
-      }
+        const sql = args.sql as string | undefined;
+        if (!sql) {
+          console.error(cross("Provide a SQL statement or pass --tables to list tables."));
+          process.exitCode = 2;
+          return;
+        }
 
-      const start = performance.now();
-      const rows = db.prepare(sql).all();
-      const elapsed = performance.now() - start;
-      console.log(JSON.stringify(rows, null, 2));
-      console.error(c.dim(`-- ${rows.length} row(s) in ${elapsed.toFixed(2)} ms`));
+        const start = performance.now();
+        await c.query("BEGIN READ ONLY");
+        try {
+          const r = await c.query(sql);
+          const elapsed = performance.now() - start;
+          console.log(JSON.stringify(r.rows, null, 2));
+          console.error(`-- ${r.rows.length} row(s) in ${elapsed.toFixed(2)} ms`);
+        } finally {
+          await c.query("ROLLBACK");
+        }
+      });
     } catch (err) {
       console.error(cross(`Query failed: ${(err as Error).message}`));
       process.exitCode = 1;
-    } finally {
-      db.close();
     }
   },
 });

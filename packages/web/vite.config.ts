@@ -18,11 +18,11 @@ export default defineConfig({
   optimizeDeps: {
     include: ["@xyflow/react", "frimousse"],
   },
-  // better-sqlite3 is a native module and cannot be bundled into the SSR build.
-  // @xyflow/react and frimousse are client-only — keep them out of the SSR bundle
-  // so they never try to call useRef/useState on a server-side null React.
+  // pg uses native bindings and must not be bundled. @xyflow/react and
+  // frimousse are client-only — keep them out of the SSR bundle so they
+  // never try to call useRef/useState on a server-side null React.
   ssr: {
-    external: ["better-sqlite3", "@xyflow/react", "frimousse"],
+    external: ["pg", "@xyflow/react", "frimousse"],
     noExternal: [
       "@doco/api",
       "@doco/core",

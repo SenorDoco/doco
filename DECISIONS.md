@@ -185,19 +185,19 @@ A consolidated record of every meaningful design decision made to date, intended
 
 ## 6. Query layer
 
-### D-023 — Tiered architecture: source files + derived index
+### D-023 — Tiered architecture: source files + derived index [SUPERSEDED]
 
-- **Chosen:** Source files (`intents/`, `rules/`, ...) are git-tracked and authoritative. A local `.doco/cache.db` SQLite index is per-clone, regenerable, *not* git-tracked.
-- **Why:** Source is durable + diffable; index is fast. Wiping the index never loses data. Each clone rebuilds locally.
-- **Ref:** SCHEMA.md §8.1.
+- **Original:** Source files (`intents/`, `rules/`, ...) are git-tracked and authoritative. A local `.doco/cache.db` SQLite index is per-clone, regenerable, *not* git-tracked.
+- **Superseded by:** the SQLite-removal migration. Postgres is now both the source of truth (D-002 is also superseded) **and** the read-side index. There is no per-clone cache layer.
+- **Why the change:** Once Phase 2 made Postgres the source of truth, the "SQL surface for agents" pillar of D-024 lost its anchor: agents reach Doco via HTTP/MCP, not raw SQL. The remaining pillar — fast batch-local reads — was outweighed by the cost of running two stores and maintaining the SQLite⇄PG bridge.
+- **Ref:** SCHEMA.md §8.1, packages/db/src/schema.sql.
 
-### D-024 — Index = SQLite + FTS5 (Kuzu deferred)
+### D-024 — Index = SQLite + FTS5 (Kuzu deferred) [SUPERSEDED]
 
-- **Chosen:** SQLite with FTS5 virtual table for full-text. Recursive CTEs for graph traversal.
-- **Alternatives rejected (for v0.x):** Kuzu (newer; smaller ecosystem), Memgraph/Neo4j (server-based; ops cost), TerminusDB (would require DB-as-source-of-truth).
-- **Why:** Priority 1 — agents are vastly more fluent in SQL than Cypher (training data volume). Plus zero-ops embedded model. Index is rebuildable, so future swap to Kuzu is cheap engineering.
-- **When to revisit:** Profiling at real scale (1M+ entities, 5+ hop traversals) shows recursive-CTE traversal as the bottleneck → swap to Kuzu.
-- **Ref:** SCHEMA.md §8.2, §8.8.
+- **Original:** SQLite with FTS5 virtual table for full-text. Recursive CTEs for graph traversal.
+- **Superseded by:** PG-native indexing — `tsvector` + GIN for full-text, the `edges` table for traversal. pgvector is the optional ANN swap when sequential cosine stops scaling (still fine at Tier B per D-049).
+- **Migration phases:** (1) additive schema in PG, (2) embeddings → PG, (3) edges + FTS + scope_match → PG, (4) lints → PG, (5) web routes → PG, (6) SQLite layer deleted, (7) this decision marked superseded.
+- **Ref:** packages/db/src/schema.sql, packages/db/src/indexer.ts, packages/db/src/embeddings.ts.
 
 ### D-025 — Edges as adjacency table
 
@@ -373,7 +373,7 @@ Roughly, in implementation-order:
 
 1. **CLI core** — `doco init`, `doco init --existing`, `doco show`, `doco query`. (PLANNING.md §1.)
 2. **Source-of-truth layer** — file readers/writers for entity YAML+Markdown; schema validation against `doco.schema.json`. (SCHEMA.md §2, §3, §4.)
-3. **Index layer** — SQLite + FTS5 cache builder; `edges` adjacency table; `scope_match` denormalization; incremental updater on file change / git commit. (SCHEMA.md §8.)
+3. **Index layer** — Postgres-native: `tsvector` + GIN for full-text, `edges` adjacency table, `scope_match` denormalization, embeddings as `bytea` (pgvector optional). Reindex rebuilds derived data from canonical PG rows. (Originally SQLite + FTS5; superseded — see D-024.)
 4. **Identity** — GitHub OAuth for people; invitation-token + session-token issuance for agents; `DOCO_TOKEN` env-var consumption; token revocation. (PLANNING.md §2, §3.)
 5. **API server** — REST CRUD + query + discovery + events stream; OpenAPI generation. (PLANNING.md §5.2.)
 6. **Web app** — recent-changes feed, list-by-kind, search (Cmd-K + full page), entity detail page with neighborhood preview, graph view as secondary. (PLANNING.md §5.3.)

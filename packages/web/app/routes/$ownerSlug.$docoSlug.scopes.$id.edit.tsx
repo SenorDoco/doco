@@ -24,11 +24,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/com
 import { EmojiPickerInput } from "~/components/emoji-picker-input";
 import { SiteHeader } from "~/components/site-header";
 import { Toggle } from "~/components/toggle";
-import { openDocoDb } from "~/lib/db.server";
+import { withClient } from "@doco/db";
 import { loadDocoForAdmin } from "~/lib/doco-access.server";
 import { loadHostConfig } from "~/lib/host";
 import { reindex, setScopeWatchedInDoco, updateScopeInDoco } from "~/lib/redeem.server";
-import { listScopeDetails, listScopeManifest } from "~/lib/scope-helpers.server";
+import { listScopeDetails, listScopeManifest, readDocoMetadata } from "~/lib/scope-helpers.server";
 
 interface ScopeRuleRecord {
   kind: string;
@@ -146,13 +146,13 @@ export async function loader({
 
   // All scopes — needed for the mandatory_scope rule's scope_id dropdown
   // and for computing child-scope refbacks (Danger Zone).
-  const allScopeDetails = listScopeDetails(dir);
+  const allScopeDetails = await listScopeDetails(dir);
   const allScopes = allScopeDetails.map((s) => ({ id: s.id, name: s.name }));
   const childNames = allScopeDetails.filter((s) => s.parent_ids.includes(id)).map((s) => s.name);
 
   // Per ADR-137bis the watched flag is editable on every scope-management
   // surface. We read it from the scope's own YAML via the manifest helper.
-  const manifest = listScopeManifest(dir);
+  const manifest = await listScopeManifest(dir);
   const isWatched = manifest.find((m) => m.id === id)?.is_watched ?? false;
 
   const rules: ScopeRuleRecord[] = Array.isArray(raw.rules)
@@ -160,23 +160,24 @@ export async function loader({
     : [];
 
   // memberCount — non-scope nodes that name this scope via in_scope_of.
-  // (Child scopes are tracked separately by childNames above.)
   let memberCount = 0;
   try {
-    const db = openDocoDb(ownerSlug, docoSlug);
-    try {
-      const row = db
-        .prepare(
-          `SELECT COUNT(*) AS n FROM edges
-           WHERE to_id = ? AND edge_type = 'in_scope_of' AND from_node_type != 'scope'`,
-        )
-        .get(id) as { n: number };
-      memberCount = row.n;
-    } finally {
-      db.close();
+    const meta = readDocoMetadata(dir);
+    if (meta?.docoId) {
+      memberCount = await withClient(async (c) => {
+        const r = await c.query<{ n: string }>(
+          `SELECT COUNT(*)::text AS n FROM edges
+            WHERE to_id = $1
+              AND edge_type = 'in_scope_of'
+              AND from_node_type != 'scope'
+              AND doco_id = $2`,
+          [id, meta.docoId],
+        );
+        return Number(r.rows[0]?.n ?? 0);
+      });
     }
   } catch {
-    /* fresh Doco without cache — treat as zero members */
+    /* PG unreachable — treat as zero */
   }
 
   return {
@@ -334,7 +335,7 @@ export async function action({
       if (!raw) return { error: "Scope not found." };
       const scopeName = String(raw.name);
 
-      const allScopeDetails = listScopeDetails(dir);
+      const allScopeDetails = await listScopeDetails(dir);
       const children = allScopeDetails.filter((s) => s.parent_ids.includes(id));
       if (children.length > 0) {
         return {
@@ -344,20 +345,22 @@ export async function action({
 
       let memberCount = 0;
       try {
-        const db = openDocoDb(ownerSlug, docoSlug);
-        try {
-          const row = db
-            .prepare(
-              `SELECT COUNT(*) AS n FROM edges
-               WHERE to_id = ? AND edge_type = 'in_scope_of' AND from_node_type != 'scope'`,
-            )
-            .get(id) as { n: number };
-          memberCount = row.n;
-        } finally {
-          db.close();
+        const meta = readDocoMetadata(dir);
+        if (meta?.docoId) {
+          memberCount = await withClient(async (c) => {
+            const r = await c.query<{ n: string }>(
+              `SELECT COUNT(*)::text AS n FROM edges
+                WHERE to_id = $1
+                  AND edge_type = 'in_scope_of'
+                  AND from_node_type != 'scope'
+                  AND doco_id = $2`,
+              [id, meta.docoId],
+            );
+            return Number(r.rows[0]?.n ?? 0);
+          });
         }
       } catch {
-        /* fresh Doco without cache — treat as zero members */
+        /* PG unreachable — treat as zero */
       }
 
       if (memberCount > 0) {

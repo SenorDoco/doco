@@ -1,0 +1,3 @@
+# Host root marker. Postgres `hosts` table is source of truth for
+# config; this file just satisfies the detectMode() filesystem guard.
+node_type: host

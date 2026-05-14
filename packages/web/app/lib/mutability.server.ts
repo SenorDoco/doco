@@ -4,9 +4,9 @@
 // Two classes of node:
 //   - Claim: Decision, Intent, Rule, Action, Reasoning, Evaluation, Reference.
 //     Mutable while in a draft lifecycle; frozen on activation. On a frozen
-//     claim, only `lifecycle` and additive edge fields (`*_add`) can be
-//     patched. Body, summary, alternatives, and core fields are locked —
-//     editorial fixes happen via supersession.
+//     claim, only `lifecycle`, `superseded_by`, and additive edge fields
+//     (`*_add`) can be patched. Body, summary, alternatives, and core fields
+//     are locked — editorial fixes happen via supersession.
 //   - Record: Principal, Organization, Scope, Doco metadata, Tag, Idea.
 //     Always mutable via PATCH. They are state, not claims.
 
@@ -73,6 +73,7 @@ export function isFrozen(nodeType: string, lifecycle: string | undefined | null)
 // Everything else is rejected.
 const ALLOWED_ON_FROZEN: ReadonlySet<string> = new Set([
   "lifecycle",
+  "superseded_by",
   "scope_names_add",
   "intent_ids_add",
 ]);

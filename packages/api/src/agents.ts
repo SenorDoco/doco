@@ -6,8 +6,8 @@
 // .doco/tokens.json + principals/ tree.
 
 import { existsSync, readFileSync, readdirSync } from "node:fs";
-import { writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { mkdir, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import {
   type EntityId,
@@ -15,6 +15,7 @@ import {
   makeEntityId,
   nowIso,
 } from "@doco/shared";
+import { upsertEntity } from "@doco/db";
 import { TokenStore } from "./auth.js";
 
 export interface PrincipalSummary {
@@ -82,7 +83,25 @@ export async function addAgentPrincipal(
     scopes: [],
   };
   const path = `${root}/principals/${id}.yaml`;
+  await mkdir(dirname(path), { recursive: true });
   await writeFile(path, stringifyYaml(yamlObj), "utf8");
+  // Also upsert into Postgres so session-token resolution (which reads
+  // `principals` via `getPrincipalById`) finds the row on the next request.
+  // Filesystem-only writes leave the agent unauthenticated until a host
+  // reindex catches up; for the CLI authorize flow the agent uses the
+  // token immediately, so we sync inline here.
+  await upsertEntity({
+    id,
+    doco_id: yamlObj.doco_id,
+    node_type: "principal",
+    raw_yaml: JSON.stringify(yamlObj),
+    summary: yamlObj.summary,
+    lifecycle: yamlObj.lifecycle,
+    created_at: yamlObj.created_at,
+    created_by: yamlObj.created_by,
+    updated_at: yamlObj.created_at,
+    updated_by: yamlObj.created_by,
+  });
   return id;
 }
 

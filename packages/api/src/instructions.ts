@@ -395,7 +395,7 @@ The deeper reference lives at \`GET $DOCO_HOST/api/v1/agent-reference\`:
 - "Don't follow recipes — think" principle (mapping domain practices to Doco primitives)
 - Placement examples (whole-message shapes for question / informational / no-writes / conversational replies)
 - Things only people can do
-- The claim flow (\`host-bootstrap\` ownership transfer)
+- Creating a Doco from a CLI session (\`doco login --create\`, browser-authorize flow)
 - ADR-086: "Doco is the memory — your private memory isn't"
 
 Fetch the reference when you hit any of those edges. For 80% of work,
@@ -669,26 +669,34 @@ You're welcome — let me know when you're ready for the next task.
 Delete Docos. Sign up new people. Create their own credentials. If a task
 hits one of these, stop and ask.
 
-## While the Doco is unclaimed
+## Creating a Doco from a CLI session
 
-If you created this Doco yourself through the agent wizard, it's owned by
-the host's \`host-bootstrap\` placeholder Principal until the owner takes
-it over. The Doco is fully writable in that state — **don't wait, keep
-working** — but the claim has to land before the URL expires.
+When the project owner says "create a Doco for this project" and \`./.env\`
+doesn't already have \`DOCO_HOST\` / \`DOCO_TOKEN\` / \`DOCO_SLUG\`, run:
 
-- \`<owner> === "host-bootstrap"\` → **unclaimed.** End every user-facing
-  message with one reminder line, formatted as a markdown link if your
-  output renders markdown. The reminder goes between the update lines and
-  the tally (which is always truly last):
-  \`[[🔮 Doco]](<claim_url>) Claim this Doco: [<claim_url>](<claim_url>) — expires in <countdown>.\`
-  Compute \`<countdown>\` fresh each render from the claim's
-  \`expires_at\` ISO timestamp against the current time. Use the largest
-  unit ≥ 1, rounded down: e.g. "in 29 days", "in 2 hours",
-  "in 5 minutes". If past, render "expired".
-- \`<owner> !== "host-bootstrap"\` → **claimed.** Stop reminding. Emit
-  ONE final acknowledgement on the turn you detect the flip
-  ("✓ Doco claimed by <owner>") and then never mention the claim URL
-  again.
+\`\`\`
+doco login --host <DOCO_HOST> --create <slug>
+\`\`\`
+
+This is the Vercel-style browser-authorize flow
+(decision_01KRKZM14WNA1685GN0F12WCKM):
+
+1. The CLI prints a short code, opens \`<DOCO_HOST>/cli/authorize\` in the
+   project owner's default browser, and polls until they approve.
+2. The browser shows an identity card — CLI version, hostname, IP,
+   timestamp — and an "Authorize" button. The project owner signs in if
+   they aren't already, reviews the card, types the requested slug (or
+   accepts the one you passed via \`--create\`), and clicks Authorize.
+3. The server mints an agent Principal owned by the project owner, mints
+   a session token bound to that agent, and creates the Doco directly
+   under \`<project-owner-username>/<slug>\` — no temporary
+   "host-bootstrap" detour, no follow-up claim URL.
+4. The CLI writes \`DOCO_HOST\` / \`DOCO_TOKEN\` / \`DOCO_SLUG\` to
+   \`./.env\`. Restart the agent session so the bootstrap hooks pick up
+   the new credentials.
+
+If the project owner denies, the CLI exits non-zero and \`./.env\` stays
+empty. Don't loop — stop and explain.
 
 ## Asking the user
 

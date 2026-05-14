@@ -1,5 +1,5 @@
 import { Link } from "react-router";
-import { readOAuthConfig, startOAuth } from "~/lib/oauth.server";
+import { readOAuthConfig, setOAuthReturnCookie, startOAuth } from "~/lib/oauth.server";
 import { loadHostConfig } from "~/lib/host";
 import { DocoMark } from "~/components/doco-mark";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
@@ -7,18 +7,26 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/com
 /**
  * GET /auth/github — Kicks off GitHub OAuth (ADR-095). If env vars
  * (DOCO_GITHUB_CLIENT_ID / DOCO_GITHUB_CLIENT_SECRET) are missing, renders
- * a setup page instead of crashing.
+ * a setup page instead of crashing. Accepts `?return=<path>` to redirect
+ * to a specific path after sign-in (only same-origin paths are honored).
  */
 export async function loader({ request }: { request: Request }) {
   const config = readOAuthConfig(request);
   if (!config) {
     return { error: "missing_config" as const, host: await loadHostConfig() };
   }
+  const reqUrl = new URL(request.url);
+  const returnParam = reqUrl.searchParams.get("return");
   const { url, setCookie } = startOAuth(config);
-  return new Response(null, {
-    status: 302,
-    headers: { Location: url, "Set-Cookie": setCookie },
-  });
+  const headers = new Headers();
+  headers.append("Set-Cookie", setCookie);
+  // Stash where to return to after the callback finishes. Same-origin only:
+  // value must start with a single "/" — open redirects rejected.
+  if (returnParam && returnParam.startsWith("/") && !returnParam.startsWith("//")) {
+    headers.append("Set-Cookie", setOAuthReturnCookie(returnParam));
+  }
+  headers.set("Location", url);
+  return new Response(null, { status: 302, headers });
 }
 
 export function meta() {

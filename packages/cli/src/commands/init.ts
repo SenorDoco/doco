@@ -158,10 +158,12 @@ tags: []
       "utf8",
     );
 
-    // Drop the agent bootstrap files (CLAUDE.md + .claude/settings.json +
-    // bootstrap-fetch.sh + user-prompt-fetch.sh) so any agent that walks
-    // into this repo is forced to fetch the canonical instructions before
-    // responding.
+    // Drop the agent bootstrap files (AGENTS.md + CLAUDE.md shim +
+    // .claude/settings.json + bootstrap-fetch.sh + user-prompt-fetch.sh
+    // + post-tool-use-check.sh + stop-check.sh) so any agent that walks
+    // into this repo — Claude Code via CLAUDE.md, others via the
+    // AGENTS.md convention — is forced to fetch the canonical
+    // instructions before responding.
     const { installAgentBootstrapCmd } = await import("./install-agent-bootstrap.js");
     // Run silently — captured output muddles `doco init`'s own success block.
     // The user sees the bootstrap files in the directory listing afterwards.
@@ -182,7 +184,7 @@ tags: []
     if (existing) {
       console.log(checkmark(`Mode:           ${c.warn("brownfield")} (extend with backfill importers in phase 6)`));
     }
-    console.log(checkmark(`Agent bootstrap installed (CLAUDE.md + .claude/ + .env.example)`));
+    console.log(checkmark(`Agent bootstrap installed (AGENTS.md + CLAUDE.md shim + .claude/ + .env.example)`));
     console.log();
     console.log(c.dim("Next:"));
     console.log(c.dim(`  1. cd ${dirName}`));

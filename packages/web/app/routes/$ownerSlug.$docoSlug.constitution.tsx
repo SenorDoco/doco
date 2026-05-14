@@ -1,26 +1,36 @@
 // /<owner>/<doco>/constitution — the Doco's Constitution scope rendered
-// as a first-class tab. Lists the scope's purpose + guidelines + every
-// node tagged with `constitution`, grouped by node type. Surfaces the
-// deterministic `rules` so the contract is visible.
-import { Link } from "react-router";
-import { openDocoDb } from "~/lib/db.server";
-import { loadDocoForRead } from "~/lib/doco-access.server";
+// as a first-class tab. Three cards stack here:
+//   1. Scope metadata (purpose + guidelines)
+//   2. Checks — the scope's `rules` array on disk (predicates the
+//      engine runs at capture time; renamed in the UI from
+//      "Membership rules" to dodge collision with Rule entities)
+//   3. Rules — Rule entities tagged with this scope. The constitutional
+//      rules of THIS Doco — the load-bearing claims the project owner
+//      authored. Project-owner-only affordances: an "Add rule" link to
+//      the new-rule form, and inline Deprecate / Reactivate buttons
+//      per row (lifecycle flips via the action handler below).
+import { Form, Link, redirect } from "react-router";
+import { parse as parseYaml } from "yaml";
+import { withClient } from "@doco/db";
+import { docoPath } from "~/lib/db.server";
+import { readDocoMetadata } from "~/lib/scope-helpers.server";
+import { canAdminDoco, loadDocoForRead, loadDocoForAdmin } from "~/lib/doco-access.server";
 import { loadHostConfig } from "~/lib/host";
+import { updateEntity } from "~/lib/capture.server";
 import { SiteHeader } from "~/components/site-header";
 import { Badge } from "~/components/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { entityUrl } from "@doco/shared";
 
-interface ConstitutionMember {
-  id: string;
-  node_type: string;
-  summary: string;
-  lifecycle: string | null;
-}
-
-interface MembershipRuleView {
+interface CheckView {
   kind: string;
   description: string;
+}
+
+interface RuleRow {
+  id: string;
+  summary: string;
+  lifecycle: string | null;
 }
 
 export async function loader({
@@ -31,15 +41,17 @@ export async function loader({
   params: { ownerSlug: string; docoSlug: string };
 }) {
   const { ownerSlug, docoSlug } = params;
-  const { me } = await loadDocoForRead(request, ownerSlug, docoSlug);
-  const db = openDocoDb(ownerSlug, docoSlug);
-  try {
-    // Find the Constitution scope.
-    const scope = db
-      .prepare(
-        "SELECT id, name, summary, raw_json FROM scope WHERE name = 'constitution' LIMIT 1",
+  const ctx = await loadDocoForRead(request, ownerSlug, docoSlug);
+  const me = ctx.me;
+  const canEdit = await canAdminDoco(ctx.meta, me?.id ?? null);
+  return withClient(async (c) => {
+    const scope = (
+      await c.query<{ id: string; name: string; summary: string; raw_yaml: string }>(
+        `SELECT id, name, summary, raw_yaml FROM scopes
+          WHERE doco_id = $1 AND name = 'constitution' LIMIT 1`,
+        [ctx.meta.docoId],
       )
-      .get() as { id: string; name: string; summary: string; raw_json: string } | undefined;
+    ).rows[0];
     if (!scope) {
       return {
         ownerSlug,
@@ -47,52 +59,19 @@ export async function loader({
         scope: null,
         host: await loadHostConfig(),
         me,
-        memberCount: 0,
-        membersByType: {},
-        rules: [],
+        canEdit,
+        rules: [] as CheckView[],
+        constitutionalRules: [] as RuleRow[],
       };
     }
-    const scopeJson = JSON.parse(scope.raw_json) as Record<string, unknown>;
+    const scopeJson = (parseYaml(scope.raw_yaml) ?? {}) as Record<string, unknown>;
     const icon = typeof scopeJson.icon === "string" ? scopeJson.icon : "";
     const purpose = typeof scopeJson.purpose === "string" ? scopeJson.purpose : "";
     const guidelines = typeof scopeJson.guidelines === "string" ? scopeJson.guidelines : "";
 
-    // Pull every node tagged with the Constitution.
-    const memberTypes = [
-      "rule",
-      "decision",
-      "intent",
-      "action",
-      "reasoning",
-      "idea",
-      "reference",
-      "eval",
-    ] as const;
-    const membersByType: Record<string, ConstitutionMember[]> = {};
-    for (const t of memberTypes) {
-      try {
-        const rows = db
-          .prepare(
-            `SELECT t.id, t.summary, t.lifecycle
-             FROM ${t} t
-             JOIN edges e ON e.from_id = t.id AND e.edge_type = 'in_scope_of' AND e.to_id = ?
-             ORDER BY t.created_at DESC LIMIT 100`,
-          )
-          .all(scope.id) as Record<string, string | null>[];
-        const mapped = rows.map((r) => ({
-          id: r.id as string,
-          node_type: t,
-          summary: (r.summary as string) ?? "",
-          lifecycle: r.lifecycle ?? null,
-        }));
-        if (mapped.length > 0) membersByType[t] = mapped;
-      } catch {
-        /* table missing — skip */
-      }
-    }
-    const memberCount = Object.values(membersByType).reduce((n, arr) => n + arr.length, 0);
-
-    // Surface the membership rules as plain-English descriptions.
+    // Surface the scope's `rules` array (renamed in the UI to "Checks"
+    // to dodge the collision with Rule entities) as plain-English
+    // descriptions.
     const rawRules = Array.isArray(scopeJson.rules)
       ? (scopeJson.rules as Record<string, unknown>[])
       : [];
@@ -101,7 +80,7 @@ export async function loader({
       if (typeof singular === "string" && singular.length > 0) return [singular];
       return [];
     };
-    const rules: MembershipRuleView[] = rawRules.map((r) => {
+    const rules: CheckView[] = rawRules.map((r) => {
       const kind = (r.kind as string) ?? "(unknown)";
       let description = (r.reason as string) ?? "";
       if (!description) {
@@ -138,19 +117,91 @@ export async function loader({
       return { kind, description };
     });
 
+    // Rule entities tagged with this constitution scope. Listed across
+    // all lifecycle stages so superseded rules stay visible alongside
+    // their successors — the supersession trail is itself part of the
+    // Constitution's history. Active first, then everything else.
+    const constitutionalRules = (
+      await c.query<RuleRow>(
+        `SELECT r.id, r.summary, r.lifecycle
+           FROM rules r
+           JOIN edges e ON e.from_id = r.id
+                       AND e.edge_type = 'in_scope_of'
+                       AND e.to_id = $1
+          WHERE r.doco_id = $2
+          ORDER BY (CASE WHEN COALESCE(r.lifecycle, 'active') = 'active' THEN 0 ELSE 1 END),
+                   r.created_at DESC`,
+        [scope.id, ctx.meta.docoId],
+      )
+    ).rows;
+
     return {
       ownerSlug,
       docoSlug,
       scope: { id: scope.id, name: scope.name, icon, summary: scope.summary, purpose, guidelines },
-      memberCount,
-      membersByType,
       rules,
+      constitutionalRules,
       host: await loadHostConfig(),
       me,
+      canEdit,
     };
-  } finally {
-    db.close();
+  });
+}
+
+/**
+ * Action handler — lifecycle toggles on Rule entities tagged with the
+ * constitution scope. The "Add rule" button isn't routed through here
+ * (it navigates to /<owner>/<doco>/rules/new); deprecate / reactivate
+ * are inline forms that POST back to this route.
+ */
+export async function action({
+  request,
+  params,
+}: {
+  request: Request;
+  params: { ownerSlug: string; docoSlug: string };
+}) {
+  const { ownerSlug, docoSlug } = params;
+  const { me } = await loadDocoForAdmin(request, ownerSlug, docoSlug);
+  const dir = docoPath(ownerSlug, docoSlug);
+  const meta = readDocoMetadata(dir);
+  if (!meta) {
+    return Response.json({ error: "Doco not found." }, { status: 404 });
   }
+  const form = await request.formData();
+  const intent = String(form.get("intent") ?? "");
+  const ruleId = String(form.get("rule_id") ?? "");
+  if (!ruleId.startsWith("rule_")) {
+    return Response.json({ error: "rule_id missing or malformed." }, { status: 400 });
+  }
+  // "deprecate" → lifecycle = "abandoned" (canonical six per ADR-100;
+  // the same retirement verb the scope edit page uses).
+  // "reactivate" → lifecycle = "active".
+  let nextLifecycle: string;
+  if (intent === "deprecate") {
+    nextLifecycle = "abandoned";
+  } else if (intent === "reactivate") {
+    nextLifecycle = "active";
+  } else {
+    return Response.json({ error: `Unknown intent: ${intent}` }, { status: 400 });
+  }
+  const result = await updateEntity({
+    docoDir: dir,
+    docoId: meta.docoId,
+    ownerSlug,
+    docoSlug,
+    nodeType: "rule",
+    pluralDir: "rules",
+    id: ruleId,
+    patch: { lifecycle: nextLifecycle },
+    allowedFields: [],
+    docoHost: new URL(request.url).origin,
+    actorId: me?.id ?? null,
+  });
+  if ("error" in result) {
+    return Response.json(result, { status: result.status ?? 400 });
+  }
+  return redirect(`/${ownerSlug}/${docoSlug}/constitution`);
 }
 
 export function meta({ params }: { params: { ownerSlug: string; docoSlug: string } }) {
@@ -162,7 +213,7 @@ export default function Constitution({
 }: {
   loaderData: Awaited<ReturnType<typeof loader>>;
 }) {
-  const { ownerSlug, docoSlug, scope, memberCount, membersByType, rules, host, me } = loaderData;
+  const { ownerSlug, docoSlug, scope, rules, constitutionalRules, me, canEdit } = loaderData;
 
   if (!scope) {
     return (
@@ -240,19 +291,19 @@ export default function Constitution({
         <Card>
           <CardHeader>
             <CardTitle className="text-sm">
-              Rules ({rules.length})
+              Checks ({rules.length})
             </CardTitle>
             <CardDescription>
-              Predicates the engine evaluates on every capture. Deterministic
-              rules block writes; probabilistic ones surface as warnings.
+              Predicates the engine evaluates on every capture into this
+              scope. Deterministic checks block writes; probabilistic
+              ones surface as warnings.
             </CardDescription>
           </CardHeader>
           <CardContent>
             {rules.length === 0 ? (
               <p className="text-xs text-muted-foreground">
-                No rules yet. The seed migration adds one — "Constitution nodes
-                must reference at least one Intent" — but you can edit the
-                scope to add more (mandatory-scope, requires-field, etc.).
+                No checks yet. Edit the scope to add some
+                (mandatory-scope, requires-field, requires-edge, etc.).
               </p>
             ) : (
               <ul className="space-y-2">
@@ -272,41 +323,85 @@ export default function Constitution({
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-sm">
-              Members ({memberCount})
+            <CardTitle className="text-sm flex items-center justify-between gap-3">
+              <span>Rules ({constitutionalRules.length})</span>
+              {canEdit ? (
+                <Link
+                  to={`/${ownerSlug}/${docoSlug}/rules/new?scope=constitution`}
+                  className="rounded-md border border-border bg-input px-2 py-1 text-[11px] font-semibold text-foreground hover:bg-card"
+                >
+                  + Add rule
+                </Link>
+              ) : null}
             </CardTitle>
             <CardDescription>
-              Every node tagged with the Constitution.
+              Rule entities the project owner has tagged into this scope
+              — the load-bearing claims this Doco is held to. Deprecated
+              and superseded entries are kept so the trail of "what we
+              used to say" stays visible.
             </CardDescription>
           </CardHeader>
-          <CardContent className="p-0">
-            {memberCount === 0 ? (
-              <p className="px-5 py-3 text-xs text-muted-foreground">
-                No nodes yet. Add load-bearing Rules / Decisions / Intents here.
+          <CardContent>
+            {constitutionalRules.length === 0 ? (
+              <p className="text-xs text-muted-foreground">
+                No Rule entities tagged with <code>constitution</code> yet.
+                {canEdit ? (
+                  <>
+                    {" "}
+                    <Link
+                      to={`/${ownerSlug}/${docoSlug}/rules/new?scope=constitution`}
+                      className="text-primary hover:underline"
+                    >
+                      Add the first one →
+                    </Link>
+                  </>
+                ) : (
+                  <>
+                    {" "}Capture one with{" "}
+                    <code>doco capture rule --scope constitution …</code>{" "}
+                    and it'll show up here.
+                  </>
+                )}
               </p>
             ) : (
-              <ul className="divide-y divide-border text-xs">
-                {Object.entries(membersByType).flatMap(([t, rows]) =>
-                  rows.map((m) => (
-                    <li key={m.id} className="flex items-baseline gap-3 px-5 py-2">
-                      <span className="w-20 shrink-0 text-[10px] uppercase tracking-wider text-muted-foreground">
-                        {t}
-                      </span>
-                      <span className="flex-1 truncate text-foreground">{m.summary}</span>
+              <ul className="space-y-2 text-xs">
+                {constitutionalRules.map((r) => {
+                  const isActive = (r.lifecycle ?? "active") === "active";
+                  return (
+                    <li key={r.id} className="flex items-baseline gap-2">
                       <Link
                         to={entityUrl({
                           ownerSlug,
                           docoSlug,
-                          nodeType: t,
-                          id: m.id,
+                          nodeType: "rule",
+                          id: r.id,
                         })}
-                        className="shrink-0 rounded-md border border-border px-2 py-0.5 text-[11px] font-semibold hover:bg-input"
+                        className="flex-1 text-primary hover:underline"
                       >
-                        View
+                        {r.summary}
                       </Link>
+                      {!isActive ? (
+                        <Badge>{r.lifecycle}</Badge>
+                      ) : null}
+                      {canEdit ? (
+                        <Form method="post" className="m-0">
+                          <input type="hidden" name="rule_id" value={r.id} />
+                          <input
+                            type="hidden"
+                            name="intent"
+                            value={isActive ? "deprecate" : "reactivate"}
+                          />
+                          <button
+                            type="submit"
+                            className="rounded border border-border bg-input px-2 py-0.5 text-[10px] font-semibold text-muted-foreground hover:bg-card hover:text-foreground"
+                          >
+                            {isActive ? "Deprecate" : "Reactivate"}
+                          </button>
+                        </Form>
+                      ) : null}
                     </li>
-                  )),
-                )}
+                  );
+                })}
               </ul>
             )}
           </CardContent>

@@ -1,4 +1,5 @@
-import { docoPath, openDocoDb } from "~/lib/db.server";
+import { withClient } from "@doco/db";
+import { docoPath } from "~/lib/db.server";
 import { canAccessDoco } from "~/lib/doco-access.server";
 import { readDocoMetadata } from "~/lib/scope-helpers.server";
 import { getCurrentPrincipalAsync } from "~/lib/session";
@@ -6,10 +7,8 @@ import { getCurrentPrincipalAsync } from "~/lib/session";
 /**
  * /<owner>/<doco>/status.json — agent-polled freshness signal.
  *
- * Returns the Doco's latest modification time + light counts. Reads from
- * the SQLite cache (which is itself rebuilt from Postgres rows on every
- * reindex). No filesystem entity walks
- * (rule_01KRKQDHWNWJAF4YKTMCB2A0D9 — alpha forbids back-compat).
+ * Returns the Doco's latest modification time + light counts read straight
+ * from Postgres.
  */
 export async function loader({
   request,
@@ -22,13 +21,19 @@ export async function loader({
   const dir = docoPath(ownerSlug, docoSlug);
   const meta = readDocoMetadata(dir);
   if (!meta) {
-    return Response.json({ status: "unknown", owner_slug: ownerSlug, doco_slug: docoSlug }, { status: 404 });
+    return Response.json(
+      { status: "unknown", owner_slug: ownerSlug, doco_slug: docoSlug },
+      { status: 404 },
+    );
   }
   const me = await getCurrentPrincipalAsync(request);
-  if (!await canAccessDoco(meta, me?.id ?? null)) {
-    return Response.json({ status: "unknown", owner_slug: ownerSlug, doco_slug: docoSlug }, { status: 404 });
+  if (!(await canAccessDoco(meta, me?.id ?? null))) {
+    return Response.json(
+      { status: "unknown", owner_slug: ownerSlug, doco_slug: docoSlug },
+      { status: 404 },
+    );
   }
-  const { latest, counts } = readStatusFromCache(ownerSlug, docoSlug);
+  const { latest, counts } = await readStatusFromPg(meta.docoId);
   return Response.json({
     status: "ok" as const,
     owner_slug: ownerSlug,
@@ -41,46 +46,44 @@ export async function loader({
   });
 }
 
-const TYPES = [
-  "scope",
-  "intent",
-  "idea",
-  "rule",
-  "decision",
-  "action",
-  "reasoning",
-  "eval",
-  "reference",
-  "principal",
+/** Map of external node_type → (PG table, exposed plural key for the response counts). */
+const TYPE_MAP: { nodeType: string; table: string; plural: string }[] = [
+  { nodeType: "scope", table: "scopes", plural: "scopes" },
+  { nodeType: "intent", table: "intents", plural: "intents" },
+  { nodeType: "idea", table: "ideas", plural: "ideas" },
+  { nodeType: "rule", table: "rules", plural: "rules" },
+  { nodeType: "decision", table: "decisions", plural: "decisions" },
+  { nodeType: "action", table: "actions", plural: "actions" },
+  { nodeType: "reasoning", table: "reasoning", plural: "reasonings" },
+  { nodeType: "eval", table: "evals", plural: "evals" },
+  { nodeType: "reference", table: "reference_entities", plural: "references" },
 ];
 
-function readStatusFromCache(
-  ownerSlug: string,
-  docoSlug: string,
-): { latest: string | null; counts: Record<string, number> } {
+async function readStatusFromPg(
+  docoId: string,
+): Promise<{ latest: string | null; counts: Record<string, number> }> {
   const counts: Record<string, number> = {};
   let latest: string | null = null;
   try {
-    const db = openDocoDb(ownerSlug, docoSlug);
-    try {
-      for (const t of TYPES) {
-        try {
-          const row = db.prepare(`SELECT count(*) AS n FROM ${t}`).get() as { n: number };
-          counts[`${t}s`] = Number(row.n ?? 0);
-        } catch {
-          counts[`${t}s`] = 0;
-        }
-        try {
-          const ts = db.prepare(`SELECT max(created_at) AS c FROM ${t}`).get() as { c: string | null };
-          if (typeof ts.c === "string" && (latest === null || ts.c > latest)) latest = ts.c;
-        } catch {}
+    await withClient(async (c) => {
+      for (const { table, plural } of TYPE_MAP) {
+        const r = await c.query<{ n: string; c: string | null }>(
+          `SELECT COUNT(*)::text AS n, MAX(created_at)::text AS c FROM ${table} WHERE doco_id = $1`,
+          [docoId],
+        );
+        counts[plural] = Number(r.rows[0]?.n ?? 0);
+        const ts = r.rows[0]?.c ?? null;
+        if (ts && (latest === null || ts > latest)) latest = ts;
       }
-    } finally {
-      db.close();
-    }
+      // Principals are host-level (no doco_id) — count them globally.
+      const p = await c.query<{ n: string }>(
+        `SELECT COUNT(*)::text AS n FROM principals`,
+      );
+      counts.principals = Number(p.rows[0]?.n ?? 0);
+    });
   } catch {
-    // No cache yet — return zeros.
-    for (const t of TYPES) counts[`${t}s`] = 0;
+    for (const { plural } of TYPE_MAP) counts[plural] = 0;
+    counts.principals = 0;
   }
   return { latest, counts };
 }

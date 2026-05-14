@@ -7,7 +7,7 @@ import type { Lint } from "./types.js";
  * an in-memory cache for unit tests), the lint emits nothing — no false
  * positives.
  */
-export const lintDriftUncoveredChanges: Lint = (_db, ctx) => {
+export const lintDriftUncoveredChanges: Lint = async (_c, _docoId, ctx) => {
   if (!ctx?.docoRoot) return [];
   const report = computeCoverage(ctx.docoRoot);
   if (report.uncovered.length === 0) return [];

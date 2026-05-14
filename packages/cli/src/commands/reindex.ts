@@ -6,7 +6,7 @@ import { c, checkmark, cross } from "../output.js";
 export const reindexCmd = defineCommand({
   meta: {
     name: "reindex",
-    description: "Wipe .doco/ and rebuild the SQLite + FTS5 index from source files.",
+    description: "Rebuild the Postgres-side derived data (edges, FTS, embeddings) for the Doco at the current root.",
   },
   args: {
     root: { type: "string", description: "Path to the Doco root (default: walk upward from cwd)." },
@@ -22,7 +22,12 @@ export const reindexCmd = defineCommand({
     const report = await reindex(root);
     console.log();
     console.log(checkmark(`Reindexed ${c.bold(String(report.inserted))} entities in ${report.durationMs} ms.`));
-    console.log(c.dim(`Cache: ${root}/.doco/cache.db`));
+    if (report.embeddings) {
+      const { computed, skipped, pruned, modelId } = report.embeddings;
+      console.log(
+        c.dim(`Embeddings (${modelId}): ${computed} computed, ${skipped} skipped, ${pruned} pruned.`),
+      );
+    }
     console.log();
   },
 });

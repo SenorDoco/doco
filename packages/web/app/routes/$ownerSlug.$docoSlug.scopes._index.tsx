@@ -8,9 +8,9 @@
 // destroying a scope requires opening its edit page first.
 import { Link, redirect } from "react-router";
 import { entityUrl } from "@doco/shared";
+import { withClient } from "@doco/db";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { SiteHeader } from "~/components/site-header";
-import { openDocoDb } from "~/lib/db.server";
 import { loadDocoForRead } from "~/lib/doco-access.server";
 import { loadHostConfig } from "~/lib/host";
 import { listScopeDetails } from "~/lib/scope-helpers.server";
@@ -24,32 +24,29 @@ export async function loader({
 }) {
   const { ownerSlug, docoSlug } = params;
   const { dir, meta, me } = await loadDocoForRead(request, ownerSlug, docoSlug);
-  const scopes = listScopeDetails(dir);
+  const scopes = await listScopeDetails(dir);
   const url = new URL(request.url);
   const isOnboarding = url.searchParams.get("onboarding") === "1";
   if (scopes.length === 0) {
     throw redirect(`/${ownerSlug}/${docoSlug}/scopes/new${isOnboarding ? "?onboarding=1" : ""}`);
   }
 
-  // Pull node counts per scope from the index in one query.
   const memberCount = new Map<string, number>();
   try {
-    const db = openDocoDb(ownerSlug, docoSlug);
-    try {
-      const rows = db
-        .prepare(
-          `SELECT to_id AS scope_id, COUNT(*) AS n
+    await withClient(async (c) => {
+      const r = await c.query<{ scope_id: string; n: string }>(
+        `SELECT to_id AS scope_id, COUNT(*)::text AS n
            FROM edges
-           WHERE edge_type = 'in_scope_of' AND from_node_type != 'scope'
-           GROUP BY to_id`,
-        )
-        .all() as { scope_id: string; n: number }[];
-      for (const r of rows) memberCount.set(r.scope_id, r.n);
-    } finally {
-      db.close();
-    }
+          WHERE edge_type = 'in_scope_of'
+            AND from_node_type != 'scope'
+            AND doco_id = $1
+          GROUP BY to_id`,
+        [meta.docoId],
+      );
+      for (const row of r.rows) memberCount.set(row.scope_id, Number(row.n));
+    });
   } catch {
-    /* fresh Doco without cache yet — counts default to 0 */
+    /* PG unreachable — counts default to 0 */
   }
 
   return {

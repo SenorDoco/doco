@@ -1,22 +1,27 @@
-import type { Database } from "better-sqlite3";
+import type { PoolClient } from "pg";
 import type { LintIssue } from "./types.js";
 
 /**
  * Resolves DECISIONS.md §13 #12 / ADR-054: Principal.display_name MUST NOT
  * match an email regex. Public Docos expose principal display_names via the
  * agent-ancestry chain (PLANNING.md §3.4); leaking emails would be a privacy
- * regression.
+ * regression. Principals are host-level — the check is global.
  */
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-export const lintPiiDisplayName = (db: Database): LintIssue[] => {
+export const lintPiiDisplayName = async (
+  c: PoolClient,
+  _docoId: string,
+): Promise<LintIssue[]> => {
   const issues: LintIssue[] = [];
-  const rows = db
-    .prepare("SELECT id, display_name FROM principal")
-    .all() as { id: string; display_name: string }[];
+  const rows = (
+    await c.query<{ id: string; display_name: string | null }>(
+      `SELECT id, display_name FROM principals WHERE display_name IS NOT NULL`,
+    )
+  ).rows;
 
   for (const r of rows) {
-    if (EMAIL_REGEX.test(r.display_name)) {
+    if (r.display_name && EMAIL_REGEX.test(r.display_name)) {
       issues.push({
         lintId: "pii-display-name",
         severity: "warning",

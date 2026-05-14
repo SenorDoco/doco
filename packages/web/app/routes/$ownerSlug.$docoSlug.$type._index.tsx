@@ -8,7 +8,8 @@
 // lint, coverage, search, status.json, api/*) are registered before this in
 // routes.ts and win the match. For an unrecognized type we return 404.
 import { Link } from "react-router";
-import { openDocoDb } from "~/lib/db.server";
+import { parse as parseYaml } from "yaml";
+import { withClient } from "@doco/db";
 import { loadDocoForRead } from "~/lib/doco-access.server";
 import { loadHostConfig } from "~/lib/host";
 import { getCurrentPrincipal } from "~/lib/session";
@@ -44,40 +45,45 @@ export async function loader({
 }) {
   const { ownerSlug, docoSlug, type } = params;
   if (!KNOWN.has(type)) throw new Response("Unknown type", { status: 404 });
-  await loadDocoForRead(request, ownerSlug, docoSlug); // 404s if private + non-member
-  const db = openDocoDb(ownerSlug, docoSlug);
-  try {
+  const ctx = await loadDocoForRead(request, ownerSlug, docoSlug);
+  return withClient(async (c) => {
     if (type === "scope") {
-      // ADR-084: scope list = tree view with member counts + parent edges.
-      const rows = db
-        .prepare(
-          `SELECT s.id, s.name, s.summary, s.raw_json,
+      const rows = (
+        await c.query<{
+          id: string;
+          name: string;
+          summary: string;
+          raw_yaml: string;
+          member_count: string;
+          sub_scope_count: string;
+        }>(
+          `SELECT s.id, s.name, s.summary, s.raw_yaml,
                   (SELECT COUNT(*) FROM edges e
-                   WHERE e.to_id = s.id AND e.edge_type = 'in_scope_of'
-                     AND e.from_node_type != 'scope') AS member_count,
+                    WHERE e.to_id = s.id
+                      AND e.edge_type = 'in_scope_of'
+                      AND e.from_node_type != 'scope'
+                      AND e.doco_id = s.doco_id)::text AS member_count,
                   (SELECT COUNT(*) FROM edges e
-                   WHERE e.to_id = s.id AND e.edge_type = 'in_scope_of'
-                     AND e.from_node_type = 'scope') AS sub_scope_count
-           FROM scope s ORDER BY s.name`,
+                    WHERE e.to_id = s.id
+                      AND e.edge_type = 'in_scope_of'
+                      AND e.from_node_type = 'scope'
+                      AND e.doco_id = s.doco_id)::text AS sub_scope_count
+             FROM scopes s
+            WHERE s.doco_id = $1
+            ORDER BY s.name`,
+          [ctx.meta.docoId],
         )
-        .all() as {
-        id: string;
-        name: string;
-        summary: string;
-        raw_json: string;
-        member_count: number;
-        sub_scope_count: number;
-      }[];
+      ).rows;
       const scopes: ScopeRow[] = rows.map((r) => {
-        const ent = JSON.parse(r.raw_json) as Record<string, unknown>;
+        const ent = (parseYaml(r.raw_yaml) ?? {}) as Record<string, unknown>;
         return {
           id: r.id,
           name: r.name,
           summary: r.summary,
           purpose: typeof ent.purpose === "string" ? ent.purpose : null,
           parent_ids: Array.isArray(ent.scopes) ? (ent.scopes as string[]) : [],
-          member_count: r.member_count,
-          sub_scope_count: r.sub_scope_count,
+          member_count: Number(r.member_count),
+          sub_scope_count: Number(r.sub_scope_count),
         };
       });
       return {
@@ -90,11 +96,17 @@ export async function loader({
         me: await getCurrentPrincipal(request),
       };
     }
-    const rows = db
-      .prepare(`SELECT id, summary, raw_json FROM ${type} ORDER BY id DESC LIMIT 200`)
-      .all() as { id: string; summary: string; raw_json: string }[];
+    const table = TABLE_BY_TYPE[type] ?? type;
+    const rows = (
+      await c.query<{ id: string; summary: string; raw_yaml: string }>(
+        `SELECT id, summary, raw_yaml FROM ${table}
+          WHERE doco_id = $1
+          ORDER BY id DESC LIMIT 200`,
+        [ctx.meta.docoId],
+      )
+    ).rows;
     const items = rows.map((r) => {
-      const ent = JSON.parse(r.raw_json) as Record<string, unknown>;
+      const ent = (parseYaml(r.raw_yaml) ?? {}) as Record<string, unknown>;
       return {
         id: r.id,
         summary: r.summary,
@@ -111,10 +123,20 @@ export async function loader({
       host: await loadHostConfig(),
       me: await getCurrentPrincipal(request),
     };
-  } finally {
-    db.close();
-  }
+  });
 }
+
+const TABLE_BY_TYPE: Record<string, string> = {
+  decision: "decisions",
+  intent: "intents",
+  rule: "rules",
+  action: "actions",
+  reasoning: "reasoning",
+  reference: "reference_entities",
+  scope: "scopes",
+  eval: "evals",
+  idea: "ideas",
+};
 
 export function meta({ params }: { params: { ownerSlug: string; docoSlug: string; type: string } }) {
   return [{ title: `${params.type}s · ${params.ownerSlug}/${params.docoSlug} · Doco` }];

@@ -50,7 +50,7 @@ export default function JoinAgent() {
             </ol>
             <p className="mt-3 text-xs text-muted-foreground">
               Once you have a token, set it as <code>DOCO_TOKEN</code> in your environment and
-              follow the repo's <code>AGENT.md</code> for everything else.
+              follow the repo's <code>AGENTS.md</code> for everything else.
             </p>
           </CardContent>
         </Card>

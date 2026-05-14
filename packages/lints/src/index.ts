@@ -1,4 +1,4 @@
-import type { Database } from "better-sqlite3";
+import type { PoolClient } from "pg";
 import { lintAgentAncestry } from "./agent-ancestry.js";
 import { lintBugfixGuard } from "./bugfix-guard.js";
 import { lintConnectivity } from "./connectivity.js";
@@ -39,11 +39,15 @@ export interface LintReport {
   issues: LintIssue[];
 }
 
-export function runAllLints(db: Database, ctx?: LintContext): LintReport {
+export async function runAllLints(
+  c: PoolClient,
+  docoId: string,
+  ctx?: LintContext,
+): Promise<LintReport> {
   const issuesByLint: Record<string, LintIssue[]> = {};
   const all: LintIssue[] = [];
   for (const [name, lint] of Object.entries(SYSTEM_LINTS)) {
-    const issues = lint(db, ctx);
+    const issues = await lint(c, docoId, ctx);
     issuesByLint[name] = issues;
     all.push(...issues);
   }

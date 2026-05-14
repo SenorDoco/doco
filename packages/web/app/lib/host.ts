@@ -8,8 +8,6 @@
 // Functions are async because Postgres is async; route loaders that
 // consumed the prior sync versions need an `await` added.
 
-import { existsSync } from "node:fs";
-import { join } from "node:path";
 import {
   getHostConfig,
   listAllDocos as _dbListAllDocos,
@@ -17,7 +15,6 @@ import {
   listOrganizationsForPrincipal,
   listPrincipals,
 } from "@doco/db";
-import { rootDir } from "./db.server";
 
 export interface HostConfig {
   id: string;
@@ -108,7 +105,6 @@ export async function listOrgsOwnedOrAdminedBy(principalId: string): Promise<Hos
 
 export async function listAllDocos(): Promise<HostDoco[]> {
   const rows = await _dbListAllDocos();
-  const docosDir = join(rootDir(), "docos");
   return rows.map((r) => {
     const fm = JSON.parse(r.raw_yaml) as Record<string, unknown>;
     const ownerKind: "principal" | "organization" =
@@ -119,7 +115,8 @@ export async function listAllDocos(): Promise<HostDoco[]> {
       ownerKind,
       ownerId: r.owner_id,
       docoId: r.id,
-      hasIndex: existsSync(join(docosDir, r.owner_slug, r.doco_slug, ".doco", "cache.db")),
+      // PG is the index; every doco row implicitly has an index.
+      hasIndex: true,
       visibility: r.visibility,
     };
     if (typeof fm.description === "string") out.description = fm.description;

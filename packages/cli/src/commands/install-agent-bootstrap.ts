@@ -12,13 +12,18 @@ import { c, checkmark, cross, header, rule } from "../output.js";
 
 /**
  * `doco install-agent-bootstrap` — drop the agent bootstrap files into a
- * repo so Claude Code (via auto-loaded CLAUDE.md + SessionStart +
+ * repo so any AI agent (via the cross-agent `AGENTS.md` convention, or
+ * via Claude Code's auto-loaded CLAUDE.md + SessionStart +
  * UserPromptSubmit hooks) is forced to fetch
  * `$DOCO_HOST/api/v1/agent-bootstrap` before responding.
  *
  * Files installed at the repo root (the cwd, or --root):
  *
- *   CLAUDE.md                       (regular file — strong imperative stub)
+ *   AGENTS.md                       (canonical bootstrap — read by any
+ *                                    agent following the AGENTS.md spec)
+ *   CLAUDE.md                       (one-line shim: `@./AGENTS.md` — only
+ *                                    exists because Claude Code auto-loads
+ *                                    CLAUDE.md by name, not AGENTS.md)
  *   .claude/settings.json           (SessionStart + UserPromptSubmit + PostToolUse + Stop hooks)
  *   .claude/bootstrap-fetch.sh      (SessionStart hook script)
  *   .claude/user-prompt-fetch.sh    (UserPromptSubmit hook script)
@@ -29,10 +34,11 @@ import { c, checkmark, cross, header, rule } from "../output.js";
  * propagate to every Doco that runs this command (or `doco init`, which
  * runs it automatically).
  *
- * Non-Claude-Code agents fetch `$DOCO_HOST/api/v1/agent-bootstrap` manually
- * at the start of each new task. The previous AGENT.md symlink convention
- * was dropped — one file (CLAUDE.md) at one filename. Non-Claude agents
- * read it directly or fetch the canonical via the bootstrap endpoint.
+ * Non-Claude agents read AGENTS.md directly (the convention any modern
+ * coding agent honors) and additionally fetch
+ * `$DOCO_HOST/api/v1/agent-bootstrap` at the start of each task to get
+ * the live canonical_instructions. The `.claude/` hooks are Claude-Code-
+ * specific and have no equivalent for other agents.
  */
 const __dirname = dirname(fileURLToPath(import.meta.url));
 // templates/ lives at the package root: ../../templates from src/commands/ or dist/commands/.
@@ -42,7 +48,7 @@ export const installAgentBootstrapCmd = defineCommand({
   meta: {
     name: "install-agent-bootstrap",
     description:
-      "Install agent bootstrap files (CLAUDE.md, .claude/settings.json, hook scripts).",
+      "Install agent bootstrap files (AGENTS.md + CLAUDE.md shim, .claude/settings.json, hook scripts).",
   },
   args: {
     root: {
@@ -64,6 +70,7 @@ export const installAgentBootstrapCmd = defineCommand({
     }
     const force = args.force as boolean;
 
+    const agentsMdSrc = join(TEMPLATES_DIR, "AGENTS.md");
     const claudeMdSrc = join(TEMPLATES_DIR, "CLAUDE.md");
     const envExampleSrc = join(TEMPLATES_DIR, ".env.example");
     const settingsSrc = join(TEMPLATES_DIR, ".claude", "settings.json");
@@ -72,6 +79,7 @@ export const installAgentBootstrapCmd = defineCommand({
     const postToolUseHookSrc = join(TEMPLATES_DIR, ".claude", "post-tool-use-check.sh");
     const stopHookSrc = join(TEMPLATES_DIR, ".claude", "stop-check.sh");
     for (const p of [
+      agentsMdSrc,
       claudeMdSrc,
       envExampleSrc,
       settingsSrc,
@@ -87,6 +95,7 @@ export const installAgentBootstrapCmd = defineCommand({
       }
     }
 
+    const agentsMdDst = join(target, "AGENTS.md");
     const claudeMdDst = join(target, "CLAUDE.md");
     const envExampleDst = join(target, ".env.example");
     const claudeDir = join(target, ".claude");
@@ -98,20 +107,25 @@ export const installAgentBootstrapCmd = defineCommand({
 
     const actions: string[] = [];
 
-    // CLAUDE.md — write/skip
-    if (existsSync(claudeMdDst) && !force) {
-      const onDisk = readFileSync(claudeMdDst, "utf8");
-      const fromTpl = readFileSync(claudeMdSrc, "utf8");
-      if (onDisk === fromTpl) {
-        actions.push(`${c.dim("=")} ${c.dim("CLAUDE.md (already at template version)")}`);
+    // AGENTS.md (canonical) + CLAUDE.md (one-line shim) — write/skip
+    for (const [src, dst, label] of [
+      [agentsMdSrc, agentsMdDst, "AGENTS.md"],
+      [claudeMdSrc, claudeMdDst, "CLAUDE.md"],
+    ] as const) {
+      if (existsSync(dst) && !force) {
+        const onDisk = readFileSync(dst, "utf8");
+        const fromTpl = readFileSync(src, "utf8");
+        if (onDisk === fromTpl) {
+          actions.push(`${c.dim("=")} ${c.dim(label + " (already at template version)")}`);
+        } else {
+          actions.push(
+            `${c.warn("!")} ${label} exists and differs from template — re-run with --force to overwrite.`,
+          );
+        }
       } else {
-        actions.push(
-          `${c.warn("!")} CLAUDE.md exists and differs from template — re-run with --force to overwrite.`,
-        );
+        copyFileSync(src, dst);
+        actions.push(checkmark(`${label} ${force ? "(overwritten)" : "written"}`));
       }
-    } else {
-      copyFileSync(claudeMdSrc, claudeMdDst);
-      actions.push(checkmark(`CLAUDE.md ${force ? "(overwritten)" : "written"}`));
     }
 
     // .env.example — user-owned data. Write on first install (when missing)

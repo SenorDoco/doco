@@ -94,7 +94,7 @@ class AutoReindexer {
     if (ownerName.startsWith(".") || docoSlug.startsWith(".")) return; // skip .deleted/ etc.
     // We only care about content changes — md/yaml under known subdirs.
     // The reindex itself filters, so we don't need to be picky here. But
-    // ignore changes under .doco/ (cache.db etc.) to prevent reindex loops.
+    // ignore stale .doco/ leftovers (pre-SQLite-removal) to prevent reindex loops.
     if (parts[2] === ".doco") return;
     const docoDir = join(docosRoot, ownerName, docoSlug);
     if (!existsSync(join(docoDir, "doco.yaml"))) return;

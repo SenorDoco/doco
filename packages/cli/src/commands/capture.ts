@@ -275,7 +275,7 @@ const scopeCmd = defineCommand({
     rules: {
       type: "string",
       description:
-        "Optional JSON array of pre-seeded membership rules (matches ScopeMembershipRule).",
+        "Optional JSON array of pre-seeded checks (predicates the engine runs at capture time — requires_edge / requires_field / mandatory_scope / forbids_* / probabilistic).",
     },
   },
   async run({ args }) {

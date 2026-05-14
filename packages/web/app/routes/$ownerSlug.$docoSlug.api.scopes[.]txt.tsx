@@ -55,9 +55,11 @@ BODY (JSON)
   guidelines     optional   markdown guidance for authors.
   parent_id      optional   id of an existing scope to nest this one
                             under.
-  rules          optional   pre-seeded membership rules (array of
-                            ScopeMembershipRule). Add more later on
-                            /scopes/<id>/edit.
+  rules          optional   pre-seeded checks (predicates the engine
+                            runs on every capture into this scope —
+                            requires_edge / requires_field /
+                            mandatory_scope / forbids_* / probabilistic).
+                            Add more later on /scopes/<id>/edit.
 
 SUCCESS RESPONSE (HTTP 201, application/json)
   {

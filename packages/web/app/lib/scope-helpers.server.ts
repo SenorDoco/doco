@@ -1,9 +1,9 @@
-// Server-only helpers for the scopes/new route. Lives in *.server.ts so
-// node:fs / node:path don't leak into the browser bundle.
+// Server-only helpers for scope reads. Lives in *.server.ts so node:fs /
+// node:path don't leak into the browser bundle. Reads scopes from PG.
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { parse as parseYaml } from "yaml";
-import { openDocoDbAtDir } from "./db.server";
+import { withClient } from "@doco/db";
 
 export interface DocoMetadata {
   docoId: string;
@@ -15,8 +15,8 @@ export interface DocoMetadata {
 }
 
 /**
- * Read the new Doco's metadata directly from `doco.yaml` — bypassing the
- * cache db so this works even before the first reindex completes.
+ * Read a Doco's metadata directly from `doco.yaml`. The bootstrap stub
+ * stays on disk so we can discover doco_id without a DB round trip.
  */
 export function readDocoMetadata(docoDir: string): DocoMetadata | null {
   try {
@@ -37,26 +37,26 @@ export function readDocoMetadata(docoDir: string): DocoMetadata | null {
   }
 }
 
-/**
- * List existing scopes from the SQLite cache. Returns [] if the cache
- * doesn't exist yet (very fresh Docos pre-first-reindex).
- */
-export function listScopeFiles(docoDir: string): { id: string; name: string }[] {
-  const out: { id: string; name: string }[] = [];
+function docoIdFromDir(docoDir: string): string | null {
+  return readDocoMetadata(docoDir)?.docoId ?? null;
+}
+
+export async function listScopeFiles(
+  docoDir: string,
+): Promise<{ id: string; name: string }[]> {
+  const docoId = docoIdFromDir(docoDir);
+  if (!docoId) return [];
   try {
-    const db = openDocoDbAtDir(docoDir);
-    try {
-      const rows = db
-        .prepare("SELECT id, name FROM scope ORDER BY name")
-        .all() as { id: string; name: string }[];
-      out.push(...rows);
-    } finally {
-      db.close();
-    }
+    return await withClient(async (c) => {
+      const r = await c.query<{ id: string; name: string }>(
+        `SELECT id, name FROM scopes WHERE doco_id = $1 ORDER BY name`,
+        [docoId],
+      );
+      return r.rows;
+    });
   } catch {
-    // No cache yet — return empty.
+    return [];
   }
-  return out;
 }
 
 export interface ScopeDetails {
@@ -66,33 +66,16 @@ export interface ScopeDetails {
   purpose: string;
   guidelines: string;
   parent_ids: string[];
-  /**
-   * Lifecycle state. `"active"` (default) means the scope accepts new
-   * members. Any non-active value (`"abandoned"`, `"superseded"`, …)
-   * means existing members keep their tag but new captures referencing
-   * the scope are rejected. Per the `scopes-are-deprecated-not-deleted`
-   * Decision.
-   */
   lifecycle: string;
-  /**
-   * Soft attention signal (ADR-137bis): `watched: true` on the scope's
-   * YAML tells contributors to proactively look for opportunities to
-   * document into this scope. Not enforced at capture time.
-   */
   is_watched: boolean;
 }
 
-/**
- * Resolve a list of scope IDs to their { name, icon } pair. Unknown IDs are
- * dropped. Used by the capture renderer to prefix the scope-list header
- * line on every node add/update.
- */
-export function resolveScopeIcons(
+export async function resolveScopeIcons(
   docoDir: string,
   scopeIds: readonly string[],
-): { name: string; icon?: string }[] {
+): Promise<{ name: string; icon?: string }[]> {
   if (scopeIds.length === 0) return [];
-  const all = listScopeDetails(docoDir);
+  const all = await listScopeDetails(docoDir);
   const byId = new Map(all.map((s) => [s.id, s]));
   const out: { name: string; icon?: string }[] = [];
   for (const id of scopeIds) {
@@ -103,61 +86,43 @@ export function resolveScopeIcons(
   return out;
 }
 
-/**
- * Richer scope listing — reads from the SQLite cache (built from
- * Postgres rows). Filesystem walk of `<docoDir>/scopes/` is gone
- * (rule_01KRKQDHWNWJAF4YKTMCB2A0D9).
- */
-export function listScopeDetails(docoDir: string): ScopeDetails[] {
+export async function listScopeDetails(docoDir: string): Promise<ScopeDetails[]> {
+  const docoId = docoIdFromDir(docoDir);
+  if (!docoId) return [];
   const out: ScopeDetails[] = [];
   try {
-    const db = openDocoDbAtDir(docoDir);
-    try {
-      const rows = db
-        .prepare("SELECT id, name, raw_json FROM scope")
-        .all() as { id: string; name: string; raw_json: string }[];
-      for (const r of rows) {
+    await withClient(async (c) => {
+      const r = await c.query<{ id: string; name: string; raw_yaml: string }>(
+        `SELECT id, name, raw_yaml FROM scopes WHERE doco_id = $1`,
+        [docoId],
+      );
+      for (const row of r.rows) {
         let e: Record<string, unknown> = {};
         try {
-          e = JSON.parse(r.raw_json) as Record<string, unknown>;
+          const parsed = parseYaml(row.raw_yaml);
+          if (parsed && typeof parsed === "object") {
+            e = parsed as Record<string, unknown>;
+          }
         } catch {}
         out.push({
-          id: r.id,
-          name: r.name,
+          id: row.id,
+          name: row.name,
           icon: typeof e.icon === "string" ? e.icon : "",
           purpose: typeof e.purpose === "string" ? e.purpose : "",
           guidelines: typeof e.guidelines === "string" ? e.guidelines : "",
           parent_ids: Array.isArray(e.scopes) ? (e.scopes as string[]) : [],
           lifecycle: typeof e.lifecycle === "string" ? e.lifecycle : "active",
-          // Fifth framework-native behavior of the Constitution scope
-          // (decision_01KRKS5H2A5QER84CJ8R4VD36Z): always watched.
-          // Projected here so every reader (bootstrap manifest, search
-          // pinning, scope manifest, scope list, edit page) sees the
-          // invariant even on legacy Docos whose stored YAML predates
-          // this rule.
-          is_watched: r.name === "constitution" || e.watched === true,
+          is_watched: row.name === "constitution" || e.watched === true,
         });
       }
-    } finally {
-      db.close();
-    }
+    });
   } catch {
-    // No cache yet — return empty.
+    return [];
   }
   out.sort((a, b) => a.name.localeCompare(b.name));
   return out;
 }
 
-/**
- * One entry per scope in the agent-facing scope manifest. Slim by
- * design — guidelines are intentionally omitted to keep the bootstrap
- * payload small (agents can fetch /status.json or open the scope page
- * if they need the full prose). `is_watched` is read from the scope's
- * own `watched: true` flag (ADR-137bis) — a soft attention signal
- * telling contributors to proactively look for opportunities to
- * document into this scope. NOT the same as hard-enforced
- * `mandatory_scope` rules on the Constitution.
- */
 export interface ScopeManifestEntry {
   id: string;
   name: string;
@@ -167,13 +132,11 @@ export interface ScopeManifestEntry {
   is_watched: boolean;
 }
 
-/**
- * Build the scope manifest: every scope in the Doco, tagged with
- * `is_watched` from the scope's own `watched: true` flag. Returns an
- * empty array when the Doco has no scopes/ directory yet.
- */
-export function listScopeManifest(docoDir: string): ScopeManifestEntry[] {
-  return listScopeDetails(docoDir).map((d) => ({
+export async function listScopeManifest(
+  docoDir: string,
+): Promise<ScopeManifestEntry[]> {
+  const details = await listScopeDetails(docoDir);
+  return details.map((d) => ({
     id: d.id,
     name: d.name,
     icon: d.icon,

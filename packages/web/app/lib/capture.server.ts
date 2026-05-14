@@ -5,8 +5,6 @@
 // Identifiers: every node has exactly one id — the ULID. URLs use the
 // ULID; agents/users read the `summary` field for the readable
 // handle.
-import { readdirSync } from "node:fs";
-import { join } from "node:path";
 import { stringify as stringifyYaml, parse as parseYaml } from "yaml";
 import { generateUlid } from "@doco/shared";
 import type { Entity, Scope } from "@doco/shared";
@@ -15,12 +13,12 @@ import {
   type EngineEdge,
 } from "@doco/core";
 import { suggestImplicitEdges } from "@doco/api";
-import { rootDir, openDocoDb, openDocoDbAtDir } from "./db.server";
+import { rootDir } from "./db.server";
 import { reindex } from "./redeem.server";
-import { resolveScopeIcons } from "./scope-helpers.server";
+import { readDocoMetadata, resolveScopeIcons } from "./scope-helpers.server";
 import { validatePatch } from "./mutability.server";
 import { appendAuditEvent } from "./audit-log.server";
-import { getEntity, upsertEntity } from "@doco/db";
+import { getEntity, upsertEntity, withClient } from "@doco/db";
 
 /**
  * Synthetic "path" returned in CaptureResult.path. Postgres is the only
@@ -367,43 +365,43 @@ function distillSummary(body: string, cap = 180): string {
 // reactivate the retired one.
 const RETIRED_LIFECYCLES: ReadonlySet<string> = new Set(["abandoned", "superseded"]);
 
-export function resolveScopeNames(
+export async function resolveScopeNames(
   docoDir: string,
   names: string[],
-): {
+): Promise<{
   ids: string[];
   unknown: string[];
   available: string[];
   retired: string[];
-} {
+}> {
   const ids: string[] = [];
   const unknown: string[] = [];
   const retired: string[] = [];
   const available: string[] = [];
   const byName = new Map<string, { id: string; lifecycle: string }>();
-  // Sync read from the SQLite cache (populated by reindex from Postgres
-  // rows). Filesystem walk of `<docoDir>/scopes/` is gone
-  // (rule_01KRKQDHWNWJAF4YKTMCB2A0D9).
-  try {
-    const db = openDocoDbAtDir(docoDir);
+  const meta = readDocoMetadata(docoDir);
+  if (meta?.docoId) {
     try {
-      const rows = db
-        .prepare("SELECT id, name, raw_json FROM scope")
-        .all() as { id: string; name: string; raw_json: string }[];
-      for (const r of rows) {
-        let lifecycle = "active";
-        try {
-          const e = JSON.parse(r.raw_json) as { lifecycle?: string };
-          if (typeof e.lifecycle === "string") lifecycle = e.lifecycle;
-        } catch {}
-        byName.set(r.name, { id: r.id, lifecycle });
-        if (!RETIRED_LIFECYCLES.has(lifecycle)) available.push(r.name);
-      }
-    } finally {
-      db.close();
+      await withClient(async (c) => {
+        const rows = (
+          await c.query<{ id: string; name: string; raw_yaml: string }>(
+            `SELECT id, name, raw_yaml FROM scopes WHERE doco_id = $1`,
+            [meta.docoId],
+          )
+        ).rows;
+        for (const r of rows) {
+          let lifecycle = "active";
+          try {
+            const e = parseYaml(r.raw_yaml) as { lifecycle?: string };
+            if (typeof e?.lifecycle === "string") lifecycle = e.lifecycle;
+          } catch {}
+          byName.set(r.name, { id: r.id, lifecycle });
+          if (!RETIRED_LIFECYCLES.has(lifecycle)) available.push(r.name);
+        }
+      });
+    } catch {
+      // PG unreachable — fall through with empty maps.
     }
-  } catch {
-    // No cache yet — first reindex hasn't happened. Treat as no-scopes.
   }
   for (const n of names) {
     const entry = byName.get(n);
@@ -423,12 +421,12 @@ export function resolveScopeNames(
  * retired. Centralizes the boilerplate that all three captures + every
  * list-op share.
  */
-function resolveScopeOrError(
+async function resolveScopeOrError(
   docoDir: string,
   names: string[],
   context: { verb: "tag" | "replace" | "add"; nodeKind?: string },
-): { ids: string[] } | CaptureError {
-  const { ids, unknown, available, retired } = resolveScopeNames(docoDir, names);
+): Promise<{ ids: string[] } | CaptureError> {
+  const { ids, unknown, available, retired } = await resolveScopeNames(docoDir, names);
   if (unknown.length > 0) {
     const availStr = available.join(", ") || "(none — create scopes first via /<owner>/<doco>/scopes/new)";
     return { error: `Unknown scope name(s): ${unknown.join(", ")}. Available: ${availStr}` };
@@ -458,7 +456,7 @@ function resolveScopeOrError(
  *   - for scopes:   name → scope_<ULID> (uses resolveScopeNames)
  *   - for intents:  the input IS the id (pass-through)
  */
-function applyListOp(
+async function applyListOp(
   fm: Record<string, unknown>,
   fieldKey: string,
   patch: {
@@ -466,20 +464,20 @@ function applyListOp(
     add?: string[];
     remove?: string[];
   },
-  lookup: (names: string[]) => { ids: string[] } | CaptureError,
-): { changed: boolean; ops: Op[]; error?: string } {
+  lookup: (names: string[]) => Promise<{ ids: string[] } | CaptureError> | { ids: string[] } | CaptureError,
+): Promise<{ changed: boolean; ops: Op[]; error?: string }> {
   const ops: Op[] = [];
   let changedField = false;
 
   if (patch.replace !== undefined) {
-    const r = lookup(patch.replace);
+    const r = await lookup(patch.replace);
     if ("error" in r) return { changed: false, ops, error: r.error };
     fm[fieldKey] = r.ids;
     ops.push({ kind: "replaced_list", field: fieldKey, names: patch.replace });
     changedField = true;
   }
   if (patch.add !== undefined) {
-    const r = lookup(patch.add);
+    const r = await lookup(patch.add);
     if ("error" in r) return { changed: false, ops, error: r.error };
     const current = Array.isArray(fm[fieldKey]) ? (fm[fieldKey] as string[]) : [];
     const merged = [...current];
@@ -498,7 +496,7 @@ function applyListOp(
     }
   }
   if (patch.remove !== undefined) {
-    const r = lookup(patch.remove);
+    const r = await lookup(patch.remove);
     if ("error" in r) return { changed: false, ops, error: r.error };
     const current = Array.isArray(fm[fieldKey]) ? (fm[fieldKey] as string[]) : [];
     const removedNames: string[] = [];
@@ -526,75 +524,54 @@ function applyListOp(
  * exist for the lookup to work. Acceptable in alpha; once auth lands
  * fully in Postgres this will read from `principals` directly.
  */
-export function resolvePrincipalUsername(username: string): string | null {
-  const docosDir = join(rootDir(), "docos");
-  // Walk /docos/<owner>/<slug>/ looking for any cache.db with a principal table.
-  // The cache is shared across Docos for host-level types, so the first
-  // one we find is sufficient.
-  let owners: string[] = [];
+export async function resolvePrincipalUsername(
+  username: string,
+): Promise<string | null> {
   try {
-    owners = readdirSync(docosDir);
+    return await withClient(async (c) => {
+      const r = await c.query<{ id: string }>(
+        `SELECT id FROM principals WHERE username = $1 LIMIT 1`,
+        [username],
+      );
+      return r.rows[0]?.id ?? null;
+    });
   } catch {
     return null;
   }
-  for (const owner of owners) {
-    let slugs: string[] = [];
-    try {
-      slugs = readdirSync(join(docosDir, owner));
-    } catch {
-      continue;
-    }
-    for (const slug of slugs) {
-      try {
-        const db = openDocoDbAtDir(join(docosDir, owner, slug));
-        try {
-          const r = db.prepare("SELECT id FROM principal WHERE username = ?").get(username) as
-            | { id: string }
-            | undefined;
-          if (r?.id) return String(r.id);
-        } finally {
-          db.close();
-        }
-      } catch {
-        // no cache — try next
-      }
-    }
-  }
-  return null;
 }
 
-function loadAllScopes(docoDir: string): Map<string, Scope> {
+async function loadAllScopes(docoDir: string): Promise<Map<string, Scope>> {
   const scopes = new Map<string, Scope>();
+  const meta = readDocoMetadata(docoDir);
+  if (!meta?.docoId) return scopes;
   try {
-    const db = openDocoDbAtDir(docoDir);
-    try {
-      const rows = db
-        .prepare("SELECT id, raw_json FROM scope")
-        .all() as { id: string; raw_json: string }[];
-      for (const r of rows) {
+    await withClient(async (c) => {
+      const r = await c.query<{ raw_yaml: string }>(
+        `SELECT raw_yaml FROM scopes WHERE doco_id = $1`,
+        [meta.docoId],
+      );
+      for (const row of r.rows) {
         try {
-          const e = JSON.parse(r.raw_json) as Record<string, unknown>;
+          const e = parseYaml(row.raw_yaml) as Record<string, unknown>;
           if (e && typeof e.id === "string") scopes.set(e.id, e as unknown as Scope);
         } catch {}
       }
-    } finally {
-      db.close();
-    }
+    });
   } catch {
-    // No cache yet — return empty.
+    // PG unreachable — return empty.
   }
   return scopes;
 }
 
-export function runScopeRules(opts: {
+export async function runScopeRules(opts: {
   docoDir: string;
   ownerSlug: string;
   docoSlug: string;
   entityFm: Record<string, unknown>;
-}): { error: string } | null {
-  const { docoDir, ownerSlug, docoSlug, entityFm } = opts;
+}): Promise<{ error: string } | null> {
+  const { docoDir, entityFm } = opts;
   const scopeIds = Array.isArray(entityFm.scopes) ? (entityFm.scopes as string[]) : [];
-  const allScopes = loadAllScopes(docoDir);
+  const allScopes = await loadAllScopes(docoDir);
 
   const readRules = (s: Scope): unknown[] => {
     const rec = s as unknown as Record<string, unknown>;
@@ -622,18 +599,19 @@ export function runScopeRules(opts: {
   if (rulesToRun.length === 0) return null;
 
   const edges: EngineEdge[] = [];
-  try {
-    const db = openDocoDb(ownerSlug, docoSlug);
+  const meta = readDocoMetadata(docoDir);
+  if (meta?.docoId) {
     try {
-      const rows = db
-        .prepare("SELECT from_id, to_id, edge_type FROM edges")
-        .all() as { from_id: string; to_id: string; edge_type: string }[];
-      for (const r of rows) edges.push(r);
-    } finally {
-      db.close();
+      await withClient(async (c) => {
+        const r = await c.query<{ from_id: string; to_id: string; edge_type: string }>(
+          `SELECT from_id, to_id, edge_type FROM edges WHERE doco_id = $1`,
+          [meta.docoId],
+        );
+        for (const row of r.rows) edges.push(row);
+      });
+    } catch {
+      /* index not built yet — fall through with synthesized edges only */
     }
-  } catch {
-    /* index not built yet — fall through with synthesized edges only */
   }
   const candidateId = (entityFm.id as string) ?? "";
   if (candidateId) {
@@ -695,32 +673,41 @@ async function attachImplicitEdges(opts: {
 }): Promise<number> {
   type CandidateRow = { id: string; node_type: string; summary: string; name?: string };
   let candidates: CandidateRow[] = [];
+  const meta = readDocoMetadata(opts.docoDir);
+  if (!meta?.docoId) return 0;
   try {
-    const db = openDocoDb(opts.ownerSlug, opts.docoSlug);
-    try {
-      const types = ["decision", "intent", "rule", "action", "reasoning", "scope", "eval"];
+    await withClient(async (c) => {
+      const types: { table: string; nodeType: string; hasName: boolean }[] = [
+        { table: "decisions", nodeType: "decision", hasName: false },
+        { table: "intents", nodeType: "intent", hasName: false },
+        { table: "rules", nodeType: "rule", hasName: false },
+        { table: "actions", nodeType: "action", hasName: false },
+        { table: "reasoning", nodeType: "reasoning", hasName: false },
+        { table: "scopes", nodeType: "scope", hasName: true },
+        { table: "evals", nodeType: "eval", hasName: true },
+      ];
       for (const t of types) {
         try {
-          const hasName = t === "scope" || t === "eval";
-          const rows = db
-            .prepare(
-              `SELECT id, summary${hasName ? ", name" : ""} FROM ${t} ORDER BY created_at DESC LIMIT 20`,
-            )
-            .all() as Record<string, string>[];
-          for (const r of rows) {
-            if (r.id === opts.entityId) continue;
-            if (opts.alreadyReferenced.has(r.id)) continue;
-            const cand: CandidateRow = { id: r.id, node_type: t, summary: r.summary };
-            if (r.name) cand.name = r.name;
+          const cols = t.hasName ? "id, summary, name" : "id, summary";
+          const r = await c.query<Record<string, string>>(
+            `SELECT ${cols} FROM ${t.table}
+              WHERE doco_id = $1
+              ORDER BY created_at DESC
+              LIMIT 20`,
+            [meta.docoId],
+          );
+          for (const row of r.rows) {
+            if (row.id === opts.entityId) continue;
+            if (opts.alreadyReferenced.has(row.id)) continue;
+            const cand: CandidateRow = { id: row.id, node_type: t.nodeType, summary: row.summary ?? "" };
+            if (row.name) cand.name = row.name;
             candidates.push(cand);
           }
         } catch {
-          /* table missing (older schema) */
+          /* table missing */
         }
       }
-    } finally {
-      db.close();
-    }
+    });
   } catch {
     return 0;
   }
@@ -773,7 +760,7 @@ export async function captureDecision(
     return { error: "scope_names must be a non-empty array." };
   }
 
-  const scopeRes = resolveScopeOrError(docoDir, draft.scope_names, { verb: "tag", nodeKind: "node" });
+  const scopeRes = await resolveScopeOrError(docoDir, draft.scope_names, { verb: "tag", nodeKind: "node" });
   if ("error" in scopeRes) return scopeRes;
   const scopeIds = scopeRes.ids;
 
@@ -781,7 +768,7 @@ export async function captureDecision(
 
   let decidedById: string | null = null;
   if (draft.decided_by_username) {
-    decidedById = resolvePrincipalUsername(draft.decided_by_username);
+    decidedById = await resolvePrincipalUsername(draft.decided_by_username);
     if (!decidedById) {
       return { error: `Unknown principal username: ${draft.decided_by_username}` };
     }
@@ -826,7 +813,7 @@ export async function captureDecision(
     scopes: scopeIds,
   };
 
-  const ruleErr = runScopeRules({ docoDir, ownerSlug, docoSlug, entityFm: fm });
+  const ruleErr = await runScopeRules({ docoDir, ownerSlug, docoSlug, entityFm: fm });
   if (ruleErr) return ruleErr;
 
   persistEntity({
@@ -867,7 +854,7 @@ export async function captureDecision(
     summary,
     docoHost,
     ops: [{ kind: "added", summary }],
-    scopes: resolveScopeIcons(docoDir, scopeIds),
+    scopes: await resolveScopeIcons(docoDir, scopeIds),
     duration_ms,
   });
   return {
@@ -894,6 +881,7 @@ export interface DecisionPatch {
   body_md?: string;
   body_md_append?: string;
   born_from?: string | null;
+  superseded_by?: string | null;
   lifecycle?: string;
 }
 
@@ -979,9 +967,22 @@ export async function updateDecision(
       ops.push({ kind: "set", field: "born_from", value: patch.born_from });
     }
   }
+  if (patch.superseded_by !== undefined) {
+    if (patch.superseded_by === null || patch.superseded_by === "") {
+      if ("superseded_by" in fm) {
+        delete fm.superseded_by;
+        changed.push("superseded_by");
+        ops.push({ kind: "cleared", field: "superseded_by" });
+      }
+    } else {
+      fm.superseded_by = patch.superseded_by;
+      changed.push("superseded_by");
+      ops.push({ kind: "set", field: "superseded_by", value: patch.superseded_by });
+    }
+  }
 
   // scopes (replace/add/remove)
-  const scopeResult = applyListOp(
+  const scopeResult = await applyListOp(
     fm,
     "scopes",
     {
@@ -989,7 +990,7 @@ export async function updateDecision(
       ...(patch.scope_names_add !== undefined ? { add: patch.scope_names_add } : {}),
       ...(patch.scope_names_remove !== undefined ? { remove: patch.scope_names_remove } : {}),
     },
-    (names) => resolveScopeOrError(docoDir, names, { verb: "replace" }),
+    async (names) => resolveScopeOrError(docoDir, names, { verb: "replace" }),
   );
   if (scopeResult.error) return { error: scopeResult.error };
   if (scopeResult.changed) {
@@ -998,7 +999,7 @@ export async function updateDecision(
   }
 
   // intent_ids (replace/add/remove) — input is already an id, pass-through.
-  const intentResult = applyListOp(
+  const intentResult = await applyListOp(
     fm,
     "intent_ids",
     {
@@ -1014,7 +1015,7 @@ export async function updateDecision(
   }
 
   if (patch.decided_by_username !== undefined) {
-    const pid = resolvePrincipalUsername(patch.decided_by_username);
+    const pid = await resolvePrincipalUsername(patch.decided_by_username);
     if (!pid) return { error: `Unknown principal username: ${patch.decided_by_username}` };
     if (fm.decided_by !== pid) {
       fm.decided_by = pid;
@@ -1074,7 +1075,7 @@ export async function updateDecision(
     summary,
     docoHost,
     ops,
-    scopes: resolveScopeIcons(docoDir, finalScopeIds),
+    scopes: await resolveScopeIcons(docoDir, finalScopeIds),
     duration_ms,
   });
   return {
@@ -1108,6 +1109,7 @@ export interface EntityPatch {
   body_md?: string;
   body_md_append?: string;
   born_from?: string | null;
+  superseded_by?: string | null;
   [k: string]: unknown;
 }
 
@@ -1181,6 +1183,19 @@ export async function updateEntity(opts: {
       ops.push({ kind: "set", field: "born_from", value: patch.born_from });
     }
   }
+  if (patch.superseded_by !== undefined) {
+    if (patch.superseded_by === null || patch.superseded_by === "") {
+      if ("superseded_by" in fm) {
+        delete fm.superseded_by;
+        changed.push("superseded_by");
+        ops.push({ kind: "cleared", field: "superseded_by" });
+      }
+    } else {
+      fm.superseded_by = patch.superseded_by;
+      changed.push("superseded_by");
+      ops.push({ kind: "set", field: "superseded_by", value: patch.superseded_by });
+    }
+  }
 
   for (const k of allowedFields) {
     if (k in patch && patch[k] !== undefined) {
@@ -1200,7 +1215,7 @@ export async function updateEntity(opts: {
   }
 
   // scopes (replace/add/remove)
-  const eScopeResult = applyListOp(
+  const eScopeResult = await applyListOp(
     fm,
     "scopes",
     {
@@ -1208,7 +1223,7 @@ export async function updateEntity(opts: {
       ...(patch.scope_names_add !== undefined ? { add: patch.scope_names_add } : {}),
       ...(patch.scope_names_remove !== undefined ? { remove: patch.scope_names_remove } : {}),
     },
-    (names) => resolveScopeOrError(docoDir, names, { verb: "replace" }),
+    async (names) => resolveScopeOrError(docoDir, names, { verb: "replace" }),
   );
   if (eScopeResult.error) return { error: eScopeResult.error };
   if (eScopeResult.changed) {
@@ -1217,7 +1232,7 @@ export async function updateEntity(opts: {
   }
 
   // intent_ids (replace/add/remove)
-  const eIntentResult = applyListOp(
+  const eIntentResult = await applyListOp(
     fm,
     "intent_ids",
     {
@@ -1292,7 +1307,7 @@ export async function updateEntity(opts: {
     summary,
     docoHost,
     ops,
-    scopes: resolveScopeIcons(docoDir, finalScopeIds),
+    scopes: await resolveScopeIcons(docoDir, finalScopeIds),
     duration_ms,
   });
   return {
@@ -1335,13 +1350,13 @@ export async function captureIntent(
     return { error: "scope_names must be a non-empty array." };
   }
 
-  const scopeRes = resolveScopeOrError(docoDir, draft.scope_names, { verb: "tag", nodeKind: "Intent" });
+  const scopeRes = await resolveScopeOrError(docoDir, draft.scope_names, { verb: "tag", nodeKind: "Intent" });
   if ("error" in scopeRes) return scopeRes;
   const scopeIds = scopeRes.ids;
 
   let wantedById: string | null = null;
   if (draft.wanted_by_username) {
-    wantedById = resolvePrincipalUsername(draft.wanted_by_username);
+    wantedById = await resolvePrincipalUsername(draft.wanted_by_username);
     if (!wantedById) {
       return { error: `Unknown principal username: ${draft.wanted_by_username}` };
     }
@@ -1371,7 +1386,7 @@ export async function captureIntent(
     scopes: scopeIds,
   };
 
-  const ruleErr = runScopeRules({ docoDir, ownerSlug, docoSlug, entityFm: fm });
+  const ruleErr = await runScopeRules({ docoDir, ownerSlug, docoSlug, entityFm: fm });
   if (ruleErr) return ruleErr;
 
   persistEntity({
@@ -1408,7 +1423,7 @@ export async function captureIntent(
     summary,
     docoHost,
     ops: [{ kind: "added", summary }],
-    scopes: resolveScopeIcons(docoDir, scopeIds),
+    scopes: await resolveScopeIcons(docoDir, scopeIds),
     duration_ms,
   });
   return {
@@ -1464,13 +1479,13 @@ export async function captureEval(
   if (!Array.isArray(draft.scope_names) || draft.scope_names.length === 0) {
     return { error: "scope_names must be a non-empty array." };
   }
-  const scopeRes = resolveScopeOrError(docoDir, draft.scope_names, { verb: "tag", nodeKind: "Eval" });
+  const scopeRes = await resolveScopeOrError(docoDir, draft.scope_names, { verb: "tag", nodeKind: "Eval" });
   if ("error" in scopeRes) return scopeRes;
   const scopeIds = scopeRes.ids;
 
   let authoredById: string | null = null;
   if (draft.authored_by_username) {
-    authoredById = resolvePrincipalUsername(draft.authored_by_username);
+    authoredById = await resolvePrincipalUsername(draft.authored_by_username);
     if (!authoredById) {
       return { error: `Unknown principal username: ${draft.authored_by_username}` };
     }
@@ -1510,7 +1525,7 @@ export async function captureEval(
     scopes: scopeIds,
   };
 
-  const ruleErr = runScopeRules({ docoDir, ownerSlug, docoSlug, entityFm: fm });
+  const ruleErr = await runScopeRules({ docoDir, ownerSlug, docoSlug, entityFm: fm });
   if (ruleErr) return ruleErr;
 
   persistEntity({
@@ -1551,7 +1566,7 @@ export async function captureEval(
     summary,
     docoHost,
     ops: [{ kind: "added", summary }],
-    scopes: resolveScopeIcons(docoDir, scopeIds),
+    scopes: await resolveScopeIcons(docoDir, scopeIds),
     duration_ms,
   });
   return {
@@ -1610,13 +1625,13 @@ export async function captureAction(
     return { error: "scope_names must be a non-empty array." };
   }
 
-  const scopeRes = resolveScopeOrError(docoDir, draft.scope_names, { verb: "tag", nodeKind: "Action" });
+  const scopeRes = await resolveScopeOrError(docoDir, draft.scope_names, { verb: "tag", nodeKind: "Action" });
   if ("error" in scopeRes) return scopeRes;
   const scopeIds = scopeRes.ids;
 
   let actorId: string | null = null;
   if (draft.performed_by_username) {
-    actorId = resolvePrincipalUsername(draft.performed_by_username);
+    actorId = await resolvePrincipalUsername(draft.performed_by_username);
     if (!actorId) {
       return { error: `Unknown principal username: ${draft.performed_by_username}` };
     }
@@ -1661,7 +1676,7 @@ export async function captureAction(
     scopes: scopeIds,
   };
 
-  const ruleErr = runScopeRules({ docoDir, ownerSlug, docoSlug, entityFm: fm });
+  const ruleErr = await runScopeRules({ docoDir, ownerSlug, docoSlug, entityFm: fm });
   if (ruleErr) return ruleErr;
 
   persistEntity({
@@ -1706,7 +1721,7 @@ export async function captureAction(
     summary,
     docoHost,
     ops: [{ kind: "added", summary }],
-    scopes: resolveScopeIcons(docoDir, scopeIds),
+    scopes: await resolveScopeIcons(docoDir, scopeIds),
     duration_ms,
   });
   return {
@@ -1767,13 +1782,13 @@ export async function captureRule(
     return { error: "scope_names must be a non-empty array." };
   }
 
-  const scopeRes = resolveScopeOrError(docoDir, draft.scope_names, { verb: "tag", nodeKind: "Rule" });
+  const scopeRes = await resolveScopeOrError(docoDir, draft.scope_names, { verb: "tag", nodeKind: "Rule" });
   if ("error" in scopeRes) return scopeRes;
   const scopeIds = scopeRes.ids;
 
   let authorId: string | null = null;
   if (draft.authored_by_username) {
-    authorId = resolvePrincipalUsername(draft.authored_by_username);
+    authorId = await resolvePrincipalUsername(draft.authored_by_username);
     if (!authorId) {
       return { error: `Unknown principal username: ${draft.authored_by_username}` };
     }
@@ -1833,7 +1848,7 @@ export async function captureRule(
     scopes: scopeIds,
   };
 
-  const ruleErr = runScopeRules({ docoDir, ownerSlug, docoSlug, entityFm: fm });
+  const ruleErr = await runScopeRules({ docoDir, ownerSlug, docoSlug, entityFm: fm });
   if (ruleErr) return ruleErr;
 
   persistEntity({
@@ -1876,7 +1891,7 @@ export async function captureRule(
     summary,
     docoHost,
     ops: [{ kind: "added", summary }],
-    scopes: resolveScopeIcons(docoDir, scopeIds),
+    scopes: await resolveScopeIcons(docoDir, scopeIds),
     duration_ms,
   });
   return {
@@ -1928,13 +1943,13 @@ export async function captureReasoning(
     return { error: "scope_names must be a non-empty array." };
   }
 
-  const scopeRes = resolveScopeOrError(docoDir, draft.scope_names, { verb: "tag", nodeKind: "Reasoning" });
+  const scopeRes = await resolveScopeOrError(docoDir, draft.scope_names, { verb: "tag", nodeKind: "Reasoning" });
   if ("error" in scopeRes) return scopeRes;
   const scopeIds = scopeRes.ids;
 
   let authorId: string | null = null;
   if (draft.authored_by_username) {
-    authorId = resolvePrincipalUsername(draft.authored_by_username);
+    authorId = await resolvePrincipalUsername(draft.authored_by_username);
     if (!authorId) {
       return { error: `Unknown principal username: ${draft.authored_by_username}` };
     }
@@ -1974,7 +1989,7 @@ export async function captureReasoning(
     scopes: scopeIds,
   };
 
-  const ruleErr = runScopeRules({ docoDir, ownerSlug, docoSlug, entityFm: fm });
+  const ruleErr = await runScopeRules({ docoDir, ownerSlug, docoSlug, entityFm: fm });
   if (ruleErr) return ruleErr;
 
   persistEntity({
@@ -2017,7 +2032,7 @@ export async function captureReasoning(
     summary,
     docoHost,
     ops: [{ kind: "added", summary }],
-    scopes: resolveScopeIcons(docoDir, scopeIds),
+    scopes: await resolveScopeIcons(docoDir, scopeIds),
     duration_ms,
   });
   return {

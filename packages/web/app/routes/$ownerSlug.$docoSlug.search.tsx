@@ -1,14 +1,13 @@
 // Per-Doco search — vector-only ranker (ADR-052, supersedes ADR-030)
-// + left-sidebar filters for lifecycle / node type / scope (Decision
-// "what-shape-do-the-search-filters-take-and-how-do-defaults").
+// + left-sidebar filters for lifecycle / node type / scope.
 //
 // One provider call embeds the query; filters resolve to a candidate
 // id set BEFORE cosine so the top-N slice always returns up to N
-// matching entities. Filter state lives in URL query params — bookmarks
-// and the back button just work.
+// matching entities. Filter state lives in URL query params.
 import { Form, Link, useSearchParams } from "react-router";
-import { cosineSimilarity, getAllEmbeddings, globalPageRank } from "@doco/index";
-import { openDocoDb } from "~/lib/db.server";
+import type { PoolClient } from "pg";
+import { cosineSimilarity, getAllEmbeddingsForDoco, withClient } from "@doco/db";
+import { globalPageRank } from "@doco/index";
 import { loadDocoForRead } from "~/lib/doco-access.server";
 import { loadHostConfig } from "~/lib/host";
 import { getCurrentPrincipal } from "~/lib/session";
@@ -23,17 +22,6 @@ import {
 import { SiteHeader } from "~/components/site-header";
 import { Badge } from "~/components/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
-
-/** Per-node-type schemas differ — probe each table's columns. */
-function pickAvailableColumns(
-  db: import("better-sqlite3").Database,
-  table: string,
-  wanted: string[],
-): string[] {
-  const rows = db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
-  const have = new Set(rows.map((r) => r.name));
-  return wanted.filter((c) => have.has(c));
-}
 
 function relativeTimeIso(iso: string | null): string {
   if (!iso) return "—";
@@ -60,19 +48,190 @@ interface Hit {
   vector_score: number;
 }
 
-const NODE_TYPES = [
-  "decision",
-  "intent",
-  "rule",
-  "action",
-  "reasoning",
-  "reference",
-  "scope",
-  "eval",
-  "idea",
-  "principal",
-  "organization",
-] as const;
+/**
+ * Per-node-type hydration. PG plural names; principal/organization have
+ * different "name-ish" columns.
+ */
+interface TypeSpec {
+  table: string;
+  nodeType: string;
+  selectExtra: string;
+  /** Build the Hit shape from a row. */
+  toHit(
+    row: Record<string, unknown>,
+    vectorScore: number,
+  ): Omit<Hit, "gpr">;
+  /** Doco-scoped or host-level? */
+  hostLevel: boolean;
+}
+
+const TYPE_SPECS: TypeSpec[] = [
+  {
+    table: "decisions",
+    nodeType: "decision",
+    selectExtra: "summary, lifecycle, created_at",
+    hostLevel: false,
+    toHit: (r, s) => ({
+      id: String(r.id),
+      node_type: "decision",
+      summary: (r.summary as string) ?? "",
+      name: null,
+      lifecycle: (r.lifecycle as string) ?? null,
+      created_at: (r.created_at as string) ?? null,
+      vector_score: s,
+    }),
+  },
+  {
+    table: "intents",
+    nodeType: "intent",
+    selectExtra: "summary, lifecycle, created_at",
+    hostLevel: false,
+    toHit: (r, s) => ({
+      id: String(r.id),
+      node_type: "intent",
+      summary: (r.summary as string) ?? "",
+      name: null,
+      lifecycle: (r.lifecycle as string) ?? null,
+      created_at: (r.created_at as string) ?? null,
+      vector_score: s,
+    }),
+  },
+  {
+    table: "rules",
+    nodeType: "rule",
+    selectExtra: "summary, lifecycle, created_at",
+    hostLevel: false,
+    toHit: (r, s) => ({
+      id: String(r.id),
+      node_type: "rule",
+      summary: (r.summary as string) ?? "",
+      name: null,
+      lifecycle: (r.lifecycle as string) ?? null,
+      created_at: (r.created_at as string) ?? null,
+      vector_score: s,
+    }),
+  },
+  {
+    table: "actions",
+    nodeType: "action",
+    selectExtra: "summary, lifecycle, created_at",
+    hostLevel: false,
+    toHit: (r, s) => ({
+      id: String(r.id),
+      node_type: "action",
+      summary: (r.summary as string) ?? "",
+      name: null,
+      lifecycle: (r.lifecycle as string) ?? null,
+      created_at: (r.created_at as string) ?? null,
+      vector_score: s,
+    }),
+  },
+  {
+    table: "reasoning",
+    nodeType: "reasoning",
+    selectExtra: "summary, lifecycle, created_at",
+    hostLevel: false,
+    toHit: (r, s) => ({
+      id: String(r.id),
+      node_type: "reasoning",
+      summary: (r.summary as string) ?? "",
+      name: null,
+      lifecycle: (r.lifecycle as string) ?? null,
+      created_at: (r.created_at as string) ?? null,
+      vector_score: s,
+    }),
+  },
+  {
+    table: "reference_entities",
+    nodeType: "reference",
+    selectExtra: "summary, lifecycle, created_at",
+    hostLevel: false,
+    toHit: (r, s) => ({
+      id: String(r.id),
+      node_type: "reference",
+      summary: (r.summary as string) ?? "",
+      name: null,
+      lifecycle: (r.lifecycle as string) ?? null,
+      created_at: (r.created_at as string) ?? null,
+      vector_score: s,
+    }),
+  },
+  {
+    table: "scopes",
+    nodeType: "scope",
+    selectExtra: "name, summary, lifecycle, created_at",
+    hostLevel: false,
+    toHit: (r, s) => ({
+      id: String(r.id),
+      node_type: "scope",
+      summary: (r.summary as string) ?? "",
+      name: (r.name as string) ?? null,
+      lifecycle: (r.lifecycle as string) ?? null,
+      created_at: (r.created_at as string) ?? null,
+      vector_score: s,
+    }),
+  },
+  {
+    table: "evals",
+    nodeType: "eval",
+    selectExtra: "summary, lifecycle, created_at",
+    hostLevel: false,
+    toHit: (r, s) => ({
+      id: String(r.id),
+      node_type: "eval",
+      summary: (r.summary as string) ?? "",
+      name: null,
+      lifecycle: (r.lifecycle as string) ?? null,
+      created_at: (r.created_at as string) ?? null,
+      vector_score: s,
+    }),
+  },
+  {
+    table: "ideas",
+    nodeType: "idea",
+    selectExtra: "summary, lifecycle, created_at",
+    hostLevel: false,
+    toHit: (r, s) => ({
+      id: String(r.id),
+      node_type: "idea",
+      summary: (r.summary as string) ?? "",
+      name: null,
+      lifecycle: (r.lifecycle as string) ?? null,
+      created_at: (r.created_at as string) ?? null,
+      vector_score: s,
+    }),
+  },
+  {
+    table: "principals",
+    nodeType: "principal",
+    selectExtra: "username, display_name, created_at",
+    hostLevel: true,
+    toHit: (r, s) => ({
+      id: String(r.id),
+      node_type: "principal",
+      summary: (r.display_name as string) ?? "",
+      name: (r.username as string) ?? null,
+      lifecycle: null,
+      created_at: (r.created_at as string) ?? null,
+      vector_score: s,
+    }),
+  },
+  {
+    table: "organizations",
+    nodeType: "organization",
+    selectExtra: "slug, name, created_at",
+    hostLevel: true,
+    toHit: (r, s) => ({
+      id: String(r.id),
+      node_type: "organization",
+      summary: (r.name as string) ?? "",
+      name: (r.slug as string) ?? null,
+      lifecycle: null,
+      created_at: (r.created_at as string) ?? null,
+      vector_score: s,
+    }),
+  },
+];
 
 export async function loader({
   request,
@@ -82,21 +241,15 @@ export async function loader({
   params: { ownerSlug: string; docoSlug: string };
 }) {
   const { ownerSlug, docoSlug } = params;
-  await loadDocoForRead(request, ownerSlug, docoSlug); // 404 if private + non-member
+  const ctx = await loadDocoForRead(request, ownerSlug, docoSlug);
   const url = new URL(request.url);
   const q = (url.searchParams.get("q") ?? "").trim();
   const me = await getCurrentPrincipal(request);
   const host = await loadHostConfig();
 
-  // Facets need a DB even on empty-query / unauth-provider paths so the
-  // sidebar checkbox lists render correctly. Facets also feed
-  // parseSearchFilters so the lifecycle default adapts to the data.
-  const db = openDocoDb(ownerSlug, docoSlug);
-  let facets: FilterFacets;
-  let filters: SearchFilters;
-  try {
-    facets = computeFilterFacets(db);
-    filters = parseSearchFilters(url.searchParams, facets);
+  return withClient(async (c) => {
+    let facets: FilterFacets = await computeFilterFacets(c, ctx.meta.docoId);
+    const filters: SearchFilters = parseSearchFilters(url.searchParams, facets);
 
     if (!q) {
       return {
@@ -127,7 +280,6 @@ export async function loader({
       };
     }
 
-    // Embed the query.
     let queryEmbedding: Float32Array;
     try {
       const [v] = await provider.embed([q]);
@@ -159,9 +311,8 @@ export async function loader({
       };
     }
 
-    // Resolve filter candidates BEFORE cosine.
-    const candidateIds = resolveFilteredCandidates(db, filters);
-    const all = getAllEmbeddings(db).filter(
+    const candidateIds = await resolveFilteredCandidates(c, ctx.meta.docoId, filters);
+    const all = (await getAllEmbeddingsForDoco(ctx.meta.docoId)).filter(
       (e) => candidateIds === null || candidateIds.has(e.entity_id),
     );
     if (all.length === 0) {
@@ -188,53 +339,33 @@ export async function loader({
     scored.sort((a, b) => b.score - a.score);
     const top = scored.slice(0, filters.limit);
     const topById = new Map(top.map((t) => [t.entity_id, t.score]));
+    const topIds = top.map((t) => t.entity_id);
 
-    // Hydrate by checking each per-type table for the top-N ids.
-    // Scope/eval/org have `name`, principal has `username`; everything
-    // else shows its `summary` as the display handle.
-    const hitsByType = new Map<string, Hit[]>();
-    for (const nodeType of NODE_TYPES) {
-      const cols = pickAvailableColumns(db, nodeType, [
-        "id",
-        "name",
-        "username",
-        "summary",
-        "lifecycle",
-        "created_at",
-      ]);
-      const placeholders = top.map(() => "?").join(",");
-      const rows = db
-        .prepare(`SELECT ${cols.join(", ")} FROM ${nodeType} WHERE id IN (${placeholders})`)
-        .all(...top.map((t) => t.entity_id)) as {
-        id: string;
-        name?: string | null;
-        username?: string | null;
-        summary?: string | null;
-        lifecycle?: string | null;
-        created_at?: string | null;
-      }[];
-      if (rows.length === 0) continue;
-      hitsByType.set(
-        nodeType,
-        rows.map((row) => ({
-          id: row.id,
-          node_type: nodeType,
-          summary: row.summary ?? "",
-          name: row.name ?? row.username ?? null,
-          lifecycle: row.lifecycle ?? null,
-          created_at: row.created_at ?? null,
-          gpr: 0,
-          vector_score: Math.round((topById.get(row.id) ?? 0) * 10000) / 10000,
-        })),
-      );
+    const hits: Hit[] = [];
+    for (const spec of TYPE_SPECS) {
+      const sql = spec.hostLevel
+        ? `SELECT id, ${spec.selectExtra} FROM ${spec.table} WHERE id = ANY($1::text[])`
+        : `SELECT id, ${spec.selectExtra} FROM ${spec.table} WHERE id = ANY($1::text[]) AND doco_id = $2`;
+      const params = spec.hostLevel ? [topIds] : [topIds, ctx.meta.docoId];
+      const rows = (await c.query(sql, params)).rows;
+      for (const row of rows) {
+        const hit = spec.toHit(
+          row as Record<string, unknown>,
+          Math.round((topById.get(String(row.id)) ?? 0) * 10000) / 10000,
+        );
+        hits.push({ ...hit, gpr: 0 });
+      }
     }
 
-    // Global PageRank — attach for display alongside cosine.
-    const allEdges = db
-      .prepare("SELECT from_id, to_id, edge_type, attribution FROM edges")
-      .all() as { from_id: string; to_id: string; edge_type: string; attribution: string }[];
+    // Global PageRank — fetch all edges for this Doco.
+    const edgeRows = (
+      await c.query<{ from_id: string; to_id: string; edge_type: string; attribution: string }>(
+        `SELECT from_id, to_id, edge_type, attribution FROM edges WHERE doco_id = $1`,
+        [ctx.meta.docoId],
+      )
+    ).rows;
     const gpr = globalPageRank(
-      allEdges.map((e) => ({
+      edgeRows.map((e) => ({
         from: e.from_id,
         to: e.to_id,
         edge_type: e.edge_type,
@@ -244,41 +375,21 @@ export async function loader({
     );
     const gprById = new Map<string, number>();
     for (const p of gpr) gprById.set(p.id, p.score);
-
-    const hits: Hit[] = [];
-    for (const arr of hitsByType.values()) {
-      for (const h of arr) {
-        h.gpr = gprById.get(h.id) ?? 0;
-        hits.push(h);
-      }
-    }
+    for (const h of hits) h.gpr = gprById.get(h.id) ?? 0;
     hits.sort((a, b) => b.vector_score - a.vector_score);
 
-    // Replace the sidebar's global facet counts with counts derived
-    // from the actual search hits. The list of facet VALUES still comes
-    // from computeFilterFacets (so unmatched values stay visible at 0),
-    // but the number next to each value now reflects the current
-    // results — not the global Doco count.
-    facets = withHitDerivedCounts(facets, db, hits);
+    facets = await withHitDerivedCounts(facets, c, ctx.meta.docoId, hits);
 
     return { q, hits, warning: null, ownerSlug, docoSlug, host, me, filters, facets };
-  } finally {
-    db.close();
-  }
+  });
 }
 
-/**
- * Bucket the current displayed hits by each facet axis. Lifecycle and
- * node_type come straight off the hit objects; scope memberships are
- * looked up in one `WHERE from_id IN (...)` pass. Values that don't
- * appear in any hit show as 0 (the facet value list stays stable so
- * the sidebar always shows every option the user could re-enable).
- */
-function withHitDerivedCounts(
+async function withHitDerivedCounts(
   facets: FilterFacets,
-  db: import("better-sqlite3").Database,
+  c: PoolClient,
+  docoId: string,
   hits: Hit[],
-): FilterFacets {
+): Promise<FilterFacets> {
   const lifecycleCounts = new Map<string, number>();
   const nodeTypeCounts = new Map<string, number>();
   for (const h of hits) {
@@ -289,17 +400,19 @@ function withHitDerivedCounts(
 
   const scopeCounts = new Map<string, number>();
   if (hits.length > 0) {
-    const placeholders = hits.map(() => "?").join(",");
-    const rows = db
-      .prepare(
-        `SELECT s.name AS name, COUNT(*) AS n
-         FROM edges e
-         INNER JOIN scope s ON s.id = e.to_id
-         WHERE e.edge_type = 'in_scope_of' AND e.from_id IN (${placeholders})
-         GROUP BY s.name`,
+    const rows = (
+      await c.query<{ name: string; n: string }>(
+        `SELECT s.name AS name, COUNT(*)::text AS n
+           FROM edges e
+           INNER JOIN scopes s ON s.id = e.to_id
+          WHERE e.edge_type = 'in_scope_of'
+            AND e.doco_id = $1
+            AND e.from_id = ANY($2::text[])
+          GROUP BY s.name`,
+        [docoId, hits.map((h) => h.id)],
       )
-      .all(...hits.map((h) => h.id)) as { name: string; n: number }[];
-    for (const r of rows) scopeCounts.set(r.name, r.n);
+    ).rows;
+    for (const r of rows) scopeCounts.set(r.name, Number(r.n));
   }
 
   return {
@@ -318,259 +431,8 @@ function withHitDerivedCounts(
   };
 }
 
-export function meta({ data }: { data: Awaited<ReturnType<typeof loader>> | undefined }) {
-  return [
-    {
-      title: data?.q
-        ? `Search: ${data.q} · ${data.ownerSlug}/${data.docoSlug}`
-        : `Search · ${data?.ownerSlug ?? ""}/${data?.docoSlug ?? ""}`,
-    },
-  ];
-}
-
-/**
- * Filter sidebar — three checkbox groups in this fixed vertical order:
- * Lifecycle (first, default = `active` only), Node type, Scope. Toggling
- * any box auto-submits the surrounding form so results refresh as the
- * user tunes the filter. The hidden `q` input keeps the query intact.
- *
- * Each row also carries an `(only)` link — clicking it sets that one
- * row's filter group to just that value, leaving the other two groups'
- * state untouched.
- */
-function FilterSidebar({
-  q,
-  filters,
-  facets,
-}: {
-  q: string;
-  filters: SearchFilters;
-  facets: FilterFacets;
-}) {
-  // URL semantics (after parseSearchFilters applies defaults):
-  // - filters.lifecycle: null when URL has `lifecycle=*`; otherwise an
-  //   explicit list (the omitted-default fills in "all except retired").
-  // - filters.nodeType: null when URL has `node_type=*`; otherwise an
-  //   explicit list (the omitted-default fills in every facet value, so
-  //   every checkbox renders checked by default).
-  // - filters.scope: same convention as node_type.
-  //
-  // `null` (wildcard) is rendered as "all checked" so the UI shows the
-  // user every value is included.
-  const lifecycleChecked = (v: string) =>
-    filters.lifecycle === null ? true : filters.lifecycle.includes(v);
-  const nodeTypeChecked = (v: string) =>
-    filters.nodeType === null ? true : filters.nodeType.includes(v);
-  const scopeChecked = (v: string) =>
-    filters.scope === null ? true : filters.scope.includes(v);
-
-  /**
-   * Build the URL for the "(only)" link. `targetGroup` becomes just
-   * `[value]`; the other two groups stay at their currently-applied
-   * state. To keep URLs short, if a preserved group's filter equals
-   * its full facet list (every value selected), we emit `name=*`
-   * instead of listing each one. `null` (wildcard) is also `*`.
-   */
-  const buildOnlyUrl = (
-    targetGroup: "lifecycle" | "node_type" | "scope",
-    value: string,
-  ): string => {
-    const params = new URLSearchParams();
-    if (q) params.set("q", q);
-
-    const appendGroup = (
-      name: "lifecycle" | "node_type" | "scope",
-      values: string[] | null,
-      allValues: string[],
-    ): void => {
-      if (values === null || (values.length === allValues.length && allValues.every((v) => values.includes(v)))) {
-        params.set(name, "*");
-      } else {
-        for (const v of values) params.append(name, v);
-      }
-    };
-
-    const allLifecycle = facets.lifecycle.map((f) => f.value);
-    const allNodeType = facets.nodeType.map((f) => f.value);
-    const allScope = facets.scope.map((f) => f.name);
-
-    if (targetGroup === "lifecycle") {
-      params.append("lifecycle", value);
-    } else {
-      appendGroup("lifecycle", filters.lifecycle, allLifecycle);
-    }
-
-    if (targetGroup === "node_type") {
-      params.append("node_type", value);
-    } else {
-      appendGroup("node_type", filters.nodeType, allNodeType);
-    }
-
-    if (targetGroup === "scope") {
-      params.append("scope", value);
-    } else {
-      appendGroup("scope", filters.scope, allScope);
-    }
-
-    return `?${params.toString()}`;
-  };
-
-  // After a soft-navigation triggered by an (only) link or row text,
-  // React reuses the existing checkbox DOM nodes — but `defaultChecked`
-  // only applies on mount, so checkbox state stays frozen at whatever
-  // the user last toggled. The key forces React to remount the form
-  // (and its inputs) whenever the URL filter state changes, so
-  // defaultChecked is re-applied from the new loaderData.
-  const formKey = JSON.stringify({
-    l: filters.lifecycle,
-    n: filters.nodeType,
-    s: filters.scope,
-  });
-
-  return (
-    <aside className="md:w-56 md:shrink-0 space-y-4">
-      <Form
-        method="get"
-        id="filter-form"
-        key={formKey}
-        // Auto-submit when any checkbox changes (still POST-less, so the
-        // back button takes you to the previous filter state).
-        onChange={(e) => (e.currentTarget as HTMLFormElement).submit()}
-      >
-        <input type="hidden" name="q" value={q} />
-
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xs uppercase tracking-wider text-muted-foreground">
-              Lifecycle
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-1 pb-3 pt-0">
-            {facets.lifecycle.length === 0 ? (
-              <p className="text-[11px] italic text-muted-foreground">No data.</p>
-            ) : (
-              facets.lifecycle.map((f) => (
-                <div
-                  key={f.value}
-                  className="flex items-center gap-2 text-xs text-foreground"
-                >
-                  <input
-                    type="checkbox"
-                    name="lifecycle"
-                    value={f.value}
-                    defaultChecked={lifecycleChecked(f.value)}
-                    aria-label={`Include ${f.value} in lifecycle filter`}
-                  />
-                  <Link
-                    to={buildOnlyUrl("lifecycle", f.value)}
-                    className="flex-1 hover:text-primary hover:underline"
-                  >
-                    <span className={f.value === "active" ? "font-semibold" : ""}>
-                      {f.value}
-                    </span>
-                  </Link>
-                  <span className="text-[10px] text-muted-foreground">{f.count}</span>
-                  <Link
-                    to={buildOnlyUrl("lifecycle", f.value)}
-                    className="text-[10px] text-muted-foreground hover:text-primary hover:underline"
-                  >
-                    (only)
-                  </Link>
-                </div>
-              ))
-            )}
-          </CardContent>
-        </Card>
-
-        <Card className="mt-3">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xs uppercase tracking-wider text-muted-foreground">
-              Type
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-1 pb-3 pt-0">
-            {facets.nodeType.map((f) => (
-              <div
-                key={f.value}
-                className="flex items-center gap-2 text-xs text-foreground"
-              >
-                <input
-                  type="checkbox"
-                  name="node_type"
-                  value={f.value}
-                  defaultChecked={nodeTypeChecked(f.value)}
-                  aria-label={`Include ${f.value} in type filter`}
-                />
-                <Link
-                  to={buildOnlyUrl("node_type", f.value)}
-                  className="flex-1 font-mono hover:text-primary hover:underline"
-                >
-                  {f.value}
-                </Link>
-                <span className="text-[10px] text-muted-foreground">{f.count}</span>
-                <Link
-                  to={buildOnlyUrl("node_type", f.value)}
-                  className="text-[10px] text-muted-foreground hover:text-primary hover:underline"
-                >
-                  (only)
-                </Link>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-
-        <Card className="mt-3">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xs uppercase tracking-wider text-muted-foreground">
-              Scope
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-1 pb-3 pt-0">
-            {facets.scope.length === 0 ? (
-              <p className="text-[11px] italic text-muted-foreground">No scopes.</p>
-            ) : (
-              facets.scope.map((f) => (
-                <div
-                  key={f.name}
-                  className="flex items-center gap-2 text-xs text-foreground"
-                >
-                  <input
-                    type="checkbox"
-                    name="scope"
-                    value={f.name}
-                    defaultChecked={scopeChecked(f.name)}
-                    aria-label={`Include ${f.name} in scope filter`}
-                  />
-                  <Link
-                    to={buildOnlyUrl("scope", f.name)}
-                    className="flex-1 font-mono hover:text-primary hover:underline"
-                  >
-                    {f.name}
-                  </Link>
-                  <span className="text-[10px] text-muted-foreground">{f.count}</span>
-                  <Link
-                    to={buildOnlyUrl("scope", f.name)}
-                    className="text-[10px] text-muted-foreground hover:text-primary hover:underline"
-                  >
-                    (only)
-                  </Link>
-                </div>
-              ))
-            )}
-          </CardContent>
-        </Card>
-
-        <div className="pt-3 text-[11px] text-muted-foreground">
-          <Link
-            to={`?q=${encodeURIComponent(q)}`}
-            className="text-primary hover:underline"
-          >
-            Reset filters
-          </Link>
-        </div>
-      </Form>
-    </aside>
-  );
+export function meta({ params }: { params: { ownerSlug: string; docoSlug: string } }) {
+  return [{ title: `Search · ${params.ownerSlug}/${params.docoSlug}` }];
 }
 
 export default function SearchInDoco({
@@ -578,146 +440,130 @@ export default function SearchInDoco({
 }: {
   loaderData: Awaited<ReturnType<typeof loader>>;
 }) {
-  const [searchParams] = useSearchParams();
-  const q = searchParams.get("q") ?? "";
-  const { ownerSlug, docoSlug, host, me, hits, warning, filters, facets } = loaderData;
+  const { q, hits, warning, ownerSlug, docoSlug, host, me, filters, facets } = loaderData;
+  const [sp] = useSearchParams();
+  const activeQ = sp.get("q") ?? q;
 
   return (
     <div>
       <SiteHeader mode="host" me={me} docoScope={{ ownerSlug, docoSlug }} />
-      <main className="mx-auto max-w-6xl px-6 py-6 space-y-4">
-        {/* Search box stays full-width above the filter+results columns. */}
-        <Form method="get" className="flex gap-2">
-          <input
-            type="search"
-            name="q"
-            defaultValue={q}
-            autoFocus
-            autoComplete="off"
-            spellCheck={false}
-            placeholder={`Search ${ownerSlug}/${docoSlug}…`}
-            className="flex-1 rounded-md border border-border bg-input px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
-          />
-          {/* Carry the current filter state through the manual submit. */}
-          {filters.lifecycle !== null
-            ? filters.lifecycle.map((v) => (
-                <input key={`lc-${v}`} type="hidden" name="lifecycle" value={v} />
-              ))
-            : null}
-          {filters.nodeType !== null
-            ? filters.nodeType.map((v) => (
-                <input key={`nt-${v}`} type="hidden" name="node_type" value={v} />
-              ))
-            : null}
-          {filters.scope !== null
-            ? filters.scope.map((v) => (
-                <input key={`sc-${v}`} type="hidden" name="scope" value={v} />
-              ))
-            : null}
-          <button
-            type="submit"
-            className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90"
-          >
-            Search
-          </button>
-        </Form>
+      <main className="mx-auto max-w-6xl px-6 py-6 grid grid-cols-1 md:grid-cols-[18rem_1fr] gap-6">
+        <aside className="space-y-4">
+          <Form method="get" className="space-y-3">
+            <div>
+              <label className="text-xs text-muted-foreground" htmlFor="q">
+                Search
+              </label>
+              <input
+                id="q"
+                name="q"
+                defaultValue={activeQ}
+                placeholder="Find anything…"
+                className="w-full rounded-md border bg-background px-2 py-1 text-sm"
+                autoFocus
+              />
+            </div>
+            <FacetGroup
+              label="Lifecycle"
+              name="lifecycle"
+              options={facets.lifecycle.map((f) => ({ value: f.value, label: `${f.value} (${f.count})` }))}
+              selected={new Set(filters.lifecycle ?? [])}
+              wildcardActive={filters.lifecycle === null}
+            />
+            <FacetGroup
+              label="Type"
+              name="node_type"
+              options={facets.nodeType.map((f) => ({ value: f.value, label: `${f.value} (${f.count})` }))}
+              selected={new Set(filters.nodeType ?? [])}
+              wildcardActive={filters.nodeType === null}
+            />
+            <FacetGroup
+              label="Scope"
+              name="scope"
+              options={facets.scope.map((f) => ({ value: f.name, label: `${f.name} (${f.count})` }))}
+              selected={new Set(filters.scope ?? [])}
+              wildcardActive={filters.scope === null}
+            />
+            <button type="submit" className="rounded-md border px-3 py-1 text-sm">
+              Apply
+            </button>
+          </Form>
+        </aside>
 
-        <div className="flex flex-col gap-4 md:flex-row">
-          <FilterSidebar q={q} filters={filters} facets={facets} />
-
-          <section className="min-w-0 flex-1 space-y-4">
-            {!loaderData.q ? (
-              <Card>
-                <CardContent className="pt-4">
-                  <p className="text-xs text-muted-foreground">
-                    Vector search: each query is embedded and cosine-ranked against every node in
-                    this Doco. Filters on the left narrow the candidate set; defaults hide
-                    deprecated content.
-                  </p>
-                </CardContent>
-              </Card>
-            ) : warning ? (
-              <Card>
-                <CardContent className="pt-4">
-                  <p className="text-xs text-destructive">{warning}</p>
-                </CardContent>
-              </Card>
-            ) : (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-sm">
-                    Results ({hits.length}
-                    {hits.length === filters.limit ? `, capped at ${filters.limit}` : ""})
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="p-0">
-                  {hits.length === 0 ? (
-                    <p className="px-4 py-3 text-xs italic text-muted-foreground">
-                      No matches.
-                    </p>
-                  ) : (
-                    <ul className="divide-y divide-border">
-                      {hits.map((r) => {
-                        // Title: scope/principal use their short handle;
-                        // everything else uses the summary. URL always
-                        // resolves by ULID id.
-                        const titleIsName = r.name !== null;
-                        const title = r.name ?? r.summary ?? r.id;
-                        // Avoid duplicating the same text in the secondary
-                        // paragraph when the title already IS the summary.
-                        const showSecondary = titleIsName && r.summary;
-                        return (
-                          <li key={r.id}>
-                            <Link
-                              to={`/${ownerSlug}/${docoSlug}/${r.node_type}/${r.id}`}
-                              className="block px-4 py-3 hover:bg-input/40"
-                            >
-                              <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                                <Badge className="shrink-0">{r.node_type}</Badge>
-                                <span
-                                  className={
-                                    titleIsName
-                                      ? "min-w-0 break-all font-mono text-sm text-primary"
-                                      : "min-w-0 text-sm text-primary"
-                                  }
-                                >
-                                  {title}
-                                </span>
-                                {r.lifecycle ? (
-                                  <Badge variant="primary" className="shrink-0">
-                                    {r.lifecycle}
-                                  </Badge>
-                                ) : null}
-                              </div>
-                              {showSecondary ? (
-                                <p className="mt-1.5 line-clamp-2 text-xs leading-relaxed text-muted-foreground">
-                                  {r.summary}
-                                </p>
-                              ) : null}
-                              <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 font-mono text-[10px] tabular-nums text-muted-foreground">
-                                <span>cos {r.vector_score.toFixed(4)}</span>
-                                <span aria-hidden="true" className="opacity-60">
-                                  ·
-                                </span>
-                                <span>GPR {r.gpr.toFixed(4)}</span>
-                                <span aria-hidden="true" className="opacity-60">
-                                  ·
-                                </span>
-                                <span>{relativeTimeIso(r.created_at)}</span>
-                              </div>
-                            </Link>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  )}
-                </CardContent>
-              </Card>
-            )}
-          </section>
-        </div>
+        <section className="space-y-4">
+          {warning ? (
+            <Card>
+              <CardContent className="pt-4 text-sm text-muted-foreground">
+                {warning}
+              </CardContent>
+            </Card>
+          ) : null}
+          {hits.length === 0 && !warning ? (
+            <Card>
+              <CardContent className="pt-4 text-sm text-muted-foreground">
+                {activeQ ? "No hits." : "Type a query to search."}
+              </CardContent>
+            </Card>
+          ) : null}
+          {hits.map((hit) => (
+            <Card key={hit.id}>
+              <CardHeader>
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <Badge>{hit.node_type}</Badge>
+                  <Link
+                    to={`/${ownerSlug}/${docoSlug}/${hit.node_type}/${hit.id}`}
+                    className="font-mono text-xs text-primary hover:underline"
+                  >
+                    {hit.id}
+                  </Link>
+                  <span className="text-xs text-muted-foreground">
+                    cosine {hit.vector_score.toFixed(4)} · gpr {hit.gpr.toFixed(4)} ·{" "}
+                    {relativeTimeIso(hit.created_at)}
+                  </span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm">{hit.summary || hit.name || hit.id}</p>
+              </CardContent>
+            </Card>
+          ))}
+        </section>
       </main>
     </div>
   );
 }
 
+function FacetGroup({
+  label,
+  name,
+  options,
+  selected,
+  wildcardActive,
+}: {
+  label: string;
+  name: string;
+  options: { value: string; label: string }[];
+  selected: Set<string>;
+  wildcardActive: boolean;
+}) {
+  return (
+    <fieldset className="space-y-1">
+      <legend className="text-xs text-muted-foreground">{label}</legend>
+      <label className="flex items-center gap-2 text-xs">
+        <input type="checkbox" name={name} value="*" defaultChecked={wildcardActive} />
+        <span>any</span>
+      </label>
+      {options.map((o) => (
+        <label key={o.value} className="flex items-center gap-2 text-xs">
+          <input
+            type="checkbox"
+            name={name}
+            value={o.value}
+            defaultChecked={selected.has(o.value)}
+          />
+          <span>{o.label}</span>
+        </label>
+      ))}
+    </fieldset>
+  );
+}
