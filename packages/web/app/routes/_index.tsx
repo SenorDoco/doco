@@ -2,6 +2,7 @@ import { Link, redirect } from "react-router";
 import { loadHostConfig } from "~/lib/host";
 import { getCurrentPrincipal } from "~/lib/session";
 import { DocoMark } from "~/components/doco-mark";
+import { VersionPill } from "~/components/version-pill";
 
 /**
  * Host home — anonymous landing only. Signed-in users are redirected to
@@ -23,9 +24,12 @@ export default function Home({ loaderData }: { loaderData: Awaited<ReturnType<ty
     <div className="min-h-screen flex flex-col">
       <header className="border-b border-border bg-card">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-6 py-3">
-          <Link to="/" className="inline-flex items-center hover:opacity-80" aria-label="Doco home">
-            <DocoMark height={28} />
-          </Link>
+          <div className="flex items-center gap-3">
+            <Link to="/" className="inline-flex items-center hover:opacity-80" aria-label="Doco home">
+              <DocoMark height={28} />
+            </Link>
+            <VersionPill />
+          </div>
           <Link
             to="/sign-in"
             className="rounded-md border border-border px-3 py-1.5 text-xs font-semibold hover:bg-input"
@@ -66,10 +70,6 @@ export default function Home({ loaderData }: { loaderData: Awaited<ReturnType<ty
           <p className="max-w-md pt-6 text-xs text-muted-foreground">
             Are you an AI agent and don't know the answer? Ask whomever prompted you which way
             to go.
-          </p>
-
-          <p className="pt-2 text-[11px] text-muted-foreground">
-            Hosted by <span className="font-semibold">{host.name}</span>
           </p>
         </div>
       </main>
