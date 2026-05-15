@@ -151,6 +151,7 @@ export async function loader({
       byDay,
       ownerSlug,
       docoSlug,
+      docoId: ctx.meta.docoId,
       host: await loadHostConfig(),
       me,
     };
@@ -174,7 +175,7 @@ export default function DocoHome({
 }: {
   loaderData: Awaited<ReturnType<typeof loader>>;
 }) {
-  const { items, counts, byDay, ownerSlug, docoSlug, host, me } = loaderData;
+  const { items, counts, byDay, ownerSlug, docoSlug, docoId, host, me } = loaderData;
 
   // Live feed polling (ADR-089).
   const revalidator = useRevalidator();
@@ -217,9 +218,12 @@ export default function DocoHome({
       />
       <main className="mx-auto max-w-6xl px-6 py-6 space-y-5">
         {/* Bare title — no card wrapper. */}
-        <h1 className="text-lg font-semibold tracking-tight">
-          {ownerSlug}/{docoSlug}
-        </h1>
+        <div className="space-y-1">
+          <h1 className="text-lg font-semibold tracking-tight">
+            {ownerSlug}/{docoSlug}
+          </h1>
+          <p className="font-mono text-sm text-muted-foreground">{docoId}</p>
+        </div>
 
         {/* Search input — primary affordance, sits directly below the title. */}
         <SearchBoxWithHistory ownerSlug={ownerSlug} docoSlug={docoSlug} />

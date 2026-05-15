@@ -26,7 +26,10 @@ export function SiteHeader({ docoScope, me }: SiteHeaderProps) {
   // search front door (ADR-120 + the search-input-at-doco-home Decision).
   const nav = docoScope
     ? [
-        { to: `/${docoScope.ownerSlug}/${docoScope.docoSlug}`, label: "Home" },
+        {
+          to: `/${docoScope.ownerSlug}/${docoScope.docoSlug}`,
+          label: `${docoScope.ownerSlug}/${docoScope.docoSlug}`,
+        },
         { to: `/${docoScope.ownerSlug}/${docoScope.docoSlug}/constitution`, label: "Constitution" },
         { to: `/${docoScope.ownerSlug}/${docoScope.docoSlug}/scopes`, label: "Scopes" },
         { to: `/${docoScope.ownerSlug}/${docoScope.docoSlug}/lint`, label: "Lint" },

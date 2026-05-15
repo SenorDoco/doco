@@ -29,7 +29,6 @@ export async function loader({
     ownerSlug,
     docoSlug,
     docoId: meta.docoId,
-    displayName: meta.displayName || docoSlug,
     description: meta.description,
     visibility: meta.visibility,
     host: await loadHostConfig(),
@@ -74,7 +73,6 @@ export async function action({
   // ── Default: save edits ───────────────────────────────────────────
   const newSlug = String(form.get("doco_slug") ?? "").trim().toLowerCase();
   const description = String(form.get("description") ?? "");
-  const displayName = String(form.get("display_name") ?? "").trim();
   const visibility = (String(form.get("visibility") ?? "") as "private" | "public") || undefined;
 
   if (!newSlug) return { error: "Slug is required." };
@@ -113,7 +111,6 @@ export async function action({
     await updateDocoMeta({
       docoDir: finalDir,
       description,
-      ...(displayName ? { display_name: displayName } : { display_name: null }),
       ...(visibility ? { visibility } : {}),
     });
   } catch (e) {
@@ -135,7 +132,7 @@ export default function DocoSettings({
   loaderData: Awaited<ReturnType<typeof loader>>;
   actionData?: { error?: string } | undefined;
 }) {
-  const { ownerSlug, docoSlug, displayName, description, visibility, docoId, host, me } = loaderData;
+  const { ownerSlug, docoSlug, description, visibility, docoId, host, me } = loaderData;
   const [searchParams] = useSearchParams();
   const isConfirmingDelete = searchParams.get("confirm") === "delete";
 
@@ -152,11 +149,6 @@ export default function DocoSettings({
         <Card>
           <CardHeader>
             <CardTitle>Settings · {ownerSlug}/{docoSlug}</CardTitle>
-            <CardDescription>
-              Owner-only. Edit the slug, display name, description, and
-              visibility. Changes apply on save; the page reloads at the
-              new location if the slug changed.
-            </CardDescription>
           </CardHeader>
           <CardContent>
             <Form method="post" className="space-y-3">
@@ -180,41 +172,46 @@ export default function DocoSettings({
               </label>
 
               <label className="block text-xs">
-                <span className="mb-1 block font-semibold text-foreground">Display name</span>
-                <input
-                  name="display_name"
-                  defaultValue={displayName}
-                  placeholder={docoSlug}
-                  className="w-full rounded-md border border-border bg-input px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
-                />
-              </label>
-
-              <label className="block text-xs">
                 <span className="mb-1 block font-semibold text-foreground">Description</span>
                 <textarea
                   name="description"
-                  rows={3}
+                  rows={1}
                   defaultValue={description}
                   placeholder="One or two sentences describing the project."
-                  className="w-full rounded-md border border-border bg-input px-3 py-2 text-xs text-foreground outline-none focus:border-primary"
+                  style={{ fieldSizing: "content" } as Record<string, string>}
+                  className="w-full resize-none overflow-hidden rounded-md border border-border bg-input px-3 py-2 text-xs text-foreground outline-none focus:border-primary"
                 />
               </label>
 
-              <label className="block text-xs">
-                <span className="mb-1 block font-semibold text-foreground">Visibility</span>
-                <select
-                  name="visibility"
-                  defaultValue={visibility}
-                  className="w-full rounded-md border border-border bg-input px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
-                >
-                  <option value="private">Private — only owner / org members can view</option>
-                  <option value="public">Public — anyone with the URL can view</option>
-                </select>
+              <fieldset className="block text-xs">
+                <legend className="mb-1 block font-semibold text-foreground">Visibility</legend>
+                <div className="space-y-1.5">
+                  <label className="flex items-start gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="visibility"
+                      value="private"
+                      defaultChecked={visibility !== "public"}
+                      className="mt-0.5"
+                    />
+                    <span>Private — only owner / org members can view</span>
+                  </label>
+                  <label className="flex items-start gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="visibility"
+                      value="public"
+                      defaultChecked={visibility === "public"}
+                      className="mt-0.5"
+                    />
+                    <span>Public — anyone with the URL can view</span>
+                  </label>
+                </div>
                 <span className="mt-1 block text-[11px] text-muted-foreground">
                   Private Docos return 404 to non-members on both the web
                   and the API. Existence isn't leaked.
                 </span>
-              </label>
+              </fieldset>
 
               <button
                 type="submit"

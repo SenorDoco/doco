@@ -1,8 +1,10 @@
 import { Link } from "react-router";
 import { resolveOwnerSlug, getPrincipalById } from "@doco/db";
 import { canAccessDoco } from "~/lib/doco-access.server";
+import { listDocoStats } from "~/lib/doco-stats.server";
 import { listAllDocos, loadHostConfig } from "~/lib/host";
 import { getCurrentPrincipal } from "~/lib/session";
+import { timeAgo } from "~/lib/time-ago";
 import { SiteHeader } from "~/components/site-header";
 import { Badge } from "~/components/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
@@ -75,9 +77,14 @@ export async function loader({ params, request }: { params: { ownerSlug: string 
     ),
   );
   const docos = ownDocos.filter((_, i) => visibility[i]);
+  const docoStats = await listDocoStats(docos.map((d) => d.docoId));
+  const docosWithStats = docos.map((d) => ({
+    ...d,
+    stats: docoStats.get(d.docoId) ?? { nodes: 0, edges: 0, lastUpdatedAt: null },
+  }));
   return {
     owner,
-    docos,
+    docos: docosWithStats,
     host: await loadHostConfig(),
     me,
   };
@@ -136,7 +143,9 @@ export default function OwnerProfile({
                 <TableHeader>
                   <TableRow>
                     <TableHead>slug</TableHead>
-                    <TableHead>indexed?</TableHead>
+                    <TableHead className="text-right">nodes</TableHead>
+                    <TableHead className="text-right">edges</TableHead>
+                    <TableHead className="text-right">last updated</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -147,12 +156,10 @@ export default function OwnerProfile({
                           {e.ownerSlug}/{e.docoSlug}
                         </Link>
                       </TableCell>
-                      <TableCell>
-                        {e.hasIndex ? (
-                          <Badge variant="success">indexed</Badge>
-                        ) : (
-                          <Badge variant="warning">no index</Badge>
-                        )}
+                      <TableCell className="text-right font-mono">{e.stats.nodes}</TableCell>
+                      <TableCell className="text-right font-mono">{e.stats.edges}</TableCell>
+                      <TableCell className="text-right text-muted-foreground">
+                        {timeAgo(e.stats.lastUpdatedAt)}
                       </TableCell>
                     </TableRow>
                   ))}

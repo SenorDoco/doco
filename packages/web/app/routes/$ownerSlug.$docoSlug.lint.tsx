@@ -60,6 +60,16 @@ export default function LintInDoco({
         <Card>
           <CardHeader>
             <CardTitle>Lint report</CardTitle>
+            <CardDescription>
+              Lint is a set of structural checks Doco runs across every
+              entity in this Doco — orphan references, broken{" "}
+              <code>applies_to</code> selectors, scope-membership
+              violations, lifecycle conflicts, and similar invariants
+              from <code>SYSTEM_LINTS</code>. Errors are blockers
+              (something is wrong with the graph); warnings flag drift
+              that probably needs attention but won't break callers.
+              Runs on every page load.
+            </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="flex items-center gap-2">

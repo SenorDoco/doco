@@ -2,8 +2,10 @@ import { Link, redirect } from "react-router";
 import { withClient } from "@doco/db";
 import { entityUrl } from "@doco/shared";
 import { isMyDoco } from "~/lib/doco-access.server";
+import { listDocoStats } from "~/lib/doco-stats.server";
 import { listAllDocos, listMyOrgs, loadHostConfig } from "~/lib/host";
 import { getCurrentPrincipal } from "~/lib/session";
+import { timeAgo } from "~/lib/time-ago";
 import { SiteHeader } from "~/components/site-header";
 import { ActivityHeatmap } from "~/components/activity-heatmap";
 import { Badge } from "~/components/badge";
@@ -44,6 +46,7 @@ export async function loader({ request }: { request: Request }) {
   );
   const docos = allDocos.filter((_, i) => mine[i]);
   const myDocoIds = docos.map((d) => d.docoId);
+  const docoStats = await listDocoStats(myDocoIds);
 
   const myOrgs = await listMyOrgs(me.id);
 
@@ -102,10 +105,15 @@ export async function loader({ request }: { request: Request }) {
     return { byDay, feed };
   });
 
+  const docosWithStats = docos.map((d) => ({
+    ...d,
+    stats: docoStats.get(d.docoId) ?? { nodes: 0, edges: 0, lastUpdatedAt: null },
+  }));
+
   return {
     host: await loadHostConfig(),
     me,
-    docos,
+    docos: docosWithStats,
     myOrgs,
     byDay,
     feed,
@@ -154,8 +162,9 @@ export default function Dashboard({
                   <TableHeader>
                     <TableRow>
                       <TableHead>slug</TableHead>
-                      <TableHead>owner</TableHead>
-                      <TableHead>indexed?</TableHead>
+                      <TableHead className="text-right">nodes</TableHead>
+                      <TableHead className="text-right">edges</TableHead>
+                      <TableHead className="text-right">last updated</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -169,18 +178,10 @@ export default function Dashboard({
                             {e.ownerSlug}/{e.docoSlug}
                           </Link>
                         </TableCell>
-                        <TableCell>
-                          <Badge variant={e.ownerKind === "organization" ? "accent" : "default"}>
-                            {e.ownerKind}
-                          </Badge>{" "}
-                          <span className="text-muted-foreground text-xs">{e.ownerSlug}</span>
-                        </TableCell>
-                        <TableCell>
-                          {e.hasIndex ? (
-                            <Badge variant="success">indexed</Badge>
-                          ) : (
-                            <Badge variant="warning">no index</Badge>
-                          )}
+                        <TableCell className="text-right font-mono">{e.stats.nodes}</TableCell>
+                        <TableCell className="text-right font-mono">{e.stats.edges}</TableCell>
+                        <TableCell className="text-right text-muted-foreground">
+                          {timeAgo(e.stats.lastUpdatedAt)}
                         </TableCell>
                       </TableRow>
                     ))}

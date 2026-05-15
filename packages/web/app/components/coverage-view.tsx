@@ -30,9 +30,12 @@ export function CoverageView({
           <CardHeader>
             <CardTitle>Coverage</CardTitle>
             <CardDescription>
-              Files modified in the working tree, cross-referenced against every Action body
-              (ADR-090). Uncovered files are drift candidates — work that shipped without an
-              Action recording it.
+              Coverage measures whether code changes in this repository
+              are documented as Actions in this Doco. Every modified
+              file is matched against the bodies of recent Action
+              entities; "uncovered" files are work that shipped without
+              an Action recording it — a drift signal that the paper
+              trail is falling behind the code. Per ADR-090.
             </CardDescription>
           </CardHeader>
           <CardContent>
