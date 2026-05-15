@@ -187,7 +187,7 @@ export default function Dashboard({
         <div className="grid grid-cols-1 gap-4 min-[840px]:grid-cols-2">
           <Card>
             <CardHeader>
-              <CardTitle>Your docos</CardTitle>
+              <CardTitle>Your Docos</CardTitle>
               <CardDescription>
                 Your docos, plus docos owned by organizations you belong to. Click to open.
               </CardDescription>
@@ -243,7 +243,7 @@ export default function Dashboard({
 
             <Card>
               <CardHeader>
-                <CardTitle>Latest activity in your docos</CardTitle>
+                <CardTitle>Latest activity in your Docos</CardTitle>
                 <CardDescription>
                   Newest first across every Doco listed on the left.
                 </CardDescription>

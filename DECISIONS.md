@@ -314,7 +314,7 @@ A consolidated record of every meaningful design decision made to date, intended
 - **Why:** Source-controlled secrets are bad practice; tokens shouldn't be in git.
 - **Ref:** PLANNING.md §3.3.
 
-### D-040 — Only people can delete docos
+### D-040 — Only people can delete Docos
 
 - **Chosen:** Built-in system Rule (`rule_system_only_people_delete`) blocks `delete_doco` Actions when `actor.is_agent == true` (or `actor.type == 'person'` in current schema).
 - **Why:** Single people-only operation; everything else (create, edit, archive, transfer) is open to both.

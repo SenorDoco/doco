@@ -1,14 +1,14 @@
-// Scope management — slim list of scopes with View / Edit.
+import { withClient } from "@doco/db";
+import { entityUrl } from "@doco/shared";
+// Scope management — slim list of scopes with row-level navigation.
 //
 // Each row shows just: name, parents (if any), short description, node
-// count, View button (entity-detail page), Edit button (standalone edit
-// page at /scopes/<id>/edit). Purpose + guidelines + rules live on those
-// pages, not inline. Deletion is intentionally NOT here — it lives only
-// in the Danger Zone at the bottom of /scopes/<id>/edit, so the act of
-// destroying a scope requires opening its edit page first.
+// count, and watched state. Clicking the row opens the entity-detail page.
+// Purpose + guidelines + rules live on the detail page, not inline.
+// Deletion is intentionally NOT here — it lives only in the Danger Zone
+// at the bottom of /scopes/<id>/edit, so the act of destroying a scope
+// requires opening its edit page first.
 import { Link, redirect } from "react-router";
-import { entityUrl } from "@doco/shared";
-import { withClient } from "@doco/db";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { SiteHeader } from "~/components/site-header";
 import { loadDocoForRead } from "~/lib/doco-access.server";
@@ -82,6 +82,98 @@ export default function ScopesIndex({
   loaderData: Awaited<ReturnType<typeof loader>>;
 }) {
   const { ownerSlug, docoSlug, displayName, scopes, isOnboarding, host, me } = loaderData;
+  type ScopeRow = (typeof scopes)[number];
+  const isDeprecatedScope = (scope: ScopeRow) =>
+    scope.lifecycle !== "active" && scope.lifecycle !== "proposed";
+  const sortedScopes = [...scopes].sort((a, b) => {
+    if (a.name === "global" && b.name !== "global") return -1;
+    if (b.name === "global" && a.name !== "global") return 1;
+    return 0;
+  });
+  const activeScopes = sortedScopes.filter((scope) => !isDeprecatedScope(scope));
+  const deprecatedScopes = sortedScopes.filter(isDeprecatedScope);
+
+  const renderScopeRow = (s: ScopeRow) => {
+    const parents = s.parent_ids
+      .map((pid) => scopes.find((x) => x.id === pid)?.name)
+      .filter(Boolean) as string[];
+    const description = shortDescription(s.short_description);
+    const isDeprecated = isDeprecatedScope(s);
+    const isGlobal = s.name === "global";
+    return (
+      <li key={s.id}>
+        <Link
+          to={entityUrl({ ownerSlug, docoSlug, nodeType: "scope", id: s.id })}
+          className={
+            isDeprecated
+              ? "flex w-full cursor-pointer flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3 text-xs text-inherit no-underline opacity-50 transition-colors hover:bg-muted/40 focus:outline-none focus:ring-2 focus:ring-primary/40"
+              : "flex w-full cursor-pointer flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3 text-xs text-inherit no-underline transition-colors hover:bg-muted/40 focus:outline-none focus:ring-2 focus:ring-primary/40"
+          }
+        >
+          <div className="flex min-w-0 basis-full items-center gap-3 sm:basis-0 sm:flex-1">
+            {s.icon ? (
+              <span className="shrink-0 text-lg leading-none" aria-hidden="true">
+                {s.icon}
+              </span>
+            ) : (
+              <span className="shrink-0 w-5" aria-hidden="true" />
+            )}
+            <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-2">
+              <span
+                className={
+                  isDeprecated
+                    ? "font-mono text-sm text-foreground line-through"
+                    : "font-mono text-sm text-foreground"
+                }
+              >
+                {s.name}
+              </span>
+              {isGlobal ? (
+                <span className="text-[10px] text-muted-foreground">(the doco's constitution)</span>
+              ) : null}
+              {isDeprecated ? (
+                <span className="rounded-md border border-border bg-input px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-muted-foreground">
+                  deprecated
+                </span>
+              ) : null}
+              {parents.length > 0 ? (
+                <span className="text-[10px] text-muted-foreground">
+                  under {parents.join(" / ")}
+                </span>
+              ) : null}
+            </div>
+          </div>
+          <div className="ml-auto flex shrink-0 items-center gap-2 sm:ml-0">
+            <span className="whitespace-nowrap text-[10px] text-muted-foreground">
+              {s.member_count} {s.member_count === 1 ? "node" : "nodes"}
+            </span>
+            <span
+              className={
+                s.is_watched
+                  ? "inline-flex items-center gap-1 rounded-md border border-primary px-1.5 py-0.5 text-[10px] font-semibold text-primary"
+                  : "inline-flex items-center gap-1 rounded-md border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground"
+              }
+              title={
+                s.is_watched
+                  ? "Watched — contributors look for opportunities to document here"
+                  : "Not watched"
+              }
+            >
+              <span aria-hidden="true">{s.is_watched ? "👁" : "·"}</span>
+              {s.is_watched ? "Watched" : "Not watched"}
+            </span>
+          </div>
+          {description ? (
+            <p className="basis-full truncate pl-8 text-muted-foreground">{description}</p>
+          ) : (
+            <p className="basis-full pl-8 text-[11px] italic text-muted-foreground">
+              No description.
+            </p>
+          )}
+        </Link>
+      </li>
+    );
+  };
 
   return (
     <div>
@@ -94,9 +186,7 @@ export default function ScopesIndex({
                 <CardTitle>
                   Scopes · {displayName} ({scopes.length})
                 </CardTitle>
-                <CardDescription>
-                  Topical neighborhoods every node belongs to.
-                </CardDescription>
+                <CardDescription>Topical neighborhoods every node belongs to.</CardDescription>
               </div>
               <Link
                 to={`/${ownerSlug}/${docoSlug}/scopes/new${isOnboarding ? "?onboarding=1" : ""}`}
@@ -111,104 +201,13 @@ export default function ScopesIndex({
               {/* Per decision_01KRPNZY7W6CCMYNKGND67BP0B the Global scope
                   sorts to the top of the list and renders with the
                   caption "the doco's constitution" next to its name. */}
-              {[...scopes]
-                .sort((a, b) => {
-                  if (a.name === "global" && b.name !== "global") return -1;
-                  if (b.name === "global" && a.name !== "global") return 1;
-                  return 0;
-                })
-                .map((s) => {
-                const parents = s.parent_ids
-                  .map((pid) => scopes.find((x) => x.id === pid)?.name)
-                  .filter(Boolean) as string[];
-                const description = shortDescription(s.short_description);
-                const isDeprecated = s.lifecycle !== "active" && s.lifecycle !== "proposed";
-                const isGlobal = s.name === "global";
-                return (
-                  <li
-                    key={s.id}
-                    className={
-                      isDeprecated
-                        ? "flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3 text-xs opacity-50"
-                        : "flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3 text-xs"
-                    }
-                  >
-                    <div className="flex min-w-0 basis-full items-center gap-3 sm:basis-0 sm:flex-1">
-                      {s.icon ? (
-                        <span className="shrink-0 text-lg leading-none" aria-hidden="true">
-                          {s.icon}
-                        </span>
-                      ) : (
-                        <span className="shrink-0 w-5" aria-hidden="true" />
-                      )}
-                      <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-2">
-                        <span
-                          className={
-                            isDeprecated
-                              ? "font-mono text-sm text-foreground line-through"
-                              : "font-mono text-sm text-foreground"
-                          }
-                        >
-                          {s.name}
-                        </span>
-                        {isGlobal ? (
-                          <span className="text-[10px] text-muted-foreground">
-                            (the doco's constitution)
-                          </span>
-                        ) : null}
-                        {isDeprecated ? (
-                          <span className="rounded-md border border-border bg-input px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-muted-foreground">
-                            deprecated
-                          </span>
-                        ) : null}
-                        {parents.length > 0 ? (
-                          <span className="text-[10px] text-muted-foreground">
-                            under {parents.join(" / ")}
-                          </span>
-                        ) : null}
-                      </div>
-                    </div>
-                    <div className="ml-auto flex shrink-0 items-center gap-2 sm:ml-0">
-                      <span className="whitespace-nowrap text-[10px] text-muted-foreground">
-                        {s.member_count} {s.member_count === 1 ? "node" : "nodes"}
-                      </span>
-                      <span
-                        className={
-                          s.is_watched
-                            ? "inline-flex items-center gap-1 rounded-md border border-primary px-1.5 py-0.5 text-[10px] font-semibold text-primary"
-                            : "inline-flex items-center gap-1 rounded-md border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground"
-                        }
-                        title={
-                          s.is_watched
-                            ? "Watched — contributors look for opportunities to document here"
-                            : "Not watched"
-                        }
-                      >
-                        <span aria-hidden="true">{s.is_watched ? "👁" : "·"}</span>
-                        {s.is_watched ? "Watched" : "Not watched"}
-                      </span>
-                      {/* Per decision_01KRPNZY7W6CCMYNKGND67BP0B the
-                          detail and edit pages collapsed — a single Open
-                          button lands on /scopes/<id>. */}
-                      <Link
-                        to={entityUrl({ ownerSlug, docoSlug, nodeType: "scope", id: s.id })}
-                        className="rounded-md border border-border px-2 py-1 text-[11px] font-semibold hover:bg-input"
-                      >
-                        Open
-                      </Link>
-                    </div>
-                    {description ? (
-                      <p className="basis-full truncate pl-8 text-muted-foreground">
-                        {description}
-                      </p>
-                    ) : (
-                      <p className="basis-full pl-8 text-[11px] italic text-muted-foreground">
-                        No description.
-                      </p>
-                    )}
-                  </li>
-                );
-              })}
+              {activeScopes.map(renderScopeRow)}
+              {deprecatedScopes.length > 0 ? (
+                <li className="bg-muted/40 px-4 py-2 text-xs font-semibold text-muted-foreground">
+                  Deprecated
+                </li>
+              ) : null}
+              {deprecatedScopes.map(renderScopeRow)}
             </ul>
           </CardContent>
         </Card>

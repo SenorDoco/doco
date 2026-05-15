@@ -41,7 +41,7 @@ export function SiteHeader({ docoScope, me }: SiteHeaderProps) {
         { to: `/${docoScope.ownerSlug}/${docoScope.docoSlug}/settings`, label: "Settings" },
       ]
     : [
-        { to: "/dashboard", label: "docos" },
+        { to: "/dashboard", label: "Docos" },
         { to: "/agents", label: "Agents" },
       ];
 

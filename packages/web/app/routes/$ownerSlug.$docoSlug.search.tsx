@@ -1,27 +1,29 @@
+import { cosineSimilarity, getAllEmbeddingsForDoco, withClient } from "@doco/db";
+import { globalPageRank } from "@doco/index";
+import type { PoolClient } from "pg";
 // Per-Doco search — vector-only ranker (ADR-052, supersedes ADR-030)
 // + left-sidebar filters for lifecycle / node type / scope.
 //
-// One provider call embeds the query; filters resolve to a candidate
-// id set BEFORE cosine so the top-N slice always returns up to N
-// matching entities. Filter state lives in URL query params.
+// One provider call embeds keyword searches; filters resolve to a
+// candidate id set BEFORE cosine so the top-N slice always returns up
+// to N matching entities. With explicit filters and no keyword, this
+// page lists the filtered nodes directly. Filter state lives in URL
+// query params.
 import { Form, Link, useSearchParams } from "react-router";
-import type { PoolClient } from "pg";
-import { cosineSimilarity, getAllEmbeddingsForDoco, withClient } from "@doco/db";
-import { globalPageRank } from "@doco/index";
+import { Badge } from "~/components/badge";
+import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
+import { SiteHeader } from "~/components/site-header";
 import { loadDocoForRead } from "~/lib/doco-access.server";
-import { loadHostConfig } from "~/lib/host";
-import { getCurrentPrincipal } from "~/lib/session";
 import { getDocoEmbeddingProvider } from "~/lib/embedding-provider.server";
+import { loadHostConfig } from "~/lib/host";
 import {
+  type FilterFacets,
+  type SearchFilters,
   computeFilterFacets,
   parseSearchFilters,
   resolveFilteredCandidates,
-  type FilterFacets,
-  type SearchFilters,
 } from "~/lib/search-filters.server";
-import { SiteHeader } from "~/components/site-header";
-import { Badge } from "~/components/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
+import { getCurrentPrincipal } from "~/lib/session";
 
 function relativeTimeIso(iso: string | null): string {
   if (!iso) return "—";
@@ -45,7 +47,7 @@ interface Hit {
   lifecycle: string | null;
   created_at: string | null;
   gpr: number;
-  vector_score: number;
+  vector_score: number | null;
 }
 
 /**
@@ -57,10 +59,7 @@ interface TypeSpec {
   nodeType: string;
   selectExtra: string;
   /** Build the Hit shape from a row. */
-  toHit(
-    row: Record<string, unknown>,
-    vectorScore: number,
-  ): Omit<Hit, "gpr">;
+  toHit(row: Record<string, unknown>, vectorScore: number | null): Omit<Hit, "gpr">;
   /** Doco-scoped or host-level? */
   hostLevel: boolean;
 }
@@ -233,6 +232,98 @@ const TYPE_SPECS: TypeSpec[] = [
   },
 ];
 
+const FILTER_PARAM_NAMES = ["lifecycle", "node_type", "scope"] as const;
+
+function hasExplicitSearchFilter(params: URLSearchParams): boolean {
+  return FILTER_PARAM_NAMES.some((name) => params.has(name));
+}
+
+async function loadFilteredHits(
+  c: PoolClient,
+  docoId: string,
+  filters: SearchFilters,
+): Promise<Hit[]> {
+  const candidateIds = await resolveFilteredCandidates(c, docoId, filters);
+  if (candidateIds !== null && candidateIds.size === 0) return [];
+
+  const ids =
+    candidateIds === null ? await loadAllDocoEntityIds(c, docoId) : Array.from(candidateIds);
+  const hits = await hydrateHits(c, ids, docoId, null);
+  await attachGlobalPageRank(c, docoId, hits);
+  hits.sort((a, b) => {
+    const byCreated = createdTime(b.created_at) - createdTime(a.created_at);
+    if (byCreated !== 0) return byCreated;
+    const byGpr = b.gpr - a.gpr;
+    if (byGpr !== 0) return byGpr;
+    return a.id.localeCompare(b.id);
+  });
+  return hits.slice(0, filters.limit);
+}
+
+async function loadAllDocoEntityIds(c: PoolClient, docoId: string): Promise<string[]> {
+  const ids: string[] = [];
+  for (const spec of TYPE_SPECS) {
+    if (spec.hostLevel) continue;
+    const rows = (
+      await c.query<{ id: string }>(`SELECT id FROM ${spec.table} WHERE doco_id = $1`, [docoId])
+    ).rows;
+    for (const row of rows) ids.push(row.id);
+  }
+  return ids;
+}
+
+async function hydrateHits(
+  c: PoolClient,
+  ids: string[],
+  docoId: string,
+  scoreById: Map<string, number> | null,
+): Promise<Hit[]> {
+  if (ids.length === 0) return [];
+  const hits: Hit[] = [];
+  for (const spec of TYPE_SPECS) {
+    const sql = spec.hostLevel
+      ? `SELECT id, ${spec.selectExtra} FROM ${spec.table} WHERE id = ANY($1::text[])`
+      : `SELECT id, ${spec.selectExtra} FROM ${spec.table} WHERE id = ANY($1::text[]) AND doco_id = $2`;
+    const params = spec.hostLevel ? [ids] : [ids, docoId];
+    const rows = (await c.query(sql, params)).rows;
+    for (const row of rows) {
+      const rawScore = scoreById?.get(String(row.id));
+      const score = typeof rawScore === "number" ? Math.round(rawScore * 10000) / 10000 : null;
+      const hit = spec.toHit(row as Record<string, unknown>, score);
+      hits.push({ ...hit, gpr: 0 });
+    }
+  }
+  return hits;
+}
+
+async function attachGlobalPageRank(c: PoolClient, docoId: string, hits: Hit[]): Promise<void> {
+  if (hits.length === 0) return;
+  const edgeRows = (
+    await c.query<{ from_id: string; to_id: string; edge_type: string; attribution: string }>(
+      `SELECT from_id, to_id, edge_type, attribution FROM edges WHERE doco_id = $1`,
+      [docoId],
+    )
+  ).rows;
+  const gpr = globalPageRank(
+    edgeRows.map((e) => ({
+      from: e.from_id,
+      to: e.to_id,
+      edge_type: e.edge_type,
+      attribution: e.attribution as "explicit" | "doco-auto",
+    })),
+    { alpha: 0.85 },
+  );
+  const gprById = new Map<string, number>();
+  for (const p of gpr) gprById.set(p.id, p.score);
+  for (const h of hits) h.gpr = gprById.get(h.id) ?? 0;
+}
+
+function createdTime(iso: string | null): number {
+  if (!iso) return 0;
+  const t = Date.parse(iso);
+  return Number.isNaN(t) ? 0 : t;
+}
+
 export async function loader({
   request,
   params,
@@ -252,9 +343,15 @@ export async function loader({
     const filters: SearchFilters = parseSearchFilters(url.searchParams, facets);
 
     if (!q) {
+      const hits = hasExplicitSearchFilter(url.searchParams)
+        ? await loadFilteredHits(c, ctx.meta.docoId, filters)
+        : [];
+      if (hits.length > 0) {
+        facets = await withHitDerivedCounts(facets, c, ctx.meta.docoId, hits);
+      }
       return {
         q,
-        hits: [] as Hit[],
+        hits,
         warning: null as string | null,
         ownerSlug,
         docoSlug,
@@ -341,42 +438,9 @@ export async function loader({
     const topById = new Map(top.map((t) => [t.entity_id, t.score]));
     const topIds = top.map((t) => t.entity_id);
 
-    const hits: Hit[] = [];
-    for (const spec of TYPE_SPECS) {
-      const sql = spec.hostLevel
-        ? `SELECT id, ${spec.selectExtra} FROM ${spec.table} WHERE id = ANY($1::text[])`
-        : `SELECT id, ${spec.selectExtra} FROM ${spec.table} WHERE id = ANY($1::text[]) AND doco_id = $2`;
-      const params = spec.hostLevel ? [topIds] : [topIds, ctx.meta.docoId];
-      const rows = (await c.query(sql, params)).rows;
-      for (const row of rows) {
-        const hit = spec.toHit(
-          row as Record<string, unknown>,
-          Math.round((topById.get(String(row.id)) ?? 0) * 10000) / 10000,
-        );
-        hits.push({ ...hit, gpr: 0 });
-      }
-    }
-
-    // Global PageRank — fetch all edges for this Doco.
-    const edgeRows = (
-      await c.query<{ from_id: string; to_id: string; edge_type: string; attribution: string }>(
-        `SELECT from_id, to_id, edge_type, attribution FROM edges WHERE doco_id = $1`,
-        [ctx.meta.docoId],
-      )
-    ).rows;
-    const gpr = globalPageRank(
-      edgeRows.map((e) => ({
-        from: e.from_id,
-        to: e.to_id,
-        edge_type: e.edge_type,
-        attribution: e.attribution as "explicit" | "doco-auto",
-      })),
-      { alpha: 0.85 },
-    );
-    const gprById = new Map<string, number>();
-    for (const p of gpr) gprById.set(p.id, p.score);
-    for (const h of hits) h.gpr = gprById.get(h.id) ?? 0;
-    hits.sort((a, b) => b.vector_score - a.vector_score);
+    const hits = await hydrateHits(c, topIds, ctx.meta.docoId, topById);
+    await attachGlobalPageRank(c, ctx.meta.docoId, hits);
+    hits.sort((a, b) => (b.vector_score ?? 0) - (a.vector_score ?? 0));
 
     facets = await withHitDerivedCounts(facets, c, ctx.meta.docoId, hits);
 
@@ -443,6 +507,7 @@ export default function SearchInDoco({
   const { q, hits, warning, ownerSlug, docoSlug, host, me, filters, facets } = loaderData;
   const [sp] = useSearchParams();
   const activeQ = sp.get("q") ?? q;
+  const hasFilters = hasExplicitSearchFilter(sp);
 
   return (
     <div>
@@ -466,21 +531,30 @@ export default function SearchInDoco({
             <FacetGroup
               label="Lifecycle"
               name="lifecycle"
-              options={facets.lifecycle.map((f) => ({ value: f.value, label: `${f.value} (${f.count})` }))}
+              options={facets.lifecycle.map((f) => ({
+                value: f.value,
+                label: `${f.value} (${f.count})`,
+              }))}
               selected={new Set(filters.lifecycle ?? [])}
               wildcardActive={filters.lifecycle === null}
             />
             <FacetGroup
               label="Type"
               name="node_type"
-              options={facets.nodeType.map((f) => ({ value: f.value, label: `${f.value} (${f.count})` }))}
+              options={facets.nodeType.map((f) => ({
+                value: f.value,
+                label: `${f.value} (${f.count})`,
+              }))}
               selected={new Set(filters.nodeType ?? [])}
               wildcardActive={filters.nodeType === null}
             />
             <FacetGroup
               label="Scope"
               name="scope"
-              options={facets.scope.map((f) => ({ value: f.name, label: `${f.name} (${f.count})` }))}
+              options={facets.scope.map((f) => ({
+                value: f.name,
+                label: `${f.name} (${f.count})`,
+              }))}
               selected={new Set(filters.scope ?? [])}
               wildcardActive={filters.scope === null}
             />
@@ -493,40 +567,45 @@ export default function SearchInDoco({
         <section className="space-y-4">
           {warning ? (
             <Card>
-              <CardContent className="pt-4 text-sm text-muted-foreground">
-                {warning}
-              </CardContent>
+              <CardContent className="pt-4 text-sm text-muted-foreground">{warning}</CardContent>
             </Card>
           ) : null}
           {hits.length === 0 && !warning ? (
             <Card>
               <CardContent className="pt-4 text-sm text-muted-foreground">
-                {activeQ ? "No hits." : "Type a query to search."}
+                {activeQ
+                  ? "No hits."
+                  : hasFilters
+                    ? "No nodes match these filters."
+                    : "Type a query to search."}
               </CardContent>
             </Card>
           ) : null}
-          {hits.map((hit) => (
-            <Card key={hit.id}>
-              <CardHeader>
-                <CardTitle className="text-sm flex items-center gap-2">
-                  <Badge>{hit.node_type}</Badge>
-                  <Link
-                    to={`/${ownerSlug}/${docoSlug}/${hit.node_type}/${hit.id}`}
-                    className="font-mono text-xs text-primary hover:underline"
-                  >
-                    {hit.id}
-                  </Link>
-                  <span className="text-xs text-muted-foreground">
-                    cosine {hit.vector_score.toFixed(4)} · gpr {hit.gpr.toFixed(4)} ·{" "}
-                    {relativeTimeIso(hit.created_at)}
-                  </span>
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm">{hit.summary || hit.name || hit.id}</p>
-              </CardContent>
-            </Card>
-          ))}
+          {hits.map((hit) => {
+            const vectorScore = hit.vector_score;
+            return (
+              <Card key={hit.id}>
+                <CardHeader>
+                  <CardTitle className="text-sm flex items-center gap-2">
+                    <Badge>{hit.node_type}</Badge>
+                    <Link
+                      to={`/${ownerSlug}/${docoSlug}/${hit.node_type}/${hit.id}`}
+                      className="font-mono text-xs text-primary hover:underline"
+                    >
+                      {hit.id}
+                    </Link>
+                    <span className="text-xs text-muted-foreground">
+                      {vectorScore === null ? "" : `cosine ${vectorScore.toFixed(4)} · `}
+                      gpr {hit.gpr.toFixed(4)} · {relativeTimeIso(hit.created_at)}
+                    </span>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-sm">{hit.summary || hit.name || hit.id}</p>
+                </CardContent>
+              </Card>
+            );
+          })}
         </section>
       </main>
     </div>

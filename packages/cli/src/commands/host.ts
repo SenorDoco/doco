@@ -1,5 +1,4 @@
 import { resolve } from "node:path";
-import { defineCommand } from "citty";
 import {
   addOrganization,
   addPrincipal,
@@ -11,6 +10,7 @@ import {
   listPrincipals,
   loadHost,
 } from "@doco/host";
+import { defineCommand } from "citty";
 import { c, checkmark, cross, header, rule } from "../output.js";
 
 const initCmd = defineCommand({
@@ -191,7 +191,7 @@ const listCmd = defineCommand({
     console.log(c.bold(`Organizations (${orgs.length})`));
     for (const o of orgs) console.log(`  ${o.slug.padEnd(24)} ${c.dim(o.id)}`);
     console.log();
-    console.log(c.bold(`docos (${docos.length})`));
+    console.log(c.bold(`Docos (${docos.length})`));
     for (const e of docos) {
       console.log(`  ${`${e.ownerSlug}/${e.docoSlug}`.padEnd(36)} ${c.dim(`${e.ownerKind} → ${e.docoId}`)}`);
     }

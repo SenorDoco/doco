@@ -133,7 +133,7 @@ export default function OwnerProfile({
 
         <Card>
           <CardHeader>
-            <CardTitle>docos</CardTitle>
+            <CardTitle>Docos</CardTitle>
           </CardHeader>
           <CardContent>
             {docos.length === 0 ? (

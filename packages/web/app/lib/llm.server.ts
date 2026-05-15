@@ -492,7 +492,7 @@ const CLASSIFIER_SYSTEM_PROMPT = `You bucket plain-English scope rules into the 
 A Scope carries two kinds of rules:
 
 - AUTHORING rules — fired by the engine when a node enters this scope (capture or scope-add). Failures BLOCK the write. Deterministic predicates check structure; probabilistic specs run an LLM judge.
-- GUIDANCE rules — prose the agent reads while WORKING in or with this scope. No automated check. Directive but not enforced. Replaces the previous "guidelines" markdown field.
+- GUIDANCE rules — prose contributors read while WORKING in or with this scope. No automated check. Directive but not enforced. Replaces the previous "guidelines" markdown field.
 
 You will see a project owner's prose. Your job:
 

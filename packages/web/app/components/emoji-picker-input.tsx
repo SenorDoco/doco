@@ -24,6 +24,12 @@ export interface EmojiPickerInputProps {
   triggerExtraClass?: string;
   /** Optional id for the hidden input (mostly for labels). */
   id?: string;
+  /** Optional callback for autosave surfaces. */
+  onValueChange?: (value: string) => void;
+  /** Whether to render the clear affordance beside the trigger. */
+  showClearButton?: boolean;
+  /** Accessible label for the trigger. */
+  triggerAriaLabel?: string;
 }
 
 const POPOVER_WIDTH = 320;
@@ -42,6 +48,9 @@ export function EmojiPickerInput({
   triggerWidthClass = "w-24",
   triggerExtraClass,
   id,
+  onValueChange,
+  showClearButton = true,
+  triggerAriaLabel = "Choose an emoji",
 }: EmojiPickerInputProps) {
   const [value, setValue] = useState(defaultValue);
   const [open, setOpen] = useState(false);
@@ -53,6 +62,15 @@ export function EmojiPickerInput({
   const triggerRef = useRef<HTMLButtonElement>(null);
   const autoId = useId();
   const hiddenId = id ?? `emoji-${autoId}`;
+
+  useEffect(() => {
+    setValue(defaultValue);
+  }, [defaultValue]);
+
+  function commitValue(nextValue: string) {
+    setValue(nextValue);
+    onValueChange?.(nextValue);
+  }
 
   function computePlacement() {
     const rect = wrapperRef.current?.getBoundingClientRect();
@@ -117,6 +135,7 @@ export function EmojiPickerInput({
         type="button"
         aria-haspopup="dialog"
         aria-expanded={open}
+        aria-label={triggerAriaLabel}
         onClick={toggleOpen}
         className={cn(
           "rounded-md border border-border bg-input px-3 py-2 text-center text-xl outline-none focus:border-primary hover:border-primary",
@@ -126,11 +145,11 @@ export function EmojiPickerInput({
       >
         <span className={value ? "" : "opacity-40"}>{value || placeholder}</span>
       </button>
-      {value ? (
+      {showClearButton && value ? (
         <button
           type="button"
           aria-label="Clear emoji"
-          onClick={() => setValue("")}
+          onClick={() => commitValue("")}
           className="flex h-7 w-7 items-center justify-center rounded text-base leading-none text-muted-foreground hover:bg-muted hover:text-foreground"
         >
           <span aria-hidden>×</span>
@@ -150,7 +169,7 @@ export function EmojiPickerInput({
             className="isolate flex h-[340px] w-full flex-col bg-card"
             columns={9}
             onEmojiSelect={({ emoji }) => {
-              setValue(emoji);
+              commitValue(emoji);
               setOpen(false);
               triggerRef.current?.focus();
             }}

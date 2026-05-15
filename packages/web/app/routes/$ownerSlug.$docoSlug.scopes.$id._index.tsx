@@ -2,37 +2,42 @@
 //
 // Per decision_01KRPNZY7W6CCMYNKGND67BP0B the separate detail and edit
 // pages collapsed into this one. Per
-// decision_01KRPRDR1AD7S1RP6E69BQDB2G the three rule groups on this page
-// (Authoring / Guidance / Tagged) are all first-class Rule entities now:
-// rows in the `rules` table with an `in_scope_of` edge to this scope.
-// The Rule's `kind` field discriminates the role; deprecate / reactivate
-// is a regular Rule PATCH (lifecycle = abandoned / active).
+// decision_01KRPRDR1AD7S1RP6E69BQDB2G scope rules are first-class Rule
+// entities: rows in the `rules` table with an `in_scope_of` edge to this
+// scope. This page surfaces Authoring + Guidance rules; other Rule
+// entities tagged with the scope remain regular members/feed items.
+// Deprecate / reactivate is a regular Rule PATCH (lifecycle = abandoned /
+// active).
 //
-// Layout: two columns. Left carries Members stats + Watched toggle + the
-// three rule sections + Add rules (prose classifier) + Icon + Deprecate
-// scope link. Right carries activity heatmap + scope-filtered latest
-// activity feed.
+// Layout: title-level icon picker, then two columns. Left carries Members
+// stats + Watched toggle + Authoring/Guidance rule sections with inline add
+// affordances + Deprecate scope link. Right carries activity heatmap +
+// scope-filtered latest activity feed.
 
-import { useEffect, useState } from "react";
-import { Form, Link, redirect, useFetcher, useRevalidator } from "react-router";
-import { parse as parseYaml } from "yaml";
+import { withClient } from "@doco/db";
 import type { EntityId } from "@doco/shared";
 import { entityUrl } from "@doco/shared";
+import { Plus } from "lucide-react";
+import { useEffect, useState } from "react";
+import {
+  Form,
+  Link,
+  type ShouldRevalidateFunctionArgs,
+  redirect,
+  useFetcher,
+  useRevalidator,
+} from "react-router";
+import { parse as parseYaml } from "yaml";
 import { ActivityHeatmap } from "~/components/activity-heatmap";
 import { Badge } from "~/components/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { EmojiPickerInput } from "~/components/emoji-picker-input";
 import { SiteHeader } from "~/components/site-header";
 import { Toggle } from "~/components/toggle";
-import { withClient } from "@doco/db";
+import { updateEntity } from "~/lib/capture.server";
 import { loadDocoForAdmin } from "~/lib/doco-access.server";
 import { loadHostConfig } from "~/lib/host";
-import {
-  classifyRuleProse,
-  LlmUnavailableError,
-  type ClassifiedRule,
-} from "~/lib/llm.server";
-import { updateEntity } from "~/lib/capture.server";
+import { type ClassifiedRule, LlmUnavailableError, classifyRuleProse } from "~/lib/llm.server";
 import {
   createRuleInDoco,
   reindex,
@@ -42,6 +47,16 @@ import {
 import { listScopeDetails, readDocoMetadata } from "~/lib/scope-helpers.server";
 
 const HEATMAP_WEEKS = 26;
+const MEMBER_NODE_TYPES = [
+  "decision",
+  "intent",
+  "action",
+  "rule",
+  "reasoning",
+  "eval",
+  "reference",
+  "idea",
+] as const;
 
 type RuleKind = "authoring" | "guidance" | "tagged";
 
@@ -64,6 +79,13 @@ interface RuleRecord {
   predicate?: AuthoringPredicateRecord;
 }
 
+interface RuleLifecycleActionResult {
+  ok?: boolean;
+  rule_id?: string;
+  lifecycle?: string;
+  error?: string;
+}
+
 function asFieldList(p: AuthoringPredicateRecord): string[] {
   if (Array.isArray(p.fields)) return p.fields.filter((f): f is string => typeof f === "string");
   if (typeof p.field === "string" && p.field.length > 0) return [p.field];
@@ -79,6 +101,20 @@ function asScopeIdList(p: AuthoringPredicateRecord): string[] {
 
 function isActive(lifecycle: string): boolean {
   return lifecycle === "active" || lifecycle === "proposed";
+}
+
+function nodesSearchPath(
+  ownerSlug: string,
+  docoSlug: string,
+  scopeName: string,
+  lifecycle: string,
+): string {
+  const params = new URLSearchParams();
+  params.set("scope", scopeName);
+  params.set("lifecycle", lifecycle);
+  params.set("limit", "500");
+  for (const nodeType of MEMBER_NODE_TYPES) params.append("node_type", nodeType);
+  return `/${ownerSlug}/${docoSlug}/search?${params.toString()}`;
 }
 
 async function readScopeRaw(scopeId: string): Promise<Record<string, unknown> | null> {
@@ -415,6 +451,8 @@ export async function action({
       if ("error" in result) {
         return { error: (result as { error: string }).error };
       }
+      await reindex(dir);
+      return { ok: true, rule_id: ruleId, lifecycle: nextLifecycle };
     } else {
       return { error: `Unknown intent: ${intent}` };
     }
@@ -425,6 +463,17 @@ export async function action({
   await reindex(dir);
   if (intent === "set_watched") return { ok: true };
   return redirect(back);
+}
+
+export function shouldRevalidate({
+  formData,
+  defaultShouldRevalidate,
+}: ShouldRevalidateFunctionArgs) {
+  const intent = String(formData?.get("intent") ?? "");
+  if (intent === "deprecate_rule" || intent === "reactivate_rule") {
+    return false;
+  }
+  return defaultShouldRevalidate;
 }
 
 export function meta({ params }: { params: { ownerSlug: string; docoSlug: string; id: string } }) {
@@ -442,22 +491,19 @@ function describeAuthoringPredicate(
       return `Nodes must NOT have a \`${p.edge_type}\` edge${p.target_node_type ? ` to a ${p.target_node_type}` : ""}.`;
     case "requires_field": {
       const fields = asFieldList(p);
-      if (fields.length === 0) return `Nodes must declare a field.`;
+      if (fields.length === 0) return "Nodes must declare a field.";
       if (fields.length === 1) return `Nodes must declare the \`${fields[0]}\` field.`;
       return `Nodes must declare these fields: ${fields.map((f) => `\`${f}\``).join(", ")}.`;
     }
     case "forbids_field": {
       const fields = asFieldList(p);
-      if (fields.length === 0) return `Nodes must NOT declare a field.`;
+      if (fields.length === 0) return "Nodes must NOT declare a field.";
       return `Nodes must NOT declare these fields: ${fields.map((f) => `\`${f}\``).join(", ")}.`;
     }
     case "mandatory_scope": {
-      const names = asScopeIdList(p).map(
-        (id) => allScopes.find((s) => s.id === id)?.name ?? id,
-      );
-      if (names.length === 0) return `Every node in this Doco must list a scope.`;
-      if (names.length === 1)
-        return `Every node in this Doco must list scope \`${names[0]}\`.`;
+      const names = asScopeIdList(p).map((id) => allScopes.find((s) => s.id === id)?.name ?? id);
+      if (names.length === 0) return "Every node in this Doco must list a scope.";
+      if (names.length === 1) return `Every node in this Doco must list scope \`${names[0]}\`.`;
       return `Every node in this Doco must list these scopes: ${names
         .map((n) => `\`${n}\``)
         .join(", ")}.`;
@@ -483,9 +529,7 @@ function predicateShorthand(
     case "forbids_field":
       return `forbids fields: ${asFieldList(p).join(", ") || "—"}`;
     case "mandatory_scope": {
-      const names = asScopeIdList(p).map(
-        (id) => allScopes.find((s) => s.id === id)?.name ?? id,
-      );
+      const names = asScopeIdList(p).map((id) => allScopes.find((s) => s.id === id)?.name ?? id);
       return `mandatory scope: ${names.join(", ") || "—"}`;
     }
     case "probabilistic":
@@ -502,8 +546,18 @@ export default function ScopePage({
   loaderData: Awaited<ReturnType<typeof loader>>;
   actionData?: { error?: string } | undefined;
 }) {
-  const { ownerSlug, docoSlug, scope, rules, allScopes, memberCount, memberStats, byDay, items, me } =
-    loaderData;
+  const {
+    ownerSlug,
+    docoSlug,
+    scope,
+    rules,
+    allScopes,
+    memberCount,
+    memberStats,
+    byDay,
+    items,
+    me,
+  } = loaderData;
 
   // Live revalidation for the activity feed.
   const revalidator = useRevalidator();
@@ -546,15 +600,18 @@ export default function ScopePage({
         ) : null}
 
         <div className="flex items-baseline gap-3">
-          <h1 className="text-lg font-bold tracking-tight">
-            {scope.icon ? <span className="mr-1">{scope.icon}</span> : null}
-            <span className="font-mono">{scope.name}</span>
-            {scope.name === "global" ? (
-              <span className="ml-2 text-xs text-muted-foreground">
-                (the doco's constitution)
-              </span>
-            ) : null}
-          </h1>
+          <div className="flex min-w-0 items-baseline">
+            <ScopeTitleIcon icon={scope.icon} />
+            <h1 className="text-lg font-bold tracking-tight">
+              <span className="font-mono">{scope.name}</span>
+              {scope.name === "global" ? (
+                <span className="ml-2 text-xs text-muted-foreground">
+                  {" "}
+                  (the doco's constitution)
+                </span>
+              ) : null}
+            </h1>
+          </div>
           <Link
             to={`/${ownerSlug}/${docoSlug}/scopes`}
             className="ml-auto text-xs text-muted-foreground hover:text-foreground"
@@ -568,11 +625,14 @@ export default function ScopePage({
           <div className="min-[840px]:col-span-7 space-y-4">
             {/* Stats */}
             <Card>
-              <CardHeader>
-                <CardTitle className="text-sm">Members ({memberCount})</CardTitle>
-                <CardDescription>
-                  Nodes tagged with this scope, broken down by lifecycle.
-                </CardDescription>
+              <CardHeader className="flex-row items-center justify-between gap-3">
+                <CardTitle className="text-sm">Nodes ({memberCount})</CardTitle>
+                <Link
+                  to={nodesSearchPath(ownerSlug, docoSlug, scope.name, "*")}
+                  className="rounded-md border border-border px-3 py-1.5 text-xs font-semibold text-foreground hover:bg-card"
+                >
+                  View them
+                </Link>
               </CardHeader>
               <CardContent>
                 {memberStats.length === 0 ? (
@@ -580,15 +640,47 @@ export default function ScopePage({
                     No nodes are tagged with this scope yet.
                   </p>
                 ) : (
-                  <dl className="grid grid-cols-2 gap-y-1 text-xs sm:grid-cols-3">
+                  <div className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-3">
                     {memberStats.map((s) => (
-                      <div key={s.lifecycle} className="flex items-center gap-2">
+                      <Link
+                        key={s.lifecycle}
+                        to={nodesSearchPath(ownerSlug, docoSlug, scope.name, s.lifecycle)}
+                        className="flex items-center gap-2 rounded-md border border-border px-2 py-1.5 hover:bg-card"
+                        aria-label={`View ${s.count} ${s.lifecycle} nodes in ${scope.name}`}
+                      >
                         <Badge>{s.lifecycle}</Badge>
                         <span className="font-mono tabular-nums">{s.count}</span>
-                      </div>
+                      </Link>
                     ))}
-                  </dl>
+                  </div>
                 )}
+                <Form
+                  method="get"
+                  action={`/${ownerSlug}/${docoSlug}/search`}
+                  className="mt-3 flex flex-col gap-2 sm:flex-row"
+                >
+                  <input type="hidden" name="scope" value={scope.name} />
+                  <input type="hidden" name="lifecycle" value="*" />
+                  <input type="hidden" name="limit" value="500" />
+                  {MEMBER_NODE_TYPES.map((nodeType) => (
+                    <input key={nodeType} type="hidden" name="node_type" value={nodeType} />
+                  ))}
+                  <label className="sr-only" htmlFor="scope-node-search">
+                    Search nodes in {scope.name}
+                  </label>
+                  <input
+                    id="scope-node-search"
+                    name="q"
+                    placeholder="Search nodes in this scope..."
+                    className="min-w-0 flex-1 rounded-md border border-border bg-background px-3 py-1.5 text-sm outline-none focus:border-primary"
+                  />
+                  <button
+                    type="submit"
+                    className="rounded-md border border-border px-3 py-1.5 text-sm font-semibold hover:bg-card"
+                  >
+                    Search
+                  </button>
+                </Form>
               </CardContent>
             </Card>
 
@@ -626,7 +718,7 @@ export default function ScopePage({
             <RuleSectionCard
               title="Guidance rules"
               description={
-                "Prose the agent reads while working in or with this scope. No automated check — directive but not enforced."
+                "Prose contributors read while working in or with this scope. No automated check — directive but not enforced."
               }
               kind="guidance"
               rules={rules.guidance}
@@ -635,63 +727,13 @@ export default function ScopePage({
               docoSlug={docoSlug}
             />
 
-            <RuleSectionCard
-              title="Tagged rules"
-              description={
-                "Rule entities authored elsewhere and tagged with this scope. Deprecate / reactivate behaves the same as for Authoring + Guidance rules — all three are Rule entities now (decision_01KRPRDR1AD7S1RP6E69BQDB2G)."
-              }
-              kind="tagged"
-              rules={rules.tagged}
-              allScopes={allScopes}
-              ownerSlug={ownerSlug}
-              docoSlug={docoSlug}
-            />
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-sm">Add rules</CardTitle>
-                <CardDescription>
-                  Describe one or more rules in plain English. The classifier splits multi-rule
-                  prose, buckets each into authoring or guidance, and shows a preview before
-                  saving.
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <RuleProseEditor allScopes={allScopes} />
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-sm">Icon</CardTitle>
-                <CardDescription>
-                  Identifies the scope at a glance — on /scopes, in capture footers, and on entity
-                  detail pages.
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <Form method="post" className="space-y-2">
-                  <input type="hidden" name="intent" value="save_icon" />
-                  <EmojiPickerInput name="icon" defaultValue={scope.icon} />
-                  <div>
-                    <button
-                      type="submit"
-                      className="rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90"
-                    >
-                      Save icon
-                    </button>
-                  </div>
-                </Form>
-              </CardContent>
-            </Card>
-
             {scope.name === "global" ? null : (
               <Card className="border-destructive/40">
                 <CardHeader>
                   <CardTitle className="text-sm text-destructive">Deprecate scope</CardTitle>
                   <CardDescription>
-                    Retire this scope. Existing members keep their tag and remain queryable, but
-                    new captures referencing this scope are rejected.
+                    Retire this scope. Existing members keep their tag and remain queryable, but new
+                    captures referencing this scope are rejected.
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -761,6 +803,40 @@ export default function ScopePage({
   );
 }
 
+function ScopeTitleIcon({ icon }: { icon: string }) {
+  const fetcher = useFetcher<{ error?: string }>();
+  const isSaving = fetcher.state !== "idle";
+
+  function saveIcon(nextIcon: string) {
+    if (!nextIcon || nextIcon === icon) return;
+    const formData = new FormData();
+    formData.set("intent", "save_icon");
+    formData.set("icon", nextIcon);
+    fetcher.submit(formData, { method: "post" });
+  }
+
+  return (
+    <span className="relative mr-1 inline-flex align-baseline">
+      <EmojiPickerInput
+        name="icon"
+        defaultValue={icon}
+        placeholder="📔"
+        showClearButton={false}
+        triggerAriaLabel="Change scope icon"
+        triggerWidthClass="w-auto"
+        triggerExtraClass="inline-flex h-[1.2em] min-w-[1.2em] items-center justify-center rounded-sm border-0 bg-transparent p-0 text-lg leading-none hover:bg-muted focus:border-transparent focus:bg-muted"
+        onValueChange={saveIcon}
+      />
+      {isSaving ? <span className="sr-only">Saving scope icon</span> : null}
+      {fetcher.data?.error ? (
+        <span className="absolute left-0 top-full mt-1 whitespace-nowrap text-[10px] font-normal text-destructive">
+          {fetcher.data.error}
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
 function RuleSectionCard({
   title,
   description,
@@ -778,8 +854,19 @@ function RuleSectionCard({
   ownerSlug: string;
   docoSlug: string;
 }) {
-  const active = rules.filter((r) => isActive(r.lifecycle));
-  const deprecated = rules.filter((r) => !isActive(r.lifecycle));
+  const [localRules, setLocalRules] = useState(rules);
+  const [isAdding, setIsAdding] = useState(false);
+
+  useEffect(() => {
+    setLocalRules(rules);
+  }, [rules]);
+
+  const updateRuleLifecycle = (ruleId: string, lifecycle: string) => {
+    setLocalRules((current) => current.map((r) => (r.id === ruleId ? { ...r, lifecycle } : r)));
+  };
+
+  const active = localRules.filter((r) => isActive(r.lifecycle));
+  const deprecated = localRules.filter((r) => !isActive(r.lifecycle));
   const badgeFor = (r: RuleRecord) => {
     if (kind === "authoring" && r.predicate) {
       return `Authoring · ${r.predicate.kind === "probabilistic" ? "probabilistic" : "deterministic"}`;
@@ -790,13 +877,29 @@ function RuleSectionCard({
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-sm">
-          {title} ({active.length}
-          {deprecated.length > 0 ? ` + ${deprecated.length} deprecated` : ""})
-        </CardTitle>
-        <CardDescription>{description}</CardDescription>
+        <div className="flex flex-wrap items-start gap-3">
+          <div className="min-w-0 flex-1">
+            <CardTitle className="text-sm">
+              {title} ({active.length}
+              {deprecated.length > 0 ? ` + ${deprecated.length} deprecated` : ""})
+            </CardTitle>
+            <CardDescription>{description}</CardDescription>
+          </div>
+          <button
+            type="button"
+            onClick={() => setIsAdding((open) => !open)}
+            className="inline-flex shrink-0 items-center gap-1 rounded-md border border-border px-2.5 py-1 text-xs font-semibold text-foreground hover:bg-card"
+            aria-expanded={isAdding}
+          >
+            <Plus className="h-3 w-3" aria-hidden="true" />
+            Add rule
+          </button>
+        </div>
       </CardHeader>
       <CardContent className="space-y-3">
+        {isAdding ? (
+          <RuleProseEditor allScopes={allScopes} onSaved={() => setIsAdding(false)} />
+        ) : null}
         {active.length === 0 ? (
           <p className="text-xs italic text-muted-foreground">No active rules.</p>
         ) : (
@@ -820,16 +923,14 @@ function RuleSectionCard({
                     </div>
                   ) : null}
                 </div>
-                <Form method="post">
-                  <input type="hidden" name="intent" value="deprecate_rule" />
-                  <input type="hidden" name="rule_id" value={r.id} />
-                  <button
-                    type="submit"
-                    className="rounded-md border border-border px-2 py-0.5 text-[10px] text-destructive hover:bg-destructive/10"
-                  >
-                    Deprecate
-                  </button>
-                </Form>
+                <RuleLifecycleButton
+                  rule={r}
+                  intent="deprecate_rule"
+                  nextLifecycle="abandoned"
+                  label="Deprecate"
+                  className="text-destructive hover:bg-destructive/10"
+                  onLifecycleChange={updateRuleLifecycle}
+                />
               </li>
             ))}
           </ul>
@@ -859,16 +960,14 @@ function RuleSectionCard({
                       </div>
                     ) : null}
                   </div>
-                  <Form method="post">
-                    <input type="hidden" name="intent" value="reactivate_rule" />
-                    <input type="hidden" name="rule_id" value={r.id} />
-                    <button
-                      type="submit"
-                      className="rounded-md border border-border px-2 py-0.5 text-[10px] text-foreground hover:bg-card"
-                    >
-                      Reactivate
-                    </button>
-                  </Form>
+                  <RuleLifecycleButton
+                    rule={r}
+                    intent="reactivate_rule"
+                    nextLifecycle="active"
+                    label="Reactivate"
+                    className="text-foreground hover:bg-card"
+                    onLifecycleChange={updateRuleLifecycle}
+                  />
                 </li>
               ))}
             </ul>
@@ -876,6 +975,55 @@ function RuleSectionCard({
         ) : null}
       </CardContent>
     </Card>
+  );
+}
+
+function RuleLifecycleButton({
+  rule,
+  intent,
+  nextLifecycle,
+  label,
+  className,
+  onLifecycleChange,
+}: {
+  rule: RuleRecord;
+  intent: "deprecate_rule" | "reactivate_rule";
+  nextLifecycle: string;
+  label: string;
+  className: string;
+  onLifecycleChange: (ruleId: string, lifecycle: string) => void;
+}) {
+  const fetcher = useFetcher<RuleLifecycleActionResult>();
+  const isSubmitting = fetcher.state !== "idle";
+  const error = fetcher.data?.error;
+
+  useEffect(() => {
+    if (
+      fetcher.state === "idle" &&
+      fetcher.data?.ok === true &&
+      fetcher.data.rule_id === rule.id &&
+      fetcher.data.lifecycle
+    ) {
+      onLifecycleChange(rule.id, fetcher.data.lifecycle);
+    }
+  }, [fetcher.state, fetcher.data, onLifecycleChange, rule.id]);
+
+  return (
+    <fetcher.Form method="post" className="flex shrink-0 flex-col items-end gap-1">
+      <input type="hidden" name="intent" value={intent} />
+      <input type="hidden" name="rule_id" value={rule.id} />
+      <button
+        type="submit"
+        disabled={isSubmitting}
+        className={`rounded-md border border-border px-2 py-0.5 text-[10px] disabled:cursor-not-allowed disabled:opacity-40 ${className}`}
+        aria-label={`${label} rule ${rule.id}`}
+      >
+        {isSubmitting ? "Saving..." : label}
+      </button>
+      {error ? (
+        <span className="max-w-32 text-right text-[10px] text-destructive">{error}</span>
+      ) : null}
+    </fetcher.Form>
   );
 }
 
@@ -923,10 +1071,7 @@ function WatchedSwitch({
         checked={checked}
         label={checked ? `Stop watching ${scopeName}` : `Watch ${scopeName}`}
         onCheckedChange={(next) => {
-          fetcher.submit(
-            { intent: "set_watched", watched: String(next) },
-            { method: "post" },
-          );
+          fetcher.submit({ intent: "set_watched", watched: String(next) }, { method: "post" });
         }}
       />
       <span className="text-foreground">
@@ -949,7 +1094,13 @@ function WatchedSwitch({
  * arrays. The UI shape is unchanged from
  * decision_01KRPNZY7W6CCMYNKGND67BP0B.
  */
-function RuleProseEditor({ allScopes }: { allScopes: { id: string; name: string }[] }) {
+function RuleProseEditor({
+  allScopes,
+  onSaved,
+}: {
+  allScopes: { id: string; name: string }[];
+  onSaved?: () => void;
+}) {
   const fetcher = useFetcher<{
     classified?: ClassifiedRule[];
     originalProse?: string;
@@ -965,8 +1116,9 @@ function RuleProseEditor({ allScopes }: { allScopes: { id: string; name: string 
     if (fetcher.state === "idle" && fetcher.data?.ok === true) {
       setProse("");
       setHidePreview(true);
+      onSaved?.();
     }
-  }, [fetcher.state, fetcher.data]);
+  }, [fetcher.state, fetcher.data, onSaved]);
 
   const isClassifying =
     fetcher.state !== "idle" && fetcher.formData?.get("intent") === "classify_rule_prose";
@@ -975,16 +1127,17 @@ function RuleProseEditor({ allScopes }: { allScopes: { id: string; name: string 
   const classified = fetcher.data?.classified;
   const classifyError =
     fetcher.data?.error && fetcher.data?.classified === undefined ? fetcher.data.error : null;
-  const inPreview = !hidePreview && Array.isArray(classified) && classified.length > 0;
-  const authoringCount = classified?.filter((c) => c.bucket === "authoring").length ?? 0;
-  const guidanceCount = classified?.filter((c) => c.bucket === "guidance").length ?? 0;
+  const previewRules = !hidePreview && Array.isArray(classified) ? classified : [];
+  const inPreview = previewRules.length > 0;
+  const authoringCount = previewRules.filter((c) => c.bucket === "authoring").length;
+  const guidanceCount = previewRules.filter((c) => c.bucket === "guidance").length;
 
   return (
     <div className="rounded-md border border-dashed border-border bg-input/30 p-3 space-y-2">
       {inPreview ? (
         <fetcher.Form method="post" className="space-y-2">
           <input type="hidden" name="intent" value="add_rules_classified" />
-          <input type="hidden" name="payload" value={JSON.stringify(classified)} />
+          <input type="hidden" name="payload" value={JSON.stringify(previewRules)} />
           <p className="text-[11px] text-muted-foreground">
             The classifier produced{" "}
             <strong>
@@ -997,11 +1150,11 @@ function RuleProseEditor({ allScopes }: { allScopes: { id: string; name: string 
             . Review and accept, or cancel to edit your prose.
           </p>
           <ul className="space-y-2">
-            {classified!.map((c, i) => {
+            {previewRules.map((c) => {
               if (c.bucket === "guidance") {
                 return (
                   <li
-                    key={i}
+                    key={JSON.stringify(c)}
                     className="flex items-baseline gap-2 rounded-md border border-border bg-card p-2 text-xs"
                   >
                     <Badge>Guidance</Badge>
@@ -1013,12 +1166,10 @@ function RuleProseEditor({ allScopes }: { allScopes: { id: string; name: string 
               const asRecord = c.rule as unknown as AuthoringPredicateRecord;
               return (
                 <li
-                  key={i}
+                  key={JSON.stringify(c)}
                   className="flex items-baseline gap-2 rounded-md border border-border bg-card p-2 text-xs"
                 >
-                  <Badge>
-                    Authoring · {isProbabilistic ? "probabilistic" : "deterministic"}
-                  </Badge>
+                  <Badge>Authoring · {isProbabilistic ? "probabilistic" : "deterministic"}</Badge>
                   <div className="flex-1 space-y-0.5">
                     <div className="text-foreground">{c.text}</div>
                     <div className="font-mono text-[10px] text-muted-foreground">
@@ -1040,7 +1191,7 @@ function RuleProseEditor({ allScopes }: { allScopes: { id: string; name: string 
             >
               {isSaving
                 ? "Saving…"
-                : `Accept & add ${classified!.length} rule${classified!.length === 1 ? "" : "s"}`}
+                : `Accept & add ${previewRules.length} rule${previewRules.length === 1 ? "" : "s"}`}
             </button>
             <button
               type="button"
@@ -1052,11 +1203,7 @@ function RuleProseEditor({ allScopes }: { allScopes: { id: string; name: string 
           </div>
         </fetcher.Form>
       ) : (
-        <fetcher.Form
-          method="post"
-          className="space-y-2"
-          onSubmit={() => setHidePreview(false)}
-        >
+        <fetcher.Form method="post" className="space-y-2" onSubmit={() => setHidePreview(false)}>
           <input type="hidden" name="intent" value="classify_rule_prose" />
           <label className="block text-xs">
             <span className="mb-1 block text-[10px] uppercase tracking-wider text-muted-foreground">

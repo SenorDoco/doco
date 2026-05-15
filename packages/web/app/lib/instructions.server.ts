@@ -627,7 +627,7 @@ Twelve node types. Files at \`<plural>/<id>.md\` (or \`.yaml\`).
 | reference | external source |
 | **scope** | **a topical neighborhood** — the navigation primitive |
 
-**Scopes are how large docos stay navigable.** A scope can be anything
+**Scopes are how large Docos stay navigable.** A scope can be anything
 you want to track separately — a feature area, a country, a team, a
 customer segment, a regulatory regime, a document type, a migration
 project. Pick names that make sense for what *this* Doco is about.
