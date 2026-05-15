@@ -1,5 +1,5 @@
-import { redirect } from "react-router";
 import { addPrincipal, findPrincipalByGitHubLogin } from "@doco/host";
+import { redirect } from "react-router";
 import { rootDir } from "~/lib/db.server";
 import {
   clearOAuthReturnCookie,
@@ -38,9 +38,7 @@ export async function loader({ request }: { request: Request }) {
   const gh = await fetchGitHubUser(accessToken);
   const email = (await fetchGitHubPrimaryEmail(accessToken)) ?? gh.email ?? undefined;
 
-  // create-or-find on GitHub login. @doco/host functions are now Postgres-aware
-  // when DOCO_STORAGE=postgres; the filesystem path stays the fallback for
-  // local dev.
+  // create-or-find on GitHub login. @doco/host persists through Postgres.
   const root = rootDir();
   let principalId: string;
   const existing = await findPrincipalByGitHubLogin(root, gh.login);

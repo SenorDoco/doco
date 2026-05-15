@@ -5,8 +5,8 @@
 //
 // Note: this route IS the catch-all for any unknown `<type>` segment under
 // `/:ownerSlug/:docoSlug/`. The static per-Doco routes (settings, scopes,
-// lint, coverage, search, status.json, api/*) are registered before this in
-// routes.ts and win the match. For an unrecognized type we return 404.
+// lint, search, status.json, api/*) are registered before this in routes.ts
+// and win the match. For an unrecognized type we return 404.
 import { Link } from "react-router";
 import { parse as parseYaml } from "yaml";
 import { withClient } from "@doco/db";

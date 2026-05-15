@@ -253,17 +253,6 @@ export default function DocoSettings({
                 Run the connectivity + invariant checks.
               </span>
             </div>
-            <div>
-              <Link
-                to={`/${ownerSlug}/${docoSlug}/coverage`}
-                className="text-primary hover:underline"
-              >
-                Coverage →
-              </Link>
-              <span className="ml-2 text-muted-foreground">
-                Drift between code changes and captured Actions (ADR-090).
-              </span>
-            </div>
             <div className="pt-2 text-[11px] text-muted-foreground">
               Doco id: <span className="font-mono">{docoId}</span>
             </div>

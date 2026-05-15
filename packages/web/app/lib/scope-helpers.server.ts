@@ -1,9 +1,7 @@
-// Server-only helpers for scope reads. Lives in *.server.ts so node:fs /
-// node:path don't leak into the browser bundle. Reads scopes from PG.
-import { readFileSync } from "node:fs";
-import { basename, dirname, join } from "node:path";
-import { parse as parseYaml } from "yaml";
+// Server-only helpers for scope reads. Reads scopes from PG.
+import { basename, dirname } from "node:path";
 import { getDocoBySlug, withClient } from "@doco/db";
+import { parse as parseYaml } from "yaml";
 
 export interface DocoMetadata {
   docoId: string;
@@ -15,57 +13,35 @@ export interface DocoMetadata {
 }
 
 /**
- * Read a Doco's metadata. In filesystem-storage mode (local dev) this
- * reads `<docoDir>/doco.yaml`. In Postgres-storage mode (production) the
- * `docos/` tree doesn't exist on the deployment, so we derive the
- * (ownerSlug, docoSlug) pair from the directory path and query the
- * `docos` table. The `docoDir` is always shaped `<rootDir>/docos/<owner>/<slug>`
- * (see `docoPath` in db.server.ts) so the last two path segments are
- * the slugs.
+ * Read a Doco's metadata from Postgres. The `docoDir` argument is a
+ * placeholder shaped `<rootDir>/docos/<owner>/<slug>` (see `docoPath` in
+ * db.server.ts), so the last two path segments are the slugs.
  */
 export async function readDocoMetadata(docoDir: string): Promise<DocoMetadata | null> {
-  if (process.env.DOCO_STORAGE === "postgres") {
-    const docoSlug = basename(docoDir);
-    const ownerSlug = basename(dirname(docoDir));
-    if (!ownerSlug || !docoSlug) return null;
-    const row = await getDocoBySlug(ownerSlug, docoSlug);
-    if (!row) return null;
-    let description = "";
-    let displayName = row.name ?? "";
-    try {
-      const parsed = parseYaml(row.raw_yaml) as Record<string, unknown>;
-      if (typeof parsed.description === "string") description = parsed.description;
-      if (!displayName && typeof parsed.display_name === "string") {
-        displayName = parsed.display_name;
-      }
-    } catch {
-      // raw_yaml unparseable — fall back to row.name and empty description.
-    }
-    return {
-      docoId: row.id,
-      ownerId: row.owner_id,
-      displayName,
-      description,
-      visibility: row.visibility,
-      slug: row.doco_slug,
-    };
-  }
+  const docoSlug = basename(docoDir);
+  const ownerSlug = basename(dirname(docoDir));
+  if (!ownerSlug || !docoSlug) return null;
+  const row = await getDocoBySlug(ownerSlug, docoSlug);
+  if (!row) return null;
+  let description = "";
+  let displayName = row.name ?? "";
   try {
-    const text = readFileSync(join(docoDir, "doco.yaml"), "utf8");
-    const parsed = parseYaml(text) as Record<string, unknown>;
-    const visibility = parsed.visibility === "public" ? "public" : "private";
-    return {
-      docoId: String(parsed.id ?? ""),
-      ownerId: String(parsed.owner_id ?? ""),
-      displayName: String(parsed.display_name ?? ""),
-      description:
-        typeof parsed.description === "string" ? parsed.description : "",
-      visibility,
-      slug: String(parsed.slug ?? ""),
-    };
+    const parsed = parseYaml(row.raw_yaml) as Record<string, unknown>;
+    if (typeof parsed.description === "string") description = parsed.description;
+    if (!displayName && typeof parsed.display_name === "string") {
+      displayName = parsed.display_name;
+    }
   } catch {
-    return null;
+    // raw_yaml unparseable — fall back to row.name and empty description.
   }
+  return {
+    docoId: row.id,
+    ownerId: row.owner_id,
+    displayName,
+    description,
+    visibility: row.visibility,
+    slug: row.doco_slug,
+  };
 }
 
 async function docoIdFromDir(docoDir: string): Promise<string | null> {
@@ -80,7 +56,7 @@ export async function listScopeFiles(
   try {
     return await withClient(async (c) => {
       const r = await c.query<{ id: string; name: string }>(
-        `SELECT id, name FROM scopes WHERE doco_id = $1 ORDER BY name`,
+        "SELECT id, name FROM scopes WHERE doco_id = $1 ORDER BY name",
         [docoId],
       );
       return r.rows;
@@ -124,7 +100,7 @@ export async function listScopeDetails(docoDir: string): Promise<ScopeDetails[]>
   try {
     await withClient(async (c) => {
       const r = await c.query<{ id: string; name: string; raw_yaml: string }>(
-        `SELECT id, name, raw_yaml FROM scopes WHERE doco_id = $1`,
+        "SELECT id, name, raw_yaml FROM scopes WHERE doco_id = $1",
         [docoId],
       );
       for (const row of r.rows) {

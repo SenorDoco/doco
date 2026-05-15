@@ -34,8 +34,7 @@ import { type RouteConfig, index, route } from "@react-router/dev/routes";
  *   /:owner/:doco/:type            per-Doco entity list (short form; ADR-120)
  *   /:owner/:doco/:type/:id        per-Doco entity detail (id is the ULID; scope also resolves by name)
  *   /:owner/:doco/search           per-Doco search (richer results — GPR / age / lifecycle)
- *   /:owner/:doco/lint             per-Doco lint (includes auto-reindex watcher status; ADR-123)
- *   /:owner/:doco/coverage         per-Doco drift (ADR-090)
+ *   /:owner/:doco/lint             per-Doco lint report
  *   /:owner/:doco/settings         per-Doco settings (admin only; danger zone soft-delete; ADR-124)
  *   /:owner/:doco/scopes           per-Doco scope list (Edit button — not chevron — for instructions)
  *   /:owner/:doco/scopes/new       per-Doco add a scope (templates + custom form)
@@ -142,7 +141,6 @@ export default [
   route(":ownerSlug/:docoSlug/search", "routes/$ownerSlug.$docoSlug.search.tsx"),
   route(":ownerSlug/:docoSlug/search.json", "routes/$ownerSlug.$docoSlug.search[.]json.tsx"),
   route(":ownerSlug/:docoSlug/lint", "routes/$ownerSlug.$docoSlug.lint.tsx"),
-  route(":ownerSlug/:docoSlug/coverage", "routes/$ownerSlug.$docoSlug.coverage.tsx"),
   route(":ownerSlug/:docoSlug/scopes", "routes/$ownerSlug.$docoSlug.scopes._index.tsx"),
   route(":ownerSlug/:docoSlug/scopes/new", "routes/$ownerSlug.$docoSlug.scopes.new.tsx"),
   route(":ownerSlug/:docoSlug/scopes/:id/edit", "routes/$ownerSlug.$docoSlug.scopes.$id.edit.tsx"),

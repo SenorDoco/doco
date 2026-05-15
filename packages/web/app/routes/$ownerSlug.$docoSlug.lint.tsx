@@ -5,8 +5,6 @@ import { Badge } from "~/components/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { SiteHeader } from "~/components/site-header";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "~/components/table";
-import { getWatcherStatus } from "~/lib/auto-reindex.server";
-import { docoPath } from "~/lib/db.server";
 import { loadDocoForRead } from "~/lib/doco-access.server";
 import { loadHostConfig } from "~/lib/host";
 import { getCurrentPrincipal } from "~/lib/session";
@@ -20,26 +18,13 @@ export async function loader({
 }) {
   const { ownerSlug, docoSlug } = params;
   const ctx = await loadDocoForRead(request, ownerSlug, docoSlug); // 404 if private + non-member
-  const docoRoot = docoPath(ownerSlug, docoSlug);
-  const report = await withClient((c) => runAllLints(c, ctx.meta.docoId, { docoRoot }));
-  const isPostgresStorage = process.env.DOCO_STORAGE === "postgres";
-  const watcher = isPostgresStorage ? null : getWatcherStatus();
-  const docoKey = `${ownerSlug}/${docoSlug}`;
-  const watcherForThisDoco = {
-    enabled: watcher?.enabled ?? false,
-    started_at: watcher?.started_at ?? null,
-    pending: watcher?.pending.filter((p) => p.docoKey === docoKey) ?? [],
-    recent: watcher?.recent.filter((r) => r.docoKey === docoKey).slice(0, 10) ?? [],
-    total_reindexes: watcher?.total_reindexes ?? 0,
-  };
+  const report = await withClient((c) => runAllLints(c, ctx.meta.docoId));
   return {
     report,
     ownerSlug,
     docoSlug,
     host: await loadHostConfig(),
     me: await getCurrentPrincipal(request),
-    indexingMode: isPostgresStorage ? "write-time" : "filesystem-watcher",
-    watcher: watcherForThisDoco,
   };
 }
 
@@ -52,8 +37,7 @@ export default function LintInDoco({
 }: {
   loaderData: Awaited<ReturnType<typeof loader>>;
 }) {
-  const { report, ownerSlug, docoSlug, host, me, indexingMode, watcher } = loaderData;
-  const usesWriteTimeIndexing = indexingMode === "write-time";
+  const { report, ownerSlug, docoSlug, host, me } = loaderData;
   return (
     <div>
       <SiteHeader mode="host" me={me} docoScope={{ ownerSlug, docoSlug }} />
@@ -78,61 +62,6 @@ export default function LintInDoco({
                 {report.warnings} warnings
               </Badge>
             </div>
-          </CardContent>
-        </Card>
-
-        {/* Indexing status: write-time in PG mode, watcher-backed in legacy filesystem mode. */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm">Index freshness</CardTitle>
-            <CardDescription>
-              {usesWriteTimeIndexing
-                ? "Postgres is the source of truth and refreshes derived data at write time. The filesystem watcher is only for legacy local YAML mode, so stopped is expected here."
-                : "Local on-disk YAML mode uses the filesystem watcher to refresh derived data after file changes. If pending work stays queued or recent events fail, file a bug."}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <dl className="grid grid-cols-2 gap-y-1 text-xs">
-              <dt className="text-muted-foreground">Mode</dt>
-              <dd>
-                <Badge variant="success">
-                  {usesWriteTimeIndexing ? "write-time" : "filesystem"}
-                </Badge>
-              </dd>
-              <dt className="text-muted-foreground">Watcher</dt>
-              <dd>
-                {usesWriteTimeIndexing ? (
-                  <Badge>not used</Badge>
-                ) : watcher.enabled ? (
-                  <Badge variant="success">running</Badge>
-                ) : (
-                  <Badge variant="destructive">stopped</Badge>
-                )}
-              </dd>
-              <dt className="text-muted-foreground">Started</dt>
-              <dd className="font-mono">{watcher.started_at ?? "—"}</dd>
-              <dt className="text-muted-foreground">Pending</dt>
-              <dd>{watcher.pending.length}</dd>
-              <dt className="text-muted-foreground">Reindexes (host-wide)</dt>
-              <dd>{watcher.total_reindexes}</dd>
-            </dl>
-            {watcher.recent.length > 0 ? (
-              <details className="mt-2 text-[11px]">
-                <summary className="cursor-pointer text-muted-foreground">
-                  Recent reindex events for this Doco ({watcher.recent.length})
-                </summary>
-                <ul className="mt-1 space-y-0.5 font-mono">
-                  {watcher.recent.map((r, i) => (
-                    <li
-                      key={`${r.ran_at}-${i}`}
-                      className={r.ok ? "text-muted-foreground" : "text-destructive"}
-                    >
-                      {r.ran_at} · {r.duration_ms}ms · {r.ok ? "ok" : `error: ${r.error}`}
-                    </li>
-                  ))}
-                </ul>
-              </details>
-            ) : null}
           </CardContent>
         </Card>
 

@@ -19,7 +19,7 @@ export {
   updateDocoMeta,
   updateScopeInDoco,
 } from "@doco/host";
-import { reindex as reindexBare, type BuildReport } from "@doco/index";
+import { type BuildReport, reindex as reindexBare } from "@doco/index";
 import { getDocoEmbeddingProvider } from "./embedding-provider.server";
 import { readDocoMetadata } from "./scope-helpers.server";
 
@@ -37,9 +37,8 @@ export interface ReindexExtraOptions {
  * through here so embeddings stay in sync with the index.
  *
  * `docoId` is optional: when the caller already holds it (capture/patch
- * handlers, scope edits), pass it to skip the on-disk `doco.yaml` read.
- * Postgres-backed serverless deploys have no persistent filesystem, so
- * a missing yaml otherwise throws and silently breaks edge/FTS rebuild.
+ * handlers, scope edits), pass it directly. Otherwise this wrapper resolves
+ * the id from the synthetic `<root>/docos/<owner>/<slug>` path.
  *
  * `changedEntityIds` triggers the incremental path: only those entities'
  * derived rows are rebuilt, the rest of the Doco's edges/FTS/embeddings
@@ -56,10 +55,8 @@ export async function reindex(
   extra?: ReindexExtraOptions,
 ): Promise<BuildReport> {
   const embeddingProvider = getDocoEmbeddingProvider();
-  // Postgres-backed serverless deploys have no doco.yaml on disk;
-  // reindexBare's filesystem code path raises "No doco.yaml at …" when
-  // docoId is missing. Resolve it from the docoRoot's slug pair so
-  // callers that hold only the synthetic dir path still work.
+  // Resolve from the docoRoot's slug pair so callers that hold only the
+  // synthetic dir path still work.
   let resolvedDocoId = docoId;
   if (!resolvedDocoId) {
     const meta = await readDocoMetadata(docoRoot);

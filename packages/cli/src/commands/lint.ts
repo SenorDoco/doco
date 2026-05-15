@@ -40,7 +40,7 @@ export const lintCmd = defineCommand({
       await reindex(root);
     }
 
-    const report = await withClient((conn) => runAllLints(conn, docoId, { docoRoot: root }));
+    const report = await withClient((conn) => runAllLints(conn, docoId));
 
     if (args.json) {
       console.log(JSON.stringify(report, null, 2));
@@ -61,7 +61,9 @@ export const lintCmd = defineCommand({
       console.log();
       return;
     }
-    console.log(`${c.err(String(report.errors))} errors, ${c.warn(String(report.warnings))} warnings`);
+    console.log(
+      `${c.err(String(report.errors))} errors, ${c.warn(String(report.warnings))} warnings`,
+    );
     console.log();
     for (const issue of report.issues) {
       const sigil = issue.severity === "error" ? c.err("✗") : c.warn("!");

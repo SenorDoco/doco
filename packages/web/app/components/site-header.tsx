@@ -22,9 +22,9 @@ interface SiteHeaderProps {
  * navigation on row 2 (sub-bar). Keeps the nav uncrowded as it grows.
  */
 export function SiteHeader({ docoScope, me }: SiteHeaderProps) {
-  // Per-Doco nav slimmed (5 tabs): per-type entity tabs and Search moved
-  // off the nav bar — the Doco home is the chronological feed AND the
-  // search front door (ADR-120 + the search-input-at-doco-home Decision).
+  // Per-Doco nav: per-type entity tabs and Search moved off the nav bar —
+  // the Doco home is the chronological feed AND the search front door
+  // (ADR-120 + the search-input-at-doco-home Decision).
   const nav = docoScope
     ? [
         {
@@ -34,7 +34,6 @@ export function SiteHeader({ docoScope, me }: SiteHeaderProps) {
         { to: `/${docoScope.ownerSlug}/${docoScope.docoSlug}/constitution`, label: "Constitution" },
         { to: `/${docoScope.ownerSlug}/${docoScope.docoSlug}/scopes`, label: "Scopes" },
         { to: `/${docoScope.ownerSlug}/${docoScope.docoSlug}/lint`, label: "Lint" },
-        { to: `/${docoScope.ownerSlug}/${docoScope.docoSlug}/coverage`, label: "Coverage" },
         { to: `/${docoScope.ownerSlug}/${docoScope.docoSlug}/settings`, label: "Settings" },
       ]
     : [

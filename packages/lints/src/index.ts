@@ -1,31 +1,26 @@
 import type { PoolClient } from "pg";
 import { lintAgentAncestry } from "./agent-ancestry.js";
 import { lintConnectivity } from "./connectivity.js";
-import { lintDriftUncoveredChanges } from "./drift-uncovered-changes.js";
 import { lintFollowsCycle } from "./follows-cycle.js";
 import { lintOrphanReasoning } from "./orphan-reasoning.js";
 import { lintPiiDisplayName } from "./pii-display-name.js";
-import type { Lint, LintContext, LintIssue } from "./types.js";
+import type { Lint, LintIssue } from "./types.js";
 
 export * from "./types.js";
 export {
   lintAgentAncestry,
   lintConnectivity,
-  lintDriftUncoveredChanges,
   lintFollowsCycle,
   lintOrphanReasoning,
   lintPiiDisplayName,
 };
-export { computeCoverage } from "./coverage.js";
-export type { CoverageOptions, CoverageReport } from "./coverage.js";
 
 export const SYSTEM_LINTS: Record<string, Lint> = {
   "orphan-reasoning": lintOrphanReasoning,
-  "connectivity": lintConnectivity,
+  connectivity: lintConnectivity,
   "follows-cycle": lintFollowsCycle,
   "agent-ancestry": lintAgentAncestry,
   "pii-display-name": lintPiiDisplayName,
-  "drift-uncovered-changes": lintDriftUncoveredChanges,
 };
 
 export interface LintReport {
@@ -36,15 +31,11 @@ export interface LintReport {
   issues: LintIssue[];
 }
 
-export async function runAllLints(
-  c: PoolClient,
-  docoId: string,
-  ctx?: LintContext,
-): Promise<LintReport> {
+export async function runAllLints(c: PoolClient, docoId: string): Promise<LintReport> {
   const issuesByLint: Record<string, LintIssue[]> = {};
   const all: LintIssue[] = [];
   for (const [name, lint] of Object.entries(SYSTEM_LINTS)) {
-    const issues = await lint(c, docoId, ctx);
+    const issues = await lint(c, docoId);
     issuesByLint[name] = issues;
     all.push(...issues);
   }

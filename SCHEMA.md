@@ -424,9 +424,8 @@ CREATE INDEX scope_match_target ON scope_match(target_id);
 
 ### 8.4 Incremental updates
 
-- **post-commit git hook**: diff `HEAD~1..HEAD`, re-index only the touched files.
-- **file watcher** (active while `doco` daemon runs): same logic for working-tree edits.
-- **schema-version bump or detected corruption**: `doco reindex` does a full rebuild.
+- **write-time refresh**: Postgres is the source of truth, and derived indexes update in the same write path that creates or changes entities.
+- **schema-version bump or detected corruption**: a maintenance reindex does a full rebuild.
 
 A 10k-entity full reindex is bound by file I/O (parsing YAML), not SQL — single-digit seconds on typical hardware.
 
