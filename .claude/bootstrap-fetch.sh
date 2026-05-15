@@ -17,12 +17,23 @@
 set -u
 
 # Load .env if present. The production host is fixed at doco.to; env
-# only carries identity + secret material.
+# only carries the DOCO_TOKEN secret. DOCO_ID lives in AGENTS.md
+# (committed, non-secret) — we read it from there if it's not already
+# in env. Legacy repos with DOCO_ID in .env keep working: env wins
+# over the AGENTS.md fallback.
 if [ -f "$PWD/.env" ]; then
   # shellcheck disable=SC1091
   set -a
   source "$PWD/.env"
   set +a
+fi
+if [ -z "${DOCO_ID:-}" ]; then
+  for f in "$PWD/AGENTS.md" "$PWD/CLAUDE.md"; do
+    if [ -f "$f" ]; then
+      DOCO_ID=$(grep -oE 'doco_[A-Za-z0-9]+' "$f" | head -1)
+      [ -n "$DOCO_ID" ] && export DOCO_ID && break
+    fi
+  done
 fi
 DOCO_BASE_URL="https://doco.to"
 

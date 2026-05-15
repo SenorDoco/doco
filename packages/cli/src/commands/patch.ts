@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { defineCommand } from "citty";
 import { c, cross } from "../output.js";
+import { requireDocoConfig } from "../env.js";
 
 /**
  * `doco patch <type> <id>` — extend an existing Doco node via PATCH.
@@ -19,8 +20,6 @@ import { c, cross } from "../output.js";
 
 const DOCO_BASE_URL = "https://doco.to";
 
-type Env = { token: string; docoId: string };
-
 const PLURAL_BY_TYPE: Record<string, string> = {
   decision: "decisions",
   intent: "intents",
@@ -30,42 +29,6 @@ const PLURAL_BY_TYPE: Record<string, string> = {
   reference: "references",
   scope: "scopes",
 };
-
-function loadDotenv(): void {
-  for (const k of ["DOCO_TOKEN", "DOCO_ID"] as const) {
-    if (process.env[k]) continue;
-    try {
-      const text = readFileSync(resolve(process.cwd(), ".env"), "utf8");
-      for (const raw of text.split(/\r?\n/)) {
-        const line = raw.replace(/^\s*export\s+/, "");
-        const m = line.match(/^([A-Z_][A-Z0-9_]*)\s*=\s*(.*?)\s*$/);
-        if (!m) continue;
-        let v = m[2];
-        if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) {
-          v = v.slice(1, -1);
-        }
-        if (!process.env[m[1]]) process.env[m[1]] = v;
-      }
-      break;
-    } catch {
-      break;
-    }
-  }
-}
-
-function requireEnv(): Env {
-  loadDotenv();
-  const token = process.env.DOCO_TOKEN ?? "";
-  const docoId = process.env.DOCO_ID ?? "";
-  const missing = Object.entries({ DOCO_TOKEN: token, DOCO_ID: docoId })
-    .filter(([, v]) => !v)
-    .map(([k]) => k);
-  if (missing.length) {
-    console.error(cross(`Missing env: ${missing.join(", ")}. Set in shell or in ./.env.`));
-    process.exit(2);
-  }
-  return { token, docoId };
-}
 
 function splitList(s: string | undefined): string[] {
   if (!s) return [];
@@ -126,7 +89,7 @@ async function sendPatch(
     process.exit(2);
   }
 
-  const { token, docoId } = requireEnv();
+  const { token, docoId } = requireDocoConfig();
   const url = `${DOCO_BASE_URL}/by-id/${encodeURIComponent(docoId)}/api/${plural}/${id}.json`;
   let resp: Response;
   try {
@@ -286,7 +249,7 @@ export const patchCmd = defineCommand({
   meta: {
     name: "patch",
     description:
-      "Extend an existing Doco node via PATCH. Use this when a search hit names the file or territory you're editing (vector_score > ~0.45) — it's strictly preferred over opening a sibling node. Reads DOCO_TOKEN/DOCO_ID from env or ./.env. Prints the response's footer_lines to stdout.",
+      "Extend an existing Doco node via PATCH. Use this when a search hit names the file or territory you're editing (vector_score > ~0.45) — it's strictly preferred over opening a sibling node. Reads DOCO_TOKEN from env or ./.env and DOCO_ID from the AGENTS.md header. Prints the response's footer_lines to stdout.",
   },
   subCommands: {
     decision: makeTypedSubcommand("decision"),

@@ -165,14 +165,18 @@ tags: []
     // + post-tool-use-check.sh + stop-check.sh) so any agent that walks
     // into this repo — Claude Code via CLAUDE.md, others via the
     // AGENTS.md convention — is forced to fetch the canonical
-    // instructions before responding.
+    // instructions before responding. Pass `doco-id` so AGENTS.md is
+    // stamped with this Doco's id at the top (committed coordinator
+    // value — only DOCO_TOKEN ends up in .env).
     const { installAgentBootstrapCmd } = await import("./install-agent-bootstrap.js");
     // Run silently — captured output muddles `doco init`'s own success block.
     // The user sees the bootstrap files in the directory listing afterwards.
     const originalLog = console.log;
     console.log = () => {};
     try {
-      await installAgentBootstrapCmd.run!({ args: { root, force: false } } as never);
+      await installAgentBootstrapCmd.run!({
+        args: { root, force: false, "doco-id": docoId },
+      } as never);
     } finally {
       console.log = originalLog;
     }
@@ -190,7 +194,7 @@ tags: []
     console.log();
     console.log(c.dim("Next:"));
     console.log(c.dim(`  1. cd ${dirName}`));
-    console.log(c.dim(`  2. cp .env.example .env  # fill in DOCO_ID=${docoId}, DOCO_TOKEN`));
+    console.log(c.dim(`  2. cp .env.example .env  # fill in DOCO_TOKEN (DOCO_ID is already in AGENTS.md)`));
     console.log(c.dim(`  3. doco validate  # confirm structure`));
     console.log(c.dim(`  4. Restart your Claude Code session in this directory.`));
     console.log(c.dim(`  5. In Claude Code, run /hooks → approve the SessionStart + UserPromptSubmit hooks. Claude Code skips unapproved project hooks silently, so the protocol won't auto-load until you approve them once per project (and once per worktree if you use them).`));

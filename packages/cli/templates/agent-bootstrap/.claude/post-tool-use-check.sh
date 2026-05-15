@@ -39,7 +39,10 @@ esac
 FILE_PATH=$(printf '%s' "$INPUT" | jq -r '.tool_input.file_path // ""' 2>/dev/null || true)
 [ -z "$FILE_PATH" ] && exit 0
 
-# 2. Load .env so we have $PWD-ish context and DOCO_ID for the nudge URL.
+# 2. Load .env so we have $PWD-ish context and DOCO_TOKEN. DOCO_ID
+#    lives in AGENTS.md (committed, non-secret) and is used to build
+#    the nudge URL — fall back to grepping AGENTS.md when it's not in
+#    env. Legacy repos with DOCO_ID still in .env keep working: env wins.
 if [ -f "$PWD/.env" ]; then
   set -a
   # shellcheck disable=SC1091
@@ -48,6 +51,14 @@ if [ -f "$PWD/.env" ]; then
 fi
 DOCO_BASE_URL="https://doco.to"
 DOCO_ID="${DOCO_ID:-}"
+if [ -z "$DOCO_ID" ]; then
+  for f in "$PWD/AGENTS.md" "$PWD/CLAUDE.md"; do
+    if [ -f "$f" ]; then
+      DOCO_ID=$(grep -oE 'doco_[A-Za-z0-9]+' "$f" | head -1)
+      [ -n "$DOCO_ID" ] && break
+    fi
+  done
+fi
 
 # 3. Locate the pre-fetched hits file written by user-prompt-fetch.sh.
 HITS_KEY=$(printf '%s' "$PWD" | shasum 2>/dev/null | awk '{print $1}' || printf 'default')

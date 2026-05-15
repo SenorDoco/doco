@@ -1,5 +1,7 @@
 # 🛑 STOP — read this before doing anything else
 
+**This project's Doco ID:** [`doco_01KR441EA0ZDMF0N5DY38GSVS3`](https://doco.to/by-id/doco_01KR441EA0ZDMF0N5DY38GSVS3)
+
 You are in a **Doco-tracked project**. The user expects you to follow
 the Doco agent protocol — query indicator at the top of every reply,
 scope-prefixed footer lines after every write, the four-step cognitive
@@ -10,7 +12,7 @@ the user will call you out.
 ## Before you respond to ANY message — fetch your real instructions
 
 ```
-curl -s "https://doco.to/api/v1/agent-bootstrap?id=$DOCO_ID" -H "Authorization: Bearer $DOCO_TOKEN"
+curl -s "https://doco.to/api/v1/agent-bootstrap?id=doco_01KR441EA0ZDMF0N5DY38GSVS3" -H "Authorization: Bearer $DOCO_TOKEN"
 ```
 
 Read the `canonical_instructions` field of the response. Read it
@@ -38,17 +40,21 @@ If you see those blocks at the top of your context, the hooks worked
 than Claude Code don't have these hooks at all — run the curl above
 at the start of every task.
 
-## If `DOCO_TOKEN` or `DOCO_ID` aren't set
+## Where DOCO_ID and DOCO_TOKEN live
 
-Check `./.env` (gitignored). The hooks read two vars:
+Two values, two homes — split by **whether they're secret**:
 
-- `DOCO_TOKEN` — bearer token for write capture + per-Doco context
-  on the bootstrap response.
-- `DOCO_ID` — the immutable Doco id (e.g. `doco_...`); tells the
-  UserPromptSubmit hook which Doco to query.
+- **`DOCO_ID`** — the immutable Doco id (`doco_...`). Non-secret.
+  Lives at the top of **this file**, committed alongside the repo so
+  every contributor (and every agent) picks up the same value.
+  Edit the **This project's Doco ID** line directly to change it;
+  `doco login` keeps it in sync when you re-authorize.
+- **`DOCO_TOKEN`** — bearer token for write capture + per-Doco context
+  on the bootstrap response. **Secret.** Lives in `./.env`
+  (gitignored). Minted by `doco login`.
 
-If either is missing or the token cannot access this Doco, start every
-reply with:
+If `DOCO_TOKEN` is missing or the token cannot access this Doco, start
+every reply with:
 
 ```
 [🔮 Doco] Not connected yet: <reason>

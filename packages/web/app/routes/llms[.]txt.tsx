@@ -33,8 +33,9 @@ an agent on it. From the project root, run:
     doco login --host ${baseUrl} --create <slug>
 
 The CLI opens the owner's browser to a one-screen authorize prompt. On
-approval, it creates the Doco, mints an agent token, and writes
-DOCO_TOKEN + DOCO_ID to ./.env in the project root. Then:
+approval, it creates the Doco, mints an agent token, writes DOCO_TOKEN
+(the secret) to ./.env in the project root, and stamps DOCO_ID (the
+non-secret coordinator) into the header of AGENTS.md. Then:
 
     doco install-agent-bootstrap
 
@@ -53,8 +54,9 @@ to \`doco-cli\` is in flight and the publish pipeline is pending):
 
 ## I'm already in a Doco-tracked project
 
-If \`./.env\` has DOCO_TOKEN + DOCO_ID, fetch the canonical
-agent instructions at the start of every task and follow them:
+If \`./.env\` has DOCO_TOKEN and AGENTS.md carries a DOCO_ID at the top,
+fetch the canonical agent instructions at the start of every task and
+follow them (substitute the DOCO_ID from AGENTS.md inline):
 
     curl -s "https://doco.to/api/v1/agent-bootstrap?id=$DOCO_ID" \\
       -H "Authorization: Bearer $DOCO_TOKEN"

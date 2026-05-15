@@ -12,9 +12,10 @@ import { c, checkmark, cross, header, rule } from "../output.js";
  * Posts to https://doco.to/api/v1/cli/device-init for a state nonce + short
  * code + authorize URL, opens the URL in the project owner's default
  * browser, then polls /api/v1/cli/device-exchange until the project
- * owner clicks Authorize. On approval, writes DOCO_TOKEN
- * (and DOCO_ID if --create was used) to ./.env so the bootstrap hooks
- * pick up the new credentials on the next session.
+ * owner clicks Authorize. On approval, writes DOCO_TOKEN to ./.env
+ * (gitignored secret) and stamps DOCO_ID into the AGENTS.md header
+ * (committed, non-secret coordinator) so the bootstrap hooks pick up
+ * the new credentials on the next session.
  *
  * Replaces the host-bootstrap detour + /claim/<token> handoff: the Doco
  * is created directly under the authorizing project owner with no
@@ -24,7 +25,7 @@ export const loginCmd = defineCommand({
   meta: {
     name: "login",
     description:
-      "Authorize this CLI session in the browser (Vercel-style). Writes DOCO_TOKEN and, when available, DOCO_ID to ./.env on success.",
+      "Authorize this CLI session in the browser (Vercel-style). Writes DOCO_TOKEN to ./.env and stamps DOCO_ID into AGENTS.md on success.",
   },
   args: {
     host: {
@@ -165,38 +166,58 @@ export const loginCmd = defineCommand({
         if (body.status === "approved" && body.token && body.owner_slug) {
           console.log();
           console.log(checkmark(`Authorized by ${c.warn(body.owner_slug)}.`));
-          const updates: Record<string, string> = {
-            DOCO_TOKEN: body.token,
-          };
-          if (body.doco_id) {
-            updates.DOCO_ID = body.doco_id;
-          } else if (!env.DOCO_ID) {
-            // Leave a placeholder if the user didn't ask for create.
-          }
-          writeEnvFile(envPath, env, updates);
-          console.log(checkmark(`Wrote DOCO_TOKEN${body.doco_id ? " + DOCO_ID" : ""} to ${c.dim("./.env")}.`));
+          // DOCO_TOKEN is secret → .env (gitignored). DOCO_ID is a
+          // non-secret coordinator → AGENTS.md header (committed). The
+          // install step below stamps DOCO_ID into AGENTS.md via the
+          // --doco-id flag; .env carries only the token.
+          //
+          // Migration: if a prior version of this CLI wrote DOCO_ID
+          // into .env, strip it so the AGENTS.md value is canonical
+          // and there's no shadow that diverges on later re-login.
+          const updates: Record<string, string> = { DOCO_TOKEN: body.token };
+          const removeFromEnv: string[] = [];
+          if (env.DOCO_ID) removeFromEnv.push("DOCO_ID");
+          writeEnvFile(envPath, env, updates, removeFromEnv);
+          console.log(
+            checkmark(
+              `Wrote DOCO_TOKEN to ${c.dim("./.env")}${
+                removeFromEnv.length ? c.dim(" (removed legacy DOCO_ID from .env)") : ""
+              }.`,
+            ),
+          );
 
           // Install the agent-bootstrap files (AGENTS.md + CLAUDE.md shim +
           // .claude/settings.json + the four hook scripts) into the same
-          // repo. Without this the project owner's agent has no protocol
-          // hooks installed — they'd need a separate `doco
-          // install-agent-bootstrap` invocation before the new env vars
-          // take effect. The hooks themselves `source .env` on each fire,
-          // so once they're approved (Claude Code: /hooks) the very next
-          // UserPromptSubmit picks up the fresh DOCO_TOKEN — no full
-          // session restart needed.
+          // repo. The --doco-id flag stamps the freshly-authorized id
+          // into AGENTS.md, so subsequent sessions read it from the
+          // committed file. The hooks themselves `source .env` on each
+          // fire and fall back to grepping AGENTS.md when DOCO_ID isn't
+          // in env — once they're approved (Claude Code: /hooks) the
+          // very next UserPromptSubmit picks up the fresh credentials
+          // (no full session restart needed).
+          const idForInstall = body.doco_id || env.DOCO_ID || "";
           try {
             const { installAgentBootstrapCmd } = await import("./install-agent-bootstrap.js");
             const originalLog = console.log;
             console.log = () => {};
             try {
               await installAgentBootstrapCmd.run!({
-                args: { root: process.cwd(), force: false },
+                args: {
+                  root: process.cwd(),
+                  force: !!idForInstall, // re-stamp AGENTS.md when we have a fresh id
+                  "doco-id": idForInstall,
+                },
               } as never);
             } finally {
               console.log = originalLog;
             }
-            console.log(checkmark(`Installed agent bootstrap (${c.dim("AGENTS.md + CLAUDE.md + .claude/")}).`));
+            console.log(
+              checkmark(
+                `Installed agent bootstrap (${c.dim("AGENTS.md + CLAUDE.md + .claude/")})${
+                  idForInstall ? c.dim(` — stamped with ${idForInstall}`) : ""
+                }.`,
+              ),
+            );
           } catch (e) {
             console.error(c.dim(`(install-agent-bootstrap failed: ${(e as Error).message}. Run \`doco install-agent-bootstrap\` manually.)`));
           }
@@ -324,38 +345,61 @@ function readEnvFile(path: string): EnvMap {
 }
 
 /**
- * Write the env file with `updates` applied. Preserves existing comments
- * and ordering: keys we update get rewritten in-place; new keys append at
- * the bottom; everything else is untouched.
+ * Write the env file with `updates` applied and any keys in
+ * `removeKeys` stripped. Preserves existing comments and ordering:
+ * keys we update get rewritten in-place; new keys append at the bottom;
+ * keys in `removeKeys` are deleted (along with their line); everything
+ * else is untouched. `removeKeys` exists for the DOCO_ID-out-of-.env
+ * migration — pre-migration repos had DOCO_ID in .env, and leaving it
+ * would shadow the AGENTS.md value.
  */
-function writeEnvFile(path: string, prior: EnvMap, updates: EnvMap): void {
+function writeEnvFile(
+  path: string,
+  prior: EnvMap,
+  updates: EnvMap,
+  removeKeys: string[] = [],
+): void {
   const existed = existsSync(path);
   const lines = existed ? readFileSync(path, "utf8").split(/\r?\n/) : [];
+  const remove = new Set(removeKeys);
   const seen = new Set<string>();
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i]!;
+  const filtered: string[] = [];
+  for (const line of lines) {
     const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#")) continue;
-    const eq = trimmed.indexOf("=");
-    if (eq < 0) continue;
-    const key = trimmed.slice(0, eq).trim();
-    if (key in updates) {
-      lines[i] = `${key}=${updates[key]}`;
-      seen.add(key);
+    if (!trimmed || trimmed.startsWith("#")) {
+      filtered.push(line);
+      continue;
     }
+    const eq = trimmed.indexOf("=");
+    if (eq < 0) {
+      filtered.push(line);
+      continue;
+    }
+    const key = trimmed.slice(0, eq).trim();
+    if (remove.has(key)) {
+      // drop this line — migration path
+      continue;
+    }
+    if (key in updates) {
+      filtered.push(`${key}=${updates[key]}`);
+      seen.add(key);
+      continue;
+    }
+    filtered.push(line);
   }
   // Append keys that weren't present.
-  if (lines.length > 0 && lines[lines.length - 1]!.trim() !== "") {
-    lines.push("");
+  if (filtered.length > 0 && filtered[filtered.length - 1]!.trim() !== "") {
+    filtered.push("");
   }
   for (const [key, value] of Object.entries(updates)) {
     if (seen.has(key)) continue;
-    lines.push(`${key}=${value}`);
+    filtered.push(`${key}=${value}`);
   }
   // Ensure trailing newline.
-  let text = lines.join("\n");
+  let text = filtered.join("\n");
   if (!text.endsWith("\n")) text += "\n";
   writeFileSync(path, text, "utf8");
   // Reflect into the in-memory map so callers can re-read.
   for (const [k, v] of Object.entries(updates)) prior[k] = v;
+  for (const k of removeKeys) delete prior[k];
 }

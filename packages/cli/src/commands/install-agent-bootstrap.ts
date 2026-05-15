@@ -4,12 +4,22 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
+  writeFileSync,
 } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineCommand } from "citty";
 import { findTemplatesDir } from "../find-templates.js";
+import { readDocoIdFromAgentsMd } from "../env.js";
 import { c, checkmark, cross, header, rule } from "../output.js";
+
+/**
+ * AGENTS.md / CLAUDE.md placeholder substituted with the project's
+ * actual DOCO_ID at install time. Lives at the top of the file's
+ * "This project's Doco ID" line and inside the curl example.
+ * `doco login` passes the freshly-minted id via the `docoId` arg.
+ */
+const DOCO_ID_PLACEHOLDER = /__DOCO_ID__/g;
 
 /**
  * `doco install-agent-bootstrap` — drop the agent bootstrap files into a
@@ -62,6 +72,11 @@ export const installAgentBootstrapCmd = defineCommand({
       description: "Overwrite existing files. Default: skip and warn.",
       default: false,
     },
+    "doco-id": {
+      type: "string",
+      description:
+        "DOCO_ID to stamp into the AGENTS.md header. Defaults to process.env.DOCO_ID, then to whatever AGENTS.md already carries. `doco login` passes the freshly-authorized id here.",
+    },
   },
   async run({ args }) {
     const target = resolve((args.root as string | undefined) ?? process.cwd());
@@ -71,6 +86,16 @@ export const installAgentBootstrapCmd = defineCommand({
       return;
     }
     const force = args.force as boolean;
+    // Resolve the DOCO_ID to substitute: explicit arg > env > existing
+    // AGENTS.md (re-install on an already-stamped repo). Empty string
+    // when none is known — the template keeps the literal placeholder
+    // so the project owner can see what's missing.
+    const docoIdArg = (args["doco-id"] as string | undefined)?.trim();
+    const docoId =
+      docoIdArg ||
+      process.env.DOCO_ID ||
+      readDocoIdFromAgentsMd(target) ||
+      "";
 
     const agentsMdSrc = join(TEMPLATES_DIR, "AGENTS.md");
     const claudeMdSrc = join(TEMPLATES_DIR, "CLAUDE.md");
@@ -109,14 +134,19 @@ export const installAgentBootstrapCmd = defineCommand({
 
     const actions: string[] = [];
 
-    // AGENTS.md (canonical) + CLAUDE.md (one-line shim) — write/skip
+    // AGENTS.md (canonical) + CLAUDE.md (one-line shim) — write/skip.
+    // Substitute __DOCO_ID__ in the rendered output so the project's
+    // actual id ends up in the committed header. When docoId is empty
+    // we leave the literal placeholder alone so the project owner can
+    // spot what's missing and re-run `doco login`.
     for (const [src, dst, label] of [
       [agentsMdSrc, agentsMdDst, "AGENTS.md"],
       [claudeMdSrc, claudeMdDst, "CLAUDE.md"],
     ] as const) {
+      const tplRaw = readFileSync(src, "utf8");
+      const fromTpl = docoId ? tplRaw.replace(DOCO_ID_PLACEHOLDER, docoId) : tplRaw;
       if (existsSync(dst) && !force) {
         const onDisk = readFileSync(dst, "utf8");
-        const fromTpl = readFileSync(src, "utf8");
         if (onDisk === fromTpl) {
           actions.push(`${c.dim("=")} ${c.dim(label + " (already at template version)")}`);
         } else {
@@ -125,7 +155,7 @@ export const installAgentBootstrapCmd = defineCommand({
           );
         }
       } else {
-        copyFileSync(src, dst);
+        writeFileSync(dst, fromTpl, "utf8");
         actions.push(checkmark(`${label} ${force ? "(overwritten)" : "written"}`));
       }
     }
@@ -185,24 +215,37 @@ export const installAgentBootstrapCmd = defineCommand({
     for (const a of actions) console.log(a);
     console.log(rule());
     console.log(c.dim("Next:"));
+    if (!docoId) {
+      console.log(
+        c.dim(
+          "  1. AGENTS.md still has __DOCO_ID__ as a placeholder. Run `doco login --host https://doco.to` to authorize and stamp the real id, or edit the **This project's Doco ID** line by hand.",
+        ),
+      );
+    } else {
+      console.log(
+        c.dim(
+          `  1. AGENTS.md stamped with ${docoId}. To rotate, re-run \`doco login\` or edit the **This project's Doco ID** line directly.`,
+        ),
+      );
+    }
     console.log(
       c.dim(
-        "  1. cp .env.example .env  # fill in DOCO_ID=doco_..., DOCO_TOKEN",
+        "  2. cp .env.example .env  # fill in DOCO_TOKEN (mint via `doco login`)",
       ),
     );
     console.log(
       c.dim(
-        "  2. Restart your Claude Code session in this directory.",
+        "  3. Restart your Claude Code session in this directory.",
       ),
     );
     console.log(
       c.dim(
-        "  3. In Claude Code, run /hooks → approve the SessionStart + UserPromptSubmit + PostToolUse + Stop hooks. Claude Code skips unapproved project hooks silently, so the protocol won't auto-load until you approve them once per project (and once per worktree if you use them).",
+        "  4. In Claude Code, run /hooks → approve the SessionStart + UserPromptSubmit + PostToolUse + Stop hooks. Claude Code skips unapproved project hooks silently, so the protocol won't auto-load until you approve them once per project (and once per worktree if you use them).",
       ),
     );
     console.log(
       c.dim(
-        "  4. Non-Claude agents: fetch https://doco.to/api/v1/agent-bootstrap?id=$DOCO_ID manually at the start of each task.",
+        "  5. Non-Claude agents: fetch https://doco.to/api/v1/agent-bootstrap?id=<DOCO_ID> manually at the start of each task. The id is in AGENTS.md.",
       ),
     );
     console.log();

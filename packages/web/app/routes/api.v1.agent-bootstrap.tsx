@@ -148,7 +148,7 @@ export async function loader({ request }: { request: Request }) {
     // `redirected: false` and this is a no-op.
     const resolved = await resolveDocoSlugAlias(effectiveOwner, effectiveDoco);
     if (!resolved) {
-      warning = `Doco "${effectiveOwner}/${effectiveDoco}" doesn't resolve on this host. Check DOCO_ID in .env.`;
+      warning = `Doco "${effectiveOwner}/${effectiveDoco}" doesn't resolve on this host. Check the DOCO_ID line at the top of AGENTS.md.`;
     } else {
       const dir = docoPath(resolved.ownerSlug, resolved.docoSlug);
       const meta = await readDocoMetadata(dir);
@@ -172,7 +172,7 @@ export async function loader({ request }: { request: Request }) {
           docoSlugPath = `${resolved.ownerSlug}/${resolved.docoSlug}`;
           docoIdPath = effectiveDocoId ?? meta.docoId;
           if (resolved.redirected) {
-            warning = `Slug "${effectiveOwner}/${effectiveDoco}" is an alias for "${docoSlugPath}". Use DOCO_ID in .env to avoid slug drift.`;
+            warning = `Slug "${effectiveOwner}/${effectiveDoco}" is an alias for "${docoSlugPath}". Pin DOCO_ID in AGENTS.md to avoid slug drift.`;
           }
           if (isOnboardingState(scopes)) {
             const reqUrl = new URL(request.url);
