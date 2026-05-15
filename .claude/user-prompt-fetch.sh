@@ -33,7 +33,9 @@ if [ -n "$INPUT" ] && command -v jq >/dev/null 2>&1; then
 fi
 
 # 2. Load .env if present. The production host is fixed at doco.to; env
-#    only carries identity + secret material.
+#    only carries the DOCO_TOKEN secret. DOCO_ID lives in AGENTS.md
+#    (committed, non-secret) — read it from there if it's not in env.
+#    Legacy repos with DOCO_ID still in .env keep working: env wins.
 if [ -f "$PWD/.env" ]; then
   set -a
   # shellcheck disable=SC1091
@@ -42,20 +44,28 @@ if [ -f "$PWD/.env" ]; then
 fi
 DOCO_BASE_URL="https://doco.to"
 DOCO_ID="${DOCO_ID:-}"
+if [ -z "$DOCO_ID" ]; then
+  for f in "$PWD/AGENTS.md" "$PWD/CLAUDE.md"; do
+    if [ -f "$f" ]; then
+      DOCO_ID=$(grep -oE 'doco_[A-Za-z0-9]+' "$f" | head -1)
+      [ -n "$DOCO_ID" ] && break
+    fi
+  done
+fi
 
 # 3. Build the protocol reminder — short, deterministic, every turn.
 #    Kept under 800 chars so the per-turn token cost stays bounded.
 read -r -d '' PROTOCOL_REMINDER <<'EOF' || true
 ## Doco protocol — apply this in your reply
 
-1. TOP OF REPLY: paste the pre-fetched Doco block FIRST.
+1. TOP OF THE TURN'S FIRST TEXT OUTPUT (once per turn, NOT on intermediate progress updates between tool calls): paste the pre-fetched Doco block FIRST.
 
    If the pre-fetched block says "[🔮 Doco] Not connected yet: <reason>", paste that exact line instead of any connected indicator. Do not render query/count/tally/footer lines while disconnected. Ask the project owner to authorize with `doco login --host https://doco.to`.
 
    If connected and queried, render the two-line query indicator:
    [🔮 Doco] <querying-verb>
    [🔮 Doco] <loading-verb> <doco_id>. <N> relevant nodes found (<X.X>s)
-   (Or "[🔮 Doco] Not querying Doco" on one line if you genuinely don't.)
+   If you didn't query (greeting, one-word ack), emit nothing at the top — no "Not querying" placeholder, no fallback line. Absence is the signal.
    The pre-fetched connected block below has the verbs already picked at random plus real <N>/<X.Xs> — paste it verbatim.
 
 2. AFTER EVERY WRITE (POST/PATCH/DELETE on /api/*.json), only when connected: render footer_lines from the response verbatim, one per line. Shape:
@@ -64,9 +74,9 @@ read -r -d '' PROTOCOL_REMINDER <<'EOF' || true
 
 3. BEFORE DECLARING DONE: scan capture triggers. Scope names are BARE (no scope_ prefix) and match templates: user-flow changed → `user-flows` Decision. Bug fixed → `bugs` Decision + `bugs` Rule (`born_from: <decision_id>`). Framework touched (CLI / hooks / canonical) → add `framework`. ADR-shaped → `adrs`. POST to /api/decisions.json etc. via the host's capture endpoints. **If instinct says skip, name the existing node you're relying on — "CLI can't capture X" or "too small for a Decision" aren't naming a node. If a high-vector_score hit already governs the change, PATCH it instead of skipping.**
 
-4. LAST LINE OF EVERY CONNECTED MESSAGE (even with 0 writes):
+4. CLOSING LINE OF THE TURN (once per turn, on the LAST text output only — NOT on intermediate progress updates between tool calls; even when 0 writes):
    [🔮 Doco] <doco_id>: **<N>** node(s) added/updated
-   <N> = count of distinct entities you added/updated this turn (PATCH-3-fields-of-1-Decision = 1, not 3). The number MUST be wrapped in markdown bold (`**N**`). Singular when N == 1, plural otherwise (0 is plural).
+   <N> = count of distinct entities you added/updated this turn (PATCH-3-fields-of-1-Decision = 1, not 3). The number MUST be wrapped in markdown bold (`**N**`). Singular when N == 1, plural otherwise (0 is plural). A "turn" is one user prompt → your complete answer, even when threaded through many tool calls; the tally bookends the turn, not each chunk.
 
 The full canonical_instructions was loaded at session start. Re-fetch via `curl -s https://doco.to/api/v1/agent-bootstrap?id=$DOCO_ID -H "Authorization: Bearer $DOCO_TOKEN"` if you've lost track and are connected.
 EOF

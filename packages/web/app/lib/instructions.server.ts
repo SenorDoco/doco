@@ -107,21 +107,30 @@ verb is already randomized **and the line itself is in the wrapper
 above the canonical** — emit it verbatim as your first output instead
 of re-picking the verb or waiting until you've read the canonical body.
 
-### 1b. Per reply — every turn
+### 1b. Per turn — at the top of the turn's FIRST text output
 
-Two lines if you queried, one if you didn't. Render BEFORE any prose
-(and after the session-load line on your first reply):
+Two lines if you queried, nothing at all if you didn't. Render BEFORE
+any prose in the FIRST text output of the turn (and after the
+session-load line on your first reply):
 
 \`\`\`
 [🔮 Doco] <querying-verb>
 [🔮 Doco] <N> relevant nodes found (<X.X>s)
 \`\`\`
 
-or, if you genuinely didn't need to query (greeting, one-word ack):
+If you didn't need to query (greeting, one-word ack), emit nothing at
+the top — no "Not querying" placeholder, no fallback line. Absence is
+the signal.
 
-\`\`\`
-[🔮 Doco] Not querying Doco
-\`\`\`
+A "turn" is one user prompt → your complete answer, even when that
+answer threads multiple text outputs through tool calls. The query
+indicator goes at the very top of the FIRST text output of the turn —
+once. Intermediate progress updates between tool calls ("found the
+file, editing now," "typecheck passed, capturing rationale") are plain
+prose with no indicator and no tally. Don't restart the indicator on
+each chunk; the project owner reads the whole turn as one reply, and
+repeating bookends on every chunk turns the protocol into visual noise
+instead of a dial-tone.
 
 **Pick \`<querying-verb>\` at random from this list — same rule:**
 
@@ -305,9 +314,9 @@ Intent fits, create one first (\`doco capture intent …\`).
 
 Don't hand-write YAML. **Prefer the \`doco capture\` CLI** — one bash
 invocation per node, no curl, no Authorization header, no URL
-construction. It reads \`DOCO_TOKEN\`/\`DOCO_ID\` from the environment
-(or \`./.env\` in the current directory), talks to \`https://doco.to\`,
-and prints
+construction. It reads \`DOCO_TOKEN\` from the environment (or
+\`./.env\`) and \`DOCO_ID\` from the AGENTS.md header in the current
+directory, talks to \`https://doco.to\`, and prints
 the response's \`footer_lines\` to stdout for you to paste verbatim:
 
 \`\`\`
@@ -355,13 +364,22 @@ Full request specs: \`GET https://doco.to/by-id/<doco_id>/api/<type>.txt\`. The
 server resolves names → ids, generates the ULID, writes the file, and
 reindexes — one round-trip whether you use the CLI or curl.
 
-## 4. LAST LINE OF EVERY REPLY — tally (no exceptions)
+## 4. CLOSING LINE OF THE TURN — tally (no exceptions, once per turn)
 
 \`\`\`
 [🔮 Doco] <doco_id>: **<N>** node(s) added/updated
 \`\`\`
 
-- \`<doco_id>\` from \`DOCO_ID\` in \`.env\`.
+The tally is the LAST line of the LAST text output of the turn — the
+message the project owner reads right before they reply (whether
+you're handing the turn back with a question or just declaring the
+task complete). **One tally per turn, at the close.** Never on
+intermediate progress updates between tool calls; those are plain
+prose with no tally and no top-of-reply indicator. Stacking a tally
+on every intermediate chunk turns the protocol into clutter instead
+of an end-of-turn dial-tone.
+
+- \`<doco_id>\` from the project's AGENTS.md header (or \`process.env.DOCO_ID\`).
 - \`<N>\` counts distinct entities touched this turn (PATCH-3-fields-of-1-Decision = 1).
 - \`<N>\` MUST be wrapped in markdown bold (\`**N**\`).
 - Singular form for \`**1**\`; plural otherwise (zero is plural).
@@ -369,15 +387,25 @@ reindexes — one round-trip whether you use the CLI or curl.
 
 ## Authentication
 
-Read \`DOCO_TOKEN\` and \`DOCO_ID\` from \`./.env\` (gitignored).
+Two values, two homes — split by whether they're secret:
+
+- \`DOCO_TOKEN\` — bearer; **secret**; gates writes. Lives in
+  \`./.env\` (gitignored). Read from \`process.env\` first, then from
+  \`./.env\` as a fallback.
+- \`DOCO_ID\` — \`doco_...\`; **non-secret** coordinator (like a repo
+  slug). Lives at the top of \`AGENTS.md\` on a line shaped
+  \`**This project's Doco ID:** \\\`doco_...\\\`\`. Read from
+  \`process.env\` first, then grep \`AGENTS.md\` (or \`CLAUDE.md\`) for
+  the first \`doco_<ulid>\` match. Legacy repos that still carry
+  \`DOCO_ID\` in \`.env\` keep working: the env load wins over the
+  AGENTS.md fallback.
+
 Missing or unauthorized → do not ask the user to paste a token. Ask
 them to authorize the agent with the browser flow:
 \`doco login --host https://doco.to\`. If this is a new Doco, use
-\`doco login --host https://doco.to --create <slug>\`.
-
-- \`DOCO_TOKEN\` — bearer; secret; gates writes.
-- \`DOCO_ID\` — \`doco_...\`; tells the per-prompt hook which
-  Doco to query.
+\`doco login --host https://doco.to --create <slug>\`. \`doco login\`
+writes \`DOCO_TOKEN\` to \`./.env\` and stamps \`DOCO_ID\` into
+\`AGENTS.md\` in one step.
 
 ## Auto-loaded protocol (Claude Code only)
 
@@ -698,11 +726,47 @@ on this branch.
 **Purely conversational reply (no query, no writes):**
 
 \`\`\`
-[🔮 Doco] Not querying Doco
-
 You're welcome — let me know when you're ready for the next task.
 
 [🔮 Doco] acme/payments: **0** nodes added/updated
+\`\`\`
+
+No top-of-reply indicator because the agent didn't query — absence
+is the signal, no "Not querying" placeholder. The tally still closes
+the turn so the project owner gets the explicit no-op confirmation.
+
+**Multi-step turn that weaves several text outputs through tool calls:**
+
+The agent edits files, runs typecheck, captures rationale — each step
+produces an intermediate text output before the next tool call. Only
+the FIRST text output carries the top-of-reply indicator; only the
+LAST one carries the tally. The middle chunks are plain prose.
+
+\`\`\`
+First text output:
+[🔮 Doco] Wired up to acme/payments
+[🔮 Doco] Scanning the graph...
+[🔮 Doco] 5 relevant nodes found (0.2s)
+
+The filter now renders plural labels in their type colors with the dot
+removed. Checking the repo's typecheck script next.
+
+(tool call: run typecheck)
+
+Intermediate text output (no indicator, no tally):
+
+Typecheck passed cleanly. Doing one last diff/status pass, then I'll
+capture the rationale.
+
+(tool call: doco capture decision …)
+
+Final text output:
+
+[🔮 Doco] 📝 Decision updated: [Replace bare emoji input with EmojiPickerInput…](…).body ➕ appended — 🎨 design-language (0.2s)
+
+Captured the why so the change has rationale, not just the code.
+
+[🔮 Doco] acme/payments: **1** node added/updated
 \`\`\`
 
 ## Things only people can do
@@ -712,8 +776,9 @@ hits one of these, stop and ask.
 
 ## Creating a Doco from a CLI session
 
-When the project owner says "create a Doco for this project" and \`./.env\`
-doesn't already have \`DOCO_TOKEN\` / \`DOCO_ID\`, run:
+When the project owner says "create a Doco for this project" and
+\`./.env\` doesn't already have \`DOCO_TOKEN\` (or \`AGENTS.md\` doesn't
+already carry a \`DOCO_ID\`), run:
 
 \`\`\`
 doco login --host https://doco.to --create <slug>
@@ -732,13 +797,15 @@ This is the Vercel-style browser-authorize flow
    a session token bound to that agent, and creates the Doco directly
    under \`<project-owner-username>/<slug>\` — no temporary
    "host-bootstrap" detour, no follow-up claim URL.
-4. The CLI writes \`DOCO_TOKEN\` / \`DOCO_ID\` to
-   \`./.env\` and drops the agent-bootstrap files (\`AGENTS.md\`,
-   \`CLAUDE.md\`, \`.claude/settings.json\`, the four hook scripts) into
-   the repo. The hooks themselves \`source ./.env\` on each fire, so a
-   full session restart isn't needed — \`/hooks\` to approve in Claude
-   Code, optionally \`/clear\`, and the next \`UserPromptSubmit\` picks
-   up the fresh credentials.
+4. The CLI writes \`DOCO_TOKEN\` to \`./.env\` (gitignored secret),
+   stamps \`DOCO_ID\` into the header of \`AGENTS.md\` (committed,
+   non-secret coordinator), and drops the rest of the agent-bootstrap
+   files (\`CLAUDE.md\`, \`.claude/settings.json\`, the four hook
+   scripts) into the repo. The hooks themselves \`source ./.env\` on
+   each fire and grep \`AGENTS.md\` for \`DOCO_ID\` if it's not in env,
+   so a full session restart isn't needed — \`/hooks\` to approve in
+   Claude Code, optionally \`/clear\`, and the next \`UserPromptSubmit\`
+   picks up the fresh credentials.
 
 If the project owner denies, the CLI exits non-zero and \`./.env\` stays
 empty. Don't loop — stop and explain.
