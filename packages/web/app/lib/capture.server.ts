@@ -81,29 +81,36 @@ async function persistEntity(args: {
 }
 
 /**
- * Run reindex (and optionally `attachImplicitEdges`) after the
- * user-visible response has already returned. Fire-and-forget; the
- * caller must have already `await`-ed `persistEntity` so the new row
- * is durably written before the background work starts. Failures
- * log but do not surface — the response committed.
+ * Reindex synchronously (so the caller's response reflects materialized
+ * edges/FTS/embeddings) and schedule the optional LLM-based
+ * `attachImplicitEdges` pass in the background. The caller must have
+ * already `await`-ed `persistEntity` so the new row is durably written
+ * before the reindex reads it back.
  *
- * A search issued in the same turn that just captured a node may
- * briefly miss it until reindex completes (~seconds with embeddings
- * on). Agents don't re-search what they just wrote, so this is
- * acceptable.
+ * Why sync reindex: on Vercel-style serverless deploys the lambda is
+ * frozen once the response is sent — a fire-and-forget background
+ * promise may never run to completion, leaving the `edges` table empty
+ * even though the entity row carries `intent_ids` / `born_from`. The
+ * fix: await the reindex before responding. Adds a few hundred ms to
+ * capture/PATCH latency; in return the graph is always consistent the
+ * moment the agent sees the success line.
+ *
+ * `attachImplicitEdges` stays background because it issues an LLM call
+ * (multi-second, optional). If it doesn't complete on serverless the
+ * worst case is no auto-edges suggested — explicit edges still land.
  */
-function scheduleBackgroundIndex(
+async function reindexAndScheduleAttach(
   docoDir: string,
   docoId: string,
   attachOpts?: Parameters<typeof attachImplicitEdges>[0],
-): void {
+): Promise<void> {
+  try {
+    await reindex(docoDir, docoId);
+  } catch (err) {
+    console.error(`reindex failed for ${docoDir}:`, err);
+  }
+  if (!attachOpts) return;
   void (async () => {
-    try {
-      await reindex(docoDir, docoId);
-    } catch (err) {
-      console.error(`background reindex failed for ${docoDir}:`, err);
-    }
-    if (!attachOpts) return;
     try {
       await attachImplicitEdges(attachOpts);
     } catch (err) {
@@ -863,7 +870,7 @@ export async function captureDecision(
     entity_id: id,
     summary,
   });
-  scheduleBackgroundIndex(docoDir, docoId, {
+  await reindexAndScheduleAttach(docoDir, docoId, {
     docoDir,
     ownerSlug,
     docoSlug,
@@ -1094,7 +1101,7 @@ export async function updateDecision(
     afterFm: fm,
     patchKeys: Object.keys(patch),
   });
-  scheduleBackgroundIndex(docoDir, docoId);
+  await reindexAndScheduleAttach(docoDir, docoId);
   const summary = String(fm.summary ?? decisionId);
   const duration_ms = Math.round(performance.now() - startedAt);
   const finalScopeIds = Array.isArray(fm.scopes) ? (fm.scopes as string[]) : [];
@@ -1325,7 +1332,7 @@ export async function updateEntity(opts: {
     afterFm: fm,
     patchKeys: Object.keys(patch),
   });
-  scheduleBackgroundIndex(docoDir, docoId);
+  await reindexAndScheduleAttach(docoDir, docoId);
 
   const summary = String(fm.summary ?? fm.name ?? id);
   const duration_ms = Math.round(performance.now() - startedAt);
@@ -1435,7 +1442,7 @@ export async function captureIntent(
     entity_id: id,
     summary,
   });
-  scheduleBackgroundIndex(docoDir, docoId, {
+  await reindexAndScheduleAttach(docoDir, docoId, {
     docoDir,
     ownerSlug,
     docoSlug,
@@ -1573,7 +1580,7 @@ export async function captureEval(
     entity_id: id,
     summary,
   });
-  scheduleBackgroundIndex(docoDir, docoId, {
+  await reindexAndScheduleAttach(docoDir, docoId, {
     docoDir,
     ownerSlug,
     docoSlug,
@@ -1723,7 +1730,7 @@ export async function captureAction(
     entity_id: id,
     summary,
   });
-  scheduleBackgroundIndex(docoDir, docoId, {
+  await reindexAndScheduleAttach(docoDir, docoId, {
     docoDir,
     ownerSlug,
     docoSlug,
@@ -1895,7 +1902,7 @@ export async function captureRule(
     entity_id: id,
     summary,
   });
-  scheduleBackgroundIndex(docoDir, docoId, {
+  await reindexAndScheduleAttach(docoDir, docoId, {
     docoDir,
     ownerSlug,
     docoSlug,
@@ -2035,7 +2042,7 @@ export async function captureReasoning(
     entity_id: id,
     summary,
   });
-  scheduleBackgroundIndex(docoDir, docoId, {
+  await reindexAndScheduleAttach(docoDir, docoId, {
     docoDir,
     ownerSlug,
     docoSlug,
@@ -2156,7 +2163,7 @@ export async function captureReference(
     entity_id: id,
     summary,
   });
-  scheduleBackgroundIndex(docoDir, docoId, {
+  await reindexAndScheduleAttach(docoDir, docoId, {
     docoDir,
     ownerSlug,
     docoSlug,
