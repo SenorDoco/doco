@@ -87,6 +87,22 @@ export async function listOrgs(): Promise<HostOrg[]> {
   });
 }
 
+/** Return organizations where the given Principal is a member (any role). */
+export async function listMyOrgs(principalId: string): Promise<HostOrg[]> {
+  const rows = await listOrganizationsForPrincipal(principalId);
+  return rows.map((r) => {
+    const fm = JSON.parse(r.raw_yaml) as Record<string, unknown>;
+    const out: HostOrg = {
+      id: r.id,
+      slug: r.slug,
+      display_name: (fm.display_name as string) ?? r.name,
+      member_count: r.member_count,
+    };
+    if (typeof fm.description === "string") out.description = fm.description;
+    return out;
+  });
+}
+
 /** Return organizations where the given Principal is owner or admin. */
 export async function listOrgsOwnedOrAdminedBy(principalId: string): Promise<HostOrg[]> {
   const rows = await listOrganizationsForPrincipal(principalId, ["owner", "admin"]);
