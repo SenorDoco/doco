@@ -164,7 +164,7 @@ export function EntityGraph({ centerId, nodes, links, hrefFor }: EntityGraphProp
     };
   }, []);
 
-  // Card background fades white → neutral-400 as PPR drops. Range is taken
+  // Card background fades white → neutral-300 as PPR drops. Range is taken
   // across non-focal nodes so the focal AND the highest-PPR neighbor both
   // land at white; weaker neighbors recede toward gray.
   const pprBounds = useMemo(() => {
@@ -187,7 +187,7 @@ export function EntityGraph({ centerId, nodes, links, hrefFor }: EntityGraphProp
         let bg = "rgb(255,255,255)";
         if (!n.is_center && pprRange > 0) {
           const t = (n.ppr - pprBounds.min) / pprRange;
-          const v = Math.round(163 + 92 * t);
+          const v = Math.round(212 + 43 * t);
           bg = `rgb(${v},${v},${v})`;
         }
         const title = n.name ?? (n.summary.length > 40 ? `${n.summary.slice(0, 40)}…` : n.summary);
@@ -380,6 +380,11 @@ export function EntityGraph({ centerId, nodes, links, hrefFor }: EntityGraphProp
                 // Match the parent graph container's `rounded-md` so the
                 // MiniMap nests cleanly inside Doco's component radii.
                 borderRadius: "var(--radius)",
+                // The inner SVG mask path is a rectangle — without
+                // clipping, the dark mask-fill corners poke past the
+                // rounded panel border. `overflow: hidden` clips the SVG
+                // to the rounded panel shape.
+                overflow: "hidden",
               }}
             />
           </Flow.ReactFlow>
