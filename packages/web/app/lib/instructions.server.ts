@@ -202,13 +202,15 @@ for context that Doco already indexes.
    you're standing on a paper trail — use it. An answer that
    contradicts a documented Decision because you didn't read the hits
    is a defect, even if the user doesn't catch it.
-2. **Deduplicate.** Before drafting a new Decision, Rule, or Intent,
-   scan the hits for a node that already covers your territory. If
-   you find one, **PATCH it** (extend it, supersede it, add a
-   \`relates_to\` edge) rather than POSTing a near-duplicate. Two
-   overlapping nodes are strictly worse than one stale one — they
-   fragment the graph and force every future agent to pick which is
-   canonical. New nodes are for new territory.
+2. **Deduplicate.** Before drafting a new Doco node, scan the hits
+   for nodes that already cover the same territory. If a hit is the
+   same claim and still true, **PATCH it** (extend it, add context)
+   rather than POSTing a near-duplicate. If a hit is the older claim
+   your new claim replaces, capture the new node as a supersession and
+   mark/link the prior one as superseded. Two overlapping nodes are
+   strictly worse than one stale one — they fragment the graph and
+   force every future agent to pick which is canonical. New nodes are
+   for new territory.
 
 If \`OPENAI_API_KEY\` isn't set on the host, the response carries
 \`hits: []\` plus a \`warning\` field explaining vector search is
@@ -245,12 +247,26 @@ Every turn that produced changes captures something. The question is
 "Git will record it" is not a name; ADR-086 is exactly this trap (git
 records *what*, not *why*).
 
-**First, check the hits.** Before POSTing any new node, re-read the
-top-of-reply query hits. If an existing entity already covers your
-change (a search hit names the file or the territory at vector_score
-> ~0.45), **PATCH it** with \`doco patch <type> <id> --append-body
-"..."\` — same one-liner cost as a new POST, but the graph stays
-connected. New nodes are for new territory.
+**First, run the documentation search.** The top-of-reply query may be
+broader than the node you're about to write. Once you decide a capture
+is needed, search Doco again with the candidate node's
+summary/question/predicate. Read the highest-vector_score hits, then
+make the branch explicit:
+
+- **Same claim, still true:** PATCH the existing node with
+  \`doco patch <type> <id> --append-body "..."\` — same one-liner cost
+  as a new POST, but the graph stays connected.
+- **Older claim, now replaced:** capture a superseding node and
+  transition/link the prior one (\`doco supersede <decision_id>\` for
+  Decisions, or \`doco patch <type> <id> --lifecycle superseded
+  --superseded-by <new_id>\` where supported).
+- **New territory:** POST a new node and link it to the relevant
+  Intent, Decision, or Rule.
+
+If an existing entity already covers your change (a search hit names
+the file or the territory at vector_score > ~0.45), PATCH or
+supersede it. New nodes without a supersession edge are for genuinely
+new territory.
 
 **Rationalization tells.** These phrases mean you're about to skip a
 capture that probably should happen. Each binds to a counter-move:
