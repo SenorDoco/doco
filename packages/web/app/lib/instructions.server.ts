@@ -51,13 +51,28 @@ the top of every reply and do not render query/count/tally/footer lines:
 [🔮 Doco] Not connected yet: <reason>
 \`\`\`
 
-Use a concrete reason: \`missing DOCO_TOKEN\`, \`missing DOCO_ID\`,
-\`authorization expired\`, \`token cannot access this Doco\`,
-\`doco.to unreachable\`, or the host's warning text if it supplied one.
-Then ask the project owner to authorize using the browser flow:
-\`doco login --host https://doco.to\` for an existing Doco, or
-\`doco login --host https://doco.to --create <slug>\` when creating a
-new Doco.
+Pick the concrete reason that matches what actually failed (do not
+invent or paraphrase — agents that compose generic reasons produce
+generic recovery advice and waste the project owner's time). The
+recovery action depends on WHICH failure mode you hit:
+
+| Disconnected reason | Recovery to recommend to the project owner |
+|---|---|
+| \`missing DOCO_TOKEN\` | \`doco login --host https://doco.to\` mints a fresh token. |
+| \`authorization expired\` / 401 from bootstrap | Same — \`doco login --host https://doco.to\`. |
+| \`missing DOCO_ID\` | Edit the **This project's Doco ID** line in \`AGENTS.md\` (or re-run \`doco login\` — it stamps the id at the top of the file). |
+| \`token cannot access this Doco\` / 403 from bootstrap | Ask the project owner to add this agent as a member of the Doco, OR run \`doco login\` with an account that already has access. **Do NOT recommend \`doco login --create\` — that would fork a duplicate Doco.** |
+| \`Doco doesn't exist on this host\` / 404 from bootstrap | Read the bootstrap response's \`missing_doco_guidance\` field (added when this case hits) — it carries the right action for both subcases (create-new with \`doco login --create <slug>\` OR fix a stale id in AGENTS.md). |
+| \`bootstrap fetch blocked\` / \`HTTP_STATUS:000\` / \`doco.to unreachable\` | **Sandbox / network-policy issue — \`doco login\` will NOT help here.** The bearer token is fine; the request never left your agent runtime. Tell the project owner to allowlist \`doco.to\` in your agent's network/sandbox settings (Codex web, GitHub Coding Agent, Anthropic web sandbox, etc. each have their own settings page). For a one-off, the project owner may also be able to approve the call inline in the agent's UI. |
+| Host returns 5xx | doco.to is down; wait + retry. \`doco login\` won't help. |
+
+When you can't tell which case applies, surface the raw HTTP status +
+the host's response body in the disconnected indicator and let the
+project owner choose — never default to \`doco login\` because it's
+the most familiar suggestion. A wrong recovery move (mint a fresh
+token to fix a sandbox-block; \`--create\` a duplicate Doco to fix a
+membership gap) is strictly worse than a clear "I don't know which —
+here's what failed."
 
 When you are connected, the regular indicator splits across two
 lifecycle moments — **session-load** (fires once when you read this

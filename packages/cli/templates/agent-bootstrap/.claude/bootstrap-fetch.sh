@@ -38,34 +38,69 @@ fi
 DOCO_BASE_URL="https://doco.to"
 
 emit_disconnected() {
-  local msg=$1
-  # Use printf so embedded quotes survive; let jq handle string escaping.
-  local body=$'🔒 Doco connection — not connected\n\n⚠️ **Every reply must start with this exact line until access is fixed:**\n\n    [🔮 Doco] Not connected yet: '"${msg}"$'\n\nDo not render regular Doco query/count/footer/tally lines while disconnected. Ask the project owner to authorize the agent with `doco login --host https://doco.to` (or `doco login --host https://doco.to --create <slug>` for a new Doco), then restart or `/clear` so SessionStart runs again.'
+  # $1 indicator_reason — single-line "Not connected yet: <reason>" reason
+  # $2 mode             — picks the recovery suffix (see below); defaults to "default"
+  # $3 body_extra       — optional multi-line content inserted between
+  #                       the indicator and the recovery (e.g. the host's
+  #                       structured missing_doco_guidance actions)
+  #
+  # Recovery mode never bakes `doco login` into a sandbox-block case —
+  # the token is fine, the request just didn't leave the runtime.
+  #   default  — credentials issue, do `doco login` to re-authorize
+  #   network  — sandbox / network policy, allowlist doco.to in the agent runtime
+  #   tool     — missing local tool (curl / jq); install it
+  #   verbatim — body_extra is authoritative; no generic suffix
+  local indicator_reason=$1
+  local mode=${2:-default}
+  local body_extra=${3:-}
+  local recovery
+  case "$mode" in
+    network)
+      recovery=$'**This is a sandbox / network-policy issue, not a credentials problem — `doco login` will NOT help.** The bearer token is fine; the bootstrap request didn\'t leave your agent runtime. Tell the project owner to allowlist `doco.to` in your agent\'s network settings (Codex web, GitHub Coding Agent, Anthropic web sandbox, etc. each have their own settings page). For a one-off, they may also approve the call inline in the agent\'s UI. Once the host is reachable, restart or `/clear` so SessionStart runs again.'
+      ;;
+    tool)
+      recovery=$'Install the missing local tool, then restart or `/clear` so SessionStart runs again.'
+      ;;
+    verbatim)
+      recovery=""
+      ;;
+    default|*)
+      recovery=$'Ask the project owner to authorize the agent with `doco login --host https://doco.to` (or `doco login --host https://doco.to --create <slug>` for a new Doco), then restart or `/clear` so SessionStart runs again.'
+      ;;
+  esac
+  local body
+  body=$'🔒 Doco connection — not connected\n\n⚠️ **Every reply must start with this exact line until access is fixed:**\n\n    [🔮 Doco] Not connected yet: '"${indicator_reason}"$'\n\nDo not render regular Doco query/count/footer/tally lines while disconnected.'
+  if [ -n "$body_extra" ]; then
+    body="${body}"$'\n\n'"${body_extra}"
+  fi
+  if [ -n "$recovery" ]; then
+    body="${body}"$'\n\n'"${recovery}"
+  fi
   if command -v jq >/dev/null 2>&1; then
     jq -nc --arg c "$body" \
       '{hookSpecificOutput: {hookEventName: "SessionStart", additionalContext: $c}}'
   else
     # jq missing — emit a literal valid JSON. Escape only what matters.
     printf '{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"[🔮 Doco] Not connected yet: %s. jq is also missing — install it before retrying."}}\n' \
-      "$msg"
+      "$indicator_reason"
   fi
 }
 
 if ! command -v curl >/dev/null 2>&1; then
-  emit_disconnected "curl is not installed"
+  emit_disconnected "curl is not installed" tool
   exit 0
 fi
 if [ -z "${DOCO_ID:-}" ]; then
-  emit_disconnected "missing DOCO_ID"
+  emit_disconnected "missing DOCO_ID — set the **This project's Doco ID** line at the top of AGENTS.md, or run \`doco login --host https://doco.to\` to stamp it" default
   exit 0
 fi
 if [ -z "${DOCO_TOKEN:-}" ]; then
-  emit_disconnected "missing DOCO_TOKEN; ask the project owner to authorize with doco login --host https://doco.to"
+  emit_disconnected "missing DOCO_TOKEN" default
   exit 0
 fi
 
 if ! command -v jq >/dev/null 2>&1; then
-  emit_disconnected "jq is not installed"
+  emit_disconnected "jq is not installed" tool
   exit 0
 fi
 
@@ -77,14 +112,20 @@ HTTP_STATUS=$(curl -sS --max-time 8 -w '%{http_code}' -o "$TMP_RESP" \
 RESP=$(cat "$TMP_RESP" 2>/dev/null || true)
 rm -f "$TMP_RESP" 2>/dev/null || true
 if [ -z "$RESP" ]; then
-  emit_disconnected "doco.to unreachable"
+  # Empty body OR curl exit non-zero means the request never reached
+  # the host (DNS, sandbox network gate, firewall). HTTP_STATUS:000 is
+  # the same case. Don't tell the project owner to `doco login` — the
+  # token is fine; the runtime is the blocker.
+  emit_disconnected "doco.to unreachable (HTTP_STATUS:000 / network blocked at the agent runtime)" network
   exit 0
 fi
 if [ "$HTTP_STATUS" != "200" ]; then
   case "$HTTP_STATUS" in
-    401|403) emit_disconnected "token cannot access this Doco; ask the project owner to authorize with doco login --host https://doco.to" ;;
-    404) emit_disconnected "Doco ID not found or inaccessible: ${DOCO_ID}" ;;
-    *) emit_disconnected "bootstrap failed with HTTP ${HTTP_STATUS}" ;;
+    401) emit_disconnected "DOCO_TOKEN expired or invalid (HTTP 401)" default ;;
+    403) emit_disconnected "token cannot access this Doco (HTTP 403) — ask the project owner to add this agent as a member, or run \`doco login\` with an account that already has access. Don't run \`--create\` — there's already a Doco; you just can't reach it." default ;;
+    404) emit_disconnected "DOCO_ID \"${DOCO_ID}\" doesn't resolve on doco.to (HTTP 404)" default ;;
+    5*) emit_disconnected "doco.to returned ${HTTP_STATUS} — host outage; wait and retry. \`doco login\` won't help." network ;;
+    *) emit_disconnected "bootstrap failed with HTTP ${HTTP_STATUS}" default ;;
   esac
   exit 0
 fi
@@ -102,14 +143,15 @@ HAS_GUIDANCE=$(printf '%s' "$RESP" | jq -r '.missing_doco_guidance // empty | if
 # When the host says the DOCO_ID didn't resolve OR resolved-but-is-
 # inaccessible, the bootstrap response carries structured recovery
 # guidance under `missing_doco_guidance` plus a single-line summary
-# under `warning`. Render the actions list as the disconnected body so
-# the agent sees BOTH the "Not connected yet" indicator AND the
-# concrete next steps (create / ask for access / re-authorize) without
-# having to compose them from scratch.
+# under `warning`. Split title (indicator) from summary+actions (body)
+# so the agent sees a clean "Not connected yet: <title>" line plus the
+# numbered action list — instead of cramming the whole multi-paragraph
+# guidance into the indicator slot.
 if [ -n "$HAS_GUIDANCE" ]; then
-  GUIDANCE_TEXT=$(printf '%s' "$RESP" | jq -r '
+  GUIDANCE_TITLE=$(printf '%s' "$RESP" | jq -r '.missing_doco_guidance.title // empty' 2>/dev/null)
+  GUIDANCE_BODY=$(printf '%s' "$RESP" | jq -r '
     .missing_doco_guidance as $g |
-    $g.title + "\n\n" + $g.summary + "\n\n"
+    $g.summary + "\n\n"
     + (
         ($g.actions | to_entries | map(
           ((.key + 1) | tostring) + ". " + .value.label
@@ -118,15 +160,15 @@ if [ -n "$HAS_GUIDANCE" ]; then
         )) | join("\n\n")
       )
   ' 2>/dev/null)
-  emit_disconnected "$GUIDANCE_TEXT"
+  emit_disconnected "$GUIDANCE_TITLE" verbatim "$GUIDANCE_BODY"
   exit 0
 fi
 if [ -n "$WARNING_TEXT" ]; then
-  emit_disconnected "$WARNING_TEXT"
+  emit_disconnected "$WARNING_TEXT" verbatim
   exit 0
 fi
 if [ "$RESP_DOCO_ID" != "$DOCO_ID" ]; then
-  emit_disconnected "bootstrap did not return context for ${DOCO_ID}"
+  emit_disconnected "bootstrap did not return context for ${DOCO_ID}" default
   exit 0
 fi
 

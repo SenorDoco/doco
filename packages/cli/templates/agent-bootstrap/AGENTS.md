@@ -53,21 +53,48 @@ Two values, two homes — split by **whether they're secret**:
   on the bootstrap response. **Secret.** Lives in `./.env`
   (gitignored). Minted by `doco login`.
 
-If `DOCO_TOKEN` is missing or the token cannot access this Doco, start
+If the bootstrap can't be reached or your token is rejected, start
 every reply with:
 
 ```
 [🔮 Doco] Not connected yet: <reason>
 ```
 
-Then ask the project owner to authorize with the browser flow:
+**Pick the recovery action by which failure you hit — not by reflex.**
+The wrong move (mint a fresh token to fix a sandbox-block; `--create`
+a duplicate Doco to fix a membership gap) wastes the project owner's
+time. The full table lives in the canonical at
+`/api/v1/agent-bootstrap`; the short version:
 
-```
-doco login --host https://doco.to
-```
+- **`missing DOCO_TOKEN`** / **`authorization expired`** / 401 →
+  `doco login --host https://doco.to` (mints a fresh token).
+- **`missing DOCO_ID`** → edit the **This project's Doco ID** line
+  above (or re-run `doco login` — it stamps the id here).
+- **`token cannot access this Doco`** / 403 → ask the project owner
+  to add this agent as a member; or `doco login` with an account
+  that has access. **Don't suggest `--create`** — there's already a
+  Doco; you just can't reach it.
+- **`Doco doesn't exist on this host`** / 404 → read the
+  `missing_doco_guidance` field on the bootstrap response; it tells
+  you whether the right move is `doco login --create <slug>` (new
+  project) or fixing a stale id in this file (typo / wrong host).
+- **`bootstrap fetch blocked`** / **`HTTP_STATUS:000`** /
+  **`doco.to unreachable`** → **sandbox or network-policy issue —
+  `doco login` will NOT help.** The token is fine; the request never
+  left your agent runtime. Tell the project owner to allowlist
+  `doco.to` in the agent's network settings (Codex web, GitHub
+  Coding Agent, Anthropic web sandbox, etc. each have their own
+  settings page). For a one-off, they may also approve the call
+  inline in the agent's UI.
+- **Host returns 5xx** → doco.to is down; wait and retry.
+
+When in doubt, surface the raw HTTP status + the host's response body
+in the indicator and let the project owner choose. A clear "I don't
+know which case — here's what failed" beats a confident wrong
+recommendation.
 
 If the project owner wants you to set up a new Doco for this repo,
-run `doco login --host https://doco.to --create <slug>` instead.
+run `doco login --host https://doco.to --create <slug>`.
 
 This is the Vercel-style browser-authorize flow: the CLI opens
 `https://doco.to/cli/authorize` in the project owner's default browser, the
