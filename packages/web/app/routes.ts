@@ -39,6 +39,7 @@ import { type RouteConfig, index, route } from "@react-router/dev/routes";
  *   /:owner/:doco/scopes           per-Doco scope list (Edit button — not chevron — for instructions)
  *   /:owner/:doco/scopes/new       per-Doco add a scope (templates + custom form)
  *   /:owner/:doco/scopes/:id       per-Doco scope detail+edit (merged) — including the Global scope (formerly /constitution; renamed per decision_01KRPNZY7W6CCMYNKGND67BP0B)
+ *   /:owner/:doco/scopes/:id/rules/new    standalone add rule page for scope rules
  *   /:owner/:doco/scopes/:id/abandon    standalone Danger Zone confirmation
  *   /:owner/:doco/status.json      per-Doco status (connection signal for agent footer line)
  *   /:owner/:doco/api/*            per-Doco capture + update endpoints
@@ -147,6 +148,10 @@ export default [
   // at /scopes/:id; abandonment is a sibling page so the main scope
   // surface stays a coherent "edit everything else" view.
   route(":ownerSlug/:docoSlug/scopes/:id", "routes/$ownerSlug.$docoSlug.scopes.$id._index.tsx"),
+  route(
+    ":ownerSlug/:docoSlug/scopes/:id/rules/new",
+    "routes/$ownerSlug.$docoSlug.scopes.$id.rules.new.tsx",
+  ),
   route(":ownerSlug/:docoSlug/scopes/:id/abandon", "routes/$ownerSlug.$docoSlug.scopes.$id.abandon.tsx"),
   route(":ownerSlug/:docoSlug/rules/new", "routes/$ownerSlug.$docoSlug.rules.new.tsx"),
   // Short-form entity routes. `:type` is validated by the loader; reserved

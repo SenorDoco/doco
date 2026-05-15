@@ -2,14 +2,14 @@ import { withClient } from "@doco/db";
 import { entityUrl } from "@doco/shared";
 // Scope management — slim list of scopes with row-level navigation.
 //
-// Each row shows just: name, parents (if any), short description, node
-// count, and watched state. Clicking the row opens the entity-detail page.
-// Purpose + guidelines + rules live on the detail page, not inline.
+// Each row shows just: name, parents (if any), node count, and watched state.
+// Clicking the row opens the entity-detail page.
+// Rules live on the detail page, not inline.
 // Deletion is intentionally NOT here — it lives only in the Danger Zone
 // at the bottom of /scopes/<id>/edit, so the act of destroying a scope
 // requires opening its edit page first.
 import { Link, redirect } from "react-router";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
+import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
 import { SiteHeader } from "~/components/site-header";
 import { loadDocoForRead } from "~/lib/doco-access.server";
 import { loadHostConfig } from "~/lib/host";
@@ -67,15 +67,6 @@ export function meta({ params }: { params: { ownerSlug: string; docoSlug: string
   return [{ title: `Scopes · ${params.ownerSlug}/${params.docoSlug} · Doco` }];
 }
 
-/** Truncate a string to ~120 chars on a word boundary; "…" suffix if cut. */
-function shortDescription(text: string, cap = 120): string {
-  const trimmed = text.trim();
-  if (trimmed.length <= cap) return trimmed;
-  const cut = trimmed.slice(0, cap);
-  const lastSpace = cut.lastIndexOf(" ");
-  return `${(lastSpace > cap / 2 ? cut.slice(0, lastSpace) : cut).replace(/[\s.,;:!?-]+$/, "")}…`;
-}
-
 export default function ScopesIndex({
   loaderData,
 }: {
@@ -97,7 +88,6 @@ export default function ScopesIndex({
     const parents = s.parent_ids
       .map((pid) => scopes.find((x) => x.id === pid)?.name)
       .filter(Boolean) as string[];
-    const description = shortDescription(s.short_description);
     const isAbandoned = isAbandonedScope(s);
     const isGlobal = s.name === "global";
     return (
@@ -163,13 +153,6 @@ export default function ScopesIndex({
               {s.is_watched ? "Watched" : "Not watched"}
             </span>
           </div>
-          {description ? (
-            <p className="basis-full truncate pl-8 text-muted-foreground">{description}</p>
-          ) : (
-            <p className="basis-full pl-8 text-[11px] italic text-muted-foreground">
-              No description.
-            </p>
-          )}
         </Link>
       </li>
     );
@@ -186,7 +169,6 @@ export default function ScopesIndex({
                 <CardTitle>
                   Scopes · {displayName} ({scopes.length})
                 </CardTitle>
-                <CardDescription>Topical neighborhoods every node belongs to.</CardDescription>
               </div>
               <Link
                 to={`/${ownerSlug}/${docoSlug}/scopes/new${isOnboarding ? "?onboarding=1" : ""}`}

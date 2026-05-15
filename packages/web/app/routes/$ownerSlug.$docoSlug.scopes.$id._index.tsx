@@ -9,8 +9,8 @@
 // Abandon / activate is a regular Rule PATCH (lifecycle = abandoned / active).
 //
 // Layout: title-level icon picker, then two columns. Left carries Members
-// stats + Watched toggle + Authoring/Guidance rule sections with inline add
-// affordances + Abandon scope link. Right carries activity heatmap +
+// stats + Watched toggle + Guidance/Authoring rule sections with standalone
+// add links + Abandon scope link. Right carries activity heatmap +
 // scope-filtered latest activity feed.
 
 import { withClient } from "@doco/db";
@@ -36,13 +36,7 @@ import { Toggle } from "~/components/toggle";
 import { updateEntity } from "~/lib/capture.server";
 import { loadDocoForAdmin } from "~/lib/doco-access.server";
 import { loadHostConfig } from "~/lib/host";
-import { type ClassifiedRule, LlmUnavailableError, classifyRuleProse } from "~/lib/llm.server";
-import {
-  createRuleInDoco,
-  reindex,
-  setScopeWatchedInDoco,
-  updateScopeInDoco,
-} from "~/lib/redeem.server";
+import { reindex, setScopeWatchedInDoco, updateScopeInDoco } from "~/lib/redeem.server";
 import { listScopeDetails, readDocoMetadata } from "~/lib/scope-helpers.server";
 
 const HEATMAP_WEEKS = 26;
@@ -360,71 +354,6 @@ export async function action({
     } else if (intent === "save_icon") {
       const icon = String(form.get("icon") ?? "").trim();
       await updateScopeInDoco({ docoDir: dir, scopeId, icon: icon || null });
-    } else if (intent === "classify_rule_prose") {
-      const prose = String(form.get("prose") ?? "").trim();
-      if (!prose) return { error: "Type the rule in your own words." };
-      const raw = await readScopeRaw(id);
-      if (!raw) return { error: "Scope not found." };
-      const allScopeDetails = await listScopeDetails(dir);
-      try {
-        const classified = await classifyRuleProse({
-          prose,
-          scopeName: String(raw.name),
-          availableScopes: allScopeDetails.map((s) => ({ id: s.id, name: s.name })),
-        });
-        return { classified, originalProse: prose };
-      } catch (e) {
-        if (e instanceof LlmUnavailableError) {
-          return {
-            error: `Classifier unavailable — ${e.message} The host must reach OpenAI to author rules from prose.`,
-          };
-        }
-        return { error: (e as Error).message };
-      }
-    } else if (intent === "add_rules_classified") {
-      // Per decision_01KRPRDR1AD7S1RP6E69BQDB2G classified rules become
-      // first-class Rule entities (one per classified row) tagged with
-      // the scope. The classifier output shape is unchanged; the
-      // persistence layer creates entities instead of mutating arrays.
-      const payload = String(form.get("payload") ?? "");
-      if (!payload) return { error: "No classified payload to add." };
-      let parsed: ClassifiedRule[];
-      try {
-        parsed = JSON.parse(payload) as ClassifiedRule[];
-      } catch (e) {
-        return { error: `Invalid classified payload: ${(e as Error).message}` };
-      }
-      if (!Array.isArray(parsed) || parsed.length === 0) {
-        return { error: "No rules to add." };
-      }
-      let addedAuthoring = 0;
-      let addedGuidance = 0;
-      for (const c of parsed) {
-        if (c.bucket === "guidance") {
-          if (c.text.trim()) {
-            await createRuleInDoco({
-              docoId: meta.docoId as EntityId<"doco">,
-              kind: "guidance",
-              summary: c.text.trim(),
-              scopeId,
-              createdBy: null,
-            });
-            addedGuidance++;
-          }
-        } else {
-          await createRuleInDoco({
-            docoId: meta.docoId as EntityId<"doco">,
-            kind: "authoring",
-            summary: c.text.trim() || `Authoring rule (${c.rule.kind})`,
-            predicate: c.rule,
-            scopeId,
-            createdBy: null,
-          });
-          addedAuthoring++;
-        }
-      }
-      await reindex(dir);
-      return { ok: true, added_authoring: addedAuthoring, added_guidance: addedGuidance };
     } else if (intent === "abandon_rule" || intent === "activate_rule") {
       // Per decision_01KRPRDR1AD7S1RP6E69BQDB2G abandoning any rule
       // (authoring, guidance, or tagged) is the same operation: PATCH the
@@ -477,41 +406,6 @@ export function shouldRevalidate({
 
 export function meta({ params }: { params: { ownerSlug: string; docoSlug: string; id: string } }) {
   return [{ title: `${params.id} · ${params.ownerSlug}/${params.docoSlug} · Doco` }];
-}
-
-function describeAuthoringPredicate(
-  p: AuthoringPredicateRecord,
-  allScopes: { id: string; name: string }[],
-): string {
-  switch (p.kind) {
-    case "requires_edge":
-      return `Nodes must have an outgoing \`${p.edge_type}\` edge${p.target_node_type ? ` to a ${p.target_node_type}` : ""}.`;
-    case "forbids_edge":
-      return `Nodes must NOT have a \`${p.edge_type}\` edge${p.target_node_type ? ` to a ${p.target_node_type}` : ""}.`;
-    case "requires_field": {
-      const fields = asFieldList(p);
-      if (fields.length === 0) return "Nodes must declare a field.";
-      if (fields.length === 1) return `Nodes must declare the \`${fields[0]}\` field.`;
-      return `Nodes must declare these fields: ${fields.map((f) => `\`${f}\``).join(", ")}.`;
-    }
-    case "forbids_field": {
-      const fields = asFieldList(p);
-      if (fields.length === 0) return "Nodes must NOT declare a field.";
-      return `Nodes must NOT declare these fields: ${fields.map((f) => `\`${f}\``).join(", ")}.`;
-    }
-    case "mandatory_scope": {
-      const names = asScopeIdList(p).map((id) => allScopes.find((s) => s.id === id)?.name ?? id);
-      if (names.length === 0) return "Every node in this Doco must list a scope.";
-      if (names.length === 1) return `Every node in this Doco must list scope \`${names[0]}\`.`;
-      return `Every node in this Doco must list these scopes: ${names
-        .map((n) => `\`${n}\``)
-        .join(", ")}.`;
-    }
-    case "probabilistic":
-      return `LLM-judged: ${p.spec}`;
-    default:
-      return `(${p.kind})`;
-  }
 }
 
 function predicateShorthand(
@@ -703,18 +597,6 @@ export default function ScopePage({
             </Card>
 
             <RuleSectionCard
-              title="Authoring rules"
-              description={
-                "Predicates the engine evaluates whenever a node enters this scope. Deterministic kinds block writes structurally; probabilistic specs run an LLM judge and reject on a “no” verdict."
-              }
-              kind="authoring"
-              rules={rules.authoring}
-              allScopes={allScopes}
-              ownerSlug={ownerSlug}
-              docoSlug={docoSlug}
-            />
-
-            <RuleSectionCard
               title="Guidance rules"
               description={
                 "Prose contributors read while working in or with this scope. No automated check — directive but not enforced."
@@ -724,6 +606,20 @@ export default function ScopePage({
               allScopes={allScopes}
               ownerSlug={ownerSlug}
               docoSlug={docoSlug}
+              scopeId={scope.id}
+            />
+
+            <RuleSectionCard
+              title="Authoring rules"
+              description={
+                "Predicates the engine evaluates whenever a node enters this scope. Deterministic kinds block writes structurally; probabilistic specs are judged at capture time."
+              }
+              kind="authoring"
+              rules={rules.authoring}
+              allScopes={allScopes}
+              ownerSlug={ownerSlug}
+              docoSlug={docoSlug}
+              scopeId={scope.id}
             />
 
             {scope.name === "global" ? null : (
@@ -844,6 +740,7 @@ function RuleSectionCard({
   allScopes,
   ownerSlug,
   docoSlug,
+  scopeId,
 }: {
   title: string;
   description: string;
@@ -852,9 +749,9 @@ function RuleSectionCard({
   allScopes: { id: string; name: string }[];
   ownerSlug: string;
   docoSlug: string;
+  scopeId: string;
 }) {
   const [localRules, setLocalRules] = useState(rules);
-  const [isAdding, setIsAdding] = useState(false);
 
   useEffect(() => {
     setLocalRules(rules);
@@ -884,21 +781,16 @@ function RuleSectionCard({
             </CardTitle>
             <CardDescription>{description}</CardDescription>
           </div>
-          <button
-            type="button"
-            onClick={() => setIsAdding((open) => !open)}
+          <Link
+            to={`/${ownerSlug}/${docoSlug}/scopes/${scopeId}/rules/new?kind=${kind}`}
             className="inline-flex shrink-0 items-center gap-1 rounded-md border border-border px-2.5 py-1 text-xs font-semibold text-foreground hover:bg-card"
-            aria-expanded={isAdding}
           >
             <Plus className="h-3 w-3" aria-hidden="true" />
             Add rule
-          </button>
+          </Link>
         </div>
       </CardHeader>
       <CardContent className="space-y-3">
-        {isAdding ? (
-          <RuleProseEditor allScopes={allScopes} onSaved={() => setIsAdding(false)} />
-        ) : null}
         {active.length === 0 ? (
           <p className="text-xs italic text-muted-foreground">No active rules.</p>
         ) : (
@@ -1082,153 +974,6 @@ function WatchedSwitch({
         <span className="text-[11px] text-muted-foreground">Saving…</span>
       ) : null}
       {error ? <span className="text-[11px] text-destructive">{error}</span> : null}
-    </div>
-  );
-}
-
-/**
- * Prose rule editor — single textarea + classifier preview + accept.
- * Per decision_01KRPRDR1AD7S1RP6E69BQDB2G the server creates Rule
- * entities (one per classified row) instead of pushing onto embedded
- * arrays. The UI shape is unchanged from
- * decision_01KRPNZY7W6CCMYNKGND67BP0B.
- */
-function RuleProseEditor({
-  allScopes,
-  onSaved,
-}: {
-  allScopes: { id: string; name: string }[];
-  onSaved?: () => void;
-}) {
-  const fetcher = useFetcher<{
-    classified?: ClassifiedRule[];
-    originalProse?: string;
-    ok?: boolean;
-    added_authoring?: number;
-    added_guidance?: number;
-    error?: string;
-  }>();
-  const [prose, setProse] = useState("");
-  const [hidePreview, setHidePreview] = useState(false);
-
-  useEffect(() => {
-    if (fetcher.state === "idle" && fetcher.data?.ok === true) {
-      setProse("");
-      setHidePreview(true);
-      onSaved?.();
-    }
-  }, [fetcher.state, fetcher.data, onSaved]);
-
-  const isClassifying =
-    fetcher.state !== "idle" && fetcher.formData?.get("intent") === "classify_rule_prose";
-  const isSaving =
-    fetcher.state !== "idle" && fetcher.formData?.get("intent") === "add_rules_classified";
-  const classified = fetcher.data?.classified;
-  const classifyError =
-    fetcher.data?.error && fetcher.data?.classified === undefined ? fetcher.data.error : null;
-  const previewRules = !hidePreview && Array.isArray(classified) ? classified : [];
-  const inPreview = previewRules.length > 0;
-  const authoringCount = previewRules.filter((c) => c.bucket === "authoring").length;
-  const guidanceCount = previewRules.filter((c) => c.bucket === "guidance").length;
-
-  return (
-    <div className="rounded-md border border-dashed border-border bg-input/30 p-3 space-y-2">
-      {inPreview ? (
-        <fetcher.Form method="post" className="space-y-2">
-          <input type="hidden" name="intent" value="add_rules_classified" />
-          <input type="hidden" name="payload" value={JSON.stringify(previewRules)} />
-          <p className="text-[11px] text-muted-foreground">
-            The classifier produced{" "}
-            <strong>
-              {authoringCount} authoring rule{authoringCount === 1 ? "" : "s"}
-            </strong>{" "}
-            and{" "}
-            <strong>
-              {guidanceCount} guidance rule{guidanceCount === 1 ? "" : "s"}
-            </strong>
-            . Review and accept, or cancel to edit your prose.
-          </p>
-          <ul className="space-y-2">
-            {previewRules.map((c) => {
-              if (c.bucket === "guidance") {
-                return (
-                  <li
-                    key={JSON.stringify(c)}
-                    className="flex items-baseline gap-2 rounded-md border border-border bg-card p-2 text-xs"
-                  >
-                    <Badge>Guidance</Badge>
-                    <div className="flex-1 text-foreground whitespace-pre-wrap">{c.text}</div>
-                  </li>
-                );
-              }
-              const isProbabilistic = c.rule.kind === "probabilistic";
-              const asRecord = c.rule as unknown as AuthoringPredicateRecord;
-              return (
-                <li
-                  key={JSON.stringify(c)}
-                  className="flex items-baseline gap-2 rounded-md border border-border bg-card p-2 text-xs"
-                >
-                  <Badge>Authoring · {isProbabilistic ? "probabilistic" : "deterministic"}</Badge>
-                  <div className="flex-1 space-y-0.5">
-                    <div className="text-foreground">{c.text}</div>
-                    <div className="font-mono text-[10px] text-muted-foreground">
-                      {predicateShorthand(asRecord, allScopes)}
-                    </div>
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-          {fetcher.data?.error && fetcher.data?.classified !== undefined ? (
-            <p className="text-[11px] text-destructive">{fetcher.data.error}</p>
-          ) : null}
-          <div className="flex gap-2">
-            <button
-              type="submit"
-              disabled={isSaving}
-              className="rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              {isSaving
-                ? "Saving…"
-                : `Accept & add ${previewRules.length} rule${previewRules.length === 1 ? "" : "s"}`}
-            </button>
-            <button
-              type="button"
-              onClick={() => setHidePreview(true)}
-              className="rounded-md border border-border px-3 py-1.5 text-xs text-foreground hover:bg-card"
-            >
-              Cancel
-            </button>
-          </div>
-        </fetcher.Form>
-      ) : (
-        <fetcher.Form method="post" className="space-y-2" onSubmit={() => setHidePreview(false)}>
-          <input type="hidden" name="intent" value="classify_rule_prose" />
-          <label className="block text-xs">
-            <span className="mb-1 block text-[10px] uppercase tracking-wider text-muted-foreground">
-              Rule prose
-            </span>
-            <textarea
-              name="prose"
-              rows={3}
-              value={prose}
-              onChange={(e) => setProse(e.target.value)}
-              placeholder="e.g. Every Decision should have an Intent, and bugs should link to a Rule."
-              className="w-full rounded-md border border-border bg-input px-3 py-2 text-xs text-foreground outline-none focus:border-primary"
-            />
-          </label>
-          {classifyError ? <p className="text-[11px] text-destructive">{classifyError}</p> : null}
-          <div>
-            <button
-              type="submit"
-              disabled={isClassifying || prose.trim().length === 0}
-              className="rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              {isClassifying ? "Classifying…" : "Classify with LLM"}
-            </button>
-          </div>
-        </fetcher.Form>
-      )}
     </div>
   );
 }
