@@ -6,12 +6,21 @@
 // Status 308 preserves request method, so POST/PATCH at /by-id/<id>/api/...
 // retry cleanly at /<owner>/<slug>/api/... on the same call.
 //
-// Privacy gate: same 404 conflation as the per-Doco routes — an agent
-// can't probe by ID to discover private docos they don't own.
+// Failure modes are de-conflated: a missing id returns 404 with
+// "no Doco with this id exists" guidance, a real-but-private Doco
+// returns 403 with "ask the owner for access" guidance. Probing for
+// existence isn't a meaningful enumeration attack — ULIDs are 128-bit
+// (effectively unguessable), and telling an inaccessible-but-real
+// caller to `doco login --create` would fork a duplicate Doco when
+// the real one is right there.
 
 import { redirect } from "react-router";
 import { getDocoById } from "@doco/db";
 import { canAccessDoco } from "~/lib/doco-access.server";
+import {
+  hostFromRequest,
+  missingDocoResponse,
+} from "~/lib/missing-doco-guidance.server";
 import { getCurrentPrincipalAsync } from "~/lib/session";
 
 export async function loader({
@@ -21,15 +30,24 @@ export async function loader({
   request: Request;
   params: { docoId: string; "*": string | undefined };
 }) {
+  const host = hostFromRequest(request);
   const row = await getDocoById(params.docoId);
   if (!row) {
-    return new Response(`Doco "${params.docoId}" not found.`, { status: 404 });
+    return missingDocoResponse({
+      state: "not_found",
+      identifier: params.docoId,
+      host,
+    });
   }
   const me = await getCurrentPrincipalAsync(request);
   if (
     !await canAccessDoco({ ownerId: row.owner_id, visibility: row.visibility }, me?.id ?? null)
   ) {
-    return new Response(`Doco "${params.docoId}" not found.`, { status: 404 });
+    return missingDocoResponse({
+      state: "no_access",
+      identifier: params.docoId,
+      host,
+    });
   }
   const url = new URL(request.url);
   const prefix = `/by-id/${params.docoId}`;

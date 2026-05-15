@@ -130,14 +130,33 @@ elif [ -n "$PROMPT" ]; then
     HITS_FILE="${TMPDIR:-/tmp}/doco-last-hits-${HITS_KEY}.json"
     printf '%s' "$RESP" > "$HITS_FILE" 2>/dev/null || true
   else
-    REASON="search failed"
+    # For 403 (no_access) and 404 (not_found) the host returns rich
+    # recovery guidance in the response body (see
+    # packages/web/app/lib/missing-doco-guidance.server.ts). Prefer
+    # that body verbatim — it tells the user how to recover instead
+    # of just naming the failure. Fall back to a short reason string
+    # when the body is missing (host down, unauthorized token, etc.).
+    REASON=""
     case "$HTTP_STATUS" in
       000) REASON="doco.to unreachable" ;;
-      401|403) REASON="token cannot access this Doco; ask the project owner to authorize with doco login --host https://doco.to" ;;
-      404) REASON="Doco ID not found or inaccessible: ${DOCO_ID}" ;;
+      401) REASON="DOCO_TOKEN is missing or expired; ask the project owner to authorize with doco login --host https://doco.to" ;;
       *) REASON="search failed with HTTP ${HTTP_STATUS}" ;;
     esac
-    QUERY_BLOCK=$(printf '\n\n## Doco connection for THIS prompt — paste as your top-of-reply indicator\n\n[🔮 Doco] Not connected yet: %s\n\nDo not render any other Doco indicator, footer, or tally lines until the connection is fixed.\n' "$REASON")
+    GUIDANCE=""
+    if [ -n "$RESP" ] && { [ "$HTTP_STATUS" = "403" ] || [ "$HTTP_STATUS" = "404" ]; }; then
+      GUIDANCE="$RESP"
+    fi
+    if [ -n "$GUIDANCE" ]; then
+      # First line of the body is the title — use it for the indicator
+      # so the [🔮 Doco] Not connected yet: line stays single-logical-line.
+      # Show the rest below as the recovery section.
+      FIRST_LINE=$(printf '%s' "$GUIDANCE" | head -n 1)
+      REST=$(printf '%s' "$GUIDANCE" | tail -n +2)
+      QUERY_BLOCK=$(printf '\n\n## Doco connection for THIS prompt — paste as your top-of-reply indicator\n\n[🔮 Doco] Not connected yet: %s\n\nThen show the project owner this recovery guidance from the host (do not render any other Doco indicator, footer, or tally lines until the connection is fixed):\n\n%s\n' \
+        "$FIRST_LINE" "$REST")
+    else
+      QUERY_BLOCK=$(printf '\n\n## Doco connection for THIS prompt — paste as your top-of-reply indicator\n\n[🔮 Doco] Not connected yet: %s\n\nDo not render any other Doco indicator, footer, or tally lines until the connection is fixed.\n' "$REASON")
+    fi
   fi
 fi
 

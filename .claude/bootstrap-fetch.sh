@@ -97,6 +97,30 @@ fi
 
 WARNING_TEXT=$(printf '%s' "$RESP" | jq -r '.warning // empty' 2>/dev/null)
 RESP_DOCO_ID=$(printf '%s' "$RESP" | jq -r '.doco_id // empty' 2>/dev/null)
+HAS_GUIDANCE=$(printf '%s' "$RESP" | jq -r '.missing_doco_guidance // empty | if type == "object" then "1" else "" end' 2>/dev/null)
+
+# When the host says the DOCO_ID didn't resolve OR resolved-but-is-
+# inaccessible, the bootstrap response carries structured recovery
+# guidance under `missing_doco_guidance` plus a single-line summary
+# under `warning`. Render the actions list as the disconnected body so
+# the agent sees BOTH the "Not connected yet" indicator AND the
+# concrete next steps (create / ask for access / re-authorize) without
+# having to compose them from scratch.
+if [ -n "$HAS_GUIDANCE" ]; then
+  GUIDANCE_TEXT=$(printf '%s' "$RESP" | jq -r '
+    .missing_doco_guidance as $g |
+    $g.title + "\n\n" + $g.summary + "\n\n"
+    + (
+        ($g.actions | to_entries | map(
+          ((.key + 1) | tostring) + ". " + .value.label
+          + (if .value.command then "\n     $ " + .value.command else "" end)
+          + "\n     " + .value.explainer
+        )) | join("\n\n")
+      )
+  ' 2>/dev/null)
+  emit_disconnected "$GUIDANCE_TEXT"
+  exit 0
+fi
 if [ -n "$WARNING_TEXT" ]; then
   emit_disconnected "$WARNING_TEXT"
   exit 0

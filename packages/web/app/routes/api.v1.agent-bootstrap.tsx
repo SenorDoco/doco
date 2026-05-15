@@ -18,6 +18,12 @@ import { resolveDocoSlugAlias } from "~/lib/doco-aliases.server";
 import { etaggedJson } from "~/lib/etag.server";
 import { loadHostConfig } from "~/lib/host";
 import {
+  buildMissingDocoGuidance,
+  formatMissingDocoLine,
+  hostFromRequest,
+  type MissingDocoGuidance,
+} from "~/lib/missing-doco-guidance.server";
+import {
   listScopeManifest,
   readDocoMetadata,
   type ScopeManifestEntry,
@@ -111,13 +117,26 @@ export async function loader({ request }: { request: Request }) {
   const url = new URL(request.url);
   const slug = (url.searchParams.get("slug") ?? "").trim();
   const id = (url.searchParams.get("id") ?? "").trim();
+  const host = hostFromRequest(request);
   let codeMap: unknown | null = null;
   let constitution: ConstitutionSnapshot | null = null;
   let scopes: ScopeManifestEntry[] = [];
   let docoSlugPath: string | null = null;
   let docoIdPath: string | null = null;
   let warning: string | null = null;
+  let missingDocoGuidance: MissingDocoGuidance | null = null;
   let onboardingOverlay: OnboardingOverlay | null = null;
+
+  // When the caller's id/slug doesn't resolve (or resolves to a Doco
+  // they can't access) we set `missingDocoGuidance` to the structured
+  // recovery actions and mirror its single-line summary into `warning`
+  // for older clients that only read the warning string. Three states
+  // collapse into two recovery shapes: not_found (typo / never
+  // created) and no_access (exists, wrong credentials).
+  function flagMissing(state: "not_found" | "no_access", identifier: string) {
+    missingDocoGuidance = buildMissingDocoGuidance({ state, identifier, host });
+    warning = formatMissingDocoLine(missingDocoGuidance);
+  }
 
   // Accept `?id=doco_<ulid>` for per-Doco context. A legacy `?slug=`
   // parameter still resolves old callers, but ID is the stable path.
@@ -127,7 +146,7 @@ export async function loader({ request }: { request: Request }) {
   if (id) {
     const row = await getDocoById(id);
     if (!row) {
-      warning = `Doco id "${id}" doesn't resolve to a Doco on this host.`;
+      flagMissing("not_found", id);
     } else {
       effectiveOwner = row.owner_slug;
       effectiveDoco = row.doco_slug;
@@ -148,12 +167,12 @@ export async function loader({ request }: { request: Request }) {
     // `redirected: false` and this is a no-op.
     const resolved = await resolveDocoSlugAlias(effectiveOwner, effectiveDoco);
     if (!resolved) {
-      warning = `Doco "${effectiveOwner}/${effectiveDoco}" doesn't resolve on this host. Check the DOCO_ID line at the top of AGENTS.md.`;
+      flagMissing("not_found", `${effectiveOwner}/${effectiveDoco}`);
     } else {
       const dir = docoPath(resolved.ownerSlug, resolved.docoSlug);
       const meta = await readDocoMetadata(dir);
       if (!meta) {
-        warning = `Doco "${effectiveOwner}/${effectiveDoco}" not found.`;
+        flagMissing("not_found", `${effectiveOwner}/${effectiveDoco}`);
       } else {
         // Apply the same privacy gate the per-Doco data routes use,
         // so bootstrap can't quietly report scopes/code_map for a
@@ -162,7 +181,7 @@ export async function loader({ request }: { request: Request }) {
         // signal — bootstrap said yes while data routes said no.
         const me = await getCurrentPrincipalAsync(request);
         if (!await canAccessDoco(meta, me?.id ?? null)) {
-          warning = `Doco "${effectiveOwner}/${effectiveDoco}" exists but isn't accessible with the supplied credentials. The bearer token resolves to a principal that isn't the Doco's owner or a member of the owning org.`;
+          flagMissing("no_access", `${effectiveOwner}/${effectiveDoco}`);
         } else {
           // code_map.yaml is gone (alpha forbids back-compat); keep
           // the field in the response for client compatibility.
@@ -202,7 +221,8 @@ export async function loader({ request }: { request: Request }) {
     scopes,
     onboarding_overlay: onboardingOverlay,
     warning,
+    missing_doco_guidance: missingDocoGuidance,
     note:
-      "Slim bootstrap. For deep reference fetch /api/v1/agent-reference. For per-Doco lint/status, call /by-id/<doco_id>/status.json. Pass ?id=<doco_id> to receive `code_map` + `constitution` (Doco-specific load-bearing rules enforced at capture time) + `scopes` (manifest with mandatory vs optional flag). When `onboarding_overlay` is non-null the Doco has only the Constitution scope — run STEP 1 (scope_setup) and STEP 2 (scope_population) before treating onboarding as done; the overlay disappears the moment the project owner accepts a first project-specific scope.",
+      "Slim bootstrap. For deep reference fetch /api/v1/agent-reference. For per-Doco lint/status, call /by-id/<doco_id>/status.json. Pass ?id=<doco_id> to receive `code_map` + `constitution` (Doco-specific load-bearing rules enforced at capture time) + `scopes` (manifest with mandatory vs optional flag). When `onboarding_overlay` is non-null the Doco has only the Constitution scope — run STEP 1 (scope_setup) and STEP 2 (scope_population) before treating onboarding as done; the overlay disappears the moment the project owner accepts a first project-specific scope. When `missing_doco_guidance` is non-null the caller's id/slug didn't resolve OR resolved to a Doco they can't access — read the structured `actions` to pick the right recovery (create vs ask-for-access). `warning` carries a single-line version of the same.",
   });
 }
