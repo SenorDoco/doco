@@ -94,11 +94,12 @@ async function persistEntity(args: {
  */
 function scheduleBackgroundIndex(
   docoDir: string,
+  docoId: string,
   attachOpts?: Parameters<typeof attachImplicitEdges>[0],
 ): void {
   void (async () => {
     try {
-      await reindex(docoDir);
+      await reindex(docoDir, docoId);
     } catch (err) {
       console.error(`background reindex failed for ${docoDir}:`, err);
     }
@@ -761,14 +762,15 @@ async function attachImplicitEdges(opts: {
       ...prior,
       ...proposed.map((p) => ({ to_id: p.to_id, edge_type: p.edge_type, reason: p.reason })),
     ];
+    const docoId = String(fm.doco_id ?? "");
     await persistEntity({
       nodeType: opts.entityType,
       id: opts.entityId,
-      docoId: String(fm.doco_id ?? ""),
+      docoId,
       fm,
       body: existing.body,
     });
-    await reindex(opts.docoDir);
+    await reindex(opts.docoDir, docoId || undefined);
     return proposed.length;
   } catch {
     return 0;
@@ -861,7 +863,7 @@ export async function captureDecision(
     entity_id: id,
     summary,
   });
-  scheduleBackgroundIndex(docoDir, {
+  scheduleBackgroundIndex(docoDir, docoId, {
     docoDir,
     ownerSlug,
     docoSlug,
@@ -1092,7 +1094,7 @@ export async function updateDecision(
     afterFm: fm,
     patchKeys: Object.keys(patch),
   });
-  scheduleBackgroundIndex(docoDir);
+  scheduleBackgroundIndex(docoDir, docoId);
   const summary = String(fm.summary ?? decisionId);
   const duration_ms = Math.round(performance.now() - startedAt);
   const finalScopeIds = Array.isArray(fm.scopes) ? (fm.scopes as string[]) : [];
@@ -1323,7 +1325,7 @@ export async function updateEntity(opts: {
     afterFm: fm,
     patchKeys: Object.keys(patch),
   });
-  scheduleBackgroundIndex(docoDir);
+  scheduleBackgroundIndex(docoDir, docoId);
 
   const summary = String(fm.summary ?? fm.name ?? id);
   const duration_ms = Math.round(performance.now() - startedAt);
@@ -1433,7 +1435,7 @@ export async function captureIntent(
     entity_id: id,
     summary,
   });
-  scheduleBackgroundIndex(docoDir, {
+  scheduleBackgroundIndex(docoDir, docoId, {
     docoDir,
     ownerSlug,
     docoSlug,
@@ -1571,7 +1573,7 @@ export async function captureEval(
     entity_id: id,
     summary,
   });
-  scheduleBackgroundIndex(docoDir, {
+  scheduleBackgroundIndex(docoDir, docoId, {
     docoDir,
     ownerSlug,
     docoSlug,
@@ -1721,7 +1723,7 @@ export async function captureAction(
     entity_id: id,
     summary,
   });
-  scheduleBackgroundIndex(docoDir, {
+  scheduleBackgroundIndex(docoDir, docoId, {
     docoDir,
     ownerSlug,
     docoSlug,
@@ -1893,7 +1895,7 @@ export async function captureRule(
     entity_id: id,
     summary,
   });
-  scheduleBackgroundIndex(docoDir, {
+  scheduleBackgroundIndex(docoDir, docoId, {
     docoDir,
     ownerSlug,
     docoSlug,
@@ -2033,7 +2035,7 @@ export async function captureReasoning(
     entity_id: id,
     summary,
   });
-  scheduleBackgroundIndex(docoDir, {
+  scheduleBackgroundIndex(docoDir, docoId, {
     docoDir,
     ownerSlug,
     docoSlug,
@@ -2154,7 +2156,7 @@ export async function captureReference(
     entity_id: id,
     summary,
   });
-  scheduleBackgroundIndex(docoDir, {
+  scheduleBackgroundIndex(docoDir, docoId, {
     docoDir,
     ownerSlug,
     docoSlug,
