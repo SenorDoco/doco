@@ -6,10 +6,12 @@ import { resolve } from "node:path";
 import { defineCommand } from "citty";
 import { c, cross } from "../output.js";
 
-type Env = { host: string; token: string; slug: string };
+const DOCO_BASE_URL = "https://doco.to";
+
+type Env = { token: string; docoId: string };
 
 function loadDotenv(): void {
-  for (const k of ["DOCO_HOST", "DOCO_TOKEN", "DOCO_SLUG"] as const) {
+  for (const k of ["DOCO_TOKEN", "DOCO_ID"] as const) {
     if (process.env[k]) continue;
     try {
       const text = readFileSync(resolve(process.cwd(), ".env"), "utf8");
@@ -32,17 +34,16 @@ function loadDotenv(): void {
 
 function requireEnv(): Env {
   loadDotenv();
-  const host = (process.env.DOCO_HOST ?? "").replace(/\/+$/, "");
   const token = process.env.DOCO_TOKEN ?? "";
-  const slug = process.env.DOCO_SLUG ?? "";
-  const missing = Object.entries({ DOCO_HOST: host, DOCO_TOKEN: token, DOCO_SLUG: slug })
+  const docoId = process.env.DOCO_ID ?? "";
+  const missing = Object.entries({ DOCO_TOKEN: token, DOCO_ID: docoId })
     .filter(([, v]) => !v)
     .map(([k]) => k);
   if (missing.length) {
     console.error(cross(`Missing env: ${missing.join(", ")}. Set in shell or in ./.env.`));
     process.exit(2);
   }
-  return { host, token, slug };
+  return { token, docoId };
 }
 
 interface AuditEvent {
@@ -59,9 +60,9 @@ interface AuditEvent {
 }
 
 async function fetchEvents(query: Record<string, string>): Promise<AuditEvent[]> {
-  const { host, token, slug } = requireEnv();
+  const { token, docoId } = requireEnv();
   const qs = new URLSearchParams(query).toString();
-  const url = `${host}/${slug}/api/audit.json${qs ? `?${qs}` : ""}`;
+  const url = `${DOCO_BASE_URL}/by-id/${encodeURIComponent(docoId)}/api/audit.json${qs ? `?${qs}` : ""}`;
   let resp: Response;
   try {
     resp = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });

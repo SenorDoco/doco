@@ -56,7 +56,9 @@ export interface CliAuthorization {
   issued_token: string | null;
   /** The Doco slug the agent created during approval (if the form requested it). */
   created_doco_slug: string | null;
-  /** The owner_slug under which Docos created in this session live. */
+  /** The immutable Doco id created during approval (if the form requested it). */
+  created_doco_id: string | null;
+  /** The owner_slug under which docos created in this session live. */
   approved_owner_slug: string | null;
   created_at: string;
   approved_at: string | null;
@@ -236,6 +238,7 @@ export class TokenStore {
       issued_principal_id: null,
       issued_token: null,
       created_doco_slug: null,
+      created_doco_id: null,
       approved_owner_slug: null,
       created_at: now.toISOString(),
       approved_at: null,
@@ -290,6 +293,7 @@ export class TokenStore {
     sessionTokenValue: string,
     approvedOwnerSlug: string,
     createdDocoSlug: string | null,
+    createdDocoId: string | null,
   ): Promise<CliAuthorization> {
     const file = await this.load();
     const row = file.tokens.find(
@@ -305,6 +309,7 @@ export class TokenStore {
     row.issued_token = sessionTokenValue;
     row.approved_owner_slug = approvedOwnerSlug;
     row.created_doco_slug = createdDocoSlug;
+    row.created_doco_id = createdDocoId;
     row.approved_at = new Date().toISOString();
     await this.save(file);
     return row;
@@ -331,6 +336,7 @@ export class TokenStore {
     principal_id: EntityId<"principal">;
     owner_slug: string;
     created_doco_slug: string | null;
+    created_doco_id: string | null;
   } | null> {
     const file = await this.load();
     const row = file.tokens.find(
@@ -346,6 +352,7 @@ export class TokenStore {
       principal_id: row.issued_principal_id,
       owner_slug: row.approved_owner_slug,
       created_doco_slug: row.created_doco_slug,
+      created_doco_id: row.created_doco_id ?? null,
     };
     row.status = "exchanged";
     row.issued_token = null; // wipe the secret after handoff

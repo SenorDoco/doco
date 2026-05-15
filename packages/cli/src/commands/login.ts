@@ -9,11 +9,11 @@ import { c, checkmark, cross, header, rule } from "../output.js";
  * `doco login` — Vercel-style browser-authorize flow
  * (decision_01KRKZM14WNA1685GN0F12WCKM).
  *
- * Posts to $DOCO_HOST/api/v1/cli/device-init for a state nonce + short
+ * Posts to https://doco.to/api/v1/cli/device-init for a state nonce + short
  * code + authorize URL, opens the URL in the project owner's default
  * browser, then polls /api/v1/cli/device-exchange until the project
- * owner clicks Authorize. On approval, writes DOCO_HOST + DOCO_TOKEN
- * (and DOCO_SLUG if --create was used) to ./.env so the bootstrap hooks
+ * owner clicks Authorize. On approval, writes DOCO_TOKEN
+ * (and DOCO_ID if --create was used) to ./.env so the bootstrap hooks
  * pick up the new credentials on the next session.
  *
  * Replaces the host-bootstrap detour + /claim/<token> handoff: the Doco
@@ -24,13 +24,13 @@ export const loginCmd = defineCommand({
   meta: {
     name: "login",
     description:
-      "Authorize this CLI session in the browser (Vercel-style). Writes DOCO_HOST + DOCO_TOKEN to ./.env on success.",
+      "Authorize this CLI session in the browser (Vercel-style). Writes DOCO_TOKEN and, when available, DOCO_ID to ./.env on success.",
   },
   args: {
     host: {
       type: "string",
       description:
-        "Doco host URL (e.g. http://localhost:5173). Defaults to DOCO_HOST in ./.env or the environment.",
+        "Doco host URL. Defaults to https://doco.to.",
     },
     create: {
       type: "string",
@@ -55,18 +55,7 @@ export const loginCmd = defineCommand({
 
     const docoHost =
       (typeof args.host === "string" ? args.host.trim() : "") ||
-      env.DOCO_HOST ||
-      process.env.DOCO_HOST ||
-      "";
-    if (!docoHost) {
-      console.error(
-        cross(
-          "DOCO_HOST not set. Pass --host=http://your-doco-host:5173 or set DOCO_HOST in ./.env.",
-        ),
-      );
-      process.exitCode = 2;
-      return;
-    }
+      "https://doco.to";
     const normalizedHost = docoHost.replace(/\/$/, "");
 
     const createSlug =
@@ -120,7 +109,7 @@ export const loginCmd = defineCommand({
       init = (await res.json()) as typeof init;
     } catch (e) {
       console.error(cross(`device-init request failed: ${(e as Error).message}`));
-      console.error(c.dim("Check that DOCO_HOST is reachable from this machine."));
+      console.error(c.dim(`Check that ${normalizedHost} is reachable from this machine.`));
       process.exitCode = 1;
       return;
     }
@@ -171,21 +160,21 @@ export const loginCmd = defineCommand({
           principal_id?: string;
           owner_slug?: string;
           doco_slug?: string | null;
+          doco_id?: string | null;
         };
         if (body.status === "approved" && body.token && body.owner_slug) {
           console.log();
           console.log(checkmark(`Authorized by ${c.warn(body.owner_slug)}.`));
           const updates: Record<string, string> = {
-            DOCO_HOST: normalizedHost,
             DOCO_TOKEN: body.token,
           };
-          if (body.doco_slug) {
-            updates.DOCO_SLUG = `${body.owner_slug}/${body.doco_slug}`;
-          } else if (!env.DOCO_SLUG) {
+          if (body.doco_id) {
+            updates.DOCO_ID = body.doco_id;
+          } else if (!env.DOCO_ID) {
             // Leave a placeholder if the user didn't ask for create.
           }
           writeEnvFile(envPath, env, updates);
-          console.log(checkmark(`Wrote DOCO_HOST + DOCO_TOKEN${body.doco_slug ? " + DOCO_SLUG" : ""} to ${c.dim("./.env")}.`));
+          console.log(checkmark(`Wrote DOCO_TOKEN${body.doco_id ? " + DOCO_ID" : ""} to ${c.dim("./.env")}.`));
 
           // Install the agent-bootstrap files (AGENTS.md + CLAUDE.md shim +
           // .claude/settings.json + the four hook scripts) into the same

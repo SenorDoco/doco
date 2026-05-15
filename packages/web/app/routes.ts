@@ -18,13 +18,13 @@ import { type RouteConfig, index, route } from "@react-router/dev/routes";
  * Hosted-multi-tenant route table:
  *
  *   /                              host home (anonymous landing; redirects signed-in to /dashboard)
- *   /dashboard                     signed-in host dashboard (Docos / users / orgs)
+ *   /dashboard                     signed-in host dashboard (docos / users / orgs)
  *   /sign-in, /sign-out, /sign-up  auth (cookie locally; OAuth in prod per ADR-066, ADR-094)
  *   /onboarding/*                  first-run wizard (ADR-073). Agent variants retired by decision_01KRKZM14WNA1685GN0F12WCKM — use /cli/authorize.
  *   /cli/authorize                 Vercel-style browser-authorize handoff for `doco login` (decision_01KRKZM14WNA1685GN0F12WCKM)
  *   /agents, /agents/new           agent self-service (ADR-071)
  *   /new-doco, /new-org            self-service create flows (ADR-067)
- *   /:owner                        owner profile + Docos
+ *   /:owner                        owner profile + docos
  *   /:owner/:doco                  per-Doco recent + search input
  *   /:owner/:doco/:type            per-Doco entity list (short form; ADR-120)
  *   /:owner/:doco/:type/:id        per-Doco entity detail (id is the ULID; scope also resolves by name)
@@ -92,6 +92,16 @@ export default [
   // and ownership transfers; the slug is not. Agents that record the
   // ID once can resolve to the current canonical slug at request time.
   route("api/v1/docos/:docoId.json", "routes/api.v1.docos.$docoId[.]json.tsx"),
+  route("by-id/:docoId/status.json", "routes/by-id.$docoId.status[.]json.tsx"),
+  route("by-id/:docoId/settings", "routes/by-id.$docoId.settings.tsx"),
+  route("by-id/:docoId/api/:type.json", "routes/by-id.$docoId.api.$type[.]json.tsx"),
+  route("by-id/:docoId/api/:type/:id.json", "routes/by-id.$docoId.api.$type.$id[.]json.tsx"),
+  route("by-id/:docoId/api/:type.txt", "routes/by-id.$docoId.api.$type[.]txt.tsx"),
+  route("by-id/:docoId/search.json", "routes/by-id.$docoId.search[.]json.tsx"),
+  route("by-id/:docoId/scopes/new", "routes/by-id.$docoId.scopes.new.tsx"),
+  route("by-id/:docoId/scopes/:id/edit", "routes/by-id.$docoId.scopes.$id.edit.tsx"),
+  route("by-id/:docoId/:type/:id", "routes/by-id.$docoId.$type.$id.tsx"),
+  route("by-id/:docoId/:type", "routes/by-id.$docoId.$type.tsx"),
   route("by-id/:docoId/*", "routes/by-id.$docoId.$.tsx"),
   // Owner + per-Doco
   route(":ownerSlug", "routes/$ownerSlug._index.tsx"),

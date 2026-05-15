@@ -7,7 +7,7 @@ import { rootDir } from "~/lib/db.server";
  * /api/v1/cli/device-init. While the project owner hasn't acted yet,
  * status="pending" comes back. Once they click Authorize in the
  * browser, the next poll consumes the row and returns the session
- * token + agent principal id (and the Doco slug, if the project owner
+ * token + agent principal id (and the Doco id, if the project owner
  * created one as part of approving). A second exchange for the same
  * nonce always returns status="already_consumed" — single-shot.
  *
@@ -16,7 +16,7 @@ import { rootDir } from "~/lib/db.server";
  *
  * Output (application/json):
  *   pending   → { status: "pending" }
- *   approved  → { status: "approved", token, principal_id, owner_slug, doco_slug? }
+ *   approved  → { status: "approved", token, principal_id, owner_slug, doco_id? }
  *   denied    → { status: "denied" }
  *   expired   → { status: "expired" }
  *   not_found → { status: "not_found" } (404)
@@ -68,6 +68,7 @@ export async function action({ request }: { request: Request }) {
     principal_id: consumed.principal_id,
     owner_slug: consumed.owner_slug,
     doco_slug: consumed.created_doco_slug,
+    doco_id: consumed.created_doco_id,
   });
 }
 

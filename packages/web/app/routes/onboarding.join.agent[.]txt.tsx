@@ -1,7 +1,7 @@
 // Plain-prose docs for agents who land on /onboarding/join/agent (per the
 // agent-route policy enforced by check-agent-route-policy.mjs).
 //
-// Agents can't self-add to existing Docos. Tell them so, in agent-friendly
+// Agents can't self-add to existing docos. Tell them so, in agent-friendly
 // prose, with a pointer to the owner-side instructions.
 
 export function loader() {
@@ -21,7 +21,7 @@ export function loader() {
     "",
     "If the owner wants to CREATE a brand-new Doco rather than join an existing",
     "one, see /onboarding/create/agent.txt for the full procedure. Short form:",
-    "run `doco login --host <DOCO_HOST> --create <slug>` from the repo root and",
+    "run `doco login --host https://doco.to --create <slug>` from the repo root and",
     "the owner approves the session in a browser tab.",
   ].join("\n");
   return new Response(body, {

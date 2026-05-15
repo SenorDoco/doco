@@ -1,13 +1,13 @@
-// GET /api/v1/agent-bootstrap[?slug=<owner>/<doco>] — slim agent bootstrap.
+// GET /api/v1/agent-bootstrap[?id=<doco_id>] — slim agent bootstrap.
 //
 // Returns the slim daily-use `canonical_instructions` (~1,200 tokens),
 // plus a per-Doco `code_map` and `constitution` (Doco-specific
-// load-bearing rules) when `?slug=` is provided so the agent jumps
+// load-bearing rules) when `?id=` is provided so the agent jumps
 // straight to the right files and knows which rules will block a
 // capture before drafting.
 //
 // For the long-form reference, fetch `/api/v1/agent-reference`. For
-// per-Doco context (scopes, lint, freshness), `/<owner>/<doco>/status.json`.
+// per-Doco context (scopes, lint, freshness), `/by-id/<doco_id>/status.json`.
 
 import { CANONICAL_INSTRUCTIONS } from "~/lib/instructions.server";
 import type { ScopeRule } from "@doco/shared";
@@ -38,7 +38,7 @@ export interface ConstitutionSnapshot {
 
 /**
  * Read the Constitution scope from Postgres (`scopes` table). Returns
- * null when no Constitution scope exists (fresh Docos pre-seed).
+ * null when no Constitution scope exists (fresh docos pre-seed).
  * Filesystem walk of `<doco>/scopes/*.yaml` is gone
  * (rule_01KRKQDHWNWJAF4YKTMCB2A0D9 — alpha forbids back-compat).
  */
@@ -119,9 +119,8 @@ export async function loader({ request }: { request: Request }) {
   let warning: string | null = null;
   let onboardingOverlay: OnboardingOverlay | null = null;
 
-  // Accept either `?slug=<owner>/<doco>` or `?id=doco_<ulid>`. The ID
-  // is immortal across renames; agents that want a stable identifier
-  // pin to it instead of the slug. If both are supplied, ID wins.
+  // Accept `?id=doco_<ulid>` for per-Doco context. A legacy `?slug=`
+  // parameter still resolves old callers, but ID is the stable path.
   let effectiveOwner: string | null = null;
   let effectiveDoco: string | null = null;
   let effectiveDocoId: string | null = null;
@@ -149,7 +148,7 @@ export async function loader({ request }: { request: Request }) {
     // `redirected: false` and this is a no-op.
     const resolved = await resolveDocoSlugAlias(effectiveOwner, effectiveDoco);
     if (!resolved) {
-      warning = `Slug "${effectiveOwner}/${effectiveDoco}" doesn't resolve to a Doco on this host. Check DOCO_SLUG in .env.`;
+      warning = `Doco "${effectiveOwner}/${effectiveDoco}" doesn't resolve on this host. Check DOCO_ID in .env.`;
     } else {
       const dir = docoPath(resolved.ownerSlug, resolved.docoSlug);
       const meta = await readDocoMetadata(dir);
@@ -173,7 +172,7 @@ export async function loader({ request }: { request: Request }) {
           docoSlugPath = `${resolved.ownerSlug}/${resolved.docoSlug}`;
           docoIdPath = effectiveDocoId ?? meta.docoId;
           if (resolved.redirected) {
-            warning = `Slug "${effectiveOwner}/${effectiveDoco}" is an alias for "${docoSlugPath}". Update DOCO_SLUG in .env to silence this notice.`;
+            warning = `Slug "${effectiveOwner}/${effectiveDoco}" is an alias for "${docoSlugPath}". Use DOCO_ID in .env to avoid slug drift.`;
           }
           if (isOnboardingState(scopes)) {
             const reqUrl = new URL(request.url);
@@ -204,6 +203,6 @@ export async function loader({ request }: { request: Request }) {
     onboarding_overlay: onboardingOverlay,
     warning,
     note:
-      "Slim bootstrap. For deep reference fetch /api/v1/agent-reference. For per-Doco lint/status, call $DOCO_HOST/<owner>/<doco>/status.json. Pass ?slug=<owner>/<doco> to receive `code_map` + `constitution` (Doco-specific load-bearing rules enforced at capture time) + `scopes` (manifest with mandatory vs optional flag). When `onboarding_overlay` is non-null the Doco has only the Constitution scope — run STEP 1 (scope_setup) and STEP 2 (scope_population) before treating onboarding as done; the overlay disappears the moment the project owner accepts a first project-specific scope.",
+      "Slim bootstrap. For deep reference fetch /api/v1/agent-reference. For per-Doco lint/status, call /by-id/<doco_id>/status.json. Pass ?id=<doco_id> to receive `code_map` + `constitution` (Doco-specific load-bearing rules enforced at capture time) + `scopes` (manifest with mandatory vs optional flag). When `onboarding_overlay` is non-null the Doco has only the Constitution scope — run STEP 1 (scope_setup) and STEP 2 (scope_population) before treating onboarding as done; the overlay disappears the moment the project owner accepts a first project-specific scope.",
   });
 }

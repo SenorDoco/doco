@@ -23,6 +23,6 @@ export async function loader() {
       mode: "host",
     },
     note:
-      "Long-form reference. The slim daily-use bootstrap is at $DOCO_HOST/api/v1/agent-bootstrap; fetch THIS URL only when you hit an edge case or need deeper context.",
+      "Long-form reference. The slim daily-use bootstrap is at https://doco.to/api/v1/agent-bootstrap?id=<doco_id>; fetch THIS URL only when you hit an edge case or need deeper context.",
   });
 }

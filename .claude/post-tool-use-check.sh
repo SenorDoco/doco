@@ -39,15 +39,15 @@ esac
 FILE_PATH=$(printf '%s' "$INPUT" | jq -r '.tool_input.file_path // ""' 2>/dev/null || true)
 [ -z "$FILE_PATH" ] && exit 0
 
-# 2. Load .env so we have $PWD-ish context and DOCO_HOST for the nudge URL.
-if [ -z "${DOCO_HOST:-}" ] && [ -f "$PWD/.env" ]; then
+# 2. Load .env so we have $PWD-ish context and DOCO_ID for the nudge URL.
+if [ -f "$PWD/.env" ]; then
   set -a
   # shellcheck disable=SC1091
   source "$PWD/.env"
   set +a
 fi
-DOCO_HOST="${DOCO_HOST:-}"
-DOCO_SLUG="${DOCO_SLUG:-}"
+DOCO_BASE_URL="https://doco.to"
+DOCO_ID="${DOCO_ID:-}"
 
 # 3. Locate the pre-fetched hits file written by user-prompt-fetch.sh.
 HITS_KEY=$(printf '%s' "$PWD" | shasum 2>/dev/null | awk '{print $1}' || printf 'default')
@@ -116,9 +116,9 @@ MATCH_COUNT=$(printf '%s' "$FINAL_MATCHES" | jq 'length' 2>/dev/null || echo 0)
 [ "$MATCH_COUNT" = "0" ] && exit 0
 
 # 6. Build the nudge text. List up to 3 matches with URLs.
-NUDGE_BODY=$(printf '%s' "$FINAL_MATCHES" | jq -r --arg host "$DOCO_HOST" --arg slug "$DOCO_SLUG" --arg fp "$RELPATH" '
+NUDGE_BODY=$(printf '%s' "$FINAL_MATCHES" | jq -r --arg host "$DOCO_BASE_URL" --arg doco_id "$DOCO_ID" --arg fp "$RELPATH" '
   .[0:3] | map(
-    "- [" + (.slug // .id) + "](" + ($host) + "/" + ($slug) + "/decision/" + .id + ") (vector_score " + ((.vector_score // 0) | tostring) + "): " +
+    "- [" + (.slug // .id) + "](" + ($host) + "/by-id/" + ($doco_id) + "/decision/" + .id + ") (vector_score " + ((.vector_score // 0) | tostring) + "): " +
       (if (.summary | length) > 200 then (.summary[:197] + "...") else .summary end)
   ) | join("\n")
 ' 2>/dev/null)

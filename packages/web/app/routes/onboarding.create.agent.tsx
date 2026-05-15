@@ -69,7 +69,7 @@ export default function CreateAgent({
               <li>The CLI opens this host's <code>/cli/authorize</code> in the project owner's default browser.</li>
               <li>They sign in (if they aren't already) and review a one-screen identity card: CLI version, hostname, IP, timestamp, short code.</li>
               <li>They click <strong>Authorize</strong>. The server creates an agent Principal owned by them, mints a session token, and creates the Doco at <code>{loaderData.baseUrl}/&lt;their-username&gt;/&lt;slug&gt;</code>.</li>
-              <li>The CLI captures the token via polling and writes <code>DOCO_HOST</code> / <code>DOCO_TOKEN</code> / <code>DOCO_SLUG</code> to <code>./.env</code>.</li>
+              <li>The CLI captures the token via polling and writes <code>DOCO_TOKEN</code> / <code>DOCO_ID</code> to <code>./.env</code>.</li>
               <li>Restart your agent session to pick up the new credentials. The bootstrap hooks in <code>AGENTS.md</code> handle everything from there.</li>
             </ol>
 

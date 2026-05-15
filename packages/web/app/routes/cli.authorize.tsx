@@ -158,7 +158,7 @@ function clientIpFrom(request: Request): string {
 
 type ActionResult =
   | { error: string }
-  | { ok: true; approved_owner: string; created_doco_slug: string | null };
+  | { ok: true; approved_owner: string; created_doco_slug: string | null; created_doco_id: string | null };
 
 export async function action({ request }: { request: Request }): Promise<ActionResult> {
   const principal = await getCurrentPrincipal(request);
@@ -207,6 +207,7 @@ export async function action({ request }: { request: Request }): Promise<ActionR
   // Optionally create a Doco under the authorizing user, in the same step.
   const docoSlugInput = String(form.get("doco_slug") ?? "").trim().toLowerCase();
   let createdDocoSlug: string | null = null;
+  let createdDocoId: string | null = null;
   if (docoSlugInput) {
     const slugError = validateDocoSlug(docoSlugInput);
     if (slugError) return { error: slugError };
@@ -232,6 +233,7 @@ export async function action({ request }: { request: Request }): Promise<ActionR
       await mirrorDocoToPostgres(created.path, created.docoId);
       await reindex(created.path);
       createdDocoSlug = created.docoSlug;
+      createdDocoId = created.docoId;
     } catch (e) {
       return { error: `Failed to create Doco: ${(e as Error).message}` };
     }
@@ -244,9 +246,10 @@ export async function action({ request }: { request: Request }): Promise<ActionR
     session.token,
     principal.username,
     createdDocoSlug,
+    createdDocoId,
   );
 
-  return { ok: true, approved_owner: principal.username, created_doco_slug: createdDocoSlug };
+  return { ok: true, approved_owner: principal.username, created_doco_slug: createdDocoSlug, created_doco_id: createdDocoId };
 }
 
 export function meta() {

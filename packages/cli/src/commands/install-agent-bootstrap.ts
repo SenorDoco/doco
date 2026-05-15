@@ -16,7 +16,7 @@ import { c, checkmark, cross, header, rule } from "../output.js";
  * repo so any AI agent (via the cross-agent `AGENTS.md` convention, or
  * via Claude Code's auto-loaded CLAUDE.md + SessionStart +
  * UserPromptSubmit hooks) is forced to fetch
- * `$DOCO_HOST/api/v1/agent-bootstrap` before responding.
+ * `https://doco.to/api/v1/agent-bootstrap?id=$DOCO_ID` before responding.
  *
  * Files installed at the repo root (the cwd, or --root):
  *
@@ -37,7 +37,7 @@ import { c, checkmark, cross, header, rule } from "../output.js";
  *
  * Non-Claude agents read AGENTS.md directly (the convention any modern
  * coding agent honors) and additionally fetch
- * `$DOCO_HOST/api/v1/agent-bootstrap` at the start of each task to get
+ * `https://doco.to/api/v1/agent-bootstrap?id=$DOCO_ID` at the start of each task to get
  * the live canonical_instructions. The `.claude/` hooks are Claude-Code-
  * specific and have no equivalent for other agents.
  */
@@ -187,7 +187,7 @@ export const installAgentBootstrapCmd = defineCommand({
     console.log(c.dim("Next:"));
     console.log(
       c.dim(
-        "  1. cp .env.example .env  # fill in DOCO_HOST, DOCO_SLUG=<owner>/<doco>, DOCO_TOKEN",
+        "  1. cp .env.example .env  # fill in DOCO_ID=doco_..., DOCO_TOKEN",
       ),
     );
     console.log(
@@ -202,7 +202,7 @@ export const installAgentBootstrapCmd = defineCommand({
     );
     console.log(
       c.dim(
-        "  4. Non-Claude agents: fetch $DOCO_HOST/api/v1/agent-bootstrap manually at the start of each task.",
+        "  4. Non-Claude agents: fetch https://doco.to/api/v1/agent-bootstrap?id=$DOCO_ID manually at the start of each task.",
       ),
     );
     console.log();

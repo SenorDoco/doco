@@ -13,7 +13,8 @@ API — there are no on-disk per-entity files to read here.
 
 - [AGENTS.md](AGENTS.md) — agent bootstrap. Every agent working in this
   repo should fetch the live `canonical_instructions` from
-  `$DOCO_HOST/api/v1/agent-bootstrap` before doing anything else.
+  `https://doco.to/api/v1/agent-bootstrap?id=<doco_id>` before doing
+  anything else.
 - [docos/torrenegra/doco/doco.yaml](docos/torrenegra/doco/doco.yaml) —
   this Doco's identity stub. Durable data is in Postgres.
 - [packages/db/src/schema.sql](packages/db/src/schema.sql) — current
@@ -48,9 +49,9 @@ API — there are no on-disk per-entity files to read here.
 
 1. [AGENTS.md](AGENTS.md) — protocol, bootstrap, env setup.
 2. The live `canonical_instructions` served by
-   `$DOCO_HOST/api/v1/agent-bootstrap` — four invariants every reply
-   must follow.
-3. `$DOCO_HOST/<owner>/<doco>/search.json?q=<task>` — query Doco
+   `https://doco.to/api/v1/agent-bootstrap?id=<doco_id>` — four
+   invariants every reply must follow.
+3. `https://doco.to/by-id/<doco_id>/search.json?q=<task>` — query Doco
    before drafting a Decision, Rule, or Intent.
 
 ## Reading order for a new person

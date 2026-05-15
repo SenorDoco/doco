@@ -3,10 +3,12 @@ import { resolve } from "node:path";
 import { defineCommand } from "citty";
 import { c, cross } from "../output.js";
 
-type Env = { host: string; token: string; slug: string };
+const DOCO_BASE_URL = "https://doco.to";
+
+type Env = { token: string; docoId: string };
 
 function loadDotenv(): void {
-  for (const k of ["DOCO_HOST", "DOCO_TOKEN", "DOCO_SLUG"] as const) {
+  for (const k of ["DOCO_TOKEN", "DOCO_ID"] as const) {
     if (process.env[k]) continue;
     try {
       const text = readFileSync(resolve(process.cwd(), ".env"), "utf8");
@@ -29,17 +31,16 @@ function loadDotenv(): void {
 
 function requireEnv(): Env {
   loadDotenv();
-  const host = (process.env.DOCO_HOST ?? "").replace(/\/+$/, "");
   const token = process.env.DOCO_TOKEN ?? "";
-  const slug = process.env.DOCO_SLUG ?? "";
-  const missing = Object.entries({ DOCO_HOST: host, DOCO_TOKEN: token, DOCO_SLUG: slug })
+  const docoId = process.env.DOCO_ID ?? "";
+  const missing = Object.entries({ DOCO_TOKEN: token, DOCO_ID: docoId })
     .filter(([, v]) => !v)
     .map(([k]) => k);
   if (missing.length) {
     console.error(cross(`Missing env: ${missing.join(", ")}. Set in shell or in ./.env.`));
     process.exit(2);
   }
-  return { host, token, slug };
+  return { token, docoId };
 }
 
 function splitList(s: string | undefined): string[] {
@@ -81,8 +82,8 @@ async function postCapture(
     | "references",
   body: Record<string, unknown>,
 ): Promise<void> {
-  const { host, token, slug } = requireEnv();
-  const url = `${host}/${slug}/api/${type}.json`;
+  const { token, docoId } = requireEnv();
+  const url = `${DOCO_BASE_URL}/by-id/${encodeURIComponent(docoId)}/api/${type}.json`;
   let resp: Response;
   try {
     resp = await fetch(url, {
@@ -120,7 +121,7 @@ async function postCapture(
 const intentCmd = defineCommand({
   meta: {
     name: "intent",
-    description: "Capture an Intent (POST /<owner>/<doco>/api/intents.json).",
+    description: "Capture an Intent (POST /by-id/<doco_id>/api/intents.json).",
   },
   args: {
     summary: { type: "string", description: "Required. One-line 'what someone wants' summary.", required: true },
@@ -148,7 +149,7 @@ const intentCmd = defineCommand({
 const decisionCmd = defineCommand({
   meta: {
     name: "decision",
-    description: "Capture a Decision (POST /<owner>/<doco>/api/decisions.json).",
+    description: "Capture a Decision (POST /by-id/<doco_id>/api/decisions.json).",
   },
   args: {
     question: { type: "string", description: "Required. The question the Decision answers.", required: true },
@@ -192,7 +193,7 @@ const decisionCmd = defineCommand({
 const evalCmd = defineCommand({
   meta: {
     name: "eval",
-    description: "Capture an Eval (POST /<owner>/<doco>/api/evals.json).",
+    description: "Capture an Eval (POST /by-id/<doco_id>/api/evals.json).",
   },
   args: {
     name: { type: "string", description: "Required. Human-readable name.", required: true },
@@ -248,7 +249,7 @@ const scopeCmd = defineCommand({
   meta: {
     name: "scope",
     description:
-      "Create a Scope (POST /<owner>/<doco>/api/scopes.json). Per ADR-137bis every scope-creation call must declare --watched true or false — no default.",
+      "Create a Scope (POST /by-id/<doco_id>/api/scopes.json). Per ADR-137bis every scope-creation call must declare --watched true or false — no default.",
   },
   args: {
     watched: {
@@ -328,7 +329,7 @@ const scopeCmd = defineCommand({
 const actionCmd = defineCommand({
   meta: {
     name: "action",
-    description: "Capture an Action (POST /<owner>/<doco>/api/actions.json).",
+    description: "Capture an Action (POST /by-id/<doco_id>/api/actions.json).",
   },
   args: {
     summary: { type: "string", description: "Required. One-line 'what was done' summary.", required: true },
@@ -374,7 +375,7 @@ const actionCmd = defineCommand({
 const ruleCmd = defineCommand({
   meta: {
     name: "rule",
-    description: "Capture a Rule (POST /<owner>/<doco>/api/rules.json).",
+    description: "Capture a Rule (POST /by-id/<doco_id>/api/rules.json).",
   },
   args: {
     summary: { type: "string", description: "Required. One-line policy summary.", required: true },
@@ -424,7 +425,7 @@ const ruleCmd = defineCommand({
 const reasoningCmd = defineCommand({
   meta: {
     name: "reasoning",
-    description: "Capture a Reasoning (POST /<owner>/<doco>/api/reasoning.json).",
+    description: "Capture a Reasoning (POST /by-id/<doco_id>/api/reasoning.json).",
   },
   args: {
     claim: { type: "string", description: "Required. The claim / conclusion the reasoning establishes.", required: true },
@@ -461,7 +462,7 @@ const reasoningCmd = defineCommand({
 const referenceCmd = defineCommand({
   meta: {
     name: "reference",
-    description: "Capture a Reference (POST /<owner>/<doco>/api/references.json).",
+    description: "Capture a Reference (POST /by-id/<doco_id>/api/references.json).",
   },
   args: {
     "ref-type": {
@@ -524,7 +525,7 @@ export const captureCmd = defineCommand({
   meta: {
     name: "capture",
     description:
-      "Capture a node (Intent / Decision / Action / Rule / Reasoning / Eval / Scope / Reference) via the host's POST endpoints. Reads DOCO_HOST/DOCO_TOKEN/DOCO_SLUG from env or ./.env. Prints the response's footer_lines to stdout.",
+      "Capture a node (Intent / Decision / Action / Rule / Reasoning / Eval / Scope / Reference) via doco.to's POST endpoints. Reads DOCO_TOKEN/DOCO_ID from env or ./.env. Prints the response's footer_lines to stdout.",
   },
   subCommands: {
     intent: intentCmd,

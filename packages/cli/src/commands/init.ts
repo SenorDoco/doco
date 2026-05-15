@@ -190,7 +190,7 @@ tags: []
     console.log();
     console.log(c.dim("Next:"));
     console.log(c.dim(`  1. cd ${dirName}`));
-    console.log(c.dim(`  2. cp .env.example .env  # fill in DOCO_HOST, DOCO_SLUG=${slug}, DOCO_TOKEN`));
+    console.log(c.dim(`  2. cp .env.example .env  # fill in DOCO_ID=${docoId}, DOCO_TOKEN`));
     console.log(c.dim(`  3. doco validate  # confirm structure`));
     console.log(c.dim(`  4. Restart your Claude Code session in this directory.`));
     console.log(c.dim(`  5. In Claude Code, run /hooks → approve the SessionStart + UserPromptSubmit hooks. Claude Code skips unapproved project hooks silently, so the protocol won't auto-load until you approve them once per project (and once per worktree if you use them).`));

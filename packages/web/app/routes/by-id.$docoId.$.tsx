@@ -19,7 +19,7 @@ export async function loader({
   params,
 }: {
   request: Request;
-  params: { docoId: string; "*": string };
+  params: { docoId: string; "*": string | undefined };
 }) {
   const row = await getDocoById(params.docoId);
   if (!row) {
@@ -31,8 +31,11 @@ export async function loader({
   ) {
     return new Response(`Doco "${params.docoId}" not found.`, { status: 404 });
   }
-  const rest = params["*"] ?? "";
   const url = new URL(request.url);
+  const prefix = `/by-id/${params.docoId}`;
+  const rest = url.pathname.startsWith(`${prefix}/`)
+    ? url.pathname.slice(prefix.length + 1)
+    : params["*"] ?? "";
   const target = `/${row.owner_slug}/${row.doco_slug}${rest ? `/${rest}` : ""}${url.search}`;
   throw redirect(target, { status: 308 });
 }

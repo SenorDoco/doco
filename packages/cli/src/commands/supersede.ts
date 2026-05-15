@@ -2,11 +2,10 @@
 // (decision_01KRKEPRAMM9QSSEJ2X5FHPESJ).
 //
 // Two-step under the hood:
-//   1. POST /api/decisions.json  — capture a new Decision that supersedes
-//                                  the prior. Body fields supplied via
-//                                  flags or read from --body-md-file.
-//   2. PATCH /api/decisions/<prior>.json  — set lifecycle to "superseded"
-//                                  (or whatever --prior-lifecycle says).
+//   1. POST /by-id/<doco_id>/api/decisions.json — capture a new Decision
+//                                                  that supersedes the prior.
+//   2. PATCH /by-id/<doco_id>/api/decisions/<prior>.json — set lifecycle to
+//                                                           "superseded".
 //
 // Today only Decisions are supported (the most common case). Intent,
 // Rule, Action supersession would mirror this — followup if needed.
@@ -16,10 +15,12 @@ import { resolve } from "node:path";
 import { defineCommand } from "citty";
 import { c, cross, checkmark } from "../output.js";
 
-type Env = { host: string; token: string; slug: string };
+const DOCO_BASE_URL = "https://doco.to";
+
+type Env = { token: string; docoId: string };
 
 function loadDotenv(): void {
-  for (const k of ["DOCO_HOST", "DOCO_TOKEN", "DOCO_SLUG"] as const) {
+  for (const k of ["DOCO_TOKEN", "DOCO_ID"] as const) {
     if (process.env[k]) continue;
     try {
       const text = readFileSync(resolve(process.cwd(), ".env"), "utf8");
@@ -42,17 +43,16 @@ function loadDotenv(): void {
 
 function requireEnv(): Env {
   loadDotenv();
-  const host = (process.env.DOCO_HOST ?? "").replace(/\/+$/, "");
   const token = process.env.DOCO_TOKEN ?? "";
-  const slug = process.env.DOCO_SLUG ?? "";
-  const missing = Object.entries({ DOCO_HOST: host, DOCO_TOKEN: token, DOCO_SLUG: slug })
+  const docoId = process.env.DOCO_ID ?? "";
+  const missing = Object.entries({ DOCO_TOKEN: token, DOCO_ID: docoId })
     .filter(([, v]) => !v)
     .map(([k]) => k);
   if (missing.length) {
     console.error(cross(`Missing env: ${missing.join(", ")}. Set in shell or in ./.env.`));
     process.exit(2);
   }
-  return { host, token, slug };
+  return { token, docoId };
 }
 
 export const supersedeCmd = defineCommand({
@@ -138,7 +138,7 @@ export const supersedeCmd = defineCommand({
       bodyMd = String(args["body-md"]);
     }
 
-    const { host, token, slug } = requireEnv();
+    const { token, docoId } = requireEnv();
 
     const captureBody: Record<string, unknown> = {
       question: String(args.question ?? `Supersede ${priorId} — what changes?`),
@@ -155,7 +155,7 @@ export const supersedeCmd = defineCommand({
     // is also self-documented in prose.
     captureBody.body_md = `${captureBody.body_md ?? ""}\n\n## Supersedes\n\n- ${priorId}\n`.trim();
 
-    const captureUrl = `${host}/${slug}/api/decisions.json`;
+    const captureUrl = `${DOCO_BASE_URL}/by-id/${encodeURIComponent(docoId)}/api/decisions.json`;
     let captureResp: Response;
     try {
       captureResp = await fetch(captureUrl, {
@@ -184,7 +184,7 @@ export const supersedeCmd = defineCommand({
     console.log(checkmark(`Captured new Decision: ${newId}`));
 
     const priorLifecycle = String(args["prior-lifecycle"] ?? "superseded");
-    const patchUrl = `${host}/${slug}/api/decisions/${priorId}.json`;
+    const patchUrl = `${DOCO_BASE_URL}/by-id/${encodeURIComponent(docoId)}/api/decisions/${priorId}.json`;
     let patchResp: Response;
     try {
       patchResp = await fetch(patchUrl, {

@@ -16,8 +16,8 @@ export async function loader({ request }: { request: Request }) {
     "     showing CLI version, hostname, IP, timestamp, and a short code.",
     "  3. They click Authorize. Server creates an agent Principal owned by",
     "     them + a session token + the Doco at " + baseUrl + "/<their-username>/<slug>.",
-    "  4. CLI captures the token via polling and writes DOCO_HOST + DOCO_TOKEN +",
-    "     DOCO_SLUG to ./.env. Restart your agent session afterwards.",
+    "  4. CLI captures the token via polling and writes DOCO_TOKEN +",
+    "     DOCO_ID to ./.env. Restart your agent session afterwards.",
     "",
     "If `doco` is not on PATH (the CLI isn't on npm yet — the `@doco/cli`",
     "name is squatted by an unrelated package; rename to `doco-cli` is in",
@@ -41,7 +41,7 @@ export async function loader({ request }: { request: Request }) {
     "",
     "The previous HTTP-POST 'agent creates an unclaimed Doco' form +",
     "/claim/<token> handoff is retired (decision_01KRKZM14WNA1685GN0F12WCKM).",
-    "Docos are bound to the project owner from creation; no temporary",
+    "docos are bound to the project owner from creation; no temporary",
     "host-bootstrap owner, no follow-up URL to chase.",
   ].join("\n");
   return new Response(body, {
