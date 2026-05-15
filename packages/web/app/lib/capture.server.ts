@@ -6,12 +6,13 @@
 // ULID; agents/users read the `summary` field for the readable
 // handle.
 import { stringify as stringifyYaml, parse as parseYaml } from "yaml";
+import { waitUntil } from "@vercel/functions";
 import { generateUlid } from "@doco/shared";
 import type { Entity, Scope, EngineEdge } from "@doco/shared";
 import { evaluateScopeRules } from "@doco/shared";
 import { suggestImplicitEdges } from "./llm.server";
 import { rootDir } from "./db.server";
-import { reindex } from "./redeem.server";
+import { reindex, reindexEmbeddingsOnly } from "./redeem.server";
 import { readDocoMetadata, resolveScopeIcons } from "./scope-helpers.server";
 import { validatePatch } from "./mutability.server";
 import { appendAuditEvent } from "./audit-log.server";
@@ -95,6 +96,21 @@ async function persistEntity(args: {
  * capture/PATCH latency; in return the graph is always consistent the
  * moment the agent sees the success line.
  *
+ * `changedEntityId` triggers the incremental reindex path: only that
+ * entity's FTS row + outgoing edges are rebuilt, leaving the rest of
+ * the Doco's derived data untouched. Capture/patch handlers always
+ * know the id of the row they just wrote, so they all pass it.
+ *
+ * Two-phase reindex (decision_01KRP… two-phase-reindex):
+ *  1. Structural pass (FTS + edges) — runs inline, awaited. Fast: one
+ *     batched INSERT per table on the changed entity's rows, ~50ms.
+ *     The agent's success line reflects a real graph.
+ *  2. Embedding pass — wrapped in Vercel `waitUntil` so the response
+ *     returns before the OpenAI call completes. Search rankings catch
+ *     up within a second or two of the response; explicit FTS keyword
+ *     hits work immediately. On non-Vercel runtimes `waitUntil` is a
+ *     no-op shim that runs the promise like normal `void`.
+ *
  * `attachImplicitEdges` stays background because it issues an LLM call
  * (multi-second, optional). If it doesn't complete on serverless the
  * worst case is no auto-edges suggested — explicit edges still land.
@@ -102,21 +118,33 @@ async function persistEntity(args: {
 async function reindexAndScheduleAttach(
   docoDir: string,
   docoId: string,
+  changedEntityId: string,
   attachOpts?: Parameters<typeof attachImplicitEdges>[0],
 ): Promise<void> {
   try {
-    await reindex(docoDir, docoId);
+    await reindex(docoDir, docoId, [changedEntityId], { skipEmbeddings: true });
   } catch (err) {
     console.error(`reindex failed for ${docoDir}:`, err);
   }
+  waitUntil(
+    (async () => {
+      try {
+        await reindexEmbeddingsOnly(docoDir, docoId, [changedEntityId]);
+      } catch (err) {
+        console.error(`reindex embeddings failed for ${docoDir}:`, err);
+      }
+    })(),
+  );
   if (!attachOpts) return;
-  void (async () => {
-    try {
-      await attachImplicitEdges(attachOpts);
-    } catch (err) {
-      console.error("background attachImplicitEdges failed:", err);
-    }
-  })();
+  waitUntil(
+    (async () => {
+      try {
+        await attachImplicitEdges(attachOpts);
+      } catch (err) {
+        console.error("background attachImplicitEdges failed:", err);
+      }
+    })(),
+  );
 }
 
 export interface DecisionDraft {
@@ -777,7 +805,7 @@ async function attachImplicitEdges(opts: {
       fm,
       body: existing.body,
     });
-    await reindex(opts.docoDir, docoId || undefined);
+    await reindex(opts.docoDir, docoId || undefined, [opts.entityId]);
     return proposed.length;
   } catch {
     return 0;
@@ -870,7 +898,7 @@ export async function captureDecision(
     entity_id: id,
     summary,
   });
-  await reindexAndScheduleAttach(docoDir, docoId, {
+  await reindexAndScheduleAttach(docoDir, docoId, id, {
     docoDir,
     ownerSlug,
     docoSlug,
@@ -1101,7 +1129,7 @@ export async function updateDecision(
     afterFm: fm,
     patchKeys: Object.keys(patch),
   });
-  await reindexAndScheduleAttach(docoDir, docoId);
+  await reindexAndScheduleAttach(docoDir, docoId, decisionId);
   const summary = String(fm.summary ?? decisionId);
   const duration_ms = Math.round(performance.now() - startedAt);
   const finalScopeIds = Array.isArray(fm.scopes) ? (fm.scopes as string[]) : [];
@@ -1332,7 +1360,7 @@ export async function updateEntity(opts: {
     afterFm: fm,
     patchKeys: Object.keys(patch),
   });
-  await reindexAndScheduleAttach(docoDir, docoId);
+  await reindexAndScheduleAttach(docoDir, docoId, id);
 
   const summary = String(fm.summary ?? fm.name ?? id);
   const duration_ms = Math.round(performance.now() - startedAt);
@@ -1442,7 +1470,7 @@ export async function captureIntent(
     entity_id: id,
     summary,
   });
-  await reindexAndScheduleAttach(docoDir, docoId, {
+  await reindexAndScheduleAttach(docoDir, docoId, id, {
     docoDir,
     ownerSlug,
     docoSlug,
@@ -1580,7 +1608,7 @@ export async function captureEval(
     entity_id: id,
     summary,
   });
-  await reindexAndScheduleAttach(docoDir, docoId, {
+  await reindexAndScheduleAttach(docoDir, docoId, id, {
     docoDir,
     ownerSlug,
     docoSlug,
@@ -1730,7 +1758,7 @@ export async function captureAction(
     entity_id: id,
     summary,
   });
-  await reindexAndScheduleAttach(docoDir, docoId, {
+  await reindexAndScheduleAttach(docoDir, docoId, id, {
     docoDir,
     ownerSlug,
     docoSlug,
@@ -1902,7 +1930,7 @@ export async function captureRule(
     entity_id: id,
     summary,
   });
-  await reindexAndScheduleAttach(docoDir, docoId, {
+  await reindexAndScheduleAttach(docoDir, docoId, id, {
     docoDir,
     ownerSlug,
     docoSlug,
@@ -2042,7 +2070,7 @@ export async function captureReasoning(
     entity_id: id,
     summary,
   });
-  await reindexAndScheduleAttach(docoDir, docoId, {
+  await reindexAndScheduleAttach(docoDir, docoId, id, {
     docoDir,
     ownerSlug,
     docoSlug,
@@ -2163,7 +2191,7 @@ export async function captureReference(
     entity_id: id,
     summary,
   });
-  await reindexAndScheduleAttach(docoDir, docoId, {
+  await reindexAndScheduleAttach(docoDir, docoId, id, {
     docoDir,
     ownerSlug,
     docoSlug,
