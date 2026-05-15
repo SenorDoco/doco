@@ -1,5 +1,5 @@
 import { Link, redirect } from "react-router";
-import { canAccessDoco } from "~/lib/doco-access.server";
+import { isMyDoco } from "~/lib/doco-access.server";
 import { listAllDocos, listOrgs, listUsers, loadHostConfig } from "~/lib/host";
 import { getCurrentPrincipal } from "~/lib/session";
 import { SiteHeader } from "~/components/site-header";
@@ -8,20 +8,19 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "~/components/table";
 
 /**
- * /dashboard — signed-in host dashboard. Lists all Docos, users, and
- * organizations registered on this host. The Doco wordmark + "what is Doco"
- * marketing copy lives on the home page (/) instead.
+ * /dashboard — signed-in user's personal home. Lists Docos the user has
+ * a stake in (owner, agent, or org member) — not strangers' public Docos
+ * (those remain browseable at their direct URLs). The Doco wordmark +
+ * "what is Doco" marketing copy lives on the home page (/) instead.
  */
 export async function loader({ request }: { request: Request }) {
   const me = await getCurrentPrincipal(request);
   if (!me) throw redirect("/sign-in");
   const allDocos = await listAllDocos();
-  const visibility = await Promise.all(
-    allDocos.map((d) =>
-      canAccessDoco({ ownerId: d.ownerId, visibility: d.visibility }, me.id),
-    ),
+  const mine = await Promise.all(
+    allDocos.map((d) => isMyDoco({ ownerId: d.ownerId }, me.id)),
   );
-  const docos = allDocos.filter((_, i) => visibility[i]);
+  const docos = allDocos.filter((_, i) => mine[i]);
   return {
     host: await loadHostConfig(),
     me,
@@ -48,8 +47,10 @@ export default function Dashboard({
       <main className="mx-auto max-w-6xl px-6 py-6 space-y-4">
         <Card>
           <CardHeader>
-            <CardTitle>Docos ({docos.length})</CardTitle>
-            <CardDescription>All Docos registered in this host. Click to open.</CardDescription>
+            <CardTitle>Your Docos ({docos.length})</CardTitle>
+            <CardDescription>
+              Docos you own and Docos owned by organizations you belong to. Click to open.
+            </CardDescription>
           </CardHeader>
           <CardContent>
             <Table>

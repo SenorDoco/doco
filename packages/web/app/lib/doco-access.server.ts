@@ -72,6 +72,30 @@ async function getPrincipalOwnerId(principalId: string): Promise<string | null> 
 }
 
 /**
+ * "Is this Doco mine?" — predicate for the signed-in user's personal
+ * dashboard. Stricter than `canAccessDoco`: ignores `public` visibility
+ * and the host-bootstrap exemption. True iff the principal has a
+ * personal stake in the Doco: they own it, they're an agent of the
+ * owner, or they're a member of the owning organization.
+ */
+export async function isMyDoco(
+  meta: { ownerId: string },
+  principalId: string | null,
+): Promise<boolean> {
+  if (!principalId) return false;
+  if (meta.ownerId === principalId) return true;
+
+  const ownerOfPrincipal = await getPrincipalOwnerId(principalId);
+  if (ownerOfPrincipal && ownerOfPrincipal === meta.ownerId) return true;
+
+  if (meta.ownerId.startsWith("organization_")) {
+    if (await dbIsOrgMember(meta.ownerId, principalId)) return true;
+    if (ownerOfPrincipal && (await dbIsOrgMember(meta.ownerId, ownerOfPrincipal))) return true;
+  }
+  return false;
+}
+
+/**
  * Same as `canAccessDoco` but for write/admin operations.
  */
 export async function canAdminDoco(
