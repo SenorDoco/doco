@@ -339,6 +339,20 @@ collaboration itself. It lives in the Global scope (the doco's constitution) bec
 manifest is load-bearing for every other decision the project owner
 makes about this Doco.
 
+**When a request sounds like a standing rule** (Global scope: durable defaults).
+When the project owner asks an agent to do something "all the time",
+"always", "from now on", "in every session", "across all sessions", or
+for every future agent, treat that as a signal that the preference may
+belong in the Global scope as a Rule. Suggest it explicitly: "That
+sounds like a Doco-wide rule; would you like me to add it to the Global
+scope?" Name the candidate predicate in plain language so the project
+owner can confirm, refine, or decline it.
+
+Do not silently turn every preference into a Global Rule. The point is
+to protect durable, cross-session intent from staying trapped in one
+conversation. The project owner still decides whether the instruction
+is a one-off, a local convention, or a Doco-wide invariant.
+
 | Change you made | What to capture |
 |---|---|
 | **Edited code an existing entity already governs** (vector_score > ~0.45 hit names the file or the territory) | **PATCH that entity** with \`doco patch <type> <id> --append-body "..."\`. Don't open a sibling node — the existing one tracks the same element's reasoning over time. |

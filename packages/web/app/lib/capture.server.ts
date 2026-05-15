@@ -9,7 +9,11 @@ import { stringify as stringifyYaml, parse as parseYaml } from "yaml";
 import { waitUntil } from "@vercel/functions";
 import { generateUlid } from "@doco/shared";
 import type { Entity, Scope, EngineEdge, AuthoringPredicate } from "@doco/shared";
-import { evaluateScopeRules } from "@doco/shared";
+import {
+  evaluateScopeRules,
+  globalScopeMembershipViolation,
+  shouldRunAuthoringRuleForEntity,
+} from "@doco/shared";
 import {
   judgeProbabilisticRule,
   LlmUnavailableError,
@@ -631,6 +635,14 @@ async function loadAllScopes(docoDir: string): Promise<Map<string, Scope>> {
   return scopes;
 }
 
+function findGlobalScope(allScopes: Map<string, Scope>): Scope | null {
+  for (const s of allScopes.values()) {
+    const name = (s as unknown as Record<string, unknown>).name;
+    if (name === "global") return s;
+  }
+  return null;
+}
+
 export async function runScopeRules(opts: {
   docoDir: string;
   ownerSlug: string;
@@ -651,16 +663,19 @@ export async function runScopeRules(opts: {
 
   // Collect the set of scope ids whose authoring rules we need to load:
   // - every scope the entity already lists,
-  // - PLUS the Global scope (its mandatory_scope rules apply Doco-wide).
+  // - PLUS the Global scope (all of its authoring rules apply Doco-wide).
   const scopesToCheck = new Set(scopeIds);
-  let globalScopeId: string | null = null;
-  for (const s of allScopes.values()) {
-    const sname = (s as unknown as Record<string, unknown>).name;
-    if (sname === "global") {
-      globalScopeId = s.id;
-      scopesToCheck.add(s.id);
-      break;
-    }
+  const globalScope = findGlobalScope(allScopes);
+  const globalScopeId = globalScope?.id ?? null;
+  if (globalScopeId) {
+    const globalMembershipError = globalScopeMembershipViolation({
+      entityNodeType: typeof entityFm.node_type === "string" ? entityFm.node_type : "",
+      entityScopes: scopeIds,
+      globalScopeId,
+      globalScopeName: "Global",
+    });
+    if (globalMembershipError) return { error: globalMembershipError };
+    scopesToCheck.add(globalScopeId);
   }
 
   // Load Rule entities (kind=authoring, lifecycle in active/proposed)
@@ -710,12 +725,15 @@ export async function runScopeRules(opts: {
     if (fm.kind !== "authoring") continue;
     const predicate = fm.predicate as AuthoringPredicate | undefined;
     if (!predicate || typeof predicate !== "object") continue;
-    // Global scope contributes only its mandatory_scope rules when the
-    // entity isn't already tagged with it — those are the Doco-wide
-    // gates. For every other scope, all predicates apply.
-    const inSelfScope = scopeIds.includes(row.scope_id);
-    const isGlobal = globalScopeId === row.scope_id;
-    if (isGlobal && !inSelfScope && predicate.kind !== "mandatory_scope") continue;
+    if (
+      !shouldRunAuthoringRuleForEntity({
+        ruleScopeId: row.scope_id,
+        globalScopeId,
+        entityScopes: scopeIds,
+      })
+    ) {
+      continue;
+    }
     const arr = perScope.get(row.scope_id) ?? [];
     arr.push({
       rule_id: row.id,
@@ -1418,6 +1436,23 @@ export async function updateEntity(opts: {
   if (eScopeResult.changed) {
     if (!changed.includes("scopes")) changed.push("scopes");
     ops.push(...eScopeResult.ops);
+    const allScopes = await loadAllScopes(docoDir);
+    const globalScope = findGlobalScope(allScopes);
+    const nextScopes = Array.isArray(fm.scopes) ? (fm.scopes as string[]) : [];
+    const beforeScopes = Array.isArray(beforeFm.scopes) ? (beforeFm.scopes as string[]) : [];
+    const addedGlobal =
+      Boolean(globalScope?.id) &&
+      nextScopes.includes(globalScope!.id) &&
+      !beforeScopes.includes(globalScope!.id);
+    if (addedGlobal) {
+      const globalMembershipError = globalScopeMembershipViolation({
+        entityNodeType: nodeType,
+        entityScopes: nextScopes,
+        globalScopeId: globalScope!.id,
+        globalScopeName: "Global",
+      });
+      if (globalMembershipError) return { error: globalMembershipError };
+    }
   }
 
   // intent_ids (replace/add/remove)
