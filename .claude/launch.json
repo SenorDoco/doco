@@ -7,7 +7,6 @@
       "runtimeArgs": ["--filter", "@doco/web", "dev"],
       "port": 5173,
       "env": {
-        "DOCO_LOCALHOST_PICKER": "1",
         "DOCO_DATABASE_URL": "postgres://postgres:doco@127.0.0.1:5433/doco"
       }
     }

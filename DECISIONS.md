@@ -62,7 +62,7 @@ A consolidated record of every meaningful design decision made to date, intended
 ### D-008 — Per-Doco `schema_version` (additive evolution)
 
 - **Chosen:** Each Doco records `schema_version`. Schema evolution is additive (new fields don't invalidate old data); breaking changes require an explicit version bump.
-- **Why:** Different Docos can adopt new features at their own pace. Forward-compat hatch.
+- **Why:** Different docos can adopt new features at their own pace. Forward-compat hatch.
 - **Open:** Whether to allow only-additive forever vs explicit migrations. (See §13.)
 - **Ref:** SCHEMA.md §3, §11 open questions.
 
@@ -314,7 +314,7 @@ A consolidated record of every meaningful design decision made to date, intended
 - **Why:** Source-controlled secrets are bad practice; tokens shouldn't be in git.
 - **Ref:** PLANNING.md §3.3.
 
-### D-040 — Only people can delete Docos
+### D-040 — Only people can delete docos
 
 - **Chosen:** Built-in system Rule (`rule_system_only_people_delete`) blocks `delete_doco` Actions when `actor.is_agent == true` (or `actor.type == 'person'` in current schema).
 - **Why:** Single people-only operation; everything else (create, edit, archive, transfer) is open to both.

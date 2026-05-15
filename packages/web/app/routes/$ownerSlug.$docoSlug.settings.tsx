@@ -52,7 +52,7 @@ export async function action({
   if (intent === "delete") {
     if (!me) return { error: "Sign in to delete this Doco." };
     if (me.type !== "person") {
-      return { error: "Per ADR-040, only people can delete Docos. Ask the Doco's owner." };
+      return { error: "Per ADR-040, only people can delete docos. Ask the Doco's owner." };
     }
     const confirmSlug = String(form.get("confirm_slug") ?? "").trim();
     if (confirmSlug !== docoSlug) {
@@ -208,7 +208,7 @@ export default function DocoSettings({
                   </label>
                 </div>
                 <span className="mt-1 block text-[11px] text-muted-foreground">
-                  Private Docos return 404 to non-members on both the web
+                  Private docos return 404 to non-members on both the web
                   and the API. Existence isn't leaked.
                 </span>
               </fieldset>
@@ -277,7 +277,7 @@ export default function DocoSettings({
             <CardDescription>
               Deleting permanently removes this Doco and every entity,
               edge, and scope inside it. This cannot be undone. Per
-              ADR-040, only people can delete Docos.
+              ADR-040, only people can delete docos.
             </CardDescription>
           </CardHeader>
           <CardContent>

@@ -29,12 +29,12 @@ interface FeedEvent {
 
 /**
  * /dashboard — signed-in user's personal home. Three panels:
- *   - Left: Docos the user has a stake in (owner, agent, or org member).
+ *   - Left: docos the user has a stake in (owner, agent, or org member).
  *   - Top-right: GitHub-style heatmap of the user's own activity
  *     (audit events authored by them OR by an agent they own).
  *   - Bottom-right: chronological feed of recent audit events across
- *     the user's Docos (any actor).
- * Strangers' public Docos remain browseable at /<owner>/<slug>; they
+ *     the user's docos (any actor).
+ * Strangers' public docos remain browseable at /<owner>/<slug>; they
  * do not surface here.
  */
 export async function loader({ request }: { request: Request }) {
@@ -189,13 +189,13 @@ export default function Dashboard({
             <CardHeader>
               <CardTitle>Your docos</CardTitle>
               <CardDescription>
-                Docos you own and Docos owned by organizations you belong to. Click to open.
+                Your docos, plus docos owned by organizations you belong to. Click to open.
               </CardDescription>
             </CardHeader>
             <CardContent>
               {docos.length === 0 ? (
                 <p className="text-xs text-muted-foreground">
-                  You haven't created or joined any Docos yet.
+                  You haven't created or joined any docos yet.
                 </p>
               ) : (
                 <Table>

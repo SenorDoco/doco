@@ -5,7 +5,7 @@
 // once and resolve it to the current slug as needed.
 //
 // Applies the same privacy gate as the per-Doco data routes so this
-// endpoint can't be used to enumerate private Docos by ID guessing.
+// endpoint can't be used to enumerate private docos by ID guessing.
 
 import { getDocoById } from "@doco/db";
 import { canAccessDoco } from "~/lib/doco-access.server";

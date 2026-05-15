@@ -26,7 +26,7 @@ export async function action({ request }: { request: Request }) {
   if (!ownerSlug || !docoSlug) return { error: "Owner and Doco slug are required." };
   if (ownerSlug !== me.username) {
     const allowed = (await listOrgsOwnedOrAdminedBy(me.id)).find((o) => o.slug === ownerSlug);
-    if (!allowed) return { error: `You can't create Docos under "${ownerSlug}".` };
+    if (!allowed) return { error: `You can't create docos under "${ownerSlug}".` };
   }
   try {
     const rec = await createDocoInHost(rootDir(), {

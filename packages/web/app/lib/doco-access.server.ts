@@ -1,4 +1,4 @@
-// Privacy gate for Docos. Postgres-backed
+// Privacy gate for docos. Postgres-backed
 // (rule_01KRKQDHWNWJAF4YKTMCB2A0D9 — alpha forbids back-compat).
 
 import { redirect } from "react-router";
@@ -45,7 +45,7 @@ export async function canAccessDoco(
   return false;
 }
 
-/** True if ownerId is the host-bootstrap placeholder Principal (unclaimed Docos). */
+/** True if ownerId is the host-bootstrap placeholder Principal (unclaimed docos). */
 async function isHostBootstrapOwned(ownerId: string): Promise<boolean> {
   if (!ownerId.startsWith("principal_")) return false;
   const p = await getPrincipalById(ownerId);

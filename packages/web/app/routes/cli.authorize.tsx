@@ -128,7 +128,7 @@ async function ensureOwnerPrincipalOnDisk(root: string, principalId: string): Pr
  * Postgres `docos` table. Companion to ensureOwnerPrincipalOnDisk —
  * createDocoInHost only writes the filesystem; the Postgres row is
  * needed by reindex (which reads from Postgres) and by the per-Doco
- * routes (which look up Docos via getDocoById / `owner_slug`).
+ * routes (which look up docos via getDocoById / `owner_slug`).
  *
  * Workaround for the in-flight Postgres-as-source-of-truth migration.
  */

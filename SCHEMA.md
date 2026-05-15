@@ -454,7 +454,7 @@ Priority 1 (agent comprehension) argues for SQL over a custom DSL: SQL is alread
 
 - **10k–1M entities per Doco**: SQLite + FTS5 sweet spot.
 - **> 1M**: switch the local cache to DuckDB (columnar) or an embedded graph DB (Kuzu — see §8.8).
-- **Cross-Doco queries** (search across all my Docos): need a fan-out indexer — out of scope for v0.x.
+- **Cross-Doco queries** (search across all my docos): need a fan-out indexer — out of scope for v0.x.
 
 ### 8.8 Why SQLite, not a graph database?
 
@@ -516,7 +516,7 @@ Resolution: a Rule applying to a Scope also applies to its descendants. Defer un
 
 ### 9.4 Cross-Doco — `imports`
 
-Shared Rule sets (compliance baselines, organization-wide policies, vendor SDKs that ship with their own constraints) live in dedicated Docos and are pulled in via `doco.yaml`:
+Shared Rule sets (compliance baselines, organization-wide policies, vendor SDKs that ship with their own constraints) live in dedicated docos and are pulled in via `doco.yaml`:
 
 ```yaml
 # doco.yaml
@@ -628,7 +628,7 @@ Agents and people get the same output. Agents typically ingest the PRECISE + REL
 3. **Storage = git repo** — I committed to "an Doco IS a git repo" because it gives version control, branching, and diffs for free. The alternative is an abstracted backend (DB) with git as one possible projection. The git-native choice is cheaper to start but harder to scale to enterprise workflows later.
 4. **YAML frontmatter + Markdown body** — chosen because it serves both agents (structured) and people (narrative) in one file. Alternative: pure JSON (cleaner for agents, worse for people). Worth revisiting if agents struggle with mixed format.
 5. **Evaluations as file-per-result** — better for git diffs, worse than JSONL for high-volume runs. Monthly partitioning mitigates. Could move to JSONL if eval throughput becomes a real constraint.
-6. **Per-Doco `schema_version`** — lets Docos migrate at their own pace; cross-Doco tooling has to handle multiple versions. Alternative: single global schema that's only ever additive. I'd lean toward additive-only for v0.x and keep `schema_version` as a forward-compat hatch.
+6. **Per-Doco `schema_version`** — lets docos migrate at their own pace; cross-Doco tooling has to handle multiple versions. Alternative: single global schema that's only ever additive. I'd lean toward additive-only for v0.x and keep `schema_version` as a forward-compat hatch.
 7. **Visibility only at Doco level** — no per-entity visibility yet. Adding "private intent in a public Doco" later is doable but non-trivial.
 8. **No `Plan` entity** — a plan is emergent from Intent + Decision + Action chains. Could be added later if a higher-level grouping is needed.
 9. **No `Question` entity** — folded into Decision's `question` field. If questions need to live before being decided (e.g., open RFCs), promote to an entity.

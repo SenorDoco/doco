@@ -1,12 +1,12 @@
 // JSON-shaped sibling of /onboarding/join/agent (per the agent-route
 // policy enforced by check-agent-route-policy.mjs). There is no
-// state-changing POST here — agents can't self-join Docos — so the
+// state-changing POST here — agents can't self-join docos — so the
 // endpoint is a documentation handle that tells the caller what to do
 // instead.
 export function loader() {
   return Response.json({
     status: "info",
-    summary: "Agents can't self-add to existing Docos. Ask the owner to create your Principal at /agents/new and share the resulting DOCO_TOKEN.",
+    summary: "Agents can't self-add to existing docos. Ask the owner to create your Principal at /agents/new and share the resulting DOCO_TOKEN.",
     next_steps: [
       "Tell the owner to sign in at /sign-in",
       "They visit /agents/new and create your agent Principal",
@@ -28,7 +28,7 @@ export function loader() {
 export function action() {
   return Response.json(
     {
-      error: "Agents cannot self-join Docos. See /onboarding/join/agent.txt for the owner-mediated path.",
+      error: "Agents cannot self-join docos. See /onboarding/join/agent.txt for the owner-mediated path.",
     },
     { status: 405 },
   );

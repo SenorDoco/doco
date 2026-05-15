@@ -254,8 +254,8 @@ RELATED
 Per-Doco settings endpoint. Two methods:
 
   GET   ${baseUrl}/${owner}/${doco}/api/settings.json
-    Returns the current settings. Read-gated: anonymous on public Docos,
-    owner/org-members on private Docos, 404 otherwise.
+    Returns the current settings. Read-gated: anonymous on public docos,
+    owner/org-members on private docos, 404 otherwise.
 
   POST  ${baseUrl}/${owner}/${doco}/api/settings.json
     (PATCH is also accepted.) Updates fields. Admin-gated (owner or org

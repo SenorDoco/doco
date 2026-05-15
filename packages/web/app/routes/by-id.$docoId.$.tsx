@@ -7,7 +7,7 @@
 // retry cleanly at /<owner>/<slug>/api/... on the same call.
 //
 // Privacy gate: same 404 conflation as the per-Doco routes — an agent
-// can't probe by ID to discover private Docos they don't own.
+// can't probe by ID to discover private docos they don't own.
 
 import { redirect } from "react-router";
 import { getDocoById } from "@doco/db";

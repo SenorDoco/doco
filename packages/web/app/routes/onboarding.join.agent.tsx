@@ -1,5 +1,5 @@
 // AI agent + Join. Per ADR-073.
-// Agents can't self-add to existing Docos — security model preserved.
+// Agents can't self-add to existing docos — security model preserved.
 import { Link } from "react-router";
 
 import { loadHostConfig } from "~/lib/host";
@@ -34,7 +34,7 @@ export default function JoinAgent() {
           <CardHeader>
             <CardTitle className="text-base">You need an invitation</CardTitle>
             <CardDescription>
-              Agents can't self-add to existing Docos. Ask the Doco's admin (probably the owner
+              Agents can't self-add to existing docos. Ask the Doco's admin (probably the owner
               who prompted you) to invite you. They will:
             </CardDescription>
           </CardHeader>

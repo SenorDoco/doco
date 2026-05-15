@@ -159,12 +159,12 @@ const docoNewCmd = defineCommand({
 });
 
 const docoCmd = defineCommand({
-  meta: { name: "doco", description: "Manage Docos in the host." },
+  meta: { name: "doco", description: "Manage docos in the host." },
   subCommands: { new: docoNewCmd },
 });
 
 const listCmd = defineCommand({
-  meta: { name: "list", description: "List Users, Organizations, and Docos in the host." },
+  meta: { name: "list", description: "List Users, Organizations, and docos in the host." },
   args: {
     root: { type: "string" },
     json: { type: "boolean", default: false },
@@ -191,7 +191,7 @@ const listCmd = defineCommand({
     console.log(c.bold(`Organizations (${orgs.length})`));
     for (const o of orgs) console.log(`  ${o.slug.padEnd(24)} ${c.dim(o.id)}`);
     console.log();
-    console.log(c.bold(`Docos (${docos.length})`));
+    console.log(c.bold(`docos (${docos.length})`));
     for (const e of docos) {
       console.log(`  ${`${e.ownerSlug}/${e.docoSlug}`.padEnd(36)} ${c.dim(`${e.ownerKind} → ${e.docoId}`)}`);
     }
@@ -209,7 +209,7 @@ function failNoHost(): void {
 export const hostCmd = defineCommand({
   meta: {
     name: "host",
-    description: "Multi-tenant host: many Docos owned by Users or Organizations (ADR-061).",
+    description: "Multi-tenant host: many docos owned by Users or Organizations (ADR-061).",
   },
   subCommands: {
     init: initCmd,

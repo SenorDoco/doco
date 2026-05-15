@@ -1,5 +1,5 @@
 // Per-Doco aggregate stats (Nodes, Edges, Last updated) shown on the
-// dashboard and owner-profile Docos tables.
+// dashboard and owner-profile docos tables.
 //
 // Nodes counts every entity row tied to a Doco (decisions + intents +
 // rules + actions + reasoning + evals + ideas + scopes +

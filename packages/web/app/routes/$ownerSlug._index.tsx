@@ -133,11 +133,11 @@ export default function OwnerProfile({
 
         <Card>
           <CardHeader>
-            <CardTitle>Docos ({docos.length})</CardTitle>
+            <CardTitle>docos</CardTitle>
           </CardHeader>
           <CardContent>
             {docos.length === 0 ? (
-              <p className="text-xs text-muted-foreground">No Docos yet.</p>
+              <p className="text-xs text-muted-foreground">No docos yet.</p>
             ) : (
               <Table>
                 <TableHeader>

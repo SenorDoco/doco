@@ -55,7 +55,7 @@ export const importCmd = defineCommand({
   meta: {
     name: "import",
     description:
-      "Import a bundle (produced by `doco export`) into the configured Postgres. Used to migrate filesystem-storage Docos into Phase 2 Postgres storage.",
+      "Import a bundle (produced by `doco export`) into the configured Postgres. Used to migrate filesystem-storage docos into Phase 2 Postgres storage.",
   },
   args: {
     bundle: {

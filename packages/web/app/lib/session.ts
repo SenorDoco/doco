@@ -1,9 +1,8 @@
 // Session + Principal lookup — Phase 3 Postgres-only
 // (rule_01KRKQDHWNWJAF4YKTMCB2A0D9 — alpha forbids back-compat).
 
-import { getPrincipalById, getPrincipalByUsername, listPrincipals } from "@doco/db";
+import { getPrincipalById, getPrincipalByUsername } from "@doco/db";
 import { rootDir } from "./db.server";
-import type { HostUser } from "./host";
 
 const COOKIE_NAME = "doco_session";
 
@@ -113,19 +112,3 @@ export async function getCurrentPrincipalAsync(
   return null;
 }
 
-/** All host Users — used by the sign-in picker. */
-export async function listSignInCandidates(): Promise<HostUser[]> {
-  const rows = await listPrincipals({ type: "human" });
-  return rows.map((r) => {
-    const fm = JSON.parse(r.raw_yaml) as Record<string, unknown>;
-    const email =
-      r.email ?? (fm.github_identity as { email?: string } | undefined)?.email ?? null;
-    const out: HostUser = {
-      id: r.id,
-      username: r.username,
-      display_name: r.display_name ?? r.username,
-    };
-    if (typeof email === "string") out.email = email;
-    return out;
-  });
-}

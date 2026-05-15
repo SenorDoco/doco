@@ -1,4 +1,4 @@
-// Slug aliases for Docos. Per D-019: slugs are immutable once set;
+// Slug aliases for docos. Per D-019: slugs are immutable once set;
 // renames and ownership transfers leave the old slug as a permanent
 // alias to the canonical current slug. Same idea as GitHub's repository
 // redirects after rename/transfer — old URLs in agents' .env,

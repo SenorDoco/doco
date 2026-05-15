@@ -90,7 +90,7 @@ The timestamp is the moment the agent's `Principal` entity was created. Lineage 
 
 ### 2.4 Permissions: person-only operations
 
-The schema-level expression of "only people can delete Docos" is a built-in **system Rule** shipped with Doco:
+The schema-level expression of "only people can delete docos" is a built-in **system Rule** shipped with Doco:
 
 ```yaml
 # Built-in system Rule (shipped with Doco, not user-editable)
@@ -100,7 +100,7 @@ phase: pre
 applies_to: { node_type: action, verb: delete_doco }
 predicate: "actor.type == 'person'"
 on_violation: block
-summary: "Only person Principals may delete Docos"
+summary: "Only person Principals may delete docos"
 ```
 
 All other operations (create, edit, archive, transfer, etc.) are open to both people and agents subject to their `permissions` list on the relevant Membership edge.
@@ -270,7 +270,7 @@ Each item has a "view in graph" affordance — once-clicked-from, never primary.
 
 3. **Backfill quality.** Extracted entities will be lossy and sometimes wrong. Default `lifecycle: proposed` keeps them out of the active graph until reviewed; require explicit acceptance to flip. A built-in Rule could even prevent backfilled entities from being Premises in active Reasoning until reviewed (lint/check).
 
-4. **Public Docos and the trust chain.** If Docos can be public, anyone reads agent ancestry. Probably fine (just usernames + timestamps), but confirm no PII can leak via `Principal.identifier` or display names. Add a Rule: `display_name must not contain email patterns`.
+4. **Public docos and the trust chain.** If docos can be public, anyone reads agent ancestry. Probably fine (just usernames + timestamps), but confirm no PII can leak via `Principal.identifier` or display names. Add a Rule: `display_name must not contain email patterns`.
 
 5. **Graph-as-secondary-view risk.** Agreeing graph is hard, but a Rule-discovery tool that can't show "this Rule descends from this ADR's consequence" loses something. Compromise: expose graph as drill-down only, but make the *path-back-to-source* widget on every entity detail page (the alignment trace) very prominent.
 

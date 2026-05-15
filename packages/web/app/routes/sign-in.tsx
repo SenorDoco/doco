@@ -1,19 +1,14 @@
-import { Form, Link, redirect } from "react-router";
+import { Link, redirect } from "react-router";
 
-import {
-  findPrincipalById,
-  getSessionPrincipalId,
-  listSignInCandidates,
-  setSessionCookie,
-} from "~/lib/session";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
+import { findPrincipalById, getSessionPrincipalId } from "~/lib/session";
+import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
 import { DocoMark } from "~/components/doco-mark";
 import { VersionPill } from "~/components/version-pill";
 
 /**
- * /sign-in (ADR-095) — GitHub OAuth is the primary path. A localhost
- * identity-picker is offered as a switch-account affordance when
- * DOCO_LOCALHOST_PICKER=1; production-grade hosts leave it off.
+ * /sign-in (ADR-095) — GitHub OAuth is the only path. Anyone with a
+ * cookie session that resolves to a real Principal is redirected straight
+ * to `/dashboard` (or `?next=`).
  *
  * Accepts `?next=<relative-path>` for deep-link return-after-sign-in
  * (e.g. private-Doco entity URLs that redirect anonymous visitors here).
@@ -30,22 +25,7 @@ export async function loader({ request }: { request: Request }) {
   const next = safeNext(new URL(request.url).searchParams.get("next"));
   const id = getSessionPrincipalId(request);
   if (id && await findPrincipalById(id)) throw redirect(next ?? "/dashboard");
-  const pickerEnabled = process.env.DOCO_LOCALHOST_PICKER === "1";
-  const users = pickerEnabled ? await listSignInCandidates() : [];
-  return { users, pickerEnabled, next };
-}
-
-export async function action({ request }: { request: Request }) {
-  if (process.env.DOCO_LOCALHOST_PICKER !== "1") {
-    return { error: "Picker sign-in is disabled. Use Continue with GitHub." };
-  }
-  const form = await request.formData();
-  const principalId = String(form.get("principal_id") ?? "");
-  if (!await findPrincipalById(principalId)) {
-    return { error: "That user no longer exists." };
-  }
-  const next = safeNext(String(form.get("next") ?? "")) ?? "/dashboard";
-  return redirect(next, { headers: { "Set-Cookie": setSessionCookie(principalId) } });
+  return { next };
 }
 
 export function meta() {
@@ -54,12 +34,10 @@ export function meta() {
 
 export default function SignIn({
   loaderData,
-  actionData,
 }: {
   loaderData: Awaited<ReturnType<typeof loader>>;
-  actionData?: { error?: string } | undefined;
 }) {
-  const { users, pickerEnabled, next } = loaderData;
+  const { next } = loaderData;
   return (
     <div>
       <header className="border-b border-border bg-card">
@@ -83,43 +61,6 @@ export default function SignIn({
               <GitHubMark />
               Continue with GitHub
             </Link>
-
-            {pickerEnabled && users.length > 0 ? (
-              <>
-                <div className="my-4 flex items-center gap-2 text-[11px] text-muted-foreground">
-                  <span className="h-px flex-1 bg-border" />
-                  <span>or switch local identity</span>
-                  <span className="h-px flex-1 bg-border" />
-                </div>
-                <ul className="space-y-2">
-                  {users.map((u) => (
-                    <li key={u.id}>
-                      <Form method="post">
-                        <input type="hidden" name="principal_id" value={u.id} />
-                        {next ? <input type="hidden" name="next" value={next} /> : null}
-                        <button
-                          type="submit"
-                          className="w-full rounded-md border border-border bg-input px-3 py-2 text-left transition-colors hover:border-primary hover:bg-card"
-                        >
-                          <div className="text-sm font-semibold">{u.username}</div>
-                          {u.email ? (
-                            <div className="text-xs text-muted-foreground">{u.email}</div>
-                          ) : null}
-                        </button>
-                      </Form>
-                    </li>
-                  ))}
-                </ul>
-                <p className="mt-3 text-[11px] text-muted-foreground">
-                  This picker is a local-dev convenience (DOCO_LOCALHOST_PICKER=1). Production hosts
-                  leave it off — sign-in is GitHub-only there.
-                </p>
-              </>
-            ) : null}
-
-            {actionData?.error ? (
-              <p className="mt-3 text-xs text-destructive">{actionData.error}</p>
-            ) : null}
 
             <p className="mt-4 text-xs text-muted-foreground">
               New here?{" "}
