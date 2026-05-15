@@ -187,7 +187,7 @@ export default function Dashboard({
         <div className="grid grid-cols-1 gap-4 min-[840px]:grid-cols-2">
           <Card>
             <CardHeader>
-              <CardTitle>Your Docos ({docos.length})</CardTitle>
+              <CardTitle>Your docos</CardTitle>
               <CardDescription>
                 Docos you own and Docos owned by organizations you belong to. Click to open.
               </CardDescription>
