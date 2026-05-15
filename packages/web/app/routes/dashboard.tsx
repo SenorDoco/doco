@@ -144,7 +144,7 @@ export default function Dashboard({
     <div>
       <SiteHeader mode="host" me={me} />
       <main className="mx-auto max-w-6xl px-6 py-6 space-y-4">
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 min-[840px]:grid-cols-2">
           <Card>
             <CardHeader>
               <CardTitle>Your Docos ({docos.length})</CardTitle>
