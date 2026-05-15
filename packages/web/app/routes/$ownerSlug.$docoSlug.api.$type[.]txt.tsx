@@ -193,7 +193,11 @@ BODY (JSON)
                             runs on every capture into this scope —
                             requires_edge / requires_field /
                             mandatory_scope / forbids_* / probabilistic).
-                            Add more later on /scopes/<id>/edit.
+                            For typed rule objects only — to author from
+                            plain English (recommended), POST to
+                            \`/api/scopes/<scope_id>/rules.json\` with
+                            \`{prose}\` instead and let the LLM
+                            classifier pick the predicate.
 
 SUCCESS RESPONSE (HTTP 201, application/json)
   {
@@ -242,6 +246,45 @@ HOW AGENTS USE WATCHED SCOPES
   yes, include that scope in the node's \`scopes\` list. This is a
   soft prompt — not a blocker — and applies to every node type
   (Decision, Intent, Action, Rule, ...).
+
+ADDING RULES IN PLAIN ENGLISH
+  Once a scope exists, author rules by POSTing prose:
+
+    POST ${baseUrl}/${owner}/${doco}/api/scopes/<scope_id>/rules.json
+    Content-Type: application/json
+    { "prose": "Every Decision should have an Intent." }
+
+  The server runs the prose through an LLM classifier that:
+    - splits multi-rule prose into separate atomic rules,
+    - maps each to the most-fitting deterministic predicate
+      (requires_edge / forbids_edge / requires_field /
+      forbids_field / mandatory_scope) when one fits — these
+      block writes at capture time,
+    - falls back to {kind: "probabilistic", spec: <verbatim>}
+      for prose no deterministic predicate captures — these are
+      LLM-judged at capture time and reject the write on a
+      no verdict.
+
+  Response (HTTP 201):
+    {
+      "added": [ { "text": "...", "rule": { "kind": "...", ... } }, ... ],
+      "total": <new total count of rules on this scope>,
+      "footer_lines": [ "[🔮 Doco] ➕ Scope updated: ...", ... ]
+    }
+
+  Errors:
+    400  prose missing/empty, JSON malformed.
+    404  scope id not found.
+    503  classifier unavailable (host can't reach OpenAI). The host's
+         OPENAI_API_KEY is load-bearing — failures REJECT the operation
+         rather than silently saving the prose as probabilistic.
+
+  Example:
+    curl -sS -X POST \\
+      -H "Content-Type: application/json" \\
+      -H "Authorization: Bearer $DOCO_TOKEN" \\
+      ${baseUrl}/${owner}/${doco}/api/scopes/scope_<ULID>/rules.json \\
+      -d '{ "prose": "Every Decision should have an Intent, and bugs should link to a Rule." }'
 
 RELATED
   POST ${baseUrl}/${owner}/${doco}/api/intents.json     capture an Intent

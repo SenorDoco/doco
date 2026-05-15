@@ -438,7 +438,7 @@ export default function EntityDetail({
   const headerPane = (
     <header className="space-y-2">
       <h1 className="text-lg font-semibold tracking-tight text-foreground">{display}</h1>
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2 pt-1">
         <Badge>{type}</Badge>
         {ent.lifecycle ? <Badge>lifecycle: {String(ent.lifecycle)}</Badge> : null}
         {ent.modality ? <Badge variant="primary">{String(ent.modality)}</Badge> : null}

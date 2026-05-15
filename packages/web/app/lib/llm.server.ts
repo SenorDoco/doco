@@ -277,12 +277,34 @@ export async function suggestImplicitEdges(
 // UI element") and an entity description; returns ok/reason. Used by the
 // rules engine to evaluate `{ kind: "probabilistic", spec: "..." }`
 // rules.
+//
+// Two modes:
+//   - default (`strict: false`) — soft-fails to `{ok: true}` on missing
+//     key / network error / parse error. Caller treats the rule as a
+//     deferred warning.
+//   - strict (`strict: true`) — throws `LlmUnavailableError` on every
+//     failure path. Used by runScopeRules so capture-time probabilistic
+//     enforcement REJECTS on LLM unavailability instead of silently passing
+//     (decision_01KRPET95G2QNTPCR0YWAKSCH5).
+
+export class LlmUnavailableError extends Error {
+  constructor(reason: string) {
+    super(reason);
+    this.name = "LlmUnavailableError";
+  }
+}
 
 export interface JudgeProbabilisticOptions {
   spec: string;
   entity: { id: string; node_type: string; summary: string; body?: string };
   model?: string;
   timeoutMs?: number;
+  /**
+   * When true, every failure path throws LlmUnavailableError instead of
+   * returning the soft-fail `{ok: true}` shape. Capture-time enforcement
+   * passes `strict: true` so an unavailable LLM rejects the write.
+   */
+  strict?: boolean;
 }
 
 export interface JudgeResult {
@@ -305,8 +327,13 @@ a reason like "criterion not testable from the visible fields".`;
 export async function judgeProbabilisticRule(
   opts: JudgeProbabilisticOptions,
 ): Promise<JudgeResult> {
+  const strict = opts.strict === true;
+  const softFail = (reason: string): JudgeResult => {
+    if (strict) throw new LlmUnavailableError(reason);
+    return { ok: true, reason };
+  };
   const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) return { ok: true, reason: "No LLM available; deferred." };
+  if (!apiKey) return softFail("OPENAI_API_KEY missing on host.");
   const userPrompt =
     `SPEC: ${opts.spec}\n\n` +
     `ENTITY:\n` +
@@ -334,18 +361,317 @@ export async function judgeProbabilisticRule(
       }),
       signal: controller.signal,
     });
-    if (!res.ok) return { ok: true, reason: "Judge call failed; deferred." };
+    if (!res.ok) return softFail(`OpenAI judge call failed: HTTP ${res.status}.`);
     const data = (await res.json()) as { choices?: { message?: { content?: string } }[] };
     const text = data.choices?.[0]?.message?.content;
-    if (!text) return { ok: true, reason: "Empty judge response; deferred." };
+    if (!text) return softFail("Empty judge response from OpenAI.");
     const parsed = JSON.parse(text) as { ok?: unknown; reason?: unknown };
     return {
       ok: parsed.ok === true,
       reason: typeof parsed.reason === "string" ? parsed.reason : "(no reason given)",
     };
-  } catch {
-    return { ok: true, reason: "Judge errored; deferred." };
+  } catch (e) {
+    if (e instanceof LlmUnavailableError) throw e;
+    return softFail(`Judge errored: ${(e as Error).message ?? "unknown error"}.`);
   } finally {
     clearTimeout(timeout);
+  }
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// Prose -> ScopeRule[] classifier (decision_01KRPET95G2QNTPCR0YWAKSCH5).
+//
+// The author types "every Decision should have an Intent, and bugs should
+// link to a Rule" — this turns that into TWO ScopeRule rows, classifying
+// each as the most-fitting deterministic predicate (requires_edge with
+// edge_type=serves + target_node_type=intent; requires_edge with
+// edge_type=relates_to + target_node_type=rule). Falls back to
+// {kind: "probabilistic", spec: <verbatim>} for prose the predicate
+// language can't capture ("the writing is clear", "the rationale is
+// concrete"). Always throws on LLM unavailability — both surfaces
+// (web preview, API commit) reject the operation instead of silently
+// degrading.
+
+export interface ClassifiedRule {
+  /** The portion of the original prose this rule represents (verbatim). */
+  text: string;
+  /** The ScopeRule that will be persisted. Matches the @doco/shared union. */
+  rule: ClassifiedScopeRule;
+}
+
+/**
+ * Mirrors ScopeRule in @doco/shared but typed locally to avoid coupling the
+ * web package to that import here. The persistence layer accepts any
+ * record-shaped object; the engine reads the discriminant `kind`.
+ */
+export type ClassifiedScopeRule =
+  | {
+      kind: "requires_edge" | "forbids_edge";
+      edge_type: string;
+      target_node_type?: string;
+      reason?: string;
+    }
+  | { kind: "requires_field" | "forbids_field"; fields: string[]; reason?: string }
+  | { kind: "mandatory_scope"; scope_ids: string[]; reason?: string }
+  | { kind: "probabilistic"; spec: string; reason?: string };
+
+export interface ClassifyRuleProseOptions {
+  /** What the project owner typed (may describe multiple rules). */
+  prose: string;
+  /** Scopes available on this Doco — needed to resolve `mandatory_scope` ids. */
+  availableScopes: { id: string; name: string }[];
+  /** Name of the scope these rules attach to (informs the LLM's framing). */
+  scopeName: string;
+  model?: string;
+  timeoutMs?: number;
+}
+
+// Canonical edge types + node types the engine recognizes. The LLM picks
+// from these or falls back to probabilistic — anything off-list would fail
+// the rules engine silently.
+const CLASSIFIER_EDGE_TYPES = [
+  "serves",
+  "consults",
+  "enacts",
+  "performed_by",
+  "acts_on",
+  "authored_by",
+  "premise",
+  "concludes",
+  "has_parent",
+  "has_stakeholder",
+  "owned_by",
+  "created_by",
+  "updated_by",
+  "born_from",
+  "superseded_by",
+  "in_scope_of",
+  "member_of",
+  "follows",
+  "tests",
+  "relates_to",
+] as const;
+
+const CLASSIFIER_NODE_TYPES = [
+  "principal",
+  "doco",
+  "organization",
+  "intent",
+  "idea",
+  "rule",
+  "decision",
+  "action",
+  "reasoning",
+  "eval",
+  "reference",
+  "scope",
+] as const;
+
+const CLASSIFIER_FIELDS = [
+  "summary",
+  "slug",
+  "lifecycle",
+  "scopes",
+  "intent_ids",
+  "decision_ids",
+  "rules_consulted",
+  "stakeholders",
+  "follows",
+  "born_from",
+  "superseded_by",
+  "target_ref",
+  "target",
+  "actor_id",
+  "author_id",
+] as const;
+
+const CLASSIFIER_SYSTEM_PROMPT = `You translate plain-English scope rules into the Doco rule engine's typed predicates.
+
+A Scope's "rules" array declares predicates that every node tagged with that scope must satisfy. Deterministic predicates block writes structurally; a probabilistic predicate stores free-text the LLM judges at capture time.
+
+You will see a project owner's prose. Your job:
+
+1. SPLIT the prose into atomic rules. If they wrote "A and B", emit TWO rules.
+2. For each atomic rule, pick the MOST FITTING predicate from this list:
+
+   - {kind: "requires_edge", edge_type, target_node_type?}
+     Use when the rule is "nodes in this scope must reference X".
+     Examples:
+       "must have an Intent" -> requires_edge edge_type=serves target_node_type=intent
+       "should cite a Decision" -> requires_edge edge_type=enacts target_node_type=decision
+       "must link to a Rule" -> requires_edge edge_type=relates_to target_node_type=rule
+       "should reference an existing Bug" -> requires_edge edge_type=born_from target_node_type=decision
+
+   - {kind: "forbids_edge", edge_type, target_node_type?}
+     Use for the negative form ("must not reference X").
+
+   - {kind: "requires_field", fields[]}
+     Use when the rule names a frontmatter property the node must declare.
+     Examples:
+       "must declare a lifecycle" -> requires_field fields=["lifecycle"]
+       "summary and slug are required" -> requires_field fields=["summary", "slug"]
+
+   - {kind: "forbids_field", fields[]}
+     Use for the negative form.
+
+   - {kind: "mandatory_scope", scope_ids[]}
+     Use ONLY when the rule says "every node in this Doco must also be tagged with scope X".
+     The Doco-wide form. You'll get an availableScopes list — resolve scope NAMES to IDs from it. If the named scope isn't in the list, fall back to probabilistic.
+
+   - {kind: "probabilistic", spec}
+     Use when the rule asks for a quality judgment that no deterministic predicate captures ("the writing is clear", "the rationale is concrete", "the decision is well-reasoned"). The original prose IS the spec.
+
+3. CONSTRAINTS for deterministic kinds:
+   - edge_type MUST be one of: ${CLASSIFIER_EDGE_TYPES.join(", ")}.
+   - target_node_type MUST be one of: ${CLASSIFIER_NODE_TYPES.join(", ")}, or omitted.
+   - fields MUST be drawn from: ${CLASSIFIER_FIELDS.join(", ")}. If the prose names a field not on this list, fall back to probabilistic.
+   - When in doubt -> probabilistic. It is BETTER to defer to the LLM judge than to misclassify into a deterministic kind that won't fire correctly.
+
+4. Each rule also gets a "text" field: the verbatim slice of the user's prose this rule represents. Authors must be able to see their original words in the rule list.
+
+5. Each rule may include a "reason" field (one short sentence) — only when the prose makes the rule's motivation explicit. Otherwise omit.
+
+OUTPUT JSON ONLY in this shape:
+{
+  "rules": [
+    {
+      "text": "<verbatim prose slice>",
+      "rule": {
+        "kind": "requires_edge" | "forbids_edge" | "requires_field" | "forbids_field" | "mandatory_scope" | "probabilistic",
+        ...kind-specific params
+      }
+    }
+  ]
+}
+
+No commentary. No prose outside the JSON.`;
+
+export async function classifyRuleProse(
+  opts: ClassifyRuleProseOptions,
+): Promise<ClassifiedRule[]> {
+  const prose = opts.prose.trim();
+  if (!prose) throw new LlmUnavailableError("Empty prose — nothing to classify.");
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) throw new LlmUnavailableError("OPENAI_API_KEY missing on host.");
+
+  const userPrompt =
+    `Scope this rule attaches to: ${opts.scopeName}\n\n` +
+    `Available scopes on this Doco (for mandatory_scope resolution):\n` +
+    opts.availableScopes.map((s) => `  - id: ${s.id}, name: ${s.name}`).join("\n") +
+    `\n\nProject owner's prose:\n${prose}`;
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), opts.timeoutMs ?? 30_000);
+  try {
+    const res = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: opts.model ?? "gpt-4o-mini",
+        messages: [
+          { role: "system", content: CLASSIFIER_SYSTEM_PROMPT },
+          { role: "user", content: userPrompt },
+        ],
+        response_format: { type: "json_object" },
+        temperature: 0,
+      }),
+      signal: controller.signal,
+    });
+    if (!res.ok) {
+      throw new LlmUnavailableError(`OpenAI classifier call failed: HTTP ${res.status}.`);
+    }
+    const data = (await res.json()) as { choices?: { message?: { content?: string } }[] };
+    const text = data.choices?.[0]?.message?.content;
+    if (!text) throw new LlmUnavailableError("Empty classifier response from OpenAI.");
+    const parsed = JSON.parse(text) as { rules?: unknown };
+    if (!Array.isArray(parsed.rules) || parsed.rules.length === 0) {
+      throw new LlmUnavailableError("Classifier returned no rules.");
+    }
+    return parsed.rules.map(normalizeClassifiedRow).filter((r): r is ClassifiedRule => r !== null);
+  } catch (e) {
+    if (e instanceof LlmUnavailableError) throw e;
+    throw new LlmUnavailableError(
+      `Classifier errored: ${(e as Error).message ?? "unknown error"}.`,
+    );
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function normalizeClassifiedRow(raw: unknown): ClassifiedRule | null {
+  if (!raw || typeof raw !== "object") return null;
+  const rec = raw as Record<string, unknown>;
+  const text = typeof rec.text === "string" ? rec.text.trim() : "";
+  if (!text) return null;
+  const ruleRaw = rec.rule;
+  if (!ruleRaw || typeof ruleRaw !== "object") return null;
+  const r = ruleRaw as Record<string, unknown>;
+  const kind = typeof r.kind === "string" ? r.kind : "";
+  const reason = typeof r.reason === "string" && r.reason.trim() ? r.reason.trim() : undefined;
+  switch (kind) {
+    case "requires_edge":
+    case "forbids_edge": {
+      const edge_type = typeof r.edge_type === "string" ? r.edge_type : "";
+      if (!CLASSIFIER_EDGE_TYPES.includes(edge_type as (typeof CLASSIFIER_EDGE_TYPES)[number])) {
+        // Off-list edge type — preserve as probabilistic so capture-time
+        // judging still applies. Better a deferred check than a broken one.
+        return { text, rule: { kind: "probabilistic", spec: text, ...(reason ? { reason } : {}) } };
+      }
+      const target_node_type = typeof r.target_node_type === "string" ? r.target_node_type : "";
+      const validTarget =
+        target_node_type === ""
+          ? undefined
+          : CLASSIFIER_NODE_TYPES.includes(target_node_type as (typeof CLASSIFIER_NODE_TYPES)[number])
+            ? target_node_type
+            : null;
+      if (validTarget === null) {
+        return { text, rule: { kind: "probabilistic", spec: text, ...(reason ? { reason } : {}) } };
+      }
+      return {
+        text,
+        rule: {
+          kind,
+          edge_type,
+          ...(validTarget ? { target_node_type: validTarget } : {}),
+          ...(reason ? { reason } : {}),
+        },
+      };
+    }
+    case "requires_field":
+    case "forbids_field": {
+      const fieldsRaw = Array.isArray(r.fields) ? r.fields : [];
+      const fields = fieldsRaw
+        .filter((f): f is string => typeof f === "string" && f.length > 0)
+        .filter((f) => CLASSIFIER_FIELDS.includes(f as (typeof CLASSIFIER_FIELDS)[number]));
+      if (fields.length === 0) {
+        return { text, rule: { kind: "probabilistic", spec: text, ...(reason ? { reason } : {}) } };
+      }
+      return {
+        text,
+        rule: { kind, fields: [...new Set(fields)], ...(reason ? { reason } : {}) },
+      };
+    }
+    case "mandatory_scope": {
+      const idsRaw = Array.isArray(r.scope_ids) ? r.scope_ids : [];
+      const ids = idsRaw.filter(
+        (s): s is string => typeof s === "string" && s.startsWith("scope_"),
+      );
+      if (ids.length === 0) {
+        return { text, rule: { kind: "probabilistic", spec: text, ...(reason ? { reason } : {}) } };
+      }
+      return {
+        text,
+        rule: { kind, scope_ids: [...new Set(ids)], ...(reason ? { reason } : {}) },
+      };
+    }
+    case "probabilistic": {
+      const spec = typeof r.spec === "string" && r.spec.trim() ? r.spec.trim() : text;
+      return { text, rule: { kind, spec, ...(reason ? { reason } : {}) } };
+    }
+    default:
+      return { text, rule: { kind: "probabilistic", spec: text, ...(reason ? { reason } : {}) } };
   }
 }

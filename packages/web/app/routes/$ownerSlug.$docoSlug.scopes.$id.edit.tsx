@@ -15,7 +15,7 @@
 // until you press Save / Add / Remove / Delete. Cancel returns to /scopes.
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Form, Link, redirect, useFetcher } from "react-router";
 import { parse as parseYaml } from "yaml";
 import type { EntityId } from "@doco/shared";
@@ -27,6 +27,11 @@ import { Toggle } from "~/components/toggle";
 import { withClient } from "@doco/db";
 import { loadDocoForAdmin } from "~/lib/doco-access.server";
 import { loadHostConfig } from "~/lib/host";
+import {
+  classifyRuleProse,
+  LlmUnavailableError,
+  type ClassifiedRule,
+} from "~/lib/llm.server";
 import { reindex, setScopeWatchedInDoco, updateScopeInDoco } from "~/lib/redeem.server";
 import { listScopeDetails, listScopeManifest, readDocoMetadata } from "~/lib/scope-helpers.server";
 
@@ -59,68 +64,6 @@ function asScopeIdList(r: ScopeRuleRecord): string[] {
   if (typeof r.scope_id === "string" && r.scope_id.length > 0) return [r.scope_id];
   return [];
 }
-
-// Canonical lists shared by every rule-form dropdown. Keep these in sync with
-// the index's FIELD_TO_EDGE_TYPE table (packages/index/src/edges.ts) and the
-// entity discriminator (packages/shared/src/entities.ts).
-const EDGE_TYPE_OPTIONS = [
-  "serves",
-  "consults",
-  "enacts",
-  "performed_by",
-  "acts_on",
-  "authored_by",
-  "premise",
-  "concludes",
-  "has_parent",
-  "has_stakeholder",
-  "owned_by",
-  "created_by",
-  "updated_by",
-  "born_from",
-  "superseded_by",
-  "in_scope_of",
-  "member_of",
-  "follows",
-  "tests",
-  "relates_to",
-] as const;
-
-const NODE_TYPE_OPTIONS = [
-  "principal",
-  "doco",
-  "organization",
-  "intent",
-  "idea",
-  "rule",
-  "decision",
-  "action",
-  "reasoning",
-  "eval",
-  "reference",
-  "scope",
-] as const;
-
-// Common frontmatter fields that a `requires_field` / `forbids_field` rule
-// would reasonably target. The dropdown still allows "Other" for advanced
-// users via the schema-free underlying YAML.
-const FIELD_OPTIONS = [
-  "summary",
-  "slug",
-  "lifecycle",
-  "scopes",
-  "intent_ids",
-  "decision_ids",
-  "rules_consulted",
-  "stakeholders",
-  "follows",
-  "born_from",
-  "superseded_by",
-  "target_ref",
-  "target",
-  "actor_id",
-  "author_id",
-] as const;
 
 function readScopeRaw(docoDir: string, scopeId: string): Record<string, unknown> | null {
   try {
@@ -251,59 +194,66 @@ export async function action({
         purpose: purpose || null,
         guidelines: guidelines || null,
       });
-    } else if (intent === "add_deterministic_rule") {
+    } else if (intent === "classify_rule_prose") {
+      // The new prose-driven flow (decision_01KRPET95G2QNTPCR0YWAKSCH5).
+      // Fetcher-only path: returns the classified rules without persisting
+      // so the form can show a preview before the project owner accepts.
+      // No reindex, no redirect.
+      const prose = String(form.get("prose") ?? "").trim();
+      if (!prose) return { error: "Type the rule in your own words." };
       const raw = readScopeRaw(dir, id);
       if (!raw) return { error: "Scope not found." };
-      const existing: ScopeRuleRecord[] = Array.isArray(raw.rules)
-        ? (raw.rules as ScopeRuleRecord[])
-        : [];
-      const kind = String(form.get("kind") ?? "");
-      const reason = String(form.get("reason") ?? "").trim();
-      const newRule: ScopeRuleRecord = { kind };
-      if (kind === "requires_edge" || kind === "forbids_edge") {
-        const edge_type = String(form.get("edge_type") ?? "").trim();
-        const target_node_type = String(form.get("target_node_type") ?? "").trim();
-        if (!edge_type) return { error: "edge_type is required for this rule kind." };
-        newRule.edge_type = edge_type;
-        if (target_node_type) newRule.target_node_type = target_node_type;
-      } else if (kind === "requires_field" || kind === "forbids_field") {
-        const fields = form
-          .getAll("fields")
-          .map((v) => String(v).trim())
-          .filter((v) => v.length > 0);
-        if (fields.length === 0) {
-          return { error: "Pick at least one field for this rule kind." };
+      const allScopeDetails = await listScopeDetails(dir);
+      try {
+        const classified = await classifyRuleProse({
+          prose,
+          scopeName: String(raw.name),
+          availableScopes: allScopeDetails.map((s) => ({ id: s.id, name: s.name })),
+        });
+        return { classified, originalProse: prose };
+      } catch (e) {
+        if (e instanceof LlmUnavailableError) {
+          return {
+            error: `Classifier unavailable — ${e.message} The host must reach OpenAI to author rules from prose.`,
+          };
         }
-        // Dedup while preserving the order the author picked.
-        newRule.fields = [...new Set(fields)];
-      } else if (kind === "mandatory_scope") {
-        const scopeIds = form
-          .getAll("scope_ids")
-          .map((v) => String(v).trim())
-          .filter((v) => v.length > 0);
-        if (scopeIds.length === 0) {
-          return { error: "Pick at least one scope for mandatory_scope." };
-        }
-        newRule.scope_ids = [...new Set(scopeIds)];
-      } else {
-        return { error: `Unknown deterministic rule kind: ${kind}` };
+        return { error: (e as Error).message };
       }
-      if (reason) newRule.reason = reason;
-      const next = [...existing, newRule];
-      await updateScopeInDoco({ docoDir: dir, scopeId, rules: next });
-    } else if (intent === "add_probabilistic_rule") {
+    } else if (intent === "add_rules_classified") {
+      const payload = String(form.get("payload") ?? "");
+      if (!payload) return { error: "No classified payload to add." };
+      let parsed: ClassifiedRule[];
+      try {
+        parsed = JSON.parse(payload) as ClassifiedRule[];
+      } catch (e) {
+        return { error: `Invalid classified payload: ${(e as Error).message}` };
+      }
+      if (!Array.isArray(parsed) || parsed.length === 0) {
+        return { error: "No rules to add." };
+      }
       const raw = readScopeRaw(dir, id);
       if (!raw) return { error: "Scope not found." };
       const existing: ScopeRuleRecord[] = Array.isArray(raw.rules)
         ? (raw.rules as ScopeRuleRecord[])
         : [];
-      const spec = String(form.get("spec") ?? "").trim();
-      const reason = String(form.get("reason") ?? "").trim();
-      if (!spec) return { error: "spec is required for probabilistic rules." };
-      const newRule: ScopeRuleRecord = { kind: "probabilistic", spec };
-      if (reason) newRule.reason = reason;
-      const next = [...existing, newRule];
+      const newRules: ScopeRuleRecord[] = parsed.map((c) => {
+        // Persist the original prose as `reason` so the rule list shows the
+        // project owner's own words next to the predicate shorthand. For
+        // probabilistic rules the spec IS the prose, so reason stays
+        // whatever the classifier set (if anything) to avoid duplication.
+        const base: ScopeRuleRecord = { ...(c.rule as unknown as ScopeRuleRecord) };
+        if (c.rule.kind !== "probabilistic" && !base.reason && c.text.trim()) {
+          base.reason = c.text.trim();
+        }
+        return base;
+      });
+      const next = [...existing, ...newRules];
       await updateScopeInDoco({ docoDir: dir, scopeId, rules: next });
+      await reindex(dir);
+      // Fetcher-only path — returning data instead of redirecting lets the
+      // editor component reset its preview state and React Router
+      // revalidate the loader so the new rules show in the list above.
+      return { ok: true, added: newRules.length };
     } else if (intent === "remove_rule") {
       const indexStr = String(form.get("rule_index") ?? "");
       const index = Number.parseInt(indexStr, 10);
@@ -553,9 +503,11 @@ export default function ScopeEdit({
           <CardHeader>
             <CardTitle className="text-sm">Rules ({scope.rules.length})</CardTitle>
             <CardDescription>
-              Predicates the engine evaluates whenever a node enters this scope. Deterministic kinds
-              (requires_edge / forbids_edge / requires_field / forbids_field / mandatory_scope)
-              block writes. Probabilistic kinds surface as warnings. Add and remove one at a time.
+              Predicates the engine evaluates whenever a node enters this scope. Describe each rule
+              in plain English — the classifier turns it into a deterministic predicate (which
+              blocks writes structurally) when one fits, otherwise an LLM-judged probabilistic
+              rule that runs at capture time. Multi-rule prose splits into separate rows
+              automatically.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
@@ -565,33 +517,38 @@ export default function ScopeEdit({
               </p>
             ) : (
               <ul className="space-y-2">
-                {scope.rules.map((r, i) => (
-                  <li
-                    key={`${r.kind}-${i}`}
-                    className="flex items-baseline gap-2 rounded-md border border-border bg-card p-2 text-xs"
-                  >
-                    <Badge>{r.kind}</Badge>
-                    <span className="flex-1 text-foreground">{describeRule(r, allScopes)}</span>
-                    <Form method="post">
-                      <input type="hidden" name="intent" value="remove_rule" />
-                      <input type="hidden" name="rule_index" value={String(i)} />
-                      <button
-                        type="submit"
-                        className="rounded-md border border-border px-2 py-0.5 text-[10px] text-destructive hover:bg-destructive/10"
-                      >
-                        Remove
-                      </button>
-                    </Form>
-                  </li>
-                ))}
+                {scope.rules.map((r, i) => {
+                  const isProbabilistic = r.kind === "probabilistic";
+                  const shorthand = predicateShorthand(r, allScopes);
+                  return (
+                    <li
+                      key={`${r.kind}-${i}`}
+                      className="flex items-baseline gap-2 rounded-md border border-border bg-card p-2 text-xs"
+                    >
+                      <Badge>{isProbabilistic ? "Probabilistic" : "Deterministic"}</Badge>
+                      <div className="flex-1 space-y-0.5">
+                        <div className="text-foreground">{describeRule(r, allScopes)}</div>
+                        <div className="font-mono text-[10px] text-muted-foreground">
+                          {shorthand}
+                        </div>
+                      </div>
+                      <Form method="post">
+                        <input type="hidden" name="intent" value="remove_rule" />
+                        <input type="hidden" name="rule_index" value={String(i)} />
+                        <button
+                          type="submit"
+                          className="rounded-md border border-border px-2 py-0.5 text-[10px] text-destructive hover:bg-destructive/10"
+                        >
+                          Remove
+                        </button>
+                      </Form>
+                    </li>
+                  );
+                })}
               </ul>
             )}
 
-            {/* Add a deterministic rule */}
-            <DeterministicRuleForm allScopes={allScopes} />
-
-            {/* Add a probabilistic rule */}
-            <ProbabilisticRuleForm />
+            <RuleProseEditor allScopes={allScopes} />
           </CardContent>
         </Card>
 
@@ -801,203 +758,178 @@ function DangerZone({
 }
 
 /**
- * Deterministic rules block writes. Kind dictates which params are needed;
- * we show all four param blocks and let the action validate (so the form
- * works in browsers without scripting too).
+ * Compact one-line description of a rule's predicate shape — shown as a
+ * subtitle under the project owner's prose so the rule list makes the
+ * engine semantics visible at a glance.
  */
-export function DeterministicRuleForm({
-  allScopes,
-}: {
-  allScopes: { id: string; name: string }[];
-}) {
-  return (
-    <div className="rounded-md border border-dashed border-border bg-input/30 p-3">
-      <p className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-        Add deterministic rule
-      </p>
-      <p className="mb-2 text-[11px] text-muted-foreground">
-        Deterministic rules block writes on violation. The engine evaluates them against the
-        entity's frontmatter + the Doco's graph — no LLM involved. Pick a kind, fill in its params,
-        and the rule fires every time a node enters this scope.
-      </p>
-      <Form method="post" className="space-y-2">
-        <input type="hidden" name="intent" value="add_deterministic_rule" />
-        <label className="block text-xs">
-          <span className="mb-1 block text-[11px] uppercase tracking-wider text-muted-foreground">
-            Kind
-          </span>
-          <select
-            name="kind"
-            defaultValue="requires_edge"
-            className="w-full rounded-md border border-border bg-input px-3 py-2 text-xs text-foreground outline-none focus:border-primary"
-          >
-            <option value="requires_edge">requires_edge — nodes must reference …</option>
-            <option value="forbids_edge">forbids_edge — nodes must NOT reference …</option>
-            <option value="requires_field">requires_field — frontmatter must include …</option>
-            <option value="forbids_field">forbids_field — frontmatter must NOT include …</option>
-            <option value="mandatory_scope">
-              mandatory_scope — every node in this Doco must list …
-            </option>
-          </select>
-        </label>
-
-        <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-          <label className="block text-xs">
-            <span className="mb-1 block text-[10px] uppercase tracking-wider text-muted-foreground">
-              edge_type{" "}
-              <span className="text-muted-foreground">(for requires_edge / forbids_edge)</span>
-            </span>
-            <select
-              name="edge_type"
-              defaultValue=""
-              className="w-full rounded-md border border-border bg-input px-3 py-2 text-xs text-foreground outline-none focus:border-primary"
-            >
-              <option value="">— pick an edge type —</option>
-              {EDGE_TYPE_OPTIONS.map((e) => (
-                <option key={e} value={e}>
-                  {e}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="block text-xs">
-            <span className="mb-1 block text-[10px] uppercase tracking-wider text-muted-foreground">
-              target_node_type <span className="text-muted-foreground">(optional)</span>
-            </span>
-            <select
-              name="target_node_type"
-              defaultValue=""
-              className="w-full rounded-md border border-border bg-input px-3 py-2 text-xs text-foreground outline-none focus:border-primary"
-            >
-              <option value="">— any —</option>
-              {NODE_TYPE_OPTIONS.map((n) => (
-                <option key={n} value={n}>
-                  {n}
-                </option>
-              ))}
-            </select>
-          </label>
-          <fieldset className="block text-xs">
-            <legend className="mb-1 block text-[10px] uppercase tracking-wider text-muted-foreground">
-              fields{" "}
-              <span className="text-muted-foreground">
-                (for requires_field / forbids_field — tick one or more)
-              </span>
-            </legend>
-            <div className="max-h-32 overflow-y-auto rounded-md border border-border bg-input p-2 grid grid-cols-2 gap-1">
-              {FIELD_OPTIONS.map((f) => (
-                <label key={f} className="flex items-center gap-2 text-xs">
-                  <input
-                    type="checkbox"
-                    name="fields"
-                    value={f}
-                    className="size-3"
-                  />
-                  <span className="font-mono text-foreground">{f}</span>
-                </label>
-              ))}
-            </div>
-          </fieldset>
-          <fieldset className="block text-xs">
-            <legend className="mb-1 block text-[10px] uppercase tracking-wider text-muted-foreground">
-              scope_ids{" "}
-              <span className="text-muted-foreground">
-                (for mandatory_scope — tick one or more)
-              </span>
-            </legend>
-            <div className="max-h-32 overflow-y-auto rounded-md border border-border bg-input p-2 space-y-1">
-              {allScopes.map((s) => (
-                <label key={s.id} className="flex items-center gap-2 text-xs">
-                  <input
-                    type="checkbox"
-                    name="scope_ids"
-                    value={s.id}
-                    className="size-3"
-                  />
-                  <span className="font-mono text-foreground">{s.name}</span>
-                </label>
-              ))}
-            </div>
-          </fieldset>
-        </div>
-
-        <label className="block text-xs">
-          <span className="mb-1 block text-[10px] uppercase tracking-wider text-muted-foreground">
-            reason{" "}
-            <span className="text-muted-foreground">(optional — shown when the rule fails)</span>
-          </span>
-          <input
-            name="reason"
-            placeholder="Why this rule exists. Surfaced to authors on violation."
-            className="w-full rounded-md border border-border bg-input px-3 py-2 text-xs text-foreground outline-none focus:border-primary"
-          />
-        </label>
-
-        <div>
-          <button
-            type="submit"
-            className="rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90"
-          >
-            Add deterministic rule
-          </button>
-        </div>
-      </Form>
-    </div>
-  );
+function predicateShorthand(
+  r: ScopeRuleRecord,
+  allScopes: { id: string; name: string }[],
+): string {
+  switch (r.kind) {
+    case "requires_edge":
+      return `requires \`${r.edge_type ?? "?"}\`${r.target_node_type ? ` → ${r.target_node_type}` : ""}`;
+    case "forbids_edge":
+      return `forbids \`${r.edge_type ?? "?"}\`${r.target_node_type ? ` → ${r.target_node_type}` : ""}`;
+    case "requires_field":
+      return `requires fields: ${asFieldList(r).join(", ") || "—"}`;
+    case "forbids_field":
+      return `forbids fields: ${asFieldList(r).join(", ") || "—"}`;
+    case "mandatory_scope": {
+      const names = asScopeIdList(r).map((id) => allScopes.find((s) => s.id === id)?.name ?? id);
+      return `mandatory scope: ${names.join(", ") || "—"}`;
+    }
+    case "probabilistic":
+      return "LLM-judged at capture time";
+    default:
+      return r.kind;
+  }
 }
 
 /**
- * Probabilistic rules surface as warnings. The engine sends the candidate
- * node + the spec to an LLM, which returns ok/reason. No deterministic
- * matching — the spec is plain English.
+ * Single-textarea rule editor (decision_01KRPET95G2QNTPCR0YWAKSCH5).
+ *
+ * Two-step flow on the web. Step 1 — the project owner types prose
+ * describing one or more rules; the fetcher posts `classify_rule_prose`
+ * and the server LLM (OpenAI) returns a typed `ClassifiedRule[]` (splitting
+ * multi-rule prose and picking the most-fitting deterministic predicate
+ * when one fits, otherwise falling back to probabilistic). Step 2 — the
+ * preview UI shows what the classifier produced, with a Deterministic /
+ * Probabilistic badge per row; clicking Accept POSTs `add_rules_classified`
+ * (regular Form, redirects on success) to persist them.
+ *
+ * Classifier failure rejects the operation rather than silently saving
+ * the prose as probabilistic — per decision_01KRPET95G2QNTPCR0YWAKSCH5
+ * the host's OPENAI_API_KEY is now load-bearing, and degrading silently
+ * would hide that.
  */
-export function ProbabilisticRuleForm() {
+function RuleProseEditor({ allScopes }: { allScopes: { id: string; name: string }[] }) {
+  const fetcher = useFetcher<{
+    classified?: ClassifiedRule[];
+    originalProse?: string;
+    ok?: boolean;
+    added?: number;
+    error?: string;
+  }>();
+  const [prose, setProse] = useState("");
+  const [hidePreview, setHidePreview] = useState(false);
+
+  // When the accept fetcher succeeds, clear the local state so the form
+  // resets to the empty prose textarea — the loader revalidates and the
+  // new rule rows show in the list above.
+  useEffect(() => {
+    if (fetcher.state === "idle" && fetcher.data?.ok === true) {
+      setProse("");
+      setHidePreview(true);
+    }
+  }, [fetcher.state, fetcher.data]);
+
+  const isClassifying =
+    fetcher.state !== "idle" && fetcher.formData?.get("intent") === "classify_rule_prose";
+  const isSaving =
+    fetcher.state !== "idle" && fetcher.formData?.get("intent") === "add_rules_classified";
+  const classified = fetcher.data?.classified;
+  const classifyError =
+    fetcher.data?.error && fetcher.data?.classified === undefined ? fetcher.data.error : null;
+  const inPreview = !hidePreview && Array.isArray(classified) && classified.length > 0;
+
   return (
-    <div className="rounded-md border border-dashed border-border bg-input/30 p-3">
-      <p className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-        Add probabilistic rule
+    <div className="rounded-md border border-dashed border-border bg-input/30 p-3 space-y-2">
+      <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+        Add a rule
       </p>
-      <p className="mb-2 text-[11px] text-muted-foreground">
-        Probabilistic rules surface as warnings (not blockers). The engine sends the candidate node
-        and your prose spec to an LLM judge, which decides ok / not-ok and explains why. Use them
-        for properties that are too fuzzy for a deterministic predicate — &ldquo;the writing is
-        clear&rdquo;, &ldquo;the design rationale is concrete&rdquo;.
+      <p className="text-[11px] text-muted-foreground">
+        Describe the rule in your own words. A classifier turns it into a deterministic predicate
+        when one fits (and the engine blocks writes that violate it), or keeps your prose verbatim
+        as a probabilistic rule that the LLM judge evaluates at capture time. Two rules in one
+        sentence? They split automatically.
       </p>
-      <Form method="post" className="space-y-2">
-        <input type="hidden" name="intent" value="add_probabilistic_rule" />
-        <label className="block text-xs">
-          <span className="mb-1 block text-[10px] uppercase tracking-wider text-muted-foreground">
-            spec <span className="text-muted-foreground">(plain English property)</span>
-          </span>
-          <textarea
-            name="spec"
-            rows={2}
-            placeholder="Plain-English property the LLM should check (e.g. 'Decisions must reference a concrete UI element')."
-            className="w-full rounded-md border border-border bg-input px-3 py-2 text-xs text-foreground outline-none focus:border-primary"
-          />
-        </label>
 
-        <label className="block text-xs">
-          <span className="mb-1 block text-[10px] uppercase tracking-wider text-muted-foreground">
-            reason{" "}
-            <span className="text-muted-foreground">(optional — shown when the rule warns)</span>
-          </span>
-          <input
-            name="reason"
-            placeholder="Why this rule exists. Surfaced to authors on a warning."
-            className="w-full rounded-md border border-border bg-input px-3 py-2 text-xs text-foreground outline-none focus:border-primary"
-          />
-        </label>
-
-        <div>
-          <button
-            type="submit"
-            className="rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90"
-          >
-            Add probabilistic rule
-          </button>
-        </div>
-      </Form>
+      {inPreview ? (
+        <fetcher.Form method="post" className="space-y-2">
+          <input type="hidden" name="intent" value="add_rules_classified" />
+          <input type="hidden" name="payload" value={JSON.stringify(classified)} />
+          <p className="text-[11px] text-muted-foreground">
+            The classifier split your prose into <strong>{classified!.length}</strong> rule
+            {classified!.length === 1 ? "" : "s"}. Review and accept, or cancel to edit your prose.
+          </p>
+          <ul className="space-y-2">
+            {classified!.map((c, i) => {
+              const isProbabilistic = c.rule.kind === "probabilistic";
+              // Cast through unknown so the local ScopeRuleRecord helpers
+              // can read the legacy + plural shapes the engine accepts.
+              const asRecord = c.rule as unknown as ScopeRuleRecord;
+              return (
+                <li
+                  key={i}
+                  className="flex items-baseline gap-2 rounded-md border border-border bg-card p-2 text-xs"
+                >
+                  <Badge>{isProbabilistic ? "Probabilistic" : "Deterministic"}</Badge>
+                  <div className="flex-1 space-y-0.5">
+                    <div className="text-foreground">{c.text}</div>
+                    <div className="font-mono text-[10px] text-muted-foreground">
+                      {predicateShorthand(asRecord, allScopes)}
+                    </div>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+          {fetcher.data?.error && fetcher.data?.classified !== undefined ? (
+            <p className="text-[11px] text-destructive">{fetcher.data.error}</p>
+          ) : null}
+          <div className="flex gap-2">
+            <button
+              type="submit"
+              disabled={isSaving}
+              className="rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {isSaving
+                ? "Saving…"
+                : `Accept & add ${classified!.length} rule${classified!.length === 1 ? "" : "s"}`}
+            </button>
+            <button
+              type="button"
+              onClick={() => setHidePreview(true)}
+              className="rounded-md border border-border px-3 py-1.5 text-xs text-foreground hover:bg-card"
+            >
+              Cancel
+            </button>
+          </div>
+        </fetcher.Form>
+      ) : (
+        <fetcher.Form
+          method="post"
+          className="space-y-2"
+          onSubmit={() => setHidePreview(false)}
+        >
+          <input type="hidden" name="intent" value="classify_rule_prose" />
+          <label className="block text-xs">
+            <span className="mb-1 block text-[10px] uppercase tracking-wider text-muted-foreground">
+              Rule prose
+            </span>
+            <textarea
+              name="prose"
+              rows={3}
+              value={prose}
+              onChange={(e) => setProse(e.target.value)}
+              placeholder="e.g. Every Decision should have an Intent, and bugs should link to a Rule."
+              className="w-full rounded-md border border-border bg-input px-3 py-2 text-xs text-foreground outline-none focus:border-primary"
+            />
+          </label>
+          {classifyError ? <p className="text-[11px] text-destructive">{classifyError}</p> : null}
+          <div>
+            <button
+              type="submit"
+              disabled={isClassifying || prose.trim().length === 0}
+              className="rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {isClassifying ? "Classifying…" : "Classify with LLM"}
+            </button>
+          </div>
+        </fetcher.Form>
+      )}
     </div>
   );
 }
+

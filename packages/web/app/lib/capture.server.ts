@@ -10,7 +10,11 @@ import { waitUntil } from "@vercel/functions";
 import { generateUlid } from "@doco/shared";
 import type { Entity, Scope, EngineEdge } from "@doco/shared";
 import { evaluateScopeRules } from "@doco/shared";
-import { suggestImplicitEdges } from "./llm.server";
+import {
+  judgeProbabilisticRule,
+  LlmUnavailableError,
+  suggestImplicitEdges,
+} from "./llm.server";
 import { rootDir } from "./db.server";
 import { reindex, reindexEmbeddingsOnly } from "./redeem.server";
 import { readDocoMetadata, resolveScopeIcons } from "./scope-helpers.server";
@@ -706,6 +710,12 @@ export async function runScopeRules(opts: {
 
   const entityForEngine = entityFm as unknown as Entity;
   const allViolations: { scopeName: string; reason: string; severity: "error" | "warning" | "pending" }[] = [];
+  const entitySummary =
+    typeof entityFm.summary === "string" ? (entityFm.summary as string) : "";
+  const entityNodeType =
+    typeof entityFm.node_type === "string" ? (entityFm.node_type as string) : "";
+  const entityBody =
+    typeof entityFm.body_md === "string" ? (entityFm.body_md as string) : undefined;
   for (const { scope, rules } of rulesToRun) {
     const filteredScope = {
       ...(scope as unknown as Record<string, unknown>),
@@ -718,7 +728,64 @@ export async function runScopeRules(opts: {
       entityScopes: scopeIds,
     });
     const scopeName = (scope as unknown as { name: string }).name;
-    allViolations.push(...v.map((vv) => ({ scopeName, reason: vv.reason, severity: vv.severity })));
+    for (const vv of v) {
+      if (vv.severity === "error") {
+        allViolations.push({ scopeName, reason: vv.reason, severity: "error" });
+        continue;
+      }
+      if (vv.severity !== "pending" || vv.kind !== "probabilistic") {
+        allViolations.push({ scopeName, reason: vv.reason, severity: vv.severity });
+        continue;
+      }
+      // Probabilistic rule — invoke the LLM judge. Strict mode means
+      // the host's OPENAI_API_KEY is now load-bearing for captures
+      // into scopes carrying probabilistic rules
+      // (decision_01KRPET95G2QNTPCR0YWAKSCH5). Failure to reach the
+      // judge rejects the write rather than silently passing.
+      const rule = rules[vv.rule_index] as { kind?: string; spec?: string } | undefined;
+      const spec = rule?.spec ?? "";
+      if (!spec) {
+        allViolations.push({
+          scopeName,
+          reason: `Probabilistic rule at index ${vv.rule_index} has no spec.`,
+          severity: "error",
+        });
+        continue;
+      }
+      try {
+        const judgeResult = await judgeProbabilisticRule({
+          spec,
+          entity: {
+            id: candidateId,
+            node_type: entityNodeType,
+            summary: entitySummary,
+            ...(entityBody ? { body: entityBody } : {}),
+          },
+          strict: true,
+        });
+        if (!judgeResult.ok) {
+          allViolations.push({
+            scopeName,
+            reason: `Probabilistic rule failed: "${spec}" — ${judgeResult.reason}`,
+            severity: "error",
+          });
+        }
+      } catch (e) {
+        if (e instanceof LlmUnavailableError) {
+          allViolations.push({
+            scopeName,
+            reason: `Probabilistic rule judge unavailable — ${e.message} The host must reach OpenAI to capture into scopes with probabilistic rules.`,
+            severity: "error",
+          });
+        } else {
+          allViolations.push({
+            scopeName,
+            reason: `Probabilistic rule judge errored: ${(e as Error).message}`,
+            severity: "error",
+          });
+        }
+      }
+    }
   }
   const fails = allViolations.filter((v) => v.severity === "error");
   if (fails.length === 0) return null;
