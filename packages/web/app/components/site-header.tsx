@@ -1,6 +1,7 @@
 import { Form, NavLink } from "react-router";
 import { cn } from "~/lib/cn";
 import { DocoMark } from "~/components/doco-mark";
+import { VersionPill } from "~/components/version-pill";
 import type { CurrentPrincipal } from "~/lib/session";
 
 interface SiteHeaderProps {
@@ -49,21 +50,7 @@ export function SiteHeader({ docoScope, me }: SiteHeaderProps) {
           <NavLink to="/" className="inline-flex items-center hover:opacity-80" aria-label="Doco home">
             <DocoMark height={28} />
           </NavLink>
-          {docoScope ? (
-            <span className="font-normal text-xs text-muted-foreground">
-              /{" "}
-              <NavLink to={`/${docoScope.ownerSlug}`} className="hover:text-foreground">
-                {docoScope.ownerSlug}
-              </NavLink>
-              {" / "}
-              <NavLink
-                to={`/${docoScope.ownerSlug}/${docoScope.docoSlug}`}
-                className="hover:text-foreground"
-              >
-                {docoScope.docoSlug}
-              </NavLink>
-            </span>
-          ) : null}
+          <VersionPill />
         </h1>
         <div className="ml-auto flex items-center gap-3 text-xs">
           {/* mode is always "host" per ADR-093; the conditional remains for future modes. */}

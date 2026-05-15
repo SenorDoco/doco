@@ -5,6 +5,7 @@ import { Link } from "react-router";
 import { loadHostConfig } from "~/lib/host";
 import { getPublicBaseUrl } from "@doco/shared";
 import { DocoMark } from "~/components/doco-mark";
+import { VersionPill } from "~/components/version-pill";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 
 export async function loader({ request }: { request: Request }) {
@@ -33,7 +34,8 @@ export default function CreateHuman({
           <Link to="/" className="inline-flex items-center hover:opacity-80" aria-label="Doco home">
             <DocoMark height={28} />
           </Link>
-          <Link to="/onboarding/create" className="text-xs text-muted-foreground hover:text-foreground">
+          <VersionPill />
+          <Link to="/onboarding/create" className="ml-auto text-xs text-muted-foreground hover:text-foreground">
             ← Back
           </Link>
         </div>

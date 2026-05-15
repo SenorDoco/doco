@@ -1,7 +1,7 @@
 import { Link } from "react-router";
 import { readOAuthConfig, setOAuthReturnCookie, startOAuth } from "~/lib/oauth.server";
-import { loadHostConfig } from "~/lib/host";
 import { DocoMark } from "~/components/doco-mark";
+import { VersionPill } from "~/components/version-pill";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 
 /**
@@ -13,7 +13,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/com
 export async function loader({ request }: { request: Request }) {
   const config = readOAuthConfig(request);
   if (!config) {
-    return { error: "missing_config" as const, host: await loadHostConfig() };
+    return { error: "missing_config" as const };
   }
   const reqUrl = new URL(request.url);
   const returnParam = reqUrl.searchParams.get("return");
@@ -36,7 +36,7 @@ export function meta() {
 export default function AuthGitHub({
   loaderData,
 }: {
-  loaderData: { error: "missing_config"; host: { name: string } } | undefined;
+  loaderData: { error: "missing_config" } | undefined;
 }) {
   // The success branch returns a Response (a redirect); only the error branch
   // reaches this component.
@@ -48,7 +48,7 @@ export default function AuthGitHub({
           <Link to="/" className="inline-flex items-center hover:opacity-80" aria-label="Doco home">
             <DocoMark height={28} />
           </Link>
-          <span className="text-xs text-muted-foreground">/ {loaderData.host.name}</span>
+          <VersionPill />
         </div>
       </header>
       <main className="mx-auto max-w-2xl px-6 py-10">

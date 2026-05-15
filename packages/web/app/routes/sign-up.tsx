@@ -1,8 +1,8 @@
 import { Link, redirect } from "react-router";
-import { loadHostConfig } from "~/lib/host";
 import { getCurrentPrincipal } from "~/lib/session";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { DocoMark } from "~/components/doco-mark";
+import { VersionPill } from "~/components/version-pill";
 
 /**
  * /sign-up — GitHub-OAuth-only account creation (ADR-095). No manual form.
@@ -11,18 +11,14 @@ import { DocoMark } from "~/components/doco-mark";
  */
 export async function loader({ request }: { request: Request }) {
   if (await getCurrentPrincipal(request)) throw redirect("/dashboard");
-  return { host: await loadHostConfig() };
+  return {};
 }
 
 export function meta() {
   return [{ title: "Sign up · Doco" }];
 }
 
-export default function SignUp({
-  loaderData,
-}: {
-  loaderData: Awaited<ReturnType<typeof loader>>;
-}) {
+export default function SignUp() {
   return (
     <div>
       <header className="border-b border-border bg-card">
@@ -30,7 +26,7 @@ export default function SignUp({
           <Link to="/" className="inline-flex items-center hover:opacity-80" aria-label="Doco home">
             <DocoMark height={28} />
           </Link>
-          <span className="text-xs text-muted-foreground">/ {loaderData.host.name}</span>
+          <VersionPill />
         </div>
       </header>
       <main className="mx-auto max-w-md px-6 py-10">

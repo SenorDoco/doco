@@ -117,15 +117,26 @@ function spiralLayout(
 export function EntityGraph({ centerId, nodes, links, hrefFor }: EntityGraphProps) {
   const navigate = useNavigate();
 
+  // Scope nodes are never shown as neighbors — they're a categorical
+  // membership signal, not part of the focal node's reasoning chain. The
+  // focal node itself stays visible even when it's a scope (otherwise the
+  // graph on a scope-detail page would be empty).
   const allTypes = useMemo(() => {
     const set = new Set<string>();
-    for (const n of nodes) set.add(n.node_type);
+    for (const n of nodes) {
+      if (n.node_type === "scope") continue;
+      set.add(n.node_type);
+    }
     return Array.from(set).sort();
   }, [nodes]);
   const [hiddenTypes, setHiddenTypes] = useState<Set<string>>(new Set());
 
   const visible = useMemo(() => {
-    const v = nodes.filter((n) => n.id === centerId || !hiddenTypes.has(n.node_type));
+    const v = nodes.filter((n) => {
+      if (n.id === centerId) return true;
+      if (n.node_type === "scope") return false;
+      return !hiddenTypes.has(n.node_type);
+    });
     const ids = new Set(v.map((n) => n.id));
     const vl = links.filter((l) => {
       const src = typeof l.source === "string" ? l.source : (l.source as { id: string }).id;
@@ -207,10 +218,6 @@ export function EntityGraph({ centerId, nodes, links, hrefFor }: EntityGraphProp
                 style={{ width: NODE_W }}
               >
                 <div className="flex items-center gap-1.5">
-                  <span
-                    className="inline-block h-2 w-2 shrink-0 rounded-full"
-                    style={{ backgroundColor: color }}
-                  />
                   <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
                     {n.node_type}
                   </span>
@@ -244,11 +251,17 @@ export function EntityGraph({ centerId, nodes, links, hrefFor }: EntityGraphProp
           },
           style: {
             background: bg,
-            border: n.is_center ? `2px solid ${color}` : `1px solid ${color}66`,
+            // Borders stay gray for every node — the type is signalled by
+            // the colored stripe drawn inside the left edge of the card
+            // (boxShadow inset). Focal keeps a 2px gray border for weight.
+            border: n.is_center
+              ? "2px solid var(--color-border)"
+              : "1px solid var(--color-border)",
             borderRadius: 8,
             padding: 0,
             width: NODE_W,
             overflow: "hidden",
+            boxShadow: `inset 4px 0 0 ${color}`,
           },
           sourcePosition: "right" as const,
           targetPosition: "left" as const,
@@ -360,6 +373,9 @@ export function EntityGraph({ centerId, nodes, links, hrefFor }: EntityGraphProp
               }
               pannable
               zoomable
+              maskColor="rgba(0, 0, 0, 0.35)"
+              maskStrokeColor="rgba(0, 0, 0, 0.6)"
+              maskStrokeWidth={2}
               style={{
                 width: 120,
                 height: 90,

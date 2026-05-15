@@ -1,6 +1,5 @@
 import { Form, Link, redirect } from "react-router";
 
-import { loadHostConfig } from "~/lib/host";
 import {
   findPrincipalById,
   getSessionPrincipalId,
@@ -9,6 +8,7 @@ import {
 } from "~/lib/session";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { DocoMark } from "~/components/doco-mark";
+import { VersionPill } from "~/components/version-pill";
 
 /**
  * /sign-in (ADR-095) — GitHub OAuth is the primary path. A localhost
@@ -32,7 +32,7 @@ export async function loader({ request }: { request: Request }) {
   if (id && await findPrincipalById(id)) throw redirect(next ?? "/dashboard");
   const pickerEnabled = process.env.DOCO_LOCALHOST_PICKER === "1";
   const users = pickerEnabled ? await listSignInCandidates() : [];
-  return { users, host: await loadHostConfig(), pickerEnabled, next };
+  return { users, pickerEnabled, next };
 }
 
 export async function action({ request }: { request: Request }) {
@@ -59,7 +59,7 @@ export default function SignIn({
   loaderData: Awaited<ReturnType<typeof loader>>;
   actionData?: { error?: string } | undefined;
 }) {
-  const { users, host, pickerEnabled, next } = loaderData;
+  const { users, pickerEnabled, next } = loaderData;
   return (
     <div>
       <header className="border-b border-border bg-card">
@@ -67,7 +67,7 @@ export default function SignIn({
           <Link to="/" className="inline-flex items-center hover:opacity-80" aria-label="Doco home">
             <DocoMark height={28} />
           </Link>
-          <span className="text-xs text-muted-foreground">/ {host.name}</span>
+          <VersionPill />
         </div>
       </header>
       <main className="mx-auto max-w-md px-6 py-10">

@@ -14,6 +14,7 @@ import { Link } from "react-router";
 import { loadHostConfig } from "~/lib/host";
 import { getPublicBaseUrl } from "@doco/shared";
 import { DocoMark } from "~/components/doco-mark";
+import { VersionPill } from "~/components/version-pill";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 
 export async function loader({ request }: { request: Request }) {
@@ -46,6 +47,7 @@ export default function CreateAgent({
           <Link to="/" className="inline-flex items-center hover:opacity-80" aria-label="Doco home">
             <DocoMark height={28} />
           </Link>
+          <VersionPill />
         </div>
       </header>
       <main className="mx-auto max-w-2xl px-6 py-12 space-y-4 w-full">

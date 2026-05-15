@@ -1,9 +1,33 @@
+import { execSync } from "node:child_process";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { reactRouter } from "@react-router/dev/vite";
 import tailwindcss from "@tailwindcss/vite";
 import { defineConfig } from "vite";
 import tsconfigPaths from "vite-tsconfig-paths";
 
+// Build-time stamps surfaced as `__DOCO_VERSION__` / `__DOCO_RELEASE_AT__`
+// in the client. Version comes from the monorepo root package.json (the
+// single source of truth for "what version of Doco is this"). Release
+// timestamp is the most recent git commit on the deployed tree — for an
+// alpha with no tags, "released" === "last commit shipped". Falls back to
+// `Date.now()` if git isn't available (e.g. shallow CI container).
+const rootDir = resolve(import.meta.dirname, "../..");
+const rootPkg = JSON.parse(readFileSync(resolve(rootDir, "package.json"), "utf-8")) as {
+  version: string;
+};
+let releaseAt: string;
+try {
+  releaseAt = execSync("git log -1 --format=%cI", { cwd: rootDir }).toString().trim();
+} catch {
+  releaseAt = new Date().toISOString();
+}
+
 export default defineConfig({
+  define: {
+    __DOCO_VERSION__: JSON.stringify(rootPkg.version),
+    __DOCO_RELEASE_AT__: JSON.stringify(releaseAt),
+  },
   plugins: [tailwindcss(), reactRouter(), tsconfigPaths()],
   server: {
     port: 5173,
