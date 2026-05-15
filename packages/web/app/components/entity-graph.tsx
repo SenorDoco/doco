@@ -192,9 +192,14 @@ export function EntityGraph({ centerId, nodes, links, hrefFor }: EntityGraphProp
         return {
           id: n.id,
           position: pos,
-          // Constrain node size at the React-Flow level so labels never
-          // visually leak past the colored border.
-          width: NODE_W,
+          // `initialWidth`/`initialHeight` (not `width`/`height`) so the
+          // MiniMap has valid dimensions on first render — ResizeObserver
+          // still refines them once the DOM measures. With `width`/`height`,
+          // height stayed `undefined` until measurement and the MiniMap's
+          // `getInternalNodesBounds` collapsed to 0-height, leaving the
+          // mini-map blank.
+          initialWidth: NODE_W,
+          initialHeight: subtitle ? 100 : 78,
           data: {
             label: (
               <div
@@ -355,7 +360,12 @@ export function EntityGraph({ centerId, nodes, links, hrefFor }: EntityGraphProp
               }
               pannable
               zoomable
-              style={{ width: 120, height: 90 }}
+              style={{
+                width: 120,
+                height: 90,
+                border: "1px solid var(--color-border)",
+                borderRadius: 4,
+              }}
             />
           </Flow.ReactFlow>
         ) : (

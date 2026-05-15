@@ -23,6 +23,7 @@ interface FeedEvent {
   docoSlug: string;
   entity_type: string;
   entity_id: string;
+  summary: string | null;
   op: string;
 }
 
@@ -87,6 +88,29 @@ export async function loader({ request }: { request: Request }) {
          LIMIT $2`,
         [myDocoIds, FEED_LIMIT],
       );
+      // Look up each event's entity summary so the row reads like the
+      // per-Doco FeedLine ("✍️ Decision added: <summary>"). Entity ids
+      // are globally unique ULIDs, so one UNION across all node tables
+      // resolves them regardless of original type.
+      const entityIds = Array.from(new Set(feedRows.rows.map((r) => r.entity_id)));
+      const summaryById = new Map<string, string>();
+      if (entityIds.length > 0) {
+        const summaryRows = await c.query<{ id: string; summary: string | null }>(
+          `SELECT id, summary FROM decisions WHERE id = ANY($1)
+           UNION ALL SELECT id, summary FROM intents WHERE id = ANY($1)
+           UNION ALL SELECT id, summary FROM ideas WHERE id = ANY($1)
+           UNION ALL SELECT id, summary FROM rules WHERE id = ANY($1)
+           UNION ALL SELECT id, summary FROM actions WHERE id = ANY($1)
+           UNION ALL SELECT id, summary FROM reasoning WHERE id = ANY($1)
+           UNION ALL SELECT id, summary FROM evals WHERE id = ANY($1)
+           UNION ALL SELECT id, summary FROM scopes WHERE id = ANY($1)
+           UNION ALL SELECT id, summary FROM reference_entities WHERE id = ANY($1)`,
+          [entityIds],
+        );
+        for (const r of summaryRows.rows) {
+          if (r.summary != null) summaryById.set(r.id, r.summary);
+        }
+      }
       const docoMap = new Map(docos.map((d) => [d.docoId, d]));
       feed = feedRows.rows.map((r) => {
         const d = docoMap.get(r.doco_id);
@@ -98,6 +122,7 @@ export async function loader({ request }: { request: Request }) {
           docoSlug: d?.docoSlug ?? "?",
           entity_type: r.entity_type,
           entity_id: r.entity_id,
+          summary: summaryById.get(r.entity_id) ?? null,
           op: r.op,
         };
       });
@@ -125,13 +150,28 @@ export function meta({ data }: { data: Awaited<ReturnType<typeof loader>> | unde
   return [{ title: `${data.host.name} · Doco` }];
 }
 
+// Mirror the canonical footer-line vocabulary so dashboard rows read
+// the same way agent capture footers do (see capture.server.ts).
 function verbFromOp(op: string): string {
-  if (op === "entity.create") return "created";
+  if (op === "entity.create") return "added";
   if (op === "entity.update") return "updated";
   if (op === "entity.delete") return "deleted";
   if (op === "lifecycle.transition") return "transitioned";
   if (op === "edge.add") return "linked";
   return op;
+}
+
+function iconFromOp(op: string): string {
+  if (op === "entity.create") return "✍️";
+  if (op === "entity.update") return "📝";
+  if (op === "entity.delete") return "🗑️";
+  if (op === "lifecycle.transition") return "🔁";
+  if (op === "edge.add") return "➕";
+  return "•";
+}
+
+function capType(t: string): string {
+  return t.length === 0 ? t : t.charAt(0).toUpperCase() + t.slice(1);
 }
 
 export default function Dashboard({
@@ -203,49 +243,20 @@ export default function Dashboard({
 
             <Card>
               <CardHeader>
-                <CardTitle>Latest activity in your Docos</CardTitle>
+                <CardTitle>Latest activity in your docos</CardTitle>
                 <CardDescription>
                   Newest first across every Doco listed on the left.
                 </CardDescription>
               </CardHeader>
-              <CardContent>
+              <CardContent className="p-0">
                 {feed.length === 0 ? (
-                  <p className="text-xs text-muted-foreground">No activity yet.</p>
+                  <p className="px-5 py-6 text-xs text-muted-foreground">No activity yet.</p>
                 ) : (
-                  <ol className="space-y-2 text-xs">
+                  <div className="divide-y divide-border">
                     {feed.map((e) => (
-                      <li key={e.event_id} className="border-l-2 border-border pl-3">
-                        <div className="text-muted-foreground">
-                          <code className="font-mono">
-                            {e.at.replace("T", " ").slice(0, 16)}Z
-                          </code>
-                          <span className="mx-2">·</span>
-                          <span className="font-medium text-foreground">
-                            {e.byUsername ?? "anonymous"}
-                          </span>{" "}
-                          {verbFromOp(e.op)}{" "}
-                          <Link
-                            to={entityUrl({
-                              ownerSlug: e.ownerSlug,
-                              docoSlug: e.docoSlug,
-                              nodeType: e.entity_type,
-                              id: e.entity_id,
-                            })}
-                            className="text-primary hover:underline"
-                          >
-                            {e.entity_type}
-                          </Link>
-                          <span className="mx-2">·</span>
-                          <Link
-                            to={`/${e.ownerSlug}/${e.docoSlug}`}
-                            className="hover:underline"
-                          >
-                            {e.ownerSlug}/{e.docoSlug}
-                          </Link>
-                        </div>
-                      </li>
+                      <DashboardFeedLine key={e.event_id} event={e} />
                     ))}
-                  </ol>
+                  </div>
                 )}
               </CardContent>
             </Card>
@@ -273,6 +284,56 @@ export default function Dashboard({
           </Card>
         ) : null}
       </main>
+    </div>
+  );
+}
+
+// Mirrors the per-Doco FeedLine shape so both surfaces read the same:
+//   <op-icon> <Type> <verb>: <summary> — <owner>/<doco> · <by>      Ns ago
+// The Doco link replaces the per-Doco's scopes tail — it's the cross-
+// Doco analogue of context. The actor sits behind the Doco link
+// because dashboard cuts across principals; per-Doco implies it.
+function DashboardFeedLine({ event }: { event: FeedEvent }) {
+  const url = entityUrl({
+    ownerSlug: event.ownerSlug,
+    docoSlug: event.docoSlug,
+    nodeType: event.entity_type,
+    id: event.entity_id,
+  });
+  const summary = event.summary ?? `${event.entity_type}_${event.entity_id.slice(-6)}`;
+  return (
+    <div className="flex items-baseline gap-3 px-5 py-3 font-mono text-xs leading-relaxed text-foreground">
+      <div className="min-w-0 flex-1">
+        <span>{iconFromOp(event.op)} </span>
+        <span className="font-semibold">
+          {capType(event.entity_type)} {verbFromOp(event.op)}
+        </span>
+        <span className="text-muted-foreground">: </span>
+        <Link to={url} className="text-primary hover:underline">
+          {summary}
+        </Link>
+        <span className="text-muted-foreground"> — </span>
+        <Link
+          to={`/${event.ownerSlug}/${event.docoSlug}`}
+          className="text-muted-foreground hover:text-foreground hover:underline"
+        >
+          {event.ownerSlug}/{event.docoSlug}
+        </Link>
+        {event.byUsername ? (
+          <>
+            <span className="text-muted-foreground"> · </span>
+            <span className="text-muted-foreground">{event.byUsername}</span>
+          </>
+        ) : null}
+      </div>
+      <time
+        dateTime={event.at}
+        title={event.at}
+        suppressHydrationWarning
+        className="shrink-0 whitespace-nowrap text-[11px] tabular-nums text-muted-foreground"
+      >
+        {timeAgo(event.at)}
+      </time>
     </div>
   );
 }

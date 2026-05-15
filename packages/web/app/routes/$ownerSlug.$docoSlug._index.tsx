@@ -1,6 +1,6 @@
 // Per-Doco home — bare title up top, then the search input, then a
-// two-column body: stats + activity heatmap on the left, "Latest
-// Activity" feed on the right.
+// two-column body: Stats on the left, "Activity" heatmap above the
+// "Latest activity" feed on the right.
 //
 // The feed renders one line per recently-added entity in the same shape
 // agents emit via `renderOperationLines` in capture.server.ts:
@@ -229,17 +229,8 @@ export default function DocoHome({
         <SearchBoxWithHistory ownerSlug={ownerSlug} docoSlug={docoSlug} />
 
         <div className="grid grid-cols-1 gap-5 min-[840px]:grid-cols-12">
-          {/* Left: stats with a heatmap on top. */}
-          <aside className="min-[840px]:col-span-5 space-y-5">
-            <Card>
-              <CardHeader>
-                <CardTitle>Activity</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ActivityHeatmap byDay={byDay} weeks={HEATMAP_WEEKS} />
-              </CardContent>
-            </Card>
-
+          {/* Left: stats. */}
+          <aside className="min-[840px]:col-span-5">
             <Card>
               <CardHeader>
                 <CardTitle>Stats</CardTitle>
@@ -268,11 +259,20 @@ export default function DocoHome({
             </Card>
           </aside>
 
-          {/* Right: real-time feed of recently added entities. */}
-          <section className="min-[840px]:col-span-7">
+          {/* Right: activity heatmap above the real-time feed. */}
+          <section className="min-[840px]:col-span-7 space-y-5">
             <Card>
               <CardHeader>
-                <CardTitle>Latest Activity</CardTitle>
+                <CardTitle>Activity</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ActivityHeatmap byDay={byDay} weeks={HEATMAP_WEEKS} />
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Latest activity</CardTitle>
               </CardHeader>
               <CardContent className="p-0">
                 <div className="divide-y divide-border">
