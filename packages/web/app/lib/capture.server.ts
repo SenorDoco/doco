@@ -434,12 +434,10 @@ function distillSummary(body: string, cap = 180): string {
  * Map a list of bare scope names to their entity ids by reading the
  * Doco's scopes/ directory.
  */
-// A scope is "retired" when its lifecycle is `abandoned` (retired with no
-// replacement) or `superseded` (replaced by another scope). Both keep the
-// scope record around so existing references stay readable, but new
-// captures referencing them are rejected here — pick a different scope
-// or reactivate the retired one.
-const RETIRED_LIFECYCLES: ReadonlySet<string> = new Set(["abandoned", "superseded"]);
+// A scope becomes unavailable for new captures when its lifecycle is
+// `abandoned` (no replacement) or `superseded` (replaced by another scope).
+// Both keep the scope record around so existing references stay readable.
+const UNAVAILABLE_SCOPE_LIFECYCLES: ReadonlySet<string> = new Set(["abandoned", "superseded"]);
 
 export async function resolveScopeNames(
   docoDir: string,
@@ -448,11 +446,11 @@ export async function resolveScopeNames(
   ids: string[];
   unknown: string[];
   available: string[];
-  retired: string[];
+  unavailable: string[];
 }> {
   const ids: string[] = [];
   const unknown: string[] = [];
-  const retired: string[] = [];
+  const unavailable: string[] = [];
   const available: string[] = [];
   const byName = new Map<string, { id: string; lifecycle: string }>();
   const meta = await readDocoMetadata(docoDir);
@@ -472,7 +470,7 @@ export async function resolveScopeNames(
             if (typeof e?.lifecycle === "string") lifecycle = e.lifecycle;
           } catch {}
           byName.set(r.name, { id: r.id, lifecycle });
-          if (!RETIRED_LIFECYCLES.has(lifecycle)) available.push(r.name);
+          if (!UNAVAILABLE_SCOPE_LIFECYCLES.has(lifecycle)) available.push(r.name);
         }
       });
     } catch {
@@ -486,15 +484,15 @@ export async function resolveScopeNames(
       continue;
     }
     ids.push(entry.id);
-    if (RETIRED_LIFECYCLES.has(entry.lifecycle)) retired.push(n);
+    if (UNAVAILABLE_SCOPE_LIFECYCLES.has(entry.lifecycle)) unavailable.push(n);
   }
   available.sort();
-  return { ids, unknown, available, retired };
+  return { ids, unknown, available, unavailable };
 }
 
 /**
  * Resolve scope names → ids, returning a typed error if any are missing or
- * retired. Centralizes the boilerplate that all three captures + every
+ * unavailable. Centralizes the boilerplate that all three captures + every
  * list-op share.
  */
 async function resolveScopeOrError(
@@ -502,22 +500,22 @@ async function resolveScopeOrError(
   names: string[],
   context: { verb: "tag" | "replace" | "add"; nodeKind?: string },
 ): Promise<{ ids: string[] } | CaptureError> {
-  const { ids, unknown, available, retired } = await resolveScopeNames(docoDir, names);
+  const { ids, unknown, available, unavailable } = await resolveScopeNames(docoDir, names);
   if (unknown.length > 0) {
     const availStr = available.join(", ") || "(none — create scopes first via /<owner>/<doco>/scopes/new)";
     return { error: `Unknown scope name(s): ${unknown.join(", ")}. Available: ${availStr}` };
   }
-  if (retired.length > 0) {
+  if (unavailable.length > 0) {
     if (context.verb === "tag") {
       const noun = context.nodeKind ?? "node";
       return {
-        error: `Cannot tag a new ${noun} with retired scope(s): ${retired.join(", ")}. Reactivate the scope first or pick a different one. Available active scopes: ${available.join(", ")}`,
+        error: `Cannot tag a new ${noun} with abandoned or superseded scope(s): ${unavailable.join(", ")}. Activate the scope first or pick a different one. Available active scopes: ${available.join(", ")}`,
       };
     }
     if (context.verb === "replace") {
-      return { error: `Cannot replace scopes with retired one(s): ${retired.join(", ")}. Reactivate first or omit them.` };
+      return { error: `Cannot replace scopes with abandoned or superseded one(s): ${unavailable.join(", ")}. Activate first or omit them.` };
     }
-    return { error: `Cannot add retired scope(s) to a node: ${retired.join(", ")}. Reactivate first or pick a different scope.` };
+    return { error: `Cannot add abandoned or superseded scope(s) to a node: ${unavailable.join(", ")}. Activate first or pick a different scope.` };
   }
   return { ids };
 }

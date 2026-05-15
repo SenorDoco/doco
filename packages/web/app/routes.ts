@@ -25,7 +25,7 @@ import { type RouteConfig, index, route } from "@react-router/dev/routes";
  *   /                              host home (anonymous landing; redirects signed-in to /dashboard)
  *   /dashboard                     signed-in host dashboard (docos / users / orgs)
  *   /sign-in, /sign-out, /sign-up  auth (cookie locally; OAuth in prod per ADR-066, ADR-094)
- *   /onboarding/*                  first-run wizard (ADR-073). Agent variants retired by decision_01KRKZM14WNA1685GN0F12WCKM — use /cli/authorize.
+ *   /onboarding/*                  first-run wizard (ADR-073). Agent variants abandoned by decision_01KRKZM14WNA1685GN0F12WCKM — use /cli/authorize.
  *   /cli/authorize                 Vercel-style browser-authorize handoff for `doco login` (decision_01KRKZM14WNA1685GN0F12WCKM)
  *   /agents, /agents/new           agent self-service (ADR-071)
  *   /new-doco, /new-org            self-service create flows (ADR-067)
@@ -39,7 +39,7 @@ import { type RouteConfig, index, route } from "@react-router/dev/routes";
  *   /:owner/:doco/scopes           per-Doco scope list (Edit button — not chevron — for instructions)
  *   /:owner/:doco/scopes/new       per-Doco add a scope (templates + custom form)
  *   /:owner/:doco/scopes/:id       per-Doco scope detail+edit (merged) — including the Global scope (formerly /constitution; renamed per decision_01KRPNZY7W6CCMYNKGND67BP0B)
- *   /:owner/:doco/scopes/:id/deprecate  standalone Danger Zone confirmation
+ *   /:owner/:doco/scopes/:id/abandon    standalone Danger Zone confirmation
  *   /:owner/:doco/status.json      per-Doco status (connection signal for agent footer line)
  *   /:owner/:doco/api/*            per-Doco capture + update endpoints
  *                                  (decisions / intents / evos / settings; ADR-128 added evos.json)
@@ -144,10 +144,10 @@ export default [
   route(":ownerSlug/:docoSlug/scopes", "routes/$ownerSlug.$docoSlug.scopes._index.tsx"),
   route(":ownerSlug/:docoSlug/scopes/new", "routes/$ownerSlug.$docoSlug.scopes.new.tsx"),
   // Per decision_01KRPNZY7W6CCMYNKGND67BP0B the merged scope page lives
-  // at /scopes/:id; deprecation is a sibling page so the main scope
+  // at /scopes/:id; abandonment is a sibling page so the main scope
   // surface stays a coherent "edit everything else" view.
   route(":ownerSlug/:docoSlug/scopes/:id", "routes/$ownerSlug.$docoSlug.scopes.$id._index.tsx"),
-  route(":ownerSlug/:docoSlug/scopes/:id/deprecate", "routes/$ownerSlug.$docoSlug.scopes.$id.deprecate.tsx"),
+  route(":ownerSlug/:docoSlug/scopes/:id/abandon", "routes/$ownerSlug.$docoSlug.scopes.$id.abandon.tsx"),
   route(":ownerSlug/:docoSlug/rules/new", "routes/$ownerSlug.$docoSlug.rules.new.tsx"),
   // Short-form entity routes. `:type` is validated by the loader; reserved
   // feature slugs above win the match for the static paths.

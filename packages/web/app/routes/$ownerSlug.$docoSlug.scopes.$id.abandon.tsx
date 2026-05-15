@@ -1,5 +1,5 @@
-// /<owner>/<doco>/scopes/<id>/deprecate — standalone Danger Zone for
-// scope deprecation.
+// /<owner>/<doco>/scopes/<id>/abandon — standalone Danger Zone for
+// abandoning a scope.
 //
 // Per decision_01KRPNZY7W6CCMYNKGND67BP0B the destructive action moved
 // off the merged scope page so the main scope page stays a coherent
@@ -97,13 +97,13 @@ export async function action({
   const back = `/${ownerSlug}/${docoSlug}/scopes`;
 
   try {
-    if (intent === "deprecate") {
+    if (intent === "abandon") {
       const raw = await readScopeRaw(id);
       if (!raw) return { error: "Scope not found." };
       if (raw.name === "global") {
         return {
           error:
-            "The Global scope (the doco's constitution) cannot be deprecated — it's a framework-seeded invariant.",
+            "The Global scope (the doco's constitution) cannot be abandoned — it's a framework-seeded invariant.",
         };
       }
       const scopeName = String(raw.name);
@@ -112,7 +112,7 @@ export async function action({
       const children = allScopeDetails.filter((s) => s.parent_ids.includes(id));
       if (children.length > 0) {
         return {
-          error: `Can't deprecate: ${children.length} child scope(s) depend on this. Reparent or deprecate them first: ${children.map((s) => s.name).join(", ")}`,
+          error: `Can't abandon: ${children.length} child scope(s) depend on this. Reparent or abandon them first: ${children.map((s) => s.name).join(", ")}`,
         };
       }
 
@@ -138,13 +138,13 @@ export async function action({
         const confirmName = String(form.get("confirm_name") ?? "").trim();
         if (confirmName !== scopeName) {
           return {
-            error: `Type the scope name "${scopeName}" exactly to confirm deprecating a non-empty scope.`,
+            error: `Type the scope name "${scopeName}" exactly to confirm abandoning a non-empty scope.`,
           };
         }
       }
 
       await updateScopeInDoco({ docoDir: dir, scopeId, lifecycle: "abandoned" });
-    } else if (intent === "reactivate") {
+    } else if (intent === "activate") {
       await updateScopeInDoco({ docoDir: dir, scopeId, lifecycle: "active" });
     } else {
       return { error: `Unknown intent: ${intent}` };
@@ -158,10 +158,10 @@ export async function action({
 }
 
 export function meta({ params }: { params: { ownerSlug: string; docoSlug: string; id: string } }) {
-  return [{ title: `Deprecate · ${params.id} · ${params.ownerSlug}/${params.docoSlug} · Doco` }];
+  return [{ title: `Abandon · ${params.id} · ${params.ownerSlug}/${params.docoSlug} · Doco` }];
 }
 
-export default function DeprecateScopePage({
+export default function AbandonScopePage({
   loaderData,
   actionData,
 }: {
@@ -172,7 +172,7 @@ export default function DeprecateScopePage({
   const [typed, setTyped] = useState("");
   const hasChildren = childNames.length > 0;
   const hasMembers = memberCount > 0;
-  const isDeprecated = scope.lifecycle !== "active" && scope.lifecycle !== "proposed";
+  const isAbandoned = scope.lifecycle !== "active" && scope.lifecycle !== "proposed";
   const canSubmit = !hasChildren && (!hasMembers || typed.trim() === scope.name);
 
   return (
@@ -187,7 +187,7 @@ export default function DeprecateScopePage({
 
         <div className="flex items-baseline gap-3">
           <h1 className="text-lg font-bold tracking-tight">
-            Deprecate scope · <span className="font-mono">{scope.name}</span>
+            Abandon scope · <span className="font-mono">{scope.name}</span>
           </h1>
           <Link
             to={`/${ownerSlug}/${docoSlug}/scopes/${scope.id}`}
@@ -197,23 +197,23 @@ export default function DeprecateScopePage({
           </Link>
         </div>
 
-        {isDeprecated ? (
+        {isAbandoned ? (
           <Card className="border-warn/40">
             <CardHeader>
-              <CardTitle className="text-sm">This scope is already deprecated</CardTitle>
+              <CardTitle className="text-sm">This scope is already abandoned</CardTitle>
               <CardDescription>
                 Existing members keep their tag, but new captures referencing it are rejected.
-                Reactivate to start accepting new members again.
+                Activate it to start accepting new members again.
               </CardDescription>
             </CardHeader>
             <CardContent>
               <Form method="post">
-                <input type="hidden" name="intent" value="reactivate" />
+                <input type="hidden" name="intent" value="activate" />
                 <button
                   type="submit"
                   className="rounded-md border border-border bg-input px-3 py-1.5 text-xs font-semibold text-foreground hover:bg-card"
                 >
-                  Reactivate scope
+                  Activate scope
                 </button>
               </Form>
             </CardContent>
@@ -223,30 +223,30 @@ export default function DeprecateScopePage({
             <CardHeader>
               <CardTitle className="text-sm text-destructive">Danger zone</CardTitle>
               <CardDescription>
-                Deprecating a scope retires it — existing members keep their tag and remain
-                queryable, but new captures referencing this scope are rejected. Scopes are never
-                deleted; deprecation is the closest you get to "remove."
+                Abandoning a scope keeps existing members tagged and queryable, but new captures
+                referencing this scope are rejected. Scopes are never deleted; abandoning is the
+                closest you get to "remove."
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
               {hasChildren ? (
                 <div className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-xs text-destructive">
-                  Can't deprecate:{" "}
+                  Can't abandon:{" "}
                   {childNames.length === 1
                     ? "1 child scope depends"
                     : `${childNames.length} child scopes depend`}{" "}
                   on this one — {childNames.map((n) => `\`${n}\``).join(", ")}. Reparent or
-                  deprecate them first.
+                  abandon them first.
                 </div>
               ) : (
                 <Form method="post" className="space-y-3">
-                  <input type="hidden" name="intent" value="deprecate" />
+                  <input type="hidden" name="intent" value="abandon" />
                   {hasMembers ? (
                     <>
                       <p className="text-xs text-foreground">
                         This scope has <span className="font-semibold">{memberCount}</span>{" "}
                         {memberCount === 1 ? "node" : "nodes"} tagged with it. To confirm
-                        deprecation, type the scope name{" "}
+                        abandonment, type the scope name{" "}
                         <span className="font-mono font-semibold">{scope.name}</span> below.
                       </p>
                       <label className="block">
@@ -266,7 +266,7 @@ export default function DeprecateScopePage({
                   ) : (
                     <p className="text-xs text-foreground">
                       This scope is empty — no nodes are tagged with it. Press the button below to
-                      deprecate it. (You can reactivate later.)
+                      abandon it. (You can activate it later.)
                     </p>
                   )}
                   <button
@@ -274,7 +274,7 @@ export default function DeprecateScopePage({
                     disabled={!canSubmit}
                     className="rounded-md bg-destructive px-3 py-1.5 text-xs font-semibold text-destructive-foreground hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
                   >
-                    {hasMembers ? "Deprecate scope" : "Deprecate empty scope"}
+                    {hasMembers ? "Abandon scope" : "Abandon empty scope"}
                   </button>
                 </Form>
               )}

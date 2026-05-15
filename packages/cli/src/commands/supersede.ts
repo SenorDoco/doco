@@ -69,7 +69,7 @@ export const supersedeCmd = defineCommand({
     "prior-lifecycle": {
       type: "string",
       description:
-        "Lifecycle to set on the prior Decision. Default 'superseded'; pass 'abandoned' to retire without a successor (rare in supersede flow).",
+        "Lifecycle to set on the prior Decision. Default 'superseded'; pass 'abandoned' to abandon without a successor (rare in supersede flow).",
     },
   },
   async run({ args }) {

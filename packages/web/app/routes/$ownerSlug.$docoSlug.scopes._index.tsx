@@ -83,29 +83,29 @@ export default function ScopesIndex({
 }) {
   const { ownerSlug, docoSlug, displayName, scopes, isOnboarding, host, me } = loaderData;
   type ScopeRow = (typeof scopes)[number];
-  const isDeprecatedScope = (scope: ScopeRow) =>
+  const isAbandonedScope = (scope: ScopeRow) =>
     scope.lifecycle !== "active" && scope.lifecycle !== "proposed";
   const sortedScopes = [...scopes].sort((a, b) => {
     if (a.name === "global" && b.name !== "global") return -1;
     if (b.name === "global" && a.name !== "global") return 1;
     return 0;
   });
-  const activeScopes = sortedScopes.filter((scope) => !isDeprecatedScope(scope));
-  const deprecatedScopes = sortedScopes.filter(isDeprecatedScope);
+  const activeScopes = sortedScopes.filter((scope) => !isAbandonedScope(scope));
+  const abandonedScopes = sortedScopes.filter(isAbandonedScope);
 
   const renderScopeRow = (s: ScopeRow) => {
     const parents = s.parent_ids
       .map((pid) => scopes.find((x) => x.id === pid)?.name)
       .filter(Boolean) as string[];
     const description = shortDescription(s.short_description);
-    const isDeprecated = isDeprecatedScope(s);
+    const isAbandoned = isAbandonedScope(s);
     const isGlobal = s.name === "global";
     return (
       <li key={s.id}>
         <Link
           to={entityUrl({ ownerSlug, docoSlug, nodeType: "scope", id: s.id })}
           className={
-            isDeprecated
+            isAbandoned
               ? "flex w-full cursor-pointer flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3 text-xs text-inherit no-underline opacity-50 transition-colors hover:bg-muted/40 focus:outline-none focus:ring-2 focus:ring-primary/40"
               : "flex w-full cursor-pointer flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3 text-xs text-inherit no-underline transition-colors hover:bg-muted/40 focus:outline-none focus:ring-2 focus:ring-primary/40"
           }
@@ -121,7 +121,7 @@ export default function ScopesIndex({
             <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-2">
               <span
                 className={
-                  isDeprecated
+                  isAbandoned
                     ? "font-mono text-sm text-foreground line-through"
                     : "font-mono text-sm text-foreground"
                 }
@@ -131,9 +131,9 @@ export default function ScopesIndex({
               {isGlobal ? (
                 <span className="text-[10px] text-muted-foreground">(the doco's constitution)</span>
               ) : null}
-              {isDeprecated ? (
+              {isAbandoned ? (
                 <span className="rounded-md border border-border bg-input px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-muted-foreground">
-                  deprecated
+                  abandoned
                 </span>
               ) : null}
               {parents.length > 0 ? (
@@ -202,12 +202,12 @@ export default function ScopesIndex({
                   sorts to the top of the list and renders with the
                   caption "the doco's constitution" next to its name. */}
               {activeScopes.map(renderScopeRow)}
-              {deprecatedScopes.length > 0 ? (
+              {abandonedScopes.length > 0 ? (
                 <li className="bg-muted/40 px-4 py-2 text-xs font-semibold text-muted-foreground">
-                  Deprecated
+                  Abandoned
                 </li>
               ) : null}
-              {deprecatedScopes.map(renderScopeRow)}
+              {abandonedScopes.map(renderScopeRow)}
             </ul>
           </CardContent>
         </Card>

@@ -42,7 +42,7 @@ export async function loader({ request }: { request: Request }) {
     "want to do.",
     "",
     "The previous HTTP-POST 'agent creates an unclaimed Doco' form +",
-    "/claim/<token> handoff is retired (decision_01KRKZM14WNA1685GN0F12WCKM).",
+    "/claim/<token> handoff is abandoned (decision_01KRKZM14WNA1685GN0F12WCKM).",
     "docos are bound to the project owner from creation; no temporary",
     "host-bootstrap owner, no follow-up URL to chase.",
   ].join("\n");

@@ -310,7 +310,7 @@ project owner can see it whole and keeps shaping it. Two rules:
 2. When the manifest drifts from reality — a watched scope hasn't
    accrued activity in weeks, a new line of work has no scope of its
    own, a scope's stated purpose no longer matches what's in it —
-   say so to the project owner. Only they can retire, sharpen, or
+   say so to the project owner. Only they can abandon, sharpen, or
    add scopes; your job is to make sure they have the signal in
    time to act on it. Watched scopes are the project owner's
    standing request to "keep me posted on this," and that request

@@ -10,7 +10,7 @@
 >   `decision_01KRKEVEE3RQGPWHAPMZ0MS9G9`); "git repository as storage
 >   model" (Postgres took source-of-truth in Phase 2 of that same
 >   decision).
-> - The "Evaluation" node type was retired
+> - The "Evaluation" node type was removed
 >   (`decision_01KRHBZMD0V35NAX94Y7N2MXVA`); the live name is "Eval".
 > - Sections 8.1–8.8 (query model + SQLite rationale) are marked
 >   `[SUPERSEDED]` at §8 — the current implementation is in
@@ -114,12 +114,12 @@ Display-only label suggestions (UI may use; not stored):
 
 | Entity | proposed | active | succeeded | superseded | abandoned | failed |
 |---|---|---|---|---|---|---|
-| Intent | proposed | active | achieved | deprecated | abandoned | — |
+| Intent | proposed | active | achieved | superseded | abandoned | — |
 | Decision | proposed | active | accepted | superseded | reverted | — |
 | Action | planned | in_progress | completed | — | blocked | failed |
-| Rule | proposed | active | — | superseded | retired | — |
+| Rule | proposed | active | — | superseded | abandoned | — |
 | Reasoning | (typically captured at a moment; lifecycle optional) |
-| Eval | proposed | active | passed | superseded | retired | failed |
+| Eval | proposed | active | passed | superseded | abandoned | failed |
 
 ## 4. Entities
 

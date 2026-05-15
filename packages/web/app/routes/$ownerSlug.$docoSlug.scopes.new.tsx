@@ -82,7 +82,7 @@ export async function loader({
 }) {
   const { ownerSlug, docoSlug } = params;
   const { dir, meta, me } = await loadDocoForRead(request, ownerSlug, docoSlug);
-  // Active scopes only — retired scopes aren't shown as parent options
+  // Active scopes only — abandoned scopes aren't shown as parent options
   // and don't block re-installing a template with the same name (the
   // installer renames or skips depending on UX; here we just hide them).
   const allScopes = await listScopeDetails(dir);

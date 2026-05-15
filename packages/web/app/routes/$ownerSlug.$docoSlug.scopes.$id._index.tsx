@@ -6,12 +6,11 @@
 // entities: rows in the `rules` table with an `in_scope_of` edge to this
 // scope. This page surfaces Authoring + Guidance rules; other Rule
 // entities tagged with the scope remain regular members/feed items.
-// Deprecate / reactivate is a regular Rule PATCH (lifecycle = abandoned /
-// active).
+// Abandon / activate is a regular Rule PATCH (lifecycle = abandoned / active).
 //
 // Layout: title-level icon picker, then two columns. Left carries Members
 // stats + Watched toggle + Authoring/Guidance rule sections with inline add
-// affordances + Deprecate scope link. Right carries activity heatmap +
+// affordances + Abandon scope link. Right carries activity heatmap +
 // scope-filtered latest activity feed.
 
 import { withClient } from "@doco/db";
@@ -426,15 +425,15 @@ export async function action({
       }
       await reindex(dir);
       return { ok: true, added_authoring: addedAuthoring, added_guidance: addedGuidance };
-    } else if (intent === "deprecate_rule" || intent === "reactivate_rule") {
-      // Per decision_01KRPRDR1AD7S1RP6E69BQDB2G deprecating any rule
+    } else if (intent === "abandon_rule" || intent === "activate_rule") {
+      // Per decision_01KRPRDR1AD7S1RP6E69BQDB2G abandoning any rule
       // (authoring, guidance, or tagged) is the same operation: PATCH the
       // Rule entity's lifecycle.
       const ruleId = String(form.get("rule_id") ?? "");
       if (!ruleId.startsWith("rule_")) {
         return { error: "rule_id missing or malformed." };
       }
-      const nextLifecycle = intent === "deprecate_rule" ? "abandoned" : "active";
+      const nextLifecycle = intent === "abandon_rule" ? "abandoned" : "active";
       const result = await updateEntity({
         docoDir: dir,
         docoId: meta.docoId,
@@ -470,7 +469,7 @@ export function shouldRevalidate({
   defaultShouldRevalidate,
 }: ShouldRevalidateFunctionArgs) {
   const intent = String(formData?.get("intent") ?? "");
-  if (intent === "deprecate_rule" || intent === "reactivate_rule") {
+  if (intent === "abandon_rule" || intent === "activate_rule") {
     return false;
   }
   return defaultShouldRevalidate;
@@ -730,18 +729,18 @@ export default function ScopePage({
             {scope.name === "global" ? null : (
               <Card className="border-destructive/40">
                 <CardHeader>
-                  <CardTitle className="text-sm text-destructive">Deprecate scope</CardTitle>
+                  <CardTitle className="text-sm text-destructive">Abandon scope</CardTitle>
                   <CardDescription>
-                    Retire this scope. Existing members keep their tag and remain queryable, but new
-                    captures referencing this scope are rejected.
+                    Abandon this scope. Existing members keep their tag and remain queryable, but
+                    new captures referencing this scope are rejected.
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
                   <Link
-                    to={`/${ownerSlug}/${docoSlug}/scopes/${scope.id}/deprecate`}
+                    to={`/${ownerSlug}/${docoSlug}/scopes/${scope.id}/abandon`}
                     className="inline-flex items-center rounded-md border border-destructive/40 px-3 py-1.5 text-xs font-semibold text-destructive hover:bg-destructive/10"
                   >
-                    Deprecate scope →
+                    Abandon scope →
                   </Link>
                 </CardContent>
               </Card>
@@ -866,7 +865,7 @@ function RuleSectionCard({
   };
 
   const active = localRules.filter((r) => isActive(r.lifecycle));
-  const deprecated = localRules.filter((r) => !isActive(r.lifecycle));
+  const abandoned = localRules.filter((r) => !isActive(r.lifecycle));
   const badgeFor = (r: RuleRecord) => {
     if (kind === "authoring" && r.predicate) {
       return `Authoring · ${r.predicate.kind === "probabilistic" ? "probabilistic" : "deterministic"}`;
@@ -881,7 +880,7 @@ function RuleSectionCard({
           <div className="min-w-0 flex-1">
             <CardTitle className="text-sm">
               {title} ({active.length}
-              {deprecated.length > 0 ? ` + ${deprecated.length} deprecated` : ""})
+              {abandoned.length > 0 ? ` + ${abandoned.length} abandoned` : ""})
             </CardTitle>
             <CardDescription>{description}</CardDescription>
           </div>
@@ -925,9 +924,9 @@ function RuleSectionCard({
                 </div>
                 <RuleLifecycleButton
                   rule={r}
-                  intent="deprecate_rule"
+                  intent="abandon_rule"
                   nextLifecycle="abandoned"
-                  label="Deprecate"
+                  label="Abandon"
                   className="text-destructive hover:bg-destructive/10"
                   onLifecycleChange={updateRuleLifecycle}
                 />
@@ -935,13 +934,13 @@ function RuleSectionCard({
             ))}
           </ul>
         )}
-        {deprecated.length > 0 ? (
+        {abandoned.length > 0 ? (
           <details className="text-xs">
             <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
-              Show deprecated ({deprecated.length})
+              Show abandoned ({abandoned.length})
             </summary>
             <ul className="mt-2 space-y-2">
-              {deprecated.map((r) => (
+              {abandoned.map((r) => (
                 <li
                   key={r.id}
                   className="flex items-baseline gap-2 rounded-md border border-border bg-card/50 p-2 text-xs opacity-60"
@@ -962,9 +961,9 @@ function RuleSectionCard({
                   </div>
                   <RuleLifecycleButton
                     rule={r}
-                    intent="reactivate_rule"
+                    intent="activate_rule"
                     nextLifecycle="active"
-                    label="Reactivate"
+                    label="Activate"
                     className="text-foreground hover:bg-card"
                     onLifecycleChange={updateRuleLifecycle}
                   />
@@ -987,7 +986,7 @@ function RuleLifecycleButton({
   onLifecycleChange,
 }: {
   rule: RuleRecord;
-  intent: "deprecate_rule" | "reactivate_rule";
+  intent: "abandon_rule" | "activate_rule";
   nextLifecycle: string;
   label: string;
   className: string;

@@ -193,7 +193,7 @@ const commonArgs = {
   },
   lifecycle: {
     type: "string" as const,
-    description: "Set lifecycle (e.g. 'active', 'deprecated', 'superseded', 'abandoned').",
+    description: "Set lifecycle (e.g. 'active', 'superseded', 'abandoned', 'failed').",
   },
   "superseded-by": {
     type: "string" as const,

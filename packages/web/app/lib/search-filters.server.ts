@@ -24,11 +24,11 @@ const DEFAULT_LIMIT = 100;
 const MAX_LIMIT = 500;
 
 /**
- * Lifecycle values that signal the entity is retired and should be
- * hidden by default. Other values (active, succeeded, accepted, …) are
- * treated as "current" and surface in default search results.
+ * Lifecycle values that signal the entity should be hidden by default.
+ * Other values (active, accepted, …) are treated as "current" and surface
+ * in default search results.
  */
-export const RETIRED_LIFECYCLE_VALUES = [
+export const HIDDEN_BY_DEFAULT_LIFECYCLE_VALUES = [
   "succeeded",
   "superseded",
   "abandoned",
@@ -47,8 +47,8 @@ export function parseSearchFilters(
   const lifecycleVals = readMulti(params, "lifecycle");
   let lifecycle: string[] | null;
   if (lifecycleVals === null) {
-    const retired = new Set<string>(RETIRED_LIFECYCLE_VALUES);
-    lifecycle = facets.lifecycle.map((f) => f.value).filter((v) => !retired.has(v));
+    const hiddenByDefault = new Set<string>(HIDDEN_BY_DEFAULT_LIFECYCLE_VALUES);
+    lifecycle = facets.lifecycle.map((f) => f.value).filter((v) => !hiddenByDefault.has(v));
   } else if (lifecycleVals.length === 1 && lifecycleVals[0] === "*") {
     lifecycle = null;
   } else {

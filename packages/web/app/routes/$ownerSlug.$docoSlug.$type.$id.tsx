@@ -431,7 +431,7 @@ export async function action({
   const scopeId = id as EntityId<"scope">;
 
   // Per decision_01KRPMC7CVDA9WZ5DKH81TVAAA `purpose` and `guidelines`
-  // are retired; the "save_scope" intent went with them. To edit a
+  // were removed; the "save_scope" intent went with them. To edit a
   // scope's rules, the user opens /scopes/<id>/edit (the only place rules
   // are managed).
 
