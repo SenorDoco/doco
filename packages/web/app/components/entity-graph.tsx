@@ -5,8 +5,8 @@
 //
 // react-flow is loaded via dynamic import — it touches the DOM directly,
 // can't run during SSR.
-import { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router";
+import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react";
+import { Link, useNavigate } from "react-router";
 import "@xyflow/react/dist/style.css";
 
 export interface GraphNode {
@@ -41,6 +41,21 @@ interface EntityGraphProps {
   nodes: GraphNode[];
   links: GraphLink[];
   hrefFor?: (id: string, nodeType: string) => string;
+}
+
+interface MiniMapNodeProps {
+  id: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  style?: CSSProperties;
+  selected?: boolean;
+  className?: string;
+  color?: string;
+  strokeColor?: string;
+  borderRadius?: number;
+  shapeRendering?: string;
 }
 
 /**
@@ -114,10 +129,7 @@ function relativeTime(iso: string | null): string {
  * inter-node distance needs to be at least ~170 to avoid corner overlap
  * for the inner ring. Higher values give a sparser but more readable layout.
  */
-function spiralLayout(
-  nodes: GraphNode[],
-  centerId: string,
-): Map<string, { x: number; y: number }> {
+function spiralLayout(nodes: GraphNode[], centerId: string): Map<string, { x: number; y: number }> {
   const positions = new Map<string, { x: number; y: number }>();
   positions.set(centerId, { x: 0, y: 0 });
   const others = nodes.filter((n) => n.id !== centerId);
@@ -165,10 +177,12 @@ export function EntityGraph({ centerId, nodes, links, hrefFor }: EntityGraphProp
     return { nodes: v, links: vl };
   }, [nodes, links, hiddenTypes, centerId]);
 
-  const positions = useMemo(
-    () => spiralLayout(visible.nodes, centerId),
-    [visible.nodes, centerId],
-  );
+  const positions = useMemo(() => spiralLayout(visible.nodes, centerId), [visible.nodes, centerId]);
+  const visibleNodeById = useMemo(() => {
+    const byId = new Map<string, GraphNode>();
+    for (const node of visible.nodes) byId.set(node.id, node);
+    return byId;
+  }, [visible.nodes]);
 
   // Dynamic import — react-flow uses window/document.
   // biome-ignore lint/suspicious/noExplicitAny: dynamic-import escape hatch
@@ -230,9 +244,7 @@ export function EntityGraph({ centerId, nodes, links, hrefFor }: EntityGraphProp
     let obs: MutationObserver | null = null;
     const attach = () => {
       if (canceled || !graphRef.current) return;
-      const path = graphRef.current.querySelector<SVGPathElement>(
-        ".react-flow__minimap-mask",
-      );
+      const path = graphRef.current.querySelector<SVGPathElement>(".react-flow__minimap-mask");
       if (!path) {
         requestAnimationFrame(attach);
         return;
@@ -252,8 +264,8 @@ export function EntityGraph({ centerId, nodes, links, hrefFor }: EntityGraphProp
   // across non-focal nodes so the focal AND the highest-PPR neighbor both
   // land at white; weaker neighbors recede toward gray.
   const pprBounds = useMemo(() => {
-    let min = Infinity;
-    let max = -Infinity;
+    let min = Number.POSITIVE_INFINITY;
+    let max = Number.NEGATIVE_INFINITY;
     for (const n of visible.nodes) {
       if (n.is_center) continue;
       if (n.ppr < min) min = n.ppr;
@@ -286,6 +298,9 @@ export function EntityGraph({ centerId, nodes, links, hrefFor }: EntityGraphProp
             : n.summary
           : null;
         const NODE_W = 240;
+        // Make the card itself a real link. React Flow's node-level click
+        // remains as a fallback, but the anchor gives expected browser affordances.
+        const href = hrefFor ? hrefFor(n.id, n.node_type) : `/${n.node_type}/${n.id}`;
         return {
           id: n.id,
           position: pos,
@@ -299,8 +314,12 @@ export function EntityGraph({ centerId, nodes, links, hrefFor }: EntityGraphProp
           initialHeight: subtitle ? 100 : 78,
           data: {
             label: (
-              <div
-                className="flex flex-col gap-0.5 overflow-hidden px-3 py-2"
+              <Link
+                to={href}
+                aria-label={`Open ${n.node_type} ${title}`}
+                className="nodrag nopan flex cursor-pointer flex-col gap-0.5 overflow-hidden px-3 py-2 text-inherit no-underline"
+                draggable={false}
+                onClick={(event) => event.stopPropagation()}
                 style={{ width: NODE_W }}
               >
                 <div className="flex items-center gap-1.5">
@@ -312,7 +331,14 @@ export function EntityGraph({ centerId, nodes, links, hrefFor }: EntityGraphProp
                   {title}
                 </div>
                 {subtitle ? (
-                  <div className="overflow-hidden text-[10px] leading-tight text-muted-foreground" style={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" as const }}>
+                  <div
+                    className="overflow-hidden text-[10px] leading-tight text-muted-foreground"
+                    style={{
+                      display: "-webkit-box",
+                      WebkitLineClamp: 2,
+                      WebkitBoxOrient: "vertical" as const,
+                    }}
+                  >
                     {subtitle}
                   </div>
                 ) : null}
@@ -336,7 +362,7 @@ export function EntityGraph({ centerId, nodes, links, hrefFor }: EntityGraphProp
                     </span>
                   )}
                 </div>
-              </div>
+              </Link>
             ),
           },
           style: {
@@ -344,9 +370,7 @@ export function EntityGraph({ centerId, nodes, links, hrefFor }: EntityGraphProp
             // Borders stay gray for every node — the type is signalled by
             // the colored stripe drawn inside the left edge of the card
             // (boxShadow inset). Focal keeps a 2px gray border for weight.
-            border: n.is_center
-              ? "2px solid var(--color-border)"
-              : "1px solid var(--color-border)",
+            border: n.is_center ? "2px solid var(--color-border)" : "1px solid var(--color-border)",
             borderRadius: 8,
             padding: 0,
             width: NODE_W,
@@ -357,7 +381,7 @@ export function EntityGraph({ centerId, nodes, links, hrefFor }: EntityGraphProp
           targetPosition: "left" as const,
         };
       }),
-    [visible.nodes, positions, pprBounds],
+    [visible.nodes, positions, pprBounds, hrefFor],
   );
 
   const flowEdges = useMemo(
@@ -398,6 +422,71 @@ export function EntityGraph({ centerId, nodes, links, hrefFor }: EntityGraphProp
         };
       }),
     [visible.links],
+  );
+
+  const MiniMapNode = useMemo(
+    () =>
+      function DocoMiniMapNode({
+        id,
+        x,
+        y,
+        width,
+        height,
+        style,
+        selected,
+        className,
+        color,
+        strokeColor,
+        borderRadius = 5,
+        shapeRendering,
+      }: MiniMapNodeProps) {
+        const graphNode = visibleNodeById.get(id);
+        const fill =
+          color ??
+          (typeof style?.background === "string" ? style.background : undefined) ??
+          (typeof style?.backgroundColor === "string" ? style.backgroundColor : undefined) ??
+          "rgb(255,255,255)";
+        const stripeColor = TYPE_COLOR[graphNode?.node_type ?? ""] ?? FALLBACK_COLOR;
+        const radius = Math.min(borderRadius, width / 4, height / 4);
+        const stripeWidth = Math.min(34, Math.max(18, width * 0.16));
+        const stripeRight = x + stripeWidth;
+        const bottom = y + height;
+        const stripeRadius = Math.min(radius, stripeWidth, height / 2);
+        const stripePath = [
+          `M${x + stripeRadius},${y}`,
+          `L${stripeRight},${y}`,
+          `L${stripeRight},${bottom}`,
+          `L${x + stripeRadius},${bottom}`,
+          `Q${x},${bottom} ${x},${bottom - stripeRadius}`,
+          `L${x},${y + stripeRadius}`,
+          `Q${x},${y} ${x + stripeRadius},${y}`,
+          "Z",
+        ].join(" ");
+        const classes = ["react-flow__minimap-node", selected ? "selected" : "", className]
+          .filter(Boolean)
+          .join(" ");
+
+        return (
+          <g className={classes} shapeRendering={shapeRendering}>
+            <rect
+              x={x}
+              y={y}
+              width={width}
+              height={height}
+              rx={radius}
+              ry={radius}
+              style={{
+                fill,
+                stroke: strokeColor ?? "var(--color-border)",
+                strokeWidth: graphNode?.is_center ? 2 : 1,
+                vectorEffect: "non-scaling-stroke",
+              }}
+            />
+            <path d={stripePath} style={{ fill: stripeColor }} />
+          </g>
+        );
+      },
+    [visibleNodeById],
   );
 
   return (
@@ -441,6 +530,8 @@ export function EntityGraph({ centerId, nodes, links, hrefFor }: EntityGraphProp
           <Flow.ReactFlow
             nodes={flowNodes}
             edges={flowEdges}
+            nodesDraggable={false}
+            nodesConnectable={false}
             fitView
             fitViewOptions={{ padding: 0.05, maxZoom: 1.6 }}
             onNodeClick={(_e: unknown, n: { id: string }) => {
@@ -448,7 +539,9 @@ export function EntityGraph({ centerId, nodes, links, hrefFor }: EntityGraphProp
               if (!node) return;
               // hrefFor is always provided by callers in production; the fallback exists
               // only for ad-hoc tests/storybook. Use the short form (no `/e/`).
-              const href = hrefFor ? hrefFor(node.id, node.node_type) : `/${node.node_type}/${node.id}`;
+              const href = hrefFor
+                ? hrefFor(node.id, node.node_type)
+                : `/${node.node_type}/${node.id}`;
               navigate(href);
             }}
             proOptions={{ hideAttribution: true }}
@@ -456,10 +549,7 @@ export function EntityGraph({ centerId, nodes, links, hrefFor }: EntityGraphProp
             <Flow.Background gap={20} size={1} />
             <Flow.Controls showInteractive={false} />
             <Flow.MiniMap
-              nodeColor={(n: { id: string }) =>
-                TYPE_COLOR[visible.nodes.find((x) => x.id === n.id)?.node_type ?? ""] ??
-                FALLBACK_COLOR
-              }
+              nodeComponent={MiniMapNode}
               pannable
               zoomable
               maskColor="rgba(0, 0, 0, 0.35)"
