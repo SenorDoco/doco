@@ -5,10 +5,9 @@ import type { PoolClient } from "pg";
 // + left-sidebar filters for lifecycle / node type / scope.
 //
 // One provider call embeds keyword searches; filters resolve to a
-// candidate id set BEFORE cosine so the top-N slice always returns up
-// to N matching entities. With explicit filters and no keyword, this
-// page lists the filtered nodes directly. Filter state lives in URL
-// query params.
+// candidate id set BEFORE cosine so pagination always slices matching
+// entities. With explicit filters and no keyword, this page lists the
+// filtered nodes directly. Filter state lives in URL query params.
 import { Form, Link, useSearchParams } from "react-router";
 import { Badge } from "~/components/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
@@ -233,6 +232,7 @@ const TYPE_SPECS: TypeSpec[] = [
 ];
 
 const FILTER_PARAM_NAMES = ["lifecycle", "node_type", "scope"] as const;
+const SEARCH_PAGE_SIZE = 25;
 
 function hasExplicitSearchFilter(params: URLSearchParams): boolean {
   return FILTER_PARAM_NAMES.some((name) => params.has(name));
@@ -257,7 +257,7 @@ async function loadFilteredHits(
     if (byGpr !== 0) return byGpr;
     return a.id.localeCompare(b.id);
   });
-  return hits.slice(0, filters.limit);
+  return hits;
 }
 
 async function loadAllDocoEntityIds(c: PoolClient, docoId: string): Promise<string[]> {
@@ -324,6 +324,36 @@ function createdTime(iso: string | null): number {
   return Number.isNaN(t) ? 0 : t;
 }
 
+interface PaginationState {
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+  start: number;
+  end: number;
+}
+
+function paginationState(params: URLSearchParams, total: number): PaginationState {
+  const rawPage = Number.parseInt(params.get("page") ?? "", 10);
+  const totalPages = Math.max(1, Math.ceil(total / SEARCH_PAGE_SIZE));
+  const requestedPage = Number.isFinite(rawPage) ? rawPage : 1;
+  const page = Math.max(1, Math.min(totalPages, requestedPage));
+  const startIndex = (page - 1) * SEARCH_PAGE_SIZE;
+  const end = Math.min(total, startIndex + SEARCH_PAGE_SIZE);
+  return {
+    page,
+    pageSize: SEARCH_PAGE_SIZE,
+    total,
+    totalPages,
+    start: total === 0 ? 0 : startIndex + 1,
+    end,
+  };
+}
+
+function paginateHits<T>(hits: T[], pagination: PaginationState): T[] {
+  return hits.slice(pagination.start === 0 ? 0 : pagination.start - 1, pagination.end);
+}
+
 export async function loader({
   request,
   params,
@@ -343,15 +373,16 @@ export async function loader({
     const filters: SearchFilters = parseSearchFilters(url.searchParams, facets);
 
     if (!q) {
-      const hits = hasExplicitSearchFilter(url.searchParams)
+      const allHits = hasExplicitSearchFilter(url.searchParams)
         ? await loadFilteredHits(c, ctx.meta.docoId, filters)
         : [];
-      if (hits.length > 0) {
-        facets = await withHitDerivedCounts(facets, c, ctx.meta.docoId, hits);
+      if (hasExplicitSearchFilter(url.searchParams)) {
+        facets = await withHitDerivedCounts(facets, c, ctx.meta.docoId, allHits);
       }
+      const pagination = paginationState(url.searchParams, allHits.length);
       return {
         q,
-        hits,
+        hits: paginateHits(allHits, pagination),
         warning: null as string | null,
         ownerSlug,
         docoSlug,
@@ -359,10 +390,12 @@ export async function loader({
         me,
         filters,
         facets,
+        pagination,
       };
     }
 
     const provider = getDocoEmbeddingProvider();
+    const emptyPagination = paginationState(url.searchParams, 0);
     if (!provider) {
       return {
         q,
@@ -374,6 +407,7 @@ export async function loader({
         me,
         filters,
         facets,
+        pagination: emptyPagination,
       };
     }
 
@@ -391,6 +425,7 @@ export async function loader({
           me,
           filters,
           facets,
+          pagination: emptyPagination,
         };
       }
       queryEmbedding = v;
@@ -405,6 +440,7 @@ export async function loader({
         me,
         filters,
         facets,
+        pagination: emptyPagination,
       };
     }
 
@@ -426,6 +462,7 @@ export async function loader({
         me,
         filters,
         facets,
+        pagination: emptyPagination,
       };
     }
 
@@ -434,17 +471,28 @@ export async function loader({
       score: cosineSimilarity(queryEmbedding, e.embedding),
     }));
     scored.sort((a, b) => b.score - a.score);
-    const top = scored.slice(0, filters.limit);
-    const topById = new Map(top.map((t) => [t.entity_id, t.score]));
-    const topIds = top.map((t) => t.entity_id);
+    const scoreById = new Map(scored.map((t) => [t.entity_id, t.score]));
+    const allIds = scored.map((t) => t.entity_id);
 
-    const hits = await hydrateHits(c, topIds, ctx.meta.docoId, topById);
-    await attachGlobalPageRank(c, ctx.meta.docoId, hits);
-    hits.sort((a, b) => (b.vector_score ?? 0) - (a.vector_score ?? 0));
+    const allHits = await hydrateHits(c, allIds, ctx.meta.docoId, scoreById);
+    await attachGlobalPageRank(c, ctx.meta.docoId, allHits);
+    allHits.sort((a, b) => (b.vector_score ?? 0) - (a.vector_score ?? 0));
 
-    facets = await withHitDerivedCounts(facets, c, ctx.meta.docoId, hits);
+    facets = await withHitDerivedCounts(facets, c, ctx.meta.docoId, allHits);
+    const pagination = paginationState(url.searchParams, allHits.length);
 
-    return { q, hits, warning: null, ownerSlug, docoSlug, host, me, filters, facets };
+    return {
+      q,
+      hits: paginateHits(allHits, pagination),
+      warning: null,
+      ownerSlug,
+      docoSlug,
+      host,
+      me,
+      filters,
+      facets,
+      pagination,
+    };
   });
 }
 
@@ -504,10 +552,14 @@ export default function SearchInDoco({
 }: {
   loaderData: Awaited<ReturnType<typeof loader>>;
 }) {
-  const { q, hits, warning, ownerSlug, docoSlug, host, me, filters, facets } = loaderData;
+  const { q, hits, warning, ownerSlug, docoSlug, host, me, filters, facets, pagination } =
+    loaderData;
   const [sp] = useSearchParams();
   const activeQ = sp.get("q") ?? q;
   const hasFilters = hasExplicitSearchFilter(sp);
+  const preservedSearchParams = Array.from(sp.entries()).filter(
+    ([key]) => key !== "q" && key !== "page",
+  );
 
   return (
     <div>
@@ -527,44 +579,53 @@ export default function SearchInDoco({
                 className="w-full rounded-md border bg-background px-2 py-1 text-sm"
                 autoFocus
               />
+              {preservedSearchParams.map(([key, value], index) => (
+                <input key={`${key}-${value}-${index}`} type="hidden" name={key} value={value} />
+              ))}
             </div>
+          </Form>
+          <div className="space-y-4">
             <FacetGroup
-              label="Lifecycle"
-              name="lifecycle"
-              options={facets.lifecycle.map((f) => ({
-                value: f.value,
-                label: `${f.value} (${f.count})`,
+              label="Scopes"
+              name="scope"
+              searchParams={sp}
+              options={facets.scope.map((f) => ({
+                value: f.name,
+                label: f.name,
+                count: f.count,
               }))}
-              selected={new Set(filters.lifecycle ?? [])}
-              wildcardActive={filters.lifecycle === null}
+              selected={new Set(filters.scope ?? [])}
+              wildcardActive={filters.scope === null}
             />
             <FacetGroup
-              label="Type"
+              label="Types"
               name="node_type"
+              searchParams={sp}
               options={facets.nodeType.map((f) => ({
                 value: f.value,
-                label: `${f.value} (${f.count})`,
+                label: f.value,
+                count: f.count,
               }))}
               selected={new Set(filters.nodeType ?? [])}
               wildcardActive={filters.nodeType === null}
             />
             <FacetGroup
-              label="Scope"
-              name="scope"
-              options={facets.scope.map((f) => ({
-                value: f.name,
-                label: `${f.name} (${f.count})`,
+              label="Life cycles"
+              name="lifecycle"
+              searchParams={sp}
+              options={facets.lifecycle.map((f) => ({
+                value: f.value,
+                label: f.value,
+                count: f.count,
               }))}
-              selected={new Set(filters.scope ?? [])}
-              wildcardActive={filters.scope === null}
+              selected={new Set(filters.lifecycle ?? [])}
+              wildcardActive={filters.lifecycle === null}
             />
-            <button type="submit" className="rounded-md border px-3 py-1 text-sm">
-              Apply
-            </button>
-          </Form>
+          </div>
         </aside>
 
         <section className="space-y-4">
+          <ResultsSummary pagination={pagination} />
           {warning ? (
             <Card>
               <CardContent className="pt-4 text-sm text-muted-foreground">{warning}</CardContent>
@@ -606,6 +667,7 @@ export default function SearchInDoco({
               </Card>
             );
           })}
+          <PaginationControls pagination={pagination} searchParams={sp} />
         </section>
       </main>
     </div>
@@ -615,34 +677,166 @@ export default function SearchInDoco({
 function FacetGroup({
   label,
   name,
+  searchParams,
   options,
   selected,
   wildcardActive,
 }: {
   label: string;
   name: string;
-  options: { value: string; label: string }[];
+  searchParams: URLSearchParams;
+  options: { value: string; label: string; count: number }[];
   selected: Set<string>;
   wildcardActive: boolean;
 }) {
   return (
-    <fieldset className="space-y-1">
-      <legend className="text-xs text-muted-foreground">{label}</legend>
-      <label className="flex items-center gap-2 text-xs">
-        <input type="checkbox" name={name} value="*" defaultChecked={wildcardActive} />
-        <span>any</span>
-      </label>
+    <section className="space-y-1">
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="text-xs text-muted-foreground">{label}</h2>
+        <Link
+          to={hrefForAll(searchParams, name)}
+          className="text-xs text-primary hover:underline"
+        >
+          All
+        </Link>
+      </div>
       {options.map((o) => (
-        <label key={o.value} className="flex items-center gap-2 text-xs">
-          <input
-            type="checkbox"
-            name={name}
-            value={o.value}
-            defaultChecked={selected.has(o.value)}
-          />
-          <span>{o.label}</span>
-        </label>
+        <div key={o.value} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
+          <Link
+            to={hrefForToggle(searchParams, name, o.value, options, selected, wildcardActive)}
+            className="flex min-w-0 items-center gap-2 text-xs hover:text-primary"
+          >
+            <span
+              aria-hidden="true"
+              className={`flex h-3 w-3 shrink-0 items-center justify-center rounded-[3px] border text-[9px] leading-none ${
+                wildcardActive || selected.has(o.value)
+                  ? "border-primary bg-primary text-primary-foreground"
+                  : "border-muted-foreground/70"
+              }`}
+            >
+              {wildcardActive || selected.has(o.value) ? "✓" : ""}
+            </span>
+            <span className="truncate">{o.label}</span>
+          </Link>
+          <span className="whitespace-nowrap text-xs text-muted-foreground">
+            {o.count}{" "}
+            <Link
+              to={hrefForOnly(searchParams, name, o.value)}
+              className="text-primary hover:underline"
+            >
+              (only)
+            </Link>
+          </span>
+        </div>
       ))}
-    </fieldset>
+    </section>
   );
+}
+
+function ResultsSummary({ pagination }: { pagination: PaginationState }) {
+  const shown = pagination.end === 0 ? 0 : pagination.end - pagination.start + 1;
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+      <span>
+        Showing {shown} of {pagination.total} found
+        {pagination.total > 0 ? ` (${pagination.start}-${pagination.end})` : ""}
+      </span>
+      {pagination.totalPages > 1 ? (
+        <span>
+          Page {pagination.page} of {pagination.totalPages}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
+function PaginationControls({
+  pagination,
+  searchParams,
+}: {
+  pagination: PaginationState;
+  searchParams: URLSearchParams;
+}) {
+  if (pagination.totalPages <= 1) return null;
+  return (
+    <nav className="flex items-center justify-between gap-3 text-xs" aria-label="Search results">
+      {pagination.page > 1 ? (
+        <Link
+          to={hrefForPage(searchParams, pagination.page - 1)}
+          className="text-primary hover:underline"
+        >
+          Previous
+        </Link>
+      ) : (
+        <span className="text-muted-foreground">Previous</span>
+      )}
+      {pagination.page < pagination.totalPages ? (
+        <Link
+          to={hrefForPage(searchParams, pagination.page + 1)}
+          className="text-primary hover:underline"
+        >
+          Next
+        </Link>
+      ) : (
+        <span className="text-muted-foreground">Next</span>
+      )}
+    </nav>
+  );
+}
+
+function hrefForAll(searchParams: URLSearchParams, name: string): string {
+  const next = nextSearchParams(searchParams);
+  next.delete(name);
+  next.append(name, "*");
+  return searchHref(next);
+}
+
+function hrefForOnly(searchParams: URLSearchParams, name: string, value: string): string {
+  const next = nextSearchParams(searchParams);
+  next.delete(name);
+  next.append(name, value);
+  return searchHref(next);
+}
+
+function hrefForToggle(
+  searchParams: URLSearchParams,
+  name: string,
+  value: string,
+  options: { value: string }[],
+  selected: Set<string>,
+  wildcardActive: boolean,
+): string {
+  const next = nextSearchParams(searchParams);
+  next.delete(name);
+
+  const optionValues = options.map((o) => o.value);
+  const values = new Set(wildcardActive ? optionValues : Array.from(selected));
+  if (values.has(value)) {
+    if (values.size > 1) values.delete(value);
+  } else {
+    values.add(value);
+  }
+
+  for (const v of optionValues) {
+    if (values.has(v)) next.append(name, v);
+  }
+  return searchHref(next);
+}
+
+function hrefForPage(searchParams: URLSearchParams, page: number): string {
+  const next = new URLSearchParams(searchParams);
+  if (page <= 1) next.delete("page");
+  else next.set("page", String(page));
+  return searchHref(next);
+}
+
+function nextSearchParams(searchParams: URLSearchParams): URLSearchParams {
+  const next = new URLSearchParams(searchParams);
+  next.delete("page");
+  return next;
+}
+
+function searchHref(searchParams: URLSearchParams): string {
+  const qs = searchParams.toString();
+  return qs ? `?${qs}` : "?";
 }
