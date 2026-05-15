@@ -41,8 +41,7 @@ DOCO_TOKEN + DOCO_ID to ./.env in the project root. Then:
 This installs AGENTS.md, CLAUDE.md (Claude-Code shim), and .claude/
 hook scripts. Restart your session afterwards.
 
-Detail (plain text):  ${baseUrl}/onboarding/create/agent.txt
-Detail (HTML):        ${baseUrl}/onboarding/create/agent
+Detail:  ${baseUrl}/onboarding/create/agent.txt
 
 If \`doco\` is not on $PATH, install from source — the CLI isn't on npm
 yet (the \`@doco/cli\` name is squatted by an unrelated package; rename

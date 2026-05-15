@@ -4,6 +4,7 @@ import { Link } from "react-router";
 
 import { loadHostConfig } from "~/lib/host";
 import { DocoMark } from "~/components/doco-mark";
+import { VersionPill } from "~/components/version-pill";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 
 export async function loader() {
@@ -22,7 +23,8 @@ export default function JoinAgent() {
           <Link to="/" className="inline-flex items-center hover:opacity-80" aria-label="Doco home">
             <DocoMark height={28} />
           </Link>
-          <Link to="/onboarding/join" className="text-xs text-muted-foreground hover:text-foreground">
+          <VersionPill />
+          <Link to="/onboarding/join" className="ml-auto text-xs text-muted-foreground hover:text-foreground">
             ← Back
           </Link>
         </div>

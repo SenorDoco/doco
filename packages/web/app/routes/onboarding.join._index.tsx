@@ -2,6 +2,7 @@
 import { Link } from "react-router";
 
 import { DocoMark } from "~/components/doco-mark";
+import { VersionPill } from "~/components/version-pill";
 
 export function meta() {
   return [{ title: "Join an Doco · Doco" }];
@@ -22,20 +23,27 @@ export function RoleSplitPage({
   title,
   humanHref,
   agentHref,
+  agentReloadDocument = false,
   backHref,
 }: {
   title: string;
   humanHref: string;
   agentHref: string;
+  /** Set when agentHref targets a resource route (.txt / .json) — forces a
+   *  full browser navigation instead of react-router client-side routing. */
+  agentReloadDocument?: boolean;
   backHref: string;
 }) {
   return (
     <div className="min-h-screen flex flex-col">
       <header className="border-b border-border bg-card">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-6 py-3">
-          <Link to="/" className="inline-flex items-center hover:opacity-80" aria-label="Doco home">
-            <DocoMark height={28} />
-          </Link>
+          <div className="flex items-center gap-3">
+            <Link to="/" className="inline-flex items-center hover:opacity-80" aria-label="Doco home">
+              <DocoMark height={28} />
+            </Link>
+            <VersionPill />
+          </div>
           <Link to={backHref} className="text-xs text-muted-foreground hover:text-foreground">
             ← Back
           </Link>
@@ -56,6 +64,7 @@ export function RoleSplitPage({
             </Link>
             <Link
               to={agentHref}
+              reloadDocument={agentReloadDocument}
               className="rounded-lg border border-border bg-card px-6 py-8 text-left transition-colors hover:border-primary"
             >
               <div className="text-base font-semibold">I'm an AI agent</div>

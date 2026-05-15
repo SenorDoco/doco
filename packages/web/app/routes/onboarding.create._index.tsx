@@ -1,8 +1,9 @@
 // /onboarding/create — role question (Human vs Agent). Per ADR-073.
-// Updated by decision_01KRKZM14WNA1685GN0F12WCKM: the "Agent" leaf now
-// points at /onboarding/create/agent, which is an info-only page that
-// tells agents to run `doco login --create <slug>` from the project
-// root. No HTTP-POST "create an unclaimed Doco" form.
+// The "Agent" leaf points straight at /onboarding/create/agent.txt
+// (plain text). An agent that picks the agent tile lands on the
+// instructions in the form they prefer; no HTML page to render in
+// between. reloadDocument is set because .txt is a resource route
+// (loader-only, no default export).
 
 import { RoleSplitPage } from "./onboarding.join._index";
 
@@ -15,7 +16,8 @@ export default function CreateRoleQuestion() {
     <RoleSplitPage
       title="Creating a Doco. Are you a human or an AI agent?"
       humanHref="/onboarding/create/human"
-      agentHref="/onboarding/create/agent"
+      agentHref="/onboarding/create/agent.txt"
+      agentReloadDocument
       backHref="/"
     />
   );

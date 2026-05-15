@@ -8,12 +8,17 @@ import { type RouteConfig, index, route } from "@react-router/dev/routes";
  * use — the explicit manual table doubles as a prose-readable index
  * of the URL surface, grouped by area.
  *
- * Agent-route policy: any route whose path has an `agent` segment MUST also
- * register `<path>.txt` (plain-prose docs for agents) and `<path>.json`
- * (resource route — clean JSON POST endpoint, no document render). Enforced
- * by `pnpm --filter @doco/web lint:routes`. The HTML route must advertise
- * both siblings via `<link rel="alternate">` in its `links()` export so an
- * agent that lands on the browser version can discover the agent version.
+ * Agent-route policy: when there's an HTML route whose path has an `agent`
+ * segment, register `<path>.txt` (plain-prose docs for agents) AND
+ * `<path>.json` (resource route — clean JSON POST endpoint, no document
+ * render) as siblings. The HTML route must advertise both via
+ * `<link rel="alternate">` in its `links()` export so an agent that lands
+ * on the browser version can discover the agent version. Enforced by
+ * `pnpm --filter @doco/web lint:routes`.
+ *
+ * Info-only agent paths can ship as `.txt` only — no HTML, no `.json` —
+ * when the page is one screen of instructions and there is no state to
+ * mutate. /onboarding/create/agent.txt is the standing example.
  *
  * Hosted-multi-tenant route table:
  *
@@ -71,11 +76,11 @@ export default [
   route("onboarding/join/agent.json", "routes/onboarding.join.agent[.]json.tsx"),
   route("onboarding/create", "routes/onboarding.create._index.tsx"),
   route("onboarding/create/human", "routes/onboarding.create.human.tsx"),
-  // /onboarding/create/agent.* is info-only after
-  // decision_01KRKZM14WNA1685GN0F12WCKM: the page tells agents to run
-  // `doco login --create <slug>` from the project root rather than
-  // POSTing an unclaimed Doco. No claim handoff.
-  route("onboarding/create/agent", "routes/onboarding.create.agent.tsx"),
+  // /onboarding/create/agent is plain text only — the "Agent" leaf on
+  // /onboarding/create routes straight here. After
+  // decision_01KRKZM14WNA1685GN0F12WCKM the page is info-only (run
+  // `doco login --create <slug>`), so the HTML and .json siblings
+  // would just be ceremony around a one-screen instruction.
   route("onboarding/create/agent.txt", "routes/onboarding.create.agent[.]txt.tsx"),
   // Agents
   route("agents", "routes/agents._index.tsx"),

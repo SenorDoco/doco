@@ -69,6 +69,25 @@ const TYPE_COLOR: Record<string, string> = {
 };
 const FALLBACK_COLOR = "#525252";
 
+const TYPE_PLURAL_LABEL: Record<string, string> = {
+  doco: "docos",
+  principal: "principals",
+  organization: "organizations",
+  intent: "intents",
+  idea: "ideas",
+  rule: "rules",
+  decision: "decisions",
+  action: "actions",
+  reasoning: "reasonings",
+  eval: "evals",
+  reference: "references",
+  scope: "scopes",
+};
+
+function typePluralLabel(type: string): string {
+  return TYPE_PLURAL_LABEL[type] ?? `${type}s`;
+}
+
 /** Format an ISO timestamp as "Ns / Nm / Nh / Nd ago". */
 function relativeTime(iso: string | null): string {
   if (!iso) return "—";
@@ -388,11 +407,12 @@ export function EntityGraph({ centerId, nodes, links, hrefFor }: EntityGraphProp
         {allTypes.map((t) => {
           const v = !hiddenTypes.has(t);
           const color = TYPE_COLOR[t] ?? FALLBACK_COLOR;
+          const label = typePluralLabel(t);
           return (
             <label
               key={t}
               className="inline-flex cursor-pointer select-none items-center gap-1"
-              title={t}
+              title={label}
             >
               <input
                 type="checkbox"
@@ -407,12 +427,7 @@ export function EntityGraph({ centerId, nodes, links, hrefFor }: EntityGraphProp
                 }}
                 className="h-3 w-3"
               />
-              <span
-                className="inline-block h-2 w-2 rounded-full"
-                style={{ backgroundColor: color }}
-                aria-hidden="true"
-              />
-              {t}
+              <span style={{ color }}>{label}</span>
             </label>
           );
         })}

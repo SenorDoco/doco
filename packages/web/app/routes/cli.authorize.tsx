@@ -29,6 +29,7 @@ import { rootDir } from "~/lib/db.server";
 import { addAgentPrincipal, createDocoInHost, reindex } from "~/lib/redeem.server";
 import { getCurrentPrincipal } from "~/lib/session";
 import { DocoMark } from "~/components/doco-mark";
+import { VersionPill } from "~/components/version-pill";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 
 type LoaderError =
@@ -432,6 +433,7 @@ function Shell({ children }: { children: React.ReactNode }) {
           <Link to="/" className="inline-flex items-center hover:opacity-80" aria-label="Doco home">
             <DocoMark height={28} />
           </Link>
+          <VersionPill />
         </div>
       </header>
       <main className="mx-auto max-w-xl px-6 py-12 w-full">{children}</main>

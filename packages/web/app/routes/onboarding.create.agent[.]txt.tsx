@@ -1,6 +1,7 @@
-// /onboarding/create/agent.txt — plain-text companion to the HTML page.
-// Agents discovering the host via the AGENTS.md convention may curl this
-// for the no-chrome instructions.
+// /onboarding/create/agent.txt — the only "create as agent" page. The
+// "Agent" leaf on /onboarding/create points straight here; there is no
+// HTML rendering. Agents discovering the host via the AGENTS.md
+// convention may also curl this URL directly.
 import { getPublicBaseUrl } from "@doco/shared";
 
 export async function loader({ request }: { request: Request }) {
