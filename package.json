@@ -16,7 +16,7 @@
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
     "format": "biome format --write .",
-    "doco": "pnpm --filter @doco/cli doco",
+    "doco": "pnpm --filter doco-cli doco",
     "deploy": "pnpm dlx vercel --prod"
   },
   "devDependencies": {

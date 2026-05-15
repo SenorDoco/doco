@@ -89,7 +89,7 @@ export const installAgentBootstrapCmd = defineCommand({
       stopHookSrc,
     ]) {
       if (!existsSync(p)) {
-        console.error(cross(`Template missing: ${p}. Reinstall @doco/cli.`));
+        console.error(cross(`Template missing: ${p}. Reinstall doco-cli.`));
         process.exitCode = 2;
         return;
       }

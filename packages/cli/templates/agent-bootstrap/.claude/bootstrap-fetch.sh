@@ -173,11 +173,21 @@ if [ -n "$WARNING_TEXT" ]; then
   WARNING_BLOCK=$(printf '\n\n---\n\n## ⚠️ Bootstrap warning\n\n%s\n\nThis is not a hard failure — the canonical instructions below are still authoritative. But the per-Doco context (scopes / constitution) was not loaded, so any captures will need correcting once `.env` is fixed. Mention this to the user on your first reply.\n' "$WARNING_TEXT")
 fi
 
+# Pre-bake the session-load indicator line so the agent emits it as
+# the literal first output of its first reply — BEFORE any prose,
+# narration, or tool calls. Pick a random loading-verb from the
+# canonical 1a list so the line is ready to paste verbatim.
+LOADING_VERBS=("Connected to" "Tuned into" "Listening to" "Wired up to" "Synced with" "Plugged into" "Online with" "Reading" "Hooked into" "Linked to" "Eyes on" "Riding shotgun on" "Pinned to" "Threaded into" "Locked onto" "Channel open:" "Live on" "Mind-melded with" "Pulled up" "Holding the file on")
+LOADING_VERB="${LOADING_VERBS[$RANDOM % ${#LOADING_VERBS[@]}]}"
+SLUG_FOR_LINE="${DOCO_SLUG:-this Doco}"
+SESSION_LOAD_LINE="[🔮 Doco] ${LOADING_VERB} ${SLUG_FOR_LINE}"
+
 # Prepend a strong "do not re-fetch" header so the agent recognises the
 # canonical is ALREADY in their context. The previous "if you see this,
 # the hook worked" wording was too soft — agents re-fetched anyway. This
-# version explicitly forbids re-fetching.
+# version explicitly forbids re-fetching AND pre-bakes the session-load
+# line the agent must emit as its first output.
 TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-HEADER=$'🔒 Doco canonical_instructions — auto-loaded by SessionStart hook at '"${TIMESTAMP}"$'\n\nThis IS the canonical. **Do NOT re-fetch via `curl $DOCO_HOST/api/v1/agent-bootstrap`** — re-read the block below instead. The protocol applies to every reply (query indicator at top, footer_lines after writes, tally at end). For deep reference (model walkthrough, scope onboarding, placement examples), the long form is at `/api/v1/agent-reference` — fetch only on demand.\n\n---\n\n'
+HEADER=$'🔒 Doco canonical_instructions — auto-loaded by SessionStart hook at '"${TIMESTAMP}"$'\n\n⚠️ **The literal first line of your first reply must be the session-load indicator** — emitted BEFORE any prose, narration, or tool calls. Pre-built for you here (verb already randomized — paste verbatim):\n\n    '"${SESSION_LOAD_LINE}"$'\n\nNo "let me read this first" preface. No "I see this repo has Doco" prose. The line IS the acknowledgement. Then your per-reply [🔮 Doco] querying / count lines, then prose. See canonical § 1a below.\n\nThis IS the canonical. **Do NOT re-fetch via `curl $DOCO_HOST/api/v1/agent-bootstrap`** — re-read the block below instead. The protocol applies to every reply (query indicator at top, footer_lines after writes, tally at end). For deep reference (model walkthrough, scope onboarding, placement examples), the long form is at `/api/v1/agent-reference` — fetch only on demand.\n\n---\n\n'
 printf '%s' "$RESP" | jq -nc --arg c "${HEADER}${INSTR}${WARNING_BLOCK}${CODE_MAP_BLOCK}${CONSTITUTION_BLOCK}${SCOPES_BLOCK}" \
   '{hookSpecificOutput: {hookEventName: "SessionStart", additionalContext: $c}}'

@@ -72,10 +72,13 @@ export default function CreateAgent({
             </ol>
 
             <p className="pt-2">
-              If <code>doco</code> isn't on PATH, install the CLI first:{" "}
-              <code className="rounded bg-input px-1 py-0.5 font-mono">npm i -g @doco/cli</code>{" "}
-              (or invoke ad-hoc with <code className="rounded bg-input px-1 py-0.5 font-mono">npx @doco/cli</code>).
+              If <code>doco</code> isn't on PATH, install from source — the CLI isn't on npm
+              yet (the <code>@doco/cli</code> name is squatted by an unrelated package; rename
+              to <code>doco-cli</code> is in flight and the publish pipeline is pending):
             </p>
+            <pre className="overflow-x-auto rounded bg-input p-2 font-mono text-[11px]">{`git clone https://github.com/torrenegra/doco
+cd doco && pnpm install && pnpm build
+pnpm --filter doco-cli link --global`}</pre>
 
             <div className="rounded-md border border-border bg-card p-3 text-xs space-y-1.5">
               <p className="font-semibold">First-run permissions (Claude Code and similar)</p>
@@ -84,10 +87,10 @@ export default function CreateAgent({
                 unverified external CLI. Either click <strong>Allow</strong> when prompted, or
                 pre-authorize once at the user level in <code>~/.claude/settings.json</code>:
               </p>
-              <pre className="overflow-x-auto rounded bg-input p-2 font-mono text-[11px]">{`{"permissions":{"allow":["Bash(doco:*)","Bash(npx @doco/cli:*)"]}}`}</pre>
+              <pre className="overflow-x-auto rounded bg-input p-2 font-mono text-[11px]">{`{"permissions":{"allow":["Bash(doco:*)"]}}`}</pre>
               <p>
                 After the first successful run, the bootstrap installed into this repo's{" "}
-                <code>.claude/settings.json</code> allowlists the same entries, so future
+                <code>.claude/settings.json</code> allowlists the same entry, so future
                 calls run unprompted.
               </p>
             </div>

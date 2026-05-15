@@ -43,22 +43,37 @@ once when you read this canonical) and **per-reply** (fires every turn).
 On your FIRST reply of a session you emit both; on later replies, just
 the per-reply piece.
 
-### 1a. Once per session — when you load this canonical
+### 1a. Once per session — the moment you recognize this is a Doco project
 
-The first time you read this document in a session — whether the
-SessionStart hook injected it or you curled it yourself — the moment of
-connection deserves its own line. Render it ABOVE your first reply's
-per-query indicator:
+The session-load indicator is the **literal first characters** of your
+first reply in the session. Before any prose. Before any narration like
+"I'll fetch the canonical" or "let me read the bootstrap." Before any
+tool call beyond loading \`./.env\`. The line *itself* is how you
+acknowledge "I see this is a Doco project" — the canonical fetch comes
+next, narrated AFTER the line, not before.
+
+You know it's a Doco project the moment ANY of these is true: the
+SessionStart hook injected a \`🔒 Doco canonical_instructions\` block
+into your context, \`$DOCO_SLUG\` is set in the environment,
+\`AGENTS.md\` / \`CLAUDE.md\` mentions Doco, or \`./.env\` carries
+\`DOCO_HOST\`. You do **not** need to have finished reading the
+canonical body — you have \`$DOCO_SLUG\`, that is enough to render:
 
 \`\`\`
 [🔮 Doco] <loading-verb> <owner>/<doco>
 \`\`\`
 
-It marks "I realized this repo has Doco and reviewed the protocol."
-Don't repeat it on subsequent replies in the same session — once is
-enough. If you re-fetch the canonical mid-session (host blip, lost
-context, manual curl after a warning), emit it again to signal the
-reconnection.
+The failure mode this rule prevents: agent narrates "I have the
+canonical, now let me query Doco," runs three tool calls, *then*
+finally emits the connection line at line 12 of its reply. The project
+owner sees ten seconds of generic prose before the visual signal that
+the Doco protocol is engaged. Reverse it — line is first, prose is
+second.
+
+Don't repeat the session-load line on subsequent replies in the same
+session — once is enough. If you re-fetch the canonical mid-session
+(host blip, lost context, manual curl after a warning), emit it again
+to signal the reconnection.
 
 **Pick \`<loading-verb>\` at random from this list — zero deliberation, no tone-matching to the prompt:**
 
@@ -68,7 +83,9 @@ Eyes on · Riding shotgun on · Pinned to · Threaded into · Locked onto ·
 Channel open: · Live on · Mind-melded with · Pulled up · Holding the file on
 
 When the SessionStart hook pre-builds this line (Claude Code), the
-verb is already randomized — emit verbatim instead of re-picking.
+verb is already randomized **and the line itself is in the wrapper
+above the canonical** — emit it verbatim as your first output instead
+of re-picking the verb or waiting until you've read the canonical body.
 
 ### 1b. Per reply — every turn
 

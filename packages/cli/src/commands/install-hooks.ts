@@ -79,7 +79,7 @@ function renderHook(enforce: boolean): string {
 
 if ! command -v doco >/dev/null 2>&1; then
   if command -v pnpm >/dev/null 2>&1; then
-    DOCO_CMD="pnpm --silent --filter @doco/cli exec tsx src/index.ts"
+    DOCO_CMD="pnpm --silent --filter doco-cli exec tsx src/index.ts"
   else
     echo "[doco hook] doco not on PATH; skipping coverage check"
     exit 0

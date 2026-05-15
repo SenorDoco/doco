@@ -64,14 +64,14 @@ created directly under the project owner's account — no temporary
 "unclaimed" state, no follow-up URL to chase.
 
 **First-run permissions** (Claude Code): the `.claude/settings.json`
-shipped with this bootstrap allowlists `doco` and `npx @doco/cli`, so
-agents in repos that have run `doco install-agent-bootstrap` don't get
-auto-mode-blocked. But on the **very first** `doco login` in a fresh
-repo — the call that installs the bootstrap in the first place — the
-allowlist isn't loaded yet. Expect one Allow prompt the first time, or
-ask the project owner to pre-authorize at the user level in
-`~/.claude/settings.json` with the same two entries. After the
-bootstrap lands, future `doco` calls in this repo run unprompted.
+shipped with this bootstrap allowlists `doco`, so agents in repos that
+have run `doco install-agent-bootstrap` don't get auto-mode-blocked.
+But on the **very first** `doco login` in a fresh repo — the call that
+installs the bootstrap in the first place — the allowlist isn't loaded
+yet. Expect one Allow prompt the first time, or ask the project owner
+to pre-authorize at the user level in `~/.claude/settings.json` with
+the same entry. After the bootstrap lands, future `doco` calls in this
+repo run unprompted.
 
 If `DOCO_HOST` is already known but the token is just stale or missing
 (reconnecting to an existing Doco), run `doco login` without

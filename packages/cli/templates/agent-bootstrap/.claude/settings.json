@@ -2,9 +2,7 @@
   "$schema": "https://claude.com/schemas/settings.json",
   "permissions": {
     "allow": [
-      "Bash(doco:*)",
-      "Bash(npx @doco/cli:*)",
-      "Bash(npx -y @doco/cli:*)"
+      "Bash(doco:*)"
     ]
   },
   "hooks": {

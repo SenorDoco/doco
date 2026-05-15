@@ -44,8 +44,13 @@ hook scripts. Restart your session afterwards.
 Detail (plain text):  ${baseUrl}/onboarding/create/agent.txt
 Detail (HTML):        ${baseUrl}/onboarding/create/agent
 
-If \`doco\` is not on $PATH, install it: \`npm i -g @doco/cli\` (or use
-\`npx @doco/cli login …\` for a one-shot).
+If \`doco\` is not on $PATH, install from source — the CLI isn't on npm
+yet (the \`@doco/cli\` name is squatted by an unrelated package; rename
+to \`doco-cli\` is in flight and the publish pipeline is pending):
+
+    git clone https://github.com/torrenegra/doco
+    cd doco && pnpm install && pnpm build
+    pnpm --filter doco-cli link --global
 
 ## I'm already in a Doco-tracked project
 

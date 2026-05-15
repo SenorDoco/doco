@@ -1,0 +1,17 @@
+id: principal_01KRMD8J8A3FCAJECMPZKMDHKM
+doco_id: doco_01KRMD8J8AMW3JB2V7PJ47B4M6
+node_type: principal
+summary: Agent torrenegra/2026-05-14T23:31:01.513Z.
+type: agent
+username: torrenegra/2026-05-14T23:31:01.513Z
+display_name: CLI session for torrenegra (test.local)
+owner_id: principal_01KR441EA199MZCP7RDMADFZW9
+agent_metadata:
+  provider: doco-cli
+  model: doco-cli/0.0.1 (overlay-test)
+  capabilities: []
+  created_at: 2026-05-14T23:31:01.513Z
+created_at: 2026-05-14T23:31:01.514Z
+created_by: principal_01KR441EA199MZCP7RDMADFZW9
+lifecycle: active
+scopes: []

@@ -21,12 +21,25 @@ export default defineConfig({
   // crashes React with "Cannot read properties of null (reading
   // 'useState' / 'useContext')" — duplicate-React symptom, same root.
   // Anything imported from app/ that lives in node_modules belongs here.
+  // React + react-dom + jsx runtimes are listed explicitly: leaving them
+  // to auto-discovery means Vite optimizes the rest of the deps first,
+  // then re-optimizes when an app module imports React → browserHash
+  // rotates mid-load → orphaned chunks → duplicate-React crash on the
+  // entity-detail page (the first page to dynamic-import @xyflow/react).
   optimizeDeps: {
     include: [
+      "react",
+      "react-dom",
+      "react-dom/client",
+      "react/jsx-runtime",
+      "react/jsx-dev-runtime",
+      "react-router",
+      "react-router/dom",
       "@xyflow/react",
       "class-variance-authority",
       "clsx",
       "frimousse",
+      "lucide-react",
       "tailwind-merge",
       "yaml",
     ],
