@@ -129,9 +129,18 @@ export function ActivityHeatmap({ byDay, weeks = 26 }: ActivityHeatmapProps) {
             overflow-y: auto, and the horizontal scrollbar's thickness
             then forces a vertical scrollbar too. */}
         <div ref={scrollRef} className="min-w-0 flex-1 overflow-x-auto overflow-y-hidden">
-          {/* pb-3 reserves space below the cells so the horizontal
-              scrollbar doesn't clip into the last row (Sat). */}
-          <div className="inline-flex flex-col gap-1.5 pb-3">
+          {/* `inline-flex` sizes the inner wrap to its content (so the
+              horizontal scrollWidth equals the cells' width) but is
+              inline-level — its vertical-align defaults to `baseline`,
+              which sat the wrap ~9px below the scroll container's top
+              and visibly de-aligned every cell row from its weekday
+              label. `align-top` pins vertical-align to `top` so row 0
+              of cells lines up with row 0 of labels.
+              pb-5 reserves 20px below the cells so the horizontal
+              scrollbar doesn't clip into the last row (Sat); macOS
+              classic scrollbars are 15–17px and pb-3 (12px) was
+              under-reserved. */}
+          <div className="inline-flex flex-col gap-1.5 pb-5 align-top">
             <div className="flex gap-[3px]">
               {cols.map((_, c) => {
                 const m = monthLabels.find((ml) => ml.col === c);

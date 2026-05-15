@@ -195,9 +195,6 @@ export default function Dashboard({
             <Card>
               <CardHeader>
                 <CardTitle>Your activity</CardTitle>
-                <CardDescription>
-                  Audit events you authored, last {HEATMAP_WEEKS} weeks.
-                </CardDescription>
               </CardHeader>
               <CardContent>
                 <ActivityHeatmap byDay={byDay} weeks={HEATMAP_WEEKS} />
