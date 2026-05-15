@@ -129,7 +129,9 @@ export function ActivityHeatmap({ byDay, weeks = 26 }: ActivityHeatmapProps) {
             overflow-y: auto, and the horizontal scrollbar's thickness
             then forces a vertical scrollbar too. */}
         <div ref={scrollRef} className="min-w-0 flex-1 overflow-x-auto overflow-y-hidden">
-          <div className="inline-flex flex-col gap-1.5">
+          {/* pb-3 reserves space below the cells so the horizontal
+              scrollbar doesn't clip into the last row (Sat). */}
+          <div className="inline-flex flex-col gap-1.5 pb-3">
             <div className="flex gap-[3px]">
               {cols.map((_, c) => {
                 const m = monthLabels.find((ml) => ml.col === c);
