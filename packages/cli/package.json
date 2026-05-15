@@ -1,30 +1,44 @@
 {
   "name": "doco-cli",
   "version": "0.0.1",
-  "private": true,
   "type": "module",
   "description": "Doco CLI — init, show, validate, capture, lint, query.",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/torrenegra/doco.git",
+    "directory": "packages/cli"
+  },
+  "homepage": "https://github.com/torrenegra/doco#readme",
+  "publishConfig": {
+    "access": "public"
+  },
   "main": "./dist/index.js",
   "bin": {
     "doco": "./dist/index.js"
   },
-  "files": ["dist"],
+  "files": ["dist", "templates"],
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsx build.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run --passWithNoTests",
     "test:watch": "vitest",
-    "doco": "tsx src/index.ts"
+    "doco": "tsx src/index.ts",
+    "prepack": "pnpm build"
   },
   "dependencies": {
+    "citty": "^0.1.6",
+    "gray-matter": "^4.0.3",
+    "kleur": "^4.1.5",
+    "pg": "^8.13.1",
+    "yaml": "^2.6.1"
+  },
+  "devDependencies": {
     "@doco/db": "workspace:*",
     "@doco/host": "workspace:*",
     "@doco/index": "workspace:*",
     "@doco/lints": "workspace:*",
     "@doco/shared": "workspace:*",
-    "citty": "^0.1.6",
-    "kleur": "^4.1.5",
-    "yaml": "^2.6.1"
+    "esbuild": "^0.25.0"
   }
 }

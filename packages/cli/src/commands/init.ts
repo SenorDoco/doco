@@ -8,11 +8,13 @@ import {
   makeEntityId,
   nowIso,
 } from "@doco/shared";
+import { findTemplatesDir } from "../find-templates.js";
 import { c, checkmark, cross, header, rule } from "../output.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-// templates/ lives at the package root: ../../templates from src/commands/ or dist/commands/.
-const TEMPLATES_DIR = resolve(__dirname, "..", "..", "templates");
+// Walk up from this file's directory until templates/ is found. Works
+// from dist/commands/ (tsc layout) AND dist/ (bundled layout).
+const TEMPLATES_DIR = findTemplatesDir(__dirname);
 
 export const initCmd = defineCommand({
   meta: {
