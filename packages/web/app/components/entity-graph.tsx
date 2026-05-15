@@ -251,7 +251,7 @@ export function EntityGraph({ centerId, nodes, links, hrefFor }: EntityGraphProp
         const pprRange = pprBounds.max - pprBounds.min;
         let bg = "rgb(255,255,255)";
         if (n.is_center) {
-          bg = "color-mix(in oklch, var(--color-accent) 50%, white)";
+          bg = "color-mix(in oklch, var(--color-accent) 70%, white)";
         } else if (pprRange > 0) {
           const t = (n.ppr - pprBounds.min) / pprRange;
           const v = Math.round(212 + 43 * t);
