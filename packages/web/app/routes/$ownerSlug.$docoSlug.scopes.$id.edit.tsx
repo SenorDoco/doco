@@ -13,8 +13,6 @@
 //
 // Saving each section is a separate form POST; nothing is persisted
 // until you press Save / Add / Remove / Delete. Cancel returns to /scopes.
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { useEffect, useState } from "react";
 import { Form, Link, redirect, useFetcher } from "react-router";
 import { parse as parseYaml } from "yaml";
@@ -65,11 +63,19 @@ function asScopeIdList(r: ScopeRuleRecord): string[] {
   return [];
 }
 
-function readScopeRaw(docoDir: string, scopeId: string): Record<string, unknown> | null {
+async function readScopeRaw(scopeId: string): Promise<Record<string, unknown> | null> {
   try {
-    const path = join(docoDir, "scopes", `${scopeId}.yaml`);
-    const text = readFileSync(path, "utf8");
-    return parseYaml(text) as Record<string, unknown>;
+    return await withClient(async (c) => {
+      const r = await c.query<{ raw_yaml: string }>(
+        "SELECT raw_yaml FROM scopes WHERE id = $1 LIMIT 1",
+        [scopeId],
+      );
+      const row = r.rows[0];
+      if (!row) return null;
+      // raw_yaml is JSON for new writes (decision_01KRPJ6ZGR36WR8165CXABBEH5)
+      // but parseYaml accepts JSON too — handles both transparently.
+      return parseYaml(row.raw_yaml) as Record<string, unknown>;
+    });
   } catch {
     return null;
   }
@@ -84,7 +90,7 @@ export async function loader({
 }) {
   const { ownerSlug, docoSlug, id } = params;
   const { dir, me } = await loadDocoForAdmin(request, ownerSlug, docoSlug);
-  const raw = readScopeRaw(dir, id);
+  const raw = await readScopeRaw(id);
   if (!raw) throw new Response("Scope not found", { status: 404 });
 
   // All scopes — needed for the mandatory_scope rule's scope_id dropdown
@@ -171,7 +177,7 @@ export async function action({
       }
       // Fifth framework-native behavior of the Constitution scope
       // (decision_01KRKS5H2A5QER84CJ8R4VD36Z): always watched.
-      const raw = readScopeRaw(dir, id);
+      const raw = await readScopeRaw(id);
       if (raw && raw.name === "constitution" && watchedRaw === "false") {
         return {
           error:
@@ -201,7 +207,7 @@ export async function action({
       // No reindex, no redirect.
       const prose = String(form.get("prose") ?? "").trim();
       if (!prose) return { error: "Type the rule in your own words." };
-      const raw = readScopeRaw(dir, id);
+      const raw = await readScopeRaw(id);
       if (!raw) return { error: "Scope not found." };
       const allScopeDetails = await listScopeDetails(dir);
       try {
@@ -231,7 +237,7 @@ export async function action({
       if (!Array.isArray(parsed) || parsed.length === 0) {
         return { error: "No rules to add." };
       }
-      const raw = readScopeRaw(dir, id);
+      const raw = await readScopeRaw(id);
       if (!raw) return { error: "Scope not found." };
       const existing: ScopeRuleRecord[] = Array.isArray(raw.rules)
         ? (raw.rules as ScopeRuleRecord[])
@@ -258,7 +264,7 @@ export async function action({
       const indexStr = String(form.get("rule_index") ?? "");
       const index = Number.parseInt(indexStr, 10);
       if (!Number.isInteger(index) || index < 0) return { error: "Invalid rule index." };
-      const raw = readScopeRaw(dir, id);
+      const raw = await readScopeRaw(id);
       if (!raw) return { error: "Scope not found." };
       const existing: ScopeRuleRecord[] = Array.isArray(raw.rules)
         ? (raw.rules as ScopeRuleRecord[])
@@ -281,7 +287,7 @@ export async function action({
       //   2. If the scope has member nodes, require the confirm_name
       //      field to match the scope's name verbatim. Empty scopes
       //      confirm with no name match.
-      const raw = readScopeRaw(dir, id);
+      const raw = await readScopeRaw(id);
       if (!raw) return { error: "Scope not found." };
       const scopeName = String(raw.name);
 
