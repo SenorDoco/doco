@@ -147,12 +147,12 @@ export async function loader({ request }: { request: Request }) {
     // alias to the canonical current one). When the caller used
     // `?id=`, the slug is already canonical — the resolver returns
     // `redirected: false` and this is a no-op.
-    const resolved = resolveDocoSlugAlias(effectiveOwner, effectiveDoco);
+    const resolved = await resolveDocoSlugAlias(effectiveOwner, effectiveDoco);
     if (!resolved) {
       warning = `Slug "${effectiveOwner}/${effectiveDoco}" doesn't resolve to a Doco on this host. Check DOCO_SLUG in .env.`;
     } else {
       const dir = docoPath(resolved.ownerSlug, resolved.docoSlug);
-      const meta = readDocoMetadata(dir);
+      const meta = await readDocoMetadata(dir);
       if (!meta) {
         warning = `Doco "${effectiveOwner}/${effectiveDoco}" not found.`;
       } else {

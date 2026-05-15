@@ -34,7 +34,7 @@ export async function loader({
 }) {
   const { ownerSlug, docoSlug } = params;
   const dir = docoPath(ownerSlug, docoSlug);
-  const meta = readDocoMetadata(dir);
+  const meta = await readDocoMetadata(dir);
   if (!meta) {
     return Response.json({ error: `Doco "${ownerSlug}/${docoSlug}" not found.` }, { status: 404 });
   }

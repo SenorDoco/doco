@@ -78,7 +78,7 @@ export function makeCaptureRoute<TDraft>(cfg: CaptureRouteConfig<TDraft>) {
       const { ownerSlug, docoSlug } = params;
       const { me } = await loadDocoForAdmin(request, ownerSlug, docoSlug);
       const dir = docoPath(ownerSlug, docoSlug);
-      const meta = readDocoMetadata(dir);
+      const meta = await readDocoMetadata(dir);
       if (!meta) {
         return Response.json(
           { error: `Doco "${ownerSlug}/${docoSlug}" not found.` },
@@ -161,7 +161,7 @@ export function makeUpdateRoute(cfg: UpdateRouteConfig) {
       const { ownerSlug, docoSlug, id } = params;
       const { me } = await loadDocoForAdmin(request, ownerSlug, docoSlug);
       const dir = docoPath(ownerSlug, docoSlug);
-      const meta = readDocoMetadata(dir);
+      const meta = await readDocoMetadata(dir);
       if (!meta) return Response.json({ error: "Doco not found." }, { status: 404 });
       if (request.method !== "PATCH" && request.method !== "POST") {
         return Response.json({ error: "Use PATCH or POST." }, { status: 405 });

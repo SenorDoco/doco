@@ -1,9 +1,9 @@
 // Server-only helpers for scope reads. Lives in *.server.ts so node:fs /
 // node:path don't leak into the browser bundle. Reads scopes from PG.
 import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { parse as parseYaml } from "yaml";
-import { withClient } from "@doco/db";
+import { getDocoBySlug, withClient } from "@doco/db";
 
 export interface DocoMetadata {
   docoId: string;
@@ -15,10 +15,41 @@ export interface DocoMetadata {
 }
 
 /**
- * Read a Doco's metadata directly from `doco.yaml`. The bootstrap stub
- * stays on disk so we can discover doco_id without a DB round trip.
+ * Read a Doco's metadata. In filesystem-storage mode (local dev) this
+ * reads `<docoDir>/doco.yaml`. In Postgres-storage mode (production) the
+ * `docos/` tree doesn't exist on the deployment, so we derive the
+ * (ownerSlug, docoSlug) pair from the directory path and query the
+ * `docos` table. The `docoDir` is always shaped `<rootDir>/docos/<owner>/<slug>`
+ * (see `docoPath` in db.server.ts) so the last two path segments are
+ * the slugs.
  */
-export function readDocoMetadata(docoDir: string): DocoMetadata | null {
+export async function readDocoMetadata(docoDir: string): Promise<DocoMetadata | null> {
+  if (process.env.DOCO_STORAGE === "postgres") {
+    const docoSlug = basename(docoDir);
+    const ownerSlug = basename(dirname(docoDir));
+    if (!ownerSlug || !docoSlug) return null;
+    const row = await getDocoBySlug(ownerSlug, docoSlug);
+    if (!row) return null;
+    let description = "";
+    let displayName = row.name ?? "";
+    try {
+      const parsed = parseYaml(row.raw_yaml) as Record<string, unknown>;
+      if (typeof parsed.description === "string") description = parsed.description;
+      if (!displayName && typeof parsed.display_name === "string") {
+        displayName = parsed.display_name;
+      }
+    } catch {
+      // raw_yaml unparseable — fall back to row.name and empty description.
+    }
+    return {
+      docoId: row.id,
+      ownerId: row.owner_id,
+      displayName,
+      description,
+      visibility: row.visibility,
+      slug: row.doco_slug,
+    };
+  }
   try {
     const text = readFileSync(join(docoDir, "doco.yaml"), "utf8");
     const parsed = parseYaml(text) as Record<string, unknown>;
@@ -37,14 +68,14 @@ export function readDocoMetadata(docoDir: string): DocoMetadata | null {
   }
 }
 
-function docoIdFromDir(docoDir: string): string | null {
-  return readDocoMetadata(docoDir)?.docoId ?? null;
+async function docoIdFromDir(docoDir: string): Promise<string | null> {
+  return (await readDocoMetadata(docoDir))?.docoId ?? null;
 }
 
 export async function listScopeFiles(
   docoDir: string,
 ): Promise<{ id: string; name: string }[]> {
-  const docoId = docoIdFromDir(docoDir);
+  const docoId = await docoIdFromDir(docoDir);
   if (!docoId) return [];
   try {
     return await withClient(async (c) => {
@@ -87,7 +118,7 @@ export async function resolveScopeIcons(
 }
 
 export async function listScopeDetails(docoDir: string): Promise<ScopeDetails[]> {
-  const docoId = docoIdFromDir(docoDir);
+  const docoId = await docoIdFromDir(docoDir);
   if (!docoId) return [];
   const out: ScopeDetails[] = [];
   try {

@@ -162,7 +162,7 @@ export async function loader({
   // memberCount — non-scope nodes that name this scope via in_scope_of.
   let memberCount = 0;
   try {
-    const meta = readDocoMetadata(dir);
+    const meta = await readDocoMetadata(dir);
     if (meta?.docoId) {
       memberCount = await withClient(async (c) => {
         const r = await c.query<{ n: string }>(
@@ -345,7 +345,7 @@ export async function action({
 
       let memberCount = 0;
       try {
-        const meta = readDocoMetadata(dir);
+        const meta = await readDocoMetadata(dir);
         if (meta?.docoId) {
           memberCount = await withClient(async (c) => {
             const r = await c.query<{ n: string }>(

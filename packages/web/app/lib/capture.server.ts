@@ -415,7 +415,7 @@ export async function resolveScopeNames(
   const retired: string[] = [];
   const available: string[] = [];
   const byName = new Map<string, { id: string; lifecycle: string }>();
-  const meta = readDocoMetadata(docoDir);
+  const meta = await readDocoMetadata(docoDir);
   if (meta?.docoId) {
     try {
       await withClient(async (c) => {
@@ -572,7 +572,7 @@ export async function resolvePrincipalUsername(
 
 async function loadAllScopes(docoDir: string): Promise<Map<string, Scope>> {
   const scopes = new Map<string, Scope>();
-  const meta = readDocoMetadata(docoDir);
+  const meta = await readDocoMetadata(docoDir);
   if (!meta?.docoId) return scopes;
   try {
     await withClient(async (c) => {
@@ -629,7 +629,7 @@ export async function runScopeRules(opts: {
   if (rulesToRun.length === 0) return null;
 
   const edges: EngineEdge[] = [];
-  const meta = readDocoMetadata(docoDir);
+  const meta = await readDocoMetadata(docoDir);
   if (meta?.docoId) {
     try {
       await withClient(async (c) => {
@@ -703,7 +703,7 @@ async function attachImplicitEdges(opts: {
 }): Promise<number> {
   type CandidateRow = { id: string; node_type: string; summary: string; name?: string };
   let candidates: CandidateRow[] = [];
-  const meta = readDocoMetadata(opts.docoDir);
+  const meta = await readDocoMetadata(opts.docoDir);
   if (!meta?.docoId) return 0;
   try {
     await withClient(async (c) => {

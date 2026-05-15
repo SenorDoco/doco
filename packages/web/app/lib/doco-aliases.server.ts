@@ -21,6 +21,7 @@
 import { existsSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
+import { getDocoBySlug } from "@doco/db";
 import { docoPath, rootDir } from "./db.server";
 
 interface DocoAliasEntry {
@@ -73,17 +74,23 @@ export interface DocoSlugResolution {
 /**
  * Resolve `<ownerSlug>/<docoSlug>` through the alias map.
  *
- *   - When the direct path has a `doco.yaml`, returns the input unchanged
- *     (`redirected: false`).
+ *   - When the direct path has a `doco.yaml` (filesystem mode) or the
+ *     `docos` table holds a row for the pair (Postgres mode), returns the
+ *     input unchanged (`redirected: false`).
  *   - When the direct path has no `doco.yaml` but the alias map has an
  *     entry that leads to a real Doco, returns the canonical slug
- *     (`redirected: true`).
+ *     (`redirected: true`). Postgres mode skips this step — rename UI
+ *     isn't wired in alpha so `_aliases.yaml` doesn't exist there.
  *   - Otherwise returns null (Doco truly doesn't exist anywhere).
  */
-export function resolveDocoSlugAlias(
+export async function resolveDocoSlugAlias(
   ownerSlug: string,
   docoSlug: string,
-): DocoSlugResolution | null {
+): Promise<DocoSlugResolution | null> {
+  if (process.env.DOCO_STORAGE === "postgres") {
+    const row = await getDocoBySlug(ownerSlug, docoSlug);
+    return row ? { ownerSlug, docoSlug, redirected: false } : null;
+  }
   if (existsSync(join(docoPath(ownerSlug, docoSlug), "doco.yaml"))) {
     return { ownerSlug, docoSlug, redirected: false };
   }

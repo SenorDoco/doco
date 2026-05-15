@@ -96,7 +96,7 @@ export async function action({
   }
   await reindex(finalDir);
 
-  const updated = readDocoMetadata(finalDir);
+  const updated = await readDocoMetadata(finalDir);
   return Response.json(
     {
       ok: true,

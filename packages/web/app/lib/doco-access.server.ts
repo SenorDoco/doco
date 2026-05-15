@@ -117,7 +117,7 @@ export async function loadDocoForRead(
   redirected: boolean;
 }> {
   const ownerResolved = resolvePrincipalUsernameAlias(ownerSlug);
-  const aliasResolved = resolveDocoSlugAlias(ownerResolved.canonical, docoSlug);
+  const aliasResolved = await resolveDocoSlugAlias(ownerResolved.canonical, docoSlug);
   if (!aliasResolved) {
     throw notFoundForAccessDenied(ownerSlug, docoSlug);
   }
@@ -139,7 +139,7 @@ export async function loadDocoForRead(
     }
   }
   const dir = docoPath(aliasResolved.ownerSlug, aliasResolved.docoSlug);
-  const meta = readDocoMetadata(dir);
+  const meta = await readDocoMetadata(dir);
   if (!meta) throw notFoundForAccessDenied(ownerSlug, docoSlug);
   const me = await getCurrentPrincipalAsync(request);
   if (!(await canAccessDoco(meta, me?.id ?? null))) {
