@@ -7,7 +7,12 @@ import type { EntityId } from "@doco/shared";
 import { DEFAULT_SCOPE_TEMPLATES, findScopeTemplate } from "@doco/host";
 import { loadDocoForAdmin, loadDocoForRead } from "~/lib/doco-access.server";
 import { loadHostConfig } from "~/lib/host";
-import { createRuleInDoco, createScopeInDoco, reindex } from "~/lib/redeem.server";
+import {
+  createRuleInDoco,
+  createScopeInDoco,
+  reindex,
+  seedScopeFromTemplate,
+} from "~/lib/redeem.server";
 import { listScopeDetails } from "~/lib/scope-helpers.server";
 import { SiteHeader } from "~/components/site-header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
@@ -97,13 +102,14 @@ export async function loader({
   // not watched, asks for the choice) instead of the picker grid — the
   // question is too important to ask inline on a cramped card.
   const pickedTemplateName = url.searchParams.get("template");
-  let pickedTemplate: { name: string; icon: string; label: string; purpose: string } | null = null;
+  let pickedTemplate: { name: string; icon: string; label: string; intentSummary: string } | null =
+    null;
   if (pickedTemplateName) {
     const t = findScopeTemplate(pickedTemplateName);
     if (!t || existingNames.has(t.name)) {
       throw redirect(`/${ownerSlug}/${docoSlug}/scopes/new${isOnboarding ? "?onboarding=1" : ""}`);
     }
-    pickedTemplate = { name: t.name, icon: t.icon, label: t.label, purpose: t.purpose };
+    pickedTemplate = { name: t.name, icon: t.icon, label: t.label, intentSummary: t.intentSummary };
   }
   return {
     ownerSlug,
@@ -118,7 +124,7 @@ export async function loader({
       name: t.name,
       label: t.label,
       icon: t.icon,
-      purpose: t.purpose,
+      intentSummary: t.intentSummary,
       alreadyAdded: false,
     })),
     pickedTemplate,
@@ -169,9 +175,6 @@ export async function action({
       if (existing.some((s) => s.name === tpl.name)) {
         return redirect(afterAdd);
       }
-      // Per decision_01KRPRDR1AD7S1RP6E69BQDB2G the template's
-      // `guidelines` text becomes a Rule entity (kind=guidance) tagged
-      // with the new scope — no embedded array on the scope row.
       const newId = await createScopeInDoco({
         docoDir: dir,
         docoId: docoId as EntityId<"doco">,
@@ -180,15 +183,15 @@ export async function action({
         watched,
         createdBy,
       });
-      if (tpl.guidelines) {
-        await createRuleInDoco({
-          docoId: docoId as EntityId<"doco">,
-          kind: "guidance",
-          summary: tpl.guidelines,
-          scopeId: newId,
-          createdBy,
-        });
-      }
+      // Templates ship `intentSummary` + `rules[]`; seed both into the
+      // new scope through the single entry point so the Doco-creation
+      // path and this picker path stay aligned.
+      await seedScopeFromTemplate({
+        docoId: docoId as EntityId<"doco">,
+        scopeId: newId,
+        template: tpl,
+        createdBy,
+      });
     } else if (intent === "add-custom") {
       const name = String(form.get("name") ?? "").trim().toLowerCase();
       const icon = String(form.get("icon") ?? "").trim();
@@ -350,7 +353,7 @@ export default function AddScope({
                   <CardTitle>
                     Add the <span className="font-mono">{pickedTemplate.name}</span> scope
                   </CardTitle>
-                  <CardDescription>{pickedTemplate.purpose}</CardDescription>
+                  <CardDescription>{pickedTemplate.intentSummary}</CardDescription>
                 </div>
               </div>
             </CardHeader>
@@ -503,8 +506,8 @@ export default function AddScope({
             <CardTitle>Common templates</CardTitle>
             <CardDescription>
               Shortcuts for documentation contexts that come up a lot. Each adds
-              a scope with prefilled <strong>purpose</strong> and{" "}
-              <strong>guidelines</strong> so agents know how to author into it.
+              a scope with a seeded intent and rules so agents know how to
+              author into it.
               You don&apos;t need them all — pick the ones that fit{" "}
               <em>{displayName}</em>. Clicking <strong>Add</strong> opens a
               short confirmation screen that explains the{" "}
@@ -530,7 +533,7 @@ export default function AddScope({
                   <div className="flex-1">
                     <span className="font-mono text-foreground">{t.name}</span>
                     <br />
-                    <span className="text-muted-foreground">{t.purpose}</span>
+                    <span className="text-muted-foreground">{t.intentSummary}</span>
                   </div>
                   {t.alreadyAdded ? (
                     <span className="self-center text-[10px] text-muted-foreground">

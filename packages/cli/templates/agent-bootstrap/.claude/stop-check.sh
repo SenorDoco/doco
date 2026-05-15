@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
 # Stop hook: fires when the assistant finishes a turn. Parses the
-# session transcript to count Edit/Write tool calls vs. doco-capture
-# Bash invocations. If edits > 0 and captures == 0, inject a final
-# nudge reminding the agent that a turn with code changes but no
-# Doco trail looks like a capture-skip.
+# session transcript to count Edit/Write tool calls, Doco write commands,
+# and user-facing Doco operation footers. It injects a final nudge for
+# either of the two common drift cases:
+#
+# - edits happened but no Doco capture/patch/write was attempted;
+# - Doco writes returned footer_lines, but the agent never pasted every
+#   footer line into user-facing text.
 #
 # Wired from `.claude/settings.json`. Hook input (JSON on stdin) carries:
 #   .hook_event_name = "Stop"
@@ -35,17 +38,17 @@ TRANSCRIPT=$(printf '%s' "$INPUT" | jq -r '.transcript_path // ""' 2>/dev/null |
 [ -f "$TRANSCRIPT" ] || exit 0
 
 # Loop-guard: when the Stop hook fires and emits additionalContext, the
-# agent may choose to continue (e.g. to capture). If our last nudge is
+# agent may choose to continue (e.g. to capture or paste footers). If our last nudge is
 # still the latest user-message-shaped entry in the transcript, we've
 # already nudged this stretch — bail out to avoid double-nudging.
-if grep -q "Doco Stop nudge — turn had edits but no captures" "$TRANSCRIPT" 2>/dev/null; then
-  # Already nudged. Only nudge again if a new Edit/Write came AFTER the
+if grep -q "Doco Stop nudge —" "$TRANSCRIPT" 2>/dev/null; then
+  # Already nudged. Only nudge again if a new Edit/Write/Bash came AFTER the
   # nudge line. Cheap check: look at the last 100 lines of the transcript.
   LAST_CHUNK=$(tail -c 200000 "$TRANSCRIPT" 2>/dev/null || true)
-  NUDGE_LINE=$(printf '%s\n' "$LAST_CHUNK" | grep -n "Doco Stop nudge — turn had edits but no captures" | tail -1 | cut -d: -f1)
+  NUDGE_LINE=$(printf '%s\n' "$LAST_CHUNK" | grep -n "Doco Stop nudge —" | tail -1 | cut -d: -f1)
   if [ -n "$NUDGE_LINE" ]; then
     AFTER_NUDGE=$(printf '%s\n' "$LAST_CHUNK" | tail -n "+$NUDGE_LINE")
-    if ! printf '%s' "$AFTER_NUDGE" | grep -qE '"name":"(Edit|Write|MultiEdit|NotebookEdit)"'; then
+    if ! printf '%s' "$AFTER_NUDGE" | grep -qE '"name":"(Edit|Write|MultiEdit|NotebookEdit|Bash)"'; then
       exit 0
     fi
   fi
@@ -59,12 +62,11 @@ fi
 #    appear as type=assistant with message.content[].type=tool_use
 #    objects carrying .name and .input.
 #
-#    We count Edit/Write/MultiEdit/NotebookEdit calls in tool_name, and
-#    we count Bash calls whose .command starts with "doco capture" or
-#    "doco patch" (the two CLI surfaces that write to Doco). We also
-#    count occurrences of the "✍️ added" footer-line marker in
-#    assistant text content — agents sometimes capture via raw curl and
-#    paste the footer instead of using the CLI.
+#    We count Edit/Write/MultiEdit/NotebookEdit calls in tool_name, Doco
+#    write commands in Bash tool calls, footer lines printed by tools,
+#    and footer lines pasted into assistant text. The critical check is
+#    tool footer_lines > assistant footer_lines: the write succeeded, but
+#    the client never got the per-operation update.
 
 # Use python3 — it's preinstalled on macOS / most Linux and avoids the
 # multi-line jq+awk gymnastics. Falls back silently if python3 missing.
@@ -77,8 +79,29 @@ import json, sys, re
 
 path = sys.argv[1]
 edits = 0
-captures = 0
-footer_lines = 0
+doco_writes = 0
+assistant_footer_lines = 0
+tool_footer_lines = 0
+
+FOOTER_RE = re.compile(
+    r'\[(?:🔮|✅) Doco\]\s*(?:✍️|📝|🧹|➕|➖|🔁|🏷️|🗑️)\s+'
+)
+
+def text_from(value):
+    if isinstance(value, str):
+        return value
+    if isinstance(value, list):
+        parts = []
+        for item in value:
+            if isinstance(item, str):
+                parts.append(item)
+            elif isinstance(item, dict):
+                parts.append(text_from(item.get('text') or item.get('content') or ''))
+        return '\n'.join(parts)
+    return ''
+
+def count_footer_lines(text):
+    return len(FOOTER_RE.findall(text or ''))
 
 with open(path, 'r', encoding='utf-8', errors='replace') as f:
     lines = f.readlines()
@@ -115,51 +138,64 @@ for line in lines[last_user_idx + 1:]:
         d = json.loads(line)
     except Exception:
         continue
-    if d.get('type') != 'assistant':
-        continue
     content = d.get('message', {}).get('content', [])
+    if isinstance(content, str):
+        if d.get('type') == 'assistant':
+            assistant_footer_lines += count_footer_lines(content)
+        continue
     if not isinstance(content, list):
         continue
     for c in content:
         if not isinstance(c, dict):
             continue
-        if c.get('type') == 'tool_use':
+        if d.get('type') == 'assistant' and c.get('type') == 'tool_use':
             name = c.get('name', '')
             inp = c.get('input', {}) or {}
             if name in ('Edit', 'Write', 'MultiEdit', 'NotebookEdit'):
                 edits += 1
             elif name == 'Bash':
                 cmd = inp.get('command', '') or ''
-                # Match `doco capture …`, `doco patch …`, or curl POSTs
-                # to /api/<type>.json endpoints.
-                if re.search(r'\bdoco\s+(capture|patch)\b', cmd):
-                    captures += 1
-                elif re.search(r'curl[^|;&]*-X\s*(POST|PATCH)[^|;&]*/api/[a-z]+\.json', cmd, re.IGNORECASE):
-                    captures += 1
-                elif re.search(r'curl[^|;&]*/api/[a-z]+\.json[^|;&]*-X\s*(POST|PATCH)', cmd, re.IGNORECASE):
-                    captures += 1
-        elif c.get('type') == 'text':
-            text = c.get('text', '') or ''
-            # Footer-line markers: each doco-write op emits a line like
-            # "[✅ Doco] ...: ✍️ Decision added: ..."
-            footer_lines += text.count('✍️ ')
-            footer_lines += text.count(': 📝 ')
+                # Match CLI write surfaces and raw HTTP writes to capture
+                # endpoints. `doco scope add-rule` writes Rule nodes.
+                if re.search(r'\bdoco\s+(capture|patch|supersede)\b', cmd):
+                    doco_writes += 1
+                elif re.search(r'\bdoco\s+scope\s+add-rule\b', cmd):
+                    doco_writes += 1
+                elif re.search(r'curl[^|;&]*-X\s*(POST|PATCH|DELETE)[^|;&]*/api/[a-z]+(?:/\S*)?\.json', cmd, re.IGNORECASE):
+                    doco_writes += 1
+                elif re.search(r'curl[^|;&]*/api/[a-z]+(?:/\S*)?\.json[^|;&]*-X\s*(POST|PATCH|DELETE)', cmd, re.IGNORECASE):
+                    doco_writes += 1
+        elif d.get('type') == 'assistant' and c.get('type') == 'text':
+            assistant_footer_lines += count_footer_lines(c.get('text', '') or '')
+        elif d.get('type') == 'user' and c.get('type') == 'tool_result':
+            tool_footer_lines += count_footer_lines(text_from(c.get('content', '')))
 
-# captures counts CLI/curl invocations; footer_lines is a fallback
-# signal for agents that pasted footers (i.e. they DID capture, the CLI
-# just wasn't via a Bash tool that lives in this transcript).
-total_capture_signal = captures + (1 if footer_lines > 0 else 0)
-print(f"{edits} {total_capture_signal}")
+print(f"{edits} {doco_writes} {assistant_footer_lines} {tool_footer_lines}")
 PYEOF
 )
 
 EDITS=$(printf '%s' "$COUNTS" | awk '{print $1}')
-CAPTURES=$(printf '%s' "$COUNTS" | awk '{print $2}')
+DOCO_WRITES=$(printf '%s' "$COUNTS" | awk '{print $2}')
+ASSISTANT_FOOTERS=$(printf '%s' "$COUNTS" | awk '{print $3}')
+TOOL_FOOTERS=$(printf '%s' "$COUNTS" | awk '{print $4}')
 EDITS="${EDITS:-0}"
-CAPTURES="${CAPTURES:-0}"
+DOCO_WRITES="${DOCO_WRITES:-0}"
+ASSISTANT_FOOTERS="${ASSISTANT_FOOTERS:-0}"
+TOOL_FOOTERS="${TOOL_FOOTERS:-0}"
 
-# 3. Nudge condition: edits > 0 AND captures == 0.
-if [ "$EDITS" = "0" ] || [ "$CAPTURES" != "0" ]; then
+# 3a. Doco wrote nodes, but the assistant didn't paste every returned
+#     footer line into user-facing text.
+if [ "$TOOL_FOOTERS" -gt "$ASSISTANT_FOOTERS" ] 2>/dev/null; then
+  NUDGE=$(printf '🔮 Doco Stop nudge — Doco write footer_lines not shown to user\n\nThis turn'\''s Doco write tool output contained %s footer line(s), but assistant text emitted %s. The closing tally is not a substitute for per-operation updates.\n\nBefore declaring done, paste every returned `footer_lines` entry verbatim, one per line, above the final tally. If multiple nodes were added or updated, the user should see one Doco operation line for each returned footer line.' \
+    "$TOOL_FOOTERS" "$ASSISTANT_FOOTERS")
+
+  jq -nc --arg c "$NUDGE" \
+    '{hookSpecificOutput: {hookEventName: "Stop", additionalContext: $c}}'
+  exit 0
+fi
+
+# 3b. Existing ADR-141 nudge: edits happened, but no Doco write signal.
+if [ "$EDITS" = "0" ] || [ "$DOCO_WRITES" != "0" ] || [ "$ASSISTANT_FOOTERS" != "0" ]; then
   exit 0
 fi
 

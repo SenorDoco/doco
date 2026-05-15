@@ -235,6 +235,10 @@ Paste them verbatim, one per line:
   when the node has no scopes.
 - Multi-op batches emit one line per op; the LAST line carries
   \` (X.Xs)\` timing AFTER the scope tail — already in the response.
+- Running the write command is not enough. If the tool output returned
+  two \`footer_lines\`, the user-facing reply must show two Doco operation
+  lines before the closing tally. The tally is only the aggregate
+  bookend; it never substitutes for the per-operation lines.
 
 Op icons: ✍️ added · 📝 updated · 🧹 cleared · ➕ added/appended ·
 ➖ removed · 🔁 replaced · 🏷️ renamed · 🗑️ deleted.
@@ -485,8 +489,11 @@ writes \`DOCO_TOKEN\` to \`./.env\` and stamps \`DOCO_ID\` into
   still in flight.
 - **\`Stop\`** — if the session shows Edits/Writes > 0 and zero
   \`doco capture\` calls, injects a final *"about to declare done with
-  edits but no captures — name the existing node or capture."* The
-  last line of defense against silent skip.
+  edits but no captures — name the existing node or capture."* It also
+  compares footer lines printed by Doco write tools against footer lines
+  pasted into assistant text, and nudges when the write succeeded but
+  the per-operation lines never reached the user. The last line of
+  defense against silent skip and silent footer drops.
 
 If you see those blocks already at the top of your context, the hooks
 worked — **do NOT re-fetch via curl**. Re-read the block already loaded.

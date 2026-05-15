@@ -693,42 +693,44 @@ function FacetGroup({
     <section className="space-y-1">
       <div className="flex items-center justify-between gap-3">
         <h2 className="text-xs text-muted-foreground">{label}</h2>
-        <Link
-          to={hrefForAll(searchParams, name)}
-          className="text-xs text-primary hover:underline"
-        >
+        <Link to={hrefForAll(searchParams, name)} className="text-xs text-primary hover:underline">
           All
         </Link>
       </div>
-      {options.map((o) => (
-        <div key={o.value} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
-          <Link
-            to={hrefForToggle(searchParams, name, o.value, options, selected, wildcardActive)}
-            className="flex min-w-0 items-center gap-2 text-xs hover:text-primary"
-          >
-            <span
-              aria-hidden="true"
-              className={`flex h-3 w-3 shrink-0 items-center justify-center rounded-[3px] border text-[9px] leading-none ${
-                wildcardActive || selected.has(o.value)
-                  ? "border-primary bg-primary text-primary-foreground"
-                  : "border-muted-foreground/70"
-              }`}
-            >
-              {wildcardActive || selected.has(o.value) ? "✓" : ""}
-            </span>
-            <span className="truncate">{o.label}</span>
-          </Link>
-          <span className="whitespace-nowrap text-xs text-muted-foreground">
-            {o.count}{" "}
+      {options.map((o) => {
+        const isSelected = wildcardActive || selected.has(o.value);
+        return (
+          <div key={o.value} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
             <Link
-              to={hrefForOnly(searchParams, name, o.value)}
-              className="text-primary hover:underline"
+              to={hrefForToggle(searchParams, name, o.value, options, selected, wildcardActive)}
+              className="flex min-w-0 items-center gap-2 text-xs hover:text-primary"
             >
-              (only)
+              <span
+                aria-hidden="true"
+                className={`flex h-3 w-3 shrink-0 items-center justify-center rounded-[3px] border text-[9px] leading-none ${
+                  isSelected
+                    ? "border-primary bg-primary text-primary-foreground"
+                    : "border-muted-foreground/70"
+                }`}
+              >
+                {isSelected ? "✓" : ""}
+              </span>
+              <span className="truncate">{o.label}</span>
             </Link>
-          </span>
-        </div>
-      ))}
+            <span className="whitespace-nowrap text-xs text-muted-foreground">
+              <span className="inline-block min-w-8 text-right tabular-nums">
+                {isSelected ? o.count : ""}
+              </span>{" "}
+              <Link
+                to={hrefForOnly(searchParams, name, o.value)}
+                className="text-primary hover:underline"
+              >
+                (only)
+              </Link>
+            </span>
+          </div>
+        );
+      })}
     </section>
   );
 }

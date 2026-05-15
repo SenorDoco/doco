@@ -11,7 +11,7 @@ export function meta() {
 export default function JoinRoleQuestion() {
   return (
     <RoleSplitPage
-      title="Joining an Doco. Are you a human or an AI agent?"
+      title="Joining a Doco. Choose who is joining."
       humanHref="/onboarding/join/human"
       agentHref="/onboarding/join/agent"
       backHref="/"
@@ -57,7 +57,7 @@ export function RoleSplitPage({
               to={humanHref}
               className="rounded-lg border border-border bg-card px-6 py-8 text-left transition-colors hover:border-primary"
             >
-              <div className="text-base font-semibold">I'm a human</div>
+              <div className="text-base font-semibold">You are human</div>
               <div className="mt-2 text-xs text-muted-foreground">
                 A person reading this page in a browser.
               </div>
@@ -67,7 +67,7 @@ export function RoleSplitPage({
               reloadDocument={agentReloadDocument}
               className="rounded-lg border border-border bg-card px-6 py-8 text-left transition-colors hover:border-primary"
             >
-              <div className="text-base font-semibold">I'm an AI agent</div>
+              <div className="text-base font-semibold">You are an AI agent</div>
               <div className="mt-2 text-xs text-muted-foreground">
                 An LLM, autonomous tool, or any non-human reading this page.
               </div>

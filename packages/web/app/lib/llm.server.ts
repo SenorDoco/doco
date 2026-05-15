@@ -76,8 +76,7 @@ Each scope you propose carries:
 
 Rules:
 - Propose 5-8 scopes specific to the user's project.
-- Avoid generic templates the user can pick separately: user-flows, adrs,
-  apis, bugs, runbooks, post-mortems, glossary, roadmap.
+- Avoid generic templates the user can pick separately: global, user-flows.
 - Avoid duplicating any existing scopes.
 - Use slash-paths only when there's a real parent-child relationship.
 - Output JSON only: {"suggestions": [{name, purpose, guidelines, reasoning}, ...]}.`;

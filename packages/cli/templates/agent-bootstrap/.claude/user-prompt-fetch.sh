@@ -64,13 +64,13 @@ read -r -d '' PROTOCOL_REMINDER <<'EOF' || true
 
    If connected and queried, render the two-line query indicator:
    [🔮 Doco] <querying-verb>
-   [🔮 Doco] <loading-verb> <doco_id>. <N> relevant nodes found (<X.X>s)
+   [🔮 Doco] <N> relevant nodes found (<X.X>s)
    If you didn't query (greeting, one-word ack), emit nothing at the top — no "Not querying" placeholder, no fallback line. Absence is the signal.
    The pre-fetched connected block below has the verbs already picked at random plus real <N>/<X.Xs> — paste it verbatim.
 
-2. AFTER EVERY WRITE (POST/PATCH/DELETE on /api/*.json), only when connected: render footer_lines from the response verbatim, one per line. Shape:
-   [🔮 Doco] <op-icon> <Type> <verb>: [<slug>](<url>): <details> — <icon> <scope1>, <icon> <scope2>
-   The slug is a markdown link to the entity. Never show the raw ULID — use slug/seq_id only. Scope tail omitted when no scopes. Last line in a batch carries (X.Xs) timing AFTER the scope tail — already there.
+2. AFTER EVERY WRITE (POST/PATCH/DELETE on /api/*.json), only when connected: render every returned footer_lines entry verbatim, one per line, before the closing tally. Running `doco capture` / `doco patch` is not enough; the user-facing reply must contain the operation lines. Shape:
+   [🔮 Doco] <op-icon> <Type> <verb>: [<summary>](<url>) — <icon> <scope1>, <icon> <scope2>
+   The summary is the markdown link to the entity. Never show the raw ULID. Scope tail omitted when no scopes. Last line in a batch carries (X.Xs) timing AFTER the scope tail — already there.
 
 3. BEFORE DECLARING DONE: scan capture triggers. Scope names are BARE (no scope_ prefix) and match templates: user-flow changed → `user-flows` Decision. Bug fixed → `bugs` Decision + `bugs` Rule (`born_from: <decision_id>`). Framework touched (CLI / hooks / canonical) → add `framework`. ADR-shaped → `adrs`. POST to /api/decisions.json etc. via the host's capture endpoints. **If instinct says skip, name the existing node you're relying on — "CLI can't capture X" or "too small for a Decision" aren't naming a node. If a high-vector_score hit already governs the change, PATCH it instead of skipping.**
 

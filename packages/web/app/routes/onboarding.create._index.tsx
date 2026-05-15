@@ -14,7 +14,7 @@ export function meta() {
 export default function CreateRoleQuestion() {
   return (
     <RoleSplitPage
-      title="Creating a Doco. Are you a human or an AI agent?"
+      title="Creating a Doco. Choose who is setting it up."
       humanHref="/onboarding/create/human"
       agentHref="/onboarding/create/agent.txt"
       agentReloadDocument
