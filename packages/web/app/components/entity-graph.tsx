@@ -314,7 +314,7 @@ export function EntityGraph({ centerId, nodes, links, hrefFor }: EntityGraphProp
             nodes={flowNodes}
             edges={flowEdges}
             fitView
-            fitViewOptions={{ padding: 0.15, maxZoom: 1 }}
+            fitViewOptions={{ padding: 0.05, maxZoom: 1.6 }}
             onNodeClick={(_e: unknown, n: { id: string }) => {
               const node = visible.nodes.find((x) => x.id === n.id);
               if (!node) return;
