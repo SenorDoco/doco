@@ -8,7 +8,7 @@
 import { stringify as stringifyYaml, parse as parseYaml } from "yaml";
 import { waitUntil } from "@vercel/functions";
 import { generateUlid } from "@doco/shared";
-import type { Entity, Scope, EngineEdge } from "@doco/shared";
+import type { Entity, Scope, EngineEdge, AuthoringPredicate } from "@doco/shared";
 import { evaluateScopeRules } from "@doco/shared";
 import {
   judgeProbabilisticRule,
@@ -643,51 +643,106 @@ export async function runScopeRules(opts: {
   const scopeIds = Array.isArray(entityFm.scopes) ? (entityFm.scopes as string[]) : [];
   const allScopes = await loadAllScopes(docoDir);
 
-  // Per decision_01KRPMC7CVDA9WZ5DKH81TVAAA the engine reads only
-  // `authoring_rules`. Guidance rules are agent-facing prose with no
-  // automated check, evaluated nowhere in the capture path.
-  const readRules = (s: Scope): unknown[] => {
-    const rec = s as unknown as Record<string, unknown>;
-    return Array.isArray(rec.authoring_rules) ? (rec.authoring_rules as unknown[]) : [];
-  };
+  // Per decision_01KRPRDR1AD7S1RP6E69BQDB2G authoring rules are
+  // first-class Rule entities (kind=authoring, tagged with the scope via
+  // in_scope_of). Load them per scope from the `rules` table; the
+  // engine evaluates whatever predicates come out.
+  const meta = await readDocoMetadata(docoDir);
+  if (!meta?.docoId) return null;
+  const docoId = meta.docoId;
 
-  const rulesToRun: { scope: Scope; rules: unknown[] }[] = [];
-  for (const sid of scopeIds) {
-    const s = allScopes.get(sid);
-    if (!s) continue;
-    const rules = readRules(s);
-    if (rules.length > 0) rulesToRun.push({ scope: s, rules });
-  }
+  // Collect the set of scope ids whose authoring rules we need to load:
+  // - every scope the entity already lists,
+  // - PLUS the Global scope (its mandatory_scope rules apply Doco-wide).
+  const scopesToCheck = new Set(scopeIds);
+  let globalScopeId: string | null = null;
   for (const s of allScopes.values()) {
     const sname = (s as unknown as Record<string, unknown>).name;
-    // Per decision_01KRPNZY7W6CCMYNKGND67BP0B the framework-seeded scope
-    // is "global" (was: "constitution"); the mandatory_scope rules that
-    // apply Doco-wide live on it.
-    if (sname !== "global") continue;
-    if (scopeIds.includes(s.id)) break;
-    const rules = readRules(s);
-    const onlyMandatory = rules.filter(
-      (r) => (r as Record<string, unknown>).kind === "mandatory_scope",
-    );
-    if (onlyMandatory.length > 0) rulesToRun.push({ scope: s, rules: onlyMandatory });
-    break;
+    if (sname === "global") {
+      globalScopeId = s.id;
+      scopesToCheck.add(s.id);
+      break;
+    }
   }
-  if (rulesToRun.length === 0) return null;
 
-  const edges: EngineEdge[] = [];
-  const meta = await readDocoMetadata(docoDir);
-  if (meta?.docoId) {
+  // Load Rule entities (kind=authoring, lifecycle in active/proposed)
+  // tagged with any of these scopes. One query, then we bucket per scope
+  // in code.
+  type RuleRow = {
+    id: string;
+    summary: string;
+    raw_yaml: string;
+    scope_id: string;
+  };
+  let ruleRows: RuleRow[] = [];
+  if (scopesToCheck.size > 0) {
     try {
-      await withClient(async (c) => {
-        const r = await c.query<{ from_id: string; to_id: string; edge_type: string }>(
-          `SELECT from_id, to_id, edge_type FROM edges WHERE doco_id = $1`,
-          [meta.docoId],
+      ruleRows = await withClient(async (c) => {
+        const r = await c.query<RuleRow>(
+          `SELECT r.id, r.summary, r.raw_yaml, e.to_id AS scope_id
+             FROM rules r
+             JOIN edges e ON e.from_id = r.id
+                         AND e.edge_type = 'in_scope_of'
+                         AND e.to_id = ANY($1::text[])
+            WHERE r.doco_id = $2
+              AND COALESCE(r.lifecycle, 'active') IN ('active', 'proposed')`,
+          [Array.from(scopesToCheck), docoId],
         );
-        for (const row of r.rows) edges.push(row);
+        return r.rows;
       });
     } catch {
-      /* index not built yet — fall through with synthesized edges only */
+      ruleRows = [];
     }
+  }
+
+  type Loaded = {
+    rule_id: string;
+    predicate: AuthoringPredicate;
+    lifecycle?: string;
+    reason?: string;
+  };
+  const perScope = new Map<string, Loaded[]>();
+  for (const row of ruleRows) {
+    let fm: Record<string, unknown> = {};
+    try {
+      fm = JSON.parse(row.raw_yaml) as Record<string, unknown>;
+    } catch {
+      continue;
+    }
+    if (fm.kind !== "authoring") continue;
+    const predicate = fm.predicate as AuthoringPredicate | undefined;
+    if (!predicate || typeof predicate !== "object") continue;
+    // Global scope contributes only its mandatory_scope rules when the
+    // entity isn't already tagged with it — those are the Doco-wide
+    // gates. For every other scope, all predicates apply.
+    const inSelfScope = scopeIds.includes(row.scope_id);
+    const isGlobal = globalScopeId === row.scope_id;
+    if (isGlobal && !inSelfScope && predicate.kind !== "mandatory_scope") continue;
+    const arr = perScope.get(row.scope_id) ?? [];
+    arr.push({
+      rule_id: row.id,
+      predicate,
+      lifecycle: typeof fm.lifecycle === "string" ? fm.lifecycle : "active",
+      reason: row.summary,
+    });
+    perScope.set(row.scope_id, arr);
+  }
+
+  if (perScope.size === 0) return null;
+
+  // Load the doco's edges for the engine (used by requires_edge /
+  // forbids_edge predicates).
+  const edges: EngineEdge[] = [];
+  try {
+    await withClient(async (c) => {
+      const r = await c.query<{ from_id: string; to_id: string; edge_type: string }>(
+        `SELECT from_id, to_id, edge_type FROM edges WHERE doco_id = $1`,
+        [docoId],
+      );
+      for (const row of r.rows) edges.push(row);
+    });
+  } catch {
+    /* index not built yet — fall through with synthesized edges only */
   }
   const candidateId = (entityFm.id as string) ?? "";
   if (candidateId) {
@@ -722,21 +777,16 @@ export async function runScopeRules(opts: {
     typeof entityFm.node_type === "string" ? (entityFm.node_type as string) : "";
   const entityBody =
     typeof entityFm.body_md === "string" ? (entityFm.body_md as string) : undefined;
-  for (const { scope, rules } of rulesToRun) {
-    // The engine reads `authoring_rules` (decision_01KRPMC7CVDA9WZ5DKH81TVAAA),
-    // so the per-iteration filtered view overrides that field, not the
-    // retired `rules` name.
-    const filteredScope = {
-      ...(scope as unknown as Record<string, unknown>),
-      authoring_rules: rules,
-    } as unknown as Scope;
+  for (const [scopeIdKey, loadedRules] of perScope) {
+    const scope = allScopes.get(scopeIdKey);
+    const scopeName = scope ? (scope as unknown as { name: string }).name : "(scope)";
     const v = evaluateScopeRules({
       entity: entityForEngine,
-      scope: filteredScope,
+      authoring_rules: loadedRules,
+      scopeName,
       allEdges: edges,
       entityScopes: scopeIds,
     });
-    const scopeName = (scope as unknown as { name: string }).name;
     for (const vv of v) {
       if (vv.severity === "error") {
         allViolations.push({ scopeName, reason: vv.reason, severity: "error" });
@@ -751,12 +801,11 @@ export async function runScopeRules(opts: {
       // into scopes carrying probabilistic rules
       // (decision_01KRPET95G2QNTPCR0YWAKSCH5). Failure to reach the
       // judge rejects the write rather than silently passing.
-      const rule = rules[vv.rule_index] as { kind?: string; spec?: string } | undefined;
-      const spec = rule?.spec ?? "";
+      const spec = vv.spec ?? "";
       if (!spec) {
         allViolations.push({
           scopeName,
-          reason: `Probabilistic rule at index ${vv.rule_index} has no spec.`,
+          reason: `Probabilistic rule ${vv.rule_id} has no spec.`,
           severity: "error",
         });
         continue;

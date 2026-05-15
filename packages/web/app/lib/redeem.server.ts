@@ -8,6 +8,7 @@ export type {
 } from "./llm.server";
 export {
   createDocoInHost,
+  createRuleInDoco,
   createScopeInDoco,
   materializeScopeTree,
   migrateScopesInDoco,

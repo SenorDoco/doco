@@ -4,7 +4,7 @@ import { docoPath } from "~/lib/db.server";
 import { loadDocoForAdmin, loadDocoForRead } from "~/lib/doco-access.server";
 import { listScopeDetails, readDocoMetadata } from "~/lib/scope-helpers.server";
 import { renderOperationLines } from "~/lib/capture.server";
-import { createScopeInDoco, reindex } from "~/lib/redeem.server";
+import { createRuleInDoco, createScopeInDoco, reindex } from "~/lib/redeem.server";
 
 /**
  * POST /<owner>/<doco>/api/scopes.json — single-call Scope creation.
@@ -140,6 +140,27 @@ export async function action({
   const t0 = Date.now();
 
   let createOpts: Parameters<typeof createScopeInDoco>[0];
+  let seedGuidanceText: string | null = null;
+  // Per decision_01KRPRDR1AD7S1RP6E69BQDB2G the body's `authoring_rules`
+  // (typed predicates) and `guidance_rules` (prose strings) become
+  // first-class Rule entities created AFTER the scope itself; the
+  // scope row no longer carries the arrays.
+  const seedAuthoringFromBody: unknown[] = Array.isArray(body.authoring_rules)
+    ? body.authoring_rules
+    : [];
+  const seedGuidanceFromBody: { text: string; lifecycle?: string }[] = Array.isArray(
+    body.guidance_rules,
+  )
+    ? body.guidance_rules
+        .map((g) => {
+          if (typeof g === "string") return { text: g, lifecycle: "active" };
+          if (g && typeof g === "object" && typeof g.text === "string") {
+            return { text: g.text, lifecycle: g.lifecycle ?? "active" };
+          }
+          return null;
+        })
+        .filter((g): g is { text: string; lifecycle: string } => g !== null)
+    : [];
 
   if (body.template_name) {
     const tpl = findScopeTemplate(body.template_name);
@@ -150,21 +171,15 @@ export async function action({
     if (existing.some((s) => s.name === tpl.name)) {
       return Response.json({ error: `Scope "${tpl.name}" already exists.` }, { status: 409 });
     }
-    // Per decision_01KRPMC7CVDA9WZ5DKH81TVAAA: template `purpose`
-    // retired; `guidelines` text becomes the seed `guidance_rules[0]`.
-    // Per decision_01KRPNZY7W6CCMYNKGND67BP0B each guidance rule is an
-    // object with text + lifecycle.
     createOpts = {
       docoDir: dir,
       docoId,
       name: tpl.name,
       ...(tpl.icon ? { icon: tpl.icon } : {}),
-      ...(tpl.guidelines
-        ? { guidance_rules: [{ text: tpl.guidelines, lifecycle: "active" }] }
-        : {}),
       watched,
       createdBy,
     };
+    seedGuidanceText = tpl.guidelines ?? null;
   } else {
     const name = (body.name ?? "").trim().toLowerCase();
     if (!name) {
@@ -197,17 +212,6 @@ export async function action({
       }
       parentScopes.push(parent.id as EntityId<"scope">);
     }
-    // Normalize bare string guidance entries to the object shape per
-    // decision_01KRPNZY7W6CCMYNKGND67BP0B.
-    const normalizedGuidance = (body.guidance_rules ?? [])
-      .map((g) => {
-        if (typeof g === "string") return { text: g, lifecycle: "active" };
-        if (g && typeof g === "object" && typeof g.text === "string") {
-          return { text: g.text, lifecycle: g.lifecycle ?? "active" };
-        }
-        return null;
-      })
-      .filter((g): g is { text: string; lifecycle: string } => g !== null);
 
     createOpts = {
       docoDir: dir,
@@ -215,26 +219,59 @@ export async function action({
       name,
       ...(body.icon ? { icon: body.icon } : {}),
       parentScopes,
-      ...(body.authoring_rules && body.authoring_rules.length > 0
-        ? { authoring_rules: body.authoring_rules }
-        : {}),
-      ...(normalizedGuidance.length > 0 ? { guidance_rules: normalizedGuidance } : {}),
       watched,
       createdBy,
     };
   }
 
   const newScopeId = await createScopeInDoco(createOpts);
+
+  // Seed Rule entities for any guidance / authoring rules the caller
+  // included, plus the template's guidelines if applicable.
+  if (seedGuidanceText) {
+    await createRuleInDoco({
+      docoId,
+      kind: "guidance",
+      summary: seedGuidanceText,
+      scopeId: newScopeId,
+      createdBy,
+    });
+  }
+  for (const g of seedGuidanceFromBody) {
+    if (g.text.trim()) {
+      await createRuleInDoco({
+        docoId,
+        kind: "guidance",
+        summary: g.text.trim(),
+        scopeId: newScopeId,
+        lifecycle: (g.lifecycle as "active" | "abandoned" | undefined) ?? "active",
+        createdBy,
+      });
+    }
+  }
+  for (const ar of seedAuthoringFromBody) {
+    if (ar && typeof ar === "object") {
+      const obj = ar as { kind?: string; reason?: string };
+      await createRuleInDoco({
+        docoId,
+        kind: "authoring",
+        summary: obj.reason ?? `Authoring rule (${obj.kind ?? "?"})`,
+        predicate: ar,
+        scopeId: newScopeId,
+        createdBy,
+      });
+    }
+  }
+
   await reindex(dir);
   const duration_ms = Date.now() - t0;
 
   const scopeName = createOpts.name;
   const scopeIcon = createOpts.icon;
-  // Per decision_01KRPMC7CVDA9WZ5DKH81TVAAA there is no `purpose` field
-  // any more. Use the first guidance rule as the summary if one exists,
-  // otherwise fall back to a generic line.
-  const firstGuidance = createOpts.guidance_rules?.[0]?.text?.trim();
-  const summary = firstGuidance || `Scope: ${scopeName}${watched ? " (watched)" : ""}`;
+  const summary =
+    seedGuidanceText?.trim() ||
+    seedGuidanceFromBody[0]?.text?.trim() ||
+    `Scope: ${scopeName}${watched ? " (watched)" : ""}`;
   const footer_lines = renderOperationLines({
     ownerSlug,
     docoSlug,

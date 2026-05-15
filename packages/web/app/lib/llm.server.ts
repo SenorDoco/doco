@@ -402,7 +402,7 @@ export type ClassifiedRule =
   | { bucket: "guidance"; text: string };
 
 /**
- * Mirrors AuthoringRule in @doco/shared but typed locally to avoid coupling
+ * Mirrors AuthoringPredicate in @doco/shared but typed locally to avoid coupling
  * the web package to that import here. The persistence layer accepts any
  * record-shaped object; the engine reads the discriminant `kind`.
  */

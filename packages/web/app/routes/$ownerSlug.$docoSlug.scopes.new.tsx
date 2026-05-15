@@ -7,7 +7,7 @@ import type { EntityId } from "@doco/shared";
 import { DEFAULT_SCOPE_TEMPLATES, findScopeTemplate } from "@doco/host";
 import { loadDocoForAdmin, loadDocoForRead } from "~/lib/doco-access.server";
 import { loadHostConfig } from "~/lib/host";
-import { createScopeInDoco, reindex } from "~/lib/redeem.server";
+import { createRuleInDoco, createScopeInDoco, reindex } from "~/lib/redeem.server";
 import { listScopeDetails } from "~/lib/scope-helpers.server";
 import { SiteHeader } from "~/components/site-header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
@@ -169,21 +169,26 @@ export async function action({
       if (existing.some((s) => s.name === tpl.name)) {
         return redirect(afterAdd);
       }
-      // Per decision_01KRPMC7CVDA9WZ5DKH81TVAAA: template `purpose` is
-      // retired; `guidelines` text seeds `guidance_rules[0]`. Per
-      // decision_01KRPNZY7W6CCMYNKGND67BP0B each guidance rule is an
-      // object with a per-rule lifecycle.
-      await createScopeInDoco({
+      // Per decision_01KRPRDR1AD7S1RP6E69BQDB2G the template's
+      // `guidelines` text becomes a Rule entity (kind=guidance) tagged
+      // with the new scope — no embedded array on the scope row.
+      const newId = await createScopeInDoco({
         docoDir: dir,
         docoId: docoId as EntityId<"doco">,
         name: tpl.name,
         icon: tpl.icon,
-        ...(tpl.guidelines
-          ? { guidance_rules: [{ text: tpl.guidelines, lifecycle: "active" }] }
-          : {}),
         watched,
         createdBy,
       });
+      if (tpl.guidelines) {
+        await createRuleInDoco({
+          docoId: docoId as EntityId<"doco">,
+          kind: "guidance",
+          summary: tpl.guidelines,
+          scopeId: newId,
+          createdBy,
+        });
+      }
     } else if (intent === "add-custom") {
       const name = String(form.get("name") ?? "").trim().toLowerCase();
       const icon = String(form.get("icon") ?? "").trim();
@@ -253,26 +258,49 @@ export async function action({
         if (reason) r.reason = reason;
         rules.push(r);
       }
-      // Per decision_01KRPMC7CVDA9WZ5DKH81TVAAA: no `purpose` field; the
-      // form's "Purpose" textarea now seeds `guidance_rules[0]` if the
-      // user filled it (still rendered on the form so the new-scope page
-      // still asks for a one-liner about why the scope exists). `rules`
-      // is renamed to `authoring_rules`.
+      // Per decision_01KRPRDR1AD7S1RP6E69BQDB2G rules are first-class
+      // Rule entities now. Create the scope, then seed: the optional
+      // "Purpose" textarea → a guidance Rule; the optional inline
+      // first-rule fieldset → an authoring Rule.
       const newScopeId = await createScopeInDoco({
         docoDir: dir,
         docoId: docoId as EntityId<"doco">,
         name,
         ...(icon ? { icon } : {}),
         parentScopes,
-        ...(purpose ? { guidance_rules: [{ text: purpose, lifecycle: "active" }] } : {}),
-        ...(rules.length > 0 ? { authoring_rules: rules } : {}),
         watched,
         createdBy,
       });
+      if (purpose) {
+        await createRuleInDoco({
+          docoId: docoId as EntityId<"doco">,
+          kind: "guidance",
+          summary: purpose,
+          scopeId: newScopeId,
+          createdBy,
+        });
+      }
+      for (const rule of rules) {
+        const reason =
+          typeof rule.reason === "string" && rule.reason.trim()
+            ? rule.reason.trim()
+            : `Authoring rule (${String(rule.kind ?? "?")})`;
+        // Strip `reason` from the predicate; reason lives on the Rule
+        // entity's `summary` instead.
+        const { reason: _unused, ...predicate } = rule as { reason?: unknown; [k: string]: unknown };
+        void _unused;
+        await createRuleInDoco({
+          docoId: docoId as EntityId<"doco">,
+          kind: "authoring",
+          summary: reason,
+          predicate,
+          scopeId: newScopeId,
+          createdBy,
+        });
+      }
       await reindex(dir);
-      // After-create redirect: go straight to the merged scope page
-      // (decision_01KRPNZY7W6CCMYNKGND67BP0B replaced the separate /edit
-      // page) so the user can refine rules right away.
+      // After-create redirect: go straight to the merged scope page so
+      // the user can refine rules right away (decision_01KRPNZY7W6CCMYNKGND67BP0B).
       return redirect(`/${ownerSlug}/${docoSlug}/scopes/${newScopeId}`);
     } else {
       return { error: `Unknown intent: ${intent}` };

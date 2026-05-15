@@ -10,7 +10,7 @@
 // per-Doco context (scopes, lint, freshness), `/by-id/<doco_id>/status.json`.
 
 import { CANONICAL_INSTRUCTIONS } from "~/lib/instructions.server";
-import type { AuthoringRule } from "@doco/shared";
+import type { AuthoringPredicate } from "@doco/shared";
 import { getDocoById, listEntitiesByDoco } from "@doco/db";
 import { docoPath } from "~/lib/db.server";
 import { canAccessDoco } from "~/lib/doco-access.server";
@@ -31,56 +31,87 @@ import {
 import { getCurrentPrincipalAsync } from "~/lib/session";
 
 /**
- * Shape of the Constitution scope as exposed to agents on the bootstrap.
+ * Shape of the Global scope (formerly "Constitution") as exposed to
+ * agents on the bootstrap. Per decision_01KRPRDR1AD7S1RP6E69BQDB2G
+ * authoring + guidance rules are first-class Rule entities tagged
+ * `in_scope_of` this scope; the bootstrap surfaces them inline so
+ * agents don't have to make extra calls.
  */
 export interface ConstitutionSnapshot {
   id: string;
   name: string;
   icon: string | null;
-  /**
-   * Per decision_01KRPMC7CVDA9WZ5DKH81TVAAA the scope no longer carries
-   * a dedicated `purpose` or `guidelines` field. The agent reads the
-   * authoring rules (predicates the engine enforces) and the guidance
-   * rules (prose to keep in mind while working) separately.
-   */
-  authoring_rules: AuthoringRule[];
-  guidance_rules: string[];
+  authoring_rules: { id: string; summary: string; predicate: AuthoringPredicate }[];
+  guidance_rules: { id: string; summary: string }[];
 }
 
 /**
- * Read the Constitution scope from Postgres (`scopes` table). Returns
- * null when no Constitution scope exists (fresh docos pre-seed).
- * Filesystem walk of `<doco>/scopes/*.yaml` is gone
- * (rule_01KRKQDHWNWJAF4YKTMCB2A0D9 — alpha forbids back-compat).
+ * Read the Global scope + its rule entities from Postgres. Returns null
+ * when no Global scope exists (fresh docos pre-seed).
  */
 async function loadConstitution(docoId: string): Promise<ConstitutionSnapshot | null> {
   const rows = await listEntitiesByDoco("scope", docoId);
+  let globalScope: { id: string; name: string; raw_yaml: string } | null = null;
   for (const r of rows) {
     // Per decision_01KRPNZY7W6CCMYNKGND67BP0B the framework-seeded scope
     // is named "global" (was: "constitution"; readable label "the doco's
     // constitution"). Field names in the bootstrap response keep
     // "Constitution" so agents reading the canonical see the familiar
     // term, but the underlying scope row's `name` is "global".
-    if (r.name !== "global") continue;
+    if (r.name === "global") {
+      globalScope = { id: r.id, name: r.name, raw_yaml: r.raw_yaml };
+      break;
+    }
+  }
+  if (!globalScope) return null;
+  let scopeFm: Record<string, unknown> = {};
+  try {
+    scopeFm = JSON.parse(globalScope.raw_yaml) as Record<string, unknown>;
+  } catch {}
+
+  // Per decision_01KRPRDR1AD7S1RP6E69BQDB2G load the scope's rules from
+  // the `rules` table (kind=authoring + kind=guidance, lifecycle
+  // active/proposed, tagged in_scope_of this scope).
+  const { withClient } = await import("@doco/db");
+  type RuleRow = { id: string; summary: string; raw_yaml: string };
+  const ruleRows = await withClient(async (c) => {
+    const r = await c.query<RuleRow>(
+      `SELECT r.id, r.summary, r.raw_yaml
+         FROM rules r
+         JOIN edges e ON e.from_id = r.id
+                     AND e.edge_type = 'in_scope_of'
+                     AND e.to_id = $1
+        WHERE r.doco_id = $2
+          AND COALESCE(r.lifecycle, 'active') IN ('active', 'proposed')`,
+      [globalScope.id, docoId],
+    );
+    return r.rows;
+  });
+  const authoring: { id: string; summary: string; predicate: AuthoringPredicate }[] = [];
+  const guidance: { id: string; summary: string }[] = [];
+  for (const r of ruleRows) {
     let fm: Record<string, unknown> = {};
     try {
       fm = JSON.parse(r.raw_yaml) as Record<string, unknown>;
     } catch {}
-    return {
-      id: r.id,
-      name: r.name,
-      icon: typeof fm.icon === "string" ? fm.icon : null,
-      authoring_rules: Array.isArray(fm.authoring_rules)
-        ? (fm.authoring_rules as AuthoringRule[])
-        : [],
-      guidance_rules: Array.isArray(fm.guidance_rules)
-        ? (fm.guidance_rules as unknown[]).filter(
-            (s): s is string => typeof s === "string",
-          )
-        : [],
-    };
+    const kind = typeof fm.kind === "string" ? fm.kind : "tagged";
+    if (kind === "authoring") {
+      const predicate = fm.predicate as AuthoringPredicate | undefined;
+      if (predicate && typeof predicate === "object") {
+        authoring.push({ id: r.id, summary: r.summary, predicate });
+      }
+    } else if (kind === "guidance") {
+      guidance.push({ id: r.id, summary: r.summary });
+    }
   }
-  return null;
+
+  return {
+    id: globalScope.id,
+    name: globalScope.name,
+    icon: typeof scopeFm.icon === "string" ? scopeFm.icon : null,
+    authoring_rules: authoring,
+    guidance_rules: guidance,
+  };
 }
 
 /**

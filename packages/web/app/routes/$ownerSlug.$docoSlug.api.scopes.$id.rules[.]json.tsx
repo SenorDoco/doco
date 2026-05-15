@@ -26,7 +26,7 @@ import {
   LlmUnavailableError,
   type ClassifiedRule,
 } from "~/lib/llm.server";
-import { reindex, updateScopeInDoco } from "~/lib/redeem.server";
+import { createRuleInDoco, reindex } from "~/lib/redeem.server";
 import { listScopeDetails, readDocoMetadata } from "~/lib/scope-helpers.server";
 
 interface RuleProseBody {
@@ -114,54 +114,39 @@ export async function action({
     return Response.json({ error: (e as Error).message }, { status: 500 });
   }
 
-  // Per decision_01KRPMC7CVDA9WZ5DKH81TVAAA the classifier output is
-  // bucketed: authoring rules become entries in `authoring_rules`,
-  // guidance rules go to `guidance_rules`. Per
-  // decision_01KRPNZY7W6CCMYNKGND67BP0B each rule carries a per-rule
-  // lifecycle; newly-classified rules ship as `active`, and the
-  // guidance_rules shape is `{ text, lifecycle }` instead of bare strings.
-  const existingAuthoring: unknown[] = Array.isArray(scopeRaw.authoring_rules)
-    ? (scopeRaw.authoring_rules as unknown[])
-    : [];
-  const existingGuidance: { text: string; lifecycle?: string }[] = Array.isArray(
-    scopeRaw.guidance_rules,
-  )
-    ? (scopeRaw.guidance_rules as unknown[])
-        .map((g): { text: string; lifecycle?: string } | null => {
-          if (typeof g === "string") return { text: g, lifecycle: "active" };
-          if (g && typeof g === "object" && typeof (g as { text?: unknown }).text === "string") {
-            const obj = g as { text: string; lifecycle?: string };
-            return { text: obj.text, lifecycle: obj.lifecycle ?? "active" };
-          }
-          return null;
-        })
-        .filter((g): g is { text: string; lifecycle?: string } => g !== null)
-    : [];
-  const newAuthoring: unknown[] = [];
-  const newGuidance: { text: string; lifecycle: string }[] = [];
+  // Per decision_01KRPRDR1AD7S1RP6E69BQDB2G each classified rule
+  // becomes a first-class Rule entity (kind: authoring | guidance)
+  // tagged with the scope via an `in_scope_of` edge.
+  if (!meta?.docoId) {
+    return Response.json({ error: "Doco metadata missing." }, { status: 500 });
+  }
+  const docoId = meta.docoId as EntityId<"doco">;
+  let addedAuthoring = 0;
+  let addedGuidance = 0;
   for (const c of classified) {
     if (c.bucket === "guidance") {
-      if (c.text.trim()) newGuidance.push({ text: c.text.trim(), lifecycle: "active" });
+      if (c.text.trim()) {
+        await createRuleInDoco({
+          docoId,
+          kind: "guidance",
+          summary: c.text.trim(),
+          scopeId: id as EntityId<"scope">,
+          createdBy: null,
+        });
+        addedGuidance++;
+      }
       continue;
     }
-    const base = { ...c.rule, lifecycle: "active" } as Record<string, unknown>;
-    if (
-      c.rule.kind !== "probabilistic" &&
-      (typeof base.reason !== "string" || base.reason.trim() === "") &&
-      c.text.trim()
-    ) {
-      base.reason = c.text.trim();
-    }
-    newAuthoring.push(base);
+    await createRuleInDoco({
+      docoId,
+      kind: "authoring",
+      summary: c.text.trim() || `Authoring rule (${c.rule.kind})`,
+      predicate: c.rule,
+      scopeId: id as EntityId<"scope">,
+      createdBy: null,
+    });
+    addedAuthoring++;
   }
-  const nextAuthoring = [...existingAuthoring, ...newAuthoring];
-  const nextGuidance = [...existingGuidance, ...newGuidance];
-  await updateScopeInDoco({
-    docoDir: dir,
-    scopeId: id as EntityId<"scope">,
-    ...(newAuthoring.length > 0 ? { authoring_rules: nextAuthoring } : {}),
-    ...(newGuidance.length > 0 ? { guidance_rules: nextGuidance } : {}),
-  });
   await reindex(dir);
 
   const duration_ms = Date.now() - t0;
@@ -187,8 +172,8 @@ export async function action({
   return Response.json(
     {
       added: classified,
-      total_authoring: nextAuthoring.length,
-      total_guidance: nextGuidance.length,
+      added_authoring: addedAuthoring,
+      added_guidance: addedGuidance,
       footer_lines,
     },
     { status: 201 },

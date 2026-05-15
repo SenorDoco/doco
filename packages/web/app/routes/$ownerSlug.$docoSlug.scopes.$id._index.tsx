@@ -1,18 +1,18 @@
 // /<owner>/<doco>/scopes/<id> — merged scope detail + edit page.
 //
-// Per decision_01KRPNZY7W6CCMYNKGND67BP0B the separate detail (/scope/<id>)
-// and edit (/scopes/<id>/edit) pages collapsed into this one. Layout: two
-// columns. The left column carries everything editable about the scope
-// (icon, watched flag, the three rule lists, a link to the standalone
-// /deprecate page); the right column carries the activity heatmap and the
-// latest-activity feed filtered to entities tagged with this scope.
+// Per decision_01KRPNZY7W6CCMYNKGND67BP0B the separate detail and edit
+// pages collapsed into this one. Per
+// decision_01KRPRDR1AD7S1RP6E69BQDB2G the three rule groups on this page
+// (Authoring / Guidance / Tagged) are all first-class Rule entities now:
+// rows in the `rules` table with an `in_scope_of` edge to this scope.
+// The Rule's `kind` field discriminates the role; deprecate / reactivate
+// is a regular Rule PATCH (lifecycle = abandoned / active).
 //
-// Rules now follow per-rule lifecycle (active / abandoned / superseded /
-// proposed). "Deprecate" sets `abandoned`; "Reactivate" sets `active`.
-// The engine + the agent-facing surfaces only consider non-abandoned
-// rules. Tagged rules are first-class Rule entities (with their own
-// lifecycle on the Rule node) listed here for context — deprecating a
-// tagged rule PATCHes the Rule entity, not the scope.
+// Layout: two columns. Left carries Members stats + Watched toggle + the
+// three rule sections + Add rules (prose classifier) + Icon + Deprecate
+// scope link. Right carries activity heatmap + scope-filtered latest
+// activity feed.
+
 import { useEffect, useState } from "react";
 import { Form, Link, redirect, useFetcher, useRevalidator } from "react-router";
 import { parse as parseYaml } from "yaml";
@@ -32,51 +32,49 @@ import {
   LlmUnavailableError,
   type ClassifiedRule,
 } from "~/lib/llm.server";
-import { reindex, setScopeWatchedInDoco, updateScopeInDoco } from "~/lib/redeem.server";
 import { updateEntity } from "~/lib/capture.server";
+import {
+  createRuleInDoco,
+  reindex,
+  setScopeWatchedInDoco,
+  updateScopeInDoco,
+} from "~/lib/redeem.server";
 import { listScopeDetails, readDocoMetadata } from "~/lib/scope-helpers.server";
 
 const HEATMAP_WEEKS = 26;
 
-interface AuthoringRuleRecord {
+type RuleKind = "authoring" | "guidance" | "tagged";
+
+interface AuthoringPredicateRecord {
   kind: string;
   edge_type?: string;
   target_node_type?: string;
-  field?: string;
   fields?: string[];
-  scope_id?: string;
+  field?: string;
   scope_ids?: string[];
+  scope_id?: string;
   spec?: string;
-  reason?: string;
-  lifecycle?: string;
 }
 
-interface GuidanceRuleRecord {
-  text: string;
-  lifecycle?: string;
-}
-
-interface TaggedRuleRecord {
+interface RuleRecord {
   id: string;
   summary: string;
   lifecycle: string;
+  kind: RuleKind;
+  predicate?: AuthoringPredicateRecord;
 }
 
-function asFieldList(r: AuthoringRuleRecord): string[] {
-  if (Array.isArray(r.fields)) return r.fields.filter((f): f is string => typeof f === "string");
-  if (typeof r.field === "string" && r.field.length > 0) return [r.field];
+function asFieldList(p: AuthoringPredicateRecord): string[] {
+  if (Array.isArray(p.fields)) return p.fields.filter((f): f is string => typeof f === "string");
+  if (typeof p.field === "string" && p.field.length > 0) return [p.field];
   return [];
 }
 
-function asScopeIdList(r: AuthoringRuleRecord): string[] {
-  if (Array.isArray(r.scope_ids))
-    return r.scope_ids.filter((s): s is string => typeof s === "string");
-  if (typeof r.scope_id === "string" && r.scope_id.length > 0) return [r.scope_id];
+function asScopeIdList(p: AuthoringPredicateRecord): string[] {
+  if (Array.isArray(p.scope_ids))
+    return p.scope_ids.filter((s): s is string => typeof s === "string");
+  if (typeof p.scope_id === "string" && p.scope_id.length > 0) return [p.scope_id];
   return [];
-}
-
-function ruleLifecycle(rule: { lifecycle?: string } | { lifecycle?: string; text: string }): string {
-  return (rule as { lifecycle?: string }).lifecycle ?? "active";
 }
 
 function isActive(lifecycle: string): boolean {
@@ -114,47 +112,51 @@ export async function loader({
   const allScopeDetails = await listScopeDetails(dir);
   const allScopes = allScopeDetails.map((s) => ({ id: s.id, name: s.name }));
 
-  const authoringRules: AuthoringRuleRecord[] = Array.isArray(raw.authoring_rules)
-    ? (raw.authoring_rules as AuthoringRuleRecord[])
-    : [];
-  const guidanceRules: GuidanceRuleRecord[] = Array.isArray(raw.guidance_rules)
-    ? (raw.guidance_rules as unknown[])
-        .map((g): GuidanceRuleRecord | null => {
-          if (typeof g === "string") return { text: g, lifecycle: "active" };
-          if (g && typeof g === "object" && typeof (g as { text?: unknown }).text === "string") {
-            const obj = g as GuidanceRuleRecord;
-            return { text: obj.text, ...(obj.lifecycle ? { lifecycle: obj.lifecycle } : {}) };
-          }
-          return null;
-        })
-        .filter((g): g is GuidanceRuleRecord => g !== null)
-    : [];
-
   const meta = await readDocoMetadata(dir);
   const docoId = meta?.docoId ?? null;
 
-  // Tagged Rule entities (first-class Rule nodes with an
-  // in_scope_of edge pointing here). Includes lifecycle so the UI can
-  // surface deprecate/reactivate.
-  const taggedRules: TaggedRuleRecord[] = docoId
+  // Per decision_01KRPRDR1AD7S1RP6E69BQDB2G all rule groups are
+  // first-class Rule entities now. One query, then we bucket in code.
+  type Row = { id: string; summary: string; lifecycle: string; raw_yaml: string };
+  const ruleRows: Row[] = docoId
     ? await withClient(async (c) => {
-        const rs = await c.query<TaggedRuleRecord>(
-          `SELECT r.id, r.summary, COALESCE(r.lifecycle, 'active') AS lifecycle
+        const r = await c.query<Row>(
+          `SELECT r.id, r.summary, COALESCE(r.lifecycle, 'active') AS lifecycle, r.raw_yaml
              FROM rules r
              JOIN edges e ON e.from_id = r.id
                          AND e.edge_type = 'in_scope_of'
                          AND e.to_id = $1
             WHERE r.doco_id = $2
-            ORDER BY (CASE WHEN COALESCE(r.lifecycle, 'active') = 'active' THEN 0 ELSE 1 END),
+            ORDER BY (CASE WHEN COALESCE(r.lifecycle, 'active') IN ('active', 'proposed') THEN 0 ELSE 1 END),
                      r.created_at DESC`,
           [id, docoId],
         );
-        return rs.rows;
+        return r.rows;
       })
     : [];
+  const rulesByKind: Record<RuleKind, RuleRecord[]> = {
+    authoring: [],
+    guidance: [],
+    tagged: [],
+  };
+  for (const row of ruleRows) {
+    let fm: Record<string, unknown> = {};
+    try {
+      fm = JSON.parse(row.raw_yaml) as Record<string, unknown>;
+    } catch {}
+    const kind: RuleKind =
+      fm.kind === "authoring" || fm.kind === "guidance" ? (fm.kind as RuleKind) : "tagged";
+    const predicate = fm.predicate as AuthoringPredicateRecord | undefined;
+    rulesByKind[kind].push({
+      id: row.id,
+      summary: row.summary,
+      lifecycle: row.lifecycle,
+      kind,
+      ...(predicate && typeof predicate === "object" ? { predicate } : {}),
+    });
+  }
 
-  // Stats: count entities tagged with this scope, grouped by lifecycle.
-  // We join across entity tables via the `in_scope_of` edge.
+  // Stats: count entities tagged with this scope by lifecycle.
   const memberStats: { lifecycle: string; count: number }[] = docoId
     ? await withClient(async (c) => {
         const tables = [
@@ -187,41 +189,35 @@ export async function loader({
     : [];
   const memberCount = memberStats.reduce((sum, s) => sum + s.count, 0);
 
-  // Heatmap data: per-day created_at counts for entities tagged with
-  // this scope over the last HEATMAP_WEEKS.
+  // Heatmap data.
   const since = new Date();
   since.setDate(since.getDate() - HEATMAP_WEEKS * 7);
   const sinceIso = since.toISOString().slice(0, 10);
   const byDay: Record<string, number> = docoId
     ? await withClient(async (c) => {
+        const tables = [
+          "decisions",
+          "intents",
+          "actions",
+          "rules",
+          "reasoning",
+          "evals",
+          "ideas",
+          "reference_entities",
+        ];
+        const unionSql = tables
+          .map(
+            (t) =>
+              `SELECT to_char(${t}.created_at, 'YYYY-MM-DD') AS day FROM ${t}
+                 JOIN edges e ON e.from_id = ${t}.id
+                              AND e.edge_type = 'in_scope_of'
+                              AND e.to_id = $1
+                WHERE ${t}.doco_id = $2`,
+          )
+          .join(" UNION ALL ");
         const rs = await c.query<{ day: string; n: string }>(
-          `SELECT day, COUNT(*)::text AS n FROM (
-             SELECT to_char(decisions.created_at, 'YYYY-MM-DD') AS day FROM decisions
-               JOIN edges e ON e.from_id = decisions.id AND e.edge_type = 'in_scope_of' AND e.to_id = $1
-              WHERE decisions.doco_id = $2
-             UNION ALL SELECT to_char(intents.created_at, 'YYYY-MM-DD') FROM intents
-               JOIN edges e ON e.from_id = intents.id AND e.edge_type = 'in_scope_of' AND e.to_id = $1
-              WHERE intents.doco_id = $2
-             UNION ALL SELECT to_char(actions.created_at, 'YYYY-MM-DD') FROM actions
-               JOIN edges e ON e.from_id = actions.id AND e.edge_type = 'in_scope_of' AND e.to_id = $1
-              WHERE actions.doco_id = $2
-             UNION ALL SELECT to_char(rules.created_at, 'YYYY-MM-DD') FROM rules
-               JOIN edges e ON e.from_id = rules.id AND e.edge_type = 'in_scope_of' AND e.to_id = $1
-              WHERE rules.doco_id = $2
-             UNION ALL SELECT to_char(reasoning.created_at, 'YYYY-MM-DD') FROM reasoning
-               JOIN edges e ON e.from_id = reasoning.id AND e.edge_type = 'in_scope_of' AND e.to_id = $1
-              WHERE reasoning.doco_id = $2
-             UNION ALL SELECT to_char(evals.created_at, 'YYYY-MM-DD') FROM evals
-               JOIN edges e ON e.from_id = evals.id AND e.edge_type = 'in_scope_of' AND e.to_id = $1
-              WHERE evals.doco_id = $2
-             UNION ALL SELECT to_char(ideas.created_at, 'YYYY-MM-DD') FROM ideas
-               JOIN edges e ON e.from_id = ideas.id AND e.edge_type = 'in_scope_of' AND e.to_id = $1
-              WHERE ideas.doco_id = $2
-             UNION ALL SELECT to_char(reference_entities.created_at, 'YYYY-MM-DD') FROM reference_entities
-               JOIN edges e ON e.from_id = reference_entities.id AND e.edge_type = 'in_scope_of' AND e.to_id = $1
-              WHERE reference_entities.doco_id = $2
-           ) t WHERE day >= $3
-           GROUP BY day`,
+          `SELECT day, COUNT(*)::text AS n FROM (${unionSql}) t WHERE day >= $3
+             GROUP BY day`,
           [id, docoId, sinceIso],
         );
         const out: Record<string, number> = {};
@@ -231,7 +227,13 @@ export async function loader({
     : {};
 
   // Latest 30 entities tagged with this scope, for the feed.
-  type FeedItem = { id: string; node_type: string; summary: string; lifecycle: string; created_at: string };
+  type FeedItem = {
+    id: string;
+    node_type: string;
+    summary: string;
+    lifecycle: string;
+    created_at: string;
+  };
   const items: FeedItem[] = docoId
     ? await withClient(async (c) => {
         const tables: { table: string; nodeType: string }[] = [
@@ -277,16 +279,14 @@ export async function loader({
       name: String(raw.name),
       icon: typeof raw.icon === "string" ? raw.icon : "",
       lifecycle: typeof raw.lifecycle === "string" ? raw.lifecycle : "active",
-      authoring_rules: authoringRules,
-      guidance_rules: guidanceRules,
       is_watched: isWatched,
     },
+    rules: rulesByKind,
     allScopes,
     memberCount,
     memberStats,
     byDay,
     items,
-    taggedRules,
   };
 }
 
@@ -347,6 +347,10 @@ export async function action({
         return { error: (e as Error).message };
       }
     } else if (intent === "add_rules_classified") {
+      // Per decision_01KRPRDR1AD7S1RP6E69BQDB2G classified rules become
+      // first-class Rule entities (one per classified row) tagged with
+      // the scope. The classifier output shape is unchanged; the
+      // persistence layer creates entities instead of mutating arrays.
       const payload = String(form.get("payload") ?? "");
       if (!payload) return { error: "No classified payload to add." };
       let parsed: ClassifiedRule[];
@@ -358,109 +362,43 @@ export async function action({
       if (!Array.isArray(parsed) || parsed.length === 0) {
         return { error: "No rules to add." };
       }
-      const raw = await readScopeRaw(id);
-      if (!raw) return { error: "Scope not found." };
-      const existingAuthoring: AuthoringRuleRecord[] = Array.isArray(raw.authoring_rules)
-        ? (raw.authoring_rules as AuthoringRuleRecord[])
-        : [];
-      const existingGuidance: GuidanceRuleRecord[] = Array.isArray(raw.guidance_rules)
-        ? ((raw.guidance_rules as unknown[])
-            .map((g): GuidanceRuleRecord | null => {
-              if (typeof g === "string") return { text: g, lifecycle: "active" };
-              if (g && typeof g === "object" && typeof (g as { text?: unknown }).text === "string") {
-                const obj = g as GuidanceRuleRecord;
-                return { text: obj.text, ...(obj.lifecycle ? { lifecycle: obj.lifecycle } : { lifecycle: "active" }) };
-              }
-              return null;
-            })
-            .filter((g): g is GuidanceRuleRecord => g !== null))
-        : [];
-      const newAuthoring: AuthoringRuleRecord[] = [];
-      const newGuidance: GuidanceRuleRecord[] = [];
+      let addedAuthoring = 0;
+      let addedGuidance = 0;
       for (const c of parsed) {
         if (c.bucket === "guidance") {
-          if (c.text.trim()) newGuidance.push({ text: c.text.trim(), lifecycle: "active" });
-          continue;
-        }
-        const base: AuthoringRuleRecord = {
-          ...(c.rule as unknown as AuthoringRuleRecord),
-          lifecycle: "active",
-        };
-        if (c.rule.kind !== "probabilistic" && !base.reason && c.text.trim()) {
-          base.reason = c.text.trim();
-        }
-        newAuthoring.push(base);
-      }
-      const nextAuthoring = [...existingAuthoring, ...newAuthoring];
-      const nextGuidance = [...existingGuidance, ...newGuidance];
-      await updateScopeInDoco({
-        docoDir: dir,
-        scopeId,
-        ...(newAuthoring.length > 0 ? { authoring_rules: nextAuthoring } : {}),
-        ...(newGuidance.length > 0 ? { guidance_rules: nextGuidance } : {}),
-      });
-      await reindex(dir);
-      return {
-        ok: true,
-        added_authoring: newAuthoring.length,
-        added_guidance: newGuidance.length,
-      };
-    } else if (
-      intent === "deprecate_authoring_rule" ||
-      intent === "reactivate_authoring_rule"
-    ) {
-      const indexStr = String(form.get("rule_index") ?? "");
-      const idx = Number.parseInt(indexStr, 10);
-      if (!Number.isInteger(idx) || idx < 0) return { error: "Invalid rule index." };
-      const raw = await readScopeRaw(id);
-      if (!raw) return { error: "Scope not found." };
-      const existing: AuthoringRuleRecord[] = Array.isArray(raw.authoring_rules)
-        ? (raw.authoring_rules as AuthoringRuleRecord[])
-        : [];
-      if (idx >= existing.length) return { error: "Rule index out of range." };
-      const nextLifecycle =
-        intent === "deprecate_authoring_rule" ? "abandoned" : "active";
-      const next = existing.map((r, i) => (i === idx ? { ...r, lifecycle: nextLifecycle } : r));
-      await updateScopeInDoco({ docoDir: dir, scopeId, authoring_rules: next });
-    } else if (
-      intent === "deprecate_guidance_rule" ||
-      intent === "reactivate_guidance_rule"
-    ) {
-      const indexStr = String(form.get("rule_index") ?? "");
-      const idx = Number.parseInt(indexStr, 10);
-      if (!Number.isInteger(idx) || idx < 0) return { error: "Invalid rule index." };
-      const raw = await readScopeRaw(id);
-      if (!raw) return { error: "Scope not found." };
-      const existingRaw: unknown[] = Array.isArray(raw.guidance_rules)
-        ? (raw.guidance_rules as unknown[])
-        : [];
-      const existing: GuidanceRuleRecord[] = existingRaw
-        .map((g): GuidanceRuleRecord | null => {
-          if (typeof g === "string") return { text: g, lifecycle: "active" };
-          if (g && typeof g === "object" && typeof (g as { text?: unknown }).text === "string") {
-            const obj = g as GuidanceRuleRecord;
-            return { text: obj.text, lifecycle: obj.lifecycle ?? "active" };
+          if (c.text.trim()) {
+            await createRuleInDoco({
+              docoId: meta.docoId as EntityId<"doco">,
+              kind: "guidance",
+              summary: c.text.trim(),
+              scopeId,
+              createdBy: null,
+            });
+            addedGuidance++;
           }
-          return null;
-        })
-        .filter((g): g is GuidanceRuleRecord => g !== null);
-      if (idx >= existing.length) return { error: "Rule index out of range." };
-      const nextLifecycle =
-        intent === "deprecate_guidance_rule" ? "abandoned" : "active";
-      const next = existing.map((r, i) => (i === idx ? { ...r, lifecycle: nextLifecycle } : r));
-      await updateScopeInDoco({ docoDir: dir, scopeId, guidance_rules: next });
-    } else if (
-      intent === "deprecate_tagged_rule" ||
-      intent === "reactivate_tagged_rule"
-    ) {
-      // Tagged rules are first-class Rule entities — PATCH the Rule's own
-      // lifecycle, not the scope's rule arrays.
+        } else {
+          await createRuleInDoco({
+            docoId: meta.docoId as EntityId<"doco">,
+            kind: "authoring",
+            summary: c.text.trim() || `Authoring rule (${c.rule.kind})`,
+            predicate: c.rule,
+            scopeId,
+            createdBy: null,
+          });
+          addedAuthoring++;
+        }
+      }
+      await reindex(dir);
+      return { ok: true, added_authoring: addedAuthoring, added_guidance: addedGuidance };
+    } else if (intent === "deprecate_rule" || intent === "reactivate_rule") {
+      // Per decision_01KRPRDR1AD7S1RP6E69BQDB2G deprecating any rule
+      // (authoring, guidance, or tagged) is the same operation: PATCH the
+      // Rule entity's lifecycle.
       const ruleId = String(form.get("rule_id") ?? "");
       if (!ruleId.startsWith("rule_")) {
         return { error: "rule_id missing or malformed." };
       }
-      const nextLifecycle =
-        intent === "deprecate_tagged_rule" ? "abandoned" : "active";
+      const nextLifecycle = intent === "deprecate_rule" ? "abandoned" : "active";
       const result = await updateEntity({
         docoDir: dir,
         docoId: meta.docoId,
@@ -493,30 +431,30 @@ export function meta({ params }: { params: { ownerSlug: string; docoSlug: string
   return [{ title: `${params.id} · ${params.ownerSlug}/${params.docoSlug} · Doco` }];
 }
 
-function describeAuthoringRule(
-  r: AuthoringRuleRecord,
+function describeAuthoringPredicate(
+  p: AuthoringPredicateRecord,
   allScopes: { id: string; name: string }[],
 ): string {
-  if (r.reason) return r.reason;
-  switch (r.kind) {
+  switch (p.kind) {
     case "requires_edge":
-      return `Nodes must have an outgoing \`${r.edge_type}\` edge${r.target_node_type ? ` to a ${r.target_node_type}` : ""}.`;
+      return `Nodes must have an outgoing \`${p.edge_type}\` edge${p.target_node_type ? ` to a ${p.target_node_type}` : ""}.`;
     case "forbids_edge":
-      return `Nodes must NOT have a \`${r.edge_type}\` edge${r.target_node_type ? ` to a ${r.target_node_type}` : ""}.`;
+      return `Nodes must NOT have a \`${p.edge_type}\` edge${p.target_node_type ? ` to a ${p.target_node_type}` : ""}.`;
     case "requires_field": {
-      const fields = asFieldList(r);
+      const fields = asFieldList(p);
       if (fields.length === 0) return `Nodes must declare a field.`;
       if (fields.length === 1) return `Nodes must declare the \`${fields[0]}\` field.`;
       return `Nodes must declare these fields: ${fields.map((f) => `\`${f}\``).join(", ")}.`;
     }
     case "forbids_field": {
-      const fields = asFieldList(r);
+      const fields = asFieldList(p);
       if (fields.length === 0) return `Nodes must NOT declare a field.`;
       return `Nodes must NOT declare these fields: ${fields.map((f) => `\`${f}\``).join(", ")}.`;
     }
     case "mandatory_scope": {
-      const ids = asScopeIdList(r);
-      const names = ids.map((id) => allScopes.find((s) => s.id === id)?.name ?? id);
+      const names = asScopeIdList(p).map(
+        (id) => allScopes.find((s) => s.id === id)?.name ?? id,
+      );
       if (names.length === 0) return `Every node in this Doco must list a scope.`;
       if (names.length === 1)
         return `Every node in this Doco must list scope \`${names[0]}\`.`;
@@ -525,33 +463,35 @@ function describeAuthoringRule(
         .join(", ")}.`;
     }
     case "probabilistic":
-      return `LLM-judged: ${r.spec}`;
+      return `LLM-judged: ${p.spec}`;
     default:
-      return `(${r.kind})`;
+      return `(${p.kind})`;
   }
 }
 
 function predicateShorthand(
-  r: AuthoringRuleRecord,
+  p: AuthoringPredicateRecord,
   allScopes: { id: string; name: string }[],
 ): string {
-  switch (r.kind) {
+  switch (p.kind) {
     case "requires_edge":
-      return `requires \`${r.edge_type ?? "?"}\`${r.target_node_type ? ` → ${r.target_node_type}` : ""}`;
+      return `requires \`${p.edge_type ?? "?"}\`${p.target_node_type ? ` → ${p.target_node_type}` : ""}`;
     case "forbids_edge":
-      return `forbids \`${r.edge_type ?? "?"}\`${r.target_node_type ? ` → ${r.target_node_type}` : ""}`;
+      return `forbids \`${p.edge_type ?? "?"}\`${p.target_node_type ? ` → ${p.target_node_type}` : ""}`;
     case "requires_field":
-      return `requires fields: ${asFieldList(r).join(", ") || "—"}`;
+      return `requires fields: ${asFieldList(p).join(", ") || "—"}`;
     case "forbids_field":
-      return `forbids fields: ${asFieldList(r).join(", ") || "—"}`;
+      return `forbids fields: ${asFieldList(p).join(", ") || "—"}`;
     case "mandatory_scope": {
-      const names = asScopeIdList(r).map((id) => allScopes.find((s) => s.id === id)?.name ?? id);
+      const names = asScopeIdList(p).map(
+        (id) => allScopes.find((s) => s.id === id)?.name ?? id,
+      );
       return `mandatory scope: ${names.join(", ") || "—"}`;
     }
     case "probabilistic":
       return "LLM-judged at capture time";
     default:
-      return r.kind;
+      return p.kind;
   }
 }
 
@@ -562,11 +502,10 @@ export default function ScopePage({
   loaderData: Awaited<ReturnType<typeof loader>>;
   actionData?: { error?: string } | undefined;
 }) {
-  const { ownerSlug, docoSlug, scope, allScopes, memberCount, memberStats, byDay, items, taggedRules, me } =
+  const { ownerSlug, docoSlug, scope, rules, allScopes, memberCount, memberStats, byDay, items, me } =
     loaderData;
 
-  // Live revalidation for the activity feed and rule counts — same
-  // pattern as the Doco home page (ADR-089).
+  // Live revalidation for the activity feed.
   const revalidator = useRevalidator();
   useEffect(() => {
     let tick: ReturnType<typeof setInterval> | null = null;
@@ -596,13 +535,6 @@ export default function ScopePage({
     };
   }, [revalidator]);
 
-  const activeAuthoring = scope.authoring_rules.filter((r) => isActive(ruleLifecycle(r)));
-  const deprecatedAuthoring = scope.authoring_rules.filter((r) => !isActive(ruleLifecycle(r)));
-  const activeGuidance = scope.guidance_rules.filter((r) => isActive(ruleLifecycle(r)));
-  const deprecatedGuidance = scope.guidance_rules.filter((r) => !isActive(ruleLifecycle(r)));
-  const activeTagged = taggedRules.filter((r) => isActive(r.lifecycle));
-  const deprecatedTagged = taggedRules.filter((r) => !isActive(r.lifecycle));
-
   return (
     <div>
       <SiteHeader mode="host" me={me} docoScope={{ ownerSlug, docoSlug }} />
@@ -618,7 +550,9 @@ export default function ScopePage({
             {scope.icon ? <span className="mr-1">{scope.icon}</span> : null}
             <span className="font-mono">{scope.name}</span>
             {scope.name === "global" ? (
-              <span className="ml-2 text-xs text-muted-foreground">(the doco's constitution)</span>
+              <span className="ml-2 text-xs text-muted-foreground">
+                (the doco's constitution)
+              </span>
             ) : null}
           </h1>
           <Link
@@ -632,7 +566,7 @@ export default function ScopePage({
         <div className="grid gap-4 min-[840px]:grid-cols-12">
           {/* Left column */}
           <div className="min-[840px]:col-span-7 space-y-4">
-            {/* Stats card */}
+            {/* Stats */}
             <Card>
               <CardHeader>
                 <CardTitle className="text-sm">Members ({memberCount})</CardTitle>
@@ -677,260 +611,49 @@ export default function ScopePage({
               </CardContent>
             </Card>
 
-            {/* Authoring rules */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-sm">
-                  Authoring rules ({activeAuthoring.length}
-                  {deprecatedAuthoring.length > 0 ? ` + ${deprecatedAuthoring.length} deprecated` : ""})
-                </CardTitle>
-                <CardDescription>
-                  Predicates the engine evaluates whenever a node enters this scope. Deterministic
-                  kinds block writes structurally; probabilistic specs run an LLM judge and reject
-                  on a "no" verdict.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {activeAuthoring.length === 0 ? (
-                  <p className="text-xs italic text-muted-foreground">No active authoring rules.</p>
-                ) : (
-                  <ul className="space-y-2">
-                    {scope.authoring_rules.map((r, i) =>
-                      isActive(ruleLifecycle(r)) ? (
-                        <li
-                          key={`a-${i}`}
-                          className="flex items-baseline gap-2 rounded-md border border-border bg-card p-2 text-xs"
-                        >
-                          <Badge>
-                            Authoring · {r.kind === "probabilistic" ? "probabilistic" : "deterministic"}
-                          </Badge>
-                          <div className="flex-1 space-y-0.5">
-                            <div className="text-foreground">{describeAuthoringRule(r, allScopes)}</div>
-                            <div className="font-mono text-[10px] text-muted-foreground">
-                              {predicateShorthand(r, allScopes)}
-                            </div>
-                          </div>
-                          <Form method="post">
-                            <input type="hidden" name="intent" value="deprecate_authoring_rule" />
-                            <input type="hidden" name="rule_index" value={String(i)} />
-                            <button
-                              type="submit"
-                              className="rounded-md border border-border px-2 py-0.5 text-[10px] text-destructive hover:bg-destructive/10"
-                            >
-                              Deprecate
-                            </button>
-                          </Form>
-                        </li>
-                      ) : null,
-                    )}
-                  </ul>
-                )}
-                {deprecatedAuthoring.length > 0 ? (
-                  <details className="text-xs">
-                    <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
-                      Show deprecated ({deprecatedAuthoring.length})
-                    </summary>
-                    <ul className="mt-2 space-y-2">
-                      {scope.authoring_rules.map((r, i) =>
-                        isActive(ruleLifecycle(r)) ? null : (
-                          <li
-                            key={`a-dep-${i}`}
-                            className="flex items-baseline gap-2 rounded-md border border-border bg-card/50 p-2 text-xs opacity-60"
-                          >
-                            <Badge>{ruleLifecycle(r)}</Badge>
-                            <div className="flex-1 space-y-0.5">
-                              <div className="text-foreground line-through">
-                                {describeAuthoringRule(r, allScopes)}
-                              </div>
-                              <div className="font-mono text-[10px] text-muted-foreground">
-                                {predicateShorthand(r, allScopes)}
-                              </div>
-                            </div>
-                            <Form method="post">
-                              <input type="hidden" name="intent" value="reactivate_authoring_rule" />
-                              <input type="hidden" name="rule_index" value={String(i)} />
-                              <button
-                                type="submit"
-                                className="rounded-md border border-border px-2 py-0.5 text-[10px] text-foreground hover:bg-card"
-                              >
-                                Reactivate
-                              </button>
-                            </Form>
-                          </li>
-                        ),
-                      )}
-                    </ul>
-                  </details>
-                ) : null}
-              </CardContent>
-            </Card>
+            <RuleSectionCard
+              title="Authoring rules"
+              description={
+                "Predicates the engine evaluates whenever a node enters this scope. Deterministic kinds block writes structurally; probabilistic specs run an LLM judge and reject on a “no” verdict."
+              }
+              kind="authoring"
+              rules={rules.authoring}
+              allScopes={allScopes}
+              ownerSlug={ownerSlug}
+              docoSlug={docoSlug}
+            />
 
-            {/* Guidance rules */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-sm">
-                  Guidance rules ({activeGuidance.length}
-                  {deprecatedGuidance.length > 0 ? ` + ${deprecatedGuidance.length} deprecated` : ""})
-                </CardTitle>
-                <CardDescription>
-                  Prose the agent reads while working in or with this scope. No automated check —
-                  directive but not enforced.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {activeGuidance.length === 0 ? (
-                  <p className="text-xs italic text-muted-foreground">No active guidance rules.</p>
-                ) : (
-                  <ul className="space-y-2">
-                    {scope.guidance_rules.map((r, i) =>
-                      isActive(ruleLifecycle(r)) ? (
-                        <li
-                          key={`g-${i}`}
-                          className="flex items-baseline gap-2 rounded-md border border-border bg-card p-2 text-xs"
-                        >
-                          <Badge>Guidance</Badge>
-                          <div className="flex-1 text-foreground whitespace-pre-wrap">{r.text}</div>
-                          <Form method="post">
-                            <input type="hidden" name="intent" value="deprecate_guidance_rule" />
-                            <input type="hidden" name="rule_index" value={String(i)} />
-                            <button
-                              type="submit"
-                              className="rounded-md border border-border px-2 py-0.5 text-[10px] text-destructive hover:bg-destructive/10"
-                            >
-                              Deprecate
-                            </button>
-                          </Form>
-                        </li>
-                      ) : null,
-                    )}
-                  </ul>
-                )}
-                {deprecatedGuidance.length > 0 ? (
-                  <details className="text-xs">
-                    <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
-                      Show deprecated ({deprecatedGuidance.length})
-                    </summary>
-                    <ul className="mt-2 space-y-2">
-                      {scope.guidance_rules.map((r, i) =>
-                        isActive(ruleLifecycle(r)) ? null : (
-                          <li
-                            key={`g-dep-${i}`}
-                            className="flex items-baseline gap-2 rounded-md border border-border bg-card/50 p-2 text-xs opacity-60"
-                          >
-                            <Badge>{ruleLifecycle(r)}</Badge>
-                            <div className="flex-1 text-foreground whitespace-pre-wrap line-through">
-                              {r.text}
-                            </div>
-                            <Form method="post">
-                              <input type="hidden" name="intent" value="reactivate_guidance_rule" />
-                              <input type="hidden" name="rule_index" value={String(i)} />
-                              <button
-                                type="submit"
-                                className="rounded-md border border-border px-2 py-0.5 text-[10px] text-foreground hover:bg-card"
-                              >
-                                Reactivate
-                              </button>
-                            </Form>
-                          </li>
-                        ),
-                      )}
-                    </ul>
-                  </details>
-                ) : null}
-              </CardContent>
-            </Card>
+            <RuleSectionCard
+              title="Guidance rules"
+              description={
+                "Prose the agent reads while working in or with this scope. No automated check — directive but not enforced."
+              }
+              kind="guidance"
+              rules={rules.guidance}
+              allScopes={allScopes}
+              ownerSlug={ownerSlug}
+              docoSlug={docoSlug}
+            />
 
-            {/* Tagged rules (first-class Rule entities tagged in_scope_of this scope) */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-sm">
-                  Tagged rules ({activeTagged.length}
-                  {deprecatedTagged.length > 0 ? ` + ${deprecatedTagged.length} deprecated` : ""})
-                </CardTitle>
-                <CardDescription>
-                  Rule entities (first-class nodes in the doco's graph) tagged with this scope.
-                  Authored as Rule nodes elsewhere; listed here for context. Deprecating updates
-                  the Rule entity's lifecycle.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {activeTagged.length === 0 ? (
-                  <p className="text-xs italic text-muted-foreground">No active tagged rules.</p>
-                ) : (
-                  <ul className="space-y-2">
-                    {activeTagged.map((r) => (
-                      <li
-                        key={r.id}
-                        className="flex items-baseline gap-2 rounded-md border border-border bg-card p-2 text-xs"
-                      >
-                        <Badge>Rule</Badge>
-                        <div className="flex-1">
-                          <Link
-                            to={entityUrl({ ownerSlug, docoSlug, nodeType: "rule", id: r.id })}
-                            className="text-foreground hover:text-primary hover:underline"
-                          >
-                            {r.summary}
-                          </Link>
-                        </div>
-                        <Form method="post">
-                          <input type="hidden" name="intent" value="deprecate_tagged_rule" />
-                          <input type="hidden" name="rule_id" value={r.id} />
-                          <button
-                            type="submit"
-                            className="rounded-md border border-border px-2 py-0.5 text-[10px] text-destructive hover:bg-destructive/10"
-                          >
-                            Deprecate
-                          </button>
-                        </Form>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-                {deprecatedTagged.length > 0 ? (
-                  <details className="text-xs">
-                    <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
-                      Show deprecated ({deprecatedTagged.length})
-                    </summary>
-                    <ul className="mt-2 space-y-2">
-                      {deprecatedTagged.map((r) => (
-                        <li
-                          key={r.id}
-                          className="flex items-baseline gap-2 rounded-md border border-border bg-card/50 p-2 text-xs opacity-60"
-                        >
-                          <Badge>{r.lifecycle}</Badge>
-                          <div className="flex-1">
-                            <Link
-                              to={entityUrl({ ownerSlug, docoSlug, nodeType: "rule", id: r.id })}
-                              className="text-foreground line-through hover:text-primary hover:no-underline"
-                            >
-                              {r.summary}
-                            </Link>
-                          </div>
-                          <Form method="post">
-                            <input type="hidden" name="intent" value="reactivate_tagged_rule" />
-                            <input type="hidden" name="rule_id" value={r.id} />
-                            <button
-                              type="submit"
-                              className="rounded-md border border-border px-2 py-0.5 text-[10px] text-foreground hover:bg-card"
-                            >
-                              Reactivate
-                            </button>
-                          </Form>
-                        </li>
-                      ))}
-                    </ul>
-                  </details>
-                ) : null}
-              </CardContent>
-            </Card>
+            <RuleSectionCard
+              title="Tagged rules"
+              description={
+                "Rule entities authored elsewhere and tagged with this scope. Deprecate / reactivate behaves the same as for Authoring + Guidance rules — all three are Rule entities now (decision_01KRPRDR1AD7S1RP6E69BQDB2G)."
+              }
+              kind="tagged"
+              rules={rules.tagged}
+              allScopes={allScopes}
+              ownerSlug={ownerSlug}
+              docoSlug={docoSlug}
+            />
 
-            {/* Add rules — single prose textarea + classifier preview */}
             <Card>
               <CardHeader>
                 <CardTitle className="text-sm">Add rules</CardTitle>
                 <CardDescription>
                   Describe one or more rules in plain English. The classifier splits multi-rule
-                  prose, buckets each into authoring or guidance, and shows a preview before saving.
+                  prose, buckets each into authoring or guidance, and shows a preview before
+                  saving.
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -938,7 +661,6 @@ export default function ScopePage({
               </CardContent>
             </Card>
 
-            {/* Icon */}
             <Card>
               <CardHeader>
                 <CardTitle className="text-sm">Icon</CardTitle>
@@ -963,15 +685,13 @@ export default function ScopePage({
               </CardContent>
             </Card>
 
-            {/* Deprecate scope (link to standalone confirmation page) */}
             {scope.name === "global" ? null : (
               <Card className="border-destructive/40">
                 <CardHeader>
                   <CardTitle className="text-sm text-destructive">Deprecate scope</CardTitle>
                   <CardDescription>
                     Retire this scope. Existing members keep their tag and remain queryable, but
-                    new captures referencing this scope are rejected. Standalone confirmation
-                    page — no destructive action here.
+                    new captures referencing this scope are rejected.
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -1041,10 +761,127 @@ export default function ScopePage({
   );
 }
 
+function RuleSectionCard({
+  title,
+  description,
+  kind,
+  rules,
+  allScopes,
+  ownerSlug,
+  docoSlug,
+}: {
+  title: string;
+  description: string;
+  kind: RuleKind;
+  rules: RuleRecord[];
+  allScopes: { id: string; name: string }[];
+  ownerSlug: string;
+  docoSlug: string;
+}) {
+  const active = rules.filter((r) => isActive(r.lifecycle));
+  const deprecated = rules.filter((r) => !isActive(r.lifecycle));
+  const badgeFor = (r: RuleRecord) => {
+    if (kind === "authoring" && r.predicate) {
+      return `Authoring · ${r.predicate.kind === "probabilistic" ? "probabilistic" : "deterministic"}`;
+    }
+    if (kind === "guidance") return "Guidance";
+    return "Rule";
+  };
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-sm">
+          {title} ({active.length}
+          {deprecated.length > 0 ? ` + ${deprecated.length} deprecated` : ""})
+        </CardTitle>
+        <CardDescription>{description}</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {active.length === 0 ? (
+          <p className="text-xs italic text-muted-foreground">No active rules.</p>
+        ) : (
+          <ul className="space-y-2">
+            {active.map((r) => (
+              <li
+                key={r.id}
+                className="flex items-baseline gap-2 rounded-md border border-border bg-card p-2 text-xs"
+              >
+                <Badge>{badgeFor(r)}</Badge>
+                <div className="flex-1 space-y-0.5">
+                  <Link
+                    to={entityUrl({ ownerSlug, docoSlug, nodeType: "rule", id: r.id })}
+                    className="block text-foreground hover:text-primary"
+                  >
+                    {r.summary}
+                  </Link>
+                  {r.predicate ? (
+                    <div className="font-mono text-[10px] text-muted-foreground">
+                      {predicateShorthand(r.predicate, allScopes)}
+                    </div>
+                  ) : null}
+                </div>
+                <Form method="post">
+                  <input type="hidden" name="intent" value="deprecate_rule" />
+                  <input type="hidden" name="rule_id" value={r.id} />
+                  <button
+                    type="submit"
+                    className="rounded-md border border-border px-2 py-0.5 text-[10px] text-destructive hover:bg-destructive/10"
+                  >
+                    Deprecate
+                  </button>
+                </Form>
+              </li>
+            ))}
+          </ul>
+        )}
+        {deprecated.length > 0 ? (
+          <details className="text-xs">
+            <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
+              Show deprecated ({deprecated.length})
+            </summary>
+            <ul className="mt-2 space-y-2">
+              {deprecated.map((r) => (
+                <li
+                  key={r.id}
+                  className="flex items-baseline gap-2 rounded-md border border-border bg-card/50 p-2 text-xs opacity-60"
+                >
+                  <Badge>{r.lifecycle}</Badge>
+                  <div className="flex-1 space-y-0.5">
+                    <Link
+                      to={entityUrl({ ownerSlug, docoSlug, nodeType: "rule", id: r.id })}
+                      className="block text-foreground line-through hover:text-primary"
+                    >
+                      {r.summary}
+                    </Link>
+                    {r.predicate ? (
+                      <div className="font-mono text-[10px] text-muted-foreground">
+                        {predicateShorthand(r.predicate, allScopes)}
+                      </div>
+                    ) : null}
+                  </div>
+                  <Form method="post">
+                    <input type="hidden" name="intent" value="reactivate_rule" />
+                    <input type="hidden" name="rule_id" value={r.id} />
+                    <button
+                      type="submit"
+                      className="rounded-md border border-border px-2 py-0.5 text-[10px] text-foreground hover:bg-card"
+                    >
+                      Reactivate
+                    </button>
+                  </Form>
+                </li>
+              ))}
+            </ul>
+          </details>
+        ) : null}
+      </CardContent>
+    </Card>
+  );
+}
+
 /**
  * Watched-flag toggle — auto-saves on change. Locked + always-on for the
- * Global scope (the doco's constitution) per
- * decision_01KRKS5H2A5QER84CJ8R4VD36Z.
+ * Global scope (the doco's constitution).
  */
 function WatchedSwitch({
   isWatched,
@@ -1107,9 +944,10 @@ function WatchedSwitch({
 
 /**
  * Prose rule editor — single textarea + classifier preview + accept.
- * See decision_01KRPET95G2QNTPCR0YWAKSCH5 (prose-driven rule authoring)
- * and decision_01KRPNZY7W6CCMYNKGND67BP0B (extended to bucket into
- * authoring + guidance, with lifecycle on each rule).
+ * Per decision_01KRPRDR1AD7S1RP6E69BQDB2G the server creates Rule
+ * entities (one per classified row) instead of pushing onto embedded
+ * arrays. The UI shape is unchanged from
+ * decision_01KRPNZY7W6CCMYNKGND67BP0B.
  */
 function RuleProseEditor({ allScopes }: { allScopes: { id: string; name: string }[] }) {
   const fetcher = useFetcher<{
@@ -1172,7 +1010,7 @@ function RuleProseEditor({ allScopes }: { allScopes: { id: string; name: string 
                 );
               }
               const isProbabilistic = c.rule.kind === "probabilistic";
-              const asRecord = c.rule as unknown as AuthoringRuleRecord;
+              const asRecord = c.rule as unknown as AuthoringPredicateRecord;
               return (
                 <li
                   key={i}

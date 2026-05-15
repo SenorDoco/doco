@@ -1,3 +1,6 @@
+import { withClient } from "@doco/db";
+import { globalPageRank, personalizedPageRank } from "@doco/index";
+import { ENTITY_TYPES, type EntityId, entityListUrl, entityUrl, parseEntityId } from "@doco/shared";
 // Per-Doco entity detail at the short URL `/:ownerSlug/:docoSlug/:type/:id`.
 //
 // Replaces the legacy `/e/:type/:id` URL — that path now redirects here.
@@ -5,14 +8,11 @@
 import { useState } from "react";
 import { Form, Link, redirect } from "react-router";
 import { parse as parseYaml } from "yaml";
-import { type EntityId, ENTITY_TYPES, entityUrl, entityListUrl } from "@doco/shared";
-import { withClient } from "@doco/db";
+import { type AuditEvent, readEntityHistory } from "~/lib/audit-log.server";
 import { docoPath } from "~/lib/db.server";
 import { loadDocoForAdmin, loadDocoForRead } from "~/lib/doco-access.server";
 import { loadHostConfig } from "~/lib/host";
-import { globalPageRank, personalizedPageRank } from "@doco/index";
 import { reindex, updateScopeInDoco } from "~/lib/redeem.server";
-import { readEntityHistory, type AuditEvent } from "~/lib/audit-log.server";
 
 /** External node_type → PG table name. */
 const TABLE_BY_TYPE: Record<string, string> = {
@@ -35,11 +35,40 @@ function tableFor(nodeType: string): string {
 
 /** Tables that live at host level (no doco_id column). */
 const HOST_LEVEL_TABLES = new Set(["principals", "organizations"]);
-import { SiteHeader } from "~/components/site-header";
+
+type IdentitySummary = {
+  id: string;
+  node_type: "principal" | "organization";
+  label: string;
+  detail: string;
+};
+
+function collectIdentityIds(value: unknown, out = new Set<string>()): Set<string> {
+  if (typeof value === "string") {
+    const parsed = parseEntityId(value);
+    if (parsed?.type === "principal" || parsed?.type === "organization") out.add(value);
+    return out;
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) collectIdentityIds(item, out);
+    return out;
+  }
+  if (value && typeof value === "object") {
+    for (const item of Object.values(value as Record<string, unknown>)) {
+      collectIdentityIds(item, out);
+    }
+  }
+  return out;
+}
+
+function displayPrincipalType(type: string): string {
+  return type === "human" ? "person" : type;
+}
 import { Badge } from "~/components/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "~/components/table";
 import { EntityGraph, type GraphLink, type GraphNode } from "~/components/entity-graph";
+import { SiteHeader } from "~/components/site-header";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "~/components/table";
 
 /** "Ns / Nm / Nh / Nd ago" — same shape the graph component uses. */
 function relativeTimeIso(iso: string): string {
@@ -98,7 +127,7 @@ export async function loader({
       if (!row && type === "scope") {
         row = (
           await c.query<{ raw_yaml: string; id: string }>(
-            `SELECT raw_yaml, id FROM scopes WHERE name = $1 AND doco_id = $2`,
+            "SELECT raw_yaml, id FROM scopes WHERE name = $1 AND doco_id = $2",
             [idParam, docoId],
           )
         ).rows[0];
@@ -112,7 +141,7 @@ export async function loader({
     const entityScopes: { id: string; name: string; icon: string | null }[] = [];
     if (entityScopeIds.length > 0) {
       const r = await c.query<{ id: string; name: string; raw_yaml: string }>(
-        `SELECT id, name, raw_yaml FROM scopes WHERE doco_id = $1 AND id = ANY($2::text[])`,
+        "SELECT id, name, raw_yaml FROM scopes WHERE doco_id = $1 AND id = ANY($2::text[])",
         [docoId, entityScopeIds],
       );
       const byId = new Map(r.rows.map((s) => [s.id, s]));
@@ -159,7 +188,7 @@ export async function loader({
 
     const allEdgesRows = (
       await c.query<{ from_id: string; to_id: string; edge_type: string; attribution: string }>(
-        `SELECT from_id, to_id, edge_type, attribution FROM edges WHERE doco_id = $1`,
+        "SELECT from_id, to_id, edge_type, attribution FROM edges WHERE doco_id = $1",
         [docoId],
       )
     ).rows;
@@ -188,17 +217,25 @@ export async function loader({
       arr.push(nid);
       neighborsByTable.set(tbl, arr);
     }
-    const neighborMeta = new Map<string, { summary: string; name: string | null; created_at: string | null; node_type: string }>();
+    const neighborMeta = new Map<
+      string,
+      { summary: string; name: string | null; created_at: string | null; node_type: string }
+    >();
     for (const [tbl, ids] of neighborsByTable) {
       try {
         const isHost = HOST_LEVEL_TABLES.has(tbl);
         const isScope = tbl === "scopes";
-        const cols = isScope ? "id, summary, name, created_at::text" : "id, summary, created_at::text";
+        const cols = isScope
+          ? "id, summary, name, created_at::text"
+          : "id, summary, created_at::text";
         const sql = isHost
           ? `SELECT ${cols} FROM ${tbl} WHERE id = ANY($1::text[])`
           : `SELECT ${cols} FROM ${tbl} WHERE id = ANY($1::text[]) AND doco_id = $2`;
         const params = isHost ? [ids] : [ids, docoId];
-        const r = await c.query<{ id: string; summary: string; name?: string; created_at: string }>(sql, params);
+        const r = await c.query<{ id: string; summary: string; name?: string; created_at: string }>(
+          sql,
+          params,
+        );
         for (const row of r.rows) {
           const m = /^([a-z_]+)_/.exec(row.id);
           const nt = m?.[1] ?? "";
@@ -245,10 +282,8 @@ export async function loader({
     } | null = null;
     if (type === "scope") {
       const memberTypes = ["intent", "decision", "action", "rule", "idea", "reasoning"] as const;
-      const members: Record<
-        string,
-        { id: string; summary: string; lifecycle: string | null }[]
-      > = {};
+      const members: Record<string, { id: string; summary: string; lifecycle: string | null }[]> =
+        {};
       for (const t of memberTypes) {
         const memTable = tableFor(t);
         const rows = (
@@ -284,7 +319,7 @@ export async function loader({
     if (type === "scope") {
       allScopes = (
         await c.query<{ id: string; name: string }>(
-          `SELECT id, name FROM scopes WHERE doco_id = $1 AND id != $2 ORDER BY name`,
+          "SELECT id, name FROM scopes WHERE doco_id = $1 AND id != $2 ORDER BY name",
           [docoId, id],
         )
       ).rows;
@@ -298,6 +333,65 @@ export async function loader({
         ? (ent as { doco_id: string }).doco_id
         : undefined,
     );
+    const identityIds = collectIdentityIds(ent);
+    collectIdentityIds(history, identityIds);
+    for (const e of outgoing) collectIdentityIds(e.to_id, identityIds);
+    for (const e of incoming) collectIdentityIds(e.from_id, identityIds);
+
+    const identityMap: Record<string, IdentitySummary> = {};
+    const principalIds = [...identityIds].filter(
+      (candidate) => parseEntityId(candidate)?.type === "principal",
+    );
+    if (principalIds.length > 0) {
+      const principals = (
+        await c.query<{
+          id: string;
+          username: string;
+          type: string;
+          display_name: string | null;
+        }>(
+          `SELECT id, username, type, display_name
+             FROM principals
+            WHERE id = ANY($1::text[])`,
+          [principalIds],
+        )
+      ).rows;
+      for (const p of principals) {
+        const kind = displayPrincipalType(p.type);
+        identityMap[p.id] = {
+          id: p.id,
+          node_type: "principal",
+          label: p.display_name ?? p.username ?? p.id,
+          detail: `${kind} · ${p.username}`,
+        };
+      }
+    }
+    const organizationIds = [...identityIds].filter(
+      (candidate) => parseEntityId(candidate)?.type === "organization",
+    );
+    if (organizationIds.length > 0) {
+      const organizations = (
+        await c.query<{
+          id: string;
+          slug: string;
+          name: string | null;
+        }>(
+          `SELECT id, slug, name
+             FROM organizations
+            WHERE id = ANY($1::text[])`,
+          [organizationIds],
+        )
+      ).rows;
+      for (const org of organizations) {
+        identityMap[org.id] = {
+          id: org.id,
+          node_type: "organization",
+          label: org.name ?? org.slug ?? org.id,
+          detail: `organization · ${org.slug}`,
+        };
+      }
+    }
+
     return {
       ent,
       entityScopes,
@@ -314,6 +408,7 @@ export async function loader({
       allScopes,
       me,
       history,
+      identityMap,
     };
   });
 }
@@ -396,6 +491,7 @@ export default function EntityDetail({
     allScopes,
     me,
     history,
+    identityMap,
   } = loaderData;
   // Per ADR-018 each node type has its own handle field — username, name,
   // title, locator. Fall through to anything that reads as friendly
@@ -419,7 +515,9 @@ export default function EntityDetail({
   // Focal node's GPR (computed in the loader for every neighbor including center).
   const focalNode = graphNodes.find((n) => n.is_center);
   const focalGpr = focalNode?.gpr ?? null;
-  const focalCreatedAt = focalNode?.created_at ?? (typeof ent.created_at === "string" ? (ent.created_at as string) : null);
+  const focalCreatedAt =
+    focalNode?.created_at ??
+    (typeof ent.created_at === "string" ? (ent.created_at as string) : null);
 
   // PPR-ranked neighbors for the "More relevant nodes" list — drop the focal,
   // take the top 10, render in descending order.
@@ -465,7 +563,10 @@ export default function EntityDetail({
       <CardContent>
         <dl className="grid grid-cols-[max-content_1fr] gap-x-3 gap-y-2 text-xs">
           <dt className="text-muted-foreground">Id</dt>
-          <dd className="font-mono break-all" title="Entity ULID id — primary key in this Doco's storage">
+          <dd
+            className="font-mono break-all"
+            title="Entity ULID id — primary key in this Doco's storage"
+          >
             {id}
           </dd>
           <dt className="text-muted-foreground">Created</dt>
@@ -483,9 +584,7 @@ export default function EntityDetail({
     <Card>
       <CardHeader>
         <CardTitle className="text-sm">More relevant nodes ({rankedNeighbors.length})</CardTitle>
-        <CardDescription>
-          Sorted by personalized PageRank from this node (ADR-076).
-        </CardDescription>
+        <CardDescription>Sorted by personalized PageRank from this node (ADR-076).</CardDescription>
       </CardHeader>
       <CardContent className="p-0">
         <ul className="divide-y divide-border">
@@ -547,16 +646,14 @@ export default function EntityDetail({
               </Link>
             </CardTitle>
             <CardDescription>
-              Per ADR-079 — entities that declare <code>scopes: [{id}]</code> in their
-              frontmatter, grouped by node type.
+              Per ADR-079 — entities that declare <code>scopes: [{id}]</code> in their frontmatter,
+              grouped by node type.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             {scopeLanding.subScopes.length > 0 ? (
               <div>
-                <p className="text-xs font-semibold uppercase text-muted-foreground">
-                  Sub-scopes
-                </p>
+                <p className="text-xs font-semibold uppercase text-muted-foreground">Sub-scopes</p>
                 <div className="mt-1 flex flex-wrap gap-2">
                   {scopeLanding.subScopes.map((s) => (
                     <Link
@@ -599,8 +696,8 @@ export default function EntityDetail({
             ))}
             {Object.keys(scopeLanding.members).length === 0 ? (
               <p className="text-xs text-muted-foreground">
-                No members yet. Reference this scope from any entity's <code>scopes:</code>{" "}
-                array to populate the dashboard.
+                No members yet. Reference this scope from any entity's <code>scopes:</code> array to
+                populate the dashboard.
               </p>
             ) : null}
           </CardContent>
@@ -611,9 +708,7 @@ export default function EntityDetail({
         <Card>
           <CardHeader>
             <CardTitle className="text-sm">Manage scope</CardTitle>
-            <CardDescription>
-              Change parents (reparent) or remove this scope.
-            </CardDescription>
+            <CardDescription>Change parents (reparent) or remove this scope.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             {/* Reparent */}
@@ -636,8 +731,8 @@ export default function EntityDetail({
                 <Form method="post" className="space-y-2">
                   <input type="hidden" name="intent" value="reparent" />
                   <p className="text-[11px] text-muted-foreground">
-                    Pick zero or more parents. Multi-parent supported. Leaving
-                    none makes this a root scope.
+                    Pick zero or more parents. Multi-parent supported. Leaving none makes this a
+                    root scope.
                   </p>
                   <div className="max-h-60 overflow-auto rounded-md border border-border p-2">
                     {allScopes.length === 0 ? (
@@ -646,10 +741,7 @@ export default function EntityDetail({
                       </p>
                     ) : (
                       allScopes.map((s) => (
-                        <label
-                          key={s.id}
-                          className="flex items-center gap-2 py-0.5 text-xs"
-                        >
+                        <label key={s.id} className="flex items-center gap-2 py-0.5 text-xs">
                           <input
                             type="checkbox"
                             name="parent_id"
@@ -678,9 +770,7 @@ export default function EntityDetail({
                   </div>
                 </Form>
               ) : currentParents.length === 0 ? (
-                <p className="text-xs text-muted-foreground">
-                  Root scope (no parents).
-                </p>
+                <p className="text-xs text-muted-foreground">Root scope (no parents).</p>
               ) : (
                 <ul className="flex flex-wrap gap-2 text-xs">
                   {currentParents.map((pid) => {
@@ -730,7 +820,10 @@ export default function EntityDetail({
                   <TableRow key={`${e.edge_type}-${e.to_id}`}>
                     <TableCell className="font-mono text-xs">{e.edge_type}</TableCell>
                     <TableCell>
-                      <Link to={linkTo(e.to_node_type, e.to_id)} className="text-primary hover:underline">
+                      <Link
+                        to={linkTo(e.to_node_type, e.to_id)}
+                        className="text-primary hover:underline"
+                      >
                         {e.to_id}
                       </Link>
                       <span className="ml-2 text-xs text-muted-foreground">({e.to_node_type})</span>
@@ -745,13 +838,11 @@ export default function EntityDetail({
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-sm">
-            Referenced by ({incoming.length})
-          </CardTitle>
+          <CardTitle className="text-sm">Referenced by ({incoming.length})</CardTitle>
           <CardDescription>
-            Other entities that point at this one. Per ADR-075. A zero count is a hint
-            that this entity may be isolated — consider whether it should be linked from
-            an Action, Decision, or other contextual node.
+            Other entities that point at this one. Per ADR-075. A zero count is a hint that this
+            entity may be isolated — consider whether it should be linked from an Action, Decision,
+            or other contextual node.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -772,10 +863,15 @@ export default function EntityDetail({
                   <TableRow key={`${e.edge_type}-${e.from_id}`}>
                     <TableCell className="font-mono text-xs">{e.edge_type}</TableCell>
                     <TableCell>
-                      <Link to={linkTo(e.from_node_type, e.from_id)} className="text-primary hover:underline">
+                      <Link
+                        to={linkTo(e.from_node_type, e.from_id)}
+                        className="text-primary hover:underline"
+                      >
                         {e.from_id}
                       </Link>
-                      <span className="ml-2 text-xs text-muted-foreground">({e.from_node_type})</span>
+                      <span className="ml-2 text-xs text-muted-foreground">
+                        ({e.from_node_type})
+                      </span>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -785,18 +881,9 @@ export default function EntityDetail({
         </CardContent>
       </Card>
 
-      <HistoryCard history={history} />
+      <HistoryCard history={history} identityMap={identityMap} linkTo={linkTo} />
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-sm">Raw entity</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <pre className="overflow-x-auto rounded-md border border-border bg-input p-3 text-[12px] leading-snug">
-            {JSON.stringify(ent, null, 2)}
-          </pre>
-        </CardContent>
-      </Card>
+      <MetadataCard ent={ent} identityMap={identityMap} linkTo={linkTo} />
     </div>
   );
 
@@ -829,15 +916,179 @@ export default function EntityDetail({
   );
 }
 
-function HistoryCard({ history }: { history: AuditEvent[] }) {
+type EntityLinkFn = (kind: string, otherId: string) => string;
+
+function MetadataCard({
+  ent,
+  identityMap,
+  linkTo,
+}: {
+  ent: Record<string, unknown>;
+  identityMap: Record<string, IdentitySummary>;
+  linkTo: EntityLinkFn;
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-sm">Metadata</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <dl className="divide-y divide-border text-xs">
+          {Object.entries(ent).map(([key, value]) => (
+            <div key={key} className="grid gap-2 py-2 md:grid-cols-[12rem_1fr]">
+              <dt className="font-mono text-muted-foreground">{key}</dt>
+              <dd className="min-w-0">
+                <MetadataValue value={value} identityMap={identityMap} linkTo={linkTo} />
+              </dd>
+            </div>
+          ))}
+        </dl>
+        <details className="mt-3 border-t border-border pt-3">
+          <summary className="cursor-pointer text-xs font-medium text-muted-foreground hover:text-foreground">
+            Raw JSON
+          </summary>
+          <pre className="mt-2 overflow-x-auto rounded-md border border-border bg-input p-3 text-[12px] leading-snug">
+            {JSON.stringify(ent, null, 2)}
+          </pre>
+        </details>
+      </CardContent>
+    </Card>
+  );
+}
+
+function MetadataValue({
+  value,
+  identityMap,
+  linkTo,
+}: {
+  value: unknown;
+  identityMap: Record<string, IdentitySummary>;
+  linkTo: EntityLinkFn;
+}) {
+  if (value === null) return <code className="font-mono text-muted-foreground">null</code>;
+  if (value === undefined)
+    return <code className="font-mono text-muted-foreground">undefined</code>;
+
+  if (typeof value === "string") {
+    return <StringMetadataValue value={value} identityMap={identityMap} linkTo={linkTo} />;
+  }
+
+  if (typeof value === "number" || typeof value === "boolean") {
+    return <code className="font-mono">{String(value)}</code>;
+  }
+
+  if (Array.isArray(value)) {
+    if (value.length === 0) return <code className="font-mono text-muted-foreground">[]</code>;
+    return (
+      <ul className="space-y-1">
+        {value.map((item) => (
+          <li key={metadataItemKey(item)} className="min-w-0">
+            <MetadataValue value={item} identityMap={identityMap} linkTo={linkTo} />
+          </li>
+        ))}
+      </ul>
+    );
+  }
+
+  if (typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>);
+    if (entries.length === 0)
+      return <code className="font-mono text-muted-foreground">{"{}"}</code>;
+    return (
+      <dl className="space-y-1 rounded-md border border-border bg-input/30 p-2">
+        {entries.map(([key, nested]) => (
+          <div key={key} className="grid gap-1 md:grid-cols-[10rem_1fr]">
+            <dt className="font-mono text-muted-foreground">{key}</dt>
+            <dd className="min-w-0">
+              <MetadataValue value={nested} identityMap={identityMap} linkTo={linkTo} />
+            </dd>
+          </div>
+        ))}
+      </dl>
+    );
+  }
+
+  return <span className="break-words">{String(value)}</span>;
+}
+
+function metadataItemKey(item: unknown): string {
+  if (typeof item === "string" || typeof item === "number" || typeof item === "boolean") {
+    return `${typeof item}:${String(item)}`;
+  }
+  if (item === null) return "null";
+  if (item && typeof item === "object") {
+    const record = item as Record<string, unknown>;
+    if (typeof record.id === "string") return record.id;
+    if (typeof record.name === "string") return record.name;
+    return JSON.stringify(record);
+  }
+  return String(item);
+}
+
+function StringMetadataValue({
+  value,
+  identityMap,
+  linkTo,
+}: {
+  value: string;
+  identityMap: Record<string, IdentitySummary>;
+  linkTo: EntityLinkFn;
+}) {
+  const identity = identityMap[value];
+  if (identity) return <IdentityValue identity={identity} linkTo={linkTo} />;
+
+  const parsed = parseEntityId(value);
+  if (parsed && parsed.type !== "doco") {
+    return (
+      <Link to={linkTo(parsed.type, value)} className="font-mono text-primary hover:underline">
+        {value}
+      </Link>
+    );
+  }
+
+  return <span className="whitespace-pre-wrap break-words">{value}</span>;
+}
+
+function IdentityValue({
+  identity,
+  linkTo,
+}: {
+  identity: IdentitySummary;
+  linkTo: EntityLinkFn;
+}) {
+  return (
+    <span className="inline-flex max-w-full flex-col gap-0.5 sm:flex-row sm:flex-wrap sm:items-baseline sm:gap-2">
+      <Link
+        to={linkTo(identity.node_type, identity.id)}
+        className="font-medium text-primary hover:underline"
+      >
+        {identity.label}
+      </Link>
+      <span className="text-muted-foreground">{identity.detail}</span>
+      <code className="break-all font-mono text-[10px] text-muted-foreground" title={identity.id}>
+        {identity.id}
+      </code>
+    </span>
+  );
+}
+
+function HistoryCard({
+  history,
+  identityMap,
+  linkTo,
+}: {
+  history: AuditEvent[];
+  identityMap: Record<string, IdentitySummary>;
+  linkTo: EntityLinkFn;
+}) {
   if (!history || history.length === 0) {
     return (
       <Card>
         <CardHeader>
           <CardTitle className="text-sm">History</CardTitle>
           <CardDescription>
-            Audit events captured for this entity. None yet — the audit log started recording on
-            the day this Doco picked up the audit-events feature.
+            Audit events captured for this entity. None yet — the audit log started recording on the
+            day this Doco picked up the audit-events feature.
           </CardDescription>
         </CardHeader>
       </Card>
@@ -848,7 +1099,8 @@ function HistoryCard({ history }: { history: AuditEvent[] }) {
       <CardHeader>
         <CardTitle className="text-sm">History ({history.length})</CardTitle>
         <CardDescription>
-          Audit events for this entity, newest first. From <code>/api/audit.json?entity_id=...</code>.
+          Audit events for this entity, newest first. From{" "}
+          <code>/api/audit.json?entity_id=...</code>.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -858,7 +1110,11 @@ function HistoryCard({ history }: { history: AuditEvent[] }) {
               <div className="text-muted-foreground">
                 <code className="font-mono">{e.at.replace("T", " ").slice(0, 19)}Z</code>
                 <span className="mx-2">·</span>
-                <code className="font-mono">{e.by ?? "anonymous"}</code>
+                {e.by ? (
+                  <StringMetadataValue value={e.by} identityMap={identityMap} linkTo={linkTo} />
+                ) : (
+                  <code className="font-mono">anonymous</code>
+                )}
                 <span className="mx-2">·</span>
                 <span className="font-medium text-foreground">{e.op}</span>
               </div>
