@@ -23,7 +23,7 @@ if [ -z "${DOCO_HOST:-}" ] && [ -f "$PWD/.env" ]; then
   source "$PWD/.env"
   set +a
 fi
-DOCO_HOST="${DOCO_HOST:-http://localhost:5173}"
+DOCO_HOST="${DOCO_HOST:-https://doco.to}"
 
 emit_warning() {
   local msg=$1

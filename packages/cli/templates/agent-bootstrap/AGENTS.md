@@ -41,7 +41,7 @@ at the start of every task.
 
 Check `./.env` (gitignored). The hooks read three vars:
 
-- `DOCO_HOST` — your host URL (e.g. `http://localhost:5173` or
+- `DOCO_HOST` — your host URL (e.g. `https://doco.to` or
   `https://doco.example.com`).
 - `DOCO_TOKEN` — bearer token for write capture + per-Doco context
   on the bootstrap response.
