@@ -1,6 +1,6 @@
 // Server-only re-export. Keeps server-only dependencies (pg, etc.) out of
 // the client bundle. See lib/tokens.server.ts.
-export { findPrincipalById, addAgentPrincipal } from "./agents.server";
+export { addAgentPrincipal } from "./agents.server";
 export { suggestScopes } from "./llm.server";
 export type {
   ScopeSuggestion,
@@ -21,6 +21,7 @@ export {
 } from "@doco/host";
 import { reindex as reindexBare, type BuildReport } from "@doco/index";
 import { getDocoEmbeddingProvider } from "./embedding-provider.server";
+import { readDocoMetadata } from "./scope-helpers.server";
 
 export interface ReindexExtraOptions {
   /** Skip the OpenAI embedding pass (FTS + edges only). */
@@ -48,16 +49,25 @@ export interface ReindexExtraOptions {
  * `extra.skipEmbeddings` / `extra.skipStructural` split the two phases —
  * capture flow runs structural inline and embeddings in `waitUntil`.
  */
-export function reindex(
+export async function reindex(
   docoRoot: string,
   docoId?: string,
   changedEntityIds?: string[],
   extra?: ReindexExtraOptions,
 ): Promise<BuildReport> {
   const embeddingProvider = getDocoEmbeddingProvider();
+  // Postgres-backed serverless deploys have no doco.yaml on disk;
+  // reindexBare's filesystem code path raises "No doco.yaml at …" when
+  // docoId is missing. Resolve it from the docoRoot's slug pair so
+  // callers that hold only the synthetic dir path still work.
+  let resolvedDocoId = docoId;
+  if (!resolvedDocoId) {
+    const meta = await readDocoMetadata(docoRoot);
+    if (meta) resolvedDocoId = meta.docoId;
+  }
   const opts = {
     ...(embeddingProvider ? { embeddingProvider } : {}),
-    ...(docoId ? { docoId } : {}),
+    ...(resolvedDocoId ? { docoId: resolvedDocoId } : {}),
     ...(changedEntityIds && changedEntityIds.length > 0 ? { changedEntityIds } : {}),
     ...(extra?.skipEmbeddings ? { skipEmbeddings: true } : {}),
     ...(extra?.skipStructural ? { skipStructural: true } : {}),
