@@ -153,11 +153,32 @@ export function EntityGraph({ centerId, nodes, links, hrefFor }: EntityGraphProp
     };
   }, []);
 
+  // Card background fades white → neutral-400 as PPR drops. Range is taken
+  // across non-focal nodes so the focal AND the highest-PPR neighbor both
+  // land at white; weaker neighbors recede toward gray.
+  const pprBounds = useMemo(() => {
+    let min = Infinity;
+    let max = -Infinity;
+    for (const n of visible.nodes) {
+      if (n.is_center) continue;
+      if (n.ppr < min) min = n.ppr;
+      if (n.ppr > max) max = n.ppr;
+    }
+    return { min, max };
+  }, [visible.nodes]);
+
   const flowNodes = useMemo(
     () =>
       visible.nodes.map((n) => {
         const pos = positions.get(n.id) ?? { x: 0, y: 0 };
         const color = TYPE_COLOR[n.node_type] ?? FALLBACK_COLOR;
+        const pprRange = pprBounds.max - pprBounds.min;
+        let bg = "rgb(255,255,255)";
+        if (!n.is_center && pprRange > 0) {
+          const t = (n.ppr - pprBounds.min) / pprRange;
+          const v = Math.round(163 + 92 * t);
+          bg = `rgb(${v},${v},${v})`;
+        }
         const title = n.name ?? (n.summary.length > 40 ? `${n.summary.slice(0, 40)}…` : n.summary);
         // Subtitle only adds value when the title is a distinct handle (name).
         // For nameless nodes the title already IS the summary — showing it
@@ -217,7 +238,7 @@ export function EntityGraph({ centerId, nodes, links, hrefFor }: EntityGraphProp
             ),
           },
           style: {
-            background: "white",
+            background: bg,
             border: n.is_center ? `2px solid ${color}` : `1px solid ${color}66`,
             borderRadius: 8,
             padding: 0,
@@ -228,7 +249,7 @@ export function EntityGraph({ centerId, nodes, links, hrefFor }: EntityGraphProp
           targetPosition: "left" as const,
         };
       }),
-    [visible.nodes, positions],
+    [visible.nodes, positions, pprBounds],
   );
 
   const flowEdges = useMemo(
