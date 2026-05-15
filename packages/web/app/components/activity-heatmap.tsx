@@ -124,8 +124,11 @@ export function ActivityHeatmap({ byDay, weeks = 26 }: ActivityHeatmapProps) {
             </div>
           ))}
         </div>
-        {/* Scrollable region: month labels + data cells. */}
-        <div ref={scrollRef} className="min-w-0 flex-1 overflow-x-auto">
+        {/* Scrollable region: month labels + data cells. Pin overflow-y
+            explicitly — Tailwind's overflow-x-auto otherwise implies
+            overflow-y: auto, and the horizontal scrollbar's thickness
+            then forces a vertical scrollbar too. */}
+        <div ref={scrollRef} className="min-w-0 flex-1 overflow-x-auto overflow-y-hidden">
           <div className="inline-flex flex-col gap-1.5">
             <div className="flex gap-[3px]">
               {cols.map((_, c) => {
