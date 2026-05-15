@@ -5,7 +5,7 @@
 //
 // react-flow is loaded via dynamic import — it touches the DOM directly,
 // can't run during SSR.
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import "@xyflow/react/dist/style.css";
 
@@ -163,6 +163,71 @@ export function EntityGraph({ centerId, nodes, links, hrefFor }: EntityGraphProp
       canceled = true;
     };
   }, []);
+
+  // Round the viewport-window corners inside the MiniMap. React Flow
+  // renders the mask as an SVG <path> with two subpaths — an outer rect
+  // covering the panel bounds, and the inner viewport rect cut out via
+  // `fill-rule: evenodd`. The inner subpath uses sharp `h`/`v` commands
+  // (square corners), which read as a square window inside an otherwise-
+  // rounded panel. Patch `d` to substitute arc commands so the viewport
+  // matches the panel radius. `d` is recomputed on every pan/zoom, so a
+  // MutationObserver keeps the rounding applied.
+  const graphRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!Flow) return;
+    let canceled = false;
+    let lastAppliedD = "";
+
+    const roundInner = (path: SVGPathElement) => {
+      if (canceled) return;
+      const d = path.getAttribute("d") ?? "";
+      if (d === lastAppliedD) return;
+      // Second `M` starts the inner viewport subpath.
+      const innerIdx = d.indexOf("M", 1);
+      if (innerIdx < 0) return;
+      const inner = d.slice(innerIdx);
+      // Parse `M x,y h w v h h -w z` — the rectangular viewport.
+      const m = inner.match(/^M([-\d.]+),([-\d.]+)h([-\d.]+)v([-\d.]+)h/);
+      if (!m) return;
+      const x = Number.parseFloat(m[1]);
+      const y = Number.parseFloat(m[2]);
+      const w = Number.parseFloat(m[3]);
+      const h = Number.parseFloat(m[4]);
+      if (!Number.isFinite(x + y + w + h) || w < 12 || h < 12) return;
+      const r = Math.min(6, w / 4, h / 4);
+      const r2 = r * 2;
+      const rounded =
+        `M${x + r},${y}` +
+        `h${w - r2}a${r},${r} 0 0 1 ${r},${r}` +
+        `v${h - r2}a${r},${r} 0 0 1 ${-r},${r}` +
+        `h${-(w - r2)}a${r},${r} 0 0 1 ${-r},${-r}` +
+        `v${-(h - r2)}a${r},${r} 0 0 1 ${r},${-r}z`;
+      const newD = d.slice(0, innerIdx) + rounded;
+      if (newD === d) return;
+      lastAppliedD = newD;
+      path.setAttribute("d", newD);
+    };
+
+    let obs: MutationObserver | null = null;
+    const attach = () => {
+      if (canceled || !graphRef.current) return;
+      const path = graphRef.current.querySelector<SVGPathElement>(
+        ".react-flow__minimap-mask",
+      );
+      if (!path) {
+        requestAnimationFrame(attach);
+        return;
+      }
+      roundInner(path);
+      obs = new MutationObserver(() => roundInner(path));
+      obs.observe(path, { attributes: true, attributeFilter: ["d"] });
+    };
+    attach();
+    return () => {
+      canceled = true;
+      obs?.disconnect();
+    };
+  }, [Flow]);
 
   // Card background fades white → neutral-300 as PPR drops. Range is taken
   // across non-focal nodes so the focal AND the highest-PPR neighbor both
@@ -346,7 +411,10 @@ export function EntityGraph({ centerId, nodes, links, hrefFor }: EntityGraphProp
         })}
       </div>
 
-      <div className="relative h-[65vh] min-h-[480px] w-full overflow-hidden rounded-md border border-border bg-input">
+      <div
+        ref={graphRef}
+        className="relative h-[65vh] min-h-[480px] w-full overflow-hidden rounded-md border border-border bg-input"
+      >
         {Flow ? (
           <Flow.ReactFlow
             nodes={flowNodes}
