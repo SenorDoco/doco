@@ -7,25 +7,39 @@ import { defineConfig } from "vite";
 import tsconfigPaths from "vite-tsconfig-paths";
 
 // Build-time stamps surfaced as `__DOCO_VERSION__` / `__DOCO_RELEASE_AT__`
-// in the client. Version comes from the monorepo root package.json (the
-// single source of truth for "what version of Doco is this"). Release
-// timestamp is the most recent git commit on the deployed tree — for an
-// alpha with no tags, "released" === "last commit shipped". Falls back to
-// `Date.now()` if git isn't available (e.g. shallow CI container).
+// in the client. During alpha, version means "which deployed build is this?"
+// rather than the static package.json semver. Prefer Vercel's system metadata,
+// then local git, then package.json as the local-development fallback.
 const rootDir = resolve(import.meta.dirname, "../..");
 const rootPkg = JSON.parse(readFileSync(resolve(rootDir, "package.json"), "utf-8")) as {
   version: string;
 };
-let releaseAt: string;
-try {
-  releaseAt = execSync("git log -1 --format=%cI", { cwd: rootDir }).toString().trim();
-} catch {
-  releaseAt = new Date().toISOString();
+function clean(value: string | undefined): string | null {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : null;
 }
+
+function git(command: string): string | null {
+  try {
+    return clean(execSync(command, { cwd: rootDir }).toString());
+  } catch {
+    return null;
+  }
+}
+
+const vercelGitSha = clean(process.env.VERCEL_GIT_COMMIT_SHA);
+const vercelDeploymentId = clean(process.env.VERCEL_DEPLOYMENT_ID);
+const version =
+  clean(process.env.DOCO_VERSION) ??
+  (vercelGitSha ? vercelGitSha.slice(0, 7) : null) ??
+  (vercelDeploymentId ? vercelDeploymentId.replace(/^dpl_/, "").slice(0, 8) : null) ??
+  git("git rev-parse --short=7 HEAD") ??
+  rootPkg.version;
+const releaseAt = git("git log -1 --format=%cI") ?? new Date().toISOString();
 
 export default defineConfig({
   define: {
-    __DOCO_VERSION__: JSON.stringify(rootPkg.version),
+    __DOCO_VERSION__: JSON.stringify(version),
     __DOCO_RELEASE_AT__: JSON.stringify(releaseAt),
   },
   plugins: [tailwindcss(), reactRouter(), tsconfigPaths()],
@@ -73,12 +87,6 @@ export default defineConfig({
   // never try to call useRef/useState on a server-side null React.
   ssr: {
     external: ["pg", "@xyflow/react", "frimousse"],
-    noExternal: [
-      "@doco/db",
-      "@doco/host",
-      "@doco/index",
-      "@doco/lints",
-      "@doco/shared",
-    ],
+    noExternal: ["@doco/db", "@doco/host", "@doco/index", "@doco/lints", "@doco/shared"],
   },
 });
