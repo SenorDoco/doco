@@ -78,9 +78,11 @@ export default function LintInDoco({
           <CardHeader>
             <CardTitle className="text-sm">Index freshness</CardTitle>
             <CardDescription>
-              The filesystem watcher reindexes this Doco whenever YAML or
-              markdown changes on disk. Agents shouldn't need to call
-              reindex; if this card shows the index lagging, file a bug.
+              Postgres is the source of truth and reindexes derived data
+              at write time — agents shouldn't need to call reindex. The
+              legacy CLI filesystem watcher only runs when DOCO_STORAGE
+              is unset (local dev with on-disk YAML); if this card shows
+              the index lagging, file a bug.
             </CardDescription>
           </CardHeader>
           <CardContent>

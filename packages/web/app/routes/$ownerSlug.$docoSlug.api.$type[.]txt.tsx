@@ -268,9 +268,9 @@ AUTH
 
 BODY (JSON) — write
   slug           optional   new slug (lowercase kebab-case). If different
-                            from current, the Doco's directory is moved
-                            on disk and the response carries the new slug
-                            so you can update bookmarks.
+                            from current, the rename takes effect
+                            immediately and the response carries the new
+                            slug so you can update bookmarks.
   display_name   optional   string. Empty string clears.
   description    optional   string. Empty string clears.
   visibility     optional   "private" or "public".

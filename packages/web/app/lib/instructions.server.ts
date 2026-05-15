@@ -122,14 +122,16 @@ GET $DOCO_HOST/<owner>/<doco>/search.json?q=<paraphrase-of-task>
 
 Response carries \`count\`, \`duration_ms\`, and \`hits[]\` ordered by
 \`vector_score\` descending. Each hit includes \`id\` (the entity's ULID,
-e.g. \`decision_01KRHB95AVGFHG80B2EAWE20K8\`), \`file_path\` (absolute
-path to the entity's \`.md\` / \`.yaml\` on disk; saves you a filesystem
-grep), \`summary\`, \`vector_score\` (cosine similarity 0..1, the ranker),
-and \`gpr\` (Global PageRank, a secondary centrality signal). Scope hits
-also carry \`name\` (the short readable handle scopes are referenced by).
-Search is vector-only — one cosine ranking, no FTS card, no
-find-rules sidecar. Read the highest-vector_score hits BEFORE writing
-prose. Don't \`grep\` the repo for context that Doco already indexes.
+e.g. \`decision_01KRHB95AVGFHG80B2EAWE20K8\`), \`summary\`,
+\`vector_score\` (cosine similarity 0..1, the ranker), and \`gpr\`
+(Global PageRank, a secondary centrality signal). Scope hits also
+carry \`name\` (the short readable handle scopes are referenced by).
+Storage is Postgres — entities don't have a stable on-disk location to
+read; fetch the body with \`GET $DOCO_HOST/<owner>/<doco>/<id>.json\`
+when you need the full text. Search is vector-only — one cosine
+ranking, no FTS card, no find-rules sidecar. Read the
+highest-vector_score hits BEFORE writing prose. Don't \`grep\` the repo
+for context that Doco already indexes.
 
 **The query has two jobs — both matter equally:**
 

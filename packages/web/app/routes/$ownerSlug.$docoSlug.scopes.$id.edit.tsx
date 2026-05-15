@@ -11,7 +11,7 @@
 // be deleted (ADR-084 follow-up). Empty scopes confirm with a button;
 // non-empty scopes require typing the scope name verbatim.
 //
-// Saving each section is a separate form POST; nothing changes on disk
+// Saving each section is a separate form POST; nothing is persisted
 // until you press Save / Add / Remove / Delete. Cancel returns to /scopes.
 import { readFileSync } from "node:fs";
 import { join } from "node:path";

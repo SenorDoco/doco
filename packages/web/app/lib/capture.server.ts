@@ -396,9 +396,9 @@ function distillSummary(body: string, cap = 180): string {
  */
 // A scope is "retired" when its lifecycle is `abandoned` (retired with no
 // replacement) or `superseded` (replaced by another scope). Both keep the
-// scope on disk so existing references stay readable, but new captures
-// referencing them are rejected here — pick a different scope or
-// reactivate the retired one.
+// scope record around so existing references stay readable, but new
+// captures referencing them are rejected here — pick a different scope
+// or reactivate the retired one.
 const RETIRED_LIFECYCLES: ReadonlySet<string> = new Set(["abandoned", "superseded"]);
 
 export async function resolveScopeNames(
@@ -488,7 +488,7 @@ async function resolveScopeOrError(
  * the list of changed-keys. Used by `updateDecision` + `updateEntity`
  * for both `scopes` and `intent_ids` lists.
  *
- * `lookup` translates the input names to the ids stored on disk:
+ * `lookup` translates the input names to the ids Postgres stores:
  *   - for scopes:   name → scope_<ULID> (uses resolveScopeNames)
  *   - for intents:  the input IS the id (pass-through)
  */
@@ -1773,10 +1773,11 @@ export interface RuleDraft {
   intent_ids?: string[];
   /**
    * Optional: enforcement surface — `lint | runtime | review | manual`.
-   * Maps to the Rule's `phase` field on disk for compatibility with the
-   * existing schema (`lint` → `declared`, `runtime` → `invariant`,
-   * `review`/`manual` → `declared`). The original verb is preserved
-   * verbatim in an `enforced_by` field so the spec stays round-trippable.
+   * Maps to the Rule's `phase` field in the stored row for compatibility
+   * with the existing schema (`lint` → `declared`, `runtime` →
+   * `invariant`, `review`/`manual` → `declared`). The original verb is
+   * preserved verbatim in an `enforced_by` field so the spec stays
+   * round-trippable.
    */
   enforced_by?: "lint" | "runtime" | "review" | "manual";
   /** Optional: severity — `hard` (blocker) or `soft` (warning). Maps to schema. */

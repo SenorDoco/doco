@@ -1,12 +1,11 @@
 // /<owner>/<doco>/settings — admin-only Doco settings page. Renames the
-// slug (moves the directory), edits description + display_name, toggles
-// visibility (private/public), or soft-deletes the Doco.
+// slug, edits description + display_name, toggles visibility
+// (private/public), or deletes the Doco.
 //
 // Delete: people only (ADR-040). Two-step confirmation — type the slug to
-// activate the "Delete permanently" button. The Doco's directory is moved
-// to `docos/<owner>/.deleted/<slug>-<timestamp>/` rather than rm-rf'd, so
-// recovery is possible for some window. Per the `settings-page-delete-doco`
-// Intent + ADR.
+// activate the "Delete permanently" button. Hard-delete via ON DELETE
+// CASCADE — not recoverable. Per the `settings-page-delete-doco` Intent +
+// ADR.
 import { Form, Link, redirect, useSearchParams } from "react-router";
 import { validateDocoSlug } from "@doco/shared";
 import { rootDir } from "~/lib/db.server";
@@ -175,8 +174,8 @@ export default function DocoSettings({
                   />
                 </div>
                 <span className="mt-1 block text-[11px] text-muted-foreground">
-                  Lowercase kebab-case. Changing this moves the Doco's
-                  directory on disk and updates every URL.
+                  Lowercase kebab-case. Renaming takes effect immediately
+                  and updates every URL.
                 </span>
               </label>
 
@@ -279,9 +278,9 @@ export default function DocoSettings({
           <CardHeader>
             <CardTitle className="text-base text-destructive">Danger zone</CardTitle>
             <CardDescription>
-              Deleting moves this Doco to <code>.deleted/</code> on disk —
-              recoverable by hand but excluded from listings and routing.
-              Per ADR-040, only people can delete Docos.
+              Deleting permanently removes this Doco and every entity,
+              edge, and scope inside it. This cannot be undone. Per
+              ADR-040, only people can delete Docos.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -298,9 +297,8 @@ export default function DocoSettings({
                 <p className="text-xs">
                   Type the Doco's slug{" "}
                   <span className="font-mono font-semibold">{docoSlug}</span>{" "}
-                  to confirm. This will move it to a <code>.deleted/</code>{" "}
-                  subfolder; entities and edges remain on disk but the Doco
-                  disappears from all listings + URLs.
+                  to confirm. This permanently deletes the Doco and every
+                  entity, edge, and scope inside it. It cannot be undone.
                 </p>
                 <input
                   name="confirm_slug"

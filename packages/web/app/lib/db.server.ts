@@ -1,7 +1,8 @@
-// Host-root + per-Doco directory helpers. Durable storage is Postgres;
-// the remaining file-system helpers exist only to locate `doco.yaml`
-// bootstrap stubs and the on-disk markdown/yaml files that round-trip
-// with the PG `raw_yaml` column.
+// Host-root path helpers. Durable storage is Postgres; nothing the web
+// app reads or writes lives on disk. The helpers here only resolve a
+// `<root>/docos/<owner>/<slug>/` path that older CLI flows (init,
+// import, export) still address — they are passed downward as
+// scaffolding hints, never read as authority.
 
 import { existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -12,9 +13,9 @@ let watcherStarted = false;
 function startAutoReindexOnce(): void {
   if (watcherStarted) return;
   watcherStarted = true;
-  // No-op in Postgres-storage mode: there's no docos/ tree to watch and
-  // Postgres is the source-of-truth, so derived data is reindexed at
-  // write time, not by a filesystem watcher.
+  // No-op in Postgres-storage mode: nothing on disk to watch — Postgres
+  // is source-of-truth and derived data is reindexed at write time.
+  // The watcher only runs in the legacy CLI filesystem mode.
   if (process.env.DOCO_STORAGE === "postgres") return;
   import("./auto-reindex.server")
     .then((m) => m.ensureWatcherStarted())
@@ -22,13 +23,15 @@ function startAutoReindexOnce(): void {
 }
 
 /**
- * Find the host root — the directory that contains `docos/<owner>/<slug>/`
- * subdirectories. Each subdirectory holds the Doco's `doco.yaml`
- * bootstrap stub plus the on-disk entity files; durable storage is
- * Postgres.
+ * Resolve the host root path that older CLI flows (init/import/export)
+ * still address. Durable storage is Postgres — the on-disk
+ * `<root>/docos/<owner>/<slug>/` tree is no longer authoritative for
+ * the web app.
  *
  * Resolution order: DOCO_ROOT env var, otherwise walk upward from cwd
- * looking for a `docos/` subdirectory.
+ * looking for a `docos/` subdirectory. In Postgres-storage mode (the
+ * default for serverless deployments) we fall back to cwd as a benign
+ * placeholder — see the comment in the fallback branch.
  */
 export function rootDir(): string {
   if (cachedRoot) {
@@ -53,16 +56,19 @@ export function rootDir(): string {
     dir = parent;
   }
   // Postgres-storage mode (serverless functions, no on-disk docos/):
-  // return cwd as a benign placeholder. Downstream filesystem reads
-  // already guard with existsSync and degrade to empty results; the
-  // canonical lookups (principal-by-username, doco-by-slug) happen via
-  // Postgres in this mode and don't need a host root.
+  // return cwd as a benign placeholder. The canonical lookups
+  // (principal-by-username, doco-by-slug) go through Postgres and
+  // don't need a host root; the few downstream callers that still
+  // address `<root>/docos/...` guard with existsSync and degrade to
+  // empty results.
   if (process.env.DOCO_STORAGE === "postgres") {
     cachedRoot = process.cwd();
     return cachedRoot;
   }
   throw new Error(
-    "Could not find host root. Set DOCO_ROOT or run from inside a directory that contains `docos/`.",
+    "Could not find host root. Set DOCO_STORAGE=postgres for serverless, " +
+      "or set DOCO_ROOT / run from inside a directory that contains `docos/` " +
+      "for legacy CLI mode.",
   );
 }
 

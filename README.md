@@ -3,76 +3,61 @@
 Alignment framework and runtime checking system. Documents and verifies the
 relationships between user intent, agent reasoning, and agent actions.
 
-This repository is itself an Doco — see [doco.yaml](doco.yaml). The project's
-own intents, rules, decisions, action, and reasoning are expressed in the schema
-the project defines.
+This repository is itself a Doco Host serving its own Doco at
+[torrenegra/doco](docos/torrenegra/doco/doco.yaml). Entities (Intents,
+Decisions, Rules, Actions, Reasoning, Evals, References, Principals,
+Scopes) live in Postgres and are reached through the web app and HTTP
+API — there are no on-disk per-entity files to read here.
 
 ## Quick links
 
-- [doco.yaml](doco.yaml) — root identity for this Doco.
-- [schema/doco.schema.json](schema/doco.schema.json) — JSON Schema for every entity. Agents introspect this directly.
-- [glossary.yaml](glossary.yaml) — term ↔ synonyms for Rule discovery.
-- [SCHEMA.md](SCHEMA.md), [PLANNING.md](PLANNING.md), [DECISIONS.md](DECISIONS.md) — original prose design (kept; the per-entity files mirror them).
+- [AGENTS.md](AGENTS.md) — agent bootstrap. Every agent working in this
+  repo should fetch the live `canonical_instructions` from
+  `$DOCO_HOST/api/v1/agent-bootstrap` before doing anything else.
+- [docos/torrenegra/doco/doco.yaml](docos/torrenegra/doco/doco.yaml) —
+  this Doco's identity stub. Durable data is in Postgres.
+- [packages/db/src/schema.sql](packages/db/src/schema.sql) — current
+  database schema (single source of truth for storage).
+- [packages/shared/src/entities.ts](packages/shared/src/entities.ts) —
+  TypeScript types for every entity (single source of truth for shape).
+- [SCHEMA.md](SCHEMA.md), [PLANNING.md](PLANNING.md),
+  [DECISIONS.md](DECISIONS.md) — historical prose design. Most of the
+  schema-level content is superseded; the design rationale (§1 of
+  SCHEMA.md) is still load-bearing.
 
-## Directory layout
+## Repository layout
 
 ```
 .
-├── doco.yaml                # Marks this directory as an Doco (D-002)
-├── glossary.yaml             # Term → synonyms (D-032)
-├── schema/
-│   └── doco.schema.json     # JSON Schema for entities (embedded for self-comprehension)
-├── principals/               # Humans + agents (D-018, D-034..D-036)
-├── intents/                  # What the project intends (6 entities)
-├── rules/                    # Constraints / invariants / runtime checks (5 entities)
-├── decisions/                # 45 ADRs migrated from DECISIONS.md (ADR-001..ADR-045)
-├── actions/                  # Things done (bootstrap so far)
-├── reasoning/                # Inferential bridges (Premises → Conclusion)
-├── references/               # Pointers to external resources (incl. PLANNING/SCHEMA/DECISIONS)
-├── tags/                     # Reserved + custom tags
-├── evals/                    # Eval entities (D-024 / decision_01KRHBZMD0V35NAX94Y7N2MXVA)
-└── docs/                     # Reserved for additional reader-facing documentation
+├── AGENTS.md                # Agent bootstrap (also imported by CLAUDE.md)
+├── host.yaml                # Host root marker (Postgres `hosts` table is authoritative)
+├── docos/<owner>/<slug>/    # Per-Doco scaffolding stubs (doco.yaml only — entities are in PG)
+├── packages/
+│   ├── api/                 # JSON/text routes shared between web + CLI
+│   ├── cli/                 # `doco` command (init, capture, patch, watch, import, export, …)
+│   ├── db/                  # Postgres adapter + schema.sql
+│   ├── host/                # Host/Doco/Principal/Organization domain layer
+│   ├── index/               # Edge derivation + embedding index helpers
+│   ├── lints/               # Lint registry + checks
+│   ├── shared/              # TypeScript entity types + URL conventions
+│   └── web/                 # React Router web app (`doco.to`-shaped UI)
+└── SCHEMA.md / PLANNING.md / DECISIONS.md / NOTICE / LICENSE
 ```
-
-## Status
-
-**Day 0: 2026-05-08.** The framework is being defined from first principles in
-collaboration between [torrenegra](principals/principal_01KR441EA199MZCP7RDMADFZW9.yaml)
-(person, founder) and [claude-opus-4-7](principals/principal_01KR441EA259F7EE420Z4VWFPJ.yaml)
-(agent, invited 2026-05-08T15:42:00Z).
-
-The bootstrap action that produced this directory tree is recorded at
-[actions/action_01KR441EC1HG8M0PGYMR5EQDMM.md](actions/action_01KR441EC1HG8M0PGYMR5EQDMM.md),
-authorized by the foundational ADRs (ADR-002, ADR-003, ADR-009).
-
-## What's next
-
-Per [intent_01KR441EAEM5NQBM160763TDDT.md](intents/intent_01KR441EAEM5NQBM160763TDDT.md)
-(implementation-v0):
-
-1. CLI core (`doco init`, `init --existing`, `show`, `query`).
-2. Source-of-truth layer — readers/writers + JSON-Schema validation.
-3. Index layer — Postgres `entity_fts` (tsvector), `embeddings` (bytea), `edges` adjacency, `scope_match`.
-4. Identity — GitHub OAuth + invitation/session tokens.
-5. API server (REST + OpenAPI).
-6. Web app — recent-changes feed, list views, entity detail, graph as drill-down.
-7. Importers — Slack, GitHub PRs, agent transcripts.
-8. Rule discovery — `doco find-rules` + embedding index.
-9. System Rules + lints.
 
 ## Reading order for a new agent
 
-1. [doco.yaml](doco.yaml) — what this Doco is.
-2. [schema/doco.schema.json](schema/doco.schema.json) — entity shapes.
-3. [intents/](intents/) — what the project intends to accomplish.
-4. [rules/](rules/) — what must hold.
-5. [decisions/](decisions/) — settled choices and their rationale.
-6. [actions/](actions/) and [reasoning/](reasoning/) — what happened and why.
+1. [AGENTS.md](AGENTS.md) — protocol, bootstrap, env setup.
+2. The live `canonical_instructions` served by
+   `$DOCO_HOST/api/v1/agent-bootstrap` — four invariants every reply
+   must follow.
+3. `$DOCO_HOST/<owner>/<doco>/search.json?q=<task>` — query Doco
+   before drafting a Decision, Rule, or Intent.
 
 ## Reading order for a new person
 
 1. This README.
-2. [SCHEMA.md](SCHEMA.md) — design narrative for the schema.
+2. [SCHEMA.md](SCHEMA.md) §1 — design philosophy → priority mapping
+   (the rest is historical).
 3. [PLANNING.md](PLANNING.md) — design narrative for product flows.
-4. [DECISIONS.md](DECISIONS.md) — settled decisions with rationale.
-5. (Then dive into per-entity files when something needs to change.)
+4. [DECISIONS.md](DECISIONS.md) — early ADRs with rationale; later
+   decisions live in the Doco itself.

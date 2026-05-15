@@ -15,7 +15,8 @@ interface SettingsPatch {
  * /<owner>/<doco>/api/settings.json — single-call settings endpoint.
  *
  *  GET   returns the current settings (read-gated like the rest of the Doco).
- *  PATCH/POST updates fields (admin-gated). Slug rename moves the directory.
+ *  PATCH/POST updates fields (admin-gated). Slug rename updates the
+ *  Postgres row and every URL that resolves through it.
  *
  * Same auth as decisions.json: cookie session OR Authorization: Bearer
  * <DOCO_TOKEN>. Private Docos return 404 to non-members.
