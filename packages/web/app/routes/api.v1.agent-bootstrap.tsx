@@ -10,7 +10,7 @@
 // per-Doco context (scopes, lint, freshness), `/by-id/<doco_id>/status.json`.
 
 import { CANONICAL_INSTRUCTIONS } from "~/lib/instructions.server";
-import type { ScopeRule } from "@doco/shared";
+import type { AuthoringRule } from "@doco/shared";
 import { getDocoById, listEntitiesByDoco } from "@doco/db";
 import { docoPath } from "~/lib/db.server";
 import { canAccessDoco } from "~/lib/doco-access.server";
@@ -37,9 +37,14 @@ export interface ConstitutionSnapshot {
   id: string;
   name: string;
   icon: string | null;
-  purpose: string;
-  guidelines: string;
-  rules: ScopeRule[];
+  /**
+   * Per decision_01KRPMC7CVDA9WZ5DKH81TVAAA the scope no longer carries
+   * a dedicated `purpose` or `guidelines` field. The agent reads the
+   * authoring rules (predicates the engine enforces) and the guidance
+   * rules (prose to keep in mind while working) separately.
+   */
+  authoring_rules: AuthoringRule[];
+  guidance_rules: string[];
 }
 
 /**
@@ -60,9 +65,14 @@ async function loadConstitution(docoId: string): Promise<ConstitutionSnapshot | 
       id: r.id,
       name: r.name,
       icon: typeof fm.icon === "string" ? fm.icon : null,
-      purpose: typeof fm.purpose === "string" ? fm.purpose : "",
-      guidelines: typeof fm.guidelines === "string" ? fm.guidelines : "",
-      rules: Array.isArray(fm.rules) ? (fm.rules as ScopeRule[]) : [],
+      authoring_rules: Array.isArray(fm.authoring_rules)
+        ? (fm.authoring_rules as AuthoringRule[])
+        : [],
+      guidance_rules: Array.isArray(fm.guidance_rules)
+        ? (fm.guidance_rules as unknown[]).filter(
+            (s): s is string => typeof s === "string",
+          )
+        : [],
     };
   }
   return null;

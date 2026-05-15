@@ -40,10 +40,17 @@ interface ScopeCreateBody {
   template_name?: string;
   name?: string;
   icon?: string;
-  purpose?: string;
-  guidelines?: string;
   parent_id?: string;
-  rules?: unknown[];
+  /**
+   * Optional authoring rules — engine-readable predicates fired on
+   * every capture into the scope. Use the prose endpoint
+   * (/api/scopes/<id>/rules.json with `{prose}`) to author from plain
+   * English; this typed field exists for callers that want to provide
+   * the predicate shape directly.
+   */
+  authoring_rules?: unknown[];
+  /** Optional guidance rules — prose for agents to read; no automated check. */
+  guidance_rules?: string[];
   watched?: boolean;
 }
 
@@ -137,13 +144,14 @@ export async function action({
     if (existing.some((s) => s.name === tpl.name)) {
       return Response.json({ error: `Scope "${tpl.name}" already exists.` }, { status: 409 });
     }
+    // Per decision_01KRPMC7CVDA9WZ5DKH81TVAAA: template `purpose`
+    // retired; `guidelines` text becomes the seed `guidance_rules[0]`.
     createOpts = {
       docoDir: dir,
       docoId,
       name: tpl.name,
       ...(tpl.icon ? { icon: tpl.icon } : {}),
-      ...(tpl.purpose ? { purpose: tpl.purpose } : {}),
-      ...(tpl.guidelines ? { guidelines: tpl.guidelines } : {}),
+      ...(tpl.guidelines ? { guidance_rules: [tpl.guidelines] } : {}),
       watched,
       createdBy,
     };
@@ -184,10 +192,13 @@ export async function action({
       docoId,
       name,
       ...(body.icon ? { icon: body.icon } : {}),
-      ...(body.purpose ? { purpose: body.purpose } : {}),
-      ...(body.guidelines ? { guidelines: body.guidelines } : {}),
       parentScopes,
-      ...(body.rules && body.rules.length > 0 ? { rules: body.rules } : {}),
+      ...(body.authoring_rules && body.authoring_rules.length > 0
+        ? { authoring_rules: body.authoring_rules }
+        : {}),
+      ...(body.guidance_rules && body.guidance_rules.length > 0
+        ? { guidance_rules: body.guidance_rules }
+        : {}),
       watched,
       createdBy,
     };
@@ -199,8 +210,11 @@ export async function action({
 
   const scopeName = createOpts.name;
   const scopeIcon = createOpts.icon;
-  const summary =
-    createOpts.purpose?.trim() || `Scope: ${scopeName}${watched ? " (watched)" : ""}`;
+  // Per decision_01KRPMC7CVDA9WZ5DKH81TVAAA there is no `purpose` field
+  // any more. Use the first guidance rule as the summary if one exists,
+  // otherwise fall back to a generic line.
+  const firstGuidance = createOpts.guidance_rules?.[0]?.trim();
+  const summary = firstGuidance || `Scope: ${scopeName}${watched ? " (watched)" : ""}`;
   const footer_lines = renderOperationLines({
     ownerSlug,
     docoSlug,

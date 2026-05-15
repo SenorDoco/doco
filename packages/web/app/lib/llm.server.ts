@@ -379,32 +379,34 @@ export async function judgeProbabilisticRule(
 }
 
 // ────────────────────────────────────────────────────────────────────────
-// Prose -> ScopeRule[] classifier (decision_01KRPET95G2QNTPCR0YWAKSCH5).
+// Prose -> { authoring_rules[], guidance_rules[] } classifier
+// (decision_01KRPMC7CVDA9WZ5DKH81TVAAA, extends
+// decision_01KRPET95G2QNTPCR0YWAKSCH5).
 //
-// The author types "every Decision should have an Intent, and bugs should
-// link to a Rule" — this turns that into TWO ScopeRule rows, classifying
-// each as the most-fitting deterministic predicate (requires_edge with
-// edge_type=serves + target_node_type=intent; requires_edge with
-// edge_type=relates_to + target_node_type=rule). Falls back to
-// {kind: "probabilistic", spec: <verbatim>} for prose the predicate
-// language can't capture ("the writing is clear", "the rationale is
-// concrete"). Always throws on LLM unavailability — both surfaces
-// (web preview, API commit) reject the operation instead of silently
-// degrading.
+// The author types a mix of "every Decision should have an Intent" (a
+// gate fired at write time — an *authoring rule*) and "when writing a
+// bugfix Decision, lead with the symptom" (a directive the agent reads
+// while working — a *guidance rule*). The classifier:
+//   1. Splits multi-rule prose into atomic items.
+//   2. Buckets each into "authoring" or "guidance".
+//   3. For authoring, maps to the most-fitting deterministic predicate
+//      (requires_edge / forbids_edge / requires_field / forbids_field /
+//      mandatory_scope) or falls back to probabilistic.
+//   4. For guidance, persists the verbatim prose — no predicate.
+//
+// Always throws on LLM unavailability — both surfaces (web preview,
+// API commit) reject the operation instead of silently degrading.
 
-export interface ClassifiedRule {
-  /** The portion of the original prose this rule represents (verbatim). */
-  text: string;
-  /** The ScopeRule that will be persisted. Matches the @doco/shared union. */
-  rule: ClassifiedScopeRule;
-}
+export type ClassifiedRule =
+  | { bucket: "authoring"; text: string; rule: ClassifiedAuthoringRule }
+  | { bucket: "guidance"; text: string };
 
 /**
- * Mirrors ScopeRule in @doco/shared but typed locally to avoid coupling the
- * web package to that import here. The persistence layer accepts any
+ * Mirrors AuthoringRule in @doco/shared but typed locally to avoid coupling
+ * the web package to that import here. The persistence layer accepts any
  * record-shaped object; the engine reads the discriminant `kind`.
  */
-export type ClassifiedScopeRule =
+export type ClassifiedAuthoringRule =
   | {
       kind: "requires_edge" | "forbids_edge";
       edge_type: string;
@@ -485,14 +487,23 @@ const CLASSIFIER_FIELDS = [
   "author_id",
 ] as const;
 
-const CLASSIFIER_SYSTEM_PROMPT = `You translate plain-English scope rules into the Doco rule engine's typed predicates.
+const CLASSIFIER_SYSTEM_PROMPT = `You bucket plain-English scope rules into the Doco rule engine.
 
-A Scope's "rules" array declares predicates that every node tagged with that scope must satisfy. Deterministic predicates block writes structurally; a probabilistic predicate stores free-text the LLM judges at capture time.
+A Scope carries two kinds of rules:
+
+- AUTHORING rules — fired by the engine when a node enters this scope (capture or scope-add). Failures BLOCK the write. Deterministic predicates check structure; probabilistic specs run an LLM judge.
+- GUIDANCE rules — prose the agent reads while WORKING in or with this scope. No automated check. Directive but not enforced. Replaces the previous "guidelines" markdown field.
 
 You will see a project owner's prose. Your job:
 
 1. SPLIT the prose into atomic rules. If they wrote "A and B", emit TWO rules.
-2. For each atomic rule, pick the MOST FITTING predicate from this list:
+
+2. BUCKET each atomic rule into "authoring" or "guidance":
+   - AUTHORING when the rule names a structural property of the node ("must have an X", "should cite a Y", "every Decision should declare lifecycle"). The engine can fire this as a predicate or as an LLM judgement at write time.
+   - GUIDANCE when the rule is procedural / stylistic / informational ("when writing a bugfix Decision, lead with the symptom", "format Decision bodies with sections: Context, Options, Choice, Consequences", "cite the original Decision in the body, not just via the edge"). Anything the agent should KEEP IN MIND while working, but where no per-write check would be appropriate.
+   When unsure: lean GUIDANCE. Authoring rules block writes — false positives are expensive.
+
+3. For AUTHORING rules, pick the MOST FITTING predicate from this list:
 
    - {kind: "requires_edge", edge_type, target_node_type?}
      Use when the rule is "nodes in this scope must reference X".
@@ -519,27 +530,32 @@ You will see a project owner's prose. Your job:
      The Doco-wide form. You'll get an availableScopes list — resolve scope NAMES to IDs from it. If the named scope isn't in the list, fall back to probabilistic.
 
    - {kind: "probabilistic", spec}
-     Use when the rule asks for a quality judgment that no deterministic predicate captures ("the writing is clear", "the rationale is concrete", "the decision is well-reasoned"). The original prose IS the spec.
+     Use when the rule asks for a quality judgment that no deterministic predicate captures ("the writing is clear", "the rationale is concrete", "the decision is well-reasoned"). The original prose IS the spec. Probabilistic still BLOCKS writes on the LLM judge's "no" — if you want softer behavior, the rule is GUIDANCE.
 
-3. CONSTRAINTS for deterministic kinds:
+4. CONSTRAINTS for deterministic authoring kinds:
    - edge_type MUST be one of: ${CLASSIFIER_EDGE_TYPES.join(", ")}.
    - target_node_type MUST be one of: ${CLASSIFIER_NODE_TYPES.join(", ")}, or omitted.
    - fields MUST be drawn from: ${CLASSIFIER_FIELDS.join(", ")}. If the prose names a field not on this list, fall back to probabilistic.
-   - When in doubt -> probabilistic. It is BETTER to defer to the LLM judge than to misclassify into a deterministic kind that won't fire correctly.
+   - When in doubt within the authoring bucket -> probabilistic. It is BETTER to defer to the LLM judge than to misclassify into a deterministic kind that won't fire correctly.
 
-4. Each rule also gets a "text" field: the verbatim slice of the user's prose this rule represents. Authors must be able to see their original words in the rule list.
+5. Each rule gets a "text" field: the verbatim slice of the user's prose this rule represents. Authors must be able to see their original words in the rule list.
 
-5. Each rule may include a "reason" field (one short sentence) — only when the prose makes the rule's motivation explicit. Otherwise omit.
+6. Authoring rules may include a "reason" field on the inner rule object (one short sentence) — only when the prose makes the rule's motivation explicit. Otherwise omit. Guidance rules have no reason field; the prose IS the rule.
 
 OUTPUT JSON ONLY in this shape:
 {
   "rules": [
     {
+      "bucket": "authoring",
       "text": "<verbatim prose slice>",
       "rule": {
         "kind": "requires_edge" | "forbids_edge" | "requires_field" | "forbids_field" | "mandatory_scope" | "probabilistic",
         ...kind-specific params
       }
+    },
+    {
+      "bucket": "guidance",
+      "text": "<verbatim prose slice>"
     }
   ]
 }
@@ -606,19 +622,34 @@ function normalizeClassifiedRow(raw: unknown): ClassifiedRule | null {
   const rec = raw as Record<string, unknown>;
   const text = typeof rec.text === "string" ? rec.text.trim() : "";
   if (!text) return null;
+  const bucket = typeof rec.bucket === "string" ? rec.bucket.toLowerCase() : "";
+  // GUIDANCE rules carry no inner predicate — the prose IS the rule.
+  if (bucket === "guidance") {
+    return { bucket: "guidance", text };
+  }
+  // AUTHORING rules carry an inner predicate that we validate against
+  // the engine's recognized edge/node/field vocabularies; off-list inputs
+  // fall back to probabilistic so capture-time judging still applies.
   const ruleRaw = rec.rule;
-  if (!ruleRaw || typeof ruleRaw !== "object") return null;
+  if (!ruleRaw || typeof ruleRaw !== "object") {
+    // Authoring bucket with a missing/invalid rule body → preserve as
+    // probabilistic so the engine can still LLM-judge it at write time.
+    return { bucket: "authoring", text, rule: { kind: "probabilistic", spec: text } };
+  }
   const r = ruleRaw as Record<string, unknown>;
   const kind = typeof r.kind === "string" ? r.kind : "";
   const reason = typeof r.reason === "string" && r.reason.trim() ? r.reason.trim() : undefined;
+  const probabilisticFallback = (): ClassifiedRule => ({
+    bucket: "authoring",
+    text,
+    rule: { kind: "probabilistic", spec: text, ...(reason ? { reason } : {}) },
+  });
   switch (kind) {
     case "requires_edge":
     case "forbids_edge": {
       const edge_type = typeof r.edge_type === "string" ? r.edge_type : "";
       if (!CLASSIFIER_EDGE_TYPES.includes(edge_type as (typeof CLASSIFIER_EDGE_TYPES)[number])) {
-        // Off-list edge type — preserve as probabilistic so capture-time
-        // judging still applies. Better a deferred check than a broken one.
-        return { text, rule: { kind: "probabilistic", spec: text, ...(reason ? { reason } : {}) } };
+        return probabilisticFallback();
       }
       const target_node_type = typeof r.target_node_type === "string" ? r.target_node_type : "";
       const validTarget =
@@ -627,10 +658,9 @@ function normalizeClassifiedRow(raw: unknown): ClassifiedRule | null {
           : CLASSIFIER_NODE_TYPES.includes(target_node_type as (typeof CLASSIFIER_NODE_TYPES)[number])
             ? target_node_type
             : null;
-      if (validTarget === null) {
-        return { text, rule: { kind: "probabilistic", spec: text, ...(reason ? { reason } : {}) } };
-      }
+      if (validTarget === null) return probabilisticFallback();
       return {
+        bucket: "authoring",
         text,
         rule: {
           kind,
@@ -646,10 +676,9 @@ function normalizeClassifiedRow(raw: unknown): ClassifiedRule | null {
       const fields = fieldsRaw
         .filter((f): f is string => typeof f === "string" && f.length > 0)
         .filter((f) => CLASSIFIER_FIELDS.includes(f as (typeof CLASSIFIER_FIELDS)[number]));
-      if (fields.length === 0) {
-        return { text, rule: { kind: "probabilistic", spec: text, ...(reason ? { reason } : {}) } };
-      }
+      if (fields.length === 0) return probabilisticFallback();
       return {
+        bucket: "authoring",
         text,
         rule: { kind, fields: [...new Set(fields)], ...(reason ? { reason } : {}) },
       };
@@ -659,19 +688,22 @@ function normalizeClassifiedRow(raw: unknown): ClassifiedRule | null {
       const ids = idsRaw.filter(
         (s): s is string => typeof s === "string" && s.startsWith("scope_"),
       );
-      if (ids.length === 0) {
-        return { text, rule: { kind: "probabilistic", spec: text, ...(reason ? { reason } : {}) } };
-      }
+      if (ids.length === 0) return probabilisticFallback();
       return {
+        bucket: "authoring",
         text,
         rule: { kind, scope_ids: [...new Set(ids)], ...(reason ? { reason } : {}) },
       };
     }
     case "probabilistic": {
       const spec = typeof r.spec === "string" && r.spec.trim() ? r.spec.trim() : text;
-      return { text, rule: { kind, spec, ...(reason ? { reason } : {}) } };
+      return {
+        bucket: "authoring",
+        text,
+        rule: { kind, spec, ...(reason ? { reason } : {}) },
+      };
     }
     default:
-      return { text, rule: { kind: "probabilistic", spec: text, ...(reason ? { reason } : {}) } };
+      return probabilisticFallback();
   }
 }

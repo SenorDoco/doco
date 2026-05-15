@@ -57,8 +57,15 @@ export async function loader({
     }
     const scopeJson = (parseYaml(scope.raw_yaml) ?? {}) as Record<string, unknown>;
     const icon = typeof scopeJson.icon === "string" ? scopeJson.icon : "";
-    const purpose = typeof scopeJson.purpose === "string" ? scopeJson.purpose : "";
-    const guidelines = typeof scopeJson.guidelines === "string" ? scopeJson.guidelines : "";
+    // Per decision_01KRPMC7CVDA9WZ5DKH81TVAAA the scope no longer carries
+    // `purpose` or `guidelines` strings — the agent reads
+    // `guidance_rules` (prose to keep in mind) and `authoring_rules`
+    // (engine-enforced predicates) instead.
+    const guidanceRules: string[] = Array.isArray(scopeJson.guidance_rules)
+      ? (scopeJson.guidance_rules as unknown[]).filter(
+          (s): s is string => typeof s === "string",
+        )
+      : [];
 
     // Rule entities tagged with this constitution scope. Superseded
     // rules are filtered out — they've been replaced and aren't
@@ -82,7 +89,13 @@ export async function loader({
     return {
       ownerSlug,
       docoSlug,
-      scope: { id: scope.id, name: scope.name, icon, summary: scope.summary, purpose, guidelines },
+      scope: {
+        id: scope.id,
+        name: scope.name,
+        icon,
+        summary: scope.summary,
+        guidance_rules: guidanceRules,
+      },
       constitutionalRules,
       host: await loadHostConfig(),
       me,
@@ -202,22 +215,21 @@ export default function Constitution({
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
-            {scope.purpose ? (
+            {scope.guidance_rules.length > 0 ? (
               <div>
                 <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  Purpose
+                  Guidance rules
                 </p>
-                <p className="mt-0.5 text-sm">{scope.purpose}</p>
-              </div>
-            ) : null}
-            {scope.guidelines ? (
-              <div>
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  Guidelines
-                </p>
-                <pre className="mt-0.5 whitespace-pre-wrap font-sans text-xs text-muted-foreground">
-                  {scope.guidelines}
-                </pre>
+                <ul className="mt-1 space-y-1">
+                  {scope.guidance_rules.map((text, i) => (
+                    <li
+                      key={i}
+                      className="whitespace-pre-wrap text-xs text-muted-foreground"
+                    >
+                      • {text}
+                    </li>
+                  ))}
+                </ul>
               </div>
             ) : null}
             <div>

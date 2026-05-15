@@ -112,7 +112,7 @@ export default function ScopesIndex({
                 const parents = s.parent_ids
                   .map((pid) => scopes.find((x) => x.id === pid)?.name)
                   .filter(Boolean) as string[];
-                const description = shortDescription(s.purpose);
+                const description = shortDescription(s.short_description);
                 const isDeprecated = s.lifecycle !== "active" && s.lifecycle !== "proposed";
                 return (
                   <li

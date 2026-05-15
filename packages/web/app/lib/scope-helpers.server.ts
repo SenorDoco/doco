@@ -70,8 +70,13 @@ export interface ScopeDetails {
   id: string;
   name: string;
   icon: string;
-  purpose: string;
-  guidelines: string;
+  /**
+   * Per decision_01KRPMC7CVDA9WZ5DKH81TVAAA the scope no longer carries
+   * a dedicated `purpose` or `guidelines` field. The first guidance rule
+   * (if any) doubles as a readable short summary in scope-list contexts;
+   * the full list lives on the scope's `guidance_rules` array.
+   */
+  short_description: string;
   parent_ids: string[];
   lifecycle: string;
   is_watched: boolean;
@@ -111,12 +116,14 @@ export async function listScopeDetails(docoDir: string): Promise<ScopeDetails[]>
             e = parsed as Record<string, unknown>;
           }
         } catch {}
+        const firstGuidance = Array.isArray(e.guidance_rules)
+          ? (e.guidance_rules as unknown[]).find((s): s is string => typeof s === "string") ?? ""
+          : "";
         out.push({
           id: row.id,
           name: row.name,
           icon: typeof e.icon === "string" ? e.icon : "",
-          purpose: typeof e.purpose === "string" ? e.purpose : "",
-          guidelines: typeof e.guidelines === "string" ? e.guidelines : "",
+          short_description: firstGuidance,
           parent_ids: Array.isArray(e.scopes) ? (e.scopes as string[]) : [],
           lifecycle: typeof e.lifecycle === "string" ? e.lifecycle : "active",
           is_watched: row.name === "constitution" || e.watched === true,
@@ -134,7 +141,8 @@ export interface ScopeManifestEntry {
   id: string;
   name: string;
   icon: string;
-  purpose: string;
+  /** Short readable description (first guidance rule, if any). */
+  short_description: string;
   lifecycle: string;
   is_watched: boolean;
 }
@@ -147,7 +155,7 @@ export async function listScopeManifest(
     id: d.id,
     name: d.name,
     icon: d.icon,
-    purpose: d.purpose,
+    short_description: d.short_description,
     lifecycle: d.lifecycle,
     is_watched: d.is_watched,
   }));

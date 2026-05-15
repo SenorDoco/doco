@@ -329,22 +329,10 @@ export async function action({
   const intent = String(form.get("intent") ?? "");
   const scopeId = id as EntityId<"scope">;
 
-  if (intent === "save_scope") {
-    const purpose = String(form.get("purpose") ?? "").trim();
-    const guidelines = String(form.get("guidelines") ?? "").trim();
-    try {
-      await updateScopeInDoco({
-        docoDir: dir,
-        scopeId,
-        purpose: purpose || null,
-        guidelines: guidelines || null,
-      });
-      await reindex(dir);
-    } catch (e) {
-      return { error: `Failed to save: ${(e as Error).message}` };
-    }
-    return redirect(entityUrl({ ownerSlug, docoSlug, nodeType: "scope", id: id }));
-  }
+  // Per decision_01KRPMC7CVDA9WZ5DKH81TVAAA `purpose` and `guidelines`
+  // are retired; the "save_scope" intent went with them. To edit a
+  // scope's rules, the user opens /scopes/<id>/edit (the only place rules
+  // are managed).
 
   if (intent === "reparent") {
     const parentIds = form
@@ -418,7 +406,6 @@ export default function EntityDetail({
     entityUrl({ ownerSlug, docoSlug, nodeType: kind, id: otherId });
   // Scope-edit mode: toggled inline. ADR-084 follow-up. Deletion lives on
   // /scopes/<id>/edit's Danger Zone, not here.
-  const [editingPG, setEditingPG] = useState(false);
   const [editingParents, setEditingParents] = useState(false);
   const isScope = type === "scope";
   const currentParents = isScope && Array.isArray(ent.scopes) ? (ent.scopes as string[]) : [];
@@ -523,87 +510,20 @@ export default function EntityDetail({
       {isScope ? (
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center justify-between text-sm">
-              <span>Purpose &amp; guidelines</span>
-              {editingPG ? null : (
-                <button
-                  type="button"
-                  onClick={() => setEditingPG(true)}
-                  className="rounded-md border border-border px-2 py-0.5 text-[10px] hover:border-primary"
-                >
-                  Edit
-                </button>
-              )}
-            </CardTitle>
+            <CardTitle className="text-sm">Rules</CardTitle>
             <CardDescription>
-              Per ADR-082 — what this scope is for and how to author nodes inside it.
+              Per decision_01KRPMC7CVDA9WZ5DKH81TVAAA every piece of normative content on a scope —
+              authoring predicates and agent-facing guidance — lives as a rule. Manage them on the
+              scope edit page.
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-3">
-            {editingPG ? (
-              <Form method="post" className="space-y-2">
-                <input type="hidden" name="intent" value="save_scope" />
-                <label className="block text-xs">
-                  <span className="mb-1 block text-muted-foreground">Purpose</span>
-                  <textarea
-                    name="purpose"
-                    rows={3}
-                    defaultValue={
-                      typeof ent.purpose === "string" ? String(ent.purpose) : ""
-                    }
-                    className="w-full rounded-md border border-border bg-input px-3 py-2 text-xs text-foreground outline-none focus:border-primary"
-                  />
-                </label>
-                <label className="block text-xs">
-                  <span className="mb-1 block text-muted-foreground">Guidelines (markdown)</span>
-                  <textarea
-                    name="guidelines"
-                    rows={10}
-                    defaultValue={
-                      typeof ent.guidelines === "string" ? String(ent.guidelines) : ""
-                    }
-                    className="w-full rounded-md border border-border bg-input px-3 py-2 font-mono text-[11px] text-foreground outline-none focus:border-primary"
-                  />
-                </label>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="submit"
-                    className="rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90"
-                  >
-                    Save
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setEditingPG(false)}
-                    className="text-xs text-muted-foreground hover:text-foreground"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </Form>
-            ) : (
-              <>
-                {typeof ent.purpose === "string" && ent.purpose ? (
-                  <div>
-                    <p className="text-xs font-semibold uppercase text-muted-foreground">Purpose</p>
-                    <p className="mt-1 text-xs">{String(ent.purpose)}</p>
-                  </div>
-                ) : null}
-                {typeof ent.guidelines === "string" && ent.guidelines ? (
-                  <div>
-                    <p className="text-xs font-semibold uppercase text-muted-foreground">Guidelines</p>
-                    <pre className="mt-1 whitespace-pre-wrap text-xs text-muted-foreground">
-                      {String(ent.guidelines)}
-                    </pre>
-                  </div>
-                ) : null}
-                {!ent.purpose && !ent.guidelines ? (
-                  <p className="text-xs text-muted-foreground">
-                    No purpose or guidelines yet. Click Edit to add them.
-                  </p>
-                ) : null}
-              </>
-            )}
+          <CardContent>
+            <Link
+              to={`/${ownerSlug}/${docoSlug}/scopes/${id}/edit`}
+              className="inline-flex items-center rounded-md border border-border bg-input px-3 py-1.5 text-xs font-semibold hover:bg-card"
+            >
+              Edit rules →
+            </Link>
           </CardContent>
         </Card>
       ) : null}
@@ -883,6 +803,7 @@ export default function EntityDetail({
 
         {/* 2. The map — takes ~75% of viewport height (size lives in EntityGraph). */}
         <EntityGraph
+          key={`${type}:${id}`}
           centerId={id}
           nodes={graphNodes}
           links={graphLinks}

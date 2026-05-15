@@ -114,11 +114,25 @@ export async function action({
     return Response.json({ error: (e as Error).message }, { status: 500 });
   }
 
-  // Persist: existing rules + new classified rules. The original prose
-  // slice lives on each deterministic rule's `reason` so the rule list
-  // shows the human-authored intent next to the predicate shorthand.
-  const existing: unknown[] = Array.isArray(scopeRaw.rules) ? (scopeRaw.rules as unknown[]) : [];
-  const newRules = classified.map((c) => {
+  // Per decision_01KRPMC7CVDA9WZ5DKH81TVAAA the classifier output is
+  // bucketed: authoring rules become entries in `authoring_rules`,
+  // guidance rules go to `guidance_rules`. The original prose slice
+  // lives on each authoring rule's `reason` so the rule list shows the
+  // human-authored intent next to the predicate shorthand; for guidance
+  // rules the prose IS the rule.
+  const existingAuthoring: unknown[] = Array.isArray(scopeRaw.authoring_rules)
+    ? (scopeRaw.authoring_rules as unknown[])
+    : [];
+  const existingGuidance: string[] = Array.isArray(scopeRaw.guidance_rules)
+    ? (scopeRaw.guidance_rules as unknown[]).filter((s): s is string => typeof s === "string")
+    : [];
+  const newAuthoring: unknown[] = [];
+  const newGuidance: string[] = [];
+  for (const c of classified) {
+    if (c.bucket === "guidance") {
+      if (c.text.trim()) newGuidance.push(c.text.trim());
+      continue;
+    }
     const base = { ...c.rule } as Record<string, unknown>;
     if (
       c.rule.kind !== "probabilistic" &&
@@ -127,20 +141,25 @@ export async function action({
     ) {
       base.reason = c.text.trim();
     }
-    return base;
-  });
-  const next = [...existing, ...newRules];
+    newAuthoring.push(base);
+  }
+  const nextAuthoring = [...existingAuthoring, ...newAuthoring];
+  const nextGuidance = [...existingGuidance, ...newGuidance];
   await updateScopeInDoco({
     docoDir: dir,
     scopeId: id as EntityId<"scope">,
-    rules: next,
+    ...(newAuthoring.length > 0 ? { authoring_rules: nextAuthoring } : {}),
+    ...(newGuidance.length > 0 ? { guidance_rules: nextGuidance } : {}),
   });
   await reindex(dir);
 
   const duration_ms = Date.now() - t0;
   const ops = classified.map((c) => ({
     kind: "added" as const,
-    summary: `Rule (${c.rule.kind}): ${c.text}`,
+    summary:
+      c.bucket === "guidance"
+        ? `Guidance rule: ${c.text}`
+        : `Authoring rule (${c.rule.kind}): ${c.text}`,
   }));
   const footer_lines = renderOperationLines({
     ownerSlug,
@@ -157,7 +176,8 @@ export async function action({
   return Response.json(
     {
       added: classified,
-      total: next.length,
+      total_authoring: nextAuthoring.length,
+      total_guidance: nextGuidance.length,
       footer_lines,
     },
     { status: 201 },

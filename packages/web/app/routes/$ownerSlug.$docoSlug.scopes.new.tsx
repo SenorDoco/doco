@@ -169,13 +169,14 @@ export async function action({
       if (existing.some((s) => s.name === tpl.name)) {
         return redirect(afterAdd);
       }
+      // Per decision_01KRPMC7CVDA9WZ5DKH81TVAAA: template `purpose` is
+      // retired; `guidelines` text seeds `guidance_rules[0]`.
       await createScopeInDoco({
         docoDir: dir,
         docoId: docoId as EntityId<"doco">,
         name: tpl.name,
         icon: tpl.icon,
-        purpose: tpl.purpose,
-        guidelines: tpl.guidelines,
+        ...(tpl.guidelines ? { guidance_rules: [tpl.guidelines] } : {}),
         watched,
         createdBy,
       });
@@ -248,14 +249,19 @@ export async function action({
         if (reason) r.reason = reason;
         rules.push(r);
       }
+      // Per decision_01KRPMC7CVDA9WZ5DKH81TVAAA: no `purpose` field; the
+      // form's "Purpose" textarea now seeds `guidance_rules[0]` if the
+      // user filled it (still rendered on the form so the new-scope page
+      // still asks for a one-liner about why the scope exists). `rules`
+      // is renamed to `authoring_rules`.
       const newScopeId = await createScopeInDoco({
         docoDir: dir,
         docoId: docoId as EntityId<"doco">,
         name,
         ...(icon ? { icon } : {}),
-        ...(purpose ? { purpose } : {}),
         parentScopes,
-        ...(rules.length > 0 ? { rules } : {}),
+        ...(purpose ? { guidance_rules: [purpose] } : {}),
+        ...(rules.length > 0 ? { authoring_rules: rules } : {}),
         watched,
         createdBy,
       });
@@ -331,18 +337,14 @@ export default function AddScope({
                     whether the work belongs here. <strong>Not watched</strong>{" "}
                     scopes are still available — they just don&apos;t get the
                     extra attention prompt. This is a soft signal, not
-                    enforcement (hard enforcement is what{" "}
-                    <code>mandatory_scope</code> Constitution rules are for,
-                    set later on the Rules editor).
+                    enforcement.
                     {isOnboarding ? (
                       <>
                         {" "}During onboarding <strong>Watched</strong> is
                         pre-selected because you&apos;re picking these scopes
                         on purpose. Flip it if you want this one to stay quiet.
                       </>
-                    ) : (
-                      <> No silent default per ADR-137bis.</>
-                    )}
+                    ) : null}
                   </p>
                   <div
                     className="flex flex-col gap-2"
@@ -544,9 +546,7 @@ export default function AddScope({
                   agent) to proactively look for opportunities to document into
                   it when capturing work. <strong>Not watched</strong> scopes
                   are still available — they just don't get the extra attention
-                  prompt. This is a soft signal, not enforcement (hard
-                  enforcement is what <code>mandatory_scope</code> Constitution
-                  rules are for, set later on the Rules editor). No default.
+                  prompt. This is a soft signal, not enforcement.
                 </p>
                 <div className="flex flex-wrap gap-4" role="radiogroup" aria-label="Watched or not watched">
                   <label className="flex items-center gap-2">

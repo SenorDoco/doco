@@ -25,7 +25,8 @@ interface ScopeRow {
   id: string;
   name: string;
   summary: string;
-  purpose: string | null;
+  /** First guidance rule (if any) — doubles as the short description. */
+  short_description: string | null;
   parent_ids: string[];
   member_count: number;
   sub_scope_count: number;
@@ -76,11 +77,16 @@ export async function loader({
       ).rows;
       const scopes: ScopeRow[] = rows.map((r) => {
         const ent = (parseYaml(r.raw_yaml) ?? {}) as Record<string, unknown>;
+        const firstGuidance = Array.isArray(ent.guidance_rules)
+          ? (ent.guidance_rules as unknown[]).find(
+              (s): s is string => typeof s === "string",
+            ) ?? null
+          : null;
         return {
           id: r.id,
           name: r.name,
           summary: r.summary,
-          purpose: typeof ent.purpose === "string" ? ent.purpose : null,
+          short_description: firstGuidance,
           parent_ids: Array.isArray(ent.scopes) ? (ent.scopes as string[]) : [],
           member_count: Number(r.member_count),
           sub_scope_count: Number(r.sub_scope_count),
@@ -254,9 +260,9 @@ export default function ListByTypeInDoco({
                           : ""}
                         )
                       </span>
-                      {n.purpose ? (
+                      {n.short_description ? (
                         <span className="ml-2 truncate text-muted-foreground">
-                          — {n.purpose}
+                          — {n.short_description}
                         </span>
                       ) : null}
                       <Link

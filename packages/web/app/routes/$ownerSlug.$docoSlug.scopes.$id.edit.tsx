@@ -104,8 +104,14 @@ export async function loader({
   const manifest = await listScopeManifest(dir);
   const isWatched = manifest.find((m) => m.id === id)?.is_watched ?? false;
 
-  const rules: ScopeRuleRecord[] = Array.isArray(raw.rules)
-    ? (raw.rules as ScopeRuleRecord[])
+  // Per decision_01KRPMC7CVDA9WZ5DKH81TVAAA the scope carries two parallel
+  // rule arrays. `authoring_rules` are engine-readable predicates that fire
+  // at write time; `guidance_rules` are prose strings the agent reads.
+  const authoringRules: ScopeRuleRecord[] = Array.isArray(raw.authoring_rules)
+    ? (raw.authoring_rules as ScopeRuleRecord[])
+    : [];
+  const guidanceRules: string[] = Array.isArray(raw.guidance_rules)
+    ? (raw.guidance_rules as unknown[]).filter((s): s is string => typeof s === "string")
     : [];
 
   // memberCount — non-scope nodes that name this scope via in_scope_of.
@@ -138,10 +144,9 @@ export async function loader({
       id: String(raw.id),
       name: String(raw.name),
       icon: typeof raw.icon === "string" ? raw.icon : "",
-      purpose: typeof raw.purpose === "string" ? raw.purpose : "",
-      guidelines: typeof raw.guidelines === "string" ? raw.guidelines : "",
       lifecycle: typeof raw.lifecycle === "string" ? raw.lifecycle : "active",
-      rules,
+      authoring_rules: authoringRules,
+      guidance_rules: guidanceRules,
       is_watched: isWatched,
     },
     allScopes,
@@ -189,17 +194,12 @@ export async function action({
         targetScopeId: scopeId,
         watched: watchedRaw === "true",
       });
-    } else if (intent === "save_basics") {
+    } else if (intent === "save_icon") {
+      // Per decision_01KRPMC7CVDA9WZ5DKH81TVAAA the scope no longer
+      // carries `purpose` or `guidelines` fields — everything other than
+      // the icon is rules. So this intent only saves the icon.
       const icon = String(form.get("icon") ?? "").trim();
-      const purpose = String(form.get("purpose") ?? "").trim();
-      const guidelines = String(form.get("guidelines") ?? "").trim();
-      await updateScopeInDoco({
-        docoDir: dir,
-        scopeId,
-        icon: icon || null,
-        purpose: purpose || null,
-        guidelines: guidelines || null,
-      });
+      await updateScopeInDoco({ docoDir: dir, scopeId, icon: icon || null });
     } else if (intent === "classify_rule_prose") {
       // The new prose-driven flow (decision_01KRPET95G2QNTPCR0YWAKSCH5).
       // Fetcher-only path: returns the classified rules without persisting
@@ -239,10 +239,19 @@ export async function action({
       }
       const raw = await readScopeRaw(id);
       if (!raw) return { error: "Scope not found." };
-      const existing: ScopeRuleRecord[] = Array.isArray(raw.rules)
-        ? (raw.rules as ScopeRuleRecord[])
+      const existingAuthoring: ScopeRuleRecord[] = Array.isArray(raw.authoring_rules)
+        ? (raw.authoring_rules as ScopeRuleRecord[])
         : [];
-      const newRules: ScopeRuleRecord[] = parsed.map((c) => {
+      const existingGuidance: string[] = Array.isArray(raw.guidance_rules)
+        ? (raw.guidance_rules as unknown[]).filter((s): s is string => typeof s === "string")
+        : [];
+      const newAuthoring: ScopeRuleRecord[] = [];
+      const newGuidance: string[] = [];
+      for (const c of parsed) {
+        if (c.bucket === "guidance") {
+          if (c.text.trim()) newGuidance.push(c.text.trim());
+          continue;
+        }
         // Persist the original prose as `reason` so the rule list shows the
         // project owner's own words next to the predicate shorthand. For
         // probabilistic rules the spec IS the prose, so reason stays
@@ -251,27 +260,57 @@ export async function action({
         if (c.rule.kind !== "probabilistic" && !base.reason && c.text.trim()) {
           base.reason = c.text.trim();
         }
-        return base;
+        newAuthoring.push(base);
+      }
+      const nextAuthoring = [...existingAuthoring, ...newAuthoring];
+      const nextGuidance = [...existingGuidance, ...newGuidance];
+      await updateScopeInDoco({
+        docoDir: dir,
+        scopeId,
+        ...(newAuthoring.length > 0 ? { authoring_rules: nextAuthoring } : {}),
+        ...(newGuidance.length > 0 ? { guidance_rules: nextGuidance } : {}),
       });
-      const next = [...existing, ...newRules];
-      await updateScopeInDoco({ docoDir: dir, scopeId, rules: next });
       await reindex(dir);
       // Fetcher-only path — returning data instead of redirecting lets the
       // editor component reset its preview state and React Router
       // revalidate the loader so the new rules show in the list above.
-      return { ok: true, added: newRules.length };
-    } else if (intent === "remove_rule") {
+      return {
+        ok: true,
+        added_authoring: newAuthoring.length,
+        added_guidance: newGuidance.length,
+      };
+    } else if (intent === "remove_authoring_rule") {
       const indexStr = String(form.get("rule_index") ?? "");
       const index = Number.parseInt(indexStr, 10);
       if (!Number.isInteger(index) || index < 0) return { error: "Invalid rule index." };
       const raw = await readScopeRaw(id);
       if (!raw) return { error: "Scope not found." };
-      const existing: ScopeRuleRecord[] = Array.isArray(raw.rules)
-        ? (raw.rules as ScopeRuleRecord[])
+      const existing: ScopeRuleRecord[] = Array.isArray(raw.authoring_rules)
+        ? (raw.authoring_rules as ScopeRuleRecord[])
         : [];
       if (index >= existing.length) return { error: "Rule index out of range." };
       const next = existing.filter((_, i) => i !== index);
-      await updateScopeInDoco({ docoDir: dir, scopeId, rules: next.length === 0 ? null : next });
+      await updateScopeInDoco({
+        docoDir: dir,
+        scopeId,
+        authoring_rules: next.length === 0 ? null : next,
+      });
+    } else if (intent === "remove_guidance_rule") {
+      const indexStr = String(form.get("rule_index") ?? "");
+      const index = Number.parseInt(indexStr, 10);
+      if (!Number.isInteger(index) || index < 0) return { error: "Invalid rule index." };
+      const raw = await readScopeRaw(id);
+      if (!raw) return { error: "Scope not found." };
+      const existing: string[] = Array.isArray(raw.guidance_rules)
+        ? (raw.guidance_rules as unknown[]).filter((s): s is string => typeof s === "string")
+        : [];
+      if (index >= existing.length) return { error: "Rule index out of range." };
+      const next = existing.filter((_, i) => i !== index);
+      await updateScopeInDoco({
+        docoDir: dir,
+        scopeId,
+        guidance_rules: next.length === 0 ? null : next,
+      });
     } else if (intent === "deprecate") {
       // Danger Zone — deprecate (don't delete) a scope. Per the
       // `scopes-are-deprecated-not-deleted` Decision: scopes follow the
@@ -422,56 +461,28 @@ export default function ScopeEdit({
           </Link>
         </div>
 
-        {/* Basics — icon + Purpose + Guidelines */}
+        {/* Icon — the only non-rule scalar a scope carries.
+            Per decision_01KRPMC7CVDA9WZ5DKH81TVAAA `purpose` and
+            `guidelines` were retired; every other piece of normative
+            content lives as a rule below. */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-sm">Basics</CardTitle>
+            <CardTitle className="text-sm">Icon</CardTitle>
             <CardDescription>
               The icon identifies the scope at a glance — it surfaces on the /scopes list, the
               /constitution tab, and on every capture footer that touches a node in this scope.
-              Purpose: one sentence on why this scope exists. Guidelines: markdown the agent reads
-              before authoring nodes into the scope.
             </CardDescription>
           </CardHeader>
           <CardContent>
             <Form method="post" className="space-y-2">
-              <input type="hidden" name="intent" value="save_basics" />
-              <div>
-                <span className="mb-1 block text-[11px] uppercase tracking-wider text-muted-foreground">
-                  Icon
-                </span>
-                <EmojiPickerInput name="icon" defaultValue={scope.icon} />
-              </div>
-              <label className="block">
-                <span className="mb-1 block text-[11px] uppercase tracking-wider text-muted-foreground">
-                  Purpose
-                </span>
-                <textarea
-                  name="purpose"
-                  rows={2}
-                  defaultValue={scope.purpose}
-                  placeholder="One sentence — why this scope exists, what nodes belong here."
-                  className="w-full rounded-md border border-border bg-input px-3 py-2 text-xs text-foreground outline-none focus:border-primary"
-                />
-              </label>
-              <label className="block">
-                <span className="mb-1 block text-[11px] uppercase tracking-wider text-muted-foreground">
-                  Guidelines (markdown)
-                </span>
-                <textarea
-                  name="guidelines"
-                  rows={10}
-                  defaultValue={scope.guidelines}
-                  placeholder="How to author nodes in this scope. What questions they should answer, what evidence is expected, format conventions, anti-patterns."
-                  className="w-full rounded-md border border-border bg-input px-3 py-2 font-mono text-[11px] text-foreground outline-none focus:border-primary"
-                />
-              </label>
+              <input type="hidden" name="intent" value="save_icon" />
+              <EmojiPickerInput name="icon" defaultValue={scope.icon} />
               <div>
                 <button
                   type="submit"
                   className="rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90"
                 >
-                  Save basics
+                  Save icon
                 </button>
               </div>
             </Form>
@@ -492,7 +503,7 @@ export default function ScopeEdit({
               <code>watched: true</code> flag on the scope's own YAML. Not
               enforced at capture time — for hard enforcement, add a{" "}
               <code>mandatory_scope</code> rule to the Constitution via the
-              Rules editor below (a different mechanism).
+              Authoring rules editor below (a different mechanism).
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -504,26 +515,28 @@ export default function ScopeEdit({
           </CardContent>
         </Card>
 
-        {/* Rules */}
+        {/* Authoring rules — engine-readable predicates fired at write
+            time. Failures block the write. */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-sm">Rules ({scope.rules.length})</CardTitle>
+            <CardTitle className="text-sm">
+              Authoring rules ({scope.authoring_rules.length})
+            </CardTitle>
             <CardDescription>
-              Predicates the engine evaluates whenever a node enters this scope. Describe each rule
-              in plain English — the classifier turns it into a deterministic predicate (which
-              blocks writes structurally) when one fits, otherwise an LLM-judged probabilistic
-              rule that runs at capture time. Multi-rule prose splits into separate rows
-              automatically.
+              Predicates the engine evaluates whenever a node enters this scope. Deterministic kinds
+              (requires_edge / requires_field / mandatory_scope / forbids_*) block writes
+              structurally; probabilistic specs run an LLM judge at capture time and reject on a
+              "no" verdict. Authored via prose below — the classifier picks the predicate.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
-            {scope.rules.length === 0 ? (
+            {scope.authoring_rules.length === 0 ? (
               <p className="text-xs italic text-muted-foreground">
-                No rules yet. Use the form below to add one.
+                No authoring rules yet.
               </p>
             ) : (
               <ul className="space-y-2">
-                {scope.rules.map((r, i) => {
+                {scope.authoring_rules.map((r, i) => {
                   const isProbabilistic = r.kind === "probabilistic";
                   const shorthand = predicateShorthand(r, allScopes);
                   return (
@@ -539,7 +552,7 @@ export default function ScopeEdit({
                         </div>
                       </div>
                       <Form method="post">
-                        <input type="hidden" name="intent" value="remove_rule" />
+                        <input type="hidden" name="intent" value="remove_authoring_rule" />
                         <input type="hidden" name="rule_index" value={String(i)} />
                         <button
                           type="submit"
@@ -553,7 +566,67 @@ export default function ScopeEdit({
                 })}
               </ul>
             )}
+          </CardContent>
+        </Card>
 
+        {/* Guidance rules — prose for agents to read while working in or
+            with this scope. No automated check. */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm">
+              Guidance rules ({scope.guidance_rules.length})
+            </CardTitle>
+            <CardDescription>
+              Prose the agent reads while working in or with this scope. No automated check —
+              directive but not enforced. Use these for procedural / stylistic / informational rules
+              that don't fit an authoring predicate ("when writing a bugfix Decision, lead with the
+              symptom"; "format Decision bodies with sections: Context, Options, Choice,
+              Consequences").
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {scope.guidance_rules.length === 0 ? (
+              <p className="text-xs italic text-muted-foreground">
+                No guidance rules yet.
+              </p>
+            ) : (
+              <ul className="space-y-2">
+                {scope.guidance_rules.map((text, i) => (
+                  <li
+                    key={`guidance-${i}`}
+                    className="flex items-baseline gap-2 rounded-md border border-border bg-card p-2 text-xs"
+                  >
+                    <Badge>Guidance</Badge>
+                    <div className="flex-1 text-foreground whitespace-pre-wrap">{text}</div>
+                    <Form method="post">
+                      <input type="hidden" name="intent" value="remove_guidance_rule" />
+                      <input type="hidden" name="rule_index" value={String(i)} />
+                      <button
+                        type="submit"
+                        className="rounded-md border border-border px-2 py-0.5 text-[10px] text-destructive hover:bg-destructive/10"
+                      >
+                        Remove
+                      </button>
+                    </Form>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Add rules — one prose textarea; classifier buckets into
+            authoring or guidance and lets the project owner preview. */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm">Add rules</CardTitle>
+            <CardDescription>
+              Describe one or more rules in plain English. The classifier splits multi-rule prose,
+              buckets each into authoring (engine-readable predicates that block writes) or
+              guidance (prose for agents to read), and shows you a preview before saving.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
             <RuleProseEditor allScopes={allScopes} />
           </CardContent>
         </Card>
@@ -814,7 +887,8 @@ function RuleProseEditor({ allScopes }: { allScopes: { id: string; name: string 
     classified?: ClassifiedRule[];
     originalProse?: string;
     ok?: boolean;
-    added?: number;
+    added_authoring?: number;
+    added_guidance?: number;
     error?: string;
   }>();
   const [prose, setProse] = useState("");
@@ -822,7 +896,7 @@ function RuleProseEditor({ allScopes }: { allScopes: { id: string; name: string 
 
   // When the accept fetcher succeeds, clear the local state so the form
   // resets to the empty prose textarea — the loader revalidates and the
-  // new rule rows show in the list above.
+  // new rule rows show in the lists above.
   useEffect(() => {
     if (fetcher.state === "idle" && fetcher.data?.ok === true) {
       setProse("");
@@ -838,39 +912,51 @@ function RuleProseEditor({ allScopes }: { allScopes: { id: string; name: string 
   const classifyError =
     fetcher.data?.error && fetcher.data?.classified === undefined ? fetcher.data.error : null;
   const inPreview = !hidePreview && Array.isArray(classified) && classified.length > 0;
+  const authoringCount =
+    classified?.filter((c) => c.bucket === "authoring").length ?? 0;
+  const guidanceCount =
+    classified?.filter((c) => c.bucket === "guidance").length ?? 0;
 
   return (
     <div className="rounded-md border border-dashed border-border bg-input/30 p-3 space-y-2">
-      <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-        Add a rule
-      </p>
-      <p className="text-[11px] text-muted-foreground">
-        Describe the rule in your own words. A classifier turns it into a deterministic predicate
-        when one fits (and the engine blocks writes that violate it), or keeps your prose verbatim
-        as a probabilistic rule that the LLM judge evaluates at capture time. Two rules in one
-        sentence? They split automatically.
-      </p>
-
       {inPreview ? (
         <fetcher.Form method="post" className="space-y-2">
           <input type="hidden" name="intent" value="add_rules_classified" />
           <input type="hidden" name="payload" value={JSON.stringify(classified)} />
           <p className="text-[11px] text-muted-foreground">
-            The classifier split your prose into <strong>{classified!.length}</strong> rule
-            {classified!.length === 1 ? "" : "s"}. Review and accept, or cancel to edit your prose.
+            The classifier produced{" "}
+            <strong>
+              {authoringCount} authoring rule{authoringCount === 1 ? "" : "s"}
+            </strong>{" "}
+            and{" "}
+            <strong>
+              {guidanceCount} guidance rule{guidanceCount === 1 ? "" : "s"}
+            </strong>
+            . Review and accept, or cancel to edit your prose.
           </p>
           <ul className="space-y-2">
             {classified!.map((c, i) => {
+              if (c.bucket === "guidance") {
+                return (
+                  <li
+                    key={i}
+                    className="flex items-baseline gap-2 rounded-md border border-border bg-card p-2 text-xs"
+                  >
+                    <Badge>Guidance</Badge>
+                    <div className="flex-1 text-foreground whitespace-pre-wrap">{c.text}</div>
+                  </li>
+                );
+              }
               const isProbabilistic = c.rule.kind === "probabilistic";
-              // Cast through unknown so the local ScopeRuleRecord helpers
-              // can read the legacy + plural shapes the engine accepts.
               const asRecord = c.rule as unknown as ScopeRuleRecord;
               return (
                 <li
                   key={i}
                   className="flex items-baseline gap-2 rounded-md border border-border bg-card p-2 text-xs"
                 >
-                  <Badge>{isProbabilistic ? "Probabilistic" : "Deterministic"}</Badge>
+                  <Badge>
+                    Authoring · {isProbabilistic ? "probabilistic" : "deterministic"}
+                  </Badge>
                   <div className="flex-1 space-y-0.5">
                     <div className="text-foreground">{c.text}</div>
                     <div className="font-mono text-[10px] text-muted-foreground">
@@ -893,7 +979,7 @@ function RuleProseEditor({ allScopes }: { allScopes: { id: string; name: string 
               {isSaving
                 ? "Saving…"
                 : `Accept & add ${classified!.length} rule${classified!.length === 1 ? "" : "s"}`}
-            </button>
+            </button>{" "}
             <button
               type="button"
               onClick={() => setHidePreview(true)}

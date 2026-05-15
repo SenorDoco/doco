@@ -643,9 +643,12 @@ export async function runScopeRules(opts: {
   const scopeIds = Array.isArray(entityFm.scopes) ? (entityFm.scopes as string[]) : [];
   const allScopes = await loadAllScopes(docoDir);
 
+  // Per decision_01KRPMC7CVDA9WZ5DKH81TVAAA the engine reads only
+  // `authoring_rules`. Guidance rules are agent-facing prose with no
+  // automated check, evaluated nowhere in the capture path.
   const readRules = (s: Scope): unknown[] => {
     const rec = s as unknown as Record<string, unknown>;
-    return Array.isArray(rec.rules) ? (rec.rules as unknown[]) : [];
+    return Array.isArray(rec.authoring_rules) ? (rec.authoring_rules as unknown[]) : [];
   };
 
   const rulesToRun: { scope: Scope; rules: unknown[] }[] = [];
@@ -717,9 +720,12 @@ export async function runScopeRules(opts: {
   const entityBody =
     typeof entityFm.body_md === "string" ? (entityFm.body_md as string) : undefined;
   for (const { scope, rules } of rulesToRun) {
+    // The engine reads `authoring_rules` (decision_01KRPMC7CVDA9WZ5DKH81TVAAA),
+    // so the per-iteration filtered view overrides that field, not the
+    // retired `rules` name.
     const filteredScope = {
       ...(scope as unknown as Record<string, unknown>),
-      rules,
+      authoring_rules: rules,
     } as unknown as Scope;
     const v = evaluateScopeRules({
       entity: entityForEngine,
