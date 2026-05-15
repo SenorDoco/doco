@@ -1,15 +1,15 @@
-import { Link } from "react-router";
 import { withClient } from "@doco/db";
 import { runAllLints } from "@doco/lints";
+import { Link } from "react-router";
+import { Badge } from "~/components/badge";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
+import { SiteHeader } from "~/components/site-header";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "~/components/table";
+import { getWatcherStatus } from "~/lib/auto-reindex.server";
 import { docoPath } from "~/lib/db.server";
 import { loadDocoForRead } from "~/lib/doco-access.server";
 import { loadHostConfig } from "~/lib/host";
 import { getCurrentPrincipal } from "~/lib/session";
-import { getWatcherStatus } from "~/lib/auto-reindex.server";
-import { SiteHeader } from "~/components/site-header";
-import { Badge } from "~/components/badge";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "~/components/table";
 
 export async function loader({
   request,
@@ -21,17 +21,16 @@ export async function loader({
   const { ownerSlug, docoSlug } = params;
   const ctx = await loadDocoForRead(request, ownerSlug, docoSlug); // 404 if private + non-member
   const docoRoot = docoPath(ownerSlug, docoSlug);
-  const report = await withClient((c) =>
-    runAllLints(c, ctx.meta.docoId, { docoRoot }),
-  );
-  const watcher = getWatcherStatus();
+  const report = await withClient((c) => runAllLints(c, ctx.meta.docoId, { docoRoot }));
+  const isPostgresStorage = process.env.DOCO_STORAGE === "postgres";
+  const watcher = isPostgresStorage ? null : getWatcherStatus();
   const docoKey = `${ownerSlug}/${docoSlug}`;
   const watcherForThisDoco = {
-    enabled: watcher.enabled,
-    started_at: watcher.started_at,
-    pending: watcher.pending.filter((p) => p.docoKey === docoKey),
-    recent: watcher.recent.filter((r) => r.docoKey === docoKey).slice(0, 10),
-    total_reindexes: watcher.total_reindexes,
+    enabled: watcher?.enabled ?? false,
+    started_at: watcher?.started_at ?? null,
+    pending: watcher?.pending.filter((p) => p.docoKey === docoKey) ?? [],
+    recent: watcher?.recent.filter((r) => r.docoKey === docoKey).slice(0, 10) ?? [],
+    total_reindexes: watcher?.total_reindexes ?? 0,
   };
   return {
     report,
@@ -39,6 +38,7 @@ export async function loader({
     docoSlug,
     host: await loadHostConfig(),
     me: await getCurrentPrincipal(request),
+    indexingMode: isPostgresStorage ? "write-time" : "filesystem-watcher",
     watcher: watcherForThisDoco,
   };
 }
@@ -52,7 +52,8 @@ export default function LintInDoco({
 }: {
   loaderData: Awaited<ReturnType<typeof loader>>;
 }) {
-  const { report, ownerSlug, docoSlug, host, me, watcher } = loaderData;
+  const { report, ownerSlug, docoSlug, host, me, indexingMode, watcher } = loaderData;
+  const usesWriteTimeIndexing = indexingMode === "write-time";
   return (
     <div>
       <SiteHeader mode="host" me={me} docoScope={{ ownerSlug, docoSlug }} />
@@ -61,14 +62,11 @@ export default function LintInDoco({
           <CardHeader>
             <CardTitle>Lint report</CardTitle>
             <CardDescription>
-              Lint is a set of structural checks Doco runs across every
-              entity in this Doco — orphan references, broken{" "}
-              <code>applies_to</code> selectors, scope-membership
-              violations, lifecycle conflicts, and similar invariants
-              from <code>SYSTEM_LINTS</code>. Errors are blockers
-              (something is wrong with the graph); warnings flag drift
-              that probably needs attention but won't break callers.
-              Runs on every page load.
+              Lint is a set of structural checks Doco runs across every entity in this Doco — orphan
+              references, broken <code>applies_to</code> selectors, scope-membership violations,
+              lifecycle conflicts, and similar invariants from <code>SYSTEM_LINTS</code>. Errors are
+              blockers (something is wrong with the graph); warnings flag drift that probably needs
+              attention but won't break callers. Runs on every page load.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -83,23 +81,29 @@ export default function LintInDoco({
           </CardContent>
         </Card>
 
-        {/* Auto-reindex watcher status (per `auto-reindex-on-file-changes` ADR). */}
+        {/* Indexing status: write-time in PG mode, watcher-backed in legacy filesystem mode. */}
         <Card>
           <CardHeader>
             <CardTitle className="text-sm">Index freshness</CardTitle>
             <CardDescription>
-              Postgres is the source of truth and reindexes derived data
-              at write time — agents shouldn't need to call reindex. The
-              legacy CLI filesystem watcher only runs when DOCO_STORAGE
-              is unset (local dev with on-disk YAML); if this card shows
-              the index lagging, file a bug.
+              {usesWriteTimeIndexing
+                ? "Postgres is the source of truth and refreshes derived data at write time. The filesystem watcher is only for legacy local YAML mode, so stopped is expected here."
+                : "Local on-disk YAML mode uses the filesystem watcher to refresh derived data after file changes. If pending work stays queued or recent events fail, file a bug."}
             </CardDescription>
           </CardHeader>
           <CardContent>
             <dl className="grid grid-cols-2 gap-y-1 text-xs">
+              <dt className="text-muted-foreground">Mode</dt>
+              <dd>
+                <Badge variant="success">
+                  {usesWriteTimeIndexing ? "write-time" : "filesystem"}
+                </Badge>
+              </dd>
               <dt className="text-muted-foreground">Watcher</dt>
               <dd>
-                {watcher.enabled ? (
+                {usesWriteTimeIndexing ? (
+                  <Badge>not used</Badge>
+                ) : watcher.enabled ? (
                   <Badge variant="success">running</Badge>
                 ) : (
                   <Badge variant="destructive">stopped</Badge>
@@ -119,7 +123,10 @@ export default function LintInDoco({
                 </summary>
                 <ul className="mt-1 space-y-0.5 font-mono">
                   {watcher.recent.map((r, i) => (
-                    <li key={`${r.ran_at}-${i}`} className={r.ok ? "text-muted-foreground" : "text-destructive"}>
+                    <li
+                      key={`${r.ran_at}-${i}`}
+                      className={r.ok ? "text-muted-foreground" : "text-destructive"}
+                    >
                       {r.ran_at} · {r.duration_ms}ms · {r.ok ? "ok" : `error: ${r.error}`}
                     </li>
                   ))}
@@ -157,7 +164,9 @@ export default function LintInDoco({
               <ul className="mt-4 space-y-2">
                 {report.issues.map((iss) => (
                   <li key={`${iss.lintId}-${iss.source}`} className="flex items-start gap-2">
-                    <Badge variant={iss.severity === "error" ? "destructive" : "warning"}>{iss.lintId}</Badge>
+                    <Badge variant={iss.severity === "error" ? "destructive" : "warning"}>
+                      {iss.lintId}
+                    </Badge>
                     <div className="text-sm">
                       <Link
                         to={`/${ownerSlug}/${docoSlug}/${guessTypeFromId(iss.source)}/${iss.source}`}
