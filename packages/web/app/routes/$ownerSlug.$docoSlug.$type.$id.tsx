@@ -66,6 +66,12 @@ export async function loader({
 }) {
   const { ownerSlug, docoSlug, type, id: idParam } = params;
   if (!KNOWN.has(type)) throw new Response("Unknown type", { status: 404 });
+  // Per decision_01KRPNZY7W6CCMYNKGND67BP0B scopes use the plural URL
+  // `/scopes/:id` so the merged detail+edit page is the single canonical
+  // landing surface. Redirect the singular short-form here.
+  if (type === "scope") {
+    throw redirect(`/${ownerSlug}/${docoSlug}/scopes/${idParam}`, { status: 308 });
+  }
   const ctx = await loadDocoForRead(request, ownerSlug, docoSlug);
   const me = ctx.me;
   const docoId = ctx.meta.docoId;

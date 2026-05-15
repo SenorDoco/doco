@@ -31,7 +31,11 @@ export function SiteHeader({ docoScope, me }: SiteHeaderProps) {
           to: `/${docoScope.ownerSlug}/${docoScope.docoSlug}`,
           label: `${docoScope.ownerSlug}/${docoScope.docoSlug}`,
         },
-        { to: `/${docoScope.ownerSlug}/${docoScope.docoSlug}/constitution`, label: "Constitution" },
+        // The /constitution tab was removed per
+        // decision_01KRPNZY7W6CCMYNKGND67BP0B — the Global scope (formerly
+        // "Constitution") appears first on /scopes with the caption "the
+        // doco's constitution" next to its name. Edit it like any other
+        // scope from /scopes/<id>.
         { to: `/${docoScope.ownerSlug}/${docoScope.docoSlug}/scopes`, label: "Scopes" },
         { to: `/${docoScope.ownerSlug}/${docoScope.docoSlug}/lint`, label: "Lint" },
         { to: `/${docoScope.ownerSlug}/${docoScope.docoSlug}/settings`, label: "Settings" },

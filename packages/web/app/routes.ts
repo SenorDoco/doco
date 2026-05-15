@@ -38,7 +38,8 @@ import { type RouteConfig, index, route } from "@react-router/dev/routes";
  *   /:owner/:doco/settings         per-Doco settings (admin only; danger zone soft-delete; ADR-124)
  *   /:owner/:doco/scopes           per-Doco scope list (Edit button — not chevron — for instructions)
  *   /:owner/:doco/scopes/new       per-Doco add a scope (templates + custom form)
- *   /:owner/:doco/constitution     per-Doco Constitution (mandatory scope + rules; ADR-129)
+ *   /:owner/:doco/scopes/:id       per-Doco scope detail+edit (merged) — including the Global scope (formerly /constitution; renamed per decision_01KRPNZY7W6CCMYNKGND67BP0B)
+ *   /:owner/:doco/scopes/:id/deprecate  standalone Danger Zone confirmation
  *   /:owner/:doco/status.json      per-Doco status (connection signal for agent footer line)
  *   /:owner/:doco/api/*            per-Doco capture + update endpoints
  *                                  (decisions / intents / evos / settings; ADR-128 added evos.json)
@@ -103,7 +104,6 @@ export default [
   route("by-id/:docoId/api/:type.txt", "routes/by-id.$docoId.api.$type[.]txt.tsx"),
   route("by-id/:docoId/search.json", "routes/by-id.$docoId.search[.]json.tsx"),
   route("by-id/:docoId/scopes/new", "routes/by-id.$docoId.scopes.new.tsx"),
-  route("by-id/:docoId/scopes/:id/edit", "routes/by-id.$docoId.scopes.$id.edit.tsx"),
   route("by-id/:docoId/:type/:id", "routes/by-id.$docoId.$type.$id.tsx"),
   route("by-id/:docoId/:type", "routes/by-id.$docoId.$type.tsx"),
   route("by-id/:docoId/*", "routes/by-id.$docoId.$.tsx"),
@@ -143,8 +143,11 @@ export default [
   route(":ownerSlug/:docoSlug/lint", "routes/$ownerSlug.$docoSlug.lint.tsx"),
   route(":ownerSlug/:docoSlug/scopes", "routes/$ownerSlug.$docoSlug.scopes._index.tsx"),
   route(":ownerSlug/:docoSlug/scopes/new", "routes/$ownerSlug.$docoSlug.scopes.new.tsx"),
-  route(":ownerSlug/:docoSlug/scopes/:id/edit", "routes/$ownerSlug.$docoSlug.scopes.$id.edit.tsx"),
-  route(":ownerSlug/:docoSlug/constitution", "routes/$ownerSlug.$docoSlug.constitution.tsx"),
+  // Per decision_01KRPNZY7W6CCMYNKGND67BP0B the merged scope page lives
+  // at /scopes/:id; deprecation is a sibling page so the main scope
+  // surface stays a coherent "edit everything else" view.
+  route(":ownerSlug/:docoSlug/scopes/:id", "routes/$ownerSlug.$docoSlug.scopes.$id._index.tsx"),
+  route(":ownerSlug/:docoSlug/scopes/:id/deprecate", "routes/$ownerSlug.$docoSlug.scopes.$id.deprecate.tsx"),
   route(":ownerSlug/:docoSlug/rules/new", "routes/$ownerSlug.$docoSlug.rules.new.tsx"),
   // Short-form entity routes. `:type` is validated by the loader; reserved
   // feature slugs above win the match for the static paths.

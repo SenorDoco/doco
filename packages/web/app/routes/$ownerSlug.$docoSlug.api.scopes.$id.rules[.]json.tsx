@@ -116,24 +116,35 @@ export async function action({
 
   // Per decision_01KRPMC7CVDA9WZ5DKH81TVAAA the classifier output is
   // bucketed: authoring rules become entries in `authoring_rules`,
-  // guidance rules go to `guidance_rules`. The original prose slice
-  // lives on each authoring rule's `reason` so the rule list shows the
-  // human-authored intent next to the predicate shorthand; for guidance
-  // rules the prose IS the rule.
+  // guidance rules go to `guidance_rules`. Per
+  // decision_01KRPNZY7W6CCMYNKGND67BP0B each rule carries a per-rule
+  // lifecycle; newly-classified rules ship as `active`, and the
+  // guidance_rules shape is `{ text, lifecycle }` instead of bare strings.
   const existingAuthoring: unknown[] = Array.isArray(scopeRaw.authoring_rules)
     ? (scopeRaw.authoring_rules as unknown[])
     : [];
-  const existingGuidance: string[] = Array.isArray(scopeRaw.guidance_rules)
-    ? (scopeRaw.guidance_rules as unknown[]).filter((s): s is string => typeof s === "string")
+  const existingGuidance: { text: string; lifecycle?: string }[] = Array.isArray(
+    scopeRaw.guidance_rules,
+  )
+    ? (scopeRaw.guidance_rules as unknown[])
+        .map((g): { text: string; lifecycle?: string } | null => {
+          if (typeof g === "string") return { text: g, lifecycle: "active" };
+          if (g && typeof g === "object" && typeof (g as { text?: unknown }).text === "string") {
+            const obj = g as { text: string; lifecycle?: string };
+            return { text: obj.text, lifecycle: obj.lifecycle ?? "active" };
+          }
+          return null;
+        })
+        .filter((g): g is { text: string; lifecycle?: string } => g !== null)
     : [];
   const newAuthoring: unknown[] = [];
-  const newGuidance: string[] = [];
+  const newGuidance: { text: string; lifecycle: string }[] = [];
   for (const c of classified) {
     if (c.bucket === "guidance") {
-      if (c.text.trim()) newGuidance.push(c.text.trim());
+      if (c.text.trim()) newGuidance.push({ text: c.text.trim(), lifecycle: "active" });
       continue;
     }
-    const base = { ...c.rule } as Record<string, unknown>;
+    const base = { ...c.rule, lifecycle: "active" } as Record<string, unknown>;
     if (
       c.rule.kind !== "probabilistic" &&
       (typeof base.reason !== "string" || base.reason.trim() === "") &&

@@ -660,7 +660,10 @@ export async function runScopeRules(opts: {
   }
   for (const s of allScopes.values()) {
     const sname = (s as unknown as Record<string, unknown>).name;
-    if (sname !== "constitution") continue;
+    // Per decision_01KRPNZY7W6CCMYNKGND67BP0B the framework-seeded scope
+    // is "global" (was: "constitution"); the mandatory_scope rules that
+    // apply Doco-wide live on it.
+    if (sname !== "global") continue;
     if (scopeIds.includes(s.id)) break;
     const rules = readRules(s);
     const onlyMandatory = rules.filter(

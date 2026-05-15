@@ -170,13 +170,17 @@ export async function action({
         return redirect(afterAdd);
       }
       // Per decision_01KRPMC7CVDA9WZ5DKH81TVAAA: template `purpose` is
-      // retired; `guidelines` text seeds `guidance_rules[0]`.
+      // retired; `guidelines` text seeds `guidance_rules[0]`. Per
+      // decision_01KRPNZY7W6CCMYNKGND67BP0B each guidance rule is an
+      // object with a per-rule lifecycle.
       await createScopeInDoco({
         docoDir: dir,
         docoId: docoId as EntityId<"doco">,
         name: tpl.name,
         icon: tpl.icon,
-        ...(tpl.guidelines ? { guidance_rules: [tpl.guidelines] } : {}),
+        ...(tpl.guidelines
+          ? { guidance_rules: [{ text: tpl.guidelines, lifecycle: "active" }] }
+          : {}),
         watched,
         createdBy,
       });
@@ -260,16 +264,16 @@ export async function action({
         name,
         ...(icon ? { icon } : {}),
         parentScopes,
-        ...(purpose ? { guidance_rules: [purpose] } : {}),
+        ...(purpose ? { guidance_rules: [{ text: purpose, lifecycle: "active" }] } : {}),
         ...(rules.length > 0 ? { authoring_rules: rules } : {}),
         watched,
         createdBy,
       });
       await reindex(dir);
-      // After-create redirect: go straight to the edit page so the user
-      // can add more rules / refine guidelines. The list page is one
-      // click away via the "Back to scopes" link there.
-      return redirect(`/${ownerSlug}/${docoSlug}/scopes/${newScopeId}/edit`);
+      // After-create redirect: go straight to the merged scope page
+      // (decision_01KRPNZY7W6CCMYNKGND67BP0B replaced the separate /edit
+      // page) so the user can refine rules right away.
+      return redirect(`/${ownerSlug}/${docoSlug}/scopes/${newScopeId}`);
     } else {
       return { error: `Unknown intent: ${intent}` };
     }

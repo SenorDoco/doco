@@ -49,8 +49,14 @@ interface ScopeCreateBody {
    * the predicate shape directly.
    */
   authoring_rules?: unknown[];
-  /** Optional guidance rules — prose for agents to read; no automated check. */
-  guidance_rules?: string[];
+  /**
+   * Optional guidance rules — prose for agents to read; no automated
+   * check. Per decision_01KRPNZY7W6CCMYNKGND67BP0B each entry is an
+   * object: `{ text, lifecycle? }`. Bare strings are also accepted for
+   * backward-compatible callers and promoted to the object shape with
+   * `lifecycle: "active"`.
+   */
+  guidance_rules?: ({ text: string; lifecycle?: string } | string)[];
   watched?: boolean;
 }
 
@@ -146,12 +152,16 @@ export async function action({
     }
     // Per decision_01KRPMC7CVDA9WZ5DKH81TVAAA: template `purpose`
     // retired; `guidelines` text becomes the seed `guidance_rules[0]`.
+    // Per decision_01KRPNZY7W6CCMYNKGND67BP0B each guidance rule is an
+    // object with text + lifecycle.
     createOpts = {
       docoDir: dir,
       docoId,
       name: tpl.name,
       ...(tpl.icon ? { icon: tpl.icon } : {}),
-      ...(tpl.guidelines ? { guidance_rules: [tpl.guidelines] } : {}),
+      ...(tpl.guidelines
+        ? { guidance_rules: [{ text: tpl.guidelines, lifecycle: "active" }] }
+        : {}),
       watched,
       createdBy,
     };
@@ -187,6 +197,18 @@ export async function action({
       }
       parentScopes.push(parent.id as EntityId<"scope">);
     }
+    // Normalize bare string guidance entries to the object shape per
+    // decision_01KRPNZY7W6CCMYNKGND67BP0B.
+    const normalizedGuidance = (body.guidance_rules ?? [])
+      .map((g) => {
+        if (typeof g === "string") return { text: g, lifecycle: "active" };
+        if (g && typeof g === "object" && typeof g.text === "string") {
+          return { text: g.text, lifecycle: g.lifecycle ?? "active" };
+        }
+        return null;
+      })
+      .filter((g): g is { text: string; lifecycle: string } => g !== null);
+
     createOpts = {
       docoDir: dir,
       docoId,
@@ -196,9 +218,7 @@ export async function action({
       ...(body.authoring_rules && body.authoring_rules.length > 0
         ? { authoring_rules: body.authoring_rules }
         : {}),
-      ...(body.guidance_rules && body.guidance_rules.length > 0
-        ? { guidance_rules: body.guidance_rules }
-        : {}),
+      ...(normalizedGuidance.length > 0 ? { guidance_rules: normalizedGuidance } : {}),
       watched,
       createdBy,
     };
@@ -213,7 +233,7 @@ export async function action({
   // Per decision_01KRPMC7CVDA9WZ5DKH81TVAAA there is no `purpose` field
   // any more. Use the first guidance rule as the summary if one exists,
   // otherwise fall back to a generic line.
-  const firstGuidance = createOpts.guidance_rules?.[0]?.trim();
+  const firstGuidance = createOpts.guidance_rules?.[0]?.text?.trim();
   const summary = firstGuidance || `Scope: ${scopeName}${watched ? " (watched)" : ""}`;
   const footer_lines = renderOperationLines({
     ownerSlug,

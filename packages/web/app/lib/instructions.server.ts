@@ -271,11 +271,11 @@ It's a prompt for you, the agent. Two rules:
    know how this is going" — silently leaving it off is the failure
    mode the flag exists to prevent.
 
-Distinguish from \`mandatory_scope\` Constitution rules: those are
+Distinguish from \`mandatory_scope\` authoring rules on the Global scope (the doco's constitution): those are
 hard-enforced (capture is rejected if the scope isn't listed). Watched
 is soft. A scope can be one, both, or neither.
 
-**Informing the project owner about scopes** (Constitution: scope-manifest visibility).
+**Informing the project owner about scopes** (Global scope: scope-manifest visibility).
 The scope manifest — every scope this Doco carries and which of them
 sit under the \`watched\` flag — is how the project owner steers what
 this Doco pays attention to. The manifest only stays useful if the
@@ -301,7 +301,7 @@ project owner can see it whole and keeps shaping it. Two rules:
 
 Like the watched-scopes prompt above, this rule isn't a per-node
 predicate the engine checks — it shapes the rhythm of the
-collaboration itself. It lives in the Constitution because the
+collaboration itself. It lives in the Global scope (the doco's constitution) because the
 manifest is load-bearing for every other decision the project owner
 makes about this Doco.
 
@@ -829,7 +829,7 @@ empty. Don't loop — stop and explain.
 
 The bootstrap response from \`/api/v1/agent-bootstrap?id=<doco_id>\`
 carries an \`onboarding_overlay\` field while the Doco has only the
-framework-seeded Constitution scope (no project-specific scopes yet).
+framework-seeded Global scope (the doco's constitution; no project-specific scopes yet).
 When that field is non-null you're in **onboarding mode** — work the
 project owner through scope setup AND scope population before treating
 the session as "done":

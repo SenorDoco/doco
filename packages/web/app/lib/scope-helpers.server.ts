@@ -126,7 +126,7 @@ export async function listScopeDetails(docoDir: string): Promise<ScopeDetails[]>
           short_description: firstGuidance,
           parent_ids: Array.isArray(e.scopes) ? (e.scopes as string[]) : [],
           lifecycle: typeof e.lifecycle === "string" ? e.lifecycle : "active",
-          is_watched: row.name === "constitution" || e.watched === true,
+          is_watched: row.name === "global" || e.watched === true,
         });
       }
     });

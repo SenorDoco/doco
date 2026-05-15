@@ -108,12 +108,22 @@ export default function ScopesIndex({
           </CardHeader>
           <CardContent className="p-0">
             <ul className="divide-y divide-border">
-              {scopes.map((s) => {
+              {/* Per decision_01KRPNZY7W6CCMYNKGND67BP0B the Global scope
+                  sorts to the top of the list and renders with the
+                  caption "the doco's constitution" next to its name. */}
+              {[...scopes]
+                .sort((a, b) => {
+                  if (a.name === "global" && b.name !== "global") return -1;
+                  if (b.name === "global" && a.name !== "global") return 1;
+                  return 0;
+                })
+                .map((s) => {
                 const parents = s.parent_ids
                   .map((pid) => scopes.find((x) => x.id === pid)?.name)
                   .filter(Boolean) as string[];
                 const description = shortDescription(s.short_description);
                 const isDeprecated = s.lifecycle !== "active" && s.lifecycle !== "proposed";
+                const isGlobal = s.name === "global";
                 return (
                   <li
                     key={s.id}
@@ -141,6 +151,11 @@ export default function ScopesIndex({
                         >
                           {s.name}
                         </span>
+                        {isGlobal ? (
+                          <span className="text-[10px] text-muted-foreground">
+                            (the doco's constitution)
+                          </span>
+                        ) : null}
                         {isDeprecated ? (
                           <span className="rounded-md border border-border bg-input px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-muted-foreground">
                             deprecated
@@ -172,17 +187,14 @@ export default function ScopesIndex({
                         <span aria-hidden="true">{s.is_watched ? "👁" : "·"}</span>
                         {s.is_watched ? "Watched" : "Not watched"}
                       </span>
+                      {/* Per decision_01KRPNZY7W6CCMYNKGND67BP0B the
+                          detail and edit pages collapsed — a single Open
+                          button lands on /scopes/<id>. */}
                       <Link
                         to={entityUrl({ ownerSlug, docoSlug, nodeType: "scope", id: s.id })}
                         className="rounded-md border border-border px-2 py-1 text-[11px] font-semibold hover:bg-input"
                       >
-                        View
-                      </Link>
-                      <Link
-                        to={`/${ownerSlug}/${docoSlug}/scopes/${s.id}/edit`}
-                        className="rounded-md border border-border px-2 py-1 text-[11px] font-semibold hover:bg-input"
-                      >
-                        Edit
+                        Open
                       </Link>
                     </div>
                     {description ? (

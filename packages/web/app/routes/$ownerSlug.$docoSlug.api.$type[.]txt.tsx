@@ -164,9 +164,9 @@ A WATCHED scope tells contributors (person or agent): "when capturing
 work that touches this topic, scan against this scope and tag the new
 node into it." Not enforced at capture time — purely a prompt to think
 about the topic. For HARD enforcement ("every node must list this
-scope or capture is rejected"), use a \`mandatory_scope\` rule on the
-Constitution scope instead, via the Rules editor at
-/scopes/<id>/edit. The two mechanisms are independent.
+scope or capture is rejected"), use a \`mandatory_scope\` authoring rule
+on the Global scope (the doco's constitution) instead, via the Rules
+editor at /scopes/<id>. The two mechanisms are independent.
 
 ENDPOINT
   POST ${baseUrl}/${owner}/${doco}/api/scopes.json

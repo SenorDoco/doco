@@ -56,7 +56,12 @@ export interface ConstitutionSnapshot {
 async function loadConstitution(docoId: string): Promise<ConstitutionSnapshot | null> {
   const rows = await listEntitiesByDoco("scope", docoId);
   for (const r of rows) {
-    if (r.name !== "constitution") continue;
+    // Per decision_01KRPNZY7W6CCMYNKGND67BP0B the framework-seeded scope
+    // is named "global" (was: "constitution"; readable label "the doco's
+    // constitution"). Field names in the bootstrap response keep
+    // "Constitution" so agents reading the canonical see the familiar
+    // term, but the underlying scope row's `name` is "global".
+    if (r.name !== "global") continue;
     let fm: Record<string, unknown> = {};
     try {
       fm = JSON.parse(r.raw_yaml) as Record<string, unknown>;
