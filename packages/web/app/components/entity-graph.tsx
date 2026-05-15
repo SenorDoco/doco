@@ -221,11 +221,6 @@ export function EntityGraph({ centerId, nodes, links, hrefFor }: EntityGraphProp
                   <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
                     {n.node_type}
                   </span>
-                  {n.is_center ? (
-                    <span className="ml-auto rounded bg-primary/15 px-1 text-[9px] text-primary">
-                      focal
-                    </span>
-                  ) : null}
                 </div>
                 <div className="truncate font-mono text-xs font-semibold text-foreground">
                   {title}
@@ -237,14 +232,18 @@ export function EntityGraph({ centerId, nodes, links, hrefFor }: EntityGraphProp
                 ) : null}
                 <div className="mt-1 flex items-center justify-between gap-2 text-[9px] text-muted-foreground">
                   <span className="truncate">{relativeTime(n.created_at)}</span>
-                  <span className="flex shrink-0 items-center gap-2 font-mono">
-                    <span title="Personalized PageRank from focal node">
-                      PPR <span className="text-foreground">{n.ppr.toFixed(3)}</span>
+                  {n.is_center ? (
+                    <span className="shrink-0 font-medium text-foreground">Node in focus</span>
+                  ) : (
+                    <span className="flex shrink-0 items-center gap-2 font-mono">
+                      <span title="Personalized PageRank from focal node">
+                        PPR <span className="text-foreground">{n.ppr.toFixed(3)}</span>
+                      </span>
+                      <span title="Global PageRank (over the whole Doco graph)">
+                        GPR <span className="text-foreground">{n.gpr.toFixed(3)}</span>
+                      </span>
                     </span>
-                    <span title="Global PageRank (over the whole Doco graph)">
-                      GPR <span className="text-foreground">{n.gpr.toFixed(3)}</span>
-                    </span>
-                  </span>
+                  )}
                 </div>
               </div>
             ),
@@ -347,7 +346,7 @@ export function EntityGraph({ centerId, nodes, links, hrefFor }: EntityGraphProp
         })}
       </div>
 
-      <div className="relative h-[50vh] min-h-[360px] w-full overflow-hidden rounded-md border border-border bg-input">
+      <div className="relative h-[65vh] min-h-[480px] w-full overflow-hidden rounded-md border border-border bg-input">
         {Flow ? (
           <Flow.ReactFlow
             nodes={flowNodes}
@@ -374,13 +373,13 @@ export function EntityGraph({ centerId, nodes, links, hrefFor }: EntityGraphProp
               pannable
               zoomable
               maskColor="rgba(0, 0, 0, 0.35)"
-              maskStrokeColor="rgba(0, 0, 0, 0.6)"
-              maskStrokeWidth={2}
               style={{
                 width: 120,
                 height: 90,
                 border: "1px solid var(--color-border)",
-                borderRadius: 4,
+                // Match the parent graph container's `rounded-md` so the
+                // MiniMap nests cleanly inside Doco's component radii.
+                borderRadius: "var(--radius)",
               }}
             />
           </Flow.ReactFlow>
