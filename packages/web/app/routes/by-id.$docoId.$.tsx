@@ -16,12 +16,32 @@
 
 import { redirect } from "react-router";
 import { getDocoById } from "@doco/db";
+import { isEntityType } from "@doco/shared";
 import { canAccessDoco } from "~/lib/doco-access.server";
 import {
   hostFromRequest,
   missingDocoResponse,
 } from "~/lib/missing-doco-guidance.server";
 import { getCurrentPrincipalAsync } from "~/lib/session";
+
+// Singular node type → URL plural (matches the `/<owner>/<doco>/api/<plural>/<id>.json` route shape).
+// The canonical's POST endpoints already use these plurals, so the JSON-read URL matches.
+const TYPE_TO_API_PLURAL: Record<string, string> = {
+  decision: "decisions",
+  intent: "intents",
+  rule: "rules",
+  action: "actions",
+  reasoning: "reasoning",
+  reference: "references",
+  scope: "scopes",
+  eval: "evals",
+};
+
+// Matches a typed ULID, optionally with a file extension. The agent-facing
+// short form `/by-id/<doco_id>/<typed_ulid>(.json)?` leans on this: the ULID
+// already encodes its type, so the URL stays short even though the slug-form
+// destination route demands an explicit type segment.
+const TYPED_ULID_RE = /^([a-z]+)_[0-9A-HJKMNP-TV-Z]{26}(?:\.([a-z]+))?$/;
 
 export async function loader({
   request,
@@ -54,7 +74,37 @@ export async function loader({
   const rest = url.pathname.startsWith(`${prefix}/`)
     ? url.pathname.slice(prefix.length + 1)
     : params["*"] ?? "";
-  const target = `/${row.owner_slug}/${row.doco_slug}${rest ? `/${rest}` : ""}${url.search}`;
+
+  // If the rest is a single segment shaped like a typed ULID
+  // (e.g. `decision_01K...` or `decision_01K....json`), inject the
+  // segments the slug-form destination route requires. Without this,
+  // `/by-id/<doco_id>/decision_01K....json` redirects to
+  // `/<owner>/<doco>/decision_01K....json` and the entity route's
+  // `$type` guard rejects it as "Unknown type".
+  let target: string;
+  if (rest.indexOf("/") < 0 && TYPED_ULID_RE.test(rest)) {
+    const m = TYPED_ULID_RE.exec(rest)!;
+    const [, type, ext] = m;
+    const typedId = rest.replace(/\.[a-z]+$/, "");
+    if (isEntityType(type)) {
+      if (ext === "json") {
+        const plural = TYPE_TO_API_PLURAL[type];
+        target = plural
+          ? `/${row.owner_slug}/${row.doco_slug}/api/${plural}/${typedId}.json${url.search}`
+          : `/${row.owner_slug}/${row.doco_slug}/${rest}${url.search}`;
+      } else if (!ext) {
+        // HTML view — scopes use the plural URL segment per decision_01KRPNZY7W6CCMYNKGND67BP0B.
+        const seg = type === "scope" ? "scopes" : type;
+        target = `/${row.owner_slug}/${row.doco_slug}/${seg}/${typedId}${url.search}`;
+      } else {
+        target = `/${row.owner_slug}/${row.doco_slug}/${rest}${url.search}`;
+      }
+    } else {
+      target = `/${row.owner_slug}/${row.doco_slug}/${rest}${url.search}`;
+    }
+  } else {
+    target = `/${row.owner_slug}/${row.doco_slug}${rest ? `/${rest}` : ""}${url.search}`;
+  }
   throw redirect(target, { status: 308 });
 }
 

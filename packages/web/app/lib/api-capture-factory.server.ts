@@ -3,6 +3,8 @@
 // Scope capture stays in its own file because its template-vs-custom branching
 // + required `watched` flag don't fit the simple shape.
 
+import { getEntity } from "@doco/db";
+import { parse as parseYaml } from "yaml";
 import { docoPath } from "~/lib/db.server";
 import { loadDocoForAdmin, loadDocoForRead } from "~/lib/doco-access.server";
 import { withIdempotency } from "~/lib/idempotency.server";
@@ -147,8 +149,48 @@ export interface UpdateRouteConfig {
 
 export function makeUpdateRoute(cfg: UpdateRouteConfig) {
   return {
-    loader() {
-      return Response.json({ error: "Use PATCH or POST with a JSON body." }, { status: 405 });
+    // GET /<owner>/<doco>/api/<plural>/<id>.json — read the entity body.
+    // Reachable from the agent-facing short form `/by-id/<doco_id>/<typed_ulid>.json`
+    // via the catchall redirect. Read access (not admin) — anyone who can
+    // see the Doco can read entity bodies.
+    async loader({
+      request,
+      params,
+    }: {
+      request: Request;
+      params: IdRouteParams;
+    }) {
+      const { ownerSlug, docoSlug, id } = params;
+      const ctx = await loadDocoForRead(request, ownerSlug, docoSlug);
+      const rec = await getEntity(cfg.nodeType, id);
+      // Cross-doco probe by ULID is effectively unguessable (128 bits), but
+      // we still gate on the doco the caller actually has read access to —
+      // returning 404 for "wrong doco" matches the agent-facing contract.
+      if (!rec || rec.doco_id !== ctx.meta.docoId) {
+        return Response.json(
+          { error: `${cfg.nodeType} not found: ${id}` },
+          { status: 404 },
+        );
+      }
+      let parsed: unknown = null;
+      try {
+        parsed = parseYaml(rec.raw_yaml);
+      } catch {
+        // Malformed YAML on disk — return raw_yaml only and let the
+        // caller cope. Don't 500 — the row exists.
+      }
+      return Response.json({
+        id: rec.id,
+        node_type: rec.node_type,
+        doco_id: rec.doco_id,
+        summary: rec.summary ?? null,
+        lifecycle: rec.lifecycle ?? null,
+        body_md: rec.body_md ?? null,
+        created_at: rec.created_at ?? null,
+        updated_at: rec.updated_at ?? null,
+        raw_yaml: rec.raw_yaml,
+        parsed,
+      });
     },
 
     async action({

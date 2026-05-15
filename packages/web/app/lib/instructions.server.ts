@@ -54,7 +54,22 @@ the top of every reply and do not render query/count/tally/footer lines:
 Pick the concrete reason that matches what actually failed (do not
 invent or paraphrase — agents that compose generic reasons produce
 generic recovery advice and waste the project owner's time). The
-recovery action depends on WHICH failure mode you hit:
+recovery action depends on WHICH failure mode you hit.
+
+**Before consulting the table — verify your bearer was actually sent.**
+If your runtime fetches the bootstrap via raw shell
+\`curl ... -H "Authorization: Bearer $DOCO_TOKEN"\`, the \`./.env\`
+fallback documented in §Authentication does NOT apply: shell expansion
+only sees variables already in the environment, and an empty
+\`$DOCO_TOKEN\` gets sent as \`Authorization: Bearer \` (empty bearer).
+The host then correctly returns \`token cannot access this Doco\` — but
+the fix is to load \`./.env\` (\`set -a; . ./.env; set +a\`) and re-curl,
+not to ask the project owner to re-authorize. Run
+\`[ -n "$DOCO_TOKEN" ] && echo set || echo unset\` before recommending
+any recovery below. Misdiagnosing an empty-bearer as a membership gap
+and routing the project owner to \`doco login\` (or worse,
+\`doco login --create\`) is the exact reflex this rule prevents — the
+token on disk is fine; the shell just never picked it up.
 
 | Disconnected reason | Recovery to recommend to the project owner |
 |---|---|
@@ -171,8 +186,11 @@ e.g. \`decision_01KRHB95AVGFHG80B2EAWE20K8\`), \`summary\`,
 (Global PageRank, a secondary centrality signal). Scope hits also
 carry \`name\` (the short readable handle scopes are referenced by).
 Storage is Postgres — entities don't have a stable on-disk location to
-read; fetch the body with \`GET https://doco.to/by-id/<doco_id>/<id>.json\`
-when you need the full text. Search is vector-only — one cosine
+read; fetch the body with
+\`GET https://doco.to/by-id/<doco_id>/api/<type-plural>/<id>.json\`
+(e.g. \`/api/decisions/decision_01K....json\`,
+\`/api/intents/intent_01K....json\`) when you need the full text. Plurals
+match the POST endpoints listed in §3 below. Search is vector-only — one cosine
 ranking, no FTS card, no find-rules sidecar. Read the
 highest-vector_score hits BEFORE writing prose. Don't \`grep\` the repo
 for context that Doco already indexes.

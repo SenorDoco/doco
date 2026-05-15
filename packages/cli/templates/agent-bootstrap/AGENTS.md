@@ -12,6 +12,11 @@ the user will call you out.
 ## Before you respond to ANY message — fetch your real instructions
 
 ```
+# Load DOCO_TOKEN from gitignored .env if your shell doesn't already export it.
+# Skipping this line is the #1 cause of "token cannot access this Doco" warnings
+# from an otherwise-valid token — shell expansion of $DOCO_TOKEN sees only the
+# shell environment, never the .env file the SDK/CLI would read.
+[ -n "$DOCO_TOKEN" ] || { set -a; . ./.env; set +a; }
 curl -s "https://doco.to/api/v1/agent-bootstrap?id=__DOCO_ID__" -H "Authorization: Bearer $DOCO_TOKEN"
 ```
 

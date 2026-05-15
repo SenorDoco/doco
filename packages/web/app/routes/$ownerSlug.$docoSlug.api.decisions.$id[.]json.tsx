@@ -2,29 +2,27 @@ import { docoPath } from "~/lib/db.server";
 import { loadDocoForAdmin } from "~/lib/doco-access.server";
 import { readDocoMetadata } from "~/lib/scope-helpers.server";
 import { updateDecision, type DecisionPatch } from "~/lib/capture.server";
+import { makeUpdateRoute } from "~/lib/api-capture-factory.server";
 
 /**
+ * GET /<owner>/<doco>/api/decisions/<id>.json — read the Decision body.
+ * Reachable from `/by-id/<doco_id>/decision_<ulid>.json` via the catchall
+ * redirect. Shares the factory's generic entity-read loader.
+ *
  * PATCH /<owner>/<doco>/api/decisions/<id>.json — update an existing
- * Decision in place. Same admin gate + auth surface as the capture
- * endpoint. Setting `is_adr: false` demotes (clears scope_adr + number);
- * `is_adr: true` promotes (adds scope_adr + assigns next number).
+ * Decision in place. Custom action (not the factory's `updateEntity`)
+ * because decisions carry ADR-specific logic: setting `is_adr: false`
+ * demotes (clears scope_adr + number); `is_adr: true` promotes (adds
+ * scope_adr + assigns next number).
  *
  * Resource route — no default export.
  */
-export async function loader({
-  params,
-}: {
-  params: { ownerSlug: string; docoSlug: string; id: string };
-}) {
-  return Response.json(
-    {
-      error:
-        "Use PATCH (or POST) to update a decision. See /<owner>/<doco>/api/decisions.txt for the patch field list.",
-      decision_id: params.id,
-    },
-    { status: 405 },
-  );
-}
+export const loader = makeUpdateRoute({
+  type: "decisions",
+  nodeType: "decision",
+  pluralDir: "decisions",
+  allowedFields: [],
+}).loader;
 
 export async function action({
   request,
