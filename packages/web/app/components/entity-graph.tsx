@@ -250,7 +250,9 @@ export function EntityGraph({ centerId, nodes, links, hrefFor }: EntityGraphProp
         const color = TYPE_COLOR[n.node_type] ?? FALLBACK_COLOR;
         const pprRange = pprBounds.max - pprBounds.min;
         let bg = "rgb(255,255,255)";
-        if (!n.is_center && pprRange > 0) {
+        if (n.is_center) {
+          bg = "color-mix(in oklch, var(--color-accent) 50%, transparent)";
+        } else if (pprRange > 0) {
           const t = (n.ppr - pprBounds.min) / pprRange;
           const v = Math.round(212 + 43 * t);
           bg = `rgb(${v},${v},${v})`;
@@ -298,7 +300,12 @@ export function EntityGraph({ centerId, nodes, links, hrefFor }: EntityGraphProp
                 <div className="mt-1 flex items-center justify-between gap-2 text-[9px] text-muted-foreground">
                   <span className="truncate">{relativeTime(n.created_at)}</span>
                   {n.is_center ? (
-                    <span className="shrink-0 font-medium text-foreground">Node in focus</span>
+                    <span className="flex shrink-0 items-center gap-2 font-mono">
+                      <span className="font-medium text-foreground">Node in focus</span>
+                      <span title="Global PageRank (over the whole Doco graph)">
+                        GPR <span className="text-foreground">{n.gpr.toFixed(3)}</span>
+                      </span>
+                    </span>
                   ) : (
                     <span className="flex shrink-0 items-center gap-2 font-mono">
                       <span title="Personalized PageRank from focal node">
