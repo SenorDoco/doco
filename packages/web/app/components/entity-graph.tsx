@@ -21,6 +21,11 @@ import "@xyflow/react/dist/style.css";
  * graph and clutter every neighborhood. Filtered out at render time
  * (decision_01KRRJTW39THBW0C943G0GTH0M). The underlying edges remain in
  * the index — this is a visualization-only filter.
+ *
+ * Note: `created_by` / `updated_by` used to be filtered here. They're now
+ * skipped at index time (see SKIP_FIELDS in packages/index/src/edges.ts),
+ * so the runtime filter is just for legacy edges still sitting in the DB
+ * from before the change.
  */
 const HIDDEN_EDGE_TYPES: ReadonlySet<string> = new Set([
   "in_scope_of",

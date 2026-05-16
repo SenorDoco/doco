@@ -442,14 +442,11 @@ const CLASSIFIER_EDGE_TYPES = [
   "enacts",
   "performed_by",
   "acts_on",
-  "authored_by",
   "premise",
   "concludes",
   "has_parent",
   "has_stakeholder",
   "owned_by",
-  "created_by",
-  "updated_by",
   "born_from",
   "superseded_by",
   "in_scope_of",
@@ -489,7 +486,6 @@ const CLASSIFIER_FIELDS = [
   "target_ref",
   "target",
   "actor_id",
-  "author_id",
 ] as const;
 
 const CLASSIFIER_SYSTEM_PROMPT = `You bucket plain-English scope rules into the Doco rule engine.

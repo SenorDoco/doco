@@ -32,14 +32,11 @@ const EDGE_TYPE_OPTIONS = [
   "enacts",
   "performed_by",
   "acts_on",
-  "authored_by",
   "premise",
   "concludes",
   "has_parent",
   "has_stakeholder",
   "owned_by",
-  "created_by",
-  "updated_by",
   "born_from",
   "superseded_by",
   "in_scope_of",
@@ -77,7 +74,6 @@ const FIELD_OPTIONS = [
   "target_ref",
   "target",
   "actor_id",
-  "author_id",
 ] as const;
 
 export async function loader({
