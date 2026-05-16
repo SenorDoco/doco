@@ -664,17 +664,15 @@ export async function runScopeRules(opts: {
   // Collect the set of scope ids whose authoring rules we need to load:
   // - every scope the entity already lists,
   // - PLUS the Global scope (all of its authoring rules apply Doco-wide).
+  // The "only Rule nodes belong to Global" check that used to be a
+  // hardcoded short-circuit here now lives as a `requires_node_type`
+  // authoring rule seeded into every Doco's Global scope. The engine
+  // below evaluates it like any other rule, so deprecating the rule
+  // (PATCH lifecycle=abandoned) actually disables the check.
   const scopesToCheck = new Set(scopeIds);
   const globalScope = findGlobalScope(allScopes);
   const globalScopeId = globalScope?.id ?? null;
   if (globalScopeId) {
-    const globalMembershipError = globalScopeMembershipViolation({
-      entityNodeType: typeof entityFm.node_type === "string" ? entityFm.node_type : "",
-      entityScopes: scopeIds,
-      globalScopeId,
-      globalScopeName: "Global",
-    });
-    if (globalMembershipError) return { error: globalMembershipError };
     scopesToCheck.add(globalScopeId);
   }
 
