@@ -46,21 +46,6 @@ if [ -f "$PWD/.env" ]; then
   source "$PWD/.env"
   set +a
 fi
-# Transitional fallback: synthesize DOCO_URL from legacy DOCO_TOKEN +
-# DOCO_ID so nudge URLs in older repos still point at the right place.
-if [ -z "${DOCO_URL:-}" ] && [ -n "${DOCO_TOKEN:-}" ]; then
-  if [ -z "${DOCO_ID:-}" ]; then
-    for f in "$PWD/AGENTS.md" "$PWD/CLAUDE.md"; do
-      if [ -f "$f" ]; then
-        DOCO_ID=$(grep -oE 'doco_[A-Za-z0-9]+' "$f" | head -1)
-        [ -n "$DOCO_ID" ] && break
-      fi
-    done
-  fi
-  if [ -n "${DOCO_ID:-}" ]; then
-    DOCO_URL="https://doco.to/by-id/${DOCO_ID}/"
-  fi
-fi
 if [ -n "${DOCO_URL:-}" ]; then
   case "$DOCO_URL" in
     */) ;;

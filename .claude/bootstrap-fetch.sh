@@ -77,31 +77,6 @@ if ! command -v curl >/dev/null 2>&1; then
   emit_disconnected "curl is not installed" tool
   exit 0
 fi
-
-# Transitional fallback for repos still on DOCO_TOKEN + DOCO_ID — the
-# in-flight migration to DOCO_URL only renamed the env-var contract;
-# the server's `extractCredential` still resolves a Bearer token, so
-# we can keep older repos connected by translating their env to the
-# equivalent URL + Authorization header. New repos go straight to
-# DOCO_URL with no header; this branch only fires when DOCO_URL is
-# missing AND legacy vars are present.
-LEGACY_AUTH=""
-if [ -z "${DOCO_URL:-}" ] && [ -n "${DOCO_TOKEN:-}" ]; then
-  if [ -z "${DOCO_ID:-}" ]; then
-    for f in "$PWD/AGENTS.md" "$PWD/CLAUDE.md"; do
-      if [ -f "$f" ]; then
-        DOCO_ID=$(grep -oE 'doco_[A-Za-z0-9]+' "$f" | head -1)
-        [ -n "$DOCO_ID" ] && export DOCO_ID && break
-      fi
-    done
-  fi
-  if [ -n "${DOCO_ID:-}" ]; then
-    LEGACY_AUTH="Authorization: Bearer ${DOCO_TOKEN}"
-    DOCO_URL="https://doco.to/by-id/${DOCO_ID}/"
-    BOOTSTRAP_OVERRIDE="https://doco.to/api/v1/agent-bootstrap?id=${DOCO_ID}"
-  fi
-fi
-
 if [ -z "${DOCO_URL:-}" ]; then
   emit_disconnected "missing DOCO_URL — set DOCO_URL in ./.env, or re-onboard at https://doco.to/onboarding/create/agent" default
   exit 0
@@ -119,14 +94,8 @@ case "$DOCO_URL" in
 esac
 
 TMP_RESP="${TMPDIR:-/tmp}/doco-bootstrap-$$.json"
-BOOTSTRAP_URL="${BOOTSTRAP_OVERRIDE:-${DOCO_URL}bootstrap.json}"
-if [ -n "$LEGACY_AUTH" ]; then
-  HTTP_STATUS=$(curl -sSL --max-time 8 -w '%{http_code}' -o "$TMP_RESP" \
-    -H "$LEGACY_AUTH" "$BOOTSTRAP_URL" 2>/dev/null || true)
-else
-  HTTP_STATUS=$(curl -sSL --max-time 8 -w '%{http_code}' -o "$TMP_RESP" \
-    "$BOOTSTRAP_URL" 2>/dev/null || true)
-fi
+HTTP_STATUS=$(curl -sSL --max-time 8 -w '%{http_code}' -o "$TMP_RESP" \
+  "${DOCO_URL}bootstrap.json" 2>/dev/null || true)
 RESP=$(cat "$TMP_RESP" 2>/dev/null || true)
 rm -f "$TMP_RESP" 2>/dev/null || true
 if [ -z "$RESP" ]; then

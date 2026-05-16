@@ -33,24 +33,6 @@ if [ -f "$PWD/.env" ]; then
   set +a
 fi
 
-# Transitional fallback for repos still on DOCO_TOKEN + DOCO_ID — same
-# rationale as in bootstrap-fetch.sh.
-LEGACY_AUTH=""
-if [ -z "${DOCO_URL:-}" ] && [ -n "${DOCO_TOKEN:-}" ]; then
-  if [ -z "${DOCO_ID:-}" ]; then
-    for f in "$PWD/AGENTS.md" "$PWD/CLAUDE.md"; do
-      if [ -f "$f" ]; then
-        DOCO_ID=$(grep -oE 'doco_[A-Za-z0-9]+' "$f" | head -1)
-        [ -n "$DOCO_ID" ] && export DOCO_ID && break
-      fi
-    done
-  fi
-  if [ -n "${DOCO_ID:-}" ]; then
-    LEGACY_AUTH="Authorization: Bearer ${DOCO_TOKEN}"
-    DOCO_URL="https://doco.to/by-id/${DOCO_ID}/"
-  fi
-fi
-
 # Ensure trailing slash on DOCO_URL.
 if [ -n "${DOCO_URL:-}" ]; then
   case "$DOCO_URL" in
@@ -104,13 +86,8 @@ if [ -n "$DISCONNECTED_REASON" ]; then
 elif [ -n "$PROMPT" ]; then
   ENC=$(printf '%s' "$PROMPT" | jq -sRr @uri 2>/dev/null || true)
   TMP_RESP="${TMPDIR:-/tmp}/doco-search-$$.json"
-  if [ -n "$LEGACY_AUTH" ]; then
-    HTTP_STATUS=$(curl -sSL --max-time 5 -w '%{http_code}' -o "$TMP_RESP" \
-      -H "$LEGACY_AUTH" "${DOCO_URL}search.json?q=${ENC}&limit=10" 2>/dev/null || true)
-  else
-    HTTP_STATUS=$(curl -sSL --max-time 5 -w '%{http_code}' -o "$TMP_RESP" \
-      "${DOCO_URL}search.json?q=${ENC}&limit=10" 2>/dev/null || true)
-  fi
+  HTTP_STATUS=$(curl -sSL --max-time 5 -w '%{http_code}' -o "$TMP_RESP" \
+    "${DOCO_URL}search.json?q=${ENC}&limit=10" 2>/dev/null || true)
   RESP=$(cat "$TMP_RESP" 2>/dev/null || true)
   rm -f "$TMP_RESP" 2>/dev/null || true
   if [ "$HTTP_STATUS" = "200" ] && [ -n "$RESP" ]; then
