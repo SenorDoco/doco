@@ -36,7 +36,7 @@
   description: Sub-area of an Doco, expressed via reserved scope_* tags (D-028).
 
 - term: evaluation
-  synonyms: [check, assertion result, audit, lint result]
+  synonyms: [check, assertion result, audit]
   description: Append-only record of running a Rule against a target (§4.8).
 
 - term: input sanitization

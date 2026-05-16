@@ -165,7 +165,7 @@ A consolidated record of every meaningful design decision made to date, intended
 
 ### D-021 — Reserved tag conventions
 
-- **Chosen:** Reserved tag names with semantic meaning recognized by tooling/lints:
+- **Chosen:** Reserved tag names with semantic meaning recognized by tooling:
   - `tag_adr` — Decision is published as an ADR (sets `number` field).
   - `tag_bugfix` — Decision resolves a bug; expected to spawn a `tag_regression_guard` Rule.
   - `tag_regression_guard` — Rule born from a bugfix Decision.
@@ -285,7 +285,7 @@ A consolidated record of every meaningful design decision made to date, intended
 ### D-035 — Agents can only be created via invitation tokens
 
 - **Chosen:** No agent self-signup. Every agent's `Principal` is created via a token issued by a person (or an agent already invited by a person, transitively).
-- **Why:** Trust invariant: every agent's `owner_id` chain terminates at a person. Lintable, queryable.
+- **Why:** Trust invariant: every agent's `owner_id` chain terminates at a person. Queryable.
 - **Ref:** PLANNING.md §2.2, §3.
 
 ### D-036 — Username convention
@@ -360,10 +360,10 @@ A consolidated record of every meaningful design decision made to date, intended
 
 These are conventions that emerged but aren't separate decisions — they're instances of how the schema is *used*:
 
-- **Bug fix → regression Rule.** Every meaningful bug-fix Decision should produce at least one `tag_regression_guard` Rule via `born_from`. Lints can flag fix Decisions without a guard. (PLANNING.md §6 item 3, conversation around bug resolution.)
+- **Bug fix → regression Rule.** Every meaningful bug-fix Decision should produce at least one `tag_regression_guard` Rule via `born_from`. Convention is documented; enforcement is left to review. (PLANNING.md §6 item 3, conversation around bug resolution.)
 - **ADR consequence → enforced Rule.** When an ADR has machine-checkable consequences, those become Rules with `tag_adr_consequence` and `born_from: <adr_decision_id>`. (Conversation around ADRs.)
 - **Multi-author Reasoning.** Multiple Reasoning entities can attach to the same Decision (different authors, contested chains). Both are preserved; the team picks based on evidence. (SCHEMA.md §4.7.)
-- **Agent ancestry chain.** `MATCH path = (a:Principal {is_agent:true})-[:OwnedBy*]->(person:Principal {is_agent:false}) RETURN path` should always return a path for every agent. Lint for orphan agents.
+- **Agent ancestry chain.** `MATCH path = (a:Principal {is_agent:true})-[:OwnedBy*]->(person:Principal {is_agent:false}) RETURN path` should always return a path for every agent. Invariant: no orphan agents.
 
 ---
 
@@ -379,7 +379,7 @@ Roughly, in implementation-order:
 6. **Web app** — recent-changes feed, list-by-kind, search (Cmd-K + full page), entity detail page with neighborhood preview, graph view as secondary. (PLANNING.md §5.3.)
 7. **Importers** — Slack, email, Figma, Notion, GitHub PRs, agent transcripts. Each runs idempotently and emits `lifecycle: proposed` entities with Reference back-pointers. (PLANNING.md §4.)
 8. **Rule discovery** — `doco find-rules` CLI + API endpoint; vector embedding index; `glossary.yaml` expansion. (SCHEMA.md §10.)
-9. **System Rules + lints** — `rule_system_only_people_delete`; orphan-Reasoning lint; bug-fix-without-regression-guard lint; agent-without-person-ancestor lint. (PLANNING.md §2.4, §11 above.)
+9. **System Rules** — `rule_system_only_people_delete`; orphan-Reasoning, bug-fix-without-regression-guard, and agent-without-person-ancestor invariants documented for review. (PLANNING.md §2.4, §11 above.)
 
 ---
 

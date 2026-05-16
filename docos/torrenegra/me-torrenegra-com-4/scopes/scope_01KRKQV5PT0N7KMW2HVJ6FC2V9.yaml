@@ -14,8 +14,7 @@ guidelines: >-
   - One **Intent** per flow ("user buys a product", "agent claims a Doco").
 
   - One or more **Actions** per step the user/system performs. Chain them with
-  the `follows` field so the order is explicit and the cycle-lint guards against
-  loops.
+  the `follows` field so the order is explicit; don't create cycles.
 
   - One **Decision** per branch ("if cart total > $X, require 2FA"). Reference
   the Decision from the Action that depends on it via `decision_ids`.

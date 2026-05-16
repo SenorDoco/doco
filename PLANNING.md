@@ -165,7 +165,7 @@ WHERE a.id = 'principal_agent_01H...'
 RETURN path
 ```
 
-A lint can periodically verify the invariant: no agent Principal has an ancestry chain ending in another agent.
+The invariant is queryable: no agent Principal has an ancestry chain ending in another agent.
 
 ## 4. Backfilling decisions from prior context
 
@@ -268,7 +268,7 @@ Each item has a "view in graph" affordance — once-clicked-from, never primary.
 
 2. **Token revocation cascade — strict or scoped?** Strict (proposed): revoking Alice's session token invalidates all agents whose ancestry passes through it. Scoped alternative: tombstone the owner, leave agents intact until their *own* tokens are revoked. Strict is safer; scoped is more forgiving. Going strict by default, with a per-Doco override flag.
 
-3. **Backfill quality.** Extracted entities will be lossy and sometimes wrong. Default `lifecycle: proposed` keeps them out of the active graph until reviewed; require explicit acceptance to flip. A built-in Rule could even prevent backfilled entities from being Premises in active Reasoning until reviewed (lint/check).
+3. **Backfill quality.** Extracted entities will be lossy and sometimes wrong. Default `lifecycle: proposed` keeps them out of the active graph until reviewed; require explicit acceptance to flip. A built-in Rule could even prevent backfilled entities from being Premises in active Reasoning until reviewed.
 
 4. **Public Docos and the trust chain.** If docos can be public, anyone reads agent ancestry. Probably fine (just usernames + timestamps), but confirm no PII can leak via `Principal.identifier` or display names. Add a Rule: `display_name must not contain email patterns`.
 
