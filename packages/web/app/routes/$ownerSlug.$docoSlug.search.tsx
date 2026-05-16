@@ -15,7 +15,7 @@ import { SiteHeader } from "~/components/site-header";
 import { loadDocoForRead } from "~/lib/doco-access.server";
 import { getDocoEmbeddingProvider } from "~/lib/embedding-provider.server";
 import { loadHostConfig } from "~/lib/host";
-import { nodeTypeColor } from "~/lib/node-colors";
+import { nodeTypeColor, nodeTypePlural } from "~/lib/node-colors";
 import {
   type FilterFacets,
   type SearchFilters,
@@ -605,7 +605,7 @@ export default function SearchInDoco({
               searchParams={sp}
               options={facets.nodeType.map((f) => ({
                 value: f.value,
-                label: f.value,
+                label: nodeTypePlural(f.value),
                 count: f.count,
                 color: nodeTypeColor(f.value),
               }))}

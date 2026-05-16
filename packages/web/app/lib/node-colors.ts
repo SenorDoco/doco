@@ -28,3 +28,22 @@ export const NODE_FALLBACK_COLOR = "#525252";
 export function nodeTypeColor(type: string): string {
   return NODE_TYPE_COLOR[type] ?? NODE_FALLBACK_COLOR;
 }
+
+const NODE_TYPE_PLURAL: Record<string, string> = {
+  doco: "docos",
+  principal: "principals",
+  organization: "organizations",
+  intent: "intents",
+  idea: "ideas",
+  rule: "rules",
+  decision: "decisions",
+  action: "actions",
+  reasoning: "reasoning",
+  eval: "evals",
+  reference: "references",
+  scope: "scopes",
+};
+
+export function nodeTypePlural(type: string): string {
+  return NODE_TYPE_PLURAL[type] ?? `${type}s`;
+}
