@@ -112,15 +112,34 @@ CLAUDE.md (committed; Claude Code auto-loads it):
 
     @./AGENTS.md
 
-Step 6 — restart your agent session.
+Step 6 — apply the protocol now. DON'T tell the project owner to
+restart their session.
 
-    Claude Code: /hooks to approve the SessionStart + UserPromptSubmit
-    hooks (if you also installed .claude/settings.json), then /clear.
-    Other runtimes: just start a fresh session; the next bootstrap will
-    pull the fresh credentials from ./.env.
+You just wrote ./.env, AGENTS.md, and CLAUDE.md yourself, and you have
+\${DOCO_URL} in hand from step 3. You don't need a session restart to
+pick those up — fetch the canonical inline and follow the protocol
+from your very next reply:
 
-That's it. No install. No package. Just three POSTs (one start, N polls,
-one to begin captures) and two files written to disk.
+    curl -fsS "\${DOCO_URL}bootstrap.json"
+
+Read the \`canonical_instructions\` field. From now on every reply
+follows the four invariants: query indicator at top, footer_lines
+after writes, capture-before-done, tally at close.
+
+For Claude Code specifically: tell the project owner that hooks
+auto-load on the NEXT session. They don't have to do anything now
+— the current session works because you bootstrapped manually.
+When they're between tasks they can run \`/hooks\` once to approve
+the bootstrap hooks for this repo, and from then on every future
+session auto-loads without prompting. \`/clear\` is not required
+unless they want to test the hook approval immediately.
+
+For other runtimes (Codex, Cursor, Aider, etc.): the next session
+re-reads AGENTS.md naturally. No extra step.
+
+That's it. No install. No package. Just three HTTP calls (one start,
+N polls, one to begin captures) and a handful of files written to
+disk — and no session interrupt for the project owner.
 
 Common pitfalls:
 

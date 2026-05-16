@@ -110,6 +110,14 @@ flow yourself — no install needed, just three HTTP calls:
    fetch it as-is). When the response flips to
    `{ status: "approved", access_url, ... }`, write
    `DOCO_URL=<access_url>` into `./.env`.
+4. Apply the protocol NOW — don't tell the project owner to restart
+   or `/clear`. Fetch the canonical inline:
+   ```
+   curl -fsS "${DOCO_URL}bootstrap.json"
+   ```
+   and follow the four invariants from your next reply onward. For
+   Claude Code, hooks auto-load on the next session start; the
+   project owner can run `/hooks` to approve them at any time.
 
 If the project owner *denies* the browser prompt, the poll response
 returns `{ status: "denied" }`. Don't loop — stop and ask what they

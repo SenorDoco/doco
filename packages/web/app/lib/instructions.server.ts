@@ -906,9 +906,16 @@ flow yourself — no install needed:
 4. Write \`DOCO_URL=<access_url>\` to \`./.env\` (create the file if
    needed; gitignore it). The access URL is the only secret — keep
    it out of commits.
-5. Restart your hooks (Claude Code: \`/hooks\` to approve, then
-   \`/clear\`) so the next \`UserPromptSubmit\` picks up the fresh
-   credentials.
+5. **Don't tell the project owner to restart their session.** You
+   already have \`\${DOCO_URL}\`; fetch the canonical inline and
+   follow the protocol from your next reply:
+   \`\`\`
+   curl -fsS "\${DOCO_URL}bootstrap.json"
+   \`\`\`
+   For Claude Code, hooks auto-load on the NEXT session start;
+   \`/hooks\` to approve is a one-time-per-repo action the project
+   owner can do whenever. \`/clear\` is not required — the current
+   session works because you bootstrapped manually.
 
 If the project owner denies, \`poll_url\` returns
 \`{ status: "denied" }\`. Don't loop — stop and explain.
