@@ -137,7 +137,7 @@ export default function ScopesIndex({
               </div>
               {s.intents[0] ? (
                 <div className="flex min-w-0 items-start gap-1.5 text-[11px] leading-snug text-muted-foreground">
-                  <span className="shrink-0 font-semibold text-foreground/70">Intent</span>
+                  <span className="shrink-0 font-semibold text-foreground/70">Intent:</span>
                   <span className="min-w-0 break-words">
                     {s.intents[0].summary}
                     {s.intents.length > 1 ? ` + ${s.intents.length - 1} more` : ""}
