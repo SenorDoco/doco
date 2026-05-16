@@ -26,12 +26,22 @@ import { loadHostConfig } from "~/lib/host";
 import { nodeTypeColor } from "~/lib/node-colors";
 import { listScopeDetails } from "~/lib/scope-helpers.server";
 import { computeFilterFacets } from "~/lib/search-filters.server";
+import { timeAgo } from "~/lib/time-ago";
 
 const FEED_LIMIT = 30;
 const HEATMAP_WEEKS = 52;
+const TOP_CONTRIBUTORS_LIMIT = 10;
 
 interface FeedItem extends ActivityFeedLineItem {
   event_id: string;
+}
+
+interface TopContributor {
+  principalId: string;
+  username: string;
+  displayName: string | null;
+  lastAt: string;
+  eventCount: number;
 }
 
 const NODE_TYPE_LABELS: Record<string, string> = {
@@ -176,11 +186,45 @@ export async function loader({
     const byDay: Record<string, number> = {};
     for (const r of activityRows) byDay[r.day] = Number(r.n);
 
+    const contributorRows = (
+      await c.query<{
+        principal_id: string;
+        username: string;
+        display_name: string | null;
+        last_at: Date | string;
+        event_count: string;
+      }>(
+        `SELECT ae.by_principal AS principal_id,
+                p.username,
+                p.display_name,
+                MAX(ae.at) AS last_at,
+                COUNT(*)::text AS event_count
+           FROM audit_events ae
+           JOIN principals p ON p.id = ae.by_principal
+          WHERE ae.doco_id = $1 AND ae.by_principal IS NOT NULL
+          GROUP BY ae.by_principal, p.username, p.display_name
+          ORDER BY COUNT(*) DESC, MAX(ae.at) DESC
+          LIMIT $2`,
+        [ctx.meta.docoId, TOP_CONTRIBUTORS_LIMIT],
+      )
+    ).rows;
+    const topContributors: TopContributor[] = contributorRows.map((r) => ({
+      principalId: r.principal_id,
+      username: r.username,
+      displayName: r.display_name,
+      lastAt:
+        r.last_at instanceof Date
+          ? r.last_at.toISOString()
+          : new Date(String(r.last_at)).toISOString(),
+      eventCount: Number(r.event_count),
+    }));
+
     return {
       items,
       facets,
       totalNodes,
       byDay,
+      topContributors,
       ownerSlug,
       docoSlug,
       docoId: ctx.meta.docoId,
@@ -230,7 +274,8 @@ export default function DocoHome({
 }: {
   loaderData: Awaited<ReturnType<typeof loader>>;
 }) {
-  const { items, facets, totalNodes, byDay, ownerSlug, docoSlug, docoId, host, me } = loaderData;
+  const { items, facets, totalNodes, byDay, topContributors, ownerSlug, docoSlug, docoId, host, me } =
+    loaderData;
 
   // Live feed polling (ADR-089).
   const revalidator = useRevalidator();
@@ -274,6 +319,7 @@ export default function DocoHome({
         icon: s.icon ?? undefined,
         count: s.count,
         ariaLabel: `Open scope ${s.name}`,
+        updatedAt: s.updatedAt,
       })),
     },
     {
@@ -285,6 +331,7 @@ export default function DocoHome({
         count: t.count,
         ariaLabel: `Search ${t.count} ${nodeTypeLabel(t.value).toLowerCase()}`,
         color: nodeTypeColor(t.value),
+        updatedAt: t.updatedAt,
       })),
     },
     {
@@ -295,6 +342,7 @@ export default function DocoHome({
         label: l.value,
         count: l.count,
         ariaLabel: `Search ${l.count} nodes in lifecycle ${l.value}`,
+        updatedAt: l.updatedAt,
       })),
     },
   ];
@@ -315,7 +363,7 @@ export default function DocoHome({
 
         <div className="grid grid-cols-1 gap-5 min-[840px]:grid-cols-12">
           {/* Left: node counts. */}
-          <aside className="min-[840px]:col-span-6">
+          <aside className="min-w-0 min-[840px]:col-span-6">
             <NodesOverviewCard
               sections={sections}
               search={
@@ -332,11 +380,12 @@ export default function DocoHome({
               empty={
                 <p className="text-xs italic text-muted-foreground">This Doco has no nodes yet.</p>
               }
+              aside={<TopContributorsList contributors={topContributors} />}
             />
           </aside>
 
           {/* Right: activity heatmap above the real-time feed. */}
-          <section className="min-[840px]:col-span-6 space-y-5">
+          <section className="min-w-0 min-[840px]:col-span-6 space-y-5">
             <Card>
               <CardHeader>
                 <CardTitle>Activity</CardTitle>
@@ -547,7 +596,7 @@ function SearchBoxWithHistory({
       </div>
       <button
         type="submit"
-        className="rounded-md bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:opacity-90"
+        className="rounded-md border border-border bg-card px-4 py-2.5 text-sm font-semibold text-foreground hover:bg-muted"
       >
         Search
       </button>
@@ -561,4 +610,37 @@ function stringField(
 ): string | null {
   const value = obj?.[field];
   return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+function TopContributorsList({ contributors }: { contributors: TopContributor[] }) {
+  return (
+    <section className="space-y-1">
+      <h2 className="text-xs font-semibold text-foreground">Top contributors</h2>
+      {contributors.length === 0 ? (
+        <p className="text-xs italic text-muted-foreground">No recorded contributions yet.</p>
+      ) : (
+        contributors.map((c) => (
+          <div
+            key={c.principalId}
+            className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3"
+          >
+            <span
+              className="truncate text-xs"
+              title={c.username}
+            >
+              {c.displayName ?? c.username}
+            </span>
+            <time
+              dateTime={c.lastAt}
+              title={c.lastAt}
+              suppressHydrationWarning
+              className="min-w-14 whitespace-nowrap text-right text-xs tabular-nums text-muted-foreground"
+            >
+              {timeAgo(c.lastAt)}
+            </time>
+          </div>
+        ))
+      )}
+    </section>
+  );
 }
