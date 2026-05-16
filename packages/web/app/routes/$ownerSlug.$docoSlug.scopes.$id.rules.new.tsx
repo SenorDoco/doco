@@ -121,9 +121,11 @@ export async function action({
     }
     const changedIds: string[] = [];
     for (const c of authoring) {
+      // v7: a Rule is authoring for a scope iff the scope cites it via
+      // gated_by; createRuleInDoco auto-wires the citation when a
+      // predicate is set.
       const ruleId = await createRuleInDoco({
         docoId,
-        kind: "authoring",
         summary: c.text.trim() || `Authoring rule (${c.rule.kind})`,
         predicate: c.rule,
         scopeId,

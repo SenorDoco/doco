@@ -137,9 +137,12 @@ export async function action({
       }
       continue;
     }
+    // v7 (decision_01KRRR5BQ16ASY8HQEE0V499YG): the predicate IS what
+    // makes this rule authoring for the scope. `createRuleInDoco`
+    // auto-wires the rule id into `Scope.gated_by`; the engine reads
+    // the citation, not a flag on the rule.
     await createRuleInDoco({
       docoId,
-      kind: "authoring",
       summary: c.text.trim() || `Authoring rule (${c.rule.kind})`,
       predicate: c.rule,
       scopeId: id as EntityId<"scope">,

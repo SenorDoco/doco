@@ -196,16 +196,10 @@ BODY (JSON)
   icon           optional   single emoji.
   parent_id      optional   id of an existing scope to nest this one
                             under.
-  authoring_rules optional  typed predicates the engine runs on every
-                            capture into this scope (requires_edge /
-                            requires_field / mandatory_scope / forbids_*
-                            / probabilistic). To author from plain
-                            English instead, POST to
-                            \`/api/scopes/<scope_id>/rules.json\` with
-                            \`{prose}\` and let the LLM classifier pick
-                            the predicate.
-  guidance_rules optional   array of prose Rules ({text, lifecycle?})
-                            for agents to read; no automated check.
+
+  Scope creation deliberately does not accept first-rule fields.
+  Create the scope first, then add rules with
+  \`POST /api/scopes/<scope_id>/rules.json\`.
 
 SUCCESS RESPONSE (HTTP 201, application/json)
   {
@@ -218,7 +212,8 @@ SUCCESS RESPONSE (HTTP 201, application/json)
   Use \`footer_lines\` verbatim in your next user-facing message.
 
 ERROR RESPONSES
-  400  Missing/invalid \`watched\`, bad name, unknown template, missing parent.
+  400  Missing/invalid \`watched\`, bad name, unknown template, missing parent,
+       or create-time rule fields.
   409  Scope with this name already exists.
 
 EXAMPLE — install the user-flows template as watched

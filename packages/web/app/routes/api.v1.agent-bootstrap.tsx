@@ -69,9 +69,12 @@ async function loadConstitution(docoId: string): Promise<ConstitutionSnapshot | 
     scopeFm = JSON.parse(globalScope.raw_yaml) as Record<string, unknown>;
   } catch {}
 
-  // Per decision_01KRPRDR1AD7S1RP6E69BQDB2G load the scope's rules from
-  // the `rules` table (kind=authoring + kind=guidance, lifecycle
-  // active/proposed, tagged in_scope_of this scope).
+  // v7 (decision_01KRRR5BQ16ASY8HQEE0V499YG): a Rule is "authoring"
+  // for the Global scope iff the scope cites it via `gated_by`. We
+  // pull every active/proposed rule tagged in_scope_of Global, then
+  // bucket by citation: ids ∈ gated_by → authoring; kind=guidance →
+  // guidance; everything else → tagged (omitted here — tagged rules
+  // show on the scope's page, not on the bootstrap surface).
   const { withClient } = await import("@doco/db");
   type RuleRow = { id: string; summary: string; raw_yaml: string };
   const ruleRows = await withClient(async (c) => {
@@ -87,6 +90,11 @@ async function loadConstitution(docoId: string): Promise<ConstitutionSnapshot | 
     );
     return r.rows;
   });
+  const gatedBy = new Set<string>(
+    Array.isArray(scopeFm.gated_by)
+      ? (scopeFm.gated_by as unknown[]).filter((v): v is string => typeof v === "string")
+      : [],
+  );
   const authoring: { id: string; summary: string; predicate: AuthoringPredicate }[] = [];
   const guidance: { id: string; summary: string }[] = [];
   for (const r of ruleRows) {
@@ -95,11 +103,9 @@ async function loadConstitution(docoId: string): Promise<ConstitutionSnapshot | 
       fm = JSON.parse(r.raw_yaml) as Record<string, unknown>;
     } catch {}
     const kind = typeof fm.kind === "string" ? fm.kind : "tagged";
-    if (kind === "authoring") {
-      const predicate = fm.predicate as AuthoringPredicate | undefined;
-      if (predicate && typeof predicate === "object") {
-        authoring.push({ id: r.id, summary: r.summary, predicate });
-      }
+    const predicate = fm.predicate as AuthoringPredicate | undefined;
+    if (gatedBy.has(r.id) && predicate && typeof predicate === "object") {
+      authoring.push({ id: r.id, summary: r.summary, predicate });
     } else if (kind === "guidance") {
       guidance.push({ id: r.id, summary: r.summary });
     }

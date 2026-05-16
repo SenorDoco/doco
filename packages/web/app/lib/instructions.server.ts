@@ -694,7 +694,7 @@ to prevent.
 
 ## The model in 30 seconds
 
-Twelve node types. Files at \`<plural>/<id>.md\` (or \`.yaml\`).
+Thirteen node types. Files at \`<plural>/<id>.md\` (or \`.yaml\`).
 
 | type | what it captures |
 |---|---|
@@ -709,17 +709,56 @@ Twelve node types. Files at \`<plural>/<id>.md\` (or \`.yaml\`).
 | log | a recorded happening — past-tense verb, specific principal, required \`happened_at\` + concrete outputs; frozen from creation. Use for commits, deploys, verifications |
 | eval | named, executable test/eval pinning a load-bearing claim |
 | reference | external source |
+| state | (v7) a node in a formal state machine — \`kind: initial \\| intermediate \\| terminal\`, optional \`invariants\`. Reached by Actions whose \`follows\` includes this State |
 | **scope** | **a topical neighborhood** — the navigation primitive |
 
 **Scopes are how large Docos stay navigable.** A scope can be anything
 you want to track separately — a feature area, a country, a team, a
 customer segment, a regulatory regime, a document type, a migration
 project. Pick names that make sense for what *this* Doco is about.
-The framework ships two opinionated templates (\`global\` and
-\`user-flows\`); common conventions like \`adrs\`, \`apis\`, \`bugs\`,
-\`runbooks\`, \`post-mortems\`, \`glossary\`, \`roadmap\`,
-\`design-language\`, \`coding-style\`, \`framework\`, \`test-evals\` are
-no longer auto-installed and are project-owner-authored when needed.
+The framework ships three opinionated templates (\`global\`,
+\`user-flows\`, and v7's \`state-machines\`); common conventions like
+\`adrs\`, \`apis\`, \`bugs\`, \`runbooks\`, \`post-mortems\`, \`glossary\`,
+\`roadmap\`, \`design-language\`, \`coding-style\`, \`framework\`,
+\`test-evals\` are no longer auto-installed and are
+project-owner-authored when needed.
+
+**No name-based behavior** (v7 — decision_01KRRR5BQ16ASY8HQEE0V499YG +
+Global rule_01KRRPZTKDXT0RREZB37VPX2AG). Framework code never reads a
+scope's *name* to drive behavior. If the framework needs to do
+something for a particular scope, it reads a generic attribute on the
+scope — \`gated_by\`, \`excluded_rules\`, \`default_node_lifecycle\`, an
+attached Rule, an edge — never a string match on the scope name. That's
+what makes template scopes renamable: the project owner can rebrand
+\`state-machines\` to \`lifecycles\` without rewriting framework code.
+
+**v7 lifecycle primitives** (decision_01KRRR5BQ16ASY8HQEE0V499YG):
+
+- **Lifecycle** gained \`drafted\` — sketch incomplete graphs without
+  tripping completeness rules; promote in bulk with
+  \`doco scope activate <scope>\` once the wiring is sound.
+- **\`Scope.gated_by\`** cites the Rules that gate captures into that
+  scope (replacing the v6 \`Rule.kind = "authoring"\` flag — that value
+  is gone). Child scopes inherit the union of their ancestors'
+  \`gated_by\` minus their own \`excluded_rules\` (per-scope opt-out).
+- **\`Scope.default_node_lifecycle\`** sets the lifecycle for captures
+  into the scope (or descendants) when the author doesn't override
+  explicitly — the \`state-machines\` template ships
+  \`default_node_lifecycle: drafted\` so its members start mid-build.
+- **\`Action.triggered_by\`** lists other Actions whose firing
+  triggers this one (general, not state-machine-specific).
+- **\`Action.gated_by\`** + **\`Scope.gated_by\`** are the same edge
+  type — guards and authoring rules unify. A Rule can be cited from
+  both an Action's and a Scope's \`gated_by\` simultaneously.
+- **\`Rule.fires_when_node_lifecycle\`** narrows a rule to specific
+  lifecycles — used by completeness checks that skip drafted
+  neighbors mid-refactor and fire at activation time.
+- New predicate kinds: \`unique-within-scope\`, \`count-within-scope\`,
+  \`graph-constraint\` (with \`alternates-between\`,
+  \`degree-bounds\`, \`references-resolve-in-scope\` operators), and
+  \`descriptive\` (engine treats as no-op documentation). All accept
+  \`scope_ref: "$capture_scope"\` to refer to whichever scope cites
+  the rule.
 
 Any node belongs to one or more scopes. **Scopes are
 edge-hierarchical:** a child scope's parents live in its \`scopes\`

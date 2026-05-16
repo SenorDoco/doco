@@ -224,6 +224,15 @@ export async function loader({
         return r.rows;
       })
     : [];
+  // v7 (decision_01KRRR5BQ16ASY8HQEE0V499YG): a Rule is "authoring"
+  // for this scope iff the scope cites it via `gated_by`. Bucket
+  // accordingly. The local "authoring" label is presentational — the
+  // engine drove the semantics by reading gated_by upstream.
+  const scopeGatedBy = new Set<string>(
+    Array.isArray(raw.gated_by)
+      ? raw.gated_by.filter((v: unknown): v is string => typeof v === "string")
+      : [],
+  );
   const rulesByKind: Record<RuleKind, RuleRecord[]> = {
     authoring: [],
     guidance: [],
@@ -234,9 +243,15 @@ export async function loader({
     try {
       fm = JSON.parse(row.raw_yaml) as Record<string, unknown>;
     } catch {}
-    const kind: RuleKind =
-      fm.kind === "authoring" || fm.kind === "guidance" ? (fm.kind as RuleKind) : "tagged";
     const predicate = fm.predicate as AuthoringPredicateRecord | undefined;
+    let kind: RuleKind;
+    if (scopeGatedBy.has(row.id) && predicate && typeof predicate === "object") {
+      kind = "authoring";
+    } else if (fm.kind === "guidance") {
+      kind = "guidance";
+    } else {
+      kind = "tagged";
+    }
     rulesByKind[kind].push({
       id: row.id,
       summary: row.summary,

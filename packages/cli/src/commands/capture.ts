@@ -42,7 +42,8 @@ async function postCapture(
     | "actions"
     | "logs"
     | "rules"
-    | "references",
+    | "references"
+    | "states",
   body: Record<string, unknown>,
 ): Promise<void> {
   const { token, docoId } = requireDocoConfig();
@@ -296,23 +297,23 @@ const scopeCmd = defineCommand({
       description: "Required if --template-name absent. Lowercase letter-start, no slashes.",
     },
     icon: { type: "string", description: "Optional single emoji." },
-    purpose: { type: "string", description: "Optional purpose string." },
+    purpose: {
+      type: "string",
+      description: "Required if --template-name absent. Main Intent summary this scope serves.",
+    },
     guidelines: {
       type: "string",
-      description: "Optional markdown guidelines (use --guidelines-file for a path).",
+      description:
+        "Deprecated; ignored. Add scope rules after creation with `doco scope add-rule`.",
     },
     "guidelines-file": {
       type: "string",
-      description: "Optional path to a file whose contents become the guidelines.",
+      description:
+        "Deprecated; ignored. Add scope rules after creation with `doco scope add-rule`.",
     },
     "parent-id": {
       type: "string",
       description: "Optional id of an existing scope to nest this one under.",
-    },
-    rules: {
-      type: "string",
-      description:
-        "Optional JSON array of pre-seeded checks (predicates the engine runs at capture time — requires_edge / requires_field / mandatory_scope / forbids_* / probabilistic).",
     },
   },
   async run({ args }) {
@@ -340,15 +341,12 @@ const scopeCmd = defineCommand({
     } else {
       body.name = name;
       if (args.icon) body.icon = args.icon;
-      if (args.purpose) body.purpose = args.purpose;
-      const guidelines = readBody(
-        args.guidelines as string | undefined,
-        args["guidelines-file"] as string | undefined,
-      );
-      if (guidelines !== undefined) body.guidelines = guidelines;
+      if (!args.purpose) {
+        console.error(cross("Pass --purpose when creating a custom scope."));
+        process.exit(2);
+      }
+      body.intent_summary = args.purpose;
       if (args["parent-id"]) body.parent_id = args["parent-id"];
-      const rules = parseJson<unknown[]>(args.rules as string | undefined, "rules");
-      if (rules) body.rules = rules;
     }
     await postCapture("scopes", body);
   },
@@ -463,8 +461,7 @@ const logCmd = defineCommand({
     },
     "template-id": {
       type: "string",
-      description:
-        "Optional. ID of the Action template this Log instances (e.g., 'action_01...').",
+      description: "Optional. ID of the Action template this Log instances (e.g., 'action_01...').",
     },
     "intent-id": {
       type: "string",
@@ -660,11 +657,86 @@ const referenceCmd = defineCommand({
   },
 });
 
+const stateCmd = defineCommand({
+  meta: {
+    name: "state",
+    description:
+      "Capture a State (POST /by-id/<doco_id>/api/states.json). Per v7 (decision_01KRRR5BQ16ASY8HQEE0V499YG) — a node in a formal state machine. The state-machines template uses these heavily, but any scope can hold States.",
+  },
+  args: {
+    summary: {
+      type: "string",
+      description: "Required. The State's display name ('paid', 'cart', 'cancelled').",
+      required: true,
+    },
+    scope: {
+      type: "string",
+      description: "Required. Comma-separated scope names.",
+      required: true,
+    },
+    kind: {
+      type: "string",
+      description: "Required. One of: initial | intermediate | terminal.",
+      required: true,
+    },
+    invariant: {
+      type: "string",
+      description:
+        "Optional. Comma-separated invariants — observable predicates true while in this State (e.g. 'order.payment.captured = false'). Pass multiple `--invariant` flags or one comma-separated string.",
+    },
+    follows: {
+      type: "string",
+      description:
+        "Optional. Comma-separated entity ids this State follows (typically the transition Action ids that landed in this State).",
+    },
+    "created-by-username": {
+      type: "string",
+      description: "Optional principal username who authored the State.",
+    },
+    "body-md": { type: "string", description: "Optional markdown body (inline string)." },
+    "body-md-file": {
+      type: "string",
+      description: "Optional path to a file whose contents become body_md.",
+    },
+    lifecycle: {
+      type: "string",
+      description:
+        "Optional. When unset, the State's lifecycle defaults to the capturing scope's `default_node_lifecycle` (with inheritance) — `drafted` for the state-machines template, otherwise `active`.",
+    },
+  },
+  async run({ args }) {
+    const kind = String(args.kind ?? "").trim();
+    if (!["initial", "intermediate", "terminal"].includes(kind)) {
+      console.error(
+        cross(`--kind must be one of: initial, intermediate, terminal (got '${kind}').`),
+      );
+      process.exit(2);
+    }
+    const body: Record<string, unknown> = {
+      summary: args.summary,
+      scope_names: splitList(args.scope as string),
+      kind,
+    };
+    const invariants = splitList(args.invariant as string | undefined);
+    if (invariants.length > 0) body.invariants = invariants;
+    const follows = splitList(args.follows as string | undefined);
+    if (follows.length > 0) body.follows = follows;
+    if (args["created-by-username"]) body.created_by_username = args["created-by-username"];
+    const bodyMd = readBody(
+      args["body-md"] as string | undefined,
+      args["body-md-file"] as string | undefined,
+    );
+    if (bodyMd !== undefined) body.body_md = bodyMd;
+    if (args.lifecycle) body.lifecycle = args.lifecycle;
+    await postCapture("states", body);
+  },
+});
+
 export const captureCmd = defineCommand({
   meta: {
     name: "capture",
     description:
-      "Capture a node (Intent / Decision / Action / Log / Rule / Eval / Scope / Reference) via doco.to's POST endpoints. Reads DOCO_TOKEN from env or ./.env and DOCO_ID from the AGENTS.md header. Prints the response's footer_lines to stdout.",
+      "Capture a node (Intent / Decision / Action / Log / Rule / Eval / Scope / Reference / State) via doco.to's POST endpoints. Reads DOCO_TOKEN from env or ./.env and DOCO_ID from the AGENTS.md header. Prints the response's footer_lines to stdout.",
   },
   subCommands: {
     intent: intentCmd,
@@ -675,6 +747,7 @@ export const captureCmd = defineCommand({
     eval: evalCmd,
     scope: scopeCmd,
     reference: referenceCmd,
+    state: stateCmd,
   },
 });
 

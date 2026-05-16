@@ -1,17 +1,16 @@
-import type { EntityId } from "@doco/shared";
 import { findScopeTemplate } from "@doco/host";
+import type { EntityId } from "@doco/shared";
+import { renderOperationLines } from "~/lib/capture.server";
 import { docoPath } from "~/lib/db.server";
 import { loadDocoForAdmin, loadDocoForRead } from "~/lib/doco-access.server";
-import { listScopeDetails, readDocoMetadata } from "~/lib/scope-helpers.server";
-import { renderOperationLines } from "~/lib/capture.server";
 import {
   createIntentInDoco,
-  createRuleInDoco,
   createScopeInDoco,
   reindex,
   seedScopeFromTemplate,
   updateScopeInDoco,
 } from "~/lib/redeem.server";
+import { listScopeDetails, readDocoMetadata } from "~/lib/scope-helpers.server";
 
 /**
  * POST /<owner>/<doco>/api/scopes.json — single-call Scope creation.
@@ -34,13 +33,12 @@ import {
  *   - `icon`: string (optional) — single emoji.
  *   - `parent_id`: string (optional) — id of an existing scope to nest
  *     this one under.
- *   - `authoring_rules`: unknown[] (optional) — typed predicates the
- *     engine runs on every capture into this scope.
- *   - `guidance_rules`: ({text,lifecycle?}|string)[] (optional) — prose
- *     rules for agents to read; no automated check.
  *   - `watched`: boolean (REQUIRED) — soft attention signal. NOT hard
  *     enforcement (use a `mandatory_scope` authoring rule on the Global
  *     scope for that). No default.
+ *
+ * Rule creation is deliberately separate from Scope creation. Add rules
+ * after the scope exists with /api/scopes/<id>/rules.json.
  */
 
 const SCOPE_NAME_RE = /^[a-z][a-z0-9_-]*$/;
@@ -51,24 +49,10 @@ interface ScopeCreateBody {
   intent_summary?: string;
   icon?: string;
   parent_id?: string;
-  /**
-   * Optional authoring rules — engine-readable predicates fired on
-   * every capture into the scope. Use the prose endpoint
-   * (/api/scopes/<id>/rules.json with `{prose}`) to author from plain
-   * English; this typed field exists for callers that want to provide
-   * the predicate shape directly.
-   */
-  authoring_rules?: unknown[];
-  /**
-   * Optional guidance rules — prose for agents to read; no automated
-   * check. Per decision_01KRPNZY7W6CCMYNKGND67BP0B each entry is an
-   * object: `{ text, lifecycle? }`. Bare strings are also accepted for
-   * backward-compatible callers and promoted to the object shape with
-   * `lifecycle: "active"`.
-   */
-  guidance_rules?: ({ text: string; lifecycle?: string } | string)[];
   watched?: boolean;
 }
+
+const CREATE_TIME_RULE_FIELDS = ["authoring_rules", "guidance_rules", "rules"] as const;
 
 export async function loader({
   request,
@@ -114,6 +98,20 @@ export async function action({
   } catch (e) {
     return Response.json({ error: `Invalid JSON body: ${(e as Error).message}` }, { status: 400 });
   }
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return Response.json({ error: "JSON body must be an object." }, { status: 400 });
+  }
+  const createTimeRuleField = CREATE_TIME_RULE_FIELDS.find((field) =>
+    Object.prototype.hasOwnProperty.call(body, field),
+  );
+  if (createTimeRuleField) {
+    return Response.json(
+      {
+        error: `\`${createTimeRuleField}\` is no longer accepted during scope creation. Create the scope first, then POST rule prose to /${ownerSlug}/${docoSlug}/api/scopes/<scope_id>/rules.json.`,
+      },
+      { status: 400 },
+    );
+  }
 
   if (typeof body.watched !== "boolean") {
     return Response.json(
@@ -132,9 +130,7 @@ export async function action({
   // duplicate creation, but this guard fires first and gives a clearer
   // error.)
   const resolvedName =
-    body.template_name === "global"
-      ? "global"
-      : (body.name ?? "").trim().toLowerCase();
+    body.template_name === "global" ? "global" : (body.name ?? "").trim().toLowerCase();
   if (resolvedName === "global" && body.watched === false) {
     return Response.json(
       {
@@ -153,26 +149,6 @@ export async function action({
   let customIntentSummary: string | null = null;
   let seedGuidanceText: string | null = null;
   let templateToSeed: NonNullable<ReturnType<typeof findScopeTemplate>> | null = null;
-  // Per decision_01KRPRDR1AD7S1RP6E69BQDB2G the body's `authoring_rules`
-  // (typed predicates) and `guidance_rules` (prose strings) become
-  // first-class Rule entities created AFTER the scope itself; the
-  // scope row no longer carries the arrays.
-  const seedAuthoringFromBody: unknown[] = Array.isArray(body.authoring_rules)
-    ? body.authoring_rules
-    : [];
-  const seedGuidanceFromBody: { text: string; lifecycle?: string }[] = Array.isArray(
-    body.guidance_rules,
-  )
-    ? body.guidance_rules
-        .map((g) => {
-          if (typeof g === "string") return { text: g, lifecycle: "active" };
-          if (g && typeof g === "object" && typeof g.text === "string") {
-            return { text: g.text, lifecycle: g.lifecycle ?? "active" };
-          }
-          return null;
-        })
-        .filter((g): g is { text: string; lifecycle: string } => g !== null)
-    : [];
 
   if (body.template_name) {
     const tpl = findScopeTemplate(body.template_name);
@@ -249,9 +225,8 @@ export async function action({
   const newScopeId = await createScopeInDoco(createOpts);
   const changedEntityIds: string[] = [newScopeId];
 
-  // Seed entities for the template and any guidance / authoring rules
-  // the caller included. Templates seed one Intent + one Rule per
-  // template rule; custom body guidance remains prose-only Rules.
+  // Templates seed one Intent + one Rule per template rule. Custom
+  // scopes only seed their main Intent; rules are added after creation.
   if (templateToSeed) {
     const seeded = await seedScopeFromTemplate({
       docoDir: dir,
@@ -276,33 +251,6 @@ export async function action({
     });
     changedEntityIds.push(intentId);
   }
-  for (const g of seedGuidanceFromBody) {
-    if (g.text.trim()) {
-      const ruleId = await createRuleInDoco({
-        docoId,
-        kind: "guidance",
-        summary: g.text.trim(),
-        scopeId: newScopeId,
-        lifecycle: (g.lifecycle as "active" | "abandoned" | undefined) ?? "active",
-        createdBy,
-      });
-      changedEntityIds.push(ruleId);
-    }
-  }
-  for (const ar of seedAuthoringFromBody) {
-    if (ar && typeof ar === "object") {
-      const obj = ar as { kind?: string; reason?: string };
-      const ruleId = await createRuleInDoco({
-        docoId,
-        kind: "authoring",
-        summary: obj.reason ?? `Authoring rule (${obj.kind ?? "?"})`,
-        predicate: ar,
-        scopeId: newScopeId,
-        createdBy,
-      });
-      changedEntityIds.push(ruleId);
-    }
-  }
 
   await reindex(dir, docoId, changedEntityIds);
   const duration_ms = Date.now() - t0;
@@ -312,7 +260,6 @@ export async function action({
   const summary =
     seedGuidanceText?.trim() ||
     customIntentSummary?.trim() ||
-    seedGuidanceFromBody[0]?.text?.trim() ||
     `Scope: ${scopeName}${watched ? " (watched)" : ""}`;
   const footer_lines = renderOperationLines({
     ownerSlug,

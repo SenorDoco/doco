@@ -8,12 +8,21 @@
 import { stringify as stringifyYaml, parse as parseYaml } from "yaml";
 import { waitUntil } from "@vercel/functions";
 import { generateUlid } from "@doco/shared";
-import type { Entity, Scope, EngineEdge, AuthoringPredicate } from "@doco/shared";
+import type {
+  Entity,
+  Scope,
+  EngineEdge,
+  AuthoringPredicate,
+  Lifecycle,
+} from "@doco/shared";
 import {
+  computeEffectiveDefaultLifecycle,
+  computeEffectiveGatedBy,
   evaluateScopeRules,
   globalScopeMembershipViolation,
   shouldRunAuthoringRuleForEntity,
 } from "@doco/shared";
+import { ensureV7Migration } from "./migrations/v7.server";
 import {
   judgeProbabilisticRule,
   LlmUnavailableError,
@@ -24,7 +33,7 @@ import { reindex, reindexEmbeddingsOnly } from "./redeem.server";
 import { readDocoMetadata, resolveScopeIcons } from "./scope-helpers.server";
 import { validatePatch } from "./mutability.server";
 import { appendAuditEvent } from "./audit-log.server";
-import { getEntity, upsertEntity, withClient } from "@doco/db";
+import { NODE_TABLES, getEntity, upsertEntity, withClient } from "@doco/db";
 
 /**
  * Synthetic "path" returned in CaptureResult.path. Postgres is the only
@@ -649,6 +658,121 @@ function findGlobalScope(allScopes: Map<string, Scope>): Scope | null {
   return null;
 }
 
+/**
+ * v7: load the population of entities in each requested scope, indexed
+ * by scope id. Used by within-scope predicates
+ * (`unique-within-scope`, `count-within-scope`, `graph-constraint`).
+ * Uses the materialized `in_scope_of` edges to enumerate members; the
+ * candidate is injected into each scope it claims so completeness
+ * checks see it before the row commits.
+ */
+async function buildNodesByScope(
+  docoId: string,
+  scopeIds: string[],
+  candidate: Entity,
+): Promise<Map<string, Entity[]>> {
+  const out = new Map<string, Entity[]>();
+  if (scopeIds.length === 0) return out;
+
+  const memberIds = new Map<string, string[]>(); // scope_id → [entity_id, …]
+  try {
+    await withClient(async (c) => {
+      const r = await c.query<{ from_id: string; to_id: string }>(
+        `SELECT from_id, to_id FROM edges
+          WHERE doco_id = $1
+            AND edge_type = 'in_scope_of'
+            AND to_id = ANY($2::text[])`,
+        [docoId, scopeIds],
+      );
+      for (const row of r.rows) {
+        const arr = memberIds.get(row.to_id) ?? [];
+        arr.push(row.from_id);
+        memberIds.set(row.to_id, arr);
+      }
+    });
+  } catch {
+    /* index empty — fall through with candidate-only buckets */
+  }
+
+  // Bucket member ids by their backing table.
+  const byTable = new Map<string, string[]>();
+  const allMemberIds = new Set<string>();
+  for (const ids of memberIds.values()) for (const id of ids) allMemberIds.add(id);
+  for (const id of allMemberIds) {
+    const idx = id.indexOf("_");
+    if (idx === -1) continue;
+    const nodeType = id.slice(0, idx);
+    const spec = NODE_TABLES[nodeType];
+    if (!spec) continue;
+    const arr = byTable.get(spec.table) ?? [];
+    arr.push(id);
+    byTable.set(spec.table, arr);
+  }
+
+  // Batch-fetch entity rows from each table.
+  const entitiesById = new Map<string, Entity>();
+  try {
+    await withClient(async (c) => {
+      for (const [table, ids] of byTable) {
+        if (ids.length === 0) continue;
+        // Table name comes from the trusted NODE_TABLES constant; ids
+        // are parameterized.
+        const r = await c.query<{ id: string; raw_yaml: string }>(
+          `SELECT id, raw_yaml FROM ${table}
+            WHERE doco_id = $1 AND id = ANY($2::text[])`,
+          [docoId, ids],
+        );
+        for (const row of r.rows) {
+          try {
+            const fm = JSON.parse(row.raw_yaml);
+            if (fm && typeof fm === "object") {
+              entitiesById.set(row.id, fm as Entity);
+            }
+          } catch {
+            try {
+              const fm = parseYaml(row.raw_yaml);
+              if (fm && typeof fm === "object") {
+                entitiesById.set(row.id, fm as Entity);
+              }
+            } catch {
+              /* skip */
+            }
+          }
+        }
+      }
+    });
+  } catch {
+    /* fall through with whatever was already collected */
+  }
+
+  // Materialize per-scope arrays from member ids.
+  for (const [scopeId, ids] of memberIds) {
+    const ents: Entity[] = [];
+    for (const id of ids) {
+      const e = entitiesById.get(id);
+      if (e) ents.push(e);
+    }
+    out.set(scopeId, ents);
+  }
+
+  // Inject the candidate into each scope it claims, even if the
+  // in_scope_of edge isn't materialized yet.
+  const candidateScopes =
+    (candidate as unknown as { scopes?: unknown }).scopes ?? [];
+  if (Array.isArray(candidateScopes)) {
+    for (const sid of candidateScopes as string[]) {
+      if (!scopeIds.includes(sid)) continue;
+      const arr = out.get(sid) ?? [];
+      const candidateId = (candidate as unknown as { id?: string }).id;
+      const alreadyIn = arr.some((e) => (e as { id?: string }).id === candidateId);
+      if (!alreadyIn) arr.push(candidate);
+      out.set(sid, arr);
+    }
+  }
+
+  return out;
+}
+
 export async function runScopeRules(opts: {
   docoDir: string;
   ownerSlug: string;
@@ -659,22 +783,22 @@ export async function runScopeRules(opts: {
   const scopeIds = Array.isArray(entityFm.scopes) ? (entityFm.scopes as string[]) : [];
   const allScopes = await loadAllScopes(docoDir);
 
-  // Per decision_01KRPRDR1AD7S1RP6E69BQDB2G authoring rules are
-  // first-class Rule entities (kind=authoring, tagged with the scope via
-  // in_scope_of). Load them per scope from the `rules` table; the
-  // engine evaluates whatever predicates come out.
+  // Per v7 (decision_01KRRR5BQ16ASY8HQEE0V499YG) authoring rules are
+  // cited by a Scope via `Scope.gated_by` (with parent-scope inheritance
+  // and per-scope `excluded_rules` opt-out). The legacy
+  // `Rule.kind === "authoring"` marker is gone; existing data is
+  // backfilled by `ensureV7Migration` before this loader runs.
   const meta = await readDocoMetadata(docoDir);
   if (!meta?.docoId) return null;
   const docoId = meta.docoId;
+  await ensureV7Migration(docoId);
 
-  // Collect the set of scope ids whose authoring rules we need to load:
+  // Collect the set of scope ids whose gated_by we need to walk:
   // - every scope the entity already lists,
-  // - PLUS the Global scope (all of its authoring rules apply Doco-wide).
-  // The "only Rule nodes belong to Global" check that used to be a
-  // hardcoded short-circuit here now lives as a `requires_node_type`
-  // authoring rule seeded into every Doco's Global scope. The engine
-  // below evaluates it like any other rule, so deprecating the rule
-  // (PATCH lifecycle=abandoned) actually disables the check.
+  // - PLUS the Global scope (its gated_by carries Doco-wide invariants).
+  // The "only Rule nodes belong to Global" check lives as a
+  // `requires_node_type` rule on Global's gated_by; deprecating it via
+  // PATCH lifecycle=abandoned disables the check.
   const scopesToCheck = new Set(scopeIds);
   const globalScope = findGlobalScope(allScopes);
   const globalScopeId = globalScope?.id ?? null;
@@ -682,28 +806,33 @@ export async function runScopeRules(opts: {
     scopesToCheck.add(globalScopeId);
   }
 
-  // Load Rule entities (kind=authoring, lifecycle in active/proposed)
-  // tagged with any of these scopes. One query, then we bucket per scope
-  // in code.
-  type RuleRow = {
-    id: string;
-    summary: string;
-    raw_yaml: string;
-    scope_id: string;
-  };
+  // For each scope to check, compute its effective gated_by (walking
+  // parent scopes + applying excluded_rules). Map each rule id to the
+  // scope that cites it — that becomes its "$capture_scope" for
+  // within-scope predicates.
+  const ruleIdToCitingScope = new Map<string, string>();
+  for (const scopeId of scopesToCheck) {
+    const scope = allScopes.get(scopeId);
+    if (!scope) continue;
+    const effective = computeEffectiveGatedBy(scope, allScopes);
+    for (const rid of effective) {
+      if (!ruleIdToCitingScope.has(rid)) ruleIdToCitingScope.set(rid, scopeId);
+    }
+  }
+
+  // Load the cited Rule entities (active / proposed). One query.
+  type RuleRow = { id: string; summary: string; raw_yaml: string };
   let ruleRows: RuleRow[] = [];
-  if (scopesToCheck.size > 0) {
+  if (ruleIdToCitingScope.size > 0) {
     try {
       ruleRows = await withClient(async (c) => {
         const r = await c.query<RuleRow>(
-          `SELECT r.id, r.summary, r.raw_yaml, e.to_id AS scope_id
-             FROM rules r
-             JOIN edges e ON e.from_id = r.id
-                         AND e.edge_type = 'in_scope_of'
-                         AND e.to_id = ANY($1::text[])
-            WHERE r.doco_id = $2
-              AND COALESCE(r.lifecycle, 'active') IN ('active', 'proposed')`,
-          [Array.from(scopesToCheck), docoId],
+          `SELECT id, summary, raw_yaml
+             FROM rules
+            WHERE doco_id = $1
+              AND id = ANY($2::text[])
+              AND COALESCE(lifecycle, 'active') IN ('active', 'proposed')`,
+          [docoId, Array.from(ruleIdToCitingScope.keys())],
         );
         return r.rows;
       });
@@ -714,24 +843,34 @@ export async function runScopeRules(opts: {
 
   type Loaded = {
     rule_id: string;
+    scope_id?: string;
     predicate: AuthoringPredicate;
     lifecycle?: string;
+    fires_when_node_lifecycle?: Lifecycle[];
     reason?: string;
   };
   const perScope = new Map<string, Loaded[]>();
+  let needsNodesByScope = false;
   for (const row of ruleRows) {
     let fm: Record<string, unknown> = {};
     try {
       fm = JSON.parse(row.raw_yaml) as Record<string, unknown>;
     } catch {
-      continue;
+      try {
+        const parsed = parseYaml(row.raw_yaml);
+        if (parsed && typeof parsed === "object")
+          fm = parsed as Record<string, unknown>;
+      } catch {
+        continue;
+      }
     }
-    if (fm.kind !== "authoring") continue;
     const predicate = fm.predicate as AuthoringPredicate | undefined;
     if (!predicate || typeof predicate !== "object") continue;
+    const citingScope = ruleIdToCitingScope.get(row.id);
+    if (!citingScope) continue;
     if (
       !shouldRunAuthoringRuleForEntity({
-        ruleScopeId: row.scope_id,
+        ruleScopeId: citingScope,
         predicateKind: predicate.kind,
         globalScopeId,
         entityScopes: scopeIds,
@@ -739,14 +878,26 @@ export async function runScopeRules(opts: {
     ) {
       continue;
     }
-    const arr = perScope.get(row.scope_id) ?? [];
+    if (
+      predicate.kind === "unique-within-scope" ||
+      predicate.kind === "count-within-scope" ||
+      predicate.kind === "graph-constraint"
+    ) {
+      needsNodesByScope = true;
+    }
+    const fires = Array.isArray(fm.fires_when_node_lifecycle)
+      ? (fm.fires_when_node_lifecycle as Lifecycle[])
+      : undefined;
+    const arr = perScope.get(citingScope) ?? [];
     arr.push({
       rule_id: row.id,
+      scope_id: citingScope,
       predicate,
       lifecycle: typeof fm.lifecycle === "string" ? fm.lifecycle : "active",
+      fires_when_node_lifecycle: fires,
       reason: row.summary,
     });
-    perScope.set(row.scope_id, arr);
+    perScope.set(citingScope, arr);
   }
 
   if (perScope.size === 0) return null;
@@ -798,6 +949,14 @@ export async function runScopeRules(opts: {
     typeof entityFm.node_type === "string" ? (entityFm.node_type as string) : "";
   const entityBody =
     typeof entityFm.body_md === "string" ? (entityFm.body_md as string) : undefined;
+
+  // v7: build a nodesByScope index for `unique-within-scope`,
+  // `count-within-scope`, and `graph-constraint` predicates. Only build
+  // it if at least one predicate needs it — the queries are non-trivial.
+  const nodesByScope = needsNodesByScope
+    ? await buildNodesByScope(docoId, Array.from(perScope.keys()), entityForEngine)
+    : undefined;
+
   for (const [scopeIdKey, loadedRules] of perScope) {
     const scope = allScopes.get(scopeIdKey);
     const scopeName = scope ? (scope as unknown as { name: string }).name : "(scope)";
@@ -807,6 +966,7 @@ export async function runScopeRules(opts: {
       scopeName,
       allEdges: edges,
       entityScopes: scopeIds,
+      nodesByScope,
     });
     for (const vv of v) {
       if (vv.severity === "error") {
@@ -2398,6 +2558,161 @@ export async function captureReference(
     ok: true,
     id,
     path: syntheticPath("reference", id),
+    footer_lines,
+    duration_ms,
+  };
+}
+
+// ─── State (v7 — state-machine node) ──────────────────────────────────────
+// Per decision_01KRRR5BQ16ASY8HQEE0V499YG. A State is a node in a formal
+// state machine: a position the modeled entity occupies for some span of
+// time. Holds invariants while occupied; reached via Actions whose
+// `follows` includes this State. Framework-general — nothing about the
+// shape is state-machines-specific.
+
+export interface StateDraft {
+  /** Required: one-line summary (the State's display name, e.g. "paid", "cart"). */
+  summary: string;
+  /** Required: at least one scope name (bare). */
+  scope_names: string[];
+  /** Required: initial / intermediate / terminal. */
+  kind: "initial" | "intermediate" | "terminal";
+
+  /** Optional: predicates true while in this State. Free-form prose. */
+  invariants?: string[];
+  /** Optional: entity ids this state follows (typically a transition Action). */
+  follows?: string[];
+  /** Optional: principal id who created this entry. */
+  created_by_id?: string;
+  /** Optional: principal username (resolves to id). */
+  created_by_username?: string;
+  /** Optional: raw markdown body. */
+  body_md?: string;
+  /** Optional: explicit lifecycle override. If unset, falls back to the
+   *  capturing scope's `default_node_lifecycle` (with parent inheritance),
+   *  else "active". */
+  lifecycle?: string;
+}
+
+export async function captureState(
+  docoDir: string,
+  docoId: string,
+  ownerSlug: string,
+  docoSlug: string,
+  draft: StateDraft,
+  docoHost?: string,
+): Promise<CaptureResult | CaptureError> {
+  const startedAt = performance.now();
+  if (!draft.summary?.trim()) return { error: "summary is required." };
+  if (!draft.kind) return { error: "kind is required (initial | intermediate | terminal)." };
+  if (
+    draft.kind !== "initial" &&
+    draft.kind !== "intermediate" &&
+    draft.kind !== "terminal"
+  ) {
+    return { error: `kind must be one of initial / intermediate / terminal — got "${draft.kind}".` };
+  }
+  if (!Array.isArray(draft.scope_names) || draft.scope_names.length === 0) {
+    return { error: "scope_names must be a non-empty array." };
+  }
+
+  const scopeRes = await resolveScopeOrError(docoDir, draft.scope_names, {
+    verb: "tag",
+    nodeKind: "State",
+  });
+  if ("error" in scopeRes) return scopeRes;
+  const scopeIds = scopeRes.ids;
+
+  let createdById: string | null = draft.created_by_id ?? null;
+  if (!createdById && draft.created_by_username) {
+    createdById = await resolvePrincipalUsername(draft.created_by_username);
+    if (!createdById) {
+      return { error: `Unknown principal username: ${draft.created_by_username}` };
+    }
+  }
+
+  const id = `state_${generateUlid()}`;
+  const summary = draft.summary.trim();
+  const now = new Date().toISOString();
+
+  // v7: honor default_node_lifecycle from the capturing scope hierarchy
+  // unless the author overrides via explicit lifecycle. Walks the first
+  // listed scope's ancestors (more scopes => first wins; the project
+  // owner can layer ordering if they care).
+  let lifecycle = draft.lifecycle?.trim();
+  if (!lifecycle && scopeIds.length > 0) {
+    const allScopes = await loadAllScopes(docoDir);
+    const first = allScopes.get(scopeIds[0]);
+    if (first) {
+      const def = computeEffectiveDefaultLifecycle(first, allScopes);
+      if (def) lifecycle = def;
+    }
+  }
+  if (!lifecycle) lifecycle = "active";
+
+  const follows: string[] = Array.isArray(draft.follows) ? draft.follows : [];
+  const invariants: string[] = Array.isArray(draft.invariants)
+    ? draft.invariants.filter((s): s is string => typeof s === "string" && s.length > 0)
+    : [];
+
+  const fm: Record<string, unknown> = {
+    id,
+    doco_id: docoId,
+    node_type: "state",
+    summary,
+    kind: draft.kind,
+    ...(invariants.length > 0 ? { invariants } : {}),
+    ...(follows.length > 0 ? { follows } : {}),
+    created_at: now,
+    ...(createdById ? { created_by: createdById } : {}),
+    lifecycle,
+    scopes: scopeIds,
+  };
+
+  const ruleErr = await runScopeRules({ docoDir, ownerSlug, docoSlug, entityFm: fm });
+  if (ruleErr) return ruleErr;
+
+  await persistEntity({
+    nodeType: "state",
+    id,
+    docoId,
+    fm,
+    body: draft.body_md?.trim() ?? "",
+  });
+  emitAuditForCreate({
+    docoDir,
+    docoId,
+    actorId: createdById ?? null,
+    entity_type: "state",
+    entity_id: id,
+    summary,
+  });
+  await reindexAndScheduleAttach(docoDir, docoId, id, {
+    docoDir,
+    ownerSlug,
+    docoSlug,
+    entityId: id,
+    entityType: "state",
+    entitySummary: summary,
+    alreadyReferenced: new Set([...follows, ...scopeIds]),
+  });
+
+  const duration_ms = Math.round(performance.now() - startedAt);
+  const footer_lines = renderOperationLines({
+    ownerSlug,
+    docoSlug,
+    nodeType: "state",
+    id,
+    summary,
+    docoHost,
+    ops: [{ kind: "added", summary }],
+    scopes: await resolveScopeIcons(docoDir, scopeIds),
+    duration_ms,
+  });
+  return {
+    ok: true,
+    id,
+    path: syntheticPath("state", id),
     footer_lines,
     duration_ms,
   };
