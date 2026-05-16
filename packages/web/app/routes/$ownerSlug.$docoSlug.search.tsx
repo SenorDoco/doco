@@ -595,7 +595,6 @@ export default function SearchInDoco({
                 label: f.name,
                 count: f.count,
                 icon: f.icon,
-                color: nodeTypeColor("scope"),
               }))}
               selected={new Set(filters.scope ?? [])}
               wildcardActive={filters.scope === null}
