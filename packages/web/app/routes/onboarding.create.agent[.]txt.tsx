@@ -29,16 +29,37 @@ Response (JSON):
       "expires_at":       "<ISO timestamp; 10-minute window>"
     }
 
-Step 2 — tell the project owner what to do, then wait:
+Step 2 — open the authorize_url in the project owner's browser, then wait:
 
-    Open <authorize_url> in your browser.
-    Sign in if asked.
-    On the authorize page they see TWO options:
-      (a) Use an existing Doco — pick one from a list of Docos they own
-      (b) Create a new Doco — enter a slug (lower-case, kebab-case)
-    Click Authorize next to whichever option they picked.
+DON'T print the URL and ask them to copy-paste. Open it yourself first.
+Their terminal can reach their default browser:
 
-Don't loop. Don't retry on your own. Wait for them to confirm.
+    # Try in order; whichever exits 0 wins. \`command -v\` keeps the call
+    # silent on platforms where the opener doesn't exist.
+    if command -v open >/dev/null 2>&1; then
+      open "<authorize_url>"
+    elif command -v xdg-open >/dev/null 2>&1; then
+      xdg-open "<authorize_url>"
+    elif command -v start >/dev/null 2>&1; then
+      start "<authorize_url>"
+    else
+      echo "Open this URL in your browser: <authorize_url>"
+    fi
+
+In a remote sandbox (Codex web, GitHub Coding Agent, Anthropic web)
+none of the openers exist; the else branch prints the URL and the
+project owner opens it manually. Locally (Claude Code on a Mac, Cursor
+on a laptop) the first branch fires and the browser pops up on its
+own.
+
+Tell the project owner what just happened so they look at the browser:
+
+    "I opened the authorize page in your browser — sign in if asked,
+    pick an existing Doco (or enter a slug to create a new one), and
+    click Authorize. I'll wait."
+
+Don't loop. Don't retry on your own. Wait for them to confirm or for
+step 3's poll to flip status.
 
 Step 3 — poll for approval (plain GET; the poll_url from step 1 already
 has ?state_nonce=… baked in, fetch it as-is):
