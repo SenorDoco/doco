@@ -1,10 +1,9 @@
-import { createDocoInHost } from "@doco/host";
-import { reindex } from "@doco/index";
 import { Form, Link, redirect } from "react-router";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { SiteHeader } from "~/components/site-header";
 import { rootDir } from "~/lib/db.server";
 import { listOrgsOwnedOrAdminedBy, loadHostConfig } from "~/lib/host";
+import { createDocoInHost, reindex } from "~/lib/redeem.server";
 import { getCurrentPrincipal } from "~/lib/session";
 
 export async function loader({ request }: { request: Request }) {
@@ -38,7 +37,7 @@ export async function action({ request }: { request: Request }) {
       visibility,
     });
     // Build an empty per-Doco index so the web's loaders can read it.
-    await reindex(rec.path);
+    await reindex(rec.path, rec.docoId);
     // Render the success step inline so the user gets explicit "Doco
     // created" confirmation before being pushed to scope setup (ADR-080
     // rev 2 — scopes are the explicit second step but skippable).
