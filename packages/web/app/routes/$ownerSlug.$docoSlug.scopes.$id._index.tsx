@@ -470,14 +470,10 @@ export async function loader({
       // v7 (decision_01KRRR5BQ16ASY8HQEE0V499YG): surface the scope's
       // gating + lifecycle data so the editor can render it.
       default_node_lifecycle:
-        typeof raw.default_node_lifecycle === "string"
-          ? raw.default_node_lifecycle
-          : null,
+        typeof raw.default_node_lifecycle === "string" ? raw.default_node_lifecycle : null,
       gated_by: Array.from(scopeGatedBy),
       excluded_rules: Array.isArray(raw.excluded_rules)
-        ? (raw.excluded_rules as unknown[]).filter(
-            (v): v is string => typeof v === "string",
-          )
+        ? (raw.excluded_rules as unknown[]).filter((v): v is string => typeof v === "string")
         : [],
     },
     primaryIntent,
@@ -717,28 +713,26 @@ export default function ScopePage({
               {scope.default_node_lifecycle ? (
                 <p>
                   <span className="font-mono">default_node_lifecycle</span> ={" "}
-                  <Badge>{scope.default_node_lifecycle}</Badge> — captures into this
-                  scope (or descendants) start at this lifecycle unless the author
-                  passes an explicit override.
+                  <Badge>{scope.default_node_lifecycle}</Badge> — captures into this scope (or
+                  descendants) start at this lifecycle unless the author passes an explicit
+                  override.
                 </p>
               ) : null}
               {scope.gated_by && scope.gated_by.length > 0 ? (
                 <p>
-                  <span className="font-mono">gated_by</span>: {scope.gated_by.length}{" "}
-                  rule{scope.gated_by.length === 1 ? "" : "s"} cited as authoring rules
-                  for this scope (see the Authoring rules section below).
+                  <span className="font-mono">gated_by</span>: {scope.gated_by.length} rule
+                  {scope.gated_by.length === 1 ? "" : "s"} cited as authoring rules for this scope
+                  (see the Authoring rules section below).
                 </p>
               ) : null}
               {scope.excluded_rules && scope.excluded_rules.length > 0 ? (
                 <p>
-                  <span className="font-mono">excluded_rules</span>:{" "}
-                  {scope.excluded_rules.length} inherited rule
+                  <span className="font-mono">excluded_rules</span>: {scope.excluded_rules.length}{" "}
+                  inherited rule
                   {scope.excluded_rules.length === 1 ? "" : "s"} opted out —{" "}
                   {scope.excluded_rules.slice(0, 4).map((rid, i, arr) => (
                     <span key={rid}>
-                      <Link
-                        to={entityUrl({ ownerSlug, docoSlug, nodeType: "rule", id: rid })}
-                      >
+                      <Link to={entityUrl({ ownerSlug, docoSlug, nodeType: "rule", id: rid })}>
                         <span className="font-mono">{rid.slice(0, 18)}…</span>
                       </Link>
                       {i < arr.length - 1 ? ", " : ""}
@@ -905,13 +899,13 @@ export default function ScopePage({
             </Card>
 
             <Card>
-              <CardHeader>
+              <CardHeader className="px-4 py-3">
                 <CardTitle className="text-sm">Latest activity</CardTitle>
               </CardHeader>
               <CardContent className="p-0">
                 {items.length === 0 ? (
-                  <div className="px-5 py-6 text-xs text-muted-foreground">
-                    No activity for nodes tagged with this scope yet.
+                  <div className="px-4 pb-4 text-xs leading-5 text-muted-foreground">
+                    No scoped activity yet.
                   </div>
                 ) : (
                   <div className="divide-y divide-border">
