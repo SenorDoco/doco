@@ -170,6 +170,7 @@ export default [
   route(":ownerSlug/:docoSlug/api/scopes/:id/validate.json", "routes/$ownerSlug.$docoSlug.api.scopes.$id.validate[.]json.tsx"),
   route(":ownerSlug/:docoSlug/api/scopes/:id/excluded-rules.json", "routes/$ownerSlug.$docoSlug.api.scopes.$id.excluded-rules[.]json.tsx"),
   route(":ownerSlug/:docoSlug/api/scopes.json", "routes/$ownerSlug.$docoSlug.api.scopes[.]json.tsx"),
+  route(":ownerSlug/:docoSlug/api/principals.json", "routes/$ownerSlug.$docoSlug.api.principals[.]json.tsx"),
   route(":ownerSlug/:docoSlug/api/intents.json", "routes/$ownerSlug.$docoSlug.api.intents[.]json.tsx"),
   route(":ownerSlug/:docoSlug/api/actions.json", "routes/$ownerSlug.$docoSlug.api.actions[.]json.tsx"),
   route(":ownerSlug/:docoSlug/api/logs.json", "routes/$ownerSlug.$docoSlug.api.logs[.]json.tsx"),
