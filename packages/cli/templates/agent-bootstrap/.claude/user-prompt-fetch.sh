@@ -58,6 +58,8 @@ fi
 read -r -d '' PROTOCOL_REMINDER <<'EOF' || true
 ## Doco protocol — apply this in your reply
 
+Use Doco as a verb in client-facing prose: "Want me to doco it?", "Doco this decision", "Doco this ADR", "Doco the flow".
+
 1. TOP OF THE TURN'S FIRST TEXT OUTPUT (once per turn, NOT on intermediate progress updates between tool calls): paste the pre-fetched Doco block FIRST.
 
    If the pre-fetched block says "[🔮 Doco] Not connected yet: <reason>", paste that exact line instead of any connected indicator. Do not render query/count/tally/footer lines while disconnected. Ask the project owner to authorize with `doco login --host https://doco.to`.
@@ -116,13 +118,11 @@ elif [ -n "$PROMPT" ]; then
         (if (.summary | length) > 120 then (.summary[:117] + "...") else .summary end)
     ' 2>/dev/null | head -10)
     # Random verbs — pick one at random. The variety is the point;
-    # the structured fields (slug, count, timing) stay identical.
-    LOADING_VERBS=("Connected to" "Tuned into" "Listening to" "Wired up to" "Synced with" "Plugged into" "Online with" "Reading" "Hooked into" "Eyes on" "Riding shotgun on" "Pinned to" "Threaded into" "Locked onto" "Channel open:" "Live on" "Mind-melded with" "Pulled up" "Holding the file on")
+    # the structured fields (count, timing) stay identical.
     QUERYING_VERBS=("Querying..." "Looking it up..." "Asking around..." "Reading the room..." "Sniffing for hits..." "Flipping through notes..." "Scanning the graph..." "Searching the lore..." "Peering into the orb..." "Combing the archive..." "Hunting for prior art..." "Pinging the memory..." "Cross-referencing..." "Checking what's known..." "Tracing the trail..." "Diving in..." "Polling the Doco..." "Skimming the index..." "Asking the oracle..." "Searching...")
-    LOADING_VERB="${LOADING_VERBS[$RANDOM % ${#LOADING_VERBS[@]}]}"
     QUERYING_VERB="${QUERYING_VERBS[$RANDOM % ${#QUERYING_VERBS[@]}]}"
-    QUERY_BLOCK=$(printf '\n\n## Pre-fetched query for THIS prompt — paste as your top-of-reply indicator\n\n[🔮 Doco] %s\n[🔮 Doco] %s %s. %s relevant nodes found (%ss)\n\nTop hits:\n%s\n' \
-      "$QUERYING_VERB" "$LOADING_VERB" "$DOCO_ID" "$COUNT" "$SECS" "$HITS")
+    QUERY_BLOCK=$(printf '\n\n## Pre-fetched query for THIS prompt — paste as your top-of-reply indicator\n\n[🔮 Doco] %s\n[🔮 Doco] %s relevant nodes found (%ss)\n\nTop hits:\n%s\n' \
+      "$QUERYING_VERB" "$COUNT" "$SECS" "$HITS")
     # Persist the full hits JSON for cross-hook reads (PostToolUse path-match).
     # Namespace by $PWD hash so concurrent worktrees don't stomp each other.
     # The PostToolUse hook reads this on every Edit/Write tool call.

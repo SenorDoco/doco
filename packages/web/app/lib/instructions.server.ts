@@ -31,6 +31,12 @@ You're working on a project that uses **Doco** — AI-native documentation
 of intent, decisions, rules, actions, logs. Every meaningful
 decision leaves a trail.
 
+Use Doco naturally as a verb when you talk with the project owner:
+"Want me to doco it?", "Doco this decision", "Doco this ADR", and
+"Doco the flow" are all normal client-facing phrases. When a project
+owner says "doco it", interpret that as a request to capture the
+appropriate Doco nodes.
+
 This document carries the **four invariants** every reply must follow.
 For deeper reference (model walkthrough, scope onboarding flow, capture
 checklist, "don't follow recipes — think" principles, placement
@@ -115,7 +121,12 @@ the canonical body — you have \`$DOCO_ID\`, that is enough to render:
 
 \`\`\`
 [🔮 Doco] <loading-verb> <doco_id>
+[🔮 Doco] To document anything, just ask me to "doco it"
 \`\`\`
+
+That second line is fixed copy. Render it directly under the
+session-load indicator, before any per-reply query lines, and repeat it
+only when you repeat the session-load indicator after a reconnection.
 
 The failure mode this rule prevents: agent narrates "I have the
 canonical, now let me query Doco," runs three tool calls, *then*
@@ -136,8 +147,8 @@ Plugged into · Online with · Reading · Hooked into · Eyes on ·
 Riding shotgun on · Pinned to · Threaded into · Locked onto ·
 Channel open: · Live on · Mind-melded with · Pulled up · Holding the file on
 
-When the SessionStart hook pre-builds this line (Claude Code), the
-verb is already randomized **and the line itself is in the wrapper
+When the SessionStart hook pre-builds this block (Claude Code), the
+verb is already randomized **and the block itself is in the wrapper
 above the canonical** — emit it verbatim as your first output instead
 of re-picking the verb or waiting until you've read the canonical body.
 
@@ -145,7 +156,7 @@ of re-picking the verb or waiting until you've read the canonical body.
 
 Two lines if you queried, nothing at all if you didn't. Render BEFORE
 any prose in the FIRST text output of the turn (and after the
-session-load line on your first reply):
+session-load block on your first reply):
 
 \`\`\`
 [🔮 Doco] <querying-verb>
@@ -757,6 +768,7 @@ when nothing was captured.
 
 \`\`\`
 [🔮 Doco] Connected to acme/payments
+[🔮 Doco] To document anything, just ask me to "doco it"
 [🔮 Doco] Querying...
 [🔮 Doco] 7 relevant nodes found (0.3s)
 
@@ -777,6 +789,7 @@ to confirm tomorrow?
 
 \`\`\`
 [🔮 Doco] Tuned into acme/payments
+[🔮 Doco] To document anything, just ask me to "doco it"
 [🔮 Doco] Reading the room...
 [🔮 Doco] 3 relevant nodes found (0.2s)
 
@@ -797,6 +810,7 @@ small UI text removal touches a form already governed by a Decision
 
 \`\`\`
 [🔮 Doco] Wired up to acme/payments
+[🔮 Doco] To document anything, just ask me to "doco it"
 [🔮 Doco] Asking around...
 [🔮 Doco] 4 relevant nodes found (0.2s)
 
@@ -825,6 +839,7 @@ One line, ~10 seconds, the *why* survives the next refactor.
 
 \`\`\`
 [🔮 Doco] Pinned to acme/payments
+[🔮 Doco] To document anything, just ask me to "doco it"
 [🔮 Doco] Sniffing for hits...
 [🔮 Doco] 0 relevant nodes found (0.1s)
 
@@ -856,6 +871,7 @@ LAST one carries the tally. The middle chunks are plain prose.
 \`\`\`
 First text output:
 [🔮 Doco] Wired up to acme/payments
+[🔮 Doco] To document anything, just ask me to "doco it"
 [🔮 Doco] Scanning the graph...
 [🔮 Doco] 5 relevant nodes found (0.2s)
 

@@ -254,21 +254,23 @@ if printf '%s' "$RESP" | jq -e '.scopes and (.scopes | type == "array") and ((.s
   fi
 fi
 
-# Pre-bake the session-load indicator line so the agent emits it as
+# Pre-bake the session-load indicator block so the agent emits it as
 # the literal first output of its first reply — BEFORE any prose,
 # narration, or tool calls. Pick a random loading-verb from the
-# canonical 1a list so the line is ready to paste verbatim.
+# canonical 1a list so the block is ready to paste verbatim.
 LOADING_VERBS=("Connected to" "Tuned into" "Listening to" "Wired up to" "Synced with" "Plugged into" "Online with" "Reading" "Hooked into" "Eyes on" "Riding shotgun on" "Pinned to" "Threaded into" "Locked onto" "Channel open:" "Live on" "Mind-melded with" "Pulled up" "Holding the file on")
 LOADING_VERB="${LOADING_VERBS[$RANDOM % ${#LOADING_VERBS[@]}]}"
 DOCO_FOR_LINE="${DOCO_ID:-this Doco}"
 SESSION_LOAD_LINE="[🔮 Doco] ${LOADING_VERB} ${DOCO_FOR_LINE}"
+SESSION_LOAD_HINT='[🔮 Doco] To document anything, just ask me to "doco it"'
+SESSION_LOAD_BLOCK="    ${SESSION_LOAD_LINE}"$'\n'"    ${SESSION_LOAD_HINT}"
 
 # Prepend a strong "do not re-fetch" header so the agent recognises the
 # canonical is ALREADY in their context. The previous "if you see this,
 # the hook worked" wording was too soft — agents re-fetched anyway. This
 # version explicitly forbids re-fetching AND pre-bakes the session-load
-# line the agent must emit as its first output.
+# block the agent must emit as its first output.
 TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-HEADER=$'🔒 Doco canonical_instructions — auto-loaded by SessionStart hook at '"${TIMESTAMP}"$'\n\n⚠️ **The literal first line of your first reply must be the session-load indicator** — emitted BEFORE any prose, narration, or tool calls. Pre-built for you here (verb already randomized — paste verbatim):\n\n    '"${SESSION_LOAD_LINE}"$'\n\nNo "let me read this first" preface. No "I see this repo has Doco" prose. The line IS the acknowledgement. Then your per-reply [🔮 Doco] querying / count lines, then prose. See canonical § 1a below.\n\nThis IS the canonical. **Do NOT re-fetch via raw curl** — re-read the block below instead, or use `doco bootstrap` if this block has genuinely fallen out of context. The protocol applies to every connected reply (query indicator at top, footer_lines after writes, tally at end). For deep reference (model walkthrough, scope onboarding, placement examples), the long form is at `/api/v1/agent-reference` — fetch only on demand.\n\n---\n\n'
+HEADER=$'🔒 Doco canonical_instructions — auto-loaded by SessionStart hook at '"${TIMESTAMP}"$'\n\n⚠️ **The literal first lines of your first reply must be the session-load block** — emitted BEFORE any prose, narration, or tool calls. Pre-built for you here (verb already randomized — paste verbatim):\n\n'"${SESSION_LOAD_BLOCK}"$'\n\nNo "let me read this first" preface. No "I see this repo has Doco" prose. The block IS the acknowledgement. Then your per-reply [🔮 Doco] querying / count lines, then prose. See canonical § 1a below.\n\nThis IS the canonical. **Do NOT re-fetch via raw curl** — re-read the block below instead, or use `doco bootstrap` if this block has genuinely fallen out of context. The protocol applies to every connected reply (query indicator at top, footer_lines after writes, tally at end). For deep reference (model walkthrough, scope onboarding, placement examples), the long form is at `/api/v1/agent-reference` — fetch only on demand.\n\n---\n\n'
 printf '%s' "$RESP" | jq -nc --arg c "${HEADER}${INSTR}${CODE_MAP_BLOCK}${CONSTITUTION_BLOCK}${SCOPES_BLOCK}" \
   '{hookSpecificOutput: {hookEventName: "SessionStart", additionalContext: $c}}'
