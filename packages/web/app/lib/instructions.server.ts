@@ -1,28 +1,16 @@
 /**
  * Canonical agent-bootstrap instructions — split into two exports.
  *
- * `CANONICAL_INSTRUCTIONS` is the slim daily-use bootstrap (~1,200 tokens)
- * served on every `GET /api/v1/agent-bootstrap`. It covers ONLY the
- * protocol mechanics — the four invariants every reply must follow —
- * so agents have low-overhead bootstrap on every session.
+ * `CANONICAL_INSTRUCTIONS` is the slim daily-use bootstrap served on
+ * every `GET /api/v1/agent-bootstrap` (and on every `GET
+ * ${DOCO_URL}bootstrap.json`). It covers ONLY the protocol mechanics —
+ * the four invariants every reply must follow.
  *
- * `AGENT_REFERENCE` is the long-form deep reference (the model
- * walkthrough, scope onboarding, "don't follow recipes — think"
- * principles, placement examples, the icon dictionary, the "Doco is the
- * memory" rule, the claim flow). Served at `GET /api/v1/agent-reference`
- * and fetched on demand when the agent hits an edge case or needs more
- * detail than the canonical carries.
- *
- * The split exists because the previous monolithic canonical (~7,400
- * tokens) caused agents to chunk-read 4× per session, re-fetch from
- * scratch out of mistrust, and still miss the protocol mechanics. The
- * slim version makes the dial-tone unmissable and the reference
- * available when actually needed.
+ * `AGENT_REFERENCE` is the long-form deep reference. Served at
+ * `GET https://doco.to/api/v1/agent-reference` and fetched on demand.
  *
  * Per ADR-080 (centralized bootstrap), ADR-082 (scopes carry purpose +
- * guidelines), ADR-086 (knowledge lives in Doco, not private memory),
- * and the `slim-canonical-and-agent-reference-split` Decision (this
- * commit).
+ * guidelines), ADR-086 (knowledge lives in Doco, not private memory).
  */
 
 export const CANONICAL_INSTRUCTIONS = `# Doco — agent bootstrap (slim)
@@ -45,10 +33,9 @@ examples), fetch \`https://doco.to/api/v1/agent-reference\` on demand.
 ## 1. TOP OF EVERY REPLY — connection indicator
 
 Only render the regular Doco indicator when you have proper access:
-\`DOCO_ID\` is present, \`DOCO_TOKEN\` is present, the bootstrap for
-\`https://doco.to/api/v1/agent-bootstrap?id=$DOCO_ID\` returns this
-Doco's per-Doco context without an access warning, and the per-prompt
-search endpoint is reachable with the same token.
+\`DOCO_URL\` is present, \`GET \${DOCO_URL}bootstrap.json\` returns this
+Doco's per-Doco context without an access warning, and
+\`GET \${DOCO_URL}search.json?q=…\` is reachable with the same URL.
 
 If any of that is missing or failing, render exactly one Doco line at
 the top of every reply and do not render query/count/tally/footer lines:
@@ -62,42 +49,19 @@ invent or paraphrase — agents that compose generic reasons produce
 generic recovery advice and waste the project owner's time). The
 recovery action depends on WHICH failure mode you hit.
 
-**Before consulting the table — verify your bearer was actually sent.**
-Prefer the CLI wrappers when you are fetching Doco from a shell:
-\`doco bootstrap\` for the canonical and \`doco search "<task>"\` for
-the per-prompt query. They read \`DOCO_TOKEN\` from \`./.env\` inside the
-process, so the bearer token never appears in shell command text or
-permission prompts. If your runtime falls back to raw shell
-\`curl ... -H "Authorization: Bearer $DOCO_TOKEN"\`, the \`./.env\`
-fallback documented in §Authentication does NOT apply: shell expansion
-only sees variables already in the environment, and an empty
-\`$DOCO_TOKEN\` gets sent as \`Authorization: Bearer \` (empty bearer).
-The host then correctly returns \`token cannot access this Doco\` — but
-the fix is to load \`./.env\` (\`set -a; . ./.env; set +a\`) and re-curl,
-not to ask the project owner to re-authorize. Run
-\`[ -n "$DOCO_TOKEN" ] && echo set || echo unset\` before recommending
-any recovery below. Misdiagnosing an empty-bearer as a membership gap
-and routing the project owner to \`doco login\` (or worse,
-\`doco login --create\`) is the exact reflex this rule prevents — the
-token on disk is fine; the shell just never picked it up.
-
 | Disconnected reason | Recovery to recommend to the project owner |
 |---|---|
-| \`missing DOCO_TOKEN\` | \`doco login --host https://doco.to\` mints a fresh token. |
-| \`authorization expired\` / 401 from bootstrap | Same — \`doco login --host https://doco.to\`. |
-| \`missing DOCO_ID\` | Edit the **This project's Doco ID** line in \`AGENTS.md\` (or re-run \`doco login\` — it stamps the id at the top of the file). |
-| \`token cannot access this Doco\` / 403 from bootstrap | Ask the project owner to add this agent as a member of the Doco, OR run \`doco login\` with an account that already has access. **Do NOT recommend \`doco login --create\` — that would fork a duplicate Doco.** |
-| \`Doco doesn't exist on this host\` / 404 from bootstrap | Read the bootstrap response's \`missing_doco_guidance\` field (added when this case hits) — it carries the right action for both subcases (create-new with \`doco login --create <slug>\` OR fix a stale id in AGENTS.md). |
-| \`bootstrap fetch blocked\` / \`HTTP_STATUS:000\` / \`doco.to unreachable\` | **Sandbox / network-policy issue — \`doco login\` will NOT help here.** The bearer token is fine; the request never left your agent runtime. Tell the project owner that the durable fix has two settings on the sandbox environment: (1) allowlist \`doco.to\` in the network-access settings (Codex web, GitHub Coding Agent, Anthropic web sandbox, etc. each have their own settings page); (2) add \`npm install -g doco-cli\` to the environment's setup script so every agent session has \`doco\` on \`$PATH\` before bootstrap runs. Once both are in place, the CLI keeps the bearer token inside the Node process and the sandbox stops prompting on every call. For a one-off, ask approval for \`doco bootstrap\` / \`doco search\` rather than a raw curl command that exposes the bearer token in the prompt. |
-| Host returns 5xx | doco.to is down; wait + retry. \`doco login\` won't help. |
+| \`missing DOCO_URL\` | Onboard via the browser: open \`https://doco.to/onboarding/create/agent\`. The success page returns an access URL the agent writes into \`./.env\` as \`DOCO_URL\`. |
+| \`access URL invalid\` / 401 from bootstrap | The access URL was revoked or never minted. Re-onboard via \`https://doco.to/onboarding/create/agent\`. |
+| \`access URL not bound to a Doco\` / 401 with hint | A pre-DOCO_URL credential reached the new wire format. Re-onboard via the browser flow to mint a per-Doco access URL. |
+| \`Doco doesn't exist on this host\` / 404 from bootstrap | The host responded that this Doco isn't there. Read the bootstrap response's \`missing_doco_guidance\` field — it tells you whether to re-onboard or fix a stale URL in \`./.env\`. |
+| \`bootstrap fetch blocked\` / \`HTTP_STATUS:000\` / \`doco.to unreachable\` | Sandbox / network-policy issue. The access URL never left your runtime. Ask the project owner to allowlist \`doco.to\` in the agent's network-access settings (Codex web, GitHub Coding Agent, Anthropic web sandbox, etc. each have their own settings page). For a one-off, ask approval for the specific \`curl\` to \`https://doco.to/…\` rather than guessing. |
+| Host returns 5xx | doco.to is down; wait + retry. |
 
 When you can't tell which case applies, surface the raw HTTP status +
 the host's response body in the disconnected indicator and let the
-project owner choose — never default to \`doco login\` because it's
-the most familiar suggestion. A wrong recovery move (mint a fresh
-token to fix a sandbox-block; \`--create\` a duplicate Doco to fix a
-membership gap) is strictly worse than a clear "I don't know which —
-here's what failed."
+project owner choose — a clear "I don't know which — here's what
+failed" beats a confident wrong recommendation.
 
 When you are connected, the regular indicator splits across two
 lifecycle moments — **session-load** (fires once when you read this
@@ -115,12 +79,12 @@ next, narrated AFTER the line, not before.
 
 You know it's a connected Doco project the moment the SessionStart hook
 injected a \`🔒 Doco canonical_instructions\` block with no warning, or
-a manual bootstrap fetch using \`DOCO_ID\` + \`DOCO_TOKEN\` returned this
-Doco's per-Doco context. You do **not** need to have finished reading
-the canonical body — you have \`$DOCO_ID\`, that is enough to render:
+a manual bootstrap fetch using \`DOCO_URL\` returned this Doco's
+per-Doco context. You do **not** need to have finished reading the
+canonical body — you have \`\${DOCO_URL}\`, that is enough to render:
 
 \`\`\`
-[🔮 Doco] <loading-verb> <doco_id>
+[🔮 Doco] <loading-verb>
 [🔮 Doco] To document anything, just ask me to "doco it"
 \`\`\`
 
@@ -188,14 +152,10 @@ Polling the Doco... · Skimming the index... · Asking the oracle... · Searchin
 
 The structured fields (count, timing) appear identically every reply — only the verb varies. Pick fast and move on. When the UserPromptSubmit hook pre-builds the indicator block (Claude Code), the verbs are already randomized there — emit verbatim instead of re-picking.
 
-The query. Prefer the CLI wrapper when available because it keeps the
-bearer token out of shell command text:
+The query — one HTTP GET, no headers needed:
 
 \`\`\`
-doco search "<paraphrase-of-task>"
-
-# HTTP fallback if the CLI is unavailable:
-GET https://doco.to/by-id/<doco_id>/search.json?q=<paraphrase-of-task>
+GET \${DOCO_URL}search.json?q=<paraphrase-of-task>
 \`\`\`
 
 Response carries \`count\`, \`duration_ms\`, and \`hits[]\` ordered by
@@ -203,16 +163,17 @@ Response carries \`count\`, \`duration_ms\`, and \`hits[]\` ordered by
 e.g. \`decision_01KRHB95AVGFHG80B2EAWE20K8\`), \`summary\`,
 \`vector_score\` (cosine similarity 0..1, the ranker), and \`gpr\`
 (Global PageRank, a secondary centrality signal). Scope hits also
-carry \`name\` (the short readable handle scopes are referenced by).
-Storage is Postgres — entities don't have a stable on-disk location to
-read; fetch the body with
-\`GET https://doco.to/by-id/<doco_id>/api/<type-plural>/<id>.json\`
-(e.g. \`/api/decisions/decision_01K....json\`,
-\`/api/intents/intent_01K....json\`) when you need the full text. Plurals
-match the POST endpoints listed in §3 below. Search is vector-only — one cosine
-ranking, no FTS card, no find-rules sidecar. Read the
-highest-vector_score hits BEFORE writing prose. Don't \`grep\` the repo
-for context that Doco already indexes.
+carry \`name\`. Fetch a node's full body when needed:
+
+\`\`\`
+GET \${DOCO_URL}api/<type-plural>/<id>.json
+\`\`\`
+
+…where \`<type-plural>\` is \`decisions\`, \`intents\`, \`actions\`,
+\`logs\`, \`rules\`, \`evals\`, \`references\`, or \`scopes\`. Search is
+vector-only — one cosine ranking. Read the highest-vector_score hits
+BEFORE writing prose. Don't \`grep\` the repo for context that Doco
+already indexes.
 
 **The query has two jobs — both matter equally:**
 
@@ -237,8 +198,8 @@ unavailable — handle that as "0 relevant nodes found" in the indicator.
 
 ## 2. AFTER EVERY WRITE — footer_lines verbatim
 
-POST/PATCH/DELETE on any \`/api/*.json\` returns \`footer_lines: string[]\`.
-Paste them verbatim, one per line:
+POST/PATCH/DELETE on any \`\${DOCO_URL}api/*.json\` returns
+\`footer_lines: string[]\`. Paste them verbatim, one per line:
 
 \`\`\`
 [🔮 Doco] <op-icon> <Type> <verb>: <body> — <icon> <scope1>, <icon> <scope2>
@@ -276,13 +237,13 @@ is needed, search Doco again with the candidate node's
 summary/question/predicate. Read the highest-vector_score hits, then
 make the branch explicit:
 
-- **Same claim, still true:** PATCH the existing node with
-  \`doco patch <type> <id> --append-body "..."\` — same one-liner cost
-  as a new POST, but the graph stays connected.
-- **Older claim, now replaced:** capture a superseding node and
-  transition/link the prior one (\`doco supersede <decision_id>\` for
-  Decisions, or \`doco patch <type> <id> --lifecycle superseded
-  --superseded-by <new_id>\` where supported).
+- **Same claim, still true:** PATCH the existing node — \`PATCH
+  \${DOCO_URL}api/<type-plural>/<id>.json\` with body
+  \`{ "body_md_append": "..." }\`. Same one-call cost as a new POST, but
+  the graph stays connected.
+- **Older claim, now replaced:** capture a superseding node, then
+  PATCH the prior one with \`{ "lifecycle": "superseded",
+  "superseded_by": "<new_id>" }\`.
 - **New territory:** POST a new node and link it to the relevant
   Intent, Decision, or Rule.
 
@@ -296,15 +257,15 @@ capture that probably should happen. Each binds to a counter-move:
 
 | If you find yourself saying… | Counter-move |
 |---|---|
-| "The CLI doesn't support capturing X" | Use \`doco capture action\` / \`rule\` / \`eval\` — they're all CLI-native. If a node type really lacks CLI support, hand-write the YAML; CLI gaps are not a node-shape decision. |
 | "Too small for a Decision" | If the change has a *why*, capture the why. A 2-line removal can encode a real choice — rejected alternatives, weighed trade-offs, an affordance that's now redundant. |
 | "Git will record the change" | Git records *what*, not *why*. The why is exactly what makes the capture worth writing. |
 | "No decision content" | Re-check the hits. If a search result names your file or your territory at vector_score > ~0.45, **PATCH that node** — there *is* decision content, you're amending it. |
-| "Too trivial to bother" | The PATCH is one line: \`doco patch decision <id> --append-body "Update YYYY-MM-DD: <what + why>."\` — total cost ~10 seconds. The cost asymmetry that justified skipping is gone. |
+| "Too trivial to bother" | The PATCH is one HTTP call: \`PATCH \${DOCO_URL}api/decisions/<id>.json\` with \`{"body_md_append": "Update YYYY-MM-DD: <what + why>."}\`. Total cost ~10 seconds. The asymmetry that justified skipping is gone. |
 
 Scope names below are bare (no \`scope_\` prefix) and match the default
-templates installed by \`doco init\`. If a referenced scope isn't
-installed in this Doco yet, create it at \`https://doco.to/by-id/<doco_id>/scopes/new\`
+templates installed when a Doco is created. If a referenced scope isn't
+installed in this Doco yet, browse to
+\`\${DOCO_URL%/}\` (your Doco's home) and add it from the scope manager
 first.
 
 **Watched scopes** (ADR-137bis). Some scopes carry a \`watched: true\`
@@ -314,13 +275,13 @@ enforcement: nothing rejects a capture that omits a watched scope.
 It's a prompt for you, the agent. Two rules:
 
 1. When you author ANY new node (Decision, Intent, Action, Rule, Eval,
-   Reference, …), scan the watched scopes for this Doco —
-   they appear in the bootstrap response, in \`/status.json\`, and on
-   the per-scope manifest with \`is_watched: true\`. Ask: "does my
-   work touch any of these topics?" If yes, include that scope in the
-   new node's \`scopes\` list alongside the subject-area scope you'd
-   have picked anyway. A watched scope is rarely the *only* scope a
-   node belongs to — it stacks.
+   Reference, …), scan the watched scopes for this Doco — they appear
+   in the bootstrap response and on each scope's manifest with
+   \`is_watched: true\`. Ask: "does my work touch any of these
+   topics?" If yes, include that scope in the new node's \`scopes\`
+   list alongside the subject-area scope you'd have picked anyway. A
+   watched scope is rarely the *only* scope a node belongs to — it
+   stacks.
 
 2. When the user describes work that lands on a watched scope and you
    were about to capture without tagging it, pause and add the scope.
@@ -328,9 +289,10 @@ It's a prompt for you, the agent. Two rules:
    know how this is going" — silently leaving it off is the failure
    mode the flag exists to prevent.
 
-Distinguish from \`mandatory_scope\` authoring rules on the Global scope (the doco's constitution): those are
-hard-enforced (capture is rejected if the scope isn't listed). Watched
-is soft. A scope can be one, both, or neither.
+Distinguish from \`mandatory_scope\` authoring rules on the Global
+scope (the doco's constitution): those are hard-enforced (capture is
+rejected if the scope isn't listed). Watched is soft. A scope can be
+one, both, or neither.
 
 **Informing the project owner about scopes** (Global scope: scope-manifest visibility).
 The scope manifest — every scope this Doco carries and which of them
@@ -356,12 +318,6 @@ project owner can see it whole and keeps shaping it. Two rules:
    only holds value while the watched set still reflects what they
    actually care about.
 
-Like the watched-scopes prompt above, this rule isn't a per-node
-predicate the engine checks — it shapes the rhythm of the
-collaboration itself. It lives in the Global scope (the doco's constitution) because the
-manifest is load-bearing for every other decision the project owner
-makes about this Doco.
-
 **When a request sounds like a standing rule** (Global scope: durable defaults).
 When the project owner asks an agent to do something "all the time",
 "always", "from now on", "in every session", "across all sessions", or
@@ -371,10 +327,9 @@ sounds like a Doco-wide rule; would you like me to add it to the Global
 scope?" Name the candidate predicate in plain language so the project
 owner can confirm, refine, or decline it.
 
-Do not silently turn every preference into a Global Rule. The point is
-to protect durable, cross-session intent from staying trapped in one
-conversation. The project owner still decides whether the instruction
-is a one-off, a local convention, or a Doco-wide invariant.
+Do not silently turn every preference into a Global Rule. The project
+owner still decides whether the instruction is a one-off, a local
+convention, or a Doco-wide invariant.
 
 **Project-specific Rules can redefine done.** If bootstrap or search
 surfaces a Rule saying this Doco's work must be committed, pushed,
@@ -394,12 +349,12 @@ rationalize skipping the Rule.
 
 | Change you made | What to capture |
 |---|---|
-| **Edited code an existing entity already governs** (vector_score > ~0.45 hit names the file or the territory) | **PATCH that entity** with \`doco patch <type> <id> --append-body "..."\`. Don't open a sibling node — the existing one tracks the same element's reasoning over time. |
+| **Edited code an existing entity already governs** (vector_score > ~0.45 hit names the file or the territory) | **PATCH that entity** with \`PATCH \${DOCO_URL}api/<type-plural>/<id>.json\` body \`{"body_md_append": "..."}\`. Don't open a sibling node — the existing one tracks the same element's reasoning over time. |
 | User-flow (route/redirect/form/banner/multi-step UX) | Decision with **\`user-flows\`** |
 | UI affordance / element copy / interaction tweak (not the journey itself) | Decision with the project's design-language scope (if one exists) — or, if a governing Decision exists, **PATCH it** (see top row). |
 | Bug fix | Decision with the project's bug scope + a Rule with the same scope (\`born_from: <decision_id>\` — the link IS the regression-guard) |
 | Code now satisfies an architectural decision's consequence | Rule with the relevant subject-area scope, \`born_from: <decision_id>\`. |
-| Editing the framework itself (CLI templates, hooks, bootstrap pipeline, canonical) | tag the project's framework scope (if one exists) on top of whatever else applies |
+| Editing the framework itself (templates, hooks, bootstrap pipeline, canonical) | tag the project's framework scope (if one exists) on top of whatever else applies |
 | Recorded event that happened (commit pushed, deploy ran, eval verified) | **Log** with past-tense verb + \`happened_at\` + concrete \`outputs\` (commit hash, deploy URL, etc.). Frozen on creation — supersede if a typo |
 | Designed step in a process/flow (template — what happens at this point) | **Action** with imperative/present verb + role-typed actor + designed input/output shapes |
 | Did real work that doesn't fit above | If it happened, use **Log**. If it's a designed template step, use **Action**. If it's an aspirational goal / backlog item, use **Intent** |
@@ -408,71 +363,50 @@ rationalize skipping the Rule.
 auto-assign numbers, doesn't auto-add an \`adrs\` scope, doesn't have
 an \`is_adr\` flag, doesn't have a \`number\` field on Decision. If a
 project wants to track ADRs, it authors an \`adrs\` scope as a
-custom scope (the framework no longer ships an ADR template) — that
-scope's guidance Rules describe whatever convention the project picks
-(sequential \`ADR-NNN\`, git-commit-hash, or whatever). The identifier
-lives in the Decision's body or summary; the framework treats it as
-plain prose.
+custom scope — that scope's guidance Rules describe whatever
+convention the project picks (sequential \`ADR-NNN\`, git-commit-hash,
+or whatever). The identifier lives in the Decision's body or summary;
+the framework treats it as plain prose.
 
 Every Decision needs at least one Intent in \`intent_ids\`. If no
-Intent fits, create one first (\`doco capture intent …\`).
+Intent fits, create one first.
 
-Don't hand-write YAML. **Prefer the \`doco capture\` CLI** — one bash
-invocation per node, no curl, no Authorization header, no URL
-construction. It reads \`DOCO_TOKEN\` from the environment (or
-\`./.env\`) and \`DOCO_ID\` from the AGENTS.md header in the current
-directory, talks to \`https://doco.to\`, and prints
-the response's \`footer_lines\` to stdout for you to paste verbatim:
+### Capture via HTTP
+
+Every capture is a JSON POST or PATCH against \`\${DOCO_URL}api/…\`.
+No CLI, no auth header — the access URL carries the credential. POSTs
+create; PATCHes extend. Examples:
 
 \`\`\`
 # Create new nodes:
-doco capture intent    --summary "..." --scope <comma,list>
-doco capture decision  --question "..." --chosen "..." --alternatives '<JSON>' --scope <comma,list>
-doco capture action    --summary "..." --verb "<verb>" --scope <comma,list>
-doco capture log       --summary "..." --verb "<past-tense>" --happened-at "<ISO>" --outputs '<JSON>' --scope <comma,list>
-doco capture rule      --summary "..." --predicate "..." --scope <comma,list>
-doco capture eval      --name "..." --scope <comma,list> --criterion-kind exact|shape|llm-judge
+POST \${DOCO_URL}api/intents.json
+POST \${DOCO_URL}api/decisions.json
+POST \${DOCO_URL}api/actions.json
+POST \${DOCO_URL}api/logs.json
+POST \${DOCO_URL}api/rules.json
+POST \${DOCO_URL}api/evals.json
+POST \${DOCO_URL}api/references.json
 
 # Extend an existing node (the move that beats "skip-and-rationalize"):
-doco patch <type> <id> --append-body "..." [--summary "..."] [--scope <comma,list>]
+PATCH \${DOCO_URL}api/<type-plural>/<id>.json
 \`\`\`
 
-Each subcommand accepts \`--body-md\` (inline) or \`--body-md-file\`
-(path) and type-specific fields (\`--intent-id a,b\`,
-\`--decided-by-username\`, etc.; Decisions require
-\`--alternatives <JSON>\`). Run
-\`doco capture <type> --help\` or \`doco patch <type> --help\` for the
-full flag set. The \`doco patch\` command is the **single biggest unlock
-against capture-skip rationalization** — it makes "extend the existing
-entity" exactly as cheap as "POST a new one."
+POST body shapes for each type are documented at
+\`GET \${DOCO_URL}api/<type-plural>.txt\` — fetch the spec when you're
+unsure of the field set. Decisions require \`question\`, \`chosen\`,
+\`alternatives\` (array), \`intent_ids\` (array), and at least one
+\`scope\` (array). The server resolves names → ids, generates the ULID,
+writes the entity, and reindexes in one round-trip.
 
-The CLI exists specifically so agents don't have to issue
-state-mutating curl POSTs, which conservative permission systems
-(Claude Code's auto-mode classifier, etc.) reject by default — a
-single \`Bash(doco:*)\` allowlist entry unblocks every capture
-operation, where allowlisting curl would mean enumerating every
-endpoint and flag shape.
-
-If \`doco\` isn't on \`$PATH\` (fresh agent, no install), fall back to
-the raw HTTP endpoints — same auth, same response shape:
-
-\`\`\`
-POST  https://doco.to/by-id/<doco_id>/api/decisions.json
-POST  https://doco.to/by-id/<doco_id>/api/intents.json
-POST  https://doco.to/by-id/<doco_id>/api/actions.json
-POST  https://doco.to/by-id/<doco_id>/api/rules.json
-POST  https://doco.to/by-id/<doco_id>/api/evals.json
-PATCH https://doco.to/by-id/<doco_id>/api/decisions/<id>.json   (and same for other types — pass \`body_md_append\` to extend the body)
-\`\`\`
-
-Full request specs: \`GET https://doco.to/by-id/<doco_id>/api/<type>.txt\`. The
-server resolves names → ids, generates the ULID, writes the file, and
-reindexes — one round-trip whether you use the CLI or curl.
+PATCH bodies accept \`body_md_append\` (extend the body without
+clobbering), \`summary\` (rename), \`scopes\` (replace), and most
+other top-level fields. See \`\${DOCO_URL}api/<type-plural>.txt\` for
+the full set.
 
 ## 4. CLOSING LINE OF THE TURN — tally (no exceptions, once per turn)
 
 \`\`\`
-[🔮 Doco] <doco_id>: **<N>** node(s) added/updated
+[🔮 Doco] <owner>/<doco>: **<N>** node(s) added/updated
 \`\`\`
 
 The tally is the LAST line of the LAST text output of the turn — the
@@ -484,7 +418,8 @@ prose with no tally and no top-of-reply indicator. Stacking a tally
 on every intermediate chunk turns the protocol into clutter instead
 of an end-of-turn dial-tone.
 
-- \`<doco_id>\` from the project's AGENTS.md header (or \`process.env.DOCO_ID\`).
+- \`<owner>/<doco>\` comes from the bootstrap response (\`owner_slug\`
+  and \`doco_slug\`). Cache it from the session-load fetch.
 - \`<N>\` counts distinct entities touched this turn (PATCH-3-fields-of-1-Decision = 1).
 - \`<N>\` MUST be wrapped in markdown bold (\`**N**\`).
 - Singular form for \`**1**\`; plural otherwise (zero is plural).
@@ -492,77 +427,87 @@ of an end-of-turn dial-tone.
 
 ## Authentication
 
-Two values, two homes — split by whether they're secret:
+One value, one home:
 
-- \`DOCO_TOKEN\` — bearer; **secret**; gates writes. Lives in
+- \`DOCO_URL\` — the **access URL** for this Doco. Looks like
+  \`https://doco.to/agent/<long-random-credential>/\`. Lives in
   \`./.env\` (gitignored). Read from \`process.env\` first, then from
-  \`./.env\` as a fallback.
-- \`DOCO_ID\` — \`doco_...\`; **non-secret** coordinator (like a repo
-  slug). Lives at the top of \`AGENTS.md\` on a line shaped
-  \`**This project's Doco ID:** \\\`doco_...\\\`\`. Read from
-  \`process.env\` first, then grep \`AGENTS.md\` (or \`CLAUDE.md\`) for
-  the first \`doco_<ulid>\` match. Legacy repos that still carry
-  \`DOCO_ID\` in \`.env\` keep working: the env load wins over the
-  AGENTS.md fallback.
+  \`./.env\` as a fallback. Treat it the same way you'd treat a Slack
+  webhook URL or a personal iCal feed — share-by-revealing, rotated
+  if leaked, single-source-of-truth in \`./.env\`.
 
-Missing or unauthorized → do not ask the user to paste a token. Ask
-them to authorize the agent with the browser flow:
-\`doco login --host https://doco.to\`. If this is a new Doco, use
-\`doco login --host https://doco.to --create <slug>\`. \`doco login\`
-writes \`DOCO_TOKEN\` to \`./.env\` and stamps \`DOCO_ID\` into
-\`AGENTS.md\` in one step.
+The credential is **encoded in the URL path**. There is no
+\`Authorization\` header, no separate token to keep in sync, no
+\`DOCO_ID\` env var to read from \`AGENTS.md\`. Every API call is:
 
-For shell-based reads, prefer \`doco bootstrap\` and \`doco search\`
-over raw \`curl -H "Authorization: Bearer $DOCO_TOKEN"\`; the CLI loads
-the same credentials internally without exposing the bearer token in
-shell history or agent permission prompts.
+\`\`\`
+curl \${DOCO_URL}search.json?q=hello
+curl -X POST \${DOCO_URL}api/decisions.json -H "Content-Type: application/json" -d @body.json
+\`\`\`
+
+Missing or unauthorized → do not ask the user to paste anything. Ask
+them to authorize the agent in the browser:
+
+\`\`\`
+Open https://doco.to/onboarding/create/agent in your browser.
+Sign in, name the new Doco, click Authorize. The success page hands
+me an access URL I'll save into ./.env as DOCO_URL automatically.
+\`\`\`
+
+The browser flow uses
+\`POST https://doco.to/api/v1/agent-link/start\` (no auth) to get a
+state nonce + an authorize URL, then polls
+\`POST https://doco.to/api/v1/agent-link/poll\` until the owner clicks
+Authorize. The poll response carries \`{ access_url, owner_slug,
+doco_slug }\`. Persist \`access_url\` to \`./.env\` as
+\`DOCO_URL=<access_url>\` and you're done.
 
 ## Auto-loaded protocol (Claude Code only)
 
-\`.claude/settings.json\` wires four hooks:
+\`.claude/settings.json\` wires three hooks:
 
-- **\`SessionStart\`** — fetches this document at session start; injects
-  as additional context.
-- **\`UserPromptSubmit\`** — re-injects a tight checklist AND pre-fetches
-  \`/search.json\` for the prompt on every user message.
-- **\`PostToolUse\`** (on Edit/Write) — cross-references the edited path
-  against the prompt's pre-fetched search hits. If a Decision with
-  vector_score > ~0.45 names this file, injects a *"governed by
-  [decision_X] — consider PATCHing"* hint. Catches drift while it's
-  still in flight.
-- **\`Stop\`** — if the session shows Edits/Writes > 0 and zero
-  \`doco capture\` calls, injects a final *"about to declare done with
-  edits but no captures — name the existing node or capture."* It also
-  compares footer lines printed by Doco write tools against footer lines
-  pasted into assistant text, and nudges when the write succeeded but
-  the per-operation lines never reached the user. The last line of
-  defense against silent skip and silent footer drops.
+- **\`SessionStart\`** — fetches \`\${DOCO_URL}bootstrap.json\` at
+  session start and injects the result as additional context.
+- **\`UserPromptSubmit\`** — re-injects a tight checklist AND
+  pre-fetches \`\${DOCO_URL}search.json\` for the prompt on every user
+  message. The block already contains the connection indicator with a
+  randomized verb — emit it verbatim instead of re-picking.
+- **\`PostToolUse\`** (on Edit/Write) — cross-references the edited
+  path against the prompt's pre-fetched search hits. If a Decision
+  with vector_score > ~0.45 names this file, injects a *"governed
+  by [decision_X] — consider PATCHing"* hint. Catches drift while
+  it's still in flight.
 
 If you see those blocks already at the top of your context, the hooks
-worked — **do NOT re-fetch via curl**. Re-read the block already loaded.
+worked — **do NOT re-fetch via curl**. Re-read the block already
+loaded.
 
-Non-Claude-Code agents: run \`doco bootstrap\` manually at the start of
-each new task.
+Non-Claude-Code agents: run a manual bootstrap fetch at the start of
+each new task:
+
+\`\`\`
+curl -fsS \${DOCO_URL}bootstrap.json
+\`\`\`
 
 ## If the bootstrap fetch fails — refuse to proceed
 
 If the SessionStart hook injected a "⚠️ Doco bootstrap not loaded"
 warning instead of \`canonical_instructions\`, or a manual
-\`doco bootstrap\` (or raw curl fallback) returns nothing / non-200
-(host down, network error, expired token, wrong \`DOCO_ID\`),
-**stop**. Do not start the user's task — not a typo fix, not a
-one-line edit, not even a question that doesn't touch code. There
-is no "continue without Doco" option: the protocol (query indicator,
-captures, footer, tally) is the contract you owe the project owner
-on every reply, and none of it works without the host.
+\`curl \${DOCO_URL}bootstrap.json\` returns nothing / non-200 (host
+down, network error, invalid access URL, missing env var), **stop**.
+Do not start the user's task — not a typo fix, not a one-line edit,
+not even a question that doesn't touch code. There is no "continue
+without Doco" option: the protocol (query indicator, captures, footer,
+tally) is the contract you owe the project owner on every reply, and
+none of it works without the host.
 
-Tell the user, in plain prose, exactly what failed (host
-unreachable, 401, expired token, missing env var) and what you
-need to reconnect (start the host, fix \`.env\`, refresh the
-token). Then **wait**. Don't propose alternatives, don't offer to
-proceed anyway, don't ask which path they prefer. When they
-confirm the fix, re-curl. Only when the bootstrap loads
-successfully do you begin the work.
+Tell the user, in plain prose, exactly what failed (host unreachable,
+401, missing env var) and what you need to reconnect (start the host,
+fix \`.env\`, re-onboard the agent at
+\`https://doco.to/onboarding/create/agent\`). Then **wait**. Don't
+propose alternatives, don't offer to proceed anyway, don't ask which
+path they prefer. When they confirm the fix, re-fetch. Only when the
+bootstrap loads successfully do you begin the work.
 
 Silently degrading — or worse, asking permission to silently
 degrade — hides exactly the friction the project owner needs to
@@ -577,7 +522,7 @@ The deeper reference lives at \`GET https://doco.to/api/v1/agent-reference\`:
 - "Don't follow recipes — think" principle (mapping domain practices to Doco primitives)
 - Placement examples (whole-message shapes for question / informational / no-writes / conversational replies)
 - Things only people can do
-- Creating a Doco from a CLI session (\`doco login --create\`, browser-authorize flow)
+- The full browser-authorization handoff for creating a new Doco
 - ADR-086: "Doco is the memory — your private memory isn't"
 
 Fetch the reference when you hit any of those edges. For 80% of work,
@@ -590,10 +535,10 @@ export const AGENT_REFERENCE = `# Doco — agent reference (long form)
 
 This is the deeper reference, fetched on demand from
 \`GET https://doco.to/api/v1/agent-reference\`. The slim bootstrap
-(\`/api/v1/agent-bootstrap\`) carries the four invariants you apply on
-every reply; this document is for when you hit an edge case — scope
-onboarding, the claim flow, a methodology question, placement
-ambiguity.
+(\`/api/v1/agent-bootstrap\` or \`\${DOCO_URL}bootstrap.json\`) carries
+the four invariants you apply on every reply; this document is for
+when you hit an edge case — scope onboarding, the connect flow, a
+methodology question, placement ambiguity.
 
 ## When you've just created a Doco — scopes come next
 
@@ -625,39 +570,31 @@ Propose, then **wait for the project owner's nod before materializing.**
 2. **Propose the curated starter set** in plain prose. The
    recommended starter shape is **\`user-flows\` (from the template)
    + 1–3 custom scopes** named for the project's actual subject
-   areas. Everything other than \`user-flows\` is project-owner-authored
-   — you describe a custom scope's purpose + initial rules in the
-   propose-and-confirm step, then the owner sees and tweaks them.
-   Phrasing:
+   areas. Phrasing:
    > "For this project I'd start with **user-flows** (end-to-end
    > journeys, from the template), plus custom scopes
    > **\`<project-area>\`** for <reason> and **\`<other-area>\`**
    > for <reason>. Sound right, or do you want me to adjust?"
-   Then **stop and wait.** Do not call \`/scopes/new\` until the
-   project owner has acknowledged.
+   Then **stop and wait.** Don't materialize until the project owner
+   has acknowledged.
 3. **If the project is unclear, ASK first.** Don't guess.
    > "Before I set up scopes — what areas of this project do you
    > want to track separately? I'd start you with \`user-flows\`
    > plus 1–3 custom scopes named for the project's subject areas
    > (e.g. \`payments\`, \`search\`)."
 4. **Default watched=true during onboarding.** Every scope you
-   create in this onboarding session passes \`watched: true\` to
-   the scope-creation endpoint. The project owner is literally in
-   the room picking these scopes on purpose — the soft attention
-   signal is exactly what onboarding is for. ADR-137bis's "no
-   silent default" rule applies again *after* onboarding; new
-   scopes added later require an explicit choice on every surface.
-   The project owner can flip any scope's watched value any time
-   from the scope's edit page. **Explain "watched" to the project
-   owner the first time you mention it**, in their words:
+   create in this onboarding session passes \`watched: true\`. The
+   project owner is literally in the room picking these scopes on
+   purpose — the soft attention signal is exactly what onboarding is
+   for. **Explain "watched" to the project owner the first time you
+   mention it**, in their words:
    > "Watched means: when you (or an agent) capture work later,
    > this scope nudges you to consider whether the work belongs
    > here. It's a soft signal — not enforcement. Onboarding scopes
    > default to watched; you can flip any of them from the scope's
    > edit page later."
 5. Only after the project owner confirms do you POST to
-   \`https://doco.to/by-id/<doco_id>/scopes/new\` (or call the
-   scope-creation endpoints). Children require their parent to
+   \`\${DOCO_URL}api/scopes.json\`. Children require their parent to
    already exist.
 6. **A single template scope is a smell.** "I set up \`user-flows\`"
    alone means you didn't engage with what the project is about.
@@ -736,30 +673,20 @@ what makes template scopes renamable: the project owner can rebrand
 **v7 lifecycle primitives** (decision_01KRRR5BQ16ASY8HQEE0V499YG):
 
 - **Lifecycle** gained \`drafted\` — sketch incomplete graphs without
-  tripping completeness rules; promote in bulk with
-  \`doco scope activate <scope>\` once the wiring is sound.
+  tripping completeness rules; promote in bulk from the scope's page
+  once the wiring is sound.
 - **\`Scope.gated_by\`** cites the Rules that gate captures into that
-  scope (replacing the v6 \`Rule.kind = "authoring"\` flag — that value
-  is gone). Child scopes inherit the union of their ancestors'
+  scope. Child scopes inherit the union of their ancestors'
   \`gated_by\` minus their own \`excluded_rules\` (per-scope opt-out).
 - **\`Scope.default_node_lifecycle\`** sets the lifecycle for captures
   into the scope (or descendants) when the author doesn't override
-  explicitly — the \`state-machines\` template ships
-  \`default_node_lifecycle: drafted\` so its members start mid-build.
+  explicitly.
 - **\`Action.triggered_by\`** lists other Actions whose firing
   triggers this one (general, not state-machine-specific).
 - **\`Action.gated_by\`** + **\`Scope.gated_by\`** are the same edge
-  type — guards and authoring rules unify. A Rule can be cited from
-  both an Action's and a Scope's \`gated_by\` simultaneously.
+  type — guards and authoring rules unify.
 - **\`Rule.fires_when_node_lifecycle\`** narrows a rule to specific
-  lifecycles — used by completeness checks that skip drafted
-  neighbors mid-refactor and fire at activation time.
-- New predicate kinds: \`unique-within-scope\`, \`count-within-scope\`,
-  \`graph-constraint\` (with \`alternates-between\`,
-  \`degree-bounds\`, \`references-resolve-in-scope\` operators), and
-  \`descriptive\` (engine treats as no-op documentation). All accept
-  \`scope_ref: "$capture_scope"\` to refer to whichever scope cites
-  the rule.
+  lifecycles.
 
 Any node belongs to one or more scopes. **Scopes are
 edge-hierarchical:** a child scope's parents live in its \`scopes\`
@@ -817,7 +744,7 @@ retries fire correctly but the dedup window was 60s — payloads delivered
 65s apart pass through twice. I captured the analysis as a Decision and
 proposed a fix.
 
-[🔮 Doco] ✍️ Decision added: [Bump the idempotency-key TTL from 60s to 24h to match Stripe's own retry envelope.](https://doco.example.com/acme/payments/decision/decision_01KRHB95AVGFHG80B2EAWE20K8) — 🏗️ adrs (0.2s)
+[🔮 Doco] ✍️ Decision added: [Bump the idempotency-key TTL from 60s to 24h to match Stripe's own retry envelope.](https://doco.to/acme/payments/decision/decision_01KRHB95AVGFHG80B2EAWE20K8) — 🏗️ adrs (0.2s)
 
 Should I ship the TTL change to staging tonight or wait for the on-call
 to confirm tomorrow?
@@ -836,17 +763,16 @@ to confirm tomorrow?
 I added the regression test for the dedup window and re-ran the webhook
 suite. All 47 cases pass.
 
-[🔮 Doco] ✍️ Eval added: [Replay a webhook 65s after first delivery — expect single handler invocation.](https://doco.example.com/acme/payments/eval/eval_01KRHB95AVGFHG80B2EAWE20K8) — 🧪 test-evals (0.2s)
+[🔮 Doco] ✍️ Eval added: [Replay a webhook 65s after first delivery — expect single handler invocation.](https://doco.to/acme/payments/eval/eval_01KRHB95AVGFHG80B2EAWE20K8) — 🧪 test-evals (0.2s)
 
 [🔮 Doco] acme/payments: **1** node added/updated
 \`\`\`
 
 **Message that PATCHes an existing Decision instead of opening a sibling (1 write):**
 
-The defining move that beats the three-layer rationalization ("CLI
-can't capture Actions / no decision content / git records it"). A
-small UI text removal touches a form already governed by a Decision
-— PATCHing that Decision is correct AND cheap.
+The defining move that beats rationalization. A small UI text removal
+touches a form already governed by a Decision — PATCHing that Decision
+is correct AND cheap.
 
 \`\`\`
 [🔮 Doco] Wired up to acme/payments
@@ -861,19 +787,20 @@ not prose. Removed both spans. This amends decision_01KRG8VPS… (the
 EmojiPickerInput rollout, vector_score 0.49 on this turn's hits), so
 PATCHing that Decision keeps the element's reasoning in one place.
 
-[🔮 Doco] 📝 Decision updated: [Replace the bare emoji <input> with EmojiPickerInput…](https://doco.example.com/acme/payments/decision/decision_01KRG8VPSAAAA).body ➕ appended — 🎨 design-language (0.2s)
+[🔮 Doco] 📝 Decision updated: [Replace the bare emoji <input> with EmojiPickerInput…](https://doco.to/acme/payments/decision/decision_01KRG8VPSAAAA).body ➕ appended — 🎨 design-language (0.2s)
 
 [🔮 Doco] acme/payments: **1** node added/updated
 \`\`\`
 
-The relevant command:
+The relevant HTTP call:
 
 \`\`\`
-doco patch decision decision_01KRG8VPSAAAA --append-body \\
-  "Update 2026-05-13: Removed the 'Click to pick' helper-text spans on /scopes/new and /scopes/<id>/edit. The button trigger + visible × already communicate the affordance; the helper prose became visual noise."
+curl -X PATCH "\${DOCO_URL}api/decisions/decision_01KRG8VPSAAAA.json" \\
+  -H "Content-Type: application/json" \\
+  -d '{"body_md_append": "Update 2026-05-13: Removed the \\"Click to pick\\" helper-text spans on /scopes/new and /scopes/<id>/edit. The button trigger + visible × already communicate the affordance; the helper prose became visual noise."}'
 \`\`\`
 
-One line, ~10 seconds, the *why* survives the next refactor.
+One call, ~10 seconds, the *why* survives the next refactor.
 
 **Message that didn't touch Doco (0 writes):**
 
@@ -925,7 +852,7 @@ Intermediate text output (no indicator, no tally):
 Typecheck passed cleanly. Doing one last diff/status pass, then I'll
 capture the rationale.
 
-(tool call: doco capture decision …)
+(tool call: curl -X PATCH …)
 
 Final text output:
 
@@ -941,71 +868,66 @@ Captured the why so the change has rationale, not just the code.
 Delete docos. Sign up new people. Create their own credentials. If a task
 hits one of these, stop and ask.
 
-## Creating a Doco from a CLI session
+## Onboarding an agent for a new Doco
 
 When the project owner says "create a Doco for this project" and
-\`./.env\` doesn't already have \`DOCO_TOKEN\` (or \`AGENTS.md\` doesn't
-already carry a \`DOCO_ID\`), run:
+\`./.env\` doesn't already have \`DOCO_URL\`, run the browser-authorize
+flow yourself — no install needed:
 
-\`\`\`
-doco login --host https://doco.to --create <slug>
-\`\`\`
+1. \`POST https://doco.to/api/v1/agent-link/start\` (no auth) with a
+   small JSON body describing yourself:
+   \`\`\`
+   curl -X POST https://doco.to/api/v1/agent-link/start \\
+     -H "Content-Type: application/json" \\
+     -d '{"agent_name": "Claude Code", "hostname": "<host>"}'
+   \`\`\`
+   Response: \`{ state_nonce, short_code, authorize_url, poll_url,
+   interval_seconds, expires_at }\`.
+2. Tell the project owner: "Open \`<authorize_url>\` in your browser.
+   Sign in, name the new Doco, and click Authorize." Don't loop —
+   wait for them to confirm they did it.
+3. Poll \`poll_url\` every \`interval_seconds\` with
+   \`{ state_nonce }\`:
+   \`\`\`
+   curl -X POST <poll_url> -H "Content-Type: application/json" \\
+     -d '{"state_nonce": "<from-step-1>"}'
+   \`\`\`
+   Response stays \`{ status: "pending" }\` until the project owner
+   acts, then flips to:
+   \`{ status: "approved", access_url, owner_slug, doco_slug, doco_id }\`.
+4. Write \`DOCO_URL=<access_url>\` to \`./.env\` (create the file if
+   needed; gitignore it). The access URL is the only secret — keep
+   it out of commits.
+5. Restart your hooks (Claude Code: \`/hooks\` to approve, then
+   \`/clear\`) so the next \`UserPromptSubmit\` picks up the fresh
+   credentials.
 
-This is the Vercel-style browser-authorize flow
-(decision_01KRKZM14WNA1685GN0F12WCKM):
-
-1. The CLI prints a short code, opens \`https://doco.to/cli/authorize\` in the
-   project owner's default browser, and polls until they approve.
-2. The browser shows an identity card — CLI version, hostname, IP,
-   timestamp — and an "Authorize" button. The project owner signs in if
-   they aren't already, reviews the card, types the requested slug (or
-   accepts the one you passed via \`--create\`), and clicks Authorize.
-3. The server mints an agent Principal owned by the project owner, mints
-   a session token bound to that agent, and creates the Doco directly
-   under \`<project-owner-username>/<slug>\` — no temporary
-   "host-bootstrap" detour, no follow-up claim URL.
-4. The CLI writes \`DOCO_TOKEN\` to \`./.env\` (gitignored secret),
-   stamps \`DOCO_ID\` into the header of \`AGENTS.md\` (committed,
-   non-secret coordinator), and drops the rest of the agent-bootstrap
-   files (\`CLAUDE.md\`, \`.claude/settings.json\`, the four hook
-   scripts) into the repo. The hooks themselves \`source ./.env\` on
-   each fire and grep \`AGENTS.md\` for \`DOCO_ID\` if it's not in env,
-   so a full session restart isn't needed — \`/hooks\` to approve in
-   Claude Code, optionally \`/clear\`, and the next \`UserPromptSubmit\`
-   picks up the fresh credentials.
-
-If the project owner denies, the CLI exits non-zero and \`./.env\` stays
-empty. Don't loop — stop and explain.
+If the project owner denies, \`poll_url\` returns
+\`{ status: "denied" }\`. Don't loop — stop and explain.
 
 ### After the Doco exists — onboarding STEP 1 + STEP 2
 
-The bootstrap response from \`/api/v1/agent-bootstrap?id=<doco_id>\`
-carries an \`onboarding_overlay\` field while the Doco has only the
-framework-seeded Global scope (the doco's constitution; no project-specific scopes yet).
-When that field is non-null you're in **onboarding mode** — work the
-project owner through scope setup AND scope population before treating
-the session as "done":
+The bootstrap response from \`\${DOCO_URL}bootstrap.json\` (or
+\`/api/v1/agent-bootstrap?id=<doco_id>\`) carries an
+\`onboarding_overlay\` field while the Doco has only the
+framework-seeded Global scope. When that field is non-null you're
+in **onboarding mode** — work the project owner through scope setup
+AND scope population before treating the session as "done":
 
 - **STEP 1 — \`scope_setup\`**: read the project, propose a curated
   starter set in plain prose (\`user-flows\` from the template + 1–3
   custom scopes for the project's actual subject areas), wait for the
-  project owner's nod, then materialize with \`watched: true\`. Don't
-  materialize without consent. A single template scope alone is a smell.
+  project owner's nod, then materialize with \`watched: true\`.
 - **\`watched_explainer\`**: tell the project owner what watched means
-  the first time it comes up — "Watched means: when you (or an agent)
-  capture work later, this scope nudges you to consider whether the
-  work belongs here."
+  the first time it comes up.
 - **STEP 2 — \`scope_population\`**: for each scope just created, ask
   the project owner what they want to capture first (concrete asks beat
-  generic ones — "What's the most important architectural choice
-  you've already made that should be the first ADR?"). Drive at least
-  one real node into each scope before declaring onboarding done.
-  Empty scopes are documentation theater.
+  generic ones). Drive at least one real node into each scope before
+  declaring onboarding done.
 
 The overlay drops out of the bootstrap response the moment the project
 owner accepts a first project-specific scope — that's the natural
-"onboarding is progressing" signal. Read the long-form reference at
-\`https://doco.to/api/v1/agent-reference\` for the deep walkthrough.
+"onboarding is progressing" signal.
 
 ## Asking the user
 

@@ -189,10 +189,10 @@ export async function action({ request }: { request: Request }): Promise<ActionR
   try {
     agentId = await addAgentPrincipal(rootDir(), {
       username: agentUsername,
-      display_name: `CLI session for ${principal.username} (${row.cli_hostname})`,
+      display_name: `Agent session for ${principal.username} (${row.cli_hostname})`,
       owner_id: principal.id as EntityId<"principal">,
       agent_metadata: {
-        provider: "doco-cli",
+        provider: row.cli_user_agent,
         model: row.cli_user_agent,
         capabilities: [],
         created_at: isoNow,
@@ -202,43 +202,45 @@ export async function action({ request }: { request: Request }): Promise<ActionR
     return { error: `Failed to create agent Principal: ${(e as Error).message}` };
   }
 
-  // Issue the session token bound to the agent Principal.
-  const session = await store.issueSessionToken(agentId, principal.id as EntityId<"principal">);
-
-  // Optionally create a Doco under the authorizing user, in the same step.
+  // Create the Doco first so the access URL we mint binds to a specific
+  // Doco. A bound credential lets `/agent/<cred>/*` resolve the
+  // destination without a separate DOCO_ID env var.
   const docoSlugInput = String(form.get("doco_slug") ?? "").trim().toLowerCase();
-  let createdDocoSlug: string | null = null;
-  let createdDocoId: string | null = null;
-  if (docoSlugInput) {
-    const slugError = validateDocoSlug(docoSlugInput);
-    if (slugError) return { error: slugError };
-    // createDocoInHost walks <root>/principals/*.yaml to resolve the
-    // owner. The project owner's row may exist only in Postgres if it
-    // was created during a prior GitHub OAuth round. Mirror it to disk
-    // so resolveOwnerSlug succeeds.
-    try {
-      await ensureOwnerPrincipalOnDisk(rootDir(), principal.id);
-    } catch (e) {
-      return { error: `Failed to mirror owner principal: ${(e as Error).message}` };
-    }
-    try {
-      const created = await createDocoInHost(rootDir(), {
-        ownerSlug: principal.username,
-        docoSlug: docoSlugInput,
-        autoSuffixOnCollision: false,
-        visibility: "private",
-      });
-      // createDocoInHost writes only to the filesystem. The reindex
-      // call below loads from Postgres, so the row has to be there
-      // first. Mirror the doco.yaml in.
-      await mirrorDocoToPostgres(created.path, created.docoId);
-      await reindex(created.path);
-      createdDocoSlug = created.docoSlug;
-      createdDocoId = created.docoId;
-    } catch (e) {
-      return { error: `Failed to create Doco: ${(e as Error).message}` };
-    }
+  if (!docoSlugInput) {
+    return { error: "Pick a Doco slug — the access URL is bound to one Doco." };
   }
+  const slugError = validateDocoSlug(docoSlugInput);
+  if (slugError) return { error: slugError };
+  let createdDocoSlug: string;
+  let createdDocoId: EntityId<"doco">;
+  try {
+    await ensureOwnerPrincipalOnDisk(rootDir(), principal.id);
+  } catch (e) {
+    return { error: `Failed to mirror owner principal: ${(e as Error).message}` };
+  }
+  try {
+    const created = await createDocoInHost(rootDir(), {
+      ownerSlug: principal.username,
+      docoSlug: docoSlugInput,
+      autoSuffixOnCollision: false,
+      visibility: "private",
+    });
+    await mirrorDocoToPostgres(created.path, created.docoId);
+    await reindex(created.path);
+    createdDocoSlug = created.docoSlug;
+    createdDocoId = created.docoId as EntityId<"doco">;
+  } catch (e) {
+    return { error: `Failed to create Doco: ${(e as Error).message}` };
+  }
+
+  // Issue the session token, bound to the freshly-created Doco so the
+  // access URL `/agent/<token>/...` resolves to it without a separate
+  // doco identifier.
+  const session = await store.issueSessionToken(
+    agentId,
+    principal.id as EntityId<"principal">,
+    createdDocoId,
+  );
 
   await store.approveCliAuthorization(
     state,
@@ -254,7 +256,7 @@ export async function action({ request }: { request: Request }): Promise<ActionR
 }
 
 export function meta() {
-  return [{ title: "Authorize CLI session · Doco" }];
+  return [{ title: "Authorize agent · Doco" }];
 }
 
 export default function CliAuthorize({
@@ -288,8 +290,10 @@ export default function CliAuthorize({
       <Shell>
         <Card>
           <CardHeader>
-            <CardTitle>Authorization successful</CardTitle>
-            <CardDescription>You can close this tab.</CardDescription>
+            <CardTitle>Agent authorized</CardTitle>
+            <CardDescription>
+              The agent has picked up its access URL. You can close this tab.
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-2 text-sm text-muted-foreground">
             <p>
@@ -297,7 +301,7 @@ export default function CliAuthorize({
             </p>
             {actionData.created_doco_slug ? (
               <p>
-                A new Doco was created:{" "}
+                Your new Doco lives at{" "}
                 <Link
                   to={`/${actionData.approved_owner}/${actionData.created_doco_slug}`}
                   className="text-primary hover:underline"
@@ -306,9 +310,7 @@ export default function CliAuthorize({
                 </Link>
                 .
               </p>
-            ) : (
-              <p>The CLI now holds a session token bound to your account.</p>
-            )}
+            ) : null}
           </CardContent>
         </Card>
       </Shell>
@@ -320,20 +322,20 @@ export default function CliAuthorize({
     <Shell>
       <Card>
         <CardHeader>
-          <CardTitle>Authorize Doco CLI</CardTitle>
+          <CardTitle>Authorize an agent</CardTitle>
           <CardDescription>
-            A Doco CLI session wants to act on your account. Review the details below and
-            authorize, or deny if you didn&apos;t initiate this.
+            An agent on your machine is asking for access to a Doco on your account. Review the
+            details below and authorize, or deny if you didn&apos;t initiate this.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="rounded-md border border-border bg-card p-4 text-sm space-y-2">
-            <Row label="CLI">
-              <strong>doco-cli</strong>
-              {cli.cli_version ? ` @ ${cli.cli_version}` : null}
+            <Row label="Agent">
               {cli.cli_user_agent && cli.cli_user_agent !== "unknown" ? (
-                <span className="text-muted-foreground"> · {cli.cli_user_agent}</span>
-              ) : null}
+                <span>{cli.cli_user_agent}</span>
+              ) : (
+                <span className="text-muted-foreground">unknown</span>
+              )}
             </Row>
             <Row label="Hostname">{cli.cli_hostname}</Row>
             <Row label="IP">{cli.client_ip}</Row>
@@ -356,13 +358,14 @@ export default function CliAuthorize({
             <input type="hidden" name="state" value={loaderData.state} />
             <label className="block text-sm">
               <span className="text-muted-foreground">
-                Optionally, create a new Doco as part of this authorization:
+                Name your Doco — the access URL will be bound to it:
               </span>
               <input
                 type="text"
                 name="doco_slug"
                 placeholder="my-project"
                 pattern="[a-z0-9-]+"
+                required
                 className="mt-1 block w-full rounded-md border border-border bg-input px-2 py-1 text-sm font-mono"
               />
               <span className="text-xs text-muted-foreground">
@@ -377,7 +380,7 @@ export default function CliAuthorize({
                 value="approve"
                 className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90"
               >
-                Authorize
+                Create Doco &amp; authorize agent
               </button>
               <button
                 type="submit"
@@ -415,14 +418,14 @@ function errorTitle(err: LoaderError): string {
 
 function errorDescription(err: LoaderError): string {
   if (err.error === "missing_state")
-    return "Open this URL by running `doco login` in your terminal.";
+    return "This URL is missing the authorization state — ask your agent to restart the connect flow.";
   if (err.error === "not_found")
-    return "This authorization request doesn't exist. Try `doco login` again to start a fresh one.";
+    return "This authorization request doesn't exist. Ask your agent to restart the connect flow.";
   if (err.error === "expired")
-    return "This request timed out. Run `doco login` again to start a new one.";
+    return "This request timed out. Ask your agent to restart the connect flow.";
   if (err.status === "approved" || err.status === "exchanged")
     return "This request was already authorized. You can close this tab.";
-  return "This request was denied. Run `doco login` again to start a fresh one.";
+  return "This request was denied. Ask your agent to restart the connect flow if you want to retry.";
 }
 
 function Shell({ children }: { children: React.ReactNode }) {

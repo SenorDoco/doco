@@ -89,9 +89,15 @@ export default [
   route("api/suggest-scopes", "routes/api.suggest-scopes.tsx"),
   route("api/v1/agent-bootstrap", "routes/api.v1.agent-bootstrap.tsx"),
   route("api/v1/agent-reference", "routes/api.v1.agent-reference.tsx"),
-  // CLI authorization (decision_01KRKZM14WNA1685GN0F12WCKM).
-  route("api/v1/cli/device-init", "routes/api.v1.cli.device-init.tsx"),
-  route("api/v1/cli/device-exchange", "routes/api.v1.cli.device-exchange.tsx"),
+  // Agent browser-authorization handoff. The agent POSTs /start, gets a
+  // short-lived state nonce + an authorize URL, opens that URL in the
+  // project owner's browser, then polls /poll until the owner clicks
+  // Approve. The poll response carries an `access_url` of the shape
+  // `https://<host>/agent/<credential>/` which the agent writes into its
+  // `.env` as `DOCO_URL`. Per-Doco scoping: every authorized access URL
+  // is bound to one Doco picked during the browser step.
+  route("api/v1/agent-link/start", "routes/api.v1.agent-link.start.tsx"),
+  route("api/v1/agent-link/poll", "routes/api.v1.agent-link.poll.tsx"),
   route("cli/authorize", "routes/cli.authorize.tsx"),
   // ID-based lookup + redirect: the doco_id is immortal across renames
   // and ownership transfers; the slug is not. Agents that record the
@@ -115,6 +121,18 @@ export default [
   route("by-id/:docoId/:type/:id", "routes/by-id.$docoId.$type.$id.tsx"),
   route("by-id/:docoId/:type", "routes/by-id.$docoId.$type.tsx"),
   route("by-id/:docoId/*", "routes/by-id.$docoId.$.tsx"),
+  // Agent access-URL family. The credential lives in the path; each
+  // route 308-redirects to the canonical /by-id/<doco>/<rest> shape
+  // with the credential preserved as `?_a=<cred>` so the destination
+  // authenticates. Explicit per-leaf routes win React Router 7's rank
+  // against the `:ownerSlug/:docoSlug/<literal>` patterns; the splat
+  // catches anything else.
+  route("agent/:cred/bootstrap.json", "routes/agent.$cred.bootstrap[.]json.tsx"),
+  route("agent/:cred/search.json", "routes/agent.$cred.search[.]json.tsx"),
+  route("agent/:cred/status.json", "routes/agent.$cred.status[.]json.tsx"),
+  route("agent/:cred/api/:type.json", "routes/agent.$cred.api.$type[.]json.tsx"),
+  route("agent/:cred/api/:type/:id.json", "routes/agent.$cred.api.$type.$id[.]json.tsx"),
+  route("agent/:cred/*", "routes/agent.$cred.$.tsx"),
   // Owner + per-Doco
   route(":ownerSlug", "routes/$ownerSlug._index.tsx"),
   route(":ownerSlug/:docoSlug", "routes/$ownerSlug.$docoSlug._index.tsx"),

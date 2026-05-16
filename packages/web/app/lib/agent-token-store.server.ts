@@ -12,12 +12,23 @@ export type StoredToken = SessionToken | CliAuthorization;
 
 export interface SessionToken {
   kind: "session";
-  token: string; // opaque, 256 bits hex
+  token: string; // opaque, 256 bits hex — used as the credential segment in DOCO_URL paths
   principal_id: EntityId<"principal">;
   issued_at: string;
   expires_at: string | null; // null = never (sessions; ADR-037)
   invited_by: EntityId<"principal"> | null; // chain root reached at a person (ADR-035 invariant)
   revoked: boolean;
+  /**
+   * The Doco this credential is scoped to. Set when the credential is
+   * minted via the browser-authorization handoff. When set, requests to
+   * `/agent/<token>/<path>` resolve to this Doco without a separate
+   * doco-id query parameter.
+   *
+   * Nullable for back-compat with credentials minted before the
+   * per-Doco access-URL model. Those callers used a separate DOCO_ID +
+   * Authorization Bearer header.
+   */
+  bound_doco_id: EntityId<"doco"> | null;
 }
 
 /**
@@ -128,6 +139,7 @@ export class TokenStore {
   async issueSessionToken(
     principalId: EntityId<"principal">,
     invitedBy?: EntityId<"principal">,
+    boundDocoId?: EntityId<"doco"> | null,
   ): Promise<SessionToken> {
     const file = await this.load();
     const token: SessionToken = {
@@ -138,6 +150,7 @@ export class TokenStore {
       expires_at: null,
       invited_by: invitedBy ?? null,
       revoked: false,
+      bound_doco_id: boundDocoId ?? null,
     };
     file.tokens.push(token);
     await this.save(file);
@@ -151,7 +164,9 @@ export class TokenStore {
       | SessionToken
       | undefined;
     if (!t || t.revoked) return null;
-    return t;
+    // Older rows may not carry bound_doco_id; normalize on read so callers
+    // can assume the field exists.
+    return { ...t, bound_doco_id: t.bound_doco_id ?? null };
   }
 
   /**

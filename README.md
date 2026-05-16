@@ -12,9 +12,8 @@ API — there are no on-disk per-entity files to read here.
 ## Quick links
 
 - [AGENTS.md](AGENTS.md) — agent bootstrap. Every agent working in this
-  repo should run `doco bootstrap` before doing anything else; it fetches
-  the live `canonical_instructions` without exposing the bearer token in
-  the shell command.
+  repo should fetch `${DOCO_URL}bootstrap.json` before doing anything
+  else; the response carries the live `canonical_instructions`.
 - [docos/torrenegra/doco/doco.yaml](docos/torrenegra/doco/doco.yaml) —
   this Doco's identity stub. Durable data is in Postgres.
 - [packages/db/src/schema.sql](packages/db/src/schema.sql) — current
@@ -34,8 +33,7 @@ API — there are no on-disk per-entity files to read here.
 ├── host.yaml                # Host root marker (Postgres `hosts` table is authoritative)
 ├── docos/<owner>/<slug>/    # Per-Doco scaffolding stubs (doco.yaml only — entities are in PG)
 ├── packages/
-│   ├── api/                 # JSON/text routes shared between web + CLI
-│   ├── cli/                 # `doco` command (init, capture, patch, watch, import, export, …)
+│   ├── api/                 # JSON/text routes
 │   ├── db/                  # Postgres adapter + schema.sql
 │   ├── host/                # Host/Doco/Principal/Organization domain layer
 │   ├── index/               # Edge derivation + embedding index helpers
@@ -44,26 +42,33 @@ API — there are no on-disk per-entity files to read here.
 └── SCHEMA.md / PLANNING.md / DECISIONS.md / NOTICE / LICENSE
 ```
 
-## Install the CLI
+## Connecting an agent (zero install)
 
-```bash
-npm install -g doco-cli
-```
+There is no SDK, no CLI to install, no package to download. An agent
+that wants to read or write this repo's Doco runs three HTTP calls:
 
-This installs the `doco` binary on your `$PATH`. For sandboxed coding
-agents (OpenAI Codex web, GitHub Coding Agent, Anthropic web sandbox),
-add the same line to your environment's **setup script** and allowlist
-`doco.to` in the network-access settings — that combination keeps the
-bearer token inside the Node process so the sandbox stops prompting on
-every bootstrap call.
+1. `POST https://doco.to/api/v1/agent-link/start` — no auth — returns
+   `{ state_nonce, short_code, authorize_url, poll_url,
+   interval_seconds }`.
+2. The project owner opens `authorize_url` in their browser, signs in,
+   names the new Doco, clicks Authorize.
+3. The agent polls `poll_url` with `{ state_nonce }` until the
+   response flips to `{ status: "approved", access_url, owner_slug,
+   doco_slug, doco_id }`.
+
+The agent writes `DOCO_URL=<access_url>` into `./.env`. From then on
+every API call is just `curl ${DOCO_URL}<path>` — the credential lives
+in the URL path; no `Authorization` header, no separate token to
+manage. See `/onboarding/create/agent.txt` on this host for the
+complete recipe.
 
 ## Reading order for a new agent
 
 1. [AGENTS.md](AGENTS.md) — protocol, bootstrap, env setup.
-2. `doco bootstrap` — live `canonical_instructions`, including the four
-   invariants every reply must follow.
-3. `doco search "<task>"` — query Doco before drafting a Decision, Rule,
-   or Intent.
+2. `curl -fsS ${DOCO_URL}bootstrap.json` — live `canonical_instructions`,
+   including the four invariants every reply must follow.
+3. `curl -fsS "${DOCO_URL}search.json?q=<task>"` — query Doco before
+   drafting a Decision, Rule, or Intent.
 
 ## Reading order for a new person
 

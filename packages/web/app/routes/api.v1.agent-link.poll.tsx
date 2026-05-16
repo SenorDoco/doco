@@ -2,25 +2,30 @@ import { TokenStore } from "~/lib/tokens.server";
 import { rootDir } from "~/lib/db.server";
 
 /**
- * POST /api/v1/cli/device-exchange — Single-use exchange step.
- * The CLI polls this endpoint with the state_nonce it got from
- * /api/v1/cli/device-init. While the project owner hasn't acted yet,
- * status="pending" comes back. Once they click Authorize in the
- * browser, the next poll consumes the row and returns the session
- * token + agent principal id (and the Doco id, if the project owner
- * created one as part of approving). A second exchange for the same
- * nonce always returns status="already_consumed" — single-shot.
+ * POST /api/v1/agent-link/poll — Wait for the project owner to approve in
+ * the browser. The agent polls this endpoint with the `state_nonce` it
+ * got from /api/v1/agent-link/start.
  *
  * Input (application/json):
  *   { state_nonce: string }
  *
  * Output (application/json):
  *   pending   → { status: "pending" }
- *   approved  → { status: "approved", token, principal_id, owner_slug, doco_id? }
+ *   approved  → {
+ *                 status: "approved",
+ *                 access_url: "https://<host>/agent/<credential>/",
+ *                 owner_slug: string,
+ *                 doco_slug: string | null,
+ *                 doco_id: string | null,
+ *               }
  *   denied    → { status: "denied" }
  *   expired   → { status: "expired" }
  *   not_found → { status: "not_found" } (404)
  *   consumed  → { status: "already_consumed" } (409)
+ *
+ * The `access_url` is single-use to read — a second poll for the same
+ * nonce returns "already_consumed". Persist `access_url` immediately
+ * (e.g. write to `.env` as `DOCO_URL=<access_url>`).
  */
 export async function action({ request }: { request: Request }) {
   if (request.method !== "POST") {
@@ -45,27 +50,26 @@ export async function action({ request }: { request: Request }) {
     return Response.json({ status: "not_found" }, { status: 404 });
   }
 
-  if (row.status === "pending") {
-    return Response.json({ status: "pending" });
-  }
-  if (row.status === "denied") {
-    return Response.json({ status: "denied" });
-  }
-  if (row.status === "expired") {
-    return Response.json({ status: "expired" });
-  }
+  if (row.status === "pending") return Response.json({ status: "pending" });
+  if (row.status === "denied") return Response.json({ status: "denied" });
+  if (row.status === "expired") return Response.json({ status: "expired" });
   if (row.status === "exchanged") {
     return Response.json({ status: "already_consumed" }, { status: 409 });
   }
-  // status === "approved" — consume and return the token.
+
+  // status === "approved" — single-use consume.
   const consumed = await store.consumeCliAuthorization(state_nonce);
   if (!consumed) {
     return Response.json({ status: "race_lost" }, { status: 409 });
   }
+
+  const url = new URL(request.url);
+  const origin = `${url.protocol}//${url.host}`;
+  const access_url = `${origin}/agent/${consumed.token}/`;
+
   return Response.json({
     status: "approved",
-    token: consumed.token,
-    principal_id: consumed.principal_id,
+    access_url,
     owner_slug: consumed.owner_slug,
     doco_slug: consumed.created_doco_slug,
     doco_id: consumed.created_doco_id,
@@ -74,7 +78,10 @@ export async function action({ request }: { request: Request }) {
 
 export async function loader() {
   return Response.json(
-    { error: "method_not_allowed", hint: "POST { state_nonce } to poll." },
+    {
+      error: "method_not_allowed",
+      hint: "POST { state_nonce } to wait for browser authorization to complete.",
+    },
     { status: 405 },
   );
 }

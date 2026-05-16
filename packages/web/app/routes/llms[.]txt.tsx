@@ -25,66 +25,92 @@ If the project owner just told you something like "let's start using
 Doco" or "visit ${new URL(baseUrl).host} and follow the wizard", you've
 reached the right document. This is the agent-readable entry point.
 
-## Bootstrap Doco for a new project
+There is no SDK to install, no CLI to install, no package to download.
+Doco is plain HTTP — you call it with whatever HTTP client you already
+have.
+
+## Bootstrap Doco for a new project (no install required)
 
 The project owner wants Doco installed in their repo and you set up as
-an agent on it. From the project root, run:
+an agent on it. Run this from the project root — these are plain HTTP
+calls, no install needed.
 
-    doco login --host ${baseUrl} --create <slug>
+1. Ask the host for a browser-authorization handoff:
 
-The CLI opens the owner's browser to a one-screen authorize prompt. On
-approval, it creates the Doco, mints an agent token, writes DOCO_TOKEN
-(the secret) to ./.env in the project root, and stamps DOCO_ID (the
-non-secret coordinator) into the header of AGENTS.md. Then:
+       POST ${baseUrl}/api/v1/agent-link/start
+       Content-Type: application/json
 
-    doco install-agent-bootstrap
+       {"agent_name": "<your-runtime-name>", "hostname": "<host>"}
 
-This installs AGENTS.md, CLAUDE.md (Claude-Code shim), and .claude/
-hook scripts. Restart your session afterwards.
+   Response: \`{ state_nonce, short_code, authorize_url, poll_url,
+   interval_seconds, expires_at }\`.
 
-Detail:  ${baseUrl}/onboarding/create/agent.txt
+2. Tell the project owner: "Open <authorize_url> in your browser. Sign
+   in, name the new Doco, click Authorize." Wait.
 
-If \`doco\` is not on $PATH, install from source — the CLI isn't on npm
-yet (the \`@doco/cli\` name is squatted by an unrelated package; rename
-to \`doco-cli\` is in flight and the publish pipeline is pending):
+3. Poll \`poll_url\` every \`interval_seconds\`:
 
-    git clone https://github.com/torrenegra/doco
-    cd doco && pnpm install && pnpm build
-    pnpm --filter doco-cli link --global
+       POST <poll_url>
+       Content-Type: application/json
+
+       {"state_nonce": "<from-step-1>"}
+
+   Response stays \`{ status: "pending" }\` until the owner acts, then
+   flips to \`{ status: "approved", access_url, owner_slug, doco_slug,
+   doco_id }\`.
+
+4. Write \`DOCO_URL=<access_url>\` to \`./.env\` (gitignored). The
+   access URL is a single opaque URL of the shape
+   \`${baseUrl}/agent/<credential>/\` — credential and identity
+   together in the path. No \`Authorization\` header, no separate
+   token to manage.
+
+5. Write \`AGENTS.md\` and \`CLAUDE.md\` (a one-line shim) into the
+   repo root so future sessions auto-load the protocol. Templates
+   live at ${baseUrl}/onboarding/create/agent.txt — fetch and write
+   them verbatim.
+
+Detail: ${baseUrl}/onboarding/create/agent.txt
 
 ## I'm already in a Doco-tracked project
 
-If \`./.env\` has DOCO_TOKEN and AGENTS.md carries a DOCO_ID at the top,
-fetch the canonical agent instructions at the start of every task and
-follow them:
+If \`./.env\` has \`DOCO_URL\`, fetch the canonical agent instructions
+at the start of every task:
 
-    doco bootstrap
+    curl -fsS \${DOCO_URL}bootstrap.json
 
 The \`canonical_instructions\` field is the protocol — query indicator,
 capture footer, tally line, all of it.
 
-Before writing about a task, query the project memory without exposing
-the bearer token in shell command text:
+Before writing about a task, query the project memory:
 
-    doco search "<task>"
+    curl -fsS "\${DOCO_URL}search.json?q=<task-paraphrase>"
+
+The credential lives in the URL path; no headers, no env-var gymnastics.
 
 ## What NOT to do
 
-- Don't try to "follow the wizard" by curl-ing /onboarding/create. That
-  flow is human-facing and the page is a React app; the agent-facing
-  path is the CLI above.
-- Don't write Doco YAML by hand. The \`doco capture\` CLI and the
-  POST /api/<type>.json endpoints handle ULID generation, file
-  writing, and reindexing in one round trip.
-- Don't silently degrade if the host or token is broken. The canonical
-  instructions explain what to do (stop and ask the project owner).
+- Don't try to "follow the wizard" by curl-ing /onboarding/create — the
+  React app is human-facing. The agent path is /api/v1/agent-link/start
+  above.
+- Don't write Doco YAML by hand. The POST /api/<type>.json endpoints
+  handle ULID generation, file writing, and reindexing in one
+  round-trip.
+- Don't silently degrade if the host or access URL is broken. The
+  canonical instructions explain what to do (stop and ask the project
+  owner).
 
 ## Endpoints
 
-- ${baseUrl}/api/v1/agent-bootstrap         canonical agent protocol (slim)
-- ${baseUrl}/api/v1/agent-reference         deeper reference (model, capture flow)
-- ${baseUrl}/by-id/<doco_id>/search.json    vector search for prior context
-- ${baseUrl}/by-id/<doco_id>/status.json    freshness + counts (footer source)
+- ${baseUrl}/api/v1/agent-link/start    begin browser authorization (no auth)
+- ${baseUrl}/api/v1/agent-link/poll     wait for approval (no auth)
+- ${baseUrl}/api/v1/agent-bootstrap     canonical agent protocol (slim, public)
+- ${baseUrl}/api/v1/agent-reference     deeper reference (model, capture flow)
+- \${DOCO_URL}bootstrap.json            per-Doco bootstrap (access URL required)
+- \${DOCO_URL}search.json?q=…           vector search for prior context
+- \${DOCO_URL}status.json               freshness + counts (footer source)
+- \${DOCO_URL}api/<type-plural>.json    POST to capture a new node
+- \${DOCO_URL}api/<type-plural>/<id>.json  PATCH to extend an existing node
 `;
   return new Response(body, {
     headers: {

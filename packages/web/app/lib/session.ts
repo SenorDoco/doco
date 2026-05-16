@@ -84,8 +84,19 @@ export async function getCurrentPrincipal(request: Request): Promise<CurrentPrin
 }
 
 /**
- * Like `getCurrentPrincipal` but also accepts an `Authorization: Bearer
- * <DOCO_TOKEN>` header so agents can authenticate the same way people do.
+ * Resolve the calling Principal across all supported authentication
+ * mechanisms — in priority order:
+ *
+ *   1. `doco_session` cookie (browser users).
+ *   2. URL path: `/agent/<credential>/...` — the credential is the path
+ *      segment that follows `/agent/`. This is what an agent reaches
+ *      when it calls `${DOCO_URL}<resource>` directly.
+ *   3. `?_a=<credential>` query parameter — used internally by the
+ *      `/agent/<credential>/*` 308 redirect so the credential survives
+ *      to the destination route without going back into the path.
+ *   4. Legacy `Authorization: Bearer <credential>` header — kept while
+ *      pre-DOCO_URL bootstraps cycle out; new onboarding never emits
+ *      this form.
  */
 export async function getCurrentPrincipalAsync(
   request: Request,
@@ -95,19 +106,41 @@ export async function getCurrentPrincipalAsync(
     const fromCookie = await findPrincipalById(cookieId);
     if (fromCookie) return fromCookie;
   }
+  const credential = extractCredential(request);
+  if (credential) {
+    const { TokenStore } = await import("./agent-token-store.server");
+    const store = TokenStore.forDoco(rootDir());
+    const session = await store.resolve(credential);
+    if (session?.principal_id) {
+      const p = await findPrincipalById(session.principal_id);
+      if (p) return p;
+    }
+  }
+  return null;
+}
+
+const CREDENTIAL_HEX_RE = /^[0-9a-f]{64}$/;
+const AGENT_PATH_RE = /^\/agent\/([0-9a-f]{64})(?:\/|$)/;
+
+/**
+ * Extract the agent credential from a request. Order:
+ *   1. URL path `/agent/<credential>/...`
+ *   2. `?_a=<credential>` query param
+ *   3. Legacy `Authorization: Bearer <credential>` header
+ * Returns null if no credential is present or the candidate isn't a
+ * well-formed 64-char hex string.
+ */
+export function extractCredential(request: Request): string | null {
+  const url = new URL(request.url);
+  const pathMatch = AGENT_PATH_RE.exec(url.pathname);
+  if (pathMatch && pathMatch[1]) return pathMatch[1];
+  const qa = url.searchParams.get("_a");
+  if (qa && CREDENTIAL_HEX_RE.test(qa)) return qa;
   const auth = request.headers.get("authorization");
   if (auth) {
     const m = /^Bearer\s+(.+)$/i.exec(auth);
-    const token = m ? (m[1] ?? "").trim() : "";
-    if (token) {
-      const { TokenStore } = await import("./agent-token-store.server");
-      const store = TokenStore.forDoco(rootDir());
-      const session = await store.resolve(token);
-      if (session?.principal_id) {
-        const p = await findPrincipalById(session.principal_id);
-        if (p) return p;
-      }
-    }
+    const t = m ? (m[1] ?? "").trim() : "";
+    if (t && CREDENTIAL_HEX_RE.test(t)) return t;
   }
   return null;
 }
