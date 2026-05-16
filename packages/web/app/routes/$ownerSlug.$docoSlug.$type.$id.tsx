@@ -41,6 +41,8 @@ function tableFor(nodeType: string): string {
 /** Tables that live at host level (no doco_id column). */
 const HOST_LEVEL_TABLES = new Set(["principals", "organizations"]);
 
+const GRAPH_HIDDEN_LIFECYCLES = ["abandoned", "superseded"] as const;
+
 type IdentitySummary = {
   id: string;
   node_type: "principal" | "organization";
@@ -198,7 +200,28 @@ export async function loader({
         [docoId],
       )
     ).rows;
-    const pprEdges = allEdgesRows.map((e) => ({
+
+    const hiddenGraphNodeIds = new Set<string>();
+    for (const tbl of new Set(Object.values(TABLE_BY_TYPE))) {
+      if (HOST_LEVEL_TABLES.has(tbl)) continue;
+      const hiddenRows = (
+        await c.query<{ id: string }>(
+          `SELECT id
+             FROM ${tbl}
+            WHERE doco_id = $1
+              AND lifecycle = ANY($2::text[])`,
+          [docoId, GRAPH_HIDDEN_LIFECYCLES],
+        )
+      ).rows;
+      for (const hiddenRow of hiddenRows) {
+        if (hiddenRow.id !== id) hiddenGraphNodeIds.add(hiddenRow.id);
+      }
+    }
+
+    const graphEdgesRows = allEdgesRows.filter(
+      (e) => !hiddenGraphNodeIds.has(e.from_id) && !hiddenGraphNodeIds.has(e.to_id),
+    );
+    const pprEdges = graphEdgesRows.map((e) => ({
       from: e.from_id,
       to: e.to_id,
       edge_type: e.edge_type,
@@ -316,7 +339,7 @@ export async function loader({
         is_center: nid === id,
       });
     }
-    const graphLinks: GraphLink[] = allEdgesRows
+    const graphLinks: GraphLink[] = graphEdgesRows
       .filter((e) => neighborIds.has(e.from_id) && neighborIds.has(e.to_id))
       .map((e) => ({
         source: e.from_id,
