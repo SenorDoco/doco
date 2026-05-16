@@ -1,9 +1,9 @@
 import { Link, redirect } from "react-router";
 
-import { findPrincipalById, getSessionPrincipalId } from "~/lib/session";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
 import { DocoMark } from "~/components/doco-mark";
 import { VersionPill } from "~/components/version-pill";
+import { findPrincipalById, getSessionPrincipalId } from "~/lib/session";
 
 /**
  * /sign-in (ADR-095) — GitHub OAuth is the only path. Anyone with a
@@ -24,7 +24,7 @@ function safeNext(input: string | null | undefined): string | null {
 export async function loader({ request }: { request: Request }) {
   const next = safeNext(new URL(request.url).searchParams.get("next"));
   const id = getSessionPrincipalId(request);
-  if (id && await findPrincipalById(id)) throw redirect(next ?? "/dashboard");
+  if (id && (await findPrincipalById(id))) throw redirect(next ?? "/dashboard");
   return { next };
 }
 
@@ -55,7 +55,7 @@ export default function SignIn({
           </CardHeader>
           <CardContent>
             <Link
-              to={next ? `/auth/github?next=${encodeURIComponent(next)}` : "/auth/github"}
+              to={next ? `/auth/github?return=${encodeURIComponent(next)}` : "/auth/github"}
               className="flex w-full items-center justify-center gap-2 rounded-md bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:opacity-90"
             >
               <GitHubMark />

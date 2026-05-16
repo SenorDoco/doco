@@ -1,6 +1,7 @@
 import { addPrincipal, findPrincipalByGitHubLogin } from "@doco/host";
 import { redirect } from "react-router";
 import { rootDir } from "~/lib/db.server";
+import { clearSignupInviteCookie, hasValidSignupInviteCookie } from "~/lib/invite.server";
 import {
   clearOAuthReturnCookie,
   clearOAuthStateCookie,
@@ -45,6 +46,12 @@ export async function loader({ request }: { request: Request }) {
   if (existing) {
     principalId = existing.id;
   } else {
+    if (!hasValidSignupInviteCookie(cookieHeader)) {
+      const headers = oauthCleanupHeaders();
+      headers.append("Set-Cookie", clearSignupInviteCookie());
+      headers.set("Location", "/sign-up?error=invite_required");
+      return new Response(null, { status: 302, headers });
+    }
     principalId = await addPrincipal(root, {
       username: gh.login.toLowerCase(),
       display_name: gh.name ?? gh.login,
@@ -61,9 +68,8 @@ export async function loader({ request }: { request: Request }) {
   // Headers.append). Clear the OAuth-state cookie + return cookie and set
   // the session cookie. Honor `?return=` cookie if a sane same-origin path
   // is captured; default to /dashboard.
-  const headers = new Headers();
-  headers.append("Set-Cookie", clearOAuthStateCookie());
-  headers.append("Set-Cookie", clearOAuthReturnCookie());
+  const headers = oauthCleanupHeaders();
+  headers.append("Set-Cookie", clearSignupInviteCookie());
   headers.append("Set-Cookie", setSessionCookie(principalId));
   const returnPath = readOAuthReturnCookie(cookieHeader);
   headers.set("Location", returnPath ?? "/dashboard");
@@ -72,4 +78,11 @@ export async function loader({ request }: { request: Request }) {
 
 export default function GitHubCallback() {
   return null;
+}
+
+function oauthCleanupHeaders(): Headers {
+  const headers = new Headers();
+  headers.append("Set-Cookie", clearOAuthStateCookie());
+  headers.append("Set-Cookie", clearOAuthReturnCookie());
+  return headers;
 }

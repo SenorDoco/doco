@@ -1,24 +1,47 @@
-import { Link, redirect } from "react-router";
-import { getCurrentPrincipal } from "~/lib/session";
+import { Form, Link, redirect } from "react-router";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { DocoMark } from "~/components/doco-mark";
 import { VersionPill } from "~/components/version-pill";
+import { isValidSignupInviteCode, setSignupInviteCookie } from "~/lib/invite.server";
+import { getCurrentPrincipal } from "~/lib/session";
 
 /**
- * /sign-up — GitHub-OAuth-only account creation (ADR-095). No manual form.
- * Visiting this page shows a single "Continue with GitHub" button that
- * routes through /auth/github.
+ * /sign-up — invite-gated, GitHub-OAuth account creation (ADR-095).
+ * Existing accounts still sign in through /sign-in; creating a new person
+ * Principal requires a valid invite code before the OAuth round-trip.
  */
 export async function loader({ request }: { request: Request }) {
   if (await getCurrentPrincipal(request)) throw redirect("/dashboard");
-  return {};
+  const error = new URL(request.url).searchParams.get("error");
+  return {
+    error: error === "invite_required" ? "Enter an invite code before creating an account." : null,
+  };
+}
+
+export async function action({ request }: { request: Request }) {
+  if (await getCurrentPrincipal(request)) throw redirect("/dashboard");
+  const form = await request.formData();
+  const inviteCode = String(form.get("invite_code") ?? "");
+  if (!isValidSignupInviteCode(inviteCode)) {
+    return { error: "That invite code is not valid." };
+  }
+  return redirect("/auth/github?return=%2Fdashboard", {
+    headers: { "Set-Cookie": setSignupInviteCookie() },
+  });
 }
 
 export function meta() {
   return [{ title: "Sign up · Doco" }];
 }
 
-export default function SignUp() {
+export default function SignUp({
+  loaderData,
+  actionData,
+}: {
+  loaderData: Awaited<ReturnType<typeof loader>>;
+  actionData?: { error?: string } | undefined;
+}) {
+  const error = actionData?.error ?? loaderData.error;
   return (
     <div>
       <header className="border-b border-border bg-card">
@@ -33,18 +56,33 @@ export default function SignUp() {
         <Card>
           <CardHeader>
             <CardTitle>Create an account</CardTitle>
-            <CardDescription>
-              One click to sign up.
-            </CardDescription>
+            <CardDescription>Enter your invite code, then continue with GitHub.</CardDescription>
           </CardHeader>
           <CardContent>
-            <Link
-              to="/auth/github"
-              className="flex w-full items-center justify-center gap-2 rounded-md bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:opacity-90"
-            >
-              <GitHubMark />
-              Continue with GitHub
-            </Link>
+            <Form method="post" className="space-y-3">
+              <label className="block text-xs">
+                <span className="mb-1 block text-muted-foreground">Invite code</span>
+                <input
+                  type="text"
+                  name="invite_code"
+                  required
+                  autoComplete="one-time-code"
+                  className="w-full rounded-md border border-border bg-input px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
+                />
+              </label>
+              {error ? (
+                <p className="text-xs text-destructive" role="alert">
+                  {error}
+                </p>
+              ) : null}
+              <button
+                type="submit"
+                className="flex w-full items-center justify-center gap-2 rounded-md bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:opacity-90"
+              >
+                <GitHubMark />
+                Continue with GitHub
+              </button>
+            </Form>
             <p className="mt-3 text-xs text-muted-foreground">
               Already have an account?{" "}
               <Link to="/sign-in" className="text-primary hover:underline">
