@@ -1,6 +1,6 @@
 {
   "name": "doco-cli",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
   "description": "Doco CLI — init, bootstrap, search, capture, patch, lint, query.",
   "license": "Apache-2.0",
