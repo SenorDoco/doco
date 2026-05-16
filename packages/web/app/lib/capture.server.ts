@@ -726,6 +726,7 @@ export async function runScopeRules(opts: {
     if (
       !shouldRunAuthoringRuleForEntity({
         ruleScopeId: row.scope_id,
+        predicateKind: predicate.kind,
         globalScopeId,
         entityScopes: scopeIds,
       })
