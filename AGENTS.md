@@ -49,8 +49,8 @@ protocol fresh automatically:
 
 If you see those blocks at the top of your context, the hooks worked
 — follow what they say. If not, run the bootstrap command manually.
-Agents other than Claude Code don't have these hooks at all — run
-`doco bootstrap` above at the start of every task.
+Agents other than Claude Code don't have these hooks at all — run the
+bootstrap command block above at the start of every task.
 
 ## Where DOCO_ID and DOCO_TOKEN live
 
