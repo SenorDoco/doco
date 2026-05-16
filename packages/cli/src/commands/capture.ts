@@ -155,7 +155,8 @@ const decisionCmd = defineCommand({
     "intent-id": { type: "string", description: "Optional. Comma-separated intent ids to link." },
     alternatives: {
       type: "string",
-      description: 'Optional JSON: \'[{"name":"X","rejected_because":"Y"}]\'.',
+      description: 'Required JSON: \'[{"name":"X","rejected_because":"Y"}]\'.',
+      required: true,
     },
     "decided-by-username": {
       type: "string",

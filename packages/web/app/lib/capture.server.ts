@@ -20,6 +20,7 @@ import {
   computeEffectiveGatedBy,
   evaluateScopeRules,
   globalScopeMembershipViolation,
+  hardWrittenDocoRuleViolations,
   shouldRunAuthoringRuleForEntity,
 } from "@doco/shared";
 import { ensureV7Migration } from "./migrations/v7.server";
@@ -782,6 +783,32 @@ export async function runScopeRules(opts: {
   const { docoDir, entityFm } = opts;
   const scopeIds = Array.isArray(entityFm.scopes) ? (entityFm.scopes as string[]) : [];
   const allScopes = await loadAllScopes(docoDir);
+  const globalScope = findGlobalScope(allScopes);
+  const globalScopeId = globalScope?.id ?? null;
+  const entityForEngine = entityFm as unknown as Entity;
+  const allViolations: {
+    scopeName: string;
+    reason: string;
+    severity: "error" | "warning" | "pending";
+  }[] = hardWrittenDocoRuleViolations({
+    entity: entityForEngine,
+    entityScopes: scopeIds,
+    globalScopeId,
+    globalScopeName: "Global",
+  }).map((v) => ({
+    scopeName: v.kind === "requires_node_type" ? "Global" : "Doco",
+    reason: v.reason,
+    severity: v.severity,
+  }));
+
+  const formatFailures = (): { error: string } | null => {
+    const fails = allViolations.filter((v) => v.severity === "error");
+    if (fails.length === 0) return null;
+    const lines = fails.map((f) => `${f.scopeName}: ${f.reason}`);
+    return {
+      error: `Scope rule${fails.length > 1 ? "s" : ""} failed — ${lines.join(" | ")}. Capture aborted.`,
+    };
+  };
 
   // Per v7 (decision_01KRRR5BQ16ASY8HQEE0V499YG) authoring rules are
   // cited by a Scope via `Scope.gated_by` (with parent-scope inheritance
@@ -795,13 +822,12 @@ export async function runScopeRules(opts: {
 
   // Collect the set of scope ids whose gated_by we need to walk:
   // - every scope the entity already lists,
-  // - PLUS the Global scope (its gated_by carries Doco-wide invariants).
-  // The "only Rule nodes belong to Global" check lives as a
-  // `requires_node_type` rule on Global's gated_by; deprecating it via
-  // PATCH lifecycle=abandoned disables the check.
+  // - PLUS the Global scope (its gated_by carries project-authored
+  //   Doco-wide invariants).
+  // Framework-native invariants such as "Decision alternatives are
+  // required" and "Global is Rule-only" are checked above, not loaded
+  // from seeded Global template Rules.
   const scopesToCheck = new Set(scopeIds);
-  const globalScope = findGlobalScope(allScopes);
-  const globalScopeId = globalScope?.id ?? null;
   if (globalScopeId) {
     scopesToCheck.add(globalScopeId);
   }
@@ -900,7 +926,7 @@ export async function runScopeRules(opts: {
     perScope.set(citingScope, arr);
   }
 
-  if (perScope.size === 0) return null;
+  if (perScope.size === 0) return formatFailures();
 
   // Load the doco's edges for the engine (used by requires_edge /
   // forbids_edge predicates).
@@ -941,8 +967,6 @@ export async function runScopeRules(opts: {
     }
   }
 
-  const entityForEngine = entityFm as unknown as Entity;
-  const allViolations: { scopeName: string; reason: string; severity: "error" | "warning" | "pending" }[] = [];
   const entitySummary =
     typeof entityFm.summary === "string" ? (entityFm.summary as string) : "";
   const entityNodeType =
@@ -1026,12 +1050,7 @@ export async function runScopeRules(opts: {
       }
     }
   }
-  const fails = allViolations.filter((v) => v.severity === "error");
-  if (fails.length === 0) return null;
-  const lines = fails.map((f) => `${f.scopeName}: ${f.reason}`);
-  return {
-    error: `Scope rule${fails.length > 1 ? "s" : ""} failed — ${lines.join(" | ")}. Capture aborted.`,
-  };
+  return formatFailures();
 }
 
 async function attachImplicitEdges(opts: {

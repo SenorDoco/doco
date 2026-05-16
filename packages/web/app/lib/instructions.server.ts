@@ -427,7 +427,7 @@ the response's \`footer_lines\` to stdout for you to paste verbatim:
 \`\`\`
 # Create new nodes:
 doco capture intent    --summary "..." --scope <comma,list>
-doco capture decision  --question "..." --chosen "..." --scope <comma,list>
+doco capture decision  --question "..." --chosen "..." --alternatives '<JSON>' --scope <comma,list>
 doco capture action    --summary "..." --verb "<verb>" --scope <comma,list>
 doco capture log       --summary "..." --verb "<past-tense>" --happened-at "<ISO>" --outputs '<JSON>' --scope <comma,list>
 doco capture rule      --summary "..." --predicate "..." --scope <comma,list>
@@ -438,8 +438,9 @@ doco patch <type> <id> --append-body "..." [--summary "..."] [--scope <comma,lis
 \`\`\`
 
 Each subcommand accepts \`--body-md\` (inline) or \`--body-md-file\`
-(path) and type-specific optional fields (\`--intent-id a,b\`,
-\`--alternatives <JSON>\`, \`--decided-by-username\`, etc.). Run
+(path) and type-specific fields (\`--intent-id a,b\`,
+\`--decided-by-username\`, etc.; Decisions require
+\`--alternatives <JSON>\`). Run
 \`doco capture <type> --help\` or \`doco patch <type> --help\` for the
 full flag set. The \`doco patch\` command is the **single biggest unlock
 against capture-skip rationalization** — it makes "extend the existing

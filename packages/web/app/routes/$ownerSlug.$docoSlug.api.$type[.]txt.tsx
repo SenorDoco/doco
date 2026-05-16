@@ -31,7 +31,7 @@ BODY (JSON)
                                 existing scopes on this Doco. Bare names;
                                 no \`scope_\` prefix.
   summary            optional   one-line summary; derived from chosen if omitted
-  alternatives       optional   [{ "name": "...", "rejected_because": "..." }, ...]
+  alternatives       required   non-empty [{ "name": "...", "rejected_because": "..." }, ...]
   intent_ids         optional   ["intent_01...", ...]; ULID references to Intents
   decided_by_username optional  host-level username; resolved to principal id
   created_by_id      optional   principal id; defaults to decided_by
