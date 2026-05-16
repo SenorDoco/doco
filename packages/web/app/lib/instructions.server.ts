@@ -28,7 +28,7 @@
 export const CANONICAL_INSTRUCTIONS = `# Doco — agent bootstrap (slim)
 
 You're working on a project that uses **Doco** — AI-native documentation
-of intent, decisions, rules, actions. Every meaningful
+of intent, decisions, rules, actions, logs. Every meaningful
 decision leaves a trail.
 
 This document carries the **four invariants** every reply must follow.
@@ -389,7 +389,9 @@ rationalize skipping the Rule.
 | Bug fix | Decision with the project's bug scope + a Rule with the same scope (\`born_from: <decision_id>\` — the link IS the regression-guard) |
 | Code now satisfies an architectural decision's consequence | Rule with the relevant subject-area scope, \`born_from: <decision_id>\`. |
 | Editing the framework itself (CLI templates, hooks, bootstrap pipeline, canonical) | tag the project's framework scope (if one exists) on top of whatever else applies |
-| Did real work that doesn't fit above | Action with the verb + outputs + subject-area scope(s) |
+| Recorded event that happened (commit pushed, deploy ran, eval verified) | **Log** with past-tense verb + \`happened_at\` + concrete \`outputs\` (commit hash, deploy URL, etc.). Frozen on creation — supersede if a typo |
+| Designed step in a process/flow (template — what happens at this point) | **Action** with imperative/present verb + role-typed actor + designed input/output shapes |
+| Did real work that doesn't fit above | If it happened, use **Log**. If it's a designed template step, use **Action**. If it's an aspirational goal / backlog item, use **Intent** |
 
 **On ADRs.** Doco has no native ADR concept. The framework doesn't
 auto-assign numbers, doesn't auto-add an \`adrs\` scope, doesn't have
@@ -416,6 +418,7 @@ the response's \`footer_lines\` to stdout for you to paste verbatim:
 doco capture intent    --summary "..." --scope <comma,list>
 doco capture decision  --question "..." --chosen "..." --scope <comma,list>
 doco capture action    --summary "..." --verb "<verb>" --scope <comma,list>
+doco capture log       --summary "..." --verb "<past-tense>" --happened-at "<ISO>" --outputs '<JSON>' --scope <comma,list>
 doco capture rule      --summary "..." --predicate "..." --scope <comma,list>
 doco capture eval      --name "..." --scope <comma,list> --criterion-kind exact|shape|llm-judge
 
@@ -691,7 +694,8 @@ Twelve node types. Files at \`<plural>/<id>.md\` (or \`.yaml\`).
 | idea | speculative thought, before it crystallizes |
 | rule | invariant the framework enforces |
 | decision | an ADR — why a choice was made |
-| action | a thing that was done |
+| action | a designed step in a process (BPMN/UML sense) — imperative verb, role-typed actor, designed input/output shapes |
+| log | a recorded happening — past-tense verb, specific principal, required \`happened_at\` + concrete outputs; frozen from creation. Use for commits, deploys, verifications |
 | eval | named, executable test/eval pinning a load-bearing claim |
 | reference | external source |
 | **scope** | **a topical neighborhood** — the navigation primitive |

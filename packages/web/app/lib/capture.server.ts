@@ -1297,6 +1297,7 @@ export type NodeTypeName =
   | "intent"
   | "rule"
   | "action"
+  | "log"
   | "reference"
   | "scope";
 

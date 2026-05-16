@@ -75,6 +75,7 @@ const TYPE_FETCHES: TypeFetch[] = [
   fetchSpec("intents", "intent", "summary, lifecycle, created_at", false),
   fetchSpec("rules", "rule", "summary, lifecycle, created_at", false),
   fetchSpec("actions", "action", "summary, lifecycle, created_at", false),
+  fetchSpec("logs", "log", "summary, lifecycle, created_at", false),
   fetchSpec("reference_entities", "reference", "summary, lifecycle, created_at", false),
   fetchSpec(
     "scopes",

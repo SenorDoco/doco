@@ -126,6 +126,21 @@ const TYPE_SPECS: TypeSpec[] = [
     }),
   },
   {
+    table: "logs",
+    nodeType: "log",
+    selectExtra: "summary, lifecycle, created_at",
+    hostLevel: false,
+    toHit: (r, s) => ({
+      id: String(r.id),
+      node_type: "log",
+      summary: (r.summary as string) ?? "",
+      name: null,
+      lifecycle: (r.lifecycle as string) ?? null,
+      created_at: (r.created_at as string) ?? null,
+      vector_score: s,
+    }),
+  },
+  {
     table: "reference_entities",
     nodeType: "reference",
     selectExtra: "summary, lifecycle, created_at",

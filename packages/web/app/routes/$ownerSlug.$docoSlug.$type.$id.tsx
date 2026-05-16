@@ -20,6 +20,7 @@ const TABLE_BY_TYPE: Record<string, string> = {
   intent: "intents",
   rule: "rules",
   action: "actions",
+  log: "logs",
   reference: "reference_entities",
   scope: "scopes",
   eval: "evals",
