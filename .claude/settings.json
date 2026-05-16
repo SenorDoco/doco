@@ -2,7 +2,10 @@
   "$schema": "https://claude.com/schemas/settings.json",
   "permissions": {
     "allow": [
-      "Bash(doco:*)",
+      "Bash(curl:* https://doco.to/*)",
+      "Bash(open https://doco.to/*)",
+      "Bash(xdg-open https://doco.to/*)",
+      "Bash(start https://doco.to/*)",
       "Bash(git push:*)"
     ]
   },

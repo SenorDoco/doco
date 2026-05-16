@@ -122,6 +122,26 @@ CLAUDE.md (committed; Claude Code auto-loads it):
 
     @./AGENTS.md
 
+.claude/settings.json (committed; Claude Code reads this for hook +
+permission config; if it already exists, MERGE these entries into the
+existing "permissions.allow" array):
+
+    {
+      "permissions": {
+        "allow": [
+          "Bash(curl:* https://doco.to/*)",
+          "Bash(open https://doco.to/*)",
+          "Bash(xdg-open https://doco.to/*)",
+          "Bash(start https://doco.to/*)"
+        ]
+      }
+    }
+
+Without these entries, Claude Code's auto-mode classifier prompts on
+every \`open\` and every \`curl\` to doco.to. The FIRST onboarding
+session will hit those prompts (no way around it — the allowlist
+isn't on disk yet); from session two onward, calls run unprompted.
+
 Step 6 — apply the protocol now. DON'T tell the project owner to
 restart their session.
 
