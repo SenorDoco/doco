@@ -45,7 +45,7 @@ export default function Home({ loaderData }: { loaderData: Awaited<ReturnType<ty
       <main className="flex flex-1 flex-col items-center justify-center px-6 py-16">
         <div className="flex w-full max-w-4xl flex-col items-center gap-6 text-center">
           <DocoMark height={96} />
-          <h1 className="w-full max-w-4xl pt-2 text-4xl font-bold leading-tight md:text-6xl">
+          <h1 className="w-full max-w-4xl pt-2 text-3xl font-bold leading-tight md:text-5xl">
             {DOCO_TAGLINE}
           </h1>
           <p className="w-full max-w-lg text-sm text-muted-foreground">
