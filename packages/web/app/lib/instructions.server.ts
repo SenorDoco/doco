@@ -361,20 +361,21 @@ is a one-off, a local convention, or a Doco-wide invariant.
 |---|---|
 | **Edited code an existing entity already governs** (vector_score > ~0.45 hit names the file or the territory) | **PATCH that entity** with \`doco patch <type> <id> --append-body "..."\`. Don't open a sibling node — the existing one tracks the same element's reasoning over time. |
 | User-flow (route/redirect/form/banner/multi-step UX) | Decision with **\`user-flows\`** |
-| UI affordance / element copy / interaction tweak (not the journey itself) | Decision with **\`design-language\`** — or, if a governing Decision exists, **PATCH it** (see top row). |
-| Bug fix | Decision with **\`bugs\`** + a Rule with **\`bugs\`** (\`born_from: <decision_id>\` — the link IS the regression-guard) |
-| Code now satisfies an architectural decision's consequence | Rule with the relevant subject-area scope, \`born_from: <decision_id>\`. If the Doco has installed the **\`adrs\`** template, use it. |
-| Editing the framework itself (CLI templates, hooks, bootstrap pipeline, canonical) | add **\`framework\`** on top of whatever else applies |
+| UI affordance / element copy / interaction tweak (not the journey itself) | Decision with the project's design-language scope (if one exists) — or, if a governing Decision exists, **PATCH it** (see top row). |
+| Bug fix | Decision with the project's bug scope + a Rule with the same scope (\`born_from: <decision_id>\` — the link IS the regression-guard) |
+| Code now satisfies an architectural decision's consequence | Rule with the relevant subject-area scope, \`born_from: <decision_id>\`. |
+| Editing the framework itself (CLI templates, hooks, bootstrap pipeline, canonical) | tag the project's framework scope (if one exists) on top of whatever else applies |
 | Did real work that doesn't fit above | Action with the verb + outputs + subject-area scope(s) |
 
 **On ADRs.** Doco has no native ADR concept. The framework doesn't
 auto-assign numbers, doesn't auto-add an \`adrs\` scope, doesn't have
 an \`is_adr\` flag, doesn't have a \`number\` field on Decision. If a
-project wants to track ADRs, it installs the **\`adrs\`** scope
-template — that template's guidelines describe whatever convention
-the project picks (sequential \`ADR-NNN\`, git-commit-hash, or
-whatever). The identifier lives in the Decision's body or summary;
-the framework treats it as plain prose.
+project wants to track ADRs, it authors an \`adrs\` scope as a
+custom scope (the framework no longer ships an ADR template) — that
+scope's guidance Rules describe whatever convention the project picks
+(sequential \`ADR-NNN\`, git-commit-hash, or whatever). The identifier
+lives in the Decision's body or summary; the framework treats it as
+plain prose.
 
 Every Decision needs at least one Intent in \`intent_ids\`. If no
 Intent fits, create one first (\`doco capture intent …\`).
@@ -554,11 +555,16 @@ ambiguity.
 
 ## When you've just created a Doco — scopes come next
 
-A new Doco has zero scopes, and **nodes can't be added until at least
-one scope exists** (the connectivity lint enforces this). The framework
-ships eight default templates: **user-flows, adrs, apis, bugs, runbooks,
-post-mortems, glossary, roadmap**. Each comes with prefilled purpose +
-guidelines.
+A new Doco has the framework-seeded **Global scope** (always installed,
+serves as the doco's constitution) and zero project-specific scopes.
+Nodes outside Global can't be added until at least one project-specific
+scope exists (the connectivity lint enforces this). The framework ships
+one additional opt-in template — **\`user-flows\`** — for the common
+case where end-to-end journeys matter. Every other scope a project
+wants (\`adrs\`, \`apis\`, \`bugs\`, \`runbooks\`, \`post-mortems\`,
+\`glossary\`, \`roadmap\`, \`design-language\`, \`coding-style\`,
+\`framework\`, \`test-evals\`, anything else) is **project-owner-authored**
+— you propose, the owner customs them.
 
 Onboarding has **two steps**, in this order. Stopping after step 1 is
 the single most common onboarding failure mode — agents create the
@@ -575,23 +581,23 @@ Propose, then **wait for the project owner's nod before materializing.**
    to propose with confidence, go to step 2. **If you don't, go to
    step 3 (ASK is the default for low-context docos).**
 2. **Propose the curated starter set** in plain prose. The
-   recommended starter shape is **\`adrs\` + \`user-flows\` + 1–2
-   custom scopes** named for the project's actual subject areas.
-   Don't propose all eight templates "just in case" — \`apis\`/
-   \`bugs\`/\`runbooks\`/\`post-mortems\`/\`glossary\`/\`roadmap\` are
-   available, but the project owner adds them when the need arises.
+   recommended starter shape is **\`user-flows\` (from the template)
+   + 1–3 custom scopes** named for the project's actual subject
+   areas. Everything other than \`user-flows\` is project-owner-authored
+   — you describe a custom scope's purpose + initial rules in the
+   propose-and-confirm step, then the owner sees and tweaks them.
    Phrasing:
-   > "For this project I'd start with **adrs** (architectural
-   > choices), **user-flows** (end-to-end journeys), plus a custom
-   > scope **scope_<project-area>** for <reason>. Sound right, or
-   > do you want me to adjust?"
+   > "For this project I'd start with **user-flows** (end-to-end
+   > journeys, from the template), plus custom scopes
+   > **\`<project-area>\`** for <reason> and **\`<other-area>\`**
+   > for <reason>. Sound right, or do you want me to adjust?"
    Then **stop and wait.** Do not call \`/scopes/new\` until the
    project owner has acknowledged.
 3. **If the project is unclear, ASK first.** Don't guess.
    > "Before I set up scopes — what areas of this project do you
-   > want to track separately? I'd start you with \`adrs\` and
-   > \`user-flows\` plus 1–2 custom scopes named for the project's
-   > subject areas (e.g. \`payments\`, \`search\`)."
+   > want to track separately? I'd start you with \`user-flows\`
+   > plus 1–3 custom scopes named for the project's subject areas
+   > (e.g. \`payments\`, \`search\`)."
 4. **Default watched=true during onboarding.** Every scope you
    create in this onboarding session passes \`watched: true\` to
    the scope-creation endpoint. The project owner is literally in
@@ -668,9 +674,11 @@ Twelve node types. Files at \`<plural>/<id>.md\` (or \`.yaml\`).
 you want to track separately — a feature area, a country, a team, a
 customer segment, a regulatory regime, a document type, a migration
 project. Pick names that make sense for what *this* Doco is about.
-Templates exist (user-flows, adrs, apis, bugs, runbooks, post-mortems,
-glossary, roadmap) as shortcuts for common cases — they're examples,
-not a fixed menu.
+The framework ships two opinionated templates (\`global\` and
+\`user-flows\`); common conventions like \`adrs\`, \`apis\`, \`bugs\`,
+\`runbooks\`, \`post-mortems\`, \`glossary\`, \`roadmap\`,
+\`design-language\`, \`coding-style\`, \`framework\`, \`test-evals\` are
+no longer auto-installed and are project-owner-authored when needed.
 
 Any node belongs to one or more scopes. **Scopes are
 edge-hierarchical:** a child scope's parents live in its \`scopes\`
@@ -691,9 +699,13 @@ payment policy, a post-mortem, a design-system, a customer-support
 playbook — **don't ask Doco for a recipe**. Doco only gives you twelve
 primitives + edge types.
 
-If a default scope template covers your case (user-flows, adrs, apis, bugs,
-runbooks, post-mortems, glossary, roadmap), its **guidelines** field is
-the recipe. Read it.
+If the \`user-flows\` template covers your case, install it (or read its
+seeded guidance Rules if already installed). Other common scope names
+(\`adrs\`, \`apis\`, \`bugs\`, \`runbooks\`, \`post-mortems\`, \`glossary\`,
+\`roadmap\`, \`design-language\`, \`coding-style\`, \`framework\`,
+\`test-evals\`) are conventions you author from scratch — describe the
+purpose as an Intent, the guidance as Rules, and capture them as you
+would any custom scope.
 
 If no template fits:
 
@@ -890,11 +902,10 @@ project owner through scope setup AND scope population before treating
 the session as "done":
 
 - **STEP 1 — \`scope_setup\`**: read the project, propose a curated
-  starter set in plain prose (\`adrs\` + \`user-flows\` + 1–2 custom
-  scopes for the project's actual subject areas), wait for the project
-  owner's nod, then materialize with \`watched: true\`. Don't propose
-  all eight built-in templates; don't materialize without consent. A
-  single template scope alone is a smell.
+  starter set in plain prose (\`user-flows\` from the template + 1–3
+  custom scopes for the project's actual subject areas), wait for the
+  project owner's nod, then materialize with \`watched: true\`. Don't
+  materialize without consent. A single template scope alone is a smell.
 - **\`watched_explainer\`**: tell the project owner what watched means
   the first time it comes up — "Watched means: when you (or an agent)
   capture work later, this scope nudges you to consider whether the

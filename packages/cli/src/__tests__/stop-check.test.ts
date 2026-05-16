@@ -1,15 +1,12 @@
+import { spawnSync } from "node:child_process";
 import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { spawnSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
 
 const testDir = dirname(fileURLToPath(import.meta.url));
-const hookPath = resolve(
-  testDir,
-  "../../templates/agent-bootstrap/.claude/stop-check.sh",
-);
+const hookPath = resolve(testDir, "../../templates/agent-bootstrap/.claude/stop-check.sh");
 
 function writeFakeJq(dir: string) {
   const jqPath = join(dir, "jq");
@@ -51,11 +48,7 @@ function runHook(events: unknown[]) {
   try {
     writeFakeJq(dir);
     const transcriptPath = join(dir, "transcript.jsonl");
-    writeFileSync(
-      transcriptPath,
-      events.map((event) => JSON.stringify(event)).join("\n"),
-      "utf8",
-    );
+    writeFileSync(transcriptPath, events.map((event) => JSON.stringify(event)).join("\n"), "utf8");
 
     const result = spawnSync("bash", [hookPath], {
       input: JSON.stringify({ transcript_path: transcriptPath }),
