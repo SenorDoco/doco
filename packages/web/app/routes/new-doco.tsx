@@ -49,7 +49,7 @@ export async function action({ request }: { request: Request }) {
 }
 
 export function meta() {
-  return [{ title: "New Doco · Doco" }];
+  return [{ title: "New doco · Doco" }];
 }
 
 export default function NewDoco({
@@ -172,7 +172,7 @@ export default function NewDoco({
                   type="submit"
                   className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90"
                 >
-                  Create Doco
+                  Create doco
                 </button>
                 <Link
                   to="/dashboard"

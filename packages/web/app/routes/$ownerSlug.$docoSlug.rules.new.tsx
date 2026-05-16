@@ -114,7 +114,7 @@ export async function action({
 }
 
 export function meta({ params }: { params: { ownerSlug: string; docoSlug: string } }) {
-  return [{ title: `New Rule · ${params.ownerSlug}/${params.docoSlug} · Doco` }];
+  return [{ title: `New rule · ${params.ownerSlug}/${params.docoSlug} · Doco` }];
 }
 
 export default function NewRule({
