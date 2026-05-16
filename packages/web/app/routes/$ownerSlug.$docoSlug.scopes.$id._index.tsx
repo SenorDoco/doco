@@ -156,11 +156,18 @@ async function readScopeRaw(scopeId: string): Promise<Record<string, unknown> | 
   }
 }
 
-async function readPrimaryIntentForScope(
+function scopeMainIntentId(raw: Record<string, unknown> | null): string | null {
+  const ids = Array.isArray(raw?.intent_ids)
+    ? raw.intent_ids.filter((id): id is string => typeof id === "string")
+    : [];
+  return ids.length === 1 ? ids[0] : null;
+}
+
+async function readMainIntentForScope(
   docoId: string | null,
-  primaryIntentId?: string | null,
+  mainIntentId?: string | null,
 ): Promise<PrimaryIntentRecord | null> {
-  if (!docoId || !primaryIntentId) return null;
+  if (!docoId || !mainIntentId) return null;
   try {
     return await withClient(async (c) => {
       const r = await c.query<PrimaryIntentRecord>(
@@ -171,7 +178,7 @@ async function readPrimaryIntentForScope(
           WHERE doco_id = $1
             AND id = $2
           LIMIT 1`,
-        [docoId, primaryIntentId],
+        [docoId, mainIntentId],
       );
       return r.rows[0] ?? null;
     });
@@ -382,9 +389,8 @@ export async function loader({
 
   const isWatched =
     String(raw.name) === "global" || (raw as { watched?: unknown }).watched === true;
-  const primaryIntentId =
-    typeof raw.primary_intent_id === "string" ? raw.primary_intent_id : null;
-  const primaryIntent = await readPrimaryIntentForScope(docoId, primaryIntentId);
+  const mainIntentId = scopeMainIntentId(raw);
+  const primaryIntent = await readMainIntentForScope(docoId, mainIntentId);
 
   return {
     ownerSlug,
@@ -397,7 +403,7 @@ export async function loader({
       icon: typeof raw.icon === "string" ? raw.icon : "",
       lifecycle: typeof raw.lifecycle === "string" ? raw.lifecycle : "active",
       is_watched: isWatched,
-      primary_intent_id: primaryIntent?.id ?? primaryIntentId,
+      intent_ids: mainIntentId ? [mainIntentId] : [],
     },
     primaryIntent,
     rules: rulesByKind,
@@ -451,10 +457,7 @@ export async function action({
         return { error: "Main intent is required." };
       }
       const raw = await readScopeRaw(id);
-      const existingPrimaryId =
-        typeof raw?.primary_intent_id === "string"
-          ? raw.primary_intent_id
-          : null;
+      const existingPrimaryId = scopeMainIntentId(raw);
       const actorId = (me?.id ??
         (meta.ownerId.startsWith("principal_") ? meta.ownerId : null)) as EntityId<"principal"> | null;
       const newIntentId = await createIntentInDoco({
@@ -464,7 +467,7 @@ export async function action({
         createdBy: actorId,
       });
       if (existingPrimaryId && existingPrimaryId !== newIntentId) {
-        const current = await readPrimaryIntentForScope(meta.docoId, existingPrimaryId);
+        const current = await readMainIntentForScope(meta.docoId, existingPrimaryId);
         if (current && current.lifecycle !== "abandoned") {
           const result = await updateEntity({
             docoDir: dir,
@@ -485,7 +488,7 @@ export async function action({
       await updateScopeInDoco({
         docoDir: dir,
         scopeId,
-        primaryIntentId: newIntentId,
+        intentIds: [newIntentId],
       });
       await reindex(dir, meta.docoId, [id, newIntentId]);
       return redirect(back);

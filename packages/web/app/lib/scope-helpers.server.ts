@@ -71,7 +71,7 @@ export interface ScopeDetails {
   parent_ids: string[];
   lifecycle: string;
   is_watched: boolean;
-  primary_intent_id: string | null;
+  intent_ids: string[];
   primary_intent: {
     id: string;
     summary: string;
@@ -123,8 +123,9 @@ export async function listScopeDetails(
           parent_ids: Array.isArray(e.scopes) ? (e.scopes as string[]) : [],
           lifecycle: typeof e.lifecycle === "string" ? e.lifecycle : "active",
           is_watched: row.name === "global" || e.watched === true,
-          primary_intent_id:
-            typeof e.primary_intent_id === "string" ? e.primary_intent_id : null,
+          intent_ids: Array.isArray(e.intent_ids)
+            ? e.intent_ids.filter((id): id is string => typeof id === "string")
+            : [],
           primary_intent: null,
         });
       }
@@ -133,7 +134,7 @@ export async function listScopeDetails(
         const explicitIds = [
           ...new Set(
             out
-              .map((s) => s.primary_intent_id)
+              .map((s) => (s.intent_ids.length === 1 ? s.intent_ids[0] : null))
               .filter((id): id is string => typeof id === "string" && id.length > 0),
           ),
         ];
@@ -163,8 +164,9 @@ export async function listScopeDetails(
         }
 
         for (const scope of out) {
-          if (!scope.primary_intent_id) continue;
-          scope.primary_intent = explicitById.get(scope.primary_intent_id) ?? null;
+          const mainIntentId = scope.intent_ids.length === 1 ? scope.intent_ids[0] : null;
+          if (!mainIntentId) continue;
+          scope.primary_intent = explicitById.get(mainIntentId) ?? null;
         }
       }
     });

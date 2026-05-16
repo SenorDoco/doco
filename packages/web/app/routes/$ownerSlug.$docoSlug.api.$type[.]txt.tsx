@@ -190,7 +190,8 @@ BODY (JSON)
                             *if template_name is absent.
   intent_summary required*  the main Intent this scope serves. The
                             created Intent is attached to the scope and
-                            recorded on the Scope as primary_intent_id.
+                            recorded on the Scope as single-item
+                            intent_ids.
                             *if template_name is absent.
   icon           optional   single emoji.
   parent_id      optional   id of an existing scope to nest this one

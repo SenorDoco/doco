@@ -272,7 +272,7 @@ export async function action({
     await updateScopeInDoco({
       docoDir: dir,
       scopeId: newScopeId,
-      primaryIntentId: intentId,
+      intentIds: [intentId],
     });
     changedEntityIds.push(intentId);
   }

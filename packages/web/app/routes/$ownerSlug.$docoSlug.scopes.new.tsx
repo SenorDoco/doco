@@ -267,8 +267,9 @@ export async function action({
       }
       // Per decision_01KRPRDR1AD7S1RP6E69BQDB2G rules are first-class
       // Rule entities now. Create the scope, then seed: the required
-      // main intent textarea → an Intent attached as primary; the
-      // optional inline first-rule fieldset → an authoring Rule.
+      // main intent textarea → an Intent referenced by the Scope's
+      // single-item intent_ids list; the optional inline first-rule
+      // fieldset → an authoring Rule.
       const newScopeId = await createScopeInDoco({
         docoDir: dir,
         docoId: docoId as EntityId<"doco">,
@@ -278,7 +279,7 @@ export async function action({
         watched,
         createdBy,
       });
-      const primaryIntentId = await createIntentInDoco({
+      const mainIntentId = await createIntentInDoco({
         docoId: docoId as EntityId<"doco">,
         summary: purpose,
         scopeId: newScopeId,
@@ -287,7 +288,7 @@ export async function action({
       await updateScopeInDoco({
         docoDir: dir,
         scopeId: newScopeId,
-        primaryIntentId,
+        intentIds: [mainIntentId],
       });
       for (const rule of rules) {
         const reason =
@@ -307,7 +308,7 @@ export async function action({
           createdBy,
         });
       }
-      await reindex(dir, docoId, [newScopeId, primaryIntentId]);
+      await reindex(dir, docoId, [newScopeId, mainIntentId]);
       // After-create redirect: go straight to the merged scope page so
       // the user can refine rules right away (decision_01KRPNZY7W6CCMYNKGND67BP0B).
       return redirect(`/${ownerSlug}/${docoSlug}/scopes/${newScopeId}`);
