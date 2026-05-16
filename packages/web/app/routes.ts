@@ -57,6 +57,19 @@ export default [
   // paths. Both point at /llms.txt as the canonical agent entry.
   route("llms.txt", "routes/llms[.]txt.tsx"),
   route("robots.txt", "routes/robots[.]txt.tsx"),
+  // Common probes agents try when told to "follow the wizard". Each
+  // bounces to /llms.txt instead of 404-ing so the agent finds the
+  // real recipe instead of giving up and asking the human.
+  route("docs", "routes/agent-probes[.]ts.tsx", { id: "probe-docs" }),
+  route("setup", "routes/agent-probes[.]ts.tsx", { id: "probe-setup" }),
+  route("new", "routes/agent-probes[.]ts.tsx", { id: "probe-new" }),
+  route("agent", "routes/agent-probes[.]ts.tsx", { id: "probe-agent" }),
+  route("ai", "routes/agent-probes[.]ts.tsx", { id: "probe-ai" }),
+  route("getting-started", "routes/agent-probes[.]ts.tsx", { id: "probe-getting-started" }),
+  route("install", "routes/agent-probes[.]ts.tsx", { id: "probe-install" }),
+  route("connect", "routes/agent-probes[.]ts.tsx", { id: "probe-connect" }),
+  route("api", "routes/agent-probes[.]ts.tsx", { id: "probe-api" }),
+  route("api/docs", "routes/agent-probes[.]ts.tsx", { id: "probe-api-docs" }),
   route("dashboard", "routes/dashboard.tsx"),
   // Auth
   route("sign-in", "routes/sign-in.tsx"),

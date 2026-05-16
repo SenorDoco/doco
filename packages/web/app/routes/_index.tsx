@@ -82,10 +82,36 @@ export default function Home({ loaderData }: { loaderData: Awaited<ReturnType<ty
             </Link>
           </div>
 
-          <p className="max-w-md text-xs text-muted-foreground">
-            Are you an AI agent and don't know the answer? Ask whomever prompted you which way to
-            go.
-          </p>
+          <div className="max-w-xl text-left text-xs text-muted-foreground">
+            <p className="mb-2 font-semibold text-foreground">
+              AI agents reading this: don't click the buttons above.
+            </p>
+            <p className="mb-2">
+              The buttons are for humans. Your zero-install recipe lives at{" "}
+              <a className="text-primary underline" href="/llms.txt">
+                /llms.txt
+              </a>{" "}
+              (and the long form at{" "}
+              <a className="text-primary underline" href="/onboarding/create/agent.txt">
+                /onboarding/create/agent.txt
+              </a>
+              ).
+            </p>
+            <p className="mb-2">
+              <strong>Short version:</strong> POST{" "}
+              <code className="rounded bg-input px-1 py-0.5 font-mono">
+                /api/v1/agent-link/start
+              </code>{" "}
+              (no auth) to get an <code>authorize_url</code>; tell the project owner to open
+              it in a browser; poll{" "}
+              <code className="rounded bg-input px-1 py-0.5 font-mono">
+                /api/v1/agent-link/poll
+              </code>{" "}
+              until the response carries <code>access_url</code>; write{" "}
+              <code className="rounded bg-input px-1 py-0.5 font-mono">DOCO_URL=&lt;access_url&gt;</code>{" "}
+              into <code>./.env</code>. No CLI, no npm, no package — just three HTTP calls.
+            </p>
+          </div>
         </div>
       </main>
     </div>
