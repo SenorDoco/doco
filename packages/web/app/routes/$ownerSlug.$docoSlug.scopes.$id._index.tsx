@@ -576,11 +576,7 @@ export default function ScopePage({
                       href: inScopeSearchPath(ownerSlug, docoSlug, scope.name, {
                         nodeType: t.nodeType,
                       }),
-                      label: (
-                        <NodeTypeBadge nodeType={t.nodeType}>
-                          {nodeTypeLabel(t.nodeType)}
-                        </NodeTypeBadge>
-                      ),
+                      label: nodeTypeLabel(t.nodeType),
                       count: t.count,
                       ariaLabel: `View ${t.count} ${nodeTypeLabel(t.nodeType).toLowerCase()} in ${scope.name}`,
                       color: nodeTypeColor(t.nodeType),
@@ -593,7 +589,7 @@ export default function ScopePage({
                       href: inScopeSearchPath(ownerSlug, docoSlug, scope.name, {
                         lifecycle: s.lifecycle,
                       }),
-                      label: <Badge>{s.lifecycle}</Badge>,
+                      label: s.lifecycle,
                       count: s.count,
                       ariaLabel: `View ${s.count} ${s.lifecycle} nodes in ${scope.name}`,
                     })),

@@ -17,7 +17,6 @@ import { useEffect, useState } from "react";
 import { Form, Link, useRevalidator } from "react-router";
 import { parse as parseYaml } from "yaml";
 import { ActivityHeatmap } from "~/components/activity-heatmap";
-import { Badge, NodeTypeBadge } from "~/components/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
 import {
   NodesOverviewCard,
@@ -251,16 +250,8 @@ export default function DocoHome({
       items: facets.scope.map((s) => ({
         key: `scope-${s.name}`,
         href: scopeSearchPath(ownerSlug, docoSlug, s.name),
-        label: (
-          <span className="inline-flex items-center gap-2">
-            {s.icon ? (
-              <span aria-hidden="true" className="text-base leading-none">
-                {s.icon}
-              </span>
-            ) : null}
-            <span className="font-mono">{s.name}</span>
-          </span>
-        ),
+        label: s.name,
+        icon: s.icon ?? undefined,
         count: s.count,
         ariaLabel: `Search ${s.count} nodes in scope ${s.name}`,
         color: nodeTypeColor("scope"),
@@ -271,7 +262,7 @@ export default function DocoHome({
       items: facets.nodeType.map((t) => ({
         key: `type-${t.value}`,
         href: nodeTypeSearchPath(ownerSlug, docoSlug, t.value),
-        label: <NodeTypeBadge nodeType={t.value}>{nodeTypeLabel(t.value)}</NodeTypeBadge>,
+        label: nodeTypeLabel(t.value),
         count: t.count,
         ariaLabel: `Search ${t.count} ${nodeTypeLabel(t.value).toLowerCase()}`,
         color: nodeTypeColor(t.value),
@@ -282,7 +273,7 @@ export default function DocoHome({
       items: facets.lifecycle.map((l) => ({
         key: `lifecycle-${l.value}`,
         href: lifecycleSearchPath(ownerSlug, docoSlug, l.value),
-        label: <Badge>{l.value}</Badge>,
+        label: l.value,
         count: l.count,
         ariaLabel: `Search ${l.count} nodes in lifecycle ${l.value}`,
       })),
