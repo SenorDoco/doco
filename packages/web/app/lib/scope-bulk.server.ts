@@ -179,10 +179,32 @@ export async function validateMembers(opts: {
 }
 
 /**
+ * Node types `scope activate` / `scope draft` will NOT touch even when
+ * they are members of the target scope. Rules and Intents are the
+ * scope's own modeling metadata (the seeder creates them at `active`
+ * irrespective of `default_node_lifecycle`); flipping them to `drafted`
+ * would silently disable the scope's rule set, which is exactly the
+ * opposite of what the project owner asked for. References are also
+ * frozen — they describe pinned external sources. Other captured types
+ * (State, Action, Decision, Eval, Idea, Log) stay in scope of the flip.
+ *
+ * Decision_01KRRR5BQ16ASY8HQEE0V499YG documents the v7 bulk-verb
+ * semantics; this exclusion list is the practical guard that keeps the
+ * "drafted by default" template usable.
+ */
+const BULK_LIFECYCLE_SKIP_NODE_TYPES: ReadonlySet<string> = new Set([
+  "rule",
+  "intent",
+  "reference",
+]);
+
+/**
  * Bulk-patch members' lifecycle field. Used by `activate` (after
  * validation) and `draft` (no validation). Updates raw_yaml + the
  * `lifecycle` mirror column. Does NOT reindex — the caller is
- * responsible.
+ * responsible. Skips Rules / Intents / References by default per
+ * `BULK_LIFECYCLE_SKIP_NODE_TYPES` — pass `includeMetaTypes: true` to
+ * flip everything (rarely useful; reserved for an explicit override).
  */
 export async function bulkUpdateLifecycle(opts: {
   members: ScopeMember[];
@@ -190,10 +212,18 @@ export async function bulkUpdateLifecycle(opts: {
   /** Only flip members whose current lifecycle matches this set (e.g.,
    *  `["drafted"]` so `activate` skips already-active rows). */
   onlyFromLifecycles?: string[];
+  /** When true, include Rule / Intent / Reference members in the flip. */
+  includeMetaTypes?: boolean;
 }): Promise<string[]> {
   const updatedIds: string[] = [];
   await withClient(async (c) => {
     for (const m of opts.members) {
+      if (
+        !opts.includeMetaTypes &&
+        BULK_LIFECYCLE_SKIP_NODE_TYPES.has(m.node_type)
+      ) {
+        continue;
+      }
       const current = typeof m.fm.lifecycle === "string" ? m.fm.lifecycle : "active";
       if (opts.onlyFromLifecycles && !opts.onlyFromLifecycles.includes(current)) continue;
       if (current === opts.targetLifecycle) continue;

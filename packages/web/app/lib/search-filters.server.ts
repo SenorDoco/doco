@@ -108,6 +108,8 @@ const PG_DOCO_TABLES_WITH_LIFECYCLE = [
   "evals",
   "reference_entities",
   "scopes",
+  // v7 (decision_01KRRR5BQ16ASY8HQEE0V499YG): State node type.
+  "states",
 ] as const;
 
 /** Map from external node_type (singular) → PG table (plural). */
@@ -121,6 +123,8 @@ const NODE_TYPE_TO_TABLE: Record<string, string> = {
   eval: "evals",
   reference: "reference_entities",
   scope: "scopes",
+  // v7.
+  state: "states",
   principal: "principals",
   organization: "organizations",
 };
@@ -203,9 +207,15 @@ export async function resolveFilteredCandidates(
 }
 
 export interface FilterFacets {
-  lifecycle: { value: string; count: number }[];
-  nodeType: { value: string; count: number }[];
-  scope: { id: string; name: string; count: number; icon: string | null }[];
+  lifecycle: { value: string; count: number; updatedAt: string | null }[];
+  nodeType: { value: string; count: number; updatedAt: string | null }[];
+  scope: {
+    id: string;
+    name: string;
+    count: number;
+    icon: string | null;
+    updatedAt: string | null;
+  }[];
 }
 
 export interface SearchHitScope {
@@ -261,10 +271,12 @@ export async function attachScopesToSearchHits<T extends { id: string }>(
 }
 
 export async function computeFilterFacets(c: PoolClient, docoId: string): Promise<FilterFacets> {
-  const lifecycleCounts = new Map<string, number>();
+  const lifecycleFacets = new Map<string, { count: number; updatedAt: string | null }>();
   for (const t of PG_DOCO_TABLES_WITH_LIFECYCLE) {
-    const r = await c.query<{ value: string; n: string }>(
-      `SELECT COALESCE(lifecycle, 'active') AS value, COUNT(*)::text AS n
+    const r = await c.query<{ value: string; n: string; updated_at: Date | string | null }>(
+      `SELECT COALESCE(lifecycle, 'active') AS value,
+              COUNT(*)::text AS n,
+              MAX(updated_at) AS updated_at
          FROM ${t}
         WHERE doco_id = $1
         GROUP BY value`,
@@ -272,55 +284,92 @@ export async function computeFilterFacets(c: PoolClient, docoId: string): Promis
     );
     for (const row of r.rows) {
       const n = Number(row.n);
-      lifecycleCounts.set(row.value, (lifecycleCounts.get(row.value) ?? 0) + n);
+      const current = lifecycleFacets.get(row.value) ?? { count: 0, updatedAt: null };
+      lifecycleFacets.set(row.value, {
+        count: current.count + n,
+        updatedAt: latestIso(current.updatedAt, toIso(row.updated_at)),
+      });
     }
   }
 
-  const nodeTypeCounts: { value: string; count: number }[] = [];
+  const nodeTypeCounts: { value: string; count: number; updatedAt: string | null }[] = [];
   for (const t of PG_DOCO_TABLES_WITH_LIFECYCLE) {
-    const r = await c.query<{ n: string }>(
-      `SELECT COUNT(*)::text AS n FROM ${t} WHERE doco_id = $1`,
+    const r = await c.query<{ n: string; updated_at: Date | string | null }>(
+      `SELECT COUNT(*)::text AS n, MAX(updated_at) AS updated_at FROM ${t} WHERE doco_id = $1`,
       [docoId],
     );
-    const n = Number(r.rows[0]?.n ?? 0);
+    const row = r.rows[0];
+    const n = Number(row?.n ?? 0);
     if (n > 0) {
-      nodeTypeCounts.push({ value: TABLE_TO_NODE_TYPE[t] ?? t, count: n });
+      nodeTypeCounts.push({
+        value: TABLE_TO_NODE_TYPE[t] ?? t,
+        count: n,
+        updatedAt: toIso(row?.updated_at),
+      });
     }
   }
   nodeTypeCounts.sort((a, b) => b.count - a.count);
 
+  const entityUpdatesSql = PG_DOCO_TABLES_WITH_LIFECYCLE.map(
+    (t) => `SELECT id, updated_at FROM ${t} WHERE doco_id = $1`,
+  ).join(" UNION ALL ");
   const scopeRows = (
-    await c.query<{ id: string; name: string; raw_yaml: string | null; n: string }>(
-      `SELECT s.id AS id, s.name AS name, s.raw_yaml AS raw_yaml, COUNT(e.from_id)::text AS n
+    await c.query<{
+      id: string;
+      name: string;
+      raw_yaml: string | null;
+      n: string;
+      updated_at: Date | string | null;
+    }>(
+      `WITH entity_updates AS (${entityUpdatesSql})
+       SELECT s.id AS id,
+              s.name AS name,
+              s.raw_yaml AS raw_yaml,
+              COUNT(e.from_id)::text AS n,
+              GREATEST(s.updated_at, COALESCE(MAX(eu.updated_at), s.updated_at)) AS updated_at
          FROM scopes s
          LEFT JOIN edges e
            ON e.to_id = s.id
           AND e.edge_type = 'in_scope_of'
           AND e.from_node_type != 'scope'
           AND e.doco_id = s.doco_id
+         LEFT JOIN entity_updates eu ON eu.id = e.from_id
         WHERE s.doco_id = $1
-        GROUP BY s.id, s.name, s.raw_yaml
+        GROUP BY s.id, s.name, s.raw_yaml, s.updated_at
         ORDER BY COUNT(e.from_id) DESC, s.name ASC`,
       [docoId],
     )
   ).rows;
 
   return {
-    lifecycle: Array.from(lifecycleCounts.entries())
-      .map(([value, count]) => ({ value, count }))
+    lifecycle: Array.from(lifecycleFacets.entries())
+      .map(([value, facet]) => ({ value, count: facet.count, updatedAt: facet.updatedAt }))
       .sort((a, b) => {
         if (a.value === "active") return -1;
         if (b.value === "active") return 1;
         return a.value.localeCompare(b.value);
       }),
     nodeType: nodeTypeCounts,
-    scope: scopeRows.map((r: { id: string; name: string; raw_yaml: string | null; n: string }) => ({
+    scope: scopeRows.map((r) => ({
       id: r.id,
       name: r.name,
       count: Number(r.n),
       icon: scopeIconFromRawYaml(r.raw_yaml),
+      updatedAt: toIso(r.updated_at),
     })),
   };
+}
+
+function toIso(value: Date | string | null | undefined): string | null {
+  if (!value) return null;
+  const d = value instanceof Date ? value : new Date(String(value));
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
+}
+
+function latestIso(a: string | null, b: string | null): string | null {
+  if (!a) return b;
+  if (!b) return a;
+  return new Date(a).getTime() >= new Date(b).getTime() ? a : b;
 }
 
 export function scopeIconFromRawYaml(rawYaml: string | null): string | null {

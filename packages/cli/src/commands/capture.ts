@@ -4,7 +4,7 @@ import { defineCommand } from "citty";
 import { requireDocoConfig } from "../env.js";
 import { c, cross } from "../output.js";
 
-const DOCO_BASE_URL = "https://doco.to";
+// Host comes from requireDocoConfig() so DOCO_HOST overrides for local dev.
 
 function splitList(s: string | undefined): string[] {
   if (!s) return [];
@@ -46,8 +46,8 @@ async function postCapture(
     | "states",
   body: Record<string, unknown>,
 ): Promise<void> {
-  const { token, docoId } = requireDocoConfig();
-  const url = `${DOCO_BASE_URL}/by-id/${encodeURIComponent(docoId)}/api/${type}.json`;
+  const { token, docoId, host } = requireDocoConfig();
+  const url = `${host}/by-id/${encodeURIComponent(docoId)}/api/${type}.json`;
   let resp: Response;
   try {
     resp = await fetch(url, {

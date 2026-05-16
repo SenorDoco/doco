@@ -16,7 +16,7 @@ import { defineCommand } from "citty";
 import { c, cross, checkmark } from "../output.js";
 import { requireDocoConfig } from "../env.js";
 
-const DOCO_BASE_URL = "https://doco.to";
+// Host comes from requireDocoConfig() so DOCO_HOST overrides for local dev.
 
 export const supersedeCmd = defineCommand({
   meta: {
@@ -101,7 +101,7 @@ export const supersedeCmd = defineCommand({
       bodyMd = String(args["body-md"]);
     }
 
-    const { token, docoId } = requireDocoConfig();
+    const { token, docoId, host } = requireDocoConfig();
 
     const captureBody: Record<string, unknown> = {
       question: String(args.question ?? `Supersede ${priorId} — what changes?`),
@@ -118,7 +118,7 @@ export const supersedeCmd = defineCommand({
     // is also self-documented in prose.
     captureBody.body_md = `${captureBody.body_md ?? ""}\n\n## Supersedes\n\n- ${priorId}\n`.trim();
 
-    const captureUrl = `${DOCO_BASE_URL}/by-id/${encodeURIComponent(docoId)}/api/decisions.json`;
+    const captureUrl = `${host}/by-id/${encodeURIComponent(docoId)}/api/decisions.json`;
     let captureResp: Response;
     try {
       captureResp = await fetch(captureUrl, {
@@ -147,7 +147,7 @@ export const supersedeCmd = defineCommand({
     console.log(checkmark(`Captured new Decision: ${newId}`));
 
     const priorLifecycle = String(args["prior-lifecycle"] ?? "superseded");
-    const patchUrl = `${DOCO_BASE_URL}/by-id/${encodeURIComponent(docoId)}/api/decisions/${priorId}.json`;
+    const patchUrl = `${host}/by-id/${encodeURIComponent(docoId)}/api/decisions/${priorId}.json`;
     let patchResp: Response;
     try {
       patchResp = await fetch(patchUrl, {

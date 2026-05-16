@@ -57,6 +57,8 @@ const TYPE_MAP: { nodeType: string; table: string; plural: string }[] = [
   { nodeType: "log", table: "logs", plural: "logs" },
   { nodeType: "eval", table: "evals", plural: "evals" },
   { nodeType: "reference", table: "reference_entities", plural: "references" },
+  // v7 (decision_01KRRR5BQ16ASY8HQEE0V499YG): State node type.
+  { nodeType: "state", table: "states", plural: "states" },
 ];
 
 async function readStatusFromPg(

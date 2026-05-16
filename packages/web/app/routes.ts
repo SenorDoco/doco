@@ -104,6 +104,14 @@ export default [
   route("by-id/:docoId/api/:type.txt", "routes/by-id.$docoId.api.$type[.]txt.tsx"),
   route("by-id/:docoId/search.json", "routes/by-id.$docoId.search[.]json.tsx"),
   route("by-id/:docoId/scopes/new", "routes/by-id.$docoId.scopes.new.tsx"),
+  // v7 (decision_01KRRR5BQ16ASY8HQEE0V499YG) scope bulk verbs — by-id
+  // shorthand that the splat would otherwise miss because the slug-form
+  // catch-all is more specific. Each re-exports from the splat so the
+  // 308 to the canonical URL still runs.
+  route("by-id/:docoId/api/scopes/:id/activate.json", "routes/by-id.$docoId.api.scopes.$id.activate[.]json.tsx"),
+  route("by-id/:docoId/api/scopes/:id/draft.json", "routes/by-id.$docoId.api.scopes.$id.draft[.]json.tsx"),
+  route("by-id/:docoId/api/scopes/:id/validate.json", "routes/by-id.$docoId.api.scopes.$id.validate[.]json.tsx"),
+  route("by-id/:docoId/api/scopes/:id/excluded-rules.json", "routes/by-id.$docoId.api.scopes.$id.excluded-rules[.]json.tsx"),
   route("by-id/:docoId/:type/:id", "routes/by-id.$docoId.$type.$id.tsx"),
   route("by-id/:docoId/:type", "routes/by-id.$docoId.$type.tsx"),
   route("by-id/:docoId/*", "routes/by-id.$docoId.$.tsx"),
@@ -121,6 +129,11 @@ export default [
   route(":ownerSlug/:docoSlug/api/references/:id.json", "routes/$ownerSlug.$docoSlug.api.references.$id[.]json.tsx"),
   route(":ownerSlug/:docoSlug/api/scopes/:id.json", "routes/$ownerSlug.$docoSlug.api.scopes.$id[.]json.tsx"),
   route(":ownerSlug/:docoSlug/api/scopes/:id/rules.json", "routes/$ownerSlug.$docoSlug.api.scopes.$id.rules[.]json.tsx"),
+  // v7 (decision_01KRRR5BQ16ASY8HQEE0V499YG) scope bulk verbs.
+  route(":ownerSlug/:docoSlug/api/scopes/:id/activate.json", "routes/$ownerSlug.$docoSlug.api.scopes.$id.activate[.]json.tsx"),
+  route(":ownerSlug/:docoSlug/api/scopes/:id/draft.json", "routes/$ownerSlug.$docoSlug.api.scopes.$id.draft[.]json.tsx"),
+  route(":ownerSlug/:docoSlug/api/scopes/:id/validate.json", "routes/$ownerSlug.$docoSlug.api.scopes.$id.validate[.]json.tsx"),
+  route(":ownerSlug/:docoSlug/api/scopes/:id/excluded-rules.json", "routes/$ownerSlug.$docoSlug.api.scopes.$id.excluded-rules[.]json.tsx"),
   route(":ownerSlug/:docoSlug/api/scopes.json", "routes/$ownerSlug.$docoSlug.api.scopes[.]json.tsx"),
   route(":ownerSlug/:docoSlug/api/intents.json", "routes/$ownerSlug.$docoSlug.api.intents[.]json.tsx"),
   route(":ownerSlug/:docoSlug/api/actions.json", "routes/$ownerSlug.$docoSlug.api.actions[.]json.tsx"),
@@ -128,6 +141,8 @@ export default [
   route(":ownerSlug/:docoSlug/api/rules.json", "routes/$ownerSlug.$docoSlug.api.rules[.]json.tsx"),
   route(":ownerSlug/:docoSlug/api/references.json", "routes/$ownerSlug.$docoSlug.api.references[.]json.tsx"),
   route(":ownerSlug/:docoSlug/api/evals.json", "routes/$ownerSlug.$docoSlug.api.evals[.]json.tsx"),
+  // v7: State node POST endpoint.
+  route(":ownerSlug/:docoSlug/api/states.json", "routes/$ownerSlug.$docoSlug.api.states[.]json.tsx"),
   route(":ownerSlug/:docoSlug/api/settings.json", "routes/$ownerSlug.$docoSlug.api.settings[.]json.tsx"),
   // Plain-prose specs for the .json endpoints — one parametrized route handles
   // decisions / intents / scopes / settings.

@@ -14,7 +14,7 @@ import { defineCommand } from "citty";
 import { c, cross } from "../output.js";
 import { requireDocoConfig } from "../env.js";
 
-const DOCO_BASE_URL = "https://doco.to";
+// Host comes from requireDocoConfig() so DOCO_HOST overrides for local dev.
 
 interface ClassifiedRow {
   text: string;
@@ -52,8 +52,8 @@ const addRuleCmd = defineCommand({
       process.exit(2);
     }
 
-    const { token, docoId } = requireDocoConfig();
-    const url = `${DOCO_BASE_URL}/by-id/${encodeURIComponent(docoId)}/api/scopes/${encodeURIComponent(scopeId)}/rules.json`;
+    const { token, docoId, host } = requireDocoConfig();
+    const url = `${host}/by-id/${encodeURIComponent(docoId)}/api/scopes/${encodeURIComponent(scopeId)}/rules.json`;
     let resp: Response;
     try {
       resp = await fetch(url, {
@@ -115,8 +115,8 @@ async function postScopeVerb(
     console.error(cross(`--scope-id must start with 'scope_' (got '${scopeId}').`));
     process.exit(2);
   }
-  const { token, docoId } = requireDocoConfig();
-  const url = `${DOCO_BASE_URL}/by-id/${encodeURIComponent(docoId)}/api/scopes/${encodeURIComponent(scopeId)}/${verb}.json`;
+  const { token, docoId, host } = requireDocoConfig();
+  const url = `${host}/by-id/${encodeURIComponent(docoId)}/api/scopes/${encodeURIComponent(scopeId)}/${verb}.json`;
   let resp: Response;
   try {
     resp = await fetch(url, {

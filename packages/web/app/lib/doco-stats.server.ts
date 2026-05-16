@@ -25,6 +25,9 @@ const ENTITY_TABLES = [
   "ideas",
   "scopes",
   "reference_entities",
+  "logs",
+  // v7 (decision_01KRRR5BQ16ASY8HQEE0V499YG): State node type.
+  "states",
 ] as const;
 
 const EMPTY: DocoStats = { nodes: 0, edges: 0, lastUpdatedAt: null };

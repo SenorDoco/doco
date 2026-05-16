@@ -4,13 +4,26 @@ import { DOCO_TAGLINE, VersionPill } from "~/components/version-pill";
 import { loadHostConfig } from "~/lib/host";
 import { getCurrentPrincipal } from "~/lib/session";
 
+const FALLBACK_HOST = { id: "host_fallback", name: "torrenegra", visibility: "public" } as const;
+
 /**
  * Host home — anonymous landing only. Signed-in users are redirected to
  * /dashboard so the marketing copy never gets in the way of their work.
  */
 export async function loader({ request }: { request: Request }) {
-  if (await getCurrentPrincipal(request)) throw redirect("/dashboard");
-  return { host: await loadHostConfig() };
+  try {
+    if (await getCurrentPrincipal(request)) throw redirect("/dashboard");
+  } catch (error) {
+    if (error instanceof Response) throw error;
+    console.warn("Home session lookup failed; rendering anonymous fallback.", error);
+  }
+
+  try {
+    return { host: await loadHostConfig() };
+  } catch (error) {
+    console.warn("Home host config lookup failed; rendering fallback host.", error);
+    return { host: FALLBACK_HOST };
+  }
 }
 
 export function meta({ data }: { data: Awaited<ReturnType<typeof loader>> | undefined }) {
@@ -43,15 +56,11 @@ export default function Home({ loaderData }: { loaderData: Awaited<ReturnType<ty
         </div>
       </header>
       <main className="flex flex-1 flex-col items-center justify-center px-6 py-16">
-        <div className="flex w-full max-w-4xl flex-col items-center gap-6 text-center">
+        <div className="-translate-y-3 md:-translate-y-6 flex w-full max-w-4xl flex-col items-center gap-8 text-center">
           <DocoMark height={96} />
-          <h1 className="w-full max-w-4xl pt-2 text-4xl font-bold leading-tight md:text-6xl">
+          <h1 className="w-full max-w-4xl text-2xl font-bold leading-tight md:text-4xl">
             {DOCO_TAGLINE}
           </h1>
-          <p className="w-full max-w-lg text-sm text-muted-foreground">
-            AI-native documentation of important ideas, rules, and evals.
-          </p>
-
           <div className="grid w-full grid-cols-1 gap-3 md:grid-cols-2 md:gap-4">
             <Link
               to="/onboarding/join"
@@ -73,7 +82,7 @@ export default function Home({ loaderData }: { loaderData: Awaited<ReturnType<ty
             </Link>
           </div>
 
-          <p className="max-w-md pt-6 text-xs text-muted-foreground">
+          <p className="max-w-md text-xs text-muted-foreground">
             Are you an AI agent and don't know the answer? Ask whomever prompted you which way to
             go.
           </p>

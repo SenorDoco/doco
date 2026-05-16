@@ -133,6 +133,12 @@ function nodeTypeLabel(type: string): string {
   return NODE_TYPE_LABELS[type] ?? `${type.charAt(0).toUpperCase()}${type.slice(1)}s`;
 }
 
+function toIso(value: Date | string | null | undefined): string | null {
+  if (!value) return null;
+  const d = value instanceof Date ? value : new Date(String(value));
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
+}
+
 async function readScopeRaw(scopeId: string): Promise<Record<string, unknown> | null> {
   try {
     return await withClient(async (c) => {
@@ -256,7 +262,7 @@ export async function loader({
   }
 
   // Stats: count entities tagged with this scope by lifecycle.
-  const memberStats: { lifecycle: string; count: number }[] = docoId
+  const memberStats: { lifecycle: string; count: number; updatedAt: string | null }[] = docoId
     ? await withClient(async (c) => {
         const tables = [
           "decisions",
@@ -266,29 +272,40 @@ export async function loader({
           "evals",
           "reference_entities",
           "ideas",
+          "logs",
+          // v7 (decision_01KRRR5BQ16ASY8HQEE0V499YG): States count too.
+          "states",
         ];
         const unionSql = tables
           .map(
             (t) =>
-              `SELECT COALESCE(${t}.lifecycle, 'active') AS lifecycle FROM ${t}
+              `SELECT COALESCE(${t}.lifecycle, 'active') AS lifecycle, ${t}.updated_at FROM ${t}
                  JOIN edges e ON e.from_id = ${t}.id
                               AND e.edge_type = 'in_scope_of'
                               AND e.to_id = $1
                 WHERE ${t}.doco_id = $2`,
           )
           .join(" UNION ALL ");
-        const rs = await c.query<{ lifecycle: string; n: string }>(
-          `SELECT lifecycle, COUNT(*)::text AS n FROM (${unionSql}) t
+        const rs = await c.query<{
+          lifecycle: string;
+          n: string;
+          updated_at: Date | string | null;
+        }>(
+          `SELECT lifecycle, COUNT(*)::text AS n, MAX(updated_at) AS updated_at FROM (${unionSql}) t
              GROUP BY lifecycle ORDER BY lifecycle`,
           [id, docoId],
         );
-        return rs.rows.map((r) => ({ lifecycle: r.lifecycle, count: Number(r.n) }));
+        return rs.rows.map((r) => ({
+          lifecycle: r.lifecycle,
+          count: Number(r.n),
+          updatedAt: toIso(r.updated_at),
+        }));
       })
     : [];
   const memberCount = memberStats.reduce((sum, s) => sum + s.count, 0);
 
   // Stats: count entities tagged with this scope by node type.
-  const memberTypeStats: { nodeType: string; count: number }[] = docoId
+  const memberTypeStats: { nodeType: string; count: number; updatedAt: string | null }[] = docoId
     ? await withClient(async (c) => {
         const tables: { table: string; nodeType: string }[] = [
           { table: "decisions", nodeType: "decision" },
@@ -299,23 +316,34 @@ export async function loader({
           { table: "evals", nodeType: "eval" },
           { table: "reference_entities", nodeType: "reference" },
           { table: "ideas", nodeType: "idea" },
+          { table: "logs", nodeType: "log" },
+          // v7 (decision_01KRRR5BQ16ASY8HQEE0V499YG): State node type.
+          { table: "states", nodeType: "state" },
         ];
         const unionSql = tables
           .map(
             (t) =>
-              `SELECT '${t.nodeType}'::text AS node_type FROM ${t.table}
+              `SELECT '${t.nodeType}'::text AS node_type, ${t.table}.updated_at FROM ${t.table}
                  JOIN edges e ON e.from_id = ${t.table}.id
                               AND e.edge_type = 'in_scope_of'
                               AND e.to_id = $1
                 WHERE ${t.table}.doco_id = $2`,
           )
           .join(" UNION ALL ");
-        const rs = await c.query<{ node_type: string; n: string }>(
-          `SELECT node_type, COUNT(*)::text AS n FROM (${unionSql}) t
+        const rs = await c.query<{
+          node_type: string;
+          n: string;
+          updated_at: Date | string | null;
+        }>(
+          `SELECT node_type, COUNT(*)::text AS n, MAX(updated_at) AS updated_at FROM (${unionSql}) t
              GROUP BY node_type ORDER BY COUNT(*) DESC`,
           [id, docoId],
         );
-        return rs.rows.map((r) => ({ nodeType: r.node_type, count: Number(r.n) }));
+        return rs.rows.map((r) => ({
+          nodeType: r.node_type,
+          count: Number(r.n),
+          updatedAt: toIso(r.updated_at),
+        }));
       })
     : [];
 
@@ -334,6 +362,8 @@ export async function loader({
           "evals",
           "ideas",
           "reference_entities",
+          // v7 (decision_01KRRR5BQ16ASY8HQEE0V499YG): include States.
+          "states",
         ];
         const unionSql = tables
           .map(
@@ -470,14 +500,10 @@ export async function loader({
       // v7 (decision_01KRRR5BQ16ASY8HQEE0V499YG): surface the scope's
       // gating + lifecycle data so the editor can render it.
       default_node_lifecycle:
-        typeof raw.default_node_lifecycle === "string"
-          ? raw.default_node_lifecycle
-          : null,
+        typeof raw.default_node_lifecycle === "string" ? raw.default_node_lifecycle : null,
       gated_by: Array.from(scopeGatedBy),
       excluded_rules: Array.isArray(raw.excluded_rules)
-        ? (raw.excluded_rules as unknown[]).filter(
-            (v): v is string => typeof v === "string",
-          )
+        ? (raw.excluded_rules as unknown[]).filter((v): v is string => typeof v === "string")
         : [],
     },
     primaryIntent,
@@ -717,28 +743,26 @@ export default function ScopePage({
               {scope.default_node_lifecycle ? (
                 <p>
                   <span className="font-mono">default_node_lifecycle</span> ={" "}
-                  <Badge>{scope.default_node_lifecycle}</Badge> — captures into this
-                  scope (or descendants) start at this lifecycle unless the author
-                  passes an explicit override.
+                  <Badge>{scope.default_node_lifecycle}</Badge> — captures into this scope (or
+                  descendants) start at this lifecycle unless the author passes an explicit
+                  override.
                 </p>
               ) : null}
               {scope.gated_by && scope.gated_by.length > 0 ? (
                 <p>
-                  <span className="font-mono">gated_by</span>: {scope.gated_by.length}{" "}
-                  rule{scope.gated_by.length === 1 ? "" : "s"} cited as authoring rules
-                  for this scope (see the Authoring rules section below).
+                  <span className="font-mono">gated_by</span>: {scope.gated_by.length} rule
+                  {scope.gated_by.length === 1 ? "" : "s"} cited as authoring rules for this scope
+                  (see the Authoring rules section below).
                 </p>
               ) : null}
               {scope.excluded_rules && scope.excluded_rules.length > 0 ? (
                 <p>
-                  <span className="font-mono">excluded_rules</span>:{" "}
-                  {scope.excluded_rules.length} inherited rule
+                  <span className="font-mono">excluded_rules</span>: {scope.excluded_rules.length}{" "}
+                  inherited rule
                   {scope.excluded_rules.length === 1 ? "" : "s"} opted out —{" "}
                   {scope.excluded_rules.slice(0, 4).map((rid, i, arr) => (
                     <span key={rid}>
-                      <Link
-                        to={entityUrl({ ownerSlug, docoSlug, nodeType: "rule", id: rid })}
-                      >
+                      <Link to={entityUrl({ ownerSlug, docoSlug, nodeType: "rule", id: rid })}>
                         <span className="font-mono">{rid.slice(0, 18)}…</span>
                       </Link>
                       {i < arr.length - 1 ? ", " : ""}
@@ -755,7 +779,7 @@ export default function ScopePage({
 
         <div className="grid gap-4 min-[840px]:grid-cols-12">
           {/* Left column */}
-          <div className="min-[840px]:col-span-6 space-y-4">
+          <div className="min-w-0 min-[840px]:col-span-6 space-y-4">
             <NodesOverviewCard
               sections={
                 [
@@ -770,6 +794,7 @@ export default function ScopePage({
                       count: t.count,
                       ariaLabel: `View ${t.count} ${nodeTypeLabel(t.nodeType).toLowerCase()} in ${scope.name}`,
                       color: nodeTypeColor(t.nodeType),
+                      updatedAt: t.updatedAt,
                     })),
                   },
                   {
@@ -782,6 +807,7 @@ export default function ScopePage({
                       label: s.lifecycle,
                       count: s.count,
                       ariaLabel: `View ${s.count} ${s.lifecycle} nodes in ${scope.name}`,
+                      updatedAt: s.updatedAt,
                     })),
                   },
                 ] satisfies NodesOverviewSection[]
@@ -816,7 +842,7 @@ export default function ScopePage({
                   />
                   <button
                     type="submit"
-                    className="rounded-md bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:opacity-90"
+                    className="rounded-md border border-border bg-card px-4 py-2.5 text-sm font-semibold text-foreground hover:bg-muted"
                   >
                     Search
                   </button>
@@ -891,7 +917,7 @@ export default function ScopePage({
           </div>
 
           {/* Right column — activity heatmap + feed */}
-          <aside className="min-[840px]:col-span-6 space-y-4">
+          <aside className="min-w-0 min-[840px]:col-span-6 space-y-4">
             <Card>
               <CardHeader>
                 <CardTitle className="text-sm">Activity</CardTitle>
@@ -905,13 +931,13 @@ export default function ScopePage({
             </Card>
 
             <Card>
-              <CardHeader>
+              <CardHeader className="px-4 py-3">
                 <CardTitle className="text-sm">Latest activity</CardTitle>
               </CardHeader>
               <CardContent className="p-0">
                 {items.length === 0 ? (
-                  <div className="px-5 py-6 text-xs text-muted-foreground">
-                    No activity for nodes tagged with this scope yet.
+                  <div className="px-4 pb-4 text-xs leading-5 text-muted-foreground">
+                    No scoped activity yet.
                   </div>
                 ) : (
                   <div className="divide-y divide-border">
@@ -974,16 +1000,14 @@ function PrimaryIntentCard({
               <CardDescription>No main intent is attached yet.</CardDescription>
             )}
           </div>
+          <Link
+            to={`/${ownerSlug}/${docoSlug}/scopes/${scopeId}/intent/replace`}
+            className="inline-flex h-8 shrink-0 items-center rounded-md border border-border px-2.5 text-xs font-semibold hover:bg-muted"
+          >
+            Replace
+          </Link>
         </div>
       </CardHeader>
-      <CardContent>
-        <Link
-          to={`/${ownerSlug}/${docoSlug}/scopes/${scopeId}/intent/replace`}
-          className="inline-flex rounded-md border border-border px-3 py-2 text-xs font-semibold hover:bg-card"
-        >
-          Replace
-        </Link>
-      </CardContent>
     </Card>
   );
 }

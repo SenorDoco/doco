@@ -537,16 +537,19 @@ async function withHitDerivedCounts(
     lifecycle: facets.lifecycle.map((f) => ({
       value: f.value,
       count: lifecycleCounts.get(f.value) ?? 0,
+      updatedAt: f.updatedAt,
     })),
     nodeType: facets.nodeType.map((f) => ({
       value: f.value,
       count: nodeTypeCounts.get(f.value) ?? 0,
+      updatedAt: f.updatedAt,
     })),
     scope: facets.scope.map((f) => ({
       id: f.id,
       name: f.name,
       count: scopeCounts.get(f.name) ?? 0,
       icon: f.icon,
+      updatedAt: f.updatedAt,
     })),
   };
 }
