@@ -8,10 +8,12 @@ import { DEFAULT_SCOPE_TEMPLATES, findScopeTemplate } from "@doco/host";
 import { loadDocoForAdmin, loadDocoForRead } from "~/lib/doco-access.server";
 import { loadHostConfig } from "~/lib/host";
 import {
+  createIntentInDoco,
   createRuleInDoco,
   createScopeInDoco,
   reindex,
   seedScopeFromTemplate,
+  updateScopeInDoco,
 } from "~/lib/redeem.server";
 import { listScopeDetails } from "~/lib/scope-helpers.server";
 import { SiteHeader } from "~/components/site-header";
@@ -187,6 +189,7 @@ export async function action({
       // new scope through the single entry point so the Doco-creation
       // path and this picker path stay aligned.
       await seedScopeFromTemplate({
+        docoDir: dir,
         docoId: docoId as EntityId<"doco">,
         scopeId: newId,
         template: tpl,
@@ -198,6 +201,7 @@ export async function action({
       const purpose = String(form.get("purpose") ?? "").trim();
       const parentId = String(form.get("parent_id") ?? "").trim() || null;
       if (!name) return { error: "Scope name is required." };
+      if (!purpose) return { error: "Main intent is required." };
       if (!SCOPE_NAME_RE.test(name)) {
         return {
           error: "Name must start with a letter and use only lowercase letters, digits, hyphens, underscores. No slashes (use the parent dropdown).",
@@ -262,9 +266,9 @@ export async function action({
         rules.push(r);
       }
       // Per decision_01KRPRDR1AD7S1RP6E69BQDB2G rules are first-class
-      // Rule entities now. Create the scope, then seed: the optional
-      // "Purpose" textarea → a guidance Rule; the optional inline
-      // first-rule fieldset → an authoring Rule.
+      // Rule entities now. Create the scope, then seed: the required
+      // main intent textarea → an Intent attached as primary; the
+      // optional inline first-rule fieldset → an authoring Rule.
       const newScopeId = await createScopeInDoco({
         docoDir: dir,
         docoId: docoId as EntityId<"doco">,
@@ -274,15 +278,17 @@ export async function action({
         watched,
         createdBy,
       });
-      if (purpose) {
-        await createRuleInDoco({
-          docoId: docoId as EntityId<"doco">,
-          kind: "guidance",
-          summary: purpose,
-          scopeId: newScopeId,
-          createdBy,
-        });
-      }
+      const primaryIntentId = await createIntentInDoco({
+        docoId: docoId as EntityId<"doco">,
+        summary: purpose,
+        scopeId: newScopeId,
+        createdBy,
+      });
+      await updateScopeInDoco({
+        docoDir: dir,
+        scopeId: newScopeId,
+        primaryIntentId,
+      });
       for (const rule of rules) {
         const reason =
           typeof rule.reason === "string" && rule.reason.trim()
@@ -301,7 +307,7 @@ export async function action({
           createdBy,
         });
       }
-      await reindex(dir);
+      await reindex(dir, docoId, [newScopeId, primaryIntentId]);
       // After-create redirect: go straight to the merged scope page so
       // the user can refine rules right away (decision_01KRPNZY7W6CCMYNKGND67BP0B).
       return redirect(`/${ownerSlug}/${docoSlug}/scopes/${newScopeId}`);
@@ -563,8 +569,8 @@ export default function AddScope({
             <CardDescription>
               Anything that isn't a template fit. Pick a parent if this scope
               belongs under another one — the parent has to exist already (add
-              it first). You can also seed one rule here; add more rules on
-              the next page.
+              it first). You can also seed one rule here; add more rules on the
+              next page.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -634,12 +640,13 @@ export default function AddScope({
               </div>
               <label className="block text-xs">
                 <span className="mb-1 block font-semibold text-foreground">
-                  Purpose (optional)
+                  Main intent *
                 </span>
                 <textarea
                   name="purpose"
                   rows={3}
-                  placeholder="Why this scope exists. Agents read this before authoring nodes into it."
+                  required
+                  placeholder="What this scope is meant to make true."
                   className="w-full rounded-md border border-border bg-input px-3 py-2 text-xs text-foreground outline-none focus:border-primary"
                 />
               </label>

@@ -8,6 +8,7 @@ export type {
 } from "./llm.server";
 export {
   createDocoInHost,
+  createIntentInDoco,
   createRuleInDoco,
   createScopeInDoco,
   materializeScopeTree,

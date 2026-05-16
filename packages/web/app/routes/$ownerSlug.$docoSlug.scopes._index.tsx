@@ -24,7 +24,7 @@ export async function loader({
 }) {
   const { ownerSlug, docoSlug } = params;
   const { dir, meta, me } = await loadDocoForRead(request, ownerSlug, docoSlug);
-  const scopes = await listScopeDetails(dir, { includeIntents: true });
+  const scopes = await listScopeDetails(dir, { includePrimaryIntent: true });
   const url = new URL(request.url);
   const isOnboarding = url.searchParams.get("onboarding") === "1";
   if (scopes.length === 0) {
@@ -135,13 +135,10 @@ export default function ScopesIndex({
                   </span>
                 ) : null}
               </div>
-              {s.intents[0] ? (
+              {s.primary_intent ? (
                 <div className="flex min-w-0 items-start gap-1.5 text-[11px] leading-snug text-muted-foreground">
                   <span className="shrink-0 font-semibold text-foreground/70">Intent:</span>
-                  <span className="min-w-0 break-words">
-                    {s.intents[0].summary}
-                    {s.intents.length > 1 ? ` + ${s.intents.length - 1} more` : ""}
-                  </span>
+                  <span className="min-w-0 break-words">{s.primary_intent.summary}</span>
                 </div>
               ) : null}
             </div>

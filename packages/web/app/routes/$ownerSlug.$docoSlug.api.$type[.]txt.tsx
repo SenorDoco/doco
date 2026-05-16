@@ -188,6 +188,10 @@ BODY (JSON)
                             scope.
   name           required*  lowercase, starts with a letter, no slashes.
                             *if template_name is absent.
+  intent_summary required*  the main Intent this scope serves. The
+                            created Intent is attached to the scope and
+                            recorded on the Scope as primary_intent_id.
+                            *if template_name is absent.
   icon           optional   single emoji.
   parent_id      optional   id of an existing scope to nest this one
                             under.
@@ -231,7 +235,7 @@ EXAMPLE — custom scope, not watched, nested under an existing parent
     -d '{
       "name": "payments",
       "icon": "💳",
-      "purpose": "Anything touching Stripe / billing flows.",
+      "intent_summary": "Anything touching Stripe / billing flows stays visible and consistently documented.",
       "parent_id": "scope_<ULID-of-parent>",
       "watched": false
     }'

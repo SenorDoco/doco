@@ -71,11 +71,12 @@ export interface ScopeDetails {
   parent_ids: string[];
   lifecycle: string;
   is_watched: boolean;
-  intents: {
+  primary_intent_id: string | null;
+  primary_intent: {
     id: string;
     summary: string;
     lifecycle: string;
-  }[];
+  } | null;
 }
 
 export async function resolveScopeIcons(
@@ -96,7 +97,7 @@ export async function resolveScopeIcons(
 
 export async function listScopeDetails(
   docoDir: string,
-  opts: { includeIntents?: boolean } = {},
+  opts: { includePrimaryIntent?: boolean } = {},
 ): Promise<ScopeDetails[]> {
   const docoId = await docoIdFromDir(docoDir);
   if (!docoId) return [];
@@ -122,12 +123,46 @@ export async function listScopeDetails(
           parent_ids: Array.isArray(e.scopes) ? (e.scopes as string[]) : [],
           lifecycle: typeof e.lifecycle === "string" ? e.lifecycle : "active",
           is_watched: row.name === "global" || e.watched === true,
-          intents: [],
+          primary_intent_id:
+            typeof e.primary_intent_id === "string" ? e.primary_intent_id : null,
+          primary_intent: null,
         });
       }
 
-      if (opts.includeIntents && out.length > 0) {
-        const byScopeId = new Map(out.map((s) => [s.id, s.intents]));
+      if (opts.includePrimaryIntent && out.length > 0) {
+        const explicitIds = [
+          ...new Set(
+            out
+              .map((s) => s.primary_intent_id)
+              .filter((id): id is string => typeof id === "string" && id.length > 0),
+          ),
+        ];
+        const explicitById = new Map<string, ScopeDetails["primary_intent"]>();
+        if (explicitIds.length > 0) {
+          const explicitRows = await c.query<{
+            id: string;
+            summary: string;
+            lifecycle: string;
+          }>(
+            `SELECT id,
+                    COALESCE(summary, '') AS summary,
+                    COALESCE(lifecycle, 'active') AS lifecycle
+               FROM intents
+              WHERE doco_id = $1
+                AND id = ANY($2::text[])`,
+            [docoId, explicitIds],
+          );
+          for (const row of explicitRows.rows) {
+            if (row.summary.trim().length === 0) continue;
+            explicitById.set(row.id, {
+              id: row.id,
+              summary: row.summary,
+              lifecycle: row.lifecycle,
+            });
+          }
+        }
+
+        const attachedByScopeId = new Map<string, NonNullable<ScopeDetails["primary_intent"]>[]>();
         const intentRows = await c.query<{
           scope_id: string;
           id: string;
@@ -150,13 +185,30 @@ export async function listScopeDetails(
           [docoId],
         );
         for (const row of intentRows.rows) {
-          const intents = byScopeId.get(row.scope_id);
-          if (!intents || row.summary.trim().length === 0) continue;
+          if (row.summary.trim().length === 0) continue;
+          const intents = attachedByScopeId.get(row.scope_id) ?? [];
           intents.push({
             id: row.id,
             summary: row.summary,
             lifecycle: row.lifecycle,
           });
+          attachedByScopeId.set(row.scope_id, intents);
+        }
+
+        for (const scope of out) {
+          if (scope.primary_intent_id) {
+            scope.primary_intent = explicitById.get(scope.primary_intent_id) ?? null;
+            continue;
+          }
+          const attached = attachedByScopeId.get(scope.id) ?? [];
+          // Legacy bootstrap: before scopes carried primary_intent_id, a
+          // template-created scope usually had exactly one active/proposed
+          // Intent tagged to it. Only use that when it is unambiguous.
+          const onlyAttached = attached[0];
+          if (attached.length === 1 && onlyAttached) {
+            scope.primary_intent = onlyAttached;
+            scope.primary_intent_id = onlyAttached.id;
+          }
         }
       }
     });

@@ -41,7 +41,12 @@ import { updateEntity } from "~/lib/capture.server";
 import { loadDocoForAdmin } from "~/lib/doco-access.server";
 import { loadHostConfig } from "~/lib/host";
 import { nodeTypeColor } from "~/lib/node-colors";
-import { reindex, setScopeWatchedInDoco, updateScopeInDoco } from "~/lib/redeem.server";
+import {
+  createIntentInDoco,
+  reindex,
+  setScopeWatchedInDoco,
+  updateScopeInDoco,
+} from "~/lib/redeem.server";
 import { listScopeDetails, readDocoMetadata } from "~/lib/scope-helpers.server";
 
 const HEATMAP_WEEKS = 26;
@@ -81,6 +86,12 @@ interface RuleLifecycleActionResult {
   rule_id?: string;
   lifecycle?: string;
   error?: string;
+}
+
+interface PrimaryIntentRecord {
+  id: string;
+  summary: string;
+  lifecycle: string;
 }
 
 function asFieldList(p: AuthoringPredicateRecord): string[] {
@@ -139,6 +150,53 @@ async function readScopeRaw(scopeId: string): Promise<Record<string, unknown> | 
       const row = r.rows[0];
       if (!row) return null;
       return parseYaml(row.raw_yaml) as Record<string, unknown>;
+    });
+  } catch {
+    return null;
+  }
+}
+
+async function readPrimaryIntentForScope(
+  docoId: string | null,
+  scopeId: string,
+  primaryIntentId?: string | null,
+): Promise<PrimaryIntentRecord | null> {
+  if (!docoId) return null;
+  try {
+    return await withClient(async (c) => {
+      if (primaryIntentId) {
+        const r = await c.query<PrimaryIntentRecord>(
+          `SELECT id,
+                  COALESCE(summary, '') AS summary,
+                  COALESCE(lifecycle, 'active') AS lifecycle
+             FROM intents
+            WHERE doco_id = $1
+              AND id = $2
+            LIMIT 1`,
+          [docoId, primaryIntentId],
+        );
+        return r.rows[0] ?? null;
+      }
+
+      const r = await c.query<PrimaryIntentRecord>(
+        `SELECT i.id,
+                COALESCE(i.summary, '') AS summary,
+                COALESCE(i.lifecycle, 'active') AS lifecycle
+           FROM edges e
+           JOIN intents i ON i.id = e.from_id
+                         AND i.doco_id = e.doco_id
+          WHERE e.doco_id = $1
+            AND e.edge_type = 'in_scope_of'
+            AND e.from_node_type = 'intent'
+            AND e.to_node_type = 'scope'
+            AND e.to_id = $2
+            AND COALESCE(i.lifecycle, 'active') IN ('active', 'proposed')
+          ORDER BY i.created_at ASC, i.id ASC
+          LIMIT 2`,
+        [docoId, scopeId],
+      );
+      const onlyIntent = r.rows[0];
+      return r.rows.length === 1 && onlyIntent ? onlyIntent : null;
     });
   } catch {
     return null;
@@ -347,6 +405,9 @@ export async function loader({
 
   const isWatched =
     String(raw.name) === "global" || (raw as { watched?: unknown }).watched === true;
+  const primaryIntentId =
+    typeof raw.primary_intent_id === "string" ? raw.primary_intent_id : null;
+  const primaryIntent = await readPrimaryIntentForScope(docoId, id, primaryIntentId);
 
   return {
     ownerSlug,
@@ -359,7 +420,9 @@ export async function loader({
       icon: typeof raw.icon === "string" ? raw.icon : "",
       lifecycle: typeof raw.lifecycle === "string" ? raw.lifecycle : "active",
       is_watched: isWatched,
+      primary_intent_id: primaryIntent?.id ?? primaryIntentId,
     },
+    primaryIntent,
     rules: rulesByKind,
     allScopes,
     memberCount,
@@ -378,7 +441,7 @@ export async function action({
   params: { ownerSlug: string; docoSlug: string; id: string };
 }) {
   const { ownerSlug, docoSlug, id } = params;
-  const { dir, meta } = await loadDocoForAdmin(request, ownerSlug, docoSlug);
+  const { dir, meta, me } = await loadDocoForAdmin(request, ownerSlug, docoSlug);
   const form = await request.formData();
   const intent = String(form.get("intent") ?? "");
   const scopeId = id as EntityId<"scope">;
@@ -405,6 +468,50 @@ export async function action({
     } else if (intent === "save_icon") {
       const icon = String(form.get("icon") ?? "").trim();
       await updateScopeInDoco({ docoDir: dir, scopeId, icon: icon || null });
+    } else if (intent === "replace_primary_intent") {
+      const summary = String(form.get("summary") ?? "").trim();
+      if (!summary) {
+        return { error: "Main intent is required." };
+      }
+      const raw = await readScopeRaw(id);
+      const existingPrimaryId =
+        typeof raw?.primary_intent_id === "string"
+          ? raw.primary_intent_id
+          : (await readPrimaryIntentForScope(meta.docoId, id))?.id ?? null;
+      const actorId = (me?.id ??
+        (meta.ownerId.startsWith("principal_") ? meta.ownerId : null)) as EntityId<"principal"> | null;
+      const newIntentId = await createIntentInDoco({
+        docoId: meta.docoId as EntityId<"doco">,
+        summary,
+        scopeId,
+        createdBy: actorId,
+      });
+      if (existingPrimaryId && existingPrimaryId !== newIntentId) {
+        const current = await readPrimaryIntentForScope(meta.docoId, id, existingPrimaryId);
+        if (current && current.lifecycle !== "abandoned") {
+          const result = await updateEntity({
+            docoDir: dir,
+            docoId: meta.docoId,
+            ownerSlug,
+            docoSlug,
+            nodeType: "intent",
+            pluralDir: "intents",
+            id: existingPrimaryId,
+            patch: { lifecycle: "abandoned" },
+            allowedFields: ["lifecycle"],
+            docoHost: new URL(request.url).origin,
+            actorId,
+          });
+          if ("error" in result) return { error: result.error };
+        }
+      }
+      await updateScopeInDoco({
+        docoDir: dir,
+        scopeId,
+        primaryIntentId: newIntentId,
+      });
+      await reindex(dir, meta.docoId, [id, newIntentId]);
+      return redirect(back);
     } else if (intent === "abandon_rule" || intent === "activate_rule") {
       // Per decision_01KRPRDR1AD7S1RP6E69BQDB2G abandoning any rule
       // (authoring, guidance, or tagged) is the same operation: PATCH the
@@ -502,6 +609,7 @@ export default function ScopePage({
     ownerSlug,
     docoSlug,
     scope,
+    primaryIntent,
     rules,
     allScopes,
     memberCount,
@@ -577,6 +685,12 @@ export default function ScopePage({
             ← Back to scopes
           </Link>
         </div>
+
+        <PrimaryIntentCard
+          primaryIntent={primaryIntent}
+          ownerSlug={ownerSlug}
+          docoSlug={docoSlug}
+        />
 
         <div className="grid gap-4 min-[840px]:grid-cols-12">
           {/* Left column */}
@@ -768,6 +882,72 @@ export default function ScopePage({
         </div>
       </main>
     </div>
+  );
+}
+
+function PrimaryIntentCard({
+  primaryIntent,
+  ownerSlug,
+  docoSlug,
+}: {
+  primaryIntent: PrimaryIntentRecord | null;
+  ownerSlug: string;
+  docoSlug: string;
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex flex-wrap items-start gap-3">
+          <div className="min-w-0 flex-1">
+            <CardTitle className="text-sm">Main intent</CardTitle>
+            {primaryIntent ? (
+              <CardDescription>
+                <Link
+                  to={entityUrl({
+                    ownerSlug,
+                    docoSlug,
+                    nodeType: "intent",
+                    id: primaryIntent.id,
+                  })}
+                  className="text-foreground hover:text-primary"
+                >
+                  {primaryIntent.summary}
+                </Link>
+                {primaryIntent.lifecycle !== "active" ? (
+                  <span className="ml-2">
+                    <Badge>{primaryIntent.lifecycle}</Badge>
+                  </span>
+                ) : null}
+              </CardDescription>
+            ) : (
+              <CardDescription>No main intent is attached yet.</CardDescription>
+            )}
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <Form method="post" className="flex flex-col gap-2 sm:flex-row">
+          <input type="hidden" name="intent" value="replace_primary_intent" />
+          <label className="sr-only" htmlFor="scope-primary-intent">
+            Main intent
+          </label>
+          <textarea
+            id="scope-primary-intent"
+            name="summary"
+            required
+            rows={2}
+            defaultValue={primaryIntent?.summary ?? ""}
+            className="min-w-0 flex-1 rounded-md border border-border bg-input px-3 py-2 text-xs text-foreground outline-none focus:border-primary"
+          />
+          <button
+            type="submit"
+            className="self-start rounded-md border border-border px-3 py-2 text-xs font-semibold hover:bg-card"
+          >
+            Replace intent
+          </button>
+        </Form>
+      </CardContent>
+    </Card>
   );
 }
 

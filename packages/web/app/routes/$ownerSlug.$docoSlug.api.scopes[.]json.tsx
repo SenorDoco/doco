@@ -5,10 +5,12 @@ import { loadDocoForAdmin, loadDocoForRead } from "~/lib/doco-access.server";
 import { listScopeDetails, readDocoMetadata } from "~/lib/scope-helpers.server";
 import { renderOperationLines } from "~/lib/capture.server";
 import {
+  createIntentInDoco,
   createRuleInDoco,
   createScopeInDoco,
   reindex,
   seedScopeFromTemplate,
+  updateScopeInDoco,
 } from "~/lib/redeem.server";
 
 /**
@@ -27,6 +29,8 @@ import {
  *     into the new scope.
  *   - `name`: string (required if `template_name` absent) — lowercase,
  *     starts with a letter, no slashes.
+ *   - `intent_summary`: string (required if `template_name` absent) —
+ *     the main Intent this scope serves.
  *   - `icon`: string (optional) — single emoji.
  *   - `parent_id`: string (optional) — id of an existing scope to nest
  *     this one under.
@@ -44,6 +48,7 @@ const SCOPE_NAME_RE = /^[a-z][a-z0-9_-]*$/;
 interface ScopeCreateBody {
   template_name?: string;
   name?: string;
+  intent_summary?: string;
   icon?: string;
   parent_id?: string;
   /**
@@ -145,6 +150,7 @@ export async function action({
   const t0 = Date.now();
 
   let createOpts: Parameters<typeof createScopeInDoco>[0];
+  let customIntentSummary: string | null = null;
   let seedGuidanceText: string | null = null;
   let templateToSeed: NonNullable<ReturnType<typeof findScopeTemplate>> | null = null;
   // Per decision_01KRPRDR1AD7S1RP6E69BQDB2G the body's `authoring_rules`
@@ -191,9 +197,16 @@ export async function action({
     seedGuidanceText = tpl.intentSummary;
   } else {
     const name = (body.name ?? "").trim().toLowerCase();
+    customIntentSummary = (body.intent_summary ?? "").trim();
     if (!name) {
       return Response.json(
         { error: "Either `template_name` or `name` is required." },
+        { status: 400 },
+      );
+    }
+    if (!customIntentSummary) {
+      return Response.json(
+        { error: "`intent_summary` is required when creating a custom scope." },
         { status: 400 },
       );
     }
@@ -241,6 +254,7 @@ export async function action({
   // template rule; custom body guidance remains prose-only Rules.
   if (templateToSeed) {
     const seeded = await seedScopeFromTemplate({
+      docoDir: dir,
       docoId,
       scopeId: newScopeId,
       template: templateToSeed,
@@ -248,6 +262,19 @@ export async function action({
     });
     if (seeded.intentId) changedEntityIds.push(seeded.intentId);
     changedEntityIds.push(...seeded.ruleIds);
+  } else if (customIntentSummary) {
+    const intentId = await createIntentInDoco({
+      docoId,
+      summary: customIntentSummary,
+      scopeId: newScopeId,
+      createdBy,
+    });
+    await updateScopeInDoco({
+      docoDir: dir,
+      scopeId: newScopeId,
+      primaryIntentId: intentId,
+    });
+    changedEntityIds.push(intentId);
   }
   for (const g of seedGuidanceFromBody) {
     if (g.text.trim()) {
@@ -284,6 +311,7 @@ export async function action({
   const scopeIcon = createOpts.icon;
   const summary =
     seedGuidanceText?.trim() ||
+    customIntentSummary?.trim() ||
     seedGuidanceFromBody[0]?.text?.trim() ||
     `Scope: ${scopeName}${watched ? " (watched)" : ""}`;
   const footer_lines = renderOperationLines({
