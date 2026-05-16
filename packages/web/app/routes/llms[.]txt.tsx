@@ -84,7 +84,26 @@ miss the call to action.
 
 After rendering the block, you can move on to step 4.
 
-## 4. Connect — load the protocol and start
+## 4. Commit the bootstrap files to git
+
+\`doco.md\`, \`AGENTS.md\`, \`CLAUDE.md\`, and the \`.gitignore\` entry
+need to land in git so a fresh clone / CI runner / teammate's agent
+discovers this Doco. **This is a separate action from Doco capture
+— capture moved nodes into doco.to via HTTP POSTs, those are
+durable on the host; this is the git-level commit so the REPO
+carries the Doco coordinates.** Don't conflate the two in your
+narration; users will reasonably ask "why push? you said it's in
+Doco" if you do.
+
+    git add doco.md AGENTS.md CLAUDE.md .gitignore
+    git commit -m "Wire repo into Doco at <doco_url>"
+
+Push per the project's git workflow. If unclear, ASK ("commit + push
+now, or do you commit yourself?"). Some Docos carry an "always
+commit and push" Rule on Global — read the bootstrap response's
+Global scope rules to find out.
+
+## 5. Connect — load the protocol and start
 
 On every session, fetch the protocol and follow it:
 
@@ -96,7 +115,8 @@ footer, capture-before-done, tally). Per-prompt search:
 
     curl -fsS "https://doco.to/agent/\${DOCO_KEY}/search.json?q=<paraphrase>"
 
-Capture:
+Capture (this is the Doco-side write — adds nodes on doco.to, not
+to git):
 
     curl -X POST "https://doco.to/agent/\${DOCO_KEY}/api/decisions.json" \\
       -H "Content-Type: application/json" -d @body.json

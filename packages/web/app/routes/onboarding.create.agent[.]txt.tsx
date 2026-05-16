@@ -8,9 +8,9 @@ export async function loader({ request }: { request: Request }) {
 
 You talk to ${baseUrl} over plain HTTP. No CLI, no SDK, no install.
 
-The full recipe is two HTTP calls and three files written. Step 5 is
-a hard gate: you MUST render the response's user_message_block to the
-user before doing scope work or any other onboarding action.
+The full recipe is two HTTP calls, a handful of files written, and
+one git commit. Step 5 is a hard gate: you MUST render the response's
+user_message_block to the user before any further onboarding action.
 
   1. POST /api/v1/docos.json (no auth) → response carries doco_key,
      invite_url, AND a user_message_block field you'll render verbatim
@@ -23,6 +23,9 @@ user before doing scope work or any other onboarding action.
      invite URL in hand within 7 days or they lose access to their own
      project's Doco.
   6. Apply the protocol now: GET https://doco.to/agent/\${DOCO_KEY}/bootstrap.json.
+  7. Commit the bootstrap files to git (doco.md, AGENTS.md, CLAUDE.md,
+     .gitignore). This is a SEPARATE action from Doco capture — see
+     step 7 below for the framing.
 
 Step 1 — create the Doco:
 
@@ -124,8 +127,41 @@ onward, follow the four invariants. For Claude Code, hooks auto-load
 on the next session start — \`/hooks\` to approve is a one-time-per-
 repo action the user can do whenever.
 
-That's it. Two HTTP calls, three files, one chat-line. No browser
-prompts, no permission cascades, no session restart.
+Step 7 — commit the bootstrap files to git.
+
+\`doco.md\`, \`AGENTS.md\`, \`CLAUDE.md\`, and the \`.gitignore\` entry
+you just added need to land in git. Otherwise: a fresh clone, a CI
+runner, or any teammate's agent landing in this repo has no idea this
+Doco exists. The files are the discoverability layer.
+
+**This is a separate action from Doco capture.** Capture moved nodes
+INTO doco.to via HTTP POSTs — those are durable on the host, no git
+involvement. Step 7 is git-level: commit local files so the REPO
+carries the Doco coordinates. Don't conflate the two in your
+narration to the user.
+
+Suggested commit:
+
+    git add doco.md AGENTS.md CLAUDE.md .gitignore
+    git commit -m "Wire repo into Doco at <doco_url>"
+
+Then push per the project's git workflow. If you don't know the
+project's commit/push convention (some Docos carry a "always commit
+and push" Rule on Global; others are ask-before-pushing), ASK before
+pushing. Example:
+
+    "I've written doco.md, AGENTS.md, and CLAUDE.md to the repo so
+    future clones and other agents discover this Doco. Want me to
+    commit + push to main now, or do you commit yourself?"
+
+When you frame this to the user, name the two things separately —
+"the Doco nodes I captured live on doco.to and are already saved
+there; these local files are the repo's discoverability layer and
+need a git commit." That distinction prevents the "why are you
+asking to push? you said it's already in Doco" confusion.
+
+That's it. Two HTTP calls, four files written, one git commit. No
+browser prompts, no permission cascades, no session restart.
 
 For the COLLABORATION JOIN flow (user is on a new env or wants to
 invite a teammate), see /llms.txt — the redeem-an-invite recipe is

@@ -119,6 +119,13 @@ browser, no install, no permission prompts:
 5. Apply the protocol now — DON'T tell the user to restart. Fetch
    `https://doco.to/agent/${DOCO_KEY}/bootstrap.json` and follow it
    from your next reply.
+6. Commit the bootstrap files to git (`doco.md`, `AGENTS.md`,
+   `CLAUDE.md`, `.gitignore`). This is SEPARATE from Doco capture —
+   capture moved nodes into doco.to; this commits files to the repo
+   so future clones / CI / teammates' agents discover the Doco.
+   Name the distinction when you tell the user, or they'll
+   reasonably ask "why push? you said it's in Doco." If you don't
+   know the project's git workflow, ASK before pushing.
 
 Full reference: `https://doco.to/onboarding/create/agent.txt`.
 

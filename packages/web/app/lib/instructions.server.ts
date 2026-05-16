@@ -979,6 +979,24 @@ No install, no browser, no permission prompts.
    curl -fsS "https://doco.to/agent/\${DOCO_KEY}/bootstrap.json"
    \`\`\`
 
+7. **Commit the bootstrap files to git** — separate from Doco
+   capture. The four files you wrote (\`doco.md\`, \`AGENTS.md\`,
+   \`CLAUDE.md\`, \`.gitignore\`) are the repo's discoverability
+   layer; without them in git, a fresh clone / CI runner / teammate's
+   agent has no idea this Doco exists. Capture (steps so far) moved
+   nodes INTO doco.to via HTTP POSTs — those are durable on the host,
+   no git involvement. Step 7 is git-level. Name the two things
+   separately when you tell the user, or they'll reasonably ask
+   "wait, why push? you said it's in Doco":
+
+       git add doco.md AGENTS.md CLAUDE.md .gitignore
+       git commit -m "Wire repo into Doco at <doco_url>"
+
+   Push per the project's git workflow. If you don't know, ASK
+   ("commit + push to main now, or do you commit yourself?"). Some
+   Docos carry an "always commit and push" Rule on Global — read
+   the bootstrap response's Global scope rules to check.
+
 ### Joining an existing Doco (new env, same repo, or invited from elsewhere)
 
 If \`doco.md\` exists but \`./.env\` has no \`DOCO_KEY\`, ask the user
