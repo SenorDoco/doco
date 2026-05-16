@@ -158,45 +158,22 @@ async function readScopeRaw(scopeId: string): Promise<Record<string, unknown> | 
 
 async function readPrimaryIntentForScope(
   docoId: string | null,
-  scopeId: string,
   primaryIntentId?: string | null,
 ): Promise<PrimaryIntentRecord | null> {
-  if (!docoId) return null;
+  if (!docoId || !primaryIntentId) return null;
   try {
     return await withClient(async (c) => {
-      if (primaryIntentId) {
-        const r = await c.query<PrimaryIntentRecord>(
-          `SELECT id,
-                  COALESCE(summary, '') AS summary,
-                  COALESCE(lifecycle, 'active') AS lifecycle
-             FROM intents
-            WHERE doco_id = $1
-              AND id = $2
-            LIMIT 1`,
-          [docoId, primaryIntentId],
-        );
-        return r.rows[0] ?? null;
-      }
-
       const r = await c.query<PrimaryIntentRecord>(
-        `SELECT i.id,
-                COALESCE(i.summary, '') AS summary,
-                COALESCE(i.lifecycle, 'active') AS lifecycle
-           FROM edges e
-           JOIN intents i ON i.id = e.from_id
-                         AND i.doco_id = e.doco_id
-          WHERE e.doco_id = $1
-            AND e.edge_type = 'in_scope_of'
-            AND e.from_node_type = 'intent'
-            AND e.to_node_type = 'scope'
-            AND e.to_id = $2
-            AND COALESCE(i.lifecycle, 'active') IN ('active', 'proposed')
-          ORDER BY i.created_at ASC, i.id ASC
-          LIMIT 2`,
-        [docoId, scopeId],
+        `SELECT id,
+                COALESCE(summary, '') AS summary,
+                COALESCE(lifecycle, 'active') AS lifecycle
+           FROM intents
+          WHERE doco_id = $1
+            AND id = $2
+          LIMIT 1`,
+        [docoId, primaryIntentId],
       );
-      const onlyIntent = r.rows[0];
-      return r.rows.length === 1 && onlyIntent ? onlyIntent : null;
+      return r.rows[0] ?? null;
     });
   } catch {
     return null;
@@ -407,7 +384,7 @@ export async function loader({
     String(raw.name) === "global" || (raw as { watched?: unknown }).watched === true;
   const primaryIntentId =
     typeof raw.primary_intent_id === "string" ? raw.primary_intent_id : null;
-  const primaryIntent = await readPrimaryIntentForScope(docoId, id, primaryIntentId);
+  const primaryIntent = await readPrimaryIntentForScope(docoId, primaryIntentId);
 
   return {
     ownerSlug,
@@ -477,7 +454,7 @@ export async function action({
       const existingPrimaryId =
         typeof raw?.primary_intent_id === "string"
           ? raw.primary_intent_id
-          : (await readPrimaryIntentForScope(meta.docoId, id))?.id ?? null;
+          : null;
       const actorId = (me?.id ??
         (meta.ownerId.startsWith("principal_") ? meta.ownerId : null)) as EntityId<"principal"> | null;
       const newIntentId = await createIntentInDoco({
@@ -487,7 +464,7 @@ export async function action({
         createdBy: actorId,
       });
       if (existingPrimaryId && existingPrimaryId !== newIntentId) {
-        const current = await readPrimaryIntentForScope(meta.docoId, id, existingPrimaryId);
+        const current = await readPrimaryIntentForScope(meta.docoId, existingPrimaryId);
         if (current && current.lifecycle !== "abandoned") {
           const result = await updateEntity({
             docoDir: dir,

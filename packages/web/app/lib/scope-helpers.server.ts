@@ -162,53 +162,9 @@ export async function listScopeDetails(
           }
         }
 
-        const attachedByScopeId = new Map<string, NonNullable<ScopeDetails["primary_intent"]>[]>();
-        const intentRows = await c.query<{
-          scope_id: string;
-          id: string;
-          summary: string;
-          lifecycle: string;
-        }>(
-          `SELECT e.to_id AS scope_id,
-                  i.id,
-                  COALESCE(i.summary, '') AS summary,
-                  COALESCE(i.lifecycle, 'active') AS lifecycle
-             FROM edges e
-             JOIN intents i ON i.id = e.from_id
-                           AND i.doco_id = e.doco_id
-            WHERE e.doco_id = $1
-              AND e.edge_type = 'in_scope_of'
-              AND e.from_node_type = 'intent'
-              AND e.to_node_type = 'scope'
-              AND COALESCE(i.lifecycle, 'active') IN ('active', 'proposed')
-            ORDER BY i.created_at ASC, i.id ASC`,
-          [docoId],
-        );
-        for (const row of intentRows.rows) {
-          if (row.summary.trim().length === 0) continue;
-          const intents = attachedByScopeId.get(row.scope_id) ?? [];
-          intents.push({
-            id: row.id,
-            summary: row.summary,
-            lifecycle: row.lifecycle,
-          });
-          attachedByScopeId.set(row.scope_id, intents);
-        }
-
         for (const scope of out) {
-          if (scope.primary_intent_id) {
-            scope.primary_intent = explicitById.get(scope.primary_intent_id) ?? null;
-            continue;
-          }
-          const attached = attachedByScopeId.get(scope.id) ?? [];
-          // Legacy bootstrap: before scopes carried primary_intent_id, a
-          // template-created scope usually had exactly one active/proposed
-          // Intent tagged to it. Only use that when it is unambiguous.
-          const onlyAttached = attached[0];
-          if (attached.length === 1 && onlyAttached) {
-            scope.primary_intent = onlyAttached;
-            scope.primary_intent_id = onlyAttached.id;
-          }
+          if (!scope.primary_intent_id) continue;
+          scope.primary_intent = explicitById.get(scope.primary_intent_id) ?? null;
         }
       }
     });
