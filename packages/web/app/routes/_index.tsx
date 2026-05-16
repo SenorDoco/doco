@@ -61,10 +61,6 @@ export default function Home({ loaderData }: { loaderData: Awaited<ReturnType<ty
           <h1 className="w-full max-w-4xl pt-2 text-2xl font-bold leading-tight md:text-4xl">
             {DOCO_TAGLINE}
           </h1>
-          <p className="w-full max-w-lg text-sm text-muted-foreground">
-            AI-native documentation of important ideas, rules, and evals.
-          </p>
-
           <div className="grid w-full grid-cols-1 gap-3 md:grid-cols-2 md:gap-4">
             <Link
               to="/onboarding/join"
