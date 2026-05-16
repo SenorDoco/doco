@@ -3,10 +3,9 @@
 // Global PageRank is a follow-up (needs a separate globalPageRank function
 // in @doco/index — `personalizedPageRank` requires a single source).
 //
-// Layout: Dagre left-to-right (decision_01KRRJTW39THBW0C943G0GTH0M) so
-// process-shaped neighborhoods (Intent + Actions chained via follows +
-// Decisions via decision_ids) read as BPMN flows for free. Non-process
-// neighborhoods still render as clean DAGs — the layout is universal.
+// Layout: swim lanes by node type, with Dagre left-to-right ordering
+// (decision_01KRRJTW39THBW0C943G0GTH0M) inside each lane so process-shaped
+// neighborhoods still read as BPMN flows.
 //
 // react-flow is loaded via dynamic import — it touches the DOM directly,
 // can't run during SSR.
@@ -27,11 +26,7 @@ import "@xyflow/react/dist/style.css";
  * so the runtime filter is just for legacy edges still sitting in the DB
  * from before the change.
  */
-const HIDDEN_EDGE_TYPES: ReadonlySet<string> = new Set([
-  "in_scope_of",
-  "created_by",
-  "updated_by",
-]);
+const HIDDEN_EDGE_TYPES: ReadonlySet<string> = new Set(["in_scope_of", "created_by", "updated_by"]);
 
 export interface GraphNode {
   id: string;
@@ -82,6 +77,35 @@ interface MiniMapNodeProps {
   shapeRendering?: string;
 }
 
+interface SwimLaneNodeData {
+  label: string;
+  count: number;
+  color: string;
+  background: string;
+  border: string;
+  labelOffsetX: number;
+}
+
+interface GraphLane {
+  id: string;
+  type: string;
+  label: string;
+  count: number;
+  color: string;
+  background: string;
+  border: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  labelOffsetX: number;
+}
+
+interface GraphLayout {
+  positions: Map<string, { x: number; y: number }>;
+  lanes: GraphLane[];
+}
+
 const TYPE_PLURAL_LABEL: Record<string, string> = {
   doco: "docos",
   principal: "principals",
@@ -101,6 +125,35 @@ function typePluralLabel(type: string): string {
   return TYPE_PLURAL_LABEL[type] ?? `${type}s`;
 }
 
+const LANE_ORDER = [
+  "intent",
+  "decision",
+  "action",
+  "log",
+  "rule",
+  "eval",
+  "reference",
+  "idea",
+  "doco",
+  "organization",
+  "principal",
+  "scope",
+];
+
+function laneOrderIndex(type: string): number {
+  const i = LANE_ORDER.indexOf(type);
+  return i >= 0 ? i : LANE_ORDER.length;
+}
+
+function colorWithAlpha(hex: string, alpha: number): string {
+  const normalized = hex.trim().replace(/^#/, "");
+  if (!/^[\da-f]{6}$/i.test(normalized)) return `rgba(82, 82, 82, ${alpha})`;
+  const r = Number.parseInt(normalized.slice(0, 2), 16);
+  const g = Number.parseInt(normalized.slice(2, 4), 16);
+  const b = Number.parseInt(normalized.slice(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
 /** Format an ISO timestamp as "Ns / Nm / Nh / Nd ago". */
 function relativeTime(iso: string | null): string {
   if (!iso) return "—";
@@ -118,16 +171,12 @@ function relativeTime(iso: string | null): string {
 }
 
 /**
- * Dagre layered layout, left-to-right
- * (decision_01KRRJTW39THBW0C943G0GTH0M).
+ * Swim-lane graph layout: node type controls the horizontal lane, while
+ * Dagre's left-to-right rank controls ordering inside each lane.
  *
- * Lays the neighborhood out as a directed graph with ranks flowing
- * source → target. Process-shaped data (Intent + Actions chained via
- * `follows` + Decisions via `decision_ids`) reads as a BPMN flow:
- * the Intent sits in the leftmost rank, Actions march right along the
- * `follows` spine, Decisions appear where they're consulted.
- * Non-process neighborhoods (Rule, Scope, Reference) still get a clean
- * layered DAG — no separate render mode, no toggle.
+ * Process-shaped data (Intent + Actions chained via `follows` + Decisions
+ * via `decision_ids`) keeps the same left-to-right reading order, but lanes
+ * make cross-type relationships scannable before the viewer reads card copy.
  *
  * Edges that don't carry process / reasoning value (`in_scope_of`,
  * `created_by`, `updated_by`) are filtered upstream so they don't
@@ -140,13 +189,15 @@ function relativeTime(iso: string | null): string {
  */
 const NODE_WIDTH = 240;
 const NODE_HEIGHT = 100;
-function dagreLayout(
-  nodes: GraphNode[],
-  links: GraphLink[],
-  centerId: string,
-): Map<string, { x: number; y: number }> {
+const NODE_GAP_X = 56;
+const LANE_HEIGHT = 148;
+const LANE_GAP = 24;
+const LANE_HEADER_HEIGHT = 36;
+const LANE_PADDING_X = 16;
+const LANE_LABEL_WIDTH = 160;
+function dagreLayout(nodes: GraphNode[], links: GraphLink[], centerId: string): GraphLayout {
   const positions = new Map<string, { x: number; y: number }>();
-  if (nodes.length === 0) return positions;
+  if (nodes.length === 0) return { positions, lanes: [] };
 
   const g = new dagre.graphlib.Graph({ multigraph: true });
   g.setGraph({
@@ -156,7 +207,6 @@ function dagreLayout(
     marginx: 20,
     marginy: 20,
   });
-  // biome-ignore lint/suspicious/noExplicitAny: dagre default-edge label fn
   g.setDefaultEdgeLabel(() => ({}));
 
   for (const n of nodes) {
@@ -173,23 +223,108 @@ function dagreLayout(
 
   dagre.layout(g);
 
-  // Re-center on the focal node so existing fitView geometry stays sane.
-  const focal = g.node(centerId);
-  const cx = focal?.x ?? 0;
-  const cy = focal?.y ?? 0;
-  for (const n of nodes) {
-    const pos = g.node(n.id);
-    if (pos && Number.isFinite(pos.x) && Number.isFinite(pos.y)) {
-      // Dagre returns the node's CENTER; react-flow expects top-left.
-      positions.set(n.id, {
-        x: pos.x - cx - NODE_WIDTH / 2,
-        y: pos.y - cy - NODE_HEIGHT / 2,
+  const laneTypes = Array.from(new Set(nodes.map((n) => n.node_type))).sort((a, b) => {
+    const byKnownOrder = laneOrderIndex(a) - laneOrderIndex(b);
+    return byKnownOrder !== 0 ? byKnownOrder : a.localeCompare(b);
+  });
+  const laneTopByType = new Map<string, number>();
+  laneTypes.forEach((type, i) => {
+    laneTopByType.set(type, i * (LANE_HEIGHT + LANE_GAP));
+  });
+
+  const raw = new Map<string, { x: number; y: number }>();
+  let globalMinX = Number.POSITIVE_INFINITY;
+  let globalMaxX = Number.NEGATIVE_INFINITY;
+
+  for (const type of laneTypes) {
+    const laneNodes = nodes
+      .filter((n) => n.node_type === type)
+      .sort((a, b) => {
+        const ax = g.node(a.id)?.x ?? 0;
+        const bx = g.node(b.id)?.x ?? 0;
+        if (ax !== bx) return ax - bx;
+        if ((b.ppr ?? 0) !== (a.ppr ?? 0)) return (b.ppr ?? 0) - (a.ppr ?? 0);
+        return a.id.localeCompare(b.id);
       });
+    const laneTop = laneTopByType.get(type) ?? 0;
+    let rightEdge = Number.NEGATIVE_INFINITY;
+
+    for (const n of laneNodes) {
+      const pos = g.node(n.id);
+      const dagreX = pos && Number.isFinite(pos.x) ? pos.x - NODE_WIDTH / 2 : 0;
+      const x = Math.max(dagreX, rightEdge + NODE_GAP_X);
+      const y = laneTop + LANE_HEADER_HEIGHT;
+      raw.set(n.id, { x, y });
+      rightEdge = x + NODE_WIDTH;
+      globalMinX = Math.min(globalMinX, x);
+      globalMaxX = Math.max(globalMaxX, x + NODE_WIDTH);
+    }
+  }
+
+  const focalRaw = raw.get(centerId);
+  const cx = (focalRaw?.x ?? 0) + NODE_WIDTH / 2;
+  const cy = (focalRaw?.y ?? 0) + NODE_HEIGHT / 2;
+
+  for (const n of nodes) {
+    const pos = raw.get(n.id);
+    if (pos) {
+      positions.set(n.id, { x: pos.x - cx, y: pos.y - cy });
     } else {
       positions.set(n.id, { x: 0, y: 0 });
     }
   }
-  return positions;
+
+  if (!Number.isFinite(globalMinX) || !Number.isFinite(globalMaxX)) {
+    globalMinX = 0;
+    globalMaxX = NODE_WIDTH;
+  }
+
+  const laneRawX = globalMinX - LANE_PADDING_X;
+  const laneX = laneRawX - cx;
+  const laneWidth = globalMaxX - globalMinX + LANE_PADDING_X * 2;
+  const labelOffsetX = Math.max(
+    12,
+    Math.min(laneWidth - LANE_LABEL_WIDTH, cx - laneRawX - LANE_LABEL_WIDTH / 2),
+  );
+  const lanes = laneTypes.map((type) => {
+    const laneNodes = nodes.filter((n) => n.node_type === type);
+    const color = nodeTypeColor(type);
+    const laneTop = laneTopByType.get(type) ?? 0;
+    return {
+      id: `swim-lane:${type}`,
+      type,
+      label: typePluralLabel(type),
+      count: laneNodes.length,
+      color,
+      background: colorWithAlpha(color, 0.045),
+      border: colorWithAlpha(color, 0.22),
+      x: laneX,
+      y: laneTop - cy,
+      width: laneWidth,
+      height: LANE_HEIGHT,
+      labelOffsetX,
+    };
+  });
+
+  return { positions, lanes };
+}
+
+function SwimLaneNode({ data }: { data: SwimLaneNodeData }) {
+  return (
+    <div
+      className="h-full w-full rounded-md border border-dashed px-3 py-2"
+      style={{ background: data.background, borderColor: data.border }}
+    >
+      <div
+        className="flex items-center gap-2 text-[10px] font-semibold uppercase text-muted-foreground"
+        style={{ marginLeft: data.labelOffsetX }}
+      >
+        <span className="h-2 w-2 rounded-full" style={{ backgroundColor: data.color }} />
+        <span style={{ color: data.color }}>{data.label}</span>
+        <span className="font-mono text-muted-foreground">{data.count}</span>
+      </div>
+    </div>
+  );
 }
 
 export function EntityGraph({ centerId, nodes, links, hrefFor }: EntityGraphProps) {
@@ -227,15 +362,17 @@ export function EntityGraph({ centerId, nodes, links, hrefFor }: EntityGraphProp
     return { nodes: v, links: vl };
   }, [nodes, links, hiddenTypes, centerId]);
 
-  const positions = useMemo(
+  const layout = useMemo(
     () => dagreLayout(visible.nodes, visible.links, centerId),
     [visible.nodes, visible.links, centerId],
   );
+  const positions = layout.positions;
   const visibleNodeById = useMemo(() => {
     const byId = new Map<string, GraphNode>();
     for (const node of visible.nodes) byId.set(node.id, node);
     return byId;
   }, [visible.nodes]);
+  const nodeTypes = useMemo(() => ({ swimLane: SwimLaneNode }), []);
 
   // Dynamic import — react-flow uses window/document.
   // biome-ignore lint/suspicious/noExplicitAny: dynamic-import escape hatch
@@ -327,115 +464,143 @@ export function EntityGraph({ centerId, nodes, links, hrefFor }: EntityGraphProp
     return { min, max };
   }, [visible.nodes]);
 
-  const flowNodes = useMemo(
-    () =>
-      visible.nodes.map((n) => {
-        const pos = positions.get(n.id) ?? { x: 0, y: 0 };
-        const color = nodeTypeColor(n.node_type);
-        const pprRange = pprBounds.max - pprBounds.min;
-        let bg = "rgb(255,255,255)";
-        if (n.is_center) {
-          bg = "color-mix(in oklch, var(--color-accent) 30%, white)";
-        } else if (pprRange > 0) {
-          const t = (n.ppr - pprBounds.min) / pprRange;
-          const v = Math.round(212 + 43 * t);
-          bg = `rgb(${v},${v},${v})`;
-        }
-        const title = n.name ?? (n.summary.length > 40 ? `${n.summary.slice(0, 40)}…` : n.summary);
-        // Subtitle only adds value when the title is a distinct handle (name).
-        // For nameless nodes the title already IS the summary — showing it
-        // twice (or as a prefix of itself) is noise.
-        const subtitle = n.name
-          ? n.summary.length > 80
-            ? `${n.summary.slice(0, 80)}…`
-            : n.summary
-          : null;
-        const NODE_W = 240;
-        // Make the card itself a real link. React Flow's node-level click
-        // remains as a fallback, but the anchor gives expected browser affordances.
-        const href = hrefFor ? hrefFor(n.id, n.node_type) : `/${n.node_type}/${n.id}`;
-        return {
-          id: n.id,
-          position: pos,
-          // `initialWidth`/`initialHeight` (not `width`/`height`) so the
-          // MiniMap has valid dimensions on first render — ResizeObserver
-          // still refines them once the DOM measures. With `width`/`height`,
-          // height stayed `undefined` until measurement and the MiniMap's
-          // `getInternalNodesBounds` collapsed to 0-height, leaving the
-          // mini-map blank.
-          initialWidth: NODE_W,
-          initialHeight: subtitle ? 100 : 78,
-          data: {
-            label: (
-              <Link
-                to={href}
-                aria-label={`Open ${n.node_type} ${title}`}
-                className="nodrag nopan flex cursor-pointer flex-col gap-0.5 overflow-hidden px-3 py-2 text-inherit no-underline"
-                draggable={false}
-                onClick={(event) => event.stopPropagation()}
-                style={{ width: NODE_W }}
-              >
-                <div className="flex items-center gap-1.5">
-                  <span className="text-[10px] uppercase tracking-wider" style={{ color }}>
-                    {n.node_type}
+  const flowNodes = useMemo(() => {
+    const laneNodes = layout.lanes.map((lane) => ({
+      id: lane.id,
+      type: "swimLane",
+      position: { x: lane.x, y: lane.y },
+      data: {
+        label: lane.label,
+        count: lane.count,
+        color: lane.color,
+        background: lane.background,
+        border: lane.border,
+        labelOffsetX: lane.labelOffsetX,
+      },
+      draggable: false,
+      selectable: false,
+      connectable: false,
+      focusable: false,
+      zIndex: 0,
+      style: {
+        width: lane.width,
+        height: lane.height,
+        padding: 0,
+        border: "none",
+        background: "transparent",
+        pointerEvents: "none" as const,
+      },
+    }));
+
+    const entityNodes = visible.nodes.map((n) => {
+      const pos = positions.get(n.id) ?? { x: 0, y: 0 };
+      const color = nodeTypeColor(n.node_type);
+      const pprRange = pprBounds.max - pprBounds.min;
+      let bg = "rgb(255,255,255)";
+      if (n.is_center) {
+        bg = "color-mix(in oklch, var(--color-accent) 30%, white)";
+      } else if (pprRange > 0) {
+        const t = (n.ppr - pprBounds.min) / pprRange;
+        const v = Math.round(212 + 43 * t);
+        bg = `rgb(${v},${v},${v})`;
+      }
+      const title = n.name ?? (n.summary.length > 40 ? `${n.summary.slice(0, 40)}…` : n.summary);
+      // Subtitle only adds value when the title is a distinct handle (name).
+      // For nameless nodes the title already IS the summary — showing it
+      // twice (or as a prefix of itself) is noise.
+      const subtitle = n.name
+        ? n.summary.length > 80
+          ? `${n.summary.slice(0, 80)}…`
+          : n.summary
+        : null;
+      const NODE_W = 240;
+      // Make the card itself a real link. React Flow's node-level click
+      // remains as a fallback, but the anchor gives expected browser affordances.
+      const href = hrefFor ? hrefFor(n.id, n.node_type) : `/${n.node_type}/${n.id}`;
+      return {
+        id: n.id,
+        position: pos,
+        // `initialWidth`/`initialHeight` (not `width`/`height`) so the
+        // MiniMap has valid dimensions on first render — ResizeObserver
+        // still refines them once the DOM measures. With `width`/`height`,
+        // height stayed `undefined` until measurement and the MiniMap's
+        // `getInternalNodesBounds` collapsed to 0-height, leaving the
+        // mini-map blank.
+        initialWidth: NODE_W,
+        initialHeight: subtitle ? 100 : 78,
+        data: {
+          label: (
+            <Link
+              to={href}
+              aria-label={`Open ${n.node_type} ${title}`}
+              className="nodrag nopan flex cursor-pointer flex-col gap-0.5 overflow-hidden px-3 py-2 text-inherit no-underline"
+              draggable={false}
+              onClick={(event) => event.stopPropagation()}
+              style={{ width: NODE_W }}
+            >
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] uppercase tracking-wider" style={{ color }}>
+                  {n.node_type}
+                </span>
+              </div>
+              <div className="truncate font-mono text-xs font-semibold text-foreground">
+                {title}
+              </div>
+              {subtitle ? (
+                <div
+                  className="overflow-hidden text-[10px] leading-tight text-muted-foreground"
+                  style={{
+                    display: "-webkit-box",
+                    WebkitLineClamp: 2,
+                    WebkitBoxOrient: "vertical" as const,
+                  }}
+                >
+                  {subtitle}
+                </div>
+              ) : null}
+              <div className="mt-1 flex items-center justify-between gap-2 text-[9px] text-muted-foreground">
+                <span className="truncate">{relativeTime(n.created_at)}</span>
+                {n.is_center ? (
+                  <span className="flex shrink-0 items-center gap-2 font-mono">
+                    <span className="font-medium text-foreground">Node in focus</span>
+                    <span title="Global PageRank (over the whole Doco graph)">
+                      GPR <span className="text-foreground">{n.gpr.toFixed(3)}</span>
+                    </span>
                   </span>
-                </div>
-                <div className="truncate font-mono text-xs font-semibold text-foreground">
-                  {title}
-                </div>
-                {subtitle ? (
-                  <div
-                    className="overflow-hidden text-[10px] leading-tight text-muted-foreground"
-                    style={{
-                      display: "-webkit-box",
-                      WebkitLineClamp: 2,
-                      WebkitBoxOrient: "vertical" as const,
-                    }}
-                  >
-                    {subtitle}
-                  </div>
-                ) : null}
-                <div className="mt-1 flex items-center justify-between gap-2 text-[9px] text-muted-foreground">
-                  <span className="truncate">{relativeTime(n.created_at)}</span>
-                  {n.is_center ? (
-                    <span className="flex shrink-0 items-center gap-2 font-mono">
-                      <span className="font-medium text-foreground">Node in focus</span>
-                      <span title="Global PageRank (over the whole Doco graph)">
-                        GPR <span className="text-foreground">{n.gpr.toFixed(3)}</span>
-                      </span>
+                ) : (
+                  <span className="flex shrink-0 items-center gap-2 font-mono">
+                    <span title="Personalized PageRank from focal node">
+                      PPR <span className="text-foreground">{n.ppr.toFixed(3)}</span>
                     </span>
-                  ) : (
-                    <span className="flex shrink-0 items-center gap-2 font-mono">
-                      <span title="Personalized PageRank from focal node">
-                        PPR <span className="text-foreground">{n.ppr.toFixed(3)}</span>
-                      </span>
-                      <span title="Global PageRank (over the whole Doco graph)">
-                        GPR <span className="text-foreground">{n.gpr.toFixed(3)}</span>
-                      </span>
+                    <span title="Global PageRank (over the whole Doco graph)">
+                      GPR <span className="text-foreground">{n.gpr.toFixed(3)}</span>
                     </span>
-                  )}
-                </div>
-              </Link>
-            ),
-          },
-          style: {
-            background: bg,
-            // Borders stay gray for every node — the type is signalled by
-            // the colored stripe drawn inside the left edge of the card
-            // (boxShadow inset). Focal keeps a 2px gray border for weight.
-            border: n.is_center ? "2px solid var(--color-border)" : "1px solid var(--color-border)",
-            borderRadius: 8,
-            padding: 0,
-            width: NODE_W,
-            overflow: "hidden",
-            boxShadow: `inset 4px 0 0 ${color}`,
-          },
-          sourcePosition: "right" as const,
-          targetPosition: "left" as const,
-        };
-      }),
-    [visible.nodes, positions, pprBounds, hrefFor],
-  );
+                  </span>
+                )}
+              </div>
+            </Link>
+          ),
+        },
+        zIndex: 2,
+        style: {
+          background: bg,
+          // Borders stay gray for every node — the type is signalled by
+          // the colored stripe drawn inside the left edge of the card
+          // (boxShadow inset). Focal keeps a 2px gray border for weight.
+          border: n.is_center ? "2px solid var(--color-border)" : "1px solid var(--color-border)",
+          borderRadius: 8,
+          padding: 0,
+          width: NODE_W,
+          overflow: "hidden",
+          boxShadow: `inset 4px 0 0 ${color}`,
+        },
+        sourcePosition: "right" as const,
+        targetPosition: "left" as const,
+      };
+    });
+
+    return [...laneNodes, ...entityNodes];
+  }, [visible.nodes, layout.lanes, positions, pprBounds, hrefFor]);
 
   const flowEdges = useMemo(
     () =>
@@ -494,6 +659,7 @@ export function EntityGraph({ centerId, nodes, links, hrefFor }: EntityGraphProp
         shapeRendering,
       }: MiniMapNodeProps) {
         const graphNode = visibleNodeById.get(id);
+        if (!graphNode) return null;
         const fill =
           color ??
           (typeof style?.background === "string" ? style.background : undefined) ??
@@ -584,6 +750,7 @@ export function EntityGraph({ centerId, nodes, links, hrefFor }: EntityGraphProp
           <Flow.ReactFlow
             nodes={flowNodes}
             edges={flowEdges}
+            nodeTypes={nodeTypes}
             nodesDraggable={false}
             nodesConnectable={false}
             fitView
