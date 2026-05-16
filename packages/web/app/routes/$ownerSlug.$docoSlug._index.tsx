@@ -274,6 +274,7 @@ export default function DocoHome({
         icon: s.icon ?? undefined,
         count: s.count,
         ariaLabel: `Open scope ${s.name}`,
+        updatedAt: s.updatedAt,
       })),
     },
     {
@@ -285,6 +286,7 @@ export default function DocoHome({
         count: t.count,
         ariaLabel: `Search ${t.count} ${nodeTypeLabel(t.value).toLowerCase()}`,
         color: nodeTypeColor(t.value),
+        updatedAt: t.updatedAt,
       })),
     },
     {
@@ -295,6 +297,7 @@ export default function DocoHome({
         label: l.value,
         count: l.count,
         ariaLabel: `Search ${l.count} nodes in lifecycle ${l.value}`,
+        updatedAt: l.updatedAt,
       })),
     },
   ];
@@ -315,7 +318,7 @@ export default function DocoHome({
 
         <div className="grid grid-cols-1 gap-5 min-[840px]:grid-cols-12">
           {/* Left: node counts. */}
-          <aside className="min-[840px]:col-span-6">
+          <aside className="min-w-0 min-[840px]:col-span-6">
             <NodesOverviewCard
               sections={sections}
               search={
@@ -336,7 +339,7 @@ export default function DocoHome({
           </aside>
 
           {/* Right: activity heatmap above the real-time feed. */}
-          <section className="min-[840px]:col-span-6 space-y-5">
+          <section className="min-w-0 min-[840px]:col-span-6 space-y-5">
             <Card>
               <CardHeader>
                 <CardTitle>Activity</CardTitle>

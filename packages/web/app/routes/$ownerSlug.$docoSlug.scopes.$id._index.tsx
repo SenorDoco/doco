@@ -133,6 +133,12 @@ function nodeTypeLabel(type: string): string {
   return NODE_TYPE_LABELS[type] ?? `${type.charAt(0).toUpperCase()}${type.slice(1)}s`;
 }
 
+function toIso(value: Date | string | null | undefined): string | null {
+  if (!value) return null;
+  const d = value instanceof Date ? value : new Date(String(value));
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
+}
+
 async function readScopeRaw(scopeId: string): Promise<Record<string, unknown> | null> {
   try {
     return await withClient(async (c) => {
@@ -256,7 +262,7 @@ export async function loader({
   }
 
   // Stats: count entities tagged with this scope by lifecycle.
-  const memberStats: { lifecycle: string; count: number }[] = docoId
+  const memberStats: { lifecycle: string; count: number; updatedAt: string | null }[] = docoId
     ? await withClient(async (c) => {
         const tables = [
           "decisions",
@@ -270,25 +276,33 @@ export async function loader({
         const unionSql = tables
           .map(
             (t) =>
-              `SELECT COALESCE(${t}.lifecycle, 'active') AS lifecycle FROM ${t}
+              `SELECT COALESCE(${t}.lifecycle, 'active') AS lifecycle, ${t}.updated_at FROM ${t}
                  JOIN edges e ON e.from_id = ${t}.id
                               AND e.edge_type = 'in_scope_of'
                               AND e.to_id = $1
                 WHERE ${t}.doco_id = $2`,
           )
           .join(" UNION ALL ");
-        const rs = await c.query<{ lifecycle: string; n: string }>(
-          `SELECT lifecycle, COUNT(*)::text AS n FROM (${unionSql}) t
+        const rs = await c.query<{
+          lifecycle: string;
+          n: string;
+          updated_at: Date | string | null;
+        }>(
+          `SELECT lifecycle, COUNT(*)::text AS n, MAX(updated_at) AS updated_at FROM (${unionSql}) t
              GROUP BY lifecycle ORDER BY lifecycle`,
           [id, docoId],
         );
-        return rs.rows.map((r) => ({ lifecycle: r.lifecycle, count: Number(r.n) }));
+        return rs.rows.map((r) => ({
+          lifecycle: r.lifecycle,
+          count: Number(r.n),
+          updatedAt: toIso(r.updated_at),
+        }));
       })
     : [];
   const memberCount = memberStats.reduce((sum, s) => sum + s.count, 0);
 
   // Stats: count entities tagged with this scope by node type.
-  const memberTypeStats: { nodeType: string; count: number }[] = docoId
+  const memberTypeStats: { nodeType: string; count: number; updatedAt: string | null }[] = docoId
     ? await withClient(async (c) => {
         const tables: { table: string; nodeType: string }[] = [
           { table: "decisions", nodeType: "decision" },
@@ -303,19 +317,27 @@ export async function loader({
         const unionSql = tables
           .map(
             (t) =>
-              `SELECT '${t.nodeType}'::text AS node_type FROM ${t.table}
+              `SELECT '${t.nodeType}'::text AS node_type, ${t.table}.updated_at FROM ${t.table}
                  JOIN edges e ON e.from_id = ${t.table}.id
                               AND e.edge_type = 'in_scope_of'
                               AND e.to_id = $1
                 WHERE ${t.table}.doco_id = $2`,
           )
           .join(" UNION ALL ");
-        const rs = await c.query<{ node_type: string; n: string }>(
-          `SELECT node_type, COUNT(*)::text AS n FROM (${unionSql}) t
+        const rs = await c.query<{
+          node_type: string;
+          n: string;
+          updated_at: Date | string | null;
+        }>(
+          `SELECT node_type, COUNT(*)::text AS n, MAX(updated_at) AS updated_at FROM (${unionSql}) t
              GROUP BY node_type ORDER BY COUNT(*) DESC`,
           [id, docoId],
         );
-        return rs.rows.map((r) => ({ nodeType: r.node_type, count: Number(r.n) }));
+        return rs.rows.map((r) => ({
+          nodeType: r.node_type,
+          count: Number(r.n),
+          updatedAt: toIso(r.updated_at),
+        }));
       })
     : [];
 
@@ -749,7 +771,7 @@ export default function ScopePage({
 
         <div className="grid gap-4 min-[840px]:grid-cols-12">
           {/* Left column */}
-          <div className="min-[840px]:col-span-6 space-y-4">
+          <div className="min-w-0 min-[840px]:col-span-6 space-y-4">
             <NodesOverviewCard
               sections={
                 [
@@ -764,6 +786,7 @@ export default function ScopePage({
                       count: t.count,
                       ariaLabel: `View ${t.count} ${nodeTypeLabel(t.nodeType).toLowerCase()} in ${scope.name}`,
                       color: nodeTypeColor(t.nodeType),
+                      updatedAt: t.updatedAt,
                     })),
                   },
                   {
@@ -776,6 +799,7 @@ export default function ScopePage({
                       label: s.lifecycle,
                       count: s.count,
                       ariaLabel: `View ${s.count} ${s.lifecycle} nodes in ${scope.name}`,
+                      updatedAt: s.updatedAt,
                     })),
                   },
                 ] satisfies NodesOverviewSection[]
@@ -885,7 +909,7 @@ export default function ScopePage({
           </div>
 
           {/* Right column — activity heatmap + feed */}
-          <aside className="min-[840px]:col-span-6 space-y-4">
+          <aside className="min-w-0 min-[840px]:col-span-6 space-y-4">
             <Card>
               <CardHeader>
                 <CardTitle className="text-sm">Activity</CardTitle>
