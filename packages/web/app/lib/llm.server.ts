@@ -410,9 +410,15 @@ export type ClassifiedAuthoringRule =
       kind: "requires_edge" | "forbids_edge";
       edge_type: string;
       target_node_type?: string;
+      when_node_type?: string[];
       reason?: string;
     }
-  | { kind: "requires_field" | "forbids_field"; fields: string[]; reason?: string }
+  | {
+      kind: "requires_field" | "forbids_field";
+      fields: string[];
+      when_node_type?: string[];
+      reason?: string;
+    }
   | { kind: "mandatory_scope"; scope_ids: string[]; reason?: string }
   | { kind: "probabilistic"; spec: string; reason?: string };
 
@@ -504,24 +510,23 @@ You will see a project owner's prose. Your job:
 
 3. For AUTHORING rules, pick the MOST FITTING predicate from this list:
 
-   - {kind: "requires_edge", edge_type, target_node_type?}
+   - {kind: "requires_edge", edge_type, target_node_type?, when_node_type?}
      Use when the rule is "nodes in this scope must reference X".
      Examples:
        "must have an Intent" -> requires_edge edge_type=serves target_node_type=intent
        "should cite a Decision" -> requires_edge edge_type=enacts target_node_type=decision
-       "must link to a Rule" -> requires_edge edge_type=relates_to target_node_type=rule
-       "should reference an existing Bug" -> requires_edge edge_type=born_from target_node_type=decision
+       "every Action must link an Intent" -> requires_edge edge_type=serves target_node_type=intent when_node_type=["action"]
 
-   - {kind: "forbids_edge", edge_type, target_node_type?}
+   - {kind: "forbids_edge", edge_type, target_node_type?, when_node_type?}
      Use for the negative form ("must not reference X").
 
-   - {kind: "requires_field", fields[]}
+   - {kind: "requires_field", fields[], when_node_type?}
      Use when the rule names a frontmatter property the node must declare.
      Examples:
        "must declare a lifecycle" -> requires_field fields=["lifecycle"]
-       "summary and slug are required" -> requires_field fields=["summary", "slug"]
+       "every Decision must populate alternatives" -> requires_field fields=["alternatives"] when_node_type=["decision"]
 
-   - {kind: "forbids_field", fields[]}
+   - {kind: "forbids_field", fields[], when_node_type?}
      Use for the negative form.
 
    - {kind: "mandatory_scope", scope_ids[]}
@@ -535,6 +540,7 @@ You will see a project owner's prose. Your job:
    - edge_type MUST be one of: ${CLASSIFIER_EDGE_TYPES.join(", ")}.
    - target_node_type MUST be one of: ${CLASSIFIER_NODE_TYPES.join(", ")}, or omitted.
    - fields MUST be drawn from: ${CLASSIFIER_FIELDS.join(", ")}. If the prose names a field not on this list, fall back to probabilistic.
+   - when_node_type (optional, only on requires_edge / forbids_edge / requires_field / forbids_field) is an array of node-type strings drawn from: ${CLASSIFIER_NODE_TYPES.join(", ")}. Set it only when the prose narrows the rule to specific types ("every Action must…", "Decisions in this scope must…"). When the rule applies to every node tagged with the scope, omit it.
    - When in doubt within the authoring bucket -> probabilistic. It is BETTER to defer to the LLM judge than to misclassify into a deterministic kind that won't fire correctly.
 
 5. Each rule gets a "text" field: the verbatim slice of the user's prose this rule represents. Authors must be able to see their original words in the rule list.
@@ -616,6 +622,21 @@ export async function classifyRuleProse(
   }
 }
 
+/**
+ * Validate `when_node_type` from the classifier output. Returns a
+ * deduped, drop-invalid array, or `undefined` if the result would be
+ * empty (in which case the predicate fires Doco-wide, the original
+ * behavior).
+ */
+function normalizeWhenNodeType(raw: unknown): string[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const valid = raw
+    .filter((t): t is string => typeof t === "string" && t.length > 0)
+    .filter((t) => CLASSIFIER_NODE_TYPES.includes(t as (typeof CLASSIFIER_NODE_TYPES)[number]));
+  if (valid.length === 0) return undefined;
+  return [...new Set(valid)];
+}
+
 function normalizeClassifiedRow(raw: unknown): ClassifiedRule | null {
   if (!raw || typeof raw !== "object") return null;
   const rec = raw as Record<string, unknown>;
@@ -658,6 +679,7 @@ function normalizeClassifiedRow(raw: unknown): ClassifiedRule | null {
             ? target_node_type
             : null;
       if (validTarget === null) return probabilisticFallback();
+      const when = normalizeWhenNodeType(r.when_node_type);
       return {
         bucket: "authoring",
         text,
@@ -665,6 +687,7 @@ function normalizeClassifiedRow(raw: unknown): ClassifiedRule | null {
           kind,
           edge_type,
           ...(validTarget ? { target_node_type: validTarget } : {}),
+          ...(when ? { when_node_type: when } : {}),
           ...(reason ? { reason } : {}),
         },
       };
@@ -676,10 +699,16 @@ function normalizeClassifiedRow(raw: unknown): ClassifiedRule | null {
         .filter((f): f is string => typeof f === "string" && f.length > 0)
         .filter((f) => CLASSIFIER_FIELDS.includes(f as (typeof CLASSIFIER_FIELDS)[number]));
       if (fields.length === 0) return probabilisticFallback();
+      const when = normalizeWhenNodeType(r.when_node_type);
       return {
         bucket: "authoring",
         text,
-        rule: { kind, fields: [...new Set(fields)], ...(reason ? { reason } : {}) },
+        rule: {
+          kind,
+          fields: [...new Set(fields)],
+          ...(when ? { when_node_type: when } : {}),
+          ...(reason ? { reason } : {}),
+        },
       };
     }
     case "mandatory_scope": {

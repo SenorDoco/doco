@@ -57,6 +57,15 @@ interface AuthoringPredicateRecord {
   scope_ids?: string[];
   scope_id?: string;
   spec?: string;
+  /**
+   * Optional per-rule node-type filter
+   * (decision_01KRRD5SRX69P2MWN0G1B8216H). Present on
+   * `requires_edge` / `forbids_edge` / `requires_field` / `forbids_field`
+   * predicates that should fire only for matching node types. Omitted
+   * means scope-wide.
+   */
+  when_node_type?: string[];
+  node_types?: string[];
 }
 
 interface RuleRecord {
@@ -454,18 +463,26 @@ function predicateShorthand(
   p: AuthoringPredicateRecord,
   allScopes: { id: string; name: string }[],
 ): string {
+  const whenSuffix =
+    Array.isArray(p.when_node_type) && p.when_node_type.length > 0
+      ? ` (when ${p.when_node_type.join("/")})`
+      : "";
   switch (p.kind) {
     case "requires_edge":
-      return `requires \`${p.edge_type ?? "?"}\`${p.target_node_type ? ` → ${p.target_node_type}` : ""}`;
+      return `requires \`${p.edge_type ?? "?"}\`${p.target_node_type ? ` → ${p.target_node_type}` : ""}${whenSuffix}`;
     case "forbids_edge":
-      return `forbids \`${p.edge_type ?? "?"}\`${p.target_node_type ? ` → ${p.target_node_type}` : ""}`;
+      return `forbids \`${p.edge_type ?? "?"}\`${p.target_node_type ? ` → ${p.target_node_type}` : ""}${whenSuffix}`;
     case "requires_field":
-      return `requires fields: ${asFieldList(p).join(", ") || "—"}`;
+      return `requires fields: ${asFieldList(p).join(", ") || "—"}${whenSuffix}`;
     case "forbids_field":
-      return `forbids fields: ${asFieldList(p).join(", ") || "—"}`;
+      return `forbids fields: ${asFieldList(p).join(", ") || "—"}${whenSuffix}`;
     case "mandatory_scope": {
       const names = asScopeIdList(p).map((id) => allScopes.find((s) => s.id === id)?.name ?? id);
       return `mandatory scope: ${names.join(", ") || "—"}`;
+    }
+    case "requires_node_type": {
+      const types = Array.isArray(p.node_types) ? p.node_types : [];
+      return `only allows: ${types.join(", ") || "—"}`;
     }
     case "probabilistic":
       return "LLM-judged at capture time";
