@@ -225,23 +225,60 @@ export async function loader({
     }
     const neighborMeta = new Map<
       string,
-      { summary: string; name: string | null; created_at: string | null; node_type: string }
+      {
+        summary: string;
+        name: string | null;
+        created_at: string | null;
+        node_type: string;
+        principal_id: string | null;
+        principal_label: string | null;
+      }
     >();
     for (const [tbl, ids] of neighborsByTable) {
       try {
-        const isHost = HOST_LEVEL_TABLES.has(tbl);
-        const isScope = tbl === "scopes";
-        const cols = isScope
-          ? "id, summary, name, created_at::text"
-          : "id, summary, created_at::text";
-        const sql = isHost
-          ? `SELECT ${cols} FROM ${tbl} WHERE id = ANY($1::text[])`
-          : `SELECT ${cols} FROM ${tbl} WHERE id = ANY($1::text[]) AND doco_id = $2`;
-        const params = isHost ? [ids] : [ids, docoId];
-        const r = await c.query<{ id: string; summary: string; name?: string; created_at: string }>(
-          sql,
-          params,
-        );
+        let sql: string;
+        let params: unknown[];
+        if (tbl === "principals") {
+          sql = `SELECT id,
+                        username AS summary,
+                        username AS name,
+                        created_at::text,
+                        id AS principal_id,
+                        username AS principal_label
+                   FROM principals
+                  WHERE id = ANY($1::text[])`;
+          params = [ids];
+        } else if (tbl === "organizations") {
+          sql = `SELECT id,
+                        COALESCE(name, slug) AS summary,
+                        slug AS name,
+                        created_at::text,
+                        NULL::text AS principal_id,
+                        NULL::text AS principal_label
+                   FROM organizations
+                  WHERE id = ANY($1::text[])`;
+          params = [ids];
+        } else {
+          const nameExpr = tbl === "scopes" ? "t.name" : "NULL::text";
+          sql = `SELECT t.id,
+                        t.summary,
+                        ${nameExpr} AS name,
+                        t.created_at::text,
+                        t.created_by AS principal_id,
+                        p.username AS principal_label
+                   FROM ${tbl} t
+                   LEFT JOIN principals p ON p.id = t.created_by
+                  WHERE t.id = ANY($1::text[]) AND t.doco_id = $2`;
+          params = [ids, docoId];
+        }
+        const r = await c.query<{
+          id: string;
+          summary: string | null;
+          name: string | null;
+          created_at: string | null;
+          principal_id: string | null;
+          principal_label: string | null;
+        }>(sql, params);
         for (const row of r.rows) {
           const m = /^([a-z_]+)_/.exec(row.id);
           const nt = m?.[1] ?? "";
@@ -250,6 +287,8 @@ export async function loader({
             summary: row.summary ?? row.id,
             name: row.name ?? null,
             created_at: row.created_at ?? null,
+            principal_id: row.principal_id ?? null,
+            principal_label: row.principal_label ?? null,
           });
         }
       } catch {
@@ -267,6 +306,10 @@ export async function loader({
         node_type: nt,
         summary: meta?.summary ?? nid,
         name: meta?.name ?? null,
+        principal_id: meta?.principal_id ?? (nt === "principal" ? nid : null),
+        principal_label:
+          meta?.principal_label ??
+          (nt === "principal" ? (meta?.name ?? meta?.summary ?? nid) : null),
         created_at: meta?.created_at ?? null,
         ppr: pprByid.get(nid) ?? 0,
         gpr: gprByid.get(nid) ?? 0,

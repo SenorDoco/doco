@@ -3,7 +3,7 @@
 // Global PageRank is a follow-up (needs a separate globalPageRank function
 // in @doco/index — `personalizedPageRank` requires a single source).
 //
-// Layout: swim lanes by node type, with Dagre left-to-right ordering
+// Layout: swim lanes by Principal, with Dagre left-to-right ordering
 // (decision_01KRRJTW39THBW0C943G0GTH0M) inside each lane so process-shaped
 // neighborhoods still read as BPMN flows.
 //
@@ -34,6 +34,9 @@ export interface GraphNode {
   summary: string;
   /** Scopes carry their `name` here; other entity types leave it null. */
   name: string | null;
+  /** Principal who owns this node's lane, usually the creator/actor. */
+  principal_id?: string | null;
+  principal_label?: string | null;
   created_at: string | null;
   /** Personalized PageRank from the focal node (1.0 = focal node itself). */
   ppr: number;
@@ -77,33 +80,26 @@ interface MiniMapNodeProps {
   shapeRendering?: string;
 }
 
-interface SwimLaneNodeData {
-  label: string;
-  count: number;
-  color: string;
-  background: string;
-  border: string;
-  labelOffsetX: number;
-}
-
 interface GraphLane {
   id: string;
-  type: string;
+  principalId: string | null;
   label: string;
   count: number;
-  color: string;
-  background: string;
-  border: string;
   x: number;
   y: number;
   width: number;
   height: number;
-  labelOffsetX: number;
 }
 
 interface GraphLayout {
   positions: Map<string, { x: number; y: number }>;
   lanes: GraphLane[];
+}
+
+interface FlowViewport {
+  x: number;
+  y: number;
+  zoom: number;
 }
 
 const TYPE_PLURAL_LABEL: Record<string, string> = {
@@ -125,33 +121,27 @@ function typePluralLabel(type: string): string {
   return TYPE_PLURAL_LABEL[type] ?? `${type}s`;
 }
 
-const LANE_ORDER = [
-  "intent",
-  "decision",
-  "action",
-  "log",
-  "rule",
-  "eval",
-  "reference",
-  "idea",
-  "doco",
-  "organization",
-  "principal",
-  "scope",
-];
+const UNKNOWN_PRINCIPAL_KEY = "__unknown_principal__";
+const UNKNOWN_PRINCIPAL_LABEL = "Unknown principal";
 
-function laneOrderIndex(type: string): number {
-  const i = LANE_ORDER.indexOf(type);
-  return i >= 0 ? i : LANE_ORDER.length;
-}
+function principalLaneFor(node: GraphNode): { key: string; id: string | null; label: string } {
+  if (node.node_type === "principal") {
+    return {
+      key: node.id,
+      id: node.id,
+      label: node.name ?? node.summary ?? node.id,
+    };
+  }
 
-function colorWithAlpha(hex: string, alpha: number): string {
-  const normalized = hex.trim().replace(/^#/, "");
-  if (!/^[\da-f]{6}$/i.test(normalized)) return `rgba(82, 82, 82, ${alpha})`;
-  const r = Number.parseInt(normalized.slice(0, 2), 16);
-  const g = Number.parseInt(normalized.slice(2, 4), 16);
-  const b = Number.parseInt(normalized.slice(4, 6), 16);
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  if (node.principal_id) {
+    return {
+      key: node.principal_id,
+      id: node.principal_id,
+      label: node.principal_label ?? node.principal_id,
+    };
+  }
+
+  return { key: UNKNOWN_PRINCIPAL_KEY, id: null, label: UNKNOWN_PRINCIPAL_LABEL };
 }
 
 /** Format an ISO timestamp as "Ns / Nm / Nh / Nd ago". */
@@ -171,12 +161,12 @@ function relativeTime(iso: string | null): string {
 }
 
 /**
- * Swim-lane graph layout: node type controls the horizontal lane, while
+ * Swim-lane graph layout: Principal controls the horizontal lane, while
  * Dagre's left-to-right rank controls ordering inside each lane.
  *
  * Process-shaped data (Intent + Actions chained via `follows` + Decisions
  * via `decision_ids`) keeps the same left-to-right reading order, but lanes
- * make cross-type relationships scannable before the viewer reads card copy.
+ * make ownership / authorship scannable before the viewer reads card copy.
  *
  * Edges that don't carry process / reasoning value (`in_scope_of`,
  * `created_by`, `updated_by`) are filtered upstream so they don't
@@ -194,7 +184,6 @@ const LANE_HEIGHT = 148;
 const LANE_GAP = 24;
 const LANE_HEADER_HEIGHT = 36;
 const LANE_PADDING_X = 16;
-const LANE_LABEL_WIDTH = 160;
 function dagreLayout(nodes: GraphNode[], links: GraphLink[], centerId: string): GraphLayout {
   const positions = new Map<string, { x: number; y: number }>();
   if (nodes.length === 0) return { positions, lanes: [] };
@@ -223,30 +212,52 @@ function dagreLayout(nodes: GraphNode[], links: GraphLink[], centerId: string): 
 
   dagre.layout(g);
 
-  const laneTypes = Array.from(new Set(nodes.map((n) => n.node_type))).sort((a, b) => {
-    const byKnownOrder = laneOrderIndex(a) - laneOrderIndex(b);
-    return byKnownOrder !== 0 ? byKnownOrder : a.localeCompare(b);
+  const laneByKey = new Map<
+    string,
+    { key: string; id: string | null; label: string; nodes: GraphNode[]; maxPpr: number }
+  >();
+  for (const node of nodes) {
+    const principal = principalLaneFor(node);
+    const lane = laneByKey.get(principal.key) ?? {
+      key: principal.key,
+      id: principal.id,
+      label: principal.label,
+      nodes: [],
+      maxPpr: 0,
+    };
+    lane.nodes.push(node);
+    lane.maxPpr = Math.max(lane.maxPpr, node.ppr ?? 0);
+    if (principal.label !== principal.id) lane.label = principal.label;
+    laneByKey.set(principal.key, lane);
+  }
+  const centerNode = nodes.find((n) => n.id === centerId);
+  const centerLaneKey = centerNode ? principalLaneFor(centerNode).key : null;
+  const lanesByPrincipal = Array.from(laneByKey.values()).sort((a, b) => {
+    if (a.key === centerLaneKey) return -1;
+    if (b.key === centerLaneKey) return 1;
+    if (a.key === UNKNOWN_PRINCIPAL_KEY) return 1;
+    if (b.key === UNKNOWN_PRINCIPAL_KEY) return -1;
+    if (b.maxPpr !== a.maxPpr) return b.maxPpr - a.maxPpr;
+    return a.label.localeCompare(b.label);
   });
-  const laneTopByType = new Map<string, number>();
-  laneTypes.forEach((type, i) => {
-    laneTopByType.set(type, i * (LANE_HEIGHT + LANE_GAP));
+  const laneTopByKey = new Map<string, number>();
+  lanesByPrincipal.forEach((lane, i) => {
+    laneTopByKey.set(lane.key, i * (LANE_HEIGHT + LANE_GAP));
   });
 
   const raw = new Map<string, { x: number; y: number }>();
   let globalMinX = Number.POSITIVE_INFINITY;
   let globalMaxX = Number.NEGATIVE_INFINITY;
 
-  for (const type of laneTypes) {
-    const laneNodes = nodes
-      .filter((n) => n.node_type === type)
-      .sort((a, b) => {
-        const ax = g.node(a.id)?.x ?? 0;
-        const bx = g.node(b.id)?.x ?? 0;
-        if (ax !== bx) return ax - bx;
-        if ((b.ppr ?? 0) !== (a.ppr ?? 0)) return (b.ppr ?? 0) - (a.ppr ?? 0);
-        return a.id.localeCompare(b.id);
-      });
-    const laneTop = laneTopByType.get(type) ?? 0;
+  for (const lane of lanesByPrincipal) {
+    const laneNodes = lane.nodes.sort((a, b) => {
+      const ax = g.node(a.id)?.x ?? 0;
+      const bx = g.node(b.id)?.x ?? 0;
+      if (ax !== bx) return ax - bx;
+      if ((b.ppr ?? 0) !== (a.ppr ?? 0)) return (b.ppr ?? 0) - (a.ppr ?? 0);
+      return a.id.localeCompare(b.id);
+    });
+    const laneTop = laneTopByKey.get(lane.key) ?? 0;
     let rightEdge = Number.NEGATIVE_INFINITY;
 
     for (const n of laneNodes) {
@@ -282,48 +293,30 @@ function dagreLayout(nodes: GraphNode[], links: GraphLink[], centerId: string): 
   const laneRawX = globalMinX - LANE_PADDING_X;
   const laneX = laneRawX - cx;
   const laneWidth = globalMaxX - globalMinX + LANE_PADDING_X * 2;
-  const labelOffsetX = Math.max(
-    12,
-    Math.min(laneWidth - LANE_LABEL_WIDTH, cx - laneRawX - LANE_LABEL_WIDTH / 2),
-  );
-  const lanes = laneTypes.map((type) => {
-    const laneNodes = nodes.filter((n) => n.node_type === type);
-    const color = nodeTypeColor(type);
-    const laneTop = laneTopByType.get(type) ?? 0;
+  const lanes = lanesByPrincipal.map((lane) => {
+    const laneTop = laneTopByKey.get(lane.key) ?? 0;
     return {
-      id: `swim-lane:${type}`,
-      type,
-      label: typePluralLabel(type),
-      count: laneNodes.length,
-      color,
-      background: colorWithAlpha(color, 0.045),
-      border: colorWithAlpha(color, 0.22),
+      id: `swim-lane:${lane.key}`,
+      principalId: lane.id,
+      label: lane.label,
+      count: lane.nodes.length,
       x: laneX,
       y: laneTop - cy,
       width: laneWidth,
       height: LANE_HEIGHT,
-      labelOffsetX,
     };
   });
 
   return { positions, lanes };
 }
 
-function SwimLaneNode({ data }: { data: SwimLaneNodeData }) {
+function SwimLaneNode() {
   return (
     <div
-      className="h-full w-full rounded-md border border-dashed px-3 py-2"
-      style={{ background: data.background, borderColor: data.border }}
-    >
-      <div
-        className="flex items-center gap-2 text-[10px] font-semibold uppercase text-muted-foreground"
-        style={{ marginLeft: data.labelOffsetX }}
-      >
-        <span className="h-2 w-2 rounded-full" style={{ backgroundColor: data.color }} />
-        <span style={{ color: data.color }}>{data.label}</span>
-        <span className="font-mono text-muted-foreground">{data.count}</span>
-      </div>
-    </div>
+      className="h-full w-full rounded-md border border-dashed border-border bg-background/55"
+      aria-hidden="true"
+      data-swim-lane-band="principal"
+    />
   );
 }
 
@@ -377,6 +370,13 @@ export function EntityGraph({ centerId, nodes, links, hrefFor }: EntityGraphProp
   // Dynamic import — react-flow uses window/document.
   // biome-ignore lint/suspicious/noExplicitAny: dynamic-import escape hatch
   const [Flow, setFlow] = useState<any>(null);
+  const [viewport, setViewport] = useState<FlowViewport>({ x: 0, y: 0, zoom: 1 });
+  const [graphHeight, setGraphHeight] = useState(0);
+  const updateViewport = (next: FlowViewport) => {
+    setViewport((prev) =>
+      prev.x === next.x && prev.y === next.y && prev.zoom === next.zoom ? prev : next,
+    );
+  };
   useEffect(() => {
     let canceled = false;
     import("@xyflow/react").then((mod) => {
@@ -396,6 +396,16 @@ export function EntityGraph({ centerId, nodes, links, hrefFor }: EntityGraphProp
   // matches the panel radius. `d` is recomputed on every pan/zoom, so a
   // MutationObserver keeps the rounding applied.
   const graphRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = graphRef.current;
+    if (!el) return;
+    const update = () => setGraphHeight(el.clientHeight);
+    update();
+    const obs = new ResizeObserver(update);
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, []);
+
   useEffect(() => {
     if (!Flow) return;
     let canceled = false;
@@ -469,14 +479,7 @@ export function EntityGraph({ centerId, nodes, links, hrefFor }: EntityGraphProp
       id: lane.id,
       type: "swimLane",
       position: { x: lane.x, y: lane.y },
-      data: {
-        label: lane.label,
-        count: lane.count,
-        color: lane.color,
-        background: lane.background,
-        border: lane.border,
-        labelOffsetX: lane.labelOffsetX,
-      },
+      data: {},
       draggable: false,
       selectable: false,
       connectable: false,
@@ -601,6 +604,41 @@ export function EntityGraph({ centerId, nodes, links, hrefFor }: EntityGraphProp
 
     return [...laneNodes, ...entityNodes];
   }, [visible.nodes, layout.lanes, positions, pprBounds, hrefFor]);
+
+  const laneLabelRails = useMemo(() => {
+    const height = graphHeight || 480;
+    return layout.lanes.map((lane) => {
+      const laneTop = lane.y * viewport.zoom + viewport.y;
+      const laneBottom = (lane.y + lane.height) * viewport.zoom + viewport.y;
+      if (laneBottom <= 0 || laneTop >= height) return null;
+
+      const visibleTop = Math.max(0, laneTop);
+      const visibleBottom = Math.min(height, laneBottom);
+      const railHeight = Math.min(height, Math.max(44, visibleBottom - visibleTop));
+      const top = Math.min(Math.max(0, visibleTop), Math.max(0, height - railHeight));
+
+      return (
+        <div
+          key={lane.id}
+          className="absolute left-0 flex w-8 items-center justify-center border-r border-border bg-background/90 shadow-sm"
+          style={{ top, height: railHeight }}
+          data-swim-lane-label={lane.id}
+          title={`${lane.label} (${lane.count})`}
+        >
+          <span
+            className="block max-h-full overflow-hidden whitespace-nowrap px-1 text-[10px] font-semibold uppercase text-muted-foreground"
+            style={{
+              writingMode: "vertical-rl",
+              transform: "rotate(180deg)",
+              textOverflow: "ellipsis",
+            }}
+          >
+            {lane.label}
+          </span>
+        </div>
+      );
+    });
+  }, [layout.lanes, viewport, graphHeight]);
 
   const flowEdges = useMemo(
     () =>
@@ -747,48 +785,58 @@ export function EntityGraph({ centerId, nodes, links, hrefFor }: EntityGraphProp
         className="relative h-[65vh] min-h-[480px] w-full overflow-hidden rounded-md border border-border bg-input"
       >
         {Flow ? (
-          <Flow.ReactFlow
-            nodes={flowNodes}
-            edges={flowEdges}
-            nodeTypes={nodeTypes}
-            nodesDraggable={false}
-            nodesConnectable={false}
-            fitView
-            fitViewOptions={{ padding: 0.05, maxZoom: 1.6 }}
-            onNodeClick={(_e: unknown, n: { id: string }) => {
-              const node = visible.nodes.find((x) => x.id === n.id);
-              if (!node) return;
-              // hrefFor is always provided by callers in production; the fallback exists
-              // only for ad-hoc tests/storybook. Use the short form (no `/e/`).
-              const href = hrefFor
-                ? hrefFor(node.id, node.node_type)
-                : `/${node.node_type}/${node.id}`;
-              navigate(href);
-            }}
-            proOptions={{ hideAttribution: true }}
-          >
-            <Flow.Background gap={20} size={1} />
-            <Flow.Controls showInteractive={false} />
-            <Flow.MiniMap
-              nodeComponent={MiniMapNode}
-              pannable
-              zoomable
-              maskColor="rgba(0, 0, 0, 0.35)"
-              style={{
-                width: 120,
-                height: 90,
-                border: "1px solid var(--color-border)",
-                // Match the parent graph container's `rounded-md` so the
-                // MiniMap nests cleanly inside Doco's component radii.
-                borderRadius: "var(--radius)",
-                // The inner SVG mask path is a rectangle — without
-                // clipping, the dark mask-fill corners poke past the
-                // rounded panel border. `overflow: hidden` clips the SVG
-                // to the rounded panel shape.
-                overflow: "hidden",
+          <>
+            <Flow.ReactFlow
+              nodes={flowNodes}
+              edges={flowEdges}
+              nodeTypes={nodeTypes}
+              nodesDraggable={false}
+              nodesConnectable={false}
+              fitView
+              fitViewOptions={{ padding: 0.05, maxZoom: 1.6 }}
+              onInit={(instance: { getViewport?: () => FlowViewport }) => {
+                const next = instance.getViewport?.();
+                if (next) updateViewport(next);
               }}
-            />
-          </Flow.ReactFlow>
+              onMove={(_event: unknown, next: FlowViewport) => updateViewport(next)}
+              onNodeClick={(_e: unknown, n: { id: string }) => {
+                const node = visible.nodes.find((x) => x.id === n.id);
+                if (!node) return;
+                // hrefFor is always provided by callers in production; the fallback exists
+                // only for ad-hoc tests/storybook. Use the short form (no `/e/`).
+                const href = hrefFor
+                  ? hrefFor(node.id, node.node_type)
+                  : `/${node.node_type}/${node.id}`;
+                navigate(href);
+              }}
+              proOptions={{ hideAttribution: true }}
+            >
+              <Flow.Background gap={20} size={1} />
+              <Flow.Controls position="top-right" showInteractive={false} />
+              <Flow.MiniMap
+                nodeComponent={MiniMapNode}
+                pannable
+                zoomable
+                maskColor="rgba(0, 0, 0, 0.35)"
+                style={{
+                  width: 120,
+                  height: 90,
+                  border: "1px solid var(--color-border)",
+                  // Match the parent graph container's `rounded-md` so the
+                  // MiniMap nests cleanly inside Doco's component radii.
+                  borderRadius: "var(--radius)",
+                  // The inner SVG mask path is a rectangle — without
+                  // clipping, the dark mask-fill corners poke past the
+                  // rounded panel border. `overflow: hidden` clips the SVG
+                  // to the rounded panel shape.
+                  overflow: "hidden",
+                }}
+              />
+            </Flow.ReactFlow>
+            <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-8 overflow-hidden">
+              {laneLabelRails}
+            </div>
+          </>
         ) : (
           <div className="flex h-full w-full items-center justify-center text-xs text-muted-foreground">
             Loading graph…
