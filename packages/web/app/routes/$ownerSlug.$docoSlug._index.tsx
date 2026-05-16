@@ -182,13 +182,8 @@ function nodeTypeSearchPath(ownerSlug: string, docoSlug: string, nodeType: strin
   return `/${ownerSlug}/${docoSlug}/search?${params.toString()}`;
 }
 
-function scopeSearchPath(ownerSlug: string, docoSlug: string, scopeName: string): string {
-  const params = new URLSearchParams();
-  params.set("scope", scopeName);
-  params.set("node_type", "*");
-  params.set("lifecycle", "*");
-  params.set("limit", "500");
-  return `/${ownerSlug}/${docoSlug}/search?${params.toString()}`;
+function scopeDetailPath(ownerSlug: string, docoSlug: string, scopeId: string): string {
+  return `/${ownerSlug}/${docoSlug}/scopes/${scopeId}`;
 }
 
 function lifecycleSearchPath(ownerSlug: string, docoSlug: string, lifecycle: string): string {
@@ -248,12 +243,11 @@ export default function DocoHome({
       title: "Scopes",
       items: facets.scope.map((s) => ({
         key: `scope-${s.name}`,
-        href: scopeSearchPath(ownerSlug, docoSlug, s.name),
+        href: scopeDetailPath(ownerSlug, docoSlug, s.id),
         label: s.name,
         icon: s.icon ?? undefined,
         count: s.count,
-        ariaLabel: `Search ${s.count} nodes in scope ${s.name}`,
-        color: nodeTypeColor("scope"),
+        ariaLabel: `Open scope ${s.name}`,
       })),
     },
     {
