@@ -1,9 +1,9 @@
 import { execSync } from "node:child_process";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { copyFileSync, existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { reactRouter } from "@react-router/dev/vite";
 import tailwindcss from "@tailwindcss/vite";
-import { defineConfig } from "vite";
+import { defineConfig, type Plugin } from "vite";
 import tsconfigPaths from "vite-tsconfig-paths";
 
 // Build-time stamps surfaced as `__DOCO_VERSION__` / `__DOCO_RELEASE_AT__`
@@ -37,12 +37,40 @@ const version =
   rootPkg.version;
 const releaseAt = git("git log -1 --format=%cI") ?? new Date().toISOString();
 
+function findAssetDirs(dir: string): string[] {
+  if (!existsSync(dir)) return [];
+  const out: string[] = [];
+  for (const entry of readdirSync(dir)) {
+    const path = join(dir, entry);
+    const stat = statSync(path);
+    if (stat.isDirectory()) {
+      if (entry === "assets") out.push(path);
+      out.push(...findAssetDirs(path));
+    }
+  }
+  return out;
+}
+
+function copyDbSchemaIntoServerBuild(): Plugin {
+  return {
+    name: "doco-copy-db-schema",
+    apply: "build",
+    closeBundle() {
+      const schemaSrc = resolve(rootDir, "packages/db/src/schema.sql");
+      const serverRoot = resolve(import.meta.dirname, "build/server");
+      for (const assetDir of findAssetDirs(serverRoot)) {
+        copyFileSync(schemaSrc, join(assetDir, "schema.sql"));
+      }
+    },
+  };
+}
+
 export default defineConfig({
   define: {
     __DOCO_VERSION__: JSON.stringify(version),
     __DOCO_RELEASE_AT__: JSON.stringify(releaseAt),
   },
-  plugins: [tailwindcss(), reactRouter(), tsconfigPaths()],
+  plugins: [tailwindcss(), reactRouter(), tsconfigPaths(), copyDbSchemaIntoServerBuild()],
   server: {
     port: 5173,
     host: "127.0.0.1",
