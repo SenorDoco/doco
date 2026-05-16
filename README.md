@@ -45,6 +45,19 @@ API — there are no on-disk per-entity files to read here.
 └── SCHEMA.md / PLANNING.md / DECISIONS.md / NOTICE / LICENSE
 ```
 
+## Install the CLI
+
+```bash
+npm install -g doco-cli
+```
+
+This installs the `doco` binary on your `$PATH`. For sandboxed coding
+agents (OpenAI Codex web, GitHub Coding Agent, Anthropic web sandbox),
+add the same line to your environment's **setup script** and allowlist
+`doco.to` in the network-access settings — that combination keeps the
+bearer token inside the Node process so the sandbox stops prompting on
+every bootstrap call.
+
 ## Reading order for a new agent
 
 1. [AGENTS.md](AGENTS.md) — protocol, bootstrap, env setup.

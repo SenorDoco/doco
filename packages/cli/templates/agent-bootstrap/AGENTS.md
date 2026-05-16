@@ -20,8 +20,18 @@ elif [ -f "packages/cli/dist/index.js" ]; then
   node packages/cli/dist/index.js bootstrap
 elif command -v pnpm >/dev/null 2>&1 && [ -f "packages/cli/src/index.ts" ]; then
   pnpm exec tsx packages/cli/src/index.ts bootstrap
+elif command -v npm >/dev/null 2>&1; then
+  # No local CLI — install from npm. Cleanest path for sandboxed agents
+  # (Codex web, GitHub Coding Agent, etc.) since the bearer token never
+  # appears in shell command text and the sandbox stops prompting on
+  # every call. Better still: add `npm install -g doco-cli` to your
+  # agent environment's setup script so this happens once per env, not
+  # once per session.
+  npm install -g doco-cli >/dev/null 2>&1 && doco bootstrap
 else
-  # Fallback only if the CLI is unavailable:
+  # Last-resort fallback only if no Node toolchain is available. Some
+  # sandboxes (Codex web) reject this because the bearer is visible in
+  # the command text — prefer one of the paths above.
   [ -n "$DOCO_TOKEN" ] || { set -a; . ./.env; set +a; }
   curl -s "https://doco.to/api/v1/agent-bootstrap?id=__DOCO_ID__" -H "Authorization: Bearer $DOCO_TOKEN"
 fi
