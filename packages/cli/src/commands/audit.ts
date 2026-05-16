@@ -5,7 +5,7 @@ import { defineCommand } from "citty";
 import { c, cross } from "../output.js";
 import { requireDocoConfig } from "../env.js";
 
-const DOCO_BASE_URL = "https://doco.to";
+// Host comes from requireDocoConfig() so DOCO_HOST overrides for local dev.
 
 interface AuditEvent {
   event_id: string;
@@ -21,9 +21,9 @@ interface AuditEvent {
 }
 
 async function fetchEvents(query: Record<string, string>): Promise<AuditEvent[]> {
-  const { token, docoId } = requireDocoConfig();
+  const { token, docoId, host } = requireDocoConfig();
   const qs = new URLSearchParams(query).toString();
-  const url = `${DOCO_BASE_URL}/by-id/${encodeURIComponent(docoId)}/api/audit.json${qs ? `?${qs}` : ""}`;
+  const url = `${host}/by-id/${encodeURIComponent(docoId)}/api/audit.json${qs ? `?${qs}` : ""}`;
   let resp: Response;
   try {
     resp = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });

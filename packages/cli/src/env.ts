@@ -10,7 +10,23 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-export type DocoConfig = { token: string; docoId: string };
+export type DocoConfig = { token: string; docoId: string; host: string };
+
+/**
+ * Doco host the CLI talks to. Defaults to production (`https://doco.to`)
+ * for the wide-default path the bootstrap canonical documents. Override
+ * via `DOCO_HOST` for local dev / test (`http://127.0.0.1:5173`) — set
+ * it in `./.env` alongside `DOCO_TOKEN` (or export inline) and every
+ * subcommand will route there.
+ */
+export const DEFAULT_DOCO_HOST = "https://doco.to";
+
+export function resolveDocoHost(): string {
+  loadDotenv();
+  const raw = (process.env.DOCO_HOST ?? "").trim();
+  if (!raw) return DEFAULT_DOCO_HOST;
+  return raw.replace(/\/+$/, "");
+}
 
 /**
  * Read `./.env` into `process.env` for any DOCO_* keys that aren't
@@ -89,5 +105,5 @@ export function requireDocoConfig(): DocoConfig {
     );
     process.exit(2);
   }
-  return { token, docoId };
+  return { token, docoId, host: resolveDocoHost() };
 }

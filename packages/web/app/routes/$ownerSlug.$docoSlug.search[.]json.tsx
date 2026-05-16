@@ -85,6 +85,8 @@ const TYPE_FETCHES: TypeFetch[] = [
   })),
   fetchSpec("evals", "eval", "summary, lifecycle, created_at", false),
   fetchSpec("ideas", "idea", "summary, lifecycle, created_at", false),
+  // v7 (decision_01KRRR5BQ16ASY8HQEE0V499YG): State node type.
+  fetchSpec("states", "state", "summary, lifecycle, created_at", false),
   fetchSpec(
     "principals",
     "principal",

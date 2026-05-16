@@ -272,6 +272,9 @@ export async function loader({
           "evals",
           "reference_entities",
           "ideas",
+          "logs",
+          // v7 (decision_01KRRR5BQ16ASY8HQEE0V499YG): States count too.
+          "states",
         ];
         const unionSql = tables
           .map(
@@ -313,6 +316,9 @@ export async function loader({
           { table: "evals", nodeType: "eval" },
           { table: "reference_entities", nodeType: "reference" },
           { table: "ideas", nodeType: "idea" },
+          { table: "logs", nodeType: "log" },
+          // v7 (decision_01KRRR5BQ16ASY8HQEE0V499YG): State node type.
+          { table: "states", nodeType: "state" },
         ];
         const unionSql = tables
           .map(
@@ -356,6 +362,8 @@ export async function loader({
           "evals",
           "ideas",
           "reference_entities",
+          // v7 (decision_01KRRR5BQ16ASY8HQEE0V499YG): include States.
+          "states",
         ];
         const unionSql = tables
           .map(
@@ -992,16 +1000,14 @@ function PrimaryIntentCard({
               <CardDescription>No main intent is attached yet.</CardDescription>
             )}
           </div>
+          <Link
+            to={`/${ownerSlug}/${docoSlug}/scopes/${scopeId}/intent/replace`}
+            className="inline-flex h-8 shrink-0 items-center rounded-md border border-border px-2.5 text-xs font-semibold hover:bg-muted"
+          >
+            Replace
+          </Link>
         </div>
       </CardHeader>
-      <CardContent>
-        <Link
-          to={`/${ownerSlug}/${docoSlug}/scopes/${scopeId}/intent/replace`}
-          className="inline-flex rounded-md border border-border px-3 py-2 text-xs font-semibold hover:bg-card"
-        >
-          Replace
-        </Link>
-      </CardContent>
     </Card>
   );
 }

@@ -108,6 +108,8 @@ const PG_DOCO_TABLES_WITH_LIFECYCLE = [
   "evals",
   "reference_entities",
   "scopes",
+  // v7 (decision_01KRRR5BQ16ASY8HQEE0V499YG): State node type.
+  "states",
 ] as const;
 
 /** Map from external node_type (singular) → PG table (plural). */
@@ -121,6 +123,8 @@ const NODE_TYPE_TO_TABLE: Record<string, string> = {
   eval: "evals",
   reference: "reference_entities",
   scope: "scopes",
+  // v7.
+  state: "states",
   principal: "principals",
   organization: "organizations",
 };

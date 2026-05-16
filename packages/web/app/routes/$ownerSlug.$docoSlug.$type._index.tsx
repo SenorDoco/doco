@@ -134,6 +134,10 @@ const TABLE_BY_TYPE: Record<string, string> = {
   scope: "scopes",
   eval: "evals",
   idea: "ideas",
+  // v7 (decision_01KRRR5BQ16ASY8HQEE0V499YG): State node type maps to
+  // the `states` table; the default `nodeType + "s"` fallback would
+  // resolve to `state` and crash the list query.
+  state: "states",
 };
 
 export function meta({ params }: { params: { ownerSlug: string; docoSlug: string; type: string } }) {

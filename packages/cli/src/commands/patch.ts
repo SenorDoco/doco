@@ -18,7 +18,7 @@ import { requireDocoConfig } from "../env.js";
  * endpoints. Same auth + response shape as `doco capture`.
  */
 
-const DOCO_BASE_URL = "https://doco.to";
+// Host comes from requireDocoConfig() so DOCO_HOST overrides for local dev.
 
 const PLURAL_BY_TYPE: Record<string, string> = {
   decision: "decisions",
@@ -88,8 +88,8 @@ async function sendPatch(
     process.exit(2);
   }
 
-  const { token, docoId } = requireDocoConfig();
-  const url = `${DOCO_BASE_URL}/by-id/${encodeURIComponent(docoId)}/api/${plural}/${id}.json`;
+  const { token, docoId, host } = requireDocoConfig();
+  const url = `${host}/by-id/${encodeURIComponent(docoId)}/api/${plural}/${id}.json`;
   let resp: Response;
   try {
     resp = await fetch(url, {
