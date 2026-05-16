@@ -266,25 +266,12 @@ export default function CliAuthorize({
 }) {
   const actionData = useActionData<ActionResult>();
 
-  if ("error" in loaderData) {
-    return (
-      <Shell>
-        <Card>
-          <CardHeader>
-            <CardTitle>{errorTitle(loaderData)}</CardTitle>
-            <CardDescription>{errorDescription(loaderData)}</CardDescription>
-          </CardHeader>
-          <CardContent className="text-sm text-muted-foreground">
-            <Link to="/" className="text-primary hover:underline">
-              Return to the host home
-            </Link>
-            .
-          </CardContent>
-        </Card>
-      </Shell>
-    );
-  }
-
+  // Action-success wins over the loader's "already_resolved" state. React
+  // Router revalidates the loader after the action runs; the loader now
+  // sees status=approved (which the action just set) and returns
+  // already_resolved. Without this short-circuit the user would see the
+  // success card flash for one frame before the loader's "Already
+  // authorized" error replaced it.
   if (actionData && "ok" in actionData) {
     const docoUrl = `${actionData.approved_owner}/${actionData.bound_doco_slug}`;
     return (
@@ -315,6 +302,25 @@ export default function CliAuthorize({
                 (Created just now as part of this authorization.)
               </p>
             ) : null}
+          </CardContent>
+        </Card>
+      </Shell>
+    );
+  }
+
+  if ("error" in loaderData) {
+    return (
+      <Shell>
+        <Card>
+          <CardHeader>
+            <CardTitle>{errorTitle(loaderData)}</CardTitle>
+            <CardDescription>{errorDescription(loaderData)}</CardDescription>
+          </CardHeader>
+          <CardContent className="text-sm text-muted-foreground">
+            <Link to="/" className="text-primary hover:underline">
+              Return to the host home
+            </Link>
+            .
           </CardContent>
         </Card>
       </Shell>
