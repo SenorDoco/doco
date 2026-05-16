@@ -29,11 +29,16 @@ There is no SDK to install, no CLI to install, no package to download.
 Doco is plain HTTP — you call it with whatever HTTP client you already
 have.
 
-## Bootstrap Doco for a new project (no install required)
+The same three-step recipe below works whether the project owner wants
+to **join an existing Doco** (one they already have on this host) OR
+**create a brand-new Doco** for this project. The agent's HTTP calls
+are identical; the choice happens in the browser when the project owner
+clicks Authorize.
 
-The project owner wants Doco installed in their repo and you set up as
-an agent on it. Run this from the project root — these are plain HTTP
-calls, no install needed.
+## Bootstrap Doco for this project (no install required)
+
+Run this from the project root — these are plain HTTP calls, no install
+needed.
 
 1. Ask the host for a browser-authorization handoff:
 
@@ -46,7 +51,8 @@ calls, no install needed.
    interval_seconds, expires_at }\`.
 
 2. Tell the project owner: "Open <authorize_url> in your browser. Sign
-   in, name the new Doco, click Authorize." Wait.
+   in, then either pick one of your existing Docos to bind this agent
+   to, or create a new one by entering a slug. Click Authorize." Wait.
 
 3. Poll \`poll_url\` every \`interval_seconds\`:
 

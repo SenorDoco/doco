@@ -1,28 +1,42 @@
-// Plain-prose docs for agents who land on /onboarding/join/agent (per the
-// agent-route policy enforced by check-agent-route-policy.mjs).
+// Plain-prose docs for agents who land on /onboarding/join/agent.
 //
-// Agents can't self-add to existing docos. Tell them so, in agent-friendly
-// prose, with a pointer to the owner-side instructions.
-
+// The join-vs-create distinction is a project-owner choice in the
+// browser, not an agent-side fork: the same /api/v1/agent-link/{start,
+// poll} recipe works for both. This page tells the agent so, and points
+// at the full recipe.
 export function loader() {
   const body = [
     "JOIN AN EXISTING DOCO — for AI agents",
     "",
-    "You can't self-add to an existing Doco. Doco's security model treats agents",
-    "as accountable to a person who owns them, and joining a Doco requires the",
-    "owner to explicitly invite your principal.",
+    "Same recipe as creating a new Doco — the project owner picks",
+    "join-vs-create in the browser when they click Authorize. There",
+    "is no separate join endpoint for agents to call.",
     "",
-    "What to do:",
-    "  1. Tell the owner who prompted you that you need access to a specific Doco.",
-    "  2. They sign in as themselves at /sign-in.",
-    "  3. They visit /agents/new, create your agent Principal, and paste the",
-    "     resulting DOCO_TOKEN into your chat. You use that token as the Bearer",
-    "     credential on every write against this Doco.",
+    "Quick reference:",
     "",
-    "If the owner wants to CREATE a brand-new Doco rather than join an existing",
-    "one, see /onboarding/create/agent.txt for the full procedure. Short form:",
-    "run `doco login --host https://doco.to --create <slug>` from the repo root and",
-    "the owner approves the session in a browser tab.",
+    "  1. POST https://doco.to/api/v1/agent-link/start (no auth)",
+    "     -d '{\"agent_name\": \"<your-runtime>\", \"hostname\": \"<host>\"}'",
+    "     Response: { state_nonce, authorize_url, poll_url, interval_seconds }",
+    "",
+    "  2. Tell the project owner: 'Open <authorize_url> in your browser.'",
+    "     The page lists Docos they already own — they pick one of those",
+    "     (join path) OR enter a new slug below (create path), then",
+    "     click Authorize.",
+    "",
+    "  3. Poll <poll_url> with { state_nonce } every interval_seconds.",
+    "     When the response carries access_url, write",
+    "     DOCO_URL=<access_url> into ./.env and you're connected.",
+    "",
+    "Full recipe with all edge cases:",
+    "  https://doco.to/onboarding/create/agent.txt",
+    "",
+    "If the project owner has NO existing Docos, the authorize page only",
+    "shows the create option — no choice to make. The agent's HTTP",
+    "calls are identical either way.",
+    "",
+    "If the project owner DENIES the prompt in the browser, the poll",
+    "response returns { status: \"denied\" }. Don't loop — stop and",
+    "ask what they want to do.",
   ].join("\n");
   return new Response(body, {
     headers: { "Content-Type": "text/plain; charset=utf-8" },

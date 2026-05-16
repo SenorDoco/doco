@@ -111,6 +111,10 @@ export default function Home({ loaderData }: { loaderData: Awaited<ReturnType<ty
               <code className="rounded bg-input px-1 py-0.5 font-mono">DOCO_URL=&lt;access_url&gt;</code>{" "}
               into <code>./.env</code>. No CLI, no npm, no package — just three HTTP calls.
             </p>
+            <p className="mb-0">
+              Same recipe whether the project owner wants to <strong>join an existing Doco</strong>{" "}
+              or <strong>create a new one</strong> — they pick which on the authorize page.
+            </p>
           </div>
         </div>
       </main>

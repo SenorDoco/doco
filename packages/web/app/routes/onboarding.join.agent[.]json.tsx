@@ -1,34 +1,38 @@
-// JSON-shaped sibling of /onboarding/join/agent (per the agent-route
-// policy enforced by check-agent-route-policy.mjs). There is no
-// state-changing POST here — agents can't self-join docos — so the
-// endpoint is a documentation handle that tells the caller what to do
-// instead.
+// JSON-shaped sibling of /onboarding/join/agent. There is no
+// state-changing POST here — joining vs creating is the project
+// owner's choice in the browser; the agent's HTTP calls are the same
+// recipe either way. The endpoint is a discovery handle that tells
+// the caller where to actually start.
 export function loader() {
   return Response.json({
     status: "info",
-    summary: "Agents can't self-add to existing docos. Ask the owner to create your Principal at /agents/new and share the resulting DOCO_TOKEN.",
+    summary:
+      "Join-vs-create is a project-owner choice in the browser, not an agent-side fork. Use the same /api/v1/agent-link/{start,poll} recipe.",
+    recipe: {
+      start: "POST https://doco.to/api/v1/agent-link/start",
+      poll: "POST https://doco.to/api/v1/agent-link/poll",
+      details: "https://doco.to/onboarding/create/agent.txt",
+    },
     next_steps: [
-      "Tell the owner to sign in at /sign-in",
-      "They visit /agents/new and create your agent Principal",
-      "They paste the resulting DOCO_TOKEN into your chat — use it as the Bearer credential on every write",
+      "POST /api/v1/agent-link/start (no auth) to get state_nonce + authorize_url",
+      "Tell the project owner to open authorize_url; they pick existing or create-new in the browser",
+      "Poll /api/v1/agent-link/poll until response carries access_url; write DOCO_URL=<access_url> to ./.env",
     ],
     related_routes: [
-      "/onboarding/join/agent",
       "/onboarding/join/agent.txt",
-      "/agents/new",
       "/onboarding/create/agent.txt",
-      "/cli/authorize",
+      "/llms.txt",
+      "/api/v1/agent-link/start",
+      "/api/v1/agent-link/poll",
     ],
   });
 }
 
-// POST: same response shape; we don't write state here. Returning a
-// JSON object (not a 405) keeps the resource discoverable for agents
-// that try a POST out of habit.
 export function action() {
   return Response.json(
     {
-      error: "Agents cannot self-join docos. See /onboarding/join/agent.txt for the owner-mediated path.",
+      error:
+        "No state to mutate here. Use POST /api/v1/agent-link/start to begin the browser-authorize handoff.",
     },
     { status: 405 },
   );

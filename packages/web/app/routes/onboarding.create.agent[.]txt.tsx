@@ -5,7 +5,11 @@ import { getPublicBaseUrl } from "@doco/shared";
 
 export async function loader({ request }: { request: Request }) {
   const baseUrl = getPublicBaseUrl(request);
-  const body = `Create a new Doco for this project — zero-install recipe for agents.
+  const body = `Set up Doco for this project — zero-install recipe for agents.
+
+This same recipe handles BOTH cases — bind this agent to a Doco the
+project owner already has, OR create a brand-new Doco. The HTTP calls
+are identical; the project owner picks which in the browser at step 2.
 
 You'll talk to ${baseUrl} over plain HTTP. There is no CLI to install
 and no SDK to import.
@@ -30,8 +34,10 @@ Step 2 — tell the project owner what to do, then wait:
 
     Open <authorize_url> in your browser.
     Sign in if asked.
-    Type the slug for your new Doco (lower-case, kebab-case).
-    Click Authorize.
+    On the authorize page they see TWO options:
+      (a) Use an existing Doco — pick one from a list of Docos they own
+      (b) Create a new Doco — enter a slug (lower-case, kebab-case)
+    Click Authorize next to whichever option they picked.
 
 Don't loop. Don't retry on your own. Wait for them to confirm.
 

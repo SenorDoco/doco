@@ -23,9 +23,11 @@ import { stringify as stringifyYaml, parse as parseYaml } from "yaml";
 import type { EntityId } from "@doco/shared";
 import { validateDocoSlug } from "@doco/shared";
 import { readFileSync } from "node:fs";
-import { getPrincipalById, upsertEntity } from "@doco/db";
+import { getDocoById, getPrincipalById, upsertEntity } from "@doco/db";
 import { TokenStore } from "~/lib/tokens.server";
 import { rootDir } from "~/lib/db.server";
+import { isMyDoco } from "~/lib/doco-access.server";
+import { listAllDocos } from "~/lib/host";
 import { addAgentPrincipal, createDocoInHost, reindex } from "~/lib/redeem.server";
 import { getCurrentPrincipal } from "~/lib/session";
 import { DocoMark } from "~/components/doco-mark";
@@ -51,6 +53,16 @@ type LoaderOk = {
     client_ip: string;
   };
   principal: { id: string; username: string; display_name: string };
+  /**
+   * Docos the signed-in project owner can pick from to bind this access
+   * URL to. Empty when they have none yet — in which case the form only
+   * offers the create-new path.
+   */
+  myDocos: Array<{
+    docoId: string;
+    ownerSlug: string;
+    docoSlug: string;
+  }>;
 };
 
 export async function loader({ request }: { request: Request }) {
@@ -76,6 +88,15 @@ export async function loader({ request }: { request: Request }) {
     } satisfies LoaderError;
   }
 
+  const allDocos = await listAllDocos();
+  const ownerships = await Promise.all(
+    allDocos.map((d) => isMyDoco({ ownerId: d.ownerId }, principal.id)),
+  );
+  const myDocos = allDocos
+    .filter((_, i) => ownerships[i])
+    .map((d) => ({ docoId: d.docoId, ownerSlug: d.ownerSlug, docoSlug: d.docoSlug }))
+    .sort((a, b) => `${a.ownerSlug}/${a.docoSlug}`.localeCompare(`${b.ownerSlug}/${b.docoSlug}`));
+
   return {
     ok: true,
     state,
@@ -93,6 +114,7 @@ export async function loader({ request }: { request: Request }) {
       username: principal.username,
       display_name: principal.display_name,
     },
+    myDocos,
   } satisfies LoaderOk;
 }
 
@@ -159,7 +181,14 @@ function clientIpFrom(request: Request): string {
 
 type ActionResult =
   | { error: string }
-  | { ok: true; approved_owner: string; created_doco_slug: string | null; created_doco_id: string | null };
+  | {
+      ok: true;
+      approved_owner: string;
+      bound_doco_slug: string;
+      bound_doco_id: string;
+      created_doco_slug: string | null;
+      created_doco_id: string | null;
+    };
 
 export async function action({ request }: { request: Request }): Promise<ActionResult> {
   const principal = await getCurrentPrincipal(request);
@@ -202,44 +231,69 @@ export async function action({ request }: { request: Request }): Promise<ActionR
     return { error: `Failed to create agent Principal: ${(e as Error).message}` };
   }
 
-  // Create the Doco first so the access URL we mint binds to a specific
-  // Doco. A bound credential lets `/agent/<cred>/*` resolve the
-  // destination without a separate DOCO_ID env var.
-  const docoSlugInput = String(form.get("doco_slug") ?? "").trim().toLowerCase();
-  if (!docoSlugInput) {
-    return { error: "Pick a Doco slug — the access URL is bound to one Doco." };
-  }
-  const slugError = validateDocoSlug(docoSlugInput);
-  if (slugError) return { error: slugError };
-  let createdDocoSlug: string;
-  let createdDocoId: EntityId<"doco">;
-  try {
-    await ensureOwnerPrincipalOnDisk(rootDir(), principal.id);
-  } catch (e) {
-    return { error: `Failed to mirror owner principal: ${(e as Error).message}` };
-  }
-  try {
-    const created = await createDocoInHost(rootDir(), {
-      ownerSlug: principal.username,
-      docoSlug: docoSlugInput,
-      autoSuffixOnCollision: false,
-      visibility: "private",
-    });
-    await mirrorDocoToPostgres(created.path, created.docoId);
-    await reindex(created.path);
-    createdDocoSlug = created.docoSlug;
-    createdDocoId = created.docoId as EntityId<"doco">;
-  } catch (e) {
-    return { error: `Failed to create Doco: ${(e as Error).message}` };
+  // Two paths: bind the credential to an EXISTING Doco the project
+  // owner already has, or CREATE a new one. The form sends `mode` =
+  // "existing" | "create".
+  const mode = String(form.get("mode") ?? "create");
+  let boundDocoId: EntityId<"doco">;
+  let boundOwnerSlug: string;
+  let boundDocoSlug: string;
+  let createdDocoSlug: string | null = null;
+  let createdDocoId: string | null = null;
+
+  if (mode === "existing") {
+    const existingDocoId = String(form.get("existing_doco_id") ?? "").trim();
+    if (!existingDocoId) {
+      return { error: "Pick an existing Doco from the list." };
+    }
+    const docoRow = await getDocoById(existingDocoId);
+    if (!docoRow) {
+      return { error: `Doco ${existingDocoId} not found.` };
+    }
+    const owned = await isMyDoco({ ownerId: docoRow.owner_id }, principal.id);
+    if (!owned) {
+      return { error: "You can only bind an access URL to a Doco you own." };
+    }
+    boundDocoId = docoRow.id as EntityId<"doco">;
+    boundOwnerSlug = docoRow.owner_slug;
+    boundDocoSlug = docoRow.doco_slug;
+  } else {
+    const docoSlugInput = String(form.get("doco_slug") ?? "").trim().toLowerCase();
+    if (!docoSlugInput) {
+      return { error: "Pick a Doco slug — the access URL is bound to one Doco." };
+    }
+    const slugError = validateDocoSlug(docoSlugInput);
+    if (slugError) return { error: slugError };
+    try {
+      await ensureOwnerPrincipalOnDisk(rootDir(), principal.id);
+    } catch (e) {
+      return { error: `Failed to mirror owner principal: ${(e as Error).message}` };
+    }
+    try {
+      const created = await createDocoInHost(rootDir(), {
+        ownerSlug: principal.username,
+        docoSlug: docoSlugInput,
+        autoSuffixOnCollision: false,
+        visibility: "private",
+      });
+      await mirrorDocoToPostgres(created.path, created.docoId);
+      await reindex(created.path);
+      boundDocoId = created.docoId as EntityId<"doco">;
+      boundOwnerSlug = principal.username;
+      boundDocoSlug = created.docoSlug;
+      createdDocoSlug = created.docoSlug;
+      createdDocoId = created.docoId;
+    } catch (e) {
+      return { error: `Failed to create Doco: ${(e as Error).message}` };
+    }
   }
 
-  // Issue the session token, bound to the freshly-created Doco so the
-  // access URL `/agent/<token>/...` resolves to it without a separate
-  // doco identifier.
+  // Issue the session token, bound to the chosen Doco so the access URL
+  // `/agent/<token>/...` resolves to it without a separate doco identifier.
   const session = await store.issueSessionToken(
     agentId,
     principal.id as EntityId<"principal">,
-    createdDocoId,
+    boundDocoId,
   );
 
   await store.approveCliAuthorization(
@@ -247,12 +301,19 @@ export async function action({ request }: { request: Request }): Promise<ActionR
     principal.id as EntityId<"principal">,
     agentId,
     session.token,
-    principal.username,
-    createdDocoSlug,
-    createdDocoId,
+    boundOwnerSlug,
+    boundDocoSlug,
+    boundDocoId,
   );
 
-  return { ok: true, approved_owner: principal.username, created_doco_slug: createdDocoSlug, created_doco_id: createdDocoId };
+  return {
+    ok: true,
+    approved_owner: boundOwnerSlug,
+    bound_doco_slug: boundDocoSlug,
+    bound_doco_id: boundDocoId,
+    created_doco_slug: createdDocoSlug,
+    created_doco_id: createdDocoId,
+  };
 }
 
 export function meta() {
@@ -286,6 +347,7 @@ export default function CliAuthorize({
   }
 
   if (actionData && "ok" in actionData) {
+    const docoUrl = `${actionData.approved_owner}/${actionData.bound_doco_slug}`;
     return (
       <Shell>
         <Card>
@@ -299,16 +361,19 @@ export default function CliAuthorize({
             <p>
               Authorized as <strong>{actionData.approved_owner}</strong>.
             </p>
+            <p>
+              Access URL is bound to{" "}
+              <Link
+                to={`/${docoUrl}`}
+                className="text-primary hover:underline"
+              >
+                {docoUrl}
+              </Link>
+              .
+            </p>
             {actionData.created_doco_slug ? (
-              <p>
-                Your new Doco lives at{" "}
-                <Link
-                  to={`/${actionData.approved_owner}/${actionData.created_doco_slug}`}
-                  className="text-primary hover:underline"
-                >
-                  {actionData.approved_owner}/{actionData.created_doco_slug}
-                </Link>
-                .
+              <p className="text-xs">
+                (Created just now as part of this authorization.)
               </p>
             ) : null}
           </CardContent>
@@ -354,26 +419,63 @@ export default function CliAuthorize({
             <p className="text-sm text-destructive">{actionData.error}</p>
           ) : null}
 
-          <Form method="post" className="space-y-3">
-            <input type="hidden" name="state" value={loaderData.state} />
-            <label className="block text-sm">
-              <span className="text-muted-foreground">
-                Name your Doco — the access URL will be bound to it:
-              </span>
-              <input
-                type="text"
-                name="doco_slug"
-                placeholder="my-project"
-                pattern="[a-z0-9-]+"
-                required
-                className="mt-1 block w-full rounded-md border border-border bg-input px-2 py-1 text-sm font-mono"
-              />
-              <span className="text-xs text-muted-foreground">
-                Lower-case, kebab-case. Will be created at{" "}
-                <code>{loaderData.principal.username}/&lt;slug&gt;</code>.
-              </span>
-            </label>
-            <div className="flex gap-2">
+          <div className="space-y-4">
+            {loaderData.myDocos.length > 0 ? (
+              <Form method="post" className="space-y-2 rounded-md border border-border bg-card p-4">
+                <input type="hidden" name="state" value={loaderData.state} />
+                <input type="hidden" name="mode" value="existing" />
+                <p className="text-sm font-semibold">Use an existing Doco</p>
+                <p className="text-xs text-muted-foreground">
+                  Bind this agent's access URL to a Doco you already own.
+                </p>
+                <div className="space-y-1 text-sm">
+                  {loaderData.myDocos.map((d, idx) => (
+                    <label key={d.docoId} className="flex items-center gap-2">
+                      <input
+                        type="radio"
+                        name="existing_doco_id"
+                        value={d.docoId}
+                        defaultChecked={idx === 0}
+                      />
+                      <span className="font-mono">
+                        {d.ownerSlug}/{d.docoSlug}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+                <button
+                  type="submit"
+                  name="intent"
+                  value="approve"
+                  className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90"
+                >
+                  Use this Doco &amp; authorize agent
+                </button>
+              </Form>
+            ) : null}
+
+            <Form method="post" className="space-y-2 rounded-md border border-border bg-card p-4">
+              <input type="hidden" name="state" value={loaderData.state} />
+              <input type="hidden" name="mode" value="create" />
+              <p className="text-sm font-semibold">
+                {loaderData.myDocos.length > 0 ? "Or create a new Doco" : "Create a new Doco"}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                The access URL will be bound to the new Doco.
+              </p>
+              <label className="block text-sm">
+                <input
+                  type="text"
+                  name="doco_slug"
+                  placeholder="my-project"
+                  pattern="[a-z0-9-]+"
+                  className="mt-1 block w-full rounded-md border border-border bg-input px-2 py-1 text-sm font-mono"
+                />
+                <span className="text-xs text-muted-foreground">
+                  Lower-case, kebab-case. Will be created at{" "}
+                  <code>{loaderData.principal.username}/&lt;slug&gt;</code>.
+                </span>
+              </label>
               <button
                 type="submit"
                 name="intent"
@@ -382,6 +484,10 @@ export default function CliAuthorize({
               >
                 Create Doco &amp; authorize agent
               </button>
+            </Form>
+
+            <Form method="post">
+              <input type="hidden" name="state" value={loaderData.state} />
               <button
                 type="submit"
                 name="intent"
@@ -390,8 +496,8 @@ export default function CliAuthorize({
               >
                 Deny
               </button>
-            </div>
-          </Form>
+            </Form>
+          </div>
         </CardContent>
       </Card>
     </Shell>
