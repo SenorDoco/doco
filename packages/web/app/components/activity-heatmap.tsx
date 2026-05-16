@@ -15,7 +15,7 @@ import { useEffect, useRef, useState } from "react";
 interface ActivityHeatmapProps {
   /** Map of yyyy-mm-dd → count of nodes added that day. */
   byDay: Record<string, number>;
-  /** Number of week-columns to render. Default 26 (~6 months). */
+  /** Number of week-columns to render. Default 52 (~1 year). */
   weeks?: number;
 }
 
@@ -47,7 +47,7 @@ function toLocalIso(d: Date): string {
   return `${y}-${m}-${dd}`;
 }
 
-export function ActivityHeatmap({ byDay, weeks = 26 }: ActivityHeatmapProps) {
+export function ActivityHeatmap({ byDay, weeks = 52 }: ActivityHeatmapProps) {
   const today = new Date();
   const totalDays = weeks * 7;
   const days: { date: string; count: number; weekday: number }[] = [];

@@ -28,7 +28,7 @@ import { listScopeDetails } from "~/lib/scope-helpers.server";
 import { computeFilterFacets } from "~/lib/search-filters.server";
 
 const FEED_LIMIT = 30;
-const HEATMAP_WEEKS = 26;
+const HEATMAP_WEEKS = 52;
 
 interface FeedItem extends ActivityFeedLineItem {
   event_id: string;

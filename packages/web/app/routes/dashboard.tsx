@@ -21,7 +21,7 @@ import { listAllDocos, listMyOrgs, loadHostConfig } from "~/lib/host";
 import { getCurrentPrincipal } from "~/lib/session";
 import { timeAgo } from "~/lib/time-ago";
 
-const HEATMAP_WEEKS = 26;
+const HEATMAP_WEEKS = 52;
 const FEED_LIMIT = 20;
 
 interface FeedEvent {

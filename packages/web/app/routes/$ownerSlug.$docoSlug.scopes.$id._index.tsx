@@ -42,7 +42,7 @@ import { nodeTypeColor } from "~/lib/node-colors";
 import { reindex, setScopeWatchedInDoco, updateScopeInDoco } from "~/lib/redeem.server";
 import { listScopeDetails, readDocoMetadata } from "~/lib/scope-helpers.server";
 
-const HEATMAP_WEEKS = 26;
+const HEATMAP_WEEKS = 52;
 
 type RuleKind = "authoring" | "guidance" | "tagged";
 
@@ -896,7 +896,7 @@ export default function ScopePage({
               <CardHeader>
                 <CardTitle className="text-sm">Activity</CardTitle>
                 <CardDescription>
-                  Captures tagged with this scope over the last {HEATMAP_WEEKS} weeks.
+                  Captures tagged with this scope over the last year.
                 </CardDescription>
               </CardHeader>
               <CardContent>
