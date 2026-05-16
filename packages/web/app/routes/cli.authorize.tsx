@@ -15,15 +15,10 @@
 //      to "approved". The CLI's next poll consumes the token.
 //
 // No host-bootstrap detour. No /claim/<token> handoff.
-import { mkdir, writeFile } from "node:fs/promises";
-import { existsSync } from "node:fs";
-import { join } from "node:path";
 import { Form, Link, redirect, useActionData } from "react-router";
-import { stringify as stringifyYaml, parse as parseYaml } from "yaml";
 import type { EntityId } from "@doco/shared";
 import { validateDocoSlug } from "@doco/shared";
-import { readFileSync } from "node:fs";
-import { getDocoById, getPrincipalById, upsertEntity } from "@doco/db";
+import { getDocoById } from "@doco/db";
 import { TokenStore } from "~/lib/tokens.server";
 import { rootDir } from "~/lib/db.server";
 import { isMyDoco } from "~/lib/doco-access.server";
@@ -116,60 +111,6 @@ export async function loader({ request }: { request: Request }) {
     },
     myDocos,
   } satisfies LoaderOk;
-}
-
-/**
- * If the named principal exists in Postgres but not as a YAML file on
- * disk, write the YAML so createDocoInHost's filesystem-walking owner
- * resolver picks it up. No-op if the file already exists. Idempotent.
- *
- * Workaround for the in-flight Postgres-as-source-of-truth migration —
- * once createDocoInHost reads owners from Postgres directly, this
- * helper goes away.
- */
-async function ensureOwnerPrincipalOnDisk(root: string, principalId: string): Promise<void> {
-  const dir = join(root, "principals");
-  const path = join(dir, `${principalId}.yaml`);
-  if (existsSync(path)) return;
-  const row = await getPrincipalById(principalId);
-  if (!row) throw new Error(`Principal ${principalId} not found in Postgres.`);
-  // raw_yaml is JSON-encoded (the migration tool stores frontmatter as
-  // JSON for easier processing); convert it back to YAML for the
-  // filesystem-walking readers.
-  let fm: Record<string, unknown>;
-  try {
-    fm = JSON.parse(row.raw_yaml) as Record<string, unknown>;
-  } catch {
-    fm = parseYaml(row.raw_yaml) as Record<string, unknown>;
-  }
-  await mkdir(dir, { recursive: true });
-  await writeFile(path, stringifyYaml(fm), "utf8");
-}
-
-/**
- * Mirror a freshly-created Doco's `doco.yaml` from disk into the
- * Postgres `docos` table. Companion to ensureOwnerPrincipalOnDisk —
- * createDocoInHost only writes the filesystem; the Postgres row is
- * needed by reindex (which reads from Postgres) and by the per-Doco
- * routes (which look up docos via getDocoById / `owner_slug`).
- *
- * Workaround for the in-flight Postgres-as-source-of-truth migration.
- */
-async function mirrorDocoToPostgres(docoPath: string, docoId: string): Promise<void> {
-  const yamlText = readFileSync(join(docoPath, "doco.yaml"), "utf8");
-  const fm = parseYaml(yamlText) as Record<string, unknown>;
-  await upsertEntity({
-    id: docoId,
-    doco_id: docoId,
-    node_type: "doco",
-    raw_yaml: JSON.stringify(fm),
-    summary: typeof fm.summary === "string" ? fm.summary : null,
-    lifecycle: typeof fm.lifecycle === "string" ? fm.lifecycle : "active",
-    created_at: typeof fm.created_at === "string" ? fm.created_at : new Date().toISOString(),
-    created_by: typeof fm.created_by === "string" ? fm.created_by : null,
-    updated_at: typeof fm.created_at === "string" ? fm.created_at : new Date().toISOString(),
-    updated_by: typeof fm.created_by === "string" ? fm.created_by : null,
-  });
 }
 
 function clientIpFrom(request: Request): string {
@@ -265,19 +206,17 @@ export async function action({ request }: { request: Request }): Promise<ActionR
     const slugError = validateDocoSlug(docoSlugInput);
     if (slugError) return { error: slugError };
     try {
-      await ensureOwnerPrincipalOnDisk(rootDir(), principal.id);
-    } catch (e) {
-      return { error: `Failed to mirror owner principal: ${(e as Error).message}` };
-    }
-    try {
+      // createDocoInHost resolves the owner via Postgres-backed listPrincipals
+      // and inserts the doco row + framework-seeded global scope directly into
+      // Postgres. The `docoRoot` path it returns is synthetic — used only as a
+      // stable identifier for reindex, never read from disk.
       const created = await createDocoInHost(rootDir(), {
         ownerSlug: principal.username,
         docoSlug: docoSlugInput,
         autoSuffixOnCollision: false,
         visibility: "private",
       });
-      await mirrorDocoToPostgres(created.path, created.docoId);
-      await reindex(created.path);
+      await reindex(created.path, created.docoId);
       boundDocoId = created.docoId as EntityId<"doco">;
       boundOwnerSlug = principal.username;
       boundDocoSlug = created.docoSlug;
