@@ -8,7 +8,42 @@ import type { EntityId } from "@doco/shared";
  * Persisted in Postgres as a host-scoped JSON blob.
  */
 
-export type StoredToken = SessionToken | CliAuthorization;
+export type StoredToken = SessionToken | CliAuthorization | Invite;
+
+/**
+ * Single-use invite to join a Doco. Per the invite-flow redesign — any
+ * user (agent or human) holding a valid access key on a Doco can mint
+ * an Invite; redemption mints a fresh per-user access key bound to the
+ * same Doco. The invite-code path component is itself the secret;
+ * there is no separate "Authorize" step.
+ *
+ * The first Invite a Doco ever has is the one returned by anonymous
+ * `POST /api/v1/docos` — it gives the creator their first sharable
+ * link without a separate mint step.
+ */
+export interface Invite {
+  kind: "invite";
+  /** Opaque hex token. Path component of the invite URL. */
+  code: string;
+  /** Doco this invite grants access to. */
+  doco_id: EntityId<"doco">;
+  /** Principal that minted this invite (null for anonymous-creation seed). */
+  minted_by_principal_id: EntityId<"principal"> | null;
+  /** ISO timestamp this invite expires (default 7 days from issue). */
+  expires_at: string;
+  /** ISO timestamp this invite was issued. */
+  issued_at: string;
+  /** Lifecycle status of the invite. */
+  status: "pending" | "consumed" | "expired" | "revoked";
+  /**
+   * The Principal that redeemed this invite. Set when status flips to
+   * "consumed". For multi-use invites (future), this would be the
+   * most-recent redeemer.
+   */
+  redeemed_by_principal_id: EntityId<"principal"> | null;
+  /** ISO timestamp of redemption. Null until consumed. */
+  redeemed_at: string | null;
+}
 
 export interface SessionToken {
   kind: "session";
@@ -355,6 +390,97 @@ export class TokenStore {
     return out;
   }
 
+  // ───────────────────────────────────────────── invites
+
+  /**
+   * Mint a new Invite for a Doco. Returns the freshly-issued Invite row;
+   * the caller renders `invite_url = https://<host>/invite/<code>`.
+   *
+   * @param docoId             Doco the invite grants access to.
+   * @param mintedByPrincipalId Principal that issued the invite (null for the
+   *                            anonymous-create seed invite).
+   * @param ttlDays             Days until the invite expires (default 7).
+   */
+  async issueInvite(
+    docoId: EntityId<"doco">,
+    mintedByPrincipalId: EntityId<"principal"> | null,
+    ttlDays: number = 7,
+  ): Promise<Invite> {
+    const file = await this.load();
+    const now = new Date();
+    const expires = new Date(now.getTime() + Math.max(1, Math.min(365, ttlDays)) * 86400 * 1000);
+    const invite: Invite = {
+      kind: "invite",
+      code: randomBytes(TOKEN_LEN_BYTES).toString("hex"),
+      doco_id: docoId,
+      minted_by_principal_id: mintedByPrincipalId,
+      expires_at: expires.toISOString(),
+      issued_at: now.toISOString(),
+      status: "pending",
+      redeemed_by_principal_id: null,
+      redeemed_at: null,
+    };
+    file.tokens.push(invite);
+    await this.save(file);
+    return invite;
+  }
+
+  /**
+   * Find an Invite by its code. Auto-expires past-TTL invites on read so
+   * callers don't redeem stale ones. Returns null if missing.
+   */
+  async findInvite(code: string): Promise<Invite | null> {
+    const file = await this.load();
+    const row = file.tokens.find(
+      (t) => t.kind === "invite" && t.code === code,
+    ) as Invite | undefined;
+    if (!row) return null;
+    if (row.status === "pending" && Date.parse(row.expires_at) < Date.now()) {
+      row.status = "expired";
+      await this.save(file);
+    }
+    return row;
+  }
+
+  /**
+   * Single-use redemption: mark the Invite as consumed and stamp it with
+   * the redeemer. Returns the prior row (for the caller to read doco_id,
+   * etc.). Returns null if the invite is missing, expired, or already
+   * consumed.
+   */
+  async consumeInvite(
+    code: string,
+    redeemedByPrincipalId: EntityId<"principal">,
+  ): Promise<Invite | null> {
+    const file = await this.load();
+    const row = file.tokens.find(
+      (t) => t.kind === "invite" && t.code === code,
+    ) as Invite | undefined;
+    if (!row) return null;
+    if (row.status === "pending" && Date.parse(row.expires_at) < Date.now()) {
+      row.status = "expired";
+      await this.save(file);
+      return null;
+    }
+    if (row.status !== "pending") return null;
+    row.status = "consumed";
+    row.redeemed_by_principal_id = redeemedByPrincipalId;
+    row.redeemed_at = new Date().toISOString();
+    await this.save(file);
+    return row;
+  }
+
+  async revokeInvite(code: string): Promise<boolean> {
+    const file = await this.load();
+    const row = file.tokens.find(
+      (t) => t.kind === "invite" && t.code === code,
+    ) as Invite | undefined;
+    if (!row) return false;
+    if (row.status !== "pending") return false;
+    row.status = "revoked";
+    await this.save(file);
+    return true;
+  }
 }
 
 /** Resolve a Bearer token from an Authorization header. */

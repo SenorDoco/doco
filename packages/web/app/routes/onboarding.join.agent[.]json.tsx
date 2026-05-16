@@ -1,29 +1,27 @@
-// JSON-shaped sibling of /onboarding/join/agent. There is no
-// state-changing POST here — joining vs creating is the project
-// owner's choice in the browser; the agent's HTTP calls are the same
-// recipe either way. The endpoint is a discovery handle that tells
-// the caller where to actually start.
+// JSON-shaped sibling of /onboarding/join/agent. Joining a Doco is
+// a single HTTP call when you have an invite, or a single
+// ask-the-user when you don't.
 export function loader() {
   return Response.json({
     status: "info",
     summary:
-      "Join-vs-create is a project-owner choice in the browser, not an agent-side fork. Use the same /api/v1/agent-link/{start,poll} recipe.",
+      "Redeem an invite URL (https://doco.to/invite/<code>) with one POST to /api/v1/invites/<code>/redeem.json. If you don't have an invite, ask the user — either the user signs in at <doco_url> to mint one, or asks an already-connected agent to POST /agent/<DOCO_KEY>/api/invites.json.",
     recipe: {
-      start: "GET https://doco.to/api/v1/agent-link/start?agent_name=<runtime>&hostname=<host>",
-      poll: "GET https://doco.to/api/v1/agent-link/poll?state_nonce=<from-start>",
-      details: "https://doco.to/onboarding/create/agent.txt",
+      redeem: "POST https://doco.to/api/v1/invites/<code>/redeem.json (no auth, empty body)",
+      mint: "POST https://doco.to/agent/<DOCO_KEY>/api/invites.json (auth via existing key)",
+      details: "https://doco.to/llms.txt",
     },
     next_steps: [
-      "GET /api/v1/agent-link/start (no auth) to get state_nonce + authorize_url + poll_url",
-      "Tell the project owner to open authorize_url; they pick existing or create-new in the browser",
-      "GET poll_url until response carries access_url; write DOCO_URL=<access_url> to ./.env",
+      "If user pasted an invite URL: POST /api/v1/invites/<code>/redeem.json (no auth)",
+      "Response carries doco_key — write it to ./.env as DOCO_KEY=<doco_key>",
+      "doco.md is committed in the repo; if missing, write one with the doco_url from the response",
     ],
     related_routes: [
       "/onboarding/join/agent.txt",
       "/onboarding/create/agent.txt",
       "/llms.txt",
-      "/api/v1/agent-link/start",
-      "/api/v1/agent-link/poll",
+      "/api/v1/docos.json",
+      "/api/v1/invites/<code>/redeem.json",
     ],
   });
 }
@@ -32,7 +30,7 @@ export function action() {
   return Response.json(
     {
       error:
-        "No state to mutate here. Use POST /api/v1/agent-link/start to begin the browser-authorize handoff.",
+        "No state to mutate here. Use POST /api/v1/invites/<code>/redeem.json to redeem an invite URL.",
     },
     { status: 405 },
   );

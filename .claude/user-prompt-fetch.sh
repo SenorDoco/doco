@@ -33,12 +33,11 @@ if [ -f "$PWD/.env" ]; then
   set +a
 fi
 
-# Ensure trailing slash on DOCO_URL.
-if [ -n "${DOCO_URL:-}" ]; then
-  case "$DOCO_URL" in
-    */) ;;
-    *) DOCO_URL="${DOCO_URL}/" ;;
-  esac
+# Prefer DOCO_KEY (the new env-var shape). For in-flight repos that
+# still carry the old DOCO_URL=https://doco.to/agent/<hex>/, extract
+# the 64-hex segment so the same hook works on both.
+if [ -z "${DOCO_KEY:-}" ] && [ -n "${DOCO_URL:-}" ]; then
+  DOCO_KEY=$(printf '%s' "$DOCO_URL" | sed -nE 's|.*/agent/([0-9a-f]{64})/?$|\1|p')
 fi
 
 # 3. Build the protocol reminder — short, deterministic, every turn.
@@ -73,8 +72,8 @@ EOF
 # 4. Pre-fetch /search.json for the user's prompt.
 QUERY_BLOCK=""
 DISCONNECTED_REASON=""
-if [ -z "${DOCO_URL:-}" ]; then
-  DISCONNECTED_REASON="missing DOCO_URL — re-onboard at https://doco.to/onboarding/create/agent"
+if [ -z "${DOCO_KEY:-}" ]; then
+  DISCONNECTED_REASON="missing DOCO_KEY — ask the project owner for an invite URL"
 elif ! command -v curl >/dev/null 2>&1; then
   DISCONNECTED_REASON="curl is not installed"
 elif ! command -v jq >/dev/null 2>&1; then
@@ -87,7 +86,7 @@ elif [ -n "$PROMPT" ]; then
   ENC=$(printf '%s' "$PROMPT" | jq -sRr @uri 2>/dev/null || true)
   TMP_RESP="${TMPDIR:-/tmp}/doco-search-$$.json"
   HTTP_STATUS=$(curl -sSL --max-time 5 -w '%{http_code}' -o "$TMP_RESP" \
-    "${DOCO_URL}search.json?q=${ENC}&limit=10" 2>/dev/null || true)
+    "https://doco.to/agent/${DOCO_KEY}/search.json?q=${ENC}&limit=10" 2>/dev/null || true)
   RESP=$(cat "$TMP_RESP" 2>/dev/null || true)
   rm -f "$TMP_RESP" 2>/dev/null || true
   if [ "$HTTP_STATUS" = "200" ] && [ -n "$RESP" ]; then
@@ -110,7 +109,7 @@ elif [ -n "$PROMPT" ]; then
     REASON=""
     case "$HTTP_STATUS" in
       000) REASON="doco.to unreachable" ;;
-      401) REASON="DOCO_URL invalid or revoked; re-onboard at https://doco.to/onboarding/create/agent" ;;
+      401) REASON="DOCO_KEY invalid or revoked — ask for a fresh invite URL" ;;
       *) REASON="search failed with HTTP ${HTTP_STATUS}" ;;
     esac
     GUIDANCE=""

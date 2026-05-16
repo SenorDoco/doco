@@ -24,8 +24,8 @@ import { type RouteConfig, index, route } from "@react-router/dev/routes";
  *   /                              host home (anonymous landing; redirects signed-in to /dashboard)
  *   /dashboard                     signed-in host dashboard (docos / users / orgs)
  *   /sign-in, /sign-out, /sign-up  auth (cookie locally; OAuth in prod per ADR-066, ADR-094)
- *   /onboarding/*                  first-run wizard (ADR-073). Agent variants abandoned by decision_01KRKZM14WNA1685GN0F12WCKM — use /cli/authorize.
- *   /cli/authorize                 Vercel-style browser-authorize handoff for `doco login` (decision_01KRKZM14WNA1685GN0F12WCKM)
+ *   /onboarding/*                  first-run wizard (ADR-073). Agents POST /api/v1/docos.json directly; humans use the web flow.
+ *   /invite/:code                  browser landing for a Doco invite — signed-in human accepts and gets their own DOCO_KEY.
  *   /agents, /agents/new           agent self-service (ADR-071)
  *   /new-doco, /new-org            self-service create flows (ADR-067)
  *   /:owner                        owner profile + docos
@@ -102,16 +102,20 @@ export default [
   route("api/suggest-scopes", "routes/api.suggest-scopes.tsx"),
   route("api/v1/agent-bootstrap", "routes/api.v1.agent-bootstrap.tsx"),
   route("api/v1/agent-reference", "routes/api.v1.agent-reference.tsx"),
-  // Agent browser-authorization handoff. The agent POSTs /start, gets a
-  // short-lived state nonce + an authorize URL, opens that URL in the
-  // project owner's browser, then polls /poll until the owner clicks
-  // Approve. The poll response carries an `access_url` of the shape
-  // `https://<host>/agent/<credential>/` which the agent writes into its
-  // `.env` as `DOCO_URL`. Per-Doco scoping: every authorized access URL
-  // is bound to one Doco picked during the browser step.
-  route("api/v1/agent-link/start", "routes/api.v1.agent-link.start.tsx"),
-  route("api/v1/agent-link/poll", "routes/api.v1.agent-link.poll.tsx"),
-  route("cli/authorize", "routes/cli.authorize.tsx"),
+  // Anonymous Doco creation + invite-based collaboration. Any user
+  // (agent or human) can POST /api/v1/docos.json with no prior auth
+  // and get back a `{doco_id, doco_url, doco_key, invite_url}` envelope.
+  // The invite_url is sharable for 7 days by default; a recipient
+  // (human via /invite/<code> or agent via the redeem.json endpoint)
+  // claims their own personal access key. The old agent-link / device-
+  // code flow is retired — that pattern fought every conservative
+  // permission classifier and lost.
+  route("api/v1/docos.json", "routes/api.v1.docos[.]json.tsx"),
+  route(
+    "api/v1/invites/:code/redeem.json",
+    "routes/api.v1.invites.$code.redeem[.]json.tsx",
+  ),
+  route("invite/:code", "routes/invite.$code.tsx"),
   // ID-based lookup + redirect: the doco_id is immortal across renames
   // and ownership transfers; the slug is not. Agents that record the
   // ID once can resolve to the current canonical slug at request time.

@@ -1,15 +1,6 @@
 // /llms.txt — agent-readable entry point at the host root.
 //
-// Convention: https://llmstxt.org/. Served as text/plain. The companion
-// signals (<link rel="alternate"> + <meta name="ai-instructions">) on
-// every page point agents here so they don't have to guess.
-//
-// Why this file exists: an agent told "visit doco.to and follow the
-// wizard" in a fresh project (no AGENTS.md, no .env, no Doco training
-// data) used to fetch the homepage, /onboarding/create, /new-doco,
-// then probe /agent /docs /onboarding/agent /sitemap.xml /robots.txt
-// /llms.txt — every fallback. All 404. This file is the first one
-// that's no longer 404.
+// Convention: https://llmstxt.org/. Served as text/plain.
 import { getPublicBaseUrl } from "@doco/shared";
 
 export async function loader({ request }: { request: Request }) {
@@ -18,148 +9,135 @@ export async function loader({ request }: { request: Request }) {
 
 > Doco is AI-native documentation of intents, decisions, rules, and
 > actions for software projects. Every meaningful change leaves a
-> trail; every agent working in a Doco-tracked project follows a shared
-> protocol.
+> trail; every user (agent or human) working in a Doco-tracked
+> project follows a shared protocol.
 
-If the project owner just told you something like "let's start using
-Doco" or "visit ${new URL(baseUrl).host} and follow the wizard", you've
-reached the right document. This is the agent-readable entry point.
+If a user just told you something like "let's start using Doco" or
+"visit ${new URL(baseUrl).host} and follow the wizard", you're at the
+right page. This is the agent-readable entry point.
 
-There is no SDK to install, no CLI to install, no package to download.
-Doco is plain HTTP — you call it with whatever HTTP client you already
-have.
+No SDK, no CLI, no package, no install. Doco is plain HTTP — call it
+with whatever HTTP client you already have. Setup is two phases:
+**create a Doco** (one POST), then **wire it into the repo** (one .env
+line + one doco.md file).
 
-The same three-step recipe below works whether the project owner wants
-to **join an existing Doco** (one they already have on this host) OR
-**create a brand-new Doco** for this project. The agent's HTTP calls
-are identical; the choice happens in the browser when the project owner
-clicks Authorize.
+## 1. Create a Doco (no auth required)
 
-## Bootstrap Doco for this project (no install required)
+    POST ${baseUrl}/api/v1/docos.json
+    Content-Type: application/json
 
-Run this from the project root — these are plain HTTP calls, no install
-needed.
+    {"slug": "<lowercase-kebab>", "description": "<short prose>"}
 
-1. Ask the host for a browser-authorization handoff — a plain GET so
-   conservative agent classifiers don't flag it as a state-mutating POST:
+Both fields are optional. If \`slug\` is omitted, the server assigns
+\`doco-<random>\`. Response:
 
-       GET ${baseUrl}/api/v1/agent-link/start?agent_name=<your-runtime>&hostname=<host>
+    {
+      "doco_id":           "doco_01K…",
+      "doco_url":          "${baseUrl}/by-id/doco_01K…/",
+      "doco_slug":         "<owner>/<slug>",
+      "doco_key":          "<64-hex>",
+      "invite_url":        "${baseUrl}/invite/<64-hex>",
+      "invite_expires_at": "<ISO timestamp, 7 days out>"
+    }
 
-   Response: \`{ state_nonce, short_code, authorize_url, poll_url,
-   interval_seconds, expires_at }\`. The \`poll_url\` already has the
-   \`state_nonce\` baked in as a query param — fetch it as-is.
+This is anonymous: the server mints an agent-Principal as the
+owner-of-record (no human attached). You hold the \`doco_key\`; share
+the \`invite_url\` with the project owner so they can claim
+collaboration access too. Both single-use, both ephemeral on the
+client side — only \`doco_key\` belongs in long-term storage.
 
-2. **DO NOT print the URL and ask the user to copy it.** That is the
-   default print-and-wait pattern from older CLI tools (gh, vercel)
-   — Doco's flow is automatic. The agent announces, the user
-   confirms, the agent opens the URL itself.
+## 2. Wire it into the repo
 
-   First, announce. Use your runtime's confirmation primitive —
-   Claude Code's AskUserQuestion, Codex's inline option-picker,
-   Cursor's choice menu, etc. If your runtime has no confirmation
-   primitive, plain prose works:
+Write **\`./.env\`** (gitignored — the agent creates a basic
+\`.gitignore\` if one isn't already there):
 
-       "I'll open a browser window so you can authorize me to access
-       a Doco for this project. When it opens, sign in if asked, pick
-       an existing Doco or enter a slug for a new one, and click
-       Authorize. Ready to proceed?"
+    DOCO_KEY=<doco_key from step 1>
 
-   Wait for the user's "yes" / "go" / button click. Then run this
-   exact snippet (substitute \`<authorize_url>\`):
+Write **\`./doco.md\`** (committed, non-secret) verbatim:
 
-       if command -v open >/dev/null 2>&1; then
-         open "<authorize_url>"
-       elif command -v xdg-open >/dev/null 2>&1; then
-         xdg-open "<authorize_url>"
-       elif command -v start >/dev/null 2>&1; then
-         start "<authorize_url>"
-       else
-         echo "Open this URL in your browser: <authorize_url>"
-       fi
+    # Doco
 
-   The \`else\` branch only fires in remote sandboxes (Codex web,
-   GitHub Coding Agent, Anthropic web) where none of the openers
-   exist. On a local laptop \`open\` (macOS), \`xdg-open\` (Linux),
-   or \`start\` (Windows) always exists — the browser pops up.
+    This project is tracked in Doco at:
+    <doco_url>
 
-3. Poll \`poll_url\` (the URL from step 1, already shaped as
-   \`${baseUrl}/api/v1/agent-link/poll?state_nonce=<nonce>\`) every
-   \`interval_seconds\`:
+    Need access? Ask the project owner for an invite URL.
 
-       GET <poll_url>
+Write or update **\`./AGENTS.md\`** so it includes the line
+\`@./doco.md\` somewhere near the top — that way any agent loading
+this repo auto-reads the Doco coordinates. If you also use Claude
+Code, write **\`./CLAUDE.md\`** with the single line \`@./AGENTS.md\`
+(this is Claude Code's auto-load entry point).
 
-   Response stays \`{ status: "pending" }\` until the owner acts, then
-   flips to \`{ status: "approved", access_url, owner_slug, doco_slug,
-   doco_id }\`.
+## 3. Tell the user about the invite
 
-4. Write \`DOCO_URL=<access_url>\` to \`./.env\` (gitignored). The
-   access URL is a single opaque URL of the shape
-   \`${baseUrl}/agent/<credential>/\` — credential and identity
-   together in the path. No \`Authorization\` header, no separate
-   token to manage.
+The \`invite_url\` from step 1 is your one-line tell to the user. Say
+something like:
 
-5. Write \`AGENTS.md\` and \`CLAUDE.md\` (a one-line shim) into the
-   repo root so future sessions auto-load the protocol. Templates
-   live at ${baseUrl}/onboarding/create/agent.txt — fetch and write
-   them verbatim. DO NOT write \`.claude/settings.json\` or any
-   other agent-config file yourself — that's a privilege-escalation
-   vector and conservative agent classifiers (correctly) block it.
-   If permission prompts come up during this session, just ask the
-   project owner to approve them inline; they own the trust
-   boundary, not you.
+    "I created a Doco for this project at <doco_url>. To claim
+    collaboration access (browse it on the web, invite others, mint
+    more invite URLs), open <invite_url> within 7 days and sign in."
 
-6. Apply the protocol NOW, in this same session. Don't tell the
-   project owner to /clear or restart — you already have
-   \${DOCO_URL}; fetch the canonical inline and follow it:
+Repeat this once per session start until they accept. If they never
+accept, that's fine — you still operate fully via the API.
 
-       curl -fsS "\${DOCO_URL}bootstrap.json"
+## 4. Connect — load the protocol and start
 
-   Read the \`canonical_instructions\` field. From your next reply
-   onward, follow the four invariants. For Claude Code, hooks
-   auto-load on the NEXT session start; \`/hooks\` to approve is a
-   one-time-per-repo action the project owner can do whenever.
+On every session, fetch the protocol and follow it:
 
-Detail: ${baseUrl}/onboarding/create/agent.txt
+    curl -fsS "https://doco.to/agent/\${DOCO_KEY}/bootstrap.json"
 
-## I'm already in a Doco-tracked project
+The response's \`canonical_instructions\` field carries the four
+invariants every reply must follow (query indicator, capture
+footer, capture-before-done, tally). Per-prompt search:
 
-If \`./.env\` has \`DOCO_URL\`, fetch the canonical agent instructions
-at the start of every task:
+    curl -fsS "https://doco.to/agent/\${DOCO_KEY}/search.json?q=<paraphrase>"
 
-    curl -fsS \${DOCO_URL}bootstrap.json
+Capture:
 
-The \`canonical_instructions\` field is the protocol — query indicator,
-capture footer, tally line, all of it.
+    curl -X POST "https://doco.to/agent/\${DOCO_KEY}/api/decisions.json" \\
+      -H "Content-Type: application/json" -d @body.json
 
-Before writing about a task, query the project memory:
+## Cross-environment: same repo, fresh \`.env\`
 
-    curl -fsS "\${DOCO_URL}search.json?q=<task-paraphrase>"
+\`doco.md\` is committed, so any clone has the Doco URL. If \`.env\` is
+empty (new machine, fresh container), tell the user:
 
-The credential lives in the URL path; no headers, no env-var gymnastics.
+    "I can see this repo is tracked at <doco_url>, but I need an
+    invite to access it. Ask the project owner to either (a) sign
+    in at <doco_url> and click 'New invite', or (b) ask their
+    already-connected agent to POST
+    /agent/<their-DOCO_KEY>/api/invites.json. They'll give you an
+    invite URL — paste it back here."
+
+When the user pastes \`https://doco.to/invite/<code>\`, redeem it:
+
+    curl -X POST "${baseUrl}/api/v1/invites/<code>/redeem.json" \\
+      -H "Content-Type: application/json" -d '{}'
+
+The response carries a fresh \`doco_key\` — write it to \`.env\`.
 
 ## What NOT to do
 
-- Don't try to "follow the wizard" by curl-ing /onboarding/create — the
-  React app is human-facing. The agent path is /api/v1/agent-link/start
-  above.
-- Don't write Doco YAML by hand. The POST /api/<type>.json endpoints
-  handle ULID generation, file writing, and reindexing in one
-  round-trip.
-- Don't silently degrade if the host or access URL is broken. The
-  canonical instructions explain what to do (stop and ask the project
-  owner).
+- DO NOT print URLs and ask the user to copy/paste anything you can
+  fetch yourself. Anything that's \`curl\`-able is your job.
+- DO NOT write \`.claude/settings.json\` or any agent-config file.
+  Trust-config writes are a privilege-escalation vector and
+  conservative classifiers (correctly) block them.
+- DO NOT silently degrade when \`.env\` is empty. Stop and ask for an
+  invite — the user owns the trust boundary.
 
 ## Endpoints
 
-- GET  ${baseUrl}/api/v1/agent-link/start   begin browser authorization (no auth)
-- GET  ${baseUrl}/api/v1/agent-link/poll    wait for approval (no auth)
-- GET  ${baseUrl}/api/v1/agent-bootstrap    canonical agent protocol (slim, public)
-- GET  ${baseUrl}/api/v1/agent-reference    deeper reference (model, capture flow)
-- GET  \${DOCO_URL}bootstrap.json           per-Doco bootstrap (access URL required)
-- GET  \${DOCO_URL}search.json?q=…          vector search for prior context
-- GET  \${DOCO_URL}status.json              freshness + counts (footer source)
-- POST \${DOCO_URL}api/<type-plural>.json   capture a new node
-- PATCH \${DOCO_URL}api/<type-plural>/<id>.json   extend an existing node
+- POST  ${baseUrl}/api/v1/docos.json                                  create a Doco (no auth)
+- POST  ${baseUrl}/api/v1/invites/<code>/redeem.json                  redeem an invite (no auth)
+- GET   ${baseUrl}/api/v1/agent-bootstrap                             canonical protocol (no per-Doco context)
+- GET   ${baseUrl}/api/v1/agent-reference                             deeper reference
+- GET   https://doco.to/agent/\${DOCO_KEY}/bootstrap.json              per-Doco bootstrap
+- GET   https://doco.to/agent/\${DOCO_KEY}/search.json?q=…             vector search
+- GET   https://doco.to/agent/\${DOCO_KEY}/status.json                 freshness + counts
+- POST  https://doco.to/agent/\${DOCO_KEY}/api/<type-plural>.json      capture a new node
+- POST  https://doco.to/agent/\${DOCO_KEY}/api/invites.json            mint a new invite
+- PATCH https://doco.to/agent/\${DOCO_KEY}/api/<type-plural>/<id>.json  extend a node
 `;
   return new Response(body, {
     headers: {

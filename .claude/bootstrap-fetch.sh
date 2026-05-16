@@ -77,8 +77,16 @@ if ! command -v curl >/dev/null 2>&1; then
   emit_disconnected "curl is not installed" tool
   exit 0
 fi
-if [ -z "${DOCO_URL:-}" ]; then
-  emit_disconnected "missing DOCO_URL — set DOCO_URL in ./.env, or re-onboard at https://doco.to/onboarding/create/agent" default
+
+# Prefer DOCO_KEY (the new env-var shape). For in-flight repos that
+# still carry the old DOCO_URL=https://doco.to/agent/<hex>/, extract the
+# 64-hex segment so the same hook works on both.
+if [ -z "${DOCO_KEY:-}" ] && [ -n "${DOCO_URL:-}" ]; then
+  DOCO_KEY=$(printf '%s' "$DOCO_URL" | sed -nE 's|.*/agent/([0-9a-f]{64})/?$|\1|p')
+fi
+
+if [ -z "${DOCO_KEY:-}" ]; then
+  emit_disconnected "missing DOCO_KEY — ask the project owner for an invite URL (or create a new Doco via POST https://doco.to/api/v1/docos.json)" default
   exit 0
 fi
 
@@ -87,15 +95,9 @@ if ! command -v jq >/dev/null 2>&1; then
   exit 0
 fi
 
-# Ensure the URL has a trailing slash so we can append paths cleanly.
-case "$DOCO_URL" in
-  */) ;;
-  *) DOCO_URL="${DOCO_URL}/" ;;
-esac
-
 TMP_RESP="${TMPDIR:-/tmp}/doco-bootstrap-$$.json"
 HTTP_STATUS=$(curl -sSL --max-time 8 -w '%{http_code}' -o "$TMP_RESP" \
-  "${DOCO_URL}bootstrap.json" 2>/dev/null || true)
+  "https://doco.to/agent/${DOCO_KEY}/bootstrap.json" 2>/dev/null || true)
 RESP=$(cat "$TMP_RESP" 2>/dev/null || true)
 rm -f "$TMP_RESP" 2>/dev/null || true
 if [ -z "$RESP" ]; then
@@ -104,9 +106,9 @@ if [ -z "$RESP" ]; then
 fi
 if [ "$HTTP_STATUS" != "200" ]; then
   case "$HTTP_STATUS" in
-    401) emit_disconnected "DOCO_URL invalid or revoked (HTTP 401)" default ;;
-    403) emit_disconnected "access URL cannot reach this Doco (HTTP 403)" default ;;
-    404) emit_disconnected "Doco not found at this access URL (HTTP 404)" default ;;
+    401) emit_disconnected "DOCO_KEY invalid or revoked (HTTP 401) — ask for a fresh invite URL" default ;;
+    403) emit_disconnected "DOCO_KEY cannot reach this Doco (HTTP 403)" default ;;
+    404) emit_disconnected "Doco not found for this DOCO_KEY (HTTP 404)" default ;;
     5*) emit_disconnected "doco.to returned ${HTTP_STATUS} — host outage; wait and retry." network ;;
     *) emit_disconnected "bootstrap failed with HTTP ${HTTP_STATUS}" default ;;
   esac

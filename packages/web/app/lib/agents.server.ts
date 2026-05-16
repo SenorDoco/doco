@@ -8,7 +8,14 @@ import { type EntityId, generateUlid, makeEntityId, nowIso } from "@doco/shared"
 export interface AddAgentPrincipalOpts {
   username: string;
   display_name: string;
-  owner_id: EntityId<"principal">;
+  /**
+   * Human or agent that owns this agent. Nullable for anonymous-create
+   * agents (the `POST /api/v1/docos` path) — those have no human at the
+   * root of their invitation chain. ADR-035's "chains root at a person"
+   * invariant is explicitly relaxed for that flow (see the
+   * "agents-can-create-Docos-on-their-own" Decision in the metaDoco).
+   */
+  owner_id: EntityId<"principal"> | null;
   agent_metadata: {
     provider: string;
     model: string;
@@ -40,7 +47,8 @@ export async function addAgentPrincipal(
     owner_id: opts.owner_id,
     agent_metadata: opts.agent_metadata,
     created_at: created,
-    created_by: opts.owner_id, // owner created this agent
+    // owner created this agent — null when owner_id is null (anonymous create)
+    created_by: opts.owner_id,
     lifecycle: "active",
     scopes: [],
   };
