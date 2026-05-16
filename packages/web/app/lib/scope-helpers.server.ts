@@ -48,9 +48,7 @@ async function docoIdFromDir(docoDir: string): Promise<string | null> {
   return (await readDocoMetadata(docoDir))?.docoId ?? null;
 }
 
-export async function listScopeFiles(
-  docoDir: string,
-): Promise<{ id: string; name: string }[]> {
+export async function listScopeFiles(docoDir: string): Promise<{ id: string; name: string }[]> {
   const docoId = await docoIdFromDir(docoDir);
   if (!docoId) return [];
   try {
@@ -73,6 +71,11 @@ export interface ScopeDetails {
   parent_ids: string[];
   lifecycle: string;
   is_watched: boolean;
+  intents: {
+    id: string;
+    summary: string;
+    lifecycle: string;
+  }[];
 }
 
 export async function resolveScopeIcons(
@@ -91,7 +94,10 @@ export async function resolveScopeIcons(
   return out;
 }
 
-export async function listScopeDetails(docoDir: string): Promise<ScopeDetails[]> {
+export async function listScopeDetails(
+  docoDir: string,
+  opts: { includeIntents?: boolean } = {},
+): Promise<ScopeDetails[]> {
   const docoId = await docoIdFromDir(docoDir);
   if (!docoId) return [];
   const out: ScopeDetails[] = [];
@@ -116,7 +122,42 @@ export async function listScopeDetails(docoDir: string): Promise<ScopeDetails[]>
           parent_ids: Array.isArray(e.scopes) ? (e.scopes as string[]) : [],
           lifecycle: typeof e.lifecycle === "string" ? e.lifecycle : "active",
           is_watched: row.name === "global" || e.watched === true,
+          intents: [],
         });
+      }
+
+      if (opts.includeIntents && out.length > 0) {
+        const byScopeId = new Map(out.map((s) => [s.id, s.intents]));
+        const intentRows = await c.query<{
+          scope_id: string;
+          id: string;
+          summary: string;
+          lifecycle: string;
+        }>(
+          `SELECT e.to_id AS scope_id,
+                  i.id,
+                  COALESCE(i.summary, '') AS summary,
+                  COALESCE(i.lifecycle, 'active') AS lifecycle
+             FROM edges e
+             JOIN intents i ON i.id = e.from_id
+                           AND i.doco_id = e.doco_id
+            WHERE e.doco_id = $1
+              AND e.edge_type = 'in_scope_of'
+              AND e.from_node_type = 'intent'
+              AND e.to_node_type = 'scope'
+              AND COALESCE(i.lifecycle, 'active') IN ('active', 'proposed')
+            ORDER BY i.created_at ASC, i.id ASC`,
+          [docoId],
+        );
+        for (const row of intentRows.rows) {
+          const intents = byScopeId.get(row.scope_id);
+          if (!intents || row.summary.trim().length === 0) continue;
+          intents.push({
+            id: row.id,
+            summary: row.summary,
+            lifecycle: row.lifecycle,
+          });
+        }
       }
     });
   } catch {
@@ -134,9 +175,7 @@ export interface ScopeManifestEntry {
   is_watched: boolean;
 }
 
-export async function listScopeManifest(
-  docoDir: string,
-): Promise<ScopeManifestEntry[]> {
+export async function listScopeManifest(docoDir: string): Promise<ScopeManifestEntry[]> {
   const details = await listScopeDetails(docoDir);
   return details.map((d) => ({
     id: d.id,

@@ -24,7 +24,7 @@ export async function loader({
 }) {
   const { ownerSlug, docoSlug } = params;
   const { dir, meta, me } = await loadDocoForRead(request, ownerSlug, docoSlug);
-  const scopes = await listScopeDetails(dir);
+  const scopes = await listScopeDetails(dir, { includeIntents: true });
   const url = new URL(request.url);
   const isOnboarding = url.searchParams.get("onboarding") === "1";
   if (scopes.length === 0) {
@@ -108,28 +108,41 @@ export default function ScopesIndex({
             ) : (
               <span className="shrink-0 w-5" aria-hidden="true" />
             )}
-            <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-2">
-              <span
-                className={
-                  isAbandoned
-                    ? "font-mono text-sm text-foreground line-through"
-                    : "font-mono text-sm text-foreground"
-                }
-              >
-                {s.name}
-              </span>
-              {isGlobal ? (
-                <span className="text-[10px] text-muted-foreground">(the doco's constitution)</span>
-              ) : null}
-              {isAbandoned ? (
-                <span className="rounded-md border border-border bg-input px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-muted-foreground">
-                  abandoned
+            <div className="min-w-0 flex-1 space-y-1">
+              <div className="flex min-w-0 flex-wrap items-baseline gap-2">
+                <span
+                  className={
+                    isAbandoned
+                      ? "font-mono text-sm text-foreground line-through"
+                      : "font-mono text-sm text-foreground"
+                  }
+                >
+                  {s.name}
                 </span>
-              ) : null}
-              {parents.length > 0 ? (
-                <span className="text-[10px] text-muted-foreground">
-                  under {parents.join(" / ")}
-                </span>
+                {isGlobal ? (
+                  <span className="text-[10px] text-muted-foreground">
+                    (the doco's constitution)
+                  </span>
+                ) : null}
+                {isAbandoned ? (
+                  <span className="rounded-md border border-border bg-input px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-muted-foreground">
+                    abandoned
+                  </span>
+                ) : null}
+                {parents.length > 0 ? (
+                  <span className="text-[10px] text-muted-foreground">
+                    under {parents.join(" / ")}
+                  </span>
+                ) : null}
+              </div>
+              {s.intents[0] ? (
+                <div className="flex min-w-0 items-start gap-1.5 text-[11px] leading-snug text-muted-foreground">
+                  <span className="shrink-0 font-semibold text-foreground/70">Intent</span>
+                  <span className="min-w-0 break-words">
+                    {s.intents[0].summary}
+                    {s.intents.length > 1 ? ` + ${s.intents.length - 1} more` : ""}
+                  </span>
+                </div>
               ) : null}
             </div>
           </div>
