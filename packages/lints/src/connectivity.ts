@@ -57,7 +57,27 @@ export const lintConnectivity = async (
           severity: "warning",
           source: id,
           message:
-            "Action has no outbound edge to any Intent or Decision. Add intent_ids or decision_ids — otherwise the work-record floats free of its rationale.",
+            "Action has no outbound edge to any Intent or Decision. Add intent_ids or decision_ids — otherwise the designed step floats free of its rationale.",
+        });
+      }
+    },
+  );
+
+  await checkScopeFreeEntities(
+    c,
+    docoId,
+    "logs",
+    "Log",
+    issues,
+    async (id) => {
+      const n = await countOutboundEdgesToTypes(c, docoId, id, ["intent", "decision", "action"]);
+      if (n === 0) {
+        issues.push({
+          lintId: "connectivity",
+          severity: "warning",
+          source: id,
+          message:
+            "Log has no outbound edge to an Intent, Decision, or Action template. Add intent_ids, decision_ids, or template_id — otherwise the recorded happening floats free of its rationale.",
         });
       }
     },
@@ -98,7 +118,7 @@ export const lintConnectivity = async (
 async function checkScopeFreeEntities(
   c: PoolClient,
   docoId: string,
-  table: "decisions" | "actions" | "ideas" | "intents",
+  table: "decisions" | "actions" | "logs" | "ideas" | "intents",
   display: string,
   issues: LintIssue[],
   extra?: (id: string) => Promise<void>,
@@ -129,6 +149,8 @@ function scopeMessage(display: string): string {
       return "Decision has no scopes — assign at least one scope so it can be discovered by topic. Per ADR-079.";
     case "Action":
       return "Action has no scopes — assign at least one scope so it can be discovered by topic. Per ADR-079.";
+    case "Log":
+      return "Log has no scopes — assign at least one scope so the recorded event can be discovered by topic.";
     case "Idea":
       return "Idea has no scopes — assign at least one scope so it can be discovered by topic.";
     case "Intent":

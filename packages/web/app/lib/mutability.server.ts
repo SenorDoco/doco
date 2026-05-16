@@ -22,6 +22,7 @@ export type ClaimNodeType =
   | "intent"
   | "rule"
   | "action"
+  | "log"
   | "eval"
   | "reference";
 
@@ -38,6 +39,7 @@ const CLAIM_TYPES: ReadonlySet<string> = new Set<ClaimNodeType>([
   "intent",
   "rule",
   "action",
+  "log",
   "eval",
   "reference",
 ]);
@@ -54,8 +56,11 @@ const FROZEN_LIFECYCLES: Record<ClaimNodeType, ReadonlySet<string>> = {
   rule: new Set(["active", "succeeded", "failed", "superseded", "abandoned"]),
   action: new Set(["active", "succeeded", "failed", "superseded", "abandoned"]),
   eval: new Set(["active", "succeeded", "failed", "superseded", "abandoned"]),
-  // Reference has no proposed phase — it is frozen from creation.
+  // Log records a thing that happened — frozen from creation so the audit
+  // trail stays trustworthy. Editorial fixes go through supersession.
   // Sentinel "*" is matched specially below to mean "any lifecycle, including unset".
+  log: new Set(["*"]),
+  // Reference has no proposed phase — it is frozen from creation.
   reference: new Set(["*"]),
 };
 

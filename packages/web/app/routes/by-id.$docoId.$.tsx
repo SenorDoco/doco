@@ -31,6 +31,7 @@ const TYPE_TO_API_PLURAL: Record<string, string> = {
   intent: "intents",
   rule: "rules",
   action: "actions",
+  log: "logs",
   reference: "references",
   scope: "scopes",
   eval: "evals",

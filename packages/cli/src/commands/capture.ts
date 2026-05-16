@@ -40,6 +40,7 @@ async function postCapture(
     | "evals"
     | "scopes"
     | "actions"
+    | "logs"
     | "rules"
     | "references",
   body: Record<string, unknown>,
@@ -427,6 +428,101 @@ const actionCmd = defineCommand({
   },
 });
 
+const logCmd = defineCommand({
+  meta: {
+    name: "log",
+    description:
+      "Capture a Log — a recorded happening (POST /by-id/<doco_id>/api/logs.json). Use for actual events: commits, deploys, verifications. Past-tense verb, concrete outputs.",
+  },
+  args: {
+    summary: {
+      type: "string",
+      description: "Required. One-line summary of what happened.",
+      required: true,
+    },
+    scope: {
+      type: "string",
+      description: "Required. Comma-separated scope names.",
+      required: true,
+    },
+    verb: {
+      type: "string",
+      description: "Required. Past-tense verb ('pushed', 'deployed', 'verified').",
+      required: true,
+    },
+    "happened-at": {
+      type: "string",
+      description: "Required. ISO 8601 UTC timestamp of when the event occurred.",
+      required: true,
+    },
+    outputs: {
+      type: "string",
+      description:
+        "Required. JSON object of concrete outputs (commit hash, deploy URL, …). Must be non-empty.",
+      required: true,
+    },
+    "template-id": {
+      type: "string",
+      description:
+        "Optional. ID of the Action template this Log instances (e.g., 'action_01...').",
+    },
+    "intent-id": {
+      type: "string",
+      description: "Optional. Comma-separated intent ids this Log advances.",
+    },
+    "decision-id": {
+      type: "string",
+      description: "Optional. Comma-separated decision ids this Log enacts.",
+    },
+    follows: {
+      type: "string",
+      description: "Optional. Comma-separated entity ids this Log follows.",
+    },
+    inputs: { type: "string", description: "Optional JSON for verb-specific inputs." },
+    "performed-by-username": {
+      type: "string",
+      description: "Optional principal username who performed the action.",
+    },
+    "body-md": { type: "string", description: "Optional markdown body (inline string)." },
+    "body-md-file": {
+      type: "string",
+      description: "Optional path to a file whose contents become body_md.",
+    },
+    lifecycle: { type: "string", description: "Optional. Defaults to 'succeeded'." },
+  },
+  async run({ args }) {
+    const outputs = parseJson<Record<string, unknown>>(args.outputs as string, "outputs");
+    if (!outputs || typeof outputs !== "object" || Array.isArray(outputs)) {
+      console.error(cross("--outputs must be a JSON object."));
+      process.exit(2);
+    }
+    const body: Record<string, unknown> = {
+      summary: args.summary,
+      scope_names: splitList(args.scope as string),
+      verb: args.verb,
+      happened_at: args["happened-at"],
+      outputs,
+    };
+    if (args["template-id"]) body.template_id = args["template-id"];
+    const intents = splitList(args["intent-id"] as string | undefined);
+    if (intents.length) body.intent_ids = intents;
+    const decisions = splitList(args["decision-id"] as string | undefined);
+    if (decisions.length) body.decision_ids = decisions;
+    const follows = splitList(args.follows as string | undefined);
+    if (follows.length) body.follows = follows;
+    const inputs = parseJson<unknown>(args.inputs as string | undefined, "inputs");
+    if (inputs !== undefined) body.inputs = inputs;
+    if (args["performed-by-username"]) body.performed_by_username = args["performed-by-username"];
+    const bodyMd = readBody(
+      args["body-md"] as string | undefined,
+      args["body-md-file"] as string | undefined,
+    );
+    if (bodyMd !== undefined) body.body_md = bodyMd;
+    if (args.lifecycle) body.lifecycle = args.lifecycle;
+    await postCapture("logs", body);
+  },
+});
+
 const ruleCmd = defineCommand({
   meta: {
     name: "rule",
@@ -568,12 +664,13 @@ export const captureCmd = defineCommand({
   meta: {
     name: "capture",
     description:
-      "Capture a node (Intent / Decision / Action / Rule / Eval / Scope / Reference) via doco.to's POST endpoints. Reads DOCO_TOKEN from env or ./.env and DOCO_ID from the AGENTS.md header. Prints the response's footer_lines to stdout.",
+      "Capture a node (Intent / Decision / Action / Log / Rule / Eval / Scope / Reference) via doco.to's POST endpoints. Reads DOCO_TOKEN from env or ./.env and DOCO_ID from the AGENTS.md header. Prints the response's footer_lines to stdout.",
   },
   subCommands: {
     intent: intentCmd,
     decision: decisionCmd,
     action: actionCmd,
+    log: logCmd,
     rule: ruleCmd,
     eval: evalCmd,
     scope: scopeCmd,

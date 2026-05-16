@@ -1945,6 +1945,171 @@ export async function captureAction(
   };
 }
 
+// ─── Log (recorded happening) ─────────────────────────────────────────────
+// Parallel to Action but for instance-level happenings: a deploy that ran,
+// a commit that pushed, an eval that verified. Required fields make the
+// instance-vs-template distinction load-bearing: `happened_at` (when) and
+// `outputs` (what concrete results came out).
+
+export interface LogDraft {
+  summary: string;
+  scope_names: string[];
+  /** Past-tense verb naming what happened ("pushed", "deployed", "verified"). */
+  verb: string;
+  /** When the event occurred. ISO 8601 UTC. */
+  happened_at: string;
+  /** Concrete output values from the event — commit hash, deploy URL,
+   *  verification result. Non-empty in practice. */
+  outputs: Record<string, unknown>;
+
+  /** Optional: the Action template this Log instances. */
+  template_id?: string;
+  intent_ids?: string[];
+  decision_ids?: string[];
+  follows?: string[];
+  inputs?: unknown;
+  performed_by_username?: string;
+  created_by_id?: string;
+  body_md?: string;
+  /** Optional override. Logs default to "succeeded" (the event happened). */
+  lifecycle?: string;
+}
+
+export async function captureLog(
+  docoDir: string,
+  docoId: string,
+  ownerSlug: string,
+  docoSlug: string,
+  draft: LogDraft,
+  docoHost?: string,
+): Promise<CaptureResult | CaptureError> {
+  const startedAt = performance.now();
+  if (!draft.summary?.trim()) return { error: "summary is required." };
+  if (!draft.verb?.trim()) return { error: "verb is required." };
+  if (!draft.happened_at?.trim()) {
+    return { error: "happened_at is required (ISO 8601 UTC) — Logs record a moment in time." };
+  }
+  if (
+    !draft.outputs ||
+    typeof draft.outputs !== "object" ||
+    Object.keys(draft.outputs).length === 0
+  ) {
+    return {
+      error:
+        "outputs is required and must be a non-empty object — Logs record concrete results (commit hash, deploy URL, etc.).",
+    };
+  }
+  if (!Array.isArray(draft.scope_names) || draft.scope_names.length === 0) {
+    return { error: "scope_names must be a non-empty array." };
+  }
+
+  const scopeRes = await resolveScopeOrError(docoDir, draft.scope_names, {
+    verb: "tag",
+    nodeKind: "Log",
+  });
+  if ("error" in scopeRes) return scopeRes;
+  const scopeIds = scopeRes.ids;
+
+  let actorId: string | null = null;
+  if (draft.performed_by_username) {
+    actorId = await resolvePrincipalUsername(draft.performed_by_username);
+    if (!actorId) {
+      return { error: `Unknown principal username: ${draft.performed_by_username}` };
+    }
+  }
+  if (!actorId && draft.created_by_id) actorId = draft.created_by_id;
+  if (!actorId) {
+    return {
+      error:
+        "performed_by_username is required (or pass an authenticated request — the route fills it from `me.username`).",
+    };
+  }
+
+  const intentIds: string[] = Array.isArray(draft.intent_ids) ? draft.intent_ids : [];
+  const decisionIds: string[] = Array.isArray(draft.decision_ids) ? draft.decision_ids : [];
+  const follows: string[] = Array.isArray(draft.follows) ? draft.follows : [];
+
+  const id = `log_${generateUlid()}`;
+  const summary = draft.summary.trim();
+  const now = new Date().toISOString();
+  const createdById = draft.created_by_id ?? actorId;
+
+  const fm: Record<string, unknown> = {
+    id,
+    doco_id: docoId,
+    node_type: "log",
+    summary,
+    actor_id: actorId,
+    verb: draft.verb.trim(),
+    happened_at: draft.happened_at,
+    outputs: draft.outputs,
+    ...(draft.template_id ? { template_id: draft.template_id } : {}),
+    ...(intentIds.length > 0 ? { intent_ids: intentIds } : {}),
+    ...(decisionIds.length > 0 ? { decision_ids: decisionIds } : {}),
+    ...(follows.length > 0 ? { follows } : {}),
+    ...(draft.inputs !== undefined ? { inputs: draft.inputs } : {}),
+    created_at: now,
+    ...(createdById ? { created_by: createdById } : {}),
+    lifecycle: draft.lifecycle ?? "succeeded",
+    scopes: scopeIds,
+  };
+
+  const ruleErr = await runScopeRules({ docoDir, ownerSlug, docoSlug, entityFm: fm });
+  if (ruleErr) return ruleErr;
+
+  await persistEntity({
+    nodeType: "log",
+    id,
+    docoId,
+    fm,
+    body: draft.body_md?.trim() ?? "",
+  });
+  emitAuditForCreate({
+    docoDir,
+    docoId,
+    actorId: createdById ?? actorId ?? null,
+    entity_type: "log",
+    entity_id: id,
+    summary,
+  });
+  await reindexAndScheduleAttach(docoDir, docoId, id, {
+    docoDir,
+    ownerSlug,
+    docoSlug,
+    entityId: id,
+    entityType: "log",
+    entitySummary: summary,
+    alreadyReferenced: new Set([
+      ...intentIds,
+      ...decisionIds,
+      ...follows,
+      ...scopeIds,
+      ...(actorId ? [actorId] : []),
+      ...(draft.template_id ? [draft.template_id] : []),
+    ]),
+  });
+
+  const duration_ms = Math.round(performance.now() - startedAt);
+  const footer_lines = renderOperationLines({
+    ownerSlug,
+    docoSlug,
+    nodeType: "log",
+    id,
+    summary,
+    docoHost,
+    ops: [{ kind: "added", summary }],
+    scopes: await resolveScopeIcons(docoDir, scopeIds),
+    duration_ms,
+  });
+  return {
+    ok: true,
+    id,
+    path: syntheticPath("log", id),
+    footer_lines,
+    duration_ms,
+  };
+}
+
 // ─── Rule ─────────────────────────────────────────────────────────────────
 
 export interface RuleDraft {
