@@ -23,7 +23,9 @@ import { loadDocoForAdmin } from "~/lib/doco-access.server";
 import { renderOperationLines } from "~/lib/capture.server";
 import {
   classifyRuleProse,
+  formatRuleClassifierError,
   LlmUnavailableError,
+  ruleClassifierErrorStatus,
   type ClassifiedRule,
 } from "~/lib/llm.server";
 import { createRuleInDoco, reindex } from "~/lib/redeem.server";
@@ -106,9 +108,9 @@ export async function action({
     if (e instanceof LlmUnavailableError) {
       return Response.json(
         {
-          error: `Classifier unavailable — ${e.message} The host must reach OpenAI to author rules from prose.`,
+          error: formatRuleClassifierError(e),
         },
-        { status: 503 },
+        { status: ruleClassifierErrorStatus(e) },
       );
     }
     return Response.json({ error: (e as Error).message }, { status: 500 });

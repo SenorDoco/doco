@@ -9,7 +9,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/com
 import { SiteHeader } from "~/components/site-header";
 import { loadDocoForAdmin } from "~/lib/doco-access.server";
 import { loadHostConfig } from "~/lib/host";
-import { LlmUnavailableError, classifyRuleProse } from "~/lib/llm.server";
+import {
+  LlmUnavailableError,
+  classifyRuleProse,
+  formatRuleClassifierError,
+} from "~/lib/llm.server";
 import { createRuleInDoco, reindex } from "~/lib/redeem.server";
 import { listScopeDetails } from "~/lib/scope-helpers.server";
 
@@ -138,7 +142,7 @@ export async function action({
   } catch (e) {
     if (e instanceof LlmUnavailableError) {
       return {
-        error: `Classifier unavailable — ${e.message} The host must reach OpenAI to author rules from prose.`,
+        error: formatRuleClassifierError(e),
       };
     }
     return { error: (e as Error).message };
@@ -165,7 +169,7 @@ export default function NewScopeRule({
   const kind = resolveKind(searchParams.get("kind") ?? loaderData.kind);
   const navigation = useNavigation();
   const isSubmitting = navigation.state !== "idle";
-  const title = kind === "guidance" ? "New Guidance Rule" : "New Authoring Rule";
+  const title = kind === "guidance" ? "New guidance rule" : "New authoring rule";
   const description =
     kind === "guidance"
       ? "Guidance rules are saved as prose for contributors to read while working with this scope."
