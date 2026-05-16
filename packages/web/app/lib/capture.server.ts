@@ -212,6 +212,7 @@ export type Op =
   | { kind: "deleted" };
 
 const TRUNC = 120;
+const STRUCK_LIFECYCLES = new Set(["abandoned", "superseded"]);
 
 /**
  * Escape `\`, `[`, `]` for safe use inside the text portion of a markdown
@@ -288,8 +289,13 @@ export function renderOperationLines(opts: {
   // (entity.property). If the summary text ends with a period, the
   // link text's trailing `.` plus the separator `.` render as `..` —
   // strip the trailing period so the dot-notation stays clean.
-  const mutationAnchor = (): string =>
-    buildAnchor(opts.summary.replace(/\.+$/, ""));
+  const shouldStrikeMutationAnchor = opts.ops.some(
+    (op) => op.kind === "set" && op.field === "lifecycle" && STRUCK_LIFECYCLES.has(op.value),
+  );
+  const mutationAnchor = (): string => {
+    const anchor = buildAnchor(opts.summary.replace(/\.+$/, ""));
+    return shouldStrikeMutationAnchor ? `~~${anchor}~~` : anchor;
+  };
   const lines = opts.ops.map((op) => {
     switch (op.kind) {
       case "added":
