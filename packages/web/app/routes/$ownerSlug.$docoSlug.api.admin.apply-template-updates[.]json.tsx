@@ -4,10 +4,10 @@
 // (currently `global` and `user-flows`) into alignment with the current
 // DEFAULT_SCOPE_TEMPLATES per decision_01KRRD6QM7NN2EV56NZK96DNKY.
 //
-// Idempotent: seeds only missing rules, abandons only known-stale
-// summaries, and refreshes the user-flows seed Intent's summary only if
-// it matches a known prior value. Re-running is a no-op once a Doco is
-// up to date.
+// Idempotent: seeds only missing rules and missing template Intents,
+// abandons only known-stale summaries, and refreshes seed Intent
+// summaries only if they match a known prior value. Re-running is a
+// no-op once a Doco is up to date.
 //
 // Admin-only — gated by `loadDocoForAdmin`.
 
@@ -36,8 +36,9 @@ export async function action({
     return Response.json({ error: "POST required." }, { status: 405 });
   }
   const { ownerSlug, docoSlug } = params;
-  const { meta, me } = await loadDocoForAdmin(request, ownerSlug, docoSlug);
+  const { dir, meta, me } = await loadDocoForAdmin(request, ownerSlug, docoSlug);
   const result = await applyScopeTemplateUpdatesToDoco({
+    docoDir: dir,
     docoId: meta.docoId as EntityId<"doco">,
     createdBy: (me?.id as EntityId<"principal"> | undefined) ?? null,
   });

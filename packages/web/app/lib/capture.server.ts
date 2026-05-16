@@ -825,8 +825,8 @@ export async function runScopeRules(opts: {
   // - PLUS the Global scope (its gated_by carries project-authored
   //   Doco-wide invariants).
   // Framework-native invariants such as "Decision alternatives are
-  // required" and "Global is Rule-only" are checked above, not loaded
-  // from seeded Global template Rules.
+  // required" and "Global only accepts Intent/Rule nodes" are checked
+  // above, not loaded from seeded Global template Rules.
   const scopesToCheck = new Set(scopeIds);
   if (globalScopeId) {
     scopesToCheck.add(globalScopeId);
