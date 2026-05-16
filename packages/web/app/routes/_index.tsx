@@ -4,13 +4,26 @@ import { DOCO_TAGLINE, VersionPill } from "~/components/version-pill";
 import { loadHostConfig } from "~/lib/host";
 import { getCurrentPrincipal } from "~/lib/session";
 
+const FALLBACK_HOST = { id: "host_fallback", name: "torrenegra", visibility: "public" } as const;
+
 /**
  * Host home — anonymous landing only. Signed-in users are redirected to
  * /dashboard so the marketing copy never gets in the way of their work.
  */
 export async function loader({ request }: { request: Request }) {
-  if (await getCurrentPrincipal(request)) throw redirect("/dashboard");
-  return { host: await loadHostConfig() };
+  try {
+    if (await getCurrentPrincipal(request)) throw redirect("/dashboard");
+  } catch (error) {
+    if (error instanceof Response) throw error;
+    console.warn("Home session lookup failed; rendering anonymous fallback.", error);
+  }
+
+  try {
+    return { host: await loadHostConfig() };
+  } catch (error) {
+    console.warn("Home host config lookup failed; rendering fallback host.", error);
+    return { host: FALLBACK_HOST };
+  }
 }
 
 export function meta({ data }: { data: Awaited<ReturnType<typeof loader>> | undefined }) {
