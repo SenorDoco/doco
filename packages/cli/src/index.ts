@@ -21,7 +21,7 @@ import { validateCmd } from "./commands/validate.js";
 const main = defineCommand({
   meta: {
     name: "doco",
-    version: "0.0.1",
+    version: "0.1.0",
     description: "Doco CLI — alignment framework and runtime checking system.",
   },
   subCommands: {
