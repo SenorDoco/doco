@@ -18,7 +18,9 @@ import { useEffect, useState } from "react";
 import { Form, Link, useRevalidator } from "react-router";
 import { parse as parseYaml } from "yaml";
 import { ActivityHeatmap } from "~/components/activity-heatmap";
+import { NodeTypeBadge } from "~/components/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
+import { NodesOverviewCard } from "~/components/nodes-overview-card";
 import { SiteHeader } from "~/components/site-header";
 import { docoPath } from "~/lib/db.server";
 import { loadDocoForRead } from "~/lib/doco-access.server";
@@ -179,6 +181,24 @@ async function countRows(c: PoolClient, table: string, docoId: string): Promise<
   return Number(r.rows[0]?.n ?? 0);
 }
 
+function allNodesSearchPath(ownerSlug: string, docoSlug: string): string {
+  const params = new URLSearchParams();
+  params.set("node_type", "*");
+  params.set("lifecycle", "*");
+  params.set("scope", "*");
+  params.set("limit", "500");
+  return `/${ownerSlug}/${docoSlug}/search?${params.toString()}`;
+}
+
+function nodeTypeSearchPath(ownerSlug: string, docoSlug: string, nodeType: string): string {
+  const params = new URLSearchParams();
+  params.set("node_type", nodeType);
+  params.set("lifecycle", "*");
+  params.set("scope", "*");
+  params.set("limit", "500");
+  return `/${ownerSlug}/${docoSlug}/search?${params.toString()}`;
+}
+
 export function meta({ params }: { params: { ownerSlug: string; docoSlug: string } }) {
   return [{ title: `${params.ownerSlug}/${params.docoSlug} · Doco` }];
 }
@@ -234,50 +254,28 @@ export default function DocoHome({
           <p className="font-mono text-sm text-muted-foreground">{docoId}</p>
         </div>
 
-        {/* Search input — primary affordance, sits directly below the title. */}
-        <SearchBoxWithHistory ownerSlug={ownerSlug} docoSlug={docoSlug} />
-
         <div className="grid grid-cols-1 gap-5 min-[840px]:grid-cols-12">
           {/* Left: node counts. */}
           <aside className="min-[840px]:col-span-5">
-            <Card>
-              <CardHeader>
-                <CardTitle>Nodes</CardTitle>
-              </CardHeader>
-              <CardContent className="pt-0">
-                <dl className="space-y-1">
-                  {counts.map((c) => {
-                    const color = nodeTypeColor(c.type);
-                    return (
-                      <div
-                        key={c.type}
-                        className="flex items-center justify-between rounded-sm py-2 pl-3 pr-2"
-                        style={{
-                          background: `color-mix(in oklch, ${color} 8%, white)`,
-                          boxShadow: `inset 4px 0 0 ${color}`,
-                        }}
-                      >
-                        <dt className="text-sm text-foreground">
-                          <Link
-                            to={`/${ownerSlug}/${docoSlug}/${c.type}`}
-                            className="hover:text-primary hover:underline"
-                          >
-                            {c.label}
-                          </Link>
-                        </dt>
-                        <dd className="font-mono text-sm tabular-nums text-foreground">
-                          {c.count}
-                        </dd>
-                      </div>
-                    );
-                  })}
-                  <div className="flex items-center justify-between border-t border-border pt-3 font-semibold">
-                    <dt className="text-sm text-foreground">Total</dt>
-                    <dd className="font-mono text-sm tabular-nums text-foreground">{totalNodes}</dd>
-                  </div>
-                </dl>
-              </CardContent>
-            </Card>
+            <NodesOverviewCard
+              total={totalNodes}
+              viewHref={allNodesSearchPath(ownerSlug, docoSlug)}
+              tiles={counts.map((c) => ({
+                key: c.type,
+                href: nodeTypeSearchPath(ownerSlug, docoSlug, c.type),
+                badge: <NodeTypeBadge nodeType={c.type}>{c.label}</NodeTypeBadge>,
+                count: c.count,
+                ariaLabel: `Search ${c.count} ${c.label.toLowerCase()} in ${ownerSlug}/${docoSlug}`,
+                color: nodeTypeColor(c.type),
+              }))}
+              search={
+                <SearchBoxWithHistory
+                  ownerSlug={ownerSlug}
+                  docoSlug={docoSlug}
+                  placeholder="Search nodes in this Doco - summaries, body, scope names..."
+                />
+              }
+            />
           </aside>
 
           {/* Right: activity heatmap above the real-time feed. */}
@@ -402,9 +400,11 @@ function relativeTimeMs(ts: number): string {
 function SearchBoxWithHistory({
   ownerSlug,
   docoSlug,
+  placeholder,
 }: {
   ownerSlug: string;
   docoSlug: string;
+  placeholder: string;
 }) {
   const [recent, setRecent] = useState<RecentSearch[]>([]);
   const [focused, setFocused] = useState(false);
@@ -435,7 +435,7 @@ function SearchBoxWithHistory({
           onBlur={() => setFocused(false)}
           autoComplete="off"
           spellCheck={false}
-          placeholder={`Search ${ownerSlug}/${docoSlug} — summaries, body, scope names…`}
+          placeholder={placeholder}
           className="w-full rounded-md border border-border bg-input px-4 py-2.5 text-sm text-foreground outline-none focus:border-primary"
         />
         {showDropdown ? (

@@ -31,6 +31,7 @@ import { ActivityHeatmap } from "~/components/activity-heatmap";
 import { Badge, NodeTypeBadge } from "~/components/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { EmojiPickerInput } from "~/components/emoji-picker-input";
+import { NodesOverviewCard } from "~/components/nodes-overview-card";
 import { SiteHeader } from "~/components/site-header";
 import { Toggle } from "~/components/toggle";
 import { updateEntity } from "~/lib/capture.server";
@@ -516,41 +517,26 @@ export default function ScopePage({
         <div className="grid gap-4 min-[840px]:grid-cols-12">
           {/* Left column */}
           <div className="min-[840px]:col-span-7 space-y-4">
-            {/* Stats */}
-            <Card>
-              <CardHeader className="flex-row items-center justify-between gap-3">
-                <CardTitle className="text-sm">Nodes ({memberCount})</CardTitle>
-                <Link
-                  to={nodesSearchPath(ownerSlug, docoSlug, scope.name, "*")}
-                  className="rounded-md border border-border px-3 py-1.5 text-xs font-semibold text-foreground hover:bg-card"
-                >
-                  View them
-                </Link>
-              </CardHeader>
-              <CardContent>
-                {memberStats.length === 0 ? (
-                  <p className="text-xs italic text-muted-foreground">
-                    No nodes are tagged with this scope yet.
-                  </p>
-                ) : (
-                  <div className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-3">
-                    {memberStats.map((s) => (
-                      <Link
-                        key={s.lifecycle}
-                        to={nodesSearchPath(ownerSlug, docoSlug, scope.name, s.lifecycle)}
-                        className="flex items-center gap-2 rounded-md border border-border px-2 py-1.5 hover:bg-card"
-                        aria-label={`View ${s.count} ${s.lifecycle} nodes in ${scope.name}`}
-                      >
-                        <Badge>{s.lifecycle}</Badge>
-                        <span className="font-mono tabular-nums">{s.count}</span>
-                      </Link>
-                    ))}
-                  </div>
-                )}
+            <NodesOverviewCard
+              total={memberCount}
+              viewHref={nodesSearchPath(ownerSlug, docoSlug, scope.name, "*")}
+              tiles={memberStats.map((s) => ({
+                key: s.lifecycle,
+                href: nodesSearchPath(ownerSlug, docoSlug, scope.name, s.lifecycle),
+                badge: <Badge>{s.lifecycle}</Badge>,
+                count: s.count,
+                ariaLabel: `View ${s.count} ${s.lifecycle} nodes in ${scope.name}`,
+              }))}
+              empty={
+                <p className="text-xs italic text-muted-foreground">
+                  No nodes are tagged with this scope yet.
+                </p>
+              }
+              search={
                 <Form
                   method="get"
                   action={`/${ownerSlug}/${docoSlug}/search`}
-                  className="mt-3 flex flex-col gap-2 sm:flex-row"
+                  className="flex flex-col gap-2 sm:flex-row"
                 >
                   <input type="hidden" name="scope" value={scope.name} />
                   <input type="hidden" name="lifecycle" value="*" />
@@ -565,17 +551,17 @@ export default function ScopePage({
                     id="scope-node-search"
                     name="q"
                     placeholder="Search nodes in this scope..."
-                    className="min-w-0 flex-1 rounded-md border border-border bg-background px-3 py-1.5 text-sm outline-none focus:border-primary"
+                    className="min-w-0 flex-1 rounded-md border border-border bg-input px-4 py-2.5 text-sm text-foreground outline-none focus:border-primary"
                   />
                   <button
                     type="submit"
-                    className="rounded-md border border-border px-3 py-1.5 text-sm font-semibold hover:bg-card"
+                    className="rounded-md border border-border px-4 py-2.5 text-sm font-semibold hover:bg-card"
                   >
                     Search
                   </button>
                 </Form>
-              </CardContent>
-            </Card>
+              }
+            />
 
             {/* Watched toggle */}
             <Card>
