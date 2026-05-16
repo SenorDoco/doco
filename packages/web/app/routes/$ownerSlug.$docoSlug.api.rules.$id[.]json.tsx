@@ -6,6 +6,7 @@ const route = makeUpdateRoute({
   pluralDir: "rules",
   allowedFields: [
     "slug",
+    "kind",
     "predicate",
     "modality",
     "severity",
