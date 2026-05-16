@@ -103,13 +103,40 @@ export async function action({ request }: { request: Request }) {
 
   const url = new URL(request.url);
   const origin = `${url.protocol}//${url.host}`;
+  const docoUrl = `${origin}/by-id/${created.docoId}/`;
+  const inviteUrl = `${origin}/invite/${invite.code}`;
+  const expiresHuman = new Date(invite.expires_at).toLocaleString("en-US", {
+    timeZone: "UTC",
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
+
   return Response.json({
     doco_id: created.docoId,
-    doco_url: `${origin}/by-id/${created.docoId}/`,
+    doco_url: docoUrl,
     doco_slug: `${created.ownerSlug}/${created.docoSlug}`,
     doco_key: session.token,
-    invite_url: `${origin}/invite/${invite.code}`,
+    invite_url: inviteUrl,
     invite_expires_at: invite.expires_at,
+    /**
+     * Verbatim block the agent MUST render to the user as its very next
+     * message — before scope work, before any other onboarding step.
+     * Without this hand-off the user never learns they need to claim
+     * collaboration access, and the invite expires in 7 days leaving
+     * them locked out of their own project's Doco.
+     */
+    user_message_block: [
+      `✅ I created a Doco for this project at **${docoUrl}**.`,
+      ``,
+      `🤝 **Important — claim your collaboration access within 7 days.**`,
+      `Open this invite URL in your browser and sign in with GitHub:`,
+      ``,
+      `**${inviteUrl}**`,
+      ``,
+      `Expires ${expiresHuman} UTC (single-use; once you accept, this URL stops working).`,
+      ``,
+      `If you don't claim, I'll keep operating directly via the API — but you won't be able to browse the Doco on the web, mint invite URLs for teammates, or revoke my access.`,
+    ].join("\n"),
   });
 }
 

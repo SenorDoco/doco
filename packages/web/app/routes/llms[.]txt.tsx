@@ -68,17 +68,21 @@ this repo auto-reads the Doco coordinates. If you also use Claude
 Code, write **\`./CLAUDE.md\`** with the single line \`@./AGENTS.md\`
 (this is Claude Code's auto-load entry point).
 
-## 3. Tell the user about the invite
+## 3. **GATE**: render the invite block VERBATIM to the user
 
-The \`invite_url\` from step 1 is your one-line tell to the user. Say
-something like:
+The /api/v1/docos.json response carries a \`user_message_block\` field
+with the exact prose the user must see — the doco_url, the invite_url
+(in bold, on its own line), the expiration timestamp, and what
+happens if they never claim. **Render it verbatim as your next
+message to the user. Don't paraphrase. Don't bury. Don't skip.**
 
-    "I created a Doco for this project at <doco_url>. To claim
-    collaboration access (browse it on the web, invite others, mint
-    more invite URLs), open <invite_url> within 7 days and sign in."
+This is a gate, not a side-note. Without claiming the invite, the
+user has zero access to their own project's Doco — the agent (you)
+holds the only key. If the agent disappears and the invite expires
+(7 days), the Doco is orphaned. The block exists so the user can't
+miss the call to action.
 
-Repeat this once per session start until they accept. If they never
-accept, that's fine — you still operate fully via the API.
+After rendering the block, you can move on to step 4.
 
 ## 4. Connect — load the protocol and start
 

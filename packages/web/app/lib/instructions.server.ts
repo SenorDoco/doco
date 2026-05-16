@@ -959,16 +959,18 @@ No install, no browser, no permission prompts.
    with the single line \`@./AGENTS.md\` (Claude Code's auto-load
    entry point).
 
-5. **Tell the user once**, in your normal chat:
+5. **GATE — render the response's \`user_message_block\` verbatim**
+   as your next message. The /api/v1/docos.json response includes
+   that field with bolded prose, the doco_url, the invite_url on its
+   own line, the expiration timestamp, and the consequences of not
+   claiming. **Don't paraphrase. Don't bury. Don't skip.**
 
-       "I created a Doco for this project at <doco_url>. To claim
-       collaboration access (browse it on the web, invite others,
-       mint more invite URLs), open <invite_url> in your browser
-       within 7 days and sign in with GitHub. If you never claim,
-       that's fine — I'll keep operating directly via the API."
+   This is a gate because without claiming the invite, the user has
+   zero access to their own project's Doco — you hold the only key.
+   If you disappear and the invite expires (7 days), the Doco is
+   orphaned. The block exists to make sure the call to action lands.
 
-   Repeat the offer once per session start until they accept. After
-   that, drop it.
+   Only after rendering the block, move on to step 6.
 
 6. **Apply the protocol now** — don't tell the user to restart or
    \`/clear\`. You already have \`DOCO_KEY\`; fetch the canonical and

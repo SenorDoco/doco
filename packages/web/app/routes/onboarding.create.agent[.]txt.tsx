@@ -8,13 +8,20 @@ export async function loader({ request }: { request: Request }) {
 
 You talk to ${baseUrl} over plain HTTP. No CLI, no SDK, no install.
 
-The full recipe is two HTTP calls and three files written:
+The full recipe is two HTTP calls and three files written. Step 5 is
+a hard gate: you MUST render the response's user_message_block to the
+user before doing scope work or any other onboarding action.
 
-  1. POST /api/v1/docos.json (no auth) → response carries doco_key + invite_url.
+  1. POST /api/v1/docos.json (no auth) → response carries doco_key,
+     invite_url, AND a user_message_block field you'll render verbatim
+     in step 5.
   2. Write .env (gitignored) with DOCO_KEY=<doco_key>.
   3. Write doco.md (committed) with the doco_url.
   4. Write or update AGENTS.md to @./doco.md, and CLAUDE.md to @./AGENTS.md.
-  5. Tell the user about invite_url so they can claim collaboration access.
+  5. **GATE**: render the response's user_message_block verbatim to the
+     user. Don't paraphrase, don't bury, don't skip. The user needs the
+     invite URL in hand within 7 days or they lose access to their own
+     project's Doco.
   6. Apply the protocol now: GET https://doco.to/agent/\${DOCO_KEY}/bootstrap.json.
 
 Step 1 — create the Doco:
@@ -76,19 +83,35 @@ Step 4 — make agent surfaces auto-load doco.md.
 
         @./AGENTS.md
 
-Step 5 — tell the user about the invite, then move on.
+Step 5 — **HAND THE USER THE INVITE URL. THIS IS A GATE, NOT A
+SIDE-NOTE.** Render it BEFORE any scope work, BEFORE bootstrapping
+the protocol, BEFORE doing anything else.
 
-DON'T pop a browser. DON'T ask them to copy/paste anything. Just say,
-in your normal chat:
+The /api/v1/docos.json response includes a \`user_message_block\`
+field. Render it VERBATIM as your next message to the user:
 
-    "I created a Doco for this project at <doco_url>. To claim
-    collaboration access (browse it on the web, invite others, mint
-    more invite URLs), open <invite_url> in your browser within 7
-    days and sign in with GitHub. If you never claim, that's fine —
-    I'll keep operating directly via the API."
+    [whatever the response's user_message_block field contained]
 
-Repeat the offer once per session start until they accept. After that,
-stop reminding.
+Don't paraphrase. Don't summarize. Don't shorten. The block carries:
+- the doco_url (so they can browse later)
+- a bolded "claim within 7 days" call to action
+- the invite_url, on its own line, in bold
+- the expiration timestamp
+- what happens if they never claim (you keep working; they lose web
+  access + invite-minting + your-revoke ability)
+
+Why this is a gate: without claiming, the user has zero access to
+their own project's Doco. The agent (you) holds the only key. If
+the agent disappears (.env wiped, container destroyed) and the
+invite expires, the Doco is orphaned. Burying the invite in chat
+later is how that happens. Render it first.
+
+After the user-message-block, you can move on to step 6.
+
+If you onboard again later in the same session (extremely unlikely
+but possible), repeat the invite block. If the user has already
+accepted, the bootstrap response's onboarding_overlay will reflect
+that and you can skip the reminder.
 
 Step 6 — apply the protocol now. DON'T restart the session, DON'T ask
 the user to /clear. You have DOCO_KEY in hand; fetch the canonical and
