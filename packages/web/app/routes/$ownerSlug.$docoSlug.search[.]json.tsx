@@ -5,18 +5,20 @@
 // Resource route — no default export.
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import type { PoolClient } from "pg";
 import { cosineSimilarity, getAllEmbeddingsForDoco, withClient } from "@doco/db";
 import { globalPageRank } from "@doco/index";
+import type { PoolClient } from "pg";
 import { docoPath } from "~/lib/db.server";
-import { etaggedJson } from "~/lib/etag.server";
 import { loadDocoForRead } from "~/lib/doco-access.server";
 import { getDocoEmbeddingProvider } from "~/lib/embedding-provider.server";
+import { etaggedJson } from "~/lib/etag.server";
 import {
+  type SearchFilters,
+  type SearchHitScope,
+  attachScopesToSearchHits,
   computeFilterFacets,
   parseSearchFilters,
   resolveFilteredCandidates,
-  type SearchFilters,
 } from "~/lib/search-filters.server";
 
 const PLURAL_DIR: Record<string, string> = {
@@ -32,11 +34,7 @@ const PLURAL_DIR: Record<string, string> = {
   organization: "organizations",
 };
 
-function resolveEntityFilePath(
-  docoDir: string,
-  nodeType: string,
-  id: string,
-): string | null {
+function resolveEntityFilePath(docoDir: string, nodeType: string, id: string): string | null {
   const plural = PLURAL_DIR[nodeType] ?? `${nodeType}s`;
   for (const ext of [".md", ".yaml"]) {
     const candidate = join(docoDir, plural, `${id}${ext}`);
@@ -55,6 +53,7 @@ interface Hit {
   gpr: number;
   vector_score: number;
   file_path: string | null;
+  scopes: SearchHitScope[];
   pinned?: boolean;
 }
 
@@ -63,11 +62,7 @@ interface TypeFetch {
   nodeType: string;
   selectExtra: string;
   hostLevel: boolean;
-  rowToHit(
-    row: Record<string, unknown>,
-    vectorScore: number,
-    docoDir: string,
-  ): Hit;
+  rowToHit(row: Record<string, unknown>, vectorScore: number, docoDir: string): Omit<Hit, "scopes">;
 }
 
 const TYPE_FETCHES: TypeFetch[] = [
@@ -77,23 +72,17 @@ const TYPE_FETCHES: TypeFetch[] = [
   fetchSpec("actions", "action", "summary, lifecycle, created_at", false),
   fetchSpec("logs", "log", "summary, lifecycle, created_at", false),
   fetchSpec("reference_entities", "reference", "summary, lifecycle, created_at", false),
-  fetchSpec(
-    "scopes",
-    "scope",
-    "name, summary, lifecycle, created_at",
-    false,
-    (r, vs, docoDir) => ({
-      id: String(r.id),
-      node_type: "scope",
-      name: (r.name as string) ?? null,
-      summary: (r.summary as string) ?? "",
-      lifecycle: (r.lifecycle as string) ?? null,
-      created_at: (r.created_at as string) ?? null,
-      gpr: 0,
-      vector_score: vs,
-      file_path: resolveEntityFilePath(docoDir, "scope", String(r.id)),
-    }),
-  ),
+  fetchSpec("scopes", "scope", "name, summary, lifecycle, created_at", false, (r, vs, docoDir) => ({
+    id: String(r.id),
+    node_type: "scope",
+    name: (r.name as string) ?? null,
+    summary: (r.summary as string) ?? "",
+    lifecycle: (r.lifecycle as string) ?? null,
+    created_at: (r.created_at as string) ?? null,
+    gpr: 0,
+    vector_score: vs,
+    file_path: resolveEntityFilePath(docoDir, "scope", String(r.id)),
+  })),
   fetchSpec("evals", "eval", "summary, lifecycle, created_at", false),
   fetchSpec("ideas", "idea", "summary, lifecycle, created_at", false),
   fetchSpec(
@@ -113,23 +102,17 @@ const TYPE_FETCHES: TypeFetch[] = [
       file_path: resolveEntityFilePath(docoDir, "principal", String(r.id)),
     }),
   ),
-  fetchSpec(
-    "organizations",
-    "organization",
-    "slug, name, created_at",
-    true,
-    (r, vs, docoDir) => ({
-      id: String(r.id),
-      node_type: "organization",
-      name: (r.slug as string) ?? null,
-      summary: (r.name as string) ?? "",
-      lifecycle: null,
-      created_at: (r.created_at as string) ?? null,
-      gpr: 0,
-      vector_score: vs,
-      file_path: resolveEntityFilePath(docoDir, "organization", String(r.id)),
-    }),
-  ),
+  fetchSpec("organizations", "organization", "slug, name, created_at", true, (r, vs, docoDir) => ({
+    id: String(r.id),
+    node_type: "organization",
+    name: (r.slug as string) ?? null,
+    summary: (r.name as string) ?? "",
+    lifecycle: null,
+    created_at: (r.created_at as string) ?? null,
+    gpr: 0,
+    vector_score: vs,
+    file_path: resolveEntityFilePath(docoDir, "organization", String(r.id)),
+  })),
 ];
 
 function fetchSpec(
@@ -268,14 +251,14 @@ export async function loader({
       for (const row of rows) {
         const id = String(row.id);
         const vs = Math.round((topById.get(id) ?? 0) * 10000) / 10000;
-        allHits.push(spec.rowToHit(row as Record<string, unknown>, vs, docoDir));
+        allHits.push({ ...spec.rowToHit(row as Record<string, unknown>, vs, docoDir), scopes: [] });
       }
     }
 
     // Global PageRank — pull all edges for this Doco.
     const edgeRows = (
       await c.query<{ from_id: string; to_id: string; edge_type: string; attribution: string }>(
-        `SELECT from_id, to_id, edge_type, attribution FROM edges WHERE doco_id = $1`,
+        "SELECT from_id, to_id, edge_type, attribution FROM edges WHERE doco_id = $1",
         [ctx.meta.docoId],
       )
     ).rows;
@@ -294,11 +277,11 @@ export async function loader({
     allHits.sort((a, b) => b.vector_score - a.vector_score);
 
     // Pin Constitution + mandatory scopes (ADR-136, ADR-129).
-    const wantsScope =
-      filters.nodeType === null || filters.nodeType.includes("scope");
+    const wantsScope = filters.nodeType === null || filters.nodeType.includes("scope");
     if (wantsScope) {
       await applyScopePins(c, ctx.meta.docoId, allHits, scored, gprById, docoDir);
     }
+    await attachScopesToSearchHits(c, ctx.meta.docoId, allHits);
 
     const stableData = {
       query: q,
@@ -361,10 +344,9 @@ async function applyScopePins(
         lifecycle: null,
         created_at: row.created_at,
         gpr: gprById.get(row.id) ?? 0,
-        vector_score: scoreEntry
-          ? Math.round(scoreEntry.score * 10000) / 10000
-          : 0,
+        vector_score: scoreEntry ? Math.round(scoreEntry.score * 10000) / 10000 : 0,
         file_path: resolveEntityFilePath(docoDir, "scope", row.id),
+        scopes: [],
         pinned: true,
       });
     }

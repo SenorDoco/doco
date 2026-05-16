@@ -9,7 +9,7 @@ import type { PoolClient } from "pg";
 // entities. With explicit filters and no keyword, this page lists the
 // filtered nodes directly. Filter state lives in URL query params.
 import { Form, Link, useSearchParams } from "react-router";
-import { NodeTypeBadge } from "~/components/badge";
+import { Badge, NodeTypeBadge } from "~/components/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
 import { SiteHeader } from "~/components/site-header";
 import { loadDocoForRead } from "~/lib/doco-access.server";
@@ -19,6 +19,8 @@ import { nodeTypeColor, nodeTypePlural } from "~/lib/node-colors";
 import {
   type FilterFacets,
   type SearchFilters,
+  type SearchHitScope,
+  attachScopesToSearchHits,
   computeFilterFacets,
   parseSearchFilters,
   resolveFilteredCandidates,
@@ -48,6 +50,7 @@ interface Hit {
   created_at: string | null;
   gpr: number;
   vector_score: number | null;
+  scopes: SearchHitScope[];
 }
 
 /**
@@ -59,7 +62,7 @@ interface TypeSpec {
   nodeType: string;
   selectExtra: string;
   /** Build the Hit shape from a row. */
-  toHit(row: Record<string, unknown>, vectorScore: number | null): Omit<Hit, "gpr">;
+  toHit(row: Record<string, unknown>, vectorScore: number | null): Omit<Hit, "gpr" | "scopes">;
   /** Doco-scoped or host-level? */
   hostLevel: boolean;
 }
@@ -251,6 +254,7 @@ async function loadFilteredHits(
     candidateIds === null ? await loadAllDocoEntityIds(c, docoId) : Array.from(candidateIds);
   const hits = await hydrateHits(c, ids, docoId, null);
   await attachGlobalPageRank(c, docoId, hits);
+  await attachScopesToSearchHits(c, docoId, hits);
   hits.sort((a, b) => {
     const byCreated = createdTime(b.created_at) - createdTime(a.created_at);
     if (byCreated !== 0) return byCreated;
@@ -291,7 +295,7 @@ async function hydrateHits(
       const rawScore = scoreById?.get(String(row.id));
       const score = typeof rawScore === "number" ? Math.round(rawScore * 10000) / 10000 : null;
       const hit = spec.toHit(row as Record<string, unknown>, score);
-      hits.push({ ...hit, gpr: 0 });
+      hits.push({ ...hit, gpr: 0, scopes: [] });
     }
   }
   return hits;
@@ -477,6 +481,7 @@ export async function loader({
 
     const allHits = await hydrateHits(c, allIds, ctx.meta.docoId, scoreById);
     await attachGlobalPageRank(c, ctx.meta.docoId, allHits);
+    await attachScopesToSearchHits(c, ctx.meta.docoId, allHits);
     allHits.sort((a, b) => (b.vector_score ?? 0) - (a.vector_score ?? 0));
 
     facets = await withHitDerivedCounts(facets, c, ctx.meta.docoId, allHits);
@@ -538,6 +543,7 @@ async function withHitDerivedCounts(
       count: nodeTypeCounts.get(f.value) ?? 0,
     })),
     scope: facets.scope.map((f) => ({
+      id: f.id,
       name: f.name,
       count: scopeCounts.get(f.name) ?? 0,
       icon: f.icon,
@@ -650,14 +656,33 @@ export default function SearchInDoco({
             return (
               <Card key={hit.id}>
                 <CardHeader>
-                  <CardTitle className="text-sm flex items-center gap-2">
+                  <CardTitle className="flex flex-wrap items-center gap-2 text-sm">
                     <NodeTypeBadge nodeType={hit.node_type} />
                     <Link
                       to={`/${ownerSlug}/${docoSlug}/${hit.node_type}/${hit.id}`}
-                      className="font-mono text-xs text-primary hover:underline"
+                      className="break-all font-mono text-xs text-primary hover:underline"
                     >
                       {hit.id}
                     </Link>
+                    {hit.lifecycle ? (
+                      <Badge className="bg-card text-[10px] uppercase">
+                        lifecycle: {hit.lifecycle}
+                      </Badge>
+                    ) : null}
+                    {hit.scopes.map((scope) => (
+                      <Link
+                        key={scope.id}
+                        to={`/${ownerSlug}/${docoSlug}/scopes/${scope.id}`}
+                        className="inline-flex items-center gap-1 rounded-md border border-border bg-card px-2 py-0.5 font-mono text-[11px] text-muted-foreground hover:border-primary hover:text-primary"
+                      >
+                        {scope.icon ? (
+                          <span aria-hidden className="font-sans text-[12px] leading-none">
+                            {scope.icon}
+                          </span>
+                        ) : null}
+                        <span>{scope.name}</span>
+                      </Link>
+                    ))}
                     <span className="text-xs text-muted-foreground">
                       {vectorScore === null ? "" : `cosine ${vectorScore.toFixed(4)} · `}
                       gpr {hit.gpr.toFixed(4)} · {relativeTimeIso(hit.created_at)}

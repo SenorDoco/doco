@@ -205,7 +205,59 @@ export async function resolveFilteredCandidates(
 export interface FilterFacets {
   lifecycle: { value: string; count: number }[];
   nodeType: { value: string; count: number }[];
-  scope: { name: string; count: number; icon: string | null }[];
+  scope: { id: string; name: string; count: number; icon: string | null }[];
+}
+
+export interface SearchHitScope {
+  id: string;
+  name: string;
+  icon: string | null;
+}
+
+export async function attachScopesToSearchHits<T extends { id: string }>(
+  c: PoolClient,
+  docoId: string,
+  hits: T[],
+): Promise<Array<T & { scopes: SearchHitScope[] }>> {
+  const byId = new Map<string, Array<T & { scopes: SearchHitScope[] }>>();
+  for (const hit of hits) {
+    const withScopes = hit as T & { scopes: SearchHitScope[] };
+    withScopes.scopes = [];
+    byId.set(hit.id, [withScopes, ...(byId.get(hit.id) ?? [])]);
+  }
+  if (hits.length === 0) return hits as Array<T & { scopes: SearchHitScope[] }>;
+
+  const rows = (
+    await c.query<{ from_id: string; id: string; name: string; raw_yaml: string | null }>(
+      `SELECT e.from_id, s.id, s.name, s.raw_yaml
+         FROM edges e
+         INNER JOIN scopes s
+           ON s.id = e.to_id
+          AND s.doco_id = e.doco_id
+        WHERE e.edge_type = 'in_scope_of'
+          AND e.doco_id = $1
+          AND e.from_id = ANY($2::text[])
+        ORDER BY s.name ASC`,
+      [docoId, hits.map((h) => h.id)],
+    )
+  ).rows;
+
+  const seen = new Set<string>();
+  for (const row of rows) {
+    const targets = byId.get(row.from_id);
+    if (!targets) continue;
+    const key = `${row.from_id}:${row.id}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const scope = {
+      id: row.id,
+      name: row.name,
+      icon: scopeIconFromRawYaml(row.raw_yaml),
+    };
+    for (const hit of targets) hit.scopes.push(scope);
+  }
+
+  return hits as Array<T & { scopes: SearchHitScope[] }>;
 }
 
 export async function computeFilterFacets(c: PoolClient, docoId: string): Promise<FilterFacets> {
@@ -238,8 +290,8 @@ export async function computeFilterFacets(c: PoolClient, docoId: string): Promis
   nodeTypeCounts.sort((a, b) => b.count - a.count);
 
   const scopeRows = (
-    await c.query<{ name: string; raw_yaml: string | null; n: string }>(
-      `SELECT s.name AS name, s.raw_yaml AS raw_yaml, COUNT(e.from_id)::text AS n
+    await c.query<{ id: string; name: string; raw_yaml: string | null; n: string }>(
+      `SELECT s.id AS id, s.name AS name, s.raw_yaml AS raw_yaml, COUNT(e.from_id)::text AS n
          FROM scopes s
          LEFT JOIN edges e
            ON e.to_id = s.id
@@ -247,7 +299,7 @@ export async function computeFilterFacets(c: PoolClient, docoId: string): Promis
           AND e.from_node_type != 'scope'
           AND e.doco_id = s.doco_id
         WHERE s.doco_id = $1
-        GROUP BY s.name, s.raw_yaml
+        GROUP BY s.id, s.name, s.raw_yaml
         ORDER BY COUNT(e.from_id) DESC, s.name ASC`,
       [docoId],
     )
@@ -262,7 +314,8 @@ export async function computeFilterFacets(c: PoolClient, docoId: string): Promis
         return a.value.localeCompare(b.value);
       }),
     nodeType: nodeTypeCounts,
-    scope: scopeRows.map((r: { name: string; raw_yaml: string | null; n: string }) => ({
+    scope: scopeRows.map((r: { id: string; name: string; raw_yaml: string | null; n: string }) => ({
+      id: r.id,
       name: r.name,
       count: Number(r.n),
       icon: scopeIconFromRawYaml(r.raw_yaml),
@@ -270,7 +323,7 @@ export async function computeFilterFacets(c: PoolClient, docoId: string): Promis
   };
 }
 
-function scopeIconFromRawYaml(rawYaml: string | null): string | null {
+export function scopeIconFromRawYaml(rawYaml: string | null): string | null {
   if (!rawYaml) return null;
   try {
     const parsed = parseYaml(rawYaml) as { icon?: unknown } | null;
