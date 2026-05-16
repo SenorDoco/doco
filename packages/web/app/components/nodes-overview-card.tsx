@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { Link } from "react-router";
 import { Card } from "~/components/card";
+import { cn } from "~/lib/cn";
 import { timeAgo } from "~/lib/time-ago";
 
 export interface NodesOverviewItem {
@@ -76,20 +77,27 @@ export function NodesOverviewCard({
         ),
       );
   return (
-    <Card className="p-5">
-      <div className="space-y-4">
-        {search}
-        {aside ? (
-          <div className="grid border-t border-border min-[640px]:grid-cols-2">
-            <div className="min-w-0 space-y-4 pt-4 min-[640px]:pr-6">{sectionsBlock}</div>
-            <div className="min-w-0 space-y-4 pt-4 min-[640px]:border-l min-[640px]:border-border min-[640px]:pl-6">
-              {aside}
-            </div>
+    <Card>
+      {search ? <div className="p-5">{search}</div> : null}
+      {aside ? (
+        <div
+          className={cn(
+            "grid min-[640px]:grid-cols-2",
+            search ? "border-t border-border" : null,
+          )}
+        >
+          <div className="min-w-0 space-y-4 p-5">{sectionsBlock}</div>
+          <div className="min-w-0 space-y-4 p-5 min-[640px]:border-l min-[640px]:border-border">
+            {aside}
           </div>
-        ) : (
-          <div className="space-y-4 border-t border-border pt-4">{sectionsBlock}</div>
-        )}
-      </div>
+        </div>
+      ) : (
+        <div
+          className={cn("space-y-4 p-5", search ? "border-t border-border" : null)}
+        >
+          {sectionsBlock}
+        </div>
+      )}
     </Card>
   );
 }
