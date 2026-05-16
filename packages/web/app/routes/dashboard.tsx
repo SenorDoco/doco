@@ -6,6 +6,13 @@ import { Badge } from "~/components/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { SiteHeader } from "~/components/site-header";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "~/components/table";
+import {
+  auditSummaryFallback,
+  capNodeType,
+  iconFromAuditOp,
+  lifecycleTransitionText,
+  verbFromAuditOp,
+} from "~/lib/activity-feed";
 import { isMyDoco } from "~/lib/doco-access.server";
 import { listDocoStats } from "~/lib/doco-stats.server";
 import { listAllDocos, listMyOrgs, loadHostConfig } from "~/lib/host";
@@ -25,6 +32,8 @@ interface FeedEvent {
   entity_id: string;
   summary: string | null;
   op: string;
+  before: Record<string, unknown> | null;
+  after: Record<string, unknown> | null;
 }
 
 /**
@@ -75,9 +84,12 @@ export async function loader({ request }: { request: Request }) {
         entity_type: string;
         entity_id: string;
         op: string;
+        before_json: Record<string, unknown> | null;
+        after_json: Record<string, unknown> | null;
         username: string | null;
       }>(
         `SELECT a.event_id, a.at, a.doco_id, a.entity_type, a.entity_id, a.op,
+                a.before_json, a.after_json,
                 p.username
          FROM audit_events a
          LEFT JOIN principals p ON p.id = a.by_principal
@@ -99,8 +111,10 @@ export async function loader({ request }: { request: Request }) {
            UNION ALL SELECT id, summary FROM ideas WHERE id = ANY($1)
            UNION ALL SELECT id, summary FROM rules WHERE id = ANY($1)
            UNION ALL SELECT id, summary FROM actions WHERE id = ANY($1)
+           UNION ALL SELECT id, summary FROM logs WHERE id = ANY($1)
            UNION ALL SELECT id, summary FROM evals WHERE id = ANY($1)
-           UNION ALL SELECT id, summary FROM scopes WHERE id = ANY($1)
+           UNION ALL SELECT id, summary FROM states WHERE id = ANY($1)
+           UNION ALL SELECT id, COALESCE(summary, name) AS summary FROM scopes WHERE id = ANY($1)
            UNION ALL SELECT id, summary FROM reference_entities WHERE id = ANY($1)`,
           [entityIds],
         );
@@ -121,6 +135,8 @@ export async function loader({ request }: { request: Request }) {
           entity_id: r.entity_id,
           summary: summaryById.get(r.entity_id) ?? null,
           op: r.op,
+          before: r.before_json,
+          after: r.after_json,
         };
       });
     }
@@ -145,30 +161,6 @@ export async function loader({ request }: { request: Request }) {
 export function meta({ data }: { data: Awaited<ReturnType<typeof loader>> | undefined }) {
   if (!data) return [{ title: "Dashboard · Doco" }];
   return [{ title: `${data.host.name} · Doco` }];
-}
-
-// Mirror the canonical footer-line vocabulary so dashboard rows read
-// the same way agent capture footers do (see capture.server.ts).
-function verbFromOp(op: string): string {
-  if (op === "entity.create") return "added";
-  if (op === "entity.update") return "updated";
-  if (op === "entity.delete") return "deleted";
-  if (op === "lifecycle.transition") return "transitioned";
-  if (op === "edge.add") return "linked";
-  return op;
-}
-
-function iconFromOp(op: string): string {
-  if (op === "entity.create") return "✍️";
-  if (op === "entity.update") return "📝";
-  if (op === "entity.delete") return "🗑️";
-  if (op === "lifecycle.transition") return "🔁";
-  if (op === "edge.add") return "➕";
-  return "•";
-}
-
-function capType(t: string): string {
-  return t.length === 0 ? t : t.charAt(0).toUpperCase() + t.slice(1);
 }
 
 export default function Dashboard({
@@ -297,18 +289,20 @@ function DashboardFeedLine({ event }: { event: FeedEvent }) {
     nodeType: event.entity_type,
     id: event.entity_id,
   });
-  const summary = event.summary ?? `${event.entity_type}_${event.entity_id.slice(-6)}`;
+  const summary = event.summary ?? auditSummaryFallback(event.entity_type, event.entity_id);
+  const detail = lifecycleTransitionText(event);
   return (
     <div className="flex items-baseline gap-3 px-5 py-3 font-mono text-xs leading-relaxed text-foreground">
       <div className="min-w-0 flex-1">
-        <span>{iconFromOp(event.op)} </span>
+        <span>{iconFromAuditOp(event.op)} </span>
         <span className="font-semibold">
-          {capType(event.entity_type)} {verbFromOp(event.op)}
+          {capNodeType(event.entity_type)} {verbFromAuditOp(event.op)}
         </span>
         <span className="text-muted-foreground">: </span>
         <Link to={url} className="text-primary hover:underline">
           {summary}
         </Link>
+        {detail ? <span className="text-muted-foreground">{detail}</span> : null}
         <span className="text-muted-foreground"> — </span>
         <Link
           to={`/${event.ownerSlug}/${event.docoSlug}`}

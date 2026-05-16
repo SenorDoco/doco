@@ -1,13 +1,13 @@
 import { withClient } from "@doco/db";
+import { entityUrl } from "@doco/shared";
 // Per-Doco home — bare title up top, then the search input, then a
 // two-column body: Nodes on the left, "Activity" heatmap above the
 // "Latest activity" feed on the right.
 //
-// The feed renders one line per recently-added entity in the same shape
-// agents emit via `renderOperationLines` in capture.server.ts:
-// `[🔮 Doco] <icon> <scope1>, …: ✍️ <Type> added: <summary>`. The
-// summary is the markdown-link target (the slug is not shown). Keep this
-// in sync with renderOperationLines if the footer shape ever moves.
+// The feed renders one line per recent audit event in the same family as
+// agent footer lines: `<op-icon> <Type> <verb>: <summary>`. Lifecycle
+// transitions include their old → new value so state changes show up in
+// the feed instead of disappearing behind the entity's original created_at.
 //
 // Live feed (ADR-089): re-fetch every 5s so new entities show up
 // without a manual refresh. React Router 7's useRevalidator re-runs the
@@ -18,11 +18,15 @@ import { Form, Link, useRevalidator } from "react-router";
 import { parse as parseYaml } from "yaml";
 import { ActivityHeatmap } from "~/components/activity-heatmap";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
-import {
-  NodesOverviewCard,
-  type NodesOverviewSection,
-} from "~/components/nodes-overview-card";
+import { NodesOverviewCard, type NodesOverviewSection } from "~/components/nodes-overview-card";
 import { SiteHeader } from "~/components/site-header";
+import {
+  auditSummaryFallback,
+  capNodeType,
+  iconFromAuditOp,
+  lifecycleTransitionText,
+  verbFromAuditOp,
+} from "~/lib/activity-feed";
 import { docoPath } from "~/lib/db.server";
 import { loadDocoForRead } from "~/lib/doco-access.server";
 import { loadHostConfig } from "~/lib/host";
@@ -34,13 +38,14 @@ const FEED_LIMIT = 30;
 const HEATMAP_WEEKS = 26;
 
 interface FeedItem {
+  event_id: string;
   id: string;
   node_type: string;
-  summary: string;
-  created_at: string;
-  title: string | null;
-  /** Scope's readable handle. Other types leave it null. */
-  name: string | null;
+  summary: string | null;
+  at: string;
+  op: string;
+  before: Record<string, unknown> | null;
+  after: Record<string, unknown> | null;
   scopes: { name: string; icon?: string }[];
 }
 
@@ -56,7 +61,7 @@ const NODE_TYPE_LABELS: Record<string, string> = {
 };
 
 function nodeTypeLabel(type: string): string {
-  return NODE_TYPE_LABELS[type] ?? type.charAt(0).toUpperCase() + type.slice(1) + "s";
+  return NODE_TYPE_LABELS[type] ?? `${type.charAt(0).toUpperCase()}${type.slice(1)}s`;
 }
 
 export async function loader({
@@ -73,29 +78,46 @@ export async function loader({
   const scopeDetails = await listScopeDetails(dir);
   const scopeById = new Map(scopeDetails.map((s) => [s.id, s]));
   return withClient(async (c) => {
+    type AuditFeedRow = {
+      event_id: string;
+      at: Date | string;
+      entity_type: string;
+      entity_id: string;
+      op: string;
+      before_json: Record<string, unknown> | null;
+      after_json: Record<string, unknown> | null;
+    };
     const rawItems = (
-      await c.query<Omit<FeedItem, "scopes">>(
-        `SELECT id, node_type, summary, created_at::text, title, name FROM (
-           SELECT id, 'decision' AS node_type, summary, created_at, NULL AS title, NULL AS name FROM decisions WHERE doco_id = $1
-           UNION ALL
-           SELECT id, 'intent' AS node_type, summary, created_at, NULL AS title, NULL FROM intents WHERE doco_id = $1
-           UNION ALL
-           SELECT id, 'idea' AS node_type, summary, created_at, NULL, NULL FROM ideas WHERE doco_id = $1
-           UNION ALL
-           SELECT id, 'rule' AS node_type, summary, created_at, NULL, NULL FROM rules WHERE doco_id = $1
-           UNION ALL
-           SELECT id, 'action' AS node_type, summary, created_at, NULL, NULL FROM actions WHERE doco_id = $1
-           UNION ALL
-           SELECT id, 'log' AS node_type, summary, created_at, NULL, NULL FROM logs WHERE doco_id = $1
-           UNION ALL
-           SELECT id, 'eval' AS node_type, summary, created_at, NULL AS title, NULL FROM evals WHERE doco_id = $1
-           UNION ALL
-           SELECT id, 'scope' AS node_type, summary, created_at, NULL, name FROM scopes WHERE doco_id = $1
-         ) t
-         ORDER BY created_at DESC LIMIT $2`,
+      await c.query<AuditFeedRow>(
+        `SELECT event_id, at, entity_type, entity_id, op, before_json, after_json
+           FROM audit_events
+          WHERE doco_id = $1
+          ORDER BY at DESC
+          LIMIT $2`,
         [ctx.meta.docoId, FEED_LIMIT],
       )
     ).rows;
+
+    const entityIds = Array.from(new Set(rawItems.map((r) => r.entity_id)));
+    const summaryById = new Map<string, string>();
+    if (entityIds.length > 0) {
+      const summaryRows = await c.query<{ id: string; summary: string | null }>(
+        `SELECT id, summary FROM decisions WHERE doco_id = $1 AND id = ANY($2::text[])
+         UNION ALL SELECT id, summary FROM intents WHERE doco_id = $1 AND id = ANY($2::text[])
+         UNION ALL SELECT id, summary FROM ideas WHERE doco_id = $1 AND id = ANY($2::text[])
+         UNION ALL SELECT id, summary FROM rules WHERE doco_id = $1 AND id = ANY($2::text[])
+         UNION ALL SELECT id, summary FROM actions WHERE doco_id = $1 AND id = ANY($2::text[])
+         UNION ALL SELECT id, summary FROM logs WHERE doco_id = $1 AND id = ANY($2::text[])
+         UNION ALL SELECT id, summary FROM evals WHERE doco_id = $1 AND id = ANY($2::text[])
+         UNION ALL SELECT id, summary FROM states WHERE doco_id = $1 AND id = ANY($2::text[])
+         UNION ALL SELECT id, COALESCE(summary, name) AS summary FROM scopes WHERE doco_id = $1 AND id = ANY($2::text[])
+         UNION ALL SELECT id, summary FROM reference_entities WHERE doco_id = $1 AND id = ANY($2::text[])`,
+        [ctx.meta.docoId, entityIds],
+      );
+      for (const row of summaryRows.rows) {
+        if (row.summary != null) summaryById.set(row.id, row.summary);
+      }
+    }
 
     let scopeEdges: { from_id: string; to_id: string }[] = [];
     if (rawItems.length > 0) {
@@ -105,7 +127,7 @@ export async function loader({
             WHERE edge_type = 'in_scope_of'
               AND doco_id = $1
               AND from_id = ANY($2::text[])`,
-          [ctx.meta.docoId, rawItems.map((r) => r.id)],
+          [ctx.meta.docoId, entityIds],
         )
       ).rows;
     }
@@ -116,12 +138,25 @@ export async function loader({
       scopeIdsByItem.set(e.from_id, arr);
     }
     const items: FeedItem[] = rawItems.map((it) => {
-      const sids = scopeIdsByItem.get(it.id) ?? [];
+      const sids = scopeIdsByItem.get(it.entity_id) ?? [];
       const scopes = sids
         .map((id) => scopeById.get(id))
         .filter((s): s is NonNullable<typeof s> => s != null)
         .map((s) => (s.icon ? { name: s.name, icon: s.icon } : { name: s.name }));
-      return { ...it, scopes };
+      return {
+        event_id: it.event_id,
+        id: it.entity_id,
+        node_type: it.entity_type,
+        summary:
+          summaryById.get(it.entity_id) ??
+          stringField(it.after_json, "summary") ??
+          stringField(it.before_json, "summary"),
+        at: it.at instanceof Date ? it.at.toISOString() : new Date(String(it.at)).toISOString(),
+        op: it.op,
+        before: it.before_json,
+        after: it.after_json,
+        scopes,
+      };
     });
 
     const facets = await computeFilterFacets(c, ctx.meta.docoId);
@@ -304,9 +339,7 @@ export default function DocoHome({
                 />
               }
               empty={
-                <p className="text-xs italic text-muted-foreground">
-                  This Doco has no nodes yet.
-                </p>
+                <p className="text-xs italic text-muted-foreground">This Doco has no nodes yet.</p>
               }
             />
           </aside>
@@ -330,7 +363,7 @@ export default function DocoHome({
                 <div className="divide-y divide-border">
                   {items.length === 0 ? (
                     <div className="px-5 py-6 text-xs text-muted-foreground">
-                      This Doco has no entities yet. Set up scopes via{" "}
+                      This Doco has no recorded activity yet. Set up scopes via{" "}
                       <Link
                         to={`/${ownerSlug}/${docoSlug}/scopes/new`}
                         className="text-primary hover:underline"
@@ -353,10 +386,6 @@ export default function DocoHome({
       </main>
     </div>
   );
-}
-
-function capType(t: string): string {
-  return t.length === 0 ? t : t.charAt(0).toUpperCase() + t.slice(1);
 }
 
 const RECENT_LIMIT = 8;
@@ -548,17 +577,27 @@ function FeedLine({
   ownerSlug: string;
   docoSlug: string;
 }) {
-  const url = `/${ownerSlug}/${docoSlug}/${item.node_type}/${item.id}`;
-  const Type = capType(item.node_type);
+  const url = entityUrl({
+    ownerSlug,
+    docoSlug,
+    nodeType: item.node_type,
+    id: item.id,
+  });
+  const summary = item.summary ?? auditSummaryFallback(item.node_type, item.id);
+  const Type = capNodeType(item.node_type);
+  const detail = lifecycleTransitionText(item);
   return (
     <div className="flex items-baseline gap-3 px-5 py-3 font-mono text-xs leading-relaxed text-foreground">
       <div className="min-w-0 flex-1">
-        <span>✍️ </span>
-        <span className="font-semibold">{Type} added</span>
+        <span>{iconFromAuditOp(item.op)} </span>
+        <span className="font-semibold">
+          {Type} {verbFromAuditOp(item.op)}
+        </span>
         <span className="text-muted-foreground">: </span>
         <Link to={url} className="text-primary hover:underline">
-          {item.summary}
+          {summary}
         </Link>
+        {detail ? <span className="text-muted-foreground">{detail}</span> : null}
         {item.scopes.length > 0 ? (
           <>
             <span className="text-muted-foreground"> — </span>
@@ -573,15 +612,23 @@ function FeedLine({
         ) : null}
       </div>
       <time
-        dateTime={item.created_at}
-        title={item.created_at}
+        dateTime={item.at}
+        title={item.at}
         suppressHydrationWarning
         className="shrink-0 whitespace-nowrap text-[11px] tabular-nums text-muted-foreground"
       >
-        {relativeTimeIso(item.created_at)}
+        {relativeTimeIso(item.at)}
       </time>
     </div>
   );
+}
+
+function stringField(
+  obj: Record<string, unknown> | null | undefined,
+  field: string,
+): string | null {
+  const value = obj?.[field];
+  return typeof value === "string" && value.length > 0 ? value : null;
 }
 
 /** Format an ISO timestamp as "Ns / Nm / Nh / Nd ago". */

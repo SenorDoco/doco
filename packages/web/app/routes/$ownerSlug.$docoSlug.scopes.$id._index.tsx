@@ -31,12 +31,16 @@ import { ActivityHeatmap } from "~/components/activity-heatmap";
 import { Badge, NodeTypeBadge } from "~/components/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { EmojiPickerInput } from "~/components/emoji-picker-input";
-import {
-  NodesOverviewCard,
-  type NodesOverviewSection,
-} from "~/components/nodes-overview-card";
+import { NodesOverviewCard, type NodesOverviewSection } from "~/components/nodes-overview-card";
 import { SiteHeader } from "~/components/site-header";
 import { Toggle } from "~/components/toggle";
+import {
+  auditSummaryFallback,
+  capNodeType,
+  iconFromAuditOp,
+  lifecycleTransitionText,
+  verbFromAuditOp,
+} from "~/lib/activity-feed";
 import { updateEntity } from "~/lib/capture.server";
 import { loadDocoForAdmin } from "~/lib/doco-access.server";
 import { loadHostConfig } from "~/lib/host";
@@ -137,7 +141,7 @@ const NODE_TYPE_LABELS: Record<string, string> = {
 };
 
 function nodeTypeLabel(type: string): string {
-  return NODE_TYPE_LABELS[type] ?? type.charAt(0).toUpperCase() + type.slice(1) + "s";
+  return NODE_TYPE_LABELS[type] ?? `${type.charAt(0).toUpperCase()}${type.slice(1)}s`;
 }
 
 async function readScopeRaw(scopeId: string): Promise<Record<string, unknown> | null> {
@@ -362,13 +366,17 @@ export async function loader({
       })
     : {};
 
-  // Latest 30 entities tagged with this scope, for the feed.
+  // Latest 30 audit events for entities currently tagged with this scope.
   type FeedItem = {
+    event_id: string;
     id: string;
     node_type: string;
-    summary: string;
+    summary: string | null;
     lifecycle: string;
-    created_at: string;
+    at: string;
+    op: string;
+    before: Record<string, unknown> | null;
+    after: Record<string, unknown> | null;
   };
   const items: FeedItem[] = docoId
     ? await withClient(async (c) => {
@@ -379,6 +387,7 @@ export async function loader({
           { table: "logs", nodeType: "log" },
           { table: "rules", nodeType: "rule" },
           { table: "evals", nodeType: "eval" },
+          { table: "states", nodeType: "state" },
           { table: "reference_entities", nodeType: "reference" },
           { table: "ideas", nodeType: "idea" },
         ];
@@ -386,19 +395,51 @@ export async function loader({
           .map(
             (t) =>
               `SELECT ${t.table}.id, '${t.nodeType}'::text AS node_type, ${t.table}.summary,
-                      COALESCE(${t.table}.lifecycle, 'active') AS lifecycle, ${t.table}.created_at
+                      COALESCE(${t.table}.lifecycle, 'active') AS lifecycle
                  FROM ${t.table}
-                 JOIN edges e ON e.from_id = ${t.table}.id
-                              AND e.edge_type = 'in_scope_of'
-                              AND e.to_id = $1
                 WHERE ${t.table}.doco_id = $2`,
           )
           .join(" UNION ALL ");
-        const rs = await c.query<FeedItem>(
-          `SELECT * FROM (${unionSql}) t ORDER BY created_at DESC LIMIT 30`,
+        const rs = await c.query<
+          Omit<FeedItem, "at" | "before" | "after"> & {
+            at: Date | string;
+            before_json: Record<string, unknown> | null;
+            after_json: Record<string, unknown> | null;
+          }
+        >(
+          `WITH entity_rows AS (${unionSql})
+           SELECT a.event_id,
+                  a.entity_id AS id,
+                  a.entity_type AS node_type,
+                  COALESCE(er.summary, a.after_json->>'summary', a.before_json->>'summary') AS summary,
+                  COALESCE(er.lifecycle, a.after_json->>'lifecycle', a.before_json->>'lifecycle', 'active') AS lifecycle,
+                  a.at,
+                  a.op,
+                  a.before_json,
+                  a.after_json
+             FROM audit_events a
+             JOIN edges e ON e.from_id = a.entity_id
+                         AND e.edge_type = 'in_scope_of'
+                         AND e.to_id = $1
+                         AND e.doco_id = a.doco_id
+             LEFT JOIN entity_rows er ON er.id = a.entity_id
+            WHERE a.doco_id = $2
+            ORDER BY a.at DESC
+            LIMIT 30`,
           [id, docoId],
         );
-        return rs.rows;
+        return rs.rows.map((row) => ({
+          event_id: row.event_id,
+          id: row.id,
+          node_type: row.node_type,
+          summary: row.summary,
+          lifecycle: row.lifecycle,
+          at:
+            row.at instanceof Date ? row.at.toISOString() : new Date(String(row.at)).toISOString(),
+          op: row.op,
+          before: row.before_json,
+          after: row.after_json,
+        }));
       })
     : [];
 
@@ -474,7 +515,9 @@ export async function action({
       const raw = await readScopeRaw(id);
       const existingPrimaryId = scopeMainIntentId(raw);
       const actorId = (me?.id ??
-        (meta.ownerId.startsWith("principal_") ? meta.ownerId : null)) as EntityId<"principal"> | null;
+        (meta.ownerId.startsWith("principal_")
+          ? meta.ownerId
+          : null)) as EntityId<"principal"> | null;
       const newIntentId = await createIntentInDoco({
         docoId: meta.docoId as EntityId<"doco">,
         summary,
@@ -849,26 +892,39 @@ export default function ScopePage({
                   </div>
                 ) : (
                   <ul className="divide-y divide-border">
-                    {items.map((it) => (
-                      <li key={it.id} className="px-4 py-2 text-xs">
-                        <Link
-                          to={entityUrl({
-                            ownerSlug,
-                            docoSlug,
-                            nodeType: it.node_type,
-                            id: it.id,
-                          })}
-                          className="flex items-baseline gap-2 hover:text-primary"
-                        >
-                          <NodeTypeBadge
-                            nodeType={it.node_type}
-                            className="text-[10px] uppercase"
-                          />
-                          <span className="flex-1 truncate text-foreground">{it.summary}</span>
-                          <Badge>{it.lifecycle}</Badge>
-                        </Link>
-                      </li>
-                    ))}
+                    {items.map((it) => {
+                      const detail = lifecycleTransitionText(it);
+                      return (
+                        <li key={it.event_id} className="px-4 py-2 text-xs">
+                          <Link
+                            to={entityUrl({
+                              ownerSlug,
+                              docoSlug,
+                              nodeType: it.node_type,
+                              id: it.id,
+                            })}
+                            className="flex items-baseline gap-2 hover:text-primary"
+                          >
+                            <span>{iconFromAuditOp(it.op)}</span>
+                            <span className="min-w-0 flex-1 truncate text-foreground">
+                              <span className="font-semibold">
+                                {capNodeType(it.node_type)} {verbFromAuditOp(it.op)}
+                              </span>
+                              <span className="text-muted-foreground">: </span>
+                              {it.summary ?? auditSummaryFallback(it.node_type, it.id)}
+                              {detail ? (
+                                <span className="text-muted-foreground">{detail}</span>
+                              ) : null}
+                            </span>
+                            <NodeTypeBadge
+                              nodeType={it.node_type}
+                              className="text-[10px] uppercase"
+                            />
+                            <Badge>{it.lifecycle}</Badge>
+                          </Link>
+                        </li>
+                      );
+                    })}
                   </ul>
                 )}
               </CardContent>
