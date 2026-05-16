@@ -7,6 +7,7 @@ export type {
   SuggestScopesOptions,
 } from "./llm.server";
 export {
+  applyScopeTemplateUpdatesToDoco,
   createDocoInHost,
   createIntentInDoco,
   createRuleInDoco,

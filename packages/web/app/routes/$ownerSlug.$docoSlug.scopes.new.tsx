@@ -11,15 +11,21 @@ import { SiteHeader } from "~/components/site-header";
 import { loadDocoForAdmin, loadDocoForRead } from "~/lib/doco-access.server";
 import { loadHostConfig } from "~/lib/host";
 import {
+  applyScopeTemplateUpdatesToDoco,
   createIntentInDoco,
   createScopeInDoco,
   reindex,
   seedScopeFromTemplate,
+  setScopeWatchedInDoco,
   updateScopeInDoco,
 } from "~/lib/redeem.server";
 import { listScopeDetails } from "~/lib/scope-helpers.server";
 
 const SCOPE_NAME_RE = /^[a-z][a-z0-9_-]*$/;
+
+function isLiveScopeLifecycle(lifecycle: string): boolean {
+  return lifecycle === "active" || lifecycle === "proposed";
+}
 
 export async function loader({
   request,
@@ -30,11 +36,10 @@ export async function loader({
 }) {
   const { ownerSlug, docoSlug } = params;
   const { dir, meta, me } = await loadDocoForRead(request, ownerSlug, docoSlug);
-  // Active scopes only — abandoned scopes aren't shown as parent options
-  // and don't block re-installing a template with the same name (the
-  // installer renames or skips depending on UX; here we just hide them).
+  // Active scopes only — abandoned scopes aren't shown as parent options.
+  // Template adds can reactivate an abandoned scope with the same name.
   const allScopes = await listScopeDetails(dir);
-  const scopes = allScopes.filter((s) => s.lifecycle === "active");
+  const scopes = allScopes.filter((s) => isLiveScopeLifecycle(s.lifecycle));
   const existingNames = new Set(scopes.map((s) => s.name));
   const url = new URL(request.url);
   const isOnboarding = url.searchParams.get("onboarding") === "1";
@@ -115,27 +120,53 @@ export async function action({
       const tpl = findScopeTemplate(tplName);
       if (!tpl) return { error: `Unknown template: ${tplName}` };
       const existing = await listScopeDetails(dir);
-      if (existing.some((s) => s.name === tpl.name)) {
+      const existingScope = existing.find((s) => s.name === tpl.name);
+      if (existingScope && isLiveScopeLifecycle(existingScope.lifecycle)) {
         return redirect(afterAdd);
       }
-      const newId = await createScopeInDoco({
-        docoDir: dir,
-        docoId: docoId as EntityId<"doco">,
-        name: tpl.name,
-        icon: tpl.icon,
-        watched,
-        createdBy,
-      });
-      // Templates ship `intentSummary` + `rules[]`; seed both into the
-      // new scope through the single entry point so the Doco-creation
-      // path and this picker path stay aligned.
-      await seedScopeFromTemplate({
-        docoDir: dir,
-        docoId: docoId as EntityId<"doco">,
-        scopeId: newId,
-        template: tpl,
-        createdBy,
-      });
+      if (existingScope) {
+        if (existingScope.lifecycle !== "abandoned") {
+          return {
+            error: `Scope "${tpl.name}" already exists with lifecycle "${existingScope.lifecycle}". Resolve it from the scope page before adding this template again.`,
+          };
+        }
+        const scopeId = existingScope.id as EntityId<"scope">;
+        await updateScopeInDoco({
+          docoDir: dir,
+          scopeId,
+          lifecycle: "active",
+          icon: tpl.icon,
+        });
+        await setScopeWatchedInDoco({
+          docoDir: dir,
+          targetScopeId: scopeId,
+          watched,
+        });
+        await applyScopeTemplateUpdatesToDoco({
+          docoDir: dir,
+          docoId: docoId as EntityId<"doco">,
+          createdBy,
+        });
+      } else {
+        const newId = await createScopeInDoco({
+          docoDir: dir,
+          docoId: docoId as EntityId<"doco">,
+          name: tpl.name,
+          icon: tpl.icon,
+          watched,
+          createdBy,
+        });
+        // Templates ship `intentSummary` + `rules[]`; seed both into the
+        // new scope through the single entry point so the Doco-creation
+        // path and this picker path stay aligned.
+        await seedScopeFromTemplate({
+          docoDir: dir,
+          docoId: docoId as EntityId<"doco">,
+          scopeId: newId,
+          template: tpl,
+          createdBy,
+        });
+      }
     } else if (intent === "add-custom") {
       const name = String(form.get("name") ?? "")
         .trim()
