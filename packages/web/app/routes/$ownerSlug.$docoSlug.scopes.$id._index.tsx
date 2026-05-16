@@ -27,20 +27,14 @@ import {
   useRevalidator,
 } from "react-router";
 import { parse as parseYaml } from "yaml";
+import { ActivityFeedLine, type ActivityFeedLineItem } from "~/components/activity-feed-line";
 import { ActivityHeatmap } from "~/components/activity-heatmap";
-import { Badge, NodeTypeBadge } from "~/components/badge";
+import { Badge } from "~/components/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { EmojiPickerInput } from "~/components/emoji-picker-input";
 import { NodesOverviewCard, type NodesOverviewSection } from "~/components/nodes-overview-card";
 import { SiteHeader } from "~/components/site-header";
 import { Toggle } from "~/components/toggle";
-import {
-  auditSummaryFallback,
-  capNodeType,
-  iconFromAuditOp,
-  lifecycleTransitionText,
-  verbFromAuditOp,
-} from "~/lib/activity-feed";
 import { updateEntity } from "~/lib/capture.server";
 import { loadDocoForAdmin } from "~/lib/doco-access.server";
 import { loadHostConfig } from "~/lib/host";
@@ -205,6 +199,7 @@ export async function loader({
 
   const allScopeDetails = await listScopeDetails(dir);
   const allScopes = allScopeDetails.map((s) => ({ id: s.id, name: s.name }));
+  const scopeById = new Map(allScopeDetails.map((s) => [s.id, s]));
 
   const meta = await readDocoMetadata(dir);
   const docoId = meta?.docoId ?? null;
@@ -367,17 +362,10 @@ export async function loader({
     : {};
 
   // Latest 30 audit events for entities currently tagged with this scope.
-  type FeedItem = {
+  interface FeedItem extends ActivityFeedLineItem {
     event_id: string;
-    id: string;
-    node_type: string;
-    summary: string | null;
     lifecycle: string;
-    at: string;
-    op: string;
-    before: Record<string, unknown> | null;
-    after: Record<string, unknown> | null;
-  };
+  }
   const items: FeedItem[] = docoId
     ? await withClient(async (c) => {
         const tables: { table: string; nodeType: string }[] = [
@@ -428,7 +416,27 @@ export async function loader({
             LIMIT 30`,
           [id, docoId],
         );
-        return rs.rows.map((row) => ({
+        const rows = rs.rows;
+        const entityIds = Array.from(new Set(rows.map((row) => row.id)));
+        const scopeEdges =
+          entityIds.length > 0
+            ? (
+                await c.query<{ from_id: string; to_id: string }>(
+                  `SELECT from_id, to_id FROM edges
+                    WHERE edge_type = 'in_scope_of'
+                      AND doco_id = $1
+                      AND from_id = ANY($2::text[])`,
+                  [docoId, entityIds],
+                )
+              ).rows
+            : [];
+        const scopeIdsByItem = new Map<string, string[]>();
+        for (const edge of scopeEdges) {
+          const arr = scopeIdsByItem.get(edge.from_id) ?? [];
+          arr.push(edge.to_id);
+          scopeIdsByItem.set(edge.from_id, arr);
+        }
+        return rows.map((row) => ({
           event_id: row.event_id,
           id: row.id,
           node_type: row.node_type,
@@ -439,6 +447,10 @@ export async function loader({
           op: row.op,
           before: row.before_json,
           after: row.after_json,
+          scopes: (scopeIdsByItem.get(row.id) ?? [])
+            .map((scopeId) => scopeById.get(scopeId))
+            .filter((s): s is NonNullable<typeof s> => s != null)
+            .map((s) => (s.icon ? { name: s.name, icon: s.icon } : { name: s.name })),
         }));
       })
     : [];
@@ -888,44 +900,19 @@ export default function ScopePage({
               <CardContent className="p-0">
                 {items.length === 0 ? (
                   <div className="px-5 py-6 text-xs text-muted-foreground">
-                    No nodes tagged with this scope yet.
+                    No activity for nodes tagged with this scope yet.
                   </div>
                 ) : (
-                  <ul className="divide-y divide-border">
-                    {items.map((it) => {
-                      const detail = lifecycleTransitionText(it);
-                      return (
-                        <li key={it.event_id} className="px-4 py-2 text-xs">
-                          <Link
-                            to={entityUrl({
-                              ownerSlug,
-                              docoSlug,
-                              nodeType: it.node_type,
-                              id: it.id,
-                            })}
-                            className="flex items-baseline gap-2 hover:text-primary"
-                          >
-                            <span>{iconFromAuditOp(it.op)}</span>
-                            <span className="min-w-0 flex-1 truncate text-foreground">
-                              <span className="font-semibold">
-                                {capNodeType(it.node_type)} {verbFromAuditOp(it.op)}
-                              </span>
-                              <span className="text-muted-foreground">: </span>
-                              {it.summary ?? auditSummaryFallback(it.node_type, it.id)}
-                              {detail ? (
-                                <span className="text-muted-foreground">{detail}</span>
-                              ) : null}
-                            </span>
-                            <NodeTypeBadge
-                              nodeType={it.node_type}
-                              className="text-[10px] uppercase"
-                            />
-                            <Badge>{it.lifecycle}</Badge>
-                          </Link>
-                        </li>
-                      );
-                    })}
-                  </ul>
+                  <div className="divide-y divide-border">
+                    {items.map((it) => (
+                      <ActivityFeedLine
+                        key={it.event_id}
+                        item={it}
+                        ownerSlug={ownerSlug}
+                        docoSlug={docoSlug}
+                      />
+                    ))}
+                  </div>
                 )}
               </CardContent>
             </Card>

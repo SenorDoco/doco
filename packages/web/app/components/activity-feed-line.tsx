@@ -1,0 +1,100 @@
+import { entityUrl } from "@doco/shared";
+import { Link } from "react-router";
+import {
+  auditSummaryFallback,
+  capNodeType,
+  iconFromAuditOp,
+  lifecycleTransitionText,
+  verbFromAuditOp,
+} from "~/lib/activity-feed";
+
+export interface ActivityFeedScope {
+  name: string;
+  icon?: string;
+}
+
+export interface ActivityFeedLineItem {
+  id: string;
+  node_type: string;
+  summary: string | null;
+  at: string;
+  op: string;
+  before: Record<string, unknown> | null;
+  after: Record<string, unknown> | null;
+  scopes: ActivityFeedScope[];
+}
+
+/**
+ * Shared latest-activity row. Mirrors the agent footer-line shape:
+ *   ✍️ <Type> added: <summary> — <icon> <scope1>, …          Ns ago
+ */
+export function ActivityFeedLine({
+  item,
+  ownerSlug,
+  docoSlug,
+}: {
+  item: ActivityFeedLineItem;
+  ownerSlug: string;
+  docoSlug: string;
+}) {
+  const url = entityUrl({
+    ownerSlug,
+    docoSlug,
+    nodeType: item.node_type,
+    id: item.id,
+  });
+  const summary = item.summary ?? auditSummaryFallback(item.node_type, item.id);
+  const Type = capNodeType(item.node_type);
+  const detail = lifecycleTransitionText(item);
+  return (
+    <div className="flex items-baseline gap-3 px-5 py-3 font-mono text-xs leading-relaxed text-foreground">
+      <div className="min-w-0 flex-1">
+        <span>{iconFromAuditOp(item.op)} </span>
+        <span className="font-semibold">
+          {Type} {verbFromAuditOp(item.op)}
+        </span>
+        <span className="text-muted-foreground">: </span>
+        <Link to={url} className="text-primary hover:underline">
+          {summary}
+        </Link>
+        {detail ? <span className="text-muted-foreground">{detail}</span> : null}
+        {item.scopes.length > 0 ? (
+          <>
+            <span className="text-muted-foreground"> — </span>
+            {item.scopes.map((s, i) => (
+              <span key={`${s.name}-${i}`} className="text-muted-foreground">
+                {i > 0 ? ", " : null}
+                {s.icon ? `${s.icon} ` : null}
+                {s.name}
+              </span>
+            ))}
+          </>
+        ) : null}
+      </div>
+      <time
+        dateTime={item.at}
+        title={item.at}
+        suppressHydrationWarning
+        className="shrink-0 whitespace-nowrap text-[11px] tabular-nums text-muted-foreground"
+      >
+        {relativeTimeIso(item.at)}
+      </time>
+    </div>
+  );
+}
+
+function relativeTimeIso(iso: string): string {
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return "";
+  return relativeTimeMs(t);
+}
+
+function relativeTimeMs(ts: number): string {
+  const s = Math.floor((Date.now() - ts) / 1000);
+  if (s < 60) return `${Math.max(s, 0)}s ago`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  return `${Math.floor(h / 24)}d ago`;
+}

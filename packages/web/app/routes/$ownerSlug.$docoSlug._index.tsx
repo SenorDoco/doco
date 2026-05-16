@@ -1,5 +1,4 @@
 import { withClient } from "@doco/db";
-import { entityUrl } from "@doco/shared";
 // Per-Doco home — bare title up top, then the search input, then a
 // two-column body: Nodes on the left, "Activity" heatmap above the
 // "Latest activity" feed on the right.
@@ -16,17 +15,11 @@ import { entityUrl } from "@doco/shared";
 import { useEffect, useState } from "react";
 import { Form, Link, useRevalidator } from "react-router";
 import { parse as parseYaml } from "yaml";
+import { ActivityFeedLine, type ActivityFeedLineItem } from "~/components/activity-feed-line";
 import { ActivityHeatmap } from "~/components/activity-heatmap";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
 import { NodesOverviewCard, type NodesOverviewSection } from "~/components/nodes-overview-card";
 import { SiteHeader } from "~/components/site-header";
-import {
-  auditSummaryFallback,
-  capNodeType,
-  iconFromAuditOp,
-  lifecycleTransitionText,
-  verbFromAuditOp,
-} from "~/lib/activity-feed";
 import { docoPath } from "~/lib/db.server";
 import { loadDocoForRead } from "~/lib/doco-access.server";
 import { loadHostConfig } from "~/lib/host";
@@ -37,16 +30,8 @@ import { computeFilterFacets } from "~/lib/search-filters.server";
 const FEED_LIMIT = 30;
 const HEATMAP_WEEKS = 26;
 
-interface FeedItem {
+interface FeedItem extends ActivityFeedLineItem {
   event_id: string;
-  id: string;
-  node_type: string;
-  summary: string | null;
-  at: string;
-  op: string;
-  before: Record<string, unknown> | null;
-  after: Record<string, unknown> | null;
-  scopes: { name: string; icon?: string }[];
 }
 
 const NODE_TYPE_LABELS: Record<string, string> = {
@@ -376,7 +361,12 @@ export default function DocoHome({
                     </div>
                   ) : null}
                   {items.map((it) => (
-                    <FeedLine key={it.id} item={it} ownerSlug={ownerSlug} docoSlug={docoSlug} />
+                    <ActivityFeedLine
+                      key={it.event_id}
+                      item={it}
+                      ownerSlug={ownerSlug}
+                      docoSlug={docoSlug}
+                    />
                   ))}
                 </div>
               </CardContent>
@@ -560,80 +550,10 @@ function SearchBoxWithHistory({
   );
 }
 
-/**
- * Render one feed entry. Shape mirrors `renderOperationLines` in
- * capture.server.ts (sans the agent-only `[🔮 Doco]` prefix):
- *   ✍️ <Type> added: <summary> — <icon> <scope1>, …          Ns ago
- * The `<summary>` is the link to the entity; the right gutter carries
- * the relative age in the same Ns/Nm/Nh/Nd shape used elsewhere in the
- * UI (entity-detail metadata, graph nodes, …).
- */
-function FeedLine({
-  item,
-  ownerSlug,
-  docoSlug,
-}: {
-  item: FeedItem;
-  ownerSlug: string;
-  docoSlug: string;
-}) {
-  const url = entityUrl({
-    ownerSlug,
-    docoSlug,
-    nodeType: item.node_type,
-    id: item.id,
-  });
-  const summary = item.summary ?? auditSummaryFallback(item.node_type, item.id);
-  const Type = capNodeType(item.node_type);
-  const detail = lifecycleTransitionText(item);
-  return (
-    <div className="flex items-baseline gap-3 px-5 py-3 font-mono text-xs leading-relaxed text-foreground">
-      <div className="min-w-0 flex-1">
-        <span>{iconFromAuditOp(item.op)} </span>
-        <span className="font-semibold">
-          {Type} {verbFromAuditOp(item.op)}
-        </span>
-        <span className="text-muted-foreground">: </span>
-        <Link to={url} className="text-primary hover:underline">
-          {summary}
-        </Link>
-        {detail ? <span className="text-muted-foreground">{detail}</span> : null}
-        {item.scopes.length > 0 ? (
-          <>
-            <span className="text-muted-foreground"> — </span>
-            {item.scopes.map((s, i) => (
-              <span key={`${s.name}-${i}`} className="text-muted-foreground">
-                {i > 0 ? ", " : null}
-                {s.icon ? `${s.icon} ` : null}
-                {s.name}
-              </span>
-            ))}
-          </>
-        ) : null}
-      </div>
-      <time
-        dateTime={item.at}
-        title={item.at}
-        suppressHydrationWarning
-        className="shrink-0 whitespace-nowrap text-[11px] tabular-nums text-muted-foreground"
-      >
-        {relativeTimeIso(item.at)}
-      </time>
-    </div>
-  );
-}
-
 function stringField(
   obj: Record<string, unknown> | null | undefined,
   field: string,
 ): string | null {
   const value = obj?.[field];
   return typeof value === "string" && value.length > 0 ? value : null;
-}
-
-/** Format an ISO timestamp as "Ns / Nm / Nh / Nd ago". */
-function relativeTimeIso(iso: string): string {
-  const t = Date.parse(iso);
-  if (Number.isNaN(t)) return "";
-  return relativeTimeMs(t);
 }
