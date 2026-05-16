@@ -84,23 +84,27 @@ export async function loader({
     ).rows;
 
     const entityIds = Array.from(new Set(rawItems.map((r) => r.entity_id)));
-    const summaryById = new Map<string, string>();
+    const entityById = new Map<string, { summary: string | null; lifecycle: string | null }>();
     if (entityIds.length > 0) {
-      const summaryRows = await c.query<{ id: string; summary: string | null }>(
-        `SELECT id, summary FROM decisions WHERE doco_id = $1 AND id = ANY($2::text[])
-         UNION ALL SELECT id, summary FROM intents WHERE doco_id = $1 AND id = ANY($2::text[])
-         UNION ALL SELECT id, summary FROM ideas WHERE doco_id = $1 AND id = ANY($2::text[])
-         UNION ALL SELECT id, summary FROM rules WHERE doco_id = $1 AND id = ANY($2::text[])
-         UNION ALL SELECT id, summary FROM actions WHERE doco_id = $1 AND id = ANY($2::text[])
-         UNION ALL SELECT id, summary FROM logs WHERE doco_id = $1 AND id = ANY($2::text[])
-         UNION ALL SELECT id, summary FROM evals WHERE doco_id = $1 AND id = ANY($2::text[])
-         UNION ALL SELECT id, summary FROM states WHERE doco_id = $1 AND id = ANY($2::text[])
-         UNION ALL SELECT id, COALESCE(summary, name) AS summary FROM scopes WHERE doco_id = $1 AND id = ANY($2::text[])
-         UNION ALL SELECT id, summary FROM reference_entities WHERE doco_id = $1 AND id = ANY($2::text[])`,
+      const summaryRows = await c.query<{
+        id: string;
+        summary: string | null;
+        lifecycle: string | null;
+      }>(
+        `SELECT id, summary, lifecycle FROM decisions WHERE doco_id = $1 AND id = ANY($2::text[])
+         UNION ALL SELECT id, summary, lifecycle FROM intents WHERE doco_id = $1 AND id = ANY($2::text[])
+         UNION ALL SELECT id, summary, lifecycle FROM ideas WHERE doco_id = $1 AND id = ANY($2::text[])
+         UNION ALL SELECT id, summary, lifecycle FROM rules WHERE doco_id = $1 AND id = ANY($2::text[])
+         UNION ALL SELECT id, summary, lifecycle FROM actions WHERE doco_id = $1 AND id = ANY($2::text[])
+         UNION ALL SELECT id, summary, lifecycle FROM logs WHERE doco_id = $1 AND id = ANY($2::text[])
+         UNION ALL SELECT id, summary, lifecycle FROM evals WHERE doco_id = $1 AND id = ANY($2::text[])
+         UNION ALL SELECT id, summary, lifecycle FROM states WHERE doco_id = $1 AND id = ANY($2::text[])
+         UNION ALL SELECT id, COALESCE(summary, name) AS summary, lifecycle FROM scopes WHERE doco_id = $1 AND id = ANY($2::text[])
+         UNION ALL SELECT id, summary, lifecycle FROM reference_entities WHERE doco_id = $1 AND id = ANY($2::text[])`,
         [ctx.meta.docoId, entityIds],
       );
       for (const row of summaryRows.rows) {
-        if (row.summary != null) summaryById.set(row.id, row.summary);
+        entityById.set(row.id, { summary: row.summary, lifecycle: row.lifecycle });
       }
     }
 
@@ -123,6 +127,7 @@ export async function loader({
       scopeIdsByItem.set(e.from_id, arr);
     }
     const items: FeedItem[] = rawItems.map((it) => {
+      const entity = entityById.get(it.entity_id);
       const sids = scopeIdsByItem.get(it.entity_id) ?? [];
       const scopes = sids
         .map((id) => scopeById.get(id))
@@ -133,9 +138,10 @@ export async function loader({
         id: it.entity_id,
         node_type: it.entity_type,
         summary:
-          summaryById.get(it.entity_id) ??
+          entity?.summary ??
           stringField(it.after_json, "summary") ??
           stringField(it.before_json, "summary"),
+        lifecycle: entity?.lifecycle ?? null,
         at: it.at instanceof Date ? it.at.toISOString() : new Date(String(it.at)).toISOString(),
         op: it.op,
         before: it.before_json,

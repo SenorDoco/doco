@@ -8,7 +8,9 @@ import { Link } from "react-router";
 import { NodeTypeBadge } from "~/components/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { SiteHeader } from "~/components/site-header";
+import { shouldStrikeActivityTarget } from "~/lib/activity-feed";
 import { type AuditOp, readAuditEvents } from "~/lib/audit-log.server";
+import { cn } from "~/lib/cn";
 import { docoPath } from "~/lib/db.server";
 import { loadDocoForRead } from "~/lib/doco-access.server";
 
@@ -116,7 +118,10 @@ export default function ActivityPage({
                           nodeType: e.entity_type as never,
                           id: e.entity_id as EntityId<never>,
                         })}
-                        className="inline-flex items-center gap-1.5 text-primary hover:underline"
+                        className={cn(
+                          "inline-flex items-center gap-1.5 text-primary hover:underline",
+                          shouldStrikeActivityTarget(e) && "line-through decoration-2",
+                        )}
                       >
                         <NodeTypeBadge nodeType={e.entity_type} />
                         <span className="font-mono">{e.entity_id}</span>

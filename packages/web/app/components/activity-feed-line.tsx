@@ -5,8 +5,10 @@ import {
   capNodeType,
   iconFromAuditOp,
   lifecycleTransitionText,
+  shouldStrikeActivityTarget,
   verbFromAuditOp,
 } from "~/lib/activity-feed";
+import { cn } from "~/lib/cn";
 
 export interface ActivityFeedScope {
   name: string;
@@ -19,6 +21,7 @@ export interface ActivityFeedLineItem {
   summary: string | null;
   at: string;
   op: string;
+  lifecycle?: string | null;
   before: Record<string, unknown> | null;
   after: Record<string, unknown> | null;
   scopes: ActivityFeedScope[];
@@ -46,6 +49,7 @@ export function ActivityFeedLine({
   const summary = item.summary ?? auditSummaryFallback(item.node_type, item.id);
   const Type = capNodeType(item.node_type);
   const detail = lifecycleTransitionText(item);
+  const strikeTarget = shouldStrikeActivityTarget(item);
   return (
     <div className="flex items-baseline gap-3 px-5 py-3 font-mono text-xs leading-relaxed text-foreground">
       <div className="min-w-0 flex-1">
@@ -54,7 +58,13 @@ export function ActivityFeedLine({
           {Type} {verbFromAuditOp(item.op)}
         </span>
         <span className="text-muted-foreground">: </span>
-        <Link to={url} className="text-primary hover:underline">
+        <Link
+          to={url}
+          className={cn(
+            "text-primary hover:underline",
+            strikeTarget && "line-through decoration-2",
+          )}
+        >
           {summary}
         </Link>
         {detail ? <span className="text-muted-foreground">{detail}</span> : null}

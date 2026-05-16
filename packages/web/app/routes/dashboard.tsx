@@ -11,8 +11,10 @@ import {
   capNodeType,
   iconFromAuditOp,
   lifecycleTransitionText,
+  shouldStrikeActivityTarget,
   verbFromAuditOp,
 } from "~/lib/activity-feed";
+import { cn } from "~/lib/cn";
 import { isMyDoco } from "~/lib/doco-access.server";
 import { listDocoStats } from "~/lib/doco-stats.server";
 import { listAllDocos, listMyOrgs, loadHostConfig } from "~/lib/host";
@@ -31,6 +33,7 @@ interface FeedEvent {
   entity_type: string;
   entity_id: string;
   summary: string | null;
+  lifecycle: string | null;
   op: string;
   before: Record<string, unknown> | null;
   after: Record<string, unknown> | null;
@@ -103,28 +106,33 @@ export async function loader({ request }: { request: Request }) {
       // are globally unique ULIDs, so one UNION across all node tables
       // resolves them regardless of original type.
       const entityIds = Array.from(new Set(feedRows.rows.map((r) => r.entity_id)));
-      const summaryById = new Map<string, string>();
+      const entityById = new Map<string, { summary: string | null; lifecycle: string | null }>();
       if (entityIds.length > 0) {
-        const summaryRows = await c.query<{ id: string; summary: string | null }>(
-          `SELECT id, summary FROM decisions WHERE id = ANY($1)
-           UNION ALL SELECT id, summary FROM intents WHERE id = ANY($1)
-           UNION ALL SELECT id, summary FROM ideas WHERE id = ANY($1)
-           UNION ALL SELECT id, summary FROM rules WHERE id = ANY($1)
-           UNION ALL SELECT id, summary FROM actions WHERE id = ANY($1)
-           UNION ALL SELECT id, summary FROM logs WHERE id = ANY($1)
-           UNION ALL SELECT id, summary FROM evals WHERE id = ANY($1)
-           UNION ALL SELECT id, summary FROM states WHERE id = ANY($1)
-           UNION ALL SELECT id, COALESCE(summary, name) AS summary FROM scopes WHERE id = ANY($1)
-           UNION ALL SELECT id, summary FROM reference_entities WHERE id = ANY($1)`,
+        const summaryRows = await c.query<{
+          id: string;
+          summary: string | null;
+          lifecycle: string | null;
+        }>(
+          `SELECT id, summary, lifecycle FROM decisions WHERE id = ANY($1)
+           UNION ALL SELECT id, summary, lifecycle FROM intents WHERE id = ANY($1)
+           UNION ALL SELECT id, summary, lifecycle FROM ideas WHERE id = ANY($1)
+           UNION ALL SELECT id, summary, lifecycle FROM rules WHERE id = ANY($1)
+           UNION ALL SELECT id, summary, lifecycle FROM actions WHERE id = ANY($1)
+           UNION ALL SELECT id, summary, lifecycle FROM logs WHERE id = ANY($1)
+           UNION ALL SELECT id, summary, lifecycle FROM evals WHERE id = ANY($1)
+           UNION ALL SELECT id, summary, lifecycle FROM states WHERE id = ANY($1)
+           UNION ALL SELECT id, COALESCE(summary, name) AS summary, lifecycle FROM scopes WHERE id = ANY($1)
+           UNION ALL SELECT id, summary, lifecycle FROM reference_entities WHERE id = ANY($1)`,
           [entityIds],
         );
         for (const r of summaryRows.rows) {
-          if (r.summary != null) summaryById.set(r.id, r.summary);
+          entityById.set(r.id, { summary: r.summary, lifecycle: r.lifecycle });
         }
       }
       const docoMap = new Map(docos.map((d) => [d.docoId, d]));
       feed = feedRows.rows.map((r) => {
         const d = docoMap.get(r.doco_id);
+        const entity = entityById.get(r.entity_id);
         return {
           event_id: r.event_id,
           at: r.at instanceof Date ? r.at.toISOString() : String(r.at),
@@ -133,7 +141,8 @@ export async function loader({ request }: { request: Request }) {
           docoSlug: d?.docoSlug ?? "?",
           entity_type: r.entity_type,
           entity_id: r.entity_id,
-          summary: summaryById.get(r.entity_id) ?? null,
+          summary: entity?.summary ?? null,
+          lifecycle: entity?.lifecycle ?? null,
           op: r.op,
           before: r.before_json,
           after: r.after_json,
@@ -291,6 +300,7 @@ function DashboardFeedLine({ event }: { event: FeedEvent }) {
   });
   const summary = event.summary ?? auditSummaryFallback(event.entity_type, event.entity_id);
   const detail = lifecycleTransitionText(event);
+  const strikeTarget = shouldStrikeActivityTarget(event);
   return (
     <div className="flex items-baseline gap-3 px-5 py-3 font-mono text-xs leading-relaxed text-foreground">
       <div className="min-w-0 flex-1">
@@ -299,7 +309,13 @@ function DashboardFeedLine({ event }: { event: FeedEvent }) {
           {capNodeType(event.entity_type)} {verbFromAuditOp(event.op)}
         </span>
         <span className="text-muted-foreground">: </span>
-        <Link to={url} className="text-primary hover:underline">
+        <Link
+          to={url}
+          className={cn(
+            "text-primary hover:underline",
+            strikeTarget && "line-through decoration-2",
+          )}
+        >
           {summary}
         </Link>
         {detail ? <span className="text-muted-foreground">{detail}</span> : null}

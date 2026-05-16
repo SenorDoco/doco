@@ -3,6 +3,8 @@ export interface ActivityFeedDelta {
   after?: Record<string, unknown> | null;
 }
 
+const STRUCK_ACTIVITY_LIFECYCLES: ReadonlySet<string> = new Set(["abandoned", "superseded"]);
+
 export function verbFromAuditOp(op: string): string {
   if (op === "entity.create") return "added";
   if (op === "entity.update") return "updated";
@@ -33,6 +35,17 @@ export function lifecycleTransitionText(event: { op: string } & ActivityFeedDelt
   if (after) return `.lifecycle set to "${after}"`;
   if (before) return `.lifecycle cleared from "${before}"`;
   return ".lifecycle changed";
+}
+
+export function shouldStrikeActivityTarget(
+  event: { op?: string; lifecycle?: unknown } & ActivityFeedDelta,
+): boolean {
+  const transitionLifecycle =
+    event.op === "lifecycle.transition" ? stringField(event.after, "lifecycle") : null;
+  const currentLifecycle = typeof event.lifecycle === "string" ? event.lifecycle : null;
+  const afterLifecycle = stringField(event.after, "lifecycle");
+  const lifecycle = transitionLifecycle ?? currentLifecycle ?? afterLifecycle;
+  return lifecycle != null && STRUCK_ACTIVITY_LIFECYCLES.has(lifecycle);
 }
 
 export function auditSummaryFallback(nodeType: string, id: string): string {
