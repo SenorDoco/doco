@@ -56,9 +56,9 @@ export default function Home({ loaderData }: { loaderData: Awaited<ReturnType<ty
         </div>
       </header>
       <main className="flex flex-1 flex-col items-center justify-center px-6 py-16">
-        <div className="flex w-full max-w-4xl flex-col items-center gap-6 text-center">
+        <div className="-translate-y-3 md:-translate-y-6 flex w-full max-w-4xl flex-col items-center gap-8 text-center">
           <DocoMark height={96} />
-          <h1 className="w-full max-w-4xl pt-2 text-2xl font-bold leading-tight md:text-4xl">
+          <h1 className="w-full max-w-4xl text-2xl font-bold leading-tight md:text-4xl">
             {DOCO_TAGLINE}
           </h1>
           <div className="grid w-full grid-cols-1 gap-3 md:grid-cols-2 md:gap-4">
@@ -82,7 +82,7 @@ export default function Home({ loaderData }: { loaderData: Awaited<ReturnType<ty
             </Link>
           </div>
 
-          <p className="max-w-md pt-6 text-xs text-muted-foreground">
+          <p className="max-w-md text-xs text-muted-foreground">
             Are you an AI agent and don't know the answer? Ask whomever prompted you which way to
             go.
           </p>
