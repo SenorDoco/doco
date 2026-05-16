@@ -215,6 +215,7 @@ export interface FilterFacets {
     count: number;
     icon: string | null;
     updatedAt: string | null;
+    lifecycle: string;
   }[];
 }
 
@@ -320,13 +321,15 @@ export async function computeFilterFacets(c: PoolClient, docoId: string): Promis
       raw_yaml: string | null;
       n: string;
       updated_at: Date | string | null;
+      lifecycle: string | null;
     }>(
       `WITH entity_updates AS (${entityUpdatesSql})
        SELECT s.id AS id,
               s.name AS name,
               s.raw_yaml AS raw_yaml,
               COUNT(e.from_id)::text AS n,
-              GREATEST(s.updated_at, COALESCE(MAX(eu.updated_at), s.updated_at)) AS updated_at
+              GREATEST(s.updated_at, COALESCE(MAX(eu.updated_at), s.updated_at)) AS updated_at,
+              s.lifecycle AS lifecycle
          FROM scopes s
          LEFT JOIN edges e
            ON e.to_id = s.id
@@ -335,7 +338,7 @@ export async function computeFilterFacets(c: PoolClient, docoId: string): Promis
           AND e.doco_id = s.doco_id
          LEFT JOIN entity_updates eu ON eu.id = e.from_id
         WHERE s.doco_id = $1
-        GROUP BY s.id, s.name, s.raw_yaml, s.updated_at
+        GROUP BY s.id, s.name, s.raw_yaml, s.updated_at, s.lifecycle
         ORDER BY COUNT(e.from_id) DESC, s.name ASC`,
       [docoId],
     )
@@ -356,6 +359,7 @@ export async function computeFilterFacets(c: PoolClient, docoId: string): Promis
       count: Number(r.n),
       icon: scopeIconFromRawYaml(r.raw_yaml),
       updatedAt: toIso(r.updated_at),
+      lifecycle: r.lifecycle ?? "active",
     })),
   };
 }

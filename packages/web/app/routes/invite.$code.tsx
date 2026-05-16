@@ -143,35 +143,14 @@ export default function InviteLanding({
         <Card>
           <CardHeader>
             <CardTitle>You're in</CardTitle>
-            <CardDescription>
-              You now have your own access key to{" "}
-              <Link
-                to={`/${actionData.doco_slug}`}
-                className="text-primary hover:underline"
-              >
-                {actionData.doco_slug}
-              </Link>
-              . Browse it any time at the link above.
-            </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-3 text-sm text-muted-foreground">
-            <p>
-              To use this Doco from an agent in a repo, drop these two files at the repo root:
-            </p>
-            <div className="rounded-md border border-border bg-card p-3 font-mono text-xs">
-              <div className="text-muted-foreground mb-1">.env (gitignored)</div>
-              <div className="break-all">DOCO_KEY={actionData.doco_key}</div>
-            </div>
-            <div className="rounded-md border border-border bg-card p-3 font-mono text-xs">
-              <div className="text-muted-foreground mb-1">doco.md (committed)</div>
-              <div className="whitespace-pre-wrap break-all">
-                {`# Doco\n\nThis project is tracked in Doco at:\n${actionData.doco_url}\n\nNeed access? Ask the project owner for an invite URL.`}
-              </div>
-            </div>
-            <p className="text-xs">
-              Then run any agent in that repo — it'll auto-load the protocol from{" "}
-              <code>{actionData.doco_url}bootstrap.json</code>.
-            </p>
+          <CardContent>
+            <Link
+              to={`/${actionData.doco_slug}`}
+              className="inline-flex items-center rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90"
+            >
+              Continue
+            </Link>
           </CardContent>
         </Card>
       </Shell>

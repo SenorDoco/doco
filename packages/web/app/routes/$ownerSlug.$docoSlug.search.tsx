@@ -1,6 +1,7 @@
 import { cosineSimilarity, getAllEmbeddingsForDoco, withClient } from "@doco/db";
 import { globalPageRank } from "@doco/index";
 import type { PoolClient } from "pg";
+import type { ReactNode } from "react";
 // Per-Doco search — vector-only ranker (ADR-052, supersedes ADR-030)
 // + left-sidebar filters for lifecycle / node type / scope.
 //
@@ -9,13 +10,14 @@ import type { PoolClient } from "pg";
 // entities. With explicit filters and no keyword, this page lists the
 // filtered nodes directly. Filter state lives in URL query params.
 import { Form, Link, useSearchParams } from "react-router";
-import { Badge, NodeTypeBadge } from "~/components/badge";
+import { LifecycleBadge, NodeTypeBadge } from "~/components/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
+import { NodeTypeIcon } from "~/components/node-type-icon";
 import { SiteHeader } from "~/components/site-header";
 import { loadDocoForRead } from "~/lib/doco-access.server";
 import { getDocoEmbeddingProvider } from "~/lib/embedding-provider.server";
 import { loadHostConfig } from "~/lib/host";
-import { nodeTypeColor, nodeTypePlural } from "~/lib/node-colors";
+import { lifecycleColor, nodeTypePlural } from "~/lib/node-colors";
 import {
   type FilterFacets,
   type SearchFilters,
@@ -550,6 +552,7 @@ async function withHitDerivedCounts(
       count: scopeCounts.get(f.name) ?? 0,
       icon: f.icon,
       updatedAt: f.updatedAt,
+      lifecycle: f.lifecycle,
     })),
   };
 }
@@ -616,7 +619,7 @@ export default function SearchInDoco({
                 value: f.value,
                 label: nodeTypePlural(f.value),
                 count: f.count,
-                color: nodeTypeColor(f.value),
+                icon: <NodeTypeIcon nodeType={f.value} />,
               }))}
               selected={new Set(filters.nodeType ?? [])}
               wildcardActive={filters.nodeType === null}
@@ -629,6 +632,7 @@ export default function SearchInDoco({
                 value: f.value,
                 label: f.value,
                 count: f.count,
+                color: lifecycleColor(f.value),
               }))}
               selected={new Set(filters.lifecycle ?? [])}
               wildcardActive={filters.lifecycle === null}
@@ -667,11 +671,7 @@ export default function SearchInDoco({
                     >
                       {hit.id}
                     </Link>
-                    {hit.lifecycle ? (
-                      <Badge className="bg-card text-[10px] uppercase">
-                        lifecycle: {hit.lifecycle}
-                      </Badge>
-                    ) : null}
+                    {hit.lifecycle ? <LifecycleBadge lifecycle={hit.lifecycle} /> : null}
                     {hit.scopes.map((scope) => (
                       <Link
                         key={scope.id}
@@ -720,7 +720,7 @@ function FacetGroup({
     value: string;
     label: string;
     count: number;
-    icon?: string | null;
+    icon?: ReactNode;
     color?: string | null;
   }[];
   selected: Set<string>;

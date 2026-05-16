@@ -18,12 +18,13 @@ import { parse as parseYaml } from "yaml";
 import { ActivityFeedLine, type ActivityFeedLineItem } from "~/components/activity-feed-line";
 import { ActivityHeatmap } from "~/components/activity-heatmap";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
+import { NodeTypeIcon } from "~/components/node-type-icon";
 import { NodesOverviewCard, type NodesOverviewSection } from "~/components/nodes-overview-card";
 import { SiteHeader } from "~/components/site-header";
 import { docoPath } from "~/lib/db.server";
 import { loadDocoForRead } from "~/lib/doco-access.server";
 import { loadHostConfig } from "~/lib/host";
-import { nodeTypeColor } from "~/lib/node-colors";
+import { lifecycleColor } from "~/lib/node-colors";
 import { listScopeDetails } from "~/lib/scope-helpers.server";
 import { computeFilterFacets } from "~/lib/search-filters.server";
 import { timeAgo } from "~/lib/time-ago";
@@ -271,8 +272,18 @@ export default function DocoHome({
 }: {
   loaderData: Awaited<ReturnType<typeof loader>>;
 }) {
-  const { items, facets, totalNodes, byDay, topContributors, ownerSlug, docoSlug, docoId, host, me } =
-    loaderData;
+  const {
+    items,
+    facets,
+    totalNodes,
+    byDay,
+    topContributors,
+    ownerSlug,
+    docoSlug,
+    docoId,
+    host,
+    me,
+  } = loaderData;
 
   // Live feed polling (ADR-089).
   const revalidator = useRevalidator();
@@ -309,7 +320,9 @@ export default function DocoHome({
   const sections: NodesOverviewSection[] = [
     {
       title: "Scopes",
-      items: facets.scope.map((s) => ({
+      items: facets.scope
+        .filter((s) => s.lifecycle === "active")
+        .map((s) => ({
         key: `scope-${s.name}`,
         href: scopeDetailPath(ownerSlug, docoSlug, s.id),
         label: s.name,
@@ -325,9 +338,9 @@ export default function DocoHome({
         key: `type-${t.value}`,
         href: nodeTypeSearchPath(ownerSlug, docoSlug, t.value),
         label: nodeTypeLabel(t.value),
+        icon: <NodeTypeIcon nodeType={t.value} />,
         count: t.count,
         ariaLabel: `Search ${t.count} ${nodeTypeLabel(t.value).toLowerCase()}`,
-        color: nodeTypeColor(t.value),
         updatedAt: t.updatedAt,
       })),
     },
@@ -339,6 +352,7 @@ export default function DocoHome({
         label: l.value,
         count: l.count,
         ariaLabel: `Search ${l.count} nodes in lifecycle ${l.value}`,
+        color: lifecycleColor(l.value),
         updatedAt: l.updatedAt,
       })),
     },
@@ -621,10 +635,7 @@ function TopContributorsList({ contributors }: { contributors: TopContributor[] 
             key={c.principalId}
             className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3"
           >
-            <span
-              className="truncate text-xs"
-              title={c.username}
-            >
+            <span className="truncate text-xs" title={c.username}>
               {c.username}
             </span>
             <time
