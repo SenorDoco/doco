@@ -635,7 +635,7 @@ function TopContributorsList({ contributors }: { contributors: TopContributor[] 
               dateTime={c.lastAt}
               title={c.lastAt}
               suppressHydrationWarning
-              className="min-w-14 whitespace-nowrap text-right text-xs tabular-nums text-muted-foreground"
+              className="min-w-14 whitespace-nowrap text-right text-[10px] tabular-nums text-muted-foreground"
             >
               {timeAgo(c.lastAt)}
             </time>

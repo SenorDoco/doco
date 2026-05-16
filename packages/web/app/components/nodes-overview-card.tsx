@@ -66,7 +66,7 @@ export function NodesOverviewCard({
                   dateTime={item.updatedAt ?? undefined}
                   title={item.updatedAt ?? undefined}
                   suppressHydrationWarning
-                  className="min-w-14 whitespace-nowrap text-right text-xs tabular-nums text-muted-foreground"
+                  className="min-w-14 whitespace-nowrap text-right text-[10px] tabular-nums text-muted-foreground"
                 >
                   {timeAgo(item.updatedAt)}
                 </time>
@@ -76,16 +76,20 @@ export function NodesOverviewCard({
         ),
       );
   return (
-    <Card className="space-y-4 p-5">
-      {search}
-      {aside ? (
-        <div className="grid gap-x-6 gap-y-4 min-[640px]:grid-cols-2">
-          <div className="min-w-0 space-y-4">{sectionsBlock}</div>
-          <div className="min-w-0 space-y-4">{aside}</div>
-        </div>
-      ) : (
-        sectionsBlock
-      )}
+    <Card className="p-5">
+      <div className="space-y-4">
+        {search}
+        {aside ? (
+          <div className="grid border-t border-border min-[640px]:grid-cols-2">
+            <div className="min-w-0 space-y-4 pt-4 min-[640px]:pr-6">{sectionsBlock}</div>
+            <div className="min-w-0 space-y-4 pt-4 min-[640px]:border-l min-[640px]:border-border min-[640px]:pl-6">
+              {aside}
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-4 border-t border-border pt-4">{sectionsBlock}</div>
+        )}
+      </div>
     </Card>
   );
 }
