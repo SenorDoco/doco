@@ -177,12 +177,12 @@ function relativeTime(iso: string | null): string {
  * back to the focal node only when Dagre cannot place a node (extreme
  * edge case — disconnected isolates).
  */
-const NODE_WIDTH = 240;
-const NODE_HEIGHT = 100;
-const NODE_GAP_X = 56;
-const LANE_HEIGHT = 148;
-const LANE_GAP = 24;
-const LANE_HEADER_HEIGHT = 36;
+const NODE_WIDTH = 340;
+const NODE_HEIGHT = 154;
+const NODE_GAP_X = 72;
+const LANE_HEIGHT = 208;
+const LANE_GAP = 28;
+const LANE_HEADER_HEIGHT = 40;
 const LANE_PADDING_X = 16;
 function dagreLayout(nodes: GraphNode[], links: GraphLink[], centerId: string): GraphLayout {
   const positions = new Map<string, { x: number; y: number }>();
@@ -320,6 +320,117 @@ function SwimLaneNode() {
   );
 }
 
+interface EntityNodeCardProps {
+  id: string;
+  href: string;
+  nodeType: string;
+  title: string;
+  summary: string;
+  createdAt: string | null;
+  isCenter?: boolean;
+  ppr: number;
+  gpr: number;
+  color: string;
+  background: string;
+  onExpandedChange?: (id: string, expanded: boolean) => void;
+}
+
+function EntityNodeCard({
+  id,
+  href,
+  nodeType,
+  title,
+  summary,
+  createdAt,
+  isCenter,
+  ppr,
+  gpr,
+  color,
+  background,
+  onExpandedChange,
+}: EntityNodeCardProps) {
+  const [expanded, setExpanded] = useState(false);
+  const hasDistinctTitle = title !== summary;
+  const setCardExpanded = (next: boolean) => {
+    setExpanded(next);
+    onExpandedChange?.(id, next);
+  };
+  const clampStyle = expanded
+    ? undefined
+    : {
+        display: "-webkit-box",
+        WebkitLineClamp: 3,
+        WebkitBoxOrient: "vertical" as const,
+      };
+
+  return (
+    <Link
+      to={href}
+      aria-label={`Open ${nodeType} ${title}`}
+      className="nodrag nopan relative flex cursor-pointer flex-col gap-1 overflow-visible px-4 py-3 text-inherit no-underline shadow-sm transition-[box-shadow,min-height] duration-150 hover:z-10 hover:shadow-md focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      data-entity-node-card={nodeType}
+      draggable={false}
+      onBlur={() => setCardExpanded(false)}
+      onClick={(event) => event.stopPropagation()}
+      onFocus={() => setCardExpanded(true)}
+      onMouseEnter={() => setCardExpanded(true)}
+      onMouseLeave={() => setCardExpanded(false)}
+      style={{
+        width: NODE_WIDTH,
+        minHeight: NODE_HEIGHT,
+        background,
+        border: isCenter ? "2px solid var(--color-border)" : "1px solid var(--color-border)",
+        borderRadius: 8,
+        boxShadow: `inset 4px 0 0 ${color}`,
+      }}
+    >
+      <div className="flex items-center gap-1.5">
+        <span className="text-[10px] uppercase tracking-wider" style={{ color }}>
+          {nodeType}
+        </span>
+      </div>
+      {hasDistinctTitle ? (
+        <div className="truncate font-mono text-xs font-semibold text-foreground">{title}</div>
+      ) : null}
+      <div
+        className={[
+          expanded ? "overflow-visible" : "overflow-hidden",
+          hasDistinctTitle
+            ? "text-[11px] leading-snug text-muted-foreground"
+            : "font-mono text-sm font-semibold leading-snug text-foreground",
+        ].join(" ")}
+        data-entity-node-summary="true"
+        style={{
+          ...clampStyle,
+          minHeight: hasDistinctTitle ? 44 : 56,
+        }}
+      >
+        {summary}
+      </div>
+      <div className="mt-auto flex items-center justify-between gap-2 text-[9px] text-muted-foreground">
+        <span className="truncate">{relativeTime(createdAt)}</span>
+        {isCenter ? (
+          <span className="flex shrink-0 items-center gap-2 font-mono">
+            <span className="font-medium text-foreground">Node in focus</span>
+            <span title="Global PageRank (over the whole Doco graph)">
+              GPR <span className="text-foreground">{gpr.toFixed(3)}</span>
+            </span>
+          </span>
+        ) : (
+          <span className="flex shrink-0 items-center gap-2 font-mono">
+            <span title="Personalized PageRank from focal node">
+              PPR <span className="text-foreground">{ppr.toFixed(3)}</span>
+            </span>
+            <span title="Global PageRank (over the whole Doco graph)">
+              GPR <span className="text-foreground">{gpr.toFixed(3)}</span>
+            </span>
+          </span>
+        )}
+      </div>
+    </Link>
+  );
+}
+
 export function EntityGraph({ centerId, nodes, links, hrefFor }: EntityGraphProps) {
   const navigate = useNavigate();
 
@@ -372,6 +483,7 @@ export function EntityGraph({ centerId, nodes, links, hrefFor }: EntityGraphProp
   const [Flow, setFlow] = useState<any>(null);
   const [viewport, setViewport] = useState<FlowViewport>({ x: 0, y: 0, zoom: 1 });
   const [graphHeight, setGraphHeight] = useState(0);
+  const [expandedNodeId, setExpandedNodeId] = useState<string | null>(null);
   const updateViewport = (next: FlowViewport) => {
     setViewport((prev) =>
       prev.x === next.x && prev.y === next.y && prev.zoom === next.zoom ? prev : next,
@@ -507,16 +619,7 @@ export function EntityGraph({ centerId, nodes, links, hrefFor }: EntityGraphProp
         const v = Math.round(212 + 43 * t);
         bg = `rgb(${v},${v},${v})`;
       }
-      const title = n.name ?? (n.summary.length > 40 ? `${n.summary.slice(0, 40)}…` : n.summary);
-      // Subtitle only adds value when the title is a distinct handle (name).
-      // For nameless nodes the title already IS the summary — showing it
-      // twice (or as a prefix of itself) is noise.
-      const subtitle = n.name
-        ? n.summary.length > 80
-          ? `${n.summary.slice(0, 80)}…`
-          : n.summary
-        : null;
-      const NODE_W = 240;
+      const title = n.name ?? n.summary;
       // Make the card itself a real link. React Flow's node-level click
       // remains as a fallback, but the anchor gives expected browser affordances.
       const href = hrefFor ? hrefFor(n.id, n.node_type) : `/${n.node_type}/${n.id}`;
@@ -529,73 +632,38 @@ export function EntityGraph({ centerId, nodes, links, hrefFor }: EntityGraphProp
         // height stayed `undefined` until measurement and the MiniMap's
         // `getInternalNodesBounds` collapsed to 0-height, leaving the
         // mini-map blank.
-        initialWidth: NODE_W,
-        initialHeight: subtitle ? 100 : 78,
+        initialWidth: NODE_WIDTH,
+        initialHeight: NODE_HEIGHT,
         data: {
           label: (
-            <Link
-              to={href}
-              aria-label={`Open ${n.node_type} ${title}`}
-              className="nodrag nopan flex cursor-pointer flex-col gap-0.5 overflow-hidden px-3 py-2 text-inherit no-underline"
-              draggable={false}
-              onClick={(event) => event.stopPropagation()}
-              style={{ width: NODE_W }}
-            >
-              <div className="flex items-center gap-1.5">
-                <span className="text-[10px] uppercase tracking-wider" style={{ color }}>
-                  {n.node_type}
-                </span>
-              </div>
-              <div className="truncate font-mono text-xs font-semibold text-foreground">
-                {title}
-              </div>
-              {subtitle ? (
-                <div
-                  className="overflow-hidden text-[10px] leading-tight text-muted-foreground"
-                  style={{
-                    display: "-webkit-box",
-                    WebkitLineClamp: 2,
-                    WebkitBoxOrient: "vertical" as const,
-                  }}
-                >
-                  {subtitle}
-                </div>
-              ) : null}
-              <div className="mt-1 flex items-center justify-between gap-2 text-[9px] text-muted-foreground">
-                <span className="truncate">{relativeTime(n.created_at)}</span>
-                {n.is_center ? (
-                  <span className="flex shrink-0 items-center gap-2 font-mono">
-                    <span className="font-medium text-foreground">Node in focus</span>
-                    <span title="Global PageRank (over the whole Doco graph)">
-                      GPR <span className="text-foreground">{n.gpr.toFixed(3)}</span>
-                    </span>
-                  </span>
-                ) : (
-                  <span className="flex shrink-0 items-center gap-2 font-mono">
-                    <span title="Personalized PageRank from focal node">
-                      PPR <span className="text-foreground">{n.ppr.toFixed(3)}</span>
-                    </span>
-                    <span title="Global PageRank (over the whole Doco graph)">
-                      GPR <span className="text-foreground">{n.gpr.toFixed(3)}</span>
-                    </span>
-                  </span>
-                )}
-              </div>
-            </Link>
+            <EntityNodeCard
+              id={n.id}
+              href={href}
+              nodeType={n.node_type}
+              title={title}
+              summary={n.summary}
+              createdAt={n.created_at}
+              isCenter={n.is_center}
+              ppr={n.ppr}
+              gpr={n.gpr}
+              color={color}
+              background={bg}
+              onExpandedChange={(id, expanded) =>
+                setExpandedNodeId((current) => {
+                  if (expanded) return id;
+                  return current === id ? null : current;
+                })
+              }
+            />
           ),
         },
-        zIndex: 2,
+        zIndex: expandedNodeId === n.id ? 10 : 2,
         style: {
-          background: bg,
-          // Borders stay gray for every node — the type is signalled by
-          // the colored stripe drawn inside the left edge of the card
-          // (boxShadow inset). Focal keeps a 2px gray border for weight.
-          border: n.is_center ? "2px solid var(--color-border)" : "1px solid var(--color-border)",
-          borderRadius: 8,
+          background: "transparent",
+          border: "none",
           padding: 0,
-          width: NODE_W,
-          overflow: "hidden",
-          boxShadow: `inset 4px 0 0 ${color}`,
+          width: NODE_WIDTH,
+          overflow: "visible",
         },
         sourcePosition: "right" as const,
         targetPosition: "left" as const,
@@ -603,7 +671,7 @@ export function EntityGraph({ centerId, nodes, links, hrefFor }: EntityGraphProp
     });
 
     return [...laneNodes, ...entityNodes];
-  }, [visible.nodes, layout.lanes, positions, pprBounds, hrefFor]);
+  }, [visible.nodes, layout.lanes, positions, pprBounds, hrefFor, expandedNodeId]);
 
   const laneLabelRails = useMemo(() => {
     const height = graphHeight || 480;
