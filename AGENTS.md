@@ -99,15 +99,19 @@ flow yourself — no install needed, just three HTTP calls:
    (no auth, plain GET so conservative classifiers don't flag it).
    Response gives you `authorize_url`, `poll_url` (already shaped with
    `?state_nonce=…`), `state_nonce`, and `interval_seconds`.
-2. Announce the browser-open and wait for go-ahead BEFORE opening:
-   "I'll open a browser window so you can authorize me. When it
-   opens, sign in, pick an existing Doco or enter a slug for a new
-   one, and click Authorize. Ready?" If your runtime has buttons /
-   choice tools (AskUserQuestion etc.), offer "Yes, open it" and
-   "Wait, I need a moment". Only after the project owner says go,
-   open `<authorize_url>` with `open` (macOS), `xdg-open` (Linux),
-   or `start` (Windows); fall back to printing the URL only if none
-   exist (remote sandboxes without GUI). Wait — don't loop.
+2. **DO NOT print the URL and tell the project owner to open it.**
+   Doco's flow is automatic: announce, wait for confirmation, then
+   you run the opener. Use AskUserQuestion (or your runtime's
+   confirmation primitive) to ask "Ready to open the authorize page
+   in your browser?" — wait for go. Then run this exact snippet:
+   ```
+   if command -v open >/dev/null 2>&1; then open "<authorize_url>"
+   elif command -v xdg-open >/dev/null 2>&1; then xdg-open "<authorize_url>"
+   elif command -v start >/dev/null 2>&1; then start "<authorize_url>"
+   else echo "Open this URL in your browser: <authorize_url>"; fi
+   ```
+   The else branch fires ONLY in remote sandboxes; on a local laptop
+   the browser opens by itself. Wait — don't loop.
 3. Poll `poll_url` every `interval_seconds` (it's already a GET URL —
    fetch it as-is). When the response flips to
    `{ status: "approved", access_url, ... }`, write

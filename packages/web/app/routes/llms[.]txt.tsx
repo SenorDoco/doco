@@ -49,14 +49,38 @@ needed.
    interval_seconds, expires_at }\`. The \`poll_url\` already has the
    \`state_nonce\` baked in as a query param — fetch it as-is.
 
-2. Announce the browser-open and wait for go-ahead BEFORE opening.
-   "I'll open a browser window so you can authorize me. When it opens,
-   sign in, pick an existing Doco or enter a slug for a new one, and
-   click Authorize. Ready?" If your runtime has buttons/choice tools,
-   offer "Yes, open it" / "Wait, I need a moment". Only after the
-   project owner says go, open <authorize_url> with \`open\` (macOS),
-   \`xdg-open\` (Linux), or \`start\` (Windows); fall back to printing
-   the URL only if none exist (remote sandboxes). Wait.
+2. **DO NOT print the URL and ask the user to copy it.** That is the
+   default print-and-wait pattern from older CLI tools (gh, vercel)
+   — Doco's flow is automatic. The agent announces, the user
+   confirms, the agent opens the URL itself.
+
+   First, announce. Use your runtime's confirmation primitive —
+   Claude Code's AskUserQuestion, Codex's inline option-picker,
+   Cursor's choice menu, etc. If your runtime has no confirmation
+   primitive, plain prose works:
+
+       "I'll open a browser window so you can authorize me to access
+       a Doco for this project. When it opens, sign in if asked, pick
+       an existing Doco or enter a slug for a new one, and click
+       Authorize. Ready to proceed?"
+
+   Wait for the user's "yes" / "go" / button click. Then run this
+   exact snippet (substitute \`<authorize_url>\`):
+
+       if command -v open >/dev/null 2>&1; then
+         open "<authorize_url>"
+       elif command -v xdg-open >/dev/null 2>&1; then
+         xdg-open "<authorize_url>"
+       elif command -v start >/dev/null 2>&1; then
+         start "<authorize_url>"
+       else
+         echo "Open this URL in your browser: <authorize_url>"
+       fi
+
+   The \`else\` branch only fires in remote sandboxes (Codex web,
+   GitHub Coding Agent, Anthropic web) where none of the openers
+   exist. On a local laptop \`open\` (macOS), \`xdg-open\` (Linux),
+   or \`start\` (Windows) always exists — the browser pops up.
 
 3. Poll \`poll_url\` (the URL from step 1, already shaped as
    \`${baseUrl}/api/v1/agent-link/poll?state_nonce=<nonce>\`) every

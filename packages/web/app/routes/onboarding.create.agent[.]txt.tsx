@@ -29,27 +29,28 @@ Response (JSON):
       "expires_at":       "<ISO timestamp; 10-minute window>"
     }
 
-Step 2 — announce the browser-open, wait for go-ahead, THEN open it:
+Step 2 — announce, wait, then open the browser yourself.
 
-DON'T pop a browser window silently. Tell the project owner what's
-about to happen so they're ready to act on it, and wait for their
-explicit confirmation BEFORE opening anything:
+DO NOT print the URL and ask the project owner to copy it into their
+browser. That's the default print-and-wait pattern from older CLI
+tools — Doco's flow is automatic. You announce, the project owner
+confirms, then YOU run the opener.
+
+First, announce — and use your runtime's confirmation primitive if
+you have one (Claude Code's AskUserQuestion tool, Codex's inline
+option-picker, Cursor's choice menu, etc.). With no primitive,
+plain prose works:
 
     "I'll open a browser window so you can authorize me to access a
     Doco for this project. When it opens, sign in if asked, pick an
     existing Doco from the list or enter a slug for a new one, and
     click Authorize. Ready to proceed?"
 
-If your runtime supports interactive choices (buttons, option lists,
-AskUserQuestion-style tools), offer "Yes, open it" and "Wait, I need
-a moment" as choices. Otherwise plain prose works — let them reply
-"yes" or "go".
+Wait for "yes" / "go" / button click. Don't poll yet. Don't open
+anything yet.
 
-ONLY after the project owner says yes, open the URL. Their terminal
-can reach their default browser:
+THEN run this exact snippet (substitute <authorize_url>):
 
-    # Try in order; whichever exits 0 wins. \`command -v\` keeps the call
-    # silent on platforms where the opener doesn't exist.
     if command -v open >/dev/null 2>&1; then
       open "<authorize_url>"
     elif command -v xdg-open >/dev/null 2>&1; then
@@ -60,14 +61,15 @@ can reach their default browser:
       echo "Open this URL in your browser: <authorize_url>"
     fi
 
-In a remote sandbox (Codex web, GitHub Coding Agent, Anthropic web)
-none of the openers exist; the else branch prints the URL — at that
-point the project owner is already expecting it, no surprise.
-Locally (Claude Code on a Mac, Cursor on a laptop) the first branch
-fires and the browser pops up after the project owner already said go.
+The else branch is the ONLY case where you print the URL — it fires
+only when none of the openers exist (remote sandboxes: Codex web,
+GitHub Coding Agent, Anthropic web). On a local laptop \`open\`
+(macOS), \`xdg-open\` (Linux), or \`start\` (Windows) ALWAYS exists,
+so the first three branches handle every machine the project owner
+is likely on. The browser pops up by itself after they said go.
 
-Don't loop. Don't retry on your own. Wait for them to authorize in the
-browser; step 3's poll will detect the flip.
+Don't loop. Don't retry on your own. Wait for them to authorize in
+the browser; step 3's poll will detect the flip.
 
 Step 3 — poll for approval (plain GET; the poll_url from step 1 already
 has ?state_nonce=… baked in, fetch it as-is):

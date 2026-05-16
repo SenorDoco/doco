@@ -932,26 +932,35 @@ flow yourself — no install needed:
    Response: \`{ state_nonce, short_code, authorize_url, poll_url,
    interval_seconds, expires_at }\`. The \`poll_url\` already has the
    state_nonce baked in as a query param.
-2. Announce the browser-open and wait for the project owner's
-   go-ahead BEFORE opening anything. They need to know what's about
-   to happen so they're ready to act on it:
+2. **DO NOT print the URL and tell the project owner to open it.**
+   That's the default print-and-wait pattern from older CLI tools
+   (gh, vercel, etc.) — Doco's flow is automatic. You announce, the
+   project owner confirms, then YOU run the opener.
+
+   Announce. Use your runtime's confirmation primitive if you have
+   one (Claude Code's AskUserQuestion tool, Codex's inline option-
+   picker, Cursor's choice menu, etc.). With no primitive, plain
+   prose works:
 
        "I'll open a browser window so you can authorize me to access
        a Doco for this project. When it opens, sign in if asked,
        pick an existing Doco from the list or enter a slug for a new
        one, and click Authorize. Ready to proceed?"
 
-   If your runtime has interactive options (buttons, choice lists,
-   AskUserQuestion etc.), offer "Yes, open it" and "Wait, I need a
-   moment". Otherwise plain prose — let them reply with "yes" or "go".
+   Wait for "yes" / "go" / button click. Don't poll yet. Don't open
+   anything yet.
 
-   ONLY after the project owner confirms, open the URL:
+   THEN run this exact snippet:
    \`\`\`
    if command -v open >/dev/null 2>&1; then open "<authorize_url>"
    elif command -v xdg-open >/dev/null 2>&1; then xdg-open "<authorize_url>"
    elif command -v start >/dev/null 2>&1; then start "<authorize_url>"
    else echo "Open this URL in your browser: <authorize_url>"; fi
    \`\`\`
+   The \`else\` branch fires ONLY in remote sandboxes (Codex web,
+   GitHub Coding Agent, Anthropic web) where no opener exists. On a
+   local laptop one of the first three branches always runs and the
+   browser pops up by itself after the project owner said go.
    Don't loop — wait for them to authorize in the browser.
 3. Poll \`poll_url\` every \`interval_seconds\` — it's already a GET
    URL, fetch it as-is:
