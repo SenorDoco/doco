@@ -17,7 +17,6 @@ export const NODE_TYPE_COLOR: Record<string, string> = {
   rule: "#dc2626", // red
   decision: "#f97316", // orange
   action: "#7c3aed", // purple
-  reasoning: "#eab308", // yellow
   eval: "#0ea5e9", // sky
   reference: "#a16207", // amber/brown
   scope: "#84cc16", // lime
@@ -38,7 +37,6 @@ const NODE_TYPE_PLURAL: Record<string, string> = {
   rule: "rules",
   decision: "decisions",
   action: "actions",
-  reasoning: "reasoning",
   eval: "evals",
   reference: "references",
   scope: "scopes",

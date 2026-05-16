@@ -129,7 +129,6 @@ const TABLE_BY_TYPE: Record<string, string> = {
   intent: "intents",
   rule: "rules",
   action: "actions",
-  reasoning: "reasoning",
   reference: "reference_entities",
   scope: "scopes",
   eval: "evals",

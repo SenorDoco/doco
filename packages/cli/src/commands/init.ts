@@ -81,7 +81,6 @@ export const initCmd = defineCommand({
       "rules",
       "decisions",
       "actions",
-      "reasoning",
       "references",
       "scopes",
     ]) {

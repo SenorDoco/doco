@@ -3,7 +3,7 @@
 
 - term: alignment
   synonyms: [coherence, congruence, consistency]
-  description: Coherence between intent, reasoning, and action. Doco's central concept.
+  description: Coherence between intent, decision, and action. Doco's central concept.
 
 - term: intent
   synonyms: [goal, objective, purpose, aim, target]
@@ -22,12 +22,6 @@
 - term: action
   synonyms: [step, operation, change, deployment, edit]
   description: Something a principal does in the world.
-
-- term: reasoning
-  synonyms: [rationale, justification, argument, logic, premises]
-  description: |
-    Premises + inference + conclusion. First-class so multi-author and contested
-    reasoning are queryable (D-012).
 
 - term: principal
   synonyms: [user, member, identity, actor, account]

@@ -16,8 +16,8 @@ export async function loader({ request }: { request: Request }) {
   const baseUrl = getPublicBaseUrl(request);
   const body = `# Doco
 
-> Doco is AI-native documentation of intents, decisions, rules, actions,
-> and reasoning for software projects. Every meaningful change leaves a
+> Doco is AI-native documentation of intents, decisions, rules, and
+> actions for software projects. Every meaningful change leaves a
 > trail; every agent working in a Doco-tracked project follows a shared
 > protocol.
 

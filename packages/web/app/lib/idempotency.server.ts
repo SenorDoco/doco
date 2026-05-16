@@ -1,7 +1,7 @@
 // Idempotency-Key support for POST endpoints. Agents retry POSTs on
 // transient failures (timeout, 5xx, dropped connection) and without
 // this layer end up creating duplicate Decisions / Intents / Rules /
-// Actions / Reasoning / Evals. The GitHub-style contract:
+// Actions / Evals. The GitHub-style contract:
 //
 //   - Client sends `Idempotency-Key: <opaque-string>` on POST.
 //   - Server stores (key, principal_id, body_hash) -> response for

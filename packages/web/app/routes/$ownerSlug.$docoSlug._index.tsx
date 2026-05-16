@@ -52,7 +52,6 @@ const NODE_TYPE_LABELS: Record<string, string> = {
   scope: "Scopes",
   eval: "Evals",
   reference: "References",
-  reasoning: "Reasonings",
   idea: "Ideas",
 };
 
@@ -86,8 +85,6 @@ export async function loader({
            SELECT id, 'rule' AS node_type, summary, created_at, NULL, NULL FROM rules WHERE doco_id = $1
            UNION ALL
            SELECT id, 'action' AS node_type, summary, created_at, NULL, NULL FROM actions WHERE doco_id = $1
-           UNION ALL
-           SELECT id, 'reasoning' AS node_type, summary, created_at, NULL, NULL FROM reasoning WHERE doco_id = $1
            UNION ALL
            SELECT id, 'eval' AS node_type, summary, created_at, NULL AS title, NULL FROM evals WHERE doco_id = $1
            UNION ALL
@@ -139,7 +136,6 @@ export async function loader({
            UNION ALL SELECT to_char(created_at, 'YYYY-MM-DD') FROM ideas WHERE doco_id = $1
            UNION ALL SELECT to_char(created_at, 'YYYY-MM-DD') FROM rules WHERE doco_id = $1
            UNION ALL SELECT to_char(created_at, 'YYYY-MM-DD') FROM actions WHERE doco_id = $1
-           UNION ALL SELECT to_char(created_at, 'YYYY-MM-DD') FROM reasoning WHERE doco_id = $1
            UNION ALL SELECT to_char(created_at, 'YYYY-MM-DD') FROM evals WHERE doco_id = $1
            UNION ALL SELECT to_char(created_at, 'YYYY-MM-DD') FROM scopes WHERE doco_id = $1
            UNION ALL SELECT to_char(created_at, 'YYYY-MM-DD') FROM reference_entities WHERE doco_id = $1

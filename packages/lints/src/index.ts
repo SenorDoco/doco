@@ -2,7 +2,6 @@ import type { PoolClient } from "pg";
 import { lintAgentAncestry } from "./agent-ancestry.js";
 import { lintConnectivity } from "./connectivity.js";
 import { lintFollowsCycle } from "./follows-cycle.js";
-import { lintOrphanReasoning } from "./orphan-reasoning.js";
 import { lintPiiDisplayName } from "./pii-display-name.js";
 import type { Lint, LintIssue } from "./types.js";
 
@@ -11,12 +10,10 @@ export {
   lintAgentAncestry,
   lintConnectivity,
   lintFollowsCycle,
-  lintOrphanReasoning,
   lintPiiDisplayName,
 };
 
 export const SYSTEM_LINTS: Record<string, Lint> = {
-  "orphan-reasoning": lintOrphanReasoning,
   connectivity: lintConnectivity,
   "follows-cycle": lintFollowsCycle,
   "agent-ancestry": lintAgentAncestry,

@@ -17,7 +17,6 @@ const NODE_DIRS: Record<string, { dir: string; ext: "md" | "yaml" }> = {
   decision: { dir: "decisions", ext: "md" },
   rule: { dir: "rules", ext: "md" },
   action: { dir: "actions", ext: "md" },
-  reasoning: { dir: "reasoning", ext: "md" },
   eval: { dir: "evals", ext: "md" },
   scope: { dir: "scopes", ext: "yaml" },
   reference: { dir: "references", ext: "yaml" },

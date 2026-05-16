@@ -65,8 +65,6 @@ my-doco/
     {decision-id}.md
   actions/
     {action-id}.md
-  reasoning/
-    {reasoning-id}.md
   evals/
     {eval-id}.md
   references/
@@ -118,7 +116,6 @@ Display-only label suggestions (UI may use; not stored):
 | Decision | proposed | active | accepted | superseded | reverted | — |
 | Action | planned | in_progress | completed | — | blocked | failed |
 | Rule | proposed | active | — | superseded | abandoned | — |
-| Reasoning | (typically captured at a moment; lifecycle optional) |
 | Eval | proposed | active | passed | superseded | abandoned | failed |
 
 ## 4. Entities
@@ -234,28 +231,6 @@ ended_at: ...
 
 Markdown body: narrative description, post-hoc commentary.
 
-### 4.7 Reasoning — the inferential bridge
-
-First-class so multiple reasonings can attach to one decision (agent's vs reviewer's vs revised), and so reasoning itself is queryable and reviewable.
-
-```yaml
-id: reasoning_...
-node_type: reasoning
-author_id: principal_...
-premises:
-  - { node_type: intent,     ref: intent_...,     as: "user wants to ship feature X" }
-  - { node_type: rule,       ref: rule_...,       as: "no schema migrations during freeze" }
-  - { node_type: fact,       ref: reference_...,  as: "current schema lacks column Y" }
-inference: "Therefore we should defer column Y until after the freeze and ..."
-conclusion_node_type: decision | action | claim
-conclusion_ref: decision_... | action_... | null
-confidence: 0.0..1.0
-uncertainty:                       # known unknowns
-  - "Whether Y is needed before X ships"
-```
-
-Markdown body: free-form reasoning narrative, written by the principal.
-
 ### 4.8 Reference — typed pointer to external resource
 
 ```yaml
@@ -308,8 +283,8 @@ applies_to:
 
 ```
 Principal --owns--> Doco --contains--> { Intent, Rule, Decision,
-                                          Action, Reasoning,
-                                          Evaluation, Reference, Tag }
+                                          Action, Evaluation,
+                                          Reference, Tag }
 Principal --member_of--> Doco           # with role + permissions edge properties
 Principal --owned_by--> Principal        # agent → inviter (chain terminates at a person; PLANNING.md §3)
 Doco     --imports--> Doco             # with ref + namespace + include edge properties (§9.4)
@@ -319,14 +294,13 @@ Decision     --serves--> Intent
              --consults--> Rule
 Action       --enacts--> Decision
              --attempts--> Intent
-Reasoning    --concludes--> Decision | Action | Claim
-Rule         --applies_to--> Intent | Decision | Action | Reasoning | Rule
+Rule         --applies_to--> Intent | Decision | Action | Rule
 Evaluation   --runs--> Rule
 *            --born_from--> *            # provenance; canonical use: Rule born from a fix Decision
 *            --follows--> *              # ordering / dependency; lint forbids cycles (ADR-077)
 ```
 
-The **alignment graph** is the path: `Intent → Reasoning → (Decision →) Action`, with `Rule` overlaid as the boundary and runtime check.
+The **alignment graph** is the path: `Intent → Decision → Action`, with `Rule` overlaid as the boundary and runtime check.
 
 ### 6.1 The fields-as-edges convention
 
@@ -340,8 +314,6 @@ Any field on an entity whose value is an entity ID (or list of IDs) is **automat
 | `Action.intent_ids` | Attempts |
 | `Action.decision_ids` | Enacts |
 | `Action.target` | ActsOn |
-| `Reasoning.premises[].ref` | Premise (with `as` carried as edge property) |
-| `Reasoning.conclusion_ref` | Concludes (traversable in both directions; replaces the v0.1 `Decision.reasoning_id` / `Action.reasoning_id` source fields) |
 | `Rule.applies_to` | AppliesTo |
 | `Evaluation.rule_id` | RunsRule |
 | `Evaluation.target_id` | EvaluatedOn |
@@ -419,7 +391,6 @@ CREATE INDEX scope_match_target ON scope_match(target_id);
 | "Path from action back to originating intent" | recursive CTE over `edges` | tens of ms |
 | "Anything mentioning 'session token'" | FTS5 | tens of ms |
 | "Failing rule evaluations on agent X's actions last 7 days" | join across actions × evaluations × rules | sub-10 ms |
-| "Orphan reasonings (no conclusion attached)" | anti-join on `edges` | sub-ms |
 | "Rules violated in the last commit" | join evaluations × edges with time range filter | sub-10 ms |
 
 ### 8.4 Incremental updates
@@ -457,7 +428,7 @@ Priority 1 (agent comprehension) argues for SQL over a custom DSL: SQL is alread
 
 ### 8.8 Why SQLite, not a graph database?
 
-The data is graph-shaped. Every entity is a node; every reference is an edge. The alignment graph (Intent → Reasoning → Decision → Action, with Rules overlaid) IS Doco's central data structure. Storing it relationally is a deliberate, reversible trade — the index isn't source-of-truth, so swapping is cheap.
+The data is graph-shaped. Every entity is a node; every reference is an edge. The alignment graph (Intent → Decision → Action, with Rules overlaid) IS Doco's central data structure. Storing it relationally is a deliberate, reversible trade — the index isn't source-of-truth, so swapping is cheap.
 
 | Option | Pros | Cons | Verdict |
 |---|---|---|---|
@@ -622,8 +593,7 @@ Agents and people get the same output. Agents typically ingest the PRECISE + REL
 
 ## 11. Open questions (where I made judgment calls — feel free to redirect)
 
-1. **Reasoning as a first-class entity** — I made it separate rather than a `rationale` field on Decision/Action. Pro: multi-author reasoning, contested reasoning, agent-vs-person reasoning all become queryable. Con: more entities to manage. Collapse if multi-author reasoning isn't a target use case.
-2. **Predicate language** — I left `predicate` as a string with the language deferred. Candidates: CEL, a Lisp-like S-expr, or a small JSON DSL. Suggest deferring until we have 3–5 real Rules to test against.
+1. **Predicate language** — I left `predicate` as a string with the language deferred. Candidates: CEL, a Lisp-like S-expr, or a small JSON DSL. Suggest deferring until we have 3–5 real Rules to test against.
 3. **Storage = git repo** — I committed to "an Doco IS a git repo" because it gives version control, branching, and diffs for free. The alternative is an abstracted backend (DB) with git as one possible projection. The git-native choice is cheaper to start but harder to scale to enterprise workflows later.
 4. **YAML frontmatter + Markdown body** — chosen because it serves both agents (structured) and people (narrative) in one file. Alternative: pure JSON (cleaner for agents, worse for people). Worth revisiting if agents struggle with mixed format.
 5. **Evaluations as file-per-result** — better for git diffs, worse than JSONL for high-volume runs. Monthly partitioning mitigates. Could move to JSONL if eval throughput becomes a real constraint.

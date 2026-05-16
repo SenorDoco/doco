@@ -887,7 +887,6 @@ async function attachImplicitEdges(opts: {
         { table: "intents", nodeType: "intent", hasName: false },
         { table: "rules", nodeType: "rule", hasName: false },
         { table: "actions", nodeType: "action", hasName: false },
-        { table: "reasoning", nodeType: "reasoning", hasName: false },
         { table: "scopes", nodeType: "scope", hasName: true },
         { table: "evals", nodeType: "eval", hasName: true },
       ];
@@ -1298,7 +1297,6 @@ export type NodeTypeName =
   | "intent"
   | "rule"
   | "action"
-  | "reasoning"
   | "reference"
   | "scope";
 
@@ -1812,8 +1810,6 @@ export interface ActionDraft {
   intent_ids?: string[];
   /** Optional: decision ids the action enacts. */
   decision_ids?: string[];
-  /** Optional: reasoning ids consulted by the action. */
-  reasoning_ids?: string[];
   /** Optional: entity ids this action follows (chronological / causal). */
   follows?: string[];
   /** Optional: verb-specific inputs (any shape). */
@@ -1868,7 +1864,6 @@ export async function captureAction(
 
   const intentIds: string[] = Array.isArray(draft.intent_ids) ? draft.intent_ids : [];
   const decisionIds: string[] = Array.isArray(draft.decision_ids) ? draft.decision_ids : [];
-  const reasoningIds: string[] = Array.isArray(draft.reasoning_ids) ? draft.reasoning_ids : [];
   const follows: string[] = Array.isArray(draft.follows) ? draft.follows : [];
 
   const id = `action_${generateUlid()}`;
@@ -1885,7 +1880,6 @@ export async function captureAction(
     verb: draft.verb.trim(),
     ...(intentIds.length > 0 ? { intent_ids: intentIds } : {}),
     ...(decisionIds.length > 0 ? { decision_ids: decisionIds } : {}),
-    ...(reasoningIds.length > 0 ? { reasoning_ids: reasoningIds } : {}),
     ...(follows.length > 0 ? { follows } : {}),
     ...(draft.inputs !== undefined ? { inputs: draft.inputs } : {}),
     ...(draft.outputs !== undefined ? { outputs: draft.outputs } : {}),
@@ -1924,7 +1918,6 @@ export async function captureAction(
     alreadyReferenced: new Set([
       ...intentIds,
       ...decisionIds,
-      ...reasoningIds,
       ...follows,
       ...scopeIds,
       ...(actorId ? [actorId] : []),
@@ -2117,146 +2110,6 @@ export async function captureRule(
     ok: true,
     id,
     path: syntheticPath("rule", id),
-    footer_lines,
-    duration_ms,
-  };
-}
-
-// ─── Reasoning ────────────────────────────────────────────────────────────
-
-export interface ReasoningDraft {
-  /** Required: the claim / conclusion the reasoning establishes. */
-  claim: string;
-  /** Required: at least one scope name. */
-  scope_names: string[];
-
-  /** Optional: one-line summary; defaults to the claim. */
-  summary?: string;
-  /** Optional: intent ids the reasoning serves. */
-  intent_ids?: string[];
-  /** Optional: entity ids supported by this reasoning (`supports` edge). */
-  supports?: string[];
-  /** Optional: evidence list / JSON shape. */
-  evidence?: unknown;
-  /** Optional: principal username who authored the reasoning. */
-  authored_by_username?: string;
-  /** Optional: principal id who created this entry; defaults to authored_by. */
-  created_by_id?: string;
-  /** Optional: raw markdown body appended after frontmatter. */
-  body_md?: string;
-  /** Optional: defaults to "active". */
-  lifecycle?: string;
-}
-
-export async function captureReasoning(
-  docoDir: string,
-  docoId: string,
-  ownerSlug: string,
-  docoSlug: string,
-  draft: ReasoningDraft,
-  docoHost?: string,
-): Promise<CaptureResult | CaptureError> {
-  const startedAt = performance.now();
-  if (!draft.claim?.trim()) return { error: "claim is required." };
-  if (!Array.isArray(draft.scope_names) || draft.scope_names.length === 0) {
-    return { error: "scope_names must be a non-empty array." };
-  }
-
-  const scopeRes = await resolveScopeOrError(docoDir, draft.scope_names, { verb: "tag", nodeKind: "Reasoning" });
-  if ("error" in scopeRes) return scopeRes;
-  const scopeIds = scopeRes.ids;
-
-  let authorId: string | null = null;
-  if (draft.authored_by_username) {
-    authorId = await resolvePrincipalUsername(draft.authored_by_username);
-    if (!authorId) {
-      return { error: `Unknown principal username: ${draft.authored_by_username}` };
-    }
-  }
-  if (!authorId && draft.created_by_id) {
-    authorId = draft.created_by_id;
-  }
-  if (!authorId) {
-    return {
-      error:
-        "authored_by_username is required (or pass an authenticated request — the route fills it from `me.username`).",
-    };
-  }
-
-  const intentIds: string[] = Array.isArray(draft.intent_ids) ? draft.intent_ids : [];
-  const supports: string[] = Array.isArray(draft.supports) ? draft.supports : [];
-
-  const id = `reasoning_${generateUlid()}`;
-  const summary = draft.summary?.trim() || distillSummary(draft.claim) || `Reasoning: ${id}`;
-  const now = new Date().toISOString();
-  const createdById = draft.created_by_id ?? authorId;
-
-  const fm: Record<string, unknown> = {
-    id,
-    doco_id: docoId,
-    node_type: "reasoning",
-    summary,
-    author_id: authorId,
-    ...(intentIds.length > 0 ? { intent_ids: intentIds } : {}),
-    premises: [],
-    inference: draft.claim.trim(),
-    ...(supports.length > 0 ? { supports } : {}),
-    ...(draft.evidence !== undefined ? { evidence: draft.evidence } : {}),
-    created_at: now,
-    ...(createdById ? { created_by: createdById } : {}),
-    lifecycle: draft.lifecycle ?? "active",
-    scopes: scopeIds,
-  };
-
-  const ruleErr = await runScopeRules({ docoDir, ownerSlug, docoSlug, entityFm: fm });
-  if (ruleErr) return ruleErr;
-
-  await persistEntity({
-    nodeType: "reasoning",
-    id,
-    docoId,
-    fm,
-    body: draft.body_md?.trim() ?? "",
-  });
-  emitAuditForCreate({
-    docoDir,
-    docoId,
-    actorId: createdById ?? authorId ?? null,
-    entity_type: "reasoning",
-    entity_id: id,
-    summary,
-  });
-  await reindexAndScheduleAttach(docoDir, docoId, id, {
-    docoDir,
-    ownerSlug,
-    docoSlug,
-    entityId: id,
-    entityType: "reasoning",
-    entitySummary: summary,
-    alreadyReferenced: new Set([
-      ...intentIds,
-      ...supports,
-      ...scopeIds,
-      ...(authorId ? [authorId] : []),
-    ]),
-  });
-
-  const duration_ms = Math.round(performance.now() - startedAt);
-  const footer_lines = renderOperationLines({
-    ownerSlug,
-    docoSlug,
-    nodeType: "reasoning",
-    id,
-    summary,
-    docoHost,
-    ops: [{ kind: "added", summary }],
-    scopes: await resolveScopeIcons(docoDir, scopeIds),
-    duration_ms,
-  });
-  return {
-    ok: true,
-    id,
-    path: syntheticPath("reasoning", id),
     footer_lines,
     duration_ms,
   };

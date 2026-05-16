@@ -28,7 +28,7 @@
 export const CANONICAL_INSTRUCTIONS = `# Doco — agent bootstrap (slim)
 
 You're working on a project that uses **Doco** — AI-native documentation
-of intent, decisions, rules, actions, reasoning. Every meaningful
+of intent, decisions, rules, actions. Every meaningful
 decision leaves a trail.
 
 This document carries the **four invariants** every reply must follow.
@@ -285,7 +285,7 @@ capture that probably should happen. Each binds to a counter-move:
 
 | If you find yourself saying… | Counter-move |
 |---|---|
-| "The CLI doesn't support capturing X" | Use \`doco capture action\` / \`rule\` / \`reasoning\` — they're all CLI-native. If a node type really lacks CLI support, hand-write the YAML; CLI gaps are not a node-shape decision. |
+| "The CLI doesn't support capturing X" | Use \`doco capture action\` / \`rule\` / \`eval\` — they're all CLI-native. If a node type really lacks CLI support, hand-write the YAML; CLI gaps are not a node-shape decision. |
 | "Too small for a Decision" | If the change has a *why*, capture the why. A 2-line removal can encode a real choice — rejected alternatives, weighed trade-offs, an affordance that's now redundant. |
 | "Git will record the change" | Git records *what*, not *why*. The why is exactly what makes the capture worth writing. |
 | "No decision content" | Re-check the hits. If a search result names your file or your territory at vector_score > ~0.45, **PATCH that node** — there *is* decision content, you're amending it. |
@@ -303,7 +303,7 @@ enforcement: nothing rejects a capture that omits a watched scope.
 It's a prompt for you, the agent. Two rules:
 
 1. When you author ANY new node (Decision, Intent, Action, Rule, Eval,
-   Reasoning, Reference, …), scan the watched scopes for this Doco —
+   Reference, …), scan the watched scopes for this Doco —
    they appear in the bootstrap response, in \`/status.json\`, and on
    the per-scope manifest with \`is_watched: true\`. Ask: "does my
    work touch any of these topics?" If yes, include that scope in the
@@ -417,7 +417,6 @@ doco capture intent    --summary "..." --scope <comma,list>
 doco capture decision  --question "..." --chosen "..." --scope <comma,list>
 doco capture action    --summary "..." --verb "<verb>" --scope <comma,list>
 doco capture rule      --summary "..." --predicate "..." --scope <comma,list>
-doco capture reasoning --summary "..." --claim "..." --scope <comma,list>
 doco capture eval      --name "..." --scope <comma,list> --criterion-kind exact|shape|llm-judge
 
 # Extend an existing node (the move that beats "skip-and-rationalize"):
@@ -447,7 +446,6 @@ POST  https://doco.to/by-id/<doco_id>/api/decisions.json
 POST  https://doco.to/by-id/<doco_id>/api/intents.json
 POST  https://doco.to/by-id/<doco_id>/api/actions.json
 POST  https://doco.to/by-id/<doco_id>/api/rules.json
-POST  https://doco.to/by-id/<doco_id>/api/reasoning.json
 POST  https://doco.to/by-id/<doco_id>/api/evals.json
 PATCH https://doco.to/by-id/<doco_id>/api/decisions/<id>.json   (and same for other types — pass \`body_md_append\` to extend the body)
 \`\`\`
@@ -694,7 +692,6 @@ Twelve node types. Files at \`<plural>/<id>.md\` (or \`.yaml\`).
 | rule | invariant the framework enforces |
 | decision | an ADR — why a choice was made |
 | action | a thing that was done |
-| reasoning | the bridge between facts and an action |
 | eval | named, executable test/eval pinning a load-bearing claim |
 | reference | external source |
 | **scope** | **a topical neighborhood** — the navigation primitive |
@@ -974,8 +971,8 @@ this? If yes, capture it as a Doco node:
 - A principle to enforce → Rule.
 - A goal or non-goal → Intent.
 - A speculative thought you're not acting on yet → Idea.
-- A lesson learned → Decision or Reasoning, depending on whether
-  alternatives existed.
+- A lesson learned → Decision (capture rejected alternatives in
+  the Decision body if any existed).
 
 Private memory is only for what's truly about **you and this user**:
 your collaboration style, how this user phrases requests, your tool

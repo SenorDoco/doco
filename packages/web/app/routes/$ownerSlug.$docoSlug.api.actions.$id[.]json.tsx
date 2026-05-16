@@ -10,7 +10,6 @@ const route = makeUpdateRoute({
     "outputs",
     "follows",
     "decision_ids",
-    "reasoning_ids",
     "performed_by",
     "performed_at",
   ],

@@ -25,7 +25,6 @@ const PLURAL_BY_TYPE: Record<string, string> = {
   intent: "intents",
   action: "actions",
   rule: "rules",
-  reasoning: "reasoning",
   reference: "references",
   scope: "scopes",
 };
@@ -256,7 +255,6 @@ export const patchCmd = defineCommand({
     intent: makeTypedSubcommand("intent"),
     action: makeTypedSubcommand("action"),
     rule: makeTypedSubcommand("rule"),
-    reasoning: makeTypedSubcommand("reasoning"),
     reference: makeTypedSubcommand("reference"),
     scope: makeTypedSubcommand("scope"),
   },

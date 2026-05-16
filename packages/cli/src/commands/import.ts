@@ -35,7 +35,6 @@ const ENTITY_FILES = [
   "decision.jsonl",
   "rule.jsonl",
   "action.jsonl",
-  "reasoning.jsonl",
   "eval.jsonl",
   "scope.jsonl",
   "reference.jsonl",

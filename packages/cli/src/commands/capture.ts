@@ -41,7 +41,6 @@ async function postCapture(
     | "scopes"
     | "actions"
     | "rules"
-    | "reasoning"
     | "references",
   body: Record<string, unknown>,
 ): Promise<void> {
@@ -384,10 +383,6 @@ const actionCmd = defineCommand({
       description:
         "Optional. Comma-separated decision ids this action enacts (frontmatter `decision_ids`).",
     },
-    "reasoning-id": {
-      type: "string",
-      description: "Optional. Comma-separated reasoning ids consulted.",
-    },
     follows: {
       type: "string",
       description: "Optional. Comma-separated entity ids this action follows.",
@@ -415,8 +410,6 @@ const actionCmd = defineCommand({
     if (intents.length) body.intent_ids = intents;
     const decisions = splitList(args["decision-id"] as string | undefined);
     if (decisions.length) body.decision_ids = decisions;
-    const reasonings = splitList(args["reasoning-id"] as string | undefined);
-    if (reasonings.length) body.reasoning_ids = reasonings;
     const follows = splitList(args.follows as string | undefined);
     if (follows.length) body.follows = follows;
     const inputs = parseJson<unknown>(args.inputs as string | undefined, "inputs");
@@ -506,69 +499,6 @@ const ruleCmd = defineCommand({
   },
 });
 
-const reasoningCmd = defineCommand({
-  meta: {
-    name: "reasoning",
-    description: "Capture a Reasoning (POST /by-id/<doco_id>/api/reasoning.json).",
-  },
-  args: {
-    claim: {
-      type: "string",
-      description: "Required. The claim / conclusion the reasoning establishes.",
-      required: true,
-    },
-    scope: {
-      type: "string",
-      description: "Required. Comma-separated scope names.",
-      required: true,
-    },
-    summary: {
-      type: "string",
-      description: "Optional one-line summary; derived from claim if absent.",
-    },
-    "intent-id": {
-      type: "string",
-      description: "Optional. Comma-separated intent ids this reasoning serves.",
-    },
-    supports: {
-      type: "string",
-      description: "Optional. Comma-separated entity ids supported by this reasoning.",
-    },
-    evidence: { type: "string", description: "Optional JSON describing evidence." },
-    "authored-by-username": {
-      type: "string",
-      description: "Optional principal username who authored the reasoning.",
-    },
-    "body-md": { type: "string", description: "Optional markdown body (inline string)." },
-    "body-md-file": {
-      type: "string",
-      description: "Optional path to a file whose contents become body_md.",
-    },
-    lifecycle: { type: "string", description: "Optional. Defaults to 'active'." },
-  },
-  async run({ args }) {
-    const body: Record<string, unknown> = {
-      claim: args.claim,
-      scope_names: splitList(args.scope as string),
-    };
-    if (args.summary) body.summary = args.summary;
-    const intents = splitList(args["intent-id"] as string | undefined);
-    if (intents.length) body.intent_ids = intents;
-    const supports = splitList(args.supports as string | undefined);
-    if (supports.length) body.supports = supports;
-    const evidence = parseJson<unknown>(args.evidence as string | undefined, "evidence");
-    if (evidence !== undefined) body.evidence = evidence;
-    if (args["authored-by-username"]) body.authored_by_username = args["authored-by-username"];
-    const bodyMd = readBody(
-      args["body-md"] as string | undefined,
-      args["body-md-file"] as string | undefined,
-    );
-    if (bodyMd !== undefined) body.body_md = bodyMd;
-    if (args.lifecycle) body.lifecycle = args.lifecycle;
-    await postCapture("reasoning", body);
-  },
-});
-
 const referenceCmd = defineCommand({
   meta: {
     name: "reference",
@@ -638,14 +568,13 @@ export const captureCmd = defineCommand({
   meta: {
     name: "capture",
     description:
-      "Capture a node (Intent / Decision / Action / Rule / Reasoning / Eval / Scope / Reference) via doco.to's POST endpoints. Reads DOCO_TOKEN from env or ./.env and DOCO_ID from the AGENTS.md header. Prints the response's footer_lines to stdout.",
+      "Capture a node (Intent / Decision / Action / Rule / Eval / Scope / Reference) via doco.to's POST endpoints. Reads DOCO_TOKEN from env or ./.env and DOCO_ID from the AGENTS.md header. Prints the response's footer_lines to stdout.",
   },
   subCommands: {
     intent: intentCmd,
     decision: decisionCmd,
     action: actionCmd,
     rule: ruleCmd,
-    reasoning: reasoningCmd,
     eval: evalCmd,
     scope: scopeCmd,
     reference: referenceCmd,

@@ -54,7 +54,6 @@ const TYPE_MAP: { nodeType: string; table: string; plural: string }[] = [
   { nodeType: "rule", table: "rules", plural: "rules" },
   { nodeType: "decision", table: "decisions", plural: "decisions" },
   { nodeType: "action", table: "actions", plural: "actions" },
-  { nodeType: "reasoning", table: "reasoning", plural: "reasonings" },
   { nodeType: "eval", table: "evals", plural: "evals" },
   { nodeType: "reference", table: "reference_entities", plural: "references" },
 ];

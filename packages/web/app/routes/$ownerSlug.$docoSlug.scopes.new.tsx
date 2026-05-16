@@ -55,7 +55,6 @@ const NODE_TYPE_OPTIONS = [
   "rule",
   "decision",
   "action",
-  "reasoning",
   "eval",
   "reference",
   "scope",

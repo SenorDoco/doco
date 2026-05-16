@@ -462,7 +462,6 @@ const CLASSIFIER_NODE_TYPES = [
   "rule",
   "decision",
   "action",
-  "reasoning",
   "eval",
   "reference",
   "scope",

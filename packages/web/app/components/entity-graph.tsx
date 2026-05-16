@@ -68,7 +68,6 @@ const TYPE_PLURAL_LABEL: Record<string, string> = {
   rule: "rules",
   decision: "decisions",
   action: "actions",
-  reasoning: "reasonings",
   eval: "evals",
   reference: "references",
   scope: "scopes",

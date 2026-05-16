@@ -24,7 +24,6 @@ const PLURAL_DIR: Record<string, string> = {
   intent: "intents",
   rule: "rules",
   action: "actions",
-  reasoning: "reasoning",
   reference: "references",
   scope: "scopes",
   eval: "evals",
@@ -76,7 +75,6 @@ const TYPE_FETCHES: TypeFetch[] = [
   fetchSpec("intents", "intent", "summary, lifecycle, created_at", false),
   fetchSpec("rules", "rule", "summary, lifecycle, created_at", false),
   fetchSpec("actions", "action", "summary, lifecycle, created_at", false),
-  fetchSpec("reasoning", "reasoning", "summary, lifecycle, created_at", false),
   fetchSpec("reference_entities", "reference", "summary, lifecycle, created_at", false),
   fetchSpec(
     "scopes",

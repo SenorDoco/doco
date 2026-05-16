@@ -99,7 +99,6 @@ export async function loader({ request }: { request: Request }) {
            UNION ALL SELECT id, summary FROM ideas WHERE id = ANY($1)
            UNION ALL SELECT id, summary FROM rules WHERE id = ANY($1)
            UNION ALL SELECT id, summary FROM actions WHERE id = ANY($1)
-           UNION ALL SELECT id, summary FROM reasoning WHERE id = ANY($1)
            UNION ALL SELECT id, summary FROM evals WHERE id = ANY($1)
            UNION ALL SELECT id, summary FROM scopes WHERE id = ANY($1)
            UNION ALL SELECT id, summary FROM reference_entities WHERE id = ANY($1)`,

@@ -2,7 +2,7 @@
 // (decision_01KRKEPRAMM9QSSEJ2X5FHPESJ).
 //
 // Two classes of node:
-//   - Claim: Decision, Intent, Rule, Action, Reasoning, Eval, Reference.
+//   - Claim: Decision, Intent, Rule, Action, Eval, Reference.
 //     Mutable while in a draft lifecycle; frozen on activation. On a frozen
 //     claim, only `lifecycle`, `superseded_by`, and additive edge fields
 //     (`*_add`) can be patched. Body, summary, alternatives, and core fields
@@ -22,7 +22,6 @@ export type ClaimNodeType =
   | "intent"
   | "rule"
   | "action"
-  | "reasoning"
   | "eval"
   | "reference";
 
@@ -39,7 +38,6 @@ const CLAIM_TYPES: ReadonlySet<string> = new Set<ClaimNodeType>([
   "intent",
   "rule",
   "action",
-  "reasoning",
   "eval",
   "reference",
 ]);
@@ -55,7 +53,6 @@ const FROZEN_LIFECYCLES: Record<ClaimNodeType, ReadonlySet<string>> = {
   intent: new Set(["active", "succeeded", "failed", "superseded", "abandoned"]),
   rule: new Set(["active", "succeeded", "failed", "superseded", "abandoned"]),
   action: new Set(["active", "succeeded", "failed", "superseded", "abandoned"]),
-  reasoning: new Set(["active", "succeeded", "failed", "superseded", "abandoned"]),
   eval: new Set(["active", "succeeded", "failed", "superseded", "abandoned"]),
   // Reference has no proposed phase — it is frozen from creation.
   // Sentinel "*" is matched specially below to mean "any lifecycle, including unset".

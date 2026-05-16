@@ -31,13 +31,6 @@ describe("system lints against the Doco project (PG-backed)", () => {
     expect(report.issuesByLint["agent-ancestry"] ?? []).toEqual([]);
   });
 
-  it("orphan-reasoning: bootstrap reasoning has a real conclusion_ref", async () => {
-    await reindex(REPO_ROOT);
-    const docoId = readDocoId();
-    const report = await withClient((c) => runAllLints(c, docoId));
-    expect(report.issuesByLint["orphan-reasoning"] ?? []).toEqual([]);
-  });
-
   it("follows-cycle: meta-Doco has no follows cycles", async () => {
     await reindex(REPO_ROOT);
     const docoId = readDocoId();

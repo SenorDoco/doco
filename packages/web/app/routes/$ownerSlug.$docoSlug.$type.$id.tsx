@@ -20,7 +20,6 @@ const TABLE_BY_TYPE: Record<string, string> = {
   intent: "intents",
   rule: "rules",
   action: "actions",
-  reasoning: "reasoning",
   reference: "reference_entities",
   scope: "scopes",
   eval: "evals",
@@ -282,7 +281,7 @@ export async function loader({
       subScopes: { id: string; name: string }[];
     } | null = null;
     if (type === "scope") {
-      const memberTypes = ["intent", "decision", "action", "rule", "idea", "reasoning"] as const;
+      const memberTypes = ["intent", "decision", "action", "rule", "idea"] as const;
       const members: Record<string, { id: string; summary: string; lifecycle: string | null }[]> =
         {};
       for (const t of memberTypes) {
