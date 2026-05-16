@@ -80,10 +80,10 @@ export async function action({
     return Response.json({ error: "At least one scope is required." }, { status: 400 });
   }
   const severity = severityRaw === "soft" ? "soft" : "hard";
-  const enforcedBy = (["lint", "runtime", "review", "manual"] as const).includes(
-    enforcedByRaw as "lint" | "runtime" | "review" | "manual",
+  const enforcedBy = (["runtime", "review", "manual"] as const).includes(
+    enforcedByRaw as "runtime" | "review" | "manual",
   )
-    ? (enforcedByRaw as "lint" | "runtime" | "review" | "manual")
+    ? (enforcedByRaw as "runtime" | "review" | "manual")
     : "review";
 
   const result = await captureRule(
@@ -223,10 +223,6 @@ export default function NewRule({
                   <label className="mt-1 flex items-center gap-1 text-xs">
                     <input type="radio" name="enforced_by" value="review" defaultChecked />
                     review
-                  </label>
-                  <label className="mt-1 flex items-center gap-1 text-xs">
-                    <input type="radio" name="enforced_by" value="lint" />
-                    lint
                   </label>
                   <label className="mt-1 flex items-center gap-1 text-xs">
                     <input type="radio" name="enforced_by" value="runtime" />

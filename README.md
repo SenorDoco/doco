@@ -39,7 +39,6 @@ API — there are no on-disk per-entity files to read here.
 │   ├── db/                  # Postgres adapter + schema.sql
 │   ├── host/                # Host/Doco/Principal/Organization domain layer
 │   ├── index/               # Edge derivation + embedding index helpers
-│   ├── lints/               # Lint registry + checks
 │   ├── shared/              # TypeScript entity types + URL conventions
 │   └── web/                 # React Router web app (`doco.to`-shaped UI)
 └── SCHEMA.md / PLANNING.md / DECISIONS.md / NOTICE / LICENSE

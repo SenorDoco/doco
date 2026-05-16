@@ -242,17 +242,6 @@ export default function DocoSettings({
                 Add/edit/delete the scopes nodes live in.
               </span>
             </div>
-            <div>
-              <Link
-                to={`/${ownerSlug}/${docoSlug}/lint`}
-                className="text-primary hover:underline"
-              >
-                Lint →
-              </Link>
-              <span className="ml-2 text-muted-foreground">
-                Run the connectivity + invariant checks.
-              </span>
-            </div>
             <div className="pt-2 text-[11px] text-muted-foreground">
               Doco id: <span className="font-mono">{docoId}</span>
             </div>

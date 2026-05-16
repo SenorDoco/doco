@@ -22,9 +22,6 @@
       "path": "../index"
     },
     {
-      "path": "../lints"
-    },
-    {
       "path": "../host"
     }
   ]

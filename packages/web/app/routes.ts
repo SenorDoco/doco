@@ -13,8 +13,7 @@ import { type RouteConfig, index, route } from "@react-router/dev/routes";
  * `<path>.json` (resource route — clean JSON POST endpoint, no document
  * render) as siblings. The HTML route must advertise both via
  * `<link rel="alternate">` in its `links()` export so an agent that lands
- * on the browser version can discover the agent version. Enforced by
- * `pnpm --filter @doco/web lint:routes`.
+ * on the browser version can discover the agent version.
  *
  * Info-only agent paths can ship as `.txt` only — no HTML, no `.json` —
  * when the page is one screen of instructions and there is no state to
@@ -34,7 +33,6 @@ import { type RouteConfig, index, route } from "@react-router/dev/routes";
  *   /:owner/:doco/:type            per-Doco entity list (short form; ADR-120)
  *   /:owner/:doco/:type/:id        per-Doco entity detail (id is the ULID; scope also resolves by name)
  *   /:owner/:doco/search           per-Doco search (richer results — GPR / age / lifecycle)
- *   /:owner/:doco/lint             per-Doco lint report
  *   /:owner/:doco/settings         per-Doco settings (admin only; danger zone soft-delete; ADR-124)
  *   /:owner/:doco/scopes           per-Doco scope list (Edit button — not chevron — for instructions)
  *   /:owner/:doco/scopes/new       per-Doco add a scope (templates + custom form)
@@ -48,7 +46,7 @@ import { type RouteConfig, index, route } from "@react-router/dev/routes";
  *
  * Per-Doco URL collisions are prevented by `PER_DOCO_RESERVED_SLUGS` in
  * @doco/shared/url-conventions.ts — every static subpath here MUST be in
- * that set (enforced by `pnpm --filter @doco/web lint:routes`).
+ * that set.
  */
 export default [
   index("routes/_index.tsx"),
@@ -148,7 +146,6 @@ export default [
   // belt-and-suspenders.)
   route(":ownerSlug/:docoSlug/search", "routes/$ownerSlug.$docoSlug.search.tsx"),
   route(":ownerSlug/:docoSlug/search.json", "routes/$ownerSlug.$docoSlug.search[.]json.tsx"),
-  route(":ownerSlug/:docoSlug/lint", "routes/$ownerSlug.$docoSlug.lint.tsx"),
   route(":ownerSlug/:docoSlug/scopes", "routes/$ownerSlug.$docoSlug.scopes._index.tsx"),
   route(":ownerSlug/:docoSlug/scopes/new", "routes/$ownerSlug.$docoSlug.scopes.new.tsx"),
   // Per decision_01KRPNZY7W6CCMYNKGND67BP0B the merged scope page lives

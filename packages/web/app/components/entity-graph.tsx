@@ -3,12 +3,30 @@
 // Global PageRank is a follow-up (needs a separate globalPageRank function
 // in @doco/index — `personalizedPageRank` requires a single source).
 //
+// Layout: Dagre left-to-right (decision_01KRRJTW39THBW0C943G0GTH0M) so
+// process-shaped neighborhoods (Intent + Actions chained via follows +
+// Decisions via decision_ids) read as BPMN flows for free. Non-process
+// neighborhoods still render as clean DAGs — the layout is universal.
+//
 // react-flow is loaded via dynamic import — it touches the DOM directly,
 // can't run during SSR.
+import dagre from "@dagrejs/dagre";
 import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { nodeTypeColor } from "~/lib/node-colors";
 import "@xyflow/react/dist/style.css";
+
+/**
+ * Administrative edge types that carry no reading value in the rendered
+ * graph and clutter every neighborhood. Filtered out at render time
+ * (decision_01KRRJTW39THBW0C943G0GTH0M). The underlying edges remain in
+ * the index — this is a visualization-only filter.
+ */
+const HIDDEN_EDGE_TYPES: ReadonlySet<string> = new Set([
+  "in_scope_of",
+  "created_by",
+  "updated_by",
+]);
 
 export interface GraphNode {
   id: string;
@@ -95,28 +113,77 @@ function relativeTime(iso: string | null): string {
 }
 
 /**
- * Phyllotaxis (sunflower-spiral) layout: focal node at origin, remaining
- * nodes placed at angle `i * golden_angle` and radius `step * sqrt(i)`.
- * Ranks by PPR so highest-ranked sit closest. Deterministic, no overlap
- * even at 25+ nodes, and react-flow's fitView zooms it to the viewport.
+ * Dagre layered layout, left-to-right
+ * (decision_01KRRJTW39THBW0C943G0GTH0M).
  *
- * `step` scales with the node-card width: cards are ~240×130 so the
- * inter-node distance needs to be at least ~170 to avoid corner overlap
- * for the inner ring. Higher values give a sparser but more readable layout.
+ * Lays the neighborhood out as a directed graph with ranks flowing
+ * source → target. Process-shaped data (Intent + Actions chained via
+ * `follows` + Decisions via `decision_ids`) reads as a BPMN flow:
+ * the Intent sits in the leftmost rank, Actions march right along the
+ * `follows` spine, Decisions appear where they're consulted.
+ * Non-process neighborhoods (Rule, Scope, Reference) still get a clean
+ * layered DAG — no separate render mode, no toggle.
+ *
+ * Edges that don't carry process / reasoning value (`in_scope_of`,
+ * `created_by`, `updated_by`) are filtered upstream so they don't
+ * influence the layout.
+ *
+ * Returns positions keyed by node id, with the focal node centered at
+ * (0, 0) so the existing `fitView` viewport math keeps working. Falls
+ * back to the focal node only when Dagre cannot place a node (extreme
+ * edge case — disconnected isolates).
  */
-function spiralLayout(nodes: GraphNode[], centerId: string): Map<string, { x: number; y: number }> {
+const NODE_WIDTH = 240;
+const NODE_HEIGHT = 100;
+function dagreLayout(
+  nodes: GraphNode[],
+  links: GraphLink[],
+  centerId: string,
+): Map<string, { x: number; y: number }> {
   const positions = new Map<string, { x: number; y: number }>();
-  positions.set(centerId, { x: 0, y: 0 });
-  const others = nodes.filter((n) => n.id !== centerId);
-  others.sort((a, b) => b.ppr - a.ppr); // highest PPR first
-  const goldenAngle = Math.PI * (3 - Math.sqrt(5)); // ~2.4 rad ≈ 137.5°
-  const step = 160; // wider than before — node cards are ~240×130 so we need real breathing room
-  others.forEach((node, i) => {
-    const idx = i + 1;
-    const theta = idx * goldenAngle;
-    const r = step * Math.sqrt(idx);
-    positions.set(node.id, { x: r * Math.cos(theta), y: r * Math.sin(theta) });
+  if (nodes.length === 0) return positions;
+
+  const g = new dagre.graphlib.Graph({ multigraph: true });
+  g.setGraph({
+    rankdir: "LR",
+    nodesep: 40,
+    ranksep: 80,
+    marginx: 20,
+    marginy: 20,
   });
+  // biome-ignore lint/suspicious/noExplicitAny: dagre default-edge label fn
+  g.setDefaultEdgeLabel(() => ({}));
+
+  for (const n of nodes) {
+    g.setNode(n.id, { width: NODE_WIDTH, height: NODE_HEIGHT });
+  }
+  // Use a deterministic edge key (the index) so duplicate edges between
+  // the same pair don't clobber each other.
+  links.forEach((l, i) => {
+    const src = typeof l.source === "string" ? l.source : (l.source as { id: string }).id;
+    const tgt = typeof l.target === "string" ? l.target : (l.target as { id: string }).id;
+    if (!g.hasNode(src) || !g.hasNode(tgt)) return;
+    g.setEdge(src, tgt, {}, `e${i}`);
+  });
+
+  dagre.layout(g);
+
+  // Re-center on the focal node so existing fitView geometry stays sane.
+  const focal = g.node(centerId);
+  const cx = focal?.x ?? 0;
+  const cy = focal?.y ?? 0;
+  for (const n of nodes) {
+    const pos = g.node(n.id);
+    if (pos && Number.isFinite(pos.x) && Number.isFinite(pos.y)) {
+      // Dagre returns the node's CENTER; react-flow expects top-left.
+      positions.set(n.id, {
+        x: pos.x - cx - NODE_WIDTH / 2,
+        y: pos.y - cy - NODE_HEIGHT / 2,
+      });
+    } else {
+      positions.set(n.id, { x: 0, y: 0 });
+    }
+  }
   return positions;
 }
 
@@ -145,6 +212,9 @@ export function EntityGraph({ centerId, nodes, links, hrefFor }: EntityGraphProp
     });
     const ids = new Set(v.map((n) => n.id));
     const vl = links.filter((l) => {
+      // Drop administrative edges that clutter the render and carry no
+      // process / reasoning value (decision_01KRRJTW39THBW0C943G0GTH0M).
+      if (HIDDEN_EDGE_TYPES.has(l.edge_type)) return false;
       const src = typeof l.source === "string" ? l.source : (l.source as { id: string }).id;
       const tgt = typeof l.target === "string" ? l.target : (l.target as { id: string }).id;
       return ids.has(src) && ids.has(tgt);
@@ -152,7 +222,10 @@ export function EntityGraph({ centerId, nodes, links, hrefFor }: EntityGraphProp
     return { nodes: v, links: vl };
   }, [nodes, links, hiddenTypes, centerId]);
 
-  const positions = useMemo(() => spiralLayout(visible.nodes, centerId), [visible.nodes, centerId]);
+  const positions = useMemo(
+    () => dagreLayout(visible.nodes, visible.links, centerId),
+    [visible.nodes, visible.links, centerId],
+  );
   const visibleNodeById = useMemo(() => {
     const byId = new Map<string, GraphNode>();
     for (const node of visible.nodes) byId.set(node.id, node);

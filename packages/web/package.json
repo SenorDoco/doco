@@ -14,10 +14,10 @@
     "test": "echo 'web tests run via Chrome E2E'"
   },
   "dependencies": {
+    "@dagrejs/dagre": "^3.0.0",
     "@doco/db": "workspace:*",
     "@doco/host": "workspace:*",
     "@doco/index": "workspace:*",
-    "@doco/lints": "workspace:*",
     "@doco/shared": "workspace:*",
     "@react-router/node": "^7.0.2",
     "@react-router/serve": "^7.0.2",

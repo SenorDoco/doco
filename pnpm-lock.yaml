@@ -51,9 +51,6 @@ importers:
       '@doco/index':
         specifier: workspace:*
         version: link:../index
-      '@doco/lints':
-        specifier: workspace:*
-        version: link:../lints
       '@doco/shared':
         specifier: workspace:*
         version: link:../shared
@@ -98,28 +95,6 @@ importers:
         specifier: ^2.6.1
         version: 2.8.4
 
-  packages/lints:
-    dependencies:
-      '@doco/db':
-        specifier: workspace:*
-        version: link:../db
-      '@doco/shared':
-        specifier: workspace:*
-        version: link:../shared
-      pg:
-        specifier: ^8.13.1
-        version: 8.20.0
-      yaml:
-        specifier: ^2.6.1
-        version: 2.8.4
-    devDependencies:
-      '@doco/index':
-        specifier: workspace:*
-        version: link:../index
-      '@types/pg':
-        specifier: ^8.11.10
-        version: 8.20.0
-
   packages/shared:
     dependencies:
       gray-matter:
@@ -131,6 +106,9 @@ importers:
 
   packages/web:
     dependencies:
+      '@dagrejs/dagre':
+        specifier: ^3.0.0
+        version: 3.0.0
       '@doco/db':
         specifier: workspace:*
         version: link:../db
@@ -140,9 +118,6 @@ importers:
       '@doco/index':
         specifier: workspace:*
         version: link:../index
-      '@doco/lints':
-        specifier: workspace:*
-        version: link:../lints
       '@doco/shared':
         specifier: workspace:*
         version: link:../shared
@@ -407,6 +382,12 @@ packages:
     engines: {node: '>=14.21.3'}
     cpu: [x64]
     os: [win32]
+
+  '@dagrejs/dagre@3.0.0':
+    resolution: {integrity: sha512-ZzhnTy1rfuoew9Ez3EIw4L2znPGnYYhfn8vc9c4oB8iw6QAsszbiU0vRhlxWPFnmmNSFAkrYeF1PhM5m4lAN0Q==}
+
+  '@dagrejs/graphlib@4.0.1':
+    resolution: {integrity: sha512-IvcV6FduIIAmLwnH+yun+QtV36SC7mERqa86aClNqmMN09WhmPPYU8ckHrZBozErf+UvHPWOTJYaGYiIcs0DgA==}
 
   '@esbuild/aix-ppc64@0.21.5':
     resolution: {integrity: sha512-1SDgH6ZSPTlggy1yI6+Dbkiz8xzpHJEVAlF/AM1tHPLsf5STom9rwtjE4hKAF20FfXXNTFqEYXyJNWh1GiZedQ==}
@@ -2675,6 +2656,12 @@ snapshots:
 
   '@biomejs/cli-win32-x64@1.9.4':
     optional: true
+
+  '@dagrejs/dagre@3.0.0':
+    dependencies:
+      '@dagrejs/graphlib': 4.0.1
+
+  '@dagrejs/graphlib@4.0.1': {}
 
   '@esbuild/aix-ppc64@0.21.5':
     optional: true

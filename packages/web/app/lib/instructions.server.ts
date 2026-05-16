@@ -588,7 +588,7 @@ ambiguity.
 A new Doco has the framework-seeded **Global scope** (always installed,
 serves as the doco's constitution) and zero project-specific scopes.
 Nodes outside Global can't be added until at least one project-specific
-scope exists (the connectivity lint enforces this). The framework ships
+scope exists. The framework ships
 one additional opt-in template — **\`user-flows\`** — for the common
 case where end-to-end journeys matter. Every other scope a project
 wants (\`adrs\`, \`apis\`, \`bugs\`, \`runbooks\`, \`post-mortems\`,
@@ -716,11 +716,10 @@ field, not in slashes in its name. So \`country/france/payment\` is
 three scopes — \`country\`, \`france\` (with \`scopes: [country.id]\`),
 \`payment\` (with \`scopes: [france.id]\`) — not a single string.
 
-Assign at least one scope to every Decision, Action, Idea, and Intent
-(the connectivity lint enforces this).
+Assign at least one scope to every Decision, Action, Idea, and Intent.
 
 **\`follows\`** orders entities into BPMN-style flows: \`B follows: [A]\`
-means A came first. Cycles are caught by lint.
+means A came first. Don't create cycles.
 
 ## Don't follow recipes — think
 

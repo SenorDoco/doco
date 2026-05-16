@@ -546,7 +546,7 @@ const ruleCmd = defineCommand({
     },
     "enforced-by": {
       type: "string",
-      description: "Optional. One of: lint | runtime | review | manual.",
+      description: "Optional. One of: runtime | review | manual.",
     },
     "born-from": { type: "string", description: "Optional. Decision id this Rule was born from." },
     severity: { type: "string", description: "Optional. One of: hard | soft." },
@@ -563,9 +563,9 @@ const ruleCmd = defineCommand({
   },
   async run({ args }) {
     const enforced = args["enforced-by"] as string | undefined;
-    if (enforced && !["lint", "runtime", "review", "manual"].includes(enforced)) {
+    if (enforced && !["runtime", "review", "manual"].includes(enforced)) {
       console.error(
-        cross(`--enforced-by must be one of: lint, runtime, review, manual (got '${enforced}').`),
+        cross(`--enforced-by must be one of: runtime, review, manual (got '${enforced}').`),
       );
       process.exit(2);
     }

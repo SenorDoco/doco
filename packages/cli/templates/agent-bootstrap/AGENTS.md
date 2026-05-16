@@ -43,8 +43,7 @@ trivial (typo fix, single-string replace, one-line edit). The protocol
 applies to every reply — there is no "small enough to skip" threshold.
 
 The same response also includes this Doco's scopes (with their
-icons + purpose + guidelines), known lint issues, and recent activity.
-Skim those too.
+icons + purpose + guidelines) and recent activity. Skim those too.
 
 **Claude Code only:** two `.claude/settings.json` hooks keep the
 protocol fresh automatically:

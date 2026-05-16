@@ -115,6 +115,6 @@ export default defineConfig({
   // never try to call useRef/useState on a server-side null React.
   ssr: {
     external: ["pg", "@xyflow/react", "frimousse"],
-    noExternal: ["@doco/db", "@doco/host", "@doco/index", "@doco/lints", "@doco/shared"],
+    noExternal: ["@doco/db", "@doco/host", "@doco/index", "@doco/shared"],
   },
 });

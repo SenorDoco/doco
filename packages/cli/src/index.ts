@@ -8,7 +8,6 @@ import { hostCmd } from "./commands/host.js";
 import { importCmd } from "./commands/import.js";
 import { initCmd } from "./commands/init.js";
 import { installAgentBootstrapCmd } from "./commands/install-agent-bootstrap.js";
-import { lintCmd } from "./commands/lint.js";
 import { loginCmd } from "./commands/login.js";
 import { patchCmd } from "./commands/patch.js";
 import { queryCmd } from "./commands/query.js";
@@ -33,7 +32,6 @@ const main = defineCommand({
     validate: validateCmd,
     reindex: reindexCmd,
     query: queryCmd,
-    lint: lintCmd,
     host: hostCmd,
     capture: captureCmd,
     patch: patchCmd,

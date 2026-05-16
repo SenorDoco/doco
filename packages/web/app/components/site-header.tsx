@@ -37,7 +37,6 @@ export function SiteHeader({ docoScope, me }: SiteHeaderProps) {
         // doco's constitution" next to its name. Edit it like any other
         // scope from /scopes/<id>.
         { to: `/${docoScope.ownerSlug}/${docoScope.docoSlug}/scopes`, label: "Scopes" },
-        { to: `/${docoScope.ownerSlug}/${docoScope.docoSlug}/lint`, label: "Lint" },
         { to: `/${docoScope.ownerSlug}/${docoScope.docoSlug}/settings`, label: "Settings" },
       ]
     : [

@@ -7,7 +7,7 @@
 // capture before drafting.
 //
 // For the long-form reference, fetch `/api/v1/agent-reference`. For
-// per-Doco context (scopes, lint, freshness), `/by-id/<doco_id>/status.json`.
+// per-Doco context (scopes, freshness), `/by-id/<doco_id>/status.json`.
 
 import { CANONICAL_INSTRUCTIONS } from "~/lib/instructions.server";
 import type { AuthoringPredicate } from "@doco/shared";
@@ -269,6 +269,6 @@ export async function loader({ request }: { request: Request }) {
     warning,
     missing_doco_guidance: missingDocoGuidance,
     note:
-      "Slim bootstrap. For deep reference fetch /api/v1/agent-reference. For per-Doco lint/status, call /by-id/<doco_id>/status.json. Pass ?id=<doco_id> to receive `code_map` + `constitution` (Doco-specific load-bearing rules enforced at capture time) + `scopes` (manifest with mandatory vs optional flag). When `onboarding_overlay` is non-null the Doco has only the Constitution scope — run STEP 1 (scope_setup) and STEP 2 (scope_population) before treating onboarding as done; the overlay disappears the moment the project owner accepts a first project-specific scope. When `missing_doco_guidance` is non-null the caller's id/slug didn't resolve OR resolved to a Doco they can't access — read the structured `actions` to pick the right recovery (create vs ask-for-access). `warning` carries a single-line version of the same.",
+      "Slim bootstrap. For deep reference fetch /api/v1/agent-reference. For per-Doco status, call /by-id/<doco_id>/status.json. Pass ?id=<doco_id> to receive `code_map` + `constitution` (Doco-specific load-bearing rules enforced at capture time) + `scopes` (manifest with mandatory vs optional flag). When `onboarding_overlay` is non-null the Doco has only the Constitution scope — run STEP 1 (scope_setup) and STEP 2 (scope_population) before treating onboarding as done; the overlay disappears the moment the project owner accepts a first project-specific scope. When `missing_doco_guidance` is non-null the caller's id/slug didn't resolve OR resolved to a Doco they can't access — read the structured `actions` to pick the right recovery (create vs ask-for-access). `warning` carries a single-line version of the same.",
   });
 }

@@ -2125,14 +2125,13 @@ export interface RuleDraft {
   /** Optional: intent ids the Rule serves. */
   intent_ids?: string[];
   /**
-   * Optional: enforcement surface — `lint | runtime | review | manual`.
+   * Optional: enforcement surface — `runtime | review | manual`.
    * Maps to the Rule's `phase` field in the stored row for compatibility
-   * with the existing schema (`lint` → `declared`, `runtime` →
-   * `invariant`, `review`/`manual` → `declared`). The original verb is
-   * preserved verbatim in an `enforced_by` field so the spec stays
-   * round-trippable.
+   * with the existing schema (`runtime` → `invariant`, `review`/`manual`
+   * → `declared`). The original verb is preserved verbatim in an
+   * `enforced_by` field so the spec stays round-trippable.
    */
-  enforced_by?: "lint" | "runtime" | "review" | "manual";
+  enforced_by?: "runtime" | "review" | "manual";
   /** Optional: severity — `hard` (blocker) or `soft` (warning). Maps to schema. */
   severity?: "hard" | "soft";
   /** Optional: id of the Decision this Rule was born from. */
