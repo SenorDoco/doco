@@ -883,18 +883,27 @@ flow yourself — no install needed:
    Response: \`{ state_nonce, short_code, authorize_url, poll_url,
    interval_seconds, expires_at }\`. The \`poll_url\` already has the
    state_nonce baked in as a query param.
-2. Open \`<authorize_url>\` in their browser yourself — DON'T ask the
-   project owner to copy-paste. Their terminal can reach their
-   default browser:
+2. Announce the browser-open and wait for the project owner's
+   go-ahead BEFORE opening anything. They need to know what's about
+   to happen so they're ready to act on it:
+
+       "I'll open a browser window so you can authorize me to access
+       a Doco for this project. When it opens, sign in if asked,
+       pick an existing Doco from the list or enter a slug for a new
+       one, and click Authorize. Ready to proceed?"
+
+   If your runtime has interactive options (buttons, choice lists,
+   AskUserQuestion etc.), offer "Yes, open it" and "Wait, I need a
+   moment". Otherwise plain prose — let them reply with "yes" or "go".
+
+   ONLY after the project owner confirms, open the URL:
    \`\`\`
    if command -v open >/dev/null 2>&1; then open "<authorize_url>"
    elif command -v xdg-open >/dev/null 2>&1; then xdg-open "<authorize_url>"
    elif command -v start >/dev/null 2>&1; then start "<authorize_url>"
    else echo "Open this URL in your browser: <authorize_url>"; fi
    \`\`\`
-   Then tell the project owner: "I opened the authorize page in your
-   browser — sign in, pick an existing Doco or name a new one, click
-   Authorize." Don't loop — wait for them to confirm.
+   Don't loop — wait for them to authorize in the browser.
 3. Poll \`poll_url\` every \`interval_seconds\` — it's already a GET
    URL, fetch it as-is:
    \`\`\`

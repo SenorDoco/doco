@@ -49,13 +49,14 @@ needed.
    interval_seconds, expires_at }\`. The \`poll_url\` already has the
    \`state_nonce\` baked in as a query param — fetch it as-is.
 
-2. Open <authorize_url> yourself — DON'T ask the project owner to
-   copy-paste. Their terminal can reach their default browser:
-   \`open\` (macOS), \`xdg-open\` (Linux), \`start\` (Windows). Try them
-   in order; fall back to printing the URL only if none exist (remote
-   sandboxes). Then tell the project owner what to do in the browser
-   that just popped up: sign in, pick an existing Doco or enter a slug
-   for a new one, click Authorize. Wait.
+2. Announce the browser-open and wait for go-ahead BEFORE opening.
+   "I'll open a browser window so you can authorize me. When it opens,
+   sign in, pick an existing Doco or enter a slug for a new one, and
+   click Authorize. Ready?" If your runtime has buttons/choice tools,
+   offer "Yes, open it" / "Wait, I need a moment". Only after the
+   project owner says go, open <authorize_url> with \`open\` (macOS),
+   \`xdg-open\` (Linux), or \`start\` (Windows); fall back to printing
+   the URL only if none exist (remote sandboxes). Wait.
 
 3. Poll \`poll_url\` (the URL from step 1, already shaped as
    \`${baseUrl}/api/v1/agent-link/poll?state_nonce=<nonce>\`) every

@@ -106,13 +106,15 @@ flow yourself — no install needed, just three HTTP calls:
    (no auth, plain GET so conservative classifiers don't flag it).
    Response gives you `authorize_url`, `poll_url` (already shaped with
    `?state_nonce=…`), `state_nonce`, and `interval_seconds`.
-2. Open `<authorize_url>` in their browser yourself — don't make them
-   copy-paste. Their terminal can reach their default browser:
-   `open` (macOS), `xdg-open` (Linux), `start` (Windows). Try them in
-   order; fall back to printing the URL only if none exist (remote
-   sandboxes without GUI). Then tell them: "I opened the authorize
-   page in your browser — sign in, pick a Doco, click Authorize."
-   Wait — don't loop.
+2. Announce the browser-open and wait for go-ahead BEFORE opening:
+   "I'll open a browser window so you can authorize me. When it
+   opens, sign in, pick an existing Doco or enter a slug for a new
+   one, and click Authorize. Ready?" If your runtime has buttons /
+   choice tools (AskUserQuestion etc.), offer "Yes, open it" and
+   "Wait, I need a moment". Only after the project owner says go,
+   open `<authorize_url>` with `open` (macOS), `xdg-open` (Linux),
+   or `start` (Windows); fall back to printing the URL only if none
+   exist (remote sandboxes without GUI). Wait — don't loop.
 3. Poll `poll_url` every `interval_seconds` (it's already a GET URL —
    fetch it as-is). When the response flips to
    `{ status: "approved", access_url, owner_slug, doco_slug, doco_id }`,

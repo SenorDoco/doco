@@ -29,10 +29,24 @@ Response (JSON):
       "expires_at":       "<ISO timestamp; 10-minute window>"
     }
 
-Step 2 — open the authorize_url in the project owner's browser, then wait:
+Step 2 — announce the browser-open, wait for go-ahead, THEN open it:
 
-DON'T print the URL and ask them to copy-paste. Open it yourself first.
-Their terminal can reach their default browser:
+DON'T pop a browser window silently. Tell the project owner what's
+about to happen so they're ready to act on it, and wait for their
+explicit confirmation BEFORE opening anything:
+
+    "I'll open a browser window so you can authorize me to access a
+    Doco for this project. When it opens, sign in if asked, pick an
+    existing Doco from the list or enter a slug for a new one, and
+    click Authorize. Ready to proceed?"
+
+If your runtime supports interactive choices (buttons, option lists,
+AskUserQuestion-style tools), offer "Yes, open it" and "Wait, I need
+a moment" as choices. Otherwise plain prose works — let them reply
+"yes" or "go".
+
+ONLY after the project owner says yes, open the URL. Their terminal
+can reach their default browser:
 
     # Try in order; whichever exits 0 wins. \`command -v\` keeps the call
     # silent on platforms where the opener doesn't exist.
@@ -47,19 +61,13 @@ Their terminal can reach their default browser:
     fi
 
 In a remote sandbox (Codex web, GitHub Coding Agent, Anthropic web)
-none of the openers exist; the else branch prints the URL and the
-project owner opens it manually. Locally (Claude Code on a Mac, Cursor
-on a laptop) the first branch fires and the browser pops up on its
-own.
+none of the openers exist; the else branch prints the URL — at that
+point the project owner is already expecting it, no surprise.
+Locally (Claude Code on a Mac, Cursor on a laptop) the first branch
+fires and the browser pops up after the project owner already said go.
 
-Tell the project owner what just happened so they look at the browser:
-
-    "I opened the authorize page in your browser — sign in if asked,
-    pick an existing Doco (or enter a slug to create a new one), and
-    click Authorize. I'll wait."
-
-Don't loop. Don't retry on your own. Wait for them to confirm or for
-step 3's poll to flip status.
+Don't loop. Don't retry on your own. Wait for them to authorize in the
+browser; step 3's poll will detect the flip.
 
 Step 3 — poll for approval (plain GET; the poll_url from step 1 already
 has ?state_nonce=… baked in, fetch it as-is):
