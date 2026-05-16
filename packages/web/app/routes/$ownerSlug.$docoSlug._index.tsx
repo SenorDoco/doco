@@ -272,7 +272,7 @@ export default function DocoHome({
                 <SearchBoxWithHistory
                   ownerSlug={ownerSlug}
                   docoSlug={docoSlug}
-                  placeholder="Search nodes in this Doco - summaries, body, scope names..."
+                  placeholder="Search nodes - body, summaries, scopes..."
                 />
               }
             />
