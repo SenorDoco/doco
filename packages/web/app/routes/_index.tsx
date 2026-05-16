@@ -51,7 +51,7 @@ export default function Home({ loaderData }: { loaderData: Awaited<ReturnType<ty
               to="/onboarding/join"
               className="group rounded-lg border border-border bg-card px-6 py-8 text-left transition-colors hover:border-primary"
             >
-              <div className="text-base font-semibold">Join an existing Doco</div>
+              <div className="text-base font-semibold">Join an existing doco</div>
               <div className="mt-2 text-xs text-muted-foreground">
                 Collaborate on a project that's already tracked here.
               </div>
@@ -60,7 +60,7 @@ export default function Home({ loaderData }: { loaderData: Awaited<ReturnType<ty
               to="/onboarding/create"
               className="group rounded-lg border border-border bg-card px-6 py-8 text-left transition-colors hover:border-primary"
             >
-              <div className="text-base font-semibold">Create a new Doco</div>
+              <div className="text-base font-semibold">Create a new doco</div>
               <div className="mt-2 text-xs text-muted-foreground">
                 Start tracking alignment for a new project.
               </div>
