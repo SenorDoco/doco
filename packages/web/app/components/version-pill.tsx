@@ -51,7 +51,7 @@ export function VersionPill({ className }: VersionPillProps) {
       )}
       suppressHydrationWarning
     >
-      <span>
+      <span className="opacity-50">
         Alpha {__DOCO_VERSION__} · {ago}
       </span>
       <span>{DOCO_TAGLINE}</span>
