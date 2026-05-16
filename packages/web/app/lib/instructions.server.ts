@@ -514,6 +514,55 @@ Silently degrading — or worse, asking permission to silently
 degrade — hides exactly the friction the project owner needs to
 see. Surface it and wait it out.
 
+## On a fresh Doco — onboarding is NOT done when scopes exist
+
+The bootstrap response carries an \`onboarding_overlay\` field while
+the Doco has only the framework-seeded Global scope (no
+project-specific scopes yet). When that field is non-null, you are
+in **onboarding mode** — STOP treating the session as a normal
+work session and walk the project owner through scope setup
+**AND** scope population before you declare onboarding done.
+
+The overlay carries three keys, each a self-contained instruction
+to act on verbatim:
+
+- \`scope_setup\` — **STEP 1**. Read the project, propose a curated
+  starter set (\`user-flows\` from the template + 1–3 CUSTOM scopes
+  named for this project's subject areas) in plain prose. WAIT for
+  the project owner to confirm before calling any scope-creation
+  endpoint. **Decide-and-confirm, not decide-and-execute.** A single
+  template scope alone is a smell — every onboarding session should
+  produce at least one custom scope.
+- \`watched_explainer\` — read this once at the moment you first
+  mention "watched" to the project owner. Use the wording in the
+  overlay verbatim so the explanation is consistent across agents.
+- \`scope_population\` — **STEP 2**. For EACH scope you just created,
+  ask the project owner what they want to capture first. Concrete
+  asks ("walk me through the most important user journey", "what's
+  the load-bearing thing about <area> that's in your head but not
+  in the repo yet?") beat generic asks. Drive at least one real node
+  into each scope before declaring onboarding done. Empty scopes are
+  documentation theater.
+
+**The two failure modes this section exists to prevent.** Both
+trip ADR-086-style "the work is the work, not the container":
+
+1. Onboarding ends with "0 nodes captured, here are two options for
+   you." That's an UNFINISHED onboarding handed back to the project
+   owner with a checklist. Don't.
+2. Onboarding ends with scope shells created but no nodes inside.
+   That's documentation theater. Don't.
+
+Only treat onboarding as done when EITHER (a) each scope has at
+least one real node, OR (b) the project owner explicitly says
+"defer the rest for now" — and you acknowledge "OK, deferring;
+\`<scope_a>\`, \`<scope_b>\` are still empty and would benefit
+from a real node when you have a minute."
+
+The overlay drops out of the bootstrap response the moment the
+project owner accepts a first project-specific scope. After that
+you're in normal-work mode and the rest of the canonical applies.
+
 ## What's NOT in this slim canonical
 
 The deeper reference lives at \`GET https://doco.to/api/v1/agent-reference\`:
