@@ -24,8 +24,11 @@ interface VersionPillProps {
   className?: string;
 }
 
+export const DOCO_TAGLINE = "Doco: keep people, agents, and work aligned.";
+
 /**
- * Identity strip beside the DocoMark on every page: "Alpha <version> · <ago>".
+ * Identity strip beside the DocoMark on every page: "Alpha <version> · <ago>"
+ * with the project tagline underneath.
  * Replaces the prior owner/doco slug breadcrumb (which only appeared on
  * Doco-scoped pages and re-stated info already in the URL). Build-time
  * constants come from vite.config.ts; the relative-time string refreshes
@@ -42,10 +45,16 @@ export function VersionPill({ className }: VersionPillProps) {
   }, [releasedAt]);
   return (
     <span
-      className={cn("font-normal text-xs text-muted-foreground", className)}
+      className={cn(
+        "flex flex-col gap-0.5 font-normal text-xs leading-tight text-muted-foreground",
+        className,
+      )}
       suppressHydrationWarning
     >
-      Alpha {__DOCO_VERSION__} · {ago}
+      <span>
+        Alpha {__DOCO_VERSION__} · {ago}
+      </span>
+      <span>{DOCO_TAGLINE}</span>
     </span>
   );
 }

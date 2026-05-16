@@ -315,7 +315,7 @@ export default function DocoHome({
 
         <div className="grid grid-cols-1 gap-5 min-[840px]:grid-cols-12">
           {/* Left: node counts. */}
-          <aside className="min-[840px]:col-span-5">
+          <aside className="min-[840px]:col-span-6">
             <NodesOverviewCard
               sections={sections}
               search={
@@ -336,7 +336,7 @@ export default function DocoHome({
           </aside>
 
           {/* Right: activity heatmap above the real-time feed. */}
-          <section className="min-[840px]:col-span-7 space-y-5">
+          <section className="min-[840px]:col-span-6 space-y-5">
             <Card>
               <CardHeader>
                 <CardTitle>Activity</CardTitle>
@@ -347,34 +347,33 @@ export default function DocoHome({
             </Card>
 
             <Card>
-              <CardHeader>
-                <CardTitle>Latest activity</CardTitle>
+              <CardHeader className="px-4 py-3">
+                <CardTitle className="text-sm">Latest activity</CardTitle>
               </CardHeader>
               <CardContent className="p-0">
-                <div className="divide-y divide-border">
-                  {items.length === 0 ? (
-                    <div className="px-5 py-6 text-xs text-muted-foreground">
-                      This Doco has no recorded activity yet. Set up scopes via{" "}
-                      <Link
-                        to={`/${ownerSlug}/${docoSlug}/scopes/new`}
-                        className="text-primary hover:underline"
-                      >
-                        scopes/new
-                      </Link>
-                      , or add intents/rules/decisions under
-                      <code className="mx-1 rounded bg-input px-1">{`docos/${ownerSlug}/${docoSlug}/`}</code>
-                      and run <code className="mx-1 rounded bg-input px-1">doco reindex</code>.
-                    </div>
-                  ) : null}
-                  {items.map((it) => (
-                    <ActivityFeedLine
-                      key={it.event_id}
-                      item={it}
-                      ownerSlug={ownerSlug}
-                      docoSlug={docoSlug}
-                    />
-                  ))}
-                </div>
+                {items.length === 0 ? (
+                  <div className="px-4 pb-4 text-xs leading-5 text-muted-foreground">
+                    No recorded activity yet. Create a scope in{" "}
+                    <Link
+                      to={`/${ownerSlug}/${docoSlug}/scopes/new`}
+                      className="text-primary hover:underline"
+                    >
+                      scopes/new
+                    </Link>{" "}
+                    or capture a node; this feed records UI, CLI, and API writes.
+                  </div>
+                ) : (
+                  <div className="divide-y divide-border">
+                    {items.map((it) => (
+                      <ActivityFeedLine
+                        key={it.event_id}
+                        item={it}
+                        ownerSlug={ownerSlug}
+                        docoSlug={docoSlug}
+                      />
+                    ))}
+                  </div>
+                )}
               </CardContent>
             </Card>
           </section>

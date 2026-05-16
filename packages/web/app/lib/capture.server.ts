@@ -765,8 +765,13 @@ async function buildNodesByScope(
       if (!scopeIds.includes(sid)) continue;
       const arr = out.get(sid) ?? [];
       const candidateId = (candidate as unknown as { id?: string }).id;
-      const alreadyIn = arr.some((e) => (e as { id?: string }).id === candidateId);
-      if (!alreadyIn) arr.push(candidate);
+      // If the candidate's id already appears in the scope's member
+      // list (loaded from DB), replace it with the candidate so any
+      // overridden fields (lifecycle, kind, …) win over the persisted
+      // state. Otherwise append.
+      const idx = arr.findIndex((e) => (e as { id?: string }).id === candidateId);
+      if (idx === -1) arr.push(candidate);
+      else arr[idx] = candidate;
       out.set(sid, arr);
     }
   }

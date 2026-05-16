@@ -99,14 +99,158 @@ const addRuleCmd = defineCommand({
   },
 });
 
+// v7 (decision_01KRRR5BQ16ASY8HQEE0V499YG). Bulk + structural operations
+// on a scope: activate / draft / validate / exclude-rule. Each one is a
+// thin wrapper around its doco.to endpoint — the bulk logic (enumerate
+// scope + descendants, fetch members, evaluate rules, write
+// transactionally) lives server-side in
+// packages/web/app/lib/scope-bulk.server.ts.
+
+async function postScopeVerb(
+  scopeId: string,
+  verb: "activate" | "draft" | "validate" | "excluded-rules",
+  body: Record<string, unknown> = {},
+): Promise<void> {
+  if (!scopeId.startsWith("scope_")) {
+    console.error(cross(`--scope-id must start with 'scope_' (got '${scopeId}').`));
+    process.exit(2);
+  }
+  const { token, docoId } = requireDocoConfig();
+  const url = `${DOCO_BASE_URL}/by-id/${encodeURIComponent(docoId)}/api/scopes/${encodeURIComponent(scopeId)}/${verb}.json`;
+  let resp: Response;
+  try {
+    resp = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify(body),
+    });
+  } catch (e) {
+    console.error(cross(`Network error POSTing ${url}: ${(e as Error).message}`));
+    process.exit(1);
+  }
+  const text = await resp.text();
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    parsed = undefined;
+  }
+  if (!resp.ok) {
+    const errMsg =
+      parsed && typeof parsed === "object" && parsed !== null && "error" in parsed
+        ? String((parsed as { error: unknown }).error)
+        : text;
+    console.error(cross(`HTTP ${resp.status}: ${errMsg}`));
+    // Surface validation failures for activate / validate.
+    if (parsed && typeof parsed === "object" && parsed !== null && "failures" in parsed) {
+      const fs = (parsed as { failures: { id: string; node_type: string; error?: string }[] })
+        .failures;
+      if (Array.isArray(fs)) {
+        for (const f of fs.slice(0, 20)) {
+          console.error(`  - ${f.node_type}/${f.id}: ${f.error ?? "(no detail)"}`);
+        }
+        if (fs.length > 20) console.error(`  ...and ${fs.length - 20} more`);
+      }
+    }
+    process.exit(1);
+  }
+  console.log(text);
+}
+
+const activateCmd = defineCommand({
+  meta: {
+    name: "activate",
+    description:
+      "Flip every drafted node in this scope (and descendants) to lifecycle=active. Re-runs the rules engine on each candidate first; aborts on the first failure with the violations listed.",
+  },
+  args: {
+    "scope-id": {
+      type: "string",
+      description: "Required. The target scope's ULID.",
+      required: true,
+    },
+  },
+  async run({ args }) {
+    await postScopeVerb(String(args["scope-id"]), "activate");
+  },
+});
+
+const draftCmd = defineCommand({
+  meta: {
+    name: "draft",
+    description:
+      "Flip every active node in this scope (and descendants) back to lifecycle=drafted. Inverse of `activate`; no validation.",
+  },
+  args: {
+    "scope-id": {
+      type: "string",
+      description: "Required. The target scope's ULID.",
+      required: true,
+    },
+  },
+  async run({ args }) {
+    await postScopeVerb(String(args["scope-id"]), "draft");
+  },
+});
+
+const validateScopeCmd = defineCommand({
+  meta: {
+    name: "validate",
+    description:
+      "Re-evaluate the rules engine against every node in this scope (and descendants) at its current lifecycle. Returns the violation list; no DB writes.",
+  },
+  args: {
+    "scope-id": {
+      type: "string",
+      description: "Required. The target scope's ULID.",
+      required: true,
+    },
+  },
+  async run({ args }) {
+    await postScopeVerb(String(args["scope-id"]), "validate");
+  },
+});
+
+const excludeRuleCmd = defineCommand({
+  meta: {
+    name: "exclude-rule",
+    description:
+      "Add a Rule id to this scope's `excluded_rules` so an inherited authoring rule no longer fires for captures into this scope. The Rule keeps its citation elsewhere; only this one scope opts out.",
+  },
+  args: {
+    "scope-id": {
+      type: "string",
+      description: "Required. The target scope's ULID.",
+      required: true,
+    },
+    rule: {
+      type: "string",
+      description: "Required. The Rule id to exclude (e.g. 'rule_01KR…').",
+      required: true,
+    },
+  },
+  async run({ args }) {
+    const ruleId = String(args.rule);
+    if (!ruleId.startsWith("rule_")) {
+      console.error(cross(`--rule must start with 'rule_' (got '${ruleId}').`));
+      process.exit(2);
+    }
+    await postScopeVerb(String(args["scope-id"]), "excluded-rules", { rule_id: ruleId });
+  },
+});
+
 export const scopeCmd = defineCommand({
   meta: {
     name: "scope",
     description:
-      "Scope operations that don't fit the uniform PATCH/POST shape — currently `add-rule` for prose-driven rule authoring.",
+      "Scope operations that don't fit the uniform PATCH/POST shape: `add-rule` for prose-driven rule authoring; v7 bulk verbs `activate` / `draft` / `validate` / `exclude-rule`.",
   },
   subCommands: {
     "add-rule": addRuleCmd,
+    activate: activateCmd,
+    draft: draftCmd,
+    validate: validateScopeCmd,
+    "exclude-rule": excludeRuleCmd,
   },
 });
 

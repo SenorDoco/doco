@@ -25,6 +25,11 @@ const TABLE_BY_TYPE: Record<string, string> = {
   scope: "scopes",
   eval: "evals",
   idea: "ideas",
+  // v7 (decision_01KRRR5BQ16ASY8HQEE0V499YG): State is a first-class
+  // node type. The generic detail page handles it via this mapping;
+  // the frontmatter renderer surfaces `kind` and `invariants`
+  // alongside the standard summary / scopes / follows tail.
+  state: "states",
   principal: "principals",
   organization: "organizations",
 };

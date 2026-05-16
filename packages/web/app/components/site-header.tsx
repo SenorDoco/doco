@@ -1,7 +1,7 @@
 import { Form, NavLink } from "react-router";
-import { cn } from "~/lib/cn";
 import { DocoMark } from "~/components/doco-mark";
 import { VersionPill } from "~/components/version-pill";
+import { cn } from "~/lib/cn";
 import type { CurrentPrincipal } from "~/lib/session";
 
 interface SiteHeaderProps {
@@ -48,53 +48,54 @@ export function SiteHeader({ docoScope, me }: SiteHeaderProps) {
     <header className="border-b border-border bg-card">
       {/* Row 1: brand + breadcrumb + (host-mode) account actions. */}
       <div className="mx-auto flex max-w-6xl items-center gap-6 px-6 py-3">
-        <h1 className="m-0 flex items-center gap-3 leading-none tracking-tight">
-          <NavLink to="/" className="inline-flex items-center hover:opacity-80" aria-label="Doco home">
+        <h1 className="m-0 flex min-w-0 items-center gap-3 leading-none">
+          <NavLink
+            to="/"
+            className="inline-flex items-center hover:opacity-80"
+            aria-label="Doco home"
+          >
             <DocoMark height={28} />
           </NavLink>
           <VersionPill />
         </h1>
-        <div className="ml-auto flex items-center gap-3 text-xs">
-          {/* mode is always "host" per ADR-093; the conditional remains for future modes. */}
-          {true ? (
-            me ? (
-              <>
-                <NavLink
-                  to="/onboarding/create"
-                  className="rounded-md border border-border px-3 py-1.5 font-semibold hover:bg-input"
-                >
-                  + Doco
-                </NavLink>
-                <NavLink
-                  to="/new-org"
-                  className="rounded-md border border-border px-3 py-1.5 font-semibold hover:bg-input"
-                >
-                  + Org
-                </NavLink>
-                <NavLink
-                  to={`/${me.username}`}
-                  className="rounded-full border border-border bg-input px-3 py-1 font-semibold text-foreground hover:border-primary"
-                >
-                  {me.username}
-                </NavLink>
-                <Form method="post" action="/sign-out">
-                  <button
-                    type="submit"
-                    className="text-muted-foreground hover:text-foreground transition-colors"
-                  >
-                    Sign out
-                  </button>
-                </Form>
-              </>
-            ) : (
+        <div className="ml-auto flex shrink-0 items-center gap-3 text-xs">
+          {me ? (
+            <>
               <NavLink
-                to="/sign-in"
-                className="rounded-md bg-primary px-3 py-1.5 font-semibold text-primary-foreground hover:opacity-90"
+                to="/onboarding/create"
+                className="whitespace-nowrap rounded-md border border-border px-3 py-1.5 font-semibold hover:bg-input"
               >
-                Sign in
+                + Doco
               </NavLink>
-            )
-          ) : null}
+              <NavLink
+                to="/new-org"
+                className="whitespace-nowrap rounded-md border border-border px-3 py-1.5 font-semibold hover:bg-input"
+              >
+                + Org
+              </NavLink>
+              <NavLink
+                to={`/${me.username}`}
+                className="whitespace-nowrap rounded-full border border-border bg-input px-3 py-1 font-semibold text-foreground hover:border-primary"
+              >
+                {me.username}
+              </NavLink>
+              <Form method="post" action="/sign-out">
+                <button
+                  type="submit"
+                  className="text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  Sign out
+                </button>
+              </Form>
+            </>
+          ) : (
+            <NavLink
+              to="/sign-in"
+              className="whitespace-nowrap rounded-md bg-primary px-3 py-1.5 font-semibold text-primary-foreground hover:opacity-90"
+            >
+              Sign in
+            </NavLink>
+          )}
         </div>
       </div>
 
@@ -109,7 +110,9 @@ export function SiteHeader({ docoScope, me }: SiteHeaderProps) {
               className={({ isActive }) =>
                 cn(
                   "transition-colors",
-                  isActive ? "text-foreground font-medium" : "text-muted-foreground hover:text-foreground",
+                  isActive
+                    ? "text-foreground font-medium"
+                    : "text-muted-foreground hover:text-foreground",
                 )
               }
             >
