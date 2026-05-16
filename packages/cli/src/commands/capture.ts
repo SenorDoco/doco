@@ -1,8 +1,8 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { defineCommand } from "citty";
-import { c, cross } from "../output.js";
 import { requireDocoConfig } from "../env.js";
+import { c, cross } from "../output.js";
 
 const DOCO_BASE_URL = "https://doco.to";
 
@@ -87,12 +87,26 @@ const intentCmd = defineCommand({
     description: "Capture an Intent (POST /by-id/<doco_id>/api/intents.json).",
   },
   args: {
-    summary: { type: "string", description: "Required. One-line 'what someone wants' summary.", required: true },
-    scope: { type: "string", description: "Required. Comma-separated scope names (bare, e.g. 'framework,user-flows').", required: true },
+    summary: {
+      type: "string",
+      description: "Required. One-line 'what someone wants' summary.",
+      required: true,
+    },
+    scope: {
+      type: "string",
+      description: "Required. Comma-separated scope names (bare, e.g. 'framework,user-flows').",
+      required: true,
+    },
     title: { type: "string", description: "Optional short title (defaults to summary)." },
     "body-md": { type: "string", description: "Optional markdown body (inline string)." },
-    "body-md-file": { type: "string", description: "Optional path to a file whose contents become body_md." },
-    "wanted-by-username": { type: "string", description: "Optional principal username who wants this." },
+    "body-md-file": {
+      type: "string",
+      description: "Optional path to a file whose contents become body_md.",
+    },
+    "wanted-by-username": {
+      type: "string",
+      description: "Optional principal username who wants this.",
+    },
     lifecycle: { type: "string", description: "Optional. Defaults to 'active'." },
   },
   async run({ args }) {
@@ -101,7 +115,10 @@ const intentCmd = defineCommand({
       scope_names: splitList(args.scope as string),
     };
     if (args.title) body.title = args.title;
-    const bodyMd = readBody(args["body-md"] as string | undefined, args["body-md-file"] as string | undefined);
+    const bodyMd = readBody(
+      args["body-md"] as string | undefined,
+      args["body-md-file"] as string | undefined,
+    );
     if (bodyMd !== undefined) body.body_md = bodyMd;
     if (args["wanted-by-username"]) body.wanted_by_username = args["wanted-by-username"];
     if (args.lifecycle) body.lifecycle = args.lifecycle;
@@ -115,19 +132,43 @@ const decisionCmd = defineCommand({
     description: "Capture a Decision (POST /by-id/<doco_id>/api/decisions.json).",
   },
   args: {
-    question: { type: "string", description: "Required. The question the Decision answers.", required: true },
-    chosen: { type: "string", description: "Required. The chosen resolution (multi-line ok).", required: true },
-    scope: { type: "string", description: "Required. Comma-separated scope names.", required: true },
-    summary: { type: "string", description: "Optional one-line summary; derived from chosen if absent." },
+    question: {
+      type: "string",
+      description: "Required. The question the Decision answers.",
+      required: true,
+    },
+    chosen: {
+      type: "string",
+      description: "Required. The chosen resolution (multi-line ok).",
+      required: true,
+    },
+    scope: {
+      type: "string",
+      description: "Required. Comma-separated scope names.",
+      required: true,
+    },
+    summary: {
+      type: "string",
+      description: "Optional one-line summary; derived from chosen if absent.",
+    },
     "intent-id": { type: "string", description: "Optional. Comma-separated intent ids to link." },
     alternatives: {
       type: "string",
-      description: "Optional JSON: '[{\"name\":\"X\",\"rejected_because\":\"Y\"}]'.",
+      description: 'Optional JSON: \'[{"name":"X","rejected_because":"Y"}]\'.',
     },
-    "decided-by-username": { type: "string", description: "Optional principal username who made the decision." },
+    "decided-by-username": {
+      type: "string",
+      description: "Optional principal username who made the decision.",
+    },
     "body-md": { type: "string", description: "Optional markdown body (inline string)." },
-    "body-md-file": { type: "string", description: "Optional path to a file whose contents become body_md." },
-    "born-from": { type: "string", description: "Optional id of an origin entity (e.g. bugfix Decision)." },
+    "body-md-file": {
+      type: "string",
+      description: "Optional path to a file whose contents become body_md.",
+    },
+    "born-from": {
+      type: "string",
+      description: "Optional id of an origin entity (e.g. bugfix Decision).",
+    },
     lifecycle: { type: "string", description: "Optional. Defaults to 'active'." },
   },
   async run({ args }) {
@@ -145,7 +186,10 @@ const decisionCmd = defineCommand({
     );
     if (alts) body.alternatives = alts;
     if (args["decided-by-username"]) body.decided_by_username = args["decided-by-username"];
-    const bodyMd = readBody(args["body-md"] as string | undefined, args["body-md-file"] as string | undefined);
+    const bodyMd = readBody(
+      args["body-md"] as string | undefined,
+      args["body-md-file"] as string | undefined,
+    );
     if (bodyMd !== undefined) body.body_md = bodyMd;
     if (args["born-from"]) body.born_from = args["born-from"];
     if (args.lifecycle) body.lifecycle = args.lifecycle;
@@ -160,28 +204,46 @@ const evalCmd = defineCommand({
   },
   args: {
     name: { type: "string", description: "Required. Human-readable name.", required: true },
-    scope: { type: "string", description: "Required. Comma-separated scope names.", required: true },
+    scope: {
+      type: "string",
+      description: "Required. Comma-separated scope names.",
+      required: true,
+    },
     "criterion-kind": {
       type: "string",
       description: "Required. One of: exact | shape | llm-judge.",
       required: true,
     },
-    "criterion-spec": { type: "string", description: "Optional spec string accompanying the criterion." },
+    "criterion-spec": {
+      type: "string",
+      description: "Optional spec string accompanying the criterion.",
+    },
     summary: { type: "string", description: "Optional one-line summary." },
     description: { type: "string", description: "Optional free-form description." },
     input: { type: "string", description: "Optional JSON for the input value." },
-    expected: { type: "string", description: "Optional JSON for the expected outcome (or prose for llm-judge)." },
+    expected: {
+      type: "string",
+      description: "Optional JSON for the expected outcome (or prose for llm-judge).",
+    },
     "target-ref": { type: "string", description: "Optional id of the entity this Eval tests." },
     "intent-id": { type: "string", description: "Optional comma-separated intent ids." },
-    "authored-by-username": { type: "string", description: "Optional principal username who authored the Eval." },
+    "authored-by-username": {
+      type: "string",
+      description: "Optional principal username who authored the Eval.",
+    },
     "body-md": { type: "string", description: "Optional markdown body (inline string)." },
-    "body-md-file": { type: "string", description: "Optional path to a file whose contents become body_md." },
+    "body-md-file": {
+      type: "string",
+      description: "Optional path to a file whose contents become body_md.",
+    },
     lifecycle: { type: "string", description: "Optional. Defaults to 'active'." },
   },
   async run({ args }) {
     const kind = args["criterion-kind"] as string;
     if (!["exact", "shape", "llm-judge"].includes(kind)) {
-      console.error(cross(`--criterion-kind must be one of: exact, shape, llm-judge (got '${kind}').`));
+      console.error(
+        cross(`--criterion-kind must be one of: exact, shape, llm-judge (got '${kind}').`),
+      );
       process.exit(2);
     }
     const criterion: Record<string, unknown> = { kind };
@@ -201,7 +263,10 @@ const evalCmd = defineCommand({
     const intents = splitList(args["intent-id"] as string | undefined);
     if (intents.length) body.intent_ids = intents;
     if (args["authored-by-username"]) body.authored_by_username = args["authored-by-username"];
-    const bodyMd = readBody(args["body-md"] as string | undefined, args["body-md-file"] as string | undefined);
+    const bodyMd = readBody(
+      args["body-md"] as string | undefined,
+      args["body-md-file"] as string | undefined,
+    );
     if (bodyMd !== undefined) body.body_md = bodyMd;
     if (args.lifecycle) body.lifecycle = args.lifecycle;
     await postCapture("evals", body);
@@ -224,7 +289,7 @@ const scopeCmd = defineCommand({
     "template-name": {
       type: "string",
       description:
-        "Optional. Install a default template (e.g. 'user-flows', 'bugs'). Mutually exclusive with --name.",
+        "Optional. Install a default template. The framework ships two: 'global' (auto-installed at Doco create) and 'user-flows'. Mutually exclusive with --name.",
     },
     name: {
       type: "string",
@@ -295,18 +360,49 @@ const actionCmd = defineCommand({
     description: "Capture an Action (POST /by-id/<doco_id>/api/actions.json).",
   },
   args: {
-    summary: { type: "string", description: "Required. One-line 'what was done' summary.", required: true },
-    scope: { type: "string", description: "Required. Comma-separated scope names.", required: true },
-    verb: { type: "string", description: "Required. Short verb (e.g. 'refactor', 'migrate').", required: true },
-    "intent-id": { type: "string", description: "Optional. Comma-separated intent ids this action serves." },
-    "decision-id": { type: "string", description: "Optional. Comma-separated decision ids this action enacts (frontmatter `decision_ids`)." },
-    "reasoning-id": { type: "string", description: "Optional. Comma-separated reasoning ids consulted." },
-    follows: { type: "string", description: "Optional. Comma-separated entity ids this action follows." },
+    summary: {
+      type: "string",
+      description: "Required. One-line 'what was done' summary.",
+      required: true,
+    },
+    scope: {
+      type: "string",
+      description: "Required. Comma-separated scope names.",
+      required: true,
+    },
+    verb: {
+      type: "string",
+      description: "Required. Short verb (e.g. 'refactor', 'migrate').",
+      required: true,
+    },
+    "intent-id": {
+      type: "string",
+      description: "Optional. Comma-separated intent ids this action serves.",
+    },
+    "decision-id": {
+      type: "string",
+      description:
+        "Optional. Comma-separated decision ids this action enacts (frontmatter `decision_ids`).",
+    },
+    "reasoning-id": {
+      type: "string",
+      description: "Optional. Comma-separated reasoning ids consulted.",
+    },
+    follows: {
+      type: "string",
+      description: "Optional. Comma-separated entity ids this action follows.",
+    },
     inputs: { type: "string", description: "Optional JSON for verb-specific inputs." },
     outputs: { type: "string", description: "Optional JSON for verb-specific outputs." },
-    "performed-by-username": { type: "string", description: "Optional principal username who performed the action." },
+    "performed-by-username": {
+      type: "string",
+      description: "Optional principal username who performed the action.",
+    },
     "body-md": { type: "string", description: "Optional markdown body (inline string)." },
-    "body-md-file": { type: "string", description: "Optional path to a file whose contents become body_md." },
+    "body-md-file": {
+      type: "string",
+      description: "Optional path to a file whose contents become body_md.",
+    },
     lifecycle: { type: "string", description: "Optional. Defaults to 'succeeded'." },
   },
   async run({ args }) {
@@ -328,7 +424,10 @@ const actionCmd = defineCommand({
     const outputs = parseJson<unknown>(args.outputs as string | undefined, "outputs");
     if (outputs !== undefined) body.outputs = outputs;
     if (args["performed-by-username"]) body.performed_by_username = args["performed-by-username"];
-    const bodyMd = readBody(args["body-md"] as string | undefined, args["body-md-file"] as string | undefined);
+    const bodyMd = readBody(
+      args["body-md"] as string | undefined,
+      args["body-md-file"] as string | undefined,
+    );
     if (bodyMd !== undefined) body.body_md = bodyMd;
     if (args.lifecycle) body.lifecycle = args.lifecycle;
     await postCapture("actions", body);
@@ -342,24 +441,43 @@ const ruleCmd = defineCommand({
   },
   args: {
     summary: { type: "string", description: "Required. One-line policy summary.", required: true },
-    scope: { type: "string", description: "Required. Comma-separated scope names.", required: true },
-    predicate: { type: "string", description: "Required. The machine-checkable / prose predicate the Rule asserts.", required: true },
-    "intent-id": { type: "string", description: "Optional. Comma-separated intent ids this rule serves." },
+    scope: {
+      type: "string",
+      description: "Required. Comma-separated scope names.",
+      required: true,
+    },
+    predicate: {
+      type: "string",
+      description: "Required. The machine-checkable / prose predicate the Rule asserts.",
+      required: true,
+    },
+    "intent-id": {
+      type: "string",
+      description: "Optional. Comma-separated intent ids this rule serves.",
+    },
     "enforced-by": {
       type: "string",
       description: "Optional. One of: lint | runtime | review | manual.",
     },
     "born-from": { type: "string", description: "Optional. Decision id this Rule was born from." },
     severity: { type: "string", description: "Optional. One of: hard | soft." },
-    "authored-by-username": { type: "string", description: "Optional principal username who authored the Rule." },
+    "authored-by-username": {
+      type: "string",
+      description: "Optional principal username who authored the Rule.",
+    },
     "body-md": { type: "string", description: "Optional markdown body (inline string)." },
-    "body-md-file": { type: "string", description: "Optional path to a file whose contents become body_md." },
+    "body-md-file": {
+      type: "string",
+      description: "Optional path to a file whose contents become body_md.",
+    },
     lifecycle: { type: "string", description: "Optional. Defaults to 'active'." },
   },
   async run({ args }) {
     const enforced = args["enforced-by"] as string | undefined;
     if (enforced && !["lint", "runtime", "review", "manual"].includes(enforced)) {
-      console.error(cross(`--enforced-by must be one of: lint, runtime, review, manual (got '${enforced}').`));
+      console.error(
+        cross(`--enforced-by must be one of: lint, runtime, review, manual (got '${enforced}').`),
+      );
       process.exit(2);
     }
     const severity = args.severity as string | undefined;
@@ -378,7 +496,10 @@ const ruleCmd = defineCommand({
     if (severity) body.severity = severity;
     if (args["born-from"]) body.born_from = args["born-from"];
     if (args["authored-by-username"]) body.authored_by_username = args["authored-by-username"];
-    const bodyMd = readBody(args["body-md"] as string | undefined, args["body-md-file"] as string | undefined);
+    const bodyMd = readBody(
+      args["body-md"] as string | undefined,
+      args["body-md-file"] as string | undefined,
+    );
     if (bodyMd !== undefined) body.body_md = bodyMd;
     if (args.lifecycle) body.lifecycle = args.lifecycle;
     await postCapture("rules", body);
@@ -391,15 +512,38 @@ const reasoningCmd = defineCommand({
     description: "Capture a Reasoning (POST /by-id/<doco_id>/api/reasoning.json).",
   },
   args: {
-    claim: { type: "string", description: "Required. The claim / conclusion the reasoning establishes.", required: true },
-    scope: { type: "string", description: "Required. Comma-separated scope names.", required: true },
-    summary: { type: "string", description: "Optional one-line summary; derived from claim if absent." },
-    "intent-id": { type: "string", description: "Optional. Comma-separated intent ids this reasoning serves." },
-    supports: { type: "string", description: "Optional. Comma-separated entity ids supported by this reasoning." },
+    claim: {
+      type: "string",
+      description: "Required. The claim / conclusion the reasoning establishes.",
+      required: true,
+    },
+    scope: {
+      type: "string",
+      description: "Required. Comma-separated scope names.",
+      required: true,
+    },
+    summary: {
+      type: "string",
+      description: "Optional one-line summary; derived from claim if absent.",
+    },
+    "intent-id": {
+      type: "string",
+      description: "Optional. Comma-separated intent ids this reasoning serves.",
+    },
+    supports: {
+      type: "string",
+      description: "Optional. Comma-separated entity ids supported by this reasoning.",
+    },
     evidence: { type: "string", description: "Optional JSON describing evidence." },
-    "authored-by-username": { type: "string", description: "Optional principal username who authored the reasoning." },
+    "authored-by-username": {
+      type: "string",
+      description: "Optional principal username who authored the reasoning.",
+    },
     "body-md": { type: "string", description: "Optional markdown body (inline string)." },
-    "body-md-file": { type: "string", description: "Optional path to a file whose contents become body_md." },
+    "body-md-file": {
+      type: "string",
+      description: "Optional path to a file whose contents become body_md.",
+    },
     lifecycle: { type: "string", description: "Optional. Defaults to 'active'." },
   },
   async run({ args }) {
@@ -415,7 +559,10 @@ const reasoningCmd = defineCommand({
     const evidence = parseJson<unknown>(args.evidence as string | undefined, "evidence");
     if (evidence !== undefined) body.evidence = evidence;
     if (args["authored-by-username"]) body.authored_by_username = args["authored-by-username"];
-    const bodyMd = readBody(args["body-md"] as string | undefined, args["body-md-file"] as string | undefined);
+    const bodyMd = readBody(
+      args["body-md"] as string | undefined,
+      args["body-md-file"] as string | undefined,
+    );
     if (bodyMd !== undefined) body.body_md = bodyMd;
     if (args.lifecycle) body.lifecycle = args.lifecycle;
     await postCapture("reasoning", body);
@@ -435,11 +582,14 @@ const referenceCmd = defineCommand({
     },
     locator: {
       type: "string",
-      description:
-        "Required. The pointer itself — path, URL, ticket id, commit sha, document id.",
+      description: "Required. The pointer itself — path, URL, ticket id, commit sha, document id.",
       required: true,
     },
-    scope: { type: "string", description: "Required. Comma-separated scope names.", required: true },
+    scope: {
+      type: "string",
+      description: "Required. Comma-separated scope names.",
+      required: true,
+    },
     summary: {
       type: "string",
       description: "Optional one-line summary; derived from ref-type + locator if absent.",

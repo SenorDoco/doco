@@ -1,11 +1,11 @@
-import { Form, Link, redirect } from "react-router";
 import { createDocoInHost } from "@doco/host";
 import { reindex } from "@doco/index";
+import { Form, Link, redirect } from "react-router";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
+import { SiteHeader } from "~/components/site-header";
 import { rootDir } from "~/lib/db.server";
 import { listOrgsOwnedOrAdminedBy, loadHostConfig } from "~/lib/host";
 import { getCurrentPrincipal } from "~/lib/session";
-import { SiteHeader } from "~/components/site-header";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 
 export async function loader({ request }: { request: Request }) {
   const me = await getCurrentPrincipal(request);
@@ -19,7 +19,9 @@ export async function action({ request }: { request: Request }) {
   if (!me) throw redirect("/sign-in?next=%2Fnew-doco");
   const form = await request.formData();
   const ownerSlug = String(form.get("owner_slug") ?? "").trim();
-  const docoSlug = String(form.get("doco_slug") ?? "").trim().toLowerCase();
+  const docoSlug = String(form.get("doco_slug") ?? "")
+    .trim()
+    .toLowerCase();
   const description = String(form.get("description") ?? "").trim();
   const visibility = String(form.get("visibility") ?? "private") as "private" | "public";
 
@@ -55,9 +57,7 @@ export default function NewDoco({
   actionData,
 }: {
   loaderData: Awaited<ReturnType<typeof loader>>;
-  actionData?:
-    | { error?: string; ok?: { ownerSlug: string; docoSlug: string } }
-    | undefined;
+  actionData?: { error?: string; ok?: { ownerSlug: string; docoSlug: string } } | undefined;
 }) {
   const { me, orgs, host } = loaderData;
   const owners = [
@@ -77,9 +77,8 @@ export default function NewDoco({
                 Doco created · {ownerSlug}/{docoSlug}
               </CardTitle>
               <CardDescription>
-                Set up the scopes you'll document in. At least one scope is
-                needed before nodes can be added — but you can come back any
-                time.
+                Set up the scopes you'll document in. At least one scope is needed before nodes can
+                be added — but you can come back any time.
               </CardDescription>
             </CardHeader>
             <CardContent className="flex items-center gap-2">
@@ -108,9 +107,9 @@ export default function NewDoco({
       <main className="mx-auto max-w-2xl px-6 py-8">
         <Card>
           <CardHeader>
-            <CardTitle>New Doco</CardTitle>
+            <CardTitle>New doco</CardTitle>
             <CardDescription>
-              Create a new Doco owned by you or one of your organizations.
+              Create a new doco owned by you or one of your organizations.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -135,7 +134,6 @@ export default function NewDoco({
                   name="doco_slug"
                   required
                   pattern="[a-z0-9_-]+"
-                  autoFocus
                   placeholder="my-doco"
                   className="w-full rounded-md border border-border bg-input px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
                 />
@@ -163,8 +161,8 @@ export default function NewDoco({
                 </select>
               </label>
               <p className="text-[11px] text-muted-foreground">
-                Next step after creation: set up the scopes you want to document
-                in. You can also add scopes later.
+                Next step after creation: set up the scopes you want to document in. You can also
+                add scopes later.
               </p>
               {actionData?.error ? (
                 <p className="text-xs text-destructive">{actionData.error}</p>
@@ -176,7 +174,10 @@ export default function NewDoco({
                 >
                   Create Doco
                 </button>
-                <Link to="/dashboard" className="text-xs text-muted-foreground hover:text-foreground">
+                <Link
+                  to="/dashboard"
+                  className="text-xs text-muted-foreground hover:text-foreground"
+                >
                   Cancel
                 </Link>
               </div>

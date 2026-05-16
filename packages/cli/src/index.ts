@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { defineCommand, runMain } from "citty";
 import { activityCmd, historyCmd } from "./commands/audit.js";
+import { bootstrapCmd, searchCmd } from "./commands/bootstrap.js";
 import { captureCmd } from "./commands/capture.js";
 import { exportCmd } from "./commands/export.js";
 import { hostCmd } from "./commands/host.js";
@@ -26,6 +27,8 @@ const main = defineCommand({
   subCommands: {
     init: initCmd,
     login: loginCmd,
+    bootstrap: bootstrapCmd,
+    search: searchCmd,
     show: showCmd,
     validate: validateCmd,
     reindex: reindexCmd,

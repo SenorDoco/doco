@@ -1,5 +1,7 @@
+import { withClient } from "@doco/db";
+import type { PoolClient } from "pg";
 // Per-Doco home — bare title up top, then the search input, then a
-// two-column body: Stats on the left, "Activity" heatmap above the
+// two-column body: Nodes on the left, "Activity" heatmap above the
 // "Latest activity" feed on the right.
 //
 // The feed renders one line per recently-added entity in the same shape
@@ -15,15 +17,14 @@
 import { useEffect, useState } from "react";
 import { Form, Link, useRevalidator } from "react-router";
 import { parse as parseYaml } from "yaml";
-import type { PoolClient } from "pg";
-import { withClient } from "@doco/db";
+import { ActivityHeatmap } from "~/components/activity-heatmap";
+import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
+import { SiteHeader } from "~/components/site-header";
 import { docoPath } from "~/lib/db.server";
 import { loadDocoForRead } from "~/lib/doco-access.server";
 import { loadHostConfig } from "~/lib/host";
+import { nodeTypeColor } from "~/lib/node-colors";
 import { listScopeDetails } from "~/lib/scope-helpers.server";
-import { SiteHeader } from "~/components/site-header";
-import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
-import { ActivityHeatmap } from "~/components/activity-heatmap";
 
 const FEED_LIMIT = 30;
 const HEATMAP_WEEKS = 26;
@@ -111,14 +112,26 @@ export async function loader({
     });
 
     const counts: NodeTypeCount[] = [
-      { type: "decision", label: "Decisions", count: await countRows(c, "decisions", ctx.meta.docoId) },
+      {
+        type: "decision",
+        label: "Decisions",
+        count: await countRows(c, "decisions", ctx.meta.docoId),
+      },
       { type: "action", label: "Actions", count: await countRows(c, "actions", ctx.meta.docoId) },
       { type: "intent", label: "Intents", count: await countRows(c, "intents", ctx.meta.docoId) },
       { type: "rule", label: "Rules", count: await countRows(c, "rules", ctx.meta.docoId) },
       { type: "scope", label: "Scopes", count: await countRows(c, "scopes", ctx.meta.docoId) },
       { type: "eval", label: "Evals", count: await countRows(c, "evals", ctx.meta.docoId) },
-      { type: "reference", label: "References", count: await countRows(c, "reference_entities", ctx.meta.docoId) },
-      { type: "reasoning", label: "Reasonings", count: await countRows(c, "reasoning", ctx.meta.docoId) },
+      {
+        type: "reference",
+        label: "References",
+        count: await countRows(c, "reference_entities", ctx.meta.docoId),
+      },
+      {
+        type: "reasoning",
+        label: "Reasonings",
+        count: await countRows(c, "reasoning", ctx.meta.docoId),
+      },
       { type: "idea", label: "Ideas", count: await countRows(c, "ideas", ctx.meta.docoId) },
     ];
 
@@ -211,11 +224,7 @@ export default function DocoHome({
 
   return (
     <div>
-      <SiteHeader
-        mode="host"
-        me={me}
-        docoScope={{ ownerSlug, docoSlug }}
-      />
+      <SiteHeader mode="host" me={me} docoScope={{ ownerSlug, docoSlug }} />
       <main className="mx-auto max-w-6xl px-6 py-6 space-y-5">
         {/* Bare title — no card wrapper. */}
         <div className="space-y-1">
@@ -229,28 +238,40 @@ export default function DocoHome({
         <SearchBoxWithHistory ownerSlug={ownerSlug} docoSlug={docoSlug} />
 
         <div className="grid grid-cols-1 gap-5 min-[840px]:grid-cols-12">
-          {/* Left: stats. */}
+          {/* Left: node counts. */}
           <aside className="min-[840px]:col-span-5">
             <Card>
               <CardHeader>
-                <CardTitle>Stats</CardTitle>
+                <CardTitle>Nodes</CardTitle>
               </CardHeader>
               <CardContent className="pt-0">
-                <dl className="divide-y divide-border">
-                  {counts.map((c) => (
-                    <div key={c.type} className="flex items-center justify-between py-2">
-                      <dt className="text-sm text-foreground">
-                        <Link
-                          to={`/${ownerSlug}/${docoSlug}/${c.type}`}
-                          className="hover:text-primary hover:underline"
-                        >
-                          {c.label}
-                        </Link>
-                      </dt>
-                      <dd className="font-mono text-sm tabular-nums text-foreground">{c.count}</dd>
-                    </div>
-                  ))}
-                  <div className="flex items-center justify-between py-2 font-semibold">
+                <dl className="space-y-1">
+                  {counts.map((c) => {
+                    const color = nodeTypeColor(c.type);
+                    return (
+                      <div
+                        key={c.type}
+                        className="flex items-center justify-between rounded-sm py-2 pl-3 pr-2"
+                        style={{
+                          background: `color-mix(in oklch, ${color} 8%, white)`,
+                          boxShadow: `inset 4px 0 0 ${color}`,
+                        }}
+                      >
+                        <dt className="text-sm text-foreground">
+                          <Link
+                            to={`/${ownerSlug}/${docoSlug}/${c.type}`}
+                            className="hover:text-primary hover:underline"
+                          >
+                            {c.label}
+                          </Link>
+                        </dt>
+                        <dd className="font-mono text-sm tabular-nums text-foreground">
+                          {c.count}
+                        </dd>
+                      </div>
+                    );
+                  })}
+                  <div className="flex items-center justify-between border-t border-border pt-3 font-semibold">
                     <dt className="text-sm text-foreground">Total</dt>
                     <dd className="font-mono text-sm tabular-nums text-foreground">{totalNodes}</dd>
                   </div>
@@ -291,12 +312,7 @@ export default function DocoHome({
                     </div>
                   ) : null}
                   {items.map((it) => (
-                    <FeedLine
-                      key={it.id}
-                      item={it}
-                      ownerSlug={ownerSlug}
-                      docoSlug={docoSlug}
-                    />
+                    <FeedLine key={it.id} item={it} ownerSlug={ownerSlug} docoSlug={docoSlug} />
                   ))}
                 </div>
               </CardContent>
@@ -419,13 +435,11 @@ function SearchBoxWithHistory({
           onBlur={() => setFocused(false)}
           autoComplete="off"
           spellCheck={false}
-          placeholder={`Search ${ownerSlug}/${docoSlug} — slugs, summaries, body, numbers…`}
+          placeholder={`Search ${ownerSlug}/${docoSlug} — summaries, body, scope names…`}
           className="w-full rounded-md border border-border bg-input px-4 py-2.5 text-sm text-foreground outline-none focus:border-primary"
-          autoFocus
         />
         {showDropdown ? (
           <ul
-            role="listbox"
             aria-label="Recent searches"
             className="absolute left-0 right-0 top-full z-10 mt-1 overflow-hidden rounded-md border border-border bg-card text-sm text-card-foreground shadow-sm"
           >

@@ -78,7 +78,7 @@ read -r -d '' PROTOCOL_REMINDER <<'EOF' || true
    [🔮 Doco] <doco_id>: **<N>** node(s) added/updated
    <N> = count of distinct entities you added/updated this turn (PATCH-3-fields-of-1-Decision = 1, not 3). The number MUST be wrapped in markdown bold (`**N**`). Singular when N == 1, plural otherwise (0 is plural). A "turn" is one user prompt → your complete answer, even when threaded through many tool calls; the tally bookends the turn, not each chunk.
 
-The full canonical_instructions was loaded at session start. Re-fetch via `curl -s https://doco.to/api/v1/agent-bootstrap?id=$DOCO_ID -H "Authorization: Bearer $DOCO_TOKEN"` if you've lost track and are connected.
+The full canonical_instructions was loaded at session start. Re-fetch via `doco bootstrap` if you've lost track and are connected.
 EOF
 
 # 4. Pre-fetch /search.json for the user's prompt so the agent doesn't

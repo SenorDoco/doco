@@ -12,12 +12,19 @@ the user will call you out.
 ## Before you respond to ANY message — fetch your real instructions
 
 ```
-# Load DOCO_TOKEN from gitignored .env if your shell doesn't already export it.
-# Skipping this line is the #1 cause of "token cannot access this Doco" warnings
-# from an otherwise-valid token — shell expansion of $DOCO_TOKEN sees only the
-# shell environment, never the .env file the SDK/CLI would read.
-[ -n "$DOCO_TOKEN" ] || { set -a; . ./.env; set +a; }
-curl -s "https://doco.to/api/v1/agent-bootstrap?id=__DOCO_ID__" -H "Authorization: Bearer $DOCO_TOKEN"
+# Preferred: keeps DOCO_TOKEN out of shell command text, so agent
+# permission reviewers can approve the network call without seeing the secret.
+if command -v doco >/dev/null 2>&1; then
+  doco bootstrap
+elif [ -f "packages/cli/dist/index.js" ]; then
+  node packages/cli/dist/index.js bootstrap
+elif command -v pnpm >/dev/null 2>&1 && [ -f "packages/cli/src/index.ts" ]; then
+  pnpm exec tsx packages/cli/src/index.ts bootstrap
+else
+  # Fallback only if the CLI is unavailable:
+  [ -n "$DOCO_TOKEN" ] || { set -a; . ./.env; set +a; }
+  curl -s "https://doco.to/api/v1/agent-bootstrap?id=__DOCO_ID__" -H "Authorization: Bearer $DOCO_TOKEN"
+fi
 ```
 
 Read the `canonical_instructions` field of the response. Read it
@@ -41,9 +48,9 @@ protocol fresh automatically:
   use that line instead of regular Doco query/footer/tally lines.
 
 If you see those blocks at the top of your context, the hooks worked
-— follow what they say. If not, run the curl manually. Agents other
-than Claude Code don't have these hooks at all — run the curl above
-at the start of every task.
+— follow what they say. If not, run the bootstrap command manually.
+Agents other than Claude Code don't have these hooks at all — run
+`doco bootstrap` above at the start of every task.
 
 ## Where DOCO_ID and DOCO_TOKEN live
 

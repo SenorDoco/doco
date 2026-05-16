@@ -178,26 +178,29 @@ BODY (JSON)
                             document into this scope. false → available
                             but no extra attention prompt. Soft signal,
                             not enforcement.
-  template_name  optional   install a default template by name (e.g.
-                            "user-flows", "bugs"). Mutually exclusive
-                            with the custom fields below.
+  template_name  optional   install a default template by name. The
+                            framework ships two: "global" (auto-installed
+                            on Doco create) and "user-flows" (opt-in
+                            here). Mutually exclusive with the custom
+                            fields below. The install seeds one Intent
+                            (from the template's intentSummary) plus N
+                            Rules (one per template rule) into the new
+                            scope.
   name           required*  lowercase, starts with a letter, no slashes.
                             *if template_name is absent.
   icon           optional   single emoji.
-  purpose        optional   why this scope exists. Agents read this
-                            before authoring into it.
-  guidelines     optional   markdown guidance for authors.
   parent_id      optional   id of an existing scope to nest this one
                             under.
-  rules          optional   pre-seeded checks (predicates the engine
-                            runs on every capture into this scope —
-                            requires_edge / requires_field /
-                            mandatory_scope / forbids_* / probabilistic).
-                            For typed rule objects only — to author from
-                            plain English (recommended), POST to
+  authoring_rules optional  typed predicates the engine runs on every
+                            capture into this scope (requires_edge /
+                            requires_field / mandatory_scope / forbids_*
+                            / probabilistic). To author from plain
+                            English instead, POST to
                             \`/api/scopes/<scope_id>/rules.json\` with
-                            \`{prose}\` instead and let the LLM
-                            classifier pick the predicate.
+                            \`{prose}\` and let the LLM classifier pick
+                            the predicate.
+  guidance_rules optional   array of prose Rules ({text, lifecycle?})
+                            for agents to read; no automated check.
 
 SUCCESS RESPONSE (HTTP 201, application/json)
   {
@@ -213,12 +216,12 @@ ERROR RESPONSES
   400  Missing/invalid \`watched\`, bad name, unknown template, missing parent.
   409  Scope with this name already exists.
 
-EXAMPLE — install the bugs template as watched
+EXAMPLE — install the user-flows template as watched
   curl -sS -X POST \\
     -H "Content-Type: application/json" \\
     -H "Authorization: Bearer $DOCO_TOKEN" \\
     ${baseUrl}/${owner}/${doco}/api/scopes.json \\
-    -d '{ "template_name": "bugs", "watched": true }'
+    -d '{ "template_name": "user-flows", "watched": true }'
 
 EXAMPLE — custom scope, not watched, nested under an existing parent
   curl -sS -X POST \\

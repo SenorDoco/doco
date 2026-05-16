@@ -1,16 +1,16 @@
-import { Link, redirect } from "react-router";
 import { withClient } from "@doco/db";
 import { entityUrl } from "@doco/shared";
+import { Link, redirect } from "react-router";
+import { ActivityHeatmap } from "~/components/activity-heatmap";
+import { Badge } from "~/components/badge";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
+import { SiteHeader } from "~/components/site-header";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "~/components/table";
 import { isMyDoco } from "~/lib/doco-access.server";
 import { listDocoStats } from "~/lib/doco-stats.server";
 import { listAllDocos, listMyOrgs, loadHostConfig } from "~/lib/host";
 import { getCurrentPrincipal } from "~/lib/session";
 import { timeAgo } from "~/lib/time-ago";
-import { SiteHeader } from "~/components/site-header";
-import { ActivityHeatmap } from "~/components/activity-heatmap";
-import { Badge } from "~/components/badge";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "~/components/table";
 
 const HEATMAP_WEEKS = 26;
 const FEED_LIMIT = 20;
@@ -42,9 +42,7 @@ export async function loader({ request }: { request: Request }) {
   if (!me) throw redirect("/sign-in");
 
   const allDocos = await listAllDocos();
-  const mine = await Promise.all(
-    allDocos.map((d) => isMyDoco({ ownerId: d.ownerId }, me.id)),
-  );
+  const mine = await Promise.all(allDocos.map((d) => isMyDoco({ ownerId: d.ownerId }, me.id)));
   const docos = allDocos.filter((_, i) => mine[i]);
   const myDocoIds = docos.map((d) => d.docoId);
   const docoStats = await listDocoStats(myDocoIds);
@@ -187,9 +185,9 @@ export default function Dashboard({
         <div className="grid grid-cols-1 gap-4 min-[840px]:grid-cols-2">
           <Card>
             <CardHeader>
-              <CardTitle>Your Docos</CardTitle>
+              <CardTitle>Your docos</CardTitle>
               <CardDescription>
-                Your docos, plus docos owned by organizations you belong to. Click to open.
+                Your docos, plus docos owned by organizations you belong to.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -243,9 +241,9 @@ export default function Dashboard({
 
             <Card>
               <CardHeader>
-                <CardTitle>Latest activity in your Docos</CardTitle>
+                <CardTitle>Latest activity in your docos</CardTitle>
                 <CardDescription>
-                  Newest first across every Doco listed on the left.
+                  Newest first across every doco listed on the left.
                 </CardDescription>
               </CardHeader>
               <CardContent className="p-0">

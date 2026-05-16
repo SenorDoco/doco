@@ -7,6 +7,7 @@
 // can't run during SSR.
 import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router";
+import { nodeTypeColor } from "~/lib/node-colors";
 import "@xyflow/react/dist/style.css";
 
 export interface GraphNode {
@@ -57,32 +58,6 @@ interface MiniMapNodeProps {
   borderRadius?: number;
   shapeRendering?: string;
 }
-
-/**
- * Twelve distinct hues, no two visually adjacent. The four most-visible
- * types in the entity-detail graph (decision, scope, intent, principal)
- * occupy widely-separated parts of the wheel so they never read as
- * "all sort of green-ish."
- *   decision  → orange     (warm, action-shaped)
- *   scope     → lime green (categorical neighborhood)
- *   intent    → magenta    (was emerald — collided with scope/lime)
- *   principal → cyan       (was blue — collided with organization/indigo)
- */
-const TYPE_COLOR: Record<string, string> = {
-  doco: "#525252", // gray
-  principal: "#06b6d4", // cyan
-  organization: "#6366f1", // indigo
-  intent: "#d946ef", // magenta
-  idea: "#f43f5e", // rose
-  rule: "#dc2626", // red
-  decision: "#f97316", // orange
-  action: "#7c3aed", // purple
-  reasoning: "#eab308", // yellow
-  eval: "#0ea5e9", // sky — Eval is the test-definition node (replaces EVO + Evaluation)
-  reference: "#a16207", // amber/brown
-  scope: "#84cc16", // lime
-};
-const FALLBACK_COLOR = "#525252";
 
 const TYPE_PLURAL_LABEL: Record<string, string> = {
   doco: "docos",
@@ -278,7 +253,7 @@ export function EntityGraph({ centerId, nodes, links, hrefFor }: EntityGraphProp
     () =>
       visible.nodes.map((n) => {
         const pos = positions.get(n.id) ?? { x: 0, y: 0 };
-        const color = TYPE_COLOR[n.node_type] ?? FALLBACK_COLOR;
+        const color = nodeTypeColor(n.node_type);
         const pprRange = pprBounds.max - pprBounds.min;
         let bg = "rgb(255,255,255)";
         if (n.is_center) {
@@ -446,7 +421,7 @@ export function EntityGraph({ centerId, nodes, links, hrefFor }: EntityGraphProp
           (typeof style?.background === "string" ? style.background : undefined) ??
           (typeof style?.backgroundColor === "string" ? style.backgroundColor : undefined) ??
           "rgb(255,255,255)";
-        const stripeColor = TYPE_COLOR[graphNode?.node_type ?? ""] ?? FALLBACK_COLOR;
+        const stripeColor = nodeTypeColor(graphNode?.node_type ?? "");
         const radius = Math.min(borderRadius, width / 4, height / 4);
         const stripeWidth = Math.min(34, Math.max(18, width * 0.16));
         const stripeRight = x + stripeWidth;
@@ -495,7 +470,7 @@ export function EntityGraph({ centerId, nodes, links, hrefFor }: EntityGraphProp
         <span className="text-muted-foreground">Show:</span>
         {allTypes.map((t) => {
           const v = !hiddenTypes.has(t);
-          const color = TYPE_COLOR[t] ?? FALLBACK_COLOR;
+          const color = nodeTypeColor(t);
           const label = typePluralLabel(t);
           return (
             <label

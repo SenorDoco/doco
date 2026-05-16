@@ -1,0 +1,30 @@
+/**
+ * Twelve distinct hues, no two visually adjacent. The four most-visible
+ * types in the entity-detail graph (decision, scope, intent, principal)
+ * occupy widely-separated parts of the wheel so they never read as
+ * "all sort of green-ish."
+ *   decision  -> orange     (warm, action-shaped)
+ *   scope     -> lime green (categorical neighborhood)
+ *   intent    -> magenta    (was emerald, collided with scope/lime)
+ *   principal -> cyan       (was blue, collided with organization/indigo)
+ */
+export const NODE_TYPE_COLOR: Record<string, string> = {
+  doco: "#525252", // gray
+  principal: "#06b6d4", // cyan
+  organization: "#6366f1", // indigo
+  intent: "#d946ef", // magenta
+  idea: "#f43f5e", // rose
+  rule: "#dc2626", // red
+  decision: "#f97316", // orange
+  action: "#7c3aed", // purple
+  reasoning: "#eab308", // yellow
+  eval: "#0ea5e9", // sky
+  reference: "#a16207", // amber/brown
+  scope: "#84cc16", // lime
+};
+
+export const NODE_FALLBACK_COLOR = "#525252";
+
+export function nodeTypeColor(type: string): string {
+  return NODE_TYPE_COLOR[type] ?? NODE_FALLBACK_COLOR;
+}

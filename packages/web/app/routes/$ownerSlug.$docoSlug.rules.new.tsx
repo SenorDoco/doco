@@ -1,16 +1,16 @@
+import { withClient } from "@doco/db";
 // /<owner>/<doco>/rules/new — minimal capture form for a Rule entity.
 // Linked from /constitution's "Add rule" button (and reusable from
 // anywhere else that wants the same affordance — pass ?scope=<name>
 // to prefill the scope). Admin-only: project owners + org admins.
 import { Form, redirect, useSearchParams } from "react-router";
-import { withClient } from "@doco/db";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
+import { SiteHeader } from "~/components/site-header";
+import { captureRule } from "~/lib/capture.server";
 import { docoPath } from "~/lib/db.server";
-import { readDocoMetadata } from "~/lib/scope-helpers.server";
 import { loadDocoForAdmin } from "~/lib/doco-access.server";
 import { loadHostConfig } from "~/lib/host";
-import { captureRule } from "~/lib/capture.server";
-import { SiteHeader } from "~/components/site-header";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
+import { readDocoMetadata } from "~/lib/scope-helpers.server";
 
 interface IntentOption {
   id: string;
@@ -132,11 +132,10 @@ export default function NewRule({
       <main className="mx-auto max-w-2xl px-6 py-6 space-y-4">
         <Card>
           <CardHeader>
-            <CardTitle>New Rule</CardTitle>
+            <CardTitle>New rule</CardTitle>
             <CardDescription>
-              Capture a load-bearing claim about how this project operates.
-              Rules tagged with <code>constitution</code> appear on the
-              Constitution page.
+              Capture a load-bearing claim about how this project operates. Rules tagged with{" "}
+              <code>constitution</code> appear on the Constitution page.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -199,8 +198,7 @@ export default function NewRule({
                 </select>
                 {scopeFromUrl === "constitution" ? (
                   <span className="mt-1 block text-[10px] text-muted-foreground">
-                    The constitution scope requires every node to reference
-                    at least one Intent.
+                    The constitution scope requires every node to reference at least one Intent.
                   </span>
                 ) : null}
               </label>

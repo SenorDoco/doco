@@ -9,8 +9,8 @@ import {
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineCommand } from "citty";
-import { findTemplatesDir } from "../find-templates.js";
 import { readDocoIdFromAgentsMd } from "../env.js";
+import { findTemplatesDir } from "../find-templates.js";
 import { c, checkmark, cross, header, rule } from "../output.js";
 
 /**
@@ -25,8 +25,8 @@ const DOCO_ID_PLACEHOLDER = /__DOCO_ID__/g;
  * `doco install-agent-bootstrap` — drop the agent bootstrap files into a
  * repo so any AI agent (via the cross-agent `AGENTS.md` convention, or
  * via Claude Code's auto-loaded CLAUDE.md + SessionStart +
- * UserPromptSubmit hooks) is forced to fetch
- * `https://doco.to/api/v1/agent-bootstrap?id=$DOCO_ID` before responding.
+ * UserPromptSubmit hooks) is forced to run `doco bootstrap` before
+ * responding.
  *
  * Files installed at the repo root (the cwd, or --root):
  *
@@ -46,10 +46,9 @@ const DOCO_ID_PLACEHOLDER = /__DOCO_ID__/g;
  * runs it automatically).
  *
  * Non-Claude agents read AGENTS.md directly (the convention any modern
- * coding agent honors) and additionally fetch
- * `https://doco.to/api/v1/agent-bootstrap?id=$DOCO_ID` at the start of each task to get
- * the live canonical_instructions. The `.claude/` hooks are Claude-Code-
- * specific and have no equivalent for other agents.
+ * coding agent honors) and additionally run `doco bootstrap` at the start
+ * of each task to get the live canonical_instructions. The `.claude/`
+ * hooks are Claude-Code-specific and have no equivalent for other agents.
  */
 const __dirname = dirname(fileURLToPath(import.meta.url));
 // Walk up from this file's directory until templates/ is found. Works
@@ -91,11 +90,7 @@ export const installAgentBootstrapCmd = defineCommand({
     // when none is known — the template keeps the literal placeholder
     // so the project owner can see what's missing.
     const docoIdArg = (args["doco-id"] as string | undefined)?.trim();
-    const docoId =
-      docoIdArg ||
-      process.env.DOCO_ID ||
-      readDocoIdFromAgentsMd(target) ||
-      "";
+    const docoId = docoIdArg || process.env.DOCO_ID || readDocoIdFromAgentsMd(target) || "";
 
     const agentsMdSrc = join(TEMPLATES_DIR, "AGENTS.md");
     const claudeMdSrc = join(TEMPLATES_DIR, "CLAUDE.md");
@@ -148,7 +143,7 @@ export const installAgentBootstrapCmd = defineCommand({
       if (existsSync(dst) && !force) {
         const onDisk = readFileSync(dst, "utf8");
         if (onDisk === fromTpl) {
-          actions.push(`${c.dim("=")} ${c.dim(label + " (already at template version)")}`);
+          actions.push(`${c.dim("=")} ${c.dim(`${label} (already at template version)`)}`);
         } else {
           actions.push(
             `${c.warn("!")} ${label} exists and differs from template — re-run with --force to overwrite.`,
@@ -168,10 +163,10 @@ export const installAgentBootstrapCmd = defineCommand({
     // below are the framework's source of truth; .env.example is the
     // adopter's. To reset .env.example, delete it manually and re-run.
     {
-      const label = envExampleDst.replace(target + "/", "");
+      const label = envExampleDst.replace(`${target}/`, "");
       if (existsSync(envExampleDst)) {
         actions.push(
-          `${c.dim("=")} ${c.dim(label + " (existing — not overwritten; rm and re-run to reset)")}`,
+          `${c.dim("=")} ${c.dim(`${label} (existing — not overwritten; rm and re-run to reset)`)}`,
         );
       } else {
         copyFileSync(envExampleSrc, envExampleDst);
@@ -191,12 +186,12 @@ export const installAgentBootstrapCmd = defineCommand({
       [postToolUseHookSrc, postToolUseHookDst, 0o755],
       [stopHookSrc, stopHookDst, 0o755],
     ] as const) {
-      const label = dst.replace(target + "/", "");
+      const label = dst.replace(`${target}/`, "");
       if (existsSync(dst) && !force) {
         const onDisk = readFileSync(dst, "utf8");
         const fromTpl = readFileSync(src, "utf8");
         if (onDisk === fromTpl) {
-          actions.push(`${c.dim("=")} ${c.dim(label + " (already at template version)")}`);
+          actions.push(`${c.dim("=")} ${c.dim(`${label} (already at template version)`)}`);
         } else {
           actions.push(
             `${c.warn("!")} ${label} exists and differs from template — re-run with --force to overwrite.`,
@@ -228,16 +223,8 @@ export const installAgentBootstrapCmd = defineCommand({
         ),
       );
     }
-    console.log(
-      c.dim(
-        "  2. cp .env.example .env  # fill in DOCO_TOKEN (mint via `doco login`)",
-      ),
-    );
-    console.log(
-      c.dim(
-        "  3. Restart your Claude Code session in this directory.",
-      ),
-    );
+    console.log(c.dim("  2. cp .env.example .env  # fill in DOCO_TOKEN (mint via `doco login`)"));
+    console.log(c.dim("  3. Restart your Claude Code session in this directory."));
     console.log(
       c.dim(
         "  4. In Claude Code, run /hooks → approve the SessionStart + UserPromptSubmit + PostToolUse + Stop hooks. Claude Code skips unapproved project hooks silently, so the protocol won't auto-load until you approve them once per project (and once per worktree if you use them).",
@@ -245,7 +232,7 @@ export const installAgentBootstrapCmd = defineCommand({
     );
     console.log(
       c.dim(
-        "  5. Non-Claude agents: fetch https://doco.to/api/v1/agent-bootstrap?id=<DOCO_ID> manually at the start of each task. The id is in AGENTS.md.",
+        "  5. Non-Claude agents: run `doco bootstrap` manually at the start of each task. It reads DOCO_TOKEN from ./.env and the id from AGENTS.md without exposing the bearer in the shell command.",
       ),
     );
     console.log();

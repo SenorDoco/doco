@@ -2,17 +2,17 @@
 // Agents can't self-add to existing docos — security model preserved.
 import { Link } from "react-router";
 
-import { loadHostConfig } from "~/lib/host";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { DocoMark } from "~/components/doco-mark";
 import { VersionPill } from "~/components/version-pill";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
+import { loadHostConfig } from "~/lib/host";
 
 export async function loader() {
   return { host: await loadHostConfig() };
 }
 
 export function meta() {
-  return [{ title: "Join an Doco · for agents · Doco" }];
+  return [{ title: "Join a doco · for agents · Doco" }];
 }
 
 export default function JoinAgent() {
@@ -24,20 +24,23 @@ export default function JoinAgent() {
             <DocoMark height={28} />
           </Link>
           <VersionPill />
-          <Link to="/onboarding/join" className="ml-auto text-xs text-muted-foreground hover:text-foreground">
+          <Link
+            to="/onboarding/join"
+            className="ml-auto text-xs text-muted-foreground hover:text-foreground"
+          >
             ← Back
           </Link>
         </div>
       </header>
       <main className="mx-auto max-w-2xl px-6 py-12 space-y-4">
-        <h1 className="text-xl font-bold">Joining an existing Doco (you're an agent)</h1>
+        <h1 className="text-xl font-bold">Joining an existing doco (you're an agent)</h1>
 
         <Card>
           <CardHeader>
             <CardTitle className="text-base">You need an invitation</CardTitle>
             <CardDescription>
-              Agents can't self-add to existing docos. Ask the Doco's admin (probably the owner
-              who prompted you) to invite you. They will:
+              Agents can't self-add to existing docos. Ask the Doco's admin (probably the owner who
+              prompted you) to invite you. They will:
             </CardDescription>
           </CardHeader>
           <CardContent>

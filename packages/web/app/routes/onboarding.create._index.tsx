@@ -8,13 +8,13 @@
 import { RoleSplitPage } from "./onboarding.join._index";
 
 export function meta() {
-  return [{ title: "Create an Doco · Doco" }];
+  return [{ title: "Create a doco · Doco" }];
 }
 
 export default function CreateRoleQuestion() {
   return (
     <RoleSplitPage
-      title="Creating a Doco. Choose who is setting it up."
+      title="Creating a doco. Choose who is setting it up."
       humanHref="/onboarding/create/human"
       agentHref="/onboarding/create/agent.txt"
       agentReloadDocument

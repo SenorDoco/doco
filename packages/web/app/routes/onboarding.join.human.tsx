@@ -16,7 +16,7 @@ export async function loader({ request }: { request: Request }) {
 }
 
 export function meta() {
-  return [{ title: "Join an Doco · Doco" }];
+  return [{ title: "Join a doco · Doco" }];
 }
 
 export default function JoinHuman({
@@ -41,7 +41,7 @@ export default function JoinHuman({
         </div>
       </header>
       <main className="mx-auto max-w-2xl px-6 py-12 space-y-4">
-        <h1 className="text-xl font-bold">Joining an existing Doco</h1>
+        <h1 className="text-xl font-bold">Joining an existing doco</h1>
         <p className="text-sm text-muted-foreground">Two ways to get started.</p>
 
         <Card>
@@ -72,7 +72,7 @@ export default function JoinHuman({
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">2. Ask the Doco's admin to invite you</CardTitle>
+            <CardTitle className="text-base">2. Ask the doco's admin to invite you</CardTitle>
             <CardDescription>
               Contact whoever owns the Doco you want to join. They'll add you as a member and you
               can sign in here once you have an account.

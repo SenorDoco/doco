@@ -5,13 +5,13 @@ import { DocoMark } from "~/components/doco-mark";
 import { VersionPill } from "~/components/version-pill";
 
 export function meta() {
-  return [{ title: "Join an Doco · Doco" }];
+  return [{ title: "Join a doco · Doco" }];
 }
 
 export default function JoinRoleQuestion() {
   return (
     <RoleSplitPage
-      title="Joining a Doco. Choose who is joining."
+      title="Joining a doco. Choose who is joining."
       humanHref="/onboarding/join/human"
       agentHref="/onboarding/join/agent"
       backHref="/"
@@ -39,7 +39,11 @@ export function RoleSplitPage({
       <header className="border-b border-border bg-card">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-6 py-3">
           <div className="flex items-center gap-3">
-            <Link to="/" className="inline-flex items-center hover:opacity-80" aria-label="Doco home">
+            <Link
+              to="/"
+              className="inline-flex items-center hover:opacity-80"
+              aria-label="Doco home"
+            >
               <DocoMark height={28} />
             </Link>
             <VersionPill />

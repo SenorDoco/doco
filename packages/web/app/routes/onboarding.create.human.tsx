@@ -16,7 +16,7 @@ export async function loader({ request }: { request: Request }) {
 }
 
 export function meta() {
-  return [{ title: "Create an Doco · Doco" }];
+  return [{ title: "Create a doco · Doco" }];
 }
 
 export default function CreateHuman({
@@ -41,7 +41,7 @@ export default function CreateHuman({
         </div>
       </header>
       <main className="mx-auto max-w-2xl px-6 py-12 space-y-4">
-        <h1 className="text-xl font-bold">Creating a new Doco</h1>
+        <h1 className="text-xl font-bold">Creating a new doco</h1>
         <p className="text-sm text-muted-foreground">Two ways.</p>
 
         <Card>
@@ -72,7 +72,7 @@ export default function CreateHuman({
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">2. Create an Doco manually</CardTitle>
+            <CardTitle className="text-base">2. Create a doco manually</CardTitle>
             <CardDescription>
               Sign in (or sign up) and use the host's manual creation form. Better if you want to
               configure ownership, organization, and visibility yourself.

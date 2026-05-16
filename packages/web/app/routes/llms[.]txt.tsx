@@ -56,13 +56,17 @@ to \`doco-cli\` is in flight and the publish pipeline is pending):
 
 If \`./.env\` has DOCO_TOKEN and AGENTS.md carries a DOCO_ID at the top,
 fetch the canonical agent instructions at the start of every task and
-follow them (substitute the DOCO_ID from AGENTS.md inline):
+follow them:
 
-    curl -s "https://doco.to/api/v1/agent-bootstrap?id=$DOCO_ID" \\
-      -H "Authorization: Bearer $DOCO_TOKEN"
+    doco bootstrap
 
 The \`canonical_instructions\` field is the protocol — query indicator,
 capture footer, tally line, all of it.
+
+Before writing about a task, query the project memory without exposing
+the bearer token in shell command text:
+
+    doco search "<task>"
 
 ## What NOT to do
 
