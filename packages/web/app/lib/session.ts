@@ -58,7 +58,7 @@ function rowToPrincipal(row: {
   const out: CurrentPrincipal = {
     id: row.id,
     username: row.username,
-    display_name: row.display_name ?? row.username,
+    display_name: type === "agent" ? row.display_name ?? row.username : row.username,
     type,
   };
   if (typeof email === "string") out.email = email;
@@ -144,4 +144,3 @@ export function extractCredential(request: Request): string | null {
   }
   return null;
 }
-

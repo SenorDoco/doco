@@ -90,13 +90,13 @@ const TYPE_FETCHES: TypeFetch[] = [
   fetchSpec(
     "principals",
     "principal",
-    "username, display_name, created_at",
+    "username, created_at",
     true,
     (r, vs, docoDir) => ({
       id: String(r.id),
       node_type: "principal",
       name: (r.username as string) ?? null,
-      summary: (r.display_name as string) ?? "",
+      summary: (r.username as string) ?? "",
       lifecycle: null,
       created_at: (r.created_at as string) ?? null,
       gpr: 0,

@@ -70,7 +70,6 @@ const userCreateCmd = defineCommand({
   args: {
     username: { type: "positional", required: true },
     email: { type: "string" },
-    "display-name": { type: "string" },
     root: { type: "string", description: "Host root (default: walk upward from cwd)." },
   },
   async run({ args }) {
@@ -79,7 +78,6 @@ const userCreateCmd = defineCommand({
     const id = await addPrincipal(root, {
       username: args.username as string,
       ...(args.email !== undefined ? { email: args.email as string } : {}),
-      ...(args["display-name"] !== undefined ? { display_name: args["display-name"] as string } : {}),
     });
     console.log(checkmark(`User registered: ${args.username} ${c.dim(`(${id})`)}`));
   },

@@ -206,12 +206,12 @@ const TYPE_SPECS: TypeSpec[] = [
   {
     table: "principals",
     nodeType: "principal",
-    selectExtra: "username, display_name, created_at",
+    selectExtra: "username, created_at",
     hostLevel: true,
     toHit: (r, s) => ({
       id: String(r.id),
       node_type: "principal",
-      summary: (r.display_name as string) ?? "",
+      summary: (r.username as string) ?? "",
       name: (r.username as string) ?? null,
       lifecycle: null,
       created_at: (r.created_at as string) ?? null,

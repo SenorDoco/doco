@@ -54,7 +54,6 @@ export async function loader({ request }: { request: Request }) {
     }
     principalId = await addPrincipal(root, {
       username: gh.login.toLowerCase(),
-      display_name: gh.name ?? gh.login,
       ...(email ? { email } : {}),
       github_identity: {
         github_id: String(gh.id),

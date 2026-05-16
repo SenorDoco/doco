@@ -354,9 +354,8 @@ export async function loader({
           id: string;
           username: string;
           type: string;
-          display_name: string | null;
         }>(
-          `SELECT id, username, type, display_name
+          `SELECT id, username, type
              FROM principals
             WHERE id = ANY($1::text[])`,
           [principalIds],
@@ -367,7 +366,7 @@ export async function loader({
         identityMap[p.id] = {
           id: p.id,
           node_type: "principal",
-          label: p.display_name ?? p.username ?? p.id,
+          label: p.username ?? p.id,
           detail: `${kind} · ${p.username}`,
         };
       }

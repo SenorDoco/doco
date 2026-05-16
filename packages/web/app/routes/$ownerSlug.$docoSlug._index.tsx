@@ -39,7 +39,6 @@ interface FeedItem extends ActivityFeedLineItem {
 interface TopContributor {
   principalId: string;
   username: string;
-  displayName: string | null;
   lastAt: string;
   eventCount: number;
 }
@@ -191,19 +190,17 @@ export async function loader({
       await c.query<{
         principal_id: string;
         username: string;
-        display_name: string | null;
         last_at: Date | string;
         event_count: string;
       }>(
         `SELECT ae.by_principal AS principal_id,
                 p.username,
-                p.display_name,
                 MAX(ae.at) AS last_at,
                 COUNT(*)::text AS event_count
            FROM audit_events ae
            JOIN principals p ON p.id = ae.by_principal
           WHERE ae.doco_id = $1 AND ae.by_principal IS NOT NULL
-          GROUP BY ae.by_principal, p.username, p.display_name
+          GROUP BY ae.by_principal, p.username
           ORDER BY COUNT(*) DESC, MAX(ae.at) DESC
           LIMIT $2`,
         [ctx.meta.docoId, TOP_CONTRIBUTORS_LIMIT],
@@ -212,7 +209,6 @@ export async function loader({
     const topContributors: TopContributor[] = contributorRows.map((r) => ({
       principalId: r.principal_id,
       username: r.username,
-      displayName: r.display_name,
       lastAt:
         r.last_at instanceof Date
           ? r.last_at.toISOString()
@@ -629,7 +625,7 @@ function TopContributorsList({ contributors }: { contributors: TopContributor[] 
               className="truncate text-xs"
               title={c.username}
             >
-              {c.displayName ?? c.username}
+              {c.username}
             </span>
             <time
               dateTime={c.lastAt}

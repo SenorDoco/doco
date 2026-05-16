@@ -38,7 +38,7 @@ async function findOwnerBySlug(slug: string): Promise<UserView | OrgView | null>
       kind: "principal",
       id: p.id,
       username: p.username,
-      display_name: p.display_name ?? slug,
+      display_name: p.username,
     };
     if (typeof email === "string") out.email = email;
     return out;
