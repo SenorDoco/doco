@@ -23,59 +23,69 @@ export function NodesOverviewCard({
   search,
   sections,
   empty,
+  aside,
 }: {
   search?: ReactNode;
   sections: NodesOverviewSection[];
   empty?: ReactNode;
+  aside?: ReactNode;
 }) {
   const allEmpty = sections.every((s) => s.items.length === 0);
+  const sectionsBlock = allEmpty
+    ? empty
+    : sections.map((section) =>
+        section.items.length === 0 ? null : (
+          <section key={section.title} className="space-y-1">
+            <h2 className="text-xs font-semibold text-foreground">{section.title}</h2>
+            {section.items.map((item) => (
+              <div
+                key={item.key}
+                className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3"
+              >
+                <Link
+                  to={item.href}
+                  aria-label={item.ariaLabel}
+                  className="flex min-w-0 items-center gap-2 text-xs hover:text-primary"
+                >
+                  {item.icon ? (
+                    <span aria-hidden className="shrink-0 text-[12px] leading-none">
+                      {item.icon}
+                    </span>
+                  ) : null}
+                  <span
+                    className="truncate"
+                    style={item.color ? { color: item.color } : undefined}
+                  >
+                    {item.label}
+                  </span>
+                </Link>
+                <span className="whitespace-nowrap text-xs tabular-nums text-muted-foreground">
+                  {item.count}
+                </span>
+                <time
+                  dateTime={item.updatedAt ?? undefined}
+                  title={item.updatedAt ?? undefined}
+                  suppressHydrationWarning
+                  className="min-w-14 whitespace-nowrap text-right text-xs tabular-nums text-muted-foreground"
+                >
+                  {timeAgo(item.updatedAt)}
+                </time>
+              </div>
+            ))}
+          </section>
+        ),
+      );
   return (
     <Card className="space-y-4 p-5">
       {search}
-      {allEmpty
-        ? empty
-        : sections.map((section) =>
-            section.items.length === 0 ? null : (
-              <section key={section.title} className="space-y-1">
-                <h2 className="text-xs font-semibold text-foreground">{section.title}</h2>
-                {section.items.map((item) => (
-                  <div
-                    key={item.key}
-                    className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3"
-                  >
-                    <Link
-                      to={item.href}
-                      aria-label={item.ariaLabel}
-                      className="flex min-w-0 items-center gap-2 text-xs hover:text-primary"
-                    >
-                      {item.icon ? (
-                        <span aria-hidden className="shrink-0 text-[12px] leading-none">
-                          {item.icon}
-                        </span>
-                      ) : null}
-                      <span
-                        className="truncate"
-                        style={item.color ? { color: item.color } : undefined}
-                      >
-                        {item.label}
-                      </span>
-                    </Link>
-                    <span className="whitespace-nowrap text-xs tabular-nums text-muted-foreground">
-                      {item.count}
-                    </span>
-                    <time
-                      dateTime={item.updatedAt ?? undefined}
-                      title={item.updatedAt ?? undefined}
-                      suppressHydrationWarning
-                      className="min-w-14 whitespace-nowrap text-right text-xs tabular-nums text-muted-foreground"
-                    >
-                      {timeAgo(item.updatedAt)}
-                    </time>
-                  </div>
-                ))}
-              </section>
-            ),
-          )}
+      {aside ? (
+        <div className="grid gap-x-6 gap-y-4 min-[640px]:grid-cols-2">
+          <div className="min-w-0 space-y-4">{sectionsBlock}</div>
+          <div className="min-w-0 space-y-4">{aside}</div>
+        </div>
+      ) : (
+        sectionsBlock
+      )}
     </Card>
   );
 }
