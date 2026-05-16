@@ -1,68 +1,68 @@
 import type { ReactNode } from "react";
 import { Link } from "react-router";
-import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
+import { Card } from "~/components/card";
 
-export interface NodesOverviewTile {
+export interface NodesOverviewItem {
   key: string;
   href: string;
-  badge: ReactNode;
+  label: ReactNode;
   count: number;
   ariaLabel: string;
   color?: string;
 }
 
+export interface NodesOverviewSection {
+  title: string;
+  items: NodesOverviewItem[];
+}
+
 export function NodesOverviewCard({
-  total,
-  viewHref,
-  tiles,
   search,
+  sections,
   empty,
 }: {
-  total: number;
-  viewHref: string;
-  tiles: NodesOverviewTile[];
   search?: ReactNode;
+  sections: NodesOverviewSection[];
   empty?: ReactNode;
 }) {
+  const allEmpty = sections.every((s) => s.items.length === 0);
   return (
     <Card>
-      <CardHeader className="flex-row items-center justify-between gap-3">
-        <CardTitle>Nodes ({total})</CardTitle>
-        <Link
-          to={viewHref}
-          className="shrink-0 rounded-md border border-border px-3 py-1.5 text-sm font-semibold text-foreground hover:bg-card"
-        >
-          View them
-        </Link>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        {tiles.length === 0 ? (
-          empty
-        ) : (
-          <div className="grid grid-cols-1 gap-2 text-sm sm:grid-cols-3">
-            {tiles.map((tile) => (
-              <Link
-                key={tile.key}
-                to={tile.href}
-                className="flex min-w-0 items-center gap-3 rounded-md border border-border px-3 py-2 text-foreground hover:bg-card"
-                style={
-                  tile.color
-                    ? {
-                        background: `color-mix(in oklch, ${tile.color} 8%, white)`,
-                        boxShadow: `inset 4px 0 0 ${tile.color}`,
-                      }
-                    : undefined
-                }
-                aria-label={tile.ariaLabel}
-              >
-                <span className="min-w-0 truncate">{tile.badge}</span>
-                <span className="font-mono tabular-nums">{tile.count}</span>
-              </Link>
-            ))}
-          </div>
-        )}
+      <div className="space-y-5 px-5 py-4">
         {search}
-      </CardContent>
+        {allEmpty
+          ? empty
+          : sections.map((section) =>
+              section.items.length === 0 ? null : (
+                <section key={section.title} className="space-y-2">
+                  <h2 className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    {section.title}
+                  </h2>
+                  <ul className="divide-y divide-border overflow-hidden rounded-md border border-border">
+                    {section.items.map((item) => (
+                      <li key={item.key}>
+                        <Link
+                          to={item.href}
+                          aria-label={item.ariaLabel}
+                          className="flex items-center justify-between gap-3 px-3 py-2 text-sm text-foreground hover:bg-card"
+                          style={
+                            item.color
+                              ? { boxShadow: `inset 4px 0 0 ${item.color}` }
+                              : undefined
+                          }
+                        >
+                          <span className="min-w-0 flex-1 truncate">{item.label}</span>
+                          <span className="font-mono tabular-nums text-foreground">
+                            {item.count}
+                          </span>
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              ),
+            )}
+      </div>
     </Card>
   );
 }

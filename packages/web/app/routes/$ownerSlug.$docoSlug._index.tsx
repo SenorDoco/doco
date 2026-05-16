@@ -1,5 +1,4 @@
 import { withClient } from "@doco/db";
-import type { PoolClient } from "pg";
 // Per-Doco home — bare title up top, then the search input, then a
 // two-column body: Nodes on the left, "Activity" heatmap above the
 // "Latest activity" feed on the right.
@@ -18,15 +17,19 @@ import { useEffect, useState } from "react";
 import { Form, Link, useRevalidator } from "react-router";
 import { parse as parseYaml } from "yaml";
 import { ActivityHeatmap } from "~/components/activity-heatmap";
-import { NodeTypeBadge } from "~/components/badge";
+import { Badge, NodeTypeBadge } from "~/components/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
-import { NodesOverviewCard } from "~/components/nodes-overview-card";
+import {
+  NodesOverviewCard,
+  type NodesOverviewSection,
+} from "~/components/nodes-overview-card";
 import { SiteHeader } from "~/components/site-header";
 import { docoPath } from "~/lib/db.server";
 import { loadDocoForRead } from "~/lib/doco-access.server";
 import { loadHostConfig } from "~/lib/host";
 import { nodeTypeColor } from "~/lib/node-colors";
 import { listScopeDetails } from "~/lib/scope-helpers.server";
+import { computeFilterFacets } from "~/lib/search-filters.server";
 
 const FEED_LIMIT = 30;
 const HEATMAP_WEEKS = 26;
@@ -42,10 +45,20 @@ interface FeedItem {
   scopes: { name: string; icon?: string }[];
 }
 
-interface NodeTypeCount {
-  type: string;
-  label: string;
-  count: number;
+const NODE_TYPE_LABELS: Record<string, string> = {
+  decision: "Decisions",
+  action: "Actions",
+  intent: "Intents",
+  rule: "Rules",
+  scope: "Scopes",
+  eval: "Evals",
+  reference: "References",
+  reasoning: "Reasonings",
+  idea: "Ideas",
+};
+
+function nodeTypeLabel(type: string): string {
+  return NODE_TYPE_LABELS[type] ?? type.charAt(0).toUpperCase() + type.slice(1) + "s";
 }
 
 export async function loader({
@@ -113,29 +126,8 @@ export async function loader({
       return { ...it, scopes };
     });
 
-    const counts: NodeTypeCount[] = [
-      {
-        type: "decision",
-        label: "Decisions",
-        count: await countRows(c, "decisions", ctx.meta.docoId),
-      },
-      { type: "action", label: "Actions", count: await countRows(c, "actions", ctx.meta.docoId) },
-      { type: "intent", label: "Intents", count: await countRows(c, "intents", ctx.meta.docoId) },
-      { type: "rule", label: "Rules", count: await countRows(c, "rules", ctx.meta.docoId) },
-      { type: "scope", label: "Scopes", count: await countRows(c, "scopes", ctx.meta.docoId) },
-      { type: "eval", label: "Evals", count: await countRows(c, "evals", ctx.meta.docoId) },
-      {
-        type: "reference",
-        label: "References",
-        count: await countRows(c, "reference_entities", ctx.meta.docoId),
-      },
-      {
-        type: "reasoning",
-        label: "Reasonings",
-        count: await countRows(c, "reasoning", ctx.meta.docoId),
-      },
-      { type: "idea", label: "Ideas", count: await countRows(c, "ideas", ctx.meta.docoId) },
-    ];
+    const facets = await computeFilterFacets(c, ctx.meta.docoId);
+    const totalNodes = facets.nodeType.reduce((sum, t) => sum + t.count, 0);
 
     const since = new Date();
     since.setDate(since.getDate() - HEATMAP_WEEKS * 7);
@@ -162,7 +154,8 @@ export async function loader({
 
     return {
       items,
-      counts,
+      facets,
+      totalNodes,
       byDay,
       ownerSlug,
       docoSlug,
@@ -171,14 +164,6 @@ export async function loader({
       me,
     };
   });
-}
-
-async function countRows(c: PoolClient, table: string, docoId: string): Promise<number> {
-  const r = await c.query<{ n: string }>(
-    `SELECT COUNT(*)::text AS n FROM ${table} WHERE doco_id = $1`,
-    [docoId],
-  );
-  return Number(r.rows[0]?.n ?? 0);
 }
 
 function allNodesSearchPath(ownerSlug: string, docoSlug: string): string {
@@ -199,6 +184,24 @@ function nodeTypeSearchPath(ownerSlug: string, docoSlug: string, nodeType: strin
   return `/${ownerSlug}/${docoSlug}/search?${params.toString()}`;
 }
 
+function scopeSearchPath(ownerSlug: string, docoSlug: string, scopeName: string): string {
+  const params = new URLSearchParams();
+  params.set("scope", scopeName);
+  params.set("node_type", "*");
+  params.set("lifecycle", "*");
+  params.set("limit", "500");
+  return `/${ownerSlug}/${docoSlug}/search?${params.toString()}`;
+}
+
+function lifecycleSearchPath(ownerSlug: string, docoSlug: string, lifecycle: string): string {
+  const params = new URLSearchParams();
+  params.set("lifecycle", lifecycle);
+  params.set("node_type", "*");
+  params.set("scope", "*");
+  params.set("limit", "500");
+  return `/${ownerSlug}/${docoSlug}/search?${params.toString()}`;
+}
+
 export function meta({ params }: { params: { ownerSlug: string; docoSlug: string } }) {
   return [{ title: `${params.ownerSlug}/${params.docoSlug} · Doco` }];
 }
@@ -208,7 +211,7 @@ export default function DocoHome({
 }: {
   loaderData: Awaited<ReturnType<typeof loader>>;
 }) {
-  const { items, counts, byDay, ownerSlug, docoSlug, docoId, host, me } = loaderData;
+  const { items, facets, totalNodes, byDay, ownerSlug, docoSlug, docoId, host, me } = loaderData;
 
   // Live feed polling (ADR-089).
   const revalidator = useRevalidator();
@@ -240,7 +243,51 @@ export default function DocoHome({
     };
   }, [revalidator]);
 
-  const totalNodes = counts.reduce((sum, c) => sum + c.count, 0);
+  const allSearchHref = allNodesSearchPath(ownerSlug, docoSlug);
+
+  const sections: NodesOverviewSection[] = [
+    {
+      title: "Scopes",
+      items: facets.scope.map((s) => ({
+        key: `scope-${s.name}`,
+        href: scopeSearchPath(ownerSlug, docoSlug, s.name),
+        label: (
+          <span className="inline-flex items-center gap-2">
+            {s.icon ? (
+              <span aria-hidden="true" className="text-base leading-none">
+                {s.icon}
+              </span>
+            ) : null}
+            <span className="font-mono">{s.name}</span>
+          </span>
+        ),
+        count: s.count,
+        ariaLabel: `Search ${s.count} nodes in scope ${s.name}`,
+        color: nodeTypeColor("scope"),
+      })),
+    },
+    {
+      title: "Node types",
+      items: facets.nodeType.map((t) => ({
+        key: `type-${t.value}`,
+        href: nodeTypeSearchPath(ownerSlug, docoSlug, t.value),
+        label: <NodeTypeBadge nodeType={t.value}>{nodeTypeLabel(t.value)}</NodeTypeBadge>,
+        count: t.count,
+        ariaLabel: `Search ${t.count} ${nodeTypeLabel(t.value).toLowerCase()}`,
+        color: nodeTypeColor(t.value),
+      })),
+    },
+    {
+      title: "Lifecycle",
+      items: facets.lifecycle.map((l) => ({
+        key: `lifecycle-${l.value}`,
+        href: lifecycleSearchPath(ownerSlug, docoSlug, l.value),
+        label: <Badge>{l.value}</Badge>,
+        count: l.count,
+        ariaLabel: `Search ${l.count} nodes in lifecycle ${l.value}`,
+      })),
+    },
+  ];
 
   return (
     <div>
@@ -249,7 +296,9 @@ export default function DocoHome({
         {/* Bare title — no card wrapper. */}
         <div className="space-y-1">
           <h1 className="text-lg font-semibold tracking-tight">
-            {ownerSlug}/{docoSlug}
+            <Link to={allSearchHref} className="hover:text-primary">
+              {ownerSlug}/{docoSlug}
+            </Link>
           </h1>
           <p className="font-mono text-sm text-muted-foreground">{docoId}</p>
         </div>
@@ -258,22 +307,22 @@ export default function DocoHome({
           {/* Left: node counts. */}
           <aside className="min-[840px]:col-span-5">
             <NodesOverviewCard
-              total={totalNodes}
-              viewHref={allNodesSearchPath(ownerSlug, docoSlug)}
-              tiles={counts.map((c) => ({
-                key: c.type,
-                href: nodeTypeSearchPath(ownerSlug, docoSlug, c.type),
-                badge: <NodeTypeBadge nodeType={c.type}>{c.label}</NodeTypeBadge>,
-                count: c.count,
-                ariaLabel: `Search ${c.count} ${c.label.toLowerCase()} in ${ownerSlug}/${docoSlug}`,
-                color: nodeTypeColor(c.type),
-              }))}
+              sections={sections}
               search={
                 <SearchBoxWithHistory
                   ownerSlug={ownerSlug}
                   docoSlug={docoSlug}
-                  placeholder="Search nodes - body, summaries, scopes..."
+                  placeholder={
+                    totalNodes > 0
+                      ? `Search ${totalNodes} node${totalNodes === 1 ? "" : "s"}…`
+                      : "Search nodes…"
+                  }
                 />
+              }
+              empty={
+                <p className="text-xs italic text-muted-foreground">
+                  This Doco has no nodes yet.
+                </p>
               }
             />
           </aside>

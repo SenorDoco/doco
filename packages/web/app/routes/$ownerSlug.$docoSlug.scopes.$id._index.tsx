@@ -31,26 +31,20 @@ import { ActivityHeatmap } from "~/components/activity-heatmap";
 import { Badge, NodeTypeBadge } from "~/components/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { EmojiPickerInput } from "~/components/emoji-picker-input";
-import { NodesOverviewCard } from "~/components/nodes-overview-card";
+import {
+  NodesOverviewCard,
+  type NodesOverviewSection,
+} from "~/components/nodes-overview-card";
 import { SiteHeader } from "~/components/site-header";
 import { Toggle } from "~/components/toggle";
 import { updateEntity } from "~/lib/capture.server";
 import { loadDocoForAdmin } from "~/lib/doco-access.server";
 import { loadHostConfig } from "~/lib/host";
+import { nodeTypeColor } from "~/lib/node-colors";
 import { reindex, setScopeWatchedInDoco, updateScopeInDoco } from "~/lib/redeem.server";
 import { listScopeDetails, readDocoMetadata } from "~/lib/scope-helpers.server";
 
 const HEATMAP_WEEKS = 26;
-const MEMBER_NODE_TYPES = [
-  "decision",
-  "intent",
-  "action",
-  "rule",
-  "reasoning",
-  "eval",
-  "reference",
-  "idea",
-] as const;
 
 type RuleKind = "authoring" | "guidance" | "tagged";
 
@@ -97,18 +91,34 @@ function isActive(lifecycle: string): boolean {
   return lifecycle === "active" || lifecycle === "proposed";
 }
 
-function nodesSearchPath(
+function inScopeSearchPath(
   ownerSlug: string,
   docoSlug: string,
   scopeName: string,
-  lifecycle: string,
+  filters: { nodeType?: string; lifecycle?: string },
 ): string {
   const params = new URLSearchParams();
   params.set("scope", scopeName);
-  params.set("lifecycle", lifecycle);
+  params.set("node_type", filters.nodeType ?? "*");
+  params.set("lifecycle", filters.lifecycle ?? "*");
   params.set("limit", "500");
-  for (const nodeType of MEMBER_NODE_TYPES) params.append("node_type", nodeType);
   return `/${ownerSlug}/${docoSlug}/search?${params.toString()}`;
+}
+
+const NODE_TYPE_LABELS: Record<string, string> = {
+  decision: "Decisions",
+  action: "Actions",
+  intent: "Intents",
+  rule: "Rules",
+  scope: "Scopes",
+  eval: "Evals",
+  reference: "References",
+  reasoning: "Reasonings",
+  idea: "Ideas",
+};
+
+function nodeTypeLabel(type: string): string {
+  return NODE_TYPE_LABELS[type] ?? type.charAt(0).toUpperCase() + type.slice(1) + "s";
 }
 
 async function readScopeRaw(scopeId: string): Promise<Record<string, unknown> | null> {
@@ -219,6 +229,38 @@ export async function loader({
     : [];
   const memberCount = memberStats.reduce((sum, s) => sum + s.count, 0);
 
+  // Stats: count entities tagged with this scope by node type.
+  const memberTypeStats: { nodeType: string; count: number }[] = docoId
+    ? await withClient(async (c) => {
+        const tables: { table: string; nodeType: string }[] = [
+          { table: "decisions", nodeType: "decision" },
+          { table: "intents", nodeType: "intent" },
+          { table: "actions", nodeType: "action" },
+          { table: "rules", nodeType: "rule" },
+          { table: "reasoning", nodeType: "reasoning" },
+          { table: "evals", nodeType: "eval" },
+          { table: "reference_entities", nodeType: "reference" },
+          { table: "ideas", nodeType: "idea" },
+        ];
+        const unionSql = tables
+          .map(
+            (t) =>
+              `SELECT '${t.nodeType}'::text AS node_type FROM ${t.table}
+                 JOIN edges e ON e.from_id = ${t.table}.id
+                              AND e.edge_type = 'in_scope_of'
+                              AND e.to_id = $1
+                WHERE ${t.table}.doco_id = $2`,
+          )
+          .join(" UNION ALL ");
+        const rs = await c.query<{ node_type: string; n: string }>(
+          `SELECT node_type, COUNT(*)::text AS n FROM (${unionSql}) t
+             GROUP BY node_type ORDER BY COUNT(*) DESC`,
+          [id, docoId],
+        );
+        return rs.rows.map((r) => ({ nodeType: r.node_type, count: Number(r.n) }));
+      })
+    : [];
+
   // Heatmap data.
   const since = new Date();
   since.setDate(since.getDate() - HEATMAP_WEEKS * 7);
@@ -315,6 +357,7 @@ export async function loader({
     allScopes,
     memberCount,
     memberStats,
+    memberTypeStats,
     byDay,
     items,
   };
@@ -448,6 +491,7 @@ export default function ScopePage({
     allScopes,
     memberCount,
     memberStats,
+    memberTypeStats,
     byDay,
     items,
     me,
@@ -497,7 +541,12 @@ export default function ScopePage({
           <div className="flex min-w-0 items-baseline">
             <ScopeTitleIcon icon={scope.icon} />
             <h1 className="text-lg font-bold tracking-tight">
-              <span className="font-mono">{scope.name}</span>
+              <Link
+                to={inScopeSearchPath(ownerSlug, docoSlug, scope.name, {})}
+                className="font-mono hover:text-primary"
+              >
+                {scope.name}
+              </Link>
               {scope.name === "global" ? (
                 <span className="ml-2 text-xs text-muted-foreground">
                   {" "}
@@ -518,15 +567,39 @@ export default function ScopePage({
           {/* Left column */}
           <div className="min-[840px]:col-span-7 space-y-4">
             <NodesOverviewCard
-              total={memberCount}
-              viewHref={nodesSearchPath(ownerSlug, docoSlug, scope.name, "*")}
-              tiles={memberStats.map((s) => ({
-                key: s.lifecycle,
-                href: nodesSearchPath(ownerSlug, docoSlug, scope.name, s.lifecycle),
-                badge: <Badge>{s.lifecycle}</Badge>,
-                count: s.count,
-                ariaLabel: `View ${s.count} ${s.lifecycle} nodes in ${scope.name}`,
-              }))}
+              sections={
+                [
+                  {
+                    title: "Node types",
+                    items: memberTypeStats.map((t) => ({
+                      key: `type-${t.nodeType}`,
+                      href: inScopeSearchPath(ownerSlug, docoSlug, scope.name, {
+                        nodeType: t.nodeType,
+                      }),
+                      label: (
+                        <NodeTypeBadge nodeType={t.nodeType}>
+                          {nodeTypeLabel(t.nodeType)}
+                        </NodeTypeBadge>
+                      ),
+                      count: t.count,
+                      ariaLabel: `View ${t.count} ${nodeTypeLabel(t.nodeType).toLowerCase()} in ${scope.name}`,
+                      color: nodeTypeColor(t.nodeType),
+                    })),
+                  },
+                  {
+                    title: "Lifecycle",
+                    items: memberStats.map((s) => ({
+                      key: `lifecycle-${s.lifecycle}`,
+                      href: inScopeSearchPath(ownerSlug, docoSlug, scope.name, {
+                        lifecycle: s.lifecycle,
+                      }),
+                      label: <Badge>{s.lifecycle}</Badge>,
+                      count: s.count,
+                      ariaLabel: `View ${s.count} ${s.lifecycle} nodes in ${scope.name}`,
+                    })),
+                  },
+                ] satisfies NodesOverviewSection[]
+              }
               empty={
                 <p className="text-xs italic text-muted-foreground">
                   No nodes are tagged with this scope yet.
@@ -540,17 +613,19 @@ export default function ScopePage({
                 >
                   <input type="hidden" name="scope" value={scope.name} />
                   <input type="hidden" name="lifecycle" value="*" />
+                  <input type="hidden" name="node_type" value="*" />
                   <input type="hidden" name="limit" value="500" />
-                  {MEMBER_NODE_TYPES.map((nodeType) => (
-                    <input key={nodeType} type="hidden" name="node_type" value={nodeType} />
-                  ))}
                   <label className="sr-only" htmlFor="scope-node-search">
                     Search nodes in {scope.name}
                   </label>
                   <input
                     id="scope-node-search"
                     name="q"
-                    placeholder="Search nodes in this scope..."
+                    placeholder={
+                      memberCount > 0
+                        ? `Search ${memberCount} node${memberCount === 1 ? "" : "s"} in this scope…`
+                        : "Search nodes in this scope…"
+                    }
                     className="min-w-0 flex-1 rounded-md border border-border bg-input px-4 py-2.5 text-sm text-foreground outline-none focus:border-primary"
                   />
                   <button
