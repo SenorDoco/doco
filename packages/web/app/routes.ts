@@ -135,6 +135,13 @@ export default [
   route(":ownerSlug/:docoSlug/api/:type.txt", "routes/$ownerSlug.$docoSlug.api.$type[.]txt.tsx"),
   // Audit-events log (decision_01KRKESCBTYG4005VMPKYNYR53).
   route(":ownerSlug/:docoSlug/api/audit.json", "routes/$ownerSlug.$docoSlug.api.audit[.]json.tsx"),
+  // Admin-only one-shot migration that brings managed scopes into
+  // alignment with the current DEFAULT_SCOPE_TEMPLATES
+  // (decision_01KRRD6QM7NN2EV56NZK96DNKY).
+  route(
+    ":ownerSlug/:docoSlug/api/admin/apply-template-updates.json",
+    "routes/$ownerSlug.$docoSlug.api.admin.apply-template-updates[.]json.tsx",
+  ),
   route(":ownerSlug/:docoSlug/activity", "routes/$ownerSlug.$docoSlug.activity.tsx"),
   // Feature routes — registered BEFORE the catch-all :type below so they win
   // the match. (React Router prefers static segments but explicit order is
