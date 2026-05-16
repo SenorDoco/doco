@@ -3,6 +3,7 @@
 // applied BEFORE the cosine top-N slice. See the Decision
 // `what-shape-do-the-search-filters-take-and-how-do-defaults`.
 import type { PoolClient } from "pg";
+import { parse as parseYaml } from "yaml";
 
 /**
  * Parsed filter spec. `null` for a field means "no filter" (everything
@@ -35,10 +36,7 @@ export const HIDDEN_BY_DEFAULT_LIFECYCLE_VALUES = [
   "failed",
 ] as const;
 
-export function parseSearchFilters(
-  params: URLSearchParams,
-  facets: FilterFacets,
-): SearchFilters {
+export function parseSearchFilters(params: URLSearchParams, facets: FilterFacets): SearchFilters {
   const rawLimit = Number.parseInt(params.get("limit") ?? "", 10);
   const limit = Number.isFinite(rawLimit)
     ? Math.max(1, Math.min(MAX_LIMIT, rawLimit))
@@ -162,10 +160,9 @@ export async function resolveFilteredCandidates(
       const table = NODE_TYPE_TO_TABLE[nt];
       if (!table) continue;
       if (table === "principals" || table === "organizations") continue;
-      const r = await c.query<{ id: string }>(
-        `SELECT id FROM ${table} WHERE doco_id = $1`,
-        [docoId],
-      );
+      const r = await c.query<{ id: string }>(`SELECT id FROM ${table} WHERE doco_id = $1`, [
+        docoId,
+      ]);
       for (const row of r.rows) nodeTypeIds.add(row.id);
     }
   }
@@ -175,7 +172,7 @@ export async function resolveFilteredCandidates(
     scopeIds = new Set();
     const scopeRows = (
       await c.query<{ id: string }>(
-        `SELECT id FROM scopes WHERE doco_id = $1 AND name = ANY($2::text[])`,
+        "SELECT id FROM scopes WHERE doco_id = $1 AND name = ANY($2::text[])",
         [docoId, filters.scope],
       )
     ).rows;
@@ -193,9 +190,7 @@ export async function resolveFilteredCandidates(
     }
   }
 
-  const sets = [lifecycleIds, nodeTypeIds, scopeIds].filter(
-    (s): s is Set<string> => s !== null,
-  );
+  const sets = [lifecycleIds, nodeTypeIds, scopeIds].filter((s): s is Set<string> => s !== null);
   if (sets.length === 0) return null;
   if (sets.length === 1) return sets[0];
 
@@ -210,13 +205,10 @@ export async function resolveFilteredCandidates(
 export interface FilterFacets {
   lifecycle: { value: string; count: number }[];
   nodeType: { value: string; count: number }[];
-  scope: { name: string; count: number }[];
+  scope: { name: string; count: number; icon: string | null }[];
 }
 
-export async function computeFilterFacets(
-  c: PoolClient,
-  docoId: string,
-): Promise<FilterFacets> {
+export async function computeFilterFacets(c: PoolClient, docoId: string): Promise<FilterFacets> {
   const lifecycleCounts = new Map<string, number>();
   for (const t of PG_DOCO_TABLES_WITH_LIFECYCLE) {
     const r = await c.query<{ value: string; n: string }>(
@@ -246,8 +238,8 @@ export async function computeFilterFacets(
   nodeTypeCounts.sort((a, b) => b.count - a.count);
 
   const scopeRows = (
-    await c.query<{ name: string; n: string }>(
-      `SELECT s.name AS name, COUNT(e.from_id)::text AS n
+    await c.query<{ name: string; raw_yaml: string | null; n: string }>(
+      `SELECT s.name AS name, s.raw_yaml AS raw_yaml, COUNT(e.from_id)::text AS n
          FROM scopes s
          LEFT JOIN edges e
            ON e.to_id = s.id
@@ -255,7 +247,7 @@ export async function computeFilterFacets(
           AND e.from_node_type != 'scope'
           AND e.doco_id = s.doco_id
         WHERE s.doco_id = $1
-        GROUP BY s.name
+        GROUP BY s.name, s.raw_yaml
         ORDER BY COUNT(e.from_id) DESC, s.name ASC`,
       [docoId],
     )
@@ -270,9 +262,20 @@ export async function computeFilterFacets(
         return a.value.localeCompare(b.value);
       }),
     nodeType: nodeTypeCounts,
-    scope: scopeRows.map((r: { name: string; n: string }) => ({
+    scope: scopeRows.map((r: { name: string; raw_yaml: string | null; n: string }) => ({
       name: r.name,
       count: Number(r.n),
+      icon: scopeIconFromRawYaml(r.raw_yaml),
     })),
   };
+}
+
+function scopeIconFromRawYaml(rawYaml: string | null): string | null {
+  if (!rawYaml) return null;
+  try {
+    const parsed = parseYaml(rawYaml) as { icon?: unknown } | null;
+    return typeof parsed?.icon === "string" && parsed.icon.trim() ? parsed.icon : null;
+  } catch {
+    return null;
+  }
 }

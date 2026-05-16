@@ -64,11 +64,12 @@ function collectIdentityIds(value: unknown, out = new Set<string>()): Set<string
 function displayPrincipalType(type: string): string {
   return type === "human" ? "person" : type;
 }
-import { Badge } from "~/components/badge";
+import { Badge, NodeTypeBadge } from "~/components/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { EntityGraph, type GraphLink, type GraphNode } from "~/components/entity-graph";
 import { SiteHeader } from "~/components/site-header";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "~/components/table";
+import { nodeTypeColor } from "~/lib/node-colors";
 
 /** "Ns / Nm / Nh / Nd ago" — same shape the graph component uses. */
 function relativeTimeIso(iso: string): string {
@@ -518,6 +519,7 @@ export default function EntityDetail({
   const focalCreatedAt =
     focalNode?.created_at ??
     (typeof ent.created_at === "string" ? (ent.created_at as string) : null);
+  const scopeColor = nodeTypeColor("scope");
 
   // PPR-ranked neighbors for the "More relevant nodes" list — drop the focal,
   // take the top 10, render in descending order.
@@ -530,7 +532,7 @@ export default function EntityDetail({
     <header className="space-y-2">
       <h1 className="text-lg font-semibold tracking-tight text-foreground">{display}</h1>
       <div className="flex flex-wrap items-center gap-2 pt-1">
-        <Badge>{type}</Badge>
+        <NodeTypeBadge nodeType={type} />
         {ent.lifecycle ? <Badge>lifecycle: {String(ent.lifecycle)}</Badge> : null}
         {ent.modality ? <Badge variant="primary">{String(ent.modality)}</Badge> : null}
         {ent.phase ? <Badge variant="primary">{String(ent.phase)}</Badge> : null}
@@ -539,6 +541,11 @@ export default function EntityDetail({
             key={s.id}
             to={linkTo("scope", s.name)}
             className="inline-flex items-center gap-1 rounded-md border border-border bg-card px-2 py-0.5 text-[11px] font-mono text-muted-foreground transition-colors hover:border-primary hover:text-foreground"
+            style={{
+              borderColor: scopeColor,
+              backgroundColor: `color-mix(in oklch, ${scopeColor} 9%, white)`,
+              color: scopeColor,
+            }}
           >
             {s.icon ? (
               <span aria-hidden className="font-sans text-[12px] leading-none">
@@ -594,9 +601,7 @@ export default function EntityDetail({
                 to={linkTo(n.node_type, n.id)}
                 className="block px-4 py-2 text-xs hover:bg-input/40"
               >
-                <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
-                  {n.node_type}
-                </span>
+                <NodeTypeBadge nodeType={n.node_type} className="text-[10px] uppercase" />
                 <span className="ml-2 font-mono text-foreground">{n.name ?? n.id}</span>
                 <span className="ml-2 text-muted-foreground">{n.summary?.slice(0, 80)}</span>
                 <span className="ml-2 font-mono text-[10px] text-muted-foreground">

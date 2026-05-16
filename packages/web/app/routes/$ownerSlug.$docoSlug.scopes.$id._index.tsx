@@ -28,7 +28,7 @@ import {
 } from "react-router";
 import { parse as parseYaml } from "yaml";
 import { ActivityHeatmap } from "~/components/activity-heatmap";
-import { Badge } from "~/components/badge";
+import { Badge, NodeTypeBadge } from "~/components/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { EmojiPickerInput } from "~/components/emoji-picker-input";
 import { SiteHeader } from "~/components/site-header";
@@ -679,9 +679,10 @@ export default function ScopePage({
                           })}
                           className="flex items-baseline gap-2 hover:text-primary"
                         >
-                          <span className="font-mono text-[10px] uppercase text-muted-foreground">
-                            {it.node_type}
-                          </span>
+                          <NodeTypeBadge
+                            nodeType={it.node_type}
+                            className="text-[10px] uppercase"
+                          />
                           <span className="flex-1 truncate text-foreground">{it.summary}</span>
                           <Badge>{it.lifecycle}</Badge>
                         </Link>

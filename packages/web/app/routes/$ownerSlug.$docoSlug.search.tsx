@@ -9,12 +9,13 @@ import type { PoolClient } from "pg";
 // entities. With explicit filters and no keyword, this page lists the
 // filtered nodes directly. Filter state lives in URL query params.
 import { Form, Link, useSearchParams } from "react-router";
-import { Badge } from "~/components/badge";
+import { NodeTypeBadge } from "~/components/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
 import { SiteHeader } from "~/components/site-header";
 import { loadDocoForRead } from "~/lib/doco-access.server";
 import { getDocoEmbeddingProvider } from "~/lib/embedding-provider.server";
 import { loadHostConfig } from "~/lib/host";
+import { nodeTypeColor } from "~/lib/node-colors";
 import {
   type FilterFacets,
   type SearchFilters,
@@ -300,7 +301,7 @@ async function attachGlobalPageRank(c: PoolClient, docoId: string, hits: Hit[]):
   if (hits.length === 0) return;
   const edgeRows = (
     await c.query<{ from_id: string; to_id: string; edge_type: string; attribution: string }>(
-      `SELECT from_id, to_id, edge_type, attribution FROM edges WHERE doco_id = $1`,
+      "SELECT from_id, to_id, edge_type, attribution FROM edges WHERE doco_id = $1",
       [docoId],
     )
   ).rows;
@@ -539,6 +540,7 @@ async function withHitDerivedCounts(
     scope: facets.scope.map((f) => ({
       name: f.name,
       count: scopeCounts.get(f.name) ?? 0,
+      icon: f.icon,
     })),
   };
 }
@@ -577,10 +579,9 @@ export default function SearchInDoco({
                 defaultValue={activeQ}
                 placeholder="Find anything…"
                 className="w-full rounded-md border bg-background px-2 py-1 text-sm"
-                autoFocus
               />
-              {preservedSearchParams.map(([key, value], index) => (
-                <input key={`${key}-${value}-${index}`} type="hidden" name={key} value={value} />
+              {preservedSearchParams.map(([key, value]) => (
+                <input key={`${key}-${value}`} type="hidden" name={key} value={value} />
               ))}
             </div>
           </Form>
@@ -593,6 +594,8 @@ export default function SearchInDoco({
                 value: f.name,
                 label: f.name,
                 count: f.count,
+                icon: f.icon,
+                color: nodeTypeColor("scope"),
               }))}
               selected={new Set(filters.scope ?? [])}
               wildcardActive={filters.scope === null}
@@ -605,6 +608,7 @@ export default function SearchInDoco({
                 value: f.value,
                 label: f.value,
                 count: f.count,
+                color: nodeTypeColor(f.value),
               }))}
               selected={new Set(filters.nodeType ?? [])}
               wildcardActive={filters.nodeType === null}
@@ -648,7 +652,7 @@ export default function SearchInDoco({
               <Card key={hit.id}>
                 <CardHeader>
                   <CardTitle className="text-sm flex items-center gap-2">
-                    <Badge>{hit.node_type}</Badge>
+                    <NodeTypeBadge nodeType={hit.node_type} />
                     <Link
                       to={`/${ownerSlug}/${docoSlug}/${hit.node_type}/${hit.id}`}
                       className="font-mono text-xs text-primary hover:underline"
@@ -685,7 +689,13 @@ function FacetGroup({
   label: string;
   name: string;
   searchParams: URLSearchParams;
-  options: { value: string; label: string; count: number }[];
+  options: {
+    value: string;
+    label: string;
+    count: number;
+    icon?: string | null;
+    color?: string | null;
+  }[];
   selected: Set<string>;
   wildcardActive: boolean;
 }) {
@@ -699,6 +709,7 @@ function FacetGroup({
       </div>
       {options.map((o) => {
         const isSelected = wildcardActive || selected.has(o.value);
+        const color = o.color ?? null;
         return (
           <div key={o.value} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
             <Link
@@ -712,10 +723,28 @@ function FacetGroup({
                     ? "border-primary bg-primary text-primary-foreground"
                     : "border-muted-foreground/70"
                 }`}
+                style={
+                  color
+                    ? {
+                        borderColor: color,
+                        backgroundColor: isSelected
+                          ? color
+                          : `color-mix(in oklch, ${color} 7%, white)`,
+                        color: isSelected ? "white" : color,
+                      }
+                    : undefined
+                }
               >
                 {isSelected ? "✓" : ""}
               </span>
-              <span className="truncate">{o.label}</span>
+              {o.icon ? (
+                <span aria-hidden className="shrink-0 font-sans text-[12px] leading-none">
+                  {o.icon}
+                </span>
+              ) : null}
+              <span className="truncate" style={color ? { color } : undefined}>
+                {o.label}
+              </span>
             </Link>
             <span className="whitespace-nowrap text-xs text-muted-foreground">
               <span className="inline-block min-w-8 text-right tabular-nums">

@@ -8,6 +8,7 @@ import { loadDocoForRead } from "~/lib/doco-access.server";
 import { readAuditEvents, type AuditOp } from "~/lib/audit-log.server";
 import { entityUrl } from "@doco/shared";
 import type { EntityId } from "@doco/shared";
+import { NodeTypeBadge } from "~/components/badge";
 import { SiteHeader } from "~/components/site-header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 
@@ -42,7 +43,10 @@ export async function loader({
   const opParam = url.searchParams.get("op");
   let op: AuditOp[] | undefined;
   if (opParam) {
-    const parts = opParam.split(",").map((s) => s.trim()).filter(Boolean);
+    const parts = opParam
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
     if (parts.every((p) => VALID_OPS.has(p))) op = parts as AuditOp[];
   }
   const limitRaw = url.searchParams.get("limit");
@@ -62,7 +66,9 @@ export async function loader({
   };
 }
 
-export default function ActivityPage({ loaderData }: { loaderData: Awaited<ReturnType<typeof loader>> }) {
+export default function ActivityPage({
+  loaderData,
+}: { loaderData: Awaited<ReturnType<typeof loader>> }) {
   const { ownerSlug, docoSlug, me, events, filters } = loaderData;
   return (
     <div>
@@ -72,7 +78,11 @@ export default function ActivityPage({ loaderData }: { loaderData: Awaited<Retur
           <h1 className="text-xl font-semibold">Activity</h1>
           <p className="text-sm text-muted-foreground">
             Per-Doco audit-events log — every mutation that touched an entity. Filter via URL
-            params: <code className="font-mono">?entity_type=decision&op=lifecycle.transition&since=2026-05-01</code>.
+            params:{" "}
+            <code className="font-mono">
+              ?entity_type=decision&op=lifecycle.transition&since=2026-05-01
+            </code>
+            .
           </p>
         </div>
 
@@ -106,9 +116,10 @@ export default function ActivityPage({ loaderData }: { loaderData: Awaited<Retur
                           nodeType: e.entity_type as never,
                           id: e.entity_id as EntityId<never>,
                         })}
-                        className="text-primary hover:underline"
+                        className="inline-flex items-center gap-1.5 text-primary hover:underline"
                       >
-                        {e.entity_type}/{e.entity_id}
+                        <NodeTypeBadge nodeType={e.entity_type} />
+                        <span className="font-mono">{e.entity_id}</span>
                       </Link>
                     </div>
                     {e.before || e.after ? (
@@ -132,7 +143,13 @@ function FilterChips({
   ownerSlug,
   docoSlug,
 }: {
-  filters: { entity_type?: string; by?: string; since?: string; until?: string; op?: string | null };
+  filters: {
+    entity_type?: string;
+    by?: string;
+    since?: string;
+    until?: string;
+    op?: string | null;
+  };
   ownerSlug: string;
   docoSlug: string;
 }) {
@@ -141,15 +158,22 @@ function FilterChips({
   return (
     <div className="flex flex-wrap items-center gap-2 text-xs">
       <span className="text-muted-foreground">Filters:</span>
-      {entries.map(([k, v]) => (
-        <code key={k} className="rounded-md border border-border px-2 py-0.5 font-mono">
-          {k}={String(v)}
-        </code>
-      ))}
-      <Link
-        to={`/${ownerSlug}/${docoSlug}/activity`}
-        className="text-primary hover:underline"
-      >
+      {entries.map(([k, v]) =>
+        k === "entity_type" ? (
+          <span
+            key={k}
+            className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-0.5 font-mono"
+          >
+            <span>entity_type=</span>
+            <NodeTypeBadge nodeType={String(v)} />
+          </span>
+        ) : (
+          <code key={k} className="rounded-md border border-border px-2 py-0.5 font-mono">
+            {k}={String(v)}
+          </code>
+        ),
+      )}
+      <Link to={`/${ownerSlug}/${docoSlug}/activity`} className="text-primary hover:underline">
         Clear
       </Link>
     </div>

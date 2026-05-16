@@ -298,7 +298,7 @@ export function EntityGraph({ centerId, nodes, links, hrefFor }: EntityGraphProp
                 style={{ width: NODE_W }}
               >
                 <div className="flex items-center gap-1.5">
-                  <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                  <span className="text-[10px] uppercase tracking-wider" style={{ color }}>
                     {n.node_type}
                   </span>
                 </div>
@@ -490,6 +490,7 @@ export function EntityGraph({ centerId, nodes, links, hrefFor }: EntityGraphProp
                   });
                 }}
                 className="h-3 w-3"
+                style={{ accentColor: color }}
               />
               <span style={{ color }}>{label}</span>
             </label>
