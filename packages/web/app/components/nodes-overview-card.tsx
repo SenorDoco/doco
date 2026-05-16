@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { Link } from "react-router";
+import { Card } from "~/components/card";
 
 export interface NodesOverviewItem {
   key: string;
@@ -27,7 +28,7 @@ export function NodesOverviewCard({
 }) {
   const allEmpty = sections.every((s) => s.items.length === 0);
   return (
-    <div className="space-y-4">
+    <Card className="space-y-4 p-5">
       {search}
       {allEmpty
         ? empty
@@ -65,6 +66,6 @@ export function NodesOverviewCard({
               </section>
             ),
           )}
-    </div>
+    </Card>
   );
 }
