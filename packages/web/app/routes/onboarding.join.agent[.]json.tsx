@@ -9,14 +9,14 @@ export function loader() {
     summary:
       "Join-vs-create is a project-owner choice in the browser, not an agent-side fork. Use the same /api/v1/agent-link/{start,poll} recipe.",
     recipe: {
-      start: "POST https://doco.to/api/v1/agent-link/start",
-      poll: "POST https://doco.to/api/v1/agent-link/poll",
+      start: "GET https://doco.to/api/v1/agent-link/start?agent_name=<runtime>&hostname=<host>",
+      poll: "GET https://doco.to/api/v1/agent-link/poll?state_nonce=<from-start>",
       details: "https://doco.to/onboarding/create/agent.txt",
     },
     next_steps: [
-      "POST /api/v1/agent-link/start (no auth) to get state_nonce + authorize_url",
+      "GET /api/v1/agent-link/start (no auth) to get state_nonce + authorize_url + poll_url",
       "Tell the project owner to open authorize_url; they pick existing or create-new in the browser",
-      "Poll /api/v1/agent-link/poll until response carries access_url; write DOCO_URL=<access_url> to ./.env",
+      "GET poll_url until response carries access_url; write DOCO_URL=<access_url> to ./.env",
     ],
     related_routes: [
       "/onboarding/join/agent.txt",
