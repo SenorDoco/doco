@@ -41,8 +41,18 @@ import { loadHostConfig } from "~/lib/host";
 import { nodeTypeColor } from "~/lib/node-colors";
 import { reindex, setScopeWatchedInDoco, updateScopeInDoco } from "~/lib/redeem.server";
 import { listScopeDetails, readDocoMetadata } from "~/lib/scope-helpers.server";
+import { timeAgo } from "~/lib/time-ago";
 
 const HEATMAP_WEEKS = 52;
+const TOP_CONTRIBUTORS_LIMIT = 10;
+
+interface TopContributor {
+  principalId: string;
+  username: string;
+  displayName: string | null;
+  lastAt: string;
+  eventCount: number;
+}
 
 type RuleKind = "authoring" | "guidance" | "tagged";
 
@@ -386,6 +396,47 @@ export async function loader({
       })
     : {};
 
+  // Top contributors to entities currently tagged with this scope —
+  // ranked by total audit-event count desc, last-contributed-at tiebreak.
+  const topContributors: TopContributor[] = docoId
+    ? await withClient(async (c) => {
+        const rs = await c.query<{
+          principal_id: string;
+          username: string;
+          display_name: string | null;
+          last_at: Date | string;
+          event_count: string;
+        }>(
+          `SELECT ae.by_principal AS principal_id,
+                  p.username,
+                  p.display_name,
+                  MAX(ae.at) AS last_at,
+                  COUNT(*)::text AS event_count
+             FROM audit_events ae
+             JOIN principals p ON p.id = ae.by_principal
+             JOIN edges e ON e.from_id = ae.entity_id
+                          AND e.edge_type = 'in_scope_of'
+                          AND e.to_id = $2
+                          AND e.doco_id = ae.doco_id
+            WHERE ae.doco_id = $1 AND ae.by_principal IS NOT NULL
+            GROUP BY ae.by_principal, p.username, p.display_name
+            ORDER BY COUNT(*) DESC, MAX(ae.at) DESC
+            LIMIT $3`,
+          [docoId, id, TOP_CONTRIBUTORS_LIMIT],
+        );
+        return rs.rows.map((r) => ({
+          principalId: r.principal_id,
+          username: r.username,
+          displayName: r.display_name,
+          lastAt:
+            r.last_at instanceof Date
+              ? r.last_at.toISOString()
+              : new Date(String(r.last_at)).toISOString(),
+          eventCount: Number(r.event_count),
+        }));
+      })
+    : [];
+
   // Latest 30 audit events for entities currently tagged with this scope.
   interface FeedItem extends ActivityFeedLineItem {
     event_id: string;
@@ -514,6 +565,7 @@ export async function loader({
     memberTypeStats,
     byDay,
     items,
+    topContributors,
   };
 }
 
@@ -657,6 +709,7 @@ export default function ScopePage({
     memberTypeStats,
     byDay,
     items,
+    topContributors,
     me,
   } = loaderData;
 
@@ -817,6 +870,7 @@ export default function ScopePage({
                   No nodes are tagged with this scope yet.
                 </p>
               }
+              aside={<TopContributorsList contributors={topContributors} />}
               search={
                 <Form
                   method="get"
@@ -1009,6 +1063,36 @@ function PrimaryIntentCard({
         </div>
       </CardHeader>
     </Card>
+  );
+}
+
+function TopContributorsList({ contributors }: { contributors: TopContributor[] }) {
+  return (
+    <section className="space-y-1">
+      <h2 className="text-xs font-semibold text-foreground">Top contributors</h2>
+      {contributors.length === 0 ? (
+        <p className="text-xs italic text-muted-foreground">No recorded contributions yet.</p>
+      ) : (
+        contributors.map((c) => (
+          <div
+            key={c.principalId}
+            className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3"
+          >
+            <span className="truncate text-xs" title={c.username}>
+              {c.displayName ?? c.username}
+            </span>
+            <time
+              dateTime={c.lastAt}
+              title={c.lastAt}
+              suppressHydrationWarning
+              className="min-w-14 whitespace-nowrap text-right text-xs tabular-nums text-muted-foreground"
+            >
+              {timeAgo(c.lastAt)}
+            </time>
+          </div>
+        ))
+      )}
+    </section>
   );
 }
 
