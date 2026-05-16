@@ -45,16 +45,6 @@ export function NodesOverviewCard({
                       aria-label={item.ariaLabel}
                       className="flex min-w-0 items-center gap-2 text-xs hover:text-primary"
                     >
-                      {item.color ? (
-                        <span
-                          aria-hidden="true"
-                          className="h-3 w-3 shrink-0 rounded-[3px] border"
-                          style={{
-                            borderColor: item.color,
-                            backgroundColor: `color-mix(in oklch, ${item.color} 18%, white)`,
-                          }}
-                        />
-                      ) : null}
                       {item.icon ? (
                         <span aria-hidden className="shrink-0 text-[12px] leading-none">
                           {item.icon}
