@@ -10,23 +10,23 @@
 // For the long-form reference, fetch `/api/v1/agent-reference`. For
 // per-Doco context (scopes, freshness), `/<doco_handle>/status.json`.
 
-import { CANONICAL_INSTRUCTIONS } from "~/lib/instructions.server";
-import type { AuthoringPredicate } from "@doco/shared";
 import { getDocoByIdOrHandle, listEntitiesByDoco } from "@doco/db";
+import type { AuthoringPredicate } from "@doco/shared";
 import { docoPath, rootDir } from "~/lib/db.server";
 import { canAccessDoco } from "~/lib/doco-access.server";
 import { etaggedJson } from "~/lib/etag.server";
 import { loadHostConfig } from "~/lib/host";
+import { CANONICAL_INSTRUCTIONS } from "~/lib/instructions.server";
 import {
+  type MissingDocoGuidance,
   buildMissingDocoGuidance,
   formatMissingDocoLine,
   hostFromRequest,
-  type MissingDocoGuidance,
 } from "~/lib/missing-doco-guidance.server";
 import {
-  listScopeManifest,
-  readDocoMetadata,
   type ScopeManifestEntry,
+  listLiveScopeManifest,
+  readDocoMetadata,
 } from "~/lib/scope-helpers.server";
 import { extractCredential, getCurrentPrincipalAsync } from "~/lib/session";
 import { TokenStore } from "~/lib/tokens.server";
@@ -166,9 +166,7 @@ function buildOnboardingOverlay(args: {
  * also count as "no project-specific scope yet."
  */
 function isOnboardingState(scopes: ScopeManifestEntry[]): boolean {
-  const projectSpecific = scopes.filter(
-    (s) => s.name !== "global" && s.name !== "constitution",
-  );
+  const projectSpecific = scopes.filter((s) => s.name !== "global" && s.name !== "constitution");
   return projectSpecific.length === 0;
 }
 
@@ -224,14 +222,14 @@ export async function loader({ request }: { request: Request }) {
         // api/*.json. The previous gap was a misleading-success
         // signal — bootstrap said yes while data routes said no.
         const me = await getCurrentPrincipalAsync(request);
-        if (!await canAccessDoco(meta, me?.id ?? null)) {
+        if (!(await canAccessDoco(meta, me?.id ?? null))) {
           flagMissing("no_access", id);
         } else {
           // code_map.yaml is gone (alpha forbids back-compat); keep
           // the field in the response for client compatibility.
           codeMap = null;
           constitution = await loadConstitution(meta.docoId);
-          scopes = await listScopeManifest(dir);
+          scopes = await listLiveScopeManifest(dir);
           docoIdPath = row.id;
           docoHandlePath = row.handle;
           if (isOnboardingState(scopes)) {
@@ -264,7 +262,6 @@ export async function loader({ request }: { request: Request }) {
     onboarding_overlay: onboardingOverlay,
     warning,
     missing_doco_guidance: missingDocoGuidance,
-    note:
-      "Slim bootstrap. For deep reference fetch /api/v1/agent-reference. For per-Doco status, call /<doco_handle>/status.json. Pass ?id=<doco_id> to receive `code_map` + `constitution` (Doco-specific load-bearing rules enforced at capture time) + `scopes` (manifest with mandatory vs optional flag). When `onboarding_overlay` is non-null the Doco has only the Constitution scope — run STEP 1 (scope_setup) and STEP 2 (scope_population) before treating onboarding as done; the overlay disappears the moment the project owner accepts a first project-specific scope. When `missing_doco_guidance` is non-null the caller's id/handle didn't resolve OR resolved to a Doco they can't access — read the structured `actions` to pick the right recovery (create vs ask-for-access). `warning` carries a single-line version of the same.",
+    note: "Slim bootstrap. For deep reference fetch /api/v1/agent-reference. For per-Doco status, call /<doco_handle>/status.json. Pass ?id=<doco_id> to receive `code_map` + `constitution` (Doco-specific load-bearing rules enforced at capture time) + `scopes` (active/proposed manifest entries only; abandoned scopes are omitted). When `onboarding_overlay` is non-null the Doco has only the Constitution scope — run STEP 1 (scope_setup) and STEP 2 (scope_population) before treating onboarding as done; the overlay disappears the moment the project owner accepts a first project-specific scope. When `missing_doco_guidance` is non-null the caller's id/handle didn't resolve OR resolved to a Doco they can't access — read the structured `actions` to pick the right recovery (create vs ask-for-access). `warning` carries a single-line version of the same.",
   });
 }

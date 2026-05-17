@@ -2,6 +2,7 @@
 import { basename } from "node:path";
 import { getDocoByHandle, withClient } from "@doco/db";
 import { parse as parseYaml } from "yaml";
+import { isLiveScopeLifecycle } from "~/lib/scope-lifecycle";
 
 export interface DocoMetadata {
   docoId: string;
@@ -194,4 +195,8 @@ export async function listScopeManifest(docoDir: string): Promise<ScopeManifestE
     lifecycle: d.lifecycle,
     is_watched: d.is_watched,
   }));
+}
+
+export async function listLiveScopeManifest(docoDir: string): Promise<ScopeManifestEntry[]> {
+  return (await listScopeManifest(docoDir)).filter((s) => isLiveScopeLifecycle(s.lifecycle));
 }

@@ -4,6 +4,7 @@
 // `what-shape-do-the-search-filters-take-and-how-do-defaults`.
 import type { PoolClient } from "pg";
 import { parse as parseYaml } from "yaml";
+import { isLiveScopeLifecycle } from "~/lib/scope-lifecycle";
 
 /**
  * Parsed filter spec. `null` for a field means "no filter" (everything
@@ -66,7 +67,7 @@ export function parseSearchFilters(params: URLSearchParams, facets: FilterFacets
   const scopeVals = readMulti(params, "scope");
   let scope: string[] | null;
   if (scopeVals === null) {
-    scope = facets.scope.map((f) => f.name);
+    scope = facets.scope.filter((f) => isLiveScopeLifecycle(f.lifecycle)).map((f) => f.name);
   } else if (scopeVals.length === 1 && scopeVals[0] === "*") {
     scope = null;
   } else {
@@ -229,6 +230,7 @@ export async function attachScopesToSearchHits<T extends { id: string }>(
   c: PoolClient,
   docoId: string,
   hits: T[],
+  opts: { includeInactiveScopes?: boolean } = {},
 ): Promise<Array<T & { scopes: SearchHitScope[] }>> {
   const byId = new Map<string, Array<T & { scopes: SearchHitScope[] }>>();
   for (const hit of hits) {
@@ -239,8 +241,18 @@ export async function attachScopesToSearchHits<T extends { id: string }>(
   if (hits.length === 0) return hits as Array<T & { scopes: SearchHitScope[] }>;
 
   const rows = (
-    await c.query<{ from_id: string; id: string; name: string; raw_yaml: string | null }>(
-      `SELECT e.from_id, s.id, s.name, s.raw_yaml
+    await c.query<{
+      from_id: string;
+      id: string;
+      name: string;
+      raw_yaml: string | null;
+      lifecycle: string | null;
+    }>(
+      `SELECT e.from_id,
+              s.id,
+              s.name,
+              s.raw_yaml,
+              COALESCE(s.lifecycle, 'active') AS lifecycle
          FROM edges e
          INNER JOIN scopes s
            ON s.id = e.to_id
@@ -255,6 +267,7 @@ export async function attachScopesToSearchHits<T extends { id: string }>(
 
   const seen = new Set<string>();
   for (const row of rows) {
+    if (!opts.includeInactiveScopes && !isLiveScopeLifecycle(row.lifecycle)) continue;
     const targets = byId.get(row.from_id);
     if (!targets) continue;
     const key = `${row.from_id}:${row.id}`;

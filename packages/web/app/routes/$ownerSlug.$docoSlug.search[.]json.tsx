@@ -87,23 +87,17 @@ const TYPE_FETCHES: TypeFetch[] = [
   fetchSpec("ideas", "idea", "summary, lifecycle, created_at", false),
   // v7 (decision_01KRRR5BQ16ASY8HQEE0V499YG): State node type.
   fetchSpec("states", "state", "summary, lifecycle, created_at", false),
-  fetchSpec(
-    "principals",
-    "principal",
-    "username, created_at",
-    true,
-    (r, vs, docoDir) => ({
-      id: String(r.id),
-      node_type: "principal",
-      name: (r.username as string) ?? null,
-      summary: (r.username as string) ?? "",
-      lifecycle: null,
-      created_at: (r.created_at as string) ?? null,
-      gpr: 0,
-      vector_score: vs,
-      file_path: resolveEntityFilePath(docoDir, "principal", String(r.id)),
-    }),
-  ),
+  fetchSpec("principals", "principal", "username, created_at", true, (r, vs, docoDir) => ({
+    id: String(r.id),
+    node_type: "principal",
+    name: (r.username as string) ?? null,
+    summary: (r.username as string) ?? "",
+    lifecycle: null,
+    created_at: (r.created_at as string) ?? null,
+    gpr: 0,
+    vector_score: vs,
+    file_path: resolveEntityFilePath(docoDir, "principal", String(r.id)),
+  })),
   fetchSpec("organizations", "organization", "slug, name, created_at", true, (r, vs, docoDir) => ({
     id: String(r.id),
     node_type: "organization",
@@ -283,7 +277,9 @@ export async function loader({
     if (wantsScope) {
       await applyScopePins(c, ctx.meta.docoId, allHits, scored, gprById, docoDir);
     }
-    await attachScopesToSearchHits(c, ctx.meta.docoId, allHits);
+    await attachScopesToSearchHits(c, ctx.meta.docoId, allHits, {
+      includeInactiveScopes: false,
+    });
 
     const stableData = {
       query: q,
