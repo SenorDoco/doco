@@ -26,14 +26,17 @@ line + one doco.md file).
     POST ${baseUrl}/api/v1/docos.json
     Content-Type: application/json
 
-    {"slug": "<lowercase-kebab>", "description": "<short prose>"}
+    {"requested_id": "<lowercase-kebab>", "description": "<short prose>"}
 
-Both fields are optional. If \`slug\` is omitted, the server assigns
-\`doco-<random>\`. Response:
+Both fields are optional. \`requested_id\` is the human-readable URL
+id you'd like; the host auto-suffixes (-2, -3, …) on global collision
+and writes the actually-used value to \`doco_handle\` in the response.
+Omitted id auto-generates as \`doco-<random>\`. Response:
 
     {
       "doco_id":           "doco_01K…",
-      "doco_url":          "${baseUrl}/by-id/doco_01K…/",
+      "doco_handle":       "<lowercase-kebab>",
+      "doco_url":          "${baseUrl}/<doco_handle>/",
       "doco_slug":         "<owner>/<slug>",
       "doco_key":          "<64-hex>",
       "invite_url":        "${baseUrl}/invite/<64-hex>",

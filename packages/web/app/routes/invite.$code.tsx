@@ -70,6 +70,7 @@ type ActionResult =
   | {
       ok: true;
       doco_url: string;
+      doco_handle: string;
       doco_slug: string;
       doco_key: string;
     };
@@ -116,9 +117,11 @@ export async function action({
 
   const url = new URL(request.url);
   const origin = `${url.protocol}//${url.host}`;
+  const handle = doco.handle || `${doco.owner_slug}-${doco.doco_slug}`;
   return {
     ok: true,
-    doco_url: `${origin}/by-id/${doco.id}/`,
+    doco_url: `${origin}/${handle}/`,
+    doco_handle: handle,
     doco_slug: `${doco.owner_slug}/${doco.doco_slug}`,
     doco_key: session.token,
   };
