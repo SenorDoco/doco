@@ -13,15 +13,15 @@
 //     just a "Continue" button to /<owner>/<slug>/.
 //   - If not signed in: bounce through GitHub OAuth and come back here.
 
-import { Form, Link, redirect } from "react-router";
+import { getDocoById, getPrincipalById } from "@doco/db";
 import type { EntityId } from "@doco/shared";
-import { getDocoById } from "@doco/db";
-import { TokenStore } from "~/lib/tokens.server";
-import { rootDir } from "~/lib/db.server";
-import { getCurrentPrincipal } from "~/lib/session";
+import { Form, Link, redirect } from "react-router";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { DocoMark } from "~/components/doco-mark";
 import { VersionPill } from "~/components/version-pill";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
+import { rootDir } from "~/lib/db.server";
+import { getCurrentPrincipal } from "~/lib/session";
+import { TokenStore } from "~/lib/tokens.server";
 
 type LoaderError =
   | { error: "missing_code" }
@@ -35,6 +35,7 @@ type LoaderOk = {
   ok: true;
   code: string;
   doco: { id: string; handle: string };
+  inviter: { username: string } | null;
   expires_at: string;
   signedIn: { id: string; username: string; display_name: string } | null;
 };
@@ -53,11 +54,15 @@ export async function loader({ request, params }: { request: Request; params: { 
   const doco = await getDocoById(invite.doco_id);
   if (!doco) return { error: "doco_not_found" } satisfies LoaderError;
 
+  const inviter = invite.minted_by_principal_id
+    ? await getPrincipalById(invite.minted_by_principal_id)
+    : null;
   const principal = await getCurrentPrincipal(request);
   return {
     ok: true,
     code,
     doco: { id: doco.id, handle: doco.handle },
+    inviter: inviter ? { username: inviter.username } : null,
     expires_at: invite.expires_at,
     signedIn: principal
       ? { id: principal.id, username: principal.username, display_name: principal.display_name }
@@ -111,7 +116,10 @@ export async function action({
   const consumed = await store.consumeInvite(code, principal.id as EntityId<"principal">);
   if (!consumed) {
     await store.revoke(session.token, false);
-    return { error: "This invite was claimed by someone else in the same moment. Ask the minter for a fresh one." };
+    return {
+      error:
+        "This invite was claimed by someone else in the same moment. Ask the minter for a fresh one.",
+    };
   }
 
   const url = new URL(request.url);
@@ -173,13 +181,18 @@ export default function InviteLanding({
     <Shell>
       <Card>
         <CardHeader>
-          <CardTitle>You've been invited to a doco</CardTitle>
+          <CardTitle>
+            You've been invited to doco <em>{loaderData.doco.handle}</em>
+            {loaderData.inviter ? (
+              <>
+                {" "}
+                by <em>{loaderData.inviter.username}</em>
+              </>
+            ) : null}
+          </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3 text-sm text-muted-foreground">
-          <p>
-            <strong>{loaderData.doco.handle}</strong> keeps people, agents, and work aligned
-            with doco.
-          </p>
+          <p>Doco keeps people, agents, and work aligned.</p>
           <p>
             Invite expires <strong>{new Date(loaderData.expires_at).toLocaleString()}</strong>.
             Single-use — once you accept, this URL stops working.
@@ -225,13 +238,11 @@ function errorTitle(err: LoaderError["error"]): string {
 
 function errorDescription(err: LoaderError["error"]): string {
   if (err === "missing_code") return "Open the URL the inviter shared, not /invite/ on its own.";
-  if (err === "not_found")
-    return "This invite link doesn't match any active or past invite.";
+  if (err === "not_found") return "This invite link doesn't match any active or past invite.";
   if (err === "expired") return "Ask the inviter for a fresh URL.";
   if (err === "consumed")
     return "This invite was used. Each invite URL is single-use; ask for a new one.";
-  if (err === "revoked")
-    return "The minter revoked this invite. Ask them for a fresh one.";
+  if (err === "revoked") return "The minter revoked this invite. Ask them for a fresh one.";
   return "The Doco it pointed at has been deleted.";
 }
 
