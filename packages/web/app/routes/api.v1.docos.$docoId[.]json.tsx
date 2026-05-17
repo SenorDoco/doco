@@ -10,7 +10,7 @@
 // "ask the owner for access" guidance. ULIDs are 128-bit so existence-
 // probing isn't a meaningful enumeration attack.
 
-import { getDocoById } from "@doco/db";
+import { getDocoByIdOrHandle } from "@doco/db";
 import { canAccessDoco } from "~/lib/doco-access.server";
 import {
   hostFromRequest,
@@ -26,7 +26,9 @@ export async function loader({
   params: { docoId: string };
 }) {
   const host = hostFromRequest(request);
-  const row = await getDocoById(params.docoId);
+  // Phase 1 of slug-removal: the path param now accepts either the
+  // ULID (legacy) or the new handle (phase 2 canonical).
+  const row = await getDocoByIdOrHandle(params.docoId);
   if (!row) {
     return missingDocoResponse({
       state: "not_found",
@@ -47,11 +49,13 @@ export async function loader({
       host,
     });
   }
+  const handle = row.handle || `${row.owner_slug}-${row.doco_slug}`;
   return Response.json({
     doco_id: row.id,
+    doco_handle: handle,
     owner_slug: row.owner_slug,
     doco_slug: row.doco_slug,
-    canonical_path: `/${row.owner_slug}/${row.doco_slug}`,
+    canonical_path: `/${handle}`,
     visibility: row.visibility,
   });
 }

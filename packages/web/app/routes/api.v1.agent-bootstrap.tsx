@@ -182,6 +182,7 @@ export async function loader({ request }: { request: Request }) {
   let scopes: ScopeManifestEntry[] = [];
   let docoSlugPath: string | null = null;
   let docoIdPath: string | null = null;
+  let docoHandlePath: string | null = null;
   let warning: string | null = null;
   let missingDocoGuidance: MissingDocoGuidance | null = null;
   let onboardingOverlay: OnboardingOverlay | null = null;
@@ -249,6 +250,7 @@ export async function loader({ request }: { request: Request }) {
           scopes = await listScopeManifest(dir);
           docoSlugPath = `${resolved.ownerSlug}/${resolved.docoSlug}`;
           docoIdPath = effectiveDocoId ?? meta.docoId;
+          docoHandlePath = meta.handle || `${resolved.ownerSlug}-${resolved.docoSlug}`;
           if (resolved.redirected) {
             warning = `Slug "${effectiveOwner}/${effectiveDoco}" is an alias for "${docoSlugPath}". Pin DOCO_ID in AGENTS.md to avoid slug drift.`;
           }
@@ -275,6 +277,11 @@ export async function loader({ request }: { request: Request }) {
     },
     doco_slug: docoSlugPath,
     doco_id: docoIdPath,
+    // Phase 1 of slug-removal: surface the handle alongside the
+    // legacy slug pair. Agents that record `doco_handle` once will
+    // be insulated from owner renames or slug changes (the URL id
+    // is stable per Doco). Phase 2 makes this the canonical id.
+    doco_handle: docoHandlePath,
     code_map: codeMap,
     constitution,
     scopes,

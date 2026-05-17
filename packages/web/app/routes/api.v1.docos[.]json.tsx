@@ -7,16 +7,24 @@
 // so the creator has a sharable URL on the same response.
 //
 // Input (application/json, all optional):
-//   { slug?: string, description?: string }
+//   {
+//     requested_id?: string,   // preferred human-readable id; auto-suffixed
+//                              // (-2, -3, ...) on global collision. Phase 1
+//                              // of slug-removal — `slug` is still accepted
+//                              // as the legacy alias.
+//     slug?: string,           // legacy alias for requested_id.
+//     description?: string,
+//   }
 //
 // Output:
 //   {
-//     doco_id: string,
-//     doco_url: string,            // https://<host>/by-id/<doco_id>/  — for doco.md
-//     doco_slug: string,           // "<owner>/<slug>" canonical form
+//     doco_id: string,             // ULID — stable internal id (FK target)
+//     doco_handle: string,         // public, human-readable URL id
+//     doco_url: string,            // https://<host>/<doco_handle>/
+//     doco_slug: string,           // legacy "<owner>/<slug>" canonical form
 //     doco_key: string,            // for .env as DOCO_KEY=<hex>
-//     invite_url: string,          // https://<host>/invite/<code>     — share this
-//     invite_expires_at: string,   // ISO timestamp; 7 days from now
+//     invite_url: string,          // https://<host>/invite/<code>
+//     invite_expires_at: string,
 //   }
 //
 // Spam vector is acknowledged — anonymous endpoint with no rate-limit
@@ -35,9 +43,13 @@ export async function action({ request }: { request: Request }) {
     return Response.json({ error: "method_not_allowed" }, { status: 405 });
   }
 
-  let body: { slug?: string; description?: string } = {};
+  let body: { slug?: string; requested_id?: string; description?: string } = {};
   try {
-    body = (await request.json()) as { slug?: string; description?: string };
+    body = (await request.json()) as {
+      slug?: string;
+      requested_id?: string;
+      description?: string;
+    };
   } catch {
     // Empty body is fine — all fields are optional.
   }
@@ -65,8 +77,12 @@ export async function action({ request }: { request: Request }) {
     );
   }
 
-  const docoSlugInput = (body.slug ?? "").trim().toLowerCase();
-  const docoSlug = docoSlugInput || `doco-${randomBytes(4).toString("hex")}`;
+  // Phase 1 of slug-removal: callers can pass `requested_id` (the
+  // new spelling) or `slug` (legacy alias). They map to the same
+  // thing — the docoSlug column and, via `createDocoInHost`, also
+  // seed the `handle` column.
+  const requestedInput = (body.requested_id ?? body.slug ?? "").trim().toLowerCase();
+  const docoSlug = requestedInput || `doco-${randomBytes(4).toString("hex")}`;
   const slugErr = validateDocoSlug(docoSlug);
   if (slugErr) {
     return Response.json({ error: slugErr }, { status: 400 });
@@ -77,6 +93,7 @@ export async function action({ request }: { request: Request }) {
     created = await createDocoInHost(rootDir(), {
       ownerSlug: agentUsername,
       docoSlug,
+      requestedId: docoSlug,
       autoSuffixOnCollision: true,
       visibility: "private",
       ...(body.description ? { description: body.description } : {}),
@@ -103,7 +120,12 @@ export async function action({ request }: { request: Request }) {
 
   const url = new URL(request.url);
   const origin = `${url.protocol}//${url.host}`;
-  const docoUrl = `${origin}/by-id/${created.docoId}/`;
+  // Phase 1 of slug-removal: prefer the handle URL when available;
+  // fall back to /by-id/<ULID>/ for rows minted before the handle
+  // column existed.
+  const docoUrl = created.handle
+    ? `${origin}/${created.handle}/`
+    : `${origin}/by-id/${created.docoId}/`;
   const inviteUrl = `${origin}/invite/${invite.code}`;
   const expiresHuman = new Date(invite.expires_at).toLocaleString("en-US", {
     timeZone: "UTC",
@@ -113,6 +135,7 @@ export async function action({ request }: { request: Request }) {
 
   return Response.json({
     doco_id: created.docoId,
+    doco_handle: created.handle,
     doco_url: docoUrl,
     doco_slug: `${created.ownerSlug}/${created.docoSlug}`,
     doco_key: session.token,
