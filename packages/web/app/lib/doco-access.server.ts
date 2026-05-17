@@ -173,8 +173,27 @@ export async function loadDocoForRead(
   redirected: boolean;
 }> {
   const ownerResolved = resolvePrincipalUsernameAlias(ownerSlug);
-  const aliasResolved = await resolveDocoSlugAlias(ownerResolved.canonical, docoSlug);
+  let aliasResolved = await resolveDocoSlugAlias(ownerResolved.canonical, docoSlug);
   if (!aliasResolved) {
+    // Phase 2 of slug-removal: if (owner, slug) doesn't resolve, try
+    // the new shape — owner segment is actually a Doco `handle`, slug
+    // segment is the first piece of the rest path. When that matches,
+    // 308 to the canonical /<owner>/<slug>/<docoSlug> URL so existing
+    // handlers keep serving it.
+    const { getDocoByHandle } = await import("@doco/db");
+    const byHandle = await getDocoByHandle(ownerSlug);
+    if (byHandle) {
+      const url = new URL(request.url);
+      const oldPrefix = `/${ownerSlug}`;
+      const rest = url.pathname.startsWith(`${oldPrefix}/`)
+        ? url.pathname.slice(oldPrefix.length)
+        : "";
+      const newPath = `/${byHandle.owner_slug}/${byHandle.doco_slug}${rest}`;
+      throw new Response(null, {
+        status: 308,
+        headers: { Location: newPath + url.search },
+      });
+    }
     throw notFoundForAccessDenied(ownerSlug, docoSlug);
   }
   // If either segment was non-canonical (alias followed), 308 to the

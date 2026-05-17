@@ -1,5 +1,5 @@
-import { Link } from "react-router";
-import { resolveOwnerSlug, getPrincipalById } from "@doco/db";
+import { Link, redirect } from "react-router";
+import { resolveOwnerSlug, getPrincipalById, getDocoByHandle } from "@doco/db";
 import { canAccessDoco } from "~/lib/doco-access.server";
 import { listDocoStats } from "~/lib/doco-stats.server";
 import { listAllDocos, loadHostConfig } from "~/lib/host";
@@ -66,6 +66,18 @@ async function findOwnerBySlug(slug: string): Promise<UserView | OrgView | null>
 }
 
 export async function loader({ params, request }: { params: { ownerSlug: string }; request: Request }) {
+  // Phase 2 of slug-removal: if the segment resolves as a Doco
+  // handle (the new globally-unique URL id), redirect to the
+  // legacy `/<owner>/<slug>/` route so the existing handlers keep
+  // serving it. Once every handler reads `params.docoId` natively
+  // this redirect goes away and the route becomes the canonical.
+  const url = new URL(request.url);
+  if (!url.search) {
+    const byHandle = await getDocoByHandle(params.ownerSlug);
+    if (byHandle) {
+      throw redirect(`/${byHandle.owner_slug}/${byHandle.doco_slug}`, { status: 308 });
+    }
+  }
   const owner = await findOwnerBySlug(params.ownerSlug);
   if (!owner) throw new Response(`Owner "${params.ownerSlug}" not found.`, { status: 404 });
   const me = await getCurrentPrincipal(request);
