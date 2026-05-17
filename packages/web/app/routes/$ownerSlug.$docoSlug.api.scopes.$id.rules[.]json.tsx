@@ -58,7 +58,7 @@ export async function action({
   const dir = docoPath(ownerSlug, docoSlug);
   const meta = await readDocoMetadata(dir);
   if (!meta) {
-    return Response.json({ error: `Doco "${ownerSlug}/${docoSlug}" not found.` }, { status: 404 });
+    return Response.json({ error: `Doco "${handle}" not found.` }, { status: 404 });
   }
   if (request.method !== "POST") {
     return Response.json({ error: "Use POST." }, { status: 405 });

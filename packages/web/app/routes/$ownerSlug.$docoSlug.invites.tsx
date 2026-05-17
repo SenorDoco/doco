@@ -127,7 +127,7 @@ export default function Invites({
         <div className="space-y-1">
           <h1 className="text-lg font-semibold tracking-tight">
             <Link to={`/${handle}`} className="hover:text-primary">
-              {ownerSlug}/{docoSlug}
+              {handle}
             </Link>
             <span className="text-muted-foreground"> · invites</span>
           </h1>

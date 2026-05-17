@@ -162,7 +162,8 @@ export async function canAdminDoco(
  * isn't leaked to non-members.
  */
 export function notFoundForAccessDenied(ownerSlug: string, docoSlug: string): Response {
-  return new Response(`Doco "${ownerSlug}/${docoSlug}" not found.`, { status: 404 });
+  const label = docoSlug ? `${ownerSlug}/${docoSlug}` : ownerSlug;
+  return new Response(`Doco "${label}" not found.`, { status: 404 });
 }
 
 /**

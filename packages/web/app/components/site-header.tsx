@@ -31,13 +31,13 @@ interface SiteHeaderProps {
 export function SiteHeader({ docoScope, me }: SiteHeaderProps) {
   // Per-Doco nav: per-type entity tabs and Search moved off the nav bar —
   // the Doco home is the chronological feed AND the search front door.
-  const docoLabel =
-    docoScope?.ownerSlug && docoScope.docoSlug
-      ? `${docoScope.ownerSlug}/${docoScope.docoSlug}`
-      : (docoScope?.handle ?? "");
+  // Breadcrumb label is the handle (the canonical URL identifier).
+  // The old `<owner>/<slug>` compound is gone — after slug-removal it
+  // would render as `<owner>/<handle>` which doubles the owner prefix
+  // visually (e.g. "torrenegra/torrenegra-doco").
   const nav = docoScope
     ? [
-        { to: `/${docoScope.handle}`, label: docoLabel },
+        { to: `/${docoScope.handle}`, label: docoScope.handle },
         { to: `/${docoScope.handle}/scopes`, label: "Scopes" },
         { to: `/${docoScope.handle}/settings`, label: "Settings" },
       ]

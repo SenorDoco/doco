@@ -75,7 +75,7 @@ export default function NewDoco({
           <Card>
             <CardHeader>
               <CardTitle>
-                Doco created · {ownerSlug}/{docoSlug}
+                Doco created · {handle}
               </CardTitle>
               <CardDescription>
                 Set up the scopes you'll document in. At least one scope is needed before nodes can

@@ -369,7 +369,7 @@ export default function DocoHome({
           <div className="space-y-1">
             <h1 className="text-lg font-semibold tracking-tight">
               <Link to={allSearchHref} className="hover:text-primary">
-                {ownerSlug}/{docoSlug}
+                {handle}
               </Link>
             </h1>
             <p className="font-mono text-sm text-muted-foreground">{docoId}</p>

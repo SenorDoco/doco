@@ -152,7 +152,7 @@ export default function DocoSettings({
 
         <Card>
           <CardHeader>
-            <CardTitle>Settings · {ownerSlug}/{docoSlug}</CardTitle>
+            <CardTitle>Settings · {handle}</CardTitle>
           </CardHeader>
           <CardContent>
             <Form method="post" className="space-y-3">

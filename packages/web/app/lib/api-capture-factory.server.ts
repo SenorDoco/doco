@@ -83,7 +83,7 @@ export function makeCaptureRoute<TDraft>(cfg: CaptureRouteConfig<TDraft>) {
       const meta = await readDocoMetadata(dir);
       if (!meta) {
         return Response.json(
-          { error: `Doco "${ownerSlug}/${docoSlug}" not found.` },
+          { error: `Doco "${handle}" not found.` },
           { status: 404 },
         );
       }

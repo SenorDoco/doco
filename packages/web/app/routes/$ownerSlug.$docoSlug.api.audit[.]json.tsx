@@ -36,11 +36,11 @@ export async function loader({
   const dir = docoPath(ownerSlug, docoSlug);
   const meta = await readDocoMetadata(dir);
   if (!meta) {
-    return Response.json({ error: `Doco "${ownerSlug}/${docoSlug}" not found.` }, { status: 404 });
+    return Response.json({ error: `Doco "${handle}" not found.` }, { status: 404 });
   }
   const me = await getCurrentPrincipalAsync(request);
   if (!await canAccessDoco(meta, me?.id ?? null)) {
-    return Response.json({ error: `Doco "${ownerSlug}/${docoSlug}" not found.` }, { status: 404 });
+    return Response.json({ error: `Doco "${handle}" not found.` }, { status: 404 });
   }
 
   const url = new URL(request.url);
