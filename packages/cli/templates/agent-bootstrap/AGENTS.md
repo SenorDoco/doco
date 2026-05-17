@@ -37,10 +37,10 @@ guidance you must walk the user through before declaring onboarding done.
 protocol fresh automatically:
 
 - **`SessionStart`** (runs once per session: startup/resume/clear/compact)
-  fetches `bootstrap.json` and injects `canonical_instructions` as
+  fetches `/api/v1/agent-bootstrap` and injects `canonical_instructions` as
   additional context.
 - **`UserPromptSubmit`** (runs on every user message) re-injects a
-  tight protocol checklist AND pre-fetches `search.json` for the
+  tight protocol checklist AND pre-fetches `<doco_url>/search.json` for the
   prompt so the top-of-reply query indicator is pre-built — paste the
   block verbatim. If it says `[🔮 Doco] Not connected yet: <reason>`,
   use that line instead of regular Doco query/footer/tally lines.
