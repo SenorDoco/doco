@@ -1,19 +1,17 @@
-// /invite/<code> — browser landing page for a Doco invite.
+// /invite/<code> — browser landing page for a Doco invite. Humans
+// only — agents have their own programmatic redeem path at
+// /api/v1/invites/<code>/redeem.json (which returns `next_steps_for_agent`
+// + `user_message_block` along with the doco_key).
 //
-// The page loads the invite, shows the project owner what they're
-// being invited to (Doco name + minter, if known), and asks them to
-// click "Accept". On accept:
+// The page loads the invite, shows the human what they're being
+// invited to (Doco name + expiration), and asks them to click
+// "Accept":
 //
 //   - If signed in: the invite is redeemed, the human Principal is
 //     joined to the Doco as a member, and a personal SessionToken is
-//     minted for them. They see the `DOCO_KEY=` line + the matching
-//     `doco.md` snippet so they can wire the Doco into a repo if they
-//     want one.
+//     minted for them. The success card is intentionally minimal —
+//     just a "Continue" button to /<owner>/<slug>/.
 //   - If not signed in: bounce through GitHub OAuth and come back here.
-//
-// Agents calling the same path get a tiny JSON view (no auth) and are
-// redirected to `/api/v1/invites/<code>/redeem.json` for the actual
-// exchange — this route is human-facing.
 
 import { Form, Link, redirect } from "react-router";
 import type { EntityId } from "@doco/shared";
@@ -165,12 +163,6 @@ export default function InviteLanding({
             <CardTitle>{errorTitle(loaderData.error)}</CardTitle>
             <CardDescription>{errorDescription(loaderData.error)}</CardDescription>
           </CardHeader>
-          <CardContent className="text-sm text-muted-foreground">
-            <Link to="/" className="text-primary hover:underline">
-              Return to the host home
-            </Link>
-            .
-          </CardContent>
         </Card>
       </Shell>
     );
