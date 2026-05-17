@@ -19,7 +19,7 @@ interface SettingsPatch {
  *  Postgres row and every URL that resolves through it.
  *
  * Same auth as decisions.json: cookie session OR Authorization: Bearer
- * <DOCO_TOKEN>. Private docos return 404 to non-members.
+ * <DOCO_ACCESS>. Private docos return 404 to non-members.
  *
  * Resource route — no default export.
  */

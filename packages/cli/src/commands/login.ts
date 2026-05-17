@@ -12,10 +12,9 @@ import { c, checkmark, cross, header, rule } from "../output.js";
  * Posts to https://doco.to/api/v1/cli/device-init for a state nonce + short
  * code + authorize URL, opens the URL in the project owner's default
  * browser, then polls /api/v1/cli/device-exchange until the project
- * owner clicks Authorize. On approval, writes DOCO_TOKEN to ./.env
- * (gitignored secret) and stamps DOCO_ID into the AGENTS.md header
- * (committed, non-secret coordinator) so the bootstrap hooks pick up
- * the new credentials on the next session.
+ * owner clicks Authorize. On approval, writes DOCO_ACCESS to ./.env
+ * (gitignored secret) so the bootstrap hooks pick up the new
+ * credentials on the next session.
  *
  * Replaces the host-bootstrap detour + /claim/<token> handoff: the Doco
  * is created directly under the authorizing project owner with no
@@ -25,7 +24,7 @@ export const loginCmd = defineCommand({
   meta: {
     name: "login",
     description:
-      "Authorize this CLI session in the browser (Vercel-style). Writes DOCO_TOKEN to ./.env and stamps DOCO_ID into AGENTS.md on success.",
+      "Authorize this CLI session in the browser (Vercel-style). Writes DOCO_ACCESS to ./.env on success.",
   },
   args: {
     host: {
@@ -166,35 +165,38 @@ export const loginCmd = defineCommand({
         if (body.status === "approved" && body.token && body.owner_username) {
           console.log();
           console.log(checkmark(`Authorized by ${c.warn(body.owner_username)}.`));
-          // DOCO_TOKEN is secret → .env (gitignored). DOCO_ID is a
-          // non-secret coordinator → AGENTS.md header (committed). The
-          // install step below stamps DOCO_ID into AGENTS.md via the
-          // --doco-id flag; .env carries only the token.
+          // DOCO_ACCESS is secret → .env (gitignored). The Doco
+          // coordinate lives in doco.md.
           //
-          // Migration: if a prior version of this CLI wrote DOCO_ID
-          // into .env, strip it so the AGENTS.md value is canonical
-          // and there's no shadow that diverges on later re-login.
-          const updates: Record<string, string> = { DOCO_TOKEN: body.token };
+          // Migration: strip old credential names so .env has one
+          // canonical Doco secret.
+          const updates: Record<string, string> = { DOCO_ACCESS: body.token };
           const removeFromEnv: string[] = [];
+          if (env.DOCO_TOKEN) removeFromEnv.push("DOCO_TOKEN");
+          if (env.DOCO_KEY) removeFromEnv.push("DOCO_KEY");
+          if (env.DOCO_URL) removeFromEnv.push("DOCO_URL");
           if (env.DOCO_ID) removeFromEnv.push("DOCO_ID");
           writeEnvFile(envPath, env, updates, removeFromEnv);
           console.log(
             checkmark(
-              `Wrote DOCO_TOKEN to ${c.dim("./.env")}${
-                removeFromEnv.length ? c.dim(" (removed legacy DOCO_ID from .env)") : ""
+              `Wrote DOCO_ACCESS to ${c.dim("./.env")}${
+                removeFromEnv.length ? c.dim(" (removed legacy Doco env names)") : ""
               }.`,
             ),
           );
 
+          if (body.doco_handle) {
+            const docoUrl = `${normalizedHost}/${body.doco_handle}/`;
+            writeFileSync(resolve(process.cwd(), "doco.md"), renderDocoMd(docoUrl), "utf8");
+            console.log(checkmark(`Wrote Doco URL to ${c.dim("./doco.md")}.`));
+          }
+
           // Install the agent-bootstrap files (AGENTS.md + CLAUDE.md shim +
           // .claude/settings.json + the four hook scripts) into the same
-          // repo. The --doco-id flag stamps the freshly-authorized id
-          // into AGENTS.md, so subsequent sessions read it from the
-          // committed file. The hooks themselves `source .env` on each
-          // fire and fall back to grepping AGENTS.md when DOCO_ID isn't
-          // in env — once they're approved (Claude Code: /hooks) the
-          // very next UserPromptSubmit picks up the fresh credentials
-          // (no full session restart needed).
+          // repo. The hooks themselves `source .env` on each fire and
+          // pick up DOCO_ACCESS — once they're approved (Claude Code:
+          // /hooks) the very next UserPromptSubmit picks up the fresh
+          // credential (no full session restart needed).
           const idForInstall = body.doco_id || env.DOCO_ID || "";
           try {
             const { installAgentBootstrapCmd } = await import("./install-agent-bootstrap.js");
@@ -268,6 +270,33 @@ function cliVersion(): string {
   // Hard-coded matches package.json — keeps the CLI dependency-free.
   // Re-source from package.json once the package gets versioned.
   return "0.0.1";
+}
+
+function renderDocoMd(docoUrl: string): string {
+  return `# Doco
+
+This project is tracked in Doco for AI-native documentation: intents,
+decisions, rules, actions, and history. Decisions and the why behind
+them live at:
+
+**${docoUrl}**
+
+## For Contributors
+
+Need access? Open the Doco URL above and sign in to mint an invite for
+yourself. Or ask someone already connected to call:
+
+\`\`\`sh
+curl -X POST "${docoUrl.replace(/\/+$/, "")}/api/invites.json" \\
+  -H "Authorization: Bearer $DOCO_ACCESS" \\
+  -H "Content-Type: application/json" \\
+  -d '{"expires_in_days": 7}'
+\`\`\`
+
+Agents should store their personal access credential in \`./.env\` as
+\`DOCO_ACCESS=<64-hex>\`. The credential is secret and gitignored; this
+file is the committed, non-secret project coordinate.
+`;
 }
 
 async function safeText(res: Response): Promise<string | null> {
@@ -349,9 +378,8 @@ function readEnvFile(path: string): EnvMap {
  * `removeKeys` stripped. Preserves existing comments and ordering:
  * keys we update get rewritten in-place; new keys append at the bottom;
  * keys in `removeKeys` are deleted (along with their line); everything
- * else is untouched. `removeKeys` exists for the DOCO_ID-out-of-.env
- * migration — pre-migration repos had DOCO_ID in .env, and leaving it
- * would shadow the AGENTS.md value.
+ * else is untouched. `removeKeys` exists for one-time cleanup of old
+ * Doco env names so .env converges on DOCO_ACCESS.
  */
 function writeEnvFile(
   path: string,

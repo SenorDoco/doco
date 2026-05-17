@@ -1,4 +1,4 @@
-// /agents/new — owner creates a Principal{type:agent} + DOCO_TOKEN in one step.
+// /agents/new — owner creates a Principal{type:agent} + DOCO_ACCESS in one step.
 // Per ADR-071. Replaces the invitation-redemption ceremony for agent enrollment.
 import { useState } from "react";
 import { Form, redirect, useActionData } from "react-router";
@@ -59,7 +59,7 @@ export async function action({ request }: { request: Request }) {
 
   return {
     ok: {
-      session_token: session.token,
+      doco_access: session.token,
       principal: {
         id: principalId,
         username,
@@ -86,7 +86,7 @@ export default function AgentsNew({
   const actionData = useActionData<
     | {
         ok: {
-          session_token: string;
+          doco_access: string;
           principal: {
             id: string;
             username: string;
@@ -103,7 +103,7 @@ export default function AgentsNew({
   const [copied, setCopied] = useState<string | null>(null);
 
   if (actionData && "ok" in actionData) {
-    const { session_token, principal } = actionData.ok;
+    const { doco_access, principal } = actionData.ok;
     return (
       <div>
         <SiteHeader mode="host" me={me} />
@@ -112,27 +112,26 @@ export default function AgentsNew({
             <CardHeader>
               <CardTitle>Agent created · {principal.display_name}</CardTitle>
               <CardDescription>
-                Paste this token into your chat with the agent. They&apos;ll know what to do —
-                their repo&apos;s <code>AGENTS.md</code> tells them how to use it. We won&apos;t
-                show it again.
+                Paste this access credential into your chat with the agent. Their repo&apos;s{" "}
+                <code>AGENTS.md</code> tells them how to use it. We won&apos;t show it again.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="space-y-2 rounded-md border border-success bg-input p-3">
                 <div className="flex items-center gap-2">
                   <code className="flex-1 break-all rounded-md bg-card px-2 py-1 text-xs">
-                    {session_token}
+                    {doco_access}
                   </code>
                   <button
                     type="button"
                     onClick={async () => {
-                      await navigator.clipboard.writeText(session_token);
-                      setCopied(session_token);
+                      await navigator.clipboard.writeText(doco_access);
+                      setCopied(doco_access);
                       setTimeout(() => setCopied(null), 1500);
                     }}
                     className="rounded-md border border-border px-2 py-1 text-xs hover:bg-card"
                   >
-                    {copied === session_token ? "Copied!" : "Copy"}
+                    {copied === doco_access ? "Copied!" : "Copy"}
                   </button>
                 </div>
               </div>
@@ -170,9 +169,9 @@ export default function AgentsNew({
           <CardHeader>
             <CardTitle>New agent</CardTitle>
             <CardDescription>
-              Creates a Principal{`{type: agent}`} owned by you and returns an DOCO_TOKEN.
-              Pass the token to your tooling (env var, secrets manager) — your agent will use it
-              to act on your behalf. Per ADR-071.
+              Creates a Principal{`{type: agent}`} owned by you and returns a Doco access
+              credential. Pass it to your tooling as <code>DOCO_ACCESS</code>; your agent will
+              use it to act on your behalf. Per ADR-071.
             </CardDescription>
           </CardHeader>
           <CardContent>

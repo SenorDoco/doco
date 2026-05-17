@@ -29,7 +29,7 @@
 
 - term: agent
   synonyms: [bot, AI, automated principal, assistant]
-  description: A principal that is not a person. Created via invitation token (D-035).
+  description: A principal that is not a person. Created via invitation credential (D-035).
 
 - term: scope
   synonyms: [boundary, area, domain, namespace]
@@ -43,8 +43,8 @@
   synonyms: [validation, scrubbing, boundary check, normalization]
   description: Any check applied to data crossing a trust boundary.
 
-- term: session token
-  synonyms: [auth token, session cookie, bearer token, DOCO_TOKEN]
+- term: access credential
+  synonyms: [auth credential, session cookie, DOCO_ACCESS]
   description: Long-lived agent credential (D-037), revocable.
 
 - term: PII

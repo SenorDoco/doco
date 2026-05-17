@@ -1,18 +1,19 @@
-// GET /api/v1/agent-bootstrap[?id=<doco_id>] — slim agent bootstrap.
+// GET /api/v1/agent-bootstrap[?id=<doco_handle-or-id>] — slim agent bootstrap.
 //
 // Returns the slim daily-use `canonical_instructions` (~1,200 tokens),
 // plus a per-Doco `code_map` and `constitution` (Doco-specific
 // load-bearing rules) when `?id=` is provided so the agent jumps
 // straight to the right files and knows which rules will block a
-// capture before drafting.
+// capture before drafting. When `id` is omitted, a bound DOCO_ACCESS
+// bearer credential can provide the Doco id.
 //
 // For the long-form reference, fetch `/api/v1/agent-reference`. For
-// per-Doco context (scopes, freshness), `/by-id/<doco_id>/status.json`.
+// per-Doco context (scopes, freshness), `/<doco_handle>/status.json`.
 
 import { CANONICAL_INSTRUCTIONS } from "~/lib/instructions.server";
 import type { AuthoringPredicate } from "@doco/shared";
 import { getDocoByIdOrHandle, listEntitiesByDoco } from "@doco/db";
-import { docoPath } from "~/lib/db.server";
+import { docoPath, rootDir } from "~/lib/db.server";
 import { canAccessDoco } from "~/lib/doco-access.server";
 import { etaggedJson } from "~/lib/etag.server";
 import { loadHostConfig } from "~/lib/host";
@@ -27,7 +28,8 @@ import {
   readDocoMetadata,
   type ScopeManifestEntry,
 } from "~/lib/scope-helpers.server";
-import { getCurrentPrincipalAsync } from "~/lib/session";
+import { extractCredential, getCurrentPrincipalAsync } from "~/lib/session";
+import { TokenStore } from "~/lib/tokens.server";
 
 /**
  * Shape of the Global scope (formerly "Constitution") as exposed to
@@ -177,7 +179,14 @@ export async function loader({ request }: { request: Request }) {
   // columns (phase 3 of slug-removal). Pin the doco_handle in
   // `doco.md` and pass it as `?id=` — `getDocoByIdOrHandle` accepts
   // both ULIDs and handles.
-  const id = (url.searchParams.get("id") ?? "").trim();
+  let id = (url.searchParams.get("id") ?? "").trim();
+  if (!id) {
+    const credential = extractCredential(request);
+    if (credential) {
+      const session = await TokenStore.forDoco(rootDir()).resolve(credential);
+      id = session?.bound_doco_id ?? "";
+    }
+  }
   const host = hostFromRequest(request);
   let codeMap: unknown | null = null;
   let constitution: ConstitutionSnapshot | null = null;

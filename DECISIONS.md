@@ -282,9 +282,9 @@ A consolidated record of every meaningful design decision made to date, intended
 - **Open:** Whether GitHub-only is permanent or v0 simplification (see §13).
 - **Ref:** PLANNING.md §2.1.
 
-### D-035 — Agents can only be created via invitation tokens
+### D-035 — Agents can only be created via invitation credentials
 
-- **Chosen:** No agent self-signup. Every agent's `Principal` is created via a token issued by a person (or an agent already invited by a person, transitively).
+- **Chosen:** No agent self-signup. Every agent's `Principal` is created via a credential issued by a person (or an agent already invited by a person, transitively).
 - **Why:** Trust invariant: every agent's `owner_id` chain terminates at a person. Queryable.
 - **Ref:** PLANNING.md §2.2, §3.
 
@@ -296,14 +296,14 @@ A consolidated record of every meaningful design decision made to date, intended
 
 ### D-037 — Token lifecycle: 5-min invitation → long-lived session
 
-- **Chosen:** Two-phase tokens: invitation token (5-minute single-use, URL-shareable) → session token (no default expiry, stored in `DOCO_TOKEN` env var, revocable).
-- **Alternatives rejected:** Single token type (loses bootstrap-vs-runtime separation); session tokens with default TTL (operational toil for long-running agents).
-- **Why:** Narrow blast radius for leaked invite URLs; agents can persist session tokens for ongoing work.
+- **Chosen:** Two-phase credentials: invitation credential (5-minute single-use, URL-shareable) → access credential (no default expiry, stored in `DOCO_ACCESS` env var, revocable).
+- **Alternatives rejected:** Single credential type (loses bootstrap-vs-runtime separation); access credentials with default TTL (operational toil for long-running agents).
+- **Why:** Narrow blast radius for leaked invite URLs; agents can persist access credentials for ongoing work.
 - **Ref:** PLANNING.md §3.1, §3.2.
 
 ### D-038 — Token revocation cascades strictly (default)
 
-- **Chosen:** Revoking a session token invalidates all session tokens whose ancestry chain passes through it. Per-Doco override flag for "scoped" mode (only revoke the named token).
+- **Chosen:** Revoking an access credential invalidates all access credentials whose ancestry chain passes through it. Per-Doco override flag for "scoped" mode (only revoke the named credential).
 - **Why:** Strict-by-default is safer for security incidents.
 - **Open:** Per-Doco override is real but not deeply specified yet (§13).
 - **Ref:** PLANNING.md §3.3, §6.
@@ -311,7 +311,7 @@ A consolidated record of every meaningful design decision made to date, intended
 ### D-039 — Tokens are stored externally, not in the Doco
 
 - **Chosen:** Token *values* live in the API server's encrypted database. The Doco records *which* Principals exist and the lineage; the index reflects edges.
-- **Why:** Source-controlled secrets are bad practice; tokens shouldn't be in git.
+- **Why:** Source-controlled secrets are bad practice; access credentials shouldn't be in git.
 - **Ref:** PLANNING.md §3.3.
 
 ### D-040 — Only people can delete Docos
@@ -374,7 +374,7 @@ Roughly, in implementation-order:
 1. **CLI core** — `doco init`, `doco init --existing`, `doco show`, `doco query`. (PLANNING.md §1.)
 2. **Source-of-truth layer** — file readers/writers for entity YAML+Markdown; schema validation against `doco.schema.json`. (SCHEMA.md §2, §3, §4.)
 3. **Index layer** — Postgres-native: `tsvector` + GIN for full-text, `edges` adjacency table, `scope_match` denormalization, embeddings as `bytea` (pgvector optional). Reindex rebuilds derived data from canonical PG rows. (Originally SQLite + FTS5; superseded — see D-024.)
-4. **Identity** — GitHub OAuth for people; invitation-token + session-token issuance for agents; `DOCO_TOKEN` env-var consumption; token revocation. (PLANNING.md §2, §3.)
+4. **Identity** — GitHub OAuth for people; invitation credential + access credential issuance for agents; `DOCO_ACCESS` env-var consumption; revocation. (PLANNING.md §2, §3.)
 5. **API server** — REST CRUD + query + discovery + events stream; OpenAPI generation. (PLANNING.md §5.2.)
 6. **Web app** — recent-changes feed, list-by-kind, search (Cmd-K + full page), entity detail page with neighborhood preview, graph view as secondary. (PLANNING.md §5.3.)
 7. **Importers** — Slack, email, Figma, Notion, GitHub PRs, agent transcripts. Each runs idempotently and emits `lifecycle: proposed` entities with Reference back-pointers. (PLANNING.md §4.)

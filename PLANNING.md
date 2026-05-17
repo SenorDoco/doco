@@ -57,7 +57,7 @@ Two paths depending on whether the joiner is a person or agent.
 - The person visits the Doco URL while signed in via GitHub; access is granted automatically.
 
 **Agent joining:**
-- See §3 — invitation token flow.
+- See §3 — invitation credential flow.
 
 ## 2. Identity & authentication
 
@@ -75,7 +75,7 @@ A person's `Principal.username` is their GitHub login. Display name and avatar c
 
 ### 2.2 Agent accounts — invitation-only
 
-**Agents cannot self-create accounts.** Every agent Principal is created via an invitation token issued by a person (or transitively by an agent that was itself invited by a person).
+**Agents cannot self-create accounts.** Every agent Principal is created via an invitation credential issued by a person (or transitively by an agent that was itself invited by a person).
 
 This invariant — *every agent traces back to a person's invitation* — is the core trust property of the system. It's enforceable by walking `Principal.owner_id` and asserting the chain terminates at a `type: person`.
 
@@ -105,16 +105,16 @@ summary: "Only person Principals may delete docos"
 
 All other operations (create, edit, archive, transfer, etc.) are open to both people and agents subject to their `permissions` list on the relevant Membership edge.
 
-## 3. Agent collaboration via invitation tokens
+## 3. Agent collaboration via invitation credentials
 
-A person invites an agent by sharing a URL with an embedded token. The token has a deliberate **two-phase lifecycle**: a short-lived **invitation token** that bootstraps a long-lived **session token**.
+A person invites an agent by sharing a URL with an embedded credential. The credential has a deliberate **two-phase lifecycle**: a short-lived **invitation credential** that bootstraps a long-lived **access credential**.
 
-### 3.1 Two token types
+### 3.1 Two credential types
 
 | Token | Purpose | Expiry | Storable |
 |---|---|---|---|
-| **Invitation token** | First-time bootstrap; URL-shareable | **5 minutes** from issuance, single-use | No |
-| **Session token** | Long-term agent access; environment-stored | **No default expiry** (revocable) | Yes — env var (`DOCO_TOKEN`), secrets manager |
+| **Invitation credential** | First-time bootstrap; URL-shareable | **5 minutes** from issuance, single-use | No |
+| **Access credential** | Long-term agent access; environment-stored | **No default expiry** (revocable) | Yes — env var (`DOCO_ACCESS`), secrets manager |
 
 ### 3.2 Lifecycle
 
@@ -125,32 +125,32 @@ A person invites an agent by sharing a URL with an embedded token. The token has
 2. URL shared out-of-band (Slack, email, paste).
 
 3. Agent visits URL within 5 minutes:
-     — Server validates the invitation token (single-use, not expired).
+     — Server validates the invitation credential (single-use, not expired).
      — Agent self-introduces (display_name, model, provider).
      — Server creates a Principal{type:agent}:
          owner_id = inviter
          username = "{inviter_username}/{now_ISO}"
      — Server issues a SESSION TOKEN to the agent.
-     — Server returns the session token in the response body.
+     — Server returns the access credential in the response body.
 
-4. Agent stores session token in the DOCO_TOKEN environment variable.
+4. Agent stores the access credential in the DOCO_ACCESS environment variable.
 
 5. Future agents spawned by this agent (subagents, long-running runtimes, CI):
-     — Inherit DOCO_TOKEN from environment.
+     — Inherit DOCO_ACCESS from environment.
      — Use it to create their own Principal:
          POST /api/v1/doco/{slug}/agents
          Authorization: Bearer {session_token}
          body: { display_name, model, provider, ... }
      — Server creates a new Principal{type:agent} with owner_id pointing to
        the invoking agent (preserving the person-ancestry chain).
-     — Server issues each new agent its own session token.
+     — Server issues each new agent its own access credential.
 ```
 
 ### 3.3 Security properties
 
 - **5-minute invitation window** — narrow enough that leaked invite URLs aren't valuable to typical attackers (the breach-to-exploit chain is too slow).
-- **Session tokens never expire by default but are always revocable** by any person with `admin` permission on the Doco.
-- **Revocation cascades** — revoking a session token invalidates all session tokens whose ancestry chain passes through it. (Default — strict. Alternative considered in §6.)
+- **Access credentials never expire by default but are always revocable** by any person with `admin` permission on the Doco.
+- **Revocation cascades** — revoking an access credential invalidates all access credentials whose ancestry chain passes through it. (Default — strict. Alternative considered in §6.)
 - **Audit trail** — each token issuance, use, and revocation produces an Action (`verb: issue_token`, `use_token`, `revoke_token`), visible in the Doco's history.
 - **Tokens are stored in a secure store** (the API server's encrypted DB), never in the Doco's git repo. The Doco records *which* Principals exist and their lineage; token *values* live elsewhere.
 
@@ -266,7 +266,7 @@ Each item has a "view in graph" affordance — once-clicked-from, never primary.
 
 1. **GitHub-only people — hard constraint or v0 simplification?** Locks out users without GitHub accounts (some PMs, many designers). If broader adoption matters, eventually need OIDC/SAML — but every alternative provider must still resolve to a verified external identity (no Doco-native passwords). Defer until adoption signal demands it.
 
-2. **Token revocation cascade — strict or scoped?** Strict (proposed): revoking Alice's session token invalidates all agents whose ancestry passes through it. Scoped alternative: tombstone the owner, leave agents intact until their *own* tokens are revoked. Strict is safer; scoped is more forgiving. Going strict by default, with a per-Doco override flag.
+2. **Credential revocation cascade — strict or scoped?** Strict (proposed): revoking Alice's access credential invalidates all agents whose ancestry passes through it. Scoped alternative: tombstone the owner, leave agents intact until their own credentials are revoked. Strict is safer; scoped is more forgiving. Going strict by default, with a per-Doco override flag.
 
 3. **Backfill quality.** Extracted entities will be lossy and sometimes wrong. Default `lifecycle: proposed` keeps them out of the active graph until reviewed; require explicit acceptance to flip. A built-in Rule could even prevent backfilled entities from being Premises in active Reasoning until reviewed.
 

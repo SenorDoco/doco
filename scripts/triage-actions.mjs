@@ -20,7 +20,7 @@
 //   DOCO_ID=doco_... node scripts/triage-actions.mjs
 //   # or read DOCO_ID from the local AGENTS.md header automatically.
 //
-// Requires DOCO_TOKEN in the environment or ./.env, and OPENAI_API_KEY.
+// Requires DOCO_ACCESS in the environment or ./.env, and OPENAI_API_KEY.
 
 import { readFile, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
@@ -58,12 +58,12 @@ async function readDocoIdFromAgentsMd() {
   return m ? m[1] : null;
 }
 
-if (!process.env.DOCO_TOKEN || !process.env.OPENAI_API_KEY) loadDotEnv();
+if (!process.env.DOCO_ACCESS || !process.env.OPENAI_API_KEY) loadDotEnv();
 
-const DOCO_TOKEN = process.env.DOCO_TOKEN;
+const DOCO_ACCESS = process.env.DOCO_ACCESS;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-if (!DOCO_TOKEN) {
-  console.error("Missing DOCO_TOKEN — set it in env or ./.env");
+if (!DOCO_ACCESS) {
+  console.error("Missing DOCO_ACCESS — set it in env or ./.env");
   process.exit(2);
 }
 if (!OPENAI_API_KEY) {
@@ -79,7 +79,7 @@ if (!DOCO_ID) {
 
 async function docoFetch(path) {
   const res = await fetch(`${DOCO_HOST}${path}`, {
-    headers: { Authorization: `Bearer ${DOCO_TOKEN}` },
+    headers: { Authorization: `Bearer ${DOCO_ACCESS}` },
     redirect: "follow",
   });
   if (!res.ok) throw new Error(`${path} → ${res.status} ${res.statusText}`);

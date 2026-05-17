@@ -12,8 +12,8 @@ export type StoredToken = SessionToken | CliAuthorization | Invite;
 
 /**
  * Single-use invite to join a Doco. Per the invite-flow redesign — any
- * user (agent or human) holding a valid access key on a Doco can mint
- * an Invite; redemption mints a fresh per-user access key bound to the
+ * user (agent or human) holding a valid access credential on a Doco can mint
+ * an Invite; redemption mints a fresh per-user access credential bound to the
  * same Doco. The invite-code path component is itself the secret;
  * there is no separate "Authorize" step.
  *
@@ -47,20 +47,18 @@ export interface Invite {
 
 export interface SessionToken {
   kind: "session";
-  token: string; // opaque, 256 bits hex — used as the credential segment in DOCO_URL paths
+  token: string; // opaque, 256 bits hex — exposed as DOCO_ACCESS
   principal_id: EntityId<"principal">;
   issued_at: string;
   expires_at: string | null; // null = never (sessions; ADR-037)
   invited_by: EntityId<"principal"> | null; // chain root reached at a person (ADR-035 invariant)
   revoked: boolean;
   /**
-   * The Doco this credential is scoped to. Set when the credential is
-   * minted via the browser-authorization handoff. When set, requests to
-   * `/agent/<token>/<path>` resolve to this Doco without a separate
-   * doco-id query parameter.
+   * The Doco this credential is scoped to. When set, bootstrap can infer
+   * the Doco from DOCO_ACCESS without a separate doco-id query parameter.
    *
    * Nullable for back-compat with credentials minted before the
-   * per-Doco access-URL model. Those callers used a separate DOCO_ID +
+   * per-Doco access-credential model. Those callers used a separate DOCO_ID +
    * Authorization Bearer header.
    */
   bound_doco_id: EntityId<"doco"> | null;

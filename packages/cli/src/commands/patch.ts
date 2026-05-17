@@ -14,7 +14,7 @@ import { requireDocoConfig } from "../env.js";
  * makes the PATCH cost equal to the POST cost.
  *
  * Wraps the existing
- *   PATCH /by-id/<doco_id>/api/<plural>/<id>.json
+ *   PATCH /<doco-handle>/api/<plural>/<id>.json
  * endpoints. Same auth + response shape as `doco capture`.
  */
 
@@ -88,13 +88,13 @@ async function sendPatch(
     process.exit(2);
   }
 
-  const { token, docoId, host } = requireDocoConfig();
-  const url = `${host}/by-id/${encodeURIComponent(docoId)}/api/${plural}/${id}.json`;
+  const { access, docoRef, host } = requireDocoConfig();
+  const url = `${host}/${encodeURIComponent(docoRef)}/api/${plural}/${id}.json`;
   let resp: Response;
   try {
     resp = await fetch(url, {
       method: "PATCH",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${access}` },
       body: JSON.stringify(body),
     });
   } catch (e) {
@@ -226,7 +226,7 @@ function makeTypedSubcommand(type: string) {
   return defineCommand({
     meta: {
       name: type,
-      description: `PATCH a ${type} (PATCH /by-id/<doco_id>/api/${PLURAL_BY_TYPE[type]}/<id>.json).`,
+      description: `PATCH a ${type} (PATCH /<doco-handle>/api/${PLURAL_BY_TYPE[type]}/<id>.json).`,
     },
     args: {
       id: {
@@ -248,7 +248,7 @@ export const patchCmd = defineCommand({
   meta: {
     name: "patch",
     description:
-      "Extend an existing Doco node via PATCH. Use this when a search hit names the file or territory you're editing (vector_score > ~0.45) — it's strictly preferred over opening a sibling node. Reads DOCO_TOKEN from env or ./.env and DOCO_ID from the AGENTS.md header. Prints the response's footer_lines to stdout.",
+      "Extend an existing Doco node via PATCH. Use this when a search hit names the file or territory you're editing (vector_score > ~0.45) — it's strictly preferred over opening a sibling node. Reads DOCO_ACCESS from env or ./.env and the Doco URL from doco.md. Prints the response's footer_lines to stdout.",
   },
   subCommands: {
     decision: makeTypedSubcommand("decision"),

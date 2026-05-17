@@ -25,7 +25,7 @@ import { type RouteConfig, index, route } from "@react-router/dev/routes";
  *   /dashboard                     signed-in host dashboard (docos / users / orgs)
  *   /sign-in, /sign-out, /sign-up  auth (cookie locally; OAuth in prod per ADR-066, ADR-094)
  *   /onboarding/*                  first-run wizard (ADR-073). Agents POST /api/v1/docos.json directly; humans use the web flow.
- *   /invite/:code                  browser landing for a Doco invite — signed-in human accepts and gets their own DOCO_KEY.
+ *   /invite/:code                  browser landing for a Doco invite — signed-in human accepts and gets their own DOCO_ACCESS.
  *   /agents, /agents/new           agent self-service (ADR-071)
  *   /new-doco, /new-org            self-service create flows (ADR-067)
  *   /:owner                        owner profile + docos
@@ -104,10 +104,10 @@ export default [
   route("api/v1/agent-reference", "routes/api.v1.agent-reference.tsx"),
   // Anonymous Doco creation + invite-based collaboration. Any user
   // (agent or human) can POST /api/v1/docos.json with no prior auth
-  // and get back a `{doco_id, doco_url, doco_key, invite_url}` envelope.
+  // and get back a `{doco_id, doco_url, doco_access, invite_url}` envelope.
   // The invite_url is sharable for 7 days by default; a recipient
   // (human via /invite/<code> or agent via the redeem.json endpoint)
-  // claims their own personal access key. The old agent-link / device-
+  // claims their own personal access credential. The old agent-link / device-
   // code flow is retired — that pattern fought every conservative
   // permission classifier and lost.
   route("api/v1/docos.json", "routes/api.v1.docos[.]json.tsx"),
@@ -123,7 +123,7 @@ export default [
   // splat redirect family is gone — anyone holding a ULID hits this
   // endpoint to discover the current `doco_handle`.
   route("api/v1/docos/:docoId.json", "routes/api.v1.docos.$docoId[.]json.tsx"),
-  // Agent access-URL family. The credential lives in the path; each
+  // Legacy agent access-URL family. Older credentials live in the path; each
   // route 308-redirects to the canonical /by-id/<doco>/<rest> shape
   // with the credential preserved as `?_a=<cred>` so the destination
   // authenticates. Explicit per-leaf routes win React Router 7's rank

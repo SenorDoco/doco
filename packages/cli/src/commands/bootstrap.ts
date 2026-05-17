@@ -10,7 +10,7 @@ function normalizedHost(raw: unknown): string {
 
 async function fetchAgentJson(args: {
   url: URL;
-  token: string;
+  access: string;
   pretty: boolean;
   failureLabel: string;
 }): Promise<void> {
@@ -18,7 +18,7 @@ async function fetchAgentJson(args: {
   let body = "";
   try {
     resp = await fetch(args.url, {
-      headers: { Authorization: `Bearer ${args.token}` },
+      headers: { Authorization: `Bearer ${args.access}` },
     });
     body = await resp.text();
   } catch (err) {
@@ -50,16 +50,20 @@ export const bootstrapCmd = defineCommand({
   meta: {
     name: "bootstrap",
     description:
-      "Fetch the agent bootstrap JSON. Reads DOCO_TOKEN from env or ./.env and DOCO_ID from AGENTS.md, keeping the bearer token out of shell commands.",
+      "Fetch the agent bootstrap JSON. Reads DOCO_ACCESS from env or ./.env and keeps the credential out of shell commands.",
   },
   args: {
     host: {
       type: "string",
       description: "Doco host URL. Defaults to https://doco.to.",
     },
+    ref: {
+      type: "string",
+      description: "Override the Doco handle/ref. Defaults to doco.md.",
+    },
     id: {
       type: "string",
-      description: "Override DOCO_ID. Defaults to the AGENTS.md header.",
+      description: "Legacy alias for --ref.",
     },
     pretty: {
       type: "boolean",
@@ -68,13 +72,19 @@ export const bootstrapCmd = defineCommand({
     },
   },
   async run({ args }) {
-    const { token, docoId } = requireDocoConfig();
-    const id = typeof args.id === "string" && args.id.trim() ? args.id.trim() : docoId;
-    const url = new URL("/api/v1/agent-bootstrap", normalizedHost(args.host));
-    url.searchParams.set("id", id);
+    const { access, docoRef, host } = requireDocoConfig();
+    const refArg =
+      typeof args.ref === "string" && args.ref.trim()
+        ? args.ref.trim()
+        : typeof args.id === "string" && args.id.trim()
+          ? args.id.trim()
+          : "";
+    const ref = refArg || docoRef;
+    const url = new URL("/api/v1/agent-bootstrap", normalizedHost(args.host || host));
+    if (ref) url.searchParams.set("id", ref);
     await fetchAgentJson({
       url,
-      token,
+      access,
       pretty: Boolean(args.pretty),
       failureLabel: "Bootstrap fetch",
     });
@@ -85,7 +95,7 @@ export const searchCmd = defineCommand({
   meta: {
     name: "search",
     description:
-      "Query this Doco's /search.json endpoint. Reads DOCO_TOKEN from env or ./.env and DOCO_ID from AGENTS.md, keeping the bearer token out of shell commands.",
+      "Query this Doco's /search.json endpoint. Reads DOCO_ACCESS from env or ./.env and the Doco URL from doco.md, keeping the credential out of shell commands.",
   },
   args: {
     query: {
@@ -102,9 +112,13 @@ export const searchCmd = defineCommand({
       type: "string",
       description: "Doco host URL. Defaults to https://doco.to.",
     },
+    ref: {
+      type: "string",
+      description: "Override the Doco handle/ref. Defaults to doco.md.",
+    },
     id: {
       type: "string",
-      description: "Override DOCO_ID. Defaults to the AGENTS.md header.",
+      description: "Legacy alias for --ref.",
     },
     pretty: {
       type: "boolean",
@@ -113,20 +127,26 @@ export const searchCmd = defineCommand({
     },
   },
   async run({ args }) {
-    const { token, docoId } = requireDocoConfig();
-    const id = typeof args.id === "string" && args.id.trim() ? args.id.trim() : docoId;
+    const { access, docoRef, host } = requireDocoConfig();
+    const refArg =
+      typeof args.ref === "string" && args.ref.trim()
+        ? args.ref.trim()
+        : typeof args.id === "string" && args.id.trim()
+          ? args.id.trim()
+          : "";
+    const ref = refArg || docoRef;
     const query = String(args.query ?? "").trim();
     if (!query) {
       console.error(cross("Provide a search query."));
       process.exitCode = 2;
       return;
     }
-    const url = new URL(`/by-id/${encodeURIComponent(id)}/search.json`, normalizedHost(args.host));
+    const url = new URL(`/${encodeURIComponent(ref)}/search.json`, normalizedHost(args.host || host));
     url.searchParams.set("q", query);
     url.searchParams.set("limit", String(args.limit ?? "10"));
     await fetchAgentJson({
       url,
-      token,
+      access,
       pretty: Boolean(args.pretty),
       failureLabel: "Search",
     });

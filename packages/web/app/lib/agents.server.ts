@@ -1,5 +1,5 @@
 // Agent-creation logic shared between the web app and the API surface.
-// Used by /agents/new (owner creates an agent + DOCO_TOKEN directly) and
+// Used by /agents/new (owner creates an agent + DOCO_ACCESS directly) and
 // /cli/authorize (Vercel-style browser-authorize handoff).
 
 import { upsertEntity } from "@doco/db";
@@ -52,7 +52,7 @@ export async function addAgentPrincipal(
     lifecycle: "active",
     scopes: [],
   };
-  // Upsert into Postgres so session-token resolution (which reads
+  // Upsert into Postgres so access-credential resolution (which reads
   // `principals` via `getPrincipalById`) finds the row on the next request.
   await upsertEntity({
     id,

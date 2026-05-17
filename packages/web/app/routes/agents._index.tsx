@@ -59,7 +59,7 @@ export default function AgentsList({
           <div>
             <h1 className="text-lg font-semibold">Your agents ({agents.length})</h1>
             <p className="text-xs text-muted-foreground">
-              Long-lived agent Principals you own. Each has its own DOCO_TOKEN.
+              Long-lived agent Principals you own. Each has its own DOCO_ACCESS.
             </p>
           </div>
           <Link
@@ -74,8 +74,8 @@ export default function AgentsList({
           <Card>
             <CardHeader>
               <CardTitle className="text-sm">No agents yet</CardTitle>
-              <CardDescription>
-                Create one to get an DOCO_TOKEN your tools can use to act on your behalf.
+            <CardDescription>
+                Create one to get a Doco access credential your tools can use to act on your behalf.
                 Per ADR-071.
               </CardDescription>
             </CardHeader>

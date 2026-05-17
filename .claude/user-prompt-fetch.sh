@@ -14,7 +14,7 @@
 # a fresh search result.
 #
 # Env vars consumed (sourced from $PWD/.env if not in shell):
-#   DOCO_URL  access URL of the shape https://doco.to/agent/<credential>/
+#   DOCO_ACCESS  opaque Doco access credential
 
 set -u
 
@@ -33,11 +33,21 @@ if [ -f "$PWD/.env" ]; then
   set +a
 fi
 
-# Prefer DOCO_KEY (the new env-var shape). For in-flight repos that
-# still carry the old DOCO_URL=https://doco.to/agent/<hex>/, extract
-# the 64-hex segment so the same hook works on both.
-if [ -z "${DOCO_KEY:-}" ] && [ -n "${DOCO_URL:-}" ]; then
-  DOCO_KEY=$(printf '%s' "$DOCO_URL" | sed -nE 's|.*/agent/([0-9a-f]{64})/?$|\1|p')
+# Prefer DOCO_ACCESS. Older env names are accepted only as migration
+# fallbacks so existing sessions can load and rewrite themselves.
+if [ -z "${DOCO_ACCESS:-}" ] && [ -n "${DOCO_KEY:-}" ]; then
+  DOCO_ACCESS="$DOCO_KEY"
+fi
+if [ -z "${DOCO_ACCESS:-}" ] && [ -n "${DOCO_TOKEN:-}" ]; then
+  DOCO_ACCESS="$DOCO_TOKEN"
+fi
+if [ -z "${DOCO_ACCESS:-}" ] && [ -n "${DOCO_URL:-}" ]; then
+  DOCO_ACCESS=$(printf '%s' "$DOCO_URL" | sed -nE 's|.*/agent/([0-9a-f]{64})/?$|\1|p')
+fi
+
+DOCO_HANDLE="${DOCO_HANDLE:-}"
+if [ -z "$DOCO_HANDLE" ] && [ -f "$PWD/doco.md" ]; then
+  DOCO_HANDLE=$(sed -nE 's|.*https?://[^/ ]+/([A-Za-z0-9][A-Za-z0-9-]*)/?[ ).]*.*|\1|p' "$PWD/doco.md" | head -1)
 fi
 
 # 3. Build the protocol reminder — short, deterministic, every turn.
@@ -48,7 +58,7 @@ Use Doco as a verb in client-facing prose: "Want me to doco it?", "Doco this dec
 
 1. TOP OF THE TURN'S FIRST TEXT OUTPUT (once per turn, NOT on intermediate progress updates between tool calls): paste the pre-fetched Doco block FIRST.
 
-   If the pre-fetched block says "[🔮 Doco] Not connected yet: <reason>", paste that exact line instead of any connected indicator. Do not render query/count/tally/footer lines while disconnected. Ask the project owner to re-onboard at https://doco.to/onboarding/create/agent.
+   If the pre-fetched block says "[🔮 Doco] Not connected yet: <reason>", paste that exact line instead of any connected indicator. Do not render query/count/tally/footer lines while disconnected. Ask the project owner for an invite URL or to re-onboard at https://doco.to/onboarding/create/agent.
 
    If connected and queried, render the two-line query indicator:
    [🔮 Doco] <querying-verb>
@@ -56,24 +66,26 @@ Use Doco as a verb in client-facing prose: "Want me to doco it?", "Doco this dec
    If you didn't query (greeting, one-word ack), emit nothing at the top — no "Not querying" placeholder, no fallback line. Absence is the signal.
    The pre-fetched connected block below has the verbs already picked at random plus real <N>/<X.Xs> — paste it verbatim.
 
-2. AFTER EVERY WRITE (POST/PATCH/DELETE on ${DOCO_URL}api/*.json), only when connected: render every returned footer_lines entry verbatim, one per line, before the closing tally. Curl returning JSON is not enough; the user-facing reply must contain the operation lines. Shape:
+2. AFTER EVERY WRITE (POST/PATCH/DELETE on Doco API endpoints), only when connected: render every returned footer_lines entry verbatim, one per line, before the closing tally. Curl returning JSON is not enough; the user-facing reply must contain the operation lines. Shape:
    [🔮 Doco] <op-icon> <Type> <verb>: [<summary>](<url>) — <icon> <scope1>, <icon> <scope2>
    The summary is the markdown link to the entity. Never show the raw ULID. Scope tail omitted when no scopes. Last line in a batch carries (X.Xs) timing AFTER the scope tail — already there.
 
-3. BEFORE DECLARING DONE: scan capture triggers. Scope names are BARE (no scope_ prefix) and match templates: user-flow changed → `user-flows` Decision. Bug fixed → `bugs` Decision + `bugs` Rule (`born_from: <decision_id>`). Framework touched (templates / hooks / canonical) → add `framework`. ADR-shaped → `adrs`. POST to ${DOCO_URL}api/decisions.json etc. **If instinct says skip, name the existing node you're relying on. If a high-vector_score hit already governs the change, PATCH it instead of skipping (PATCH ${DOCO_URL}api/<type-plural>/<id>.json with body_md_append).**
+3. BEFORE DECLARING DONE: scan capture triggers. Scope names are BARE (no scope_ prefix) and match templates: user-flow changed → `user-flows` Decision. Bug fixed → `bugs` Decision + `bugs` Rule (`born_from: <decision_id>`). Framework touched (templates / hooks / canonical) → add `framework`. ADR-shaped → `adrs`. POST to /<doco-handle>/api/decisions.json etc. **If instinct says skip, name the existing node you're relying on. If a high-vector_score hit already governs the change, PATCH it instead of skipping.**
 
 4. CLOSING LINE OF THE TURN (once per turn, on the LAST text output only — NOT on intermediate progress updates between tool calls; even when 0 writes):
    [🔮 Doco] <owner>/<doco>: **<N>** node(s) added/updated
    <N> = count of distinct entities you added/updated this turn (PATCH-3-fields-of-1-Decision = 1, not 3). The number MUST be wrapped in markdown bold (`**N**`). Singular when N == 1, plural otherwise (0 is plural). A "turn" is one user prompt → your complete answer, even when threaded through many tool calls; the tally bookends the turn, not each chunk.
 
-The full canonical_instructions was loaded at session start. Re-fetch via `curl -fsS ${DOCO_URL}bootstrap.json` if you've lost track and are connected.
+The full canonical_instructions was loaded at session start. Re-fetch via `curl -fsS -H "Authorization: Bearer ${DOCO_ACCESS}" https://doco.to/api/v1/agent-bootstrap` if you've lost track and are connected.
 EOF
 
 # 4. Pre-fetch /search.json for the user's prompt.
 QUERY_BLOCK=""
 DISCONNECTED_REASON=""
-if [ -z "${DOCO_KEY:-}" ]; then
-  DISCONNECTED_REASON="missing DOCO_KEY — ask the project owner for an invite URL"
+if [ -z "${DOCO_ACCESS:-}" ]; then
+  DISCONNECTED_REASON="missing DOCO_ACCESS — ask the project owner for an invite URL"
+elif [ -z "${DOCO_HANDLE:-}" ]; then
+  DISCONNECTED_REASON="missing doco.md Doco URL"
 elif ! command -v curl >/dev/null 2>&1; then
   DISCONNECTED_REASON="curl is not installed"
 elif ! command -v jq >/dev/null 2>&1; then
@@ -86,7 +98,8 @@ elif [ -n "$PROMPT" ]; then
   ENC=$(printf '%s' "$PROMPT" | jq -sRr @uri 2>/dev/null || true)
   TMP_RESP="${TMPDIR:-/tmp}/doco-search-$$.json"
   HTTP_STATUS=$(curl -sSL --max-time 5 -w '%{http_code}' -o "$TMP_RESP" \
-    "https://doco.to/agent/${DOCO_KEY}/search.json?q=${ENC}&limit=10" 2>/dev/null || true)
+    -H "Authorization: Bearer ${DOCO_ACCESS}" \
+    "https://doco.to/${DOCO_HANDLE}/search.json?q=${ENC}&limit=10" 2>/dev/null || true)
   RESP=$(cat "$TMP_RESP" 2>/dev/null || true)
   rm -f "$TMP_RESP" 2>/dev/null || true
   if [ "$HTTP_STATUS" = "200" ] && [ -n "$RESP" ]; then
@@ -109,7 +122,7 @@ elif [ -n "$PROMPT" ]; then
     REASON=""
     case "$HTTP_STATUS" in
       000) REASON="doco.to unreachable" ;;
-      401) REASON="DOCO_KEY invalid or revoked — ask for a fresh invite URL" ;;
+      401) REASON="DOCO_ACCESS invalid or revoked — ask for a fresh invite URL" ;;
       *) REASON="search failed with HTTP ${HTTP_STATUS}" ;;
     esac
     GUIDANCE=""

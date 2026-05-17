@@ -1,7 +1,7 @@
 // /invite/<code> — browser landing page for a Doco invite. Humans
 // only — agents have their own programmatic redeem path at
 // /api/v1/invites/<code>/redeem.json (which returns `next_steps_for_agent`
-// + `user_message_block` along with the doco_key).
+// + `user_message_block` along with the doco_access credential).
 //
 // The page loads the invite, shows the human what they're being
 // invited to (Doco name + expiration), and asks them to click
@@ -76,7 +76,7 @@ type ActionResult =
       ok: true;
       doco_url: string;
       doco_handle: string;
-      doco_key: string;
+      doco_access: string;
     };
 
 export async function action({
@@ -106,8 +106,8 @@ export async function action({
   if (!doco) return { error: "The Doco this invite points at no longer exists." };
 
   // Bind the existing human Principal to the Doco — no new Principal
-  // minted. The SessionToken IS the human's personal DOCO_KEY for
-  // this Doco.
+  // minted. The session secret is the human's personal Doco access
+  // credential for this Doco.
   const session = await store.issueSessionToken(
     principal.id as EntityId<"principal">,
     invite.minted_by_principal_id ?? undefined,
@@ -129,7 +129,7 @@ export async function action({
     ok: true,
     doco_url: `${origin}/${handle}/`,
     doco_handle: handle,
-    doco_key: session.token,
+    doco_access: session.token,
   };
 }
 

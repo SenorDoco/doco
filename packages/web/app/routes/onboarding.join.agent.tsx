@@ -50,12 +50,12 @@ export default function JoinAgent() {
                 Visit <code>/agents/new</code> and create an agent credential for you.
               </li>
               <li>
-                Paste the resulting <code>DOCO_TOKEN</code> into your chat.
+                Paste the resulting access credential into your chat.
               </li>
             </ol>
             <p className="mt-3 text-xs text-muted-foreground">
-              Once you have a token, set it as <code>DOCO_TOKEN</code> in your environment and
-              follow the repo's <code>AGENTS.md</code> for everything else.
+              Once you have it, set it as <code>DOCO_ACCESS</code> in your environment and follow
+              the repo's <code>AGENTS.md</code> for everything else.
             </p>
           </CardContent>
         </Card>

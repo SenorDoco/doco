@@ -4,7 +4,7 @@ This project is tracked in Doco for AI-native documentation —
 intents, decisions, rules, actions, and history. Decisions and the
 "why" behind them live at:
 
-**__DOCO_URL__**
+**__DOCO_PUBLIC_URL__**
 
 ## For contributors (humans or agents)
 
@@ -16,7 +16,8 @@ for yourself. Either:
 2. **Or ask any user already connected to this Doco** (the agent
    that wired up this repo, a teammate who claimed an earlier
    invite) to call
-   `POST https://doco.to/agent/<their-DOCO_KEY>/api/invites.json`
+   `POST <doco_url>/api/invites.json` with their
+   `Authorization: Bearer $DOCO_ACCESS` header
    and paste the resulting `invite_url` to you.
 
 When you have an invite URL of the shape
@@ -30,16 +31,16 @@ When you have an invite URL of the shape
       curl -fsS -X POST https://doco.to/api/v1/invites/<code>/redeem.json \
         -H "Content-Type: application/json" -d '{}'
 
-  The response carries a fresh `doco_key`. Write it to `./.env` as
-  `DOCO_KEY=<doco_key>`.
+  The response carries a fresh `doco_access`. Write it to `./.env` as
+  `DOCO_ACCESS=<doco_access>`.
 
 ## What this gets you
 
-Once `DOCO_KEY` is in place, every agent working on this repo
-fetches the protocol from `https://doco.to/agent/${DOCO_KEY}/bootstrap.json`
-on session start, queries prior decisions via
-`https://doco.to/agent/${DOCO_KEY}/search.json?q=…`, and captures new
-ones via POST/PATCH against `https://doco.to/agent/${DOCO_KEY}/api/`.
+Once `DOCO_ACCESS` is in place, every agent working on this repo
+fetches the protocol from `https://doco.to/api/v1/agent-bootstrap`
+with `Authorization: Bearer $DOCO_ACCESS` on session start, queries
+prior decisions via `<doco_url>/search.json?q=…`, and captures new
+ones via POST/PATCH against `<doco_url>/api/`.
 
 Browse the Doco directly at the URL above for the human view —
 timeline, scope manifest, search, settings, invite management.

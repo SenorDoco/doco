@@ -2,8 +2,8 @@
 //
 // Any user (agent or human) can redeem an Invite without prior auth.
 // The server mints a fresh agent-Principal scoped to the inviting Doco,
-// issues a SessionToken bound to that Doco (the redeemer's personal
-// `DOCO_KEY`), and marks the Invite as consumed.
+// issues an access credential bound to that Doco, and marks the Invite
+// as consumed.
 //
 // For human redemption via the browser, see /invite/<code> (the web
 // landing page wires through to this same redeem operation but
@@ -16,7 +16,7 @@
 //     doco_id: string,
 //     doco_url: string,
 //     doco_handle: string,
-//     doco_key: string,            // .env as DOCO_KEY=<hex>
+//     doco_access: string,         // .env as DOCO_ACCESS=<hex>
 //   }
 //
 // Errors:
@@ -124,17 +124,17 @@ export async function action({
     doco_id: doco.id,
     doco_handle: doco.handle,
     doco_url: docoUrl,
-    doco_key: session.token,
+    doco_access: session.token,
     /**
      * Next-step guidance for the redeeming agent — what to do with the
      * fields above before treating itself as "connected."
      */
     next_steps_for_agent: [
-      "Write DOCO_KEY=<doco_key> to ./.env (gitignored — create the file and a basic .gitignore if either is missing).",
+      "Write DOCO_ACCESS=<doco_access> to ./.env (gitignored — create the file and a basic .gitignore if either is missing).",
       "If doco.md doesn't already exist at repo root, write it with the doco_url so future clones / CI / teammates discover the Doco.",
       "If AGENTS.md doesn't include `@./doco.md`, add the line near the top.",
       "If CLAUDE.md doesn't exist, write it with the single line `@./AGENTS.md`.",
-      "Fetch the canonical protocol: curl -fsS https://doco.to/agent/${DOCO_KEY}/bootstrap.json — apply it from your next reply.",
+      "Fetch the canonical protocol: curl -fsS -H \"Authorization: Bearer ${DOCO_ACCESS}\" https://doco.to/api/v1/agent-bootstrap — apply it from your next reply.",
       "Render the user_message_block below as your next message to whoever invited you in.",
     ],
     /**
@@ -146,9 +146,9 @@ export async function action({
     user_message_block: [
       `✅ I claimed access to **${doco.handle}** (Doco at ${docoUrl}).`,
       ``,
-      `I saved my personal access key to \`./.env\` (gitignored) — from here I fetch the protocol on session start, search prior decisions before drafting new ones, and capture meaningful changes as Doco nodes.`,
+      `I saved my personal Doco access credential to \`./.env\` (gitignored) — from here I fetch the protocol on session start, search prior decisions before drafting new ones, and capture meaningful changes as Doco nodes.`,
       ``,
-      `If this repo didn't already have a \`doco.md\`, I just wrote one so future clones / CI / teammates discover the Doco. The key in \`.env\` is mine alone — if you want your own access (browse on the web, mint invites for teammates), ask me for a fresh invite URL.`,
+      `If this repo didn't already have a \`doco.md\`, I just wrote one so future clones / CI / teammates discover the Doco. The access credential in \`.env\` is mine alone — if you want your own access (browse on the web, mint invites for teammates), ask me for a fresh invite URL.`,
     ].join("\n"),
   });
 }

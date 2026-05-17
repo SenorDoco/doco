@@ -2,8 +2,8 @@
 //
 // Any user (agent or human) can call this with no prior auth. The
 // server mints an anonymous agent-Principal as the owner-of-record,
-// creates a new Doco under it, issues a SessionToken bound to that
-// Doco (the creator's `DOCO_KEY`), and mints an initial 7-day Invite
+// creates a new Doco under it, issues an access credential bound to
+// that Doco, and mints an initial 7-day Invite
 // so the creator has a sharable URL on the same response.
 //
 // Input (application/json, all optional):
@@ -18,7 +18,7 @@
 //     doco_id: string,             // ULID — stable internal id (FK target)
 //     doco_handle: string,         // public, human-readable URL id
 //     doco_url: string,            // https://<host>/<doco_handle>/
-//     doco_key: string,            // for .env as DOCO_KEY=<hex>
+//     doco_access: string,         // for .env as DOCO_ACCESS=<hex>
 //     invite_url: string,          // https://<host>/invite/<code>
 //     invite_expires_at: string,
 //   }
@@ -126,7 +126,7 @@ export async function action({ request }: { request: Request }) {
     doco_id: created.docoId,
     doco_handle: created.handle,
     doco_url: docoUrl,
-    doco_key: session.token,
+    doco_access: session.token,
     invite_url: inviteUrl,
     invite_expires_at: invite.expires_at,
     /**

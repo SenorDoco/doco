@@ -12,8 +12,9 @@ API — there are no on-disk per-entity files to read here.
 ## Quick links
 
 - [AGENTS.md](AGENTS.md) — agent bootstrap. Every agent working in this
-  repo should fetch `${DOCO_URL}bootstrap.json` before doing anything
-  else; the response carries the live `canonical_instructions`.
+  repo should fetch `https://doco.to/api/v1/agent-bootstrap` with
+  `Authorization: Bearer $DOCO_ACCESS` before doing anything else; the
+  response carries the live `canonical_instructions`.
 - [docos/torrenegra/doco/doco.yaml](docos/torrenegra/doco/doco.yaml) —
   this Doco's identity stub. Durable data is in Postgres.
 - [packages/db/src/schema.sql](packages/db/src/schema.sql) — current
@@ -44,33 +45,21 @@ API — there are no on-disk per-entity files to read here.
 
 ## Connecting an agent (zero install)
 
-There is no SDK, no CLI to install, no package to download. An agent
-that wants to read or write this repo's Doco runs three HTTP calls:
+An agent needs two pieces of state:
 
-1. `GET https://doco.to/api/v1/agent-link/start?agent_name=<runtime>&hostname=<host>`
-   — no auth, plain GET so conservative agent classifiers don't flag
-   it as state-mutating. Returns `{ state_nonce, short_code,
-   authorize_url, poll_url, interval_seconds }` where `poll_url`
-   already has `?state_nonce=…` baked in.
-2. The project owner opens `authorize_url` in their browser, signs
-   in, picks an existing Doco or names a new one, clicks Authorize.
-3. The agent GETs `poll_url` (as-is) until the response flips to
-   `{ status: "approved", access_url, owner_slug, doco_slug,
-   doco_id }`.
+1. `doco.md` with the public Doco URL.
+2. `./.env` with `DOCO_ACCESS=<credential>`.
 
-The agent writes `DOCO_URL=<access_url>` into `./.env`. From then on
-every API call is just `curl ${DOCO_URL}<path>` — the credential lives
-in the URL path; no `Authorization` header, no separate token to
-manage. See `/onboarding/create/agent.txt` on this host for the
-complete recipe.
+From then on every API call sends `Authorization: Bearer
+$DOCO_ACCESS`; no secret appears in the URL. See
+`/onboarding/create/agent.txt` and `/onboarding/join/agent.txt` on
+this host for the complete recipes.
 
 ## Reading order for a new agent
 
 1. [AGENTS.md](AGENTS.md) — protocol, bootstrap, env setup.
-2. `curl -fsS ${DOCO_URL}bootstrap.json` — live `canonical_instructions`,
-   including the four invariants every reply must follow.
-3. `curl -fsS "${DOCO_URL}search.json?q=<task>"` — query Doco before
-   drafting a Decision, Rule, or Intent.
+2. `curl -fsS -H "Authorization: Bearer $DOCO_ACCESS" https://doco.to/api/v1/agent-bootstrap` — live `canonical_instructions`, including the four invariants every reply must follow.
+3. `curl -fsS -H "Authorization: Bearer $DOCO_ACCESS" "https://doco.to/meta-doco/search.json?q=<task>"` — query Doco before drafting a Decision, Rule, or Intent.
 
 ## Reading order for a new person
 

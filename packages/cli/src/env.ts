@@ -1,22 +1,19 @@
-// Doco config resolution for the CLI — pulls the bearer DOCO_TOKEN from
-// `./.env` (gitignored, secret) and the project's DOCO_ID from
-// `./AGENTS.md` (committed, non-secret coordinator). `decision/move-
-// doco-id-to-agents-md` (this commit) split the two: the ID is part of
-// the project and should ride with git, only the credential goes in the
-// secret file. Existing repos that still carry DOCO_ID in `.env` keep
-// working via the fallback — read order is env > AGENTS.md > .env so
-// the new home wins once it's filled in.
+// Doco config resolution for the CLI. The secret is `DOCO_ACCESS` in
+// `./.env`; the project coordinate is the committed URL in `./doco.md`.
+// Older installs that still have previous env names continue to work as
+// read-only fallbacks, but new writes and user-facing guidance use
+// DOCO_ACCESS only.
 
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-export type DocoConfig = { token: string; docoId: string; host: string };
+export type DocoConfig = { access: string; docoRef: string; host: string };
 
 /**
  * Doco host the CLI talks to. Defaults to production (`https://doco.to`)
  * for the wide-default path the bootstrap canonical documents. Override
  * via `DOCO_HOST` for local dev / test (`http://127.0.0.1:5173`) — set
- * it in `./.env` alongside `DOCO_TOKEN` (or export inline) and every
+ * it in `./.env` alongside `DOCO_ACCESS` (or export inline) and every
  * subcommand will route there.
  */
 export const DEFAULT_DOCO_HOST = "https://doco.to";
@@ -35,7 +32,7 @@ export function resolveDocoHost(): string {
  * be invoked from a shell that hasn't sourced .env.
  */
 export function loadDotenv(): void {
-  for (const k of ["DOCO_TOKEN", "DOCO_ID"] as const) {
+  for (const k of ["DOCO_ACCESS", "DOCO_TOKEN", "DOCO_KEY", "DOCO_ID", "DOCO_URL"] as const) {
     if (process.env[k]) continue;
     try {
       const text = readFileSync(resolve(process.cwd(), ".env"), "utf8");
@@ -57,16 +54,28 @@ export function loadDotenv(): void {
       break;
     }
   }
+  if (!process.env.DOCO_ACCESS) {
+    process.env.DOCO_ACCESS = process.env.DOCO_TOKEN || process.env.DOCO_KEY || "";
+  }
+  if (!process.env.DOCO_ACCESS && process.env.DOCO_URL) {
+    const m = process.env.DOCO_URL.match(/\/agent\/([0-9a-f]{64})\/?$/);
+    if (m?.[1]) process.env.DOCO_ACCESS = m[1];
+  }
 }
 
 /**
- * Pull `doco_...` out of the project's AGENTS.md header. The Doco ID
- * lives in the committed bootstrap file (top-of-file metadata line)
- * rather than `.env`, because it's not secret and every contributor
- * needs the same value. Returns the first `doco_<ulid>` match — the
- * template puts it on the first content line, so first-match is right.
+ * Pull the public Doco coordinate out of doco.md. The file carries a
+ * human URL, not another secret. The route layer accepts either the
+ * modern handle or a legacy `doco_...` id, so this returns a generic ref.
  */
-export function readDocoIdFromAgentsMd(cwd: string = process.cwd()): string | null {
+export function readDocoRefFromProject(cwd: string = process.cwd()): string | null {
+  try {
+    const text = readFileSync(resolve(cwd, "doco.md"), "utf8");
+    const urlMatch = text.match(/https?:\/\/[^/\s)]+\/([A-Za-z0-9][A-Za-z0-9-]*)(?:\/|\b)/);
+    if (urlMatch?.[1]) return urlMatch[1];
+  } catch {
+    // Fall through to legacy ID discovery below.
+  }
   for (const name of ["AGENTS.md", "CLAUDE.md"]) {
     try {
       const text = readFileSync(resolve(cwd, name), "utf8");
@@ -80,24 +89,16 @@ export function readDocoIdFromAgentsMd(cwd: string = process.cwd()): string | nu
 }
 
 /**
- * Resolve token + docoId or exit 2 with a missing-env message.
- * Read order: process.env → ./.env (via loadDotenv) → ./AGENTS.md.
- *
- * Existing repos that still carry DOCO_ID in .env keep working (the
- * `loadDotenv` step puts it on process.env first). When the .env entry
- * is dropped — the new convention — the AGENTS.md fallback fills in.
+ * Resolve access credential + Doco ref or exit 2 with a missing-config
+ * message. Read order: process.env → ./.env (via loadDotenv) → doco.md.
  */
 export function requireDocoConfig(): DocoConfig {
   loadDotenv();
-  const token = process.env.DOCO_TOKEN ?? "";
-  let docoId = process.env.DOCO_ID ?? "";
-  if (!docoId) {
-    docoId = readDocoIdFromAgentsMd() ?? "";
-    if (docoId) process.env.DOCO_ID = docoId;
-  }
+  const access = process.env.DOCO_ACCESS ?? "";
+  const docoRef = readDocoRefFromProject() ?? process.env.DOCO_ID ?? "";
   const missing: string[] = [];
-  if (!token) missing.push("DOCO_TOKEN (./.env)");
-  if (!docoId) missing.push("DOCO_ID (./AGENTS.md header)");
+  if (!access) missing.push("DOCO_ACCESS (./.env)");
+  if (!docoRef) missing.push("doco.md URL");
   if (missing.length) {
     const cross = "\x1b[31m✗\x1b[0m";
     console.error(
@@ -105,5 +106,5 @@ export function requireDocoConfig(): DocoConfig {
     );
     process.exit(2);
   }
-  return { token, docoId, host: resolveDocoHost() };
+  return { access, docoRef, host: resolveDocoHost() };
 }

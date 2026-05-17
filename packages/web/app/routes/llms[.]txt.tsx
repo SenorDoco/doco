@@ -37,24 +37,24 @@ Omitted id auto-generates as \`doco-<random>\`. Response:
       "doco_id":           "doco_01K…",
       "doco_handle":       "<lowercase-kebab>",
       "doco_url":          "${baseUrl}/<doco_handle>/",
-      "doco_key":          "<64-hex>",
+      "doco_access":          "<64-hex>",
       "invite_url":        "${baseUrl}/invite/<64-hex>",
       "invite_expires_at": "<ISO timestamp, 7 days out>"
     }
 
 This is anonymous: the server mints an agent-Principal as the
 doco owner-of-record (no human attached yet). You hold the
-\`doco_key\`; share the \`invite_url\` with the user who asked you
+\`doco_access\`; share the \`invite_url\` with the user who asked you
 to set up Doco so they can claim collaboration access themselves.
 Both single-use, both ephemeral on the client side — only
-\`doco_key\` belongs in long-term storage.
+\`doco_access\` belongs in long-term storage.
 
 ## 2. Wire it into the repo
 
 Write **\`./.env\`** (gitignored — the agent creates a basic
 \`.gitignore\` if one isn't already there):
 
-    DOCO_KEY=<doco_key from step 1>
+    DOCO_ACCESS=<doco_access from step 1>
 
 Write **\`./doco.md\`** (committed, non-secret) verbatim:
 
@@ -112,26 +112,26 @@ Global scope rules to find out.
 
 On every session, fetch the protocol and follow it:
 
-    curl -fsS "https://doco.to/agent/\${DOCO_KEY}/bootstrap.json"
+    curl -fsS "https://doco.to/agent/\${DOCO_ACCESS}/bootstrap.json"
 
 The response's \`canonical_instructions\` field carries the four
 invariants every reply must follow (query indicator, capture
 footer, capture-before-done, tally). Per-prompt search:
 
-    curl -fsS "https://doco.to/agent/\${DOCO_KEY}/search.json?q=<paraphrase>"
+    curl -fsS "https://doco.to/agent/\${DOCO_ACCESS}/search.json?q=<paraphrase>"
 
 Capture (this is the Doco-side write — adds nodes on doco.to, not
 to git):
 
-    curl -X POST "https://doco.to/agent/\${DOCO_KEY}/api/decisions.json" \\
+    curl -X POST "https://doco.to/agent/\${DOCO_ACCESS}/api/decisions.json" \\
       -H "Content-Type: application/json" -d @body.json
 
 ## Minting more invites (for teammates, expired URLs, etc.)
 
-Any user (agent or human) holding a valid \`DOCO_KEY\` for the Doco can
+Any user (agent or human) holding a valid \`DOCO_ACCESS\` for the Doco can
 mint additional invites with one HTTP call:
 
-    curl -X POST "https://doco.to/agent/\${DOCO_KEY}/api/invites.json" \\
+    curl -X POST "https://doco.to/agent/\${DOCO_ACCESS}/api/invites.json" \\
       -H "Content-Type: application/json" \\
       -d '{"expires_in_days": 7}'
 
@@ -143,8 +143,8 @@ mint a fresh one for each collaborator.
 
 **Don't re-POST \`/api/v1/docos.json\` to "refresh" an invite — that
 creates a brand-new Doco.** The correct endpoint when a user asks
-"can I have a fresh invite?" is \`/agent/<key>/api/invites.json\`
-(API) or the **Invite collaborators** button on the Doco's web page
+"can I have a fresh invite?" is \`/<doco_handle>/api/invites.json\`
+with \`Authorization: Bearer \${DOCO_ACCESS}\` (API) or the **Invite collaborators** button on the Doco's web page
 (human). If you've already created a duplicate Doco by mistake,
 only a human can soft-delete it from the Doco's Settings page.
 
@@ -156,7 +156,7 @@ empty (new machine, fresh container), tell the user:
     "I can see this repo is tracked at <doco_url>, but I need an
     invite to access it. Either (a) open <doco_url>, sign in, and
     click 'New invite', or (b) ask any user already connected to
-    this Doco to POST /agent/<their-DOCO_KEY>/api/invites.json.
+    this Doco to POST /<doco_handle>/api/invites.json.
     Paste the resulting invite URL back here."
 
 When the user pastes \`https://doco.to/invite/<code>\`, redeem it:
@@ -165,7 +165,7 @@ When the user pastes \`https://doco.to/invite/<code>\`, redeem it:
       -H "Content-Type: application/json" -d '{}'
 
 The response carries:
-- \`doco_key\` — write to \`./.env\` as \`DOCO_KEY=<doco_key>\`.
+- \`doco_access\` — write to \`./.env\` as \`DOCO_ACCESS=<doco_access>\`.
 - \`doco_url\` — if the repo has no \`doco.md\`, write one with this URL.
 - \`next_steps_for_agent\` — an ordered checklist of file writes +
   the bootstrap fetch. Walk it top-to-bottom; it's the recipe in
@@ -190,12 +190,12 @@ The response carries:
 - POST  ${baseUrl}/api/v1/invites/<code>/redeem.json                  redeem an invite (no auth)
 - GET   ${baseUrl}/api/v1/agent-bootstrap                             canonical protocol (no per-Doco context)
 - GET   ${baseUrl}/api/v1/agent-reference                             deeper reference
-- GET   https://doco.to/agent/\${DOCO_KEY}/bootstrap.json              per-Doco bootstrap
-- GET   https://doco.to/agent/\${DOCO_KEY}/search.json?q=…             vector search
-- GET   https://doco.to/agent/\${DOCO_KEY}/status.json                 freshness + counts
-- POST  https://doco.to/agent/\${DOCO_KEY}/api/<type-plural>.json      capture a new node
-- POST  https://doco.to/agent/\${DOCO_KEY}/api/invites.json            mint a new invite
-- PATCH https://doco.to/agent/\${DOCO_KEY}/api/<type-plural>/<id>.json  extend a node
+- GET   https://doco.to/agent/\${DOCO_ACCESS}/bootstrap.json              per-Doco bootstrap
+- GET   https://doco.to/agent/\${DOCO_ACCESS}/search.json?q=…             vector search
+- GET   https://doco.to/agent/\${DOCO_ACCESS}/status.json                 freshness + counts
+- POST  https://doco.to/agent/\${DOCO_ACCESS}/api/<type-plural>.json      capture a new node
+- POST  https://doco.to/agent/\${DOCO_ACCESS}/api/invites.json            mint a new invite
+- PATCH https://doco.to/agent/\${DOCO_ACCESS}/api/<type-plural>/<id>.json  extend a node
 `;
   return new Response(body, {
     headers: {

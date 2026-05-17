@@ -11,7 +11,7 @@
 //   - /by-id/<id>/...             (splat 404/403 body — plain text, curl reads)
 //   - /api/v1/docos/<id>.json     (404/403 body — plain text, curl reads)
 //
-// On the bootstrap endpoint the bearer token tells us which state the
+// On the bootstrap endpoint the bearer credential tells us which state the
 // caller is in. On the splat / docos.json endpoints the caller may be
 // anonymous, but we still de-conflate: ULIDs are 128-bit (effectively
 // unguessable), so "this id exists but you can't see it" is not a
@@ -42,7 +42,7 @@ export interface MissingDocoGuidance {
 
 export function buildMissingDocoGuidance(args: {
   state: MissingDocoState;
-  /** The identifier the caller used — a doco_<ulid> or "<owner>/<doco>" slug. */
+  /** The identifier the caller used — a doco_<ulid> or Doco handle. */
   identifier: string;
   /** Host URL like "https://doco.to". */
   host: string;
@@ -60,12 +60,12 @@ export function buildMissingDocoGuidance(args: {
           label: "Create a new Doco for this project",
           command: `doco login --host ${host} --create <slug>`,
           explainer:
-            "Opens the browser-authorize flow and creates a Doco under your account. Pick a kebab-case slug naming the project. The CLI stamps the freshly-minted DOCO_ID into AGENTS.md and writes DOCO_TOKEN to .env.",
+            "Opens the browser-authorize flow and creates a Doco under your account. Pick a kebab-case slug naming the project. The CLI writes the Doco URL to doco.md and writes DOCO_ACCESS to .env.",
         },
         {
           label: "Recover the right id for an existing Doco",
           explainer:
-            "Check the **This project's Doco ID** line at the top of AGENTS.md — typo? wrong host? If the line is correct as written, ask the project owner for the canonical DOCO_ID and update AGENTS.md.",
+            "Check the Doco URL in doco.md — typo? wrong host? If the URL is correct as written, ask the project owner for a fresh invite URL.",
         },
       ],
     };
@@ -76,7 +76,7 @@ export function buildMissingDocoGuidance(args: {
     status: 403,
     title: `The Doco "${identifier}" exists on ${host}, but your credentials don't grant access.`,
     summary:
-      "Your token resolves to a principal that isn't the Doco's owner or a member of the owning org.",
+      "Your access credential resolves to a principal that isn't the Doco's owner or a member of the owning org.",
     actions: [
       {
         label: "Ask the project owner to grant access",
@@ -87,7 +87,7 @@ export function buildMissingDocoGuidance(args: {
         label: "Re-authorize with the right account",
         command: `doco login --host ${host}`,
         explainer:
-          "Mints a fresh token. If you have access under a different account or organization, switch to that one in the browser flow.",
+          "Mints a fresh access credential. If you have access under a different account or organization, switch to that one in the browser flow.",
       },
       {
         label: "Do NOT run `doco login --create`",

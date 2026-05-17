@@ -14,11 +14,9 @@
 
 set -u
 
-# Load .env if present. The only env var Doco needs is DOCO_URL — the
-# access URL for this Doco, of the shape
-# `https://doco.to/agent/<credential>/`. Identity and credential are
-# encoded in the URL path; there is no Authorization header, no separate
-# DOCO_TOKEN, no DOCO_ID.
+# Load .env if present. The only secret env var Doco needs is
+# DOCO_ACCESS. The project coordinate lives in doco.md, and bound
+# credentials let the bootstrap endpoint infer it.
 if [ -f "$PWD/.env" ]; then
   # shellcheck disable=SC1091
   set -a
@@ -53,7 +51,7 @@ emit_disconnected() {
       recovery=""
       ;;
     default|*)
-      recovery=$'Ask the project owner to re-onboard the agent at https://doco.to/onboarding/create/agent. The success page hands you an access URL to write into ./.env as DOCO_URL. After that, restart or `/clear` so SessionStart runs again.'
+      recovery=$'Ask the project owner for an invite URL or re-onboard the agent at https://doco.to/onboarding/create/agent.txt. Write the returned access credential into ./.env as DOCO_ACCESS. After that, restart or `/clear` so SessionStart runs again.'
       ;;
   esac
   local body
@@ -78,15 +76,20 @@ if ! command -v curl >/dev/null 2>&1; then
   exit 0
 fi
 
-# Prefer DOCO_KEY (the new env-var shape). For in-flight repos that
-# still carry the old DOCO_URL=https://doco.to/agent/<hex>/, extract the
-# 64-hex segment so the same hook works on both.
-if [ -z "${DOCO_KEY:-}" ] && [ -n "${DOCO_URL:-}" ]; then
-  DOCO_KEY=$(printf '%s' "$DOCO_URL" | sed -nE 's|.*/agent/([0-9a-f]{64})/?$|\1|p')
+# Prefer DOCO_ACCESS. Older env names are accepted only as migration
+# fallbacks so existing sessions can load and rewrite themselves.
+if [ -z "${DOCO_ACCESS:-}" ] && [ -n "${DOCO_KEY:-}" ]; then
+  DOCO_ACCESS="$DOCO_KEY"
+fi
+if [ -z "${DOCO_ACCESS:-}" ] && [ -n "${DOCO_TOKEN:-}" ]; then
+  DOCO_ACCESS="$DOCO_TOKEN"
+fi
+if [ -z "${DOCO_ACCESS:-}" ] && [ -n "${DOCO_URL:-}" ]; then
+  DOCO_ACCESS=$(printf '%s' "$DOCO_URL" | sed -nE 's|.*/agent/([0-9a-f]{64})/?$|\1|p')
 fi
 
-if [ -z "${DOCO_KEY:-}" ]; then
-  emit_disconnected "missing DOCO_KEY — ask the project owner for an invite URL (or create a new Doco via POST https://doco.to/api/v1/docos.json)" default
+if [ -z "${DOCO_ACCESS:-}" ]; then
+  emit_disconnected "missing DOCO_ACCESS — ask the project owner for an invite URL (or create a new Doco via POST https://doco.to/api/v1/docos.json)" default
   exit 0
 fi
 
@@ -97,7 +100,8 @@ fi
 
 TMP_RESP="${TMPDIR:-/tmp}/doco-bootstrap-$$.json"
 HTTP_STATUS=$(curl -sSL --max-time 8 -w '%{http_code}' -o "$TMP_RESP" \
-  "https://doco.to/agent/${DOCO_KEY}/bootstrap.json" 2>/dev/null || true)
+  -H "Authorization: Bearer ${DOCO_ACCESS}" \
+  "https://doco.to/api/v1/agent-bootstrap" 2>/dev/null || true)
 RESP=$(cat "$TMP_RESP" 2>/dev/null || true)
 rm -f "$TMP_RESP" 2>/dev/null || true
 if [ -z "$RESP" ]; then
@@ -106,9 +110,9 @@ if [ -z "$RESP" ]; then
 fi
 if [ "$HTTP_STATUS" != "200" ]; then
   case "$HTTP_STATUS" in
-    401) emit_disconnected "DOCO_KEY invalid or revoked (HTTP 401) — ask for a fresh invite URL" default ;;
-    403) emit_disconnected "DOCO_KEY cannot reach this Doco (HTTP 403)" default ;;
-    404) emit_disconnected "Doco not found for this DOCO_KEY (HTTP 404)" default ;;
+    401) emit_disconnected "DOCO_ACCESS invalid or revoked (HTTP 401) — ask for a fresh invite URL" default ;;
+    403) emit_disconnected "DOCO_ACCESS cannot reach this Doco (HTTP 403)" default ;;
+    404) emit_disconnected "Doco not found for this DOCO_ACCESS (HTTP 404)" default ;;
     5*) emit_disconnected "doco.to returned ${HTTP_STATUS} — host outage; wait and retry." network ;;
     *) emit_disconnected "bootstrap failed with HTTP ${HTTP_STATUS}" default ;;
   esac
@@ -123,8 +127,7 @@ fi
 
 WARNING_TEXT=$(printf '%s' "$RESP" | jq -r '.warning // empty' 2>/dev/null)
 HAS_GUIDANCE=$(printf '%s' "$RESP" | jq -r '.missing_doco_guidance // empty | if type == "object" then "1" else "" end' 2>/dev/null)
-RESP_OWNER=$(printf '%s' "$RESP" | jq -r '.owner_slug // empty' 2>/dev/null)
-RESP_DOCO=$(printf '%s' "$RESP" | jq -r '.doco_slug // empty' 2>/dev/null)
+RESP_DOCO=$(printf '%s' "$RESP" | jq -r '.doco_handle // .doco_slug // empty' 2>/dev/null)
 
 if [ -n "$HAS_GUIDANCE" ]; then
   GUIDANCE_TITLE=$(printf '%s' "$RESP" | jq -r '.missing_doco_guidance.title // empty' 2>/dev/null)
@@ -150,8 +153,8 @@ fi
 # Pre-bake the session-load indicator block.
 LOADING_VERBS=("Connected to" "Tuned into" "Listening to" "Wired up to" "Synced with" "Plugged into" "Online with" "Reading" "Hooked into" "Eyes on" "Riding shotgun on" "Pinned to" "Threaded into" "Locked onto" "Channel open:" "Live on" "Mind-melded with" "Pulled up" "Holding the file on")
 LOADING_VERB="${LOADING_VERBS[$RANDOM % ${#LOADING_VERBS[@]}]}"
-if [ -n "$RESP_OWNER" ] && [ -n "$RESP_DOCO" ]; then
-  DOCO_FOR_LINE="${RESP_OWNER}/${RESP_DOCO}"
+if [ -n "$RESP_DOCO" ]; then
+  DOCO_FOR_LINE="${RESP_DOCO}"
 else
   DOCO_FOR_LINE="this Doco"
 fi
@@ -220,6 +223,6 @@ if printf '%s' "$RESP" | jq -e '.scopes and (.scopes | type == "array") and ((.s
 fi
 
 TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-HEADER=$'🔒 Doco canonical_instructions — auto-loaded by SessionStart hook at '"${TIMESTAMP}"$'\n\n⚠️ **The literal first lines of your first reply must be the session-load block** — emitted BEFORE any prose, narration, or tool calls. Pre-built for you here (verb already randomized — paste verbatim):\n\n'"${SESSION_LOAD_BLOCK}"$'\n\nNo "let me read this first" preface. No "I see this repo has Doco" prose. The block IS the acknowledgement. Then your per-reply [🔮 Doco] querying / count lines, then prose. See canonical § 1a below.\n\nThis IS the canonical. **Do NOT re-fetch via `curl ${DOCO_URL}bootstrap.json`** — re-read the block below instead. The protocol applies to every connected reply (query indicator at top, footer_lines after writes, tally at end). For deep reference (model walkthrough, scope onboarding, placement examples), the long form is at `https://doco.to/api/v1/agent-reference` — fetch only on demand.\n\n---\n\n'
+HEADER=$'🔒 Doco canonical_instructions — auto-loaded by SessionStart hook at '"${TIMESTAMP}"$'\n\n⚠️ **The literal first lines of your first reply must be the session-load block** — emitted BEFORE any prose, narration, or tool calls. Pre-built for you here (verb already randomized — paste verbatim):\n\n'"${SESSION_LOAD_BLOCK}"$'\n\nNo "let me read this first" preface. No "I see this repo has Doco" prose. The block IS the acknowledgement. Then your per-reply [🔮 Doco] querying / count lines, then prose. See canonical § 1a below.\n\nThis IS the canonical. **Do NOT re-fetch via raw curl** — re-read the block below instead. The protocol applies to every connected reply (query indicator at top, footer_lines after writes, tally at end). For deep reference (model walkthrough, scope onboarding, placement examples), the long form is at `https://doco.to/api/v1/agent-reference` — fetch only on demand.\n\n---\n\n'
 printf '%s' "$RESP" | jq -nc --arg c "${HEADER}${INSTR}${CONSTITUTION_BLOCK}${SCOPES_BLOCK}" \
   '{hookSpecificOutput: {hookEventName: "SessionStart", additionalContext: $c}}'

@@ -88,15 +88,13 @@ export async function getCurrentPrincipal(request: Request): Promise<CurrentPrin
  * mechanisms — in priority order:
  *
  *   1. `doco_session` cookie (browser users).
- *   2. URL path: `/agent/<credential>/...` — the credential is the path
- *      segment that follows `/agent/`. This is what an agent reaches
- *      when it calls `${DOCO_URL}<resource>` directly.
+ *   2. URL path: `/agent/<credential>/...` — older access URLs put the
+ *      credential in the path.
  *   3. `?_a=<credential>` query parameter — used internally by the
  *      `/agent/<credential>/*` 308 redirect so the credential survives
  *      to the destination route without going back into the path.
- *   4. Legacy `Authorization: Bearer <credential>` header — kept while
- *      pre-DOCO_URL bootstraps cycle out; new onboarding never emits
- *      this form.
+ *   4. `Authorization: Bearer <credential>` header — the current
+ *      DOCO_ACCESS transport.
  */
 export async function getCurrentPrincipalAsync(
   request: Request,
@@ -126,7 +124,7 @@ const AGENT_PATH_RE = /^\/agent\/([0-9a-f]{64})(?:\/|$)/;
  * Extract the agent credential from a request. Order:
  *   1. URL path `/agent/<credential>/...`
  *   2. `?_a=<credential>` query param
- *   3. Legacy `Authorization: Bearer <credential>` header
+ *   3. `Authorization: Bearer <credential>` header
  * Returns null if no credential is present or the candidate isn't a
  * well-formed 64-char hex string.
  */

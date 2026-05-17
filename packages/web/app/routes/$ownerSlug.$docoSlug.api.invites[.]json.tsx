@@ -1,5 +1,5 @@
 // POST /<doco-handle>/api/invites.json — mint a new invite for this
-// Doco. Any user (agent or human) holding a valid access key for the
+// Doco. Any user (agent or human) holding a valid access credential for the
 // Doco can call this; auth flows through getCurrentPrincipalAsync,
 // which resolves the URL-path credential, query-param credential, or
 // Bearer header.

@@ -2,9 +2,9 @@
 // (decision_01KRKEPRAMM9QSSEJ2X5FHPESJ).
 //
 // Two-step under the hood:
-//   1. POST /by-id/<doco_id>/api/decisions.json — capture a new Decision
+//   1. POST /<doco-handle>/api/decisions.json — capture a new Decision
 //                                                  that supersedes the prior.
-//   2. PATCH /by-id/<doco_id>/api/decisions/<prior>.json — set lifecycle to
+//   2. PATCH /<doco-handle>/api/decisions/<prior>.json — set lifecycle to
 //                                                           "superseded".
 //
 // Today only Decisions are supported (the most common case). Intent,
@@ -101,7 +101,7 @@ export const supersedeCmd = defineCommand({
       bodyMd = String(args["body-md"]);
     }
 
-    const { token, docoId, host } = requireDocoConfig();
+    const { access, docoRef, host } = requireDocoConfig();
 
     const captureBody: Record<string, unknown> = {
       question: String(args.question ?? `Supersede ${priorId} — what changes?`),
@@ -118,12 +118,12 @@ export const supersedeCmd = defineCommand({
     // is also self-documented in prose.
     captureBody.body_md = `${captureBody.body_md ?? ""}\n\n## Supersedes\n\n- ${priorId}\n`.trim();
 
-    const captureUrl = `${host}/by-id/${encodeURIComponent(docoId)}/api/decisions.json`;
+    const captureUrl = `${host}/${encodeURIComponent(docoRef)}/api/decisions.json`;
     let captureResp: Response;
     try {
       captureResp = await fetch(captureUrl, {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${access}` },
         body: JSON.stringify(captureBody),
       });
     } catch (e) {
@@ -147,12 +147,12 @@ export const supersedeCmd = defineCommand({
     console.log(checkmark(`Captured new Decision: ${newId}`));
 
     const priorLifecycle = String(args["prior-lifecycle"] ?? "superseded");
-    const patchUrl = `${host}/by-id/${encodeURIComponent(docoId)}/api/decisions/${priorId}.json`;
+    const patchUrl = `${host}/${encodeURIComponent(docoRef)}/api/decisions/${priorId}.json`;
     let patchResp: Response;
     try {
       patchResp = await fetch(patchUrl, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${access}` },
         body: JSON.stringify({ lifecycle: priorLifecycle }),
       });
     } catch (e) {

@@ -46,13 +46,13 @@ async function postCapture(
     | "states",
   body: Record<string, unknown>,
 ): Promise<void> {
-  const { token, docoId, host } = requireDocoConfig();
-  const url = `${host}/by-id/${encodeURIComponent(docoId)}/api/${type}.json`;
+  const { access, docoRef, host } = requireDocoConfig();
+  const url = `${host}/${encodeURIComponent(docoRef)}/api/${type}.json`;
   let resp: Response;
   try {
     resp = await fetch(url, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${access}` },
       body: JSON.stringify(body),
     });
   } catch (e) {
@@ -737,7 +737,7 @@ export const captureCmd = defineCommand({
   meta: {
     name: "capture",
     description:
-      "Capture a node (Intent / Decision / Action / Log / Rule / Eval / Scope / Reference / State) via doco.to's POST endpoints. Reads DOCO_TOKEN from env or ./.env and DOCO_ID from the AGENTS.md header. Prints the response's footer_lines to stdout.",
+      "Capture a node (Intent / Decision / Action / Log / Rule / Eval / Scope / Reference / State) via doco.to's POST endpoints. Reads DOCO_ACCESS from env or ./.env and the Doco URL from doco.md. Prints the response's footer_lines to stdout.",
   },
   subCommands: {
     intent: intentCmd,

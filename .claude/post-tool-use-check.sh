@@ -39,18 +39,18 @@ esac
 FILE_PATH=$(printf '%s' "$INPUT" | jq -r '.tool_input.file_path // ""' 2>/dev/null || true)
 [ -z "$FILE_PATH" ] && exit 0
 
-# 2. Load .env so we have DOCO_URL for the nudge link.
+# 2. Load .env so we can build Doco links.
 if [ -f "$PWD/.env" ]; then
   set -a
   # shellcheck disable=SC1091
   source "$PWD/.env"
   set +a
 fi
-if [ -n "${DOCO_URL:-}" ]; then
-  case "$DOCO_URL" in
-    */) ;;
-    *) DOCO_URL="${DOCO_URL}/" ;;
-  esac
+DOCO_BASE_URL="${DOCO_HOST:-https://doco.to}"
+DOCO_BASE_URL="${DOCO_BASE_URL%/}"
+DOCO_HANDLE="${DOCO_HANDLE:-}"
+if [ -z "$DOCO_HANDLE" ] && [ -f "$PWD/doco.md" ]; then
+  DOCO_HANDLE=$(sed -nE 's|.*https?://[^/ ]+/([A-Za-z0-9][A-Za-z0-9-]*)/?[ ).]*.*|\1|p' "$PWD/doco.md" | head -1)
 fi
 
 # 3. Locate the pre-fetched hits file written by user-prompt-fetch.sh.
@@ -120,16 +120,16 @@ MATCH_COUNT=$(printf '%s' "$FINAL_MATCHES" | jq 'length' 2>/dev/null || echo 0)
 [ "$MATCH_COUNT" = "0" ] && exit 0
 
 # 6. Build the nudge text. List up to 3 matches with URLs.
-NUDGE_BODY=$(printf '%s' "$FINAL_MATCHES" | jq -r --arg url "${DOCO_URL:-https://doco.to/}" '
+NUDGE_BODY=$(printf '%s' "$FINAL_MATCHES" | jq -r --arg host "$DOCO_BASE_URL" --arg doco "$DOCO_HANDLE" '
   .[0:3] | map(
-    "- [" + (.slug // .id) + "](" + ($url) + "api/decisions/" + .id + ".json) (vector_score " + ((.vector_score // 0) | tostring) + "): " +
+    "- [" + (.slug // .id) + "](" + ($host) + "/" + ($doco) + "/decision/" + .id + ") (vector_score " + ((.vector_score // 0) | tostring) + "): " +
       (if (.summary | length) > 200 then (.summary[:197] + "...") else .summary end)
   ) | join("\n")
 ' 2>/dev/null)
 
 [ -z "$NUDGE_BODY" ] && exit 0
 
-NUDGE=$(printf '🔮 Doco PostToolUse — file just edited (%s) is referenced in an existing Decision\n\nThis edit touched **%s**. The following Decision(s) from this prompt'\''s search hits cite this path in their body (vector_score > 0.45):\n\n%s\n\n**Consider PATCHing one of these Decisions** instead of opening a sibling. If a high-vector_score hit already governs the change, PATCH it (`curl -X PATCH "${DOCO_URL}api/decisions/<id>.json" -H "Content-Type: application/json" -d '\''{"body_md_append": "..."}'\''`) rather than skipping the capture or creating a near-duplicate. Two overlapping nodes are strictly worse than one stale one.' \
+NUDGE=$(printf '🔮 Doco PostToolUse — file just edited (%s) is referenced in an existing Decision\n\nThis edit touched **%s**. The following Decision(s) from this prompt'\''s search hits cite this path in their body (vector_score > 0.45):\n\n%s\n\n**Consider PATCHing one of these Decisions** instead of opening a sibling. If a high-vector_score hit already governs the change, PATCH it (`doco patch decision <id> --append-body "..."`) rather than skipping the capture or creating a near-duplicate. Two overlapping nodes are strictly worse than one stale one.' \
   "$RELPATH" "$RELPATH" "$NUDGE_BODY")
 
 # 7. Emit the JSON envelope.

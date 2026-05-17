@@ -135,7 +135,7 @@ ERROR RESPONSE
 EXAMPLE
   curl -sS -X POST \\
     -H "Content-Type: application/json" \\
-    -H "Authorization: Bearer $DOCO_TOKEN" \\
+    -H "Authorization: Bearer $DOCO_ACCESS" \\
     ${baseUrl}/${handle}/api/intents.json \\
     -d '{
       "summary": "Agent capture friction is bounded to a few seconds end-to-end.",
@@ -220,14 +220,14 @@ ERROR RESPONSES
 EXAMPLE — install the user-flows template as watched
   curl -sS -X POST \\
     -H "Content-Type: application/json" \\
-    -H "Authorization: Bearer $DOCO_TOKEN" \\
+    -H "Authorization: Bearer $DOCO_ACCESS" \\
     ${baseUrl}/${handle}/api/scopes.json \\
     -d '{ "template_name": "user-flows", "watched": true }'
 
 EXAMPLE — custom scope, not watched, nested under an existing parent
   curl -sS -X POST \\
     -H "Content-Type: application/json" \\
-    -H "Authorization: Bearer $DOCO_TOKEN" \\
+    -H "Authorization: Bearer $DOCO_ACCESS" \\
     ${baseUrl}/${handle}/api/scopes.json \\
     -d '{
       "name": "payments",
@@ -308,7 +308,7 @@ ADDING RULES IN PLAIN ENGLISH
   Example:
     curl -sS -X POST \\
       -H "Content-Type: application/json" \\
-      -H "Authorization: Bearer $DOCO_TOKEN" \\
+      -H "Authorization: Bearer $DOCO_ACCESS" \\
       ${baseUrl}/${handle}/api/scopes/scope_<ULID>/rules.json \\
       -d '{ "kind": "authoring", "prose": "Every Decision should have an Intent, and bugs should link to a Rule." }'
 
@@ -331,7 +331,7 @@ Per-Doco settings endpoint. Two methods:
     admin). Only the keys you include are touched.
 
 AUTH
-  Cookie session OR \`Authorization: Bearer <DOCO_TOKEN>\`. Read returns
+  Cookie session OR \`Authorization: Bearer <DOCO_ACCESS>\`. Read returns
   404 if you can't access; write returns 403 if you can read but not
   admin.
 
@@ -365,19 +365,19 @@ ERROR RESPONSE
 
 EXAMPLE — read current settings
   curl -sS ${baseUrl}/${handle}/api/settings.json \\
-    -H "Authorization: Bearer $DOCO_TOKEN"
+    -H "Authorization: Bearer $DOCO_ACCESS"
 
 EXAMPLE — flip to public + edit description
   curl -sS -X POST \\
     -H "Content-Type: application/json" \\
-    -H "Authorization: Bearer $DOCO_TOKEN" \\
+    -H "Authorization: Bearer $DOCO_ACCESS" \\
     ${baseUrl}/${handle}/api/settings.json \\
     -d '{ "visibility": "public", "description": "Now open-source." }'
 
 EXAMPLE — rename the handle
   curl -sS -X POST \\
     -H "Content-Type: application/json" \\
-    -H "Authorization: Bearer $DOCO_TOKEN" \\
+    -H "Authorization: Bearer $DOCO_ACCESS" \\
     ${baseUrl}/${handle}/api/settings.json \\
     -d '{ "handle": "renamed-project" }'
   # subsequent requests should use the new URL: /renamed-project/...

@@ -21,12 +21,12 @@ interface AuditEvent {
 }
 
 async function fetchEvents(query: Record<string, string>): Promise<AuditEvent[]> {
-  const { token, docoId, host } = requireDocoConfig();
+  const { access, docoRef, host } = requireDocoConfig();
   const qs = new URLSearchParams(query).toString();
-  const url = `${host}/by-id/${encodeURIComponent(docoId)}/api/audit.json${qs ? `?${qs}` : ""}`;
+  const url = `${host}/${encodeURIComponent(docoRef)}/api/audit.json${qs ? `?${qs}` : ""}`;
   let resp: Response;
   try {
-    resp = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+    resp = await fetch(url, { headers: { Authorization: `Bearer ${access}` } });
   } catch (e) {
     console.error(cross(`Network error GETting ${url}: ${(e as Error).message}`));
     process.exit(1);
