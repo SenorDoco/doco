@@ -37,9 +37,9 @@ When you have an invite URL of the shape
 ## What this gets you
 
 Once `DOCO_ACCESS` is in place, every agent working on this repo
-fetches the protocol from `https://doco.to/api/v1/agent-bootstrap`
-with `Authorization: Bearer $DOCO_ACCESS` on session start, queries
-prior decisions via `<doco_url>/search.json?q=…`, and captures new
+fetches the protocol with `node .agents/doco-agent-client.mjs bootstrap`
+on session start, queries prior decisions with
+`node .agents/doco-agent-client.mjs search --q "…"`, and captures new
 ones via POST/PATCH against `<doco_url>/api/`.
 
 Browse the Doco directly at the URL above for the human view —

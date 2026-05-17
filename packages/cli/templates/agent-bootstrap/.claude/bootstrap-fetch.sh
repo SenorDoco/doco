@@ -8,7 +8,7 @@
 #   { "hookSpecificOutput": { "hookEventName": "SessionStart",
 #                             "additionalContext": "<text>" } }
 #
-# On failure (host unreachable, env missing, jq absent) we still emit a
+# On failure (host unreachable, env missing, jq/node absent) we still emit a
 # valid JSON envelope with a disconnected indicator so the agent never
 # presents as connected without proper access.
 
@@ -71,8 +71,14 @@ emit_disconnected() {
   fi
 }
 
-if ! command -v curl >/dev/null 2>&1; then
-  emit_disconnected "curl is not installed" tool
+if ! command -v node >/dev/null 2>&1; then
+  emit_disconnected "node is not installed" tool
+  exit 0
+fi
+
+CLIENT="$PWD/.agents/doco-agent-client.mjs"
+if [ ! -f "$CLIENT" ]; then
+  emit_disconnected "Doco agent client is missing at .agents/doco-agent-client.mjs" tool
   exit 0
 fi
 
@@ -98,13 +104,25 @@ if ! command -v jq >/dev/null 2>&1; then
   exit 0
 fi
 
-TMP_RESP="${TMPDIR:-/tmp}/doco-bootstrap-$$.json"
-HTTP_STATUS=$(curl -sSL --max-time 8 -w '%{http_code}' -o "$TMP_RESP" \
-  -H "Authorization: Bearer ${DOCO_ACCESS}" \
-  "https://doco.to/api/v1/agent-bootstrap" 2>/dev/null || true)
-RESP=$(cat "$TMP_RESP" 2>/dev/null || true)
-rm -f "$TMP_RESP" 2>/dev/null || true
-if [ -z "$RESP" ]; then
+BOOT_META=$(node "$CLIENT" bootstrap --meta 2>/dev/null || true)
+if [ -z "$BOOT_META" ]; then
+  emit_disconnected "doco.to unreachable (HTTP_STATUS:000 / network blocked at the agent runtime)" network
+  exit 0
+fi
+if ! printf '%s' "$BOOT_META" | jq -e . >/dev/null 2>&1; then
+  emit_disconnected "bootstrap helper returned invalid JSON" default
+  exit 0
+fi
+
+HTTP_STATUS=$(printf '%s' "$BOOT_META" | jq -r '.status // 0' 2>/dev/null)
+BOOT_CODE=$(printf '%s' "$BOOT_META" | jq -r '.code // empty' 2>/dev/null)
+BOOT_ERROR=$(printf '%s' "$BOOT_META" | jq -r '.error // empty' 2>/dev/null)
+RESP=$(printf '%s' "$BOOT_META" | jq -c '.body // empty' 2>/dev/null)
+if [ "$BOOT_CODE" = "missing_access" ]; then
+  emit_disconnected "missing DOCO_ACCESS — ask the project owner for an invite URL (or create a new Doco via POST https://doco.to/api/v1/docos.json)" default
+  exit 0
+fi
+if [ "$BOOT_CODE" = "network" ] || [ "$BOOT_CODE" = "timeout" ] || [ "$HTTP_STATUS" = "0" ]; then
   emit_disconnected "doco.to unreachable (HTTP_STATUS:000 / network blocked at the agent runtime)" network
   exit 0
 fi
@@ -114,7 +132,7 @@ if [ "$HTTP_STATUS" != "200" ]; then
     403) emit_disconnected "DOCO_ACCESS cannot reach this Doco (HTTP 403)" default ;;
     404) emit_disconnected "Doco not found for this DOCO_ACCESS (HTTP 404)" default ;;
     5*) emit_disconnected "doco.to returned ${HTTP_STATUS} — host outage; wait and retry." network ;;
-    *) emit_disconnected "bootstrap failed with HTTP ${HTTP_STATUS}" default ;;
+    *) emit_disconnected "${BOOT_ERROR:-bootstrap failed with HTTP ${HTTP_STATUS}}" default ;;
   esac
   exit 0
 fi

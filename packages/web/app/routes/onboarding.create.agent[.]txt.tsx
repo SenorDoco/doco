@@ -22,7 +22,9 @@ user_message_block to the user before any further onboarding action.
      user. Don't paraphrase, don't bury, don't skip. The user needs the
      invite URL in hand within 7 days or they lose access to their own
      project's Doco.
-  6. Apply the protocol now: GET /api/v1/agent-bootstrap with
+  6. Apply the protocol now: prefer
+     node .agents/doco-agent-client.mjs bootstrap when the repo has the
+     helper; otherwise GET /api/v1/agent-bootstrap with
      Authorization: Bearer \${DOCO_ACCESS}.
   7. Commit the bootstrap files to git (doco.md, AGENTS.md, CLAUDE.md,
      .gitignore). This is a SEPARATE action from Doco capture — see
@@ -125,7 +127,12 @@ that and you can skip the reminder.
 
 Step 6 — apply the protocol now. DON'T restart the session, DON'T ask
 the user to /clear. You have DOCO_ACCESS in hand; fetch the canonical and
-follow it:
+follow it. Prefer the checked-in helper when the repo has it, because it
+keeps DOCO_ACCESS out of shell command text:
+
+    node .agents/doco-agent-client.mjs bootstrap
+
+Fallback plain HTTP shape:
 
     curl -fsS -H "Authorization: Bearer \${DOCO_ACCESS}" \\
       "https://doco.to/api/v1/agent-bootstrap"

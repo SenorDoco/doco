@@ -30,6 +30,16 @@ The single biggest lever for keeping agents unblocked in a sandboxed environment
 3. **Set `DOCO_ACCESS` as an environment secret** so the CLI can authenticate without
    a fresh `doco login` per session.
 
+When npm/pnpm installs are blocked too, rely on the checked-in
+`.agents/doco-agent-client.mjs` helper installed by `doco install-agent-bootstrap`.
+It uses Node's built-in `fetch`, reads `DOCO_ACCESS` from `./.env` internally, and
+supports the startup calls agents need:
+
+```bash
+node .agents/doco-agent-client.mjs bootstrap
+node .agents/doco-agent-client.mjs search --q "what we know about auth"
+```
+
 ## Quick start
 
 ```bash

@@ -12,8 +12,9 @@ API — there are no on-disk per-entity files to read here.
 ## Quick links
 
 - [AGENTS.md](AGENTS.md) — agent bootstrap. Every agent working in this
-  repo should fetch `https://doco.to/api/v1/agent-bootstrap` with
-  `Authorization: Bearer $DOCO_ACCESS` before doing anything else; the
+  repo should run `node .agents/doco-agent-client.mjs bootstrap`
+  before doing anything else; the helper reads `DOCO_ACCESS` internally
+  so the credential stays out of shell command text, and the
   response carries the live `canonical_instructions`.
 - [docos/torrenegra/doco/doco.yaml](docos/torrenegra/doco/doco.yaml) —
   this Doco's identity stub. Durable data is in Postgres.
@@ -58,8 +59,8 @@ this host for the complete recipes.
 ## Reading order for a new agent
 
 1. [AGENTS.md](AGENTS.md) — protocol, bootstrap, env setup.
-2. `curl -fsS -H "Authorization: Bearer $DOCO_ACCESS" https://doco.to/api/v1/agent-bootstrap` — live `canonical_instructions`, including the four invariants every reply must follow.
-3. `curl -fsS -H "Authorization: Bearer $DOCO_ACCESS" "https://doco.to/meta-doco/search.json?q=<task>"` — query Doco before drafting a Decision, Rule, or Intent.
+2. `node .agents/doco-agent-client.mjs bootstrap` — live `canonical_instructions`, including the four invariants every reply must follow.
+3. `node .agents/doco-agent-client.mjs search --q "<task>"` — query Doco before drafting a Decision, Rule, or Intent.
 
 ## Reading order for a new person
 

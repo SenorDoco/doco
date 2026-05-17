@@ -40,6 +40,8 @@ const DOCO_ID_PLACEHOLDER = /__DOCO_ID__/g;
  *   .claude/user-prompt-fetch.sh    (UserPromptSubmit hook script)
  *   .claude/post-tool-use-check.sh  (PostToolUse hook — path-match nudge per ADR-141)
  *   .claude/stop-check.sh           (Stop hook — edits-without-captures nudge per ADR-141)
+ *   .agents/doco-agent-client.mjs   (dependency-free Node fetch helper; keeps
+ *                                    DOCO_ACCESS out of shell command text)
  *
  * Source of truth: `packages/cli/templates/agent-bootstrap/`. Edits there
  * propagate to every Doco that runs this command (or `doco init`, which
@@ -101,6 +103,7 @@ export const installAgentBootstrapCmd = defineCommand({
     const userPromptHookSrc = join(TEMPLATES_DIR, ".claude", "user-prompt-fetch.sh");
     const postToolUseHookSrc = join(TEMPLATES_DIR, ".claude", "post-tool-use-check.sh");
     const stopHookSrc = join(TEMPLATES_DIR, ".claude", "stop-check.sh");
+    const agentClientSrc = join(TEMPLATES_DIR, ".agents", "doco-agent-client.mjs");
     for (const p of [
       agentsMdSrc,
       claudeMdSrc,
@@ -111,6 +114,7 @@ export const installAgentBootstrapCmd = defineCommand({
       userPromptHookSrc,
       postToolUseHookSrc,
       stopHookSrc,
+      agentClientSrc,
     ]) {
       if (!existsSync(p)) {
         console.error(cross(`Template missing: ${p}. Reinstall doco-cli.`));
@@ -129,6 +133,8 @@ export const installAgentBootstrapCmd = defineCommand({
     const userPromptHookDst = join(claudeDir, "user-prompt-fetch.sh");
     const postToolUseHookDst = join(claudeDir, "post-tool-use-check.sh");
     const stopHookDst = join(claudeDir, "stop-check.sh");
+    const agentsDir = join(target, ".agents");
+    const agentClientDst = join(agentsDir, "doco-agent-client.mjs");
 
     const actions: string[] = [];
 
@@ -193,6 +199,7 @@ export const installAgentBootstrapCmd = defineCommand({
     // overwrites; without --force, exists-and-differs prints a warning so
     // the operator can review the drift before re-syncing.
     if (!existsSync(claudeDir)) mkdirSync(claudeDir, { recursive: true });
+    if (!existsSync(agentsDir)) mkdirSync(agentsDir, { recursive: true });
 
     for (const [src, dst, mode] of [
       [settingsSrc, settingsDst, 0o644],
@@ -200,6 +207,7 @@ export const installAgentBootstrapCmd = defineCommand({
       [userPromptHookSrc, userPromptHookDst, 0o755],
       [postToolUseHookSrc, postToolUseHookDst, 0o755],
       [stopHookSrc, stopHookDst, 0o755],
+      [agentClientSrc, agentClientDst, 0o755],
     ] as const) {
       const label = dst.replace(`${target}/`, "");
       if (existsSync(dst) && !force) {
@@ -243,7 +251,7 @@ export const installAgentBootstrapCmd = defineCommand({
     );
     console.log(
       c.dim(
-        "  5. Non-Claude agents: run `doco bootstrap` manually at the start of each task. It reads DOCO_ACCESS from ./.env without exposing the credential in the shell command.",
+        "  5. Non-Claude agents: run `node .agents/doco-agent-client.mjs bootstrap` manually at the start of each task. It reads DOCO_ACCESS from ./.env without exposing the credential in the shell command.",
       ),
     );
     console.log();

@@ -110,14 +110,22 @@ Global scope rules to find out.
 
 ## 5. Connect — load the protocol and start
 
-On every session, fetch the protocol and follow it:
+If the repo contains \`.agents/doco-agent-client.mjs\`, prefer it for
+bootstrap and search. It reads \`DOCO_ACCESS\` from \`./.env\` internally
+so the credential stays out of shell command text:
+
+    node .agents/doco-agent-client.mjs bootstrap
+    node .agents/doco-agent-client.mjs search --q "<paraphrase>"
+
+Otherwise, on every session, fetch the protocol and follow it:
 
     curl -fsS -H "Authorization: Bearer \${DOCO_ACCESS}" \\
       "${baseUrl}/api/v1/agent-bootstrap"
 
 The response's \`canonical_instructions\` field carries the four
 invariants every reply must follow (query indicator, capture
-footer, capture-before-done, tally). Per-prompt search:
+footer, capture-before-done, tally). Per-prompt search without the
+helper:
 
     curl -fsS -H "Authorization: Bearer \${DOCO_ACCESS}" \\
       "${baseUrl}/<doco_handle>/search.json?q=<paraphrase>"
@@ -183,6 +191,9 @@ The response carries:
 
 - DO NOT print URLs and ask the user to copy/paste anything you can
   fetch yourself. Anything that's \`curl\`-able is your job.
+- DO prefer \`node .agents/doco-agent-client.mjs bootstrap\` and
+  \`node .agents/doco-agent-client.mjs search --q "…"\` when that helper
+  is present; it avoids putting \`DOCO_ACCESS\` in shell command text.
 - DO NOT write \`.claude/settings.json\` or any agent-config file.
   Trust-config writes are a privilege-escalation vector and
   conservative classifiers (correctly) block them.

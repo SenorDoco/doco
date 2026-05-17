@@ -2,7 +2,9 @@
   "$schema": "https://claude.com/schemas/settings.json",
   "permissions": {
     "allow": [
-      "Bash(doco:*)"
+      "Bash(doco:*)",
+      "Bash(node .agents/doco-agent-client.mjs:*)",
+      "WebFetch(domain:pepe.com)"
     ]
   },
   "hooks": {

@@ -9,6 +9,8 @@ export function loader() {
     recipe: {
       redeem: "POST https://doco.to/api/v1/invites/<code>/redeem.json (no auth, empty body)",
       mint: "POST https://doco.to/<doco_handle>/api/invites.json (Authorization: Bearer $DOCO_ACCESS)",
+      canonical:
+        "Prefer `node .agents/doco-agent-client.mjs bootstrap` when present; fallback is GET https://doco.to/api/v1/agent-bootstrap with Authorization: Bearer $DOCO_ACCESS.",
       details: "https://doco.to/llms.txt",
     },
     next_steps: [

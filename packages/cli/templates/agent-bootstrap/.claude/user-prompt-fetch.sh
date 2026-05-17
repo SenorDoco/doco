@@ -70,13 +70,13 @@ Use Doco as a verb in client-facing prose: "Want me to doco it?", "Doco this dec
    [🔮 Doco] <op-icon> <Type> <verb>: [<summary>](<url>) — <icon> <scope1>, <icon> <scope2>
    The summary is the markdown link to the entity. Never show the raw ULID. Scope tail omitted when no scopes. Last line in a batch carries (X.Xs) timing AFTER the scope tail — already there.
 
-3. BEFORE DECLARING DONE: scan capture triggers. Scope names are BARE (no scope_ prefix) and match templates: user-flow changed → `user-flows` Decision. Bug fixed → `bugs` Decision + `bugs` Rule (`born_from: <decision_id>`). Framework touched (templates / hooks / canonical) → add `framework`. ADR-shaped → `adrs`. POST to /<doco-handle>/api/decisions.json etc. **If instinct says skip, name the existing node you're relying on. If a high-vector_score hit already governs the change, PATCH it instead of skipping.**
+3. BEFORE DECLARING DONE: scan capture triggers. Scope names are BARE (no scope_ prefix) and come from the live bootstrap/search context. User-flow changed → `user-flows` Decision when that scope is active. Bug fixed → Decision + born-from Rule in the active bug/project scope when one exists. Framework/templates/hooks/canonical touched → patch or supersede the existing governing node when search returns one; otherwise use the most specific active scope from the bootstrap. POST to /<doco-handle>/api/decisions.json etc. **If instinct says skip, name the existing node you're relying on. If a high-vector_score hit already governs the change, PATCH it instead of skipping.**
 
 4. CLOSING LINE OF THE TURN (once per turn, on the LAST text output only — NOT on intermediate progress updates between tool calls; even when 0 writes):
    [🔮 Doco] <owner>/<doco>: **<N>** node(s) added/updated
    <N> = count of distinct entities you added/updated this turn (PATCH-3-fields-of-1-Decision = 1, not 3). The number MUST be wrapped in markdown bold (`**N**`). Singular when N == 1, plural otherwise (0 is plural). A "turn" is one user prompt → your complete answer, even when threaded through many tool calls; the tally bookends the turn, not each chunk.
 
-The full canonical_instructions was loaded at session start. Re-fetch via `curl -fsS -H "Authorization: Bearer ${DOCO_ACCESS}" https://doco.to/api/v1/agent-bootstrap` if you've lost track and are connected.
+The full canonical_instructions was loaded at session start. Re-fetch via `node .agents/doco-agent-client.mjs bootstrap` if you've lost track and are connected; the helper reads DOCO_ACCESS internally so the credential stays out of shell command text.
 EOF
 
 # 4. Pre-fetch /search.json for the user's prompt.
@@ -86,8 +86,10 @@ if [ -z "${DOCO_ACCESS:-}" ]; then
   DISCONNECTED_REASON="missing DOCO_ACCESS — ask the project owner for an invite URL"
 elif [ -z "${DOCO_HANDLE:-}" ]; then
   DISCONNECTED_REASON="missing doco.md Doco URL"
-elif ! command -v curl >/dev/null 2>&1; then
-  DISCONNECTED_REASON="curl is not installed"
+elif ! command -v node >/dev/null 2>&1; then
+  DISCONNECTED_REASON="node is not installed"
+elif [ ! -f "$PWD/.agents/doco-agent-client.mjs" ]; then
+  DISCONNECTED_REASON="Doco agent client is missing at .agents/doco-agent-client.mjs"
 elif ! command -v jq >/dev/null 2>&1; then
   DISCONNECTED_REASON="jq is not installed"
 fi
@@ -95,13 +97,14 @@ fi
 if [ -n "$DISCONNECTED_REASON" ]; then
   QUERY_BLOCK=$(printf '\n\n## Doco connection for THIS prompt — paste as your top-of-reply indicator\n\n[🔮 Doco] Not connected yet: %s\n\nDo not render any other Doco indicator, footer, or tally lines until the connection is fixed.\n' "$DISCONNECTED_REASON")
 elif [ -n "$PROMPT" ]; then
-  ENC=$(printf '%s' "$PROMPT" | jq -sRr @uri 2>/dev/null || true)
-  TMP_RESP="${TMPDIR:-/tmp}/doco-search-$$.json"
-  HTTP_STATUS=$(curl -sSL --max-time 5 -w '%{http_code}' -o "$TMP_RESP" \
-    -H "Authorization: Bearer ${DOCO_ACCESS}" \
-    "https://doco.to/${DOCO_HANDLE}/search.json?q=${ENC}&limit=10" 2>/dev/null || true)
-  RESP=$(cat "$TMP_RESP" 2>/dev/null || true)
-  rm -f "$TMP_RESP" 2>/dev/null || true
+  SEARCH_META=$(node "$PWD/.agents/doco-agent-client.mjs" search --q "$PROMPT" --limit 10 --meta 2>/dev/null || true)
+  if ! printf '%s' "$SEARCH_META" | jq -e . >/dev/null 2>&1; then
+    SEARCH_META='{"ok":false,"status":0,"code":"network","error":"doco.to unreachable"}'
+  fi
+  HTTP_STATUS=$(printf '%s' "$SEARCH_META" | jq -r '.status // 0' 2>/dev/null)
+  SEARCH_CODE=$(printf '%s' "$SEARCH_META" | jq -r '.code // empty' 2>/dev/null)
+  SEARCH_ERROR=$(printf '%s' "$SEARCH_META" | jq -r '.error // empty' 2>/dev/null)
+  RESP=$(printf '%s' "$SEARCH_META" | jq -c '.body // empty' 2>/dev/null)
   if [ "$HTTP_STATUS" = "200" ] && [ -n "$RESP" ]; then
     COUNT=$(printf '%s' "$RESP" | jq -r '.count // 0' 2>/dev/null || echo 0)
     MS=$(printf '%s' "$RESP" | jq -r '.duration_ms // 0' 2>/dev/null || echo 0)
@@ -120,10 +123,16 @@ elif [ -n "$PROMPT" ]; then
     printf '%s' "$RESP" > "$HITS_FILE" 2>/dev/null || true
   else
     REASON=""
+    case "$SEARCH_CODE:$HTTP_STATUS" in
+      missing_access:*) REASON="missing DOCO_ACCESS — ask the project owner for an invite URL" ;;
+      missing_doco_handle:*) REASON="missing doco.md Doco URL" ;;
+      network:*|timeout:*|*:000|*:0) REASON="doco.to unreachable" ;;
+      *:401) REASON="DOCO_ACCESS invalid or revoked — ask for a fresh invite URL" ;;
+      *) REASON="${SEARCH_ERROR:-search failed with HTTP ${HTTP_STATUS}}" ;;
+    esac
     case "$HTTP_STATUS" in
       000) REASON="doco.to unreachable" ;;
       401) REASON="DOCO_ACCESS invalid or revoked — ask for a fresh invite URL" ;;
-      *) REASON="search failed with HTTP ${HTTP_STATUS}" ;;
     esac
     GUIDANCE=""
     if [ -n "$RESP" ] && { [ "$HTTP_STATUS" = "403" ] || [ "$HTTP_STATUS" = "404" ]; }; then

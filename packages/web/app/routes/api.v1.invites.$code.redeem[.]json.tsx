@@ -134,7 +134,7 @@ export async function action({
       "If doco.md doesn't already exist at repo root, write it with the doco_url so future clones / CI / teammates discover the Doco.",
       "If AGENTS.md doesn't include `@./doco.md`, add the line near the top.",
       "If CLAUDE.md doesn't exist, write it with the single line `@./AGENTS.md`.",
-      "Fetch the canonical protocol: curl -fsS -H \"Authorization: Bearer ${DOCO_ACCESS}\" https://doco.to/api/v1/agent-bootstrap — apply it from your next reply.",
+      "Fetch the canonical protocol: prefer `node .agents/doco-agent-client.mjs bootstrap` when the repo has the helper; otherwise GET https://doco.to/api/v1/agent-bootstrap with Authorization: Bearer ${DOCO_ACCESS}. Apply it from your next reply.",
       "Render the user_message_block below as your next message to whoever invited you in.",
     ],
     /**

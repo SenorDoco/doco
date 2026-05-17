@@ -32,10 +32,13 @@ examples), fetch \`https://doco.to/api/v1/agent-reference\` on demand.
 ## 1. TOP OF EVERY REPLY — connection indicator
 
 Only render the regular Doco indicator when you have proper access:
-\`DOCO_ACCESS\` is present, \`GET https://doco.to/api/v1/agent-bootstrap\`
-with \`Authorization: Bearer \${DOCO_ACCESS}\` returns this Doco's
-per-Doco context without an access warning, and
-\`GET <doco_url>/search.json?q=…\` is reachable with the same bearer
+\`DOCO_ACCESS\` is present, the checked-in helper
+\`node .agents/doco-agent-client.mjs bootstrap\` (or an equivalent
+\`GET https://doco.to/api/v1/agent-bootstrap\` with
+\`Authorization: Bearer \${DOCO_ACCESS}\`) returns this Doco's per-Doco
+context without an access warning, and
+\`node .agents/doco-agent-client.mjs search --q "…"\` (or equivalent
+\`GET <doco_url>/search.json?q=…\`) is reachable with the same bearer
 credential.
 
 If any of that is missing or failing, render exactly one Doco line at
@@ -56,7 +59,7 @@ recovery action depends on WHICH failure mode you hit.
 | \`DOCO_ACCESS invalid\` / 401 from bootstrap | The access credential was revoked or never minted. Ask for a fresh invite URL. |
 | \`access credential not bound to a Doco\` / 401 with hint | An old credential reached the new wire format. Re-onboard or redeem a fresh invite to mint a per-Doco access credential. |
 | \`Doco doesn't exist on this host\` / 404 from bootstrap | The host responded that this Doco isn't there. Read the bootstrap response's \`missing_doco_guidance\` field — it tells you whether to re-onboard or fix a stale URL in \`./.env\`. |
-| \`bootstrap fetch blocked\` / \`HTTP_STATUS:000\` / \`doco.to unreachable\` | Sandbox / network-policy issue. The bootstrap request never left your runtime. Ask the project owner to allowlist \`doco.to\` in the agent's network-access settings (Codex web, GitHub Coding Agent, Anthropic web sandbox, etc. each have their own settings page). For a one-off, ask approval for the specific \`curl\` to \`https://doco.to/api/v1/agent-bootstrap\` rather than guessing. |
+| \`bootstrap fetch blocked\` / \`HTTP_STATUS:000\` / \`doco.to unreachable\` | Sandbox / network-policy issue. The bootstrap request never left your runtime. Ask the project owner to allowlist \`doco.to\` in the agent's network-access settings (Codex web, GitHub Coding Agent, Anthropic web sandbox, etc. each have their own settings page). For a one-off, prefer approval for \`node .agents/doco-agent-client.mjs bootstrap\` when the helper exists; it keeps \`DOCO_ACCESS\` out of shell command text. |
 | Host returns 5xx | doco.to is down; wait + retry. |
 
 When you can't tell which case applies, surface the raw HTTP status +
@@ -456,13 +459,17 @@ Two pieces of information, two files:
   Treat it like a Slack webhook URL or a personal iCal feed —
   share-by-revealing, rotated if leaked.
 
-Combine them at call time:
+When the checked-in helper is present, use it for bootstrap/search so
+the credential stays out of shell command text:
 
 \`\`\`
-curl -fsS -H "Authorization: Bearer \${DOCO_ACCESS}" \\
-  "https://doco.to/api/v1/agent-bootstrap"
-curl -fsS -H "Authorization: Bearer \${DOCO_ACCESS}" \\
-  "https://doco.to/<doco_handle>/search.json?q=hello"
+node .agents/doco-agent-client.mjs bootstrap
+node .agents/doco-agent-client.mjs search --q "hello"
+\`\`\`
+
+For other HTTP calls, combine the two pieces at call time:
+
+\`\`\`
 curl -X POST "https://doco.to/<doco_handle>/api/decisions.json" \\
   -H "Authorization: Bearer \${DOCO_ACCESS}" \\
   -H "Content-Type: application/json" -d @body.json
@@ -479,12 +486,11 @@ Missing \`DOCO_ACCESS\`: see "Onboarding an agent for a new Doco" below
 
 \`.claude/settings.json\` wires three hooks:
 
-- **\`SessionStart\`** — fetches \`/api/v1/agent-bootstrap\` with
-  \`Authorization: Bearer \${DOCO_ACCESS}\` at
-  session start and injects the result as additional context.
+- **\`SessionStart\`** — runs \`node .agents/doco-agent-client.mjs bootstrap\`
+  at session start and injects the result as additional context.
 - **\`UserPromptSubmit\`** — re-injects a tight checklist AND
-  pre-fetches \`<doco_url>/search.json\` for the prompt on every user
-  message. The block already contains the connection indicator with a
+  runs \`node .agents/doco-agent-client.mjs search --q "<prompt>"\` on every
+  user message. The block already contains the connection indicator with a
   randomized verb — emit it verbatim instead of re-picking.
 - **\`PostToolUse\`** (on Edit/Write) — cross-references the edited
   path against the prompt's pre-fetched search hits. If a Decision
@@ -500,15 +506,14 @@ Non-Claude-Code agents: run a manual bootstrap fetch at the start of
 each new task:
 
 \`\`\`
-curl -fsS -H "Authorization: Bearer \${DOCO_ACCESS}" \\
-  https://doco.to/api/v1/agent-bootstrap
+node .agents/doco-agent-client.mjs bootstrap
 \`\`\`
 
 ## If the bootstrap fetch fails — refuse to proceed
 
 If the SessionStart hook injected a "⚠️ Doco bootstrap not loaded"
 warning instead of \`canonical_instructions\`, or a manual
-\`curl -H "Authorization: Bearer \${DOCO_ACCESS}" https://doco.to/api/v1/agent-bootstrap\`
+\`node .agents/doco-agent-client.mjs bootstrap\`
 returns nothing / non-200 (host down, network error, invalid credential,
 missing env var), **stop**.
 Do not start the user's task — not a typo fix, not a one-line edit,
@@ -1004,15 +1009,14 @@ No install, no browser, no permission prompts.
 
 6. **Apply the protocol now** — don't tell the user to restart or
    \`/clear\`. You already have \`DOCO_ACCESS\`; fetch the canonical and
-   follow it:
+   follow it. Prefer the checked-in helper when the repo has it:
    \`\`\`
-   curl -fsS -H "Authorization: Bearer \${DOCO_ACCESS}" \\
-     "https://doco.to/api/v1/agent-bootstrap"
+   node .agents/doco-agent-client.mjs bootstrap
    \`\`\`
 
 7. **Commit the bootstrap files to git** — separate from Doco
-   capture. The four files you wrote (\`doco.md\`, \`AGENTS.md\`,
-   \`CLAUDE.md\`, \`.gitignore\`) are the repo's discoverability
+   capture. The files you wrote (\`doco.md\`, \`AGENTS.md\`,
+   \`CLAUDE.md\`, optional \`.agents/doco-agent-client.mjs\`, \`.gitignore\`) are the repo's discoverability
    layer; without them in git, a fresh clone / CI runner / teammate's
    agent has no idea this Doco exists. Capture (steps so far) moved
    nodes INTO doco.to via HTTP POSTs — those are durable on the host,
