@@ -41,8 +41,6 @@ function tableFor(nodeType: string): string {
 /** Tables that live at host level (no doco_id column). */
 const HOST_LEVEL_TABLES = new Set(["principals", "organizations"]);
 
-const GRAPH_HIDDEN_LIFECYCLES = ["abandoned", "superseded"] as const;
-
 type IdentitySummary = {
   id: string;
   node_type: "principal" | "organization";
@@ -71,12 +69,11 @@ function collectIdentityIds(value: unknown, out = new Set<string>()): Set<string
 function displayPrincipalType(type: string): string {
   return type === "human" ? "person" : type;
 }
-import { Badge, NodeTypeBadge } from "~/components/badge";
+import { Badge, LifecycleBadge, NodeTypeBadge } from "~/components/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { EntityGraph, type GraphLink, type GraphNode } from "~/components/entity-graph";
 import { SiteHeader } from "~/components/site-header";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "~/components/table";
-import { nodeTypeColor } from "~/lib/node-colors";
 
 /** "Ns / Nm / Nh / Nd ago" — same shape the graph component uses. */
 function relativeTimeIso(iso: string): string {
@@ -201,26 +198,7 @@ export async function loader({
       )
     ).rows;
 
-    const hiddenGraphNodeIds = new Set<string>();
-    for (const tbl of new Set(Object.values(TABLE_BY_TYPE))) {
-      if (HOST_LEVEL_TABLES.has(tbl)) continue;
-      const hiddenRows = (
-        await c.query<{ id: string }>(
-          `SELECT id
-             FROM ${tbl}
-            WHERE doco_id = $1
-              AND lifecycle = ANY($2::text[])`,
-          [docoId, GRAPH_HIDDEN_LIFECYCLES],
-        )
-      ).rows;
-      for (const hiddenRow of hiddenRows) {
-        if (hiddenRow.id !== id) hiddenGraphNodeIds.add(hiddenRow.id);
-      }
-    }
-
-    const graphEdgesRows = allEdgesRows.filter(
-      (e) => !hiddenGraphNodeIds.has(e.from_id) && !hiddenGraphNodeIds.has(e.to_id),
-    );
+    const graphEdgesRows = allEdgesRows;
     const pprEdges = graphEdgesRows.map((e) => ({
       from: e.from_id,
       to: e.to_id,
@@ -251,6 +229,7 @@ export async function loader({
       {
         summary: string;
         name: string | null;
+        lifecycle: string | null;
         created_at: string | null;
         node_type: string;
         principal_id: string | null;
@@ -265,6 +244,7 @@ export async function loader({
           sql = `SELECT id,
                         username AS summary,
                         username AS name,
+                        NULL::text AS lifecycle,
                         created_at::text,
                         id AS principal_id,
                         username AS principal_label
@@ -275,6 +255,7 @@ export async function loader({
           sql = `SELECT id,
                         COALESCE(name, slug) AS summary,
                         slug AS name,
+                        NULL::text AS lifecycle,
                         created_at::text,
                         NULL::text AS principal_id,
                         NULL::text AS principal_label
@@ -286,6 +267,7 @@ export async function loader({
           sql = `SELECT t.id,
                         t.summary,
                         ${nameExpr} AS name,
+                        t.lifecycle,
                         t.created_at::text,
                         t.created_by AS principal_id,
                         p.username AS principal_label
@@ -298,6 +280,7 @@ export async function loader({
           id: string;
           summary: string | null;
           name: string | null;
+          lifecycle: string | null;
           created_at: string | null;
           principal_id: string | null;
           principal_label: string | null;
@@ -309,6 +292,7 @@ export async function loader({
             node_type: nt,
             summary: row.summary ?? row.id,
             name: row.name ?? null,
+            lifecycle: row.lifecycle ?? null,
             created_at: row.created_at ?? null,
             principal_id: row.principal_id ?? null,
             principal_label: row.principal_label ?? null,
@@ -316,6 +300,40 @@ export async function loader({
         }
       } catch {
         /* unknown table */
+      }
+    }
+    const scopeIdsByNode = new Map<string, Set<string>>();
+    const graphScopeIds = new Set<string>();
+    for (const edge of allEdgesRows) {
+      if (edge.edge_type !== "in_scope_of") continue;
+      if (!neighborIds.has(edge.from_id)) continue;
+      if (!edge.to_id.startsWith("scope_")) continue;
+      const ids = scopeIdsByNode.get(edge.from_id) ?? new Set<string>();
+      ids.add(edge.to_id);
+      scopeIdsByNode.set(edge.from_id, ids);
+      graphScopeIds.add(edge.to_id);
+    }
+    for (const scope of entityScopes) {
+      graphScopeIds.add(scope.id);
+      if (id) {
+        const ids = scopeIdsByNode.get(id) ?? new Set<string>();
+        ids.add(scope.id);
+        scopeIdsByNode.set(id, ids);
+      }
+    }
+    const graphScopeById = new Map<string, { id: string; name: string; icon: string | null }>();
+    if (graphScopeIds.size > 0) {
+      const r = await c.query<{ id: string; name: string; raw_yaml: string }>(
+        "SELECT id, name, raw_yaml FROM scopes WHERE doco_id = $1 AND id = ANY($2::text[])",
+        [docoId, Array.from(graphScopeIds)],
+      );
+      for (const scope of r.rows) {
+        let icon: string | null = null;
+        try {
+          const parsed = parseYaml(scope.raw_yaml) as { icon?: string } | null;
+          if (parsed && typeof parsed.icon === "string") icon = parsed.icon;
+        } catch {}
+        graphScopeById.set(scope.id, { id: scope.id, name: scope.name, icon });
       }
     }
     const graphNodes: GraphNode[] = [];
@@ -329,6 +347,12 @@ export async function loader({
         node_type: nt,
         summary: meta?.summary ?? nid,
         name: meta?.name ?? null,
+        lifecycle: meta?.lifecycle ?? null,
+        scopes: Array.from(scopeIdsByNode.get(nid) ?? [])
+          .map((scopeId) => graphScopeById.get(scopeId))
+          .filter((scope): scope is { id: string; name: string; icon: string | null } =>
+            Boolean(scope),
+          ),
         principal_id: meta?.principal_id ?? (nt === "principal" ? nid : null),
         principal_label:
           meta?.principal_label ??
@@ -589,7 +613,6 @@ export default function EntityDetail({
   const focalCreatedAt =
     focalNode?.created_at ??
     (typeof ent.created_at === "string" ? (ent.created_at as string) : null);
-  const scopeColor = nodeTypeColor("scope");
 
   // PPR-ranked neighbors for the "More relevant nodes" list — drop the focal,
   // take the top 10, render in descending order.
@@ -603,7 +626,7 @@ export default function EntityDetail({
       <h1 className="text-lg font-semibold tracking-tight text-foreground">{display}</h1>
       <div className="flex flex-wrap items-center gap-2 pt-1">
         <NodeTypeBadge nodeType={type} />
-        {ent.lifecycle ? <Badge>lifecycle: {String(ent.lifecycle)}</Badge> : null}
+        {ent.lifecycle ? <LifecycleBadge lifecycle={String(ent.lifecycle)} /> : null}
         {ent.modality ? <Badge variant="primary">{String(ent.modality)}</Badge> : null}
         {ent.phase ? <Badge variant="primary">{String(ent.phase)}</Badge> : null}
         {entityScopes.map((s) => (
@@ -611,11 +634,6 @@ export default function EntityDetail({
             key={s.id}
             to={linkTo("scope", s.name)}
             className="inline-flex items-center gap-1 rounded-md border border-border bg-card px-2 py-0.5 text-[11px] font-mono text-muted-foreground transition-colors hover:border-primary hover:text-foreground"
-            style={{
-              borderColor: scopeColor,
-              backgroundColor: `color-mix(in oklch, ${scopeColor} 9%, white)`,
-              color: scopeColor,
-            }}
           >
             {s.icon ? (
               <span aria-hidden className="font-sans text-[12px] leading-none">
@@ -975,6 +993,7 @@ export default function EntityDetail({
           centerId={id}
           nodes={graphNodes}
           links={graphLinks}
+          scopeFilters={entityScopes}
           hrefFor={(nid, nt) => linkTo(nt, nid)}
         />
 

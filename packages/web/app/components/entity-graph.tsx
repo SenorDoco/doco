@@ -12,7 +12,8 @@
 import dagre from "@dagrejs/dagre";
 import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router";
-import { nodeTypeColor } from "~/lib/node-colors";
+import { NodeTypeIcon } from "~/components/node-type-icon";
+import { lifecycleColor } from "~/lib/node-colors";
 import "@xyflow/react/dist/style.css";
 
 /**
@@ -34,6 +35,8 @@ export interface GraphNode {
   summary: string;
   /** Scopes carry their `name` here; other entity types leave it null. */
   name: string | null;
+  lifecycle?: string | null;
+  scopes?: { id: string; name: string; icon?: string | null }[];
   /** Principal who owns this node's lane, usually the creator/actor. */
   principal_id?: string | null;
   principal_label?: string | null;
@@ -62,6 +65,7 @@ interface EntityGraphProps {
   centerId: string;
   nodes: GraphNode[];
   links: GraphLink[];
+  scopeFilters?: { id: string; name: string; icon?: string | null }[];
   hrefFor?: (id: string, nodeType: string) => string;
 }
 
@@ -102,23 +106,27 @@ interface FlowViewport {
   zoom: number;
 }
 
-const TYPE_PLURAL_LABEL: Record<string, string> = {
-  doco: "docos",
-  principal: "principals",
-  organization: "organizations",
-  intent: "intents",
-  idea: "ideas",
-  rule: "rules",
-  decision: "decisions",
-  action: "actions",
-  log: "logs",
-  eval: "evals",
-  reference: "references",
-  scope: "scopes",
-};
+const LIFECYCLE_ORDER = [
+  "active",
+  "drafted",
+  "proposed",
+  "superseded",
+  "abandoned",
+  "succeeded",
+  "failed",
+  "planned",
+  "in_progress",
+  "retired",
+];
 
-function typePluralLabel(type: string): string {
-  return TYPE_PLURAL_LABEL[type] ?? `${type}s`;
+const HIDDEN_LIFECYCLES_BY_DEFAULT = new Set(["abandoned", "superseded"]);
+
+function lifecycleLabel(lifecycle: string): string {
+  return lifecycle.replaceAll("_", " ");
+}
+
+function nodeLifecycle(node: GraphNode): string {
+  return node.lifecycle ?? "active";
 }
 
 const UNKNOWN_PRINCIPAL_KEY = "__unknown_principal__";
@@ -330,7 +338,8 @@ interface EntityNodeCardProps {
   isCenter?: boolean;
   ppr: number;
   gpr: number;
-  color: string;
+  lifecycle: string;
+  accentColor: string;
   background: string;
   onExpandedChange?: (id: string, expanded: boolean) => void;
 }
@@ -345,7 +354,8 @@ function EntityNodeCard({
   isCenter,
   ppr,
   gpr,
-  color,
+  lifecycle,
+  accentColor,
   background,
   onExpandedChange,
 }: EntityNodeCardProps) {
@@ -381,12 +391,22 @@ function EntityNodeCard({
         background,
         border: isCenter ? "2px solid var(--color-border)" : "1px solid var(--color-border)",
         borderRadius: 8,
-        boxShadow: `inset 4px 0 0 ${color}`,
+        boxShadow: `inset 4px 0 0 ${accentColor}`,
       }}
     >
       <div className="flex items-center gap-1.5">
-        <span className="text-[10px] uppercase tracking-wider" style={{ color }}>
+        <span className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-muted-foreground">
+          <NodeTypeIcon nodeType={nodeType} className="h-3 w-3" />
           {nodeType}
+        </span>
+        <span
+          className="ml-auto rounded-sm px-1.5 py-0.5 text-[9px] uppercase"
+          style={{
+            color: accentColor,
+            background: `color-mix(in oklch, ${accentColor} 10%, white)`,
+          }}
+        >
+          {lifecycleLabel(lifecycle)}
         </span>
       </div>
       {hasDistinctTitle ? (
@@ -431,28 +451,69 @@ function EntityNodeCard({
   );
 }
 
-export function EntityGraph({ centerId, nodes, links, hrefFor }: EntityGraphProps) {
+export function EntityGraph({
+  centerId,
+  nodes,
+  links,
+  scopeFilters = [],
+  hrefFor,
+}: EntityGraphProps) {
   const navigate = useNavigate();
 
-  // Scope nodes are never shown as neighbors — they're a categorical
-  // membership signal, not part of the focal node's reasoning chain. The
-  // focal node itself stays visible even when it's a scope (otherwise the
-  // graph on a scope-detail page would be empty).
-  const allTypes = useMemo(() => {
-    const set = new Set<string>();
+  const allLifecycles = useMemo(() => {
+    const set = new Set<string>(["active"]);
     for (const n of nodes) {
-      if (n.node_type === "scope") continue;
-      set.add(n.node_type);
+      if (n.node_type === "principal") continue;
+      if (n.node_type === "scope" && n.id !== centerId) continue;
+      set.add(nodeLifecycle(n));
     }
-    return Array.from(set).sort();
-  }, [nodes]);
-  const [hiddenTypes, setHiddenTypes] = useState<Set<string>>(new Set());
+    return Array.from(set).sort((a, b) => {
+      const ai = LIFECYCLE_ORDER.indexOf(a);
+      const bi = LIFECYCLE_ORDER.indexOf(b);
+      if (ai !== -1 || bi !== -1) {
+        if (ai === -1) return 1;
+        if (bi === -1) return -1;
+        return ai - bi;
+      }
+      return a.localeCompare(b);
+    });
+  }, [nodes, centerId]);
+  const [visibleLifecycles, setVisibleLifecycles] = useState<Set<string>>(
+    () =>
+      new Set(allLifecycles.filter((lifecycle) => !HIDDEN_LIFECYCLES_BY_DEFAULT.has(lifecycle))),
+  );
+  const [selectedScopeId, setSelectedScopeId] = useState<string>("all");
+
+  useEffect(() => {
+    setVisibleLifecycles((prev) => {
+      const next = new Set<string>();
+      for (const lifecycle of allLifecycles) {
+        if (prev.has(lifecycle) || !HIDDEN_LIFECYCLES_BY_DEFAULT.has(lifecycle)) {
+          next.add(lifecycle);
+        }
+      }
+      return next;
+    });
+  }, [allLifecycles]);
+
+  useEffect(() => {
+    if (selectedScopeId === "all") return;
+    if (!scopeFilters.some((scope) => scope.id === selectedScopeId)) setSelectedScopeId("all");
+  }, [scopeFilters, selectedScopeId]);
 
   const visible = useMemo(() => {
     const v = nodes.filter((n) => {
+      if (n.node_type === "principal") return false;
       if (n.id === centerId) return true;
       if (n.node_type === "scope") return false;
-      return !hiddenTypes.has(n.node_type);
+      if (!visibleLifecycles.has(nodeLifecycle(n))) return false;
+      if (
+        selectedScopeId !== "all" &&
+        !(n.scopes ?? []).some((scope) => scope.id === selectedScopeId)
+      ) {
+        return false;
+      }
+      return true;
     });
     const ids = new Set(v.map((n) => n.id));
     const vl = links.filter((l) => {
@@ -464,7 +525,7 @@ export function EntityGraph({ centerId, nodes, links, hrefFor }: EntityGraphProp
       return ids.has(src) && ids.has(tgt);
     });
     return { nodes: v, links: vl };
-  }, [nodes, links, hiddenTypes, centerId]);
+  }, [nodes, links, visibleLifecycles, selectedScopeId, centerId]);
 
   const layout = useMemo(
     () => dagreLayout(visible.nodes, visible.links, centerId),
@@ -609,7 +670,8 @@ export function EntityGraph({ centerId, nodes, links, hrefFor }: EntityGraphProp
 
     const entityNodes = visible.nodes.map((n) => {
       const pos = positions.get(n.id) ?? { x: 0, y: 0 };
-      const color = nodeTypeColor(n.node_type);
+      const lifecycle = nodeLifecycle(n);
+      const accentColor = lifecycleColor(lifecycle);
       const pprRange = pprBounds.max - pprBounds.min;
       let bg = "rgb(255,255,255)";
       if (n.is_center) {
@@ -646,7 +708,8 @@ export function EntityGraph({ centerId, nodes, links, hrefFor }: EntityGraphProp
               isCenter={n.is_center}
               ppr={n.ppr}
               gpr={n.gpr}
-              color={color}
+              lifecycle={lifecycle}
+              accentColor={accentColor}
               background={bg}
               onExpandedChange={(id, expanded) =>
                 setExpandedNodeId((current) => {
@@ -738,11 +801,11 @@ export function EntityGraph({ centerId, nodes, links, hrefFor }: EntityGraphProp
           // them apart from explicit (person/agent-authored) ones.
           style: isAuto
             ? {
-                stroke: "rgba(112, 122, 35, 0.25)",
+                stroke: "rgba(115, 115, 115, 0.25)",
                 strokeDasharray: "4 4",
                 pointerEvents: "none" as const,
               }
-            : { stroke: "rgba(112, 122, 35, 0.5)", pointerEvents: "none" as const },
+            : { stroke: "rgba(115, 115, 115, 0.5)", pointerEvents: "none" as const },
         };
       }),
     [visible.links],
@@ -771,7 +834,7 @@ export function EntityGraph({ centerId, nodes, links, hrefFor }: EntityGraphProp
           (typeof style?.background === "string" ? style.background : undefined) ??
           (typeof style?.backgroundColor === "string" ? style.backgroundColor : undefined) ??
           "rgb(255,255,255)";
-        const stripeColor = nodeTypeColor(graphNode?.node_type ?? "");
+        const stripeColor = lifecycleColor(graphNode?.lifecycle);
         const radius = Math.min(borderRadius, width / 4, height / 4);
         const stripeWidth = Math.min(34, Math.max(18, width * 0.16));
         const stripeRight = x + stripeWidth;
@@ -816,36 +879,78 @@ export function EntityGraph({ centerId, nodes, links, hrefFor }: EntityGraphProp
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex flex-wrap gap-2 text-xs">
-        <span className="text-muted-foreground">Show:</span>
-        {allTypes.map((t) => {
-          const v = !hiddenTypes.has(t);
-          const color = nodeTypeColor(t);
-          const label = typePluralLabel(t);
-          return (
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-muted-foreground">Life cycle:</span>
+          {allLifecycles.map((lifecycle) => {
+            const checked = visibleLifecycles.has(lifecycle);
+            const color = lifecycleColor(lifecycle);
+            const label = lifecycleLabel(lifecycle);
+            return (
+              <label
+                key={lifecycle}
+                className="inline-flex cursor-pointer select-none items-center gap-1"
+                title={label}
+              >
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  onChange={() => {
+                    setVisibleLifecycles((prev) => {
+                      const next = new Set(prev);
+                      if (checked) next.delete(lifecycle);
+                      else next.add(lifecycle);
+                      return next;
+                    });
+                  }}
+                  className="h-3 w-3"
+                  style={{ accentColor: color }}
+                />
+                <span className="capitalize" style={{ color }}>
+                  {label}
+                </span>
+              </label>
+            );
+          })}
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-muted-foreground">Scope:</span>
+          <label
+            key="all-scopes"
+            className="inline-flex cursor-pointer select-none items-center gap-1"
+            title="All scopes"
+          >
+            <input
+              type="radio"
+              name="entity-graph-scope"
+              checked={selectedScopeId === "all"}
+              onChange={() => setSelectedScopeId("all")}
+              className="h-3 w-3"
+            />
+            <span>All scopes</span>
+          </label>
+          {scopeFilters.map((scope) => (
             <label
-              key={t}
+              key={scope.id}
               className="inline-flex cursor-pointer select-none items-center gap-1"
-              title={label}
+              title={scope.name}
             >
               <input
-                type="checkbox"
-                checked={v}
-                onChange={() => {
-                  setHiddenTypes((prev) => {
-                    const next = new Set(prev);
-                    if (v) next.add(t);
-                    else next.delete(t);
-                    return next;
-                  });
-                }}
+                type="radio"
+                name="entity-graph-scope"
+                checked={selectedScopeId === scope.id}
+                onChange={() => setSelectedScopeId(scope.id)}
                 className="h-3 w-3"
-                style={{ accentColor: color }}
               />
-              <span style={{ color }}>{label}</span>
+              {scope.icon ? (
+                <span aria-hidden className="font-sans text-[12px] leading-none">
+                  {scope.icon}
+                </span>
+              ) : null}
+              <span>{scope.name}</span>
             </label>
-          );
-        })}
+          ))}
+        </div>
       </div>
 
       <div

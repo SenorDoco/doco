@@ -10,7 +10,7 @@ export interface NodesOverviewItem {
   label: string;
   count: number;
   ariaLabel: string;
-  icon?: string;
+  icon?: ReactNode;
   color?: string;
   updatedAt?: string | null;
 }

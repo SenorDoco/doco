@@ -1,7 +1,8 @@
 import { type VariantProps, cva } from "class-variance-authority";
 import type * as React from "react";
+import { NodeTypeIcon } from "~/components/node-type-icon";
 import { cn } from "~/lib/cn";
-import { nodeTypeColor } from "~/lib/node-colors";
+import { lifecycleColor } from "~/lib/node-colors";
 
 const badgeVariants = cva(
   "inline-flex items-center rounded-md border px-2 py-0.5 text-[11px] font-mono transition-colors",
@@ -39,10 +40,35 @@ export function NodeTypeBadge({
   children,
   ...props
 }: NodeTypeBadgeProps) {
-  const color = nodeTypeColor(nodeType);
   return (
     <Badge
-      className={cn("bg-card", className)}
+      className={cn("gap-1.5 bg-card", className)}
+      style={{
+        ...style,
+      }}
+      {...props}
+    >
+      <NodeTypeIcon nodeType={nodeType} />
+      {children ?? nodeType}
+    </Badge>
+  );
+}
+
+export interface LifecycleBadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
+  lifecycle: string;
+}
+
+export function LifecycleBadge({
+  className,
+  lifecycle,
+  style,
+  children,
+  ...props
+}: LifecycleBadgeProps) {
+  const color = lifecycleColor(lifecycle);
+  return (
+    <Badge
+      className={cn("bg-card text-[10px] uppercase", className)}
       style={{
         borderColor: color,
         backgroundColor: `color-mix(in oklch, ${color} 9%, white)`,
@@ -51,7 +77,7 @@ export function NodeTypeBadge({
       }}
       {...props}
     >
-      {children ?? nodeType}
+      {children ?? `lifecycle: ${lifecycle}`}
     </Badge>
   );
 }

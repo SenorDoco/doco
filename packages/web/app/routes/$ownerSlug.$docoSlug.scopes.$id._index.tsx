@@ -32,13 +32,14 @@ import { ActivityHeatmap } from "~/components/activity-heatmap";
 import { Badge } from "~/components/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { EmojiPickerInput } from "~/components/emoji-picker-input";
+import { NodeTypeIcon } from "~/components/node-type-icon";
 import { NodesOverviewCard, type NodesOverviewSection } from "~/components/nodes-overview-card";
 import { SiteHeader } from "~/components/site-header";
 import { Toggle } from "~/components/toggle";
 import { updateEntity } from "~/lib/capture.server";
 import { loadDocoForAdmin } from "~/lib/doco-access.server";
 import { loadHostConfig } from "~/lib/host";
-import { nodeTypeColor } from "~/lib/node-colors";
+import { lifecycleColor } from "~/lib/node-colors";
 import { reindex, setScopeWatchedInDoco, updateScopeInDoco } from "~/lib/redeem.server";
 import { listScopeDetails, readDocoMetadata } from "~/lib/scope-helpers.server";
 import { timeAgo } from "~/lib/time-ago";
@@ -80,6 +81,7 @@ interface RuleRecord {
   summary: string;
   lifecycle: string;
   kind: RuleKind;
+  createdAt: string | null;
   predicate?: AuthoringPredicateRecord;
 }
 
@@ -216,11 +218,17 @@ export async function loader({
 
   // Per decision_01KRPRDR1AD7S1RP6E69BQDB2G all rule groups are
   // first-class Rule entities now. One query, then we bucket in code.
-  type Row = { id: string; summary: string; lifecycle: string; raw_yaml: string };
+  type Row = {
+    id: string;
+    summary: string;
+    lifecycle: string;
+    raw_yaml: string;
+    created_at: string | Date | null;
+  };
   const ruleRows: Row[] = docoId
     ? await withClient(async (c) => {
         const r = await c.query<Row>(
-          `SELECT r.id, r.summary, COALESCE(r.lifecycle, 'active') AS lifecycle, r.raw_yaml
+          `SELECT r.id, r.summary, COALESCE(r.lifecycle, 'active') AS lifecycle, r.raw_yaml, r.created_at
              FROM rules r
              JOIN edges e ON e.from_id = r.id
                          AND e.edge_type = 'in_scope_of'
@@ -266,6 +274,12 @@ export async function loader({
       summary: row.summary,
       lifecycle: row.lifecycle,
       kind,
+      createdAt:
+        row.created_at instanceof Date
+          ? row.created_at.toISOString()
+          : typeof row.created_at === "string"
+            ? row.created_at
+            : null,
       ...(predicate && typeof predicate === "object" ? { predicate } : {}),
     });
   }
@@ -840,9 +854,9 @@ export default function ScopePage({
                         nodeType: t.nodeType,
                       }),
                       label: nodeTypeLabel(t.nodeType),
+                      icon: <NodeTypeIcon nodeType={t.nodeType} />,
                       count: t.count,
                       ariaLabel: `View ${t.count} ${nodeTypeLabel(t.nodeType).toLowerCase()} in ${scope.name}`,
-                      color: nodeTypeColor(t.nodeType),
                       updatedAt: t.updatedAt,
                     })),
                   },
@@ -856,6 +870,7 @@ export default function ScopePage({
                       label: s.lifecycle,
                       count: s.count,
                       ariaLabel: `View ${s.count} ${s.lifecycle} nodes in ${scope.name}`,
+                      color: lifecycleColor(s.lifecycle),
                       updatedAt: s.updatedAt,
                     })),
                   },
@@ -1202,11 +1217,14 @@ function RuleSectionCard({
                   >
                     {r.summary}
                   </Link>
-                  {r.predicate ? (
-                    <div className="font-mono text-[10px] text-muted-foreground">
-                      {predicateShorthand(r.predicate, allScopes)}
-                    </div>
-                  ) : null}
+                  <div className="flex flex-wrap items-center gap-x-2 text-[10px] text-muted-foreground">
+                    <span>Added {timeAgo(r.createdAt)}</span>
+                    {r.predicate ? (
+                      <span className="font-mono">
+                        {predicateShorthand(r.predicate, allScopes)}
+                      </span>
+                    ) : null}
+                  </div>
                 </div>
                 <RuleLifecycleButton
                   rule={r}
@@ -1239,11 +1257,14 @@ function RuleSectionCard({
                     >
                       {r.summary}
                     </Link>
-                    {r.predicate ? (
-                      <div className="font-mono text-[10px] text-muted-foreground">
-                        {predicateShorthand(r.predicate, allScopes)}
-                      </div>
-                    ) : null}
+                    <div className="flex flex-wrap items-center gap-x-2 text-[10px] text-muted-foreground">
+                      <span>Added {timeAgo(r.createdAt)}</span>
+                      {r.predicate ? (
+                        <span className="font-mono">
+                          {predicateShorthand(r.predicate, allScopes)}
+                        </span>
+                      ) : null}
+                    </div>
                   </div>
                   <RuleLifecycleButton
                     rule={r}

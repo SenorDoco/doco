@@ -29,6 +29,25 @@ export function nodeTypeColor(type: string): string {
   return NODE_TYPE_COLOR[type] ?? NODE_FALLBACK_COLOR;
 }
 
+export const LIFECYCLE_COLOR: Record<string, string> = {
+  abandoned: "#dc2626",
+  failed: "#dc2626",
+  superseded: "#9333ea",
+  retired: "#9333ea",
+  proposed: "#2563eb",
+  planned: "#2563eb",
+  in_progress: "#2563eb",
+  active: "#16a34a",
+  succeeded: "#16a34a",
+  drafted: "#ca8a04",
+};
+
+export const LIFECYCLE_FALLBACK_COLOR = "#737373";
+
+export function lifecycleColor(lifecycle: string | null | undefined): string {
+  return LIFECYCLE_COLOR[lifecycle ?? "active"] ?? LIFECYCLE_FALLBACK_COLOR;
+}
+
 const NODE_TYPE_PLURAL: Record<string, string> = {
   doco: "docos",
   principal: "principals",
