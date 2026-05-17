@@ -22,7 +22,8 @@ user_message_block to the user before any further onboarding action.
      user. Don't paraphrase, don't bury, don't skip. The user needs the
      invite URL in hand within 7 days or they lose access to their own
      project's Doco.
-  6. Apply the protocol now: GET https://doco.to/agent/\${DOCO_ACCESS}/bootstrap.json.
+  6. Apply the protocol now: GET /api/v1/agent-bootstrap with
+     Authorization: Bearer \${DOCO_ACCESS}.
   7. Commit the bootstrap files to git (doco.md, AGENTS.md, CLAUDE.md,
      .gitignore). This is a SEPARATE action from Doco capture — see
      step 7 below for the framing.
@@ -126,7 +127,8 @@ Step 6 — apply the protocol now. DON'T restart the session, DON'T ask
 the user to /clear. You have DOCO_ACCESS in hand; fetch the canonical and
 follow it:
 
-    curl -fsS "https://doco.to/agent/\${DOCO_ACCESS}/bootstrap.json"
+    curl -fsS -H "Authorization: Bearer \${DOCO_ACCESS}" \\
+      "https://doco.to/api/v1/agent-bootstrap"
 
 Read the \`canonical_instructions\` field. From your next reply
 onward, follow the four invariants. For Claude Code, hooks auto-load

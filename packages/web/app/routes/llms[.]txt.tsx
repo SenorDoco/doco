@@ -112,26 +112,31 @@ Global scope rules to find out.
 
 On every session, fetch the protocol and follow it:
 
-    curl -fsS "https://doco.to/agent/\${DOCO_ACCESS}/bootstrap.json"
+    curl -fsS -H "Authorization: Bearer \${DOCO_ACCESS}" \\
+      "${baseUrl}/api/v1/agent-bootstrap"
 
 The response's \`canonical_instructions\` field carries the four
 invariants every reply must follow (query indicator, capture
 footer, capture-before-done, tally). Per-prompt search:
 
-    curl -fsS "https://doco.to/agent/\${DOCO_ACCESS}/search.json?q=<paraphrase>"
+    curl -fsS -H "Authorization: Bearer \${DOCO_ACCESS}" \\
+      "${baseUrl}/<doco_handle>/search.json?q=<paraphrase>"
 
 Capture (this is the Doco-side write — adds nodes on doco.to, not
 to git):
 
-    curl -X POST "https://doco.to/agent/\${DOCO_ACCESS}/api/decisions.json" \\
-      -H "Content-Type: application/json" -d @body.json
+    curl -X POST "${baseUrl}/<doco_handle>/api/decisions.json" \\
+      -H "Authorization: Bearer \${DOCO_ACCESS}" \\
+      -H "Content-Type: application/json" \\
+      -d @body.json
 
 ## Minting more invites (for teammates, expired URLs, etc.)
 
 Any user (agent or human) holding a valid \`DOCO_ACCESS\` for the Doco can
 mint additional invites with one HTTP call:
 
-    curl -X POST "https://doco.to/agent/\${DOCO_ACCESS}/api/invites.json" \\
+    curl -X POST "${baseUrl}/<doco_handle>/api/invites.json" \\
+      -H "Authorization: Bearer \${DOCO_ACCESS}" \\
       -H "Content-Type: application/json" \\
       -d '{"expires_in_days": 7}'
 
@@ -188,14 +193,13 @@ The response carries:
 
 - POST  ${baseUrl}/api/v1/docos.json                                  create a Doco (no auth)
 - POST  ${baseUrl}/api/v1/invites/<code>/redeem.json                  redeem an invite (no auth)
-- GET   ${baseUrl}/api/v1/agent-bootstrap                             canonical protocol (no per-Doco context)
+- GET   ${baseUrl}/api/v1/agent-bootstrap                             bootstrap; Bearer adds Doco context
 - GET   ${baseUrl}/api/v1/agent-reference                             deeper reference
-- GET   https://doco.to/agent/\${DOCO_ACCESS}/bootstrap.json              per-Doco bootstrap
-- GET   https://doco.to/agent/\${DOCO_ACCESS}/search.json?q=…             vector search
-- GET   https://doco.to/agent/\${DOCO_ACCESS}/status.json                 freshness + counts
-- POST  https://doco.to/agent/\${DOCO_ACCESS}/api/<type-plural>.json      capture a new node
-- POST  https://doco.to/agent/\${DOCO_ACCESS}/api/invites.json            mint a new invite
-- PATCH https://doco.to/agent/\${DOCO_ACCESS}/api/<type-plural>/<id>.json  extend a node
+- GET   ${baseUrl}/<doco_handle>/search.json?q=…                         vector search
+- GET   ${baseUrl}/<doco_handle>/status.json                             freshness + counts
+- POST  ${baseUrl}/<doco_handle>/api/<type-plural>.json                  capture a new node
+- POST  ${baseUrl}/<doco_handle>/api/invites.json                        mint a new invite
+- PATCH ${baseUrl}/<doco_handle>/api/<type-plural>/<id>.json             extend a node
 `;
   return new Response(body, {
     headers: {
