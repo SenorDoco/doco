@@ -1,6 +1,6 @@
 import { withClient } from "@doco/db";
 import { docoPath } from "~/lib/db.server";
-import { canAccessDoco } from "~/lib/doco-access.server";
+import { canAccessDoco, normalizeDocoParams } from "~/lib/doco-access.server";
 import { readDocoMetadata } from "~/lib/scope-helpers.server";
 import { getCurrentPrincipalAsync } from "~/lib/session";
 
@@ -15,9 +15,9 @@ export async function loader({
   params,
 }: {
   request: Request;
-  params: { ownerSlug: string; docoSlug: string };
+  params: { docoId: string };
 }) {
-  const { ownerSlug, docoSlug } = params;
+  const { ownerSlug, docoSlug } = await normalizeDocoParams(params);
   const dir = docoPath(ownerSlug, docoSlug);
   const meta = await readDocoMetadata(dir);
   if (!meta) {

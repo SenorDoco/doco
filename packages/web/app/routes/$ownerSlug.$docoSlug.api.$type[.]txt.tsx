@@ -1,4 +1,5 @@
 import { getPublicBaseUrl } from "@doco/shared";
+import { normalizeDocoParams } from "~/lib/doco-access.server";
 
 /**
  * Parametrized .txt spec endpoint for the per-Doco capture/settings APIs.
@@ -380,14 +381,15 @@ RELATED
 `,
 };
 
-export function loader({
+export async function loader({
   request,
   params,
 }: {
   request: Request;
-  params: { ownerSlug: string; docoSlug: string; type: string };
+  params: { docoId: string; type: string };
 }) {
-  const { ownerSlug, docoSlug, type } = params;
+  const { ownerSlug, docoSlug } = await normalizeDocoParams(params);
+  const { type } = params;
   const renderer = SPECS[type];
   if (!renderer) {
     return new Response(`Unknown spec: ${type}. Known: ${Object.keys(SPECS).join(", ")}.\n`, {

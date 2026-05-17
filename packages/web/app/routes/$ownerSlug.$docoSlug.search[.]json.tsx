@@ -9,7 +9,7 @@ import { cosineSimilarity, getAllEmbeddingsForDoco, withClient } from "@doco/db"
 import { globalPageRank } from "@doco/index";
 import type { PoolClient } from "pg";
 import { docoPath } from "~/lib/db.server";
-import { loadDocoForRead } from "~/lib/doco-access.server";
+import { loadDocoForRead, normalizeDocoParams } from "~/lib/doco-access.server";
 import { getDocoEmbeddingProvider } from "~/lib/embedding-provider.server";
 import { etaggedJson } from "~/lib/etag.server";
 import {
@@ -150,10 +150,10 @@ export async function loader({
   params,
 }: {
   request: Request;
-  params: { ownerSlug: string; docoSlug: string };
+  params: { docoId: string };
 }) {
   const start = performance.now();
-  const { ownerSlug, docoSlug } = params;
+  const { ownerSlug, docoSlug } = await normalizeDocoParams(params);
   const ctx = await loadDocoForRead(request, ownerSlug, docoSlug);
   const url = new URL(request.url);
   const q = (url.searchParams.get("q") ?? "").trim();

@@ -22,7 +22,7 @@ import { NodeTypeIcon } from "~/components/node-type-icon";
 import { NodesOverviewCard, type NodesOverviewSection } from "~/components/nodes-overview-card";
 import { SiteHeader } from "~/components/site-header";
 import { docoPath } from "~/lib/db.server";
-import { loadDocoForRead } from "~/lib/doco-access.server";
+import { loadDocoForRead, normalizeDocoParams } from "~/lib/doco-access.server";
 import { loadHostConfig } from "~/lib/host";
 import { lifecycleColor } from "~/lib/node-colors";
 import { listScopeDetails } from "~/lib/scope-helpers.server";
@@ -64,9 +64,9 @@ export async function loader({
   params,
 }: {
   request: Request;
-  params: { ownerSlug: string; docoSlug: string };
+  params: { docoId: string };
 }) {
-  const { ownerSlug, docoSlug } = params;
+  const { ownerSlug, docoSlug } = await normalizeDocoParams(params);
   const ctx = await loadDocoForRead(request, ownerSlug, docoSlug);
   const me = ctx.me;
   const dir = docoPath(ownerSlug, docoSlug);
@@ -263,8 +263,8 @@ function lifecycleSearchPath(ownerSlug: string, docoSlug: string, lifecycle: str
   return `/${ownerSlug}/${docoSlug}/search?${params.toString()}`;
 }
 
-export function meta({ params }: { params: { ownerSlug: string; docoSlug: string } }) {
-  return [{ title: `${params.ownerSlug}/${params.docoSlug} · Doco` }];
+export function meta({ params }: { params: { docoId: string } }) {
+  return [{ title: `${params.docoId} · Doco` }];
 }
 
 export default function DocoHome({

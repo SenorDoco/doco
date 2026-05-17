@@ -11,7 +11,7 @@ import type { EntityId } from "@doco/shared";
 import type { Invite } from "~/lib/agent-token-store.server";
 import { TokenStore } from "~/lib/tokens.server";
 import { rootDir } from "~/lib/db.server";
-import { loadDocoForRead } from "~/lib/doco-access.server";
+import { loadDocoForRead, normalizeDocoParams } from "~/lib/doco-access.server";
 import { SiteHeader } from "~/components/site-header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 
@@ -29,12 +29,13 @@ export async function loader({
   params,
 }: {
   request: Request;
-  params: { ownerSlug: string; docoSlug: string };
+  params: { docoId: string };
 }) {
+  const { ownerSlug, docoSlug } = await normalizeDocoParams(params);
   const { meta, me, canonicalOwnerSlug, canonicalDocoSlug } = await loadDocoForRead(
     request,
-    params.ownerSlug,
-    params.docoSlug,
+    ownerSlug,
+    docoSlug,
   );
   const store = TokenStore.forDoco(rootDir());
   const invites = await store.listInvitesForDoco(meta.docoId as EntityId<"doco">);
@@ -67,9 +68,10 @@ export async function action({
   params,
 }: {
   request: Request;
-  params: { ownerSlug: string; docoSlug: string };
+  params: { docoId: string };
 }): Promise<ActionResult> {
-  const { meta, me } = await loadDocoForRead(request, params.ownerSlug, params.docoSlug);
+  const { ownerSlug, docoSlug } = await normalizeDocoParams(params);
+  const { meta, me } = await loadDocoForRead(request, ownerSlug, docoSlug);
   if (!me) {
     return { error: "Sign in to mint invites." };
   }

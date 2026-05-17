@@ -8,7 +8,7 @@ import { Form, Link, redirect } from "react-router";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { EmojiPickerInput } from "~/components/emoji-picker-input";
 import { SiteHeader } from "~/components/site-header";
-import { loadDocoForAdmin, loadDocoForRead } from "~/lib/doco-access.server";
+import { loadDocoForAdmin, loadDocoForRead, normalizeDocoParams } from "~/lib/doco-access.server";
 import { loadHostConfig } from "~/lib/host";
 import {
   applyScopeTemplateUpdatesToDoco,
@@ -32,9 +32,9 @@ export async function loader({
   params,
 }: {
   request: Request;
-  params: { ownerSlug: string; docoSlug: string };
+  params: { docoId: string };
 }) {
-  const { ownerSlug, docoSlug } = params;
+  const { ownerSlug, docoSlug } = await normalizeDocoParams(params);
   const { dir, meta, me } = await loadDocoForRead(request, ownerSlug, docoSlug);
   // Active scopes only — abandoned scopes aren't shown as parent options.
   // Template adds can reactivate an abandoned scope with the same name.
@@ -88,9 +88,9 @@ export async function action({
   params,
 }: {
   request: Request;
-  params: { ownerSlug: string; docoSlug: string };
+  params: { docoId: string };
 }) {
-  const { ownerSlug, docoSlug } = params;
+  const { ownerSlug, docoSlug } = await normalizeDocoParams(params);
   const { dir, meta, me } = await loadDocoForAdmin(request, ownerSlug, docoSlug);
   const { docoId, ownerId } = meta;
   const createdBy = (me?.id ?? ownerId) as EntityId<"principal">;
@@ -231,8 +231,8 @@ export async function action({
   return redirect(afterAdd);
 }
 
-export function meta({ params }: { params: { ownerSlug: string; docoSlug: string } }) {
-  return [{ title: `Add scope · ${params.ownerSlug}/${params.docoSlug} · Doco` }];
+export function meta({ params }: { params: { docoId: string } }) {
+  return [{ title: `Add scope · ${params.docoId} · Doco` }];
 }
 
 export default function AddScope({

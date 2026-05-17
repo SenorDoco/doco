@@ -166,6 +166,54 @@ export function notFoundForAccessDenied(ownerSlug: string, docoSlug: string): Re
 }
 
 /**
+ * Resolve `:docoId/*` route params to the legacy slug pair so handlers
+ * keep speaking `(ownerSlug, docoSlug)` to lib helpers. Accepts the
+ * URL's single `params.docoId` segment, which may be a human-readable
+ * handle (canonical, phase 2d+) or a ULID (legacy callers / pinned
+ * agent contexts). Throws a 404 if nothing resolves.
+ *
+ * For migration safety this also accepts the OLD param shape with
+ * `ownerSlug`/`docoSlug` — that path stays alive until every route is
+ * cut over (phase 3 drops it).
+ */
+export async function normalizeDocoParams(params: {
+  docoId?: string;
+  ownerSlug?: string;
+  docoSlug?: string;
+}): Promise<{
+  ownerSlug: string;
+  docoSlug: string;
+  handle: string;
+  docoId: string;
+}> {
+  if (params.docoId) {
+    const { getDocoByIdOrHandle } = await import("@doco/db");
+    const row = await getDocoByIdOrHandle(params.docoId);
+    if (!row) throw notFoundForAccessDenied(params.docoId, "");
+    return {
+      ownerSlug: row.owner_slug,
+      docoSlug: row.doco_slug,
+      handle: row.handle || `${row.owner_slug}-${row.doco_slug}`,
+      docoId: row.id,
+    };
+  }
+  if (params.ownerSlug && params.docoSlug) {
+    const { getDocoBySlug } = await import("@doco/db");
+    const row = await getDocoBySlug(params.ownerSlug, params.docoSlug);
+    return {
+      ownerSlug: params.ownerSlug,
+      docoSlug: params.docoSlug,
+      handle: row?.handle || `${params.ownerSlug}-${params.docoSlug}`,
+      docoId: row?.id || "",
+    };
+  }
+  throw notFoundForAccessDenied(
+    params.docoId ?? params.ownerSlug ?? "",
+    params.docoSlug ?? "",
+  );
+}
+
+/**
  * Load + privacy-gate a Doco for a read route.
  */
 export async function loadDocoForRead(

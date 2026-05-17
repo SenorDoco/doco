@@ -34,7 +34,7 @@ import { reindex, reindexEmbeddingsOnly } from "./redeem.server";
 import { readDocoMetadata, resolveScopeIcons } from "./scope-helpers.server";
 import { validatePatch } from "./mutability.server";
 import { appendAuditEvent } from "./audit-log.server";
-import { NODE_TABLES, getEntity, upsertEntity, withClient } from "@doco/db";
+import { NODE_TABLES, getDocoById, getEntity, upsertEntity, withClient } from "@doco/db";
 
 /**
  * Synthetic "path" returned in CaptureResult.path. Postgres is the only
@@ -261,9 +261,24 @@ function capType(t: string): string {
   return t.length === 0 ? t : t.charAt(0).toUpperCase() + t.slice(1);
 }
 
-export function renderOperationLines(opts: {
+export async function renderOperationLines(opts: {
   ownerSlug: string;
   docoSlug: string;
+  /**
+   * Phase 2d+ canonical URL identifier (the human-readable handle).
+   * When provided, the footer link uses `${docoHost}/${handle}/...`.
+   * Optional — when omitted, the function looks it up by `docoId` (if
+   * provided) or falls back to `<owner>-<slug>` synthesis (correct for
+   * every migrated Doco).
+   */
+  handle?: string;
+  /**
+   * Doco ULID — when set, the function does a single DB lookup to
+   * resolve the current handle. Recommended for capture handlers that
+   * already hold the ULID; the lookup keeps the URL accurate even when
+   * the handle differs from `<owner>-<slug>` (e.g., custom requested_id).
+   */
+  docoId?: string;
   nodeType: string;
   /** Entity ULID id — used to build the markdown link URL. */
   id: string;
@@ -280,10 +295,24 @@ export function renderOperationLines(opts: {
   ops: Op[];
   scopes?: { name: string; icon?: string }[];
   duration_ms?: number;
-}): string[] {
+}): Promise<string[]> {
   const Type = capType(opts.nodeType);
+  // Phase 2d of slug-removal: every Doco URL is `/<handle>/...`. Use
+  // the explicit handle when given; otherwise look it up by docoId;
+  // otherwise fall back to `<owner>-<slug>` synthesis (correct for
+  // every Doco minted from the slug-form web/CLI path AND every
+  // pre-phase-1 row the migration backfilled).
+  let handle: string;
+  if (opts.handle) {
+    handle = opts.handle;
+  } else if (opts.docoId) {
+    const row = await getDocoById(opts.docoId);
+    handle = row?.handle || `${opts.ownerSlug}-${opts.docoSlug}`;
+  } else {
+    handle = `${opts.ownerSlug}-${opts.docoSlug}`;
+  }
   const linkUrl = opts.docoHost
-    ? `${opts.docoHost}/${opts.ownerSlug}/${opts.docoSlug}/${opts.nodeType}/${opts.id}`
+    ? `${opts.docoHost}/${handle}/${opts.nodeType}/${opts.id}`
     : null;
   const scopeSuffix =
     opts.scopes && opts.scopes.length > 0
@@ -912,7 +941,8 @@ export async function runScopeRules(opts: {
     if (
       predicate.kind === "unique-within-scope" ||
       predicate.kind === "count-within-scope" ||
-      predicate.kind === "graph-constraint"
+      predicate.kind === "graph-constraint" ||
+      predicate.kind === "graph-completeness"
     ) {
       needsNodesByScope = true;
     }
@@ -986,6 +1016,27 @@ export async function runScopeRules(opts: {
     ? await buildNodesByScope(docoId, Array.from(perScope.keys()), entityForEngine)
     : undefined;
 
+  // user-flows v2: principal index for `requires_field_resolves_to_principal`.
+  // Small table — load all rows once when at least one such predicate is
+  // active in the candidate's scopes. Maps principal_id → { type }.
+  const needsPrincipalIndex = Array.from(perScope.values()).some((rules) =>
+    rules.some((r) => r.predicate.kind === "requires_field_resolves_to_principal"),
+  );
+  let principalIndex: Map<string, { type: string }> | undefined;
+  if (needsPrincipalIndex) {
+    principalIndex = new Map();
+    try {
+      await withClient(async (c) => {
+        const r = await c.query<{ id: string; type: string }>(
+          `SELECT id, type FROM principals`,
+        );
+        for (const row of r.rows) principalIndex!.set(row.id, { type: row.type });
+      });
+    } catch {
+      /* leave empty — evaluator will emit a loud error */
+    }
+  }
+
   for (const [scopeIdKey, loadedRules] of perScope) {
     const scope = allScopes.get(scopeIdKey);
     const scopeName = scope ? (scope as unknown as { name: string }).name : "(scope)";
@@ -996,6 +1047,7 @@ export async function runScopeRules(opts: {
       allEdges: edges,
       entityScopes: scopeIds,
       nodesByScope,
+      principalIndex,
     });
     for (const vv of v) {
       if (vv.severity === "error") {
@@ -1241,7 +1293,8 @@ export async function captureDecision(
     ]),
   });
   const duration_ms = Math.round(performance.now() - startedAt);
-  const footer_lines = renderOperationLines({
+  const footer_lines = await renderOperationLines({
+    docoId,
     ownerSlug,
     docoSlug,
     nodeType: "decision",
@@ -1462,7 +1515,8 @@ export async function updateDecision(
   const summary = String(fm.summary ?? decisionId);
   const duration_ms = Math.round(performance.now() - startedAt);
   const finalScopeIds = Array.isArray(fm.scopes) ? (fm.scopes as string[]) : [];
-  const footer_lines = renderOperationLines({
+  const footer_lines = await renderOperationLines({
+    docoId,
     ownerSlug,
     docoSlug,
     nodeType: "decision",
@@ -1711,7 +1765,8 @@ export async function updateEntity(opts: {
   const summary = String(fm.summary ?? fm.name ?? id);
   const duration_ms = Math.round(performance.now() - startedAt);
   const finalScopeIds = Array.isArray(fm.scopes) ? (fm.scopes as string[]) : [];
-  const footer_lines = renderOperationLines({
+  const footer_lines = await renderOperationLines({
+    docoId,
     ownerSlug,
     docoSlug,
     nodeType,
@@ -1744,6 +1799,14 @@ export interface IntentDraft {
   body_md?: string;
   /** Optional: principal username who wants this. Resolves to id. */
   wanted_by_username?: string;
+  /**
+   * Optional: principals expected to act in this flow. Each username
+   * resolves to a principal id; the resulting list is stored on the
+   * Intent as `actors: [principal_id, ...]`. Used by the user-flows
+   * `graph-completeness` rule to require an Action per actor before
+   * the Intent moves to `active`.
+   */
+  actors_usernames?: string[];
   /** Optional: defaults to "active". */
   lifecycle?: string;
 }
@@ -1780,6 +1843,18 @@ export async function captureIntent(
     };
   }
 
+  // Resolve actors_usernames → principal_ids. Each must resolve; an
+  // unknown username is a typo and we'd rather catch it at capture
+  // than ship a broken Intent.
+  const actorIds: string[] = [];
+  if (Array.isArray(draft.actors_usernames) && draft.actors_usernames.length > 0) {
+    for (const uname of draft.actors_usernames) {
+      const pid = await resolvePrincipalUsername(uname);
+      if (!pid) return { error: `Unknown principal username in actors: ${uname}` };
+      if (!actorIds.includes(pid)) actorIds.push(pid);
+    }
+  }
+
   const id = `intent_${generateUlid()}`;
   const summary = draft.summary.trim();
   const title = draft.title?.trim() || summary;
@@ -1792,6 +1867,7 @@ export async function captureIntent(
     summary,
     title,
     wanted_by: wantedById,
+    ...(actorIds.length > 0 ? { actors: actorIds } : {}),
     created_at: now,
     created_by: wantedById,
     lifecycle: draft.lifecycle ?? "active",
@@ -1823,10 +1899,15 @@ export async function captureIntent(
     entityId: id,
     entityType: "intent",
     entitySummary: summary,
-    alreadyReferenced: new Set([...scopeIds, ...(wantedById ? [wantedById] : [])]),
+    alreadyReferenced: new Set([
+      ...scopeIds,
+      ...(wantedById ? [wantedById] : []),
+      ...actorIds,
+    ]),
   });
   const duration_ms = Math.round(performance.now() - startedAt);
-  const footer_lines = renderOperationLines({
+  const footer_lines = await renderOperationLines({
+    docoId,
     ownerSlug,
     docoSlug,
     nodeType: "intent",
@@ -1968,7 +2049,8 @@ export async function captureEval(
   });
 
   const duration_ms = Math.round(performance.now() - startedAt);
-  const footer_lines = renderOperationLines({
+  const footer_lines = await renderOperationLines({
+    docoId,
     ownerSlug,
     docoSlug,
     nodeType: "eval",
@@ -2117,7 +2199,8 @@ export async function captureAction(
   });
 
   const duration_ms = Math.round(performance.now() - startedAt);
-  const footer_lines = renderOperationLines({
+  const footer_lines = await renderOperationLines({
+    docoId,
     ownerSlug,
     docoSlug,
     nodeType: "action",
@@ -2282,7 +2365,8 @@ export async function captureLog(
   });
 
   const duration_ms = Math.round(performance.now() - startedAt);
-  const footer_lines = renderOperationLines({
+  const footer_lines = await renderOperationLines({
+    docoId,
     ownerSlug,
     docoSlug,
     nodeType: "log",
@@ -2451,7 +2535,8 @@ export async function captureRule(
   });
 
   const duration_ms = Math.round(performance.now() - startedAt);
-  const footer_lines = renderOperationLines({
+  const footer_lines = await renderOperationLines({
+    docoId,
     ownerSlug,
     docoSlug,
     nodeType: "rule",
@@ -2567,7 +2652,8 @@ export async function captureReference(
   });
 
   const duration_ms = Math.round(performance.now() - startedAt);
-  const footer_lines = renderOperationLines({
+  const footer_lines = await renderOperationLines({
+    docoId,
     ownerSlug,
     docoSlug,
     nodeType: "reference",
@@ -2722,7 +2808,8 @@ export async function captureState(
   });
 
   const duration_ms = Math.round(performance.now() - startedAt);
-  const footer_lines = renderOperationLines({
+  const footer_lines = await renderOperationLines({
+    docoId,
     ownerSlug,
     docoSlug,
     nodeType: "state",

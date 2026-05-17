@@ -37,7 +37,7 @@ import { NodesOverviewCard, type NodesOverviewSection } from "~/components/nodes
 import { SiteHeader } from "~/components/site-header";
 import { Toggle } from "~/components/toggle";
 import { updateEntity } from "~/lib/capture.server";
-import { loadDocoForAdmin } from "~/lib/doco-access.server";
+import { loadDocoForAdmin, normalizeDocoParams } from "~/lib/doco-access.server";
 import { loadHostConfig } from "~/lib/host";
 import { lifecycleColor } from "~/lib/node-colors";
 import { reindex, setScopeWatchedInDoco, updateScopeInDoco } from "~/lib/redeem.server";
@@ -202,9 +202,10 @@ export async function loader({
   params,
 }: {
   request: Request;
-  params: { ownerSlug: string; docoSlug: string; id: string };
+  params: { docoId: string; id: string };
 }) {
-  const { ownerSlug, docoSlug, id } = params;
+  const { ownerSlug, docoSlug } = await normalizeDocoParams(params);
+  const { id } = params;
   const { dir, me } = await loadDocoForAdmin(request, ownerSlug, docoSlug);
   const raw = await readScopeRaw(id);
   if (!raw) throw new Response("Scope not found", { status: 404 });
@@ -584,9 +585,10 @@ export async function action({
   params,
 }: {
   request: Request;
-  params: { ownerSlug: string; docoSlug: string; id: string };
+  params: { docoId: string; id: string };
 }) {
-  const { ownerSlug, docoSlug, id } = params;
+  const { ownerSlug, docoSlug } = await normalizeDocoParams(params);
+  const { id } = params;
   const { dir, meta } = await loadDocoForAdmin(request, ownerSlug, docoSlug);
   const form = await request.formData();
   const intent = String(form.get("intent") ?? "");
@@ -664,8 +666,8 @@ export function shouldRevalidate({
   return defaultShouldRevalidate;
 }
 
-export function meta({ params }: { params: { ownerSlug: string; docoSlug: string; id: string } }) {
-  return [{ title: `${params.id} · ${params.ownerSlug}/${params.docoSlug} · Doco` }];
+export function meta({ params }: { params: { docoId: string; id: string } }) {
+  return [{ title: `${params.id} · ${params.docoId} · Doco` }];
 }
 
 function predicateShorthand(

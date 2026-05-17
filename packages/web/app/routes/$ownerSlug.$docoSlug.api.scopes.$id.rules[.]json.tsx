@@ -20,7 +20,7 @@ import type { EntityId } from "@doco/shared";
 import { parse as parseYaml } from "yaml";
 import { renderOperationLines } from "~/lib/capture.server";
 import { docoPath } from "~/lib/db.server";
-import { loadDocoForAdmin } from "~/lib/doco-access.server";
+import { loadDocoForAdmin, normalizeDocoParams } from "~/lib/doco-access.server";
 import {
   type ClassifiedRule,
   LlmUnavailableError,
@@ -50,9 +50,10 @@ export async function action({
   params,
 }: {
   request: Request;
-  params: { ownerSlug: string; docoSlug: string; id: string };
+  params: { docoId: string; id: string };
 }) {
-  const { ownerSlug, docoSlug, id } = params;
+  const { ownerSlug, docoSlug } = await normalizeDocoParams(params);
+  const { id } = params;
   await loadDocoForAdmin(request, ownerSlug, docoSlug);
   const dir = docoPath(ownerSlug, docoSlug);
   const meta = await readDocoMetadata(dir);
@@ -156,19 +157,24 @@ export async function action({
   const duration_ms = Date.now() - t0;
   const docoHost = new URL(request.url).origin;
   const scopes = scopeIcon ? [{ name: scopeName, icon: scopeIcon }] : [{ name: scopeName }];
-  const footer_lines = addedRules.flatMap((rule, index) =>
-    renderOperationLines({
-      ownerSlug,
-      docoSlug,
-      nodeType: "rule",
-      id: rule.id,
-      summary: rule.summary,
-      docoHost,
-      ops: [{ kind: "added", summary: rule.summary }],
-      scopes,
-      duration_ms: index === addedRules.length - 1 ? duration_ms : undefined,
-    }),
-  );
+  const footer_lines = (
+    await Promise.all(
+      addedRules.map((rule, index) =>
+        renderOperationLines({
+          docoId,
+          ownerSlug,
+          docoSlug,
+          nodeType: "rule",
+          id: rule.id,
+          summary: rule.summary,
+          docoHost,
+          ops: [{ kind: "added", summary: rule.summary }],
+          scopes,
+          duration_ms: index === addedRules.length - 1 ? duration_ms : undefined,
+        }),
+      ),
+    )
+  ).flat();
 
   return Response.json(
     {

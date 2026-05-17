@@ -9,7 +9,7 @@
 import { Form, Link, redirect, useSearchParams } from "react-router";
 import { validateDocoSlug } from "@doco/shared";
 import { rootDir } from "~/lib/db.server";
-import { loadDocoForAdmin } from "~/lib/doco-access.server";
+import { loadDocoForAdmin, normalizeDocoParams } from "~/lib/doco-access.server";
 import { recordDocoSlugAlias } from "~/lib/doco-aliases.server";
 import { loadHostConfig } from "~/lib/host";
 import { reindex, renameDocoSlug, softDeleteDoco, updateDocoMeta } from "~/lib/redeem.server";
@@ -21,9 +21,9 @@ export async function loader({
   params,
 }: {
   request: Request;
-  params: { ownerSlug: string; docoSlug: string };
+  params: { docoId: string };
 }) {
-  const { ownerSlug, docoSlug } = params;
+  const { ownerSlug, docoSlug } = await normalizeDocoParams(params);
   const { meta, me } = await loadDocoForAdmin(request, ownerSlug, docoSlug);
   return {
     ownerSlug,
@@ -41,9 +41,9 @@ export async function action({
   params,
 }: {
   request: Request;
-  params: { ownerSlug: string; docoSlug: string };
+  params: { docoId: string };
 }) {
-  const { ownerSlug, docoSlug } = params;
+  const { ownerSlug, docoSlug } = await normalizeDocoParams(params);
   const { dir: oldDir, meta, me } = await loadDocoForAdmin(request, ownerSlug, docoSlug);
   const form = await request.formData();
   const intent = String(form.get("intent") ?? "save");
@@ -121,8 +121,8 @@ export async function action({
   return redirect(`/${ownerSlug}/${finalSlug}/settings`);
 }
 
-export function meta({ params }: { params: { ownerSlug: string; docoSlug: string } }) {
-  return [{ title: `Settings · ${params.ownerSlug}/${params.docoSlug} · Doco` }];
+export function meta({ params }: { params: { docoId: string } }) {
+  return [{ title: `Settings · ${params.docoId} · Doco` }];
 }
 
 export default function DocoSettings({

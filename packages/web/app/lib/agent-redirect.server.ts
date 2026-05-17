@@ -51,7 +51,11 @@ export async function dispatchAgentUrl({
     search.set("id", session.bound_doco_id);
     target = `/api/v1/agent-bootstrap?${search.toString()}`;
   } else {
-    target = `/by-id/${session.bound_doco_id}/${rest}?${search.toString()}`;
+    // Phase 2d of slug-removal: canonical Doco URLs are
+    // `/<doco_id>/...` where doco_id is the ULID stored on the
+    // session. Handlers normalize ULID → handle internally; no need
+    // to look up the handle here to keep this layer fast.
+    target = `/${session.bound_doco_id}/${rest}?${search.toString()}`;
   }
   throw redirect(target, { status: 308 });
 }

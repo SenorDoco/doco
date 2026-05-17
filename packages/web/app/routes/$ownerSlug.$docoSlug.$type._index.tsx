@@ -10,7 +10,7 @@
 import { Link } from "react-router";
 import { parse as parseYaml } from "yaml";
 import { withClient } from "@doco/db";
-import { loadDocoForRead } from "~/lib/doco-access.server";
+import { loadDocoForRead, normalizeDocoParams } from "~/lib/doco-access.server";
 import { loadHostConfig } from "~/lib/host";
 import { getCurrentPrincipal } from "~/lib/session";
 import { SiteHeader } from "~/components/site-header";
@@ -39,10 +39,11 @@ export async function loader({
   params,
   request,
 }: {
-  params: { ownerSlug: string; docoSlug: string; type: string };
+  params: { docoId: string; type: string };
   request: Request;
 }) {
-  const { ownerSlug, docoSlug, type } = params;
+  const { ownerSlug, docoSlug } = await normalizeDocoParams(params);
+  const { type } = params;
   if (!KNOWN.has(type)) throw new Response("Unknown type", { status: 404 });
   const ctx = await loadDocoForRead(request, ownerSlug, docoSlug);
   return withClient(async (c) => {
@@ -140,8 +141,8 @@ const TABLE_BY_TYPE: Record<string, string> = {
   state: "states",
 };
 
-export function meta({ params }: { params: { ownerSlug: string; docoSlug: string; type: string } }) {
-  return [{ title: `${params.type}s · ${params.ownerSlug}/${params.docoSlug} · Doco` }];
+export function meta({ params }: { params: { docoId: string; type: string } }) {
+  return [{ title: `${params.type}s · ${params.docoId} · Doco` }];
 }
 
 /** Build a forest of scope trees from a flat scope list. */

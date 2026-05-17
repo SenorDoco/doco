@@ -14,7 +14,7 @@ import { LifecycleBadge, NodeTypeBadge } from "~/components/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
 import { NodeTypeIcon } from "~/components/node-type-icon";
 import { SiteHeader } from "~/components/site-header";
-import { loadDocoForRead } from "~/lib/doco-access.server";
+import { loadDocoForRead, normalizeDocoParams } from "~/lib/doco-access.server";
 import { getDocoEmbeddingProvider } from "~/lib/embedding-provider.server";
 import { loadHostConfig } from "~/lib/host";
 import { lifecycleColor, nodeTypePlural } from "~/lib/node-colors";
@@ -366,9 +366,9 @@ export async function loader({
   params,
 }: {
   request: Request;
-  params: { ownerSlug: string; docoSlug: string };
+  params: { docoId: string };
 }) {
-  const { ownerSlug, docoSlug } = params;
+  const { ownerSlug, docoSlug } = await normalizeDocoParams(params);
   const ctx = await loadDocoForRead(request, ownerSlug, docoSlug);
   const url = new URL(request.url);
   const q = (url.searchParams.get("q") ?? "").trim();
@@ -557,8 +557,8 @@ async function withHitDerivedCounts(
   };
 }
 
-export function meta({ params }: { params: { ownerSlug: string; docoSlug: string } }) {
-  return [{ title: `Search · ${params.ownerSlug}/${params.docoSlug}` }];
+export function meta({ params }: { params: { docoId: string } }) {
+  return [{ title: `Search · ${params.docoId}` }];
 }
 
 export default function SearchInDoco({

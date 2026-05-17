@@ -10,7 +10,7 @@ import { Form, Link, redirect } from "react-router";
 import { parse as parseYaml } from "yaml";
 import { type AuditEvent, readEntityHistory } from "~/lib/audit-log.server";
 import { docoPath } from "~/lib/db.server";
-import { loadDocoForAdmin, loadDocoForRead } from "~/lib/doco-access.server";
+import { loadDocoForAdmin, loadDocoForRead, normalizeDocoParams } from "~/lib/doco-access.server";
 import { loadHostConfig } from "~/lib/host";
 import { reindex, updateScopeInDoco } from "~/lib/redeem.server";
 
@@ -96,9 +96,10 @@ export async function loader({
   params,
 }: {
   request: Request;
-  params: { ownerSlug: string; docoSlug: string; type: string; id: string };
+  params: { docoId: string; type: string; id: string };
 }) {
-  const { ownerSlug, docoSlug, type, id: idParam } = params;
+  const { ownerSlug, docoSlug } = await normalizeDocoParams(params);
+  const { type, id: idParam } = params;
   if (!KNOWN.has(type)) throw new Response("Unknown type", { status: 404 });
   // Per decision_01KRPNZY7W6CCMYNKGND67BP0B scopes use the plural URL
   // `/scopes/:id` so the merged detail+edit page is the single canonical
@@ -513,9 +514,10 @@ export async function action({
   params,
 }: {
   request: Request;
-  params: { ownerSlug: string; docoSlug: string; type: string; id: string };
+  params: { docoId: string; type: string; id: string };
 }) {
-  const { ownerSlug, docoSlug, type, id } = params;
+  const { ownerSlug, docoSlug } = await normalizeDocoParams(params);
+  const { type, id } = params;
   if (type !== "scope") {
     return { error: "Inline edit is only supported for scopes today." };
   }

@@ -6,7 +6,7 @@
 import { getEntity } from "@doco/db";
 import { parse as parseYaml } from "yaml";
 import { docoPath } from "~/lib/db.server";
-import { loadDocoForAdmin, loadDocoForRead } from "~/lib/doco-access.server";
+import { loadDocoForAdmin, loadDocoForRead, normalizeDocoParams } from "~/lib/doco-access.server";
 import { withIdempotency } from "~/lib/idempotency.server";
 import { readDocoMetadata } from "~/lib/scope-helpers.server";
 import {
@@ -23,8 +23,7 @@ interface MeLike {
 }
 
 interface RouteParams {
-  ownerSlug: string;
-  docoSlug: string;
+  docoId: string;
 }
 
 interface IdRouteParams extends RouteParams {
@@ -63,7 +62,8 @@ export function makeCaptureRoute<TDraft>(cfg: CaptureRouteConfig<TDraft>) {
       request: Request;
       params: RouteParams;
     }) {
-      await loadDocoForRead(request, params.ownerSlug, params.docoSlug);
+      const { ownerSlug, docoSlug } = await normalizeDocoParams(params);
+      await loadDocoForRead(request, ownerSlug, docoSlug);
       return Response.json(
         { error: `Use POST to capture. See /<owner>/<doco>/api/${cfg.type}.txt for the spec.` },
         { status: 405 },
@@ -77,7 +77,7 @@ export function makeCaptureRoute<TDraft>(cfg: CaptureRouteConfig<TDraft>) {
       request: Request;
       params: RouteParams;
     }) {
-      const { ownerSlug, docoSlug } = params;
+      const { ownerSlug, docoSlug } = await normalizeDocoParams(params);
       const { me } = await loadDocoForAdmin(request, ownerSlug, docoSlug);
       const dir = docoPath(ownerSlug, docoSlug);
       const meta = await readDocoMetadata(dir);
@@ -160,7 +160,8 @@ export function makeUpdateRoute(cfg: UpdateRouteConfig) {
       request: Request;
       params: IdRouteParams;
     }) {
-      const { ownerSlug, docoSlug, id } = params;
+      const { id } = params;
+      const { ownerSlug, docoSlug } = await normalizeDocoParams(params);
       const ctx = await loadDocoForRead(request, ownerSlug, docoSlug);
       const rec = await getEntity(cfg.nodeType, id);
       // Cross-doco probe by ULID is effectively unguessable (128 bits), but
@@ -200,7 +201,8 @@ export function makeUpdateRoute(cfg: UpdateRouteConfig) {
       request: Request;
       params: IdRouteParams;
     }) {
-      const { ownerSlug, docoSlug, id } = params;
+      const { id } = params;
+      const { ownerSlug, docoSlug } = await normalizeDocoParams(params);
       const { me } = await loadDocoForAdmin(request, ownerSlug, docoSlug);
       const dir = docoPath(ownerSlug, docoSlug);
       const meta = await readDocoMetadata(dir);

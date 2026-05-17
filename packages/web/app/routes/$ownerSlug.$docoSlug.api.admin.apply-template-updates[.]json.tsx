@@ -13,7 +13,7 @@
 
 import { applyScopeTemplateUpdatesToDoco } from "@doco/host";
 import type { EntityId } from "@doco/shared";
-import { loadDocoForAdmin } from "~/lib/doco-access.server";
+import { loadDocoForAdmin, normalizeDocoParams } from "~/lib/doco-access.server";
 
 export function loader() {
   return Response.json(
@@ -30,12 +30,12 @@ export async function action({
   params,
 }: {
   request: Request;
-  params: { ownerSlug: string; docoSlug: string };
+  params: { docoId: string };
 }) {
   if (request.method !== "POST") {
     return Response.json({ error: "POST required." }, { status: 405 });
   }
-  const { ownerSlug, docoSlug } = params;
+  const { ownerSlug, docoSlug } = await normalizeDocoParams(params);
   const { dir, meta, me } = await loadDocoForAdmin(request, ownerSlug, docoSlug);
   const result = await applyScopeTemplateUpdatesToDoco({
     docoDir: dir,

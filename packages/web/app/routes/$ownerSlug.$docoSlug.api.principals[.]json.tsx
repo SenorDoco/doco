@@ -1,6 +1,6 @@
 import { upsertEntity, withClient } from "@doco/db";
 import { type EntityId, generateUlid, makeEntityId, nowIso } from "@doco/shared";
-import { loadDocoForAdmin } from "~/lib/doco-access.server";
+import { loadDocoForAdmin, normalizeDocoParams } from "~/lib/doco-access.server";
 
 const ROLE_PRINCIPAL_USERNAMES = new Set(["user", "human", "doco-host", "github"]);
 
@@ -35,13 +35,14 @@ export async function action({
   params,
 }: {
   request: Request;
-  params: { ownerSlug: string; docoSlug: string };
+  params: { docoId: string };
 }) {
+  const { ownerSlug, docoSlug } = await normalizeDocoParams(params);
   if (request.method !== "POST") {
     return Response.json({ error: "Use POST." }, { status: 405 });
   }
 
-  const { me, meta } = await loadDocoForAdmin(request, params.ownerSlug, params.docoSlug);
+  const { me, meta } = await loadDocoForAdmin(request, ownerSlug, docoSlug);
   const body = (await request.json().catch(() => ({}))) as {
     username?: string;
     display_name?: string;

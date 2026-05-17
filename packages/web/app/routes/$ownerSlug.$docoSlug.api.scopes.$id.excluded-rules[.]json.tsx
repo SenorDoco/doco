@@ -6,7 +6,7 @@
 // `{updated: false}`.
 
 import { docoPath } from "~/lib/db.server";
-import { loadDocoForAdmin } from "~/lib/doco-access.server";
+import { loadDocoForAdmin, normalizeDocoParams } from "~/lib/doco-access.server";
 import { readDocoMetadata } from "~/lib/scope-helpers.server";
 import { reindex } from "~/lib/redeem.server";
 import { appendExcludedRule } from "~/lib/scope-bulk.server";
@@ -27,9 +27,10 @@ export async function action({
   params,
 }: {
   request: Request;
-  params: { ownerSlug: string; docoSlug: string; id: string };
+  params: { docoId: string; id: string };
 }) {
-  const { ownerSlug, docoSlug, id } = params;
+  const { ownerSlug, docoSlug } = await normalizeDocoParams(params);
+  const { id } = params;
   if (request.method !== "POST") {
     return Response.json({ error: "POST required." }, { status: 405 });
   }

@@ -22,15 +22,16 @@
 import type { EntityId } from "@doco/shared";
 import { TokenStore } from "~/lib/tokens.server";
 import { rootDir } from "~/lib/db.server";
-import { loadDocoForRead } from "~/lib/doco-access.server";
+import { loadDocoForRead, normalizeDocoParams } from "~/lib/doco-access.server";
 
 export async function action({
   request,
   params,
 }: {
   request: Request;
-  params: { ownerSlug: string; docoSlug: string };
+  params: { docoId: string };
 }) {
+  const { ownerSlug, docoSlug } = await normalizeDocoParams(params);
   if (request.method !== "POST") {
     return Response.json({ error: "method_not_allowed" }, { status: 405 });
   }
@@ -42,8 +43,8 @@ export async function action({
   // "you can admin it," because invites are how memberships grow.
   const { meta, me } = await loadDocoForRead(
     request,
-    params.ownerSlug,
-    params.docoSlug,
+    ownerSlug,
+    docoSlug,
   );
   if (!me) {
     // canAccessDoco may have let an anonymous caller pass for a public

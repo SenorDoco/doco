@@ -2,7 +2,7 @@ import { findScopeTemplate } from "@doco/host";
 import type { EntityId } from "@doco/shared";
 import { renderOperationLines } from "~/lib/capture.server";
 import { docoPath } from "~/lib/db.server";
-import { loadDocoForAdmin, loadDocoForRead } from "~/lib/doco-access.server";
+import { loadDocoForAdmin, loadDocoForRead, normalizeDocoParams } from "~/lib/doco-access.server";
 import {
   createIntentInDoco,
   createScopeInDoco,
@@ -59,9 +59,10 @@ export async function loader({
   params,
 }: {
   request: Request;
-  params: { ownerSlug: string; docoSlug: string };
+  params: { docoId: string };
 }) {
-  await loadDocoForRead(request, params.ownerSlug, params.docoSlug);
+  const { ownerSlug, docoSlug } = await normalizeDocoParams(params);
+  await loadDocoForRead(request, ownerSlug, docoSlug);
   return Response.json(
     {
       error:
@@ -76,9 +77,9 @@ export async function action({
   params,
 }: {
   request: Request;
-  params: { ownerSlug: string; docoSlug: string };
+  params: { docoId: string };
 }) {
-  const { ownerSlug, docoSlug } = params;
+  const { ownerSlug, docoSlug } = await normalizeDocoParams(params);
   const { me } = await loadDocoForAdmin(request, ownerSlug, docoSlug);
   const dir = docoPath(ownerSlug, docoSlug);
   const meta = await readDocoMetadata(dir);
@@ -261,7 +262,8 @@ export async function action({
     seedGuidanceText?.trim() ||
     customIntentSummary?.trim() ||
     `Scope: ${scopeName}${watched ? " (watched)" : ""}`;
-  const footer_lines = renderOperationLines({
+  const footer_lines = await renderOperationLines({
+    docoId,
     ownerSlug,
     docoSlug,
     nodeType: "scope",

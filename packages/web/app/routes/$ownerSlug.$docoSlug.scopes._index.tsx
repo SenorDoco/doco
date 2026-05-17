@@ -11,7 +11,7 @@ import { entityUrl } from "@doco/shared";
 import { Link, redirect } from "react-router";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
 import { SiteHeader } from "~/components/site-header";
-import { loadDocoForRead } from "~/lib/doco-access.server";
+import { loadDocoForRead, normalizeDocoParams } from "~/lib/doco-access.server";
 import { loadHostConfig } from "~/lib/host";
 import { listScopeDetails } from "~/lib/scope-helpers.server";
 
@@ -20,9 +20,9 @@ export async function loader({
   params,
 }: {
   request: Request;
-  params: { ownerSlug: string; docoSlug: string };
+  params: { docoId: string };
 }) {
-  const { ownerSlug, docoSlug } = params;
+  const { ownerSlug, docoSlug } = await normalizeDocoParams(params);
   const { dir, meta, me } = await loadDocoForRead(request, ownerSlug, docoSlug);
   const scopes = await listScopeDetails(dir, { includePrimaryIntent: true });
   const url = new URL(request.url);
@@ -63,8 +63,8 @@ export async function loader({
   };
 }
 
-export function meta({ params }: { params: { ownerSlug: string; docoSlug: string } }) {
-  return [{ title: `Scopes · ${params.ownerSlug}/${params.docoSlug} · Doco` }];
+export function meta({ params }: { params: { docoId: string } }) {
+  return [{ title: `Scopes · ${params.docoId} · Doco` }];
 }
 
 export default function ScopesIndex({

@@ -1,6 +1,6 @@
 import { validateDocoSlug } from "@doco/shared";
 import { rootDir } from "~/lib/db.server";
-import { loadDocoForAdmin, loadDocoForRead } from "~/lib/doco-access.server";
+import { loadDocoForAdmin, loadDocoForRead, normalizeDocoParams } from "~/lib/doco-access.server";
 import { reindex, renameDocoSlug, updateDocoMeta } from "~/lib/redeem.server";
 import { readDocoMetadata } from "~/lib/scope-helpers.server";
 
@@ -28,9 +28,9 @@ export async function loader({
   params,
 }: {
   request: Request;
-  params: { ownerSlug: string; docoSlug: string };
+  params: { docoId: string };
 }) {
-  const { ownerSlug, docoSlug } = params;
+  const { ownerSlug, docoSlug } = await normalizeDocoParams(params);
   const { meta } = await loadDocoForRead(request, ownerSlug, docoSlug);
   return Response.json({
     owner_slug: ownerSlug,
@@ -47,9 +47,9 @@ export async function action({
   params,
 }: {
   request: Request;
-  params: { ownerSlug: string; docoSlug: string };
+  params: { docoId: string };
 }) {
-  const { ownerSlug, docoSlug } = params;
+  const { ownerSlug, docoSlug } = await normalizeDocoParams(params);
   const { dir: oldDir } = await loadDocoForAdmin(request, ownerSlug, docoSlug);
 
   if (request.method !== "POST" && request.method !== "PATCH") {

@@ -14,7 +14,7 @@ import { parse as parseYaml } from "yaml";
 import { withClient } from "@doco/db";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { SiteHeader } from "~/components/site-header";
-import { loadDocoForAdmin } from "~/lib/doco-access.server";
+import { loadDocoForAdmin, normalizeDocoParams } from "~/lib/doco-access.server";
 import { loadHostConfig } from "~/lib/host";
 import { reindex, updateScopeInDoco } from "~/lib/redeem.server";
 import { listScopeDetails, readDocoMetadata } from "~/lib/scope-helpers.server";
@@ -40,9 +40,10 @@ export async function loader({
   params,
 }: {
   request: Request;
-  params: { ownerSlug: string; docoSlug: string; id: string };
+  params: { docoId: string; id: string };
 }) {
-  const { ownerSlug, docoSlug, id } = params;
+  const { ownerSlug, docoSlug } = await normalizeDocoParams(params);
+  const { id } = params;
   const { dir, me } = await loadDocoForAdmin(request, ownerSlug, docoSlug);
   const raw = await readScopeRaw(id);
   if (!raw) throw new Response("Scope not found", { status: 404 });
@@ -87,9 +88,10 @@ export async function action({
   params,
 }: {
   request: Request;
-  params: { ownerSlug: string; docoSlug: string; id: string };
+  params: { docoId: string; id: string };
 }) {
-  const { ownerSlug, docoSlug, id } = params;
+  const { ownerSlug, docoSlug } = await normalizeDocoParams(params);
+  const { id } = params;
   const { dir } = await loadDocoForAdmin(request, ownerSlug, docoSlug);
   const form = await request.formData();
   const intent = String(form.get("intent") ?? "");
@@ -157,8 +159,8 @@ export async function action({
   return redirect(back);
 }
 
-export function meta({ params }: { params: { ownerSlug: string; docoSlug: string; id: string } }) {
-  return [{ title: `Abandon · ${params.id} · ${params.ownerSlug}/${params.docoSlug} · Doco` }];
+export function meta({ params }: { params: { docoId: string; id: string } }) {
+  return [{ title: `Abandon · ${params.id} · ${params.docoId} · Doco` }];
 }
 
 export default function AbandonScopePage({

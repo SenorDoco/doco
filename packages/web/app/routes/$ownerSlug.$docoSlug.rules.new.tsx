@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/com
 import { SiteHeader } from "~/components/site-header";
 import { captureRule } from "~/lib/capture.server";
 import { docoPath } from "~/lib/db.server";
-import { loadDocoForAdmin } from "~/lib/doco-access.server";
+import { loadDocoForAdmin, normalizeDocoParams } from "~/lib/doco-access.server";
 import { loadHostConfig } from "~/lib/host";
 import { readDocoMetadata } from "~/lib/scope-helpers.server";
 
@@ -22,9 +22,9 @@ export async function loader({
   params,
 }: {
   request: Request;
-  params: { ownerSlug: string; docoSlug: string };
+  params: { docoId: string };
 }) {
-  const { ownerSlug, docoSlug } = params;
+  const { ownerSlug, docoSlug } = await normalizeDocoParams(params);
   const { meta, me } = await loadDocoForAdmin(request, ownerSlug, docoSlug);
   const url = new URL(request.url);
   const prefillScope = url.searchParams.get("scope") ?? "";
@@ -55,9 +55,9 @@ export async function action({
   params,
 }: {
   request: Request;
-  params: { ownerSlug: string; docoSlug: string };
+  params: { docoId: string };
 }) {
-  const { ownerSlug, docoSlug } = params;
+  const { ownerSlug, docoSlug } = await normalizeDocoParams(params);
   const { me } = await loadDocoForAdmin(request, ownerSlug, docoSlug);
   const dir = docoPath(ownerSlug, docoSlug);
   const meta = await readDocoMetadata(dir);
@@ -113,8 +113,8 @@ export async function action({
   return redirect(`/${ownerSlug}/${docoSlug}/rule/${result.id}`);
 }
 
-export function meta({ params }: { params: { ownerSlug: string; docoSlug: string } }) {
-  return [{ title: `New rule · ${params.ownerSlug}/${params.docoSlug} · Doco` }];
+export function meta({ params }: { params: { docoId: string } }) {
+  return [{ title: `New rule · ${params.docoId} · Doco` }];
 }
 
 export default function NewRule({
