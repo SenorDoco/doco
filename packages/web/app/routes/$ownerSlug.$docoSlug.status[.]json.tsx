@@ -17,30 +17,28 @@ export async function loader({
   request: Request;
   params: { docoId: string };
 }) {
-  const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
+  const { handle } = await normalizeDocoParams(params);
   const dir = docoPath(handle);
   const meta = await readDocoMetadata(dir);
   if (!meta) {
     return Response.json(
-      { status: "unknown", owner_slug: ownerSlug, doco_slug: docoSlug },
+      { status: "unknown", doco_handle: handle },
       { status: 404 },
     );
   }
   const me = await getCurrentPrincipalAsync(request);
   if (!(await canAccessDoco(meta, me?.id ?? null))) {
     return Response.json(
-      { status: "unknown", owner_slug: ownerSlug, doco_slug: docoSlug },
+      { status: "unknown", doco_handle: handle },
       { status: 404 },
     );
   }
   const { latest, counts } = await readStatusFromPg(meta.docoId);
   return Response.json({
     status: "ok" as const,
-    owner_slug: ownerSlug,
-    doco_slug: docoSlug,
     doco_id: meta.docoId,
-    doco_handle: meta.handle || `${ownerSlug}-${docoSlug}`,
-    display_name: meta.displayName || docoSlug,
+    doco_handle: meta.handle,
+    display_name: meta.displayName || meta.handle,
     visibility: meta.visibility,
     last_updated_at: latest,
     counts,

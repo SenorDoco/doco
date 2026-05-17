@@ -99,11 +99,11 @@ export interface CliAuthorization {
   /** The session token minted on approval. Cleared on "exchanged". */
   issued_token: string | null;
   /** The Doco slug the agent created during approval (if the form requested it). */
-  created_doco_slug: string | null;
+  created_doco_handle: string | null;
   /** The immutable Doco id created during approval (if the form requested it). */
   created_doco_id: string | null;
   /** The owner_slug under which docos created in this session live. */
-  approved_owner_slug: string | null;
+  approved_owner_username: string | null;
   created_at: string;
   approved_at: string | null;
   expires_at: string;
@@ -267,9 +267,9 @@ export class TokenStore {
       approved_by_principal_id: null,
       issued_principal_id: null,
       issued_token: null,
-      created_doco_slug: null,
+      created_doco_handle: null,
       created_doco_id: null,
-      approved_owner_slug: null,
+      approved_owner_username: null,
       created_at: now.toISOString(),
       approved_at: null,
       expires_at: new Date(now.getTime() + CLI_AUTH_TTL_MS).toISOString(),
@@ -321,8 +321,8 @@ export class TokenStore {
     approvedByPrincipalId: EntityId<"principal">,
     issuedPrincipalId: EntityId<"principal">,
     sessionTokenValue: string,
-    approvedOwnerSlug: string,
-    createdDocoSlug: string | null,
+    approvedOwnerUsername: string,
+    createdDocoHandle: string | null,
     createdDocoId: string | null,
   ): Promise<CliAuthorization> {
     const file = await this.load();
@@ -337,8 +337,8 @@ export class TokenStore {
     row.approved_by_principal_id = approvedByPrincipalId;
     row.issued_principal_id = issuedPrincipalId;
     row.issued_token = sessionTokenValue;
-    row.approved_owner_slug = approvedOwnerSlug;
-    row.created_doco_slug = createdDocoSlug;
+    row.approved_owner_username = approvedOwnerUsername;
+    row.created_doco_handle = createdDocoHandle;
     row.created_doco_id = createdDocoId;
     row.approved_at = new Date().toISOString();
     await this.save(file);
@@ -364,8 +364,8 @@ export class TokenStore {
   async consumeCliAuthorization(stateNonce: string): Promise<{
     token: string;
     principal_id: EntityId<"principal">;
-    owner_slug: string;
-    created_doco_slug: string | null;
+    owner_username: string;
+    created_doco_handle: string | null;
     created_doco_id: string | null;
   } | null> {
     const file = await this.load();
@@ -374,14 +374,14 @@ export class TokenStore {
     ) as CliAuthorization | undefined;
     if (!row) return null;
     if (row.status !== "approved") return null;
-    if (!row.issued_token || !row.issued_principal_id || !row.approved_owner_slug) {
+    if (!row.issued_token || !row.issued_principal_id || !row.approved_owner_username) {
       throw new Error("cli authorization approved but missing issued token data");
     }
     const out = {
       token: row.issued_token,
       principal_id: row.issued_principal_id,
-      owner_slug: row.approved_owner_slug,
-      created_doco_slug: row.created_doco_slug,
+      owner_username: row.approved_owner_username,
+      created_doco_handle: row.created_doco_handle,
       created_doco_id: row.created_doco_id ?? null,
     };
     row.status = "exchanged";

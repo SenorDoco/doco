@@ -425,11 +425,8 @@ prose with no tally and no top-of-reply indicator. Stacking a tally
 on every intermediate chunk turns the protocol into clutter instead
 of an end-of-turn dial-tone.
 
-- \`<owner>/<doco>\` comes from the bootstrap response. Prefer the
-  globally-unique \`doco_handle\` (phase-1 of slug removal — the
-  field is set on every response); fall back to the legacy
-  \`owner_slug\`/\`doco_slug\` pair when consuming older responses.
-  Cache it from the session-load fetch.
+- \`<doco-handle>\` comes from the bootstrap response's
+  \`doco_handle\` field. Cache it from the session-load fetch.
 - \`<N>\` counts distinct entities touched this turn (PATCH-3-fields-of-1-Decision = 1).
 - \`<N>\` MUST be wrapped in markdown bold (\`**N**\`).
 - Singular form for \`**1**\`; plural otherwise (zero is plural).
@@ -941,7 +938,6 @@ No install, no browser, no permission prompts.
      "doco_id":           "doco_01K…",
      "doco_handle":       "<lowercase-kebab>",
      "doco_url":          "https://doco.to/<doco_handle>/",
-     "doco_slug":         "<owner>/<slug>",
      "doco_key":          "<64-hex>",
      "invite_url":        "https://doco.to/invite/<64-hex>",
      "invite_expires_at": "<ISO timestamp, 7 days out>"
@@ -1046,7 +1042,7 @@ curl -fsS -X POST https://doco.to/api/v1/invites/<code>/redeem.json \\
   -H "Content-Type: application/json" -d '{}'
 \`\`\`
 The response carries \`doco_key\`, \`doco_handle\`, \`doco_url\`,
-\`doco_slug\`, plus two walk-this-recipe fields:
+plus two walk-this-recipe fields:
 \`next_steps_for_agent\` (ordered checklist of file writes +
 bootstrap fetch) and \`user_message_block\` (verbatim prose to render
 to whoever pasted the invite). Walk the checklist

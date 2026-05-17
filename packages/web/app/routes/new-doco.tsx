@@ -17,14 +17,14 @@ export async function action({ request }: { request: Request }) {
   const me = await getCurrentPrincipal(request);
   if (!me) throw redirect("/sign-in?next=%2Fnew-doco");
   const form = await request.formData();
-  const ownerSlug = String(form.get("owner_slug") ?? "").trim();
-  const docoSlug = String(form.get("doco_slug") ?? "")
+  const ownerSlug = String(form.get("owner") ?? "").trim();
+  const docoSlug = String(form.get("doco_handle") ?? "")
     .trim()
     .toLowerCase();
   const description = String(form.get("description") ?? "").trim();
   const visibility = String(form.get("visibility") ?? "private") as "private" | "public";
 
-  if (!ownerSlug || !docoSlug) return { error: "Owner and Doco slug are required." };
+  if (!ownerSlug || !docoSlug) return { error: "Owner and Doco handle are required." };
   if (ownerSlug !== me.username) {
     const allowed = (await listOrgsOwnedOrAdminedBy(me.id)).find((o) => o.slug === ownerSlug);
     if (!allowed) return { error: `You can't create docos under "${ownerSlug}".` };
@@ -118,7 +118,7 @@ export default function NewDoco({
               <label className="block text-xs">
                 <span className="mb-1 block text-muted-foreground">Owner</span>
                 <select
-                  name="owner_slug"
+                  name="owner"
                   className="w-full rounded-md border border-border bg-input px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
                 >
                   {owners.map((o) => (
@@ -129,17 +129,17 @@ export default function NewDoco({
                 </select>
               </label>
               <label className="block text-xs">
-                <span className="mb-1 block text-muted-foreground">Slug</span>
+                <span className="mb-1 block text-muted-foreground">Handle</span>
                 <input
                   type="text"
-                  name="doco_slug"
+                  name="doco_handle"
                   required
                   pattern="[a-z0-9_-]+"
                   placeholder="my-doco"
                   className="w-full rounded-md border border-border bg-input px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
                 />
                 <span className="mt-1 block text-[11px] text-muted-foreground">
-                  Lowercase kebab-case. URL becomes /&lt;owner&gt;/&lt;slug&gt;.
+                  Lowercase kebab-case. URL becomes /&lt;handle&gt;.
                 </span>
               </label>
               <label className="block text-xs">

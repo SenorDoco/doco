@@ -28,8 +28,6 @@ interface FeedEvent {
   event_id: string;
   at: string;
   byUsername: string | null;
-  ownerSlug: string;
-  docoSlug: string;
   handle: string;
   entity_type: string;
   entity_id: string;
@@ -139,9 +137,7 @@ export async function loader({ request }: { request: Request }) {
           event_id: r.event_id,
           at: r.at instanceof Date ? r.at.toISOString() : String(r.at),
           byUsername: r.username,
-          ownerSlug: d?.ownerSlug ?? "?",
-          docoSlug: d?.docoSlug ?? "?",
-          handle: d?.handle ?? `${d?.ownerSlug ?? "?"}-${d?.docoSlug ?? "?"}`,
+          handle: d?.handle ?? "?",
           entity_type: r.entity_type,
           entity_id: r.entity_id,
           summary: entity?.summary ?? null,

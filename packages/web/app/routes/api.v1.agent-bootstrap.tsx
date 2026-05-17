@@ -182,7 +182,6 @@ export async function loader({ request }: { request: Request }) {
   let codeMap: unknown | null = null;
   let constitution: ConstitutionSnapshot | null = null;
   let scopes: ScopeManifestEntry[] = [];
-  let docoSlugPath: string | null = null;
   let docoIdPath: string | null = null;
   let docoHandlePath: string | null = null;
   let warning: string | null = null;
@@ -224,7 +223,6 @@ export async function loader({ request }: { request: Request }) {
           codeMap = null;
           constitution = await loadConstitution(meta.docoId);
           scopes = await listScopeManifest(dir);
-          docoSlugPath = `${row.owner_slug}/${row.handle}`;
           docoIdPath = row.id;
           docoHandlePath = row.handle;
           if (isOnboardingState(scopes)) {
@@ -247,12 +245,9 @@ export async function loader({ request }: { request: Request }) {
       name: (await loadHostConfig()).name,
       mode: "host",
     },
-    doco_slug: docoSlugPath,
     doco_id: docoIdPath,
-    // Phase 1 of slug-removal: surface the handle alongside the
-    // legacy slug pair. Agents that record `doco_handle` once will
-    // be insulated from owner renames or slug changes (the URL id
-    // is stable per Doco). Phase 2 makes this the canonical id.
+    /** Public, globally-unique URL identifier — what `doco.md` pins
+     *  and what every Doco URL is built from. */
     doco_handle: docoHandlePath,
     code_map: codeMap,
     constitution,

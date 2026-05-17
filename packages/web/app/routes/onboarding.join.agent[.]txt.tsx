@@ -26,7 +26,6 @@ export function loader() {
     "      \"doco_id\":              \"doco_01K…\",",
     "      \"doco_handle\":          \"<lowercase-kebab>\",",
     "      \"doco_url\":             \"https://doco.to/<doco_handle>/\",",
-    "      \"doco_slug\":            \"<owner>/<slug>\",",
     "      \"doco_key\":             \"<64-hex>\",",
     "      \"next_steps_for_agent\": [ ...ordered checklist... ],",
     "      \"user_message_block\":   \"...verbatim prose to render...\"",

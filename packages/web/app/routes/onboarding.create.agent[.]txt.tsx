@@ -38,7 +38,6 @@ Step 1 — create the Doco:
       "doco_id":           "doco_01K…",
       "doco_handle":       "<lowercase-kebab>",
       "doco_url":          "${baseUrl}/<lowercase-kebab>/",
-      "doco_slug":         "<owner>/<slug>",
       "doco_key":          "<64-hex>",
       "invite_url":        "${baseUrl}/invite/<64-hex>",
       "invite_expires_at": "<ISO timestamp, 7 days out>"

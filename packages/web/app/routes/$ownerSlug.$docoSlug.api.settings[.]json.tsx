@@ -30,12 +30,11 @@ export async function loader({
   request: Request;
   params: { docoId: string };
 }) {
-  const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
+  const { handle } = await normalizeDocoParams(params);
   const { meta } = await loadDocoForRead(request, handle);
   return Response.json({
-    owner_slug: ownerSlug,
-    doco_slug: docoSlug,
     doco_id: meta.docoId,
+    doco_handle: meta.handle,
     display_name: meta.displayName,
     description: meta.description,
     visibility: meta.visibility,
@@ -101,9 +100,8 @@ export async function action({
   return Response.json(
     {
       ok: true,
-      owner_slug: ownerSlug,
-      doco_slug: finalSlug,
       doco_id: updated?.docoId ?? null,
+      doco_handle: updated?.handle ?? finalSlug,
       display_name: updated?.displayName ?? "",
       description: updated?.description ?? "",
       visibility: updated?.visibility ?? "private",

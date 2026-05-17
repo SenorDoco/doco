@@ -9,10 +9,7 @@
 // Input (application/json, all optional):
 //   {
 //     requested_id?: string,   // preferred human-readable id; auto-suffixed
-//                              // (-2, -3, ...) on global collision. Phase 1
-//                              // of slug-removal — `slug` is still accepted
-//                              // as the legacy alias.
-//     slug?: string,           // legacy alias for requested_id.
+//                              // (-2, -3, ...) on global collision.
 //     description?: string,
 //   }
 //
@@ -21,7 +18,6 @@
 //     doco_id: string,             // ULID — stable internal id (FK target)
 //     doco_handle: string,         // public, human-readable URL id
 //     doco_url: string,            // https://<host>/<doco_handle>/
-//     doco_slug: string,           // legacy "<owner>/<slug>" canonical form
 //     doco_key: string,            // for .env as DOCO_KEY=<hex>
 //     invite_url: string,          // https://<host>/invite/<code>
 //     invite_expires_at: string,
@@ -43,10 +39,9 @@ export async function action({ request }: { request: Request }) {
     return Response.json({ error: "method_not_allowed" }, { status: 405 });
   }
 
-  let body: { slug?: string; requested_id?: string; description?: string } = {};
+  let body: { requested_id?: string; description?: string } = {};
   try {
     body = (await request.json()) as {
-      slug?: string;
       requested_id?: string;
       description?: string;
     };
@@ -77,11 +72,7 @@ export async function action({ request }: { request: Request }) {
     );
   }
 
-  // Phase 1 of slug-removal: callers can pass `requested_id` (the
-  // new spelling) or `slug` (legacy alias). They map to the same
-  // thing — the docoSlug column and, via `createDocoInHost`, also
-  // seed the `handle` column.
-  const requestedInput = (body.requested_id ?? body.slug ?? "").trim().toLowerCase();
+  const requestedInput = (body.requested_id ?? "").trim().toLowerCase();
   const docoSlug = requestedInput || `doco-${randomBytes(4).toString("hex")}`;
   const slugErr = validateDocoSlug(docoSlug);
   if (slugErr) {
@@ -123,9 +114,7 @@ export async function action({ request }: { request: Request }) {
   // Phase 1 of slug-removal: prefer the handle URL when available;
   // fall back to /by-id/<ULID>/ for rows minted before the handle
   // column existed.
-  const docoUrl = created.handle
-    ? `${origin}/${created.handle}/`
-    : `${origin}/by-id/${created.docoId}/`;
+  const docoUrl = `${origin}/${created.handle}/`;
   const inviteUrl = `${origin}/invite/${invite.code}`;
   const expiresHuman = new Date(invite.expires_at).toLocaleString("en-US", {
     timeZone: "UTC",
@@ -137,7 +126,6 @@ export async function action({ request }: { request: Request }) {
     doco_id: created.docoId,
     doco_handle: created.handle,
     doco_url: docoUrl,
-    doco_slug: `${created.ownerSlug}/${created.docoSlug}`,
     doco_key: session.token,
     invite_url: inviteUrl,
     invite_expires_at: invite.expires_at,

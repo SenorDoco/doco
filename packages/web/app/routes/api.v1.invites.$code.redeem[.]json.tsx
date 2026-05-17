@@ -15,7 +15,7 @@
 //   {
 //     doco_id: string,
 //     doco_url: string,
-//     doco_slug: string,
+//     doco_handle: string,
 //     doco_key: string,            // .env as DOCO_KEY=<hex>
 //   }
 //

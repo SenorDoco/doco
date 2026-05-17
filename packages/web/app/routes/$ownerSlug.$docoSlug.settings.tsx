@@ -71,11 +71,11 @@ export async function action({
   }
 
   // ── Default: save edits ───────────────────────────────────────────
-  const newSlug = String(form.get("doco_slug") ?? "").trim().toLowerCase();
+  const newSlug = String(form.get("doco_handle") ?? "").trim().toLowerCase();
   const description = String(form.get("description") ?? "");
   const visibility = (String(form.get("visibility") ?? "") as "private" | "public") || undefined;
 
-  if (!newSlug) return { error: "Slug is required." };
+  if (!newSlug) return { error: "Handle is required." };
   const slugError = validateDocoSlug(newSlug);
   if (slugError) return { error: slugError };
   if (visibility && visibility !== "private" && visibility !== "public") {
@@ -153,17 +153,14 @@ export default function DocoSettings({
             <Form method="post" className="space-y-3">
               <input type="hidden" name="intent" value="save" />
               <label className="block text-xs">
-                <span className="mb-1 block font-semibold text-foreground">Slug *</span>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-muted-foreground">{ownerSlug}/</span>
-                  <input
-                    name="doco_slug"
-                    required
-                    pattern="[a-z0-9_-]+"
-                    defaultValue={docoSlug}
-                    className="flex-1 rounded-md border border-border bg-input px-3 py-2 font-mono text-xs text-foreground outline-none focus:border-primary"
-                  />
-                </div>
+                <span className="mb-1 block font-semibold text-foreground">Handle *</span>
+                <input
+                  name="doco_handle"
+                  required
+                  pattern="[a-z0-9_-]+"
+                  defaultValue={handle}
+                  className="w-full rounded-md border border-border bg-input px-3 py-2 font-mono text-xs text-foreground outline-none focus:border-primary"
+                />
                 <span className="mt-1 block text-[11px] text-muted-foreground">
                   Lowercase kebab-case. Renaming takes effect immediately
                   and updates every URL.
