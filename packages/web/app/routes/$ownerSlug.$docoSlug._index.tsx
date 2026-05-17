@@ -323,14 +323,14 @@ export default function DocoHome({
       items: facets.scope
         .filter((s) => s.lifecycle === "active")
         .map((s) => ({
-        key: `scope-${s.name}`,
-        href: scopeDetailPath(ownerSlug, docoSlug, s.id),
-        label: s.name,
-        icon: s.icon ?? undefined,
-        count: s.count,
-        ariaLabel: `Open scope ${s.name}`,
-        updatedAt: s.updatedAt,
-      })),
+          key: `scope-${s.name}`,
+          href: scopeDetailPath(ownerSlug, docoSlug, s.id),
+          label: s.name,
+          icon: s.icon ?? undefined,
+          count: s.count,
+          ariaLabel: `Open scope ${s.name}`,
+          updatedAt: s.updatedAt,
+        })),
     },
     {
       title: "Node types",
