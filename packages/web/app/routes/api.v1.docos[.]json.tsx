@@ -1,9 +1,9 @@
 // POST /api/v1/docos.json — anonymous Doco creation.
 //
 // Any user (agent or human) can call this with no prior auth. The
-// server mints an anonymous agent-Principal as the owner-of-record,
-// creates a new Doco under it, issues an access credential bound to
-// that Doco, and mints an initial 7-day Invite
+// server preallocates the Doco id, mints a setup-agent Principal as
+// the owner-of-record, creates the new Doco under it, issues an access
+// credential bound to that Doco, and mints an initial 7-day Invite
 // so the creator has a sharable URL on the same response.
 //
 // Input (application/json, all optional):
@@ -29,7 +29,7 @@
 
 import { randomBytes } from "node:crypto";
 import type { EntityId } from "@doco/shared";
-import { validateDocoSlug } from "@doco/shared";
+import { generateUlid, makeEntityId, validateDocoSlug } from "@doco/shared";
 import { TokenStore } from "~/lib/tokens.server";
 import { rootDir } from "~/lib/db.server";
 import { addAgentPrincipal, createDocoInHost, reindex } from "~/lib/redeem.server";
@@ -50,13 +50,14 @@ export async function action({ request }: { request: Request }) {
   }
 
   const isoNow = new Date().toISOString();
-  const agentUsername = `agent-${randomBytes(6).toString("hex")}`;
+  const docoId = makeEntityId("doco", generateUlid()) as EntityId<"doco">;
+  const agentUsername = `setup-agent-${docoId.toLowerCase()}`;
   const userAgent = request.headers.get("user-agent") ?? "unknown";
   let agentId: EntityId<"principal">;
   try {
     agentId = await addAgentPrincipal(rootDir(), {
       username: agentUsername,
-      display_name: `Anonymous agent ${agentUsername}`,
+      display_name: "Setup agent",
       owner_id: null,
       agent_metadata: {
         provider: userAgent,
@@ -84,6 +85,7 @@ export async function action({ request }: { request: Request }) {
     created = await createDocoInHost(rootDir(), {
       ownerSlug: agentUsername,
       docoSlug,
+      docoId,
       requestedId: docoSlug,
       autoSuffixOnCollision: true,
       visibility: "private",
