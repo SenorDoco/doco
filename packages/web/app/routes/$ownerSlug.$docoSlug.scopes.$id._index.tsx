@@ -1049,9 +1049,9 @@ function PrimaryIntentCard({
       <CardHeader>
         <div className="flex flex-wrap items-start gap-3">
           <div className="min-w-0 flex-1">
-            <CardTitle className="text-sm">Main intent</CardTitle>
             {primaryIntent ? (
-              <CardDescription>
+              <CardDescription className="text-xs">
+                <span className="font-semibold text-foreground/70">Main intent: </span>
                 <Link
                   to={entityUrl({
                     ownerSlug,
