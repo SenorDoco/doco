@@ -73,7 +73,10 @@ export async function loader({ params, request }: { params: { ownerSlug: string 
   const ownDocos = allDocos.filter((e) => e.ownerSlug === params.ownerSlug);
   const visibility = await Promise.all(
     ownDocos.map((d) =>
-      canAccessDoco({ ownerId: d.ownerId, visibility: d.visibility }, me?.id ?? null),
+      canAccessDoco(
+        { ownerId: d.ownerId, visibility: d.visibility, docoId: d.docoId },
+        me?.id ?? null,
+      ),
     ),
   );
   const docos = ownDocos.filter((_, i) => visibility[i]);

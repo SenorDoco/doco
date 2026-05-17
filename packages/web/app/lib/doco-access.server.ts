@@ -28,7 +28,7 @@ import { type CurrentPrincipal, getCurrentPrincipalAsync } from "./session";
  *       - otherwise → no.
  */
 export async function canAccessDoco(
-  meta: { ownerId: string; visibility: string },
+  meta: { ownerId: string; visibility: string; docoId?: string },
   principalId: string | null,
 ): Promise<boolean> {
   if (meta.visibility === "public") return true;
@@ -42,6 +42,13 @@ export async function canAccessDoco(
   if (meta.ownerId.startsWith("organization_")) {
     if (await dbIsOrgMember(meta.ownerId, principalId)) return true;
     if (ownerOfPrincipal && (await dbIsOrgMember(meta.ownerId, ownerOfPrincipal))) return true;
+  }
+
+  // Invited collaborator: holds an active SessionToken bound to this
+  // Doco. Same source of truth the dashboard uses to list it.
+  if (meta.docoId) {
+    const invited = await listInvitedDocoIdsForPrincipal(principalId);
+    if (invited.has(meta.docoId)) return true;
   }
   return false;
 }

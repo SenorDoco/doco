@@ -61,7 +61,10 @@ export async function loader({
   }
   const me = await getCurrentPrincipalAsync(request);
   if (
-    !await canAccessDoco({ ownerId: row.owner_id, visibility: row.visibility }, me?.id ?? null)
+    !await canAccessDoco(
+      { ownerId: row.owner_id, visibility: row.visibility, docoId: row.id },
+      me?.id ?? null,
+    )
   ) {
     return missingDocoResponse({
       state: "no_access",
