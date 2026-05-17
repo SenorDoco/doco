@@ -175,7 +175,7 @@ export default function NewScopeRule({
   const title = kind === "guidance" ? "New guidance rule" : "New authoring rule";
   const description =
     kind === "guidance"
-      ? "Guidance rules are saved as prose for contributors to read while working with this scope."
+      ? "Guidance rules are saved as one prose rule for contributors to read while working with this scope."
       : "Authoring rules become predicates evaluated when nodes enter this scope.";
 
   return (

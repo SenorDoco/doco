@@ -1,10 +1,11 @@
 // POST /<doco-handle>/api/scopes/<scope_id>/rules.json
 //
-// Prose-driven rule authoring (decision_01KRPET95G2QNTPCR0YWAKSCH5).
+// Prose-driven scope Rule creation (decision_01KRPET95G2QNTPCR0YWAKSCH5).
 //
-// The agent / CLI / external caller posts `{prose}` — plain English
-// describing one or more rules. The server runs the same classifier
-// the web UI uses (classifyRuleProse → OpenAI), splits multi-rule prose
+// The agent / CLI / external caller posts `{kind, prose}` — plain
+// English plus the caller's intended rule bucket. Guidance prose is
+// saved as one verbatim prose Rule. Authoring prose runs through the
+// classifier (classifyRuleProse → OpenAI), which splits authoring prose
 // into atomic rows, picks the most-fitting deterministic predicate when
 // one fits, otherwise falls back to {kind: "probabilistic", spec}. The
 // classifier ALWAYS throws LlmUnavailableError when OpenAI can't be
@@ -33,13 +34,21 @@ import { listScopeDetails, readDocoMetadata } from "~/lib/scope-helpers.server";
 
 interface RuleProseBody {
   prose?: string;
+  kind?: string;
+}
+
+type RequestedRuleKind = "authoring" | "guidance";
+
+function resolveRequestedKind(value: unknown): RequestedRuleKind | null {
+  if (value === "authoring" || value === "guidance") return value;
+  return null;
 }
 
 export function loader() {
   return Response.json(
     {
       error:
-        "Use POST with `{prose: string}` to add rules. See /<doco-handle>/api/scopes.txt for the spec.",
+        'Use POST with `{kind: "authoring" | "guidance", prose: string}` to add rules. See /<doco-handle>/api/scopes.txt for the spec.',
     },
     { status: 405 },
   );
@@ -80,6 +89,13 @@ export async function action({
       { status: 400 },
     );
   }
+  const requestedKind = resolveRequestedKind(body.kind);
+  if (!requestedKind) {
+    return Response.json(
+      { error: "`kind` is required and must be either `authoring` or `guidance`." },
+      { status: 400 },
+    );
+  }
 
   const scopeRaw = await readScopeFromDb(meta.docoId, id);
   if (!scopeRaw) {
@@ -93,27 +109,52 @@ export async function action({
 
   const t0 = Date.now();
   let classified: ClassifiedRule[];
-  try {
-    classified = await classifyRuleProse({
-      prose,
-      scopeName,
-      availableScopes,
-    });
-  } catch (e) {
-    if (e instanceof LlmUnavailableError) {
-      return Response.json(
-        {
-          error: formatRuleClassifierError(e),
-        },
-        { status: ruleClassifierErrorStatus(e) },
-      );
+  if (requestedKind === "guidance") {
+    classified = [{ bucket: "guidance", text: prose }];
+  } else {
+    try {
+      const rows = await classifyRuleProse({
+        prose,
+        scopeName,
+        availableScopes,
+      });
+      classified = rows.filter((c) => c.bucket === "authoring");
+      const guidanceCount = rows.length - classified.length;
+      if (classified.length === 0) {
+        return Response.json(
+          {
+            error:
+              'This reads like guidance. Submit `kind: "guidance"` to save it as a guidance rule.',
+          },
+          { status: 400 },
+        );
+      }
+      if (guidanceCount > 0) {
+        return Response.json(
+          {
+            error:
+              "This mixes authoring and guidance rules. Submit authoring and guidance rules separately.",
+          },
+          { status: 400 },
+        );
+      }
+    } catch (e) {
+      if (e instanceof LlmUnavailableError) {
+        return Response.json(
+          {
+            error: formatRuleClassifierError(e),
+          },
+          { status: ruleClassifierErrorStatus(e) },
+        );
+      }
+      return Response.json({ error: (e as Error).message }, { status: 500 });
     }
-    return Response.json({ error: (e as Error).message }, { status: 500 });
   }
 
   // Per decision_01KRPRDR1AD7S1RP6E69BQDB2G each classified rule
-  // becomes a first-class Rule entity (kind: authoring | guidance)
-  // tagged with the scope via an `in_scope_of` edge.
+  // becomes a first-class Rule entity tagged with the scope via an
+  // `in_scope_of` edge. Predicate-bearing rows are authoring rules for
+  // this scope because createRuleInDoco cites them from Scope.gated_by.
   if (!meta?.docoId) {
     return Response.json({ error: "Doco metadata missing." }, { status: 500 });
   }

@@ -252,14 +252,16 @@ HOW AGENTS USE WATCHED SCOPES
   (Decision, Intent, Action, Rule, ...).
 
 ADDING RULES IN PLAIN ENGLISH
-  Once a scope exists, author rules by POSTing prose:
+  Once a scope exists, author rules by POSTing prose plus the caller's
+  intended rule kind:
 
     POST ${baseUrl}/${handle}/api/scopes/<scope_id>/rules.json
     Content-Type: application/json
-    { "prose": "Every Decision should have an Intent." }
+    { "kind": "authoring", "prose": "Every Decision should have an Intent." }
 
-  The server runs the prose through an LLM classifier that:
-    - splits multi-rule prose into separate atomic rules,
+  For \`kind: "authoring"\`, the server runs the prose through an LLM
+  classifier that:
+    - splits authoring prose into separate atomic rules,
     - maps each to the most-fitting deterministic predicate
       (requires_edge / forbids_edge / requires_field /
       forbids_field / mandatory_scope) when one fits — these
@@ -269,15 +271,20 @@ ADDING RULES IN PLAIN ENGLISH
       LLM-judged at capture time and reject the write on a
       no verdict.
 
+  For \`kind: "guidance"\`, the server does not classify or split the
+  prose. It saves the submitted prose as one guidance Rule, exactly as
+  contributors should read it.
+
   Response (HTTP 201):
     {
       "added": [
         {
           "id": "rule_<ULID>",
+          "bucket": "authoring" | "guidance",
           "summary": "...",
           "url": "${baseUrl}/${handle}/rule/rule_<ULID>",
           "text": "...",
-          "rule": { "kind": "...", ... }
+          "rule": { "kind": "...", ... } // authoring only
         }
       ],
       "added_authoring": <count>,
@@ -291,18 +298,19 @@ ADDING RULES IN PLAIN ENGLISH
   authoring rule lives.
 
   Errors:
-    400  prose missing/empty, JSON malformed.
+    400  kind missing/invalid, prose missing/empty, JSON malformed.
     404  scope id not found.
-    503  classifier unavailable (host can't reach OpenAI). The host's
-         OPENAI_API_KEY is load-bearing — failures REJECT the operation
-         rather than silently saving the prose as probabilistic.
+    503  authoring classifier unavailable (host can't reach OpenAI).
+         The host's OPENAI_API_KEY is load-bearing for authoring rules —
+         failures REJECT the operation rather than silently saving the
+         prose as probabilistic.
 
   Example:
     curl -sS -X POST \\
       -H "Content-Type: application/json" \\
       -H "Authorization: Bearer $DOCO_TOKEN" \\
       ${baseUrl}/${handle}/api/scopes/scope_<ULID>/rules.json \\
-      -d '{ "prose": "Every Decision should have an Intent, and bugs should link to a Rule." }'
+      -d '{ "kind": "authoring", "prose": "Every Decision should have an Intent, and bugs should link to a Rule." }'
 
 RELATED
   POST ${baseUrl}/${handle}/api/intents.json     capture an Intent
@@ -339,9 +347,8 @@ BODY (JSON) — write
 SUCCESS RESPONSE — write (HTTP 200, application/json)
   {
     "ok": true,
-    "owner_slug": "...",
-    "doco_slug": "<possibly-new-slug>",
     "doco_id": "doco_...",
+    "doco_handle": "<possibly-new-handle>",
     "display_name": "...",
     "description": "...",
     "visibility": "private" | "public"

@@ -4,28 +4,27 @@
 // POST /<doco-handle>/api/scopes/<scope_id>/rules.json endpoint.
 //
 // Per decision_01KRPET95G2QNTPCR0YWAKSCH5 the project owner describes
-// the rule in their own words; the host's LLM classifier maps that onto
-// the most-fitting deterministic predicate (requires_edge,
-// requires_field, mandatory_scope, …) when one fits, otherwise persists
-// the prose as a probabilistic rule the LLM judges at capture time. The
-// classifier ALWAYS rejects when the host can't reach OpenAI — there is
-// no silent fallback. Multi-rule prose splits into separate rows.
+// the rule in their own words and declares whether it is an authoring
+// rule or a guidance rule. Authoring prose goes through the LLM classifier
+// and may split into separate authoring rows. Guidance prose is saved as
+// one verbatim Rule.
 import { defineCommand } from "citty";
-import { c, cross } from "../output.js";
 import { requireDocoConfig } from "../env.js";
+import { c, cross } from "../output.js";
 
 // Host comes from requireDocoConfig() so DOCO_HOST overrides for local dev.
 
 interface ClassifiedRow {
+  bucket?: string;
   text: string;
-  rule: { kind: string };
+  rule?: { kind: string };
 }
 
 const addRuleCmd = defineCommand({
   meta: {
     name: "add-rule",
     description:
-      "Add one or more rules to a scope from plain English prose. The host's LLM classifier splits multi-rule prose and picks the most-fitting deterministic predicate, or keeps the prose verbatim as a probabilistic rule.",
+      "Add a guidance rule or one or more authoring rules to a scope from plain English prose.",
   },
   args: {
     "scope-id": {
@@ -36,15 +35,25 @@ const addRuleCmd = defineCommand({
     prose: {
       type: "string",
       description:
-        "Required. The rule(s) in plain English. Multi-rule sentences (\"A and B should …\") are split automatically.",
+        "Required. The rule(s) in plain English. Guidance is saved as-is; authoring prose may split into separate checks.",
       required: true,
+    },
+    kind: {
+      type: "string",
+      description: "Optional. `authoring` (default) or `guidance`.",
+      required: false,
     },
   },
   async run({ args }) {
     const scopeId = String(args["scope-id"]);
     const prose = String(args.prose);
+    const kind = String(args.kind ?? "authoring");
     if (!scopeId.startsWith("scope_")) {
       console.error(cross(`--scope-id must start with 'scope_' (got '${scopeId}').`));
+      process.exit(2);
+    }
+    if (kind !== "authoring" && kind !== "guidance") {
+      console.error(cross("--kind must be either 'authoring' or 'guidance'."));
       process.exit(2);
     }
     if (prose.trim().length === 0) {
@@ -59,7 +68,7 @@ const addRuleCmd = defineCommand({
       resp = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ prose }),
+        body: JSON.stringify({ kind, prose }),
       });
     } catch (e) {
       console.error(cross(`Network error POSTing ${url}: ${(e as Error).message}`));
@@ -88,7 +97,7 @@ const addRuleCmd = defineCommand({
       // Print a one-liner per classified rule so the operator sees what
       // got persisted before the footer-line block.
       for (const c of obj.added) {
-        console.log(`  + [${c.rule.kind}] ${c.text}`);
+        console.log(`  + [${c.rule?.kind ?? c.bucket ?? "guidance"}] ${c.text}`);
       }
     }
     if (Array.isArray(obj.footer_lines) && obj.footer_lines.length > 0) {
@@ -243,7 +252,7 @@ export const scopeCmd = defineCommand({
   meta: {
     name: "scope",
     description:
-      "Scope operations that don't fit the uniform PATCH/POST shape: `add-rule` for prose-driven rule authoring; v7 bulk verbs `activate` / `draft` / `validate` / `exclude-rule`.",
+      "Scope operations that don't fit the uniform PATCH/POST shape: `add-rule` for prose-driven rule creation; v7 bulk verbs `activate` / `draft` / `validate` / `exclude-rule`.",
   },
   subCommands: {
     "add-rule": addRuleCmd,

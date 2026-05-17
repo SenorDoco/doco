@@ -1205,7 +1205,7 @@ function RuleSectionCard({
             className="inline-flex shrink-0 items-center gap-1 rounded-md border border-border px-2.5 py-1 text-xs font-semibold text-foreground hover:bg-card"
           >
             <Plus className="h-3 w-3" aria-hidden="true" />
-            Add rule
+            {kind === "guidance" ? "Add guidance" : "Add authoring"}
           </Link>
         </div>
       </CardHeader>

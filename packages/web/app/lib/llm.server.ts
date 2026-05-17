@@ -1,3 +1,7 @@
+import { existsSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { loadEnvFile } from "node:process";
+
 /**
  * Minimal OpenAI client for scope suggestions (ADR-082 follow-up).
  *
@@ -13,9 +17,6 @@
  * even without an LLM available; suggestions are a *helpful add-on*, never
  * the only way to add scopes.
  */
-import { loadEnvFile } from "node:process";
-import { existsSync } from "node:fs";
-import { dirname, join } from "node:path";
 
 function loadDotEnvFromAncestors(): void {
   let dir = process.cwd();
@@ -81,23 +82,15 @@ Rules:
 - Use slash-paths only when there's a real parent-child relationship.
 - Output JSON only: {"suggestions": [{name, purpose, guidelines, reasoning}, ...]}.`;
 
-export async function suggestScopes(
-  opts: SuggestScopesOptions,
-): Promise<ScopeSuggestion[]> {
+export async function suggestScopes(opts: SuggestScopesOptions): Promise<ScopeSuggestion[]> {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) return [];
   const description = opts.description.trim();
   if (description.length < 5) return [];
 
-  const userPrompt =
-    `Project description: ${description}\n\n` +
-    (opts.existingScopeNames && opts.existingScopeNames.length > 0
-      ? `Existing scopes (avoid duplicating): ${opts.existingScopeNames.join(", ")}\n\n`
-      : "") +
-    (opts.templateNames && opts.templateNames.length > 0
-      ? `Templates the user picks separately (avoid these): ${opts.templateNames.join(", ")}\n\n`
-      : "") +
-    `Propose 5-8 project-specific scopes.`;
+  const userPrompt = `Project description: ${description}
+
+${opts.existingScopeNames && opts.existingScopeNames.length > 0 ? `Existing scopes (avoid duplicating): ${opts.existingScopeNames.join(", ")}\n\n` : ""}${opts.templateNames && opts.templateNames.length > 0 ? `Templates the user picks separately (avoid these): ${opts.templateNames.join(", ")}\n\n` : ""}Propose 5-8 project-specific scopes.`;
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), opts.timeoutMs ?? 30_000);
@@ -136,10 +129,8 @@ export async function suggestScopes(
       .map((s): ScopeSuggestion | null => {
         const name = typeof s.name === "string" ? s.name.trim() : "";
         const purpose = typeof s.purpose === "string" ? s.purpose.trim() : "";
-        const guidelines =
-          typeof s.guidelines === "string" ? s.guidelines.trim() : "";
-        const reasoning =
-          typeof s.reasoning === "string" ? s.reasoning.trim() : "";
+        const guidelines = typeof s.guidelines === "string" ? s.guidelines.trim() : "";
+        const reasoning = typeof s.reasoning === "string" ? s.reasoning.trim() : "";
         if (!NAME_RE.test(name)) return null;
         if (!purpose || !guidelines) return null;
         return { name, purpose, guidelines, reasoning };
@@ -211,18 +202,19 @@ export async function suggestImplicitEdges(
 ): Promise<ImplicitEdgeSuggestion[]> {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey || opts.candidates.length === 0) return [];
-  const userPrompt =
-    `SOURCE:\n` +
-    `  id: ${opts.source.id}\n` +
-    `  node_type: ${opts.source.node_type}\n` +
-    `  summary: ${opts.source.summary}\n\n` +
-    `CANDIDATES (${opts.candidates.length}):\n` +
-    opts.candidates
-      .map(
-        (c) =>
-          `  - id: ${c.id}\n    type: ${c.node_type}\n${c.name ? `    name: ${c.name}\n` : ""}    summary: ${c.summary}`,
-      )
-      .join("\n");
+  const candidatesText = opts.candidates
+    .map(
+      (c) =>
+        `  - id: ${c.id}\n    type: ${c.node_type}\n${c.name ? `    name: ${c.name}\n` : ""}    summary: ${c.summary}`,
+    )
+    .join("\n");
+  const userPrompt = `SOURCE:
+  id: ${opts.source.id}
+  node_type: ${opts.source.node_type}
+  summary: ${opts.source.summary}
+
+CANDIDATES (${opts.candidates.length}):
+${candidatesText}`;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), opts.timeoutMs ?? 30_000);
   try {
@@ -353,13 +345,14 @@ export async function judgeProbabilisticRule(
   };
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) return softFail("OPENAI_API_KEY missing on host.");
-  const userPrompt =
-    `SPEC: ${opts.spec}\n\n` +
-    `ENTITY:\n` +
-    `  id: ${opts.entity.id}\n` +
-    `  node_type: ${opts.entity.node_type}\n` +
-    `  summary: ${opts.entity.summary}\n` +
-    (opts.entity.body ? `  body:\n${opts.entity.body.slice(0, 2000)}\n` : "");
+  const bodyText = opts.entity.body ? `  body:\n${opts.entity.body.slice(0, 2000)}\n` : "";
+  const userPrompt = `SPEC: ${opts.spec}
+
+ENTITY:
+  id: ${opts.entity.id}
+  node_type: ${opts.entity.node_type}
+  summary: ${opts.entity.summary}
+${bodyText}`;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), opts.timeoutMs ?? 30_000);
   try {
@@ -402,16 +395,17 @@ export async function judgeProbabilisticRule(
 // (decision_01KRPMC7CVDA9WZ5DKH81TVAAA, extends
 // decision_01KRPET95G2QNTPCR0YWAKSCH5).
 //
-// The author types a mix of "every Decision should have an Intent" (a
-// gate fired at write time — an *authoring rule*) and "when writing a
-// bugfix Decision, lead with the symptom" (a directive the agent reads
-// while working — a *guidance rule*). The classifier:
-//   1. Splits multi-rule prose into atomic items.
-//   2. Buckets each into "authoring" or "guidance".
+// The author types "every Decision should have an Intent" (a gate fired
+// at write time — an *authoring rule*) or "when writing a bugfix Decision,
+// lead with the symptom" (a directive the agent reads while working — a
+// *guidance rule*). The classifier:
+//   1. Buckets the prose into "authoring" or "guidance".
+//   2. Splits authoring prose into atomic items.
 //   3. For authoring, maps to the most-fitting deterministic predicate
 //      (requires_edge / forbids_edge / requires_field / forbids_field /
 //      mandatory_scope) or falls back to probabilistic.
-//   4. For guidance, persists the verbatim prose — no predicate.
+//   4. For guidance, persists the whole verbatim prose — no predicate,
+//      and no splitting.
 //
 // Always throws on LLM unavailability — both surfaces (web preview,
 // API commit) reject the operation instead of silently degrading.
@@ -517,7 +511,11 @@ A Scope carries two kinds of rules:
 
 You will see a project owner's prose. Your job:
 
-1. SPLIT the prose into atomic rules. If they wrote "A and B", emit TWO rules.
+1. DECIDE whether the project owner is asking for guidance or authoring behavior.
+
+   If the prose is GUIDANCE, emit exactly ONE guidance rule whose text is the project owner's complete prose, trimmed only for leading/trailing whitespace. Do NOT split guidance by sentence, bullet, conjunction, paragraph, or "A and B". Guidance rules are read as prose and must be saved as-is.
+
+   Only split AUTHORING prose into atomic rules. If they wrote "A and B" as enforceable checks, emit TWO authoring rules. If a rare mixed submission contains both authoring checks and guidance prose, keep the guidance prose as one guidance item.
 
 2. BUCKET each atomic rule into "authoring" or "guidance":
    - AUTHORING when the rule names a structural property of the node ("must have an X", "should cite a Y", "every Decision should declare lifecycle"). The engine can fire this as a predicate or as an LLM judgement at write time.
@@ -583,19 +581,22 @@ OUTPUT JSON ONLY in this shape:
 
 No commentary. No prose outside the JSON.`;
 
-export async function classifyRuleProse(
-  opts: ClassifyRuleProseOptions,
-): Promise<ClassifiedRule[]> {
+export async function classifyRuleProse(opts: ClassifyRuleProseOptions): Promise<ClassifiedRule[]> {
   const prose = opts.prose.trim();
   if (!prose) throw new LlmUnavailableError("Empty prose — nothing to classify.");
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) throw new LlmUnavailableError("OPENAI_API_KEY missing on host.");
 
-  const userPrompt =
-    `Scope this rule attaches to: ${opts.scopeName}\n\n` +
-    `Available scopes on this Doco (for mandatory_scope resolution):\n` +
-    opts.availableScopes.map((s) => `  - id: ${s.id}, name: ${s.name}`).join("\n") +
-    `\n\nProject owner's prose:\n${prose}`;
+  const availableScopesText = opts.availableScopes
+    .map((s) => `  - id: ${s.id}, name: ${s.name}`)
+    .join("\n");
+  const userPrompt = `Scope this rule attaches to: ${opts.scopeName}
+
+Available scopes on this Doco (for mandatory_scope resolution):
+${availableScopesText}
+
+Project owner's prose:
+${prose}`;
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), opts.timeoutMs ?? 30_000);
@@ -691,7 +692,9 @@ function normalizeClassifiedRow(raw: unknown): ClassifiedRule | null {
       const validTarget =
         target_node_type === ""
           ? undefined
-          : CLASSIFIER_NODE_TYPES.includes(target_node_type as (typeof CLASSIFIER_NODE_TYPES)[number])
+          : CLASSIFIER_NODE_TYPES.includes(
+                target_node_type as (typeof CLASSIFIER_NODE_TYPES)[number],
+              )
             ? target_node_type
             : null;
       if (validTarget === null) return probabilisticFallback();
