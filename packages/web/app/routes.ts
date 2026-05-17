@@ -155,6 +155,8 @@ export default [
   route(":ownerSlug/:docoSlug", "routes/$ownerSlug.$docoSlug._index.tsx"),
   route(":ownerSlug/:docoSlug/status.json", "routes/$ownerSlug.$docoSlug.status[.]json.tsx"),
   route(":ownerSlug/:docoSlug/settings", "routes/$ownerSlug.$docoSlug.settings.tsx"),
+  route(":ownerSlug/:docoSlug/invites", "routes/$ownerSlug.$docoSlug.invites.tsx"),
+  route(":ownerSlug/:docoSlug/api/invites.json", "routes/$ownerSlug.$docoSlug.api.invites[.]json.tsx"),
   route(":ownerSlug/:docoSlug/api/decisions.json", "routes/$ownerSlug.$docoSlug.api.decisions[.]json.tsx"),
   route(":ownerSlug/:docoSlug/api/decisions/:id.json", "routes/$ownerSlug.$docoSlug.api.decisions.$id[.]json.tsx"),
   route(":ownerSlug/:docoSlug/api/intents/:id.json", "routes/$ownerSlug.$docoSlug.api.intents.$id[.]json.tsx"),

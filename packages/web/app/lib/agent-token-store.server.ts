@@ -481,6 +481,30 @@ export class TokenStore {
     await this.save(file);
     return true;
   }
+
+  /**
+   * List every Invite ever issued for a Doco, freshest first. Used by
+   * the per-Doco /invites page (web management UI). Auto-expires past-TTL
+   * pending rows on read so the UI reflects the same status the redeem
+   * path would see.
+   */
+  async listInvitesForDoco(docoId: EntityId<"doco">): Promise<Invite[]> {
+    const file = await this.load();
+    let mutated = false;
+    const now = Date.now();
+    const matches: Invite[] = [];
+    for (const t of file.tokens) {
+      if (t.kind !== "invite") continue;
+      if (t.doco_id !== docoId) continue;
+      if (t.status === "pending" && Date.parse(t.expires_at) < now) {
+        t.status = "expired";
+        mutated = true;
+      }
+      matches.push(t);
+    }
+    if (mutated) await this.save(file);
+    return matches.sort((a, b) => Date.parse(b.issued_at) - Date.parse(a.issued_at));
+  }
 }
 
 /** Resolve a Bearer token from an Authorization header. */

@@ -363,13 +363,21 @@ export default function DocoHome({
       <SiteHeader mode="host" me={me} docoScope={{ ownerSlug, docoSlug }} />
       <main className="mx-auto max-w-6xl px-6 py-6 space-y-5">
         {/* Bare title — no card wrapper. */}
-        <div className="space-y-1">
-          <h1 className="text-lg font-semibold tracking-tight">
-            <Link to={allSearchHref} className="hover:text-primary">
-              {ownerSlug}/{docoSlug}
-            </Link>
-          </h1>
-          <p className="font-mono text-sm text-muted-foreground">{docoId}</p>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="space-y-1">
+            <h1 className="text-lg font-semibold tracking-tight">
+              <Link to={allSearchHref} className="hover:text-primary">
+                {ownerSlug}/{docoSlug}
+              </Link>
+            </h1>
+            <p className="font-mono text-sm text-muted-foreground">{docoId}</p>
+          </div>
+          <Link
+            to={`/${ownerSlug}/${docoSlug}/invites`}
+            className="shrink-0 rounded-md border border-border px-3 py-1.5 text-xs font-semibold hover:bg-input"
+          >
+            Invite collaborators
+          </Link>
         </div>
 
         <div className="grid grid-cols-1 gap-5 min-[840px]:grid-cols-12">

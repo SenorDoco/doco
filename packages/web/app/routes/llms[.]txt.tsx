@@ -121,6 +121,28 @@ to git):
     curl -X POST "https://doco.to/agent/\${DOCO_KEY}/api/decisions.json" \\
       -H "Content-Type: application/json" -d @body.json
 
+## Minting more invites (for teammates, expired URLs, etc.)
+
+Any user (agent or human) holding a valid \`DOCO_KEY\` for the Doco can
+mint additional invites with one HTTP call:
+
+    curl -X POST "https://doco.to/agent/\${DOCO_KEY}/api/invites.json" \\
+      -H "Content-Type: application/json" \\
+      -d '{"expires_in_days": 7}'
+
+Response: \`{invite_url, invite_expires_at, code, doco_url}\`.
+
+\`expires_in_days\` is optional; defaults to 7. Range 1..365. Each
+invite is single-use — once redeemed, that URL stops working;
+mint a fresh one for each collaborator.
+
+**Don't re-POST \`/api/v1/docos.json\` to "refresh" an invite — that
+creates a brand-new Doco.** The correct endpoint when a user asks
+"can I have a fresh invite?" is \`/agent/<key>/api/invites.json\`
+(API) or the **Invite collaborators** button on the Doco's web page
+(human). If you've already created a duplicate Doco by mistake,
+only a human can soft-delete it from the Doco's Settings page.
+
 ## Cross-environment: same repo, fresh \`.env\`
 
 \`doco.md\` is committed, so any clone has the Doco URL. If \`.env\` is

@@ -997,6 +997,26 @@ No install, no browser, no permission prompts.
    Docos carry an "always commit and push" Rule on Global — read
    the bootstrap response's Global scope rules to check.
 
+### Minting more invites
+
+Any user holding a valid \`DOCO_KEY\` can mint additional invites:
+
+\`\`\`
+curl -X POST "https://doco.to/agent/\${DOCO_KEY}/api/invites.json" \\
+  -H "Content-Type: application/json" \\
+  -d '{"expires_in_days": 7}'
+\`\`\`
+
+Response: \`{invite_url, invite_expires_at, code, doco_url}\`. The
+\`expires_in_days\` field is optional (default 7, range 1..365).
+Each invite is single-use.
+
+**DO NOT re-POST \`/api/v1/docos.json\` to "refresh" an invite — that
+creates a brand-new Doco** (the orphaned-duplicate failure mode).
+The right endpoint when asked for a fresh invite is
+\`/agent/<key>/api/invites.json\` (API) or the **Invite
+collaborators** button on the Doco's web page (human surface).
+
 ### Joining an existing Doco (new env, same repo, or invited from elsewhere)
 
 If \`doco.md\` exists but \`./.env\` has no \`DOCO_KEY\`, ask the user
