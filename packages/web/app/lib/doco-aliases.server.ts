@@ -1,4 +1,4 @@
-import { getDocoBySlug, getDocoByHandle } from "@doco/db";
+import { getDocoByHandle } from "@doco/db";
 
 export interface DocoSlugResolution {
   ownerSlug: string;
@@ -6,11 +6,21 @@ export interface DocoSlugResolution {
   redirected: boolean;
 }
 
+/**
+ * @deprecated Phase 3a — the slug pair no longer exists in storage. The
+ * resolver now tries two handle shapes: `<owner>-<slug>` (the migration
+ * synthesis, correct for every legacy Doco) and `<slug>` alone (the new
+ * `requested_id`-only handle for API-created Docos). Returns the
+ * legacy slug pair on success so existing call sites keep working;
+ * new code should use `resolveDocoHandleAlias` or `getDocoByHandle`.
+ */
 export async function resolveDocoSlugAlias(
   ownerSlug: string,
   docoSlug: string,
 ): Promise<DocoSlugResolution | null> {
-  const row = await getDocoBySlug(ownerSlug, docoSlug);
+  const row =
+    (await getDocoByHandle(`${ownerSlug}-${docoSlug}`)) ||
+    (await getDocoByHandle(docoSlug));
   return row ? { ownerSlug, docoSlug, redirected: false } : null;
 }
 

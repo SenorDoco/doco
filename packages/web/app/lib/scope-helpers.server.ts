@@ -1,11 +1,11 @@
 // Server-only helpers for scope reads. Reads scopes from PG.
 import { basename, dirname } from "node:path";
-import { getDocoBySlug, withClient } from "@doco/db";
+import { getDocoByHandle, withClient } from "@doco/db";
 import { parse as parseYaml } from "yaml";
 
 export interface DocoMetadata {
   docoId: string;
-  /** Phase 1 of slug-removal: public globally-unique handle. */
+  /** Public globally-unique URL identifier. */
   handle: string;
   ownerId: string;
   displayName: string;
@@ -16,14 +16,22 @@ export interface DocoMetadata {
 
 /**
  * Read a Doco's metadata from Postgres. The `docoDir` argument is a
- * placeholder shaped `<rootDir>/docos/<owner>/<slug>` (see `docoPath` in
- * db.server.ts), so the last two path segments are the slugs.
+ * placeholder built by `docoPath(ownerSlug, docoSlug)` — its last two
+ * segments are the legacy slug pair. Phase 3a dropped those columns
+ * from storage; we now resolve the row by `handle` instead. Two
+ * lookup candidates cover every shape:
+ *   1. `<ownerSlug>-<docoSlug>` — what the migration set for every
+ *      pre-3a row.
+ *   2. `<docoSlug>` — what newer API-created Docos use (their handle
+ *      equals their requested_id).
  */
 export async function readDocoMetadata(docoDir: string): Promise<DocoMetadata | null> {
   const docoSlug = basename(docoDir);
   const ownerSlug = basename(dirname(docoDir));
   if (!ownerSlug || !docoSlug) return null;
-  const row = await getDocoBySlug(ownerSlug, docoSlug);
+  const row =
+    (await getDocoByHandle(`${ownerSlug}-${docoSlug}`)) ||
+    (await getDocoByHandle(docoSlug));
   if (!row) return null;
   let description = "";
   let displayName = row.name ?? "";
