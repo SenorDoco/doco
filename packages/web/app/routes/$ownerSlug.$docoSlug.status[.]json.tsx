@@ -39,6 +39,7 @@ export async function loader({
     owner_slug: ownerSlug,
     doco_slug: docoSlug,
     doco_id: meta.docoId,
+    doco_handle: meta.handle || `${ownerSlug}-${docoSlug}`,
     display_name: meta.displayName || docoSlug,
     visibility: meta.visibility,
     last_updated_at: latest,

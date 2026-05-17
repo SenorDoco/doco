@@ -31,19 +31,24 @@ Step 1 — create the Doco:
 
     curl -fsS -X POST ${baseUrl}/api/v1/docos.json \\
       -H "Content-Type: application/json" \\
-      -d '{"slug": "<lowercase-kebab>", "description": "<short prose>"}'
+      -d '{"requested_id": "<lowercase-kebab>", "description": "<short prose>"}'
 
     Response (JSON):
     {
       "doco_id":           "doco_01K…",
-      "doco_url":          "${baseUrl}/by-id/doco_01K…/",
+      "doco_handle":       "<lowercase-kebab>",
+      "doco_url":          "${baseUrl}/<lowercase-kebab>/",
       "doco_slug":         "<owner>/<slug>",
       "doco_key":          "<64-hex>",
       "invite_url":        "${baseUrl}/invite/<64-hex>",
       "invite_expires_at": "<ISO timestamp, 7 days out>"
     }
 
-Both fields in the request are optional. Omitted slug auto-generates.
+Both fields in the request are optional. \`requested_id\` is the
+human-readable URL id you'd like; the host auto-suffixes (-2, -3, …)
+on global collision and writes the actually-used value to
+\`doco_handle\` in the response. Omitted id auto-generates. The
+legacy field name \`slug\` is still accepted as an alias.
 
 Step 2 — write ./.env (gitignored). Create the file if missing; if the
 project already has an .env, append to it without clobbering existing

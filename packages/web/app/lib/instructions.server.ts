@@ -418,8 +418,11 @@ prose with no tally and no top-of-reply indicator. Stacking a tally
 on every intermediate chunk turns the protocol into clutter instead
 of an end-of-turn dial-tone.
 
-- \`<owner>/<doco>\` comes from the bootstrap response (\`owner_slug\`
-  and \`doco_slug\`). Cache it from the session-load fetch.
+- \`<owner>/<doco>\` comes from the bootstrap response. Prefer the
+  globally-unique \`doco_handle\` (phase-1 of slug removal — the
+  field is set on every response); fall back to the legacy
+  \`owner_slug\`/\`doco_slug\` pair when consuming older responses.
+  Cache it from the session-load fetch.
 - \`<N>\` counts distinct entities touched this turn (PATCH-3-fields-of-1-Decision = 1).
 - \`<N>\` MUST be wrapped in markdown bold (\`**N**\`).
 - Singular form for \`**1**\`; plural otherwise (zero is plural).
@@ -430,9 +433,10 @@ of an end-of-turn dial-tone.
 Two pieces of information, two files:
 
 - **\`doco.md\`** at repo root, committed. Carries the Doco URL —
-  \`https://doco.to/by-id/<doco_id>/\`. Non-secret, public-facing, the
-  "this is the project's Doco" marker any teammate or future agent
-  sees on their first clone.
+  \`https://doco.to/<doco_handle>/\` (the human-readable handle the
+  host minted at create time; phase-1 of slug removal). Non-secret,
+  public-facing, the "this is the project's Doco" marker any
+  teammate or future agent sees on their first clone.
 - **\`DOCO_KEY\`** in \`./.env\`, gitignored. The 64-hex credential.
   Treat it like a Slack webhook URL or a personal iCal feed —
   share-by-revealing, rotated if leaked.
@@ -918,13 +922,18 @@ No install, no browser, no permission prompts.
    \`\`\`
    curl -fsS -X POST https://doco.to/api/v1/docos.json \\
      -H "Content-Type: application/json" \\
-     -d '{"slug": "<lowercase-kebab>", "description": "<short prose>"}'
+     -d '{"requested_id": "<lowercase-kebab>", "description": "<short prose>"}'
    \`\`\`
-   Both fields optional. Response:
+   Both fields optional. \`requested_id\` is the human-readable URL
+   id you'd like (the host auto-suffixes \`-2\`, \`-3\`, … on global
+   collision and reports the actually-used value as \`doco_handle\`
+   in the response). The legacy field \`slug\` is still accepted as
+   an alias. Response:
    \`\`\`
    {
      "doco_id":           "doco_01K…",
-     "doco_url":          "https://doco.to/by-id/doco_01K…/",
+     "doco_handle":       "<lowercase-kebab>",
+     "doco_url":          "https://doco.to/<doco_handle>/",
      "doco_slug":         "<owner>/<slug>",
      "doco_key":          "<64-hex>",
      "invite_url":        "https://doco.to/invite/<64-hex>",
@@ -1029,10 +1038,11 @@ redeem:
 curl -fsS -X POST https://doco.to/api/v1/invites/<code>/redeem.json \\
   -H "Content-Type: application/json" -d '{}'
 \`\`\`
-The response carries \`doco_key\`, \`doco_url\`, \`doco_slug\`, plus two
-walk-this-recipe fields: \`next_steps_for_agent\` (ordered checklist
-of file writes + bootstrap fetch) and \`user_message_block\` (verbatim
-prose to render to whoever pasted the invite). Walk the checklist
+The response carries \`doco_key\`, \`doco_handle\`, \`doco_url\`,
+\`doco_slug\`, plus two walk-this-recipe fields:
+\`next_steps_for_agent\` (ordered checklist of file writes +
+bootstrap fetch) and \`user_message_block\` (verbatim prose to render
+to whoever pasted the invite). Walk the checklist
 top-to-bottom, then render the message block. Don't skip either —
 the user pasted you an invite but doesn't know exactly what you'll
 do with it; the block tells them.

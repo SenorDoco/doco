@@ -149,6 +149,8 @@ const docoNewCmd = defineCommand({
     console.log(checkmark(`Doco created: ${rec.ownerSlug}/${rec.docoSlug}`));
     console.log(`  ${c.dim("path:")}      ${rec.path}`);
     console.log(`  ${c.dim("doco id:")}  ${rec.docoId}`);
+    console.log(`  ${c.dim("handle:")}    ${rec.handle}`);
+    console.log(`  ${c.dim("url:")}       /${rec.handle}`);
     console.log(`  ${c.dim("owner:")}     ${rec.ownerKind} (${rec.ownerId})`);
     console.log();
     console.log(c.dim(`Next: cd ${rec.path} && doco validate && doco reindex`));

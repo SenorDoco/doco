@@ -85,11 +85,16 @@ export async function action({
 
   const url = new URL(request.url);
   const origin = `${url.protocol}//${url.host}`;
+  // Phase 1 of slug-removal: prefer the handle URL; fall back to the
+  // ULID /by-id/ form for pre-handle Docos.
+  const docoUrl = meta.handle
+    ? `${origin}/${meta.handle}/`
+    : `${origin}/by-id/${meta.docoId}/`;
   return Response.json({
     invite_url: `${origin}/invite/${invite.code}`,
     invite_expires_at: invite.expires_at,
     code: invite.code,
-    doco_url: `${origin}/by-id/${meta.docoId}/`,
+    doco_url: docoUrl,
   });
 }
 

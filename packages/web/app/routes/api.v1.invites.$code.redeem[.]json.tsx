@@ -119,9 +119,13 @@ export async function action({
 
   const url = new URL(request.url);
   const origin = `${url.protocol}//${url.host}`;
-  const docoUrl = `${origin}/by-id/${doco.id}/`;
+  // Phase 1 of slug-removal: prefer the handle URL; fall back to
+  // /by-id/<ULID>/ for pre-handle Docos.
+  const handle = doco.handle || `${doco.owner_slug}-${doco.doco_slug}`;
+  const docoUrl = doco.handle ? `${origin}/${doco.handle}/` : `${origin}/by-id/${doco.id}/`;
   return Response.json({
     doco_id: doco.id,
+    doco_handle: handle,
     doco_url: docoUrl,
     doco_slug: `${doco.owner_slug}/${doco.doco_slug}`,
     doco_key: session.token,
