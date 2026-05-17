@@ -231,7 +231,7 @@ export async function loadDocoForRead(
       });
     }
   }
-  const dir = docoPath(row.owner_slug, row.handle);
+  const dir = docoPath(row.handle);
   const meta = await readDocoMetadata(dir);
   if (!meta) throw notFoundForAccessDenied(handleOrId, "");
   const me = await getCurrentPrincipalAsync(request);

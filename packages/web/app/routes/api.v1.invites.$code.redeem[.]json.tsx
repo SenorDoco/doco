@@ -119,15 +119,11 @@ export async function action({
 
   const url = new URL(request.url);
   const origin = `${url.protocol}//${url.host}`;
-  // Phase 1 of slug-removal: prefer the handle URL; fall back to
-  // /by-id/<ULID>/ for pre-handle Docos.
-  const handle = doco.handle || `${doco.owner_slug}-${doco.doco_slug}`;
-  const docoUrl = doco.handle ? `${origin}/${doco.handle}/` : `${origin}/by-id/${doco.id}/`;
+  const docoUrl = `${origin}/${doco.handle}/`;
   return Response.json({
     doco_id: doco.id,
-    doco_handle: handle,
+    doco_handle: doco.handle,
     doco_url: docoUrl,
-    doco_slug: `${doco.owner_slug}/${doco.doco_slug}`,
     doco_key: session.token,
     /**
      * Next-step guidance for the redeeming agent — what to do with the
@@ -148,7 +144,7 @@ export async function action({
      * them at the human-friendly Doco URL for browsing.
      */
     user_message_block: [
-      `✅ I claimed access to **${doco.owner_slug}/${doco.doco_slug}** (Doco at ${docoUrl}).`,
+      `✅ I claimed access to **${doco.handle}** (Doco at ${docoUrl}).`,
       ``,
       `I saved my personal access key to \`./.env\` (gitignored) — from here I fetch the protocol on session start, search prior decisions before drafting new ones, and capture meaningful changes as Doco nodes.`,
       ``,

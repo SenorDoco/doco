@@ -159,13 +159,13 @@ export const loginCmd = defineCommand({
           status: string;
           token?: string;
           principal_id?: string;
-          owner_slug?: string;
-          doco_slug?: string | null;
+          owner_username?: string;
+          doco_handle?: string | null;
           doco_id?: string | null;
         };
-        if (body.status === "approved" && body.token && body.owner_slug) {
+        if (body.status === "approved" && body.token && body.owner_username) {
           console.log();
-          console.log(checkmark(`Authorized by ${c.warn(body.owner_slug)}.`));
+          console.log(checkmark(`Authorized by ${c.warn(body.owner_username)}.`));
           // DOCO_TOKEN is secret → .env (gitignored). DOCO_ID is a
           // non-secret coordinator → AGENTS.md header (committed). The
           // install step below stamps DOCO_ID into AGENTS.md via the
@@ -222,9 +222,9 @@ export const loginCmd = defineCommand({
             console.error(c.dim(`(install-agent-bootstrap failed: ${(e as Error).message}. Run \`doco install-agent-bootstrap\` manually.)`));
           }
 
-          if (body.doco_slug) {
+          if (body.doco_handle) {
             console.log();
-            console.log(c.dim(`Doco URL: ${normalizedHost}/${body.owner_slug}/${body.doco_slug}`));
+            console.log(c.dim(`Doco URL: ${normalizedHost}/${body.doco_handle}`));
           }
           console.log();
           console.log(c.dim("Next, in this Claude Code session (no restart needed):"));

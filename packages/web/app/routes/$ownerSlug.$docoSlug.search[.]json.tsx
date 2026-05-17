@@ -157,7 +157,7 @@ export async function loader({
   const ctx = await loadDocoForRead(request, handle);
   const url = new URL(request.url);
   const q = (url.searchParams.get("q") ?? "").trim();
-  const docoDir = docoPath(ownerSlug, docoSlug);
+  const docoDir = docoPath(handle);
 
   return withClient(async (c) => {
     const facets = await computeFilterFacets(c, ctx.meta.docoId);

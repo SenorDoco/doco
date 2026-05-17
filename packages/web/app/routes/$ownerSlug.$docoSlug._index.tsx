@@ -69,7 +69,7 @@ export async function loader({
   const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
   const ctx = await loadDocoForRead(request, handle);
   const me = ctx.me;
-  const dir = docoPath(ownerSlug, docoSlug);
+  const dir = docoPath(handle);
   const scopeDetails = await listScopeDetails(dir);
   const scopeById = new Map(scopeDetails.map((s) => [s.id, s]));
   return withClient(async (c) => {
@@ -461,13 +461,13 @@ interface RecentSearch {
   ts: number;
 }
 
-function recentSearchesKey(ownerSlug: string, docoSlug: string): string {
-  return `doco:recent-searches:${ownerSlug}/${docoSlug}`;
+function recentSearchesKey(handle: string): string {
+  return `doco:recent-searches:${handle}`;
 }
 
-function loadRecent(ownerSlug: string, docoSlug: string): RecentSearch[] {
+function loadRecent(handle: string): RecentSearch[] {
   try {
-    const raw = localStorage.getItem(recentSearchesKey(ownerSlug, docoSlug));
+    const raw = localStorage.getItem(recentSearchesKey(handle));
     if (!raw) return [];
     const parsed = JSON.parse(raw) as unknown;
     if (!Array.isArray(parsed)) return [];
@@ -485,31 +485,31 @@ function loadRecent(ownerSlug: string, docoSlug: string): RecentSearch[] {
   }
 }
 
-function saveRecent(ownerSlug: string, docoSlug: string, q: string): void {
+function saveRecent(handle: string, q: string): void {
   const trimmed = q.trim();
   if (trimmed.length === 0) return;
-  const existing = loadRecent(ownerSlug, docoSlug).filter((r) => r.q !== trimmed);
+  const existing = loadRecent(handle).filter((r) => r.q !== trimmed);
   const next = [{ q: trimmed, ts: Date.now() }, ...existing].slice(0, RECENT_LIMIT);
   try {
-    localStorage.setItem(recentSearchesKey(ownerSlug, docoSlug), JSON.stringify(next));
+    localStorage.setItem(recentSearchesKey(handle), JSON.stringify(next));
   } catch {
     // localStorage may be unavailable (private mode, quota) — non-fatal.
   }
 }
 
-function removeRecent(ownerSlug: string, docoSlug: string, q: string): RecentSearch[] {
-  const next = loadRecent(ownerSlug, docoSlug).filter((r) => r.q !== q);
+function removeRecent(handle: string, q: string): RecentSearch[] {
+  const next = loadRecent(handle).filter((r) => r.q !== q);
   try {
-    localStorage.setItem(recentSearchesKey(ownerSlug, docoSlug), JSON.stringify(next));
+    localStorage.setItem(recentSearchesKey(handle), JSON.stringify(next));
   } catch {
     // non-fatal.
   }
   return next;
 }
 
-function clearAllRecent(ownerSlug: string, docoSlug: string): void {
+function clearAllRecent(handle: string): void {
   try {
-    localStorage.removeItem(recentSearchesKey(ownerSlug, docoSlug));
+    localStorage.removeItem(recentSearchesKey(handle));
   } catch {
     // non-fatal.
   }
@@ -541,7 +541,7 @@ function SearchBoxWithHistory({
   const [query, setQuery] = useState("");
 
   useEffect(() => {
-    setRecent(loadRecent(ownerSlug, docoSlug));
+    setRecent(loadRecent(handle));
   }, [ownerSlug, docoSlug]);
 
   const showDropdown = focused && query.trim().length === 0 && recent.length > 0;
@@ -552,7 +552,7 @@ function SearchBoxWithHistory({
       action={`/${handle}/search`}
       className="flex gap-2"
       onSubmit={() => {
-        saveRecent(ownerSlug, docoSlug, query);
+        saveRecent(handle, query);
       }}
     >
       <div className="relative flex-1">
@@ -579,7 +579,7 @@ function SearchBoxWithHistory({
                   type="button"
                   onMouseDown={(e) => {
                     e.preventDefault();
-                    saveRecent(ownerSlug, docoSlug, r.q);
+                    saveRecent(handle, r.q);
                     window.location.href = `/${handle}/search?q=${encodeURIComponent(r.q)}`;
                   }}
                   className="flex flex-1 items-center justify-between gap-3 px-4 py-2 text-left"
@@ -594,7 +594,7 @@ function SearchBoxWithHistory({
                   aria-label={`Remove "${r.q}" from recent searches`}
                   onMouseDown={(e) => {
                     e.preventDefault();
-                    setRecent(removeRecent(ownerSlug, docoSlug, r.q));
+                    setRecent(removeRecent(handle, r.q));
                   }}
                   className="mr-1 flex h-7 w-7 shrink-0 items-center justify-center rounded text-base leading-none text-muted-foreground hover:bg-input hover:text-foreground"
                 >
@@ -607,7 +607,7 @@ function SearchBoxWithHistory({
                 type="button"
                 onMouseDown={(e) => {
                   e.preventDefault();
-                  clearAllRecent(ownerSlug, docoSlug);
+                  clearAllRecent(handle);
                   setRecent([]);
                 }}
                 className="block w-full px-4 py-1.5 text-left text-xs text-muted-foreground hover:bg-muted hover:text-foreground"

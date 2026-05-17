@@ -81,7 +81,7 @@ export async function action({
 }) {
   const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
   const { me } = await loadDocoForAdmin(request, handle);
-  const dir = docoPath(ownerSlug, docoSlug);
+  const dir = docoPath(handle);
   const meta = await readDocoMetadata(dir);
   if (!meta) {
     return Response.json({ error: `Doco "${handle}" not found.` }, { status: 404 });

@@ -205,7 +205,7 @@ export async function loader({ request }: { request: Request }) {
     if (!row) {
       flagMissing("not_found", id);
     } else {
-      const dir = docoPath(row.owner_slug, row.handle);
+      const dir = docoPath(row.handle);
       const meta = await readDocoMetadata(dir);
       if (!meta) {
         flagMissing("not_found", id);

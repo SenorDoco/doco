@@ -35,7 +35,7 @@ export async function action({
     return Response.json({ error: "POST required." }, { status: 405 });
   }
   await loadDocoForAdmin(request, handle);
-  const dir = docoPath(ownerSlug, docoSlug);
+  const dir = docoPath(handle);
   const meta = await readDocoMetadata(dir);
   if (!meta?.docoId) {
     return Response.json({ error: "Doco metadata missing." }, { status: 500 });

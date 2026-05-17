@@ -34,7 +34,7 @@ type LoaderError =
 type LoaderOk = {
   ok: true;
   code: string;
-  doco: { id: string; owner_slug: string; doco_slug: string };
+  doco: { id: string; handle: string };
   expires_at: string;
   signedIn: { id: string; username: string; display_name: string } | null;
 };
@@ -57,7 +57,7 @@ export async function loader({ request, params }: { request: Request; params: { 
   return {
     ok: true,
     code,
-    doco: { id: doco.id, owner_slug: doco.owner_slug, doco_slug: doco.doco_slug },
+    doco: { id: doco.id, handle: doco.handle },
     expires_at: invite.expires_at,
     signedIn: principal
       ? { id: principal.id, username: principal.username, display_name: principal.display_name }
@@ -71,7 +71,6 @@ type ActionResult =
       ok: true;
       doco_url: string;
       doco_handle: string;
-      doco_slug: string;
       doco_key: string;
     };
 
@@ -117,12 +116,11 @@ export async function action({
 
   const url = new URL(request.url);
   const origin = `${url.protocol}//${url.host}`;
-  const handle = doco.handle || `${doco.owner_slug}-${doco.doco_slug}`;
+  const handle = doco.handle;
   return {
     ok: true,
     doco_url: `${origin}/${handle}/`,
     doco_handle: handle,
-    doco_slug: `${doco.owner_slug}/${doco.doco_slug}`,
     doco_key: session.token,
   };
 }
@@ -147,7 +145,7 @@ export default function InviteLanding({
           </CardHeader>
           <CardContent>
             <Link
-              to={`/${actionData.doco_slug}`}
+              to={`/${actionData.doco_handle}`}
               className="inline-flex items-center rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90"
             >
               Continue
@@ -178,7 +176,7 @@ export default function InviteLanding({
           <CardTitle>You've been invited to a Doco</CardTitle>
           <CardDescription>
             <strong>
-              {loaderData.doco.owner_slug}/{loaderData.doco.doco_slug}
+              {loaderData.doco.handle}
             </strong>{" "}
             is tracking decisions, intents, and rules in Doco. Click Accept to join.
           </CardDescription>

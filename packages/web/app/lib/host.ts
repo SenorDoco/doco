@@ -35,14 +35,14 @@ export interface HostOrg {
 }
 
 export interface HostDoco {
-  ownerSlug: string;
-  docoSlug: string;
-  /** Phase 1 of slug-removal: globally-unique handle for this Doco's
-   *  public URL. Falls back to `<ownerSlug>-<docoSlug>` if the column
-   *  is null (very old rows). */
+  /** Public globally-unique URL identifier. */
   handle: string;
+  /** Owner's username (Principal.username) or org slug, derived via
+   *  JOIN in mapDocoRow. Useful for "owned by alice" labels. */
+  ownerUsername: string;
   ownerKind: "principal" | "organization";
   ownerId: string;
+  /** Internal ULID — FK target for every entity table. */
   docoId: string;
   description?: string;
   hasIndex: boolean;
@@ -125,9 +125,8 @@ export async function listAllDocos(): Promise<HostDoco[]> {
     const ownerKind: "principal" | "organization" =
       r.owner_id.startsWith("organization_") ? "organization" : "principal";
     const out: HostDoco = {
-      ownerSlug: r.owner_slug,
-      docoSlug: r.doco_slug,
-      handle: r.handle || `${r.owner_slug}-${r.doco_slug}`,
+      handle: r.handle,
+      ownerUsername: r.owner_slug,
       ownerKind,
       ownerId: r.owner_id,
       docoId: r.id,

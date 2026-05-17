@@ -49,13 +49,11 @@ export async function loader({
       host,
     });
   }
-  const handle = row.handle || `${row.owner_slug}-${row.doco_slug}`;
   return Response.json({
     doco_id: row.id,
-    doco_handle: handle,
-    owner_slug: row.owner_slug,
-    doco_slug: row.doco_slug,
-    canonical_path: `/${handle}`,
+    doco_handle: row.handle,
+    owner_username: row.owner_slug,
+    canonical_path: `/${row.handle}`,
     visibility: row.visibility,
   });
 }

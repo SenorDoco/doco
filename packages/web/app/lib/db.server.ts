@@ -11,19 +11,13 @@ export function rootDir(): string {
   return cachedRoot;
 }
 
-export function docoPath(ownerSlug: string, docoSlug: string): string {
-  return join(rootDir(), "docos", ownerSlug, docoSlug);
-}
-
 /**
- * Phase-2 path builder for handle-keyed lookups. Once routes drop the
- * owner prefix, this replaces `docoPath`. For now both shapes exist so
- * callers can migrate at their own pace.
+ * Stable placeholder path for capture / reindex APIs that still take a
+ * `docoDir` argument. The path is never read from disk — Postgres is
+ * the source of truth — but downstream helpers parse `basename(docoDir)`
+ * to recover the handle, so we encode the canonical handle directly
+ * here. Use `docoPath(handle)` everywhere.
  */
-export function docoPathByHandle(handle: string): string {
+export function docoPath(handle: string): string {
   return join(rootDir(), "docos", handle);
-}
-
-export function readDocoFullSlug(ownerSlug: string, docoSlug: string): string {
-  return `${ownerSlug}/${docoSlug}`;
 }

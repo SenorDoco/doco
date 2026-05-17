@@ -138,7 +138,7 @@ export async function loader({
   const ctx = await loadDocoForRead(request, handle);
   const me = ctx.me;
   const docoId = ctx.meta.docoId;
-  const dir = docoPath(ownerSlug, docoSlug);
+  const dir = docoPath(handle);
 
   return withClient(async (c) => {
     const table = tableFor(type);
@@ -577,7 +577,7 @@ export async function action({
     return { error: "Inline edit is only supported for scopes today." };
   }
   await loadDocoForAdmin(request, handle); // 404/403 if not owner/admin
-  const dir = docoPath(ownerSlug, docoSlug);
+  const dir = docoPath(handle);
   const form = await request.formData();
   const intent = String(form.get("intent") ?? "");
   const scopeId = id as EntityId<"scope">;

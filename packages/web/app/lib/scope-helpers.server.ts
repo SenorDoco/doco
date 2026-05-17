@@ -1,5 +1,5 @@
 // Server-only helpers for scope reads. Reads scopes from PG.
-import { basename, dirname } from "node:path";
+import { basename } from "node:path";
 import { getDocoByHandle, withClient } from "@doco/db";
 import { parse as parseYaml } from "yaml";
 
@@ -11,27 +11,17 @@ export interface DocoMetadata {
   displayName: string;
   description: string;
   visibility: "private" | "public";
-  slug: string;
 }
 
 /**
- * Read a Doco's metadata from Postgres. The `docoDir` argument is a
- * placeholder built by `docoPath(ownerSlug, docoSlug)` — its last two
- * segments are the legacy slug pair. Phase 3a dropped those columns
- * from storage; we now resolve the row by `handle` instead. Two
- * lookup candidates cover every shape:
- *   1. `<ownerSlug>-<docoSlug>` — what the migration set for every
- *      pre-3a row.
- *   2. `<docoSlug>` — what newer API-created Docos use (their handle
- *      equals their requested_id).
+ * Read a Doco's metadata from Postgres. `docoDir` is a placeholder
+ * built by `docoPath(handle)` — its basename is the handle. Lookup
+ * keys off `handle` directly.
  */
 export async function readDocoMetadata(docoDir: string): Promise<DocoMetadata | null> {
-  const docoSlug = basename(docoDir);
-  const ownerSlug = basename(dirname(docoDir));
-  if (!ownerSlug || !docoSlug) return null;
-  const row =
-    (await getDocoByHandle(`${ownerSlug}-${docoSlug}`)) ||
-    (await getDocoByHandle(docoSlug));
+  const handle = basename(docoDir);
+  if (!handle) return null;
+  const row = await getDocoByHandle(handle);
   if (!row) return null;
   let description = "";
   let displayName = row.name ?? "";
@@ -46,12 +36,11 @@ export async function readDocoMetadata(docoDir: string): Promise<DocoMetadata | 
   }
   return {
     docoId: row.id,
-    handle: row.handle || `${row.owner_slug}-${row.doco_slug}`,
+    handle: row.handle,
     ownerId: row.owner_id,
     displayName,
     description,
     visibility: row.visibility,
-    slug: row.doco_slug,
   };
 }
 

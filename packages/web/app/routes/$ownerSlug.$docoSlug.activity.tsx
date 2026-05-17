@@ -35,7 +35,7 @@ export async function loader({
 }) {
   const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
   const { me } = await loadDocoForRead(request, handle);
-  const dir = docoPath(ownerSlug, docoSlug);
+  const dir = docoPath(handle);
 
   const url = new URL(request.url);
   const entity_type = url.searchParams.get("entity_type") ?? undefined;

@@ -10,7 +10,6 @@ import { Form, Link, redirect, useSearchParams } from "react-router";
 import { validateDocoSlug } from "@doco/shared";
 import { rootDir } from "~/lib/db.server";
 import { loadDocoForAdmin, normalizeDocoParams } from "~/lib/doco-access.server";
-import { recordDocoSlugAlias } from "~/lib/doco-aliases.server";
 import { loadHostConfig } from "~/lib/host";
 import { reindex, renameDocoSlug, softDeleteDoco, updateDocoMeta } from "~/lib/redeem.server";
 import { SiteHeader } from "~/components/site-header";
@@ -68,7 +67,7 @@ export async function action({
     }
     // The dashboard listing already excludes `.deleted/`. Redirect home
     // with a flash-shaped query param the dashboard can surface.
-    return redirect(`/dashboard?deleted=${encodeURIComponent(`${ownerSlug}/${docoSlug}`)}`);
+    return redirect(`/dashboard?deleted=${encodeURIComponent(handle)}`);
   }
 
   // ── Default: save edits ───────────────────────────────────────────
@@ -100,12 +99,8 @@ export async function action({
     } catch (e) {
       return { error: (e as Error).message };
     }
-    // Leave a slug alias so the old URL keeps resolving (D-019).
-    try {
-      recordDocoSlugAlias(ownerSlug, docoSlug, ownerSlug, newSlug, meta.docoId);
-    } catch (e) {
-      console.error("settings: failed to record slug alias:", e);
-    }
+    // No alias persistence in alpha. Renames update the canonical
+    // `docos.handle` row directly; the old handle stops resolving.
   }
 
   try {
