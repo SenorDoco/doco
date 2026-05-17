@@ -30,16 +30,20 @@ export function nodeTypeColor(type: string): string {
 }
 
 export const LIFECYCLE_COLOR: Record<string, string> = {
-  abandoned: "#dc2626",
-  failed: "#dc2626",
-  superseded: "#9333ea",
-  retired: "#9333ea",
-  proposed: "#2563eb",
-  planned: "#2563eb",
-  in_progress: "#2563eb",
   active: "#16a34a",
-  succeeded: "#16a34a",
-  drafted: "#ca8a04",
+  in_progress: "#ca8a04",
+  in_progess: "#ca8a04",
+  planned: "#171717",
+  proposed: "#2563eb",
+  abandoned: "#737373",
+  retired: "#737373",
+  succeeded: "#737373",
+  successed: "#737373",
+  superseded: "#737373",
+  superseeded: "#737373",
+  draft: "#dc2626",
+  drafted: "#dc2626",
+  failed: "#dc2626",
 };
 
 export const LIFECYCLE_FALLBACK_COLOR = "#737373";
