@@ -758,7 +758,7 @@ export default function ScopePage({
 
   return (
     <div>
-      <SiteHeader mode="host" me={me} docoScope={{ ownerSlug, docoSlug }} />
+      <SiteHeader mode="host" me={me} docoScope={{ ownerSlug, docoSlug, handle }} />
       <main className="mx-auto max-w-6xl px-6 py-6 space-y-4">
         {actionData?.error ? (
           <div className="rounded-md border border-destructive bg-destructive/5 px-4 py-3 text-xs text-destructive">

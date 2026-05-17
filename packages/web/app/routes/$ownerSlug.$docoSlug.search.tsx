@@ -583,7 +583,7 @@ export default function SearchInDoco({
 
   return (
     <div>
-      <SiteHeader mode="host" me={me} docoScope={{ ownerSlug, docoSlug }} />
+      <SiteHeader mode="host" me={me} docoScope={{ ownerSlug, docoSlug, handle }} />
       <main className="mx-auto max-w-6xl px-6 py-6 grid grid-cols-1 md:grid-cols-[18rem_1fr] gap-6">
         <aside className="space-y-4">
           <Form method="get" className="space-y-3">

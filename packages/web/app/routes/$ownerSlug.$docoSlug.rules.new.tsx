@@ -129,7 +129,7 @@ export default function NewRule({
 
   return (
     <div>
-      <SiteHeader mode="host" me={me} docoScope={{ ownerSlug, docoSlug }} />
+      <SiteHeader mode="host" me={me} docoScope={{ ownerSlug, docoSlug, handle }} />
       <main className="mx-auto max-w-2xl px-6 py-6 space-y-4">
         <Card>
           <CardHeader>

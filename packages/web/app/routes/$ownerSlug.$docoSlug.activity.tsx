@@ -75,7 +75,7 @@ export default function ActivityPage({
   const { ownerSlug, docoSlug, handle, me, events, filters } = loaderData;
   return (
     <div>
-      <SiteHeader mode="host" me={me} docoScope={{ ownerSlug, docoSlug }} />
+      <SiteHeader mode="host" me={me} docoScope={{ ownerSlug, docoSlug, handle }} />
       <main className="mx-auto max-w-7xl space-y-4 px-6 py-6">
         <div>
           <h1 className="text-xl font-semibold">Activity</h1>

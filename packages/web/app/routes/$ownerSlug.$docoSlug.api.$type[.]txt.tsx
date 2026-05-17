@@ -4,16 +4,16 @@ import { normalizeDocoParams } from "~/lib/doco-access.server";
 /**
  * Parametrized .txt spec endpoint for the per-Doco capture/settings APIs.
  *
- *   GET /<owner>/<doco>/api/<type>.txt
+ *   GET /<doco-handle>/api/<type>.txt
  *
  * `type` is one of: decisions, intents, scopes, settings.
  * Returns plain-prose spec for the corresponding .json endpoint.
  */
 
-type SpecRenderer = (baseUrl: string, owner: string, doco: string) => string;
+type SpecRenderer = (baseUrl: string, handle: string) => string;
 
 const SPECS: Record<string, SpecRenderer> = {
-  decisions: (baseUrl, owner, doco) => `# Doco — Capture a Decision (single call)
+  decisions: (baseUrl, handle) => `# Doco — Capture a Decision (single call)
 
 Single POST. Server resolves names/usernames to ids, generates the
 ULID, writes the file, and reindexes. Replaces the multi-step recon
@@ -21,7 +21,7 @@ ULID, writes the file, and reindexes. Replaces the multi-step recon
 with one request.
 
 ENDPOINT
-  POST ${baseUrl}/${owner}/${doco}/api/decisions.json
+  POST ${baseUrl}/${handle}/api/decisions.json
   Content-Type: application/json
 
 BODY (JSON)
@@ -63,7 +63,7 @@ ERROR RESPONSE (HTTP 400 / 404 / 405, application/json)
 EXAMPLE
   curl -sS -X POST \\
     -H "Content-Type: application/json" \\
-    "${baseUrl}/${owner}/${doco}/api/decisions.json" \\
+    "${baseUrl}/${handle}/api/decisions.json" \\
     -d '{
       "question": "Where should the Doco-created confirmation live?",
       "chosen": "Each creation entry point renders its own success card; scopes page is purely about scopes.",
@@ -83,7 +83,7 @@ WHEN TO CALL THIS
   this endpoint exists to skip.
 
 UPDATE AN EXISTING DECISION
-  PATCH ${baseUrl}/${owner}/${doco}/api/decisions/<id>.json
+  PATCH ${baseUrl}/${handle}/api/decisions/<id>.json
   Content-Type: application/json
 
   Body fields are all optional (only the keys you include are touched):
@@ -97,18 +97,18 @@ UPDATE AN EXISTING DECISION
   that actually changed.
 
 RELATED
-  GET ${baseUrl}/${owner}/${doco}/status.json   freshness + counts (footer)
+  GET ${baseUrl}/${handle}/status.json   freshness + counts (footer)
   POST /api/v1/agent-bootstrap                  canonical instructions
 `,
 
-  intents: (baseUrl, owner, doco) => `# Doco — Capture an Intent (single call)
+  intents: (baseUrl, handle) => `# Doco — Capture an Intent (single call)
 
 Intents are the source of every downstream Decision/Action. Capture an
 Intent **before** writing the first Decision that depends on it — that
 way the Decision can reference it via \`intent_ids\`.
 
 ENDPOINT
-  POST ${baseUrl}/${owner}/${doco}/api/intents.json
+  POST ${baseUrl}/${handle}/api/intents.json
   Content-Type: application/json
 
 BODY (JSON)
@@ -136,7 +136,7 @@ EXAMPLE
   curl -sS -X POST \\
     -H "Content-Type: application/json" \\
     -H "Authorization: Bearer $DOCO_TOKEN" \\
-    ${baseUrl}/${owner}/${doco}/api/intents.json \\
+    ${baseUrl}/${handle}/api/intents.json \\
     -d '{
       "summary": "Agent capture friction is bounded to a few seconds end-to-end.",
       "scope_names": ["framework"],
@@ -151,11 +151,11 @@ WHEN TO CALL THIS
   skip the connection.
 
 RELATED
-  POST ${baseUrl}/${owner}/${doco}/api/decisions.json   capture a Decision
-  GET  ${baseUrl}/${owner}/${doco}/status.json          freshness + counts
+  POST ${baseUrl}/${handle}/api/decisions.json   capture a Decision
+  GET  ${baseUrl}/${handle}/status.json          freshness + counts
 `,
 
-  scopes: (baseUrl, owner, doco) => `# Doco — Create a Scope (single call)
+  scopes: (baseUrl, handle) => `# Doco — Create a Scope (single call)
 
 Per ADR-137bis every scope-creation call MUST declare whether the new
 scope is "watched" — a soft attention signal for contributors. No
@@ -170,7 +170,7 @@ on the Global scope (the doco's constitution) instead, via the Rules
 editor at /scopes/<id>. The two mechanisms are independent.
 
 ENDPOINT
-  POST ${baseUrl}/${owner}/${doco}/api/scopes.json
+  POST ${baseUrl}/${handle}/api/scopes.json
   Content-Type: application/json
 
 BODY (JSON)
@@ -221,14 +221,14 @@ EXAMPLE — install the user-flows template as watched
   curl -sS -X POST \\
     -H "Content-Type: application/json" \\
     -H "Authorization: Bearer $DOCO_TOKEN" \\
-    ${baseUrl}/${owner}/${doco}/api/scopes.json \\
+    ${baseUrl}/${handle}/api/scopes.json \\
     -d '{ "template_name": "user-flows", "watched": true }'
 
 EXAMPLE — custom scope, not watched, nested under an existing parent
   curl -sS -X POST \\
     -H "Content-Type: application/json" \\
     -H "Authorization: Bearer $DOCO_TOKEN" \\
-    ${baseUrl}/${owner}/${doco}/api/scopes.json \\
+    ${baseUrl}/${handle}/api/scopes.json \\
     -d '{
       "name": "payments",
       "icon": "💳",
@@ -254,7 +254,7 @@ HOW AGENTS USE WATCHED SCOPES
 ADDING RULES IN PLAIN ENGLISH
   Once a scope exists, author rules by POSTing prose:
 
-    POST ${baseUrl}/${owner}/${doco}/api/scopes/<scope_id>/rules.json
+    POST ${baseUrl}/${handle}/api/scopes/<scope_id>/rules.json
     Content-Type: application/json
     { "prose": "Every Decision should have an Intent." }
 
@@ -275,7 +275,7 @@ ADDING RULES IN PLAIN ENGLISH
         {
           "id": "rule_<ULID>",
           "summary": "...",
-          "url": "${baseUrl}/${owner}/${doco}/rule/rule_<ULID>",
+          "url": "${baseUrl}/${handle}/rule/rule_<ULID>",
           "text": "...",
           "rule": { "kind": "...", ... }
         }
@@ -301,24 +301,24 @@ ADDING RULES IN PLAIN ENGLISH
     curl -sS -X POST \\
       -H "Content-Type: application/json" \\
       -H "Authorization: Bearer $DOCO_TOKEN" \\
-      ${baseUrl}/${owner}/${doco}/api/scopes/scope_<ULID>/rules.json \\
+      ${baseUrl}/${handle}/api/scopes/scope_<ULID>/rules.json \\
       -d '{ "prose": "Every Decision should have an Intent, and bugs should link to a Rule." }'
 
 RELATED
-  POST ${baseUrl}/${owner}/${doco}/api/intents.json     capture an Intent
-  POST ${baseUrl}/${owner}/${doco}/api/decisions.json   capture a Decision
-  GET  ${baseUrl}/${owner}/${doco}/status.json          freshness + counts
+  POST ${baseUrl}/${handle}/api/intents.json     capture an Intent
+  POST ${baseUrl}/${handle}/api/decisions.json   capture a Decision
+  GET  ${baseUrl}/${handle}/status.json          freshness + counts
 `,
 
-  settings: (baseUrl, owner, doco) => `# Doco — Settings (read + patch)
+  settings: (baseUrl, handle) => `# Doco — Settings (read + patch)
 
 Per-Doco settings endpoint. Two methods:
 
-  GET   ${baseUrl}/${owner}/${doco}/api/settings.json
+  GET   ${baseUrl}/${handle}/api/settings.json
     Returns the current settings. Read-gated: anonymous on public docos,
     owner/org-members on private docos, 404 otherwise.
 
-  POST  ${baseUrl}/${owner}/${doco}/api/settings.json
+  POST  ${baseUrl}/${handle}/api/settings.json
     (PATCH is also accepted.) Updates fields. Admin-gated (owner or org
     admin). Only the keys you include are touched.
 
@@ -357,27 +357,27 @@ ERROR RESPONSE
     - "slug must be lowercase kebab-case ([a-z0-9_-]+)." — fix the name.
 
 EXAMPLE — read current settings
-  curl -sS ${baseUrl}/${owner}/${doco}/api/settings.json \\
+  curl -sS ${baseUrl}/${handle}/api/settings.json \\
     -H "Authorization: Bearer $DOCO_TOKEN"
 
 EXAMPLE — flip to public + edit description
   curl -sS -X POST \\
     -H "Content-Type: application/json" \\
     -H "Authorization: Bearer $DOCO_TOKEN" \\
-    ${baseUrl}/${owner}/${doco}/api/settings.json \\
+    ${baseUrl}/${handle}/api/settings.json \\
     -d '{ "visibility": "public", "description": "Now open-source." }'
 
 EXAMPLE — rename the slug
   curl -sS -X POST \\
     -H "Content-Type: application/json" \\
     -H "Authorization: Bearer $DOCO_TOKEN" \\
-    ${baseUrl}/${owner}/${doco}/api/settings.json \\
+    ${baseUrl}/${handle}/api/settings.json \\
     -d '{ "slug": "renamed-project" }'
   # subsequent requests should use the new URL: /<owner>/renamed-project/...
 
 RELATED
-  GET  ${baseUrl}/${owner}/${doco}/status.json    freshness + counts
-  POST ${baseUrl}/${owner}/${doco}/api/decisions.json   capture a decision
+  GET  ${baseUrl}/${handle}/status.json    freshness + counts
+  POST ${baseUrl}/${handle}/api/decisions.json   capture a decision
 `,
 };
 
@@ -397,7 +397,7 @@ export async function loader({
       headers: { "content-type": "text/plain; charset=utf-8" },
     });
   }
-  const body = renderer(getPublicBaseUrl(request), ownerSlug, docoSlug);
+  const body = renderer(getPublicBaseUrl(request), handle);
   return new Response(body, {
     status: 200,
     headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" },

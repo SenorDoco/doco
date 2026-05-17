@@ -362,7 +362,7 @@ export default function DocoHome({
 
   return (
     <div>
-      <SiteHeader mode="host" me={me} docoScope={{ ownerSlug, docoSlug }} />
+      <SiteHeader mode="host" me={me} docoScope={{ ownerSlug, docoSlug, handle }} />
       <main className="mx-auto max-w-6xl px-6 py-6 space-y-5">
         {/* Bare title — no card wrapper. */}
         <div className="flex flex-wrap items-start justify-between gap-3">

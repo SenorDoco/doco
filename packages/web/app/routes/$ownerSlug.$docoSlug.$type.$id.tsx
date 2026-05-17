@@ -941,10 +941,7 @@ export default function EntityDetail({
 
             <p className="text-[11px] text-muted-foreground">
               To delete this scope, open its{" "}
-              <Link
-                to={`/${handle}/scopes/${id}/edit`}
-                className="underline hover:text-foreground"
-              >
+              <Link to={`/${handle}/scopes/${id}/edit`} className="underline hover:text-foreground">
                 edit page
               </Link>{" "}
               and use the Danger Zone at the bottom.
@@ -1040,7 +1037,7 @@ export default function EntityDetail({
 
   return (
     <div>
-      <SiteHeader mode="host" me={me} docoScope={{ ownerSlug, docoSlug }} />
+      <SiteHeader mode="host" me={me} docoScope={{ ownerSlug, docoSlug, handle }} />
       <main className="mx-auto max-w-7xl space-y-4 px-6 py-6">
         {/* 1. Header (no box) — id, title, badges, summary. */}
         {headerPane}

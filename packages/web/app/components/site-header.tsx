@@ -5,8 +5,15 @@ import { cn } from "~/lib/cn";
 import type { CurrentPrincipal } from "~/lib/session";
 
 interface SiteHeaderProps {
-  /** When set, renders the breadcrumb (owner / doco) and per-Doco nav. */
-  docoScope?: { ownerSlug: string; docoSlug: string };
+  /**
+   * When set, renders the breadcrumb and per-Doco nav.
+   *
+   * `handle` is the canonical URL identifier (phase 2d+). `ownerSlug`
+   * and `docoSlug` are kept as optional inputs for callers that still
+   * thread the legacy slug pair; they're used for the breadcrumb label
+   * only, never for building URLs.
+   */
+  docoScope?: { handle: string; ownerSlug?: string; docoSlug?: string };
   /**
    * Mode parameter — historically toggled host vs. single-doco shape (per ADR-093
    * single-doco mode is removed). Kept on the props for caller-site compatibility;
@@ -23,21 +30,16 @@ interface SiteHeaderProps {
  */
 export function SiteHeader({ docoScope, me }: SiteHeaderProps) {
   // Per-Doco nav: per-type entity tabs and Search moved off the nav bar —
-  // the Doco home is the chronological feed AND the search front door
-  // (ADR-120 + the search-input-at-doco-home Decision).
+  // the Doco home is the chronological feed AND the search front door.
+  const docoLabel =
+    docoScope?.ownerSlug && docoScope.docoSlug
+      ? `${docoScope.ownerSlug}/${docoScope.docoSlug}`
+      : (docoScope?.handle ?? "");
   const nav = docoScope
     ? [
-        {
-          to: `/${docoScope.ownerSlug}/${docoScope.docoSlug}`,
-          label: `${docoScope.ownerSlug}/${docoScope.docoSlug}`,
-        },
-        // The /constitution tab was removed per
-        // decision_01KRPNZY7W6CCMYNKGND67BP0B — the Global scope (formerly
-        // "Constitution") appears first on /scopes with the caption "the
-        // doco's constitution" next to its name. Edit it like any other
-        // scope from /scopes/<id>.
-        { to: `/${docoScope.ownerSlug}/${docoScope.docoSlug}/scopes`, label: "Scopes" },
-        { to: `/${docoScope.ownerSlug}/${docoScope.docoSlug}/settings`, label: "Settings" },
+        { to: `/${docoScope.handle}`, label: docoLabel },
+        { to: `/${docoScope.handle}/scopes`, label: "Scopes" },
+        { to: `/${docoScope.handle}/settings`, label: "Settings" },
       ]
     : [
         { to: "/dashboard", label: "Docos" },
@@ -106,7 +108,7 @@ export function SiteHeader({ docoScope, me }: SiteHeaderProps) {
             <NavLink
               key={n.to}
               to={n.to}
-              end={n.to === "/" || n.to === `/${docoScope?.ownerSlug}/${docoScope?.docoSlug}`}
+              end={n.to === "/" || (docoScope?.handle ? n.to === `/${docoScope.handle}` : false)}
               className={({ isActive }) =>
                 cn(
                   "transition-colors",

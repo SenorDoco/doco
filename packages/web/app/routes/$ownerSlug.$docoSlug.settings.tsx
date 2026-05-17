@@ -119,7 +119,10 @@ export async function action({
   }
 
   await reindex(finalDir);
-  return redirect(`/${ownerSlug}/${finalSlug}/settings`);
+  // After rename, the handle becomes `<ownerSlug>-<finalSlug>` (the
+  // host-side renameDocoSlug uses that synthesis). Redirect to the
+  // canonical handle URL.
+  return redirect(`/${ownerSlug}-${finalSlug}/settings`);
 }
 
 export function meta({ params }: { params: { docoId: string } }) {
@@ -139,7 +142,7 @@ export default function DocoSettings({
 
   return (
     <div>
-      <SiteHeader mode="host" me={me} docoScope={{ ownerSlug, docoSlug }} />
+      <SiteHeader mode="host" me={me} docoScope={{ ownerSlug, docoSlug, handle }} />
       <main className="mx-auto max-w-6xl px-6 py-6 space-y-4">
         {actionData?.error ? (
           <div className="rounded-md border border-destructive bg-destructive/5 px-4 py-3 text-xs text-destructive">
