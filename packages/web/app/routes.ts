@@ -135,18 +135,10 @@ export default [
   route("agent/:cred/api/:type.json", "routes/agent.$cred.api.$type[.]json.tsx"),
   route("agent/:cred/api/:type/:id.json", "routes/agent.$cred.api.$type.$id[.]json.tsx"),
   route("agent/:cred/*", "routes/agent.$cred.$.tsx"),
-  // Per-Doco routes (phase 2d of slug removal): every Doco lives at
-  // `/<doco-id>/...` where doco-id is the handle (canonical) or a
-  // ULID (legacy). Handlers normalize either URL shape via
-  // `normalizeDocoParams` so internals continue to speak the legacy
-  // `(ownerSlug, docoSlug)` pair to lib helpers. Phase 3 collapses
-  // that internal pair and drops the `owner_slug` / `doco_slug`
-  // columns from `docos`.
-  //
-  // The legacy `/<owner>/<slug>/*` and `/by-id/<ulid>/*` route trees
-  // are gone — agents and humans address Docos by handle now. There
-  // is no owner profile page; the dashboard is the single signed-in
-  // landing.
+  // Per-Doco routes: every Doco lives at `/<doco-id>/...` where
+  // doco-id is the handle. `normalizeDocoParams` resolves the URL
+  // param to a row. There is no owner profile page; the dashboard
+  // is the single signed-in landing.
   route(":docoId", "routes/$ownerSlug.$docoSlug._index.tsx"),
   route(":docoId/status.json", "routes/$ownerSlug.$docoSlug.status[.]json.tsx"),
   route(":docoId/settings", "routes/$ownerSlug.$docoSlug.settings.tsx"),
