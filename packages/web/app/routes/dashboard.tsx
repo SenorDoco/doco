@@ -15,7 +15,7 @@ import {
   verbFromAuditOp,
 } from "~/lib/activity-feed";
 import { cn } from "~/lib/cn";
-import { isMyDoco } from "~/lib/doco-access.server";
+import { isMyDoco, listInvitedDocoIdsForPrincipal } from "~/lib/doco-access.server";
 import { listDocoStats } from "~/lib/doco-stats.server";
 import { listAllDocos, listMyOrgs, loadHostConfig } from "~/lib/host";
 import { getCurrentPrincipal } from "~/lib/session";
@@ -54,8 +54,9 @@ export async function loader({ request }: { request: Request }) {
   if (!me) throw redirect("/sign-in");
 
   const allDocos = await listAllDocos();
+  const invitedDocoIds = await listInvitedDocoIdsForPrincipal(me.id);
   const mine = await Promise.all(allDocos.map((d) => isMyDoco({ ownerId: d.ownerId }, me.id)));
-  const docos = allDocos.filter((_, i) => mine[i]);
+  const docos = allDocos.filter((d, i) => mine[i] || invitedDocoIds.has(d.docoId));
   const myDocoIds = docos.map((d) => d.docoId);
   const docoStats = await listDocoStats(myDocoIds);
 

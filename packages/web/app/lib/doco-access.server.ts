@@ -7,7 +7,8 @@ import {
   isOrgAdmin as dbIsOrgAdmin,
   isOrgMember as dbIsOrgMember,
 } from "@doco/db";
-import { docoPath } from "./db.server";
+import { docoPath, rootDir } from "./db.server";
+import { TokenStore } from "./tokens.server";
 import { resolveDocoSlugAlias } from "./doco-aliases.server";
 import { resolvePrincipalUsernameAlias } from "./principal-aliases.server";
 import { type DocoMetadata, readDocoMetadata } from "./scope-helpers.server";
@@ -76,7 +77,10 @@ async function getPrincipalOwnerId(principalId: string): Promise<string | null> 
  * dashboard. Stricter than `canAccessDoco`: ignores `public` visibility
  * and the host-bootstrap exemption. True iff the principal has a
  * personal stake in the Doco: they own it, they're an agent of the
- * owner, or they're a member of the owning organization.
+ * owner, or they're a member of the owning organization. Invite-
+ * redeemed collaborators are handled separately via
+ * `listInvitedDocoIdsForPrincipal` — that path needs the Doco id, not
+ * the owner id, so callers union the two sets.
  */
 export async function isMyDoco(
   meta: { ownerId: string },
@@ -93,6 +97,27 @@ export async function isMyDoco(
     if (ownerOfPrincipal && (await dbIsOrgMember(meta.ownerId, ownerOfPrincipal))) return true;
   }
   return false;
+}
+
+/**
+ * Doco ids the principal holds an active, invite-redeemed SessionToken
+ * for. Source of truth for "invited collaborator" status — the human
+ * invite flow at /invite/<code> binds the existing human Principal to
+ * the Doco purely by minting a SessionToken with bound_doco_id; there
+ * is no separate collaborators table.
+ */
+export async function listInvitedDocoIdsForPrincipal(
+  principalId: string,
+): Promise<Set<string>> {
+  const file = await TokenStore.forDoco(rootDir()).load();
+  const ids = new Set<string>();
+  for (const t of file.tokens) {
+    if (t.kind !== "session") continue;
+    if (t.revoked) continue;
+    if (t.principal_id !== principalId) continue;
+    if (t.bound_doco_id) ids.add(t.bound_doco_id);
+  }
+  return ids;
 }
 
 /**
