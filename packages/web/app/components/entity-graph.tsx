@@ -645,20 +645,6 @@ export function EntityGraph({
     };
   }, [Flow]);
 
-  // Card background fades white → neutral-300 as PPR drops. Range is taken
-  // across non-focal nodes so the focal AND the highest-PPR neighbor both
-  // land at white; weaker neighbors recede toward gray.
-  const pprBounds = useMemo(() => {
-    let min = Number.POSITIVE_INFINITY;
-    let max = Number.NEGATIVE_INFINITY;
-    for (const n of visible.nodes) {
-      if (n.is_center) continue;
-      if (n.ppr < min) min = n.ppr;
-      if (n.ppr > max) max = n.ppr;
-    }
-    return { min, max };
-  }, [visible.nodes]);
-
   const flowNodes = useMemo(() => {
     const laneNodes = layout.lanes.map((lane) => ({
       id: lane.id,
@@ -684,15 +670,9 @@ export function EntityGraph({
       const pos = positions.get(n.id) ?? { x: 0, y: 0 };
       const lifecycle = nodeLifecycle(n);
       const accentColor = lifecycleColor(lifecycle);
-      const pprRange = pprBounds.max - pprBounds.min;
-      let bg = "rgb(255,255,255)";
-      if (n.is_center) {
-        bg = "color-mix(in oklch, var(--color-accent) 30%, white)";
-      } else if (pprRange > 0) {
-        const t = (n.ppr - pprBounds.min) / pprRange;
-        const v = Math.round(212 + 43 * t);
-        bg = `rgb(${v},${v},${v})`;
-      }
+      const bg = n.is_center
+        ? "color-mix(in oklch, var(--color-accent) 30%, white)"
+        : "rgb(255,255,255)";
       const title = n.name ?? n.summary;
       // Make the card itself a real link. React Flow's node-level click
       // remains as a fallback, but the anchor gives expected browser affordances.
@@ -746,7 +726,7 @@ export function EntityGraph({
     });
 
     return [...laneNodes, ...entityNodes];
-  }, [visible.nodes, layout.lanes, positions, pprBounds, hrefFor, expandedNodeId]);
+  }, [visible.nodes, layout.lanes, positions, hrefFor, expandedNodeId]);
 
   const laneLabelRails = useMemo(() => {
     const height = graphHeight || 480;
