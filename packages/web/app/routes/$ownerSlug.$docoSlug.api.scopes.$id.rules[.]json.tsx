@@ -15,18 +15,18 @@
 // Unlike the web flow there is NO preview step — APIs and CLIs are
 // non-interactive; commit-immediately.
 
-import { parse as parseYaml } from "yaml";
-import type { EntityId } from "@doco/shared";
 import { withClient } from "@doco/db";
+import type { EntityId } from "@doco/shared";
+import { parse as parseYaml } from "yaml";
+import { renderOperationLines } from "~/lib/capture.server";
 import { docoPath } from "~/lib/db.server";
 import { loadDocoForAdmin } from "~/lib/doco-access.server";
-import { renderOperationLines } from "~/lib/capture.server";
 import {
+  type ClassifiedRule,
+  LlmUnavailableError,
   classifyRuleProse,
   formatRuleClassifierError,
-  LlmUnavailableError,
   ruleClassifierErrorStatus,
-  type ClassifiedRule,
 } from "~/lib/llm.server";
 import { createRuleInDoco, reindex } from "~/lib/redeem.server";
 import { listScopeDetails, readDocoMetadata } from "~/lib/scope-helpers.server";
@@ -64,19 +64,13 @@ export async function action({
   }
   const ct = (request.headers.get("content-type") ?? "").toLowerCase();
   if (!ct.includes("application/json")) {
-    return Response.json(
-      { error: "Content-Type must be application/json." },
-      { status: 400 },
-    );
+    return Response.json({ error: "Content-Type must be application/json." }, { status: 400 });
   }
   let body: RuleProseBody;
   try {
     body = (await request.json()) as RuleProseBody;
   } catch (e) {
-    return Response.json(
-      { error: `Invalid JSON body: ${(e as Error).message}` },
-      { status: 400 },
-    );
+    return Response.json({ error: `Invalid JSON body: ${(e as Error).message}` }, { status: 400 });
   }
   const prose = (body.prose ?? "").trim();
   if (!prose) {
@@ -125,16 +119,19 @@ export async function action({
   const docoId = meta.docoId as EntityId<"doco">;
   let addedAuthoring = 0;
   let addedGuidance = 0;
+  const addedRules: Array<ClassifiedRule & { id: EntityId<"rule">; summary: string }> = [];
   for (const c of classified) {
     if (c.bucket === "guidance") {
       if (c.text.trim()) {
-        await createRuleInDoco({
+        const summary = c.text.trim();
+        const ruleId = await createRuleInDoco({
           docoId,
           kind: "guidance",
-          summary: c.text.trim(),
+          summary,
           scopeId: id as EntityId<"scope">,
           createdBy: null,
         });
+        addedRules.push({ ...c, id: ruleId, summary });
         addedGuidance++;
       }
       continue;
@@ -143,40 +140,42 @@ export async function action({
     // makes this rule authoring for the scope. `createRuleInDoco`
     // auto-wires the rule id into `Scope.gated_by`; the engine reads
     // the citation, not a flag on the rule.
-    await createRuleInDoco({
+    const summary = c.text.trim() || `Authoring rule (${c.rule.kind})`;
+    const ruleId = await createRuleInDoco({
       docoId,
-      summary: c.text.trim() || `Authoring rule (${c.rule.kind})`,
+      summary,
       predicate: c.rule,
       scopeId: id as EntityId<"scope">,
       createdBy: null,
     });
+    addedRules.push({ ...c, id: ruleId, summary });
     addedAuthoring++;
   }
   await reindex(dir);
 
   const duration_ms = Date.now() - t0;
-  const ops = classified.map((c) => ({
-    kind: "added" as const,
-    summary:
-      c.bucket === "guidance"
-        ? `Guidance rule: ${c.text}`
-        : `Authoring rule (${c.rule.kind}): ${c.text}`,
-  }));
-  const footer_lines = renderOperationLines({
-    ownerSlug,
-    docoSlug,
-    nodeType: "scope",
-    id,
-    summary: `${classified.length} rule${classified.length === 1 ? "" : "s"} added to scope ${scopeName}`,
-    docoHost: new URL(request.url).origin,
-    ops,
-    scopes: scopeIcon ? [{ name: scopeName, icon: scopeIcon }] : [{ name: scopeName }],
-    duration_ms,
-  });
+  const docoHost = new URL(request.url).origin;
+  const scopes = scopeIcon ? [{ name: scopeName, icon: scopeIcon }] : [{ name: scopeName }];
+  const footer_lines = addedRules.flatMap((rule, index) =>
+    renderOperationLines({
+      ownerSlug,
+      docoSlug,
+      nodeType: "rule",
+      id: rule.id,
+      summary: rule.summary,
+      docoHost,
+      ops: [{ kind: "added", summary: rule.summary }],
+      scopes,
+      duration_ms: index === addedRules.length - 1 ? duration_ms : undefined,
+    }),
+  );
 
   return Response.json(
     {
-      added: classified,
+      added: addedRules.map((rule) => ({
+        ...rule,
+        url: `${docoHost}/${ownerSlug}/${docoSlug}/rule/${rule.id}`,
+      })),
       added_authoring: addedAuthoring,
       added_guidance: addedGuidance,
       footer_lines,
@@ -192,7 +191,7 @@ async function readScopeFromDb(
   try {
     return await withClient(async (c) => {
       const r = await c.query<{ raw_yaml: string }>(
-        `SELECT raw_yaml FROM scopes WHERE id = $1 AND doco_id = $2 LIMIT 1`,
+        "SELECT raw_yaml FROM scopes WHERE id = $1 AND doco_id = $2 LIMIT 1",
         [scopeId, docoId],
       );
       const row = r.rows[0];

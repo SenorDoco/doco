@@ -219,6 +219,13 @@ POST/PATCH/DELETE on any \`\${DOCO_URL}api/*.json\` returns
   two \`footer_lines\`, the user-facing reply must show two Doco operation
   lines before the closing tally. The tally is only the aggregate
   bookend; it never substitutes for the per-operation lines.
+- Do not infer extra entity links from prose around a write. The
+  \`footer_lines\` links are the only link contract. If an endpoint creates
+  attached entities while mutating a container (for example adding Rules to
+  a Scope), use the returned entity ids / direct Rule URLs when explaining
+  where those entities live. If the footer says "Scope updated", say the
+  scope was updated; don't present that link as though it opens the new
+  Rule.
 
 Op icons: ✍️ added · 📝 updated · 🧹 cleared · ➕ added/appended ·
 ➖ removed · 🔁 replaced · 🏷️ renamed · 🗑️ deleted.

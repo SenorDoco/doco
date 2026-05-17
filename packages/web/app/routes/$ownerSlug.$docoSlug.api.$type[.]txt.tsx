@@ -270,10 +270,24 @@ ADDING RULES IN PLAIN ENGLISH
 
   Response (HTTP 201):
     {
-      "added": [ { "text": "...", "rule": { "kind": "...", ... } }, ... ],
-      "total": <new total count of rules on this scope>,
-      "footer_lines": [ "[🔮 Doco] ➕ Scope updated: ...", ... ]
+      "added": [
+        {
+          "id": "rule_<ULID>",
+          "summary": "...",
+          "url": "${baseUrl}/${owner}/${doco}/rule/rule_<ULID>",
+          "text": "...",
+          "rule": { "kind": "...", ... }
+        }
+      ],
+      "added_authoring": <count>,
+      "added_guidance": <count>,
+      "footer_lines": [ "[🔮 Doco] ✍️ Rule added: ...", ... ]
     }
+
+  Rule-creation footer lines link to the created Rule entities. Do not
+  describe a Scope footer link as the Rule link; if a response returns
+  Rule ids/URLs, use those direct links when explaining where the new
+  authoring rule lives.
 
   Errors:
     400  prose missing/empty, JSON malformed.
