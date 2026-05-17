@@ -173,30 +173,26 @@ export default function InviteLanding({
     <Shell>
       <Card>
         <CardHeader>
-          <CardTitle>You've been invited to a Doco</CardTitle>
-          <CardDescription>
-            <strong>
-              {loaderData.doco.handle}
-            </strong>{" "}
-            is tracking decisions, intents, and rules in Doco. Click Accept to join.
-          </CardDescription>
+          <CardTitle>You've been invited to a doco</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3 text-sm text-muted-foreground">
+          <p>
+            <strong>{loaderData.doco.handle}</strong> keeps people, agents, and work aligned
+            with doco.
+          </p>
           <p>
             Invite expires <strong>{new Date(loaderData.expires_at).toLocaleString()}</strong>.
             Single-use — once you accept, this URL stops working.
           </p>
           {loaderData.signedIn ? (
             <p>
-              Signed in as <strong>{loaderData.signedIn.username}</strong>.
+              You're signed in as <strong>{loaderData.signedIn.username}</strong>.
             </p>
           ) : (
-            <p>
-              You'll be asked to sign in with GitHub before joining.
-            </p>
+            <p>You'll be asked to sign in with GitHub before joining.</p>
           )}
           {actionData && "error" in actionData ? (
-            <p className="text-sm text-destructive">{actionData.error}</p>
+            <p className="text-destructive">{actionData.error}</p>
           ) : null}
           <Form method="post" className="flex gap-2">
             <button
