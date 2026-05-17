@@ -1,4 +1,4 @@
-// /<owner>/<doco>/scopes/<id> — merged scope detail + edit page.
+// /<doco-handle>/scopes/<id> — merged scope detail + edit page.
 //
 // Per decision_01KRPNZY7W6CCMYNKGND67BP0B the separate detail and edit
 // pages collapsed into this one. Per
@@ -205,7 +205,7 @@ export async function loader({
 }) {
   const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
   const { id } = params;
-  const { dir, me } = await loadDocoForAdmin(request, ownerSlug, docoSlug);
+  const { dir, me } = await loadDocoForAdmin(request, handle);
   const raw = await readScopeRaw(id);
   if (!raw) throw new Response("Scope not found", { status: 404 });
 
@@ -589,7 +589,7 @@ export async function action({
 }) {
   const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
   const { id } = params;
-  const { dir, meta } = await loadDocoForAdmin(request, ownerSlug, docoSlug);
+  const { dir, meta } = await loadDocoForAdmin(request, handle);
   const form = await request.formData();
   const intent = String(form.get("intent") ?? "");
   const scopeId = id as EntityId<"scope">;

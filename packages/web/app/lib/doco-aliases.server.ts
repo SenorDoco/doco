@@ -1,29 +1,5 @@
 import { getDocoByHandle } from "@doco/db";
 
-export interface DocoSlugResolution {
-  ownerSlug: string;
-  docoSlug: string;
-  redirected: boolean;
-}
-
-/**
- * @deprecated Phase 3a — the slug pair no longer exists in storage. The
- * resolver now tries two handle shapes: `<owner>-<slug>` (the migration
- * synthesis, correct for every legacy Doco) and `<slug>` alone (the new
- * `requested_id`-only handle for API-created Docos). Returns the
- * legacy slug pair on success so existing call sites keep working;
- * new code should use `resolveDocoHandleAlias` or `getDocoByHandle`.
- */
-export async function resolveDocoSlugAlias(
-  ownerSlug: string,
-  docoSlug: string,
-): Promise<DocoSlugResolution | null> {
-  const row =
-    (await getDocoByHandle(`${ownerSlug}-${docoSlug}`)) ||
-    (await getDocoByHandle(docoSlug));
-  return row ? { ownerSlug, docoSlug, redirected: false } : null;
-}
-
 export function recordDocoSlugAlias(
   _fromOwner: string,
   _fromSlug: string,
@@ -31,14 +7,14 @@ export function recordDocoSlugAlias(
   _toSlug: string,
   _docoId: string,
 ): void {
-  // No alias persistence in alpha. Renames update the canonical Postgres row.
+  // No alias persistence in alpha. Renames update the canonical
+  // Postgres row directly. After slug-removal phase 3 the only
+  // identifier that can be renamed is `handle`; the legacy
+  // `(owner_slug, doco_slug)` pair no longer exists in storage so
+  // there's nothing to alias from.
 }
 
-/**
- * Phase 1 of slug-removal: resolve a Doco by its `handle` (public,
- * globally-unique URL id). Routes that switch to the new `/<doco-id>/`
- * shape use this instead of `resolveDocoSlugAlias`.
- */
+/** Resolve a Doco by its `handle` (public, globally-unique URL id). */
 export async function resolveDocoHandleAlias(
   handle: string,
 ): Promise<{ handle: string; ownerSlug: string; docoSlug: string } | null> {

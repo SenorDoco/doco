@@ -62,10 +62,10 @@ export function makeCaptureRoute<TDraft>(cfg: CaptureRouteConfig<TDraft>) {
       request: Request;
       params: RouteParams;
     }) {
-      const { ownerSlug, docoSlug } = await normalizeDocoParams(params);
-      await loadDocoForRead(request, ownerSlug, docoSlug);
+      const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
+      await loadDocoForRead(request, handle);
       return Response.json(
-        { error: `Use POST to capture. See /<owner>/<doco>/api/${cfg.type}.txt for the spec.` },
+        { error: `Use POST to capture. See /<doco-handle>/api/${cfg.type}.txt for the spec.` },
         { status: 405 },
       );
     },
@@ -77,8 +77,8 @@ export function makeCaptureRoute<TDraft>(cfg: CaptureRouteConfig<TDraft>) {
       request: Request;
       params: RouteParams;
     }) {
-      const { ownerSlug, docoSlug } = await normalizeDocoParams(params);
-      const { me } = await loadDocoForAdmin(request, ownerSlug, docoSlug);
+      const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
+      const { me } = await loadDocoForAdmin(request, handle);
       const dir = docoPath(ownerSlug, docoSlug);
       const meta = await readDocoMetadata(dir);
       if (!meta) {
@@ -149,7 +149,7 @@ export interface UpdateRouteConfig {
 
 export function makeUpdateRoute(cfg: UpdateRouteConfig) {
   return {
-    // GET /<owner>/<doco>/api/<plural>/<id>.json — read the entity body.
+    // GET /<doco-handle>/api/<plural>/<id>.json — read the entity body.
     // Reachable from the agent-facing short form `/by-id/<doco_id>/<typed_ulid>.json`
     // via the catchall redirect. Read access (not admin) — anyone who can
     // see the Doco can read entity bodies.
@@ -161,8 +161,8 @@ export function makeUpdateRoute(cfg: UpdateRouteConfig) {
       params: IdRouteParams;
     }) {
       const { id } = params;
-      const { ownerSlug, docoSlug } = await normalizeDocoParams(params);
-      const ctx = await loadDocoForRead(request, ownerSlug, docoSlug);
+      const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
+      const ctx = await loadDocoForRead(request, handle);
       const rec = await getEntity(cfg.nodeType, id);
       // Cross-doco probe by ULID is effectively unguessable (128 bits), but
       // we still gate on the doco the caller actually has read access to —
@@ -202,8 +202,8 @@ export function makeUpdateRoute(cfg: UpdateRouteConfig) {
       params: IdRouteParams;
     }) {
       const { id } = params;
-      const { ownerSlug, docoSlug } = await normalizeDocoParams(params);
-      const { me } = await loadDocoForAdmin(request, ownerSlug, docoSlug);
+      const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
+      const { me } = await loadDocoForAdmin(request, handle);
       const dir = docoPath(ownerSlug, docoSlug);
       const meta = await readDocoMetadata(dir);
       if (!meta) return Response.json({ error: "Doco not found." }, { status: 404 });

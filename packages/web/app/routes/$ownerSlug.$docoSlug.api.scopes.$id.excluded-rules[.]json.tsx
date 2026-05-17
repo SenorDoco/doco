@@ -1,4 +1,4 @@
-// POST /<owner>/<doco>/api/scopes/<scope_id>/excluded-rules.json
+// POST /<doco-handle>/api/scopes/<scope_id>/excluded-rules.json
 //
 // v7 (decision_01KRRR5BQ16ASY8HQEE0V499YG). Append a Rule id to this
 // scope's `excluded_rules` array — the per-scope opt-out for an
@@ -34,7 +34,7 @@ export async function action({
   if (request.method !== "POST") {
     return Response.json({ error: "POST required." }, { status: 405 });
   }
-  await loadDocoForAdmin(request, ownerSlug, docoSlug);
+  await loadDocoForAdmin(request, handle);
   const dir = docoPath(ownerSlug, docoSlug);
   const meta = await readDocoMetadata(dir);
   if (!meta?.docoId) {

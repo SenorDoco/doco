@@ -47,7 +47,7 @@ SUCCESS RESPONSE (HTTP 201, application/json)
   {
     "ok": true,
     "id": "decision_<ULID>",
-    "path": "docos/<owner>/<doco>/decisions/decision_<ULID>.md",
+    "path": "docos/<doco-handle>/decisions/decision_<ULID>.md",
     "footer_lines": ["[🔮 Doco] ..."],
     "duration_ms": 432
   }
@@ -123,7 +123,7 @@ SUCCESS RESPONSE (HTTP 201, application/json)
   {
     "ok": true,
     "id": "intent_<ULID>",
-    "path": "docos/<owner>/<doco>/intents/intent_<ULID>.md",
+    "path": "docos/<doco-handle>/intents/intent_<ULID>.md",
     "footer_lines": ["[🔮 Doco] ✍️ Intent added: [<summary>](<url>)"]
   }
 

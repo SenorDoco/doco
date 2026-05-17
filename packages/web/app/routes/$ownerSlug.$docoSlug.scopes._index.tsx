@@ -23,7 +23,7 @@ export async function loader({
   params: { docoId: string };
 }) {
   const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
-  const { dir, meta, me } = await loadDocoForRead(request, ownerSlug, docoSlug);
+  const { dir, meta, me } = await loadDocoForRead(request, handle);
   const scopes = await listScopeDetails(dir, { includePrimaryIntent: true });
   const url = new URL(request.url);
   const isOnboarding = url.searchParams.get("onboarding") === "1";

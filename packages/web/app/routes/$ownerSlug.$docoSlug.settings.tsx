@@ -1,4 +1,4 @@
-// /<owner>/<doco>/settings — admin-only Doco settings page. Renames the
+// /<doco-handle>/settings — admin-only Doco settings page. Renames the
 // slug, edits description + display_name, toggles visibility
 // (private/public), or deletes the Doco.
 //
@@ -24,7 +24,7 @@ export async function loader({
   params: { docoId: string };
 }) {
   const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
-  const { meta, me } = await loadDocoForAdmin(request, ownerSlug, docoSlug);
+  const { meta, me } = await loadDocoForAdmin(request, handle);
   return {
     ownerSlug,
     docoSlug,
@@ -45,7 +45,7 @@ export async function action({
   params: { docoId: string };
 }) {
   const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
-  const { dir: oldDir, meta, me } = await loadDocoForAdmin(request, ownerSlug, docoSlug);
+  const { dir: oldDir, meta, me } = await loadDocoForAdmin(request, handle);
   const form = await request.formData();
   const intent = String(form.get("intent") ?? "save");
 

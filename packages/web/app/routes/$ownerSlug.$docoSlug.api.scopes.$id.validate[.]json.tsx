@@ -1,4 +1,4 @@
-// POST /<owner>/<doco>/api/scopes/<scope_id>/validate.json
+// POST /<doco-handle>/api/scopes/<scope_id>/validate.json
 //
 // v7. Re-evaluate the rules engine against every node in the scope
 // (and descendants) at its current lifecycle. Returns a violations
@@ -32,7 +32,7 @@ export async function action({
   if (request.method !== "POST") {
     return Response.json({ error: "POST required." }, { status: 405 });
   }
-  await loadDocoForAdmin(request, ownerSlug, docoSlug);
+  await loadDocoForAdmin(request, handle);
   const dir = docoPath(ownerSlug, docoSlug);
   const meta = await readDocoMetadata(dir);
   if (!meta?.docoId) {

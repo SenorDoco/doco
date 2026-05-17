@@ -135,7 +135,7 @@ export async function loader({
   if (type === "scope") {
     throw redirect(`/${handle}/scopes/${idParam}`, { status: 308 });
   }
-  const ctx = await loadDocoForRead(request, ownerSlug, docoSlug);
+  const ctx = await loadDocoForRead(request, handle);
   const me = ctx.me;
   const docoId = ctx.meta.docoId;
   const dir = docoPath(ownerSlug, docoSlug);
@@ -576,7 +576,7 @@ export async function action({
   if (type !== "scope") {
     return { error: "Inline edit is only supported for scopes today." };
   }
-  await loadDocoForAdmin(request, ownerSlug, docoSlug); // 404/403 if not owner/admin
+  await loadDocoForAdmin(request, handle); // 404/403 if not owner/admin
   const dir = docoPath(ownerSlug, docoSlug);
   const form = await request.formData();
   const intent = String(form.get("intent") ?? "");

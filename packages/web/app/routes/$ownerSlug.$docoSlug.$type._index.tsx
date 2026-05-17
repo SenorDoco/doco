@@ -45,7 +45,7 @@ export async function loader({
   const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
   const { type } = params;
   if (!KNOWN.has(type)) throw new Response("Unknown type", { status: 404 });
-  const ctx = await loadDocoForRead(request, ownerSlug, docoSlug);
+  const ctx = await loadDocoForRead(request, handle);
   return withClient(async (c) => {
     if (type === "scope") {
       const rows = (

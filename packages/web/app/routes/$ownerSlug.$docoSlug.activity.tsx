@@ -1,4 +1,4 @@
-// /<owner>/<doco>/activity — paginated audit-events firehose.
+// /<doco-handle>/activity — paginated audit-events firehose.
 // Reads from the per-Doco audit log (decision_01KRKESCBTYG4005VMPKYNYR53)
 // with filterable query params: entity_type, op, by, since, until, limit.
 
@@ -34,7 +34,7 @@ export async function loader({
   params: { docoId: string };
 }) {
   const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
-  const { me } = await loadDocoForRead(request, ownerSlug, docoSlug);
+  const { me } = await loadDocoForRead(request, handle);
   const dir = docoPath(ownerSlug, docoSlug);
 
   const url = new URL(request.url);

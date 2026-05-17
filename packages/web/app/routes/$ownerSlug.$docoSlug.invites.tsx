@@ -1,4 +1,4 @@
-// /<owner>/<doco>/invites — web management UI for Doco invites.
+// /<doco-handle>/invites — web management UI for Doco invites.
 //
 // Lists all invites (pending / consumed / expired / revoked) and lets
 // any user with access to this Doco mint a new one with one click.
@@ -34,8 +34,7 @@ export async function loader({
   const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
   const { meta, me, canonicalOwnerSlug, canonicalDocoSlug } = await loadDocoForRead(
     request,
-    ownerSlug,
-    docoSlug,
+    handle,
   );
   const store = TokenStore.forDoco(rootDir());
   const invites = await store.listInvitesForDoco(meta.docoId as EntityId<"doco">);
@@ -72,7 +71,7 @@ export async function action({
   params: { docoId: string };
 }): Promise<ActionResult> {
   const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
-  const { meta, me } = await loadDocoForRead(request, ownerSlug, docoSlug);
+  const { meta, me } = await loadDocoForRead(request, handle);
   if (!me) {
     return { error: "Sign in to mint invites." };
   }

@@ -1,4 +1,4 @@
-// GET /<owner>/<doco>/api/audit.json — read the per-Doco audit log.
+// GET /<doco-handle>/api/audit.json — read the per-Doco audit log.
 //
 // Filters (all optional, all query-string):
 //   entity_id=<id>           events for one entity

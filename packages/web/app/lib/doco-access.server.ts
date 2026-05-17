@@ -3,13 +3,13 @@
 
 import { redirect } from "react-router";
 import {
+  getDocoByIdOrHandle,
   getPrincipalById,
   isOrgAdmin as dbIsOrgAdmin,
   isOrgMember as dbIsOrgMember,
 } from "@doco/db";
 import { docoPath, rootDir } from "./db.server";
 import { TokenStore } from "./tokens.server";
-import { resolveDocoSlugAlias } from "./doco-aliases.server";
 import { resolvePrincipalUsernameAlias } from "./principal-aliases.server";
 import { type DocoMetadata, readDocoMetadata } from "./scope-helpers.server";
 import { type CurrentPrincipal, getCurrentPrincipalAsync } from "./session";
@@ -166,51 +166,35 @@ export function notFoundForAccessDenied(ownerSlug: string, docoSlug: string): Re
 }
 
 /**
- * Resolve `:docoId/*` route params to the legacy slug pair so handlers
- * keep speaking `(ownerSlug, docoSlug)` to lib helpers. Accepts the
- * URL's single `params.docoId` segment, which may be a human-readable
- * handle (canonical, phase 2d+) or a ULID (legacy callers / pinned
- * agent contexts). Throws a 404 if nothing resolves.
- *
- * For migration safety this also accepts the OLD param shape with
- * `ownerSlug`/`docoSlug` — that path stays alive until every route is
- * cut over (phase 3 drops it).
+ * Resolve `:docoId/*` route params to the canonical record. Accepts
+ * the URL's single `params.docoId` segment, which may be a
+ * human-readable handle (canonical) or a ULID. Throws a 404 if
+ * nothing resolves. The returned `ownerSlug` and `docoSlug` are
+ * back-compat fields synthesized by `mapDocoRow`: `ownerSlug` comes
+ * from a JOIN to `principals.username` / `organizations.slug`,
+ * `docoSlug` mirrors `handle`. Handlers that need the legacy slug
+ * pair for internal plumbing (docoPath, captures) keep destructuring
+ * them; new code should read `handle` directly.
  */
 export async function normalizeDocoParams(params: {
   docoId?: string;
-  ownerSlug?: string;
-  docoSlug?: string;
 }): Promise<{
   ownerSlug: string;
   docoSlug: string;
   handle: string;
   docoId: string;
 }> {
-  if (params.docoId) {
-    const { getDocoByIdOrHandle } = await import("@doco/db");
-    const row = await getDocoByIdOrHandle(params.docoId);
-    if (!row) throw notFoundForAccessDenied(params.docoId, "");
-    return {
-      ownerSlug: row.owner_slug,
-      docoSlug: row.doco_slug,
-      handle: row.handle || `${row.owner_slug}-${row.doco_slug}`,
-      docoId: row.id,
-    };
+  if (!params.docoId) {
+    throw notFoundForAccessDenied("", "");
   }
-  if (params.ownerSlug && params.docoSlug) {
-    const { getDocoBySlug } = await import("@doco/db");
-    const row = await getDocoBySlug(params.ownerSlug, params.docoSlug);
-    return {
-      ownerSlug: params.ownerSlug,
-      docoSlug: params.docoSlug,
-      handle: row?.handle || `${params.ownerSlug}-${params.docoSlug}`,
-      docoId: row?.id || "",
-    };
-  }
-  throw notFoundForAccessDenied(
-    params.docoId ?? params.ownerSlug ?? "",
-    params.docoSlug ?? "",
-  );
+  const row = await getDocoByIdOrHandle(params.docoId);
+  if (!row) throw notFoundForAccessDenied(params.docoId, "");
+  return {
+    ownerSlug: row.owner_slug,
+    docoSlug: row.handle,
+    handle: row.handle,
+    docoId: row.id,
+  };
 }
 
 /**
@@ -218,56 +202,49 @@ export async function normalizeDocoParams(params: {
  */
 export async function loadDocoForRead(
   request: Request,
-  ownerSlug: string,
-  docoSlug: string,
+  handleOrId: string,
 ): Promise<{
   dir: string;
   meta: DocoMetadata;
   me: CurrentPrincipal | null;
   canonicalOwnerSlug: string;
   canonicalDocoSlug: string;
+  canonicalHandle: string;
   redirected: boolean;
 }> {
-  const ownerResolved = resolvePrincipalUsernameAlias(ownerSlug);
-  const aliasResolved = await resolveDocoSlugAlias(ownerResolved.canonical, docoSlug);
-  if (!aliasResolved) {
-    // Phase 2d wired every per-Doco URL through `:docoId`, so by the
-    // time loadDocoForRead runs `normalizeDocoParams` has already
-    // resolved the canonical slug pair. The phase-2b handle-fallback
-    // redirect that used to live here is unreachable now.
-    throw notFoundForAccessDenied(ownerSlug, docoSlug);
-  }
-  // If either segment was non-canonical (alias followed), 308 to the
-  // canonical URL. GitHub-style: old URLs keep working, clients learn
-  // the canonical on the next round-trip. 308 preserves method so
-  // POST/PATCH captures retry cleanly at the new URL.
-  if (ownerResolved.redirected || aliasResolved.redirected) {
+  const row = await getDocoByIdOrHandle(handleOrId);
+  if (!row) throw notFoundForAccessDenied(handleOrId, "");
+  // Principal-username alias compat (e.g., username renames). Drives a
+  // 308 from the old handle to the canonical one when the JOINed
+  // owner_slug indicates the principal has been renamed since the
+  // handle was originally minted. Rare in practice.
+  const ownerResolved = resolvePrincipalUsernameAlias(row.owner_slug);
+  if (ownerResolved.redirected && handleOrId !== row.handle) {
     const url = new URL(request.url);
-    const oldPrefix = `/${ownerSlug}/${docoSlug}`;
+    const oldPrefix = `/${handleOrId}`;
     if (url.pathname === oldPrefix || url.pathname.startsWith(`${oldPrefix}/`)) {
-      const newPath = `/${aliasResolved.ownerSlug}/${aliasResolved.docoSlug}${url.pathname.slice(
-        oldPrefix.length,
-      )}`;
+      const newPath = `/${row.handle}${url.pathname.slice(oldPrefix.length)}`;
       throw new Response(null, {
         status: 308,
         headers: { Location: newPath + url.search },
       });
     }
   }
-  const dir = docoPath(aliasResolved.ownerSlug, aliasResolved.docoSlug);
+  const dir = docoPath(row.owner_slug, row.handle);
   const meta = await readDocoMetadata(dir);
-  if (!meta) throw notFoundForAccessDenied(ownerSlug, docoSlug);
+  if (!meta) throw notFoundForAccessDenied(handleOrId, "");
   const me = await getCurrentPrincipalAsync(request);
   if (!(await canAccessDoco(meta, me?.id ?? null))) {
-    throw notFoundForAccessDenied(ownerSlug, docoSlug);
+    throw notFoundForAccessDenied(handleOrId, "");
   }
   return {
     dir,
     meta,
     me,
-    canonicalOwnerSlug: aliasResolved.ownerSlug,
-    canonicalDocoSlug: aliasResolved.docoSlug,
-    redirected: aliasResolved.redirected || ownerResolved.redirected,
+    canonicalOwnerSlug: row.owner_slug,
+    canonicalDocoSlug: row.handle,
+    canonicalHandle: row.handle,
+    redirected: ownerResolved.redirected,
   };
 }
 
@@ -276,10 +253,16 @@ export async function loadDocoForRead(
  */
 export async function loadDocoForAdmin(
   request: Request,
-  ownerSlug: string,
-  docoSlug: string,
-): Promise<{ dir: string; meta: DocoMetadata; me: CurrentPrincipal | null }> {
-  const ctx = await loadDocoForRead(request, ownerSlug, docoSlug);
+  handleOrId: string,
+): Promise<{
+  dir: string;
+  meta: DocoMetadata;
+  me: CurrentPrincipal | null;
+  canonicalOwnerSlug: string;
+  canonicalDocoSlug: string;
+  canonicalHandle: string;
+}> {
+  const ctx = await loadDocoForRead(request, handleOrId);
   if (!(await canAdminDoco(ctx.meta, ctx.me?.id ?? null))) {
     throw new Response("Forbidden: only the Doco's owner can edit this.", { status: 403 });
   }

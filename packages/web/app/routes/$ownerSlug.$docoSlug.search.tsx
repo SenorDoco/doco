@@ -369,7 +369,7 @@ export async function loader({
   params: { docoId: string };
 }) {
   const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
-  const ctx = await loadDocoForRead(request, ownerSlug, docoSlug);
+  const ctx = await loadDocoForRead(request, handle);
   const url = new URL(request.url);
   const q = (url.searchParams.get("q") ?? "").trim();
   const me = await getCurrentPrincipal(request);

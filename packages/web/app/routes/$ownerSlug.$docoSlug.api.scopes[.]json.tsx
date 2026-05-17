@@ -13,7 +13,7 @@ import {
 import { listScopeDetails, readDocoMetadata } from "~/lib/scope-helpers.server";
 
 /**
- * POST /<owner>/<doco>/api/scopes.json — single-call Scope creation.
+ * POST /<doco-handle>/api/scopes.json — single-call Scope creation.
  *
  * Per ADR-137bis every scope-creation surface MUST require an explicit
  * `watched: boolean` answer — a soft attention signal for contributors,
@@ -62,7 +62,7 @@ export async function loader({
   params: { docoId: string };
 }) {
   const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
-  await loadDocoForRead(request, ownerSlug, docoSlug);
+  await loadDocoForRead(request, handle);
   return Response.json(
     {
       error:
@@ -80,7 +80,7 @@ export async function action({
   params: { docoId: string };
 }) {
   const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
-  const { me } = await loadDocoForAdmin(request, ownerSlug, docoSlug);
+  const { me } = await loadDocoForAdmin(request, handle);
   const dir = docoPath(ownerSlug, docoSlug);
   const meta = await readDocoMetadata(dir);
   if (!meta) {

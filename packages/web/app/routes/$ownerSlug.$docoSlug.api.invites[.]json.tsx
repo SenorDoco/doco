@@ -1,4 +1,4 @@
-// POST /<owner>/<doco>/api/invites.json — mint a new invite for this
+// POST /<doco-handle>/api/invites.json — mint a new invite for this
 // Doco. Any user (agent or human) holding a valid access key for the
 // Doco can call this; auth flows through getCurrentPrincipalAsync,
 // which resolves the URL-path credential, query-param credential, or
@@ -41,11 +41,7 @@ export async function action({
   // metadata. Any user with read access can mint an invite — the
   // permission boundary is "you can read this Doco" rather than
   // "you can admin it," because invites are how memberships grow.
-  const { meta, me } = await loadDocoForRead(
-    request,
-    ownerSlug,
-    docoSlug,
-  );
+  const { meta, me } = await loadDocoForRead(request, handle);
   if (!me) {
     // canAccessDoco may have let an anonymous caller pass for a public
     // Doco; minting invites still requires a Principal so we can

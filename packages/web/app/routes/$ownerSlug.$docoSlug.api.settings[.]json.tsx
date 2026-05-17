@@ -12,7 +12,7 @@ interface SettingsPatch {
 }
 
 /**
- * /<owner>/<doco>/api/settings.json — single-call settings endpoint.
+ * /<doco-handle>/api/settings.json — single-call settings endpoint.
  *
  *  GET   returns the current settings (read-gated like the rest of the Doco).
  *  PATCH/POST updates fields (admin-gated). Slug rename updates the
@@ -31,7 +31,7 @@ export async function loader({
   params: { docoId: string };
 }) {
   const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
-  const { meta } = await loadDocoForRead(request, ownerSlug, docoSlug);
+  const { meta } = await loadDocoForRead(request, handle);
   return Response.json({
     owner_slug: ownerSlug,
     doco_slug: docoSlug,
@@ -50,7 +50,7 @@ export async function action({
   params: { docoId: string };
 }) {
   const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
-  const { dir: oldDir } = await loadDocoForAdmin(request, ownerSlug, docoSlug);
+  const { dir: oldDir } = await loadDocoForAdmin(request, handle);
 
   if (request.method !== "POST" && request.method !== "PATCH") {
     return Response.json({ error: "Use POST or PATCH." }, { status: 405 });

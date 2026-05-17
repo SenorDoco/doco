@@ -1,4 +1,4 @@
-// POST /<owner>/<doco>/api/admin/apply-template-updates.json
+// POST /<doco-handle>/api/admin/apply-template-updates.json
 //
 // One-shot admin endpoint that brings the target Doco's managed scopes
 // (currently `global` and `user-flows`) into alignment with the current
@@ -36,7 +36,7 @@ export async function action({
     return Response.json({ error: "POST required." }, { status: 405 });
   }
   const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
-  const { dir, meta, me } = await loadDocoForAdmin(request, ownerSlug, docoSlug);
+  const { dir, meta, me } = await loadDocoForAdmin(request, handle);
   const result = await applyScopeTemplateUpdatesToDoco({
     docoDir: dir,
     docoId: meta.docoId as EntityId<"doco">,

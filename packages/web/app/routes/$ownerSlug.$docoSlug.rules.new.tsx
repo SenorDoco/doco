@@ -1,5 +1,5 @@
 import { withClient } from "@doco/db";
-// /<owner>/<doco>/rules/new — minimal capture form for a Rule entity.
+// /<doco-handle>/rules/new — minimal capture form for a Rule entity.
 // Linked from /constitution's "Add rule" button (and reusable from
 // anywhere else that wants the same affordance — pass ?scope=<name>
 // to prefill the scope). Admin-only: project owners + org admins.
@@ -25,7 +25,7 @@ export async function loader({
   params: { docoId: string };
 }) {
   const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
-  const { meta, me } = await loadDocoForAdmin(request, ownerSlug, docoSlug);
+  const { meta, me } = await loadDocoForAdmin(request, handle);
   const url = new URL(request.url);
   const prefillScope = url.searchParams.get("scope") ?? "";
   const intents = await withClient(async (c) => {
@@ -59,7 +59,7 @@ export async function action({
   params: { docoId: string };
 }) {
   const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
-  const { me } = await loadDocoForAdmin(request, ownerSlug, docoSlug);
+  const { me } = await loadDocoForAdmin(request, handle);
   const dir = docoPath(ownerSlug, docoSlug);
   const meta = await readDocoMetadata(dir);
   if (!meta) {

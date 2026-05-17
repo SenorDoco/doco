@@ -11,10 +11,9 @@
 
 import { CANONICAL_INSTRUCTIONS } from "~/lib/instructions.server";
 import type { AuthoringPredicate } from "@doco/shared";
-import { getDocoById, listEntitiesByDoco } from "@doco/db";
+import { getDocoByIdOrHandle, listEntitiesByDoco } from "@doco/db";
 import { docoPath } from "~/lib/db.server";
 import { canAccessDoco } from "~/lib/doco-access.server";
-import { resolveDocoSlugAlias } from "~/lib/doco-aliases.server";
 import { etaggedJson } from "~/lib/etag.server";
 import { loadHostConfig } from "~/lib/host";
 import {
@@ -147,7 +146,7 @@ function buildOnboardingOverlay(args: {
       "STEP 1 of onboarding — set up scopes. DECIDE-AND-CONFIRM, not decide-and-execute. (1) Read the project (files, README, the description the project owner gave). (2) Propose a curated starter set to the project owner in plain prose: 'user-flows' (the only template the framework ships) PLUS 1–3 CUSTOM scopes named for this project's actual subject areas. Phrase it: 'For this project I'd start with user-flows (end-to-end journeys, from the template), plus custom scopes <name-for-area-1> for <reason> and <name-for-area-2> for <reason>. Sound right, or should I adjust?' Then STOP and wait — DO NOT call any scope-creation endpoint yet. (3) If the project is unclear, ASK FIRST: 'What areas of this project do you want to track separately?' (4) Only after the project owner confirms, POST to /<doco-handle>/scopes/new or call the scope-creation endpoints. (5) During onboarding ONLY, pass watched=true on every scope you create — see watched_explainer below for what this means and why it's the onboarding default. (6) A single template scope alone is a smell — every onboarding session should produce at least one CUSTOM scope named for a project-specific area. Conventional names like adrs/apis/bugs/runbooks/post-mortems/glossary/roadmap/design-language/coding-style/framework/test-evals are no longer auto-installed; they're project-owner-authored when needed. NOTE: scope creation is STEP 1; do NOT stop after scopes exist — keep going to STEP 2 (scope_population).",
     scope_setup_url: `${baseUrl}/${handle}/scopes/new?onboarding=1`,
     watched_explainer:
-      "Every scope carries a 'watched' boolean (ADR-137bis). Watched=TRUE means contributors (project owner and agents alike) should proactively scan against this scope at capture time — 'does the thing I'm about to capture also belong here?' It's a soft attention signal, not enforcement. Watched=FALSE means the scope is available but no extra prompting; agents won't get nudged to consider it. During ONBOARDING, every scope you create defaults to watched=true: the project owner is literally in the room picking these scopes on purpose, so the attention signal matches what onboarding is for. After onboarding, ADR-137bis applies again — every scope-creation surface requires the caller (project owner or agent) to pick watched/not-watched explicitly with no default. The project owner can flip any scope's watched value any time from /<owner>/<doco>/scopes/<id>/edit. When you explain watched to the project owner in chat, use these exact words: 'Watched means: when you (or an agent) capture work later, this scope nudges you to consider whether the work belongs here.'",
+      "Every scope carries a 'watched' boolean (ADR-137bis). Watched=TRUE means contributors (project owner and agents alike) should proactively scan against this scope at capture time — 'does the thing I'm about to capture also belong here?' It's a soft attention signal, not enforcement. Watched=FALSE means the scope is available but no extra prompting; agents won't get nudged to consider it. During ONBOARDING, every scope you create defaults to watched=true: the project owner is literally in the room picking these scopes on purpose, so the attention signal matches what onboarding is for. After onboarding, ADR-137bis applies again — every scope-creation surface requires the caller (project owner or agent) to pick watched/not-watched explicitly with no default. The project owner can flip any scope's watched value any time from /<doco-handle>/scopes/<id>/edit. When you explain watched to the project owner in chat, use these exact words: 'Watched means: when you (or an agent) capture work later, this scope nudges you to consider whether the work belongs here.'",
     scope_population:
       "STEP 2 of onboarding — drive real content into each scope. ONBOARDING IS NOT DONE WHEN SCOPES EXIST. For EACH scope you just created, ask the project owner what they want to capture first: for adrs, 'What's the most important architectural choice you've already made that should be the first ADR?'; for user-flows, 'Walk me through the most important user journey in this project — I'll capture it as an Intent + Action chain'; for any custom scope, 'What's the load-bearing thing about <area> that's in your head but not in the repo yet?' Drive at least ONE real node into each scope before treating onboarding as complete. Empty scopes are the failure mode this step exists to prevent — a scope shell with no nodes is documentation theater, not the work. Only stop when EITHER (a) each scope has at least one real node, OR (b) the project owner explicitly says 'defer the rest for now' (acknowledge: 'OK, deferring; remember <scope_a>, <scope_b> are still empty and would benefit from a real node when you have a minute.'). NEVER print 'Onboarding done' if any scope is still empty unless (b) was said.",
   };
@@ -173,7 +172,11 @@ function isOnboardingState(scopes: ScopeManifestEntry[]): boolean {
 
 export async function loader({ request }: { request: Request }) {
   const url = new URL(request.url);
-  const slug = (url.searchParams.get("slug") ?? "").trim();
+  // Per-Doco context comes from `?id=<doco_id-or-handle>`. The legacy
+  // `?slug=<owner>/<doco>` query param was retired with the slug
+  // columns (phase 3 of slug-removal). Pin the doco_handle in
+  // `doco.md` and pass it as `?id=` — `getDocoByIdOrHandle` accepts
+  // both ULIDs and handles.
   const id = (url.searchParams.get("id") ?? "").trim();
   const host = hostFromRequest(request);
   let codeMap: unknown | null = null;
@@ -197,41 +200,15 @@ export async function loader({ request }: { request: Request }) {
     warning = formatMissingDocoLine(missingDocoGuidance);
   }
 
-  // Accept `?id=doco_<ulid>` for per-Doco context. A legacy `?slug=`
-  // parameter still resolves old callers, but ID is the stable path.
-  let effectiveOwner: string | null = null;
-  let effectiveDoco: string | null = null;
-  let effectiveDocoId: string | null = null;
   if (id) {
-    const row = await getDocoById(id);
+    const row = await getDocoByIdOrHandle(id);
     if (!row) {
       flagMissing("not_found", id);
     } else {
-      effectiveOwner = row.owner_slug;
-      effectiveDoco = row.doco_slug;
-      effectiveDocoId = row.id;
-    }
-  } else if (slug && slug.includes("/")) {
-    const [reqOwner, reqDoco] = slug.split("/", 2);
-    if (reqOwner && reqDoco) {
-      effectiveOwner = reqOwner;
-      effectiveDoco = reqDoco;
-    }
-  }
-
-  if (effectiveOwner && effectiveDoco && !warning) {
-    // Resolve slug aliases (D-019: renames leave the old slug as an
-    // alias to the canonical current one). When the caller used
-    // `?id=`, the slug is already canonical — the resolver returns
-    // `redirected: false` and this is a no-op.
-    const resolved = await resolveDocoSlugAlias(effectiveOwner, effectiveDoco);
-    if (!resolved) {
-      flagMissing("not_found", `${effectiveOwner}/${effectiveDoco}`);
-    } else {
-      const dir = docoPath(resolved.ownerSlug, resolved.docoSlug);
+      const dir = docoPath(row.owner_slug, row.handle);
       const meta = await readDocoMetadata(dir);
       if (!meta) {
-        flagMissing("not_found", `${effectiveOwner}/${effectiveDoco}`);
+        flagMissing("not_found", id);
       } else {
         // Apply the same privacy gate the per-Doco data routes use,
         // so bootstrap can't quietly report scopes/code_map for a
@@ -240,25 +217,22 @@ export async function loader({ request }: { request: Request }) {
         // signal — bootstrap said yes while data routes said no.
         const me = await getCurrentPrincipalAsync(request);
         if (!await canAccessDoco(meta, me?.id ?? null)) {
-          flagMissing("no_access", `${effectiveOwner}/${effectiveDoco}`);
+          flagMissing("no_access", id);
         } else {
           // code_map.yaml is gone (alpha forbids back-compat); keep
           // the field in the response for client compatibility.
           codeMap = null;
           constitution = await loadConstitution(meta.docoId);
           scopes = await listScopeManifest(dir);
-          docoSlugPath = `${resolved.ownerSlug}/${resolved.docoSlug}`;
-          docoIdPath = effectiveDocoId ?? meta.docoId;
-          docoHandlePath = meta.handle || `${resolved.ownerSlug}-${resolved.docoSlug}`;
-          if (resolved.redirected) {
-            warning = `Slug "${effectiveOwner}/${effectiveDoco}" is an alias for "${docoSlugPath}". Pin DOCO_ID in AGENTS.md to avoid slug drift.`;
-          }
+          docoSlugPath = `${row.owner_slug}/${row.handle}`;
+          docoIdPath = row.id;
+          docoHandlePath = row.handle;
           if (isOnboardingState(scopes)) {
             const reqUrl = new URL(request.url);
             const baseUrl = `${reqUrl.protocol}//${reqUrl.host}`;
             onboardingOverlay = buildOnboardingOverlay({
               baseUrl,
-              handle: meta.handle || `${resolved.ownerSlug}-${resolved.docoSlug}`,
+              handle: row.handle,
             });
           }
         }

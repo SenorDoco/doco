@@ -551,7 +551,7 @@ async function resolveScopeOrError(
 ): Promise<{ ids: string[] } | CaptureError> {
   const { ids, unknown, available, unavailable } = await resolveScopeNames(docoDir, names);
   if (unknown.length > 0) {
-    const availStr = available.join(", ") || "(none — create scopes first via /<owner>/<doco>/scopes/new)";
+    const availStr = available.join(", ") || "(none — create scopes first via /<doco-handle>/scopes/new)";
     return { error: `Unknown scope name(s): ${unknown.join(", ")}. Available: ${availStr}` };
   }
   if (unavailable.length > 0) {

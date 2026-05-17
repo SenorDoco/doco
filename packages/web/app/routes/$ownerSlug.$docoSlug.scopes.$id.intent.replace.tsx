@@ -1,4 +1,4 @@
-// /<owner>/<doco>/scopes/<id>/intent/replace — standalone main Intent
+// /<doco-handle>/scopes/<id>/intent/replace — standalone main Intent
 // replacement for a scope.
 
 import { withClient } from "@doco/db";
@@ -79,7 +79,7 @@ export async function loader({
 }) {
   const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
   const { id } = params;
-  const { meta, me } = await loadDocoForAdmin(request, ownerSlug, docoSlug);
+  const { meta, me } = await loadDocoForAdmin(request, handle);
   const raw = await readScopeRaw(meta.docoId, id);
   if (!raw) throw new Response("Scope not found", { status: 404 });
   const primaryIntent = await readMainIntentForScope(meta.docoId, scopeMainIntentId(raw));
@@ -108,7 +108,7 @@ export async function action({
 }) {
   const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
   const { id } = params;
-  const { dir, meta, me } = await loadDocoForAdmin(request, ownerSlug, docoSlug);
+  const { dir, meta, me } = await loadDocoForAdmin(request, handle);
   const form = await request.formData();
   const summary = String(form.get("summary") ?? "").trim();
   const back = `/${handle}/scopes/${id}`;

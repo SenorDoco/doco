@@ -42,7 +42,7 @@ export async function action({
     return Response.json({ error: "Use POST." }, { status: 405 });
   }
 
-  const { me, meta } = await loadDocoForAdmin(request, ownerSlug, docoSlug);
+  const { me, meta } = await loadDocoForAdmin(request, handle);
   const body = (await request.json().catch(() => ({}))) as {
     username?: string;
     display_name?: string;

@@ -67,7 +67,7 @@ export async function loader({
   params: { docoId: string };
 }) {
   const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
-  const ctx = await loadDocoForRead(request, ownerSlug, docoSlug);
+  const ctx = await loadDocoForRead(request, handle);
   const me = ctx.me;
   const dir = docoPath(ownerSlug, docoSlug);
   const scopeDetails = await listScopeDetails(dir);

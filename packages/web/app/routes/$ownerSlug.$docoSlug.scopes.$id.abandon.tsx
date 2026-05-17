@@ -1,4 +1,4 @@
-// /<owner>/<doco>/scopes/<id>/abandon — standalone Danger Zone for
+// /<doco-handle>/scopes/<id>/abandon — standalone Danger Zone for
 // abandoning a scope.
 //
 // Per decision_01KRPNZY7W6CCMYNKGND67BP0B the destructive action moved
@@ -44,7 +44,7 @@ export async function loader({
 }) {
   const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
   const { id } = params;
-  const { dir, me } = await loadDocoForAdmin(request, ownerSlug, docoSlug);
+  const { dir, me } = await loadDocoForAdmin(request, handle);
   const raw = await readScopeRaw(id);
   if (!raw) throw new Response("Scope not found", { status: 404 });
   const scopeName = String(raw.name);
@@ -93,7 +93,7 @@ export async function action({
 }) {
   const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
   const { id } = params;
-  const { dir } = await loadDocoForAdmin(request, ownerSlug, docoSlug);
+  const { dir } = await loadDocoForAdmin(request, handle);
   const form = await request.formData();
   const intent = String(form.get("intent") ?? "");
   const scopeId = id as EntityId<"scope">;

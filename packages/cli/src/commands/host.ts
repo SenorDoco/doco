@@ -118,12 +118,18 @@ const orgCmd = defineCommand({
 });
 
 const docoNewCmd = defineCommand({
-  meta: { name: "new", description: "Create a new Doco in the host owned by a user or org." },
+  meta: { name: "new", description: "Create a new Doco in the host." },
   args: {
-    slug: {
+    handle: {
       type: "positional",
-      description: "owner_slug/doco_slug, e.g. alice/my-project",
+      description:
+        "Doco handle (URL identifier), e.g. my-project. May also be <owner>/<slug> for back-compat — the legacy form derives owner from the prefix; new form requires --owner.",
       required: true,
+    },
+    owner: {
+      type: "string",
+      description:
+        "Owner username or org slug for the new Doco. Required when `handle` is a single segment; ignored when `handle` is `<owner>/<slug>` (the owner comes from the prefix).",
     },
     description: { type: "string" },
     visibility: { type: "string", default: "private" },
@@ -132,21 +138,45 @@ const docoNewCmd = defineCommand({
   async run({ args }) {
     const root = rootArgOrFind(args);
     if (!root) return failNoHost();
-    const slug = args.slug as string;
-    const parts = slug.split("/");
-    if (parts.length !== 2 || !parts[0] || !parts[1]) {
-      console.error(cross(`Invalid slug "${slug}" — expected <owner>/<doco>.`));
-      process.exitCode = 2;
-      return;
+    const handleArg = args.handle as string;
+
+    // Accept either:
+    //   1. single segment + --owner=<owner>      (preferred — handle IS the URL id)
+    //   2. legacy "<owner>/<doco>" compound       (back-compat)
+    let ownerSlug: string;
+    let docoSlug: string;
+    let requestedId: string;
+    if (handleArg.includes("/")) {
+      const parts = handleArg.split("/");
+      if (parts.length !== 2 || !parts[0] || !parts[1]) {
+        console.error(cross(`Invalid argument "${handleArg}" — expected <owner>/<handle> or a single <handle> with --owner.`));
+        process.exitCode = 2;
+        return;
+      }
+      ownerSlug = parts[0];
+      docoSlug = parts[1];
+      requestedId = parts[1];
+    } else {
+      const ownerArg = (args.owner as string | undefined)?.trim();
+      if (!ownerArg) {
+        console.error(cross(`--owner=<user-or-org> is required when handle is a single segment. Or pass <owner>/<handle> in one argument.`));
+        process.exitCode = 2;
+        return;
+      }
+      ownerSlug = ownerArg;
+      docoSlug = handleArg;
+      requestedId = handleArg;
     }
+
     const rec = await createDocoInHost(root, {
-      ownerSlug: parts[0],
-      docoSlug: parts[1],
+      ownerSlug,
+      docoSlug,
+      requestedId,
       ...(args.description !== undefined ? { description: args.description as string } : {}),
       visibility: (args.visibility as "private" | "public") ?? "private",
     });
     console.log();
-    console.log(checkmark(`Doco created: ${rec.ownerSlug}/${rec.docoSlug}`));
+    console.log(checkmark(`Doco created: ${rec.handle}`));
     console.log(`  ${c.dim("path:")}      ${rec.path}`);
     console.log(`  ${c.dim("doco id:")}  ${rec.docoId}`);
     console.log(`  ${c.dim("handle:")}    ${rec.handle}`);

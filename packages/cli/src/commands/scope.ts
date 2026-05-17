@@ -1,7 +1,7 @@
 // `doco scope <subcommand>` — operations on scopes that don't fit the
 // uniform PATCH/POST shape elsewhere. The first subcommand: `add-rule`,
 // which authors rules from plain English prose. Maps onto the host's
-// POST /<owner>/<doco>/api/scopes/<scope_id>/rules.json endpoint.
+// POST /<doco-handle>/api/scopes/<scope_id>/rules.json endpoint.
 //
 // Per decision_01KRPET95G2QNTPCR0YWAKSCH5 the project owner describes
 // the rule in their own words; the host's LLM classifier maps that onto

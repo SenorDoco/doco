@@ -5,7 +5,7 @@ import { readDocoMetadata } from "~/lib/scope-helpers.server";
 import { getCurrentPrincipalAsync } from "~/lib/session";
 
 /**
- * /<owner>/<doco>/status.json — agent-polled freshness signal.
+ * /<doco-handle>/status.json — agent-polled freshness signal.
  *
  * Returns the Doco's latest modification time + light counts read straight
  * from Postgres.

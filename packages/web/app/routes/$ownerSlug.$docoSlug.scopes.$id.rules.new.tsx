@@ -1,4 +1,4 @@
-// /<owner>/<doco>/scopes/<id>/rules/new — standalone rule creation for
+// /<doco-handle>/scopes/<id>/rules/new — standalone rule creation for
 // a scope page's Guidance / Authoring sections.
 
 import { withClient } from "@doco/db";
@@ -51,7 +51,7 @@ export async function loader({
 }) {
   const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
   const { id } = params;
-  const { meta, me } = await loadDocoForAdmin(request, ownerSlug, docoSlug);
+  const { meta, me } = await loadDocoForAdmin(request, handle);
   const raw = await readScopeRaw(meta.docoId, id);
   if (!raw) throw new Response("Scope not found", { status: 404 });
   const url = new URL(request.url);
@@ -80,7 +80,7 @@ export async function action({
 }) {
   const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
   const { id } = params;
-  const { dir, meta, me } = await loadDocoForAdmin(request, ownerSlug, docoSlug);
+  const { dir, meta, me } = await loadDocoForAdmin(request, handle);
   const form = await request.formData();
   const kind = resolveKind(String(form.get("kind") ?? ""));
   const prose = String(form.get("prose") ?? "").trim();

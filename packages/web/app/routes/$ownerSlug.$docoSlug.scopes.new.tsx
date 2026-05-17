@@ -35,7 +35,7 @@ export async function loader({
   params: { docoId: string };
 }) {
   const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
-  const { dir, meta, me } = await loadDocoForRead(request, ownerSlug, docoSlug);
+  const { dir, meta, me } = await loadDocoForRead(request, handle);
   // Active scopes only — abandoned scopes aren't shown as parent options.
   // Template adds can reactivate an abandoned scope with the same name.
   const allScopes = await listScopeDetails(dir);
@@ -92,7 +92,7 @@ export async function action({
   params: { docoId: string };
 }) {
   const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
-  const { dir, meta, me } = await loadDocoForAdmin(request, ownerSlug, docoSlug);
+  const { dir, meta, me } = await loadDocoForAdmin(request, handle);
   const { docoId, ownerId } = meta;
   const createdBy = (me?.id ?? ownerId) as EntityId<"principal">;
 

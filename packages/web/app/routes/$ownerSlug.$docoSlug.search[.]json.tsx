@@ -1,4 +1,4 @@
-// GET /<owner>/<doco>/search.json — agent-facing query endpoint.
+// GET /<doco-handle>/search.json — agent-facing query endpoint.
 //
 // Agents call this at the START of every new task to find nodes in the
 // Doco relevant to the user's request. Vector-only ranking (ADR-052).
@@ -154,7 +154,7 @@ export async function loader({
 }) {
   const start = performance.now();
   const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
-  const ctx = await loadDocoForRead(request, ownerSlug, docoSlug);
+  const ctx = await loadDocoForRead(request, handle);
   const url = new URL(request.url);
   const q = (url.searchParams.get("q") ?? "").trim();
   const docoDir = docoPath(ownerSlug, docoSlug);

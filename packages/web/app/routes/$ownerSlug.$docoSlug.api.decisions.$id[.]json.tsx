@@ -1,15 +1,15 @@
 import { docoPath } from "~/lib/db.server";
-import { loadDocoForAdmin } from "~/lib/doco-access.server";
+import { loadDocoForAdmin, normalizeDocoParams } from "~/lib/doco-access.server";
 import { readDocoMetadata } from "~/lib/scope-helpers.server";
 import { updateDecision, type DecisionPatch } from "~/lib/capture.server";
 import { makeUpdateRoute } from "~/lib/api-capture-factory.server";
 
 /**
- * GET /<owner>/<doco>/api/decisions/<id>.json — read the Decision body.
+ * GET /<doco-handle>/api/decisions/<id>.json — read the Decision body.
  * Reachable from `/by-id/<doco_id>/decision_<ulid>.json` via the catchall
  * redirect. Shares the factory's generic entity-read loader.
  *
- * PATCH /<owner>/<doco>/api/decisions/<id>.json — update an existing
+ * PATCH /<doco-handle>/api/decisions/<id>.json — update an existing
  * Decision in place. Custom action (not the factory's `updateEntity`)
  * because decisions carry ADR-specific logic: setting `is_adr: false`
  * demotes (clears scope_adr + number); `is_adr: true` promotes (adds
@@ -29,10 +29,11 @@ export async function action({
   params,
 }: {
   request: Request;
-  params: { ownerSlug: string; docoSlug: string; id: string };
+  params: { docoId: string; id: string };
 }) {
-  const { ownerSlug, docoSlug, id } = params;
-  const { me } = await loadDocoForAdmin(request, ownerSlug, docoSlug);
+  const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
+  const { id } = params;
+  const { me } = await loadDocoForAdmin(request, handle);
   const dir = docoPath(ownerSlug, docoSlug);
   const meta = await readDocoMetadata(dir);
   if (!meta) {

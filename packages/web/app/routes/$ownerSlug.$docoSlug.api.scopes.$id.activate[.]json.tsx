@@ -1,4 +1,4 @@
-// POST /<owner>/<doco>/api/scopes/<scope_id>/activate.json
+// POST /<doco-handle>/api/scopes/<scope_id>/activate.json
 //
 // v7 (decision_01KRRR5BQ16ASY8HQEE0V499YG). Bulk-flip every drafted
 // node in the scope (and descendants) to lifecycle=active, after
@@ -35,7 +35,7 @@ export async function action({
   if (request.method !== "POST") {
     return Response.json({ error: "POST required." }, { status: 405 });
   }
-  await loadDocoForAdmin(request, ownerSlug, docoSlug);
+  await loadDocoForAdmin(request, handle);
   const dir = docoPath(ownerSlug, docoSlug);
   const meta = await readDocoMetadata(dir);
   if (!meta?.docoId) {

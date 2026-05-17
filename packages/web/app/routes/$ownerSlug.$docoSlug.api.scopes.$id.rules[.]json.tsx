@@ -1,4 +1,4 @@
-// POST /<owner>/<doco>/api/scopes/<scope_id>/rules.json
+// POST /<doco-handle>/api/scopes/<scope_id>/rules.json
 //
 // Prose-driven rule authoring (decision_01KRPET95G2QNTPCR0YWAKSCH5).
 //
@@ -39,7 +39,7 @@ export function loader() {
   return Response.json(
     {
       error:
-        "Use POST with `{prose: string}` to add rules. See /<owner>/<doco>/api/scopes.txt for the spec.",
+        "Use POST with `{prose: string}` to add rules. See /<doco-handle>/api/scopes.txt for the spec.",
     },
     { status: 405 },
   );
@@ -54,7 +54,7 @@ export async function action({
 }) {
   const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
   const { id } = params;
-  await loadDocoForAdmin(request, ownerSlug, docoSlug);
+  await loadDocoForAdmin(request, handle);
   const dir = docoPath(ownerSlug, docoSlug);
   const meta = await readDocoMetadata(dir);
   if (!meta) {
