@@ -37,7 +37,7 @@ export interface GraphNode {
   name: string | null;
   lifecycle?: string | null;
   scopes?: { id: string; name: string; icon?: string | null }[];
-  /** Principal who owns this node's lane, usually the creator/actor. */
+  /** Principal who owns this node's lane in the rendered graph. */
   principal_id?: string | null;
   principal_label?: string | null;
   created_at: string | null;

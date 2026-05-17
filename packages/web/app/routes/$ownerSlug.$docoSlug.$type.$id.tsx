@@ -69,6 +69,34 @@ function collectIdentityIds(value: unknown, out = new Set<string>()): Set<string
 function displayPrincipalType(type: string): string {
   return type === "human" ? "person" : type;
 }
+
+function storedFrontmatter(rawYaml: string | null | undefined): Record<string, unknown> {
+  if (!rawYaml) return {};
+  try {
+    const parsed = parseYaml(rawYaml);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : {};
+  } catch {
+    return {};
+  }
+}
+
+function stringField(fm: Record<string, unknown>, field: string): string | null {
+  const value = fm[field];
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+function graphLanePrincipalId(
+  nodeType: string,
+  fm: Record<string, unknown>,
+  createdBy: string | null,
+): string | null {
+  if (nodeType === "intent") return stringField(fm, "wanted_by") ?? createdBy;
+  if (nodeType === "action" || nodeType === "log") return stringField(fm, "actor_id") ?? createdBy;
+  if (nodeType === "decision") return stringField(fm, "decided_by") ?? createdBy;
+  return createdBy;
+}
 import { Badge, LifecycleBadge, NodeTypeBadge } from "~/components/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { EntityGraph, type GraphLink, type GraphNode } from "~/components/entity-graph";
@@ -243,12 +271,14 @@ export async function loader({
         let params: unknown[];
         if (tbl === "principals") {
           sql = `SELECT id,
-                        username AS summary,
-                        username AS name,
+                        COALESCE(display_name, username) AS summary,
+                        COALESCE(display_name, username) AS name,
                         NULL::text AS lifecycle,
                         created_at::text,
                         id AS principal_id,
-                        username AS principal_label
+                        COALESCE(display_name, username) AS principal_label,
+                        NULL::text AS created_by,
+                        raw_yaml
                    FROM principals
                   WHERE id = ANY($1::text[])`;
           params = [ids];
@@ -259,7 +289,9 @@ export async function loader({
                         NULL::text AS lifecycle,
                         created_at::text,
                         NULL::text AS principal_id,
-                        NULL::text AS principal_label
+                        NULL::text AS principal_label,
+                        NULL::text AS created_by,
+                        raw_yaml
                    FROM organizations
                   WHERE id = ANY($1::text[])`;
           params = [ids];
@@ -270,10 +302,11 @@ export async function loader({
                         ${nameExpr} AS name,
                         t.lifecycle,
                         t.created_at::text,
-                        t.created_by AS principal_id,
-                        p.username AS principal_label
+                        NULL::text AS principal_id,
+                        NULL::text AS principal_label,
+                        t.created_by,
+                        t.raw_yaml
                    FROM ${tbl} t
-                   LEFT JOIN principals p ON p.id = t.created_by
                   WHERE t.id = ANY($1::text[]) AND t.doco_id = $2`;
           params = [ids, docoId];
         }
@@ -285,22 +318,43 @@ export async function loader({
           created_at: string | null;
           principal_id: string | null;
           principal_label: string | null;
+          created_by: string | null;
+          raw_yaml: string | null;
         }>(sql, params);
         for (const row of r.rows) {
           const m = /^([a-z_]+)_/.exec(row.id);
           const nt = m?.[1] ?? "";
+          const fm = storedFrontmatter(row.raw_yaml);
           neighborMeta.set(row.id, {
             node_type: nt,
             summary: row.summary ?? row.id,
             name: row.name ?? null,
             lifecycle: row.lifecycle ?? null,
             created_at: row.created_at ?? null,
-            principal_id: row.principal_id ?? null,
+            principal_id: row.principal_id ?? graphLanePrincipalId(nt, fm, row.created_by ?? null),
             principal_label: row.principal_label ?? null,
           });
         }
       } catch {
         /* unknown table */
+      }
+    }
+    const graphPrincipalIds = Array.from(
+      new Set(
+        Array.from(neighborMeta.values())
+          .map((meta) => meta.principal_id)
+          .filter((principalId): principalId is string => Boolean(principalId)),
+      ),
+    );
+    if (graphPrincipalIds.length > 0) {
+      const principalRows = await c.query<{ id: string; label: string }>(
+        "SELECT id, COALESCE(display_name, username) AS label FROM principals WHERE id = ANY($1::text[])",
+        [graphPrincipalIds],
+      );
+      const principalLabelById = new Map(principalRows.rows.map((row) => [row.id, row.label]));
+      for (const meta of neighborMeta.values()) {
+        if (!meta.principal_id || meta.principal_label) continue;
+        meta.principal_label = principalLabelById.get(meta.principal_id) ?? null;
       }
     }
     const scopeIdsByNode = new Map<string, Set<string>>();
