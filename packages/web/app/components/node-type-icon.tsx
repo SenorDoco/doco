@@ -38,9 +38,9 @@ function iconPath(nodeType: string) {
     case "intent":
       return (
         <>
-          <circle cx="10" cy="12" r="6.5" />
-          <circle cx="10" cy="12" r="3" />
-          <path d="M15 6.5h4v5h-4M15 6.5v11" />
+          <circle cx="12" cy="12" r="6.2" />
+          <circle cx="12" cy="12" r="2.2" />
+          <path d="M12 3.8v3M12 17.2v3M3.8 12h3M17.2 12h3" />
         </>
       );
     case "idea":
@@ -53,9 +53,11 @@ function iconPath(nodeType: string) {
     case "rule":
       return (
         <>
-          <path d="M7 3.8h7l3 3v13.4H7a2 2 0 0 1-2-2V5.8a2 2 0 0 1 2-2Z" />
-          <path d="M14 3.8V7h3M8.5 10.5h5M8.5 13.5h7" />
-          <path d="M10 17l1.4 1.4 3.1-3.4" />
+          <path d="m14 13-7.8 7.8a1.4 1.4 0 0 1-2-2L12 11" />
+          <path d="m16 16 5-5" />
+          <path d="m13 3 8 8" />
+          <path d="m8 8 5-5" />
+          <path d="m8.5 7.5 8 8" />
         </>
       );
     case "decision":
@@ -89,17 +91,16 @@ function iconPath(nodeType: string) {
     case "reference":
       return (
         <>
-          <path d="M9.8 8.8 8.2 10.4a3.4 3.4 0 0 0 4.8 4.8l1.6-1.6" />
-          <path d="m11.2 12.8 1.6-1.6" />
-          <path d="m14.2 15.2 1.6-1.6A3.4 3.4 0 0 0 11 8.8L9.4 10.4" />
+          <path d="M10.3 6.7 7.7 9.3a4.1 4.1 0 0 0 5.8 5.8l2.1-2.1" />
+          <path d="m10.2 13.8 3.6-3.6" />
+          <path d="m13.7 17.3 2.6-2.6a4.1 4.1 0 0 0-5.8-5.8L8.4 11" />
         </>
       );
     case "scope":
       return (
         <>
-          <circle cx="12" cy="12" r="6.2" />
-          <circle cx="12" cy="12" r="2.2" />
-          <path d="M12 3.8v3M12 17.2v3M3.8 12h3M17.2 12h3" />
+          <rect x="4" y="5" width="16" height="14" rx="2" strokeDasharray="2.4 2.4" />
+          <path d="M8 9h8M8 12h5M8 15h7" />
         </>
       );
     case "state":
