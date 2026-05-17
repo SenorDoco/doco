@@ -12,9 +12,9 @@ export function loader() {
       details: "https://doco.to/llms.txt",
     },
     next_steps: [
-      "If user pasted an invite URL: POST /api/v1/invites/<code>/redeem.json (no auth)",
-      "Response carries doco_key — write it to ./.env as DOCO_KEY=<doco_key>",
-      "doco.md is committed in the repo; if missing, write one with the doco_url from the response",
+      "POST /api/v1/invites/<code>/redeem.json (no auth, empty body).",
+      "Walk the response's `next_steps_for_agent` array top-to-bottom — it carries the ordered checklist (write DOCO_KEY to .env, write doco.md if missing, update AGENTS.md / CLAUDE.md, fetch the canonical, render user_message_block).",
+      "Render the response's `user_message_block` verbatim to whoever pasted the invite — names the Doco, what files you wrote, and how they can claim their own access.",
     ],
     related_routes: [
       "/onboarding/join/agent.txt",

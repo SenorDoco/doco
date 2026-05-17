@@ -138,7 +138,15 @@ When the user pastes \`https://doco.to/invite/<code>\`, redeem it:
     curl -X POST "${baseUrl}/api/v1/invites/<code>/redeem.json" \\
       -H "Content-Type: application/json" -d '{}'
 
-The response carries a fresh \`doco_key\` — write it to \`.env\`.
+The response carries:
+- \`doco_key\` — write to \`./.env\` as \`DOCO_KEY=<doco_key>\`.
+- \`doco_url\` — if the repo has no \`doco.md\`, write one with this URL.
+- \`next_steps_for_agent\` — an ordered checklist of file writes +
+  the bootstrap fetch. Walk it top-to-bottom; it's the recipe in
+  miniature.
+- \`user_message_block\` — verbatim prose to render to the user who
+  pasted the invite. Tells them you're connected, what files you
+  wrote, and how to claim their own access if they want it.
 
 ## What NOT to do
 

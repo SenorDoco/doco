@@ -146,7 +146,14 @@ curl -fsS -X POST "https://doco.to/api/v1/invites/<code>/redeem.json" \
   -H "Content-Type: application/json" -d '{}'
 ```
 
-Response carries a fresh `doco_key`. Write it to `./.env`.
+Response carries `doco_key`, `doco_url`, `doco_slug`, plus two
+walk-this-recipe fields:
+
+- `next_steps_for_agent` — ordered checklist (write DOCO_KEY to
+  .env, write doco.md if missing, update AGENTS.md / CLAUDE.md,
+  fetch the canonical). Walk it top-to-bottom.
+- `user_message_block` — verbatim prose to render to whoever
+  pasted the invite. Don't paraphrase.
 
 ## If the bootstrap fetch fails — refuse to proceed
 

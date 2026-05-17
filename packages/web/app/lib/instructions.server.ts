@@ -1009,7 +1009,13 @@ redeem:
 curl -fsS -X POST https://doco.to/api/v1/invites/<code>/redeem.json \\
   -H "Content-Type: application/json" -d '{}'
 \`\`\`
-Response carries a fresh \`doco_key\` — write it to \`./.env\`.
+The response carries \`doco_key\`, \`doco_url\`, \`doco_slug\`, plus two
+walk-this-recipe fields: \`next_steps_for_agent\` (ordered checklist
+of file writes + bootstrap fetch) and \`user_message_block\` (verbatim
+prose to render to whoever pasted the invite). Walk the checklist
+top-to-bottom, then render the message block. Don't skip either —
+the user pasted you an invite but doesn't know exactly what you'll
+do with it; the block tells them.
 
 ### After the Doco exists — onboarding STEP 1 + STEP 2
 
