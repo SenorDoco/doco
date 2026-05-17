@@ -3,7 +3,12 @@
 This project is the meta-Doco — Doco's own Doco. Decisions, intents,
 rules, and history about Doco-the-product live at:
 
-**https://doco.to/by-id/doco_01KR441EA0ZDMF0N5DY38GSVS3/**
+**https://doco.to/torrenegra-doco/**
+
+(Internal ULID: `doco_01KR441EA0ZDMF0N5DY38GSVS3`. The
+`torrenegra-doco` handle is the public, human-readable URL id —
+phase-1 of slug removal sets it as `<owner_slug>-<doco_slug>` for
+every existing Doco.)
 
 ## For contributors (humans or agents)
 
