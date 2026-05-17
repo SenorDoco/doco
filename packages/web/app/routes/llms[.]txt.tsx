@@ -44,10 +44,11 @@ Omitted id auto-generates as \`doco-<random>\`. Response:
     }
 
 This is anonymous: the server mints an agent-Principal as the
-owner-of-record (no human attached). You hold the \`doco_key\`; share
-the \`invite_url\` with the project owner so they can claim
-collaboration access too. Both single-use, both ephemeral on the
-client side — only \`doco_key\` belongs in long-term storage.
+doco owner-of-record (no human attached yet). You hold the
+\`doco_key\`; share the \`invite_url\` with the user who asked you
+to set up Doco so they can claim collaboration access themselves.
+Both single-use, both ephemeral on the client side — only
+\`doco_key\` belongs in long-term storage.
 
 ## 2. Wire it into the repo
 
@@ -63,7 +64,9 @@ Write **\`./doco.md\`** (committed, non-secret) verbatim:
     This project is tracked in Doco at:
     <doco_url>
 
-    Need access? Ask the project owner for an invite URL.
+    Need access? Open the Doco URL above and sign in to mint an
+    invite for yourself — or ask any user already connected to this
+    Doco to mint one and share the resulting invite URL.
 
 Write or update **\`./AGENTS.md\`** so it includes the line
 \`@./doco.md\` somewhere near the top — that way any agent loading
@@ -152,11 +155,10 @@ only a human can soft-delete it from the Doco's Settings page.
 empty (new machine, fresh container), tell the user:
 
     "I can see this repo is tracked at <doco_url>, but I need an
-    invite to access it. Ask the project owner to either (a) sign
-    in at <doco_url> and click 'New invite', or (b) ask their
-    already-connected agent to POST
-    /agent/<their-DOCO_KEY>/api/invites.json. They'll give you an
-    invite URL — paste it back here."
+    invite to access it. Either (a) open <doco_url>, sign in, and
+    click 'New invite', or (b) ask any user already connected to
+    this Doco to POST /agent/<their-DOCO_KEY>/api/invites.json.
+    Paste the resulting invite URL back here."
 
 When the user pastes \`https://doco.to/invite/<code>\`, redeem it:
 

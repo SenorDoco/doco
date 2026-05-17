@@ -65,7 +65,9 @@ Step 3 — write ./doco.md (committed, non-secret) verbatim:
 
     **<doco_url>**
 
-    Need access? Ask the project owner for an invite URL.
+    Need access? Open the Doco URL above and sign in to mint an
+    invite for yourself — or ask any user already connected to
+    this Doco to mint one and share the resulting invite URL.
 
 Step 4 — make agent surfaces auto-load doco.md.
 
