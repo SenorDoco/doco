@@ -187,7 +187,6 @@ function relativeTime(iso: string | null): string {
  */
 const NODE_WIDTH = 340;
 const NODE_HEIGHT = 154;
-const NODE_CARD_RAIL_WIDTH = 36;
 const NODE_GAP_X = 72;
 const LANE_HEIGHT = 208;
 const LANE_GAP = 28;
@@ -378,7 +377,7 @@ function EntityNodeCard({
     <Link
       to={href}
       aria-label={`Open ${nodeType} ${title}`}
-      className="nodrag nopan relative flex cursor-pointer flex-col gap-1 overflow-visible py-3 pr-4 text-inherit no-underline shadow-sm transition-[box-shadow,min-height] duration-150 hover:z-10 hover:shadow-md focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className="nodrag nopan relative flex cursor-pointer flex-col gap-1 overflow-visible px-4 py-3 text-inherit no-underline shadow-sm transition-[box-shadow,min-height] duration-150 hover:z-10 hover:shadow-md focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       data-entity-node-card={nodeType}
       draggable={false}
       onBlur={() => setCardExpanded(false)}
@@ -392,23 +391,20 @@ function EntityNodeCard({
         background,
         border: isCenter ? "2px solid var(--color-border)" : "1px solid var(--color-border)",
         borderRadius: 8,
-        paddingLeft: NODE_CARD_RAIL_WIDTH + 12,
+        boxShadow: `inset 4px 0 0 ${accentColor}`,
       }}
     >
-      <span
+      <NodeTypeIcon
+        nodeType={nodeType}
         aria-hidden="true"
-        className="absolute inset-y-0 left-0 flex items-start justify-center rounded-l-[7px] pt-3"
-        data-entity-node-rail="true"
+        className="pointer-events-none absolute left-1/2 top-1/2 z-0 h-24 w-24 -translate-x-1/2 -translate-y-1/2"
+        data-entity-node-background-icon="true"
         style={{
-          width: NODE_CARD_RAIL_WIDTH,
-          background: accentColor,
+          color: accentColor,
+          opacity: 0.14,
         }}
-      >
-        <span className="inline-flex h-5 w-5 items-center justify-center rounded-sm border border-black/10 bg-background/90 text-foreground shadow-sm">
-          <NodeTypeIcon nodeType={nodeType} className="h-3.5 w-3.5" />
-        </span>
-      </span>
-      <div className="flex items-center gap-1.5">
+      />
+      <div className="relative z-10 flex items-center gap-1.5">
         <span className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-muted-foreground">
           {nodeType}
         </span>
@@ -423,10 +419,13 @@ function EntityNodeCard({
         </span>
       </div>
       {hasDistinctTitle ? (
-        <div className="truncate font-mono text-xs font-semibold text-foreground">{title}</div>
+        <div className="relative z-10 truncate font-mono text-xs font-semibold text-foreground">
+          {title}
+        </div>
       ) : null}
       <div
         className={[
+          "relative z-10",
           expanded ? "overflow-visible" : "overflow-hidden",
           hasDistinctTitle
             ? "text-[11px] leading-snug text-muted-foreground"
@@ -440,7 +439,7 @@ function EntityNodeCard({
       >
         {summary}
       </div>
-      <div className="mt-auto flex items-center justify-between gap-2 text-[9px] text-muted-foreground">
+      <div className="relative z-10 mt-auto flex items-center justify-between gap-2 text-[9px] text-muted-foreground">
         <span className="truncate">{relativeTime(createdAt)}</span>
         {isCenter ? (
           <span className="flex shrink-0 items-center gap-2 font-mono">
