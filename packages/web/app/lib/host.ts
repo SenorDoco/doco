@@ -4,9 +4,6 @@
 // All filesystem walks of `<root>/host.yaml`, `<root>/principals/`,
 // `<root>/organizations/`, and `<root>/docos/<owner>/<slug>/doco.yaml`
 // have been replaced with Postgres queries via @doco/db.
-//
-// Functions are async because Postgres is async; route loaders that
-// consumed the prior sync versions need an `await` added.
 
 import {
   getHostConfig,
@@ -40,6 +37,10 @@ export interface HostOrg {
 export interface HostDoco {
   ownerSlug: string;
   docoSlug: string;
+  /** Phase 1 of slug-removal: globally-unique handle for this Doco's
+   *  public URL. Falls back to `<ownerSlug>-<docoSlug>` if the column
+   *  is null (very old rows). */
+  handle: string;
   ownerKind: "principal" | "organization";
   ownerId: string;
   docoId: string;
@@ -87,7 +88,6 @@ export async function listOrgs(): Promise<HostOrg[]> {
   });
 }
 
-/** Return organizations where the given Principal is a member (any role). */
 export async function listMyOrgs(principalId: string): Promise<HostOrg[]> {
   const rows = await listOrganizationsForPrincipal(principalId);
   return rows.map((r) => {
@@ -103,7 +103,6 @@ export async function listMyOrgs(principalId: string): Promise<HostOrg[]> {
   });
 }
 
-/** Return organizations where the given Principal is owner or admin. */
 export async function listOrgsOwnedOrAdminedBy(principalId: string): Promise<HostOrg[]> {
   const rows = await listOrganizationsForPrincipal(principalId, ["owner", "admin"]);
   return rows.map((r) => {
@@ -128,10 +127,10 @@ export async function listAllDocos(): Promise<HostDoco[]> {
     const out: HostDoco = {
       ownerSlug: r.owner_slug,
       docoSlug: r.doco_slug,
+      handle: r.handle || `${r.owner_slug}-${r.doco_slug}`,
       ownerKind,
       ownerId: r.owner_id,
       docoId: r.id,
-      // PG is the index; every doco row implicitly has an index.
       hasIndex: true,
       visibility: r.visibility,
     };

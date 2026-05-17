@@ -6,11 +6,6 @@ import { join } from "node:path";
 
 let cachedRoot: string | null = null;
 
-/**
- * Resolve the host root placeholder. Canonical reads and writes go
- * through Postgres, so this must not discover or depend on a local
- * `docos/` tree.
- */
 export function rootDir(): string {
   cachedRoot ??= process.cwd();
   return cachedRoot;
@@ -18,6 +13,15 @@ export function rootDir(): string {
 
 export function docoPath(ownerSlug: string, docoSlug: string): string {
   return join(rootDir(), "docos", ownerSlug, docoSlug);
+}
+
+/**
+ * Phase-2 path builder for handle-keyed lookups. Once routes drop the
+ * owner prefix, this replaces `docoPath`. For now both shapes exist so
+ * callers can migrate at their own pace.
+ */
+export function docoPathByHandle(handle: string): string {
+  return join(rootDir(), "docos", handle);
 }
 
 export function readDocoFullSlug(ownerSlug: string, docoSlug: string): string {

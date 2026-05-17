@@ -5,6 +5,8 @@ import { parse as parseYaml } from "yaml";
 
 export interface DocoMetadata {
   docoId: string;
+  /** Phase 1 of slug-removal: public globally-unique handle. */
+  handle: string;
   ownerId: string;
   displayName: string;
   description: string;
@@ -36,6 +38,7 @@ export async function readDocoMetadata(docoDir: string): Promise<DocoMetadata | 
   }
   return {
     docoId: row.id,
+    handle: row.handle || `${row.owner_slug}-${row.doco_slug}`,
     ownerId: row.owner_id,
     displayName,
     description,
