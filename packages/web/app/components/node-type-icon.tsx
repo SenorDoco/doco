@@ -10,8 +10,9 @@ function iconPath(nodeType: string) {
     case "principal":
       return (
         <>
-          <rect x="3.5" y="4.5" width="17" height="15" rx="1.8" />
-          <path d="M7.5 4.5v15M7.5 9.5h13M7.5 14.5h13" />
+          <circle cx="12" cy="7.2" r="3" />
+          <path d="M5.5 20.2a6.5 6.5 0 0 1 13 0" />
+          <path d="M8.2 14.6a5.3 5.3 0 0 1 7.6 0" />
         </>
       );
     case "doco":
@@ -67,38 +68,38 @@ function iconPath(nodeType: string) {
     case "action":
       return (
         <>
-          <rect x="4" y="7" width="16" height="10" rx="2.2" />
-          <path d="M7 12h6.5M15.5 9.5 18 12l-2.5 2.5" />
+          <rect x="4" y="7" width="16" height="10" rx="1.8" />
         </>
       );
     case "log":
       return (
         <>
-          <circle cx="12" cy="12" r="7.5" />
-          <circle cx="12" cy="12" r="5" />
-          <path d="M12 8.5V12l2.6 1.6" />
+          <circle cx="6.5" cy="7.5" r="0.9" />
+          <circle cx="6.5" cy="12" r="0.9" />
+          <circle cx="6.5" cy="16.5" r="0.9" />
+          <path d="M10 7.5h8M10 12h8M10 16.5h8" />
         </>
       );
     case "eval":
       return (
         <>
-          <path d="M12 3.5 20.5 12 12 20.5 3.5 12 12 3.5Z" />
-          <path d="m8.2 12.2 2.4 2.4 5.3-5.6" />
+          <path d="m5.5 12.6 4.2 4.2 8.8-9.4" />
         </>
       );
     case "reference":
       return (
         <>
-          <path d="M7 3.8h7l3 3v13.4H7a2 2 0 0 1-2-2V5.8a2 2 0 0 1 2-2Z" />
-          <path d="M14 3.8V7h3" />
-          <path d="M9.2 14.2 8.3 15a2 2 0 0 0 2.8 2.8l1.1-1.1M11.8 11.6l1.1-1.1a2 2 0 0 1 2.8 2.8l-.9.9M10.5 15.5l4-4" />
+          <path d="M9.8 8.8 8.2 10.4a3.4 3.4 0 0 0 4.8 4.8l1.6-1.6" />
+          <path d="m11.2 12.8 1.6-1.6" />
+          <path d="m14.2 15.2 1.6-1.6A3.4 3.4 0 0 0 11 8.8L9.4 10.4" />
         </>
       );
     case "scope":
       return (
         <>
-          <rect x="4" y="5" width="16" height="14" rx="2" strokeDasharray="2.4 2.4" />
-          <path d="M8 9h8M8 12h5M8 15h7" />
+          <circle cx="12" cy="12" r="6.2" />
+          <circle cx="12" cy="12" r="2.2" />
+          <path d="M12 3.8v3M12 17.2v3M3.8 12h3M17.2 12h3" />
         </>
       );
     case "state":
