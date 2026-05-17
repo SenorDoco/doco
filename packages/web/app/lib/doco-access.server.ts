@@ -128,10 +128,13 @@ export async function listInvitedDocoIdsForPrincipal(
 }
 
 /**
- * Same as `canAccessDoco` but for write/admin operations.
+ * Same as `canAccessDoco` but for write/admin operations. During alpha,
+ * a Doco can have many owners — every invite-redeemed collaborator has
+ * full admin rights. Reader/author tiers are deferred until we have a
+ * real need to distinguish them.
  */
 export async function canAdminDoco(
-  meta: { ownerId: string },
+  meta: { ownerId: string; docoId?: string },
   principalId: string | null,
 ): Promise<boolean> {
   if (await isHostBootstrapOwned(meta.ownerId)) return true;
@@ -144,6 +147,11 @@ export async function canAdminDoco(
   if (meta.ownerId.startsWith("organization_")) {
     if (await dbIsOrgAdmin(meta.ownerId, principalId)) return true;
     if (ownerOfPrincipal && (await dbIsOrgAdmin(meta.ownerId, ownerOfPrincipal))) return true;
+  }
+
+  if (meta.docoId) {
+    const invited = await listInvitedDocoIdsForPrincipal(principalId);
+    if (invited.has(meta.docoId)) return true;
   }
   return false;
 }
