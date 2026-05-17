@@ -1,11 +1,11 @@
-import { validateDocoSlug } from "@doco/shared";
-import { rootDir } from "~/lib/db.server";
+import { validateRequestedDocoId } from "@doco/shared";
+import { getDocoByHandle } from "@doco/db";
+import { parse as parseYaml } from "yaml";
 import { loadDocoForAdmin, loadDocoForRead, normalizeDocoParams } from "~/lib/doco-access.server";
-import { reindex, renameDocoSlug, updateDocoMeta } from "~/lib/redeem.server";
-import { readDocoMetadata } from "~/lib/scope-helpers.server";
+import { reindex, renameDocoHandle, updateDocoMeta } from "~/lib/redeem.server";
 
 interface SettingsPatch {
-  slug?: string;
+  handle?: string;
   display_name?: string | null;
   description?: string | null;
   visibility?: "private" | "public";
@@ -15,7 +15,7 @@ interface SettingsPatch {
  * /<doco-handle>/api/settings.json — single-call settings endpoint.
  *
  *  GET   returns the current settings (read-gated like the rest of the Doco).
- *  PATCH/POST updates fields (admin-gated). Slug rename updates the
+ *  PATCH/POST updates fields (admin-gated). Handle rename updates the
  *  Postgres row and every URL that resolves through it.
  *
  * Same auth as decisions.json: cookie session OR Authorization: Bearer
@@ -48,8 +48,8 @@ export async function action({
   request: Request;
   params: { docoId: string };
 }) {
-  const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
-  const { dir: oldDir } = await loadDocoForAdmin(request, handle);
+  const { handle } = await normalizeDocoParams(params);
+  const { dir: oldDir, meta } = await loadDocoForAdmin(request, handle);
 
   if (request.method !== "POST" && request.method !== "PATCH") {
     return Response.json({ error: "Use POST or PATCH." }, { status: 405 });
@@ -65,20 +65,13 @@ export async function action({
     return Response.json({ error: `Invalid JSON body: ${(e as Error).message}` }, { status: 400 });
   }
 
-  let finalSlug = docoSlug;
-  let finalDir = oldDir;
-  if (patch.slug !== undefined && patch.slug !== docoSlug) {
-    const slugError = validateDocoSlug(patch.slug);
-    if (slugError) return Response.json({ error: slugError }, { status: 400 });
+  let finalHandle = handle;
+  if (patch.handle !== undefined && patch.handle !== handle) {
+    const handleError = validateRequestedDocoId(patch.handle);
+    if (handleError) return Response.json({ error: handleError }, { status: 400 });
     try {
-      const { newDir } = await renameDocoSlug({
-        root: rootDir(),
-        ownerSlug,
-        oldSlug: docoSlug,
-        newSlug: patch.slug,
-      });
-      finalSlug = patch.slug;
-      finalDir = newDir;
+      await renameDocoHandle({ oldHandle: handle, newHandle: patch.handle });
+      finalHandle = patch.handle;
     } catch (e) {
       return Response.json({ error: (e as Error).message }, { status: 400 });
     }
@@ -86,7 +79,7 @@ export async function action({
 
   try {
     await updateDocoMeta({
-      docoDir: finalDir,
+      handle: finalHandle,
       ...(patch.description !== undefined ? { description: patch.description } : {}),
       ...(patch.display_name !== undefined ? { display_name: patch.display_name } : {}),
       ...(patch.visibility !== undefined ? { visibility: patch.visibility } : {}),
@@ -94,17 +87,28 @@ export async function action({
   } catch (e) {
     return Response.json({ error: (e as Error).message }, { status: 400 });
   }
-  await reindex(finalDir);
+  await reindex(oldDir, meta.docoId);
 
-  const updated = await readDocoMetadata(finalDir);
+  const row = await getDocoByHandle(finalHandle);
+  let display_name = row?.name ?? "";
+  let description = "";
+  if (row) {
+    try {
+      const parsed = parseYaml(row.raw_yaml) as Record<string, unknown>;
+      if (typeof parsed.description === "string") description = parsed.description;
+      if (!display_name && typeof parsed.display_name === "string") display_name = parsed.display_name;
+    } catch {
+      // raw_yaml unparseable — display_name + description fall back to defaults.
+    }
+  }
   return Response.json(
     {
       ok: true,
-      doco_id: updated?.docoId ?? null,
-      doco_handle: updated?.handle ?? finalSlug,
-      display_name: updated?.displayName ?? "",
-      description: updated?.description ?? "",
-      visibility: updated?.visibility ?? "private",
+      doco_id: row?.id ?? meta.docoId,
+      doco_handle: finalHandle,
+      display_name,
+      description,
+      visibility: row?.visibility ?? "private",
     },
     { status: 200 },
   );

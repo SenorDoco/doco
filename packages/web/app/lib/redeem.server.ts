@@ -16,7 +16,7 @@ export {
   migrateScopesInDoco,
   parseScopeNamesInput,
   readScopeWatchedInDoco,
-  renameDocoSlug,
+  renameDocoHandle,
   seedScopeFromTemplate,
   setScopeWatchedInDoco,
   softDeleteDoco,

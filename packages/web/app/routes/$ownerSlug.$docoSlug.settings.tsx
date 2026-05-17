@@ -11,7 +11,7 @@ import { validateDocoSlug } from "@doco/shared";
 import { rootDir } from "~/lib/db.server";
 import { loadDocoForAdmin, normalizeDocoParams } from "~/lib/doco-access.server";
 import { loadHostConfig } from "~/lib/host";
-import { reindex, renameDocoSlug, softDeleteDoco, updateDocoMeta } from "~/lib/redeem.server";
+import { reindex, renameDocoHandle, softDeleteDoco, updateDocoMeta } from "~/lib/redeem.server";
 import { SiteHeader } from "~/components/site-header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 
@@ -71,41 +71,30 @@ export async function action({
   }
 
   // ── Default: save edits ───────────────────────────────────────────
-  const newSlug = String(form.get("doco_handle") ?? "").trim().toLowerCase();
+  const newHandle = String(form.get("doco_handle") ?? "").trim().toLowerCase();
   const description = String(form.get("description") ?? "");
   const visibility = (String(form.get("visibility") ?? "") as "private" | "public") || undefined;
 
-  if (!newSlug) return { error: "Handle is required." };
-  const slugError = validateDocoSlug(newSlug);
-  if (slugError) return { error: slugError };
+  if (!newHandle) return { error: "Handle is required." };
+  const handleError = validateDocoSlug(newHandle);
+  if (handleError) return { error: handleError };
   if (visibility && visibility !== "private" && visibility !== "public") {
     return { error: "Visibility must be private or public." };
   }
 
-  // Apply slug rename first if it changed; everything else writes to the
-  // new location.
-  let finalSlug = docoSlug;
-  let finalDir = oldDir;
-  if (newSlug !== docoSlug) {
+  let finalHandle = handle;
+  if (newHandle !== handle) {
     try {
-      const { newDir } = await renameDocoSlug({
-        root: rootDir(),
-        ownerSlug,
-        oldSlug: docoSlug,
-        newSlug,
-      });
-      finalSlug = newSlug;
-      finalDir = newDir;
+      await renameDocoHandle({ oldHandle: handle, newHandle });
+      finalHandle = newHandle;
     } catch (e) {
       return { error: (e as Error).message };
     }
-    // No alias persistence in alpha. Renames update the canonical
-    // `docos.handle` row directly; the old handle stops resolving.
   }
 
   try {
     await updateDocoMeta({
-      docoDir: finalDir,
+      handle: finalHandle,
       description,
       ...(visibility ? { visibility } : {}),
     });
@@ -113,11 +102,8 @@ export async function action({
     return { error: (e as Error).message };
   }
 
-  await reindex(finalDir);
-  // After rename, the handle becomes `<ownerSlug>-<finalSlug>` (the
-  // host-side renameDocoSlug uses that synthesis). Redirect to the
-  // canonical handle URL.
-  return redirect(`/${ownerSlug}-${finalSlug}/settings`);
+  await reindex(oldDir, meta.docoId);
+  return redirect(`/${finalHandle}/settings`);
 }
 
 export function meta({ params }: { params: { docoId: string } }) {

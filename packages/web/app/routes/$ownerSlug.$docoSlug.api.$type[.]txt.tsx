@@ -336,10 +336,10 @@ AUTH
   admin.
 
 BODY (JSON) — write
-  slug           optional   new slug (lowercase kebab-case). If different
+  handle         optional   new handle (lowercase kebab-case). If different
                             from current, the rename takes effect
                             immediately and the response carries the new
-                            slug so you can update bookmarks.
+                            handle so you can update bookmarks.
   display_name   optional   string. Empty string clears.
   description    optional   string. Empty string clears.
   visibility     optional   "private" or "public".
@@ -360,8 +360,8 @@ ERROR RESPONSE
   Common errors:
     - HTTP 404 — you can't read this Doco (private + non-member, or doesn't exist).
     - HTTP 403 — you can read it but you're not its owner / org admin.
-    - "Doco \\"<owner>/<new>\\" already exists." — pick a different slug.
-    - "slug must be lowercase kebab-case ([a-z0-9_-]+)." — fix the name.
+    - "Doco \\"<handle>\\" already exists." — pick a different handle.
+    - "handle must be lowercase kebab-case ([a-z0-9_-]+)." — fix the name.
 
 EXAMPLE — read current settings
   curl -sS ${baseUrl}/${handle}/api/settings.json \\
@@ -374,13 +374,13 @@ EXAMPLE — flip to public + edit description
     ${baseUrl}/${handle}/api/settings.json \\
     -d '{ "visibility": "public", "description": "Now open-source." }'
 
-EXAMPLE — rename the slug
+EXAMPLE — rename the handle
   curl -sS -X POST \\
     -H "Content-Type: application/json" \\
     -H "Authorization: Bearer $DOCO_TOKEN" \\
     ${baseUrl}/${handle}/api/settings.json \\
-    -d '{ "slug": "renamed-project" }'
-  # subsequent requests should use the new URL: /<owner>/renamed-project/...
+    -d '{ "handle": "renamed-project" }'
+  # subsequent requests should use the new URL: /renamed-project/...
 
 RELATED
   GET  ${baseUrl}/${handle}/status.json    freshness + counts
