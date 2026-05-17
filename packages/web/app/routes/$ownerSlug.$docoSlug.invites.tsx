@@ -31,7 +31,7 @@ export async function loader({
   request: Request;
   params: { docoId: string };
 }) {
-  const { ownerSlug, docoSlug } = await normalizeDocoParams(params);
+  const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
   const { meta, me, canonicalOwnerSlug, canonicalDocoSlug } = await loadDocoForRead(
     request,
     ownerSlug,
@@ -52,6 +52,7 @@ export async function loader({
   return {
     ownerSlug: canonicalOwnerSlug,
     docoSlug: canonicalDocoSlug,
+    handle,
     docoId: meta.docoId,
     invites: serialized,
     me,
@@ -70,7 +71,7 @@ export async function action({
   request: Request;
   params: { docoId: string };
 }): Promise<ActionResult> {
-  const { ownerSlug, docoSlug } = await normalizeDocoParams(params);
+  const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
   const { meta, me } = await loadDocoForRead(request, ownerSlug, docoSlug);
   if (!me) {
     return { error: "Sign in to mint invites." };
@@ -116,7 +117,7 @@ export default function Invites({
   loaderData: Awaited<ReturnType<typeof loader>>;
   actionData?: ActionResult;
 }) {
-  const { ownerSlug, docoSlug, invites, me, canMint } = loaderData;
+  const { ownerSlug, docoSlug, handle, invites, me, canMint } = loaderData;
   const navigation = useNavigation();
   const minting = navigation.state === "submitting";
 
@@ -126,7 +127,7 @@ export default function Invites({
       <main className="mx-auto max-w-3xl px-6 py-6 space-y-5">
         <div className="space-y-1">
           <h1 className="text-lg font-semibold tracking-tight">
-            <Link to={`/${ownerSlug}/${docoSlug}`} className="hover:text-primary">
+            <Link to={`/${handle}`} className="hover:text-primary">
               {ownerSlug}/{docoSlug}
             </Link>
             <span className="text-muted-foreground"> · invites</span>
@@ -174,7 +175,7 @@ export default function Invites({
               </Form>
             ) : (
               <Link
-                to={`/sign-in?return=${encodeURIComponent(`/${ownerSlug}/${docoSlug}/invites`)}`}
+                to={`/sign-in?return=${encodeURIComponent(`/${handle}/invites`)}`}
                 className="text-primary hover:underline text-sm"
               >
                 Sign in

@@ -17,7 +17,7 @@ export async function loader({
   request: Request;
   params: { docoId: string };
 }) {
-  const { ownerSlug, docoSlug } = await normalizeDocoParams(params);
+  const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
   const dir = docoPath(ownerSlug, docoSlug);
   const meta = await readDocoMetadata(dir);
   if (!meta) {

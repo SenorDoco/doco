@@ -22,13 +22,13 @@ export async function loader({
   request: Request;
   params: { docoId: string };
 }) {
-  const { ownerSlug, docoSlug } = await normalizeDocoParams(params);
+  const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
   const { dir, meta, me } = await loadDocoForRead(request, ownerSlug, docoSlug);
   const scopes = await listScopeDetails(dir, { includePrimaryIntent: true });
   const url = new URL(request.url);
   const isOnboarding = url.searchParams.get("onboarding") === "1";
   if (scopes.length === 0) {
-    throw redirect(`/${ownerSlug}/${docoSlug}/scopes/new${isOnboarding ? "?onboarding=1" : ""}`);
+    throw redirect(`/${handle}/scopes/new${isOnboarding ? "?onboarding=1" : ""}`);
   }
 
   const memberCount = new Map<string, number>();
@@ -52,6 +52,7 @@ export async function loader({
   return {
     ownerSlug,
     docoSlug,
+    handle,
     displayName: meta.displayName || docoSlug,
     scopes: scopes.map((s) => ({
       ...s,
@@ -72,7 +73,7 @@ export default function ScopesIndex({
 }: {
   loaderData: Awaited<ReturnType<typeof loader>>;
 }) {
-  const { ownerSlug, docoSlug, displayName, scopes, isOnboarding, host, me } = loaderData;
+  const { ownerSlug, docoSlug, handle, displayName, scopes, isOnboarding, host, me } = loaderData;
   type ScopeRow = (typeof scopes)[number];
   const isAbandonedScope = (scope: ScopeRow) =>
     scope.lifecycle !== "active" && scope.lifecycle !== "proposed";
@@ -181,7 +182,7 @@ export default function ScopesIndex({
                 </CardTitle>
               </div>
               <Link
-                to={`/${ownerSlug}/${docoSlug}/scopes/new${isOnboarding ? "?onboarding=1" : ""}`}
+                to={`/${handle}/scopes/new${isOnboarding ? "?onboarding=1" : ""}`}
                 className="self-center whitespace-nowrap rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90"
               >
                 + Add scope
@@ -207,7 +208,7 @@ export default function ScopesIndex({
         {isOnboarding ? (
           <div className="flex items-center gap-3 pt-2 text-xs">
             <Link
-              to={`/${ownerSlug}/${docoSlug}`}
+              to={`/${handle}`}
               className="rounded-md border border-border px-3 py-1.5 hover:bg-card"
             >
               Continue to Doco →

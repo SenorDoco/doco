@@ -31,7 +31,7 @@ export async function action({
   request: Request;
   params: { docoId: string };
 }) {
-  const { ownerSlug, docoSlug } = await normalizeDocoParams(params);
+  const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
   if (request.method !== "POST") {
     return Response.json({ error: "method_not_allowed" }, { status: 405 });
   }

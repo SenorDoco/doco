@@ -30,6 +30,7 @@ interface FeedEvent {
   byUsername: string | null;
   ownerSlug: string;
   docoSlug: string;
+  handle: string;
   entity_type: string;
   entity_id: string;
   summary: string | null;
@@ -140,6 +141,7 @@ export async function loader({ request }: { request: Request }) {
           byUsername: r.username,
           ownerSlug: d?.ownerSlug ?? "?",
           docoSlug: d?.docoSlug ?? "?",
+          handle: d?.handle ?? `${d?.ownerSlug ?? "?"}-${d?.docoSlug ?? "?"}`,
           entity_type: r.entity_type,
           entity_id: r.entity_id,
           summary: entity?.summary ?? null,
@@ -211,10 +213,10 @@ export default function Dashboard({
                       <TableRow key={e.docoId}>
                         <TableCell>
                           <Link
-                            to={`/${e.ownerSlug}/${e.docoSlug}`}
+                            to={`/${e.handle}`}
                             className="text-primary hover:underline"
                           >
-                            {e.ownerSlug}/{e.docoSlug}
+                            {e.handle}
                           </Link>
                         </TableCell>
                         <TableCell className="text-right font-mono">{e.stats.nodes}</TableCell>
@@ -294,8 +296,7 @@ export default function Dashboard({
 // because dashboard cuts across principals; per-Doco implies it.
 function DashboardFeedLine({ event }: { event: FeedEvent }) {
   const url = entityUrl({
-    ownerSlug: event.ownerSlug,
-    docoSlug: event.docoSlug,
+    docoId: event.handle,
     nodeType: event.entity_type,
     id: event.entity_id,
   });
@@ -322,10 +323,10 @@ function DashboardFeedLine({ event }: { event: FeedEvent }) {
         {detail ? <span className="text-muted-foreground">{detail}</span> : null}
         <span className="text-muted-foreground"> — </span>
         <Link
-          to={`/${event.ownerSlug}/${event.docoSlug}`}
+          to={`/${event.handle}`}
           className="text-muted-foreground hover:text-foreground hover:underline"
         >
-          {event.ownerSlug}/{event.docoSlug}
+          {event.handle}
         </Link>
         {event.byUsername ? (
           <>

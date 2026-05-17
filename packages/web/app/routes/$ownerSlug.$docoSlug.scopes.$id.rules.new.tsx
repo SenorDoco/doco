@@ -49,7 +49,7 @@ export async function loader({
   request: Request;
   params: { docoId: string; id: string };
 }) {
-  const { ownerSlug, docoSlug } = await normalizeDocoParams(params);
+  const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
   const { id } = params;
   const { meta, me } = await loadDocoForAdmin(request, ownerSlug, docoSlug);
   const raw = await readScopeRaw(meta.docoId, id);
@@ -59,6 +59,7 @@ export async function loader({
   return {
     ownerSlug,
     docoSlug,
+    handle,
     me,
     host: await loadHostConfig(),
     kind: resolveKind(url.searchParams.get("kind")),
@@ -77,13 +78,13 @@ export async function action({
   request: Request;
   params: { docoId: string; id: string };
 }) {
-  const { ownerSlug, docoSlug } = await normalizeDocoParams(params);
+  const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
   const { id } = params;
   const { dir, meta, me } = await loadDocoForAdmin(request, ownerSlug, docoSlug);
   const form = await request.formData();
   const kind = resolveKind(String(form.get("kind") ?? ""));
   const prose = String(form.get("prose") ?? "").trim();
-  const back = `/${ownerSlug}/${docoSlug}/scopes/${id}`;
+  const back = `/${handle}/scopes/${id}`;
   if (!prose) return { error: "Type the rule in your own words." };
 
   const raw = await readScopeRaw(meta.docoId, id);
@@ -166,7 +167,7 @@ export default function NewScopeRule({
   loaderData: Awaited<ReturnType<typeof loader>>;
   actionData?: { error?: string } | undefined;
 }) {
-  const { ownerSlug, docoSlug, scope, me } = loaderData;
+  const { ownerSlug, docoSlug, handle, scope, me } = loaderData;
   const [searchParams] = useSearchParams();
   const kind = resolveKind(searchParams.get("kind") ?? loaderData.kind);
   const navigation = useNavigation();
@@ -182,7 +183,7 @@ export default function NewScopeRule({
       <SiteHeader mode="host" me={me} docoScope={{ ownerSlug, docoSlug }} />
       <main className="mx-auto max-w-2xl px-6 py-6 space-y-4">
         <Link
-          to={`/${ownerSlug}/${docoSlug}/scopes/${scope.id}`}
+          to={`/${handle}/scopes/${scope.id}`}
           className="text-xs text-muted-foreground hover:text-foreground"
         >
           ← Back to {scope.name}
@@ -226,7 +227,7 @@ export default function NewScopeRule({
                   SUBMIT
                 </button>
                 <Link
-                  to={`/${ownerSlug}/${docoSlug}/scopes/${scope.id}`}
+                  to={`/${handle}/scopes/${scope.id}`}
                   className="text-xs text-muted-foreground hover:underline"
                 >
                   Cancel

@@ -61,7 +61,7 @@ export async function loader({
   request: Request;
   params: { docoId: string };
 }) {
-  const { ownerSlug, docoSlug } = await normalizeDocoParams(params);
+  const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
   await loadDocoForRead(request, ownerSlug, docoSlug);
   return Response.json(
     {
@@ -79,7 +79,7 @@ export async function action({
   request: Request;
   params: { docoId: string };
 }) {
-  const { ownerSlug, docoSlug } = await normalizeDocoParams(params);
+  const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
   const { me } = await loadDocoForAdmin(request, ownerSlug, docoSlug);
   const dir = docoPath(ownerSlug, docoSlug);
   const meta = await readDocoMetadata(dir);
@@ -108,7 +108,7 @@ export async function action({
   if (createTimeRuleField) {
     return Response.json(
       {
-        error: `\`${createTimeRuleField}\` is no longer accepted during scope creation. Create the scope first, then POST rule prose to /${ownerSlug}/${docoSlug}/api/scopes/<scope_id>/rules.json.`,
+        error: `\`${createTimeRuleField}\` is no longer accepted during scope creation. Create the scope first, then POST rule prose to /${handle}/api/scopes/<scope_id>/rules.json.`,
       },
       { status: 400 },
     );

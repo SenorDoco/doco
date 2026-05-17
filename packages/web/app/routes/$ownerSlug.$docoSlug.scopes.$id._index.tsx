@@ -116,8 +116,7 @@ function isActive(lifecycle: string): boolean {
 }
 
 function inScopeSearchPath(
-  ownerSlug: string,
-  docoSlug: string,
+  handle: string,
   scopeName: string,
   filters: { nodeType?: string; lifecycle?: string },
 ): string {
@@ -126,7 +125,7 @@ function inScopeSearchPath(
   params.set("node_type", filters.nodeType ?? "*");
   params.set("lifecycle", filters.lifecycle ?? "*");
   params.set("limit", "500");
-  return `/${ownerSlug}/${docoSlug}/search?${params.toString()}`;
+  return `/${handle}/search?${params.toString()}`;
 }
 
 const NODE_TYPE_LABELS: Record<string, string> = {
@@ -204,7 +203,7 @@ export async function loader({
   request: Request;
   params: { docoId: string; id: string };
 }) {
-  const { ownerSlug, docoSlug } = await normalizeDocoParams(params);
+  const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
   const { id } = params;
   const { dir, me } = await loadDocoForAdmin(request, ownerSlug, docoSlug);
   const raw = await readScopeRaw(id);
@@ -550,6 +549,7 @@ export async function loader({
   return {
     ownerSlug,
     docoSlug,
+    handle,
     me,
     host: await loadHostConfig(),
     scope: {
@@ -587,13 +587,13 @@ export async function action({
   request: Request;
   params: { docoId: string; id: string };
 }) {
-  const { ownerSlug, docoSlug } = await normalizeDocoParams(params);
+  const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
   const { id } = params;
   const { dir, meta } = await loadDocoForAdmin(request, ownerSlug, docoSlug);
   const form = await request.formData();
   const intent = String(form.get("intent") ?? "");
   const scopeId = id as EntityId<"scope">;
-  const back = `/${ownerSlug}/${docoSlug}/scopes/${id}`;
+  const back = `/${handle}/scopes/${id}`;
 
   try {
     if (intent === "set_watched") {
@@ -712,6 +712,7 @@ export default function ScopePage({
   const {
     ownerSlug,
     docoSlug,
+    handle,
     scope,
     primaryIntent,
     rules,
@@ -770,7 +771,7 @@ export default function ScopePage({
             <ScopeTitleIcon icon={scope.icon} />
             <h1 className="text-lg font-bold tracking-tight">
               <Link
-                to={inScopeSearchPath(ownerSlug, docoSlug, scope.name, {})}
+                to={inScopeSearchPath(handle, scope.name, {})}
                 className="font-mono hover:text-primary"
               >
                 {scope.name}
@@ -784,7 +785,7 @@ export default function ScopePage({
             </h1>
           </div>
           <Link
-            to={`/${ownerSlug}/${docoSlug}/scopes`}
+            to={`/${handle}/scopes`}
             className="ml-auto text-xs text-muted-foreground hover:text-foreground"
           >
             ← Back to scopes
@@ -796,6 +797,7 @@ export default function ScopePage({
           primaryIntent={primaryIntent}
           ownerSlug={ownerSlug}
           docoSlug={docoSlug}
+          handle={handle}
         />
 
         {(scope.default_node_lifecycle ||
@@ -852,7 +854,7 @@ export default function ScopePage({
                     title: "Node types",
                     items: memberTypeStats.map((t) => ({
                       key: `type-${t.nodeType}`,
-                      href: inScopeSearchPath(ownerSlug, docoSlug, scope.name, {
+                      href: inScopeSearchPath(handle, scope.name, {
                         nodeType: t.nodeType,
                       }),
                       label: nodeTypeLabel(t.nodeType),
@@ -866,7 +868,7 @@ export default function ScopePage({
                     title: "Lifecycle",
                     items: memberStats.map((s) => ({
                       key: `lifecycle-${s.lifecycle}`,
-                      href: inScopeSearchPath(ownerSlug, docoSlug, scope.name, {
+                      href: inScopeSearchPath(handle, scope.name, {
                         lifecycle: s.lifecycle,
                       }),
                       label: s.lifecycle,
@@ -887,7 +889,7 @@ export default function ScopePage({
               search={
                 <Form
                   method="get"
-                  action={`/${ownerSlug}/${docoSlug}/search`}
+                  action={`/${handle}/search`}
                   className="flex flex-col gap-2 sm:flex-row"
                 >
                   <input type="hidden" name="scope" value={scope.name} />
@@ -946,6 +948,7 @@ export default function ScopePage({
               allScopes={allScopes}
               ownerSlug={ownerSlug}
               docoSlug={docoSlug}
+              handle={handle}
               scopeId={scope.id}
             />
 
@@ -959,6 +962,7 @@ export default function ScopePage({
               allScopes={allScopes}
               ownerSlug={ownerSlug}
               docoSlug={docoSlug}
+              handle={handle}
               scopeId={scope.id}
             />
 
@@ -973,7 +977,7 @@ export default function ScopePage({
                 </CardHeader>
                 <CardContent>
                   <Link
-                    to={`/${ownerSlug}/${docoSlug}/scopes/${scope.id}/abandon`}
+                    to={`/${handle}/scopes/${scope.id}/abandon`}
                     className="inline-flex items-center rounded-md border border-destructive/40 px-3 py-1.5 text-xs font-semibold text-destructive hover:bg-destructive/10"
                   >
                     Abandon scope →
@@ -1032,11 +1036,13 @@ function PrimaryIntentCard({
   primaryIntent,
   ownerSlug,
   docoSlug,
+  handle,
 }: {
   scopeId: string;
   primaryIntent: PrimaryIntentRecord | null;
   ownerSlug: string;
   docoSlug: string;
+  handle: string;
 }) {
   return (
     <Card>
@@ -1068,7 +1074,7 @@ function PrimaryIntentCard({
             )}
           </div>
           <Link
-            to={`/${ownerSlug}/${docoSlug}/scopes/${scopeId}/intent/replace`}
+            to={`/${handle}/scopes/${scopeId}/intent/replace`}
             className="inline-flex h-8 shrink-0 items-center rounded-md border border-border px-2.5 text-xs font-semibold hover:bg-muted"
           >
             Replace
@@ -1151,6 +1157,7 @@ function RuleSectionCard({
   allScopes,
   ownerSlug,
   docoSlug,
+  handle,
   scopeId,
 }: {
   title: string;
@@ -1160,6 +1167,7 @@ function RuleSectionCard({
   allScopes: { id: string; name: string }[];
   ownerSlug: string;
   docoSlug: string;
+  handle: string;
   scopeId: string;
 }) {
   const [localRules, setLocalRules] = useState(rules);
@@ -1193,7 +1201,7 @@ function RuleSectionCard({
             <CardDescription>{description}</CardDescription>
           </div>
           <Link
-            to={`/${ownerSlug}/${docoSlug}/scopes/${scopeId}/rules/new?kind=${kind}`}
+            to={`/${handle}/scopes/${scopeId}/rules/new?kind=${kind}`}
             className="inline-flex shrink-0 items-center gap-1 rounded-md border border-border px-2.5 py-1 text-xs font-semibold text-foreground hover:bg-card"
           >
             <Plus className="h-3 w-3" aria-hidden="true" />

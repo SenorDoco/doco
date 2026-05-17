@@ -34,7 +34,7 @@ export async function loader({
   request: Request;
   params: { docoId: string };
 }) {
-  const { ownerSlug, docoSlug } = await normalizeDocoParams(params);
+  const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
   const { dir, meta, me } = await loadDocoForRead(request, ownerSlug, docoSlug);
   // Active scopes only — abandoned scopes aren't shown as parent options.
   // Template adds can reactivate an abandoned scope with the same name.
@@ -55,13 +55,14 @@ export async function loader({
   if (pickedTemplateName) {
     const t = findScopeTemplate(pickedTemplateName);
     if (!t || existingNames.has(t.name)) {
-      throw redirect(`/${ownerSlug}/${docoSlug}/scopes/new${isOnboarding ? "?onboarding=1" : ""}`);
+      throw redirect(`/${handle}/scopes/new${isOnboarding ? "?onboarding=1" : ""}`);
     }
     pickedTemplate = { name: t.name, icon: t.icon, label: t.label, intentSummary: t.intentSummary };
   }
   return {
     ownerSlug,
     docoSlug,
+    handle,
     docoId: meta.docoId,
     displayName: meta.displayName || docoSlug,
     scopes,
@@ -90,7 +91,7 @@ export async function action({
   request: Request;
   params: { docoId: string };
 }) {
-  const { ownerSlug, docoSlug } = await normalizeDocoParams(params);
+  const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
   const { dir, meta, me } = await loadDocoForAdmin(request, ownerSlug, docoSlug);
   const { docoId, ownerId } = meta;
   const createdBy = (me?.id ?? ownerId) as EntityId<"principal">;
@@ -99,7 +100,7 @@ export async function action({
   const intent = String(form.get("intent") ?? "");
   const url = new URL(request.url);
   const isOnboarding = url.searchParams.get("onboarding") === "1";
-  const afterAdd = `/${ownerSlug}/${docoSlug}/scopes${isOnboarding ? "?onboarding=1" : ""}`;
+  const afterAdd = `/${handle}/scopes${isOnboarding ? "?onboarding=1" : ""}`;
 
   // Per ADR-137bis every scope-creation call must declare whether this
   // scope is "watched" (a soft attention signal — contributors scan
@@ -219,7 +220,7 @@ export async function action({
       await reindex(dir, docoId, [newScopeId, mainIntentId]);
       // After-create redirect: go straight to the merged scope page so
       // the user can add rules only after the scope exists.
-      return redirect(`/${ownerSlug}/${docoSlug}/scopes/${newScopeId}`);
+      return redirect(`/${handle}/scopes/${newScopeId}`);
     } else {
       return { error: `Unknown intent: ${intent}` };
     }
@@ -245,6 +246,7 @@ export default function AddScope({
   const {
     ownerSlug,
     docoSlug,
+    handle,
     displayName,
     scopes,
     templates,
@@ -347,7 +349,7 @@ export default function AddScope({
                     Add scope
                   </button>
                   <Link
-                    to={`/${ownerSlug}/${docoSlug}/scopes/new${isOnboarding ? "?onboarding=1" : ""}`}
+                    to={`/${handle}/scopes/new${isOnboarding ? "?onboarding=1" : ""}`}
                     className="text-xs text-muted-foreground hover:text-foreground"
                   >
                     ← Back to templates
@@ -453,7 +455,7 @@ export default function AddScope({
                         // and asks for the choice (per ADR-137bis: no silent
                         // default). Keeps this card tight.
                         <Link
-                          to={`/${ownerSlug}/${docoSlug}/scopes/new?template=${encodeURIComponent(t.name)}${isOnboarding ? "&onboarding=1" : ""}`}
+                          to={`/${handle}/scopes/new?template=${encodeURIComponent(t.name)}${isOnboarding ? "&onboarding=1" : ""}`}
                           className="self-center rounded-md bg-primary px-2.5 py-1 text-[11px] font-semibold text-primary-foreground hover:opacity-90"
                         >
                           Add
@@ -590,7 +592,7 @@ export default function AddScope({
             <div className="flex items-center gap-3 pt-2 text-xs">
               {scopes.length > 0 ? (
                 <Link
-                  to={`/${ownerSlug}/${docoSlug}/scopes${isOnboarding ? "?onboarding=1" : ""}`}
+                  to={`/${handle}/scopes${isOnboarding ? "?onboarding=1" : ""}`}
                   className="rounded-md border border-border px-3 py-1.5 hover:bg-card"
                 >
                   ← Back to scopes ({scopes.length})
@@ -598,7 +600,7 @@ export default function AddScope({
               ) : null}
               {isOnboarding && scopes.length > 0 ? (
                 <Link
-                  to={`/${ownerSlug}/${docoSlug}`}
+                  to={`/${handle}`}
                   className="text-xs text-muted-foreground hover:text-foreground"
                 >
                   Continue to Doco →

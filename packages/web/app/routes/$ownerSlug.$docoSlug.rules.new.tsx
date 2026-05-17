@@ -24,7 +24,7 @@ export async function loader({
   request: Request;
   params: { docoId: string };
 }) {
-  const { ownerSlug, docoSlug } = await normalizeDocoParams(params);
+  const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
   const { meta, me } = await loadDocoForAdmin(request, ownerSlug, docoSlug);
   const url = new URL(request.url);
   const prefillScope = url.searchParams.get("scope") ?? "";
@@ -43,6 +43,7 @@ export async function loader({
   return {
     ownerSlug,
     docoSlug,
+    handle,
     prefillScope,
     intents,
     host: await loadHostConfig(),
@@ -57,7 +58,7 @@ export async function action({
   request: Request;
   params: { docoId: string };
 }) {
-  const { ownerSlug, docoSlug } = await normalizeDocoParams(params);
+  const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
   const { me } = await loadDocoForAdmin(request, ownerSlug, docoSlug);
   const dir = docoPath(ownerSlug, docoSlug);
   const meta = await readDocoMetadata(dir);
@@ -108,9 +109,9 @@ export async function action({
   // After capture, redirect back to constitution if that was the source
   // scope; otherwise land on the new rule's detail page.
   if (scopeNames.includes("constitution")) {
-    return redirect(`/${ownerSlug}/${docoSlug}/constitution`);
+    return redirect(`/${handle}/constitution`);
   }
-  return redirect(`/${ownerSlug}/${docoSlug}/rule/${result.id}`);
+  return redirect(`/${handle}/rule/${result.id}`);
 }
 
 export function meta({ params }: { params: { docoId: string } }) {
@@ -122,7 +123,7 @@ export default function NewRule({
 }: {
   loaderData: Awaited<ReturnType<typeof loader>>;
 }) {
-  const { ownerSlug, docoSlug, prefillScope, intents, me } = loaderData;
+  const { ownerSlug, docoSlug, handle, prefillScope, intents, me } = loaderData;
   const [searchParams] = useSearchParams();
   const scopeFromUrl = searchParams.get("scope") ?? prefillScope;
 
@@ -244,8 +245,8 @@ export default function NewRule({
                 <a
                   href={
                     scopeFromUrl === "constitution"
-                      ? `/${ownerSlug}/${docoSlug}/constitution`
-                      : `/${ownerSlug}/${docoSlug}`
+                      ? `/${handle}/constitution`
+                      : `/${handle}`
                   }
                   className="text-xs text-muted-foreground hover:underline"
                 >

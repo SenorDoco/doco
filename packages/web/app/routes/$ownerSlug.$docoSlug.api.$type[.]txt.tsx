@@ -388,7 +388,7 @@ export async function loader({
   request: Request;
   params: { docoId: string; type: string };
 }) {
-  const { ownerSlug, docoSlug } = await normalizeDocoParams(params);
+  const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
   const { type } = params;
   const renderer = SPECS[type];
   if (!renderer) {

@@ -41,7 +41,7 @@ export async function action({ request }: { request: Request }) {
     // Render the success step inline so the user gets explicit "Doco
     // created" confirmation before being pushed to scope setup (ADR-080
     // rev 2 — scopes are the explicit second step but skippable).
-    return { ok: { ownerSlug, docoSlug } };
+    return { ok: { ownerSlug, docoSlug, handle: rec.handle } };
   } catch (e) {
     return { error: (e as Error).message };
   }
@@ -56,7 +56,9 @@ export default function NewDoco({
   actionData,
 }: {
   loaderData: Awaited<ReturnType<typeof loader>>;
-  actionData?: { error?: string; ok?: { ownerSlug: string; docoSlug: string } } | undefined;
+  actionData?:
+    | { error?: string; ok?: { ownerSlug: string; docoSlug: string; handle: string } }
+    | undefined;
 }) {
   const { me, orgs, host } = loaderData;
   const owners = [
@@ -65,7 +67,7 @@ export default function NewDoco({
   ];
 
   if (actionData?.ok) {
-    const { ownerSlug, docoSlug } = actionData.ok;
+    const { ownerSlug, docoSlug, handle } = actionData.ok;
     return (
       <div>
         <SiteHeader mode="host" me={me} />
@@ -82,13 +84,13 @@ export default function NewDoco({
             </CardHeader>
             <CardContent className="flex items-center gap-2">
               <Link
-                to={`/${ownerSlug}/${docoSlug}/scopes/new`}
+                to={`/${handle}/scopes/new`}
                 className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90"
               >
                 Set up scopes →
               </Link>
               <Link
-                to={`/${ownerSlug}/${docoSlug}`}
+                to={`/${handle}`}
                 className="text-xs text-muted-foreground hover:text-foreground"
               >
                 Skip for now

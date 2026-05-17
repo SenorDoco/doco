@@ -42,7 +42,7 @@ export async function loader({
   params: { docoId: string; type: string };
   request: Request;
 }) {
-  const { ownerSlug, docoSlug } = await normalizeDocoParams(params);
+  const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
   const { type } = params;
   if (!KNOWN.has(type)) throw new Response("Unknown type", { status: 404 });
   const ctx = await loadDocoForRead(request, ownerSlug, docoSlug);
@@ -91,6 +91,7 @@ export async function loader({
         type,
         ownerSlug,
         docoSlug,
+        handle,
         host: await loadHostConfig(),
         me: await getCurrentPrincipal(request),
       };
@@ -119,6 +120,7 @@ export async function loader({
       type,
       ownerSlug,
       docoSlug,
+      handle,
       host: await loadHostConfig(),
       me: await getCurrentPrincipal(request),
     };
@@ -191,7 +193,7 @@ export default function ListByTypeInDoco({
 }: {
   loaderData: Awaited<ReturnType<typeof loader>>;
 }) {
-  const { items, scopes, type, ownerSlug, docoSlug, host, me } = loaderData;
+  const { items, scopes, type, ownerSlug, docoSlug, handle, host, me } = loaderData;
   if (type === "scope" && scopes) {
     const tree = buildScopeTree(scopes);
     const flat = flattenTree(tree);
@@ -213,7 +215,7 @@ export default function ListByTypeInDoco({
                   </span>
                 </span>
                 <Link
-                  to={`/${ownerSlug}/${docoSlug}/scopes/new`}
+                  to={`/${handle}/scopes/new`}
                   className="rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90"
                 >
                   + New scope
@@ -225,7 +227,7 @@ export default function ListByTypeInDoco({
                 <p className="text-xs text-muted-foreground">
                   No scopes yet.{" "}
                   <Link
-                    to={`/${ownerSlug}/${docoSlug}/scopes/new?onboarding=1`}
+                    to={`/${handle}/scopes/new?onboarding=1`}
                     className="text-primary hover:underline"
                   >
                     Set up your first scopes
@@ -258,7 +260,7 @@ export default function ListByTypeInDoco({
                         )
                       </span>
                       <Link
-                        to={`/${ownerSlug}/${docoSlug}/scopes/new?parent=${n.id}`}
+                        to={`/${handle}/scopes/new?parent=${n.id}`}
                         className="ml-auto rounded-md border border-border px-2 py-0.5 text-[10px] hover:border-primary"
                         title="Add child scope"
                       >

@@ -33,7 +33,7 @@ export async function loader({
   request: Request;
   params: { docoId: string };
 }) {
-  const { ownerSlug, docoSlug } = await normalizeDocoParams(params);
+  const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
   const { me } = await loadDocoForRead(request, ownerSlug, docoSlug);
   const dir = docoPath(ownerSlug, docoSlug);
 
@@ -62,6 +62,7 @@ export async function loader({
   return {
     ownerSlug,
     docoSlug,
+    handle,
     me,
     events,
     filters: { entity_type, by, since, until, op: opParam },
@@ -71,7 +72,7 @@ export async function loader({
 export default function ActivityPage({
   loaderData,
 }: { loaderData: Awaited<ReturnType<typeof loader>> }) {
-  const { ownerSlug, docoSlug, me, events, filters } = loaderData;
+  const { ownerSlug, docoSlug, handle, me, events, filters } = loaderData;
   return (
     <div>
       <SiteHeader mode="host" me={me} docoScope={{ ownerSlug, docoSlug }} />
@@ -88,7 +89,7 @@ export default function ActivityPage({
           </p>
         </div>
 
-        <FilterChips filters={filters} ownerSlug={ownerSlug} docoSlug={docoSlug} />
+        <FilterChips filters={filters} ownerSlug={ownerSlug} docoSlug={docoSlug} handle={handle} />
 
         <Card>
           <CardHeader>
@@ -145,8 +146,9 @@ export default function ActivityPage({
 
 function FilterChips({
   filters,
-  ownerSlug,
-  docoSlug,
+  ownerSlug: _ownerSlug,
+  docoSlug: _docoSlug,
+  handle,
 }: {
   filters: {
     entity_type?: string;
@@ -157,6 +159,7 @@ function FilterChips({
   };
   ownerSlug: string;
   docoSlug: string;
+  handle: string;
 }) {
   const entries = Object.entries(filters).filter(([, v]) => v !== undefined && v !== null);
   if (entries.length === 0) return null;
@@ -178,7 +181,7 @@ function FilterChips({
           </code>
         ),
       )}
-      <Link to={`/${ownerSlug}/${docoSlug}/activity`} className="text-primary hover:underline">
+      <Link to={`/${handle}/activity`} className="text-primary hover:underline">
         Clear
       </Link>
     </div>

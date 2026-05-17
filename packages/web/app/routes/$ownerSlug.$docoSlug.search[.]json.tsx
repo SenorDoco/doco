@@ -153,7 +153,7 @@ export async function loader({
   params: { docoId: string };
 }) {
   const start = performance.now();
-  const { ownerSlug, docoSlug } = await normalizeDocoParams(params);
+  const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
   const ctx = await loadDocoForRead(request, ownerSlug, docoSlug);
   const url = new URL(request.url);
   const q = (url.searchParams.get("q") ?? "").trim();

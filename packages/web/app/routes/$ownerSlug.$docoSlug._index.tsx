@@ -66,7 +66,7 @@ export async function loader({
   request: Request;
   params: { docoId: string };
 }) {
-  const { ownerSlug, docoSlug } = await normalizeDocoParams(params);
+  const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
   const ctx = await loadDocoForRead(request, ownerSlug, docoSlug);
   const me = ctx.me;
   const dir = docoPath(ownerSlug, docoSlug);
@@ -225,6 +225,7 @@ export async function loader({
       topContributors,
       ownerSlug,
       docoSlug,
+      handle,
       docoId: ctx.meta.docoId,
       host: await loadHostConfig(),
       me,
@@ -232,35 +233,35 @@ export async function loader({
   });
 }
 
-function allNodesSearchPath(ownerSlug: string, docoSlug: string): string {
+function allNodesSearchPath(handle: string): string {
   const params = new URLSearchParams();
   params.set("node_type", "*");
   params.set("lifecycle", "*");
   params.set("scope", "*");
   params.set("limit", "500");
-  return `/${ownerSlug}/${docoSlug}/search?${params.toString()}`;
+  return `/${handle}/search?${params.toString()}`;
 }
 
-function nodeTypeSearchPath(ownerSlug: string, docoSlug: string, nodeType: string): string {
+function nodeTypeSearchPath(handle: string, nodeType: string): string {
   const params = new URLSearchParams();
   params.set("node_type", nodeType);
   params.set("lifecycle", "*");
   params.set("scope", "*");
   params.set("limit", "500");
-  return `/${ownerSlug}/${docoSlug}/search?${params.toString()}`;
+  return `/${handle}/search?${params.toString()}`;
 }
 
-function scopeDetailPath(ownerSlug: string, docoSlug: string, scopeId: string): string {
-  return `/${ownerSlug}/${docoSlug}/scopes/${scopeId}`;
+function scopeDetailPath(handle: string, scopeId: string): string {
+  return `/${handle}/scopes/${scopeId}`;
 }
 
-function lifecycleSearchPath(ownerSlug: string, docoSlug: string, lifecycle: string): string {
+function lifecycleSearchPath(handle: string, lifecycle: string): string {
   const params = new URLSearchParams();
   params.set("lifecycle", lifecycle);
   params.set("node_type", "*");
   params.set("scope", "*");
   params.set("limit", "500");
-  return `/${ownerSlug}/${docoSlug}/search?${params.toString()}`;
+  return `/${handle}/search?${params.toString()}`;
 }
 
 export function meta({ params }: { params: { docoId: string } }) {
@@ -280,6 +281,7 @@ export default function DocoHome({
     topContributors,
     ownerSlug,
     docoSlug,
+    handle,
     docoId,
     host,
     me,
@@ -315,7 +317,7 @@ export default function DocoHome({
     };
   }, [revalidator]);
 
-  const allSearchHref = allNodesSearchPath(ownerSlug, docoSlug);
+  const allSearchHref = allNodesSearchPath(handle);
 
   const sections: NodesOverviewSection[] = [
     {
@@ -324,7 +326,7 @@ export default function DocoHome({
         .filter((s) => s.lifecycle === "active")
         .map((s) => ({
           key: `scope-${s.name}`,
-          href: scopeDetailPath(ownerSlug, docoSlug, s.id),
+          href: scopeDetailPath(handle, s.id),
           label: s.name,
           icon: s.icon ?? undefined,
           count: s.count,
@@ -336,7 +338,7 @@ export default function DocoHome({
       title: "Node types",
       items: facets.nodeType.map((t) => ({
         key: `type-${t.value}`,
-        href: nodeTypeSearchPath(ownerSlug, docoSlug, t.value),
+        href: nodeTypeSearchPath(handle, t.value),
         label: nodeTypeLabel(t.value),
         icon: <NodeTypeIcon nodeType={t.value} />,
         count: t.count,
@@ -348,7 +350,7 @@ export default function DocoHome({
       title: "Lifecycle",
       items: facets.lifecycle.map((l) => ({
         key: `lifecycle-${l.value}`,
-        href: lifecycleSearchPath(ownerSlug, docoSlug, l.value),
+        href: lifecycleSearchPath(handle, l.value),
         label: l.value,
         count: l.count,
         ariaLabel: `Search ${l.count} nodes in lifecycle ${l.value}`,
@@ -373,7 +375,7 @@ export default function DocoHome({
             <p className="font-mono text-sm text-muted-foreground">{docoId}</p>
           </div>
           <Link
-            to={`/${ownerSlug}/${docoSlug}/invites`}
+            to={`/${handle}/invites`}
             className="shrink-0 rounded-md border border-border px-3 py-1.5 text-xs font-semibold hover:bg-input"
           >
             Invite collaborators
@@ -389,6 +391,7 @@ export default function DocoHome({
                 <SearchBoxWithHistory
                   ownerSlug={ownerSlug}
                   docoSlug={docoSlug}
+                  handle={handle}
                   placeholder={
                     totalNodes > 0
                       ? `Search ${totalNodes} node${totalNodes === 1 ? "" : "s"}…`
@@ -423,7 +426,7 @@ export default function DocoHome({
                   <div className="px-4 pb-4 text-xs leading-5 text-muted-foreground">
                     No recorded activity yet. Create a scope in{" "}
                     <Link
-                      to={`/${ownerSlug}/${docoSlug}/scopes/new`}
+                      to={`/${handle}/scopes/new`}
                       className="text-primary hover:underline"
                     >
                       scopes/new
@@ -525,10 +528,12 @@ function relativeTimeMs(ts: number): string {
 function SearchBoxWithHistory({
   ownerSlug,
   docoSlug,
+  handle,
   placeholder,
 }: {
   ownerSlug: string;
   docoSlug: string;
+  handle: string;
   placeholder: string;
 }) {
   const [recent, setRecent] = useState<RecentSearch[]>([]);
@@ -544,7 +549,7 @@ function SearchBoxWithHistory({
   return (
     <Form
       method="get"
-      action={`/${ownerSlug}/${docoSlug}/search`}
+      action={`/${handle}/search`}
       className="flex gap-2"
       onSubmit={() => {
         saveRecent(ownerSlug, docoSlug, query);
@@ -575,7 +580,7 @@ function SearchBoxWithHistory({
                   onMouseDown={(e) => {
                     e.preventDefault();
                     saveRecent(ownerSlug, docoSlug, r.q);
-                    window.location.href = `/${ownerSlug}/${docoSlug}/search?q=${encodeURIComponent(r.q)}`;
+                    window.location.href = `/${handle}/search?q=${encodeURIComponent(r.q)}`;
                   }}
                   className="flex flex-1 items-center justify-between gap-3 px-4 py-2 text-left"
                 >

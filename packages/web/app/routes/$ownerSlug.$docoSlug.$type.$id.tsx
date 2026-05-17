@@ -98,14 +98,14 @@ export async function loader({
   request: Request;
   params: { docoId: string; type: string; id: string };
 }) {
-  const { ownerSlug, docoSlug } = await normalizeDocoParams(params);
+  const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
   const { type, id: idParam } = params;
   if (!KNOWN.has(type)) throw new Response("Unknown type", { status: 404 });
   // Per decision_01KRPNZY7W6CCMYNKGND67BP0B scopes use the plural URL
   // `/scopes/:id` so the merged detail+edit page is the single canonical
   // landing surface. Redirect the singular short-form here.
   if (type === "scope") {
-    throw redirect(`/${ownerSlug}/${docoSlug}/scopes/${idParam}`, { status: 308 });
+    throw redirect(`/${handle}/scopes/${idParam}`, { status: 308 });
   }
   const ctx = await loadDocoForRead(request, ownerSlug, docoSlug);
   const me = ctx.me;
@@ -497,6 +497,7 @@ export async function loader({
       id,
       ownerSlug,
       docoSlug,
+      handle,
       host: await loadHostConfig(),
       graphNodes,
       graphLinks,
@@ -516,7 +517,7 @@ export async function action({
   request: Request;
   params: { docoId: string; type: string; id: string };
 }) {
-  const { ownerSlug, docoSlug } = await normalizeDocoParams(params);
+  const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
   const { type, id } = params;
   if (type !== "scope") {
     return { error: "Inline edit is only supported for scopes today." };
@@ -581,6 +582,7 @@ export default function EntityDetail({
     incoming,
     ownerSlug,
     docoSlug,
+    handle,
     host,
     graphNodes,
     graphLinks,
@@ -719,7 +721,7 @@ export default function EntityDetail({
           </CardHeader>
           <CardContent>
             <Link
-              to={`/${ownerSlug}/${docoSlug}/scopes/${id}/edit`}
+              to={`/${handle}/scopes/${id}/edit`}
               className="inline-flex items-center rounded-md border border-border bg-input px-3 py-1.5 text-xs font-semibold hover:bg-card"
             >
               Edit rules →
@@ -734,7 +736,7 @@ export default function EntityDetail({
             <CardTitle className="flex items-center justify-between text-sm">
               <span>Members of this scope</span>
               <Link
-                to={`/${ownerSlug}/${docoSlug}/scopes/new?parent=${id}`}
+                to={`/${handle}/scopes/new?parent=${id}`}
                 className="rounded-md border border-border px-2 py-0.5 text-[10px] hover:border-primary"
               >
                 + Add child scope
@@ -886,7 +888,7 @@ export default function EntityDetail({
             <p className="text-[11px] text-muted-foreground">
               To delete this scope, open its{" "}
               <Link
-                to={`/${ownerSlug}/${docoSlug}/scopes/${id}/edit`}
+                to={`/${handle}/scopes/${id}/edit`}
                 className="underline hover:text-foreground"
               >
                 edit page

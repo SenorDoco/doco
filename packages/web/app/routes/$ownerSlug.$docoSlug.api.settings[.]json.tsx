@@ -30,7 +30,7 @@ export async function loader({
   request: Request;
   params: { docoId: string };
 }) {
-  const { ownerSlug, docoSlug } = await normalizeDocoParams(params);
+  const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
   const { meta } = await loadDocoForRead(request, ownerSlug, docoSlug);
   return Response.json({
     owner_slug: ownerSlug,
@@ -49,7 +49,7 @@ export async function action({
   request: Request;
   params: { docoId: string };
 }) {
-  const { ownerSlug, docoSlug } = await normalizeDocoParams(params);
+  const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
   const { dir: oldDir } = await loadDocoForAdmin(request, ownerSlug, docoSlug);
 
   if (request.method !== "POST" && request.method !== "PATCH") {

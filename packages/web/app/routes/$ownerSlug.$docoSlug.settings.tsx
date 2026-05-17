@@ -23,11 +23,12 @@ export async function loader({
   request: Request;
   params: { docoId: string };
 }) {
-  const { ownerSlug, docoSlug } = await normalizeDocoParams(params);
+  const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
   const { meta, me } = await loadDocoForAdmin(request, ownerSlug, docoSlug);
   return {
     ownerSlug,
     docoSlug,
+    handle,
     docoId: meta.docoId,
     description: meta.description,
     visibility: meta.visibility,
@@ -43,7 +44,7 @@ export async function action({
   request: Request;
   params: { docoId: string };
 }) {
-  const { ownerSlug, docoSlug } = await normalizeDocoParams(params);
+  const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
   const { dir: oldDir, meta, me } = await loadDocoForAdmin(request, ownerSlug, docoSlug);
   const form = await request.formData();
   const intent = String(form.get("intent") ?? "save");
@@ -132,7 +133,7 @@ export default function DocoSettings({
   loaderData: Awaited<ReturnType<typeof loader>>;
   actionData?: { error?: string } | undefined;
 }) {
-  const { ownerSlug, docoSlug, description, visibility, docoId, host, me } = loaderData;
+  const { ownerSlug, docoSlug, handle, description, visibility, docoId, host, me } = loaderData;
   const [searchParams] = useSearchParams();
   const isConfirmingDelete = searchParams.get("confirm") === "delete";
 
@@ -233,7 +234,7 @@ export default function DocoSettings({
           <CardContent className="space-y-2 text-xs">
             <div>
               <Link
-                to={`/${ownerSlug}/${docoSlug}/scopes`}
+                to={`/${handle}/scopes`}
                 className="text-primary hover:underline"
               >
                 Manage scopes →
@@ -261,7 +262,7 @@ export default function DocoSettings({
           <CardContent>
             {!isConfirmingDelete ? (
               <Link
-                to={`/${ownerSlug}/${docoSlug}/settings?confirm=delete`}
+                to={`/${handle}/settings?confirm=delete`}
                 className="inline-block rounded-md border border-destructive px-3 py-1.5 text-xs font-semibold text-destructive hover:bg-destructive/10"
               >
                 Delete this Doco…
@@ -290,7 +291,7 @@ export default function DocoSettings({
                     Delete permanently
                   </button>
                   <Link
-                    to={`/${ownerSlug}/${docoSlug}/settings`}
+                    to={`/${handle}/settings`}
                     className="text-xs text-muted-foreground hover:text-foreground"
                   >
                     Cancel

@@ -29,7 +29,7 @@ export async function action({
   request: Request;
   params: { docoId: string; id: string };
 }) {
-  const { ownerSlug, docoSlug } = await normalizeDocoParams(params);
+  const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
   const { id } = params;
   if (request.method !== "POST") {
     return Response.json({ error: "POST required." }, { status: 405 });

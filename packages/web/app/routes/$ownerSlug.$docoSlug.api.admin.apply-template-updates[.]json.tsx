@@ -35,7 +35,7 @@ export async function action({
   if (request.method !== "POST") {
     return Response.json({ error: "POST required." }, { status: 405 });
   }
-  const { ownerSlug, docoSlug } = await normalizeDocoParams(params);
+  const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
   const { dir, meta, me } = await loadDocoForAdmin(request, ownerSlug, docoSlug);
   const result = await applyScopeTemplateUpdatesToDoco({
     docoDir: dir,

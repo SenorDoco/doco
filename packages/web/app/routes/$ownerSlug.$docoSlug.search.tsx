@@ -368,7 +368,7 @@ export async function loader({
   request: Request;
   params: { docoId: string };
 }) {
-  const { ownerSlug, docoSlug } = await normalizeDocoParams(params);
+  const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
   const ctx = await loadDocoForRead(request, ownerSlug, docoSlug);
   const url = new URL(request.url);
   const q = (url.searchParams.get("q") ?? "").trim();
@@ -393,6 +393,7 @@ export async function loader({
         warning: null as string | null,
         ownerSlug,
         docoSlug,
+        handle,
         host,
         me,
         filters,
@@ -410,6 +411,7 @@ export async function loader({
         warning: "Vector search unavailable: no embedding provider configured (OPENAI_API_KEY).",
         ownerSlug,
         docoSlug,
+        handle,
         host,
         me,
         filters,
@@ -428,6 +430,7 @@ export async function loader({
           warning: "Vector search unavailable: provider returned empty embedding.",
           ownerSlug,
           docoSlug,
+          handle,
           host,
           me,
           filters,
@@ -443,6 +446,7 @@ export async function loader({
         warning: `Vector search unavailable: ${(e as Error).message}`,
         ownerSlug,
         docoSlug,
+        handle,
         host,
         me,
         filters,
@@ -465,6 +469,7 @@ export async function loader({
             : "No entities match the active filters.",
         ownerSlug,
         docoSlug,
+        handle,
         host,
         me,
         filters,
@@ -495,6 +500,7 @@ export async function loader({
       warning: null,
       ownerSlug,
       docoSlug,
+      handle,
       host,
       me,
       filters,
@@ -566,7 +572,7 @@ export default function SearchInDoco({
 }: {
   loaderData: Awaited<ReturnType<typeof loader>>;
 }) {
-  const { q, hits, warning, ownerSlug, docoSlug, host, me, filters, facets, pagination } =
+  const { q, hits, warning, ownerSlug, docoSlug, handle, host, me, filters, facets, pagination } =
     loaderData;
   const [sp] = useSearchParams();
   const activeQ = sp.get("q") ?? q;
@@ -666,7 +672,7 @@ export default function SearchInDoco({
                   <CardTitle className="flex flex-wrap items-center gap-2 text-sm">
                     <NodeTypeBadge nodeType={hit.node_type} />
                     <Link
-                      to={`/${ownerSlug}/${docoSlug}/${hit.node_type}/${hit.id}`}
+                      to={`/${handle}/${hit.node_type}/${hit.id}`}
                       className="break-all font-mono text-xs text-primary hover:underline"
                     >
                       {hit.id}
@@ -675,7 +681,7 @@ export default function SearchInDoco({
                     {hit.scopes.map((scope) => (
                       <Link
                         key={scope.id}
-                        to={`/${ownerSlug}/${docoSlug}/scopes/${scope.id}`}
+                        to={`/${handle}/scopes/${scope.id}`}
                         className="inline-flex items-center gap-1 rounded-md border border-border bg-card px-2 py-0.5 font-mono text-[11px] text-muted-foreground hover:border-primary hover:text-primary"
                       >
                         {scope.icon ? (

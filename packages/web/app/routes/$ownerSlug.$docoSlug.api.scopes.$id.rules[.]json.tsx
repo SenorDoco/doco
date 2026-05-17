@@ -52,7 +52,7 @@ export async function action({
   request: Request;
   params: { docoId: string; id: string };
 }) {
-  const { ownerSlug, docoSlug } = await normalizeDocoParams(params);
+  const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
   const { id } = params;
   await loadDocoForAdmin(request, ownerSlug, docoSlug);
   const dir = docoPath(ownerSlug, docoSlug);
@@ -180,7 +180,7 @@ export async function action({
     {
       added: addedRules.map((rule) => ({
         ...rule,
-        url: `${docoHost}/${ownerSlug}/${docoSlug}/rule/${rule.id}`,
+        url: `${docoHost}/${handle}/rule/${rule.id}`,
       })),
       added_authoring: addedAuthoring,
       added_guidance: addedGuidance,

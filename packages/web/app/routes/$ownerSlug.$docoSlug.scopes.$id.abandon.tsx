@@ -42,7 +42,7 @@ export async function loader({
   request: Request;
   params: { docoId: string; id: string };
 }) {
-  const { ownerSlug, docoSlug } = await normalizeDocoParams(params);
+  const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
   const { id } = params;
   const { dir, me } = await loadDocoForAdmin(request, ownerSlug, docoSlug);
   const raw = await readScopeRaw(id);
@@ -75,6 +75,7 @@ export async function loader({
   return {
     ownerSlug,
     docoSlug,
+    handle,
     me,
     host: await loadHostConfig(),
     scope: { id, name: scopeName, lifecycle },
@@ -90,13 +91,13 @@ export async function action({
   request: Request;
   params: { docoId: string; id: string };
 }) {
-  const { ownerSlug, docoSlug } = await normalizeDocoParams(params);
+  const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
   const { id } = params;
   const { dir } = await loadDocoForAdmin(request, ownerSlug, docoSlug);
   const form = await request.formData();
   const intent = String(form.get("intent") ?? "");
   const scopeId = id as EntityId<"scope">;
-  const back = `/${ownerSlug}/${docoSlug}/scopes`;
+  const back = `/${handle}/scopes`;
 
   try {
     if (intent === "abandon") {
@@ -170,7 +171,7 @@ export default function AbandonScopePage({
   loaderData: Awaited<ReturnType<typeof loader>>;
   actionData?: { error?: string } | undefined;
 }) {
-  const { ownerSlug, docoSlug, scope, childNames, memberCount, me } = loaderData;
+  const { ownerSlug, docoSlug, handle, scope, childNames, memberCount, me } = loaderData;
   const [typed, setTyped] = useState("");
   const hasChildren = childNames.length > 0;
   const hasMembers = memberCount > 0;
@@ -192,7 +193,7 @@ export default function AbandonScopePage({
             Abandon scope · <span className="font-mono">{scope.name}</span>
           </h1>
           <Link
-            to={`/${ownerSlug}/${docoSlug}/scopes/${scope.id}`}
+            to={`/${handle}/scopes/${scope.id}`}
             className="ml-auto text-xs text-muted-foreground hover:text-foreground"
           >
             ← Back to scope
