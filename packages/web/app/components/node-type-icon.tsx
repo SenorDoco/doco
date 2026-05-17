@@ -91,16 +91,14 @@ function iconPath(nodeType: string) {
     case "reference":
       return (
         <>
-          <path d="M10.3 6.7 7.7 9.3a4.1 4.1 0 0 0 5.8 5.8l2.1-2.1" />
-          <path d="m10.2 13.8 3.6-3.6" />
-          <path d="m13.7 17.3 2.6-2.6a4.1 4.1 0 0 0-5.8-5.8L8.4 11" />
+          <circle cx="11" cy="11" r="5.25" />
+          <path d="m15.1 15.1 4.9 4.9" />
         </>
       );
     case "scope":
       return (
         <>
-          <rect x="4" y="5" width="16" height="14" rx="2" strokeDasharray="2.4 2.4" />
-          <path d="M8 9h8M8 12h5M8 15h7" />
+          <rect x="5" y="5" width="14" height="14" strokeDasharray="2 2" strokeLinecap="butt" />
         </>
       );
     case "state":
