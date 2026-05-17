@@ -166,7 +166,7 @@ work that touches this topic, scan against this scope and tag the new
 node into it." Not enforced at capture time — purely a prompt to think
 about the topic. For HARD enforcement ("every node must list this
 scope or capture is rejected"), use a \`mandatory_scope\` authoring rule
-on the Global scope (the doco's constitution) instead, via the Rules
+on the Global scope (your doco's constitution) instead, via the Rules
 editor at /scopes/<id>. The two mechanisms are independent.
 
 ENDPOINT

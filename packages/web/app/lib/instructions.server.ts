@@ -297,7 +297,7 @@ It's a prompt for you, the agent. Two rules:
    mode the flag exists to prevent.
 
 Distinguish from \`mandatory_scope\` authoring rules on the Global
-scope (the doco's constitution): those are hard-enforced (capture is
+scope (your doco's constitution): those are hard-enforced (capture is
 rejected if the scope isn't listed). Watched is soft. A scope can be
 one, both, or neither.
 
@@ -590,7 +590,7 @@ methodology question, placement ambiguity.
 ## When you've just created a Doco — scopes come next
 
 A new Doco has the framework-seeded **Global scope** (always installed,
-serves as the doco's constitution) and zero project-specific scopes.
+serves as your doco's constitution) and zero project-specific scopes.
 Nodes outside Global can't be added until at least one project-specific
 scope exists. The framework ships
 one additional opt-in template — **\`user-flows\`** — for the common

@@ -122,7 +122,7 @@ export default function ScopesIndex({
                 </span>
                 {isGlobal ? (
                   <span className="text-[10px] text-muted-foreground">
-                    (the doco's constitution)
+                    (your doco's constitution)
                   </span>
                 ) : null}
                 {isAbandoned ? (
@@ -195,7 +195,7 @@ export default function ScopesIndex({
             <ul className="divide-y divide-border">
               {/* Per decision_01KRPNZY7W6CCMYNKGND67BP0B the Global scope
                   sorts to the top of the list and renders with the
-                  caption "the doco's constitution" next to its name. */}
+                  caption "your doco's constitution" next to its name. */}
               {activeScopes.map(renderScopeRow)}
               {abandonedScopes.length > 0 ? (
                 <li className="bg-muted/40 px-4 py-2 text-xs font-semibold text-muted-foreground">

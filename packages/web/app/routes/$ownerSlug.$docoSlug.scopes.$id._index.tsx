@@ -605,7 +605,7 @@ export async function action({
       if (raw && raw.name === "global" && watchedRaw === "false") {
         return {
           error:
-            "The Global scope (the doco's constitution) is always watched and cannot be unwatched (decision_01KRKS5H2A5QER84CJ8R4VD36Z).",
+            "The Global scope (your doco's constitution) is always watched and cannot be unwatched (decision_01KRKS5H2A5QER84CJ8R4VD36Z).",
         };
       }
       await setScopeWatchedInDoco({
@@ -779,7 +779,7 @@ export default function ScopePage({
               {scope.name === "global" ? (
                 <span className="ml-2 text-xs text-muted-foreground">
                   {" "}
-                  (the doco's constitution)
+                  (your doco's constitution)
                 </span>
               ) : null}
             </h1>
@@ -925,7 +925,7 @@ export default function ScopePage({
                 <CardTitle className="text-sm">Watched?</CardTitle>
                 <CardDescription>
                   A <strong>watched</strong> scope nudges contributors to consider it when capturing
-                  work. The Global scope (the doco's constitution) is always watched and cannot be
+                  work. The Global scope (your doco's constitution) is always watched and cannot be
                   unwatched.
                 </CardDescription>
               </CardHeader>
@@ -1345,7 +1345,7 @@ function RuleLifecycleButton({
 
 /**
  * Watched-flag toggle — auto-saves on change. Locked + always-on for the
- * Global scope (the doco's constitution).
+ * Global scope (your doco's constitution).
  */
 function WatchedSwitch({
   isWatched,
@@ -1376,7 +1376,7 @@ function WatchedSwitch({
           }}
         />
         <span className="text-foreground">
-          Always watched — the Global scope (the doco's constitution) is a framework invariant.
+          Always watched — the Global scope (your doco's constitution) is a framework invariant.
         </span>
       </div>
     );

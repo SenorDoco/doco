@@ -106,7 +106,7 @@ export async function action({
       if (raw.name === "global") {
         return {
           error:
-            "The Global scope (the doco's constitution) cannot be abandoned — it's a framework-seeded invariant.",
+            "The Global scope (your doco's constitution) cannot be abandoned — it's a framework-seeded invariant.",
         };
       }
       const scopeName = String(raw.name);
