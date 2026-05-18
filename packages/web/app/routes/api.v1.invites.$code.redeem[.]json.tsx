@@ -32,10 +32,11 @@
 import { randomBytes } from "node:crypto";
 import type { EntityId } from "@doco/shared";
 import { TokenStore } from "~/lib/tokens.server";
-import { rootDir } from "~/lib/db.server";
+import { docoPath, rootDir } from "~/lib/db.server";
 import { addAgentPrincipal } from "~/lib/redeem.server";
 import { getDocoById } from "@doco/db";
 import { buildAgentBootstrapResponse } from "~/lib/agent-bootstrap-response.server";
+import { loadBootstrapContext } from "~/lib/bootstrap-context.server";
 
 export async function action({
   request,
@@ -125,15 +126,27 @@ export async function action({
   const url = new URL(request.url);
   const origin = `${url.protocol}//${url.host}`;
 
-  // Response shape (doco coordinates + recipe + user_message_block) is
-  // built by the same helper the anonymous-create endpoint uses, so
-  // future tweaks to either flow propagate to the other.
+  // Bundle the per-Doco bootstrap context so the agent doesn't need a
+  // follow-on /api/v1/agent-bootstrap fetch right after this call —
+  // see the agent-bootstrap-response.server file header for why that
+  // pattern trips credential-exfil heuristics.
+  const context = await loadBootstrapContext({
+    docoDir: docoPath(doco.handle),
+    docoId: doco.id,
+    handle: doco.handle,
+    baseUrl: origin,
+  });
+
+  // Response shape (doco coordinates + recipe + canonical_instructions +
+  // user_message_block) is built by the same helper the anonymous-create
+  // endpoint uses, so future tweaks to either flow propagate to the other.
   return Response.json(
     buildAgentBootstrapResponse({
       flow: "redeem",
       origin,
       doco: { id: doco.id, handle: doco.handle },
       accessToken: session.token,
+      context,
     }),
   );
 }

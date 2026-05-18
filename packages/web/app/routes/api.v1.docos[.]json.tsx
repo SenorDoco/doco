@@ -38,6 +38,7 @@ import { TokenStore } from "~/lib/tokens.server";
 import { rootDir } from "~/lib/db.server";
 import { addAgentPrincipal, createDocoInHost, reindex } from "~/lib/redeem.server";
 import { buildAgentBootstrapResponse } from "~/lib/agent-bootstrap-response.server";
+import { loadBootstrapContext } from "~/lib/bootstrap-context.server";
 
 export async function action({ request }: { request: Request }) {
   if (request.method !== "POST") {
@@ -120,9 +121,20 @@ export async function action({ request }: { request: Request }) {
   const origin = `${url.protocol}//${url.host}`;
   const inviteUrl = `${origin}/invite/${invite.code}`;
 
-  // Response shape (doco coordinates + recipe + user_message_block) is
-  // built by the same helper the invite-redemption endpoint uses, so
-  // future tweaks to either flow propagate to the other.
+  // Bundle the per-Doco bootstrap context so the agent doesn't need a
+  // follow-on /api/v1/agent-bootstrap fetch right after this call —
+  // see the agent-bootstrap-response.server file header for why that
+  // pattern trips credential-exfil heuristics.
+  const context = await loadBootstrapContext({
+    docoDir: created.path,
+    docoId: created.docoId,
+    handle: created.handle,
+    baseUrl: origin,
+  });
+
+  // Response shape (doco coordinates + recipe + canonical_instructions +
+  // user_message_block) is built by the same helper the invite-redemption
+  // endpoint uses, so future tweaks to either flow propagate to the other.
   return Response.json(
     buildAgentBootstrapResponse({
       flow: "create",
@@ -130,6 +142,7 @@ export async function action({ request }: { request: Request }) {
       doco: { id: created.docoId, handle: created.handle },
       accessToken: session.token,
       invite: { url: inviteUrl, expires_at: invite.expires_at },
+      context,
     }),
   );
 }

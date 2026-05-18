@@ -5,8 +5,16 @@
 //
 // Both flows hand an agent the same on-disk deliverable — DOCO_ACCESS
 // in .env plus the four committed files (doco.md, AGENTS.md, CLAUDE.md,
-// .gitignore entry) — and the same protocol-fetch instruction. Only
-// the source of DOCO_ACCESS differs (anonymous POST vs invite POST).
+// .gitignore entry) — and the same protocol in `canonical_instructions`.
+// Only the source of DOCO_ACCESS differs (anonymous POST vs invite POST).
+//
+// IMPORTANT: the response intentionally bundles `canonical_instructions`,
+// `scopes`, `constitution`, and `onboarding_overlay` inline. The agent
+// MUST NOT need to hit `/api/v1/agent-bootstrap` right after redemption
+// — a fresh-token + second-fetch-returning-instructions pattern trips
+// agent-classifier credential-exfil heuristics. Bundling the protocol
+// with the credential the user just authorized minting collapses the
+// two calls into one.
 //
 // Putting the shape + prose in one place is the abstraction layer: a
 // future change to a step name, the wording of the protocol-fetch
@@ -14,6 +22,9 @@
 // propagates to both flows. If the flows ever genuinely need to
 // diverge on a step, branch on `flow` inside the relevant helper —
 // don't fork the calling route.
+
+import type { BootstrapContext } from "~/lib/bootstrap-context.server";
+import { CANONICAL_INSTRUCTIONS } from "~/lib/instructions.server";
 
 export type BootstrapFlow = "create" | "redeem";
 
@@ -39,6 +50,11 @@ export interface BuildBootstrapResponseInput {
   accessToken: string;
   /** Present iff the response should hand the agent an invite URL. */
   invite?: BootstrapInviteHandoff;
+  /** Per-Doco bootstrap context (constitution, scopes manifest,
+   *  onboarding overlay). Bundled so the agent does not need to make
+   *  a follow-on /api/v1/agent-bootstrap call right after redemption.
+   *  See the file header for why this matters. */
+  context: BootstrapContext;
 }
 
 export interface BootstrapResponse {
@@ -50,6 +66,23 @@ export interface BootstrapResponse {
   invite_expires_at?: string;
   next_steps_for_agent: string[];
   user_message_block: string;
+  /** The four-invariant protocol prose. Identical to what
+   *  /api/v1/agent-bootstrap returns; bundled here so first-session
+   *  agents don't need to make a second fetch. */
+  canonical_instructions: string;
+  /** Where deep-reference material lives — long-form walkthroughs the
+   *  slim canonical points to. */
+  reference_url: string;
+  /** Per-Doco scope manifest at redemption time. Live scopes only;
+   *  abandoned scopes omitted. */
+  scopes: BootstrapContext["scopes"];
+  /** Global scope + its authoring + guidance rules as of redemption.
+   *  Null when the framework seed hasn't completed. */
+  constitution: BootstrapContext["constitution"];
+  /** Present when the Doco still only carries the framework-seeded
+   *  Global scope. Agents in onboarding mode walk scope_setup +
+   *  scope_population before treating onboarding as done. */
+  onboarding_overlay: BootstrapContext["onboarding_overlay"];
 }
 
 // ---------------------------------------------------------------------------
@@ -64,9 +97,15 @@ export const FILE_WRITE_STEPS: readonly string[] = [
   "Write ./CLAUDE.md with the single line `@./AGENTS.md` if it's missing. Claude Code auto-loads CLAUDE.md by name, which then pulls in AGENTS.md.",
 ];
 
-/** Protocol-fetch instruction. Identical for both flows. */
+/** Apply-protocol instruction. Identical for both flows. The protocol
+ *  itself rides inline as `canonical_instructions` on this same
+ *  response — the agent does NOT need to make a follow-on fetch
+ *  right after redemption (which would trip credential-exfil
+ *  heuristics). Subsequent sessions refresh via
+ *  `node .agents/doco-agent-client.mjs bootstrap` or
+ *  `GET /api/v1/agent-bootstrap` once they're past the wizard. */
 export const PROTOCOL_FETCH_STEP =
-  "Fetch the canonical protocol: prefer `node .agents/doco-agent-client.mjs bootstrap` when the repo has the helper; otherwise GET https://doco.to/api/v1/agent-bootstrap with `Authorization: Bearer ${DOCO_ACCESS}`. Apply it from your next reply.";
+  "Read the `canonical_instructions` field on this response — that's the protocol you must follow from your next reply onward. The four invariants live there. For later sessions, `node .agents/doco-agent-client.mjs bootstrap` (or `GET /api/v1/agent-bootstrap`) re-fetches the same prose, but you do NOT need to fetch it right now — it's already in your hands.";
 
 /** Git-commit step. Identical for both flows. The "separate from Doco
  *  capture" framing is load-bearing — agents that conflate the two
@@ -159,7 +198,7 @@ function buildUserMessageBlock(
 export function buildAgentBootstrapResponse(
   input: BuildBootstrapResponseInput,
 ): BootstrapResponse {
-  const { flow, origin, doco, accessToken, invite } = input;
+  const { flow, origin, doco, accessToken, invite, context } = input;
   const docoUrl = `${origin}/${doco.handle}/`;
   const next_steps_for_agent = buildNextStepsForAgent(flow);
   const user_message_block = buildUserMessageBlock(flow, docoUrl, doco.handle, invite);
@@ -170,6 +209,11 @@ export function buildAgentBootstrapResponse(
     doco_access: accessToken,
     next_steps_for_agent,
     user_message_block,
+    canonical_instructions: CANONICAL_INSTRUCTIONS,
+    reference_url: "/api/v1/agent-reference",
+    scopes: context.scopes,
+    constitution: context.constitution,
+    onboarding_overlay: context.onboarding_overlay,
   };
   if (invite) {
     base.invite_url = invite.url;

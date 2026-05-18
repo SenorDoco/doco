@@ -7,11 +7,23 @@
 // capture before drafting. When `id` is omitted, a bound DOCO_ACCESS
 // bearer credential can provide the Doco id.
 //
+// This endpoint is for REFRESH calls — later sessions re-reading the
+// canonical to detect drift. The per-Doco context fields it returns
+// (constitution, scopes, onboarding_overlay) are also bundled into
+// the POST /api/v1/docos.json and POST /api/v1/invites/<code>/redeem.json
+// responses, so first-session agents do not need to call this right
+// after redemption. See `lib/agent-bootstrap-response.server.ts` for
+// why the post-redeem second-fetch pattern is avoided.
+//
 // For the long-form reference, fetch `/api/v1/agent-reference`. For
 // per-Doco context (scopes, freshness), `/<doco_handle>/status.json`.
 
-import { getDocoByIdOrHandle, listEntitiesByDoco } from "@doco/db";
-import type { AuthoringPredicate } from "@doco/shared";
+import { getDocoByIdOrHandle } from "@doco/db";
+import {
+  type BootstrapContext,
+  type ConstitutionSnapshot,
+  loadBootstrapContext,
+} from "~/lib/bootstrap-context.server";
 import { docoPath, rootDir } from "~/lib/db.server";
 import { canAccessDoco } from "~/lib/doco-access.server";
 import { etaggedJson } from "~/lib/etag.server";
@@ -23,152 +35,13 @@ import {
   formatMissingDocoLine,
   hostFromRequest,
 } from "~/lib/missing-doco-guidance.server";
-import {
-  type ScopeManifestEntry,
-  listLiveScopeManifest,
-  readDocoMetadata,
-} from "~/lib/scope-helpers.server";
+import { readDocoMetadata } from "~/lib/scope-helpers.server";
 import { extractCredential, getCurrentPrincipalAsync } from "~/lib/session";
 import { TokenStore } from "~/lib/tokens.server";
 
-/**
- * Shape of the Global scope (formerly "Constitution") as exposed to
- * agents on the bootstrap. Per decision_01KRPRDR1AD7S1RP6E69BQDB2G
- * authoring + guidance rules are first-class Rule entities tagged
- * `in_scope_of` this scope; the bootstrap surfaces them inline so
- * agents don't have to make extra calls.
- */
-export interface ConstitutionSnapshot {
-  id: string;
-  name: string;
-  icon: string | null;
-  authoring_rules: { id: string; summary: string; predicate: AuthoringPredicate }[];
-  guidance_rules: { id: string; summary: string }[];
-}
-
-/**
- * Read the Global scope + its rule entities from Postgres. Returns null
- * when no Global scope exists (fresh docos pre-seed).
- */
-async function loadConstitution(docoId: string): Promise<ConstitutionSnapshot | null> {
-  const rows = await listEntitiesByDoco("scope", docoId);
-  let globalScope: { id: string; name: string; raw_yaml: string } | null = null;
-  for (const r of rows) {
-    // Per decision_01KRPNZY7W6CCMYNKGND67BP0B the framework-seeded scope
-    // is named "global" (was: "constitution"; readable label "the doco's
-    // constitution"). Field names in the bootstrap response keep
-    // "Constitution" so agents reading the canonical see the familiar
-    // term, but the underlying scope row's `name` is "global".
-    if (r.name === "global") {
-      globalScope = { id: r.id, name: r.name, raw_yaml: r.raw_yaml };
-      break;
-    }
-  }
-  if (!globalScope) return null;
-  let scopeFm: Record<string, unknown> = {};
-  try {
-    scopeFm = JSON.parse(globalScope.raw_yaml) as Record<string, unknown>;
-  } catch {}
-
-  // v7 (decision_01KRRR5BQ16ASY8HQEE0V499YG): a Rule is "authoring"
-  // for the Global scope iff the scope cites it via `gated_by`. We
-  // pull every active/proposed rule tagged in_scope_of Global, then
-  // bucket by citation: ids ∈ gated_by → authoring; kind=guidance →
-  // guidance; everything else → tagged (omitted here — tagged rules
-  // show on the scope's page, not on the bootstrap surface).
-  const { withClient } = await import("@doco/db");
-  type RuleRow = { id: string; summary: string; raw_yaml: string };
-  const ruleRows = await withClient(async (c) => {
-    const r = await c.query<RuleRow>(
-      `SELECT r.id, r.summary, r.raw_yaml
-         FROM rules r
-         JOIN edges e ON e.from_id = r.id
-                     AND e.edge_type = 'in_scope_of'
-                     AND e.to_id = $1
-        WHERE r.doco_id = $2
-          AND COALESCE(r.lifecycle, 'active') IN ('active', 'proposed')`,
-      [globalScope.id, docoId],
-    );
-    return r.rows;
-  });
-  const gatedBy = new Set<string>(
-    Array.isArray(scopeFm.gated_by)
-      ? (scopeFm.gated_by as unknown[]).filter((v): v is string => typeof v === "string")
-      : [],
-  );
-  const authoring: { id: string; summary: string; predicate: AuthoringPredicate }[] = [];
-  const guidance: { id: string; summary: string }[] = [];
-  for (const r of ruleRows) {
-    let fm: Record<string, unknown> = {};
-    try {
-      fm = JSON.parse(r.raw_yaml) as Record<string, unknown>;
-    } catch {}
-    const kind = typeof fm.kind === "string" ? fm.kind : "tagged";
-    const predicate = fm.predicate as AuthoringPredicate | undefined;
-    if (gatedBy.has(r.id) && predicate && typeof predicate === "object") {
-      authoring.push({ id: r.id, summary: r.summary, predicate });
-    } else if (kind === "guidance") {
-      guidance.push({ id: r.id, summary: r.summary });
-    }
-  }
-
-  return {
-    id: globalScope.id,
-    name: globalScope.name,
-    icon: typeof scopeFm.icon === "string" ? scopeFm.icon : null,
-    authoring_rules: authoring,
-    guidance_rules: guidance,
-  };
-}
-
-/**
- * Onboarding overlay (decision_01KRKZM14WNA1685GN0F12WCKM update):
- * when a Doco only has the framework-seeded Constitution scope and
- * no project-specific scopes yet, the agent that just fetched the
- * bootstrap is in onboarding mode — they need to set scopes up + drive
- * real content into each one. This is the content the old
- * /onboarding/create/agent.json overlay carried; now it rides on the
- * regular bootstrap response and decays the moment the project owner
- * accepts a first non-Constitution scope.
- */
-interface OnboardingOverlay {
-  scope_setup: string;
-  scope_setup_url: string;
-  watched_explainer: string;
-  scope_population: string;
-}
-
-function buildOnboardingOverlay(args: {
-  baseUrl: string;
-  handle: string;
-}): OnboardingOverlay {
-  const { baseUrl, handle } = args;
-  return {
-    scope_setup:
-      "STEP 1 of onboarding — set up scopes. DECIDE-AND-CONFIRM, not decide-and-execute. (1) Read the project (files, README, the description the project owner gave). (2) Propose a curated starter set to the project owner in plain prose: 'user-flows' (the only template the framework ships) PLUS 1–3 CUSTOM scopes named for this project's actual subject areas. Phrase it: 'For this project I'd start with user-flows (end-to-end journeys, from the template), plus custom scopes <name-for-area-1> for <reason> and <name-for-area-2> for <reason>. Sound right, or should I adjust?' Then STOP and wait — DO NOT call any scope-creation endpoint yet. (3) If the project is unclear, ASK FIRST: 'What areas of this project do you want to track separately?' (4) Only after the project owner confirms, POST to /<doco-handle>/scopes/new or call the scope-creation endpoints. (5) During onboarding ONLY, pass watched=true on every scope you create — see watched_explainer below for what this means and why it's the onboarding default. (6) A single template scope alone is a smell — every onboarding session should produce at least one CUSTOM scope named for a project-specific area. Conventional names like adrs/apis/bugs/runbooks/post-mortems/glossary/roadmap/design-language/coding-style/framework/test-evals are no longer auto-installed; they're project-owner-authored when needed. NOTE: scope creation is STEP 1; do NOT stop after scopes exist — keep going to STEP 2 (scope_population).",
-    scope_setup_url: `${baseUrl}/${handle}/scopes/new?onboarding=1`,
-    watched_explainer:
-      "Every scope carries a 'watched' boolean (ADR-137bis). Watched=TRUE means contributors (project owner and agents alike) should proactively scan against this scope at capture time — 'does the thing I'm about to capture also belong here?' It's a soft attention signal, not enforcement. Watched=FALSE means the scope is available but no extra prompting; agents won't get nudged to consider it. During ONBOARDING, every scope you create defaults to watched=true: the project owner is literally in the room picking these scopes on purpose, so the attention signal matches what onboarding is for. After onboarding, ADR-137bis applies again — every scope-creation surface requires the caller (project owner or agent) to pick watched/not-watched explicitly with no default. The project owner can flip any scope's watched value any time from /<doco-handle>/scopes/<id>/edit. When you explain watched to the project owner in chat, use these exact words: 'Watched means: when you (or an agent) capture work later, this scope nudges you to consider whether the work belongs here.'",
-    scope_population:
-      "STEP 2 of onboarding — drive real content into each scope. ONBOARDING IS NOT DONE WHEN SCOPES EXIST. For EACH scope you just created, ask the project owner what they want to capture first: for adrs, 'What's the most important architectural choice you've already made that should be the first ADR?'; for user-flows, 'Walk me through the most important user journey in this project — I'll capture it as an Intent + Action chain'; for any custom scope, 'What's the load-bearing thing about <area> that's in your head but not in the repo yet?' Drive at least ONE real node into each scope before treating onboarding as complete. Empty scopes are the failure mode this step exists to prevent — a scope shell with no nodes is documentation theater, not the work. Only stop when EITHER (a) each scope has at least one real node, OR (b) the project owner explicitly says 'defer the rest for now' (acknowledge: 'OK, deferring; remember <scope_a>, <scope_b> are still empty and would benefit from a real node when you have a minute.'). NEVER print 'Onboarding done' if any scope is still empty unless (b) was said.",
-  };
-}
-
-/**
- * A Doco is "in onboarding" when the only scope it carries is the
- * framework-seeded Global scope (renamed from Constitution per
- * decision_01KRPNZY7W6CCMYNKGND67BP0B). Once the project owner
- * accepts a single project-specific scope, the overlay drops out
- * of the bootstrap response on the very next fetch.
- *
- * Both names are accepted for back-compat: older Docos that still
- * carry a scope named `constitution` (and haven't been migrated)
- * also count as "no project-specific scope yet."
- */
-function isOnboardingState(scopes: ScopeManifestEntry[]): boolean {
-  const projectSpecific = scopes.filter((s) => s.name !== "global" && s.name !== "constitution");
-  return projectSpecific.length === 0;
-}
+// Re-export so callers that previously imported the type from this
+// route can keep working.
+export type { ConstitutionSnapshot };
 
 export async function loader({ request }: { request: Request }) {
   const url = new URL(request.url);
@@ -186,14 +59,15 @@ export async function loader({ request }: { request: Request }) {
     }
   }
   const host = hostFromRequest(request);
-  let codeMap: unknown | null = null;
-  let constitution: ConstitutionSnapshot | null = null;
-  let scopes: ScopeManifestEntry[] = [];
+  let context: BootstrapContext = {
+    constitution: null,
+    scopes: [],
+    onboarding_overlay: null,
+  };
   let docoIdPath: string | null = null;
   let docoHandlePath: string | null = null;
   let warning: string | null = null;
   let missingDocoGuidance: MissingDocoGuidance | null = null;
-  let onboardingOverlay: OnboardingOverlay | null = null;
 
   // When the caller's id/slug doesn't resolve (or resolves to a Doco
   // they can't access) we set `missingDocoGuidance` to the structured
@@ -225,21 +99,16 @@ export async function loader({ request }: { request: Request }) {
         if (!(await canAccessDoco(meta, me?.id ?? null))) {
           flagMissing("no_access", id);
         } else {
-          // code_map.yaml is gone (alpha forbids back-compat); keep
-          // the field in the response for client compatibility.
-          codeMap = null;
-          constitution = await loadConstitution(meta.docoId);
-          scopes = await listLiveScopeManifest(dir);
+          const reqUrl = new URL(request.url);
+          const baseUrl = `${reqUrl.protocol}//${reqUrl.host}`;
+          context = await loadBootstrapContext({
+            docoDir: dir,
+            docoId: meta.docoId,
+            handle: row.handle,
+            baseUrl,
+          });
           docoIdPath = row.id;
           docoHandlePath = row.handle;
-          if (isOnboardingState(scopes)) {
-            const reqUrl = new URL(request.url);
-            const baseUrl = `${reqUrl.protocol}//${reqUrl.host}`;
-            onboardingOverlay = buildOnboardingOverlay({
-              baseUrl,
-              handle: row.handle,
-            });
-          }
         }
       }
     }
@@ -256,12 +125,14 @@ export async function loader({ request }: { request: Request }) {
     /** Public, globally-unique URL identifier — what `doco.md` pins
      *  and what every Doco URL is built from. */
     doco_handle: docoHandlePath,
-    code_map: codeMap,
-    constitution,
-    scopes,
-    onboarding_overlay: onboardingOverlay,
+    // code_map.yaml is gone (alpha forbids back-compat); keep the
+    // field in the response for client compatibility.
+    code_map: null,
+    constitution: context.constitution,
+    scopes: context.scopes,
+    onboarding_overlay: context.onboarding_overlay,
     warning,
     missing_doco_guidance: missingDocoGuidance,
-    note: "Slim bootstrap. For deep reference fetch /api/v1/agent-reference. For per-Doco status, call /<doco_handle>/status.json. Pass ?id=<doco_id> to receive `code_map` + `constitution` (Doco-specific load-bearing rules enforced at capture time) + `scopes` (active/proposed manifest entries only; abandoned scopes are omitted). When `onboarding_overlay` is non-null the Doco has only the Constitution scope — run STEP 1 (scope_setup) and STEP 2 (scope_population) before treating onboarding as done; the overlay disappears the moment the project owner accepts a first project-specific scope. When `missing_doco_guidance` is non-null the caller's id/handle didn't resolve OR resolved to a Doco they can't access — read the structured `actions` to pick the right recovery (create vs ask-for-access). `warning` carries a single-line version of the same.",
+    note: "Slim bootstrap. For deep reference fetch /api/v1/agent-reference. For per-Doco status, call /<doco_handle>/status.json. Pass ?id=<doco_id> to receive `code_map` + `constitution` (Doco-specific load-bearing rules enforced at capture time) + `scopes` (active/proposed manifest entries only; abandoned scopes are omitted). When `onboarding_overlay` is non-null the Doco has only the Constitution scope — run STEP 1 (scope_setup) and STEP 2 (scope_population) before treating onboarding as done; the overlay disappears the moment the project owner accepts a first project-specific scope. The same per-Doco context fields are bundled into POST /api/v1/docos.json and POST /api/v1/invites/<code>/redeem.json so first-session agents do not need to call this right after redemption. When `missing_doco_guidance` is non-null the caller's id/handle didn't resolve OR resolved to a Doco they can't access — read the structured `actions` to pick the right recovery (create vs ask-for-access). `warning` carries a single-line version of the same.",
   });
 }
