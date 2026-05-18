@@ -137,11 +137,8 @@ export default function ScopesIndex({
                 ) : null}
               </div>
               {s.primary_intent ? (
-                <div className="flex min-w-0 items-start gap-1.5 text-[11px] leading-snug text-muted-foreground">
-                  <span className="shrink-0 font-semibold text-foreground/70">
-                    Main intent:
-                  </span>
-                  <span className="min-w-0 break-words">{s.primary_intent.summary}</span>
+                <div className="min-w-0 break-words text-[11px] leading-snug text-muted-foreground">
+                  {s.primary_intent.summary}
                 </div>
               ) : null}
             </div>
