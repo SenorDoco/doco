@@ -33,6 +33,7 @@ export async function action({ request }: { request: Request }) {
     const rec = await createDocoInHost(rootDir(), {
       ownerSlug,
       docoSlug,
+      requestedId: docoSlug,
       ...(description ? { description } : {}),
       visibility,
     });
