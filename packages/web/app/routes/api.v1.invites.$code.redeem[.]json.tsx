@@ -11,12 +11,16 @@
 //
 // Input: empty body, OR optional `{ display_name?, hostname? }`.
 //
-// Output:
+// Output shape is shared with the anonymous-create endpoint via
+// `~/lib/agent-bootstrap-response.server` (see `BootstrapResponse`).
+// Redeem-side responses omit the invite handoff fields:
 //   {
 //     doco_id: string,
 //     doco_url: string,
 //     doco_handle: string,
 //     doco_access: string,         // .env as DOCO_ACCESS=<hex>
+//     next_steps_for_agent: string[],
+//     user_message_block: string,  // verbatim connection-confirmed block
 //   }
 //
 // Errors:
@@ -31,6 +35,7 @@ import { TokenStore } from "~/lib/tokens.server";
 import { rootDir } from "~/lib/db.server";
 import { addAgentPrincipal } from "~/lib/redeem.server";
 import { getDocoById } from "@doco/db";
+import { buildAgentBootstrapResponse } from "~/lib/agent-bootstrap-response.server";
 
 export async function action({
   request,
@@ -119,38 +124,18 @@ export async function action({
 
   const url = new URL(request.url);
   const origin = `${url.protocol}//${url.host}`;
-  const docoUrl = `${origin}/${doco.handle}/`;
-  return Response.json({
-    doco_id: doco.id,
-    doco_handle: doco.handle,
-    doco_url: docoUrl,
-    doco_access: session.token,
-    /**
-     * Next-step guidance for the redeeming agent — what to do with the
-     * fields above before treating itself as "connected."
-     */
-    next_steps_for_agent: [
-      "Write DOCO_ACCESS=<doco_access> to ./.env (gitignored — create the file and a basic .gitignore if either is missing).",
-      "If doco.md doesn't already exist at repo root, write it with the doco_url so future clones / CI / teammates discover the Doco.",
-      "If AGENTS.md doesn't include `@./doco.md`, add the line near the top.",
-      "If CLAUDE.md doesn't exist, write it with the single line `@./AGENTS.md`.",
-      "Fetch the canonical protocol: prefer `node .agents/doco-agent-client.mjs bootstrap` when the repo has the helper; otherwise GET https://doco.to/api/v1/agent-bootstrap with Authorization: Bearer ${DOCO_ACCESS}. Apply it from your next reply.",
-      "Render the user_message_block below as your next message to whoever invited you in.",
-    ],
-    /**
-     * Verbatim block the agent renders to the user who pasted the
-     * invite URL. Mirrors the create-side block: tells the user the
-     * agent is now connected, names what just happened, and points
-     * them at the human-friendly Doco URL for browsing.
-     */
-    user_message_block: [
-      `✅ I claimed access to **${doco.handle}** (Doco at ${docoUrl}).`,
-      ``,
-      `I saved my personal Doco access credential to \`./.env\` (gitignored) — from here I fetch the protocol on session start, search prior decisions before drafting new ones, and capture meaningful changes as Doco nodes.`,
-      ``,
-      `If this repo didn't already have a \`doco.md\`, I just wrote one so future clones / CI / teammates discover the Doco. The access credential in \`.env\` is mine alone — if you want your own access (browse on the web, mint invites for teammates), ask me for a fresh invite URL.`,
-    ].join("\n"),
-  });
+
+  // Response shape (doco coordinates + recipe + user_message_block) is
+  // built by the same helper the anonymous-create endpoint uses, so
+  // future tweaks to either flow propagate to the other.
+  return Response.json(
+    buildAgentBootstrapResponse({
+      flow: "redeem",
+      origin,
+      doco: { id: doco.id, handle: doco.handle },
+      accessToken: session.token,
+    }),
+  );
 }
 
 export async function loader() {

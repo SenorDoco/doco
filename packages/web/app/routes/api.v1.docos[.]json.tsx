@@ -13,7 +13,9 @@
 //     description?: string,
 //   }
 //
-// Output:
+// Output shape is shared with the invite-redemption endpoint via
+// `~/lib/agent-bootstrap-response.server` (see `BootstrapResponse`).
+// Create-side responses always carry the invite handoff fields:
 //   {
 //     doco_id: string,             // ULID — stable internal id (FK target)
 //     doco_handle: string,         // public, human-readable URL id
@@ -21,6 +23,8 @@
 //     doco_access: string,         // for .env as DOCO_ACCESS=<hex>
 //     invite_url: string,          // https://<host>/invite/<code>
 //     invite_expires_at: string,
+//     next_steps_for_agent: string[],
+//     user_message_block: string,  // verbatim claim-within-7-days block
 //   }
 //
 // Spam vector is acknowledged — anonymous endpoint with no rate-limit
@@ -33,6 +37,7 @@ import { generateUlid, makeEntityId, validateDocoSlug } from "@doco/shared";
 import { TokenStore } from "~/lib/tokens.server";
 import { rootDir } from "~/lib/db.server";
 import { addAgentPrincipal, createDocoInHost, reindex } from "~/lib/redeem.server";
+import { buildAgentBootstrapResponse } from "~/lib/agent-bootstrap-response.server";
 
 export async function action({ request }: { request: Request }) {
   if (request.method !== "POST") {
@@ -113,44 +118,20 @@ export async function action({ request }: { request: Request }) {
 
   const url = new URL(request.url);
   const origin = `${url.protocol}//${url.host}`;
-  // Phase 1 of slug-removal: prefer the handle URL when available;
-  // fall back to /by-id/<ULID>/ for rows minted before the handle
-  // column existed.
-  const docoUrl = `${origin}/${created.handle}/`;
   const inviteUrl = `${origin}/invite/${invite.code}`;
-  const expiresHuman = new Date(invite.expires_at).toLocaleString("en-US", {
-    timeZone: "UTC",
-    dateStyle: "medium",
-    timeStyle: "short",
-  });
 
-  return Response.json({
-    doco_id: created.docoId,
-    doco_handle: created.handle,
-    doco_url: docoUrl,
-    doco_access: session.token,
-    invite_url: inviteUrl,
-    invite_expires_at: invite.expires_at,
-    /**
-     * Verbatim block the agent MUST render to the user as its very next
-     * message — before scope work, before any other onboarding step.
-     * Without this hand-off the user never learns they need to claim
-     * collaboration access, and the invite expires in 7 days leaving
-     * them locked out of their own project's Doco.
-     */
-    user_message_block: [
-      `✅ I created a Doco for this project at **${docoUrl}**.`,
-      ``,
-      `🤝 **Important — claim your collaboration access within 7 days.**`,
-      `Open this invite URL in your browser and sign in with GitHub:`,
-      ``,
-      `**${inviteUrl}**`,
-      ``,
-      `Expires ${expiresHuman} UTC (single-use; once you accept, this URL stops working).`,
-      ``,
-      `If you don't claim, I'll keep operating directly via the API — but you won't be able to browse the Doco on the web, mint invite URLs for teammates, or revoke my access.`,
-    ].join("\n"),
-  });
+  // Response shape (doco coordinates + recipe + user_message_block) is
+  // built by the same helper the invite-redemption endpoint uses, so
+  // future tweaks to either flow propagate to the other.
+  return Response.json(
+    buildAgentBootstrapResponse({
+      flow: "create",
+      origin,
+      doco: { id: created.docoId, handle: created.handle },
+      accessToken: session.token,
+      invite: { url: inviteUrl, expires_at: invite.expires_at },
+    }),
+  );
 }
 
 export async function loader() {
