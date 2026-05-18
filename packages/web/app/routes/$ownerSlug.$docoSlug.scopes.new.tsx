@@ -618,7 +618,7 @@ export default function AddScope({
               ) : null}
               {isOnboarding && scopes.length > 0 ? (
                 <Link
-                  to={`/${handle}`}
+                  to={`/${handle}/onboarding/agent`}
                   className="text-xs text-muted-foreground hover:text-foreground"
                 >
                   Continue to Doco →

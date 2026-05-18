@@ -210,7 +210,7 @@ export default function ScopesIndex({
         {isOnboarding ? (
           <div className="flex items-center gap-3 pt-2 text-xs">
             <Link
-              to={`/${handle}`}
+              to={`/${handle}/onboarding/agent`}
               className="rounded-md border border-border px-3 py-1.5 hover:bg-card"
             >
               Continue to Doco →

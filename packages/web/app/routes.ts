@@ -183,6 +183,7 @@ export default [
   route(":docoId/activity", "routes/$ownerSlug.$docoSlug.activity.tsx"),
   route(":docoId/search", "routes/$ownerSlug.$docoSlug.search.tsx"),
   route(":docoId/search.json", "routes/$ownerSlug.$docoSlug.search[.]json.tsx"),
+  route(":docoId/onboarding/agent", "routes/$ownerSlug.$docoSlug.onboarding.agent.tsx"),
   route(":docoId/scopes", "routes/$ownerSlug.$docoSlug.scopes._index.tsx"),
   route(":docoId/scopes/new", "routes/$ownerSlug.$docoSlug.scopes.new.tsx"),
   route(":docoId/scopes/:id", "routes/$ownerSlug.$docoSlug.scopes.$id._index.tsx"),
