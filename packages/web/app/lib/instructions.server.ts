@@ -88,9 +88,17 @@ per-Doco context. You do **not** need to have finished reading the
 canonical body — the successful bootstrap is enough to render:
 
 \`\`\`
-[🔮 Doco] <loading-verb>
+[🔮 Doco] <loading-verb> <doco_handle>
 [🔮 Doco] To document anything, just ask me to "doco it"
 \`\`\`
+
+The \`<doco_handle>\` is the human-readable URL id from the bootstrap
+response (or from \`doco.md\`). NEVER emit the verb on its own —
+\`[🔮 Doco] Connected to\` with nothing after it is broken output;
+every verb in the list below is shaped to take the handle as its
+object. Concrete examples: \`[🔮 Doco] Connected to acme/payments\`,
+\`[🔮 Doco] Tuned into meta-doco\`, \`[🔮 Doco] Live on
+me-torrenegra-com-6\`.
 
 That second line is fixed copy. Render it directly under the
 session-load indicator, before any per-reply query lines, and repeat it
