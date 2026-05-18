@@ -42,7 +42,7 @@ emit_disconnected() {
   local recovery
   case "$mode" in
     network)
-      recovery=$'**This is a sandbox / network-policy issue, not a credentials problem — re-onboarding will NOT help.** The access URL is fine; the bootstrap request didn\'t leave your agent runtime. Tell the project owner to allowlist `doco.to` in your agent\'s network settings (Codex web, GitHub Coding Agent, Anthropic web sandbox, etc. each have their own settings page). For a one-off, they may also approve the call inline in the agent\'s UI. Once the host is reachable, restart or `/clear` so SessionStart runs again.'
+      recovery=$'**This is a sandbox / network-policy issue, not a credentials problem — re-onboarding will NOT help.** The access credential is fine; the bootstrap request didn\'t leave your agent runtime. Recovery depends on which runtime you\'re in:\n\n- **Codex Desktop**: the allowlist IS the approval prompt. When Codex asks to allow network access, click Allow and choose the persistent option. The safe prefix to persist is the exact helper path: `node .agents/doco-agent-client.mjs`. DO NOT approve broader `node` — that grants any Node script network access.\n- **Codex Web / GitHub Coding Agent / Anthropic web sandbox**: each has its own Environment access → Network access (or equivalent) settings page. Add `doco.to` to the allowlist there.\n- **Generic**: allow outbound HTTPS to `doco.to` on port 443.\n\nOnce the host is reachable, restart or `/clear` so SessionStart runs again.'
       ;;
     tool)
       recovery=$'Install the missing local tool, then restart or `/clear` so SessionStart runs again.'

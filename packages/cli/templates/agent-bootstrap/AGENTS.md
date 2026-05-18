@@ -96,8 +96,18 @@ every reply with:
   minted. Ask the user for a fresh invite URL.
 - **`bootstrap fetch blocked`** / **`HTTP_STATUS:000`** /
   **`doco.to unreachable`** → sandbox or network-policy issue. The
-  credential is fine; the request didn't leave your agent runtime. Tell
-  the user to allowlist `doco.to` in the agent's network settings.
+  credential is fine; the request didn't leave your agent runtime.
+  Recovery varies by runtime:
+  - **Codex Desktop** has no allowlist UI — the allowlist IS the
+    approval prompt. When Codex asks to allow network access, the
+    user clicks Allow and picks the persistent option. The safe
+    persistent prefix is the exact helper path
+    `node .agents/doco-agent-client.mjs` — NOT broader `node`, which
+    would grant any Node script network access.
+  - **Codex Web / GitHub Coding Agent / Anthropic web sandbox** each
+    have their own Environment access → Network access (or
+    equivalent) page; add `doco.to` to the allowlist there.
+  - **Generic**: allow outbound HTTPS to `doco.to:443`.
 - **Host returns 5xx** → doco.to is down; wait and retry.
 
 ## Onboarding an agent for a new Doco
