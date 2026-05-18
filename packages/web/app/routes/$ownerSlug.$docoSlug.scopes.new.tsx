@@ -21,7 +21,9 @@ import {
 } from "~/lib/redeem.server";
 import { listScopeDetails } from "~/lib/scope-helpers.server";
 
-const SCOPE_NAME_RE = /^[a-z][a-z0-9_-]*$/;
+// Scope names are hashtag-shaped (`#global`, `#user-flows`, `#payments`).
+// The leading `#` is part of the canonical name on every surface.
+const SCOPE_NAME_RE = /^#[a-z][a-z0-9_-]*$/;
 
 function isLiveScopeLifecycle(lifecycle: string): boolean {
   return lifecycle === "active" || lifecycle === "proposed";
@@ -169,18 +171,25 @@ export async function action({
         });
       }
     } else if (intent === "add-custom") {
-      const name = String(form.get("name") ?? "")
+      // Tolerate forms that submit a bare name (`payments`) by
+      // auto-prefixing `#` here — the user typed what they meant; we
+      // canonicalize before the regex check. Forms that submit the full
+      // form (`#payments`) pass through unchanged.
+      let name = String(form.get("name") ?? "")
         .trim()
         .toLowerCase();
+      if (name && !name.startsWith("#")) {
+        name = `#${name}`;
+      }
       const icon = String(form.get("icon") ?? "").trim();
       const purpose = String(form.get("purpose") ?? "").trim();
       const parentId = String(form.get("parent_id") ?? "").trim() || null;
-      if (!name) return { error: "Scope name is required." };
+      if (!name || name === "#") return { error: "Scope name is required." };
       if (!purpose) return { error: "Main intent is required." };
       if (!SCOPE_NAME_RE.test(name)) {
         return {
           error:
-            "Name must start with a letter and use only lowercase letters, digits, hyphens, underscores. No slashes (use the parent dropdown).",
+            "Name must start with `#` followed by a lowercase letter, then use only lowercase letters, digits, hyphens, underscores (e.g. `#payments`). No slashes (use the parent dropdown).",
         };
       }
       const existing = await listScopeDetails(dir);
@@ -373,16 +382,21 @@ export default function AddScope({
                   <div>
                     <p className="mb-1 font-semibold text-foreground">What to add first</p>
                     <p className="text-muted-foreground">
-                      A solid starter set is <code className="font-mono text-foreground">adrs</code>{" "}
-                      (architectural choices),{" "}
-                      <code className="font-mono text-foreground">user-flows</code> (end-to-end
-                      journeys), plus <strong>1–2 custom scopes</strong> named for{" "}
+                      A solid starter set is{" "}
+                      <code className="font-mono text-foreground">#adrs</code> (architectural
+                      choices), <code className="font-mono text-foreground">#user-flows</code>{" "}
+                      (end-to-end journeys), plus <strong>1–2 custom scopes</strong> named for{" "}
                       <em>{displayName}</em>&apos;s actual subject areas (e.g.{" "}
-                      <code className="font-mono text-foreground">payments</code>,{" "}
-                      <code className="font-mono text-foreground">search</code>,{" "}
-                      <code className="font-mono text-foreground">content-schema</code>
-                      ). More templates exist (apis, bugs, runbooks, post-mortems, glossary,
-                      roadmap) — add them when the need arises, not all at once.
+                      <code className="font-mono text-foreground">#payments</code>,{" "}
+                      <code className="font-mono text-foreground">#search</code>,{" "}
+                      <code className="font-mono text-foreground">#content-schema</code>
+                      ). More templates exist (<code className="font-mono">#apis</code>,{" "}
+                      <code className="font-mono">#bugs</code>,{" "}
+                      <code className="font-mono">#runbooks</code>,{" "}
+                      <code className="font-mono">#post-mortems</code>,{" "}
+                      <code className="font-mono">#glossary</code>,{" "}
+                      <code className="font-mono">#roadmap</code>) — add them when the need arises,
+                      not all at once.
                     </p>
                   </div>
                   <div>
@@ -526,12 +540,16 @@ export default function AddScope({
                       <input
                         name="name"
                         required
-                        pattern="[a-z][a-z0-9_-]*"
-                        placeholder="payments"
+                        pattern="#?[a-z][a-z0-9_-]*"
+                        placeholder="#payments"
                         className="w-full rounded-md border border-border bg-input px-3 py-2 font-mono text-xs text-foreground outline-none focus:border-primary"
                       />
                       <span className="mt-1 block text-[11px] text-muted-foreground">
-                        Lowercase letters, digits, hyphens, underscores. No slashes.
+                        Hashtag form: starts with{" "}
+                        <code className="font-mono text-foreground">#</code> then lowercase letters,
+                        digits, hyphens, underscores. We&apos;ll add the{" "}
+                        <code className="font-mono text-foreground">#</code> for you if you forget.
+                        No slashes.
                       </span>
                     </label>
                     <div className="text-xs">

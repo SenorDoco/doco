@@ -63,12 +63,14 @@ const SYSTEM_PROMPT = `You design topical scopes for a Doco-tracked project.
 Doco is a documentation framework. A "scope" is a topical neighborhood —
 anything the user wants to track separately: a feature area, a country,
 a team, a customer segment, a regulatory regime, a document type, a
-migration project, etc. Scope names are flat tokens (lowercase letters,
-digits, underscores, hyphens). For hierarchy, use slashes:
-"country/france/payment" is three scopes (country → france → payment).
+migration project, etc. Scope names are hashtag-shaped — they always
+start with "#" followed by lowercase letters, digits, underscores,
+hyphens (e.g. "#payments", "#user-flows"). For hierarchy, use slashes:
+"#country/#france/#payment" is three scopes (#country → #france →
+#payment).
 
 Each scope you propose carries:
-- name: the slug (or slash-path for nested)
+- name: the hashtag slug (or slash-path for nested) — every segment starts with "#"
 - purpose: 1 sentence — what nodes belong inside this scope
 - guidelines: 2–4 sentences — how to author nodes into this scope (Decisions,
   Actions, Rules) using Doco's primitives. Be specific about format and
@@ -77,7 +79,7 @@ Each scope you propose carries:
 
 Rules:
 - Propose 5-8 scopes specific to the user's project.
-- Avoid generic templates the user can pick separately: global, user-flows.
+- Avoid generic templates the user can pick separately: #global, #user-flows.
 - Avoid duplicating any existing scopes.
 - Use slash-paths only when there's a real parent-child relationship.
 - Output JSON only: {"suggestions": [{name, purpose, guidelines, reasoning}, ...]}.`;

@@ -275,11 +275,15 @@ capture that probably should happen. Each binds to a counter-move:
 | "No decision content" | Re-check the hits. If a search result names your file or your territory at vector_score > ~0.45, **PATCH that node** — there *is* decision content, you're amending it. |
 | "Too trivial to bother" | The PATCH is one HTTP call: \`PATCH \<doco_url>/api/decisions/<id>.json\` with \`{"body_md_append": "Update YYYY-MM-DD: <what + why>."}\`. Total cost ~10 seconds. The asymmetry that justified skipping is gone. |
 
-Scope names below are bare (no \`scope_\` prefix) and match the default
-templates installed when a Doco is created. If a referenced scope isn't
-installed in this Doco yet, browse to
-\`\<doco_url>\` (your Doco's home) and add it from the scope manager
-first.
+Scope names are hashtag-shaped — they always start with \`#\`, e.g.
+\`#global\`, \`#user-flows\`, \`#payments\`. The \`#\` is part of the
+canonical name on every surface: the manifest, the API, the footer
+lines, the bootstrap response. When you reference a scope in capture
+payloads, prose, or commit messages, write it with the \`#\`. Scope
+names below match the default templates installed when a Doco is
+created. If a referenced scope isn't installed in this Doco yet,
+browse to \`\<doco_url>\` (your Doco's home) and add it from the scope
+manager first.
 
 **Watched scopes** (ADR-137bis). Some scopes carry a \`watched: true\`
 flag — a soft attention signal saying "contributors should proactively
@@ -363,7 +367,7 @@ rationalize skipping the Rule.
 | Change you made | What to capture |
 |---|---|
 | **Edited code an existing entity already governs** (vector_score > ~0.45 hit names the file or the territory) | **PATCH that entity** with \`PATCH \<doco_url>/api/<type-plural>/<id>.json\` body \`{"body_md_append": "..."}\`. Don't open a sibling node — the existing one tracks the same element's reasoning over time. |
-| User-flow (route/redirect/form/banner/multi-step UX) | Decision with **\`user-flows\`** |
+| User-flow (route/redirect/form/banner/multi-step UX) | Decision with **\`#user-flows\`** |
 | UI affordance / element copy / interaction tweak (not the journey itself) | Decision with the project's design-language scope (if one exists) — or, if a governing Decision exists, **PATCH it** (see top row). |
 | Bug fix | Decision with the project's bug scope + a Rule with the same scope (\`born_from: <decision_id>\` — the link IS the regression-guard) |
 | Code now satisfies an architectural decision's consequence | Rule with the relevant subject-area scope, \`born_from: <decision_id>\`. |
@@ -373,9 +377,9 @@ rationalize skipping the Rule.
 | Did real work that doesn't fit above | If it happened, use **Log**. If it's a designed template step, use **Action**. If it's an aspirational goal / backlog item, use **Intent** |
 
 **On ADRs.** Doco has no native ADR concept. The framework doesn't
-auto-assign numbers, doesn't auto-add an \`adrs\` scope, doesn't have
+auto-assign numbers, doesn't auto-add an \`#adrs\` scope, doesn't have
 an \`is_adr\` flag, doesn't have a \`number\` field on Decision. If a
-project wants to track ADRs, it authors an \`adrs\` scope as a
+project wants to track ADRs, it authors an \`#adrs\` scope as a
 custom scope — that scope's guidance Rules describe whatever
 convention the project picks (sequential \`ADR-NNN\`, git-commit-hash,
 or whatever). The identifier lives in the Decision's body or summary;
@@ -547,12 +551,13 @@ The overlay carries three keys, each a self-contained instruction
 to act on verbatim:
 
 - \`scope_setup\` — **STEP 1**. Read the project, propose a curated
-  starter set (\`user-flows\` from the template + 1–3 CUSTOM scopes
-  named for this project's subject areas) in plain prose. WAIT for
-  the project owner to confirm before calling any scope-creation
-  endpoint. **Decide-and-confirm, not decide-and-execute.** A single
-  template scope alone is a smell — every onboarding session should
-  produce at least one custom scope.
+  starter set (\`#user-flows\` from the template + 1–3 CUSTOM scopes
+  named for this project's subject areas, hashtag-shaped:
+  \`#payments\`, \`#search\`, \`#content-schema\`) in plain prose.
+  WAIT for the project owner to confirm before calling any
+  scope-creation endpoint. **Decide-and-confirm, not
+  decide-and-execute.** A single template scope alone is a smell —
+  every onboarding session should produce at least one custom scope.
 - \`watched_explainer\` — read this once at the moment you first
   mention "watched" to the project owner. Use the wording in the
   overlay verbatim so the explanation is consistent across agents.
@@ -612,16 +617,18 @@ methodology question, placement ambiguity.
 
 ## When you've just created a Doco — scopes come next
 
-A new Doco has the framework-seeded **Global scope** (always installed,
-serves as your doco's constitution) and zero project-specific scopes.
-Nodes outside Global can't be added until at least one project-specific
-scope exists. The framework ships
-one additional opt-in template — **\`user-flows\`** — for the common
-case where end-to-end journeys matter. Every other scope a project
-wants (\`adrs\`, \`apis\`, \`bugs\`, \`runbooks\`, \`post-mortems\`,
-\`glossary\`, \`roadmap\`, \`design-language\`, \`coding-style\`,
-\`framework\`, \`test-evals\`, anything else) is **project-owner-authored**
-— you propose, the owner customs them.
+A new Doco has the framework-seeded **\`#global\` scope** (always
+installed, serves as your doco's constitution) and zero project-specific
+scopes. Nodes outside \`#global\` can't be added until at least one
+project-specific scope exists. Scope names are hashtag-shaped — they
+always start with \`#\` (\`#global\`, \`#user-flows\`, \`#payments\`,
+\`#adrs\`); the \`#\` is part of the canonical name on every surface.
+The framework ships one additional opt-in template — **\`#user-flows\`**
+— for the common case where end-to-end journeys matter. Every other
+scope a project wants (\`#adrs\`, \`#apis\`, \`#bugs\`, \`#runbooks\`,
+\`#post-mortems\`, \`#glossary\`, \`#roadmap\`, \`#design-language\`,
+\`#coding-style\`, \`#framework\`, \`#test-evals\`, anything else) is
+**project-owner-authored** — you propose, the owner customs them.
 
 Onboarding has **two steps**, in this order. Stopping after step 1 is
 the single most common onboarding failure mode — agents create the
@@ -638,20 +645,20 @@ Propose, then **wait for the project owner's nod before materializing.**
    to propose with confidence, go to step 2. **If you don't, go to
    step 3 (ASK is the default for low-context docos).**
 2. **Propose the curated starter set** in plain prose. The
-   recommended starter shape is **\`user-flows\` (from the template)
+   recommended starter shape is **\`#user-flows\` (from the template)
    + 1–3 custom scopes** named for the project's actual subject
    areas. Phrasing:
-   > "For this project I'd start with **user-flows** (end-to-end
+   > "For this project I'd start with **\`#user-flows\`** (end-to-end
    > journeys, from the template), plus custom scopes
-   > **\`<project-area>\`** for <reason> and **\`<other-area>\`**
+   > **\`#<project-area>\`** for <reason> and **\`#<other-area>\`**
    > for <reason>. Sound right, or do you want me to adjust?"
    Then **stop and wait.** Don't materialize until the project owner
    has acknowledged.
 3. **If the project is unclear, ASK first.** Don't guess.
    > "Before I set up scopes — what areas of this project do you
-   > want to track separately? I'd start you with \`user-flows\`
+   > want to track separately? I'd start you with \`#user-flows\`
    > plus 1–3 custom scopes named for the project's subject areas
-   > (e.g. \`payments\`, \`search\`)."
+   > (e.g. \`#payments\`, \`#search\`)."
 4. **Default watched=true during onboarding.** Every scope you
    create in this onboarding session passes \`watched: true\`. The
    project owner is literally in the room picking these scopes on
@@ -666,7 +673,7 @@ Propose, then **wait for the project owner's nod before materializing.**
 5. Only after the project owner confirms do you POST to
    \`\<doco_url>/api/scopes.json\`. Children require their parent to
    already exist.
-6. **A single template scope is a smell.** "I set up \`user-flows\`"
+6. **A single template scope is a smell.** "I set up \`#user-flows\`"
    alone means you didn't engage with what the project is about.
    Add at least one **custom** scope named for a project-specific
    subject area alongside any template scope.
@@ -678,13 +685,13 @@ is documentation theater — a directory of empty rooms. For EACH
 scope you just created, ask the project owner what they want to
 capture first. Concrete asks beat generic ones:
 
-- For \`adrs\` → "What's the most important architectural choice
+- For \`#adrs\` → "What's the most important architectural choice
   you've already made that should be the first ADR?"
-- For \`user-flows\` → "Walk me through the most important user
+- For \`#user-flows\` → "Walk me through the most important user
   journey in this project — I'll capture it as an Intent plus an
   Action chain."
-- For a custom subject-area scope (e.g. \`payments\`,
-  \`content-schema\`) → "What's the load-bearing thing about
+- For a custom subject-area scope (e.g. \`#payments\`,
+  \`#content-schema\`) → "What's the load-bearing thing about
   <area> that's in your head but not in the repo yet?"
 
 Drive at least one real node into each scope. Only stop when
@@ -723,12 +730,14 @@ Thirteen node types. Files at \`<plural>/<id>.md\` (or \`.yaml\`).
 **Scopes are how large Docos stay navigable.** A scope can be anything
 you want to track separately — a feature area, a country, a team, a
 customer segment, a regulatory regime, a document type, a migration
-project. Pick names that make sense for what *this* Doco is about.
-The framework ships three opinionated templates (\`global\`,
-\`user-flows\`, and v7's \`state-machines\`); common conventions like
-\`adrs\`, \`apis\`, \`bugs\`, \`runbooks\`, \`post-mortems\`, \`glossary\`,
-\`roadmap\`, \`design-language\`, \`coding-style\`, \`framework\`,
-\`test-evals\` are no longer auto-installed and are
+project. Scope names are hashtag-shaped — they start with \`#\` so
+they read as tags wherever they appear (\`#payments\`, \`#user-flows\`,
+\`#search\`). Pick names that make sense for what *this* Doco is
+about. The framework ships three opinionated templates (\`#global\`,
+\`#user-flows\`, and v7's \`#state-machines\`); common conventions like
+\`#adrs\`, \`#apis\`, \`#bugs\`, \`#runbooks\`, \`#post-mortems\`,
+\`#glossary\`, \`#roadmap\`, \`#design-language\`, \`#coding-style\`,
+\`#framework\`, \`#test-evals\` are no longer auto-installed and are
 project-owner-authored when needed.
 
 **No name-based behavior** (v7 — decision_01KRRR5BQ16ASY8HQEE0V499YG +
@@ -738,7 +747,7 @@ something for a particular scope, it reads a generic attribute on the
 scope — \`gated_by\`, \`excluded_rules\`, \`default_node_lifecycle\`, an
 attached Rule, an edge — never a string match on the scope name. That's
 what makes template scopes renamable: the project owner can rebrand
-\`state-machines\` to \`lifecycles\` without rewriting framework code.
+\`#state-machines\` to \`#lifecycles\` without rewriting framework code.
 
 **v7 lifecycle primitives** (decision_01KRRR5BQ16ASY8HQEE0V499YG):
 
@@ -760,9 +769,9 @@ what makes template scopes renamable: the project owner can rebrand
 
 Any node belongs to one or more scopes. **Scopes are
 edge-hierarchical:** a child scope's parents live in its \`scopes\`
-field, not in slashes in its name. So \`country/france/payment\` is
-three scopes — \`country\`, \`france\` (with \`scopes: [country.id]\`),
-\`payment\` (with \`scopes: [france.id]\`) — not a single string.
+field, not in slashes in its name. So \`#country/#france/#payment\` is
+three scopes — \`#country\`, \`#france\` (with \`scopes: [country.id]\`),
+\`#payment\` (with \`scopes: [france.id]\`) — not a single string.
 
 Assign at least one scope to every Decision, Action, Idea, and Intent.
 
@@ -776,13 +785,13 @@ payment policy, a post-mortem, a design-system, a customer-support
 playbook — **don't ask Doco for a recipe**. Doco only gives you twelve
 primitives + edge types.
 
-If the \`user-flows\` template covers your case, install it (or read its
-seeded guidance Rules if already installed). Other common scope names
-(\`adrs\`, \`apis\`, \`bugs\`, \`runbooks\`, \`post-mortems\`, \`glossary\`,
-\`roadmap\`, \`design-language\`, \`coding-style\`, \`framework\`,
-\`test-evals\`) are conventions you author from scratch — describe the
-purpose as an Intent, the guidance as Rules, and capture them as you
-would any custom scope.
+If the \`#user-flows\` template covers your case, install it (or read
+its seeded guidance Rules if already installed). Other common scope
+names (\`#adrs\`, \`#apis\`, \`#bugs\`, \`#runbooks\`, \`#post-mortems\`,
+\`#glossary\`, \`#roadmap\`, \`#design-language\`, \`#coding-style\`,
+\`#framework\`, \`#test-evals\`) are conventions you author from
+scratch — describe the purpose as an Intent, the guidance as Rules,
+and capture them as you would any custom scope.
 
 If no template fits:
 
@@ -814,7 +823,7 @@ retries fire correctly but the dedup window was 60s — payloads delivered
 65s apart pass through twice. I captured the analysis as a Decision and
 proposed a fix.
 
-[🔮 Doco] ✍️ Decision added: [Bump the idempotency-key TTL from 60s to 24h to match Stripe's own retry envelope.](https://doco.to/acme/payments/decision/decision_01KRHB95AVGFHG80B2EAWE20K8) — 🏗️ adrs (0.2s)
+[🔮 Doco] ✍️ Decision added: [Bump the idempotency-key TTL from 60s to 24h to match Stripe's own retry envelope.](https://doco.to/acme/payments/decision/decision_01KRHB95AVGFHG80B2EAWE20K8) — 🏗️ #adrs (0.2s)
 
 Should I ship the TTL change to staging tonight or wait for the on-call
 to confirm tomorrow?
@@ -833,7 +842,7 @@ to confirm tomorrow?
 I added the regression test for the dedup window and re-ran the webhook
 suite. All 47 cases pass.
 
-[🔮 Doco] ✍️ Eval added: [Replay a webhook 65s after first delivery — expect single handler invocation.](https://doco.to/acme/payments/eval/eval_01KRHB95AVGFHG80B2EAWE20K8) — 🧪 test-evals (0.2s)
+[🔮 Doco] ✍️ Eval added: [Replay a webhook 65s after first delivery — expect single handler invocation.](https://doco.to/acme/payments/eval/eval_01KRHB95AVGFHG80B2EAWE20K8) — 🧪 #test-evals (0.2s)
 
 [🔮 Doco] acme/payments: **1** node added/updated
 \`\`\`
@@ -857,7 +866,7 @@ not prose. Removed both spans. This amends decision_01KRG8VPS… (the
 EmojiPickerInput rollout, vector_score 0.49 on this turn's hits), so
 PATCHing that Decision keeps the element's reasoning in one place.
 
-[🔮 Doco] 📝 Decision updated: [Replace the bare emoji <input> with EmojiPickerInput…](https://doco.to/acme/payments/decision/decision_01KRG8VPSAAAA).body ➕ appended — 🎨 design-language (0.2s)
+[🔮 Doco] 📝 Decision updated: [Replace the bare emoji <input> with EmojiPickerInput…](https://doco.to/acme/payments/decision/decision_01KRG8VPSAAAA).body ➕ appended — 🎨 #design-language (0.2s)
 
 [🔮 Doco] acme/payments: **1** node added/updated
 \`\`\`
@@ -926,7 +935,7 @@ capture the rationale.
 
 Final text output:
 
-[🔮 Doco] 📝 Decision updated: [Replace bare emoji input with EmojiPickerInput…](…).body ➕ appended — 🎨 design-language (0.2s)
+[🔮 Doco] 📝 Decision updated: [Replace bare emoji input with EmojiPickerInput…](…).body ➕ appended — 🎨 #design-language (0.2s)
 
 Captured the why so the change has rationale, not just the code.
 
@@ -1084,9 +1093,10 @@ in **onboarding mode** — work the project owner through scope setup
 AND scope population before treating the session as "done":
 
 - **STEP 1 — \`scope_setup\`**: read the project, propose a curated
-  starter set in plain prose (\`user-flows\` from the template + 1–3
-  custom scopes for the project's actual subject areas), wait for the
-  project owner's nod, then materialize with \`watched: true\`.
+  starter set in plain prose (\`#user-flows\` from the template + 1–3
+  custom scopes for the project's actual subject areas, hashtag-shaped:
+  \`#payments\`, \`#search\`), wait for the project owner's nod, then
+  materialize with \`watched: true\`.
 - **\`watched_explainer\`**: tell the project owner what watched means
   the first time it comes up.
 - **STEP 2 — \`scope_population\`**: for each scope just created, ask

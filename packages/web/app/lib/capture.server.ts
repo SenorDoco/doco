@@ -24,6 +24,7 @@ import {
   shouldRunAuthoringRuleForEntity,
 } from "@doco/shared";
 import { ensureV7Migration } from "./migrations/v7.server";
+import { ensureScopeHashtagPrefixMigration } from "./migrations/scope-hashtag-prefix.server";
 import {
   judgeProbabilisticRule,
   LlmUnavailableError,
@@ -170,7 +171,7 @@ export interface DecisionDraft {
   question: string;
   /** Required: chosen resolution (multi-line ok). */
   chosen: string;
-  /** Required: at least one scope name (bare, e.g. "user-flows"). */
+  /** Required: at least one scope name (hashtag-shaped, e.g. "#user-flows"). */
   scope_names: string[];
 
   /** Optional: one-line summary; derived from chosen if absent. */
@@ -683,7 +684,10 @@ async function loadAllScopes(docoDir: string): Promise<Map<string, Scope>> {
 function findGlobalScope(allScopes: Map<string, Scope>): Scope | null {
   for (const s of allScopes.values()) {
     const name = (s as unknown as Record<string, unknown>).name;
-    if (name === "global") return s;
+    // Accept the canonical `#global`, the post-rename bare `global`,
+    // and the legacy `constitution` — the migration may not have run
+    // for every Doco yet.
+    if (name === "#global" || name === "global") return s;
   }
   return null;
 }
@@ -853,6 +857,7 @@ export async function runScopeRules(opts: {
   if (!meta?.docoId) return null;
   const docoId = meta.docoId;
   await ensureV7Migration(docoId);
+  await ensureScopeHashtagPrefixMigration(docoId);
 
   // Collect the set of scope ids whose gated_by we need to walk:
   // - every scope the entity already lists,

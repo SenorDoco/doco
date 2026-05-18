@@ -77,9 +77,12 @@ export default function ScopesIndex({
   type ScopeRow = (typeof scopes)[number];
   const isAbandonedScope = (scope: ScopeRow) =>
     scope.lifecycle !== "active" && scope.lifecycle !== "proposed";
+  // Global sorts first. Accept both `#global` (canonical) and the
+  // post-rename bare `global` until every Doco has been migrated.
+  const isGlobalName = (n: string) => n === "#global" || n === "global";
   const sortedScopes = [...scopes].sort((a, b) => {
-    if (a.name === "global" && b.name !== "global") return -1;
-    if (b.name === "global" && a.name !== "global") return 1;
+    if (isGlobalName(a.name) && !isGlobalName(b.name)) return -1;
+    if (isGlobalName(b.name) && !isGlobalName(a.name)) return 1;
     return 0;
   });
   const activeScopes = sortedScopes.filter((scope) => !isAbandonedScope(scope));
@@ -90,7 +93,7 @@ export default function ScopesIndex({
       .map((pid) => scopes.find((x) => x.id === pid)?.name)
       .filter(Boolean) as string[];
     const isAbandoned = isAbandonedScope(s);
-    const isGlobal = s.name === "global";
+    const isGlobal = isGlobalName(s.name);
     return (
       <li key={s.id}>
         <Link

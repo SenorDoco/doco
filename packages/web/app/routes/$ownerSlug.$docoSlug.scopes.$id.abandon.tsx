@@ -103,7 +103,7 @@ export async function action({
     if (intent === "abandon") {
       const raw = await readScopeRaw(id);
       if (!raw) return { error: "Scope not found." };
-      if (raw.name === "global") {
+      if (raw.name === "#global" || raw.name === "global") {
         return {
           error:
             "The Global scope (your doco's constitution) cannot be abandoned — it's a framework-seeded invariant.",

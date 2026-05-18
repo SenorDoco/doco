@@ -23,11 +23,13 @@ import { listScopeDetails, readDocoMetadata } from "~/lib/scope-helpers.server";
  *
  * Body shape:
  *   - `template_name`: string (optional) — install a default template
- *     by name ("global" or "user-flows"). Cannot be combined with the
- *     custom-create fields below. Seeds the template's Intent + Rules
- *     into the new scope.
- *   - `name`: string (required if `template_name` absent) — lowercase,
- *     starts with a letter, no slashes.
+ *     by name (`"#global"` or `"#user-flows"`; legacy bare forms
+ *     `"global"`/`"user-flows"` are accepted as aliases). Cannot be
+ *     combined with the custom-create fields below. Seeds the
+ *     template's Intent + Rules into the new scope.
+ *   - `name`: string (required if `template_name` absent) — starts
+ *     with `#` followed by a lowercase letter, then lowercase letters /
+ *     digits / hyphens / underscores. No slashes (use `parent_id`).
  *   - `intent_summary`: string (required if `template_name` absent) —
  *     the main Intent this scope serves.
  *   - `icon`: string (optional) — single emoji.
@@ -41,7 +43,11 @@ import { listScopeDetails, readDocoMetadata } from "~/lib/scope-helpers.server";
  * after the scope exists with /api/scopes/<id>/rules.json.
  */
 
-const SCOPE_NAME_RE = /^[a-z][a-z0-9_-]*$/;
+// Scope names are hashtag-shaped (`#global`, `#user-flows`, `#payments`)
+// so they read as tags wherever they appear in prose, footer lines, and
+// the scope manifest. The leading `#` is part of the canonical name —
+// stored on the row, returned by the API, and required on every POST.
+const SCOPE_NAME_RE = /^#[a-z][a-z0-9_-]*$/;
 
 interface ScopeCreateBody {
   template_name?: string;
@@ -126,13 +132,18 @@ export async function action({
   // Framework-native behavior of the Global scope (the doco's
   // constitution, decision_01KRKS5H2A5QER84CJ8R4VD36Z): always watched.
   // Refuse watched=false on any path that would create a scope named
-  // "global" — covers both template_name=global and the custom-name
+  // "#global" — covers both template_name=#global and the custom-name
   // path. (The existing 409 "already exists" check will also reject
   // duplicate creation, but this guard fires first and gives a clearer
-  // error.)
+  // error.) Accept the legacy bare form `global` as an alias for the
+  // template lookup so older clients keep working.
+  const requestedTemplate =
+    body.template_name === "global" || body.template_name === "#global"
+      ? "#global"
+      : (body.template_name ?? null);
   const resolvedName =
-    body.template_name === "global" ? "global" : (body.name ?? "").trim().toLowerCase();
-  if (resolvedName === "global" && body.watched === false) {
+    requestedTemplate === "#global" ? "#global" : (body.name ?? "").trim().toLowerCase();
+  if (resolvedName === "#global" && body.watched === false) {
     return Response.json(
       {
         error:
@@ -152,7 +163,11 @@ export async function action({
   let templateToSeed: NonNullable<ReturnType<typeof findScopeTemplate>> | null = null;
 
   if (body.template_name) {
-    const tpl = findScopeTemplate(body.template_name);
+    // Accept both `#global` (canonical, hashtag form) and legacy `global`
+    // (bare form) so older clients that POST `template_name: "global"`
+    // keep working.
+    const lookupName = requestedTemplate ?? body.template_name;
+    const tpl = findScopeTemplate(lookupName);
     if (!tpl) {
       return Response.json({ error: `Unknown template: ${body.template_name}` }, { status: 400 });
     }
@@ -191,9 +206,9 @@ export async function action({
       return Response.json(
         {
           error:
-            "`name` must start with a letter and use only lowercase letters, digits, hyphens, underscores. No slashes (use `parent_id`).",
+            "`name` must start with `#` followed by a lowercase letter, then use only lowercase letters, digits, hyphens, underscores (e.g. `#payments`, `#user-flows`). No slashes (use `parent_id`).",
         },
-        { status: 400 },
+        { status: 422 },
       );
     }
     const existing = await listScopeDetails(dir);

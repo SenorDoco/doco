@@ -27,10 +27,11 @@ ENDPOINT
 BODY (JSON)
   question           required   the question the Decision answers
   chosen             required   chosen resolution (multi-line ok)
-  scope_names        required   non-empty array of bare scope names (e.g.
-                                ["user-flows", "framework"]) — must match
-                                existing scopes on this Doco. Bare names;
-                                no \`scope_\` prefix.
+  scope_names        required   non-empty array of hashtag-shaped scope
+                                names (e.g. ["#user-flows", "#framework"])
+                                — must match existing scopes on this Doco.
+                                Every name starts with "#"; no \`scope_\`
+                                prefix.
   summary            optional   one-line summary; derived from chosen if omitted
   alternatives       required   non-empty [{ "name": "...", "rejected_because": "..." }, ...]
   intent_ids         optional   ["intent_01...", ...]; ULID references to Intents
@@ -58,7 +59,7 @@ ERROR RESPONSE (HTTP 400 / 404 / 405, application/json)
   Common errors:
     - "Unknown scope name(s): X. Available in this Doco: ..."  (typo or missing scope; create it at /scopes/new first)
     - "Unknown principal username: ..."                        (typo or not yet registered)
-    - "scope_names must be a non-empty array."                 (you owe at least one tag — for user-flow changes, "user-flows")
+    - "scope_names must be a non-empty array."                 (you owe at least one tag — for user-flow changes, "#user-flows")
 
 EXAMPLE
   curl -sS -X POST \\
@@ -67,7 +68,7 @@ EXAMPLE
     -d '{
       "question": "Where should the Doco-created confirmation live?",
       "chosen": "Each creation entry point renders its own success card; scopes page is purely about scopes.",
-      "scope_names": ["user-flows", "framework"],
+      "scope_names": ["#user-flows", "#framework"],
       "decided_by_username": "torrenegra",
       "alternatives": [
         { "name": "Keep the banner on /scopes/new", "rejected_because": "Content belongs to the creation flow, not the next-step page." }
@@ -78,7 +79,7 @@ WHEN TO CALL THIS
   See the "Before you declare a task done — capture checklist" in the
   canonical instructions. If your turn changed user-facing flow
   (routing, redirects, forms, banner placement, link destinations),
-  call this with scope_names including "user-flows" BEFORE you
+  call this with scope_names including "#user-flows" BEFORE you
   declare the work done. Don't write the YAML by hand — that's what
   this endpoint exists to skip.
 
@@ -139,7 +140,7 @@ EXAMPLE
     ${baseUrl}/${handle}/api/intents.json \\
     -d '{
       "summary": "Agent capture friction is bounded to a few seconds end-to-end.",
-      "scope_names": ["framework"],
+      "scope_names": ["#framework"],
       "wanted_by_username": "torrenegra",
       "body_md": "Background: writing two ADRs by hand took >5 minutes (70% plumbing). This Intent motivates the single-call capture endpoints."
     }'
@@ -180,14 +181,18 @@ BODY (JSON)
                             but no extra attention prompt. Soft signal,
                             not enforcement.
   template_name  optional   install a default template by name. The
-                            framework ships two: "global" (auto-installed
-                            on Doco create) and "user-flows" (opt-in
-                            here). Mutually exclusive with the custom
-                            fields below. The install seeds one Intent
-                            (from the template's intentSummary) plus N
-                            Rules (one per template rule) into the new
-                            scope.
-  name           required*  lowercase, starts with a letter, no slashes.
+                            framework ships two: "#global" (auto-installed
+                            on Doco create) and "#user-flows" (opt-in
+                            here). The legacy bare forms ("global" /
+                            "user-flows") are still accepted as aliases.
+                            Mutually exclusive with the custom fields
+                            below. The install seeds one Intent (from
+                            the template's intentSummary) plus N Rules
+                            (one per template rule) into the new scope.
+  name           required*  starts with "#" followed by a lowercase
+                            letter, then lowercase letters / digits /
+                            hyphens / underscores (e.g. "#payments",
+                            "#user-flows"). No slashes (use parent_id).
                             *if template_name is absent.
   intent_summary required*  the main Intent this scope serves. The
                             created Intent is attached to the scope and
@@ -217,12 +222,12 @@ ERROR RESPONSES
        or create-time rule fields.
   409  Scope with this name already exists.
 
-EXAMPLE — install the user-flows template as watched
+EXAMPLE — install the #user-flows template as watched
   curl -sS -X POST \\
     -H "Content-Type: application/json" \\
     -H "Authorization: Bearer $DOCO_ACCESS" \\
     ${baseUrl}/${handle}/api/scopes.json \\
-    -d '{ "template_name": "user-flows", "watched": true }'
+    -d '{ "template_name": "#user-flows", "watched": true }'
 
 EXAMPLE — custom scope, not watched, nested under an existing parent
   curl -sS -X POST \\
@@ -230,7 +235,7 @@ EXAMPLE — custom scope, not watched, nested under an existing parent
     -H "Authorization: Bearer $DOCO_ACCESS" \\
     ${baseUrl}/${handle}/api/scopes.json \\
     -d '{
-      "name": "payments",
+      "name": "#payments",
       "icon": "💳",
       "intent_summary": "Anything touching Stripe / billing flows stays visible and consistently documented.",
       "parent_id": "scope_<ULID-of-parent>",

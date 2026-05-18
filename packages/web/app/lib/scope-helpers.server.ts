@@ -123,7 +123,7 @@ export async function listScopeDetails(
           icon: typeof e.icon === "string" ? e.icon : "",
           parent_ids: Array.isArray(e.scopes) ? (e.scopes as string[]) : [],
           lifecycle: typeof e.lifecycle === "string" ? e.lifecycle : "active",
-          is_watched: row.name === "global" || e.watched === true,
+          is_watched: row.name === "#global" || row.name === "global" || e.watched === true,
           intent_ids: Array.isArray(e.intent_ids)
             ? e.intent_ids.filter((id): id is string => typeof id === "string")
             : [],

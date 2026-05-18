@@ -542,7 +542,9 @@ export async function loader({
     : [];
 
   const isWatched =
-    String(raw.name) === "global" || (raw as { watched?: unknown }).watched === true;
+    String(raw.name) === "#global" ||
+    String(raw.name) === "global" ||
+    (raw as { watched?: unknown }).watched === true;
   const mainIntentId = scopeMainIntentId(raw);
   const primaryIntent = await readMainIntentForScope(docoId, mainIntentId);
 
@@ -602,7 +604,11 @@ export async function action({
         return { error: "Pick watched or not watched — no default per ADR-137bis." };
       }
       const raw = await readScopeRaw(id);
-      if (raw && raw.name === "global" && watchedRaw === "false") {
+      if (
+        raw &&
+        (raw.name === "#global" || raw.name === "global") &&
+        watchedRaw === "false"
+      ) {
         return {
           error:
             "The Global scope (your doco's constitution) is always watched and cannot be unwatched (decision_01KRKS5H2A5QER84CJ8R4VD36Z).",
@@ -776,7 +782,7 @@ export default function ScopePage({
               >
                 {scope.name}
               </Link>
-              {scope.name === "global" ? (
+              {scope.name === "#global" || scope.name === "global" ? (
                 <span className="ml-2 text-xs text-muted-foreground">
                   {" "}
                   (your doco's constitution)
@@ -933,7 +939,7 @@ export default function ScopePage({
                 <WatchedSwitch
                   isWatched={scope.is_watched}
                   scopeName={scope.name}
-                  locked={scope.name === "global"}
+                  locked={scope.name === "#global" || scope.name === "global"}
                 />
               </CardContent>
             </Card>
@@ -966,7 +972,7 @@ export default function ScopePage({
               scopeId={scope.id}
             />
 
-            {scope.name === "global" ? null : (
+            {scope.name === "#global" || scope.name === "global" ? null : (
               <Card className="border-destructive/40">
                 <CardHeader>
                   <CardTitle className="text-sm text-destructive">Abandon scope</CardTitle>
