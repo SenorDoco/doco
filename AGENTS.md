@@ -134,10 +134,23 @@ browser, no install, no permission prompts:
    to the user as your next message. The /api/v1/docos.json response
    carries that field with bolded prose, the doco_url, the
    invite_url, the expiration, and what happens if they never claim.
-   Don't paraphrase, don't bury, don't skip. Without claiming the
-   user has zero access to their own project's Doco — if you
-   disappear before they accept, the Doco is orphaned.
-5. Apply the protocol now — DON'T tell the user to restart, and DON'T
+   Don't paraphrase, don't bury, don't skip. NO preface (don't say
+   "rendering the verbatim block (this is the GATE per the
+   protocol)" — the block IS the gate, surrounding narration weakens
+   it). NO duplicate file-list summary after the block (the project
+   owner already saw the tool diffs). Without claiming the user has
+   zero access to their own project's Doco — if you disappear before
+   they accept, the Doco is orphaned.
+5. **Run the onboarding overlay.** The create response carries
+   `onboarding_overlay`. If non-null, this Doco is still in
+   onboarding: (a) render `onboarding_overlay.scope_setup` verbatim —
+   the two-path question — and wait for the project owner's answer;
+   (b) walk `onboarding_overlay.scope_population` (the per-scope
+   checklist + read-propose-confirm-capture loop). Step 5 runs IN
+   PARALLEL with step 7 (commit); if the project's rule says "don't
+   commit unprompted", that does NOT swallow step 5 — note the rule
+   to the user as a one-liner, then immediately start step 5(a).
+6. Apply the protocol now — DON'T tell the user to restart, and DON'T
    make a follow-on fetch to `/api/v1/agent-bootstrap` right after the
    create call. The `canonical_instructions` field is already on the
    create response from step 1 — follow it from your next reply. (The
@@ -146,7 +159,7 @@ browser, no install, no permission prompts:
    For LATER sessions, `node .agents/doco-agent-client.mjs bootstrap`
    refreshes the canonical — that call is fine because it's a
    different context, not the moment the token was just minted.
-6. Commit the bootstrap files to git (`doco.md`, `AGENTS.md`,
+7. Commit the bootstrap files to git (`doco.md`, `AGENTS.md`,
    `CLAUDE.md`, `.agents/doco-agent-client.mjs`, `.gitignore`). This is SEPARATE from Doco capture —
    capture moved nodes into doco.to; this commits files to the repo
    so future clones / CI / teammates' agents discover the Doco.

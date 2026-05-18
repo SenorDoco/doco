@@ -109,15 +109,39 @@ with the exact prose the user must see — the doco_url, the invite_url
 happens if they never claim. **Render it verbatim as your next
 message to the user. Don't paraphrase. Don't bury. Don't skip.**
 
+NO preface (don't say "rendering the verbatim block (this is the GATE
+per the protocol)" — the block IS the gate, surrounding narration
+weakens it). NO duplicate file-list summary AFTER the block (the
+project owner already saw the tool diffs above; a summary below the
+block pushes the invite URL off their viewport).
+
 This is a gate, not a side-note. Without claiming the invite, the
 user has zero access to their own project's Doco — the agent (you)
 holds the only key. If the agent disappears and the invite expires
 (7 days), the Doco is orphaned. The block exists so the user can't
 miss the call to action.
 
-After rendering the block, you can move on to step 4.
+After rendering the block, move on to step 4 (NOT step 5 — onboarding
+overlay first, commit second).
 
-## 4. Commit the bootstrap files to git
+## 4. Run the onboarding overlay
+
+The same response carries an \`onboarding_overlay\` field. If it's
+non-null, this Doco is still in onboarding and step 4 is required:
+
+  (a) Render \`onboarding_overlay.scope_setup\` to the project owner —
+      the two-path question, verbatim. Then STOP and wait.
+  (b) When they answer, walk \`onboarding_overlay.scope_population\` —
+      render the \`Bootstrapping scopes:\` checklist, then walk each
+      unchecked scope through the read → bucket-by-type → propose →
+      wait → capture → flip [ ] to [x] → re-render loop.
+
+Step 4 runs IN PARALLEL with step 5 (commit). If the project's rule
+says "don't commit unprompted", DO NOT treat the commit-wait as a
+stop signal — note the rule to the user, then immediately start step
+4(a). Commit-wait and scope-setup-wait coexist.
+
+## 5. Commit the bootstrap files to git
 
 \`doco.md\`, \`AGENTS.md\`, \`CLAUDE.md\`, and the \`.gitignore\` entry
 need to land in git so a fresh clone / CI runner / teammate's agent
@@ -136,7 +160,7 @@ now, or do you commit yourself?"). Some Docos carry an "always
 commit and push" Rule on Global — read the bootstrap response's
 Global scope rules to find out.
 
-## 5. Operate — apply the protocol you already have
+## 6. Operate — apply the protocol you already have
 
 You finished onboarding with the protocol in hand (the step-1
 response's \`canonical_instructions\`). Apply it from your next reply

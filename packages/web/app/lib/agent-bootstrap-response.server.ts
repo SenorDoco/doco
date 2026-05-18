@@ -109,29 +109,54 @@ export const PROTOCOL_FETCH_STEP =
 
 /** Git-commit step. Identical for both flows. The "separate from Doco
  *  capture" framing is load-bearing — agents that conflate the two
- *  draw the "why push? you said it's in Doco" confusion from users. */
+ *  draw the "why push? you said it's in Doco" confusion from users.
+ *  IMPORTANT: commit-wait does NOT stop the onboarding-overlay loop.
+ *  If the project's rule says "don't commit unprompted", note that to
+ *  the user as a one-liner and keep going — scope_setup and
+ *  scope_population must still run while you wait for the commit nod. */
 export const COMMIT_STEP =
-  "Commit the bootstrap files to git (`doco.md`, `AGENTS.md`, `CLAUDE.md`, `.gitignore`). This is a SEPARATE action from Doco node capture — capture moved nodes onto doco.to; this commit lands files in the repo so future clones discover the Doco. Name the distinction when you tell the user. If you don't know the project's git workflow, ASK before pushing.";
+  "Commit the bootstrap files to git (`doco.md`, `AGENTS.md`, `CLAUDE.md`, `.gitignore`). This is a SEPARATE action from Doco node capture — capture moved nodes onto doco.to; this commit lands files in the repo so future clones discover the Doco. Name the distinction when you tell the user. If you don't know the project's git workflow, ASK before pushing — but DO NOT let commit-wait stop the onboarding-overlay loop above. Keep running scope_setup + scope_population while the commit nod is pending.";
+
+/** Run-onboarding-overlay step. Only meaningful for the create flow
+ *  (and for redeem flows that hit a still-onboarding Doco) — the
+ *  response carries `onboarding_overlay` which the agent must actually
+ *  walk before treating the bootstrap as done. The agent stops short
+ *  if it doesn't see an explicit step pointing at the overlay. */
+export const ONBOARDING_OVERLAY_STEP =
+  "Check the `onboarding_overlay` field on this response. If it's non-null, this Doco is still in onboarding — your very next visible action AFTER the GATE block above is to (a) render the two-path question from `onboarding_overlay.scope_setup` verbatim and wait for the project owner's answer, then (b) walk `onboarding_overlay.scope_population` (the per-scope checklist + read-propose-confirm-capture loop). DO NOT stall here just because the commit step below is waiting for a nod — onboarding-overlay work runs in parallel with commit-wait, not after it.";
 
 /** user_message_block render instruction. Same final action — branch
  *  on flow only for the emphasis: create is a hard GATE because the
  *  invite expires in 7 days; redeem is a confirmation because the
- *  recipient already has access. */
+ *  recipient already has access. Both branches share two anti-patterns
+ *  the prose calls out: no preface ("the block IS the gate; surrounding
+ *  narration weakens it"), and no duplicate file-list summary
+ *  underneath ("the project owner already saw the tool diffs"). */
 function renderUserMessageStep(flow: BootstrapFlow): string {
+  const sharedAntiPatterns =
+    " Render the block with NO preface — do NOT introduce it with prose like 'Now rendering the verbatim block (this is a GATE per the protocol):'. The block IS the gate; surrounding narration weakens it. After the block, do NOT re-list the files you just wrote in a 'Summary of what changed locally' section — the project owner already saw them in the tool diffs above, and a summary AFTER the block pushes the invite URL off the bottom of their viewport.";
   return flow === "create"
-    ? "**GATE** — render the response's `user_message_block` verbatim to the user as your next message, BEFORE scope work or any other onboarding step. The block carries the invite URL the user must claim within 7 days or they lose web access to their own project's Doco. Don't paraphrase, don't bury, don't skip."
-    : "Render the response's `user_message_block` verbatim to whoever pasted the invite URL — confirms the connection and names what's now in .env.";
+    ? `**GATE** — render the response's \`user_message_block\` verbatim to the user as your next message, BEFORE any other onboarding step. The block carries the invite URL the user must claim within 7 days or they lose web access to their own project's Doco. Don't paraphrase, don't bury, don't skip.${sharedAntiPatterns}`
+    : `Render the response's \`user_message_block\` verbatim to whoever pasted the invite URL — confirms the connection and names what's now in .env.${sharedAntiPatterns}`;
 }
 
 /** Build the ordered checklist returned as `next_steps_for_agent`.
  *  Centralising it here means the create flow benefits whenever the
- *  redeem flow's checklist grows a step (and vice versa). */
+ *  redeem flow's checklist grows a step (and vice versa).
+ *
+ *  Order rationale: file writes → GATE → onboarding overlay walk →
+ *  protocol fetch (already in hand) → commit. The GATE comes BEFORE
+ *  the commit-wait so the invite URL lands in the user's hands first,
+ *  and the onboarding-overlay step comes BEFORE commit so the agent
+ *  doesn't treat the commit-wait as a stop signal that swallows
+ *  scope_setup and scope_population. */
 export function buildNextStepsForAgent(flow: BootstrapFlow): string[] {
   return [
     ...FILE_WRITE_STEPS,
+    renderUserMessageStep(flow),
+    ONBOARDING_OVERLAY_STEP,
     PROTOCOL_FETCH_STEP,
     COMMIT_STEP,
-    renderUserMessageStep(flow),
   ];
 }
 
