@@ -111,6 +111,12 @@ export default [
   // code flow is retired — that pattern fought every conservative
   // permission classifier and lost.
   route("api/v1/docos.json", "routes/api.v1.docos[.]json.tsx"),
+  // Graceful trap for the retired browser-authorize / device-code
+  // family. Stale-knowledge agents that still try /api/v1/agent-link/start
+  // (or poll, or authorize) get a structured 410 with next_steps_for_agent
+  // pointing at the current POST /api/v1/docos.json flow — first-call
+  // recovery instead of 404 + docs re-read. See route file header.
+  route("api/v1/agent-link/*", "routes/api.v1.agent-link.$.tsx"),
   route(
     "api/v1/invites/:code/redeem.json",
     "routes/api.v1.invites.$code.redeem[.]json.tsx",
