@@ -33,11 +33,32 @@ user_message_block to the user before any further onboarding action.
      .gitignore). This is a SEPARATE action from Doco capture — see
      step 7 below for the framing.
 
-Step 1 — create the Doco:
+Step 1 — create the Doco.
+
+NARRATION DISCIPLINE — this is part of the protocol, not optional.
+The user needs visible progress bracketing the network call so the
+moment of creation doesn't read as dead air or generic agent chatter.
+
+Before the POST, emit this line to the user verbatim:
+
+    [🔮 Doco] Creating new doco...
+
+Then make the call:
 
     curl -fsS -X POST ${baseUrl}/api/v1/docos.json \\
       -H "Content-Type: application/json" \\
       -d '{"requested_id": "<lowercase-kebab>", "description": "<short prose>"}'
+
+Right after the response returns (and you've parsed \`doco_handle\` out
+of it), emit:
+
+    [🔮 Doco] Doco created: <doco_handle>
+
+Use the response's \`doco_handle\` (the human-readable URL id), not the
+\`doco_id\` ULID. These two lines bracket the create call and use the
+same \`[🔮 Doco]\` prefix as the rest of the connection indicator
+family, so the user reads them as Doco-protocol status, not free-form
+narration.
 
     Response (JSON, abbreviated):
     {

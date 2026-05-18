@@ -23,6 +23,20 @@ handful of files: the wizard's single response carries everything
 
 ## 1. Create a Doco (no auth required)
 
+**Narration discipline.** Before the POST, emit this line to the user
+verbatim so the network call doesn't read as dead air:
+
+    [🔮 Doco] Creating new doco...
+
+Right after the response returns, emit (substituting the response's
+\`doco_handle\` field — the human-readable URL id, not the ULID):
+
+    [🔮 Doco] Doco created: <doco_handle>
+
+Same \`[🔮 Doco]\` prefix as the connection-indicator family — the
+user reads it as Doco-protocol status, not free-form agent chatter.
+The call itself:
+
     POST ${baseUrl}/api/v1/docos.json
     Content-Type: application/json
 

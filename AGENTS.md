@@ -116,9 +116,15 @@ If `doco.md` doesn't exist and `./.env` has no `DOCO_ACCESS`, you're on
 the create side. Two HTTP calls, three files written, done — no
 browser, no install, no permission prompts:
 
-1. `POST https://doco.to/api/v1/docos.json` (no auth) with optional
-   `{"slug": "<kebab>", "description": "<prose>"}`. Response carries
-   `{doco_id, doco_url, doco_access, invite_url, invite_expires_at}`.
+1. Emit `[🔮 Doco] Creating new doco...` to the user, then
+   `POST https://doco.to/api/v1/docos.json` (no auth) with
+   `{"requested_id": "<kebab>", "description": "<prose>"}` (slug
+   accepted as alias). Right after the response returns, emit
+   `[🔮 Doco] Doco created: <doco_handle>` (use the response's
+   human-readable `doco_handle`, not the ULID). Response carries
+   `{doco_id, doco_url, doco_access, invite_url, invite_expires_at,
+   canonical_instructions, scopes, constitution, onboarding_overlay,
+   next_steps_for_agent, user_message_block}`.
 2. Write `DOCO_ACCESS=<doco_access>` to `./.env` (gitignored — add `.env`
    to `.gitignore` if not already there).
 3. Write `./doco.md` with the public Doco URL. Update `AGENTS.md`
