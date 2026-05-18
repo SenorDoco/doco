@@ -35,7 +35,7 @@ function gonePayload(originalPath: string) {
     next_steps_for_agent: [
       "The browser-authorize / device-code onboarding flow at /api/v1/agent-link/* is permanently removed. Do NOT retry under this path — every retry will 410 with the same payload.",
       "Fetch https://doco.to/onboarding/create/agent.txt for the full current recipe (text/plain, no auth).",
-      "TL;DR: POST https://doco.to/api/v1/docos.json (no auth, optional { requested_id, description } body). The response carries doco_access (.env value), invite_url (to hand to the user), canonical_instructions (the protocol — read this field, do NOT make a follow-on /api/v1/agent-bootstrap fetch right after), scopes / constitution / onboarding_overlay (per-Doco context), next_steps_for_agent (recipe in miniature), and user_message_block (verbatim claim-within-7-days block to render to the user as your next message).",
+      "TL;DR: POST https://doco.to/api/v1/docos.json (no auth, required { requested_id } plus optional { description } body). The response carries doco_access (.env value), invite_url (to hand to the user), canonical_instructions (the protocol — read this field, do NOT make a follow-on /api/v1/agent-bootstrap fetch right after), scopes / constitution / onboarding_overlay (per-Doco context), next_steps_for_agent (recipe in miniature), and user_message_block (verbatim claim-within-7-days block to render to the user as your next message).",
       "If you previously wrote anything to .env based on the old flow (DOCO_KEY, DOCO_TOKEN, an agent-link state value), discard it — the new credential is DOCO_ACCESS, 64-hex, returned by the create call above.",
     ],
     /** Brief prose the user (the human watching the agent's

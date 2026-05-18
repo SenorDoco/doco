@@ -55,11 +55,10 @@ Step 1 — create the Doco:
       "user_message_block":    "...verbatim claim-within-7-days block..."
     }
 
-Both fields in the request are optional. \`requested_id\` is the
-human-readable URL id you'd like; the host auto-suffixes (-2, -3, …)
-on global collision and writes the actually-used value to
-\`doco_handle\` in the response. Omitted id auto-generates. The
-legacy field name \`slug\` is still accepted as an alias.
+\`requested_id\` is required and must be the human-readable URL id
+you'd like; the host auto-suffixes (-2, -3, …) on global collision
+and writes the actually-used value to \`doco_handle\` in the response.
+\`description\` is optional.
 
 Step 2 — write ./.env (gitignored). Create the file if missing; if the
 project already has an .env, append to it without clobbering existing

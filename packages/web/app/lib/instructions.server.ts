@@ -960,11 +960,10 @@ No install, no browser, no permission prompts.
      -H "Content-Type: application/json" \\
      -d '{"requested_id": "<lowercase-kebab>", "description": "<short prose>"}'
    \`\`\`
-   Both fields optional. \`requested_id\` is the human-readable URL
-   id you'd like (the host auto-suffixes \`-2\`, \`-3\`, … on global
+   \`requested_id\` is required and must be the human-readable URL id
+   you'd like (the host auto-suffixes \`-2\`, \`-3\`, … on global
    collision and reports the actually-used value as \`doco_handle\`
-   in the response). The legacy field \`slug\` is still accepted as
-   an alias. Response:
+   in the response). \`description\` is optional. Response:
    \`\`\`
    {
      "doco_id":           "doco_01K…",

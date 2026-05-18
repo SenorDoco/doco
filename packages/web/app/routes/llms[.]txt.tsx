@@ -28,10 +28,10 @@ handful of files: the wizard's single response carries everything
 
     {"requested_id": "<lowercase-kebab>", "description": "<short prose>"}
 
-Both fields are optional. \`requested_id\` is the human-readable URL
-id you'd like; the host auto-suffixes (-2, -3, …) on global collision
+\`requested_id\` is required and must be the human-readable URL id
+you'd like; the host auto-suffixes (-2, -3, …) on global collision
 and writes the actually-used value to \`doco_handle\` in the response.
-Omitted id auto-generates as \`doco-<random>\`. Response (abbreviated):
+\`description\` is optional. Response (abbreviated):
 
     {
       "doco_id":                "doco_01K…",

@@ -6,9 +6,9 @@
 // credential bound to that Doco, and mints an initial 7-day Invite
 // so the creator has a sharable URL on the same response.
 //
-// Input (application/json, all optional):
+// Input (application/json):
 //   {
-//     requested_id?: string,   // preferred human-readable id; auto-suffixed
+//     requested_id: string,    // preferred human-readable id; auto-suffixed
 //                              // (-2, -3, ...) on global collision.
 //     description?: string,
 //   }
@@ -31,14 +31,13 @@
 // in this MVP. The team accepted that explicitly while shipping. Add
 // rate-limits or proof-of-work later if it becomes a problem.
 
-import { randomBytes } from "node:crypto";
 import type { EntityId } from "@doco/shared";
 import { generateUlid, makeEntityId, validateDocoSlug } from "@doco/shared";
-import { TokenStore } from "~/lib/tokens.server";
-import { rootDir } from "~/lib/db.server";
-import { addAgentPrincipal, createDocoInHost, reindex } from "~/lib/redeem.server";
 import { buildAgentBootstrapResponse } from "~/lib/agent-bootstrap-response.server";
 import { loadBootstrapContext } from "~/lib/bootstrap-context.server";
+import { rootDir } from "~/lib/db.server";
+import { addAgentPrincipal, createDocoInHost, reindex } from "~/lib/redeem.server";
+import { TokenStore } from "~/lib/tokens.server";
 
 export async function action({ request }: { request: Request }) {
   if (request.method !== "POST") {
@@ -52,7 +51,17 @@ export async function action({ request }: { request: Request }) {
       description?: string;
     };
   } catch {
-    // Empty body is fine — all fields are optional.
+    // Invalid or empty JSON falls through to the required-field check below.
+  }
+
+  const requestedInput = (body.requested_id ?? "").trim().toLowerCase();
+  if (!requestedInput) {
+    return Response.json({ error: "requested_id is required." }, { status: 400 });
+  }
+  const docoSlug = requestedInput;
+  const slugErr = validateDocoSlug(docoSlug);
+  if (slugErr) {
+    return Response.json({ error: slugErr }, { status: 400 });
   }
 
   const isoNow = new Date().toISOString();
@@ -79,14 +88,7 @@ export async function action({ request }: { request: Request }) {
     );
   }
 
-  const requestedInput = (body.requested_id ?? "").trim().toLowerCase();
-  const docoSlug = requestedInput || `doco-${randomBytes(4).toString("hex")}`;
-  const slugErr = validateDocoSlug(docoSlug);
-  if (slugErr) {
-    return Response.json({ error: slugErr }, { status: 400 });
-  }
-
-  let created;
+  let created: Awaited<ReturnType<typeof createDocoInHost>>;
   try {
     created = await createDocoInHost(rootDir(), {
       ownerSlug: agentUsername,
@@ -111,11 +113,7 @@ export async function action({ request }: { request: Request }) {
     undefined,
     created.docoId as EntityId<"doco">,
   );
-  const invite = await store.issueInvite(
-    created.docoId as EntityId<"doco">,
-    agentId,
-    7,
-  );
+  const invite = await store.issueInvite(created.docoId as EntityId<"doco">, agentId, 7);
 
   const url = new URL(request.url);
   const origin = `${url.protocol}//${url.host}`;
@@ -151,7 +149,7 @@ export async function loader() {
   return Response.json(
     {
       error: "method_not_allowed",
-      hint: "POST { slug?, description? } to create a new Doco anonymously.",
+      hint: "POST { requested_id, description? } to create a new Doco anonymously.",
     },
     { status: 405 },
   );
