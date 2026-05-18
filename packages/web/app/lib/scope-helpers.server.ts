@@ -184,6 +184,13 @@ export interface ScopeManifestEntry {
   icon: string;
   lifecycle: string;
   is_watched: boolean;
+  /** Count of user-captured nodes (decisions, rules, intents, actions,
+   *  logs, references, evals, ideas) tagged `in_scope_of` this scope.
+   *  Optional because not every manifest call populates it — see
+   *  `loadBootstrapContext` which enriches the manifest so the
+   *  scope_population overlay can render a "bootstrapped vs empty"
+   *  checklist. Undefined = not loaded; 0 = explicitly empty. */
+  node_count?: number;
 }
 
 export async function listScopeManifest(docoDir: string): Promise<ScopeManifestEntry[]> {
