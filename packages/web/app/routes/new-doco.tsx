@@ -182,14 +182,15 @@ export default function NewDoco({
 
 // Doco-created success view. Lives in its own component so the copy-
 // button useState hook doesn't sit inside a conditional in the parent.
-// The two-path question wording is intentionally identical to the
-// agent-side onboarding_overlay.scope_setup (see
-// lib/bootstrap-context.server.ts) — humans and agents see the same
-// fork in the same words. Keep both in sync if either rewords. The
-// agent-prompt block below the paths embeds an already-minted invite
-// URL so the project owner can hand a working credential to their AI
-// agent in another tool (Claude Code, Cursor, Codex, …) without
-// learning the wire shape themselves.
+// Two sequential steps: (1) the two-path fork question, (2) the
+// agent-handoff prompt with the embedded invite. The fork wording is
+// intentionally identical to the agent-side onboarding_overlay.scope_setup
+// (see lib/bootstrap-context.server.ts) — humans and agents see the
+// same fork in the same words. Keep both in sync if either rewords.
+// The agent-prompt step ships an already-minted invite URL so the
+// project owner can hand a working credential to their AI agent in
+// another tool (Claude Code, Cursor, Codex, …) without learning the
+// wire shape themselves.
 function NewDocoCreatedView({
   handle,
   inviteUrl,
@@ -204,69 +205,93 @@ function NewDocoCreatedView({
     "",
     inviteUrl,
     "",
-    "Then read the repo and propose 2-3 load-bearing decisions worth capturing on each scope (or just on #global if no extra scopes are set up). Skim README, CLAUDE.md / AGENTS.md, package.json, deploy config (vercel.json, fly.toml, Dockerfile, etc.), and recent `git log --oneline`. For each candidate, tell me one line of what you found and which scope it would land on. Wait for my confirmation before capturing.",
+    "Then read the repo AND your auto-memory of corrections I've already given you, and EXTRACT every explicit decision, rule, and guidance I've stated at any moment in time — not a sample, not the top 2-3, ALL of them. Sources: README, CLAUDE.md / AGENTS.md, your per-project agent memory, package.json + deploy config (vercel.json, fly.toml, Dockerfile, etc.), top-level structure, and `git log --oneline -30`.",
+    "",
+    "Bucket each finding by node type:",
+    "- Decision: a one-time choice with alternatives (stack, deploy target, db, workflow choice, etc.)",
+    "- Rule (authoring): an ongoing constraint with a predicate that gates capture or commits (e.g. \"every ADR must include alternatives_considered\", \"don't commit unprompted\")",
+    "- Rule (guidance): an ongoing reminder without enforcement (e.g. \"verify on the deployed site, not locally\", \"document corrections same-turn\")",
+    "",
+    "Propose them all as a single batch grouped by type. I'll pick which to capture, edit, or skip. Don't capture anything before I confirm.",
   ].join("\n");
   const [copied, setCopied] = useState(false);
+  const [chosenPath, setChosenPath] = useState<"simple" | "scopes" | null>(null);
+
+  if (chosenPath === null) {
+    return (
+      <div>
+        <SiteHeader mode="host" me={me} />
+        <main className="mx-auto max-w-2xl px-6 py-8 space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Doco created · {handle}</CardTitle>
+              <CardDescription>
+                Two ways to use Doco — pick one (you can change later).
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="rounded-md border border-border p-3 space-y-2">
+                <p className="text-sm font-semibold">Keep it simple</p>
+                <p className="text-xs text-muted-foreground">
+                  Do you want to keep it simple and use Doco to store important decisions so
+                  people, agents, and work stay aligned? Decisions land on the framework-seeded{" "}
+                  <code className="rounded bg-input px-1 py-0.5 text-[11px]">#global</code> scope
+                  — no extra setup. Capture decisions whenever you have something to record,
+                  either here in the web or by asking an AI agent on the project.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setChosenPath("simple")}
+                  className="inline-block rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90"
+                >
+                  Continue to Doco →
+                </button>
+              </div>
+              <div className="rounded-md border border-border p-3 space-y-2">
+                <p className="text-sm font-semibold">Document something specific</p>
+                <p className="text-xs text-muted-foreground">
+                  Or do you want to document something specific (for example, user flows, ADRs,
+                  state machines, design language, etc.)? We'll set up dedicated scopes — topical
+                  buckets — for each area you want to track, and the captured nodes file under the
+                  right one.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setChosenPath("scopes")}
+                  className="inline-block rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90"
+                >
+                  Set up scopes →
+                </button>
+              </div>
+            </CardContent>
+          </Card>
+        </main>
+      </div>
+    );
+  }
+
+  const continueHref =
+    chosenPath === "simple" ? `/${handle}` : `/${handle}/scopes/new?onboarding=1`;
+  const continueLabel = chosenPath === "simple" ? "Continue to Doco →" : "Set up scopes →";
+
   return (
     <div>
       <SiteHeader mode="host" me={me} />
       <main className="mx-auto max-w-2xl px-6 py-8 space-y-4">
         <Card>
           <CardHeader>
-            <CardTitle>Doco created · {handle}</CardTitle>
-            <CardDescription>
-              Two ways to use Doco — pick one (you can change later).
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="rounded-md border border-border p-3 space-y-2">
-              <p className="text-sm font-semibold">Keep it simple</p>
-              <p className="text-xs text-muted-foreground">
-                Do you want to keep it simple and use Doco to store important decisions so people,
-                agents, and work stay aligned? Decisions land on the framework-seeded{" "}
-                <code className="rounded bg-input px-1 py-0.5 text-[11px]">#global</code> scope —
-                no extra setup. Capture decisions whenever you have something to record, either
-                here in the web or by asking an AI agent on the project.
-              </p>
-              <Link
-                to={`/${handle}`}
-                className="inline-block rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90"
-              >
-                Continue to Doco →
-              </Link>
-            </div>
-            <div className="rounded-md border border-border p-3 space-y-2">
-              <p className="text-sm font-semibold">Document something specific</p>
-              <p className="text-xs text-muted-foreground">
-                Or do you want to document something specific (for example, user flows, ADRs,
-                state machines, design language, etc.)? We'll set up dedicated scopes — topical
-                buckets — for each area you want to track, and the captured nodes file under the
-                right one.
-              </p>
-              <Link
-                to={`/${handle}/scopes/new?onboarding=1`}
-                className="inline-block rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90"
-              >
-                Set up scopes →
-              </Link>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Hand it to your AI agent</CardTitle>
+            <CardTitle>Hand it to your AI agent</CardTitle>
             <CardDescription>
               Your AI agent — Claude Code, Cursor, Codex, etc. — already has access to your repo.
               Paste this prompt into your agent's chat and it'll redeem the invite, read the code,
-              and propose load-bearing decisions worth capturing. Works for either path above.
+              and propose load-bearing decisions worth capturing. Or skip and continue.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-2">
             <pre className="rounded-md border border-border bg-input p-3 text-[11px] whitespace-pre-wrap break-words">
 {agentPrompt}
             </pre>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
                 onClick={async () => {
@@ -274,14 +299,27 @@ function NewDocoCreatedView({
                   setCopied(true);
                   setTimeout(() => setCopied(false), 1500);
                 }}
-                className="rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90"
+                className="rounded-md border border-border bg-card px-3 py-1.5 text-xs font-semibold text-foreground hover:bg-input"
               >
                 {copied ? "Copied!" : "Copy prompt"}
               </button>
-              <p className="text-[11px] text-muted-foreground">
-                Single-use invite, expires in 7 days. Each agent gets its own credential.
-              </p>
+              <Link
+                to={continueHref}
+                className="rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90"
+              >
+                {continueLabel}
+              </Link>
+              <button
+                type="button"
+                onClick={() => setChosenPath(null)}
+                className="text-xs text-muted-foreground hover:text-foreground"
+              >
+                ← Back
+              </button>
             </div>
+            <p className="text-[11px] text-muted-foreground">
+              Single-use invite, expires in 7 days. Each agent gets its own credential.
+            </p>
           </CardContent>
         </Card>
       </main>
