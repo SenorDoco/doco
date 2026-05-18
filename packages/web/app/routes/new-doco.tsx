@@ -67,34 +67,55 @@ export default function NewDoco({
   ];
 
   if (actionData?.ok) {
-    const { ownerSlug, docoSlug, handle } = actionData.ok;
+    const { handle } = actionData.ok;
+    // Two-path question mirroring the agent's onboarding_overlay
+    // scope_setup prose (see lib/bootstrap-context.server.ts). The
+    // wording is intentionally identical so humans and agents land on
+    // the same fork — keep these two question strings in sync if
+    // either side ever rewords.
     return (
       <div>
         <SiteHeader mode="host" me={me} />
         <main className="mx-auto max-w-2xl px-6 py-8 space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle>
-                Doco created · {handle}
-              </CardTitle>
+              <CardTitle>Doco created · {handle}</CardTitle>
               <CardDescription>
-                Set up the scopes you'll document in. At least one scope is needed before nodes can
-                be added — but you can come back any time.
+                Two ways to use Doco — pick one (you can change later).
               </CardDescription>
             </CardHeader>
-            <CardContent className="flex items-center gap-2">
-              <Link
-                to={`/${handle}/scopes/new`}
-                className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90"
-              >
-                Set up scopes →
-              </Link>
-              <Link
-                to={`/${handle}`}
-                className="text-xs text-muted-foreground hover:text-foreground"
-              >
-                Skip for now
-              </Link>
+            <CardContent className="space-y-3">
+              <div className="rounded-md border border-border p-3 space-y-2">
+                <p className="text-sm font-semibold">Keep it simple</p>
+                <p className="text-xs text-muted-foreground">
+                  Do you want to keep it simple and use Doco to store important decisions so
+                  people, agents, and work stay aligned? Decisions land on the framework-seeded{" "}
+                  <code className="rounded bg-input px-1 py-0.5 text-[11px]">#global</code> scope —
+                  no extra setup. Capture decisions whenever you have something to record, either
+                  here in the web or by asking an AI agent on the project.
+                </p>
+                <Link
+                  to={`/${handle}`}
+                  className="inline-block rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90"
+                >
+                  Continue to Doco →
+                </Link>
+              </div>
+              <div className="rounded-md border border-border p-3 space-y-2">
+                <p className="text-sm font-semibold">Document something specific</p>
+                <p className="text-xs text-muted-foreground">
+                  Or do you want to document something specific (for example, user flows, ADRs,
+                  state machines, design language, etc.)? We'll set up dedicated scopes — topical
+                  buckets — for each area you want to track, and the captured nodes file under
+                  the right one.
+                </p>
+                <Link
+                  to={`/${handle}/scopes/new?onboarding=1`}
+                  className="inline-block rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90"
+                >
+                  Set up scopes →
+                </Link>
+              </div>
             </CardContent>
           </Card>
         </main>
