@@ -122,10 +122,10 @@ importers:
         specifier: workspace:*
         version: link:../shared
       '@react-router/node':
-        specifier: ^7.0.2
+        specifier: 7.15.0
         version: 7.15.0(react-router@7.15.0(react-dom@19.2.6(react@19.2.6))(react@19.2.6))(typescript@5.9.3)
       '@react-router/serve':
-        specifier: ^7.0.2
+        specifier: 7.15.0
         version: 7.15.0(react-router@7.15.0(react-dom@19.2.6(react@19.2.6))(react@19.2.6))(typescript@5.9.3)
       '@vercel/functions':
         specifier: ^3.5.1
@@ -158,7 +158,7 @@ importers:
         specifier: ^19.0.0
         version: 19.2.6(react@19.2.6)
       react-router:
-        specifier: ^7.0.2
+        specifier: 7.15.0
         version: 7.15.0(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
       tailwind-merge:
         specifier: ^2.5.5
@@ -168,7 +168,7 @@ importers:
         version: 2.8.4
     devDependencies:
       '@react-router/dev':
-        specifier: ^7.0.2
+        specifier: 7.15.0
         version: 7.15.0(@react-router/serve@7.15.0(react-router@7.15.0(react-dom@19.2.6(react@19.2.6))(react@19.2.6))(typescript@5.9.3))(@types/node@22.19.18)(jiti@2.7.0)(lightningcss@1.32.0)(react-router@7.15.0(react-dom@19.2.6(react@19.2.6))(react@19.2.6))(tsx@4.21.0)(typescript@5.9.3)(vite@6.4.2(@types/node@22.19.18)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.21.0)(yaml@2.8.4))(yaml@2.8.4)
       '@tailwindcss/vite':
         specifier: ^4.0.0-beta.7
