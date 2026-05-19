@@ -60,6 +60,17 @@ export async function loader({
     }
     pickedTemplate = { name: t.name, icon: t.icon, label: t.label, summary: t.summary };
   }
+  const templates = DEFAULT_SCOPE_TEMPLATES.filter((t) => !existingNames.has(t.name)).map((t) => ({
+    name: t.name,
+    label: t.label,
+    icon: t.icon,
+    summary: t.summary,
+    alreadyAdded: false,
+  }));
+  if (isOnboarding && templates.length === 0) {
+    throw redirect(`/${handle}/onboarding/agent`);
+  }
+
   return {
     ownerSlug,
     docoSlug,
@@ -70,13 +81,7 @@ export async function loader({
     // Only offer templates that aren't already present in this Doco.
     // Once a template is added it disappears from the picker — keeps the
     // surface focused on "what's left to set up."
-    templates: DEFAULT_SCOPE_TEMPLATES.filter((t) => !existingNames.has(t.name)).map((t) => ({
-      name: t.name,
-      label: t.label,
-      icon: t.icon,
-      summary: t.summary,
-      alreadyAdded: false,
-    })),
+    templates,
     pickedTemplate,
     isOnboarding,
     prefilledParentId: prefilledParent?.id ?? null,
