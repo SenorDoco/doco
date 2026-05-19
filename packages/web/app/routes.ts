@@ -69,6 +69,7 @@ export default [
   route("connect", "routes/agent-probes[.]ts.tsx", { id: "probe-connect" }),
   route("api", "routes/agent-probes[.]ts.tsx", { id: "probe-api" }),
   route("api/docs", "routes/agent-probes[.]ts.tsx", { id: "probe-api-docs" }),
+  route("__graph-expansion-check", "routes/__graph-expansion-check.tsx"),
   route("dashboard", "routes/dashboard.tsx"),
   // Auth
   route("sign-in", "routes/sign-in.tsx"),
@@ -80,6 +81,7 @@ export default [
   // Self-service create
   route("new-doco", "routes/new-doco.tsx"),
   route("new-org", "routes/new-org.tsx"),
+  route("orgs/:slug/members", "routes/orgs.$slug.members.tsx"),
   // Onboarding
   route("onboarding/join", "routes/onboarding.join._index.tsx"),
   route("onboarding/join/human", "routes/onboarding.join.human.tsx"),
@@ -153,6 +155,7 @@ export default [
   route(":docoId", "routes/$ownerSlug.$docoSlug._index.tsx"),
   route(":docoId/status.json", "routes/$ownerSlug.$docoSlug.status[.]json.tsx"),
   route(":docoId/settings", "routes/$ownerSlug.$docoSlug.settings.tsx"),
+  route(":docoId/members", "routes/$ownerSlug.$docoSlug.members.tsx"),
   route(":docoId/invites", "routes/$ownerSlug.$docoSlug.invites.tsx"),
   route(":docoId/api/invites.json", "routes/$ownerSlug.$docoSlug.api.invites[.]json.tsx"),
   route(":docoId/api/decisions.json", "routes/$ownerSlug.$docoSlug.api.decisions[.]json.tsx"),
@@ -192,6 +195,10 @@ export default [
   route(":docoId/scopes", "routes/$ownerSlug.$docoSlug.scopes._index.tsx"),
   route(":docoId/scopes/new", "routes/$ownerSlug.$docoSlug.scopes.new.tsx"),
   route(":docoId/scopes/:id", "routes/$ownerSlug.$docoSlug.scopes.$id._index.tsx"),
+  route(
+    ":docoId/scopes/:id/members",
+    "routes/$ownerSlug.$docoSlug.scopes.$id.members.tsx",
+  ),
   route(
     ":docoId/scopes/:id/rules/new",
     "routes/$ownerSlug.$docoSlug.scopes.$id.rules.new.tsx",

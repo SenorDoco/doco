@@ -104,7 +104,7 @@ export async function listMyOrgs(principalId: string): Promise<HostOrg[]> {
 }
 
 export async function listOrgsOwnedOrAdminedBy(principalId: string): Promise<HostOrg[]> {
-  const rows = await listOrganizationsForPrincipal(principalId, ["owner", "admin"]);
+  const rows = await listOrganizationsForPrincipal(principalId, ["owner"]);
   return rows.map((r) => {
     const fm = JSON.parse(r.raw_yaml) as Record<string, unknown>;
     const out: HostOrg = {

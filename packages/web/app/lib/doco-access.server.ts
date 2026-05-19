@@ -3,29 +3,101 @@
 
 import { redirect } from "react-router";
 import {
+  type DocoRole,
   getDocoByIdOrHandle,
+  getDocoMemberRole,
+  getOrgRole,
   getPrincipalById,
-  isOrgAdmin as dbIsOrgAdmin,
+  getScopeMemberRole,
   isOrgMember as dbIsOrgMember,
+  listDocoIdsForPrincipalMember,
+  listScopeIdsWithGrant,
+  maxRole,
+  roleAtLeast,
 } from "@doco/db";
-import { docoPath, rootDir } from "./db.server";
-import { TokenStore } from "./tokens.server";
+import { docoPath } from "./db.server";
 import { resolvePrincipalUsernameAlias } from "./principal-aliases.server";
 import { type DocoMetadata, readDocoMetadata } from "./scope-helpers.server";
 import { type CurrentPrincipal, getCurrentPrincipalAsync } from "./session";
+
+/**
+ * Doco-level role for this principal — max of (direct owner_id match,
+ * agent-owner-chain match, org-membership role on the owning org,
+ * explicit doco_members row). Scope-level grants do NOT factor in here;
+ * use `getEffectiveScopeRole` when you need the per-scope answer.
+ *
+ * Returns null when the principal has no doco-level grant.
+ * (They may still have a scope-only grant — see `canAccessDoco`.)
+ */
+export async function getDocoLevelRole(
+  meta: { ownerId: string; docoId?: string },
+  principalId: string | null,
+): Promise<DocoRole | null> {
+  if (!principalId) return null;
+
+  let role: DocoRole | null = null;
+  const ownerOfPrincipal = await getPrincipalOwnerId(principalId);
+
+  if (meta.ownerId === principalId) role = maxRole(role, "owner");
+  if (ownerOfPrincipal && ownerOfPrincipal === meta.ownerId) {
+    role = maxRole(role, "owner");
+  }
+
+  if (meta.ownerId.startsWith("organization_")) {
+    const direct = await getOrgRole(meta.ownerId, principalId);
+    role = maxRole(role, direct);
+    if (ownerOfPrincipal) {
+      const viaOwner = await getOrgRole(meta.ownerId, ownerOfPrincipal);
+      role = maxRole(role, viaOwner);
+    }
+  }
+
+  if (meta.docoId) {
+    const dm = await getDocoMemberRole(meta.docoId, principalId);
+    role = maxRole(role, dm);
+    if (ownerOfPrincipal) {
+      const ownerDm = await getDocoMemberRole(meta.docoId, ownerOfPrincipal);
+      role = maxRole(role, ownerDm);
+    }
+  }
+
+  return role;
+}
+
+/**
+ * Effective role when the principal operates ON a specific scope:
+ *   max(doco-level role, scope_members grant for this scope)
+ * Used by capture / lifecycle gates to decide whether to force lifecycle
+ * to `proposed` (author) or honor the body's `lifecycle` (approver+).
+ */
+export async function getEffectiveScopeRole(
+  meta: { ownerId: string; docoId?: string },
+  scopeId: string,
+  principalId: string | null,
+): Promise<DocoRole | null> {
+  if (!principalId) return null;
+
+  let role = await getDocoLevelRole(meta, principalId);
+  const direct = await getScopeMemberRole(scopeId, principalId);
+  role = maxRole(role, direct);
+
+  const ownerOfPrincipal = await getPrincipalOwnerId(principalId);
+  if (ownerOfPrincipal) {
+    const viaOwner = await getScopeMemberRole(scopeId, ownerOfPrincipal);
+    role = maxRole(role, viaOwner);
+  }
+
+  return role;
+}
 
 /**
  * Can `principalId` read this Doco?
  *
  *   - public visibility → always yes (anonymous OK).
  *   - host-bootstrap-owned (unclaimed) → always yes regardless of visibility.
- *   - private visibility:
- *       - unauthenticated → no.
- *       - principalId === ownerId → yes.
- *       - principalId is an agent whose `owner_id` === ownerId → yes.
- *       - ownerId is an Organization → yes iff principalId (or its
- *         owning Principal, for agents) is a member.
- *       - otherwise → no.
+ *   - private visibility: any doco-level grant OR any scope-only grant on a
+ *     scope inside this doco → yes (scope-only implies doco-reader per
+ *     decision_01KS0JBJ5X0AZ4XJJFKEWE1R62).
  */
 export async function canAccessDoco(
   meta: { ownerId: string; visibility: string; docoId?: string },
@@ -34,21 +106,13 @@ export async function canAccessDoco(
   if (meta.visibility === "public") return true;
   if (await isHostBootstrapOwned(meta.ownerId)) return true;
   if (!principalId) return false;
-  if (meta.ownerId === principalId) return true;
 
-  const ownerOfPrincipal = await getPrincipalOwnerId(principalId);
-  if (ownerOfPrincipal && ownerOfPrincipal === meta.ownerId) return true;
+  const docoLevel = await getDocoLevelRole(meta, principalId);
+  if (docoLevel) return true;
 
-  if (meta.ownerId.startsWith("organization_")) {
-    if (await dbIsOrgMember(meta.ownerId, principalId)) return true;
-    if (ownerOfPrincipal && (await dbIsOrgMember(meta.ownerId, ownerOfPrincipal))) return true;
-  }
-
-  // Invited collaborator: holds an active SessionToken bound to this
-  // Doco. Same source of truth the dashboard uses to list it.
   if (meta.docoId) {
-    const invited = await listInvitedDocoIdsForPrincipal(principalId);
-    if (invited.has(meta.docoId)) return true;
+    const scopes = await listScopeIdsWithGrant(meta.docoId, principalId);
+    if (scopes.length > 0) return true;
   }
   return false;
 }
@@ -107,31 +171,32 @@ export async function isMyDoco(
 }
 
 /**
- * Doco ids the principal holds an active, invite-redeemed SessionToken
- * for. Source of truth for "invited collaborator" status — the human
- * invite flow at /invite/<code> binds the existing human Principal to
- * the Doco purely by minting a SessionToken with bound_doco_id; there
- * is no separate collaborators table.
+ * Doco ids the principal has an explicit doco_members grant on (any role).
+ * Source of truth for "I have a relationship with this doco" — the
+ * dashboard's "shared with me" listing.
+ *
+ * Post-decision_01KS0JBJ5X0AZ4XJJFKEWE1R62, this reads from `doco_members`
+ * directly. The v8 backfill grandfathers existing SessionToken-bound
+ * principals into doco_members with role='owner' so the answer is
+ * unchanged for prior collaborators; new invite redemptions write the
+ * doco_members row alongside the SessionToken.
  */
 export async function listInvitedDocoIdsForPrincipal(
   principalId: string,
 ): Promise<Set<string>> {
-  const file = await TokenStore.forDoco(rootDir()).load();
-  const ids = new Set<string>();
-  for (const t of file.tokens) {
-    if (t.kind !== "session") continue;
-    if (t.revoked) continue;
-    if (t.principal_id !== principalId) continue;
-    if (t.bound_doco_id) ids.add(t.bound_doco_id);
-  }
-  return ids;
+  const ids = await listDocoIdsForPrincipalMember(principalId);
+  return new Set(ids);
 }
 
 /**
- * Same as `canAccessDoco` but for write/admin operations. During alpha,
- * a Doco can have many owners — every invite-redeemed collaborator has
- * full admin rights. Reader/author tiers are deferred until we have a
- * real need to distinguish them.
+ * Same as `canAccessDoco` but for write/admin operations — the
+ * owner-tier gate. Per decision_01KS0JBJ5X0AZ4XJJFKEWE1R62, owner-tier
+ * is the only role that can add users, delete the doco, manage scopes,
+ * or edit #global Rules. Approver-tier can approve lifecycle but cannot
+ * administer the doco; lower tiers can author or read only.
+ *
+ * Scope-level grants do NOT elevate to admin — even a scope-level owner
+ * grant only governs that scope, not the doco as a whole.
  */
 export async function canAdminDoco(
   meta: { ownerId: string; docoId?: string },
@@ -139,21 +204,60 @@ export async function canAdminDoco(
 ): Promise<boolean> {
   if (await isHostBootstrapOwned(meta.ownerId)) return true;
   if (!principalId) return false;
-  if (meta.ownerId === principalId) return true;
+  const role = await getDocoLevelRole(meta, principalId);
+  return role === "owner";
+}
 
-  const ownerOfPrincipal = await getPrincipalOwnerId(principalId);
-  if (ownerOfPrincipal && ownerOfPrincipal === meta.ownerId) return true;
+/** Approver-tier check — can flip lifecycle on any scope in this doco. */
+export async function canApproveDoco(
+  meta: { ownerId: string; docoId?: string },
+  principalId: string | null,
+): Promise<boolean> {
+  if (!principalId) return false;
+  const role = await getDocoLevelRole(meta, principalId);
+  return roleAtLeast(role, "approver");
+}
 
-  if (meta.ownerId.startsWith("organization_")) {
-    if (await dbIsOrgAdmin(meta.ownerId, principalId)) return true;
-    if (ownerOfPrincipal && (await dbIsOrgAdmin(meta.ownerId, ownerOfPrincipal))) return true;
-  }
+/**
+ * Can the principal write a node INTO this scope? Author-tier minimum.
+ * Their writes may still be forced to `lifecycle: proposed` if they're
+ * exactly `author` — that gate lives in the capture layer.
+ */
+export async function canWriteScope(
+  meta: { ownerId: string; docoId?: string },
+  scopeId: string,
+  principalId: string | null,
+): Promise<boolean> {
+  if (!principalId) return false;
+  const role = await getEffectiveScopeRole(meta, scopeId, principalId);
+  return roleAtLeast(role, "author");
+}
 
-  if (meta.docoId) {
-    const invited = await listInvitedDocoIdsForPrincipal(principalId);
-    if (invited.has(meta.docoId)) return true;
-  }
-  return false;
+/** Can the principal flip lifecycle on a node IN this scope? Approver-tier. */
+export async function canApproveScope(
+  meta: { ownerId: string; docoId?: string },
+  scopeId: string,
+  principalId: string | null,
+): Promise<boolean> {
+  if (!principalId) return false;
+  const role = await getEffectiveScopeRole(meta, scopeId, principalId);
+  return roleAtLeast(role, "approver");
+}
+
+/**
+ * Constitution-edit gate. The #global scope (Constitution) accepts edits
+ * only from doco-level owners — scope-level elevation does NOT promote
+ * approver/author to constitution-editor. Per the Rule born_from
+ * decision_01KS0JBJ5X0AZ4XJJFKEWE1R62.
+ */
+export async function canEditConstitution(
+  meta: { ownerId: string; docoId?: string },
+  principalId: string | null,
+): Promise<boolean> {
+  if (await isHostBootstrapOwned(meta.ownerId)) return true;
+  if (!principalId) return false;
+  const role = await getDocoLevelRole(meta, principalId);
+  return role === "owner";
 }
 
 /**

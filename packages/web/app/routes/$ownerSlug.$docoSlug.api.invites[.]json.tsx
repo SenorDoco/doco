@@ -20,9 +20,19 @@
 //   400 — invalid expires_in_days (must be 1..365)
 
 import type { EntityId } from "@doco/shared";
+import { ROLE_RANK, type DocoRole } from "@doco/db";
 import { TokenStore } from "~/lib/tokens.server";
 import { rootDir } from "~/lib/db.server";
-import { loadDocoForRead, normalizeDocoParams } from "~/lib/doco-access.server";
+import {
+  getDocoLevelRole,
+  loadDocoForRead,
+  normalizeDocoParams,
+} from "~/lib/doco-access.server";
+
+const ROLE_VALUES = new Set<DocoRole>(["owner", "approver", "author", "reader"]);
+function parseRole(v: unknown): DocoRole | null {
+  return typeof v === "string" && ROLE_VALUES.has(v as DocoRole) ? (v as DocoRole) : null;
+}
 
 export async function action({
   request,
@@ -52,9 +62,9 @@ export async function action({
     );
   }
 
-  let body: { expires_in_days?: number } = {};
+  let body: { expires_in_days?: number; role?: string } = {};
   try {
-    body = (await request.json()) as { expires_in_days?: number };
+    body = (await request.json()) as { expires_in_days?: number; role?: string };
   } catch {
     // Empty body is fine.
   }
@@ -73,11 +83,37 @@ export async function action({
     );
   }
 
+  // Role to grant the redeemer (decision_01KS0JBJ5X0AZ4XJJFKEWE1R62).
+  // Default: `author`. Inviter must hold a doco-level role ≥ requested
+  // role — you cannot mint a more-privileged grant than you yourself
+  // hold. Org owners and doco-owners pass all checks; lower tiers can
+  // only invite at-or-below their tier.
+  const requestedRole: DocoRole = parseRole(body.role) ?? "author";
+  const inviterRole = await getDocoLevelRole(
+    { ownerId: meta.ownerId, docoId: meta.docoId },
+    me.id,
+  );
+  if (!inviterRole) {
+    return Response.json(
+      { error: "Only doco members can mint invites." },
+      { status: 403 },
+    );
+  }
+  if (ROLE_RANK[requestedRole] > ROLE_RANK[inviterRole]) {
+    return Response.json(
+      {
+        error: `Cannot mint a '${requestedRole}' invite — you only hold '${inviterRole}' on this doco. Pick a role at or below your own.`,
+      },
+      { status: 403 },
+    );
+  }
+
   const store = TokenStore.forDoco(rootDir());
   const invite = await store.issueInvite(
     meta.docoId as EntityId<"doco">,
     me.id as EntityId<"principal">,
     Math.floor(ttlDays),
+    requestedRole,
   );
 
   const url = new URL(request.url);
@@ -91,6 +127,7 @@ export async function action({
     invite_url: `${origin}/invite/${invite.code}`,
     invite_expires_at: invite.expires_at,
     code: invite.code,
+    role: invite.role ?? requestedRole,
     doco_url: docoUrl,
   });
 }
