@@ -78,6 +78,17 @@ export default [
   // GitHub OAuth (ADR-095)
   route("auth/github", "routes/auth.github.tsx"),
   route("auth/github/callback", "routes/auth.github.callback.tsx"),
+  // OAuth 2.1 authorization server (decision_01KS14CW9ZN23FF5CGG0Z7TH4G).
+  // Metadata endpoints are spec'd by RFC 8414 + RFC 9728 and discovered
+  // by every MCP client that lands on /mcp without a valid bearer.
+  route(
+    ".well-known/oauth-authorization-server",
+    "routes/oauth-metadata-authorization-server.tsx",
+  ),
+  route(
+    ".well-known/oauth-protected-resource",
+    "routes/oauth-metadata-protected-resource.tsx",
+  ),
   // Self-service create
   route("new-doco", "routes/new-doco.tsx"),
   route("new-org", "routes/new-org.tsx"),
