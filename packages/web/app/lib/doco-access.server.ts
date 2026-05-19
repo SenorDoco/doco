@@ -157,13 +157,42 @@ export async function canAdminDoco(
 }
 
 /**
- * Standard 404 thrown by route loaders when the caller can't access the
- * Doco. Throws 404 instead of 403 so the existence of a private Doco
- * isn't leaked to non-members.
+ * Standard 404 thrown when the caller asked for a Doco that doesn't
+ * exist. Used only for the "no such handle" case — when the Doco
+ * exists but the caller can't see it, `accessDeniedResponse` runs
+ * instead so the UI can offer sign-in / invite-request prompts. The
+ * mild existence leak that introduces (a non-member learns "yes, this
+ * handle is real") is accepted in trade for the UX win; matches the
+ * GitHub / Notion / Linear pattern.
  */
 export function notFoundForAccessDenied(ownerSlug: string, docoSlug: string): Response {
   const label = docoSlug ? `${ownerSlug}/${docoSlug}` : ownerSlug;
   return new Response(`Doco "${label}" not found.`, { status: 404 });
+}
+
+/**
+ * Structured 403 thrown when the Doco exists but the caller lacks
+ * access. The ErrorBoundary in `root.tsx` recognizes the JSON shape
+ * and renders an access-denied page (sign-in CTA when anonymous,
+ * invite-request prose when signed in). API callers see the same
+ * payload — clearer than the old 404 contract.
+ */
+export function accessDeniedResponse(
+  handle: string,
+  ownerSlug: string,
+  signedIn: boolean,
+): Response {
+  const body = JSON.stringify({
+    kind: "access_denied",
+    error: `Access denied to Doco "${handle}".`,
+    doco_handle: handle,
+    owner_slug: ownerSlug,
+    signed_in: signedIn,
+  });
+  return new Response(body, {
+    status: 403,
+    headers: { "Content-Type": "application/json" },
+  });
 }
 
 /**
@@ -236,7 +265,7 @@ export async function loadDocoForRead(
   if (!meta) throw notFoundForAccessDenied(handleOrId, "");
   const me = await getCurrentPrincipalAsync(request);
   if (!(await canAccessDoco(meta, me?.id ?? null))) {
-    throw notFoundForAccessDenied(handleOrId, "");
+    throw accessDeniedResponse(row.handle, row.owner_slug, !!me);
   }
   return {
     dir,

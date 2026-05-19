@@ -5,9 +5,11 @@ import {
   Outlet,
   Scripts,
   ScrollRestoration,
+  useLocation,
   useRouteError,
 } from "react-router";
 
+import { AccessDeniedView, isAccessDeniedData } from "~/components/access-denied-view";
 import "./app.css";
 
 export function links() {
@@ -57,11 +59,20 @@ export default function App() {
 
 export function ErrorBoundary() {
   const error = useRouteError();
+  const location = useLocation();
   let message = "An error occurred.";
   let details: string | null = null;
   let stack: string | undefined;
 
   if (isRouteErrorResponse(error)) {
+    if (error.status === 403 && isAccessDeniedData(error.data)) {
+      return (
+        <AccessDeniedView
+          data={error.data}
+          currentPath={location.pathname + location.search}
+        />
+      );
+    }
     message = `${error.status} ${error.statusText}`;
     details = typeof error.data === "string" ? error.data : JSON.stringify(error.data, null, 2);
   } else if (error instanceof Error) {
