@@ -122,8 +122,11 @@ export async function action({
     if (!me) return { error: "Sign in to mint invites." };
     const role = String(form.get("role") ?? "author") as DocoRole;
     if (!ALL_ROLES.includes(role)) return { error: "Invalid role." };
-    const ttlRaw = Number(form.get("expires_in_days") ?? 7);
-    const ttlDays = Number.isFinite(ttlRaw) ? Math.min(Math.max(Math.floor(ttlRaw), 1), 365) : 7;
+    // Fixed 72-hour TTL — short enough that a leaked invite has a small
+    // blast radius, long enough that the recipient has a weekend to act.
+    // The /api/invites.json endpoint still accepts `expires_in_days` for
+    // agent callers; only the in-page form omits the picker.
+    const ttlDays = 3;
 
     // Inviter must hold a role ≥ the role they're granting.
     const inviterRole = await getDocoLevelRole(
@@ -365,20 +368,6 @@ function InviteCard({ inviterRole }: { inviterRole: DocoRole | null }) {
               ))}
             </select>
           </label>
-          <label className="flex flex-col gap-1 text-sm">
-            <span className="text-xs uppercase tracking-wide text-muted-foreground">
-              Expires (days)
-            </span>
-            <input
-              name="expires_in_days"
-              type="number"
-              min={1}
-              max={365}
-              defaultValue={7}
-              data-testid="invite-ttl"
-              className="rounded-md border border-border bg-background px-3 py-2 w-28"
-            />
-          </label>
           <button
             type="submit"
             data-testid="invite-submit"
@@ -401,7 +390,8 @@ function InviteCard({ inviterRole }: { inviterRole: DocoRole | null }) {
             data-testid="invite-result"
           >
             <div className="mb-1 text-xs uppercase tracking-wide text-muted-foreground">
-              Share this URL ({inviteResult.role}, expires{" "}
+              Share this URL — role <strong>{inviteResult.role}</strong>,{" "}
+              <strong>expires in 72 hours</strong> (
               {new Date(inviteResult.invite_expires_at).toLocaleString()}):
             </div>
             <div className="flex items-center gap-2">
@@ -427,8 +417,8 @@ function InviteCard({ inviterRole }: { inviterRole: DocoRole | null }) {
               </button>
             </div>
             <p className="mt-2 text-xs text-muted-foreground">
-              Single-use invite. The redeemer's role is fixed when this link is minted; changing the
-              role below won't affect already-sent links.
+              Single-use, auto-expires after 72 hours. The redeemer's role is fixed when this link
+              is minted; changing the role above won't affect already-sent links.
             </p>
           </div>
         ) : null}
