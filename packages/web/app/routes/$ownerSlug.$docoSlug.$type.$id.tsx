@@ -396,12 +396,56 @@ export async function loader({
         graphScopeById.set(scope.id, { id: scope.id, name: scope.name, icon });
       }
     }
+    // For every visible node, scan the audit log to find when it last
+    // entered its current lifecycle stage. Used as the "X ago" timestamp
+    // on each card (so the time reflects how long the node has been in
+    // its current state, not when it was created). Nodes with no
+    // lifecycle change in the audit trail fall back to `created_at`.
+    const visibleIds = Array.from(neighborIds);
+    const lifecycleSinceById = new Map<string, string>();
+    const lifecycleHistoryById = new Map<
+      string,
+      { at: string; from: string | null; to: string }[]
+    >();
+    if (visibleIds.length > 0) {
+      const auditRows = (
+        await c.query<{
+          entity_id: string;
+          at: Date | string;
+          before_json: unknown;
+          after_json: unknown;
+        }>(
+          `SELECT entity_id, at, before_json, after_json
+             FROM audit_events
+            WHERE doco_id = $1 AND entity_id = ANY($2::text[])
+            ORDER BY at DESC`,
+          [docoId, visibleIds],
+        )
+      ).rows;
+      for (const row of auditRows) {
+        const before = (row.before_json ?? {}) as { lifecycle?: unknown };
+        const after = (row.after_json ?? {}) as { lifecycle?: unknown };
+        const beforeLc = typeof before.lifecycle === "string" ? before.lifecycle : null;
+        const afterLc = typeof after.lifecycle === "string" ? after.lifecycle : null;
+        if (!afterLc || beforeLc === afterLc) continue;
+        const at = row.at instanceof Date ? row.at.toISOString() : String(row.at);
+        const hist = lifecycleHistoryById.get(row.entity_id) ?? [];
+        hist.push({ at, from: beforeLc, to: afterLc });
+        lifecycleHistoryById.set(row.entity_id, hist);
+        if (!lifecycleSinceById.has(row.entity_id)) {
+          // ORDER BY at DESC means the first hit per entity is the most recent.
+          lifecycleSinceById.set(row.entity_id, at);
+        }
+      }
+    }
+
     const graphNodes: GraphNode[] = [];
     for (const nid of neighborIds) {
       const meta = neighborMeta.get(nid);
       const m = /^([a-z_]+)_/.exec(nid);
       const nt = meta?.node_type ?? m?.[1] ?? "";
       if (!nt) continue;
+      const lifecycleSince = lifecycleSinceById.get(nid) ?? meta?.created_at ?? null;
       graphNodes.push({
         id: nid,
         node_type: nt,
@@ -418,11 +462,13 @@ export async function loader({
           meta?.principal_label ??
           (nt === "principal" ? (meta?.name ?? meta?.summary ?? nid) : null),
         created_at: meta?.created_at ?? null,
+        lifecycle_since: lifecycleSince,
         ppr: pprByid.get(nid) ?? 0,
         gpr: gprByid.get(nid) ?? 0,
         is_center: nid === id,
       });
     }
+    const focalLifecycleHistory = lifecycleHistoryById.get(id) ?? [];
     const graphLinks: GraphLink[] = graphEdgesRows
       .filter((e) => neighborIds.has(e.from_id) && neighborIds.has(e.to_id))
       .map((e) => ({
@@ -565,6 +611,7 @@ export async function loader({
       me,
       history,
       identityMap,
+      focalLifecycleHistory,
     };
   });
 }
@@ -646,6 +693,7 @@ export default function EntityDetail({
     graphLinks,
     me,
     history,
+    focalLifecycleHistory,
   } = loaderData;
   // Per ADR-018 each node type has its own handle field — username, name,
   // title, locator. Fall through to anything that reads as friendly
@@ -712,22 +760,18 @@ export default function EntityDetail({
 
       <div className="shrink-0 border-b border-border bg-card px-4 py-2">
         <div className="flex flex-wrap items-center gap-2">
-          <Link
-            to={`/${handle}`}
-            className="font-mono text-[11px] text-muted-foreground transition-colors hover:text-foreground"
+          <span
+            aria-label={type}
+            className="inline-flex shrink-0 items-center text-foreground"
+            title={type}
           >
-            {handle}
-          </Link>
-          <span className="text-muted-foreground">/</span>
+            <NodeTypeIcon nodeType={type} className="!h-5 !w-5" />
+          </span>
           <h1 className="min-w-0 flex-1 break-words text-sm font-semibold tracking-tight text-foreground">
             {display}
           </h1>
         </div>
         <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px]">
-          <span className="inline-flex items-center gap-1 text-muted-foreground">
-            <NodeTypeIcon nodeType={type} />
-            <span>{type}</span>
-          </span>
           {entityScopes.map((s) => (
             <Link
               key={s.id}
@@ -799,6 +843,7 @@ export default function EntityDetail({
             outgoing={drawerOutgoing}
             incoming={drawerIncoming}
             history={drawerHistory}
+            lifecycleHistory={focalLifecycleHistory}
             ent={ent}
           />
         </section>

@@ -42,6 +42,12 @@ export interface DrawerRelevantNode {
   gpr: number;
 }
 
+export interface DrawerLifecycleChange {
+  at: string;
+  from: string | null;
+  to: string;
+}
+
 export interface NodeDetailDrawerProps {
   open: DrawerKind | null;
   onClose: () => void;
@@ -52,6 +58,8 @@ export interface NodeDetailDrawerProps {
   nodeCreatedAt: string | null;
   nodeGpr: number | null;
   rankedNeighbors: DrawerRelevantNode[];
+  /** Lifecycle transitions in newest-first order. Surfaced in the Metadata pane. */
+  lifecycleHistory: DrawerLifecycleChange[];
   // Edges pane
   outgoing: DrawerEdge[];
   incoming: DrawerEdge[];
@@ -246,7 +254,13 @@ function HistoryPane({ history }: NodeDetailDrawerProps) {
   );
 }
 
-function MetadataPane({ nodeId, nodeCreatedAt, nodeGpr, ent }: NodeDetailDrawerProps) {
+function MetadataPane({
+  nodeId,
+  nodeCreatedAt,
+  nodeGpr,
+  lifecycleHistory,
+  ent,
+}: NodeDetailDrawerProps) {
   return (
     <div className="space-y-3 text-xs">
       <dl className="grid grid-cols-[max-content_1fr] gap-x-3 gap-y-2 border-b border-border pb-3">
@@ -259,6 +273,32 @@ function MetadataPane({ nodeId, nodeCreatedAt, nodeGpr, ent }: NodeDetailDrawerP
         <dt className="text-muted-foreground">Global PageRank</dt>
         <dd className="font-mono">{nodeGpr !== null ? nodeGpr.toFixed(4) : "—"}</dd>
       </dl>
+      <section className="border-b border-border pb-3">
+        <h3 className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+          Lifecycle history ({lifecycleHistory.length})
+        </h3>
+        {lifecycleHistory.length === 0 ? (
+          <p className="mt-1 text-muted-foreground">
+            No lifecycle transitions recorded. The node remains at its initial stage since creation.
+          </p>
+        ) : (
+          <ol className="mt-2 space-y-1">
+            {lifecycleHistory.map((entry, i) => (
+              <li
+                key={`${entry.at}-${i}`}
+                className="grid grid-cols-[max-content_1fr] gap-x-3 font-mono"
+              >
+                <span className="text-muted-foreground">
+                  {entry.at.replace("T", " ").slice(0, 19)}Z
+                </span>
+                <span>
+                  {entry.from ?? "(initial)"} → <span className="font-semibold">{entry.to}</span>
+                </span>
+              </li>
+            ))}
+          </ol>
+        )}
+      </section>
       <dl className="divide-y divide-border">
         {Object.entries(ent).map(([key, value]) => (
           <div key={key} className="grid gap-2 py-2 md:grid-cols-[10rem_1fr]">

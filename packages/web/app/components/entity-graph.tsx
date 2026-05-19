@@ -41,6 +41,13 @@ export interface GraphNode {
   principal_id?: string | null;
   principal_label?: string | null;
   created_at: string | null;
+  /**
+   * When the node last entered its CURRENT lifecycle. Pulled from the
+   * audit log; falls back to `created_at` when no lifecycle change is
+   * recorded. Cards render "X ago" using this value so the time
+   * reflects how long the node has held its current state.
+   */
+  lifecycle_since?: string | null;
   /** Personalized PageRank from the focal node (1.0 = focal node itself). */
   ppr: number;
   /** Global PageRank — uniform-restart PR over the whole Doco graph. */
@@ -193,6 +200,9 @@ function relativeTime(iso: string | null): string {
  * edge case — disconnected isolates).
  */
 const NODE_WIDTH = 340;
+const NODE_MIN_HEIGHT = 72;
+const NODE_MAX_SUMMARY_LINES = 9;
+/** Default fallback when a card's content height can't be derived yet. */
 const NODE_HEIGHT = 154;
 const EXPANDED_NODE_SCREEN_MARGIN = 12;
 const NODE_GAP_X = 72;
@@ -200,6 +210,26 @@ const LANE_HEIGHT = 208;
 const LANE_GAP = 28;
 const LANE_HEADER_HEIGHT = 40;
 const LANE_PADDING_X = 16;
+
+/**
+ * Estimate the card height needed for a node based on its summary length
+ * (+ an optional distinct title row). Cards that need less vertical space
+ * get less; cards with longer summaries grow up to ~9 lines. Used by both
+ * the Dagre layout (so positions account for actual size) and the card's
+ * own min-height so short content doesn't reserve unused space.
+ */
+function estimateCardHeight(summary: string, hasDistinctTitle: boolean): number {
+  const charsPerLine = 50;
+  const summaryLines = Math.max(
+    1,
+    Math.min(NODE_MAX_SUMMARY_LINES, Math.ceil((summary?.length ?? 0) / charsPerLine)),
+  );
+  const summaryHeight = summaryLines * 16;
+  const headerHeight = 28;
+  const titleHeight = hasDistinctTitle ? 22 : 0;
+  const padding = 24;
+  return Math.max(NODE_MIN_HEIGHT, headerHeight + titleHeight + summaryHeight + padding);
+}
 function dagreLayout(nodes: GraphNode[], links: GraphLink[], centerId: string): GraphLayout {
   const positions = new Map<string, { x: number; y: number }>();
   if (nodes.length === 0) return { positions, lanes: [] };
@@ -349,6 +379,8 @@ interface EntityNodeCardProps {
   lifecycle: string;
   accentColor: string;
   background: string;
+  /** Content-driven minimum height for this card. */
+  cardHeight: number;
   getGraphBounds?: () => DOMRect | null;
   viewportZoom: number;
   onExpandedChange?: (id: string, expanded: boolean) => void;
@@ -405,6 +437,7 @@ function EntityNodeCard({
   lifecycle,
   accentColor,
   background,
+  cardHeight,
   getGraphBounds,
   viewportZoom,
   onExpandedChange,
@@ -431,7 +464,7 @@ function EntityNodeCard({
     ? undefined
     : {
         display: "-webkit-box",
-        WebkitLineClamp: 3,
+        WebkitLineClamp: NODE_MAX_SUMMARY_LINES,
         WebkitBoxOrient: "vertical" as const,
       };
 
@@ -456,7 +489,7 @@ function EntityNodeCard({
         top: boundedExpansion?.top,
         width: boundedExpansion?.width ?? NODE_WIDTH,
         height: boundedExpansion?.height,
-        minHeight: boundedExpansion?.height ?? NODE_HEIGHT,
+        minHeight: boundedExpansion?.height ?? cardHeight,
         background,
         border: isCenter ? "2px solid var(--color-border)" : "1px solid var(--color-border)",
         borderRadius: 8,
@@ -526,7 +559,6 @@ function EntityNodeCard({
         data-entity-node-summary="true"
         style={{
           ...clampStyle,
-          minHeight: boundedExpansion ? 0 : hasDistinctTitle ? 44 : 56,
         }}
       >
         {summary}
@@ -749,6 +781,8 @@ export function EntityGraph({
         ? "color-mix(in oklch, var(--color-accent) 30%, white)"
         : "rgb(255,255,255)";
       const title = n.name ?? n.summary;
+      const hasDistinctTitle = title !== n.summary;
+      const cardHeight = estimateCardHeight(n.summary ?? "", hasDistinctTitle);
       // Make the card itself a real link. React Flow's node-level click
       // remains as a fallback, but the anchor gives expected browser affordances.
       const href = hrefFor ? hrefFor(n.id, n.node_type) : `/${n.node_type}/${n.id}`;
@@ -762,7 +796,7 @@ export function EntityGraph({
         // `getInternalNodesBounds` collapsed to 0-height, leaving the
         // mini-map blank.
         initialWidth: NODE_WIDTH,
-        initialHeight: NODE_HEIGHT,
+        initialHeight: cardHeight,
         data: {
           label: (
             <EntityNodeCard
@@ -771,13 +805,14 @@ export function EntityGraph({
               nodeType={n.node_type}
               title={title}
               summary={n.summary}
-              createdAt={n.created_at}
+              createdAt={n.lifecycle_since ?? n.created_at}
               isCenter={n.is_center}
               ppr={n.ppr}
               gpr={n.gpr}
               lifecycle={lifecycle}
               accentColor={accentColor}
               background={bg}
+              cardHeight={cardHeight}
               getGraphBounds={getGraphBounds}
               viewportZoom={viewport.zoom}
               onExpandedChange={(id, expanded) =>
