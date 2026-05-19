@@ -187,7 +187,7 @@ declaring the task complete). **One tally per turn, at the close.**
 
 ## Tools available via MCP
 
-Read tools: \`bootstrap\`, \`search\`, \`list_scopes\`, \`get_status\`,
+Read tools: \`search\`, \`list_scopes\`, \`get_status\`,
 \`get_audit\`, \`list_principals\`.
 
 Capture tools: \`capture_decision\`, \`capture_intent\`,

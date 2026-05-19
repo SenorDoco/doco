@@ -209,13 +209,11 @@ const SCOPE_NAMES_SCHEMA = {
 
 const TOOLS: ToolDef[] = [
   // -------------------- Read tools --------------------
-  {
-    name: "bootstrap",
-    description:
-      "Fetch the current canonical_instructions + per-Doco context (scopes, constitution, onboarding_overlay). Call once per session before drafting any capture or reply.",
-    inputSchema: { type: "object", properties: {}, additionalProperties: false },
-    proxy: { method: "GET", path: "/api/v1/agent-bootstrap" },
-  },
+  // The historical `bootstrap` tool is gone — under MCP OAuth
+  // (decision_01KS14CW9ZN23FF5CGG0Z7TH4G) the protocol prose lives
+  // on the `doco://protocol/canonical-instructions` MCP resource
+  // (fetch via resources/read), and per-Doco context is available
+  // via `list_scopes` + `get_status`.
   {
     name: "search",
     description:
