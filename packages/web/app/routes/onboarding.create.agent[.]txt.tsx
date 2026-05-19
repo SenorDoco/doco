@@ -16,21 +16,20 @@ that MUST run regardless of whether the commit step is gated on a
 "don't commit unprompted" rule — commit-wait does NOT swallow steps
 6 and 7.
 
-  1. POST /api/v1/docos.json (no auth) → response carries doco_access,
+  1. **OFFER THE CONNECTOR FIRST.** Before any HTTP call, before
+     creating the Doco, ask the project owner whether they want to
+     install the Doco MCP connector. Wait one turn for their answer.
+     The install applies on their NEXT session — onboarding right
+     now continues through curl either way — but offering this BEFORE
+     creating anything lets them set up their runtime while you wait.
+     See "Step 1 — offer the connector" below for the verbatim prompt
+     and per-runtime install commands. If they accept, surface the
+     install command and move on. If they decline, acknowledge and
+     move on. DO NOT block longer than one turn.
+  2. POST /api/v1/docos.json (no auth) → response carries doco_access,
      invite_url, the protocol (canonical_instructions), per-Doco scopes +
-     constitution + onboarding_overlay (which now includes a
-     \`connector_install\` field — see step 2), AND a user_message_block
-     field you'll render verbatim in step 6.
-  2. **OFFER THE CONNECTOR.** This is your FIRST onboarding output to
-     the project owner, before file writes, before the GATE. Render
-     \`onboarding_overlay.connector_install.prompt\` verbatim, plus the
-     install command matching your agent runtime from
-     \`connector_install.install_commands\`. Wait for the project owner's
-     answer. The connector applies to the project owner's NEXT session,
-     not this one — onboarding right now continues through curl either
-     way. If they accept, surface the matching install command and move
-     on; if they decline, surface \`connector_install.on_decline\` and
-     move on. Do NOT block here longer than one turn.
+     constitution + onboarding_overlay, AND a user_message_block field
+     you'll render verbatim in step 6.
   3. Write .env (gitignored) with DOCO_ACCESS=<doco_access>.
   4. Write DOCO.md (committed) with the doco_url.
   5. Write or update AGENTS.md to @./DOCO.md, and CLAUDE.md to @./AGENTS.md.
@@ -63,7 +62,41 @@ that MUST run regardless of whether the commit step is gated on a
      one-liner AFTER step 7 starts; the commit-wait does not block
      onboarding-overlay work.
 
-Step 1 — create the Doco.
+Step 1 — offer the connector FIRST, before any HTTP call.
+
+This is your VERY first onboarding action. Don't POST anything, don't
+write any file, don't even narrate "creating the doco" yet. Ask the
+project owner whether they want to install the Doco MCP connector,
+then wait ONE turn for their answer.
+
+Ask verbatim:
+
+    Before I create the Doco, do you want to install the Doco MCP
+    connector for your agent runtime? It's a one-time install that
+    gives every future Doco-tracked project native Doco tools —
+    search, list_scopes, capture_decision, capture_intent, and the
+    rest — without me having to curl them. Install takes effect on
+    your next session/restart, so onboarding right now still runs
+    through curl either way. Say 'yes install' or 'no skip' and I'll
+    proceed.
+
+Then surface the install command matching your runtime:
+
+  - Claude Code: claude mcp add doco ${baseUrl}/mcp
+  - Claude Desktop: edit ~/Library/Application Support/Claude/
+    claude_desktop_config.json — add {"mcpServers": {"doco": {"url":
+    "${baseUrl}/mcp"}}}
+  - Cursor: Settings → MCP → Add server → ${baseUrl}/mcp
+  - Codex: Codex doesn't ship native MCP support yet — skip and
+    continue with curl.
+  - Generic: MCP server URL is ${baseUrl}/mcp (Streamable HTTP).
+
+If they accept: tell them they can install + restart whenever; you'll
+continue onboarding via curl in this session regardless. Move on to
+step 2. If they decline: acknowledge and move on. DO NOT block longer
+than one turn — the install is a future-session upgrade.
+
+Step 2 — create the Doco.
 
 NARRATION DISCIPLINE — this is part of the protocol, not optional.
 The user needs visible progress bracketing the network call so the
@@ -110,32 +143,6 @@ narration.
 you'd like; the host auto-suffixes (-2, -3, …) on global collision
 and writes the actually-used value to \`doco_handle\` in the response.
 \`description\` is optional.
-
-Step 2 — offer the connector. This is your FIRST onboarding output to
-the project owner, before any file write, before the GATE block. The
-step-1 response carries \`onboarding_overlay.connector_install\` (when
-the Doco is still in onboarding state). Read these three fields:
-
-  - \`prompt\` — the verbatim question to ask the project owner.
-  - \`install_commands\` — a map keyed by agent runtime (claude_code,
-    claude_desktop, cursor, codex, generic). Pick the entry that
-    matches the runtime you're running in.
-  - \`on_decline\` — the verbatim message to surface if they say no.
-
-Render the prompt + the matching install command. Then wait ONE turn.
-
-The connector applies to the project owner's NEXT session, not this
-one — MCP installs take effect on restart. So:
-
-  - If they accept: surface the install command for them to run; tell
-    them they don't need to wait for it to finish for THIS session
-    (you'll continue onboarding via curl).
-  - If they decline: surface \`connector_install.on_decline\` and
-    continue.
-
-Either way, move on to step 3 in the very next message. DO NOT block
-onboarding waiting for the install to finish — it's a future-session
-upgrade, not a current-session prerequisite.
 
 Step 3 — write ./.env (gitignored). Create the file if missing; if the
 project already has an .env, append to it without clobbering existing

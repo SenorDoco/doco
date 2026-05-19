@@ -21,7 +21,41 @@ with whatever HTTP client you already have. Setup is ONE POST plus a
 handful of files: the wizard's single response carries everything
 (credential, protocol, scopes, invite URL, user-message block).
 
-## 1. Create a Doco (no auth required)
+## 1. OFFER THE MCP CONNECTOR (do this FIRST, before any HTTP call)
+
+This is your very first onboarding action — BEFORE the create POST,
+BEFORE writing files, BEFORE anything else. Ask the project owner
+verbatim:
+
+> **"Before I create the Doco, do you want to install the Doco MCP
+> connector? It's a one-time install per agent runtime (Claude Code,
+> Claude Desktop, Cursor, …) and gives every future Doco-tracked
+> project native Doco tools — search, capture, list scopes — without
+> me having to curl them. The install takes effect on your next
+> session/restart, so onboarding right now still runs through curl
+> either way. Say 'yes install' or 'no skip' and I'll proceed."**
+
+Then surface the install command matching your runtime:
+
+| Runtime | Install command |
+|---|---|
+| Claude Code | \`claude mcp add doco ${baseUrl}/mcp\` |
+| Claude Desktop | Edit \`~/Library/Application Support/Claude/claude_desktop_config.json\` (macOS) — add \`{"mcpServers": {"doco": {"url": "${baseUrl}/mcp"}}}\` |
+| Cursor | Settings → MCP → Add server → \`${baseUrl}/mcp\` |
+| Codex | Codex doesn't ship native MCP support yet — skip and continue with curl. |
+| Generic | MCP server URL (Streamable HTTP): \`${baseUrl}/mcp\` |
+
+Wait ONE turn for their answer. If they accept, surface the install
+command and tell them they don't have to wait for restart — you'll
+continue onboarding via curl regardless, and the connector takes
+effect on their next session. If they decline, acknowledge and move
+on. DO NOT block onboarding waiting for the install to finish — the
+install is a future-session upgrade, not a current-session
+prerequisite.
+
+After their answer, proceed to step 2 (create the Doco).
+
+## 2. Create a Doco (no auth required)
 
 **Narration discipline.** Before the POST, emit this line to the user
 verbatim so the network call doesn't read as dead air:
@@ -77,24 +111,7 @@ pattern trips agent-classifier credential-exfil heuristics, and you
 already have what that fetch would return. Later sessions refresh via
 the helper or the bootstrap endpoint — see step 5.
 
-## 1.5. Offer the MCP connector (preferred — first onboarding output)
-
-The step-1 response carries \`onboarding_overlay.connector_install\` —
-prompt + per-runtime install commands + on-decline prose. Before any
-file write, before the GATE, render the prompt verbatim to the
-project owner and pick the install command matching your runtime.
-
-The connector applies to the project owner's NEXT session (MCP
-installs take effect on restart). This session continues through
-curl either way — the prompt is a one-turn offer, not a blocker.
-
-Server URL (Streamable HTTP transport): ${baseUrl}/mcp · Auth:
-\`Authorization: Bearer \${DOCO_ACCESS}\`. Tools shipped:
-\`bootstrap\`, \`search\`, \`list_scopes\`, \`capture_decision\`.
-
-After the project owner accepts or declines, move on to step 2.
-
-## 2. Wire it into the repo
+## 3. Wire it into the repo
 
 Write **\`./.env\`** (gitignored — the agent creates a basic
 \`.gitignore\` if one isn't already there):
@@ -118,7 +135,7 @@ this repo auto-reads the Doco coordinates. If you also use Claude
 Code, write **\`./CLAUDE.md\`** with the single line \`@./AGENTS.md\`
 (this is Claude Code's auto-load entry point).
 
-## 3. **GATE**: render the invite block VERBATIM to the user
+## 4. **GATE**: render the invite block VERBATIM to the user
 
 The /api/v1/docos.json response carries a \`user_message_block\` field
 with the exact prose the user must see — the doco_url, the invite_url
@@ -141,7 +158,7 @@ miss the call to action.
 After rendering the block, move on to step 4 (NOT step 5 — onboarding
 overlay first, commit second).
 
-## 4. Run the onboarding overlay
+## 5. Run the onboarding overlay
 
 The same response carries an \`onboarding_overlay\` field. If it's
 non-null, this Doco is still in onboarding and step 4 is required:
@@ -158,7 +175,7 @@ says "don't commit unprompted", DO NOT treat the commit-wait as a
 stop signal — note the rule to the user, then immediately start step
 4(a). Commit-wait and scope-setup-wait coexist.
 
-## 5. Commit the bootstrap files to git
+## 6. Commit the bootstrap files to git
 
 \`DOCO.md\`, \`AGENTS.md\`, \`CLAUDE.md\`, and the \`.gitignore\` entry
 need to land in git so a fresh clone / CI runner / teammate's agent
@@ -177,7 +194,7 @@ now, or do you commit yourself?"). Some Docos carry an "always
 commit and push" Rule on Global — read the bootstrap response's
 Global scope rules to find out.
 
-## 6. Operate — apply the protocol you already have
+## 7. Operate — apply the protocol you already have
 
 You finished onboarding with the protocol in hand (the step-1
 response's \`canonical_instructions\`). Apply it from your next reply
