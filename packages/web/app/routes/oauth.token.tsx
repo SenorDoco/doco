@@ -7,10 +7,10 @@
 // from possession of the refresh token on refresh_token grants.
 
 import {
+  OauthError,
   consumeAuthorizationCode,
   getClient,
   issueTokens,
-  OauthError,
   refreshTokens,
 } from "~/lib/oauth-server.server";
 

@@ -1,20 +1,20 @@
 // Privacy gate for docos. Postgres-backed
 // (rule_01KRKQDHWNWJAF4YKTMCB2A0D9 — alpha forbids back-compat).
 
-import { redirect } from "react-router";
 import {
   type DocoRole,
+  isOrgUser as dbIsOrgMember,
   getDocoByIdOrHandle,
   getDocoUserRole,
   getOrgRole,
   getPrincipalById,
   getScopeUserRole,
-  isOrgUser as dbIsOrgMember,
   listDocoIdsForUserPrincipal,
   listScopeIdsWithGrant,
   maxRole,
   roleAtLeast,
 } from "@doco/db";
+import { redirect } from "react-router";
 import { docoPath } from "./db.server";
 import { validateAccessToken } from "./oauth-server.server";
 import { resolvePrincipalUsernameAlias } from "./principal-aliases.server";
@@ -182,9 +182,7 @@ export async function isMyDoco(
  * unchanged for prior collaborators; new invite redemptions write the
  * doco_users row alongside the SessionToken.
  */
-export async function listInvitedDocoIdsForPrincipal(
-  principalId: string,
-): Promise<Set<string>> {
+export async function listInvitedDocoIdsForPrincipal(principalId: string): Promise<Set<string>> {
   const ids = await listDocoIdsForUserPrincipal(principalId);
   return new Set(ids);
 }

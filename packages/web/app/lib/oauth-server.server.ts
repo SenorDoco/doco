@@ -160,7 +160,9 @@ export interface IssueAuthCodeInput {
   scope?: string;
 }
 
-export async function issueAuthorizationCode(input: IssueAuthCodeInput): Promise<{ code: string; expires_at: Date }> {
+export async function issueAuthorizationCode(
+  input: IssueAuthCodeInput,
+): Promise<{ code: string; expires_at: Date }> {
   const code = mintOpaque(CODE_PREFIX);
   const expires_at = new Date(Date.now() + AUTH_CODE_TTL_SECONDS * 1000);
   await withClient(async (c) => {
@@ -234,10 +236,9 @@ export async function consumeAuthorizationCode(args: {
     if (!verifyPkce(args.code_verifier, row.code_challenge)) {
       throw new OauthError("invalid_grant", "code_verifier does not match code_challenge");
     }
-    await c.query(
-      `UPDATE oauth_authorization_codes SET consumed_at = now() WHERE code = $1`,
-      [args.code],
-    );
+    await c.query("UPDATE oauth_authorization_codes SET consumed_at = now() WHERE code = $1", [
+      args.code,
+    ]);
     return {
       principal_id: row.principal_id,
       granted_doco_ids: row.granted_doco_ids,
@@ -371,16 +372,30 @@ export async function refreshTokens(args: {
       `INSERT INTO oauth_access_tokens
          (token, client_id, principal_id, granted_doco_ids, scope, expires_at)
        VALUES ($1, $2, $3, $4, $5, $6)`,
-      [access_token, row.client_id, row.principal_id, row.granted_doco_ids, row.scope, access_expires],
+      [
+        access_token,
+        row.client_id,
+        row.principal_id,
+        row.granted_doco_ids,
+        row.scope,
+        access_expires,
+      ],
     );
     await c.query(
       `INSERT INTO oauth_refresh_tokens
          (token, client_id, principal_id, granted_doco_ids, scope, expires_at)
        VALUES ($1, $2, $3, $4, $5, $6)`,
-      [refresh_token, row.client_id, row.principal_id, row.granted_doco_ids, row.scope, refresh_expires],
+      [
+        refresh_token,
+        row.client_id,
+        row.principal_id,
+        row.granted_doco_ids,
+        row.scope,
+        refresh_expires,
+      ],
     );
     await c.query(
-      `UPDATE oauth_refresh_tokens SET revoked = true, superseded_by = $1 WHERE token = $2`,
+      "UPDATE oauth_refresh_tokens SET revoked = true, superseded_by = $1 WHERE token = $2",
       [refresh_token, args.refresh_token],
     );
     return {
@@ -398,10 +413,13 @@ export async function refreshTokens(args: {
  * already-revoked token is a no-op (200 OK either way, per spec).
  * The `token_type_hint` is advisory; we try both tables.
  */
-export async function revokeToken(token: string, _hint?: "access_token" | "refresh_token"): Promise<void> {
+export async function revokeToken(
+  token: string,
+  _hint?: "access_token" | "refresh_token",
+): Promise<void> {
   await withClient(async (c) => {
-    await c.query(`UPDATE oauth_access_tokens  SET revoked = true WHERE token = $1`, [token]);
-    await c.query(`UPDATE oauth_refresh_tokens SET revoked = true WHERE token = $1`, [token]);
+    await c.query("UPDATE oauth_access_tokens  SET revoked = true WHERE token = $1", [token]);
+    await c.query("UPDATE oauth_refresh_tokens SET revoked = true WHERE token = $1", [token]);
   });
 }
 

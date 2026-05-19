@@ -703,10 +703,10 @@ export async function action({
   }
   const handle = routeParams.handle ?? "";
   if (!handle) {
-    return new Response(
-      "Per-Doco MCP URL required. Use https://doco.to/mcp/<your-doco-handle>.",
-      { status: 400, headers: { "Content-Type": "text/plain; charset=utf-8" } },
-    );
+    return new Response("Per-Doco MCP URL required. Use https://doco.to/mcp/<your-doco-handle>.", {
+      status: 400,
+      headers: { "Content-Type": "text/plain; charset=utf-8" },
+    });
   }
 
   let payload: JsonRpcRequest;
@@ -756,7 +756,8 @@ export async function action({
         if (!resource) {
           return rpcErr(id, INVALID_REQUEST, `unknown resource: ${uri}`);
         }
-        const text = resource.uri === CANONICAL_RESOURCE_URI ? CANONICAL_INSTRUCTIONS : AGENT_REFERENCE;
+        const text =
+          resource.uri === CANONICAL_RESOURCE_URI ? CANONICAL_INSTRUCTIONS : AGENT_REFERENCE;
         return rpcOk(id, {
           contents: [{ uri: resource.uri, mimeType: "text/markdown", text }],
         });

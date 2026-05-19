@@ -21,8 +21,8 @@
 //   state                        (recommended; opaque, round-tripped)
 //   scope                        (optional)
 
-import { Form, redirect, useLoaderData } from "react-router";
 import { getDocoById, listDocoIdsForUserPrincipal } from "@doco/db";
+import { Form, redirect, useLoaderData } from "react-router";
 import { getClient, issueAuthorizationCode } from "~/lib/oauth-server.server";
 import { getCurrentPrincipal } from "~/lib/session";
 
@@ -129,18 +129,22 @@ export default function AuthorizePage() {
     <main style={{ maxWidth: 560, margin: "60px auto", padding: 24, fontFamily: "system-ui" }}>
       <h1 style={{ fontSize: 24, marginBottom: 8 }}>Approve Doco access</h1>
       <p style={{ color: "#555", marginBottom: 24 }}>
-        <strong>{data.client_name}</strong> wants access to your Docos. Pick which Docos it can read and write to.
+        <strong>{data.client_name}</strong> wants access to your Docos. Pick which Docos it can read
+        and write to.
       </p>
       {data.docos.length === 0 ? (
         <p style={{ color: "#a00" }}>
-          You don't have access to any Docos yet. Create one or accept an invite first, then return to this page.
+          You don't have access to any Docos yet. Create one or accept an invite first, then return
+          to this page.
         </p>
       ) : (
         <Form method="post" preventScrollReset>
           <ul style={{ listStyle: "none", padding: 0, marginBottom: 24 }}>
             {data.docos.map((d) => (
               <li key={d.id} style={{ padding: "12px 0", borderBottom: "1px solid #eee" }}>
-                <label style={{ display: "flex", alignItems: "center", gap: 12, cursor: "pointer" }}>
+                <label
+                  style={{ display: "flex", alignItems: "center", gap: 12, cursor: "pointer" }}
+                >
                   <input type="checkbox" name="doco_id" value={d.id} defaultChecked />
                   <span>
                     <strong>{d.handle}</strong>
@@ -217,10 +221,7 @@ function validateParams(p: AuthorizeParams): string | null {
   return null;
 }
 
-function redirectWith(
-  params: AuthorizeParams,
-  extras: Record<string, string>,
-): string {
+function redirectWith(params: AuthorizeParams, extras: Record<string, string>): string {
   const url = new URL(params.redirect_uri);
   for (const [k, v] of Object.entries(extras)) url.searchParams.set(k, v);
   if (params.state) url.searchParams.set("state", params.state);

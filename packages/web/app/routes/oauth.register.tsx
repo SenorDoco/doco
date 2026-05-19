@@ -32,7 +32,8 @@ export async function action({ request }: { request: Request }) {
       client_name: typeof body.client_name === "string" ? body.client_name : undefined,
       redirect_uris: redirect_uris as string[],
       software_id: typeof body.software_id === "string" ? body.software_id : undefined,
-      software_version: typeof body.software_version === "string" ? body.software_version : undefined,
+      software_version:
+        typeof body.software_version === "string" ? body.software_version : undefined,
     });
     return Response.json(
       {
@@ -55,7 +56,11 @@ export async function action({ request }: { request: Request }) {
 }
 
 export function loader() {
-  return jsonError("invalid_request", "POST a JSON body with redirect_uris to register a client.", 405);
+  return jsonError(
+    "invalid_request",
+    "POST a JSON body with redirect_uris to register a client.",
+    405,
+  );
 }
 
 function jsonError(error: string, error_description: string, status: number): Response {

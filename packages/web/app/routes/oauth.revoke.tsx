@@ -14,12 +14,12 @@ export async function action({ request }: { request: Request }) {
   const token = form.get("token");
   const hint = form.get("token_type_hint");
   if (!token) {
-    return Response.json({ error: "invalid_request", error_description: "token required" }, { status: 400 });
+    return Response.json(
+      { error: "invalid_request", error_description: "token required" },
+      { status: 400 },
+    );
   }
-  await revokeToken(
-    token,
-    hint === "access_token" || hint === "refresh_token" ? hint : undefined,
-  );
+  await revokeToken(token, hint === "access_token" || hint === "refresh_token" ? hint : undefined);
   return new Response(null, { status: 200 });
 }
 
