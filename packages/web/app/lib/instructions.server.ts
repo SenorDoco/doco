@@ -314,7 +314,7 @@ It's a prompt for you, the agent. Two rules:
    know how this is going" — silently leaving it off is the failure
    mode the flag exists to prevent.
 
-Distinguish from \`mandatory_scope\` authoring rules on the Global
+Distinguish from \`mandatory_scope\` Doco-node-authoring rules on the Global
 scope (your doco's constitution): those are hard-enforced (capture is
 rejected if the scope isn't listed). Watched is soft. A scope can be
 one, both, or neither.
@@ -802,7 +802,7 @@ what makes template scopes renamable: the project owner can rebrand
 - **\`Action.triggered_by\`** lists other Actions whose firing
   triggers this one (general, not state-machine-specific).
 - **\`Action.gated_by\`** + **\`Scope.gated_by\`** are the same edge
-  type — guards and authoring rules unify.
+  type — guards and Doco-node-authoring rules unify.
 - **\`Rule.fires_when_node_lifecycle\`** narrows a rule to specific
   lifecycles.
 

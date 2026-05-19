@@ -360,7 +360,7 @@ const TOOLS: ToolDef[] = [
   {
     name: "capture_rule",
     description:
-      "Capture a Rule node — a standing constraint that applies to its scope. Use authoring kind (with a predicate) to gate captures; use guidance kind for reminders the agent surfaces without enforcement. Posts to a SPECIFIC scope's /rules endpoint.",
+      "Capture a Rule node — a standing constraint that applies to its scope. Pick `doco-node-authoring` kind (with a predicate) when the rule gates Doco-node captures (e.g. 'every ADR must include alternatives_considered' — the predicate evaluates an incoming Decision POST). Pick `guidance` for reminders the agent surfaces without enforcement (workflow rules, dev conventions). Note: `doco-node-authoring` (preferred) and legacy `authoring` are both accepted on the wire for back-compat. Posts to a SPECIFIC scope's /rules endpoint.",
     inputSchema: {
       type: "object",
       properties: {
@@ -368,7 +368,12 @@ const TOOLS: ToolDef[] = [
           type: "string",
           description: "The id of the scope this rule attaches to (from list_scopes).",
         },
-        kind: { type: "string", enum: ["authoring", "guidance"] },
+        kind: {
+          type: "string",
+          enum: ["doco-node-authoring", "guidance", "authoring"],
+          description:
+            "`doco-node-authoring` (preferred) or legacy `authoring` for predicate-bearing capture-gate rules; `guidance` for reminders without enforcement.",
+        },
         prose: { type: "string", description: "The rule prose (what the rule says)." },
         summary: { type: "string", description: "Optional one-line summary." },
       },

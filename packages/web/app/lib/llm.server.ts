@@ -292,7 +292,7 @@ const NO_CLASSIFIED_RULES_MESSAGE = "Classifier returned no rules.";
 export function formatRuleClassifierError(e: LlmUnavailableError): string {
   const message = e.message.trim();
   if (message === NO_CLASSIFIED_RULES_MESSAGE) {
-    return "We couldn't find an authoring rule in that prose. Describe a concrete condition Doco should check, or add prose-only text from Guidance rules.";
+    return "We couldn't find a Doco-node-authoring rule in that prose (a predicate-bearing condition Doco evaluates at node capture time). Either describe a concrete condition Doco should check at capture, or pick Guidance rules for prose-only reminders.";
   }
   if (message === "Empty prose — nothing to classify.") {
     return "Type the rule in your own words.";

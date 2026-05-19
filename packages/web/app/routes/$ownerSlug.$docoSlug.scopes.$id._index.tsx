@@ -807,8 +807,8 @@ export default function ScopePage({
               {scope.gated_by && scope.gated_by.length > 0 ? (
                 <p>
                   <span className="font-mono">gated_by</span>: {scope.gated_by.length} rule
-                  {scope.gated_by.length === 1 ? "" : "s"} cited as authoring rules for this scope
-                  (see the Authoring rules section below).
+                  {scope.gated_by.length === 1 ? "" : "s"} cited as Doco-node-authoring rules for this scope
+                  (see the Doco-node-authoring rules section below).
                 </p>
               ) : null}
               {scope.excluded_rules && scope.excluded_rules.length > 0 ? (
@@ -942,9 +942,9 @@ export default function ScopePage({
             />
 
             <RuleSectionCard
-              title="Authoring rules"
+              title="Doco-node-authoring rules"
               description={
-                "Predicates the engine evaluates whenever a node enters this scope. Deterministic kinds block writes structurally; probabilistic specs are judged at capture time."
+                "Predicates the engine evaluates whenever a Doco node is captured into this scope (NOT rules about how the project owner authors code or commits — those are guidance rules). Deterministic kinds block writes structurally; probabilistic specs are judged at capture time."
               }
               kind="authoring"
               rules={rules.authoring}

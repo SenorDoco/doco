@@ -39,8 +39,18 @@ interface RuleProseBody {
 
 type RequestedRuleKind = "authoring" | "guidance";
 
+/**
+ * Accept both the legacy short identifier `authoring` and the newer
+ * unambiguous `doco-node-authoring` (also `node-authoring`) on the
+ * wire. Internal storage + the LLM classifier still use the short
+ * `authoring` value as the bucket identifier — the rename is prose-
+ * and DX-facing, not a data migration. The internal type stays
+ * `RequestedRuleKind` = "authoring" | "guidance" so downstream
+ * code doesn't fork.
+ */
 function resolveRequestedKind(value: unknown): RequestedRuleKind | null {
   if (value === "authoring" || value === "guidance") return value;
+  if (value === "doco-node-authoring" || value === "node-authoring") return "authoring";
   return null;
 }
 
@@ -48,7 +58,7 @@ export function loader() {
   return Response.json(
     {
       error:
-        'Use POST with `{kind: "authoring" | "guidance", prose: string}` to add rules. See /<doco-handle>/api/scopes.txt for the spec.',
+        'Use POST with `{kind: "doco-node-authoring" | "guidance", prose: string}` (legacy `"authoring"` also accepted). See /<doco-handle>/api/scopes.txt for the spec.',
     },
     { status: 405 },
   );

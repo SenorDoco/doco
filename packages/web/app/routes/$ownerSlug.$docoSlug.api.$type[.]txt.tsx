@@ -260,16 +260,31 @@ HOW AGENTS USE WATCHED SCOPES
   (Decision, Intent, Action, Rule, ...).
 
 ADDING RULES IN PLAIN ENGLISH
-  Once a scope exists, author rules by POSTing prose plus the caller's
-  intended rule kind:
+  Once a scope exists, add rules by POSTing prose plus the caller's
+  intended rule kind. Two kinds exist:
+
+    - \`doco-node-authoring\` (preferred) — a capture-gate rule with a
+      machine-checkable predicate the framework evaluates against an
+      incoming Doco-node POST. The predicate operates on the node
+      being captured (its fields, scopes, edges) and rejects the POST
+      when it returns false. These rules apply ONLY at capture; they
+      do NOT govern agent behavior between captures.
+    - \`guidance\` — a reminder the agent surfaces during work; no
+      machine enforcement. Workflow conventions, dev policies,
+      narration discipline. The vast majority of real-project rules
+      are guidance.
+
+  For back-compat, the legacy short alias \`authoring\` is also
+  accepted on the wire (the host classifier and storage still use the
+  short identifier internally).
 
     POST ${baseUrl}/${handle}/api/scopes/<scope_id>/rules.json
     Content-Type: application/json
-    { "kind": "authoring", "prose": "Every Decision should have an Intent." }
+    { "kind": "doco-node-authoring", "prose": "Every Decision should have an Intent." }
 
-  For \`kind: "authoring"\`, the server runs the prose through an LLM
-  classifier that:
-    - splits authoring prose into separate atomic rules,
+  For \`kind: "doco-node-authoring"\` (or legacy \`"authoring"\`), the
+  server runs the prose through an LLM classifier that:
+    - splits the prose into separate atomic Doco-node-authoring rules,
     - maps each to the most-fitting deterministic predicate
       (requires_edge / forbids_edge / requires_field /
       forbids_field / mandatory_scope) when one fits — these
@@ -309,7 +324,7 @@ ADDING RULES IN PLAIN ENGLISH
     400  kind missing/invalid, prose missing/empty, JSON malformed.
     404  scope id not found.
     503  authoring classifier unavailable (host can't reach OpenAI).
-         The host's OPENAI_API_KEY is load-bearing for authoring rules —
+         The host's OPENAI_API_KEY is load-bearing for Doco-node-authoring rules —
          failures REJECT the operation rather than silently saving the
          prose as probabilistic.
 
@@ -318,7 +333,7 @@ ADDING RULES IN PLAIN ENGLISH
       -H "Content-Type: application/json" \\
       -H "Authorization: Bearer $DOCO_ACCESS" \\
       ${baseUrl}/${handle}/api/scopes/scope_<ULID>/rules.json \\
-      -d '{ "kind": "authoring", "prose": "Every Decision should have an Intent, and bugs should link to a Rule." }'
+      -d '{ "kind": "doco-node-authoring", "prose": "Every Decision should have an Intent, and bugs should link to a Rule." }'
 
 RELATED
   POST ${baseUrl}/${handle}/api/intents.json     capture an Intent
