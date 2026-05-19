@@ -39,9 +39,9 @@ export function SiteHeader({ docoScope, me }: SiteHeaderProps) {
   // Docos / Orgs / Users / account).
   const nav = docoScope
     ? [
-        { to: `/${docoScope.handle}`, label: docoScope.handle },
-        { to: `/${docoScope.handle}/scopes`, label: "Scopes" },
-        { to: `/${docoScope.handle}/settings`, label: "Settings" },
+        { to: `/${docoScope.handle}`, label: docoScope.handle, isDocoName: true },
+        { to: `/${docoScope.handle}/scopes`, label: "Scopes", isDocoName: false },
+        { to: `/${docoScope.handle}/settings`, label: "Settings", isDocoName: false },
       ]
     : [];
 
@@ -134,9 +134,11 @@ export function SiteHeader({ docoScope, me }: SiteHeaderProps) {
                 className={({ isActive }) =>
                   cn(
                     "transition-colors",
-                    isActive
-                      ? "text-foreground font-medium"
-                      : "text-muted-foreground hover:text-foreground",
+                    n.isDocoName
+                      ? "font-bold text-foreground"
+                      : isActive
+                        ? "text-foreground font-medium"
+                        : "text-muted-foreground hover:text-foreground",
                   )
                 }
               >
