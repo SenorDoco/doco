@@ -46,7 +46,8 @@ function relativeTimeIso(iso: string | null): string {
 interface Hit {
   id: string;
   node_type: string;
-  summary: string;
+  summary?: string;
+  purpose?: string;
   name: string | null;
   lifecycle: string | null;
   created_at: string | null;
@@ -163,12 +164,12 @@ const TYPE_SPECS: TypeSpec[] = [
   {
     table: "scopes",
     nodeType: "scope",
-    selectExtra: "name, summary, lifecycle, created_at",
+    selectExtra: "name, purpose, lifecycle, created_at",
     hostLevel: false,
     toHit: (r, s) => ({
       id: String(r.id),
       node_type: "scope",
-      summary: (r.summary as string) ?? "",
+      purpose: (r.purpose as string) ?? "",
       name: (r.name as string) ?? null,
       lifecycle: (r.lifecycle as string) ?? null,
       created_at: (r.created_at as string) ?? null,
@@ -699,7 +700,7 @@ export default function SearchInDoco({
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <p className="text-sm">{hit.summary || hit.name || hit.id}</p>
+                  <p className="text-sm">{hit.purpose || hit.summary || hit.name || hit.id}</p>
                 </CardContent>
               </Card>
             );

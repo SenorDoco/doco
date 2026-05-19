@@ -47,7 +47,8 @@ interface Hit {
   id: string;
   node_type: string;
   name: string | null;
-  summary: string;
+  summary?: string;
+  purpose?: string;
   lifecycle: string | null;
   created_at: string | null;
   gpr: number;
@@ -72,11 +73,11 @@ const TYPE_FETCHES: TypeFetch[] = [
   fetchSpec("actions", "action", "summary, lifecycle, created_at", false),
   fetchSpec("logs", "log", "summary, lifecycle, created_at", false),
   fetchSpec("reference_entities", "reference", "summary, lifecycle, created_at", false),
-  fetchSpec("scopes", "scope", "name, summary, lifecycle, created_at", false, (r, vs, docoDir) => ({
+  fetchSpec("scopes", "scope", "name, purpose, lifecycle, created_at", false, (r, vs, docoDir) => ({
     id: String(r.id),
     node_type: "scope",
     name: (r.name as string) ?? null,
-    summary: (r.summary as string) ?? "",
+    purpose: (r.purpose as string) ?? "",
     lifecycle: (r.lifecycle as string) ?? null,
     created_at: (r.created_at as string) ?? null,
     gpr: 0,
@@ -310,11 +311,11 @@ async function applyScopePins(
     await c.query<{
       id: string;
       name: string;
-      summary: string | null;
+      purpose: string | null;
       created_at: string;
       raw_yaml: string;
     }>(
-      `SELECT id, name, summary, created_at, raw_yaml
+      `SELECT id, name, purpose, created_at, raw_yaml
          FROM scopes WHERE doco_id = $1 AND name = 'constitution' LIMIT 1`,
       [docoId],
     )
@@ -324,7 +325,7 @@ async function applyScopePins(
   const pinScope = (row: {
     id: string;
     name: string;
-    summary: string | null;
+    purpose: string | null;
     created_at: string;
   }) => {
     const existingIdx = allHits.findIndex((h) => h.id === row.id);
@@ -338,7 +339,7 @@ async function applyScopePins(
         id: row.id,
         node_type: "scope",
         name: row.name,
-        summary: row.summary ?? "",
+        purpose: row.purpose ?? "",
         lifecycle: null,
         created_at: row.created_at,
         gpr: gprById.get(row.id) ?? 0,
@@ -375,10 +376,10 @@ async function applyScopePins(
       await c.query<{
         id: string;
         name: string;
-        summary: string | null;
+        purpose: string | null;
         created_at: string;
       }>(
-        `SELECT id, name, summary, created_at FROM scopes
+        `SELECT id, name, purpose, created_at FROM scopes
           WHERE doco_id = $1 AND id = ANY($2::text[]) AND id != $3`,
         [docoId, mandatoryIds, constRow.id],
       )
@@ -389,7 +390,7 @@ async function applyScopePins(
   pinScope({
     id: constRow.id,
     name: constRow.name,
-    summary: constRow.summary,
+    purpose: constRow.purpose,
     created_at: constRow.created_at,
   });
 }
