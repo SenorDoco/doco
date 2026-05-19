@@ -1,7 +1,6 @@
 import { withClient } from "@doco/db";
-// Per-Doco home — bare title up top, then the search input, then a
-// two-column body: Nodes on the left, "Activity" heatmap above the
-// "Latest activity" feed on the right.
+// Per-Doco home — bare title up top, then the search input, node overview,
+// activity heatmap, and latest activity feed in a single content column.
 //
 // The feed renders one line per recent audit event in the same family as
 // agent footer lines: `<op-icon> <Type> <verb>: <summary>`. Lifecycle
@@ -109,7 +108,7 @@ export async function loader({
          UNION ALL SELECT id, summary, lifecycle FROM logs WHERE doco_id = $1 AND id = ANY($2::text[])
          UNION ALL SELECT id, summary, lifecycle FROM evals WHERE doco_id = $1 AND id = ANY($2::text[])
          UNION ALL SELECT id, summary, lifecycle FROM states WHERE doco_id = $1 AND id = ANY($2::text[])
-         UNION ALL SELECT id, COALESCE(summary, name) AS summary, lifecycle FROM scopes WHERE doco_id = $1 AND id = ANY($2::text[])
+         UNION ALL SELECT id, COALESCE(purpose, name) AS summary, lifecycle FROM scopes WHERE doco_id = $1 AND id = ANY($2::text[])
          UNION ALL SELECT id, summary, lifecycle FROM reference_entities WHERE doco_id = $1 AND id = ANY($2::text[])`,
         [ctx.meta.docoId, entityIds],
       );
@@ -382,73 +381,62 @@ export default function DocoHome({
           </Link>
         </div>
 
-        <div className="grid grid-cols-1 gap-5 min-[840px]:grid-cols-12">
-          {/* Left: node counts. */}
-          <aside className="min-w-0 min-[840px]:col-span-6">
-            <NodesOverviewCard
-              sections={sections}
-              search={
-                <SearchBoxWithHistory
-                  ownerSlug={ownerSlug}
-                  docoSlug={docoSlug}
-                  handle={handle}
-                  placeholder={
-                    totalNodes > 0
-                      ? `Search ${totalNodes} node${totalNodes === 1 ? "" : "s"}…`
-                      : "Search nodes…"
-                  }
-                />
+        <NodesOverviewCard
+          sections={sections}
+          search={
+            <SearchBoxWithHistory
+              ownerSlug={ownerSlug}
+              docoSlug={docoSlug}
+              handle={handle}
+              placeholder={
+                totalNodes > 0
+                  ? `Search ${totalNodes} node${totalNodes === 1 ? "" : "s"}…`
+                  : "Search nodes…"
               }
-              empty={
-                <p className="text-xs italic text-muted-foreground">This Doco has no nodes yet.</p>
-              }
-              aside={<TopContributorsList contributors={topContributors} />}
             />
-          </aside>
+          }
+          empty={
+            <p className="text-xs italic text-muted-foreground">This Doco has no nodes yet.</p>
+          }
+          aside={<TopContributorsList contributors={topContributors} />}
+        />
 
-          {/* Right: activity heatmap above the real-time feed. */}
-          <section className="min-w-0 min-[840px]:col-span-6 space-y-5">
-            <Card>
-              <CardHeader>
-                <CardTitle>Activity</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ActivityHeatmap byDay={byDay} weeks={HEATMAP_WEEKS} />
-              </CardContent>
-            </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle>Activity</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ActivityHeatmap byDay={byDay} weeks={HEATMAP_WEEKS} />
+          </CardContent>
+        </Card>
 
-            <Card>
-              <CardHeader className="px-4 py-3">
-                <CardTitle className="text-sm">Latest activity</CardTitle>
-              </CardHeader>
-              <CardContent className="p-0">
-                {items.length === 0 ? (
-                  <div className="px-4 pb-4 text-xs leading-5 text-muted-foreground">
-                    No recorded activity yet. Create a scope in{" "}
-                    <Link
-                      to={`/${handle}/scopes/new`}
-                      className="text-primary hover:underline"
-                    >
-                      scopes/new
-                    </Link>{" "}
-                    or capture a node; this feed records UI, CLI, and API writes.
-                  </div>
-                ) : (
-                  <div className="divide-y divide-border">
-                    {items.map((it) => (
-                      <ActivityFeedLine
-                        key={it.event_id}
-                        item={it}
-                        ownerSlug={ownerSlug}
-                        docoSlug={docoSlug}
-                      />
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </section>
-        </div>
+        <Card>
+          <CardHeader className="px-4 py-3">
+            <CardTitle className="text-sm">Latest activity</CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            {items.length === 0 ? (
+              <div className="px-4 pb-4 text-xs leading-5 text-muted-foreground">
+                No recorded activity yet. Create a scope in{" "}
+                <Link to={`/${handle}/scopes/new`} className="text-primary hover:underline">
+                  scopes/new
+                </Link>{" "}
+                or capture a node; this feed records UI, CLI, and API writes.
+              </div>
+            ) : (
+              <div className="divide-y divide-border">
+                {items.map((it) => (
+                  <ActivityFeedLine
+                    key={it.event_id}
+                    item={it}
+                    ownerSlug={ownerSlug}
+                    docoSlug={docoSlug}
+                  />
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
       </main>
     </div>
   );
@@ -542,7 +530,7 @@ function SearchBoxWithHistory({
 
   useEffect(() => {
     setRecent(loadRecent(handle));
-  }, [ownerSlug, docoSlug]);
+  }, [handle]);
 
   const showDropdown = focused && query.trim().length === 0 && recent.length > 0;
 

@@ -33,6 +33,7 @@ import { type RouteConfig, index, route } from "@react-router/dev/routes";
  *   /:owner/:doco/:type            per-Doco entity list (short form; ADR-120)
  *   /:owner/:doco/:type/:id        per-Doco entity detail (id is the ULID; scope also resolves by name)
  *   /:owner/:doco/search           per-Doco search (richer results — GPR / age / lifecycle)
+ *   /:owner/:doco/chat.json        Doco-wide Señor Doco chat endpoint for signed-in humans
  *   /:owner/:doco/settings         per-Doco settings (admin only; danger zone soft-delete; ADR-124)
  *   /:owner/:doco/scopes           per-Doco scope list (Edit button — not chevron — for instructions)
  *   /:owner/:doco/scopes/new       per-Doco add a scope (templates + custom form)
@@ -208,6 +209,7 @@ export default [
     "routes/$ownerSlug.$docoSlug.api.admin.apply-template-updates[.]json.tsx",
   ),
   route(":docoId/activity", "routes/$ownerSlug.$docoSlug.activity.tsx"),
+  route(":docoId/chat.json", "routes/$ownerSlug.$docoSlug.chat[.]json.tsx"),
   route(":docoId/search", "routes/$ownerSlug.$docoSlug.search.tsx"),
   route(":docoId/search.json", "routes/$ownerSlug.$docoSlug.search[.]json.tsx"),
   route(":docoId/onboarding/agent", "routes/$ownerSlug.$docoSlug.onboarding.agent.tsx"),
@@ -221,5 +223,4 @@ export default [
   // feature paths above win the match for the static paths.
   route(":docoId/:type", "routes/$ownerSlug.$docoSlug.$type._index.tsx"),
   route(":docoId/:type/:id", "routes/$ownerSlug.$docoSlug.$type.$id.tsx"),
-  route(":docoId/:type/:id/chat.json", "routes/$ownerSlug.$docoSlug.$type.$id.chat[.]json.tsx"),
 ] satisfies RouteConfig;

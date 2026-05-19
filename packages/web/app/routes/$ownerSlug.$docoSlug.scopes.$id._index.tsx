@@ -8,10 +8,9 @@
 // entities tagged with the scope remain regular members/feed items.
 // Abandon / activate is a regular Rule PATCH (lifecycle = abandoned / active).
 //
-// Layout: title-level icon picker, then two columns. Left carries Members
-// stats + Watched toggle + Guidance/Authoring rule sections with standalone
-// add links + Abandon scope link. Right carries activity heatmap +
-// scope-filtered latest activity feed.
+// Layout: title-level icon picker, then one content column for Members stats,
+// Watched toggle, Guidance/Authoring rule sections, Abandon scope, activity
+// heatmap, and scope-filtered latest activity feed.
 
 import { withClient } from "@doco/db";
 import type { EntityId } from "@doco/shared";
@@ -508,28 +507,28 @@ export async function loader({
     String(raw.name) === "#global" ||
     String(raw.name) === "global" ||
     (raw as { watched?: unknown }).watched === true;
-  // Scope description text now lives on the Scope row's `summary` column
-  // (decision_01KRYECEA32SRSQCKFXSDCBK67). Prefer the column; fall back to
-  // the YAML mirror for rows that haven't been migrated yet by
-  // applyScopeTemplateUpdatesToDoco.
+  // Scope description text now lives on the Scope row's `purpose` column.
+  // Prefer the column; fall back to YAML mirrors for rows that haven't
+  // been migrated yet.
   const scopeRow = docoId
     ? await withClient((c) =>
-        c.query<{ summary: string | null }>(
-          "SELECT summary FROM scopes WHERE id = $1 LIMIT 1",
-          [id],
-        ),
+        c.query<{ purpose: string | null }>("SELECT purpose FROM scopes WHERE id = $1 LIMIT 1", [
+          id,
+        ]),
       )
     : null;
-  const scopeColumnSummary = (scopeRow?.rows[0]?.summary ?? "").trim();
-  const scopeYamlSummary =
-    typeof raw.summary === "string" && raw.summary.trim() !== `Scope: ${String(raw.name)}`
-      ? raw.summary
-      : "";
-  const scopeSummary = scopeColumnSummary || scopeYamlSummary;
+  const scopeColumnPurpose = (scopeRow?.rows[0]?.purpose ?? "").trim();
+  const scopeYamlPurpose =
+    typeof raw.purpose === "string" && raw.purpose.trim() !== `Scope: ${String(raw.name)}`
+      ? raw.purpose
+      : typeof raw.summary === "string" && raw.summary.trim() !== `Scope: ${String(raw.name)}`
+        ? raw.summary
+        : "";
+  const scopePurpose = scopeColumnPurpose || scopeYamlPurpose;
   const scopeAllowedNodeTypes = Array.isArray(
     (raw as { allowed_node_types?: unknown }).allowed_node_types,
   )
-    ? ((raw as { allowed_node_types: unknown[] }).allowed_node_types).filter(
+    ? (raw as { allowed_node_types: unknown[] }).allowed_node_types.filter(
         (v): v is string => typeof v === "string",
       )
     : [];
@@ -543,7 +542,7 @@ export async function loader({
     scope: {
       id: String(raw.id),
       name: String(raw.name),
-      summary: scopeSummary,
+      purpose: scopePurpose,
       icon: typeof raw.icon === "string" ? raw.icon : "",
       lifecycle: typeof raw.lifecycle === "string" ? raw.lifecycle : "active",
       is_watched: isWatched,
@@ -590,11 +589,7 @@ export async function action({
         return { error: "Pick watched or not watched — no default per ADR-137bis." };
       }
       const raw = await readScopeRaw(id);
-      if (
-        raw &&
-        (raw.name === "#global" || raw.name === "global") &&
-        watchedRaw === "false"
-      ) {
+      if (raw && (raw.name === "#global" || raw.name === "global") && watchedRaw === "false") {
         return {
           error:
             "The Global scope (your doco's constitution) is always watched and cannot be unwatched (decision_01KRKS5H2A5QER84CJ8R4VD36Z).",
@@ -608,10 +603,10 @@ export async function action({
     } else if (intent === "save_icon") {
       const icon = String(form.get("icon") ?? "").trim();
       await updateScopeInDoco({ docoDir: dir, scopeId, icon: icon || null });
-    } else if (intent === "save_summary") {
-      const summary = String(form.get("summary") ?? "").trim();
-      if (!summary) return { error: "Description is required." };
-      await updateScopeInDoco({ docoDir: dir, scopeId, summary });
+    } else if (intent === "save_purpose") {
+      const purpose = String(form.get("purpose") ?? "").trim();
+      if (!purpose) return { error: "Purpose is required." };
+      await updateScopeInDoco({ docoDir: dir, scopeId, purpose });
     } else if (intent === "abandon_rule" || intent === "activate_rule") {
       // Per decision_01KRPRDR1AD7S1RP6E69BQDB2G abandoning any rule
       // (authoring, guidance, or tagged) is the same operation: PATCH the
@@ -807,8 +802,8 @@ export default function ScopePage({
               {scope.gated_by && scope.gated_by.length > 0 ? (
                 <p>
                   <span className="font-mono">gated_by</span>: {scope.gated_by.length} rule
-                  {scope.gated_by.length === 1 ? "" : "s"} cited as Doco-node-authoring rules for this scope
-                  (see the Doco-node-authoring rules section below).
+                  {scope.gated_by.length === 1 ? "" : "s"} cited as Doco-node-authoring rules for
+                  this scope (see the Doco-node-authoring rules section below).
                 </p>
               ) : null}
               {scope.excluded_rules && scope.excluded_rules.length > 0 ? (
@@ -833,9 +828,8 @@ export default function ScopePage({
           </Card>
         )}
 
-        <div className="grid gap-4 min-[840px]:grid-cols-12">
-          {/* Left column */}
-          <div className="min-w-0 min-[840px]:col-span-6 space-y-4">
+        <div className="space-y-4">
+          <div className="min-w-0 space-y-4">
             <NodesOverviewCard
               sections={
                 [
@@ -976,8 +970,7 @@ export default function ScopePage({
             )}
           </div>
 
-          {/* Right column — activity heatmap + feed */}
-          <aside className="min-w-0 min-[840px]:col-span-6 space-y-4">
+          <section className="min-w-0 space-y-4">
             <Card>
               <CardHeader>
                 <CardTitle className="text-sm">Activity</CardTitle>
@@ -1013,7 +1006,7 @@ export default function ScopePage({
                 )}
               </CardContent>
             </Card>
-          </aside>
+          </section>
         </div>
       </main>
     </div>
@@ -1026,13 +1019,12 @@ function ScopeDescriptionCard({
   scope: {
     id: string;
     name: string;
-    summary: string;
+    purpose: string;
   };
 }) {
-  // Per decision_01KRYECEA32SRSQCKFXSDCBK67 the scope's description text
-  // lives on Scope.summary directly — no Intent indirection. The
-  // rules-only constraint stays enforced server-side; the UI no longer
-  // narrates it — the friendlier Scope.summary copy carries the message.
+  // Scope purpose lives on the Scope directly — no Intent indirection.
+  // The rules-only constraint stays enforced server-side; the UI no
+  // longer narrates it separately.
   const fetcher = useFetcher<{ error?: string }>();
   const [editing, setEditing] = useState(false);
   const isSaving = fetcher.state !== "idle";
@@ -1049,13 +1041,12 @@ function ScopeDescriptionCard({
       <CardHeader>
         {editing ? (
           <fetcher.Form method="post" className="space-y-2">
-            <input type="hidden" name="intent" value="save_summary" />
+            <input type="hidden" name="intent" value="save_purpose" />
             <textarea
-              name="summary"
-              defaultValue={scope.summary}
+              name="purpose"
+              defaultValue={scope.purpose}
               rows={3}
               required
-              autoFocus
               placeholder="What this scope is meant to make true."
               className="w-full rounded-md border border-border bg-input px-3 py-2 text-xs leading-relaxed text-foreground outline-none focus:border-primary"
             />
@@ -1083,9 +1074,9 @@ function ScopeDescriptionCard({
         ) : (
           <div className="flex items-start gap-2">
             <div className="min-w-0 flex-1">
-              {scope.summary ? (
+              {scope.purpose ? (
                 <CardDescription className="text-xs leading-relaxed">
-                  {scope.summary}
+                  {scope.purpose}
                 </CardDescription>
               ) : (
                 <CardDescription className="text-xs italic">

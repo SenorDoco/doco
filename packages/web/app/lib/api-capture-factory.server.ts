@@ -3,8 +3,16 @@
 // Scope capture stays in its own file because its template-vs-custom branching
 // + required `watched` flag don't fit the simple shape.
 
-import { type DocoRole, getEntity, ROLE_RANK, roleAtLeast, withClient } from "@doco/db";
+import { type DocoRole, ROLE_RANK, getEntity, roleAtLeast, withClient } from "@doco/db";
 import { parse as parseYaml } from "yaml";
+import {
+  type CaptureError,
+  type CaptureResult,
+  type EntityPatch,
+  type NodeTypeName,
+  resolveScopeNames,
+  updateEntity,
+} from "~/lib/capture.server";
 import { docoPath } from "~/lib/db.server";
 import {
   getDocoLevelRole,
@@ -13,15 +21,7 @@ import {
   normalizeDocoParams,
 } from "~/lib/doco-access.server";
 import { withIdempotency } from "~/lib/idempotency.server";
-import { readDocoMetadata, type DocoMetadata } from "~/lib/scope-helpers.server";
-import {
-  resolveScopeNames,
-  updateEntity,
-  type CaptureError,
-  type CaptureResult,
-  type EntityPatch,
-  type NodeTypeName,
-} from "~/lib/capture.server";
+import { type DocoMetadata, readDocoMetadata } from "~/lib/scope-helpers.server";
 
 interface MeLike {
   id: string | null;
@@ -86,28 +86,19 @@ export function makeCaptureRoute<TDraft>(cfg: CaptureRouteConfig<TDraft>) {
       const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
       const { me } = await loadDocoForRead(request, handle);
       if (!me) {
-        return Response.json(
-          { error: "Authentication required to write." },
-          { status: 401 },
-        );
+        return Response.json({ error: "Authentication required to write." }, { status: 401 });
       }
       const dir = docoPath(handle);
       const meta = await readDocoMetadata(dir);
       if (!meta) {
-        return Response.json(
-          { error: `Doco "${handle}" not found.` },
-          { status: 404 },
-        );
+        return Response.json({ error: `Doco "${handle}" not found.` }, { status: 404 });
       }
       if (request.method !== "POST") {
         return Response.json({ error: "Use POST." }, { status: 405 });
       }
       const ct = (request.headers.get("content-type") ?? "").toLowerCase();
       if (!ct.includes("application/json")) {
-        return Response.json(
-          { error: "Content-Type must be application/json." },
-          { status: 400 },
-        );
+        return Response.json({ error: "Content-Type must be application/json." }, { status: 400 });
       }
       const bodyText = await request.text();
 
@@ -180,7 +171,7 @@ export function makeCaptureRoute<TDraft>(cfg: CaptureRouteConfig<TDraft>) {
  * scope-role for the principal on each, and returns the minimum role plus
  * any deny reason. Caller decides what to do with the result.
  */
-async function enforceScopeRoleGate(args: {
+export async function enforceScopeRoleGate(args: {
   meta: DocoMetadata;
   docoDir: string;
   scopeNames: string[];
@@ -247,11 +238,11 @@ async function enforceScopeRoleGate(args: {
  * We have the ids from the entity's raw_yaml; the gate needs to know
  * whether any of them is the constitution scope.
  */
-async function loadScopeNamesByIds(scopeIds: string[]): Promise<string[]> {
+export async function loadScopeNamesByIds(scopeIds: string[]): Promise<string[]> {
   if (scopeIds.length === 0) return [];
   return withClient(async (c) => {
     const r = await c.query<{ name: string }>(
-      `SELECT name FROM scopes WHERE id = ANY($1::text[])`,
+      "SELECT name FROM scopes WHERE id = ANY($1::text[])",
       [scopeIds],
     );
     return r.rows.map((row) => String(row.name));
@@ -290,10 +281,7 @@ export function makeUpdateRoute(cfg: UpdateRouteConfig) {
       // we still gate on the doco the caller actually has read access to —
       // returning 404 for "wrong doco" matches the agent-facing contract.
       if (!rec || rec.doco_id !== ctx.meta.docoId) {
-        return Response.json(
-          { error: `${cfg.nodeType} not found: ${id}` },
-          { status: 404 },
-        );
+        return Response.json({ error: `${cfg.nodeType} not found: ${id}` }, { status: 404 });
       }
       let parsed: unknown = null;
       try {
@@ -302,11 +290,21 @@ export function makeUpdateRoute(cfg: UpdateRouteConfig) {
         // Malformed YAML on disk — return raw_yaml only and let the
         // caller cope. Don't 500 — the row exists.
       }
+      const parsedRecord =
+        parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : {};
+      const scopePurpose =
+        cfg.nodeType === "scope"
+          ? (rec.purpose ??
+            (typeof parsedRecord.purpose === "string" ? parsedRecord.purpose : null) ??
+            (typeof parsedRecord.summary === "string" ? parsedRecord.summary : null))
+          : null;
       return Response.json({
         id: rec.id,
         node_type: rec.node_type,
         doco_id: rec.doco_id,
-        summary: rec.summary ?? null,
+        ...(cfg.nodeType === "scope"
+          ? { purpose: scopePurpose }
+          : { summary: rec.summary ?? null }),
         lifecycle: rec.lifecycle ?? null,
         body_md: rec.body_md ?? null,
         created_at: rec.created_at ?? null,
@@ -327,10 +325,7 @@ export function makeUpdateRoute(cfg: UpdateRouteConfig) {
       const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
       const { me } = await loadDocoForRead(request, handle);
       if (!me) {
-        return Response.json(
-          { error: "Authentication required to edit." },
-          { status: 401 },
-        );
+        return Response.json({ error: "Authentication required to edit." }, { status: 401 });
       }
       const dir = docoPath(handle);
       const meta = await readDocoMetadata(dir);
@@ -340,10 +335,7 @@ export function makeUpdateRoute(cfg: UpdateRouteConfig) {
       }
       const ct = (request.headers.get("content-type") ?? "").toLowerCase();
       if (!ct.includes("application/json")) {
-        return Response.json(
-          { error: "Content-Type must be application/json." },
-          { status: 400 },
-        );
+        return Response.json({ error: "Content-Type must be application/json." }, { status: 400 });
       }
       let patch: EntityPatch;
       try {
@@ -358,10 +350,7 @@ export function makeUpdateRoute(cfg: UpdateRouteConfig) {
       // author+. #global membership locks to doco-level owner.
       const existing = await getEntity(cfg.nodeType, id);
       if (!existing || existing.doco_id !== meta.docoId) {
-        return Response.json(
-          { error: `${cfg.nodeType} not found: ${id}` },
-          { status: 404 },
-        );
+        return Response.json({ error: `${cfg.nodeType} not found: ${id}` }, { status: 404 });
       }
       let currentScopeIds: string[] = [];
       try {

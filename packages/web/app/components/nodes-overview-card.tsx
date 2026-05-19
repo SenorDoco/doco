@@ -53,10 +53,7 @@ export function NodesOverviewCard({
                       {item.icon}
                     </span>
                   ) : null}
-                  <span
-                    className="truncate"
-                    style={item.color ? { color: item.color } : undefined}
-                  >
+                  <span className="truncate" style={item.color ? { color: item.color } : undefined}>
                     {item.label}
                   </span>
                 </Link>
@@ -80,21 +77,12 @@ export function NodesOverviewCard({
     <Card>
       {search ? <div className="p-5">{search}</div> : null}
       {aside ? (
-        <div
-          className={cn(
-            "grid min-[640px]:grid-cols-2",
-            search ? "border-t border-border" : null,
-          )}
-        >
+        <div className={cn("space-y-4", search ? "border-t border-border" : null)}>
           <div className="min-w-0 space-y-4 p-5">{sectionsBlock}</div>
-          <div className="min-w-0 space-y-4 p-5 min-[640px]:border-l min-[640px]:border-border">
-            {aside}
-          </div>
+          <div className="min-w-0 space-y-4 border-t border-border p-5">{aside}</div>
         </div>
       ) : (
-        <div
-          className={cn("space-y-4 p-5", search ? "border-t border-border" : null)}
-        >
+        <div className={cn("space-y-4 p-5", search ? "border-t border-border" : null)}>
           {sectionsBlock}
         </div>
       )}

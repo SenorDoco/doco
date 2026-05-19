@@ -585,8 +585,8 @@ export default function SearchInDoco({
   return (
     <div>
       <SiteHeader mode="host" me={me} docoScope={{ ownerSlug, docoSlug, handle }} />
-      <main className="mx-auto max-w-6xl px-6 py-6 grid grid-cols-1 md:grid-cols-[18rem_1fr] gap-6">
-        <aside className="space-y-4">
+      <main className="mx-auto max-w-6xl space-y-6 px-6 py-6">
+        <section className="space-y-4">
           <Form method="get" className="space-y-3">
             <div>
               <label className="text-xs text-muted-foreground" htmlFor="q">
@@ -645,7 +645,7 @@ export default function SearchInDoco({
               wildcardActive={filters.lifecycle === null}
             />
           </div>
-        </aside>
+        </section>
 
         <section className="space-y-4">
           <ResultsSummary pagination={pagination} />

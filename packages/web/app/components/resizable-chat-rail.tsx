@@ -1,6 +1,6 @@
-// Resizable wrapper for the node-detail chat rail. Owns the rail width
+// Resizable wrapper for the Doco-wide chat rail. Owns the rail width
 // state, the drag handle, and the localStorage persistence so the route
-// component stays focused on the page composition.
+// shell stays focused on the page composition.
 //
 // Width is clamped to [MIN_PX, viewport * MAX_RATIO]. The first paint uses
 // a sensible default (1/4 viewport, floored at MIN_PX) so SSR markup stays
@@ -9,10 +9,10 @@
 
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 
-const STORAGE_KEY = "doco.nodeView.chatRailWidth";
-const MIN_PX = 240;
-const MAX_RATIO = 0.6;
-const DEFAULT_RATIO = 0.25;
+const STORAGE_KEY = "doco.senorDoco.chatRailWidth";
+const MIN_PX = 280;
+const MAX_RATIO = 0.55;
+const DEFAULT_RATIO = 0.28;
 
 function computeDefaultWidth(viewportWidth: number): number {
   if (viewportWidth <= 0) return MIN_PX;

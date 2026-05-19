@@ -97,7 +97,6 @@ function graphLanePrincipalId(
   if (nodeType === "decision") return stringField(fm, "decided_by") ?? createdBy;
   return createdBy;
 }
-import { AiChatPane } from "~/components/ai-chat-pane";
 import { EntityGraph, type GraphLink, type GraphNode } from "~/components/entity-graph";
 import {
   type DrawerEdge,
@@ -105,7 +104,6 @@ import {
   NodeDetailDrawer,
 } from "~/components/node-detail-drawer";
 import { NodeTypeIcon } from "~/components/node-type-icon";
-import { ResizableChatRail } from "~/components/resizable-chat-rail";
 import { SiteHeader } from "~/components/site-header";
 import { lifecycleColor } from "~/lib/node-colors";
 
@@ -746,11 +744,6 @@ export default function EntityDetail({
     after: e.after,
   }));
 
-  // Chat backend lives at /<handle>/<type>/<id>/chat.json. Only enabled for
-  // node types the chat backend's tool-use surface supports.
-  const chatEndpoint = `/${handle}/${type}/${id}/chat.json`;
-  const chatSupported = CHAT_SUPPORTED_TYPES.has(type);
-
   const drawerButtons: { kind: DrawerKind; label: string }[] = [
     { kind: "relevant", label: "Relevant nodes" },
     { kind: "edges", label: "Edges" },
@@ -826,15 +819,6 @@ export default function EntityDetail({
       </div>
 
       <div className="flex min-h-0 flex-1">
-        <ResizableChatRail>
-          {chatSupported ? (
-            <AiChatPane chatEndpoint={chatEndpoint} nodeTypeLabel={type} />
-          ) : (
-            <div className="flex flex-1 items-center justify-center px-4 text-center text-xs text-muted-foreground">
-              AI chat isn't enabled for {type} nodes yet.
-            </div>
-          )}
-        </ResizableChatRail>
         <section className="relative min-h-0 min-w-0 flex-1 p-3">
           <EntityGraph
             key={`${type}:${id}`}
@@ -864,12 +848,3 @@ export default function EntityDetail({
     </div>
   );
 }
-
-const CHAT_SUPPORTED_TYPES: ReadonlySet<string> = new Set([
-  "decision",
-  "intent",
-  "rule",
-  "action",
-  "log",
-  "reference",
-]);

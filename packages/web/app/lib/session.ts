@@ -33,6 +33,7 @@ export interface CurrentPrincipal {
   id: string;
   username: string;
   type: "person" | "agent";
+  isHuman: boolean;
   email?: string;
 }
 
@@ -50,16 +51,26 @@ function rowToPrincipal(row: {
       return {} as Record<string, unknown>;
     }
   })();
-  const email =
-    row.email ?? (fm.github_identity as { email?: string } | undefined)?.email ?? null;
+  const email = row.email ?? (fm.github_identity as { email?: string } | undefined)?.email ?? null;
+  const hasGitHubIdentity = Boolean(
+    fm.github_identity &&
+      typeof fm.github_identity === "object" &&
+      !Array.isArray(fm.github_identity),
+  );
+  const isHuman = row.type === "human" || row.type === "person" || hasGitHubIdentity;
   const type: "person" | "agent" = row.type === "agent" ? "agent" : "person";
   const out: CurrentPrincipal = {
     id: row.id,
     username: row.username,
     type,
+    isHuman,
   };
   if (typeof email === "string") out.email = email;
   return out;
+}
+
+export function isHumanPrincipal(principal: CurrentPrincipal | null | undefined): boolean {
+  return principal?.isHuman === true;
 }
 
 export async function findPrincipalById(principalId: string): Promise<CurrentPrincipal | null> {
@@ -93,9 +104,7 @@ export async function getCurrentPrincipal(request: Request): Promise<CurrentPrin
  *   4. `Authorization: Bearer <credential>` header — the current
  *      DOCO_ACCESS transport.
  */
-export async function getCurrentPrincipalAsync(
-  request: Request,
-): Promise<CurrentPrincipal | null> {
+export async function getCurrentPrincipalAsync(request: Request): Promise<CurrentPrincipal | null> {
   const cookieId = getSessionPrincipalId(request);
   if (cookieId) {
     const fromCookie = await findPrincipalById(cookieId);
@@ -128,7 +137,7 @@ const AGENT_PATH_RE = /^\/agent\/([0-9a-f]{64})(?:\/|$)/;
 export function extractCredential(request: Request): string | null {
   const url = new URL(request.url);
   const pathMatch = AGENT_PATH_RE.exec(url.pathname);
-  if (pathMatch && pathMatch[1]) return pathMatch[1];
+  if (pathMatch?.[1]) return pathMatch[1];
   const qa = url.searchParams.get("_a");
   if (qa && CREDENTIAL_HEX_RE.test(qa)) return qa;
   const auth = request.headers.get("authorization");

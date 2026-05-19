@@ -1,3 +1,4 @@
+import { validateDocoSlug } from "@doco/shared";
 // /<doco-handle>/settings — admin-only Doco settings page. Renames the
 // slug, edits description + display_name, toggles visibility
 // (private/public), or deletes the Doco.
@@ -7,13 +8,13 @@
 // CASCADE — not recoverable. Per the `settings-page-delete-doco` Intent +
 // ADR.
 import { Form, Link, redirect, useSearchParams } from "react-router";
-import { validateDocoSlug } from "@doco/shared";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
+import { SiteHeader } from "~/components/site-header";
 import { rootDir } from "~/lib/db.server";
 import { loadDocoForAdmin, normalizeDocoParams } from "~/lib/doco-access.server";
 import { loadHostConfig } from "~/lib/host";
 import { reindex, renameDocoHandle, softDeleteDoco, updateDocoMeta } from "~/lib/redeem.server";
-import { SiteHeader } from "~/components/site-header";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
+import { isHumanPrincipal } from "~/lib/session";
 
 export async function loader({
   request,
@@ -51,8 +52,8 @@ export async function action({
   // ── Soft-delete (ADR-040: people only) ────────────────────────────
   if (intent === "delete") {
     if (!me) return { error: "Sign in to delete this Doco." };
-    if (me.type !== "person") {
-      return { error: "Per ADR-040, only people can delete docos. Ask the Doco's owner." };
+    if (!isHumanPrincipal(me)) {
+      return { error: "Per ADR-040, only human accounts can delete docos. Ask the Doco's owner." };
     }
     const confirmSlug = String(form.get("confirm_slug") ?? "").trim();
     if (confirmSlug !== docoSlug) {
@@ -71,7 +72,9 @@ export async function action({
   }
 
   // ── Default: save edits ───────────────────────────────────────────
-  const newHandle = String(form.get("doco_handle") ?? "").trim().toLowerCase();
+  const newHandle = String(form.get("doco_handle") ?? "")
+    .trim()
+    .toLowerCase();
   const description = String(form.get("description") ?? "");
   const visibility = (String(form.get("visibility") ?? "") as "private" | "public") || undefined;
 
@@ -148,8 +151,7 @@ export default function DocoSettings({
                   className="w-full rounded-md border border-border bg-input px-3 py-2 font-mono text-xs text-foreground outline-none focus:border-primary"
                 />
                 <span className="mt-1 block text-[11px] text-muted-foreground">
-                  Lowercase kebab-case. Renaming takes effect immediately
-                  and updates every URL.
+                  Lowercase kebab-case. Renaming takes effect immediately and updates every URL.
                 </span>
               </label>
 
@@ -190,8 +192,8 @@ export default function DocoSettings({
                   </label>
                 </div>
                 <span className="mt-1 block text-[11px] text-muted-foreground">
-                  Private docos return 404 to non-members on both the web
-                  and the API. Existence isn't leaked.
+                  Private docos return 404 to non-members on both the web and the API. Existence
+                  isn't leaked.
                 </span>
               </fieldset>
 
@@ -208,16 +210,11 @@ export default function DocoSettings({
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Related</CardTitle>
-            <CardDescription>
-              Adjacent administration pages for this Doco.
-            </CardDescription>
+            <CardDescription>Adjacent administration pages for this Doco.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-2 text-xs">
             <div>
-              <Link
-                to={`/${handle}/scopes`}
-                className="text-primary hover:underline"
-              >
+              <Link to={`/${handle}/scopes`} className="text-primary hover:underline">
                 Manage scopes →
               </Link>
               <span className="ml-2 text-muted-foreground">
@@ -235,9 +232,8 @@ export default function DocoSettings({
           <CardHeader>
             <CardTitle className="text-base text-destructive">Danger zone</CardTitle>
             <CardDescription>
-              Deleting permanently removes this Doco and every entity,
-              edge, and scope inside it. This cannot be undone. Per
-              ADR-040, only people can delete docos.
+              Deleting permanently removes this Doco and every entity, edge, and scope inside it.
+              This cannot be undone. Per ADR-040, only people can delete docos.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -252,10 +248,9 @@ export default function DocoSettings({
               <Form method="post" className="space-y-3">
                 <input type="hidden" name="intent" value="delete" />
                 <p className="text-xs">
-                  Type the Doco's slug{" "}
-                  <span className="font-mono font-semibold">{docoSlug}</span>{" "}
-                  to confirm. This permanently deletes the Doco and every
-                  entity, edge, and scope inside it. It cannot be undone.
+                  Type the Doco's slug <span className="font-mono font-semibold">{docoSlug}</span>{" "}
+                  to confirm. This permanently deletes the Doco and every entity, edge, and scope
+                  inside it. It cannot be undone.
                 </p>
                 <input
                   name="confirm_slug"

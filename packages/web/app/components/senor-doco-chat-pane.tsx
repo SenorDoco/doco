@@ -1,22 +1,14 @@
-// Left-rail chat panel on the node detail view.
-//
-// Project owner types a request in plain English ("change the lifecycle to
-// retired", "add this to #important", "tighten the summary"); the panel POSTs
-// to the per-node chat endpoint, which calls OpenAI with tool use and
-// applies the mutation via the existing capture helpers. The assistant's
-// reply renders inline alongside the list of operations that fired.
-//
-// After a successful mutation we ask react-router to revalidate the parent
-// route so the graph + header reflect the new state immediately.
-
+import { Paperclip, Send, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { useRevalidator } from "react-router";
+import { useLocation, useNavigate, useRevalidator } from "react-router";
 
 interface ChatOperation {
   tool: string;
   description: string;
   applied: boolean;
   error?: string;
+  footer_lines?: string[];
+  navigate_to?: string;
 }
 
 interface ChatAttachmentMeta {
@@ -32,29 +24,28 @@ interface ChatTurn {
   attachments?: ChatAttachmentMeta[];
 }
 
-interface AiChatPaneProps {
-  chatEndpoint: string;
-  /** Friendly noun for the placeholder, e.g. "decision" or "rule". */
-  nodeTypeLabel: string;
+interface SenorDocoChatPaneProps {
+  endpoint: string;
+  handle: string;
 }
 
 const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 
-export function AiChatPane({ chatEndpoint, nodeTypeLabel }: AiChatPaneProps) {
+export function SenorDocoChatPane({ endpoint, handle }: SenorDocoChatPaneProps) {
   const [turns, setTurns] = useState<ChatTurn[]>([]);
   const [input, setInput] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [attachments, setAttachments] = useState<File[]>([]);
-  const revalidator = useRevalidator();
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const location = useLocation();
+  const navigate = useNavigate();
+  const revalidator = useRevalidator();
 
   const turnCount = turns.length;
   useEffect(() => {
     if (!scrollRef.current) return;
-    // Reading `turnCount` + `pending` here keeps biome's exhaustive-deps
-    // check happy and ensures we re-scroll on every new turn / spinner toggle.
     if (turnCount === 0 && !pending) return;
     scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [turnCount, pending]);
@@ -104,28 +95,31 @@ export function AiChatPane({ chatEndpoint, nodeTypeLabel }: AiChatPaneProps) {
     if (fileInputRef.current) fileInputRef.current.value = "";
     setPending(true);
     try {
-      const res = await fetch(chatEndpoint, {
+      const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           message: trimmed,
           history: priorHistory,
           attachments: encoded,
+          currentPath: `${location.pathname}${location.search}`,
         }),
       });
       const data = (await res.json().catch(() => ({}))) as {
         reply?: string;
         operations?: ChatOperation[];
         mutated?: boolean;
+        navigate_to?: string;
         error?: string;
       };
       if (!res.ok) {
-        setError(data.error ?? `HTTP ${res.status}`);
+        const message = data.error ?? `HTTP ${res.status}`;
+        setError(message);
         setTurns((prev) => [
           ...prev,
           {
             role: "assistant",
-            content: `Couldn't reach the chat backend: ${data.error ?? `HTTP ${res.status}`}`,
+            content: `I couldn't complete that: ${message}`,
           },
         ]);
         return;
@@ -138,7 +132,11 @@ export function AiChatPane({ chatEndpoint, nodeTypeLabel }: AiChatPaneProps) {
           operations: data.operations ?? [],
         },
       ]);
-      if (data.mutated) revalidator.revalidate();
+      if (data.navigate_to) {
+        navigate(data.navigate_to);
+      } else if (data.mutated) {
+        revalidator.revalidate();
+      }
     } catch (e) {
       const message = (e as Error).message;
       setError(message);
@@ -149,24 +147,26 @@ export function AiChatPane({ chatEndpoint, nodeTypeLabel }: AiChatPaneProps) {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-accent/5">
-      <header className="border-b border-border px-3 py-2">
-        <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          AI chat
-        </h2>
-        <p className="text-[11px] text-muted-foreground">
-          Ask the assistant to change this {nodeTypeLabel}.
-        </p>
+    <div className="flex h-full min-h-0 flex-col bg-card">
+      <header className="border-b border-border px-4 py-3">
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <h2 className="truncate text-sm font-semibold tracking-tight">Señor Doco</h2>
+            <p className="truncate text-[11px] text-muted-foreground">{handle}</p>
+          </div>
+          <div className="h-2 w-2 shrink-0 rounded-full bg-success" aria-label="Online" />
+        </div>
       </header>
+
       <div ref={scrollRef} className="flex-1 min-h-0 space-y-3 overflow-auto px-3 py-3 text-xs">
-        {turns.length === 0 ? (
-          <EmptyHint nodeTypeLabel={nodeTypeLabel} onSuggest={send} />
-        ) : (
-          turns.map((turn, idx) => <TurnBubble key={`${turn.role}-${idx}`} turn={turn} />)
-        )}
-        {pending ? <div className="text-muted-foreground">Assistant is thinking…</div> : null}
-        {error ? <div className="text-destructive">⚠ {error}</div> : null}
+        {turns.length === 0 ? <EmptyHint onSuggest={send} /> : null}
+        {turns.map((turn, idx) => (
+          <TurnBubble key={`${turn.role}-${idx}`} turn={turn} />
+        ))}
+        {pending ? <div className="text-muted-foreground">Thinking...</div> : null}
+        {error ? <div className="text-destructive">{error}</div> : null}
       </div>
+
       <form
         className="border-t border-border p-3"
         onSubmit={(e) => {
@@ -179,17 +179,17 @@ export function AiChatPane({ chatEndpoint, nodeTypeLabel }: AiChatPaneProps) {
             {attachments.map((file, i) => (
               <li
                 key={`${file.name}-${i}`}
-                className="inline-flex items-center gap-1 rounded-md border border-border bg-input px-2 py-0.5"
+                className="inline-flex max-w-full items-center gap-1 rounded-md border border-border bg-input px-2 py-0.5"
               >
-                <span className="font-mono">{file.name}</span>
-                <span className="text-muted-foreground">{formatBytes(file.size)}</span>
+                <span className="truncate font-mono">{file.name}</span>
+                <span className="shrink-0 text-muted-foreground">{formatBytes(file.size)}</span>
                 <button
                   type="button"
                   onClick={() => removeAttachment(i)}
                   aria-label={`Remove ${file.name}`}
-                  className="ml-1 text-muted-foreground hover:text-foreground"
+                  className="shrink-0 text-muted-foreground hover:text-foreground"
                 >
-                  ✕
+                  <X className="h-3 w-3" />
                 </button>
               </li>
             ))}
@@ -204,8 +204,8 @@ export function AiChatPane({ chatEndpoint, nodeTypeLabel }: AiChatPaneProps) {
               void send(input);
             }
           }}
-          rows={3}
-          placeholder={`Ask the assistant to change this ${nodeTypeLabel}…`}
+          rows={4}
+          placeholder="Ask anything about this Doco..."
           className="block w-full resize-none rounded-md border border-border bg-input px-3 py-2 text-xs focus:border-primary focus:outline-none"
           disabled={pending}
         />
@@ -216,23 +216,25 @@ export function AiChatPane({ chatEndpoint, nodeTypeLabel }: AiChatPaneProps) {
           onChange={(e) => addFiles(e.target.files)}
           className="sr-only"
         />
-        <div className="mt-2 flex items-center justify-between gap-2 text-[10px] text-muted-foreground">
+        <div className="mt-2 flex items-center justify-between gap-2">
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
             disabled={pending}
-            className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-[10px] hover:border-primary hover:text-foreground disabled:opacity-50"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border hover:border-primary hover:text-primary disabled:opacity-50"
             aria-label="Attach files"
+            title="Attach files"
           >
-            📎 Attach
+            <Paperclip className="h-4 w-4" />
           </button>
-          <span className="flex-1 truncate">Enter to send · Shift+Enter for newline</span>
           <button
             type="submit"
             disabled={pending || (input.trim().length === 0 && attachments.length === 0)}
-            className="rounded-md bg-primary px-3 py-1 text-[11px] font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-md bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50"
+            aria-label="Send"
+            title="Send"
           >
-            {pending ? "Sending…" : "Send"}
+            <Send className="h-4 w-4" />
           </button>
         </div>
       </form>
@@ -247,8 +249,8 @@ function TurnBubble({ turn }: { turn: ChatTurn }) {
       <div
         className={
           isUser
-            ? "max-w-[85%] rounded-md bg-primary/15 px-3 py-2 text-foreground"
-            : "max-w-[85%] rounded-md border border-border bg-card px-3 py-2 text-foreground"
+            ? "max-w-[88%] rounded-md bg-primary/15 px-3 py-2 text-foreground"
+            : "max-w-[88%] rounded-md border border-border bg-background px-3 py-2 text-foreground"
         }
       >
         {turn.content ? <p className="whitespace-pre-wrap break-words">{turn.content}</p> : null}
@@ -257,11 +259,11 @@ function TurnBubble({ turn }: { turn: ChatTurn }) {
             {turn.attachments.map((att, i) => (
               <li
                 key={`${att.name}-${i}`}
-                className="inline-flex items-center gap-1 rounded border border-border/60 bg-card/60 px-1.5 py-0.5"
+                className="inline-flex max-w-full items-center gap-1 rounded border border-border/60 bg-card/60 px-1.5 py-0.5"
               >
-                <span aria-hidden>📎</span>
-                <span className="font-mono">{att.name}</span>
-                <span className="text-muted-foreground">{formatBytes(att.size)}</span>
+                <Paperclip className="h-3 w-3 shrink-0" />
+                <span className="truncate font-mono">{att.name}</span>
+                <span className="shrink-0 text-muted-foreground">{formatBytes(att.size)}</span>
               </li>
             ))}
           </ul>
@@ -273,15 +275,24 @@ function TurnBubble({ turn }: { turn: ChatTurn }) {
                 key={`${op.tool}-${i}`}
                 className={
                   op.applied
-                    ? "rounded border border-emerald-500/40 bg-emerald-500/10 px-2 py-1"
+                    ? "rounded border border-success/40 bg-success/10 px-2 py-1"
                     : "rounded border border-destructive/40 bg-destructive/10 px-2 py-1"
                 }
               >
-                <span className="font-mono">
-                  {op.applied ? "✓" : "✗"} {op.tool}
-                </span>
-                <span className="ml-2">{op.description}</span>
+                <div className="font-mono">
+                  {op.applied ? "ok" : "err"} {op.tool}
+                </div>
+                <div>{op.description}</div>
                 {op.error ? <p className="mt-0.5 text-muted-foreground">{op.error}</p> : null}
+                {op.footer_lines && op.footer_lines.length > 0 ? (
+                  <ul className="mt-1 space-y-0.5 text-muted-foreground">
+                    {op.footer_lines.map((line) => (
+                      <li key={line} className="break-words">
+                        {line}
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
               </li>
             ))}
           </ul>
@@ -291,34 +302,24 @@ function TurnBubble({ turn }: { turn: ChatTurn }) {
   );
 }
 
-function EmptyHint({
-  nodeTypeLabel,
-  onSuggest,
-}: {
-  nodeTypeLabel: string;
-  onSuggest: (prompt: string) => void;
-}) {
+function EmptyHint({ onSuggest }: { onSuggest: (prompt: string) => void }) {
   const suggestions = [
-    `Tighten the summary of this ${nodeTypeLabel}.`,
-    "Append an update note explaining recent context.",
-    "Change the lifecycle to retired.",
+    "Add a decision for the current choice.",
+    "Create an intent in #user-flows.",
+    "Change this node to planned.",
   ];
   return (
     <div className="space-y-2 text-muted-foreground">
-      <p>Type a request and the assistant will apply it. Examples:</p>
-      <ul className="space-y-1">
-        {suggestions.map((s) => (
-          <li key={s}>
-            <button
-              type="button"
-              onClick={() => onSuggest(s)}
-              className="text-left text-primary hover:underline"
-            >
-              {s}
-            </button>
-          </li>
-        ))}
-      </ul>
+      {suggestions.map((s) => (
+        <button
+          key={s}
+          type="button"
+          onClick={() => onSuggest(s)}
+          className="block w-full rounded-md border border-border px-3 py-2 text-left text-xs hover:border-primary hover:text-foreground"
+        >
+          {s}
+        </button>
+      ))}
     </div>
   );
 }

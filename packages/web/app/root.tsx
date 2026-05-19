@@ -1,15 +1,20 @@
+import { getDocoByIdOrHandle } from "@doco/db";
 import {
-  isRouteErrorResponse,
   Links,
   Meta,
   Outlet,
   Scripts,
   ScrollRestoration,
+  isRouteErrorResponse,
+  useLoaderData,
   useLocation,
   useRouteError,
 } from "react-router";
 
 import { AccessDeniedView, isAccessDeniedData } from "~/components/access-denied-view";
+import { ResizableChatRail } from "~/components/resizable-chat-rail";
+import { SenorDocoChatPane } from "~/components/senor-doco-chat-pane";
+import { getCurrentPrincipal, isHumanPrincipal } from "~/lib/session";
 import "./app.css";
 
 export function links() {
@@ -54,7 +59,70 @@ export function Layout({ children }: { children: React.ReactNode }) {
 }
 
 export default function App() {
-  return <Outlet />;
+  const data = useLoaderData<typeof loader>();
+  if (!data.docoChat) return <Outlet />;
+  return (
+    <div className="flex h-screen overflow-hidden bg-background">
+      <ResizableChatRail>
+        <SenorDocoChatPane
+          key={data.docoChat.handle}
+          endpoint={data.docoChat.endpoint}
+          handle={data.docoChat.handle}
+        />
+      </ResizableChatRail>
+      <div className="min-w-0 flex-1 overflow-auto">
+        <Outlet />
+      </div>
+    </div>
+  );
+}
+
+const HOST_LEVEL_PATHS = new Set([
+  "agent",
+  "ai",
+  "api",
+  "auth",
+  "connect",
+  "dashboard",
+  "docs",
+  "getting-started",
+  "install",
+  "invite",
+  "llms.txt",
+  "mcp",
+  "new",
+  "new-doco",
+  "new-org",
+  "onboarding",
+  "orgs",
+  "robots.txt",
+  "setup",
+  "sign-in",
+  "sign-out",
+  "sign-up",
+  "users",
+]);
+
+const NON_HTML_DOCO_LEAVES = new Set(["chat.json", "search.json", "status.json"]);
+
+export async function loader({ request }: { request: Request }) {
+  const me = await getCurrentPrincipal(request);
+  if (!isHumanPrincipal(me)) return { docoChat: null };
+  const url = new URL(request.url);
+  const parts = url.pathname.split("/").filter(Boolean);
+  const first = parts[0];
+  if (!first || HOST_LEVEL_PATHS.has(first)) return { docoChat: null };
+  if (parts[1] === "api" || NON_HTML_DOCO_LEAVES.has(parts[1] ?? "")) {
+    return { docoChat: null };
+  }
+  const row = await getDocoByIdOrHandle(first).catch(() => null);
+  if (!row) return { docoChat: null };
+  return {
+    docoChat: {
+      handle: row.handle,
+      endpoint: `/${row.handle}/chat.json`,
+    },
+  };
 }
 
 export function ErrorBoundary() {
@@ -67,10 +135,7 @@ export function ErrorBoundary() {
   if (isRouteErrorResponse(error)) {
     if (error.status === 403 && isAccessDeniedData(error.data)) {
       return (
-        <AccessDeniedView
-          data={error.data}
-          currentPath={location.pathname + location.search}
-        />
+        <AccessDeniedView data={error.data} currentPath={location.pathname + location.search} />
       );
     }
     message = `${error.status} ${error.statusText}`;
@@ -85,7 +150,9 @@ export function ErrorBoundary() {
       <div className="rounded-lg border border-destructive bg-card p-5">
         <h1 className="text-base font-semibold text-destructive">{message}</h1>
         {details ? <pre className="mt-2 text-xs text-muted-foreground">{details}</pre> : null}
-        {stack ? <pre className="mt-3 overflow-auto text-xs text-muted-foreground">{stack}</pre> : null}
+        {stack ? (
+          <pre className="mt-3 overflow-auto text-xs text-muted-foreground">{stack}</pre>
+        ) : null}
       </div>
     </main>
   );
