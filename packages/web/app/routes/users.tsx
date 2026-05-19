@@ -307,36 +307,33 @@ export async function action({
     if (!targetId) return { error: "target_id missing." };
     if (!principalId) return { error: "principal_id missing." };
 
-    // Authorize: actor must be owner at that level.
+    // Authorize: actor must be owner at that level. Use getDocoLevelRole
+    // for the doco/scope path so direct-owner docos (no doco_users row)
+    // pass the check.
     if (level === "org") {
       const role = await getOrgRole(targetId, me.id);
       if (role !== "owner") return { error: "Only org owners can change org users." };
     } else if (level === "doco") {
-      const row = await withClient(async (c) =>
-        c.query<{ role: string }>(
-          `SELECT role FROM doco_users WHERE doco_id=$1 AND principal_id=$2`,
-          [targetId, me.id],
-        ),
+      const doco = await getDocoById(targetId);
+      if (!doco) return { error: "Doco not found." };
+      const role = await getDocoLevelRole(
+        { ownerId: doco.owner_id, docoId: doco.id },
+        me.id,
       );
-      if ((row.rows[0]?.role as DocoRole | undefined) !== "owner") {
-        return { error: "Only doco owners can change doco users." };
-      }
+      if (role !== "owner") return { error: "Only doco owners can change doco users." };
     } else if (level === "scope") {
-      // Resolve parent doco; require doco-owner there.
       const sc = await withClient(async (c) =>
         c.query<{ doco_id: string }>(`SELECT doco_id FROM scopes WHERE id=$1`, [targetId]),
       );
       const docoId = sc.rows[0]?.doco_id;
       if (!docoId) return { error: "Scope not found." };
-      const row = await withClient(async (c) =>
-        c.query<{ role: string }>(
-          `SELECT role FROM doco_users WHERE doco_id=$1 AND principal_id=$2`,
-          [docoId, me.id],
-        ),
+      const doco = await getDocoById(docoId);
+      if (!doco) return { error: "Parent doco not found." };
+      const role = await getDocoLevelRole(
+        { ownerId: doco.owner_id, docoId: doco.id },
+        me.id,
       );
-      if ((row.rows[0]?.role as DocoRole | undefined) !== "owner") {
-        return { error: "Only doco owners can change scope users." };
-      }
+      if (role !== "owner") return { error: "Only doco owners can change scope users." };
     } else {
       return { error: "Invalid level." };
     }
@@ -385,14 +382,14 @@ export async function action({
       );
       docoId = docoRow.rows[0]?.id ?? null;
     } else if (level === "doco") {
-      const row = await withClient(async (c) =>
-        c.query<{ role: string }>(
-          `SELECT role FROM doco_users WHERE doco_id=$1 AND principal_id=$2`,
-          [targetId, me.id],
-        ),
-      );
-      inviterRole = (row.rows[0]?.role as DocoRole | undefined) ?? null;
-      docoId = targetId;
+      const doco = await getDocoById(targetId);
+      if (doco) {
+        inviterRole = await getDocoLevelRole(
+          { ownerId: doco.owner_id, docoId: doco.id },
+          me.id,
+        );
+        docoId = doco.id;
+      }
     } else if (level === "scope") {
       const sc = await withClient(async (c) =>
         c.query<{ doco_id: string }>(`SELECT doco_id FROM scopes WHERE id=$1`, [targetId]),
@@ -400,13 +397,13 @@ export async function action({
       docoId = sc.rows[0]?.doco_id ?? null;
       scopeId = targetId;
       if (docoId) {
-        const row = await withClient(async (c) =>
-          c.query<{ role: string }>(
-            `SELECT role FROM doco_users WHERE doco_id=$1 AND principal_id=$2`,
-            [docoId, me.id],
-          ),
-        );
-        inviterRole = (row.rows[0]?.role as DocoRole | undefined) ?? null;
+        const doco = await getDocoById(docoId);
+        if (doco) {
+          inviterRole = await getDocoLevelRole(
+            { ownerId: doco.owner_id, docoId: doco.id },
+            me.id,
+          );
+        }
       }
     } else {
       return { error: "Invalid level." };
