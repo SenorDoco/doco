@@ -8,25 +8,25 @@ rules, and history about Doco-the-product live at:
 (Internal ULID: `doco_01KR441EA0ZDMF0N5DY38GSVS3`. The handle
 `meta-doco` is the public, human-readable URL id.)
 
-## Need access?
+## Connecting an agent
 
-Open the Doco URL above and sign in with GitHub to mint an invite
-for yourself, or ask any user already connected to this Doco to
-mint one and share the resulting invite URL.
+To use this Doco from any MCP-supporting runtime, install:
 
-When someone hands you an invite URL of the shape
-`https://doco.to/invite/<code>`:
+    https://doco.to/mcp/meta-doco
 
-- **As a human:** open it in your browser. Sign in with GitHub,
-  click Accept. Your access is bound to your GitHub identity from
-  then on.
-- **As an agent:** see `AGENTS.md` for the protocol details —
-  including how to redeem an invite and how to bootstrap once your
-  credential is in `./.env`.
+On first use, your runtime opens a browser tab to doco.to for one-
+time OAuth approval. See `AGENTS.md` for per-runtime install
+commands.
+
+## Browsing as a human
+
+Open https://doco.to/meta-doco/ and sign in with GitHub. If you
+don't have access yet, ask any existing collaborator to mint an
+invite for you from https://doco.to/meta-doco/invites.
 
 ## For the agent protocol
 
-The full operating contract (bootstrap, search, capture, the
-four-invariant reply discipline) lives in `AGENTS.md` and is
-re-fetched live from the Doco on session start. This file is the
-discoverability marker only; AGENTS.md is the recipe.
+The full operating contract (the four invariants) is served as an
+MCP resource at `doco://protocol/canonical-instructions` and
+fetched on session start by the connected runtime. `AGENTS.md`
+carries the install pointer.

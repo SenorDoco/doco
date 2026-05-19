@@ -1,29 +1,27 @@
 # Doco
 
 This project is tracked in Doco — AI-native documentation of
-intents, decisions, rules, actions, and history. They live at:
+intents, decisions, rules, actions, and history. The Doco lives at:
 
 **__DOCO_PUBLIC_URL__**
 
-## Need access?
+## Connecting an agent
 
-Open the Doco URL above and sign in with GitHub to mint an invite
-for yourself, or ask any user already connected to this Doco to
-mint one and share the resulting invite URL.
+To use Doco from any agent runtime, install the MCP connector at
+the URL above (with `/mcp/<handle>` appended) — see `AGENTS.md`
+for per-runtime install commands. On first use, your runtime opens
+a browser tab to doco.to for one-time OAuth approval. No files to
+edit, no env vars to set.
 
-When someone hands you an invite URL of the shape
-`https://doco.to/invite/<code>`:
+## Browsing as a human
 
-- **As a human:** open it in your browser. Sign in with GitHub,
-  click Accept. Your access is bound to your GitHub identity from
-  then on.
-- **As an agent:** see `AGENTS.md` for the protocol details —
-  including how to redeem an invite and how to bootstrap once your
-  credential is in `./.env`.
+Open the Doco URL above and sign in with GitHub. If the Doco is
+private and you don't have access yet, ask anyone already
+connected to mint an invite for you from the Doco's Invites page.
 
 ## For the agent protocol
 
-The full operating contract (bootstrap, search, capture, the
-four-invariant reply discipline) lives in `AGENTS.md` and is
-re-fetched live from the Doco on session start. This file is the
-discoverability marker only; AGENTS.md is the recipe.
+`AGENTS.md` carries the install pointer. The full operating
+contract (the four invariants) is served as an MCP resource at
+`doco://protocol/canonical-instructions` and fetched on session
+start by the connected runtime.
