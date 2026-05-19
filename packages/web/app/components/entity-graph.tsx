@@ -524,9 +524,10 @@ export function EntityGraph({
   const visible = useMemo(() => {
     const v = nodes.filter((n) => {
       if (n.node_type === "principal") return false;
+      // The focused node may bypass scope filters, but not lifecycle filters.
+      if (!visibleLifecycles.has(nodeLifecycle(n))) return false;
       if (n.id === centerId) return true;
       if (n.node_type === "scope") return false;
-      if (!visibleLifecycles.has(nodeLifecycle(n))) return false;
       if (
         selectedScopeId !== "all" &&
         !(n.scopes ?? []).some((scope) => scope.id === selectedScopeId)
