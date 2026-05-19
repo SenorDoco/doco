@@ -101,37 +101,15 @@ export default [
   route("new-org", "routes/new-org.tsx"),
   route("orgs", "routes/orgs._index.tsx"),
   route("users", "routes/users.tsx"),
-  // Onboarding
+  // Onboarding (human paths only — agents authenticate via OAuth +
+  // install the MCP connector at /mcp/<handle>, no recipe to walk
+  // through). decision_01KS14CW9ZN23FF5CGG0Z7TH4G.
   route("onboarding/join", "routes/onboarding.join._index.tsx"),
   route("onboarding/join/human", "routes/onboarding.join.human.tsx"),
-  route("onboarding/join/agent", "routes/onboarding.join.agent.tsx"),
-  route("onboarding/join/agent.txt", "routes/onboarding.join.agent[.]txt.tsx"),
-  route("onboarding/join/agent.json", "routes/onboarding.join.agent[.]json.tsx"),
   route("onboarding/create", "routes/onboarding.create._index.tsx"),
   route("onboarding/create/human", "routes/onboarding.create.human.tsx"),
-  // /onboarding/create/agent is plain text only — the "Agent" leaf on
-  // /onboarding/create routes straight here. After
-  // decision_01KRKZM14WNA1685GN0F12WCKM the page is info-only (run
-  // `doco login --create <slug>`), so the HTML and .json siblings
-  // would just be ceremony around a one-screen instruction.
-  route("onboarding/create/agent.txt", "routes/onboarding.create.agent[.]txt.tsx"),
-  // Per the constitution rule that agents are users, /agents and
-  // /agents/new are both gone. Agent self-service flows are:
-  // POST /api/v1/docos.json (anonymous Doco creation w/ DOCO_ACCESS) and
-  // /invite/:code (redeem an invite into an agent role grant).
   // API
   route("api/suggest-scopes", "routes/api.suggest-scopes.tsx"),
-  route("api/v1/agent-bootstrap", "routes/api.v1.agent-bootstrap.tsx"),
-  route("api/v1/agent-reference", "routes/api.v1.agent-reference.tsx"),
-  // Anonymous Doco creation + invite-based collaboration. Any user
-  // (agent or human) can POST /api/v1/docos.json with no prior auth
-  // and get back a `{doco_id, doco_url, doco_access, invite_url}` envelope.
-  // The invite_url is sharable for 7 days by default; a recipient
-  // (human via /invite/<code> or agent via the redeem.json endpoint)
-  // claims their own personal access credential. The old agent-link / device-
-  // code flow is retired — that pattern fought every conservative
-  // permission classifier and lost.
-  route("api/v1/docos.json", "routes/api.v1.docos[.]json.tsx"),
   // MCP server (Streamable HTTP transport). One MCP server per Doco —
   // the runtime installs https://doco.to/mcp/<handle>. Auth is the
   // OAuth 2.1 access token (decision_01KS14CW9ZN23FF5CGG0Z7TH4G).
@@ -139,34 +117,11 @@ export default [
   // (it can't disambiguate which Doco the call belongs to).
   route("mcp", "routes/mcp.tsx", { id: "mcp-help" }),
   route("mcp/:handle", "routes/mcp.tsx", { id: "mcp" }),
-  // Graceful trap for the retired browser-authorize / device-code
-  // family. Stale-knowledge agents that still try /api/v1/agent-link/start
-  // (or poll, or authorize) get a structured 410 with next_steps_for_agent
-  // pointing at the current POST /api/v1/docos.json flow — first-call
-  // recovery instead of 404 + docs re-read. See route file header.
-  route("api/v1/agent-link/*", "routes/api.v1.agent-link.$.tsx"),
-  route("api/v1/invites/:code/redeem.json", "routes/api.v1.invites.$code.redeem[.]json.tsx"),
-  route("invite/:code/agent.txt", "routes/invite.$code.agent[.]txt.tsx"),
   route("invite/:code", "routes/invite.$code.tsx"),
   // ID-based lookup: the doco_id is immortal across renames and
   // ownership transfers. Agents that record the ULID resolve to the
-  // current canonical handle at request time. /by-id/<ULID>/* URLs
-  // were the legacy aliases; the handle URL is now canonical so the
-  // splat redirect family is gone — anyone holding a ULID hits this
-  // endpoint to discover the current `doco_handle`.
+  // current canonical handle at request time.
   route("api/v1/docos/:docoId.json", "routes/api.v1.docos.$docoId[.]json.tsx"),
-  // Legacy agent access-URL family. Older credentials live in the path; each
-  // route 308-redirects to the canonical /by-id/<doco>/<rest> shape
-  // with the credential preserved as `?_a=<cred>` so the destination
-  // authenticates. Explicit per-leaf routes win React Router 7's rank
-  // against the `:ownerSlug/:docoSlug/<literal>` patterns; the splat
-  // catches anything else.
-  route("agent/:cred/bootstrap.json", "routes/agent.$cred.bootstrap[.]json.tsx"),
-  route("agent/:cred/search.json", "routes/agent.$cred.search[.]json.tsx"),
-  route("agent/:cred/status.json", "routes/agent.$cred.status[.]json.tsx"),
-  route("agent/:cred/api/:type.json", "routes/agent.$cred.api.$type[.]json.tsx"),
-  route("agent/:cred/api/:type/:id.json", "routes/agent.$cred.api.$type.$id[.]json.tsx"),
-  route("agent/:cred/*", "routes/agent.$cred.$.tsx"),
   // Per-Doco routes: every Doco lives at `/<doco-id>/...` where
   // doco-id is the handle. `normalizeDocoParams` resolves the URL
   // param to a row. There is no owner profile page; the dashboard
