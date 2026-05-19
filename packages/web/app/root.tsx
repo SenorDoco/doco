@@ -73,9 +73,9 @@ export default function App() {
       <div className="flex min-h-0 flex-1 overflow-hidden">
         <ResizableChatRail>
           <SenorDocoChatPane
-            key={data.docoChat.handle}
             endpoint={data.docoChat.endpoint}
             handle={data.docoChat.handle}
+            principalId={data.docoChat.me.id}
           />
         </ResizableChatRail>
         <div className="min-w-0 flex-1 overflow-auto">
@@ -118,7 +118,7 @@ const NON_HTML_DOCO_LEAVES = new Set(["chat.json", "search.json", "status.json"]
 
 export async function loader({ request }: { request: Request }) {
   const me = await getCurrentPrincipal(request);
-  if (!isHumanPrincipal(me)) return { docoChat: null };
+  if (!me || !isHumanPrincipal(me)) return { docoChat: null };
   const url = new URL(request.url);
   const parts = url.pathname.split("/").filter(Boolean);
   const first = parts[0];

@@ -27,12 +27,15 @@ interface ChatTurn {
 interface SenorDocoChatPaneProps {
   endpoint: string;
   handle: string;
+  principalId: string;
 }
 
 const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+const MAX_STORED_TURNS = 40;
 
-export function SenorDocoChatPane({ endpoint, handle }: SenorDocoChatPaneProps) {
+export function SenorDocoChatPane({ endpoint, handle, principalId }: SenorDocoChatPaneProps) {
   const [turns, setTurns] = useState<ChatTurn[]>([]);
+  const [hydrated, setHydrated] = useState(false);
   const [input, setInput] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -42,8 +45,30 @@ export function SenorDocoChatPane({ endpoint, handle }: SenorDocoChatPaneProps) 
   const location = useLocation();
   const navigate = useNavigate();
   const revalidator = useRevalidator();
+  const storageKey = `senor-doco:turns:v1:${principalId}`;
 
   const turnCount = turns.length;
+  useEffect(() => {
+    setHydrated(false);
+    try {
+      const raw = window.localStorage.getItem(storageKey);
+      setTurns(raw ? sanitizeStoredTurns(JSON.parse(raw)) : []);
+    } catch {
+      setTurns([]);
+    } finally {
+      setHydrated(true);
+    }
+  }, [storageKey]);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    try {
+      window.localStorage.setItem(storageKey, JSON.stringify(turns.slice(-MAX_STORED_TURNS)));
+    } catch {
+      // Storage can be unavailable in private contexts; the live chat still works.
+    }
+  }, [hydrated, storageKey, turns]);
+
   useEffect(() => {
     if (!scrollRef.current) return;
     if (turnCount === 0 && !pending) return;
@@ -152,7 +177,7 @@ export function SenorDocoChatPane({ endpoint, handle }: SenorDocoChatPaneProps) 
         <div className="flex items-center justify-between gap-3">
           <div className="min-w-0">
             <h2 className="truncate text-sm font-semibold tracking-tight">Señor Doco</h2>
-            <p className="truncate text-[11px] text-muted-foreground">{handle}</p>
+            <p className="truncate text-[11px] text-muted-foreground">Viewing {handle}</p>
           </div>
           <div className="h-2 w-2 shrink-0 rounded-full bg-success" aria-label="Online" />
         </div>
@@ -205,7 +230,7 @@ export function SenorDocoChatPane({ endpoint, handle }: SenorDocoChatPaneProps) 
             }
           }}
           rows={4}
-          placeholder="Ask anything about this Doco..."
+          placeholder="Ask anything about any Doco..."
           className="block w-full resize-none rounded-md border border-border bg-input px-3 py-2 text-xs focus:border-primary focus:outline-none"
           disabled={pending}
         />
@@ -304,7 +329,7 @@ function TurnBubble({ turn }: { turn: ChatTurn }) {
 
 function EmptyHint({ onSuggest }: { onSuggest: (prompt: string) => void }) {
   const suggestions = [
-    "Add a decision for the current choice.",
+    "How many nodes does this Doco have?",
     "Create an intent in #user-flows.",
     "Change this node to planned.",
   ];
@@ -328,6 +353,59 @@ function formatBytes(n: number): string {
   if (n < 1024) return `${n} B`;
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
   return `${(n / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function sanitizeStoredTurns(raw: unknown): ChatTurn[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((entry): ChatTurn | null => {
+      if (!entry || typeof entry !== "object") return null;
+      const rec = entry as Record<string, unknown>;
+      const role = rec.role;
+      const content = rec.content;
+      if ((role !== "user" && role !== "assistant") || typeof content !== "string") return null;
+      const out: ChatTurn = { role, content };
+      if (Array.isArray(rec.operations)) {
+        out.operations = rec.operations
+          .map((op): ChatOperation | null => {
+            if (!op || typeof op !== "object") return null;
+            const row = op as Record<string, unknown>;
+            if (typeof row.tool !== "string" || typeof row.description !== "string") return null;
+            return {
+              tool: row.tool,
+              description: row.description,
+              applied: row.applied === true,
+              ...(typeof row.error === "string" ? { error: row.error } : {}),
+              ...(Array.isArray(row.footer_lines)
+                ? {
+                    footer_lines: row.footer_lines.filter(
+                      (line): line is string => typeof line === "string",
+                    ),
+                  }
+                : {}),
+              ...(typeof row.navigate_to === "string" ? { navigate_to: row.navigate_to } : {}),
+            };
+          })
+          .filter((op): op is ChatOperation => op !== null);
+      }
+      if (Array.isArray(rec.attachments)) {
+        out.attachments = rec.attachments
+          .map((att): ChatAttachmentMeta | null => {
+            if (!att || typeof att !== "object") return null;
+            const row = att as Record<string, unknown>;
+            if (typeof row.name !== "string") return null;
+            return {
+              name: row.name,
+              size: typeof row.size === "number" ? row.size : 0,
+              mime: typeof row.mime === "string" ? row.mime : "",
+            };
+          })
+          .filter((att): att is ChatAttachmentMeta => att !== null);
+      }
+      return out;
+    })
+    .filter((turn): turn is ChatTurn => turn !== null)
+    .slice(-MAX_STORED_TURNS);
 }
 
 async function fileToAttachment(

@@ -10,7 +10,7 @@
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { loadEnvFile } from "node:process";
-import { getEntity, roleAtLeast, withClient } from "@doco/db";
+import { type DocoRole, getEntity, listAllDocos, roleAtLeast, withClient } from "@doco/db";
 import { entityUrl } from "@doco/shared";
 import { parse as parseYaml } from "yaml";
 import { enforceScopeRoleGate, loadScopeNamesByIds } from "~/lib/api-capture-factory.server";
@@ -34,8 +34,9 @@ import {
   updateDecision,
   updateEntity,
 } from "~/lib/capture.server";
-import { getDocoLevelRole } from "~/lib/doco-access.server";
-import type { DocoMetadata } from "~/lib/scope-helpers.server";
+import { docoPath } from "~/lib/db.server";
+import { canAccessDoco, getDocoLevelRole } from "~/lib/doco-access.server";
+import { type DocoMetadata, readDocoMetadata } from "~/lib/scope-helpers.server";
 import type { CurrentPrincipal } from "~/lib/session";
 
 if (!process.env.OPENAI_API_KEY) loadDotEnvFromAncestors();
@@ -101,6 +102,22 @@ export interface RunDocoChatTurnResult {
   operations: DocoChatOperation[];
   mutated: boolean;
   navigate_to?: string;
+}
+
+interface DocoChatDocoContext {
+  handle: string;
+  docoId: string;
+  ownerSlug: string;
+  docoSlug: string;
+  docoDir: string;
+  meta: DocoMetadata;
+  role: DocoRole | null;
+  isCurrent: boolean;
+}
+
+interface ToolTarget {
+  ok: true;
+  doco: DocoChatDocoContext;
 }
 
 interface FastPathToolCall {
@@ -210,6 +227,7 @@ You can help with the whole Doco, not just the current page. Prefer fast, exact 
 Rules:
 - Use tools for concrete writes: create nodes, add edges, and change lifecycle.
 - Use get_status for count/status questions. Do not call find_nodes with an empty query.
+- You can operate on any accessible Doco. If the user names a Doco handle, pass doco_handle exactly. If they do not, use the current visible Doco.
 - Respect the current page context. If the user says "this node" or "here", use current_entity_id when present.
 - Keep replies short. One or two sentences is usually enough.
 - If a request is ambiguous, ask one short clarifying question.
@@ -229,6 +247,10 @@ const TOOLS = [
       parameters: {
         type: "object",
         properties: {
+          doco_handle: {
+            type: "string",
+            description: "Optional accessible Doco handle. Defaults to the current visible Doco.",
+          },
           node_type: {
             type: "string",
             enum: [
@@ -259,6 +281,10 @@ const TOOLS = [
       parameters: {
         type: "object",
         properties: {
+          doco_handle: {
+            type: "string",
+            description: "Optional accessible Doco handle. Defaults to the current visible Doco.",
+          },
           query: { type: "string" },
           node_type: {
             type: "string",
@@ -290,6 +316,10 @@ const TOOLS = [
       parameters: {
         type: "object",
         properties: {
+          doco_handle: {
+            type: "string",
+            description: "Optional accessible Doco handle. Defaults to the current visible Doco.",
+          },
           node_type: {
             type: "string",
             enum: ["decision", "intent", "rule", "action", "log", "reference"],
@@ -323,6 +353,10 @@ const TOOLS = [
       parameters: {
         type: "object",
         properties: {
+          doco_handle: {
+            type: "string",
+            description: "Optional accessible Doco handle. Defaults to the current visible Doco.",
+          },
           target_id: {
             type: "string",
             description: "Entity id, or current_entity_id from context.",
@@ -343,6 +377,11 @@ const TOOLS = [
       parameters: {
         type: "object",
         properties: {
+          doco_handle: {
+            type: "string",
+            description:
+              "Optional accessible Doco handle for the source node. Defaults to the current visible Doco.",
+          },
           from_id: { type: "string" },
           to_id: { type: "string" },
           edge_type: {
@@ -368,12 +407,14 @@ const TOOLS = [
 const MAX_TOOL_ROUNDS = 5;
 
 export async function runDocoChatTurn(input: RunDocoChatTurnInput): Promise<RunDocoChatTurnResult> {
-  const fastPath = parseFastPathCommand(input.message, input.attachments);
+  const docos = await loadAccessibleDocoContexts(input);
+  const fastPath = parseFastPathCommand(input.message, input.attachments, docos, input.handle);
   if (fastPath) {
     const outcome = await applyToolCall({
       tool: fastPath.tool,
       args: fastPath.args,
       input,
+      docos,
     });
     const mutated = outcome.applied && isMutatingTool(outcome.tool);
     return {
@@ -394,7 +435,7 @@ export async function runDocoChatTurn(input: RunDocoChatTurnInput): Promise<RunD
     };
   }
 
-  const context = await loadDocoChatContext(input);
+  const context = await loadDocoChatContext(input, docos);
   const messages: OpenAIChatMessage[] = [
     { role: "system", content: SYSTEM_PROMPT },
     { role: "user", content: context },
@@ -440,6 +481,7 @@ export async function runDocoChatTurn(input: RunDocoChatTurnInput): Promise<RunD
         tool: call.function.name,
         args: parseToolArgs(call.function.arguments),
         input,
+        docos,
       });
       operations.push(outcome);
       if (outcome.applied && isMutatingTool(outcome.tool)) mutated = true;
@@ -467,23 +509,92 @@ export async function runDocoChatTurn(input: RunDocoChatTurnInput): Promise<RunD
   };
 }
 
-async function loadDocoChatContext(input: RunDocoChatTurnInput): Promise<string> {
-  const scopes = await withClient(async (c) => {
+async function loadAccessibleDocoContexts(
+  input: RunDocoChatTurnInput,
+): Promise<DocoChatDocoContext[]> {
+  const rows = await listAllDocos();
+  const out: DocoChatDocoContext[] = [];
+  for (const row of rows) {
+    const docoDir = docoPath(row.handle);
+    const meta = await readDocoMetadata(docoDir).catch(() => null);
+    if (!meta) continue;
+    if (!(await canAccessDoco(meta, input.actor.id))) continue;
+    const role = await getDocoLevelRole(
+      { ownerId: meta.ownerId, docoId: meta.docoId },
+      input.actor.id,
+    );
+    out.push({
+      handle: row.handle,
+      docoId: row.id,
+      ownerSlug: row.owner_slug,
+      docoSlug: row.handle,
+      docoDir,
+      meta,
+      role,
+      isCurrent: row.handle === input.handle,
+    });
+  }
+  if (!out.some((doco) => doco.handle === input.handle)) {
+    out.unshift({
+      handle: input.handle,
+      docoId: input.docoId,
+      ownerSlug: input.ownerSlug,
+      docoSlug: input.docoSlug,
+      docoDir: input.docoDir,
+      meta: input.meta,
+      role: await getDocoLevelRole(
+        { ownerId: input.meta.ownerId, docoId: input.meta.docoId },
+        input.actor.id,
+      ),
+      isCurrent: true,
+    });
+  }
+  return out.sort(
+    (a, b) => Number(b.isCurrent) - Number(a.isCurrent) || a.handle.localeCompare(b.handle),
+  );
+}
+
+async function loadDocoChatContext(
+  input: RunDocoChatTurnInput,
+  docos: DocoChatDocoContext[],
+): Promise<string> {
+  const scopesByDoco = await withClient(async (c) => {
+    const ids = docos.map((doco) => doco.docoId);
+    if (ids.length === 0) return new Map<string, string[]>();
     const rows = (
-      await c.query<{ name: string; purpose: string | null }>(
-        "SELECT name, purpose FROM scopes WHERE doco_id = $1 AND lifecycle IN ('active', 'proposed') ORDER BY name",
-        [input.docoId],
+      await c.query<{ doco_id: string; name: string; purpose: string | null }>(
+        "SELECT doco_id, name, purpose FROM scopes WHERE doco_id = ANY($1) AND lifecycle IN ('active', 'proposed') ORDER BY name",
+        [ids],
       )
     ).rows;
-    return rows.map((s) => `${s.name}${s.purpose ? ` — ${s.purpose}` : ""}`);
+    const grouped = new Map<string, string[]>();
+    for (const row of rows) {
+      const list = grouped.get(row.doco_id) ?? [];
+      list.push(`${row.name}${row.purpose ? ` — ${row.purpose}` : ""}`);
+      grouped.set(row.doco_id, list);
+    }
+    return grouped;
   });
   const current = await loadCurrentEntitySnapshot(input);
+  const docoLines = docos.map((doco) => {
+    const marker = doco.isCurrent ? " (current visible Doco, default target)" : "";
+    const role = doco.role ? `role=${doco.role}` : "scope-only/read access";
+    const scopes = scopesByDoco.get(doco.docoId) ?? [];
+    return [
+      `- ${doco.handle}${marker}; ${role}`,
+      scopes.length
+        ? scopes.map((scope) => `  - ${scope}`).join("\n")
+        : "  - (no active/proposed scopes)",
+    ].join("\n");
+  });
   return [
-    `Doco handle: ${input.handle}`,
+    `Current visible Doco: ${input.handle}`,
     `Current page: ${input.currentPath || "/"}`,
     `Signed-in human principal: ${input.actor.username} (${input.actor.id})`,
-    "Available scopes:",
-    scopes.length ? scopes.map((s) => `- ${s}`).join("\n") : "- (none)",
+    "Accessible Docos and scopes:",
+    docoLines.length ? docoLines.join("\n") : "- (none)",
+    "",
+    "Targeting rule: if the user does not name a Doco, use the current visible Doco. If the user names one of the accessible Doco handles, pass that handle as doco_handle.",
     "",
     current,
   ].join("\n");
@@ -560,28 +671,47 @@ async function callOpenAI(apiKey: string, messages: OpenAIChatMessage[]): Promis
 function parseFastPathCommand(
   rawMessage: string,
   attachments: ChatAttachment[] | undefined,
+  docos: DocoChatDocoContext[],
+  currentHandle: string,
 ): FastPathToolCall | null {
   if (attachments?.length) return null;
   const message = rawMessage.trim().replace(/\s+/g, " ");
   if (!message) return null;
+  const mentionedHandle = findMentionedDocoHandle(message, docos);
+  const mentionsOtherDoco = !!mentionedHandle && mentionedHandle !== currentHandle;
   return (
-    parseFastStatusQuestion(message) ??
-    parseFastCreateNode(message) ??
-    parseFastLifecycleChange(message) ??
-    parseFastAddEdge(message)
+    parseFastStatusQuestion(message, mentionedHandle) ??
+    (mentionsOtherDoco
+      ? null
+      : (parseFastCreateNode(message) ??
+        parseFastLifecycleChange(message) ??
+        parseFastAddEdge(message)))
   );
 }
 
-function parseFastStatusQuestion(message: string): FastPathToolCall | null {
+function parseFastStatusQuestion(
+  message: string,
+  mentionedHandle: string | null,
+): FastPathToolCall | null {
   const lower = message.toLowerCase();
   const asksForCount = /\b(how many|count|counts|total|number of)\b/.test(lower);
   if (!asksForCount) return null;
-  const target = inferCountTarget(lower);
+  const targetText = mentionedHandle ? lower.replaceAll(mentionedHandle.toLowerCase(), "") : lower;
+  const target = inferCountTarget(targetText) ?? (mentionedHandle ? "nodes" : null);
   if (!target) return null;
   return {
     tool: "get_status",
-    args: { node_type: target },
+    args: {
+      node_type: target,
+      ...(mentionedHandle ? { doco_handle: mentionedHandle } : {}),
+    },
   };
+}
+
+function findMentionedDocoHandle(message: string, docos: DocoChatDocoContext[]): string | null {
+  const lower = message.toLowerCase();
+  const handles = docos.map((doco) => doco.handle).sort((a, b) => b.length - a.length);
+  return handles.find((handle) => lower.includes(handle.toLowerCase())) ?? null;
 }
 
 function parseFastCreateNode(message: string): FastPathToolCall | null {
@@ -721,49 +851,77 @@ async function applyToolCall(opts: {
   tool: string;
   args: Record<string, unknown>;
   input: RunDocoChatTurnInput;
+  docos: DocoChatDocoContext[];
 }): Promise<DocoChatOperation> {
-  const { tool, args, input } = opts;
+  const { tool, args, input, docos } = opts;
   switch (tool) {
     case "get_status":
-      return getStatus(input, args);
+      return getStatus(input, args, docos);
     case "find_nodes":
-      return findNodes(input, args);
+      return findNodes(input, args, docos);
     case "create_node":
-      return createNode(input, args);
+      return createNode(input, args, docos);
     case "change_lifecycle":
-      return changeLifecycle(input, args);
+      return changeLifecycle(input, args, docos);
     case "add_edge":
-      return addEdge(input, args);
+      return addEdge(input, args, docos);
     default:
       return { tool, description: `Unknown tool: ${tool}`, applied: false, error: "Unknown tool." };
   }
 }
 
+function resolveToolDoco(
+  input: RunDocoChatTurnInput,
+  args: Record<string, unknown>,
+  docos: DocoChatDocoContext[],
+): ToolTarget | { ok: false; operation: DocoChatOperation } {
+  const requestedHandle = stringArg(args.doco_handle);
+  const handle = requestedHandle || input.handle;
+  const doco = docos.find((candidate) => candidate.handle === handle);
+  if (doco) return { ok: true, doco };
+  return {
+    ok: false,
+    operation: {
+      tool: "resolve_doco",
+      description: `Resolve Doco ${handle}`,
+      applied: false,
+      error: requestedHandle
+        ? `I do not have access to a Doco with handle "${requestedHandle}".`
+        : "No current Doco context is available.",
+    },
+  };
+}
+
 async function getStatus(
   input: RunDocoChatTurnInput,
   args: Record<string, unknown>,
+  docos: DocoChatDocoContext[],
 ): Promise<DocoChatOperation> {
+  const targetResult = resolveToolDoco(input, args, docos);
+  if (!targetResult.ok) return { ...targetResult.operation, tool: "get_status" };
+  const targetDoco = targetResult.doco;
   const rawTarget = typeof args.node_type === "string" ? args.node_type : "nodes";
   const target = COUNT_TARGETS.get(rawTarget.toLowerCase()) ?? "nodes";
-  const counts = await loadDocoCounts(input.docoId);
+  const counts = await loadDocoCounts(targetDoco.docoId);
+  const label = targetDoco.handle === input.handle ? "This Doco" : targetDoco.handle;
   if (target === "edges") {
     return {
       tool: "get_status",
-      description: `This Doco has ${formatCount(counts.edges, "edge")}.`,
+      description: `${label} has ${formatCount(counts.edges, "edge")}.`,
       applied: true,
     };
   }
   if (target !== "nodes") {
     return {
       tool: "get_status",
-      description: `This Doco has ${formatCount(counts.byType[target] ?? 0, singularLabel(target))}.`,
+      description: `${label} has ${formatCount(counts.byType[target] ?? 0, singularLabel(target))}.`,
       applied: true,
     };
   }
   const byType = COUNT_TABLES.map(({ key }) => `${key}: ${counts.byType[key] ?? 0}`).join(", ");
   return {
     tool: "get_status",
-    description: `This Doco has ${formatCount(counts.nodes, "node")} and ${formatCount(counts.edges, "edge")}. By type: ${byType}.`,
+    description: `${label} has ${formatCount(counts.nodes, "node")} and ${formatCount(counts.edges, "edge")}. By type: ${byType}.`,
     applied: true,
   };
 }
@@ -800,7 +958,11 @@ async function loadDocoCounts(docoId: string): Promise<{
 async function findNodes(
   input: RunDocoChatTurnInput,
   args: Record<string, unknown>,
+  docos: DocoChatDocoContext[],
 ): Promise<DocoChatOperation> {
+  const targetResult = resolveToolDoco(input, args, docos);
+  if (!targetResult.ok) return { ...targetResult.operation, tool: "find_nodes" };
+  const targetDoco = targetResult.doco;
   const query = typeof args.query === "string" ? args.query.trim() : "";
   const requestedType = typeof args.node_type === "string" ? args.node_type : "any";
   if (!query) {
@@ -830,7 +992,7 @@ async function findNodes(
             AND (id = $2 OR ${labelExpr} ILIKE '%' || $2 || '%')
           ORDER BY updated_at DESC
           LIMIT 6`,
-        [input.docoId, query, t],
+        [targetDoco.docoId, query, t],
       );
       out.push(...result.rows);
     }
@@ -840,14 +1002,18 @@ async function findNodes(
     ? rows
         .map((r) => `${r.id} (${r.node_type}, ${r.lifecycle ?? "no lifecycle"}): ${r.label}`)
         .join("\n")
-    : `No nodes found for "${query}".`;
+    : `No nodes found in ${targetDoco.handle} for "${query}".`;
   return { tool: "find_nodes", description, applied: true };
 }
 
 async function createNode(
   input: RunDocoChatTurnInput,
   args: Record<string, unknown>,
+  docos: DocoChatDocoContext[],
 ): Promise<DocoChatOperation> {
+  const targetResult = resolveToolDoco(input, args, docos);
+  if (!targetResult.ok) return { ...targetResult.operation, tool: "create_node" };
+  const targetDoco = targetResult.doco;
   const nodeType = typeof args.node_type === "string" ? args.node_type : "";
   if (!CAPTURE_NODE_TYPES.has(nodeType)) {
     return {
@@ -868,8 +1034,8 @@ async function createNode(
     };
   }
   const gate = await enforceScopeRoleGate({
-    meta: input.meta,
-    docoDir: input.docoDir,
+    meta: targetDoco.meta,
+    docoDir: targetDoco.docoDir,
     scopeNames,
     principalId: input.actor.id,
     mutatesLifecycle: false,
@@ -897,10 +1063,10 @@ async function createNode(
       ...(lifecycle ? { lifecycle } : {}),
     };
     result = await captureDecision(
-      input.docoDir,
-      input.docoId,
-      input.ownerSlug,
-      input.docoSlug,
+      targetDoco.docoDir,
+      targetDoco.docoId,
+      targetDoco.ownerSlug,
+      targetDoco.docoSlug,
       draft,
       input.docoHost,
     );
@@ -913,10 +1079,10 @@ async function createNode(
       ...(lifecycle ? { lifecycle } : {}),
     };
     result = await captureIntent(
-      input.docoDir,
-      input.docoId,
-      input.ownerSlug,
-      input.docoSlug,
+      targetDoco.docoDir,
+      targetDoco.docoId,
+      targetDoco.ownerSlug,
+      targetDoco.docoSlug,
       draft,
       input.docoHost,
     );
@@ -931,10 +1097,10 @@ async function createNode(
       ...(lifecycle ? { lifecycle } : {}),
     };
     result = await captureAction(
-      input.docoDir,
-      input.docoId,
-      input.ownerSlug,
-      input.docoSlug,
+      targetDoco.docoDir,
+      targetDoco.docoId,
+      targetDoco.ownerSlug,
+      targetDoco.docoSlug,
       draft,
       input.docoHost,
     );
@@ -951,10 +1117,10 @@ async function createNode(
       ...(lifecycle ? { lifecycle } : {}),
     };
     result = await captureLog(
-      input.docoDir,
-      input.docoId,
-      input.ownerSlug,
-      input.docoSlug,
+      targetDoco.docoDir,
+      targetDoco.docoId,
+      targetDoco.ownerSlug,
+      targetDoco.docoSlug,
       draft,
       input.docoHost,
     );
@@ -969,10 +1135,10 @@ async function createNode(
       ...(lifecycle ? { lifecycle } : {}),
     };
     result = await captureRule(
-      input.docoDir,
-      input.docoId,
-      input.ownerSlug,
-      input.docoSlug,
+      targetDoco.docoDir,
+      targetDoco.docoId,
+      targetDoco.ownerSlug,
+      targetDoco.docoSlug,
       draft,
       input.docoHost,
     );
@@ -988,16 +1154,16 @@ async function createNode(
       ...(lifecycle ? { lifecycle } : {}),
     };
     result = await captureReference(
-      input.docoDir,
-      input.docoId,
-      input.ownerSlug,
-      input.docoSlug,
+      targetDoco.docoDir,
+      targetDoco.docoId,
+      targetDoco.ownerSlug,
+      targetDoco.docoSlug,
       draft,
       input.docoHost,
     );
   }
   return operationFromCapture(
-    input,
+    targetDoco,
     "create_node",
     `Create ${nodeType}: ${summary}`,
     nodeType as NodeTypeName,
@@ -1008,7 +1174,11 @@ async function createNode(
 async function changeLifecycle(
   input: RunDocoChatTurnInput,
   args: Record<string, unknown>,
+  docos: DocoChatDocoContext[],
 ): Promise<DocoChatOperation> {
+  const targetResult = resolveToolDoco(input, args, docos);
+  if (!targetResult.ok) return { ...targetResult.operation, tool: "change_lifecycle" };
+  const targetDoco = targetResult.doco;
   const targetId = stringArg(args.target_id);
   const lifecycle = stringArg(args.lifecycle);
   if (!targetId || !lifecycle) {
@@ -1036,7 +1206,7 @@ async function changeLifecycle(
       error: "Unsupported target id.",
     };
   }
-  const canPatch = await ensureCanPatchEntity(input, targetId, nodeType, true);
+  const canPatch = await ensureCanPatchEntity(input, targetDoco, targetId, nodeType, true);
   if (!canPatch.ok) {
     return {
       tool: "change_lifecycle",
@@ -1048,20 +1218,20 @@ async function changeLifecycle(
   const result =
     nodeType === "decision"
       ? await updateDecision(
-          input.docoDir,
-          input.docoId,
-          input.ownerSlug,
-          input.docoSlug,
+          targetDoco.docoDir,
+          targetDoco.docoId,
+          targetDoco.ownerSlug,
+          targetDoco.docoSlug,
           targetId,
           { lifecycle },
           input.docoHost,
           input.actor.id,
         )
       : await updateEntity({
-          docoDir: input.docoDir,
-          docoId: input.docoId,
-          ownerSlug: input.ownerSlug,
-          docoSlug: input.docoSlug,
+          docoDir: targetDoco.docoDir,
+          docoId: targetDoco.docoId,
+          ownerSlug: targetDoco.ownerSlug,
+          docoSlug: targetDoco.docoSlug,
           nodeType,
           pluralDir: PLURAL_DIR[nodeType],
           id: targetId,
@@ -1071,7 +1241,7 @@ async function changeLifecycle(
           actorId: input.actor.id,
         });
   return operationFromCapture(
-    input,
+    targetDoco,
     "change_lifecycle",
     `Change ${targetId} lifecycle → ${lifecycle}`,
     nodeType,
@@ -1082,7 +1252,11 @@ async function changeLifecycle(
 async function addEdge(
   input: RunDocoChatTurnInput,
   args: Record<string, unknown>,
+  docos: DocoChatDocoContext[],
 ): Promise<DocoChatOperation> {
+  const targetResult = resolveToolDoco(input, args, docos);
+  if (!targetResult.ok) return { ...targetResult.operation, tool: "add_edge" };
+  const targetDoco = targetResult.doco;
   const fromId = stringArg(args.from_id);
   const toId = stringArg(args.to_id);
   const edgeType = stringArg(args.edge_type);
@@ -1103,7 +1277,7 @@ async function addEdge(
       error: "Unsupported source node type.",
     };
   }
-  const canPatch = await ensureCanPatchEntity(input, fromId, fromType, false);
+  const canPatch = await ensureCanPatchEntity(input, targetDoco, fromId, fromType, false);
   if (!canPatch.ok) {
     return {
       tool: "add_edge",
@@ -1112,7 +1286,7 @@ async function addEdge(
       error: canPatch.error,
     };
   }
-  const patchResult = await edgePatch(input, fromId, fromType, toId, edgeType);
+  const patchResult = await edgePatch(targetDoco, fromId, fromType, toId, edgeType);
   if (!patchResult.ok) {
     return {
       tool: "add_edge",
@@ -1123,8 +1297,8 @@ async function addEdge(
   }
   if (edgeType === "in_scope_of") {
     const gate = await enforceScopeRoleGate({
-      meta: input.meta,
-      docoDir: input.docoDir,
+      meta: targetDoco.meta,
+      docoDir: targetDoco.docoDir,
       scopeNames: [patchResult.scopeName],
       principalId: input.actor.id,
       mutatesLifecycle: false,
@@ -1141,20 +1315,20 @@ async function addEdge(
   const result =
     fromType === "decision"
       ? await updateDecision(
-          input.docoDir,
-          input.docoId,
-          input.ownerSlug,
-          input.docoSlug,
+          targetDoco.docoDir,
+          targetDoco.docoId,
+          targetDoco.ownerSlug,
+          targetDoco.docoSlug,
           fromId,
           patchResult.patch,
           input.docoHost,
           input.actor.id,
         )
       : await updateEntity({
-          docoDir: input.docoDir,
-          docoId: input.docoId,
-          ownerSlug: input.ownerSlug,
-          docoSlug: input.docoSlug,
+          docoDir: targetDoco.docoDir,
+          docoId: targetDoco.docoId,
+          ownerSlug: targetDoco.ownerSlug,
+          docoSlug: targetDoco.docoSlug,
           nodeType: fromType,
           pluralDir: PLURAL_DIR[fromType],
           id: fromId,
@@ -1164,7 +1338,7 @@ async function addEdge(
           actorId: input.actor.id,
         });
   return operationFromCapture(
-    input,
+    targetDoco,
     "add_edge",
     `Add ${edgeType}: ${fromId} → ${toId}`,
     fromType,
@@ -1173,14 +1347,14 @@ async function addEdge(
 }
 
 function operationFromCapture(
-  input: RunDocoChatTurnInput,
+  targetDoco: DocoChatDocoContext,
   tool: string,
   description: string,
   nodeType: NodeTypeName,
   result: CaptureResult | CaptureError,
 ): DocoChatOperation {
   if ("error" in result) return { tool, description, applied: false, error: result.error };
-  const navigate_to = entityUrl({ docoId: input.handle, nodeType, id: result.id });
+  const navigate_to = entityUrl({ docoId: targetDoco.handle, nodeType, id: result.id });
   return {
     tool,
     description,
@@ -1192,12 +1366,13 @@ function operationFromCapture(
 
 async function ensureCanPatchEntity(
   input: RunDocoChatTurnInput,
+  targetDoco: DocoChatDocoContext,
   id: string,
   nodeType: NodeTypeName,
   mutatesLifecycle: boolean,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const existing = await getEntity(nodeType, id);
-  if (!existing || existing.doco_id !== input.docoId) {
+  if (!existing || existing.doco_id !== targetDoco.docoId) {
     return { ok: false, error: `${nodeType} not found: ${id}` };
   }
   const fm = parseRecord(existing.raw_yaml);
@@ -1207,8 +1382,8 @@ async function ensureCanPatchEntity(
   const scopeNames = await loadScopeNamesByIds(scopeIds);
   if (scopeNames.length > 0) {
     const gate = await enforceScopeRoleGate({
-      meta: input.meta,
-      docoDir: input.docoDir,
+      meta: targetDoco.meta,
+      docoDir: targetDoco.docoDir,
       scopeNames,
       principalId: input.actor.id,
       mutatesLifecycle,
@@ -1217,7 +1392,7 @@ async function ensureCanPatchEntity(
     return { ok: true };
   }
   const role = await getDocoLevelRole(
-    { ownerId: input.meta.ownerId, docoId: input.meta.docoId },
+    { ownerId: targetDoco.meta.ownerId, docoId: targetDoco.meta.docoId },
     input.actor.id,
   );
   if (!role || !roleAtLeast(role, "author"))
@@ -1229,7 +1404,7 @@ async function ensureCanPatchEntity(
 }
 
 async function edgePatch(
-  input: RunDocoChatTurnInput,
+  targetDoco: DocoChatDocoContext,
   fromId: string,
   fromType: NodeTypeName,
   toId: string,
@@ -1248,8 +1423,15 @@ async function edgePatch(
   }
   const targetType = toId.split("_")[0] ?? "";
   const rec = await getEntity(fromType, fromId);
-  if (!rec || rec.doco_id !== input.docoId)
+  if (!rec || rec.doco_id !== targetDoco.docoId)
     return { ok: false, error: `${fromType} not found: ${fromId}` };
+  const targetNodeType = nodeTypeFromId(toId);
+  if (targetNodeType) {
+    const target = await getEntity(targetNodeType, toId).catch(() => null);
+    if (!target || target.doco_id !== targetDoco.docoId) {
+      return { ok: false, error: `Target not found in ${targetDoco.handle}: ${toId}` };
+    }
+  }
   const fm = parseRecord(rec.raw_yaml);
   if (edgeType === "serves") {
     if (targetType !== "intent") return { ok: false, error: "serves edges must target an Intent." };
