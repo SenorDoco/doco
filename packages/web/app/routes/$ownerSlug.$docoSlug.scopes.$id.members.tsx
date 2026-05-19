@@ -7,9 +7,9 @@ import {
   type DocoRole,
   getPrincipalById,
   getPrincipalByUsername,
-  listScopeMembers,
-  removeScopeMember,
-  upsertScopeMember,
+  listScopeUsers,
+  removeScopeUser,
+  upsertScopeUser,
   withClient,
 } from "@doco/db";
 import { Form, Link } from "react-router";
@@ -41,7 +41,7 @@ export async function loader({
   const scope = await loadScopeRow(params.id, meta.docoId);
   if (!scope) throw new Response("Scope not found", { status: 404 });
 
-  const members = await listScopeMembers(scope.id);
+  const members = await listScopeUsers(scope.id);
   const enriched = await Promise.all(
     members.map(async (m) => {
       const p = await getPrincipalById(m.principal_id);
@@ -89,7 +89,7 @@ export async function action({
     if (!ALL_ROLES.includes(role)) return { error: "Invalid role." };
     const p = await getPrincipalByUsername(username);
     if (!p) return { error: `No principal with username "${username}".` };
-    await upsertScopeMember({ scope_id: scope.id, principal_id: p.id, role });
+    await upsertScopeUser({ scope_id: scope.id, principal_id: p.id, role });
     return { ok: true as const };
   }
 
@@ -98,14 +98,14 @@ export async function action({
     const role = String(form.get("role") ?? "") as DocoRole;
     if (!principalId) return { error: "principal_id missing." };
     if (!ALL_ROLES.includes(role)) return { error: "Invalid role." };
-    await upsertScopeMember({ scope_id: scope.id, principal_id: principalId, role });
+    await upsertScopeUser({ scope_id: scope.id, principal_id: principalId, role });
     return { ok: true as const };
   }
 
   if (intent === "remove") {
     const principalId = String(form.get("principal_id") ?? "").trim();
     if (!principalId) return { error: "principal_id missing." };
-    await removeScopeMember(scope.id, principalId);
+    await removeScopeUser(scope.id, principalId);
     return { ok: true as const };
   }
 
@@ -113,7 +113,7 @@ export async function action({
 }
 
 export function meta() {
-  return [{ title: "Scope members · Doco" }];
+  return [{ title: "Scope users · Doco" }];
 }
 
 export default function ScopeMembersPage({
@@ -156,7 +156,7 @@ export default function ScopeMembersPage({
 
         <Card>
           <CardHeader>
-            <CardTitle>Scope members</CardTitle>
+            <CardTitle>Scope users</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             {loaderData.members.length === 0 ? (
@@ -228,7 +228,7 @@ export default function ScopeMembersPage({
 
         <Card>
           <CardHeader>
-            <CardTitle>Add a scope member</CardTitle>
+            <CardTitle>Add a scope user</CardTitle>
           </CardHeader>
           <CardContent>
             <Form method="post" className="flex flex-col gap-3 sm:flex-row sm:items-end">

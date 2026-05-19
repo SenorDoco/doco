@@ -1,6 +1,6 @@
 // /<doco-handle>/members — doco-level members management
 // (decision_01KS0JBJ5X0AZ4XJJFKEWE1R62). Owner-only. Lists every
-// principal with an explicit doco_members row, lets the owner change
+// principal with an explicit doco_users row, lets the owner change
 // or revoke their role, and mints share-by-revealing invite URLs to
 // bring new collaborators in.
 
@@ -8,10 +8,10 @@ import {
   type DocoRole,
   getDocoById,
   getPrincipalById,
-  listDocoMembers,
-  removeDocoMember,
+  listDocoUsers,
+  removeDocoUser,
   ROLE_RANK,
-  upsertDocoMember,
+  upsertDocoUser,
 } from "@doco/db";
 import type { EntityId } from "@doco/shared";
 import { useEffect, useState } from "react";
@@ -47,7 +47,7 @@ export async function loader({
   const doco = await getDocoById(meta.docoId);
   if (!doco) throw new Response("Doco not found", { status: 404 });
 
-  const members = await listDocoMembers(meta.docoId);
+  const members = await listDocoUsers(meta.docoId);
   const enriched = await Promise.all(
     members.map(async (m) => {
       const p = await getPrincipalById(m.principal_id);
@@ -107,14 +107,14 @@ export async function action({
     const role = String(form.get("role") ?? "") as DocoRole;
     if (!principalId) return { error: "principal_id missing." };
     if (!ALL_ROLES.includes(role)) return { error: "Invalid role." };
-    await upsertDocoMember({ doco_id: meta.docoId, principal_id: principalId, role });
+    await upsertDocoUser({ doco_id: meta.docoId, principal_id: principalId, role });
     return { intent: "update", ok: true, principal_id: principalId, role };
   }
 
   if (intent === "remove") {
     const principalId = String(form.get("principal_id") ?? "").trim();
     if (!principalId) return { error: "principal_id missing." };
-    await removeDocoMember(meta.docoId, principalId);
+    await removeDocoUser(meta.docoId, principalId);
     return { intent: "remove", ok: true, principal_id: principalId };
   }
 
@@ -131,7 +131,7 @@ export async function action({
       me.id,
     );
     if (!inviterRole) {
-      return { error: "Only doco members can mint invites." };
+      return { error: "Only doco users can mint invites." };
     }
     if (ROLE_RANK[role] > ROLE_RANK[inviterRole]) {
       return {
@@ -196,12 +196,12 @@ export default function DocoMembersPage({
 
         <Card>
           <CardHeader>
-            <CardTitle>Doco members</CardTitle>
+            <CardTitle>Doco users</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             {loaderData.members.length === 0 ? (
               <p className="text-sm text-muted-foreground">
-                No explicit members yet. The doco owner is <code>{loaderData.docoOwnerId}</code>.
+                No explicit users yet. The doco owner is <code>{loaderData.docoOwnerId}</code>.
               </p>
             ) : (
               <table className="w-full text-sm">
@@ -345,7 +345,7 @@ function InviteCard({ inviterRole }: { inviterRole: DocoRole | null }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Invite a collaborator</CardTitle>
+        <CardTitle>Invite a user</CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
         <fetcher.Form method="post" className="flex flex-col gap-3 sm:flex-row sm:items-end">

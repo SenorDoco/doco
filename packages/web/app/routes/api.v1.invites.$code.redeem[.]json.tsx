@@ -34,7 +34,7 @@ import type { EntityId } from "@doco/shared";
 import { TokenStore } from "~/lib/tokens.server";
 import { docoPath, rootDir } from "~/lib/db.server";
 import { addAgentPrincipal } from "~/lib/redeem.server";
-import { type DocoRole, getDocoById, upsertDocoMember } from "@doco/db";
+import { type DocoRole, getDocoById, upsertDocoUser } from "@doco/db";
 import { buildAgentBootstrapResponse } from "~/lib/agent-bootstrap-response.server";
 import { loadBootstrapContext } from "~/lib/bootstrap-context.server";
 
@@ -123,11 +123,11 @@ export async function action({
     return Response.json({ status: "consumed" }, { status: 410 });
   }
 
-  // decision_01KS0JBJ5X0AZ4XJJFKEWE1R62: write the doco_members grant for
+  // decision_01KS0JBJ5X0AZ4XJJFKEWE1R62: write the doco_users grant for
   // the redeemer at the role baked into the invite. Pre-cutover invites
   // (no role field) default to `owner` to preserve the prior posture.
   const grantedRole: DocoRole = (consumed.role as DocoRole | undefined) ?? "owner";
-  await upsertDocoMember({
+  await upsertDocoUser({
     doco_id: invite.doco_id,
     principal_id: agentId,
     role: grantedRole,

@@ -10,7 +10,7 @@ import {
   getPrincipalByUsername,
   isOrgAdmin,
   resolveOwnerSlug,
-  upsertOrgMember,
+  upsertOrgUser,
   withClient,
 } from "@doco/db";
 import { SiteHeader } from "~/components/site-header";
@@ -19,10 +19,10 @@ import { getCurrentPrincipal } from "~/lib/session";
 
 const ALL_ROLES: DocoRole[] = ["owner", "approver", "author", "reader"];
 
-async function listOrgMembersWithPrincipals(orgId: string) {
+async function listOrgUsersWithPrincipals(orgId: string) {
   return withClient(async (c) => {
     const r = await c.query<{ principal_id: string; role: string; joined_at: string | Date }>(
-      `SELECT principal_id, role, joined_at FROM org_members WHERE org_id = $1 ORDER BY joined_at`,
+      `SELECT principal_id, role, joined_at FROM org_users WHERE org_id = $1 ORDER BY joined_at`,
       [orgId],
     );
     return Promise.all(
@@ -40,10 +40,10 @@ async function listOrgMembersWithPrincipals(orgId: string) {
   });
 }
 
-async function removeOrgMember(orgId: string, principalId: string) {
+async function removeOrgUser(orgId: string, principalId: string) {
   await withClient(async (c) => {
     await c.query(
-      `DELETE FROM org_members WHERE org_id = $1 AND principal_id = $2`,
+      `DELETE FROM org_users WHERE org_id = $1 AND principal_id = $2`,
       [orgId, principalId],
     );
   });
@@ -66,9 +66,9 @@ export async function loader({
   }
   const isAdmin = await isOrgAdmin(resolved.org.id, me.id);
   if (!isAdmin) {
-    throw new Response("Forbidden: only org owners can manage members.", { status: 403 });
+    throw new Response("Forbidden: only org owners can manage users.", { status: 403 });
   }
-  const members = await listOrgMembersWithPrincipals(resolved.org.id);
+  const members = await listOrgUsersWithPrincipals(resolved.org.id);
   return {
     me,
     org: { id: resolved.org.id, slug: resolved.org.slug, name: resolved.org.name },
@@ -84,14 +84,14 @@ export async function action({
   params: { slug: string };
 }) {
   const me = await getCurrentPrincipal(request);
-  if (!me) return { error: "Sign in to manage org members." };
+  if (!me) return { error: "Sign in to manage org users." };
   const resolved = await resolveOwnerSlug(params.slug);
   if (!resolved || resolved.kind !== "organization") {
     return { error: "Organization not found." };
   }
   const orgId = resolved.org.id;
   if (!(await isOrgAdmin(orgId, me.id))) {
-    return { error: "Forbidden: only org owners can change members." };
+    return { error: "Forbidden: only org owners can change users." };
   }
 
   const form = await request.formData();
@@ -104,7 +104,7 @@ export async function action({
     if (!ALL_ROLES.includes(role)) return { error: "Invalid role." };
     const p = await getPrincipalByUsername(username);
     if (!p) return { error: `No principal with username "${username}".` };
-    await upsertOrgMember({ org_id: orgId, principal_id: p.id, role });
+    await upsertOrgUser({ org_id: orgId, principal_id: p.id, role });
     return { ok: true as const };
   }
 
@@ -113,14 +113,14 @@ export async function action({
     const role = String(form.get("role") ?? "") as DocoRole;
     if (!principalId) return { error: "principal_id missing." };
     if (!ALL_ROLES.includes(role)) return { error: "Invalid role." };
-    await upsertOrgMember({ org_id: orgId, principal_id: principalId, role });
+    await upsertOrgUser({ org_id: orgId, principal_id: principalId, role });
     return { ok: true as const };
   }
 
   if (intent === "remove") {
     const principalId = String(form.get("principal_id") ?? "").trim();
     if (!principalId) return { error: "principal_id missing." };
-    await removeOrgMember(orgId, principalId);
+    await removeOrgUser(orgId, principalId);
     return { ok: true as const };
   }
 
@@ -128,7 +128,7 @@ export async function action({
 }
 
 export function meta() {
-  return [{ title: "Org members · Doco" }];
+  return [{ title: "Org users · Doco" }];
 }
 
 interface OrgLoaderData {
@@ -180,11 +180,11 @@ export default function OrgMembersPage({
 
         <Card>
           <CardHeader>
-            <CardTitle>Org members</CardTitle>
+            <CardTitle>Org users</CardTitle>
           </CardHeader>
           <CardContent>
             {loaderData.members.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No members yet.</p>
+              <p className="text-sm text-muted-foreground">No users yet.</p>
             ) : (
               <table className="w-full text-sm">
                 <thead>
@@ -249,7 +249,7 @@ export default function OrgMembersPage({
 
         <Card>
           <CardHeader>
-            <CardTitle>Add an org member</CardTitle>
+            <CardTitle>Add an org user</CardTitle>
           </CardHeader>
           <CardContent>
             <Form method="post" className="flex flex-col gap-3 sm:flex-row sm:items-end">

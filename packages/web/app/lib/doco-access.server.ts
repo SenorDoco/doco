@@ -5,12 +5,12 @@ import { redirect } from "react-router";
 import {
   type DocoRole,
   getDocoByIdOrHandle,
-  getDocoMemberRole,
+  getDocoUserRole,
   getOrgRole,
   getPrincipalById,
-  getScopeMemberRole,
-  isOrgMember as dbIsOrgMember,
-  listDocoIdsForPrincipalMember,
+  getScopeUserRole,
+  isOrgUser as dbIsOrgMember,
+  listDocoIdsForUserPrincipal,
   listScopeIdsWithGrant,
   maxRole,
   roleAtLeast,
@@ -23,7 +23,7 @@ import { type CurrentPrincipal, getCurrentPrincipalAsync } from "./session";
 /**
  * Doco-level role for this principal — max of (direct owner_id match,
  * agent-owner-chain match, org-membership role on the owning org,
- * explicit doco_members row). Scope-level grants do NOT factor in here;
+ * explicit doco_users row). Scope-level grants do NOT factor in here;
  * use `getEffectiveScopeRole` when you need the per-scope answer.
  *
  * Returns null when the principal has no doco-level grant.
@@ -53,10 +53,10 @@ export async function getDocoLevelRole(
   }
 
   if (meta.docoId) {
-    const dm = await getDocoMemberRole(meta.docoId, principalId);
+    const dm = await getDocoUserRole(meta.docoId, principalId);
     role = maxRole(role, dm);
     if (ownerOfPrincipal) {
-      const ownerDm = await getDocoMemberRole(meta.docoId, ownerOfPrincipal);
+      const ownerDm = await getDocoUserRole(meta.docoId, ownerOfPrincipal);
       role = maxRole(role, ownerDm);
     }
   }
@@ -66,7 +66,7 @@ export async function getDocoLevelRole(
 
 /**
  * Effective role when the principal operates ON a specific scope:
- *   max(doco-level role, scope_members grant for this scope)
+ *   max(doco-level role, scope_users grant for this scope)
  * Used by capture / lifecycle gates to decide whether to force lifecycle
  * to `proposed` (author) or honor the body's `lifecycle` (approver+).
  */
@@ -78,12 +78,12 @@ export async function getEffectiveScopeRole(
   if (!principalId) return null;
 
   let role = await getDocoLevelRole(meta, principalId);
-  const direct = await getScopeMemberRole(scopeId, principalId);
+  const direct = await getScopeUserRole(scopeId, principalId);
   role = maxRole(role, direct);
 
   const ownerOfPrincipal = await getPrincipalOwnerId(principalId);
   if (ownerOfPrincipal) {
-    const viaOwner = await getScopeMemberRole(scopeId, ownerOfPrincipal);
+    const viaOwner = await getScopeUserRole(scopeId, ownerOfPrincipal);
     role = maxRole(role, viaOwner);
   }
 
@@ -171,20 +171,20 @@ export async function isMyDoco(
 }
 
 /**
- * Doco ids the principal has an explicit doco_members grant on (any role).
+ * Doco ids the principal has an explicit doco_users grant on (any role).
  * Source of truth for "I have a relationship with this doco" — the
  * dashboard's "shared with me" listing.
  *
- * Post-decision_01KS0JBJ5X0AZ4XJJFKEWE1R62, this reads from `doco_members`
+ * Post-decision_01KS0JBJ5X0AZ4XJJFKEWE1R62, this reads from `doco_users`
  * directly. The v8 backfill grandfathers existing SessionToken-bound
- * principals into doco_members with role='owner' so the answer is
+ * principals into doco_users with role='owner' so the answer is
  * unchanged for prior collaborators; new invite redemptions write the
- * doco_members row alongside the SessionToken.
+ * doco_users row alongside the SessionToken.
  */
 export async function listInvitedDocoIdsForPrincipal(
   principalId: string,
 ): Promise<Set<string>> {
-  const ids = await listDocoIdsForPrincipalMember(principalId);
+  const ids = await listDocoIdsForUserPrincipal(principalId);
   return new Set(ids);
 }
 

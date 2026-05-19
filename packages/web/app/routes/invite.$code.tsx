@@ -13,7 +13,7 @@
 //     just a "Continue" button to /<owner>/<slug>/.
 //   - If not signed in: bounce through GitHub OAuth and come back here.
 
-import { type DocoRole, getDocoById, getPrincipalById, upsertDocoMember } from "@doco/db";
+import { type DocoRole, getDocoById, getPrincipalById, upsertDocoUser } from "@doco/db";
 import type { EntityId } from "@doco/shared";
 import { Form, Link, redirect } from "react-router";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
@@ -123,10 +123,10 @@ export async function action({
   }
 
   // decision_01KS0JBJ5X0AZ4XJJFKEWE1R62: bind the human Principal into
-  // doco_members at the role baked into the invite (defaulting to
+  // doco_users at the role baked into the invite (defaulting to
   // `owner` for pre-cutover invites that lack the field).
   const grantedRole: DocoRole = (consumed.role as DocoRole | undefined) ?? "owner";
-  await upsertDocoMember({
+  await upsertDocoUser({
     doco_id: invite.doco_id,
     principal_id: principal.id,
     role: grantedRole,
