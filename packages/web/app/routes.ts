@@ -80,7 +80,8 @@ export default [
   // Self-service create
   route("new-doco", "routes/new-doco.tsx"),
   route("new-org", "routes/new-org.tsx"),
-  route("orgs/:slug/members", "routes/orgs.$slug.members.tsx"),
+  route("orgs", "routes/orgs._index.tsx"),
+  route("users", "routes/users.tsx"),
   // Onboarding
   route("onboarding/join", "routes/onboarding.join._index.tsx"),
   route("onboarding/join/human", "routes/onboarding.join.human.tsx"),
@@ -123,10 +124,7 @@ export default [
   // pointing at the current POST /api/v1/docos.json flow — first-call
   // recovery instead of 404 + docs re-read. See route file header.
   route("api/v1/agent-link/*", "routes/api.v1.agent-link.$.tsx"),
-  route(
-    "api/v1/invites/:code/redeem.json",
-    "routes/api.v1.invites.$code.redeem[.]json.tsx",
-  ),
+  route("api/v1/invites/:code/redeem.json", "routes/api.v1.invites.$code.redeem[.]json.tsx"),
   route("invite/:code", "routes/invite.$code.tsx"),
   // ID-based lookup: the doco_id is immortal across renames and
   // ownership transfers. Agents that record the ULID resolve to the
@@ -154,23 +152,43 @@ export default [
   route(":docoId", "routes/$ownerSlug.$docoSlug._index.tsx"),
   route(":docoId/status.json", "routes/$ownerSlug.$docoSlug.status[.]json.tsx"),
   route(":docoId/settings", "routes/$ownerSlug.$docoSlug.settings.tsx"),
-  route(":docoId/members", "routes/$ownerSlug.$docoSlug.members.tsx"),
   route(":docoId/invites", "routes/$ownerSlug.$docoSlug.invites.tsx"),
   route(":docoId/api/invites.json", "routes/$ownerSlug.$docoSlug.api.invites[.]json.tsx"),
   route(":docoId/api/decisions.json", "routes/$ownerSlug.$docoSlug.api.decisions[.]json.tsx"),
-  route(":docoId/api/decisions/:id.json", "routes/$ownerSlug.$docoSlug.api.decisions.$id[.]json.tsx"),
+  route(
+    ":docoId/api/decisions/:id.json",
+    "routes/$ownerSlug.$docoSlug.api.decisions.$id[.]json.tsx",
+  ),
   route(":docoId/api/intents/:id.json", "routes/$ownerSlug.$docoSlug.api.intents.$id[.]json.tsx"),
   route(":docoId/api/rules/:id.json", "routes/$ownerSlug.$docoSlug.api.rules.$id[.]json.tsx"),
   route(":docoId/api/actions/:id.json", "routes/$ownerSlug.$docoSlug.api.actions.$id[.]json.tsx"),
   route(":docoId/api/logs/:id.json", "routes/$ownerSlug.$docoSlug.api.logs.$id[.]json.tsx"),
-  route(":docoId/api/references/:id.json", "routes/$ownerSlug.$docoSlug.api.references.$id[.]json.tsx"),
+  route(
+    ":docoId/api/references/:id.json",
+    "routes/$ownerSlug.$docoSlug.api.references.$id[.]json.tsx",
+  ),
   route(":docoId/api/scopes/:id.json", "routes/$ownerSlug.$docoSlug.api.scopes.$id[.]json.tsx"),
-  route(":docoId/api/scopes/:id/rules.json", "routes/$ownerSlug.$docoSlug.api.scopes.$id.rules[.]json.tsx"),
+  route(
+    ":docoId/api/scopes/:id/rules.json",
+    "routes/$ownerSlug.$docoSlug.api.scopes.$id.rules[.]json.tsx",
+  ),
   // v7 scope bulk verbs.
-  route(":docoId/api/scopes/:id/activate.json", "routes/$ownerSlug.$docoSlug.api.scopes.$id.activate[.]json.tsx"),
-  route(":docoId/api/scopes/:id/draft.json", "routes/$ownerSlug.$docoSlug.api.scopes.$id.draft[.]json.tsx"),
-  route(":docoId/api/scopes/:id/validate.json", "routes/$ownerSlug.$docoSlug.api.scopes.$id.validate[.]json.tsx"),
-  route(":docoId/api/scopes/:id/excluded-rules.json", "routes/$ownerSlug.$docoSlug.api.scopes.$id.excluded-rules[.]json.tsx"),
+  route(
+    ":docoId/api/scopes/:id/activate.json",
+    "routes/$ownerSlug.$docoSlug.api.scopes.$id.activate[.]json.tsx",
+  ),
+  route(
+    ":docoId/api/scopes/:id/draft.json",
+    "routes/$ownerSlug.$docoSlug.api.scopes.$id.draft[.]json.tsx",
+  ),
+  route(
+    ":docoId/api/scopes/:id/validate.json",
+    "routes/$ownerSlug.$docoSlug.api.scopes.$id.validate[.]json.tsx",
+  ),
+  route(
+    ":docoId/api/scopes/:id/excluded-rules.json",
+    "routes/$ownerSlug.$docoSlug.api.scopes.$id.excluded-rules[.]json.tsx",
+  ),
   route(":docoId/api/scopes.json", "routes/$ownerSlug.$docoSlug.api.scopes[.]json.tsx"),
   route(":docoId/api/principals.json", "routes/$ownerSlug.$docoSlug.api.principals[.]json.tsx"),
   route(":docoId/api/intents.json", "routes/$ownerSlug.$docoSlug.api.intents[.]json.tsx"),
@@ -194,22 +212,12 @@ export default [
   route(":docoId/scopes", "routes/$ownerSlug.$docoSlug.scopes._index.tsx"),
   route(":docoId/scopes/new", "routes/$ownerSlug.$docoSlug.scopes.new.tsx"),
   route(":docoId/scopes/:id", "routes/$ownerSlug.$docoSlug.scopes.$id._index.tsx"),
-  route(
-    ":docoId/scopes/:id/members",
-    "routes/$ownerSlug.$docoSlug.scopes.$id.members.tsx",
-  ),
-  route(
-    ":docoId/scopes/:id/rules/new",
-    "routes/$ownerSlug.$docoSlug.scopes.$id.rules.new.tsx",
-  ),
+  route(":docoId/scopes/:id/rules/new", "routes/$ownerSlug.$docoSlug.scopes.$id.rules.new.tsx"),
   route(":docoId/scopes/:id/abandon", "routes/$ownerSlug.$docoSlug.scopes.$id.abandon.tsx"),
   route(":docoId/rules/new", "routes/$ownerSlug.$docoSlug.rules.new.tsx"),
   // Short-form entity routes. `:type` is validated by the loader; reserved
   // feature paths above win the match for the static paths.
   route(":docoId/:type", "routes/$ownerSlug.$docoSlug.$type._index.tsx"),
   route(":docoId/:type/:id", "routes/$ownerSlug.$docoSlug.$type.$id.tsx"),
-  route(
-    ":docoId/:type/:id/chat.json",
-    "routes/$ownerSlug.$docoSlug.$type.$id.chat[.]json.tsx",
-  ),
+  route(":docoId/:type/:id/chat.json", "routes/$ownerSlug.$docoSlug.$type.$id.chat[.]json.tsx"),
 ] satisfies RouteConfig;

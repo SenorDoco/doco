@@ -25,13 +25,29 @@ export interface Invite {
   kind: "invite";
   /** Opaque hex token. Path component of the invite URL. */
   code: string;
-  /** Doco this invite grants access to. */
+  /**
+   * Level the grant lands at on redemption (decision_01KS0JBJ5X0AZ4XJJFKEWE1R62).
+   * - "doco" (default for back-compat): inserts into doco_users.
+   * - "org": inserts into org_users for `org_id`.
+   * - "scope": inserts into scope_users for `scope_id`; the redeemer
+   *   gets implicit doco-reader visibility for the containing `doco_id`.
+   *
+   * Pre-existing invites without this field are treated as "doco".
+   */
+  level?: "org" | "doco" | "scope";
+  /** Doco this invite is anchored to. Always set — scope invites carry
+   * the parent doco; org invites still carry the doco the inviter was
+   * looking at when they minted (used for back-links and audit). */
   doco_id: EntityId<"doco">;
+  /** Org targeted by org-level invites. Required when level === "org". */
+  org_id?: EntityId<"organization">;
+  /** Scope targeted by scope-level invites. Required when level === "scope". */
+  scope_id?: EntityId<"scope">;
   /** Principal that minted this invite (null for anonymous-creation seed). */
   minted_by_principal_id: EntityId<"principal"> | null;
   /**
-   * Role the redeemer receives on this Doco (decision_01KS0JBJ5X0AZ4XJJFKEWE1R62).
-   * Written into doco_users on consume. Optional in storage for
+   * Role the redeemer receives on the targeted level. Written into the
+   * level-appropriate users table on consume. Optional in storage for
    * back-compat: pre-cutover Invites lack the field; their redeemer
    * falls back to `owner` (matching the v8 backfill posture). Mint
    * paths after the cutover always set it explicitly.
@@ -412,14 +428,23 @@ export class TokenStore {
     mintedByPrincipalId: EntityId<"principal"> | null,
     ttlDays: number = 7,
     role: "owner" | "approver" | "author" | "reader" = "author",
+    opts: {
+      level?: "org" | "doco" | "scope";
+      org_id?: EntityId<"organization">;
+      scope_id?: EntityId<"scope">;
+    } = {},
   ): Promise<Invite> {
     const file = await this.load();
     const now = new Date();
     const expires = new Date(now.getTime() + Math.max(1, Math.min(365, ttlDays)) * 86400 * 1000);
+    const level = opts.level ?? "doco";
     const invite: Invite = {
       kind: "invite",
       code: randomBytes(TOKEN_LEN_BYTES).toString("hex"),
+      level,
       doco_id: docoId,
+      ...(opts.org_id ? { org_id: opts.org_id } : {}),
+      ...(opts.scope_id ? { scope_id: opts.scope_id } : {}),
       minted_by_principal_id: mintedByPrincipalId,
       role,
       expires_at: expires.toISOString(),

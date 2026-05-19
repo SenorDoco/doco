@@ -34,7 +34,13 @@ import type { EntityId } from "@doco/shared";
 import { TokenStore } from "~/lib/tokens.server";
 import { docoPath, rootDir } from "~/lib/db.server";
 import { addAgentPrincipal } from "~/lib/redeem.server";
-import { type DocoRole, getDocoById, upsertDocoUser } from "@doco/db";
+import {
+  type DocoRole,
+  getDocoById,
+  upsertDocoUser,
+  upsertOrgUser,
+  upsertScopeUser,
+} from "@doco/db";
 import { buildAgentBootstrapResponse } from "~/lib/agent-bootstrap-response.server";
 import { loadBootstrapContext } from "~/lib/bootstrap-context.server";
 
@@ -123,15 +129,37 @@ export async function action({
     return Response.json({ status: "consumed" }, { status: 410 });
   }
 
-  // decision_01KS0JBJ5X0AZ4XJJFKEWE1R62: write the doco_users grant for
-  // the redeemer at the role baked into the invite. Pre-cutover invites
-  // (no role field) default to `owner` to preserve the prior posture.
+  // Write the role grant on the level the invite targets. Pre-cutover
+  // invites (no role/level fields) default to doco-level `owner` to
+  // preserve the prior posture.
   const grantedRole: DocoRole = (consumed.role as DocoRole | undefined) ?? "owner";
-  await upsertDocoUser({
-    doco_id: invite.doco_id,
-    principal_id: agentId,
-    role: grantedRole,
-  });
+  const inviteLevel = consumed.level ?? "doco";
+  if (inviteLevel === "org" && consumed.org_id) {
+    await upsertOrgUser({
+      org_id: consumed.org_id,
+      principal_id: agentId,
+      role: grantedRole,
+    });
+  } else if (inviteLevel === "scope" && consumed.scope_id) {
+    await upsertScopeUser({
+      scope_id: consumed.scope_id,
+      principal_id: agentId,
+      role: grantedRole,
+    });
+    // Implicit doco-reader so the redeemer can navigate to the containing
+    // doco; the scope grant is what governs writes into the scope itself.
+    await upsertDocoUser({
+      doco_id: invite.doco_id,
+      principal_id: agentId,
+      role: "reader",
+    });
+  } else {
+    await upsertDocoUser({
+      doco_id: invite.doco_id,
+      principal_id: agentId,
+      role: grantedRole,
+    });
+  }
 
   const url = new URL(request.url);
   const origin = `${url.protocol}//${url.host}`;

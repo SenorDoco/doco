@@ -13,7 +13,14 @@
 //     just a "Continue" button to /<owner>/<slug>/.
 //   - If not signed in: bounce through GitHub OAuth and come back here.
 
-import { type DocoRole, getDocoById, getPrincipalById, upsertDocoUser } from "@doco/db";
+import {
+  type DocoRole,
+  getDocoById,
+  getPrincipalById,
+  upsertDocoUser,
+  upsertOrgUser,
+  upsertScopeUser,
+} from "@doco/db";
 import type { EntityId } from "@doco/shared";
 import { Form, Link, redirect } from "react-router";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
@@ -122,15 +129,35 @@ export async function action({
     };
   }
 
-  // decision_01KS0JBJ5X0AZ4XJJFKEWE1R62: bind the human Principal into
-  // doco_users at the role baked into the invite (defaulting to
-  // `owner` for pre-cutover invites that lack the field).
+  // Bind the human Principal into the role grant on the level the
+  // invite targets. Pre-cutover invites (no role/level) default to
+  // doco-level `owner` to preserve prior behavior.
   const grantedRole: DocoRole = (consumed.role as DocoRole | undefined) ?? "owner";
-  await upsertDocoUser({
-    doco_id: invite.doco_id,
-    principal_id: principal.id,
-    role: grantedRole,
-  });
+  const inviteLevel = consumed.level ?? "doco";
+  if (inviteLevel === "org" && consumed.org_id) {
+    await upsertOrgUser({
+      org_id: consumed.org_id,
+      principal_id: principal.id,
+      role: grantedRole,
+    });
+  } else if (inviteLevel === "scope" && consumed.scope_id) {
+    await upsertScopeUser({
+      scope_id: consumed.scope_id,
+      principal_id: principal.id,
+      role: grantedRole,
+    });
+    await upsertDocoUser({
+      doco_id: invite.doco_id,
+      principal_id: principal.id,
+      role: "reader",
+    });
+  } else {
+    await upsertDocoUser({
+      doco_id: invite.doco_id,
+      principal_id: principal.id,
+      role: grantedRole,
+    });
+  }
 
   const url = new URL(request.url);
   const origin = `${url.protocol}//${url.host}`;

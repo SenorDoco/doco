@@ -39,7 +39,6 @@ export function SiteHeader({ docoScope, me }: SiteHeaderProps) {
     ? [
         { to: `/${docoScope.handle}`, label: docoScope.handle },
         { to: `/${docoScope.handle}/scopes`, label: "Scopes" },
-        { to: `/${docoScope.handle}/members`, label: "Users (humans/agents)" },
         { to: `/${docoScope.handle}/settings`, label: "Settings" },
       ]
     : [
@@ -65,16 +64,37 @@ export function SiteHeader({ docoScope, me }: SiteHeaderProps) {
           {me ? (
             <>
               <NavLink
-                to="/onboarding/create"
-                className="whitespace-nowrap rounded-md border border-border px-3 py-1.5 font-semibold hover:bg-input"
+                to="/dashboard"
+                className={({ isActive }) =>
+                  cn(
+                    "whitespace-nowrap rounded-md border border-border px-3 py-1.5 font-semibold hover:bg-input",
+                    isActive ? "bg-input" : "",
+                  )
+                }
               >
-                + Doco
+                Docos
               </NavLink>
               <NavLink
-                to="/new-org"
-                className="whitespace-nowrap rounded-md border border-border px-3 py-1.5 font-semibold hover:bg-input"
+                to="/orgs"
+                className={({ isActive }) =>
+                  cn(
+                    "whitespace-nowrap rounded-md border border-border px-3 py-1.5 font-semibold hover:bg-input",
+                    isActive ? "bg-input" : "",
+                  )
+                }
               >
-                + Org
+                Orgs
+              </NavLink>
+              <NavLink
+                to="/users"
+                className={({ isActive }) =>
+                  cn(
+                    "whitespace-nowrap rounded-md border border-border px-3 py-1.5 font-semibold hover:bg-input",
+                    isActive ? "bg-input" : "",
+                  )
+                }
+              >
+                Users
               </NavLink>
               <NavLink
                 to={`/${me.username}`}
