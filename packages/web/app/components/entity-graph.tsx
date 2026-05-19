@@ -501,7 +501,7 @@ function EntityNodeCard({
           <NodeTypeIcon nodeType={nodeType} className="!h-4 !w-4 shrink-0" />
           <span>{nodeType}</span>
         </span>
-        <span className="ml-auto flex shrink-0 items-center gap-2 font-mono text-[9px] text-muted-foreground">
+        <span className="ml-auto flex shrink-0 items-center gap-2 font-mono text-[11px] text-muted-foreground">
           {isCenter ? (
             <>
               <span className="font-medium text-foreground">in focus</span>

@@ -107,6 +107,7 @@ import {
 import { NodeTypeIcon } from "~/components/node-type-icon";
 import { ResizableChatRail } from "~/components/resizable-chat-rail";
 import { SiteHeader } from "~/components/site-header";
+import { lifecycleColor } from "~/lib/node-colors";
 
 /** "Ns / Nm / Nh / Nd ago" — same shape the graph component uses. */
 function relativeTimeIso(iso: string): string {
@@ -302,8 +303,9 @@ export async function loader({
           params = [ids];
         } else {
           const nameExpr = tbl === "scopes" ? "t.name" : "NULL::text";
+          const summaryExpr = tbl === "scopes" ? "t.purpose AS summary" : "t.summary";
           sql = `SELECT t.id,
-                        t.summary,
+                        ${summaryExpr},
                         ${nameExpr} AS name,
                         t.lifecycle,
                         t.created_at::text,
@@ -716,6 +718,8 @@ export default function EntityDetail({
   const focalCreatedAt =
     focalNode?.created_at ??
     (typeof ent.created_at === "string" ? (ent.created_at as string) : null);
+  const focalLifecycle = typeof ent.lifecycle === "string" ? (ent.lifecycle as string) : null;
+  const focalLifecycleSince = focalNode?.lifecycle_since ?? focalCreatedAt;
 
   // PPR-ranked neighbors for the Info pane — drop the focal, take the top 10.
   const rankedNeighbors = graphNodes
@@ -773,6 +777,17 @@ export default function EntityDetail({
           </h1>
         </div>
         <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px]">
+          {focalLifecycle ? (
+            <span className="inline-flex items-center gap-1.5 text-muted-foreground">
+              <span
+                aria-hidden
+                className="inline-block h-2 w-2 shrink-0 rounded-full"
+                style={{ backgroundColor: lifecycleColor(focalLifecycle) }}
+              />
+              <span className="font-medium text-foreground">{focalLifecycle}</span>
+              {focalLifecycleSince ? <span>· {relativeTimeIso(focalLifecycleSince)}</span> : null}
+            </span>
+          ) : null}
           {entityScopes.map((s) => (
             <Link
               key={s.id}
