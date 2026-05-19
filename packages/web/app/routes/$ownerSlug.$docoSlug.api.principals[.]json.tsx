@@ -1,6 +1,6 @@
-import { upsertEntity, withClient } from "@doco/db";
+import { getPrincipalById, listDocoUsers, upsertEntity, withClient } from "@doco/db";
 import { type EntityId, generateUlid, makeEntityId, nowIso } from "@doco/shared";
-import { loadDocoForAdmin, normalizeDocoParams } from "~/lib/doco-access.server";
+import { loadDocoForRead, loadDocoForAdmin, normalizeDocoParams } from "~/lib/doco-access.server";
 
 const ROLE_PRINCIPAL_USERNAMES = new Set(["user", "human", "doco-host", "github"]);
 
@@ -113,6 +113,42 @@ export async function action({
   );
 }
 
-export async function loader() {
-  return Response.json({ error: "Use POST." }, { status: 405 });
+/**
+ * GET — list principals with a direct grant on this Doco.
+ *
+ * Returns `{ ok: true, principals: [{ id, username, type, role,
+ * github_login, email }] }`. Read access is enough to list — anyone
+ * who can see the Doco (per loadDocoForRead) can see the user list.
+ *
+ * Backs the `list_principals` MCP tool.
+ */
+export async function loader({
+  request,
+  params,
+}: {
+  request: Request;
+  params: { docoId: string };
+}) {
+  const { handle } = await normalizeDocoParams(params);
+  const { meta } = await loadDocoForRead(request, handle);
+  const docoUsers = await listDocoUsers(meta.docoId);
+  const principals = await Promise.all(
+    docoUsers.map(async (u) => {
+      const p = await getPrincipalById(u.principal_id);
+      return p
+        ? {
+            id: p.id,
+            username: p.username,
+            type: p.type,
+            role: u.role,
+            github_login: p.github_login ?? null,
+            email: p.email ?? null,
+          }
+        : null;
+    }),
+  );
+  return Response.json({
+    ok: true,
+    principals: principals.filter((p) => p !== null),
+  });
 }
