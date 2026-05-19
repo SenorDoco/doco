@@ -149,15 +149,25 @@ function renderUserMessageStep(flow: BootstrapFlow): string {
  *  the commit-wait so the invite URL lands in the user's hands first,
  *  and the onboarding-overlay step comes BEFORE commit so the agent
  *  doesn't treat the commit-wait as a stop signal that swallows
- *  scope_setup and scope_population. */
-export function buildNextStepsForAgent(flow: BootstrapFlow): string[] {
-  return [
-    ...FILE_WRITE_STEPS,
-    renderUserMessageStep(flow),
-    ONBOARDING_OVERLAY_STEP,
-    PROTOCOL_FETCH_STEP,
-    COMMIT_STEP,
-  ];
+ *  scope_setup and scope_population.
+ *
+ *  `hasOnboardingOverlay` controls whether the overlay-walk step is
+ *  included. Always true for create (a brand-new Doco only carries
+ *  the framework-seeded `#global`). For redeem it's true only when
+ *  the joined Doco is still in onboarding — on a mature Doco with
+ *  populated scopes, the step is a no-op that still nudges the agent
+ *  toward unwanted scope-setup conversation. Drop it. */
+export function buildNextStepsForAgent(
+  flow: BootstrapFlow,
+  hasOnboardingOverlay: boolean,
+): string[] {
+  const steps: string[] = [...FILE_WRITE_STEPS, renderUserMessageStep(flow)];
+  if (hasOnboardingOverlay) {
+    steps.push(ONBOARDING_OVERLAY_STEP);
+  }
+  steps.push(PROTOCOL_FETCH_STEP);
+  steps.push(COMMIT_STEP);
+  return steps;
 }
 
 // ---------------------------------------------------------------------------
@@ -188,11 +198,11 @@ function buildCreateUserMessage(docoUrl: string, invite: BootstrapInviteHandoff)
 
 function buildRedeemUserMessage(docoUrl: string, handle: string): string {
   return [
-    `✅ I claimed access to **${handle}** (Doco at ${docoUrl}).`,
+    `✅ Accepted the invite to **${handle}** (Doco at ${docoUrl}).`,
     ``,
-    `I saved my personal Doco access credential to \`./.env\` (gitignored) — from here I fetch the protocol on session start, search prior decisions before drafting new ones, and capture meaningful changes as Doco nodes.`,
+    `Personal Doco access credential saved to \`./.env\` (gitignored). From here I fetch the protocol on session start, search prior decisions before drafting new ones, and capture meaningful changes as Doco nodes.`,
     ``,
-    `If this repo didn't already have a \`DOCO.md\`, I just wrote one so future clones / CI / teammates discover the Doco. The access credential in \`.env\` is mine alone — if you want your own access (browse on the web, mint invites for teammates), ask me for a fresh invite URL.`,
+    `The credential is mine alone — if you want your own access (browse the Doco on the web, mint invites for teammates), ask me for a fresh invite URL.`,
   ].join("\n");
 }
 
@@ -225,7 +235,10 @@ export function buildAgentBootstrapResponse(
 ): BootstrapResponse {
   const { flow, origin, doco, accessToken, invite, context } = input;
   const docoUrl = `${origin}/${doco.handle}/`;
-  const next_steps_for_agent = buildNextStepsForAgent(flow);
+  const next_steps_for_agent = buildNextStepsForAgent(
+    flow,
+    context.onboarding_overlay !== null,
+  );
   const user_message_block = buildUserMessageBlock(flow, docoUrl, doco.handle, invite);
   const base: BootstrapResponse = {
     doco_id: doco.id,
