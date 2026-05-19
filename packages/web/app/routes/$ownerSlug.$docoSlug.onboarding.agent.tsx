@@ -14,6 +14,7 @@ import { useState } from "react";
 import { Link } from "react-router";
 import type { EntityId } from "@doco/shared";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
+import { SingleColumnPageMain } from "~/components/page-main";
 import { SiteHeader } from "~/components/site-header";
 import { rootDir } from "~/lib/db.server";
 import { loadDocoForAdmin, normalizeDocoParams } from "~/lib/doco-access.server";
@@ -107,7 +108,7 @@ export default function OnboardingAgent({
   return (
     <div>
       <SiteHeader mode="host" me={me} />
-      <main className="mx-auto max-w-2xl px-6 py-8 space-y-4">
+      <SingleColumnPageMain className="py-8 space-y-4">
         <Card>
           <CardHeader>
             <CardTitle>1. Install the Doco connector (preferred)</CardTitle>
@@ -185,7 +186,7 @@ export default function OnboardingAgent({
             </p>
           </CardContent>
         </Card>
-      </main>
+      </SingleColumnPageMain>
     </div>
   );
 }

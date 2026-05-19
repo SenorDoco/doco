@@ -13,6 +13,7 @@ import type { EntityId } from "@doco/shared";
 import { parse as parseYaml } from "yaml";
 import { withClient } from "@doco/db";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
+import { SingleColumnPageMain } from "~/components/page-main";
 import { SiteHeader } from "~/components/site-header";
 import { loadDocoForAdmin, normalizeDocoParams } from "~/lib/doco-access.server";
 import { loadHostConfig } from "~/lib/host";
@@ -181,7 +182,7 @@ export default function AbandonScopePage({
   return (
     <div>
       <SiteHeader mode="host" me={me} docoScope={{ ownerSlug, docoSlug, handle }} />
-      <main className="mx-auto max-w-2xl px-6 py-6 space-y-4">
+      <SingleColumnPageMain className="py-6 space-y-4">
         {actionData?.error ? (
           <div className="rounded-md border border-destructive bg-destructive/5 px-4 py-3 text-xs text-destructive">
             {actionData.error}
@@ -284,7 +285,7 @@ export default function AbandonScopePage({
             </CardContent>
           </Card>
         )}
-      </main>
+      </SingleColumnPageMain>
     </div>
   );
 }

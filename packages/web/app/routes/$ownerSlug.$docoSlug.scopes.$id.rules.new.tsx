@@ -6,6 +6,7 @@ import type { EntityId } from "@doco/shared";
 import { Form, Link, redirect, useNavigation, useSearchParams } from "react-router";
 import { parse as parseYaml } from "yaml";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
+import { SingleColumnPageMain } from "~/components/page-main";
 import { SiteHeader } from "~/components/site-header";
 import { loadDocoForAdmin, normalizeDocoParams } from "~/lib/doco-access.server";
 import { loadHostConfig } from "~/lib/host";
@@ -181,7 +182,7 @@ export default function NewScopeRule({
   return (
     <div>
       <SiteHeader mode="host" me={me} docoScope={{ ownerSlug, docoSlug, handle }} />
-      <main className="mx-auto max-w-2xl px-6 py-6 space-y-4">
+      <SingleColumnPageMain className="py-6 space-y-4">
         <Link
           to={`/${handle}/scopes/${scope.id}`}
           className="text-xs text-muted-foreground hover:text-foreground"
@@ -236,7 +237,7 @@ export default function NewScopeRule({
             </Form>
           </CardContent>
         </Card>
-      </main>
+      </SingleColumnPageMain>
     </div>
   );
 }

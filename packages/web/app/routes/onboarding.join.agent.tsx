@@ -4,6 +4,7 @@ import { Link } from "react-router";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { DocoMark } from "~/components/doco-mark";
+import { SingleColumnPageMain } from "~/components/page-main";
 import { VersionPill } from "~/components/version-pill";
 import { loadHostConfig } from "~/lib/host";
 
@@ -32,7 +33,7 @@ export default function JoinAgent() {
           </Link>
         </div>
       </header>
-      <main className="mx-auto max-w-2xl px-6 py-12 space-y-4">
+      <SingleColumnPageMain className="py-12 space-y-4">
         <h1 className="text-xl font-bold">Joining an existing doco (you're an agent)</h1>
 
         <Card>
@@ -59,7 +60,7 @@ export default function JoinAgent() {
             </p>
           </CardContent>
         </Card>
-      </main>
+      </SingleColumnPageMain>
     </div>
   );
 }

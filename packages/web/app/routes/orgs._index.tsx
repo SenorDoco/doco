@@ -4,6 +4,7 @@
 
 import { Link, redirect } from "react-router";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
+import { SingleColumnPageMain } from "~/components/page-main";
 import { SiteHeader } from "~/components/site-header";
 import { listMyOrgs } from "~/lib/host";
 import { getCurrentPrincipal } from "~/lib/session";
@@ -40,7 +41,7 @@ export default function OrgsIndexPage({
   return (
     <div className="min-h-screen flex flex-col bg-background text-foreground">
       <SiteHeader mode="host" me={loaderData.me} />
-      <main className="mx-auto w-full max-w-3xl px-6 py-8 space-y-6">
+      <SingleColumnPageMain className="py-8 space-y-6">
         <header className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-semibold">Orgs</h1>
@@ -82,7 +83,9 @@ export default function OrgsIndexPage({
                     </Link>
                     <div className="text-xs text-muted-foreground">
                       {o.display_name}
-                      {typeof o.member_count === "number" ? ` · ${o.member_count} member${o.member_count === 1 ? "" : "s"}` : ""}
+                      {typeof o.member_count === "number"
+                        ? ` · ${o.member_count} member${o.member_count === 1 ? "" : "s"}`
+                        : ""}
                     </div>
                     {o.description ? (
                       <div className="mt-1 text-sm text-muted-foreground">{o.description}</div>
@@ -93,7 +96,7 @@ export default function OrgsIndexPage({
             )}
           </CardContent>
         </Card>
-      </main>
+      </SingleColumnPageMain>
     </div>
   );
 }

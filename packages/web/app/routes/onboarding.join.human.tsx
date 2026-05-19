@@ -4,9 +4,10 @@ import { Link } from "react-router";
 
 import { loadHostConfig } from "~/lib/host";
 import { getPublicBaseUrl } from "@doco/shared";
-import { DocoMark } from "~/components/doco-mark";
-import { VersionPill } from "~/components/version-pill";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
+import { DocoMark } from "~/components/doco-mark";
+import { SingleColumnPageMain } from "~/components/page-main";
+import { VersionPill } from "~/components/version-pill";
 
 export async function loader({ request }: { request: Request }) {
   return {
@@ -40,7 +41,7 @@ export default function JoinHuman({
           </Link>
         </div>
       </header>
-      <main className="mx-auto max-w-2xl px-6 py-12 space-y-4">
+      <SingleColumnPageMain className="py-12 space-y-4">
         <h1 className="text-xl font-bold">Joining an existing doco</h1>
         <p className="text-sm text-muted-foreground">Two ways to get started.</p>
 
@@ -79,7 +80,7 @@ export default function JoinHuman({
             </CardDescription>
           </CardHeader>
         </Card>
-      </main>
+      </SingleColumnPageMain>
     </div>
   );
 }

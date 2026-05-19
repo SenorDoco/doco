@@ -12,8 +12,9 @@ import type { Invite } from "~/lib/agent-token-store.server";
 import { TokenStore } from "~/lib/tokens.server";
 import { rootDir } from "~/lib/db.server";
 import { loadDocoForRead, normalizeDocoParams } from "~/lib/doco-access.server";
-import { SiteHeader } from "~/components/site-header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
+import { SingleColumnPageMain } from "~/components/page-main";
+import { SiteHeader } from "~/components/site-header";
 
 type SerializedInvite = {
   code: string;
@@ -123,7 +124,7 @@ export default function Invites({
   return (
     <div>
       <SiteHeader mode="host" me={me} docoScope={{ ownerSlug, docoSlug, handle }} />
-      <main className="mx-auto max-w-3xl px-6 py-6 space-y-5">
+      <SingleColumnPageMain className="py-6 space-y-5">
         <div className="space-y-1">
           <h1 className="text-lg font-semibold tracking-tight">
             <Link to={`/${handle}`} className="hover:text-primary">
@@ -204,7 +205,7 @@ export default function Invites({
             ))}
           </CardContent>
         </Card>
-      </main>
+      </SingleColumnPageMain>
     </div>
   );
 }

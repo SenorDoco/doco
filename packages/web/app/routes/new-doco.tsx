@@ -1,5 +1,6 @@
 import { Form, Link, redirect } from "react-router";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
+import { SingleColumnPageMain } from "~/components/page-main";
 import { SiteHeader } from "~/components/site-header";
 import { rootDir } from "~/lib/db.server";
 import { listOrgsOwnedOrAdminedBy, loadHostConfig } from "~/lib/host";
@@ -81,7 +82,7 @@ export default function NewDoco({
   return (
     <div>
       <SiteHeader mode="host" me={me} />
-      <main className="mx-auto max-w-2xl px-6 py-8">
+      <SingleColumnPageMain className="py-8">
         <Card>
           <CardHeader>
             <CardTitle>New doco</CardTitle>
@@ -161,7 +162,7 @@ export default function NewDoco({
             </Form>
           </CardContent>
         </Card>
-      </main>
+      </SingleColumnPageMain>
     </div>
   );
 }
@@ -187,7 +188,7 @@ function NewDocoCreatedView({
   return (
     <div>
       <SiteHeader mode="host" me={me} />
-      <main className="mx-auto max-w-2xl px-6 py-8 space-y-4">
+      <SingleColumnPageMain className="py-8 space-y-4">
         <Card>
           <CardHeader>
             <CardTitle>Doco created · {handle}</CardTitle>
@@ -229,7 +230,7 @@ function NewDocoCreatedView({
             </div>
           </CardContent>
         </Card>
-      </main>
+      </SingleColumnPageMain>
     </div>
   );
 }

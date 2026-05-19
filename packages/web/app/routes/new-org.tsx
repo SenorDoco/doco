@@ -1,10 +1,11 @@
 import { Form, Link, redirect } from "react-router";
 import { addOrganization } from "@doco/host";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
+import { SingleColumnPageMain } from "~/components/page-main";
+import { SiteHeader } from "~/components/site-header";
 import { rootDir } from "~/lib/db.server";
 import { loadHostConfig } from "~/lib/host";
 import { getCurrentPrincipal } from "~/lib/session";
-import { SiteHeader } from "~/components/site-header";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 
 export async function loader({ request }: { request: Request }) {
   const me = await getCurrentPrincipal(request);
@@ -50,7 +51,7 @@ export default function NewOrg({
   return (
     <div>
       <SiteHeader mode="host" me={me} />
-      <main className="mx-auto max-w-2xl px-6 py-8">
+      <SingleColumnPageMain className="py-8">
         <Card>
           <CardHeader>
             <CardTitle>New organization</CardTitle>
@@ -118,7 +119,7 @@ export default function NewOrg({
             </Form>
           </CardContent>
         </Card>
-      </main>
+      </SingleColumnPageMain>
     </div>
   );
 }

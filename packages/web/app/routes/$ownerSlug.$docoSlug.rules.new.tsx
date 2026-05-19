@@ -5,6 +5,7 @@ import { withClient } from "@doco/db";
 // to prefill the scope). Admin-only: project owners + org admins.
 import { Form, redirect, useSearchParams } from "react-router";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
+import { SingleColumnPageMain } from "~/components/page-main";
 import { SiteHeader } from "~/components/site-header";
 import { captureRule } from "~/lib/capture.server";
 import { docoPath } from "~/lib/db.server";
@@ -130,7 +131,7 @@ export default function NewRule({
   return (
     <div>
       <SiteHeader mode="host" me={me} docoScope={{ ownerSlug, docoSlug, handle }} />
-      <main className="mx-auto max-w-2xl px-6 py-6 space-y-4">
+      <SingleColumnPageMain className="py-6 space-y-4">
         <Card>
           <CardHeader>
             <CardTitle>New rule</CardTitle>
@@ -256,7 +257,7 @@ export default function NewRule({
             </Form>
           </CardContent>
         </Card>
-      </main>
+      </SingleColumnPageMain>
     </div>
   );
 }

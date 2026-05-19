@@ -1,6 +1,7 @@
 import { Link } from "react-router";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { DocoMark } from "~/components/doco-mark";
+import { SingleColumnPageMain } from "~/components/page-main";
 import { VersionPill } from "~/components/version-pill";
 import { readOAuthConfig, setOAuthReturnCookie, startOAuth } from "~/lib/oauth.server";
 
@@ -51,7 +52,7 @@ export default function AuthGitHub({
           <VersionPill />
         </div>
       </header>
-      <main className="mx-auto max-w-2xl px-6 py-10">
+      <SingleColumnPageMain className="py-10">
         <Card>
           <CardHeader>
             <CardTitle>GitHub OAuth not configured</CardTitle>
@@ -114,7 +115,7 @@ DOCO_GITHUB_CLIENT_SECRET=<from the OAuth app>`}
             </p>
           </CardContent>
         </Card>
-      </main>
+      </SingleColumnPageMain>
     </div>
   );
 }
