@@ -69,7 +69,6 @@ export default [
   route("connect", "routes/agent-probes[.]ts.tsx", { id: "probe-connect" }),
   route("api", "routes/agent-probes[.]ts.tsx", { id: "probe-api" }),
   route("api/docs", "routes/agent-probes[.]ts.tsx", { id: "probe-api-docs" }),
-  route("__graph-expansion-check", "routes/__graph-expansion-check.tsx"),
   route("dashboard", "routes/dashboard.tsx"),
   // Auth
   route("sign-in", "routes/sign-in.tsx"),
