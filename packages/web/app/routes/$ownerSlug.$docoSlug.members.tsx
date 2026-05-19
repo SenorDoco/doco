@@ -28,6 +28,13 @@ import { TokenStore } from "~/lib/tokens.server";
 
 const ALL_ROLES: DocoRole[] = ["owner", "approver", "author", "reader"];
 
+// Local rank lookup so the client component doesn't pull `ROLE_RANK`
+// (and the rest of @doco/db, which has node-only deps) into the browser
+// bundle.
+function rankOf(role: DocoRole): number {
+  return role === "owner" ? 3 : role === "approver" ? 2 : role === "author" ? 1 : 0;
+}
+
 export async function loader({
   request,
   params,
@@ -332,8 +339,8 @@ function InviteCard({ inviterRole }: { inviterRole: DocoRole | null }) {
   const error = result && "error" in result ? result.error : undefined;
   const [copied, setCopied] = useState(false);
 
-  const maxRoleRank = inviterRole ? ROLE_RANK[inviterRole] : -1;
-  const grantable = ALL_ROLES.filter((r) => ROLE_RANK[r] <= maxRoleRank);
+  const maxRoleRank = inviterRole ? rankOf(inviterRole) : -1;
+  const grantable = ALL_ROLES.filter((r) => rankOf(r) <= maxRoleRank);
 
   return (
     <Card>
