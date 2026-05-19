@@ -20,10 +20,12 @@ import { Form, redirect } from "react-router";
 import { withClient } from "@doco/db";
 import { findPrincipalByUsername, setSessionCookie } from "~/lib/session";
 
-const TEST_USERNAME = "doco-test-harness";
+const TEST_USERNAMES = ["doco-test-harness", "doco-test-alice", "doco-test-bob"] as const;
+type TestUsername = (typeof TEST_USERNAMES)[number];
+const TEST_USERNAME = TEST_USERNAMES[0];
 
-async function ensureTestPrincipal(): Promise<string> {
-  const existing = await findPrincipalByUsername(TEST_USERNAME);
+async function ensureTestPrincipal(username: TestUsername): Promise<string> {
+  const existing = await findPrincipalByUsername(username);
   if (existing) {
     // Repair raw_yaml if the row was minted by an older version of
     // this route that omitted node_type — the indexer NULL-checks
@@ -48,7 +50,7 @@ async function ensureTestPrincipal(): Promise<string> {
   const raw_yaml = JSON.stringify({
     id,
     node_type: "principal",
-    username: TEST_USERNAME,
+    username,
     type: "human",
     note: "Lazy-created by /auth/dev-signin for testing. Has no doco_users grants by default.",
   });
@@ -57,10 +59,10 @@ async function ensureTestPrincipal(): Promise<string> {
       `INSERT INTO principals (id, username, type, raw_yaml)
        VALUES ($1, $2, 'human', $3)
        ON CONFLICT (username) DO NOTHING`,
-      [id, TEST_USERNAME, raw_yaml],
+      [id, username, raw_yaml],
     );
   });
-  const reloaded = await findPrincipalByUsername(TEST_USERNAME);
+  const reloaded = await findPrincipalByUsername(username);
   if (!reloaded) throw new Error("ensureTestPrincipal: post-insert lookup failed");
   return reloaded.id;
 }
@@ -85,28 +87,31 @@ function ulid(): string {
 }
 
 interface LoaderData {
-  username: string;
-  principalId: string | null;
+  usernames: readonly string[];
+  defaultUsername: string;
 }
 
 export async function loader() {
-  const existing = await findPrincipalByUsername(TEST_USERNAME);
   return Response.json({
-    username: TEST_USERNAME,
-    principalId: existing?.id ?? null,
+    usernames: TEST_USERNAMES,
+    defaultUsername: TEST_USERNAME,
   } satisfies LoaderData);
+}
+
+function isTestUsername(value: string): value is TestUsername {
+  return (TEST_USERNAMES as readonly string[]).includes(value);
 }
 
 export async function action({ request }: { request: Request }) {
   const form = await request.formData();
   const requested = String(form.get("username") ?? TEST_USERNAME).trim();
-  if (requested !== TEST_USERNAME) {
+  if (!isTestUsername(requested)) {
     return new Response(
-      `dev-signin restricted to "${TEST_USERNAME}". Got "${requested}".`,
+      `dev-signin restricted to: ${TEST_USERNAMES.join(", ")}. Got "${requested}".`,
       { status: 403 },
     );
   }
-  const principalId = await ensureTestPrincipal();
+  const principalId = await ensureTestPrincipal(requested);
   const next = form.get("next");
   const target =
     typeof next === "string" && next.startsWith("/") && !next.startsWith("//")
@@ -126,20 +131,25 @@ export default function DevSignin({
     <main style={{ maxWidth: 480, margin: "60px auto", padding: 24, fontFamily: "system-ui" }}>
       <h1>Dev sign-in</h1>
       <p style={{ color: "#a00", marginBottom: 16 }}>
-        ⚠️ Testing-only. Signs in as the dedicated <code>{loaderData.username}</code> principal.
-        That account starts with no Doco grants — pair this with an invite mint to give it
-        access for a specific test run.
+        ⚠️ Testing-only. Signs in as one of the dedicated test principals. Each starts with no
+        Doco grants — pair this with an invite mint to give it access for a specific test run.
       </p>
       <Form method="post" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        <input type="hidden" name="username" value={loaderData.username} />
+        <label>
+          Sign in as:
+          <select name="username" defaultValue={loaderData.defaultUsername}>
+            {loaderData.usernames.map((u) => (
+              <option key={u} value={u}>
+                {u}
+              </option>
+            ))}
+          </select>
+        </label>
         <label>
           Redirect to (optional, must start with /):
           <input name="next" type="text" defaultValue="/dashboard" />
         </label>
-        <button type="submit">
-          Sign in as {loaderData.username}
-          {loaderData.principalId ? "" : " (will create on first signin)"}
-        </button>
+        <button type="submit">Sign in</button>
       </Form>
     </main>
   );
