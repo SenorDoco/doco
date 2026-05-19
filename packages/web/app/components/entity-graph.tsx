@@ -200,37 +200,21 @@ function relativeTime(iso: string | null): string {
  * edge case — disconnected isolates).
  */
 const NODE_WIDTH = 340;
-const NODE_MIN_HEIGHT = 72;
-const NODE_MAX_SUMMARY_LINES = 12;
 const NODE_STRIPE_WIDTH = 24;
-/** Default fallback when a card's content height can't be derived yet. */
-const NODE_HEIGHT = 154;
+/**
+ * Every card uses the same height. Picked to give the right stripe
+ * enough vertical room for the lifecycle name + "X ago" without
+ * clipping (worst case: "in_progress" + "365d ago" stacked
+ * vertically), and to leave a few lines of summary room in the body.
+ */
+const NODE_HEIGHT = 220;
+const NODE_MAX_SUMMARY_LINES = 8;
 const EXPANDED_NODE_SCREEN_MARGIN = 12;
 const NODE_GAP_X = 72;
-const LANE_HEIGHT = 208;
+const LANE_HEIGHT = 248;
 const LANE_GAP = 28;
 const LANE_HEADER_HEIGHT = 40;
 const LANE_PADDING_X = 16;
-
-/**
- * Estimate the card height needed for a node based on its summary length
- * (+ an optional distinct title row). Cards that need less vertical space
- * get less; cards with longer summaries grow up to ~9 lines. Used by both
- * the Dagre layout (so positions account for actual size) and the card's
- * own min-height so short content doesn't reserve unused space.
- */
-function estimateCardHeight(summary: string, hasDistinctTitle: boolean): number {
-  const charsPerLine = 35;
-  const summaryLines = Math.max(
-    1,
-    Math.min(NODE_MAX_SUMMARY_LINES, Math.ceil((summary?.length ?? 0) / charsPerLine)),
-  );
-  const summaryHeight = summaryLines * 17;
-  const headerHeight = 32;
-  const titleHeight = hasDistinctTitle ? 22 : 0;
-  const padding = 24;
-  return Math.max(NODE_MIN_HEIGHT, headerHeight + titleHeight + summaryHeight + padding);
-}
 function dagreLayout(nodes: GraphNode[], links: GraphLink[], centerId: string): GraphLayout {
   const positions = new Map<string, { x: number; y: number }>();
   if (nodes.length === 0) return { positions, lanes: [] };
@@ -380,8 +364,6 @@ interface EntityNodeCardProps {
   lifecycle: string;
   accentColor: string;
   background: string;
-  /** Content-driven minimum height for this card. */
-  cardHeight: number;
   getGraphBounds?: () => DOMRect | null;
   viewportZoom: number;
   onExpandedChange?: (id: string, expanded: boolean) => void;
@@ -438,7 +420,6 @@ function EntityNodeCard({
   lifecycle,
   accentColor,
   background,
-  cardHeight,
   getGraphBounds,
   viewportZoom,
   onExpandedChange,
@@ -490,7 +471,7 @@ function EntityNodeCard({
         top: boundedExpansion?.top,
         width: boundedExpansion?.width ?? NODE_WIDTH,
         height: boundedExpansion?.height,
-        minHeight: boundedExpansion?.height ?? cardHeight,
+        minHeight: boundedExpansion?.height ?? NODE_HEIGHT,
         background,
         border: isCenter ? "2px solid var(--color-border)" : "1px solid var(--color-border)",
         borderRadius: 8,
@@ -509,22 +490,12 @@ function EntityNodeCard({
           {lifecycleLabel(lifecycle)}
         </span>
         <span
-          className="mt-3 text-[9px] font-medium uppercase tracking-wider opacity-90"
+          className="mt-3 text-[9px] font-medium tracking-wider opacity-90"
           style={{ writingMode: "vertical-rl", textOrientation: "mixed" }}
         >
           {relativeTime(createdAt)}
         </span>
       </div>
-      <NodeTypeIcon
-        nodeType={nodeType}
-        aria-hidden="true"
-        className="pointer-events-none absolute left-1/2 top-1/2 z-0 h-24 w-24 -translate-x-1/2 -translate-y-1/2"
-        data-entity-node-background-icon="true"
-        style={{
-          color: accentColor,
-          opacity: 0.14,
-        }}
-      />
       <div className="relative z-10 flex items-center gap-2 text-left">
         <span className="inline-flex items-center gap-1.5 text-sm font-semibold uppercase tracking-wider text-foreground">
           <NodeTypeIcon nodeType={nodeType} className="!h-4 !w-4 shrink-0" />
@@ -788,8 +759,6 @@ export function EntityGraph({
         ? "color-mix(in oklch, var(--color-accent) 30%, white)"
         : "rgb(255,255,255)";
       const title = n.name ?? n.summary;
-      const hasDistinctTitle = title !== n.summary;
-      const cardHeight = estimateCardHeight(n.summary ?? "", hasDistinctTitle);
       // Make the card itself a real link. React Flow's node-level click
       // remains as a fallback, but the anchor gives expected browser affordances.
       const href = hrefFor ? hrefFor(n.id, n.node_type) : `/${n.node_type}/${n.id}`;
@@ -803,7 +772,7 @@ export function EntityGraph({
         // `getInternalNodesBounds` collapsed to 0-height, leaving the
         // mini-map blank.
         initialWidth: NODE_WIDTH,
-        initialHeight: cardHeight,
+        initialHeight: NODE_HEIGHT,
         data: {
           label: (
             <EntityNodeCard
@@ -819,7 +788,6 @@ export function EntityGraph({
               lifecycle={lifecycle}
               accentColor={accentColor}
               background={bg}
-              cardHeight={cardHeight}
               getGraphBounds={getGraphBounds}
               viewportZoom={viewport.zoom}
               onExpandedChange={(id, expanded) =>
