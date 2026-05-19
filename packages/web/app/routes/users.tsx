@@ -36,9 +36,56 @@ import { getCurrentPrincipal } from "~/lib/session";
 import { TokenStore } from "~/lib/tokens.server";
 
 const ALL_ROLES: DocoRole[] = ["owner", "approver", "author", "reader"];
+type InviteLevel = "org" | "doco" | "scope";
+type InviteOption = { id: string; label: string };
+type InviteDefaultSelection = { level: InviteLevel; targetId: string };
 
 function rankOf(role: DocoRole): number {
   return role === "owner" ? 3 : role === "approver" ? 2 : role === "author" ? 1 : 0;
+}
+
+function parseInviteLevel(value: string | null): InviteLevel | null {
+  return value === "org" || value === "doco" || value === "scope" ? value : null;
+}
+
+function optionsForInviteLevel(
+  level: InviteLevel,
+  options: {
+    orgs: InviteOption[];
+    docos: InviteOption[];
+    scopes: InviteOption[];
+  },
+): InviteOption[] {
+  if (level === "org") return options.orgs;
+  if (level === "scope") return options.scopes;
+  return options.docos;
+}
+
+function firstAvailableInviteLevel(options: {
+  orgs: InviteOption[];
+  docos: InviteOption[];
+  scopes: InviteOption[];
+}): InviteLevel {
+  if (options.docos.length > 0) return "doco";
+  if (options.orgs.length > 0) return "org";
+  return "scope";
+}
+
+function resolveInviteDefaultSelection(args: {
+  requestedLevel: InviteLevel | null;
+  requestedTargetId: string;
+  orgs: InviteOption[];
+  docos: InviteOption[];
+  scopes: InviteOption[];
+}): InviteDefaultSelection {
+  const level =
+    args.requestedLevel ??
+    firstAvailableInviteLevel({ orgs: args.orgs, docos: args.docos, scopes: args.scopes });
+  const options = optionsForInviteLevel(level, args);
+  const targetId = options.some((opt) => opt.id === args.requestedTargetId)
+    ? args.requestedTargetId
+    : (options[0]?.id ?? "");
+  return { level, targetId };
 }
 
 interface UserCell {
@@ -78,6 +125,7 @@ export async function loader({ request }: { request: Request }) {
   if (!me) {
     return redirect(`/sign-in?next=${encodeURIComponent("/users")}`);
   }
+  const url = new URL(request.url);
 
   // ── Orgs the signed-in user belongs to ─────────────────────────────
   const myOrgs = await listOrganizationsForPrincipal(me.id);
@@ -228,6 +276,13 @@ export async function loader({ request }: { request: Request }) {
       orgs: inviteOrgs,
       docos: inviteDocos,
       scopes: inviteScopes,
+      defaultSelection: resolveInviteDefaultSelection({
+        requestedLevel: parseInviteLevel(url.searchParams.get("level")),
+        requestedTargetId: url.searchParams.get("target_id")?.trim() ?? "",
+        orgs: inviteOrgs,
+        docos: inviteDocos,
+        scopes: inviteScopes,
+      }),
     },
   };
 }
@@ -430,6 +485,7 @@ interface UsersLoaderData {
     orgs: { id: string; label: string }[];
     docos: { id: string; label: string }[];
     scopes: { id: string; label: string; doco_handle: string }[];
+    defaultSelection: InviteDefaultSelection;
   };
 }
 
@@ -450,6 +506,7 @@ export default function UsersPage({
           orgs={loaderData.invite.orgs}
           docos={loaderData.invite.docos}
           scopes={loaderData.invite.scopes}
+          defaultSelection={loaderData.invite.defaultSelection}
         />
 
         <Section
@@ -660,19 +717,32 @@ function InviteCard({
   orgs,
   docos,
   scopes,
+  defaultSelection,
 }: {
   orgs: { id: string; label: string }[];
   docos: { id: string; label: string }[];
   scopes: { id: string; label: string; doco_handle: string }[];
+  defaultSelection: InviteDefaultSelection;
 }) {
   const fetcher = useFetcher<ActionResult>();
   const result = fetcher.data;
   const inviteResult = result && "intent" in result && result.intent === "invite" ? result : null;
   const error = result && "error" in result ? result.error : undefined;
-  const [level, setLevel] = useState<"org" | "doco" | "scope">("doco");
+  const [level, setLevel] = useState<InviteLevel>(defaultSelection.level);
+  const [targetId, setTargetId] = useState(defaultSelection.targetId);
 
-  const options = level === "org" ? orgs : level === "doco" ? docos : scopes;
+  const options = optionsForInviteLevel(level, { orgs, docos, scopes });
   const noTargets = options.length === 0;
+
+  useEffect(() => {
+    if (options.length === 0) {
+      if (targetId !== "") setTargetId("");
+      return;
+    }
+    if (!options.some((opt) => opt.id === targetId)) {
+      setTargetId(options[0]?.id ?? "");
+    }
+  }, [options, targetId]);
 
   return (
     <Card>
@@ -688,7 +758,12 @@ function InviteCard({
               <select
                 name="level"
                 value={level}
-                onChange={(e) => setLevel(e.currentTarget.value as "org" | "doco" | "scope")}
+                onChange={(e) => {
+                  const nextLevel = e.currentTarget.value as InviteLevel;
+                  setLevel(nextLevel);
+                  const nextOptions = optionsForInviteLevel(nextLevel, { orgs, docos, scopes });
+                  setTargetId(nextOptions[0]?.id ?? "");
+                }}
                 data-testid="invite-level"
                 className="rounded-md border border-border bg-background px-3 py-2"
               >
@@ -703,6 +778,8 @@ function InviteCard({
               </span>
               <select
                 name="target_id"
+                value={targetId}
+                onChange={(e) => setTargetId(e.currentTarget.value)}
                 disabled={noTargets}
                 data-testid="invite-target"
                 className="rounded-md border border-border bg-background px-3 py-2 disabled:opacity-50"

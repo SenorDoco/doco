@@ -31,6 +31,7 @@ import { ActivityHeatmap } from "~/components/activity-heatmap";
 import { Badge } from "~/components/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { EmojiPickerInput } from "~/components/emoji-picker-input";
+import { InviteCollaboratorsLink } from "~/components/invite-collaborators-link";
 import { NodeTypeIcon } from "~/components/node-type-icon";
 import { NodesOverviewCard, type NodesOverviewSection } from "~/components/nodes-overview-card";
 import { SiteHeader } from "~/components/site-header";
@@ -774,12 +775,15 @@ export default function ScopePage({
               ) : null}
             </h1>
           </div>
-          <Link
-            to={`/${handle}/scopes`}
-            className="ml-auto text-xs text-muted-foreground hover:text-foreground"
-          >
-            ← Back to scopes
-          </Link>
+          <div className="ml-auto flex flex-wrap items-center gap-2">
+            <InviteCollaboratorsLink level="scope" targetId={scope.id} />
+            <Link
+              to={`/${handle}/scopes`}
+              className="text-xs text-muted-foreground hover:text-foreground"
+            >
+              ← Back to scopes
+            </Link>
+          </div>
         </div>
 
         <ScopeDescriptionCard scope={scope} />

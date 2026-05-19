@@ -17,11 +17,12 @@ import { parse as parseYaml } from "yaml";
 import { ActivityFeedLine, type ActivityFeedLineItem } from "~/components/activity-feed-line";
 import { ActivityHeatmap } from "~/components/activity-heatmap";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
+import { InviteCollaboratorsLink } from "~/components/invite-collaborators-link";
 import { NodeTypeIcon } from "~/components/node-type-icon";
 import { NodesOverviewCard, type NodesOverviewSection } from "~/components/nodes-overview-card";
 import { SiteHeader } from "~/components/site-header";
 import { docoPath } from "~/lib/db.server";
-import { loadDocoForRead, normalizeDocoParams } from "~/lib/doco-access.server";
+import { canAdminDoco, loadDocoForRead, normalizeDocoParams } from "~/lib/doco-access.server";
 import { loadHostConfig } from "~/lib/host";
 import { lifecycleColor } from "~/lib/node-colors";
 import { listScopeDetails } from "~/lib/scope-helpers.server";
@@ -226,6 +227,7 @@ export async function loader({
       docoSlug,
       handle,
       docoId: ctx.meta.docoId,
+      canInviteCollaborators: await canAdminDoco(ctx.meta, me?.id ?? null),
       host: await loadHostConfig(),
       me,
     };
@@ -282,6 +284,7 @@ export default function DocoHome({
     docoSlug,
     handle,
     docoId,
+    canInviteCollaborators,
     host,
     me,
   } = loaderData;
@@ -373,12 +376,9 @@ export default function DocoHome({
             </h1>
             <p className="font-mono text-sm text-muted-foreground">{docoId}</p>
           </div>
-          <Link
-            to={`/${handle}/invites`}
-            className="shrink-0 rounded-md border border-border px-3 py-1.5 text-xs font-semibold hover:bg-input"
-          >
-            Invite collaborators
-          </Link>
+          {canInviteCollaborators ? (
+            <InviteCollaboratorsLink level="doco" targetId={docoId} />
+          ) : null}
         </div>
 
         <NodesOverviewCard
