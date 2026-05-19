@@ -94,7 +94,7 @@ export function SiteHeader({ docoScope, me }: SiteHeaderProps) {
                   )
                 }
               >
-                Users
+                Users (human/agents)
               </NavLink>
               <NavLink
                 to={`/${me.username}`}

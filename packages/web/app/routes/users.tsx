@@ -635,7 +635,7 @@ function InviteCard({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Invite a user</CardTitle>
+        <CardTitle>Invite a user (human or agent)</CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
         <fetcher.Form method="post" className="flex flex-col gap-3">
