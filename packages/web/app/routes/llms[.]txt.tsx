@@ -19,16 +19,18 @@ right page. This is the agent-readable entry point.
 🛑 **AGENT STOP — READ THIS BEFORE ANY HTTP CALL** 🛑
 
 Your FIRST onboarding action is NOT to POST /api/v1/docos.json.
-The wizard's step 1 is to ASK the project owner whether they want
-to install the Doco MCP connector — see section 1 below. ONLY after
-they answer (yes install / no skip) do you proceed to the create
-POST. If your first instinct after reading this page is "let me
-create the doco now," that's the exact bias the wizard intercepts.
-Ask about the connector first; create second.
+First check whether your runtime already has the Doco connector
+installed. If it does, use it for the Doco work it supports and skip
+the install offer. If it does NOT, ask the project owner whether they
+want to install it, wait one turn, and continue through the API in
+this session either way. ONLY after that connector check/ask do you
+proceed to the create POST. If your first instinct after reading this
+page is "let me create the doco now," that's the exact bias the
+wizard intercepts. Check connector first; create second.
 
 The full sequence — DO NOT skip step 1:
 
-  1. Offer the MCP connector (section 1 below) — ASK and WAIT
+  1. Check for the MCP connector (section 1 below) — ask only if absent
   2. POST /api/v1/docos.json — create the Doco
   3. Write .env (DOCO_ACCESS), DOCO.md, AGENTS.md, CLAUDE.md
   4. Render the user_message_block GATE verbatim
@@ -39,18 +41,22 @@ The full sequence — DO NOT skip step 1:
 No SDK, no CLI, no package, no install on the agent side. Doco is
 plain HTTP — call it with whatever HTTP client you already have.
 
-## 1. OFFER THE MCP CONNECTOR (do this FIRST, before any HTTP call)
+## 1. CHECK FOR THE MCP CONNECTOR (do this FIRST, before any HTTP call)
 
 This is your very first onboarding action — BEFORE the create POST,
-BEFORE writing files, BEFORE anything else. Ask the project owner
-verbatim:
+BEFORE writing files, BEFORE anything else. Inspect your active tool
+list, installed connectors, or MCP servers. If a Doco connector is
+already available, say so briefly and use it for any Doco work it
+supports. If the connector does not expose anonymous Doco creation,
+continue with the API call in step 2.
+
+If no Doco connector is available, ask the project owner verbatim:
 
 > **"Before I create the Doco, do you want to install the Doco MCP
-> connector? It's a one-time install per agent runtime (Claude Code,
-> Claude Desktop, Cursor, …) and gives every future Doco-tracked
-> project native Doco tools — search, capture, list scopes — without
-> me having to curl them. The install takes effect on your next
-> session/restart, so onboarding right now still runs through curl
+> connector for this agent runtime? It's a one-time install and gives
+> future Doco-tracked projects native Doco tools — search, capture,
+> list scopes — without raw curl. The install takes effect on your next
+> session/restart, so onboarding right now still runs through the API
 > either way. Say 'yes install' or 'no skip' and I'll proceed."**
 
 Then surface the install command matching your runtime:
@@ -65,7 +71,7 @@ Then surface the install command matching your runtime:
 
 Wait ONE turn for their answer. If they accept, surface the install
 command and tell them they don't have to wait for restart — you'll
-continue onboarding via curl regardless, and the connector takes
+continue onboarding via the API regardless, and the connector takes
 effect on their next session. If they decline, acknowledge and move
 on. DO NOT block onboarding waiting for the install to finish — the
 install is a future-session upgrade, not a current-session
@@ -214,7 +220,7 @@ Global scope rules to find out.
 
 ## 7. Operate — apply the protocol you already have
 
-You finished onboarding with the protocol in hand (the step-1
+You finished onboarding with the protocol in hand (the step-2
 response's \`canonical_instructions\`). Apply it from your next reply
 onward — four invariants: query indicator at the top of every reply,
 scope-prefixed footer lines after every write, capture before

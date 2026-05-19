@@ -114,19 +114,22 @@ every reply with:
 
 If `DOCO.md` doesn't exist and `./.env` has no `DOCO_ACCESS`, you're on
 the create side. Two HTTP calls, three files written, done — no
-browser, no install, no permission prompts:
+browser, no permission prompts. Before the create POST, check whether
+the Doco connector is already installed for this runtime:
 
-1. **Offer the connector FIRST — before any HTTP call.** Ask the
-   project owner verbatim: *"Before I create the Doco, do you want to
-   install the Doco MCP connector for your agent runtime? It's a
-   one-time install (Claude Code: `claude mcp add doco
+1. **Check for the connector FIRST — before any HTTP call.** Inspect
+   your active tools / MCP servers. If the Doco connector is already
+   present, say so briefly and use it for Doco work it supports. If it
+   is absent, ask the project owner verbatim: *"Before I create the
+   Doco, do you want to install the Doco MCP connector for this agent
+   runtime? It's a one-time install (Claude Code: `claude mcp add doco
    https://doco.to/mcp`; Claude Desktop / Cursor: see /llms.txt).
    Install takes effect on your next session/restart, so onboarding
-   right now still runs through curl either way. Say 'yes install' or
-   'no skip' and I'll proceed."* Wait ONE turn for their answer. If
-   accepted, surface the install command and tell them they don't
-   need to wait — you'll continue via curl. If declined, acknowledge
-   and move on. DO NOT block longer than one turn.
+   right now still runs through the API either way. Say 'yes install'
+   or 'no skip' and I'll proceed."* Wait ONE turn for their answer. If
+   accepted, surface the install command and tell them they don't need
+   to wait — you'll continue via the API. If declined, acknowledge and
+   move on. DO NOT block longer than one turn.
 2. Emit `[🔮 Doco] Creating new doco...` to the user, then
    `POST https://doco.to/api/v1/docos.json` (no auth) with
    `{"requested_id": "<kebab>", "description": "<prose>"}` (slug
@@ -182,17 +185,13 @@ Full reference: `https://doco.to/onboarding/create/agent.txt`.
 
 ## Joining an existing Doco
 
-If `DOCO.md` exists but `./.env` is empty, two prompts in your first
-reply — connector offer (same as the create side) AND the invite-URL
-ask. Don't redeem until the project owner responds to both.
+If `DOCO.md` exists but `./.env` is empty, check whether the Doco
+connector is already installed, then ask for the invite URL. If the
+connector is absent, offer installation once using the create-side
+wording; this session continues through the API regardless. Don't
+redeem until the project owner responds with the invite URL.
 
-**(1) Offer the connector first.** Same verbatim prompt as the create
-side: ask whether they want to install the Doco MCP connector for
-their agent runtime. Surface the install command matching the
-runtime. Install applies to their next session; this session
-continues through curl regardless. One turn, no blocking.
-
-**(2) Ask for the invite URL:**
+**Ask for the invite URL:**
 
     "I see this repo is tracked at <doco_url>, but I need an invite
     to access it. Open <doco_url>, sign in, click 'New invite', and

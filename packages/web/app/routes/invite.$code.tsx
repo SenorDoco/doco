@@ -1,17 +1,19 @@
-// /invite/<code> — browser landing page for a Doco invite. Humans
-// only — agents have their own programmatic redeem path at
-// /api/v1/invites/<code>/redeem.json (which returns `next_steps_for_agent`
-// + `user_message_block` along with the doco_access credential).
+// /invite/<code> — landing page for a Doco invite. The same URL is
+// shareable with humans and agents. Signed-in humans can accept here;
+// signed-out users choose human sign-in or the plain-text agent recipe
+// at /invite/<code>/agent.txt.
 //
 // The page loads the invite, shows the human what they're being
 // invited to (Doco name + expiration), and asks them to click
-// "Accept":
+// "Accept" only after they are signed in:
 //
 //   - If signed in: the invite is redeemed, the human Principal is
 //     joined to the Doco as a member, and a personal SessionToken is
 //     minted for them. The success card is intentionally minimal —
 //     just a "Continue" button to /<owner>/<slug>/.
-//   - If not signed in: bounce through GitHub OAuth and come back here.
+//   - If not signed in: ask whether the visitor is human or agent. Humans
+//     sign in and come back here to accept; agents get the plain-text
+//     instructions for redeeming the same invite.
 
 import {
   type DocoRole,
@@ -233,29 +235,54 @@ export default function InviteLanding({
             Single-use — once you accept, this URL stops working.
           </p>
           {loaderData.signedIn ? (
-            <p>
-              You're signed in as <strong>{loaderData.signedIn.username}</strong>.
-            </p>
+            <>
+              <p>
+                You're signed in as <strong>{loaderData.signedIn.username}</strong>.
+              </p>
+              {actionData && "error" in actionData ? (
+                <p className="text-destructive">{actionData.error}</p>
+              ) : null}
+              <Form method="post" className="flex gap-2">
+                <button
+                  type="submit"
+                  className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90"
+                >
+                  Accept invite
+                </button>
+                <Link
+                  to="/"
+                  className="rounded-md border border-border px-4 py-2 text-sm font-semibold hover:bg-card"
+                >
+                  Decline
+                </Link>
+              </Form>
+            </>
           ) : (
-            <p>You'll be asked to sign in with GitHub before joining.</p>
+            <>
+              <p>Who is redeeming this invite?</p>
+              <div className="grid gap-2 sm:grid-cols-2">
+                <Link
+                  to={`/auth/github?return=${encodeURIComponent(`/invite/${loaderData.code}`)}`}
+                  className="rounded-md border border-border bg-card p-3 hover:border-primary"
+                >
+                  <span className="block text-sm font-semibold text-foreground">Human</span>
+                  <span className="mt-1 block text-xs text-muted-foreground">
+                    Sign in first, then accept the invite here.
+                  </span>
+                </Link>
+                <Link
+                  to={`/invite/${loaderData.code}/agent.txt`}
+                  reloadDocument
+                  className="rounded-md border border-border bg-card p-3 hover:border-primary"
+                >
+                  <span className="block text-sm font-semibold text-foreground">Agent</span>
+                  <span className="mt-1 block text-xs text-muted-foreground">
+                    Open the plain-text redeem instructions.
+                  </span>
+                </Link>
+              </div>
+            </>
           )}
-          {actionData && "error" in actionData ? (
-            <p className="text-destructive">{actionData.error}</p>
-          ) : null}
-          <Form method="post" className="flex gap-2">
-            <button
-              type="submit"
-              className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90"
-            >
-              Accept invite
-            </button>
-            <Link
-              to="/"
-              className="rounded-md border border-border px-4 py-2 text-sm font-semibold hover:bg-card"
-            >
-              Decline
-            </Link>
-          </Form>
         </CardContent>
       </Card>
     </Shell>

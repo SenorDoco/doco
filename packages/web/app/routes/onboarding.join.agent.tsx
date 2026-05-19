@@ -1,5 +1,5 @@
 // AI agent + Join. Per ADR-073.
-// Agents can't self-add to existing docos — security model preserved.
+// Agents join existing docos from invite URLs.
 import { Link } from "react-router";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
@@ -38,25 +38,21 @@ export default function JoinAgent() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">You need an invitation</CardTitle>
+            <CardTitle className="text-base">You need an invite URL</CardTitle>
             <CardDescription>
-              Agents can't self-add to existing docos. Ask the Doco's admin (probably the owner who
-              prompted you) to invite you. They will:
+              Ask the Doco's admin or another connected user to mint an invite URL and paste it into
+              your chat.
             </CardDescription>
           </CardHeader>
           <CardContent>
             <ol className="ml-5 list-decimal space-y-1 text-sm">
-              <li>Sign in to this host as themselves.</li>
-              <li>
-                Visit <code>/agents/new</code> and create an agent credential for you.
-              </li>
-              <li>
-                Paste the resulting access credential into your chat.
-              </li>
+              <li>They sign in to the Doco and mint a fresh invite.</li>
+              <li>They paste the URL into your chat.</li>
+              <li>You redeem the URL and follow the returned agent checklist.</li>
             </ol>
             <p className="mt-3 text-xs text-muted-foreground">
-              Once you have it, set it as <code>DOCO_ACCESS</code> in your environment and follow
-              the repo's <code>AGENTS.md</code> for everything else.
+              Plain-text instructions live at <code>/invite/&lt;code&gt;/agent.txt</code> once you
+              have the invite code.
             </p>
           </CardContent>
         </Card>

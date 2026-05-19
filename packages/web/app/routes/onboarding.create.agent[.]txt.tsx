@@ -1,24 +1,26 @@
 // /onboarding/create/agent.txt — agent-readable recipe for creating
-// a new Doco. Two HTTP calls, two files written to disk, done.
+// a new Doco. One create call, local bootstrap files, then onboarding.
 import { getPublicBaseUrl } from "@doco/shared";
 
 export async function loader({ request }: { request: Request }) {
   const baseUrl = getPublicBaseUrl(request);
-  const body = `Set up Doco for this project — zero-install, zero-prompt recipe for agents.
+  const body = `Set up Doco for this project — connector-aware recipe for agents.
 
 You talk to ${baseUrl} over plain HTTP. No CLI, no SDK, no install.
 
 🛑 AGENT STOP — READ THIS BEFORE ANY HTTP CALL 🛑
 
-Your FIRST onboarding action is NOT to POST /api/v1/docos.json. The
-wizard's step 1 is to ASK the project owner whether they want to
-install the Doco MCP connector (see "Step 1 — offer the connector"
-below). ONLY after they answer (yes install / no skip) do you
+Your FIRST onboarding action is NOT to POST /api/v1/docos.json. First
+check whether your runtime already has the Doco connector installed.
+If it does, use it for the Doco work it supports and skip the install
+offer. If it does NOT, ask the project owner whether they want to
+install it, wait one turn, and continue through the API in this
+session either way. Only after that connector check/ask do you
 proceed to the create POST in step 2. If your first instinct after
 reading this is "let me create the doco now," that's the exact bias
-the wizard intercepts. Ask about the connector first; create second.
+the wizard intercepts. Check connector first; create second.
 
-The full recipe is one HTTP call (after the connector ask), a
+The full recipe is one HTTP call (after the connector check/ask), a
 handful of files written, an onboarding-overlay walk, and one git
 commit. Step 6 is a hard gate: you MUST render the response's
 user_message_block to the user before any further onboarding
@@ -26,16 +28,16 @@ action. Step 7 is the onboarding-overlay walk that MUST run
 regardless of whether the commit step is gated on a "don't commit
 unprompted" rule — commit-wait does NOT swallow steps 7 and 8.
 
-  1. **OFFER THE CONNECTOR FIRST.** Before any HTTP call, before
-     creating the Doco, ask the project owner whether they want to
-     install the Doco MCP connector. Wait one turn for their answer.
-     The install applies on their NEXT session — onboarding right
-     now continues through curl either way — but offering this BEFORE
-     creating anything lets them set up their runtime while you wait.
-     See "Step 1 — offer the connector" below for the verbatim prompt
-     and per-runtime install commands. If they accept, surface the
-     install command and move on. If they decline, acknowledge and
-     move on. DO NOT block longer than one turn.
+  1. **CHECK FOR THE CONNECTOR FIRST.** Before any HTTP call, before
+     creating the Doco, inspect your active tools / MCP servers for
+     the Doco connector. If it is already present, skip the install
+     offer and use connector tools where they fit. If it is absent,
+     ask the project owner whether they want to install it. Wait one
+     turn for their answer. The install applies on their NEXT session
+     — onboarding right now continues through the API either way —
+     but offering this BEFORE creating anything lets them set up
+     their runtime while you wait. See "Step 1 — check for the
+     connector" below for the exact branch.
   2. POST /api/v1/docos.json (no auth) → response carries doco_access,
      invite_url, the protocol (canonical_instructions), per-Doco scopes +
      constitution + onboarding_overlay, AND a user_message_block field
@@ -51,7 +53,7 @@ unprompted" rule — commit-wait does NOT swallow steps 7 and 8.
      needs the invite URL in hand within 7 days or they lose access to
      their own project's Doco.
   7. **RUN THE ONBOARDING OVERLAY.** Check the \`onboarding_overlay\`
-     field on the step-1 response. If it's non-null, this Doco is still
+     field on the step-2 response. If it's non-null, this Doco is still
      in onboarding — your very next visible action AFTER step 6 is:
      (a) render \`onboarding_overlay.scope_setup\` verbatim — the
      two-path question — and wait for the project owner's answer;
@@ -60,7 +62,7 @@ unprompted" rule — commit-wait does NOT swallow steps 7 and 8.
      waiting for the step-9 commit nod — steps 7 and 8 run in parallel
      with commit-wait.
   8. Apply the protocol now. The \`canonical_instructions\` field on the
-     step-1 response IS the protocol — do NOT make a second fetch to
+     step-2 response IS the protocol — do NOT make a second fetch to
      /api/v1/agent-bootstrap right now (the fresh-token + second-fetch
      pattern trips agent-classifier credential-exfil heuristics).
      Subsequent sessions refresh via the helper or the agent-bootstrap
@@ -72,23 +74,25 @@ unprompted" rule — commit-wait does NOT swallow steps 7 and 8.
      one-liner AFTER step 7 starts; the commit-wait does not block
      onboarding-overlay work.
 
-Step 1 — offer the connector FIRST, before any HTTP call.
+Step 1 — check for the connector FIRST, before any HTTP call.
 
 This is your VERY first onboarding action. Don't POST anything, don't
-write any file, don't even narrate "creating the doco" yet. Ask the
-project owner whether they want to install the Doco MCP connector,
-then wait ONE turn for their answer.
+write any file, don't even narrate "creating the doco" yet.
 
-Ask verbatim:
+First inspect your active tool list, installed connectors, or MCP
+servers. If a Doco connector is already available, say so briefly and
+use it for any Doco work it supports. If the connector does not expose
+anonymous Doco creation, continue with the API call in step 2.
+
+If no Doco connector is available, ask verbatim:
 
     Before I create the Doco, do you want to install the Doco MCP
-    connector for your agent runtime? It's a one-time install that
-    gives every future Doco-tracked project native Doco tools —
-    search, list_scopes, capture_decision, capture_intent, and the
-    rest — without me having to curl them. Install takes effect on
-    your next session/restart, so onboarding right now still runs
-    through curl either way. Say 'yes install' or 'no skip' and I'll
-    proceed.
+    connector for this agent runtime? It's a one-time install that
+    gives future Doco-tracked projects native Doco tools — search,
+    list_scopes, capture_decision, capture_intent, and the rest —
+    without raw curl. Install takes effect on your next session/restart,
+    so onboarding right now still runs through the API either way.
+    Say 'yes install' or 'no skip' and I'll proceed.
 
 Then surface the install command matching your runtime:
 
@@ -102,7 +106,7 @@ Then surface the install command matching your runtime:
   - Generic: MCP server URL is ${baseUrl}/mcp (Streamable HTTP).
 
 If they accept: tell them they can install + restart whenever; you'll
-continue onboarding via curl in this session regardless. Move on to
+continue onboarding via the API in this session regardless. Move on to
 step 2. If they decline: acknowledge and move on. DO NOT block longer
 than one turn — the install is a future-session upgrade.
 
@@ -259,7 +263,7 @@ but possible), repeat the invite block. If the user has already
 accepted, the bootstrap response's onboarding_overlay will reflect
 that and you can skip the reminder.
 
-Step 7 — RUN THE ONBOARDING OVERLAY. The step-1 response carries an
+Step 7 — RUN THE ONBOARDING OVERLAY. The step-2 response carries an
 \`onboarding_overlay\` field. If it's non-null, this Doco is still in
 onboarding and step 6 is required. The agent's very next visible
 action after rendering the GATE block (step 5) is:
@@ -295,7 +299,7 @@ Two reasons:
      credential-exfil heuristics. Newer agents will pause and ask the
      project owner to approve the call, adding friction at the worst
      moment (the user just kicked off onboarding and you're stalling).
-  2. You already have everything that fetch would return. The step-1
+  2. You already have everything that fetch would return. The step-2
      response bundles \`canonical_instructions\`, \`scopes\`, \`constitution\`,
      and \`onboarding_overlay\` inline.
 

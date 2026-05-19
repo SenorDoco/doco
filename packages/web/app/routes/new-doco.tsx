@@ -173,11 +173,9 @@ export default function NewDoco({
 // fork in the same words. Keep both in sync if either rewords.
 //
 // The agent-handoff prompt no longer lives on this success card. It is
-// a separate onboarding step at `/:handle/onboarding/agent`, reached
-// at the end of the scope-setup flow (the "Continue to Doco" link on
-// the scopes pages routes through it). The "Keep it simple" path
-// short-circuits straight to the Doco home — by design, the simple
-// path opts out of the agent handoff.
+// a separate onboarding step at `/:handle/onboarding/agent`. The "Keep
+// it simple" path skips scope setup, but it still routes through the
+// collaborator invite handoff before the Doco home.
 function NewDocoCreatedView({
   handle,
   me,
@@ -200,26 +198,25 @@ function NewDocoCreatedView({
             <div className="rounded-md border border-border p-3 space-y-2">
               <p className="text-sm font-semibold">Keep it simple</p>
               <p className="text-xs text-muted-foreground">
-                Do you want to keep it simple and use Doco to store important decisions so
-                people, agents, and work stay aligned? Decisions land on the framework-seeded{" "}
-                <code className="rounded bg-input px-1 py-0.5 text-[11px]">#global</code> scope —
-                no extra setup. Capture decisions whenever you have something to record, either
-                here in the web or by asking an AI agent on the project.
+                Do you want to keep it simple and use Doco to store important decisions so people,
+                agents, and work stay aligned? Decisions land on the framework-seeded{" "}
+                <code className="rounded bg-input px-1 py-0.5 text-[11px]">#global</code> scope — no
+                extra setup. Capture decisions whenever you have something to record, either here in
+                the web or by asking an AI agent on the project.
               </p>
               <Link
-                to={`/${handle}`}
+                to={`/${handle}/onboarding/agent`}
                 className="inline-block rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90"
               >
-                Continue to Doco →
+                Invite collaborators →
               </Link>
             </div>
             <div className="rounded-md border border-border p-3 space-y-2">
               <p className="text-sm font-semibold">Document something specific</p>
               <p className="text-xs text-muted-foreground">
-                Or do you want to document something specific (for example, user flows, ADRs,
-                state machines, design language, etc.)? We'll set up dedicated scopes — topical
-                buckets — for each area you want to track, and the captured nodes file under the
-                right one.
+                Or do you want to document something specific (for example, user flows, ADRs, state
+                machines, design language, etc.)? We'll set up dedicated scopes — topical buckets —
+                for each area you want to track, and the captured nodes file under the right one.
               </p>
               <Link
                 to={`/${handle}/scopes/new?onboarding=1`}

@@ -5,7 +5,7 @@ export function loader() {
   return Response.json({
     status: "info",
     summary:
-      "Redeem an invite URL (https://doco.to/invite/<code>) with one POST to /api/v1/invites/<code>/redeem.json. If you don't have an invite, ask the user — either the user signs in at <doco_url> to mint one, or asks an already-connected agent to POST /<doco_handle>/api/invites.json with Authorization: Bearer $DOCO_ACCESS.",
+      "Redeem an invite URL (https://doco.to/invite/<code>) after checking whether the Doco connector is already installed. If you don't have an invite, ask the user to mint one from the Doco and paste the URL.",
     recipe: {
       redeem: "POST https://doco.to/api/v1/invites/<code>/redeem.json (no auth, empty body)",
       mint: "POST https://doco.to/<doco_handle>/api/invites.json (Authorization: Bearer $DOCO_ACCESS)",
@@ -14,7 +14,8 @@ export function loader() {
       details: "https://doco.to/llms.txt",
     },
     next_steps: [
-      "POST /api/v1/invites/<code>/redeem.json (no auth, empty body).",
+      "Check whether the Doco connector is already installed. If present, use it where supported. If absent, ask once whether the user wants to install it for future sessions, then continue either way.",
+      "POST /api/v1/invites/<code>/redeem.json (no auth, empty body) unless the connector provides an invite redeem tool.",
       "Walk the response's `next_steps_for_agent` array top-to-bottom — it carries the ordered checklist (write DOCO_ACCESS to .env, write DOCO.md if missing, update AGENTS.md / CLAUDE.md, fetch the canonical, render user_message_block).",
       "Render the response's `user_message_block` verbatim to whoever pasted the invite — names the Doco, what files you wrote, and how they can claim their own access.",
     ],
