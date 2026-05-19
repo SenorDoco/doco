@@ -89,13 +89,6 @@ export default function SignUp({
                 Sign in
               </Link>
             </p>
-            <p className="mt-3 text-[11px] text-muted-foreground">
-              Only people can create Doco accounts. Agents are invited by people through{" "}
-              <Link to="/agents/new" className="text-primary hover:underline">
-                /agents/new
-              </Link>
-              .
-            </p>
           </CardContent>
         </Card>
       </main>

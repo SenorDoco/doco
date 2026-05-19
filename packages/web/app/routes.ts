@@ -25,8 +25,8 @@ import { type RouteConfig, index, route } from "@react-router/dev/routes";
  *   /dashboard                     signed-in host dashboard (docos / users / orgs)
  *   /sign-in, /sign-out, /sign-up  auth (cookie locally; OAuth in prod per ADR-066, ADR-094)
  *   /onboarding/*                  first-run wizard (ADR-073). Agents POST /api/v1/docos.json directly; humans use the web flow.
- *   /invite/:code                  browser landing for a Doco invite — signed-in human accepts and gets their own DOCO_ACCESS.
- *   /agents, /agents/new           agent self-service (ADR-071)
+ *   /invite/:code                  dual human/agent Doco invite landing. Signed-in humans accept; signed-out users choose human sign-in or agent.txt.
+ *   (agent self-service: agents join via /invite/:code or mint a fresh doco via POST /api/v1/docos.json)
  *   /new-doco, /new-org            self-service create flows (ADR-067)
  *   /:owner                        owner profile + docos
  *   /:owner/:doco                  per-Doco recent + search input
@@ -96,9 +96,10 @@ export default [
   // `doco login --create <slug>`), so the HTML and .json siblings
   // would just be ceremony around a one-screen instruction.
   route("onboarding/create/agent.txt", "routes/onboarding.create.agent[.]txt.tsx"),
-  // Agents — listing moved into /users (decision_01KS0JBJ5X0AZ4XJJFKEWE1R62).
-  // /agents/new stays for direct-create flows.
-  route("agents/new", "routes/agents.new.tsx"),
+  // Per the constitution rule that agents are users, /agents and
+  // /agents/new are both gone. Agent self-service flows are:
+  // POST /api/v1/docos.json (anonymous Doco creation w/ DOCO_ACCESS) and
+  // /invite/:code (redeem an invite into an agent role grant).
   // API
   route("api/suggest-scopes", "routes/api.suggest-scopes.tsx"),
   route("api/v1/agent-bootstrap", "routes/api.v1.agent-bootstrap.tsx"),
@@ -125,6 +126,7 @@ export default [
   // recovery instead of 404 + docs re-read. See route file header.
   route("api/v1/agent-link/*", "routes/api.v1.agent-link.$.tsx"),
   route("api/v1/invites/:code/redeem.json", "routes/api.v1.invites.$code.redeem[.]json.tsx"),
+  route("invite/:code/agent.txt", "routes/invite.$code.agent[.]txt.tsx"),
   route("invite/:code", "routes/invite.$code.tsx"),
   // ID-based lookup: the doco_id is immortal across renames and
   // ownership transfers. Agents that record the ULID resolve to the
