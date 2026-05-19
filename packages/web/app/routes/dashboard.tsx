@@ -181,18 +181,34 @@ export default function Dashboard({
     <div>
       <SiteHeader mode="host" me={me} />
       <main className="mx-auto max-w-6xl px-6 py-6 space-y-4">
+        <header className="flex items-center justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-semibold">Docos</h1>
+            <p className="text-sm text-muted-foreground">
+              Your docos, plus docos owned by organizations you belong to.
+            </p>
+          </div>
+          <Link
+            to="/onboarding/create/human"
+            className="shrink-0 rounded-md bg-primary px-3 py-1.5 text-sm font-semibold text-primary-foreground hover:opacity-90"
+          >
+            + Doco
+          </Link>
+        </header>
+
         <div className="grid grid-cols-1 gap-4 min-[840px]:grid-cols-2">
           <Card>
             <CardHeader>
               <CardTitle>Your docos</CardTitle>
-              <CardDescription>
-                Your docos, plus docos owned by organizations you belong to.
-              </CardDescription>
             </CardHeader>
             <CardContent>
               {docos.length === 0 ? (
                 <p className="text-xs text-muted-foreground">
-                  You haven't created or joined any docos yet.
+                  You haven't created or joined any docos yet.{" "}
+                  <Link to="/onboarding/create/human" className="underline">
+                    Create one
+                  </Link>
+                  .
                 </p>
               ) : (
                 <Table>
@@ -208,10 +224,7 @@ export default function Dashboard({
                     {docos.map((e) => (
                       <TableRow key={e.docoId}>
                         <TableCell>
-                          <Link
-                            to={`/${e.handle}`}
-                            className="text-primary hover:underline"
-                          >
+                          <Link to={`/${e.handle}`} className="text-primary hover:underline">
                             {e.handle}
                           </Link>
                         </TableCell>
