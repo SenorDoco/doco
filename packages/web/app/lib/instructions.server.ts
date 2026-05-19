@@ -173,7 +173,8 @@ Authorization: Bearer \${DOCO_ACCESS}
 
 Response carries \`count\`, \`duration_ms\`, and \`hits[]\` ordered by
 \`vector_score\` descending. Each hit includes \`id\` (the entity's ULID,
-e.g. \`decision_01KRHB95AVGFHG80B2EAWE20K8\`), \`summary\`,
+e.g. \`decision_01KRHB95AVGFHG80B2EAWE20K8\`), a readable text field
+(\`summary\` for non-scope nodes, \`purpose\` for scope nodes),
 \`vector_score\` (cosine similarity 0..1, the ranker), and \`gpr\`
 (Global PageRank, a secondary centrality signal). Scope hits also
 carry \`name\`. Fetch a node's full body when needed:
@@ -219,12 +220,12 @@ POST/PATCH/DELETE on any \`\<doco_url>/api/*.json\` returns
 [🔮 Doco] <op-icon> <Type> <verb>: <body> — <icon> <scope1>, <icon> <scope2>
 \`\`\`
 
-- For \`added\` ops, \`<body>\` is \`[<summary>](<url>)\` — the entity's
-  summary is itself the markdown link. The user reads and clicks
-  readable prose; the ULID lives in the URL.
+- For \`added\` ops, \`<body>\` is \`[<readable text>](<url>)\` — the
+  entity's summary (or a scope's purpose) is itself the markdown link.
+  The user reads and clicks readable prose; the ULID lives in the URL.
 - For mutations on an existing entity (\`updated\`, \`renamed\`, …),
-  \`<body>\` is also \`[<summary>](<url>).<field> <change>\` — same link
-  shape as \`added\`, with the field change appended.
+  \`<body>\` is also \`[<readable text>](<url>).<field> <change>\` —
+  same link shape as \`added\`, with the field change appended.
 - The scope tail (\` — <icon> <scope1>, <icon> <scope2>\`) is omitted
   when the node has no scopes.
 - Multi-op batches emit one line per op; the LAST line carries
@@ -255,8 +256,8 @@ records *what*, not *why*).
 **First, run the documentation search.** The top-of-reply query may be
 broader than the node you're about to write. Once you decide a capture
 is needed, search Doco again with the candidate node's
-summary/question/predicate. Read the highest-vector_score hits, then
-make the branch explicit:
+summary/purpose/question/predicate. Read the highest-vector_score hits,
+then make the branch explicit:
 
 - **Same claim, still true:** PATCH the existing node — \`PATCH
   \<doco_url>/api/<type-plural>/<id>.json\` with body
@@ -432,9 +433,9 @@ unsure of the field set. Decisions require \`question\`, \`chosen\`,
 writes the entity, and reindexes in one round-trip.
 
 PATCH bodies accept \`body_md_append\` (extend the body without
-clobbering), \`summary\` (rename), \`scopes\` (replace), and most
-other top-level fields. See \`\<doco_url>/api/<type-plural>.txt\` for
-the full set.
+clobbering), \`summary\` (rename non-scope nodes), \`purpose\` (rename
+the scope description), \`scopes\` (replace), and most other top-level
+fields. See \`\<doco_url>/api/<type-plural>.txt\` for the full set.
 
 ## 3b. URL HYGIENE — paste URLs inline, never refer to "above"
 
@@ -829,8 +830,9 @@ its seeded guidance Rules if already installed). Other common scope
 names (\`#adrs\`, \`#apis\`, \`#bugs\`, \`#runbooks\`, \`#post-mortems\`,
 \`#glossary\`, \`#roadmap\`, \`#design-language\`, \`#coding-style\`,
 \`#framework\`, \`#test-evals\`) are conventions you author from
-scratch — describe the purpose as an Intent, the guidance as Rules,
-and capture them as you would any custom scope.
+scratch — write the scope's purpose on \`Scope.purpose\`, capture the
+guidance as Rules, and capture subject-area nodes as you would for any
+custom scope.
 
 If no template fits:
 
@@ -991,7 +993,12 @@ hits one of these, stop and ask.
 When the user says "create a Doco for this project" and the repo has
 no \`DOCO.md\` and \`./.env\` has no \`DOCO_ACCESS\`, run the anonymous-
 creation flow yourself — two HTTP calls, three files written, done.
-No install, no browser, no permission prompts.
+Before the create call, check whether your runtime already has the
+Doco connector installed. If it does, use it for the Doco work it
+supports. If it does not, ask the project owner once whether they
+want to install it for future sessions; onboarding still continues
+through the API in this session either way. No browser, no permission
+prompts.
 
 1. **Create the Doco** (anonymous; no auth):
    \`\`\`

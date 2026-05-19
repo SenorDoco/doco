@@ -1,5 +1,5 @@
-import { defineCommand } from "citty";
 import { type Entity, type EntityId, isEntityId } from "@doco/shared";
+import { defineCommand } from "citty";
 import { findDocoRoot } from "../find-root.js";
 import { loadDocoFromRoot } from "../load-doco.js";
 import { c, cross, header, rule } from "../output.js";
@@ -12,7 +12,8 @@ export const showCmd = defineCommand({
   args: {
     target: {
       type: "positional",
-      description: "Entity id (e.g. decision_01H...). For scope, principal, or organization, the name/username also resolves.",
+      description:
+        "Entity id (e.g. decision_01H...). For scope, principal, or organization, the name/username also resolves.",
       required: true,
     },
     root: {
@@ -71,7 +72,10 @@ export const showCmd = defineCommand({
     console.log(rule());
     console.log(`${c.bold("type:")}    ${entity.node_type}`);
     if (data.lifecycle) console.log(`${c.bold("lifecycle:")} ${data.lifecycle}`);
-    if (data.summary) console.log(`${c.bold("summary:")}  ${data.summary}`);
+    if (data.purpose) console.log(`${c.bold("purpose:")} ${data.purpose}`);
+    if (entity.node_type !== "scope" && data.summary) {
+      console.log(`${c.bold("summary:")}  ${data.summary}`);
+    }
     console.log();
   },
 });

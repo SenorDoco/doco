@@ -295,8 +295,7 @@ export function makeUpdateRoute(cfg: UpdateRouteConfig) {
       const scopePurpose =
         cfg.nodeType === "scope"
           ? (rec.purpose ??
-            (typeof parsedRecord.purpose === "string" ? parsedRecord.purpose : null) ??
-            (typeof parsedRecord.summary === "string" ? parsedRecord.summary : null))
+            (typeof parsedRecord.purpose === "string" ? parsedRecord.purpose : null))
           : null;
       return Response.json({
         id: rec.id,

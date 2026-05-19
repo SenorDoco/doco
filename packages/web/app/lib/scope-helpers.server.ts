@@ -68,12 +68,8 @@ export async function listScopeFiles(docoDir: string): Promise<{ id: string; nam
 export interface ScopeDetails {
   id: string;
   name: string;
-  /**
-   * Description text rendered under the scope name on every surface
-   * (decision_01KRYECEA32SRSQCKFXSDCBK67). Lives on the Scope row's
-   * `summary` column; no longer fetched from an attached Intent node.
-   */
-  summary: string;
+  /** Why this scope exists and what belongs inside it. */
+  purpose: string;
   icon: string;
   parent_ids: string[];
   lifecycle: string;
@@ -112,12 +108,9 @@ export async function listScopeDetails(docoDir: string): Promise<ScopeDetails[]>
       const r = await c.query<{
         id: string;
         name: string;
-        summary: string | null;
+        purpose: string | null;
         raw_yaml: string;
-      }>(
-        "SELECT id, name, summary, raw_yaml FROM scopes WHERE doco_id = $1",
-        [docoId],
-      );
+      }>("SELECT id, name, purpose, raw_yaml FROM scopes WHERE doco_id = $1", [docoId]);
       for (const row of r.rows) {
         let e: Record<string, unknown> = {};
         try {
@@ -127,21 +120,20 @@ export async function listScopeDetails(docoDir: string): Promise<ScopeDetails[]>
           }
         } catch {}
         // Prefer the dedicated column; fall back to the YAML mirror for
-        // older rows that haven't been migrated by
-        // applyScopeTemplateUpdatesToDoco yet.
-        const summaryFromColumn = (row.summary ?? "").trim();
-        const summaryFromYaml =
-          typeof e.summary === "string" && e.summary.trim() !== `Scope: ${row.name}`
-            ? e.summary
+        // older rows that haven't been migrated yet.
+        const purposeFromColumn = (row.purpose ?? "").trim();
+        const purposeFromYaml =
+          typeof e.purpose === "string" && e.purpose.trim() !== `Scope: ${row.name}`
+            ? e.purpose
             : "";
-        const summary = summaryFromColumn || summaryFromYaml;
+        const purpose = purposeFromColumn || purposeFromYaml;
         const allowedNodeTypes = Array.isArray(e.allowed_node_types)
           ? (e.allowed_node_types as unknown[]).filter((v): v is string => typeof v === "string")
           : [];
         out.push({
           id: row.id,
           name: row.name,
-          summary,
+          purpose,
           icon: typeof e.icon === "string" ? e.icon : "",
           parent_ids: Array.isArray(e.scopes) ? (e.scopes as string[]) : [],
           lifecycle: typeof e.lifecycle === "string" ? e.lifecycle : "active",
@@ -160,13 +152,8 @@ export async function listScopeDetails(docoDir: string): Promise<ScopeDetails[]>
 export interface ScopeManifestEntry {
   id: string;
   name: string;
-  /**
-   * Scope description text — the same value rendered under the scope
-   * name on every UI surface. Carried in the manifest so agents see it
-   * on session load without a follow-up fetch
-   * (decision_01KRYECEA32SRSQCKFXSDCBK67).
-   */
-  summary: string;
+  /** Why this scope exists and what belongs inside it. */
+  purpose: string;
   icon: string;
   lifecycle: string;
   is_watched: boolean;
@@ -192,7 +179,7 @@ export async function listScopeManifest(docoDir: string): Promise<ScopeManifestE
   return details.map((d) => ({
     id: d.id,
     name: d.name,
-    summary: d.summary,
+    purpose: d.purpose,
     icon: d.icon,
     lifecycle: d.lifecycle,
     is_watched: d.is_watched,

@@ -45,10 +45,9 @@ export async function ensureScopeHashtagPrefixMigration(docoId: string): Promise
   const key = `scope_hashtag_prefix_migration_${docoId}`;
 
   await withTransaction(async (c) => {
-    const flag = await c.query<{ value: string }>(
-      "SELECT value FROM doco_meta WHERE key = $1",
-      [key],
-    );
+    const flag = await c.query<{ value: string }>("SELECT value FROM doco_meta WHERE key = $1", [
+      key,
+    ]);
     if (flag.rows[0]?.value === "done") {
       _migrated.add(docoId);
       return;
@@ -69,12 +68,13 @@ export async function ensureScopeHashtagPrefixMigration(docoId: string): Promise
         if (typeof fm.name === "string" && !fm.name.startsWith("#")) {
           fm.name = `#${fm.name}`;
         }
-        // The auto-generated summary "Scope: <name>" leaks the bare
+        // The auto-generated purpose "Scope: <name>" leaks the bare
         // name too. Refresh it iff it still matches the generated
-        // pattern; otherwise leave human-authored summaries alone.
-        if (typeof fm.summary === "string" && fm.summary === `Scope: ${r.name}`) {
-          fm.summary = `Scope: ${newName}`;
+        // pattern; otherwise leave human-authored purpose text alone.
+        if (typeof fm.purpose === "string" && fm.purpose === `Scope: ${r.name}`) {
+          fm.purpose = `Scope: ${newName}`;
         }
+        fm.summary = undefined;
         newYaml = JSON.stringify(fm);
       }
 
@@ -83,11 +83,12 @@ export async function ensureScopeHashtagPrefixMigration(docoId: string): Promise
         [newName, newYaml, r.id],
       );
 
-      // The auto-generated summary is also stored in its own column.
-      await c.query(
-        "UPDATE scopes SET summary = $1 WHERE id = $2 AND summary = $3",
-        [`Scope: ${newName}`, r.id, `Scope: ${r.name}`],
-      );
+      // The auto-generated purpose is also stored in its own column.
+      await c.query("UPDATE scopes SET purpose = $1 WHERE id = $2 AND purpose = $3", [
+        `Scope: ${newName}`,
+        r.id,
+        `Scope: ${r.name}`,
+      ]);
     }
 
     await c.query(

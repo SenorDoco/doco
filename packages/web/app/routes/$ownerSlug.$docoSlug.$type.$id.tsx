@@ -275,7 +275,7 @@ export async function loader({
         let params: unknown[];
         if (tbl === "principals") {
           sql = `SELECT id,
-                        username AS summary,
+                        username AS label,
                         username AS name,
                         NULL::text AS lifecycle,
                         created_at::text,
@@ -288,7 +288,7 @@ export async function loader({
           params = [ids];
         } else if (tbl === "organizations") {
           sql = `SELECT id,
-                        COALESCE(name, slug) AS summary,
+                        COALESCE(name, slug) AS label,
                         slug AS name,
                         NULL::text AS lifecycle,
                         created_at::text,
@@ -301,9 +301,9 @@ export async function loader({
           params = [ids];
         } else {
           const nameExpr = tbl === "scopes" ? "t.name" : "NULL::text";
-          const summaryExpr = tbl === "scopes" ? "t.purpose AS summary" : "t.summary";
+          const labelExpr = tbl === "scopes" ? "t.purpose AS label" : "t.summary AS label";
           sql = `SELECT t.id,
-                        ${summaryExpr},
+                        ${labelExpr},
                         ${nameExpr} AS name,
                         t.lifecycle,
                         t.created_at::text,
@@ -317,7 +317,7 @@ export async function loader({
         }
         const r = await c.query<{
           id: string;
-          summary: string | null;
+          label: string | null;
           name: string | null;
           lifecycle: string | null;
           created_at: string | null;
@@ -332,7 +332,7 @@ export async function loader({
           const fm = storedFrontmatter(row.raw_yaml);
           neighborMeta.set(row.id, {
             node_type: nt,
-            summary: row.summary ?? row.id,
+            summary: row.label ?? row.id,
             name: row.name ?? null,
             lifecycle: row.lifecycle ?? null,
             created_at: row.created_at ?? null,

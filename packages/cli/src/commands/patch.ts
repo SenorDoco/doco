@@ -1,8 +1,8 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { defineCommand } from "citty";
-import { c, cross } from "../output.js";
 import { requireDocoConfig } from "../env.js";
+import { c, cross } from "../output.js";
 
 /**
  * `doco patch <type> <id>` — extend an existing Doco node via PATCH.
@@ -53,17 +53,11 @@ function inferPluralFromId(id: string): string | null {
   return PLURAL_BY_TYPE[type] ?? null;
 }
 
-async function sendPatch(
-  type: string,
-  id: string,
-  body: Record<string, unknown>,
-): Promise<void> {
+async function sendPatch(type: string, id: string, body: Record<string, unknown>): Promise<void> {
   const plural = PLURAL_BY_TYPE[type];
   if (!plural) {
     console.error(
-      cross(
-        `Unknown type '${type}'. Pass one of: ${Object.keys(PLURAL_BY_TYPE).join(", ")}.`,
-      ),
+      cross(`Unknown type '${type}'. Pass one of: ${Object.keys(PLURAL_BY_TYPE).join(", ")}.`),
     );
     process.exit(2);
   }
@@ -82,7 +76,7 @@ async function sendPatch(
   if (Object.keys(body).length === 0) {
     console.error(
       cross(
-        "Nothing to patch. Pass at least one of: --append-body / --body / --summary / --scope / --add-scope / --remove-scope / --lifecycle / --superseded-by / --add-intent / --remove-intent.",
+        "Nothing to patch. Pass at least one of: --append-body / --body / --summary / --purpose / --scope / --add-scope / --remove-scope / --lifecycle / --superseded-by / --add-intent / --remove-intent.",
       ),
     );
     process.exit(2);
@@ -131,7 +125,7 @@ async function sendPatch(
   }
 }
 
-function buildPatchBody(args: Record<string, unknown>): Record<string, unknown> {
+function buildPatchBody(type: string, args: Record<string, unknown>): Record<string, unknown> {
   const body: Record<string, unknown> = {};
 
   const appendBody = readBody(
@@ -149,7 +143,14 @@ function buildPatchBody(args: Record<string, unknown>): Record<string, unknown> 
   );
   if (replaceBody !== undefined) body.body_md = replaceBody;
 
-  if (args.summary) body.summary = args.summary;
+  if (args.summary) {
+    if (type === "scope") {
+      console.error(cross("Scope nodes use --purpose; --summary is not accepted for scopes."));
+      process.exit(2);
+    }
+    body.summary = args.summary;
+  }
+  if (args.purpose) body.purpose = args.purpose;
   if (args.lifecycle) body.lifecycle = args.lifecycle;
   if (args["superseded-by"] !== undefined) body.superseded_by = args["superseded-by"];
 
@@ -180,7 +181,8 @@ const commonArgs = {
   },
   body: {
     type: "string" as const,
-    description: "REPLACE the entity's markdown body entirely (rare — usually --append-body is right).",
+    description:
+      "REPLACE the entity's markdown body entirely (rare — usually --append-body is right).",
   },
   "body-file": {
     type: "string" as const,
@@ -189,6 +191,10 @@ const commonArgs = {
   summary: {
     type: "string" as const,
     description: "Replace the entity's one-line summary.",
+  },
+  purpose: {
+    type: "string" as const,
+    description: "Replace a scope's purpose.",
   },
   lifecycle: {
     type: "string" as const,
@@ -223,6 +229,14 @@ const commonArgs = {
 };
 
 function makeTypedSubcommand(type: string) {
+  const argsForType =
+    type === "scope"
+      ? (() => {
+          const { summary: _summary, ...rest } = commonArgs;
+          void _summary;
+          return rest;
+        })()
+      : commonArgs;
   return defineCommand({
     meta: {
       name: type,
@@ -234,11 +248,11 @@ function makeTypedSubcommand(type: string) {
         description: `The ${type}'s ULID (e.g. '${type}_01KR…').`,
         required: true,
       },
-      ...commonArgs,
+      ...argsForType,
     },
     async run({ args }) {
       const id = String(args.id);
-      const body = buildPatchBody(args as Record<string, unknown>);
+      const body = buildPatchBody(type, args as Record<string, unknown>);
       await sendPatch(type, id, body);
     },
   });

@@ -26,8 +26,8 @@
 //   - tools/list           — return tool registry
 //   - tools/call           — invoke tool by name + args
 
-import type { EntityId } from "@doco/shared";
 import { getDocoById } from "@doco/db";
+import type { EntityId } from "@doco/shared";
 import { rootDir } from "~/lib/db.server";
 import { extractCredential } from "~/lib/session";
 import { TokenStore } from "~/lib/tokens.server";
@@ -208,7 +208,7 @@ const TOOLS: ToolDef[] = [
   {
     name: "list_scopes",
     description:
-      "List live scopes with their summary, icon, allowed_node_types, lifecycle, and is_watched. Use this to pick the right scope for a capture.",
+      "List live scopes with their purpose, icon, allowed_node_types, lifecycle, and is_watched. Use this to pick the right scope for a capture.",
     inputSchema: { type: "object", properties: {}, additionalProperties: false },
     proxy: { method: "GET", path: "/{handle}/api/scopes.json" },
   },
@@ -340,10 +340,12 @@ const TOOLS: ToolDef[] = [
         },
         outputs: {
           type: "object",
-          description:
-            "Concrete output values (commit hash, deploy URL, verification result).",
+          description: "Concrete output values (commit hash, deploy URL, verification result).",
         },
-        template_id: { type: "string", description: "Optional Action template this Log instances." },
+        template_id: {
+          type: "string",
+          description: "Optional Action template this Log instances.",
+        },
         intent_ids: { type: "array", items: { type: "string" } },
         decision_ids: { type: "array", items: { type: "string" } },
         follows: { type: "array", items: { type: "string" } },
@@ -555,7 +557,7 @@ const TOOLS: ToolDef[] = [
           type: "string",
           description: "Scope name (hashtag-shaped; the host prepends '#' if missing).",
         },
-        summary: { type: "string", description: "What this scope is for." },
+        purpose: { type: "string", description: "What this scope is for." },
         icon: { type: "string", description: "Optional emoji or short marker." },
         watched: { type: "boolean" },
         allowed_node_types: {
@@ -570,14 +572,13 @@ const TOOLS: ToolDef[] = [
         },
       },
       required: ["name", "watched"],
-      additionalProperties: true,
+      additionalProperties: false,
     },
     proxy: { method: "POST", path: "/{handle}/api/scopes.json" },
   },
   {
     name: "activate_scope_draft",
-    description:
-      "Activate a draft scope (move lifecycle from 'proposed' / 'draft' to 'active').",
+    description: "Activate a draft scope (move lifecycle from 'proposed' / 'draft' to 'active').",
     inputSchema: {
       type: "object",
       properties: { scope_id: { type: "string" } },

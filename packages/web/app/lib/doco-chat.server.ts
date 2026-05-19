@@ -498,7 +498,7 @@ async function loadCurrentEntitySnapshot(input: RunDocoChatTurnInput): Promise<s
   const scopeNames = await loadScopeNamesByIds(
     Array.isArray(fm.scopes) ? fm.scopes.filter((s): s is string => typeof s === "string") : [],
   );
-  const summary =
+  const label =
     parsed.nodeType === "scope"
       ? (rec.purpose ?? String(fm.purpose ?? fm.name ?? parsed.id))
       : (rec.summary ?? String(fm.summary ?? fm.name ?? parsed.id));
@@ -506,7 +506,9 @@ async function loadCurrentEntitySnapshot(input: RunDocoChatTurnInput): Promise<s
     "Current entity:",
     `current_entity_id: ${parsed.id}`,
     `current_entity_type: ${parsed.nodeType}`,
-    `current_entity_summary: ${summary}`,
+    parsed.nodeType === "scope"
+      ? `current_entity_purpose: ${label}`
+      : `current_entity_summary: ${label}`,
     `current_entity_lifecycle: ${rec.lifecycle ?? fm.lifecycle ?? "(none)"}`,
     `current_entity_scopes: ${scopeNames.length ? scopeNames.join(", ") : "(none)"}`,
   ].join("\n");
@@ -809,23 +811,23 @@ async function findNodes(
     const out: {
       id: string;
       node_type: string;
-      summary: string | null;
+      label: string | null;
       lifecycle: string | null;
     }[] = [];
     for (const t of types) {
       const table = ENTITY_TABLE[t];
       if (!table) continue;
-      const summaryExpr = t === "scope" ? "COALESCE(purpose, name)" : "summary";
+      const labelExpr = t === "scope" ? "COALESCE(purpose, name)" : "summary";
       const result = await c.query<{
         id: string;
         node_type: string;
-        summary: string | null;
+        label: string | null;
         lifecycle: string | null;
       }>(
-        `SELECT id, $3::text AS node_type, ${summaryExpr} AS summary, lifecycle
+        `SELECT id, $3::text AS node_type, ${labelExpr} AS label, lifecycle
            FROM ${table}
           WHERE doco_id = $1
-            AND (id = $2 OR ${summaryExpr} ILIKE '%' || $2 || '%')
+            AND (id = $2 OR ${labelExpr} ILIKE '%' || $2 || '%')
           ORDER BY updated_at DESC
           LIMIT 6`,
         [input.docoId, query, t],
@@ -836,7 +838,7 @@ async function findNodes(
   });
   const description = rows.length
     ? rows
-        .map((r) => `${r.id} (${r.node_type}, ${r.lifecycle ?? "no lifecycle"}): ${r.summary}`)
+        .map((r) => `${r.id} (${r.node_type}, ${r.lifecycle ?? "no lifecycle"}): ${r.label}`)
         .join("\n")
     : `No nodes found for "${query}".`;
   return { tool: "find_nodes", description, applied: true };

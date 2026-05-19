@@ -10,7 +10,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSy
 import { join, resolve } from "node:path";
 import { defineCommand } from "citty";
 import { parse as parseYaml } from "yaml";
-import { c, cross, checkmark } from "../output.js";
+import { c, checkmark, cross } from "../output.js";
 
 const NODE_DIRS: Record<string, { dir: string; ext: "md" | "yaml" }> = {
   intent: { dir: "intents", ext: "md" },
@@ -31,6 +31,7 @@ interface ExportedRow {
   raw_yaml: string; // canonical JSON serialization of frontmatter
   body_md?: string;
   summary?: string | null;
+  purpose?: string | null;
   lifecycle?: string | null;
   name?: string | null;
   created_at?: string | null;
@@ -61,7 +62,11 @@ function parseEntityFile(filePath: string, nodeType: string): ExportedRow | null
     raw_yaml: JSON.stringify(fm),
   };
   if (body) out.body_md = body;
-  if (typeof fm.summary === "string") out.summary = fm.summary;
+  if (nodeType === "scope") {
+    if (typeof fm.purpose === "string") out.purpose = fm.purpose;
+  } else if (typeof fm.summary === "string") {
+    out.summary = fm.summary;
+  }
   if (typeof fm.lifecycle === "string") out.lifecycle = fm.lifecycle;
   if (typeof fm.name === "string") out.name = fm.name;
   if (typeof fm.created_at === "string") out.created_at = fm.created_at;
@@ -236,7 +241,9 @@ export const exportCmd = defineCommand({
     };
     writeFileSync(join(outDir, "manifest.json"), JSON.stringify(manifest, null, 2), "utf8");
 
-    console.log(checkmark(`Exported ${totalRows} entity row(s) + ${auditCount} audit event(s) to:`));
+    console.log(
+      checkmark(`Exported ${totalRows} entity row(s) + ${auditCount} audit event(s) to:`),
+    );
     console.log(`  ${c.bold(outDir)}`);
     for (const [t, n] of Object.entries(counts)) console.log(`  ${t}: ${n}`);
   },

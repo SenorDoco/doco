@@ -300,7 +300,7 @@ const scopeCmd = defineCommand({
     icon: { type: "string", description: "Optional single emoji." },
     purpose: {
       type: "string",
-      description: "Required if --template-name absent. Main Intent summary this scope serves.",
+      description: "Required if --template-name absent. What this scope is for.",
     },
     guidelines: {
       type: "string",
@@ -346,7 +346,7 @@ const scopeCmd = defineCommand({
         console.error(cross("Pass --purpose when creating a custom scope."));
         process.exit(2);
       }
-      body.summary = args.purpose;
+      body.purpose = args.purpose;
       if (args["parent-id"]) body.parent_id = args["parent-id"];
     }
     await postCapture("scopes", body);

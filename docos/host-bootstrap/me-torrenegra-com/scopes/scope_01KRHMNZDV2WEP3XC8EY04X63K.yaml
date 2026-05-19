@@ -1,10 +1,6 @@
 id: scope_01KRHMNZDV2WEP3XC8EY04X63K
 doco_id: doco_01KRHJQC0YMK6VEPZSMCQVP1QD
 node_type: scope
-summary: Contract between posts.json, the block-based editor (editor.js /
-  blocks.js), and the renderers (post.html / post.js / index.html). Any change
-  to the block schema, post fields, or how blocks are rendered should produce a
-  node here.
 name: content-schema
 purpose: Contract between posts.json, the block-based editor (editor.js /
   blocks.js), and the renderers (post.html / post.js / index.html). Any change

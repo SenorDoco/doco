@@ -1,8 +1,6 @@
 id: scope_01KRKQV5PT0N7KMW2HVJ6FC2V9
 doco_id: doco_01KRKQN7B69M414EC0MM86KDDW
 node_type: scope
-summary: "End-to-end user journeys: how a person (or external system) moves
-  through a feature from start to finish."
 name: user-flows
 icon: 🌊
 purpose: "End-to-end user journeys: how a person (or external system) moves

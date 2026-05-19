@@ -477,7 +477,13 @@ export function meta() {
 }
 
 interface UsersLoaderData {
-  me: { id: string; username: string; type: "person" | "agent"; isHuman: boolean; email?: string };
+  me: {
+    id: string;
+    username: string;
+    type: "person" | "agent";
+    isHuman: boolean;
+    email?: string;
+  };
   orgSections: OrgSection[];
   docoSections: DocoSection[];
   scopeSections: ScopeSection[];

@@ -3,7 +3,7 @@ import { withClient } from "@doco/db";
 // activity heatmap, and latest activity feed in a single content column.
 //
 // The feed renders one line per recent audit event in the same family as
-// agent footer lines: `<op-icon> <Type> <verb>: <summary>`. Lifecycle
+// agent footer lines: `<op-icon> <Type> <verb>: <readable text>`. Lifecycle
 // transitions include their old → new value so state changes show up in
 // the feed instead of disappearing behind the entity's original created_at.
 //
@@ -94,27 +94,27 @@ export async function loader({
     ).rows;
 
     const entityIds = Array.from(new Set(rawItems.map((r) => r.entity_id)));
-    const entityById = new Map<string, { summary: string | null; lifecycle: string | null }>();
+    const entityById = new Map<string, { label: string | null; lifecycle: string | null }>();
     if (entityIds.length > 0) {
-      const summaryRows = await c.query<{
+      const entityLabelRows = await c.query<{
         id: string;
-        summary: string | null;
+        label: string | null;
         lifecycle: string | null;
       }>(
-        `SELECT id, summary, lifecycle FROM decisions WHERE doco_id = $1 AND id = ANY($2::text[])
-         UNION ALL SELECT id, summary, lifecycle FROM intents WHERE doco_id = $1 AND id = ANY($2::text[])
-         UNION ALL SELECT id, summary, lifecycle FROM ideas WHERE doco_id = $1 AND id = ANY($2::text[])
-         UNION ALL SELECT id, summary, lifecycle FROM rules WHERE doco_id = $1 AND id = ANY($2::text[])
-         UNION ALL SELECT id, summary, lifecycle FROM actions WHERE doco_id = $1 AND id = ANY($2::text[])
-         UNION ALL SELECT id, summary, lifecycle FROM logs WHERE doco_id = $1 AND id = ANY($2::text[])
-         UNION ALL SELECT id, summary, lifecycle FROM evals WHERE doco_id = $1 AND id = ANY($2::text[])
-         UNION ALL SELECT id, summary, lifecycle FROM states WHERE doco_id = $1 AND id = ANY($2::text[])
-         UNION ALL SELECT id, COALESCE(purpose, name) AS summary, lifecycle FROM scopes WHERE doco_id = $1 AND id = ANY($2::text[])
-         UNION ALL SELECT id, summary, lifecycle FROM reference_entities WHERE doco_id = $1 AND id = ANY($2::text[])`,
+        `SELECT id, summary AS label, lifecycle FROM decisions WHERE doco_id = $1 AND id = ANY($2::text[])
+         UNION ALL SELECT id, summary AS label, lifecycle FROM intents WHERE doco_id = $1 AND id = ANY($2::text[])
+         UNION ALL SELECT id, summary AS label, lifecycle FROM ideas WHERE doco_id = $1 AND id = ANY($2::text[])
+         UNION ALL SELECT id, summary AS label, lifecycle FROM rules WHERE doco_id = $1 AND id = ANY($2::text[])
+         UNION ALL SELECT id, summary AS label, lifecycle FROM actions WHERE doco_id = $1 AND id = ANY($2::text[])
+         UNION ALL SELECT id, summary AS label, lifecycle FROM logs WHERE doco_id = $1 AND id = ANY($2::text[])
+         UNION ALL SELECT id, summary AS label, lifecycle FROM evals WHERE doco_id = $1 AND id = ANY($2::text[])
+         UNION ALL SELECT id, summary AS label, lifecycle FROM states WHERE doco_id = $1 AND id = ANY($2::text[])
+         UNION ALL SELECT id, COALESCE(purpose, name) AS label, lifecycle FROM scopes WHERE doco_id = $1 AND id = ANY($2::text[])
+         UNION ALL SELECT id, summary AS label, lifecycle FROM reference_entities WHERE doco_id = $1 AND id = ANY($2::text[])`,
         [ctx.meta.docoId, entityIds],
       );
-      for (const row of summaryRows.rows) {
-        entityById.set(row.id, { summary: row.summary, lifecycle: row.lifecycle });
+      for (const row of entityLabelRows.rows) {
+        entityById.set(row.id, { label: row.label, lifecycle: row.lifecycle });
       }
     }
 
@@ -148,7 +148,7 @@ export async function loader({
         id: it.entity_id,
         node_type: it.entity_type,
         summary:
-          entity?.summary ??
+          entity?.label ??
           stringField(it.after_json, "summary") ??
           stringField(it.before_json, "summary"),
         lifecycle: entity?.lifecycle ?? null,

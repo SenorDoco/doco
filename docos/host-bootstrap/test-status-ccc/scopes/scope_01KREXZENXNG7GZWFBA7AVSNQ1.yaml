@@ -1,7 +1,6 @@
 id: scope_01KREXZENXNG7GZWFBA7AVSNQ1
 doco_id: doco_01KREXYZB08XXA3E33G1WC5D3J
 node_type: scope
-summary: Payments area for merchants
 name: payments
 purpose: Payments area for merchants
 created_at: 2026-05-12T20:27:42.141Z

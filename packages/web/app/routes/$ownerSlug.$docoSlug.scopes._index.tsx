@@ -139,9 +139,9 @@ export default function ScopesIndex({
                   </span>
                 ) : null}
               </div>
-              {s.summary ? (
+              {s.purpose ? (
                 <div className="min-w-0 break-words text-[11px] leading-snug text-muted-foreground">
-                  {s.summary}
+                  {s.purpose}
                 </div>
               ) : null}
             </div>

@@ -509,7 +509,7 @@ export async function loader({
     String(raw.name) === "global" ||
     (raw as { watched?: unknown }).watched === true;
   // Scope description text now lives on the Scope row's `purpose` column.
-  // Prefer the column; fall back to YAML mirrors for rows that haven't
+  // Prefer the column; fall back to the YAML mirror for rows that haven't
   // been migrated yet.
   const scopeRow = docoId
     ? await withClient((c) =>
@@ -522,9 +522,7 @@ export async function loader({
   const scopeYamlPurpose =
     typeof raw.purpose === "string" && raw.purpose.trim() !== `Scope: ${String(raw.name)}`
       ? raw.purpose
-      : typeof raw.summary === "string" && raw.summary.trim() !== `Scope: ${String(raw.name)}`
-        ? raw.summary
-        : "";
+      : "";
   const scopePurpose = scopeColumnPurpose || scopeYamlPurpose;
   const scopeAllowedNodeTypes = Array.isArray(
     (raw as { allowed_node_types?: unknown }).allowed_node_types,

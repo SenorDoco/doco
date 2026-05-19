@@ -1,7 +1,6 @@
 id: scope_01KREXZEPZ8133595F8W8DYB69
 doco_id: doco_01KREXYZB08XXA3E33G1WC5D3J
 node_type: scope
-summary: Stripe integration
 name: stripe
 purpose: Stripe integration
 created_at: 2026-05-12T20:27:42.175Z

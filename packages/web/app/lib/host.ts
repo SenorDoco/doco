@@ -6,8 +6,8 @@
 // have been replaced with Postgres queries via @doco/db.
 
 import {
-  getHostConfig,
   listAllDocos as _dbListAllDocos,
+  getHostConfig,
   listOrganizations,
   listOrganizationsForPrincipal,
   listPrincipals,
@@ -60,8 +60,7 @@ export async function listUsers(): Promise<HostUser[]> {
   const rows = await listPrincipals({ type: "human" });
   return rows.map((r) => {
     const fm = JSON.parse(r.raw_yaml) as Record<string, unknown>;
-    const email =
-      r.email ?? (fm.github_identity as { email?: string } | undefined)?.email ?? null;
+    const email = r.email ?? (fm.github_identity as { email?: string } | undefined)?.email ?? null;
     const out: HostUser = {
       id: r.id,
       username: r.username,
@@ -120,8 +119,9 @@ export async function listAllDocos(): Promise<HostDoco[]> {
   const rows = await _dbListAllDocos();
   return rows.map((r) => {
     const fm = JSON.parse(r.raw_yaml) as Record<string, unknown>;
-    const ownerKind: "principal" | "organization" =
-      r.owner_id.startsWith("organization_") ? "organization" : "principal";
+    const ownerKind: "principal" | "organization" = r.owner_id.startsWith("organization_")
+      ? "organization"
+      : "principal";
     const out: HostDoco = {
       handle: r.handle,
       ownerUsername: r.owner_slug,

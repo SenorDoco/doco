@@ -52,19 +52,19 @@ export async function loader({
   // the picker grid. During onboarding, scope templates are selected in
   // bulk and created as watched without a per-scope confirmation.
   const pickedTemplateName = isOnboarding ? null : url.searchParams.get("template");
-  let pickedTemplate: { name: string; icon: string; label: string; summary: string } | null = null;
+  let pickedTemplate: { name: string; icon: string; label: string; purpose: string } | null = null;
   if (pickedTemplateName) {
     const t = findScopeTemplate(pickedTemplateName);
     if (!t || existingNames.has(t.name)) {
       throw redirect(`/${handle}/scopes/new${isOnboarding ? "?onboarding=1" : ""}`);
     }
-    pickedTemplate = { name: t.name, icon: t.icon, label: t.label, summary: t.summary };
+    pickedTemplate = { name: t.name, icon: t.icon, label: t.label, purpose: t.purpose };
   }
   const templates = DEFAULT_SCOPE_TEMPLATES.filter((t) => !existingNames.has(t.name)).map((t) => ({
     name: t.name,
     label: t.label,
     icon: t.icon,
-    summary: t.summary,
+    purpose: t.purpose,
     alreadyAdded: false,
   }));
   if (isOnboarding && templates.length === 0) {
@@ -154,13 +154,13 @@ export async function action({
       name: tpl.name,
       icon: tpl.icon,
       watched,
-      summary: tpl.summary,
+      purpose: tpl.purpose,
       ...(tpl.allowed_node_types && tpl.allowed_node_types.length > 0
         ? { allowed_node_types: tpl.allowed_node_types }
         : {}),
       createdBy,
     });
-    // Templates ship `summary` + `rules[]` (and optionally
+    // Templates ship `purpose` + `rules[]` (and optionally
     // `allowed_node_types`). The description text and node-type
     // restriction are already written onto the Scope row by
     // createScopeInDoco; seedScopeFromTemplate only adds the rules.
@@ -225,13 +225,10 @@ export async function action({
         name = `#${name}`;
       }
       const icon = String(form.get("icon") ?? "").trim();
-      // The form field is still named "purpose" for back-compat with any
-      // bookmarked URL state, but it now stores the scope's description
-      // text directly on Scope.summary (decision_01KRYECEA32SRSQCKFXSDCBK67).
-      const description = String(form.get("purpose") ?? "").trim();
+      const purpose = String(form.get("purpose") ?? "").trim();
       const parentId = String(form.get("parent_id") ?? "").trim() || null;
       if (!name || name === "#") return { error: "Scope name is required." };
-      if (!description) return { error: "Description is required." };
+      if (!purpose) return { error: "Purpose is required." };
       if (!SCOPE_NAME_RE.test(name)) {
         return {
           error:
@@ -250,8 +247,8 @@ export async function action({
         }
         parentScopes.push(parent.id as EntityId<"scope">);
       }
-      // Scope creation writes the description onto Scope.summary directly
-      // — no Intent indirection (decision_01KRYECEA32SRSQCKFXSDCBK67).
+      // Scope creation writes the purpose onto Scope.purpose directly
+      // — no Intent indirection.
       // Rules are authored after creation from the scope page or rules API.
       const newScopeId = await createScopeInDoco({
         docoDir: dir,
@@ -260,7 +257,7 @@ export async function action({
         ...(icon ? { icon } : {}),
         parentScopes,
         watched,
-        summary: description,
+        purpose,
         createdBy,
       });
       await reindex(dir, docoId, [newScopeId]);
@@ -344,7 +341,7 @@ export default function AddScope({
                         ) : null}
                         <span className="min-w-0 flex-1">
                           <span className="font-mono text-foreground">{t.name}</span>
-                          <span className="mt-1 block text-muted-foreground">{t.summary}</span>
+                          <span className="mt-1 block text-muted-foreground">{t.purpose}</span>
                         </span>
                       </label>
                     ))}
@@ -392,7 +389,7 @@ export default function AddScope({
                   <CardTitle>
                     Add the <span className="font-mono">{pickedTemplate.name}</span> scope
                   </CardTitle>
-                  <CardDescription>{pickedTemplate.summary}</CardDescription>
+                  <CardDescription>{pickedTemplate.purpose}</CardDescription>
                 </div>
               </div>
             </CardHeader>
@@ -494,7 +491,7 @@ export default function AddScope({
                       <div className="flex-1">
                         <span className="font-mono text-foreground">{t.name}</span>
                         <br />
-                        <span className="text-muted-foreground">{t.summary}</span>
+                        <span className="text-muted-foreground">{t.purpose}</span>
                       </div>
                       {t.alreadyAdded ? (
                         <span className="self-center text-[10px] text-muted-foreground">
@@ -601,7 +598,7 @@ export default function AddScope({
                     </div>
                   </div>
                   <label className="block text-xs">
-                    <span className="mb-1 block font-semibold text-foreground">Description *</span>
+                    <span className="mb-1 block font-semibold text-foreground">Purpose *</span>
                     <textarea
                       name="purpose"
                       rows={3}

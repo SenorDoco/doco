@@ -187,7 +187,7 @@ BODY (JSON)
                             "user-flows") are still accepted as aliases.
                             Mutually exclusive with the custom fields
                             below. The install seeds the template's
-                            description text onto Scope.summary, its
+                            purpose text onto Scope.purpose, its
                             allowed_node_types onto the row's YAML, and
                             N Rules (one per template rule). No
                             "primary intent" Intent is created.
@@ -196,11 +196,10 @@ BODY (JSON)
                             hyphens / underscores (e.g. "#payments",
                             "#user-flows"). No slashes (use parent_id).
                             *if template_name is absent.
-  summary        required*  description text rendered under the scope
+  purpose        required*  description text rendered under the scope
                             name on every surface (list card, detail
                             page, bootstrap manifest). Replaces the
                             former \`intent_summary\` body parameter
-                            (decision_01KRYECEA32SRSQCKFXSDCBK67).
                             *if template_name is absent.
   icon           optional   single emoji.
   parent_id      optional   id of an existing scope to nest this one
@@ -214,6 +213,7 @@ SUCCESS RESPONSE (HTTP 201, application/json)
   {
     "id": "scope_<ULID>",
     "name": "...",
+    "purpose": "...",
     "watched": true | false,
     "footer_lines": ["[🔮 Doco] ✍️ Scope added: ... — <icon> <name>", ...]
   }
@@ -240,7 +240,7 @@ EXAMPLE — custom scope, not watched, nested under an existing parent
     -d '{
       "name": "#payments",
       "icon": "💳",
-      "summary": "Anything touching Stripe / billing flows stays visible and consistently documented.",
+      "purpose": "Anything touching Stripe / billing flows stays visible and consistently documented.",
       "parent_id": "scope_<ULID-of-parent>",
       "watched": false
     }'

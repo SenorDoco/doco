@@ -1,8 +1,6 @@
 id: scope_01KRKQV65Q4DSDR84BQS84AQ80
 doco_id: doco_01KRKQN7B69M414EC0MM86KDDW
 node_type: scope
-summary: "The site's content layer: posts.json schema, language toggle (EN/ES),
-  post ordering and pagination, the bio and about pages."
 name: content
 purpose: "The site's content layer: posts.json schema, language toggle (EN/ES),
   post ordering and pagination, the bio and about pages."

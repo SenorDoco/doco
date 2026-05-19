@@ -1,8 +1,6 @@
 id: scope_01KREYRVM8BD32V6ZE8F0CY8FR
 doco_id: doco_01KREYRVJY7CF1JSKF3EBCX72B
 node_type: scope
-summary: "Architecture Decision Records: durable rationale for choices about
-  structure, technology, and tradeoffs."
 name: adrs
 icon: 🏗️
 purpose: "Architecture Decision Records: durable rationale for choices about

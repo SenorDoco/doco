@@ -1,8 +1,6 @@
 id: scope_01KRKQV6M4G6A27DEQT67PMGJH
 doco_id: doco_01KRKQN7B69M414EC0MM86KDDW
 node_type: scope
-summary: "The non-public editor surface: admin.html, new.html, editor.html, the
-  /api/* server functions, and Vercel Blob image uploads."
 name: admin-tools
 purpose: "The non-public editor surface: admin.html, new.html, editor.html, the
   /api/* server functions, and Vercel Blob image uploads."

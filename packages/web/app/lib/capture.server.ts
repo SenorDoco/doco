@@ -1,20 +1,6 @@
-// Server-only helpers for "capture an entity" endpoints. Single-call API
-// for agents/people to write a Decision (or other entity types) without
-// round-tripping for ULID generation, ID lookups, and reindex.
-//
-// Identifiers: every node has exactly one id — the ULID. URLs use the
-// ULID; agents/users read the `summary` field for the readable
-// handle.
-import { stringify as stringifyYaml, parse as parseYaml } from "yaml";
-import { waitUntil } from "@vercel/functions";
+import { NODE_TABLES, getDocoById, getEntity, upsertEntity, withClient } from "@doco/db";
 import { generateUlid } from "@doco/shared";
-import type {
-  Entity,
-  Scope,
-  EngineEdge,
-  AuthoringPredicate,
-  Lifecycle,
-} from "@doco/shared";
+import type { AuthoringPredicate, EngineEdge, Entity, Lifecycle, Scope } from "@doco/shared";
 import {
   computeEffectiveDefaultLifecycle,
   computeEffectiveGatedBy,
@@ -23,19 +9,23 @@ import {
   hardWrittenDocoRuleViolations,
   shouldRunAuthoringRuleForEntity,
 } from "@doco/shared";
-import { ensureV7Migration } from "./migrations/v7.server";
-import { ensureScopeHashtagPrefixMigration } from "./migrations/scope-hashtag-prefix.server";
-import {
-  judgeProbabilisticRule,
-  LlmUnavailableError,
-  suggestImplicitEdges,
-} from "./llm.server";
+import { waitUntil } from "@vercel/functions";
+// Server-only helpers for "capture an entity" endpoints. Single-call API
+// for agents/people to write a Decision (or other entity types) without
+// round-tripping for ULID generation, ID lookups, and reindex.
+//
+// Identifiers: every node has exactly one id — the ULID. URLs use the
+// ULID; agents/users read the readable field (`summary` for most nodes,
+// `purpose` for scopes) for the human handle.
+import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
+import { appendAuditEvent } from "./audit-log.server";
 import { rootDir } from "./db.server";
+import { LlmUnavailableError, judgeProbabilisticRule, suggestImplicitEdges } from "./llm.server";
+import { ensureScopeHashtagPrefixMigration } from "./migrations/scope-hashtag-prefix.server";
+import { ensureV7Migration } from "./migrations/v7.server";
+import { validatePatch } from "./mutability.server";
 import { reindex, reindexEmbeddingsOnly } from "./redeem.server";
 import { readDocoMetadata, resolveScopeIcons } from "./scope-helpers.server";
-import { validatePatch } from "./mutability.server";
-import { appendAuditEvent } from "./audit-log.server";
-import { NODE_TABLES, getDocoById, getEntity, upsertEntity, withClient } from "@doco/db";
 
 /**
  * Synthetic "path" returned in CaptureResult.path. Postgres is the only
@@ -86,7 +76,10 @@ async function persistEntity(args: {
       node_type: args.nodeType,
       raw_yaml: JSON.stringify(fm),
       body_md: args.body,
-      summary: typeof fm.summary === "string" ? fm.summary : null,
+      summary:
+        args.nodeType === "scope" ? null : typeof fm.summary === "string" ? fm.summary : null,
+      purpose:
+        args.nodeType === "scope" ? (typeof fm.purpose === "string" ? fm.purpose : null) : null,
       lifecycle: typeof fm.lifecycle === "string" ? fm.lifecycle : null,
       name: typeof fm.name === "string" ? fm.name : null,
       created_at: typeof fm.created_at === "string" ? fm.created_at : null,
@@ -312,14 +305,10 @@ export async function renderOperationLines(opts: {
   } else {
     handle = `${opts.ownerSlug}-${opts.docoSlug}`;
   }
-  const linkUrl = opts.docoHost
-    ? `${opts.docoHost}/${handle}/${opts.nodeType}/${opts.id}`
-    : null;
+  const linkUrl = opts.docoHost ? `${opts.docoHost}/${handle}/${opts.nodeType}/${opts.id}` : null;
   const scopeSuffix =
     opts.scopes && opts.scopes.length > 0
-      ? ` — ${opts.scopes
-          .map((s) => (s.icon ? `${s.icon} ${s.name}` : s.name))
-          .join(", ")}`
+      ? ` — ${opts.scopes.map((s) => (s.icon ? `${s.icon} ${s.name}` : s.name)).join(", ")}`
       : "";
   const buildAnchor = (summaryForLine: string): string => {
     const text = trunc(summaryForLine);
@@ -564,7 +553,8 @@ async function resolveScopeOrError(
 ): Promise<{ ids: string[] } | CaptureError> {
   const { ids, unknown, available, unavailable } = await resolveScopeNames(docoDir, names);
   if (unknown.length > 0) {
-    const availStr = available.join(", ") || "(none — create scopes first via /<doco-handle>/scopes/new)";
+    const availStr =
+      available.join(", ") || "(none — create scopes first via /<doco-handle>/scopes/new)";
     return { error: `Unknown scope name(s): ${unknown.join(", ")}. Available: ${availStr}` };
   }
   if (unavailable.length > 0) {
@@ -575,16 +565,18 @@ async function resolveScopeOrError(
       };
     }
     if (context.verb === "replace") {
-      return { error: `Cannot replace scopes with abandoned or superseded one(s): ${unavailable.join(", ")}. Activate first or omit them.` };
+      return {
+        error: `Cannot replace scopes with abandoned or superseded one(s): ${unavailable.join(", ")}. Activate first or omit them.`,
+      };
     }
-    return { error: `Cannot add abandoned or superseded scope(s) to a node: ${unavailable.join(", ")}. Activate first or pick a different scope.` };
+    return {
+      error: `Cannot add abandoned or superseded scope(s) to a node: ${unavailable.join(", ")}. Activate first or pick a different scope.`,
+    };
   }
   if (context.incomingNodeType && ids.length > 0) {
     const offenders = await findScopesRejectingNodeType(docoDir, ids, context.incomingNodeType);
     if (offenders.length > 0) {
-      const lines = offenders.map(
-        (o) => `${o.name} (accepts only ${o.allowed.join(", ")})`,
-      );
+      const lines = offenders.map((o) => `${o.name} (accepts only ${o.allowed.join(", ")})`);
       return {
         error: `Cannot tag a ${context.incomingNodeType} into ${lines.join("; ")}.`,
       };
@@ -655,7 +647,9 @@ async function applyListOp(
     add?: string[];
     remove?: string[];
   },
-  lookup: (names: string[]) => Promise<{ ids: string[] } | CaptureError> | { ids: string[] } | CaptureError,
+  lookup: (
+    names: string[],
+  ) => Promise<{ ids: string[] } | CaptureError> | { ids: string[] } | CaptureError,
 ): Promise<{ changed: boolean; ops: Op[]; error?: string }> {
   const ops: Op[] = [];
   let changedField = false;
@@ -709,9 +703,7 @@ async function applyListOp(
  * if no row matches or the lookup fails (alpha: PG unreachable is a
  * soft-null, not a throw).
  */
-export async function resolvePrincipalUsername(
-  username: string,
-): Promise<string | null> {
+export async function resolvePrincipalUsername(username: string): Promise<string | null> {
   try {
     return await withClient(async (c) => {
       const r = await c.query<{ id: string }>(
@@ -858,8 +850,7 @@ async function buildNodesByScope(
 
   // Inject the candidate into each scope it claims, even if the
   // in_scope_of edge isn't materialized yet.
-  const candidateScopes =
-    (candidate as unknown as { scopes?: unknown }).scopes ?? [];
+  const candidateScopes = (candidate as unknown as { scopes?: unknown }).scopes ?? [];
   if (Array.isArray(candidateScopes)) {
     for (const sid of candidateScopes as string[]) {
       if (!scopeIds.includes(sid)) continue;
@@ -990,8 +981,7 @@ export async function runScopeRules(opts: {
     } catch {
       try {
         const parsed = parseYaml(row.raw_yaml);
-        if (parsed && typeof parsed === "object")
-          fm = parsed as Record<string, unknown>;
+        if (parsed && typeof parsed === "object") fm = parsed as Record<string, unknown>;
       } catch {
         continue;
       }
@@ -1074,8 +1064,7 @@ export async function runScopeRules(opts: {
     }
   }
 
-  const entitySummary =
-    typeof entityFm.summary === "string" ? (entityFm.summary as string) : "";
+  const entitySummary = typeof entityFm.summary === "string" ? (entityFm.summary as string) : "";
   const entityNodeType =
     typeof entityFm.node_type === "string" ? (entityFm.node_type as string) : "";
   const entityBody =
@@ -1099,9 +1088,7 @@ export async function runScopeRules(opts: {
     principalIndex = new Map();
     try {
       await withClient(async (c) => {
-        const r = await c.query<{ id: string; type: string }>(
-          `SELECT id, type FROM principals`,
-        );
+        const r = await c.query<{ id: string; type: string }>(`SELECT id, type FROM principals`);
         for (const row of r.rows) principalIndex!.set(row.id, { type: row.type });
       });
     } catch {
@@ -1218,7 +1205,11 @@ async function attachImplicitEdges(opts: {
           for (const row of r.rows) {
             if (row.id === opts.entityId) continue;
             if (opts.alreadyReferenced.has(row.id)) continue;
-            const cand: CandidateRow = { id: row.id, node_type: t.nodeType, summary: row.summary ?? "" };
+            const cand: CandidateRow = {
+              id: row.id,
+              node_type: t.nodeType,
+              summary: row.summary ?? "",
+            };
             if (row.name) cand.name = row.name;
             candidates.push(cand);
           }
@@ -1280,7 +1271,11 @@ export async function captureDecision(
     return { error: "scope_names must be a non-empty array." };
   }
 
-  const scopeRes = await resolveScopeOrError(docoDir, draft.scope_names, { verb: "tag", nodeKind: "Decision", incomingNodeType: "decision" });
+  const scopeRes = await resolveScopeOrError(docoDir, draft.scope_names, {
+    verb: "tag",
+    nodeKind: "Decision",
+    incomingNodeType: "decision",
+  });
   if ("error" in scopeRes) return scopeRes;
   const scopeIds = scopeRes.ids;
 
@@ -1305,10 +1300,7 @@ export async function captureDecision(
 
   const id = `decision_${generateUlid()}`;
 
-  const summary =
-    draft.summary?.trim() ||
-    distillSummary(draft.chosen) ||
-    `Decision: ${id}`;
+  const summary = draft.summary?.trim() || distillSummary(draft.chosen) || `Decision: ${id}`;
 
   const now = new Date().toISOString();
   const createdById = draft.created_by_id ?? decidedById ?? null;
@@ -1425,7 +1417,11 @@ export async function updateDecision(
   const fm = existing.fm;
   const existingBody = existing.body;
 
-  const gate = validatePatch("decision", fm.lifecycle as string | undefined, patch as Record<string, unknown>);
+  const gate = validatePatch(
+    "decision",
+    fm.lifecycle as string | undefined,
+    patch as Record<string, unknown>,
+  );
   if (!gate.allowed) {
     return {
       error: `Decision is frozen — patch touched disallowed field(s): ${gate.rejected.join(", ")}.`,
@@ -1620,6 +1616,7 @@ export type NodeTypeName =
 
 export interface EntityPatch {
   summary?: string;
+  purpose?: string;
   lifecycle?: string;
   scope_names?: string[];
   scope_names_add?: string[];
@@ -1648,7 +1645,18 @@ export async function updateEntity(opts: {
   actorId?: string | null;
 }): Promise<UpdateResult | CaptureError> {
   const startedAt = performance.now();
-  const { docoDir, docoId, ownerSlug, docoSlug, nodeType, id, patch, allowedFields, docoHost, actorId } = opts;
+  const {
+    docoDir,
+    docoId,
+    ownerSlug,
+    docoSlug,
+    nodeType,
+    id,
+    patch,
+    allowedFields,
+    docoHost,
+    actorId,
+  } = opts;
 
   const existing = await readEntityFromPostgres(nodeType, id);
   if (!existing) return { error: `${nodeType} not found: ${id}` };
@@ -1658,7 +1666,18 @@ export async function updateEntity(opts: {
   // are pure YAML and ignore body operations.
   const isMd = nodeType !== "scope" && nodeType !== "reference";
 
-  const gate = validatePatch(nodeType, fm.lifecycle as string | undefined, patch as Record<string, unknown>);
+  if (nodeType === "scope" && Object.prototype.hasOwnProperty.call(patch, "summary")) {
+    return {
+      error: "Scope nodes use `purpose`; `summary` is not accepted for scopes.",
+      status: 400,
+    };
+  }
+
+  const gate = validatePatch(
+    nodeType,
+    fm.lifecycle as string | undefined,
+    patch as Record<string, unknown>,
+  );
   if (!gate.allowed) {
     return {
       error: `${nodeType} is frozen — patch touched disallowed field(s): ${gate.rejected.join(", ")}.`,
@@ -1689,7 +1708,17 @@ export async function updateEntity(opts: {
     }
   };
 
-  setScalar("summary", typeof patch.summary === "string" ? patch.summary.trim() : undefined);
+  if (nodeType === "scope") {
+    const purposePatch = typeof patch.purpose === "string" ? patch.purpose.trim() : undefined;
+    setScalar("purpose", purposePatch);
+    if (purposePatch !== undefined && "summary" in fm) {
+      fm.summary = undefined;
+      changed.push("summary");
+      ops.push({ kind: "cleared", field: "summary" });
+    }
+  } else {
+    setScalar("summary", typeof patch.summary === "string" ? patch.summary.trim() : undefined);
+  }
   setScalar("lifecycle", patch.lifecycle);
   if (patch.born_from !== undefined) {
     if (patch.born_from === null || patch.born_from === "") {
@@ -1719,6 +1748,7 @@ export async function updateEntity(opts: {
   }
 
   for (const k of allowedFields) {
+    if (k === "summary" || k === "purpose") continue;
     if (k in patch && patch[k] !== undefined) {
       const v = patch[k];
       if (v === null || v === "") {
@@ -1834,7 +1864,9 @@ export async function updateEntity(opts: {
   });
   await reindexAndScheduleAttach(docoDir, docoId, id);
 
-  const summary = String(fm.summary ?? fm.name ?? id);
+  const summary = String(
+    nodeType === "scope" ? (fm.purpose ?? fm.name ?? id) : (fm.summary ?? fm.name ?? id),
+  );
   const duration_ms = Math.round(performance.now() - startedAt);
   const finalScopeIds = Array.isArray(fm.scopes) ? (fm.scopes as string[]) : [];
   const footer_lines = await renderOperationLines({
@@ -1897,7 +1929,11 @@ export async function captureIntent(
     return { error: "scope_names must be a non-empty array." };
   }
 
-  const scopeRes = await resolveScopeOrError(docoDir, draft.scope_names, { verb: "tag", nodeKind: "Intent", incomingNodeType: "intent" });
+  const scopeRes = await resolveScopeOrError(docoDir, draft.scope_names, {
+    verb: "tag",
+    nodeKind: "Intent",
+    incomingNodeType: "intent",
+  });
   if ("error" in scopeRes) return scopeRes;
   const scopeIds = scopeRes.ids;
 
@@ -1971,11 +2007,7 @@ export async function captureIntent(
     entityId: id,
     entityType: "intent",
     entitySummary: summary,
-    alreadyReferenced: new Set([
-      ...scopeIds,
-      ...(wantedById ? [wantedById] : []),
-      ...actorIds,
-    ]),
+    alreadyReferenced: new Set([...scopeIds, ...(wantedById ? [wantedById] : []), ...actorIds]),
   });
   const duration_ms = Math.round(performance.now() - startedAt);
   const footer_lines = await renderOperationLines({
@@ -2043,7 +2075,11 @@ export async function captureEval(
   if (!Array.isArray(draft.scope_names) || draft.scope_names.length === 0) {
     return { error: "scope_names must be a non-empty array." };
   }
-  const scopeRes = await resolveScopeOrError(docoDir, draft.scope_names, { verb: "tag", nodeKind: "Eval", incomingNodeType: "eval" });
+  const scopeRes = await resolveScopeOrError(docoDir, draft.scope_names, {
+    verb: "tag",
+    nodeKind: "Eval",
+    incomingNodeType: "eval",
+  });
   if ("error" in scopeRes) return scopeRes;
   const scopeIds = scopeRes.ids;
 
@@ -2114,10 +2150,7 @@ export async function captureEval(
     entityId: id,
     entityType: "eval",
     entitySummary: summary,
-    alreadyReferenced: new Set([
-      ...scopeIds,
-      ...(draft.target_ref ? [draft.target_ref] : []),
-    ]),
+    alreadyReferenced: new Set([...scopeIds, ...(draft.target_ref ? [draft.target_ref] : [])]),
   });
 
   const duration_ms = Math.round(performance.now() - startedAt);
@@ -2187,7 +2220,11 @@ export async function captureAction(
     return { error: "scope_names must be a non-empty array." };
   }
 
-  const scopeRes = await resolveScopeOrError(docoDir, draft.scope_names, { verb: "tag", nodeKind: "Action", incomingNodeType: "action" });
+  const scopeRes = await resolveScopeOrError(docoDir, draft.scope_names, {
+    verb: "tag",
+    nodeKind: "Action",
+    incomingNodeType: "action",
+  });
   if ("error" in scopeRes) return scopeRes;
   const scopeIds = scopeRes.ids;
 
@@ -2508,7 +2545,11 @@ export async function captureRule(
     return { error: "scope_names must be a non-empty array." };
   }
 
-  const scopeRes = await resolveScopeOrError(docoDir, draft.scope_names, { verb: "tag", nodeKind: "Rule", incomingNodeType: "rule" });
+  const scopeRes = await resolveScopeOrError(docoDir, draft.scope_names, {
+    verb: "tag",
+    nodeKind: "Rule",
+    incomingNodeType: "rule",
+  });
   if ("error" in scopeRes) return scopeRes;
   const scopeIds = scopeRes.ids;
 
@@ -2661,7 +2702,11 @@ export async function captureReference(
     return { error: "scope_names must be a non-empty array." };
   }
 
-  const scopeRes = await resolveScopeOrError(docoDir, draft.scope_names, { verb: "tag", nodeKind: "Reference", incomingNodeType: "reference" });
+  const scopeRes = await resolveScopeOrError(docoDir, draft.scope_names, {
+    verb: "tag",
+    nodeKind: "Reference",
+    incomingNodeType: "reference",
+  });
   if ("error" in scopeRes) return scopeRes;
   const scopeIds = scopeRes.ids;
 
@@ -2788,12 +2833,10 @@ export async function captureState(
   const startedAt = performance.now();
   if (!draft.summary?.trim()) return { error: "summary is required." };
   if (!draft.kind) return { error: "kind is required (initial | intermediate | terminal)." };
-  if (
-    draft.kind !== "initial" &&
-    draft.kind !== "intermediate" &&
-    draft.kind !== "terminal"
-  ) {
-    return { error: `kind must be one of initial / intermediate / terminal — got "${draft.kind}".` };
+  if (draft.kind !== "initial" && draft.kind !== "intermediate" && draft.kind !== "terminal") {
+    return {
+      error: `kind must be one of initial / intermediate / terminal — got "${draft.kind}".`,
+    };
   }
   if (!Array.isArray(draft.scope_names) || draft.scope_names.length === 0) {
     return { error: "scope_names must be a non-empty array." };

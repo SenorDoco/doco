@@ -1,3 +1,5 @@
+import { withClient } from "@doco/db";
+import { ENTITY_TYPES, entityUrl, isEntityType } from "@doco/shared";
 // Per-Doco entity list at the short URL `/:ownerSlug/:docoSlug/:type`.
 //
 // Replaces the legacy `/e/:type` URL — that path now redirects here. See
@@ -9,22 +11,20 @@
 // and win the match. For an unrecognized type we return 404.
 import { Link } from "react-router";
 import { parse as parseYaml } from "yaml";
-import { withClient } from "@doco/db";
+import { Badge } from "~/components/badge";
+import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
+import { SiteHeader } from "~/components/site-header";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "~/components/table";
 import { loadDocoForRead, normalizeDocoParams } from "~/lib/doco-access.server";
 import { loadHostConfig } from "~/lib/host";
 import { getCurrentPrincipal } from "~/lib/session";
-import { SiteHeader } from "~/components/site-header";
-import { Badge } from "~/components/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "~/components/table";
-import { ENTITY_TYPES, entityUrl, isEntityType } from "@doco/shared";
 
 const KNOWN = new Set<string>(ENTITY_TYPES);
 
 interface ScopeRow {
   id: string;
   name: string;
-  summary: string;
+  purpose: string;
   parent_ids: string[];
   member_count: number;
   sub_scope_count: number;
@@ -52,12 +52,12 @@ export async function loader({
         await c.query<{
           id: string;
           name: string;
-          summary: string;
+          purpose: string;
           raw_yaml: string;
           member_count: string;
           sub_scope_count: string;
         }>(
-          `SELECT s.id, s.name, s.summary, s.raw_yaml,
+          `SELECT s.id, s.name, s.purpose, s.raw_yaml,
                   (SELECT COUNT(*) FROM edges e
                     WHERE e.to_id = s.id
                       AND e.edge_type = 'in_scope_of'
@@ -79,7 +79,7 @@ export async function loader({
         return {
           id: r.id,
           name: r.name,
-          summary: r.summary,
+          purpose: r.purpose,
           parent_ids: Array.isArray(ent.scopes) ? (ent.scopes as string[]) : [],
           member_count: Number(r.member_count),
           sub_scope_count: Number(r.sub_scope_count),
@@ -199,11 +199,7 @@ export default function ListByTypeInDoco({
     const flat = flattenTree(tree);
     return (
       <div>
-        <SiteHeader
-          mode="host"
-          me={me}
-          docoScope={{ ownerSlug, docoSlug, handle }}
-        />
+        <SiteHeader mode="host" me={me} docoScope={{ ownerSlug, docoSlug, handle }} />
         <main className="mx-auto max-w-6xl px-6 py-6 space-y-4">
           <Card>
             <CardHeader>
@@ -252,8 +248,7 @@ export default function ListByTypeInDoco({
                         {n.name}
                       </Link>
                       <span className="text-muted-foreground">
-                        ({n.member_count}{" "}
-                        {n.member_count === 1 ? "member" : "members"}
+                        ({n.member_count} {n.member_count === 1 ? "member" : "members"}
                         {n.sub_scope_count > 0
                           ? ` · ${n.sub_scope_count} ${n.sub_scope_count === 1 ? "child" : "children"}`
                           : ""}
@@ -286,7 +281,9 @@ export default function ListByTypeInDoco({
           <CardHeader>
             <CardTitle>
               {capitalize(type)}s{" "}
-              <span className="ml-2 text-xs font-normal text-muted-foreground">({items.length})</span>
+              <span className="ml-2 text-xs font-normal text-muted-foreground">
+                ({items.length})
+              </span>
             </CardTitle>
           </CardHeader>
         </Card>

@@ -101,32 +101,32 @@ export async function loader({ request }: { request: Request }) {
          LIMIT $2`,
         [myDocoIds, FEED_LIMIT],
       );
-      // Look up each event's entity summary so the row reads like the
-      // per-Doco FeedLine ("✍️ Decision added: <summary>"). Entity ids
+      // Look up each event's readable label so the row reads like the
+      // per-Doco FeedLine ("✍️ Decision added: <readable text>"). Entity ids
       // are globally unique ULIDs, so one UNION across all node tables
       // resolves them regardless of original type.
       const entityIds = Array.from(new Set(feedRows.rows.map((r) => r.entity_id)));
-      const entityById = new Map<string, { summary: string | null; lifecycle: string | null }>();
+      const entityById = new Map<string, { label: string | null; lifecycle: string | null }>();
       if (entityIds.length > 0) {
-        const summaryRows = await c.query<{
+        const entityLabelRows = await c.query<{
           id: string;
-          summary: string | null;
+          label: string | null;
           lifecycle: string | null;
         }>(
-          `SELECT id, summary, lifecycle FROM decisions WHERE id = ANY($1)
-           UNION ALL SELECT id, summary, lifecycle FROM intents WHERE id = ANY($1)
-           UNION ALL SELECT id, summary, lifecycle FROM ideas WHERE id = ANY($1)
-           UNION ALL SELECT id, summary, lifecycle FROM rules WHERE id = ANY($1)
-           UNION ALL SELECT id, summary, lifecycle FROM actions WHERE id = ANY($1)
-           UNION ALL SELECT id, summary, lifecycle FROM logs WHERE id = ANY($1)
-           UNION ALL SELECT id, summary, lifecycle FROM evals WHERE id = ANY($1)
-           UNION ALL SELECT id, summary, lifecycle FROM states WHERE id = ANY($1)
-           UNION ALL SELECT id, COALESCE(summary, name) AS summary, lifecycle FROM scopes WHERE id = ANY($1)
-           UNION ALL SELECT id, summary, lifecycle FROM reference_entities WHERE id = ANY($1)`,
+          `SELECT id, summary AS label, lifecycle FROM decisions WHERE id = ANY($1)
+           UNION ALL SELECT id, summary AS label, lifecycle FROM intents WHERE id = ANY($1)
+           UNION ALL SELECT id, summary AS label, lifecycle FROM ideas WHERE id = ANY($1)
+           UNION ALL SELECT id, summary AS label, lifecycle FROM rules WHERE id = ANY($1)
+           UNION ALL SELECT id, summary AS label, lifecycle FROM actions WHERE id = ANY($1)
+           UNION ALL SELECT id, summary AS label, lifecycle FROM logs WHERE id = ANY($1)
+           UNION ALL SELECT id, summary AS label, lifecycle FROM evals WHERE id = ANY($1)
+           UNION ALL SELECT id, summary AS label, lifecycle FROM states WHERE id = ANY($1)
+           UNION ALL SELECT id, COALESCE(purpose, name) AS label, lifecycle FROM scopes WHERE id = ANY($1)
+           UNION ALL SELECT id, summary AS label, lifecycle FROM reference_entities WHERE id = ANY($1)`,
           [entityIds],
         );
-        for (const r of summaryRows.rows) {
-          entityById.set(r.id, { summary: r.summary, lifecycle: r.lifecycle });
+        for (const r of entityLabelRows.rows) {
+          entityById.set(r.id, { label: r.label, lifecycle: r.lifecycle });
         }
       }
       const docoMap = new Map(docos.map((d) => [d.docoId, d]));
@@ -140,7 +140,7 @@ export async function loader({ request }: { request: Request }) {
           handle: d?.handle ?? "?",
           entity_type: r.entity_type,
           entity_id: r.entity_id,
-          summary: entity?.summary ?? null,
+          summary: entity?.label ?? null,
           lifecycle: entity?.lifecycle ?? null,
           op: r.op,
           before: r.before_json,

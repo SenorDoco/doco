@@ -3,12 +3,12 @@ import type { EntityId } from "@doco/shared";
 import { renderOperationLines } from "~/lib/capture.server";
 import { docoPath } from "~/lib/db.server";
 import { loadDocoForAdmin, loadDocoForRead, normalizeDocoParams } from "~/lib/doco-access.server";
+import { createScopeInDoco, reindex, seedScopeFromTemplate } from "~/lib/redeem.server";
 import {
-  createScopeInDoco,
-  reindex,
-  seedScopeFromTemplate,
-} from "~/lib/redeem.server";
-import { listScopeDetails, readDocoMetadata } from "~/lib/scope-helpers.server";
+  listLiveScopeManifest,
+  listScopeDetails,
+  readDocoMetadata,
+} from "~/lib/scope-helpers.server";
 
 /**
  * POST /<doco-handle>/api/scopes.json — single-call Scope creation.
@@ -24,14 +24,14 @@ import { listScopeDetails, readDocoMetadata } from "~/lib/scope-helpers.server";
  *     by name (`"#global"` or `"#user-flows"`; legacy bare forms
  *     `"global"`/`"user-flows"` are accepted as aliases). Cannot be
  *     combined with the custom-create fields below. Seeds the
- *     template's summary, allowed_node_types, and Rules into the new
+ *     template's purpose, allowed_node_types, and Rules into the new
  *     scope (decision_01KRYECEA32SRSQCKFXSDCBK67 — no primary-intent
  *     Intent is created anymore; the description text lives on
- *     Scope.summary).
+ *     Scope.purpose).
  *   - `name`: string (required if `template_name` absent) — starts
  *     with `#` followed by a lowercase letter, then lowercase letters /
  *     digits / hyphens / underscores. No slashes (use `parent_id`).
- *   - `summary`: string (required if `template_name` absent) —
+ *   - `purpose`: string (required if `template_name` absent) —
  *     description text rendered under the scope name everywhere
  *     (list cards, detail page, bootstrap manifest).
  *   - `icon`: string (optional) — single emoji.
@@ -54,7 +54,7 @@ const SCOPE_NAME_RE = /^#[a-z][a-z0-9_-]*$/;
 interface ScopeCreateBody {
   template_name?: string;
   name?: string;
-  summary?: string;
+  purpose?: string;
   icon?: string;
   parent_id?: string;
   watched?: boolean;
@@ -69,15 +69,10 @@ export async function loader({
   request: Request;
   params: { docoId: string };
 }) {
-  const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
+  const { handle } = await normalizeDocoParams(params);
   await loadDocoForRead(request, handle);
-  return Response.json(
-    {
-      error:
-        "Use POST to create a scope. Body must include `watched: boolean` (ADR-137bis) and either `template_name` or `name`.",
-    },
-    { status: 405 },
-  );
+  const scopes = await listLiveScopeManifest(docoPath(handle));
+  return Response.json({ scopes });
 }
 
 export async function action({
@@ -109,6 +104,12 @@ export async function action({
   }
   if (!body || typeof body !== "object" || Array.isArray(body)) {
     return Response.json({ error: "JSON body must be an object." }, { status: 400 });
+  }
+  if (Object.prototype.hasOwnProperty.call(body, "summary")) {
+    return Response.json(
+      { error: "Scope nodes use `purpose`; `summary` is not accepted for scopes." },
+      { status: 400 },
+    );
   }
   const createTimeRuleField = CREATE_TIME_RULE_FIELDS.find((field) =>
     Object.prototype.hasOwnProperty.call(body, field),
@@ -161,7 +162,7 @@ export async function action({
 
   let createOpts: Parameters<typeof createScopeInDoco>[0];
   let templateToSeed: NonNullable<ReturnType<typeof findScopeTemplate>> | null = null;
-  let resolvedSummary = "";
+  let resolvedPurpose = "";
 
   if (body.template_name) {
     // Accept both `#global` (canonical, hashtag form) and legacy `global`
@@ -176,14 +177,14 @@ export async function action({
     if (existing.some((s) => s.name === tpl.name)) {
       return Response.json({ error: `Scope "${tpl.name}" already exists.` }, { status: 409 });
     }
-    resolvedSummary = tpl.summary;
+    resolvedPurpose = tpl.purpose;
     createOpts = {
       docoDir: dir,
       docoId,
       name: tpl.name,
       ...(tpl.icon ? { icon: tpl.icon } : {}),
       watched,
-      summary: tpl.summary,
+      purpose: tpl.purpose,
       ...(tpl.allowed_node_types && tpl.allowed_node_types.length > 0
         ? { allowed_node_types: tpl.allowed_node_types }
         : {}),
@@ -192,16 +193,16 @@ export async function action({
     templateToSeed = tpl;
   } else {
     const name = (body.name ?? "").trim().toLowerCase();
-    const customSummary = (body.summary ?? "").trim();
+    const customPurpose = (body.purpose ?? "").trim();
     if (!name) {
       return Response.json(
         { error: "Either `template_name` or `name` is required." },
         { status: 400 },
       );
     }
-    if (!customSummary) {
+    if (!customPurpose) {
       return Response.json(
-        { error: "`summary` is required when creating a custom scope." },
+        { error: "`purpose` is required when creating a custom scope." },
         { status: 400 },
       );
     }
@@ -230,7 +231,7 @@ export async function action({
       parentScopes.push(parent.id as EntityId<"scope">);
     }
 
-    resolvedSummary = customSummary;
+    resolvedPurpose = customPurpose;
     createOpts = {
       docoDir: dir,
       docoId,
@@ -238,7 +239,7 @@ export async function action({
       ...(body.icon ? { icon: body.icon } : {}),
       parentScopes,
       watched,
-      summary: customSummary,
+      purpose: customPurpose,
       createdBy,
     };
   }
@@ -265,18 +266,16 @@ export async function action({
 
   const scopeName = createOpts.name;
   const scopeIcon = createOpts.icon;
-  const summary =
-    resolvedSummary.trim() ||
-    `Scope: ${scopeName}${watched ? " (watched)" : ""}`;
+  const purpose = resolvedPurpose.trim() || `Scope: ${scopeName}${watched ? " (watched)" : ""}`;
   const footer_lines = await renderOperationLines({
     docoId,
     ownerSlug,
     docoSlug,
     nodeType: "scope",
     id: newScopeId,
-    summary,
+    summary: purpose,
     docoHost: new URL(request.url).origin,
-    ops: [{ kind: "added", summary }],
+    ops: [{ kind: "added", summary: purpose }],
     scopes: scopeIcon ? [{ name: scopeName, icon: scopeIcon }] : [{ name: scopeName }],
     duration_ms,
   });
@@ -285,6 +284,7 @@ export async function action({
     {
       id: newScopeId,
       name: scopeName,
+      purpose,
       watched,
       footer_lines,
     },
