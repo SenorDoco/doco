@@ -96,8 +96,8 @@ export default [
   // `doco login --create <slug>`), so the HTML and .json siblings
   // would just be ceremony around a one-screen instruction.
   route("onboarding/create/agent.txt", "routes/onboarding.create.agent[.]txt.tsx"),
-  // Agents
-  route("agents", "routes/agents._index.tsx"),
+  // Agents — listing moved into /users (decision_01KS0JBJ5X0AZ4XJJFKEWE1R62).
+  // /agents/new stays for direct-create flows.
   route("agents/new", "routes/agents.new.tsx"),
   // API
   route("api/suggest-scopes", "routes/api.suggest-scopes.tsx"),

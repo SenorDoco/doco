@@ -35,16 +35,15 @@ export function SiteHeader({ docoScope, me }: SiteHeaderProps) {
   // The old `<owner>/<slug>` compound is gone — after slug-removal it
   // would render as `<owner>/<handle>` which doubles the owner prefix
   // visually (e.g. "torrenegra/torrenegra-doco").
+  // Per-doco sub-bar; host-mode shows nothing here (top-bar links cover
+  // Docos / Orgs / Users / account).
   const nav = docoScope
     ? [
         { to: `/${docoScope.handle}`, label: docoScope.handle },
         { to: `/${docoScope.handle}/scopes`, label: "Scopes" },
         { to: `/${docoScope.handle}/settings`, label: "Settings" },
       ]
-    : [
-        { to: "/dashboard", label: "Docos" },
-        { to: "/agents", label: "Agents" },
-      ];
+    : [];
 
   return (
     <header className="border-b border-border bg-card">
@@ -122,28 +121,31 @@ export function SiteHeader({ docoScope, me }: SiteHeaderProps) {
         </div>
       </div>
 
-      {/* Row 2: per-Doco / host nav (sub-bar, ADR-088). */}
-      <div className="border-t border-border/60">
-        <nav className="mx-auto flex max-w-6xl items-center gap-5 px-6 py-2 text-xs">
-          {nav.map((n) => (
-            <NavLink
-              key={n.to}
-              to={n.to}
-              end={n.to === "/" || (docoScope?.handle ? n.to === `/${docoScope.handle}` : false)}
-              className={({ isActive }) =>
-                cn(
-                  "transition-colors",
-                  isActive
-                    ? "text-foreground font-medium"
-                    : "text-muted-foreground hover:text-foreground",
-                )
-              }
-            >
-              {n.label}
-            </NavLink>
-          ))}
-        </nav>
-      </div>
+      {/* Row 2: per-Doco sub-bar. Rendered only when we're inside a
+          docoScope; host-mode pages get the top-bar links as their nav. */}
+      {nav.length > 0 ? (
+        <div className="border-t border-border/60">
+          <nav className="mx-auto flex max-w-6xl items-center gap-5 px-6 py-2 text-xs">
+            {nav.map((n) => (
+              <NavLink
+                key={n.to}
+                to={n.to}
+                end={n.to === "/" || (docoScope?.handle ? n.to === `/${docoScope.handle}` : false)}
+                className={({ isActive }) =>
+                  cn(
+                    "transition-colors",
+                    isActive
+                      ? "text-foreground font-medium"
+                      : "text-muted-foreground hover:text-foreground",
+                  )
+                }
+              >
+                {n.label}
+              </NavLink>
+            ))}
+          </nav>
+        </div>
+      ) : null}
     </header>
   );
 }

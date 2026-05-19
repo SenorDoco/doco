@@ -13,6 +13,7 @@ import {
   listDocoIdsForUserPrincipal,
   listDocoUsers,
   listOrganizationsForPrincipal,
+  listPrincipals,
   listScopeIdsForUserPrincipal,
   listScopeUsers,
   removeDocoUser,
@@ -27,6 +28,7 @@ import type { EntityId } from "@doco/shared";
 import { useEffect, useState } from "react";
 import { Link, redirect, useFetcher } from "react-router";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
+import { SingleColumnPageMain } from "~/components/page-main";
 import { SiteHeader } from "~/components/site-header";
 import { rootDir } from "~/lib/db.server";
 import { getCurrentPrincipal } from "~/lib/session";
@@ -41,7 +43,6 @@ function rankOf(role: DocoRole): number {
 interface UserCell {
   principal_id: string;
   username: string;
-  display_name: string | null;
 }
 
 interface OrgSection {
@@ -63,12 +64,20 @@ interface ScopeSection {
   users: (UserCell & { role: DocoRole })[];
 }
 
+interface AgentRow {
+  id: string;
+  username: string;
+  display_name: string | null;
+  model: string;
+  provider: string;
+  created_at: string;
+}
+
 async function enrichPrincipal(id: string): Promise<UserCell> {
   const p = await getPrincipalById(id);
   return {
     principal_id: id,
     username: p?.username ?? id,
-    display_name: p?.display_name ?? null,
   };
 }
 
@@ -161,15 +170,42 @@ export async function loader({ request }: { request: Request }) {
     });
   }
 
+  // ── Agents this principal owns (replaces the old /agents page) ────
+  const principalRows = await listPrincipals({ type: "agent" });
+  const myAgents: AgentRow[] = [];
+  for (const r of principalRows) {
+    let fm: Record<string, unknown> = {};
+    try {
+      fm = JSON.parse(r.raw_yaml) as Record<string, unknown>;
+    } catch {
+      /* skip unparseable */
+    }
+    if (fm.owner_id !== me.id) continue;
+    const m = (fm.agent_metadata ?? {}) as { model?: string; provider?: string };
+    myAgents.push({
+      id: r.id,
+      username: r.username,
+      display_name: typeof fm.display_name === "string" ? fm.display_name : null,
+      model: m.model ?? "—",
+      provider: m.provider ?? "—",
+      created_at: typeof fm.created_at === "string" ? fm.created_at : "",
+    });
+  }
+  myAgents.sort((a, b) => b.created_at.localeCompare(a.created_at));
+
   // ── Invite-target options: where can THIS user mint invites? ──────
-  const inviteOrgs = orgSections.filter((s) => s.myRole === "owner").map((s) => ({
-    id: s.org.id,
-    label: s.org.slug,
-  }));
-  const inviteDocos = docoSections.filter((s) => s.myRole === "owner").map((s) => ({
-    id: s.doco.id,
-    label: s.doco.handle,
-  }));
+  const inviteOrgs = orgSections
+    .filter((s) => s.myRole === "owner")
+    .map((s) => ({
+      id: s.org.id,
+      label: s.org.slug,
+    }));
+  const inviteDocos = docoSections
+    .filter((s) => s.myRole === "owner")
+    .map((s) => ({
+      id: s.doco.id,
+      label: s.doco.handle,
+    }));
   // Scope invites need doco-owner role on the containing doco. Surface
   // every scope inside any doco the user owns at the doco level.
   const ownerDocoIds = new Set(inviteDocos.map((d) => d.id));
@@ -195,6 +231,7 @@ export async function loader({ request }: { request: Request }) {
     orgSections,
     docoSections,
     scopeSections,
+    myAgents,
     invite: {
       orgs: inviteOrgs,
       docos: inviteDocos,
@@ -212,8 +249,21 @@ type ActionResult =
       level: "org" | "doco" | "scope";
       role: DocoRole;
     }
-  | { intent: "update"; ok: true; level: "org" | "doco" | "scope"; target_id: string; principal_id: string; role: DocoRole }
-  | { intent: "remove"; ok: true; level: "org" | "doco" | "scope"; target_id: string; principal_id: string }
+  | {
+      intent: "update";
+      ok: true;
+      level: "org" | "doco" | "scope";
+      target_id: string;
+      principal_id: string;
+      role: DocoRole;
+    }
+  | {
+      intent: "remove";
+      ok: true;
+      level: "org" | "doco" | "scope";
+      target_id: string;
+      principal_id: string;
+    }
   | { error: string };
 
 export async function action({
@@ -271,11 +321,19 @@ export async function action({
     if (intent === "update") {
       const role = String(form.get("role") ?? "") as DocoRole;
       if (!ALL_ROLES.includes(role)) return { error: "Invalid role." };
-      if (level === "org") await upsertOrgUser({ org_id: targetId, principal_id: principalId, role });
+      if (level === "org")
+        await upsertOrgUser({ org_id: targetId, principal_id: principalId, role });
       else if (level === "doco")
         await upsertDocoUser({ doco_id: targetId, principal_id: principalId, role });
       else await upsertScopeUser({ scope_id: targetId, principal_id: principalId, role });
-      return { intent: "update", ok: true, level, target_id: targetId, principal_id: principalId, role };
+      return {
+        intent: "update",
+        ok: true,
+        level,
+        target_id: targetId,
+        principal_id: principalId,
+        role,
+      };
     }
     if (level === "org") await removeOrgUser(targetId, principalId);
     else if (level === "doco") await removeDocoUser(targetId, principalId);
@@ -375,10 +433,11 @@ export function meta() {
 }
 
 interface UsersLoaderData {
-  me: { id: string; username: string; display_name: string; type: "person" | "agent"; email?: string };
+  me: { id: string; username: string; type: "person" | "agent"; email?: string };
   orgSections: OrgSection[];
   docoSections: DocoSection[];
   scopeSections: ScopeSection[];
+  myAgents: AgentRow[];
   invite: {
     orgs: { id: string; label: string }[];
     docos: { id: string; label: string }[];
@@ -394,7 +453,7 @@ export default function UsersPage({
   return (
     <div className="min-h-screen flex flex-col bg-background text-foreground">
       <SiteHeader mode="host" me={loaderData.me} />
-      <main className="mx-auto w-full max-w-4xl px-6 py-8 space-y-6">
+      <SingleColumnPageMain className="py-8 space-y-6">
         <header>
           <h1 className="text-2xl font-semibold">Users (humans/agents)</h1>
           <p className="text-sm text-muted-foreground">
@@ -453,8 +512,64 @@ export default function UsersPage({
             })),
           )}
         />
-      </main>
+
+        <AgentsSection agents={loaderData.myAgents} />
+      </SingleColumnPageMain>
     </div>
+  );
+}
+
+function AgentsSection({ agents }: { agents: AgentRow[] }) {
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <CardTitle>Your agents</CardTitle>
+          <Link
+            to="/agents/new"
+            className="rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90"
+          >
+            + New agent
+          </Link>
+        </div>
+      </CardHeader>
+      <CardContent>
+        {agents.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            You don't own any agents yet. Agents you create or that authorize sessions on your
+            behalf appear here.
+          </p>
+        ) : (
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-xs uppercase tracking-wide text-muted-foreground">
+                <th className="pb-2 font-medium">Agent</th>
+                <th className="pb-2 font-medium">Model</th>
+                <th className="pb-2 font-medium">Provider</th>
+                <th className="pb-2 font-medium">Created</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {agents.map((a) => (
+                <tr key={a.id} data-testid={`agent-row-${a.username}`}>
+                  <td className="py-2 align-middle">
+                    <div className="font-medium">{a.username}</div>
+                    {a.display_name ? (
+                      <div className="text-xs text-muted-foreground">{a.display_name}</div>
+                    ) : null}
+                  </td>
+                  <td className="py-2 align-middle font-mono text-xs">{a.model}</td>
+                  <td className="py-2 align-middle font-mono text-xs">{a.provider}</td>
+                  <td className="py-2 align-middle text-xs text-muted-foreground">
+                    {a.created_at ? new Date(a.created_at).toLocaleString() : "—"}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -533,9 +648,6 @@ function UserRow({ row }: { row: SectionRow }) {
     <tr data-testid={`row-${row.level}-${row.user.username}`}>
       <td className="py-2 align-middle">
         <div className="font-medium">{row.user.username}</div>
-        {row.user.display_name ? (
-          <div className="text-xs text-muted-foreground">{row.user.display_name}</div>
-        ) : null}
       </td>
       <td className="py-2 align-middle">
         <Link to={row.target_link} className="text-xs underline">
@@ -573,13 +685,15 @@ function UserRow({ row }: { row: SectionRow }) {
             data-testid={`status-${row.level}-${row.user.username}`}
             aria-live="polite"
           >
-            {roleFetcher.state !== "idle"
-              ? "Saving…"
-              : error
-                ? <span className="text-destructive">{error}</span>
-                : showSaved
-                  ? "Saved"
-                  : ""}
+            {roleFetcher.state !== "idle" ? (
+              "Saving…"
+            ) : error ? (
+              <span className="text-destructive">{error}</span>
+            ) : showSaved ? (
+              "Saved"
+            ) : (
+              ""
+            )}
           </span>
         </div>
       </td>
