@@ -64,7 +64,16 @@ function rpcErr(id: JsonRpcId, code: number, message: string): Response {
 // Authentication.
 // ---------------------------------------------------------------------------
 
-interface ResolvedSession {
+/** Minimum a tool needs to call its backing API. Public tools (e.g.
+ *  redeem_invite, called before the agent has any credential) get an
+ *  origin-only context; authed tools get the full ResolvedSession. */
+interface ProxyContext {
+  origin: string;
+  docoHandle?: string;
+  rawCredential?: string;
+}
+
+interface ResolvedSession extends ProxyContext {
   agentId: EntityId<"principal">;
   docoId: EntityId<"doco">;
   docoHandle: string;
@@ -76,6 +85,11 @@ interface ResolvedSession {
   origin: string;
 }
 
+function requestOrigin(request: Request): string {
+  const url = new URL(request.url);
+  return `${url.protocol}//${url.host}`;
+}
+
 async function resolveSession(request: Request): Promise<ResolvedSession | null> {
   const credential = extractCredential(request);
   if (!credential) return null;
@@ -83,13 +97,12 @@ async function resolveSession(request: Request): Promise<ResolvedSession | null>
   if (!session || !session.bound_doco_id) return null;
   const doco = await getDocoById(session.bound_doco_id);
   if (!doco) return null;
-  const url = new URL(request.url);
   return {
     agentId: session.principal_id as EntityId<"principal">,
     docoId: doco.id as EntityId<"doco">,
     docoHandle: doco.handle,
     rawCredential: credential,
-    origin: `${url.protocol}//${url.host}`,
+    origin: requestOrigin(request),
   };
 }
 
@@ -111,11 +124,17 @@ interface ProxyOptions {
 }
 
 async function proxyApi(
-  session: ResolvedSession,
+  ctx: ProxyContext,
   opts: ProxyOptions,
   args: Record<string, unknown>,
 ): Promise<unknown> {
-  let path = opts.path.replace("{handle}", session.docoHandle);
+  let path = opts.path;
+  if (path.includes("{handle}")) {
+    if (!ctx.docoHandle) {
+      throw new Error("tool path requires a Doco handle but no session is bound");
+    }
+    path = path.replace("{handle}", ctx.docoHandle);
+  }
   const argsCopy: Record<string, unknown> = { ...args };
   for (const v of opts.pathArgs ?? []) {
     const raw = argsCopy[v];
@@ -132,16 +151,14 @@ async function proxyApi(
     query.set(v, String(raw));
     delete argsCopy[v];
   }
-  const url = `${session.origin}${path}${query.toString() ? `?${query}` : ""}`;
-  const init: RequestInit = {
-    method: opts.method,
-    headers: {
-      Accept: "application/json",
-      Authorization: `Bearer ${session.rawCredential}`,
-    },
-  };
+  const url = `${ctx.origin}${path}${query.toString() ? `?${query}` : ""}`;
+  const headers: Record<string, string> = { Accept: "application/json" };
+  if (ctx.rawCredential) {
+    headers.Authorization = `Bearer ${ctx.rawCredential}`;
+  }
+  const init: RequestInit = { method: opts.method, headers };
   if (opts.method !== "GET" && opts.bodyAllowed !== false) {
-    (init.headers as Record<string, string>)["Content-Type"] = "application/json";
+    headers["Content-Type"] = "application/json";
     init.body = JSON.stringify(argsCopy);
   }
   const res = await fetch(url, init);
@@ -171,6 +188,11 @@ interface ToolDef {
   description: string;
   inputSchema: Record<string, unknown>;
   proxy: ProxyOptions;
+  /** Defaults to true. Set false for tools whose backing endpoint is
+   *  intentionally unauthenticated — `redeem_invite` is the canonical
+   *  case: a new agent has no DOCO_ACCESS yet, so the very call that
+   *  mints one cannot itself require one. */
+  requiresAuth?: boolean;
 }
 
 // Common JSON-Schema fragments reused across capture-tool schemas.
@@ -606,6 +628,29 @@ const TOOLS: ToolDef[] = [
     },
     proxy: { method: "POST", path: "/{handle}/api/invites.json" },
   },
+  {
+    name: "redeem_invite",
+    description:
+      "Redeem a single-use invite URL to join a Doco. Unauthenticated — a new agent joining a Doco has no DOCO_ACCESS yet, so the very call that mints one cannot itself require one. Returns the new doco_access credential plus bootstrap context (scopes, constitution, canonical_instructions, next_steps_for_agent, user_message_block). Pass the bare invite code — the segment after /invite/ in a https://doco.to/invite/<code> URL.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        code: {
+          type: "string",
+          description:
+            "The invite code — the segment after /invite/ in a https://doco.to/invite/<code> URL.",
+        },
+      },
+      required: ["code"],
+      additionalProperties: false,
+    },
+    requiresAuth: false,
+    proxy: {
+      method: "POST",
+      path: "/api/v1/invites/{code}/redeem.json",
+      pathArgs: ["code"],
+    },
+  },
 ];
 
 const TOOL_BY_NAME = new Map<string, ToolDef>(TOOLS.map((t) => [t.name, t]));
@@ -615,13 +660,13 @@ const TOOL_BY_NAME = new Map<string, ToolDef>(TOOLS.map((t) => [t.name, t]));
 // ---------------------------------------------------------------------------
 
 async function callTool(
-  session: ResolvedSession,
+  ctx: ProxyContext,
   name: string,
   args: Record<string, unknown>,
 ): Promise<unknown> {
   const tool = TOOL_BY_NAME.get(name);
   if (!tool) throw new Error(`unknown tool: ${name}`);
-  return await proxyApi(session, tool.proxy, args);
+  return await proxyApi(ctx, tool.proxy, args);
 }
 
 function asContent(value: unknown): { content: { type: string; text: string }[] } {
@@ -683,21 +728,26 @@ export async function action({ request }: { request: Request }) {
         });
       }
       case "tools/call": {
+        const toolName = typeof params.name === "string" ? params.name : "";
+        if (!toolName) {
+          return rpcErr(id, INVALID_REQUEST, "tools/call requires `name`");
+        }
+        const tool = TOOL_BY_NAME.get(toolName);
+        if (!tool) {
+          return rpcErr(id, MCP_TOOL_FAILED, `unknown tool: ${toolName}`);
+        }
         const session = await resolveSession(request);
-        if (!session) {
+        if (!session && tool.requiresAuth !== false) {
           return rpcErr(
             id,
             MCP_AUTH_REQUIRED,
             "Authorization required. Send `Authorization: Bearer ${DOCO_ACCESS}` per Streamable HTTP transport.",
           );
         }
-        const toolName = typeof params.name === "string" ? params.name : "";
+        const ctx: ProxyContext = session ?? { origin: requestOrigin(request) };
         const toolArgs = (params.arguments ?? {}) as Record<string, unknown>;
-        if (!toolName) {
-          return rpcErr(id, INVALID_REQUEST, "tools/call requires `name`");
-        }
         try {
-          const result = await callTool(session, toolName, toolArgs);
+          const result = await callTool(ctx, toolName, toolArgs);
           return rpcOk(id, asContent(result));
         } catch (e) {
           return rpcErr(id, MCP_TOOL_FAILED, `${toolName} failed: ${(e as Error).message}`);
