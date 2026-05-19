@@ -8,13 +8,23 @@ export async function loader({ request }: { request: Request }) {
 
 You talk to ${baseUrl} over plain HTTP. No CLI, no SDK, no install.
 
-The full recipe is ONE HTTP call, a handful of files written, an
-onboarding-overlay walk, and one git commit. Step 5 is a hard gate:
-you MUST render the response's user_message_block to the user before
-any further onboarding action. Step 6 is the onboarding-overlay walk
-that MUST run regardless of whether the commit step is gated on a
-"don't commit unprompted" rule — commit-wait does NOT swallow steps
-6 and 7.
+🛑 AGENT STOP — READ THIS BEFORE ANY HTTP CALL 🛑
+
+Your FIRST onboarding action is NOT to POST /api/v1/docos.json. The
+wizard's step 1 is to ASK the project owner whether they want to
+install the Doco MCP connector (see "Step 1 — offer the connector"
+below). ONLY after they answer (yes install / no skip) do you
+proceed to the create POST in step 2. If your first instinct after
+reading this is "let me create the doco now," that's the exact bias
+the wizard intercepts. Ask about the connector first; create second.
+
+The full recipe is one HTTP call (after the connector ask), a
+handful of files written, an onboarding-overlay walk, and one git
+commit. Step 6 is a hard gate: you MUST render the response's
+user_message_block to the user before any further onboarding
+action. Step 7 is the onboarding-overlay walk that MUST run
+regardless of whether the commit step is gated on a "don't commit
+unprompted" rule — commit-wait does NOT swallow steps 7 and 8.
 
   1. **OFFER THE CONNECTOR FIRST.** Before any HTTP call, before
      creating the Doco, ask the project owner whether they want to

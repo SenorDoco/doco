@@ -16,10 +16,28 @@ If a user just told you something like "let's start using Doco" or
 "visit ${new URL(baseUrl).host} and follow the wizard", you're at the
 right page. This is the agent-readable entry point.
 
-No SDK, no CLI, no package, no install. Doco is plain HTTP — call it
-with whatever HTTP client you already have. Setup is ONE POST plus a
-handful of files: the wizard's single response carries everything
-(credential, protocol, scopes, invite URL, user-message block).
+🛑 **AGENT STOP — READ THIS BEFORE ANY HTTP CALL** 🛑
+
+Your FIRST onboarding action is NOT to POST /api/v1/docos.json.
+The wizard's step 1 is to ASK the project owner whether they want
+to install the Doco MCP connector — see section 1 below. ONLY after
+they answer (yes install / no skip) do you proceed to the create
+POST. If your first instinct after reading this page is "let me
+create the doco now," that's the exact bias the wizard intercepts.
+Ask about the connector first; create second.
+
+The full sequence — DO NOT skip step 1:
+
+  1. Offer the MCP connector (section 1 below) — ASK and WAIT
+  2. POST /api/v1/docos.json — create the Doco
+  3. Write .env (DOCO_ACCESS), DOCO.md, AGENTS.md, CLAUDE.md
+  4. Render the user_message_block GATE verbatim
+  5. Run the onboarding overlay (scope_setup + scope_population)
+  6. Apply the protocol (canonical_instructions, already in hand)
+  7. Commit the bootstrap files to git
+
+No SDK, no CLI, no package, no install on the agent side. Doco is
+plain HTTP — call it with whatever HTTP client you already have.
 
 ## 1. OFFER THE MCP CONNECTOR (do this FIRST, before any HTTP call)
 
