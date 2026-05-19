@@ -2,41 +2,33 @@
 //
 // The Doco MCP server. Once an agent runtime (Claude Code, Claude
 // Desktop, Cursor, etc.) installs this URL as an MCP server, the
-// agent gains native Doco tools: bootstrap, search, capture_decision,
-// capture_rule. No more raw curl, no more credential-in-shell-history,
-// no more "remind me which endpoint accepts which field" friction.
+// agent gains native Doco tools that mirror the full HTTP API 1:1.
+//
+// PARITY RULE (captured as a guidance Rule on #global): web, API, and
+// MCP must offer the same functionality. If the JSON API grows a new
+// endpoint, this connector grows a new tool in the same change.
 //
 // Authentication: the MCP client passes `Authorization: Bearer
-// ${DOCO_ACCESS}` (per the Streamable HTTP spec). The token resolves
-// to a Doco + Principal via the existing TokenStore, and tools fan
-// out to the same internal entry points the JSON routes use.
+// ${DOCO_ACCESS}` per Streamable HTTP transport. The bearer resolves
+// to a Principal + bound Doco via the existing TokenStore.
 //
-// Protocol shape (minimal — just enough to be a useful client):
-//   - initialize           — handshake; advertise serverInfo + capabilities
-//   - notifications/initialized — one-way client ack (no response)
-//   - tools/list           — return the tool definitions
-//   - tools/call           — invoke a tool, return content[]
+// Architecture: every capture / patch / read tool is a thin
+// authenticated HTTPS proxy to the corresponding /<handle>/api/...
+// endpoint. The MCP server adds zero behavior; it's a protocol
+// adapter only. Adding a new tool when the API grows means: add a
+// row to TOOLS + a row to the dispatcher map. The actual logic
+// (validation, scope-gate checks, capture/audit) stays in the JSON
+// routes where the web + the API surface call it from.
 //
-// Future work (not in this MVP):
-//   - SSE streaming for long-running tool calls (currently single JSON response)
-//   - resources/list + resources/read (no per-Doco resources exposed yet)
-//   - prompts/list (the onboarding-overlay text is a natural fit)
-//   - logging/setLevel (server-side debug toggles)
-//
-// All four shipped tools delegate to existing internal capture/search
-// functions rather than re-deriving logic; the route is a thin
-// protocol adapter, not a parallel implementation.
+// Protocol surface implemented:
+//   - initialize           — handshake
+//   - notifications/initialized — one-way ack
+//   - tools/list           — return tool registry
+//   - tools/call           — invoke tool by name + args
 
 import type { EntityId } from "@doco/shared";
 import { getDocoById } from "@doco/db";
-import { docoPath, rootDir } from "~/lib/db.server";
-import { normalizeDocoParams } from "~/lib/doco-access.server";
-import {
-  type DecisionDraft,
-  captureDecision,
-} from "~/lib/capture.server";
-import { loadBootstrapContext } from "~/lib/bootstrap-context.server";
-import { CANONICAL_INSTRUCTIONS } from "~/lib/instructions.server";
+import { rootDir } from "~/lib/db.server";
 import { extractCredential } from "~/lib/session";
 import { TokenStore } from "~/lib/tokens.server";
 
@@ -53,39 +45,19 @@ interface JsonRpcRequest {
   params?: unknown;
 }
 
-interface JsonRpcSuccess {
-  jsonrpc: "2.0";
-  id: JsonRpcId;
-  result: unknown;
-}
-
-interface JsonRpcError {
-  jsonrpc: "2.0";
-  id: JsonRpcId;
-  error: { code: number; message: string; data?: unknown };
-}
-
 const PARSE_ERROR = -32700;
 const INVALID_REQUEST = -32600;
 const METHOD_NOT_FOUND = -32601;
 const INTERNAL_ERROR = -32603;
-
-// Application-level errors (MCP convention reserves -32000..-32099).
 const MCP_AUTH_REQUIRED = -32001;
 const MCP_TOOL_FAILED = -32002;
 
 function rpcOk(id: JsonRpcId, result: unknown): Response {
-  const body: JsonRpcSuccess = { jsonrpc: "2.0", id, result };
-  return Response.json(body);
+  return Response.json({ jsonrpc: "2.0", id, result });
 }
 
-function rpcErr(id: JsonRpcId, code: number, message: string, data?: unknown): Response {
-  const body: JsonRpcError = {
-    jsonrpc: "2.0",
-    id,
-    error: { code, message, ...(data !== undefined ? { data } : {}) },
-  };
-  return Response.json(body);
+function rpcErr(id: JsonRpcId, code: number, message: string): Response {
+  return Response.json({ jsonrpc: "2.0", id, error: { code, message } });
 }
 
 // ---------------------------------------------------------------------------
@@ -96,12 +68,12 @@ interface ResolvedSession {
   agentId: EntityId<"principal">;
   docoId: EntityId<"doco">;
   docoHandle: string;
-  ownerSlug: string;
-  docoDir: string;
-  /** The raw bearer the MCP client sent — passed through to internal
-   *  HTTP proxies (search) so they hit the same access-control path
-   *  as any other authenticated request. */
+  /** Raw bearer passed through to internal HTTPS proxies so they
+   *  resolve to the same Principal/Doco via the same auth code path. */
   rawCredential: string;
+  /** Origin of the host (deployed prod vs preview). The proxy
+   *  computes this from the incoming request URL. */
+  origin: string;
 }
 
 async function resolveSession(request: Request): Promise<ResolvedSession | null> {
@@ -111,15 +83,83 @@ async function resolveSession(request: Request): Promise<ResolvedSession | null>
   if (!session || !session.bound_doco_id) return null;
   const doco = await getDocoById(session.bound_doco_id);
   if (!doco) return null;
-  const norm = await normalizeDocoParams({ docoId: doco.id });
+  const url = new URL(request.url);
   return {
     agentId: session.principal_id as EntityId<"principal">,
     docoId: doco.id as EntityId<"doco">,
     docoHandle: doco.handle,
-    ownerSlug: norm.ownerSlug,
-    docoDir: docoPath(doco.handle),
     rawCredential: credential,
+    origin: `${url.protocol}//${url.host}`,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Internal API proxy — every tool funnels through here.
+// ---------------------------------------------------------------------------
+
+interface ProxyOptions {
+  method: "GET" | "POST" | "PATCH" | "DELETE";
+  /** Path template; `{handle}` and any `{var}` placeholders are filled
+   *  from session.docoHandle + the args. */
+  path: string;
+  /** Args interpreted as URL placeholders (consumed; not sent in body). */
+  pathArgs?: string[];
+  /** Args interpreted as querystring. */
+  queryArgs?: string[];
+  /** Remaining args land in the JSON body for POST/PATCH. */
+  bodyAllowed?: boolean;
+}
+
+async function proxyApi(
+  session: ResolvedSession,
+  opts: ProxyOptions,
+  args: Record<string, unknown>,
+): Promise<unknown> {
+  let path = opts.path.replace("{handle}", session.docoHandle);
+  const argsCopy: Record<string, unknown> = { ...args };
+  for (const v of opts.pathArgs ?? []) {
+    const raw = argsCopy[v];
+    if (typeof raw !== "string" || !raw) {
+      throw new Error(`Missing required path argument: ${v}`);
+    }
+    path = path.replace(`{${v}}`, encodeURIComponent(raw));
+    delete argsCopy[v];
+  }
+  const query = new URLSearchParams();
+  for (const v of opts.queryArgs ?? []) {
+    const raw = argsCopy[v];
+    if (raw === undefined || raw === null) continue;
+    query.set(v, String(raw));
+    delete argsCopy[v];
+  }
+  const url = `${session.origin}${path}${query.toString() ? `?${query}` : ""}`;
+  const init: RequestInit = {
+    method: opts.method,
+    headers: {
+      Accept: "application/json",
+      Authorization: `Bearer ${session.rawCredential}`,
+    },
+  };
+  if (opts.method !== "GET" && opts.bodyAllowed !== false) {
+    (init.headers as Record<string, string>)["Content-Type"] = "application/json";
+    init.body = JSON.stringify(argsCopy);
+  }
+  const res = await fetch(url, init);
+  const text = await res.text();
+  let body: unknown;
+  try {
+    body = text ? JSON.parse(text) : null;
+  } catch {
+    body = text;
+  }
+  if (!res.ok) {
+    throw new Error(
+      `${opts.method} ${path} → ${res.status} ${res.statusText}: ${
+        typeof body === "string" ? body : JSON.stringify(body)
+      }`,
+    );
+  }
+  return body;
 }
 
 // ---------------------------------------------------------------------------
@@ -130,56 +170,90 @@ interface ToolDef {
   name: string;
   description: string;
   inputSchema: Record<string, unknown>;
+  proxy: ProxyOptions;
 }
 
+// Common JSON-Schema fragments reused across capture-tool schemas.
+const SCOPE_NAMES_SCHEMA = {
+  type: "array",
+  items: { type: "string" },
+  description:
+    "At least one scope name (hashtag-shaped, e.g. '#important'). File on the scope whose allowed_node_types accepts this node type — see list_scopes.",
+};
+
 const TOOLS: ToolDef[] = [
+  // -------------------- Read tools --------------------
   {
     name: "bootstrap",
     description:
-      "Fetch the current canonical_instructions + per-Doco context (scopes, constitution, onboarding_overlay). Call this once per session before drafting any capture or reply.",
+      "Fetch the current canonical_instructions + per-Doco context (scopes, constitution, onboarding_overlay). Call once per session before drafting any capture or reply.",
     inputSchema: { type: "object", properties: {}, additionalProperties: false },
+    proxy: { method: "GET", path: "/api/v1/agent-bootstrap" },
   },
   {
     name: "search",
     description:
-      "Search the connected Doco for prior decisions, rules, intents, actions, or logs matching a query. Use BEFORE drafting any new node to avoid duplicates.",
+      "Vector + keyword search across the connected Doco's nodes. Use BEFORE drafting any new capture to avoid duplicates.",
     inputSchema: {
       type: "object",
       properties: {
-        q: { type: "string", description: "Free-text query (paraphrase what you'd capture)." },
-        limit: {
-          type: "number",
-          description: "Max hits (default 10, max 50).",
-          minimum: 1,
-          maximum: 50,
-        },
+        q: { type: "string", description: "Free-text query." },
+        limit: { type: "number", minimum: 1, maximum: 50 },
       },
       required: ["q"],
       additionalProperties: false,
     },
+    proxy: { method: "GET", path: "/{handle}/search.json", queryArgs: ["q", "limit"] },
   },
   {
     name: "list_scopes",
     description:
-      "Return the connected Doco's live scope manifest (id, name, summary, icon, allowed_node_types, node_count). Use this to pick the right scope for a capture.",
+      "List live scopes with their summary, icon, allowed_node_types, lifecycle, and is_watched. Use this to pick the right scope for a capture.",
     inputSchema: { type: "object", properties: {}, additionalProperties: false },
+    proxy: { method: "GET", path: "/{handle}/api/scopes.json" },
   },
   {
-    name: "capture_decision",
+    name: "get_status",
     description:
-      "Capture a Decision node — a one-time choice with alternatives considered. Posts to the Doco's decisions API.",
+      "Doco freshness + per-type node counts. Useful before declaring 'onboarding done' to verify the scope checklist actually has content.",
+    inputSchema: { type: "object", properties: {}, additionalProperties: false },
+    proxy: { method: "GET", path: "/{handle}/status.json" },
+  },
+  {
+    name: "get_audit",
+    description:
+      "Audit-log events (captures, patches, lifecycle changes) for this Doco. Read-only.",
     inputSchema: {
       type: "object",
       properties: {
-        question: { type: "string", description: "The question the Decision answers." },
-        chosen: { type: "string", description: "The chosen resolution (multi-line OK)." },
-        scope_names: {
-          type: "array",
-          items: { type: "string" },
-          description:
-            "At least one scope name (hashtag-shaped, e.g. '#important' or '#adrs'). File on the scope whose allowed_node_types accepts 'decision'.",
+        limit: { type: "number", minimum: 1, maximum: 200 },
+        since: {
+          type: "string",
+          description: "ISO 8601 timestamp; return events on or after.",
         },
-        summary: { type: "string", description: "Optional one-line summary." },
+      },
+      additionalProperties: false,
+    },
+    proxy: { method: "GET", path: "/{handle}/api/audit.json", queryArgs: ["limit", "since"] },
+  },
+  {
+    name: "list_principals",
+    description: "List principals (humans + agents) connected to this Doco.",
+    inputSchema: { type: "object", properties: {}, additionalProperties: false },
+    proxy: { method: "GET", path: "/{handle}/api/principals.json" },
+  },
+  // -------------------- Capture tools (one per node type) --------------------
+  {
+    name: "capture_decision",
+    description:
+      "Capture a Decision node — a one-time choice with alternatives considered. File on a scope whose accepts includes 'decision' (typically #important or a topical scope like #adrs).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        question: { type: "string" },
+        chosen: { type: "string" },
+        scope_names: SCOPE_NAMES_SCHEMA,
+        summary: { type: "string" },
         alternatives: {
           type: "array",
           items: {
@@ -190,122 +264,345 @@ const TOOLS: ToolDef[] = [
             },
             required: ["name", "rejected_because"],
           },
-          description: "Optional rejected alternatives.",
         },
-        body_md: { type: "string", description: "Optional raw markdown appended after frontmatter." },
+        intent_ids: { type: "array", items: { type: "string" } },
+        body_md: { type: "string" },
       },
       required: ["question", "chosen", "scope_names"],
       additionalProperties: false,
     },
+    proxy: { method: "POST", path: "/{handle}/api/decisions.json" },
+  },
+  {
+    name: "capture_intent",
+    description:
+      "Capture an Intent node — a goal or aim. Lives upstream of Decisions and Actions that serve it.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        summary: { type: "string", description: "One-line 'what someone wants' summary." },
+        scope_names: SCOPE_NAMES_SCHEMA,
+        title: { type: "string" },
+        body_md: { type: "string", description: "Context + non-goals + success criteria." },
+        wanted_by_username: { type: "string" },
+        actors_usernames: {
+          type: "array",
+          items: { type: "string" },
+          description: "Principals expected to act in this flow.",
+        },
+        lifecycle: { type: "string" },
+      },
+      required: ["summary", "scope_names"],
+      additionalProperties: false,
+    },
+    proxy: { method: "POST", path: "/{handle}/api/intents.json" },
+  },
+  {
+    name: "capture_action",
+    description:
+      "Capture an Action node — a step in a flow, an edit, a deploy, an interaction. The unit of progress.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        summary: { type: "string" },
+        scope_names: SCOPE_NAMES_SCHEMA,
+        verb: { type: "string", description: "Short verb (refactor, migrate, deploy, …)." },
+        intent_ids: { type: "array", items: { type: "string" } },
+        decision_ids: { type: "array", items: { type: "string" } },
+        follows: { type: "array", items: { type: "string" } },
+        inputs: {},
+        outputs: {},
+        performed_by_username: { type: "string" },
+        body_md: { type: "string" },
+        lifecycle: { type: "string" },
+      },
+      required: ["summary", "scope_names", "verb"],
+      additionalProperties: false,
+    },
+    proxy: { method: "POST", path: "/{handle}/api/actions.json" },
+  },
+  {
+    name: "capture_log",
+    description:
+      "Capture a Log node — something that happened, with a timestamp and concrete outputs. Distinct from Action: Logs are observational, Actions are deliberate.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        summary: { type: "string" },
+        scope_names: SCOPE_NAMES_SCHEMA,
+        verb: {
+          type: "string",
+          description: "Past-tense verb (pushed, deployed, verified).",
+        },
+        happened_at: {
+          type: "string",
+          description: "ISO 8601 UTC timestamp of when the event occurred.",
+        },
+        outputs: {
+          type: "object",
+          description:
+            "Concrete output values (commit hash, deploy URL, verification result).",
+        },
+        template_id: { type: "string", description: "Optional Action template this Log instances." },
+        intent_ids: { type: "array", items: { type: "string" } },
+        decision_ids: { type: "array", items: { type: "string" } },
+        follows: { type: "array", items: { type: "string" } },
+        inputs: {},
+        performed_by_username: { type: "string" },
+        body_md: { type: "string" },
+        lifecycle: { type: "string" },
+      },
+      required: ["summary", "scope_names", "verb", "happened_at", "outputs"],
+      additionalProperties: false,
+    },
+    proxy: { method: "POST", path: "/{handle}/api/logs.json" },
+  },
+  {
+    name: "capture_rule",
+    description:
+      "Capture a Rule node — a standing constraint that applies to its scope. Use authoring kind (with a predicate) to gate captures; use guidance kind for reminders the agent surfaces without enforcement. Posts to a SPECIFIC scope's /rules endpoint.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        scope_id: {
+          type: "string",
+          description: "The id of the scope this rule attaches to (from list_scopes).",
+        },
+        kind: { type: "string", enum: ["authoring", "guidance"] },
+        prose: { type: "string", description: "The rule prose (what the rule says)." },
+        summary: { type: "string", description: "Optional one-line summary." },
+      },
+      required: ["scope_id", "kind", "prose"],
+      additionalProperties: false,
+    },
+    proxy: {
+      method: "POST",
+      path: "/{handle}/api/scopes/{scope_id}/rules.json",
+      pathArgs: ["scope_id"],
+    },
+  },
+  {
+    name: "capture_eval",
+    description:
+      "Capture an Eval node — a test or measurement (exact value, shape check, or LLM-judge criterion).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "Short readable name." },
+        scope_names: SCOPE_NAMES_SCHEMA,
+        criterion: {
+          type: "object",
+          properties: {
+            kind: { type: "string", enum: ["exact", "shape", "llm-judge"] },
+            spec: { type: "string" },
+          },
+          required: ["kind"],
+        },
+        body_md: { type: "string" },
+        summary: { type: "string" },
+        description: { type: "string" },
+        input: {},
+        expected: {},
+        target_ref: { type: "string", description: "Id of the entity this Eval tests." },
+        intent_ids: { type: "array", items: { type: "string" } },
+        authored_by_username: { type: "string" },
+        lifecycle: { type: "string" },
+      },
+      required: ["name", "scope_names", "criterion"],
+      additionalProperties: false,
+    },
+    proxy: { method: "POST", path: "/{handle}/api/evals.json" },
+  },
+  {
+    name: "capture_reference",
+    description:
+      "Capture a Reference node — a pointer to external material (URL, doc, spec, contract).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        ref_type: { type: "string", description: "URL / file / spec / etc." },
+        locator: { type: "string", description: "The URL or path." },
+        scope_names: SCOPE_NAMES_SCHEMA,
+        summary: { type: "string" },
+        body_md: { type: "string" },
+        content_hash: { type: "string" },
+        intent_ids: { type: "array", items: { type: "string" } },
+        created_by_username: { type: "string" },
+        lifecycle: { type: "string" },
+      },
+      required: ["ref_type", "locator", "scope_names"],
+      additionalProperties: false,
+    },
+    proxy: { method: "POST", path: "/{handle}/api/references.json" },
+  },
+  {
+    name: "capture_state",
+    description:
+      "Capture a State node — a named state in a state machine (typically used inside the #state-machines scope).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        summary: { type: "string", description: "State display name (e.g. 'paid', 'cart')." },
+        scope_names: SCOPE_NAMES_SCHEMA,
+        kind: { type: "string", enum: ["initial", "intermediate", "terminal"] },
+        invariants: {
+          type: "array",
+          items: { type: "string" },
+          description: "Free-form predicates true while in this State.",
+        },
+        follows: { type: "array", items: { type: "string" } },
+        created_by_username: { type: "string" },
+        body_md: { type: "string" },
+        lifecycle: { type: "string" },
+      },
+      required: ["summary", "scope_names", "kind"],
+      additionalProperties: false,
+    },
+    proxy: { method: "POST", path: "/{handle}/api/states.json" },
+  },
+  // -------------------- Patch tools (one per patchable node type) --------------------
+  // Each patch endpoint accepts a partial of its draft. Schemas
+  // intentionally permissive (additionalProperties: true) so the
+  // route's own validation owns shape correctness — the MCP server
+  // doesn't re-derive it.
+  {
+    name: "patch_decision",
+    description:
+      "Extend an existing Decision (add alternatives, update body_md, change lifecycle). Use this when search.vector_score > ~0.45 — strictly preferred over opening a sibling node.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "The Decision's ULID." },
+      },
+      required: ["id"],
+      additionalProperties: true,
+    },
+    proxy: { method: "PATCH", path: "/{handle}/api/decisions/{id}.json", pathArgs: ["id"] },
+  },
+  {
+    name: "patch_intent",
+    description: "Extend an existing Intent.",
+    inputSchema: {
+      type: "object",
+      properties: { id: { type: "string" } },
+      required: ["id"],
+      additionalProperties: true,
+    },
+    proxy: { method: "PATCH", path: "/{handle}/api/intents/{id}.json", pathArgs: ["id"] },
+  },
+  {
+    name: "patch_action",
+    description: "Extend an existing Action.",
+    inputSchema: {
+      type: "object",
+      properties: { id: { type: "string" } },
+      required: ["id"],
+      additionalProperties: true,
+    },
+    proxy: { method: "PATCH", path: "/{handle}/api/actions/{id}.json", pathArgs: ["id"] },
+  },
+  {
+    name: "patch_rule",
+    description: "Extend an existing Rule.",
+    inputSchema: {
+      type: "object",
+      properties: { id: { type: "string" } },
+      required: ["id"],
+      additionalProperties: true,
+    },
+    proxy: { method: "PATCH", path: "/{handle}/api/rules/{id}.json", pathArgs: ["id"] },
+  },
+  {
+    name: "patch_log",
+    description: "Extend an existing Log.",
+    inputSchema: {
+      type: "object",
+      properties: { id: { type: "string" } },
+      required: ["id"],
+      additionalProperties: true,
+    },
+    proxy: { method: "PATCH", path: "/{handle}/api/logs/{id}.json", pathArgs: ["id"] },
+  },
+  {
+    name: "patch_reference",
+    description: "Extend an existing Reference.",
+    inputSchema: {
+      type: "object",
+      properties: { id: { type: "string" } },
+      required: ["id"],
+      additionalProperties: true,
+    },
+    proxy: {
+      method: "PATCH",
+      path: "/{handle}/api/references/{id}.json",
+      pathArgs: ["id"],
+    },
+  },
+  // -------------------- Scope management --------------------
+  {
+    name: "create_scope",
+    description:
+      "Create a new scope. During onboarding, pass watched=true (see bootstrap response's onboarding_overlay.watched_explainer). Otherwise the caller MUST pick watched explicitly.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: {
+          type: "string",
+          description: "Scope name (hashtag-shaped; the host prepends '#' if missing).",
+        },
+        summary: { type: "string", description: "What this scope is for." },
+        icon: { type: "string", description: "Optional emoji or short marker." },
+        watched: { type: "boolean" },
+        allowed_node_types: {
+          type: "array",
+          items: { type: "string" },
+          description:
+            "Node types this scope accepts. Empty/omitted means 'anything'. Examples: ['rule'] (rules-only), ['decision', 'intent'].",
+        },
+        template_name: {
+          type: "string",
+          description: "Optional template name (e.g. 'user-flows') to clone defaults from.",
+        },
+      },
+      required: ["name", "watched"],
+      additionalProperties: true,
+    },
+    proxy: { method: "POST", path: "/{handle}/api/scopes.json" },
+  },
+  {
+    name: "activate_scope_draft",
+    description:
+      "Activate a draft scope (move lifecycle from 'proposed' / 'draft' to 'active').",
+    inputSchema: {
+      type: "object",
+      properties: { scope_id: { type: "string" } },
+      required: ["scope_id"],
+      additionalProperties: false,
+    },
+    proxy: {
+      method: "POST",
+      path: "/{handle}/api/scopes/{scope_id}/activate.json",
+      pathArgs: ["scope_id"],
+      bodyAllowed: false,
+    },
+  },
+  // -------------------- Invite management --------------------
+  {
+    name: "create_invite",
+    description:
+      "Mint a single-use invite URL the project owner can share with a teammate (human or agent). Defaults to 7-day TTL.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        expires_in_days: { type: "number", minimum: 1, maximum: 365 },
+      },
+      additionalProperties: false,
+    },
+    proxy: { method: "POST", path: "/{handle}/api/invites.json" },
   },
 ];
 
-// ---------------------------------------------------------------------------
-// Tool implementations.
-// ---------------------------------------------------------------------------
-
-async function tool_bootstrap(session: ResolvedSession): Promise<unknown> {
-  const ctx = await loadBootstrapContext({
-    docoDir: session.docoDir,
-    docoId: session.docoId,
-    handle: session.docoHandle,
-    baseUrl: "https://doco.to",
-  });
-  return {
-    canonical_instructions: CANONICAL_INSTRUCTIONS,
-    doco_id: session.docoId,
-    doco_handle: session.docoHandle,
-    scopes: ctx.scopes,
-    constitution: ctx.constitution,
-    onboarding_overlay: ctx.onboarding_overlay,
-  };
-}
-
-async function tool_search(
-  session: ResolvedSession,
-  args: { q?: unknown; limit?: unknown },
-): Promise<unknown> {
-  const q = typeof args.q === "string" ? args.q.trim() : "";
-  if (!q) throw new Error("search.q is required");
-  const limit =
-    typeof args.limit === "number" && args.limit > 0 && args.limit <= 50 ? args.limit : 10;
-  // Search lives behind the per-Doco /search.json route — proxy via an
-  // internal HTTPS fetch so we inherit the same ranking + access
-  // control. The agent's own bearer is reused, so the proxied call
-  // resolves to the same Principal + Doco.
-  // NOTE: V1 uses an internal HTTPS roundtrip. Cheap to swap for a
-  // direct function call once the search internals expose a stable
-  // server-side entry point.
-  const url = `https://doco.to/${session.docoHandle}/search.json?q=${encodeURIComponent(q)}&limit=${limit}`;
-  const res = await fetch(url, {
-    headers: {
-      Accept: "application/json",
-      Authorization: `Bearer ${session.rawCredential}`,
-    },
-  });
-  if (!res.ok) {
-    throw new Error(`search failed: ${res.status} ${res.statusText}`);
-  }
-  return await res.json();
-}
-
-async function tool_list_scopes(session: ResolvedSession): Promise<unknown> {
-  const ctx = await loadBootstrapContext({
-    docoDir: session.docoDir,
-    docoId: session.docoId,
-    handle: session.docoHandle,
-    baseUrl: "https://doco.to",
-  });
-  // Filter to just live scopes (already filtered upstream) and project
-  // the fields most useful for routing capture targets.
-  return {
-    scopes: ctx.scopes.map((s) => ({
-      id: s.id,
-      name: s.name,
-      icon: s.icon,
-      summary: s.summary,
-      allowed_node_types: s.allowed_node_types,
-      node_count: s.node_count ?? 0,
-      is_watched: s.is_watched,
-    })),
-  };
-}
-
-async function tool_capture_decision(
-  session: ResolvedSession,
-  args: Record<string, unknown>,
-): Promise<unknown> {
-  const draft: DecisionDraft = {
-    question: typeof args.question === "string" ? args.question : "",
-    chosen: typeof args.chosen === "string" ? args.chosen : "",
-    scope_names: Array.isArray(args.scope_names)
-      ? (args.scope_names as unknown[]).filter((v): v is string => typeof v === "string")
-      : [],
-  };
-  if (typeof args.summary === "string") draft.summary = args.summary;
-  if (typeof args.body_md === "string") draft.body_md = args.body_md;
-  if (Array.isArray(args.alternatives)) {
-    draft.alternatives = (args.alternatives as unknown[])
-      .filter((v): v is { name: string; rejected_because: string } =>
-        typeof v === "object" && v !== null &&
-        typeof (v as Record<string, unknown>).name === "string" &&
-        typeof (v as Record<string, unknown>).rejected_because === "string",
-      );
-  }
-  if (!draft.question || !draft.chosen || draft.scope_names.length === 0) {
-    throw new Error("capture_decision requires question, chosen, and at least one scope_name");
-  }
-  draft.decided_by_username = `mcp-agent-${session.agentId.slice(0, 8)}`;
-  draft.created_by_id = session.agentId;
-  const result = await captureDecision(
-    session.docoDir,
-    session.docoId,
-    session.ownerSlug,
-    session.docoHandle,
-    draft,
-  );
-  return result;
-}
+const TOOL_BY_NAME = new Map<string, ToolDef>(TOOLS.map((t) => [t.name, t]));
 
 // ---------------------------------------------------------------------------
 // Dispatcher.
@@ -316,18 +613,9 @@ async function callTool(
   name: string,
   args: Record<string, unknown>,
 ): Promise<unknown> {
-  switch (name) {
-    case "bootstrap":
-      return await tool_bootstrap(session);
-    case "search":
-      return await tool_search(session, args);
-    case "list_scopes":
-      return await tool_list_scopes(session);
-    case "capture_decision":
-      return await tool_capture_decision(session, args);
-    default:
-      throw new Error(`unknown tool: ${name}`);
-  }
+  const tool = TOOL_BY_NAME.get(name);
+  if (!tool) throw new Error(`unknown tool: ${name}`);
+  return await proxyApi(session, tool.proxy, args);
 }
 
 function asContent(value: unknown): { content: { type: string; text: string }[] } {
@@ -368,24 +656,25 @@ export async function action({ request }: { request: Request }) {
   try {
     switch (method) {
       case "initialize": {
-        // Advertise the server. Protocol version negotiation is
-        // permissive — accept whatever the client offered.
         const clientProtocol =
           typeof params.protocolVersion === "string" ? params.protocolVersion : "2024-11-05";
         return rpcOk(id, {
           protocolVersion: clientProtocol,
           capabilities: { tools: {} },
-          serverInfo: { name: "doco", version: "0.1.0" },
+          serverInfo: { name: "doco", version: "0.2.0" },
         });
       }
       case "notifications/initialized": {
-        // Client one-way ack; per JSON-RPC convention notifications
-        // get no response body, but we still must respond with 200 in
-        // HTTP transport. Empty body.
         return new Response(null, { status: 204 });
       }
       case "tools/list": {
-        return rpcOk(id, { tools: TOOLS });
+        return rpcOk(id, {
+          tools: TOOLS.map((t) => ({
+            name: t.name,
+            description: t.description,
+            inputSchema: t.inputSchema,
+          })),
+        });
       }
       case "tools/call": {
         const session = await resolveSession(request);
@@ -420,14 +709,15 @@ export function loader() {
   return Response.json(
     {
       name: "doco",
-      version: "0.1.0",
+      version: "0.2.0",
       transport: "streamable-http",
       protocol_versions_supported: ["2024-11-05"],
       auth: "Bearer ${DOCO_ACCESS} (header)",
+      tools_exposed: TOOLS.map((t) => t.name),
+      parity_rule:
+        "MCP tools track the JSON API 1:1. New API endpoints get a new tool in the same change. Captured as a guidance rule on #global.",
       hint: "POST JSON-RPC 2.0 to this URL. See https://modelcontextprotocol.io/specification/draft/basic/transports#streamable-http",
     },
-    {
-      headers: { "Content-Type": "application/json" },
-    },
+    { headers: { "Content-Type": "application/json" } },
   );
 }
