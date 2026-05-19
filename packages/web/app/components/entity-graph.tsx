@@ -201,7 +201,8 @@ function relativeTime(iso: string | null): string {
  */
 const NODE_WIDTH = 340;
 const NODE_MIN_HEIGHT = 72;
-const NODE_MAX_SUMMARY_LINES = 9;
+const NODE_MAX_SUMMARY_LINES = 12;
+const NODE_STRIPE_WIDTH = 24;
 /** Default fallback when a card's content height can't be derived yet. */
 const NODE_HEIGHT = 154;
 const EXPANDED_NODE_SCREEN_MARGIN = 12;
@@ -219,13 +220,13 @@ const LANE_PADDING_X = 16;
  * own min-height so short content doesn't reserve unused space.
  */
 function estimateCardHeight(summary: string, hasDistinctTitle: boolean): number {
-  const charsPerLine = 50;
+  const charsPerLine = 35;
   const summaryLines = Math.max(
     1,
     Math.min(NODE_MAX_SUMMARY_LINES, Math.ceil((summary?.length ?? 0) / charsPerLine)),
   );
-  const summaryHeight = summaryLines * 16;
-  const headerHeight = 28;
+  const summaryHeight = summaryLines * 17;
+  const headerHeight = 32;
   const titleHeight = hasDistinctTitle ? 22 : 0;
   const padding = 24;
   return Math.max(NODE_MIN_HEIGHT, headerHeight + titleHeight + summaryHeight + padding);
@@ -474,7 +475,7 @@ function EntityNodeCard({
       to={href}
       aria-label={`Open ${nodeType} ${title}`}
       className={[
-        "nodrag nopan relative flex cursor-pointer flex-col gap-1 py-3 pl-4 pr-7 text-left text-inherit no-underline shadow-sm transition-[box-shadow,width,height,left,top] duration-150 hover:z-10 hover:shadow-md focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        "nodrag nopan relative flex cursor-pointer flex-col gap-1 py-3 pl-4 pr-10 text-left text-inherit no-underline shadow-sm transition-[box-shadow,width,height,left,top] duration-150 hover:z-10 hover:shadow-md focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         boundedExpansion ? "overflow-hidden" : "overflow-visible",
       ].join(" ")}
       data-entity-node-card={nodeType}
@@ -493,20 +494,27 @@ function EntityNodeCard({
         background,
         border: isCenter ? "2px solid var(--color-border)" : "1px solid var(--color-border)",
         borderRadius: 8,
-        boxShadow: `inset -16px 0 0 ${accentColor}`,
+        boxShadow: `inset -${NODE_STRIPE_WIDTH}px 0 0 ${accentColor}`,
       }}
     >
-      <span
+      <div
         aria-hidden="true"
-        className="pointer-events-none absolute right-0 top-0 z-20 flex justify-center pt-1.5 text-[9px] font-semibold uppercase tracking-wider text-white"
-        style={{
-          width: 16,
-          writingMode: "vertical-rl",
-          textOrientation: "mixed",
-        }}
+        className="pointer-events-none absolute right-0 top-0 z-20 flex flex-col items-center pt-2 text-white"
+        style={{ width: NODE_STRIPE_WIDTH }}
       >
-        {lifecycleLabel(lifecycle)}
-      </span>
+        <span
+          className="text-[11px] font-semibold uppercase tracking-wider"
+          style={{ writingMode: "vertical-rl", textOrientation: "mixed" }}
+        >
+          {lifecycleLabel(lifecycle)}
+        </span>
+        <span
+          className="mt-3 text-[9px] font-medium uppercase tracking-wider opacity-90"
+          style={{ writingMode: "vertical-rl", textOrientation: "mixed" }}
+        >
+          {relativeTime(createdAt)}
+        </span>
+      </div>
       <NodeTypeIcon
         nodeType={nodeType}
         aria-hidden="true"
@@ -523,7 +531,6 @@ function EntityNodeCard({
           <span>{nodeType}</span>
         </span>
         <span className="ml-auto flex shrink-0 items-center gap-2 font-mono text-[9px] text-muted-foreground">
-          <span className="truncate">{relativeTime(createdAt)}</span>
           {isCenter ? (
             <>
               <span className="font-medium text-foreground">in focus</span>
