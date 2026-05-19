@@ -16,7 +16,7 @@
 import { withClient } from "@doco/db";
 import type { EntityId } from "@doco/shared";
 import { entityUrl } from "@doco/shared";
-import { Plus } from "lucide-react";
+import { Pencil, Plus } from "lucide-react";
 import { useEffect, useState } from "react";
 import {
   Form,
@@ -608,6 +608,10 @@ export async function action({
     } else if (intent === "save_icon") {
       const icon = String(form.get("icon") ?? "").trim();
       await updateScopeInDoco({ docoDir: dir, scopeId, icon: icon || null });
+    } else if (intent === "save_summary") {
+      const summary = String(form.get("summary") ?? "").trim();
+      if (!summary) return { error: "Description is required." };
+      await updateScopeInDoco({ docoDir: dir, scopeId, summary });
     } else if (intent === "abandon_rule" || intent === "activate_rule") {
       // Per decision_01KRPRDR1AD7S1RP6E69BQDB2G abandoning any rule
       // (authoring, guidance, or tagged) is the same operation: PATCH the
@@ -1023,32 +1027,83 @@ function ScopeDescriptionCard({
     id: string;
     name: string;
     summary: string;
-    allowed_node_types: string[];
   };
 }) {
   // Per decision_01KRYECEA32SRSQCKFXSDCBK67 the scope's description text
-  // lives on Scope.summary directly — no Intent indirection, no "Replace"
-  // affordance pretending the description is a separate node.
-  const rulesOnly = scope.allowed_node_types.length === 1 && scope.allowed_node_types[0] === "rule";
+  // lives on Scope.summary directly — no Intent indirection. The
+  // rules-only constraint stays enforced server-side; the UI no longer
+  // narrates it — the friendlier Scope.summary copy carries the message.
+  const fetcher = useFetcher<{ error?: string }>();
+  const [editing, setEditing] = useState(false);
+  const isSaving = fetcher.state !== "idle";
+  // Close edit mode once a successful save round-trips. fetcher.data is
+  // populated with the action's return value after the form submits.
+  useEffect(() => {
+    if (fetcher.state === "idle" && fetcher.data && !fetcher.data.error) {
+      setEditing(false);
+    }
+  }, [fetcher.state, fetcher.data]);
+
   return (
     <Card>
       <CardHeader>
-        <div className="min-w-0">
-          {scope.summary ? (
-            <CardDescription className="text-xs leading-relaxed">{scope.summary}</CardDescription>
-          ) : (
-            <CardDescription className="text-xs italic">
-              No description yet. Add one from the scope's settings.
-            </CardDescription>
-          )}
-          {rulesOnly ? (
-            <p className="mt-2 text-[11px] text-muted-foreground">
-              <span className="font-semibold">Rules-only scope:</span> the framework rejects POSTs of
-              any non-Rule node whose <code className="font-mono">scopes</code> list includes{" "}
-              <code className="font-mono">{scope.name}</code>.
-            </p>
-          ) : null}
-        </div>
+        {editing ? (
+          <fetcher.Form method="post" className="space-y-2">
+            <input type="hidden" name="intent" value="save_summary" />
+            <textarea
+              name="summary"
+              defaultValue={scope.summary}
+              rows={3}
+              required
+              autoFocus
+              placeholder="What this scope is meant to make true."
+              className="w-full rounded-md border border-border bg-input px-3 py-2 text-xs leading-relaxed text-foreground outline-none focus:border-primary"
+            />
+            <div className="flex items-center gap-2">
+              <button
+                type="submit"
+                disabled={isSaving}
+                className="rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
+              >
+                {isSaving ? "Saving…" : "Save"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setEditing(false)}
+                disabled={isSaving}
+                className="rounded-md border border-border px-3 py-1.5 text-xs font-semibold hover:bg-muted disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              {fetcher.data?.error ? (
+                <span className="text-[11px] text-destructive">{fetcher.data.error}</span>
+              ) : null}
+            </div>
+          </fetcher.Form>
+        ) : (
+          <div className="flex items-start gap-2">
+            <div className="min-w-0 flex-1">
+              {scope.summary ? (
+                <CardDescription className="text-xs leading-relaxed">
+                  {scope.summary}
+                </CardDescription>
+              ) : (
+                <CardDescription className="text-xs italic">
+                  No description yet. Click the pencil to add one.
+                </CardDescription>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => setEditing(true)}
+              aria-label="Edit description"
+              title="Edit description"
+              className="shrink-0 rounded-md border border-border p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+            >
+              <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
+            </button>
+          </div>
+        )}
       </CardHeader>
     </Card>
   );
