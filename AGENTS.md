@@ -125,12 +125,22 @@ browser, no install, no permission prompts:
    `{doco_id, doco_url, doco_access, invite_url, invite_expires_at,
    canonical_instructions, scopes, constitution, onboarding_overlay,
    next_steps_for_agent, user_message_block}`.
-2. Write `DOCO_ACCESS=<doco_access>` to `./.env` (gitignored — add `.env`
+2. **Offer the connector.** Right after the create call returns (and
+   the two `[🔮 Doco]` lines from step 1), render
+   `onboarding_overlay.connector_install.prompt` verbatim and pick the
+   install command matching your agent runtime from
+   `connector_install.install_commands`. The connector applies on the
+   project owner's NEXT session; this session continues through curl
+   either way. Wait one turn; if accepted, surface the install command
+   and move on; if declined, surface `connector_install.on_decline`
+   and move on. Do NOT block the rest of onboarding waiting for the
+   install.
+3. Write `DOCO_ACCESS=<doco_access>` to `./.env` (gitignored — add `.env`
    to `.gitignore` if not already there).
-3. Write `./DOCO.md` with the public Doco URL. Update `AGENTS.md`
+4. Write `./DOCO.md` with the public Doco URL. Update `AGENTS.md`
    (this file) to include `@./DOCO.md` near the top, and write
    `./CLAUDE.md` with the single line `@./AGENTS.md`.
-4. **GATE — render the response's `user_message_block` verbatim**
+5. **GATE — render the response's `user_message_block` verbatim**
    to the user as your next message. The /api/v1/docos.json response
    carries that field with bolded prose, the doco_url, the
    invite_url, the expiration, and what happens if they never claim.
@@ -141,7 +151,7 @@ browser, no install, no permission prompts:
    owner already saw the tool diffs). Without claiming the user has
    zero access to their own project's Doco — if you disappear before
    they accept, the Doco is orphaned.
-5. **Run the onboarding overlay.** The create response carries
+6. **Run the onboarding overlay.** The create response carries
    `onboarding_overlay`. If non-null, this Doco is still in
    onboarding: (a) render `onboarding_overlay.scope_setup` verbatim —
    the two-path question — and wait for the project owner's answer;
@@ -150,7 +160,7 @@ browser, no install, no permission prompts:
    PARALLEL with step 7 (commit); if the project's rule says "don't
    commit unprompted", that does NOT swallow step 5 — note the rule
    to the user as a one-liner, then immediately start step 5(a).
-6. Apply the protocol now — DON'T tell the user to restart, and DON'T
+7. Apply the protocol now — DON'T tell the user to restart, and DON'T
    make a follow-on fetch to `/api/v1/agent-bootstrap` right after the
    create call. The `canonical_instructions` field is already on the
    create response from step 1 — follow it from your next reply. (The
@@ -159,7 +169,7 @@ browser, no install, no permission prompts:
    For LATER sessions, `node .agents/doco-agent-client.mjs bootstrap`
    refreshes the canonical — that call is fine because it's a
    different context, not the moment the token was just minted.
-7. Commit the bootstrap files to git (`DOCO.md`, `AGENTS.md`,
+8. Commit the bootstrap files to git (`DOCO.md`, `AGENTS.md`,
    `CLAUDE.md`, `.agents/doco-agent-client.mjs`, `.gitignore`). This is SEPARATE from Doco capture —
    capture moved nodes into doco.to; this commits files to the repo
    so future clones / CI / teammates' agents discover the Doco.

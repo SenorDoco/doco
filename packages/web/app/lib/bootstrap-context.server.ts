@@ -55,6 +55,27 @@ export interface OnboardingOverlay {
   scope_setup_url: string;
   watched_explainer: string;
   scope_population: string;
+  /**
+   * Connector install hand-off — the FIRST onboarding action the agent
+   * takes after a fresh create or redeem. Frame: "install once, future
+   * sessions are cleaner." Even if the project owner declines, the
+   * agent proceeds with the curl-based flow (no functional difference
+   * for this session — MCP installs apply on the NEXT session).
+   */
+  connector_install: ConnectorInstall;
+}
+
+export interface ConnectorInstall {
+  /** Prose the agent renders verbatim to ask the project owner. */
+  prompt: string;
+  /** Canonical MCP server URL the connector points at. */
+  server_url: string;
+  /** Per-runtime install commands, keyed by agent runtime. */
+  install_commands: Record<string, string>;
+  /** Prose the agent surfaces if the project owner declines. */
+  on_decline: string;
+  /** Where the human-facing equivalent lives in the web UI. */
+  web_install_url: string;
 }
 
 /**
@@ -202,6 +223,23 @@ export function buildOnboardingOverlay(args: {
     scope_setup_url: `${baseUrl}/${handle}/scopes/new?onboarding=1`,
     watched_explainer:
       "Every scope carries a 'watched' boolean (ADR-137bis). Watched=TRUE means contributors (project owner and agents alike) should proactively scan against this scope at capture time — 'does the thing I'm about to capture also belong here?' It's a soft attention signal, not enforcement. Watched=FALSE means the scope is available but no extra prompting; agents won't get nudged to consider it. During ONBOARDING, every scope you create defaults to watched=true: the project owner is literally in the room picking these scopes on purpose, so the attention signal matches what onboarding is for. After onboarding, ADR-137bis applies again — every scope-creation surface requires the caller (project owner or agent) to pick watched/not-watched explicitly with no default. The project owner can flip any scope's watched value any time from /<doco-handle>/scopes/<id>/edit. When you explain watched to the project owner in chat, use these exact words: 'Watched means: when you (or an agent) capture work later, this scope nudges you to consider whether the work belongs here.'",
+    connector_install: {
+      prompt:
+        "BEFORE we go any further with onboarding, do you want me to install the Doco MCP connector for you? It's a one-time install per agent runtime (Claude Code, Claude Desktop, Cursor, …). Future sessions in this project — and every other Doco-tracked project you have — get native Doco tools (search, list_scopes, capture_decision) without me having to curl them by hand. **It doesn't apply to this session** — MCP installs take effect on your next session/restart — so onboarding right now still runs through curl either way. Say 'yes install' or 'no skip' and I'll proceed.",
+      server_url: `${baseUrl}/mcp`,
+      install_commands: {
+        claude_code: `claude mcp add doco ${baseUrl}/mcp`,
+        claude_desktop: `Edit ~/Library/Application Support/Claude/claude_desktop_config.json — add { "mcpServers": { "doco": { "url": "${baseUrl}/mcp" } } }`,
+        cursor: `Cursor → Settings → MCP → Add server. URL: ${baseUrl}/mcp`,
+        codex: `Codex doesn't ship native MCP support yet — skip the install and proceed with curl.`,
+        generic: `MCP server URL (Streamable HTTP transport): ${baseUrl}/mcp — paste into your agent runtime's MCP config.`,
+      },
+      on_decline:
+        "OK, proceeding with curl-based onboarding. The connector is a quality-of-life upgrade — you can install anytime later from " +
+        `${baseUrl}/${handle}/onboarding/agent` +
+        " when you're ready. Continuing to STEP 1.",
+      web_install_url: `${baseUrl}/${handle}/onboarding/agent`,
+    },
     scope_population:
       "STEP 2 of onboarding — bootstrap EVERY scope on the Doco. The job is to lift every explicit statement the project owner has made about this project into Doco, ROUTED by each scope's own filter (its `summary` + `allowed_node_types`) — not by guessing names. Comprehensive per scope, not sampled. Walk scope-by-scope with a visible checklist so the project owner can see progress.\n\nSTART WITH THE CHECKLIST. Render the block under `Bootstrapping scopes:` (see below) verbatim as one of your first lines after STEP 1 finishes. Rebuild it from the bootstrap response's `scopes` field. Every entry carries:\n\n- A name (`#global`, `#important`, `#user-flows`, …).\n- A `summary` (what the scope is FOR).\n- An `accepts:` field that reflects `allowed_node_types` — the node types the scope's capture gate accepts. `accepts: rule` means a Decision POST will be rejected; `accepts: anything` (empty filter) means any type lands.\n- A pre-checked `[x]` + count when the scope already carries captured nodes (skip those). Unchecked `[ ]` scopes need the read-propose-confirm loop below.\n\nROUTING RULE — file findings by each scope's `accepts`, not by guessing:\n\n  - Findings that are RULES (authoring or guidance) → land on the scope whose `accepts` includes `rule`. On a default Doco that's `#global` (rules-only, by design — the framework's standing rule book).\n  - Findings that are DECISIONS or INTENTS or any other non-rule type → land on the scope whose `accepts` is unrestricted (or whose `accepts` explicitly lists `decision`/`intent`/etc.). On a default Doco the catch-all is `#important` (cross-cutting decisions that don't fit a more specific topical scope).\n  - Findings with a clear topical home → land on the MOST SPECIFIC matching scope (architectural decisions with alternatives on `#adrs`, deploy policy on `#deployments`, journey-shaped content on `#user-flows`, UI conventions on `#design-language`, etc.). Use the scope's `summary` as the topic filter.\n  - If a finding doesn't fit any current scope's filter, propose adding a new scope FIRST (per `#global`'s standing rule: \"Don't create a new scope to fit a node. If you're an agent, propose it to your client and wait for their confirmation first.\"). Once the scope is approved, file the finding there.\n\nNEVER try to POST a Decision (or any non-rule node) onto `#global` — the framework's capture gate will reject it with a 400 referencing `allowed_node_types`. The rejection isn't a Doco bug, it's the scope contract working as designed; the right move is to re-file on `#important` (or whatever the project's catch-all scope is) without bothering the project owner about the mis-route." +
       checklistBlock +

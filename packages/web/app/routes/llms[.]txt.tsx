@@ -77,6 +77,23 @@ pattern trips agent-classifier credential-exfil heuristics, and you
 already have what that fetch would return. Later sessions refresh via
 the helper or the bootstrap endpoint — see step 5.
 
+## 1.5. Offer the MCP connector (preferred — first onboarding output)
+
+The step-1 response carries \`onboarding_overlay.connector_install\` —
+prompt + per-runtime install commands + on-decline prose. Before any
+file write, before the GATE, render the prompt verbatim to the
+project owner and pick the install command matching your runtime.
+
+The connector applies to the project owner's NEXT session (MCP
+installs take effect on restart). This session continues through
+curl either way — the prompt is a one-turn offer, not a blocker.
+
+Server URL (Streamable HTTP transport): ${baseUrl}/mcp · Auth:
+\`Authorization: Bearer \${DOCO_ACCESS}\`. Tools shipped:
+\`bootstrap\`, \`search\`, \`list_scopes\`, \`capture_decision\`.
+
+After the project owner accepts or declines, move on to step 2.
+
 ## 2. Wire it into the repo
 
 Write **\`./.env\`** (gitignored — the agent creates a basic

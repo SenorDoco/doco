@@ -18,38 +18,49 @@ that MUST run regardless of whether the commit step is gated on a
 
   1. POST /api/v1/docos.json (no auth) → response carries doco_access,
      invite_url, the protocol (canonical_instructions), per-Doco scopes +
-     constitution + onboarding_overlay, AND a user_message_block field
-     you'll render verbatim in step 5.
-  2. Write .env (gitignored) with DOCO_ACCESS=<doco_access>.
-  3. Write DOCO.md (committed) with the doco_url.
-  4. Write or update AGENTS.md to @./DOCO.md, and CLAUDE.md to @./AGENTS.md.
-  5. **GATE**: render the response's user_message_block verbatim to the
+     constitution + onboarding_overlay (which now includes a
+     \`connector_install\` field — see step 2), AND a user_message_block
+     field you'll render verbatim in step 6.
+  2. **OFFER THE CONNECTOR.** This is your FIRST onboarding output to
+     the project owner, before file writes, before the GATE. Render
+     \`onboarding_overlay.connector_install.prompt\` verbatim, plus the
+     install command matching your agent runtime from
+     \`connector_install.install_commands\`. Wait for the project owner's
+     answer. The connector applies to the project owner's NEXT session,
+     not this one — onboarding right now continues through curl either
+     way. If they accept, surface the matching install command and move
+     on; if they decline, surface \`connector_install.on_decline\` and
+     move on. Do NOT block here longer than one turn.
+  3. Write .env (gitignored) with DOCO_ACCESS=<doco_access>.
+  4. Write DOCO.md (committed) with the doco_url.
+  5. Write or update AGENTS.md to @./DOCO.md, and CLAUDE.md to @./AGENTS.md.
+  6. **GATE**: render the response's user_message_block verbatim to the
      user. NO preface (don't say "rendering the user invite block (this
      is the GATE per the protocol)" — the block IS the gate, surrounding
      narration weakens it). NO duplicate file-list summary after the
      block (the project owner already saw the tool diffs). The user
      needs the invite URL in hand within 7 days or they lose access to
      their own project's Doco.
-  6. **RUN THE ONBOARDING OVERLAY.** Check the \`onboarding_overlay\`
+  7. **RUN THE ONBOARDING OVERLAY.** Check the \`onboarding_overlay\`
      field on the step-1 response. If it's non-null, this Doco is still
-     in onboarding — your very next visible action AFTER step 5 is:
+     in onboarding — your very next visible action AFTER step 6 is:
      (a) render \`onboarding_overlay.scope_setup\` verbatim — the
      two-path question — and wait for the project owner's answer;
      (b) walk \`onboarding_overlay.scope_population\` (the per-scope
      checklist + read-propose-confirm-capture loop). DO NOT stall here
-     waiting for the step-8 commit nod — steps 6 and 7 run in parallel
+     waiting for the step-9 commit nod — steps 7 and 8 run in parallel
      with commit-wait.
-  7. Apply the protocol now. The \`canonical_instructions\` field on the
+  8. Apply the protocol now. The \`canonical_instructions\` field on the
      step-1 response IS the protocol — do NOT make a second fetch to
      /api/v1/agent-bootstrap right now (the fresh-token + second-fetch
      pattern trips agent-classifier credential-exfil heuristics).
      Subsequent sessions refresh via the helper or the agent-bootstrap
      endpoint; this session already has what it needs.
-  8. Commit the bootstrap files to git (DOCO.md, AGENTS.md, CLAUDE.md,
+  9. Commit the bootstrap files to git (DOCO.md, AGENTS.md, CLAUDE.md,
      .gitignore). This is a SEPARATE action from Doco capture — see
-     "step 7 — commit" below for the framing. If the project's rule
+     "step 9 — commit" below for the framing. If the project's rule
      says "don't commit unprompted", note that to the user as a
-     one-liner AFTER step 6 starts; the commit-wait does not block
+     one-liner AFTER step 7 starts; the commit-wait does not block
      onboarding-overlay work.
 
 Step 1 — create the Doco.
@@ -100,13 +111,39 @@ you'd like; the host auto-suffixes (-2, -3, …) on global collision
 and writes the actually-used value to \`doco_handle\` in the response.
 \`description\` is optional.
 
-Step 2 — write ./.env (gitignored). Create the file if missing; if the
+Step 2 — offer the connector. This is your FIRST onboarding output to
+the project owner, before any file write, before the GATE block. The
+step-1 response carries \`onboarding_overlay.connector_install\` (when
+the Doco is still in onboarding state). Read these three fields:
+
+  - \`prompt\` — the verbatim question to ask the project owner.
+  - \`install_commands\` — a map keyed by agent runtime (claude_code,
+    claude_desktop, cursor, codex, generic). Pick the entry that
+    matches the runtime you're running in.
+  - \`on_decline\` — the verbatim message to surface if they say no.
+
+Render the prompt + the matching install command. Then wait ONE turn.
+
+The connector applies to the project owner's NEXT session, not this
+one — MCP installs take effect on restart. So:
+
+  - If they accept: surface the install command for them to run; tell
+    them they don't need to wait for it to finish for THIS session
+    (you'll continue onboarding via curl).
+  - If they decline: surface \`connector_install.on_decline\` and
+    continue.
+
+Either way, move on to step 3 in the very next message. DO NOT block
+onboarding waiting for the install to finish — it's a future-session
+upgrade, not a current-session prerequisite.
+
+Step 3 — write ./.env (gitignored). Create the file if missing; if the
 project already has an .env, append to it without clobbering existing
 lines. Also ensure .env is in .gitignore:
 
     DOCO_ACCESS=<doco_access from step 1>
 
-Step 3 — write ./DOCO.md (committed, non-secret) verbatim:
+Step 4 — write ./DOCO.md (committed, non-secret) verbatim:
 
     # Doco
 
@@ -119,7 +156,7 @@ Step 3 — write ./DOCO.md (committed, non-secret) verbatim:
     invite for yourself — or ask any user already connected to
     this Doco to mint one and share the resulting invite URL.
 
-Step 4 — make agent surfaces auto-load DOCO.md.
+Step 5 — make agent surfaces auto-load DOCO.md.
 
     ./AGENTS.md (committed; the cross-agent convention from
     https://agents.md). If it doesn't exist, write:
@@ -143,7 +180,7 @@ Step 4 — make agent surfaces auto-load DOCO.md.
 
         @./AGENTS.md
 
-Step 5 — **HAND THE USER THE INVITE URL. THIS IS A GATE, NOT A
+Step 6 — **HAND THE USER THE INVITE URL. THIS IS A GATE, NOT A
 SIDE-NOTE.** Render it BEFORE any scope work, BEFORE bootstrapping
 the protocol, BEFORE doing anything else.
 
@@ -173,7 +210,7 @@ but possible), repeat the invite block. If the user has already
 accepted, the bootstrap response's onboarding_overlay will reflect
 that and you can skip the reminder.
 
-Step 6 — RUN THE ONBOARDING OVERLAY. The step-1 response carries an
+Step 7 — RUN THE ONBOARDING OVERLAY. The step-1 response carries an
 \`onboarding_overlay\` field. If it's non-null, this Doco is still in
 onboarding and step 6 is required. The agent's very next visible
 action after rendering the GATE block (step 5) is:
@@ -196,7 +233,7 @@ stop signal — note the rule to the user as a one-liner, then
 immediately move to step 6(a). The two waits coexist: commit-wait
 for git, scope-setup-wait for the project owner's path answer.
 
-Step 7 — apply the protocol now. DON'T restart the session, DON'T ask
+Step 8 — apply the protocol now. DON'T restart the session, DON'T ask
 the user to /clear. The protocol is ALREADY in the response you got
 from step 1 — read its \`canonical_instructions\` field and follow it
 from your next reply onward.
@@ -221,7 +258,7 @@ happen on the same turn the token was minted. For Claude Code, hooks
 auto-load on the next session start — \`/hooks\` to approve is a
 one-time-per-repo action the user can do whenever.
 
-Step 8 — commit the bootstrap files to git.
+Step 9 — commit the bootstrap files to git.
 
 \`DOCO.md\`, \`AGENTS.md\`, \`CLAUDE.md\`, and the \`.gitignore\` entry
 you just added need to land in git. Otherwise: a fresh clone, a CI

@@ -110,6 +110,12 @@ export default [
   // code flow is retired — that pattern fought every conservative
   // permission classifier and lost.
   route("api/v1/docos.json", "routes/api.v1.docos[.]json.tsx"),
+  // MCP server (Streamable HTTP transport). Once an agent runtime
+  // installs this URL as an MCP server, the agent gets native Doco
+  // tools (bootstrap, search, list_scopes, capture_decision) without
+  // raw curl. Auth: `Authorization: Bearer ${DOCO_ACCESS}` per
+  // transport spec. See route file header for protocol details.
+  route("mcp", "routes/mcp.tsx"),
   // Graceful trap for the retired browser-authorize / device-code
   // family. Stale-knowledge agents that still try /api/v1/agent-link/start
   // (or poll, or authorize) get a structured 410 with next_steps_for_agent
@@ -196,4 +202,8 @@ export default [
   // feature paths above win the match for the static paths.
   route(":docoId/:type", "routes/$ownerSlug.$docoSlug.$type._index.tsx"),
   route(":docoId/:type/:id", "routes/$ownerSlug.$docoSlug.$type.$id.tsx"),
+  route(
+    ":docoId/:type/:id/chat.json",
+    "routes/$ownerSlug.$docoSlug.$type.$id.chat[.]json.tsx",
+  ),
 ] satisfies RouteConfig;

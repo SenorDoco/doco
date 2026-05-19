@@ -79,18 +79,82 @@ export default function OnboardingAgent({
     "If a finding doesn't fit any current scope, propose adding a new scope FIRST and wait for my OK. Don't print 'Onboarding done' until every scope on the checklist is checked off or I've explicitly deferred remaining ones.",
   ].join("\n");
   const [copied, setCopied] = useState(false);
+  const [copiedRuntime, setCopiedRuntime] = useState<string | null>(null);
+  // MCP connector install commands. The server URL is the host's /mcp
+  // route (Streamable HTTP transport). One install per runtime, takes
+  // effect on the next session — so the agent-handoff prompt below is
+  // still the way to bootstrap THIS session.
+  const mcpUrl = "https://doco.to/mcp";
+  const runtimes: { id: string; label: string; command: string; note?: string }[] = [
+    {
+      id: "claude-code",
+      label: "Claude Code",
+      command: `claude mcp add doco ${mcpUrl}`,
+    },
+    {
+      id: "claude-desktop",
+      label: "Claude Desktop",
+      command: `{\n  "mcpServers": {\n    "doco": { "url": "${mcpUrl}" }\n  }\n}`,
+      note: "Paste this into ~/Library/Application Support/Claude/claude_desktop_config.json (macOS) / %APPDATA%/Claude/claude_desktop_config.json (Windows), then restart Claude Desktop.",
+    },
+    {
+      id: "cursor",
+      label: "Cursor",
+      command: mcpUrl,
+      note: "Cursor → Settings → MCP → Add server. Paste the URL above, then restart Cursor.",
+    },
+  ];
   return (
     <div>
       <SiteHeader mode="host" me={me} />
       <main className="mx-auto max-w-2xl px-6 py-8 space-y-4">
         <Card>
           <CardHeader>
-            <CardTitle>Hand it to your AI agent</CardTitle>
+            <CardTitle>1. Install the Doco connector (preferred)</CardTitle>
             <CardDescription>
-              Your AI agent — Claude Code, Cursor, Codex, etc. — already has access to your repo.
-              Paste this prompt into your agent's chat and it'll redeem the invite, read the code,
-              and propose load-bearing decisions, rules, and guidance worth capturing. Or skip and
-              continue to your Doco.
+              Once installed, your AI agent gets native Doco tools — search, list scopes, capture
+              decisions — without raw curl. One install per agent runtime; future Doco-tracked
+              projects you bootstrap reuse it. <strong>Installs take effect on your next session</strong>,
+              so this session still goes through the copy-paste prompt below.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {runtimes.map((rt) => (
+              <div key={rt.id} className="rounded-md border border-border p-3 space-y-2">
+                <p className="text-sm font-semibold">{rt.label}</p>
+                <pre className="rounded-md border border-border bg-input p-2 text-[11px] whitespace-pre-wrap break-words">
+                  {rt.command}
+                </pre>
+                {rt.note ? (
+                  <p className="text-[11px] text-muted-foreground">{rt.note}</p>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={async () => {
+                    await navigator.clipboard.writeText(rt.command);
+                    setCopiedRuntime(rt.id);
+                    setTimeout(() => setCopiedRuntime(null), 1500);
+                  }}
+                  className="rounded-md border border-border bg-card px-3 py-1.5 text-xs font-semibold text-foreground hover:bg-input"
+                >
+                  {copiedRuntime === rt.id ? "Copied!" : "Copy"}
+                </button>
+              </div>
+            ))}
+            <p className="text-[11px] text-muted-foreground">
+              Server URL (Streamable HTTP transport): <code className="rounded bg-input px-1 py-0.5">{mcpUrl}</code> · Auth: <code className="rounded bg-input px-1 py-0.5">Authorization: Bearer ${"{"}DOCO_ACCESS{"}"}</code>
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>2. Or: hand it to your AI agent for this session</CardTitle>
+            <CardDescription>
+              If you'd rather not install the connector yet, paste this prompt into your agent's
+              chat. It'll redeem the invite, read your repo, and propose load-bearing decisions,
+              rules, and guidance worth capturing. Works regardless of whether you install the
+              connector above.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-2">
