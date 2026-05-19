@@ -41,8 +41,9 @@ export async function loader({
   const url = new URL(request.url);
   const origin = `${url.protocol}//${url.host}`;
   const inviteUrl = `${origin}/invite/${invite.code}`;
+  const mcpUrl = `${origin}/mcp/${handle}`;
 
-  return { handle, inviteUrl, me };
+  return { handle, inviteUrl, mcpUrl, me };
 }
 
 export function meta() {
@@ -54,7 +55,7 @@ export default function OnboardingAgent({
 }: {
   loaderData: Awaited<ReturnType<typeof loader>>;
 }) {
-  const { handle, inviteUrl, me } = loaderData;
+  const { handle, inviteUrl, mcpUrl, me } = loaderData;
   return (
     <div>
       <SiteHeader mode="host" me={me} />
@@ -65,7 +66,11 @@ export default function OnboardingAgent({
             <CardDescription>{COLLABORATION_INVITE_DESCRIPTION}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-2">
-            <CollaborationInvitePrompt inviteUrl={inviteUrl} continueTo={`/${handle}`} />
+            <CollaborationInvitePrompt
+              inviteUrl={inviteUrl}
+              mcpUrl={mcpUrl}
+              continueTo={`/${handle}`}
+            />
           </CardContent>
         </Card>
       </SingleColumnPageMain>

@@ -292,6 +292,7 @@ type ActionResult =
       intent: "invite";
       ok: true;
       invite_url: string;
+      mcp_url: string;
       invite_expires_at: string;
       level: "org" | "doco" | "scope";
       role: DocoRole;
@@ -459,10 +460,17 @@ export async function action({
     );
     const url = new URL(request.url);
     const origin = `${url.protocol}//${url.host}`;
+    // Resolve the handle of the Doco backing this invite so the prompt
+    // can name the per-Doco MCP install URL alongside the invite URL.
+    // Required by CollaborationInvitePrompt under MCP-OAuth — the
+    // single-URL "redeem this" shape is gone (the URL is human-only).
+    const docoRow = await getDocoById(docoId);
+    const handle = docoRow?.handle ?? "";
     return {
       intent: "invite",
       ok: true,
       invite_url: `${origin}/invite/${invite.code}`,
+      mcp_url: handle ? `${origin}/mcp/${handle}` : "",
       invite_expires_at: invite.expires_at,
       level,
       role,
@@ -838,14 +846,18 @@ function InviteCard({
         {inviteResult ? (
           <CollaborationInvitePrompt
             inviteUrl={inviteResult.invite_url}
+            mcpUrl={inviteResult.mcp_url}
             showDescription
             testId="invite-result"
             promptTestId="invite-url"
             copyButtonTestId="invite-copy"
             note={
               <>
-                Single-use invite, expires in 72 hours. Redeemer gets the{" "}
-                <strong>{inviteResult.role}</strong> {inviteResult.level} grant.
+                Single-use invite, expires in 72 hours. The invite URL is
+                browser-only — clicking it adds you to the Doco's users with{" "}
+                <strong>{inviteResult.role}</strong> {inviteResult.level} role.
+                To connect an AI agent, install the Doco MCP connector in its
+                runtime (the URL is in the prompt above).
               </>
             }
           />

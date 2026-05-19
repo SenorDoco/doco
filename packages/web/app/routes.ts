@@ -120,6 +120,10 @@ export default [
   route("mcp", "routes/mcp.tsx", { id: "mcp-help" }),
   route("mcp/:handle", "routes/mcp.tsx", { id: "mcp" }),
   route("invite/:code", "routes/invite.$code.tsx"),
+  // Agent-readable companion to /invite/:code. Agents that get pasted
+  // an invite URL ("redeem this") fetch this to learn the MCP-OAuth
+  // path — the invite URL itself is browser-only.
+  route("invite/:code/agent.txt", "routes/invite.$code.agent[.]txt.tsx"),
   // ID-based lookup: the doco_id is immortal across renames and
   // ownership transfers. Agents that record the ULID resolve to the
   // current canonical handle at request time.
