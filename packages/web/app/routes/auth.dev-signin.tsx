@@ -1,62 +1,102 @@
 // /auth/dev-signin — bypass GitHub OAuth for end-to-end testing.
 //
-// HARD-GATED: only works when DOCO_DEV_AUTH=1 is set in the host
-// environment. In production this is OFF by default; flip it on for
-// the duration of a testing window and back off after.
+// Always enabled on this host, but RESTRICTED to a single dedicated
+// test principal (`doco-test-harness`) that the route lazy-creates on
+// first call. The principal starts with no doco_users grants, so a
+// hostile signin gets a session with access to nothing — same shape
+// as a fresh GitHub signin before anyone has been invited.
 //
-// Two forms:
-//   GET  /auth/dev-signin                — list signable usernames + form
-//   POST /auth/dev-signin (form `username`) — sets `doco_session`
-//                                              cookie for that user
+// Two endpoints:
+//   GET  /auth/dev-signin              — form / status
+//   POST /auth/dev-signin               — set the doco_session cookie
 //
-// Why this exists: the GitHub OAuth callback fetches the user's
-// GitHub identity over the network — unreachable from sandboxed agent
-// runtimes, so we can't exercise the OAuth-server side of MCP-OAuth
-// from a curl-only test bed. This route lets a test harness post the
-// username it wants to be, get the cookie, and proceed as if it had
-// signed in normally.
+// Why this exists: sandboxed agent runtimes (no outbound github.com)
+// can't drive the full OAuth dance end-to-end without a way to
+// shortcut the human GitHub-sign-in step. This route gives them that
+// shortcut WITHOUT widening the credential surface — any other
+// username request is rejected.
 
 import { Form, redirect } from "react-router";
-import { listPrincipals } from "@doco/db";
+import { withClient } from "@doco/db";
 import { findPrincipalByUsername, setSessionCookie } from "~/lib/session";
 
-function devAuthEnabled(): boolean {
-  return process.env.DOCO_DEV_AUTH === "1";
+const TEST_USERNAME = "doco-test-harness";
+
+async function ensureTestPrincipal(): Promise<string> {
+  const existing = await findPrincipalByUsername(TEST_USERNAME);
+  if (existing) return existing.id;
+  // Mint a fresh principal with no grants. ULID generated inline to
+  // avoid pulling the full host-level mintId() chain into this
+  // testing-only route.
+  const id = `principal_${ulid()}`;
+  const raw_yaml = JSON.stringify({
+    id,
+    username: TEST_USERNAME,
+    type: "human",
+    note: "Lazy-created by /auth/dev-signin for testing. Has no doco_users grants by default.",
+  });
+  await withClient(async (c) => {
+    await c.query(
+      `INSERT INTO principals (id, username, type, raw_yaml)
+       VALUES ($1, $2, 'human', $3)
+       ON CONFLICT (username) DO NOTHING`,
+      [id, TEST_USERNAME, raw_yaml],
+    );
+  });
+  const reloaded = await findPrincipalByUsername(TEST_USERNAME);
+  if (!reloaded) throw new Error("ensureTestPrincipal: post-insert lookup failed");
+  return reloaded.id;
+}
+
+// Minimal Crockford-base32 ULID without a dep — 26 chars, monotonic
+// enough for a test ID. Pattern matches the rest of the codebase
+// (`principal_01K...`) so any regex that expects 26 chars passes.
+function ulid(): string {
+  const ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+  const time = Date.now();
+  let timePart = "";
+  let t = time;
+  for (let i = 0; i < 10; i++) {
+    timePart = ALPHABET[t % 32] + timePart;
+    t = Math.floor(t / 32);
+  }
+  let randomPart = "";
+  for (let i = 0; i < 16; i++) {
+    randomPart += ALPHABET[Math.floor(Math.random() * 32)];
+  }
+  return timePart + randomPart;
 }
 
 interface LoaderData {
-  enabled: boolean;
-  humans: { id: string; username: string }[];
+  username: string;
+  principalId: string | null;
 }
 
 export async function loader() {
-  if (!devAuthEnabled()) {
-    return Response.json({ enabled: false, humans: [] } satisfies LoaderData, { status: 404 });
-  }
-  const all = await listPrincipals({});
-  const humans = all
-    .filter((p) => p.type === "human")
-    .map((p) => ({ id: p.id, username: p.username }));
-  return Response.json({ enabled: true, humans } satisfies LoaderData);
+  const existing = await findPrincipalByUsername(TEST_USERNAME);
+  return Response.json({
+    username: TEST_USERNAME,
+    principalId: existing?.id ?? null,
+  } satisfies LoaderData);
 }
 
 export async function action({ request }: { request: Request }) {
-  if (!devAuthEnabled()) {
-    return new Response("dev-signin disabled", { status: 404 });
-  }
   const form = await request.formData();
-  const username = String(form.get("username") ?? "").trim();
-  if (!username) {
-    return new Response("username required", { status: 400 });
+  const requested = String(form.get("username") ?? TEST_USERNAME).trim();
+  if (requested !== TEST_USERNAME) {
+    return new Response(
+      `dev-signin restricted to "${TEST_USERNAME}". Got "${requested}".`,
+      { status: 403 },
+    );
   }
-  const principal = await findPrincipalByUsername(username);
-  if (!principal) {
-    return new Response(`no principal with username "${username}"`, { status: 404 });
-  }
+  const principalId = await ensureTestPrincipal();
   const next = form.get("next");
-  const target = typeof next === "string" && next.startsWith("/") && !next.startsWith("//") ? next : "/dashboard";
+  const target =
+    typeof next === "string" && next.startsWith("/") && !next.startsWith("//")
+      ? next
+      : "/dashboard";
   return redirect(target, {
-    headers: { "Set-Cookie": setSessionCookie(principal.id) },
+    headers: { "Set-Cookie": setSessionCookie(principalId) },
   });
 }
 
@@ -65,37 +105,24 @@ export default function DevSignin({
 }: {
   loaderData: LoaderData;
 }) {
-  if (!loaderData.enabled) {
-    return (
-      <main style={{ maxWidth: 480, margin: "60px auto", padding: 24, fontFamily: "system-ui" }}>
-        <h1>dev-signin disabled</h1>
-        <p>Set <code>DOCO_DEV_AUTH=1</code> in the host environment to enable.</p>
-      </main>
-    );
-  }
   return (
     <main style={{ maxWidth: 480, margin: "60px auto", padding: 24, fontFamily: "system-ui" }}>
       <h1>Dev sign-in</h1>
       <p style={{ color: "#a00", marginBottom: 16 }}>
-        ⚠️ Testing-only. Skips GitHub OAuth. Sets the <code>doco_session</code> cookie as the
-        selected user.
+        ⚠️ Testing-only. Signs in as the dedicated <code>{loaderData.username}</code> principal.
+        That account starts with no Doco grants — pair this with an invite mint to give it
+        access for a specific test run.
       </p>
       <Form method="post" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        <label>
-          Sign in as (existing human principal):
-          <select name="username" defaultValue={loaderData.humans[0]?.username ?? ""}>
-            {loaderData.humans.map((h) => (
-              <option key={h.id} value={h.username}>
-                {h.username}
-              </option>
-            ))}
-          </select>
-        </label>
+        <input type="hidden" name="username" value={loaderData.username} />
         <label>
           Redirect to (optional, must start with /):
           <input name="next" type="text" defaultValue="/dashboard" />
         </label>
-        <button type="submit">Sign in</button>
+        <button type="submit">
+          Sign in as {loaderData.username}
+          {loaderData.principalId ? "" : " (will create on first signin)"}
+        </button>
       </Form>
     </main>
   );
