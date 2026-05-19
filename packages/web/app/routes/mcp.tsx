@@ -33,6 +33,7 @@
 
 import { getDocoByIdOrHandle } from "@doco/db";
 import type { EntityId } from "@doco/shared";
+import { AGENT_REFERENCE, CANONICAL_INSTRUCTIONS } from "~/lib/instructions.server";
 import { validateAccessToken } from "~/lib/oauth-server.server";
 import { extractBearer } from "~/lib/session";
 
@@ -636,6 +637,32 @@ const TOOLS: ToolDef[] = [
 const TOOL_BY_NAME = new Map<string, ToolDef>(TOOLS.map((t) => [t.name, t]));
 
 // ---------------------------------------------------------------------------
+// MCP resources. Replaces the HTTP /api/v1/agent-bootstrap +
+// /api/v1/agent-reference endpoints: connected runtimes fetch the
+// canonical protocol via MCP `resources/read` once per session.
+// ---------------------------------------------------------------------------
+
+const CANONICAL_RESOURCE_URI = "doco://protocol/canonical-instructions";
+const REFERENCE_RESOURCE_URI = "doco://protocol/agent-reference";
+
+const RESOURCES = [
+  {
+    uri: CANONICAL_RESOURCE_URI,
+    name: "Canonical agent instructions",
+    description:
+      "The four-invariant protocol every Doco-connected reply must follow (query indicator, footer lines, capture-before-done, tally). Fetch once per session.",
+    mimeType: "text/markdown",
+  },
+  {
+    uri: REFERENCE_RESOURCE_URI,
+    name: "Agent reference (long form)",
+    description:
+      "Deep reference — node-type walkthrough, scope onboarding flow, capture checklist, placement examples. Fetch only when the canonical points you here.",
+    mimeType: "text/markdown",
+  },
+] as const;
+
+// ---------------------------------------------------------------------------
 // Dispatcher.
 // ---------------------------------------------------------------------------
 
@@ -704,8 +731,8 @@ export async function action({
           typeof params.protocolVersion === "string" ? params.protocolVersion : "2024-11-05";
         return rpcOk(id, {
           protocolVersion: clientProtocol,
-          capabilities: { tools: {} },
-          serverInfo: { name: "doco", version: "0.2.0" },
+          capabilities: { tools: {}, resources: {} },
+          serverInfo: { name: "doco", version: "0.3.0" },
         });
       }
       case "notifications/initialized": {
@@ -718,6 +745,20 @@ export async function action({
             description: t.description,
             inputSchema: t.inputSchema,
           })),
+        });
+      }
+      case "resources/list": {
+        return rpcOk(id, { resources: RESOURCES });
+      }
+      case "resources/read": {
+        const uri = typeof params.uri === "string" ? params.uri : "";
+        const resource = RESOURCES.find((r) => r.uri === uri);
+        if (!resource) {
+          return rpcErr(id, INVALID_REQUEST, `unknown resource: ${uri}`);
+        }
+        const text = resource.uri === CANONICAL_RESOURCE_URI ? CANONICAL_INSTRUCTIONS : AGENT_REFERENCE;
+        return rpcOk(id, {
+          contents: [{ uri: resource.uri, mimeType: "text/markdown", text }],
         });
       }
       case "tools/call": {
