@@ -13,335 +13,103 @@ export async function loader({ request }: { request: Request }) {
 > project follows a shared protocol.
 
 If a user just told you something like "let's start using Doco" or
-"visit ${new URL(baseUrl).host} and follow the wizard", you're at the
-right page. This is the agent-readable entry point.
-
-🛑 **AGENT STOP — READ THIS BEFORE ANY HTTP CALL** 🛑
-
-Your FIRST onboarding action is NOT to POST /api/v1/docos.json.
-First check whether your runtime already has the Doco connector
-installed. If it does, use it for the Doco work it supports and skip
-the install offer. If it does NOT, ask the project owner whether they
-want to install it, wait one turn, and continue through the API in
-this session either way. ONLY after that connector check/ask do you
-proceed to the create POST. If your first instinct after reading this
-page is "let me create the doco now," that's the exact bias the
-wizard intercepts. Check connector first; create second.
-
-The full sequence — DO NOT skip step 1:
-
-  1. Check for the MCP connector (section 1 below) — ask only if absent
-  2. POST /api/v1/docos.json — create the Doco
-  3. Write .env (DOCO_ACCESS), DOCO.md, AGENTS.md, CLAUDE.md
-  4. Render the user_message_block GATE verbatim
-  5. Run the onboarding overlay (scope_setup + scope_population)
-  6. Apply the protocol (canonical_instructions, already in hand)
-  7. Commit the bootstrap files to git
-
-No SDK, no CLI, no package, no install on the agent side. Doco is
-plain HTTP — call it with whatever HTTP client you already have.
-
-## 1. CHECK FOR THE MCP CONNECTOR (do this FIRST, before any HTTP call)
-
-This is your very first onboarding action — BEFORE the create POST,
-BEFORE writing files, BEFORE anything else. Inspect your active tool
-list, installed connectors, or MCP servers. If a Doco connector is
-already available, say so briefly and use it for any Doco work it
-supports. If the connector does not expose anonymous Doco creation,
-continue with the API call in step 2.
-
-If no Doco connector is available, ask the project owner verbatim:
-
-> **"Before I create the Doco, do you want to install the Doco MCP
-> connector for this agent runtime? It's a one-time install and gives
-> future Doco-tracked projects native Doco tools — search, capture,
-> list scopes — without raw curl. The install takes effect on your next
-> session/restart, so onboarding right now still runs through the API
-> either way. Say 'yes install' or 'no skip' and I'll proceed."**
-
-Then surface the install command matching your runtime:
-
-| Runtime | Install command |
-|---|---|
-| Claude Code | \`claude mcp add doco ${baseUrl}/mcp\` |
-| Claude Desktop | Edit \`~/Library/Application Support/Claude/claude_desktop_config.json\` (macOS) — add \`{"mcpServers": {"doco": {"url": "${baseUrl}/mcp"}}}\` |
-| Cursor | Settings → MCP → Add server → \`${baseUrl}/mcp\` |
-| Codex | Codex doesn't ship native MCP support yet — skip and continue with curl. |
-| Generic | MCP server URL (Streamable HTTP): \`${baseUrl}/mcp\` |
-
-Wait ONE turn for their answer. If they accept, surface the install
-command and tell them they don't have to wait for restart — you'll
-continue onboarding via the API regardless, and the connector takes
-effect on their next session. If they decline, acknowledge and move
-on. DO NOT block onboarding waiting for the install to finish — the
-install is a future-session upgrade, not a current-session
-prerequisite.
-
-After their answer, proceed to step 2 (create the Doco).
-
-## 2. Create a Doco (no auth required)
-
-**Narration discipline.** Before the POST, emit this line to the user
-verbatim so the network call doesn't read as dead air:
-
-    [🔮 Doco] Creating new doco...
-
-Right after the response returns, emit (substituting the response's
-\`doco_handle\` field — the human-readable URL id, not the ULID):
-
-    [🔮 Doco] Doco created: <doco_handle>
-
-Same \`[🔮 Doco]\` prefix as the connection-indicator family — the
-user reads it as Doco-protocol status, not free-form agent chatter.
-The call itself:
-
-    POST ${baseUrl}/api/v1/docos.json
-    Content-Type: application/json
-
-    {"requested_id": "<lowercase-kebab>", "description": "<short prose>"}
-
-\`requested_id\` is required and must be the human-readable URL id
-you'd like; the host auto-suffixes (-2, -3, …) on global collision
-and writes the actually-used value to \`doco_handle\` in the response.
-\`description\` is optional. Response (abbreviated):
-
-    {
-      "doco_id":                "doco_01K…",
-      "doco_handle":            "<lowercase-kebab>",
-      "doco_url":               "${baseUrl}/<doco_handle>/",
-      "doco_access":            "<64-hex>",
-      "invite_url":             "${baseUrl}/invite/<64-hex>",
-      "invite_expires_at":      "<ISO timestamp, 7 days out>",
-      "canonical_instructions": "...the protocol; four invariants every reply must follow...",
-      "scopes":                 [...],
-      "constitution":           {...},
-      "onboarding_overlay":     {...},
-      "next_steps_for_agent":   [...],
-      "user_message_block":     "...verbatim claim-within-7-days block..."
-    }
-
-This is anonymous: the server mints an agent-Principal as the
-doco owner-of-record (no human attached yet). You hold the
-\`doco_access\`; share the \`invite_url\` with the user who asked you
-to set up Doco so they can claim collaboration access themselves.
-Both single-use, both ephemeral on the client side — only
-\`doco_access\` belongs in long-term storage.
-
-**The response is self-contained.** The \`canonical_instructions\`
-field IS the protocol you must follow from your next reply onward —
-you do NOT need to make a follow-on GET to /api/v1/agent-bootstrap
-right after this. The fresh-token + second-fetch-returning-instructions
-pattern trips agent-classifier credential-exfil heuristics, and you
-already have what that fetch would return. Later sessions refresh via
-the helper or the bootstrap endpoint — see step 5.
-
-## 3. Wire it into the repo
-
-Write **\`./.env\`** (gitignored — the agent creates a basic
-\`.gitignore\` if one isn't already there):
-
-    DOCO_ACCESS=<doco_access from step 1>
-
-Write **\`./DOCO.md\`** (committed, non-secret) verbatim:
-
-    # Doco
-
-    This project is tracked in Doco at:
-    <doco_url>
-
-    Need access? Open the Doco URL above and sign in to mint an
-    invite for yourself — or ask any user already connected to this
-    Doco to mint one and share the resulting invite URL.
-
-Write or update **\`./AGENTS.md\`** so it includes the line
-\`@./DOCO.md\` somewhere near the top — that way any agent loading
-this repo auto-reads the Doco coordinates. If you also use Claude
-Code, write **\`./CLAUDE.md\`** with the single line \`@./AGENTS.md\`
-(this is Claude Code's auto-load entry point).
-
-## 4. **GATE**: render the invite block VERBATIM to the user
-
-The /api/v1/docos.json response carries a \`user_message_block\` field
-with the exact prose the user must see — the doco_url, the invite_url
-(in bold, on its own line), the expiration timestamp, and what
-happens if they never claim. **Render it verbatim as your next
-message to the user. Don't paraphrase. Don't bury. Don't skip.**
-
-NO preface (don't say "rendering the verbatim block (this is the GATE
-per the protocol)" — the block IS the gate, surrounding narration
-weakens it). NO duplicate file-list summary AFTER the block (the
-project owner already saw the tool diffs above; a summary below the
-block pushes the invite URL off their viewport).
-
-This is a gate, not a side-note. Without claiming the invite, the
-user has zero access to their own project's Doco — the agent (you)
-holds the only key. If the agent disappears and the invite expires
-(7 days), the Doco is orphaned. The block exists so the user can't
-miss the call to action.
-
-After rendering the block, move on to step 4 (NOT step 5 — onboarding
-overlay first, commit second).
-
-## 5. Run the onboarding overlay
-
-The same response carries an \`onboarding_overlay\` field. If it's
-non-null, this Doco is still in onboarding and step 4 is required:
-
-  (a) Render \`onboarding_overlay.scope_setup\` to the project owner —
-      the two-path question, verbatim. Then STOP and wait.
-  (b) When they answer, walk \`onboarding_overlay.scope_population\` —
-      render the \`Bootstrapping scopes:\` checklist, then walk each
-      unchecked scope through the read → bucket-by-type → propose →
-      wait → capture → flip [ ] to [x] → re-render loop.
-
-Step 4 runs IN PARALLEL with step 5 (commit). If the project's rule
-says "don't commit unprompted", DO NOT treat the commit-wait as a
-stop signal — note the rule to the user, then immediately start step
-4(a). Commit-wait and scope-setup-wait coexist.
-
-## 6. Commit the bootstrap files to git
-
-\`DOCO.md\`, \`AGENTS.md\`, \`CLAUDE.md\`, and the \`.gitignore\` entry
-need to land in git so a fresh clone / CI runner / teammate's agent
-discovers this Doco. **This is a separate action from Doco capture
-— capture moved nodes into doco.to via HTTP POSTs, those are
-durable on the host; this is the git-level commit so the REPO
-carries the Doco coordinates.** Don't conflate the two in your
-narration; users will reasonably ask "why push? you said it's in
-Doco" if you do.
-
-    git add DOCO.md AGENTS.md CLAUDE.md .gitignore
-    git commit -m "Wire repo into Doco at <doco_url>"
-
-Push per the project's git workflow. If unclear, ASK ("commit + push
-now, or do you commit yourself?"). Some Docos carry an "always
-commit and push" Rule on Global — read the bootstrap response's
-Global scope rules to find out.
-
-## 7. Operate — apply the protocol you already have
-
-You finished onboarding with the protocol in hand (the step-2
-response's \`canonical_instructions\`). Apply it from your next reply
-onward — four invariants: query indicator at the top of every reply,
-scope-prefixed footer lines after every write, capture before
-declaring done, tally line at the close.
-
-**Do NOT make a follow-on GET to /api/v1/agent-bootstrap right after
-onboarding.** The pattern (fresh token, immediate fetch returning
-instructions you'll execute) trips agent-classifier credential-exfil
-heuristics; newer agents will pause and ask the project owner to
-approve. You don't need that fetch — you already have the protocol.
-
-Later sessions (a fresh \`/clear\` in Claude Code, a new agent
-landing in this repo, a SessionStart hook firing) are a different
-context and DO need to refresh the canonical. For those, prefer the
-checked-in helper when present:
-
-    node .agents/doco-agent-client.mjs bootstrap
-    node .agents/doco-agent-client.mjs search --q "<paraphrase>"
-
-It reads \`DOCO_ACCESS\` from \`./.env\` internally so the credential
-stays out of shell command text. Plain HTTP equivalent:
-
-    curl -fsS -H "Authorization: Bearer \${DOCO_ACCESS}" \\
-      "${baseUrl}/api/v1/agent-bootstrap"
-
-Per-prompt search without the helper:
-
-    curl -fsS -H "Authorization: Bearer \${DOCO_ACCESS}" \\
-      "${baseUrl}/<doco_handle>/search.json?q=<paraphrase>"
-
-Capture (this is the Doco-side write — adds nodes on doco.to, not
-to git):
-
-    curl -X POST "${baseUrl}/<doco_handle>/api/decisions.json" \\
-      -H "Authorization: Bearer \${DOCO_ACCESS}" \\
-      -H "Content-Type: application/json" \\
-      -d @body.json
-
-## Minting more invites (for teammates, expired URLs, etc.)
-
-Any user (agent or human) holding a valid \`DOCO_ACCESS\` for the Doco can
-mint additional invites with one HTTP call:
-
-    curl -X POST "${baseUrl}/<doco_handle>/api/invites.json" \\
-      -H "Authorization: Bearer \${DOCO_ACCESS}" \\
-      -H "Content-Type: application/json" \\
-      -d '{"expires_in_days": 7}'
-
-Response: \`{invite_url, invite_expires_at, code, doco_url}\`.
-
-\`expires_in_days\` is optional; defaults to 7. Range 1..365. Each
-invite is single-use — once redeemed, that URL stops working;
-mint a fresh one for each collaborator.
-
-**Don't re-POST \`/api/v1/docos.json\` to "refresh" an invite — that
-creates a brand-new Doco.** The correct endpoint when a user asks
-"can I have a fresh invite?" is \`/<doco_handle>/api/invites.json\`
-with \`Authorization: Bearer \${DOCO_ACCESS}\` (API) or the **Invite collaborators** button on the Doco's web page
-(human). If you've already created a duplicate Doco by mistake,
-only a human can soft-delete it from the Doco's Settings page.
-
-## Cross-environment: same repo, fresh \`.env\`
-
-\`DOCO.md\` is committed, so any clone has the Doco URL. If \`.env\` is
-empty (new machine, fresh container), tell the user:
-
-    "I can see this repo is tracked at <doco_url>, but I need an
-    invite to access it. Either (a) open <doco_url>, sign in, and
-    click 'New invite', or (b) ask any user already connected to
-    this Doco to POST /<doco_handle>/api/invites.json.
-    Paste the resulting invite URL back here."
-
-When the user pastes \`https://doco.to/invite/<code>\`, redeem it:
-
-    curl -X POST "${baseUrl}/api/v1/invites/<code>/redeem.json" \\
-      -H "Content-Type: application/json" -d '{}'
-
-The response is the same shape as the create-flow response — the
-URL was the only thing that differed. It carries:
-- \`doco_access\` — write to \`./.env\` as \`DOCO_ACCESS=<doco_access>\`.
-- \`doco_url\` — if the repo has no \`DOCO.md\`, write one with this URL.
-- \`canonical_instructions\` — the protocol. Apply it from your next
-  reply. Do NOT make a follow-on /api/v1/agent-bootstrap fetch right
-  now (same reason as step 1).
-- \`scopes\`, \`constitution\`, \`onboarding_overlay\` — per-Doco context
-  the bootstrap would otherwise return. Already in your hands.
-- \`next_steps_for_agent\` — an ordered checklist of file writes.
-  Walk it top-to-bottom; it's the recipe in miniature.
-- \`user_message_block\` — verbatim prose to render to the user who
-  pasted the invite. Tells them you're connected, what files you
-  wrote, and how to claim their own access if they want it.
-
-## What NOT to do
-
-- DO NOT print URLs and ask the user to copy/paste anything you can
-  fetch yourself. Anything that's \`curl\`-able is your job.
-- DO prefer \`node .agents/doco-agent-client.mjs bootstrap\` and
-  \`node .agents/doco-agent-client.mjs search --q "…"\` when that helper
-  is present; it avoids putting \`DOCO_ACCESS\` in shell command text.
-- DO NOT write \`.claude/settings.json\` or any agent-config file.
-  Trust-config writes are a privilege-escalation vector and
-  conservative classifiers (correctly) block them.
-- DO NOT silently degrade when \`.env\` is empty. Stop and ask for an
-  invite — the user owns the trust boundary.
-
-## Endpoints
-
-- POST  ${baseUrl}/api/v1/docos.json                                  create a Doco (no auth)
-- POST  ${baseUrl}/api/v1/invites/<code>/redeem.json                  redeem an invite (no auth)
-- GET   ${baseUrl}/api/v1/agent-bootstrap                             bootstrap; Bearer adds Doco context
-- GET   ${baseUrl}/api/v1/agent-reference                             deeper reference
-- GET   ${baseUrl}/<doco_handle>/search.json?q=…                         vector search
-- GET   ${baseUrl}/<doco_handle>/status.json                             freshness + counts
-- POST  ${baseUrl}/<doco_handle>/api/<type-plural>.json                  capture a new node
-- POST  ${baseUrl}/<doco_handle>/api/invites.json                        mint a new invite
-- PATCH ${baseUrl}/<doco_handle>/api/<type-plural>/<id>.json             extend a node
+"visit doco.to and follow the wizard", you're at the right page.
+
+## How agents authenticate (decision_01KS14CW9ZN23FF5CGG0Z7TH4G)
+
+Doco speaks **MCP OAuth 2.1**. There is one connection path; no
+DOCO_ACCESS bearer, no .env, no helper script.
+
+1. Your runtime installs the per-Doco MCP server at:
+
+       ${baseUrl}/mcp/<doco-handle>
+
+   (Per-runtime install commands — Claude Code, Claude Desktop,
+   ChatGPT Connectors, Codex CLI, Cursor, Gemini Code Assist, … —
+   live in the AGENTS.md template the Doco's repo carries.)
+
+2. On first use, the runtime contacts the MCP server, gets back a
+   \`WWW-Authenticate: Bearer realm="doco", resource_metadata="…"\`
+   challenge, and follows the metadata chain:
+
+       ${baseUrl}/.well-known/oauth-protected-resource
+       ${baseUrl}/.well-known/oauth-authorization-server
+
+   This is the standard MCP-OAuth dance (RFC 8414 + RFC 9728).
+
+3. The runtime registers itself dynamically (RFC 7591) at
+   \`/oauth/register\`, then opens \`/oauth/authorize\` in the project
+   owner's browser. The owner signs in with GitHub (existing
+   /auth/github flow), picks which Docos this runtime can access,
+   clicks Approve.
+
+4. The runtime exchanges the resulting authorization code (+ PKCE
+   S256 verifier) at \`/oauth/token\` for an access + refresh token
+   pair, stored in its native credential store.
+
+5. Every subsequent MCP call carries
+   \`Authorization: Bearer <access_token>\`. The token expires in 1
+   hour; the refresh token lasts 60 days. Revocation is at
+   \`/oauth/revoke\`.
+
+## Creating a brand-new Doco
+
+There is no anonymous-create endpoint anymore. To create a Doco:
+
+  1. The project owner signs in with GitHub at ${baseUrl}/sign-in.
+  2. They visit ${baseUrl}/new-doco and pick a handle.
+  3. After creation, they install the MCP connector at
+     \`${baseUrl}/mcp/<handle>\` in their runtime — that triggers the
+     OAuth flow for the agent.
+
+## Inviting another human (or another runtime)
+
+  1. Doco owner opens \`${baseUrl}/<handle>/invites\` and clicks
+     "New invite". A 7-day single-use URL is minted.
+  2. Owner shares the URL. Recipient opens it in a browser, signs in
+     with GitHub, clicks Accept → \`doco_users\` row added with the
+     invite's role.
+  3. Recipient installs the MCP connector and OAuth-approves the
+     newly-accessible Doco.
+
+## Tools exposed by the MCP server
+
+\`search\`, \`list_scopes\`, \`get_status\`, \`get_audit\`,
+\`list_principals\`, \`capture_decision\`, \`capture_intent\`,
+\`capture_action\`, \`capture_log\`, \`capture_rule\`, \`capture_eval\`,
+\`capture_reference\`, \`capture_state\`, \`patch_decision\`,
+\`patch_intent\`, \`patch_action\`, \`patch_rule\`, \`patch_log\`,
+\`patch_reference\`, \`create_scope\`, \`activate_scope_draft\`,
+\`create_invite\`.
+
+## Resources exposed by the MCP server
+
+  doco://protocol/canonical-instructions   the four-invariant protocol
+  doco://protocol/agent-reference          long-form reference
+
+Fetch the canonical resource once per session via MCP
+\`resources/read\`; it carries the protocol every reply must follow.
+
+## If your runtime doesn't speak MCP yet
+
+Most agent runtimes have native MCP support in 2026 — if yours
+doesn't, ask the project owner before getting clever. There is no
+fallback HTTP-with-bearer path.
+
+## Related routes
+
+  ${baseUrl}/.well-known/oauth-authorization-server
+  ${baseUrl}/.well-known/oauth-protected-resource
+  ${baseUrl}/oauth/register
+  ${baseUrl}/oauth/authorize
+  ${baseUrl}/oauth/token
+  ${baseUrl}/oauth/revoke
+  ${baseUrl}/mcp/<handle>
+  ${baseUrl}/new-doco
+  ${baseUrl}/<handle>/invites
+  ${baseUrl}/invite/<code>
 `;
   return new Response(body, {
-    headers: {
-      "Content-Type": "text/plain; charset=utf-8",
-      "Cache-Control": "no-store",
-    },
+    headers: { "Content-Type": "text/plain; charset=utf-8" },
   });
 }
