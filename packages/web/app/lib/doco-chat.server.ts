@@ -104,7 +104,7 @@ export interface RunDocoChatTurnResult {
 }
 
 interface FastPathToolCall {
-  tool: "create_node" | "change_lifecycle" | "add_edge";
+  tool: "get_status" | "create_node" | "change_lifecycle" | "add_edge";
   args: Record<string, unknown>;
 }
 
@@ -158,6 +158,27 @@ const ENTITY_TABLE: Record<string, string> = {
   scope: "scopes",
 };
 
+const COUNT_TABLES = [
+  { key: "decisions", nodeType: "decision", table: "decisions" },
+  { key: "intents", nodeType: "intent", table: "intents" },
+  { key: "rules", nodeType: "rule", table: "rules" },
+  { key: "actions", nodeType: "action", table: "actions" },
+  { key: "logs", nodeType: "log", table: "logs" },
+  { key: "references", nodeType: "reference", table: "reference_entities" },
+  { key: "evals", nodeType: "eval", table: "evals" },
+  { key: "ideas", nodeType: "idea", table: "ideas" },
+  { key: "states", nodeType: "state", table: "states" },
+  { key: "scopes", nodeType: "scope", table: "scopes" },
+] as const;
+
+const COUNT_TARGETS = new Map<string, string>([
+  ["node", "nodes"],
+  ["nodes", "nodes"],
+  ["edge", "edges"],
+  ["edges", "edges"],
+  ...COUNT_TABLES.flatMap(({ key, nodeType }) => [[nodeType, key] as const, [key, key] as const]),
+]);
+
 const CHAT_NODE_TYPES = new Set<NodeTypeName>([
   "decision",
   "intent",
@@ -188,6 +209,7 @@ You can help with the whole Doco, not just the current page. Prefer fast, exact 
 
 Rules:
 - Use tools for concrete writes: create nodes, add edges, and change lifecycle.
+- Use get_status for count/status questions. Do not call find_nodes with an empty query.
 - Respect the current page context. If the user says "this node" or "here", use current_entity_id when present.
 - Keep replies short. One or two sentences is usually enough.
 - If a request is ambiguous, ask one short clarifying question.
@@ -198,6 +220,37 @@ Rules:
 Attachments arrive inline in the current user message. Images arrive as image_url parts. Text-readable files arrive as text parts with a header. Do not invent contents for unreadable files.`;
 
 const TOOLS = [
+  {
+    type: "function" as const,
+    function: {
+      name: "get_status",
+      description:
+        "Get Doco-wide counts, including total nodes, edges, and per-node-type totals. Use this for count/status questions.",
+      parameters: {
+        type: "object",
+        properties: {
+          node_type: {
+            type: "string",
+            enum: [
+              "nodes",
+              "edges",
+              "decision",
+              "intent",
+              "rule",
+              "action",
+              "log",
+              "reference",
+              "eval",
+              "idea",
+              "state",
+              "scope",
+            ],
+          },
+        },
+        additionalProperties: false,
+      },
+    },
+  },
   {
     type: "function" as const,
     function: {
@@ -322,7 +375,7 @@ export async function runDocoChatTurn(input: RunDocoChatTurnInput): Promise<RunD
       args: fastPath.args,
       input,
     });
-    const mutated = outcome.applied && outcome.tool !== "find_nodes";
+    const mutated = outcome.applied && isMutatingTool(outcome.tool);
     return {
       reply: fastPathReply(outcome),
       operations: [outcome],
@@ -389,7 +442,7 @@ export async function runDocoChatTurn(input: RunDocoChatTurnInput): Promise<RunD
         input,
       });
       operations.push(outcome);
-      if (outcome.applied && outcome.tool !== "find_nodes") mutated = true;
+      if (outcome.applied && isMutatingTool(outcome.tool)) mutated = true;
       if (outcome.navigate_to) navigateTo = outcome.navigate_to;
       messages.push({
         role: "tool",
@@ -510,8 +563,23 @@ function parseFastPathCommand(
   const message = rawMessage.trim().replace(/\s+/g, " ");
   if (!message) return null;
   return (
-    parseFastCreateNode(message) ?? parseFastLifecycleChange(message) ?? parseFastAddEdge(message)
+    parseFastStatusQuestion(message) ??
+    parseFastCreateNode(message) ??
+    parseFastLifecycleChange(message) ??
+    parseFastAddEdge(message)
   );
+}
+
+function parseFastStatusQuestion(message: string): FastPathToolCall | null {
+  const lower = message.toLowerCase();
+  const asksForCount = /\b(how many|count|counts|total|number of)\b/.test(lower);
+  if (!asksForCount) return null;
+  const target = inferCountTarget(lower);
+  if (!target) return null;
+  return {
+    tool: "get_status",
+    args: { node_type: target },
+  };
 }
 
 function parseFastCreateNode(message: string): FastPathToolCall | null {
@@ -583,10 +651,15 @@ function parseFastAddEdge(message: string): FastPathToolCall | null {
 
 function fastPathReply(outcome: DocoChatOperation): string {
   if (outcome.applied) {
+    if (outcome.tool === "get_status" || outcome.tool === "find_nodes") return outcome.description;
     const suffix = outcome.navigate_to ? " I am showing it now." : "";
     return `Done: ${outcome.description}.${suffix}`;
   }
   return `I could not apply that directly: ${outcome.error ?? "unknown error"}`;
+}
+
+function isMutatingTool(tool: string): boolean {
+  return tool !== "find_nodes" && tool !== "get_status";
 }
 
 function parseFastPathScopes(raw: string | undefined): string[] {
@@ -610,6 +683,26 @@ function normalizeLifecycle(raw: string | undefined): string {
     .replace(/-+/g, "_");
 }
 
+function inferCountTarget(lowerMessage: string): string | null {
+  if (/\b(edge|edges)\b/.test(lowerMessage)) return "edges";
+  for (const { key, nodeType } of COUNT_TABLES) {
+    const plural = key.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&");
+    const singular = nodeType.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&");
+    if (new RegExp(`\\b(${singular}|${plural})\\b`).test(lowerMessage)) return key;
+  }
+  if (/\b(node|nodes|doco|graph)\b/.test(lowerMessage)) return "nodes";
+  return null;
+}
+
+function singularLabel(plural: string): string {
+  const found = COUNT_TABLES.find((t) => t.key === plural);
+  return found?.nodeType ?? plural.replace(/s$/, "");
+}
+
+function formatCount(count: number, singular: string): string {
+  return `${count} ${count === 1 ? singular : `${singular}s`}`;
+}
+
 function parseToolArgs(raw: string): Record<string, unknown> {
   try {
     const parsed = JSON.parse(raw);
@@ -629,6 +722,8 @@ async function applyToolCall(opts: {
 }): Promise<DocoChatOperation> {
   const { tool, args, input } = opts;
   switch (tool) {
+    case "get_status":
+      return getStatus(input, args);
     case "find_nodes":
       return findNodes(input, args);
     case "create_node":
@@ -640,6 +735,64 @@ async function applyToolCall(opts: {
     default:
       return { tool, description: `Unknown tool: ${tool}`, applied: false, error: "Unknown tool." };
   }
+}
+
+async function getStatus(
+  input: RunDocoChatTurnInput,
+  args: Record<string, unknown>,
+): Promise<DocoChatOperation> {
+  const rawTarget = typeof args.node_type === "string" ? args.node_type : "nodes";
+  const target = COUNT_TARGETS.get(rawTarget.toLowerCase()) ?? "nodes";
+  const counts = await loadDocoCounts(input.docoId);
+  if (target === "edges") {
+    return {
+      tool: "get_status",
+      description: `This Doco has ${formatCount(counts.edges, "edge")}.`,
+      applied: true,
+    };
+  }
+  if (target !== "nodes") {
+    return {
+      tool: "get_status",
+      description: `This Doco has ${formatCount(counts.byType[target] ?? 0, singularLabel(target))}.`,
+      applied: true,
+    };
+  }
+  const byType = COUNT_TABLES.map(({ key }) => `${key}: ${counts.byType[key] ?? 0}`).join(", ");
+  return {
+    tool: "get_status",
+    description: `This Doco has ${formatCount(counts.nodes, "node")} and ${formatCount(counts.edges, "edge")}. By type: ${byType}.`,
+    applied: true,
+  };
+}
+
+async function loadDocoCounts(docoId: string): Promise<{
+  nodes: number;
+  edges: number;
+  byType: Record<string, number>;
+}> {
+  return withClient(async (c) => {
+    const byType: Record<string, number> = {};
+    const countResults = await Promise.all(
+      COUNT_TABLES.map(async ({ key, table }) => {
+        const result = await c.query<{ n: string }>(
+          `SELECT COUNT(*)::text AS n FROM ${table} WHERE doco_id = $1`,
+          [docoId],
+        );
+        return [key, Number(result.rows[0]?.n ?? 0)] as const;
+      }),
+    );
+    for (const [key, n] of countResults) byType[key] = n;
+    const edgesResult = await c.query<{ n: string }>(
+      "SELECT COUNT(*)::text AS n FROM edges WHERE doco_id = $1",
+      [docoId],
+    );
+    return {
+      nodes: Object.values(byType).reduce((sum, n) => sum + n, 0),
+      edges: Number(edgesResult.rows[0]?.n ?? 0),
+      byType,
+    };
+  });
 }
 
 async function findNodes(
