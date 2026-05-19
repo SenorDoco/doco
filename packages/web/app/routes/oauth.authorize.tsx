@@ -46,12 +46,12 @@ export async function loader({ request }: { request: Request }) {
   const url = new URL(request.url);
   const params = readParams(url);
   const paramError = validateParams(params);
-  if (paramError) return errorResponse(paramError, 400);
+  if (paramError) throw errorResponse(paramError, 400);
 
   const client = await getClient(params.client_id);
-  if (!client) return errorResponse("invalid_client: unknown client_id", 400);
+  if (!client) throw errorResponse("invalid_client: unknown client_id", 400);
   if (!client.redirect_uris.includes(params.redirect_uri)) {
-    return errorResponse("invalid_redirect_uri: not registered for this client", 400);
+    throw errorResponse("invalid_redirect_uri: not registered for this client", 400);
   }
 
   const principal = await getCurrentPrincipal(request);
@@ -60,7 +60,7 @@ export async function loader({ request }: { request: Request }) {
     // the current authorize URL (with all PKCE params intact) in the
     // `return` cookie so the callback brings the user back here.
     const returnPath = `${url.pathname}${url.search}`;
-    return redirect(`/auth/github?return=${encodeURIComponent(returnPath)}`);
+    throw redirect(`/auth/github?return=${encodeURIComponent(returnPath)}`);
   }
 
   const docoIds = await listDocoIdsForUserPrincipal(principal.id);
@@ -78,22 +78,22 @@ export async function loader({ request }: { request: Request }) {
     params,
     docos,
   };
-  return Response.json(data);
+  return data;
 }
 
 export async function action({ request }: { request: Request }) {
   const url = new URL(request.url);
   const params = readParams(url);
   const paramError = validateParams(params);
-  if (paramError) return errorResponse(paramError, 400);
+  if (paramError) throw errorResponse(paramError, 400);
 
   const principal = await getCurrentPrincipal(request);
-  if (!principal) return errorResponse("user not signed in", 401);
+  if (!principal) throw errorResponse("user not signed in", 401);
 
   const client = await getClient(params.client_id);
-  if (!client) return errorResponse("invalid_client", 400);
+  if (!client) throw errorResponse("invalid_client", 400);
   if (!client.redirect_uris.includes(params.redirect_uri)) {
-    return errorResponse("invalid_redirect_uri", 400);
+    throw errorResponse("invalid_redirect_uri", 400);
   }
 
   const form = await request.formData();
@@ -103,13 +103,13 @@ export async function action({ request }: { request: Request }) {
 
   const selected = form.getAll("doco_id").map((v) => String(v));
   if (selected.length === 0) {
-    return errorResponse("at least one Doco must be selected", 400);
+    throw errorResponse("at least one Doco must be selected", 400);
   }
   // Verify every selected doco_id is actually in the user's grant set
   // (defense against form tampering).
   const allowed = new Set(await listDocoIdsForUserPrincipal(principal.id));
   for (const id of selected) {
-    if (!allowed.has(id)) return errorResponse(`not authorized for ${id}`, 403);
+    if (!allowed.has(id)) throw errorResponse(`not authorized for ${id}`, 403);
   }
 
   const { code } = await issueAuthorizationCode({
