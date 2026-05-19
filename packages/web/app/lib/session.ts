@@ -2,7 +2,6 @@
 // (rule_01KRKQDHWNWJAF4YKTMCB2A0D9 — alpha forbids back-compat).
 
 import { getPrincipalById, getPrincipalByUsername } from "@doco/db";
-import { rootDir } from "./db.server";
 
 const COOKIE_NAME = "doco_session";
 
@@ -96,13 +95,13 @@ export async function getCurrentPrincipal(request: Request): Promise<CurrentPrin
  * mechanisms — in priority order:
  *
  *   1. `doco_session` cookie (browser users).
- *   2. URL path: `/agent/<credential>/...` — older access URLs put the
- *      credential in the path.
- *   3. `?_a=<credential>` query parameter — used internally by the
- *      `/agent/<credential>/*` 308 redirect so the credential survives
- *      to the destination route without going back into the path.
- *   4. `Authorization: Bearer <credential>` header — the current
- *      DOCO_ACCESS transport.
+ *   2. `Authorization: Bearer <oauth-access-token>` header — OAuth 2.1
+ *      tokens issued via /oauth/token (decision_01KS14CW9ZN23FF5CGG0Z7TH4G).
+ *
+ * Legacy 64-hex DOCO_ACCESS bearers, the /agent/<cred>/* URL path,
+ * and the ?_a=<cred> query parameter are all removed — the v12
+ * cutover migration invalidates any historical credentials, and
+ * runtimes get a 401 + WWW-Authenticate that kicks off the OAuth flow.
  */
 export async function getCurrentPrincipalAsync(request: Request): Promise<CurrentPrincipal | null> {
   const cookieId = getSessionPrincipalId(request);
@@ -110,41 +109,37 @@ export async function getCurrentPrincipalAsync(request: Request): Promise<Curren
     const fromCookie = await findPrincipalById(cookieId);
     if (fromCookie) return fromCookie;
   }
-  const credential = extractCredential(request);
+  const credential = extractBearer(request);
   if (credential) {
-    const { TokenStore } = await import("./agent-token-store.server");
-    const store = TokenStore.forDoco(rootDir());
-    const session = await store.resolve(credential);
-    if (session?.principal_id) {
-      const p = await findPrincipalById(session.principal_id);
+    const { validateAccessToken } = await import("./oauth-server.server");
+    const token = await validateAccessToken(credential);
+    if (token?.principal_id) {
+      const p = await findPrincipalById(token.principal_id);
       if (p) return p;
     }
   }
   return null;
 }
 
-const CREDENTIAL_HEX_RE = /^[0-9a-f]{64}$/;
-const AGENT_PATH_RE = /^\/agent\/([0-9a-f]{64})(?:\/|$)/;
+/**
+ * Extract whatever's in the `Authorization: Bearer …` header. The
+ * value is opaque at this layer — OAuth token validation runs in
+ * `validateAccessToken`. Returns null when the header is missing or
+ * malformed.
+ */
+export function extractBearer(request: Request): string | null {
+  const auth = request.headers.get("authorization");
+  if (!auth) return null;
+  const m = /^Bearer\s+(.+)$/i.exec(auth);
+  const t = m ? (m[1] ?? "").trim() : "";
+  return t || null;
+}
 
 /**
- * Extract the agent credential from a request. Order:
- *   1. URL path `/agent/<credential>/...`
- *   2. `?_a=<credential>` query param
- *   3. `Authorization: Bearer <credential>` header
- * Returns null if no credential is present or the candidate isn't a
- * well-formed 64-char hex string.
+ * Back-compat alias kept while older callers still reference this
+ * name. The wire format is now opaque OAuth tokens; the 64-hex
+ * shape + URL-path / query-param fallbacks are gone.
  */
 export function extractCredential(request: Request): string | null {
-  const url = new URL(request.url);
-  const pathMatch = AGENT_PATH_RE.exec(url.pathname);
-  if (pathMatch?.[1]) return pathMatch[1];
-  const qa = url.searchParams.get("_a");
-  if (qa && CREDENTIAL_HEX_RE.test(qa)) return qa;
-  const auth = request.headers.get("authorization");
-  if (auth) {
-    const m = /^Bearer\s+(.+)$/i.exec(auth);
-    const t = m ? (m[1] ?? "").trim() : "";
-    if (t && CREDENTIAL_HEX_RE.test(t)) return t;
-  }
-  return null;
+  return extractBearer(request);
 }

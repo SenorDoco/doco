@@ -16,9 +16,10 @@ import {
   roleAtLeast,
 } from "@doco/db";
 import { docoPath } from "./db.server";
+import { validateAccessToken } from "./oauth-server.server";
 import { resolvePrincipalUsernameAlias } from "./principal-aliases.server";
 import { type DocoMetadata, readDocoMetadata } from "./scope-helpers.server";
-import { type CurrentPrincipal, getCurrentPrincipalAsync } from "./session";
+import { type CurrentPrincipal, extractBearer, getCurrentPrincipalAsync } from "./session";
 
 /**
  * Doco-level role for this principal — max of (direct owner_id match,
@@ -371,6 +372,13 @@ export async function loadDocoForRead(
   if (!(await canAccessDoco(meta, me?.id ?? null))) {
     throw accessDeniedResponse(row.handle, row.owner_slug, !!me);
   }
+  // Token scope-down: if the caller authenticated via an OAuth access
+  // token, the token's granted_doco_ids must include this Doco. This is
+  // the per-request grant gate (separate from the role grant in
+  // doco_users): a user might have role-level access to multiple Docos
+  // but the runtime that holds this token only got user approval for a
+  // subset.
+  await enforceOauthGrant(request, row.id);
   return {
     dir,
     meta,
@@ -380,6 +388,28 @@ export async function loadDocoForRead(
     canonicalHandle: row.handle,
     redirected: ownerResolved.redirected,
   };
+}
+
+/**
+ * If the request is authenticated via an OAuth access token, the
+ * token's `granted_doco_ids` must include `docoId`. No-op for cookie
+ * sessions or anonymous reads on public docos. Throws a 403 response
+ * when the grant is missing.
+ */
+async function enforceOauthGrant(request: Request, docoId: string): Promise<void> {
+  const bearer = extractBearer(request);
+  if (!bearer) return;
+  const token = await validateAccessToken(bearer);
+  if (!token) return; // not an OAuth token → no scope-down to enforce
+  if (!token.granted_doco_ids.includes(docoId)) {
+    throw new Response(
+      JSON.stringify({
+        kind: "access_denied",
+        error: "OAuth token not authorized for this Doco. Re-authorize at /oauth/authorize.",
+      }),
+      { status: 403, headers: { "Content-Type": "application/json" } },
+    );
+  }
 }
 
 /**

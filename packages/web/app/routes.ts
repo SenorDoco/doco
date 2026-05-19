@@ -132,12 +132,13 @@ export default [
   // code flow is retired — that pattern fought every conservative
   // permission classifier and lost.
   route("api/v1/docos.json", "routes/api.v1.docos[.]json.tsx"),
-  // MCP server (Streamable HTTP transport). Once an agent runtime
-  // installs this URL as an MCP server, the agent gets native Doco
-  // tools (bootstrap, search, list_scopes, capture_decision) without
-  // raw curl. Auth: `Authorization: Bearer ${DOCO_ACCESS}` per
-  // transport spec. See route file header for protocol details.
-  route("mcp", "routes/mcp.tsx"),
+  // MCP server (Streamable HTTP transport). One MCP server per Doco —
+  // the runtime installs https://doco.to/mcp/<handle>. Auth is the
+  // OAuth 2.1 access token (decision_01KS14CW9ZN23FF5CGG0Z7TH4G).
+  // /mcp alone returns the help/discovery doc and a 400 to POSTs
+  // (it can't disambiguate which Doco the call belongs to).
+  route("mcp", "routes/mcp.tsx", { id: "mcp-help" }),
+  route("mcp/:handle", "routes/mcp.tsx", { id: "mcp" }),
   // Graceful trap for the retired browser-authorize / device-code
   // family. Stale-knowledge agents that still try /api/v1/agent-link/start
   // (or poll, or authorize) get a structured 410 with next_steps_for_agent

@@ -1,16 +1,21 @@
-// POST /mcp — Model Context Protocol (Streamable HTTP transport).
+// POST /mcp/:handle — Model Context Protocol (Streamable HTTP transport).
 //
-// The Doco MCP server. Once an agent runtime (Claude Code, Claude
-// Desktop, Cursor, etc.) installs this URL as an MCP server, the
-// agent gains native Doco tools that mirror the full HTTP API 1:1.
+// One MCP server per Doco. The runtime installs
+// `https://doco.to/mcp/<handle>` as an MCP server; the handle
+// disambiguates which Doco this connection serves. The OAuth access
+// token (validated via /oauth/token) gates whether `<handle>` is in
+// the user's granted_doco_ids — tokens scoped to other Docos cannot
+// reach this one.
 //
 // PARITY RULE (captured as a guidance Rule on #global): web, API, and
 // MCP must offer the same functionality. If the JSON API grows a new
 // endpoint, this connector grows a new tool in the same change.
 //
-// Authentication: the MCP client passes `Authorization: Bearer
-// ${DOCO_ACCESS}` per Streamable HTTP transport. The bearer resolves
-// to a Principal + bound Doco via the existing TokenStore.
+// Authentication: OAuth 2.1 access token in `Authorization: Bearer`,
+// minted via /oauth/token (decision_01KS14CW9ZN23FF5CGG0Z7TH4G).
+// Unauthenticated requests get 401 + WWW-Authenticate with a pointer
+// to the resource-metadata document — the MCP runtime treats that as
+// "kick off the OAuth dance."
 //
 // Architecture: every capture / patch / read tool is a thin
 // authenticated HTTPS proxy to the corresponding /<handle>/api/...
@@ -26,11 +31,10 @@
 //   - tools/list           — return tool registry
 //   - tools/call           — invoke tool by name + args
 
-import { getDocoById } from "@doco/db";
+import { getDocoByIdOrHandle } from "@doco/db";
 import type { EntityId } from "@doco/shared";
-import { rootDir } from "~/lib/db.server";
-import { extractCredential } from "~/lib/session";
-import { TokenStore } from "~/lib/tokens.server";
+import { validateAccessToken } from "~/lib/oauth-server.server";
+import { extractBearer } from "~/lib/session";
 
 // ---------------------------------------------------------------------------
 // JSON-RPC 2.0 plumbing.
@@ -76,21 +80,42 @@ interface ResolvedSession {
   origin: string;
 }
 
-async function resolveSession(request: Request): Promise<ResolvedSession | null> {
-  const credential = extractCredential(request);
-  if (!credential) return null;
-  const session = await TokenStore.forDoco(rootDir()).resolve(credential);
-  if (!session || !session.bound_doco_id) return null;
-  const doco = await getDocoById(session.bound_doco_id);
-  if (!doco) return null;
+type ResolveResult =
+  | { kind: "ok"; session: ResolvedSession }
+  | { kind: "unauthenticated" }
+  | { kind: "forbidden"; reason: string };
+
+async function resolveSession(request: Request, handle: string): Promise<ResolveResult> {
+  const credential = extractBearer(request);
+  if (!credential) return { kind: "unauthenticated" };
+  const token = await validateAccessToken(credential);
+  if (!token) return { kind: "unauthenticated" };
+  const doco = await getDocoByIdOrHandle(handle);
+  if (!doco) return { kind: "forbidden", reason: `Doco "${handle}" not found.` };
+  if (!token.granted_doco_ids.includes(doco.id)) {
+    return {
+      kind: "forbidden",
+      reason: `Token not authorized for Doco "${handle}". Re-authorize at /oauth/authorize to include this Doco in the grant.`,
+    };
+  }
   const url = new URL(request.url);
   return {
-    agentId: session.principal_id as EntityId<"principal">,
-    docoId: doco.id as EntityId<"doco">,
-    docoHandle: doco.handle,
-    rawCredential: credential,
-    origin: `${url.protocol}//${url.host}`,
+    kind: "ok",
+    session: {
+      agentId: token.principal_id as EntityId<"principal">,
+      docoId: doco.id as EntityId<"doco">,
+      docoHandle: doco.handle,
+      rawCredential: credential,
+      origin: `${url.protocol}//${url.host}`,
+    },
   };
+}
+
+function wwwAuthenticateHeader(request: Request, error?: string): string {
+  const url = new URL(request.url);
+  const resourceMetadata = `${url.protocol}//${url.host}/.well-known/oauth-protected-resource`;
+  const errorPart = error ? `, error="${error}"` : "";
+  return `Bearer realm="doco", resource_metadata="${resourceMetadata}"${errorPart}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -639,9 +664,22 @@ function asContent(value: unknown): { content: { type: string; text: string }[] 
 // Route entry points.
 // ---------------------------------------------------------------------------
 
-export async function action({ request }: { request: Request }) {
+export async function action({
+  request,
+  params: routeParams,
+}: {
+  request: Request;
+  params: { handle?: string };
+}) {
   if (request.method !== "POST") {
     return rpcErr(null, INVALID_REQUEST, "MCP transport requires POST");
+  }
+  const handle = routeParams.handle ?? "";
+  if (!handle) {
+    return new Response(
+      "Per-Doco MCP URL required. Use https://doco.to/mcp/<your-doco-handle>.",
+      { status: 400, headers: { "Content-Type": "text/plain; charset=utf-8" } },
+    );
   }
 
   let payload: JsonRpcRequest;
@@ -683,13 +721,29 @@ export async function action({ request }: { request: Request }) {
         });
       }
       case "tools/call": {
-        const session = await resolveSession(request);
-        if (!session) {
-          return rpcErr(
-            id,
-            MCP_AUTH_REQUIRED,
-            "Authorization required. Send `Authorization: Bearer ${DOCO_ACCESS}` per Streamable HTTP transport.",
+        const resolved = await resolveSession(request, handle);
+        if (resolved.kind === "unauthenticated") {
+          return new Response(
+            JSON.stringify({
+              jsonrpc: "2.0",
+              id,
+              error: {
+                code: MCP_AUTH_REQUIRED,
+                message:
+                  "Authorization required. Acquire an OAuth access token via /oauth/authorize and send `Authorization: Bearer <token>`. See WWW-Authenticate header for discovery.",
+              },
+            }),
+            {
+              status: 401,
+              headers: {
+                "Content-Type": "application/json",
+                "WWW-Authenticate": wwwAuthenticateHeader(request, "invalid_token"),
+              },
+            },
           );
+        }
+        if (resolved.kind === "forbidden") {
+          return rpcErr(id, MCP_AUTH_REQUIRED, resolved.reason);
         }
         const toolName = typeof params.name === "string" ? params.name : "";
         const toolArgs = (params.arguments ?? {}) as Record<string, unknown>;
@@ -697,7 +751,7 @@ export async function action({ request }: { request: Request }) {
           return rpcErr(id, INVALID_REQUEST, "tools/call requires `name`");
         }
         try {
-          const result = await callTool(session, toolName, toolArgs);
+          const result = await callTool(resolved.session, toolName, toolArgs);
           return rpcOk(id, asContent(result));
         } catch (e) {
           return rpcErr(id, MCP_TOOL_FAILED, `${toolName} failed: ${(e as Error).message}`);
@@ -711,19 +765,37 @@ export async function action({ request }: { request: Request }) {
   }
 }
 
-export function loader() {
+export function loader({
+  request,
+  params,
+}: {
+  request: Request;
+  params: { handle?: string };
+}) {
+  const url = new URL(request.url);
+  const issuer = `${url.protocol}//${url.host}`;
   return Response.json(
     {
       name: "doco",
-      version: "0.2.0",
+      version: "0.3.0",
       transport: "streamable-http",
       protocol_versions_supported: ["2024-11-05"],
-      auth: "Bearer ${DOCO_ACCESS} (header)",
+      handle: params.handle ?? null,
+      auth: {
+        type: "oauth2.1",
+        authorization_server_metadata: `${issuer}/.well-known/oauth-authorization-server`,
+        protected_resource_metadata: `${issuer}/.well-known/oauth-protected-resource`,
+      },
       tools_exposed: TOOLS.map((t) => t.name),
       parity_rule:
         "MCP tools track the JSON API 1:1. New API endpoints get a new tool in the same change. Captured as a guidance rule on #global.",
       hint: "POST JSON-RPC 2.0 to this URL. See https://modelcontextprotocol.io/specification/draft/basic/transports#streamable-http",
     },
-    { headers: { "Content-Type": "application/json" } },
+    {
+      headers: {
+        "Content-Type": "application/json",
+        "WWW-Authenticate": wwwAuthenticateHeader(request),
+      },
+    },
   );
 }
