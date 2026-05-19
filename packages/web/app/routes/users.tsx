@@ -13,7 +13,6 @@ import {
   listDocoIdsForUserPrincipal,
   listDocoUsers,
   listOrganizationsForPrincipal,
-  listPrincipals,
   listScopeIdsForUserPrincipal,
   listScopeUsers,
   removeDocoUser,
@@ -63,14 +62,6 @@ interface ScopeSection {
   doco: { id: string; handle: string };
   myDocoRole: DocoRole | null;
   users: (UserCell & { role: DocoRole })[];
-}
-
-interface AgentRow {
-  id: string;
-  username: string;
-  model: string;
-  provider: string;
-  created_at: string;
 }
 
 async function enrichPrincipal(id: string): Promise<UserCell> {
@@ -194,28 +185,6 @@ export async function loader({ request }: { request: Request }) {
     });
   }
 
-  // ── Agents this principal owns (replaces the old /agents page) ────
-  const principalRows = await listPrincipals({ type: "agent" });
-  const myAgents: AgentRow[] = [];
-  for (const r of principalRows) {
-    let fm: Record<string, unknown> = {};
-    try {
-      fm = JSON.parse(r.raw_yaml) as Record<string, unknown>;
-    } catch {
-      /* skip unparseable */
-    }
-    if (fm.owner_id !== me.id) continue;
-    const m = (fm.agent_metadata ?? {}) as { model?: string; provider?: string };
-    myAgents.push({
-      id: r.id,
-      username: r.username,
-      model: m.model ?? "—",
-      provider: m.provider ?? "—",
-      created_at: typeof fm.created_at === "string" ? fm.created_at : "",
-    });
-  }
-  myAgents.sort((a, b) => b.created_at.localeCompare(a.created_at));
-
   // ── Invite-target options: where can THIS user mint invites? ──────
   const inviteOrgs = orgSections
     .filter((s) => s.myRole === "owner")
@@ -254,7 +223,6 @@ export async function loader({ request }: { request: Request }) {
     orgSections,
     docoSections,
     scopeSections,
-    myAgents,
     invite: {
       orgs: inviteOrgs,
       docos: inviteDocos,
@@ -457,7 +425,6 @@ interface UsersLoaderData {
   orgSections: OrgSection[];
   docoSections: DocoSection[];
   scopeSections: ScopeSection[];
-  myAgents: AgentRow[];
   invite: {
     orgs: { id: string; label: string }[];
     docos: { id: string; label: string }[];
@@ -529,60 +496,8 @@ export default function UsersPage({
           )}
         />
 
-        <AgentsSection agents={loaderData.myAgents} />
       </SingleColumnPageMain>
     </div>
-  );
-}
-
-function AgentsSection({ agents }: { agents: AgentRow[] }) {
-  return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <CardTitle>Your agents</CardTitle>
-          <Link
-            to="/agents/new"
-            className="rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90"
-          >
-            + New agent
-          </Link>
-        </div>
-      </CardHeader>
-      <CardContent>
-        {agents.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            You don't own any agents yet. Agents you create or that authorize sessions on your
-            behalf appear here.
-          </p>
-        ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left text-xs uppercase tracking-wide text-muted-foreground">
-                <th className="pb-2 font-medium">Agent</th>
-                <th className="pb-2 font-medium">Model</th>
-                <th className="pb-2 font-medium">Provider</th>
-                <th className="pb-2 font-medium">Created</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {agents.map((a) => (
-                <tr key={a.id} data-testid={`agent-row-${a.username}`}>
-                  <td className="py-2 align-middle">
-                    <div className="font-medium">{a.username}</div>
-                  </td>
-                  <td className="py-2 align-middle font-mono text-xs">{a.model}</td>
-                  <td className="py-2 align-middle font-mono text-xs">{a.provider}</td>
-                  <td className="py-2 align-middle text-xs text-muted-foreground">
-                    {a.created_at ? new Date(a.created_at).toLocaleString() : "—"}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </CardContent>
-    </Card>
   );
 }
 
