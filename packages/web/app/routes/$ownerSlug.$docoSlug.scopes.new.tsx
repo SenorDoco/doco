@@ -47,10 +47,11 @@ export async function loader({
   const parentParam = url.searchParams.get("parent");
   const prefilledParent = parentParam ? (scopes.find((s) => s.id === parentParam) ?? null) : null;
   // Clicking "Add" on a template card navigates here with `?template=<name>`.
-  // We then render a dedicated confirmation screen (explains watched vs
-  // not watched, asks for the choice) instead of the picker grid — the
-  // question is too important to ask inline on a cramped card.
-  const pickedTemplateName = url.searchParams.get("template");
+  // Outside onboarding, we render a dedicated confirmation screen
+  // (explains watched vs not watched, asks for the choice) instead of
+  // the picker grid. During onboarding, scope templates are selected in
+  // bulk and created as watched without a per-scope confirmation.
+  const pickedTemplateName = isOnboarding ? null : url.searchParams.get("template");
   let pickedTemplate: { name: string; icon: string; label: string; summary: string } | null = null;
   if (pickedTemplateName) {
     const t = findScopeTemplate(pickedTemplateName);
@@ -102,76 +103,110 @@ export async function action({
   const isOnboarding = url.searchParams.get("onboarding") === "1";
   const afterAdd = `/${handle}/scopes${isOnboarding ? "?onboarding=1" : ""}`;
 
-  // Per ADR-137bis every scope-creation call must declare whether this
-  // scope is "watched" (a soft attention signal — contributors scan
-  // against it at capture time) or not. The form sends `watched=true`
-  // or `watched=false`; we reject anything else.
-  const watchedRaw = String(form.get("watched") ?? "");
-  if (watchedRaw !== "true" && watchedRaw !== "false") {
-    return {
-      error:
-        "Choose whether this scope is watched (contributors should proactively look for opportunities to document into it) or not — no default per ADR-137bis.",
-    };
-  }
-  const watched = watchedRaw === "true";
+  const installTemplateScope = async ({
+    tplName,
+    watched,
+  }: {
+    tplName: string;
+    watched: boolean;
+  }) => {
+    const tpl = findScopeTemplate(tplName);
+    if (!tpl) return { error: `Unknown template: ${tplName}` };
+    const existing = await listScopeDetails(dir);
+    const existingScope = existing.find((s) => s.name === tpl.name);
+    if (existingScope && isLiveScopeLifecycle(existingScope.lifecycle)) {
+      return { ok: true };
+    }
+    if (existingScope) {
+      if (existingScope.lifecycle !== "abandoned") {
+        return {
+          error: `Scope "${tpl.name}" already exists with lifecycle "${existingScope.lifecycle}". Resolve it from the scope page before adding this template again.`,
+        };
+      }
+      const scopeId = existingScope.id as EntityId<"scope">;
+      await updateScopeInDoco({
+        docoDir: dir,
+        scopeId,
+        lifecycle: "active",
+        icon: tpl.icon,
+      });
+      await setScopeWatchedInDoco({
+        docoDir: dir,
+        targetScopeId: scopeId,
+        watched,
+      });
+      await applyScopeTemplateUpdatesToDoco({
+        docoDir: dir,
+        docoId: docoId as EntityId<"doco">,
+        createdBy,
+      });
+      return { ok: true };
+    }
+
+    const newId = await createScopeInDoco({
+      docoDir: dir,
+      docoId: docoId as EntityId<"doco">,
+      name: tpl.name,
+      icon: tpl.icon,
+      watched,
+      summary: tpl.summary,
+      ...(tpl.allowed_node_types && tpl.allowed_node_types.length > 0
+        ? { allowed_node_types: tpl.allowed_node_types }
+        : {}),
+      createdBy,
+    });
+    // Templates ship `summary` + `rules[]` (and optionally
+    // `allowed_node_types`). The description text and node-type
+    // restriction are already written onto the Scope row by
+    // createScopeInDoco; seedScopeFromTemplate only adds the rules.
+    await seedScopeFromTemplate({
+      docoDir: dir,
+      docoId: docoId as EntityId<"doco">,
+      scopeId: newId,
+      template: tpl,
+      createdBy,
+    });
+    return { ok: true };
+  };
 
   try {
+    if (intent === "add-onboarding-templates") {
+      if (!isOnboarding) {
+        return { error: `Unknown intent: ${intent}` };
+      }
+      const selectedTemplates = [...new Set(form.getAll("template_names").map(String))]
+        .map((name) => name.trim())
+        .filter(Boolean);
+      if (selectedTemplates.length === 0) {
+        return { error: "Pick at least one scope to add." };
+      }
+      for (const tplName of selectedTemplates) {
+        const result = await installTemplateScope({ tplName, watched: true });
+        if ("error" in result) return result;
+      }
+      await reindex(dir);
+      return redirect(`/${handle}/onboarding/agent`);
+    }
+
+    // Per ADR-137bis every non-onboarding scope-creation call must
+    // declare whether this scope is "watched" (a soft attention signal
+    // — contributors scan against it at capture time) or not. The form
+    // sends `watched=true` or `watched=false`; we reject anything else.
+    const watchedRaw = String(form.get("watched") ?? "");
+    if (watchedRaw !== "true" && watchedRaw !== "false") {
+      return {
+        error:
+          "Choose whether this scope is watched (contributors should proactively look for opportunities to document into it) or not — no default per ADR-137bis.",
+      };
+    }
+    const watched = watchedRaw === "true";
+
     if (intent === "add-template") {
       const tplName = String(form.get("template_name") ?? "").trim();
-      const tpl = findScopeTemplate(tplName);
-      if (!tpl) return { error: `Unknown template: ${tplName}` };
-      const existing = await listScopeDetails(dir);
-      const existingScope = existing.find((s) => s.name === tpl.name);
-      if (existingScope && isLiveScopeLifecycle(existingScope.lifecycle)) {
+      const result = await installTemplateScope({ tplName, watched });
+      if ("error" in result) return result;
+      if (result.ok) {
         return redirect(afterAdd);
-      }
-      if (existingScope) {
-        if (existingScope.lifecycle !== "abandoned") {
-          return {
-            error: `Scope "${tpl.name}" already exists with lifecycle "${existingScope.lifecycle}". Resolve it from the scope page before adding this template again.`,
-          };
-        }
-        const scopeId = existingScope.id as EntityId<"scope">;
-        await updateScopeInDoco({
-          docoDir: dir,
-          scopeId,
-          lifecycle: "active",
-          icon: tpl.icon,
-        });
-        await setScopeWatchedInDoco({
-          docoDir: dir,
-          targetScopeId: scopeId,
-          watched,
-        });
-        await applyScopeTemplateUpdatesToDoco({
-          docoDir: dir,
-          docoId: docoId as EntityId<"doco">,
-          createdBy,
-        });
-      } else {
-        const newId = await createScopeInDoco({
-          docoDir: dir,
-          docoId: docoId as EntityId<"doco">,
-          name: tpl.name,
-          icon: tpl.icon,
-          watched,
-          summary: tpl.summary,
-          ...(tpl.allowed_node_types && tpl.allowed_node_types.length > 0
-            ? { allowed_node_types: tpl.allowed_node_types }
-            : {}),
-          createdBy,
-        });
-        // Templates ship `summary` + `rules[]` (and optionally
-        // `allowed_node_types`). The description text and node-type
-        // restriction are already written onto the Scope row by
-        // createScopeInDoco; seedScopeFromTemplate only adds the rules.
-        await seedScopeFromTemplate({
-          docoDir: dir,
-          docoId: docoId as EntityId<"doco">,
-          scopeId: newId,
-          template: tpl,
-          createdBy,
-        });
       }
     } else if (intent === "add-custom") {
       // Tolerate forms that submit a bare name (`payments`) by
@@ -273,7 +308,78 @@ export default function AddScope({
           </div>
         ) : null}
 
-        {pickedTemplate ? (
+        {isOnboarding ? (
+          <Card>
+            <CardHeader>
+              <CardTitle>Choose scopes</CardTitle>
+              <CardDescription>
+                Select the scopes to create now. They&apos;ll be watched automatically.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {templates.length > 0 ? (
+                <Form method="post" className="space-y-4">
+                  <input type="hidden" name="intent" value="add-onboarding-templates" />
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    {templates.map((t) => (
+                      <label
+                        key={t.name}
+                        className="flex cursor-pointer items-start gap-3 rounded-md border border-border px-3 py-2 text-xs hover:bg-muted/40"
+                      >
+                        <input
+                          type="checkbox"
+                          name="template_names"
+                          value={t.name}
+                          className="mt-1 shrink-0"
+                        />
+                        {t.icon ? (
+                          <span className="shrink-0 text-lg leading-none" aria-hidden="true">
+                            {t.icon}
+                          </span>
+                        ) : null}
+                        <span className="min-w-0 flex-1">
+                          <span className="flex flex-wrap items-center gap-2">
+                            <span className="font-mono text-foreground">{t.name}</span>
+                            <span className="rounded-md border border-primary px-1.5 py-0.5 text-[10px] font-semibold text-primary">
+                              Watched
+                            </span>
+                          </span>
+                          <span className="mt-1 block text-muted-foreground">{t.summary}</span>
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <button
+                      type="submit"
+                      className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90"
+                    >
+                      Add selected scopes
+                    </button>
+                    <Link
+                      to={`/${handle}/onboarding/agent`}
+                      className="text-xs text-muted-foreground hover:text-foreground"
+                    >
+                      Skip for now
+                    </Link>
+                  </div>
+                </Form>
+              ) : (
+                <div className="space-y-3 text-xs">
+                  <p className="text-muted-foreground">
+                    All common scope templates are already added.
+                  </p>
+                  <Link
+                    to={`/${handle}/onboarding/agent`}
+                    className="inline-block rounded-md bg-primary px-3 py-1.5 font-semibold text-primary-foreground hover:opacity-90"
+                  >
+                    Continue
+                  </Link>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        ) : pickedTemplate ? (
           <Card>
             <CardHeader>
               <div className="flex items-start gap-3">
@@ -304,14 +410,6 @@ export default function AddScope({
                     nudges you to consider whether the work belongs here.{" "}
                     <strong>Not watched</strong> scopes are still available — they just don&apos;t
                     get the extra attention prompt. This is a soft signal, not enforcement.
-                    {isOnboarding ? (
-                      <>
-                        {" "}
-                        During onboarding <strong>Watched</strong> is pre-selected because
-                        you&apos;re picking these scopes on purpose. Flip it if you want this one to
-                        stay quiet.
-                      </>
-                    ) : null}
                   </p>
                   <div
                     className="flex flex-col gap-2"
@@ -324,7 +422,7 @@ export default function AddScope({
                         name="watched"
                         value="true"
                         required
-                        defaultChecked={isOnboarding}
+                        defaultChecked={false}
                         className="mt-0.5"
                       />
                       <span>
@@ -366,64 +464,6 @@ export default function AddScope({
           </Card>
         ) : (
           <>
-            {isOnboarding ? (
-              <Card>
-                <CardHeader>
-                  <CardTitle>Welcome — let&apos;s set up your first scopes</CardTitle>
-                  <CardDescription>
-                    Scopes are the topical neighborhoods this Doco will use. Every node belongs to
-                    one or more.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-3 text-xs">
-                  <div>
-                    <p className="mb-1 font-semibold text-foreground">What to add first</p>
-                    <p className="text-muted-foreground">
-                      A solid starter set is{" "}
-                      <code className="font-mono text-foreground">#adrs</code> (architectural
-                      choices), <code className="font-mono text-foreground">#user-flows</code>{" "}
-                      (end-to-end journeys), plus <strong>1–2 custom scopes</strong> named for{" "}
-                      <em>{displayName}</em>&apos;s actual subject areas (e.g.{" "}
-                      <code className="font-mono text-foreground">#payments</code>,{" "}
-                      <code className="font-mono text-foreground">#search</code>,{" "}
-                      <code className="font-mono text-foreground">#content-schema</code>
-                      ). More templates exist (<code className="font-mono">#apis</code>,{" "}
-                      <code className="font-mono">#bugs</code>,{" "}
-                      <code className="font-mono">#runbooks</code>,{" "}
-                      <code className="font-mono">#post-mortems</code>,{" "}
-                      <code className="font-mono">#glossary</code>,{" "}
-                      <code className="font-mono">#roadmap</code>) — add them when the need arises,
-                      not all at once.
-                    </p>
-                  </div>
-                  <div>
-                    <p className="mb-1 font-semibold text-foreground">
-                      What &ldquo;watched&rdquo; means
-                    </p>
-                    <p className="text-muted-foreground">
-                      Each scope carries a <strong>watched</strong> flag — a soft attention signal.
-                      Watched means: when you (or an agent) capture work later, this scope nudges
-                      you to consider whether the work belongs here. It&apos;s a prompt, not a rule
-                      — nothing blocks a capture that omits a watched scope.{" "}
-                      <strong>During onboarding the radio defaults to watched</strong> because
-                      you&apos;re picking these on purpose right now. You can flip any scope&apos;s
-                      watched value any time from the scope&apos;s edit page.
-                    </p>
-                  </div>
-                  <div>
-                    <p className="mb-1 font-semibold text-foreground">After this page</p>
-                    <p className="text-muted-foreground">
-                      Once you&apos;ve added 2–4 scopes, head back and{" "}
-                      <strong>capture at least one real node into each</strong> — an ADR you&apos;ve
-                      already decided, the most important user flow, the contract that&apos;s in
-                      your head but not in the repo. Empty scopes are documentation theater; the
-                      value is what&apos;s inside them.
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
-            ) : null}
-
             <Card>
               <CardHeader>
                 <CardTitle>Common templates</CardTitle>
@@ -523,7 +563,7 @@ export default function AddScope({
                           name="watched"
                           value="true"
                           required
-                          defaultChecked={isOnboarding}
+                          defaultChecked={false}
                         />
                         <span>
                           Watched — contributors should look for opportunities to document here
