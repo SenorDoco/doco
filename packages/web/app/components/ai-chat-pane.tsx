@@ -149,7 +149,7 @@ export function AiChatPane({ chatEndpoint, nodeTypeLabel }: AiChatPaneProps) {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className="flex h-full min-h-0 flex-col bg-accent/5">
       <header className="border-b border-border px-3 py-2">
         <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           AI chat
