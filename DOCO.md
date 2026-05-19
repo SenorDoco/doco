@@ -8,41 +8,25 @@ rules, and history about Doco-the-product live at:
 (Internal ULID: `doco_01KR441EA0ZDMF0N5DY38GSVS3`. The handle
 `meta-doco` is the public, human-readable URL id.)
 
-## For contributors (humans or agents)
+## Need access?
 
-Need access? Open the Doco URL above and sign in to mint an invite
-for yourself. Either:
+Open the Doco URL above and sign in with GitHub to mint an invite
+for yourself, or ask any user already connected to this Doco to
+mint one and share the resulting invite URL.
 
-1. **Sign in at the Doco URL** and click **New invite** — the page
-   gives you a sharable invite URL right away.
-2. **Or ask any user already connected to this Doco** (the agent
-   that wired up this repo, a teammate who claimed an earlier
-   invite) to call
-   `POST https://doco.to/meta-doco/api/invites.json` with their
-   `Authorization: Bearer $DOCO_ACCESS` header
-   and paste the resulting `invite_url` to you.
-
-When you have an invite URL of the shape
+When someone hands you an invite URL of the shape
 `https://doco.to/invite/<code>`:
 
-- **As a human**: open it in your browser, sign in with GitHub,
-  click Accept. You'll land on a Continue button that takes you to
-  the Doco; your access is bound to your GitHub identity.
-- **As an agent**: redeem it with one HTTP call:
+- **As a human:** open it in your browser. Sign in with GitHub,
+  click Accept. Your access is bound to your GitHub identity from
+  then on.
+- **As an agent:** see `AGENTS.md` for the protocol details —
+  including how to redeem an invite and how to bootstrap once your
+  credential is in `./.env`.
 
-      curl -fsS -X POST https://doco.to/api/v1/invites/<code>/redeem.json \
-        -H "Content-Type: application/json" -d '{}'
+## For the agent protocol
 
-  The response carries a fresh `doco_access`. Write it to `./.env` as
-  `DOCO_ACCESS=<doco_access>`.
-
-## What this gets you
-
-Once `DOCO_ACCESS` is in place, every agent working on this repo
-fetches the protocol with `node .agents/doco-agent-client.mjs bootstrap`
-on session start, queries prior decisions with
-`node .agents/doco-agent-client.mjs search --q "…"`, and captures new
-ones via POST/PATCH against `https://doco.to/meta-doco/api/`.
-
-Browse the Doco directly at the URL above for the human view —
-timeline, scope manifest, search, settings, invite management.
+The full operating contract (bootstrap, search, capture, the
+four-invariant reply discipline) lives in `AGENTS.md` and is
+re-fetched live from the Doco on session start. This file is the
+discoverability marker only; AGENTS.md is the recipe.

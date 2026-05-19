@@ -160,18 +160,50 @@ lines. Also ensure .env is in .gitignore:
 
     DOCO_ACCESS=<doco_access from step 1>
 
-Step 4 — write ./DOCO.md (committed, non-secret) verbatim:
+Step 4 — write ./DOCO.md (committed, non-secret) EXACTLY as below.
+
+DOCO.md is a discoverability marker — it tells anyone landing in the
+repo which Doco this project belongs to and how to get access. It is
+NOT a recipe. Do NOT paraphrase, do NOT add HTTP-fetch instructions,
+do NOT mention specific tooling like \`curl\`, the
+\`.agents/doco-agent-client.mjs\` helper, or the MCP connector.
+Mechanic-specific prose mis-routes future agents that don't have
+those tools installed (an MCP-installed agent reading "curl
+/api/v1/agent-bootstrap" in DOCO.md ignores its own tools; a plain-
+curl agent reading "use the MCP bootstrap tool" stalls). The protocol
+details live in AGENTS.md, not here.
+
+Write this content, with \`<doco_url>\` substituted:
 
     # Doco
 
-    This project is tracked in Doco. Decisions, intents, rules, and
-    history live at:
+    This project is tracked in Doco — AI-native documentation of
+    intents, decisions, rules, actions, and history. They live at:
 
     **<doco_url>**
 
-    Need access? Open the Doco URL above and sign in to mint an
-    invite for yourself — or ask any user already connected to
-    this Doco to mint one and share the resulting invite URL.
+    ## Need access?
+
+    Open the Doco URL above and sign in with GitHub to mint an
+    invite for yourself, or ask any user already connected to this
+    Doco to mint one and share the resulting invite URL.
+
+    When someone hands you an invite URL of the shape
+    \`https://doco.to/invite/<code>\`:
+
+    - **As a human:** open it in your browser. Sign in with GitHub,
+      click Accept. Your access is bound to your GitHub identity
+      from then on.
+    - **As an agent:** see \`AGENTS.md\` for the protocol details —
+      including how to redeem an invite and how to bootstrap once
+      your credential is in \`./.env\`.
+
+    ## For the agent protocol
+
+    The full operating contract (bootstrap, search, capture, the
+    four-invariant reply discipline) lives in \`AGENTS.md\` and is
+    re-fetched live from the Doco on session start. This file is the
+    discoverability marker only; AGENTS.md is the recipe.
 
 Step 5 — make agent surfaces auto-load DOCO.md.
 
