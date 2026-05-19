@@ -209,7 +209,6 @@ const NODE_STRIPE_WIDTH = 24;
  */
 const NODE_HEIGHT = 132;
 const NODE_MAX_SUMMARY_LINES = 8;
-const EXPANDED_NODE_SCREEN_MARGIN = 12;
 const NODE_GAP_X = 72;
 const LANE_HEIGHT = 160;
 const LANE_GAP = 28;
@@ -364,51 +363,9 @@ interface EntityNodeCardProps {
   lifecycle: string;
   accentColor: string;
   background: string;
-  getGraphBounds?: () => DOMRect | null;
-  viewportZoom: number;
-  onExpandedChange?: (id: string, expanded: boolean) => void;
-}
-
-interface ExpandedNodeBounds {
-  left: number;
-  top: number;
-  width: number;
-  height: number;
-}
-
-function expandedNodeBoundsFor(
-  cardRect: DOMRect,
-  graphRect: DOMRect,
-  viewportZoom: number,
-): ExpandedNodeBounds {
-  const zoom = Number.isFinite(viewportZoom) && viewportZoom > 0 ? viewportZoom : 1;
-  const availableLeft = Math.max(
-    0,
-    (cardRect.left - graphRect.left - EXPANDED_NODE_SCREEN_MARGIN) / zoom,
-  );
-  const availableRight = Math.max(
-    0,
-    (graphRect.right - cardRect.right - EXPANDED_NODE_SCREEN_MARGIN) / zoom,
-  );
-  const availableTop = Math.max(
-    0,
-    (cardRect.top - graphRect.top - EXPANDED_NODE_SCREEN_MARGIN) / zoom,
-  );
-  const availableBottom = Math.max(
-    0,
-    (graphRect.bottom - cardRect.bottom - EXPANDED_NODE_SCREEN_MARGIN) / zoom,
-  );
-
-  return {
-    left: -Math.round(availableLeft),
-    top: -Math.round(availableTop),
-    width: Math.round(NODE_WIDTH + availableLeft + availableRight),
-    height: Math.round(NODE_HEIGHT + availableTop + availableBottom),
-  };
 }
 
 function EntityNodeCard({
-  id,
   href,
   nodeType,
   title,
@@ -420,58 +377,25 @@ function EntityNodeCard({
   lifecycle,
   accentColor,
   background,
-  getGraphBounds,
-  viewportZoom,
-  onExpandedChange,
 }: EntityNodeCardProps) {
-  const [expanded, setExpanded] = useState(false);
-  const [expandedBounds, setExpandedBounds] = useState<ExpandedNodeBounds | null>(null);
-  const cardRef = useRef<HTMLAnchorElement>(null);
   const hasDistinctTitle = title !== summary;
-  const setCardExpanded = (next: boolean) => {
-    if (next) {
-      const cardRect = cardRef.current?.getBoundingClientRect();
-      const graphRect = getGraphBounds?.();
-      setExpandedBounds(
-        cardRect && graphRect ? expandedNodeBoundsFor(cardRect, graphRect, viewportZoom) : null,
-      );
-    } else {
-      setExpandedBounds(null);
-    }
-    setExpanded(next);
-    onExpandedChange?.(id, next);
+  const clampStyle = {
+    display: "-webkit-box",
+    WebkitLineClamp: NODE_MAX_SUMMARY_LINES,
+    WebkitBoxOrient: "vertical" as const,
   };
-  const boundedExpansion = expanded ? expandedBounds : null;
-  const clampStyle = expanded
-    ? undefined
-    : {
-        display: "-webkit-box",
-        WebkitLineClamp: NODE_MAX_SUMMARY_LINES,
-        WebkitBoxOrient: "vertical" as const,
-      };
 
   return (
     <Link
-      ref={cardRef}
       to={href}
       aria-label={`Open ${nodeType} ${title}`}
-      className={[
-        "nodrag nopan relative flex cursor-pointer flex-col gap-1 py-3 pl-4 pr-10 text-left text-inherit no-underline shadow-sm transition-[box-shadow,width,height,left,top] duration-150 hover:z-10 hover:shadow-md focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-        boundedExpansion ? "overflow-hidden" : "overflow-visible",
-      ].join(" ")}
+      className="nodrag nopan relative flex cursor-pointer flex-col gap-1 overflow-visible py-3 pl-4 pr-10 text-left text-inherit no-underline shadow-sm transition-shadow duration-150 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       data-entity-node-card={nodeType}
       draggable={false}
-      onBlur={() => setCardExpanded(false)}
       onClick={(event) => event.stopPropagation()}
-      onFocus={() => setCardExpanded(true)}
-      onMouseEnter={() => setCardExpanded(true)}
-      onMouseLeave={() => setCardExpanded(false)}
       style={{
-        left: boundedExpansion?.left,
-        top: boundedExpansion?.top,
-        width: boundedExpansion?.width ?? NODE_WIDTH,
-        height: boundedExpansion?.height,
-        minHeight: boundedExpansion?.height ?? NODE_HEIGHT,
+        width: NODE_WIDTH,
+        minHeight: NODE_HEIGHT,
         background,
         border: isCenter ? "2px solid var(--color-border)" : "1px solid var(--color-border)",
         borderRadius: 8,
@@ -528,16 +452,13 @@ function EntityNodeCard({
       ) : null}
       <div
         className={[
-          "relative z-10 text-left",
-          boundedExpansion ? "min-h-0 flex-1 overflow-auto pr-1" : "overflow-hidden",
+          "relative z-10 overflow-hidden text-left",
           hasDistinctTitle
             ? "text-[11px] leading-snug text-muted-foreground"
             : "font-mono text-sm font-semibold leading-snug text-foreground",
         ].join(" ")}
         data-entity-node-summary="true"
-        style={{
-          ...clampStyle,
-        }}
+        style={{ ...clampStyle }}
       >
         {summary}
       </div>
@@ -640,7 +561,6 @@ export function EntityGraph({
   const [Flow, setFlow] = useState<any>(null);
   const [viewport, setViewport] = useState<FlowViewport>({ x: 0, y: 0, zoom: 1 });
   const [graphHeight, setGraphHeight] = useState(0);
-  const [expandedNodeId, setExpandedNodeId] = useState<string | null>(null);
   const updateViewport = (next: FlowViewport) => {
     setViewport((prev) =>
       prev.x === next.x && prev.y === next.y && prev.zoom === next.zoom ? prev : next,
@@ -665,7 +585,6 @@ export function EntityGraph({
   // matches the panel radius. `d` is recomputed on every pan/zoom, so a
   // MutationObserver keeps the rounding applied.
   const graphRef = useRef<HTMLDivElement>(null);
-  const getGraphBounds = useCallback(() => graphRef.current?.getBoundingClientRect() ?? null, []);
   useEffect(() => {
     const el = graphRef.current;
     if (!el) return;
@@ -788,18 +707,10 @@ export function EntityGraph({
               lifecycle={lifecycle}
               accentColor={accentColor}
               background={bg}
-              getGraphBounds={getGraphBounds}
-              viewportZoom={viewport.zoom}
-              onExpandedChange={(id, expanded) =>
-                setExpandedNodeId((current) => {
-                  if (expanded) return id;
-                  return current === id ? null : current;
-                })
-              }
             />
           ),
         },
-        zIndex: expandedNodeId === n.id ? 10 : 2,
+        zIndex: 2,
         style: {
           background: "transparent",
           border: "none",
@@ -813,15 +724,7 @@ export function EntityGraph({
     });
 
     return [...laneNodes, ...entityNodes];
-  }, [
-    visible.nodes,
-    layout.lanes,
-    positions,
-    hrefFor,
-    expandedNodeId,
-    getGraphBounds,
-    viewport.zoom,
-  ]);
+  }, [visible.nodes, layout.lanes, positions, hrefFor]);
 
   const laneLabelRails = useMemo(() => {
     const height = graphHeight || 480;
