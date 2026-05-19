@@ -1098,9 +1098,9 @@ function ScopeDescriptionCard({
               onClick={() => setEditing(true)}
               aria-label="Edit description"
               title="Edit description"
-              className="shrink-0 rounded-md border border-border p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+              className="flex h-6 w-6 shrink-0 items-center justify-center rounded-[6px] border border-border text-muted-foreground hover:bg-muted hover:text-foreground"
             >
-              <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
+              <Pencil className="h-3 w-3" aria-hidden="true" />
             </button>
           </div>
         )}
