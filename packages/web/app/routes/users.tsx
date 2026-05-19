@@ -31,6 +31,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
 import { SingleColumnPageMain } from "~/components/page-main";
 import { SiteHeader } from "~/components/site-header";
 import { rootDir } from "~/lib/db.server";
+import { getDocoLevelRole } from "~/lib/doco-access.server";
 import { getCurrentPrincipal } from "~/lib/session";
 import { TokenStore } from "~/lib/tokens.server";
 
@@ -67,7 +68,6 @@ interface ScopeSection {
 interface AgentRow {
   id: string;
   username: string;
-  display_name: string | null;
   model: string;
   provider: string;
   created_at: string;
@@ -111,10 +111,30 @@ export async function loader({ request }: { request: Request }) {
     });
   }
 
-  // ── Docos the signed-in user has a doco_users grant on ────────────
-  const myDocoIds = await listDocoIdsForUserPrincipal(me.id);
+  // ── Docos the signed-in user has any access to ───────────────────
+  // Union of three sources: direct owner_id match, owning org I belong
+  // to, and explicit doco_users row. The /users invite picker needs the
+  // direct-owner path so freshly-created docos show up before any
+  // doco_users row exists.
+  const accessibleDocoIds = new Set<string>();
+  const directDocos = await withClient((c) =>
+    c.query<{ id: string }>(`SELECT id FROM docos WHERE owner_id = $1`, [me.id]),
+  );
+  directDocos.rows.forEach((r) => accessibleDocoIds.add(String(r.id)));
+  const orgDocos = await withClient((c) =>
+    c.query<{ id: string }>(
+      `SELECT id FROM docos WHERE owner_id IN (
+         SELECT org_id FROM org_users WHERE principal_id = $1
+       )`,
+      [me.id],
+    ),
+  );
+  orgDocos.rows.forEach((r) => accessibleDocoIds.add(String(r.id)));
+  const myDocoUsersIds = await listDocoIdsForUserPrincipal(me.id);
+  myDocoUsersIds.forEach((id) => accessibleDocoIds.add(id));
+
   const docoSections: DocoSection[] = [];
-  for (const docoId of myDocoIds) {
+  for (const docoId of accessibleDocoIds) {
     const doco = await getDocoById(docoId);
     if (!doco) continue;
     const users = await listDocoUsers(docoId);
@@ -124,13 +144,17 @@ export async function loader({ request }: { request: Request }) {
         role: u.role,
       })),
     );
-    const myRow = users.find((u) => u.principal_id === me.id);
+    // Effective doco-level role (covers direct owner, org chain, doco_users).
+    const myRole =
+      (await getDocoLevelRole({ ownerId: doco.owner_id, docoId: doco.id }, me.id)) ??
+      "reader";
     docoSections.push({
       doco: { id: doco.id, handle: doco.handle },
-      myRole: myRow?.role ?? "reader",
+      myRole,
       users: enriched,
     });
   }
+  docoSections.sort((a, b) => a.doco.handle.localeCompare(b.doco.handle));
 
   // ── Scopes the signed-in user has a scope_users grant on ──────────
   const myScopeIds = await listScopeIdsForUserPrincipal(me.id);
@@ -185,7 +209,6 @@ export async function loader({ request }: { request: Request }) {
     myAgents.push({
       id: r.id,
       username: r.username,
-      display_name: typeof fm.display_name === "string" ? fm.display_name : null,
       model: m.model ?? "—",
       provider: m.provider ?? "—",
       created_at: typeof fm.created_at === "string" ? fm.created_at : "",
@@ -554,9 +577,6 @@ function AgentsSection({ agents }: { agents: AgentRow[] }) {
                 <tr key={a.id} data-testid={`agent-row-${a.username}`}>
                   <td className="py-2 align-middle">
                     <div className="font-medium">{a.username}</div>
-                    {a.display_name ? (
-                      <div className="text-xs text-muted-foreground">{a.display_name}</div>
-                    ) : null}
                   </td>
                   <td className="py-2 align-middle font-mono text-xs">{a.model}</td>
                   <td className="py-2 align-middle font-mono text-xs">{a.provider}</td>
