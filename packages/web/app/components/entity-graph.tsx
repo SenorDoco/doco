@@ -10,7 +10,7 @@
 // react-flow is loaded via dynamic import — it touches the DOM directly,
 // can't run during SSR.
 import dagre from "@dagrejs/dagre";
-import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react";
+import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { NodeTypeIcon } from "~/components/node-type-icon";
 import { lifecycleColor } from "~/lib/node-colors";
@@ -194,6 +194,7 @@ function relativeTime(iso: string | null): string {
  */
 const NODE_WIDTH = 340;
 const NODE_HEIGHT = 154;
+const EXPANDED_NODE_SCREEN_MARGIN = 12;
 const NODE_GAP_X = 72;
 const LANE_HEIGHT = 208;
 const LANE_GAP = 28;
@@ -348,7 +349,47 @@ interface EntityNodeCardProps {
   lifecycle: string;
   accentColor: string;
   background: string;
+  getGraphBounds?: () => DOMRect | null;
+  viewportZoom: number;
   onExpandedChange?: (id: string, expanded: boolean) => void;
+}
+
+interface ExpandedNodeBounds {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
+function expandedNodeBoundsFor(
+  cardRect: DOMRect,
+  graphRect: DOMRect,
+  viewportZoom: number,
+): ExpandedNodeBounds {
+  const zoom = Number.isFinite(viewportZoom) && viewportZoom > 0 ? viewportZoom : 1;
+  const availableLeft = Math.max(
+    0,
+    (cardRect.left - graphRect.left - EXPANDED_NODE_SCREEN_MARGIN) / zoom,
+  );
+  const availableRight = Math.max(
+    0,
+    (graphRect.right - cardRect.right - EXPANDED_NODE_SCREEN_MARGIN) / zoom,
+  );
+  const availableTop = Math.max(
+    0,
+    (cardRect.top - graphRect.top - EXPANDED_NODE_SCREEN_MARGIN) / zoom,
+  );
+  const availableBottom = Math.max(
+    0,
+    (graphRect.bottom - cardRect.bottom - EXPANDED_NODE_SCREEN_MARGIN) / zoom,
+  );
+
+  return {
+    left: -Math.round(availableLeft),
+    top: -Math.round(availableTop),
+    width: Math.round(NODE_WIDTH + availableLeft + availableRight),
+    height: Math.round(NODE_HEIGHT + availableTop + availableBottom),
+  };
 }
 
 function EntityNodeCard({
@@ -364,14 +405,28 @@ function EntityNodeCard({
   lifecycle,
   accentColor,
   background,
+  getGraphBounds,
+  viewportZoom,
   onExpandedChange,
 }: EntityNodeCardProps) {
   const [expanded, setExpanded] = useState(false);
+  const [expandedBounds, setExpandedBounds] = useState<ExpandedNodeBounds | null>(null);
+  const cardRef = useRef<HTMLAnchorElement>(null);
   const hasDistinctTitle = title !== summary;
   const setCardExpanded = (next: boolean) => {
+    if (next) {
+      const cardRect = cardRef.current?.getBoundingClientRect();
+      const graphRect = getGraphBounds?.();
+      setExpandedBounds(
+        cardRect && graphRect ? expandedNodeBoundsFor(cardRect, graphRect, viewportZoom) : null,
+      );
+    } else {
+      setExpandedBounds(null);
+    }
     setExpanded(next);
     onExpandedChange?.(id, next);
   };
+  const boundedExpansion = expanded ? expandedBounds : null;
   const clampStyle = expanded
     ? undefined
     : {
@@ -382,9 +437,13 @@ function EntityNodeCard({
 
   return (
     <Link
+      ref={cardRef}
       to={href}
       aria-label={`Open ${nodeType} ${title}`}
-      className="nodrag nopan relative flex cursor-pointer flex-col gap-1 overflow-visible px-4 py-3 text-inherit no-underline shadow-sm transition-[box-shadow,min-height] duration-150 hover:z-10 hover:shadow-md focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className={[
+        "nodrag nopan relative flex cursor-pointer flex-col gap-1 py-3 pl-7 pr-4 text-left text-inherit no-underline shadow-sm transition-[box-shadow,width,height,left,top] duration-150 hover:z-10 hover:shadow-md focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        boundedExpansion ? "overflow-hidden" : "overflow-visible",
+      ].join(" ")}
       data-entity-node-card={nodeType}
       draggable={false}
       onBlur={() => setCardExpanded(false)}
@@ -393,14 +452,29 @@ function EntityNodeCard({
       onMouseEnter={() => setCardExpanded(true)}
       onMouseLeave={() => setCardExpanded(false)}
       style={{
-        width: NODE_WIDTH,
-        minHeight: NODE_HEIGHT,
+        left: boundedExpansion?.left,
+        top: boundedExpansion?.top,
+        width: boundedExpansion?.width ?? NODE_WIDTH,
+        height: boundedExpansion?.height,
+        minHeight: boundedExpansion?.height ?? NODE_HEIGHT,
         background,
         border: isCenter ? "2px solid var(--color-border)" : "1px solid var(--color-border)",
         borderRadius: 8,
-        boxShadow: `inset 4px 0 0 ${accentColor}`,
+        boxShadow: `inset 22px 0 0 ${accentColor}`,
       }}
     >
+      <span
+        aria-hidden="true"
+        className="pointer-events-none absolute left-0 top-0 z-20 flex h-full justify-center text-[9px] font-semibold uppercase tracking-wider text-white"
+        style={{
+          width: 22,
+          writingMode: "vertical-rl",
+          textOrientation: "mixed",
+          paddingTop: 8,
+        }}
+      >
+        {lifecycleLabel(lifecycle)}
+      </span>
       <NodeTypeIcon
         nodeType={nodeType}
         aria-hidden="true"
@@ -411,29 +485,20 @@ function EntityNodeCard({
           opacity: 0.14,
         }}
       />
-      <div className="relative z-10 flex items-center gap-1.5">
+      <div className="relative z-10 flex items-center gap-1.5 text-left">
         <span className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-muted-foreground">
           {nodeType}
         </span>
-        <span
-          className="ml-auto rounded-sm px-1.5 py-0.5 text-[9px] uppercase"
-          style={{
-            color: accentColor,
-            background: `color-mix(in oklch, ${accentColor} 10%, white)`,
-          }}
-        >
-          {lifecycleLabel(lifecycle)}
-        </span>
       </div>
       {hasDistinctTitle ? (
-        <div className="relative z-10 truncate font-mono text-xs font-semibold text-foreground">
+        <div className="relative z-10 truncate text-left font-mono text-xs font-semibold text-foreground">
           {title}
         </div>
       ) : null}
       <div
         className={[
-          "relative z-10",
-          expanded ? "overflow-visible" : "overflow-hidden",
+          "relative z-10 text-left",
+          boundedExpansion ? "min-h-0 flex-1 overflow-auto pr-1" : "overflow-hidden",
           hasDistinctTitle
             ? "text-[11px] leading-snug text-muted-foreground"
             : "font-mono text-sm font-semibold leading-snug text-foreground",
@@ -441,7 +506,7 @@ function EntityNodeCard({
         data-entity-node-summary="true"
         style={{
           ...clampStyle,
-          minHeight: hasDistinctTitle ? 44 : 56,
+          minHeight: boundedExpansion ? 0 : hasDistinctTitle ? 44 : 56,
         }}
       >
         {summary}
@@ -590,6 +655,7 @@ export function EntityGraph({
   // matches the panel radius. `d` is recomputed on every pan/zoom, so a
   // MutationObserver keeps the rounding applied.
   const graphRef = useRef<HTMLDivElement>(null);
+  const getGraphBounds = useCallback(() => graphRef.current?.getBoundingClientRect() ?? null, []);
   useEffect(() => {
     const el = graphRef.current;
     if (!el) return;
@@ -712,6 +778,8 @@ export function EntityGraph({
               lifecycle={lifecycle}
               accentColor={accentColor}
               background={bg}
+              getGraphBounds={getGraphBounds}
+              viewportZoom={viewport.zoom}
               onExpandedChange={(id, expanded) =>
                 setExpandedNodeId((current) => {
                   if (expanded) return id;
@@ -735,7 +803,15 @@ export function EntityGraph({
     });
 
     return [...laneNodes, ...entityNodes];
-  }, [visible.nodes, layout.lanes, positions, hrefFor, expandedNodeId]);
+  }, [
+    visible.nodes,
+    layout.lanes,
+    positions,
+    hrefFor,
+    expandedNodeId,
+    getGraphBounds,
+    viewport.zoom,
+  ]);
 
   const laneLabelRails = useMemo(() => {
     const height = graphHeight || 480;

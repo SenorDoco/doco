@@ -98,13 +98,13 @@ function graphLanePrincipalId(
   return createdBy;
 }
 import { AiChatPane } from "~/components/ai-chat-pane";
-import { LifecycleBadge, NodeTypeBadge } from "~/components/badge";
 import { EntityGraph, type GraphLink, type GraphNode } from "~/components/entity-graph";
 import {
   type DrawerEdge,
   type DrawerKind,
   NodeDetailDrawer,
 } from "~/components/node-detail-drawer";
+import { NodeTypeIcon } from "~/components/node-type-icon";
 import { ResizableChatRail } from "~/components/resizable-chat-rail";
 import { SiteHeader } from "~/components/site-header";
 
@@ -700,7 +700,7 @@ export default function EntityDetail({
   const chatSupported = CHAT_SUPPORTED_TYPES.has(type);
 
   const drawerButtons: { kind: DrawerKind; label: string }[] = [
-    { kind: "info", label: "Info" },
+    { kind: "relevant", label: "Relevant nodes" },
     { kind: "edges", label: "Edges" },
     { kind: "history", label: "History" },
     { kind: "metadata", label: "Metadata" },
@@ -719,10 +719,33 @@ export default function EntityDetail({
             {handle}
           </Link>
           <span className="text-muted-foreground">/</span>
-          <h1 className="min-w-0 flex-1 text-sm font-semibold tracking-tight text-foreground break-words">
+          <h1 className="min-w-0 flex-1 break-words text-sm font-semibold tracking-tight text-foreground">
             {display}
           </h1>
-          <div className="flex items-center gap-1">
+        </div>
+        <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px]">
+          <span className="inline-flex items-center gap-1 text-muted-foreground">
+            <NodeTypeIcon nodeType={type} />
+            <span>{type}</span>
+          </span>
+          {entityScopes.map((s) => (
+            <Link
+              key={s.id}
+              to={linkTo("scope", s.name)}
+              className="inline-flex items-center gap-1 rounded-md border border-border bg-card px-2 py-0.5 font-mono text-muted-foreground transition-colors hover:border-primary hover:text-foreground"
+            >
+              {s.icon ? (
+                <span aria-hidden className="font-sans leading-none">
+                  {s.icon}
+                </span>
+              ) : null}
+              <span>{s.name}</span>
+            </Link>
+          ))}
+          {ent.summary && String(ent.summary) !== display ? (
+            <span className="min-w-0 break-words text-muted-foreground">{String(ent.summary)}</span>
+          ) : null}
+          <div className="ml-auto flex items-center gap-1">
             {drawerButtons.map((btn) => {
               const active = openDrawer === btn.kind;
               return (
@@ -742,27 +765,6 @@ export default function EntityDetail({
               );
             })}
           </div>
-        </div>
-        <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px]">
-          <NodeTypeBadge nodeType={type} />
-          {ent.lifecycle ? <LifecycleBadge lifecycle={String(ent.lifecycle)} /> : null}
-          {entityScopes.map((s) => (
-            <Link
-              key={s.id}
-              to={linkTo("scope", s.name)}
-              className="inline-flex items-center gap-1 rounded-md border border-border bg-card px-2 py-0.5 font-mono text-muted-foreground transition-colors hover:border-primary hover:text-foreground"
-            >
-              {s.icon ? (
-                <span aria-hidden className="font-sans leading-none">
-                  {s.icon}
-                </span>
-              ) : null}
-              <span>{s.name}</span>
-            </Link>
-          ))}
-          {ent.summary && String(ent.summary) !== display ? (
-            <span className="min-w-0 break-words text-muted-foreground">{String(ent.summary)}</span>
-          ) : null}
         </div>
       </div>
 

@@ -1,16 +1,21 @@
 // Side drawer that overlays the entity graph on the node detail view.
-// Renders one detail "page" at a time — Info, Edges, History, or Metadata —
-// based on the `open` kind. Closing returns control to the graph.
+// Renders one detail "page" at a time — Relevant nodes, Edges, History,
+// or Metadata — based on the `open` kind. Closing returns control to
+// the graph.
+//
+// Metadata also carries the focal node's id / created / Global PageRank
+// stats (folded in after the standalone Info pane was retired — they
+// were redundant with the YAML frontmatter dump).
 //
 // Driven by the parent route's state; no internal route, no portals. The
 // drawer is positioned absolute over the graph column so the chat pane
 // on the left stays interactive while the drawer is open.
 
 import { Link } from "react-router";
-import { NodeTypeBadge } from "~/components/badge";
+import { NodeTypeIcon } from "~/components/node-type-icon";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "~/components/table";
 
-export type DrawerKind = "info" | "edges" | "history" | "metadata";
+export type DrawerKind = "relevant" | "edges" | "history" | "metadata";
 
 export interface DrawerEdge {
   edge_type: string;
@@ -42,7 +47,7 @@ export interface NodeDetailDrawerProps {
   onClose: () => void;
   /** Builds the URL for a related entity (kind + id). */
   linkTo: (kind: string, otherId: string) => string;
-  // Info pane
+  // Relevant-nodes + Metadata panes (focal node stats live in Metadata).
   nodeId: string;
   nodeCreatedAt: string | null;
   nodeGpr: number | null;
@@ -71,8 +76,8 @@ function relativeTimeIso(iso: string): string {
 
 function paneTitle(kind: DrawerKind): string {
   switch (kind) {
-    case "info":
-      return "Info";
+    case "relevant":
+      return "Relevant nodes";
     case "edges":
       return "Edges";
     case "history":
@@ -102,7 +107,7 @@ export function NodeDetailDrawer(props: NodeDetailDrawerProps) {
         </button>
       </header>
       <div className="min-h-0 flex-1 overflow-auto px-4 py-3">
-        {open === "info" ? <InfoPane {...props} /> : null}
+        {open === "relevant" ? <RelevantNodesPane {...props} /> : null}
         {open === "edges" ? <EdgesPane {...props} /> : null}
         {open === "history" ? <HistoryPane {...props} /> : null}
         {open === "metadata" ? <MetadataPane {...props} /> : null}
@@ -111,49 +116,33 @@ export function NodeDetailDrawer(props: NodeDetailDrawerProps) {
   );
 }
 
-function InfoPane({
-  nodeId,
-  nodeCreatedAt,
-  nodeGpr,
-  rankedNeighbors,
-  linkTo,
-}: NodeDetailDrawerProps) {
+function RelevantNodesPane({ rankedNeighbors, linkTo }: NodeDetailDrawerProps) {
+  if (rankedNeighbors.length === 0) {
+    return (
+      <p className="text-xs text-muted-foreground">
+        No neighbors yet. This node sits as a leaf in the graph.
+      </p>
+    );
+  }
   return (
-    <div className="space-y-4 text-xs">
-      <dl className="grid grid-cols-[max-content_1fr] gap-x-3 gap-y-2">
-        <dt className="text-muted-foreground">Id</dt>
-        <dd className="font-mono break-all">{nodeId}</dd>
-        <dt className="text-muted-foreground">Created</dt>
-        <dd className="font-mono">
-          {nodeCreatedAt ? `${nodeCreatedAt} · ${relativeTimeIso(nodeCreatedAt)}` : "—"}
-        </dd>
-        <dt className="text-muted-foreground">Global PageRank</dt>
-        <dd className="font-mono">{nodeGpr !== null ? nodeGpr.toFixed(4) : "—"}</dd>
-      </dl>
-      <div>
-        <h3 className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-          Most relevant nodes ({rankedNeighbors.length})
-        </h3>
-        <ul className="mt-2 divide-y divide-border rounded-md border border-border">
-          {rankedNeighbors.length === 0 ? (
-            <li className="px-3 py-2 text-muted-foreground">No neighbors yet.</li>
-          ) : (
-            rankedNeighbors.map((n) => (
-              <li key={n.id}>
-                <Link to={linkTo(n.node_type, n.id)} className="block px-3 py-2 hover:bg-input/40">
-                  <div className="flex items-center gap-2">
-                    <NodeTypeBadge nodeType={n.node_type} className="text-[10px] uppercase" />
-                    <span className="font-mono text-[10px] text-muted-foreground">
-                      PPR {n.ppr.toFixed(3)}
-                    </span>
-                  </div>
-                  <p className="mt-0.5 text-foreground">{n.summary?.slice(0, 120) ?? n.id}</p>
-                </Link>
-              </li>
-            ))
-          )}
-        </ul>
-      </div>
+    <div className="text-xs">
+      <p className="mb-2 text-[11px] text-muted-foreground">
+        Ranked by personalized PageRank from this node (ADR-076).
+      </p>
+      <ul className="divide-y divide-border rounded-md border border-border">
+        {rankedNeighbors.map((n) => (
+          <li key={n.id}>
+            <Link to={linkTo(n.node_type, n.id)} className="block px-3 py-2 hover:bg-input/40">
+              <div className="flex items-center gap-1.5 text-[10px] uppercase text-muted-foreground">
+                <NodeTypeIcon nodeType={n.node_type} />
+                <span>{n.node_type}</span>
+                <span className="ml-2 font-mono normal-case">PPR {n.ppr.toFixed(3)}</span>
+              </div>
+              <p className="mt-0.5 text-foreground">{n.summary?.slice(0, 120) ?? n.id}</p>
+            </Link>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
@@ -257,20 +246,32 @@ function HistoryPane({ history }: NodeDetailDrawerProps) {
   );
 }
 
-function MetadataPane({ ent }: NodeDetailDrawerProps) {
+function MetadataPane({ nodeId, nodeCreatedAt, nodeGpr, ent }: NodeDetailDrawerProps) {
   return (
-    <dl className="divide-y divide-border text-xs">
-      {Object.entries(ent).map(([key, value]) => (
-        <div key={key} className="grid gap-2 py-2 md:grid-cols-[10rem_1fr]">
-          <dt className="font-mono text-muted-foreground">{key}</dt>
-          <dd className="min-w-0">
-            <code className="block whitespace-pre-wrap break-words font-mono text-[11px]">
-              {formatMetadataValue(value)}
-            </code>
-          </dd>
-        </div>
-      ))}
-      <details className="mt-3 pt-3">
+    <div className="space-y-3 text-xs">
+      <dl className="grid grid-cols-[max-content_1fr] gap-x-3 gap-y-2 border-b border-border pb-3">
+        <dt className="text-muted-foreground">Id</dt>
+        <dd className="break-all font-mono">{nodeId}</dd>
+        <dt className="text-muted-foreground">Created</dt>
+        <dd className="font-mono">
+          {nodeCreatedAt ? `${nodeCreatedAt} · ${relativeTimeIso(nodeCreatedAt)}` : "—"}
+        </dd>
+        <dt className="text-muted-foreground">Global PageRank</dt>
+        <dd className="font-mono">{nodeGpr !== null ? nodeGpr.toFixed(4) : "—"}</dd>
+      </dl>
+      <dl className="divide-y divide-border">
+        {Object.entries(ent).map(([key, value]) => (
+          <div key={key} className="grid gap-2 py-2 md:grid-cols-[10rem_1fr]">
+            <dt className="font-mono text-muted-foreground">{key}</dt>
+            <dd className="min-w-0">
+              <code className="block whitespace-pre-wrap break-words font-mono text-[11px]">
+                {formatMetadataValue(value)}
+              </code>
+            </dd>
+          </div>
+        ))}
+      </dl>
+      <details className="pt-2">
         <summary className="cursor-pointer text-xs font-medium text-muted-foreground hover:text-foreground">
           Raw JSON
         </summary>
@@ -278,7 +279,7 @@ function MetadataPane({ ent }: NodeDetailDrawerProps) {
           {JSON.stringify(ent, null, 2)}
         </pre>
       </details>
-    </dl>
+    </div>
   );
 }
 

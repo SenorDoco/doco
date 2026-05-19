@@ -4,7 +4,6 @@
 // direct owner (inherited owner role, not editable here), and lets
 // the owner add/change/remove role grants.
 
-import { Form, Link } from "react-router";
 import {
   type DocoRole,
   getDocoById,
@@ -14,8 +13,9 @@ import {
   removeDocoMember,
   upsertDocoMember,
 } from "@doco/db";
-import { SiteHeader } from "~/components/site-header";
+import { Form, Link } from "react-router";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
+import { SiteHeader } from "~/components/site-header";
 import { loadDocoForAdmin, normalizeDocoParams } from "~/lib/doco-access.server";
 
 const ALL_ROLES: DocoRole[] = ["owner", "approver", "author", "reader"];
@@ -70,10 +70,13 @@ export async function action({
   const intent = String(form.get("intent") ?? "");
 
   if (intent === "add") {
-    const username = String(form.get("username") ?? "").trim().toLowerCase();
+    const username = String(form.get("username") ?? "")
+      .trim()
+      .toLowerCase();
     const role = String(form.get("role") ?? "author") as DocoRole;
     if (!username) return { error: "Username is required." };
-    if (!ALL_ROLES.includes(role)) return { error: "Role must be owner, approver, author, or reader." };
+    if (!ALL_ROLES.includes(role))
+      return { error: "Role must be owner, approver, author, or reader." };
     const p = await getPrincipalByUsername(username);
     if (!p) return { error: `No principal with username "${username}".` };
     await upsertDocoMember({ doco_id: meta.docoId, principal_id: p.id, role });
@@ -112,7 +115,7 @@ export default function DocoMembersPage({
 }) {
   return (
     <div className="min-h-screen flex flex-col bg-background text-foreground">
-      <SiteHeader mode="host" me={loaderData.me} />
+      <SiteHeader mode="host" me={loaderData.me} docoScope={{ handle: loaderData.handle }} />
       <main className="mx-auto w-full max-w-3xl px-6 py-8 space-y-6">
         <header className="flex items-center justify-between">
           <div>
@@ -148,8 +151,7 @@ export default function DocoMembersPage({
           <CardContent className="space-y-4">
             {loaderData.members.length === 0 ? (
               <p className="text-sm text-muted-foreground">
-                No explicit members yet. The doco owner is{" "}
-                <code>{loaderData.docoOwnerId}</code>.
+                No explicit members yet. The doco owner is <code>{loaderData.docoOwnerId}</code>.
               </p>
             ) : (
               <table className="w-full text-sm">
@@ -259,9 +261,9 @@ export default function DocoMembersPage({
               </button>
             </Form>
             <p className="mt-3 text-xs text-muted-foreground">
-              Effective role on each scope is{" "}
-              <code>max(org role, doco role, scope role)</code>. To grant a role on a specific scope,
-              open that scope's page and use the Members panel there.
+              Effective role on each scope is <code>max(org role, doco role, scope role)</code>. To
+              grant a role on a specific scope, open that scope's page and use the Members panel
+              there.
             </p>
           </CardContent>
         </Card>

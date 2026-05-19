@@ -3,7 +3,6 @@
 // A scope-only grant gives implicit doco-reader visibility but does NOT
 // promote to doco-admin.
 
-import { Form, Link } from "react-router";
 import {
   type DocoRole,
   getPrincipalById,
@@ -13,8 +12,9 @@ import {
   upsertScopeMember,
   withClient,
 } from "@doco/db";
-import { SiteHeader } from "~/components/site-header";
+import { Form, Link } from "react-router";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
+import { SiteHeader } from "~/components/site-header";
 import { loadDocoForAdmin, normalizeDocoParams } from "~/lib/doco-access.server";
 
 const ALL_ROLES: DocoRole[] = ["owner", "approver", "author", "reader"];
@@ -22,7 +22,7 @@ const ALL_ROLES: DocoRole[] = ["owner", "approver", "author", "reader"];
 async function loadScopeRow(scopeId: string, docoId: string) {
   return withClient(async (c) => {
     const r = await c.query<{ id: string; name: string }>(
-      `SELECT id, name FROM scopes WHERE id = $1 AND doco_id = $2 LIMIT 1`,
+      "SELECT id, name FROM scopes WHERE id = $1 AND doco_id = $2 LIMIT 1",
       [scopeId, docoId],
     );
     return r.rows[0] ?? null;
@@ -81,7 +81,9 @@ export async function action({
   const intent = String(form.get("intent") ?? "");
 
   if (intent === "add") {
-    const username = String(form.get("username") ?? "").trim().toLowerCase();
+    const username = String(form.get("username") ?? "")
+      .trim()
+      .toLowerCase();
     const role = String(form.get("role") ?? "author") as DocoRole;
     if (!username) return { error: "Username is required." };
     if (!ALL_ROLES.includes(role)) return { error: "Invalid role." };
@@ -123,7 +125,7 @@ export default function ScopeMembersPage({
 }) {
   return (
     <div className="min-h-screen flex flex-col bg-background text-foreground">
-      <SiteHeader mode="host" me={loaderData.me} />
+      <SiteHeader mode="host" me={loaderData.me} docoScope={{ handle: loaderData.handle }} />
       <main className="mx-auto w-full max-w-3xl px-6 py-8 space-y-6">
         <header className="flex items-center justify-between">
           <div>
@@ -132,8 +134,8 @@ export default function ScopeMembersPage({
             </h1>
             <p className="text-sm text-muted-foreground">
               Scope-level role grants. Effective role on this scope is{" "}
-              <code>max(org role, doco role, scope role)</code>; a scope-only grant gives
-              implicit doco-reader visibility.
+              <code>max(org role, doco role, scope role)</code>; a scope-only grant gives implicit
+              doco-reader visibility.
             </p>
           </div>
           <Link
@@ -159,8 +161,8 @@ export default function ScopeMembersPage({
           <CardContent className="space-y-4">
             {loaderData.members.length === 0 ? (
               <p className="text-sm text-muted-foreground">
-                No explicit scope grants yet. Everyone's effective role on this scope falls back
-                to their doco/org role.
+                No explicit scope grants yet. Everyone's effective role on this scope falls back to
+                their doco/org role.
               </p>
             ) : (
               <table className="w-full text-sm">
