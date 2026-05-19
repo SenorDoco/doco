@@ -128,7 +128,6 @@ id: principal_...
 node_type: principal
 type: person | agent
 username: "torrenegra"             # GitHub login (people) or "{owner_username}/{creation_timestamp}" (agents) — see PLANNING.md §2.3
-display_name: "..."
 github_identity:                   # only when type=person; people sign in exclusively via GitHub (PLANNING.md §2.1)
   github_id: "12345"
   github_login: "torrenegra"

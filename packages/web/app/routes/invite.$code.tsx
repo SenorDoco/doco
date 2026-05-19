@@ -44,7 +44,7 @@ type LoaderOk = {
   doco: { id: string; handle: string };
   inviter: { username: string } | null;
   expires_at: string;
-  signedIn: { id: string; username: string; display_name: string } | null;
+  signedIn: { id: string; username: string } | null;
 };
 
 export async function loader({ request, params }: { request: Request; params: { code: string } }) {
@@ -71,9 +71,7 @@ export async function loader({ request, params }: { request: Request; params: { 
     doco: { id: doco.id, handle: doco.handle },
     inviter: inviter ? { username: inviter.username } : null,
     expires_at: invite.expires_at,
-    signedIn: principal
-      ? { id: principal.id, username: principal.username, display_name: principal.display_name }
-      : null,
+    signedIn: principal ? { id: principal.id, username: principal.username } : null,
   } satisfies LoaderOk;
 }
 

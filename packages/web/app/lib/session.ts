@@ -32,7 +32,6 @@ export function clearSessionCookie(): string {
 export interface CurrentPrincipal {
   id: string;
   username: string;
-  display_name: string;
   type: "person" | "agent";
   email?: string;
 }
@@ -40,7 +39,6 @@ export interface CurrentPrincipal {
 function rowToPrincipal(row: {
   id: string;
   username: string;
-  display_name: string | null;
   email: string | null;
   type: string;
   raw_yaml: string;
@@ -58,7 +56,6 @@ function rowToPrincipal(row: {
   const out: CurrentPrincipal = {
     id: row.id,
     username: row.username,
-    display_name: type === "agent" ? row.display_name ?? row.username : row.username,
     type,
   };
   if (typeof email === "string") out.email = email;

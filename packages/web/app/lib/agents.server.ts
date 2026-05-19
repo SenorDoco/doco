@@ -7,7 +7,6 @@ import { type EntityId, generateUlid, makeEntityId, nowIso } from "@doco/shared"
 
 export interface AddAgentPrincipalOpts {
   username: string;
-  display_name: string;
   /**
    * Human or agent that owns this agent. Nullable for anonymous-create
    * agents (the `POST /api/v1/docos` path) — those have no human at the
@@ -43,7 +42,6 @@ export async function addAgentPrincipal(
     summary: `Agent ${opts.username}.`,
     type: "agent",
     username: opts.username,
-    display_name: opts.display_name,
     owner_id: opts.owner_id,
     agent_metadata: opts.agent_metadata,
     created_at: created,

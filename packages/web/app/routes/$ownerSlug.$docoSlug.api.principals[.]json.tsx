@@ -4,27 +4,20 @@ import { loadDocoForAdmin, normalizeDocoParams } from "~/lib/doco-access.server"
 
 const ROLE_PRINCIPAL_USERNAMES = new Set(["user", "human", "doco-host", "github"]);
 
-const DEFAULTS: Record<
-  string,
-  { display_name: string; type: "human" | "agent"; summary: string }
-> = {
+const DEFAULTS: Record<string, { type: "human" | "agent"; summary: string }> = {
   user: {
-    display_name: "User",
     type: "agent",
     summary: "Role principal for any Doco user, whether human or AI agent.",
   },
   human: {
-    display_name: "Human",
     type: "human",
     summary: "Role principal for the human-only subset of users.",
   },
   "doco-host": {
-    display_name: "Doco host",
     type: "agent",
     summary: "System principal for the Doco host service.",
   },
   github: {
-    display_name: "GitHub",
     type: "agent",
     summary: "External identity-provider principal for GitHub.",
   },
@@ -45,11 +38,12 @@ export async function action({
   const { me, meta } = await loadDocoForAdmin(request, handle);
   const body = (await request.json().catch(() => ({}))) as {
     username?: string;
-    display_name?: string;
     type?: "human" | "agent";
     summary?: string;
   };
-  const username = String(body.username ?? "").trim().toLowerCase();
+  const username = String(body.username ?? "")
+    .trim()
+    .toLowerCase();
   if (!ROLE_PRINCIPAL_USERNAMES.has(username)) {
     return Response.json(
       {
@@ -61,21 +55,18 @@ export async function action({
   }
 
   const existing = await withClient(async (c) =>
-    c.query<{ id: string; username: string; display_name: string | null }>(
-      "SELECT id, username, display_name FROM principals WHERE username = $1 LIMIT 1",
+    c.query<{ id: string; username: string }>(
+      "SELECT id, username FROM principals WHERE username = $1 LIMIT 1",
       [username],
     ),
   );
-  const displayName = body.display_name?.trim() || DEFAULTS[username].display_name;
   if (existing.rows[0]) {
     return Response.json({
       ok: true,
       id: existing.rows[0].id,
       username,
       existed: true,
-      footer_lines: [
-        `[🔮 Doco] 👤 Principal already exists: ${displayName} (${existing.rows[0].id})`,
-      ],
+      footer_lines: [`[🔮 Doco] 👤 Principal already exists: ${username} (${existing.rows[0].id})`],
     });
   }
 
@@ -90,7 +81,6 @@ export async function action({
     summary,
     type,
     username,
-    display_name: displayName,
     role_principal: true,
     created_at: now,
     created_by: me?.id ?? id,
@@ -117,7 +107,7 @@ export async function action({
       id,
       username,
       existed: false,
-      footer_lines: [`[🔮 Doco] 👤 Principal added: ${displayName} (${id})`],
+      footer_lines: [`[🔮 Doco] 👤 Principal added: ${username} (${id})`],
     },
     { status: 201 },
   );

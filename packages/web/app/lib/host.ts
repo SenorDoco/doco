@@ -22,7 +22,6 @@ export interface HostConfig {
 export interface HostUser {
   id: string;
   username: string;
-  display_name: string;
   email?: string;
 }
 
@@ -66,7 +65,6 @@ export async function listUsers(): Promise<HostUser[]> {
     const out: HostUser = {
       id: r.id,
       username: r.username,
-      display_name: r.username,
     };
     if (typeof email === "string") out.email = email;
     return out;

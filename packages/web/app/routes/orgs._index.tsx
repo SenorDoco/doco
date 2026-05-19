@@ -22,7 +22,7 @@ export function meta() {
 }
 
 interface OrgsLoaderData {
-  me: { id: string; username: string; display_name: string; type: "person" | "agent"; email?: string };
+  me: { id: string; username: string; type: "person" | "agent"; email?: string };
   orgs: {
     id: string;
     slug: string;

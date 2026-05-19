@@ -1,13 +1,8 @@
 import { copyFile, mkdir, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { type EntityId, generateUlid, makeEntityId, nowIso } from "@doco/shared";
 import { defineCommand } from "citty";
-import {
-  type EntityId,
-  generateUlid,
-  makeEntityId,
-  nowIso,
-} from "@doco/shared";
 import { findTemplatesDir } from "../find-templates.js";
 import { c, checkmark, cross, header, rule } from "../output.js";
 
@@ -131,7 +126,6 @@ summary: "Owner of ${slug}."
 
 type: person
 username: ${ownerUsername}
-display_name: ${ownerUsername}
 
 ${githubBlock}
 created_at: ${created}
@@ -139,11 +133,7 @@ created_by: ${principalId}   # self-reference: bootstrap principal
 lifecycle: active
 tags: []
 `;
-    await writeFile(
-      join(root, "principals", `${principalId}.yaml`),
-      principalYaml,
-      "utf8",
-    );
+    await writeFile(join(root, "principals", `${principalId}.yaml`), principalYaml, "utf8");
 
     // Write a minimal .gitignore.
     await writeFile(
@@ -187,16 +177,28 @@ tags: []
     console.log(checkmark(`Doco ID:       ${c.dim(docoId)}`));
     console.log(checkmark(`Owner:          ${ownerUsername} (${principalId})`));
     if (existing) {
-      console.log(checkmark(`Mode:           ${c.warn("brownfield")} (extend with backfill importers in phase 6)`));
+      console.log(
+        checkmark(
+          `Mode:           ${c.warn("brownfield")} (extend with backfill importers in phase 6)`,
+        ),
+      );
     }
-    console.log(checkmark(`Agent bootstrap installed (AGENTS.md + CLAUDE.md shim + .claude/ + .agents/ + .env.example)`));
+    console.log(
+      checkmark(
+        `Agent bootstrap installed (AGENTS.md + CLAUDE.md shim + .claude/ + .agents/ + .env.example)`,
+      ),
+    );
     console.log();
     console.log(c.dim("Next:"));
     console.log(c.dim(`  1. cd ${dirName}`));
     console.log(c.dim(`  2. cp .env.example .env  # fill in DOCO_ACCESS`));
     console.log(c.dim(`  3. doco validate  # confirm structure`));
     console.log(c.dim(`  4. Restart your Claude Code session in this directory.`));
-    console.log(c.dim(`  5. In Claude Code, run /hooks → approve the SessionStart + UserPromptSubmit hooks. Claude Code skips unapproved project hooks silently, so the protocol won't auto-load until you approve them once per project (and once per worktree if you use them).`));
+    console.log(
+      c.dim(
+        `  5. In Claude Code, run /hooks → approve the SessionStart + UserPromptSubmit hooks. Claude Code skips unapproved project hooks silently, so the protocol won't auto-load until you approve them once per project (and once per worktree if you use them).`,
+      ),
+    );
     console.log();
   },
 });

@@ -4,7 +4,6 @@ node_type: principal
 summary: Agent torrenegra/2026-05-15T12:45:51.906Z.
 type: agent
 username: torrenegra/2026-05-15T12:45:51.906Z
-display_name: my-agent
 owner_id: principal_01KR441EA199MZCP7RDMADFZW9
 agent_metadata:
   provider: anthropic

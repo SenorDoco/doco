@@ -72,7 +72,6 @@ export async function action({ request }: { request: Request }) {
   try {
     agentId = await addAgentPrincipal(rootDir(), {
       username: agentUsername,
-      display_name: "Setup agent",
       owner_id: null,
       agent_metadata: {
         provider: userAgent,

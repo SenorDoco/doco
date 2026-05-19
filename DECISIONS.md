@@ -419,7 +419,7 @@ Original question framings are preserved below for historical reference.
 9. **Hierarchical Scope entity.** Deferred. Promote only when tag-only model proves insufficient. (SCHEMA.md §9.3.)
 10. **`conclusion_node_type` on Reasoning is redundant** (the conclusion's ID prefix carries the type). Could be dropped. Mentioned in conversation; not yet acted on.
 11. **`Plan` and `Question` as entities.** Both deferred; Plan is emergent, Question is folded into Decision. Promote only if real use cases demand. (SCHEMA.md §11 #8, #9.)
-12. **Public-Doco PII leakage in agent ancestry chain.** Confirm `Principal.identifier` and `display_name` can't leak email patterns. Add a Rule. (PLANNING.md §6 #4.)
+12. **Public-Doco PII leakage in agent ancestry chain.** Confirm `Principal.identifier` can't leak email patterns. (PLANNING.md §6 #4.)
 
 13. **v0 scale target.** What scale (entities, edges, latency budgets) does Doco target for v0.x, and what are the swap triggers between scale tiers? Tentative direction: **Tier B (1k–100k entities, ≤ 1M edges)** — covers the team-sized brownfield-backfill case (D-042) without committing to Tier C engineering ahead of demand. Specifically blocks: centrality compute architecture (in-process `igraph`/NetworkX vs. server-based graph DB), the D-024 swap-trigger framing (currently "1M+ entities, 5+ hop traversals" — but is that what we *target*, or what we *tolerate*?), runtime-check latency budgets (sub-10ms per Action stated in §8.3 — at what tier?), and analytics cadence (per-commit / on-demand / periodic). Raised 2026-05-08 during PageRank-compute discussion.
 

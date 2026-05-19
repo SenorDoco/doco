@@ -1,15 +1,16 @@
+import type { EntityId } from "@doco/shared";
 // /agents/new — owner creates a Principal{type:agent} + DOCO_ACCESS in one step.
 // Per ADR-071. Replaces the invitation-redemption ceremony for agent enrollment.
 import { useState } from "react";
 import { Form, redirect, useActionData } from "react-router";
-import type { EntityId } from "@doco/shared";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
+import { SingleColumnPageMain } from "~/components/page-main";
+import { SiteHeader } from "~/components/site-header";
 import { rootDir } from "~/lib/db.server";
 import { loadHostConfig } from "~/lib/host";
+import { addAgentPrincipal } from "~/lib/redeem.server";
 import { getCurrentPrincipal } from "~/lib/session";
 import { TokenStore } from "~/lib/tokens.server";
-import { addAgentPrincipal } from "~/lib/redeem.server";
-import { SiteHeader } from "~/components/site-header";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 
 export async function loader({ request }: { request: Request }) {
   const me = await getCurrentPrincipal(request);
@@ -22,15 +23,15 @@ export async function action({ request }: { request: Request }) {
   if (!me) throw redirect("/sign-in");
 
   const form = await request.formData();
-  const display_name = String(form.get("display_name") ?? "").trim();
   const model = String(form.get("model") ?? "").trim();
   const provider = String(form.get("provider") ?? "").trim();
   const capsRaw = String(form.get("capabilities") ?? "").trim();
   const capabilities = capsRaw
-    ? capsRaw.split(",").map((s) => s.trim()).filter(Boolean)
+    ? capsRaw
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean)
     : [];
-
-  if (!display_name) return { error: "display_name is required" };
 
   // Username convention per ADR-036: `{owner_username}/{ISO_timestamp}`.
   const isoNow = new Date().toISOString();
@@ -41,7 +42,6 @@ export async function action({ request }: { request: Request }) {
   try {
     principalId = await addAgentPrincipal(rootDir(), {
       username,
-      display_name,
       owner_id: ownerId,
       agent_metadata: {
         provider: provider || "unknown",
@@ -63,7 +63,6 @@ export async function action({ request }: { request: Request }) {
       principal: {
         id: principalId,
         username,
-        display_name,
         type: "agent" as const,
         owner_id: ownerId,
         model: model || "unknown",
@@ -90,7 +89,6 @@ export default function AgentsNew({
           principal: {
             id: string;
             username: string;
-            display_name: string;
             type: "agent";
             owner_id: string;
             model: string;
@@ -107,10 +105,10 @@ export default function AgentsNew({
     return (
       <div>
         <SiteHeader mode="host" me={me} />
-        <main className="mx-auto max-w-2xl px-6 py-8 space-y-4">
+        <SingleColumnPageMain className="py-8 space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle>Agent created · {principal.display_name}</CardTitle>
+              <CardTitle>Agent created · {principal.username}</CardTitle>
               <CardDescription>
                 Paste this access credential into your chat with the agent. Their repo&apos;s{" "}
                 <code>AGENTS.md</code> tells them how to use it. We won&apos;t show it again.
@@ -142,10 +140,10 @@ export default function AgentsNew({
 
               <div className="flex gap-2 pt-1">
                 <a
-                  href="/agents"
+                  href="/users"
                   className="rounded-md border border-border px-3 py-1.5 text-xs hover:bg-card"
                 >
-                  ← Back to your agents
+                  ← Back to your users
                 </a>
                 <a
                   href="/agents/new"
@@ -156,7 +154,7 @@ export default function AgentsNew({
               </div>
             </CardContent>
           </Card>
-        </main>
+        </SingleColumnPageMain>
       </div>
     );
   }
@@ -164,27 +162,18 @@ export default function AgentsNew({
   return (
     <div>
       <SiteHeader mode="host" me={me} />
-      <main className="mx-auto max-w-2xl px-6 py-8 space-y-4">
+      <SingleColumnPageMain className="py-8 space-y-4">
         <Card>
           <CardHeader>
             <CardTitle>New agent</CardTitle>
             <CardDescription>
-              Creates a Principal{`{type: agent}`} owned by you and returns a Doco access
-              credential. Pass it to your tooling as <code>DOCO_ACCESS</code>; your agent will
-              use it to act on your behalf. Per ADR-071.
+              Creates a Principal{"{type: agent}"} owned by you and returns a Doco access
+              credential. Pass it to your tooling as <code>DOCO_ACCESS</code>; your agent will use
+              it to act on your behalf. Per ADR-071.
             </CardDescription>
           </CardHeader>
           <CardContent>
             <Form method="post" className="space-y-3">
-              <label className="block text-xs">
-                <span className="text-muted-foreground">display_name *</span>
-                <input
-                  required
-                  name="display_name"
-                  defaultValue="my-agent"
-                  className="mt-1 w-full rounded-md border border-border bg-input px-2 py-1.5 text-sm"
-                />
-              </label>
               <label className="block text-xs">
                 <span className="text-muted-foreground">model</span>
                 <input
@@ -223,7 +212,7 @@ export default function AgentsNew({
             ) : null}
           </CardContent>
         </Card>
-      </main>
+      </SingleColumnPageMain>
     </div>
   );
 }

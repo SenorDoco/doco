@@ -4,7 +4,6 @@ node_type: principal
 summary: Agent torrenegra/2026-05-14T20:03:32.854Z.
 type: agent
 username: torrenegra/2026-05-14T20:03:32.854Z
-display_name: CLI session for torrenegra (test3.local)
 owner_id: principal_01KR441EA199MZCP7RDMADFZW9
 agent_metadata:
   provider: doco-cli

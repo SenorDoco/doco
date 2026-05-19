@@ -9,7 +9,7 @@
 // landing page wires through to this same redeem operation but
 // associates the redeemer with the signed-in human Principal).
 //
-// Input: empty body, OR optional `{ display_name?, hostname? }`.
+// Input: empty body.
 //
 // Output shape is shared with the anonymous-create endpoint via
 // `~/lib/agent-bootstrap-response.server` (see `BootstrapResponse`).
@@ -30,10 +30,6 @@
 //   410 revoked       — invite was revoked by the minter
 
 import { randomBytes } from "node:crypto";
-import type { EntityId } from "@doco/shared";
-import { TokenStore } from "~/lib/tokens.server";
-import { docoPath, rootDir } from "~/lib/db.server";
-import { addAgentPrincipal } from "~/lib/redeem.server";
 import {
   type DocoRole,
   getDocoById,
@@ -41,8 +37,12 @@ import {
   upsertOrgUser,
   upsertScopeUser,
 } from "@doco/db";
+import type { EntityId } from "@doco/shared";
 import { buildAgentBootstrapResponse } from "~/lib/agent-bootstrap-response.server";
 import { loadBootstrapContext } from "~/lib/bootstrap-context.server";
+import { docoPath, rootDir } from "~/lib/db.server";
+import { addAgentPrincipal } from "~/lib/redeem.server";
+import { TokenStore } from "~/lib/tokens.server";
 
 export async function action({
   request,
@@ -57,13 +57,6 @@ export async function action({
   const code = (params.code ?? "").trim();
   if (!code) {
     return Response.json({ error: "missing_code" }, { status: 400 });
-  }
-
-  let body: { display_name?: string; hostname?: string } = {};
-  try {
-    body = (await request.json()) as { display_name?: string; hostname?: string };
-  } catch {
-    // Empty body is fine.
   }
 
   const store = TokenStore.forDoco(rootDir());
@@ -93,12 +86,10 @@ export async function action({
   const isoNow = new Date().toISOString();
   const agentUsername = `agent-${randomBytes(6).toString("hex")}`;
   const userAgent = request.headers.get("user-agent") ?? "unknown";
-  const displayName = body.display_name?.trim() || `Invited agent ${agentUsername}`;
   let agentId: EntityId<"principal">;
   try {
     agentId = await addAgentPrincipal(rootDir(), {
       username: agentUsername,
-      display_name: displayName,
       owner_id: invite.minted_by_principal_id,
       agent_metadata: {
         provider: userAgent,
@@ -193,7 +184,7 @@ export async function loader() {
   return Response.json(
     {
       error: "method_not_allowed",
-      hint: "POST { } to redeem an invite. Optionally include { display_name, hostname } in the body for the agent identity card.",
+      hint: "POST { } to redeem an invite.",
     },
     { status: 405 },
   );

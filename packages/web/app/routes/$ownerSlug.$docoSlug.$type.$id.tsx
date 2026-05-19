@@ -276,12 +276,12 @@ export async function loader({
         let params: unknown[];
         if (tbl === "principals") {
           sql = `SELECT id,
-                        COALESCE(display_name, username) AS summary,
-                        COALESCE(display_name, username) AS name,
+                        username AS summary,
+                        username AS name,
                         NULL::text AS lifecycle,
                         created_at::text,
                         id AS principal_id,
-                        COALESCE(display_name, username) AS principal_label,
+                        username AS principal_label,
                         NULL::text AS created_by,
                         raw_yaml
                    FROM principals
@@ -353,7 +353,7 @@ export async function loader({
     );
     if (graphPrincipalIds.length > 0) {
       const principalRows = await c.query<{ id: string; label: string }>(
-        "SELECT id, COALESCE(display_name, username) AS label FROM principals WHERE id = ANY($1::text[])",
+        "SELECT id, username AS label FROM principals WHERE id = ANY($1::text[])",
         [graphPrincipalIds],
       );
       const principalLabelById = new Map(principalRows.rows.map((row) => [row.id, row.label]));

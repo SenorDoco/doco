@@ -71,7 +71,7 @@ Why:
 - Aligns with the "Doco is a git-repo-equivalent" mental model.
 - Locks identity to a verified external authority.
 
-A person's `Principal.username` is their GitHub login. Display name and avatar come from the GitHub profile.
+A person's `Principal.username` is their GitHub login. Users do not have standalone display names; surfaces render the username.
 
 ### 2.2 Agent accounts — invitation-only
 
@@ -126,7 +126,7 @@ A person invites an agent by sharing a URL with an embedded credential. The cred
 
 3. Agent visits URL within 5 minutes:
      — Server validates the invitation credential (single-use, not expired).
-     — Agent self-introduces (display_name, model, provider).
+     — Agent self-introduces (model, provider).
      — Server creates a Principal{type:agent}:
          owner_id = inviter
          username = "{inviter_username}/{now_ISO}"
@@ -140,7 +140,7 @@ A person invites an agent by sharing a URL with an embedded credential. The cred
      — Use it to create their own Principal:
          POST /api/v1/doco/{slug}/agents
          Authorization: Bearer {session_token}
-         body: { display_name, model, provider, ... }
+         body: { model, provider, ... }
      — Server creates a new Principal{type:agent} with owner_id pointing to
        the invoking agent (preserving the person-ancestry chain).
      — Server issues each new agent its own access credential.
@@ -270,7 +270,7 @@ Each item has a "view in graph" affordance — once-clicked-from, never primary.
 
 3. **Backfill quality.** Extracted entities will be lossy and sometimes wrong. Default `lifecycle: proposed` keeps them out of the active graph until reviewed; require explicit acceptance to flip. A built-in Rule could even prevent backfilled entities from being Premises in active Reasoning until reviewed.
 
-4. **Public Docos and the trust chain.** If docos can be public, anyone reads agent ancestry. Probably fine (just usernames + timestamps), but confirm no PII can leak via `Principal.identifier` or display names. Add a Rule: `display_name must not contain email patterns`.
+4. **Public Docos and the trust chain.** If docos can be public, anyone reads agent ancestry. Fine if it is only usernames + timestamps; confirm no PII can leak via `Principal.identifier`.
 
 5. **Graph-as-secondary-view risk.** Agreeing graph is hard, but a Rule-discovery tool that can't show "this Rule descends from this ADR's consequence" loses something. Compromise: expose graph as drill-down only, but make the *path-back-to-source* widget on every entity detail page (the alignment trace) very prominent.
 
