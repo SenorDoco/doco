@@ -476,10 +476,6 @@ export default function UsersPage({
       <SingleColumnPageMain className="py-8 space-y-6">
         <header>
           <h1 className="text-2xl font-semibold">Users (humans/agents)</h1>
-          <p className="text-sm text-muted-foreground">
-            Every grant on every org, doco, and scope you can see. Edit a role inline; remove with
-            the action button. Invites mint share-by-revealing links — single-use, 72-hour TTL.
-          </p>
         </header>
 
         <InviteCard
