@@ -1,3 +1,4 @@
+import { createContext, useContext } from "react";
 import { Form, NavLink } from "react-router";
 import { DocoMark } from "~/components/doco-mark";
 import { VersionPill } from "~/components/version-pill";
@@ -22,13 +23,28 @@ interface SiteHeaderProps {
   mode: "host";
   /** Currently signed-in Principal. */
   me?: CurrentPrincipal | null;
+  /** Root shell headers stay visible while route-level headers are suppressed. */
+  shellOwner?: boolean;
+}
+
+const SiteHeaderSuppressionContext = createContext(false);
+
+export function SiteHeaderSuppressionProvider({ children }: { children: React.ReactNode }) {
+  return (
+    <SiteHeaderSuppressionContext.Provider value={true}>
+      {children}
+    </SiteHeaderSuppressionContext.Provider>
+  );
 }
 
 /**
  * Two-row header: brand + breadcrumb + account on row 1, per-Doco
  * navigation on row 2 (sub-bar). Keeps the nav uncrowded as it grows.
  */
-export function SiteHeader({ docoScope, me }: SiteHeaderProps) {
+export function SiteHeader({ docoScope, me, shellOwner = false }: SiteHeaderProps) {
+  const suppressed = useContext(SiteHeaderSuppressionContext);
+  if (suppressed && !shellOwner) return null;
+
   // Per-Doco nav: per-type entity tabs and Search moved off the nav bar —
   // the Doco home is the chronological feed AND the search front door.
   // Breadcrumb label is the handle (the canonical URL identifier).

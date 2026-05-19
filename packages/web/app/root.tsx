@@ -14,6 +14,7 @@ import {
 import { AccessDeniedView, isAccessDeniedData } from "~/components/access-denied-view";
 import { ResizableChatRail } from "~/components/resizable-chat-rail";
 import { SenorDocoChatPane } from "~/components/senor-doco-chat-pane";
+import { SiteHeader, SiteHeaderSuppressionProvider } from "~/components/site-header";
 import { getCurrentPrincipal, isHumanPrincipal } from "~/lib/session";
 import "./app.css";
 
@@ -62,16 +63,26 @@ export default function App() {
   const data = useLoaderData<typeof loader>();
   if (!data.docoChat) return <Outlet />;
   return (
-    <div className="flex h-screen overflow-hidden bg-background">
-      <ResizableChatRail>
-        <SenorDocoChatPane
-          key={data.docoChat.handle}
-          endpoint={data.docoChat.endpoint}
-          handle={data.docoChat.handle}
-        />
-      </ResizableChatRail>
-      <div className="min-w-0 flex-1 overflow-auto">
-        <Outlet />
+    <div className="flex h-screen flex-col overflow-hidden bg-background">
+      <SiteHeader
+        mode="host"
+        me={data.docoChat.me}
+        docoScope={{ handle: data.docoChat.handle }}
+        shellOwner
+      />
+      <div className="flex min-h-0 flex-1 overflow-hidden">
+        <ResizableChatRail>
+          <SenorDocoChatPane
+            key={data.docoChat.handle}
+            endpoint={data.docoChat.endpoint}
+            handle={data.docoChat.handle}
+          />
+        </ResizableChatRail>
+        <div className="min-w-0 flex-1 overflow-auto">
+          <SiteHeaderSuppressionProvider>
+            <Outlet />
+          </SiteHeaderSuppressionProvider>
+        </div>
       </div>
     </div>
   );
@@ -121,6 +132,7 @@ export async function loader({ request }: { request: Request }) {
     docoChat: {
       handle: row.handle,
       endpoint: `/${row.handle}/chat.json`,
+      me,
     },
   };
 }
