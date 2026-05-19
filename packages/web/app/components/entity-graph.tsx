@@ -441,7 +441,7 @@ function EntityNodeCard({
       to={href}
       aria-label={`Open ${nodeType} ${title}`}
       className={[
-        "nodrag nopan relative flex cursor-pointer flex-col gap-1 py-3 pl-7 pr-4 text-left text-inherit no-underline shadow-sm transition-[box-shadow,width,height,left,top] duration-150 hover:z-10 hover:shadow-md focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        "nodrag nopan relative flex cursor-pointer flex-col gap-1 py-3 pl-4 pr-7 text-left text-inherit no-underline shadow-sm transition-[box-shadow,width,height,left,top] duration-150 hover:z-10 hover:shadow-md focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         boundedExpansion ? "overflow-hidden" : "overflow-visible",
       ].join(" ")}
       data-entity-node-card={nodeType}
@@ -460,17 +460,16 @@ function EntityNodeCard({
         background,
         border: isCenter ? "2px solid var(--color-border)" : "1px solid var(--color-border)",
         borderRadius: 8,
-        boxShadow: `inset 22px 0 0 ${accentColor}`,
+        boxShadow: `inset -16px 0 0 ${accentColor}`,
       }}
     >
       <span
         aria-hidden="true"
-        className="pointer-events-none absolute left-0 top-0 z-20 flex h-full justify-center text-[9px] font-semibold uppercase tracking-wider text-white"
+        className="pointer-events-none absolute right-0 top-0 z-20 flex justify-center pt-1.5 text-[9px] font-semibold uppercase tracking-wider text-white"
         style={{
-          width: 22,
+          width: 16,
           writingMode: "vertical-rl",
           textOrientation: "mixed",
-          paddingTop: 8,
         }}
       >
         {lifecycleLabel(lifecycle)}
@@ -485,9 +484,30 @@ function EntityNodeCard({
           opacity: 0.14,
         }}
       />
-      <div className="relative z-10 flex items-center gap-1.5 text-left">
-        <span className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-muted-foreground">
-          {nodeType}
+      <div className="relative z-10 flex items-center gap-2 text-left">
+        <span className="inline-flex items-center gap-1.5 text-sm font-semibold uppercase tracking-wider text-foreground">
+          <NodeTypeIcon nodeType={nodeType} className="!h-4 !w-4 shrink-0" />
+          <span>{nodeType}</span>
+        </span>
+        <span className="ml-auto flex shrink-0 items-center gap-2 font-mono text-[9px] text-muted-foreground">
+          <span className="truncate">{relativeTime(createdAt)}</span>
+          {isCenter ? (
+            <>
+              <span className="font-medium text-foreground">in focus</span>
+              <span title="Global PageRank (over the whole Doco graph)">
+                GPR <span className="text-foreground">{gpr.toFixed(3)}</span>
+              </span>
+            </>
+          ) : (
+            <>
+              <span title="Personalized PageRank from focal node">
+                PPR <span className="text-foreground">{ppr.toFixed(3)}</span>
+              </span>
+              <span title="Global PageRank (over the whole Doco graph)">
+                GPR <span className="text-foreground">{gpr.toFixed(3)}</span>
+              </span>
+            </>
+          )}
         </span>
       </div>
       {hasDistinctTitle ? (
@@ -510,26 +530,6 @@ function EntityNodeCard({
         }}
       >
         {summary}
-      </div>
-      <div className="relative z-10 mt-auto flex items-center justify-between gap-2 text-[9px] text-muted-foreground">
-        <span className="truncate">{relativeTime(createdAt)}</span>
-        {isCenter ? (
-          <span className="flex shrink-0 items-center gap-2 font-mono">
-            <span className="font-medium text-foreground">Node in focus</span>
-            <span title="Global PageRank (over the whole Doco graph)">
-              GPR <span className="text-foreground">{gpr.toFixed(3)}</span>
-            </span>
-          </span>
-        ) : (
-          <span className="flex shrink-0 items-center gap-2 font-mono">
-            <span title="Personalized PageRank from focal node">
-              PPR <span className="text-foreground">{ppr.toFixed(3)}</span>
-            </span>
-            <span title="Global PageRank (over the whole Doco graph)">
-              GPR <span className="text-foreground">{gpr.toFixed(3)}</span>
-            </span>
-          </span>
-        )}
       </div>
     </Link>
   );
