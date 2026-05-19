@@ -24,13 +24,30 @@ const TEST_USERNAME = "doco-test-harness";
 
 async function ensureTestPrincipal(): Promise<string> {
   const existing = await findPrincipalByUsername(TEST_USERNAME);
-  if (existing) return existing.id;
-  // Mint a fresh principal with no grants. ULID generated inline to
-  // avoid pulling the full host-level mintId() chain into this
-  // testing-only route.
+  if (existing) {
+    // Repair raw_yaml if the row was minted by an older version of
+    // this route that omitted node_type — the indexer NULL-checks
+    // entity_fts.node_type, so a malformed principal blocks every
+    // future Doco-create rebuild on this host.
+    await withClient(async (c) => {
+      await c.query(
+        `UPDATE principals
+            SET raw_yaml = jsonb_set(
+              COALESCE(raw_yaml::jsonb, '{}'::jsonb),
+              '{node_type}',
+              '"principal"'::jsonb,
+              true
+            )::text
+          WHERE id = $1 AND (raw_yaml::jsonb ->> 'node_type') IS DISTINCT FROM 'principal'`,
+        [existing.id],
+      );
+    });
+    return existing.id;
+  }
   const id = `principal_${ulid()}`;
   const raw_yaml = JSON.stringify({
     id,
+    node_type: "principal",
     username: TEST_USERNAME,
     type: "human",
     note: "Lazy-created by /auth/dev-signin for testing. Has no doco_users grants by default.",
