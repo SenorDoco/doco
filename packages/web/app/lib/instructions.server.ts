@@ -436,6 +436,37 @@ clobbering), \`summary\` (rename), \`scopes\` (replace), and most
 other top-level fields. See \`\<doco_url>/api/<type-plural>.txt\` for
 the full set.
 
+## 3b. URL HYGIENE — paste URLs inline, never refer to "above"
+
+When you reference any URL in your reply prose — the Doco URL, an
+invite URL, a node link, anything — **paste the URL inline at the
+point of reference**. Never write "the invite URL is in the message
+above" or "see the link above" or "scroll up for the URL".
+
+The project owner reads your reply linearly and acts on what's in
+front of them. Pointing at "above" forces them to scroll, lose
+their place, and re-find the link — every time you do it. Pasting
+the URL inline costs one extra line and saves the scroll. Always
+worth it.
+
+This applies to:
+
+- **Post-onboarding summary** ("claim your invite within 7 days at
+  https://doco.to/invite/<code>" — paste the actual URL, don't refer
+  to the GATE block).
+- **Reminder messages** ("the Doco is at https://doco.to/<handle>/" —
+  not "go to the Doco above").
+- **Footer lines** — the \`footer_lines\` returned by capture endpoints
+  already include markdown links; that's the contract. Don't add
+  extra "see X" prose that refers back to footer entries.
+- **Help text in errors** ("redeem the invite at
+  https://doco.to/invite/<code>" — not "use the URL I posted earlier").
+
+The footer-line contract from section 2 still holds: those links are
+the canonical entity links and shouldn't be paraphrased. But OUTSIDE
+the footer lines, when you write narrative prose that mentions a
+URL, paste the URL — don't refer to it.
+
 ## 4. CLOSING LINE OF THE TURN — tally (no exceptions, once per turn)
 
 \`\`\`
