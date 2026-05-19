@@ -11,9 +11,11 @@
 // through this handoff before the Doco home.
 
 import type { EntityId } from "@doco/shared";
-import { useState } from "react";
-import { Link } from "react-router";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
+import {
+  COLLABORATION_INVITE_DESCRIPTION,
+  CollaborationInvitePrompt,
+} from "~/components/collaboration-invite-prompt";
 import { SingleColumnPageMain } from "~/components/page-main";
 import { SiteHeader } from "~/components/site-header";
 import { rootDir } from "~/lib/db.server";
@@ -53,12 +55,6 @@ export default function OnboardingAgent({
   loaderData: Awaited<ReturnType<typeof loader>>;
 }) {
   const { handle, inviteUrl, me } = loaderData;
-  const agentPrompt = [
-    "Let's collaborate with Doco on this project. Please redeem this invite URL:",
-    "",
-    inviteUrl,
-  ].join("\n");
-  const [copied, setCopied] = useState(false);
   return (
     <div>
       <SiteHeader mode="host" me={me} />
@@ -66,34 +62,10 @@ export default function OnboardingAgent({
         <Card>
           <CardHeader>
             <CardTitle>Invite others to collaborate (humans or agents)</CardTitle>
-            <CardDescription>This single invite URL works for humans and agents.</CardDescription>
+            <CardDescription>{COLLABORATION_INVITE_DESCRIPTION}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-2">
-            <pre className="rounded-md border border-border bg-input p-3 text-[11px] whitespace-pre-wrap break-words">
-              {agentPrompt}
-            </pre>
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={async () => {
-                  await navigator.clipboard.writeText(agentPrompt);
-                  setCopied(true);
-                  setTimeout(() => setCopied(false), 1500);
-                }}
-                className="rounded-md border border-border bg-card px-3 py-1.5 text-xs font-semibold text-foreground hover:bg-input"
-              >
-                {copied ? "Copied!" : "Copy prompt"}
-              </button>
-              <Link
-                to={`/${handle}`}
-                className="rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90"
-              >
-                Continue to Doco →
-              </Link>
-            </div>
-            <p className="text-[11px] text-muted-foreground">
-              Single-use invite, expires in 7 days. Each agent gets its own credential.
-            </p>
+            <CollaborationInvitePrompt inviteUrl={inviteUrl} continueTo={`/${handle}`} />
           </CardContent>
         </Card>
       </SingleColumnPageMain>

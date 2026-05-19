@@ -27,6 +27,7 @@ import type { EntityId } from "@doco/shared";
 import { useEffect, useState } from "react";
 import { Link, redirect, useFetcher } from "react-router";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
+import { CollaborationInvitePrompt } from "~/components/collaboration-invite-prompt";
 import { SingleColumnPageMain } from "~/components/page-main";
 import { SiteHeader } from "~/components/site-header";
 import { rootDir } from "~/lib/db.server";
@@ -421,7 +422,7 @@ export function meta() {
 }
 
 interface UsersLoaderData {
-  me: { id: string; username: string; type: "person" | "agent"; email?: string };
+  me: { id: string; username: string; type: "person" | "agent"; isHuman: boolean; email?: string };
   orgSections: OrgSection[];
   docoSections: DocoSection[];
   scopeSections: ScopeSection[];
@@ -669,7 +670,6 @@ function InviteCard({
   const inviteResult = result && "intent" in result && result.intent === "invite" ? result : null;
   const error = result && "error" in result ? result.error : undefined;
   const [level, setLevel] = useState<"org" | "doco" | "scope">("doco");
-  const [copied, setCopied] = useState(false);
 
   const options = level === "org" ? orgs : level === "doco" ? docos : scopes;
   const noTargets = options.length === 0;
@@ -753,42 +753,19 @@ function InviteCard({
         ) : null}
 
         {inviteResult ? (
-          <div
-            className="rounded-md border border-border bg-card p-3 text-sm"
-            data-testid="invite-result"
-          >
-            <div className="mb-1 text-xs uppercase tracking-wide text-muted-foreground">
-              Share this URL — <strong>{inviteResult.level}</strong> grant at role{" "}
-              <strong>{inviteResult.role}</strong>, <strong>expires in 72 hours</strong> (
-              {new Date(inviteResult.invite_expires_at).toLocaleString()}):
-            </div>
-            <div className="flex items-center gap-2">
-              <input
-                readOnly
-                value={inviteResult.invite_url}
-                data-testid="invite-url"
-                className="flex-1 rounded border border-border bg-background px-2 py-1 font-mono text-xs"
-                onFocus={(e) => e.currentTarget.select()}
-              />
-              <button
-                type="button"
-                data-testid="invite-copy"
-                onClick={() => {
-                  navigator.clipboard.writeText(inviteResult.invite_url).then(() => {
-                    setCopied(true);
-                    setTimeout(() => setCopied(false), 1500);
-                  });
-                }}
-                className="rounded-md border border-border px-2 py-1 text-xs hover:bg-input"
-              >
-                {copied ? "Copied" : "Copy"}
-              </button>
-            </div>
-            <p className="mt-2 text-xs text-muted-foreground">
-              Single-use, auto-expires after 72 hours. The redeemer's role is fixed when this link
-              is minted.
-            </p>
-          </div>
+          <CollaborationInvitePrompt
+            inviteUrl={inviteResult.invite_url}
+            showDescription
+            testId="invite-result"
+            promptTestId="invite-url"
+            copyButtonTestId="invite-copy"
+            note={
+              <>
+                Single-use invite, expires in 72 hours. Redeemer gets the{" "}
+                <strong>{inviteResult.role}</strong> {inviteResult.level} grant.
+              </>
+            }
+          />
         ) : null}
       </CardContent>
     </Card>
