@@ -766,7 +766,7 @@ export default function EntityDetail({
       </div>
 
       <div className="flex min-h-0 flex-1">
-        <aside className="flex w-[28rem] max-w-[40%] shrink-0 flex-col border-r border-border bg-card">
+        <aside className="flex w-1/4 min-w-[240px] shrink-0 flex-col border-r border-border bg-card">
           {chatSupported ? (
             <AiChatPane chatEndpoint={chatEndpoint} nodeTypeLabel={type} />
           ) : (
