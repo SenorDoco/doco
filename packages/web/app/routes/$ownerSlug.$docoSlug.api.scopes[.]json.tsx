@@ -4,11 +4,9 @@ import { renderOperationLines } from "~/lib/capture.server";
 import { docoPath } from "~/lib/db.server";
 import { loadDocoForAdmin, loadDocoForRead, normalizeDocoParams } from "~/lib/doco-access.server";
 import {
-  createIntentInDoco,
   createScopeInDoco,
   reindex,
   seedScopeFromTemplate,
-  updateScopeInDoco,
 } from "~/lib/redeem.server";
 import { listScopeDetails, readDocoMetadata } from "~/lib/scope-helpers.server";
 
@@ -26,12 +24,16 @@ import { listScopeDetails, readDocoMetadata } from "~/lib/scope-helpers.server";
  *     by name (`"#global"` or `"#user-flows"`; legacy bare forms
  *     `"global"`/`"user-flows"` are accepted as aliases). Cannot be
  *     combined with the custom-create fields below. Seeds the
- *     template's Intent + Rules into the new scope.
+ *     template's summary, allowed_node_types, and Rules into the new
+ *     scope (decision_01KRYECEA32SRSQCKFXSDCBK67 — no primary-intent
+ *     Intent is created anymore; the description text lives on
+ *     Scope.summary).
  *   - `name`: string (required if `template_name` absent) — starts
  *     with `#` followed by a lowercase letter, then lowercase letters /
  *     digits / hyphens / underscores. No slashes (use `parent_id`).
- *   - `intent_summary`: string (required if `template_name` absent) —
- *     the main Intent this scope serves.
+ *   - `summary`: string (required if `template_name` absent) —
+ *     description text rendered under the scope name everywhere
+ *     (list cards, detail page, bootstrap manifest).
  *   - `icon`: string (optional) — single emoji.
  *   - `parent_id`: string (optional) — id of an existing scope to nest
  *     this one under.
@@ -52,7 +54,7 @@ const SCOPE_NAME_RE = /^#[a-z][a-z0-9_-]*$/;
 interface ScopeCreateBody {
   template_name?: string;
   name?: string;
-  intent_summary?: string;
+  summary?: string;
   icon?: string;
   parent_id?: string;
   watched?: boolean;
@@ -158,9 +160,8 @@ export async function action({
   const t0 = Date.now();
 
   let createOpts: Parameters<typeof createScopeInDoco>[0];
-  let customIntentSummary: string | null = null;
-  let seedGuidanceText: string | null = null;
   let templateToSeed: NonNullable<ReturnType<typeof findScopeTemplate>> | null = null;
+  let resolvedSummary = "";
 
   if (body.template_name) {
     // Accept both `#global` (canonical, hashtag form) and legacy `global`
@@ -175,30 +176,32 @@ export async function action({
     if (existing.some((s) => s.name === tpl.name)) {
       return Response.json({ error: `Scope "${tpl.name}" already exists.` }, { status: 409 });
     }
+    resolvedSummary = tpl.summary;
     createOpts = {
       docoDir: dir,
       docoId,
       name: tpl.name,
       ...(tpl.icon ? { icon: tpl.icon } : {}),
       watched,
+      summary: tpl.summary,
+      ...(tpl.allowed_node_types && tpl.allowed_node_types.length > 0
+        ? { allowed_node_types: tpl.allowed_node_types }
+        : {}),
       createdBy,
     };
     templateToSeed = tpl;
-    // Used by the footer summary fallback below — the seeded Intent
-    // owns the prose, but the footer just needs a one-liner.
-    seedGuidanceText = tpl.intentSummary;
   } else {
     const name = (body.name ?? "").trim().toLowerCase();
-    customIntentSummary = (body.intent_summary ?? "").trim();
+    const customSummary = (body.summary ?? "").trim();
     if (!name) {
       return Response.json(
         { error: "Either `template_name` or `name` is required." },
         { status: 400 },
       );
     }
-    if (!customIntentSummary) {
+    if (!customSummary) {
       return Response.json(
-        { error: "`intent_summary` is required when creating a custom scope." },
+        { error: "`summary` is required when creating a custom scope." },
         { status: 400 },
       );
     }
@@ -227,6 +230,7 @@ export async function action({
       parentScopes.push(parent.id as EntityId<"scope">);
     }
 
+    resolvedSummary = customSummary;
     createOpts = {
       docoDir: dir,
       docoId,
@@ -234,6 +238,7 @@ export async function action({
       ...(body.icon ? { icon: body.icon } : {}),
       parentScopes,
       watched,
+      summary: customSummary,
       createdBy,
     };
   }
@@ -241,8 +246,9 @@ export async function action({
   const newScopeId = await createScopeInDoco(createOpts);
   const changedEntityIds: string[] = [newScopeId];
 
-  // Templates seed one Intent + one Rule per template rule. Custom
-  // scopes only seed their main Intent; rules are added after creation.
+  // Templates seed N Rules; the description text and allowed_node_types
+  // are already written onto the Scope row by createScopeInDoco — no
+  // primary-intent Intent is created (decision_01KRYECEA32SRSQCKFXSDCBK67).
   if (templateToSeed) {
     const seeded = await seedScopeFromTemplate({
       docoDir: dir,
@@ -251,21 +257,7 @@ export async function action({
       template: templateToSeed,
       createdBy,
     });
-    if (seeded.intentId) changedEntityIds.push(seeded.intentId);
     changedEntityIds.push(...seeded.ruleIds);
-  } else if (customIntentSummary) {
-    const intentId = await createIntentInDoco({
-      docoId,
-      summary: customIntentSummary,
-      scopeId: newScopeId,
-      createdBy,
-    });
-    await updateScopeInDoco({
-      docoDir: dir,
-      scopeId: newScopeId,
-      intentIds: [intentId],
-    });
-    changedEntityIds.push(intentId);
   }
 
   await reindex(dir, docoId, changedEntityIds);
@@ -274,8 +266,7 @@ export async function action({
   const scopeName = createOpts.name;
   const scopeIcon = createOpts.icon;
   const summary =
-    seedGuidanceText?.trim() ||
-    customIntentSummary?.trim() ||
+    resolvedSummary.trim() ||
     `Scope: ${scopeName}${watched ? " (watched)" : ""}`;
   const footer_lines = await renderOperationLines({
     docoId,

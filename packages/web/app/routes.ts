@@ -37,7 +37,6 @@ import { type RouteConfig, index, route } from "@react-router/dev/routes";
  *   /:owner/:doco/scopes           per-Doco scope list (Edit button — not chevron — for instructions)
  *   /:owner/:doco/scopes/new       per-Doco add a scope (templates + custom form)
  *   /:owner/:doco/scopes/:id       per-Doco scope detail+edit (merged) — including the Global scope (formerly /constitution; renamed per decision_01KRPNZY7W6CCMYNKGND67BP0B)
- *   /:owner/:doco/scopes/:id/intent/replace    standalone replace main intent page
  *   /:owner/:doco/scopes/:id/rules/new         standalone add rule page for scope rules
  *   /:owner/:doco/scopes/:id/abandon           standalone Danger Zone confirmation
  *   /:owner/:doco/status.json      per-Doco status (connection signal for agent footer line)
@@ -187,10 +186,6 @@ export default [
   route(":docoId/scopes", "routes/$ownerSlug.$docoSlug.scopes._index.tsx"),
   route(":docoId/scopes/new", "routes/$ownerSlug.$docoSlug.scopes.new.tsx"),
   route(":docoId/scopes/:id", "routes/$ownerSlug.$docoSlug.scopes.$id._index.tsx"),
-  route(
-    ":docoId/scopes/:id/intent/replace",
-    "routes/$ownerSlug.$docoSlug.scopes.$id.intent.replace.tsx",
-  ),
   route(
     ":docoId/scopes/:id/rules/new",
     "routes/$ownerSlug.$docoSlug.scopes.$id.rules.new.tsx",

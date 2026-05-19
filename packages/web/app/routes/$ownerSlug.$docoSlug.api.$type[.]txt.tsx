@@ -186,18 +186,21 @@ BODY (JSON)
                             here). The legacy bare forms ("global" /
                             "user-flows") are still accepted as aliases.
                             Mutually exclusive with the custom fields
-                            below. The install seeds one Intent (from
-                            the template's intentSummary) plus N Rules
-                            (one per template rule) into the new scope.
+                            below. The install seeds the template's
+                            description text onto Scope.summary, its
+                            allowed_node_types onto the row's YAML, and
+                            N Rules (one per template rule). No
+                            "primary intent" Intent is created.
   name           required*  starts with "#" followed by a lowercase
                             letter, then lowercase letters / digits /
                             hyphens / underscores (e.g. "#payments",
                             "#user-flows"). No slashes (use parent_id).
                             *if template_name is absent.
-  intent_summary required*  the main Intent this scope serves. The
-                            created Intent is attached to the scope and
-                            recorded on the Scope as single-item
-                            intent_ids.
+  summary        required*  description text rendered under the scope
+                            name on every surface (list card, detail
+                            page, bootstrap manifest). Replaces the
+                            former \`intent_summary\` body parameter
+                            (decision_01KRYECEA32SRSQCKFXSDCBK67).
                             *if template_name is absent.
   icon           optional   single emoji.
   parent_id      optional   id of an existing scope to nest this one
@@ -237,7 +240,7 @@ EXAMPLE — custom scope, not watched, nested under an existing parent
     -d '{
       "name": "#payments",
       "icon": "💳",
-      "intent_summary": "Anything touching Stripe / billing flows stays visible and consistently documented.",
+      "summary": "Anything touching Stripe / billing flows stays visible and consistently documented.",
       "parent_id": "scope_<ULID-of-parent>",
       "watched": false
     }'

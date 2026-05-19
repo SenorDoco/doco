@@ -14,6 +14,7 @@ import { listEntitiesByDoco } from "@doco/db";
 import type { AuthoringPredicate } from "@doco/shared";
 import { type ScopeManifestEntry, listLiveScopeManifest } from "~/lib/scope-helpers.server";
 import { ensureScopeHashtagPrefixMigration } from "~/lib/migrations/scope-hashtag-prefix.server";
+import { ensureScopeSummaryMigration } from "~/lib/migrations/scope-summary.server";
 
 /**
  * Shape of the Global scope (formerly "Constitution") as exposed to
@@ -24,6 +25,19 @@ import { ensureScopeHashtagPrefixMigration } from "~/lib/migrations/scope-hashta
 export interface ConstitutionSnapshot {
   id: string;
   name: string;
+  /**
+   * Description text rendered under the scope name on every surface and
+   * carried here so agents see the constitution's purpose on session
+   * load (decision_01KRYECEA32SRSQCKFXSDCBK67).
+   */
+  summary: string;
+  /**
+   * Generic scope attribute restricting which node types are accepted.
+   * #global ships with `["rule"]` — the framework rejects POSTs of any
+   * other node type whose scopes include #global
+   * (rule_01KRYED1VAT3STXX6XP2GTP7V0).
+   */
+  allowed_node_types: string[];
   icon: string | null;
   authoring_rules: { id: string; summary: string; predicate: AuthoringPredicate }[];
   guidance_rules: { id: string; summary: string }[];
@@ -51,7 +65,12 @@ export interface OnboardingOverlay {
  */
 export async function loadConstitution(docoId: string): Promise<ConstitutionSnapshot | null> {
   const rows = await listEntitiesByDoco("scope", docoId);
-  let globalScope: { id: string; name: string; raw_yaml: string } | null = null;
+  let globalScope: {
+    id: string;
+    name: string;
+    raw_yaml: string;
+    summary: string | null;
+  } | null = null;
   for (const r of rows) {
     // The framework-seeded scope is named "#global" (history:
     // "constitution" → "global" → "#global", the last after the
@@ -61,7 +80,12 @@ export async function loadConstitution(docoId: string): Promise<ConstitutionSnap
     // that still carry a bare-name "global" row are accepted too — the
     // migration will rename them on the next capture pass.
     if (r.name === "#global" || r.name === "global") {
-      globalScope = { id: r.id, name: r.name, raw_yaml: r.raw_yaml };
+      globalScope = {
+        id: r.id,
+        name: r.name,
+        raw_yaml: r.raw_yaml,
+        summary: (r as { summary?: string | null }).summary ?? null,
+      };
       break;
     }
   }
@@ -113,9 +137,24 @@ export async function loadConstitution(docoId: string): Promise<ConstitutionSnap
     }
   }
 
+  // Per decision_01KRYECEA32SRSQCKFXSDCBK67 the scope's description text
+  // lives on the row's `summary` column. Prefer that, fall back to the
+  // YAML mirror, and finally to an empty string for legacy rows that
+  // applyScopeTemplateUpdatesToDoco hasn't migrated yet.
+  const columnSummary = (globalScope.summary ?? "").trim();
+  const yamlSummary =
+    typeof scopeFm.summary === "string" && scopeFm.summary.trim() !== `Scope: ${globalScope.name}`
+      ? scopeFm.summary
+      : "";
+  const summary = columnSummary || yamlSummary;
+  const allowedNodeTypes = Array.isArray(scopeFm.allowed_node_types)
+    ? (scopeFm.allowed_node_types as unknown[]).filter((v): v is string => typeof v === "string")
+    : [];
   return {
     id: globalScope.id,
     name: globalScope.name,
+    summary,
+    allowed_node_types: allowedNodeTypes,
     icon: typeof scopeFm.icon === "string" ? scopeFm.icon : null,
     authoring_rules: authoring,
     guidance_rules: guidance,
@@ -250,6 +289,10 @@ export async function loadBootstrapContext(args: {
   // bootstrap response (and every downstream consumer) sees the
   // canonical `#`-prefixed names. Idempotent + cached per-Doco.
   await ensureScopeHashtagPrefixMigration(docoId);
+  // Then port any legacy primary-intent text onto Scope.summary and
+  // stamp template `allowed_node_types` onto rows that predate the
+  // change (decision_01KRYECEA32SRSQCKFXSDCBK67).
+  await ensureScopeSummaryMigration(docoId);
   const [constitution, rawScopes, nodeCounts] = await Promise.all([
     loadConstitution(docoId),
     listLiveScopeManifest(docoDir),

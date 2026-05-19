@@ -12,7 +12,6 @@ import { loadDocoForAdmin, loadDocoForRead, normalizeDocoParams } from "~/lib/do
 import { loadHostConfig } from "~/lib/host";
 import {
   applyScopeTemplateUpdatesToDoco,
-  createIntentInDoco,
   createScopeInDoco,
   reindex,
   seedScopeFromTemplate,
@@ -52,14 +51,13 @@ export async function loader({
   // not watched, asks for the choice) instead of the picker grid — the
   // question is too important to ask inline on a cramped card.
   const pickedTemplateName = url.searchParams.get("template");
-  let pickedTemplate: { name: string; icon: string; label: string; intentSummary: string } | null =
-    null;
+  let pickedTemplate: { name: string; icon: string; label: string; summary: string } | null = null;
   if (pickedTemplateName) {
     const t = findScopeTemplate(pickedTemplateName);
     if (!t || existingNames.has(t.name)) {
       throw redirect(`/${handle}/scopes/new${isOnboarding ? "?onboarding=1" : ""}`);
     }
-    pickedTemplate = { name: t.name, icon: t.icon, label: t.label, intentSummary: t.intentSummary };
+    pickedTemplate = { name: t.name, icon: t.icon, label: t.label, summary: t.summary };
   }
   return {
     ownerSlug,
@@ -75,7 +73,7 @@ export async function loader({
       name: t.name,
       label: t.label,
       icon: t.icon,
-      intentSummary: t.intentSummary,
+      summary: t.summary,
       alreadyAdded: false,
     })),
     pickedTemplate,
@@ -157,11 +155,16 @@ export async function action({
           name: tpl.name,
           icon: tpl.icon,
           watched,
+          summary: tpl.summary,
+          ...(tpl.allowed_node_types && tpl.allowed_node_types.length > 0
+            ? { allowed_node_types: tpl.allowed_node_types }
+            : {}),
           createdBy,
         });
-        // Templates ship `intentSummary` + `rules[]`; seed both into the
-        // new scope through the single entry point so the Doco-creation
-        // path and this picker path stay aligned.
+        // Templates ship `summary` + `rules[]` (and optionally
+        // `allowed_node_types`). The description text and node-type
+        // restriction are already written onto the Scope row by
+        // createScopeInDoco; seedScopeFromTemplate only adds the rules.
         await seedScopeFromTemplate({
           docoDir: dir,
           docoId: docoId as EntityId<"doco">,
@@ -182,10 +185,13 @@ export async function action({
         name = `#${name}`;
       }
       const icon = String(form.get("icon") ?? "").trim();
-      const purpose = String(form.get("purpose") ?? "").trim();
+      // The form field is still named "purpose" for back-compat with any
+      // bookmarked URL state, but it now stores the scope's description
+      // text directly on Scope.summary (decision_01KRYECEA32SRSQCKFXSDCBK67).
+      const description = String(form.get("purpose") ?? "").trim();
       const parentId = String(form.get("parent_id") ?? "").trim() || null;
       if (!name || name === "#") return { error: "Scope name is required." };
-      if (!purpose) return { error: "Main intent is required." };
+      if (!description) return { error: "Description is required." };
       if (!SCOPE_NAME_RE.test(name)) {
         return {
           error:
@@ -204,7 +210,8 @@ export async function action({
         }
         parentScopes.push(parent.id as EntityId<"scope">);
       }
-      // Scope creation now captures only the scope and its main Intent.
+      // Scope creation writes the description onto Scope.summary directly
+      // — no Intent indirection (decision_01KRYECEA32SRSQCKFXSDCBK67).
       // Rules are authored after creation from the scope page or rules API.
       const newScopeId = await createScopeInDoco({
         docoDir: dir,
@@ -213,20 +220,10 @@ export async function action({
         ...(icon ? { icon } : {}),
         parentScopes,
         watched,
+        summary: description,
         createdBy,
       });
-      const mainIntentId = await createIntentInDoco({
-        docoId: docoId as EntityId<"doco">,
-        summary: purpose,
-        scopeId: newScopeId,
-        createdBy,
-      });
-      await updateScopeInDoco({
-        docoDir: dir,
-        scopeId: newScopeId,
-        intentIds: [mainIntentId],
-      });
-      await reindex(dir, docoId, [newScopeId, mainIntentId]);
+      await reindex(dir, docoId, [newScopeId]);
       // After-create redirect: go straight to the merged scope page so
       // the user can add rules only after the scope exists.
       return redirect(`/${handle}/scopes/${newScopeId}`);
@@ -289,7 +286,7 @@ export default function AddScope({
                   <CardTitle>
                     Add the <span className="font-mono">{pickedTemplate.name}</span> scope
                   </CardTitle>
-                  <CardDescription>{pickedTemplate.intentSummary}</CardDescription>
+                  <CardDescription>{pickedTemplate.summary}</CardDescription>
                 </div>
               </div>
             </CardHeader>
@@ -457,7 +454,7 @@ export default function AddScope({
                       <div className="flex-1">
                         <span className="font-mono text-foreground">{t.name}</span>
                         <br />
-                        <span className="text-muted-foreground">{t.intentSummary}</span>
+                        <span className="text-muted-foreground">{t.summary}</span>
                       </div>
                       {t.alreadyAdded ? (
                         <span className="self-center text-[10px] text-muted-foreground">
@@ -564,12 +561,12 @@ export default function AddScope({
                     </div>
                   </div>
                   <label className="block text-xs">
-                    <span className="mb-1 block font-semibold text-foreground">Main intent *</span>
+                    <span className="mb-1 block font-semibold text-foreground">Description *</span>
                     <textarea
                       name="purpose"
                       rows={3}
                       required
-                      placeholder="What this scope is meant to make true."
+                      placeholder="What this scope is meant to make true. Renders under the scope name everywhere."
                       className="w-full rounded-md border border-border bg-input px-3 py-2 text-xs text-foreground outline-none focus:border-primary"
                     />
                   </label>

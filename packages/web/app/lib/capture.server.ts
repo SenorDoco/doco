@@ -544,11 +544,23 @@ export async function resolveScopeNames(
  * Resolve scope names → ids, returning a typed error if any are missing or
  * unavailable. Centralizes the boilerplate that all three captures + every
  * list-op share.
+ *
+ * When `incomingNodeType` is provided, also enforces per-scope
+ * `allowed_node_types` (decision_01KRYECEA32SRSQCKFXSDCBK67,
+ * rule_01KRYED1VAT3STXX6XP2GTP7V0): if any resolved scope's manifest
+ * restricts the accepted node types and the incoming type isn't in the
+ * allowlist, the capture is rejected. Driven by a generic attribute any
+ * scope can carry (not a name check) so the framework's no-name-based-
+ * behavior rule stays satisfied.
  */
 async function resolveScopeOrError(
   docoDir: string,
   names: string[],
-  context: { verb: "tag" | "replace" | "add"; nodeKind?: string },
+  context: {
+    verb: "tag" | "replace" | "add";
+    nodeKind?: string;
+    incomingNodeType?: string;
+  },
 ): Promise<{ ids: string[] } | CaptureError> {
   const { ids, unknown, available, unavailable } = await resolveScopeNames(docoDir, names);
   if (unknown.length > 0) {
@@ -567,7 +579,62 @@ async function resolveScopeOrError(
     }
     return { error: `Cannot add abandoned or superseded scope(s) to a node: ${unavailable.join(", ")}. Activate first or pick a different scope.` };
   }
+  if (context.incomingNodeType && ids.length > 0) {
+    const offenders = await findScopesRejectingNodeType(docoDir, ids, context.incomingNodeType);
+    if (offenders.length > 0) {
+      const lines = offenders.map(
+        (o) => `${o.name} (accepts only ${o.allowed.join(", ")})`,
+      );
+      return {
+        error: `Cannot tag a ${context.incomingNodeType} into ${lines.join("; ")}.`,
+      };
+    }
+  }
   return { ids };
+}
+
+/**
+ * Look up which of the given scope ids carry `allowed_node_types` that
+ * exclude `incomingNodeType`. Returns scope name + allowed list for each
+ * offender so the caller can build a readable error.
+ */
+async function findScopesRejectingNodeType(
+  docoDir: string,
+  scopeIds: string[],
+  incomingNodeType: string,
+): Promise<{ id: string; name: string; allowed: string[] }[]> {
+  if (scopeIds.length === 0) return [];
+  const meta = await readDocoMetadata(docoDir);
+  if (!meta?.docoId) return [];
+  const offenders: { id: string; name: string; allowed: string[] }[] = [];
+  try {
+    await withClient(async (c) => {
+      const rows = (
+        await c.query<{ id: string; name: string; raw_yaml: string }>(
+          `SELECT id, name, raw_yaml FROM scopes WHERE doco_id = $1 AND id = ANY($2::text[])`,
+          [meta.docoId, scopeIds],
+        )
+      ).rows;
+      for (const r of rows) {
+        let allowed: string[] = [];
+        try {
+          const fm = parseYaml(r.raw_yaml) as { allowed_node_types?: unknown };
+          if (Array.isArray(fm?.allowed_node_types)) {
+            allowed = (fm.allowed_node_types as unknown[]).filter(
+              (v): v is string => typeof v === "string",
+            );
+          }
+        } catch {}
+        if (allowed.length === 0) continue;
+        if (allowed.includes(incomingNodeType)) continue;
+        offenders.push({ id: r.id, name: r.name, allowed });
+      }
+    });
+  } catch {
+    // PG unreachable — fail open; the scope-row read will fail elsewhere
+    // and the user will see a clearer error from that path.
+  }
+  return offenders;
 }
 
 /**
@@ -1213,7 +1280,7 @@ export async function captureDecision(
     return { error: "scope_names must be a non-empty array." };
   }
 
-  const scopeRes = await resolveScopeOrError(docoDir, draft.scope_names, { verb: "tag", nodeKind: "node" });
+  const scopeRes = await resolveScopeOrError(docoDir, draft.scope_names, { verb: "tag", nodeKind: "Decision", incomingNodeType: "decision" });
   if ("error" in scopeRes) return scopeRes;
   const scopeIds = scopeRes.ids;
 
@@ -1830,7 +1897,7 @@ export async function captureIntent(
     return { error: "scope_names must be a non-empty array." };
   }
 
-  const scopeRes = await resolveScopeOrError(docoDir, draft.scope_names, { verb: "tag", nodeKind: "Intent" });
+  const scopeRes = await resolveScopeOrError(docoDir, draft.scope_names, { verb: "tag", nodeKind: "Intent", incomingNodeType: "intent" });
   if ("error" in scopeRes) return scopeRes;
   const scopeIds = scopeRes.ids;
 
@@ -1976,7 +2043,7 @@ export async function captureEval(
   if (!Array.isArray(draft.scope_names) || draft.scope_names.length === 0) {
     return { error: "scope_names must be a non-empty array." };
   }
-  const scopeRes = await resolveScopeOrError(docoDir, draft.scope_names, { verb: "tag", nodeKind: "Eval" });
+  const scopeRes = await resolveScopeOrError(docoDir, draft.scope_names, { verb: "tag", nodeKind: "Eval", incomingNodeType: "eval" });
   if ("error" in scopeRes) return scopeRes;
   const scopeIds = scopeRes.ids;
 
@@ -2120,7 +2187,7 @@ export async function captureAction(
     return { error: "scope_names must be a non-empty array." };
   }
 
-  const scopeRes = await resolveScopeOrError(docoDir, draft.scope_names, { verb: "tag", nodeKind: "Action" });
+  const scopeRes = await resolveScopeOrError(docoDir, draft.scope_names, { verb: "tag", nodeKind: "Action", incomingNodeType: "action" });
   if ("error" in scopeRes) return scopeRes;
   const scopeIds = scopeRes.ids;
 
@@ -2286,6 +2353,7 @@ export async function captureLog(
   const scopeRes = await resolveScopeOrError(docoDir, draft.scope_names, {
     verb: "tag",
     nodeKind: "Log",
+    incomingNodeType: "log",
   });
   if ("error" in scopeRes) return scopeRes;
   const scopeIds = scopeRes.ids;
@@ -2440,7 +2508,7 @@ export async function captureRule(
     return { error: "scope_names must be a non-empty array." };
   }
 
-  const scopeRes = await resolveScopeOrError(docoDir, draft.scope_names, { verb: "tag", nodeKind: "Rule" });
+  const scopeRes = await resolveScopeOrError(docoDir, draft.scope_names, { verb: "tag", nodeKind: "Rule", incomingNodeType: "rule" });
   if ("error" in scopeRes) return scopeRes;
   const scopeIds = scopeRes.ids;
 
@@ -2593,7 +2661,7 @@ export async function captureReference(
     return { error: "scope_names must be a non-empty array." };
   }
 
-  const scopeRes = await resolveScopeOrError(docoDir, draft.scope_names, { verb: "tag", nodeKind: "Reference" });
+  const scopeRes = await resolveScopeOrError(docoDir, draft.scope_names, { verb: "tag", nodeKind: "Reference", incomingNodeType: "reference" });
   if ("error" in scopeRes) return scopeRes;
   const scopeIds = scopeRes.ids;
 
@@ -2734,6 +2802,7 @@ export async function captureState(
   const scopeRes = await resolveScopeOrError(docoDir, draft.scope_names, {
     verb: "tag",
     nodeKind: "State",
+    incomingNodeType: "state",
   });
   if ("error" in scopeRes) return scopeRes;
   const scopeIds = scopeRes.ids;

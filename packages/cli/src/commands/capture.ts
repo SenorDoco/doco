@@ -346,7 +346,7 @@ const scopeCmd = defineCommand({
         console.error(cross("Pass --purpose when creating a custom scope."));
         process.exit(2);
       }
-      body.intent_summary = args.purpose;
+      body.summary = args.purpose;
       if (args["parent-id"]) body.parent_id = args["parent-id"];
     }
     await postCapture("scopes", body);

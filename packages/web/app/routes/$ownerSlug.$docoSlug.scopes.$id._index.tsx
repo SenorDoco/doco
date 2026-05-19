@@ -92,12 +92,6 @@ interface RuleLifecycleActionResult {
   error?: string;
 }
 
-interface PrimaryIntentRecord {
-  id: string;
-  summary: string;
-  lifecycle: string;
-}
-
 function asFieldList(p: AuthoringPredicateRecord): string[] {
   if (Array.isArray(p.fields)) return p.fields.filter((f): f is string => typeof f === "string");
   if (typeof p.field === "string" && p.field.length > 0) return [p.field];
@@ -159,37 +153,6 @@ async function readScopeRaw(scopeId: string): Promise<Record<string, unknown> | 
       const row = r.rows[0];
       if (!row) return null;
       return parseYaml(row.raw_yaml) as Record<string, unknown>;
-    });
-  } catch {
-    return null;
-  }
-}
-
-function scopeMainIntentId(raw: Record<string, unknown> | null): string | null {
-  const ids = Array.isArray(raw?.intent_ids)
-    ? raw.intent_ids.filter((id): id is string => typeof id === "string")
-    : [];
-  return ids.length === 1 ? ids[0] : null;
-}
-
-async function readMainIntentForScope(
-  docoId: string | null,
-  mainIntentId?: string | null,
-): Promise<PrimaryIntentRecord | null> {
-  if (!docoId || !mainIntentId) return null;
-  try {
-    return await withClient(async (c) => {
-      const r = await c.query<PrimaryIntentRecord>(
-        `SELECT id,
-                COALESCE(summary, '') AS summary,
-                COALESCE(lifecycle, 'active') AS lifecycle
-           FROM intents
-          WHERE doco_id = $1
-            AND id = $2
-          LIMIT 1`,
-        [docoId, mainIntentId],
-      );
-      return r.rows[0] ?? null;
     });
   } catch {
     return null;
@@ -545,8 +508,31 @@ export async function loader({
     String(raw.name) === "#global" ||
     String(raw.name) === "global" ||
     (raw as { watched?: unknown }).watched === true;
-  const mainIntentId = scopeMainIntentId(raw);
-  const primaryIntent = await readMainIntentForScope(docoId, mainIntentId);
+  // Scope description text now lives on the Scope row's `summary` column
+  // (decision_01KRYECEA32SRSQCKFXSDCBK67). Prefer the column; fall back to
+  // the YAML mirror for rows that haven't been migrated yet by
+  // applyScopeTemplateUpdatesToDoco.
+  const scopeRow = docoId
+    ? await withClient((c) =>
+        c.query<{ summary: string | null }>(
+          "SELECT summary FROM scopes WHERE id = $1 LIMIT 1",
+          [id],
+        ),
+      )
+    : null;
+  const scopeColumnSummary = (scopeRow?.rows[0]?.summary ?? "").trim();
+  const scopeYamlSummary =
+    typeof raw.summary === "string" && raw.summary.trim() !== `Scope: ${String(raw.name)}`
+      ? raw.summary
+      : "";
+  const scopeSummary = scopeColumnSummary || scopeYamlSummary;
+  const scopeAllowedNodeTypes = Array.isArray(
+    (raw as { allowed_node_types?: unknown }).allowed_node_types,
+  )
+    ? ((raw as { allowed_node_types: unknown[] }).allowed_node_types).filter(
+        (v): v is string => typeof v === "string",
+      )
+    : [];
 
   return {
     ownerSlug,
@@ -557,10 +543,11 @@ export async function loader({
     scope: {
       id: String(raw.id),
       name: String(raw.name),
+      summary: scopeSummary,
       icon: typeof raw.icon === "string" ? raw.icon : "",
       lifecycle: typeof raw.lifecycle === "string" ? raw.lifecycle : "active",
       is_watched: isWatched,
-      intent_ids: mainIntentId ? [mainIntentId] : [],
+      allowed_node_types: scopeAllowedNodeTypes,
       // v7 (decision_01KRRR5BQ16ASY8HQEE0V499YG): surface the scope's
       // gating + lifecycle data so the editor can render it.
       default_node_lifecycle:
@@ -570,7 +557,6 @@ export async function loader({
         ? (raw.excluded_rules as unknown[]).filter((v): v is string => typeof v === "string")
         : [],
     },
-    primaryIntent,
     rules: rulesByKind,
     allScopes,
     memberCount,
@@ -720,7 +706,6 @@ export default function ScopePage({
     docoSlug,
     handle,
     scope,
-    primaryIntent,
     rules,
     allScopes,
     memberCount,
@@ -798,13 +783,7 @@ export default function ScopePage({
           </Link>
         </div>
 
-        <PrimaryIntentCard
-          scopeId={scope.id}
-          primaryIntent={primaryIntent}
-          ownerSlug={ownerSlug}
-          docoSlug={docoSlug}
-          handle={handle}
-        />
+        <ScopeDescriptionCard scope={scope} />
 
         {(scope.default_node_lifecycle ||
           (scope.excluded_rules && scope.excluded_rules.length > 0)) && (
@@ -1037,54 +1016,38 @@ export default function ScopePage({
   );
 }
 
-function PrimaryIntentCard({
-  scopeId,
-  primaryIntent,
-  ownerSlug,
-  docoSlug,
-  handle,
+function ScopeDescriptionCard({
+  scope,
 }: {
-  scopeId: string;
-  primaryIntent: PrimaryIntentRecord | null;
-  ownerSlug: string;
-  docoSlug: string;
-  handle: string;
+  scope: {
+    id: string;
+    name: string;
+    summary: string;
+    allowed_node_types: string[];
+  };
 }) {
+  // Per decision_01KRYECEA32SRSQCKFXSDCBK67 the scope's description text
+  // lives on Scope.summary directly — no Intent indirection, no "Replace"
+  // affordance pretending the description is a separate node.
+  const rulesOnly = scope.allowed_node_types.length === 1 && scope.allowed_node_types[0] === "rule";
   return (
     <Card>
       <CardHeader>
-        <div className="flex flex-wrap items-start gap-3">
-          <div className="min-w-0 flex-1">
-            {primaryIntent ? (
-              <CardDescription className="text-xs">
-                <span className="font-semibold text-foreground/70">Main intent: </span>
-                <Link
-                  to={entityUrl({
-                    ownerSlug,
-                    docoSlug,
-                    nodeType: "intent",
-                    id: primaryIntent.id,
-                  })}
-                  className="text-foreground hover:text-primary"
-                >
-                  {primaryIntent.summary}
-                </Link>
-                {primaryIntent.lifecycle !== "active" ? (
-                  <span className="ml-2">
-                    <Badge>{primaryIntent.lifecycle}</Badge>
-                  </span>
-                ) : null}
-              </CardDescription>
-            ) : (
-              <CardDescription>No main intent is attached yet.</CardDescription>
-            )}
-          </div>
-          <Link
-            to={`/${handle}/scopes/${scopeId}/intent/replace`}
-            className="inline-flex h-8 shrink-0 items-center rounded-md border border-border px-2.5 text-xs font-semibold hover:bg-muted"
-          >
-            Replace
-          </Link>
+        <div className="min-w-0">
+          {scope.summary ? (
+            <CardDescription className="text-xs leading-relaxed">{scope.summary}</CardDescription>
+          ) : (
+            <CardDescription className="text-xs italic">
+              No description yet. Add one from the scope's settings.
+            </CardDescription>
+          )}
+          {rulesOnly ? (
+            <p className="mt-2 text-[11px] text-muted-foreground">
+              <span className="font-semibold">Rules-only scope:</span> the framework rejects POSTs of
+              any non-Rule node whose <code className="font-mono">scopes</code> list includes{" "}
+              <code className="font-mono">{scope.name}</code>.
+            </p>
+          ) : null}
         </div>
       </CardHeader>
     </Card>

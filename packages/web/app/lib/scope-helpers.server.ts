@@ -68,16 +68,23 @@ export async function listScopeFiles(docoDir: string): Promise<{ id: string; nam
 export interface ScopeDetails {
   id: string;
   name: string;
+  /**
+   * Description text rendered under the scope name on every surface
+   * (decision_01KRYECEA32SRSQCKFXSDCBK67). Lives on the Scope row's
+   * `summary` column; no longer fetched from an attached Intent node.
+   */
+  summary: string;
   icon: string;
   parent_ids: string[];
   lifecycle: string;
   is_watched: boolean;
-  intent_ids: string[];
-  primary_intent: {
-    id: string;
-    summary: string;
-    lifecycle: string;
-  } | null;
+  /**
+   * Generic scope attribute that restricts which node types can be
+   * tagged into this scope. Empty array (or absence) means "any node
+   * type is allowed". #global ships with ["rule"]
+   * (rule_01KRYED1VAT3STXX6XP2GTP7V0).
+   */
+  allowed_node_types: string[];
 }
 
 export async function resolveScopeIcons(
@@ -96,17 +103,19 @@ export async function resolveScopeIcons(
   return out;
 }
 
-export async function listScopeDetails(
-  docoDir: string,
-  opts: { includePrimaryIntent?: boolean } = {},
-): Promise<ScopeDetails[]> {
+export async function listScopeDetails(docoDir: string): Promise<ScopeDetails[]> {
   const docoId = await docoIdFromDir(docoDir);
   if (!docoId) return [];
   const out: ScopeDetails[] = [];
   try {
     await withClient(async (c) => {
-      const r = await c.query<{ id: string; name: string; raw_yaml: string }>(
-        "SELECT id, name, raw_yaml FROM scopes WHERE doco_id = $1",
+      const r = await c.query<{
+        id: string;
+        name: string;
+        summary: string | null;
+        raw_yaml: string;
+      }>(
+        "SELECT id, name, summary, raw_yaml FROM scopes WHERE doco_id = $1",
         [docoId],
       );
       for (const row of r.rows) {
@@ -117,58 +126,28 @@ export async function listScopeDetails(
             e = parsed as Record<string, unknown>;
           }
         } catch {}
+        // Prefer the dedicated column; fall back to the YAML mirror for
+        // older rows that haven't been migrated by
+        // applyScopeTemplateUpdatesToDoco yet.
+        const summaryFromColumn = (row.summary ?? "").trim();
+        const summaryFromYaml =
+          typeof e.summary === "string" && e.summary.trim() !== `Scope: ${row.name}`
+            ? e.summary
+            : "";
+        const summary = summaryFromColumn || summaryFromYaml;
+        const allowedNodeTypes = Array.isArray(e.allowed_node_types)
+          ? (e.allowed_node_types as unknown[]).filter((v): v is string => typeof v === "string")
+          : [];
         out.push({
           id: row.id,
           name: row.name,
+          summary,
           icon: typeof e.icon === "string" ? e.icon : "",
           parent_ids: Array.isArray(e.scopes) ? (e.scopes as string[]) : [],
           lifecycle: typeof e.lifecycle === "string" ? e.lifecycle : "active",
           is_watched: row.name === "#global" || row.name === "global" || e.watched === true,
-          intent_ids: Array.isArray(e.intent_ids)
-            ? e.intent_ids.filter((id): id is string => typeof id === "string")
-            : [],
-          primary_intent: null,
+          allowed_node_types: allowedNodeTypes,
         });
-      }
-
-      if (opts.includePrimaryIntent && out.length > 0) {
-        const explicitIds = [
-          ...new Set(
-            out
-              .map((s) => (s.intent_ids.length === 1 ? s.intent_ids[0] : null))
-              .filter((id): id is string => typeof id === "string" && id.length > 0),
-          ),
-        ];
-        const explicitById = new Map<string, ScopeDetails["primary_intent"]>();
-        if (explicitIds.length > 0) {
-          const explicitRows = await c.query<{
-            id: string;
-            summary: string;
-            lifecycle: string;
-          }>(
-            `SELECT id,
-                    COALESCE(summary, '') AS summary,
-                    COALESCE(lifecycle, 'active') AS lifecycle
-               FROM intents
-              WHERE doco_id = $1
-                AND id = ANY($2::text[])`,
-            [docoId, explicitIds],
-          );
-          for (const row of explicitRows.rows) {
-            if (row.summary.trim().length === 0) continue;
-            explicitById.set(row.id, {
-              id: row.id,
-              summary: row.summary,
-              lifecycle: row.lifecycle,
-            });
-          }
-        }
-
-        for (const scope of out) {
-          const mainIntentId = scope.intent_ids.length === 1 ? scope.intent_ids[0] : null;
-          if (!mainIntentId) continue;
-          scope.primary_intent = explicitById.get(mainIntentId) ?? null;
-        }
       }
     });
   } catch {
@@ -181,9 +160,24 @@ export async function listScopeDetails(
 export interface ScopeManifestEntry {
   id: string;
   name: string;
+  /**
+   * Scope description text — the same value rendered under the scope
+   * name on every UI surface. Carried in the manifest so agents see it
+   * on session load without a follow-up fetch
+   * (decision_01KRYECEA32SRSQCKFXSDCBK67).
+   */
+  summary: string;
   icon: string;
   lifecycle: string;
   is_watched: boolean;
+  /**
+   * Generic scope attribute that restricts which node types are accepted
+   * into this scope. Empty array means "no restriction". #global ships
+   * with ["rule"]; the framework rejects POSTs of any other node type
+   * whose `scopes` list includes such a scope
+   * (rule_01KRYED1VAT3STXX6XP2GTP7V0).
+   */
+  allowed_node_types: string[];
   /** Count of user-captured nodes (decisions, rules, intents, actions,
    *  logs, references, evals, ideas) tagged `in_scope_of` this scope.
    *  Optional because not every manifest call populates it — see
@@ -198,9 +192,11 @@ export async function listScopeManifest(docoDir: string): Promise<ScopeManifestE
   return details.map((d) => ({
     id: d.id,
     name: d.name,
+    summary: d.summary,
     icon: d.icon,
     lifecycle: d.lifecycle,
     is_watched: d.is_watched,
+    allowed_node_types: d.allowed_node_types,
   }));
 }
 
