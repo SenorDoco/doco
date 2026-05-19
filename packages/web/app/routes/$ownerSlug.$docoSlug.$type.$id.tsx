@@ -1,14 +1,14 @@
 import { withClient } from "@doco/db";
 import { globalPageRank, personalizedPageRank } from "@doco/index";
-import { ENTITY_TYPES, type EntityId, entityListUrl, entityUrl, parseEntityId } from "@doco/shared";
+import { ENTITY_TYPES, type EntityId, entityUrl, parseEntityId } from "@doco/shared";
 // Per-Doco entity detail at the short URL `/:ownerSlug/:docoSlug/:type/:id`.
 //
 // Replaces the legacy `/e/:type/:id` URL — that path now redirects here.
 // See `ship-short-entity-urls` Intent + ADR.
 import { useState } from "react";
-import { Form, Link, redirect } from "react-router";
+import { Link, redirect } from "react-router";
 import { parse as parseYaml } from "yaml";
-import { type AuditEvent, readEntityHistory } from "~/lib/audit-log.server";
+import { readEntityHistory } from "~/lib/audit-log.server";
 import { docoPath } from "~/lib/db.server";
 import { loadDocoForAdmin, loadDocoForRead, normalizeDocoParams } from "~/lib/doco-access.server";
 import { loadHostConfig } from "~/lib/host";
@@ -97,11 +97,15 @@ function graphLanePrincipalId(
   if (nodeType === "decision") return stringField(fm, "decided_by") ?? createdBy;
   return createdBy;
 }
-import { Badge, LifecycleBadge, NodeTypeBadge } from "~/components/badge";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
+import { AiChatPane } from "~/components/ai-chat-pane";
+import { LifecycleBadge, NodeTypeBadge } from "~/components/badge";
 import { EntityGraph, type GraphLink, type GraphNode } from "~/components/entity-graph";
+import {
+  type DrawerEdge,
+  type DrawerKind,
+  NodeDetailDrawer,
+} from "~/components/node-detail-drawer";
 import { SiteHeader } from "~/components/site-header";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "~/components/table";
 
 /** "Ns / Nm / Nh / Nd ago" — same shape the graph component uses. */
 function relativeTimeIso(iso: string): string {
@@ -637,14 +641,10 @@ export default function EntityDetail({
     ownerSlug,
     docoSlug,
     handle,
-    host,
     graphNodes,
     graphLinks,
-    scopeLanding,
-    allScopes,
     me,
     history,
-    identityMap,
   } = loaderData;
   // Per ADR-018 each node type has its own handle field — username, name,
   // title, locator. Fall through to anything that reads as friendly
@@ -659,11 +659,7 @@ export default function EntityDetail({
     id;
   const linkTo = (kind: string, otherId: string) =>
     entityUrl({ ownerSlug, docoSlug, nodeType: kind, id: otherId });
-  // Scope-edit mode: toggled inline. ADR-084 follow-up. Deletion lives on
-  // /scopes/<id>/edit's Danger Zone, not here.
-  const [editingParents, setEditingParents] = useState(false);
-  const isScope = type === "scope";
-  const currentParents = isScope && Array.isArray(ent.scopes) ? (ent.scopes as string[]) : [];
+  const [openDrawer, setOpenDrawer] = useState<DrawerKind | null>(null);
 
   // Focal node's GPR (computed in the loader for every neighbor including center).
   const focalNode = graphNodes.find((n) => n.is_center);
@@ -672,610 +668,147 @@ export default function EntityDetail({
     focalNode?.created_at ??
     (typeof ent.created_at === "string" ? (ent.created_at as string) : null);
 
-  // PPR-ranked neighbors for the "More relevant nodes" list — drop the focal,
-  // take the top 10, render in descending order.
+  // PPR-ranked neighbors for the Info pane — drop the focal, take the top 10.
   const rankedNeighbors = graphNodes
     .filter((n) => !n.is_center)
     .sort((a, b) => b.ppr - a.ppr)
     .slice(0, 10);
 
-  const headerPane = (
-    <header className="space-y-2">
-      <h1 className="text-lg font-semibold tracking-tight text-foreground">{display}</h1>
-      <div className="flex flex-wrap items-center gap-2 pt-1">
-        <NodeTypeBadge nodeType={type} />
-        {ent.lifecycle ? <LifecycleBadge lifecycle={String(ent.lifecycle)} /> : null}
-        {ent.modality ? <Badge variant="primary">{String(ent.modality)}</Badge> : null}
-        {ent.phase ? <Badge variant="primary">{String(ent.phase)}</Badge> : null}
-        {entityScopes.map((s) => (
-          <Link
-            key={s.id}
-            to={linkTo("scope", s.name)}
-            className="inline-flex items-center gap-1 rounded-md border border-border bg-card px-2 py-0.5 text-[11px] font-mono text-muted-foreground transition-colors hover:border-primary hover:text-foreground"
-          >
-            {s.icon ? (
-              <span aria-hidden className="font-sans text-[12px] leading-none">
-                {s.icon}
-              </span>
-            ) : null}
-            <span>{s.name}</span>
-          </Link>
-        ))}
-      </div>
-      {ent.summary && String(ent.summary) !== display ? (
-        <p className="max-w-4xl text-sm text-muted-foreground">{String(ent.summary)}</p>
-      ) : null}
-    </header>
-  );
+  const drawerOutgoing: DrawerEdge[] = outgoing.map((e) => ({
+    edge_type: e.edge_type,
+    other_id: e.to_id,
+    other_node_type: e.to_node_type,
+  }));
+  const drawerIncoming: DrawerEdge[] = incoming.map((e) => ({
+    edge_type: e.edge_type,
+    other_id: e.from_id,
+    other_node_type: e.from_node_type,
+  }));
+  const drawerHistory = history.map((e) => ({
+    event_id: e.event_id,
+    at: e.at,
+    by: e.by ?? null,
+    op: e.op,
+    before: e.before,
+    after: e.after,
+  }));
 
-  const focalStatsPane = (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-sm">This node</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <dl className="grid grid-cols-[max-content_1fr] gap-x-3 gap-y-2 text-xs">
-          <dt className="text-muted-foreground">Id</dt>
-          <dd
-            className="font-mono break-all"
-            title="Entity ULID id — primary key in this Doco's storage"
-          >
-            {id}
-          </dd>
-          <dt className="text-muted-foreground">Created</dt>
-          <dd className="font-mono">
-            {focalCreatedAt ? `${focalCreatedAt} · ${relativeTimeIso(focalCreatedAt)}` : "—"}
-          </dd>
-          <dt className="text-muted-foreground">Global PageRank</dt>
-          <dd className="font-mono">{focalGpr !== null ? focalGpr.toFixed(4) : "—"}</dd>
-        </dl>
-      </CardContent>
-    </Card>
-  );
+  // Chat backend lives at /<handle>/<type>/<id>/chat.json. Only enabled for
+  // node types the chat backend's tool-use surface supports.
+  const chatEndpoint = `/${handle}/${type}/${id}/chat.json`;
+  const chatSupported = CHAT_SUPPORTED_TYPES.has(type);
 
-  const relevantNodesPane = (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-sm">More relevant nodes ({rankedNeighbors.length})</CardTitle>
-        <CardDescription>Sorted by personalized PageRank from this node (ADR-076).</CardDescription>
-      </CardHeader>
-      <CardContent className="p-0">
-        <ul className="divide-y divide-border">
-          {rankedNeighbors.map((n) => (
-            <li key={n.id}>
-              <Link
-                to={linkTo(n.node_type, n.id)}
-                className="block px-4 py-2 text-xs hover:bg-input/40"
-              >
-                <NodeTypeBadge nodeType={n.node_type} className="text-[10px] uppercase" />
-                <span className="ml-2 font-mono text-foreground">{n.name ?? n.id}</span>
-                <span className="ml-2 text-muted-foreground">{n.summary?.slice(0, 80)}</span>
-                <span className="ml-2 font-mono text-[10px] text-muted-foreground">
-                  PPR {n.ppr.toFixed(3)} · GPR {n.gpr.toFixed(3)}
-                </span>
-              </Link>
-            </li>
-          ))}
-        </ul>
-      </CardContent>
-    </Card>
-  );
-
-  const detailsPane = (
-    <div className="space-y-4">
-      {isScope ? (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm">Rules</CardTitle>
-            <CardDescription>
-              Per decision_01KRPMC7CVDA9WZ5DKH81TVAAA every piece of normative content on a scope —
-              authoring predicates and agent-facing guidance — lives as a rule. Manage them on the
-              scope edit page.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Link
-              to={`/${handle}/scopes/${id}/edit`}
-              className="inline-flex items-center rounded-md border border-border bg-input px-3 py-1.5 text-xs font-semibold hover:bg-card"
-            >
-              Edit rules →
-            </Link>
-          </CardContent>
-        </Card>
-      ) : null}
-
-      {scopeLanding ? (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center justify-between text-sm">
-              <span>Members of this scope</span>
-              <Link
-                to={`/${handle}/scopes/new?parent=${id}`}
-                className="rounded-md border border-border px-2 py-0.5 text-[10px] hover:border-primary"
-              >
-                + Add child scope
-              </Link>
-            </CardTitle>
-            <CardDescription>
-              Per ADR-079 — entities that declare <code>scopes: [{id}]</code> in their frontmatter,
-              grouped by node type.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {scopeLanding.subScopes.length > 0 ? (
-              <div>
-                <p className="text-xs font-semibold uppercase text-muted-foreground">Sub-scopes</p>
-                <div className="mt-1 flex flex-wrap gap-2">
-                  {scopeLanding.subScopes.map((s) => (
-                    <Link
-                      key={s.id}
-                      to={linkTo("scope", s.id)}
-                      className="rounded-full border border-border px-2 py-0.5 text-xs hover:border-primary"
-                    >
-                      {s.name}
-                    </Link>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-            {Object.entries(scopeLanding.members).map(([t, rows]) => (
-              <div key={t}>
-                <p className="text-xs font-semibold uppercase text-muted-foreground">
-                  {t} ({rows.length})
-                </p>
-                <ul className="mt-1 space-y-1 text-xs">
-                  {rows.map((r) => (
-                    <li key={r.id} className="flex items-baseline gap-2">
-                      <Link
-                        to={linkTo(t, r.id)}
-                        className="text-primary hover:underline font-mono text-[11px]"
-                      >
-                        {r.id.slice(0, 36)}
-                      </Link>
-                      {r.lifecycle ? <Badge>{r.lifecycle}</Badge> : null}
-                      <span className="text-muted-foreground truncate">{r.summary}</span>
-                    </li>
-                  ))}
-                </ul>
-                <Link
-                  to={`${entityListUrl({ ownerSlug, docoSlug, nodeType: t })}?scope=${id}`}
-                  className="mt-1 inline-block text-[11px] text-primary hover:underline"
-                >
-                  See all {t}s in this scope →
-                </Link>
-              </div>
-            ))}
-            {Object.keys(scopeLanding.members).length === 0 ? (
-              <p className="text-xs text-muted-foreground">
-                No members yet. Reference this scope from any entity's <code>scopes:</code> array to
-                populate the dashboard.
-              </p>
-            ) : null}
-          </CardContent>
-        </Card>
-      ) : null}
-
-      {isScope ? (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm">Manage scope</CardTitle>
-            <CardDescription>Change parents (reparent) or remove this scope.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {/* Reparent */}
-            <div>
-              <div className="mb-2 flex items-center justify-between">
-                <p className="text-xs font-semibold uppercase text-muted-foreground">
-                  Parents ({currentParents.length})
-                </p>
-                {editingParents ? null : (
-                  <button
-                    type="button"
-                    onClick={() => setEditingParents(true)}
-                    className="rounded-md border border-border px-2 py-0.5 text-[10px] hover:border-primary"
-                  >
-                    Reparent
-                  </button>
-                )}
-              </div>
-              {editingParents ? (
-                <Form method="post" className="space-y-2">
-                  <input type="hidden" name="intent" value="reparent" />
-                  <p className="text-[11px] text-muted-foreground">
-                    Pick zero or more parents. Multi-parent supported. Leaving none makes this a
-                    root scope.
-                  </p>
-                  <div className="max-h-60 overflow-auto rounded-md border border-border p-2">
-                    {allScopes.length === 0 ? (
-                      <p className="text-xs text-muted-foreground">
-                        No other scopes to choose from.
-                      </p>
-                    ) : (
-                      allScopes.map((s) => (
-                        <label key={s.id} className="flex items-center gap-2 py-0.5 text-xs">
-                          <input
-                            type="checkbox"
-                            name="parent_id"
-                            value={s.id}
-                            defaultChecked={currentParents.includes(s.id)}
-                          />
-                          <span className="font-mono">{s.name}</span>
-                        </label>
-                      ))
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="submit"
-                      className="rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90"
-                    >
-                      Save parents
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setEditingParents(false)}
-                      className="text-xs text-muted-foreground hover:text-foreground"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </Form>
-              ) : currentParents.length === 0 ? (
-                <p className="text-xs text-muted-foreground">Root scope (no parents).</p>
-              ) : (
-                <ul className="flex flex-wrap gap-2 text-xs">
-                  {currentParents.map((pid) => {
-                    const p = allScopes.find((s) => s.id === pid);
-                    return (
-                      <li
-                        key={pid}
-                        className="rounded-full border border-border bg-card px-2 py-0.5 font-mono"
-                      >
-                        {p?.name ?? pid}
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-            </div>
-
-            <p className="text-[11px] text-muted-foreground">
-              To delete this scope, open its{" "}
-              <Link to={`/${handle}/scopes/${id}/edit`} className="underline hover:text-foreground">
-                edit page
-              </Link>{" "}
-              and use the Danger Zone at the bottom.
-            </p>
-          </CardContent>
-        </Card>
-      ) : null}
-
-      {outgoing.length > 0 ? (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm">Edges (outgoing)</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>edge type</TableHead>
-                  <TableHead>target</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {outgoing.map((e) => (
-                  <TableRow key={`${e.edge_type}-${e.to_id}`}>
-                    <TableCell className="font-mono text-xs">{e.edge_type}</TableCell>
-                    <TableCell>
-                      <Link
-                        to={linkTo(e.to_node_type, e.to_id)}
-                        className="text-primary hover:underline"
-                      >
-                        {e.to_id}
-                      </Link>
-                      <span className="ml-2 text-xs text-muted-foreground">({e.to_node_type})</span>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-      ) : null}
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-sm">Referenced by ({incoming.length})</CardTitle>
-          <CardDescription>
-            Other entities that point at this one. Per ADR-075. A zero count is a hint that this
-            entity may be isolated — consider whether it should be linked from an Action, Decision,
-            or other contextual node.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {incoming.length === 0 ? (
-            <p className="text-xs text-muted-foreground">
-              No incoming references. This entity is currently a leaf in the graph.
-            </p>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>edge type</TableHead>
-                  <TableHead>source</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {incoming.map((e) => (
-                  <TableRow key={`${e.edge_type}-${e.from_id}`}>
-                    <TableCell className="font-mono text-xs">{e.edge_type}</TableCell>
-                    <TableCell>
-                      <Link
-                        to={linkTo(e.from_node_type, e.from_id)}
-                        className="text-primary hover:underline"
-                      >
-                        {e.from_id}
-                      </Link>
-                      <span className="ml-2 text-xs text-muted-foreground">
-                        ({e.from_node_type})
-                      </span>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
-
-      <HistoryCard history={history} identityMap={identityMap} linkTo={linkTo} />
-
-      <MetadataCard ent={ent} identityMap={identityMap} linkTo={linkTo} />
-    </div>
-  );
+  const drawerButtons: { kind: DrawerKind; label: string }[] = [
+    { kind: "info", label: "Info" },
+    { kind: "edges", label: "Edges" },
+    { kind: "history", label: "History" },
+    { kind: "metadata", label: "Metadata" },
+  ];
 
   return (
-    <div>
+    <div className="flex h-screen flex-col overflow-hidden bg-background">
       <SiteHeader mode="host" me={me} docoScope={{ ownerSlug, docoSlug, handle }} />
-      <main className="mx-auto max-w-7xl space-y-4 px-6 py-6">
-        {/* 1. Header (no box) — id, title, badges, summary. */}
-        {headerPane}
 
-        {/* 2. The map — takes ~75% of viewport height (size lives in EntityGraph). */}
-        <EntityGraph
-          key={`${type}:${id}`}
-          centerId={id}
-          nodes={graphNodes}
-          links={graphLinks}
-          scopeFilters={entityScopes}
-          hrefFor={(nid, nt) => linkTo(nt, nid)}
-        />
-
-        {/* 3. Stats + most-relevant-nodes side-by-side on desktop, stacked on mobile. */}
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-          <div className="md:col-span-1">{focalStatsPane}</div>
-          <div className="md:col-span-2">{relevantNodesPane}</div>
+      <div className="shrink-0 border-b border-border bg-card px-4 py-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <Link
+            to={`/${handle}`}
+            className="font-mono text-[11px] text-muted-foreground transition-colors hover:text-foreground"
+          >
+            {handle}
+          </Link>
+          <span className="text-muted-foreground">/</span>
+          <h1 className="min-w-0 flex-1 truncate text-sm font-semibold tracking-tight text-foreground">
+            {display}
+          </h1>
+          <div className="flex items-center gap-1">
+            {drawerButtons.map((btn) => {
+              const active = openDrawer === btn.kind;
+              return (
+                <button
+                  key={btn.kind}
+                  type="button"
+                  onClick={() => setOpenDrawer(active ? null : btn.kind)}
+                  className={
+                    active
+                      ? "rounded-md border border-primary bg-primary/15 px-2 py-0.5 text-[11px] font-semibold text-foreground"
+                      : "rounded-md border border-border px-2 py-0.5 text-[11px] text-muted-foreground transition-colors hover:border-primary hover:text-foreground"
+                  }
+                  aria-pressed={active}
+                >
+                  {btn.label}
+                </button>
+              );
+            })}
+          </div>
         </div>
+        <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px]">
+          <NodeTypeBadge nodeType={type} />
+          {ent.lifecycle ? <LifecycleBadge lifecycle={String(ent.lifecycle)} /> : null}
+          {entityScopes.map((s) => (
+            <Link
+              key={s.id}
+              to={linkTo("scope", s.name)}
+              className="inline-flex items-center gap-1 rounded-md border border-border bg-card px-2 py-0.5 font-mono text-muted-foreground transition-colors hover:border-primary hover:text-foreground"
+            >
+              {s.icon ? (
+                <span aria-hidden className="font-sans leading-none">
+                  {s.icon}
+                </span>
+              ) : null}
+              <span>{s.name}</span>
+            </Link>
+          ))}
+          {ent.summary && String(ent.summary) !== display ? (
+            <span className="min-w-0 truncate text-muted-foreground">{String(ent.summary)}</span>
+          ) : null}
+        </div>
+      </div>
 
-        {/* 4. Everything else (edges, scope landing, raw, refbacks). */}
-        {detailsPane}
-      </main>
+      <div className="flex min-h-0 flex-1">
+        <aside className="flex w-[28rem] max-w-[40%] shrink-0 flex-col border-r border-border bg-card">
+          {chatSupported ? (
+            <AiChatPane chatEndpoint={chatEndpoint} nodeTypeLabel={type} />
+          ) : (
+            <div className="flex flex-1 items-center justify-center px-4 text-center text-xs text-muted-foreground">
+              AI chat isn't enabled for {type} nodes yet.
+            </div>
+          )}
+        </aside>
+        <section className="relative min-h-0 min-w-0 flex-1 p-3">
+          <EntityGraph
+            key={`${type}:${id}`}
+            centerId={id}
+            nodes={graphNodes}
+            links={graphLinks}
+            scopeFilters={entityScopes}
+            hrefFor={(nid, nt) => linkTo(nt, nid)}
+            fillHeight
+          />
+          <NodeDetailDrawer
+            open={openDrawer}
+            onClose={() => setOpenDrawer(null)}
+            linkTo={linkTo}
+            nodeId={id}
+            nodeCreatedAt={focalCreatedAt}
+            nodeGpr={focalGpr}
+            rankedNeighbors={rankedNeighbors}
+            outgoing={drawerOutgoing}
+            incoming={drawerIncoming}
+            history={drawerHistory}
+            ent={ent}
+          />
+        </section>
+      </div>
     </div>
   );
 }
 
-type EntityLinkFn = (kind: string, otherId: string) => string;
-
-function MetadataCard({
-  ent,
-  identityMap,
-  linkTo,
-}: {
-  ent: Record<string, unknown>;
-  identityMap: Record<string, IdentitySummary>;
-  linkTo: EntityLinkFn;
-}) {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-sm">Metadata</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <dl className="divide-y divide-border text-xs">
-          {Object.entries(ent).map(([key, value]) => (
-            <div key={key} className="grid gap-2 py-2 md:grid-cols-[12rem_1fr]">
-              <dt className="font-mono text-muted-foreground">{key}</dt>
-              <dd className="min-w-0">
-                <MetadataValue value={value} identityMap={identityMap} linkTo={linkTo} />
-              </dd>
-            </div>
-          ))}
-        </dl>
-        <details className="mt-3 border-t border-border pt-3">
-          <summary className="cursor-pointer text-xs font-medium text-muted-foreground hover:text-foreground">
-            Raw JSON
-          </summary>
-          <pre className="mt-2 overflow-x-auto rounded-md border border-border bg-input p-3 text-[12px] leading-snug">
-            {JSON.stringify(ent, null, 2)}
-          </pre>
-        </details>
-      </CardContent>
-    </Card>
-  );
-}
-
-function MetadataValue({
-  value,
-  identityMap,
-  linkTo,
-}: {
-  value: unknown;
-  identityMap: Record<string, IdentitySummary>;
-  linkTo: EntityLinkFn;
-}) {
-  if (value === null) return <code className="font-mono text-muted-foreground">null</code>;
-  if (value === undefined)
-    return <code className="font-mono text-muted-foreground">undefined</code>;
-
-  if (typeof value === "string") {
-    return <StringMetadataValue value={value} identityMap={identityMap} linkTo={linkTo} />;
-  }
-
-  if (typeof value === "number" || typeof value === "boolean") {
-    return <code className="font-mono">{String(value)}</code>;
-  }
-
-  if (Array.isArray(value)) {
-    if (value.length === 0) return <code className="font-mono text-muted-foreground">[]</code>;
-    return (
-      <ul className="space-y-1">
-        {value.map((item) => (
-          <li key={metadataItemKey(item)} className="min-w-0">
-            <MetadataValue value={item} identityMap={identityMap} linkTo={linkTo} />
-          </li>
-        ))}
-      </ul>
-    );
-  }
-
-  if (typeof value === "object") {
-    const entries = Object.entries(value as Record<string, unknown>);
-    if (entries.length === 0)
-      return <code className="font-mono text-muted-foreground">{"{}"}</code>;
-    return (
-      <dl className="space-y-1 rounded-md border border-border bg-input/30 p-2">
-        {entries.map(([key, nested]) => (
-          <div key={key} className="grid gap-1 md:grid-cols-[10rem_1fr]">
-            <dt className="font-mono text-muted-foreground">{key}</dt>
-            <dd className="min-w-0">
-              <MetadataValue value={nested} identityMap={identityMap} linkTo={linkTo} />
-            </dd>
-          </div>
-        ))}
-      </dl>
-    );
-  }
-
-  return <span className="break-words">{String(value)}</span>;
-}
-
-function metadataItemKey(item: unknown): string {
-  if (typeof item === "string" || typeof item === "number" || typeof item === "boolean") {
-    return `${typeof item}:${String(item)}`;
-  }
-  if (item === null) return "null";
-  if (item && typeof item === "object") {
-    const record = item as Record<string, unknown>;
-    if (typeof record.id === "string") return record.id;
-    if (typeof record.name === "string") return record.name;
-    return JSON.stringify(record);
-  }
-  return String(item);
-}
-
-function StringMetadataValue({
-  value,
-  identityMap,
-  linkTo,
-}: {
-  value: string;
-  identityMap: Record<string, IdentitySummary>;
-  linkTo: EntityLinkFn;
-}) {
-  const identity = identityMap[value];
-  if (identity) return <IdentityValue identity={identity} linkTo={linkTo} />;
-
-  const parsed = parseEntityId(value);
-  if (parsed && parsed.type !== "doco") {
-    return (
-      <Link to={linkTo(parsed.type, value)} className="font-mono text-primary hover:underline">
-        {value}
-      </Link>
-    );
-  }
-
-  return <span className="whitespace-pre-wrap break-words">{value}</span>;
-}
-
-function IdentityValue({
-  identity,
-  linkTo,
-}: {
-  identity: IdentitySummary;
-  linkTo: EntityLinkFn;
-}) {
-  return (
-    <span className="inline-flex max-w-full flex-col gap-0.5 sm:flex-row sm:flex-wrap sm:items-baseline sm:gap-2">
-      <Link
-        to={linkTo(identity.node_type, identity.id)}
-        className="font-medium text-primary hover:underline"
-      >
-        {identity.label}
-      </Link>
-      <span className="text-muted-foreground">{identity.detail}</span>
-      <code className="break-all font-mono text-[10px] text-muted-foreground" title={identity.id}>
-        {identity.id}
-      </code>
-    </span>
-  );
-}
-
-function HistoryCard({
-  history,
-  identityMap,
-  linkTo,
-}: {
-  history: AuditEvent[];
-  identityMap: Record<string, IdentitySummary>;
-  linkTo: EntityLinkFn;
-}) {
-  if (!history || history.length === 0) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-sm">History</CardTitle>
-          <CardDescription>
-            Audit events captured for this entity. None yet — the audit log started recording on the
-            day this Doco picked up the audit-events feature.
-          </CardDescription>
-        </CardHeader>
-      </Card>
-    );
-  }
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-sm">History ({history.length})</CardTitle>
-        <CardDescription>
-          Audit events for this entity, newest first. From{" "}
-          <code>/api/audit.json?entity_id=...</code>.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <ol className="space-y-2 text-xs">
-          {history.map((e) => (
-            <li key={e.event_id} className="border-l-2 border-border pl-3">
-              <div className="text-muted-foreground">
-                <code className="font-mono">{e.at.replace("T", " ").slice(0, 19)}Z</code>
-                <span className="mx-2">·</span>
-                {e.by ? (
-                  <StringMetadataValue value={e.by} identityMap={identityMap} linkTo={linkTo} />
-                ) : (
-                  <code className="font-mono">anonymous</code>
-                )}
-                <span className="mx-2">·</span>
-                <span className="font-medium text-foreground">{e.op}</span>
-              </div>
-              {e.before || e.after ? (
-                <pre className="mt-1 whitespace-pre-wrap break-words rounded-md border border-border bg-input p-2 text-[11px] leading-snug">
-                  {JSON.stringify({ before: e.before, after: e.after }, null, 2)}
-                </pre>
-              ) : null}
-            </li>
-          ))}
-        </ol>
-      </CardContent>
-    </Card>
-  );
-}
+const CHAT_SUPPORTED_TYPES: ReadonlySet<string> = new Set([
+  "decision",
+  "intent",
+  "rule",
+  "action",
+  "log",
+  "reference",
+]);

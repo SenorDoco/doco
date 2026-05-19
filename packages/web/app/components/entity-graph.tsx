@@ -67,6 +67,13 @@ interface EntityGraphProps {
   links: GraphLink[];
   scopeFilters?: { id: string; name: string; icon?: string | null }[];
   hrefFor?: (id: string, nodeType: string) => string;
+  /**
+   * When true, the wrapper becomes `h-full flex flex-col` and the inner
+   * graph container drops its fixed `h-[65vh]` for `flex-1` so the graph
+   * fills whatever vertical space its parent gives it. Used by the
+   * non-scrollable node view (decision_TODO).
+   */
+  fillHeight?: boolean;
 }
 
 interface MiniMapNodeProps {
@@ -469,6 +476,7 @@ export function EntityGraph({
   links,
   scopeFilters = [],
   hrefFor,
+  fillHeight = false,
 }: EntityGraphProps) {
   const navigate = useNavigate();
 
@@ -870,7 +878,7 @@ export function EntityGraph({
   );
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className={fillHeight ? "flex h-full min-h-0 flex-col gap-2" : "flex flex-col gap-2"}>
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-muted-foreground">Life cycle:</span>
@@ -947,7 +955,11 @@ export function EntityGraph({
 
       <div
         ref={graphRef}
-        className="relative h-[65vh] min-h-[480px] w-full overflow-hidden rounded-md border border-border bg-input"
+        className={
+          fillHeight
+            ? "relative min-h-0 w-full flex-1 overflow-hidden rounded-md border border-border bg-input"
+            : "relative h-[65vh] min-h-[480px] w-full overflow-hidden rounded-md border border-border bg-input"
+        }
       >
         {Flow ? (
           <>
