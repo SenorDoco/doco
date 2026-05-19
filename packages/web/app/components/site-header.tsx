@@ -39,7 +39,7 @@ export function SiteHeader({ docoScope, me }: SiteHeaderProps) {
     ? [
         { to: `/${docoScope.handle}`, label: docoScope.handle },
         { to: `/${docoScope.handle}/scopes`, label: "Scopes" },
-        { to: `/${docoScope.handle}/members`, label: "Users" },
+        { to: `/${docoScope.handle}/members`, label: "Users (humans/agents)" },
         { to: `/${docoScope.handle}/settings`, label: "Settings" },
       ]
     : [

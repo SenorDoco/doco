@@ -161,7 +161,7 @@ export async function action({
 }
 
 export function meta() {
-  return [{ title: "Members · Doco" }];
+  return [{ title: "Users (humans/agents) · Doco" }];
 }
 
 export default function DocoMembersPage({
@@ -175,7 +175,7 @@ export default function DocoMembersPage({
       <main className="mx-auto w-full max-w-3xl px-6 py-8 space-y-6">
         <header className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-semibold">Members</h1>
+            <h1 className="text-2xl font-semibold">Users (humans/agents)</h1>
             <p className="text-sm text-muted-foreground">
               Manage who has access to{" "}
               <Link to={`/${loaderData.handle}`} className="underline">
