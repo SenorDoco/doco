@@ -678,9 +678,10 @@ function parseFastPathCommand(
   const message = rawMessage.trim().replace(/\s+/g, " ");
   if (!message) return null;
   const mentionedHandle = findMentionedDocoHandle(message, docos);
+  const requestedHandle = mentionedHandle ?? findRequestedDocoHandleCandidate(message);
   const mentionsOtherDoco = !!mentionedHandle && mentionedHandle !== currentHandle;
   return (
-    parseFastStatusQuestion(message, mentionedHandle) ??
+    parseFastStatusQuestion(message, requestedHandle) ??
     (mentionsOtherDoco
       ? null
       : (parseFastCreateNode(message) ??
@@ -691,19 +692,19 @@ function parseFastPathCommand(
 
 function parseFastStatusQuestion(
   message: string,
-  mentionedHandle: string | null,
+  requestedHandle: string | null,
 ): FastPathToolCall | null {
   const lower = message.toLowerCase();
   const asksForCount = /\b(how many|count|counts|total|number of)\b/.test(lower);
   if (!asksForCount) return null;
-  const targetText = mentionedHandle ? lower.replaceAll(mentionedHandle.toLowerCase(), "") : lower;
-  const target = inferCountTarget(targetText) ?? (mentionedHandle ? "nodes" : null);
+  const targetText = requestedHandle ? lower.replaceAll(requestedHandle.toLowerCase(), "") : lower;
+  const target = inferCountTarget(targetText) ?? (requestedHandle ? "nodes" : null);
   if (!target) return null;
   return {
     tool: "get_status",
     args: {
       node_type: target,
-      ...(mentionedHandle ? { doco_handle: mentionedHandle } : {}),
+      ...(requestedHandle ? { doco_handle: requestedHandle } : {}),
     },
   };
 }
@@ -712,6 +713,15 @@ function findMentionedDocoHandle(message: string, docos: DocoChatDocoContext[]):
   const lower = message.toLowerCase();
   const handles = docos.map((doco) => doco.handle).sort((a, b) => b.length - a.length);
   return handles.find((handle) => lower.includes(handle.toLowerCase())) ?? null;
+}
+
+function findRequestedDocoHandleCandidate(message: string): string | null {
+  const lower = message.toLowerCase();
+  const candidates = [
+    ...lower.matchAll(/\bdoes\s+([a-z0-9][a-z0-9-]*-[a-z0-9-]*[a-z0-9])\s+have\b/g),
+    ...lower.matchAll(/\b(?:in|for|about)\s+([a-z0-9][a-z0-9-]*-[a-z0-9-]*[a-z0-9])\b/g),
+  ];
+  return candidates[0]?.[1] ?? null;
 }
 
 function parseFastCreateNode(message: string): FastPathToolCall | null {
