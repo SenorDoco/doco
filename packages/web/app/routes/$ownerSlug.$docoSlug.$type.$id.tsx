@@ -105,6 +105,7 @@ import {
   type DrawerKind,
   NodeDetailDrawer,
 } from "~/components/node-detail-drawer";
+import { ResizableChatRail } from "~/components/resizable-chat-rail";
 import { SiteHeader } from "~/components/site-header";
 
 /** "Ns / Nm / Nh / Nd ago" — same shape the graph component uses. */
@@ -766,7 +767,7 @@ export default function EntityDetail({
       </div>
 
       <div className="flex min-h-0 flex-1">
-        <aside className="flex w-1/4 min-w-[240px] shrink-0 flex-col border-r border-border bg-card">
+        <ResizableChatRail>
           {chatSupported ? (
             <AiChatPane chatEndpoint={chatEndpoint} nodeTypeLabel={type} />
           ) : (
@@ -774,7 +775,7 @@ export default function EntityDetail({
               AI chat isn't enabled for {type} nodes yet.
             </div>
           )}
-        </aside>
+        </ResizableChatRail>
         <section className="relative min-h-0 min-w-0 flex-1 p-3">
           <EntityGraph
             key={`${type}:${id}`}

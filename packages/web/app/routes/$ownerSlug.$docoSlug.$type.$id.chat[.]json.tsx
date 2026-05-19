@@ -10,7 +10,17 @@ import { parse as parseYaml } from "yaml";
 import type { NodeTypeName } from "~/lib/capture.server";
 import { docoPath } from "~/lib/db.server";
 import { loadDocoForAdmin, normalizeDocoParams } from "~/lib/doco-access.server";
-import { type ChatTurn, type NodeContextSnapshot, runChatTurn } from "~/lib/node-chat.server";
+import {
+  type ChatAttachment,
+  type ChatTurn,
+  type NodeContextSnapshot,
+  runChatTurn,
+} from "~/lib/node-chat.server";
+
+// Cap total attachment payload at 10 MB. Attachments are inlined into the
+// OpenAI request body (image_url data URLs / decoded text), so this keeps
+// per-turn request size sane without needing a separate upload path.
+const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 
 const CHAT_SUPPORTED_TYPES = new Set<NodeTypeName>([
   "decision",
@@ -66,14 +76,23 @@ export async function action({
   const ctx = await loadDocoForAdmin(request, handle);
   const dir = docoPath(handle);
 
-  let body: { message?: unknown; history?: unknown };
+  let body: { message?: unknown; history?: unknown; attachments?: unknown };
   try {
-    body = (await request.json()) as { message?: unknown; history?: unknown };
+    body = (await request.json()) as {
+      message?: unknown;
+      history?: unknown;
+      attachments?: unknown;
+    };
   } catch (e) {
     return Response.json({ error: `Invalid JSON: ${(e as Error).message}` }, { status: 400 });
   }
   const message = typeof body.message === "string" ? body.message.trim() : "";
-  if (!message) {
+  const attachmentsResult = sanitizeAttachments(body.attachments);
+  if ("error" in attachmentsResult) {
+    return Response.json({ error: attachmentsResult.error }, { status: 400 });
+  }
+  const attachments = attachmentsResult.attachments;
+  if (!message && attachments.length === 0) {
     return Response.json({ error: "Empty message." }, { status: 400 });
   }
   const history = sanitizeHistory(body.history);
@@ -131,6 +150,7 @@ export async function action({
     context: snapshot,
     message,
     history,
+    attachments,
     docoHost,
     actorId: ctx.me?.id ?? null,
   });
@@ -155,4 +175,28 @@ function sanitizeHistory(raw: unknown): ChatTurn[] {
     })
     .filter((t): t is ChatTurn => t !== null)
     .slice(-12);
+}
+
+function sanitizeAttachments(raw: unknown): { attachments: ChatAttachment[] } | { error: string } {
+  if (raw === undefined || raw === null) return { attachments: [] };
+  if (!Array.isArray(raw)) return { error: "attachments must be an array." };
+  const out: ChatAttachment[] = [];
+  let total = 0;
+  for (const entry of raw) {
+    if (!entry || typeof entry !== "object") continue;
+    const rec = entry as Record<string, unknown>;
+    const name = typeof rec.name === "string" ? rec.name.slice(0, 200) : "";
+    const mime = typeof rec.mime === "string" ? rec.mime.toLowerCase() : "";
+    const size = typeof rec.size === "number" && Number.isFinite(rec.size) ? rec.size : 0;
+    const dataUrl = typeof rec.dataUrl === "string" ? rec.dataUrl : "";
+    if (!name || !dataUrl.startsWith("data:")) continue;
+    total += dataUrl.length;
+    if (total > MAX_ATTACHMENT_BYTES) {
+      return {
+        error: `Attachments exceed the ${Math.round(MAX_ATTACHMENT_BYTES / 1024 / 1024)} MB total cap.`,
+      };
+    }
+    out.push({ name, mime, size, dataUrl });
+  }
+  return { attachments: out };
 }

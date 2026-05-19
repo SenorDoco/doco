@@ -58,6 +58,17 @@ export interface ChatOperation {
   error?: string;
 }
 
+export interface ChatAttachment {
+  /** Original filename, for the LLM to refer to. */
+  name: string;
+  /** MIME type as reported by the browser. */
+  mime: string;
+  /** Raw size in bytes; informational. */
+  size: number;
+  /** "data:<mime>;base64,..." URL with the file's bytes. */
+  dataUrl: string;
+}
+
 export interface RunChatTurnInput {
   docoDir: string;
   docoId: string;
@@ -72,6 +83,8 @@ export interface RunChatTurnInput {
   message: string;
   /** Prior turns in the same browser session. Caller appends locally. */
   history: ChatTurn[];
+  /** Files the project owner attached to THIS turn. Ephemeral — never stored. */
+  attachments?: ChatAttachment[];
   /** Origin URL for the doco host (for capture helper bookkeeping). */
   docoHost: string;
   actorId: string | null;
@@ -108,7 +121,9 @@ Rules:
 - For \`add_scope\` / \`remove_scope\`, scope names must come from the available list and always start with "#".
 - For \`change_lifecycle\`, valid values are: active, proposed, planned, retired, abandoned, superseded.
 - If the user asks something you can't do with the available tools (e.g. delete the node, create a new node), say so plainly — don't invent a tool call.
-- If the request is ambiguous, ask one short clarifying question instead of guessing.`;
+- If the request is ambiguous, ask one short clarifying question instead of guessing.
+
+Attachments: the user may include files. They arrive inline in their message: images appear as image_url parts (you can see them), text-readable files (txt, md, json, yaml, csv, source code, etc.) appear as text parts preceded by a "[attached file: NAME · MIME · SIZE]" header followed by the decoded content. Non-text/non-image files appear as a "[attached file: ... — not readable by the assistant]" stub; for those, acknowledge by name but don't invent contents. When the user references an attachment, use the inline content directly — it IS the file, not a metadata pointer.`;
 
 interface OpenAIToolCall {
   id: string;
@@ -116,9 +131,13 @@ interface OpenAIToolCall {
   function: { name: string; arguments: string };
 }
 
+type OpenAIContentPart =
+  | { type: "text"; text: string }
+  | { type: "image_url"; image_url: { url: string } };
+
 interface OpenAIChatMessage {
   role: "system" | "user" | "assistant" | "tool";
-  content: string | null;
+  content: string | OpenAIContentPart[] | null;
   tool_calls?: OpenAIToolCall[];
   tool_call_id?: string;
   name?: string;
@@ -237,7 +256,7 @@ export async function runChatTurn(input: RunChatTurnInput): Promise<RunChatTurnR
       role: turn.role,
       content: turn.content,
     })),
-    { role: "user", content: input.message },
+    buildCurrentUserMessage(input.message, input.attachments),
   ];
 
   const operations: ChatOperation[] = [];
@@ -523,4 +542,83 @@ async function applyPatch(opts: {
   } catch (e) {
     return { tool, description, applied: false, error: (e as Error).message };
   }
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// Attachment handling. Ephemeral — bytes are never stored. Images flow to
+// gpt-4o-mini via `image_url` content parts; text-readable files are decoded
+// and inlined as text so the LLM can quote/summarize. Other files are
+// acknowledged by name so the LLM doesn't pretend to read them.
+
+const TEXT_READABLE_MIMES = new Set([
+  "application/json",
+  "application/xml",
+  "application/yaml",
+  "application/x-yaml",
+  "application/javascript",
+  "application/typescript",
+  "application/sql",
+]);
+const INLINED_TEXT_CHAR_CAP = 50_000;
+
+function isImageMime(mime: string): boolean {
+  return mime.startsWith("image/");
+}
+
+function isTextReadableMime(mime: string): boolean {
+  if (mime.startsWith("text/")) return true;
+  return TEXT_READABLE_MIMES.has(mime);
+}
+
+function decodeDataUrlAsText(dataUrl: string): string {
+  const comma = dataUrl.indexOf(",");
+  if (comma < 0) return "";
+  const header = dataUrl.slice(0, comma);
+  const body = dataUrl.slice(comma + 1);
+  if (!header.includes(";base64")) {
+    try {
+      return decodeURIComponent(body);
+    } catch {
+      return "";
+    }
+  }
+  try {
+    return Buffer.from(body, "base64").toString("utf-8");
+  } catch {
+    return "";
+  }
+}
+
+function buildCurrentUserMessage(
+  message: string,
+  attachments: ChatAttachment[] | undefined,
+): OpenAIChatMessage {
+  if (!attachments || attachments.length === 0) {
+    return { role: "user", content: message };
+  }
+  const parts: OpenAIContentPart[] = [{ type: "text", text: message || "(no message text)" }];
+  for (const att of attachments) {
+    if (isImageMime(att.mime)) {
+      parts.push({ type: "image_url", image_url: { url: att.dataUrl } });
+      parts.push({
+        type: "text",
+        text: `[image above: ${att.name} · ${att.mime} · ${att.size} bytes]`,
+      });
+      continue;
+    }
+    if (isTextReadableMime(att.mime)) {
+      const text = decodeDataUrlAsText(att.dataUrl);
+      const truncated = text.length > INLINED_TEXT_CHAR_CAP;
+      parts.push({
+        type: "text",
+        text: `[attached file: ${att.name} · ${att.mime} · ${att.size} bytes${truncated ? " · TRUNCATED" : ""}]\n${text.slice(0, INLINED_TEXT_CHAR_CAP)}`,
+      });
+      continue;
+    }
+    parts.push({
+      type: "text",
+      text: `[attached file: ${att.name} · ${att.mime} · ${att.size} bytes — not readable by the assistant; acknowledge but do not invent contents]`,
+    });
+  }
+  return { role: "user", content: parts };
 }
