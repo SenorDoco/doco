@@ -719,7 +719,7 @@ export default function EntityDetail({
             {handle}
           </Link>
           <span className="text-muted-foreground">/</span>
-          <h1 className="min-w-0 flex-1 truncate text-sm font-semibold tracking-tight text-foreground">
+          <h1 className="min-w-0 flex-1 text-sm font-semibold tracking-tight text-foreground break-words">
             {display}
           </h1>
           <div className="flex items-center gap-1">
@@ -761,7 +761,7 @@ export default function EntityDetail({
             </Link>
           ))}
           {ent.summary && String(ent.summary) !== display ? (
-            <span className="min-w-0 truncate text-muted-foreground">{String(ent.summary)}</span>
+            <span className="min-w-0 break-words text-muted-foreground">{String(ent.summary)}</span>
           ) : null}
         </div>
       </div>
