@@ -207,11 +207,11 @@ const NODE_STRIPE_WIDTH = 24;
  * clipping (worst case: "in_progress" + "365d ago" stacked
  * vertically), and to leave a few lines of summary room in the body.
  */
-const NODE_HEIGHT = 220;
+const NODE_HEIGHT = 132;
 const NODE_MAX_SUMMARY_LINES = 8;
 const EXPANDED_NODE_SCREEN_MARGIN = 12;
 const NODE_GAP_X = 72;
-const LANE_HEIGHT = 248;
+const LANE_HEIGHT = 160;
 const LANE_GAP = 28;
 const LANE_HEADER_HEIGHT = 40;
 const LANE_PADDING_X = 16;
