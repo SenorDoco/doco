@@ -1,7 +1,7 @@
 // Plain-prose docs for agents who land on /onboarding/join/agent.
 //
 // Joining a Doco that already exists (because the repo carries
-// doco.md and someone else minted an invite for you) is a single
+// DOCO.md and someone else minted an invite for you) is a single
 // HTTP call.
 export function loader() {
   const body = [
@@ -12,7 +12,7 @@ export function loader() {
     "  (a) The user pasted you an invite URL (https://doco.to/invite/<code>)",
     "      and you need to redeem it.",
     "",
-    "  (b) doco.md exists in the repo, .env doesn't have DOCO_ACCESS, and",
+    "  (b) DOCO.md exists in the repo, .env doesn't have DOCO_ACCESS, and",
     "      you need to ask the user for an invite first.",
     "",
     "Case (a) — redeem an invite (no prior auth):",
@@ -38,9 +38,9 @@ export function loader() {
     "    Walk `next_steps_for_agent` top-to-bottom. The standard set is:",
     "      1. Write DOCO_ACCESS=<doco_access> into ./.env (create the file +",
     "         a basic .gitignore if either is missing).",
-    "      2. If doco.md is missing, write it with the doco_url (so",
+    "      2. If DOCO.md is missing, write it with the doco_url (so",
     "         future clones / CI / teammates' agents discover the Doco).",
-    "      3. If AGENTS.md doesn't include `@./doco.md`, add the line.",
+    "      3. If AGENTS.md doesn't include `@./DOCO.md`, add the line.",
     "      4. If CLAUDE.md doesn't exist, write `@./AGENTS.md`.",
     "      5. Apply the protocol now. The `canonical_instructions` field",
     "         on this same response IS the protocol — do NOT make a",

@@ -9,7 +9,7 @@ done, tally line at the close. Skipping the protocol means your reply
 The per-project coordinates (which Doco, which URL, what it covers)
 live in:
 
-@./doco.md
+@./DOCO.md
 
 ## Before you respond to ANY message — fetch your real instructions
 
@@ -57,7 +57,7 @@ One value, one home:
   iCal feed — share-by-revealing, rotated if leaked.
 
 The Doco's public URL — the human-clickable browse link — lives in
-`doco.md` (committed, non-secret). They're two different pieces of
+`DOCO.md` (committed, non-secret). They're two different pieces of
 information by design.
 
 Bootstrap/search calls should go through the checked-in helper when it
@@ -90,7 +90,7 @@ every reply with:
   created the Doco write `DOCO_ACCESS=…` to it? If no Doco was ever
   created for this repo, run the create flow at
   `https://doco.to/onboarding/create/agent.txt`. If a Doco exists
-  (doco.md is committed) but you're on a new env, ask the user for
+  (DOCO.md is committed) but you're on a new env, ask the user for
   an invite URL — see "Joining an existing Doco" below.
 - **`DOCO_ACCESS rejected`** / **401** → the credential was revoked or never
   minted. Ask the user for a fresh invite URL.
@@ -112,7 +112,7 @@ every reply with:
 
 ## Onboarding an agent for a new Doco
 
-If `doco.md` doesn't exist and `./.env` has no `DOCO_ACCESS`, you're on
+If `DOCO.md` doesn't exist and `./.env` has no `DOCO_ACCESS`, you're on
 the create side. Two HTTP calls, three files written, done — no
 browser, no install, no permission prompts:
 
@@ -127,8 +127,8 @@ browser, no install, no permission prompts:
    next_steps_for_agent, user_message_block}`.
 2. Write `DOCO_ACCESS=<doco_access>` to `./.env` (gitignored — add `.env`
    to `.gitignore` if not already there).
-3. Write `./doco.md` with the public Doco URL. Update `AGENTS.md`
-   (this file) to include `@./doco.md` near the top, and write
+3. Write `./DOCO.md` with the public Doco URL. Update `AGENTS.md`
+   (this file) to include `@./DOCO.md` near the top, and write
    `./CLAUDE.md` with the single line `@./AGENTS.md`.
 4. **GATE — render the response's `user_message_block` verbatim**
    to the user as your next message. The /api/v1/docos.json response
@@ -159,7 +159,7 @@ browser, no install, no permission prompts:
    For LATER sessions, `node .agents/doco-agent-client.mjs bootstrap`
    refreshes the canonical — that call is fine because it's a
    different context, not the moment the token was just minted.
-7. Commit the bootstrap files to git (`doco.md`, `AGENTS.md`,
+7. Commit the bootstrap files to git (`DOCO.md`, `AGENTS.md`,
    `CLAUDE.md`, `.agents/doco-agent-client.mjs`, `.gitignore`). This is SEPARATE from Doco capture —
    capture moved nodes into doco.to; this commits files to the repo
    so future clones / CI / teammates' agents discover the Doco.
@@ -171,7 +171,7 @@ Full reference: `https://doco.to/onboarding/create/agent.txt`.
 
 ## Joining an existing Doco
 
-If `doco.md` exists but `./.env` is empty:
+If `DOCO.md` exists but `./.env` is empty:
 
     "I see this repo is tracked at <doco_url>, but I need an invite
     to access it. Open <doco_url>, sign in, click 'New invite', and
@@ -191,7 +191,7 @@ Response carries `doco_access`, `doco_url`, `doco_slug`, plus two
 walk-this-recipe fields:
 
 - `next_steps_for_agent` — ordered checklist (write DOCO_ACCESS to
-  .env, write doco.md if missing, update AGENTS.md / CLAUDE.md,
+  .env, write DOCO.md if missing, update AGENTS.md / CLAUDE.md,
   fetch the canonical). Walk it top-to-bottom.
 - `user_message_block` — verbatim prose to render to whoever
   pasted the invite. Don't paraphrase.
@@ -227,11 +227,11 @@ SessionStart fires fresh.
 
 ## What lives where
 
-- **`doco.md`** (committed) — per-project Doco URL + invite
+- **`DOCO.md`** (committed) — per-project Doco URL + invite
   instructions. Anyone reading the repo learns what Doco this
   project is connected to.
 - **`AGENTS.md`** (this file, committed) — agent bootstrap. Cross-
-  agent convention from agents.md; imports `doco.md`.
+  agent convention from agents.md; imports `DOCO.md`.
 - **`CLAUDE.md`** (committed) — one-line shim `@./AGENTS.md`. Claude
   Code's auto-load entry point.
 - **`.agents/doco-agent-client.mjs`** (committed) — dependency-free

@@ -49,8 +49,13 @@ fi
 DOCO_BASE_URL="${DOCO_HOST:-https://doco.to}"
 DOCO_BASE_URL="${DOCO_BASE_URL%/}"
 DOCO_HANDLE="${DOCO_HANDLE:-}"
-if [ -z "$DOCO_HANDLE" ] && [ -f "$PWD/doco.md" ]; then
-  DOCO_HANDLE=$(sed -nE 's|.*https?://[^/ ]+/([A-Za-z0-9][A-Za-z0-9-]*)/?[ ).]*.*|\1|p' "$PWD/doco.md" | head -1)
+# Canonical filename is DOCO.md; older repos shipped lowercase doco.md.
+# On case-insensitive filesystems the two resolve to one file.
+DOCO_MD_PATH=""
+[ -f "$PWD/DOCO.md" ] && DOCO_MD_PATH="$PWD/DOCO.md"
+[ -z "$DOCO_MD_PATH" ] && [ -f "$PWD/doco.md" ] && DOCO_MD_PATH="$PWD/doco.md"
+if [ -z "$DOCO_HANDLE" ] && [ -n "$DOCO_MD_PATH" ]; then
+  DOCO_HANDLE=$(sed -nE 's|.*https?://[^/ ]+/([A-Za-z0-9][A-Za-z0-9-]*)/?[ ).]*.*|\1|p' "$DOCO_MD_PATH" | head -1)
 fi
 
 # 3. Locate the pre-fetched hits file written by user-prompt-fetch.sh.

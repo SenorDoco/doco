@@ -16,7 +16,7 @@ import { c, checkmark, cross, header, rule } from "../output.js";
 /**
  * AGENTS.md / CLAUDE.md placeholder substituted with the project's
  * Legacy placeholder support for older template builds. Current
- * templates read the Doco coordinate from doco.md instead.
+ * templates read the Doco coordinate from DOCO.md instead.
  */
 const DOCO_ID_PLACEHOLDER = /__DOCO_ID__/g;
 
@@ -34,7 +34,7 @@ const DOCO_ID_PLACEHOLDER = /__DOCO_ID__/g;
  *   CLAUDE.md                       (one-line shim: `@./AGENTS.md` — only
  *                                    exists because Claude Code auto-loads
  *                                    CLAUDE.md by name, not AGENTS.md)
- *   doco.md                         (committed, non-secret Doco URL)
+ *   DOCO.md                         (committed, non-secret Doco URL)
  *   .claude/settings.json           (SessionStart + UserPromptSubmit + PostToolUse + Stop hooks)
  *   .claude/bootstrap-fetch.sh      (SessionStart hook script)
  *   .claude/user-prompt-fetch.sh    (UserPromptSubmit hook script)
@@ -76,7 +76,7 @@ export const installAgentBootstrapCmd = defineCommand({
     "doco-id": {
       type: "string",
       description:
-        "Legacy Doco ref to stamp if an older template contains a placeholder. Current templates read doco.md.",
+        "Legacy Doco ref to stamp if an older template contains a placeholder. Current templates read DOCO.md.",
     },
   },
   async run({ args }) {
@@ -96,7 +96,7 @@ export const installAgentBootstrapCmd = defineCommand({
 
     const agentsMdSrc = join(TEMPLATES_DIR, "AGENTS.md");
     const claudeMdSrc = join(TEMPLATES_DIR, "CLAUDE.md");
-    const docoMdSrc = join(TEMPLATES_DIR, "doco.md");
+    const docoMdSrc = join(TEMPLATES_DIR, "DOCO.md");
     const envExampleSrc = join(TEMPLATES_DIR, ".env.example");
     const settingsSrc = join(TEMPLATES_DIR, ".claude", "settings.json");
     const hookSrc = join(TEMPLATES_DIR, ".claude", "bootstrap-fetch.sh");
@@ -125,7 +125,7 @@ export const installAgentBootstrapCmd = defineCommand({
 
     const agentsMdDst = join(target, "AGENTS.md");
     const claudeMdDst = join(target, "CLAUDE.md");
-    const docoMdDst = join(target, "doco.md");
+    const docoMdDst = join(target, "DOCO.md");
     const envExampleDst = join(target, ".env.example");
     const claudeDir = join(target, ".claude");
     const settingsDst = join(claudeDir, "settings.json");
@@ -163,11 +163,11 @@ export const installAgentBootstrapCmd = defineCommand({
       }
     }
 
-    // doco.md — committed, non-secret project coordinate. If the CLI
+    // DOCO.md — committed, non-secret project coordinate. If the CLI
     // login flow has a concrete URL it writes this before invoking the
     // installer, so don't overwrite it here.
     {
-      const label = "doco.md";
+      const label = "DOCO.md";
       if (existsSync(docoMdDst)) {
         actions.push(`${c.dim("=")} ${c.dim(`${label} (existing — not overwritten)`)}`);
       } else {
@@ -234,7 +234,7 @@ export const installAgentBootstrapCmd = defineCommand({
     console.log(rule());
     console.log(c.dim("Next:"));
     if (!docoId) {
-      console.log(c.dim("  1. Run `doco login --host https://doco.to` to authorize, or edit doco.md with the Doco URL."));
+      console.log(c.dim("  1. Run `doco login --host https://doco.to` to authorize, or edit DOCO.md with the Doco URL."));
     } else {
       console.log(
         c.dim(

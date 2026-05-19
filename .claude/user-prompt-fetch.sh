@@ -46,8 +46,13 @@ if [ -z "${DOCO_ACCESS:-}" ] && [ -n "${DOCO_URL:-}" ]; then
 fi
 
 DOCO_HANDLE="${DOCO_HANDLE:-}"
-if [ -z "$DOCO_HANDLE" ] && [ -f "$PWD/doco.md" ]; then
-  DOCO_HANDLE=$(sed -nE 's|.*https?://[^/ ]+/([A-Za-z0-9][A-Za-z0-9-]*)/?[ ).]*.*|\1|p' "$PWD/doco.md" | head -1)
+# Canonical filename is DOCO.md; older repos shipped lowercase doco.md.
+# On case-insensitive filesystems the two resolve to one file.
+DOCO_MD_PATH=""
+[ -f "$PWD/DOCO.md" ] && DOCO_MD_PATH="$PWD/DOCO.md"
+[ -z "$DOCO_MD_PATH" ] && [ -f "$PWD/doco.md" ] && DOCO_MD_PATH="$PWD/doco.md"
+if [ -z "$DOCO_HANDLE" ] && [ -n "$DOCO_MD_PATH" ]; then
+  DOCO_HANDLE=$(sed -nE 's|.*https?://[^/ ]+/([A-Za-z0-9][A-Za-z0-9-]*)/?[ ).]*.*|\1|p' "$DOCO_MD_PATH" | head -1)
 fi
 
 # 3. Build the protocol reminder — short, deterministic, every turn.
@@ -85,7 +90,7 @@ DISCONNECTED_REASON=""
 if [ -z "${DOCO_ACCESS:-}" ]; then
   DISCONNECTED_REASON="missing DOCO_ACCESS — ask the project owner for an invite URL"
 elif [ -z "${DOCO_HANDLE:-}" ]; then
-  DISCONNECTED_REASON="missing doco.md Doco URL"
+  DISCONNECTED_REASON="missing DOCO.md Doco URL"
 elif ! command -v node >/dev/null 2>&1; then
   DISCONNECTED_REASON="node is not installed"
 elif [ ! -f "$PWD/.agents/doco-agent-client.mjs" ]; then
@@ -125,7 +130,7 @@ elif [ -n "$PROMPT" ]; then
     REASON=""
     case "$SEARCH_CODE:$HTTP_STATUS" in
       missing_access:*) REASON="missing DOCO_ACCESS — ask the project owner for an invite URL" ;;
-      missing_doco_handle:*) REASON="missing doco.md Doco URL" ;;
+      missing_doco_handle:*) REASON="missing DOCO.md Doco URL" ;;
       network:*|timeout:*|*:000|*:0) REASON="doco.to unreachable" ;;
       *:401) REASON="DOCO_ACCESS invalid or revoked — ask for a fresh invite URL" ;;
       *) REASON="${SEARCH_ERROR:-search failed with HTTP ${HTTP_STATUS}}" ;;

@@ -21,8 +21,8 @@ that MUST run regardless of whether the commit step is gated on a
      constitution + onboarding_overlay, AND a user_message_block field
      you'll render verbatim in step 5.
   2. Write .env (gitignored) with DOCO_ACCESS=<doco_access>.
-  3. Write doco.md (committed) with the doco_url.
-  4. Write or update AGENTS.md to @./doco.md, and CLAUDE.md to @./AGENTS.md.
+  3. Write DOCO.md (committed) with the doco_url.
+  4. Write or update AGENTS.md to @./DOCO.md, and CLAUDE.md to @./AGENTS.md.
   5. **GATE**: render the response's user_message_block verbatim to the
      user. NO preface (don't say "rendering the user invite block (this
      is the GATE per the protocol)" — the block IS the gate, surrounding
@@ -45,7 +45,7 @@ that MUST run regardless of whether the commit step is gated on a
      pattern trips agent-classifier credential-exfil heuristics).
      Subsequent sessions refresh via the helper or the agent-bootstrap
      endpoint; this session already has what it needs.
-  8. Commit the bootstrap files to git (doco.md, AGENTS.md, CLAUDE.md,
+  8. Commit the bootstrap files to git (DOCO.md, AGENTS.md, CLAUDE.md,
      .gitignore). This is a SEPARATE action from Doco capture — see
      "step 7 — commit" below for the framing. If the project's rule
      says "don't commit unprompted", note that to the user as a
@@ -106,7 +106,7 @@ lines. Also ensure .env is in .gitignore:
 
     DOCO_ACCESS=<doco_access from step 1>
 
-Step 3 — write ./doco.md (committed, non-secret) verbatim:
+Step 3 — write ./DOCO.md (committed, non-secret) verbatim:
 
     # Doco
 
@@ -119,7 +119,7 @@ Step 3 — write ./doco.md (committed, non-secret) verbatim:
     invite for yourself — or ask any user already connected to
     this Doco to mint one and share the resulting invite URL.
 
-Step 4 — make agent surfaces auto-load doco.md.
+Step 4 — make agent surfaces auto-load DOCO.md.
 
     ./AGENTS.md (committed; the cross-agent convention from
     https://agents.md). If it doesn't exist, write:
@@ -129,13 +129,13 @@ Step 4 — make agent surfaces auto-load doco.md.
         This repository uses Doco for AI-native documentation. The
         per-project coordinates live in:
 
-        @./doco.md
+        @./DOCO.md
 
         Every agent working on this repo fetches the per-Doco
         protocol from doco.to before responding to any user message.
         See the canonical at https://doco.to/api/v1/agent-bootstrap.
 
-    If AGENTS.md already exists, ADD the line "@./doco.md" near the
+    If AGENTS.md already exists, ADD the line "@./DOCO.md" near the
     top — don't replace the existing content.
 
     ./CLAUDE.md (committed; Claude Code's auto-load entry point).
@@ -223,7 +223,7 @@ one-time-per-repo action the user can do whenever.
 
 Step 8 — commit the bootstrap files to git.
 
-\`doco.md\`, \`AGENTS.md\`, \`CLAUDE.md\`, and the \`.gitignore\` entry
+\`DOCO.md\`, \`AGENTS.md\`, \`CLAUDE.md\`, and the \`.gitignore\` entry
 you just added need to land in git. Otherwise: a fresh clone, a CI
 runner, or any teammate's agent landing in this repo has no idea this
 Doco exists. The files are the discoverability layer.
@@ -236,7 +236,7 @@ narration to the user.
 
 Suggested commit:
 
-    git add doco.md AGENTS.md CLAUDE.md .gitignore
+    git add DOCO.md AGENTS.md CLAUDE.md .gitignore
     git commit -m "Wire repo into Doco at <doco_url>"
 
 Then push per the project's git workflow. If you don't know the
@@ -244,7 +244,7 @@ project's commit/push convention (some Docos carry a "always commit
 and push" Rule on Global; others are ask-before-pushing), ASK before
 pushing. Example:
 
-    "I've written doco.md, AGENTS.md, and CLAUDE.md to the repo so
+    "I've written DOCO.md, AGENTS.md, and CLAUDE.md to the repo so
     future clones and other agents discover this Doco. Want me to
     commit + push to main now, or do you commit yourself?"
 

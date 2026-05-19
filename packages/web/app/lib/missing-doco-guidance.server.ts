@@ -60,12 +60,12 @@ export function buildMissingDocoGuidance(args: {
           label: "Create a new Doco for this project",
           command: `doco login --host ${host} --create <slug>`,
           explainer:
-            "Opens the browser-authorize flow and creates a Doco under your account. Pick a kebab-case slug naming the project. The CLI writes the Doco URL to doco.md and writes DOCO_ACCESS to .env.",
+            "Opens the browser-authorize flow and creates a Doco under your account. Pick a kebab-case slug naming the project. The CLI writes the Doco URL to DOCO.md and writes DOCO_ACCESS to .env.",
         },
         {
           label: "Recover the right id for an existing Doco",
           explainer:
-            "Check the Doco URL in doco.md — typo? wrong host? If the URL is correct as written, ask the project owner for a fresh invite URL.",
+            "Check the Doco URL in DOCO.md — typo? wrong host? If the URL is correct as written, ask the project owner for a fresh invite URL.",
         },
       ],
     };

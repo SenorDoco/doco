@@ -84,7 +84,7 @@ Write **\`./.env\`** (gitignored — the agent creates a basic
 
     DOCO_ACCESS=<doco_access from step 1>
 
-Write **\`./doco.md\`** (committed, non-secret) verbatim:
+Write **\`./DOCO.md\`** (committed, non-secret) verbatim:
 
     # Doco
 
@@ -96,7 +96,7 @@ Write **\`./doco.md\`** (committed, non-secret) verbatim:
     Doco to mint one and share the resulting invite URL.
 
 Write or update **\`./AGENTS.md\`** so it includes the line
-\`@./doco.md\` somewhere near the top — that way any agent loading
+\`@./DOCO.md\` somewhere near the top — that way any agent loading
 this repo auto-reads the Doco coordinates. If you also use Claude
 Code, write **\`./CLAUDE.md\`** with the single line \`@./AGENTS.md\`
 (this is Claude Code's auto-load entry point).
@@ -143,7 +143,7 @@ stop signal — note the rule to the user, then immediately start step
 
 ## 5. Commit the bootstrap files to git
 
-\`doco.md\`, \`AGENTS.md\`, \`CLAUDE.md\`, and the \`.gitignore\` entry
+\`DOCO.md\`, \`AGENTS.md\`, \`CLAUDE.md\`, and the \`.gitignore\` entry
 need to land in git so a fresh clone / CI runner / teammate's agent
 discovers this Doco. **This is a separate action from Doco capture
 — capture moved nodes into doco.to via HTTP POSTs, those are
@@ -152,7 +152,7 @@ carries the Doco coordinates.** Don't conflate the two in your
 narration; users will reasonably ask "why push? you said it's in
 Doco" if you do.
 
-    git add doco.md AGENTS.md CLAUDE.md .gitignore
+    git add DOCO.md AGENTS.md CLAUDE.md .gitignore
     git commit -m "Wire repo into Doco at <doco_url>"
 
 Push per the project's git workflow. If unclear, ASK ("commit + push
@@ -226,7 +226,7 @@ only a human can soft-delete it from the Doco's Settings page.
 
 ## Cross-environment: same repo, fresh \`.env\`
 
-\`doco.md\` is committed, so any clone has the Doco URL. If \`.env\` is
+\`DOCO.md\` is committed, so any clone has the Doco URL. If \`.env\` is
 empty (new machine, fresh container), tell the user:
 
     "I can see this repo is tracked at <doco_url>, but I need an
@@ -243,7 +243,7 @@ When the user pastes \`https://doco.to/invite/<code>\`, redeem it:
 The response is the same shape as the create-flow response — the
 URL was the only thing that differed. It carries:
 - \`doco_access\` — write to \`./.env\` as \`DOCO_ACCESS=<doco_access>\`.
-- \`doco_url\` — if the repo has no \`doco.md\`, write one with this URL.
+- \`doco_url\` — if the repo has no \`DOCO.md\`, write one with this URL.
 - \`canonical_instructions\` — the protocol. Apply it from your next
   reply. Do NOT make a follow-on /api/v1/agent-bootstrap fetch right
   now (same reason as step 1).

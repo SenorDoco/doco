@@ -59,7 +59,7 @@ export const bootstrapCmd = defineCommand({
     },
     ref: {
       type: "string",
-      description: "Override the Doco handle/ref. Defaults to doco.md.",
+      description: "Override the Doco handle/ref. Defaults to DOCO.md.",
     },
     id: {
       type: "string",
@@ -95,7 +95,7 @@ export const searchCmd = defineCommand({
   meta: {
     name: "search",
     description:
-      "Query this Doco's /search.json endpoint. Reads DOCO_ACCESS from env or ./.env and the Doco URL from doco.md, keeping the credential out of shell commands.",
+      "Query this Doco's /search.json endpoint. Reads DOCO_ACCESS from env or ./.env and the Doco URL from DOCO.md, keeping the credential out of shell commands.",
   },
   args: {
     query: {
@@ -114,7 +114,7 @@ export const searchCmd = defineCommand({
     },
     ref: {
       type: "string",
-      description: "Override the Doco handle/ref. Defaults to doco.md.",
+      description: "Override the Doco handle/ref. Defaults to DOCO.md.",
     },
     id: {
       type: "string",

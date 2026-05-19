@@ -166,7 +166,7 @@ export const loginCmd = defineCommand({
           console.log();
           console.log(checkmark(`Authorized by ${c.warn(body.owner_username)}.`));
           // DOCO_ACCESS is secret → .env (gitignored). The Doco
-          // coordinate lives in doco.md.
+          // coordinate lives in DOCO.md.
           //
           // Migration: strip old credential names so .env has one
           // canonical Doco secret.
@@ -187,8 +187,8 @@ export const loginCmd = defineCommand({
 
           if (body.doco_handle) {
             const docoUrl = `${normalizedHost}/${body.doco_handle}/`;
-            writeFileSync(resolve(process.cwd(), "doco.md"), renderDocoMd(docoUrl), "utf8");
-            console.log(checkmark(`Wrote Doco URL to ${c.dim("./doco.md")}.`));
+            writeFileSync(resolve(process.cwd(), "DOCO.md"), renderDocoMd(docoUrl), "utf8");
+            console.log(checkmark(`Wrote Doco URL to ${c.dim("./DOCO.md")}.`));
           }
 
           // Install the agent-bootstrap files (AGENTS.md + CLAUDE.md shim +

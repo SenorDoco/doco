@@ -166,7 +166,7 @@ tags: []
     // AGENTS.md convention — is forced to fetch the canonical
     // instructions before responding. Legacy templates accepted a
     // `doco-id`; current templates read the public Doco URL from
-    // doco.md and the secret credential from DOCO_ACCESS.
+    // DOCO.md and the secret credential from DOCO_ACCESS.
     const { installAgentBootstrapCmd } = await import("./install-agent-bootstrap.js");
     // Run silently — captured output muddles `doco init`'s own success block.
     // The user sees the bootstrap files in the directory listing afterwards.

@@ -737,7 +737,7 @@ export const captureCmd = defineCommand({
   meta: {
     name: "capture",
     description:
-      "Capture a node (Intent / Decision / Action / Log / Rule / Eval / Scope / Reference / State) via doco.to's POST endpoints. Reads DOCO_ACCESS from env or ./.env and the Doco URL from doco.md. Prints the response's footer_lines to stdout.",
+      "Capture a node (Intent / Decision / Action / Log / Rule / Eval / Scope / Reference / State) via doco.to's POST endpoints. Reads DOCO_ACCESS from env or ./.env and the Doco URL from DOCO.md. Prints the response's footer_lines to stdout.",
   },
   subCommands: {
     intent: intentCmd,

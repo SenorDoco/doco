@@ -45,7 +45,7 @@ async function runSearch() {
   if (!query) return finish(fail("usage", "search requires --q <query>"), 2);
 
   const handle = readEnv("DOCO_HANDLE") || readDocoHandle();
-  if (!handle) return finish(fail("missing_doco_handle", "missing Doco URL in doco.md"), 2);
+  if (!handle) return finish(fail("missing_doco_handle", "missing Doco URL in DOCO.md"), 2);
 
   const url = new URL(`/${encodeURIComponent(handle)}/search.json`, host);
   url.searchParams.set("q", query);
@@ -183,13 +183,18 @@ function unquote(value) {
 }
 
 function readDocoHandle() {
-  const path = join(process.cwd(), "doco.md");
-  if (!existsSync(path)) return "";
-  const text = readFileSync(path, "utf8");
-  const matches = text.matchAll(/https?:\/\/[^/\s)]+\/([A-Za-z0-9][A-Za-z0-9-]*)\/?/g);
-  for (const match of matches) {
-    const handle = match[1];
-    if (handle !== "invite" && handle !== "api") return handle;
+  // Canonical filename is DOCO.md; older repos shipped lowercase
+  // doco.md. On case-insensitive filesystems the two resolve to the
+  // same file; on case-sensitive ones the fallback matters.
+  const candidates = [join(process.cwd(), "DOCO.md"), join(process.cwd(), "doco.md")];
+  for (const path of candidates) {
+    if (!existsSync(path)) continue;
+    const text = readFileSync(path, "utf8");
+    const matches = text.matchAll(/https?:\/\/[^/\s)]+\/([A-Za-z0-9][A-Za-z0-9-]*)\/?/g);
+    for (const match of matches) {
+      const handle = match[1];
+      if (handle !== "invite" && handle !== "api") return handle;
+    }
   }
   return "";
 }

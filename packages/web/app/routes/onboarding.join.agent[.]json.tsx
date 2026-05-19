@@ -15,7 +15,7 @@ export function loader() {
     },
     next_steps: [
       "POST /api/v1/invites/<code>/redeem.json (no auth, empty body).",
-      "Walk the response's `next_steps_for_agent` array top-to-bottom — it carries the ordered checklist (write DOCO_ACCESS to .env, write doco.md if missing, update AGENTS.md / CLAUDE.md, fetch the canonical, render user_message_block).",
+      "Walk the response's `next_steps_for_agent` array top-to-bottom — it carries the ordered checklist (write DOCO_ACCESS to .env, write DOCO.md if missing, update AGENTS.md / CLAUDE.md, fetch the canonical, render user_message_block).",
       "Render the response's `user_message_block` verbatim to whoever pasted the invite — names the Doco, what files you wrote, and how they can claim their own access.",
     ],
     related_routes: [

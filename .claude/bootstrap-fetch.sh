@@ -15,7 +15,7 @@
 set -u
 
 # Load .env if present. The only secret env var Doco needs is
-# DOCO_ACCESS. The project coordinate lives in doco.md, and bound
+# DOCO_ACCESS. The project coordinate lives in DOCO.md, and bound
 # credentials let the bootstrap endpoint infer it.
 if [ -f "$PWD/.env" ]; then
   # shellcheck disable=SC1091

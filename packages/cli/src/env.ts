@@ -1,5 +1,5 @@
 // Doco config resolution for the CLI. The secret is `DOCO_ACCESS` in
-// `./.env`; the project coordinate is the committed URL in `./doco.md`.
+// `./.env`; the project coordinate is the committed URL in `./DOCO.md`.
 // Older installs that still have previous env names continue to work as
 // read-only fallbacks, but new writes and user-facing guidance use
 // DOCO_ACCESS only.
@@ -64,17 +64,28 @@ export function loadDotenv(): void {
 }
 
 /**
- * Pull the public Doco coordinate out of doco.md. The file carries a
+ * Pull the public Doco coordinate out of DOCO.md. The file carries a
  * human URL, not another secret. The route layer accepts either the
  * modern handle or a legacy `doco_...` id, so this returns a generic ref.
+ *
+ * Filename: the canonical form is `DOCO.md` (ALLCAPS, matching the
+ * AGENTS.md / CLAUDE.md / README.md root-file convention). Older
+ * repos shipped lowercase `doco.md` — read that as a fallback so a
+ * fresh CLI on an older repo doesn't pretend the coordinate is
+ * missing. On a case-insensitive filesystem (default macOS APFS,
+ * Windows NTFS) the two names resolve to the same file anyway; the
+ * fallback is for case-sensitive filesystems where `DOCO.md` and
+ * `doco.md` are genuinely different entries.
  */
 export function readDocoRefFromProject(cwd: string = process.cwd()): string | null {
-  try {
-    const text = readFileSync(resolve(cwd, "doco.md"), "utf8");
-    const urlMatch = text.match(/https?:\/\/[^/\s)]+\/([A-Za-z0-9][A-Za-z0-9-]*)(?:\/|\b)/);
-    if (urlMatch?.[1]) return urlMatch[1];
-  } catch {
-    // Fall through to legacy ID discovery below.
+  for (const fname of ["DOCO.md", "doco.md"]) {
+    try {
+      const text = readFileSync(resolve(cwd, fname), "utf8");
+      const urlMatch = text.match(/https?:\/\/[^/\s)]+\/([A-Za-z0-9][A-Za-z0-9-]*)(?:\/|\b)/);
+      if (urlMatch?.[1]) return urlMatch[1];
+    } catch {
+      // Try the next filename, then fall through to legacy ID discovery.
+    }
   }
   for (const name of ["AGENTS.md", "CLAUDE.md"]) {
     try {
@@ -90,7 +101,7 @@ export function readDocoRefFromProject(cwd: string = process.cwd()): string | nu
 
 /**
  * Resolve access credential + Doco ref or exit 2 with a missing-config
- * message. Read order: process.env → ./.env (via loadDotenv) → doco.md.
+ * message. Read order: process.env → ./.env (via loadDotenv) → DOCO.md.
  */
 export function requireDocoConfig(): DocoConfig {
   loadDotenv();
@@ -98,7 +109,7 @@ export function requireDocoConfig(): DocoConfig {
   const docoRef = readDocoRefFromProject() ?? process.env.DOCO_ID ?? "";
   const missing: string[] = [];
   if (!access) missing.push("DOCO_ACCESS (./.env)");
-  if (!docoRef) missing.push("doco.md URL");
+  if (!docoRef) missing.push("DOCO.md URL");
   if (missing.length) {
     const cross = "\x1b[31m✗\x1b[0m";
     console.error(

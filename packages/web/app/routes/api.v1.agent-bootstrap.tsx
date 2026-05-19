@@ -48,7 +48,7 @@ export async function loader({ request }: { request: Request }) {
   // Per-Doco context comes from `?id=<doco_id-or-handle>`. The legacy
   // `?slug=<owner>/<doco>` query param was retired with the slug
   // columns (phase 3 of slug-removal). Pin the doco_handle in
-  // `doco.md` and pass it as `?id=` — `getDocoByIdOrHandle` accepts
+  // `DOCO.md` and pass it as `?id=` — `getDocoByIdOrHandle` accepts
   // both ULIDs and handles.
   let id = (url.searchParams.get("id") ?? "").trim();
   if (!id) {
@@ -122,7 +122,7 @@ export async function loader({ request }: { request: Request }) {
       mode: "host",
     },
     doco_id: docoIdPath,
-    /** Public, globally-unique URL identifier — what `doco.md` pins
+    /** Public, globally-unique URL identifier — what `DOCO.md` pins
      *  and what every Doco URL is built from. */
     doco_handle: docoHandlePath,
     // code_map.yaml is gone (alpha forbids back-compat); keep the

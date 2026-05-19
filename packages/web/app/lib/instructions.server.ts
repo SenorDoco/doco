@@ -93,7 +93,7 @@ canonical body — the successful bootstrap is enough to render:
 \`\`\`
 
 The \`<doco_handle>\` is the human-readable URL id from the bootstrap
-response (or from \`doco.md\`). NEVER emit the verb on its own —
+response (or from \`DOCO.md\`). NEVER emit the verb on its own —
 \`[🔮 Doco] Connected to\` with nothing after it is broken output;
 every verb in the list below is shaped to take the handle as its
 object. Concrete examples: \`[🔮 Doco] Connected to acme/payments\`,
@@ -462,7 +462,7 @@ of an end-of-turn dial-tone.
 
 Two pieces of information, two files:
 
-- **\`doco.md\`** at repo root, committed. Carries the Doco URL —
+- **\`DOCO.md\`** at repo root, committed. Carries the Doco URL —
   \`https://doco.to/<doco_handle>/\` (the human-readable handle the
   host minted at create time; phase-1 of slug removal). Non-secret,
   public-facing, the "this is the project's Doco" marker any
@@ -489,7 +489,7 @@ curl -X POST "https://doco.to/<doco_handle>/api/decisions.json" \\
 
 No secret in the URL path and no separate \`DOCO_ID\` env var. The
 credential travels in the standard bearer header; the project
-coordinate lives in \`doco.md\`.
+coordinate lives in \`DOCO.md\`.
 
 Missing \`DOCO_ACCESS\`: see "Onboarding an agent for a new Doco" below
 — two HTTP calls (one create or one redeem) and you're connected.
@@ -958,7 +958,7 @@ hits one of these, stop and ask.
 ## Onboarding an agent for a new Doco
 
 When the user says "create a Doco for this project" and the repo has
-no \`doco.md\` and \`./.env\` has no \`DOCO_ACCESS\`, run the anonymous-
+no \`DOCO.md\` and \`./.env\` has no \`DOCO_ACCESS\`, run the anonymous-
 creation flow yourself — two HTTP calls, three files written, done.
 No install, no browser, no permission prompts.
 
@@ -992,7 +992,7 @@ No install, no browser, no permission prompts.
    DOCO_ACCESS=<doco_access from step 1>
    \`\`\`
 
-3. **Write \`./doco.md\`** (committed, non-secret):
+3. **Write \`./DOCO.md\`** (committed, non-secret):
    \`\`\`
    # Doco
 
@@ -1004,7 +1004,7 @@ No install, no browser, no permission prompts.
    \`\`\`
 
 4. **Wire it into the agent surfaces**. If \`./AGENTS.md\` doesn't
-   exist, write it with \`@./doco.md\` near the top so future agents
+   exist, write it with \`@./DOCO.md\` near the top so future agents
    auto-load the Doco coordinates. If it exists, ADD the line — don't
    replace existing content. Also write \`./CLAUDE.md\` if missing,
    with the single line \`@./AGENTS.md\` (Claude Code's auto-load
@@ -1031,7 +1031,7 @@ No install, no browser, no permission prompts.
    \`\`\`
 
 7. **Commit the bootstrap files to git** — separate from Doco
-   capture. The files you wrote (\`doco.md\`, \`AGENTS.md\`,
+   capture. The files you wrote (\`DOCO.md\`, \`AGENTS.md\`,
    \`CLAUDE.md\`, optional \`.agents/doco-agent-client.mjs\`, \`.gitignore\`) are the repo's discoverability
    layer; without them in git, a fresh clone / CI runner / teammate's
    agent has no idea this Doco exists. Capture (steps so far) moved
@@ -1040,7 +1040,7 @@ No install, no browser, no permission prompts.
    separately when you tell the user, or they'll reasonably ask
    "wait, why push? you said it's in Doco":
 
-       git add doco.md AGENTS.md CLAUDE.md .gitignore
+       git add DOCO.md AGENTS.md CLAUDE.md .gitignore
        git commit -m "Wire repo into Doco at <doco_url>"
 
    Push per the project's git workflow. If you don't know, ASK
@@ -1071,7 +1071,7 @@ collaborators** button on the Doco's web page (human surface).
 
 ### Joining an existing Doco (new env, same repo, or invited from elsewhere)
 
-If \`doco.md\` exists but \`./.env\` has no \`DOCO_ACCESS\`, ask the user
+If \`DOCO.md\` exists but \`./.env\` has no \`DOCO_ACCESS\`, ask the user
 for an invite URL: "Open \`<doco_url>\` and click 'New invite', or
 ask your already-connected agent to POST
 \`/<doco_handle>/api/invites.json\` with their \`DOCO_ACCESS\`. Paste the resulting

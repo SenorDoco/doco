@@ -4,7 +4,7 @@
 //   POST /api/v1/invites/<code>/redeem.json       (invite redemption)
 //
 // Both flows hand an agent the same on-disk deliverable — DOCO_ACCESS
-// in .env plus the four committed files (doco.md, AGENTS.md, CLAUDE.md,
+// in .env plus the four committed files (DOCO.md, AGENTS.md, CLAUDE.md,
 // .gitignore entry) — and the same protocol in `canonical_instructions`.
 // Only the source of DOCO_ACCESS differs (anonymous POST vs invite POST).
 //
@@ -92,8 +92,8 @@ export interface BootstrapResponse {
 /** Steps that write project-local files. Identical for both flows. */
 export const FILE_WRITE_STEPS: readonly string[] = [
   "Write DOCO_ACCESS=<doco_access> to ./.env (gitignored — create the file and add `.env` to .gitignore if either is missing).",
-  "Write ./doco.md (committed, non-secret) with the doco_url near the top so future clones / CI / teammates' agents discover the Doco. If doco.md already exists, leave it alone.",
-  "Update ./AGENTS.md to include `@./doco.md` near the top — if AGENTS.md is missing, write it. Don't replace existing AGENTS.md content; add the import line.",
+  "Write ./DOCO.md (committed, non-secret) with the doco_url near the top so future clones / CI / teammates' agents discover the Doco. If DOCO.md already exists, leave it alone.",
+  "Update ./AGENTS.md to include `@./DOCO.md` near the top — if AGENTS.md is missing, write it. Don't replace existing AGENTS.md content; add the import line.",
   "Write ./CLAUDE.md with the single line `@./AGENTS.md` if it's missing. Claude Code auto-loads CLAUDE.md by name, which then pulls in AGENTS.md.",
 ];
 
@@ -115,7 +115,7 @@ export const PROTOCOL_FETCH_STEP =
  *  the user as a one-liner and keep going — scope_setup and
  *  scope_population must still run while you wait for the commit nod. */
 export const COMMIT_STEP =
-  "Commit the bootstrap files to git (`doco.md`, `AGENTS.md`, `CLAUDE.md`, `.gitignore`). This is a SEPARATE action from Doco node capture — capture moved nodes onto doco.to; this commit lands files in the repo so future clones discover the Doco. Name the distinction when you tell the user. If you don't know the project's git workflow, ASK before pushing — but DO NOT let commit-wait stop the onboarding-overlay loop above. Keep running scope_setup + scope_population while the commit nod is pending.";
+  "Commit the bootstrap files to git (`DOCO.md`, `AGENTS.md`, `CLAUDE.md`, `.gitignore`). This is a SEPARATE action from Doco node capture — capture moved nodes onto doco.to; this commit lands files in the repo so future clones discover the Doco. Name the distinction when you tell the user. If you don't know the project's git workflow, ASK before pushing — but DO NOT let commit-wait stop the onboarding-overlay loop above. Keep running scope_setup + scope_population while the commit nod is pending.";
 
 /** Run-onboarding-overlay step. Only meaningful for the create flow
  *  (and for redeem flows that hit a still-onboarding Doco) — the
@@ -192,7 +192,7 @@ function buildRedeemUserMessage(docoUrl: string, handle: string): string {
     ``,
     `I saved my personal Doco access credential to \`./.env\` (gitignored) — from here I fetch the protocol on session start, search prior decisions before drafting new ones, and capture meaningful changes as Doco nodes.`,
     ``,
-    `If this repo didn't already have a \`doco.md\`, I just wrote one so future clones / CI / teammates discover the Doco. The access credential in \`.env\` is mine alone — if you want your own access (browse on the web, mint invites for teammates), ask me for a fresh invite URL.`,
+    `If this repo didn't already have a \`DOCO.md\`, I just wrote one so future clones / CI / teammates discover the Doco. The access credential in \`.env\` is mine alone — if you want your own access (browse on the web, mint invites for teammates), ask me for a fresh invite URL.`,
   ].join("\n");
 }
 

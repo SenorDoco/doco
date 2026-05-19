@@ -248,7 +248,7 @@ export const patchCmd = defineCommand({
   meta: {
     name: "patch",
     description:
-      "Extend an existing Doco node via PATCH. Use this when a search hit names the file or territory you're editing (vector_score > ~0.45) — it's strictly preferred over opening a sibling node. Reads DOCO_ACCESS from env or ./.env and the Doco URL from doco.md. Prints the response's footer_lines to stdout.",
+      "Extend an existing Doco node via PATCH. Use this when a search hit names the file or territory you're editing (vector_score > ~0.45) — it's strictly preferred over opening a sibling node. Reads DOCO_ACCESS from env or ./.env and the Doco URL from DOCO.md. Prints the response's footer_lines to stdout.",
   },
   subCommands: {
     decision: makeTypedSubcommand("decision"),
