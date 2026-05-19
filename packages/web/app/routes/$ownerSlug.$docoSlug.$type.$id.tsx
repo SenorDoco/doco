@@ -762,10 +762,11 @@ export default function EntityDetail({
         <div className="flex flex-wrap items-center gap-2">
           <span
             aria-label={type}
-            className="inline-flex shrink-0 items-center text-foreground"
+            className="inline-flex shrink-0 items-center gap-1.5 text-foreground"
             title={type}
           >
             <NodeTypeIcon nodeType={type} className="!h-5 !w-5" />
+            <span className="text-sm font-semibold capitalize tracking-tight">{type}:</span>
           </span>
           <h1 className="min-w-0 flex-1 break-words text-sm font-semibold tracking-tight text-foreground">
             {display}
@@ -786,9 +787,6 @@ export default function EntityDetail({
               <span>{s.name}</span>
             </Link>
           ))}
-          {ent.summary && String(ent.summary) !== display ? (
-            <span className="min-w-0 break-words text-muted-foreground">{String(ent.summary)}</span>
-          ) : null}
           <div className="ml-auto flex items-center gap-1">
             {drawerButtons.map((btn) => {
               const active = openDrawer === btn.kind;
