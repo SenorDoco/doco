@@ -338,12 +338,7 @@ export default function AddScope({
                           </span>
                         ) : null}
                         <span className="min-w-0 flex-1">
-                          <span className="flex flex-wrap items-center gap-2">
-                            <span className="font-mono text-foreground">{t.name}</span>
-                            <span className="rounded-md border border-primary px-1.5 py-0.5 text-[10px] font-semibold text-primary">
-                              Watched
-                            </span>
-                          </span>
+                          <span className="font-mono text-foreground">{t.name}</span>
                           <span className="mt-1 block text-muted-foreground">{t.summary}</span>
                         </span>
                       </label>
