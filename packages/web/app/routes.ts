@@ -89,6 +89,13 @@ export default [
     ".well-known/oauth-protected-resource",
     "routes/oauth-metadata-protected-resource.tsx",
   ),
+  // OAuth 2.1 authorization server endpoints. The runtime hits these
+  // via the metadata document above; the user sees /oauth/authorize
+  // in their browser when a runtime requests Doco access.
+  route("oauth/register", "routes/oauth.register.tsx"),
+  route("oauth/authorize", "routes/oauth.authorize.tsx"),
+  route("oauth/token", "routes/oauth.token.tsx"),
+  route("oauth/revoke", "routes/oauth.revoke.tsx"),
   // Self-service create
   route("new-doco", "routes/new-doco.tsx"),
   route("new-org", "routes/new-org.tsx"),
