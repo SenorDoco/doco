@@ -25,8 +25,8 @@ import { type RouteConfig, index, route } from "@react-router/dev/routes";
  *   /dashboard                     signed-in host dashboard (docos / users / orgs)
  *   /sign-in, /sign-out, /sign-up  auth (cookie locally; OAuth in prod per ADR-066, ADR-094)
  *   /onboarding/*                  first-run wizard (ADR-073). Agents POST /api/v1/docos.json directly; humans use the web flow.
- *   /invite/:code                  dual human/agent Doco invite landing. Signed-in humans accept; signed-out users choose human sign-in or agent.txt.
- *   (agent self-service: agents join via /invite/:code or mint a fresh doco via POST /api/v1/docos.json)
+ *   /invite/:code                  Human-only invite landing — signed-in humans accept (adds them to doco_users); signed-out humans bounce through GitHub. Agents read the sibling /invite/:code/agent.txt for the MCP-OAuth path instead.
+ *   (agent self-service: install the per-Doco MCP connector at /mcp/:handle; OAuth dance kicks off automatically)
  *   /new-doco, /new-org            self-service create flows (ADR-067)
  *   /:owner                        owner profile + docos
  *   /:owner/:doco                  per-Doco recent + search input

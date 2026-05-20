@@ -5,7 +5,7 @@
 // The just-minted invite's URL is highlighted at the top with a
 // copy-friendly text field.
 
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { Form, Link, useNavigation } from "react-router";
 import type { EntityId } from "@doco/shared";
 import type { Invite } from "~/lib/agent-token-store.server";
@@ -13,6 +13,7 @@ import { TokenStore } from "~/lib/tokens.server";
 import { rootDir } from "~/lib/db.server";
 import { loadDocoForRead, normalizeDocoParams } from "~/lib/doco-access.server";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
+import { CollaborationInvitePrompt } from "~/components/collaboration-invite-prompt";
 import { SingleColumnPageMain } from "~/components/page-main";
 import { SiteHeader } from "~/components/site-header";
 
@@ -62,7 +63,7 @@ export async function loader({
 
 type ActionResult =
   | { error: string }
-  | { ok: true; invite_url: string; expires_at: string };
+  | { ok: true; invite_url: string; mcp_url: string; expires_at: string };
 
 export async function action({
   request,
@@ -84,7 +85,7 @@ export async function action({
     const store = TokenStore.forDoco(rootDir());
     const ok = await store.revokeInvite(code);
     if (!ok) return { error: "Invite not found or no longer pending." };
-    return { ok: true, invite_url: "", expires_at: "" };
+    return { ok: true, invite_url: "", mcp_url: "", expires_at: "" };
   }
   const ttlRaw = String(form.get("expires_in_days") ?? "7");
   const ttl = Number.parseInt(ttlRaw, 10);
@@ -102,6 +103,7 @@ export async function action({
   return {
     ok: true,
     invite_url: `${origin}/invite/${invite.code}`,
+    mcp_url: `${origin}/mcp/${handle}`,
     expires_at: invite.expires_at,
   };
 }
@@ -185,7 +187,22 @@ export default function Invites({
               <p className="mt-3 text-sm text-destructive">{actionData.error}</p>
             ) : null}
             {actionData && "ok" in actionData && actionData.invite_url ? (
-              <FreshInvite url={actionData.invite_url} expiresAt={actionData.expires_at} />
+              <div className="mt-4 rounded-md border border-primary bg-primary/5 p-3">
+                <p className="mb-2 text-sm font-semibold">
+                  Fresh invite — copy the prompt and share with a human collaborator,
+                  or hand the MCP install URL to an agent.
+                </p>
+                <CollaborationInvitePrompt
+                  inviteUrl={actionData.invite_url}
+                  mcpUrl={actionData.mcp_url}
+                  note={
+                    <>
+                      Single-use, expires{" "}
+                      {new Date(actionData.expires_at).toLocaleString()}.
+                    </>
+                  }
+                />
+              </div>
             ) : null}
           </CardContent>
         </Card>
@@ -206,49 +223,6 @@ export default function Invites({
           </CardContent>
         </Card>
       </SingleColumnPageMain>
-    </div>
-  );
-}
-
-function FreshInvite({ url, expiresAt }: { url: string; expiresAt: string }) {
-  const ref = useRef<HTMLInputElement | null>(null);
-  const [copied, setCopied] = useState(false);
-  useEffect(() => {
-    ref.current?.select();
-  }, []);
-  return (
-    <div className="mt-4 space-y-2 rounded-md border border-primary bg-primary/5 p-3">
-      <p className="text-sm font-semibold">Fresh invite URL — copy and share now.</p>
-      <div className="flex gap-2">
-        <input
-          ref={ref}
-          type="text"
-          readOnly
-          value={url}
-          className="flex-1 rounded-md border border-border bg-card px-2 py-1 text-xs font-mono"
-        />
-        <button
-          type="button"
-          onClick={async () => {
-            try {
-              await navigator.clipboard.writeText(url);
-              setCopied(true);
-              setTimeout(() => setCopied(false), 2000);
-            } catch {
-              ref.current?.select();
-              document.execCommand("copy");
-              setCopied(true);
-              setTimeout(() => setCopied(false), 2000);
-            }
-          }}
-          className="rounded-md border border-border bg-card px-3 py-1 text-xs font-semibold hover:bg-input"
-        >
-          {copied ? "Copied" : "Copy"}
-        </button>
-      </div>
-      <p className="text-xs text-muted-foreground">
-        Single-use. Expires {new Date(expiresAt).toLocaleString()}.
-      </p>
     </div>
   );
 }

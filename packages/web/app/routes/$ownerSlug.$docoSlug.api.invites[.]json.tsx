@@ -1,19 +1,29 @@
 // POST /<doco-handle>/api/invites.json — mint a new invite for this
-// Doco. Any user (agent or human) holding a valid access credential for the
-// Doco can call this; auth flows through getCurrentPrincipalAsync,
-// which resolves the URL-path credential, query-param credential, or
-// Bearer header.
+// Doco. Any user (human OR OAuth-connected agent) holding access to
+// the Doco can call this.
 //
 // Input (application/json, all optional):
-//   { expires_in_days?: number, description?: string }
+//   { expires_in_days?: number, role?: DocoRole }
 //
 // Output:
 //   {
-//     invite_url:        "https://<host>/invite/<code>",
-//     invite_expires_at: "<ISO timestamp>",
-//     code:              "<64-hex>",
-//     doco_url:          "https://<host>/by-id/<doco_id>/",
+//     invite_url:            "https://<host>/invite/<code>",
+//     invite_expires_at:     "<ISO timestamp>",
+//     code:                  "<64-hex>",
+//     role:                  "owner|approver|author|reader",
+//     doco_url:              "https://<host>/<handle>/",
+//     mcp_url:               "https://<host>/mcp/<handle>",
+//     collaboration_prompt:  "<verbatim text to paste into an agent>"
 //   }
+//
+// The dual `invite_url` + `mcp_url` shape is the v12 / OAuth-MCP
+// contract: the invite URL is for a HUMAN to accept in a browser
+// (adds them to doco_users); the MCP URL is for an AGENT RUNTIME to
+// install as a connector (kicks off the OAuth dance, no per-invite
+// code involved). `collaboration_prompt` pre-builds the verbatim
+// text a project owner can paste into an agent so the agent sees
+// both paths named explicitly — that's the same text the /users
+// web UI shows.
 //
 // Errors:
 //   404 — Doco not found, or caller doesn't have access
@@ -22,6 +32,7 @@
 import type { EntityId } from "@doco/shared";
 import { ROLE_RANK, type DocoRole } from "@doco/db";
 import { TokenStore } from "~/lib/tokens.server";
+import { buildCollaborationInvitePrompt } from "~/components/collaboration-invite-prompt";
 import { rootDir } from "~/lib/db.server";
 import {
   getDocoLevelRole,
@@ -123,12 +134,16 @@ export async function action({
   const docoUrl = meta.handle
     ? `${origin}/${meta.handle}/`
     : `${origin}/by-id/${meta.docoId}/`;
+  const inviteUrl = `${origin}/invite/${invite.code}`;
+  const mcpUrl = meta.handle ? `${origin}/mcp/${meta.handle}` : "";
   return Response.json({
-    invite_url: `${origin}/invite/${invite.code}`,
+    invite_url: inviteUrl,
     invite_expires_at: invite.expires_at,
     code: invite.code,
     role: invite.role ?? requestedRole,
     doco_url: docoUrl,
+    mcp_url: mcpUrl,
+    collaboration_prompt: mcpUrl ? buildCollaborationInvitePrompt(inviteUrl, mcpUrl) : "",
   });
 }
 
