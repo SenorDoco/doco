@@ -44,50 +44,20 @@ export async function loader({
 }) {
   const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
   const { type } = params;
-  if (!KNOWN.has(type)) throw new Response("Unknown type", { status: 404 });
+  // v16: `scope` is no longer a navigable entity type
+  // (decision_01KS3DW9C2KN2X7Z80R18H1RAX). Reject before any read.
+  if (!KNOWN.has(type) || type === "scope") {
+    throw new Response("Unknown type", { status: 404 });
+  }
   const ctx = await loadDocoForRead(request, handle);
   return withClient(async (c) => {
     if (type === "scope") {
-      const rows = (
-        await c.query<{
-          id: string;
-          name: string;
-          purpose: string;
-          raw_yaml: string;
-          member_count: string;
-          sub_scope_count: string;
-        }>(
-          `SELECT s.id, s.name, s.purpose, s.raw_yaml,
-                  (SELECT COUNT(*) FROM edges e
-                    WHERE e.to_id = s.id
-                      AND e.edge_type = 'in_scope_of'
-                      AND e.from_node_type != 'scope'
-                      AND e.doco_id = s.doco_id)::text AS member_count,
-                  (SELECT COUNT(*) FROM edges e
-                    WHERE e.to_id = s.id
-                      AND e.edge_type = 'in_scope_of'
-                      AND e.from_node_type = 'scope'
-                      AND e.doco_id = s.doco_id)::text AS sub_scope_count
-             FROM scopes s
-            WHERE s.doco_id = $1
-            ORDER BY s.name`,
-          [ctx.meta.docoId],
-        )
-      ).rows;
-      const scopes: ScopeRow[] = rows.map((r) => {
-        const ent = (parseYaml(r.raw_yaml) ?? {}) as Record<string, unknown>;
-        return {
-          id: r.id,
-          name: r.name,
-          purpose: r.purpose,
-          parent_ids: Array.isArray(ent.scopes) ? (ent.scopes as string[]) : [],
-          member_count: Number(r.member_count),
-          sub_scope_count: Number(r.sub_scope_count),
-        };
-      });
+      // Unreachable (the early-reject above catches scope). Kept as
+      // a defensive stub until the surrounding branch is removed in
+      // a follow-up.
       return {
         items: [],
-        scopes,
+        scopes: [] as ScopeRow[],
         type,
         ownerSlug,
         docoSlug,
