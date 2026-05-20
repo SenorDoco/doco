@@ -21,7 +21,11 @@ import type { EntityId } from "@doco/shared";
 import { parse as parseYaml } from "yaml";
 import { renderOperationLines } from "~/lib/capture.server";
 import { docoPath } from "~/lib/db.server";
-import { loadDocoForAdmin, normalizeDocoParams } from "~/lib/doco-access.server";
+import {
+  loadDocoForAdmin,
+  loadDocoForRead,
+  normalizeDocoParams,
+} from "~/lib/doco-access.server";
 import {
   type ClassifiedRule,
   LlmUnavailableError,
@@ -54,14 +58,96 @@ function resolveRequestedKind(value: unknown): RequestedRuleKind | null {
   return null;
 }
 
-export function loader() {
-  return Response.json(
-    {
-      error:
-        'Use POST with `{kind: "doco-node-authoring" | "guidance", prose: string}` (legacy `"authoring"` also accepted). See /<doco-handle>/api/scopes.txt for the spec.',
-    },
-    { status: 405 },
+/**
+ * GET /<doco-handle>/api/scopes/<scope_id>/rules.json
+ *
+ * Lists all rules tagged with this scope. Returns id, summary, kind
+ * (authoring | guidance | tagged — derived using the same bucket logic
+ * as the scope detail page), lifecycle, and gated_by membership for
+ * each row. Reader access is enough — anyone who can see the Doco can
+ * read its rules.
+ *
+ * Used by migration tooling and agents that need to enumerate
+ * scope-tagged rules without scraping the search endpoint's top-N
+ * cosine results.
+ */
+export async function loader({
+  request,
+  params,
+}: {
+  request: Request;
+  params: { docoId: string; id: string };
+}) {
+  const { handle } = await normalizeDocoParams(params);
+  const { id } = params;
+  const ctx = await loadDocoForRead(request, handle);
+  const scopeRaw = await readScopeFromDb(ctx.meta.docoId, id);
+  if (!scopeRaw) {
+    return Response.json({ error: `Scope not found: ${id}` }, { status: 404 });
+  }
+  const gatedBy = new Set<string>(
+    Array.isArray(scopeRaw.gated_by)
+      ? (scopeRaw.gated_by as unknown[]).filter((v): v is string => typeof v === "string")
+      : [],
   );
+  type Row = {
+    id: string;
+    summary: string;
+    raw_yaml: string;
+    lifecycle: string | null;
+    created_at: string | null;
+  };
+  const rows = await withClient(async (c) => {
+    const r = await c.query<Row>(
+      `SELECT r.id, r.summary, r.raw_yaml, r.lifecycle, r.created_at::text AS created_at
+         FROM rules r
+         JOIN edges e ON e.from_id = r.id
+                     AND e.edge_type = 'in_scope_of'
+                     AND e.to_id = $1
+        WHERE r.doco_id = $2
+        ORDER BY r.created_at ASC`,
+      [id, ctx.meta.docoId],
+    );
+    return r.rows;
+  });
+  const rules = rows.map((row) => {
+    let fm: Record<string, unknown> = {};
+    try {
+      fm = JSON.parse(row.raw_yaml) as Record<string, unknown>;
+    } catch {
+      try {
+        fm = parseYaml(row.raw_yaml) as Record<string, unknown>;
+      } catch {
+        fm = {};
+      }
+    }
+    const fmKind = typeof fm.kind === "string" ? fm.kind : null;
+    const predicate = (fm.predicate as Record<string, unknown> | undefined) ?? null;
+    let kind: "authoring" | "guidance" | "tagged";
+    if (gatedBy.has(row.id) && predicate) {
+      kind = "authoring";
+    } else if (fmKind === "guidance") {
+      kind = "guidance";
+    } else {
+      kind = "tagged";
+    }
+    return {
+      id: row.id,
+      summary: row.summary,
+      kind,
+      stored_kind: fmKind,
+      lifecycle: row.lifecycle,
+      created_at: row.created_at,
+      gated_by: gatedBy.has(row.id),
+      has_predicate: predicate !== null,
+    };
+  });
+  return Response.json({
+    scope_id: id,
+    scope_name: String(scopeRaw.name ?? id),
+    total: rules.length,
+    rules,
+  });
 }
 
 export async function action({

@@ -2545,6 +2545,22 @@ export async function captureRule(
     return { error: "scope_names must be a non-empty array." };
   }
 
+  // Per decision_01KS2N0KQ9Y31XDKXT5DDC95YJ — `#global` only accepts rules of
+  // `kind: authoring` or `kind: guidance`. This cross-scope capture path
+  // doesn't expose `kind` (it'd default to `tagged`), so any `#global` target
+  // here is a misroute. Direct callers to the scope-specific endpoint, which
+  // already requires the owner role and rejects `kind: tagged`.
+  if (
+    draft.scope_names.some(
+      (n) => n === "#global" || n === "global" || n === "constitution",
+    )
+  ) {
+    return {
+      error:
+        "Rules into `#global` must go through `POST /<doco-handle>/api/scopes/<scope_id>/rules.json` with `{kind: \"authoring\" | \"guidance\", prose}` — the cross-scope `POST /api/rules.json` defaults to `kind: tagged`, which `#global` rejects.",
+    };
+  }
+
   const scopeRes = await resolveScopeOrError(docoDir, draft.scope_names, {
     verb: "tag",
     nodeKind: "Rule",
