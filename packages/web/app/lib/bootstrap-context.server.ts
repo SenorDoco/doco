@@ -14,6 +14,7 @@ import { listEntitiesByDoco } from "@doco/db";
 import type { AuthoringPredicate } from "@doco/shared";
 import { ensureScopeHashtagPrefixMigration } from "~/lib/migrations/scope-hashtag-prefix.server";
 import { ensureScopePurposeMigration } from "~/lib/migrations/scope-purpose.server";
+import { ensureEntityScopesStripped } from "~/lib/migrations/v16-strip-entity-scopes.server";
 import { type ScopeManifestEntry, listLiveScopeManifest } from "~/lib/scope-helpers.server";
 
 /**
@@ -308,6 +309,9 @@ export async function loadBootstrapContext(args: {
   // stamp template `allowed_node_types` onto rows that predate the
   // change (decision_01KRYECEA32SRSQCKFXSDCBK67).
   await ensureScopePurposeMigration(docoId);
+  // v16: strip the legacy `scopes` array from every entity's raw_yaml.
+  // Host-wide, gated on doco_meta.v16_strip_entity_scopes, idempotent.
+  await ensureEntityScopesStripped();
   const [constitution, rawScopes, nodeCounts] = await Promise.all([
     loadConstitution(docoId),
     listLiveScopeManifest(docoDir),
