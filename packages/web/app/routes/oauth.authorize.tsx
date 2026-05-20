@@ -180,19 +180,10 @@ export async function action({ request }: { request: Request }) {
     granted_doco_roles,
     scope: params.scope ?? undefined,
   });
-  // OAuth 2.1 §4.1.2 expects a 302 to redirect_uri here, but the
-  // resulting localhost page is whatever the runtime's local listener
-  // serves — unstyled, no Doco branding ("You can return to Codex"
-  // / "Return to Claude Code"). For browser-driven OAuth (which all
-  // human-approval flows are), we can serve a tiny Doco-branded
-  // interstitial that meta-refreshes + JS-redirects to the runtime
-  // immediately. Browsers follow meta-refresh fine; non-browser
-  // OAuth clients never hit /oauth/authorize (no user to click
-  // Approve) so this can't break them.
-  return renderApprovedInterstitial({
-    clientName: client.client_name ?? client.client_id.slice(0, 20),
-    redirectUrl: redirectWith(params, { code }),
-  });
+  // OAuth 2.1 §4.1.2: 302 to redirect_uri with ?code=...&state=...
+  // The runtime's local listener catches it and renders its own
+  // "you can return to your terminal" page.
+  return redirect(redirectWith(params, { code }));
 }
 
 export function meta() {
@@ -266,10 +257,9 @@ function DocoPickerForm({
   const allSelected = selected.size === docos.length;
   const noneSelected = selected.size === 0;
   return (
-    // reloadDocument forces a real document POST instead of React
-    // Router's client-side navigation. We need this because the action
-    // returns a Doco-branded interstitial HTML page (not a redirect or
-    // a render of this route) — client-side nav would never paint it.
+    // reloadDocument: the action returns a 302 to the runtime's
+    // localhost callback. Client-side fetch can't follow cross-origin
+    // redirects; a native document POST + browser-followed 302 can.
     <Form method="post" reloadDocument className="space-y-3">
       {targetedMessage ? (
         <p className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
@@ -450,99 +440,3 @@ function errorResponse(message: string, status: number): Response {
   });
 }
 
-/**
- * Doco-branded post-approval interstitial. Replaces the OAuth 302
- * with HTML that shows Doco branding briefly, then forwards to the
- * runtime's redirect_uri via meta-refresh + JS fallback.
- *
- * The runtime's local listener at `redirectUrl` catches `?code=…`
- * and renders its own thank-you page; users land there within a
- * few hundred ms, but they see Doco branding for that window
- * instead of an unstyled "localhost" page.
- *
- * No Tailwind / component imports here — inlined minimal CSS so the
- * page is fully styled even if other assets are slow to load.
- */
-function renderApprovedInterstitial({
-  clientName,
-  redirectUrl,
-}: {
-  clientName: string;
-  redirectUrl: string;
-}): Response {
-  const escapedClient = clientName
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-  const escapedRedirect = redirectUrl
-    .replace(/&/g, "&amp;")
-    .replace(/"/g, "&quot;");
-  const body = `<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Approved — returning to ${escapedClient} · Doco</title>
-  <!-- 1.5s delay so the user actually sees Doco branding before the
-       runtime's localhost listener takes over. The location.replace()
-       below is the fallback if meta-refresh is disabled. -->
-  <meta http-equiv="refresh" content="1.5; url=${escapedRedirect}" />
-  <style>
-    :root { color-scheme: light dark; }
-    body {
-      margin: 0; min-height: 100vh;
-      display: grid; place-items: center;
-      font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-      background: #fafaf9; color: #1c1917;
-    }
-    @media (prefers-color-scheme: dark) {
-      body { background: #0c0a09; color: #f5f5f4; }
-      .card { background: #1c1917; border-color: #292524; }
-      .muted { color: #a8a29e; }
-    }
-    .card {
-      max-width: 28rem; margin: 1.5rem; padding: 2rem;
-      background: #ffffff; border: 1px solid #e7e5e4;
-      border-radius: 0.75rem; box-shadow: 0 1px 3px rgba(0,0,0,0.04);
-      text-align: center;
-    }
-    .mark {
-      display: inline-flex; align-items: center; justify-content: center;
-      width: 3rem; height: 3rem; border-radius: 0.75rem;
-      background: linear-gradient(135deg, #a855f7, #7c3aed);
-      color: #ffffff; font-weight: 700; font-size: 1.25rem;
-      margin-bottom: 1rem;
-    }
-    h1 { font-size: 1.25rem; font-weight: 600; margin: 0 0 0.5rem 0; }
-    .muted { color: #57534e; font-size: 0.875rem; margin: 0 0 1.25rem 0; }
-    .link {
-      display: inline-block; margin-top: 0.5rem;
-      color: #7c3aed; text-decoration: none; font-size: 0.8125rem;
-    }
-    .link:hover { text-decoration: underline; }
-  </style>
-</head>
-<body>
-  <div class="card" role="status" aria-live="polite">
-    <div class="mark" aria-hidden="true">D</div>
-    <h1>Doco access approved</h1>
-    <p class="muted">Returning you to <strong>${escapedClient}</strong>…</p>
-    <a class="link" href="${escapedRedirect}">Click here if you aren't redirected automatically.</a>
-  </div>
-  <script>
-    // Match the meta-refresh delay (1.5s) — long enough for the user
-    // to register Doco branding, short enough that no one feels stuck.
-    setTimeout(function () {
-      location.replace(${JSON.stringify(redirectUrl)});
-    }, 1500);
-  </script>
-</body>
-</html>`;
-  return new Response(body, {
-    status: 200,
-    headers: {
-      "Content-Type": "text/html; charset=utf-8",
-      "Cache-Control": "no-store",
-    },
-  });
-}
