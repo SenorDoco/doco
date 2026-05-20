@@ -10,7 +10,7 @@
 // react-flow is loaded via dynamic import — it touches the DOM directly,
 // can't run during SSR.
 import dagre from "@dagrejs/dagre";
-import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { NodeTypeIcon } from "~/components/node-type-icon";
 import { lifecycleColor } from "~/lib/node-colors";
@@ -27,7 +27,7 @@ import "@xyflow/react/dist/style.css";
  * so the runtime filter is just for legacy edges still sitting in the DB
  * from before the change.
  */
-const HIDDEN_EDGE_TYPES: ReadonlySet<string> = new Set(["in_scope_of", "created_by", "updated_by"]);
+const ALWAYS_HIDDEN_EDGE_TYPES: ReadonlySet<string> = new Set(["created_by", "updated_by"]);
 
 export interface GraphNode {
   id: string;
@@ -74,6 +74,23 @@ interface EntityGraphProps {
   links: GraphLink[];
   scopeFilters?: { id: string; name: string; icon?: string | null }[];
   hrefFor?: (id: string, nodeType: string) => string;
+  /**
+   * Collection graphs, such as the Doco and scope overview graphs, render
+   * scopes as graph nodes. Entity-detail graphs keep non-focal scopes hidden
+   * because they otherwise duplicate the scope filter chips.
+   */
+  showScopeNodes?: boolean;
+  /**
+   * Entity-detail graphs hide membership edges by default because the chips
+   * already show scope membership. Full Doco/scope graphs can opt in so the
+   * graph is complete.
+   */
+  showMembershipEdges?: boolean;
+  /**
+   * Entity-detail graphs have a meaningful focal node, so PPR is useful.
+   * Collection graphs do not; they show global rank only.
+   */
+  showPersonalizedRank?: boolean;
   /**
    * When true, the wrapper becomes `h-full flex flex-col` and the inner
    * graph container drops its fixed `h-[65vh]` for `flex-1` so the graph
@@ -407,6 +424,7 @@ interface EntityNodeCardProps {
   accentColor: string;
   background: string;
   cardHeight: number;
+  showPersonalizedRank: boolean;
 }
 
 function EntityNodeCard({
@@ -422,6 +440,7 @@ function EntityNodeCard({
   accentColor,
   background,
   cardHeight,
+  showPersonalizedRank,
 }: EntityNodeCardProps) {
   const hasDistinctTitle = title !== summary;
   const clampStyle = {
@@ -478,7 +497,7 @@ function EntityNodeCard({
                 GPR <span className="text-foreground">{gpr.toFixed(3)}</span>
               </span>
             </>
-          ) : (
+          ) : showPersonalizedRank ? (
             <>
               <span title="Personalized PageRank from focal node">
                 PPR <span className="text-foreground">{ppr.toFixed(3)}</span>
@@ -487,6 +506,10 @@ function EntityNodeCard({
                 GPR <span className="text-foreground">{gpr.toFixed(3)}</span>
               </span>
             </>
+          ) : (
+            <span title="Global PageRank (over the whole Doco graph)">
+              GPR <span className="text-foreground">{gpr.toFixed(3)}</span>
+            </span>
           )}
         </span>
       </div>
@@ -517,6 +540,9 @@ export function EntityGraph({
   links,
   scopeFilters = [],
   hrefFor,
+  showScopeNodes = false,
+  showMembershipEdges = false,
+  showPersonalizedRank = true,
   fillHeight = false,
 }: EntityGraphProps) {
   const navigate = useNavigate();
@@ -525,7 +551,7 @@ export function EntityGraph({
     const set = new Set<string>(["active"]);
     for (const n of nodes) {
       if (n.node_type === "principal") continue;
-      if (n.node_type === "scope" && n.id !== centerId) continue;
+      if (n.node_type === "scope" && n.id !== centerId && !showScopeNodes) continue;
       set.add(nodeLifecycle(n));
     }
     return Array.from(set).sort((a, b) => {
@@ -538,7 +564,7 @@ export function EntityGraph({
       }
       return a.localeCompare(b);
     });
-  }, [nodes, centerId]);
+  }, [nodes, centerId, showScopeNodes]);
   const [visibleLifecycles, setVisibleLifecycles] = useState<Set<string>>(
     () =>
       new Set(allLifecycles.filter((lifecycle) => !HIDDEN_LIFECYCLES_BY_DEFAULT.has(lifecycle))),
@@ -567,13 +593,14 @@ export function EntityGraph({
       if (n.node_type === "principal") return false;
       // The focused node may bypass scope filters, but not lifecycle filters.
       if (!visibleLifecycles.has(nodeLifecycle(n))) return false;
-      if (n.id === centerId) return true;
-      if (n.node_type === "scope") return false;
-      if (
-        selectedScopeId !== "all" &&
-        !(n.scopes ?? []).some((scope) => scope.id === selectedScopeId)
-      ) {
-        return false;
+      if (showPersonalizedRank && n.id === centerId) return true;
+      if (n.node_type === "scope") {
+        if (!showScopeNodes) return false;
+        if (selectedScopeId !== "all" && n.id !== selectedScopeId) return false;
+        return true;
+      }
+      if (selectedScopeId !== "all") {
+        if (!(n.scopes ?? []).some((scope) => scope.id === selectedScopeId)) return false;
       }
       return true;
     });
@@ -581,13 +608,23 @@ export function EntityGraph({
     const vl = links.filter((l) => {
       // Drop administrative edges that clutter the render and carry no
       // process / reasoning value (decision_01KRRJTW39THBW0C943G0GTH0M).
-      if (HIDDEN_EDGE_TYPES.has(l.edge_type)) return false;
+      if (ALWAYS_HIDDEN_EDGE_TYPES.has(l.edge_type)) return false;
+      if (!showMembershipEdges && l.edge_type === "in_scope_of") return false;
       const src = typeof l.source === "string" ? l.source : (l.source as { id: string }).id;
       const tgt = typeof l.target === "string" ? l.target : (l.target as { id: string }).id;
       return ids.has(src) && ids.has(tgt);
     });
     return { nodes: v, links: vl };
-  }, [nodes, links, visibleLifecycles, selectedScopeId, centerId]);
+  }, [
+    nodes,
+    links,
+    visibleLifecycles,
+    selectedScopeId,
+    centerId,
+    showScopeNodes,
+    showMembershipEdges,
+    showPersonalizedRank,
+  ]);
 
   const layout = useMemo(
     () => dagreLayout(visible.nodes, visible.links, centerId),
@@ -754,6 +791,7 @@ export function EntityGraph({
               cardHeight={cardHeight}
               accentColor={accentColor}
               background={bg}
+              showPersonalizedRank={showPersonalizedRank}
             />
           ),
         },
@@ -771,7 +809,7 @@ export function EntityGraph({
     });
 
     return [...laneNodes, ...entityNodes];
-  }, [visible.nodes, layout.lanes, positions, hrefFor]);
+  }, [visible.nodes, layout.lanes, positions, hrefFor, showPersonalizedRank]);
 
   const laneLabelRails = useMemo(() => {
     const height = graphHeight || 480;

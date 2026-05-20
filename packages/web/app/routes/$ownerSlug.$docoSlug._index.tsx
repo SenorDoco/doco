@@ -1,4 +1,5 @@
 import { withClient } from "@doco/db";
+import { entityUrl } from "@doco/shared";
 // Per-Doco home — bare title up top, then the search input, node overview,
 // activity heatmap, and latest activity feed in a single content column.
 //
@@ -17,12 +18,14 @@ import { parse as parseYaml } from "yaml";
 import { ActivityFeedLine, type ActivityFeedLineItem } from "~/components/activity-feed-line";
 import { ActivityHeatmap } from "~/components/activity-heatmap";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
+import { EntityGraph } from "~/components/entity-graph";
 import { InviteCollaboratorsLink } from "~/components/invite-collaborators-link";
 import { NodeTypeIcon } from "~/components/node-type-icon";
 import { NodesOverviewCard, type NodesOverviewSection } from "~/components/nodes-overview-card";
 import { SiteHeader } from "~/components/site-header";
 import { docoPath } from "~/lib/db.server";
 import { canAdminDoco, loadDocoForRead, normalizeDocoParams } from "~/lib/doco-access.server";
+import { loadFullGraph } from "~/lib/full-graph.server";
 import { loadHostConfig } from "~/lib/host";
 import { lifecycleColor } from "~/lib/node-colors";
 import { listScopeDetails } from "~/lib/scope-helpers.server";
@@ -216,6 +219,7 @@ export async function loader({
           : new Date(String(r.last_at)).toISOString(),
       eventCount: Number(r.event_count),
     }));
+    const graph = await loadFullGraph(c, ctx.meta.docoId);
 
     return {
       items,
@@ -230,6 +234,7 @@ export async function loader({
       canInviteCollaborators: await canAdminDoco(ctx.meta, me?.id ?? null),
       host: await loadHostConfig(),
       me,
+      graph,
     };
   });
 }
@@ -285,8 +290,8 @@ export default function DocoHome({
     handle,
     docoId,
     canInviteCollaborators,
-    host,
     me,
+    graph,
   } = loaderData;
 
   // Live feed polling (ADR-089).
@@ -365,78 +370,104 @@ export default function DocoHome({
   return (
     <div>
       <SiteHeader mode="host" me={me} docoScope={{ ownerSlug, docoSlug, handle }} />
-      <main className="mx-auto max-w-6xl px-6 py-6 space-y-5">
-        {/* Bare title — no card wrapper. */}
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="space-y-1">
-            <h1 className="text-lg font-semibold tracking-tight">
-              <Link to={allSearchHref} className="hover:text-primary">
-                {handle}
-              </Link>
-            </h1>
-            <p className="font-mono text-sm text-muted-foreground">{docoId}</p>
-          </div>
-          {canInviteCollaborators ? (
-            <InviteCollaboratorsLink level="doco" targetId={docoId} />
-          ) : null}
-        </div>
+      <main className="mx-auto max-w-[1800px] px-6 py-6">
+        <div className="grid gap-6 xl:grid-cols-[minmax(0,760px)_minmax(520px,1fr)]">
+          <section className="min-w-0 space-y-5">
+            {/* Bare title — no card wrapper. */}
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="space-y-1">
+                <h1 className="text-lg font-semibold tracking-tight">
+                  <Link to={allSearchHref} className="hover:text-primary">
+                    {handle}
+                  </Link>
+                </h1>
+                <p className="font-mono text-sm text-muted-foreground">{docoId}</p>
+              </div>
+              {canInviteCollaborators ? (
+                <InviteCollaboratorsLink level="doco" targetId={docoId} />
+              ) : null}
+            </div>
 
-        <NodesOverviewCard
-          sections={sections}
-          search={
-            <SearchBoxWithHistory
-              ownerSlug={ownerSlug}
-              docoSlug={docoSlug}
-              handle={handle}
-              placeholder={
-                totalNodes > 0
-                  ? `Search ${totalNodes} node${totalNodes === 1 ? "" : "s"}…`
-                  : "Search nodes…"
+            <NodesOverviewCard
+              sections={sections}
+              search={
+                <SearchBoxWithHistory
+                  ownerSlug={ownerSlug}
+                  docoSlug={docoSlug}
+                  handle={handle}
+                  placeholder={
+                    totalNodes > 0
+                      ? `Search ${totalNodes} node${totalNodes === 1 ? "" : "s"}…`
+                      : "Search nodes…"
+                  }
+                />
               }
+              empty={
+                <p className="text-xs italic text-muted-foreground">This Doco has no nodes yet.</p>
+              }
+              aside={<TopContributorsList contributors={topContributors} />}
             />
-          }
-          empty={
-            <p className="text-xs italic text-muted-foreground">This Doco has no nodes yet.</p>
-          }
-          aside={<TopContributorsList contributors={topContributors} />}
-        />
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Activity</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ActivityHeatmap byDay={byDay} weeks={HEATMAP_WEEKS} />
-          </CardContent>
-        </Card>
+            <Card>
+              <CardHeader>
+                <CardTitle>Activity</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ActivityHeatmap byDay={byDay} weeks={HEATMAP_WEEKS} />
+              </CardContent>
+            </Card>
 
-        <Card>
-          <CardHeader className="px-4 py-3">
-            <CardTitle className="text-sm">Latest activity</CardTitle>
-          </CardHeader>
-          <CardContent className="p-0">
-            {items.length === 0 ? (
-              <div className="px-4 pb-4 text-xs leading-5 text-muted-foreground">
-                No recorded activity yet. Create a scope in{" "}
-                <Link to={`/${handle}/scopes/new`} className="text-primary hover:underline">
-                  scopes/new
-                </Link>{" "}
-                or capture a node; this feed records UI, CLI, and API writes.
-              </div>
-            ) : (
-              <div className="divide-y divide-border">
-                {items.map((it) => (
-                  <ActivityFeedLine
-                    key={it.event_id}
-                    item={it}
-                    ownerSlug={ownerSlug}
-                    docoSlug={docoSlug}
-                  />
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
+            <Card>
+              <CardHeader className="px-4 py-3">
+                <CardTitle className="text-sm">Latest activity</CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                {items.length === 0 ? (
+                  <div className="px-4 pb-4 text-xs leading-5 text-muted-foreground">
+                    No recorded activity yet. Create a scope in{" "}
+                    <Link to={`/${handle}/scopes/new`} className="text-primary hover:underline">
+                      scopes/new
+                    </Link>{" "}
+                    or capture a node; this feed records UI, CLI, and API writes.
+                  </div>
+                ) : (
+                  <div className="divide-y divide-border">
+                    {items.map((it) => (
+                      <ActivityFeedLine
+                        key={it.event_id}
+                        item={it}
+                        ownerSlug={ownerSlug}
+                        docoSlug={docoSlug}
+                      />
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </section>
+
+          <aside className="min-w-0 space-y-2 xl:sticky xl:top-4 xl:flex xl:h-[calc(100vh-7rem)] xl:flex-col">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h2 className="text-sm font-semibold tracking-tight">Full Doco graph</h2>
+              <span className="font-mono text-xs text-muted-foreground">
+                {graph.nodes.length} nodes · {graph.links.length} edges
+              </span>
+            </div>
+            <div className="h-[70vh] min-h-[520px] xl:min-h-0 xl:flex-1">
+              <EntityGraph
+                centerId={graph.centerId}
+                nodes={graph.nodes}
+                links={graph.links}
+                scopeFilters={graph.scopeFilters}
+                hrefFor={(id, nodeType) => entityUrl({ ownerSlug, docoSlug, nodeType, id })}
+                showScopeNodes
+                showMembershipEdges
+                showPersonalizedRank={false}
+                fillHeight
+              />
+            </div>
+          </aside>
+        </div>
       </main>
     </div>
   );

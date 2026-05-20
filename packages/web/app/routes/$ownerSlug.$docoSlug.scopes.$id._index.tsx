@@ -31,6 +31,7 @@ import { ActivityHeatmap } from "~/components/activity-heatmap";
 import { Badge } from "~/components/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { EmojiPickerInput } from "~/components/emoji-picker-input";
+import { EntityGraph } from "~/components/entity-graph";
 import { InviteCollaboratorsLink } from "~/components/invite-collaborators-link";
 import { NodeTypeIcon } from "~/components/node-type-icon";
 import { NodesOverviewCard, type NodesOverviewSection } from "~/components/nodes-overview-card";
@@ -38,6 +39,7 @@ import { SiteHeader } from "~/components/site-header";
 import { Toggle } from "~/components/toggle";
 import { updateEntity } from "~/lib/capture.server";
 import { loadDocoForAdmin, normalizeDocoParams } from "~/lib/doco-access.server";
+import { loadFullGraph } from "~/lib/full-graph.server";
 import { loadHostConfig } from "~/lib/host";
 import { lifecycleColor } from "~/lib/node-colors";
 import { reindex, setScopeWatchedInDoco, updateScopeInDoco } from "~/lib/redeem.server";
@@ -531,6 +533,14 @@ export async function loader({
         (v): v is string => typeof v === "string",
       )
     : [];
+  const graph = docoId
+    ? await withClient((c) => loadFullGraph(c, docoId, { scopeId: id, centerId: id }))
+    : {
+        centerId: id,
+        nodes: [],
+        links: [],
+        scopeFilters: [],
+      };
 
   return {
     ownerSlug,
@@ -563,6 +573,7 @@ export async function loader({
     byDay,
     items,
     topContributors,
+    graph,
   };
 }
 
@@ -713,6 +724,7 @@ export default function ScopePage({
     items,
     topContributors,
     me,
+    graph,
   } = loaderData;
 
   // Live revalidation for the activity feed.
@@ -748,267 +760,293 @@ export default function ScopePage({
   return (
     <div>
       <SiteHeader mode="host" me={me} docoScope={{ ownerSlug, docoSlug, handle }} />
-      <main className="mx-auto max-w-6xl px-6 py-6 space-y-4">
+      <main className="mx-auto max-w-[1800px] px-6 py-6">
         {actionData?.error ? (
-          <div className="rounded-md border border-destructive bg-destructive/5 px-4 py-3 text-xs text-destructive">
+          <div className="mb-4 rounded-md border border-destructive bg-destructive/5 px-4 py-3 text-xs text-destructive">
             {actionData.error}
           </div>
         ) : null}
 
-        <div className="flex items-baseline gap-3">
-          <div className="flex min-w-0 items-baseline">
-            <ScopeTitleIcon icon={scope.icon} />
-            <h1 className="text-lg font-bold tracking-tight">
-              <Link
-                to={inScopeSearchPath(handle, scope.name, {})}
-                className="font-mono hover:text-primary"
-              >
-                {scope.name}
-              </Link>
-              {scope.name === "#global" || scope.name === "global" ? (
-                <span className="ml-2 text-xs text-muted-foreground">
-                  {" "}
-                  (your doco's constitution)
-                </span>
-              ) : null}
-            </h1>
-          </div>
-          <div className="ml-auto flex flex-wrap items-center gap-2">
-            <InviteCollaboratorsLink level="scope" targetId={scope.id} />
-            <Link
-              to={`/${handle}/scopes`}
-              className="text-xs text-muted-foreground hover:text-foreground"
-            >
-              ← Back to scopes
-            </Link>
-          </div>
-        </div>
-
-        <ScopeDescriptionCard scope={scope} />
-
-        {(scope.default_node_lifecycle ||
-          (scope.excluded_rules && scope.excluded_rules.length > 0)) && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-sm">v7 scope details</CardTitle>
-            </CardHeader>
-            <CardContent className="text-xs space-y-2 text-muted-foreground">
-              {scope.default_node_lifecycle ? (
-                <p>
-                  <span className="font-mono">default_node_lifecycle</span> ={" "}
-                  <Badge>{scope.default_node_lifecycle}</Badge> — captures into this scope (or
-                  descendants) start at this lifecycle unless the author passes an explicit
-                  override.
-                </p>
-              ) : null}
-              {scope.gated_by && scope.gated_by.length > 0 ? (
-                <p>
-                  <span className="font-mono">gated_by</span>: {scope.gated_by.length} rule
-                  {scope.gated_by.length === 1 ? "" : "s"} cited as Doco-node-authoring rules for
-                  this scope (see the Doco-node-authoring rules section below).
-                </p>
-              ) : null}
-              {scope.excluded_rules && scope.excluded_rules.length > 0 ? (
-                <p>
-                  <span className="font-mono">excluded_rules</span>: {scope.excluded_rules.length}{" "}
-                  inherited rule
-                  {scope.excluded_rules.length === 1 ? "" : "s"} opted out —{" "}
-                  {scope.excluded_rules.slice(0, 4).map((rid, i, arr) => (
-                    <span key={rid}>
-                      <Link to={entityUrl({ ownerSlug, docoSlug, nodeType: "rule", id: rid })}>
-                        <span className="font-mono">{rid.slice(0, 18)}…</span>
-                      </Link>
-                      {i < arr.length - 1 ? ", " : ""}
-                    </span>
-                  ))}
-                  {scope.excluded_rules.length > 4
-                    ? `, +${scope.excluded_rules.length - 4} more`
-                    : ""}
-                </p>
-              ) : null}
-            </CardContent>
-          </Card>
-        )}
-
-        <div className="space-y-4">
-          <div className="min-w-0 space-y-4">
-            <NodesOverviewCard
-              sections={
-                [
-                  {
-                    title: "Node types",
-                    items: memberTypeStats.map((t) => ({
-                      key: `type-${t.nodeType}`,
-                      href: inScopeSearchPath(handle, scope.name, {
-                        nodeType: t.nodeType,
-                      }),
-                      label: nodeTypeLabel(t.nodeType),
-                      icon: <NodeTypeIcon nodeType={t.nodeType} />,
-                      count: t.count,
-                      ariaLabel: `View ${t.count} ${nodeTypeLabel(t.nodeType).toLowerCase()} in ${scope.name}`,
-                      updatedAt: t.updatedAt,
-                    })),
-                  },
-                  {
-                    title: "Lifecycle",
-                    items: memberStats.map((s) => ({
-                      key: `lifecycle-${s.lifecycle}`,
-                      href: inScopeSearchPath(handle, scope.name, {
-                        lifecycle: s.lifecycle,
-                      }),
-                      label: s.lifecycle,
-                      count: s.count,
-                      ariaLabel: `View ${s.count} ${s.lifecycle} nodes in ${scope.name}`,
-                      color: lifecycleColor(s.lifecycle),
-                      updatedAt: s.updatedAt,
-                    })),
-                  },
-                ] satisfies NodesOverviewSection[]
-              }
-              empty={
-                <p className="text-xs italic text-muted-foreground">
-                  No nodes are tagged with this scope yet.
-                </p>
-              }
-              aside={<TopContributorsList contributors={topContributors} />}
-              search={
-                <Form
-                  method="get"
-                  action={`/${handle}/search`}
-                  className="flex flex-col gap-2 sm:flex-row"
-                >
-                  <input type="hidden" name="scope" value={scope.name} />
-                  <input type="hidden" name="lifecycle" value="*" />
-                  <input type="hidden" name="node_type" value="*" />
-                  <input type="hidden" name="limit" value="500" />
-                  <label className="sr-only" htmlFor="scope-node-search">
-                    Search nodes in {scope.name}
-                  </label>
-                  <input
-                    id="scope-node-search"
-                    name="q"
-                    placeholder={
-                      memberCount > 0
-                        ? `Search ${memberCount} node${memberCount === 1 ? "" : "s"} in this scope…`
-                        : "Search nodes in this scope…"
-                    }
-                    className="min-w-0 flex-1 rounded-md border border-border bg-input px-4 py-2.5 text-sm text-foreground outline-none focus:border-primary"
-                  />
-                  <button
-                    type="submit"
-                    className="rounded-md border border-border bg-card px-4 py-2.5 text-sm font-semibold text-foreground hover:bg-muted"
-                  >
-                    Search
-                  </button>
-                </Form>
-              }
-            />
-
-            {/* Watched toggle */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-sm">Watched?</CardTitle>
-                <CardDescription>
-                  A <strong>watched</strong> scope nudges contributors to consider it when capturing
-                  work. The Global scope (your doco's constitution) is always watched and cannot be
-                  unwatched.
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <WatchedSwitch
-                  isWatched={scope.is_watched}
-                  scopeName={scope.name}
-                  locked={scope.name === "#global" || scope.name === "global"}
-                />
-              </CardContent>
-            </Card>
-
-            <RuleSectionCard
-              title="Guidance rules"
-              description={
-                "Prose contributors read while working in or with this scope. No automated check — directive but not enforced."
-              }
-              kind="guidance"
-              rules={rules.guidance}
-              allScopes={allScopes}
-              ownerSlug={ownerSlug}
-              docoSlug={docoSlug}
-              handle={handle}
-              scopeId={scope.id}
-            />
-
-            <RuleSectionCard
-              title="Doco-node-authoring rules"
-              description={
-                "Predicates the engine evaluates whenever a Doco node is captured into this scope (NOT rules about how the project owner authors code or commits — those are guidance rules). Deterministic kinds block writes structurally; probabilistic specs are judged at capture time."
-              }
-              kind="authoring"
-              rules={rules.authoring}
-              allScopes={allScopes}
-              ownerSlug={ownerSlug}
-              docoSlug={docoSlug}
-              handle={handle}
-              scopeId={scope.id}
-            />
-
-            {scope.name === "#global" || scope.name === "global" ? null : (
-              <Card className="border-destructive/40">
-                <CardHeader>
-                  <CardTitle className="text-sm text-destructive">Abandon scope</CardTitle>
-                  <CardDescription>
-                    Abandon this scope. Existing members keep their tag and remain queryable, but
-                    new captures referencing this scope are rejected.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
+        <div className="grid gap-6 xl:grid-cols-[minmax(0,760px)_minmax(520px,1fr)]">
+          <section className="min-w-0 space-y-4">
+            <div className="flex items-baseline gap-3">
+              <div className="flex min-w-0 items-baseline">
+                <ScopeTitleIcon icon={scope.icon} />
+                <h1 className="text-lg font-bold tracking-tight">
                   <Link
-                    to={`/${handle}/scopes/${scope.id}/abandon`}
-                    className="inline-flex items-center rounded-md border border-destructive/40 px-3 py-1.5 text-xs font-semibold text-destructive hover:bg-destructive/10"
+                    to={inScopeSearchPath(handle, scope.name, {})}
+                    className="font-mono hover:text-primary"
                   >
-                    Abandon scope →
+                    {scope.name}
                   </Link>
+                  {scope.name === "#global" || scope.name === "global" ? (
+                    <span className="ml-2 text-xs text-muted-foreground">
+                      {" "}
+                      (your doco's constitution)
+                    </span>
+                  ) : null}
+                </h1>
+              </div>
+              <div className="ml-auto flex flex-wrap items-center gap-2">
+                <InviteCollaboratorsLink level="scope" targetId={scope.id} />
+                <Link
+                  to={`/${handle}/scopes`}
+                  className="text-xs text-muted-foreground hover:text-foreground"
+                >
+                  ← Back to scopes
+                </Link>
+              </div>
+            </div>
+
+            <ScopeDescriptionCard scope={scope} />
+
+            {(scope.default_node_lifecycle ||
+              (scope.excluded_rules && scope.excluded_rules.length > 0)) && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-sm">v7 scope details</CardTitle>
+                </CardHeader>
+                <CardContent className="text-xs space-y-2 text-muted-foreground">
+                  {scope.default_node_lifecycle ? (
+                    <p>
+                      <span className="font-mono">default_node_lifecycle</span> ={" "}
+                      <Badge>{scope.default_node_lifecycle}</Badge> — captures into this scope (or
+                      descendants) start at this lifecycle unless the author passes an explicit
+                      override.
+                    </p>
+                  ) : null}
+                  {scope.gated_by && scope.gated_by.length > 0 ? (
+                    <p>
+                      <span className="font-mono">gated_by</span>: {scope.gated_by.length} rule
+                      {scope.gated_by.length === 1 ? "" : "s"} cited as Doco-node-authoring rules
+                      for this scope (see the Doco-node-authoring rules section below).
+                    </p>
+                  ) : null}
+                  {scope.excluded_rules && scope.excluded_rules.length > 0 ? (
+                    <p>
+                      <span className="font-mono">excluded_rules</span>:{" "}
+                      {scope.excluded_rules.length} inherited rule
+                      {scope.excluded_rules.length === 1 ? "" : "s"} opted out —{" "}
+                      {scope.excluded_rules.slice(0, 4).map((rid, i, arr) => (
+                        <span key={rid}>
+                          <Link to={entityUrl({ ownerSlug, docoSlug, nodeType: "rule", id: rid })}>
+                            <span className="font-mono">{rid.slice(0, 18)}…</span>
+                          </Link>
+                          {i < arr.length - 1 ? ", " : ""}
+                        </span>
+                      ))}
+                      {scope.excluded_rules.length > 4
+                        ? `, +${scope.excluded_rules.length - 4} more`
+                        : ""}
+                    </p>
+                  ) : null}
                 </CardContent>
               </Card>
             )}
-          </div>
 
-          <section className="min-w-0 space-y-4">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-sm">Activity</CardTitle>
-                <CardDescription>
-                  Captures tagged with this scope over the last year.
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <ActivityHeatmap byDay={byDay} weeks={HEATMAP_WEEKS} />
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="px-4 py-3">
-                <CardTitle className="text-sm">Latest activity</CardTitle>
-              </CardHeader>
-              <CardContent className="p-0">
-                {items.length === 0 ? (
-                  <div className="px-4 pb-4 text-xs leading-5 text-muted-foreground">
-                    No scoped activity yet.
-                  </div>
-                ) : (
-                  <div className="divide-y divide-border">
-                    {items.map((it) => (
-                      <ActivityFeedLine
-                        key={it.event_id}
-                        item={it}
-                        ownerSlug={ownerSlug}
-                        docoSlug={docoSlug}
+            <div className="space-y-4">
+              <div className="min-w-0 space-y-4">
+                <NodesOverviewCard
+                  sections={
+                    [
+                      {
+                        title: "Node types",
+                        items: memberTypeStats.map((t) => ({
+                          key: `type-${t.nodeType}`,
+                          href: inScopeSearchPath(handle, scope.name, {
+                            nodeType: t.nodeType,
+                          }),
+                          label: nodeTypeLabel(t.nodeType),
+                          icon: <NodeTypeIcon nodeType={t.nodeType} />,
+                          count: t.count,
+                          ariaLabel: `View ${t.count} ${nodeTypeLabel(t.nodeType).toLowerCase()} in ${scope.name}`,
+                          updatedAt: t.updatedAt,
+                        })),
+                      },
+                      {
+                        title: "Lifecycle",
+                        items: memberStats.map((s) => ({
+                          key: `lifecycle-${s.lifecycle}`,
+                          href: inScopeSearchPath(handle, scope.name, {
+                            lifecycle: s.lifecycle,
+                          }),
+                          label: s.lifecycle,
+                          count: s.count,
+                          ariaLabel: `View ${s.count} ${s.lifecycle} nodes in ${scope.name}`,
+                          color: lifecycleColor(s.lifecycle),
+                          updatedAt: s.updatedAt,
+                        })),
+                      },
+                    ] satisfies NodesOverviewSection[]
+                  }
+                  empty={
+                    <p className="text-xs italic text-muted-foreground">
+                      No nodes are tagged with this scope yet.
+                    </p>
+                  }
+                  aside={<TopContributorsList contributors={topContributors} />}
+                  search={
+                    <Form
+                      method="get"
+                      action={`/${handle}/search`}
+                      className="flex flex-col gap-2 sm:flex-row"
+                    >
+                      <input type="hidden" name="scope" value={scope.name} />
+                      <input type="hidden" name="lifecycle" value="*" />
+                      <input type="hidden" name="node_type" value="*" />
+                      <input type="hidden" name="limit" value="500" />
+                      <label className="sr-only" htmlFor="scope-node-search">
+                        Search nodes in {scope.name}
+                      </label>
+                      <input
+                        id="scope-node-search"
+                        name="q"
+                        placeholder={
+                          memberCount > 0
+                            ? `Search ${memberCount} node${memberCount === 1 ? "" : "s"} in this scope…`
+                            : "Search nodes in this scope…"
+                        }
+                        className="min-w-0 flex-1 rounded-md border border-border bg-input px-4 py-2.5 text-sm text-foreground outline-none focus:border-primary"
                       />
-                    ))}
-                  </div>
+                      <button
+                        type="submit"
+                        className="rounded-md border border-border bg-card px-4 py-2.5 text-sm font-semibold text-foreground hover:bg-muted"
+                      >
+                        Search
+                      </button>
+                    </Form>
+                  }
+                />
+
+                {/* Watched toggle */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-sm">Watched?</CardTitle>
+                    <CardDescription>
+                      A <strong>watched</strong> scope nudges contributors to consider it when
+                      capturing work. The Global scope (your doco's constitution) is always watched
+                      and cannot be unwatched.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <WatchedSwitch
+                      isWatched={scope.is_watched}
+                      scopeName={scope.name}
+                      locked={scope.name === "#global" || scope.name === "global"}
+                    />
+                  </CardContent>
+                </Card>
+
+                <RuleSectionCard
+                  title="Guidance rules"
+                  description={
+                    "Prose contributors read while working in or with this scope. No automated check — directive but not enforced."
+                  }
+                  kind="guidance"
+                  rules={rules.guidance}
+                  allScopes={allScopes}
+                  ownerSlug={ownerSlug}
+                  docoSlug={docoSlug}
+                  handle={handle}
+                  scopeId={scope.id}
+                />
+
+                <RuleSectionCard
+                  title="Doco-node-authoring rules"
+                  description={
+                    "Predicates the engine evaluates whenever a Doco node is captured into this scope (NOT rules about how the project owner authors code or commits — those are guidance rules). Deterministic kinds block writes structurally; probabilistic specs are judged at capture time."
+                  }
+                  kind="authoring"
+                  rules={rules.authoring}
+                  allScopes={allScopes}
+                  ownerSlug={ownerSlug}
+                  docoSlug={docoSlug}
+                  handle={handle}
+                  scopeId={scope.id}
+                />
+
+                {scope.name === "#global" || scope.name === "global" ? null : (
+                  <Card className="border-destructive/40">
+                    <CardHeader>
+                      <CardTitle className="text-sm text-destructive">Abandon scope</CardTitle>
+                      <CardDescription>
+                        Abandon this scope. Existing members keep their tag and remain queryable,
+                        but new captures referencing this scope are rejected.
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <Link
+                        to={`/${handle}/scopes/${scope.id}/abandon`}
+                        className="inline-flex items-center rounded-md border border-destructive/40 px-3 py-1.5 text-xs font-semibold text-destructive hover:bg-destructive/10"
+                      >
+                        Abandon scope →
+                      </Link>
+                    </CardContent>
+                  </Card>
                 )}
-              </CardContent>
-            </Card>
+              </div>
+
+              <section className="min-w-0 space-y-4">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-sm">Activity</CardTitle>
+                    <CardDescription>
+                      Captures tagged with this scope over the last year.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <ActivityHeatmap byDay={byDay} weeks={HEATMAP_WEEKS} />
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader className="px-4 py-3">
+                    <CardTitle className="text-sm">Latest activity</CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-0">
+                    {items.length === 0 ? (
+                      <div className="px-4 pb-4 text-xs leading-5 text-muted-foreground">
+                        No scoped activity yet.
+                      </div>
+                    ) : (
+                      <div className="divide-y divide-border">
+                        {items.map((it) => (
+                          <ActivityFeedLine
+                            key={it.event_id}
+                            item={it}
+                            ownerSlug={ownerSlug}
+                            docoSlug={docoSlug}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </section>
+            </div>
           </section>
+
+          <aside className="min-w-0 space-y-2 xl:sticky xl:top-4 xl:flex xl:h-[calc(100vh-7rem)] xl:flex-col">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h2 className="text-sm font-semibold tracking-tight">Full scope graph</h2>
+              <span className="font-mono text-xs text-muted-foreground">
+                {graph.nodes.length} nodes · {graph.links.length} edges
+              </span>
+            </div>
+            <div className="h-[70vh] min-h-[520px] xl:min-h-0 xl:flex-1">
+              <EntityGraph
+                centerId={graph.centerId}
+                nodes={graph.nodes}
+                links={graph.links}
+                scopeFilters={graph.scopeFilters}
+                hrefFor={(id, nodeType) => entityUrl({ ownerSlug, docoSlug, nodeType, id })}
+                showScopeNodes
+                showMembershipEdges
+                showPersonalizedRank={false}
+                fillHeight
+              />
+            </div>
+          </aside>
         </div>
       </main>
     </div>
