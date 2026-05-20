@@ -336,18 +336,8 @@ export async function action({
       );
       if (role !== "owner") return { error: "Only doco owners can change doco users." };
     } else if (level === "scope") {
-      const sc = await withClient(async (c) =>
-        c.query<{ doco_id: string }>(`SELECT doco_id FROM scopes WHERE id=$1`, [targetId]),
-      );
-      const docoId = sc.rows[0]?.doco_id;
-      if (!docoId) return { error: "Scope not found." };
-      const doco = await getDocoById(docoId);
-      if (!doco) return { error: "Parent doco not found." };
-      const role = await getDocoLevelRole(
-        { ownerId: doco.owner_id, docoId: doco.id },
-        me.id,
-      );
-      if (role !== "owner") return { error: "Only doco owners can change scope users." };
+      // v13 removed scope-level grants (decision_01KS3DW9C2KN2X7Z80R18H1RAX).
+      return { error: "Scope-level grants no longer exist; manage at org or doco level." };
     } else {
       return { error: "Invalid level." };
     }
@@ -405,20 +395,8 @@ export async function action({
         docoId = doco.id;
       }
     } else if (level === "scope") {
-      const sc = await withClient(async (c) =>
-        c.query<{ doco_id: string }>(`SELECT doco_id FROM scopes WHERE id=$1`, [targetId]),
-      );
-      docoId = sc.rows[0]?.doco_id ?? null;
-      scopeId = targetId;
-      if (docoId) {
-        const doco = await getDocoById(docoId);
-        if (doco) {
-          inviterRole = await getDocoLevelRole(
-            { ownerId: doco.owner_id, docoId: doco.id },
-            me.id,
-          );
-        }
-      }
+      // v13 removed scope-level invites (decision_01KS3DW9C2KN2X7Z80R18H1RAX).
+      return { error: "Scope-level invites no longer exist; pick org or doco." };
     } else {
       return { error: "Invalid level." };
     }
