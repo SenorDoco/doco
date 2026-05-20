@@ -215,12 +215,57 @@ Once you have an access_token (either recipe), attach it to every
 authenticated request:
 
 \`\`\`
-GET ${baseUrl}/<handle>/decisions/decision_<ulid>.json
 Authorization: Bearer doco_at_<your-access-token>
 \`\`\`
 
-Token scope is the union of granted_doco_ids the user approved for
-your client. Calls to Docos outside that set return 403.
+### Endpoint shapes
+
+Doco's HTTP API splits cleanly between page-level routes (under the
+Doco's root) and JSON API routes (under \`/api/\`). Pages stay HTML;
+JSON lives at \`/api/\`. The single exception is \`/status.json\` at
+the root, kept for backwards compat.
+
+**Doco root:**
+
+\`\`\`
+GET ${baseUrl}/<handle>/                          # HTML home; no JSON form
+GET ${baseUrl}/<handle>/status.json               # counts + freshness (root, not /api/)
+\`\`\`
+
+**List + capture per node type** — types are \`decisions\`,
+\`rules\`, \`intents\`, \`actions\`, \`logs\`, \`evals\`, \`references\`,
+\`states\`, \`scopes\`, \`principals\`, \`invites\`, \`audit\`:
+
+\`\`\`
+GET  ${baseUrl}/<handle>/api/<type>.json          # list nodes of that type
+POST ${baseUrl}/<handle>/api/<type>.json          # capture a new one
+\`\`\`
+
+**Read + patch one node:**
+
+\`\`\`
+GET   ${baseUrl}/<handle>/api/<type>/<id>.json    # fetch a single node
+PATCH ${baseUrl}/<handle>/api/<type>/<id>.json    # update fields
+\`\`\`
+
+**Per-type write spec** (request-body shape for POST/PATCH):
+
+\`\`\`
+GET ${baseUrl}/<handle>/api/<type>.txt            # plain-text spec for that node type
+\`\`\`
+
+### Scope enforcement
+
+The token carries a list of \`granted_doco_ids\` AND a per-Doco role
+scope-down. Calls to Docos outside the granted set return 403
+\`access_denied\`; calls to a granted Doco but for an operation the
+token's role doesn't cover return 403 \`insufficient_scope\` with
+\`WWW-Authenticate: Bearer error="insufficient_scope"\`. The
+operation→role table:
+
+  - List + read GETs require \`reader\`
+  - Capture + patch require \`author\`
+  - Admin (Doco settings, invites, role changes) requires \`owner\`
 
 ## Refreshing
 

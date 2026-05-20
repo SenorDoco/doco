@@ -51,13 +51,21 @@ that, every API call is:
     GET https://doco.to/<handle>/<endpoint>
     Authorization: Bearer doco_at_<token>
 
-If the Doco is **public**, you can skip OAuth entirely:
+If the Doco is **public**, you can skip OAuth entirely. Either way,
+the endpoint shapes are:
 
-    GET https://doco.to/<doco-handle>/                  # home
-    GET https://doco.to/<doco-handle>/status.json       # counts
-    GET https://doco.to/<doco-handle>/<type>/<id>       # one node
+    GET   https://doco.to/<handle>/status.json              # counts + freshness
+    GET   https://doco.to/<handle>/api/<type>.json          # list nodes
+    POST  https://doco.to/<handle>/api/<type>.json          # capture (needs author)
+    GET   https://doco.to/<handle>/api/<type>/<id>.json     # one node
+    PATCH https://doco.to/<handle>/api/<type>/<id>.json     # patch (needs author)
+    GET   https://doco.to/<handle>/api/<type>.txt           # plain-text spec
 
-These return 200 for public Docos and 403 for private ones.
+Node types: decisions, rules, intents, actions, logs, evals,
+references, states, scopes, principals, invites, audit.
+
+Public Docos return 200 for unauthenticated reads; private Docos
+return 403 until you finish the OAuth recipe.
 
 The four invariants below apply whichever path you took — the
 protocol is about how you reply, not about how you authenticated.

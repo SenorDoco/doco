@@ -46,16 +46,29 @@ every API call is:
     GET ${baseUrl}/<handle>/<endpoint>
     Authorization: Bearer doco_at_<token>
 
+## API endpoint shapes
+
+JSON lives under \`/api/\`. HTML pages live at the Doco root (no
+\`/api/\` prefix). One exception: \`/status.json\` lives at the root
+for backwards compat.
+
+  GET  ${baseUrl}/<handle>/status.json              # counts + freshness
+  GET  ${baseUrl}/<handle>/api/<type>.json          # list nodes of that type
+  POST ${baseUrl}/<handle>/api/<type>.json          # capture a new one (need 'author' role)
+  GET  ${baseUrl}/<handle>/api/<type>/<id>.json     # fetch one node
+  PATCH ${baseUrl}/<handle>/api/<type>/<id>.json    # update fields (need 'author' role)
+  GET  ${baseUrl}/<handle>/api/<type>.txt           # plain-text spec for the body shape
+
+Node types: \`decisions\`, \`rules\`, \`intents\`, \`actions\`,
+\`logs\`, \`evals\`, \`references\`, \`states\`, \`scopes\`,
+\`principals\`, \`invites\`, \`audit\`.
+
 ## Public Doco reads (no auth)
 
 Public Docos accept anonymous reads. If your project owner tells you
-the Doco is public, skip OAuth entirely:
-
-    GET ${baseUrl}/<doco-handle>/                  # the Doco home
-    GET ${baseUrl}/<doco-handle>/status.json       # counts + freshness
-    GET ${baseUrl}/<doco-handle>/<type>/<id>       # individual node
-
-These return 200 for public Docos and 403 for private ones.
+the Doco is public, skip OAuth entirely and use the same endpoints
+above without an Authorization header. They return 200 for public
+Docos and 403 for private ones.
 
 ## Invite URLs are human-only
 
