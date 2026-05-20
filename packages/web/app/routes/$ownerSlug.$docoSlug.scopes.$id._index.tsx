@@ -39,7 +39,7 @@ import { SiteHeader } from "~/components/site-header";
 import { Toggle } from "~/components/toggle";
 import { updateEntity } from "~/lib/capture.server";
 import { loadDocoForAdmin, normalizeDocoParams } from "~/lib/doco-access.server";
-import { loadFullGraph } from "~/lib/full-graph.server";
+import { loadOverviewGraph } from "~/lib/full-graph.server";
 import { loadHostConfig } from "~/lib/host";
 import { lifecycleColor } from "~/lib/node-colors";
 import { reindex, setScopeWatchedInDoco, updateScopeInDoco } from "~/lib/redeem.server";
@@ -534,7 +534,7 @@ export async function loader({
       )
     : [];
   const graph = docoId
-    ? await withClient((c) => loadFullGraph(c, docoId, { scopeId: id, centerId: id }))
+    ? await withClient((c) => loadOverviewGraph(c, docoId, { scopeId: id, centerId: id, handle }))
     : {
         centerId: id,
         nodes: [],
@@ -1022,9 +1022,9 @@ export default function ScopePage({
 
           <aside className="min-w-0 space-y-2 xl:sticky xl:top-4 xl:flex xl:h-[calc(100vh-7rem)] xl:flex-col">
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <h2 className="text-sm font-semibold tracking-tight">Full scope graph</h2>
+              <h2 className="text-sm font-semibold tracking-tight">Scope graph</h2>
               <span className="font-mono text-xs text-muted-foreground">
-                {graph.nodes.length} nodes · {graph.links.length} edges
+                {graph.nodes.length} clusters · {graph.links.length} links
               </span>
             </div>
             <div className="h-[70vh] min-h-[520px] xl:min-h-0 xl:flex-1">
@@ -1034,7 +1034,7 @@ export default function ScopePage({
                 links={graph.links}
                 scopeFilters={graph.scopeFilters}
                 hrefFor={(id, nodeType) => entityUrl({ ownerSlug, docoSlug, nodeType, id })}
-                layoutMode="grid"
+                layoutMode="cluster"
                 showScopeNodes
                 showMembershipEdges
                 showPersonalizedRank={false}

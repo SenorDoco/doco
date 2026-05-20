@@ -35,6 +35,10 @@ export interface GraphNode {
   summary: string;
   /** Scopes carry their `name` here; other entity types leave it null. */
   name: string | null;
+  /** Optional direct URL for aggregate/virtual graph nodes. */
+  href?: string;
+  /** Aggregate nodes render their covered entity count instead of rank. */
+  count?: number;
   lifecycle?: string | null;
   scopes?: { id: string; name: string; icon?: string | null }[];
   /** Principal who owns this node's lane in the rendered graph. */
@@ -75,10 +79,10 @@ interface EntityGraphProps {
   scopeFilters?: { id: string; name: string; icon?: string | null }[];
   hrefFor?: (id: string, nodeType: string) => string;
   /**
-   * Entity-detail pages use principal swim lanes. Doco/scope overview graphs
-   * use a compact ranked grid: deterministic, cheap, and not tied to owners.
+   * Entity-detail pages use principal swim lanes. Collection overview graphs
+   * can render compact ranked grids or semantic clusters.
    */
-  layoutMode?: "swimlanes" | "grid";
+  layoutMode?: "swimlanes" | "grid" | "cluster";
   /**
    * Collection graphs, such as the Doco and scope overview graphs, render
    * scopes as graph nodes. Entity-detail graphs keep non-focal scopes hidden
@@ -241,6 +245,8 @@ const GRID_MIN_COLUMNS = 2;
 const GRID_MAX_COLUMNS = 18;
 const GRAPH_MIN_ZOOM = 0.02;
 const GRAPH_FIT_VIEW_OPTIONS = { padding: 0.05, maxZoom: 1.6 };
+const CLUSTER_SCOPE_RADIUS = 360;
+const CLUSTER_CHILD_RADIUS = 190;
 const GRID_TYPE_ORDER = new Map(
   [
     "scope",
@@ -321,6 +327,87 @@ function rankedGridLayout(nodes: GraphNode[]): GraphLayout {
   const cy = Math.max(0, height) / 2;
   for (const [id, pos] of raw) {
     positions.set(id, { x: pos.x - cx, y: pos.y - cy });
+  }
+
+  return { positions, lanes: [] };
+}
+
+function placeRing(
+  positions: Map<string, { x: number; y: number }>,
+  nodes: GraphNode[],
+  center: { x: number; y: number },
+  radius: number,
+  startAngle = -Math.PI / 2,
+) {
+  if (nodes.length === 0) return;
+  if (nodes.length === 1) {
+    const node = nodes[0];
+    if (node) positions.set(node.id, { x: center.x + radius, y: center.y });
+    return;
+  }
+  nodes.forEach((node, index) => {
+    const angle = startAngle + (Math.PI * 2 * index) / nodes.length;
+    positions.set(node.id, {
+      x: center.x + Math.cos(angle) * radius,
+      y: center.y + Math.sin(angle) * radius,
+    });
+  });
+}
+
+function clusterLayout(nodes: GraphNode[], centerId: string): GraphLayout {
+  const positions = new Map<string, { x: number; y: number }>();
+  if (nodes.length === 0) return { positions, lanes: [] };
+
+  const ordered = nodes.slice().sort((a, b) => {
+    const at = GRID_TYPE_ORDER.get(a.node_type) ?? 999;
+    const bt = GRID_TYPE_ORDER.get(b.node_type) ?? 999;
+    if (at !== bt) return at - bt;
+    return (a.name ?? a.summary ?? a.id).localeCompare(b.name ?? b.summary ?? b.id);
+  });
+  const centerNode = ordered.find((node) => node.id === centerId) ?? ordered[0];
+  if (!centerNode) return { positions, lanes: [] };
+  positions.set(centerNode.id, { x: 0, y: 0 });
+
+  const scopeNodes = ordered.filter(
+    (node) => node.node_type === "scope" && node.id !== centerNode.id,
+  );
+  const childNodes = ordered.filter(
+    (node) => node.id !== centerNode.id && node.node_type !== "scope",
+  );
+
+  if (centerNode.node_type === "doco" && scopeNodes.length > 0) {
+    const scopeRadius = Math.max(CLUSTER_SCOPE_RADIUS, scopeNodes.length * 92);
+    placeRing(positions, scopeNodes, { x: 0, y: 0 }, scopeRadius);
+
+    const childrenByScope = new Map<string, GraphNode[]>();
+    const unscoped: GraphNode[] = [];
+    for (const node of childNodes) {
+      const scopeId = node.scopes?.[0]?.id ?? null;
+      if (!scopeId) {
+        unscoped.push(node);
+        continue;
+      }
+      const list = childrenByScope.get(scopeId) ?? [];
+      list.push(node);
+      childrenByScope.set(scopeId, list);
+    }
+
+    for (const scope of scopeNodes) {
+      const children = childrenByScope.get(scope.id) ?? [];
+      const center = positions.get(scope.id) ?? { x: 0, y: 0 };
+      const radius = CLUSTER_CHILD_RADIUS + Math.max(0, children.length - 6) * 10;
+      placeRing(positions, children, center, radius);
+    }
+    if (unscoped.length > 0) {
+      placeRing(positions, unscoped, { x: 0, y: 0 }, scopeRadius + CLUSTER_CHILD_RADIUS);
+    }
+  } else {
+    const radius = Math.max(CLUSTER_CHILD_RADIUS, childNodes.length * 26);
+    placeRing(positions, childNodes, { x: 0, y: 0 }, radius);
+  }
+
+  for (const node of ordered) {
+    if (!positions.has(node.id)) positions.set(node.id, { x: 0, y: 0 });
   }
 
   return { positions, lanes: [] };
@@ -487,6 +574,7 @@ interface EntityNodeCardProps {
   nodeType: string;
   title: string;
   summary: string;
+  count?: number;
   createdAt: string | null;
   isCenter?: boolean;
   ppr: number;
@@ -503,6 +591,7 @@ function EntityNodeCard({
   nodeType,
   title,
   summary,
+  count,
   createdAt,
   isCenter,
   ppr,
@@ -577,6 +666,10 @@ function EntityNodeCard({
                 GPR <span className="text-foreground">{gpr.toFixed(3)}</span>
               </span>
             </>
+          ) : count != null ? (
+            <span title="Nodes represented by this cluster">
+              <span className="text-foreground">{count.toLocaleString()}</span> nodes
+            </span>
           ) : (
             <span title="Global PageRank (over the whole Doco graph)">
               GPR <span className="text-foreground">{gpr.toFixed(3)}</span>
@@ -699,6 +792,7 @@ export function EntityGraph({
   ]);
 
   const layout = useMemo(() => {
+    if (layoutMode === "cluster") return clusterLayout(visible.nodes, centerId);
     if (layoutMode === "grid") return rankedGridLayout(visible.nodes);
     return dagreLayout(visible.nodes, visible.links, centerId);
   }, [visible.nodes, visible.links, centerId, layoutMode]);
@@ -835,7 +929,7 @@ export function EntityGraph({
       const cardHeight = nodeRenderHeight(n);
       // Make the card itself a real link. React Flow's node-level click
       // remains as a fallback, but the anchor gives expected browser affordances.
-      const href = hrefFor ? hrefFor(n.id, n.node_type) : `/${n.node_type}/${n.id}`;
+      const href = n.href ?? (hrefFor ? hrefFor(n.id, n.node_type) : `/${n.node_type}/${n.id}`);
       return {
         id: n.id,
         position: pos,
@@ -855,6 +949,7 @@ export function EntityGraph({
               nodeType={n.node_type}
               title={title}
               summary={n.summary}
+              count={n.count}
               createdAt={n.lifecycle_since ?? n.created_at}
               isCenter={n.is_center}
               ppr={n.ppr}
@@ -1129,9 +1224,9 @@ export function EntityGraph({
                 if (!node) return;
                 // hrefFor is always provided by callers in production; the fallback exists
                 // only for ad-hoc tests/storybook. Use the short form (no `/e/`).
-                const href = hrefFor
-                  ? hrefFor(node.id, node.node_type)
-                  : `/${node.node_type}/${node.id}`;
+                const href =
+                  node.href ??
+                  (hrefFor ? hrefFor(node.id, node.node_type) : `/${node.node_type}/${node.id}`);
                 navigate(href);
               }}
               proOptions={{ hideAttribution: true }}

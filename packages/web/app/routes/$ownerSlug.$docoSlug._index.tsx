@@ -25,7 +25,7 @@ import { NodesOverviewCard, type NodesOverviewSection } from "~/components/nodes
 import { SiteHeader } from "~/components/site-header";
 import { docoPath } from "~/lib/db.server";
 import { canAdminDoco, loadDocoForRead, normalizeDocoParams } from "~/lib/doco-access.server";
-import { loadFullGraph } from "~/lib/full-graph.server";
+import { loadOverviewGraph } from "~/lib/full-graph.server";
 import { loadHostConfig } from "~/lib/host";
 import { lifecycleColor } from "~/lib/node-colors";
 import { listScopeDetails } from "~/lib/scope-helpers.server";
@@ -219,7 +219,7 @@ export async function loader({
           : new Date(String(r.last_at)).toISOString(),
       eventCount: Number(r.event_count),
     }));
-    const graph = await loadFullGraph(c, ctx.meta.docoId);
+    const graph = await loadOverviewGraph(c, ctx.meta.docoId, { handle });
 
     return {
       items,
@@ -448,9 +448,9 @@ export default function DocoHome({
 
           <aside className="min-w-0 space-y-2 xl:sticky xl:top-4 xl:flex xl:h-[calc(100vh-7rem)] xl:flex-col">
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <h2 className="text-sm font-semibold tracking-tight">Full Doco graph</h2>
+              <h2 className="text-sm font-semibold tracking-tight">Doco graph</h2>
               <span className="font-mono text-xs text-muted-foreground">
-                {graph.nodes.length} nodes · {graph.links.length} edges
+                {graph.nodes.length} clusters · {graph.links.length} links
               </span>
             </div>
             <div className="h-[70vh] min-h-[520px] xl:min-h-0 xl:flex-1">
@@ -460,7 +460,7 @@ export default function DocoHome({
                 links={graph.links}
                 scopeFilters={graph.scopeFilters}
                 hrefFor={(id, nodeType) => entityUrl({ ownerSlug, docoSlug, nodeType, id })}
-                layoutMode="grid"
+                layoutMode="cluster"
                 showScopeNodes
                 showMembershipEdges
                 showPersonalizedRank={false}
