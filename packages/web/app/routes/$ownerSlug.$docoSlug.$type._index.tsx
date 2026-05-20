@@ -6,12 +6,11 @@ import { ENTITY_TYPES, entityUrl, isEntityType } from "@doco/shared";
 // `ship-short-entity-urls` Intent + ADR.
 //
 // Note: this route IS the catch-all for any unknown `<type>` segment under
-// `/:ownerSlug/:docoSlug/`. The static per-Doco routes (settings, scopes,
+// `/:ownerSlug/:docoSlug/`. The static per-Doco routes (settings,
 // search, status.json, api/*) are registered before this in routes.ts
 // and win the match. For an unrecognized type we return 404.
 import { Link } from "react-router";
 import { parse as parseYaml } from "yaml";
-import { Badge } from "~/components/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
 import { SiteHeader } from "~/components/site-header";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "~/components/table";
@@ -20,20 +19,6 @@ import { loadHostConfig } from "~/lib/host";
 import { getCurrentPrincipal } from "~/lib/session";
 
 const KNOWN = new Set<string>(ENTITY_TYPES);
-
-interface ScopeRow {
-  id: string;
-  name: string;
-  purpose: string;
-  parent_ids: string[];
-  member_count: number;
-  sub_scope_count: number;
-}
-
-interface ScopeTreeNode extends ScopeRow {
-  children: ScopeTreeNode[];
-  depth: number;
-}
 
 export async function loader({
   params,
@@ -51,21 +36,6 @@ export async function loader({
   }
   const ctx = await loadDocoForRead(request, handle);
   return withClient(async (c) => {
-    if (type === "scope") {
-      // Unreachable (the early-reject above catches scope). Kept as
-      // a defensive stub until the surrounding branch is removed in
-      // a follow-up.
-      return {
-        items: [],
-        scopes: [] as ScopeRow[],
-        type,
-        ownerSlug,
-        docoSlug,
-        handle,
-        host: await loadHostConfig(),
-        me: await getCurrentPrincipal(request),
-      };
-    }
     const table = TABLE_BY_TYPE[type] ?? type;
     const rows = (
       await c.query<{ id: string; summary: string; raw_yaml: string }>(
@@ -86,7 +56,6 @@ export async function loader({
     });
     return {
       items,
-      scopes: null,
       type,
       ownerSlug,
       docoSlug,
@@ -104,7 +73,6 @@ const TABLE_BY_TYPE: Record<string, string> = {
   action: "actions",
   log: "logs",
   reference: "reference_entities",
-  scope: "scopes",
   eval: "evals",
   idea: "ideas",
   // v7 (decision_01KRRR5BQ16ASY8HQEE0V499YG): State node type maps to
@@ -117,132 +85,13 @@ export function meta({ params }: { params: { docoId: string; type: string } }) {
   return [{ title: `${params.type}s · ${params.docoId} · Doco` }];
 }
 
-/** Build a forest of scope trees from a flat scope list. */
-function buildScopeTree(scopes: ScopeRow[]): ScopeTreeNode[] {
-  const byId = new Map<string, ScopeTreeNode>();
-  for (const s of scopes) byId.set(s.id, { ...s, children: [], depth: 0 });
-  const roots: ScopeTreeNode[] = [];
-  for (const s of byId.values()) {
-    if (s.parent_ids.length === 0) {
-      roots.push(s);
-    } else {
-      const parent = byId.get(s.parent_ids[0]!);
-      if (parent) parent.children.push(s);
-      else roots.push(s);
-    }
-  }
-  function assignDepths(nodes: ScopeTreeNode[], depth: number): void {
-    for (const n of nodes) {
-      n.depth = depth;
-      assignDepths(n.children, depth + 1);
-    }
-  }
-  assignDepths(roots, 0);
-  function sortRecursive(nodes: ScopeTreeNode[]): void {
-    nodes.sort((a, b) => a.name.localeCompare(b.name));
-    for (const n of nodes) sortRecursive(n.children);
-  }
-  sortRecursive(roots);
-  return roots;
-}
-
-function flattenTree(roots: ScopeTreeNode[]): ScopeTreeNode[] {
-  const out: ScopeTreeNode[] = [];
-  function walk(nodes: ScopeTreeNode[]): void {
-    for (const n of nodes) {
-      out.push(n);
-      walk(n.children);
-    }
-  }
-  walk(roots);
-  return out;
-}
-
 export default function ListByTypeInDoco({
   loaderData,
 }: {
   loaderData: Awaited<ReturnType<typeof loader>>;
 }) {
-  const { items, scopes, type, ownerSlug, docoSlug, handle, host, me } = loaderData;
-  if (type === "scope" && scopes) {
-    const tree = buildScopeTree(scopes);
-    const flat = flattenTree(tree);
-    return (
-      <div>
-        <SiteHeader mode="host" me={me} docoScope={{ ownerSlug, docoSlug, handle }} />
-        <main className="mx-auto max-w-6xl px-6 py-6 space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center justify-between">
-                <span>
-                  Scopes{" "}
-                  <span className="ml-2 text-xs font-normal text-muted-foreground">
-                    ({scopes.length})
-                  </span>
-                </span>
-                <Link
-                  to={`/${handle}/scopes/new`}
-                  className="rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90"
-                >
-                  + New scope
-                </Link>
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {scopes.length === 0 ? (
-                <p className="text-xs text-muted-foreground">
-                  No scopes yet.{" "}
-                  <Link
-                    to={`/${handle}/scopes/new?onboarding=1`}
-                    className="text-primary hover:underline"
-                  >
-                    Set up your first scopes
-                  </Link>
-                  .
-                </p>
-              ) : (
-                <ul className="text-xs">
-                  {flat.map((n) => (
-                    <li
-                      key={n.id}
-                      className="flex items-baseline gap-2 border-b border-border py-1.5 last:border-0"
-                      style={{ paddingLeft: `${n.depth * 1.25}rem` }}
-                    >
-                      {n.depth > 0 ? (
-                        <span className="font-mono text-muted-foreground">└</span>
-                      ) : null}
-                      <Link
-                        to={entityUrl({ ownerSlug, docoSlug, nodeType: "scope", id: n.id })}
-                        className="font-mono text-primary hover:underline"
-                      >
-                        {n.name}
-                      </Link>
-                      <span className="text-muted-foreground">
-                        ({n.member_count} {n.member_count === 1 ? "member" : "members"}
-                        {n.sub_scope_count > 0
-                          ? ` · ${n.sub_scope_count} ${n.sub_scope_count === 1 ? "child" : "children"}`
-                          : ""}
-                        )
-                      </span>
-                      <Link
-                        to={`/${handle}/scopes/new?parent=${n.id}`}
-                        className="ml-auto rounded-md border border-border px-2 py-0.5 text-[10px] hover:border-primary"
-                        title="Add child scope"
-                      >
-                        + child
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </CardContent>
-          </Card>
-        </main>
-      </div>
-    );
-  }
+  const { items, type, ownerSlug, docoSlug, handle, host: _host, me } = loaderData;
 
-  // Generic non-scope rendering.
   return (
     <div>
       <SiteHeader mode="host" me={me} docoScope={{ ownerSlug, docoSlug, handle }} />

@@ -121,7 +121,6 @@ export async function loader({ request }: { request: Request }) {
            UNION ALL SELECT id, summary AS label, lifecycle FROM logs WHERE id = ANY($1)
            UNION ALL SELECT id, summary AS label, lifecycle FROM evals WHERE id = ANY($1)
            UNION ALL SELECT id, summary AS label, lifecycle FROM states WHERE id = ANY($1)
-           UNION ALL SELECT id, COALESCE(purpose, name) AS label, lifecycle FROM scopes WHERE id = ANY($1)
            UNION ALL SELECT id, summary AS label, lifecycle FROM reference_entities WHERE id = ANY($1)`,
           [entityIds],
         );
@@ -300,9 +299,9 @@ export default function Dashboard({
 
 // Mirrors the per-Doco FeedLine shape so both surfaces read the same:
 //   <op-icon> <Type> <verb>: <summary> — <owner>/<doco> · <by>      Ns ago
-// The Doco link replaces the per-Doco's scopes tail — it's the cross-
-// Doco analogue of context. The actor sits behind the Doco link
-// because dashboard cuts across principals; per-Doco implies it.
+// The Doco link gives cross-Doco context. The actor sits behind the
+// Doco link because dashboard cuts across principals; per-Doco implies
+// it.
 function DashboardFeedLine({ event }: { event: FeedEvent }) {
   const url = entityUrl({
     docoId: event.handle,
