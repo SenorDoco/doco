@@ -391,14 +391,45 @@ export async function loadDocoForRead(
 /**
  * If the request is authenticated via an OAuth access token, the
  * token's `granted_doco_ids` must include `docoId`. No-op for cookie
- * sessions or anonymous reads on public docos. Throws a 403 response
- * when the grant is missing.
+ * sessions or anonymous reads on public docos.
+ *
+ *   - No `Authorization` header → no-op; downstream anonymous /
+ *     cookie logic handles the request.
+ *   - Bearer that looks like an OAuth access token (`doco_at_…`) but
+ *     fails validation (revoked, expired, or unknown) → 401 with
+ *     `WWW-Authenticate: Bearer error="invalid_token"` per RFC 6750
+ *     §3.1, so the runtime knows to refresh or re-auth.
+ *   - Bearer that doesn't even look like an OAuth token → no-op;
+ *     unrecognized credentials fall through to the route's normal
+ *     anonymous/cookie path (and likely 403 later if the Doco is
+ *     private), which matches pre-OAuth behavior.
+ *   - Valid bearer but `docoId` isn't in `granted_doco_ids` → 403.
  */
 async function enforceOauthGrant(request: Request, docoId: string): Promise<void> {
   const bearer = extractBearer(request);
   if (!bearer) return;
+  const looksOauth = bearer.startsWith("doco_at_");
   const token = await validateAccessToken(bearer);
-  if (!token) return; // not an OAuth token → no scope-down to enforce
+  if (!token) {
+    if (looksOauth) {
+      throw new Response(
+        JSON.stringify({
+          kind: "invalid_token",
+          error: "OAuth access token is invalid, revoked, or expired.",
+        }),
+        {
+          status: 401,
+          headers: {
+            "Content-Type": "application/json",
+            // RFC 6750 §3 / RFC 9728: tell the client this was a bearer
+            // failure so it knows to refresh or restart the OAuth dance.
+            "WWW-Authenticate": `Bearer error="invalid_token", error_description="The access token is invalid, revoked, or expired"`,
+          },
+        },
+      );
+    }
+    return;
+  }
   if (!token.granted_doco_ids.includes(docoId)) {
     throw new Response(
       JSON.stringify({
