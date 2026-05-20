@@ -75,6 +75,11 @@ interface EntityGraphProps {
   scopeFilters?: { id: string; name: string; icon?: string | null }[];
   hrefFor?: (id: string, nodeType: string) => string;
   /**
+   * Entity-detail pages use principal swim lanes. Doco/scope overview graphs
+   * use a compact ranked grid: deterministic, cheap, and not tied to owners.
+   */
+  layoutMode?: "swimlanes" | "grid";
+  /**
    * Collection graphs, such as the Doco and scope overview graphs, render
    * scopes as graph nodes. Entity-detail graphs keep non-focal scopes hidden
    * because they otherwise duplicate the scope filter chips.
@@ -150,7 +155,7 @@ const LIFECYCLE_ORDER = [
   "retired",
 ];
 
-const HIDDEN_LIFECYCLES_BY_DEFAULT = new Set(["abandoned", "superseded"]);
+const HIDDEN_LIFECYCLES_BY_DEFAULT = new Set(["abandoned", "superseded", "failed", "succeeded"]);
 
 function lifecycleLabel(lifecycle: string): string {
   return lifecycle.replaceAll("_", " ");
@@ -230,6 +235,24 @@ const LANE_GAP = 28;
 const LANE_HEADER_HEIGHT = 40;
 const LANE_PADDING_X = 16;
 const LANE_BOTTOM_PADDING = 20;
+const GRID_GAP_X = 64;
+const GRID_GAP_Y = 40;
+const GRID_MIN_COLUMNS = 2;
+const GRID_MAX_COLUMNS = 18;
+const GRID_TYPE_ORDER = new Map(
+  [
+    "scope",
+    "intent",
+    "decision",
+    "action",
+    "rule",
+    "log",
+    "eval",
+    "reference",
+    "idea",
+    "state",
+  ].map((type, index) => [type, index]),
+);
 
 /**
  * Estimate a card's rendered height from its summary length so the
@@ -255,6 +278,52 @@ function nodeRenderHeight(node: GraphNode): number {
   const summary = node.summary ?? "";
   return estimateCardHeight(summary, title !== summary);
 }
+
+function rankedGridLayout(nodes: GraphNode[]): GraphLayout {
+  const positions = new Map<string, { x: number; y: number }>();
+  if (nodes.length === 0) return { positions, lanes: [] };
+
+  const columns =
+    nodes.length < GRID_MIN_COLUMNS
+      ? nodes.length
+      : Math.min(
+          GRID_MAX_COLUMNS,
+          Math.max(GRID_MIN_COLUMNS, Math.ceil(Math.sqrt(nodes.length * 1.35))),
+        );
+  const columnHeights = Array.from({ length: columns }, () => 0);
+  const ordered = nodes.slice().sort((a, b) => {
+    const ai = GRID_TYPE_ORDER.get(a.node_type) ?? 999;
+    const bi = GRID_TYPE_ORDER.get(b.node_type) ?? 999;
+    if (ai !== bi) return ai - bi;
+    if ((b.gpr ?? 0) !== (a.gpr ?? 0)) return (b.gpr ?? 0) - (a.gpr ?? 0);
+    return a.id.localeCompare(b.id);
+  });
+
+  const raw = new Map<string, { x: number; y: number }>();
+  for (const node of ordered) {
+    let column = 0;
+    for (let i = 1; i < columnHeights.length; i++) {
+      const candidateHeight = columnHeights[i] ?? 0;
+      const currentHeight = columnHeights[column] ?? 0;
+      if (candidateHeight < currentHeight) column = i;
+    }
+    const x = column * (NODE_WIDTH + GRID_GAP_X);
+    const y = columnHeights[column] ?? 0;
+    raw.set(node.id, { x, y });
+    columnHeights[column] = y + nodeRenderHeight(node) + GRID_GAP_Y;
+  }
+
+  const width = columns * NODE_WIDTH + Math.max(0, columns - 1) * GRID_GAP_X;
+  const height = Math.max(...columnHeights) - GRID_GAP_Y;
+  const cx = width / 2;
+  const cy = Math.max(0, height) / 2;
+  for (const [id, pos] of raw) {
+    positions.set(id, { x: pos.x - cx, y: pos.y - cy });
+  }
+
+  return { positions, lanes: [] };
+}
+
 function dagreLayout(nodes: GraphNode[], links: GraphLink[], centerId: string): GraphLayout {
   const positions = new Map<string, { x: number; y: number }>();
   if (nodes.length === 0) return { positions, lanes: [] };
@@ -540,6 +609,7 @@ export function EntityGraph({
   links,
   scopeFilters = [],
   hrefFor,
+  layoutMode = "swimlanes",
   showScopeNodes = false,
   showMembershipEdges = false,
   showPersonalizedRank = true,
@@ -626,10 +696,10 @@ export function EntityGraph({
     showPersonalizedRank,
   ]);
 
-  const layout = useMemo(
-    () => dagreLayout(visible.nodes, visible.links, centerId),
-    [visible.nodes, visible.links, centerId],
-  );
+  const layout = useMemo(() => {
+    if (layoutMode === "grid") return rankedGridLayout(visible.nodes);
+    return dagreLayout(visible.nodes, visible.links, centerId);
+  }, [visible.nodes, visible.links, centerId, layoutMode]);
   const positions = layout.positions;
   const visibleNodeById = useMemo(() => {
     const byId = new Map<string, GraphNode>();

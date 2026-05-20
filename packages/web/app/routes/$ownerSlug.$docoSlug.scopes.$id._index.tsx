@@ -767,7 +767,7 @@ export default function ScopePage({
           </div>
         ) : null}
 
-        <div className="grid gap-6 xl:grid-cols-[minmax(0,760px)_minmax(520px,1fr)]">
+        <div className="grid gap-6 xl:grid-cols-[400px_minmax(0,1fr)]">
           <section className="min-w-0 space-y-4">
             <div className="flex items-baseline gap-3">
               <div className="flex min-w-0 items-baseline">
@@ -789,12 +789,6 @@ export default function ScopePage({
               </div>
               <div className="ml-auto flex flex-wrap items-center gap-2">
                 <InviteCollaboratorsLink level="scope" targetId={scope.id} />
-                <Link
-                  to={`/${handle}/scopes`}
-                  className="text-xs text-muted-foreground hover:text-foreground"
-                >
-                  ← Back to scopes
-                </Link>
               </div>
             </div>
 
@@ -1040,6 +1034,7 @@ export default function ScopePage({
                 links={graph.links}
                 scopeFilters={graph.scopeFilters}
                 hrefFor={(id, nodeType) => entityUrl({ ownerSlug, docoSlug, nodeType, id })}
+                layoutMode="grid"
                 showScopeNodes
                 showMembershipEdges
                 showPersonalizedRank={false}

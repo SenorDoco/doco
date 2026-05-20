@@ -371,7 +371,7 @@ export default function DocoHome({
     <div>
       <SiteHeader mode="host" me={me} docoScope={{ ownerSlug, docoSlug, handle }} />
       <main className="mx-auto max-w-[1800px] px-6 py-6">
-        <div className="grid gap-6 xl:grid-cols-[minmax(0,760px)_minmax(520px,1fr)]">
+        <div className="grid gap-6 xl:grid-cols-[400px_minmax(0,1fr)]">
           <section className="min-w-0 space-y-5">
             {/* Bare title — no card wrapper. */}
             <div className="flex flex-wrap items-start justify-between gap-3">
@@ -460,6 +460,7 @@ export default function DocoHome({
                 links={graph.links}
                 scopeFilters={graph.scopeFilters}
                 hrefFor={(id, nodeType) => entityUrl({ ownerSlug, docoSlug, nodeType, id })}
+                layoutMode="grid"
                 showScopeNodes
                 showMembershipEdges
                 showPersonalizedRank={false}
