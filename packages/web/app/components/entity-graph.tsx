@@ -33,14 +33,13 @@ export interface GraphNode {
   id: string;
   node_type: string;
   summary: string;
-  /** Scopes carry their `name` here; other entity types leave it null. */
+  /** Display name; not all entity types populate this. */
   name: string | null;
   /** Optional direct URL for aggregate/virtual graph nodes. */
   href?: string;
   /** Aggregate nodes render their covered entity count instead of rank. */
   count?: number;
   lifecycle?: string | null;
-  scopes?: { id: string; name: string; icon?: string | null }[];
   /** Principal who owns this node's lane in the rendered graph. */
   principal_id?: string | null;
   principal_label?: string | null;
@@ -76,25 +75,12 @@ interface EntityGraphProps {
   centerId: string;
   nodes: GraphNode[];
   links: GraphLink[];
-  scopeFilters?: { id: string; name: string; icon?: string | null }[];
   hrefFor?: (id: string, nodeType: string) => string;
   /**
    * Entity-detail pages use principal swim lanes. Collection overview graphs
    * can render compact ranked grids or semantic clusters.
    */
   layoutMode?: "swimlanes" | "grid" | "cluster";
-  /**
-   * Collection graphs, such as the Doco and scope overview graphs, render
-   * scopes as graph nodes. Entity-detail graphs keep non-focal scopes hidden
-   * because they otherwise duplicate the scope filter chips.
-   */
-  showScopeNodes?: boolean;
-  /**
-   * Entity-detail graphs hide membership edges by default because the chips
-   * already show scope membership. Full Doco/scope graphs can opt in so the
-   * graph is complete.
-   */
-  showMembershipEdges?: boolean;
   /**
    * Entity-detail graphs have a meaningful focal node, so PPR is useful.
    * Collection graphs do not; they show global rank only.
@@ -104,7 +90,7 @@ interface EntityGraphProps {
    * When true, the wrapper becomes `h-full flex flex-col` and the inner
    * graph container drops its fixed `h-[65vh]` for `flex-1` so the graph
    * fills whatever vertical space its parent gives it. Used by the
-   * non-scrollable node view (decision_TODO).
+   * non-scrollable node view.
    */
   fillHeight?: boolean;
 }
@@ -216,9 +202,9 @@ function relativeTime(iso: string | null): string {
  * via `decision_ids`) keeps the same left-to-right reading order, but lanes
  * make ownership / authorship scannable before the viewer reads card copy.
  *
- * Edges that don't carry process / reasoning value (`in_scope_of`,
- * `created_by`, `updated_by`) are filtered upstream so they don't
- * influence the layout.
+ * Edges that don't carry process / reasoning value (`created_by`,
+ * `updated_by`) are filtered upstream so they don't influence the
+ * layout.
  *
  * Returns positions keyed by node id, with the focal node centered at
  * (0, 0) so the existing `fitView` viewport math keeps working. Falls
@@ -245,21 +231,11 @@ const GRID_MIN_COLUMNS = 2;
 const GRID_MAX_COLUMNS = 18;
 const GRAPH_MIN_ZOOM = 0.02;
 const GRAPH_FIT_VIEW_OPTIONS = { padding: 0.05, maxZoom: 1.6 };
-const CLUSTER_SCOPE_RADIUS = 360;
 const CLUSTER_CHILD_RADIUS = 190;
 const GRID_TYPE_ORDER = new Map(
-  [
-    "scope",
-    "intent",
-    "decision",
-    "action",
-    "rule",
-    "log",
-    "eval",
-    "reference",
-    "idea",
-    "state",
-  ].map((type, index) => [type, index]),
+  ["intent", "decision", "action", "rule", "log", "eval", "reference", "idea", "state"].map(
+    (type, index) => [type, index],
+  ),
 );
 
 /**
@@ -368,43 +344,9 @@ function clusterLayout(nodes: GraphNode[], centerId: string): GraphLayout {
   if (!centerNode) return { positions, lanes: [] };
   positions.set(centerNode.id, { x: 0, y: 0 });
 
-  const scopeNodes = ordered.filter(
-    (node) => node.node_type === "scope" && node.id !== centerNode.id,
-  );
-  const childNodes = ordered.filter(
-    (node) => node.id !== centerNode.id && node.node_type !== "scope",
-  );
-
-  if (centerNode.node_type === "doco" && scopeNodes.length > 0) {
-    const scopeRadius = Math.max(CLUSTER_SCOPE_RADIUS, scopeNodes.length * 92);
-    placeRing(positions, scopeNodes, { x: 0, y: 0 }, scopeRadius);
-
-    const childrenByScope = new Map<string, GraphNode[]>();
-    const unscoped: GraphNode[] = [];
-    for (const node of childNodes) {
-      const scopeId = node.scopes?.[0]?.id ?? null;
-      if (!scopeId) {
-        unscoped.push(node);
-        continue;
-      }
-      const list = childrenByScope.get(scopeId) ?? [];
-      list.push(node);
-      childrenByScope.set(scopeId, list);
-    }
-
-    for (const scope of scopeNodes) {
-      const children = childrenByScope.get(scope.id) ?? [];
-      const center = positions.get(scope.id) ?? { x: 0, y: 0 };
-      const radius = CLUSTER_CHILD_RADIUS + Math.max(0, children.length - 6) * 10;
-      placeRing(positions, children, center, radius);
-    }
-    if (unscoped.length > 0) {
-      placeRing(positions, unscoped, { x: 0, y: 0 }, scopeRadius + CLUSTER_CHILD_RADIUS);
-    }
-  } else {
-    const radius = Math.max(CLUSTER_CHILD_RADIUS, childNodes.length * 26);
-    placeRing(positions, childNodes, { x: 0, y: 0 }, radius);
-  }
+  const childNodes = ordered.filter((node) => node.id !== centerNode.id);
+  const radius = Math.max(CLUSTER_CHILD_RADIUS, childNodes.length * 26);
+  placeRing(positions, childNodes, { x: 0, y: 0 }, radius);
 
   for (const node of ordered) {
     if (!positions.has(node.id)) positions.set(node.id, { x: 0, y: 0 });
@@ -702,11 +644,8 @@ export function EntityGraph({
   centerId,
   nodes,
   links,
-  scopeFilters = [],
   hrefFor,
   layoutMode = "swimlanes",
-  showScopeNodes = false,
-  showMembershipEdges = false,
   showPersonalizedRank = true,
   fillHeight = false,
 }: EntityGraphProps) {
@@ -716,7 +655,6 @@ export function EntityGraph({
     const set = new Set<string>(["active"]);
     for (const n of nodes) {
       if (n.node_type === "principal") continue;
-      if (n.node_type === "scope" && n.id !== centerId && !showScopeNodes) continue;
       set.add(nodeLifecycle(n));
     }
     return Array.from(set).sort((a, b) => {
@@ -729,13 +667,11 @@ export function EntityGraph({
       }
       return a.localeCompare(b);
     });
-  }, [nodes, centerId, showScopeNodes]);
+  }, [nodes]);
   const [visibleLifecycles, setVisibleLifecycles] = useState<Set<string>>(
     () =>
       new Set(allLifecycles.filter((lifecycle) => !HIDDEN_LIFECYCLES_BY_DEFAULT.has(lifecycle))),
   );
-  const [selectedScopeId, setSelectedScopeId] = useState<string>("all");
-  const showScopeFilterControls = scopeFilters.length > 0;
 
   useEffect(() => {
     setVisibleLifecycles((prev) => {
@@ -749,25 +685,11 @@ export function EntityGraph({
     });
   }, [allLifecycles]);
 
-  useEffect(() => {
-    if (selectedScopeId === "all") return;
-    if (!scopeFilters.some((scope) => scope.id === selectedScopeId)) setSelectedScopeId("all");
-  }, [scopeFilters, selectedScopeId]);
-
   const visible = useMemo(() => {
     const v = nodes.filter((n) => {
       if (n.node_type === "principal") return false;
-      // The focused node may bypass scope filters, but not lifecycle filters.
       if (!visibleLifecycles.has(nodeLifecycle(n))) return false;
       if (showPersonalizedRank && n.id === centerId) return true;
-      if (n.node_type === "scope") {
-        if (!showScopeNodes) return false;
-        if (selectedScopeId !== "all" && n.id !== selectedScopeId) return false;
-        return true;
-      }
-      if (selectedScopeId !== "all") {
-        if (!(n.scopes ?? []).some((scope) => scope.id === selectedScopeId)) return false;
-      }
       return true;
     });
     const ids = new Set(v.map((n) => n.id));
@@ -775,22 +697,12 @@ export function EntityGraph({
       // Drop administrative edges that clutter the render and carry no
       // process / reasoning value (decision_01KRRJTW39THBW0C943G0GTH0M).
       if (ALWAYS_HIDDEN_EDGE_TYPES.has(l.edge_type)) return false;
-      if (!showMembershipEdges && l.edge_type === "in_scope_of") return false;
       const src = typeof l.source === "string" ? l.source : (l.source as { id: string }).id;
       const tgt = typeof l.target === "string" ? l.target : (l.target as { id: string }).id;
       return ids.has(src) && ids.has(tgt);
     });
     return { nodes: v, links: vl };
-  }, [
-    nodes,
-    links,
-    visibleLifecycles,
-    selectedScopeId,
-    centerId,
-    showScopeNodes,
-    showMembershipEdges,
-    showPersonalizedRank,
-  ]);
+  }, [nodes, links, visibleLifecycles, centerId, showPersonalizedRank]);
 
   const layout = useMemo(() => {
     if (layoutMode === "cluster") return clusterLayout(visible.nodes, centerId);
@@ -1156,46 +1068,6 @@ export function EntityGraph({
             );
           })}
         </div>
-        {showScopeFilterControls ? (
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-muted-foreground">Scope:</span>
-            <label
-              key="all-scopes"
-              className="inline-flex cursor-pointer select-none items-center gap-1"
-              title="All scopes"
-            >
-              <input
-                type="radio"
-                name="entity-graph-scope"
-                checked={selectedScopeId === "all"}
-                onChange={() => setSelectedScopeId("all")}
-                className="h-3 w-3"
-              />
-              <span>All scopes</span>
-            </label>
-            {scopeFilters.map((scope) => (
-              <label
-                key={scope.id}
-                className="inline-flex cursor-pointer select-none items-center gap-1"
-                title={scope.name}
-              >
-                <input
-                  type="radio"
-                  name="entity-graph-scope"
-                  checked={selectedScopeId === scope.id}
-                  onChange={() => setSelectedScopeId(scope.id)}
-                  className="h-3 w-3"
-                />
-                {scope.icon ? (
-                  <span aria-hidden className="font-sans text-[12px] leading-none">
-                    {scope.icon}
-                  </span>
-                ) : null}
-                <span>{scope.name}</span>
-              </label>
-            ))}
-          </div>
-        ) : null}
       </div>
 
       <div

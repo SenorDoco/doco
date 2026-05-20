@@ -11,7 +11,6 @@ export interface OverviewGraphNode {
   lifecycle: string | null;
   created_at: string | null;
   href?: string | null;
-  scopes: { id: string; name: string; icon?: string | null }[];
   is_center?: boolean;
 }
 
@@ -37,7 +36,6 @@ export interface OverviewNodeDetail {
   lifecycle: string | null;
   created_at: string | null;
   href?: string | null;
-  scopes: { id: string; name: string; icon?: string | null }[];
 }
 
 interface OverviewGraphProps extends OverviewGraphData {
@@ -75,18 +73,9 @@ const LIFECYCLE_ORDER = [
 ];
 const HIDDEN_LIFECYCLES_BY_DEFAULT = new Set(["abandoned", "superseded", "failed", "succeeded"]);
 const NODE_TYPE_ORDER = new Map(
-  [
-    "scope",
-    "intent",
-    "decision",
-    "action",
-    "rule",
-    "log",
-    "eval",
-    "reference",
-    "idea",
-    "state",
-  ].map((type, index) => [type, index]),
+  ["intent", "decision", "action", "rule", "log", "eval", "reference", "idea", "state"].map(
+    (type, index) => [type, index],
+  ),
 );
 
 const OVERVIEW_NODE_WIDTH = 112;
@@ -105,137 +94,48 @@ function nodeLifecycle(node: { lifecycle: string | null }): string {
   return node.lifecycle ?? "active";
 }
 
-function hashString(value: string): number {
-  let hash = 2166136261;
-  for (let i = 0; i < value.length; i++) {
-    hash ^= value.charCodeAt(i);
-    hash = Math.imul(hash, 16777619);
-  }
-  return hash >>> 0;
-}
-
-function placeRing<T extends { id: string }>(
-  items: T[],
-  center: Point,
-  radius: number,
-  positions: Map<string, Point>,
-) {
-  if (items.length === 0) return;
-  if (items.length === 1) {
-    positions.set(items[0].id, { x: center.x, y: center.y });
-    return;
-  }
-  const start = -Math.PI / 2;
-  items.forEach((item, index) => {
-    const angle = start + (Math.PI * 2 * index) / items.length;
-    positions.set(item.id, {
-      x: center.x + Math.cos(angle) * radius,
-      y: center.y + Math.sin(angle) * radius,
-    });
-  });
-}
-
-function placeCompactCloud(
-  nodes: OverviewGraphNode[],
-  center: Point,
-  positions: Map<string, Point>,
-) {
-  const sorted = nodes.slice().sort((a, b) => a.id.localeCompare(b.id));
-  const stepX = OVERVIEW_NODE_WIDTH + 10;
-  const stepY = OVERVIEW_NODE_HEIGHT + 10;
-  const columns = Math.max(1, Math.ceil(Math.sqrt(sorted.length * 1.4)));
-  sorted.forEach((node, index) => {
-    const row = Math.floor(index / columns);
-    const col = index % columns;
-    const jitter = hashString(node.id);
-    positions.set(node.id, {
-      x: center.x + (col - (columns - 1) / 2) * stepX + ((jitter % 9) - 4),
-      y:
-        center.y +
-        (row - Math.floor(sorted.length / columns) / 2) * stepY +
-        (((jitter >> 4) % 7) - 3),
-    });
-  });
-}
-
-function primaryScope(node: OverviewGraphNode): { id: string; name: string; icon?: string | null } {
-  if (node.node_type === "scope") {
-    return { id: node.id, name: node.name ?? "Scope", icon: node.scopes[0]?.icon };
-  }
-  return node.scopes[0] ?? { id: "__unscoped__", name: "Unscoped", icon: null };
-}
-
 function layoutNodes(nodes: OverviewGraphNode[], centerId: string): Map<string, Point> {
   const positions = new Map<string, Point>();
   if (nodes.length === 0) return positions;
 
-  const scopeNodes = nodes.filter((node) => node.node_type === "scope");
-  const childNodes = nodes.filter((node) => node.node_type !== "scope");
-  const scopeKeys = Array.from(
-    new Set([
-      ...scopeNodes.map((node) => node.id),
-      ...childNodes.map((node) => primaryScope(node).id),
-    ]),
-  ).sort((a, b) => {
-    if (a === centerId) return -1;
-    if (b === centerId) return 1;
-    return a.localeCompare(b);
+  const center: Point = { x: 0, y: 0 };
+  const others: OverviewGraphNode[] = [];
+  let hasCenter = false;
+  for (const node of nodes) {
+    if (node.id === centerId) {
+      positions.set(node.id, center);
+      hasCenter = true;
+    } else {
+      others.push(node);
+    }
+  }
+
+  if (others.length === 0) {
+    if (!hasCenter) {
+      // No focal node in the visible set — place the first node at origin
+      // so the viewport has something to fit to.
+      const first = nodes[0];
+      if (first) positions.set(first.id, center);
+    }
+    return positions;
+  }
+
+  others.sort((a, b) => {
+    const ai = NODE_TYPE_ORDER.get(a.node_type) ?? 999;
+    const bi = NODE_TYPE_ORDER.get(b.node_type) ?? 999;
+    if (ai !== bi) return ai - bi;
+    return a.id.localeCompare(b.id);
   });
 
-  const scopeCenters = new Map<string, Point>();
-  if (scopeKeys.length <= 1) {
-    scopeCenters.set(scopeKeys[0] ?? "__unscoped__", { x: 0, y: 0 });
-  } else {
-    const ring = new Map<string, Point>();
-    placeRing(
-      scopeKeys.map((id) => ({ id })),
-      { x: 0, y: 0 },
-      Math.max(240, scopeKeys.length * 58),
-      ring,
-    );
-    for (const key of scopeKeys) scopeCenters.set(key, ring.get(key) ?? { x: 0, y: 0 });
-  }
-
-  for (const scope of scopeNodes) {
-    positions.set(scope.id, scopeCenters.get(scope.id) ?? { x: 0, y: 0 });
-  }
-
-  const byScope = new Map<string, OverviewGraphNode[]>();
-  for (const node of childNodes) {
-    const key = primaryScope(node).id;
-    const list = byScope.get(key) ?? [];
-    list.push(node);
-    byScope.set(key, list);
-  }
-
-  for (const [scopeId, groupNodes] of byScope) {
-    const scopeCenter = scopeCenters.get(scopeId) ?? { x: 0, y: 0 };
-    const byKind = new Map<string, OverviewGraphNode[]>();
-    for (const node of groupNodes) {
-      const key = `${node.node_type}:${nodeLifecycle(node)}`;
-      const list = byKind.get(key) ?? [];
-      list.push(node);
-      byKind.set(key, list);
-    }
-    const kinds = Array.from(byKind.entries()).sort(([a], [b]) => {
-      const [at, al] = a.split(":");
-      const [bt, bl] = b.split(":");
-      const ai = NODE_TYPE_ORDER.get(at ?? "") ?? 999;
-      const bi = NODE_TYPE_ORDER.get(bt ?? "") ?? 999;
-      if (ai !== bi) return ai - bi;
-      return (al ?? "").localeCompare(bl ?? "");
+  const radius = Math.max(220, others.length * 18);
+  const start = -Math.PI / 2;
+  others.forEach((node, index) => {
+    const angle = start + (Math.PI * 2 * index) / others.length;
+    positions.set(node.id, {
+      x: center.x + Math.cos(angle) * radius,
+      y: center.y + Math.sin(angle) * radius,
     });
-    const kindCenters = new Map<string, Point>();
-    placeRing(
-      kinds.map(([id]) => ({ id })),
-      scopeCenter,
-      Math.max(74, Math.min(190, 48 + kinds.length * 14)),
-      kindCenters,
-    );
-    for (const [kind, kindNodes] of kinds) {
-      placeCompactCloud(kindNodes, kindCenters.get(kind) ?? scopeCenter, positions);
-    }
-  }
+  });
 
   return positions;
 }
@@ -259,7 +159,7 @@ function OverviewFlowNode({ data }: { data: OverviewNodeData }) {
   const lifecycle = nodeLifecycle(data.node);
   const detail = data.detail;
   const title = detail?.name ?? data.node.name ?? detail?.summary ?? data.node.node_type;
-  const subtitle = detail?.summary ?? primaryScope(data.node).name;
+  const subtitle = detail?.summary ?? data.node.name ?? data.node.id;
   const showDetail = data.showDetail && Boolean(detail);
 
   return (
