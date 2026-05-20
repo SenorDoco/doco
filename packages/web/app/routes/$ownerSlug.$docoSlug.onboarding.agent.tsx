@@ -38,9 +38,8 @@ export async function loader({
   const url = new URL(request.url);
   const origin = `${url.protocol}//${url.host}`;
   const inviteUrl = `${origin}/invite/${invite.code}`;
-  const mcpUrl = `${origin}/mcp/${handle}`;
 
-  return { handle, inviteUrl, mcpUrl, me };
+  return { handle, inviteUrl, me };
 }
 
 export function meta() {
@@ -52,25 +51,21 @@ export default function OnboardingAgent({
 }: {
   loaderData: Awaited<ReturnType<typeof loader>>;
 }) {
-  const { handle, inviteUrl, mcpUrl, me } = loaderData;
+  const { handle, inviteUrl, me } = loaderData;
   return (
     <div>
       <SiteHeader mode="host" me={me} />
       <SingleColumnPageMain className="py-8 space-y-4">
         <Card>
           <CardHeader>
-            <CardTitle>Invite collaborators</CardTitle>
+            <CardTitle>Invite a human collaborator</CardTitle>
             <CardDescription>
-              Two separate prompts — one for a human collaborator (sign-in + Accept
-              in a browser), one for an AI agent runtime (install the MCP connector).
+              Share this prompt with someone you want to collaborate with — they
+              sign in with GitHub and click Accept in their browser.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-2">
-            <CollaborationInvitePrompt
-              inviteUrl={inviteUrl}
-              mcpUrl={mcpUrl}
-              continueTo={`/${handle}`}
-            />
+            <CollaborationInvitePrompt inviteUrl={inviteUrl} continueTo={`/${handle}`} />
           </CardContent>
         </Card>
       </SingleColumnPageMain>

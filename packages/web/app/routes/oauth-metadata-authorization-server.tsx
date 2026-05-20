@@ -1,12 +1,12 @@
 // GET /.well-known/oauth-authorization-server — RFC 8414 metadata.
 //
-// MCP clients (Claude Code, Cowork, ChatGPT Connectors, Codex,
-// Cursor, …) discover this URL after the /mcp endpoint returns
-// 401 + WWW-Authenticate. The response declares which OAuth flows
-// the server supports + where to send each one.
+// Standard OAuth 2.1 server discovery. Declares the authorize / token /
+// registration / revocation endpoints, PKCE S256, dynamic client
+// registration, and the supported grant types.
 //
-// OAuth 2.1 + PKCE S256 + dynamic client registration; no implicit
-// flow, no plain code_challenge_method, no password grant.
+// The MCP-specific protected-resource sibling
+// (/.well-known/oauth-protected-resource) is gone for now — re-add
+// when the MCP server comes back.
 
 export function loader({ request }: { request: Request }) {
   const url = new URL(request.url);

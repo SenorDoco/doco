@@ -1,6 +1,5 @@
 // POST /<doco-handle>/api/invites.json — mint a new invite for this
-// Doco. Any user (human OR OAuth-connected agent) holding access to
-// the Doco can call this.
+// Doco. Any user holding access to the Doco can call this.
 //
 // Input (application/json, all optional):
 //   { expires_in_days?: number, role?: DocoRole }
@@ -12,16 +11,12 @@
 //     code:              "<64-hex>",
 //     role:              "owner|approver|author|reader",
 //     doco_url:          "https://<host>/<handle>/",
-//     mcp_url:           "https://<host>/mcp/<handle>",
-//     human_prompt:      "<verbatim text to share with a human collaborator>",
-//     agent_prompt:      "<verbatim text to paste into an AI agent runtime>"
+//     human_prompt:      "<verbatim text to share with a human collaborator>"
 //   }
 //
-// Two prompts because the two recipients act on different URLs: the
-// invite URL is browser-only (a human's GitHub Accept adds them to
-// doco_users); the MCP URL is for an agent runtime to install as an
-// MCP connector (no per-invite code involved). The caller picks
-// which prompt matches where they're pasting.
+// Invites are human-only — the recipient opens the URL in a browser,
+// signs in with GitHub, clicks Accept. The agent-collaborator path
+// is deferred until the MCP server returns.
 //
 // Errors:
 //   404 — Doco not found, or caller doesn't have access
@@ -30,10 +25,7 @@
 import type { EntityId } from "@doco/shared";
 import { ROLE_RANK, type DocoRole } from "@doco/db";
 import { TokenStore } from "~/lib/tokens.server";
-import {
-  buildAgentInvitePrompt,
-  buildHumanInvitePrompt,
-} from "~/components/collaboration-invite-prompt";
+import { buildHumanInvitePrompt } from "~/components/collaboration-invite-prompt";
 import { rootDir } from "~/lib/db.server";
 import {
   getDocoLevelRole,
@@ -136,16 +128,13 @@ export async function action({
     ? `${origin}/${meta.handle}/`
     : `${origin}/by-id/${meta.docoId}/`;
   const inviteUrl = `${origin}/invite/${invite.code}`;
-  const mcpUrl = meta.handle ? `${origin}/mcp/${meta.handle}` : "";
   return Response.json({
     invite_url: inviteUrl,
     invite_expires_at: invite.expires_at,
     code: invite.code,
     role: invite.role ?? requestedRole,
     doco_url: docoUrl,
-    mcp_url: mcpUrl,
     human_prompt: buildHumanInvitePrompt(inviteUrl),
-    agent_prompt: mcpUrl ? buildAgentInvitePrompt(mcpUrl) : "",
   });
 }
 

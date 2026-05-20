@@ -8,25 +8,17 @@ rules, and history about Doco-the-product live at:
 (Internal ULID: `doco_01KR441EA0ZDMF0N5DY38GSVS3`. The handle
 `meta-doco` is the public, human-readable URL id.)
 
-## Connecting an agent
-
-To use this Doco from any MCP-supporting runtime, install:
-
-    https://doco.to/mcp/meta-doco
-
-On first use, your runtime opens a browser tab to doco.to for one-
-time OAuth approval. See `AGENTS.md` for per-runtime install
-commands.
-
-## Browsing as a human
+## Browsing
 
 Open https://doco.to/meta-doco/ and sign in with GitHub. If you
 don't have access yet, ask any existing collaborator to mint an
 invite for you from https://doco.to/meta-doco/invites.
 
-## For the agent protocol
+## Agent protocol
 
-The full operating contract (the four invariants) is served as an
-MCP resource at `doco://protocol/canonical-instructions` and
-fetched on session start by the connected runtime. `AGENTS.md`
-carries the install pointer.
+`AGENTS.md` carries the contributor pointer. The full operating
+contract (the four invariants) is at
+https://doco.to/protocol/canonical-instructions.
+
+Programmatic agent access (MCP) is being rebuilt — agents currently
+participate via human-led capture rather than direct API writes.

@@ -87,10 +87,6 @@ export default [
     ".well-known/oauth-authorization-server",
     "routes/oauth-metadata-authorization-server.tsx",
   ),
-  route(
-    ".well-known/oauth-protected-resource",
-    "routes/oauth-metadata-protected-resource.tsx",
-  ),
   // OAuth 2.1 authorization server endpoints. The runtime hits these
   // via the metadata document above; the user sees /oauth/authorize
   // in their browser when a runtime requests Doco access.
@@ -98,6 +94,9 @@ export default [
   route("oauth/authorize", "routes/oauth.authorize.tsx"),
   route("oauth/token", "routes/oauth.token.tsx"),
   route("oauth/revoke", "routes/oauth.revoke.tsx"),
+  // Public agent-protocol prose. Replaces the MCP `resources/read`
+  // delivery path during the period the MCP layer is removed.
+  route("protocol/canonical-instructions", "routes/protocol.canonical-instructions.tsx"),
   // Self-service create
   route("new-doco", "routes/new-doco.tsx"),
   route("new-org", "routes/new-org.tsx"),
@@ -112,13 +111,6 @@ export default [
   route("onboarding/create/human", "routes/onboarding.create.human.tsx"),
   // API
   route("api/suggest-scopes", "routes/api.suggest-scopes.tsx"),
-  // MCP server (Streamable HTTP transport). One MCP server per Doco —
-  // the runtime installs https://doco.to/mcp/<handle>. Auth is the
-  // OAuth 2.1 access token (decision_01KS14CW9ZN23FF5CGG0Z7TH4G).
-  // /mcp alone returns the help/discovery doc and a 400 to POSTs
-  // (it can't disambiguate which Doco the call belongs to).
-  route("mcp", "routes/mcp.tsx", { id: "mcp-help" }),
-  route("mcp/:handle", "routes/mcp.tsx", { id: "mcp" }),
   route("invite/:code", "routes/invite.$code.tsx"),
   // Agent-readable companion to /invite/:code. Agents that get pasted
   // an invite URL ("redeem this") fetch this to learn the MCP-OAuth

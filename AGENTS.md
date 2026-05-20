@@ -6,66 +6,34 @@ live in the Doco described in:
 
 @./DOCO.md
 
-## Install the Doco MCP connector
+## Current state: human-led collaboration
 
-To work with this Doco from any agent runtime — Claude Code, Claude
-Desktop, Claude Cowork, ChatGPT Connectors, OpenAI Codex CLI,
-Cursor, Gemini Code Assist, or any other MCP-supporting runtime —
-install the Doco MCP server:
+Programmatic agent access (MCP connector) is being rebuilt and is
+not available right now. For now, the **project owner** (a human)
+is the primary contributor to the Doco: they navigate the web UI
+at https://doco.to/meta-doco/, capture Decisions / Rules / Intents,
+and share what you need to know with you in chat.
 
-    https://doco.to/mcp/meta-doco
+Your role:
 
-Per-runtime install commands:
+- Browse https://doco.to/meta-doco/ for context (you'll need access
+  via a human-invite if you don't have it yet — ask any existing
+  collaborator at https://doco.to/meta-doco/invites).
+- Call out work that should be captured. When you make a Decision,
+  fix a bug, or finish a load-bearing chunk of code, tell the
+  project owner: "this is worth capturing as a Decision / Rule /
+  Log — want me to draft it for you?"
+- Follow the four-invariant reply protocol at
+  https://doco.to/protocol/canonical-instructions — query indicator
+  at the top, footer lines after captures, capture-before-declaring-
+  done discipline, tally line at the close.
 
-| Runtime | Command / config |
-|---|---|
-| **Claude Code** (CLI) | `claude mcp add doco https://doco.to/mcp/meta-doco` |
-| **Claude Desktop** | In `claude_desktop_config.json`, add `"doco": {"url": "https://doco.to/mcp/meta-doco"}` under `mcpServers` |
-| **Claude Cowork** | Add the URL in the connector settings UI |
-| **ChatGPT Connectors** | Add a custom MCP connector pointing at the URL |
-| **OpenAI Codex CLI** | Add to `~/.codex/config.toml` under `[mcp_servers.doco]` |
-| **Cursor** | Settings → MCP Servers → Add → URL |
-| **Gemini Code Assist** | (MCP support in preview — check current docs) |
+## When MCP support returns
 
-On first use, your runtime opens a browser tab to doco.to. Sign in
-with GitHub, pick which Docos this runtime can access (meta-doco
-should appear in the list once you've been invited), click Approve.
-The runtime stores the resulting OAuth access token in its native
-credential store — no `.env`, no copy/paste, no env vars to set.
-
-If the token ever expires or you revoke it from the doco.to UI, the
-next MCP call returns `401 + WWW-Authenticate: Bearer` and your
-runtime re-runs the OAuth flow automatically.
-
-## What you get once connected
-
-The MCP server exposes:
-
-- **Tools** for reading + writing Doco nodes: `search`, `bootstrap`,
-  `list_scopes`, `get_status`, `capture_decision`, `patch_rule`,
-  `create_invite`, … (full list via `tools/list`).
-- **Resources** for the protocol prose:
-  - `doco://protocol/canonical-instructions` — the four invariants
-    every reply must follow (query indicator, footer lines,
-    capture-before-done, tally). Fetch this on session start.
-  - `doco://protocol/agent-reference` — long-form reference; fetch
-    on demand.
-
-## Joining as a new contributor
-
-If you don't yet have access, ask any existing collaborator on
-meta-doco to mint an invite for you from the Doco's Invites page at
-https://doco.to/meta-doco/invites. Open the invite URL in your
-browser, sign in with GitHub, click Accept. From then on, when you
-install the MCP connector above, meta-doco will appear in your list
-of approvable Docos.
-
-## If your runtime doesn't speak MCP yet
-
-Ask the project owner. The MCP ecosystem is converging fast and most
-agent runtimes have native MCP support. There is no fallback
-HTTP/curl path: bearer-token-in-`.env` was retired in favor of
-OAuth-via-MCP (decision_01KS14CW9ZN23FF5CGG0Z7TH4G).
+The plan is to re-introduce an MCP connector that runtimes install
+per Doco. When that ships, you'll authenticate via OAuth in a
+browser tab and get native Doco tools. The install URL will be
+advertised in this file and at https://doco.to/llms.txt.
 
 ## What lives where
 
