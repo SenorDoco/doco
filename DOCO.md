@@ -1,27 +1,24 @@
 # Doco
 
-This project is the meta-Doco — Doco's own Doco. Decisions, intents,
-rules, and history about Doco-the-product live at:
+This project is tracked in Doco — AI-native documentation of
+intents, decisions, rules, actions, and history. The Doco lives at:
 
 **https://doco.to/meta-doco/**
 
-(Internal ULID: `doco_01KR441EA0ZDMF0N5DY38GSVS3`. The handle
-`meta-doco` is the public, human-readable URL id.)
-
 ## Browsing
 
-Open https://doco.to/meta-doco/ and sign in with GitHub. If you
-don't have access yet, ask any existing collaborator to mint an
-invite for you from https://doco.to/meta-doco/invites.
+Open the Doco URL above and sign in with GitHub. If the Doco is
+private and you don't have access yet, ask anyone already
+connected to mint an invite for you from the Doco's Invites page.
 
 ## Agent protocol
 
 `AGENTS.md` carries the contributor pointer. The full operating
 contract (the four invariants) is at
-https://doco.to/protocol/canonical-instructions.
+`https://doco.to/protocol/canonical-instructions` and applies to
+any agent working in a Doco-tracked project.
 
-Agents authenticate via OAuth 2.1 directly (no MCP). The recipe
-covers both localhost-loopback (Recipe A, for shell-capable agents
-like Claude Code) and Device Authorization Grant (Recipe B, for
-chat-only agents), step by step at
-https://doco.to/protocol/agent-oauth-recipe.
+Agents authenticate via OAuth 2.1 directly. Recipe for both
+localhost-loopback (shell-capable agents) and Device Authorization
+Grant (chat-only / sandboxed agents) at
+`https://doco.to/protocol/agent-oauth-recipe`.
