@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { Link } from "react-router";
 import { Card } from "~/components/card";
 import { cn } from "~/lib/cn";
+import { lifecycleColor } from "~/lib/node-colors";
 import { timeAgo } from "~/lib/time-ago";
 
 export interface NodesOverviewItem {
@@ -9,6 +10,7 @@ export interface NodesOverviewItem {
   href: string;
   label: string;
   count: number;
+  activeCount?: number;
   ariaLabel: string;
   icon?: ReactNode;
   color?: string;
@@ -57,8 +59,18 @@ export function NodesOverviewCard({
                     {item.label}
                   </span>
                 </Link>
-                <span className="whitespace-nowrap text-xs tabular-nums text-muted-foreground">
-                  {item.count}
+                <span
+                  className="whitespace-nowrap text-xs tabular-nums text-muted-foreground"
+                  title={typeof item.activeCount === "number" ? "active / total" : undefined}
+                >
+                  {typeof item.activeCount === "number" ? (
+                    <>
+                      <span style={{ color: lifecycleColor("active") }}>{item.activeCount}</span>
+                      {`/${item.count}`}
+                    </>
+                  ) : (
+                    item.count
+                  )}
                 </span>
                 <time
                   dateTime={item.updatedAt ?? undefined}

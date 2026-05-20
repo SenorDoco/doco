@@ -177,7 +177,12 @@ export async function resolveFilteredCandidates(
 
 export interface FilterFacets {
   lifecycle: { value: string; count: number; updatedAt: string | null }[];
-  nodeType: { value: string; count: number; updatedAt: string | null }[];
+  nodeType: {
+    value: string;
+    count: number;
+    activeCount?: number;
+    updatedAt: string | null;
+  }[];
 }
 
 export interface SearchHitScope {
@@ -225,10 +230,22 @@ export async function computeFilterFacets(c: PoolClient, docoId: string): Promis
     }
   }
 
-  const nodeTypeCounts: { value: string; count: number; updatedAt: string | null }[] = [];
+  const nodeTypeCounts: {
+    value: string;
+    count: number;
+    activeCount: number;
+    updatedAt: string | null;
+  }[] = [];
   for (const t of PG_DOCO_TABLES_WITH_LIFECYCLE) {
-    const r = await c.query<{ n: string; updated_at: Date | string | null }>(
-      `SELECT COUNT(*)::text AS n, MAX(updated_at) AS updated_at FROM ${t} WHERE doco_id = $1`,
+    const r = await c.query<{
+      n: string;
+      active_n: string;
+      updated_at: Date | string | null;
+    }>(
+      `SELECT COUNT(*)::text AS n,
+              (COUNT(*) FILTER (WHERE COALESCE(lifecycle, 'active') = 'active'))::text AS active_n,
+              MAX(updated_at) AS updated_at
+         FROM ${t} WHERE doco_id = $1`,
       [docoId],
     );
     const row = r.rows[0];
@@ -237,6 +254,7 @@ export async function computeFilterFacets(c: PoolClient, docoId: string): Promis
       nodeTypeCounts.push({
         value: TABLE_TO_NODE_TYPE[t] ?? t,
         count: n,
+        activeCount: Number(row?.active_n ?? 0),
         updatedAt: toIso(row?.updated_at),
       });
     }
