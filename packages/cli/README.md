@@ -46,7 +46,7 @@ node .agents/doco-agent-client.mjs search --q "what we know about auth"
 # In a new directory:
 doco login --host https://doco.to --create my-project
 
-# In an existing Doco project (Doco URL in DOCO.md, DOCO_ACCESS in ./.env):
+# In an existing Doco project (Doco URL in .doco/connections.md, DOCO_ACCESS in ./.env):
 doco bootstrap                              # fetch the agent canonical
 doco search "what we know about auth"       # query the graph
 doco capture decision --question "..." --chosen "..." --scope <comma,list>
@@ -62,10 +62,10 @@ Two values, two homes:
 
 - **`DOCO_ACCESS`** — bearer; *secret*. Lives in `./.env` (gitignored) or as an
   environment secret in your CI/agent runtime. Minted by `doco login`.
-- **`DOCO.md`** — the public Doco URL; *non-secret*. Lives in the repo so every
+- **`.doco/connections.md`** — the public Doco URL; *non-secret*. Lives in the repo so every
   contributor and agent picks up the same project coordinate.
 
-`doco login` writes `DOCO_ACCESS` to `./.env` and writes the Doco URL to `DOCO.md`
+`doco login` writes `DOCO_ACCESS` to `./.env` and writes the Doco URL to `.doco/connections.md`
 in one step.
 
 ## License
