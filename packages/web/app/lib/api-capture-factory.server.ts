@@ -3,25 +3,23 @@
 // Scope capture stays in its own file because its template-vs-custom branching
 // + required `watched` flag don't fit the simple shape.
 
-import { type DocoRole, ROLE_RANK, getEntity, roleAtLeast, withClient } from "@doco/db";
+import { getEntity, roleAtLeast } from "@doco/db";
 import { parse as parseYaml } from "yaml";
 import {
   type CaptureError,
   type CaptureResult,
   type EntityPatch,
   type NodeTypeName,
-  resolveScopeNames,
   updateEntity,
 } from "~/lib/capture.server";
 import { docoPath } from "~/lib/db.server";
 import {
   getDocoLevelRole,
-  getEffectiveScopeRole,
   loadDocoForRead,
   normalizeDocoParams,
 } from "~/lib/doco-access.server";
 import { withIdempotency } from "~/lib/idempotency.server";
-import { type DocoMetadata, readDocoMetadata } from "~/lib/scope-helpers.server";
+import { readDocoMetadata } from "~/lib/scope-helpers.server";
 
 interface MeLike {
   id: string | null;
@@ -121,30 +119,26 @@ export function makeCaptureRoute<TDraft>(cfg: CaptureRouteConfig<TDraft>) {
             );
           }
 
-          // Role gate (decision_01KS0JBJ5X0AZ4XJJFKEWE1R62). Pulls the
-          // target scope names off the draft, verifies the caller can write
-          // each one (author+), forces lifecycle=`proposed` if the caller's
-          // min role across targets is exactly author, and locks #global
-          // to doco-level owners. Unknown scope names fall through so the
-          // capture function returns its richer error.
-          const draftLike = draft as unknown as { scope_names?: unknown; lifecycle?: string };
-          const scopeNames = Array.isArray(draftLike.scope_names)
-            ? draftLike.scope_names.filter((s): s is string => typeof s === "string")
-            : [];
-          if (scopeNames.length > 0) {
-            const gate = await enforceScopeRoleGate({
-              meta,
-              docoDir: dir,
-              scopeNames,
-              principalId: me.id,
-              mutatesLifecycle: false,
-            });
-            if (!gate.ok) {
-              return Response.json({ error: gate.error }, { status: gate.status });
-            }
-            if (gate.shouldForceProposed) {
-              draftLike.lifecycle = "proposed";
-            }
+          // Doco-level role gate
+          // (decision_01KS3DW9C2KN2X7Z80R18H1RAX — v13 removed the
+          // per-scope role tier). Caller needs author+ on the Doco.
+          // author-tier captures get their lifecycle forced to
+          // "proposed"; approver+ honors the body's lifecycle.
+          const docoRole = await getDocoLevelRole(
+            { ownerId: meta.ownerId, docoId: meta.docoId },
+            me.id,
+          );
+          if (!docoRole || !roleAtLeast(docoRole, "author")) {
+            return Response.json(
+              {
+                error:
+                  "Forbidden: writing to this Doco requires the 'author' role or higher.",
+              },
+              { status: 403 },
+            );
+          }
+          if (docoRole === "author") {
+            (draft as unknown as { lifecycle?: string }).lifecycle = "proposed";
           }
 
           if (me && cfg.fillFromAuth) {
@@ -167,89 +161,6 @@ export function makeCaptureRoute<TDraft>(cfg: CaptureRouteConfig<TDraft>) {
       );
     },
   };
-}
-
-/**
- * Shared role gate for captures: resolves scope names, computes effective
- * scope-role for the principal on each, and returns the minimum role plus
- * any deny reason. Caller decides what to do with the result.
- */
-export async function enforceScopeRoleGate(args: {
-  meta: DocoMetadata;
-  docoDir: string;
-  scopeNames: string[];
-  principalId: string | null;
-  /** True when the request changes a node's `lifecycle` (PATCH lifecycle).
-   *  Requires approver+ on every covered scope when true. */
-  mutatesLifecycle: boolean;
-}): Promise<
-  | { ok: true; minRole: DocoRole; shouldForceProposed: boolean }
-  | { ok: false; status: number; error: string }
-> {
-  if (!args.principalId) {
-    return { ok: false, status: 401, error: "Authentication required." };
-  }
-  const accessMeta = { ownerId: args.meta.ownerId, docoId: args.meta.docoId };
-  const resolved = await resolveScopeNames(args.docoDir, args.scopeNames);
-  // If the names don't resolve, hand control back to the caller — the
-  // capture function will produce a clearer error.
-  if (resolved.unknown.length > 0 || resolved.ids.length === 0) {
-    return { ok: true, minRole: "owner", shouldForceProposed: false };
-  }
-
-  let minRole: DocoRole | null = null;
-  for (const scopeId of resolved.ids) {
-    const role = await getEffectiveScopeRole(accessMeta, scopeId, args.principalId);
-    if (!role || !roleAtLeast(role, "author")) {
-      return {
-        ok: false,
-        status: 403,
-        error:
-          "Forbidden: writing into one or more target scopes requires the 'author' role or higher.",
-      };
-    }
-    if (args.mutatesLifecycle && !roleAtLeast(role, "approver")) {
-      return {
-        ok: false,
-        status: 403,
-        error:
-          "Forbidden: changing a node's lifecycle requires the 'approver' role or higher on every scope the node belongs to.",
-      };
-    }
-    if (!minRole || ROLE_RANK[role] < ROLE_RANK[minRole]) minRole = role;
-  }
-
-  // Constitution lock: any write touching #global requires doco-level owner.
-  if (args.scopeNames.includes("#global")) {
-    const docoRole = await getDocoLevelRole(accessMeta, args.principalId);
-    if (docoRole !== "owner") {
-      return {
-        ok: false,
-        status: 403,
-        error:
-          "Forbidden: only doco-level owners can write into #global (the constitution scope). Approver- or scope-level grants on #global do not permit constitution edits.",
-      };
-    }
-  }
-
-  const shouldForceProposed = minRole === "author";
-  return { ok: true, minRole: minRole ?? "owner", shouldForceProposed };
-}
-
-/**
- * Resolve scope ids → scope names for the PATCH path's #global check.
- * We have the ids from the entity's raw_yaml; the gate needs to know
- * whether any of them is the constitution scope.
- */
-export async function loadScopeNamesByIds(scopeIds: string[]): Promise<string[]> {
-  if (scopeIds.length === 0) return [];
-  return withClient(async (c) => {
-    const r = await c.query<{ name: string }>(
-      "SELECT name FROM scopes WHERE id = ANY($1::text[])",
-      [scopeIds],
-    );
-    return r.rows.map((row) => String(row.name));
-  });
 }
 
 export interface UpdateRouteConfig {
@@ -347,58 +258,29 @@ export function makeUpdateRoute(cfg: UpdateRouteConfig) {
         return Response.json({ error: `Invalid JSON: ${(e as Error).message}` }, { status: 400 });
       }
 
-      // Role gate (decision_01KS0JBJ5X0AZ4XJJFKEWE1R62). Reads the entity's
-      // current scope ids, looks up their names, and checks the caller's
-      // role on each. Lifecycle PATCH requires approver+; everything else
-      // author+. #global membership locks to doco-level owner.
+      // Doco-level role gate (v13 — decision_01KS3DW9C2KN2X7Z80R18H1RAX).
+      // Lifecycle PATCH requires approver+; other patches author+.
       const existing = await getEntity(cfg.nodeType, id);
       if (!existing || existing.doco_id !== meta.docoId) {
         return Response.json({ error: `${cfg.nodeType} not found: ${id}` }, { status: 404 });
       }
-      let currentScopeIds: string[] = [];
-      try {
-        const fm = parseYaml(existing.raw_yaml) as { scopes?: unknown };
-        if (Array.isArray(fm?.scopes)) {
-          currentScopeIds = (fm.scopes as unknown[]).filter(
-            (s): s is string => typeof s === "string",
-          );
-        }
-      } catch {
-        // unparseable yaml — fall back to no scopes; gate will deny if
-        // the principal isn't doco-owner.
-      }
-      const currentScopeNames = await loadScopeNamesByIds(currentScopeIds);
       const lifecycleChange =
         patch.lifecycle !== undefined && patch.lifecycle !== existing.lifecycle;
-      if (currentScopeNames.length > 0) {
-        const gate = await enforceScopeRoleGate({
-          meta,
-          docoDir: dir,
-          scopeNames: currentScopeNames,
-          principalId: me.id,
-          mutatesLifecycle: lifecycleChange,
-        });
-        if (!gate.ok) {
-          return Response.json({ error: gate.error }, { status: gate.status });
-        }
-      } else {
-        // Entity has no scopes — fall back to doco-level role check.
-        const docoRole = await getDocoLevelRole(
-          { ownerId: meta.ownerId, docoId: meta.docoId },
-          me.id,
+      const docoRole = await getDocoLevelRole(
+        { ownerId: meta.ownerId, docoId: meta.docoId },
+        me.id,
+      );
+      if (!docoRole || !roleAtLeast(docoRole, "author")) {
+        return Response.json(
+          { error: "Forbidden: author role required to edit." },
+          { status: 403 },
         );
-        if (!docoRole || !roleAtLeast(docoRole, "author")) {
-          return Response.json(
-            { error: "Forbidden: author role required to edit." },
-            { status: 403 },
-          );
-        }
-        if (lifecycleChange && !roleAtLeast(docoRole, "approver")) {
-          return Response.json(
-            { error: "Forbidden: approver role required to change lifecycle." },
-            { status: 403 },
-          );
-        }
+      }
+      if (lifecycleChange && !roleAtLeast(docoRole, "approver")) {
+        return Response.json(
+          { error: "Forbidden: approver role required to change lifecycle." },
+          { status: 403 },
+        );
       }
 
       const result = await updateEntity({

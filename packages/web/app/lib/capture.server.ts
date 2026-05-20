@@ -544,13 +544,16 @@ export async function resolveScopeNames(
  */
 async function resolveScopeOrError(
   docoDir: string,
-  names: string[],
+  names: string[] | undefined,
   context: {
     verb: "tag" | "replace" | "add";
     nodeKind?: string;
     incomingNodeType?: string;
   },
 ): Promise<{ ids: string[] } | CaptureError> {
+  // v13 (decision_01KS3DW9C2KN2X7Z80R18H1RAX): scope_names is optional.
+  // No names → no scope tagging; capture proceeds without scope ids.
+  if (!names || names.length === 0) return { ids: [] };
   const { ids, unknown, available, unavailable } = await resolveScopeNames(docoDir, names);
   if (unknown.length > 0) {
     const availStr =
@@ -1267,7 +1270,7 @@ export async function captureDecision(
   const startedAt = performance.now();
   if (!draft.question?.trim()) return { error: "question is required." };
   if (!draft.chosen?.trim()) return { error: "chosen is required." };
-  if (!Array.isArray(draft.scope_names) || draft.scope_names.length === 0) {
+  if (draft.scope_names && !Array.isArray(draft.scope_names)) {
     return { error: "scope_names must be a non-empty array." };
   }
 
@@ -1925,7 +1928,7 @@ export async function captureIntent(
 ): Promise<CaptureResult | CaptureError> {
   const startedAt = performance.now();
   if (!draft.summary?.trim()) return { error: "summary is required." };
-  if (!Array.isArray(draft.scope_names) || draft.scope_names.length === 0) {
+  if (draft.scope_names && !Array.isArray(draft.scope_names)) {
     return { error: "scope_names must be a non-empty array." };
   }
 
@@ -2072,7 +2075,7 @@ export async function captureEval(
   if (!["exact", "shape", "llm-judge"].includes(draft.criterion.kind)) {
     return { error: `Unknown criterion.kind: ${draft.criterion.kind}` };
   }
-  if (!Array.isArray(draft.scope_names) || draft.scope_names.length === 0) {
+  if (draft.scope_names && !Array.isArray(draft.scope_names)) {
     return { error: "scope_names must be a non-empty array." };
   }
   const scopeRes = await resolveScopeOrError(docoDir, draft.scope_names, {
@@ -2216,7 +2219,7 @@ export async function captureAction(
   const startedAt = performance.now();
   if (!draft.summary?.trim()) return { error: "summary is required." };
   if (!draft.verb?.trim()) return { error: "verb is required." };
-  if (!Array.isArray(draft.scope_names) || draft.scope_names.length === 0) {
+  if (draft.scope_names && !Array.isArray(draft.scope_names)) {
     return { error: "scope_names must be a non-empty array." };
   }
 
@@ -2383,7 +2386,7 @@ export async function captureLog(
         "outputs is required and must be a non-empty object — Logs record concrete results (commit hash, deploy URL, etc.).",
     };
   }
-  if (!Array.isArray(draft.scope_names) || draft.scope_names.length === 0) {
+  if (draft.scope_names && !Array.isArray(draft.scope_names)) {
     return { error: "scope_names must be a non-empty array." };
   }
 
@@ -2541,7 +2544,7 @@ export async function captureRule(
   const startedAt = performance.now();
   if (!draft.summary?.trim()) return { error: "summary is required." };
   if (!draft.predicate?.trim()) return { error: "predicate is required." };
-  if (!Array.isArray(draft.scope_names) || draft.scope_names.length === 0) {
+  if (draft.scope_names && !Array.isArray(draft.scope_names)) {
     return { error: "scope_names must be a non-empty array." };
   }
 
@@ -2698,7 +2701,7 @@ export async function captureReference(
     return { error: `ref_type must be one of: ${[...REF_TYPES].join(", ")}.` };
   }
   if (!draft.locator?.trim()) return { error: "locator is required." };
-  if (!Array.isArray(draft.scope_names) || draft.scope_names.length === 0) {
+  if (draft.scope_names && !Array.isArray(draft.scope_names)) {
     return { error: "scope_names must be a non-empty array." };
   }
 
@@ -2838,7 +2841,7 @@ export async function captureState(
       error: `kind must be one of initial / intermediate / terminal — got "${draft.kind}".`,
     };
   }
-  if (!Array.isArray(draft.scope_names) || draft.scope_names.length === 0) {
+  if (draft.scope_names && !Array.isArray(draft.scope_names)) {
     return { error: "scope_names must be a non-empty array." };
   }
 
