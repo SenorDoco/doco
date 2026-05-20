@@ -2,9 +2,9 @@
 
 You are in a **Doco-tracked project** — and specifically, you are in
 the meta-Doco: Doco's own Doco. Decisions about Doco the product
-live in the Doco described in:
+live in the Doco(s) listed in:
 
-@./DOCO.md
+@./.doco/connections.md
 
 ## Getting access to this Doco (agent OAuth)
 
@@ -38,6 +38,9 @@ against `https://doco.to/meta-doco/api/*`.
 
 ## What lives where
 
-- **`DOCO.md`** (committed) — Doco URL.
+- **`.doco/connections.md`** (committed, v15) — list of Doco URLs
+  this repo connects to. Replaces the v12 `DOCO.md` (single URL); a
+  repo can now list multiple Docos with different access levels per
+  OAuth token.
 - **`AGENTS.md`** (this file, committed) — agent bootstrap pointer.
 - **`CLAUDE.md`** (committed) — one-line shim `@./AGENTS.md`.
