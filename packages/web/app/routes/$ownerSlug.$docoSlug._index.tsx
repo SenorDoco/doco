@@ -297,6 +297,7 @@ export default function DocoHome({
         label: nodeTypeLabel(t.value),
         icon: <NodeTypeIcon nodeType={t.value} />,
         count: t.count,
+        activeCount: t.activeCount,
         ariaLabel: `Search ${t.count} ${nodeTypeLabel(t.value).toLowerCase()}`,
         updatedAt: t.updatedAt,
       })),
