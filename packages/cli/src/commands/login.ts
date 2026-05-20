@@ -187,8 +187,18 @@ export const loginCmd = defineCommand({
 
           if (body.doco_handle) {
             const docoUrl = `${normalizedHost}/${body.doco_handle}/`;
-            writeFileSync(resolve(process.cwd(), "DOCO.md"), renderDocoMd(docoUrl), "utf8");
-            console.log(checkmark(`Wrote Doco URL to ${c.dim("./DOCO.md")}.`));
+            const target = resolve(process.cwd(), ".doco/connections.md");
+            try {
+              const { mkdirSync } = await import("node:fs");
+              mkdirSync(resolve(process.cwd(), ".doco"), { recursive: true });
+            } catch {
+              // dir already exists, or fs locked — writeFileSync will
+              // surface the real error if any.
+            }
+            writeFileSync(target, renderConnectionsMd(docoUrl), "utf8");
+            console.log(
+              checkmark(`Wrote Doco URL to ${c.dim("./.doco/connections.md")}.`),
+            );
           }
 
           // Install the agent-bootstrap files (AGENTS.md + CLAUDE.md shim +
@@ -272,14 +282,17 @@ function cliVersion(): string {
   return "0.0.1";
 }
 
-function renderDocoMd(docoUrl: string): string {
-  return `# Doco
+function renderConnectionsMd(docoUrl: string): string {
+  return `# Doco connections
 
-This project is tracked in Doco for AI-native documentation: intents,
-decisions, rules, actions, and history. Decisions and the why behind
-them live at:
+This repo connects to the Doco(s) listed below. A Doco listed here
+is one the project owner has linked to this codebase; an agent's
+actual read/write access on each one is determined at OAuth time,
+not by this file.
 
-**${docoUrl}**
+## Active connections
+
+- ${docoUrl}
 
 ## For Contributors
 

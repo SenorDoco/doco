@@ -96,7 +96,8 @@ export const installAgentBootstrapCmd = defineCommand({
 
     const agentsMdSrc = join(TEMPLATES_DIR, "AGENTS.md");
     const claudeMdSrc = join(TEMPLATES_DIR, "CLAUDE.md");
-    const docoMdSrc = join(TEMPLATES_DIR, "DOCO.md");
+    // v15: pointer file moved from DOCO.md to .doco/connections.md.
+    const connectionsMdSrc = join(TEMPLATES_DIR, ".doco", "connections.md");
     const envExampleSrc = join(TEMPLATES_DIR, ".env.example");
     const settingsSrc = join(TEMPLATES_DIR, ".claude", "settings.json");
     const hookSrc = join(TEMPLATES_DIR, ".claude", "bootstrap-fetch.sh");
@@ -107,7 +108,7 @@ export const installAgentBootstrapCmd = defineCommand({
     for (const p of [
       agentsMdSrc,
       claudeMdSrc,
-      docoMdSrc,
+      connectionsMdSrc,
       envExampleSrc,
       settingsSrc,
       hookSrc,
@@ -125,7 +126,7 @@ export const installAgentBootstrapCmd = defineCommand({
 
     const agentsMdDst = join(target, "AGENTS.md");
     const claudeMdDst = join(target, "CLAUDE.md");
-    const docoMdDst = join(target, "DOCO.md");
+    const connectionsMdDst = join(target, ".doco", "connections.md");
     const envExampleDst = join(target, ".env.example");
     const claudeDir = join(target, ".claude");
     const settingsDst = join(claudeDir, "settings.json");
@@ -163,15 +164,17 @@ export const installAgentBootstrapCmd = defineCommand({
       }
     }
 
-    // DOCO.md — committed, non-secret project coordinate. If the CLI
-    // login flow has a concrete URL it writes this before invoking the
-    // installer, so don't overwrite it here.
+    // .doco/connections.md — committed, non-secret project coordinate
+    // (v15). If the CLI login flow has a concrete URL it writes this
+    // before invoking the installer, so don't overwrite it here.
     {
-      const label = "DOCO.md";
-      if (existsSync(docoMdDst)) {
+      const label = ".doco/connections.md";
+      if (existsSync(connectionsMdDst)) {
         actions.push(`${c.dim("=")} ${c.dim(`${label} (existing — not overwritten)`)}`);
       } else {
-        copyFileSync(docoMdSrc, docoMdDst);
+        const dotDoco = join(target, ".doco");
+        if (!existsSync(dotDoco)) mkdirSync(dotDoco, { recursive: true });
+        copyFileSync(connectionsMdSrc, connectionsMdDst);
         actions.push(checkmark(`${label} written`));
       }
     }
