@@ -239,6 +239,8 @@ const GRID_GAP_X = 64;
 const GRID_GAP_Y = 40;
 const GRID_MIN_COLUMNS = 2;
 const GRID_MAX_COLUMNS = 18;
+const GRAPH_MIN_ZOOM = 0.02;
+const GRAPH_FIT_VIEW_OPTIONS = { padding: 0.05, maxZoom: 1.6 };
 const GRID_TYPE_ORDER = new Map(
   [
     "scope",
@@ -1115,7 +1117,8 @@ export function EntityGraph({
               nodesDraggable={false}
               nodesConnectable={false}
               fitView
-              fitViewOptions={{ padding: 0.05, maxZoom: 1.6 }}
+              fitViewOptions={GRAPH_FIT_VIEW_OPTIONS}
+              minZoom={GRAPH_MIN_ZOOM}
               onInit={(instance: { getViewport?: () => FlowViewport }) => {
                 const next = instance.getViewport?.();
                 if (next) updateViewport(next);
@@ -1134,7 +1137,11 @@ export function EntityGraph({
               proOptions={{ hideAttribution: true }}
             >
               <Flow.Background gap={20} size={1} />
-              <Flow.Controls position="top-right" showInteractive={false} />
+              <Flow.Controls
+                position="top-right"
+                showInteractive={false}
+                fitViewOptions={GRAPH_FIT_VIEW_OPTIONS}
+              />
               <Flow.MiniMap
                 nodeComponent={MiniMapNode}
                 pannable
