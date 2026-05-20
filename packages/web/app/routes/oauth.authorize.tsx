@@ -4,25 +4,20 @@
 //   1. Runtime opens this URL in the user's browser with PKCE params.
 //   2. If user not signed in, redirect through GitHub OAuth (the
 //      return path captures the exact authorize URL so params survive).
-//   3. Render the approve UI: a list of Docos the user owns, with
-//      checkboxes. The runtime's name + the action ("wants access
-//      to these Docos") frames what's being granted.
+//   3. Render the approve UI: a list of every Doco the user can read
+//      or write (the union of direct ownership, org membership, and
+//      doco_users grants), with checkboxes.
 //   4. POST from the form mints an authorization code (with PKCE
 //      challenge + selected docos baked in) and redirects to the
 //      runtime's `redirect_uri` with ?code=...&state=...
 //   5. Cancel → redirect with ?error=access_denied&state=...
-//
-// Params (per OAuth 2.1 §4.1.1):
-//   response_type=code           (required, only value supported)
-//   client_id                    (required)
-//   redirect_uri                 (required; must match a registered URI)
-//   code_challenge               (required, base64url)
-//   code_challenge_method=S256   (required, only value supported)
-//   state                        (recommended; opaque, round-tripped)
-//   scope                        (optional)
 
-import { getDocoById, listDocoIdsForUserPrincipal } from "@doco/db";
+import { getDocoById } from "@doco/db";
 import { Form, redirect, useLoaderData } from "react-router";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
+import { SingleColumnPageMain } from "~/components/page-main";
+import { SiteHeader } from "~/components/site-header";
+import { listAccessibleDocoIdsForPrincipal } from "~/lib/doco-access.server";
 import { getClient, issueAuthorizationCode } from "~/lib/oauth-server.server";
 import { getCurrentPrincipal } from "~/lib/session";
 
@@ -40,6 +35,7 @@ interface LoaderData {
   client_name: string;
   params: AuthorizeParams;
   docos: { id: string; handle: string; name: string | null }[];
+  me: Awaited<ReturnType<typeof getCurrentPrincipal>>;
 }
 
 export async function loader({ request }: { request: Request }) {
@@ -56,14 +52,15 @@ export async function loader({ request }: { request: Request }) {
 
   const principal = await getCurrentPrincipal(request);
   if (!principal) {
-    // Bounce through GitHub. The state cookie is per-flow; we capture
-    // the current authorize URL (with all PKCE params intact) in the
-    // `return` cookie so the callback brings the user back here.
     const returnPath = `${url.pathname}${url.search}`;
     throw redirect(`/auth/github?return=${encodeURIComponent(returnPath)}`);
   }
 
-  const docoIds = await listDocoIdsForUserPrincipal(principal.id);
+  // The full set the user could approve: direct owner + org + doco_users.
+  // listAccessibleDocoIdsForPrincipal is the union; the bare
+  // listDocoIdsForUserPrincipal helper sees only doco_users, which
+  // misses Docos the user owns directly or via their org.
+  const docoIds = await listAccessibleDocoIdsForPrincipal(principal.id);
   const docos = (
     await Promise.all(
       docoIds.map(async (id) => {
@@ -71,12 +68,15 @@ export async function loader({ request }: { request: Request }) {
         return d ? { id: d.id, handle: d.handle, name: d.name } : null;
       }),
     )
-  ).filter((d): d is { id: string; handle: string; name: string | null } => d !== null);
+  )
+    .filter((d): d is { id: string; handle: string; name: string | null } => d !== null)
+    .sort((a, b) => a.handle.localeCompare(b.handle));
 
   const data: LoaderData = {
     client_name: client.client_name ?? client.client_id.slice(0, 20),
     params,
     docos,
+    me: principal,
   };
   return data;
 }
@@ -105,9 +105,9 @@ export async function action({ request }: { request: Request }) {
   if (selected.length === 0) {
     throw errorResponse("at least one Doco must be selected", 400);
   }
-  // Verify every selected doco_id is actually in the user's grant set
-  // (defense against form tampering).
-  const allowed = new Set(await listDocoIdsForUserPrincipal(principal.id));
+  // Defense against form tampering — every selected id must be in
+  // the principal's full accessible set, not just doco_users.
+  const allowed = new Set(await listAccessibleDocoIdsForPrincipal(principal.id));
   for (const id of selected) {
     if (!allowed.has(id)) throw errorResponse(`not authorized for ${id}`, 403);
   }
@@ -123,76 +123,77 @@ export async function action({ request }: { request: Request }) {
   return redirect(redirectWith(params, { code }));
 }
 
+export function meta() {
+  return [{ title: "Approve Doco access · Doco" }];
+}
+
 export default function AuthorizePage() {
   const data = useLoaderData() as LoaderData;
   return (
-    <main style={{ maxWidth: 560, margin: "60px auto", padding: 24, fontFamily: "system-ui" }}>
-      <h1 style={{ fontSize: 24, marginBottom: 8 }}>Approve Doco access</h1>
-      <p style={{ color: "#555", marginBottom: 24 }}>
-        <strong>{data.client_name}</strong> wants access to your Docos. Pick which Docos it can read
-        and write to.
-      </p>
-      {data.docos.length === 0 ? (
-        <p style={{ color: "#a00" }}>
-          You don't have access to any Docos yet. Create one or accept an invite first, then return
-          to this page.
-        </p>
-      ) : (
-        <Form method="post" preventScrollReset>
-          <ul style={{ listStyle: "none", padding: 0, marginBottom: 24 }}>
-            {data.docos.map((d) => (
-              <li key={d.id} style={{ padding: "12px 0", borderBottom: "1px solid #eee" }}>
-                <label
-                  style={{ display: "flex", alignItems: "center", gap: 12, cursor: "pointer" }}
-                >
-                  <input type="checkbox" name="doco_id" value={d.id} defaultChecked />
-                  <span>
-                    <strong>{d.handle}</strong>
-                    {d.name && d.name !== d.handle ? (
-                      <span style={{ color: "#666" }}> · {d.name}</span>
-                    ) : null}
-                  </span>
-                </label>
-              </li>
-            ))}
-          </ul>
-          <div style={{ display: "flex", gap: 12 }}>
-            <button
-              type="submit"
-              name="decision"
-              value="approve"
-              style={{
-                padding: "10px 20px",
-                background: "#0066cc",
-                color: "white",
-                border: 0,
-                borderRadius: 6,
-                cursor: "pointer",
-                fontSize: 16,
-              }}
-            >
-              Approve
-            </button>
-            <button
-              type="submit"
-              name="decision"
-              value="cancel"
-              style={{
-                padding: "10px 20px",
-                background: "#eee",
-                color: "#333",
-                border: 0,
-                borderRadius: 6,
-                cursor: "pointer",
-                fontSize: 16,
-              }}
-            >
-              Cancel
-            </button>
-          </div>
-        </Form>
-      )}
-    </main>
+    <div>
+      <SiteHeader mode="host" me={data.me} />
+      <SingleColumnPageMain className="py-8 space-y-4">
+        <Card>
+          <CardHeader>
+            <CardTitle>Approve Doco access</CardTitle>
+            <CardDescription>
+              <strong>{data.client_name}</strong> wants access to your Docos. Pick which Docos it
+              can read and write.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {data.docos.length === 0 ? (
+              <p className="text-sm text-destructive">
+                You don't have access to any Docos yet. Create one or accept an invite first,
+                then return to this page.
+              </p>
+            ) : (
+              <Form method="post" className="space-y-4">
+                <ul className="divide-y divide-border rounded-md border border-border">
+                  {data.docos.map((d) => (
+                    <li key={d.id} className="px-3 py-2.5">
+                      <label className="flex cursor-pointer items-center gap-3">
+                        <input
+                          type="checkbox"
+                          name="doco_id"
+                          value={d.id}
+                          defaultChecked
+                          className="h-4 w-4 accent-primary"
+                        />
+                        <span className="text-sm">
+                          <strong className="font-semibold">{d.handle}</strong>
+                          {d.name && d.name !== d.handle ? (
+                            <span className="text-muted-foreground"> · {d.name}</span>
+                          ) : null}
+                        </span>
+                      </label>
+                    </li>
+                  ))}
+                </ul>
+                <div className="flex gap-2">
+                  <button
+                    type="submit"
+                    name="decision"
+                    value="approve"
+                    className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90"
+                  >
+                    Approve
+                  </button>
+                  <button
+                    type="submit"
+                    name="decision"
+                    value="cancel"
+                    className="rounded-md border border-border bg-card px-4 py-2 text-sm font-semibold text-foreground hover:bg-input"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </Form>
+            )}
+          </CardContent>
+        </Card>
+      </SingleColumnPageMain>
+    </div>
   );
 }
 
