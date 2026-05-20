@@ -443,6 +443,17 @@ export async function action({
     if (!inviterRole) {
       return { error: "You don't have a role on this target." };
     }
+    // Granting/editing access is an owner-only action. Approvers can
+    // approve lifecycle changes but can't extend access to others;
+    // that's a permission delegation only owners get to do. Scope-
+    // level invites still require owner on the containing Doco — the
+    // loader only surfaces scopes whose Doco the user owns, but
+    // re-check here in case the form was tampered with.
+    if (inviterRole !== "owner") {
+      return {
+        error: `Only owners can grant access — you hold '${inviterRole}' on this ${level}.`,
+      };
+    }
     if (rankOf(role) > rankOf(inviterRole)) {
       return {
         error: `Cannot mint a '${role}' invite — you only hold '${inviterRole}' on this target.`,

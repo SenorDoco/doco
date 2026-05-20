@@ -18,6 +18,7 @@
 //      access_denied and stops.
 
 import type { DocoRole } from "@doco/db";
+import { useState } from "react";
 import { Form, redirect, useLoaderData } from "react-router";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { SingleColumnPageMain } from "~/components/page-main";
@@ -33,7 +34,7 @@ import {
   getClient,
   getDeviceAuthorizationByUserCode,
 } from "~/lib/oauth-server.server";
-import { DOCO_ROLES, ROLE_RANK, roleAtLeast } from "~/lib/role-helpers";
+import { DOCO_ROLES } from "~/lib/role-helpers";
 import { getCurrentPrincipal } from "~/lib/session";
 
 interface LoaderData {
@@ -101,24 +102,26 @@ export async function loader({ request }: { request: Request }) {
   }
 
   const client = await getClient(row.client_id);
-  const docoIds = await listAccessibleDocoIdsForPrincipal(me.id);
-  const docos = (
-    await Promise.all(
-      docoIds.map(async (id) => {
-        const d = await getDocoById(id);
-        if (!d) return null;
-        const my_role =
-          (await getDocoLevelRole({ ownerId: d.owner_id, docoId: d.id }, me.id)) ?? "reader";
-        return { id: d.id, handle: d.handle, name: d.name, my_role };
-      }),
-    )
-  )
-    .filter(
-      (
-        d,
-      ): d is { id: string; handle: string; name: string | null; my_role: DocoRole } =>
-        d !== null,
-    )
+  // Only owners can grant agent access (approvers/authors/readers
+  // can't extend access). Filter the candidate Doco list to
+  // owner-role only; the action re-checks on submit as a tamper
+  // defense.
+  const candidateIds = await listAccessibleDocoIdsForPrincipal(me.id);
+  type DocoRow = { id: string; handle: string; name: string | null; my_role: DocoRole };
+  const candidates = await Promise.all(
+    candidateIds.map(async (id): Promise<DocoRow | null> => {
+      const d = await getDocoById(id);
+      if (!d) return null;
+      const my_role = await getDocoLevelRole(
+        { ownerId: d.owner_id, docoId: d.id },
+        me.id,
+      );
+      if (my_role !== "owner") return null;
+      return { id: d.id, handle: d.handle, name: d.name, my_role };
+    }),
+  );
+  const docos = candidates
+    .filter((d): d is DocoRow => d !== null)
     .sort((a, b) => a.handle.localeCompare(b.handle));
 
   return {
@@ -165,9 +168,10 @@ export async function action({ request }: { request: Request }) {
     if (selected.length === 0) {
       throw new Response("at least one Doco must be selected", { status: 400 });
     }
-    // Defense against form tampering — every selected id must be in
-    // the principal's full accessible set, and the per-Doco role
-    // cannot exceed the principal's actual role on that Doco.
+    // Defense against form tampering. Two checks per id:
+    //   1. Principal must hold OWNER on this Doco — only owners can
+    //      grant agent access.
+    //   2. The per-Doco role from the form must be a valid DocoRole.
     const granted_doco_roles: Record<string, DocoRole> = {};
     const allowed = new Set(await listAccessibleDocoIdsForPrincipal(principal.id));
     for (const id of selected) {
@@ -176,12 +180,19 @@ export async function action({ request }: { request: Request }) {
       }
       const doco = await getDocoById(id);
       if (!doco) throw new Response(`unknown doco: ${id}`, { status: 400 });
-      const myRole =
-        (await getDocoLevelRole({ ownerId: doco.owner_id, docoId: doco.id }, principal.id)) ??
-        "reader";
-      const raw = String(form.get(`role_${id}`) ?? myRole).toLowerCase();
-      const requested = (DOCO_ROLES as string[]).includes(raw) ? (raw as DocoRole) : myRole;
-      granted_doco_roles[id] = ROLE_RANK[requested] <= ROLE_RANK[myRole] ? requested : myRole;
+      const myRole = await getDocoLevelRole(
+        { ownerId: doco.owner_id, docoId: doco.id },
+        principal.id,
+      );
+      if (myRole !== "owner") {
+        throw new Response(
+          `Only owners can grant access; you hold '${myRole ?? "no role"}' on ${doco.handle}.`,
+          { status: 403 },
+        );
+      }
+      const raw = String(form.get(`role_${id}`) ?? "owner").toLowerCase();
+      const requested = (DOCO_ROLES as string[]).includes(raw) ? (raw as DocoRole) : "owner";
+      granted_doco_roles[id] = requested;
     }
     await approveDeviceAuthorization({
       device_code: row.device_code,
@@ -258,71 +269,11 @@ function renderStage(data: LoaderData) {
         <CardContent>
           {data.docos && data.docos.length === 0 ? (
             <p className="text-sm text-destructive">
-              You don't have access to any Docos yet. Create one or accept an invite first, then
-              come back to this code.
+              You don't own any Docos. Only Doco owners can grant agent access — create a Doco
+              first, then re-enter this code.
             </p>
           ) : (
-            <Form method="post" className="space-y-4">
-              <input type="hidden" name="user_code" value={data.user_code} />
-              <ul className="divide-y divide-border rounded-md border border-border">
-                {data.docos!.map((d) => (
-                  <li
-                    key={d.id}
-                    className="flex items-center justify-between gap-3 px-3 py-2.5"
-                  >
-                    <label className="flex flex-1 cursor-pointer items-center gap-3">
-                      <input
-                        type="checkbox"
-                        name="doco_id"
-                        value={d.id}
-                        defaultChecked
-                        className="h-4 w-4 accent-primary"
-                      />
-                      <span className="text-sm">
-                        <strong className="font-semibold">{d.handle}</strong>
-                        {d.name && d.name !== d.handle ? (
-                          <span className="text-muted-foreground"> · {d.name}</span>
-                        ) : null}
-                      </span>
-                    </label>
-                    <select
-                      name={`role_${d.id}`}
-                      defaultValue={d.my_role}
-                      aria-label={`Role on ${d.handle}`}
-                      className="rounded-md border border-border bg-card px-2 py-1 text-xs text-foreground"
-                    >
-                      {DOCO_ROLES.filter((r) => roleAtLeast(d.my_role, r)).map((r) => (
-                        <option key={r} value={r}>
-                          {r}
-                        </option>
-                      ))}
-                    </select>
-                  </li>
-                ))}
-              </ul>
-              <p className="text-[11px] text-muted-foreground">
-                Each Doco's dropdown is capped at the role you currently hold there. Lower it to
-                scope the agent down (e.g. give a research agent <code>reader</code> only).
-              </p>
-              <div className="flex gap-2">
-                <button
-                  type="submit"
-                  name="decision"
-                  value="approve"
-                  className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90"
-                >
-                  Approve
-                </button>
-                <button
-                  type="submit"
-                  name="decision"
-                  value="deny"
-                  className="rounded-md border border-border bg-card px-4 py-2 text-sm font-semibold text-foreground hover:bg-input"
-                >
-                  Deny
-                </button>
-              </div>
-            </Form>
+            <DevicePickerForm userCode={data.user_code} docos={data.docos!} />
           )}
         </CardContent>
       </>
@@ -345,5 +296,153 @@ function renderStage(data: LoaderData) {
         </a>
       </CardContent>
     </>
+  );
+}
+
+/**
+ * Controlled approve form for /device. Per-Doco checkboxes + role
+ * dropdowns plus bulk controls (select / deselect all + set all
+ * roles). Mirrors the same shape on /oauth/authorize.
+ */
+function DevicePickerForm({
+  userCode,
+  docos,
+}: {
+  userCode: string;
+  docos: { id: string; handle: string; name: string | null; my_role: DocoRole }[];
+}) {
+  const [selected, setSelected] = useState<Set<string>>(
+    () => new Set(docos.map((d) => d.id)),
+  );
+  const [roles, setRoles] = useState<Record<string, DocoRole>>(
+    () => Object.fromEntries(docos.map((d) => [d.id, d.my_role])),
+  );
+  const allSelected = selected.size === docos.length;
+  const noneSelected = selected.size === 0;
+  return (
+    <Form method="post" className="space-y-3">
+      <input type="hidden" name="user_code" value={userCode} />
+
+      <div className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-input/40 px-3 py-2">
+        <button
+          type="button"
+          onClick={() => setSelected(new Set(docos.map((d) => d.id)))}
+          disabled={allSelected}
+          className="rounded-md border border-border bg-card px-2.5 py-1 text-xs font-semibold text-foreground hover:bg-input disabled:opacity-50"
+        >
+          Select all
+        </button>
+        <button
+          type="button"
+          onClick={() => setSelected(new Set())}
+          disabled={noneSelected}
+          className="rounded-md border border-border bg-card px-2.5 py-1 text-xs font-semibold text-foreground hover:bg-input disabled:opacity-50"
+        >
+          Deselect all
+        </button>
+        <span className="text-xs text-muted-foreground">
+          {selected.size} of {docos.length} selected
+        </span>
+        <span className="ml-auto flex items-center gap-2 text-xs text-muted-foreground">
+          Set all roles to:
+          <select
+            aria-label="Set all roles"
+            defaultValue=""
+            onChange={(e) => {
+              const r = e.currentTarget.value as DocoRole | "";
+              if (!r) return;
+              setRoles(Object.fromEntries(docos.map((d) => [d.id, r])));
+              e.currentTarget.value = "";
+            }}
+            className="rounded-md border border-border bg-card px-2 py-1 text-xs text-foreground"
+          >
+            <option value="" disabled>
+              choose…
+            </option>
+            {DOCO_ROLES.map((r) => (
+              <option key={r} value={r}>
+                {r}
+              </option>
+            ))}
+          </select>
+        </span>
+      </div>
+
+      <ul className="divide-y divide-border rounded-md border border-border">
+        {docos.map((d) => (
+          <li key={d.id} className="flex items-center justify-between gap-3 px-3 py-2.5">
+            <label className="flex flex-1 cursor-pointer items-center gap-3">
+              <input
+                type="checkbox"
+                checked={selected.has(d.id)}
+                onChange={(e) => {
+                  const next = new Set(selected);
+                  if (e.currentTarget.checked) next.add(d.id);
+                  else next.delete(d.id);
+                  setSelected(next);
+                }}
+                className="h-4 w-4 accent-primary"
+              />
+              <span className="text-sm">
+                <strong className="font-semibold">{d.handle}</strong>
+                {d.name && d.name !== d.handle ? (
+                  <span className="text-muted-foreground"> · {d.name}</span>
+                ) : null}
+              </span>
+            </label>
+            <select
+              aria-label={`Role on ${d.handle}`}
+              value={roles[d.id] ?? d.my_role}
+              onChange={(e) => setRoles({ ...roles, [d.id]: e.currentTarget.value as DocoRole })}
+              disabled={!selected.has(d.id)}
+              className="rounded-md border border-border bg-card px-2 py-1 text-xs text-foreground disabled:opacity-50"
+            >
+              {DOCO_ROLES.map((r) => (
+                <option key={r} value={r}>
+                  {r}
+                </option>
+              ))}
+            </select>
+          </li>
+        ))}
+      </ul>
+
+      {Array.from(selected).map((id) => (
+        <input key={id} type="hidden" name="doco_id" value={id} />
+      ))}
+      {Array.from(selected).map((id) => (
+        <input
+          key={`role_${id}`}
+          type="hidden"
+          name={`role_${id}`}
+          value={roles[id] ?? "owner"}
+        />
+      ))}
+
+      <p className="text-[11px] text-muted-foreground">
+        Lower a Doco's role to scope the agent down (e.g. give a research agent{" "}
+        <code>reader</code> only). Owners can grant any role up to and including their own.
+      </p>
+
+      <div className="flex gap-2">
+        <button
+          type="submit"
+          name="decision"
+          value="approve"
+          disabled={selected.size === 0}
+          className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
+        >
+          Approve
+        </button>
+        <button
+          type="submit"
+          name="decision"
+          value="deny"
+          className="rounded-md border border-border bg-card px-4 py-2 text-sm font-semibold text-foreground hover:bg-input"
+        >
+          Deny
+        </button>
+      </div>
+    </Form>
   );
 }

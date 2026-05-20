@@ -95,19 +95,22 @@ export async function action({
     );
   }
 
-  // Role to grant the redeemer (decision_01KS0JBJ5X0AZ4XJJFKEWE1R62).
-  // Default: `author`. Inviter must hold a doco-level role ≥ requested
-  // role — you cannot mint a more-privileged grant than you yourself
-  // hold. Org owners and doco-owners pass all checks; lower tiers can
-  // only invite at-or-below their tier.
+  // Inviting a user (granting/editing access on a Doco) is an
+  // owner-only action. Approvers can approve lifecycle changes but
+  // can't extend access — that's a permissions delegation that only
+  // the Doco owner gets to do.
   const requestedRole: DocoRole = parseRole(body.role) ?? "author";
   const inviterRole = await getDocoLevelRole(
     { ownerId: meta.ownerId, docoId: meta.docoId },
     me.id,
   );
-  if (!inviterRole) {
+  if (inviterRole !== "owner") {
     return Response.json(
-      { error: "Only doco members can mint invites." },
+      {
+        error: inviterRole
+          ? `Only doco owners can mint invites — you hold '${inviterRole}' on this Doco.`
+          : "Only doco owners can mint invites.",
+      },
       { status: 403 },
     );
   }
