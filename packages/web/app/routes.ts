@@ -163,10 +163,6 @@ export default [
   route(":docoId/api/settings.json", "routes/$ownerSlug.$docoSlug.api.settings[.]json.tsx"),
   route(":docoId/api/:type.txt", "routes/$ownerSlug.$docoSlug.api.$type[.]txt.tsx"),
   route(":docoId/api/audit.json", "routes/$ownerSlug.$docoSlug.api.audit[.]json.tsx"),
-  route(
-    ":docoId/api/admin/apply-template-updates.json",
-    "routes/$ownerSlug.$docoSlug.api.admin.apply-template-updates[.]json.tsx",
-  ),
   route(":docoId/activity", "routes/$ownerSlug.$docoSlug.activity.tsx"),
   route(
     ":docoId/graph-node-details.json",

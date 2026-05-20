@@ -9,25 +9,15 @@ export type {
 export {
   // v15 (Phase B) creation surfaces.
   addOrganizationByHandle,
-  applyScopeTemplateUpdatesToDoco,
   createDocoInHost,
   createDocoInOrg,
-  createIntentInDoco,
-  createRuleInDoco,
-  createScopeInDoco,
   ensurePersonalOrganization,
   findAvailableDocoHandle,
   findAvailableOrgHandle,
-  materializeScopeTree,
-  migrateScopesInDoco,
-  parseScopeNamesInput,
-  readScopeWatchedInDoco,
+  findDocoTemplate,
   renameDocoHandle,
-  seedScopeFromTemplate,
-  setScopeWatchedInDoco,
   softDeleteDoco,
   updateDocoMeta,
-  updateScopeInDoco,
 } from "@doco/host";
 import { type BuildReport, reindex as reindexBare } from "@doco/index";
 import { getDocoEmbeddingProvider } from "./embedding-provider.server";
