@@ -53,6 +53,8 @@ beforeAll(async () => {
 beforeEach(async () => {
   await withClient(async (client) => {
     await client.query(
+      // scope_match (v13 Phase 10) and scope_users (v13 Phase 11) were
+      // dropped from the schema; do not include them here.
       `TRUNCATE
         hosts,
         principals,
@@ -73,10 +75,8 @@ beforeEach(async () => {
         audit_events,
         edges,
         embeddings,
-        scope_match,
         entity_fts,
         doco_users,
-        scope_users,
         tokens_blob
       RESTART IDENTITY CASCADE`,
     );

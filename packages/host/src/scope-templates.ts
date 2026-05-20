@@ -2,12 +2,14 @@
  * Default scope templates (ADR-082; v7 reshape per
  * decision_01KRRR5BQ16ASY8HQEE0V499YG).
  *
- * The framework ships four curated scopes. Two are auto-installed on
+ * The framework ships five curated scopes. Two are auto-installed on
  * every new Doco (flagged `auto_install: true`): `#global` (the
  * Constitution) and `#important` (catch-all for important Doco-wide
- * decisions that don't fit a topical scope). The other two are opt-in:
- * `#user-flows` (opt-in at create time) and `#state-machines` (opt-in
- * via `doco install-template #state-machines`). Per the successor to
+ * decisions that don't fit a topical scope). The other three are opt-in:
+ * `#user-flows` (opt-in at create time), `#state-machines` (opt-in
+ * via `doco install-template #state-machines`), and `#business-processes`
+ * (opt-in for repeatable operational workflows — BPMN/UML applied to
+ * business operations). Per the successor to
  * decision_01KRFG5BAJ1ATHX0QE0HHX0QEV (which trimmed thirteen
  * templates down to two) — every other previously-shipped template
  * stays project-owner-authored. All scope names are hashtag-shaped —
@@ -528,6 +530,507 @@ export const DEFAULT_SCOPE_TEMPLATES: ScopeTemplate[] = [
         summary:
           "Hierarchical / composite / parallel States are deliberately not modeled in v1. A machine that needs them models the sub-machine as a separate scope under this scope's parent.",
         kind: "guidance",
+      },
+    ],
+  },
+  {
+    // Business-process modeling template — BPMN/UML primitives applied to
+    // repeatable operational workflows. Designed alongside #state-machines
+    // (which models how an *entity* moves through stages) and #user-flows
+    // (which models how a *user* moves through a feature). #business-processes
+    // models how *work* moves through actors, gateways, and milestones to
+    // produce a business outcome.
+    //
+    // Authored against the BPMN gateway/swimlane vocabulary: Principals are
+    // swimlanes, Actions are activities, Decisions are gateways, States are
+    // milestones / entry-exit conditions, Rules are policies/guards,
+    // Evals are validation checks, References are external procedures or
+    // recorded run pointers. Logs and Ideas are excluded — recorded
+    // executions live in a separate Doco (referenced here) and speculative
+    // thoughts don't belong in a designed repeatable process.
+    //
+    // Reuses State machinery from #state-machines (initial / intermediate /
+    // terminal kind, invariants, follows-chain wiring). New ground vs the
+    // sibling templates: actor-coverage via graph-completeness, explicit
+    // input/output handoffs, exhaustive Decision branches, and compensation
+    // for side-effecting Actions.
+    name: "#business-processes",
+    label: "#business-processes",
+    icon: "🏭",
+    purpose:
+      "Document repeatable business processes — the flow of work through actors, gateways, and milestones to a business outcome. Inspired by BPMN swimlanes and gateways.",
+    default_node_lifecycle: "drafted",
+    rules: [
+      // ── Membership ────────────────────────────────────────────────────
+      {
+        // BP-M1 — semantic membership. Reuses the user-flows pattern of a
+        // probabilistic gate with a node-type allowlist that exempts the
+        // Rule nodes governing the scope.
+        summary:
+          "A node belongs in #business-processes only when it describes part of a repeatable business process (its purpose Intent, an activity, a gateway, a milestone, an external reference, or a validation check) or a policy/guard for that process. One-off incidents, UI journeys, and pure state machines belong elsewhere.",
+        predicate: {
+          kind: "probabilistic",
+          spec: "A node belongs in #business-processes only when it describes part of a repeatable business process (its purpose Intent, an activity, a gateway, a milestone, an external reference, or a validation check) or a policy/guard for that process. One-off incidents (Logs), UI-specific journeys (#user-flows), and pure state machines without a business outcome (#state-machines) belong elsewhere.",
+          when_node_type: ["intent", "action", "decision", "state", "eval", "reference"],
+        },
+      },
+      {
+        // BP-M2 — deterministic node-type allowlist. Logs and Ideas
+        // excluded by design: this scope is for designed repeatable
+        // processes, not recorded executions or loose thoughts.
+        summary:
+          "Only Intent, Action, Decision, State, Eval, Reference, and Rule nodes belong to #business-processes. Logs (recorded executions) live in a separate Doco and are referenced from here; Ideas live in their own home until promoted.",
+        predicate: {
+          kind: "requires_node_type",
+          node_types: ["intent", "action", "decision", "state", "eval", "reference", "rule"],
+        },
+      },
+
+      // ── Intent shape ─────────────────────────────────────────────────
+      {
+        // BP-I1
+        summary:
+          "Every Intent in #business-processes must declare the principals expected to act in the process in the `actors` field.",
+        predicate: {
+          kind: "requires_field",
+          fields: ["actors"],
+          when_node_type: ["intent"],
+        },
+      },
+      {
+        // BP-I2
+        summary:
+          "Every Intent in #business-processes must declare the principals whose interests the process serves in the `stakeholders` field. Stakeholders without an Action surface via Reference, Eval, or a gated_by Rule.",
+        predicate: {
+          kind: "requires_field",
+          fields: ["stakeholders"],
+          when_node_type: ["intent"],
+        },
+      },
+      {
+        // BP-I3 — process Intent prose
+        summary:
+          "The process Intent's summary or body states the business trigger that starts the process, the desired terminal outcome, and what is explicitly out of scope.",
+        predicate: {
+          kind: "probabilistic",
+          when_node_type: ["intent"],
+          spec: "The Intent's summary and body together state (1) the business trigger that starts the process, (2) the desired terminal outcome, and (3) what is explicitly out of scope. All three must be discernible — vague 'handle X' Intents fail.",
+        },
+      },
+
+      // ── Action shape & handoffs ──────────────────────────────────────
+      {
+        // BP-A1
+        summary:
+          "Every Action in #business-processes must declare the principal who performs the activity in the `actor_id` field.",
+        predicate: {
+          kind: "requires_field",
+          fields: ["actor_id"],
+          when_node_type: ["action"],
+        },
+      },
+      {
+        // BP-A2 — actor_id resolves to a real Principal (human, agent, or
+        // a role-principal representing a team). Permissive on type to
+        // accommodate team-role Principals like 'kitchen', 'support', or
+        // 'finance' — first-class per the BPM template's swimlane model.
+        summary:
+          "An Action's `actor_id` must resolve to an existing Principal. Team-role Principals (kitchen, support, finance, etc.) are first-class — a swimlane represents a role, not a person.",
+        predicate: {
+          kind: "requires_field_resolves_to_principal",
+          field: "actor_id",
+          allowed_principal_types: ["human", "agent"],
+          when_node_type: ["action"],
+        },
+      },
+      {
+        // BP-A3
+        summary:
+          "Every Action in #business-processes must `serve` an Intent. Without it the process has no umbrella outcome to anchor the step.",
+        predicate: {
+          kind: "requires_edge",
+          edge_type: "serves",
+          target_node_type: "intent",
+          when_node_type: ["action"],
+        },
+      },
+      {
+        // BP-A4
+        summary:
+          "Every Action in #business-processes must populate `inputs` — the business artifacts or data shapes it consumes. Empty `inputs` is a modeling gap; describe what flows in, even if 'context only'.",
+        predicate: {
+          kind: "requires_field",
+          fields: ["inputs"],
+          when_node_type: ["action"],
+        },
+      },
+      {
+        // BP-A5
+        summary:
+          "Every Action in #business-processes must populate `outputs` — the business artifacts or data shapes it produces. Outputs of one Action should line up with the inputs of the next; explicit handoffs are the spine of the model.",
+        predicate: {
+          kind: "requires_field",
+          fields: ["outputs"],
+          when_node_type: ["action"],
+        },
+      },
+      {
+        // BP-A6 — atomic activity prose
+        summary:
+          "Action summaries describe atomic business activities (a single decisive step a swimlane owner can complete). Vague phases ('handle request', 'process order') or implementation chores ('call API', 'update row') fail.",
+        predicate: {
+          kind: "probabilistic",
+          when_node_type: ["action"],
+          spec: "The Action's verb + summary describes one atomic business activity that the responsible Principal completes in a single bounded act. Reject vague umbrella phases ('handle request', 'process order') and implementation chores divorced from business meaning ('call API', 'update database row').",
+        },
+      },
+      {
+        // BP-A7 — inputs/outputs are business artifacts
+        summary:
+          "Action `inputs` and `outputs` describe business artifacts or data shapes (e.g. 'signed-sow.pdf', 'verified-coverage-token'), not concrete runtime values or implementation primitives (HTTP status codes, SQL row counts).",
+        predicate: {
+          kind: "probabilistic",
+          when_node_type: ["action"],
+          spec: "STEP 1 — if both `inputs` and `outputs` are absent or empty, this rule PASSES (BP-A4/A5 handle missing fields). STEP 2 — otherwise judge whether the populated values name business artifacts or data shapes (signed-sow.pdf, verified-coverage-token, draft-invoice). FAIL when values are concrete runtime primitives (HTTP 200, row count = 4, the literal string 'success').",
+        },
+      },
+      {
+        // BP-A8 — compensation for side effects
+        summary:
+          "Actions with physical-world or financial side effects (shipments, payments, account state changes) declare a compensation Action via `decision_ids` or a `bounded_by` Rule citation, so the reversal path exists in the model.",
+        predicate: {
+          kind: "probabilistic",
+          when_node_type: ["action"],
+          spec: "STEP 1 — decide whether this Action has a physical-world or financial side effect (ship goods, capture payment, activate subscription, send legally binding document, change account state). Read the verb and summary. If the Action is purely informational or internal (notify, log, validate, draft), this rule PASSES. STEP 2 — only if it has a side effect, check that the Action cites either a Decision (in decision_ids) that branches to a compensation path, or a Rule (in gated_by or referenced in body) describing the reversal. FAIL with a reason that names the missing compensation if neither is present.",
+        },
+      },
+      {
+        // BP-A9 — exception/cancellation cites rationale (mirrors
+        // state-machines P5 but tightened for the BPM scope)
+        summary:
+          "Exception, cancellation, rollback, refund, rejection, or escalation Actions cite the Decision (in `decision_ids`) or Rule (in `gated_by`) that explains why the path exists. Happy-path activities are exempt.",
+        predicate: {
+          kind: "probabilistic",
+          when_node_type: ["action"],
+          spec: "STEP 1 — decide whether this Action represents an exception, cancellation, rollback, refund, rejection, escalation, abort, deny, or otherwise non-happy-path transition. Look at the verb and summary for words like 'cancel', 'refund', 'reject', 'deny', 'escalate', 'rollback', 'compensate'. If happy-path, PASS. STEP 2 — only if non-happy-path, check that `decision_ids` is non-empty OR `gated_by` is non-empty. FAIL with a reason naming which is missing.",
+        },
+      },
+      {
+        // BP-A10 — sub-process invocation resolves
+        summary:
+          "An Action that delegates to a sub-process invokes that sub-process by Intent reference (via `intent_ids` or a body link) rather than inlining its steps. The referenced Intent should exist in this Doco or be reachable via a Reference.",
+        predicate: {
+          kind: "probabilistic",
+          when_node_type: ["action"],
+          spec: "STEP 1 — decide whether this Action delegates to a sub-process (verbs like 'verify', 'authorize', 'approve' that name another business process, or summaries that say 'see X process'). If not a delegation, PASS. STEP 2 — if delegation, check that the Action either populates `intent_ids` with the sub-process's Intent OR cites a Reference in body/summary pointing at the sub-process. FAIL when steps are inlined despite naming an external process.",
+        },
+      },
+      {
+        // BP-A11 — loops bounded by Decision or Rule
+        summary:
+          "Loops in `follows` chains must declare a termination condition — either a Decision node on the cycle (BPMN-canonical) or a Rule citation in `gated_by` that bounds iteration (e.g. 'retries cap at 3'). Unbounded loops fail.",
+        predicate: {
+          kind: "probabilistic",
+          when_node_type: ["action"],
+          spec: "STEP 1 — decide whether this Action's verb/summary suggests a retry, loop, or repeated step ('retry', 'reattempt', 'poll', 'loop until'). If no loop semantics, PASS. STEP 2 — if a loop, check that either decision_ids contains a Decision whose alternatives include an exit branch, or gated_by cites a Rule that explicitly bounds iteration (max count, timeout, predicate). FAIL when retry/loop language appears without either.",
+        },
+      },
+      {
+        // BP-A12 — timer / scheduled Action
+        summary:
+          "Timer-driven Actions (reminders, scheduled steps, T-24h notifications) name their anchor and offset in summary or body — e.g. 'fires PT24H after slot-confirmed entered_at'. Bare scheduling without an anchor fails.",
+        predicate: {
+          kind: "probabilistic",
+          when_node_type: ["action"],
+          spec: "STEP 1 — decide whether this Action is timer-driven or scheduled (verbs/summaries with 'T-', '+N hours', 'after N days', 'reminder', 'scheduled', 'expires'). If not timer-driven, PASS. STEP 2 — if timer-driven, check that summary or body names both an anchor (a named State's entered_at, an absolute timestamp, or a previous Action's completion) and an offset in ISO 8601 form. FAIL when scheduling is implicit ('a few days later').",
+        },
+      },
+      {
+        // BP-A13 — trust-boundary handoff
+        summary:
+          "Actions that hand work across an organization, tenant, or external-system boundary flag the crossing in summary or body. Hidden cross-boundary transfers (data leaving the org, work crossing into a customer system) are a real risk surface and should be visible.",
+        predicate: {
+          kind: "probabilistic",
+          when_node_type: ["action"],
+          spec: "STEP 1 — decide whether this Action's actor or counterparty is on the other side of an organization, tenant, or external-system boundary (e.g. sending data to Stripe, e-signature platform, an insurance clearinghouse, the customer's own system). If purely internal, PASS. STEP 2 — if a boundary crossing, check that the summary or body explicitly notes the crossing (phrases like 'crosses to', 'sends to external', 'leaves trust boundary', or names the external system). FAIL when the boundary is implicit.",
+        },
+      },
+
+      // ── Decision shape ───────────────────────────────────────────────
+      {
+        // BP-D1
+        summary: "Every Decision in #business-processes must `serve` an Intent.",
+        predicate: {
+          kind: "requires_edge",
+          edge_type: "serves",
+          target_node_type: "intent",
+          when_node_type: ["decision"],
+        },
+      },
+      {
+        // BP-D2 — gateway shape
+        summary:
+          "Decisions read as BPMN gateways: a question whose alternatives separate exhaustive paths. Every Decision lists alternatives that cover every reachable case plus a default/else branch — silent 'otherwise' is the single biggest source of process drift.",
+        predicate: {
+          kind: "probabilistic",
+          when_node_type: ["decision"],
+          spec: "STEP 1 — check that the Decision's `question` reads as a yes/no or enumerated question. STEP 2 — check that `alternatives` is non-empty AND includes either a literal 'default' / 'else' / 'otherwise' branch or explicitly accounts for every case (e.g. an enum where every value is named). FAIL when alternatives leave room for an unhandled case.",
+        },
+      },
+      {
+        // BP-D3 — mutual exclusion
+        summary:
+          "Decision branches are mutually exclusive unless the gateway is explicitly inclusive. Overlapping branches without an 'inclusive' marker on the Decision body are a modeling smell.",
+        predicate: {
+          kind: "probabilistic",
+          when_node_type: ["decision"],
+          spec: "STEP 1 — check whether the Decision body or summary marks the gateway as 'inclusive' / 'OR' / 'parallel'. If marked inclusive, PASS. STEP 2 — for unmarked Decisions, check that the alternatives are mutually exclusive (no overlap in the conditions). FAIL when conditions overlap without the inclusive marker.",
+        },
+      },
+      {
+        // BP-D4 — too many branches
+        summary:
+          "Decisions with more than four branches are a smell — either nest them or model the discrimination as a classifier Action that feeds simpler downstream Decisions.",
+        predicate: {
+          kind: "probabilistic",
+          when_node_type: ["decision"],
+          spec: "Check the count of `alternatives`. PASS when ≤4. FAIL when >4, suggesting the Decision be split or preceded by a classifier Action.",
+        },
+      },
+
+      // ── State shape & wiring ─────────────────────────────────────────
+      {
+        // BP-S1 — uniqueness within scope (same as state-machines D4)
+        summary:
+          "State `summary` is unique within the capturing scope. Duplicate names ambiguate transitions; either merge the nodes or disambiguate the summaries (`approved-by-manager` vs `auto-approved`).",
+        predicate: {
+          kind: "unique-within-scope",
+          scope_ref: "$capture_scope",
+          node_type: "state",
+          field: "summary",
+        },
+      },
+      {
+        // BP-S2 — at least one initial (active only, same shape as
+        // state-machines D5)
+        summary:
+          "An active #business-processes scope must contain at least one active State of kind `initial` — every process starts somewhere.",
+        fires_when_node_lifecycle: ["active"],
+        predicate: {
+          kind: "count-within-scope",
+          scope_ref: "$capture_scope",
+          node_type: "state",
+          where: { kind: "initial", lifecycle: ["active"] },
+          comparator: ">=",
+          n: 1,
+        },
+      },
+      {
+        // BP-S3 — at least one terminal (active only)
+        summary:
+          "An active #business-processes scope must contain at least one active State of kind `terminal`. Open-ended 'and then?' processes are rejected. Perpetual processes (continuous monitoring loops) skip this via `excluded_rules`.",
+        fires_when_node_lifecycle: ["active"],
+        predicate: {
+          kind: "count-within-scope",
+          scope_ref: "$capture_scope",
+          node_type: "state",
+          where: { kind: "terminal", lifecycle: ["active"] },
+          comparator: ">=",
+          n: 1,
+        },
+      },
+      {
+        // BP-S4 — terminal has no successor Action (same as
+        // state-machines D7)
+        summary:
+          "Terminal States have no successor Action — no Action's `follows` may point at a terminal State.",
+        predicate: {
+          kind: "graph-constraint",
+          scope_ref: "$capture_scope",
+          graph: "follows",
+          op: "degree-bounds",
+          where: { kind: "terminal" },
+          direction: "in",
+          max: 0,
+        },
+      },
+      {
+        // BP-S5 — initial has successor Action (active only)
+        summary:
+          "Each active initial State has ≥1 successor Action — otherwise the process declares its starting point but never moves.",
+        fires_when_node_lifecycle: ["active"],
+        predicate: {
+          kind: "graph-constraint",
+          scope_ref: "$capture_scope",
+          graph: "follows",
+          op: "degree-bounds",
+          where: { kind: "initial", lifecycle: ["active"] },
+          direction: "in",
+          min: 1,
+        },
+      },
+      {
+        // BP-S6 — follows resolves in scope
+        summary:
+          "A `follows` edge must point at a node in the same scope. Cross-scope wiring belongs to sub-process invocation (an Action with `intent_ids`), not raw `follows`.",
+        predicate: {
+          kind: "graph-constraint",
+          scope_ref: "$capture_scope",
+          graph: "follows",
+          op: "references-resolve-in-scope",
+          edge_type: "follows",
+        },
+      },
+      {
+        // BP-S7 — State summary as condition/milestone (reuses
+        // state-machines P1 — same authoring discipline)
+        summary:
+          "State `summary` reads as a business condition or milestone, not imperative work: `application submitted`, `invoice approved`, `account active`. Not: `Submit application`, `Approve invoice`.",
+        predicate: {
+          kind: "probabilistic",
+          when_node_type: ["state"],
+          spec: "Check ONLY the State's `summary` field. It must read as a business condition or milestone (a noun phrase or past-participle naming the position the work occupies: `application submitted`, `invoice approved`, `account active`). It must NOT read as imperative work (`Submit application`, `Approve invoice`). A milestone in transient form (`approved`) or a steady-state form (`active`) both qualify.",
+        },
+      },
+      {
+        // BP-S8 — milestone vs steady-state distinction
+        summary:
+          "State summaries distinguish transient milestones (true at one moment, succeeded by an Action) from steady-state conditions (true until something cancels them). Naming convention or invariants make the distinction visible.",
+        predicate: {
+          kind: "probabilistic",
+          when_node_type: ["state"],
+          spec: "Check whether the State's summary, kind, and invariants together make clear whether this State is a transient milestone (entered then exited via a successor Action) or a steady-state condition (occupied for an extended span, exited only on cancellation). FAIL when a steady-state-shaped summary (`account active`, `subscription live`) has many outgoing successor Actions implying it's actually a milestone, or vice versa.",
+        },
+      },
+      {
+        // BP-S9 — observable invariants (mirrors state-machines P3)
+        summary:
+          "State `invariants` are observable predicates a reader can verify — `order.payment.captured = true`, not `the customer is happy`.",
+        predicate: {
+          kind: "probabilistic",
+          when_node_type: ["state"],
+          spec: "Check ONLY the State's `invariants` array. If empty or absent, PASS (vacuously true). When present, each entry must read as an observable predicate a reader can check programmatically (`order.payment.captured = true`), not a subjective quality (`the customer is happy`).",
+        },
+      },
+      {
+        // BP-S10 — convergence at named State
+        summary:
+          "Parallel branches must converge at a named State with an explicit join predicate. Implicit re-convergence ('and then everything continues') is a modeling gap.",
+        predicate: {
+          kind: "probabilistic",
+          when_node_type: ["state"],
+          spec: "STEP 1 — decide whether this State is a convergence point of multiple parallel branches (≥2 incoming Actions whose lineage diverged earlier). If a simple linear State, PASS. STEP 2 — if a convergence point, check that the summary or body names the join predicate (e.g. 'both parallel preparations complete', 'either-or sufficient'). FAIL when convergence is implicit.",
+        },
+      },
+
+      // ── Coverage: actors must surface as actor_id ────────────────────
+      {
+        // BP-C1 — graph completeness (same shape as user-flows v2)
+        summary:
+          "Every principal listed in a process Intent's `actors` must be the `actor_id` of at least one Action that `serves` the Intent. Fires when the Intent is active — drafted Intents are allowed to be incomplete.",
+        predicate: {
+          kind: "graph-completeness",
+          scope_ref: "$capture_scope",
+          list_field: "actors",
+          edge_type: "serves",
+          incoming_node_type: "action",
+          incoming_field_must_match: "actor_id",
+          when_node_type: ["intent"],
+        },
+        fires_when_node_lifecycle: ["active"],
+      },
+
+      // ── Abstraction discipline ───────────────────────────────────────
+      {
+        // BP-X1 — consistent level of abstraction
+        summary:
+          "Actions within one process sit at a consistent level of abstraction. Mixing a fine-grained step (`Verify VAT checksum`) with a coarse one (`Onboard customer`) in the same process is a modeling smell — either split or roll up.",
+        predicate: {
+          kind: "probabilistic",
+          when_node_type: ["action"],
+          spec: "Check whether the Action's verb/summary scale is consistent with the other Actions in the same scope. A scope mixing 'Verify VAT checksum' (line-level technical detail) with 'Onboard customer' (multi-day business outcome) fails — both Actions cannot live at the right altitude simultaneously. If the Action being judged sits comfortably alongside its siblings, PASS.",
+        },
+      },
+
+      // ── Eval shape ───────────────────────────────────────────────────
+      {
+        // BP-E1
+        summary:
+          "Every Eval in #business-processes must populate `target_ref` — the claim, Rule, or Action it tests.",
+        predicate: {
+          kind: "requires_field",
+          fields: ["target_ref"],
+          when_node_type: ["eval"],
+        },
+      },
+      {
+        // BP-E2 — Evals test process-critical claims
+        summary:
+          "Evals in #business-processes test process-critical claims: completeness (all listed actors play a part), required handoffs (output X reaches input Y), SLA behavior, branch coverage, or policy compliance. Decorative 'this should work' evals don't earn their keep.",
+        predicate: {
+          kind: "probabilistic",
+          when_node_type: ["eval"],
+          spec: "Check whether the Eval's description and criterion test something process-critical: an enumerated completeness property, a required handoff resolution, an SLA bound, a branch coverage check, or a policy compliance assertion. FAIL for vague evals ('the process works', 'no bugs') that don't pin a specific claim.",
+        },
+      },
+
+      // ── Reference shape ──────────────────────────────────────────────
+      {
+        // BP-R1 — authoritative References
+        summary:
+          "References in #business-processes are authoritative sources for the modeled process (policy documents, regulatory citations, recorded-run Logs in a sibling Doco). Decorative links fail.",
+        predicate: {
+          kind: "probabilistic",
+          when_node_type: ["reference"],
+          spec: "Check whether the Reference is authoritative for the modeled process — a policy document, regulatory citation, vendor specification, or pointer to a sibling Doco that stores recorded process instances (Logs). FAIL for decorative links (a blog post, a tangentially related article) that don't ground a specific claim in the process.",
+        },
+      },
+
+      // ── Guidance (prose, no predicate) ───────────────────────────────
+      {
+        kind: "guidance",
+        summary:
+          "Model a repeatable business process producing a business outcome — not a UI journey (#user-flows), a code path (#apis / #adrs), a one-off incident, or a pure state machine without a business outcome (#state-machines).",
+      },
+      {
+        kind: "guidance",
+        summary:
+          "Use one child scope per concrete process when the process is large (e.g. `#customer-onboarding` under `#business-processes`). Small processes share the parent scope; split when crossing a durable ownership boundary, becoming reusable, or outgrowing one readable diagram.",
+      },
+      {
+        kind: "guidance",
+        summary:
+          "Edge vocabulary: `follows` for process order (Action → State, State → Action), `triggered_by` for event causality between Actions, `gated_by` for policy/precondition guards (Action → Rule), `decision_ids` on Actions for gateway rationale.",
+      },
+      {
+        kind: "guidance",
+        summary:
+          "Write the happy path first, then exceptions, compensation, rollback, cancellation, and escalation paths. Exception, cancellation, refund, rejection, or escalation Actions cite a Decision or Rule explaining why the path exists.",
+      },
+      {
+        kind: "guidance",
+        summary:
+          "Sub-processes invoked from this process are themselves process scopes — reference them by their purpose Intent (via `intent_ids` or a body link), not by inlining their steps.",
+      },
+      {
+        kind: "guidance",
+        summary:
+          "Process instances (recorded runs, executions) live in a separate Doco as Logs and are surfaced here only via References. This template describes the design, not the history.",
+      },
+      {
+        kind: "guidance",
+        summary:
+          "Rules in this scope are process policies and guards (e.g. 'refunds above $5k require manager approval'). Template-authoring rules belong in the template definition (or in #global), not in any process that uses the template.",
+      },
+      {
+        kind: "guidance",
+        summary:
+          "Make handoffs explicit: the producing Action's `outputs` should line up with the consuming Action's `inputs`. Implicit shared state ('the request', 'the customer record') hides where work is actually exchanged.",
+      },
+      {
+        kind: "guidance",
+        summary:
+          "Do not model every click, method call, or database mutation unless it is meaningful to business operators. The acid test: would a non-engineering operator recognize this step as a thing they do?",
       },
     ],
   },
