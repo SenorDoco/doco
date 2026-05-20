@@ -2,8 +2,8 @@
 // dashboard and owner-profile docos tables.
 //
 // Nodes counts every entity row tied to a Doco (decisions + intents +
-// rules + actions + evals + ideas + scopes +
-// reference_entities). Edges reads the materialized `edges` table.
+// rules + actions + evals + ideas + reference_entities + logs + states).
+// Edges reads the materialized `edges` table.
 // Last updated is the max `at` from `audit_events` — that captures both
 // inserts and updates and is cheap because audit_events is already
 // indexed by doco_id.
@@ -16,14 +16,13 @@ export interface DocoStats {
   lastUpdatedAt: string | null;
 }
 
-const ENTITY_TABLES = [
+export const ENTITY_TABLES = [
   "decisions",
   "intents",
   "rules",
   "actions",
   "evals",
   "ideas",
-  "scopes",
   "reference_entities",
   "logs",
   // v7 (decision_01KRRR5BQ16ASY8HQEE0V499YG): State node type.
