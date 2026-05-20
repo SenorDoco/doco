@@ -242,7 +242,6 @@ function allNodesSearchPath(handle: string): string {
   const params = new URLSearchParams();
   params.set("node_type", "*");
   params.set("lifecycle", "*");
-  params.set("scope", "*");
   params.set("limit", "500");
   return `/${handle}/search?${params.toString()}`;
 }
@@ -251,20 +250,14 @@ function nodeTypeSearchPath(handle: string, nodeType: string): string {
   const params = new URLSearchParams();
   params.set("node_type", nodeType);
   params.set("lifecycle", "*");
-  params.set("scope", "*");
   params.set("limit", "500");
   return `/${handle}/search?${params.toString()}`;
-}
-
-function scopeDetailPath(handle: string, scopeId: string): string {
-  return `/${handle}/scopes/${scopeId}`;
 }
 
 function lifecycleSearchPath(handle: string, lifecycle: string): string {
   const params = new URLSearchParams();
   params.set("lifecycle", lifecycle);
   params.set("node_type", "*");
-  params.set("scope", "*");
   params.set("limit", "500");
   return `/${handle}/search?${params.toString()}`;
 }
@@ -326,20 +319,6 @@ export default function DocoHome({
   const allSearchHref = allNodesSearchPath(handle);
 
   const sections: NodesOverviewSection[] = [
-    {
-      title: "Scopes",
-      items: facets.scope
-        .filter((s) => s.lifecycle === "active")
-        .map((s) => ({
-          key: `scope-${s.name}`,
-          href: scopeDetailPath(handle, s.id),
-          label: s.name,
-          icon: s.icon ?? undefined,
-          count: s.count,
-          ariaLabel: `Open scope ${s.name}`,
-          updatedAt: s.updatedAt,
-        })),
-    },
     {
       title: "Node types",
       items: facets.nodeType.map((t) => ({
