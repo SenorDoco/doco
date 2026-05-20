@@ -1,7 +1,11 @@
 # Local index cache — per-clone, regenerable, never source-of-truth (D-023).
 # Includes seq.json + cache.db. The audit log moved to Postgres
-# (rule_01KRKQDHWNWJAF4YKTMCB2A0D9).
-.doco/
+# (rule_01KRKQDHWNWJAF4YKTMCB2A0D9). Files-not-directory pattern so the
+# v13 connections pointer file (.doco/connections.md) can be re-included.
+.doco/*
+# v13: the connections pointer file IS committed
+# (decision_01KS3DX190V93NGR3QQ37J8TVQ). Replaces the legacy DOCO.md.
+!.doco/connections.md
 
 # Node / TypeScript
 node_modules/
