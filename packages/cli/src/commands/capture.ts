@@ -38,7 +38,6 @@ async function postCapture(
     | "intents"
     | "decisions"
     | "evals"
-    | "scopes"
     | "actions"
     | "logs"
     | "rules"
@@ -93,11 +92,6 @@ const intentCmd = defineCommand({
       description: "Required. One-line 'what someone wants' summary.",
       required: true,
     },
-    scope: {
-      type: "string",
-      description: "Required. Comma-separated scope names (bare, e.g. 'framework,user-flows').",
-      required: true,
-    },
     title: { type: "string", description: "Optional short title (defaults to summary)." },
     "body-md": { type: "string", description: "Optional markdown body (inline string)." },
     "body-md-file": {
@@ -113,7 +107,6 @@ const intentCmd = defineCommand({
   async run({ args }) {
     const body: Record<string, unknown> = {
       summary: args.summary,
-      scope_names: splitList(args.scope as string),
     };
     if (args.title) body.title = args.title;
     const bodyMd = readBody(
@@ -141,11 +134,6 @@ const decisionCmd = defineCommand({
     chosen: {
       type: "string",
       description: "Required. The chosen resolution (multi-line ok).",
-      required: true,
-    },
-    scope: {
-      type: "string",
-      description: "Required. Comma-separated scope names.",
       required: true,
     },
     summary: {
@@ -177,7 +165,6 @@ const decisionCmd = defineCommand({
     const body: Record<string, unknown> = {
       question: args.question,
       chosen: args.chosen,
-      scope_names: splitList(args.scope as string),
     };
     if (args.summary) body.summary = args.summary;
     const intents = splitList(args["intent-id"] as string | undefined);
@@ -206,11 +193,6 @@ const evalCmd = defineCommand({
   },
   args: {
     name: { type: "string", description: "Required. Human-readable name.", required: true },
-    scope: {
-      type: "string",
-      description: "Required. Comma-separated scope names.",
-      required: true,
-    },
     "criterion-kind": {
       type: "string",
       description: "Required. One of: exact | shape | llm-judge.",
@@ -252,7 +234,6 @@ const evalCmd = defineCommand({
     if (args["criterion-spec"]) criterion.spec = args["criterion-spec"];
     const body: Record<string, unknown> = {
       name: args.name,
-      scope_names: splitList(args.scope as string),
       criterion,
     };
     if (args.summary) body.summary = args.summary;
@@ -275,84 +256,6 @@ const evalCmd = defineCommand({
   },
 });
 
-const scopeCmd = defineCommand({
-  meta: {
-    name: "scope",
-    description:
-      "Create a Scope (POST /by-id/<doco_id>/api/scopes.json). Per ADR-137bis every scope-creation call must declare --watched true or false — no default.",
-  },
-  args: {
-    watched: {
-      type: "string",
-      description:
-        "Required. 'true' → soft attention signal: contributors should proactively look for opportunities to document into this scope. 'false' → available but no extra prompt. NOT hard enforcement (use mandatory_scope Constitution rules for that). No default per ADR-137bis.",
-      required: true,
-    },
-    "template-name": {
-      type: "string",
-      description:
-        "Optional. Install a default template. The framework ships two: 'global' (auto-installed at Doco create) and 'user-flows'. Mutually exclusive with --name.",
-    },
-    name: {
-      type: "string",
-      description: "Required if --template-name absent. Lowercase letter-start, no slashes.",
-    },
-    icon: { type: "string", description: "Optional single emoji." },
-    purpose: {
-      type: "string",
-      description: "Required if --template-name absent. What this scope is for.",
-    },
-    guidelines: {
-      type: "string",
-      description:
-        "Deprecated; ignored. Add scope rules after creation with `doco scope add-rule`.",
-    },
-    "guidelines-file": {
-      type: "string",
-      description:
-        "Deprecated; ignored. Add scope rules after creation with `doco scope add-rule`.",
-    },
-    "parent-id": {
-      type: "string",
-      description: "Optional id of an existing scope to nest this one under.",
-    },
-  },
-  async run({ args }) {
-    const watchedRaw = String(args.watched ?? "").toLowerCase();
-    if (watchedRaw !== "true" && watchedRaw !== "false") {
-      console.error(
-        cross("--watched must be 'true' or 'false'. No default per ADR-137bis — pick one."),
-      );
-      process.exit(2);
-    }
-    const watched = watchedRaw === "true";
-    const templateName = (args["template-name"] as string | undefined)?.trim();
-    const name = (args.name as string | undefined)?.trim();
-    if (!templateName && !name) {
-      console.error(cross("Pass either --template-name or --name."));
-      process.exit(2);
-    }
-    if (templateName && name) {
-      console.error(cross("Pass only one of --template-name or --name."));
-      process.exit(2);
-    }
-    const body: Record<string, unknown> = { watched };
-    if (templateName) {
-      body.template_name = templateName;
-    } else {
-      body.name = name;
-      if (args.icon) body.icon = args.icon;
-      if (!args.purpose) {
-        console.error(cross("Pass --purpose when creating a custom scope."));
-        process.exit(2);
-      }
-      body.purpose = args.purpose;
-      if (args["parent-id"]) body.parent_id = args["parent-id"];
-    }
-    await postCapture("scopes", body);
-  },
-});
-
 const actionCmd = defineCommand({
   meta: {
     name: "action",
@@ -362,11 +265,6 @@ const actionCmd = defineCommand({
     summary: {
       type: "string",
       description: "Required. One-line 'what was done' summary.",
-      required: true,
-    },
-    scope: {
-      type: "string",
-      description: "Required. Comma-separated scope names.",
       required: true,
     },
     verb: {
@@ -403,7 +301,6 @@ const actionCmd = defineCommand({
   async run({ args }) {
     const body: Record<string, unknown> = {
       summary: args.summary,
-      scope_names: splitList(args.scope as string),
       verb: args.verb,
     };
     const intents = splitList(args["intent-id"] as string | undefined);
@@ -437,11 +334,6 @@ const logCmd = defineCommand({
     summary: {
       type: "string",
       description: "Required. One-line summary of what happened.",
-      required: true,
-    },
-    scope: {
-      type: "string",
-      description: "Required. Comma-separated scope names.",
       required: true,
     },
     verb: {
@@ -496,7 +388,6 @@ const logCmd = defineCommand({
     }
     const body: Record<string, unknown> = {
       summary: args.summary,
-      scope_names: splitList(args.scope as string),
       verb: args.verb,
       happened_at: args["happened-at"],
       outputs,
@@ -528,11 +419,6 @@ const ruleCmd = defineCommand({
   },
   args: {
     summary: { type: "string", description: "Required. One-line policy summary.", required: true },
-    scope: {
-      type: "string",
-      description: "Required. Comma-separated scope names.",
-      required: true,
-    },
     predicate: {
       type: "string",
       description: "Required. The machine-checkable / prose predicate the Rule asserts.",
@@ -574,7 +460,6 @@ const ruleCmd = defineCommand({
     }
     const body: Record<string, unknown> = {
       summary: args.summary,
-      scope_names: splitList(args.scope as string),
       predicate: args.predicate,
     };
     const intents = splitList(args["intent-id"] as string | undefined);
@@ -609,11 +494,6 @@ const referenceCmd = defineCommand({
       description: "Required. The pointer itself — path, URL, ticket id, commit sha, document id.",
       required: true,
     },
-    scope: {
-      type: "string",
-      description: "Required. Comma-separated scope names.",
-      required: true,
-    },
     summary: {
       type: "string",
       description: "Optional one-line summary; derived from ref-type + locator if absent.",
@@ -641,7 +521,6 @@ const referenceCmd = defineCommand({
     const body: Record<string, unknown> = {
       ref_type: args["ref-type"],
       locator: args.locator,
-      scope_names: splitList(args.scope as string),
     };
     if (args.summary) body.summary = args.summary;
     if (args["content-hash"]) body.content_hash = args["content-hash"];
@@ -662,17 +541,12 @@ const stateCmd = defineCommand({
   meta: {
     name: "state",
     description:
-      "Capture a State (POST /by-id/<doco_id>/api/states.json). Per v7 (decision_01KRRR5BQ16ASY8HQEE0V499YG) — a node in a formal state machine. The state-machines template uses these heavily, but any scope can hold States.",
+      "Capture a State (POST /by-id/<doco_id>/api/states.json). Per v7 (decision_01KRRR5BQ16ASY8HQEE0V499YG) — a node in a formal state machine. The state-machines template uses these heavily; any Doco can hold States.",
   },
   args: {
     summary: {
       type: "string",
       description: "Required. The State's display name ('paid', 'cart', 'cancelled').",
-      required: true,
-    },
-    scope: {
-      type: "string",
-      description: "Required. Comma-separated scope names.",
       required: true,
     },
     kind: {
@@ -702,7 +576,7 @@ const stateCmd = defineCommand({
     lifecycle: {
       type: "string",
       description:
-        "Optional. When unset, the State's lifecycle defaults to the capturing scope's `default_node_lifecycle` (with inheritance) — `drafted` for the state-machines template, otherwise `active`.",
+        "Optional. When unset, the State's lifecycle defaults to the Doco's `default_node_lifecycle` (set by the template chosen at create time) — `drafted` for the state-machines template, otherwise `active`.",
     },
   },
   async run({ args }) {
@@ -715,7 +589,6 @@ const stateCmd = defineCommand({
     }
     const body: Record<string, unknown> = {
       summary: args.summary,
-      scope_names: splitList(args.scope as string),
       kind,
     };
     const invariants = splitList(args.invariant as string | undefined);
@@ -737,7 +610,7 @@ export const captureCmd = defineCommand({
   meta: {
     name: "capture",
     description:
-      "Capture a node (Intent / Decision / Action / Log / Rule / Eval / Scope / Reference / State) via doco.to's POST endpoints. Reads DOCO_ACCESS from env or ./.env and the Doco URL from DOCO.md. Prints the response's footer_lines to stdout.",
+      "Capture a node (Intent / Decision / Action / Log / Rule / Eval / Reference / State) via doco.to's POST endpoints. Reads DOCO_ACCESS from env or ./.env and the Doco URL from DOCO.md. Prints the response's footer_lines to stdout.",
   },
   subCommands: {
     intent: intentCmd,
@@ -746,7 +619,6 @@ export const captureCmd = defineCommand({
     log: logCmd,
     rule: ruleCmd,
     eval: evalCmd,
-    scope: scopeCmd,
     reference: referenceCmd,
     state: stateCmd,
   },

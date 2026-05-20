@@ -26,7 +26,6 @@ const PLURAL_BY_TYPE: Record<string, string> = {
   action: "actions",
   rule: "rules",
   reference: "references",
-  scope: "scopes",
 };
 
 function splitList(s: string | undefined): string[] {
@@ -76,7 +75,7 @@ async function sendPatch(type: string, id: string, body: Record<string, unknown>
   if (Object.keys(body).length === 0) {
     console.error(
       cross(
-        "Nothing to patch. Pass at least one of: --append-body / --body / --summary / --purpose / --scope / --add-scope / --remove-scope / --lifecycle / --superseded-by / --add-intent / --remove-intent.",
+        "Nothing to patch. Pass at least one of: --append-body / --body / --summary / --purpose / --lifecycle / --superseded-by / --add-intent / --remove-intent.",
       ),
     );
     process.exit(2);
@@ -125,7 +124,7 @@ async function sendPatch(type: string, id: string, body: Record<string, unknown>
   }
 }
 
-function buildPatchBody(type: string, args: Record<string, unknown>): Record<string, unknown> {
+function buildPatchBody(_type: string, args: Record<string, unknown>): Record<string, unknown> {
   const body: Record<string, unknown> = {};
 
   const appendBody = readBody(
@@ -144,22 +143,11 @@ function buildPatchBody(type: string, args: Record<string, unknown>): Record<str
   if (replaceBody !== undefined) body.body_md = replaceBody;
 
   if (args.summary) {
-    if (type === "scope") {
-      console.error(cross("Scope nodes use --purpose; --summary is not accepted for scopes."));
-      process.exit(2);
-    }
     body.summary = args.summary;
   }
   if (args.purpose) body.purpose = args.purpose;
   if (args.lifecycle) body.lifecycle = args.lifecycle;
   if (args["superseded-by"] !== undefined) body.superseded_by = args["superseded-by"];
-
-  const replaceScopes = splitList(args.scope as string | undefined);
-  if (args.scope !== undefined) body.scope_names = replaceScopes;
-  const addScopes = splitList(args["add-scope"] as string | undefined);
-  if (addScopes.length) body.scope_names_add = addScopes;
-  const removeScopes = splitList(args["remove-scope"] as string | undefined);
-  if (removeScopes.length) body.scope_names_remove = removeScopes;
 
   const addIntents = splitList(args["add-intent"] as string | undefined);
   if (addIntents.length) body.intent_ids_add = addIntents;
@@ -194,7 +182,7 @@ const commonArgs = {
   },
   purpose: {
     type: "string" as const,
-    description: "Replace a scope's purpose.",
+    description: "Replace the entity's purpose (legacy — ignored after v16; use --summary).",
   },
   lifecycle: {
     type: "string" as const,
@@ -204,19 +192,6 @@ const commonArgs = {
     type: "string" as const,
     description:
       "Record the supersession edge: id of the entity that replaces this one. Allowed on frozen claims (per the mutability gate). Pair with --lifecycle superseded for the full supersession transition.",
-  },
-  scope: {
-    type: "string" as const,
-    description:
-      "Comma-separated scope names; REPLACES the entity's full scope list. Use --add-scope / --remove-scope for incremental edits.",
-  },
-  "add-scope": {
-    type: "string" as const,
-    description: "Comma-separated scope names to add.",
-  },
-  "remove-scope": {
-    type: "string" as const,
-    description: "Comma-separated scope names to remove.",
   },
   "add-intent": {
     type: "string" as const,
@@ -229,14 +204,6 @@ const commonArgs = {
 };
 
 function makeTypedSubcommand(type: string) {
-  const argsForType =
-    type === "scope"
-      ? (() => {
-          const { summary: _summary, ...rest } = commonArgs;
-          void _summary;
-          return rest;
-        })()
-      : commonArgs;
   return defineCommand({
     meta: {
       name: type,
@@ -248,7 +215,7 @@ function makeTypedSubcommand(type: string) {
         description: `The ${type}'s ULID (e.g. '${type}_01KR…').`,
         required: true,
       },
-      ...argsForType,
+      ...commonArgs,
     },
     async run({ args }) {
       const id = String(args.id);
@@ -270,7 +237,6 @@ export const patchCmd = defineCommand({
     action: makeTypedSubcommand("action"),
     rule: makeTypedSubcommand("rule"),
     reference: makeTypedSubcommand("reference"),
-    scope: makeTypedSubcommand("scope"),
   },
 });
 
