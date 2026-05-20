@@ -1,14 +1,5 @@
-import { NODE_TABLES, getDocoById, getEntity, upsertEntity, withClient } from "@doco/db";
+import { getDocoById, getEntity, upsertEntity, withClient } from "@doco/db";
 import { generateUlid } from "@doco/shared";
-import type { AuthoringPredicate, EngineEdge, Entity, Lifecycle, Scope } from "@doco/shared";
-import {
-  computeEffectiveDefaultLifecycle,
-  computeEffectiveGatedBy,
-  evaluateScopeRules,
-  globalScopeMembershipViolation,
-  hardWrittenDocoRuleViolations,
-  shouldRunAuthoringRuleForEntity,
-} from "@doco/shared";
 import { waitUntil } from "@vercel/functions";
 // Server-only helpers for "capture an entity" endpoints. Single-call API
 // for agents/people to write a Decision (or other entity types) without
@@ -16,16 +7,13 @@ import { waitUntil } from "@vercel/functions";
 //
 // Identifiers: every node has exactly one id — the ULID. URLs use the
 // ULID; agents/users read the readable field (`summary` for most nodes,
-// `purpose` for scopes) for the human handle.
-import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
+// `purpose` for scopes — kept while scopes existed; v16 removed the
+// node type itself but the field naming stays for back-compat).
 import { appendAuditEvent } from "./audit-log.server";
-import { rootDir } from "./db.server";
-import { LlmUnavailableError, judgeProbabilisticRule, suggestImplicitEdges } from "./llm.server";
-import { ensureScopeHashtagPrefixMigration } from "./migrations/scope-hashtag-prefix.server";
-import { ensureV7Migration } from "./migrations/v7.server";
+import { suggestImplicitEdges } from "./llm.server";
 import { validatePatch } from "./mutability.server";
 import { reindex, reindexEmbeddingsOnly } from "./redeem.server";
-import { readDocoMetadata, resolveScopeIcons } from "./scope-helpers.server";
+import { readDocoMetadata } from "./scope-helpers.server";
 
 /**
  * Synthetic "path" returned in CaptureResult.path. Postgres is the only
@@ -240,15 +228,13 @@ function trunc(s: string, cap = TRUNC): string {
 /**
  * Render one footer line per operation.
  *
- * Format: `[🔮 Doco] {icon} {Type} {verb}: {body} — {scope-suffix}`
+ * Format: `[🔮 Doco] {icon} {Type} {verb}: {body}`
  *
  *   - Both `added` and mutation ops render `[<summary>](<url>)` as the
  *     body anchor. Mutations append `.<field> <change>` after the link.
  *   - The URL is built from the entity's ULID id. Readers see the
  *     summary; the id lives in the URL.
- *   - Scope tail (` — <icon> <name>, …`) is omitted when no scopes.
- *   - Timing trailer ` (X.Xs)` lands AFTER the scope tail on the last
- *     line of a batch (appended at end of function).
+ *   - Timing trailer ` (X.Xs)` is appended on the last line of a batch.
  */
 
 function capType(t: string): string {
@@ -287,7 +273,6 @@ export async function renderOperationLines(opts: {
    */
   docoHost?: string;
   ops: Op[];
-  scopes?: { name: string; icon?: string }[];
   duration_ms?: number;
 }): Promise<string[]> {
   const Type = capType(opts.nodeType);
@@ -306,10 +291,6 @@ export async function renderOperationLines(opts: {
     handle = `${opts.ownerSlug}-${opts.docoSlug}`;
   }
   const linkUrl = opts.docoHost ? `${opts.docoHost}/${handle}/${opts.nodeType}/${opts.id}` : null;
-  const scopeSuffix =
-    opts.scopes && opts.scopes.length > 0
-      ? ` — ${opts.scopes.map((s) => (s.icon ? `${s.icon} ${s.name}` : s.name)).join(", ")}`
-      : "";
   const buildAnchor = (summaryForLine: string): string => {
     const text = trunc(summaryForLine);
     return linkUrl ? `[${mdLinkText(text)}](${linkUrl})` : text;
@@ -328,25 +309,25 @@ export async function renderOperationLines(opts: {
   const lines = opts.ops.map((op) => {
     switch (op.kind) {
       case "added":
-        return `[🔮 Doco] ✍️ ${Type} added: ${buildAnchor(op.summary)}${scopeSuffix}`;
+        return `[🔮 Doco] ✍️ ${Type} added: ${buildAnchor(op.summary)}`;
       case "set":
-        return `[🔮 Doco] 📝 ${Type} updated: ${mutationAnchor()}.${op.field} set to "${trunc(op.value, 100)}"${scopeSuffix}`;
+        return `[🔮 Doco] 📝 ${Type} updated: ${mutationAnchor()}.${op.field} set to "${trunc(op.value, 100)}"`;
       case "cleared":
-        return `[🔮 Doco] 🧹 ${Type} updated: ${mutationAnchor()}.${op.field} cleared${scopeSuffix}`;
+        return `[🔮 Doco] 🧹 ${Type} updated: ${mutationAnchor()}.${op.field} cleared`;
       case "added_to":
-        return `[🔮 Doco] ➕ ${Type} updated: ${mutationAnchor()}.${op.field} added: ${op.names.join(", ")}${scopeSuffix}`;
+        return `[🔮 Doco] ➕ ${Type} updated: ${mutationAnchor()}.${op.field} added: ${op.names.join(", ")}`;
       case "removed_from":
-        return `[🔮 Doco] ➖ ${Type} updated: ${mutationAnchor()}.${op.field} removed: ${op.names.join(", ")}${scopeSuffix}`;
+        return `[🔮 Doco] ➖ ${Type} updated: ${mutationAnchor()}.${op.field} removed: ${op.names.join(", ")}`;
       case "replaced_list":
-        return `[🔮 Doco] 🔁 ${Type} updated: ${mutationAnchor()}.${op.field} replaced with: ${op.names.join(", ")}${scopeSuffix}`;
+        return `[🔮 Doco] 🔁 ${Type} updated: ${mutationAnchor()}.${op.field} replaced with: ${op.names.join(", ")}`;
       case "replaced_body":
-        return `[🔮 Doco] 🔁 ${Type} updated: ${mutationAnchor()}.body replaced${scopeSuffix}`;
+        return `[🔮 Doco] 🔁 ${Type} updated: ${mutationAnchor()}.body replaced`;
       case "appended_body":
-        return `[🔮 Doco] ➕ ${Type} updated: ${mutationAnchor()}.body appended: ${trunc(op.preview, 100)}${scopeSuffix}`;
+        return `[🔮 Doco] ➕ ${Type} updated: ${mutationAnchor()}.body appended: ${trunc(op.preview, 100)}`;
       case "renamed":
-        return `[🔮 Doco] 🏷️ ${Type} renamed: ${op.from} → ${buildAnchor(op.to)}${scopeSuffix}`;
+        return `[🔮 Doco] 🏷️ ${Type} renamed: ${op.from} → ${buildAnchor(op.to)}`;
       case "deleted":
-        return `[🔮 Doco] 🗑️ ${Type} deleted: ${buildAnchor(opts.summary)}${scopeSuffix}`;
+        return `[🔮 Doco] 🗑️ ${Type} deleted: ${buildAnchor(opts.summary)}`;
     }
   });
   if (typeof opts.duration_ms === "number" && lines.length > 0) {
@@ -393,7 +374,7 @@ function emitAuditForUpdate(opts: {
     op = "lifecycle.transition";
   } else {
     const hasAddPatch = patchKeys.some((k) => k.endsWith("_add"));
-    const allChangesAreEdges = changed.every((f) => f === "scopes" || f === "intent_ids");
+    const allChangesAreEdges = changed.every((f) => f === "intent_ids");
     op = hasAddPatch && allChangesAreEdges ? "edge.add" : "entity.update";
   }
 
@@ -470,179 +451,48 @@ function distillSummary(body: string, cap = 180): string {
 }
 
 /**
- * Map a list of bare scope names to their entity ids by reading the
- * Doco's scopes/ directory.
+ * v16 (decision_01KS3DW9C2KN2X7Z80R18H1RAX): the scopes concept is
+ * gone. This used to map bare scope names to scope_<ULID> ids by
+ * reading a per-Doco scopes table.
+ *
+ * Kept exported as a no-op because `api-capture-factory.server.ts`
+ * still imports it. Returns empty arrays so the factory's early-return
+ * branch ("no resolved scopes → caller produces a clearer error")
+ * fires. Drop the export once that import is gone.
  */
-// A scope becomes unavailable for new captures when its lifecycle is
-// `abandoned` (no replacement) or `superseded` (replaced by another scope).
-// Both keep the scope record around so existing references stay readable.
-const UNAVAILABLE_SCOPE_LIFECYCLES: ReadonlySet<string> = new Set(["abandoned", "superseded"]);
-
 export async function resolveScopeNames(
-  docoDir: string,
-  names: string[],
+  _docoDir: string,
+  _names: string[],
 ): Promise<{
   ids: string[];
   unknown: string[];
   available: string[];
   unavailable: string[];
 }> {
-  const ids: string[] = [];
-  const unknown: string[] = [];
-  const unavailable: string[] = [];
-  const available: string[] = [];
-  const byName = new Map<string, { id: string; lifecycle: string }>();
-  const meta = await readDocoMetadata(docoDir);
-  if (meta?.docoId) {
-    try {
-      await withClient(async (c) => {
-        const rows = (
-          await c.query<{ id: string; name: string; raw_yaml: string }>(
-            `SELECT id, name, raw_yaml FROM scopes WHERE doco_id = $1`,
-            [meta.docoId],
-          )
-        ).rows;
-        for (const r of rows) {
-          let lifecycle = "active";
-          try {
-            const e = parseYaml(r.raw_yaml) as { lifecycle?: string };
-            if (typeof e?.lifecycle === "string") lifecycle = e.lifecycle;
-          } catch {}
-          byName.set(r.name, { id: r.id, lifecycle });
-          if (!UNAVAILABLE_SCOPE_LIFECYCLES.has(lifecycle)) available.push(r.name);
-        }
-      });
-    } catch {
-      // PG unreachable — fall through with empty maps.
-    }
-  }
-  for (const n of names) {
-    const entry = byName.get(n);
-    if (!entry) {
-      unknown.push(n);
-      continue;
-    }
-    ids.push(entry.id);
-    if (UNAVAILABLE_SCOPE_LIFECYCLES.has(entry.lifecycle)) unavailable.push(n);
-  }
-  available.sort();
-  return { ids, unknown, available, unavailable };
+  return { ids: [], unknown: [], available: [], unavailable: [] };
 }
 
 /**
- * Resolve scope names → ids, returning a typed error if any are missing or
- * unavailable. Centralizes the boilerplate that all three captures + every
- * list-op share.
- *
- * When `incomingNodeType` is provided, also enforces per-scope
- * `allowed_node_types` (decision_01KRYECEA32SRSQCKFXSDCBK67,
- * rule_01KRYED1VAT3STXX6XP2GTP7V0): if any resolved scope's manifest
- * restricts the accepted node types and the incoming type isn't in the
- * allowlist, the capture is rejected. Driven by a generic attribute any
- * scope can carry (not a name check) so the framework's no-name-based-
- * behavior rule stays satisfied.
+ * v16: no-op scope resolver. Returns an empty id list so the capture
+ * functions skip every downstream scope check without short-circuiting
+ * their normal flow.
  */
 async function resolveScopeOrError(
-  docoDir: string,
-  names: string[] | undefined,
-  context: {
-    verb: "tag" | "replace" | "add";
-    nodeKind?: string;
-    incomingNodeType?: string;
-  },
+  _docoDir: string,
+  _names: string[] | undefined,
+  _context: { verb: "tag" | "replace" | "add"; nodeKind?: string; incomingNodeType?: string },
 ): Promise<{ ids: string[] } | CaptureError> {
-  // v15 (decision_01KS3DW9C2KN2X7Z80R18H1RAX): scope_names is
-  // optional on captures. No names → no scope tagging; capture
-  // proceeds with an empty scope id list. New v15 docos have no
-  // scopes; sending scope_names on them is a no-op.
-  if (!names || names.length === 0) return { ids: [] };
-  const { ids, unknown, available, unavailable } = await resolveScopeNames(docoDir, names);
-  if (unknown.length > 0) {
-    const availStr =
-      available.join(", ") || "(none — create scopes first via /<doco-handle>/scopes/new)";
-    return { error: `Unknown scope name(s): ${unknown.join(", ")}. Available: ${availStr}` };
-  }
-  if (unavailable.length > 0) {
-    if (context.verb === "tag") {
-      const noun = context.nodeKind ?? "node";
-      return {
-        error: `Cannot tag a new ${noun} with abandoned or superseded scope(s): ${unavailable.join(", ")}. Activate the scope first or pick a different one. Available active scopes: ${available.join(", ")}`,
-      };
-    }
-    if (context.verb === "replace") {
-      return {
-        error: `Cannot replace scopes with abandoned or superseded one(s): ${unavailable.join(", ")}. Activate first or omit them.`,
-      };
-    }
-    return {
-      error: `Cannot add abandoned or superseded scope(s) to a node: ${unavailable.join(", ")}. Activate first or pick a different scope.`,
-    };
-  }
-  if (context.incomingNodeType && ids.length > 0) {
-    const offenders = await findScopesRejectingNodeType(docoDir, ids, context.incomingNodeType);
-    if (offenders.length > 0) {
-      const lines = offenders.map((o) => `${o.name} (accepts only ${o.allowed.join(", ")})`);
-      return {
-        error: `Cannot tag a ${context.incomingNodeType} into ${lines.join("; ")}.`,
-      };
-    }
-  }
-  return { ids };
-}
-
-/**
- * Look up which of the given scope ids carry `allowed_node_types` that
- * exclude `incomingNodeType`. Returns scope name + allowed list for each
- * offender so the caller can build a readable error.
- */
-async function findScopesRejectingNodeType(
-  docoDir: string,
-  scopeIds: string[],
-  incomingNodeType: string,
-): Promise<{ id: string; name: string; allowed: string[] }[]> {
-  if (scopeIds.length === 0) return [];
-  const meta = await readDocoMetadata(docoDir);
-  if (!meta?.docoId) return [];
-  const offenders: { id: string; name: string; allowed: string[] }[] = [];
-  try {
-    await withClient(async (c) => {
-      const rows = (
-        await c.query<{ id: string; name: string; raw_yaml: string }>(
-          `SELECT id, name, raw_yaml FROM scopes WHERE doco_id = $1 AND id = ANY($2::text[])`,
-          [meta.docoId, scopeIds],
-        )
-      ).rows;
-      for (const r of rows) {
-        let allowed: string[] = [];
-        try {
-          const fm = parseYaml(r.raw_yaml) as { allowed_node_types?: unknown };
-          if (Array.isArray(fm?.allowed_node_types)) {
-            allowed = (fm.allowed_node_types as unknown[]).filter(
-              (v): v is string => typeof v === "string",
-            );
-          }
-        } catch {}
-        if (allowed.length === 0) continue;
-        if (allowed.includes(incomingNodeType)) continue;
-        offenders.push({ id: r.id, name: r.name, allowed });
-      }
-    });
-  } catch {
-    // PG unreachable — fail open; the scope-row read will fail elsewhere
-    // and the user will see a clearer error from that path.
-  }
-  return offenders;
+  return { ids: [] };
 }
 
 /**
  * Apply the three list-op shapes (replace / add / remove) for a single
  * frontmatter field. Returns the ops emitted (for footer rendering) and
  * the list of changed-keys. Used by `updateDecision` + `updateEntity`
- * for both `scopes` and `intent_ids` lists.
+ * for the `intent_ids` list.
  *
- * `lookup` translates the input names to the ids Postgres stores:
- *   - for scopes:   name → scope_<ULID> (uses resolveScopeNames)
- *   - for intents:  the input IS the id (pass-through)
+ * `lookup` translates the input names to the ids Postgres stores;
+ * `intent_ids` are already ids so the callback is a pass-through.
  */
 async function applyListOp(
   fm: Record<string, unknown>,
@@ -722,456 +572,29 @@ export async function resolvePrincipalUsername(username: string): Promise<string
   }
 }
 
-async function loadAllScopes(docoDir: string): Promise<Map<string, Scope>> {
-  const scopes = new Map<string, Scope>();
-  const meta = await readDocoMetadata(docoDir);
-  if (!meta?.docoId) return scopes;
-  try {
-    await withClient(async (c) => {
-      const r = await c.query<{ raw_yaml: string }>(
-        `SELECT raw_yaml FROM scopes WHERE doco_id = $1`,
-        [meta.docoId],
-      );
-      for (const row of r.rows) {
-        try {
-          const e = parseYaml(row.raw_yaml) as Record<string, unknown>;
-          if (e && typeof e.id === "string") scopes.set(e.id, e as unknown as Scope);
-        } catch {}
-      }
-    });
-  } catch {
-    // PG unreachable — return empty.
-  }
-  return scopes;
-}
-
-function findGlobalScope(allScopes: Map<string, Scope>): Scope | null {
-  for (const s of allScopes.values()) {
-    const name = (s as unknown as Record<string, unknown>).name;
-    // Accept the canonical `#global`, the post-rename bare `global`,
-    // and the legacy `constitution` — the migration may not have run
-    // for every Doco yet.
-    if (name === "#global" || name === "global") return s;
-  }
-  return null;
-}
+// v16: the scope-rule machinery used to live here — loadAllScopes,
+// findGlobalScope, buildNodesByScope, and the full runScopeRules
+// pipeline. All deleted with the scopes concept
+// (decision_01KS3DW9C2KN2X7Z80R18H1RAX). `runScopeRules` survives
+// below as a no-op export so api-capture-factory.server.ts still
+// links; remove it once that caller is cleaned in the next pass.
 
 /**
- * v7: load the population of entities in each requested scope, indexed
- * by scope id. Used by within-scope predicates
- * (`unique-within-scope`, `count-within-scope`, `graph-constraint`).
- * Uses the materialized `in_scope_of` edges to enumerate members; the
- * candidate is injected into each scope it claims so completeness
- * checks see it before the row commits.
+ * v16 (decision_01KS3DW9C2KN2X7Z80R18H1RAX): the scope-rule engine is
+ * gone. This used to walk gated_by chains, load Rules, build a
+ * nodesByScope index, and route through `evaluateScopeRules` /
+ * `judgeProbabilisticRule`.
+ *
+ * Kept exported as a no-op because `api-capture-factory.server.ts`
+ * still imports it. Drop the export once that import is gone.
  */
-async function buildNodesByScope(
-  docoId: string,
-  scopeIds: string[],
-  candidate: Entity,
-): Promise<Map<string, Entity[]>> {
-  const out = new Map<string, Entity[]>();
-  if (scopeIds.length === 0) return out;
-
-  const memberIds = new Map<string, string[]>(); // scope_id → [entity_id, …]
-  try {
-    await withClient(async (c) => {
-      const r = await c.query<{ from_id: string; to_id: string }>(
-        `SELECT from_id, to_id FROM edges
-          WHERE doco_id = $1
-            AND edge_type = 'in_scope_of'
-            AND to_id = ANY($2::text[])`,
-        [docoId, scopeIds],
-      );
-      for (const row of r.rows) {
-        const arr = memberIds.get(row.to_id) ?? [];
-        arr.push(row.from_id);
-        memberIds.set(row.to_id, arr);
-      }
-    });
-  } catch {
-    /* index empty — fall through with candidate-only buckets */
-  }
-
-  // Bucket member ids by their backing table.
-  const byTable = new Map<string, string[]>();
-  const allMemberIds = new Set<string>();
-  for (const ids of memberIds.values()) for (const id of ids) allMemberIds.add(id);
-  for (const id of allMemberIds) {
-    const idx = id.indexOf("_");
-    if (idx === -1) continue;
-    const nodeType = id.slice(0, idx);
-    const spec = NODE_TABLES[nodeType];
-    if (!spec) continue;
-    const arr = byTable.get(spec.table) ?? [];
-    arr.push(id);
-    byTable.set(spec.table, arr);
-  }
-
-  // Batch-fetch entity rows from each table.
-  const entitiesById = new Map<string, Entity>();
-  try {
-    await withClient(async (c) => {
-      for (const [table, ids] of byTable) {
-        if (ids.length === 0) continue;
-        // Table name comes from the trusted NODE_TABLES constant; ids
-        // are parameterized.
-        const r = await c.query<{ id: string; raw_yaml: string }>(
-          `SELECT id, raw_yaml FROM ${table}
-            WHERE doco_id = $1 AND id = ANY($2::text[])`,
-          [docoId, ids],
-        );
-        for (const row of r.rows) {
-          try {
-            const fm = JSON.parse(row.raw_yaml);
-            if (fm && typeof fm === "object") {
-              entitiesById.set(row.id, fm as Entity);
-            }
-          } catch {
-            try {
-              const fm = parseYaml(row.raw_yaml);
-              if (fm && typeof fm === "object") {
-                entitiesById.set(row.id, fm as Entity);
-              }
-            } catch {
-              /* skip */
-            }
-          }
-        }
-      }
-    });
-  } catch {
-    /* fall through with whatever was already collected */
-  }
-
-  // Materialize per-scope arrays from member ids.
-  for (const [scopeId, ids] of memberIds) {
-    const ents: Entity[] = [];
-    for (const id of ids) {
-      const e = entitiesById.get(id);
-      if (e) ents.push(e);
-    }
-    out.set(scopeId, ents);
-  }
-
-  // Inject the candidate into each scope it claims, even if the
-  // in_scope_of edge isn't materialized yet.
-  const candidateScopes = (candidate as unknown as { scopes?: unknown }).scopes ?? [];
-  if (Array.isArray(candidateScopes)) {
-    for (const sid of candidateScopes as string[]) {
-      if (!scopeIds.includes(sid)) continue;
-      const arr = out.get(sid) ?? [];
-      const candidateId = (candidate as unknown as { id?: string }).id;
-      // If the candidate's id already appears in the scope's member
-      // list (loaded from DB), replace it with the candidate so any
-      // overridden fields (lifecycle, kind, …) win over the persisted
-      // state. Otherwise append.
-      const idx = arr.findIndex((e) => (e as { id?: string }).id === candidateId);
-      if (idx === -1) arr.push(candidate);
-      else arr[idx] = candidate;
-      out.set(sid, arr);
-    }
-  }
-
-  return out;
-}
-
-export async function runScopeRules(opts: {
+export async function runScopeRules(_opts: {
   docoDir: string;
   ownerSlug: string;
   docoSlug: string;
   entityFm: Record<string, unknown>;
-}): Promise<{ error: string } | null> {
-  const { docoDir, entityFm } = opts;
-  const scopeIds = Array.isArray(entityFm.scopes) ? (entityFm.scopes as string[]) : [];
-  const allScopes = await loadAllScopes(docoDir);
-  const globalScope = findGlobalScope(allScopes);
-  const globalScopeId = globalScope?.id ?? null;
-  const entityForEngine = entityFm as unknown as Entity;
-  const allViolations: {
-    scopeName: string;
-    reason: string;
-    severity: "error" | "warning" | "pending";
-  }[] = hardWrittenDocoRuleViolations({
-    entity: entityForEngine,
-    entityScopes: scopeIds,
-    globalScopeId,
-    globalScopeName: "Global",
-  }).map((v) => ({
-    scopeName: v.kind === "requires_node_type" ? "Global" : "Doco",
-    reason: v.reason,
-    severity: v.severity,
-  }));
-
-  const formatFailures = (): { error: string } | null => {
-    const fails = allViolations.filter((v) => v.severity === "error");
-    if (fails.length === 0) return null;
-    const lines = fails.map((f) => `${f.scopeName}: ${f.reason}`);
-    return {
-      error: `Scope rule${fails.length > 1 ? "s" : ""} failed — ${lines.join(" | ")}. Capture aborted.`,
-    };
-  };
-
-  // Per v7 (decision_01KRRR5BQ16ASY8HQEE0V499YG) authoring rules are
-  // cited by a Scope via `Scope.gated_by` (with parent-scope inheritance
-  // and per-scope `excluded_rules` opt-out). The legacy
-  // `Rule.kind === "authoring"` marker is gone; existing data is
-  // backfilled by `ensureV7Migration` before this loader runs.
-  const meta = await readDocoMetadata(docoDir);
-  if (!meta?.docoId) return null;
-  const docoId = meta.docoId;
-  await ensureV7Migration(docoId);
-  await ensureScopeHashtagPrefixMigration(docoId);
-
-  // Collect the set of scope ids whose gated_by we need to walk:
-  // - every scope the entity already lists,
-  // - PLUS the Global scope (its gated_by carries project-authored
-  //   Doco-wide invariants).
-  // Framework-native invariants such as "Decision alternatives are
-  // required" and "Global only accepts Intent/Rule nodes" are checked
-  // above, not loaded from seeded Global template Rules.
-  const scopesToCheck = new Set(scopeIds);
-  if (globalScopeId) {
-    scopesToCheck.add(globalScopeId);
-  }
-
-  // For each scope to check, compute its effective gated_by (walking
-  // parent scopes + applying excluded_rules). Map each rule id to the
-  // scope that cites it — that becomes its "$capture_scope" for
-  // within-scope predicates.
-  const ruleIdToCitingScope = new Map<string, string>();
-  for (const scopeId of scopesToCheck) {
-    const scope = allScopes.get(scopeId);
-    if (!scope) continue;
-    const effective = computeEffectiveGatedBy(scope, allScopes);
-    for (const rid of effective) {
-      if (!ruleIdToCitingScope.has(rid)) ruleIdToCitingScope.set(rid, scopeId);
-    }
-  }
-
-  // Load the cited Rule entities (active / proposed). One query.
-  type RuleRow = { id: string; summary: string; raw_yaml: string };
-  let ruleRows: RuleRow[] = [];
-  if (ruleIdToCitingScope.size > 0) {
-    try {
-      ruleRows = await withClient(async (c) => {
-        const r = await c.query<RuleRow>(
-          `SELECT id, summary, raw_yaml
-             FROM rules
-            WHERE doco_id = $1
-              AND id = ANY($2::text[])
-              AND COALESCE(lifecycle, 'active') IN ('active', 'proposed')`,
-          [docoId, Array.from(ruleIdToCitingScope.keys())],
-        );
-        return r.rows;
-      });
-    } catch {
-      ruleRows = [];
-    }
-  }
-
-  type Loaded = {
-    rule_id: string;
-    scope_id?: string;
-    predicate: AuthoringPredicate;
-    lifecycle?: string;
-    fires_when_node_lifecycle?: Lifecycle[];
-    reason?: string;
-  };
-  const perScope = new Map<string, Loaded[]>();
-  let needsNodesByScope = false;
-  for (const row of ruleRows) {
-    let fm: Record<string, unknown> = {};
-    try {
-      fm = JSON.parse(row.raw_yaml) as Record<string, unknown>;
-    } catch {
-      try {
-        const parsed = parseYaml(row.raw_yaml);
-        if (parsed && typeof parsed === "object") fm = parsed as Record<string, unknown>;
-      } catch {
-        continue;
-      }
-    }
-    const predicate = fm.predicate as AuthoringPredicate | undefined;
-    if (!predicate || typeof predicate !== "object") continue;
-    const citingScope = ruleIdToCitingScope.get(row.id);
-    if (!citingScope) continue;
-    if (
-      !shouldRunAuthoringRuleForEntity({
-        ruleScopeId: citingScope,
-        predicateKind: predicate.kind,
-        globalScopeId,
-        entityScopes: scopeIds,
-      })
-    ) {
-      continue;
-    }
-    if (
-      predicate.kind === "unique-within-scope" ||
-      predicate.kind === "count-within-scope" ||
-      predicate.kind === "graph-constraint" ||
-      predicate.kind === "graph-completeness"
-    ) {
-      needsNodesByScope = true;
-    }
-    const fires = Array.isArray(fm.fires_when_node_lifecycle)
-      ? (fm.fires_when_node_lifecycle as Lifecycle[])
-      : undefined;
-    const arr = perScope.get(citingScope) ?? [];
-    arr.push({
-      rule_id: row.id,
-      scope_id: citingScope,
-      predicate,
-      lifecycle: typeof fm.lifecycle === "string" ? fm.lifecycle : "active",
-      fires_when_node_lifecycle: fires,
-      reason: row.summary,
-    });
-    perScope.set(citingScope, arr);
-  }
-
-  if (perScope.size === 0) return formatFailures();
-
-  // Load the doco's edges for the engine (used by requires_edge /
-  // forbids_edge predicates).
-  const edges: EngineEdge[] = [];
-  try {
-    await withClient(async (c) => {
-      const r = await c.query<{ from_id: string; to_id: string; edge_type: string }>(
-        `SELECT from_id, to_id, edge_type FROM edges WHERE doco_id = $1`,
-        [docoId],
-      );
-      for (const row of r.rows) edges.push(row);
-    });
-  } catch {
-    /* index not built yet — fall through with synthesized edges only */
-  }
-  const candidateId = (entityFm.id as string) ?? "";
-  if (candidateId) {
-    if (Array.isArray(entityFm.intent_ids)) {
-      for (const t of entityFm.intent_ids as string[]) {
-        edges.push({ from_id: candidateId, to_id: t, edge_type: "serves" });
-      }
-    }
-    if (Array.isArray(entityFm.decision_ids)) {
-      for (const t of entityFm.decision_ids as string[]) {
-        edges.push({ from_id: candidateId, to_id: t, edge_type: "enacts" });
-      }
-    }
-    if (Array.isArray(entityFm.scopes)) {
-      for (const t of entityFm.scopes as string[]) {
-        edges.push({ from_id: candidateId, to_id: t, edge_type: "in_scope_of" });
-      }
-    }
-    if (typeof entityFm.born_from === "string") {
-      edges.push({ from_id: candidateId, to_id: entityFm.born_from, edge_type: "born_from" });
-    }
-    if (typeof entityFm.target_ref === "string") {
-      edges.push({ from_id: candidateId, to_id: entityFm.target_ref, edge_type: "tests" });
-    }
-  }
-
-  const entitySummary = typeof entityFm.summary === "string" ? (entityFm.summary as string) : "";
-  const entityNodeType =
-    typeof entityFm.node_type === "string" ? (entityFm.node_type as string) : "";
-  const entityBody =
-    typeof entityFm.body_md === "string" ? (entityFm.body_md as string) : undefined;
-
-  // v7: build a nodesByScope index for `unique-within-scope`,
-  // `count-within-scope`, and `graph-constraint` predicates. Only build
-  // it if at least one predicate needs it — the queries are non-trivial.
-  const nodesByScope = needsNodesByScope
-    ? await buildNodesByScope(docoId, Array.from(perScope.keys()), entityForEngine)
-    : undefined;
-
-  // user-flows v2: principal index for `requires_field_resolves_to_principal`.
-  // Small table — load all rows once when at least one such predicate is
-  // active in the candidate's scopes. Maps principal_id → { type }.
-  const needsPrincipalIndex = Array.from(perScope.values()).some((rules) =>
-    rules.some((r) => r.predicate.kind === "requires_field_resolves_to_principal"),
-  );
-  let principalIndex: Map<string, { type: string }> | undefined;
-  if (needsPrincipalIndex) {
-    principalIndex = new Map();
-    try {
-      await withClient(async (c) => {
-        const r = await c.query<{ id: string; type: string }>(`SELECT id, type FROM principals`);
-        for (const row of r.rows) principalIndex!.set(row.id, { type: row.type });
-      });
-    } catch {
-      /* leave empty — evaluator will emit a loud error */
-    }
-  }
-
-  for (const [scopeIdKey, loadedRules] of perScope) {
-    const scope = allScopes.get(scopeIdKey);
-    const scopeName = scope ? (scope as unknown as { name: string }).name : "(scope)";
-    const v = evaluateScopeRules({
-      entity: entityForEngine,
-      authoring_rules: loadedRules,
-      scopeName,
-      allEdges: edges,
-      entityScopes: scopeIds,
-      nodesByScope,
-      principalIndex,
-    });
-    for (const vv of v) {
-      if (vv.severity === "error") {
-        allViolations.push({ scopeName, reason: vv.reason, severity: "error" });
-        continue;
-      }
-      if (vv.severity !== "pending" || vv.kind !== "probabilistic") {
-        allViolations.push({ scopeName, reason: vv.reason, severity: vv.severity });
-        continue;
-      }
-      // Probabilistic rule — invoke the LLM judge. Strict mode means
-      // the host's OPENAI_API_KEY is now load-bearing for captures
-      // into scopes carrying probabilistic rules
-      // (decision_01KRPET95G2QNTPCR0YWAKSCH5). Failure to reach the
-      // judge rejects the write rather than silently passing.
-      const spec = vv.spec ?? "";
-      if (!spec) {
-        allViolations.push({
-          scopeName,
-          reason: `Probabilistic rule ${vv.rule_id} has no spec.`,
-          severity: "error",
-        });
-        continue;
-      }
-      try {
-        const judgeResult = await judgeProbabilisticRule({
-          spec,
-          entity: {
-            id: candidateId,
-            node_type: entityNodeType,
-            summary: entitySummary,
-            ...(entityBody ? { body: entityBody } : {}),
-          },
-          strict: true,
-        });
-        if (!judgeResult.ok) {
-          allViolations.push({
-            scopeName,
-            reason: `Probabilistic rule failed: "${spec}" — ${judgeResult.reason}`,
-            severity: "error",
-          });
-        }
-      } catch (e) {
-        if (e instanceof LlmUnavailableError) {
-          allViolations.push({
-            scopeName,
-            reason: `Probabilistic rule judge unavailable — ${e.message} The host must reach OpenAI to capture into scopes with probabilistic rules.`,
-            severity: "error",
-          });
-        } else {
-          allViolations.push({
-            scopeName,
-            reason: `Probabilistic rule judge errored: ${(e as Error).message}`,
-            severity: "error",
-          });
-        }
-      }
-    }
-  }
-  return formatFailures();
+}): Promise<CaptureError | null> {
+  return null;
 }
 
 async function attachImplicitEdges(opts: {
@@ -1276,14 +699,6 @@ export async function captureDecision(
     return { error: "scope_names must be a non-empty array." };
   }
 
-  const scopeRes = await resolveScopeOrError(docoDir, draft.scope_names, {
-    verb: "tag",
-    nodeKind: "Decision",
-    incomingNodeType: "decision",
-  });
-  if ("error" in scopeRes) return scopeRes;
-  const scopeIds = scopeRes.ids;
-
   const intentIds: string[] = Array.isArray(draft.intent_ids) ? draft.intent_ids : [];
 
   let decidedById: string | null = null;
@@ -1327,11 +742,7 @@ export async function captureDecision(
     created_at: now,
     ...(createdById ? { created_by: createdById } : {}),
     lifecycle: draft.lifecycle ?? "active",
-    scopes: scopeIds,
   };
-
-  const ruleErr = await runScopeRules({ docoDir, ownerSlug, docoSlug, entityFm: fm });
-  if (ruleErr) return ruleErr;
 
   await persistEntity({
     nodeType: "decision",
@@ -1357,7 +768,6 @@ export async function captureDecision(
     entitySummary: summary,
     alreadyReferenced: new Set([
       ...intentIds,
-      ...scopeIds,
       ...(typeof draft.born_from === "string" ? [draft.born_from] : []),
     ]),
   });
@@ -1371,7 +781,6 @@ export async function captureDecision(
     summary,
     docoHost,
     ops: [{ kind: "added", summary }],
-    scopes: await resolveScopeIcons(docoDir, scopeIds),
     duration_ms,
   });
   return {
@@ -1388,6 +797,7 @@ export interface DecisionPatch {
   question?: string;
   chosen?: string;
   alternatives?: { name: string; rejected_because: string }[];
+  /** v16: accepted for API back-compat but ignored — scopes are gone. */
   scope_names?: string[];
   scope_names_add?: string[];
   scope_names_remove?: string[];
@@ -1502,22 +912,8 @@ export async function updateDecision(
     }
   }
 
-  // scopes (replace/add/remove)
-  const scopeResult = await applyListOp(
-    fm,
-    "scopes",
-    {
-      ...(patch.scope_names !== undefined ? { replace: patch.scope_names } : {}),
-      ...(patch.scope_names_add !== undefined ? { add: patch.scope_names_add } : {}),
-      ...(patch.scope_names_remove !== undefined ? { remove: patch.scope_names_remove } : {}),
-    },
-    async (names) => resolveScopeOrError(docoDir, names, { verb: "replace" }),
-  );
-  if (scopeResult.error) return { error: scopeResult.error };
-  if (scopeResult.changed) {
-    if (!changed.includes("scopes")) changed.push("scopes");
-    ops.push(...scopeResult.ops);
-  }
+  // v16: scope_names / scope_names_add / scope_names_remove on the
+  // patch are accepted but ignored — scopes are gone.
 
   // intent_ids (replace/add/remove) — input is already an id, pass-through.
   const intentResult = await applyListOp(
@@ -1587,7 +983,6 @@ export async function updateDecision(
   await reindexAndScheduleAttach(docoDir, docoId, decisionId);
   const summary = String(fm.summary ?? decisionId);
   const duration_ms = Math.round(performance.now() - startedAt);
-  const finalScopeIds = Array.isArray(fm.scopes) ? (fm.scopes as string[]) : [];
   const footer_lines = await renderOperationLines({
     docoId,
     ownerSlug,
@@ -1597,7 +992,6 @@ export async function updateDecision(
     summary,
     docoHost,
     ops,
-    scopes: await resolveScopeIcons(docoDir, finalScopeIds),
     duration_ms,
   });
   return {
@@ -1623,6 +1017,7 @@ export interface EntityPatch {
   summary?: string;
   purpose?: string;
   lifecycle?: string;
+  /** v16: accepted for API back-compat but ignored — scopes are gone. */
   scope_names?: string[];
   scope_names_add?: string[];
   scope_names_remove?: string[];
@@ -1770,39 +1165,8 @@ export async function updateEntity(opts: {
     }
   }
 
-  // scopes (replace/add/remove)
-  const eScopeResult = await applyListOp(
-    fm,
-    "scopes",
-    {
-      ...(patch.scope_names !== undefined ? { replace: patch.scope_names } : {}),
-      ...(patch.scope_names_add !== undefined ? { add: patch.scope_names_add } : {}),
-      ...(patch.scope_names_remove !== undefined ? { remove: patch.scope_names_remove } : {}),
-    },
-    async (names) => resolveScopeOrError(docoDir, names, { verb: "replace" }),
-  );
-  if (eScopeResult.error) return { error: eScopeResult.error };
-  if (eScopeResult.changed) {
-    if (!changed.includes("scopes")) changed.push("scopes");
-    ops.push(...eScopeResult.ops);
-    const allScopes = await loadAllScopes(docoDir);
-    const globalScope = findGlobalScope(allScopes);
-    const nextScopes = Array.isArray(fm.scopes) ? (fm.scopes as string[]) : [];
-    const beforeScopes = Array.isArray(beforeFm.scopes) ? (beforeFm.scopes as string[]) : [];
-    const addedGlobal =
-      Boolean(globalScope?.id) &&
-      nextScopes.includes(globalScope!.id) &&
-      !beforeScopes.includes(globalScope!.id);
-    if (addedGlobal) {
-      const globalMembershipError = globalScopeMembershipViolation({
-        entityNodeType: nodeType,
-        entityScopes: nextScopes,
-        globalScopeId: globalScope!.id,
-        globalScopeName: "Global",
-      });
-      if (globalMembershipError) return { error: globalMembershipError };
-    }
-  }
+  // v16: scope_names / scope_names_add / scope_names_remove on the
+  // patch are accepted but ignored — scopes are gone.
 
   // intent_ids (replace/add/remove)
   const eIntentResult = await applyListOp(
@@ -1873,7 +1237,6 @@ export async function updateEntity(opts: {
     nodeType === "scope" ? (fm.purpose ?? fm.name ?? id) : (fm.summary ?? fm.name ?? id),
   );
   const duration_ms = Math.round(performance.now() - startedAt);
-  const finalScopeIds = Array.isArray(fm.scopes) ? (fm.scopes as string[]) : [];
   const footer_lines = await renderOperationLines({
     docoId,
     ownerSlug,
@@ -1883,7 +1246,6 @@ export async function updateEntity(opts: {
     summary,
     docoHost,
     ops,
-    scopes: await resolveScopeIcons(docoDir, finalScopeIds),
     duration_ms,
   });
   return {
@@ -1934,14 +1296,6 @@ export async function captureIntent(
     return { error: "scope_names must be a non-empty array." };
   }
 
-  const scopeRes = await resolveScopeOrError(docoDir, draft.scope_names, {
-    verb: "tag",
-    nodeKind: "Intent",
-    incomingNodeType: "intent",
-  });
-  if ("error" in scopeRes) return scopeRes;
-  const scopeIds = scopeRes.ids;
-
   let wantedById: string | null = null;
   if (draft.wanted_by_username) {
     wantedById = await resolvePrincipalUsername(draft.wanted_by_username);
@@ -1984,11 +1338,7 @@ export async function captureIntent(
     created_at: now,
     created_by: wantedById,
     lifecycle: draft.lifecycle ?? "active",
-    scopes: scopeIds,
   };
-
-  const ruleErr = await runScopeRules({ docoDir, ownerSlug, docoSlug, entityFm: fm });
-  if (ruleErr) return ruleErr;
 
   await persistEntity({
     nodeType: "intent",
@@ -2012,7 +1362,7 @@ export async function captureIntent(
     entityId: id,
     entityType: "intent",
     entitySummary: summary,
-    alreadyReferenced: new Set([...scopeIds, ...(wantedById ? [wantedById] : []), ...actorIds]),
+    alreadyReferenced: new Set([...(wantedById ? [wantedById] : []), ...actorIds]),
   });
   const duration_ms = Math.round(performance.now() - startedAt);
   const footer_lines = await renderOperationLines({
@@ -2024,7 +1374,6 @@ export async function captureIntent(
     summary,
     docoHost,
     ops: [{ kind: "added", summary }],
-    scopes: await resolveScopeIcons(docoDir, scopeIds),
     duration_ms,
   });
   return {
@@ -2080,13 +1429,6 @@ export async function captureEval(
   if (draft.scope_names && !Array.isArray(draft.scope_names)) {
     return { error: "scope_names must be a non-empty array." };
   }
-  const scopeRes = await resolveScopeOrError(docoDir, draft.scope_names, {
-    verb: "tag",
-    nodeKind: "Eval",
-    incomingNodeType: "eval",
-  });
-  if ("error" in scopeRes) return scopeRes;
-  const scopeIds = scopeRes.ids;
 
   let authoredById: string | null = null;
   if (draft.authored_by_username) {
@@ -2127,11 +1469,7 @@ export async function captureEval(
     created_at: now,
     created_by: authoredById,
     lifecycle: draft.lifecycle ?? "active",
-    scopes: scopeIds,
   };
-
-  const ruleErr = await runScopeRules({ docoDir, ownerSlug, docoSlug, entityFm: fm });
-  if (ruleErr) return ruleErr;
 
   await persistEntity({
     nodeType: "eval",
@@ -2155,7 +1493,7 @@ export async function captureEval(
     entityId: id,
     entityType: "eval",
     entitySummary: summary,
-    alreadyReferenced: new Set([...scopeIds, ...(draft.target_ref ? [draft.target_ref] : [])]),
+    alreadyReferenced: new Set([...(draft.target_ref ? [draft.target_ref] : [])]),
   });
 
   const duration_ms = Math.round(performance.now() - startedAt);
@@ -2168,7 +1506,6 @@ export async function captureEval(
     summary,
     docoHost,
     ops: [{ kind: "added", summary }],
-    scopes: await resolveScopeIcons(docoDir, scopeIds),
     duration_ms,
   });
   return {
@@ -2225,14 +1562,6 @@ export async function captureAction(
     return { error: "scope_names must be a non-empty array." };
   }
 
-  const scopeRes = await resolveScopeOrError(docoDir, draft.scope_names, {
-    verb: "tag",
-    nodeKind: "Action",
-    incomingNodeType: "action",
-  });
-  if ("error" in scopeRes) return scopeRes;
-  const scopeIds = scopeRes.ids;
-
   let actorId: string | null = null;
   if (draft.performed_by_username) {
     actorId = await resolvePrincipalUsername(draft.performed_by_username);
@@ -2275,11 +1604,7 @@ export async function captureAction(
     created_at: now,
     ...(createdById ? { created_by: createdById } : {}),
     lifecycle: draft.lifecycle ?? "succeeded",
-    scopes: scopeIds,
   };
-
-  const ruleErr = await runScopeRules({ docoDir, ownerSlug, docoSlug, entityFm: fm });
-  if (ruleErr) return ruleErr;
 
   await persistEntity({
     nodeType: "action",
@@ -2307,7 +1632,6 @@ export async function captureAction(
       ...intentIds,
       ...decisionIds,
       ...follows,
-      ...scopeIds,
       ...(actorId ? [actorId] : []),
     ]),
   });
@@ -2322,7 +1646,6 @@ export async function captureAction(
     summary,
     docoHost,
     ops: [{ kind: "added", summary }],
-    scopes: await resolveScopeIcons(docoDir, scopeIds),
     duration_ms,
   });
   return {
@@ -2392,14 +1715,6 @@ export async function captureLog(
     return { error: "scope_names must be a non-empty array." };
   }
 
-  const scopeRes = await resolveScopeOrError(docoDir, draft.scope_names, {
-    verb: "tag",
-    nodeKind: "Log",
-    incomingNodeType: "log",
-  });
-  if ("error" in scopeRes) return scopeRes;
-  const scopeIds = scopeRes.ids;
-
   let actorId: string | null = null;
   if (draft.performed_by_username) {
     actorId = await resolvePrincipalUsername(draft.performed_by_username);
@@ -2441,11 +1756,7 @@ export async function captureLog(
     created_at: now,
     ...(createdById ? { created_by: createdById } : {}),
     lifecycle: draft.lifecycle ?? "succeeded",
-    scopes: scopeIds,
   };
-
-  const ruleErr = await runScopeRules({ docoDir, ownerSlug, docoSlug, entityFm: fm });
-  if (ruleErr) return ruleErr;
 
   await persistEntity({
     nodeType: "log",
@@ -2473,7 +1784,6 @@ export async function captureLog(
       ...intentIds,
       ...decisionIds,
       ...follows,
-      ...scopeIds,
       ...(actorId ? [actorId] : []),
       ...(draft.template_id ? [draft.template_id] : []),
     ]),
@@ -2489,7 +1799,6 @@ export async function captureLog(
     summary,
     docoHost,
     ops: [{ kind: "added", summary }],
-    scopes: await resolveScopeIcons(docoDir, scopeIds),
     duration_ms,
   });
   return {
@@ -2550,14 +1859,6 @@ export async function captureRule(
     return { error: "scope_names must be a non-empty array." };
   }
 
-  const scopeRes = await resolveScopeOrError(docoDir, draft.scope_names, {
-    verb: "tag",
-    nodeKind: "Rule",
-    incomingNodeType: "rule",
-  });
-  if ("error" in scopeRes) return scopeRes;
-  const scopeIds = scopeRes.ids;
-
   let authorId: string | null = null;
   if (draft.authored_by_username) {
     authorId = await resolvePrincipalUsername(draft.authored_by_username);
@@ -2593,11 +1894,11 @@ export async function captureRule(
   const now = new Date().toISOString();
   const createdById = draft.created_by_id ?? authorId;
 
-  // `applies_to` defaults to the scopes-as-tags selector — matches the
-  // most common shape seen in existing rule files.
-  const appliesTo = {
-    any_of: scopeIds.map((sid) => ({ tag: sid })),
-  };
+  // v16: `applies_to` previously listed scope tags. With scopes gone
+  // the selector defaults to an empty any_of (matches everything by
+  // having nothing to filter on); rule authors can still hand-edit
+  // applies_to via patch.
+  const appliesTo = { any_of: [] as { tag: string }[] };
 
   const fm: Record<string, unknown> = {
     id,
@@ -2617,11 +1918,7 @@ export async function captureRule(
     created_at: now,
     ...(createdById ? { created_by: createdById } : {}),
     lifecycle: draft.lifecycle ?? "active",
-    scopes: scopeIds,
   };
-
-  const ruleErr = await runScopeRules({ docoDir, ownerSlug, docoSlug, entityFm: fm });
-  if (ruleErr) return ruleErr;
 
   await persistEntity({
     nodeType: "rule",
@@ -2647,7 +1944,6 @@ export async function captureRule(
     entitySummary: summary,
     alreadyReferenced: new Set([
       ...intentIds,
-      ...scopeIds,
       ...(authorId ? [authorId] : []),
       ...(typeof draft.born_from === "string" ? [draft.born_from] : []),
     ]),
@@ -2663,7 +1959,6 @@ export async function captureRule(
     summary,
     docoHost,
     ops: [{ kind: "added", summary }],
-    scopes: await resolveScopeIcons(docoDir, scopeIds),
     duration_ms,
   });
   return {

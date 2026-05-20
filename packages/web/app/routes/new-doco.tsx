@@ -1,5 +1,6 @@
+import { useState } from "react";
 import { Form, Link, redirect } from "react-router";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
+import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
 import { SingleColumnPageMain } from "~/components/page-main";
 import { SiteHeader } from "~/components/site-header";
 import { loadHostConfig } from "~/lib/host";
@@ -20,7 +21,7 @@ import { getCurrentPrincipal } from "~/lib/session";
  *   - `new_org_handle`: optional new-org handle (used when org_id is empty).
  *   - `suffix`: the suffix after `<org-handle>-` (e.g. `bpms` → `acme-bpms`).
  *   - `template_handle`: one of "generic" | "user-flows" | "state-machines"
- *     | "global-rules" — the v15 template tile picker (Phase F seeds rules).
+ *     — the v15 template tile picker.
  *   - `visibility`: "private" | "public".
  *   - `accept_suggested_handle`: "1" to silently accept a server-suggested
  *     collision-free handle.
@@ -45,11 +46,6 @@ const TEMPLATES = [
     handle: "state-machines",
     label: "State Machines",
     description: "Formal state-machine modeling — states, transitions, invariants.",
-  },
-  {
-    handle: "global-rules",
-    label: "Global Rules",
-    description: "Constitution-style rules. Layer on top of any other choice.",
   },
 ] as const;
 
@@ -189,9 +185,14 @@ export default function NewDoco({
 }) {
   const { me, orgs } = loaderData;
   const f = actionData?.form;
-  const selectedOrgId = f?.orgId ?? (orgs[0]?.id ?? "");
-  const selectedOrgHandle =
-    orgs.find((o) => o.id === selectedOrgId)?.handle ?? actionData?.suggestedOrgHandle ?? "";
+  const initialOrgId = f?.orgId ?? (orgs[0]?.id ?? "");
+  const [orgId, setOrgId] = useState(initialOrgId);
+  const [newOrgHandle, setNewOrgHandle] = useState(f?.newOrgHandle ?? "");
+  const [suffix, setSuffix] = useState(f?.suffix ?? "");
+  const isCreateNewOrg = orgId === "";
+  const orgHandleDisplay = isCreateNewOrg
+    ? newOrgHandle || "<org>"
+    : (orgs.find((o) => o.id === orgId)?.handle ?? actionData?.suggestedOrgHandle ?? "<org>");
   const selectedTemplate = f?.templateHandle ?? "generic";
 
   return (
@@ -201,10 +202,6 @@ export default function NewDoco({
         <Card>
           <CardHeader>
             <CardTitle>New doco</CardTitle>
-            <CardDescription>
-              Every Doco belongs to an organization. The Doco's handle is{" "}
-              <code>&lt;org-handle&gt;-&lt;suffix&gt;</code>.
-            </CardDescription>
           </CardHeader>
           <CardContent>
             <Form method="post" className="space-y-4">
@@ -212,61 +209,53 @@ export default function NewDoco({
                 <legend className="text-xs font-semibold uppercase text-muted-foreground">
                   1 · Organization
                 </legend>
-                <label className="block text-xs">
-                  <span className="mb-1 block text-muted-foreground">Pick one of your orgs</span>
-                  <select
-                    name="org_id"
-                    defaultValue={selectedOrgId}
-                    className="w-full rounded-md border border-border bg-input px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
-                  >
-                    {orgs.map((o) => (
-                      <option key={o.id} value={o.id}>
-                        {o.handle}
-                        {o.handle === me.username ? " (personal)" : ""}
-                      </option>
-                    ))}
-                    <option value="">+ Create a new organization</option>
-                  </select>
-                </label>
-                <label className="block text-xs">
-                  <span className="mb-1 block text-muted-foreground">
-                    Or new org handle (only used if you picked "Create new")
-                  </span>
+                <select
+                  name="org_id"
+                  value={orgId}
+                  onChange={(e) => setOrgId(e.target.value)}
+                  className="rounded-md border border-border bg-input px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
+                >
+                  {orgs.map((o) => (
+                    <option key={o.id} value={o.id}>
+                      {o.handle}
+                      {o.handle === me.username ? " (personal)" : ""}
+                    </option>
+                  ))}
+                  <option value="">+ Create a new organization</option>
+                </select>
+                {isCreateNewOrg ? (
                   <input
                     type="text"
                     name="new_org_handle"
                     pattern="[a-z0-9][a-z0-9_-]*"
-                    defaultValue={f?.newOrgHandle ?? ""}
-                    placeholder="acme"
+                    value={newOrgHandle}
+                    onChange={(e) => setNewOrgHandle(e.target.value.toLowerCase())}
+                    placeholder="Organization handle"
                     className="w-full rounded-md border border-border bg-input px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
                   />
-                </label>
+                ) : null}
               </fieldset>
 
               <fieldset className="space-y-2">
                 <legend className="text-xs font-semibold uppercase text-muted-foreground">
                   2 · Doco handle
                 </legend>
-                <label className="block text-xs">
-                  <span className="mb-1 block text-muted-foreground">
-                    Suffix (the doco part of <code>&lt;org&gt;-&lt;suffix&gt;</code>)
-                  </span>
-                  <input
-                    type="text"
-                    name="suffix"
-                    required
-                    pattern="[a-z0-9][a-z0-9_-]*"
-                    defaultValue={f?.suffix ?? ""}
-                    placeholder="bpms"
-                    className="w-full rounded-md border border-border bg-input px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
-                  />
-                  <span className="mt-1 block text-[11px] text-muted-foreground">
-                    Final handle:{" "}
-                    <code data-testid="handle-preview">
-                      {selectedOrgHandle || "<org>"}-{f?.suffix || "<suffix>"}
-                    </code>
-                  </span>
-                </label>
+                <input
+                  type="text"
+                  name="suffix"
+                  required
+                  pattern="[a-z0-9][a-z0-9_-]*"
+                  value={suffix}
+                  onChange={(e) => setSuffix(e.target.value.toLowerCase())}
+                  placeholder="bpms"
+                  className="w-full rounded-md border border-border bg-input px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
+                />
+                <span className="mt-1 block text-[11px] text-muted-foreground">
+                  Final handle:{" "}
+                  <code data-testid="handle-preview">
+                    {orgHandleDisplay}-{suffix || "<suffix>"}
+                  </code>
+                </span>
               </fieldset>
 
               <fieldset className="space-y-2">
@@ -304,7 +293,7 @@ export default function NewDoco({
                 <select
                   name="visibility"
                   defaultValue={f?.visibility ?? "private"}
-                  className="w-full rounded-md border border-border bg-input px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
+                  className="rounded-md border border-border bg-input px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
                 >
                   <option value="private">Private</option>
                   <option value="public">Public</option>
