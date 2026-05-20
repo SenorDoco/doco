@@ -366,17 +366,18 @@ export async function loadDocoForRead(
   const dir = docoPath(row.handle);
   const meta = await readDocoMetadata(dir);
   if (!meta) throw notFoundForAccessDenied(handleOrId, "");
+  // Bearer-token validation BEFORE the access check. If the caller
+  // presented an OAuth-shaped bearer that's invalid (revoked / expired
+  // / unknown), we want 401 + WWW-Authenticate per RFC 6750 §3, so the
+  // runtime knows to refresh or restart the OAuth dance. Otherwise the
+  // request would fall through to the anonymous-on-private-Doco branch
+  // and get a generic 403, which doesn't tell the runtime anything
+  // about why.
+  await enforceOauthGrant(request, row.id);
   const me = await getCurrentPrincipalAsync(request);
   if (!(await canAccessDoco(meta, me?.id ?? null))) {
     throw accessDeniedResponse(row.handle, row.owner_slug, !!me);
   }
-  // Token scope-down: if the caller authenticated via an OAuth access
-  // token, the token's granted_doco_ids must include this Doco. This is
-  // the per-request grant gate (separate from the role grant in
-  // doco_users): a user might have role-level access to multiple Docos
-  // but the runtime that holds this token only got user approval for a
-  // subset.
-  await enforceOauthGrant(request, row.id);
   return {
     dir,
     meta,
