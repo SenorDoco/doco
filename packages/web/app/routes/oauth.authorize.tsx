@@ -266,7 +266,11 @@ function DocoPickerForm({
   const allSelected = selected.size === docos.length;
   const noneSelected = selected.size === 0;
   return (
-    <Form method="post" className="space-y-3">
+    // reloadDocument forces a real document POST instead of React
+    // Router's client-side navigation. We need this because the action
+    // returns a Doco-branded interstitial HTML page (not a redirect or
+    // a render of this route) — client-side nav would never paint it.
+    <Form method="post" reloadDocument className="space-y-3">
       {targetedMessage ? (
         <p className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
           {targetedMessage}
@@ -484,7 +488,10 @@ function renderApprovedInterstitial({
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Approved — returning to ${escapedClient} · Doco</title>
-  <meta http-equiv="refresh" content="0; url=${escapedRedirect}" />
+  <!-- 1.5s delay so the user actually sees Doco branding before the
+       runtime's localhost listener takes over. The location.replace()
+       below is the fallback if meta-refresh is disabled. -->
+  <meta http-equiv="refresh" content="1.5; url=${escapedRedirect}" />
   <style>
     :root { color-scheme: light dark; }
     body {
@@ -528,9 +535,11 @@ function renderApprovedInterstitial({
     <a class="link" href="${escapedRedirect}">Click here if you aren't redirected automatically.</a>
   </div>
   <script>
-    // Belt-and-suspenders: if the meta-refresh is blocked or slow,
-    // a programmatic replace gets us there at the next tick.
-    location.replace(${JSON.stringify(redirectUrl)});
+    // Match the meta-refresh delay (1.5s) — long enough for the user
+    // to register Doco branding, short enough that no one feels stuck.
+    setTimeout(function () {
+      location.replace(${JSON.stringify(redirectUrl)});
+    }, 1500);
   </script>
 </body>
 </html>`;
