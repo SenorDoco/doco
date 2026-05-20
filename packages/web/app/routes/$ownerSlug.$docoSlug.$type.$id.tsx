@@ -756,17 +756,14 @@ export default function EntityDetail({
       <SiteHeader mode="host" me={me} docoScope={{ ownerSlug, docoSlug, handle }} />
 
       <div className="shrink-0 border-b border-border bg-card px-4 py-2">
-        <div className="flex flex-wrap items-center gap-2">
-          <span
+        <div className="flex items-start gap-2">
+          <NodeTypeIcon
+            nodeType={type}
             aria-label={type}
-            className="inline-flex shrink-0 items-center gap-1.5 text-foreground"
-            title={type}
-          >
-            <NodeTypeIcon nodeType={type} className="!h-5 !w-5" />
-            <span className="text-sm font-semibold capitalize tracking-tight">{type}:</span>
-          </span>
+            className="!h-5 !w-5 mt-0.5 shrink-0 text-foreground"
+          />
           <h1 className="min-w-0 flex-1 break-words text-sm font-semibold tracking-tight text-foreground">
-            {display}
+            <span className="uppercase tracking-wider">{type}:</span> {display}
           </h1>
         </div>
         <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px]">
