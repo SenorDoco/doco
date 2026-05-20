@@ -202,21 +202,48 @@ function relativeTime(iso: string | null): string {
 const NODE_WIDTH = 340;
 const NODE_STRIPE_WIDTH = 24;
 /**
- * Every card uses the same height. Picked to give the right stripe
- * enough vertical room for the lifecycle name + "X ago" without
- * clipping (worst case: "in_progress" + "365d ago" stacked
- * vertically), and to leave a few lines of summary room in the body.
+ * Minimum card height. Cards with short content sit at this height;
+ * cards whose summary needs more vertical room grow up to
+ * `NODE_MAX_SUMMARY_LINES` lines.
  */
 const NODE_HEIGHT = 132;
 const NODE_MAX_SUMMARY_LINES = 8;
 const NODE_GAP_X = 72;
-const LANE_HEIGHT = 160;
 const LANE_GAP = 28;
 const LANE_HEADER_HEIGHT = 40;
 const LANE_PADDING_X = 16;
+const LANE_BOTTOM_PADDING = 20;
+
+/**
+ * Estimate a card's rendered height from its summary length so the
+ * graph layout can place lanes without cards overlapping into the lane
+ * below. Conservative on purpose — better to leave a little slack than
+ * to clip a card into its neighbor.
+ */
+function estimateCardHeight(summary: string, hasDistinctTitle: boolean): number {
+  const charsPerLine = 32;
+  const summaryLines = Math.max(
+    1,
+    Math.min(NODE_MAX_SUMMARY_LINES, Math.ceil((summary?.length ?? 0) / charsPerLine)),
+  );
+  const summaryHeight = summaryLines * 17;
+  const headerHeight = 32;
+  const titleHeight = hasDistinctTitle ? 22 : 0;
+  const padding = 28;
+  return Math.max(NODE_HEIGHT, headerHeight + titleHeight + summaryHeight + padding);
+}
+
+function nodeRenderHeight(node: GraphNode): number {
+  const title = node.name ?? node.summary ?? "";
+  const summary = node.summary ?? "";
+  return estimateCardHeight(summary, title !== summary);
+}
 function dagreLayout(nodes: GraphNode[], links: GraphLink[], centerId: string): GraphLayout {
   const positions = new Map<string, { x: number; y: number }>();
   if (nodes.length === 0) return { positions, lanes: [] };
+
+  const heightById = new Map<string, number>();
+  for (const n of nodes) heightById.set(n.id, nodeRenderHeight(n));
 
   const g = new dagre.graphlib.Graph({ multigraph: true });
   g.setGraph({
@@ -229,7 +256,7 @@ function dagreLayout(nodes: GraphNode[], links: GraphLink[], centerId: string): 
   g.setDefaultEdgeLabel(() => ({}));
 
   for (const n of nodes) {
-    g.setNode(n.id, { width: NODE_WIDTH, height: NODE_HEIGHT });
+    g.setNode(n.id, { width: NODE_WIDTH, height: heightById.get(n.id) ?? NODE_HEIGHT });
   }
   // Use a deterministic edge key (the index) so duplicate edges between
   // the same pair don't clobber each other.
@@ -270,10 +297,23 @@ function dagreLayout(nodes: GraphNode[], links: GraphLink[], centerId: string): 
     if (b.maxPpr !== a.maxPpr) return b.maxPpr - a.maxPpr;
     return a.label.localeCompare(b.label);
   });
+  // Each lane's vertical extent fits the TALLEST card it contains
+  // (plus header + bottom padding). Lanes stack downward by
+  // accumulating those per-lane heights so a tall card in one lane
+  // never overlaps a card in the lane below.
   const laneTopByKey = new Map<string, number>();
-  lanesByPrincipal.forEach((lane, i) => {
-    laneTopByKey.set(lane.key, i * (LANE_HEIGHT + LANE_GAP));
-  });
+  const laneHeightByKey = new Map<string, number>();
+  let accumulatedY = 0;
+  for (const lane of lanesByPrincipal) {
+    const maxCardHeight = lane.nodes.reduce(
+      (max, n) => Math.max(max, heightById.get(n.id) ?? NODE_HEIGHT),
+      NODE_HEIGHT,
+    );
+    const laneHeight = LANE_HEADER_HEIGHT + maxCardHeight + LANE_BOTTOM_PADDING;
+    laneTopByKey.set(lane.key, accumulatedY);
+    laneHeightByKey.set(lane.key, laneHeight);
+    accumulatedY += laneHeight + LANE_GAP;
+  }
 
   const raw = new Map<string, { x: number; y: number }>();
   let globalMinX = Number.POSITIVE_INFINITY;
@@ -303,8 +343,9 @@ function dagreLayout(nodes: GraphNode[], links: GraphLink[], centerId: string): 
   }
 
   const focalRaw = raw.get(centerId);
+  const focalHeight = heightById.get(centerId) ?? NODE_HEIGHT;
   const cx = (focalRaw?.x ?? 0) + NODE_WIDTH / 2;
-  const cy = (focalRaw?.y ?? 0) + NODE_HEIGHT / 2;
+  const cy = (focalRaw?.y ?? 0) + focalHeight / 2;
 
   for (const n of nodes) {
     const pos = raw.get(n.id);
@@ -325,6 +366,8 @@ function dagreLayout(nodes: GraphNode[], links: GraphLink[], centerId: string): 
   const laneWidth = globalMaxX - globalMinX + LANE_PADDING_X * 2;
   const lanes = lanesByPrincipal.map((lane) => {
     const laneTop = laneTopByKey.get(lane.key) ?? 0;
+    const laneHeight =
+      laneHeightByKey.get(lane.key) ?? LANE_HEADER_HEIGHT + NODE_HEIGHT + LANE_BOTTOM_PADDING;
     return {
       id: `swim-lane:${lane.key}`,
       principalId: lane.id,
@@ -333,7 +376,7 @@ function dagreLayout(nodes: GraphNode[], links: GraphLink[], centerId: string): 
       x: laneX,
       y: laneTop - cy,
       width: laneWidth,
-      height: LANE_HEIGHT,
+      height: laneHeight,
     };
   });
 
@@ -363,6 +406,7 @@ interface EntityNodeCardProps {
   lifecycle: string;
   accentColor: string;
   background: string;
+  cardHeight: number;
 }
 
 function EntityNodeCard({
@@ -377,6 +421,7 @@ function EntityNodeCard({
   lifecycle,
   accentColor,
   background,
+  cardHeight,
 }: EntityNodeCardProps) {
   const hasDistinctTitle = title !== summary;
   const clampStyle = {
@@ -395,7 +440,7 @@ function EntityNodeCard({
       onClick={(event) => event.stopPropagation()}
       style={{
         width: NODE_WIDTH,
-        minHeight: NODE_HEIGHT,
+        minHeight: cardHeight,
         background,
         border: isCenter ? "2px solid var(--color-border)" : "1px solid var(--color-border)",
         borderRadius: 8,
@@ -678,6 +723,7 @@ export function EntityGraph({
         ? "color-mix(in oklch, var(--color-accent) 30%, white)"
         : "rgb(255,255,255)";
       const title = n.name ?? n.summary;
+      const cardHeight = nodeRenderHeight(n);
       // Make the card itself a real link. React Flow's node-level click
       // remains as a fallback, but the anchor gives expected browser affordances.
       const href = hrefFor ? hrefFor(n.id, n.node_type) : `/${n.node_type}/${n.id}`;
@@ -691,7 +737,7 @@ export function EntityGraph({
         // `getInternalNodesBounds` collapsed to 0-height, leaving the
         // mini-map blank.
         initialWidth: NODE_WIDTH,
-        initialHeight: NODE_HEIGHT,
+        initialHeight: cardHeight,
         data: {
           label: (
             <EntityNodeCard
@@ -705,6 +751,7 @@ export function EntityGraph({
               ppr={n.ppr}
               gpr={n.gpr}
               lifecycle={lifecycle}
+              cardHeight={cardHeight}
               accentColor={accentColor}
               background={bg}
             />
