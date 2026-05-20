@@ -17,7 +17,7 @@ import {
   normalizeDocoParams,
 } from "~/lib/doco-access.server";
 import { withIdempotency } from "~/lib/idempotency.server";
-import { readDocoMetadata } from "~/lib/scope-helpers.server";
+import { readDocoMetadata } from "~/lib/doco-metadata.server";
 
 interface MeLike {
   id: string | null;

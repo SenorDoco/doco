@@ -1,6 +1,6 @@
 import { docoPath } from "~/lib/db.server";
 import { loadDocoForAdmin, normalizeDocoParams } from "~/lib/doco-access.server";
-import { readDocoMetadata } from "~/lib/scope-helpers.server";
+import { readDocoMetadata } from "~/lib/doco-metadata.server";
 import { updateDecision, type DecisionPatch } from "~/lib/capture.server";
 import { makeUpdateRoute } from "~/lib/api-capture-factory.server";
 

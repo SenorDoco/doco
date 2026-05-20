@@ -13,7 +13,7 @@ import { appendAuditEvent } from "./audit-log.server";
 import { suggestImplicitEdges } from "./llm.server";
 import { validatePatch } from "./mutability.server";
 import { reindex, reindexEmbeddingsOnly } from "./redeem.server";
-import { readDocoMetadata } from "./scope-helpers.server";
+import { readDocoMetadata } from "./doco-metadata.server";
 
 /**
  * Synthetic "path" returned in CaptureResult.path. Postgres is the only
@@ -451,28 +451,6 @@ function distillSummary(body: string, cap = 180): string {
 }
 
 /**
- * v16 (decision_01KS3DW9C2KN2X7Z80R18H1RAX): the scopes concept is
- * gone. This used to map bare scope names to scope_<ULID> ids by
- * reading a per-Doco scopes table.
- *
- * Kept exported as a no-op because `api-capture-factory.server.ts`
- * still imports it. Returns empty arrays so the factory's early-return
- * branch ("no resolved scopes → caller produces a clearer error")
- * fires. Drop the export once that import is gone.
- */
-export async function resolveScopeNames(
-  _docoDir: string,
-  _names: string[],
-): Promise<{
-  ids: string[];
-  unknown: string[];
-  available: string[];
-  unavailable: string[];
-}> {
-  return { ids: [], unknown: [], available: [], unavailable: [] };
-}
-
-/**
  * Apply the three list-op shapes (replace / add / remove) for a single
  * frontmatter field. Returns the ops emitted (for footer rendering) and
  * the list of changed-keys. Used by `updateDecision` + `updateEntity`
@@ -560,29 +538,9 @@ export async function resolvePrincipalUsername(username: string): Promise<string
 }
 
 // v16: the scope-rule machinery used to live here — loadAllScopes,
-// findGlobalScope, buildNodesByScope, and the full runScopeRules
-// pipeline. All deleted with the scopes concept
-// (decision_01KS3DW9C2KN2X7Z80R18H1RAX). `runScopeRules` survives
-// below as a no-op export so api-capture-factory.server.ts still
-// links; remove it once that caller is cleaned in the next pass.
-
-/**
- * v16 (decision_01KS3DW9C2KN2X7Z80R18H1RAX): the scope-rule engine is
- * gone. This used to walk gated_by chains, load Rules, build a
- * nodesByScope index, and route through `evaluateScopeRules` /
- * `judgeProbabilisticRule`.
- *
- * Kept exported as a no-op because `api-capture-factory.server.ts`
- * still imports it. Drop the export once that import is gone.
- */
-export async function runScopeRules(_opts: {
-  docoDir: string;
-  ownerSlug: string;
-  docoSlug: string;
-  entityFm: Record<string, unknown>;
-}): Promise<CaptureError | null> {
-  return null;
-}
+// findGlobalScope, buildNodesByScope, resolveScopeNames, runScopeRules,
+// and the full scope-rule pipeline. All deleted with the scopes
+// concept (decision_01KS3DW9C2KN2X7Z80R18H1RAX).
 
 async function attachImplicitEdges(opts: {
   docoDir: string;

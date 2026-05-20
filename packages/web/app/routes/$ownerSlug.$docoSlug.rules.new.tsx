@@ -11,7 +11,7 @@ import { captureRule } from "~/lib/capture.server";
 import { docoPath } from "~/lib/db.server";
 import { loadDocoForAdmin, normalizeDocoParams } from "~/lib/doco-access.server";
 import { loadHostConfig } from "~/lib/host";
-import { readDocoMetadata } from "~/lib/scope-helpers.server";
+import { readDocoMetadata } from "~/lib/doco-metadata.server";
 
 interface IntentOption {
   id: string;

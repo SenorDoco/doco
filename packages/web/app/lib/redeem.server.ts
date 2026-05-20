@@ -21,7 +21,7 @@ export {
 } from "@doco/host";
 import { type BuildReport, reindex as reindexBare } from "@doco/index";
 import { getDocoEmbeddingProvider } from "./embedding-provider.server";
-import { readDocoMetadata } from "./scope-helpers.server";
+import { readDocoMetadata } from "./doco-metadata.server";
 
 export interface ReindexExtraOptions {
   /** Skip the OpenAI embedding pass (FTS + edges only). */

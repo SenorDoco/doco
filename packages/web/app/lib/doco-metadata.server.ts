@@ -1,7 +1,6 @@
-// Server-only Doco metadata helper. The file kept the legacy
-// "scope-helpers" name because half the consumers still import it
-// here; that's a follow-on rename. Today every active helper here is
-// about the Doco itself, not scopes.
+// Server-only Doco metadata helper. Reads a Doco's row from Postgres
+// + parses its raw_yaml so route loaders can render description /
+// display name / visibility without each one doing its own SELECT.
 import { basename } from "node:path";
 import { getDocoByHandle } from "@doco/db";
 import { parse as parseYaml } from "yaml";
@@ -45,21 +44,4 @@ export async function readDocoMetadata(docoDir: string): Promise<DocoMetadata | 
     description,
     visibility: row.visibility,
   };
-}
-
-/**
- * v16: scopes are gone; this used to enrich capture footer prose with
- * scope-name + icon pairs. Kept as a no-op stub so the many
- * capture.server.ts callers don't fan out a refactor in the same
- * commit. Always resolves to [] — the footer-line builder treats an
- * empty list as "no scope tail".
- *
- * Removed once the capture pipeline drops its `scopes` field entirely
- * (commit H of the v16 cleanup sweep).
- */
-export async function resolveScopeIcons(
-  _docoDir: string,
-  _scopeIds: readonly string[],
-): Promise<{ name: string; icon?: string }[]> {
-  return [];
 }

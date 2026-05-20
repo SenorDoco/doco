@@ -13,7 +13,7 @@
 
 import { docoPath } from "~/lib/db.server";
 import { canAccessDoco, normalizeDocoParams } from "~/lib/doco-access.server";
-import { readDocoMetadata } from "~/lib/scope-helpers.server";
+import { readDocoMetadata } from "~/lib/doco-metadata.server";
 import { getCurrentPrincipalAsync } from "~/lib/session";
 import { readAuditEvents, type AuditOp } from "~/lib/audit-log.server";
 

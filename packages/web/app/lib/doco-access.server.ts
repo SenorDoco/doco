@@ -17,7 +17,7 @@ import { redirect } from "react-router";
 import { docoPath } from "./db.server";
 import { validateAccessToken } from "./oauth-server.server";
 import { resolvePrincipalUsernameAlias } from "./principal-aliases.server";
-import { type DocoMetadata, readDocoMetadata } from "./scope-helpers.server";
+import { type DocoMetadata, readDocoMetadata } from "./doco-metadata.server";
 import { type CurrentPrincipal, extractBearer, getCurrentPrincipalAsync } from "./session";
 
 /**
