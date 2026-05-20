@@ -27,7 +27,6 @@ import { canAdminDoco, loadDocoForRead, normalizeDocoParams } from "~/lib/doco-a
 import { loadOverviewGraph } from "~/lib/full-graph.server";
 import { loadHostConfig } from "~/lib/host";
 import { lifecycleColor } from "~/lib/node-colors";
-import { listScopeDetails } from "~/lib/scope-helpers.server";
 import { computeFilterFacets } from "~/lib/search-filters.server";
 import { timeAgo } from "~/lib/time-ago";
 
@@ -51,7 +50,6 @@ const NODE_TYPE_LABELS: Record<string, string> = {
   action: "Actions",
   intent: "Intents",
   rule: "Rules",
-  scope: "Scopes",
   eval: "Evals",
   reference: "References",
   idea: "Ideas",
@@ -72,8 +70,6 @@ export async function loader({
   const ctx = await loadDocoForRead(request, handle);
   const me = ctx.me;
   const dir = docoPath(handle);
-  const scopeDetails = await listScopeDetails(dir);
-  const scopeById = new Map(scopeDetails.map((s) => [s.id, s]));
   return withClient(async (c) => {
     type AuditFeedRow = {
       event_id: string;
@@ -111,7 +107,6 @@ export async function loader({
          UNION ALL SELECT id, summary AS label, lifecycle FROM logs WHERE doco_id = $1 AND id = ANY($2::text[])
          UNION ALL SELECT id, summary AS label, lifecycle FROM evals WHERE doco_id = $1 AND id = ANY($2::text[])
          UNION ALL SELECT id, summary AS label, lifecycle FROM states WHERE doco_id = $1 AND id = ANY($2::text[])
-         UNION ALL SELECT id, COALESCE(purpose, name) AS label, lifecycle FROM scopes WHERE doco_id = $1 AND id = ANY($2::text[])
          UNION ALL SELECT id, summary AS label, lifecycle FROM reference_entities WHERE doco_id = $1 AND id = ANY($2::text[])`,
         [ctx.meta.docoId, entityIds],
       );
@@ -120,31 +115,8 @@ export async function loader({
       }
     }
 
-    let scopeEdges: { from_id: string; to_id: string }[] = [];
-    if (rawItems.length > 0) {
-      scopeEdges = (
-        await c.query<{ from_id: string; to_id: string }>(
-          `SELECT from_id, to_id FROM edges
-            WHERE edge_type = 'in_scope_of'
-              AND doco_id = $1
-              AND from_id = ANY($2::text[])`,
-          [ctx.meta.docoId, entityIds],
-        )
-      ).rows;
-    }
-    const scopeIdsByItem = new Map<string, string[]>();
-    for (const e of scopeEdges) {
-      const arr = scopeIdsByItem.get(e.from_id) ?? [];
-      arr.push(e.to_id);
-      scopeIdsByItem.set(e.from_id, arr);
-    }
     const items: FeedItem[] = rawItems.map((it) => {
       const entity = entityById.get(it.entity_id);
-      const sids = scopeIdsByItem.get(it.entity_id) ?? [];
-      const scopes = sids
-        .map((id) => scopeById.get(id))
-        .filter((s): s is NonNullable<typeof s> => s != null)
-        .map((s) => (s.icon ? { name: s.name, icon: s.icon } : { name: s.name }));
       return {
         event_id: it.event_id,
         id: it.entity_id,
@@ -158,7 +130,6 @@ export async function loader({
         op: it.op,
         before: it.before_json,
         after: it.after_json,
-        scopes,
       };
     });
 
@@ -178,7 +149,6 @@ export async function loader({
            UNION ALL SELECT to_char(created_at, 'YYYY-MM-DD') FROM actions WHERE doco_id = $1
            UNION ALL SELECT to_char(created_at, 'YYYY-MM-DD') FROM logs WHERE doco_id = $1
            UNION ALL SELECT to_char(created_at, 'YYYY-MM-DD') FROM evals WHERE doco_id = $1
-           UNION ALL SELECT to_char(created_at, 'YYYY-MM-DD') FROM scopes WHERE doco_id = $1
            UNION ALL SELECT to_char(created_at, 'YYYY-MM-DD') FROM reference_entities WHERE doco_id = $1
            UNION ALL SELECT to_char(created_at, 'YYYY-MM-DD') FROM states WHERE doco_id = $1
          ) t WHERE day >= $2
@@ -402,11 +372,8 @@ export default function DocoHome({
               <CardContent className="p-0">
                 {items.length === 0 ? (
                   <div className="px-4 pb-4 text-xs leading-5 text-muted-foreground">
-                    No recorded activity yet. Create a scope in{" "}
-                    <Link to={`/${handle}/scopes/new`} className="text-primary hover:underline">
-                      scopes/new
-                    </Link>{" "}
-                    or capture a node; this feed records UI, CLI, and API writes.
+                    No recorded activity yet. Capture a node from the API or
+                    CLI; this feed records UI, CLI, and API writes.
                   </div>
                 ) : (
                   <div className="divide-y divide-border">

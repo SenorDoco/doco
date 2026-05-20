@@ -10,11 +10,6 @@ import {
 } from "~/lib/activity-feed";
 import { cn } from "~/lib/cn";
 
-export interface ActivityFeedScope {
-  name: string;
-  icon?: string;
-}
-
 export interface ActivityFeedLineItem {
   id: string;
   node_type: string;
@@ -24,12 +19,11 @@ export interface ActivityFeedLineItem {
   lifecycle?: string | null;
   before: Record<string, unknown> | null;
   after: Record<string, unknown> | null;
-  scopes: ActivityFeedScope[];
 }
 
 /**
  * Shared latest-activity row. Mirrors the agent footer-line shape:
- *   ✍️ <Type> added: <summary> — <icon> <scope1>, …          Ns ago
+ *   ✍️ <Type> added: <summary>          Ns ago
  */
 export function ActivityFeedLine({
   item,
@@ -68,18 +62,6 @@ export function ActivityFeedLine({
           {summary}
         </Link>
         {detail ? <span className="text-muted-foreground">{detail}</span> : null}
-        {item.scopes.length > 0 ? (
-          <>
-            <span className="text-muted-foreground"> — </span>
-            {item.scopes.map((s, i) => (
-              <span key={`${s.name}-${i}`} className="text-muted-foreground">
-                {i > 0 ? ", " : null}
-                {s.icon ? `${s.icon} ` : null}
-                {s.name}
-              </span>
-            ))}
-          </>
-        ) : null}
       </div>
       <time
         dateTime={item.at}
