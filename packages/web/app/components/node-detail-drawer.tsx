@@ -7,9 +7,7 @@
 // stats (folded in after the standalone Info pane was retired — they
 // were redundant with the YAML frontmatter dump).
 //
-// Driven by the parent route's state; no internal route, no portals. The
-// drawer is positioned absolute over the graph column so the chat pane
-// on the left stays interactive while the drawer is open.
+// Driven by the parent route's state; no internal route, no portals.
 
 import { Link } from "react-router";
 import { NodeTypeIcon } from "~/components/node-type-icon";

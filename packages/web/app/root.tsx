@@ -1,4 +1,3 @@
-import { getDocoByIdOrHandle } from "@doco/db";
 import {
   Links,
   Meta,
@@ -6,16 +5,11 @@ import {
   Scripts,
   ScrollRestoration,
   isRouteErrorResponse,
-  useLoaderData,
   useLocation,
   useRouteError,
 } from "react-router";
 
 import { AccessDeniedView, isAccessDeniedData } from "~/components/access-denied-view";
-import { ResizableChatRail } from "~/components/resizable-chat-rail";
-import { SenorDocoChatPane } from "~/components/senor-doco-chat-pane";
-import { SiteHeader, SiteHeaderSuppressionProvider } from "~/components/site-header";
-import { getCurrentPrincipal, isHumanPrincipal } from "~/lib/session";
 import "./app.css";
 
 export function links() {
@@ -60,81 +54,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
 }
 
 export default function App() {
-  const data = useLoaderData<typeof loader>();
-  if (!data.docoChat) return <Outlet />;
-  return (
-    <div className="flex h-screen flex-col overflow-hidden bg-background">
-      <SiteHeader
-        mode="host"
-        me={data.docoChat.me}
-        docoScope={{ handle: data.docoChat.handle }}
-        shellOwner
-      />
-      <div className="flex min-h-0 flex-1 overflow-hidden">
-        <ResizableChatRail>
-          <SenorDocoChatPane
-            endpoint={data.docoChat.endpoint}
-            handle={data.docoChat.handle}
-            principalId={data.docoChat.me.id}
-          />
-        </ResizableChatRail>
-        <div className="min-w-0 flex-1 overflow-auto">
-          <SiteHeaderSuppressionProvider>
-            <Outlet />
-          </SiteHeaderSuppressionProvider>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-const HOST_LEVEL_PATHS = new Set([
-  "agent",
-  "ai",
-  "api",
-  "auth",
-  "connect",
-  "dashboard",
-  "docs",
-  "getting-started",
-  "install",
-  "invite",
-  "llms.txt",
-  "mcp",
-  "new",
-  "new-doco",
-  "new-org",
-  "onboarding",
-  "orgs",
-  "robots.txt",
-  "setup",
-  "sign-in",
-  "sign-out",
-  "sign-up",
-  "users",
-]);
-
-const NON_HTML_DOCO_LEAVES = new Set(["chat.json", "search.json", "status.json"]);
-
-export async function loader({ request }: { request: Request }) {
-  const me = await getCurrentPrincipal(request);
-  if (!me || !isHumanPrincipal(me)) return { docoChat: null };
-  const url = new URL(request.url);
-  const parts = url.pathname.split("/").filter(Boolean);
-  const first = parts[0];
-  if (!first || HOST_LEVEL_PATHS.has(first)) return { docoChat: null };
-  if (parts[1] === "api" || NON_HTML_DOCO_LEAVES.has(parts[1] ?? "")) {
-    return { docoChat: null };
-  }
-  const row = await getDocoByIdOrHandle(first).catch(() => null);
-  if (!row) return { docoChat: null };
-  return {
-    docoChat: {
-      handle: row.handle,
-      endpoint: `/${row.handle}/chat.json`,
-      me,
-    },
-  };
+  return <Outlet />;
 }
 
 export function ErrorBoundary() {
