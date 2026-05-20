@@ -26,7 +26,7 @@ import {
 import type { EntityId } from "@doco/shared";
 import { useEffect, useState } from "react";
 import { Link, redirect, useFetcher } from "react-router";
-import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { CollaborationInvitePrompt } from "~/components/collaboration-invite-prompt";
 import { SingleColumnPageMain } from "~/components/page-main";
 import { SiteHeader } from "~/components/site-header";
@@ -269,6 +269,7 @@ export async function loader({ request }: { request: Request }) {
 
   return {
     me,
+    host: `${url.protocol}//${url.host}`,
     orgSections,
     docoSections,
     scopeSections,
@@ -494,6 +495,7 @@ interface UsersLoaderData {
     isHuman: boolean;
     email?: string;
   };
+  host: string;
   orgSections: OrgSection[];
   docoSections: DocoSection[];
   scopeSections: ScopeSection[];
@@ -518,12 +520,14 @@ export default function UsersPage({
           <h1 className="text-2xl font-semibold">Users (humans/agents)</h1>
         </header>
 
-        <InviteCard
+        <InviteHumanCard
           orgs={loaderData.invite.orgs}
           docos={loaderData.invite.docos}
           scopes={loaderData.invite.scopes}
           defaultSelection={loaderData.invite.defaultSelection}
         />
+
+        <InviteAgentCard host={loaderData.host} />
 
         <Section
           title="Org users"
@@ -729,7 +733,23 @@ function UserRow({ row }: { row: SectionRow }) {
   );
 }
 
-function InviteCard({
+/**
+ * Two separate cards — humans and agents go through different
+ * authentication shapes, so they get their own widgets.
+ *
+ * Humans: pick (level, target, role) → mint a one-shot invite URL
+ * that's bound on the server to that exact grant. The recipient
+ * clicks the URL, signs in with GitHub, accepts → they land in
+ * doco_users (or org_users / scope_users) with the role you picked.
+ *
+ * Agents: there's no scoping form. The agent drives OAuth itself
+ * (localhost-loopback or Device Flow), and the human picks which
+ * Docos to grant + the per-Doco role on the approve screen at that
+ * time. So the agent card is just a static prompt the project owner
+ * pastes into their agent runtime — pointing it at the OAuth recipe
+ * and at /device for the Device-Flow approval.
+ */
+function InviteHumanCard({
   orgs,
   docos,
   scopes,
@@ -763,7 +783,11 @@ function InviteCard({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Invite a user (human or agent)</CardTitle>
+        <CardTitle>Invite a human</CardTitle>
+        <CardDescription>
+          They click the URL, sign in with GitHub, and land in your Doco with the exact role you
+          pick.
+        </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
         <fetcher.Form method="post" className="flex flex-col gap-3">
@@ -848,9 +872,6 @@ function InviteCard({
         {inviteResult ? (
           <CollaborationInvitePrompt
             inviteUrl={inviteResult.invite_url}
-            docoUrl={inviteResult.doco_url}
-            recipeUrl={inviteResult.recipe_url}
-            deviceUrl={inviteResult.device_url}
             testId="invite-result"
             promptTestId="invite-url"
             copyButtonTestId="invite-copy"
@@ -864,5 +885,57 @@ function InviteCard({
         ) : null}
       </CardContent>
     </Card>
+  );
+}
+
+function InviteAgentCard({ host }: { host: string }) {
+  const recipeUrl = `${host}/protocol/agent-oauth-recipe`;
+  const deviceUrl = `${host}/device`;
+  const prompt = [
+    `Let's collaborate with Doco on this project. The host is ${host}.`,
+    "",
+    `To get programmatic access, follow the OAuth recipe at ${recipeUrl}. If you can bind a local TCP port and open a browser, use Recipe A (localhost-loopback). If you can't (chat-only / sandboxed runtimes), use Recipe B (RFC 8628 Device Authorization Grant) — you'll show me a short code and I'll approve at ${deviceUrl}.`,
+    "",
+    "At the approve screen I'll pick which Docos you can read/write and at what role (reader / author / approver / owner) per Doco, so no scoping is needed up front.",
+  ].join("\n");
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Invite an AI agent</CardTitle>
+        <CardDescription>
+          Agents authenticate via OAuth — there's no per-invite scoping here because you pick
+          which Docos and what role at approve time.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <AgentPromptBlock body={prompt} />
+      </CardContent>
+    </Card>
+  );
+}
+
+function AgentPromptBlock({ body }: { body: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <div className="space-y-2">
+      <pre
+        className="rounded-md border border-border bg-input p-3 text-[11px] whitespace-pre-wrap break-words"
+        data-testid="invite-agent-prompt"
+      >
+        {body}
+      </pre>
+      <button
+        type="button"
+        data-testid="invite-agent-copy"
+        onClick={async () => {
+          await navigator.clipboard.writeText(body);
+          setCopied(true);
+          setTimeout(() => setCopied(false), 1500);
+        }}
+        className="rounded-md border border-border bg-card px-3 py-1.5 text-xs font-semibold text-foreground hover:bg-input"
+      >
+        {copied ? "Copied!" : "Copy prompt"}
+      </button>
+    </div>
   );
 }

@@ -366,11 +366,16 @@ export async function normalizeDocoParams(params: {
 }
 
 /**
- * Load + privacy-gate a Doco for a read route.
+ * Load + privacy-gate a Doco for a read route. `minRole` (default
+ * `reader`) is the minimum role the OAuth-token scope-down must
+ * grant on this Doco for the request to pass — pass `"author"` for
+ * capture endpoints, `"owner"` for admin endpoints (or use
+ * `loadDocoForAdmin`).
  */
 export async function loadDocoForRead(
   request: Request,
   handleOrId: string,
+  minRole: DocoRole = "reader",
 ): Promise<{
   dir: string;
   meta: DocoMetadata;
@@ -408,7 +413,7 @@ export async function loadDocoForRead(
   // request would fall through to the anonymous-on-private-Doco branch
   // and get a generic 403, which doesn't tell the runtime anything
   // about why.
-  await enforceOauthGrant(request, row.id);
+  await enforceOauthGrant(request, row.id, minRole);
   const me = await getCurrentPrincipalAsync(request);
   if (!(await canAccessDoco(meta, me?.id ?? null))) {
     throw accessDeniedResponse(row.handle, row.owner_slug, !!me);
@@ -426,8 +431,10 @@ export async function loadDocoForRead(
 
 /**
  * If the request is authenticated via an OAuth access token, the
- * token's `granted_doco_ids` must include `docoId`. No-op for cookie
- * sessions or anonymous reads on public docos.
+ * token's `granted_doco_ids` must include `docoId` AND the token's
+ * `granted_doco_roles[docoId]` (if specified) must be at least
+ * `minRole`. No-op for cookie sessions or anonymous reads on public
+ * docos.
  *
  *   - No `Authorization` header → no-op; downstream anonymous /
  *     cookie logic handles the request.
@@ -437,11 +444,17 @@ export async function loadDocoForRead(
  *     §3.1, so the runtime knows to refresh or re-auth.
  *   - Bearer that doesn't even look like an OAuth token → no-op;
  *     unrecognized credentials fall through to the route's normal
- *     anonymous/cookie path (and likely 403 later if the Doco is
- *     private), which matches pre-OAuth behavior.
+ *     anonymous/cookie path.
  *   - Valid bearer but `docoId` isn't in `granted_doco_ids` → 403.
+ *   - Valid bearer with this `docoId` granted but the per-Doco role
+ *     scope-down is below `minRole` (e.g. token grants reader, the
+ *     route needs author) → 403 with `insufficient_scope`.
  */
-async function enforceOauthGrant(request: Request, docoId: string): Promise<void> {
+async function enforceOauthGrant(
+  request: Request,
+  docoId: string,
+  minRole: DocoRole = "reader",
+): Promise<void> {
   const bearer = extractBearer(request);
   if (!bearer) return;
   const looksOauth = bearer.startsWith("doco_at_");
@@ -457,8 +470,6 @@ async function enforceOauthGrant(request: Request, docoId: string): Promise<void
           status: 401,
           headers: {
             "Content-Type": "application/json",
-            // RFC 6750 §3 / RFC 9728: tell the client this was a bearer
-            // failure so it knows to refresh or restart the OAuth dance.
             "WWW-Authenticate": `Bearer error="invalid_token", error_description="The access token is invalid, revoked, or expired"`,
           },
         },
@@ -473,6 +484,26 @@ async function enforceOauthGrant(request: Request, docoId: string): Promise<void
         error: "OAuth token not authorized for this Doco. Re-authorize at /oauth/authorize.",
       }),
       { status: 403, headers: { "Content-Type": "application/json" } },
+    );
+  }
+  // Per-Doco role scope-down: the granting user can have lowered the
+  // token's effective role on this Doco below the operation's
+  // requirement. Missing entry means "no scope-down" → inherits the
+  // principal's actual role, which is enforced elsewhere.
+  const grantedRole = token.granted_doco_roles?.[docoId];
+  if (grantedRole && !roleAtLeast(grantedRole as DocoRole, minRole)) {
+    throw new Response(
+      JSON.stringify({
+        kind: "insufficient_scope",
+        error: `OAuth token grants '${grantedRole}' on this Doco; this operation requires '${minRole}'. Re-authorize to widen the scope.`,
+      }),
+      {
+        status: 403,
+        headers: {
+          "Content-Type": "application/json",
+          "WWW-Authenticate": `Bearer error="insufficient_scope", scope="doco"`,
+        },
+      },
     );
   }
 }
@@ -491,7 +522,10 @@ export async function loadDocoForAdmin(
   canonicalDocoSlug: string;
   canonicalHandle: string;
 }> {
-  const ctx = await loadDocoForRead(request, handleOrId);
+  // The OAuth-token role scope-down must grant at least "owner" on
+  // this Doco — admin operations refuse a scoped-down token even if
+  // the underlying principal is an admin.
+  const ctx = await loadDocoForRead(request, handleOrId, "owner");
   if (!(await canAdminDoco(ctx.meta, ctx.me?.id ?? null))) {
     throw new Response("Forbidden: only the Doco's owner can edit this.", { status: 403 });
   }

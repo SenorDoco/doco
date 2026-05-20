@@ -84,7 +84,10 @@ export function makeCaptureRoute<TDraft>(cfg: CaptureRouteConfig<TDraft>) {
       params: RouteParams;
     }) {
       const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
-      const { me } = await loadDocoForRead(request, handle);
+      // Captures are writes — require the OAuth-token role scope-down
+      // to grant at least "author" on this Doco. Cookie-session users
+      // are unaffected (enforceOauthGrant only fires on Bearer auth).
+      const { me } = await loadDocoForRead(request, handle, "author");
       if (!me) {
         return Response.json({ error: "Authentication required to write." }, { status: 401 });
       }
@@ -322,7 +325,8 @@ export function makeUpdateRoute(cfg: UpdateRouteConfig) {
     }) {
       const { id } = params;
       const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
-      const { me } = await loadDocoForRead(request, handle);
+      // Patches are writes — gate on at least "author" via the token.
+      const { me } = await loadDocoForRead(request, handle, "author");
       if (!me) {
         return Response.json({ error: "Authentication required to edit." }, { status: 401 });
       }

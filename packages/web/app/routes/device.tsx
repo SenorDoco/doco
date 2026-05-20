@@ -17,12 +17,15 @@
 //   5. Cancel marks the row denied; the agent's next poll gets
 //      access_denied and stops.
 
-import { getDocoById } from "@doco/db";
+import { type DocoRole, ROLE_RANK, getDocoById, roleAtLeast } from "@doco/db";
 import { Form, redirect, useLoaderData } from "react-router";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { SingleColumnPageMain } from "~/components/page-main";
 import { SiteHeader } from "~/components/site-header";
-import { listAccessibleDocoIdsForPrincipal } from "~/lib/doco-access.server";
+import {
+  getDocoLevelRole,
+  listAccessibleDocoIdsForPrincipal,
+} from "~/lib/doco-access.server";
 import {
   approveDeviceAuthorization,
   denyDeviceAuthorization,
@@ -31,11 +34,18 @@ import {
 } from "~/lib/oauth-server.server";
 import { getCurrentPrincipal } from "~/lib/session";
 
+const DOCO_ROLES: DocoRole[] = ["reader", "author", "approver", "owner"];
+
 interface LoaderData {
   user_code: string;
   stage: "enter-code" | "approve" | "done" | "expired" | "denied" | "unknown";
   client_name?: string;
-  docos?: { id: string; handle: string; name: string | null }[];
+  docos?: {
+    id: string;
+    handle: string;
+    name: string | null;
+    my_role: DocoRole;
+  }[];
   message?: string;
   me: Awaited<ReturnType<typeof getCurrentPrincipal>>;
 }
@@ -96,11 +106,19 @@ export async function loader({ request }: { request: Request }) {
     await Promise.all(
       docoIds.map(async (id) => {
         const d = await getDocoById(id);
-        return d ? { id: d.id, handle: d.handle, name: d.name } : null;
+        if (!d) return null;
+        const my_role =
+          (await getDocoLevelRole({ ownerId: d.owner_id, docoId: d.id }, me.id)) ?? "reader";
+        return { id: d.id, handle: d.handle, name: d.name, my_role };
       }),
     )
   )
-    .filter((d): d is { id: string; handle: string; name: string | null } => d !== null)
+    .filter(
+      (
+        d,
+      ): d is { id: string; handle: string; name: string | null; my_role: DocoRole } =>
+        d !== null,
+    )
     .sort((a, b) => a.handle.localeCompare(b.handle));
 
   return {
@@ -148,17 +166,28 @@ export async function action({ request }: { request: Request }) {
       throw new Response("at least one Doco must be selected", { status: 400 });
     }
     // Defense against form tampering — every selected id must be in
-    // the principal's full accessible set (direct owner + org + grants).
+    // the principal's full accessible set, and the per-Doco role
+    // cannot exceed the principal's actual role on that Doco.
+    const granted_doco_roles: Record<string, DocoRole> = {};
     const allowed = new Set(await listAccessibleDocoIdsForPrincipal(principal.id));
     for (const id of selected) {
       if (!allowed.has(id)) {
         throw new Response(`not authorized for ${id}`, { status: 403 });
       }
+      const doco = await getDocoById(id);
+      if (!doco) throw new Response(`unknown doco: ${id}`, { status: 400 });
+      const myRole =
+        (await getDocoLevelRole({ ownerId: doco.owner_id, docoId: doco.id }, principal.id)) ??
+        "reader";
+      const raw = String(form.get(`role_${id}`) ?? myRole).toLowerCase();
+      const requested = (DOCO_ROLES as string[]).includes(raw) ? (raw as DocoRole) : myRole;
+      granted_doco_roles[id] = ROLE_RANK[requested] <= ROLE_RANK[myRole] ? requested : myRole;
     }
     await approveDeviceAuthorization({
       device_code: row.device_code,
       principal_id: principal.id,
       granted_doco_ids: selected,
+      granted_doco_roles,
     });
     return redirect(`/device?user_code=${encodeURIComponent(user_code)}`);
   }
@@ -237,8 +266,11 @@ function renderStage(data: LoaderData) {
               <input type="hidden" name="user_code" value={data.user_code} />
               <ul className="divide-y divide-border rounded-md border border-border">
                 {data.docos!.map((d) => (
-                  <li key={d.id} className="px-3 py-2.5">
-                    <label className="flex cursor-pointer items-center gap-3">
+                  <li
+                    key={d.id}
+                    className="flex items-center justify-between gap-3 px-3 py-2.5"
+                  >
+                    <label className="flex flex-1 cursor-pointer items-center gap-3">
                       <input
                         type="checkbox"
                         name="doco_id"
@@ -253,9 +285,25 @@ function renderStage(data: LoaderData) {
                         ) : null}
                       </span>
                     </label>
+                    <select
+                      name={`role_${d.id}`}
+                      defaultValue={d.my_role}
+                      aria-label={`Role on ${d.handle}`}
+                      className="rounded-md border border-border bg-card px-2 py-1 text-xs text-foreground"
+                    >
+                      {DOCO_ROLES.filter((r) => roleAtLeast(d.my_role, r)).map((r) => (
+                        <option key={r} value={r}>
+                          {r}
+                        </option>
+                      ))}
+                    </select>
                   </li>
                 ))}
               </ul>
+              <p className="text-[11px] text-muted-foreground">
+                Each Doco's dropdown is capped at the role you currently hold there. Lower it to
+                scope the agent down (e.g. give a research agent <code>reader</code> only).
+              </p>
               <div className="flex gap-2">
                 <button
                   type="submit"

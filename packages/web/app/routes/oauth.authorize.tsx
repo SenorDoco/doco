@@ -12,14 +12,19 @@
 //      runtime's `redirect_uri` with ?code=...&state=...
 //   5. Cancel → redirect with ?error=access_denied&state=...
 
-import { getDocoById } from "@doco/db";
+import { type DocoRole, ROLE_RANK, getDocoById, roleAtLeast } from "@doco/db";
 import { Form, redirect, useLoaderData } from "react-router";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { SingleColumnPageMain } from "~/components/page-main";
 import { SiteHeader } from "~/components/site-header";
-import { listAccessibleDocoIdsForPrincipal } from "~/lib/doco-access.server";
+import {
+  getDocoLevelRole,
+  listAccessibleDocoIdsForPrincipal,
+} from "~/lib/doco-access.server";
 import { getClient, issueAuthorizationCode } from "~/lib/oauth-server.server";
 import { getCurrentPrincipal } from "~/lib/session";
+
+const DOCO_ROLES: DocoRole[] = ["reader", "author", "approver", "owner"];
 
 interface AuthorizeParams {
   response_type: string;
@@ -34,7 +39,12 @@ interface AuthorizeParams {
 interface LoaderData {
   client_name: string;
   params: AuthorizeParams;
-  docos: { id: string; handle: string; name: string | null }[];
+  docos: {
+    id: string;
+    handle: string;
+    name: string | null;
+    my_role: DocoRole;
+  }[];
   me: Awaited<ReturnType<typeof getCurrentPrincipal>>;
 }
 
@@ -65,11 +75,19 @@ export async function loader({ request }: { request: Request }) {
     await Promise.all(
       docoIds.map(async (id) => {
         const d = await getDocoById(id);
-        return d ? { id: d.id, handle: d.handle, name: d.name } : null;
+        if (!d) return null;
+        const my_role =
+          (await getDocoLevelRole({ ownerId: d.owner_id, docoId: d.id }, principal.id)) ?? "reader";
+        return { id: d.id, handle: d.handle, name: d.name, my_role };
       }),
     )
   )
-    .filter((d): d is { id: string; handle: string; name: string | null } => d !== null)
+    .filter(
+      (
+        d,
+      ): d is { id: string; handle: string; name: string | null; my_role: DocoRole } =>
+        d !== null,
+    )
     .sort((a, b) => a.handle.localeCompare(b.handle));
 
   const data: LoaderData = {
@@ -105,11 +123,25 @@ export async function action({ request }: { request: Request }) {
   if (selected.length === 0) {
     throw errorResponse("at least one Doco must be selected", 400);
   }
-  // Defense against form tampering — every selected id must be in
-  // the principal's full accessible set, not just doco_users.
+  // Defense against form tampering: every selected id must be in
+  // the principal's full accessible set, and the per-Doco role must
+  // not exceed the principal's actual role on that Doco. Building
+  // the cap table from `getDocoLevelRole` (the same union the picker
+  // ran against) so we don't trust the form's role values.
+  const granted_doco_roles: Record<string, DocoRole> = {};
   const allowed = new Set(await listAccessibleDocoIdsForPrincipal(principal.id));
   for (const id of selected) {
     if (!allowed.has(id)) throw errorResponse(`not authorized for ${id}`, 403);
+    const doco = await getDocoById(id);
+    if (!doco) throw errorResponse(`unknown doco: ${id}`, 400);
+    const myRole =
+      (await getDocoLevelRole({ ownerId: doco.owner_id, docoId: doco.id }, principal.id)) ??
+      "reader";
+    const raw = String(form.get(`role_${id}`) ?? myRole).toLowerCase();
+    const requested = (DOCO_ROLES as string[]).includes(raw) ? (raw as DocoRole) : myRole;
+    // Cap at the user's actual role — the user cannot grant more than
+    // they themselves hold. min(requested, myRole).
+    granted_doco_roles[id] = ROLE_RANK[requested] <= ROLE_RANK[myRole] ? requested : myRole;
   }
 
   const { code } = await issueAuthorizationCode({
@@ -118,6 +150,7 @@ export async function action({ request }: { request: Request }) {
     redirect_uri: params.redirect_uri,
     code_challenge: params.code_challenge,
     granted_doco_ids: selected,
+    granted_doco_roles,
     scope: params.scope ?? undefined,
   });
   return redirect(redirectWith(params, { code }));
@@ -151,8 +184,11 @@ export default function AuthorizePage() {
               <Form method="post" className="space-y-4">
                 <ul className="divide-y divide-border rounded-md border border-border">
                   {data.docos.map((d) => (
-                    <li key={d.id} className="px-3 py-2.5">
-                      <label className="flex cursor-pointer items-center gap-3">
+                    <li
+                      key={d.id}
+                      className="flex items-center justify-between gap-3 px-3 py-2.5"
+                    >
+                      <label className="flex flex-1 cursor-pointer items-center gap-3">
                         <input
                           type="checkbox"
                           name="doco_id"
@@ -167,9 +203,27 @@ export default function AuthorizePage() {
                           ) : null}
                         </span>
                       </label>
+                      <select
+                        name={`role_${d.id}`}
+                        defaultValue={d.my_role}
+                        aria-label={`Role on ${d.handle}`}
+                        className="rounded-md border border-border bg-card px-2 py-1 text-xs text-foreground"
+                      >
+                        {DOCO_ROLES.filter((r) =>
+                          roleAtLeast(d.my_role, r),
+                        ).map((r) => (
+                          <option key={r} value={r}>
+                            {r}
+                          </option>
+                        ))}
+                      </select>
                     </li>
                   ))}
                 </ul>
+                <p className="text-[11px] text-muted-foreground">
+                  Each Doco's dropdown is capped at the role you currently hold there. Lower it to
+                  scope the agent down (e.g. give a research agent <code>reader</code> only).
+                </p>
                 <div className="flex gap-2">
                   <button
                     type="submit"
