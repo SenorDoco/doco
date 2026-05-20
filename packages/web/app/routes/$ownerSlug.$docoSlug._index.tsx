@@ -1,5 +1,4 @@
 import { withClient } from "@doco/db";
-import { entityUrl } from "@doco/shared";
 // Per-Doco home — bare title up top, then the search input, node overview,
 // activity heatmap, and latest activity feed in a single content column.
 //
@@ -18,10 +17,10 @@ import { parse as parseYaml } from "yaml";
 import { ActivityFeedLine, type ActivityFeedLineItem } from "~/components/activity-feed-line";
 import { ActivityHeatmap } from "~/components/activity-heatmap";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
-import { EntityGraph } from "~/components/entity-graph";
 import { InviteCollaboratorsLink } from "~/components/invite-collaborators-link";
 import { NodeTypeIcon } from "~/components/node-type-icon";
 import { NodesOverviewCard, type NodesOverviewSection } from "~/components/nodes-overview-card";
+import { OverviewGraph } from "~/components/overview-graph";
 import { SiteHeader } from "~/components/site-header";
 import { docoPath } from "~/lib/db.server";
 import { canAdminDoco, loadDocoForRead, normalizeDocoParams } from "~/lib/doco-access.server";
@@ -450,20 +449,15 @@ export default function DocoHome({
             <div className="flex flex-wrap items-center justify-between gap-3">
               <h2 className="text-sm font-semibold tracking-tight">Doco graph</h2>
               <span className="font-mono text-xs text-muted-foreground">
-                {graph.nodes.length} clusters · {graph.links.length} links
+                {graph.nodes.length} nodes · {graph.links.length} links
               </span>
             </div>
             <div className="h-[70vh] min-h-[520px] xl:min-h-0 xl:flex-1">
-              <EntityGraph
+              <OverviewGraph
                 centerId={graph.centerId}
                 nodes={graph.nodes}
                 links={graph.links}
-                scopeFilters={graph.scopeFilters}
-                hrefFor={(id, nodeType) => entityUrl({ ownerSlug, docoSlug, nodeType, id })}
-                layoutMode="cluster"
-                showScopeNodes
-                showMembershipEdges
-                showPersonalizedRank={false}
+                detailUrl={graph.detailUrl}
                 fillHeight
               />
             </div>

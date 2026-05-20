@@ -1,7 +1,12 @@
 import { globalPageRank } from "@doco/index";
 import { parse as parseYaml } from "yaml";
 import type { GraphLink, GraphNode } from "~/components/entity-graph";
-import { nodeTypePlural } from "~/lib/node-colors";
+import type {
+  OverviewGraphData,
+  OverviewGraphLink,
+  OverviewGraphNode,
+  OverviewNodeDetail,
+} from "~/components/overview-graph";
 
 type QueryClient = {
   query<T>(sql: string, params?: unknown[]): Promise<{ rows: T[] }>;
@@ -32,30 +37,12 @@ export interface FullGraphData {
   scopeFilters: { id: string; name: string; icon: string | null }[];
 }
 
-interface OverviewScopeRow {
+interface OverviewGraphRow {
   id: string;
-  name: string;
-  purpose: string | null;
-  lifecycle: string | null;
-  raw_yaml: string | null;
-  created_at: string | null;
-}
-
-interface OverviewClusterRow {
-  scope_id: string | null;
-  scope_name: string | null;
   node_type: string;
-  lifecycle: string;
-  node_count: string;
-  latest_at: string | null;
-}
-
-interface OverviewClusterEdgeRow {
-  source_cluster_id: string;
-  target_cluster_id: string;
-  edge_type: string;
-  attribution: string | null;
-  edge_count: string;
+  name: string | null;
+  lifecycle: string | null;
+  created_at: string | null;
 }
 
 const GRAPH_TABLES: {
@@ -81,10 +68,8 @@ const GRAPH_TABLES: {
   },
 ];
 
-const OVERVIEW_GRAPH_EDGE_LIMIT = 900;
-const UNSCOPED_CLUSTER_KEY = "unscoped";
-
-const OVERVIEW_ENTITY_TABLES = GRAPH_TABLES.filter((entry) => entry.nodeType !== "scope");
+const OVERVIEW_GRAPH_EDGE_LIMIT = 5000;
+const OVERVIEW_DETAIL_LIMIT = 120;
 
 function storedFrontmatter(rawYaml: string | null | undefined): Record<string, unknown> {
   if (!rawYaml) return {};
@@ -124,292 +109,171 @@ function asAttribution(value: string | null): "explicit" | "doco-auto" {
   return value === "doco-auto" ? "doco-auto" : "explicit";
 }
 
-function overviewEntitiesSql(): string {
-  return OVERVIEW_ENTITY_TABLES.map((entry) => {
-    const labelExpr = entry.labelExpr ?? "t.summary";
-    const nameExpr = entry.nameExpr ?? "NULL::text";
-    return `SELECT t.id,
-                   '${entry.nodeType}'::text AS node_type,
-                   COALESCE(t.lifecycle, 'active') AS lifecycle,
-                   t.created_at,
-                   ${labelExpr} AS label,
-                   ${nameExpr} AS name
-              FROM ${entry.table} t
-             WHERE t.doco_id = $1`;
-  }).join(" UNION ALL ");
-}
-
 function scopeIcon(rawYaml: string | null | undefined): string | null {
   const parsed = storedFrontmatter(rawYaml);
   return typeof parsed.icon === "string" ? parsed.icon : null;
 }
 
-function clusterId(scopeId: string | null, nodeType: string, lifecycle: string): string {
-  return `cluster:${scopeId ?? UNSCOPED_CLUSTER_KEY}:${nodeType}:${lifecycle}`;
-}
-
-function clusterSearchHref(
+function overviewEntityHref(
   handle: string | undefined,
-  args: { scopeName: string | null; nodeType: string; lifecycle: string },
+  nodeType: string,
+  id: string,
 ): string | undefined {
   if (!handle) return undefined;
-  const params = new URLSearchParams();
-  params.set("node_type", args.nodeType);
-  params.set("lifecycle", args.lifecycle);
-  if (args.scopeName) params.set("scope", args.scopeName);
-  return `/${handle}/search?${params.toString()}`;
+  if (nodeType === "scope") return `/${handle}/scopes/${id}`;
+  return `/${handle}/${nodeType}/${id}`;
 }
 
-function docoHref(handle: string | undefined): string | undefined {
-  return handle ? `/${handle}` : undefined;
+function overviewRowsSql(scopeId?: string, includeLabel = false): string {
+  return GRAPH_TABLES.map((entry) => {
+    const labelExpr = entry.labelExpr ?? "t.summary";
+    const nameExpr = entry.nameExpr ?? "NULL::text";
+    const scopeClause = scopeId
+      ? entry.nodeType === "scope"
+        ? "AND t.id = $2"
+        : `AND EXISTS (
+             SELECT 1 FROM edges se
+              WHERE se.doco_id = t.doco_id
+                AND se.from_id = t.id
+                AND se.edge_type = 'in_scope_of'
+                AND se.to_id = $2
+           )`
+      : "";
+    return `SELECT t.id,
+                   '${entry.nodeType}'::text AS node_type,
+                   ${nameExpr} AS name,
+                   COALESCE(t.lifecycle, 'active') AS lifecycle,
+                   t.created_at::text AS created_at
+                   ${includeLabel ? `, ${labelExpr} AS label` : ""}
+              FROM ${entry.table} t
+             WHERE t.doco_id = $1
+             ${scopeClause}`;
+  }).join(" UNION ALL ");
 }
 
-async function loadOverviewScopes(
+async function loadOverviewRows(
   c: QueryClient,
   docoId: string,
   scopeId?: string,
-): Promise<OverviewScopeRow[]> {
-  const where = scopeId ? "doco_id = $1 AND id = $2" : "doco_id = $1";
+): Promise<OverviewGraphRow[]> {
   const params = scopeId ? [docoId, scopeId] : [docoId];
-  return (
-    await c.query<OverviewScopeRow>(
-      `SELECT id,
-              name,
-              purpose,
-              COALESCE(lifecycle, 'active') AS lifecycle,
-              raw_yaml,
-              created_at::text AS created_at
-         FROM scopes
-        WHERE ${where}
-        ORDER BY name`,
-      params,
-    )
-  ).rows;
+  return (await c.query<OverviewGraphRow>(overviewRowsSql(scopeId), params)).rows;
 }
 
-async function loadOverviewClusters(
+async function loadScopeIdsByNode(
   c: QueryClient,
   docoId: string,
-  scopeId?: string,
-): Promise<OverviewClusterRow[]> {
-  const scopeFilter = scopeId ? "WHERE m.scope_id = $2" : "";
-  const params = scopeId ? [docoId, scopeId] : [docoId];
-  return (
-    await c.query<OverviewClusterRow>(
-      `WITH entities AS (${overviewEntitiesSql()}),
-            memberships AS (
-              SELECT e.id,
-                     e.node_type,
-                     e.lifecycle,
-                     e.created_at,
-                     s.id AS scope_id,
-                     s.name AS scope_name
-                FROM entities e
-                LEFT JOIN edges se
-                  ON se.doco_id = $1
-                 AND se.from_id = e.id
-                 AND se.edge_type = 'in_scope_of'
-                LEFT JOIN scopes s
-                  ON s.doco_id = $1
-                 AND s.id = se.to_id
-            )
-       SELECT m.scope_id,
-              m.scope_name,
-              m.node_type,
-              m.lifecycle,
-              COUNT(*)::text AS node_count,
-              MAX(m.created_at)::text AS latest_at
-         FROM memberships m
-         ${scopeFilter}
-        GROUP BY m.scope_id, m.scope_name, m.node_type, m.lifecycle
-        ORDER BY COUNT(*) DESC, m.scope_name NULLS LAST, m.node_type, m.lifecycle`,
-      params,
+  nodeIds: string[],
+): Promise<Map<string, string[]>> {
+  const byNode = new Map<string, string[]>();
+  if (nodeIds.length === 0) return byNode;
+  const rows = (
+    await c.query<{ from_id: string; to_id: string }>(
+      `SELECT from_id, to_id
+         FROM edges
+        WHERE doco_id = $1
+          AND edge_type = 'in_scope_of'
+          AND from_id = ANY($2::text[])`,
+      [docoId, nodeIds],
     )
   ).rows;
+  for (const row of rows) {
+    const list = byNode.get(row.from_id) ?? [];
+    list.push(row.to_id);
+    byNode.set(row.from_id, list);
+  }
+  return byNode;
 }
 
-async function loadOverviewClusterEdges(
+async function loadScopeMap(
   c: QueryClient,
   docoId: string,
-  scopeId?: string,
-): Promise<OverviewClusterEdgeRow[]> {
-  const scopeFilter = scopeId ? "WHERE s.id = $2" : "";
-  const params = scopeId
-    ? [docoId, scopeId, OVERVIEW_GRAPH_EDGE_LIMIT]
-    : [docoId, OVERVIEW_GRAPH_EDGE_LIMIT];
-  const limitParam = scopeId ? "$3" : "$2";
-  return (
-    await c.query<OverviewClusterEdgeRow>(
-      `WITH entities AS (${overviewEntitiesSql()}),
-            entity_clusters AS (
-              SELECT e.id,
-                     ('cluster:' || COALESCE(s.id, '${UNSCOPED_CLUSTER_KEY}') || ':' || e.node_type || ':' || e.lifecycle) AS cluster_id,
-                     s.id AS scope_id
-                FROM entities e
-                LEFT JOIN edges se
-                  ON se.doco_id = $1
-                 AND se.from_id = e.id
-                 AND se.edge_type = 'in_scope_of'
-                LEFT JOIN scopes s
-                  ON s.doco_id = $1
-                 AND s.id = se.to_id
-              ${scopeFilter}
-            )
-       SELECT sc.cluster_id AS source_cluster_id,
-              tc.cluster_id AS target_cluster_id,
-              e.edge_type,
-              e.attribution,
-              COUNT(*)::text AS edge_count
-         FROM edges e
-         JOIN entity_clusters sc ON sc.id = e.from_id
-         JOIN entity_clusters tc ON tc.id = e.to_id
-        WHERE e.doco_id = $1
-          AND e.edge_type != 'in_scope_of'
-          AND sc.cluster_id != tc.cluster_id
-        GROUP BY sc.cluster_id, tc.cluster_id, e.edge_type, e.attribution
-        ORDER BY COUNT(*) DESC
-        LIMIT ${limitParam}`,
-      params,
+  rows: OverviewGraphRow[],
+  scopeIdsByNode: Map<string, string[]>,
+): Promise<Map<string, { id: string; name: string; icon: string | null }>> {
+  const scopeIds = new Set<string>();
+  for (const row of rows) {
+    if (row.node_type === "scope") scopeIds.add(row.id);
+  }
+  for (const ids of scopeIdsByNode.values()) {
+    for (const id of ids) scopeIds.add(id);
+  }
+  if (scopeIds.size === 0) return new Map();
+  const scopeRows = (
+    await c.query<{ id: string; name: string; raw_yaml: string | null }>(
+      "SELECT id, name, raw_yaml FROM scopes WHERE doco_id = $1 AND id = ANY($2::text[])",
+      [docoId, Array.from(scopeIds)],
     )
   ).rows;
+  return new Map(
+    scopeRows.map((scope) => [
+      scope.id,
+      { id: scope.id, name: scope.name, icon: scopeIcon(scope.raw_yaml) },
+    ]),
+  );
+}
+
+async function loadOverviewLinks(
+  c: QueryClient,
+  docoId: string,
+  nodeIds: string[],
+): Promise<OverviewGraphLink[]> {
+  if (nodeIds.length === 0) return [];
+  const rows = (
+    await c.query<EdgeRow>(
+      `SELECT from_id, to_id, edge_type, attribution
+         FROM edges
+        WHERE doco_id = $1
+          AND edge_type != 'in_scope_of'
+          AND from_id = ANY($2::text[])
+          AND to_id = ANY($2::text[])
+        ORDER BY CASE WHEN attribution = 'explicit' THEN 0 ELSE 1 END, edge_type
+        LIMIT $3`,
+      [docoId, nodeIds, OVERVIEW_GRAPH_EDGE_LIMIT],
+    )
+  ).rows;
+  return rows.map((edge) => ({
+    source: edge.from_id,
+    target: edge.to_id,
+    edge_type: edge.edge_type,
+    attribution: asAttribution(edge.attribution),
+  }));
 }
 
 export async function loadOverviewGraph(
   c: QueryClient,
   docoId: string,
   options: { scopeId?: string; centerId?: string; handle?: string } = {},
-): Promise<FullGraphData> {
-  const [scopeRows, clusterRows, clusterEdgeRows] = await Promise.all([
-    loadOverviewScopes(c, docoId, options.scopeId),
-    loadOverviewClusters(c, docoId, options.scopeId),
-    loadOverviewClusterEdges(c, docoId, options.scopeId),
+): Promise<OverviewGraphData> {
+  const rows = await loadOverviewRows(c, docoId, options.scopeId);
+  const nodeIds = rows.map((row) => row.id);
+  const [scopeIdsByNode, links] = await Promise.all([
+    loadScopeIdsByNode(c, docoId, nodeIds),
+    loadOverviewLinks(c, docoId, nodeIds),
   ]);
-
-  const scopeById = new Map(
-    scopeRows.map((scope) => [
-      scope.id,
-      {
-        id: scope.id,
-        name: scope.name,
-        icon: scopeIcon(scope.raw_yaml),
-        purpose: scope.purpose,
-        lifecycle: scope.lifecycle ?? "active",
-        created_at: toIso(scope.created_at),
-      },
-    ]),
-  );
-  const countByScope = new Map<string, number>();
-  let totalCount = 0;
-  for (const row of clusterRows) {
-    const count = Number(row.node_count);
-    totalCount += count;
-    if (row.scope_id) countByScope.set(row.scope_id, (countByScope.get(row.scope_id) ?? 0) + count);
-  }
-
-  const docoNodeId = `doco:${docoId}`;
-  const scopeNodes: GraphNode[] = scopeRows.map((scope) => {
-    const count = countByScope.get(scope.id) ?? 0;
+  const scopeById = await loadScopeMap(c, docoId, rows, scopeIdsByNode);
+  const nodes: OverviewGraphNode[] = rows.map((row) => {
+    const scopes =
+      row.node_type === "scope"
+        ? [scopeById.get(row.id)].filter(
+            (scope): scope is { id: string; name: string; icon: string | null } => Boolean(scope),
+          )
+        : (scopeIdsByNode.get(row.id) ?? [])
+            .map((scopeId) => scopeById.get(scopeId))
+            .filter((scope): scope is { id: string; name: string; icon: string | null } =>
+              Boolean(scope),
+            );
     return {
-      id: scope.id,
-      node_type: "scope",
-      summary: `${count.toLocaleString()} nodes in ${scope.name}`,
-      name: scope.name,
-      href: options.handle ? `/${options.handle}/scopes/${scope.id}` : undefined,
-      count,
-      lifecycle: scope.lifecycle ?? "active",
-      scopes: [],
-      principal_id: null,
-      principal_label: null,
-      created_at: toIso(scope.created_at),
-      lifecycle_since: toIso(scope.created_at),
-      ppr: 0,
-      gpr: count,
-      is_center: scope.id === options.centerId || scope.id === options.scopeId,
-    };
-  });
-
-  const clusterNodes: GraphNode[] = clusterRows.map((row) => {
-    const count = Number(row.node_count);
-    const scope = row.scope_id ? scopeById.get(row.scope_id) : null;
-    const labelScope = scope?.name ?? "Unscoped";
-    const plural = nodeTypePlural(row.node_type);
-    return {
-      id: clusterId(row.scope_id, row.node_type, row.lifecycle),
+      id: row.id,
       node_type: row.node_type,
-      summary: `${count.toLocaleString()} ${plural} · ${row.lifecycle}`,
-      name: `${labelScope} · ${plural}`,
-      href: clusterSearchHref(options.handle, {
-        scopeName: scope?.name ?? null,
-        nodeType: row.node_type,
-        lifecycle: row.lifecycle,
-      }),
-      count,
-      lifecycle: row.lifecycle,
-      scopes: scope
-        ? [{ id: scope.id, name: scope.name, icon: scope.icon }]
-        : [{ id: UNSCOPED_CLUSTER_KEY, name: "Unscoped", icon: null }],
-      principal_id: null,
-      principal_label: null,
-      created_at: toIso(row.latest_at),
-      lifecycle_since: toIso(row.latest_at),
-      ppr: 0,
-      gpr: count,
-      is_center: false,
+      name: row.name,
+      lifecycle: row.lifecycle ?? "active",
+      created_at: toIso(row.created_at),
+      href: overviewEntityHref(options.handle, row.node_type, row.id),
+      scopes,
+      is_center: row.id === options.centerId || row.id === options.scopeId,
     };
   });
-
-  const nodes: GraphNode[] = [];
-  if (!options.scopeId) {
-    nodes.push({
-      id: docoNodeId,
-      node_type: "doco",
-      summary: `${totalCount.toLocaleString()} nodes · ${scopeRows.length.toLocaleString()} scopes`,
-      name: "Doco",
-      href: docoHref(options.handle),
-      count: totalCount,
-      lifecycle: "active",
-      scopes: [],
-      principal_id: null,
-      principal_label: null,
-      created_at: null,
-      lifecycle_since: null,
-      ppr: 0,
-      gpr: totalCount,
-      is_center: true,
-    });
-  }
-  nodes.push(...scopeNodes, ...clusterNodes);
-
-  const links: GraphLink[] = [];
-  if (!options.scopeId) {
-    for (const scope of scopeRows) {
-      const count = countByScope.get(scope.id) ?? 0;
-      links.push({
-        source: docoNodeId,
-        target: scope.id,
-        edge_type: `${count.toLocaleString()} nodes`,
-        attribution: "explicit",
-      });
-    }
-  }
-  for (const row of clusterRows) {
-    if (!row.scope_id) continue;
-    links.push({
-      source: row.scope_id,
-      target: clusterId(row.scope_id, row.node_type, row.lifecycle),
-      edge_type: `${Number(row.node_count).toLocaleString()} ${nodeTypePlural(row.node_type)}`,
-      attribution: "explicit",
-    });
-  }
-  for (const row of clusterEdgeRows) {
-    links.push({
-      source: row.source_cluster_id,
-      target: row.target_cluster_id,
-      edge_type: `${row.edge_type} ×${Number(row.edge_count).toLocaleString()}`,
-      attribution: asAttribution(row.attribution),
-    });
-  }
-
   const centerId =
     (options.centerId && nodes.some((node) => node.id === options.centerId)
       ? options.centerId
@@ -417,7 +281,7 @@ export async function loadOverviewGraph(
     (options.scopeId && nodes.some((node) => node.id === options.scopeId)
       ? options.scopeId
       : null) ??
-    (nodes.some((node) => node.id === docoNodeId) ? docoNodeId : null) ??
+    nodes.find((node) => node.node_type === "scope")?.id ??
     nodes[0]?.id ??
     options.centerId ??
     docoId;
@@ -426,14 +290,60 @@ export async function loadOverviewGraph(
     centerId,
     nodes,
     links,
-    scopeFilters: options.scopeId
-      ? []
-      : scopeRows.map((scope) => ({
-          id: scope.id,
-          name: scope.name,
-          icon: scopeIcon(scope.raw_yaml),
-        })),
+    detailUrl: options.handle ? `/${options.handle}/graph-node-details.json` : null,
   };
+}
+
+export async function loadOverviewNodeDetails(
+  c: QueryClient,
+  docoId: string,
+  ids: string[],
+  handle?: string,
+): Promise<OverviewNodeDetail[]> {
+  const requested = Array.from(new Set(ids.filter(Boolean))).slice(0, OVERVIEW_DETAIL_LIMIT);
+  if (requested.length === 0) return [];
+  const rows = (
+    await c.query<
+      OverviewGraphRow & {
+        label: string | null;
+      }
+    >(
+      `SELECT *
+         FROM (${overviewRowsSql(undefined, true)}) nodes
+        WHERE id = ANY($2::text[])`,
+      [docoId, requested],
+    )
+  ).rows;
+  const nodeIds = rows.map((row) => row.id);
+  const scopeIdsByNode = await loadScopeIdsByNode(c, docoId, nodeIds);
+  const scopeById = await loadScopeMap(c, docoId, rows, scopeIdsByNode);
+  const rowById = new Map(rows.map((row) => [row.id, row]));
+  return requested.flatMap((id) => {
+    const row = rowById.get(id);
+    if (!row) return [];
+    const scopes =
+      row.node_type === "scope"
+        ? [scopeById.get(row.id)].filter(
+            (scope): scope is { id: string; name: string; icon: string | null } => Boolean(scope),
+          )
+        : (scopeIdsByNode.get(row.id) ?? [])
+            .map((scopeId) => scopeById.get(scopeId))
+            .filter((scope): scope is { id: string; name: string; icon: string | null } =>
+              Boolean(scope),
+            );
+    return [
+      {
+        id: row.id,
+        node_type: row.node_type,
+        summary: row.label ?? row.name ?? row.id,
+        name: row.name,
+        lifecycle: row.lifecycle ?? "active",
+        created_at: toIso(row.created_at),
+        href: overviewEntityHref(handle, row.node_type, row.id),
+        scopes,
+      },
+    ];
+  });
 }
 
 async function loadGraphRows(

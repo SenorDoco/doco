@@ -187,6 +187,10 @@ export default [
     "routes/$ownerSlug.$docoSlug.api.admin.apply-template-updates[.]json.tsx",
   ),
   route(":docoId/activity", "routes/$ownerSlug.$docoSlug.activity.tsx"),
+  route(
+    ":docoId/graph-node-details.json",
+    "routes/$ownerSlug.$docoSlug.graph-node-details[.]json.tsx",
+  ),
   route(":docoId/search", "routes/$ownerSlug.$docoSlug.search.tsx"),
   route(":docoId/search.json", "routes/$ownerSlug.$docoSlug.search[.]json.tsx"),
   route(":docoId/onboarding/agent", "routes/$ownerSlug.$docoSlug.onboarding.agent.tsx"),
