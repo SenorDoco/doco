@@ -6,13 +6,11 @@ import { ENTITY_TYPES, type EntityId, entityUrl, parseEntityId } from "@doco/sha
 // Replaces the legacy `/e/:type/:id` URL — that path now redirects here.
 // See `ship-short-entity-urls` Intent + ADR.
 import { useState } from "react";
-import { Link, redirect } from "react-router";
 import { parse as parseYaml } from "yaml";
 import { readEntityHistory } from "~/lib/audit-log.server";
 import { docoPath } from "~/lib/db.server";
-import { loadDocoForAdmin, loadDocoForRead, normalizeDocoParams } from "~/lib/doco-access.server";
+import { loadDocoForRead, normalizeDocoParams } from "~/lib/doco-access.server";
 import { loadHostConfig } from "~/lib/host";
-import { reindex, updateScopeInDoco } from "~/lib/redeem.server";
 
 /** External node_type → PG table name. */
 const TABLE_BY_TYPE: Record<string, string> = {
@@ -22,13 +20,12 @@ const TABLE_BY_TYPE: Record<string, string> = {
   action: "actions",
   log: "logs",
   reference: "reference_entities",
-  scope: "scopes",
   eval: "evals",
   idea: "ideas",
   // v7 (decision_01KRRR5BQ16ASY8HQEE0V499YG): State is a first-class
   // node type. The generic detail page handles it via this mapping;
   // the frontmatter renderer surfaces `kind` and `invariants`
-  // alongside the standard summary / scopes / follows tail.
+  // alongside the standard summary / follows tail.
   state: "states",
   principal: "principals",
   organization: "organizations",
@@ -132,12 +129,10 @@ export async function loader({
 }) {
   const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
   const { type, id: idParam } = params;
-  if (!KNOWN.has(type)) throw new Response("Unknown type", { status: 404 });
-  // Per decision_01KRPNZY7W6CCMYNKGND67BP0B scopes use the plural URL
-  // `/scopes/:id` so the merged detail+edit page is the single canonical
-  // landing surface. Redirect the singular short-form here.
-  if (type === "scope") {
-    throw redirect(`/${handle}/scopes/${idParam}`, { status: 308 });
+  // v16: `scope` is no longer a navigable entity type
+  // (decision_01KS3DW9C2KN2X7Z80R18H1RAX). Reject before any read.
+  if (!KNOWN.has(type) || type === "scope") {
+    throw new Response("Unknown type", { status: 404 });
   }
   const ctx = await loadDocoForRead(request, handle);
   const me = ctx.me;
@@ -162,38 +157,10 @@ export async function loader({
           [idParam, docoId],
         )
       ).rows[0];
-      if (!row && type === "scope") {
-        row = (
-          await c.query<{ raw_yaml: string; id: string }>(
-            "SELECT raw_yaml, id FROM scopes WHERE name = $1 AND doco_id = $2",
-            [idParam, docoId],
-          )
-        ).rows[0];
-      }
     }
     if (!row) throw new Response(`Not found: ${idParam}`, { status: 404 });
     const id = row.id;
     const ent = (parseYaml(row.raw_yaml) ?? {}) as Record<string, unknown>;
-
-    const entityScopeIds = Array.isArray(ent.scopes) ? (ent.scopes as string[]) : [];
-    const entityScopes: { id: string; name: string; icon: string | null }[] = [];
-    if (entityScopeIds.length > 0) {
-      const r = await c.query<{ id: string; name: string; raw_yaml: string }>(
-        "SELECT id, name, raw_yaml FROM scopes WHERE doco_id = $1 AND id = ANY($2::text[])",
-        [docoId, entityScopeIds],
-      );
-      const byId = new Map(r.rows.map((s) => [s.id, s]));
-      for (const sid of entityScopeIds) {
-        const s = byId.get(sid);
-        if (!s) continue;
-        let icon: string | null = null;
-        try {
-          const parsed = parseYaml(s.raw_yaml) as { icon?: string } | null;
-          if (parsed && typeof parsed.icon === "string") icon = parsed.icon;
-        } catch {}
-        entityScopes.push({ id: s.id, name: s.name, icon });
-      }
-    }
 
     const outgoing = (
       await c.query<{
@@ -300,11 +267,9 @@ export async function loader({
                   WHERE id = ANY($1::text[])`;
           params = [ids];
         } else {
-          const nameExpr = tbl === "scopes" ? "t.name" : "NULL::text";
-          const labelExpr = tbl === "scopes" ? "t.purpose AS label" : "t.summary AS label";
           sql = `SELECT t.id,
-                        ${labelExpr},
-                        ${nameExpr} AS name,
+                        t.summary AS label,
+                        NULL::text AS name,
                         t.lifecycle,
                         t.created_at::text,
                         NULL::text AS principal_id,
@@ -360,40 +325,6 @@ export async function loader({
       for (const meta of neighborMeta.values()) {
         if (!meta.principal_id || meta.principal_label) continue;
         meta.principal_label = principalLabelById.get(meta.principal_id) ?? null;
-      }
-    }
-    const scopeIdsByNode = new Map<string, Set<string>>();
-    const graphScopeIds = new Set<string>();
-    for (const edge of allEdgesRows) {
-      if (edge.edge_type !== "in_scope_of") continue;
-      if (!neighborIds.has(edge.from_id)) continue;
-      if (!edge.to_id.startsWith("scope_")) continue;
-      const ids = scopeIdsByNode.get(edge.from_id) ?? new Set<string>();
-      ids.add(edge.to_id);
-      scopeIdsByNode.set(edge.from_id, ids);
-      graphScopeIds.add(edge.to_id);
-    }
-    for (const scope of entityScopes) {
-      graphScopeIds.add(scope.id);
-      if (id) {
-        const ids = scopeIdsByNode.get(id) ?? new Set<string>();
-        ids.add(scope.id);
-        scopeIdsByNode.set(id, ids);
-      }
-    }
-    const graphScopeById = new Map<string, { id: string; name: string; icon: string | null }>();
-    if (graphScopeIds.size > 0) {
-      const r = await c.query<{ id: string; name: string; raw_yaml: string }>(
-        "SELECT id, name, raw_yaml FROM scopes WHERE doco_id = $1 AND id = ANY($2::text[])",
-        [docoId, Array.from(graphScopeIds)],
-      );
-      for (const scope of r.rows) {
-        let icon: string | null = null;
-        try {
-          const parsed = parseYaml(scope.raw_yaml) as { icon?: string } | null;
-          if (parsed && typeof parsed.icon === "string") icon = parsed.icon;
-        } catch {}
-        graphScopeById.set(scope.id, { id: scope.id, name: scope.name, icon });
       }
     }
     // For every visible node, scan the audit log to find when it last
@@ -452,11 +383,6 @@ export async function loader({
         summary: meta?.summary ?? nid,
         name: meta?.name ?? null,
         lifecycle: meta?.lifecycle ?? null,
-        scopes: Array.from(scopeIdsByNode.get(nid) ?? [])
-          .map((scopeId) => graphScopeById.get(scopeId))
-          .filter((scope): scope is { id: string; name: string; icon: string | null } =>
-            Boolean(scope),
-          ),
         principal_id: meta?.principal_id ?? (nt === "principal" ? nid : null),
         principal_label:
           meta?.principal_label ??
@@ -477,55 +403,6 @@ export async function loader({
         edge_type: e.edge_type,
         attribution: (e.attribution as "explicit" | "doco-auto") ?? "explicit",
       }));
-
-    let scopeLanding: {
-      members: Record<string, { id: string; summary: string; lifecycle: string | null }[]>;
-      subScopes: { id: string; name: string }[];
-    } | null = null;
-    if (type === "scope") {
-      const memberTypes = ["intent", "decision", "action", "rule", "idea"] as const;
-      const members: Record<string, { id: string; summary: string; lifecycle: string | null }[]> =
-        {};
-      for (const t of memberTypes) {
-        const memTable = tableFor(t);
-        const rows = (
-          await c.query<{ id: string; summary: string; lifecycle: string | null }>(
-            `SELECT t.id, t.summary, t.lifecycle
-               FROM ${memTable} t
-               JOIN edges e ON e.from_id = t.id
-                           AND e.edge_type = 'in_scope_of'
-                           AND e.to_id = $1
-              WHERE t.doco_id = $2
-              ORDER BY t.id DESC LIMIT 25`,
-            [id, docoId],
-          )
-        ).rows;
-        if (rows.length > 0) members[t] = rows;
-      }
-      const subScopes = (
-        await c.query<{ id: string; name: string }>(
-          `SELECT s.id, s.name FROM scopes s
-             JOIN edges e ON e.from_id = s.id
-                         AND e.edge_type = 'in_scope_of'
-                         AND e.from_node_type = 'scope'
-                         AND e.to_id = $1
-            WHERE s.doco_id = $2
-            ORDER BY s.name`,
-          [id, docoId],
-        )
-      ).rows;
-      scopeLanding = { members, subScopes };
-    }
-
-    let allScopes: { id: string; name: string }[] = [];
-    if (type === "scope") {
-      allScopes = (
-        await c.query<{ id: string; name: string }>(
-          "SELECT id, name FROM scopes WHERE doco_id = $1 AND id != $2 ORDER BY name",
-          [docoId, id],
-        )
-      ).rows;
-    }
 
     const history = await readEntityHistory(
       dir,
@@ -595,7 +472,6 @@ export async function loader({
 
     return {
       ent,
-      entityScopes,
       outgoing,
       incoming,
       type,
@@ -606,62 +482,12 @@ export async function loader({
       host: await loadHostConfig(),
       graphNodes,
       graphLinks,
-      scopeLanding,
-      allScopes,
       me,
       history,
       identityMap,
       focalLifecycleHistory,
     };
   });
-}
-
-export async function action({
-  request,
-  params,
-}: {
-  request: Request;
-  params: { docoId: string; type: string; id: string };
-}) {
-  const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
-  const { type, id } = params;
-  if (type !== "scope") {
-    return { error: "Inline edit is only supported for scopes today." };
-  }
-  await loadDocoForAdmin(request, handle); // 404/403 if not owner/admin
-  const dir = docoPath(handle);
-  const form = await request.formData();
-  const intent = String(form.get("intent") ?? "");
-  const scopeId = id as EntityId<"scope">;
-
-  // Per decision_01KRPMC7CVDA9WZ5DKH81TVAAA `purpose` and `guidelines`
-  // were removed; the "save_scope" intent went with them. To edit a
-  // scope's rules, the user opens /scopes/<id>/edit (the only place rules
-  // are managed).
-
-  if (intent === "reparent") {
-    const parentIds = form
-      .getAll("parent_id")
-      .map((v) => String(v))
-      .filter((v) => v.length > 0) as EntityId<"scope">[];
-    try {
-      await updateScopeInDoco({
-        docoDir: dir,
-        scopeId,
-        parentScopes: parentIds,
-      });
-      await reindex(dir);
-    } catch (e) {
-      return { error: `Failed to reparent: ${(e as Error).message}` };
-    }
-    return redirect(entityUrl({ ownerSlug, docoSlug, nodeType: "scope", id: id }));
-  }
-
-  // Scope deletion is intentionally NOT handled here — it lives only in
-  // the Danger Zone at the bottom of /scopes/<id>/edit, so the act of
-  // destroying a scope requires opening its edit page first.
-
-  return { error: `Unknown intent: ${intent}` };
 }
 
 export function meta({ data }: { data: Awaited<ReturnType<typeof loader>> | undefined }) {
@@ -681,7 +507,6 @@ export default function EntityDetail({
 }) {
   const {
     ent,
-    entityScopes,
     type,
     id,
     outgoing,
@@ -781,20 +606,6 @@ export default function EntityDetail({
               {focalLifecycleSince ? <span>· {relativeTimeIso(focalLifecycleSince)}</span> : null}
             </span>
           ) : null}
-          {entityScopes.map((s) => (
-            <Link
-              key={s.id}
-              to={linkTo("scope", s.name)}
-              className="inline-flex items-center gap-1 rounded-md border border-border bg-card px-2 py-0.5 font-mono text-muted-foreground transition-colors hover:border-primary hover:text-foreground"
-            >
-              {s.icon ? (
-                <span aria-hidden className="font-sans leading-none">
-                  {s.icon}
-                </span>
-              ) : null}
-              <span>{s.name}</span>
-            </Link>
-          ))}
           <div className="ml-auto flex items-center gap-1">
             {drawerButtons.map((btn) => {
               const active = openDrawer === btn.kind;
@@ -825,7 +636,6 @@ export default function EntityDetail({
             centerId={id}
             nodes={graphNodes}
             links={graphLinks}
-            scopeFilters={entityScopes}
             hrefFor={(nid, nt) => linkTo(nt, nid)}
             fillHeight
           />
