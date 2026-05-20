@@ -116,7 +116,6 @@ export default [
   route("onboarding/create", "routes/onboarding.create._index.tsx"),
   route("onboarding/create/human", "routes/onboarding.create.human.tsx"),
   // API
-  route("api/suggest-scopes", "routes/api.suggest-scopes.tsx"),
   route("invite/:code", "routes/invite.$code.tsx"),
   // Agent-readable companion to /invite/:code. Agents that get pasted
   // an invite URL ("redeem this") fetch this to learn the MCP-OAuth
@@ -153,29 +152,6 @@ export default [
     ":docoId/api/references/:id.json",
     "routes/$ownerSlug.$docoSlug.api.references.$id[.]json.tsx",
   ),
-  route(":docoId/api/scopes/:id.json", "routes/$ownerSlug.$docoSlug.api.scopes.$id[.]json.tsx"),
-  route(
-    ":docoId/api/scopes/:id/rules.json",
-    "routes/$ownerSlug.$docoSlug.api.scopes.$id.rules[.]json.tsx",
-  ),
-  // v7 scope bulk verbs.
-  route(
-    ":docoId/api/scopes/:id/activate.json",
-    "routes/$ownerSlug.$docoSlug.api.scopes.$id.activate[.]json.tsx",
-  ),
-  route(
-    ":docoId/api/scopes/:id/draft.json",
-    "routes/$ownerSlug.$docoSlug.api.scopes.$id.draft[.]json.tsx",
-  ),
-  route(
-    ":docoId/api/scopes/:id/validate.json",
-    "routes/$ownerSlug.$docoSlug.api.scopes.$id.validate[.]json.tsx",
-  ),
-  route(
-    ":docoId/api/scopes/:id/excluded-rules.json",
-    "routes/$ownerSlug.$docoSlug.api.scopes.$id.excluded-rules[.]json.tsx",
-  ),
-  route(":docoId/api/scopes.json", "routes/$ownerSlug.$docoSlug.api.scopes[.]json.tsx"),
   route(":docoId/api/principals.json", "routes/$ownerSlug.$docoSlug.api.principals[.]json.tsx"),
   route(":docoId/api/intents.json", "routes/$ownerSlug.$docoSlug.api.intents[.]json.tsx"),
   route(":docoId/api/actions.json", "routes/$ownerSlug.$docoSlug.api.actions[.]json.tsx"),
@@ -199,11 +175,6 @@ export default [
   route(":docoId/search", "routes/$ownerSlug.$docoSlug.search.tsx"),
   route(":docoId/search.json", "routes/$ownerSlug.$docoSlug.search[.]json.tsx"),
   route(":docoId/onboarding/agent", "routes/$ownerSlug.$docoSlug.onboarding.agent.tsx"),
-  route(":docoId/scopes", "routes/$ownerSlug.$docoSlug.scopes._index.tsx"),
-  route(":docoId/scopes/new", "routes/$ownerSlug.$docoSlug.scopes.new.tsx"),
-  route(":docoId/scopes/:id", "routes/$ownerSlug.$docoSlug.scopes.$id._index.tsx"),
-  route(":docoId/scopes/:id/rules/new", "routes/$ownerSlug.$docoSlug.scopes.$id.rules.new.tsx"),
-  route(":docoId/scopes/:id/abandon", "routes/$ownerSlug.$docoSlug.scopes.$id.abandon.tsx"),
   route(":docoId/rules/new", "routes/$ownerSlug.$docoSlug.rules.new.tsx"),
   // Short-form entity routes. `:type` is validated by the loader; reserved
   // feature paths above win the match for the static paths.
