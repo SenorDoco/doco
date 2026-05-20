@@ -12,13 +12,13 @@ The canonical handle is the URL slug. The format is
 
 ## Active connections
 
-- https://doco.to/meta-doco/ — Doco's own Doco (decisions, intents,
-  rules, history about Doco-the-product). Will rename to
-  `torrenegra-meta-doco` once v15 lands in production.
+- https://doco.to/torrenegra-meta-doco/ — Doco's own Doco (decisions,
+  intents, rules, history about Doco-the-product). Renamed from
+  `meta-doco` by the v17 handle-prefix backfill.
 
 ## Notes
 
-- Internal ULID for `meta-doco`: `doco_01KR441EA0ZDMF0N5DY38GSVS3`.
+- Internal ULID for `torrenegra-meta-doco`: `doco_01KR441EA0ZDMF0N5DY38GSVS3`.
 - This file replaces the v12 `DOCO.md` (single Doco URL) with a
   list of Docos. A repo can connect to multiple Docos with different
   per-token access levels.
