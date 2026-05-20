@@ -7,7 +7,7 @@ intents, decisions, rules, actions, and history. The Doco lives at:
 
 ## Browsing
 
-Open the Doco URL above and sign in with GitHub. If the Doco is
+Open the Doco URL above and sign in. If the Doco is
 private and you don't have access yet, ask anyone already
 connected to mint an invite for you from the Doco's Invites page.
 

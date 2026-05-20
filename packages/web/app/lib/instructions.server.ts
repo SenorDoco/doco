@@ -233,7 +233,7 @@ thing about <area> that's in your head but not in the repo yet?"
 
 ## Things only people can do
 
-- GitHub OAuth sign-in.
+- Sign in to the host (via whichever providers it offers).
 - Create / delete a Doco.
 - Approve OAuth connector installs (when MCP returns).
 - Mint human collaboration invites.

@@ -9,8 +9,17 @@
 // until the user approves at /device.
 //
 // Input (application/x-www-form-urlencoded or application/json):
-//   client_id     — registered via POST /oauth/register
-//   scope         — optional; we accept "doco" (default)
+//   client_id          — registered via POST /oauth/register
+//   scope              — optional; we accept "doco" (default)
+//   target_doco_handle — optional. When the agent already knows which
+//                        Doco it needs access to (e.g. read from
+//                        DOCO.md), pass the handle here and the
+//                        /device approve screen will show only that
+//                        Doco instead of the full picker.
+//   requested_role     — optional. reader / author / approver / owner.
+//                        The /device approve screen pre-fills the
+//                        role dropdown to this value. The human can
+//                        still adjust before approving.
 //
 // Output (200 application/json):
 //   device_code               — opaque, the agent keeps this private and polls with it
@@ -36,14 +45,24 @@ export async function action({ request }: { request: Request }) {
   const form = await readForm(request);
   const client_id = form.get("client_id");
   const scope = form.get("scope");
+  const target_doco_handle = form.get("target_doco_handle");
+  const requested_role_raw = form.get("requested_role");
   if (!client_id) {
     return jsonError("invalid_request", "client_id required", 400);
   }
+  const validRoles = ["reader", "author", "approver", "owner"];
+  const requested_role =
+    requested_role_raw && validRoles.includes(requested_role_raw) ? requested_role_raw : null;
   try {
     const url = new URL(request.url);
     const baseUrl = `${url.protocol}//${url.host}`;
     const payload = await createDeviceAuthorization(
-      { client_id, scope: scope ?? null },
+      {
+        client_id,
+        scope: scope ?? null,
+        target_doco_handle: target_doco_handle || null,
+        requested_role,
+      },
       baseUrl,
     );
     return Response.json(payload, {

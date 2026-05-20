@@ -10,7 +10,7 @@ rules, and history about Doco-the-product live at:
 
 ## Browsing
 
-Open https://doco.to/meta-doco/ and sign in with GitHub. If you
+Open https://doco.to/meta-doco/ and sign in. If you
 don't have access yet, ask any existing collaborator to mint an
 invite for you from https://doco.to/meta-doco/invites.
 

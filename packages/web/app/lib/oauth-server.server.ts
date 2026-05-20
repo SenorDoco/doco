@@ -497,6 +497,8 @@ export interface DeviceAuthorizationRow {
   principal_id: string | null;
   granted_doco_ids: string[];
   granted_doco_roles: Record<string, string>;
+  target_doco_handle: string | null;
+  requested_role: string | null;
   expires_at: Date;
   last_polled_at: Date | null;
   created_at: Date;
@@ -505,6 +507,19 @@ export interface DeviceAuthorizationRow {
 export interface CreateDeviceAuthorizationInput {
   client_id: string;
   scope?: string | null;
+  /**
+   * Optional. When the agent already knows which Doco it needs access
+   * to (typically from the project's DOCO.md), it passes the Doco's
+   * handle here. The /device approve screen then focuses on that one
+   * Doco instead of showing the full picker.
+   */
+  target_doco_handle?: string | null;
+  /**
+   * Optional. The role the agent is requesting on the target Doco.
+   * The /device approve screen pre-fills the dropdown to this value;
+   * the human can still adjust before approving.
+   */
+  requested_role?: string | null;
 }
 
 export interface DeviceAuthorizationResponse {
@@ -541,9 +556,18 @@ export async function createDeviceAuthorization(
       await withClient(async (c) => {
         await c.query(
           `INSERT INTO oauth_device_authorizations
-             (device_code, user_code, client_id, scope, expires_at)
-           VALUES ($1, $2, $3, $4, $5)`,
-          [device_code, user_code, input.client_id, input.scope ?? null, expires_at],
+             (device_code, user_code, client_id, scope,
+              target_doco_handle, requested_role, expires_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          [
+            device_code,
+            user_code,
+            input.client_id,
+            input.scope ?? null,
+            input.target_doco_handle ?? null,
+            input.requested_role ?? null,
+            expires_at,
+          ],
         );
       });
       const trimmed = baseUrl.replace(/\/+$/, "");
@@ -575,7 +599,7 @@ export async function getDeviceAuthorizationByUserCode(
   return await withClient(async (c) => {
     const r = await c.query<DeviceAuthorizationRow>(
       `SELECT device_code, user_code, client_id, scope, status,
-              principal_id, granted_doco_ids, granted_doco_roles, expires_at, last_polled_at, created_at
+              principal_id, granted_doco_ids, granted_doco_roles, target_doco_handle, requested_role, expires_at, last_polled_at, created_at
          FROM oauth_device_authorizations
         WHERE user_code = $1`,
       [user_code.toUpperCase()],
@@ -656,7 +680,7 @@ export async function pollDeviceAuthorization(args: {
     // for the same approved authorization.
     const r = await c.query<DeviceAuthorizationRow>(
       `SELECT device_code, user_code, client_id, scope, status,
-              principal_id, granted_doco_ids, granted_doco_roles, expires_at, last_polled_at, created_at
+              principal_id, granted_doco_ids, granted_doco_roles, target_doco_handle, requested_role, expires_at, last_polled_at, created_at
          FROM oauth_device_authorizations
         WHERE device_code = $1
         FOR UPDATE`,

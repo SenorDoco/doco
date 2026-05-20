@@ -4,12 +4,12 @@ import { Link } from "react-router";
 
 /**
  * Build the prompt to share with a human collaborator. Clicking the
- * invite URL in a GitHub-signed-in browser adds the recipient to the
- * Doco's users.
+ * invite URL in a signed-in browser adds the recipient to the Doco's
+ * users.
  */
 export function buildHumanInvitePrompt(inviteUrl: string): string {
   return [
-    "You're invited to collaborate on a Doco. Open this URL in your browser, sign in with GitHub, click Accept:",
+    "You're invited to collaborate on a Doco. Open this URL in your browser, sign in, and click Accept:",
     "",
     inviteUrl,
   ].join("\n");

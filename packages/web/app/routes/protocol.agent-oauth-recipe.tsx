@@ -95,16 +95,25 @@ ${baseUrl}/oauth/authorize
   &code_challenge_method=S256
   &state=<random>
   &scope=doco
+  &target_doco_handle=<doco-handle>    # optional but recommended
+  &requested_role=author                # optional; reader|author|approver|owner
 \`\`\`
+
+**Targeted grants (recommended).** If you already know which Doco
+you need — typically read from \`DOCO.md\` in the project root,
+which carries a URL like \`${baseUrl}/<handle>/\` — pass
+\`target_doco_handle\` and \`requested_role\` so the approve screen
+focuses on that one Doco with the role pre-filled. Without them
+the user sees their full owned-Docos picker.
 
 Open it in the user's browser via \`open\` (macOS) / \`xdg-open\`
 (Linux) / \`start\` (Windows) / equivalent. Tell the user what's
-happening: "I'm asking for access to a Doco — sign in with GitHub
+happening: "I'm asking for access to a Doco — sign in
 and pick which Docos to grant."
 
 ### 4. Wait for the callback
 
-The user signs in with GitHub (if not already), sees the approve
+The user signs in (if not already), sees the approve
 screen, picks Docos, clicks Approve. Browser redirects to
 \`http://localhost:<port>/callback?code=<doco_code_...>&state=...\`.
 
@@ -153,7 +162,22 @@ Content-Type: application/x-www-form-urlencoded
 
 client_id=<your-client-id>
 &scope=doco
+&target_doco_handle=<doco-handle>      # optional but recommended
+&requested_role=author                  # optional; reader|author|approver|owner
 \`\`\`
+
+**Targeted grants (recommended).** If you already know which Doco you
+need — typically read from \`DOCO.md\` in the project root, which
+carries a URL like \`${baseUrl}/<handle>/\` — pass the handle as
+\`target_doco_handle\` and your desired role as \`requested_role\`. The
+approve screen then focuses on that one Doco with your requested
+role pre-filled, instead of showing the user the full picker. The
+user can still adjust the role before approving, but they're not
+forced to scroll through every Doco they own to find the right one.
+
+Both params are optional; omit them and the user sees their full
+owned-Docos picker (still works, just a worse UX when you know
+exactly what you need).
 
 Response:
 
@@ -176,7 +200,7 @@ Tell them clearly:
 >
 > (or, faster: open ${baseUrl}/device?user_code=WXYZ-1234)
 >
-> Then sign in with GitHub and pick which Docos to grant.
+> Then sign in and pick which Docos to grant.
 
 The \`verification_uri_complete\` saves them typing — use it.
 

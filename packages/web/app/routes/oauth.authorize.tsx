@@ -35,6 +35,10 @@ interface AuthorizeParams {
   code_challenge_method: string;
   state: string | null;
   scope: string | null;
+  /** Optional. Doco handle the agent wants access to — focuses the picker. */
+  target_doco_handle: string | null;
+  /** Optional. Pre-fills the per-Doco role dropdown(s). */
+  requested_role: string | null;
 }
 
 interface LoaderData {
@@ -46,6 +50,7 @@ interface LoaderData {
     name: string | null;
     my_role: DocoRole;
   }[];
+  targeted_message: string | null;
   me: Awaited<ReturnType<typeof getCurrentPrincipal>>;
 }
 
@@ -87,14 +92,29 @@ export async function loader({ request }: { request: Request }) {
       return { id: d.id, handle: d.handle, name: d.name, my_role };
     }),
   );
-  const docos = candidates
+  let docos = candidates
     .filter((d): d is DocoRow => d !== null)
     .sort((a, b) => a.handle.localeCompare(b.handle));
+
+  // Targeted-grant focus. If the runtime asked for a specific Doco
+  // (e.g. read from the project's DOCO.md), narrow the picker to
+  // just that Doco. If the user doesn't own the requested target,
+  // we fall back to the full owned list + surface a notice.
+  let targetedMessage: string | null = null;
+  if (params.target_doco_handle) {
+    const matched = docos.filter((d) => d.handle === params.target_doco_handle);
+    if (matched.length > 0) {
+      docos = matched;
+    } else {
+      targetedMessage = `The agent requested access to "${params.target_doco_handle}" but you don't own that Doco — pick from the Docos you do own below, or have the agent target a different one.`;
+    }
+  }
 
   const data: LoaderData = {
     client_name: client.client_name ?? client.client_id.slice(0, 20),
     params,
     docos,
+    targeted_message: targetedMessage,
     me: principal,
   };
   return data;
@@ -200,7 +220,12 @@ export default function AuthorizePage() {
                 Doco first, then return to this page.
               </p>
             ) : (
-              <DocoPickerForm docos={data.docos} />
+              <DocoPickerForm
+                docos={data.docos}
+                requestedRole={(data.params.requested_role as DocoRole | null) ?? null}
+                targetedMessage={data.targeted_message}
+                focused={Boolean(data.params.target_doco_handle && data.docos.length === 1)}
+              />
             )}
           </CardContent>
         </Card>
@@ -217,20 +242,39 @@ export default function AuthorizePage() {
  */
 function DocoPickerForm({
   docos,
+  requestedRole,
+  targetedMessage,
+  focused,
 }: {
   docos: { id: string; handle: string; name: string | null; my_role: DocoRole }[];
+  requestedRole: DocoRole | null;
+  targetedMessage: string | null;
+  focused: boolean;
 }) {
+  // When the runtime requested a specific role (via ?requested_role=…),
+  // pre-fill the dropdown to that. Otherwise default to the user's
+  // actual role on each Doco (always "owner" here — the loader
+  // filtered to owner-only).
+  const defaultRole = (d: { my_role: DocoRole }): DocoRole =>
+    requestedRole ?? d.my_role;
   const [selected, setSelected] = useState<Set<string>>(
     () => new Set(docos.map((d) => d.id)),
   );
   const [roles, setRoles] = useState<Record<string, DocoRole>>(
-    () => Object.fromEntries(docos.map((d) => [d.id, d.my_role])),
+    () => Object.fromEntries(docos.map((d) => [d.id, defaultRole(d)])),
   );
   const allSelected = selected.size === docos.length;
   const noneSelected = selected.size === 0;
   return (
     <Form method="post" className="space-y-3">
-      {/* Bulk controls */}
+      {targetedMessage ? (
+        <p className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+          {targetedMessage}
+        </p>
+      ) : null}
+
+      {/* Bulk controls — hidden in focused mode (agent targeted one Doco). */}
+      {focused ? null : (
       <div className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-input/40 px-3 py-2">
         <button
           type="button"
@@ -275,6 +319,7 @@ function DocoPickerForm({
           </select>
         </span>
       </div>
+      )}
 
       <ul className="divide-y divide-border rounded-md border border-border">
         {docos.map((d) => (
@@ -366,6 +411,7 @@ function DocoPickerForm({
 // ---------------------------------------------------------------------------
 
 function readParams(url: URL): AuthorizeParams {
+  const requested = (url.searchParams.get("requested_role") ?? "").toLowerCase();
   return {
     response_type: url.searchParams.get("response_type") ?? "",
     client_id: url.searchParams.get("client_id") ?? "",
@@ -374,6 +420,11 @@ function readParams(url: URL): AuthorizeParams {
     code_challenge_method: url.searchParams.get("code_challenge_method") ?? "",
     state: url.searchParams.get("state"),
     scope: url.searchParams.get("scope"),
+    target_doco_handle: url.searchParams.get("target_doco_handle"),
+    requested_role:
+      requested && ["reader", "author", "approver", "owner"].includes(requested)
+        ? requested
+        : null,
   };
 }
 

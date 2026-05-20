@@ -73,8 +73,8 @@ Docos and 403 for private ones.
 ## Invite URLs are human-only
 
 If a project owner pastes you a URL like \`${baseUrl}/invite/<code>\`,
-that URL is for a human to open in their browser, sign in with
-GitHub, and accept. Don't try to POST/redeem it from agent code.
+that URL is for a human to open in their browser, sign in, and
+accept. Don't try to POST/redeem it from agent code.
 
 If you (the agent) need access, run the OAuth recipe above. The
 human approves your access at \`${baseUrl}/device\` (Recipe B) or in
