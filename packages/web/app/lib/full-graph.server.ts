@@ -60,12 +60,9 @@ const GRAPH_TABLES: {
   { table: "reference_entities", nodeType: "reference" },
   { table: "ideas", nodeType: "idea" },
   { table: "states", nodeType: "state" },
-  {
-    table: "scopes",
-    nodeType: "scope",
-    labelExpr: "COALESCE(NULLIF(t.purpose, ''), t.name)",
-    nameExpr: "t.name",
-  },
+  // v15: scope nodes no longer render in the overview graph. The
+  // `scopes` table stays for one release (read by legacy paths only);
+  // dropping the entry here hides them from every graph view.
 ];
 
 const OVERVIEW_GRAPH_EDGE_LIMIT = 5000;
