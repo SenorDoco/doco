@@ -473,19 +473,6 @@ export async function resolveScopeNames(
 }
 
 /**
- * v16: no-op scope resolver. Returns an empty id list so the capture
- * functions skip every downstream scope check without short-circuiting
- * their normal flow.
- */
-async function resolveScopeOrError(
-  _docoDir: string,
-  _names: string[] | undefined,
-  _context: { verb: "tag" | "replace" | "add"; nodeKind?: string; incomingNodeType?: string },
-): Promise<{ ids: string[] } | CaptureError> {
-  return { ids: [] };
-}
-
-/**
  * Apply the three list-op shapes (replace / add / remove) for a single
  * frontmatter field. Returns the ops emitted (for footer rendering) and
  * the list of changed-keys. Used by `updateDecision` + `updateEntity`
@@ -617,7 +604,6 @@ async function attachImplicitEdges(opts: {
         { table: "intents", nodeType: "intent", hasName: false },
         { table: "rules", nodeType: "rule", hasName: false },
         { table: "actions", nodeType: "action", hasName: false },
-        { table: "scopes", nodeType: "scope", hasName: true },
         { table: "evals", nodeType: "eval", hasName: true },
       ];
       for (const t of types) {
@@ -2002,14 +1988,6 @@ export async function captureReference(
     return { error: "scope_names must be a non-empty array." };
   }
 
-  const scopeRes = await resolveScopeOrError(docoDir, draft.scope_names, {
-    verb: "tag",
-    nodeKind: "Reference",
-    incomingNodeType: "reference",
-  });
-  if ("error" in scopeRes) return scopeRes;
-  const scopeIds = scopeRes.ids;
-
   let createdById: string | null = null;
   if (draft.created_by_username) {
     createdById = await resolvePrincipalUsername(draft.created_by_username);
@@ -2038,11 +2016,7 @@ export async function captureReference(
     created_at: now,
     ...(createdById ? { created_by: createdById } : {}),
     lifecycle: draft.lifecycle ?? "active",
-    scopes: scopeIds,
   };
-
-  const ruleErr = await runScopeRules({ docoDir, ownerSlug, docoSlug, entityFm: fm });
-  if (ruleErr) return ruleErr;
 
   await persistEntity({
     nodeType: "reference",
@@ -2066,7 +2040,7 @@ export async function captureReference(
     entityId: id,
     entityType: "reference",
     entitySummary: `${summary} ${locator}`,
-    alreadyReferenced: new Set([...intentIds, ...scopeIds, ...(createdById ? [createdById] : [])]),
+    alreadyReferenced: new Set([...intentIds, ...(createdById ? [createdById] : [])]),
   });
 
   const duration_ms = Math.round(performance.now() - startedAt);
@@ -2079,7 +2053,6 @@ export async function captureReference(
     summary,
     docoHost,
     ops: [{ kind: "added", summary }],
-    scopes: await resolveScopeIcons(docoDir, scopeIds),
     duration_ms,
   });
   return {
@@ -2142,14 +2115,6 @@ export async function captureState(
     return { error: "scope_names must be a non-empty array." };
   }
 
-  const scopeRes = await resolveScopeOrError(docoDir, draft.scope_names, {
-    verb: "tag",
-    nodeKind: "State",
-    incomingNodeType: "state",
-  });
-  if ("error" in scopeRes) return scopeRes;
-  const scopeIds = scopeRes.ids;
-
   let createdById: string | null = draft.created_by_id ?? null;
   if (!createdById && draft.created_by_username) {
     createdById = await resolvePrincipalUsername(draft.created_by_username);
@@ -2162,20 +2127,10 @@ export async function captureState(
   const summary = draft.summary.trim();
   const now = new Date().toISOString();
 
-  // v7: honor default_node_lifecycle from the capturing scope hierarchy
-  // unless the author overrides via explicit lifecycle. Walks the first
-  // listed scope's ancestors (more scopes => first wins; the project
-  // owner can layer ordering if they care).
-  let lifecycle = draft.lifecycle?.trim();
-  if (!lifecycle && scopeIds.length > 0) {
-    const allScopes = await loadAllScopes(docoDir);
-    const first = allScopes.get(scopeIds[0]);
-    if (first) {
-      const def = computeEffectiveDefaultLifecycle(first, allScopes);
-      if (def) lifecycle = def;
-    }
-  }
-  if (!lifecycle) lifecycle = "active";
+  // v16: lifecycle previously inherited the capturing scope's
+  // default_node_lifecycle via parent-scope walk. With scopes gone,
+  // honor the explicit lifecycle (or default to "active").
+  const lifecycle = draft.lifecycle?.trim() || "active";
 
   const follows: string[] = Array.isArray(draft.follows) ? draft.follows : [];
   const invariants: string[] = Array.isArray(draft.invariants)
@@ -2193,11 +2148,7 @@ export async function captureState(
     created_at: now,
     ...(createdById ? { created_by: createdById } : {}),
     lifecycle,
-    scopes: scopeIds,
   };
-
-  const ruleErr = await runScopeRules({ docoDir, ownerSlug, docoSlug, entityFm: fm });
-  if (ruleErr) return ruleErr;
 
   await persistEntity({
     nodeType: "state",
@@ -2221,7 +2172,7 @@ export async function captureState(
     entityId: id,
     entityType: "state",
     entitySummary: summary,
-    alreadyReferenced: new Set([...follows, ...scopeIds]),
+    alreadyReferenced: new Set([...follows]),
   });
 
   const duration_ms = Math.round(performance.now() - startedAt);
@@ -2234,7 +2185,6 @@ export async function captureState(
     summary,
     docoHost,
     ops: [{ kind: "added", summary }],
-    scopes: await resolveScopeIcons(docoDir, scopeIds),
     duration_ms,
   });
   return {

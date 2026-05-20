@@ -382,11 +382,6 @@ function DocoPickerForm({
         />
       ))}
 
-      <p className="text-[11px] text-muted-foreground">
-        Lower a Doco's role to scope the agent down (e.g. give a research agent{" "}
-        <code>reader</code> only). Owners can grant any role up to and including their own.
-      </p>
-
       <div className="flex gap-2">
         <button
           type="submit"
