@@ -1,8 +1,8 @@
-import { Maximize2, Minus, Plus } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate } from "react-router";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router";
 import { NodeTypeIcon } from "~/components/node-type-icon";
 import { lifecycleColor } from "~/lib/node-colors";
+import "@xyflow/react/dist/style.css";
 
 export interface OverviewGraphNode {
   id: string;
@@ -49,10 +49,16 @@ interface Point {
   y: number;
 }
 
-interface Viewport {
+interface FlowViewport {
   x: number;
   y: number;
   zoom: number;
+}
+
+interface OverviewNodeData {
+  node: OverviewGraphNode;
+  detail?: OverviewNodeDetail;
+  showDetail: boolean;
 }
 
 const LIFECYCLE_ORDER = [
@@ -82,8 +88,14 @@ const NODE_TYPE_ORDER = new Map(
     "state",
   ].map((type, index) => [type, index]),
 );
-const DETAIL_ZOOM = 0.72;
-const MAX_DETAIL_CARDS = 48;
+
+const OVERVIEW_NODE_WIDTH = 112;
+const OVERVIEW_NODE_HEIGHT = 34;
+const DETAIL_ZOOM = 0.95;
+const MAX_DETAIL_FETCH = 80;
+const GRAPH_MIN_ZOOM = 0.03;
+const GRAPH_MAX_ZOOM = 2.5;
+const GRAPH_FIT_VIEW_OPTIONS = { padding: 0.12, maxZoom: 1.2 };
 
 function lifecycleLabel(lifecycle: string): string {
   return lifecycle.replaceAll("_", " ");
@@ -123,19 +135,25 @@ function placeRing<T extends { id: string }>(
   });
 }
 
-function placeSpiral(nodes: OverviewGraphNode[], center: Point, positions: Map<string, Point>) {
+function placeCompactCloud(
+  nodes: OverviewGraphNode[],
+  center: Point,
+  positions: Map<string, Point>,
+) {
   const sorted = nodes.slice().sort((a, b) => a.id.localeCompare(b.id));
+  const stepX = OVERVIEW_NODE_WIDTH + 10;
+  const stepY = OVERVIEW_NODE_HEIGHT + 10;
+  const columns = Math.max(1, Math.ceil(Math.sqrt(sorted.length * 1.4)));
   sorted.forEach((node, index) => {
-    if (index === 0) {
-      positions.set(node.id, center);
-      return;
-    }
-    const ring = Math.ceil(Math.sqrt(index));
-    const angle = hashString(node.id) * 0.000001 + index * 2.399963229728653;
-    const radius = 18 + ring * 15;
+    const row = Math.floor(index / columns);
+    const col = index % columns;
+    const jitter = hashString(node.id);
     positions.set(node.id, {
-      x: center.x + Math.cos(angle) * radius,
-      y: center.y + Math.sin(angle) * radius,
+      x: center.x + (col - (columns - 1) / 2) * stepX + ((jitter % 9) - 4),
+      y:
+        center.y +
+        (row - Math.floor(sorted.length / columns) / 2) * stepY +
+        (((jitter >> 4) % 7) - 3),
     });
   });
 }
@@ -166,12 +184,15 @@ function layoutNodes(nodes: OverviewGraphNode[], centerId: string): Map<string, 
 
   const scopeCenters = new Map<string, Point>();
   if (scopeKeys.length <= 1) {
-    const key = scopeKeys[0] ?? "__unscoped__";
-    scopeCenters.set(key, { x: 0, y: 0 });
+    scopeCenters.set(scopeKeys[0] ?? "__unscoped__", { x: 0, y: 0 });
   } else {
-    const pseudo = scopeKeys.map((id) => ({ id }));
     const ring = new Map<string, Point>();
-    placeRing(pseudo, { x: 0, y: 0 }, Math.max(420, scopeKeys.length * 105), ring);
+    placeRing(
+      scopeKeys.map((id) => ({ id })),
+      { x: 0, y: 0 },
+      Math.max(240, scopeKeys.length * 58),
+      ring,
+    );
     for (const key of scopeKeys) scopeCenters.set(key, ring.get(key) ?? { x: 0, y: 0 });
   }
 
@@ -208,37 +229,61 @@ function layoutNodes(nodes: OverviewGraphNode[], centerId: string): Map<string, 
     placeRing(
       kinds.map(([id]) => ({ id })),
       scopeCenter,
-      Math.max(120, Math.min(360, 80 + kinds.length * 24)),
+      Math.max(74, Math.min(190, 48 + kinds.length * 14)),
       kindCenters,
     );
     for (const [kind, kindNodes] of kinds) {
-      placeSpiral(kindNodes, kindCenters.get(kind) ?? scopeCenter, positions);
+      placeCompactCloud(kindNodes, kindCenters.get(kind) ?? scopeCenter, positions);
     }
   }
 
   return positions;
 }
 
-function boundsForPositions(positions: Map<string, Point>): {
-  minX: number;
-  minY: number;
-  maxX: number;
-  maxY: number;
-} {
-  let minX = Number.POSITIVE_INFINITY;
-  let minY = Number.POSITIVE_INFINITY;
-  let maxX = Number.NEGATIVE_INFINITY;
-  let maxY = Number.NEGATIVE_INFINITY;
-  for (const point of positions.values()) {
-    minX = Math.min(minX, point.x);
-    minY = Math.min(minY, point.y);
-    maxX = Math.max(maxX, point.x);
-    maxY = Math.max(maxY, point.y);
-  }
-  if (!Number.isFinite(minX + minY + maxX + maxY)) {
-    return { minX: -100, minY: -100, maxX: 100, maxY: 100 };
-  }
-  return { minX, minY, maxX, maxY };
+function isVisibleInViewport(
+  position: Point,
+  viewport: FlowViewport,
+  size: { width: number; height: number },
+): boolean {
+  const x = position.x * viewport.zoom + viewport.x;
+  const y = position.y * viewport.zoom + viewport.y;
+  return (
+    x > -OVERVIEW_NODE_WIDTH * 2 &&
+    y > -OVERVIEW_NODE_HEIGHT * 2 &&
+    x < size.width + OVERVIEW_NODE_WIDTH * 2 &&
+    y < size.height + OVERVIEW_NODE_HEIGHT * 2
+  );
+}
+
+function OverviewFlowNode({ data }: { data: OverviewNodeData }) {
+  const lifecycle = nodeLifecycle(data.node);
+  const detail = data.detail;
+  const title = detail?.name ?? data.node.name ?? detail?.summary ?? data.node.node_type;
+  const subtitle = detail?.summary ?? primaryScope(data.node).name;
+  const showDetail = data.showDetail && Boolean(detail);
+
+  return (
+    <div
+      className="overview-graph-node nodrag nopan flex h-full w-full items-center gap-1.5 overflow-hidden rounded-[4px] border bg-card px-2 text-left shadow-sm"
+      style={{
+        borderColor: data.node.is_center ? "var(--color-foreground)" : "var(--color-border)",
+        borderLeft: `6px solid ${lifecycleColor(lifecycle)}`,
+      }}
+      title={showDetail ? title : `${data.node.node_type} · ${lifecycle}`}
+    >
+      <NodeTypeIcon nodeType={data.node.node_type} className="!h-3.5 !w-3.5 shrink-0" />
+      {showDetail ? (
+        <span className="min-w-0 flex-1 truncate font-mono text-[10px] font-semibold leading-none text-foreground">
+          {title}
+        </span>
+      ) : (
+        <span className="min-w-0 flex-1 truncate text-[9px] font-semibold uppercase leading-none text-muted-foreground">
+          {data.node.node_type}
+        </span>
+      )}
+      {showDetail && title !== subtitle ? <span className="sr-only">{subtitle}</span> : null}
+    </div>
+  );
 }
 
 export function OverviewGraph({
@@ -249,13 +294,16 @@ export function OverviewGraph({
   fillHeight = false,
 }: OverviewGraphProps) {
   const navigate = useNavigate();
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const dragRef = useRef<{ x: number; y: number; moved: boolean } | null>(null);
+  const graphRef = useRef<HTMLDivElement>(null);
+  const hasFitRef = useRef(false);
   const [size, setSize] = useState({ width: 1, height: 1 });
-  const [viewport, setViewport] = useState<Viewport>({ x: 0, y: 0, zoom: 1 });
+  const [viewport, setViewport] = useState<FlowViewport>({ x: 0, y: 0, zoom: 1 });
   const [details, setDetails] = useState<Map<string, OverviewNodeDetail>>(() => new Map());
-  const [hoveredId, setHoveredId] = useState<string | null>(null);
+  const updateViewport = (next: FlowViewport) => {
+    setViewport((prev) =>
+      prev.x === next.x && prev.y === next.y && prev.zoom === next.zoom ? prev : next,
+    );
+  };
 
   const allLifecycles = useMemo(() => {
     const set = new Set<string>(["active"]);
@@ -298,36 +346,25 @@ export function OverviewGraph({
     [links, visibleIds],
   );
   const positions = useMemo(() => layoutNodes(visibleNodes, centerId), [visibleNodes, centerId]);
-  const worldToScreen = useCallback(
-    (point: Point): Point => ({
-      x: point.x * viewport.zoom + viewport.x + size.width / 2,
-      y: point.y * viewport.zoom + viewport.y + size.height / 2,
-    }),
-    [size, viewport],
-  );
-  const screenToWorld = useCallback(
-    (point: Point): Point => ({
-      x: (point.x - size.width / 2 - viewport.x) / viewport.zoom,
-      y: (point.y - size.height / 2 - viewport.y) / viewport.zoom,
-    }),
-    [size, viewport],
+  const nodeById = useMemo(
+    () => new Map(visibleNodes.map((node) => [node.id, node])),
+    [visibleNodes],
   );
 
-  const fitView = useCallback(() => {
-    const b = boundsForPositions(positions);
-    const graphWidth = Math.max(1, b.maxX - b.minX + 260);
-    const graphHeight = Math.max(1, b.maxY - b.minY + 260);
-    const zoom = Math.max(
-      0.03,
-      Math.min(2, Math.min(size.width / graphWidth, size.height / graphHeight)),
-    );
-    const cx = (b.minX + b.maxX) / 2;
-    const cy = (b.minY + b.maxY) / 2;
-    setViewport({ x: -cx * zoom, y: -cy * zoom, zoom });
-  }, [positions, size]);
+  // Dynamic import — React Flow touches the DOM during module init.
+  const [Flow, setFlow] = useState<null | typeof import("@xyflow/react")>(null);
+  useEffect(() => {
+    let canceled = false;
+    import("@xyflow/react").then((mod) => {
+      if (!canceled) setFlow(mod);
+    });
+    return () => {
+      canceled = true;
+    };
+  }, []);
 
   useEffect(() => {
-    const el = containerRef.current;
+    const el = graphRef.current;
     if (!el) return;
     const update = () =>
       setSize({ width: Math.max(1, el.clientWidth), height: Math.max(1, el.clientHeight) });
@@ -337,107 +374,23 @@ export function OverviewGraph({
     return () => obs.disconnect();
   }, []);
 
-  useEffect(() => {
-    fitView();
-  }, [fitView]);
-
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const dpr = window.devicePixelRatio || 1;
-    canvas.width = Math.floor(size.width * dpr);
-    canvas.height = Math.floor(size.height * dpr);
-    canvas.style.width = `${size.width}px`;
-    canvas.style.height = `${size.height}px`;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, size.width, size.height);
-
-    ctx.lineWidth = 1;
-    for (const link of visibleLinks) {
-      const a = positions.get(link.source);
-      const b = positions.get(link.target);
-      if (!a || !b) continue;
-      const from = worldToScreen(a);
-      const to = worldToScreen(b);
-      if (
-        (from.x < -80 && to.x < -80) ||
-        (from.y < -80 && to.y < -80) ||
-        (from.x > size.width + 80 && to.x > size.width + 80) ||
-        (from.y > size.height + 80 && to.y > size.height + 80)
-      ) {
-        continue;
-      }
-      ctx.beginPath();
-      ctx.moveTo(from.x, from.y);
-      ctx.lineTo(to.x, to.y);
-      ctx.strokeStyle =
-        link.attribution === "doco-auto" ? "rgba(115,115,115,0.12)" : "rgba(115,115,115,0.22)";
-      if (link.attribution === "doco-auto") ctx.setLineDash([4, 4]);
-      else ctx.setLineDash([]);
-      ctx.stroke();
-    }
-    ctx.setLineDash([]);
-
-    for (const node of visibleNodes) {
-      const pos = positions.get(node.id);
-      if (!pos) continue;
-      const p = worldToScreen(pos);
-      if (p.x < -24 || p.y < -24 || p.x > size.width + 24 || p.y > size.height + 24) continue;
-      const isScope = node.node_type === "scope";
-      const r = node.is_center
-        ? 7
-        : isScope
-          ? 5.5
-          : Math.max(2.2, Math.min(4.5, 2.6 + viewport.zoom));
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
-      ctx.fillStyle = lifecycleColor(nodeLifecycle(node));
-      ctx.fill();
-      ctx.lineWidth = hoveredId === node.id || node.is_center ? 2 : 1;
-      ctx.strokeStyle =
-        hoveredId === node.id || node.is_center ? "#111827" : "rgba(255,255,255,0.9)";
-      ctx.stroke();
-    }
-  }, [visibleNodes, visibleLinks, positions, viewport, size, hoveredId, worldToScreen]);
-
-  const detailCandidates = useMemo(() => {
+  const detailIds = useMemo(() => {
     if (viewport.zoom < DETAIL_ZOOM) return [];
-    const candidates = visibleNodes
-      .map((node) => {
-        const pos = positions.get(node.id);
-        if (!pos) return null;
-        const screen = worldToScreen(pos);
-        if (
-          screen.x < -120 ||
-          screen.y < -120 ||
-          screen.x > size.width + 120 ||
-          screen.y > size.height + 120
-        ) {
-          return null;
-        }
-        const dx = screen.x - size.width / 2;
-        const dy = screen.y - size.height / 2;
-        return { node, screen, distance: dx * dx + dy * dy };
+    return visibleNodes
+      .filter((node) => {
+        const position = positions.get(node.id);
+        return position ? isVisibleInViewport(position, viewport, size) : false;
       })
-      .filter((item): item is { node: OverviewGraphNode; screen: Point; distance: number } =>
-        Boolean(item),
-      )
-      .sort((a, b) => a.distance - b.distance)
-      .slice(0, MAX_DETAIL_CARDS);
-    return candidates;
-  }, [visibleNodes, positions, viewport, size, worldToScreen]);
+      .slice(0, MAX_DETAIL_FETCH)
+      .map((node) => node.id)
+      .filter((id) => !details.has(id));
+  }, [visibleNodes, positions, viewport, size, details]);
 
   useEffect(() => {
-    if (!detailUrl || detailCandidates.length === 0) return;
-    const missing = detailCandidates
-      .map((candidate) => candidate.node.id)
-      .filter((id) => !details.has(id));
-    if (missing.length === 0) return;
+    if (!detailUrl || detailIds.length === 0) return;
     const timeout = window.setTimeout(async () => {
       const url = new URL(detailUrl, window.location.origin);
-      url.searchParams.set("ids", missing.join(","));
+      url.searchParams.set("ids", detailIds.join(","));
       const res = await fetch(url.toString());
       if (!res.ok) return;
       const json = (await res.json()) as { nodes?: OverviewNodeDetail[] };
@@ -448,25 +401,61 @@ export function OverviewGraph({
       });
     }, 120);
     return () => window.clearTimeout(timeout);
-  }, [detailUrl, detailCandidates, details]);
+  }, [detailUrl, detailIds]);
 
-  const nearestNode = (screen: Point): OverviewGraphNode | null => {
-    let best: OverviewGraphNode | null = null;
-    let bestDistance = 12 * 12;
-    for (const node of visibleNodes) {
-      const pos = positions.get(node.id);
-      if (!pos) continue;
-      const p = worldToScreen(pos);
-      const dx = p.x - screen.x;
-      const dy = p.y - screen.y;
-      const d = dx * dx + dy * dy;
-      if (d < bestDistance) {
-        best = node;
-        bestDistance = d;
-      }
-    }
-    return best;
-  };
+  const flowNodes = useMemo(
+    () =>
+      visibleNodes.map((node) => {
+        const position = positions.get(node.id) ?? { x: 0, y: 0 };
+        return {
+          id: node.id,
+          type: "overviewNode",
+          position,
+          initialWidth: OVERVIEW_NODE_WIDTH,
+          initialHeight: OVERVIEW_NODE_HEIGHT,
+          data: {
+            node,
+            detail: details.get(node.id),
+            showDetail: viewport.zoom >= DETAIL_ZOOM,
+          } satisfies OverviewNodeData,
+          draggable: false,
+          selectable: false,
+          connectable: false,
+          style: {
+            width: OVERVIEW_NODE_WIDTH,
+            height: OVERVIEW_NODE_HEIGHT,
+            padding: 0,
+            background: "transparent",
+            border: "none",
+          },
+        };
+      }),
+    [visibleNodes, positions, details, viewport.zoom],
+  );
+
+  const flowEdges = useMemo(
+    () =>
+      visibleLinks.map((link, index) => ({
+        id: `${link.source}-${link.target}-${index}`,
+        source: link.source,
+        target: link.target,
+        type: "default",
+        selectable: false,
+        focusable: false,
+        interactionWidth: 0,
+        style: {
+          stroke:
+            link.attribution === "doco-auto"
+              ? "rgba(115, 115, 115, 0.16)"
+              : "rgba(115, 115, 115, 0.3)",
+          strokeDasharray: link.attribution === "doco-auto" ? "4 4" : undefined,
+          pointerEvents: "none" as const,
+        },
+      })),
+    [visibleLinks],
+  );
+
+  const nodeTypes = useMemo(() => ({ overviewNode: OverviewFlowNode }), []);
 
   return (
     <div className={fillHeight ? "flex h-full min-h-0 flex-col gap-2" : "flex flex-col gap-2"}>
@@ -505,124 +494,79 @@ export function OverviewGraph({
           })}
         </div>
       </div>
+
       <div
-        ref={containerRef}
+        ref={graphRef}
         className={
           fillHeight
             ? "relative min-h-0 w-full flex-1 overflow-hidden rounded-md border border-border bg-input"
             : "relative h-[65vh] min-h-[480px] w-full overflow-hidden rounded-md border border-border bg-input"
         }
       >
-        <canvas
-          ref={canvasRef}
-          className="absolute inset-0 cursor-grab active:cursor-grabbing"
-          onPointerDown={(event) => {
-            event.currentTarget.setPointerCapture(event.pointerId);
-            dragRef.current = { x: event.clientX, y: event.clientY, moved: false };
-          }}
-          onPointerMove={(event) => {
-            const drag = dragRef.current;
-            if (drag) {
-              const dx = event.clientX - drag.x;
-              const dy = event.clientY - drag.y;
-              if (Math.abs(dx) + Math.abs(dy) > 2) drag.moved = true;
-              drag.x = event.clientX;
-              drag.y = event.clientY;
-              setViewport((prev) => ({ ...prev, x: prev.x + dx, y: prev.y + dy }));
-              return;
-            }
-            const rect = event.currentTarget.getBoundingClientRect();
-            const node = nearestNode({ x: event.clientX - rect.left, y: event.clientY - rect.top });
-            setHoveredId(node?.id ?? null);
-          }}
-          onPointerUp={(event) => {
-            const drag = dragRef.current;
-            dragRef.current = null;
-            if (drag?.moved) return;
-            const rect = event.currentTarget.getBoundingClientRect();
-            const node = nearestNode({ x: event.clientX - rect.left, y: event.clientY - rect.top });
-            if (node?.href) navigate(node.href);
-          }}
-          onPointerLeave={() => {
-            dragRef.current = null;
-            setHoveredId(null);
-          }}
-          onWheel={(event) => {
-            event.preventDefault();
-            const rect = event.currentTarget.getBoundingClientRect();
-            const mouse = { x: event.clientX - rect.left, y: event.clientY - rect.top };
-            const before = screenToWorld(mouse);
-            const factor = event.deltaY > 0 ? 0.88 : 1.14;
-            setViewport((prev) => {
-              const zoom = Math.max(0.03, Math.min(3, prev.zoom * factor));
-              return {
-                zoom,
-                x: mouse.x - size.width / 2 - before.x * zoom,
-                y: mouse.y - size.height / 2 - before.y * zoom,
-              };
-            });
-          }}
-        />
-        <div className="absolute right-3 top-3 z-20 flex overflow-hidden rounded-md border border-border bg-card shadow-sm">
-          <button
-            type="button"
-            className="flex h-8 w-8 items-center justify-center hover:bg-muted"
-            title="Zoom in"
-            onClick={() => setViewport((prev) => ({ ...prev, zoom: Math.min(3, prev.zoom * 1.2) }))}
+        {Flow ? (
+          <Flow.ReactFlow
+            nodes={flowNodes}
+            edges={flowEdges}
+            nodeTypes={nodeTypes}
+            nodesDraggable={false}
+            nodesConnectable={false}
+            onlyRenderVisibleElements
+            fitView
+            fitViewOptions={GRAPH_FIT_VIEW_OPTIONS}
+            minZoom={GRAPH_MIN_ZOOM}
+            maxZoom={GRAPH_MAX_ZOOM}
+            panOnDrag
+            zoomOnScroll
+            zoomOnPinch
+            zoomOnDoubleClick
+            preventScrolling
+            onInit={(instance: {
+              fitView?: (options?: typeof GRAPH_FIT_VIEW_OPTIONS) => void;
+              getViewport?: () => FlowViewport;
+            }) => {
+              if (!hasFitRef.current) {
+                instance.fitView?.(GRAPH_FIT_VIEW_OPTIONS);
+                hasFitRef.current = true;
+              }
+              const next = instance.getViewport?.();
+              if (next) updateViewport(next);
+            }}
+            onMove={(_event: unknown, next: FlowViewport) => updateViewport(next)}
+            onNodeClick={(_event: unknown, node: { id: string }) => {
+              const target = nodeById.get(node.id);
+              if (target?.href) navigate(target.href);
+            }}
+            proOptions={{ hideAttribution: true }}
           >
-            <Plus className="h-4 w-4" />
-          </button>
-          <button
-            type="button"
-            className="flex h-8 w-8 items-center justify-center border-l border-border hover:bg-muted"
-            title="Zoom out"
-            onClick={() =>
-              setViewport((prev) => ({ ...prev, zoom: Math.max(0.03, prev.zoom / 1.2) }))
-            }
-          >
-            <Minus className="h-4 w-4" />
-          </button>
-          <button
-            type="button"
-            className="flex h-8 w-8 items-center justify-center border-l border-border hover:bg-muted"
-            title="Fit graph"
-            onClick={fitView}
-          >
-            <Maximize2 className="h-4 w-4" />
-          </button>
-        </div>
-        <div className="pointer-events-none absolute inset-0 z-10">
-          {detailCandidates.map(({ node, screen }) => {
-            const detail = details.get(node.id);
-            if (!detail) return null;
-            const title = detail.name ?? detail.summary;
-            return (
-              <Link
-                key={node.id}
-                to={detail.href ?? node.href ?? "#"}
-                className="pointer-events-auto absolute w-64 rounded-md border border-border bg-card px-3 py-2 text-card-foreground shadow-md no-underline"
-                style={{
-                  left: screen.x,
-                  top: screen.y,
-                  transform: "translate(-50%, calc(-100% - 12px))",
-                }}
-              >
-                <div className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold uppercase text-muted-foreground">
-                  <NodeTypeIcon nodeType={detail.node_type} className="!h-3.5 !w-3.5" />
-                  <span>{detail.node_type}</span>
-                </div>
-                <div className="truncate font-mono text-xs font-semibold text-foreground">
-                  {title}
-                </div>
-                {title !== detail.summary ? (
-                  <div className="mt-1 line-clamp-3 text-[11px] leading-snug text-muted-foreground">
-                    {detail.summary}
-                  </div>
-                ) : null}
-              </Link>
-            );
-          })}
-        </div>
+            <Flow.Background gap={20} size={1} />
+            <Flow.Controls
+              position="top-right"
+              showInteractive={false}
+              fitViewOptions={GRAPH_FIT_VIEW_OPTIONS}
+            />
+            <Flow.MiniMap
+              pannable
+              zoomable
+              maskColor="rgba(0, 0, 0, 0.35)"
+              nodeColor={(node: { id: string }) => {
+                const graphNode = nodeById.get(node.id);
+                return graphNode ? lifecycleColor(nodeLifecycle(graphNode)) : "#d4d4d4";
+              }}
+              nodeStrokeWidth={2}
+              style={{
+                width: 120,
+                height: 90,
+                border: "1px solid var(--color-border)",
+                borderRadius: "var(--radius)",
+                overflow: "hidden",
+              }}
+            />
+          </Flow.ReactFlow>
+        ) : (
+          <div className="flex h-full w-full items-center justify-center text-xs text-muted-foreground">
+            Loading graph…
+          </div>
+        )}
       </div>
     </div>
   );
