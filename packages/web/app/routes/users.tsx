@@ -247,25 +247,11 @@ export async function loader({ request }: { request: Request }) {
       id: s.doco.id,
       label: s.doco.handle,
     }));
-  // Scope invites need doco-owner role on the containing doco. Surface
-  // every scope inside any doco the user owns at the doco level.
-  const ownerDocoIds = new Set(inviteDocos.map((d) => d.id));
-  const inviteScopes = await (async () => {
-    if (ownerDocoIds.size === 0) return [] as { id: string; label: string; doco_handle: string }[];
-    return withClient(async (c) => {
-      const r = await c.query<{ id: string; name: string; doco_id: string; handle: string }>(
-        `SELECT s.id, s.name, s.doco_id, d.handle
-         FROM scopes s JOIN docos d ON d.id = s.doco_id
-         WHERE s.doco_id = ANY($1::text[]) ORDER BY d.handle, s.name`,
-        [Array.from(ownerDocoIds)],
-      );
-      return r.rows.map((row) => ({
-        id: String(row.id),
-        label: `${row.handle} · ${row.name}`,
-        doco_handle: String(row.handle),
-      }));
-    });
-  })();
+  // v13 removed scope-level invites along with scopes. The invite UI
+  // for scopes still renders if `inviteScopes` is non-empty, so keep it
+  // as an empty list. The "Scope" option in the invite picker
+  // therefore shows no targets and the form blocks the submission.
+  const inviteScopes: { id: string; label: string; doco_handle: string }[] = [];
 
   return {
     me,
