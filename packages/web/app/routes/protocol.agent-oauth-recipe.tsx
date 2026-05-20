@@ -100,7 +100,7 @@ ${baseUrl}/oauth/authorize
 \`\`\`
 
 **Targeted grants (recommended).** If you already know which Doco
-you need — typically read from \`.doco/connections.md\` in the project root,
+you need — typically read from \`DOCO.md\` in the project root,
 which carries a URL like \`${baseUrl}/<handle>/\` — pass
 \`target_doco_handle\` and \`requested_role\` so the approve screen
 focuses on that one Doco with the role pre-filled. Without them
@@ -167,7 +167,7 @@ client_id=<your-client-id>
 \`\`\`
 
 **Targeted grants (recommended).** If you already know which Doco you
-need — typically read from \`.doco/connections.md\` in the project root, which
+need — typically read from \`DOCO.md\` in the project root, which
 carries a URL like \`${baseUrl}/<handle>/\` — pass the handle as
 \`target_doco_handle\` and your desired role as \`requested_role\`. The
 approve screen then focuses on that one Doco with your requested

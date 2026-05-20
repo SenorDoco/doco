@@ -8,7 +8,9 @@ import {
   getDocoUserRole,
   getOrgRole,
   getPrincipalById,
+  getScopeUserRole,
   listDocoIdsForUserPrincipal,
+  listScopeIdsWithGrant,
   maxRole,
   roleAtLeast,
   withClient,
@@ -23,12 +25,11 @@ import { type CurrentPrincipal, extractBearer, getCurrentPrincipalAsync } from "
 /**
  * Doco-level role for this principal — max of (direct owner_id match,
  * agent-owner-chain match, org-membership role on the owning org,
- * explicit doco_users row).
+ * explicit doco_users row). Scope-level grants do NOT factor in here;
+ * use `getEffectiveScopeRole` when you need the per-scope answer.
  *
  * Returns null when the principal has no doco-level grant.
- *
- * v13 (decision_01KS3DW9C2KN2X7Z80R18H1RAX): role grants live at
- * org + doco level only; the per-scope role tier is gone.
+ * (They may still have a scope-only grant — see `canAccessDoco`.)
  */
 export async function getDocoLevelRole(
   meta: { ownerId: string; docoId?: string },
@@ -66,16 +67,39 @@ export async function getDocoLevelRole(
 }
 
 /**
+ * Effective role when the principal operates ON a specific scope:
+ *   max(doco-level role, scope_users grant for this scope)
+ * Used by capture / lifecycle gates to decide whether to force lifecycle
+ * to `proposed` (author) or honor the body's `lifecycle` (approver+).
+ */
+export async function getEffectiveScopeRole(
+  meta: { ownerId: string; docoId?: string },
+  scopeId: string,
+  principalId: string | null,
+): Promise<DocoRole | null> {
+  if (!principalId) return null;
+
+  let role = await getDocoLevelRole(meta, principalId);
+  const direct = await getScopeUserRole(scopeId, principalId);
+  role = maxRole(role, direct);
+
+  const ownerOfPrincipal = await getPrincipalOwnerId(principalId);
+  if (ownerOfPrincipal) {
+    const viaOwner = await getScopeUserRole(scopeId, ownerOfPrincipal);
+    role = maxRole(role, viaOwner);
+  }
+
+  return role;
+}
+
+/**
  * Can `principalId` read this Doco?
  *
  *   - public visibility → always yes (anonymous OK).
  *   - host-bootstrap-owned (unclaimed) → always yes regardless of visibility.
- *   - private visibility: any doco-level grant (max of org + doco
- *     role tiers — see `getDocoLevelRole`) → yes.
- *
- * v13 (decision_01KS3DW9C2KN2X7Z80R18H1RAX): the pre-existing
- * scope-only-implies-doco-reader path is gone. Per-scope grants no
- * longer exist; the effective role is `max(orgRole, docoRole)`.
+ *   - private visibility: any doco-level grant OR any scope-only grant on a
+ *     scope inside this doco → yes (scope-only implies doco-reader per
+ *     decision_01KS0JBJ5X0AZ4XJJFKEWE1R62).
  */
 export async function canAccessDoco(
   meta: { ownerId: string; visibility: string; docoId?: string },
@@ -84,7 +108,15 @@ export async function canAccessDoco(
   if (meta.visibility === "public") return true;
   if (await isHostBootstrapOwned(meta.ownerId)) return true;
   if (!principalId) return false;
-  return (await getDocoLevelRole(meta, principalId)) !== null;
+
+  const docoLevel = await getDocoLevelRole(meta, principalId);
+  if (docoLevel) return true;
+
+  if (meta.docoId) {
+    const scopes = await listScopeIdsWithGrant(meta.docoId, principalId);
+    if (scopes.length > 0) return true;
+  }
+  return false;
 }
 
 /** True if ownerId is the host-bootstrap placeholder Principal (unclaimed docos). */
@@ -220,10 +252,47 @@ export async function canApproveDoco(
   return roleAtLeast(role, "approver");
 }
 
-// v13 (decision_01KS3DW9C2KN2X7Z80R18H1RAX) removed the per-scope
-// role tier. canWriteScope / canApproveScope / canEditConstitution
-// used to live here; their callers now check the doco-level role
-// directly via `canApproveDoco` / `canAdminDoco`.
+/**
+ * Can the principal write a node INTO this scope? Author-tier minimum.
+ * Their writes may still be forced to `lifecycle: proposed` if they're
+ * exactly `author` — that gate lives in the capture layer.
+ */
+export async function canWriteScope(
+  meta: { ownerId: string; docoId?: string },
+  scopeId: string,
+  principalId: string | null,
+): Promise<boolean> {
+  if (!principalId) return false;
+  const role = await getEffectiveScopeRole(meta, scopeId, principalId);
+  return roleAtLeast(role, "author");
+}
+
+/** Can the principal flip lifecycle on a node IN this scope? Approver-tier. */
+export async function canApproveScope(
+  meta: { ownerId: string; docoId?: string },
+  scopeId: string,
+  principalId: string | null,
+): Promise<boolean> {
+  if (!principalId) return false;
+  const role = await getEffectiveScopeRole(meta, scopeId, principalId);
+  return roleAtLeast(role, "approver");
+}
+
+/**
+ * Constitution-edit gate. The #global scope (Constitution) accepts edits
+ * only from doco-level owners — scope-level elevation does NOT promote
+ * approver/author to constitution-editor. Per the Rule born_from
+ * decision_01KS0JBJ5X0AZ4XJJFKEWE1R62.
+ */
+export async function canEditConstitution(
+  meta: { ownerId: string; docoId?: string },
+  principalId: string | null,
+): Promise<boolean> {
+  if (await isHostBootstrapOwned(meta.ownerId)) return true;
+  if (!principalId) return false;
+  const role = await getDocoLevelRole(meta, principalId);
+  return role === "owner";
+}
 
 /**
  * Standard 404 thrown when the caller asked for a Doco that doesn't

@@ -161,6 +161,7 @@ export async function loader({
     const filtersOut = {
       lifecycle: filters.lifecycle,
       node_type: filters.nodeType,
+      scope: filters.scope,
       limit: filters.limit,
     };
 

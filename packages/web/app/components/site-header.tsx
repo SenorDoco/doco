@@ -56,6 +56,7 @@ export function SiteHeader({ docoScope, me, shellOwner = false }: SiteHeaderProp
   const nav = docoScope
     ? [
         { to: `/${docoScope.handle}`, label: docoScope.handle, isDocoName: true },
+        { to: `/${docoScope.handle}/scopes`, label: "Scopes", isDocoName: false },
         { to: `/${docoScope.handle}/settings`, label: "Settings", isDocoName: false },
       ]
     : [];

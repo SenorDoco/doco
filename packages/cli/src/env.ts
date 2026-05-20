@@ -1,9 +1,8 @@
 // Doco config resolution for the CLI. The secret is `DOCO_ACCESS` in
-// `./.env`; the project coordinate is the committed URL(s) in
-// `./.doco/connections.md` (v13 — decision_01KS3DX190V93NGR3QQ37J8TVQ).
-// Older installs that still have the legacy `./DOCO.md` file continue
-// to work as a read-only fallback so a fresh CLI on an older repo
-// doesn't pretend the coordinate is missing.
+// `./.env`; the project coordinate is the committed URL in `./DOCO.md`.
+// Older installs that still have previous env names continue to work as
+// read-only fallbacks, but new writes and user-facing guidance use
+// DOCO_ACCESS only.
 
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -65,27 +64,27 @@ export function loadDotenv(): void {
 }
 
 /**
- * Pull the public Doco coordinate from the project's pointer file.
- * v13 (decision_01KS3DX190V93NGR3QQ37J8TVQ): the canonical location is
- * `.doco/connections.md` — a markdown file listing one or more Doco
- * URLs (a repo can connect to multiple Docos). When the file lists
- * more than one URL, the first one wins; multi-Doco-aware commands
- * can override via `DOCO_ID` in the env.
+ * Pull the public Doco coordinate out of DOCO.md. The file carries a
+ * human URL, not another secret. The route layer accepts either the
+ * modern handle or a legacy `doco_...` id, so this returns a generic ref.
  *
- * Legacy fallback: the pre-v13 `./DOCO.md` is read if `.doco/
- * connections.md` is missing. Lowercase `doco.md` is the
- * case-sensitive-filesystem fallback for the legacy path. Once every
- * repo has migrated, both fallbacks can be removed.
+ * Filename: the canonical form is `DOCO.md` (ALLCAPS, matching the
+ * AGENTS.md / CLAUDE.md / README.md root-file convention). Older
+ * repos shipped lowercase `doco.md` — read that as a fallback so a
+ * fresh CLI on an older repo doesn't pretend the coordinate is
+ * missing. On a case-insensitive filesystem (default macOS APFS,
+ * Windows NTFS) the two names resolve to the same file anyway; the
+ * fallback is for case-sensitive filesystems where `DOCO.md` and
+ * `doco.md` are genuinely different entries.
  */
 export function readDocoRefFromProject(cwd: string = process.cwd()): string | null {
-  const candidates = [".doco/connections.md", "DOCO.md", "doco.md"];
-  for (const fname of candidates) {
+  for (const fname of ["DOCO.md", "doco.md"]) {
     try {
       const text = readFileSync(resolve(cwd, fname), "utf8");
       const urlMatch = text.match(/https?:\/\/[^/\s)]+\/([A-Za-z0-9][A-Za-z0-9-]*)(?:\/|\b)/);
       if (urlMatch?.[1]) return urlMatch[1];
     } catch {
-      // Try the next candidate, then fall through to legacy ID discovery.
+      // Try the next filename, then fall through to legacy ID discovery.
     }
   }
   for (const name of ["AGENTS.md", "CLAUDE.md"]) {
@@ -110,7 +109,7 @@ export function requireDocoConfig(): DocoConfig {
   const docoRef = readDocoRefFromProject() ?? process.env.DOCO_ID ?? "";
   const missing: string[] = [];
   if (!access) missing.push("DOCO_ACCESS (./.env)");
-  if (!docoRef) missing.push(".doco/connections.md URL");
+  if (!docoRef) missing.push("DOCO.md URL");
   if (missing.length) {
     const cross = "\x1b[31m✗\x1b[0m";
     console.error(

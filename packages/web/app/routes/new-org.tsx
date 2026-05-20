@@ -1,29 +1,15 @@
 import { Form, Link, redirect } from "react-router";
-import {
-  addOrganizationByHandle,
-  ensurePersonalOrganization,
-  findAvailableOrgHandle,
-} from "@doco/host";
+import { addOrganization } from "@doco/host";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { SingleColumnPageMain } from "~/components/page-main";
 import { SiteHeader } from "~/components/site-header";
+import { rootDir } from "~/lib/db.server";
 import { loadHostConfig } from "~/lib/host";
 import { getCurrentPrincipal } from "~/lib/session";
 
-/**
- * /new-org — create an Organization (v13 single-property model).
- *
- * The Organization has one user-facing property: `handle`. The user types
- * the handle they want. On submit, if the handle is free, the org is
- * created and the user is redirected to `/orgs/<handle>`. If it's taken,
- * the form re-renders with the next available suggestion (e.g. `acme-2`)
- * pre-filled and a one-click "Use the suggested handle instead" button.
- */
 export async function loader({ request }: { request: Request }) {
   const me = await getCurrentPrincipal(request);
   if (!me) throw redirect("/sign-in");
-  // Backfill personal org for sign-ins that pre-date v13.
-  await ensurePersonalOrganization(me.id, me.username);
   return { me, host: await loadHostConfig() };
 }
 
@@ -31,40 +17,22 @@ export async function action({ request }: { request: Request }) {
   const me = await getCurrentPrincipal(request);
   if (!me) throw redirect("/sign-in");
   const form = await request.formData();
-  const requested = String(form.get("handle") ?? "")
-    .trim()
-    .toLowerCase();
-  const accept = form.get("accept_suggested") === "1";
-
-  if (!requested) return { error: "Handle is required.", suggested: null };
-
+  const slug = String(form.get("slug") ?? "").trim().toLowerCase();
+  const display_name = String(form.get("display_name") ?? "").trim();
+  const description = String(form.get("description") ?? "").trim();
+  const visibility = String(form.get("visibility") ?? "private") as "private" | "public";
+  if (!slug) return { error: "Slug is required." };
   try {
-    if (accept) {
-      const { handle } = await addOrganizationByHandle({
-        handle: requested,
-        ownerPrincipalId: me.id,
-        autoSuffix: true,
-      });
-      throw redirect(`/orgs/${handle}`);
-    }
-    const { handle } = await addOrganizationByHandle({
-      handle: requested,
-      ownerPrincipalId: me.id,
-      autoSuffix: false,
+    await addOrganization(rootDir(), {
+      slug,
+      ...(display_name ? { display_name } : {}),
+      ...(description ? { description } : {}),
+      ownerUsername: me.username,
+      visibility,
     });
-    throw redirect(`/orgs/${handle}`);
+    return redirect(`/${slug}`);
   } catch (e) {
-    if (e instanceof Response) throw e;
-    const message = (e as Error).message;
-    // Collision — surface the next available handle as a suggestion.
-    if (message.includes("already taken")) {
-      const suggested = await findAvailableOrgHandle(requested);
-      return {
-        error: `"${requested}" is already taken. Suggested: "${suggested}".`,
-        suggested,
-      };
-    }
-    return { error: message, suggested: null };
+    return { error: (e as Error).message };
   }
 }
 
@@ -77,10 +45,9 @@ export default function NewOrg({
   actionData,
 }: {
   loaderData: Awaited<ReturnType<typeof loader>>;
-  actionData?: { error?: string; suggested?: string | null } | undefined;
+  actionData?: { error?: string } | undefined;
 }) {
-  const { me } = loaderData;
-  const suggested = actionData?.suggested ?? null;
+  const { me, host } = loaderData;
   return (
     <div>
       <SiteHeader mode="host" me={me} />
@@ -89,27 +56,51 @@ export default function NewOrg({
           <CardHeader>
             <CardTitle>New organization</CardTitle>
             <CardDescription>
-              You become the owner. The handle is the org's only public identifier — your Docos
-              will live at <code>/&lt;handle&gt;-&lt;doco-suffix&gt;/</code>.
+              You become the owner. Add members later (CLI for now;{" "}
+              <code className="rounded bg-input px-1">doco host org members add</code> coming).
             </CardDescription>
           </CardHeader>
           <CardContent>
             <Form method="post" className="space-y-3">
               <label className="block text-xs">
-                <span className="mb-1 block text-muted-foreground">Handle</span>
+                <span className="mb-1 block text-muted-foreground">Slug</span>
                 <input
                   type="text"
-                  name="handle"
+                  name="slug"
                   required
-                  pattern="[a-z0-9][a-z0-9_-]*"
+                  pattern="[a-z0-9_-]+"
                   autoFocus
-                  defaultValue={suggested ?? ""}
                   placeholder="my-org"
                   className="w-full rounded-md border border-border bg-input px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
                 />
-                <span className="mt-1 block text-[11px] text-muted-foreground">
-                  Lowercase kebab-case ([a-z0-9][a-z0-9_-]*). The handle is the org's only property.
-                </span>
+              </label>
+              <label className="block text-xs">
+                <span className="mb-1 block text-muted-foreground">Display name (optional)</span>
+                <input
+                  type="text"
+                  name="display_name"
+                  placeholder="My Organization"
+                  className="w-full rounded-md border border-border bg-input px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
+                />
+              </label>
+              <label className="block text-xs">
+                <span className="mb-1 block text-muted-foreground">Description (optional)</span>
+                <textarea
+                  name="description"
+                  rows={3}
+                  className="w-full rounded-md border border-border bg-input px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
+                />
+              </label>
+              <label className="block text-xs">
+                <span className="mb-1 block text-muted-foreground">Visibility</span>
+                <select
+                  name="visibility"
+                  defaultValue="private"
+                  className="w-full rounded-md border border-border bg-input px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
+                >
+                  <option value="private">Private</option>
+                  <option value="public">Public</option>
+                </select>
               </label>
               {actionData?.error ? (
                 <p className="text-xs text-destructive">{actionData.error}</p>
@@ -121,20 +112,7 @@ export default function NewOrg({
                 >
                   Create organization
                 </button>
-                {suggested ? (
-                  <button
-                    type="submit"
-                    name="accept_suggested"
-                    value="1"
-                    className="rounded-md border border-border px-4 py-2 text-sm hover:bg-muted"
-                  >
-                    Use "{suggested}" instead
-                  </button>
-                ) : null}
-                <Link
-                  to="/dashboard"
-                  className="text-xs text-muted-foreground hover:text-foreground"
-                >
+                <Link to="/dashboard" className="text-xs text-muted-foreground hover:text-foreground">
                   Cancel
                 </Link>
               </div>

@@ -44,11 +44,7 @@ export async function loader({
 }) {
   const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
   const { type } = params;
-  // v13: `scope` is no longer a navigable entity type (the routes were
-  // removed). Reject before the legacy render path below.
-  if (!KNOWN.has(type) || type === "scope") {
-    throw new Response("Unknown type", { status: 404 });
-  }
+  if (!KNOWN.has(type)) throw new Response("Unknown type", { status: 404 });
   const ctx = await loadDocoForRead(request, handle);
   return withClient(async (c) => {
     if (type === "scope") {

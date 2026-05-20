@@ -140,11 +140,12 @@ export async function action({
       principal_id: principal.id,
       role: grantedRole,
     });
-  } else if (inviteLevel === "scope") {
-    // v13 removed scope-level invites
-    // (decision_01KS3DW9C2KN2X7Z80R18H1RAX). Legacy invite codes that
-    // still carry `level: "scope"` collapse to a doco-level reader
-    // grant on the containing Doco — the closest live equivalent.
+  } else if (inviteLevel === "scope" && consumed.scope_id) {
+    await upsertScopeUser({
+      scope_id: consumed.scope_id,
+      principal_id: principal.id,
+      role: grantedRole,
+    });
     await upsertDocoUser({
       doco_id: invite.doco_id,
       principal_id: principal.id,

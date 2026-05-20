@@ -60,9 +60,12 @@ const GRAPH_TABLES: {
   { table: "reference_entities", nodeType: "reference" },
   { table: "ideas", nodeType: "idea" },
   { table: "states", nodeType: "state" },
-  // v13: scope nodes are no longer rendered in the overview graph. The
-  // `scopes` table stays for one release (read by legacy paths only);
-  // dropping the entry here hides them from every graph view.
+  {
+    table: "scopes",
+    nodeType: "scope",
+    labelExpr: "COALESCE(NULLIF(t.purpose, ''), t.name)",
+    nameExpr: "t.name",
+  },
 ];
 
 const OVERVIEW_GRAPH_EDGE_LIMIT = 5000;
@@ -117,8 +120,7 @@ function overviewEntityHref(
   id: string,
 ): string | undefined {
   if (!handle) return undefined;
-  // v13: scope is no longer navigable; fall through to the generic
-  // short-form so legacy scope nodes don't link to a removed route.
+  if (nodeType === "scope") return `/${handle}/scopes/${id}`;
   return `/${handle}/${nodeType}/${id}`;
 }
 

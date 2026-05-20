@@ -34,15 +34,15 @@ import { type RouteConfig, index, route } from "@react-router/dev/routes";
  *   /:owner/:doco/:type/:id        per-Doco entity detail (id is the ULID; scope also resolves by name)
  *   /:owner/:doco/search           per-Doco search (richer results — GPR / age / lifecycle)
  *   /:owner/:doco/settings         per-Doco settings (admin only; danger zone soft-delete; ADR-124)
+ *   /:owner/:doco/scopes           per-Doco scope list (Edit button — not chevron — for instructions)
+ *   /:owner/:doco/scopes/new       per-Doco add a scope (templates + custom form)
+ *   /:owner/:doco/scopes/:id       per-Doco scope detail+edit (merged) — including the Global scope (formerly /constitution; renamed per decision_01KRPNZY7W6CCMYNKGND67BP0B)
+ *   /:owner/:doco/scopes/:id/rules/new         standalone add rule page for scope rules
+ *   /:owner/:doco/scopes/:id/abandon           standalone Danger Zone confirmation
  *   /:owner/:doco/status.json      per-Doco status (connection signal for agent footer line)
  *   /:owner/:doco/api/*            per-Doco capture + update endpoints
  *                                  (decisions / intents / evos / settings; ADR-128 added evos.json)
- *
- * v13 removed the per-Doco scope surface entirely
- * (decision_01KS3DW9C2KN2X7Z80R18H1RAX). Every Doco belongs to an
- * Organization; role grants live at org + doco level only. The
- * /scopes routes, /api/scopes endpoints, and /api/suggest-scopes
- * helper are all gone.
+ *   /api/suggest-scopes            LLM scope suggestions
  *
  * Per-Doco URL collisions are prevented by `PER_DOCO_RESERVED_SLUGS` in
  * @doco/shared/url-conventions.ts — every static subpath here MUST be in
@@ -116,6 +116,7 @@ export default [
   route("onboarding/create", "routes/onboarding.create._index.tsx"),
   route("onboarding/create/human", "routes/onboarding.create.human.tsx"),
   // API
+  route("api/suggest-scopes", "routes/api.suggest-scopes.tsx"),
   route("invite/:code", "routes/invite.$code.tsx"),
   // Agent-readable companion to /invite/:code. Agents that get pasted
   // an invite URL ("redeem this") fetch this to learn the MCP-OAuth
@@ -125,11 +126,6 @@ export default [
   // ownership transfers. Agents that record the ULID resolve to the
   // current canonical handle at request time.
   route("api/v1/docos/:docoId.json", "routes/api.v1.docos.$docoId[.]json.tsx"),
-  // v13 (decision_01KS3DW9C2KN2X7Z80R18H1RAX) creation endpoints.
-  // POST-only; auto-suffix on collision; return 201 with the
-  // (possibly suffixed) handle.
-  route("api/v1/orgs.json", "routes/api.v1.orgs[.]json.tsx"),
-  route("api/v1/docos.json", "routes/api.v1.docos[.]json.tsx"),
   // Per-Doco routes: every Doco lives at `/<doco-id>/...` where
   // doco-id is the handle. `normalizeDocoParams` resolves the URL
   // param to a row. There is no owner profile page; the dashboard
@@ -152,6 +148,29 @@ export default [
     ":docoId/api/references/:id.json",
     "routes/$ownerSlug.$docoSlug.api.references.$id[.]json.tsx",
   ),
+  route(":docoId/api/scopes/:id.json", "routes/$ownerSlug.$docoSlug.api.scopes.$id[.]json.tsx"),
+  route(
+    ":docoId/api/scopes/:id/rules.json",
+    "routes/$ownerSlug.$docoSlug.api.scopes.$id.rules[.]json.tsx",
+  ),
+  // v7 scope bulk verbs.
+  route(
+    ":docoId/api/scopes/:id/activate.json",
+    "routes/$ownerSlug.$docoSlug.api.scopes.$id.activate[.]json.tsx",
+  ),
+  route(
+    ":docoId/api/scopes/:id/draft.json",
+    "routes/$ownerSlug.$docoSlug.api.scopes.$id.draft[.]json.tsx",
+  ),
+  route(
+    ":docoId/api/scopes/:id/validate.json",
+    "routes/$ownerSlug.$docoSlug.api.scopes.$id.validate[.]json.tsx",
+  ),
+  route(
+    ":docoId/api/scopes/:id/excluded-rules.json",
+    "routes/$ownerSlug.$docoSlug.api.scopes.$id.excluded-rules[.]json.tsx",
+  ),
+  route(":docoId/api/scopes.json", "routes/$ownerSlug.$docoSlug.api.scopes[.]json.tsx"),
   route(":docoId/api/principals.json", "routes/$ownerSlug.$docoSlug.api.principals[.]json.tsx"),
   route(":docoId/api/intents.json", "routes/$ownerSlug.$docoSlug.api.intents[.]json.tsx"),
   route(":docoId/api/actions.json", "routes/$ownerSlug.$docoSlug.api.actions[.]json.tsx"),
@@ -175,6 +194,11 @@ export default [
   route(":docoId/search", "routes/$ownerSlug.$docoSlug.search.tsx"),
   route(":docoId/search.json", "routes/$ownerSlug.$docoSlug.search[.]json.tsx"),
   route(":docoId/onboarding/agent", "routes/$ownerSlug.$docoSlug.onboarding.agent.tsx"),
+  route(":docoId/scopes", "routes/$ownerSlug.$docoSlug.scopes._index.tsx"),
+  route(":docoId/scopes/new", "routes/$ownerSlug.$docoSlug.scopes.new.tsx"),
+  route(":docoId/scopes/:id", "routes/$ownerSlug.$docoSlug.scopes.$id._index.tsx"),
+  route(":docoId/scopes/:id/rules/new", "routes/$ownerSlug.$docoSlug.scopes.$id.rules.new.tsx"),
+  route(":docoId/scopes/:id/abandon", "routes/$ownerSlug.$docoSlug.scopes.$id.abandon.tsx"),
   route(":docoId/rules/new", "routes/$ownerSlug.$docoSlug.rules.new.tsx"),
   // Short-form entity routes. `:type` is validated by the loader; reserved
   // feature paths above win the match for the static paths.

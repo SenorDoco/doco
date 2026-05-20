@@ -2,9 +2,9 @@
 
 You are in a **Doco-tracked project** — and specifically, you are in
 the meta-Doco: Doco's own Doco. Decisions about Doco the product
-live in the Doco(s) listed in:
+live in the Doco described in:
 
-@./.doco/connections.md
+@./DOCO.md
 
 ## Getting access to this Doco (agent OAuth)
 
@@ -21,15 +21,12 @@ directly. Recipe at https://doco.to/protocol/agent-oauth-recipe.
     poll until you get a Bearer token.
 
 Both recipes end with `Authorization: Bearer doco_at_<token>`
-against `https://doco.to/torrenegra-meta-doco/api/*` (the v13-renamed
-canonical handle; the legacy `/meta-doco/` URL 404s after the
-cutover).
+against `https://doco.to/meta-doco/api/*`.
 
 ## Your role
 
-- Get authenticated (recipe above) or browse
-  https://doco.to/torrenegra-meta-doco/ for context if access is
-  delayed.
+- Get authenticated (recipe above) or browse https://doco.to/meta-doco/
+  for context if access is delayed.
 - Call out work that should be captured. When you make a Decision,
   fix a bug, or finish a load-bearing chunk of code, capture it
   directly if you're authenticated, or tell the project owner what
@@ -41,8 +38,6 @@ cutover).
 
 ## What lives where
 
-- **`.doco/connections.md`** (committed) — list of Doco URLs this
-  repo connects to (one per line). Replaces the v12 `DOCO.md` which
-  held a single URL.
+- **`DOCO.md`** (committed) — Doco URL.
 - **`AGENTS.md`** (this file, committed) — agent bootstrap pointer.
 - **`CLAUDE.md`** (committed) — one-line shim `@./AGENTS.md`.

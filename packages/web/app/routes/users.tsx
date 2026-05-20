@@ -247,11 +247,25 @@ export async function loader({ request }: { request: Request }) {
       id: s.doco.id,
       label: s.doco.handle,
     }));
-  // v13 removed scope-level invites along with scopes. The invite UI
-  // for scopes still renders if `inviteScopes` is non-empty, so keep it
-  // as an empty list. The "Scope" option in the invite picker
-  // therefore shows no targets and the form blocks the submission.
-  const inviteScopes: { id: string; label: string; doco_handle: string }[] = [];
+  // Scope invites need doco-owner role on the containing doco. Surface
+  // every scope inside any doco the user owns at the doco level.
+  const ownerDocoIds = new Set(inviteDocos.map((d) => d.id));
+  const inviteScopes = await (async () => {
+    if (ownerDocoIds.size === 0) return [] as { id: string; label: string; doco_handle: string }[];
+    return withClient(async (c) => {
+      const r = await c.query<{ id: string; name: string; doco_id: string; handle: string }>(
+        `SELECT s.id, s.name, s.doco_id, d.handle
+         FROM scopes s JOIN docos d ON d.id = s.doco_id
+         WHERE s.doco_id = ANY($1::text[]) ORDER BY d.handle, s.name`,
+        [Array.from(ownerDocoIds)],
+      );
+      return r.rows.map((row) => ({
+        id: String(row.id),
+        label: `${row.handle} · ${row.name}`,
+        doco_handle: String(row.handle),
+      }));
+    });
+  })();
 
   return {
     me,
@@ -336,8 +350,18 @@ export async function action({
       );
       if (role !== "owner") return { error: "Only doco owners can change doco users." };
     } else if (level === "scope") {
-      // v13 removed scope-level grants (decision_01KS3DW9C2KN2X7Z80R18H1RAX).
-      return { error: "Scope-level grants no longer exist; manage at org or doco level." };
+      const sc = await withClient(async (c) =>
+        c.query<{ doco_id: string }>(`SELECT doco_id FROM scopes WHERE id=$1`, [targetId]),
+      );
+      const docoId = sc.rows[0]?.doco_id;
+      if (!docoId) return { error: "Scope not found." };
+      const doco = await getDocoById(docoId);
+      if (!doco) return { error: "Parent doco not found." };
+      const role = await getDocoLevelRole(
+        { ownerId: doco.owner_id, docoId: doco.id },
+        me.id,
+      );
+      if (role !== "owner") return { error: "Only doco owners can change scope users." };
     } else {
       return { error: "Invalid level." };
     }
@@ -395,8 +419,20 @@ export async function action({
         docoId = doco.id;
       }
     } else if (level === "scope") {
-      // v13 removed scope-level invites (decision_01KS3DW9C2KN2X7Z80R18H1RAX).
-      return { error: "Scope-level invites no longer exist; pick org or doco." };
+      const sc = await withClient(async (c) =>
+        c.query<{ doco_id: string }>(`SELECT doco_id FROM scopes WHERE id=$1`, [targetId]),
+      );
+      docoId = sc.rows[0]?.doco_id ?? null;
+      scopeId = targetId;
+      if (docoId) {
+        const doco = await getDocoById(docoId);
+        if (doco) {
+          inviterRole = await getDocoLevelRole(
+            { ownerId: doco.owner_id, docoId: doco.id },
+            me.id,
+          );
+        }
+      }
     } else {
       return { error: "Invalid level." };
     }

@@ -166,9 +166,7 @@ export const loginCmd = defineCommand({
           console.log();
           console.log(checkmark(`Authorized by ${c.warn(body.owner_username)}.`));
           // DOCO_ACCESS is secret → .env (gitignored). The Doco
-          // coordinate lives in `.doco/connections.md` (v13 —
-          // decision_01KS3DX190V93NGR3QQ37J8TVQ); pre-v13 repos
-          // carried it in `./DOCO.md` instead.
+          // coordinate lives in DOCO.md.
           //
           // Migration: strip old credential names so .env has one
           // canonical Doco secret.
@@ -189,22 +187,8 @@ export const loginCmd = defineCommand({
 
           if (body.doco_handle) {
             const docoUrl = `${normalizedHost}/${body.doco_handle}/`;
-            const target = resolve(process.cwd(), ".doco/connections.md");
-            // Ensure `.doco/` exists; node refuses to write to a
-            // missing directory. The CLI doesn't import a real fs
-            // helper to avoid a dep, so use mkdir from node:fs/promises
-            // inline via the host fs API.
-            try {
-              const { mkdirSync } = await import("node:fs");
-              mkdirSync(resolve(process.cwd(), ".doco"), { recursive: true });
-            } catch {
-              // already exists, or fs locked — writeFileSync will surface
-              // the real error if any.
-            }
-            writeFileSync(target, renderConnectionsMd(docoUrl), "utf8");
-            console.log(
-              checkmark(`Wrote Doco URL to ${c.dim("./.doco/connections.md")}.`),
-            );
+            writeFileSync(resolve(process.cwd(), "DOCO.md"), renderDocoMd(docoUrl), "utf8");
+            console.log(checkmark(`Wrote Doco URL to ${c.dim("./DOCO.md")}.`));
           }
 
           // Install the agent-bootstrap files (AGENTS.md + CLAUDE.md shim +
@@ -288,19 +272,14 @@ function cliVersion(): string {
   return "0.0.1";
 }
 
-function renderConnectionsMd(docoUrl: string): string {
-  return `# Doco connections
+function renderDocoMd(docoUrl: string): string {
+  return `# Doco
 
-This repo connects to the Doco(s) listed below. A Doco listed here is
-one the project owner has linked to this codebase; an agent's actual
-read/write access on each one is determined at OAuth time, not by
-this file. A Doco can be "aware-only" — listed here but not in any
-token's \`granted_doco_ids\` — which means the agent knows it exists
-but cannot read or write to it.
+This project is tracked in Doco for AI-native documentation: intents,
+decisions, rules, actions, and history. Decisions and the why behind
+them live at:
 
-## Active connections
-
-- ${docoUrl}
+**${docoUrl}**
 
 ## For Contributors
 
