@@ -766,7 +766,7 @@ export default function EntityDetail({
             <span className="uppercase tracking-wider">{type}:</span> {display}
           </h1>
         </div>
-        <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px]">
+        <div className="mt-1 flex flex-wrap items-center gap-2 pl-7 text-[11px]">
           {focalLifecycle ? (
             <span
               className="inline-flex items-center gap-1.5 font-medium"
