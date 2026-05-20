@@ -209,8 +209,8 @@ export default function AuthorizePage() {
           <CardHeader>
             <CardTitle>Approve Doco access</CardTitle>
             <CardDescription>
-              <strong>{data.client_name}</strong> wants access to your Docos. Pick which Docos it
-              can read and write — only Docos you own are shown.
+              <strong>{data.client_name}</strong> wants access to your Docos. Only Docos you own
+              are shown.
             </CardDescription>
           </CardHeader>
           <CardContent>

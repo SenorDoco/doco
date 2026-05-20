@@ -8,9 +8,7 @@ import {
   getDocoUserRole,
   getOrgRole,
   getPrincipalById,
-  getScopeUserRole,
   listDocoIdsForUserPrincipal,
-  listScopeIdsWithGrant,
   maxRole,
   roleAtLeast,
   withClient,
@@ -25,11 +23,9 @@ import { type CurrentPrincipal, extractBearer, getCurrentPrincipalAsync } from "
 /**
  * Doco-level role for this principal — max of (direct owner_id match,
  * agent-owner-chain match, org-membership role on the owning org,
- * explicit doco_users row). Scope-level grants do NOT factor in here;
- * use `getEffectiveScopeRole` when you need the per-scope answer.
+ * explicit doco_users row).
  *
  * Returns null when the principal has no doco-level grant.
- * (They may still have a scope-only grant — see `canAccessDoco`.)
  */
 export async function getDocoLevelRole(
   meta: { ownerId: string; docoId?: string },
@@ -67,39 +63,11 @@ export async function getDocoLevelRole(
 }
 
 /**
- * Effective role when the principal operates ON a specific scope:
- *   max(doco-level role, scope_users grant for this scope)
- * Used by capture / lifecycle gates to decide whether to force lifecycle
- * to `proposed` (author) or honor the body's `lifecycle` (approver+).
- */
-export async function getEffectiveScopeRole(
-  meta: { ownerId: string; docoId?: string },
-  scopeId: string,
-  principalId: string | null,
-): Promise<DocoRole | null> {
-  if (!principalId) return null;
-
-  let role = await getDocoLevelRole(meta, principalId);
-  const direct = await getScopeUserRole(scopeId, principalId);
-  role = maxRole(role, direct);
-
-  const ownerOfPrincipal = await getPrincipalOwnerId(principalId);
-  if (ownerOfPrincipal) {
-    const viaOwner = await getScopeUserRole(scopeId, ownerOfPrincipal);
-    role = maxRole(role, viaOwner);
-  }
-
-  return role;
-}
-
-/**
  * Can `principalId` read this Doco?
  *
  *   - public visibility → always yes (anonymous OK).
  *   - host-bootstrap-owned (unclaimed) → always yes regardless of visibility.
- *   - private visibility: any doco-level grant OR any scope-only grant on a
- *     scope inside this doco → yes (scope-only implies doco-reader per
- *     decision_01KS0JBJ5X0AZ4XJJFKEWE1R62).
+ *   - private visibility: any doco-level grant → yes.
  */
 export async function canAccessDoco(
   meta: { ownerId: string; visibility: string; docoId?: string },
@@ -112,10 +80,6 @@ export async function canAccessDoco(
   const docoLevel = await getDocoLevelRole(meta, principalId);
   if (docoLevel) return true;
 
-  if (meta.docoId) {
-    const scopes = await listScopeIdsWithGrant(meta.docoId, principalId);
-    if (scopes.length > 0) return true;
-  }
   return false;
 }
 
@@ -249,32 +213,6 @@ export async function canApproveDoco(
 ): Promise<boolean> {
   if (!principalId) return false;
   const role = await getDocoLevelRole(meta, principalId);
-  return roleAtLeast(role, "approver");
-}
-
-/**
- * Can the principal write a node INTO this scope? Author-tier minimum.
- * Their writes may still be forced to `lifecycle: proposed` if they're
- * exactly `author` — that gate lives in the capture layer.
- */
-export async function canWriteScope(
-  meta: { ownerId: string; docoId?: string },
-  scopeId: string,
-  principalId: string | null,
-): Promise<boolean> {
-  if (!principalId) return false;
-  const role = await getEffectiveScopeRole(meta, scopeId, principalId);
-  return roleAtLeast(role, "author");
-}
-
-/** Can the principal flip lifecycle on a node IN this scope? Approver-tier. */
-export async function canApproveScope(
-  meta: { ownerId: string; docoId?: string },
-  scopeId: string,
-  principalId: string | null,
-): Promise<boolean> {
-  if (!principalId) return false;
-  const role = await getEffectiveScopeRole(meta, scopeId, principalId);
   return roleAtLeast(role, "approver");
 }
 
