@@ -63,7 +63,14 @@ export async function loader({
 
 type ActionResult =
   | { error: string }
-  | { ok: true; invite_url: string; expires_at: string };
+  | {
+      ok: true;
+      invite_url: string;
+      doco_url: string;
+      recipe_url: string;
+      device_url: string;
+      expires_at: string;
+    };
 
 export async function action({
   request,
@@ -85,7 +92,14 @@ export async function action({
     const store = TokenStore.forDoco(rootDir());
     const ok = await store.revokeInvite(code);
     if (!ok) return { error: "Invite not found or no longer pending." };
-    return { ok: true, invite_url: "", expires_at: "" };
+    return {
+      ok: true,
+      invite_url: "",
+      doco_url: "",
+      recipe_url: "",
+      device_url: "",
+      expires_at: "",
+    };
   }
   const ttlRaw = String(form.get("expires_in_days") ?? "7");
   const ttl = Number.parseInt(ttlRaw, 10);
@@ -103,6 +117,9 @@ export async function action({
   return {
     ok: true,
     invite_url: `${origin}/invite/${invite.code}`,
+    doco_url: `${origin}/${handle}/`,
+    recipe_url: `${origin}/protocol/agent-oauth-recipe`,
+    device_url: `${origin}/device`,
     expires_at: invite.expires_at,
   };
 }
@@ -190,6 +207,9 @@ export default function Invites({
                 <p className="mb-3 text-sm font-semibold">Fresh invite</p>
                 <CollaborationInvitePrompt
                   inviteUrl={actionData.invite_url}
+                  docoUrl={actionData.doco_url}
+                  recipeUrl={actionData.recipe_url}
+                  deviceUrl={actionData.device_url}
                   note={
                     <>
                       Single-use, expires{" "}

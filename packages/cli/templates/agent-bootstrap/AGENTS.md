@@ -6,33 +6,37 @@ for this project lives in:
 
 @./DOCO.md
 
-## Current state: human-led collaboration
+## Getting access to this Doco (agent OAuth)
 
-Programmatic agent access (MCP connector) is being rebuilt and is
-not available right now. For now, the **project owner** (a human)
-is the primary contributor to the Doco: they navigate the web UI,
-capture Decisions / Rules / Intents, and share what you need to
-know with you in chat.
+The MCP connector layer is removed for now — you drive OAuth
+directly. Recipe lives at `https://doco.to/protocol/agent-oauth-recipe`.
 
-Your role:
+  - **Shell-capable agents (Claude Code, Cursor, …)**: use Recipe A
+    (localhost-loopback). Same shape as `gh auth login`. You'll
+    open a browser tab, the project owner approves, you get a
+    Bearer token.
+  - **Chat-only / sandboxed agents**: use Recipe B (RFC 8628 Device
+    Authorization Grant). You'll show the project owner a short
+    code like `WXYZ-1234`, they approve at `https://doco.to/device`,
+    you poll until you get a Bearer token.
 
-- Browse the Doco (if public) for context — pages render at
-  `https://doco.to/<doco-handle>/`.
+Both end with `Authorization: Bearer doco_at_<token>` against the
+Doco's HTTP API. If this Doco is public-visibility, anonymous reads
+work without auth at all — try
+`GET https://doco.to/<handle>/status.json`.
+
+## Your role
+
+- Get authenticated (recipe above) or browse anonymously if the
+  Doco is public.
 - Call out work that should be captured. When you make a Decision,
-  fix a bug, or finish a load-bearing chunk of code, tell the
-  project owner: "this is worth capturing as a Decision / Rule /
-  Log — want me to draft it for you?"
+  fix a bug, or finish a load-bearing chunk of code, capture it
+  directly if you're authenticated, or tell the project owner what
+  to capture if you're not.
 - Follow the four-invariant reply protocol at
   `https://doco.to/protocol/canonical-instructions` — query
   indicator at the top, footer lines after captures, capture-before-
   declaring-done discipline, tally line at the close.
-
-## When MCP support returns
-
-The plan is to re-introduce an MCP connector that runtimes install
-per Doco. When that ships, you'll authenticate via OAuth in a
-browser tab and get native Doco tools. The install URL will be
-advertised in this file and at `https://doco.to/llms.txt`.
 
 ## What lives where
 

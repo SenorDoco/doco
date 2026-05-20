@@ -17,3 +17,8 @@ connected to mint an invite for you from the Doco's Invites page.
 contract (the four invariants) is at
 `https://doco.to/protocol/canonical-instructions` and applies to
 any agent working in a Doco-tracked project.
+
+Agents authenticate via OAuth 2.1 directly. Recipe for both
+localhost-loopback (shell-capable agents) and Device Authorization
+Grant (chat-only / sandboxed agents) at
+`https://doco.to/protocol/agent-oauth-recipe`.

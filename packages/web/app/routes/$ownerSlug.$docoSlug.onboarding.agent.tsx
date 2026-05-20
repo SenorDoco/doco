@@ -38,8 +38,11 @@ export async function loader({
   const url = new URL(request.url);
   const origin = `${url.protocol}//${url.host}`;
   const inviteUrl = `${origin}/invite/${invite.code}`;
+  const docoUrl = `${origin}/${handle}/`;
+  const recipeUrl = `${origin}/protocol/agent-oauth-recipe`;
+  const deviceUrl = `${origin}/device`;
 
-  return { handle, inviteUrl, me };
+  return { handle, inviteUrl, docoUrl, recipeUrl, deviceUrl, me };
 }
 
 export function meta() {
@@ -51,21 +54,28 @@ export default function OnboardingAgent({
 }: {
   loaderData: Awaited<ReturnType<typeof loader>>;
 }) {
-  const { handle, inviteUrl, me } = loaderData;
+  const { handle, inviteUrl, docoUrl, recipeUrl, deviceUrl, me } = loaderData;
   return (
     <div>
       <SiteHeader mode="host" me={me} />
       <SingleColumnPageMain className="py-8 space-y-4">
         <Card>
           <CardHeader>
-            <CardTitle>Invite a human collaborator</CardTitle>
+            <CardTitle>Invite collaborators</CardTitle>
             <CardDescription>
-              Share this prompt with someone you want to collaborate with — they
-              sign in with GitHub and click Accept in their browser.
+              Two prompts — one for a human collaborator (sign-in + Accept in a
+              browser), one for an AI agent (OAuth via Device Flow or
+              localhost-loopback; recipe at /protocol/agent-oauth-recipe).
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-2">
-            <CollaborationInvitePrompt inviteUrl={inviteUrl} continueTo={`/${handle}`} />
+            <CollaborationInvitePrompt
+              inviteUrl={inviteUrl}
+              docoUrl={docoUrl}
+              recipeUrl={recipeUrl}
+              deviceUrl={deviceUrl}
+              continueTo={`/${handle}`}
+            />
           </CardContent>
         </Card>
       </SingleColumnPageMain>

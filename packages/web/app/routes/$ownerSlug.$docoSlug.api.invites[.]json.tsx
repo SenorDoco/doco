@@ -11,12 +11,17 @@
 //     code:              "<64-hex>",
 //     role:              "owner|approver|author|reader",
 //     doco_url:          "https://<host>/<handle>/",
-//     human_prompt:      "<verbatim text to share with a human collaborator>"
+//     human_prompt:      "<verbatim text to share with a human collaborator>",
+//     agent_prompt:      "<verbatim text to paste into an AI agent>"
 //   }
 //
-// Invites are human-only — the recipient opens the URL in a browser,
-// signs in with GitHub, clicks Accept. The agent-collaborator path
-// is deferred until the MCP server returns.
+// The invite URL itself is browser-only — the human recipient opens
+// it, signs in with GitHub, clicks Accept. `agent_prompt` is the
+// project owner's onboarding text for their AI agent: it points the
+// agent at the OAuth recipe (/protocol/agent-oauth-recipe) and at
+// the human-facing Device Flow approval page (/device). The agent
+// doesn't redeem the invite URL — agents authenticate independently
+// via OAuth.
 //
 // Errors:
 //   404 — Doco not found, or caller doesn't have access
@@ -25,7 +30,10 @@
 import type { EntityId } from "@doco/shared";
 import { ROLE_RANK, type DocoRole } from "@doco/db";
 import { TokenStore } from "~/lib/tokens.server";
-import { buildHumanInvitePrompt } from "~/components/collaboration-invite-prompt";
+import {
+  buildAgentInvitePrompt,
+  buildHumanInvitePrompt,
+} from "~/components/collaboration-invite-prompt";
 import { rootDir } from "~/lib/db.server";
 import {
   getDocoLevelRole,
@@ -128,6 +136,8 @@ export async function action({
     ? `${origin}/${meta.handle}/`
     : `${origin}/by-id/${meta.docoId}/`;
   const inviteUrl = `${origin}/invite/${invite.code}`;
+  const recipeUrl = `${origin}/protocol/agent-oauth-recipe`;
+  const deviceUrl = `${origin}/device`;
   return Response.json({
     invite_url: inviteUrl,
     invite_expires_at: invite.expires_at,
@@ -135,6 +145,7 @@ export async function action({
     role: invite.role ?? requestedRole,
     doco_url: docoUrl,
     human_prompt: buildHumanInvitePrompt(inviteUrl),
+    agent_prompt: buildAgentInvitePrompt({ docoUrl, recipeUrl, deviceUrl }),
   });
 }
 

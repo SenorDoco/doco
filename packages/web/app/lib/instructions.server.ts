@@ -27,25 +27,40 @@ This document carries the **four invariants** every reply must follow.
 
 ## How you read + write Doco today
 
-Programmatic agent access is being rebuilt — the MCP connector layer
-is currently removed. For now, the project owner (a human) is the
-primary contributor: they navigate the Doco's web UI, capture
-Decisions / Rules / Intents themselves, and share what you need to
-know with you in chat.
+The MCP connector layer is removed for now — you drive OAuth
+directly against the host. Two recipes, pick whichever your runtime
+supports; the full step-by-step is at:
 
-If a Doco is **public**, you can read its pages anonymously:
+    https://doco.to/protocol/agent-oauth-recipe
+
+  **Recipe A — Localhost loopback** (shell-capable agents: Claude
+    Code, Cursor, Codex CLI, anything that can bind a port and
+    \`open\` a browser). Standard PKCE + authorize URL + a tiny local
+    listener catches the redirect. Same shape as \`gh auth login\`.
+
+  **Recipe B — Device Authorization Grant, RFC 8628** (chat-only or
+    sandboxed agents: claude.ai chat, ChatGPT, runtimes without
+    port binding). You POST to /oauth/device_authorization, get
+    back a short user_code like \`WXYZ-1234\`, show it to the user,
+    they approve at /device, you poll /oauth/token until you get
+    the token.
+
+Both recipes end with you holding a \`doco_at_…\` Bearer token. After
+that, every API call is:
+
+    GET https://doco.to/<handle>/<endpoint>
+    Authorization: Bearer doco_at_<token>
+
+If the Doco is **public**, you can skip OAuth entirely:
 
     GET https://doco.to/<doco-handle>/                  # home
     GET https://doco.to/<doco-handle>/status.json       # counts
     GET https://doco.to/<doco-handle>/<type>/<id>       # one node
 
-If a Doco is **private**, you have no programmatic path right now.
-Ask the project owner to read you the relevant nodes from the UI.
+These return 200 for public Docos and 403 for private ones.
 
-The four invariants below describe how to behave when you ARE
-participating in a Doco-tracked project — apply them whether the
-mechanism is direct API access (current state for public Docos) or
-the MCP-mediated tool surface (when it returns).
+The four invariants below apply whichever path you took — the
+protocol is about how you reply, not about how you authenticated.
 
 ## 1. TOP OF EVERY REPLY — connection indicator
 
@@ -115,8 +130,16 @@ one — not *whether*. Skipping requires naming what you're relying on
 instead. "Git will record it" is not a name; git records *what*, not
 *why*.
 
-For now, you can't capture directly from your runtime — the project
-owner does it. Your job is to **call out** what should be captured:
+If you ran the OAuth recipe and hold a Bearer token, you can capture
+directly via the HTTP API:
+
+    POST https://doco.to/<handle>/api/<type>.json
+    Authorization: Bearer doco_at_<token>
+    Content-Type: application/json
+    { ...fields per the node's schema... }
+
+If you haven't authenticated (anonymous reader / public Doco only),
+call out the capture for the project owner instead:
 
 - If you made a Decision (a choice between alternatives with a why),
   tell the project owner: "this is decision-worthy — want me to draft
@@ -126,8 +149,6 @@ owner does it. Your job is to **call out** what should be captured:
   decision_…"
 - If a bug got fixed, tell them: "Decision + a born-from Rule on the
   project's bug scope would lock this in."
-
-When the MCP connector returns, you'll capture directly.
 
 | Change made | What to capture |
 |---|---|

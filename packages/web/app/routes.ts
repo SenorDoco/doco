@@ -94,9 +94,19 @@ export default [
   route("oauth/authorize", "routes/oauth.authorize.tsx"),
   route("oauth/token", "routes/oauth.token.tsx"),
   route("oauth/revoke", "routes/oauth.revoke.tsx"),
+  // Device Authorization Grant (RFC 8628). For agents that can't drive
+  // a localhost-redirect flow: they POST here, get back a short
+  // user_code, show it to the human, and poll /oauth/token while the
+  // human approves at /device.
+  route("oauth/device_authorization", "routes/oauth.device-authorization.tsx"),
+  route("device", "routes/device.tsx"),
   // Public agent-protocol prose. Replaces the MCP `resources/read`
   // delivery path during the period the MCP layer is removed.
   route("protocol/canonical-instructions", "routes/protocol.canonical-instructions.tsx"),
+  // Step-by-step OAuth recipe for agents that aren't going through an
+  // MCP runtime. Covers localhost-loopback (Recipe A) + Device Flow
+  // (Recipe B). Public; served as text/markdown.
+  route("protocol/agent-oauth-recipe", "routes/protocol.agent-oauth-recipe.tsx"),
   // Self-service create
   route("new-doco", "routes/new-doco.tsx"),
   route("new-org", "routes/new-org.tsx"),

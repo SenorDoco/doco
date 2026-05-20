@@ -424,6 +424,291 @@ export async function revokeToken(
 }
 
 // ---------------------------------------------------------------------------
+// Device Authorization Grant (RFC 8628).
+//
+// For agents that cannot drive a localhost-redirect OAuth flow — they
+// can't bind a port, or they're not running on the same machine as the
+// user's browser. The agent calls POST /oauth/device_authorization,
+// gets back a short `user_code` (e.g. "WXYZ-1234") and a verification
+// URL. It shows both to the user and polls /oauth/token until the user
+// approves in their browser at GET /device.
+// ---------------------------------------------------------------------------
+
+const DEVICE_CODE_PREFIX = "doco_dc_";
+const DEVICE_CODE_TTL_SECONDS = 15 * 60; // 15 min
+const DEVICE_CODE_POLL_INTERVAL_SECONDS = 5;
+const DEVICE_CODE_SLOWDOWN_THRESHOLD_MS = 2_000; // <2s between polls
+
+/**
+ * Generate a user_code formatted as `WXYZ-1234`. Excludes ambiguous
+ * glyphs (0/O, 1/I, B/8). 32 + 32 = 1024 distinct values per slot,
+ * 2^20 over the four-slot prefix — plenty for the 15-minute window.
+ */
+function mintUserCode(): string {
+  const alphabet = "ACDEFGHJKLMNPQRSTUVWXYZ23456789";
+  const pick = (n: number) => {
+    let out = "";
+    const buf = randomBytes(n);
+    for (let i = 0; i < n; i++) out += alphabet[buf[i] % alphabet.length];
+    return out;
+  };
+  return `${pick(4)}-${pick(4)}`;
+}
+
+export interface DeviceAuthorizationRow {
+  device_code: string;
+  user_code: string;
+  client_id: string;
+  scope: string | null;
+  status: "pending" | "approved" | "denied";
+  principal_id: string | null;
+  granted_doco_ids: string[];
+  expires_at: Date;
+  last_polled_at: Date | null;
+  created_at: Date;
+}
+
+export interface CreateDeviceAuthorizationInput {
+  client_id: string;
+  scope?: string | null;
+}
+
+export interface DeviceAuthorizationResponse {
+  device_code: string;
+  user_code: string;
+  verification_uri: string;
+  verification_uri_complete: string;
+  expires_in: number;
+  interval: number;
+}
+
+/**
+ * Create a fresh device-authorization row and return the payload the
+ * agent shows to the user. `baseUrl` is the host origin (e.g.
+ * `https://doco.to`); we build verification URLs from it.
+ */
+export async function createDeviceAuthorization(
+  input: CreateDeviceAuthorizationInput,
+  baseUrl: string,
+): Promise<DeviceAuthorizationResponse> {
+  const client = await getClient(input.client_id);
+  if (!client) {
+    throw new OauthError("invalid_client", `unknown client_id: ${input.client_id}`);
+  }
+  // Retry on user_code collision (low odds but possible). 5 attempts is
+  // dramatically more than the birthday-paradox math would need.
+  let attempt = 0;
+  while (attempt < 5) {
+    attempt += 1;
+    const device_code = mintOpaque(DEVICE_CODE_PREFIX);
+    const user_code = mintUserCode();
+    const expires_at = new Date(Date.now() + DEVICE_CODE_TTL_SECONDS * 1000);
+    try {
+      await withClient(async (c) => {
+        await c.query(
+          `INSERT INTO oauth_device_authorizations
+             (device_code, user_code, client_id, scope, expires_at)
+           VALUES ($1, $2, $3, $4, $5)`,
+          [device_code, user_code, input.client_id, input.scope ?? null, expires_at],
+        );
+      });
+      const trimmed = baseUrl.replace(/\/+$/, "");
+      return {
+        device_code,
+        user_code,
+        verification_uri: `${trimmed}/device`,
+        verification_uri_complete: `${trimmed}/device?user_code=${encodeURIComponent(user_code)}`,
+        expires_in: DEVICE_CODE_TTL_SECONDS,
+        interval: DEVICE_CODE_POLL_INTERVAL_SECONDS,
+      };
+    } catch (err) {
+      // Postgres unique violation = 23505. Retry on user_code collision.
+      const code = (err as { code?: string })?.code;
+      if (code !== "23505") throw err;
+    }
+  }
+  throw new OauthError("server_error", "could not allocate a unique user_code");
+}
+
+/**
+ * Look up the device-authorization row by user_code. Used by the
+ * /device page when the human enters their code.
+ */
+export async function getDeviceAuthorizationByUserCode(
+  user_code: string,
+): Promise<DeviceAuthorizationRow | null> {
+  if (!user_code) return null;
+  return await withClient(async (c) => {
+    const r = await c.query<DeviceAuthorizationRow>(
+      `SELECT device_code, user_code, client_id, scope, status,
+              principal_id, granted_doco_ids, expires_at, last_polled_at, created_at
+         FROM oauth_device_authorizations
+        WHERE user_code = $1`,
+      [user_code.toUpperCase()],
+    );
+    return r.rows[0] ?? null;
+  });
+}
+
+/**
+ * Mark a device-authorization as approved by a signed-in human.
+ * `granted_doco_ids` is the set of Docos the user explicitly approved
+ * the agent to access (subset of the user's own grants). Tokens are
+ * NOT minted here — the agent's next poll mints + receives them.
+ */
+export async function approveDeviceAuthorization(args: {
+  device_code: string;
+  principal_id: string;
+  granted_doco_ids: string[];
+}): Promise<void> {
+  await withClient(async (c) => {
+    const r = await c.query(
+      `UPDATE oauth_device_authorizations
+          SET status = 'approved',
+              principal_id = $2,
+              granted_doco_ids = $3
+        WHERE device_code = $1
+          AND status = 'pending'
+          AND expires_at > now()`,
+      [args.device_code, args.principal_id, args.granted_doco_ids],
+    );
+    if ((r.rowCount ?? 0) === 0) {
+      throw new OauthError(
+        "invalid_grant",
+        "device authorization not found, already resolved, or expired",
+      );
+    }
+  });
+}
+
+export async function denyDeviceAuthorization(device_code: string): Promise<void> {
+  await withClient(async (c) => {
+    await c.query(
+      `UPDATE oauth_device_authorizations
+          SET status = 'denied'
+        WHERE device_code = $1
+          AND status = 'pending'`,
+      [device_code],
+    );
+  });
+}
+
+export type DevicePollResult =
+  | { kind: "pending" }
+  | { kind: "slow_down" }
+  | { kind: "denied" }
+  | { kind: "expired" }
+  | { kind: "approved"; tokens: IssuedTokens };
+
+/**
+ * Polled by /oauth/token when `grant_type=urn:ietf:params:oauth:grant-type:device_code`.
+ * Returns the current state and — on approval — mints the access +
+ * refresh tokens and deletes the device-authorization row in one
+ * transaction so the same device_code can't mint twice.
+ */
+export async function pollDeviceAuthorization(args: {
+  device_code: string;
+  client_id: string;
+}): Promise<DevicePollResult> {
+  return await withTransaction(async (c) => {
+    // SELECT FOR UPDATE so two concurrent polls can't both mint tokens
+    // for the same approved authorization.
+    const r = await c.query<DeviceAuthorizationRow>(
+      `SELECT device_code, user_code, client_id, scope, status,
+              principal_id, granted_doco_ids, expires_at, last_polled_at, created_at
+         FROM oauth_device_authorizations
+        WHERE device_code = $1
+        FOR UPDATE`,
+      [args.device_code],
+    );
+    const row = r.rows[0];
+    if (!row) {
+      throw new OauthError("invalid_grant", "unknown device_code");
+    }
+    if (row.client_id !== args.client_id) {
+      throw new OauthError("invalid_grant", "client_id does not match device_code");
+    }
+    if (row.expires_at.getTime() <= Date.now()) {
+      await c.query("DELETE FROM oauth_device_authorizations WHERE device_code = $1", [
+        args.device_code,
+      ]);
+      return { kind: "expired" };
+    }
+    // Polling-rate guard. RFC 8628 §3.5: if the client is polling too
+    // fast, return slow_down (and don't update last_polled_at — let
+    // the next call catch up).
+    const now = Date.now();
+    if (row.last_polled_at) {
+      const gap = now - row.last_polled_at.getTime();
+      if (gap < DEVICE_CODE_SLOWDOWN_THRESHOLD_MS) {
+        return { kind: "slow_down" };
+      }
+    }
+    await c.query(
+      "UPDATE oauth_device_authorizations SET last_polled_at = now() WHERE device_code = $1",
+      [args.device_code],
+    );
+
+    if (row.status === "denied") {
+      await c.query("DELETE FROM oauth_device_authorizations WHERE device_code = $1", [
+        args.device_code,
+      ]);
+      return { kind: "denied" };
+    }
+    if (row.status === "pending") {
+      return { kind: "pending" };
+    }
+    // status === 'approved' — mint tokens, delete the row in the same tx.
+    if (!row.principal_id) {
+      throw new OauthError("server_error", "approved device_code missing principal_id");
+    }
+    const access_token = mintOpaque(ACCESS_TOKEN_PREFIX);
+    const refresh_token = mintOpaque(REFRESH_TOKEN_PREFIX);
+    const access_expires = new Date(Date.now() + ACCESS_TOKEN_TTL_SECONDS * 1000);
+    const refresh_expires = new Date(Date.now() + REFRESH_TOKEN_TTL_SECONDS * 1000);
+    await c.query(
+      `INSERT INTO oauth_access_tokens
+         (token, client_id, principal_id, granted_doco_ids, scope, expires_at)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [
+        access_token,
+        row.client_id,
+        row.principal_id,
+        row.granted_doco_ids,
+        row.scope,
+        access_expires,
+      ],
+    );
+    await c.query(
+      `INSERT INTO oauth_refresh_tokens
+         (token, client_id, principal_id, granted_doco_ids, scope, expires_at)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [
+        refresh_token,
+        row.client_id,
+        row.principal_id,
+        row.granted_doco_ids,
+        row.scope,
+        refresh_expires,
+      ],
+    );
+    await c.query("DELETE FROM oauth_device_authorizations WHERE device_code = $1", [
+      args.device_code,
+    ]);
+    return {
+      kind: "approved",
+      tokens: {
+        access_token,
+        refresh_token,
+        token_type: "Bearer",
+        expires_in: ACCESS_TOKEN_TTL_SECONDS,
+        scope: row.scope,
+      },
+    };
+  });
+}
+
+// ---------------------------------------------------------------------------
 // OAuth error envelope (RFC 6749 §5.2).
 // ---------------------------------------------------------------------------
 
@@ -433,8 +718,13 @@ export type OauthErrorCode =
   | "invalid_grant"
   | "unauthorized_client"
   | "unsupported_grant_type"
+  | "unsupported_response_type"
   | "invalid_scope"
   | "invalid_redirect_uri"
+  | "authorization_pending"
+  | "slow_down"
+  | "access_denied"
+  | "expired_token"
   | "server_error";
 
 export class OauthError extends Error {

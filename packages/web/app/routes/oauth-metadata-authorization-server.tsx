@@ -17,8 +17,15 @@ export function loader({ request }: { request: Request }) {
     token_endpoint: `${issuer}/oauth/token`,
     registration_endpoint: `${issuer}/oauth/register`,
     revocation_endpoint: `${issuer}/oauth/revoke`,
+    // RFC 8628 Device Authorization Grant — for agents that can't
+    // bind a port for the localhost-redirect flow.
+    device_authorization_endpoint: `${issuer}/oauth/device_authorization`,
     response_types_supported: ["code"],
-    grant_types_supported: ["authorization_code", "refresh_token"],
+    grant_types_supported: [
+      "authorization_code",
+      "refresh_token",
+      "urn:ietf:params:oauth:grant-type:device_code",
+    ],
     code_challenge_methods_supported: ["S256"],
     token_endpoint_auth_methods_supported: ["none"],
     scopes_supported: ["doco"],

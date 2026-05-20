@@ -11,8 +11,11 @@ import {
   consumeAuthorizationCode,
   getClient,
   issueTokens,
+  pollDeviceAuthorization,
   refreshTokens,
 } from "~/lib/oauth-server.server";
+
+const DEVICE_CODE_GRANT_TYPE = "urn:ietf:params:oauth:grant-type:device_code";
 
 export async function action({ request }: { request: Request }) {
   if (request.method !== "POST") {
@@ -27,9 +30,12 @@ export async function action({ request }: { request: Request }) {
     if (grant_type === "refresh_token") {
       return await handleRefreshToken(form);
     }
+    if (grant_type === DEVICE_CODE_GRANT_TYPE) {
+      return await handleDeviceCode(form);
+    }
     return jsonError(
       "unsupported_grant_type",
-      `grant_type must be 'authorization_code' or 'refresh_token' (got ${String(grant_type)})`,
+      `grant_type must be 'authorization_code', 'refresh_token', or '${DEVICE_CODE_GRANT_TYPE}' (got ${String(grant_type)})`,
       400,
     );
   } catch (e) {
@@ -71,6 +77,46 @@ async function handleRefreshToken(form: URLSearchParams): Promise<Response> {
   if (!client) throw new OauthError("invalid_client", "unknown client_id");
   const tokens = await refreshTokens({ client_id, refresh_token });
   return Response.json(tokens);
+}
+
+/**
+ * Device Authorization Grant polling (RFC 8628 §3.4). The agent calls
+ * this repeatedly until the human approves at /device. Per spec, the
+ * "still waiting" responses (`authorization_pending`, `slow_down`)
+ * use 400 with the OAuth error envelope — the agent inspects `error`
+ * and either keeps polling at the same cadence (pending) or backs off
+ * (slow_down). On success, this returns the standard token payload.
+ */
+async function handleDeviceCode(form: URLSearchParams): Promise<Response> {
+  const device_code = required(form, "device_code");
+  const client_id = required(form, "client_id");
+  const client = await getClient(client_id);
+  if (!client) throw new OauthError("invalid_client", "unknown client_id");
+  const result = await pollDeviceAuthorization({ device_code, client_id });
+  switch (result.kind) {
+    case "pending":
+      return jsonError(
+        "authorization_pending",
+        "user has not yet approved the device authorization; poll again at the advertised interval",
+        400,
+      );
+    case "slow_down":
+      return jsonError(
+        "slow_down",
+        "polling too fast; increase the interval by 5 seconds before the next poll",
+        400,
+      );
+    case "denied":
+      return jsonError("access_denied", "the user denied the authorization request", 400);
+    case "expired":
+      return jsonError(
+        "expired_token",
+        "device_code expired before the user approved; start a new device authorization",
+        400,
+      );
+    case "approved":
+      return Response.json(result.tokens);
+  }
 }
 
 function required(form: URLSearchParams, key: string): string {

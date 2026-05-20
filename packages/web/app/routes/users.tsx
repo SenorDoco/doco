@@ -292,6 +292,9 @@ type ActionResult =
       intent: "invite";
       ok: true;
       invite_url: string;
+      doco_url: string;
+      recipe_url: string;
+      device_url: string;
       invite_expires_at: string;
       level: "org" | "doco" | "scope";
       role: DocoRole;
@@ -459,10 +462,17 @@ export async function action({
     );
     const url = new URL(request.url);
     const origin = `${url.protocol}//${url.host}`;
+    // Resolve the Doco's handle so the agent prompt can name the per-
+    // Doco URL alongside the OAuth recipe + Device-Flow approval page.
+    const docoRow = await getDocoById(docoId);
+    const handle = docoRow?.handle ?? "";
     return {
       intent: "invite",
       ok: true,
       invite_url: `${origin}/invite/${invite.code}`,
+      doco_url: handle ? `${origin}/${handle}/` : "",
+      recipe_url: `${origin}/protocol/agent-oauth-recipe`,
+      device_url: `${origin}/device`,
       invite_expires_at: invite.expires_at,
       level,
       role,
@@ -838,6 +848,9 @@ function InviteCard({
         {inviteResult ? (
           <CollaborationInvitePrompt
             inviteUrl={inviteResult.invite_url}
+            docoUrl={inviteResult.doco_url}
+            recipeUrl={inviteResult.recipe_url}
+            deviceUrl={inviteResult.device_url}
             testId="invite-result"
             promptTestId="invite-url"
             copyButtonTestId="invite-copy"

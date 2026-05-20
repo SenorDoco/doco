@@ -20,5 +20,8 @@ invite for you from https://doco.to/meta-doco/invites.
 contract (the four invariants) is at
 https://doco.to/protocol/canonical-instructions.
 
-Programmatic agent access (MCP) is being rebuilt — agents currently
-participate via human-led capture rather than direct API writes.
+Agents authenticate via OAuth 2.1 directly (no MCP). The recipe
+covers both localhost-loopback (Recipe A, for shell-capable agents
+like Claude Code) and Device Authorization Grant (Recipe B, for
+chat-only agents), step by step at
+https://doco.to/protocol/agent-oauth-recipe.
