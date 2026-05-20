@@ -847,17 +847,13 @@ function InviteCard({
           <CollaborationInvitePrompt
             inviteUrl={inviteResult.invite_url}
             mcpUrl={inviteResult.mcp_url}
-            showDescription
             testId="invite-result"
             promptTestId="invite-url"
             copyButtonTestId="invite-copy"
             note={
               <>
-                Single-use invite, expires in 72 hours. The invite URL is
-                browser-only — clicking it adds you to the Doco's users with{" "}
-                <strong>{inviteResult.role}</strong> {inviteResult.level} role.
-                To connect an AI agent, install the Doco MCP connector in its
-                runtime (the URL is in the prompt above).
+                Single-use, expires in 72 hours. Grants{" "}
+                <strong>{inviteResult.role}</strong> at the {inviteResult.level} level.
               </>
             }
           />

@@ -7,23 +7,21 @@
 //
 // Output:
 //   {
-//     invite_url:            "https://<host>/invite/<code>",
-//     invite_expires_at:     "<ISO timestamp>",
-//     code:                  "<64-hex>",
-//     role:                  "owner|approver|author|reader",
-//     doco_url:              "https://<host>/<handle>/",
-//     mcp_url:               "https://<host>/mcp/<handle>",
-//     collaboration_prompt:  "<verbatim text to paste into an agent>"
+//     invite_url:        "https://<host>/invite/<code>",
+//     invite_expires_at: "<ISO timestamp>",
+//     code:              "<64-hex>",
+//     role:              "owner|approver|author|reader",
+//     doco_url:          "https://<host>/<handle>/",
+//     mcp_url:           "https://<host>/mcp/<handle>",
+//     human_prompt:      "<verbatim text to share with a human collaborator>",
+//     agent_prompt:      "<verbatim text to paste into an AI agent runtime>"
 //   }
 //
-// The dual `invite_url` + `mcp_url` shape is the v12 / OAuth-MCP
-// contract: the invite URL is for a HUMAN to accept in a browser
-// (adds them to doco_users); the MCP URL is for an AGENT RUNTIME to
-// install as a connector (kicks off the OAuth dance, no per-invite
-// code involved). `collaboration_prompt` pre-builds the verbatim
-// text a project owner can paste into an agent so the agent sees
-// both paths named explicitly — that's the same text the /users
-// web UI shows.
+// Two prompts because the two recipients act on different URLs: the
+// invite URL is browser-only (a human's GitHub Accept adds them to
+// doco_users); the MCP URL is for an agent runtime to install as an
+// MCP connector (no per-invite code involved). The caller picks
+// which prompt matches where they're pasting.
 //
 // Errors:
 //   404 — Doco not found, or caller doesn't have access
@@ -32,7 +30,10 @@
 import type { EntityId } from "@doco/shared";
 import { ROLE_RANK, type DocoRole } from "@doco/db";
 import { TokenStore } from "~/lib/tokens.server";
-import { buildCollaborationInvitePrompt } from "~/components/collaboration-invite-prompt";
+import {
+  buildAgentInvitePrompt,
+  buildHumanInvitePrompt,
+} from "~/components/collaboration-invite-prompt";
 import { rootDir } from "~/lib/db.server";
 import {
   getDocoLevelRole,
@@ -143,7 +144,8 @@ export async function action({
     role: invite.role ?? requestedRole,
     doco_url: docoUrl,
     mcp_url: mcpUrl,
-    collaboration_prompt: mcpUrl ? buildCollaborationInvitePrompt(inviteUrl, mcpUrl) : "",
+    human_prompt: buildHumanInvitePrompt(inviteUrl),
+    agent_prompt: mcpUrl ? buildAgentInvitePrompt(mcpUrl) : "",
   });
 }
 

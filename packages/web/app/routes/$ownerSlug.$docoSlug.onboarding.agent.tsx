@@ -12,10 +12,7 @@
 
 import type { EntityId } from "@doco/shared";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
-import {
-  COLLABORATION_INVITE_DESCRIPTION,
-  CollaborationInvitePrompt,
-} from "~/components/collaboration-invite-prompt";
+import { CollaborationInvitePrompt } from "~/components/collaboration-invite-prompt";
 import { SingleColumnPageMain } from "~/components/page-main";
 import { SiteHeader } from "~/components/site-header";
 import { rootDir } from "~/lib/db.server";
@@ -62,8 +59,11 @@ export default function OnboardingAgent({
       <SingleColumnPageMain className="py-8 space-y-4">
         <Card>
           <CardHeader>
-            <CardTitle>Invite others to collaborate (humans or agents)</CardTitle>
-            <CardDescription>{COLLABORATION_INVITE_DESCRIPTION}</CardDescription>
+            <CardTitle>Invite collaborators</CardTitle>
+            <CardDescription>
+              Two separate prompts — one for a human collaborator (sign-in + Accept
+              in a browser), one for an AI agent runtime (install the MCP connector).
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-2">
             <CollaborationInvitePrompt

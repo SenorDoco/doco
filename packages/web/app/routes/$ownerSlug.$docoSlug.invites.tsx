@@ -188,10 +188,7 @@ export default function Invites({
             ) : null}
             {actionData && "ok" in actionData && actionData.invite_url ? (
               <div className="mt-4 rounded-md border border-primary bg-primary/5 p-3">
-                <p className="mb-2 text-sm font-semibold">
-                  Fresh invite — copy the prompt and share with a human collaborator,
-                  or hand the MCP install URL to an agent.
-                </p>
+                <p className="mb-3 text-sm font-semibold">Fresh invite</p>
                 <CollaborationInvitePrompt
                   inviteUrl={actionData.invite_url}
                   mcpUrl={actionData.mcp_url}
