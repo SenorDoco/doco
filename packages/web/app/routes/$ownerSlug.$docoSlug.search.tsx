@@ -162,21 +162,6 @@ const TYPE_SPECS: TypeSpec[] = [
     }),
   },
   {
-    table: "scopes",
-    nodeType: "scope",
-    selectExtra: "name, purpose, lifecycle, created_at",
-    hostLevel: false,
-    toHit: (r, s) => ({
-      id: String(r.id),
-      node_type: "scope",
-      purpose: (r.purpose as string) ?? "",
-      name: (r.name as string) ?? null,
-      lifecycle: (r.lifecycle as string) ?? null,
-      created_at: (r.created_at as string) ?? null,
-      vector_score: s,
-    }),
-  },
-  {
     table: "evals",
     nodeType: "eval",
     selectExtra: "summary, lifecycle, created_at",
@@ -238,7 +223,7 @@ const TYPE_SPECS: TypeSpec[] = [
   },
 ];
 
-const FILTER_PARAM_NAMES = ["lifecycle", "node_type", "scope"] as const;
+const FILTER_PARAM_NAMES = ["lifecycle", "node_type"] as const;
 const SEARCH_PAGE_SIZE = 25;
 
 function hasExplicitSearchFilter(params: URLSearchParams): boolean {
@@ -525,23 +510,6 @@ async function withHitDerivedCounts(
     nodeTypeCounts.set(h.node_type, (nodeTypeCounts.get(h.node_type) ?? 0) + 1);
   }
 
-  const scopeCounts = new Map<string, number>();
-  if (hits.length > 0) {
-    const rows = (
-      await c.query<{ name: string; n: string }>(
-        `SELECT s.name AS name, COUNT(*)::text AS n
-           FROM edges e
-           INNER JOIN scopes s ON s.id = e.to_id
-          WHERE e.edge_type = 'in_scope_of'
-            AND e.doco_id = $1
-            AND e.from_id = ANY($2::text[])
-          GROUP BY s.name`,
-        [docoId, hits.map((h) => h.id)],
-      )
-    ).rows;
-    for (const r of rows) scopeCounts.set(r.name, Number(r.n));
-  }
-
   return {
     lifecycle: facets.lifecycle.map((f) => ({
       value: f.value,
@@ -552,14 +520,6 @@ async function withHitDerivedCounts(
       value: f.value,
       count: nodeTypeCounts.get(f.value) ?? 0,
       updatedAt: f.updatedAt,
-    })),
-    scope: facets.scope.map((f) => ({
-      id: f.id,
-      name: f.name,
-      count: scopeCounts.get(f.name) ?? 0,
-      icon: f.icon,
-      updatedAt: f.updatedAt,
-      lifecycle: f.lifecycle,
     })),
   };
 }
@@ -605,19 +565,6 @@ export default function SearchInDoco({
             </div>
           </Form>
           <div className="space-y-4">
-            <FacetGroup
-              label="Scopes"
-              name="scope"
-              searchParams={sp}
-              options={facets.scope.map((f) => ({
-                value: f.name,
-                label: f.name,
-                count: f.count,
-                icon: f.icon,
-              }))}
-              selected={new Set(filters.scope ?? [])}
-              wildcardActive={filters.scope === null}
-            />
             <FacetGroup
               label="Types"
               name="node_type"
