@@ -7,11 +7,17 @@ export type {
   SuggestScopesOptions,
 } from "./llm.server";
 export {
+  // v15 (Phase B) creation surfaces.
+  addOrganizationByHandle,
   applyScopeTemplateUpdatesToDoco,
   createDocoInHost,
+  createDocoInOrg,
   createIntentInDoco,
   createRuleInDoco,
   createScopeInDoco,
+  ensurePersonalOrganization,
+  findAvailableDocoHandle,
+  findAvailableOrgHandle,
   materializeScopeTree,
   migrateScopesInDoco,
   parseScopeNamesInput,
