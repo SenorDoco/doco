@@ -768,13 +768,16 @@ export default function EntityDetail({
         </div>
         <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px]">
           {focalLifecycle ? (
-            <span className="inline-flex items-center gap-1.5 text-muted-foreground">
+            <span
+              className="inline-flex items-center gap-1.5 font-medium"
+              style={{ color: lifecycleColor(focalLifecycle) }}
+            >
               <span
                 aria-hidden
                 className="inline-block h-2 w-2 shrink-0 rounded-full"
                 style={{ backgroundColor: lifecycleColor(focalLifecycle) }}
               />
-              <span className="font-medium text-foreground">{focalLifecycle}</span>
+              <span className="uppercase tracking-wider">{focalLifecycle}</span>
               {focalLifecycleSince ? <span>· {relativeTimeIso(focalLifecycleSince)}</span> : null}
             </span>
           ) : null}
