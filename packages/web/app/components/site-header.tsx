@@ -64,7 +64,7 @@ export function SiteHeader({ docoScope, me, shellOwner = false }: SiteHeaderProp
   return (
     <header className="border-b border-border bg-card">
       {/* Row 1: brand + breadcrumb + (host-mode) account actions. */}
-      <div className="mx-auto flex max-w-6xl items-center gap-6 px-6 py-3">
+      <div className="flex w-full items-center gap-6 px-6 py-3">
         <h1 className="m-0 flex min-w-0 items-center gap-3 leading-none">
           <NavLink
             to="/"
@@ -141,7 +141,7 @@ export function SiteHeader({ docoScope, me, shellOwner = false }: SiteHeaderProp
           docoScope; host-mode pages get the top-bar links as their nav. */}
       {nav.length > 0 ? (
         <div className="border-t border-border/60">
-          <nav className="mx-auto flex max-w-6xl items-center gap-5 px-6 py-2 text-xs">
+          <nav className="flex w-full items-center gap-5 px-6 py-2 text-xs">
             {nav.map((n) => (
               <NavLink
                 key={n.to}
