@@ -2,15 +2,63 @@ import { Form, Link, redirect } from "react-router";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { SingleColumnPageMain } from "~/components/page-main";
 import { SiteHeader } from "~/components/site-header";
-import { rootDir } from "~/lib/db.server";
-import { listOrgsOwnedOrAdminedBy, loadHostConfig } from "~/lib/host";
-import { createDocoInHost, reindex } from "~/lib/redeem.server";
+import { loadHostConfig } from "~/lib/host";
+import { listMyOrgs, lookupOrgHandle } from "~/lib/org-helpers.server";
+import {
+  addOrganizationByHandle,
+  createDocoInOrg,
+  ensurePersonalOrganization,
+  findAvailableDocoHandle,
+} from "~/lib/redeem.server";
 import { getCurrentPrincipal } from "~/lib/session";
+
+/**
+ * /new-doco — create a Doco (v15 model).
+ *
+ * Form fields:
+ *   - `org_id`: ULID of the chosen org, or empty when creating a new one inline.
+ *   - `new_org_handle`: optional new-org handle (used when org_id is empty).
+ *   - `suffix`: the suffix after `<org-handle>-` (e.g. `bpms` → `acme-bpms`).
+ *   - `template_handle`: one of "generic" | "user-flows" | "state-machines"
+ *     | "global-rules" — the v15 template tile picker (Phase F seeds rules).
+ *   - `visibility`: "private" | "public".
+ *   - `accept_suggested_handle`: "1" to silently accept a server-suggested
+ *     collision-free handle.
+ *
+ * Route imports go through `~/lib/redeem.server` and
+ * `~/lib/org-helpers.server` (both `.server.ts`) so react-router strips
+ * the @doco/host + @doco/db chain from the CLIENT bundle.
+ */
+
+const TEMPLATES = [
+  {
+    handle: "generic",
+    label: "Generic (empty)",
+    description: "Start with a blank doco. No rules, no node-type restrictions.",
+  },
+  {
+    handle: "user-flows",
+    label: "User Flows",
+    description: "Document end-to-end user journeys as steps, branches, and decisions.",
+  },
+  {
+    handle: "state-machines",
+    label: "State Machines",
+    description: "Formal state-machine modeling — states, transitions, invariants.",
+  },
+  {
+    handle: "global-rules",
+    label: "Global Rules",
+    description: "Constitution-style rules. Layer on top of any other choice.",
+  },
+] as const;
 
 export async function loader({ request }: { request: Request }) {
   const me = await getCurrentPrincipal(request);
   if (!me) throw redirect("/sign-in?next=%2Fnew-doco");
-  const orgs = await listOrgsOwnedOrAdminedBy(me.id);
+  // Backfill personal org for sign-ins that pre-date v15.
+  await ensurePersonalOrganization(me.id, me.username);
+  const orgs = await listMyOrgs(me.id);
   return { me, orgs, host: await loadHostConfig() };
 }
 
@@ -18,37 +66,100 @@ export async function action({ request }: { request: Request }) {
   const me = await getCurrentPrincipal(request);
   if (!me) throw redirect("/sign-in?next=%2Fnew-doco");
   const form = await request.formData();
-  const ownerSlug = String(form.get("owner") ?? "").trim();
-  const docoSlug = String(form.get("doco_handle") ?? "")
+  const orgId = String(form.get("org_id") ?? "").trim();
+  const newOrgHandleRaw = String(form.get("new_org_handle") ?? "")
     .trim()
     .toLowerCase();
-  const description = String(form.get("description") ?? "").trim();
+  const suffix = String(form.get("suffix") ?? "").trim().toLowerCase();
+  const templateHandle = String(form.get("template_handle") ?? "generic").trim();
   const visibility = String(form.get("visibility") ?? "private") as "private" | "public";
+  const accept = form.get("accept_suggested_handle") === "1";
 
-  if (!ownerSlug || !docoSlug) return { error: "Owner and Doco handle are required." };
-  if (ownerSlug !== me.username) {
-    const allowed = (await listOrgsOwnedOrAdminedBy(me.id)).find((o) => o.slug === ownerSlug);
-    if (!allowed) return { error: `You can't create docos under "${ownerSlug}".` };
-  }
+  // Step 1 — resolve the org (existing or freshly created).
+  let chosenOrgId: string;
+  let chosenOrgHandle: string;
   try {
-    const rec = await createDocoInHost(rootDir(), {
-      ownerSlug,
-      docoSlug,
-      requestedId: docoSlug,
-      ...(description ? { description } : {}),
-      visibility,
-    });
-    // Build an empty per-Doco index so the web's loaders can read it.
-    await reindex(rec.path, rec.docoId);
-    // Render the success step inline so the project owner gets explicit
-    // "Doco created" confirmation before being pushed to scope setup
-    // (ADR-080 rev 2 — scopes are the explicit second step but
-    // skippable). The agent-handoff prompt (with a freshly-minted
-    // invite) is its own onboarding step at
-    // `/:handle/onboarding/agent`, reached from the scope-setup flow.
-    return { ok: { ownerSlug, docoSlug, handle: rec.handle } };
+    if (!orgId) {
+      if (!newOrgHandleRaw) {
+        return {
+          error: "Pick an organization or type a new org handle.",
+          suggestedHandle: null,
+          suggestedOrgHandle: null,
+          form: { orgId, newOrgHandle: newOrgHandleRaw, suffix, templateHandle, visibility },
+        };
+      }
+      // Inline-create path always auto-suffixes (no separate
+      // suggestion round-trip — the user is here to create, not to
+      // bikeshed the org handle).
+      const created = await addOrganizationByHandle({
+        handle: newOrgHandleRaw,
+        ownerPrincipalId: me.id,
+        autoSuffix: true,
+      });
+      chosenOrgId = created.id;
+      chosenOrgHandle = created.handle;
+    } else {
+      const handle = await lookupOrgHandle(orgId);
+      if (!handle) {
+        return {
+          error: `Organization not found.`,
+          suggestedHandle: null,
+          suggestedOrgHandle: null,
+          form: { orgId, newOrgHandle: newOrgHandleRaw, suffix, templateHandle, visibility },
+        };
+      }
+      chosenOrgId = orgId;
+      chosenOrgHandle = handle;
+    }
   } catch (e) {
-    return { error: (e as Error).message };
+    return {
+      error: (e as Error).message,
+      suggestedHandle: null,
+      suggestedOrgHandle: null,
+      form: { orgId, newOrgHandle: newOrgHandleRaw, suffix, templateHandle, visibility },
+    };
+  }
+
+  // Step 2 — validate suffix.
+  if (!suffix) {
+    return {
+      error: "Doco suffix is required.",
+      suggestedHandle: null,
+      suggestedOrgHandle: chosenOrgHandle,
+      form: { orgId: chosenOrgId, newOrgHandle: "", suffix, templateHandle, visibility },
+    };
+  }
+
+  // Step 3 — create. Collision: web flow surfaces a suggestion + an
+  // "Use suggestion" button that resubmits with autoSuffix=true.
+  try {
+    const rec = await createDocoInOrg({
+      orgId: chosenOrgId,
+      requestedSuffix: suffix,
+      createdByPrincipalId: me.id,
+      visibility,
+      templateHandle: templateHandle === "generic" ? null : templateHandle,
+      autoSuffix: accept,
+    });
+    throw redirect(`/${rec.handle}`);
+  } catch (e) {
+    if (e instanceof Response) throw e;
+    const message = (e as Error).message;
+    if (!accept && message.includes("already taken")) {
+      const suggestion = await findAvailableDocoHandle(chosenOrgHandle, suffix);
+      return {
+        error: `Handle "${chosenOrgHandle}-${suffix}" is already taken. Suggested: "${suggestion}".`,
+        suggestedHandle: suggestion,
+        suggestedOrgHandle: chosenOrgHandle,
+        form: { orgId: chosenOrgId, newOrgHandle: "", suffix, templateHandle, visibility },
+      };
+    }
+    return {
+      error: message,
+      suggestedHandle: null,
+      suggestedOrgHandle: chosenOrgHandle,
+      form: { orgId: chosenOrgId, newOrgHandle: "", suffix, templateHandle, visibility },
+    };
   }
 }
 
@@ -64,20 +175,24 @@ export default function NewDoco({
   actionData?:
     | {
         error?: string;
-        ok?: { ownerSlug: string; docoSlug: string; handle: string };
+        suggestedHandle?: string | null;
+        suggestedOrgHandle?: string | null;
+        form?: {
+          orgId: string;
+          newOrgHandle: string;
+          suffix: string;
+          templateHandle: string;
+          visibility: string;
+        };
       }
     | undefined;
 }) {
-  const { me, orgs, host } = loaderData;
-  const owners = [
-    { slug: me.username, label: `${me.username} (you)`, kind: "principal" as const },
-    ...orgs.map((o) => ({ slug: o.slug, label: `${o.slug} (org)`, kind: "organization" as const })),
-  ];
-
-  if (actionData?.ok) {
-    const { handle } = actionData.ok;
-    return <NewDocoCreatedView handle={handle} me={me} />;
-  }
+  const { me, orgs } = loaderData;
+  const f = actionData?.form;
+  const selectedOrgId = f?.orgId ?? (orgs[0]?.id ?? "");
+  const selectedOrgHandle =
+    orgs.find((o) => o.id === selectedOrgId)?.handle ?? actionData?.suggestedOrgHandle ?? "";
+  const selectedTemplate = f?.templateHandle ?? "generic";
 
   return (
     <div>
@@ -87,61 +202,115 @@ export default function NewDoco({
           <CardHeader>
             <CardTitle>New doco</CardTitle>
             <CardDescription>
-              Create a new doco owned by you or one of your organizations.
+              Every Doco belongs to an organization. The Doco's handle is{" "}
+              <code>&lt;org-handle&gt;-&lt;suffix&gt;</code>.
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Form method="post" className="space-y-3">
-              <label className="block text-xs">
-                <span className="mb-1 block text-muted-foreground">Owner</span>
-                <select
-                  name="owner"
-                  className="w-full rounded-md border border-border bg-input px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
-                >
-                  {owners.map((o) => (
-                    <option key={o.slug} value={o.slug}>
-                      {o.label}
-                    </option>
+            <Form method="post" className="space-y-4">
+              <fieldset className="space-y-2">
+                <legend className="text-xs font-semibold uppercase text-muted-foreground">
+                  1 · Organization
+                </legend>
+                <label className="block text-xs">
+                  <span className="mb-1 block text-muted-foreground">Pick one of your orgs</span>
+                  <select
+                    name="org_id"
+                    defaultValue={selectedOrgId}
+                    className="w-full rounded-md border border-border bg-input px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
+                  >
+                    {orgs.map((o) => (
+                      <option key={o.id} value={o.id}>
+                        {o.handle}
+                        {o.handle === me.username ? " (personal)" : ""}
+                      </option>
+                    ))}
+                    <option value="">+ Create a new organization</option>
+                  </select>
+                </label>
+                <label className="block text-xs">
+                  <span className="mb-1 block text-muted-foreground">
+                    Or new org handle (only used if you picked "Create new")
+                  </span>
+                  <input
+                    type="text"
+                    name="new_org_handle"
+                    pattern="[a-z0-9][a-z0-9_-]*"
+                    defaultValue={f?.newOrgHandle ?? ""}
+                    placeholder="acme"
+                    className="w-full rounded-md border border-border bg-input px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
+                  />
+                </label>
+              </fieldset>
+
+              <fieldset className="space-y-2">
+                <legend className="text-xs font-semibold uppercase text-muted-foreground">
+                  2 · Doco handle
+                </legend>
+                <label className="block text-xs">
+                  <span className="mb-1 block text-muted-foreground">
+                    Suffix (the doco part of <code>&lt;org&gt;-&lt;suffix&gt;</code>)
+                  </span>
+                  <input
+                    type="text"
+                    name="suffix"
+                    required
+                    pattern="[a-z0-9][a-z0-9_-]*"
+                    defaultValue={f?.suffix ?? ""}
+                    placeholder="bpms"
+                    className="w-full rounded-md border border-border bg-input px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
+                  />
+                  <span className="mt-1 block text-[11px] text-muted-foreground">
+                    Final handle:{" "}
+                    <code data-testid="handle-preview">
+                      {selectedOrgHandle || "<org>"}-{f?.suffix || "<suffix>"}
+                    </code>
+                  </span>
+                </label>
+              </fieldset>
+
+              <fieldset className="space-y-2">
+                <legend className="text-xs font-semibold uppercase text-muted-foreground">
+                  3 · Template
+                </legend>
+                <div className="grid grid-cols-2 gap-2">
+                  {TEMPLATES.map((t) => (
+                    <label
+                      key={t.handle}
+                      className="flex cursor-pointer items-start gap-2 rounded-md border border-border p-2 hover:bg-muted"
+                    >
+                      <input
+                        type="radio"
+                        name="template_handle"
+                        value={t.handle}
+                        defaultChecked={selectedTemplate === t.handle}
+                        className="mt-0.5"
+                      />
+                      <span className="block">
+                        <span className="block text-sm font-semibold">{t.label}</span>
+                        <span className="block text-[11px] text-muted-foreground">
+                          {t.description}
+                        </span>
+                      </span>
+                    </label>
                   ))}
-                </select>
-              </label>
-              <label className="block text-xs">
-                <span className="mb-1 block text-muted-foreground">Handle</span>
-                <input
-                  type="text"
-                  name="doco_handle"
-                  required
-                  pattern="[a-z0-9_-]+"
-                  placeholder="my-doco"
-                  className="w-full rounded-md border border-border bg-input px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
-                />
-                <span className="mt-1 block text-[11px] text-muted-foreground">
-                  Lowercase kebab-case. URL becomes /&lt;handle&gt;.
-                </span>
-              </label>
-              <label className="block text-xs">
-                <span className="mb-1 block text-muted-foreground">Description (optional)</span>
-                <textarea
-                  name="description"
-                  rows={3}
-                  className="w-full rounded-md border border-border bg-input px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
-                />
-              </label>
-              <label className="block text-xs">
-                <span className="mb-1 block text-muted-foreground">Visibility</span>
+                </div>
+              </fieldset>
+
+              <fieldset className="space-y-2">
+                <legend className="text-xs font-semibold uppercase text-muted-foreground">
+                  4 · Visibility
+                </legend>
                 <select
                   name="visibility"
-                  defaultValue="private"
+                  defaultValue={f?.visibility ?? "private"}
                   className="w-full rounded-md border border-border bg-input px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
                 >
                   <option value="private">Private</option>
                   <option value="public">Public</option>
                 </select>
-              </label>
-              <p className="text-[11px] text-muted-foreground">
-                Next step after creation: set up the scopes you want to document in. You can also
-                add scopes later.
-              </p>
+              </fieldset>
+
               {actionData?.error ? (
                 <p className="text-xs text-destructive">{actionData.error}</p>
               ) : null}
@@ -152,6 +321,16 @@ export default function NewDoco({
                 >
                   Create doco
                 </button>
+                {actionData?.suggestedHandle ? (
+                  <button
+                    type="submit"
+                    name="accept_suggested_handle"
+                    value="1"
+                    className="rounded-md border border-border px-4 py-2 text-sm hover:bg-muted"
+                  >
+                    Use "{actionData.suggestedHandle}" instead
+                  </button>
+                ) : null}
                 <Link
                   to="/dashboard"
                   className="text-xs text-muted-foreground hover:text-foreground"
@@ -160,71 +339,6 @@ export default function NewDoco({
                 </Link>
               </div>
             </Form>
-          </CardContent>
-        </Card>
-      </SingleColumnPageMain>
-    </div>
-  );
-}
-
-// Doco-created success view. The two-path fork wording is intentionally
-// identical to the agent-side onboarding_overlay.scope_setup (see
-// lib/bootstrap-context.server.ts) — humans and agents see the same
-// fork in the same words. Keep both in sync if either rewords.
-//
-// The agent-handoff prompt no longer lives on this success card. It is
-// a separate onboarding step at `/:handle/onboarding/agent`. The "Keep
-// it simple" path skips scope setup, but it still routes through the
-// collaborator invite handoff before the Doco home.
-function NewDocoCreatedView({
-  handle,
-  me,
-}: {
-  handle: string;
-  me: Awaited<ReturnType<typeof loader>>["me"];
-}) {
-  return (
-    <div>
-      <SiteHeader mode="host" me={me} />
-      <SingleColumnPageMain className="py-8 space-y-4">
-        <Card>
-          <CardHeader>
-            <CardTitle>Doco created · {handle}</CardTitle>
-            <CardDescription>
-              Two ways to use Doco — pick one (you can change later).
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="rounded-md border border-border p-3 space-y-2">
-              <p className="text-sm font-semibold">Keep it simple</p>
-              <p className="text-xs text-muted-foreground">
-                Do you want to keep it simple and use Doco to store important decisions so people,
-                agents, and work stay aligned? Decisions land on the framework-seeded{" "}
-                <code className="rounded bg-input px-1 py-0.5 text-[11px]">#global</code> scope — no
-                extra setup. Capture decisions whenever you have something to record, either here in
-                the web or by asking an AI agent on the project.
-              </p>
-              <Link
-                to={`/${handle}/onboarding/agent`}
-                className="inline-block rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90"
-              >
-                Invite collaborators →
-              </Link>
-            </div>
-            <div className="rounded-md border border-border p-3 space-y-2">
-              <p className="text-sm font-semibold">Document something specific</p>
-              <p className="text-xs text-muted-foreground">
-                Or do you want to document something specific (for example, user flows, ADRs, state
-                machines, design language, etc.)? We'll set up dedicated scopes — topical buckets —
-                for each area you want to track, and the captured nodes file under the right one.
-              </p>
-              <Link
-                to={`/${handle}/scopes/new?onboarding=1`}
-                className="inline-block rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90"
-              >
-                Set up scopes →
-              </Link>
-            </div>
           </CardContent>
         </Card>
       </SingleColumnPageMain>
