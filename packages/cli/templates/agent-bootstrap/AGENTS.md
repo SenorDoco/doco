@@ -1,10 +1,10 @@
 # 🛑 STOP — read this before doing anything else
 
 You are in a **Doco-tracked project**. Doco coordinates this
-project's intent, decisions, rules, actions, and logs. The Doco URL
-for this project lives in:
+project's intent, decisions, rules, actions, and logs. The Doco
+URL(s) this repo connects to live in:
 
-@./DOCO.md
+@./.doco/connections.md
 
 ## Getting access to this Doco (agent OAuth)
 
@@ -40,6 +40,9 @@ work without auth at all — try
 
 ## What lives where
 
-- **`DOCO.md`** (committed) — Doco URL.
+- **`.doco/connections.md`** (committed) — list of Doco URLs this
+  repo connects to. Replaces the v12 `DOCO.md` (which held a single
+  URL); a repo can now connect to multiple Docos with different
+  access levels per token.
 - **`AGENTS.md`** (this file, committed) — agent bootstrap pointer.
 - **`CLAUDE.md`** (committed) — one-line shim `@./AGENTS.md`.
