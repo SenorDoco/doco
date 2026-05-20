@@ -12,6 +12,7 @@
 // per-Doco lookup; both call sites stay in lockstep.
 import { listEntitiesByDoco } from "@doco/db";
 import type { AuthoringPredicate } from "@doco/shared";
+import { ensureEntityScopesStripped } from "~/lib/migrations/v13-strip-entity-scopes.server";
 import { ensureScopeHashtagPrefixMigration } from "~/lib/migrations/scope-hashtag-prefix.server";
 import { ensureScopePurposeMigration } from "~/lib/migrations/scope-purpose.server";
 import { type ScopeManifestEntry, listLiveScopeManifest } from "~/lib/scope-helpers.server";
@@ -304,6 +305,9 @@ export async function loadBootstrapContext(args: {
   baseUrl: string;
 }): Promise<BootstrapContext> {
   const { docoDir, docoId, handle, baseUrl } = args;
+  // v13 one-shot: strip `scopes` arrays from every entity row's
+  // raw_yaml (cached host-wide, no-ops on subsequent calls).
+  await ensureEntityScopesStripped();
   // Run the scope-hashtag-prefix backfill before any read so the
   // bootstrap response (and every downstream consumer) sees the
   // canonical `#`-prefixed names. Idempotent + cached per-Doco.
