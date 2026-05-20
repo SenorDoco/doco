@@ -184,31 +184,11 @@ export async function loadConstitution(docoId: string): Promise<ConstitutionSnap
 export function buildOnboardingOverlay(args: {
   baseUrl: string;
   handle: string;
-  /** Scope manifest at the time the overlay is built — used so the
-   *  scope_population prose can name the actual checklist items the
-   *  agent must walk and which ones still need bootstrapping. */
+  /** Unused as of v15 — kept for back-compat with callers that
+   *  still pass it. The per-scope checklist prose is gone. */
   scopes?: ScopeManifestEntry[];
 }): OnboardingOverlay {
-  const { baseUrl, handle, scopes = [] } = args;
-  const checklistLines = scopes
-    .map((s) => {
-      const iconPrefix = s.icon ? `${s.icon} ` : "";
-      const acceptsLabel =
-        Array.isArray(s.allowed_node_types) && s.allowed_node_types.length > 0
-          ? `accepts: ${s.allowed_node_types.join(", ")}`
-          : "accepts: anything";
-      const purpose = (s.purpose ?? "").trim();
-      const purposeFragment = purpose ? ` — ${purpose}` : "";
-      const bootstrapped =
-        typeof s.node_count === "number" && s.node_count > 0
-          ? `[x] ${iconPrefix}${s.name}${purposeFragment} (${s.node_count} captured — already bootstrapped; ${acceptsLabel})`
-          : `[ ] ${iconPrefix}${s.name}${purposeFragment} (${acceptsLabel})`;
-      return `  - ${bootstrapped}`;
-    })
-    .join("\n");
-  const checklistBlock = checklistLines
-    ? `\n\nThis Doco's current scope checklist (render this verbatim before reading the repo, update the [ ] → [x] as you finish each scope; each scope's \`accepts:\` is its allowed_node_types filter — file findings whose type matches):\n\nBootstrapping scopes:\n${checklistLines}\n`
-    : "";
+  const { baseUrl, handle } = args;
   return {
     scope_setup:
       "STEP 1 of onboarding — ask the project owner whether to run repo-onboarding right now. Send this verbatim as your next message: 'I can walk the repo and propose Decisions, Intents, and Rules for capture into this Doco. Want me to do that now, or skip for now?' Then STOP and wait. If they say go, proceed to STEP 2. If they decline, capture nothing yet and stop. v15 NOTE (decision_01KS3DW9C2KN2X7Z80R18H1RAX): the Doco's template (chosen at /new-doco creation time) already seeded any framework rules — you do NOT need to create scopes (scopes were removed in v15). Capture every project-specific Decision / Intent / Rule directly onto the Doco; routing is the Doco's job, not yours.",
