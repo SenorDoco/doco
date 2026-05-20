@@ -12,7 +12,6 @@ import { loginCmd } from "./commands/login.js";
 import { patchCmd } from "./commands/patch.js";
 import { queryCmd } from "./commands/query.js";
 import { reindexCmd } from "./commands/reindex.js";
-import { scopeCmd } from "./commands/scope.js";
 import { showCmd } from "./commands/show.js";
 import { supersedeCmd } from "./commands/supersede.js";
 import { validateCmd } from "./commands/validate.js";
@@ -35,7 +34,6 @@ const main = defineCommand({
     host: hostCmd,
     capture: captureCmd,
     patch: patchCmd,
-    scope: scopeCmd,
     supersede: supersedeCmd,
     history: historyCmd,
     activity: activityCmd,
