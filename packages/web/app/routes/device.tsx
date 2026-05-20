@@ -17,11 +17,12 @@
 //   5. Cancel marks the row denied; the agent's next poll gets
 //      access_denied and stops.
 
-import { type DocoRole, ROLE_RANK, getDocoById, roleAtLeast } from "@doco/db";
+import type { DocoRole } from "@doco/db";
 import { Form, redirect, useLoaderData } from "react-router";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { SingleColumnPageMain } from "~/components/page-main";
 import { SiteHeader } from "~/components/site-header";
+import { getDocoById } from "~/lib/db.server";
 import {
   getDocoLevelRole,
   listAccessibleDocoIdsForPrincipal,
@@ -32,9 +33,8 @@ import {
   getClient,
   getDeviceAuthorizationByUserCode,
 } from "~/lib/oauth-server.server";
+import { DOCO_ROLES, ROLE_RANK, roleAtLeast } from "~/lib/role-helpers";
 import { getCurrentPrincipal } from "~/lib/session";
-
-const DOCO_ROLES: DocoRole[] = ["reader", "author", "approver", "owner"];
 
 interface LoaderData {
   user_code: string;

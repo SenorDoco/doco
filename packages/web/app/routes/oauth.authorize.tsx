@@ -12,7 +12,7 @@
 //      runtime's `redirect_uri` with ?code=...&state=...
 //   5. Cancel → redirect with ?error=access_denied&state=...
 
-import { type DocoRole, ROLE_RANK, getDocoById, roleAtLeast } from "@doco/db";
+import type { DocoRole } from "@doco/db";
 import { Form, redirect, useLoaderData } from "react-router";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { SingleColumnPageMain } from "~/components/page-main";
@@ -22,9 +22,9 @@ import {
   listAccessibleDocoIdsForPrincipal,
 } from "~/lib/doco-access.server";
 import { getClient, issueAuthorizationCode } from "~/lib/oauth-server.server";
+import { getDocoById } from "~/lib/db.server";
+import { DOCO_ROLES, ROLE_RANK, roleAtLeast } from "~/lib/role-helpers";
 import { getCurrentPrincipal } from "~/lib/session";
-
-const DOCO_ROLES: DocoRole[] = ["reader", "author", "approver", "owner"];
 
 interface AuthorizeParams {
   response_type: string;

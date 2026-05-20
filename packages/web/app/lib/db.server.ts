@@ -1,8 +1,16 @@
 // Host-root path helpers. Durable storage is Postgres; nothing the web
 // app reads or writes lives on disk. `docoPath` only builds a stable
 // placeholder path for APIs that still accept a root-shaped argument.
+//
+// Also a small re-export surface for `@doco/db` helpers that route
+// files use from their loader/action — going through this `.server.ts`
+// re-export keeps the `@doco/db` import out of the client bundle (the
+// barrel re-exports the Postgres pool, which Vite can't bundle for the
+// browser).
 
 import { join } from "node:path";
+
+export { getDocoById } from "@doco/db";
 
 let cachedRoot: string | null = null;
 
