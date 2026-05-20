@@ -78,10 +78,18 @@ export function isFrozen(nodeType: string, lifecycle: string | undefined | null)
 
 // Patch keys that are still allowed when a claim is frozen.
 // Everything else is rejected.
+//
+// Scope-list operations (`scope_names_add` / `scope_names_remove`) are both
+// allowed — they change *which* nodes the rule applies to, not the rule's
+// claim itself. Allowing only `_add` would block legitimate re-scoping
+// migrations (per decision_01KS2N0KQ9Y31XDKXT5DDC95YJ, tagged rules
+// migrate off `#global` to more-specific scopes; that requires removing
+// `#global` from frozen rules).
 const ALLOWED_ON_FROZEN: ReadonlySet<string> = new Set([
   "lifecycle",
   "superseded_by",
   "scope_names_add",
+  "scope_names_remove",
   "intent_ids_add",
 ]);
 
