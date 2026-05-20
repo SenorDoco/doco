@@ -735,6 +735,7 @@ export function EntityGraph({
       new Set(allLifecycles.filter((lifecycle) => !HIDDEN_LIFECYCLES_BY_DEFAULT.has(lifecycle))),
   );
   const [selectedScopeId, setSelectedScopeId] = useState<string>("all");
+  const showScopeFilterControls = scopeFilters.length > 0;
 
   useEffect(() => {
     setVisibleLifecycles((prev) => {
@@ -1155,44 +1156,46 @@ export function EntityGraph({
             );
           })}
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-muted-foreground">Scope:</span>
-          <label
-            key="all-scopes"
-            className="inline-flex cursor-pointer select-none items-center gap-1"
-            title="All scopes"
-          >
-            <input
-              type="radio"
-              name="entity-graph-scope"
-              checked={selectedScopeId === "all"}
-              onChange={() => setSelectedScopeId("all")}
-              className="h-3 w-3"
-            />
-            <span>All scopes</span>
-          </label>
-          {scopeFilters.map((scope) => (
+        {showScopeFilterControls ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-muted-foreground">Scope:</span>
             <label
-              key={scope.id}
+              key="all-scopes"
               className="inline-flex cursor-pointer select-none items-center gap-1"
-              title={scope.name}
+              title="All scopes"
             >
               <input
                 type="radio"
                 name="entity-graph-scope"
-                checked={selectedScopeId === scope.id}
-                onChange={() => setSelectedScopeId(scope.id)}
+                checked={selectedScopeId === "all"}
+                onChange={() => setSelectedScopeId("all")}
                 className="h-3 w-3"
               />
-              {scope.icon ? (
-                <span aria-hidden className="font-sans text-[12px] leading-none">
-                  {scope.icon}
-                </span>
-              ) : null}
-              <span>{scope.name}</span>
+              <span>All scopes</span>
             </label>
-          ))}
-        </div>
+            {scopeFilters.map((scope) => (
+              <label
+                key={scope.id}
+                className="inline-flex cursor-pointer select-none items-center gap-1"
+                title={scope.name}
+              >
+                <input
+                  type="radio"
+                  name="entity-graph-scope"
+                  checked={selectedScopeId === scope.id}
+                  onChange={() => setSelectedScopeId(scope.id)}
+                  className="h-3 w-3"
+                />
+                {scope.icon ? (
+                  <span aria-hidden className="font-sans text-[12px] leading-none">
+                    {scope.icon}
+                  </span>
+                ) : null}
+                <span>{scope.name}</span>
+              </label>
+            ))}
+          </div>
+        ) : null}
       </div>
 
       <div

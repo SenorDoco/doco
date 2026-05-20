@@ -426,11 +426,13 @@ export async function loadOverviewGraph(
     centerId,
     nodes,
     links,
-    scopeFilters: scopeRows.map((scope) => ({
-      id: scope.id,
-      name: scope.name,
-      icon: scopeIcon(scope.raw_yaml),
-    })),
+    scopeFilters: options.scopeId
+      ? []
+      : scopeRows.map((scope) => ({
+          id: scope.id,
+          name: scope.name,
+          icon: scopeIcon(scope.raw_yaml),
+        })),
   };
 }
 
