@@ -1,26 +1,21 @@
 // /users — global user-management page (decision_01KS0JBJ5X0AZ4XJJFKEWE1R62).
-// Replaces the per-doco / per-scope / per-org members pages. Top-level
-// link in the host nav. Shows every org/doco/scope grant the signed-in
-// principal can see, lets owners edit roles inline (auto-save), and
-// mints invite links at any of the three levels.
+// Replaces the per-doco / per-org members pages. Top-level link in
+// the host nav. Shows every org/doco grant the signed-in principal
+// can see, lets owners edit roles inline (auto-save), and mints
+// invite links at either level.
 
 import {
   type DocoRole,
-  type ScopeUserRow,
   getDocoById,
   getOrgRole,
   getPrincipalById,
   listDocoIdsForUserPrincipal,
   listDocoUsers,
   listOrganizationsForPrincipal,
-  listScopeIdsForUserPrincipal,
-  listScopeUsers,
   removeDocoUser,
   removeOrgUser,
-  removeScopeUser,
   upsertDocoUser,
   upsertOrgUser,
-  upsertScopeUser,
   withClient,
 } from "@doco/db";
 import type { EntityId } from "@doco/shared";
@@ -36,7 +31,7 @@ import { getCurrentPrincipal } from "~/lib/session";
 import { TokenStore } from "~/lib/tokens.server";
 
 const ALL_ROLES: DocoRole[] = ["owner", "approver", "author", "reader"];
-type InviteLevel = "org" | "doco" | "scope";
+type InviteLevel = "org" | "doco";
 type InviteOption = { id: string; label: string };
 type InviteDefaultSelection = { level: InviteLevel; targetId: string };
 
@@ -45,7 +40,7 @@ function rankOf(role: DocoRole): number {
 }
 
 function parseInviteLevel(value: string | null): InviteLevel | null {
-  return value === "org" || value === "doco" || value === "scope" ? value : null;
+  return value === "org" || value === "doco" ? value : null;
 }
 
 function optionsForInviteLevel(
@@ -53,22 +48,18 @@ function optionsForInviteLevel(
   options: {
     orgs: InviteOption[];
     docos: InviteOption[];
-    scopes: InviteOption[];
   },
 ): InviteOption[] {
   if (level === "org") return options.orgs;
-  if (level === "scope") return options.scopes;
   return options.docos;
 }
 
 function firstAvailableInviteLevel(options: {
   orgs: InviteOption[];
   docos: InviteOption[];
-  scopes: InviteOption[];
 }): InviteLevel {
   if (options.docos.length > 0) return "doco";
-  if (options.orgs.length > 0) return "org";
-  return "scope";
+  return "org";
 }
 
 function resolveInviteDefaultSelection(args: {
@@ -76,11 +67,10 @@ function resolveInviteDefaultSelection(args: {
   requestedTargetId: string;
   orgs: InviteOption[];
   docos: InviteOption[];
-  scopes: InviteOption[];
 }): InviteDefaultSelection {
   const level =
     args.requestedLevel ??
-    firstAvailableInviteLevel({ orgs: args.orgs, docos: args.docos, scopes: args.scopes });
+    firstAvailableInviteLevel({ orgs: args.orgs, docos: args.docos });
   const options = optionsForInviteLevel(level, args);
   const targetId = options.some((opt) => opt.id === args.requestedTargetId)
     ? args.requestedTargetId
@@ -102,13 +92,6 @@ interface OrgSection {
 interface DocoSection {
   doco: { id: string; handle: string };
   myRole: DocoRole;
-  users: (UserCell & { role: DocoRole })[];
-}
-
-interface ScopeSection {
-  scope: { id: string; name: string };
-  doco: { id: string; handle: string };
-  myDocoRole: DocoRole | null;
   users: (UserCell & { role: DocoRole })[];
 }
 
@@ -196,44 +179,6 @@ export async function loader({ request }: { request: Request }) {
   }
   docoSections.sort((a, b) => a.doco.handle.localeCompare(b.doco.handle));
 
-  // ── Scopes the signed-in user has a scope_users grant on ──────────
-  const myScopeIds = await listScopeIdsForUserPrincipal(me.id);
-  const scopeSections: ScopeSection[] = [];
-  for (const scopeId of myScopeIds) {
-    const scopeRow = await withClient(async (c) =>
-      c.query<{ id: string; name: string; doco_id: string }>(
-        `SELECT id, name, doco_id FROM scopes WHERE id = $1 LIMIT 1`,
-        [scopeId],
-      ),
-    );
-    const sc = scopeRow.rows[0];
-    if (!sc) continue;
-    const doco = await getDocoById(sc.doco_id);
-    if (!doco) continue;
-    const users: ScopeUserRow[] = await listScopeUsers(scopeId);
-    const enriched = await Promise.all(
-      users.map(async (u) => ({
-        ...(await enrichPrincipal(u.principal_id)),
-        role: u.role,
-      })),
-    );
-    // My doco role (for the parent doco) determines if I can edit this
-    // scope's users — only doco-owners can manage scope grants.
-    const myDocoRow = await withClient(async (c) =>
-      c.query<{ role: string }>(
-        `SELECT role FROM doco_users WHERE doco_id = $1 AND principal_id = $2`,
-        [doco.id, me.id],
-      ),
-    );
-    const myDocoRole = (myDocoRow.rows[0]?.role as DocoRole | undefined) ?? null;
-    scopeSections.push({
-      scope: { id: sc.id, name: sc.name },
-      doco: { id: doco.id, handle: doco.handle },
-      myDocoRole,
-      users: enriched,
-    });
-  }
-
   // ── Invite-target options: where can THIS user mint invites? ──────
   const inviteOrgs = orgSections
     .filter((s) => s.myRole === "owner")
@@ -247,42 +192,20 @@ export async function loader({ request }: { request: Request }) {
       id: s.doco.id,
       label: s.doco.handle,
     }));
-  // Scope invites need doco-owner role on the containing doco. Surface
-  // every scope inside any doco the user owns at the doco level.
-  const ownerDocoIds = new Set(inviteDocos.map((d) => d.id));
-  const inviteScopes = await (async () => {
-    if (ownerDocoIds.size === 0) return [] as { id: string; label: string; doco_handle: string }[];
-    return withClient(async (c) => {
-      const r = await c.query<{ id: string; name: string; doco_id: string; handle: string }>(
-        `SELECT s.id, s.name, s.doco_id, d.handle
-         FROM scopes s JOIN docos d ON d.id = s.doco_id
-         WHERE s.doco_id = ANY($1::text[]) ORDER BY d.handle, s.name`,
-        [Array.from(ownerDocoIds)],
-      );
-      return r.rows.map((row) => ({
-        id: String(row.id),
-        label: `${row.handle} · ${row.name}`,
-        doco_handle: String(row.handle),
-      }));
-    });
-  })();
 
   return {
     me,
     host: `${url.protocol}//${url.host}`,
     orgSections,
     docoSections,
-    scopeSections,
     invite: {
       orgs: inviteOrgs,
       docos: inviteDocos,
-      scopes: inviteScopes,
       defaultSelection: resolveInviteDefaultSelection({
         requestedLevel: parseInviteLevel(url.searchParams.get("level")),
         requestedTargetId: url.searchParams.get("target_id")?.trim() ?? "",
         orgs: inviteOrgs,
         docos: inviteDocos,
-        scopes: inviteScopes,
       }),
     },
   };
@@ -297,13 +220,13 @@ type ActionResult =
       recipe_url: string;
       device_url: string;
       invite_expires_at: string;
-      level: "org" | "doco" | "scope";
+      level: InviteLevel;
       role: DocoRole;
     }
   | {
       intent: "update";
       ok: true;
-      level: "org" | "doco" | "scope";
+      level: InviteLevel;
       target_id: string;
       principal_id: string;
       role: DocoRole;
@@ -311,7 +234,7 @@ type ActionResult =
   | {
       intent: "remove";
       ok: true;
-      level: "org" | "doco" | "scope";
+      level: InviteLevel;
       target_id: string;
       principal_id: string;
     }
@@ -327,7 +250,7 @@ export async function action({
 
   const form = await request.formData();
   const intent = String(form.get("intent") ?? "");
-  const level = String(form.get("level") ?? "") as "org" | "doco" | "scope";
+  const level = String(form.get("level") ?? "") as InviteLevel;
 
   if (intent === "update" || intent === "remove") {
     const targetId = String(form.get("target_id") ?? "").trim();
@@ -336,8 +259,8 @@ export async function action({
     if (!principalId) return { error: "principal_id missing." };
 
     // Authorize: actor must be owner at that level. Use getDocoLevelRole
-    // for the doco/scope path so direct-owner docos (no doco_users row)
-    // pass the check.
+    // for the doco path so direct-owner docos (no doco_users row) pass
+    // the check.
     if (level === "org") {
       const role = await getOrgRole(targetId, me.id);
       if (role !== "owner") return { error: "Only org owners can change org users." };
@@ -349,19 +272,6 @@ export async function action({
         me.id,
       );
       if (role !== "owner") return { error: "Only doco owners can change doco users." };
-    } else if (level === "scope") {
-      const sc = await withClient(async (c) =>
-        c.query<{ doco_id: string }>(`SELECT doco_id FROM scopes WHERE id=$1`, [targetId]),
-      );
-      const docoId = sc.rows[0]?.doco_id;
-      if (!docoId) return { error: "Scope not found." };
-      const doco = await getDocoById(docoId);
-      if (!doco) return { error: "Parent doco not found." };
-      const role = await getDocoLevelRole(
-        { ownerId: doco.owner_id, docoId: doco.id },
-        me.id,
-      );
-      if (role !== "owner") return { error: "Only doco owners can change scope users." };
     } else {
       return { error: "Invalid level." };
     }
@@ -371,9 +281,7 @@ export async function action({
       if (!ALL_ROLES.includes(role)) return { error: "Invalid role." };
       if (level === "org")
         await upsertOrgUser({ org_id: targetId, principal_id: principalId, role });
-      else if (level === "doco")
-        await upsertDocoUser({ doco_id: targetId, principal_id: principalId, role });
-      else await upsertScopeUser({ scope_id: targetId, principal_id: principalId, role });
+      else await upsertDocoUser({ doco_id: targetId, principal_id: principalId, role });
       return {
         intent: "update",
         ok: true,
@@ -384,8 +292,7 @@ export async function action({
       };
     }
     if (level === "org") await removeOrgUser(targetId, principalId);
-    else if (level === "doco") await removeDocoUser(targetId, principalId);
-    else await removeScopeUser(targetId, principalId);
+    else await removeDocoUser(targetId, principalId);
     return { intent: "remove", ok: true, level, target_id: targetId, principal_id: principalId };
   }
 
@@ -398,7 +305,6 @@ export async function action({
     let inviterRole: DocoRole | null = null;
     let docoId: string | null = null;
     let orgId: string | null = null;
-    let scopeId: string | null = null;
 
     if (level === "org") {
       inviterRole = await getOrgRole(targetId, me.id);
@@ -418,21 +324,6 @@ export async function action({
         );
         docoId = doco.id;
       }
-    } else if (level === "scope") {
-      const sc = await withClient(async (c) =>
-        c.query<{ doco_id: string }>(`SELECT doco_id FROM scopes WHERE id=$1`, [targetId]),
-      );
-      docoId = sc.rows[0]?.doco_id ?? null;
-      scopeId = targetId;
-      if (docoId) {
-        const doco = await getDocoById(docoId);
-        if (doco) {
-          inviterRole = await getDocoLevelRole(
-            { ownerId: doco.owner_id, docoId: doco.id },
-            me.id,
-          );
-        }
-      }
     } else {
       return { error: "Invalid level." };
     }
@@ -445,10 +336,7 @@ export async function action({
     }
     // Granting/editing access is an owner-only action. Approvers can
     // approve lifecycle changes but can't extend access to others;
-    // that's a permission delegation only owners get to do. Scope-
-    // level invites still require owner on the containing Doco — the
-    // loader only surfaces scopes whose Doco the user owns, but
-    // re-check here in case the form was tampered with.
+    // that's a permission delegation only owners get to do.
     if (inviterRole !== "owner") {
       return {
         error: `Only owners can grant access — you hold '${inviterRole}' on this ${level}.`,
@@ -469,7 +357,6 @@ export async function action({
       {
         level,
         ...(orgId ? { org_id: orgId as EntityId<"organization"> } : {}),
-        ...(scopeId ? { scope_id: scopeId as EntityId<"scope"> } : {}),
       },
     );
     const url = new URL(request.url);
@@ -509,11 +396,9 @@ interface UsersLoaderData {
   host: string;
   orgSections: OrgSection[];
   docoSections: DocoSection[];
-  scopeSections: ScopeSection[];
   invite: {
     orgs: { id: string; label: string }[];
     docos: { id: string; label: string }[];
-    scopes: { id: string; label: string; doco_handle: string }[];
     defaultSelection: InviteDefaultSelection;
   };
 }
@@ -534,7 +419,6 @@ export default function UsersPage({
         <InviteHumanCard
           orgs={loaderData.invite.orgs}
           docos={loaderData.invite.docos}
-          scopes={loaderData.invite.scopes}
           defaultSelection={loaderData.invite.defaultSelection}
         />
 
@@ -570,28 +454,13 @@ export default function UsersPage({
           )}
         />
 
-        <Section
-          title="Scope users"
-          empty="You don't have any scope grants yet."
-          rows={loaderData.scopeSections.flatMap((s) =>
-            s.users.map((u) => ({
-              level: "scope" as const,
-              target_id: s.scope.id,
-              target_label: `${s.doco.handle} · ${s.scope.name}`,
-              target_link: `/${s.doco.handle}/scopes/${s.scope.id}`,
-              user: u,
-              canEdit: s.myDocoRole === "owner",
-            })),
-          )}
-        />
-
       </SingleColumnPageMain>
     </div>
   );
 }
 
 interface SectionRow {
-  level: "org" | "doco" | "scope";
+  level: InviteLevel;
   target_id: string;
   target_label: string;
   target_link: string;
@@ -751,7 +620,7 @@ function UserRow({ row }: { row: SectionRow }) {
  * Humans: pick (level, target, role) → mint a one-shot invite URL
  * that's bound on the server to that exact grant. The recipient
  * clicks the URL, signs in with GitHub, accepts → they land in
- * doco_users (or org_users / scope_users) with the role you picked.
+ * doco_users (or org_users) with the role you picked.
  *
  * Agents: there's no scoping form. The agent drives OAuth itself
  * (localhost-loopback or Device Flow), and the human picks which
@@ -763,12 +632,10 @@ function UserRow({ row }: { row: SectionRow }) {
 function InviteHumanCard({
   orgs,
   docos,
-  scopes,
   defaultSelection,
 }: {
   orgs: { id: string; label: string }[];
   docos: { id: string; label: string }[];
-  scopes: { id: string; label: string; doco_handle: string }[];
   defaultSelection: InviteDefaultSelection;
 }) {
   const fetcher = useFetcher<ActionResult>();
@@ -778,7 +645,7 @@ function InviteHumanCard({
   const [level, setLevel] = useState<InviteLevel>(defaultSelection.level);
   const [targetId, setTargetId] = useState(defaultSelection.targetId);
 
-  const options = optionsForInviteLevel(level, { orgs, docos, scopes });
+  const options = optionsForInviteLevel(level, { orgs, docos });
   const noTargets = options.length === 0;
 
   useEffect(() => {
@@ -812,7 +679,7 @@ function InviteHumanCard({
                 onChange={(e) => {
                   const nextLevel = e.currentTarget.value as InviteLevel;
                   setLevel(nextLevel);
-                  const nextOptions = optionsForInviteLevel(nextLevel, { orgs, docos, scopes });
+                  const nextOptions = optionsForInviteLevel(nextLevel, { orgs, docos });
                   setTargetId(nextOptions[0]?.id ?? "");
                 }}
                 data-testid="invite-level"
@@ -820,12 +687,11 @@ function InviteHumanCard({
               >
                 <option value="org">Org</option>
                 <option value="doco">Doco</option>
-                <option value="scope">Scope</option>
               </select>
             </label>
             <label className="flex flex-1 flex-col gap-1 text-sm">
               <span className="text-xs uppercase tracking-wide text-muted-foreground">
-                {level === "org" ? "Organization" : level === "doco" ? "Doco" : "Scope"}
+                {level === "org" ? "Organization" : "Doco"}
               </span>
               <select
                 name="target_id"
@@ -938,12 +804,15 @@ function AgentPromptBlock({ body }: { body: string }) {
       <button
         type="button"
         data-testid="invite-agent-copy"
-        onClick={async () => {
-          await navigator.clipboard.writeText(body);
-          setCopied(true);
-          setTimeout(() => setCopied(false), 1500);
+        onClick={() => {
+          if (typeof navigator !== "undefined" && navigator.clipboard) {
+            void navigator.clipboard.writeText(body).then(() => {
+              setCopied(true);
+              setTimeout(() => setCopied(false), 1500);
+            });
+          }
         }}
-        className="rounded-md border border-border bg-card px-3 py-1.5 text-xs font-semibold text-foreground hover:bg-input"
+        className="rounded-md border border-border px-2 py-1 text-xs hover:bg-card"
       >
         {copied ? "Copied!" : "Copy prompt"}
       </button>

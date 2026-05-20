@@ -21,7 +21,6 @@ import {
   getPrincipalById,
   upsertDocoUser,
   upsertOrgUser,
-  upsertScopeUser,
 } from "@doco/db";
 import type { EntityId } from "@doco/shared";
 import { Form, Link, redirect } from "react-router";
@@ -139,17 +138,6 @@ export async function action({
       org_id: consumed.org_id,
       principal_id: principal.id,
       role: grantedRole,
-    });
-  } else if (inviteLevel === "scope" && consumed.scope_id) {
-    await upsertScopeUser({
-      scope_id: consumed.scope_id,
-      principal_id: principal.id,
-      role: grantedRole,
-    });
-    await upsertDocoUser({
-      doco_id: invite.doco_id,
-      principal_id: principal.id,
-      role: "reader",
     });
   } else {
     await upsertDocoUser({
