@@ -766,7 +766,7 @@ function InviteAgentCard({ host }: { host: string }) {
     "",
     `To get programmatic access, follow the OAuth recipe at ${recipeUrl}. If you can bind a local TCP port and open a browser, use Recipe A (localhost-loopback). If you can't (chat-only / sandboxed runtimes), use Recipe B (RFC 8628 Device Authorization Grant) — you'll show me a short code and I'll approve at ${deviceUrl}.`,
     "",
-    "At the approve screen I'll pick which Docos you can read/write and at what role (reader / author / approver / owner) per Doco, so no scoping is needed up front.",
+    "At the approve screen I'll pick which orgs and docos you can read/write and at what role (reader / author / approver / owner) per org or doco, so no scoping is needed up front.",
   ].join("\n");
   return (
     <Card>
