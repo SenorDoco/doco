@@ -16,7 +16,7 @@
 
 import { isOrgMember } from "~/lib/org-helpers.server";
 import { createDocoInOrg } from "~/lib/redeem.server";
-import { getCurrentPrincipal } from "~/lib/session";
+import { getCurrentPrincipalAsync } from "~/lib/session";
 
 export async function loader() {
   return Response.json({ error: "Use POST to create a Doco." }, { status: 405 });
@@ -26,7 +26,7 @@ export async function action({ request }: { request: Request }) {
   if (request.method !== "POST") {
     return Response.json({ error: "Use POST." }, { status: 405 });
   }
-  const me = await getCurrentPrincipal(request);
+  const me = await getCurrentPrincipalAsync(request);
   if (!me) {
     return Response.json({ error: "Authentication required." }, { status: 401 });
   }
