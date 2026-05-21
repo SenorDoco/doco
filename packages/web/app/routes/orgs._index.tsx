@@ -88,9 +88,7 @@ export default function OrgsIndexPage({
                   <li key={o.id} className="py-3">
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <Link to={`/${o.slug}`} className="font-medium hover:underline">
-                          {o.slug}
-                        </Link>
+                        <div className="font-medium">{o.slug}</div>
                         <div className="text-xs text-muted-foreground">
                           {o.display_name}
                           {typeof o.member_count === "number"

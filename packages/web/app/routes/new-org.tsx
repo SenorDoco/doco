@@ -14,10 +14,12 @@ import { getCurrentPrincipal } from "~/lib/session";
  * /new-org — create an Organization (v15 single-property model).
  *
  * The Organization has one user-facing property: `handle`. The user
- * types the handle they want. On submit, if it's free, the org lands
- * at `/orgs/<handle>`. If it's taken, the form re-renders with the
- * next available suggestion (e.g. `acme-2`) and a one-click "Use
- * suggested" button (sets `accept_suggested=1` on the form submit).
+ * types the handle they want. On submit, if it's free, we bounce to
+ * `/orgs` (the orgs listing — the new org shows up there). If it's
+ * taken, the form re-renders with the next available suggestion
+ * (e.g. `acme-2`) and a one-click "Use suggested" button (sets
+ * `accept_suggested=1` on the form submit). There is no per-org
+ * landing page at `/orgs/<handle>` yet.
  */
 export async function loader({ request }: { request: Request }) {
   const me = await getCurrentPrincipal(request);
@@ -39,12 +41,12 @@ export async function action({ request }: { request: Request }) {
   if (!requested) return { error: "Handle is required.", suggested: null };
 
   try {
-    const { handle } = await addOrganizationByHandle({
+    await addOrganizationByHandle({
       handle: requested,
       ownerPrincipalId: me.id,
       autoSuffix: accept,
     });
-    throw redirect(`/orgs/${handle}`);
+    throw redirect("/orgs");
   } catch (e) {
     if (e instanceof Response) throw e;
     const message = (e as Error).message;
