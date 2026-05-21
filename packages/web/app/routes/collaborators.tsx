@@ -210,7 +210,7 @@ export async function action({
 }
 
 export function meta() {
-  return [{ title: "Collaborators · Doco" }];
+  return [{ title: "Collaborators (people/agents) · Doco" }];
 }
 
 interface TargetRef {
@@ -336,10 +336,10 @@ export default function CollaboratorsPage({
       <SingleColumnPageMain className="py-8 space-y-6">
         <Breadcrumb items={hostBreadcrumb({ pageLabel: "Collaborators" })} />
         <header>
-          <h1 className="text-2xl font-semibold">Collaborators</h1>
+          <h1 className="text-2xl font-semibold">Collaborators (people/agents)</h1>
         </header>
 
-        <div className="space-y-3">
+        <div className="flex flex-wrap items-end justify-between gap-3">
           <label className="flex flex-col gap-1 text-sm">
             <span className="text-xs uppercase tracking-wide text-muted-foreground">
               Show collaborators for
@@ -348,7 +348,7 @@ export default function CollaboratorsPage({
               value={scope}
               onChange={(e) => applyScope(e.currentTarget.value)}
               data-testid="scope-filter"
-              className="w-full rounded-md border border-border bg-background px-3 py-2 sm:max-w-sm"
+              className="w-auto rounded-md border border-border bg-background px-3 py-2"
             >
               <option value="all">All collaborators</option>
               {loaderData.orgSections.length > 0 ? (
@@ -372,15 +372,13 @@ export default function CollaboratorsPage({
             </select>
           </label>
 
-          <div className="flex justify-end">
-            <Link
-              to="/collaborators/invite"
-              data-testid="invite-toggle"
-              className="rounded-md bg-primary px-3 py-1.5 text-sm font-semibold text-primary-foreground hover:opacity-90"
-            >
-              + Invite collaborator (people/agents)
-            </Link>
-          </div>
+          <Link
+            to="/collaborators/invite"
+            data-testid="invite-toggle"
+            className="rounded-md bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90"
+          >
+            + Invite collaborator
+          </Link>
         </div>
 
         {showOrgSection ? (
@@ -422,7 +420,7 @@ function Section({
       <CardHeader>
         <CardTitle>{title}</CardTitle>
       </CardHeader>
-      <CardContent className="border-t border-border pt-2">
+      <CardContent className="pt-2">
         {sorted.length === 0 ? (
           <p className="pt-2 text-sm text-muted-foreground">{empty}</p>
         ) : (
