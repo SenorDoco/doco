@@ -300,14 +300,16 @@ function MessageBlock({ rm }: { rm: RenderableMessage }) {
     const m = rm.message;
     // A "user" role message that contains only tool_result blocks is
     // bookkeeping in the Anthropic contract — render its results inline
-    // with the previous assistant turn instead of as a fresh "You: …"
-    // bubble.
+    // with the previous assistant turn (right-aligned + accent bubble)
+    // instead of as a fresh "You: …" bubble.
     if (m.role === "user" && m.content.every((b) => b.type === "tool_result")) {
       return (
-        <div className="mb-2">
-          {m.content.map((b, i) =>
-            b.type === "tool_result" ? <ToolResultRow key={i} result={b} /> : null,
-          )}
+        <div className="mb-2 flex justify-end">
+          <div className="max-w-[90%] space-y-1 rounded-lg bg-primary/10 px-2 py-1.5">
+            {m.content.map((b, i) =>
+              b.type === "tool_result" ? <ToolResultRow key={i} result={b} /> : null,
+            )}
+          </div>
         </div>
       );
     }
@@ -317,12 +319,18 @@ function MessageBlock({ rm }: { rm: RenderableMessage }) {
 }
 
 function SavedMessage({ message }: { message: ChatMessage }) {
+  const isAssistant = message.role === "assistant";
   return (
-    <div className={cn("mb-3", message.role === "user" ? "" : "")}>
+    <div className={cn("mb-3 flex flex-col", isAssistant ? "items-end" : "items-start")}>
       <div className="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground">
-        {message.role === "user" ? "You" : "Señor Doco"}
+        {isAssistant ? "Señor Doco" : "You"}
       </div>
-      <div className="space-y-1.5">
+      <div
+        className={cn(
+          "max-w-[90%] space-y-1.5 rounded-lg px-2.5 py-1.5",
+          isAssistant ? "bg-primary/10" : "bg-input/60",
+        )}
+      >
         {message.content.map((b, i) => (
           <BlockView key={i} block={b} />
         ))}
@@ -333,9 +341,11 @@ function SavedMessage({ message }: { message: ChatMessage }) {
 
 function InFlightMessageView({ msg }: { msg: InFlightMessage }) {
   return (
-    <div className="mb-3">
-      <div className="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground">Señor Doco</div>
-      <div className="space-y-1.5">
+    <div className="mb-3 flex flex-col items-end">
+      <div className="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground">
+        Señor Doco
+      </div>
+      <div className="max-w-[90%] space-y-1.5 rounded-lg bg-primary/10 px-2.5 py-1.5">
         {msg.content.map((b, i) => {
           if (b.type === "tool_use") {
             const result = msg.toolResults.get(b.id);
