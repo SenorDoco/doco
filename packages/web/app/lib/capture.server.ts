@@ -1964,6 +1964,11 @@ function normalizeNodeAuthoringPredicate(
   return predicate;
 }
 
+export interface ArticleCaptureExtras {
+  /** When set, the new row carries `supersedes: <oldId>` in its frontmatter. */
+  supersedes?: string;
+}
+
 export async function captureGuidanceArticle(
   docoDir: string,
   docoId: string,
@@ -1971,6 +1976,7 @@ export async function captureGuidanceArticle(
   docoSlug: string,
   draft: GuidanceArticleDraft,
   docoHost?: string,
+  extras: ArticleCaptureExtras = {},
 ): Promise<CaptureResult | CaptureError> {
   const startedAt = performance.now();
   if (!draft.summary?.trim()) return { error: "summary is required." };
@@ -1986,6 +1992,7 @@ export async function captureGuidanceArticle(
     node_type: "guidance_article",
     article_type: "guidance",
     summary,
+    ...(extras.supersedes ? { supersedes: extras.supersedes } : {}),
     created_at: now,
     created_by: draft.created_by_id ?? author,
     lifecycle: draft.lifecycle ?? "active",
@@ -2044,6 +2051,7 @@ export async function captureNodeAuthoringArticle(
   docoSlug: string,
   draft: NodeAuthoringArticleDraft,
   docoHost?: string,
+  extras: ArticleCaptureExtras = {},
 ): Promise<CaptureResult | CaptureError> {
   const startedAt = performance.now();
   if (!draft.summary?.trim()) return { error: "summary is required." };
@@ -2071,6 +2079,7 @@ export async function captureNodeAuthoringArticle(
     predicate,
     ...(firesWhen.length > 0 ? { fires_when_node_lifecycle: firesWhen } : {}),
     on_violation: draft.on_violation ?? "block",
+    ...(extras.supersedes ? { supersedes: extras.supersedes } : {}),
     created_at: now,
     created_by: draft.created_by_id ?? author,
     lifecycle: draft.lifecycle ?? "active",
@@ -2126,10 +2135,9 @@ export async function captureNodeAuthoringArticle(
 //
 // Mirror the per-Doco capture helpers but key on `org_id`. Org constitution
 // articles apply to every Doco the org owns. They live in dedicated tables
-// (`org_guidance_articles` / `org_node_authoring_articles`) and bypass the
-// per-Doco entity pipeline — no edges/FTS/audit-events, since the org
-// constitution is read-mostly reference material aggregated at agent
-// bootstrap.
+// (`org_guidance_articles` / `org_node_authoring_articles`) and emit audit
+// events under the `org_id` scope of audit_events — they are first-class
+// node-like records, just under an org scope rather than a doco scope.
 
 export interface OrgArticleCaptureResult {
   ok: true;
@@ -2137,9 +2145,44 @@ export interface OrgArticleCaptureResult {
   duration_ms: number;
 }
 
+/** Optional fields applied during modify (creates new + supersedes old). */
+interface OrgArticleExtras {
+  /** When set, the new row carries `supersedes: <oldId>` in its frontmatter. */
+  supersedes?: string;
+}
+
+function emitOrgAuditEvent(opts: {
+  orgId: string;
+  actorId: string | null;
+  entity_type: string;
+  entity_id: string;
+  op: "entity.create" | "entity.update" | "lifecycle.transition";
+  before?: Record<string, unknown>;
+  after?: Record<string, unknown>;
+  reason?: string | null;
+}): void {
+  try {
+    const input: Parameters<typeof appendAuditEvent>[0] = {
+      docoDir: "",
+      orgId: opts.orgId,
+      by: opts.actorId,
+      entity_type: opts.entity_type,
+      entity_id: opts.entity_id,
+      op: opts.op,
+    };
+    if (opts.before !== undefined) input.before = opts.before;
+    if (opts.after !== undefined) input.after = opts.after;
+    if (opts.reason !== undefined && opts.reason !== null) input.reason = opts.reason;
+    appendAuditEvent(input);
+  } catch (err) {
+    console.error("audit-log: failed to append org event", err);
+  }
+}
+
 export async function captureOrgGuidanceArticle(
   orgId: string,
   draft: GuidanceArticleDraft,
+  extras: OrgArticleExtras = {},
 ): Promise<OrgArticleCaptureResult | CaptureError> {
   const startedAt = performance.now();
   if (!draft.summary?.trim()) return { error: "summary is required." };
@@ -2156,6 +2199,7 @@ export async function captureOrgGuidanceArticle(
     node_type: "guidance_article",
     article_type: "guidance",
     summary,
+    ...(extras.supersedes ? { supersedes: extras.supersedes } : {}),
     created_at: now,
     created_by: draft.created_by_id ?? author,
     lifecycle,
@@ -2171,12 +2215,22 @@ export async function captureOrgGuidanceArticle(
     );
   });
 
+  emitOrgAuditEvent({
+    orgId,
+    actorId: draft.created_by_id ?? author ?? null,
+    entity_type: "guidance_article",
+    entity_id: id,
+    op: "entity.create",
+    after: { summary, ...(extras.supersedes ? { supersedes: extras.supersedes } : {}) },
+  });
+
   return { ok: true, id, duration_ms: Math.round(performance.now() - startedAt) };
 }
 
 export async function captureOrgNodeAuthoringArticle(
   orgId: string,
   draft: NodeAuthoringArticleDraft,
+  extras: OrgArticleExtras = {},
 ): Promise<OrgArticleCaptureResult | CaptureError> {
   const startedAt = performance.now();
   if (!draft.summary?.trim()) return { error: "summary is required." };
@@ -2205,6 +2259,7 @@ export async function captureOrgNodeAuthoringArticle(
     predicate,
     ...(firesWhen.length > 0 ? { fires_when_node_lifecycle: firesWhen } : {}),
     on_violation: draft.on_violation ?? "block",
+    ...(extras.supersedes ? { supersedes: extras.supersedes } : {}),
     created_at: now,
     created_by: draft.created_by_id ?? author,
     lifecycle,
@@ -2220,7 +2275,155 @@ export async function captureOrgNodeAuthoringArticle(
     );
   });
 
+  emitOrgAuditEvent({
+    orgId,
+    actorId: draft.created_by_id ?? author ?? null,
+    entity_type: "node_authoring_article",
+    entity_id: id,
+    op: "entity.create",
+    after: { summary, ...(extras.supersedes ? { supersedes: extras.supersedes } : {}) },
+  });
+
   return { ok: true, id, duration_ms: Math.round(performance.now() - startedAt) };
+}
+
+/**
+ * Lifecycle transition for an article (doco-scope or org-scope). Writes
+ * the new lifecycle to the underlying table and emits a
+ * `lifecycle.transition` audit event under the appropriate scope.
+ */
+export async function transitionArticleLifecycle(opts: {
+  scope: "doco" | "org";
+  scopeId: string;
+  nodeType: "guidance_article" | "node_authoring_article";
+  articleId: string;
+  newLifecycle: "active" | "superseded" | "abandoned";
+  actorId: string | null;
+  reason?: string;
+}): Promise<{ ok: true } | CaptureError> {
+  const table =
+    opts.nodeType === "guidance_article"
+      ? opts.scope === "doco"
+        ? "guidance_articles"
+        : "org_guidance_articles"
+      : opts.scope === "doco"
+        ? "node_authoring_articles"
+        : "org_node_authoring_articles";
+  const scopeCol = opts.scope === "doco" ? "doco_id" : "org_id";
+
+  const before = await withClient(async (c) => {
+    const r = await c.query<{ lifecycle: string | null; raw_yaml: string }>(
+      `SELECT lifecycle, raw_yaml FROM ${table} WHERE id = $1 AND ${scopeCol} = $2`,
+      [opts.articleId, opts.scopeId],
+    );
+    return r.rows[0] ?? null;
+  });
+  if (!before) {
+    return { error: `Article ${opts.articleId} not found in scope.`, status: 404 };
+  }
+
+  const fm = (() => {
+    try {
+      return JSON.parse(before.raw_yaml) as Record<string, unknown>;
+    } catch {
+      return {} as Record<string, unknown>;
+    }
+  })();
+  fm.lifecycle = opts.newLifecycle;
+  const updated_at = new Date().toISOString();
+
+  await withClient(async (c) => {
+    await c.query(
+      `UPDATE ${table}
+          SET lifecycle = $1,
+              raw_yaml  = $2,
+              updated_at = $3,
+              updated_by = $4
+        WHERE id = $5 AND ${scopeCol} = $6`,
+      [
+        opts.newLifecycle,
+        JSON.stringify(fm),
+        updated_at,
+        opts.actorId,
+        opts.articleId,
+        opts.scopeId,
+      ],
+    );
+  });
+
+  const evt: Parameters<typeof appendAuditEvent>[0] = {
+    docoDir: "",
+    by: opts.actorId,
+    entity_type: opts.nodeType,
+    entity_id: opts.articleId,
+    op: "lifecycle.transition",
+    before: { lifecycle: before.lifecycle ?? "active" },
+    after: { lifecycle: opts.newLifecycle },
+  };
+  if (opts.scope === "doco") evt.docoId = opts.scopeId;
+  else evt.orgId = opts.scopeId;
+  if (opts.reason !== undefined) evt.reason = opts.reason;
+  try {
+    appendAuditEvent(evt);
+  } catch (err) {
+    console.error("audit-log: lifecycle transition append failed", err);
+  }
+
+  return { ok: true };
+}
+
+/** Fetch a constitution article's persisted fields (for the edit page). */
+export async function loadArticleForEdit(opts: {
+  scope: "doco" | "org";
+  scopeId: string;
+  nodeType: "guidance_article" | "node_authoring_article";
+  articleId: string;
+}): Promise<
+  | {
+      ok: true;
+      summary: string;
+      body_md: string;
+      lifecycle: string;
+      raw_yaml: Record<string, unknown>;
+    }
+  | CaptureError
+> {
+  const table =
+    opts.nodeType === "guidance_article"
+      ? opts.scope === "doco"
+        ? "guidance_articles"
+        : "org_guidance_articles"
+      : opts.scope === "doco"
+        ? "node_authoring_articles"
+        : "org_node_authoring_articles";
+  const scopeCol = opts.scope === "doco" ? "doco_id" : "org_id";
+  const row = await withClient(async (c) => {
+    const r = await c.query<{
+      summary: string | null;
+      body_md: string | null;
+      lifecycle: string | null;
+      raw_yaml: string;
+    }>(
+      `SELECT summary, body_md, lifecycle, raw_yaml FROM ${table}
+        WHERE id = $1 AND ${scopeCol} = $2`,
+      [opts.articleId, opts.scopeId],
+    );
+    return r.rows[0] ?? null;
+  });
+  if (!row) return { error: `Article ${opts.articleId} not found.`, status: 404 };
+  let parsed: Record<string, unknown> = {};
+  try {
+    parsed = JSON.parse(row.raw_yaml) as Record<string, unknown>;
+  } catch {
+    parsed = {};
+  }
+  return {
+    ok: true,
+    summary: row.summary ?? "",
+    body_md: row.body_md ?? "",
+    lifecycle: row.lifecycle ?? "active",
+    raw_yaml: parsed,
+  };
 }
 
 const REF_TYPES = new Set(["file", "url", "ticket", "commit", "document", "other"]);

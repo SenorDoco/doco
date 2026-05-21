@@ -123,6 +123,10 @@ export default [
     "orgs/:orgHandle/constitution/node-authoring/new",
     "routes/orgs.$orgHandle.constitution.node-authoring.new.tsx",
   ),
+  route(
+    "orgs/:orgHandle/constitution/:nodeType/:articleId/edit",
+    "routes/orgs.$orgHandle.constitution.$nodeType.$articleId.edit.tsx",
+  ),
   route("users", "routes/users.tsx"),
   // Onboarding (human paths only — agents authenticate via OAuth +
   // install the MCP connector at /mcp/<handle>, no recipe to walk
@@ -161,6 +165,10 @@ export default [
   route(
     ":docoId/constitution/node-authoring/new",
     "routes/$docoHandle.constitution.node-authoring.new.tsx",
+  ),
+  route(
+    ":docoId/constitution/:nodeType/:articleId/edit",
+    "routes/$docoHandle.constitution.$nodeType.$articleId.edit.tsx",
   ),
   route(":docoId/invites", "routes/$docoHandle.invites.tsx"),
   route(":docoId/api/invites.json", "routes/$docoHandle.api.invites[.]json.tsx"),

@@ -18,7 +18,10 @@ export interface AuditEvent {
   event_id: string;
   at: string;
   by: string | null;
-  doco_id: string;
+  /** Exactly one of doco_id or org_id is set. Org-constitution articles
+   *  travel under org_id; per-Doco entities under doco_id. */
+  doco_id: string | null;
+  org_id: string | null;
   entity_type: string;
   entity_id: string;
   op: AuditOp;
@@ -29,7 +32,10 @@ export interface AuditEvent {
 
 export interface AppendEventInput {
   docoDir: string;
-  docoId: string;
+  /** Set when the event is per-Doco; leave undefined for org-scope events. */
+  docoId?: string | null;
+  /** Set when the event is org-scope (org constitution articles). */
+  orgId?: string | null;
   by: string | null;
   entity_type: string;
   entity_id: string;
@@ -48,7 +54,8 @@ export function appendAuditEvent(input: AppendEventInput): AuditEvent {
     event_id: `evt_${generateUlid()}`,
     at: new Date().toISOString(),
     by: input.by,
-    doco_id: input.docoId,
+    doco_id: input.docoId ?? null,
+    org_id: input.orgId ?? null,
     entity_type: input.entity_type,
     entity_id: input.entity_id,
     op: input.op,
@@ -62,6 +69,7 @@ export function appendAuditEvent(input: AppendEventInput): AuditEvent {
     at: event.at,
     by_principal: event.by,
     doco_id: event.doco_id,
+    org_id: event.org_id,
     entity_type: event.entity_type,
     entity_id: event.entity_id,
     op: event.op,
@@ -93,11 +101,7 @@ export async function readAuditEvents(
   filters: ReadAuditFilters = {},
   docoIdHint?: string,
 ): Promise<AuditEvent[]> {
-  const ops = filters.op
-    ? Array.isArray(filters.op)
-      ? filters.op
-      : [filters.op]
-    : undefined;
+  const ops = filters.op ? (Array.isArray(filters.op) ? filters.op : [filters.op]) : undefined;
   const rows = await readAuditEventRows({
     doco_id: docoIdHint,
     entity_id: filters.entity_id,
@@ -114,6 +118,7 @@ export async function readAuditEvents(
       at: r.at,
       by: r.by_principal,
       doco_id: r.doco_id,
+      org_id: r.org_id ?? null,
       entity_type: r.entity_type,
       entity_id: r.entity_id,
       op: r.op as AuditOp,

@@ -84,6 +84,7 @@ export async function loader({
       `SELECT id, summary, lifecycle, created_at, body_md, raw_yaml
          FROM org_guidance_articles
         WHERE org_id = $1
+          AND COALESCE(lifecycle, 'active') = 'active'
         ORDER BY created_at DESC`,
       [org.id],
     );
@@ -91,6 +92,7 @@ export async function loader({
       `SELECT id, summary, lifecycle, created_at, body_md, raw_yaml
          FROM org_node_authoring_articles
         WHERE org_id = $1
+          AND COALESCE(lifecycle, 'active') = 'active'
         ORDER BY created_at DESC`,
       [org.id],
     );
@@ -149,6 +151,7 @@ export default function OrgConstitution({
           nodeType="guidance_article"
           description={GUIDANCE_ARTICLE_EXPLAINER}
           addHref={canEdit ? `/orgs/${org.slug}/constitution/guidance/new` : null}
+          editHrefBase={canEdit ? `/orgs/${org.slug}/constitution/guidance` : null}
           items={guidanceArticles}
           empty="No guidance articles yet."
         />
@@ -158,6 +161,7 @@ export default function OrgConstitution({
           nodeType="node_authoring_article"
           description={NODE_AUTHORING_ARTICLE_EXPLAINER}
           addHref={canEdit ? `/orgs/${org.slug}/constitution/node-authoring/new` : null}
+          editHrefBase={canEdit ? `/orgs/${org.slug}/constitution/node-authoring` : null}
           items={nodeAuthoringArticles}
           empty="No node-authoring articles yet."
         />
@@ -171,6 +175,7 @@ function ArticleSection({
   nodeType,
   description,
   addHref,
+  editHrefBase,
   items,
   empty,
 }: {
@@ -178,6 +183,7 @@ function ArticleSection({
   nodeType: "guidance_article" | "node_authoring_article";
   description: string;
   addHref: string | null;
+  editHrefBase: string | null;
   items: (GuidanceArticleItem | NodeAuthoringArticleItem)[];
   empty: string;
 }) {
@@ -227,6 +233,14 @@ function ArticleSection({
                   <span className="shrink-0 rounded border border-border px-2 py-1 font-mono text-[10px] text-muted-foreground">
                     {item.lifecycle ?? "active"}
                   </span>
+                  {editHrefBase ? (
+                    <Link
+                      to={`${editHrefBase}/${item.id}/edit`}
+                      className="shrink-0 rounded-md border border-border px-2 py-1 text-[11px] font-semibold text-foreground hover:bg-muted"
+                    >
+                      Edit
+                    </Link>
+                  ) : null}
                 </div>
               </li>
             ))}

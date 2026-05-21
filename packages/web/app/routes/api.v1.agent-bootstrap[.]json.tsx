@@ -86,6 +86,7 @@ async function loadOrgConstitutionsForPrincipal(principalId: string): Promise<Or
           `SELECT id, summary, lifecycle, body_md
              FROM org_guidance_articles
             WHERE org_id = $1
+              AND COALESCE(lifecycle, 'active') = 'active'
             ORDER BY created_at DESC`,
           [o.id],
         ),
@@ -93,6 +94,7 @@ async function loadOrgConstitutionsForPrincipal(principalId: string): Promise<Or
           `SELECT id, summary, lifecycle, body_md
              FROM org_node_authoring_articles
             WHERE org_id = $1
+              AND COALESCE(lifecycle, 'active') = 'active'
             ORDER BY created_at DESC`,
           [o.id],
         ),
@@ -124,6 +126,7 @@ async function loadDocoConstitutionsForPrincipal(
           `SELECT id, summary, lifecycle, body_md
              FROM guidance_articles
             WHERE doco_id = $1
+              AND COALESCE(lifecycle, 'active') = 'active'
             ORDER BY created_at DESC`,
           [d.id],
         ),
@@ -131,6 +134,7 @@ async function loadDocoConstitutionsForPrincipal(
           `SELECT id, summary, lifecycle, body_md
              FROM node_authoring_articles
             WHERE doco_id = $1
+              AND COALESCE(lifecycle, 'active') = 'active'
             ORDER BY created_at DESC`,
           [d.id],
         ),
