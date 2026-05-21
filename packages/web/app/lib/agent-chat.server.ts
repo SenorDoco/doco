@@ -142,6 +142,40 @@ export async function loadMessages(conversationId: string): Promise<ChatMessageR
   });
 }
 
+// Page size for the sidebar's infinite-scroll hydration. Tuned to fill
+// the rail without dragging the whole history into the client; older
+// pages are fetched on scroll-up.
+export const CHAT_MESSAGES_PAGE_SIZE = 30;
+
+/**
+ * Cursor-paginated history fetch for the sidebar. Returns the newest
+ * `limit` messages whose `created_at` is strictly before the cursor
+ * (or the latest `limit` overall when no cursor is given). Result is
+ * returned in ASC order so it can be concatenated directly into the
+ * displayed message list. `hasMore` indicates whether further older
+ * pages exist.
+ */
+export async function loadMessagesPage(
+  conversationId: string,
+  opts: { before?: Date | null; limit: number },
+): Promise<{ messages: ChatMessageRow[]; hasMore: boolean }> {
+  const before = opts.before ?? null;
+  return await withClient(async (c) => {
+    const r = await c.query<ChatMessageRow>(
+      `SELECT id, conversation_id, role, content, created_at
+         FROM chat_messages
+        WHERE conversation_id = $1
+          AND ($2::timestamptz IS NULL OR created_at < $2)
+        ORDER BY created_at DESC
+        LIMIT $3`,
+      [conversationId, before, opts.limit + 1],
+    );
+    const hasMore = r.rows.length > opts.limit;
+    const slice = hasMore ? r.rows.slice(0, opts.limit) : r.rows;
+    return { messages: slice.reverse(), hasMore };
+  });
+}
+
 async function appendMessage(
   conversationId: string,
   role: "user" | "assistant",
@@ -655,11 +689,18 @@ export async function* runAssistantTurn(args: {
 export interface ConversationSnapshot {
   conversation_id: string;
   messages: { id: string; role: "user" | "assistant"; content: ContentBlockParam[]; created_at: string }[];
+  has_more: boolean;
 }
 
-export async function loadSnapshotForPrincipal(principalId: string): Promise<ConversationSnapshot> {
+export async function loadSnapshotForPrincipal(
+  principalId: string,
+  opts: { before?: Date | null } = {},
+): Promise<ConversationSnapshot> {
   const conv = await loadOrCreateConversation(principalId);
-  const rows = await loadMessages(conv.id);
+  const { messages: rows, hasMore } = await loadMessagesPage(conv.id, {
+    before: opts.before ?? null,
+    limit: CHAT_MESSAGES_PAGE_SIZE,
+  });
   return {
     conversation_id: conv.id,
     messages: rows.map((r) => ({
@@ -668,5 +709,6 @@ export async function loadSnapshotForPrincipal(principalId: string): Promise<Con
       content: r.content,
       created_at: r.created_at.toISOString(),
     })),
+    has_more: hasMore,
   };
 }

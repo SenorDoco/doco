@@ -27,7 +27,39 @@ interface ContentBlockToolResult {
   content: string;
   is_error?: boolean;
 }
-type AnyBlock = ContentBlockText | ContentBlockToolUse | ContentBlockToolResult;
+interface ContentBlockAttachmentRef {
+  type: "attachment_ref";
+  attachment_id: string;
+  filename: string;
+  mime_type: string;
+  size_bytes: number;
+}
+type AnyBlock =
+  | ContentBlockText
+  | ContentBlockToolUse
+  | ContentBlockToolResult
+  | ContentBlockAttachmentRef;
+
+interface StagedAttachment {
+  id: string;
+  filename: string;
+  mime_type: string;
+  size_bytes: number;
+}
+
+interface UploadAcceptedMeta {
+  id: string;
+  filename: string;
+  mime_type: string;
+  size_bytes: number;
+  created_at: string;
+  expires_at: string;
+}
+
+const ATTACHMENT_RETENTION_NOTICE =
+  "Attachments are stored for 30 days, then deleted.";
+const ATTACHMENT_ACCEPT =
+  "image/jpeg,image/png,image/gif,image/webp,application/pdf,text/plain,text/markdown,.md";
 
 interface ChatMessage {
   id: string;
@@ -39,6 +71,7 @@ interface ChatMessage {
 interface ConversationSnapshot {
   conversation_id: string;
   messages: ChatMessage[];
+  has_more: boolean;
 }
 
 // "In-flight" assistant message being assembled from a stream.
@@ -53,10 +86,20 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
   const [inputText, setInputText] = useState("");
   const [busy, setBusy] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [staged, setStaged] = useState<StagedAttachment[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const [bootstrapped, setBootstrapped] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
   const messageListRef = useRef<HTMLDivElement | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  // Tracks the earliest loaded message so concurrent state reads (the
+  // scroll handler closes over stale `messages`) always page from the
+  // true top of the loaded window.
+  const earliestRef = useRef<ChatMessage | null>(null);
 
   const reload = useCallback(async () => {
     try {
@@ -69,9 +112,13 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
       }
       const data = (await res.json()) as ConversationSnapshot;
       setMessages(data.messages);
+      setHasMore(data.has_more);
+      earliestRef.current = data.messages[0] ?? null;
       setLoadError(null);
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBootstrapped(true);
     }
   }, []);
 
@@ -80,10 +127,15 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
     return () => abortRef.current?.abort();
   }, [reload]);
 
+  // After the first hydration completes, jump straight to the bottom so
+  // the user sees the most recent turn. Runs once, after `messages` has
+  // been populated by `reload()` (the empty-deps variant fired before
+  // the fetch resolved and scrolled an empty list).
   useEffect(() => {
+    if (!bootstrapped) return;
     const el = messageListRef.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, []);
+  }, [bootstrapped]);
 
   // Auto-scroll on new content.
   useEffect(() => {
@@ -91,10 +143,107 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
     if (el) el.scrollTop = el.scrollHeight;
   }, [inFlight]);
 
+  const loadOlder = useCallback(async () => {
+    const earliest = earliestRef.current;
+    if (!earliest) return;
+    const el = messageListRef.current;
+    if (!el) return;
+    setLoadingOlder(true);
+    const prevScrollHeight = el.scrollHeight;
+    const prevScrollTop = el.scrollTop;
+    try {
+      const url = `/api/v1/agent-chat/conversation.json?before=${encodeURIComponent(earliest.created_at)}`;
+      const res = await fetch(url, { credentials: "same-origin" });
+      if (!res.ok) {
+        setLoadError(`HTTP ${res.status}`);
+        return;
+      }
+      const data = (await res.json()) as ConversationSnapshot;
+      if (data.messages.length === 0) {
+        setHasMore(false);
+        return;
+      }
+      setMessages((prev) => [...data.messages, ...prev]);
+      setHasMore(data.has_more);
+      earliestRef.current = data.messages[0] ?? earliestRef.current;
+      // Wait for the DOM to absorb the prepended rows, then restore the
+      // viewport so the user stays anchored on the same message rather
+      // than getting flung to the top by the height change.
+      requestAnimationFrame(() => {
+        const el2 = messageListRef.current;
+        if (!el2) return;
+        const delta = el2.scrollHeight - prevScrollHeight;
+        el2.scrollTop = prevScrollTop + delta;
+      });
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLoadingOlder(false);
+    }
+  }, []);
+
+  const onMessagesScroll = useCallback(() => {
+    if (!hasMore || loadingOlder) return;
+    const el = messageListRef.current;
+    if (!el) return;
+    if (el.scrollTop < 80) void loadOlder();
+  }, [hasMore, loadingOlder, loadOlder]);
+
+  const uploadFiles = useCallback(async (files: File[]) => {
+    if (files.length === 0) return;
+    setUploadError(null);
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      for (const f of files) fd.append("file", f);
+      const res = await fetch("/api/v1/agent-chat/attachments.json", {
+        method: "POST",
+        credentials: "same-origin",
+        body: fd,
+      });
+      if (!res.ok) {
+        setUploadError(`upload failed (HTTP ${res.status})`);
+        return;
+      }
+      const data = (await res.json()) as {
+        accepted: UploadAcceptedMeta[];
+        rejected: Array<{ filename: string; reason: string }>;
+      };
+      if (data.rejected.length > 0) {
+        setUploadError(
+          data.rejected.map((r) => `${r.filename}: ${r.reason}`).join("; "),
+        );
+      }
+      if (data.accepted.length > 0) {
+        setStaged((prev) => [
+          ...prev,
+          ...data.accepted.map((a) => ({
+            id: a.id,
+            filename: a.filename,
+            mime_type: a.mime_type,
+            size_bytes: a.size_bytes,
+          })),
+        ]);
+      }
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setUploading(false);
+    }
+  }, []);
+
+  const removeStaged = useCallback((id: string) => {
+    setStaged((prev) => prev.filter((a) => a.id !== id));
+  }, []);
+
   const send = useCallback(async () => {
     const text = inputText.trim();
-    if (!text || busy) return;
+    const attachmentIds = staged.map((a) => a.id);
+    if ((!text && attachmentIds.length === 0) || busy) return;
     setInputText("");
+    const sentAttachments = staged;
+    setStaged([]);
+    setUploadError(null);
     setBusy(true);
 
     // Local accumulator — sole source of truth for what to commit at end
@@ -105,10 +254,21 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
     const localResults = new Map<string, ContentBlockToolResult>();
     setInFlight({ content: localContent, toolResults: localResults });
 
+    const localUserBlocks: AnyBlock[] = [];
+    if (text) localUserBlocks.push({ type: "text", text });
+    for (const a of sentAttachments) {
+      localUserBlocks.push({
+        type: "attachment_ref",
+        attachment_id: a.id,
+        filename: a.filename,
+        mime_type: a.mime_type,
+        size_bytes: a.size_bytes,
+      });
+    }
     const localUser: ChatMessage = {
       id: `local_${Date.now()}`,
       role: "user",
-      content: [{ type: "text", text }],
+      content: localUserBlocks,
       created_at: new Date().toISOString(),
     };
     setMessages((prev) => [...prev, localUser]);
@@ -127,7 +287,11 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
         method: "POST",
         credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text, current_path: location.pathname + location.search }),
+        body: JSON.stringify({
+          text,
+          current_path: location.pathname + location.search,
+          attachment_ids: attachmentIds,
+        }),
         signal: controller.signal,
       });
       if (!res.ok || !res.body) {
@@ -237,7 +401,7 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
       setInFlight(null);
       setBusy(false);
     }
-  }, [inputText, busy, location.pathname, location.search, navigate]);
+  }, [inputText, busy, staged, location.pathname, location.search, navigate]);
 
   const allMessages = useMemo<RenderableMessage[]>(() => {
     const out: RenderableMessage[] = messages.map((m) => ({ kind: "saved", message: m }));
@@ -258,6 +422,7 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
 
       <div
         ref={messageListRef}
+        onScroll={onMessagesScroll}
         className="flex-1 overflow-y-auto px-3 py-3 text-xs leading-relaxed"
       >
         {loadError ? (
@@ -265,7 +430,12 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
             Couldn't load chat history: {loadError}
           </div>
         ) : null}
-        {allMessages.length === 0 && !loadError ? (
+        {hasMore ? (
+          <div className="mb-2 text-center text-[10px] text-muted-foreground">
+            {loadingOlder ? "Loading older messages…" : "Scroll up for older messages"}
+          </div>
+        ) : null}
+        {allMessages.length === 0 && !loadError && bootstrapped ? (
           <div className="text-[11px] text-muted-foreground">
             Ask me anything about your Docos — I can search, capture decisions, create new Docos or
             orgs, invite collaborators, and take you to any page.
@@ -282,6 +452,11 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
         onSend={send}
         busy={busy}
         username={me.username}
+        staged={staged}
+        uploading={uploading}
+        uploadError={uploadError}
+        onUploadFiles={uploadFiles}
+        onRemoveStaged={removeStaged}
       />
     </aside>
   );
@@ -382,7 +557,53 @@ function BlockView({ block }: { block: AnyBlock }) {
   if (block.type === "tool_result") {
     return <ToolResultRow result={block} />;
   }
+  if (block.type === "attachment_ref") {
+    return <AttachmentBlockView block={block} />;
+  }
   return null;
+}
+
+function AttachmentBlockView({ block }: { block: ContentBlockAttachmentRef }) {
+  const isImage = block.mime_type.startsWith("image/");
+  const href = `/api/v1/agent-chat/attachments/${encodeURIComponent(block.attachment_id)}`;
+  if (isImage) {
+    return (
+      <a
+        href={href}
+        target="_blank"
+        rel="noreferrer"
+        className="block overflow-hidden rounded-md border border-border bg-background"
+      >
+        <img
+          src={href}
+          alt={block.filename}
+          className="block max-h-48 w-full object-cover"
+          loading="lazy"
+        />
+        <div className="px-2 py-1 text-[10px] text-muted-foreground">
+          {block.filename} · {formatBytes(block.size_bytes)}
+        </div>
+      </a>
+    );
+  }
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noreferrer"
+      className="flex items-center gap-1.5 rounded-md border border-border bg-background px-2 py-1 text-[10px] text-foreground hover:bg-input/40"
+    >
+      <span className="font-mono text-muted-foreground">📎</span>
+      <span className="truncate">{block.filename}</span>
+      <span className="ml-auto text-muted-foreground">{formatBytes(block.size_bytes)}</span>
+    </a>
+  );
+}
+
+function formatBytes(n: number): string {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function ToolResultRow({ result }: { result: ContentBlockToolResult }) {
@@ -417,22 +638,79 @@ function Composer({
   onSend,
   busy,
   username,
+  staged,
+  uploading,
+  uploadError,
+  onUploadFiles,
+  onRemoveStaged,
 }: {
   value: string;
   onChange: (s: string) => void;
   onSend: () => void;
   busy: boolean;
   username: string;
+  staged: StagedAttachment[];
+  uploading: boolean;
+  uploadError: string | null;
+  onUploadFiles: (files: File[]) => void;
+  onRemoveStaged: (id: string) => void;
 }) {
   const ref = useRef<HTMLTextAreaElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [dragOver, setDragOver] = useState(false);
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
     el.style.height = "auto";
     el.style.height = `${Math.min(160, el.scrollHeight)}px`;
   }, [value]);
+  const canSend = !busy && (value.trim().length > 0 || staged.length > 0);
   return (
-    <div className="shrink-0 border-t border-border bg-card px-3 py-2">
+    <div
+      className={cn(
+        "shrink-0 border-t border-border bg-card px-3 py-2",
+        dragOver && "ring-2 ring-primary/40",
+      )}
+      onDragOver={(e) => {
+        e.preventDefault();
+        if (!dragOver) setDragOver(true);
+      }}
+      onDragLeave={() => setDragOver(false)}
+      onDrop={(e) => {
+        e.preventDefault();
+        setDragOver(false);
+        const files = Array.from(e.dataTransfer?.files ?? []);
+        if (files.length > 0) onUploadFiles(files);
+      }}
+    >
+      {staged.length > 0 ? (
+        <div className="mb-1.5 space-y-1">
+          {staged.map((a) => (
+            <div
+              key={a.id}
+              className="flex items-center gap-1.5 rounded-md border border-border bg-background px-2 py-1 text-[10px]"
+            >
+              <span className="font-mono text-muted-foreground">📎</span>
+              <span className="truncate">{a.filename}</span>
+              <span className="ml-auto text-muted-foreground">{formatBytes(a.size_bytes)}</span>
+              <button
+                type="button"
+                aria-label={`Remove ${a.filename}`}
+                onClick={() => onRemoveStaged(a.id)}
+                className="rounded px-1 text-muted-foreground hover:bg-input/60 hover:text-foreground"
+              >
+                ×
+              </button>
+            </div>
+          ))}
+          <div className="text-[10px] text-muted-foreground">{ATTACHMENT_RETENTION_NOTICE}</div>
+        </div>
+      ) : null}
+      {uploadError ? (
+        <div className="mb-1 rounded-md bg-destructive/10 px-2 py-1 text-[10px] text-destructive">
+          {uploadError}
+        </div>
+      ) : null}
       <textarea
         ref={ref}
         value={value}
@@ -448,14 +726,35 @@ function Composer({
         }}
         disabled={busy}
       />
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple
+        accept={ATTACHMENT_ACCEPT}
+        className="hidden"
+        onChange={(e) => {
+          const files = Array.from(e.target.files ?? []);
+          if (files.length > 0) onUploadFiles(files);
+          if (fileInputRef.current) fileInputRef.current.value = "";
+        }}
+      />
       <div className="mt-1 flex items-center justify-between">
-        <div className="text-[10px] text-muted-foreground">
-          ⏎ to send · ⇧⏎ for newline
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={busy || uploading}
+            className="rounded-md border border-border px-2 py-0.5 text-[10px] text-muted-foreground hover:bg-input/60 hover:text-foreground disabled:opacity-50"
+            aria-label="Attach a file"
+          >
+            {uploading ? "Uploading…" : "📎 Attach"}
+          </button>
+          <div className="text-[10px] text-muted-foreground">⏎ to send · ⇧⏎ for newline</div>
         </div>
         <button
           type="button"
           onClick={onSend}
-          disabled={busy || value.trim().length === 0}
+          disabled={!canSend}
           className="rounded-md bg-primary px-3 py-1 text-[11px] font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
         >
           {busy ? "…" : "Send"}
