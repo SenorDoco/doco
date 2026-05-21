@@ -1,5 +1,12 @@
 import { execSync } from "node:child_process";
-import { copyFileSync, existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  statSync,
+} from "node:fs";
 import { join, resolve } from "node:path";
 import { reactRouter } from "@react-router/dev/vite";
 import tailwindcss from "@tailwindcss/vite";
@@ -57,9 +64,24 @@ function copyDbSchemaIntoServerBuild(): Plugin {
     apply: "build",
     closeBundle() {
       const schemaSrc = resolve(rootDir, "packages/db/src/schema.sql");
+      const migrationsSrcDir = resolve(rootDir, "packages/db/migrations");
+      const migrationFiles = existsSync(migrationsSrcDir)
+        ? readdirSync(migrationsSrcDir).filter((f) => f.endsWith(".sql"))
+        : [];
       const serverRoot = resolve(import.meta.dirname, "build/server");
       for (const assetDir of findAssetDirs(serverRoot)) {
         copyFileSync(schemaSrc, join(assetDir, "schema.sql"));
+        // Migrations: `locateMigrationsDir()` in @doco/db walks up from
+        // its own location; the bundled migrations.js sits inside the
+        // asset dir, so a sibling `migrations/` here lands inside one
+        // of the candidate `../migrations` / `../../migrations` paths.
+        if (migrationFiles.length > 0) {
+          const dest = join(assetDir, "migrations");
+          mkdirSync(dest, { recursive: true });
+          for (const f of migrationFiles) {
+            copyFileSync(join(migrationsSrcDir, f), join(dest, f));
+          }
+        }
       }
     },
   };

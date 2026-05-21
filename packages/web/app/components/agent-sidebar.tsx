@@ -265,8 +265,7 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
 
   return (
     <aside
-      className="fixed left-0 z-10 flex w-[280px] flex-col border-r border-border bg-card"
-      style={{ top: "var(--site-header-height, 53px)", bottom: 0 }}
+      className="flex h-full w-[280px] shrink-0 flex-col border-r border-border bg-card"
       aria-label="Doco assistant"
     >
       <div className="flex shrink-0 items-center justify-between border-b border-border px-3 py-2">
