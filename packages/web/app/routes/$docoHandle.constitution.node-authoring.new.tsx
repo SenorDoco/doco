@@ -5,9 +5,10 @@
 import { useState } from "react";
 import { Form, Link, redirect, useActionData } from "react-router";
 import { Breadcrumb, docoBreadcrumb } from "~/components/breadcrumb";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
+import { Card, CardContent } from "~/components/card";
 import { SiteHeader } from "~/components/site-header";
 import { type NodeAuthoringArticleDraft, captureNodeAuthoringArticle } from "~/lib/capture.server";
+import { deriveArticleSummary } from "~/lib/constitution-copy";
 import { docoPath } from "~/lib/db.server";
 import { loadDocoForAdmin, normalizeDocoParams } from "~/lib/doco-access.server";
 import { loadHostConfig } from "~/lib/host";
@@ -40,8 +41,9 @@ export async function action({
   const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
   const ctx = await loadDocoForAdmin(request, handle);
   const form = await request.formData();
-  const summary = String(form.get("summary") ?? "").trim();
   const body_md = String(form.get("body_md") ?? "").trim();
+  const summary = deriveArticleSummary(body_md);
+  if (!summary) return Response.json({ error: "Article is required." }, { status: 400 });
   const evaluationKind =
     String(form.get("evaluation_kind") ?? "deterministic") === "probabilistic"
       ? "probabilistic"
@@ -113,14 +115,7 @@ export default function NewNodeAuthoringArticle({
           </p>
         </header>
         <Card>
-          <CardHeader>
-            <CardTitle>Article</CardTitle>
-            <CardDescription>
-              The summary appears in the list view. The predicate or spec is what the host actually
-              runs.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
+          <CardContent className="pt-6">
             {actionData?.error ? (
               <div className="mb-3 rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
                 {actionData.error}
@@ -129,14 +124,13 @@ export default function NewNodeAuthoringArticle({
             <Form method="post" className="space-y-4">
               <label className="block">
                 <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  Summary
+                  Article
                 </span>
-                <input
-                  type="text"
-                  name="summary"
+                <textarea
+                  name="body_md"
                   required
-                  maxLength={300}
-                  placeholder="Every Decision cites at least one Intent."
+                  rows={6}
+                  placeholder="Write the article. First line shows in the list view; rest is the full text contributors read."
                   className="mt-1 block w-full rounded-md border border-border bg-input px-3 py-2 text-sm"
                 />
               </label>
@@ -220,17 +214,6 @@ export default function NewNodeAuthoringArticle({
                   </select>
                 </label>
               </div>
-              <label className="block">
-                <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  Body
-                </span>
-                <textarea
-                  name="body_md"
-                  rows={6}
-                  placeholder="Markdown body. Rationale, examples, edge cases."
-                  className="mt-1 block w-full rounded-md border border-border bg-input px-3 py-2 text-sm"
-                />
-              </label>
               <div className="flex items-center gap-3 pt-2">
                 <button
                   type="submit"

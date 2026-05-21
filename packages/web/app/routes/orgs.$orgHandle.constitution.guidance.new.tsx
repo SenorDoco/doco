@@ -5,9 +5,10 @@
 import { getOrgRole, withClient } from "@doco/db";
 import { Form, Link, redirect, useActionData } from "react-router";
 import { Breadcrumb, orgBreadcrumb } from "~/components/breadcrumb";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
+import { Card, CardContent } from "~/components/card";
 import { SiteHeader } from "~/components/site-header";
 import { captureOrgGuidanceArticle } from "~/lib/capture.server";
+import { deriveArticleSummary } from "~/lib/constitution-copy";
 import { loadHostConfig } from "~/lib/host";
 import { getCurrentPrincipalAsync } from "~/lib/session";
 
@@ -78,8 +79,9 @@ export async function action({
     throw new Response("Only org owners can add articles.", { status: 403 });
   }
   const form = await request.formData();
-  const summary = String(form.get("summary") ?? "").trim();
   const body_md = String(form.get("body_md") ?? "").trim();
+  const summary = deriveArticleSummary(body_md);
+  if (!summary) return Response.json({ error: "Article is required." }, { status: 400 });
   const result = await captureOrgGuidanceArticle(org.id, {
     summary,
     body_md,
@@ -123,44 +125,21 @@ export default function NewOrgGuidanceArticle({
           </p>
         </header>
         <Card>
-          <CardHeader>
-            <CardTitle>Article</CardTitle>
-            <CardDescription>
-              Summary appears in the list view; body is the full text everyone reads.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
+          <CardContent className="pt-6">
             {actionData?.error ? (
               <div className="mb-3 rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
                 {actionData.error}
               </div>
             ) : null}
             <Form method="post" className="space-y-4">
-              <label className="block">
-                <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  Summary
-                </span>
-                <input
-                  type="text"
-                  name="summary"
-                  required
-                  maxLength={300}
-                  placeholder="Every Doco in this org tags its bug-fix Decisions with #postmortem."
-                  className="mt-1 block w-full rounded-md border border-border bg-input px-3 py-2 text-sm"
-                />
-              </label>
-              <label className="block">
-                <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  Body
-                </span>
-                <textarea
-                  name="body_md"
-                  rows={10}
-                  placeholder="Markdown body. Rationale, examples of compliance, examples of violation."
-                  className="mt-1 block w-full rounded-md border border-border bg-input px-3 py-2 text-sm"
-                />
-              </label>
-              <div className="flex items-center gap-3 pt-2">
+              <textarea
+                name="body_md"
+                required
+                rows={12}
+                placeholder="Write the article. First line shows in the list view; rest is the full text contributors read."
+                className="block w-full rounded-md border border-border bg-input px-3 py-2 text-sm"
+              />
+              <div className="flex items-center gap-3">
                 <button
                   type="submit"
                   className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90"
