@@ -8,12 +8,14 @@ import {
   type EmbeddingProviderLike,
   type EmbeddingsReport,
   computeContentHash,
+  getDocosAccessInfo,
   rebuildDocoDerivedData,
   upsertEmbeddings,
 } from "@doco/db";
 import type { LoadedDoco } from "@doco/shared";
 import { parse as parseYaml } from "yaml";
-import { deriveEdges } from "./edges.js";
+import { type ResolvedEdge, resolveCrossDocoEdges } from "./cross-doco.js";
+import { type Edge, deriveEdges } from "./edges.js";
 import { loadDocoFromPostgres } from "./loadDoco.js";
 
 export interface BuildReport {
@@ -90,7 +92,7 @@ export async function indexDoco(loaded: LoadedDoco, opts: IndexOptions = {}): Pr
   let inserted = 0;
   if (!opts.skipStructural) {
     const pgFts: { entity_id: string; node_type: string; summary: string; body: string }[] = [];
-    const pgEdges: ReturnType<typeof deriveEdges> = [];
+    const pgEdges: Edge[] = [];
     for (const le of loaded.entities.values()) {
       if (incrementalIds && !incrementalIds.has(le.entity.id)) continue;
       // entity_fts.node_type is NOT NULL. Some legacy host-level
@@ -117,10 +119,11 @@ export async function indexDoco(loaded: LoadedDoco, opts: IndexOptions = {}): Pr
         pgEdges.push(edge);
       }
     }
+    const resolvedEdges = await resolveDocoEdges(docoId, loaded, pgEdges);
     await rebuildDocoDerivedData(
       docoId,
       pgFts,
-      pgEdges,
+      resolvedEdges,
       incrementalIds ? { onlyEntityIds: [...incrementalIds] } : {},
     );
   }
@@ -190,4 +193,36 @@ function readDocoIdFromYaml(docoRoot: string): string {
     throw new Error(`doco.yaml at ${docoRoot} has no usable 'id' field.`);
   }
   return id;
+}
+
+/**
+ * Resolve every edge to its final shape (`to_doco_id` populated, foreign
+ * targets gated by the cross-Doco access rule). Local-only Docos take
+ * the fast path — no DB round-trip if every target sits in the loaded
+ * entity set.
+ */
+async function resolveDocoEdges(
+  docoId: string,
+  loaded: LoadedDoco,
+  edges: Edge[],
+): Promise<ResolvedEdge[]> {
+  if (edges.length === 0) return [];
+  const localIds = new Set<string>(loaded.entities.keys());
+  localIds.add(docoId);
+  // Fast path: if no edge points outside the loaded entity set, every
+  // edge is intra-Doco — skip the access lookup entirely.
+  const hasForeign = edges.some((e) => !localIds.has(e.to_id) && e.to_id !== docoId);
+  if (!hasForeign) {
+    return edges.map((e) => ({ ...e, to_doco_id: docoId }));
+  }
+  const accessRows = await getDocosAccessInfo([docoId]);
+  const fromDoco = accessRows.get(docoId);
+  if (!fromDoco) {
+    // Source Doco not in DB? Fall back to local-only edges; foreign
+    // targets get dropped because there's no `fromDoco` to gate them.
+    return edges
+      .filter((e) => localIds.has(e.to_id) || e.to_id === docoId)
+      .map((e) => ({ ...e, to_doco_id: docoId }));
+  }
+  return resolveCrossDocoEdges(fromDoco, localIds, edges);
 }

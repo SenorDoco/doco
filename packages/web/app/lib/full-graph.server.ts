@@ -104,31 +104,103 @@ async function loadOverviewRows(c: QueryClient, docoId: string): Promise<Overvie
   return (await c.query<OverviewGraphRow>(overviewRowsSql(), [docoId])).rows;
 }
 
+interface CrossDocoEdgeRow extends EdgeRow {
+  to_doco_id: string;
+}
+
 async function loadOverviewLinks(
   c: QueryClient,
   docoId: string,
   nodeIds: string[],
-): Promise<OverviewGraphLink[]> {
-  if (nodeIds.length === 0) return [];
+): Promise<{ links: OverviewGraphLink[]; crossDocoTargets: Map<string, string> }> {
+  if (nodeIds.length === 0) return { links: [], crossDocoTargets: new Map() };
+  // Two UNIONed selects: intra-Doco edges (both endpoints local) and
+  // cross-Doco outgoing edges (target lives in another Doco — per
+  // add-document-edge-connections). The cross-Doco half is gated at
+  // index-time by the access rule (same org or target public — see
+  // @doco/index/cross-doco), so anything in `edges` here is already
+  // authorized to materialize.
   const rows = (
-    await c.query<EdgeRow>(
-      `SELECT from_id, to_id, edge_type, attribution
-         FROM edges
-        WHERE doco_id = $1
-          AND edge_type != 'in_scope_of'
-          AND from_id = ANY($2::text[])
-          AND to_id = ANY($2::text[])
-        ORDER BY CASE WHEN attribution = 'explicit' THEN 0 ELSE 1 END, edge_type
-        LIMIT $3`,
+    await c.query<CrossDocoEdgeRow>(
+      `(SELECT from_id, to_id, edge_type, attribution, $1::text AS to_doco_id
+          FROM edges
+         WHERE doco_id = $1
+           AND edge_type != 'in_scope_of'
+           AND from_id = ANY($2::text[])
+           AND to_id = ANY($2::text[]))
+       UNION ALL
+       (SELECT from_id, to_id, edge_type, attribution, to_doco_id
+          FROM edges
+         WHERE doco_id = $1
+           AND edge_type != 'in_scope_of'
+           AND from_id = ANY($2::text[])
+           AND to_doco_id <> doco_id)
+       ORDER BY 4, 3
+       LIMIT $3`,
       [docoId, nodeIds, OVERVIEW_GRAPH_EDGE_LIMIT],
     )
   ).rows;
-  return rows.map((edge) => ({
-    source: edge.from_id,
-    target: edge.to_id,
-    edge_type: edge.edge_type,
-    attribution: asAttribution(edge.attribution),
-  }));
+  const links: OverviewGraphLink[] = [];
+  const crossDocoTargets = new Map<string, string>();
+  for (const edge of rows) {
+    links.push({
+      source: edge.from_id,
+      target: edge.to_id,
+      edge_type: edge.edge_type,
+      attribution: asAttribution(edge.attribution),
+    });
+    if (edge.to_doco_id !== docoId) {
+      crossDocoTargets.set(edge.to_id, edge.to_doco_id);
+    }
+  }
+  return { links, crossDocoTargets };
+}
+
+interface ForeignNodeRow extends OverviewGraphRow {
+  doco_id: string;
+}
+
+function foreignNodesSql(): string {
+  return GRAPH_TABLES.map((entry) => {
+    const nameExpr = entry.nameExpr ?? "NULL::text";
+    return `SELECT t.id,
+                   '${entry.nodeType}'::text AS node_type,
+                   ${nameExpr} AS name,
+                   COALESCE(t.lifecycle, 'active') AS lifecycle,
+                   t.created_at::text AS created_at,
+                   t.doco_id AS doco_id
+              FROM ${entry.table} t
+             WHERE t.id = ANY($1::text[])`;
+  }).join(" UNION ALL ");
+}
+
+async function loadForeignTargetNodes(
+  c: QueryClient,
+  crossDocoTargets: Map<string, string>,
+): Promise<OverviewGraphNode[]> {
+  if (crossDocoTargets.size === 0) return [];
+  const targetIds = [...crossDocoTargets.keys()];
+  const docoIds = [...new Set(crossDocoTargets.values())];
+  const [nodeRowsRes, handleRowsRes] = await Promise.all([
+    c.query<ForeignNodeRow>(foreignNodesSql(), [targetIds]),
+    c.query<{ id: string; handle: string }>(
+      "SELECT id, handle FROM docos WHERE id = ANY($1::text[])",
+      [docoIds],
+    ),
+  ]);
+  const handleByDocoId = new Map(handleRowsRes.rows.map((r) => [r.id, r.handle]));
+  return nodeRowsRes.rows.map((row) => {
+    const handle = handleByDocoId.get(row.doco_id);
+    return {
+      id: row.id,
+      node_type: row.node_type,
+      name: row.name,
+      lifecycle: row.lifecycle ?? "active",
+      created_at: toIso(row.created_at),
+      href: handle ? overviewEntityHref(handle, row.node_type, row.id) : undefined,
+      external_doco_handle: handle ?? undefined,
+    };
+  });
 }
 
 export async function loadOverviewGraph(
@@ -138,8 +210,8 @@ export async function loadOverviewGraph(
 ): Promise<OverviewGraphData> {
   const rows = await loadOverviewRows(c, docoId);
   const nodeIds = rows.map((row) => row.id);
-  const links = await loadOverviewLinks(c, docoId, nodeIds);
-  const nodes: OverviewGraphNode[] = rows.map((row) => ({
+  const { links, crossDocoTargets } = await loadOverviewLinks(c, docoId, nodeIds);
+  const localNodes: OverviewGraphNode[] = rows.map((row) => ({
     id: row.id,
     node_type: row.node_type,
     name: row.name,
@@ -148,6 +220,8 @@ export async function loadOverviewGraph(
     href: overviewEntityHref(options.handle, row.node_type, row.id),
     is_center: row.id === options.centerId,
   }));
+  const foreignNodes = await loadForeignTargetNodes(c, crossDocoTargets);
+  const nodes = [...localNodes, ...foreignNodes];
   const centerId =
     (options.centerId && nodes.some((node) => node.id === options.centerId)
       ? options.centerId

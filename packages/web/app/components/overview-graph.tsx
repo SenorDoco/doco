@@ -12,6 +12,12 @@ export interface OverviewGraphNode {
   created_at: string | null;
   href?: string | null;
   is_center?: boolean;
+  /**
+   * Handle of the owning Doco when this node lives in a different Doco
+   * than the one currently rendered. Set on cross-Doco edge targets
+   * (per add-document-edge-connections). Absent for local nodes.
+   */
+  external_doco_handle?: string;
 }
 
 export interface OverviewGraphLink {

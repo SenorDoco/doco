@@ -597,6 +597,79 @@ export async function getDocoByIdOrHandle(idOrHandle: string): Promise<DocoRow |
 }
 
 /**
+ * Cross-Doco access-control row. The minimum metadata the indexer needs
+ * to decide whether one Doco can emit an edge into another Doco
+ * (same org, or target is public — see @doco/index/cross-doco).
+ */
+export interface DocoAccessRow {
+  id: string;
+  org_id: string | null;
+  visibility: "public" | "private";
+}
+
+/**
+ * Batch-fetch the access metadata for a set of Docos. Missing ids are
+ * absent from the result. The indexer calls this with the source Doco
+ * plus every target Doco discovered via `lookupEntityDocos` so the
+ * cross-Doco access check has all the inputs it needs in one round-trip.
+ */
+export async function getDocosAccessInfo(docoIds: string[]): Promise<Map<string, DocoAccessRow>> {
+  if (docoIds.length === 0) return new Map();
+  return withClient(async (c) => {
+    const r = await c.query<{ id: string; org_id: string | null; visibility: string | null }>(
+      "SELECT id, org_id, visibility FROM docos WHERE id = ANY($1::text[])",
+      [docoIds],
+    );
+    const map = new Map<string, DocoAccessRow>();
+    for (const row of r.rows) {
+      map.set(String(row.id), {
+        id: String(row.id),
+        org_id: row.org_id === null || row.org_id === undefined ? null : String(row.org_id),
+        visibility: row.visibility === "public" ? "public" : "private",
+      });
+    }
+    return map;
+  });
+}
+
+/**
+ * Given a set of entity IDs, returns each one's owning Doco id by
+ * scanning every Doco-scoped entity table plus `docos` itself. Entities
+ * that don't exist in any table are absent from the result.
+ *
+ * Used by the cross-Doco edge resolver: an edge derived from a source
+ * Doco's entity may point at a target that lives in another Doco; this
+ * helper tells the resolver which Doco that target belongs to so the
+ * access check (same org or target public) can run.
+ *
+ * `principal_*` and `organization_*` ids are skipped — those are
+ * host-level identity rows shared across every Doco and always count
+ * as "local" to the source Doco for edge purposes.
+ */
+export async function lookupEntityDocos(entityIds: string[]): Promise<Map<string, string>> {
+  if (entityIds.length === 0) return new Map();
+  const parts: string[] = [];
+  for (const [nodeType, spec] of Object.entries(NODE_TABLES)) {
+    if (nodeType === "principal" || nodeType === "organization") continue;
+    if (nodeType === "doco") {
+      parts.push("SELECT id, id AS doco_id FROM docos WHERE id = ANY($1::text[])");
+    } else {
+      parts.push(`SELECT id, doco_id FROM ${spec.table} WHERE id = ANY($1::text[])`);
+    }
+  }
+  if (parts.length === 0) return new Map();
+  const sql = parts.join(" UNION ALL ");
+  return withClient(async (c) => {
+    const r = await c.query<{ id: string; doco_id: string }>(sql, [entityIds]);
+    const map = new Map<string, string>();
+    for (const row of r.rows) {
+      map.set(String(row.id), String(row.doco_id));
+    }
+    return map;
+  });
+}
+
+/**
  * Resolve a top-level slug to either a Principal (by username) or an
  * Organization (by slug). Used by the owner-profile route to render
  * `/<owner>` for either kind.

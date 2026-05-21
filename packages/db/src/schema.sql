@@ -457,8 +457,12 @@ CREATE INDEX IF NOT EXISTS audit_events_actor_idx ON audit_events (by_principal,
 
 -- Graph edges (ADR-025). Materialized from frontmatter ID-shaped fields
 -- by the indexer. attribution=='explicit' means declared in source;
--- 'doco-auto' means LLM-detected. Doco-scoped via doco_id; both
--- endpoints can be any node_type so we can't FK them.
+-- 'doco-auto' means LLM-detected. `doco_id` is the source Doco (the
+-- one whose entity owns the outgoing edge); `to_doco_id` is the Doco
+-- the target entity lives in. They differ for cross-Doco edges, which
+-- @doco/index emits when access rules permit (same org or target
+-- public — see migration 002 + cross-doco.ts). Both endpoints can be
+-- any node_type so we can't FK them.
 CREATE TABLE IF NOT EXISTS edges (
   from_id         text NOT NULL,
   from_node_type  text NOT NULL,
@@ -466,6 +470,7 @@ CREATE TABLE IF NOT EXISTS edges (
   to_node_type    text NOT NULL,
   edge_type       text NOT NULL,
   doco_id         text NOT NULL REFERENCES docos(id) ON DELETE CASCADE,
+  to_doco_id      text NOT NULL REFERENCES docos(id) ON DELETE CASCADE,
   edge_props_json jsonb,
   attribution     text NOT NULL DEFAULT 'explicit' CHECK (attribution IN ('explicit', 'doco-auto')),
   PRIMARY KEY (from_id, to_id, edge_type)
@@ -477,6 +482,9 @@ CREATE INDEX IF NOT EXISTS edges_type_idx        ON edges (edge_type);
 CREATE INDEX IF NOT EXISTS edges_attribution_idx ON edges (attribution);
 CREATE INDEX IF NOT EXISTS edges_doco_type_from_idx ON edges (doco_id, edge_type, from_id);
 CREATE INDEX IF NOT EXISTS edges_doco_type_to_idx   ON edges (doco_id, edge_type, to_id);
+CREATE INDEX IF NOT EXISTS edges_to_doco_idx        ON edges (to_doco_id);
+CREATE INDEX IF NOT EXISTS edges_cross_doco_idx     ON edges (doco_id, to_doco_id)
+  WHERE doco_id <> to_doco_id;
 
 -- Vector embeddings (ADR-052). One row per entity. Storage is bytea
 -- (Float32Array bytes, little-endian). pgvector + ivfflat/hnsw is an

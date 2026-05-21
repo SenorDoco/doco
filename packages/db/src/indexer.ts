@@ -23,6 +23,13 @@ export interface EdgeRowInput {
   to_id: string;
   to_node_type: string;
   edge_type: string;
+  /**
+   * The Doco the target entity lives in. Defaults to the source Doco
+   * (`doco_id` passed to `rebuildDocoDerivedData`) for intra-Doco edges.
+   * Cross-Doco edges set this to the target's Doco; the indexer's
+   * @doco/index/cross-doco layer validates access before populating it.
+   */
+  to_doco_id?: string | undefined;
   edge_props?: Record<string, unknown> | undefined;
   attribution?: "explicit" | "doco-auto" | undefined;
 }
@@ -68,17 +75,22 @@ export async function rebuildDocoDerivedData(
   return withTransaction(async (c) => {
     if (opts.onlyEntityIds && opts.onlyEntityIds.length > 0) {
       // Incremental: only wipe rows for the named entities. Outgoing
-      // edges live under `from_id`; inbound edges from OTHER entities
+      // edges live under `from_id` (including cross-Doco edges whose
+      // `to_doco_id` differs); inbound edges from OTHER entities
       // (their `from_id` is unchanged) are left in place.
-      await c.query(
-        "DELETE FROM edges WHERE doco_id = $1 AND from_id = ANY($2::text[])",
-        [docoId, opts.onlyEntityIds],
-      );
-      await c.query(
-        "DELETE FROM entity_fts WHERE doco_id = $1 AND entity_id = ANY($2::text[])",
-        [docoId, opts.onlyEntityIds],
-      );
+      await c.query("DELETE FROM edges WHERE doco_id = $1 AND from_id = ANY($2::text[])", [
+        docoId,
+        opts.onlyEntityIds,
+      ]);
+      await c.query("DELETE FROM entity_fts WHERE doco_id = $1 AND entity_id = ANY($2::text[])", [
+        docoId,
+        opts.onlyEntityIds,
+      ]);
     } else {
+      // Full rebuild: wipe every outgoing edge from this Doco (whether
+      // the target is local or cross-Doco). Edges INTO this Doco from
+      // OTHER source Docos are owned by those Docos and re-emitted when
+      // those Docos are re-indexed — don't touch them here.
       await c.query("DELETE FROM edges WHERE doco_id = $1", [docoId]);
       await c.query("DELETE FROM entity_fts WHERE doco_id = $1", [docoId]);
     }
@@ -108,19 +120,21 @@ export async function rebuildDocoDerivedData(
       await c.query(
         `INSERT INTO edges (
             from_id, from_node_type, to_id, to_node_type, edge_type,
-            doco_id, edge_props_json, attribution
+            doco_id, to_doco_id, edge_props_json, attribution
          )
          SELECT u.from_id, u.from_node_type, u.to_id, u.to_node_type,
-                u.edge_type, $1, u.props::jsonb, u.attribution
+                u.edge_type, $1, COALESCE(u.to_doco_id, $1),
+                u.props::jsonb, u.attribution
          FROM unnest(
                 $2::text[], $3::text[], $4::text[], $5::text[],
-                $6::text[], $7::text[], $8::text[]
+                $6::text[], $7::text[], $8::text[], $9::text[]
               ) AS u(from_id, from_node_type, to_id, to_node_type,
-                     edge_type, props, attribution)
+                     edge_type, to_doco_id, props, attribution)
          ON CONFLICT (from_id, to_id, edge_type) DO UPDATE SET
             from_node_type  = EXCLUDED.from_node_type,
             to_node_type    = EXCLUDED.to_node_type,
             doco_id         = EXCLUDED.doco_id,
+            to_doco_id      = EXCLUDED.to_doco_id,
             edge_props_json = EXCLUDED.edge_props_json,
             attribution     = EXCLUDED.attribution`,
         [
@@ -130,6 +144,7 @@ export async function rebuildDocoDerivedData(
           dedupedEdges.map((e) => e.to_id),
           dedupedEdges.map((e) => e.to_node_type),
           dedupedEdges.map((e) => e.edge_type),
+          dedupedEdges.map((e) => e.to_doco_id ?? null),
           dedupedEdges.map((e) => (e.edge_props ? JSON.stringify(e.edge_props) : null)),
           dedupedEdges.map((e) => e.attribution ?? "explicit"),
         ],

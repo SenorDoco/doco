@@ -49,11 +49,14 @@ export {
   getDocoById,
   getDocoByHandle,
   getDocoByIdOrHandle,
+  getDocosAccessInfo,
+  lookupEntityDocos,
   resolveOwnerSlug,
   type HostConfigRow,
   type PrincipalRow,
   type OrganizationRow,
   type DocoRow,
+  type DocoAccessRow,
 } from "./repo.js";
 
 export { NODE_TABLES, type EntityRecord } from "./types.js";
