@@ -57,6 +57,12 @@ export function Breadcrumb({
  * handle so the org name doesn't repeat (e.g. handle `torrenegra-doco`
  * with owner `torrenegra` displays as `doco`).
  *
+ * Every non-current segment is a link. `ownerSlug` points to the
+ * owner's org home page (`/orgs/<slug>`) — every Principal has a
+ * personal Organization with `handle = username`, so the route exists
+ * for both user-owned and org-owned docos. The doco short name points
+ * to the doco home (`/<handle>`).
+ *
  * Pass `parent` for subpages like `.../constitution/guidance/new`:
  * `parent: { label: "Constitution", to: "/<handle>/constitution" }`.
  */
@@ -74,7 +80,7 @@ export function docoBreadcrumb({
   const prefix = `${ownerSlug}-`;
   const shortDoco = handle.startsWith(prefix) ? handle.slice(prefix.length) : handle;
   const items: BreadcrumbItem[] = [
-    { label: ownerSlug },
+    { label: ownerSlug, to: `/orgs/${ownerSlug}` },
     { label: shortDoco, to: `/${handle}` },
   ];
   if (parent) items.push(parent);
@@ -85,6 +91,9 @@ export function docoBreadcrumb({
 /**
  * Build the breadcrumb trail for an org-scoped page.
  * Trail: `Orgs › [orgSlug] › [parent?] › [pageLabel?]`.
+ *
+ * Every non-current segment is a link. `orgSlug` points to the org
+ * home page (`/orgs/<slug>`).
  */
 export function orgBreadcrumb({
   orgSlug,
@@ -97,7 +106,7 @@ export function orgBreadcrumb({
 }): BreadcrumbItem[] {
   const items: BreadcrumbItem[] = [
     { label: "Orgs", to: "/orgs" },
-    { label: orgSlug },
+    { label: orgSlug, to: `/orgs/${orgSlug}` },
   ];
   if (parent) items.push(parent);
   if (pageLabel) items.push({ label: pageLabel });
