@@ -1,6 +1,6 @@
 import { withClient } from "@doco/db";
 import { docoPath } from "~/lib/db.server";
-import { canAccessDoco, normalizeDocoParams } from "~/lib/doco-access.server";
+import { canReadDocoForRequest, normalizeDocoParams } from "~/lib/doco-access.server";
 import { readDocoMetadata } from "~/lib/doco-metadata.server";
 import { getCurrentPrincipalAsync } from "~/lib/session";
 
@@ -24,7 +24,7 @@ export async function loader({
     return Response.json({ status: "unknown", doco_handle: handle }, { status: 404 });
   }
   const me = await getCurrentPrincipalAsync(request);
-  if (!(await canAccessDoco(meta, me?.id ?? null))) {
+  if (!(await canReadDocoForRequest(request, meta, me?.id ?? null))) {
     return Response.json({ status: "unknown", doco_handle: handle }, { status: 404 });
   }
   const { latest, counts } = await readStatusFromPg(meta.docoId);

@@ -12,7 +12,7 @@
 // Response: `{ ok, count, events: AuditEvent[] }` newest-first.
 
 import { docoPath } from "~/lib/db.server";
-import { canAccessDoco, normalizeDocoParams } from "~/lib/doco-access.server";
+import { canReadDocoForRequest, normalizeDocoParams } from "~/lib/doco-access.server";
 import { readDocoMetadata } from "~/lib/doco-metadata.server";
 import { getCurrentPrincipalAsync } from "~/lib/session";
 import { readAuditEvents, type AuditOp } from "~/lib/audit-log.server";
@@ -39,7 +39,7 @@ export async function loader({
     return Response.json({ error: `Doco "${handle}" not found.` }, { status: 404 });
   }
   const me = await getCurrentPrincipalAsync(request);
-  if (!await canAccessDoco(meta, me?.id ?? null)) {
+  if (!(await canReadDocoForRequest(request, meta, me?.id ?? null))) {
     return Response.json({ error: `Doco "${handle}" not found.` }, { status: 404 });
   }
 

@@ -17,7 +17,7 @@ import type { DocoHandle } from "@doco/shared";
 import { redirect } from "react-router";
 import { docoPath } from "./db.server";
 import { type DocoMetadata, readDocoMetadata } from "./doco-metadata.server";
-import { validateAccessToken } from "./oauth-server.server";
+import { type ValidAccessToken, validateAccessToken } from "./oauth-server.server";
 import { resolvePrincipalUsernameAlias } from "./principal-aliases.server";
 import { type CurrentPrincipal, extractBearer, getCurrentPrincipalAsync } from "./session";
 
@@ -82,6 +82,66 @@ export async function canAccessDoco(
   if (docoLevel) return true;
 
   return false;
+}
+
+/**
+ * The validated OAuth access token attached to this request, or null.
+ *
+ * Returns null for cookie-only sessions, anonymous requests, and
+ * bearer tokens that fail validation (revoked / expired / unknown).
+ * Use this from API endpoints that need to filter listings by the
+ * token's grants — for single-Doco endpoints that should fail loudly
+ * on an invalid bearer, route through `loadDocoForRead` instead, which
+ * also emits the RFC 6750 `WWW-Authenticate` header.
+ */
+export async function getOauthTokenForRequest(
+  request: Request,
+): Promise<ValidAccessToken | null> {
+  const bearer = extractBearer(request);
+  if (!bearer) return null;
+  return await validateAccessToken(bearer);
+}
+
+/** True if the OAuth token's grants cover this Doco (per-Doco or per-org). */
+export function oauthTokenGrantsDoco(
+  token: ValidAccessToken,
+  meta: { ownerId: string; docoId: string },
+): boolean {
+  if (token.granted_doco_ids.includes(meta.docoId)) return true;
+  if (
+    meta.ownerId.startsWith("organization_") &&
+    (token.granted_org_ids ?? []).includes(meta.ownerId)
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Read-access predicate for API endpoints that don't already go through
+ * `loadDocoForRead`. Layers OAuth-token scope-down on top of the
+ * principal-level `canAccessDoco`:
+ *
+ *   - No bearer (cookie or anonymous): falls back to `canAccessDoco`.
+ *   - Valid bearer that grants this Doco (per-Doco or per-org): falls
+ *     back to `canAccessDoco`.
+ *   - Bearer present but invalid, or valid but doesn't grant: returns
+ *     false — the caller should respond the same way it would for a
+ *     principal-level access denial (so the OAuth grant scope-down can
+ *     never widen what a token sees beyond what the principal sees).
+ */
+export async function canReadDocoForRequest(
+  request: Request,
+  meta: { ownerId: string; visibility: string; docoId: string },
+  principalId: string | null,
+): Promise<boolean> {
+  const bearer = extractBearer(request);
+  if (bearer) {
+    const token = await validateAccessToken(bearer);
+    if (!token) return false;
+    if (!oauthTokenGrantsDoco(token, meta)) return false;
+  }
+  return await canAccessDoco(meta, principalId);
 }
 
 /** True if ownerId is the host-bootstrap placeholder Principal (unclaimed docos). */

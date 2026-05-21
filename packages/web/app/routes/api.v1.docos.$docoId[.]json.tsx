@@ -11,7 +11,7 @@
 // probing isn't a meaningful enumeration attack.
 
 import { getDocoByIdOrHandle } from "@doco/db";
-import { canAccessDoco } from "~/lib/doco-access.server";
+import { canReadDocoForRequest } from "~/lib/doco-access.server";
 import {
   hostFromRequest,
   missingDocoResponse,
@@ -38,7 +38,8 @@ export async function loader({
   }
   const me = await getCurrentPrincipalAsync(request);
   if (
-    !await canAccessDoco(
+    !await canReadDocoForRequest(
+      request,
       { ownerId: row.owner_id, visibility: row.visibility, docoId: row.id },
       me?.id ?? null,
     )
