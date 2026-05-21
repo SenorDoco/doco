@@ -144,11 +144,14 @@ export default defineConfig({
   ssr: {
     external: ["pg", "@xyflow/react"],
     noExternal: [
+      "@react-router/node",
+      "@mjackson/node-fetch-server",
       "@doco/db",
       "@doco/host",
       "@doco/index",
       "@doco/shared",
       "@dagrejs/dagre",
+      "react-router",
     ],
   },
 });
