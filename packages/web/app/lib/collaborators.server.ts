@@ -35,9 +35,13 @@ export interface UserCell {
   last_activity_at: string | null;
 }
 
+export type GrantSource = "principal" | "oauth";
+
 export interface GrantRow extends UserCell {
   role: DocoRole;
   joined_at: string;
+  source: GrantSource;
+  client_id?: string;
 }
 
 export interface OrgSection {
@@ -95,6 +99,89 @@ async function loadLastActivity(principalIds: string[]): Promise<Map<string, str
     out.set(row.by_principal, at);
   }
   return out;
+}
+
+interface OauthGrantSlice {
+  client_id: string;
+  client_name: string;
+  target_id: string;
+  role: DocoRole;
+  granted_at: string;
+}
+
+async function loadOauthAgentGrants(principalId: string): Promise<{
+  orgs: OauthGrantSlice[];
+  docos: OauthGrantSlice[];
+}> {
+  // One active grant per OAuth client × principal — pick the most recent
+  // non-revoked, non-expired refresh token (refresh tokens are long-lived
+  // and survive across access-token rotation, so they're the stable
+  // signal that an agent still has access).
+  const rows = await withClient((c) =>
+    c.query<{
+      client_id: string;
+      client_name: string | null;
+      granted_doco_ids: string[];
+      granted_doco_roles: Record<string, string> | null;
+      granted_org_ids: string[];
+      granted_org_roles: Record<string, string> | null;
+      created_at: Date | string;
+    }>(
+      `SELECT DISTINCT ON (rt.client_id)
+              rt.client_id, c.client_name,
+              rt.granted_doco_ids, rt.granted_doco_roles,
+              rt.granted_org_ids, rt.granted_org_roles,
+              rt.created_at
+         FROM oauth_refresh_tokens rt
+         JOIN oauth_clients c ON c.client_id = rt.client_id
+        WHERE rt.revoked = false
+          AND rt.expires_at > now()
+          AND rt.principal_id = $1
+        ORDER BY rt.client_id, rt.created_at DESC`,
+      [principalId],
+    ),
+  );
+  const orgs: OauthGrantSlice[] = [];
+  const docos: OauthGrantSlice[] = [];
+  for (const row of rows.rows) {
+    const grantedAt =
+      row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at);
+    const clientName = row.client_name ?? row.client_id;
+    for (const orgId of row.granted_org_ids ?? []) {
+      const role = (row.granted_org_roles?.[orgId] ?? "reader") as DocoRole;
+      orgs.push({
+        client_id: row.client_id,
+        client_name: clientName,
+        target_id: orgId,
+        role,
+        granted_at: grantedAt,
+      });
+    }
+    for (const docoId of row.granted_doco_ids ?? []) {
+      const role = (row.granted_doco_roles?.[docoId] ?? "reader") as DocoRole;
+      docos.push({
+        client_id: row.client_id,
+        client_name: clientName,
+        target_id: docoId,
+        role,
+        granted_at: grantedAt,
+      });
+    }
+  }
+  return { orgs, docos };
+}
+
+function oauthSliceToGrantRow(slice: OauthGrantSlice): GrantRow {
+  return {
+    principal_id: `oauth:${slice.client_id}`,
+    username: slice.client_name,
+    kind: "agent",
+    last_activity_at: null,
+    role: slice.role,
+    joined_at: slice.granted_at,
+    source: "oauth",
+    client_id: slice.client_id,
+  };
 }
 
 function requestPath(request: Request): string {
@@ -186,6 +273,20 @@ export async function loadCollaboratorSections(principalId: string): Promise<{
   }
 
   const lastActivity = await loadLastActivity([...allPrincipalIds]);
+  const oauthGrants = await loadOauthAgentGrants(principalId);
+
+  const oauthOrgByTarget = new Map<string, GrantRow[]>();
+  for (const slice of oauthGrants.orgs) {
+    const list = oauthOrgByTarget.get(slice.target_id) ?? [];
+    list.push(oauthSliceToGrantRow(slice));
+    oauthOrgByTarget.set(slice.target_id, list);
+  }
+  const oauthDocoByTarget = new Map<string, GrantRow[]>();
+  for (const slice of oauthGrants.docos) {
+    const list = oauthDocoByTarget.get(slice.target_id) ?? [];
+    list.push(oauthSliceToGrantRow(slice));
+    oauthDocoByTarget.set(slice.target_id, list);
+  }
 
   const orgSections: OrgSection[] = [];
   for (const entry of orgRoleRows) {
@@ -194,8 +295,10 @@ export async function loadCollaboratorSections(principalId: string): Promise<{
         ...(await enrichPrincipal(row.principal_id, lastActivity)),
         role: row.role,
         joined_at: row.joined_at,
+        source: "principal" as const,
       })),
     );
+    users.push(...(oauthOrgByTarget.get(entry.org.id) ?? []));
     orgSections.push({ org: entry.org, myRole: entry.myRole, users });
   }
 
@@ -206,8 +309,10 @@ export async function loadCollaboratorSections(principalId: string): Promise<{
         ...(await enrichPrincipal(row.principal_id, lastActivity)),
         role: row.role,
         joined_at: row.joined_at,
+        source: "principal" as const,
       })),
     );
+    users.push(...(oauthDocoByTarget.get(entry.doco.id) ?? []));
     docoSections.push({
       doco: { id: entry.doco.id, handle: entry.doco.handle },
       myRole: entry.myRole,

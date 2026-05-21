@@ -427,6 +427,7 @@ function UserRow({ row }: { row: GroupedRow }) {
   }, [justSaved]);
 
   const username = row.principal.username;
+  const isOauth = row.principal.source === "oauth";
   const removeLabel =
     row.targets.length === 1
       ? `Remove ${username} from ${row.targets[0].label}?`
@@ -438,6 +439,11 @@ function UserRow({ row }: { row: GroupedRow }) {
     <tr data-testid={`row-${row.level}-${username}-${row.role}`}>
       <td className="py-2 align-middle">
         <div className="font-medium">{username}</div>
+        {isOauth ? (
+          <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+            OAuth client
+          </div>
+        ) : null}
       </td>
       <td className="py-2 align-middle">
         <div className="flex flex-wrap gap-x-2 gap-y-1">
@@ -454,47 +460,51 @@ function UserRow({ row }: { row: GroupedRow }) {
         </div>
       </td>
       <td className="py-2 align-middle">
-        <div className="inline-flex items-center gap-2">
-          <select
-            defaultValue={row.role}
-            disabled={!row.canEditAll || roleFetcher.state !== "idle"}
-            data-testid={`role-${row.level}-${username}-${row.role}`}
-            className="rounded-md border border-border bg-background px-2 py-1 text-sm disabled:opacity-50"
-            onChange={(e) => {
-              roleFetcher.submit(
-                {
-                  intent: "update",
-                  level: row.level,
-                  target_ids: targetIdsCsv,
-                  principal_id: row.principal.principal_id,
-                  role: e.currentTarget.value,
-                },
-                { method: "post" },
-              );
-            }}
-          >
-            {ALL_ROLES.map((r) => (
-              <option key={r} value={r}>
-                {r}
-              </option>
-            ))}
-          </select>
-          <span
-            className="text-xs text-muted-foreground"
-            data-testid={`status-${row.level}-${username}-${row.role}`}
-            aria-live="polite"
-          >
-            {roleFetcher.state !== "idle" ? (
-              "Saving…"
-            ) : error ? (
-              <span className="text-destructive">{error}</span>
-            ) : showSaved ? (
-              "Saved"
-            ) : (
-              ""
-            )}
-          </span>
-        </div>
+        {isOauth ? (
+          <span className="text-sm">{row.role}</span>
+        ) : (
+          <div className="inline-flex items-center gap-2">
+            <select
+              defaultValue={row.role}
+              disabled={!row.canEditAll || roleFetcher.state !== "idle"}
+              data-testid={`role-${row.level}-${username}-${row.role}`}
+              className="rounded-md border border-border bg-background px-2 py-1 text-sm disabled:opacity-50"
+              onChange={(e) => {
+                roleFetcher.submit(
+                  {
+                    intent: "update",
+                    level: row.level,
+                    target_ids: targetIdsCsv,
+                    principal_id: row.principal.principal_id,
+                    role: e.currentTarget.value,
+                  },
+                  { method: "post" },
+                );
+              }}
+            >
+              {ALL_ROLES.map((r) => (
+                <option key={r} value={r}>
+                  {r}
+                </option>
+              ))}
+            </select>
+            <span
+              className="text-xs text-muted-foreground"
+              data-testid={`status-${row.level}-${username}-${row.role}`}
+              aria-live="polite"
+            >
+              {roleFetcher.state !== "idle" ? (
+                "Saving…"
+              ) : error ? (
+                <span className="text-destructive">{error}</span>
+              ) : showSaved ? (
+                "Saved"
+              ) : (
+                ""
+              )}
+            </span>
+          </div>
+        )}
       </td>
       <td className="py-2 align-middle text-xs text-muted-foreground">
         {formatRelative(row.principal.last_activity_at)}
@@ -503,7 +513,9 @@ function UserRow({ row }: { row: GroupedRow }) {
         {formatDate(row.earliestJoinedAt)}
       </td>
       <td className="py-2 align-middle text-right">
-        {row.canEditAll ? (
+        {isOauth ? (
+          <span className="text-xs text-muted-foreground">—</span>
+        ) : row.canEditAll ? (
           <button
             type="button"
             disabled={removeFetcher.state !== "idle"}
