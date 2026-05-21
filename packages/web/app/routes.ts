@@ -104,6 +104,10 @@ export default [
   route("new-doco/template", "routes/new-doco.template.tsx"),
   route("new-org", "routes/new-org.tsx"),
   route("orgs", "routes/orgs._index.tsx"),
+  // Per-Org home — mirrors the Doco home page but aggregates across
+  // every Doco the org owns (docos list, node-type/lifecycle facets,
+  // activity heatmap + feed, top contributors, members).
+  route("orgs/:orgHandle", "routes/orgs.$orgHandle._index.tsx"),
   // Org-level constitution: applies to every Doco owned by the org.
   // Same shape as the per-Doco constitution at /:docoHandle/constitution.
   // Standalone add pages live one level deeper.
