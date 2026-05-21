@@ -204,6 +204,19 @@ const evalCmd = defineCommand({
       type: "string",
       description: "Optional spec string accompanying the criterion.",
     },
+    kind: {
+      type: "string",
+      description: "Optional. One of: unit | integration | eval | process | doc-consistency.",
+    },
+    "expected-status": {
+      type: "string",
+      description: "Optional. 'pass' (default) for regression checks; 'fail' for TDD-aspirational.",
+    },
+    "how-to-run": {
+      type: "string",
+      description:
+        "Optional. Free-form reproduction steps (command, prompt, URL, or manual procedure).",
+    },
     summary: { type: "string", description: "Optional one-line summary." },
     description: { type: "string", description: "Optional free-form description." },
     input: { type: "string", description: "Optional JSON for the input value." },
@@ -232,12 +245,34 @@ const evalCmd = defineCommand({
       );
       process.exit(2);
     }
+    const evalKind = args.kind as string | undefined;
+    if (
+      evalKind !== undefined &&
+      !["unit", "integration", "eval", "process", "doc-consistency"].includes(evalKind)
+    ) {
+      console.error(
+        cross(
+          `--kind must be one of: unit, integration, eval, process, doc-consistency (got '${evalKind}').`,
+        ),
+      );
+      process.exit(2);
+    }
+    const expectedStatus = args["expected-status"] as string | undefined;
+    if (expectedStatus !== undefined && !["pass", "fail"].includes(expectedStatus)) {
+      console.error(
+        cross(`--expected-status must be one of: pass, fail (got '${expectedStatus}').`),
+      );
+      process.exit(2);
+    }
     const criterion: Record<string, unknown> = { kind };
     if (args["criterion-spec"]) criterion.spec = args["criterion-spec"];
     const body: Record<string, unknown> = {
       name: args.name,
       criterion,
     };
+    if (evalKind) body.kind = evalKind;
+    if (expectedStatus) body.expected_status = expectedStatus;
+    if (args["how-to-run"]) body.how_to_run = args["how-to-run"];
     if (args.summary) body.summary = args.summary;
     if (args.description) body.description = args.description;
     const inp = parseJson<unknown>(args.input as string | undefined, "input");

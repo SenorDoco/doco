@@ -1352,8 +1352,14 @@ export interface EvalDraft {
   body_md?: string;
   /** Optional: one-line summary; derived from description / name if absent. */
   summary?: string;
+  /** Optional: what flavor of test this is. */
+  kind?: "unit" | "integration" | "eval" | "process" | "doc-consistency";
   /** Optional: free-form description. */
   description?: string;
+  /** Optional: status the author expects the runner to report. Defaults to "pass". */
+  expected_status?: "pass" | "fail";
+  /** Optional: free-form reproduction steps that produce `actual`. */
+  how_to_run?: string;
   /** Optional: input value (any shape). */
   input?: unknown;
   /** Optional: expected outcome (any shape; prose for llm-judge). */
@@ -1381,6 +1387,15 @@ export async function captureEval(
   if (!draft.criterion?.kind) return { error: "criterion.kind is required." };
   if (!["exact", "shape", "llm-judge"].includes(draft.criterion.kind)) {
     return { error: `Unknown criterion.kind: ${draft.criterion.kind}` };
+  }
+  if (
+    draft.kind !== undefined &&
+    !["unit", "integration", "eval", "process", "doc-consistency"].includes(draft.kind)
+  ) {
+    return { error: `Unknown kind: ${draft.kind}` };
+  }
+  if (draft.expected_status !== undefined && !["pass", "fail"].includes(draft.expected_status)) {
+    return { error: `Unknown expected_status: ${draft.expected_status}` };
   }
   if (draft.scope_names && !Array.isArray(draft.scope_names)) {
     return { error: "scope_names must be a non-empty array." };
@@ -1415,8 +1430,11 @@ export async function captureEval(
     node_type: "eval",
     summary,
     name: draft.name.trim(),
+    ...(draft.kind ? { kind: draft.kind } : {}),
     ...(intentIds.length > 0 ? { intent_ids: intentIds } : {}),
     ...(draft.description ? { description: draft.description } : {}),
+    ...(draft.expected_status ? { expected_status: draft.expected_status } : {}),
+    ...(draft.how_to_run ? { how_to_run: draft.how_to_run } : {}),
     ...(draft.input !== undefined ? { input: draft.input } : {}),
     ...(draft.expected !== undefined ? { expected: draft.expected } : {}),
     criterion: draft.criterion,
