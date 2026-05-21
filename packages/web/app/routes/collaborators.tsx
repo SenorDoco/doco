@@ -12,6 +12,7 @@ import {
   removeOrgUser,
   upsertDocoUser,
   upsertOrgUser,
+  withClient,
 } from "@doco/db";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useFetcher, useSearchParams } from "react-router";
@@ -48,6 +49,21 @@ type ActionResult =
       level: InviteLevel;
       target_ids: string[];
       principal_id: string;
+    }
+  | {
+      intent: "oauth_update";
+      ok: true;
+      level: InviteLevel;
+      target_ids: string[];
+      client_id: string;
+      role: DocoRole;
+    }
+  | {
+      intent: "oauth_remove";
+      ok: true;
+      level: InviteLevel;
+      target_ids: string[];
+      client_id: string;
     }
   | { error: string };
 
@@ -104,6 +120,91 @@ export async function action({
       else await removeDocoUser(targetId, principalId);
     }
     return { intent: "remove", ok: true, level, target_ids: targetIds, principal_id: principalId };
+  }
+
+  if (intent === "oauth_update" || intent === "oauth_remove") {
+    const rawTargets = String(form.get("target_ids") ?? "").trim();
+    const targetIds = rawTargets
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const clientId = String(form.get("client_id") ?? "").trim();
+    if (targetIds.length === 0) return { error: "target_ids missing." };
+    if (!clientId) return { error: "client_id missing." };
+    if (level !== "org" && level !== "doco") return { error: "Invalid level." };
+
+    // Auth: only owners on each target can manage agent grants on it.
+    for (const targetId of targetIds) {
+      if (level === "org") {
+        const role = await getOrgRole(targetId, me.id);
+        if (role !== "owner") return { error: "Only org owners can change agent grants." };
+      } else {
+        const doco = await getDocoById(targetId);
+        if (!doco) return { error: "Doco not found." };
+        const role = await getDocoLevelRole({ ownerId: doco.owner_id, docoId: doco.id }, me.id);
+        if (role !== "owner") return { error: "Only doco owners can change agent grants." };
+      }
+    }
+
+    const idsCol = level === "org" ? "granted_org_ids" : "granted_doco_ids";
+    const rolesCol = level === "org" ? "granted_org_roles" : "granted_doco_roles";
+
+    if (intent === "oauth_update") {
+      const role = String(form.get("role") ?? "") as DocoRole;
+      if (!ALL_ROLES.includes(role)) return { error: "Invalid role." };
+      for (const targetId of targetIds) {
+        await withClient(async (c) => {
+          await c.query(
+            `UPDATE oauth_access_tokens
+                SET ${rolesCol} = jsonb_set(${rolesCol}, ARRAY[$3], to_jsonb($4::text), true)
+              WHERE principal_id = $1 AND client_id = $2 AND revoked = false
+                AND $3 = ANY(${idsCol})`,
+            [me.id, clientId, targetId, role],
+          );
+          await c.query(
+            `UPDATE oauth_refresh_tokens
+                SET ${rolesCol} = jsonb_set(${rolesCol}, ARRAY[$3], to_jsonb($4::text), true)
+              WHERE principal_id = $1 AND client_id = $2 AND revoked = false
+                AND $3 = ANY(${idsCol})`,
+            [me.id, clientId, targetId, role],
+          );
+        });
+      }
+      return {
+        intent: "oauth_update",
+        ok: true,
+        level,
+        target_ids: targetIds,
+        client_id: clientId,
+        role,
+      };
+    }
+
+    for (const targetId of targetIds) {
+      await withClient(async (c) => {
+        await c.query(
+          `UPDATE oauth_access_tokens
+              SET ${idsCol}   = array_remove(${idsCol}, $3),
+                  ${rolesCol} = ${rolesCol} - $3
+            WHERE principal_id = $1 AND client_id = $2 AND revoked = false`,
+          [me.id, clientId, targetId],
+        );
+        await c.query(
+          `UPDATE oauth_refresh_tokens
+              SET ${idsCol}   = array_remove(${idsCol}, $3),
+                  ${rolesCol} = ${rolesCol} - $3
+            WHERE principal_id = $1 AND client_id = $2 AND revoked = false`,
+          [me.id, clientId, targetId],
+        );
+      });
+    }
+    return {
+      intent: "oauth_remove",
+      ok: true,
+      level,
+      target_ids: targetIds,
+      client_id: clientId,
+    };
   }
 
   return { error: `Unknown intent: ${intent}` };
@@ -350,7 +451,15 @@ function Subsection({
         <p className="text-sm text-muted-foreground">{empty}</p>
       ) : (
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="w-full table-fixed text-sm">
+            <colgroup>
+              <col className="w-[26%]" />
+              <col className="w-[24%]" />
+              <col className="w-[14%]" />
+              <col className="w-[12%]" />
+              <col className="w-[12%]" />
+              <col className="w-[12%]" />
+            </colgroup>
             <thead>
               <tr className="text-left text-xs uppercase tracking-wide text-muted-foreground">
                 <th className="pb-2 font-medium">User</th>
@@ -406,14 +515,32 @@ function UserRow({ row }: { row: GroupedRow }) {
   const removeFetcher = useFetcher<ActionResult>();
 
   const targetIdsCsv = row.targets.map((t) => t.id).join(",");
+  const isOauth = row.principal.source === "oauth";
+  const clientId = row.principal.client_id ?? "";
+  const updateIntent = isOauth ? "oauth_update" : "update";
+  const removeIntent = isOauth ? "oauth_remove" : "remove";
+
+  const matchesThisRow = (data: ActionResult) => {
+    if (!("intent" in data)) return false;
+    if (data.target_ids.join(",") !== targetIdsCsv) return false;
+    if (isOauth) {
+      return (
+        (data.intent === "oauth_update" || data.intent === "oauth_remove") &&
+        data.client_id === clientId
+      );
+    }
+    return (
+      (data.intent === "update" || data.intent === "remove") &&
+      data.principal_id === row.principal.principal_id
+    );
+  };
 
   const justSaved =
     roleFetcher.state === "idle" &&
     roleFetcher.data &&
     "intent" in roleFetcher.data &&
-    roleFetcher.data.intent === "update" &&
-    roleFetcher.data.principal_id === row.principal.principal_id &&
-    roleFetcher.data.target_ids.join(",") === targetIdsCsv;
+    (roleFetcher.data.intent === "update" || roleFetcher.data.intent === "oauth_update") &&
+    matchesThisRow(roleFetcher.data);
   const error =
     roleFetcher.data && "error" in roleFetcher.data ? roleFetcher.data.error : undefined;
 
@@ -427,7 +554,6 @@ function UserRow({ row }: { row: GroupedRow }) {
   }, [justSaved]);
 
   const username = row.principal.username;
-  const isOauth = row.principal.source === "oauth";
   const removeLabel =
     row.targets.length === 1
       ? `Remove ${username} from ${row.targets[0].label}?`
@@ -435,102 +561,104 @@ function UserRow({ row }: { row: GroupedRow }) {
           .map((t) => t.label)
           .join(", ")})?`;
 
+  const updatePayload = (newRole: string): Record<string, string> => {
+    const base: Record<string, string> = {
+      intent: updateIntent,
+      level: row.level,
+      target_ids: targetIdsCsv,
+      role: newRole,
+    };
+    if (isOauth) base.client_id = clientId;
+    else base.principal_id = row.principal.principal_id;
+    return base;
+  };
+
+  const removePayload: Record<string, string> = (() => {
+    const base: Record<string, string> = {
+      intent: removeIntent,
+      level: row.level,
+      target_ids: targetIdsCsv,
+    };
+    if (isOauth) base.client_id = clientId;
+    else base.principal_id = row.principal.principal_id;
+    return base;
+  })();
+
   return (
     <tr data-testid={`row-${row.level}-${username}-${row.role}`}>
-      <td className="py-2 align-middle">
-        <div className="font-medium">{username}</div>
+      <td className="py-2 pr-3 align-middle">
+        <div className="truncate font-medium" title={username}>
+          {username}
+        </div>
         {isOauth ? (
           <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
             OAuth client
           </div>
         ) : null}
       </td>
-      <td className="py-2 align-middle">
+      <td className="py-2 pr-3 align-middle">
         <div className="flex flex-wrap gap-x-2 gap-y-1">
           {row.targets.map((t) => (
             <Link
               key={t.id}
               to={t.link}
-              className="text-xs underline"
-              title={`Granted ${formatDate(t.joined_at)}`}
+              className="truncate text-xs underline"
+              title={`${t.label} — granted ${formatDate(t.joined_at)}`}
             >
               {t.label}
             </Link>
           ))}
         </div>
       </td>
-      <td className="py-2 align-middle">
-        {isOauth ? (
-          <span className="text-sm">{row.role}</span>
-        ) : (
-          <div className="inline-flex items-center gap-2">
-            <select
-              defaultValue={row.role}
-              disabled={!row.canEditAll || roleFetcher.state !== "idle"}
-              data-testid={`role-${row.level}-${username}-${row.role}`}
-              className="rounded-md border border-border bg-background px-2 py-1 text-sm disabled:opacity-50"
-              onChange={(e) => {
-                roleFetcher.submit(
-                  {
-                    intent: "update",
-                    level: row.level,
-                    target_ids: targetIdsCsv,
-                    principal_id: row.principal.principal_id,
-                    role: e.currentTarget.value,
-                  },
-                  { method: "post" },
-                );
-              }}
-            >
-              {ALL_ROLES.map((r) => (
-                <option key={r} value={r}>
-                  {r}
-                </option>
-              ))}
-            </select>
-            <span
-              className="text-xs text-muted-foreground"
-              data-testid={`status-${row.level}-${username}-${row.role}`}
-              aria-live="polite"
-            >
-              {roleFetcher.state !== "idle" ? (
-                "Saving…"
-              ) : error ? (
-                <span className="text-destructive">{error}</span>
-              ) : showSaved ? (
-                "Saved"
-              ) : (
-                ""
-              )}
-            </span>
-          </div>
-        )}
+      <td className="py-2 pr-3 align-middle">
+        <div className="inline-flex items-center gap-2">
+          <select
+            defaultValue={row.role}
+            disabled={!row.canEditAll || roleFetcher.state !== "idle"}
+            data-testid={`role-${row.level}-${username}-${row.role}`}
+            className="rounded-md border border-border bg-background px-2 py-1 text-sm disabled:opacity-50"
+            onChange={(e) => {
+              roleFetcher.submit(updatePayload(e.currentTarget.value), { method: "post" });
+            }}
+          >
+            {ALL_ROLES.map((r) => (
+              <option key={r} value={r}>
+                {r}
+              </option>
+            ))}
+          </select>
+          <span
+            className="truncate text-xs text-muted-foreground"
+            data-testid={`status-${row.level}-${username}-${row.role}`}
+            aria-live="polite"
+          >
+            {roleFetcher.state !== "idle" ? (
+              "Saving…"
+            ) : error ? (
+              <span className="text-destructive">{error}</span>
+            ) : showSaved ? (
+              "Saved"
+            ) : (
+              ""
+            )}
+          </span>
+        </div>
       </td>
-      <td className="py-2 align-middle text-xs text-muted-foreground">
+      <td className="py-2 pr-3 align-middle text-xs text-muted-foreground">
         {formatRelative(row.principal.last_activity_at)}
       </td>
-      <td className="py-2 align-middle text-xs text-muted-foreground">
+      <td className="py-2 pr-3 align-middle text-xs text-muted-foreground">
         {formatDate(row.earliestJoinedAt)}
       </td>
       <td className="py-2 align-middle text-right">
-        {isOauth ? (
-          <span className="text-xs text-muted-foreground">—</span>
-        ) : row.canEditAll ? (
+        {row.canEditAll ? (
           <button
             type="button"
             disabled={removeFetcher.state !== "idle"}
             data-testid={`remove-${row.level}-${username}-${row.role}`}
             onClick={() => {
               if (!confirm(removeLabel)) return;
-              removeFetcher.submit(
-                {
-                  intent: "remove",
-                  level: row.level,
-                  target_ids: targetIdsCsv,
-                  principal_id: row.principal.principal_id,
-                },
-                { method: "post" },
-              );
+              removeFetcher.submit(removePayload, { method: "post" });
             }}
             className="rounded-md border border-border px-2 py-1 text-xs text-destructive hover:bg-card disabled:opacity-50"
           >

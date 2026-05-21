@@ -260,14 +260,73 @@ You get back:
   to follow.
 - \`canonical_instructions_url\` — link to the same instructions in
   case you want to refetch them later.
-- \`org_constitutions[]\` — Articles of the Constitution for every
-  org you're a member of. These govern every Doco the org owns.
-- \`doco_constitutions[]\` — Articles for every Doco you can read.
+- \`oauth_grant\` — your token's grant set verbatim:
+  \`granted_doco_ids\`, \`granted_org_ids\`, \`granted_doco_roles\`,
+  \`granted_org_roles\`, \`scope\`, \`expires_at\`. Null for cookie
+  callers. Read this to know exactly which Docos and orgs your token
+  covers without inferring from the constitution lists.
+- \`org_constitutions[]\` — Articles of the Constitution for the orgs
+  in \`granted_org_ids\` (or for every org you're a member of, when
+  authed by cookie). These govern every Doco the org owns.
+- \`doco_constitutions[]\` — Articles for every Doco your grants
+  cover.
 
 The constitutions tell you what's expected when you capture or
 modify nodes in this Doco (or any Doco under those orgs). Cache the
 response for the session; refetch if the user tells you a
 constitution changed mid-session.
+
+### Org grants are live — don't ask for re-auth on new Docos
+
+If your token's \`granted_org_ids\` includes an org, that grant
+**automatically covers every Doco the org owns, including ones the
+user creates after the token was minted**. You do not need to
+re-run the OAuth flow when a new Doco appears under an already-
+granted org — the same Bearer token works on it immediately.
+
+Concretely: if a user asks you to work on a project that has no
+Doco yet, and \`oauth_grant.granted_org_ids\` already contains the
+org they'd create it under, the right move is:
+
+> "I'll wait while you create the Doco at ${baseUrl} (suggest
+> \`<org-handle>-<project-name>\` under \`<org-handle>\`). My existing
+> token has org-level access, so the new Doco will be reachable as
+> soon as you finish creating it — no re-authorization needed."
+
+The *wrong* move is to tell the user to grant your token again via
+the consent UI, or to re-run your install's OAuth helper script.
+Both are no-ops here and waste the user's time.
+
+(Creating the Doco itself is a human-only action — see "Things only
+people can do" in the canonical instructions. The agent's job is to
+recognize that the existing grant suffices and avoid the spurious
+re-auth ask.)
+
+### Be precise about your role — don't downgrade yourself in prose
+
+When you describe your grants to the user, surface the **role cap**
+from \`oauth_grant.granted_org_roles[org_id]\` (or
+\`granted_doco_roles[doco_id]\`) — not the generic "I can read X"
+phrasing. The role table:
+
+  - \`reader\` — list + read nodes
+  - \`author\` — author can capture + patch nodes (+ everything reader
+    can do)
+  - \`approver\` — approver can change a node's \`lifecycle\` /
+    approve-reject lifecycle transitions (+ author + reader)
+  - \`owner\` — Doco settings, invites, role changes, granting agent
+    access (+ approver + author + reader)
+
+Saying "Orgs I can read: doco, torrenegra" when you actually hold
+\`approver\` on both is misleading — the user can't tell how much
+work you're authorized to do without re-checking. Prefer:
+
+> "Orgs I can act on: doco (approver), torrenegra (approver)"
+> "Docos I can act on: doco-bpms (approver, via doco-org grant)"
+
+If the user asks "what can you do?", read out the role from
+\`oauth_grant\` for each grant — don't collapse to the lowest
+operation you happen to be planning right now.
 
 ### Endpoint shapes
 
@@ -322,16 +381,30 @@ GET ${baseUrl}/<handle>/api/<type>.txt            # plain-text spec for that nod
 
 ### Scope enforcement
 
-The token carries a list of \`granted_doco_ids\` AND a per-Doco role
-scope-down. Calls to Docos outside the granted set return 403
-\`access_denied\`; calls to a granted Doco but for an operation the
-token's role doesn't cover return 403 \`insufficient_scope\` with
-\`WWW-Authenticate: Bearer error="insufficient_scope"\`. The
-operation→role table:
+The token carries **two** grant lists with per-entry role caps:
+
+  - \`granted_doco_ids[]\` + \`granted_doco_roles{doco_id: role}\` —
+    explicit per-Doco grants.
+  - \`granted_org_ids[]\` + \`granted_org_roles{org_id: role}\` —
+    org-level grants. These are **live**: they cover every Doco the
+    org owns now AND any Doco created under the org after the token
+    was minted, with no re-auth required.
+
+A request to a Doco is allowed if the Doco's id is in
+\`granted_doco_ids\` OR the Doco's owner org is in
+\`granted_org_ids\`, AND the corresponding role cap meets what the
+operation requires. Outside that set you get 403 \`access_denied\`;
+inside the set but with insufficient role you get 403
+\`insufficient_scope\` plus \`WWW-Authenticate: Bearer
+error="insufficient_scope"\`. The operation→role table:
 
   - List + read GETs require \`reader\`
-  - Capture + patch require \`author\`
-  - Admin (Doco settings, invites, role changes) requires \`owner\`
+  - Capture + patch require \`author\` (PATCH of \`lifecycle\` is the
+    exception — see \`approver\` below)
+  - Approving / archiving a node (PATCH that changes \`lifecycle\`)
+    requires \`approver\`
+  - Admin (Doco settings, invites, role changes, granting agent
+    access) requires \`owner\`
 
 ## Refreshing
 
