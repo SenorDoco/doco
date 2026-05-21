@@ -213,40 +213,43 @@ export function meta() {
   return [{ title: "Collaborators (people/agents) · Doco" }];
 }
 
-interface TargetRef {
-  id: string;
-  label: string;
-  link: string;
-  canEdit: boolean;
+interface AccessGrant {
+  target_id: string;
+  target_label: string;
+  target_link: string;
   joined_at: string;
+  role: DocoRole;
+  canEdit: boolean;
 }
 
 interface GroupedRow {
   level: InviteLevel;
   principal: GrantRow;
-  role: DocoRole;
-  targets: TargetRef[];
-  canEditAll: boolean;
+  grants: AccessGrant[];
+  canEditAny: boolean;
   earliestJoinedAt: string;
 }
 
-function groupRows(rows: GroupedRow[]): GroupedRow[] {
+// Aggregate by principal — each row carries every (target, role) the
+// principal holds at this level. The chip+role+remove controls render
+// per grant since role can vary across targets.
+function groupByPrincipal(rows: GroupedRow[]): GroupedRow[] {
   const map = new Map<string, GroupedRow>();
   for (const row of rows) {
-    const key = `${row.principal.principal_id}::${row.role}`;
+    const key = row.principal.principal_id;
     const existing = map.get(key);
     if (existing) {
-      existing.targets.push(...row.targets);
-      existing.canEditAll = existing.canEditAll && row.canEditAll;
+      existing.grants.push(...row.grants);
+      existing.canEditAny = existing.canEditAny || row.canEditAny;
       if (row.earliestJoinedAt < existing.earliestJoinedAt) {
         existing.earliestJoinedAt = row.earliestJoinedAt;
       }
     } else {
-      map.set(key, { ...row, targets: [...row.targets] });
+      map.set(key, { ...row, grants: [...row.grants] });
     }
   }
   for (const row of map.values()) {
-    row.targets.sort((a, b) => a.label.localeCompare(b.label));
+    row.grants.sort((a, b) => a.target_label.localeCompare(b.target_label));
   }
   return [...map.values()].sort((a, b) =>
     a.principal.username.localeCompare(b.principal.username),
@@ -284,21 +287,21 @@ export default function CollaboratorsPage({
         s.users.map<GroupedRow>((u) => ({
           level: "org",
           principal: u,
-          role: u.role,
-          targets: [
+          grants: [
             {
-              id: s.org.id,
-              label: s.org.slug,
-              link: `/orgs/${s.org.slug}`,
-              canEdit: s.myRole === "owner",
+              target_id: s.org.id,
+              target_label: s.org.slug,
+              target_link: `/orgs/${s.org.slug}`,
               joined_at: u.joined_at,
+              role: u.role,
+              canEdit: s.myRole === "owner",
             },
           ],
-          canEditAll: s.myRole === "owner",
+          canEditAny: s.myRole === "owner",
           earliestJoinedAt: u.joined_at,
         })),
       );
-    return groupRows(flat);
+    return groupByPrincipal(flat);
   }, [loaderData.orgSections, scope]);
 
   const docoRows = useMemo(() => {
@@ -308,21 +311,21 @@ export default function CollaboratorsPage({
         s.users.map<GroupedRow>((u) => ({
           level: "doco",
           principal: u,
-          role: u.role,
-          targets: [
+          grants: [
             {
-              id: s.doco.id,
-              label: s.doco.handle,
-              link: `/${s.doco.handle}`,
-              canEdit: s.myRole === "owner",
+              target_id: s.doco.id,
+              target_label: s.doco.handle,
+              target_link: `/${s.doco.handle}`,
               joined_at: u.joined_at,
+              role: u.role,
+              canEdit: s.myRole === "owner",
             },
           ],
-          canEditAll: s.myRole === "owner",
+          canEditAny: s.myRole === "owner",
           earliestJoinedAt: u.joined_at,
         })),
       );
-    return groupRows(flat);
+    return groupByPrincipal(flat);
   }, [loaderData.docoSections, scope]);
 
   // When scope filters to a specific org, hide the doco section entirely
@@ -427,14 +430,13 @@ function Section({
           <div className="overflow-x-auto">
             <table className="w-full table-fixed text-sm">
               <colgroup>
-                <col className="w-[40%]" />
-                <col className="w-[40%]" />
-                <col className="w-[20%]" />
+                <col className="w-[55%]" />
+                <col className="w-[45%]" />
               </colgroup>
               <tbody className="divide-y divide-border">
                 {sorted.map((r) => (
                   <UserRow
-                    key={`${r.level}-${r.principal.principal_id}-${r.role}`}
+                    key={`${r.level}-${r.principal.principal_id}`}
                     row={r}
                     myPrincipalId={myPrincipalId}
                   />
@@ -491,8 +493,6 @@ function parseAgentName(full: string): { primary: string; caption: string | null
   return { primary, caption: first || null };
 }
 
-const MAX_VISIBLE_TARGETS = 2;
-
 function UserRow({
   row,
   myPrincipalId,
@@ -500,86 +500,13 @@ function UserRow({
   row: GroupedRow;
   myPrincipalId: string;
 }) {
-  const roleFetcher = useFetcher<ActionResult>();
-  const removeFetcher = useFetcher<ActionResult>();
-
-  const targetIdsCsv = row.targets.map((t) => t.id).join(",");
   const isOauth = row.principal.source === "oauth";
   const clientId = row.principal.client_id ?? "";
-  const updateIntent = isOauth ? "oauth_update" : "update";
-  const removeIntent = isOauth ? "oauth_remove" : "remove";
-
-  const matchesThisRow = (data: ActionResult) => {
-    if (!("intent" in data)) return false;
-    if (data.target_ids.join(",") !== targetIdsCsv) return false;
-    if (isOauth) {
-      return (
-        (data.intent === "oauth_update" || data.intent === "oauth_remove") &&
-        data.client_id === clientId
-      );
-    }
-    return (
-      (data.intent === "update" || data.intent === "remove") &&
-      data.principal_id === row.principal.principal_id
-    );
-  };
-
-  const justSaved =
-    roleFetcher.state === "idle" &&
-    roleFetcher.data &&
-    "intent" in roleFetcher.data &&
-    (roleFetcher.data.intent === "update" || roleFetcher.data.intent === "oauth_update") &&
-    matchesThisRow(roleFetcher.data);
-  const error =
-    roleFetcher.data && "error" in roleFetcher.data ? roleFetcher.data.error : undefined;
-
-  const [showSaved, setShowSaved] = useState(false);
-  useEffect(() => {
-    if (justSaved) {
-      setShowSaved(true);
-      const t = setTimeout(() => setShowSaved(false), 2000);
-      return () => clearTimeout(t);
-    }
-  }, [justSaved]);
-
   const username = row.principal.username;
-  const removeLabel =
-    row.targets.length === 1
-      ? `Remove ${username} from ${row.targets[0].label}?`
-      : `Remove ${username} from ${row.targets.length} places (${row.targets
-          .map((t) => t.label)
-          .join(", ")})?`;
-
-  const updatePayload = (newRole: string): Record<string, string> => {
-    const base: Record<string, string> = {
-      intent: updateIntent,
-      level: row.level,
-      target_ids: targetIdsCsv,
-      role: newRole,
-    };
-    if (isOauth) base.client_id = clientId;
-    else base.principal_id = row.principal.principal_id;
-    return base;
-  };
-
-  const removePayload: Record<string, string> = (() => {
-    const base: Record<string, string> = {
-      intent: removeIntent,
-      level: row.level,
-      target_ids: targetIdsCsv,
-    };
-    if (isOauth) base.client_id = clientId;
-    else base.principal_id = row.principal.principal_id;
-    return base;
-  })();
-
   const parsed = isOauth ? parseAgentName(username) : null;
   const primaryName = parsed?.primary ?? username;
   const caption = parsed?.caption ?? null;
   const isMe = !isOauth && row.principal.principal_id === myPrincipalId;
-
-  const visibleTargets = row.targets.slice(0, MAX_VISIBLE_TARGETS);
-  const overflowTargets = row.targets.slice(MAX_VISIBLE_TARGETS);
 
   const grantedAbs = formatDate(row.earliestJoinedAt);
   const grantedRel = formatRelative(row.earliestJoinedAt);
@@ -591,7 +518,7 @@ function UserRow({
   const metaTooltip = `Granted ${grantedAbs}${row.principal.last_activity_at ? ` · Last active ${row.principal.last_activity_at}` : ""}`;
 
   return (
-    <tr data-testid={`row-${row.level}-${username}-${row.role}`}>
+    <tr data-testid={`row-${row.level}-${username}`}>
       <td className="py-3 pr-3 align-top">
         <div className="flex items-center gap-1.5">
           <span className="truncate font-medium" title={username}>
@@ -615,79 +542,131 @@ function UserRow({
           {metaParts.join(" · ")}
         </div>
       </td>
-      <td className="py-3 pr-3 align-top">
+      <td className="py-3 align-top">
         <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
           Access to
         </div>
-        <div className="mt-1 flex flex-wrap items-center gap-1">
-          {visibleTargets.map((t) => (
-            <Link
-              key={t.id}
-              to={t.link}
-              className="inline-flex max-w-[12rem] items-center truncate rounded-full border border-border bg-input px-2 py-0.5 text-xs hover:bg-card"
-              title={`${t.label} — granted ${formatDate(t.joined_at)}`}
-            >
-              {t.label}
-            </Link>
+        <div className="mt-1 flex flex-col gap-1.5">
+          {row.grants.map((g) => (
+            <AccessLine
+              key={g.target_id}
+              level={row.level}
+              isOauth={isOauth}
+              principalId={row.principal.principal_id}
+              clientId={clientId}
+              username={username}
+              grant={g}
+            />
           ))}
-          {overflowTargets.length > 0 ? (
-            <span
-              className="inline-flex shrink-0 items-center rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground"
-              title={overflowTargets.map((t) => t.label).join(", ")}
-            >
-              +{overflowTargets.length} more
-            </span>
-          ) : null}
-        </div>
-      </td>
-      <td className="py-3 align-top">
-        <div className="flex flex-col items-end gap-1.5">
-          <select
-            defaultValue={row.role}
-            disabled={!row.canEditAll || roleFetcher.state !== "idle"}
-            data-testid={`role-${row.level}-${username}-${row.role}`}
-            className="rounded-md border border-border bg-background px-2 py-1 text-sm disabled:opacity-50"
-            onChange={(e) => {
-              roleFetcher.submit(updatePayload(e.currentTarget.value), { method: "post" });
-            }}
-          >
-            {ALL_ROLES.map((r) => (
-              <option key={r} value={r}>
-                {r}
-              </option>
-            ))}
-          </select>
-          {row.canEditAll ? (
-            <button
-              type="button"
-              disabled={removeFetcher.state !== "idle"}
-              data-testid={`remove-${row.level}-${username}-${row.role}`}
-              onClick={() => {
-                if (!confirm(removeLabel)) return;
-                removeFetcher.submit(removePayload, { method: "post" });
-              }}
-              className="rounded-md border border-border px-2 py-1 text-xs text-destructive hover:bg-card disabled:opacity-50"
-            >
-              {removeFetcher.state !== "idle" ? "Removing…" : "Remove"}
-            </button>
-          ) : null}
-          <span
-            className="truncate text-[10px] text-muted-foreground"
-            data-testid={`status-${row.level}-${username}-${row.role}`}
-            aria-live="polite"
-          >
-            {roleFetcher.state !== "idle" ? (
-              "Saving…"
-            ) : error ? (
-              <span className="text-destructive">{error}</span>
-            ) : showSaved ? (
-              "Saved"
-            ) : (
-              ""
-            )}
-          </span>
         </div>
       </td>
     </tr>
+  );
+}
+
+function AccessLine({
+  level,
+  isOauth,
+  principalId,
+  clientId,
+  username,
+  grant,
+}: {
+  level: InviteLevel;
+  isOauth: boolean;
+  principalId: string;
+  clientId: string;
+  username: string;
+  grant: AccessGrant;
+}) {
+  const roleFetcher = useFetcher<ActionResult>();
+  const removeFetcher = useFetcher<ActionResult>();
+
+  const updatePayload = (newRole: string): Record<string, string> => {
+    const base: Record<string, string> = {
+      intent: isOauth ? "oauth_update" : "update",
+      level,
+      target_ids: grant.target_id,
+      role: newRole,
+    };
+    if (isOauth) base.client_id = clientId;
+    else base.principal_id = principalId;
+    return base;
+  };
+  const removePayload: Record<string, string> = (() => {
+    const base: Record<string, string> = {
+      intent: isOauth ? "oauth_remove" : "remove",
+      level,
+      target_ids: grant.target_id,
+    };
+    if (isOauth) base.client_id = clientId;
+    else base.principal_id = principalId;
+    return base;
+  })();
+
+  const error =
+    roleFetcher.data && "error" in roleFetcher.data ? roleFetcher.data.error : undefined;
+  const justSaved =
+    roleFetcher.state === "idle" &&
+    roleFetcher.data &&
+    "intent" in roleFetcher.data &&
+    (roleFetcher.data.intent === "update" || roleFetcher.data.intent === "oauth_update");
+  const [showSaved, setShowSaved] = useState(false);
+  useEffect(() => {
+    if (justSaved) {
+      setShowSaved(true);
+      const t = setTimeout(() => setShowSaved(false), 2000);
+      return () => clearTimeout(t);
+    }
+  }, [justSaved]);
+
+  return (
+    <div className="flex items-center gap-1.5">
+      <Link
+        to={grant.target_link}
+        className="inline-flex min-w-0 flex-1 items-center truncate rounded-full border border-border bg-input px-2 py-0.5 text-xs hover:bg-card"
+        title={`${grant.target_label} — granted ${formatDate(grant.joined_at)}`}
+      >
+        {grant.target_label}
+      </Link>
+      <select
+        defaultValue={grant.role}
+        disabled={!grant.canEdit || roleFetcher.state !== "idle"}
+        data-testid={`role-${level}-${username}-${grant.target_id}`}
+        className="rounded-md border border-border bg-background px-1.5 py-0.5 text-xs disabled:opacity-50"
+        onChange={(e) => {
+          roleFetcher.submit(updatePayload(e.currentTarget.value), { method: "post" });
+        }}
+      >
+        {ALL_ROLES.map((r) => (
+          <option key={r} value={r}>
+            {r}
+          </option>
+        ))}
+      </select>
+      {grant.canEdit ? (
+        <button
+          type="button"
+          disabled={removeFetcher.state !== "idle"}
+          data-testid={`remove-${level}-${username}-${grant.target_id}`}
+          onClick={() => {
+            if (!confirm(`Remove ${username} from ${grant.target_label}?`)) return;
+            removeFetcher.submit(removePayload, { method: "post" });
+          }}
+          title={`Remove ${username} from ${grant.target_label}`}
+          className="shrink-0 rounded-md border border-border px-1.5 py-0.5 text-xs text-destructive hover:bg-card disabled:opacity-50"
+        >
+          {removeFetcher.state !== "idle" ? "…" : "×"}
+        </button>
+      ) : null}
+      {roleFetcher.state !== "idle" || error || showSaved ? (
+        <span
+          className="text-[10px] text-muted-foreground"
+          aria-live="polite"
+        >
+          {roleFetcher.state !== "idle" ? "Saving…" : error ? <span className="text-destructive">{error}</span> : "Saved"}
+        </span>
+      ) : null}
+    </div>
   );
 }
