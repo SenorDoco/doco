@@ -73,7 +73,7 @@ export const showCmd = defineCommand({
     console.log(`${c.bold("type:")}    ${entity.node_type}`);
     if (data.lifecycle) console.log(`${c.bold("lifecycle:")} ${data.lifecycle}`);
     if (data.purpose) console.log(`${c.bold("purpose:")} ${data.purpose}`);
-    if (entity.node_type !== "scope" && data.summary) {
+    if (data.summary) {
       console.log(`${c.bold("summary:")}  ${data.summary}`);
     }
     console.log();

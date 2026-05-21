@@ -117,6 +117,8 @@ export async function loader({ request }: { request: Request }) {
            UNION ALL SELECT id, summary AS label, lifecycle FROM intents WHERE id = ANY($1)
            UNION ALL SELECT id, summary AS label, lifecycle FROM ideas WHERE id = ANY($1)
            UNION ALL SELECT id, summary AS label, lifecycle FROM rules WHERE id = ANY($1)
+           UNION ALL SELECT id, summary AS label, lifecycle FROM guidance_articles WHERE id = ANY($1)
+           UNION ALL SELECT id, summary AS label, lifecycle FROM node_authoring_articles WHERE id = ANY($1)
            UNION ALL SELECT id, summary AS label, lifecycle FROM actions WHERE id = ANY($1)
            UNION ALL SELECT id, summary AS label, lifecycle FROM logs WHERE id = ANY($1)
            UNION ALL SELECT id, summary AS label, lifecycle FROM evals WHERE id = ANY($1)

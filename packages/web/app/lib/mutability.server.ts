@@ -21,23 +21,21 @@ export type ClaimNodeType =
   | "decision"
   | "intent"
   | "rule"
+  | "guidance_article"
+  | "node_authoring_article"
   | "action"
   | "log"
   | "eval"
   | "reference";
 
-export type RecordNodeType =
-  | "principal"
-  | "organization"
-  | "scope"
-  | "doco"
-  | "tag"
-  | "idea";
+export type RecordNodeType = "principal" | "organization" | "scope" | "doco" | "tag" | "idea";
 
 const CLAIM_TYPES: ReadonlySet<string> = new Set<ClaimNodeType>([
   "decision",
   "intent",
   "rule",
+  "guidance_article",
+  "node_authoring_article",
   "action",
   "log",
   "eval",
@@ -54,6 +52,8 @@ const FROZEN_LIFECYCLES: Record<ClaimNodeType, ReadonlySet<string>> = {
   decision: new Set(["active", "succeeded", "failed", "superseded", "abandoned"]),
   intent: new Set(["active", "succeeded", "failed", "superseded", "abandoned"]),
   rule: new Set(["active", "succeeded", "failed", "superseded", "abandoned"]),
+  guidance_article: new Set(["active", "succeeded", "failed", "superseded", "abandoned"]),
+  node_authoring_article: new Set(["active", "succeeded", "failed", "superseded", "abandoned"]),
   action: new Set(["active", "succeeded", "failed", "superseded", "abandoned"]),
   eval: new Set(["active", "succeeded", "failed", "superseded", "abandoned"]),
   // Log records a thing that happened — frozen from creation so the audit

@@ -1,5 +1,5 @@
 import { getDocoById, getEntity, upsertEntity, withClient } from "@doco/db";
-import { generateUlid } from "@doco/shared";
+import { type AuthoringPredicate, generateUlid } from "@doco/shared";
 import { waitUntil } from "@vercel/functions";
 // Server-only helpers for "capture an entity" endpoints. Single-call API
 // for agents/people to write a Decision (or other entity types) without
@@ -10,10 +10,10 @@ import { waitUntil } from "@vercel/functions";
 // `purpose` for scopes — kept while scopes existed; v16 removed the
 // node type itself but the field naming stays for back-compat).
 import { appendAuditEvent } from "./audit-log.server";
+import { readDocoMetadata } from "./doco-metadata.server";
 import { suggestImplicitEdges } from "./llm.server";
 import { validatePatch } from "./mutability.server";
 import { reindex, reindexEmbeddingsOnly } from "./redeem.server";
-import { readDocoMetadata } from "./doco-metadata.server";
 
 /**
  * Synthetic "path" returned in CaptureResult.path. Postgres is the only
@@ -238,7 +238,11 @@ function trunc(s: string, cap = TRUNC): string {
  */
 
 function capType(t: string): string {
-  return t.length === 0 ? t : t.charAt(0).toUpperCase() + t.slice(1);
+  return t
+    .split("_")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
 }
 
 export async function renderOperationLines(opts: {
@@ -561,6 +565,12 @@ async function attachImplicitEdges(opts: {
         { table: "decisions", nodeType: "decision", hasName: false },
         { table: "intents", nodeType: "intent", hasName: false },
         { table: "rules", nodeType: "rule", hasName: false },
+        { table: "guidance_articles", nodeType: "guidance_article", hasName: false },
+        {
+          table: "node_authoring_articles",
+          nodeType: "node_authoring_article",
+          hasName: false,
+        },
         { table: "actions", nodeType: "action", hasName: false },
         { table: "evals", nodeType: "eval", hasName: true },
       ];
@@ -952,6 +962,8 @@ export type NodeTypeName =
   | "decision"
   | "intent"
   | "rule"
+  | "guidance_article"
+  | "node_authoring_article"
   | "action"
   | "log"
   | "reference"
@@ -1909,6 +1921,265 @@ export async function captureRule(
     ok: true,
     id,
     path: syntheticPath("rule", id),
+    footer_lines,
+    duration_ms,
+  };
+}
+
+// ─── Constitution Articles ────────────────────────────────────────────────
+
+export interface GuidanceArticleDraft {
+  /** Required: one-line summary of the guidance. */
+  summary: string;
+  /** Optional markdown body. Defaults to the summary so the article is readable. */
+  body_md?: string;
+  /** Optional: principal username who authored the article. */
+  authored_by_username?: string;
+  /** Optional: principal id who created this entry; defaults to authored_by. */
+  created_by_id?: string;
+  /** Optional: defaults to "active". */
+  lifecycle?: string;
+}
+
+export interface NodeAuthoringArticleDraft {
+  /** Required: one-line summary of the capture-time check. */
+  summary: string;
+  /** Required: deterministic structural check or probabilistic LLM check. */
+  evaluation_kind: "deterministic" | "probabilistic";
+  /**
+   * Deterministic articles accept an AuthoringPredicate object (or JSON
+   * string) whose kind is not "probabilistic".
+   */
+  predicate?: AuthoringPredicate | string;
+  /**
+   * Probabilistic articles may pass a plain spec; it is stored as
+   * { kind: "probabilistic", spec }.
+   */
+  spec?: string;
+  fires_when_node_lifecycle?: string[];
+  on_violation?: "block" | "warn" | "log";
+  body_md?: string;
+  authored_by_username?: string;
+  created_by_id?: string;
+  lifecycle?: string;
+}
+
+async function resolveArticleAuthor(draft: {
+  authored_by_username?: string;
+  created_by_id?: string;
+}): Promise<string | CaptureError> {
+  let authorId: string | null = null;
+  if (draft.authored_by_username) {
+    authorId = await resolvePrincipalUsername(draft.authored_by_username);
+    if (!authorId) {
+      return { error: `Unknown principal username: ${draft.authored_by_username}` };
+    }
+  }
+  if (!authorId && draft.created_by_id) authorId = draft.created_by_id;
+  if (!authorId) {
+    return {
+      error:
+        "authored_by_username is required (or pass an authenticated request — the route fills it from `me.username`).",
+    };
+  }
+  return authorId;
+}
+
+function parsePredicate(value: AuthoringPredicate | string | undefined): unknown {
+  if (typeof value !== "string") return value;
+  try {
+    return JSON.parse(value) as unknown;
+  } catch {
+    return null;
+  }
+}
+
+function normalizeNodeAuthoringPredicate(
+  draft: NodeAuthoringArticleDraft,
+): AuthoringPredicate | CaptureError {
+  if (draft.evaluation_kind === "probabilistic") {
+    const spec =
+      typeof draft.spec === "string" && draft.spec.trim().length > 0
+        ? draft.spec.trim()
+        : typeof draft.predicate === "object" &&
+            draft.predicate !== null &&
+            draft.predicate.kind === "probabilistic"
+          ? draft.predicate.spec.trim()
+          : "";
+    if (!spec) return { error: "spec is required for probabilistic node_authoring_articles." };
+    return { kind: "probabilistic", spec };
+  }
+
+  const parsed = parsePredicate(draft.predicate);
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return { error: "predicate must be a JSON object for deterministic node_authoring_articles." };
+  }
+  const predicate = parsed as AuthoringPredicate;
+  if (predicate.kind === "probabilistic") {
+    return {
+      error:
+        "deterministic node_authoring_articles cannot use a probabilistic predicate; choose probabilistic instead.",
+    };
+  }
+  if (typeof predicate.kind !== "string" || predicate.kind.length === 0) {
+    return { error: "predicate.kind is required." };
+  }
+  return predicate;
+}
+
+export async function captureGuidanceArticle(
+  docoDir: string,
+  docoId: string,
+  ownerSlug: string,
+  docoSlug: string,
+  draft: GuidanceArticleDraft,
+  docoHost?: string,
+): Promise<CaptureResult | CaptureError> {
+  const startedAt = performance.now();
+  if (!draft.summary?.trim()) return { error: "summary is required." };
+  const author = await resolveArticleAuthor(draft);
+  if (typeof author !== "string") return author;
+
+  const id = `guidance_article_${generateUlid()}`;
+  const summary = draft.summary.trim();
+  const now = new Date().toISOString();
+  const fm: Record<string, unknown> = {
+    id,
+    doco_id: docoId,
+    node_type: "guidance_article",
+    article_type: "guidance",
+    summary,
+    created_at: now,
+    created_by: draft.created_by_id ?? author,
+    lifecycle: draft.lifecycle ?? "active",
+  };
+
+  await persistEntity({
+    nodeType: "guidance_article",
+    id,
+    docoId,
+    fm,
+    body: draft.body_md?.trim() || summary,
+  });
+  emitAuditForCreate({
+    docoDir,
+    docoId,
+    actorId: draft.created_by_id ?? author,
+    entity_type: "guidance_article",
+    entity_id: id,
+    summary,
+  });
+  await reindexAndScheduleAttach(docoDir, docoId, id, {
+    docoDir,
+    ownerSlug,
+    docoSlug,
+    entityId: id,
+    entityType: "guidance_article",
+    entitySummary: summary,
+    alreadyReferenced: new Set([author]),
+  });
+
+  const duration_ms = Math.round(performance.now() - startedAt);
+  const footer_lines = await renderOperationLines({
+    docoId,
+    ownerSlug,
+    docoSlug,
+    nodeType: "guidance_article",
+    id,
+    summary,
+    docoHost,
+    ops: [{ kind: "added", summary }],
+    duration_ms,
+  });
+  return {
+    ok: true,
+    id,
+    path: syntheticPath("guidance_article", id),
+    footer_lines,
+    duration_ms,
+  };
+}
+
+export async function captureNodeAuthoringArticle(
+  docoDir: string,
+  docoId: string,
+  ownerSlug: string,
+  docoSlug: string,
+  draft: NodeAuthoringArticleDraft,
+  docoHost?: string,
+): Promise<CaptureResult | CaptureError> {
+  const startedAt = performance.now();
+  if (!draft.summary?.trim()) return { error: "summary is required." };
+  if (draft.evaluation_kind !== "deterministic" && draft.evaluation_kind !== "probabilistic") {
+    return { error: "evaluation_kind must be deterministic or probabilistic." };
+  }
+  const author = await resolveArticleAuthor(draft);
+  if (typeof author !== "string") return author;
+  const predicate = normalizeNodeAuthoringPredicate(draft);
+  if ("error" in predicate) return predicate;
+
+  const id = `node_authoring_article_${generateUlid()}`;
+  const summary = draft.summary.trim();
+  const now = new Date().toISOString();
+  const firesWhen = Array.isArray(draft.fires_when_node_lifecycle)
+    ? draft.fires_when_node_lifecycle.filter((v) => typeof v === "string" && v.length > 0)
+    : [];
+  const fm: Record<string, unknown> = {
+    id,
+    doco_id: docoId,
+    node_type: "node_authoring_article",
+    article_type: "node_authoring",
+    evaluation_kind: draft.evaluation_kind,
+    summary,
+    predicate,
+    ...(firesWhen.length > 0 ? { fires_when_node_lifecycle: firesWhen } : {}),
+    on_violation: draft.on_violation ?? "block",
+    created_at: now,
+    created_by: draft.created_by_id ?? author,
+    lifecycle: draft.lifecycle ?? "active",
+  };
+
+  await persistEntity({
+    nodeType: "node_authoring_article",
+    id,
+    docoId,
+    fm,
+    body: draft.body_md?.trim() ?? "",
+  });
+  emitAuditForCreate({
+    docoDir,
+    docoId,
+    actorId: draft.created_by_id ?? author,
+    entity_type: "node_authoring_article",
+    entity_id: id,
+    summary,
+  });
+  await reindexAndScheduleAttach(docoDir, docoId, id, {
+    docoDir,
+    ownerSlug,
+    docoSlug,
+    entityId: id,
+    entityType: "node_authoring_article",
+    entitySummary: summary,
+    alreadyReferenced: new Set([author]),
+  });
+
+  const duration_ms = Math.round(performance.now() - startedAt);
+  const footer_lines = await renderOperationLines({
+    docoId,
+    ownerSlug,
+    docoSlug,
+    nodeType: "node_authoring_article",
+    id,
+    summary,
+    docoHost,
+    ops: [{ kind: "added", summary }],
+    duration_ms,
+  });
+  return {
+    ok: true,
+    id,
+    path: syntheticPath("node_authoring_article", id),
     footer_lines,
     duration_ms,
   };

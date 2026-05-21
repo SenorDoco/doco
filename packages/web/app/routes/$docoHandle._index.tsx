@@ -50,13 +50,22 @@ const NODE_TYPE_LABELS: Record<string, string> = {
   action: "Actions",
   intent: "Intents",
   rule: "Rules",
+  guidance_article: "Guidance articles",
+  node_authoring_article: "Node authoring articles",
   eval: "Evals",
   reference: "References",
   idea: "Ideas",
 };
 
 function nodeTypeLabel(type: string): string {
-  return NODE_TYPE_LABELS[type] ?? `${type.charAt(0).toUpperCase()}${type.slice(1)}s`;
+  return (
+    NODE_TYPE_LABELS[type] ??
+    `${type
+      .split("_")
+      .filter(Boolean)
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(" ")}s`
+  );
 }
 
 export async function loader({
@@ -103,6 +112,8 @@ export async function loader({
          UNION ALL SELECT id, summary AS label, lifecycle FROM intents WHERE doco_id = $1 AND id = ANY($2::text[])
          UNION ALL SELECT id, summary AS label, lifecycle FROM ideas WHERE doco_id = $1 AND id = ANY($2::text[])
          UNION ALL SELECT id, summary AS label, lifecycle FROM rules WHERE doco_id = $1 AND id = ANY($2::text[])
+         UNION ALL SELECT id, summary AS label, lifecycle FROM guidance_articles WHERE doco_id = $1 AND id = ANY($2::text[])
+         UNION ALL SELECT id, summary AS label, lifecycle FROM node_authoring_articles WHERE doco_id = $1 AND id = ANY($2::text[])
          UNION ALL SELECT id, summary AS label, lifecycle FROM actions WHERE doco_id = $1 AND id = ANY($2::text[])
          UNION ALL SELECT id, summary AS label, lifecycle FROM logs WHERE doco_id = $1 AND id = ANY($2::text[])
          UNION ALL SELECT id, summary AS label, lifecycle FROM evals WHERE doco_id = $1 AND id = ANY($2::text[])
@@ -146,6 +157,8 @@ export async function loader({
            UNION ALL SELECT to_char(created_at, 'YYYY-MM-DD') FROM intents WHERE doco_id = $1
            UNION ALL SELECT to_char(created_at, 'YYYY-MM-DD') FROM ideas WHERE doco_id = $1
            UNION ALL SELECT to_char(created_at, 'YYYY-MM-DD') FROM rules WHERE doco_id = $1
+           UNION ALL SELECT to_char(created_at, 'YYYY-MM-DD') FROM guidance_articles WHERE doco_id = $1
+           UNION ALL SELECT to_char(created_at, 'YYYY-MM-DD') FROM node_authoring_articles WHERE doco_id = $1
            UNION ALL SELECT to_char(created_at, 'YYYY-MM-DD') FROM actions WHERE doco_id = $1
            UNION ALL SELECT to_char(created_at, 'YYYY-MM-DD') FROM logs WHERE doco_id = $1
            UNION ALL SELECT to_char(created_at, 'YYYY-MM-DD') FROM evals WHERE doco_id = $1
@@ -373,8 +386,8 @@ export default function DocoHome({
               <CardContent className="p-0">
                 {items.length === 0 ? (
                   <div className="px-4 pb-4 text-xs leading-5 text-muted-foreground">
-                    No recorded activity yet. Capture a node from the API or
-                    CLI; this feed records UI, CLI, and API writes.
+                    No recorded activity yet. Capture a node from the API or CLI; this feed records
+                    UI, CLI, and API writes.
                   </div>
                 ) : (
                   <div className="divide-y divide-border">

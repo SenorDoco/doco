@@ -6,7 +6,8 @@ import { normalizeDocoParams } from "~/lib/doco-access.server";
  *
  *   GET /<doco-handle>/api/<type>.txt
  *
- * `type` is one of: decisions, intents, scopes, settings.
+ * `type` is one of: decisions, intents, guidance_articles,
+ * node_authoring_articles, scopes, settings.
  * Returns plain-prose spec for the corresponding .json endpoint.
  */
 
@@ -339,6 +340,96 @@ RELATED
   POST ${baseUrl}/${handle}/api/intents.json     capture an Intent
   POST ${baseUrl}/${handle}/api/decisions.json   capture a Decision
   GET  ${baseUrl}/${handle}/status.json          freshness + counts
+`,
+
+  guidance_articles: (baseUrl, handle) => `# Doco — Capture a Guidance Article
+
+Guidance Articles are constitution articles contributors read while
+working. They are not evaluated by the capture engine.
+
+ENDPOINT
+  POST ${baseUrl}/${handle}/api/guidance_articles.json
+  Content-Type: application/json
+
+BODY (JSON)
+  summary               required   one-line article summary
+  body_md               optional   markdown article body
+  authored_by_username  optional   host-level username; auth fills this
+  lifecycle             optional   default "active"
+
+SUCCESS RESPONSE (HTTP 201)
+  {
+    "ok": true,
+    "id": "guidance_article_<ULID>",
+    "footer_lines": ["[🔮 Doco] ✍️ Guidance Article added: ..."]
+  }
+
+RELATED
+  GET  ${baseUrl}/${handle}/constitution
+  POST ${baseUrl}/${handle}/api/node_authoring_articles.json
+`,
+
+  node_authoring_articles: (baseUrl, handle) => `# Doco — Capture a Node Authoring Article
+
+Node Authoring Articles are constitution articles the engine evaluates
+when nodes are captured. \`evaluation_kind\` is either deterministic
+(structured predicate) or probabilistic (LLM-judged spec).
+
+ENDPOINT
+  POST ${baseUrl}/${handle}/api/node_authoring_articles.json
+  Content-Type: application/json
+
+BODY (JSON)
+  summary               required   one-line article summary
+  evaluation_kind       required   "deterministic" | "probabilistic"
+  predicate             required*  deterministic AuthoringPredicate object
+                                  or JSON string. Must not have
+                                  kind="probabilistic".
+  spec                  required*  probabilistic spec; stored as
+                                  {kind:"probabilistic", spec}
+  fires_when_node_lifecycle optional ["active", ...]
+  on_violation          optional   "block" | "warn" | "log"; default "block"
+  body_md               optional   markdown article body
+  authored_by_username  optional   host-level username; auth fills this
+  lifecycle             optional   default "active"
+
+SUCCESS RESPONSE (HTTP 201)
+  {
+    "ok": true,
+    "id": "node_authoring_article_<ULID>",
+    "footer_lines": ["[🔮 Doco] ✍️ Node Authoring Article added: ..."]
+  }
+
+EXAMPLE — deterministic
+  curl -sS -X POST \\
+    -H "Content-Type: application/json" \\
+    -H "Authorization: Bearer $DOCO_ACCESS" \\
+    ${baseUrl}/${handle}/api/node_authoring_articles.json \\
+    -d '{
+      "summary": "Every Decision cites at least one Intent.",
+      "evaluation_kind": "deterministic",
+      "predicate": {
+        "kind": "requires_edge",
+        "edge_type": "serves",
+        "target_node_type": "intent",
+        "when_node_type": ["decision"]
+      }
+    }'
+
+EXAMPLE — probabilistic
+  curl -sS -X POST \\
+    -H "Content-Type: application/json" \\
+    -H "Authorization: Bearer $DOCO_ACCESS" \\
+    ${baseUrl}/${handle}/api/node_authoring_articles.json \\
+    -d '{
+      "summary": "Decision rationale names the rejected alternatives.",
+      "evaluation_kind": "probabilistic",
+      "spec": "Pass when the Decision explains at least one alternative and why it was rejected."
+    }'
+
+RELATED
+  GET  ${baseUrl}/${handle}/constitution
+  POST ${baseUrl}/${handle}/api/guidance_articles.json
 `,
 
   settings: (baseUrl, handle) => `# Doco — Settings (read + patch)

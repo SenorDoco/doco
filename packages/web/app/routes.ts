@@ -34,10 +34,7 @@ import { type RouteConfig, index, route } from "@react-router/dev/routes";
  *   /:owner/:doco/:type/:id        per-Doco entity detail (id is the ULID; scope also resolves by name)
  *   /:owner/:doco/search           per-Doco search (richer results — GPR / age / lifecycle)
  *   /:owner/:doco/settings         per-Doco settings (admin only; danger zone soft-delete; ADR-124)
- *   /:owner/:doco/scopes           per-Doco scope list (Edit button — not chevron — for instructions)
- *   /:owner/:doco/scopes/new       per-Doco add a scope (templates + custom form)
- *   /:owner/:doco/scopes/:id       per-Doco scope detail+edit (merged) — including the Global scope (formerly /constitution; renamed per decision_01KRPNZY7W6CCMYNKGND67BP0B)
- *   /:owner/:doco/scopes/:id/rules/new         standalone add rule page for scope rules
+ *   /:owner/:doco/constitution     per-Doco constitution page: guidance_articles + node_authoring_articles
  *   /:owner/:doco/scopes/:id/abandon           standalone Danger Zone confirmation
  *   /:owner/:doco/status.json      per-Doco status (connection signal for agent footer line)
  *   /:owner/:doco/api/*            per-Doco capture + update endpoints
@@ -137,26 +134,37 @@ export default [
   route(":docoId", "routes/$docoHandle._index.tsx"),
   route(":docoId/status.json", "routes/$docoHandle.status[.]json.tsx"),
   route(":docoId/settings", "routes/$docoHandle.settings.tsx"),
+  route(":docoId/constitution", "routes/$docoHandle.constitution.tsx"),
   route(":docoId/invites", "routes/$docoHandle.invites.tsx"),
   route(":docoId/api/invites.json", "routes/$docoHandle.api.invites[.]json.tsx"),
   route(":docoId/api/decisions.json", "routes/$docoHandle.api.decisions[.]json.tsx"),
-  route(
-    ":docoId/api/decisions/:id.json",
-    "routes/$docoHandle.api.decisions.$id[.]json.tsx",
-  ),
+  route(":docoId/api/decisions/:id.json", "routes/$docoHandle.api.decisions.$id[.]json.tsx"),
   route(":docoId/api/intents/:id.json", "routes/$docoHandle.api.intents.$id[.]json.tsx"),
   route(":docoId/api/rules/:id.json", "routes/$docoHandle.api.rules.$id[.]json.tsx"),
+  route(
+    ":docoId/api/guidance_articles/:id.json",
+    "routes/$docoHandle.api.guidance_articles.$id[.]json.tsx",
+  ),
+  route(
+    ":docoId/api/node_authoring_articles/:id.json",
+    "routes/$docoHandle.api.node_authoring_articles.$id[.]json.tsx",
+  ),
   route(":docoId/api/actions/:id.json", "routes/$docoHandle.api.actions.$id[.]json.tsx"),
   route(":docoId/api/logs/:id.json", "routes/$docoHandle.api.logs.$id[.]json.tsx"),
-  route(
-    ":docoId/api/references/:id.json",
-    "routes/$docoHandle.api.references.$id[.]json.tsx",
-  ),
+  route(":docoId/api/references/:id.json", "routes/$docoHandle.api.references.$id[.]json.tsx"),
   route(":docoId/api/principals.json", "routes/$docoHandle.api.principals[.]json.tsx"),
   route(":docoId/api/intents.json", "routes/$docoHandle.api.intents[.]json.tsx"),
   route(":docoId/api/actions.json", "routes/$docoHandle.api.actions[.]json.tsx"),
   route(":docoId/api/logs.json", "routes/$docoHandle.api.logs[.]json.tsx"),
   route(":docoId/api/rules.json", "routes/$docoHandle.api.rules[.]json.tsx"),
+  route(
+    ":docoId/api/guidance_articles.json",
+    "routes/$docoHandle.api.guidance_articles[.]json.tsx",
+  ),
+  route(
+    ":docoId/api/node_authoring_articles.json",
+    "routes/$docoHandle.api.node_authoring_articles[.]json.tsx",
+  ),
   route(":docoId/api/references.json", "routes/$docoHandle.api.references[.]json.tsx"),
   route(":docoId/api/evals.json", "routes/$docoHandle.api.evals[.]json.tsx"),
   route(":docoId/api/states.json", "routes/$docoHandle.api.states[.]json.tsx"),
@@ -164,10 +172,7 @@ export default [
   route(":docoId/api/:type.txt", "routes/$docoHandle.api.$type[.]txt.tsx"),
   route(":docoId/api/audit.json", "routes/$docoHandle.api.audit[.]json.tsx"),
   route(":docoId/activity", "routes/$docoHandle.activity.tsx"),
-  route(
-    ":docoId/graph-node-details.json",
-    "routes/$docoHandle.graph-node-details[.]json.tsx",
-  ),
+  route(":docoId/graph-node-details.json", "routes/$docoHandle.graph-node-details[.]json.tsx"),
   route(":docoId/search", "routes/$docoHandle.search.tsx"),
   route(":docoId/search.json", "routes/$docoHandle.search[.]json.tsx"),
   route(":docoId/onboarding/agent", "routes/$docoHandle.onboarding.agent.tsx"),

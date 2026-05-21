@@ -1,8 +1,7 @@
 import { withClient } from "@doco/db";
-// /<doco-handle>/rules/new — minimal capture form for a Rule entity.
-// Linked from /constitution's "Add rule" button (and reusable from
-// anywhere else that wants the same affordance — pass ?scope=<name>
-// to prefill the scope). Admin-only: project owners + org admins.
+// /<doco-handle>/rules/new — minimal capture form for a domain Rule entity.
+// Constitution meta-rules live in guidance_articles and
+// node_authoring_articles instead.
 import { Form, redirect, useSearchParams } from "react-router";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { SingleColumnPageMain } from "~/components/page-main";
@@ -10,8 +9,8 @@ import { SiteHeader } from "~/components/site-header";
 import { captureRule } from "~/lib/capture.server";
 import { docoPath } from "~/lib/db.server";
 import { loadDocoForAdmin, normalizeDocoParams } from "~/lib/doco-access.server";
-import { loadHostConfig } from "~/lib/host";
 import { readDocoMetadata } from "~/lib/doco-metadata.server";
+import { loadHostConfig } from "~/lib/host";
 
 interface IntentOption {
   id: string;
@@ -107,11 +106,6 @@ export async function action({
   if ("error" in result) {
     return Response.json(result, { status: result.status ?? 400 });
   }
-  // After capture, redirect back to constitution if that was the source
-  // scope; otherwise land on the new rule's detail page.
-  if (scopeNames.includes("constitution")) {
-    return redirect(`/${handle}/constitution`);
-  }
   return redirect(`/${handle}/rule/${result.id}`);
 }
 
@@ -136,8 +130,7 @@ export default function NewRule({
           <CardHeader>
             <CardTitle>New rule</CardTitle>
             <CardDescription>
-              Capture a load-bearing claim about how this project operates. Rules tagged with{" "}
-              <code>constitution</code> appear on the Constitution page.
+              Capture a load-bearing domain constraint for this project.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -176,7 +169,7 @@ export default function NewRule({
                   name="scope_names"
                   required
                   defaultValue={scopeFromUrl}
-                  placeholder="constitution"
+                  placeholder="project"
                   className="mt-1 block w-full rounded-md border border-border bg-input px-3 py-2 text-sm font-mono"
                 />
               </label>
@@ -186,7 +179,6 @@ export default function NewRule({
                 </span>
                 <select
                   name="intent_id"
-                  required={scopeFromUrl === "constitution"}
                   className="mt-1 block w-full rounded-md border border-border bg-input px-3 py-2 text-sm"
                   defaultValue=""
                 >
@@ -198,11 +190,6 @@ export default function NewRule({
                     </option>
                   ))}
                 </select>
-                {scopeFromUrl === "constitution" ? (
-                  <span className="mt-1 block text-[10px] text-muted-foreground">
-                    The constitution scope requires every node to reference at least one Intent.
-                  </span>
-                ) : null}
               </label>
               <div className="flex gap-6">
                 <fieldset>
@@ -243,14 +230,7 @@ export default function NewRule({
                 >
                   Capture rule
                 </button>
-                <a
-                  href={
-                    scopeFromUrl === "constitution"
-                      ? `/${handle}/constitution`
-                      : `/${handle}`
-                  }
-                  className="text-xs text-muted-foreground hover:underline"
-                >
+                <a href={`/${handle}`} className="text-xs text-muted-foreground hover:underline">
                   Cancel
                 </a>
               </div>

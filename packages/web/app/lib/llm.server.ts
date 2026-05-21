@@ -479,12 +479,14 @@ const CLASSIFIER_NODE_TYPES = [
   "intent",
   "idea",
   "rule",
+  "guidance_article",
+  "node_authoring_article",
   "decision",
   "action",
   "log",
   "eval",
   "reference",
-  "scope",
+  "state",
 ] as const;
 
 const CLASSIFIER_FIELDS = [

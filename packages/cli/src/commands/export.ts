@@ -16,6 +16,8 @@ const NODE_DIRS: Record<string, { dir: string; ext: "md" | "yaml" }> = {
   intent: { dir: "intents", ext: "md" },
   decision: { dir: "decisions", ext: "md" },
   rule: { dir: "rules", ext: "md" },
+  guidance_article: { dir: "guidance_articles", ext: "md" },
+  node_authoring_article: { dir: "node_authoring_articles", ext: "md" },
   action: { dir: "actions", ext: "md" },
   eval: { dir: "evals", ext: "md" },
   scope: { dir: "scopes", ext: "yaml" },

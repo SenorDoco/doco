@@ -193,6 +193,32 @@ on_violation: block | warn | log
 
 Markdown body: canonical prose statement; examples of compliance and violation.
 
+### 4.4a Constitution Articles — meta-guidance and capture gates
+
+Guidance Articles and Node Authoring Articles make up a Doco's
+constitution. They are intentionally separate from Rule nodes so domain
+rules are not confused with the meta-rules governing how a Doco is
+authored.
+
+```yaml
+id: guidance_article_...
+node_type: guidance_article
+article_type: guidance
+summary: "Prefer concrete examples over abstract prose."
+```
+
+```yaml
+id: node_authoring_article_...
+node_type: node_authoring_article
+article_type: node_authoring
+evaluation_kind: deterministic | probabilistic
+predicate:
+  kind: requires_edge | requires_field | probabilistic | ...
+on_violation: block | warn | log
+```
+
+Markdown body: article prose, rationale, and examples.
+
 ### 4.5 Decision — a recorded choice at a decision point
 
 ```yaml

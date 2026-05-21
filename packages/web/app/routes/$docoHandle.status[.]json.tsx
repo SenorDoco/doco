@@ -21,17 +21,11 @@ export async function loader({
   const dir = docoPath(handle);
   const meta = await readDocoMetadata(dir);
   if (!meta) {
-    return Response.json(
-      { status: "unknown", doco_handle: handle },
-      { status: 404 },
-    );
+    return Response.json({ status: "unknown", doco_handle: handle }, { status: 404 });
   }
   const me = await getCurrentPrincipalAsync(request);
   if (!(await canAccessDoco(meta, me?.id ?? null))) {
-    return Response.json(
-      { status: "unknown", doco_handle: handle },
-      { status: 404 },
-    );
+    return Response.json({ status: "unknown", doco_handle: handle }, { status: 404 });
   }
   const { latest, counts } = await readStatusFromPg(meta.docoId);
   return Response.json({
@@ -47,10 +41,19 @@ export async function loader({
 
 /** Map of external node_type → (PG table, exposed plural key for the response counts). */
 const TYPE_MAP: { nodeType: string; table: string; plural: string }[] = [
-  { nodeType: "scope", table: "scopes", plural: "scopes" },
   { nodeType: "intent", table: "intents", plural: "intents" },
   { nodeType: "idea", table: "ideas", plural: "ideas" },
   { nodeType: "rule", table: "rules", plural: "rules" },
+  {
+    nodeType: "guidance_article",
+    table: "guidance_articles",
+    plural: "guidance_articles",
+  },
+  {
+    nodeType: "node_authoring_article",
+    table: "node_authoring_articles",
+    plural: "node_authoring_articles",
+  },
   { nodeType: "decision", table: "decisions", plural: "decisions" },
   { nodeType: "action", table: "actions", plural: "actions" },
   { nodeType: "log", table: "logs", plural: "logs" },
@@ -77,9 +80,7 @@ async function readStatusFromPg(
         if (ts && (latest === null || ts > latest)) latest = ts;
       }
       // Principals are host-level (no doco_id) — count them globally.
-      const p = await c.query<{ n: string }>(
-        `SELECT COUNT(*)::text AS n FROM principals`,
-      );
+      const p = await c.query<{ n: string }>(`SELECT COUNT(*)::text AS n FROM principals`);
       counts.principals = Number(p.rows[0]?.n ?? 0);
     });
   } catch {

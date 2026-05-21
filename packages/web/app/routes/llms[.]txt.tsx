@@ -59,9 +59,10 @@ for backwards compat.
   PATCH ${baseUrl}/<handle>/api/<type>/<id>.json    # update fields (need 'author' role)
   GET  ${baseUrl}/<handle>/api/<type>.txt           # plain-text spec for the body shape
 
-Node types: \`decisions\`, \`rules\`, \`intents\`, \`actions\`,
-\`logs\`, \`evals\`, \`references\`, \`states\`, \`scopes\`,
-\`principals\`, \`invites\`, \`audit\`.
+Node types: \`decisions\`, \`rules\`, \`guidance_articles\`,
+\`node_authoring_articles\`, \`intents\`, \`actions\`, \`logs\`,
+\`evals\`, \`references\`, \`states\`, \`principals\`, \`invites\`,
+\`audit\`.
 
 ## Public Doco reads (no auth)
 

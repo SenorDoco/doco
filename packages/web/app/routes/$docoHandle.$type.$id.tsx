@@ -17,6 +17,8 @@ const TABLE_BY_TYPE: Record<string, string> = {
   decision: "decisions",
   intent: "intents",
   rule: "rules",
+  guidance_article: "guidance_articles",
+  node_authoring_article: "node_authoring_articles",
   action: "actions",
   log: "logs",
   reference: "reference_entities",

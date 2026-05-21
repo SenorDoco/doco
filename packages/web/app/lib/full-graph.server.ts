@@ -36,6 +36,8 @@ const GRAPH_TABLES: {
   { table: "actions", nodeType: "action" },
   { table: "logs", nodeType: "log" },
   { table: "rules", nodeType: "rule" },
+  { table: "guidance_articles", nodeType: "guidance_article" },
+  { table: "node_authoring_articles", nodeType: "node_authoring_article" },
   { table: "evals", nodeType: "eval" },
   { table: "reference_entities", nodeType: "reference" },
   { table: "ideas", nodeType: "idea" },
@@ -101,10 +103,7 @@ function overviewRowsSql(includeLabel = false): string {
   }).join(" UNION ALL ");
 }
 
-async function loadOverviewRows(
-  c: QueryClient,
-  docoId: string,
-): Promise<OverviewGraphRow[]> {
+async function loadOverviewRows(c: QueryClient, docoId: string): Promise<OverviewGraphRow[]> {
   return (await c.query<OverviewGraphRow>(overviewRowsSql(), [docoId])).rows;
 }
 

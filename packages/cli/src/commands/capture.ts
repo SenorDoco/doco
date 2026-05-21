@@ -41,6 +41,8 @@ async function postCapture(
     | "actions"
     | "logs"
     | "rules"
+    | "guidance_articles"
+    | "node_authoring_articles"
     | "references"
     | "states",
   body: Record<string, unknown>,

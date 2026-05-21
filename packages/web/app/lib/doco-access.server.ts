@@ -15,9 +15,9 @@ import {
 } from "@doco/db";
 import { redirect } from "react-router";
 import { docoPath } from "./db.server";
+import { type DocoMetadata, readDocoMetadata } from "./doco-metadata.server";
 import { validateAccessToken } from "./oauth-server.server";
 import { resolvePrincipalUsernameAlias } from "./principal-aliases.server";
-import { type DocoMetadata, readDocoMetadata } from "./doco-metadata.server";
 import { type CurrentPrincipal, extractBearer, getCurrentPrincipalAsync } from "./session";
 
 /**
@@ -168,10 +168,9 @@ export async function listInvitedDocoIdsForPrincipal(principalId: string): Promi
 export async function listAccessibleDocoIdsForPrincipal(principalId: string): Promise<string[]> {
   const ids = new Set<string>();
   await withClient(async (c) => {
-    const direct = await c.query<{ id: string }>(
-      `SELECT id FROM docos WHERE owner_id = $1`,
-      [principalId],
-    );
+    const direct = await c.query<{ id: string }>(`SELECT id FROM docos WHERE owner_id = $1`, [
+      principalId,
+    ]);
     direct.rows.forEach((r) => ids.add(String(r.id)));
     const viaOrg = await c.query<{ id: string }>(
       `SELECT id FROM docos WHERE owner_id IN (
@@ -217,10 +216,9 @@ export async function canApproveDoco(
 }
 
 /**
- * Constitution-edit gate. The #global scope (Constitution) accepts edits
- * only from doco-level owners — scope-level elevation does NOT promote
- * approver/author to constitution-editor. Per the Rule born_from
- * decision_01KS0JBJ5X0AZ4XJJFKEWE1R62.
+ * Constitution-edit gate. Constitution articles accept edits only from
+ * doco-level owners — author/approver grants do not promote to
+ * constitution-editor.
  */
 export async function canEditConstitution(
   meta: { ownerId: string; docoId?: string },

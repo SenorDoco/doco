@@ -1,5 +1,5 @@
 /**
- * Twelve distinct hues, no two visually adjacent. The four most-visible
+ * Distinct hues, no two visually adjacent. The four most-visible
  * types in the entity-detail graph (decision, scope, intent, principal)
  * occupy widely-separated parts of the wheel so they never read as
  * "all sort of green-ish."
@@ -15,6 +15,8 @@ export const NODE_TYPE_COLOR: Record<string, string> = {
   intent: "#d946ef", // magenta
   idea: "#f43f5e", // rose
   rule: "#dc2626", // red
+  guidance_article: "#8b5cf6", // violet
+  node_authoring_article: "#0891b2", // cyan-blue
   decision: "#f97316", // orange
   action: "#7c3aed", // purple
   log: "#14b8a6", // teal — instance-of-Action, distinct from purple
@@ -59,6 +61,8 @@ const NODE_TYPE_PLURAL: Record<string, string> = {
   intent: "intents",
   idea: "ideas",
   rule: "rules",
+  guidance_article: "guidance articles",
+  node_authoring_article: "node authoring articles",
   decision: "decisions",
   action: "actions",
   log: "logs",

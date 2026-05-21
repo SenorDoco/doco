@@ -2,7 +2,8 @@
 // dashboard and owner-profile docos tables.
 //
 // Nodes counts every entity row tied to a Doco (decisions + intents +
-// rules + actions + evals + ideas + reference_entities + logs + states).
+// rules + constitution articles + actions + evals + ideas +
+// reference_entities + logs + states).
 // Edges reads the materialized `edges` table.
 // Last updated is the max `at` from `audit_events` — that captures both
 // inserts and updates and is cheap because audit_events is already
@@ -20,6 +21,8 @@ export const ENTITY_TABLES = [
   "decisions",
   "intents",
   "rules",
+  "guidance_articles",
+  "node_authoring_articles",
   "actions",
   "evals",
   "ideas",
@@ -31,9 +34,7 @@ export const ENTITY_TABLES = [
 
 const EMPTY: DocoStats = { nodes: 0, edges: 0, lastUpdatedAt: null };
 
-export async function listDocoStats(
-  docoIds: readonly string[],
-): Promise<Map<string, DocoStats>> {
+export async function listDocoStats(docoIds: readonly string[]): Promise<Map<string, DocoStats>> {
   const out = new Map<string, DocoStats>();
   if (docoIds.length === 0) return out;
   const ids = [...docoIds];

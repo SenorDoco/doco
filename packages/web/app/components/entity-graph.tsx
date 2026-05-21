@@ -233,9 +233,19 @@ const GRAPH_MIN_ZOOM = 0.02;
 const GRAPH_FIT_VIEW_OPTIONS = { padding: 0.05, maxZoom: 1.6 };
 const CLUSTER_CHILD_RADIUS = 190;
 const GRID_TYPE_ORDER = new Map(
-  ["intent", "decision", "action", "rule", "log", "eval", "reference", "idea", "state"].map(
-    (type, index) => [type, index],
-  ),
+  [
+    "intent",
+    "decision",
+    "action",
+    "rule",
+    "guidance_article",
+    "node_authoring_article",
+    "log",
+    "eval",
+    "reference",
+    "idea",
+    "state",
+  ].map((type, index) => [type, index]),
 );
 
 /**

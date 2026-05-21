@@ -73,9 +73,19 @@ const LIFECYCLE_ORDER = [
 ];
 const HIDDEN_LIFECYCLES_BY_DEFAULT = new Set(["abandoned", "superseded", "failed", "succeeded"]);
 const NODE_TYPE_ORDER = new Map(
-  ["intent", "decision", "action", "rule", "log", "eval", "reference", "idea", "state"].map(
-    (type, index) => [type, index],
-  ),
+  [
+    "intent",
+    "decision",
+    "action",
+    "rule",
+    "guidance_article",
+    "node_authoring_article",
+    "log",
+    "eval",
+    "reference",
+    "idea",
+    "state",
+  ].map((type, index) => [type, index]),
 );
 
 const OVERVIEW_NODE_WIDTH = 112;

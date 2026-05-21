@@ -61,8 +61,9 @@ the endpoint shapes are:
     PATCH https://doco.to/<handle>/api/<type>/<id>.json     # patch (needs author)
     GET   https://doco.to/<handle>/api/<type>.txt           # plain-text spec
 
-Node types: decisions, rules, intents, actions, logs, evals,
-references, states, scopes, principals, invites, audit.
+Node types: decisions, rules, guidance_articles,
+node_authoring_articles, intents, actions, logs, evals, references,
+states, principals, invites, audit.
 
 Public Docos return 200 for unauthenticated reads; private Docos
 return 403 until you finish the OAuth recipe.
@@ -210,11 +211,13 @@ Doco's data model is a graph of typed nodes:
 - **Action** — a designed step in a process (imperative/present verb).
 - **Log** — a recorded event that *did* happen (past-tense verb +
   \`happened_at\` + concrete outputs). Immutable once captured.
-- **Rule** — an ongoing constraint. Either guidance (agent attention)
-  or Doco-node-authoring (capture-gate predicate).
+- **Rule** — an ongoing domain constraint.
+- **Guidance Article** — a constitution article contributors read
+  while working; no automated check.
+- **Node Authoring Article** — a constitution article evaluated when
+  nodes are captured; deterministic predicates or probabilistic specs.
 - **Eval** — a named, executable test pinning a load-bearing claim.
 - **Reference** — an external pointer (URL, file, doc) with a summary.
-- **Scope** — a hashtag-shaped grouping (\`#payments\`, \`#user-flows\`).
 - **State** — a node in a formal state machine.
 - **Idea** — exploratory capture; promote to Intent / Decision once
   it firms up.

@@ -24,7 +24,11 @@ export function iconFromAuditOp(op: string): string {
 }
 
 export function capNodeType(t: string): string {
-  return t.length === 0 ? t : t.charAt(0).toUpperCase() + t.slice(1);
+  return t
+    .split("_")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
 }
 
 export function lifecycleTransitionText(event: { op: string } & ActivityFeedDelta): string | null {

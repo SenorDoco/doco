@@ -25,6 +25,8 @@ const PLURAL_BY_TYPE: Record<string, string> = {
   intent: "intents",
   action: "actions",
   rule: "rules",
+  guidance_article: "guidance_articles",
+  node_authoring_article: "node_authoring_articles",
   reference: "references",
 };
 
