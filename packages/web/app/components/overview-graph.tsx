@@ -1,3 +1,4 @@
+import { Handle, Position } from "@xyflow/react";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { NodeTypeIcon } from "~/components/node-type-icon";
@@ -168,6 +169,17 @@ function isVisibleInViewport(
   );
 }
 
+const HIDDEN_HANDLE_STYLE = {
+  width: 1,
+  height: 1,
+  minWidth: 0,
+  minHeight: 0,
+  background: "transparent",
+  border: "none",
+  pointerEvents: "none" as const,
+  opacity: 0,
+};
+
 function OverviewFlowNode({ data }: { data: OverviewNodeData }) {
   const lifecycle = nodeLifecycle(data.node);
   const detail = data.detail;
@@ -185,6 +197,7 @@ function OverviewFlowNode({ data }: { data: OverviewNodeData }) {
       }}
       title={showDetail ? title : `${data.node.node_type} · ${lifecycle}`}
     >
+      <Handle type="target" position={Position.Left} style={HIDDEN_HANDLE_STYLE} isConnectable={false} />
       <NodeTypeIcon nodeType={data.node.node_type} className="!h-3.5 !w-3.5 shrink-0" />
       {showDetail ? (
         <span className="min-w-0 flex-1 truncate font-mono text-[10px] font-semibold leading-none text-foreground">
@@ -196,6 +209,7 @@ function OverviewFlowNode({ data }: { data: OverviewNodeData }) {
         </span>
       )}
       {showDetail && title !== subtitle ? <span className="sr-only">{subtitle}</span> : null}
+      <Handle type="source" position={Position.Right} style={HIDDEN_HANDLE_STYLE} isConnectable={false} />
     </div>
   );
 }
