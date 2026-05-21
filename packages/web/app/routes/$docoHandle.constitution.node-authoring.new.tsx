@@ -4,6 +4,7 @@
 
 import { useState } from "react";
 import { Form, Link, redirect, useActionData } from "react-router";
+import { Breadcrumb, docoBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { SiteHeader } from "~/components/site-header";
 import { type NodeAuthoringArticleDraft, captureNodeAuthoringArticle } from "~/lib/capture.server";
@@ -95,6 +96,15 @@ export default function NewNodeAuthoringArticle({
       <SiteHeader mode="host" me={me} docoScope={{ ownerSlug, docoSlug, handle }} />
       <main className="mx-auto max-w-4xl px-6 py-6 space-y-4">
         <header>
+          <Breadcrumb
+            items={docoBreadcrumb({
+              ownerSlug,
+              handle,
+              parent: { label: "Constitution", to: `/${handle}/constitution` },
+              pageLabel: "New node authoring article",
+            })}
+            className="mb-1"
+          />
           <h1 className="text-2xl font-semibold">New node authoring article</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             An automatic check that runs every time someone adds a node to this doco. Write a strict

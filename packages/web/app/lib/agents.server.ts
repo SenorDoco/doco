@@ -48,7 +48,6 @@ export async function addAgentPrincipal(
     // owner created this agent — null when owner_id is null (anonymous create)
     created_by: opts.owner_id,
     lifecycle: "active",
-    scopes: [],
   };
   // Upsert into Postgres so access-credential resolution (which reads
   // `principals` via `getPrincipalById`) finds the row on the next request.

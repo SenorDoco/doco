@@ -53,7 +53,6 @@ export function SiteHeader({ docoScope, me, shellOwner = false }: SiteHeaderProp
   // visually (e.g. "torrenegra/torrenegra-doco").
   // Per-doco sub-bar; host-mode shows nothing here (top-bar links cover
   // Docos / Orgs / Users / account).
-  // v15: Scopes link removed (scope routes ship in a later phase).
   const nav = docoScope
     ? [
         { to: `/${docoScope.handle}`, label: docoScope.handle, isDocoName: true },
@@ -114,7 +113,7 @@ export function SiteHeader({ docoScope, me, shellOwner = false }: SiteHeaderProp
                   )
                 }
               >
-                Users (human/agents)
+                Users (people/agents)
               </NavLink>
               <NavLink
                 to={`/${me.username}`}

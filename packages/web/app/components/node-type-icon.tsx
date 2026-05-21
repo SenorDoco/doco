@@ -110,12 +110,6 @@ function iconPath(nodeType: string) {
           <path d="m15.1 15.1 4.9 4.9" />
         </>
       );
-    case "scope":
-      return (
-        <>
-          <rect x="5" y="5" width="14" height="14" strokeDasharray="2 2" strokeLinecap="butt" />
-        </>
-      );
     case "state":
       return (
         <>

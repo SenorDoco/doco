@@ -57,7 +57,7 @@ export async function loadHostConfig(): Promise<HostConfig> {
 }
 
 export async function listUsers(): Promise<HostUser[]> {
-  const rows = await listPrincipals({ type: "human" });
+  const rows = await listPrincipals({ type: "person" });
   return rows.map((r) => {
     const fm = JSON.parse(r.raw_yaml) as Record<string, unknown>;
     const email = r.email ?? (fm.github_identity as { email?: string } | undefined)?.email ?? null;

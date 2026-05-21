@@ -6,9 +6,15 @@
 import { getOrgRole, withClient } from "@doco/db";
 import { Link } from "react-router";
 import { parse as parseYaml } from "yaml";
+import { Breadcrumb, orgBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { NodeTypeIcon } from "~/components/node-type-icon";
 import { SiteHeader } from "~/components/site-header";
+import {
+  AGENT_EXPOSURE_NOTE,
+  GUIDANCE_ARTICLE_EXPLAINER,
+  NODE_AUTHORING_ARTICLE_EXPLAINER,
+} from "~/lib/constitution-copy";
 import { loadHostConfig } from "~/lib/host";
 import { getCurrentPrincipalAsync } from "~/lib/session";
 
@@ -116,6 +122,10 @@ export default function OrgConstitution({
       <SiteHeader mode="host" me={me} />
       <main className="mx-auto max-w-4xl px-6 py-6 space-y-4">
         <header>
+          <Breadcrumb
+            items={orgBreadcrumb({ orgSlug: org.slug, pageLabel: "Constitution" })}
+            className="mb-1"
+          />
           <h1 className="text-2xl font-semibold">
             Constitution · <span className="font-mono">{org.slug}</span>
           </h1>
@@ -124,7 +134,7 @@ export default function OrgConstitution({
             <Link to="/orgs" className="underline">
               {org.slug}
             </Link>
-            . Every agent working on one of those docos sees these the moment it starts.
+            . {AGENT_EXPOSURE_NOTE}
           </p>
           {!canEdit ? (
             <p className="mt-2 text-xs italic text-muted-foreground">
@@ -136,7 +146,7 @@ export default function OrgConstitution({
         <ArticleSection
           title="Guidance articles"
           nodeType="guidance_article"
-          description="Plain-English rules you want everyone working on this org's docos to follow. Nothing checks them automatically — they're a shared agreement."
+          description={GUIDANCE_ARTICLE_EXPLAINER}
           addHref={canEdit ? `/orgs/${org.slug}/constitution/guidance/new` : null}
           items={guidanceArticles}
           empty="No guidance articles yet."
@@ -145,7 +155,7 @@ export default function OrgConstitution({
         <ArticleSection
           title="Node authoring articles"
           nodeType="node_authoring_article"
-          description="Automatic checks that run every time someone adds a node in any of this org's docos. Write a strict rule (e.g. every decision must link to an intent) or describe what an LLM judge should look for. On failure, block the capture, warn, or just log."
+          description={NODE_AUTHORING_ARTICLE_EXPLAINER}
           addHref={canEdit ? `/orgs/${org.slug}/constitution/node-authoring/new` : null}
           items={nodeAuthoringArticles}
           empty="No node authoring articles yet."

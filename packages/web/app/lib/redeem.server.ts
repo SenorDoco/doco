@@ -1,11 +1,6 @@
 // Server-only re-export. Keeps server-only dependencies (pg, etc.) out of
 // the client bundle. See lib/tokens.server.ts.
 export { addAgentPrincipal } from "./agents.server";
-export { suggestScopes } from "./llm.server";
-export type {
-  ScopeSuggestion,
-  SuggestScopesOptions,
-} from "./llm.server";
 export {
   // v15 (Phase B) creation surfaces.
   addOrganizationByHandle,
@@ -37,13 +32,13 @@ export interface ReindexExtraOptions {
  * through here so embeddings stay in sync with the index.
  *
  * `docoId` is optional: when the caller already holds it (capture/patch
- * handlers, scope edits), pass it directly. Otherwise this wrapper resolves
- * the id from the synthetic `<root>/docos/<owner>/<slug>` path.
+ * handlers), pass it directly. Otherwise this wrapper resolves the id
+ * from the synthetic `<root>/docos/<owner>/<slug>` path.
  *
  * `changedEntityIds` triggers the incremental path: only those entities'
  * derived rows are rebuilt, the rest of the Doco's edges/FTS/embeddings
  * stay in place. Used by single-entity capture/patch handlers. Omit
- * for full rebuilds — first build, scope rename, bulk import, settings.
+ * for full rebuilds — first build, bulk import, settings.
  *
  * `extra.skipEmbeddings` / `extra.skipStructural` split the two phases —
  * capture flow runs structural inline and embeddings in `waitUntil`.

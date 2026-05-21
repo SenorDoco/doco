@@ -20,7 +20,6 @@ const NODE_DIRS: Record<string, { dir: string; ext: "md" | "yaml" }> = {
   node_authoring_article: { dir: "node_authoring_articles", ext: "md" },
   action: { dir: "actions", ext: "md" },
   eval: { dir: "evals", ext: "md" },
-  scope: { dir: "scopes", ext: "yaml" },
   reference: { dir: "references", ext: "yaml" },
   idea: { dir: "ideas", ext: "md" },
   tag: { dir: "tags", ext: "yaml" },
@@ -33,7 +32,6 @@ interface ExportedRow {
   raw_yaml: string; // canonical JSON serialization of frontmatter
   body_md?: string;
   summary?: string | null;
-  purpose?: string | null;
   lifecycle?: string | null;
   name?: string | null;
   created_at?: string | null;
@@ -64,9 +62,7 @@ function parseEntityFile(filePath: string, nodeType: string): ExportedRow | null
     raw_yaml: JSON.stringify(fm),
   };
   if (body) out.body_md = body;
-  if (nodeType === "scope") {
-    if (typeof fm.purpose === "string") out.purpose = fm.purpose;
-  } else if (typeof fm.summary === "string") {
+  if (typeof fm.summary === "string") {
     out.summary = fm.summary;
   }
   if (typeof fm.lifecycle === "string") out.lifecycle = fm.lifecycle;

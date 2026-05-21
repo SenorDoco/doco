@@ -4,14 +4,14 @@ import { loadDocoForRead, loadDocoForAdmin, normalizeDocoParams } from "~/lib/do
 
 const ROLE_PRINCIPAL_USERNAMES = new Set(["user", "human", "doco-host", "github"]);
 
-const DEFAULTS: Record<string, { type: "human" | "agent"; summary: string }> = {
+const DEFAULTS: Record<string, { type: "person" | "agent"; summary: string }> = {
   user: {
     type: "agent",
-    summary: "Role principal for any Doco user, whether human or AI agent.",
+    summary: "Role principal for any Doco user, whether person or AI agent.",
   },
   human: {
-    type: "human",
-    summary: "Role principal for the human-only subset of users.",
+    type: "person",
+    summary: "Role principal for the person-only subset of users.",
   },
   "doco-host": {
     type: "agent",
@@ -38,7 +38,7 @@ export async function action({
   const { me, meta } = await loadDocoForAdmin(request, handle);
   const body = (await request.json().catch(() => ({}))) as {
     username?: string;
-    type?: "human" | "agent";
+    type?: "person" | "agent";
     summary?: string;
   };
   const username = String(body.username ?? "")
@@ -85,7 +85,6 @@ export async function action({
     created_at: now,
     created_by: me?.id ?? id,
     lifecycle: "active",
-    scopes: [],
   };
 
   await upsertEntity({

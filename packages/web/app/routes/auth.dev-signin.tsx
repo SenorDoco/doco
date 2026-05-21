@@ -51,13 +51,13 @@ async function ensureTestPrincipal(username: TestUsername): Promise<string> {
     id,
     node_type: "principal",
     username,
-    type: "human",
+    type: "person",
     note: "Lazy-created by /auth/dev-signin for testing. Has no doco_users grants by default.",
   });
   await withClient(async (c) => {
     await c.query(
       `INSERT INTO principals (id, username, type, raw_yaml)
-       VALUES ($1, $2, 'human', $3)
+       VALUES ($1, $2, 'person', $3)
        ON CONFLICT (username) DO NOTHING`,
       [id, username, raw_yaml],
     );

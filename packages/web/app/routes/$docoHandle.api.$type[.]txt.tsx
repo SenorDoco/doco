@@ -7,7 +7,7 @@ import { normalizeDocoParams } from "~/lib/doco-access.server";
  *   GET /<doco-handle>/api/<type>.txt
  *
  * `type` is one of: decisions, intents, guidance_articles,
- * node_authoring_articles, scopes, settings.
+ * node_authoring_articles, settings.
  * Returns plain-prose spec for the corresponding .json endpoint.
  */
 
@@ -16,10 +16,8 @@ type SpecRenderer = (baseUrl: string, handle: string) => string;
 const SPECS: Record<string, SpecRenderer> = {
   decisions: (baseUrl, handle) => `# Doco — Capture a Decision (single call)
 
-Single POST. Server resolves names/usernames to ids, generates the
-ULID, writes the file, and reindexes. Replaces the multi-step recon
-(find scope ids, find principal ids, generate ULID, write yaml, reindex)
-with one request.
+Single POST. Server resolves usernames to ids, generates the
+ULID, writes the row, and reindexes.
 
 ENDPOINT
   POST ${baseUrl}/${handle}/api/decisions.json
@@ -28,11 +26,6 @@ ENDPOINT
 BODY (JSON)
   question           required   the question the Decision answers
   chosen             required   chosen resolution (multi-line ok)
-  scope_names        required   non-empty array of hashtag-shaped scope
-                                names (e.g. ["#user-flows", "#framework"])
-                                — must match existing scopes on this Doco.
-                                Every name starts with "#"; no \`scope_\`
-                                prefix.
   summary            optional   one-line summary; derived from chosen if omitted
   alternatives       required   non-empty [{ "name": "...", "rejected_because": "..." }, ...]
   intent_ids         optional   ["intent_01...", ...]; ULID references to Intents
@@ -58,9 +51,7 @@ ERROR RESPONSE (HTTP 400 / 404 / 405, application/json)
   { "error": "<reason>" }
 
   Common errors:
-    - "Unknown scope name(s): X. Available in this Doco: ..."  (typo or missing scope; create it at /scopes/new first)
-    - "Unknown principal username: ..."                        (typo or not yet registered)
-    - "scope_names must be a non-empty array."                 (you owe at least one tag — for user-flow changes, "#user-flows")
+    - "Unknown principal username: ..."  (typo or not yet registered)
 
 EXAMPLE
   curl -sS -X POST \\
@@ -68,20 +59,16 @@ EXAMPLE
     "${baseUrl}/${handle}/api/decisions.json" \\
     -d '{
       "question": "Where should the Doco-created confirmation live?",
-      "chosen": "Each creation entry point renders its own success card; scopes page is purely about scopes.",
-      "scope_names": ["#user-flows", "#framework"],
+      "chosen": "Each creation entry point renders its own success card.",
       "decided_by_username": "torrenegra",
       "alternatives": [
-        { "name": "Keep the banner on /scopes/new", "rejected_because": "Content belongs to the creation flow, not the next-step page." }
+        { "name": "Keep the banner on the next-step page", "rejected_because": "Content belongs to the creation flow." }
       ]
     }'
 
 WHEN TO CALL THIS
   See the "Before you declare a task done — capture checklist" in the
-  canonical instructions. If your turn changed user-facing flow
-  (routing, redirects, forms, banner placement, link destinations),
-  call this with scope_names including "#user-flows" BEFORE you
-  declare the work done. Don't write the YAML by hand — that's what
+  canonical instructions. Don't write the YAML by hand — that's what
   this endpoint exists to skip.
 
 UPDATE AN EXISTING DECISION
@@ -90,7 +77,6 @@ UPDATE AN EXISTING DECISION
 
   Body fields are all optional (only the keys you include are touched):
     summary / question / chosen / alternatives / body_md / lifecycle
-    scope_names / scope_names_add / scope_names_remove
     intent_ids / intent_ids_add / intent_ids_remove
     decided_by_username / born_from
 
@@ -115,7 +101,6 @@ ENDPOINT
 
 BODY (JSON)
   summary             required   "What someone wants" — one-line.
-  scope_names         required   non-empty array.
   title               optional   short title (defaults to summary).
   body_md             optional   markdown body — context, non-goals, success criteria.
   wanted_by_username  optional   host-level username; resolved to principal id.
@@ -141,7 +126,6 @@ EXAMPLE
     ${baseUrl}/${handle}/api/intents.json \\
     -d '{
       "summary": "Agent capture friction is bounded to a few seconds end-to-end.",
-      "scope_names": ["#framework"],
       "wanted_by_username": "torrenegra",
       "body_md": "Background: writing two ADRs by hand took >5 minutes (70% plumbing). This Intent motivates the single-call capture endpoints."
     }'
@@ -153,191 +137,6 @@ WHEN TO CALL THIS
   skip the connection.
 
 RELATED
-  POST ${baseUrl}/${handle}/api/decisions.json   capture a Decision
-  GET  ${baseUrl}/${handle}/status.json          freshness + counts
-`,
-
-  scopes: (baseUrl, handle) => `# Doco — Create a Scope (single call)
-
-Per ADR-137bis every scope-creation call MUST declare whether the new
-scope is "watched" — a soft attention signal for contributors. No
-silent default on any surface.
-
-A WATCHED scope tells contributors (person or agent): "when capturing
-work that touches this topic, scan against this scope and tag the new
-node into it." Not enforced at capture time — purely a prompt to think
-about the topic. For HARD enforcement ("every node must list this
-scope or capture is rejected"), use a \`mandatory_scope\` authoring rule
-on the Global scope (your doco's constitution) instead, via the Rules
-editor at /scopes/<id>. The two mechanisms are independent.
-
-ENDPOINT
-  POST ${baseUrl}/${handle}/api/scopes.json
-  Content-Type: application/json
-
-BODY (JSON)
-  watched        REQUIRED   boolean. true → contributors should
-                            proactively look for opportunities to
-                            document into this scope. false → available
-                            but no extra attention prompt. Soft signal,
-                            not enforcement.
-  template_name  optional   install a default template by name. The
-                            framework ships two: "#global" (auto-installed
-                            on Doco create) and "#user-flows" (opt-in
-                            here). The legacy bare forms ("global" /
-                            "user-flows") are still accepted as aliases.
-                            Mutually exclusive with the custom fields
-                            below. The install seeds the template's
-                            purpose text onto Scope.purpose, its
-                            allowed_node_types onto the row's YAML, and
-                            N Rules (one per template rule). No
-                            "primary intent" Intent is created.
-  name           required*  starts with "#" followed by a lowercase
-                            letter, then lowercase letters / digits /
-                            hyphens / underscores (e.g. "#payments",
-                            "#user-flows"). No slashes (use parent_id).
-                            *if template_name is absent.
-  purpose        required*  description text rendered under the scope
-                            name on every surface (list card, detail
-                            page, bootstrap manifest). Replaces the
-                            former \`intent_summary\` body parameter
-                            *if template_name is absent.
-  icon           optional   single emoji.
-  parent_id      optional   id of an existing scope to nest this one
-                            under.
-
-  Scope creation deliberately does not accept first-rule fields.
-  Create the scope first, then add rules with
-  \`POST /api/scopes/<scope_id>/rules.json\`.
-
-SUCCESS RESPONSE (HTTP 201, application/json)
-  {
-    "id": "scope_<ULID>",
-    "name": "...",
-    "purpose": "...",
-    "watched": true | false,
-    "footer_lines": ["[🔮 Doco] ✍️ Scope added: ... — <icon> <name>", ...]
-  }
-
-  Use \`footer_lines\` verbatim in your next user-facing message.
-
-ERROR RESPONSES
-  400  Missing/invalid \`watched\`, bad name, unknown template, missing parent,
-       or create-time rule fields.
-  409  Scope with this name already exists.
-
-EXAMPLE — install the #user-flows template as watched
-  curl -sS -X POST \\
-    -H "Content-Type: application/json" \\
-    -H "Authorization: Bearer $DOCO_ACCESS" \\
-    ${baseUrl}/${handle}/api/scopes.json \\
-    -d '{ "template_name": "#user-flows", "watched": true }'
-
-EXAMPLE — custom scope, not watched, nested under an existing parent
-  curl -sS -X POST \\
-    -H "Content-Type: application/json" \\
-    -H "Authorization: Bearer $DOCO_ACCESS" \\
-    ${baseUrl}/${handle}/api/scopes.json \\
-    -d '{
-      "name": "#payments",
-      "icon": "💳",
-      "purpose": "Anything touching Stripe / billing flows stays visible and consistently documented.",
-      "parent_id": "scope_<ULID-of-parent>",
-      "watched": false
-    }'
-
-WHEN TO CALL THIS
-  Whenever you need to add a scope. The protocol's capture triggers
-  occasionally name scopes that may not be installed on a given Doco
-  ("create the scope at /scopes/new first") — this endpoint is the
-  API equivalent of that flow.
-
-HOW AGENTS USE WATCHED SCOPES
-  When authoring any new node, fetch /status.json or the bootstrap
-  payload, scan the watched scopes (\`is_watched: true\` in the scope
-  manifest), and ask: "does my work touch any of these topics?" If
-  yes, include that scope in the node's \`scopes\` list. This is a
-  soft prompt — not a blocker — and applies to every node type
-  (Decision, Intent, Action, Rule, ...).
-
-ADDING RULES IN PLAIN ENGLISH
-  Once a scope exists, add rules by POSTing prose plus the caller's
-  intended rule kind. Two kinds exist:
-
-    - \`doco-node-authoring\` (preferred) — a capture-gate rule with a
-      machine-checkable predicate the framework evaluates against an
-      incoming Doco-node POST. The predicate operates on the node
-      being captured (its fields, scopes, edges) and rejects the POST
-      when it returns false. These rules apply ONLY at capture; they
-      do NOT govern agent behavior between captures.
-    - \`guidance\` — a reminder the agent surfaces during work; no
-      machine enforcement. Workflow conventions, dev policies,
-      narration discipline. The vast majority of real-project rules
-      are guidance.
-
-  For back-compat, the legacy short alias \`authoring\` is also
-  accepted on the wire (the host classifier and storage still use the
-  short identifier internally).
-
-    POST ${baseUrl}/${handle}/api/scopes/<scope_id>/rules.json
-    Content-Type: application/json
-    { "kind": "doco-node-authoring", "prose": "Every Decision should have an Intent." }
-
-  For \`kind: "doco-node-authoring"\` (or legacy \`"authoring"\`), the
-  server runs the prose through an LLM classifier that:
-    - splits the prose into separate atomic Doco-node-authoring rules,
-    - maps each to the most-fitting deterministic predicate
-      (requires_edge / forbids_edge / requires_field /
-      forbids_field / mandatory_scope) when one fits — these
-      block writes at capture time,
-    - falls back to {kind: "probabilistic", spec: <verbatim>}
-      for prose no deterministic predicate captures — these are
-      LLM-judged at capture time and reject the write on a
-      no verdict.
-
-  For \`kind: "guidance"\`, the server does not classify or split the
-  prose. It saves the submitted prose as one guidance Rule, exactly as
-  contributors should read it.
-
-  Response (HTTP 201):
-    {
-      "added": [
-        {
-          "id": "rule_<ULID>",
-          "bucket": "authoring" | "guidance",
-          "summary": "...",
-          "url": "${baseUrl}/${handle}/rule/rule_<ULID>",
-          "text": "...",
-          "rule": { "kind": "...", ... } // authoring only
-        }
-      ],
-      "added_authoring": <count>,
-      "added_guidance": <count>,
-      "footer_lines": [ "[🔮 Doco] ✍️ Rule added: ...", ... ]
-    }
-
-  Rule-creation footer lines link to the created Rule entities. Do not
-  describe a Scope footer link as the Rule link; if a response returns
-  Rule ids/URLs, use those direct links when explaining where the new
-  authoring rule lives.
-
-  Errors:
-    400  kind missing/invalid, prose missing/empty, JSON malformed.
-    404  scope id not found.
-    503  authoring classifier unavailable (host can't reach OpenAI).
-         The host's OPENAI_API_KEY is load-bearing for Doco-node-authoring rules —
-         failures REJECT the operation rather than silently saving the
-         prose as probabilistic.
-
-  Example:
-    curl -sS -X POST \\
-      -H "Content-Type: application/json" \\
-      -H "Authorization: Bearer $DOCO_ACCESS" \\
-      ${baseUrl}/${handle}/api/scopes/scope_<ULID>/rules.json \\
-      -d '{ "kind": "doco-node-authoring", "prose": "Every Decision should have an Intent, and bugs should link to a Rule." }'
-
-RELATED
-  POST ${baseUrl}/${handle}/api/intents.json     capture an Intent
   POST ${baseUrl}/${handle}/api/decisions.json   capture a Decision
   GET  ${baseUrl}/${handle}/status.json          freshness + counts
 `,

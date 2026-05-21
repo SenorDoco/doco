@@ -1,9 +1,10 @@
 import { Link, redirect } from "react-router";
+import { Breadcrumb, docoBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
 import { SingleColumnPageMain } from "~/components/page-main";
 import { SiteHeader } from "~/components/site-header";
 import { WizardStepper } from "~/components/wizard-stepper";
-import { loadDocoForRead } from "~/lib/doco-access.server";
+import { loadDocoForRead, normalizeDocoParams } from "~/lib/doco-access.server";
 
 /**
  * /:handle/welcome — Step 4 of 4 in the doco creation wizard.
@@ -24,7 +25,8 @@ export async function loader({
   const handle = params.docoId;
   const { me, canonicalHandle } = await loadDocoForRead(request, handle, "reader");
   if (!me) throw redirect(`/sign-in?next=%2F${canonicalHandle}%2Fwelcome`);
-  return { me, handle: canonicalHandle };
+  const { ownerSlug } = await normalizeDocoParams({ docoId: canonicalHandle });
+  return { me, handle: canonicalHandle, ownerSlug };
 }
 
 export function meta({ params }: { params: { docoId: string } }) {
@@ -36,11 +38,12 @@ export default function NewDocoStep4({
 }: {
   loaderData: Awaited<ReturnType<typeof loader>>;
 }) {
-  const { me, handle } = loaderData;
+  const { me, handle, ownerSlug } = loaderData;
   return (
     <div>
       <SiteHeader mode="host" me={me} />
       <SingleColumnPageMain className="py-8 space-y-4">
+        <Breadcrumb items={docoBreadcrumb({ ownerSlug, handle, pageLabel: "Welcome" })} />
         <WizardStepper current={4} />
         <Card>
           <CardHeader>

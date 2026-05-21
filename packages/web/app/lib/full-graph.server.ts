@@ -42,9 +42,6 @@ const GRAPH_TABLES: {
   { table: "reference_entities", nodeType: "reference" },
   { table: "ideas", nodeType: "idea" },
   { table: "states", nodeType: "state" },
-  // v15: scope nodes no longer render in the overview graph. The
-  // `scopes` table is being dropped in v16+; this entry stays absent
-  // so the union no longer queries it.
 ];
 
 const OVERVIEW_GRAPH_EDGE_LIMIT = 5000;
@@ -149,10 +146,6 @@ export async function loadOverviewGraph(
     lifecycle: row.lifecycle ?? "active",
     created_at: toIso(row.created_at),
     href: overviewEntityHref(options.handle, row.node_type, row.id),
-    // v16: scope clustering removed; every node now lives in the
-    // implicit "Unscoped" group. The overview-graph layout falls
-    // through to its `__unscoped__` center when this is empty.
-    scopes: [],
     is_center: row.id === options.centerId,
   }));
   const centerId =
@@ -204,7 +197,6 @@ export async function loadOverviewNodeDetails(
         lifecycle: row.lifecycle ?? "active",
         created_at: toIso(row.created_at),
         href: overviewEntityHref(handle, row.node_type, row.id),
-        scopes: [],
       },
     ];
   });

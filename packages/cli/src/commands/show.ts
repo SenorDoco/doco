@@ -7,13 +7,13 @@ import { c, cross, header, rule } from "../output.js";
 export const showCmd = defineCommand({
   meta: {
     name: "show",
-    description: "Print one entity by id (or scope/principal/org by name/username).",
+    description: "Print one entity by id (or principal/org by username/name).",
   },
   args: {
     target: {
       type: "positional",
       description:
-        "Entity id (e.g. decision_01H...). For scope, principal, or organization, the name/username also resolves.",
+        "Entity id (e.g. decision_01H...). For principal or organization, the username/name also resolves.",
       required: true,
     },
     root: {
@@ -42,7 +42,7 @@ export const showCmd = defineCommand({
     if (isEntityId(target)) {
       entity = loaded.entities.get(target as EntityId)?.entity;
     } else {
-      // For scope/principal/organization the readable handle is the name/username.
+      // For principal/organization the readable handle is the username/name.
       for (const le of loaded.entities.values()) {
         const data = le.entity as unknown as Record<string, unknown>;
         if (data.name === target || data.username === target) {

@@ -1,4 +1,4 @@
-import { validateDocoSlug } from "@doco/shared";
+import { validateRequestedDocoId } from "@doco/shared";
 // /<doco-handle>/settings — admin-only Doco settings page. Renames the
 // slug, edits description + display_name, toggles visibility
 // (private/public), or deletes the Doco.
@@ -8,6 +8,7 @@ import { validateDocoSlug } from "@doco/shared";
 // CASCADE — not recoverable. Per the `settings-page-delete-doco` Intent +
 // ADR.
 import { Form, Link, redirect, useSearchParams } from "react-router";
+import { Breadcrumb, docoBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { SiteHeader } from "~/components/site-header";
 import { rootDir } from "~/lib/db.server";
@@ -79,7 +80,7 @@ export async function action({
   const visibility = (String(form.get("visibility") ?? "") as "private" | "public") || undefined;
 
   if (!newHandle) return { error: "Handle is required." };
-  const handleError = validateDocoSlug(newHandle);
+  const handleError = validateRequestedDocoId(newHandle);
   if (handleError) return { error: handleError };
   if (visibility && visibility !== "private" && visibility !== "public") {
     return { error: "Visibility must be private or public." };
@@ -89,7 +90,7 @@ export async function action({
   if (newHandle !== handle) {
     try {
       await renameDocoHandle({ oldHandle: handle, newHandle });
-      finalHandle = newHandle;
+      finalHandle = newHandle as typeof handle;
     } catch (e) {
       return { error: (e as Error).message };
     }
@@ -128,6 +129,7 @@ export default function DocoSettings({
     <div>
       <SiteHeader mode="host" me={me} docoScope={{ ownerSlug, docoSlug, handle }} />
       <main className="mx-auto max-w-6xl px-6 py-6 space-y-4">
+        <Breadcrumb items={docoBreadcrumb({ ownerSlug, handle, pageLabel: "Settings" })} />
         {actionData?.error ? (
           <div className="rounded-md border border-destructive bg-destructive/5 px-4 py-3 text-xs text-destructive">
             {actionData.error}
@@ -209,20 +211,11 @@ export default function DocoSettings({
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Related</CardTitle>
-            <CardDescription>Adjacent administration pages for this Doco.</CardDescription>
+            <CardTitle className="text-base">Doco id</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-2 text-xs">
-            <div>
-              <Link to={`/${handle}/scopes`} className="text-primary hover:underline">
-                Manage scopes →
-              </Link>
-              <span className="ml-2 text-muted-foreground">
-                Add/edit/delete the scopes nodes live in.
-              </span>
-            </div>
-            <div className="pt-2 text-[11px] text-muted-foreground">
-              Doco id: <span className="font-mono">{docoId}</span>
+          <CardContent>
+            <div className="text-[11px] text-muted-foreground">
+              <span className="font-mono">{docoId}</span>
             </div>
           </CardContent>
         </Card>
@@ -232,7 +225,7 @@ export default function DocoSettings({
           <CardHeader>
             <CardTitle className="text-base text-destructive">Danger zone</CardTitle>
             <CardDescription>
-              Deleting permanently removes this Doco and every entity, edge, and scope inside it.
+              Deleting permanently removes this Doco and every entity and edge inside it.
               This cannot be undone. Per ADR-040, only people can delete docos.
             </CardDescription>
           </CardHeader>
@@ -249,7 +242,7 @@ export default function DocoSettings({
                 <input type="hidden" name="intent" value="delete" />
                 <p className="text-xs">
                   Type the Doco's slug <span className="font-mono font-semibold">{docoSlug}</span>{" "}
-                  to confirm. This permanently deletes the Doco and every entity, edge, and scope
+                  to confirm. This permanently deletes the Doco and every entity and edge
                   inside it. It cannot be undone.
                 </p>
                 <input

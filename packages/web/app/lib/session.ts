@@ -56,7 +56,7 @@ function rowToPrincipal(row: {
       typeof fm.github_identity === "object" &&
       !Array.isArray(fm.github_identity),
   );
-  const isHuman = row.type === "human" || row.type === "person" || hasGitHubIdentity;
+  const isHuman = row.type === "person" || hasGitHubIdentity;
   const type: "person" | "agent" = row.type === "agent" ? "agent" : "person";
   const out: CurrentPrincipal = {
     id: row.id,

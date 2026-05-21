@@ -258,7 +258,7 @@ GET ${baseUrl}/<handle>/status.json               # counts + freshness (root, no
 
 **List + capture per node type** — types are \`decisions\`,
 \`rules\`, \`intents\`, \`actions\`, \`logs\`, \`evals\`, \`references\`,
-\`states\`, \`scopes\`, \`principals\`, \`invites\`, \`audit\`:
+\`states\`, \`principals\`, \`invites\`, \`audit\`:
 
 \`\`\`
 GET  ${baseUrl}/<handle>/api/<type>.json          # list nodes of that type

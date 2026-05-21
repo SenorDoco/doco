@@ -70,7 +70,7 @@ export const historyCmd = defineCommand({
   args: {
     id: {
       type: "positional",
-      description: "The entity's ULID (e.g. 'decision_01KR…' or 'scope_01KR…').",
+      description: "The entity's ULID (e.g. 'decision_01KR…' or 'rule_01KR…').",
       required: true,
     },
     limit: {
@@ -99,7 +99,7 @@ export const activityCmd = defineCommand({
   args: {
     type: {
       type: "string",
-      description: "Filter by entity type (e.g. 'decision', 'scope', 'rule').",
+      description: "Filter by entity type (e.g. 'decision', 'rule', 'intent').",
     },
     op: {
       type: "string",

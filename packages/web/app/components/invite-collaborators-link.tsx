@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { Link } from "react-router";
 
-export type InviteCollaboratorLevel = "org" | "doco" | "scope";
+export type InviteCollaboratorLevel = "org" | "doco";
 
 export function inviteCollaboratorsHref(level: InviteCollaboratorLevel, targetId: string): string {
   const params = new URLSearchParams();

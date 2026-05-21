@@ -5,6 +5,7 @@
 import { getOrgRole, withClient } from "@doco/db";
 import { useState } from "react";
 import { Form, Link, redirect, useActionData } from "react-router";
+import { Breadcrumb, orgBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { SiteHeader } from "~/components/site-header";
 import {
@@ -130,6 +131,14 @@ export default function NewOrgNodeAuthoringArticle({
       <SiteHeader mode="host" me={me} />
       <main className="mx-auto max-w-4xl px-6 py-6 space-y-4">
         <header>
+          <Breadcrumb
+            items={orgBreadcrumb({
+              orgSlug: org.slug,
+              parent: { label: "Constitution", to: `/orgs/${org.slug}/constitution` },
+              pageLabel: "New node authoring article",
+            })}
+            className="mb-1"
+          />
           <h1 className="text-2xl font-semibold">
             New node authoring article · <span className="font-mono">{org.slug}</span>
           </h1>

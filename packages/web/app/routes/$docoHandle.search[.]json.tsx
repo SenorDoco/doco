@@ -13,8 +13,6 @@ import { getDocoEmbeddingProvider } from "~/lib/embedding-provider.server";
 import { etaggedJson } from "~/lib/etag.server";
 import {
   type SearchFilters,
-  type SearchHitScope,
-  attachScopesToSearchHits,
   computeFilterFacets,
   parseSearchFilters,
   resolveFilteredCandidates,
@@ -48,13 +46,11 @@ interface Hit {
   node_type: string;
   name: string | null;
   summary?: string;
-  purpose?: string;
   lifecycle: string | null;
   created_at: string | null;
   gpr: number;
   vector_score: number;
   file_path: string | null;
-  scopes: SearchHitScope[];
   pinned?: boolean;
 }
 
@@ -63,7 +59,7 @@ interface TypeFetch {
   nodeType: string;
   selectExtra: string;
   hostLevel: boolean;
-  rowToHit(row: Record<string, unknown>, vectorScore: number, docoDir: string): Omit<Hit, "scopes">;
+  rowToHit(row: Record<string, unknown>, vectorScore: number, docoDir: string): Hit;
 }
 
 const TYPE_FETCHES: TypeFetch[] = [
@@ -243,7 +239,7 @@ export async function loader({
       for (const row of rows) {
         const id = String(row.id);
         const vs = Math.round((topById.get(id) ?? 0) * 10000) / 10000;
-        allHits.push({ ...spec.rowToHit(row as Record<string, unknown>, vs, docoDir), scopes: [] });
+        allHits.push(spec.rowToHit(row as Record<string, unknown>, vs, docoDir));
       }
     }
 
@@ -267,10 +263,6 @@ export async function loader({
     for (const p of gpr) gprById.set(p.id, p.score);
     for (const h of allHits) h.gpr = gprById.get(h.id) ?? 0;
     allHits.sort((a, b) => b.vector_score - a.vector_score);
-
-    await attachScopesToSearchHits(c, ctx.meta.docoId, allHits, {
-      includeInactiveScopes: false,
-    });
 
     const stableData = {
       query: q,

@@ -6,6 +6,7 @@ import { entityUrl } from "@doco/shared";
 import type { EntityId } from "@doco/shared";
 import { Link } from "react-router";
 import { NodeTypeBadge } from "~/components/badge";
+import { Breadcrumb, docoBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { SiteHeader } from "~/components/site-header";
 import { shouldStrikeActivityTarget } from "~/lib/activity-feed";
@@ -78,6 +79,10 @@ export default function ActivityPage({
       <SiteHeader mode="host" me={me} docoScope={{ ownerSlug, docoSlug, handle }} />
       <main className="mx-auto max-w-7xl space-y-4 px-6 py-6">
         <div>
+          <Breadcrumb
+            items={docoBreadcrumb({ ownerSlug, handle, pageLabel: "Activity" })}
+            className="mb-1"
+          />
           <h1 className="text-xl font-semibold">Activity</h1>
           <p className="text-sm text-muted-foreground">
             Per-Doco audit-events log — every mutation that touched an entity. Filter via URL

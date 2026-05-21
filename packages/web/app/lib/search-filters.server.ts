@@ -1,12 +1,6 @@
 // Shared filter logic for /search.json and /search HTML page. Both
 // surfaces accept the same `lifecycle` / `node_type` filters applied
 // BEFORE the cosine top-N slice.
-//
-// v16 (decision_01KS3DW9C2KN2X7Z80R18H1RAX): removed the `scope`
-// facet — scopes are gone, so there's nothing to filter on. The
-// `attachScopesToSearchHits` export below stays as a no-op shim so
-// callers can keep adding an empty `scopes` field to each hit
-// without crashing.
 import type { PoolClient } from "pg";
 
 /**
@@ -89,9 +83,6 @@ function readMulti(params: URLSearchParams, key: string): string[] | null {
  * Doco-scoped per-type tables (PG plural names). Each carries a
  * `lifecycle` column directly. principals + organizations are
  * host-level, so they don't filter on doco_id.
- *
- * v16: the legacy `scopes` table is no longer in this list — scope
- * nodes don't surface in search results.
  */
 const PG_DOCO_TABLES_WITH_LIFECYCLE = [
   "intents",
@@ -189,28 +180,6 @@ export interface FilterFacets {
   }[];
 }
 
-export interface SearchHitScope {
-  id: string;
-  name: string;
-  icon: string | null;
-}
-
-/**
- * v16 no-op shim. Scopes are removed; nothing to attach. Kept to
- * avoid churn on every search-hit consumer at once. Each hit gets a
- * `scopes: []` field so existing renderers keep their happy path.
- */
-export async function attachScopesToSearchHits<T extends { id: string }>(
-  _c: PoolClient,
-  _docoId: string,
-  hits: T[],
-  _opts: { includeInactiveScopes?: boolean } = {},
-): Promise<Array<T & { scopes: SearchHitScope[] }>> {
-  for (const hit of hits) {
-    (hit as T & { scopes: SearchHitScope[] }).scopes = [];
-  }
-  return hits as Array<T & { scopes: SearchHitScope[] }>;
-}
 
 export async function computeFilterFacets(c: PoolClient, docoId: string): Promise<FilterFacets> {
   const lifecycleFacets = new Map<string, { count: number; updatedAt: string | null }>();

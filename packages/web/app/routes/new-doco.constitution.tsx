@@ -3,6 +3,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
 import { SingleColumnPageMain } from "~/components/page-main";
 import { SiteHeader } from "~/components/site-header";
 import { WizardStepper } from "~/components/wizard-stepper";
+import {
+  AGENT_EXPOSURE_NOTE,
+  GUIDANCE_ARTICLE_EXPLAINER,
+  NODE_AUTHORING_ARTICLE_EXPLAINER,
+} from "~/lib/constitution-copy";
 import { listMyOrgs } from "~/lib/org-helpers.server";
 import { getCurrentPrincipal } from "~/lib/session";
 
@@ -22,6 +27,7 @@ export async function loader({ request }: { request: Request }) {
   const orgId = url.searchParams.get("org_id") ?? "";
   const newOrgHandle = url.searchParams.get("new_org_handle") ?? "";
   const suffix = url.searchParams.get("suffix") ?? "";
+  const visibility = url.searchParams.get("visibility") === "public" ? "public" : "private";
 
   // Bounce back to Step 1 if state is missing — every step validates
   // its own inputs so a deep-link with a half-baked URL can't slip
@@ -35,7 +41,7 @@ export async function loader({ request }: { request: Request }) {
     ? (orgs.find((o) => o.id === orgId)?.handle ?? null)
     : newOrgHandle;
 
-  return { me, orgId, newOrgHandle, suffix, orgHandle };
+  return { me, orgId, newOrgHandle, suffix, visibility, orgHandle };
 }
 
 export function meta() {

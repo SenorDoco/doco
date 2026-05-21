@@ -6,9 +6,7 @@ import { waitUntil } from "@vercel/functions";
 // round-tripping for ULID generation, ID lookups, and reindex.
 //
 // Identifiers: every node has exactly one id — the ULID. URLs use the
-// ULID; agents/users read the readable field (`summary` for most nodes,
-// `purpose` for scopes — kept while scopes existed; v16 removed the
-// node type itself but the field naming stays for back-compat).
+// ULID; agents/users read the readable field (`summary` for most nodes).
 import { appendAuditEvent } from "./audit-log.server";
 import { readDocoMetadata } from "./doco-metadata.server";
 import { suggestImplicitEdges } from "./llm.server";
@@ -64,10 +62,7 @@ async function persistEntity(args: {
       node_type: args.nodeType,
       raw_yaml: JSON.stringify(fm),
       body_md: args.body,
-      summary:
-        args.nodeType === "scope" ? null : typeof fm.summary === "string" ? fm.summary : null,
-      purpose:
-        args.nodeType === "scope" ? (typeof fm.purpose === "string" ? fm.purpose : null) : null,
+      summary: typeof fm.summary === "string" ? fm.summary : null,
       lifecycle: typeof fm.lifecycle === "string" ? fm.lifecycle : null,
       name: typeof fm.name === "string" ? fm.name : null,
       created_at: typeof fm.created_at === "string" ? fm.created_at : null,
@@ -152,8 +147,6 @@ export interface DecisionDraft {
   question: string;
   /** Required: chosen resolution (multi-line ok). */
   chosen: string;
-  /** Required: at least one scope name (hashtag-shaped, e.g. "#user-flows"). */
-  scope_names: string[];
 
   /** Optional: one-line summary; derived from chosen if absent. */
   summary?: string;
@@ -541,11 +534,6 @@ export async function resolvePrincipalUsername(username: string): Promise<string
   }
 }
 
-// v16: the scope-rule machinery used to live here — loadAllScopes,
-// findGlobalScope, buildNodesByScope, resolveScopeNames, runScopeRules,
-// and the full scope-rule pipeline. All deleted with the scopes
-// concept (decision_01KS3DW9C2KN2X7Z80R18H1RAX).
-
 async function attachImplicitEdges(opts: {
   docoDir: string;
   ownerSlug: string;
@@ -649,9 +637,6 @@ export async function captureDecision(
   const startedAt = performance.now();
   if (!draft.question?.trim()) return { error: "question is required." };
   if (!draft.chosen?.trim()) return { error: "chosen is required." };
-  if (draft.scope_names && !Array.isArray(draft.scope_names)) {
-    return { error: "scope_names must be a non-empty array." };
-  }
 
   const intentIds: string[] = Array.isArray(draft.intent_ids) ? draft.intent_ids : [];
 
@@ -751,10 +736,6 @@ export interface DecisionPatch {
   question?: string;
   chosen?: string;
   alternatives?: { name: string; rejected_because: string }[];
-  /** v16: accepted for API back-compat but ignored — scopes are gone. */
-  scope_names?: string[];
-  scope_names_add?: string[];
-  scope_names_remove?: string[];
   intent_ids?: string[];
   intent_ids_add?: string[];
   intent_ids_remove?: string[];
@@ -866,9 +847,6 @@ export async function updateDecision(
     }
   }
 
-  // v16: scope_names / scope_names_add / scope_names_remove on the
-  // patch are accepted but ignored — scopes are gone.
-
   // intent_ids (replace/add/remove) — input is already an id, pass-through.
   const intentResult = await applyListOp(
     fm,
@@ -966,17 +944,11 @@ export type NodeTypeName =
   | "node_authoring_article"
   | "action"
   | "log"
-  | "reference"
-  | "scope";
+  | "reference";
 
 export interface EntityPatch {
   summary?: string;
-  purpose?: string;
   lifecycle?: string;
-  /** v16: accepted for API back-compat but ignored — scopes are gone. */
-  scope_names?: string[];
-  scope_names_add?: string[];
-  scope_names_remove?: string[];
   intent_ids?: string[];
   intent_ids_add?: string[];
   intent_ids_remove?: string[];
@@ -1018,16 +990,9 @@ export async function updateEntity(opts: {
   if (!existing) return { error: `${nodeType} not found: ${id}` };
   const fm = existing.fm;
   const existingBody = existing.body;
-  // Types with a markdown body get body_md; others (scope, reference)
-  // are pure YAML and ignore body operations.
-  const isMd = nodeType !== "scope" && nodeType !== "reference";
-
-  if (nodeType === "scope" && Object.prototype.hasOwnProperty.call(patch, "summary")) {
-    return {
-      error: "Scope nodes use `purpose`; `summary` is not accepted for scopes.",
-      status: 400,
-    };
-  }
+  // Types with a markdown body get body_md; `reference` is pure YAML
+  // and ignores body operations.
+  const isMd = nodeType !== "reference";
 
   const gate = validatePatch(
     nodeType,
@@ -1064,17 +1029,7 @@ export async function updateEntity(opts: {
     }
   };
 
-  if (nodeType === "scope") {
-    const purposePatch = typeof patch.purpose === "string" ? patch.purpose.trim() : undefined;
-    setScalar("purpose", purposePatch);
-    if (purposePatch !== undefined && "summary" in fm) {
-      fm.summary = undefined;
-      changed.push("summary");
-      ops.push({ kind: "cleared", field: "summary" });
-    }
-  } else {
-    setScalar("summary", typeof patch.summary === "string" ? patch.summary.trim() : undefined);
-  }
+  setScalar("summary", typeof patch.summary === "string" ? patch.summary.trim() : undefined);
   setScalar("lifecycle", patch.lifecycle);
   if (patch.born_from !== undefined) {
     if (patch.born_from === null || patch.born_from === "") {
@@ -1104,7 +1059,7 @@ export async function updateEntity(opts: {
   }
 
   for (const k of allowedFields) {
-    if (k === "summary" || k === "purpose") continue;
+    if (k === "summary") continue;
     if (k in patch && patch[k] !== undefined) {
       const v = patch[k];
       if (v === null || v === "") {
@@ -1120,9 +1075,6 @@ export async function updateEntity(opts: {
       }
     }
   }
-
-  // v16: scope_names / scope_names_add / scope_names_remove on the
-  // patch are accepted but ignored — scopes are gone.
 
   // intent_ids (replace/add/remove)
   const eIntentResult = await applyListOp(
@@ -1155,8 +1107,8 @@ export async function updateEntity(opts: {
     return { error: "No fields changed." };
   }
 
-  // Compute the new body for Postgres storage. Pure-YAML types (scope,
-  // reference) carry no body.
+  // Compute the new body for Postgres storage. `reference` is pure
+  // YAML and carries no body.
   let nextBody = "";
   if (isMd) {
     if (patch.body_md !== undefined) {
@@ -1189,9 +1141,7 @@ export async function updateEntity(opts: {
   });
   await reindexAndScheduleAttach(docoDir, docoId, id);
 
-  const summary = String(
-    nodeType === "scope" ? (fm.purpose ?? fm.name ?? id) : (fm.summary ?? fm.name ?? id),
-  );
+  const summary = String(fm.summary ?? fm.name ?? id);
   const duration_ms = Math.round(performance.now() - startedAt);
   const footer_lines = await renderOperationLines({
     docoId,
@@ -1217,8 +1167,6 @@ export async function updateEntity(opts: {
 export interface IntentDraft {
   /** Required: one-line "what someone wants" summary. */
   summary: string;
-  /** Required: at least one scope name. */
-  scope_names: string[];
 
   /** Optional: short title (defaults to summary). */
   title?: string;
@@ -1248,10 +1196,6 @@ export async function captureIntent(
 ): Promise<CaptureResult | CaptureError> {
   const startedAt = performance.now();
   if (!draft.summary?.trim()) return { error: "summary is required." };
-  if (draft.scope_names && !Array.isArray(draft.scope_names)) {
-    return { error: "scope_names must be a non-empty array." };
-  }
-
   let wantedById: string | null = null;
   if (draft.wanted_by_username) {
     wantedById = await resolvePrincipalUsername(draft.wanted_by_username);
@@ -1344,8 +1288,6 @@ export async function captureIntent(
 export interface EvalDraft {
   /** Required: short readable name. */
   name: string;
-  /** Required: at least one scope name. */
-  scope_names: string[];
   /** Required: criterion shape. */
   criterion: { kind: "exact" | "shape" | "llm-judge"; spec?: string };
   /** Optional: prose body. */
@@ -1397,10 +1339,6 @@ export async function captureEval(
   if (draft.expected_status !== undefined && !["pass", "fail"].includes(draft.expected_status)) {
     return { error: `Unknown expected_status: ${draft.expected_status}` };
   }
-  if (draft.scope_names && !Array.isArray(draft.scope_names)) {
-    return { error: "scope_names must be a non-empty array." };
-  }
-
   let authoredById: string | null = null;
   if (draft.authored_by_username) {
     authoredById = await resolvePrincipalUsername(draft.authored_by_username);
@@ -1496,8 +1434,6 @@ export async function captureEval(
 export interface ActionDraft {
   /** Required: one-line summary of what was done. */
   summary: string;
-  /** Required: at least one scope name (bare). */
-  scope_names: string[];
   /** Required: short verb naming the action (`refactor`, `migrate`, …). */
   verb: string;
 
@@ -1532,10 +1468,6 @@ export async function captureAction(
   const startedAt = performance.now();
   if (!draft.summary?.trim()) return { error: "summary is required." };
   if (!draft.verb?.trim()) return { error: "verb is required." };
-  if (draft.scope_names && !Array.isArray(draft.scope_names)) {
-    return { error: "scope_names must be a non-empty array." };
-  }
-
   let actorId: string | null = null;
   if (draft.performed_by_username) {
     actorId = await resolvePrincipalUsername(draft.performed_by_username);
@@ -1639,7 +1571,6 @@ export async function captureAction(
 
 export interface LogDraft {
   summary: string;
-  scope_names: string[];
   /** Past-tense verb naming what happened ("pushed", "deployed", "verified"). */
   verb: string;
   /** When the event occurred. ISO 8601 UTC. */
@@ -1685,10 +1616,6 @@ export async function captureLog(
         "outputs is required and must be a non-empty object — Logs record concrete results (commit hash, deploy URL, etc.).",
     };
   }
-  if (draft.scope_names && !Array.isArray(draft.scope_names)) {
-    return { error: "scope_names must be a non-empty array." };
-  }
-
   let actorId: string | null = null;
   if (draft.performed_by_username) {
     actorId = await resolvePrincipalUsername(draft.performed_by_username);
@@ -1789,8 +1716,6 @@ export async function captureLog(
 export interface RuleDraft {
   /** Required: one-line summary of the policy. */
   summary: string;
-  /** Required: at least one scope name. */
-  scope_names: string[];
   /** Required: machine-checkable / prose predicate the Rule asserts. */
   predicate: string;
 
@@ -1829,10 +1754,6 @@ export async function captureRule(
   const startedAt = performance.now();
   if (!draft.summary?.trim()) return { error: "summary is required." };
   if (!draft.predicate?.trim()) return { error: "predicate is required." };
-  if (draft.scope_names && !Array.isArray(draft.scope_names)) {
-    return { error: "scope_names must be a non-empty array." };
-  }
-
   let authorId: string | null = null;
   if (draft.authored_by_username) {
     authorId = await resolvePrincipalUsername(draft.authored_by_username);
@@ -1868,10 +1789,8 @@ export async function captureRule(
   const now = new Date().toISOString();
   const createdById = draft.created_by_id ?? authorId;
 
-  // v16: `applies_to` previously listed scope tags. With scopes gone
-  // the selector defaults to an empty any_of (matches everything by
-  // having nothing to filter on); rule authors can still hand-edit
-  // applies_to via patch.
+  // Empty selector — matches everything by having nothing to filter
+  // on. Authors can still hand-edit `applies_to` via patch.
   const appliesTo = { any_of: [] as { tag: string }[] };
 
   const fm: Record<string, unknown> = {
@@ -2309,7 +2228,6 @@ const REF_TYPES = new Set(["file", "url", "ticket", "commit", "document", "other
 export interface ReferenceDraft {
   ref_type: string;
   locator: string;
-  scope_names: string[];
   summary?: string;
   body_md?: string;
   content_hash?: string | null;
@@ -2332,10 +2250,6 @@ export async function captureReference(
     return { error: `ref_type must be one of: ${[...REF_TYPES].join(", ")}.` };
   }
   if (!draft.locator?.trim()) return { error: "locator is required." };
-  if (draft.scope_names && !Array.isArray(draft.scope_names)) {
-    return { error: "scope_names must be a non-empty array." };
-  }
-
   let createdById: string | null = null;
   if (draft.created_by_username) {
     createdById = await resolvePrincipalUsername(draft.created_by_username);
@@ -2422,8 +2336,6 @@ export async function captureReference(
 export interface StateDraft {
   /** Required: one-line summary (the State's display name, e.g. "paid", "cart"). */
   summary: string;
-  /** Required: at least one scope name (bare). */
-  scope_names: string[];
   /** Required: initial / intermediate / terminal. */
   kind: "initial" | "intermediate" | "terminal";
 
@@ -2437,9 +2349,7 @@ export interface StateDraft {
   created_by_username?: string;
   /** Optional: raw markdown body. */
   body_md?: string;
-  /** Optional: explicit lifecycle override. If unset, falls back to the
-   *  capturing scope's `default_node_lifecycle` (with parent inheritance),
-   *  else "active". */
+  /** Optional: explicit lifecycle override. Defaults to "active". */
   lifecycle?: string;
 }
 
@@ -2459,10 +2369,6 @@ export async function captureState(
       error: `kind must be one of initial / intermediate / terminal — got "${draft.kind}".`,
     };
   }
-  if (draft.scope_names && !Array.isArray(draft.scope_names)) {
-    return { error: "scope_names must be a non-empty array." };
-  }
-
   let createdById: string | null = draft.created_by_id ?? null;
   if (!createdById && draft.created_by_username) {
     createdById = await resolvePrincipalUsername(draft.created_by_username);
@@ -2475,9 +2381,6 @@ export async function captureState(
   const summary = draft.summary.trim();
   const now = new Date().toISOString();
 
-  // v16: lifecycle previously inherited the capturing scope's
-  // default_node_lifecycle via parent-scope walk. With scopes gone,
-  // honor the explicit lifecycle (or default to "active").
   const lifecycle = draft.lifecycle?.trim() || "active";
 
   const follows: string[] = Array.isArray(draft.follows) ? draft.follows : [];

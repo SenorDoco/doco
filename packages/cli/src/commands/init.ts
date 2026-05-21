@@ -77,7 +77,6 @@ export const initCmd = defineCommand({
       "decisions",
       "actions",
       "references",
-      "scopes",
     ]) {
       await mkdir(join(root, sub), { recursive: true });
     }

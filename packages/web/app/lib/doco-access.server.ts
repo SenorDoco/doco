@@ -13,6 +13,7 @@ import {
   roleAtLeast,
   withClient,
 } from "@doco/db";
+import type { DocoHandle } from "@doco/shared";
 import { redirect } from "react-router";
 import { docoPath } from "./db.server";
 import { type DocoMetadata, readDocoMetadata } from "./doco-metadata.server";
@@ -285,7 +286,7 @@ export async function normalizeDocoParams(params: {
 }): Promise<{
   ownerSlug: string;
   docoSlug: string;
-  handle: string;
+  handle: DocoHandle;
   docoId: string;
 }> {
   if (!params.docoId) {
@@ -296,7 +297,7 @@ export async function normalizeDocoParams(params: {
   return {
     ownerSlug: row.owner_slug,
     docoSlug: row.handle,
-    handle: row.handle,
+    handle: row.handle as DocoHandle,
     docoId: row.id,
   };
 }

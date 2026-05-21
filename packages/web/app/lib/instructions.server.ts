@@ -8,7 +8,7 @@
  * MCP resource.
  *
  * `AGENT_REFERENCE` is the long-form deep reference (node walkthrough,
- * scope onboarding, placement examples).
+ * placement examples).
  */
 
 export const CANONICAL_INSTRUCTIONS = `# Doco — agent protocol (slim)
@@ -160,7 +160,7 @@ endpoint. If they share those with you, paste them verbatim, one
 per line:
 
 \`\`\`
-[🔮 Doco] <op-icon> <Type> <verb>: <body> — <icon> <scope1>, <icon> <scope2>
+[🔮 Doco] <op-icon> <Type> <verb>: <body>
 \`\`\`
 
 Op icons: ✍️ added · 📝 updated · 🧹 cleared · ➕ added/appended ·
@@ -191,14 +191,14 @@ call out the capture for the project owner instead:
 - If you wrote code that satisfies a Decision's consequence, tell
   them: "this would be worth capturing as a Rule born from
   decision_…"
-- If a bug got fixed, tell them: "Decision + a born-from Rule on the
-  project's bug scope would lock this in."
+- If a bug got fixed, tell them: "Decision + a born-from Rule would
+  lock this in."
 
 | Change made | What to capture |
 |---|---|
-| User-flow (route/redirect/form/banner/multi-step UX) | Decision with **\`#user-flows\`** |
-| Bug fix | Decision + a Rule with same scope (\`born_from: <decision_id>\`) |
-| Code satisfies an architectural Decision's consequence | Rule with relevant scope, \`born_from: <decision_id>\` |
+| User-flow (route/redirect/form/banner/multi-step UX) | Decision |
+| Bug fix | Decision + a Rule (\`born_from: <decision_id>\`) |
+| Code satisfies an architectural Decision's consequence | Rule with \`born_from: <decision_id>\` |
 | Recorded event (commit pushed, deploy ran) | **Log** with past-tense verb + \`happened_at\` + outputs |
 | Designed step in a process | **Action** with imperative verb |
 | Aspirational goal / backlog item | **Intent** |
@@ -260,17 +260,6 @@ Doco's data model is a graph of typed nodes:
 - **Idea** — exploratory capture; promote to Intent / Decision once
   it firms up.
 - **Tag**, **Principal** — supporting types.
-
-## Scope onboarding flow (new Doco)
-
-When a Doco is brand new, only the framework-seeded \`#global\` scope
-exists. Propose 1–3 project-specific scopes (hashtag-shaped, named
-for actual subject areas): \`#payments\`, \`#search\`,
-\`#content-schema\`. Confirm with the project owner before they
-create them.
-
-For each new scope, walk a population pass: "what's the load-bearing
-thing about <area> that's in your head but not in the repo yet?"
 
 ## Things only people can do
 

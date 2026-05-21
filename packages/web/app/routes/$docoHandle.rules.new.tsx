@@ -2,7 +2,8 @@ import { withClient } from "@doco/db";
 // /<doco-handle>/rules/new — minimal capture form for a domain Rule entity.
 // Constitution meta-rules live in guidance_articles and
 // node_authoring_articles instead.
-import { Form, redirect, useSearchParams } from "react-router";
+import { Form, redirect } from "react-router";
+import { Breadcrumb, docoBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { SingleColumnPageMain } from "~/components/page-main";
 import { SiteHeader } from "~/components/site-header";
@@ -26,8 +27,6 @@ export async function loader({
 }) {
   const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
   const { meta, me } = await loadDocoForAdmin(request, handle);
-  const url = new URL(request.url);
-  const prefillScope = url.searchParams.get("scope") ?? "";
   const intents = await withClient(async (c) => {
     const rows = (
       await c.query<IntentOption>(
@@ -44,7 +43,6 @@ export async function loader({
     ownerSlug,
     docoSlug,
     handle,
-    prefillScope,
     intents,
     host: await loadHostConfig(),
     me,
@@ -68,18 +66,10 @@ export async function action({
   const form = await request.formData();
   const summary = String(form.get("summary") ?? "").trim();
   const predicate = String(form.get("predicate") ?? "").trim();
-  const scopeNamesRaw = String(form.get("scope_names") ?? "").trim();
   const intentId = String(form.get("intent_id") ?? "").trim();
   const severityRaw = String(form.get("severity") ?? "hard");
   const enforcedByRaw = String(form.get("enforced_by") ?? "review");
 
-  const scopeNames = scopeNamesRaw
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
-  if (scopeNames.length === 0) {
-    return Response.json({ error: "At least one scope is required." }, { status: 400 });
-  }
   const severity = severityRaw === "soft" ? "soft" : "hard";
   const enforcedBy = (["runtime", "review", "manual"] as const).includes(
     enforcedByRaw as "runtime" | "review" | "manual",
@@ -95,7 +85,6 @@ export async function action({
     {
       summary,
       predicate,
-      scope_names: scopeNames,
       intent_ids: intentId ? [intentId] : [],
       severity,
       enforced_by: enforcedBy,
@@ -118,14 +107,20 @@ export default function NewRule({
 }: {
   loaderData: Awaited<ReturnType<typeof loader>>;
 }) {
-  const { ownerSlug, docoSlug, handle, prefillScope, intents, me } = loaderData;
-  const [searchParams] = useSearchParams();
-  const scopeFromUrl = searchParams.get("scope") ?? prefillScope;
+  const { ownerSlug, docoSlug, handle, intents, me } = loaderData;
 
   return (
     <div>
       <SiteHeader mode="host" me={me} docoScope={{ ownerSlug, docoSlug, handle }} />
       <SingleColumnPageMain className="py-6 space-y-4">
+        <Breadcrumb
+          items={docoBreadcrumb({
+            ownerSlug,
+            handle,
+            parent: { label: "Rules", to: `/${handle}/rule` },
+            pageLabel: "New rule",
+          })}
+        />
         <Card>
           <CardHeader>
             <CardTitle>New rule</CardTitle>
@@ -157,19 +152,6 @@ export default function NewRule({
                   required
                   rows={4}
                   placeholder="The machine-checkable or prose predicate the rule asserts."
-                  className="mt-1 block w-full rounded-md border border-border bg-input px-3 py-2 text-sm font-mono"
-                />
-              </label>
-              <label className="block">
-                <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  Scopes (comma-separated)
-                </span>
-                <input
-                  type="text"
-                  name="scope_names"
-                  required
-                  defaultValue={scopeFromUrl}
-                  placeholder="project"
                   className="mt-1 block w-full rounded-md border border-border bg-input px-3 py-2 text-sm font-mono"
                 />
               </label>

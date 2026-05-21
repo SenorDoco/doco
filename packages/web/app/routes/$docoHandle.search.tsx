@@ -3,7 +3,7 @@ import { globalPageRank } from "@doco/index";
 import type { PoolClient } from "pg";
 import type { ReactNode } from "react";
 // Per-Doco search — vector-only ranker (ADR-052, supersedes ADR-030)
-// + left-sidebar filters for lifecycle / node type / scope.
+// + left-sidebar filters for lifecycle / node type.
 //
 // One provider call embeds keyword searches; filters resolve to a
 // candidate id set BEFORE cosine so pagination always slices matching
@@ -11,6 +11,7 @@ import type { ReactNode } from "react";
 // filtered nodes directly. Filter state lives in URL query params.
 import { Form, Link, useSearchParams } from "react-router";
 import { LifecycleBadge, NodeTypeBadge } from "~/components/badge";
+import { Breadcrumb, docoBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
 import { NodeTypeIcon } from "~/components/node-type-icon";
 import { SiteHeader } from "~/components/site-header";
@@ -21,8 +22,6 @@ import { lifecycleColor, nodeTypePlural } from "~/lib/node-colors";
 import {
   type FilterFacets,
   type SearchFilters,
-  type SearchHitScope,
-  attachScopesToSearchHits,
   computeFilterFacets,
   parseSearchFilters,
   resolveFilteredCandidates,
@@ -47,13 +46,11 @@ interface Hit {
   id: string;
   node_type: string;
   summary?: string;
-  purpose?: string;
   name: string | null;
   lifecycle: string | null;
   created_at: string | null;
   gpr: number;
   vector_score: number | null;
-  scopes: SearchHitScope[];
 }
 
 /**
@@ -65,7 +62,7 @@ interface TypeSpec {
   nodeType: string;
   selectExtra: string;
   /** Build the Hit shape from a row. */
-  toHit(row: Record<string, unknown>, vectorScore: number | null): Omit<Hit, "gpr" | "scopes">;
+  toHit(row: Record<string, unknown>, vectorScore: number | null): Omit<Hit, "gpr">;
   /** Doco-scoped or host-level? */
   hostLevel: boolean;
 }
@@ -272,7 +269,6 @@ async function loadFilteredHits(
     candidateIds === null ? await loadAllDocoEntityIds(c, docoId) : Array.from(candidateIds);
   const hits = await hydrateHits(c, ids, docoId, null);
   await attachGlobalPageRank(c, docoId, hits);
-  await attachScopesToSearchHits(c, docoId, hits);
   hits.sort((a, b) => {
     const byCreated = createdTime(b.created_at) - createdTime(a.created_at);
     if (byCreated !== 0) return byCreated;
@@ -313,7 +309,7 @@ async function hydrateHits(
       const rawScore = scoreById?.get(String(row.id));
       const score = typeof rawScore === "number" ? Math.round(rawScore * 10000) / 10000 : null;
       const hit = spec.toHit(row as Record<string, unknown>, score);
-      hits.push({ ...hit, gpr: 0, scopes: [] });
+      hits.push({ ...hit, gpr: 0 });
     }
   }
   return hits;
@@ -504,7 +500,6 @@ export async function loader({
 
     const allHits = await hydrateHits(c, allIds, ctx.meta.docoId, scoreById);
     await attachGlobalPageRank(c, ctx.meta.docoId, allHits);
-    await attachScopesToSearchHits(c, ctx.meta.docoId, allHits);
     allHits.sort((a, b) => (b.vector_score ?? 0) - (a.vector_score ?? 0));
 
     facets = await withHitDerivedCounts(facets, c, ctx.meta.docoId, allHits);
@@ -576,6 +571,7 @@ export default function SearchInDoco({
     <div>
       <SiteHeader mode="host" me={me} docoScope={{ ownerSlug, docoSlug, handle }} />
       <main className="mx-auto max-w-6xl space-y-6 px-6 py-6">
+        <Breadcrumb items={docoBreadcrumb({ ownerSlug, handle, pageLabel: "Search" })} />
         <section className="space-y-4">
           <Form method="get" className="space-y-3">
             <div>
@@ -656,20 +652,6 @@ export default function SearchInDoco({
                       {hit.id}
                     </Link>
                     {hit.lifecycle ? <LifecycleBadge lifecycle={hit.lifecycle} /> : null}
-                    {hit.scopes.map((scope) => (
-                      <Link
-                        key={scope.id}
-                        to={`/${handle}/scopes/${scope.id}`}
-                        className="inline-flex items-center gap-1 rounded-md border border-border bg-card px-2 py-0.5 font-mono text-[11px] text-muted-foreground hover:border-primary hover:text-primary"
-                      >
-                        {scope.icon ? (
-                          <span aria-hidden className="font-sans text-[12px] leading-none">
-                            {scope.icon}
-                          </span>
-                        ) : null}
-                        <span>{scope.name}</span>
-                      </Link>
-                    ))}
                     <span className="text-xs text-muted-foreground">
                       {vectorScore === null ? "" : `cosine ${vectorScore.toFixed(4)} · `}
                       gpr {hit.gpr.toFixed(4)} · {relativeTimeIso(hit.created_at)}
@@ -677,7 +659,7 @@ export default function SearchInDoco({
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <p className="text-sm">{hit.purpose || hit.summary || hit.name || hit.id}</p>
+                  <p className="text-sm">{hit.summary || hit.name || hit.id}</p>
                 </CardContent>
               </Card>
             );

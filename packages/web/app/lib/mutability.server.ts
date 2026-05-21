@@ -28,7 +28,7 @@ export type ClaimNodeType =
   | "eval"
   | "reference";
 
-export type RecordNodeType = "principal" | "organization" | "scope" | "doco" | "tag" | "idea";
+export type RecordNodeType = "principal" | "organization" | "doco" | "tag" | "idea";
 
 const CLAIM_TYPES: ReadonlySet<string> = new Set<ClaimNodeType>([
   "decision",

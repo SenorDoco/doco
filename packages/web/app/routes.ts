@@ -157,7 +157,8 @@ export default [
   ),
   route(":docoId/invites", "routes/$docoHandle.invites.tsx"),
   route(":docoId/api/invites.json", "routes/$docoHandle.api.invites[.]json.tsx"),
-  route(":docoId/api/decisions.json", "routes/$docoHandle.api.decisions[.]json.tsx"),
+  // Per-entity detail (PATCH/GET) routes. Most use the makeUpdateRoute
+  // factory; decisions.$id has a custom action (ADR promotion logic).
   route(":docoId/api/decisions/:id.json", "routes/$docoHandle.api.decisions.$id[.]json.tsx"),
   route(":docoId/api/intents/:id.json", "routes/$docoHandle.api.intents.$id[.]json.tsx"),
   route(":docoId/api/rules/:id.json", "routes/$docoHandle.api.rules.$id[.]json.tsx"),
@@ -172,25 +173,17 @@ export default [
   route(":docoId/api/actions/:id.json", "routes/$docoHandle.api.actions.$id[.]json.tsx"),
   route(":docoId/api/logs/:id.json", "routes/$docoHandle.api.logs.$id[.]json.tsx"),
   route(":docoId/api/references/:id.json", "routes/$docoHandle.api.references.$id[.]json.tsx"),
+  // Special-cased capture routes that need custom logic — listed BEFORE
+  // the generic `:type.json` dispatcher so the static segment wins.
   route(":docoId/api/principals.json", "routes/$docoHandle.api.principals[.]json.tsx"),
-  route(":docoId/api/intents.json", "routes/$docoHandle.api.intents[.]json.tsx"),
-  route(":docoId/api/actions.json", "routes/$docoHandle.api.actions[.]json.tsx"),
-  route(":docoId/api/logs.json", "routes/$docoHandle.api.logs[.]json.tsx"),
-  route(":docoId/api/rules.json", "routes/$docoHandle.api.rules[.]json.tsx"),
-  route(
-    ":docoId/api/guidance_articles.json",
-    "routes/$docoHandle.api.guidance_articles[.]json.tsx",
-  ),
-  route(
-    ":docoId/api/node_authoring_articles.json",
-    "routes/$docoHandle.api.node_authoring_articles[.]json.tsx",
-  ),
-  route(":docoId/api/references.json", "routes/$docoHandle.api.references[.]json.tsx"),
-  route(":docoId/api/evals.json", "routes/$docoHandle.api.evals[.]json.tsx"),
-  route(":docoId/api/states.json", "routes/$docoHandle.api.states[.]json.tsx"),
   route(":docoId/api/settings.json", "routes/$docoHandle.api.settings[.]json.tsx"),
-  route(":docoId/api/:type.txt", "routes/$docoHandle.api.$type[.]txt.tsx"),
   route(":docoId/api/audit.json", "routes/$docoHandle.api.audit[.]json.tsx"),
+  // Generic capture dispatcher. Handles decisions, intents, actions,
+  // references, rules, guidance_articles, node_authoring_articles, logs,
+  // evals, states via CAPTURE_REGISTRY in the route file. Adding a new
+  // simple-capture entity type is one registry row; no new route needed.
+  route(":docoId/api/:type.json", "routes/$docoHandle.api.$type[.]json.tsx"),
+  route(":docoId/api/:type.txt", "routes/$docoHandle.api.$type[.]txt.tsx"),
   route(":docoId/activity", "routes/$docoHandle.activity.tsx"),
   route(":docoId/graph-node-details.json", "routes/$docoHandle.graph-node-details[.]json.tsx"),
   route(":docoId/search", "routes/$docoHandle.search.tsx"),

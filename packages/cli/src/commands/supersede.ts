@@ -44,12 +44,6 @@ export const supersedeCmd = defineCommand({
       type: "string",
       description: "Optional one-line summary; derived from chosen if absent.",
     },
-    scope: {
-      type: "string",
-      description:
-        "Comma-separated scope names for the new Decision. Required (the framework rejects scope-less captures).",
-      required: true,
-    },
     "intent-id": {
       type: "string",
       description: "Comma-separated intent ids to link on the new Decision.",
@@ -84,11 +78,6 @@ export const supersedeCmd = defineCommand({
       console.error(cross("--chosen is required (the resolution the new Decision codifies)."));
       process.exit(2);
     }
-    const scope = String(args.scope ?? "").trim();
-    if (!scope) {
-      console.error(cross("--scope is required (comma-separated scope names)."));
-      process.exit(2);
-    }
 
     let bodyMd: string | undefined;
     if (args["body-md"] && args["body-md-file"]) {
@@ -106,7 +95,6 @@ export const supersedeCmd = defineCommand({
     const captureBody: Record<string, unknown> = {
       question: String(args.question ?? `Supersede ${priorId} — what changes?`),
       chosen,
-      scope_names: scope.split(",").map((s) => s.trim()).filter(Boolean),
     };
     if (args.summary) captureBody.summary = String(args.summary);
     if (args["intent-id"]) {

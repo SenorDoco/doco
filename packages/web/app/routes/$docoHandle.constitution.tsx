@@ -6,6 +6,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/com
 import { NodeTypeIcon } from "~/components/node-type-icon";
 import { SiteHeader } from "~/components/site-header";
 import {
+  AGENT_EXPOSURE_NOTE,
+  GUIDANCE_ARTICLE_EXPLAINER,
+  NODE_AUTHORING_ARTICLE_EXPLAINER,
+} from "~/lib/constitution-copy";
+import {
   canEditConstitution,
   loadDocoForRead,
   normalizeDocoParams,
@@ -98,15 +103,14 @@ export default function Constitution({
           />
           <h1 className="text-2xl font-semibold">Constitution</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Rules that govern how nodes get added to this doco. Every agent working on it sees these
-            the moment it starts.
+            Rules that govern how nodes get added to this doco. {AGENT_EXPOSURE_NOTE}
           </p>
         </header>
 
         <ArticleSection
           title="Guidance articles"
           nodeType="guidance_article"
-          description="Plain-English rules you want everyone working on this doco to follow. Nothing checks them automatically — they're a shared agreement."
+          description={GUIDANCE_ARTICLE_EXPLAINER}
           addHref={canEdit ? `/${handle}/constitution/guidance/new` : null}
           items={guidanceArticles}
           handle={handle}
@@ -116,7 +120,7 @@ export default function Constitution({
         <ArticleSection
           title="Node authoring articles"
           nodeType="node_authoring_article"
-          description="Automatic checks that run every time someone adds a node. Write a strict rule (e.g. every decision must link to an intent) or describe what an LLM judge should look for. On failure, block the capture, warn, or just log."
+          description={NODE_AUTHORING_ARTICLE_EXPLAINER}
           addHref={canEdit ? `/${handle}/constitution/node-authoring/new` : null}
           items={nodeAuthoringArticles}
           handle={handle}

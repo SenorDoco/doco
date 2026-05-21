@@ -413,7 +413,7 @@ export default function UsersPage({
       <SiteHeader mode="host" me={loaderData.me} />
       <SingleColumnPageMain className="py-8 space-y-6">
         <header>
-          <h1 className="text-2xl font-semibold">Users (humans/agents)</h1>
+          <h1 className="text-2xl font-semibold">Users (people/agents)</h1>
         </header>
 
         <InviteHumanCard

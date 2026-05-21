@@ -65,10 +65,6 @@ function collectIdentityIds(value: unknown, out = new Set<string>()): Set<string
   return out;
 }
 
-function displayPrincipalType(type: string): string {
-  return type === "human" ? "person" : type;
-}
-
 function storedFrontmatter(rawYaml: string | null | undefined): Record<string, unknown> {
   if (!rawYaml) return {};
   try {
@@ -96,6 +92,7 @@ function graphLanePrincipalId(
   if (nodeType === "decision") return stringField(fm, "decided_by") ?? createdBy;
   return createdBy;
 }
+import { Breadcrumb, docoBreadcrumb } from "~/components/breadcrumb";
 import { EntityGraph, type GraphLink, type GraphNode } from "~/components/entity-graph";
 import {
   type DrawerEdge,
@@ -131,9 +128,7 @@ export async function loader({
 }) {
   const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
   const { type, id: idParam } = params;
-  // v16: `scope` is no longer a navigable entity type
-  // (decision_01KS3DW9C2KN2X7Z80R18H1RAX). Reject before any read.
-  if (!KNOWN.has(type) || type === "scope") {
+  if (!KNOWN.has(type)) {
     throw new Response("Unknown type", { status: 404 });
   }
   const ctx = await loadDocoForRead(request, handle);
@@ -437,12 +432,11 @@ export async function loader({
         )
       ).rows;
       for (const p of principals) {
-        const kind = displayPrincipalType(p.type);
         identityMap[p.id] = {
           id: p.id,
           node_type: "principal",
           label: p.username ?? p.id,
-          detail: `${kind} · ${p.username}`,
+          detail: `${p.type} · ${p.username}`,
         };
       }
     }
@@ -583,6 +577,18 @@ export default function EntityDetail({
       <SiteHeader mode="host" me={me} docoScope={{ ownerSlug, docoSlug, handle }} />
 
       <div className="shrink-0 border-b border-border bg-card px-4 py-2">
+        <Breadcrumb
+          items={docoBreadcrumb({
+            ownerSlug,
+            handle,
+            parent: {
+              label: `${type.charAt(0).toUpperCase() + type.slice(1)}s`,
+              to: `/${handle}/${type}`,
+            },
+            pageLabel: display,
+          })}
+          className="mb-1.5"
+        />
         <div className="flex items-start gap-2">
           <NodeTypeIcon
             nodeType={type}

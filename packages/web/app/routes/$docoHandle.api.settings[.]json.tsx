@@ -71,7 +71,7 @@ export async function action({
     if (handleError) return Response.json({ error: handleError }, { status: 400 });
     try {
       await renameDocoHandle({ oldHandle: handle, newHandle: patch.handle });
-      finalHandle = patch.handle;
+      finalHandle = patch.handle as typeof handle;
     } catch (e) {
       return Response.json({ error: (e as Error).message }, { status: 400 });
     }

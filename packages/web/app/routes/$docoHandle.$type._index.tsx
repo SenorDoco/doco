@@ -1,16 +1,14 @@
 import { withClient } from "@doco/db";
 import { ENTITY_TYPES, entityUrl, isEntityType } from "@doco/shared";
-// Per-Doco entity list at the short URL `/:ownerSlug/:docoSlug/:type`.
+// Per-Doco entity list at the short URL `/<doco-handle>/<type>`.
 //
-// Replaces the legacy `/e/:type` URL — that path now redirects here. See
-// `ship-short-entity-urls` Intent + ADR.
-//
-// Note: this route IS the catch-all for any unknown `<type>` segment under
-// `/:ownerSlug/:docoSlug/`. The static per-Doco routes (settings,
+// Note: this route IS the catch-all for any unknown `<type>` segment
+// under `/<doco-handle>/`. The static per-Doco routes (settings,
 // search, status.json, api/*) are registered before this in routes.ts
 // and win the match. For an unrecognized type we return 404.
 import { Link } from "react-router";
 import { parse as parseYaml } from "yaml";
+import { Breadcrumb, docoBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
 import { SiteHeader } from "~/components/site-header";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "~/components/table";
@@ -29,9 +27,7 @@ export async function loader({
 }) {
   const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
   const { type } = params;
-  // v16: `scope` is no longer a navigable entity type
-  // (decision_01KS3DW9C2KN2X7Z80R18H1RAX). Reject before any read.
-  if (!KNOWN.has(type) || type === "scope") {
+  if (!KNOWN.has(type)) {
     throw new Response("Unknown type", { status: 404 });
   }
   const ctx = await loadDocoForRead(request, handle);
@@ -98,6 +94,9 @@ export default function ListByTypeInDoco({
     <div>
       <SiteHeader mode="host" me={me} docoScope={{ ownerSlug, docoSlug, handle }} />
       <main className="mx-auto max-w-6xl px-6 py-6 space-y-4">
+        <Breadcrumb
+          items={docoBreadcrumb({ ownerSlug, handle, pageLabel: `${capitalize(type)}s` })}
+        />
         <Card>
           <CardHeader>
             <CardTitle>

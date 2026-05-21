@@ -4,6 +4,7 @@
 // here from the "Add guidance article" button.
 
 import { Form, Link, redirect, useActionData } from "react-router";
+import { Breadcrumb, docoBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { SiteHeader } from "~/components/site-header";
 import { captureGuidanceArticle } from "~/lib/capture.server";
@@ -75,6 +76,15 @@ export default function NewGuidanceArticle({
       <SiteHeader mode="host" me={me} docoScope={{ ownerSlug, docoSlug, handle }} />
       <main className="mx-auto max-w-4xl px-6 py-6 space-y-4">
         <header>
+          <Breadcrumb
+            items={docoBreadcrumb({
+              ownerSlug,
+              handle,
+              parent: { label: "Constitution", to: `/${handle}/constitution` },
+              pageLabel: "New guidance article",
+            })}
+            className="mb-1"
+          />
           <h1 className="text-2xl font-semibold">New guidance article</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             A plain-English rule you want everyone working on this doco to follow. Nothing checks it
