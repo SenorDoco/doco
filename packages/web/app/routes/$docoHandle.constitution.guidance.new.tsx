@@ -5,7 +5,6 @@
 
 import { Form, Link, redirect, useActionData } from "react-router";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
-import { SingleColumnPageMain } from "~/components/page-main";
 import { SiteHeader } from "~/components/site-header";
 import { captureGuidanceArticle } from "~/lib/capture.server";
 import { docoPath } from "~/lib/db.server";
@@ -74,13 +73,19 @@ export default function NewGuidanceArticle({
   return (
     <div>
       <SiteHeader mode="host" me={me} docoScope={{ ownerSlug, docoSlug, handle }} />
-      <SingleColumnPageMain className="py-6 space-y-4">
+      <main className="mx-auto max-w-4xl px-6 py-6 space-y-4">
+        <header>
+          <h1 className="text-2xl font-semibold">New guidance article</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            A plain-English rule you want everyone working on this doco to follow. Nothing checks it
+            automatically — it's a shared agreement.
+          </p>
+        </header>
         <Card>
           <CardHeader>
-            <CardTitle>New guidance article</CardTitle>
+            <CardTitle>Article</CardTitle>
             <CardDescription>
-              Prose-only meta-rule contributors read while working. No automated check is performed.
-              Use these for taste-level conventions and process expectations.
+              Summary appears in the list view; body is the full text everyone reads.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -117,7 +122,7 @@ export default function NewGuidanceArticle({
               <div className="flex items-center gap-3 pt-2">
                 <button
                   type="submit"
-                  className="rounded-md border border-primary bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90"
+                  className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90"
                 >
                   Add guidance article
                 </button>
@@ -131,7 +136,7 @@ export default function NewGuidanceArticle({
             </Form>
           </CardContent>
         </Card>
-      </SingleColumnPageMain>
+      </main>
     </div>
   );
 }

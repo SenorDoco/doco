@@ -28,18 +28,15 @@ import { type RouteConfig, index, route } from "@react-router/dev/routes";
  *   /invite/:code                  Human-only invite landing — signed-in humans accept (adds them to doco_users); signed-out humans bounce through GitHub. Agents read the sibling /invite/:code/agent.txt for the MCP-OAuth path instead.
  *   (agent self-service: install the per-Doco MCP connector at /mcp/:handle; OAuth dance kicks off automatically)
  *   /new-doco, /new-org            self-service create flows (ADR-067)
- *   /:owner                        owner profile + docos
- *   /:owner/:doco                  per-Doco recent + search input
- *   /:owner/:doco/:type            per-Doco entity list (short form; ADR-120)
- *   /:owner/:doco/:type/:id        per-Doco entity detail (id is the ULID; scope also resolves by name)
- *   /:owner/:doco/search           per-Doco search (richer results — GPR / age / lifecycle)
- *   /:owner/:doco/settings         per-Doco settings (admin only; danger zone soft-delete; ADR-124)
- *   /:owner/:doco/constitution     per-Doco constitution page: guidance_articles + node_authoring_articles
- *   /:owner/:doco/scopes/:id/abandon           standalone Danger Zone confirmation
- *   /:owner/:doco/status.json      per-Doco status (connection signal for agent footer line)
- *   /:owner/:doco/api/*            per-Doco capture + update endpoints
- *                                  (decisions / intents / evos / settings; ADR-128 added evos.json)
- *   /api/suggest-scopes            LLM scope suggestions
+ *   /<doco-handle>                 per-Doco recent + search input
+ *   /<doco-handle>/<type>          per-Doco entity list (short form; ADR-120)
+ *   /<doco-handle>/<type>/<id>     per-Doco entity detail (id is the ULID)
+ *   /<doco-handle>/search          per-Doco search (richer results — GPR / age / lifecycle)
+ *   /<doco-handle>/settings        per-Doco settings (admin only; danger zone soft-delete; ADR-124)
+ *   /<doco-handle>/constitution    per-Doco constitution page: guidance_articles + node_authoring_articles
+ *   /<doco-handle>/status.json     per-Doco status (connection signal for agent footer line)
+ *   /<doco-handle>/api/*           per-Doco capture + update endpoints
+ *                                  (decisions / intents / settings; ADR-128)
  *
  * Per-Doco URL collisions are prevented by `PER_DOCO_RESERVED_SLUGS` in
  * @doco/shared/url-conventions.ts — every static subpath here MUST be in

@@ -1,14 +1,13 @@
 // /orgs/:orgHandle/constitution — org-level constitution landing.
 //
 // Mirrors /:docoHandle/constitution. Articles authored here apply to
-// every Doco the org owns. The edit gate is org-owner.
+// every doco the org owns. The edit gate is org-owner.
 
 import { getOrgRole, withClient } from "@doco/db";
 import { Link } from "react-router";
 import { parse as parseYaml } from "yaml";
-import { Card, CardContent } from "~/components/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { NodeTypeIcon } from "~/components/node-type-icon";
-import { SingleColumnPageMain } from "~/components/page-main";
 import { SiteHeader } from "~/components/site-header";
 import { loadHostConfig } from "~/lib/host";
 import { getCurrentPrincipalAsync } from "~/lib/session";
@@ -115,111 +114,94 @@ export default function OrgConstitution({
   return (
     <div>
       <SiteHeader mode="host" me={me} />
-      <SingleColumnPageMain className="py-6 space-y-6">
-        <header className="space-y-3">
-          <h1 className="text-xl font-semibold tracking-tight">
+      <main className="mx-auto max-w-4xl px-6 py-6 space-y-4">
+        <header>
+          <h1 className="text-2xl font-semibold">
             Constitution · <span className="font-mono">{org.slug}</span>
           </h1>
-          <p className="text-sm leading-6 text-muted-foreground">
-            This constitution applies to every Doco owned by{" "}
+          <p className="mt-1 text-sm text-muted-foreground">
+            Rules that govern how nodes get added to every doco owned by{" "}
             <Link to="/orgs" className="underline">
               {org.slug}
             </Link>
-            . Articles come in two kinds:
+            . Every agent working on one of those docos sees these the moment it starts.
           </p>
-          <ul className="ml-4 list-disc space-y-2 text-sm leading-6 text-muted-foreground">
-            <li>
-              <strong className="text-foreground">Guidance articles</strong> are prose-only.
-              Contributors read them while working; no automated check is performed. Use them for
-              taste-level conventions and process expectations that should hold across every project
-              in the org.
-            </li>
-            <li>
-              <strong className="text-foreground">Node authoring articles</strong> carry a predicate
-              the host evaluates whenever a node is captured in any of the org's Docos.
-              Deterministic predicates check structural properties; probabilistic specs delegate to
-              the host's LLM judge. Each article sets <code>on_violation</code> to block, warn, or
-              log.
-            </li>
-          </ul>
-          <p className="text-sm leading-6 text-muted-foreground">
-            Agents fetch every article they have read-or-above access to from{" "}
-            <code>/api/v1/agent-bootstrap.json</code>. Org articles are returned alongside the
-            per-Doco articles for every Doco the agent can reach.
-          </p>
+          {!canEdit ? (
+            <p className="mt-2 text-xs italic text-muted-foreground">
+              Only an org owner can add articles. You are viewing read-only.
+            </p>
+          ) : null}
         </header>
 
-        {canEdit ? (
-          <div className="flex flex-wrap gap-2">
-            <Link
-              to={`/orgs/${org.slug}/constitution/guidance/new`}
-              className="inline-flex items-center gap-2 rounded-md border border-primary bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90"
-            >
-              <NodeTypeIcon nodeType="guidance_article" className="h-4 w-4" />
-              Add guidance article
-            </Link>
-            <Link
-              to={`/orgs/${org.slug}/constitution/node-authoring/new`}
-              className="inline-flex items-center gap-2 rounded-md border border-primary bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90"
-            >
-              <NodeTypeIcon nodeType="node_authoring_article" className="h-4 w-4" />
-              Add node authoring article
-            </Link>
-          </div>
-        ) : (
-          <p className="text-xs italic text-muted-foreground">
-            Only an org owner can add articles. You are viewing read-only.
-          </p>
-        )}
+        <ArticleSection
+          title="Guidance articles"
+          nodeType="guidance_article"
+          description="Plain-English rules you want everyone working on this org's docos to follow. Nothing checks them automatically — they're a shared agreement."
+          addHref={canEdit ? `/orgs/${org.slug}/constitution/guidance/new` : null}
+          items={guidanceArticles}
+          empty="No guidance articles yet."
+        />
 
-        <section className="space-y-4">
-          <h2 className="text-base font-semibold tracking-tight">Articles of the Constitution</h2>
-          <div className="grid gap-4 lg:grid-cols-2">
-            <ArticleList
-              title="Guidance articles"
-              items={guidanceArticles}
-              nodeType="guidance_article"
-              empty="No guidance articles yet."
-            />
-            <ArticleList
-              title="Node authoring articles"
-              items={nodeAuthoringArticles}
-              nodeType="node_authoring_article"
-              empty="No node authoring articles yet."
-            />
-          </div>
-        </section>
-      </SingleColumnPageMain>
+        <ArticleSection
+          title="Node authoring articles"
+          nodeType="node_authoring_article"
+          description="Automatic checks that run every time someone adds a node in any of this org's docos. Write a strict rule (e.g. every decision must link to an intent) or describe what an LLM judge should look for. On failure, block the capture, warn, or just log."
+          addHref={canEdit ? `/orgs/${org.slug}/constitution/node-authoring/new` : null}
+          items={nodeAuthoringArticles}
+          empty="No node authoring articles yet."
+        />
+      </main>
     </div>
   );
 }
 
-function ArticleList({
+function ArticleSection({
   title,
   nodeType,
+  description,
+  addHref,
   items,
   empty,
 }: {
   title: string;
   nodeType: "guidance_article" | "node_authoring_article";
+  description: string;
+  addHref: string | null;
   items: (GuidanceArticleItem | NodeAuthoringArticleItem)[];
   empty: string;
 }) {
   return (
-    <section className="space-y-3">
-      <div className="flex items-center justify-between gap-3">
-        <h3 className="text-sm font-semibold tracking-tight">{title}</h3>
-        <span className="font-mono text-xs text-muted-foreground">{items.length}</span>
-      </div>
-      {items.length === 0 ? (
-        <p className="text-xs italic text-muted-foreground">{empty}</p>
-      ) : (
-        <div className="space-y-2">
-          {items.map((item) => (
-            <Card key={item.id}>
-              <CardContent className="p-4">
+    <Card>
+      <CardHeader>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0 flex-1 space-y-1.5">
+            <CardTitle className="flex items-center gap-2">
+              <NodeTypeIcon nodeType={nodeType} className="h-4 w-4" />
+              <span>{title}</span>
+              <span className="font-mono text-xs font-normal text-muted-foreground">
+                {items.length}
+              </span>
+            </CardTitle>
+            <CardDescription className="leading-5">{description}</CardDescription>
+          </div>
+          {addHref ? (
+            <Link
+              to={addHref}
+              className="shrink-0 rounded-md bg-primary px-3 py-1.5 text-sm font-semibold text-primary-foreground hover:opacity-90"
+            >
+              + Add
+            </Link>
+          ) : null}
+        </div>
+      </CardHeader>
+      <CardContent>
+        {items.length === 0 ? (
+          <p className="text-xs italic text-muted-foreground">{empty}</p>
+        ) : (
+          <ul className="divide-y divide-border">
+            {items.map((item) => (
+              <li key={item.id} className="py-3 first:pt-0 last:pb-0">
                 <div className="flex items-start gap-3">
-                  <NodeTypeIcon nodeType={nodeType} className="mt-0.5 h-4 w-4" />
                   <div className="min-w-0 flex-1">
                     <div className="font-medium leading-snug">{item.summary}</div>
                     {"evaluationKind" in item ? (
@@ -229,7 +211,7 @@ function ArticleList({
                       </div>
                     ) : null}
                     {item.body ? (
-                      <p className="mt-2 line-clamp-3 text-xs leading-5 text-muted-foreground">
+                      <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">
                         {item.body}
                       </p>
                     ) : null}
@@ -238,12 +220,12 @@ function ArticleList({
                     {item.lifecycle ?? "active"}
                   </span>
                 </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
-    </section>
+              </li>
+            ))}
+          </ul>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
