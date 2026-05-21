@@ -235,7 +235,7 @@ export async function action({ request }: { request: Request }) {
 }
 
 export function meta() {
-  return [{ title: "Approve Doco access · Doco" }];
+  return [{ title: "Approve access · Doco" }];
 }
 
 export default function AuthorizePage() {
@@ -244,13 +244,13 @@ export default function AuthorizePage() {
     <div>
       <SiteHeader mode="host" me={data.me} />
       <SingleColumnPageMain className="py-8 space-y-4">
-        <Breadcrumb items={[{ label: "Home", to: "/" }, { label: "Approve Doco access" }]} />
+        <Breadcrumb items={[{ label: "Home", to: "/" }, { label: "Approve access" }]} />
         <Card>
           <CardHeader>
-            <CardTitle>Approve Doco access</CardTitle>
+            <CardTitle>Approve access</CardTitle>
             <CardDescription>
-              <strong>{data.client_name}</strong> wants access to your Docos. Pick individual Docos
-              or grant access to an entire organization — only ones you own are shown.
+              <strong>{data.client_name}</strong> wants access to your docos. Only orgs and docos
+              you own are shown.
             </CardDescription>
           </CardHeader>
           <CardContent>
