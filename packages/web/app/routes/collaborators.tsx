@@ -22,7 +22,8 @@ import { SiteHeader } from "~/components/site-header";
 import { ALL_ROLES, type InviteLevel } from "~/lib/collaborator-invite";
 import {
   type CollaboratorsPageData,
-  type UserCell,
+  type GrantRow,
+  type PrincipalKind,
   loadCollaboratorsPageData,
 } from "~/lib/collaborators.server";
 import { getDocoLevelRole } from "~/lib/doco-access.server";
@@ -37,7 +38,7 @@ type ActionResult =
       intent: "update";
       ok: true;
       level: InviteLevel;
-      target_id: string;
+      target_ids: string[];
       principal_id: string;
       role: DocoRole;
     }
@@ -45,7 +46,7 @@ type ActionResult =
       intent: "remove";
       ok: true;
       level: InviteLevel;
-      target_id: string;
+      target_ids: string[];
       principal_id: string;
     }
   | { error: string };
@@ -63,44 +64,46 @@ export async function action({
   const level = String(form.get("level") ?? "") as InviteLevel;
 
   if (intent === "update" || intent === "remove") {
-    const targetId = String(form.get("target_id") ?? "").trim();
+    // target_ids is the canonical field — comma-separated when a grouped
+    // row covers multiple grants. Falls back to legacy target_id.
+    const rawTargets = String(form.get("target_ids") ?? form.get("target_id") ?? "").trim();
+    const targetIds = rawTargets
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
     const principalId = String(form.get("principal_id") ?? "").trim();
-    if (!targetId) return { error: "target_id missing." };
+    if (targetIds.length === 0) return { error: "target_ids missing." };
     if (!principalId) return { error: "principal_id missing." };
 
-    // Authorize: actor must be owner at that level. Use getDocoLevelRole
-    // for the doco path so direct-owner docos (no doco_users row) pass
-    // the check.
-    if (level === "org") {
-      const role = await getOrgRole(targetId, me.id);
-      if (role !== "owner") return { error: "Only org owners can change org collaborators." };
-    } else if (level === "doco") {
-      const doco = await getDocoById(targetId);
-      if (!doco) return { error: "Doco not found." };
-      const role = await getDocoLevelRole({ ownerId: doco.owner_id, docoId: doco.id }, me.id);
-      if (role !== "owner") return { error: "Only doco owners can change doco collaborators." };
-    } else {
-      return { error: "Invalid level." };
+    if (level !== "org" && level !== "doco") return { error: "Invalid level." };
+
+    for (const targetId of targetIds) {
+      if (level === "org") {
+        const role = await getOrgRole(targetId, me.id);
+        if (role !== "owner") return { error: "Only org owners can change org collaborators." };
+      } else {
+        const doco = await getDocoById(targetId);
+        if (!doco) return { error: "Doco not found." };
+        const role = await getDocoLevelRole({ ownerId: doco.owner_id, docoId: doco.id }, me.id);
+        if (role !== "owner") return { error: "Only doco owners can change doco collaborators." };
+      }
     }
 
     if (intent === "update") {
       const role = String(form.get("role") ?? "") as DocoRole;
       if (!ALL_ROLES.includes(role)) return { error: "Invalid role." };
-      if (level === "org")
-        await upsertOrgUser({ org_id: targetId, principal_id: principalId, role });
-      else await upsertDocoUser({ doco_id: targetId, principal_id: principalId, role });
-      return {
-        intent: "update",
-        ok: true,
-        level,
-        target_id: targetId,
-        principal_id: principalId,
-        role,
-      };
+      for (const targetId of targetIds) {
+        if (level === "org")
+          await upsertOrgUser({ org_id: targetId, principal_id: principalId, role });
+        else await upsertDocoUser({ doco_id: targetId, principal_id: principalId, role });
+      }
+      return { intent: "update", ok: true, level, target_ids: targetIds, principal_id: principalId, role };
     }
-    if (level === "org") await removeOrgUser(targetId, principalId);
-    else await removeDocoUser(targetId, principalId);
-    return { intent: "remove", ok: true, level, target_id: targetId, principal_id: principalId };
+    for (const targetId of targetIds) {
+      if (level === "org") await removeOrgUser(targetId, principalId);
+      else await removeDocoUser(targetId, principalId);
+    }
+    return { intent: "remove", ok: true, level, target_ids: targetIds, principal_id: principalId };
   }
 
   return { error: `Unknown intent: ${intent}` };
@@ -108,6 +111,46 @@ export async function action({
 
 export function meta() {
   return [{ title: "Collaborators · Doco" }];
+}
+
+interface TargetRef {
+  id: string;
+  label: string;
+  link: string;
+  canEdit: boolean;
+  joined_at: string;
+}
+
+interface GroupedRow {
+  level: InviteLevel;
+  principal: GrantRow;
+  role: DocoRole;
+  targets: TargetRef[];
+  canEditAll: boolean;
+  earliestJoinedAt: string;
+}
+
+function groupRows(rows: GroupedRow[]): GroupedRow[] {
+  const map = new Map<string, GroupedRow>();
+  for (const row of rows) {
+    const key = `${row.principal.principal_id}::${row.role}`;
+    const existing = map.get(key);
+    if (existing) {
+      existing.targets.push(...row.targets);
+      existing.canEditAll = existing.canEditAll && row.canEditAll;
+      if (row.earliestJoinedAt < existing.earliestJoinedAt) {
+        existing.earliestJoinedAt = row.earliestJoinedAt;
+      }
+    } else {
+      map.set(key, { ...row, targets: [...row.targets] });
+    }
+  }
+  for (const row of map.values()) {
+    row.targets.sort((a, b) => a.label.localeCompare(b.label));
+  }
+  return [...map.values()].sort((a, b) =>
+    a.principal.username.localeCompare(b.principal.username),
+  );
 }
 
 export default function CollaboratorsPage({
@@ -129,46 +172,58 @@ export default function CollaboratorsPage({
     const next = new URLSearchParams(searchParams);
     if (value === "all") next.delete("scope");
     else next.set("scope", value);
-    // Drop the legacy level/target_id once the user picks a new scope so
-    // the URL stays clean.
     next.delete("level");
     next.delete("target_id");
     setSearchParams(next, { replace: true });
   }
 
-  const filteredOrgRows = useMemo(
-    () =>
-      loaderData.orgSections
-        .filter((s) => scope === "all" || scope === `org:${s.org.id}`)
-        .flatMap((s) =>
-          s.users.map((u) => ({
-            level: "org" as const,
-            target_id: s.org.id,
-            target_label: s.org.slug,
-            target_link: `/orgs/${s.org.slug}`,
-            user: u,
-            canEdit: s.myRole === "owner",
-          })),
-        ),
-    [loaderData.orgSections, scope],
-  );
+  const orgRows = useMemo(() => {
+    const flat: GroupedRow[] = loaderData.orgSections
+      .filter((s) => scope === "all" || scope === `org:${s.org.id}`)
+      .flatMap((s) =>
+        s.users.map<GroupedRow>((u) => ({
+          level: "org",
+          principal: u,
+          role: u.role,
+          targets: [
+            {
+              id: s.org.id,
+              label: s.org.slug,
+              link: `/orgs/${s.org.slug}`,
+              canEdit: s.myRole === "owner",
+              joined_at: u.joined_at,
+            },
+          ],
+          canEditAll: s.myRole === "owner",
+          earliestJoinedAt: u.joined_at,
+        })),
+      );
+    return groupRows(flat);
+  }, [loaderData.orgSections, scope]);
 
-  const filteredDocoRows = useMemo(
-    () =>
-      loaderData.docoSections
-        .filter((s) => scope === "all" || scope === `doco:${s.doco.id}`)
-        .flatMap((s) =>
-          s.users.map((u) => ({
-            level: "doco" as const,
-            target_id: s.doco.id,
-            target_label: s.doco.handle,
-            target_link: `/${s.doco.handle}`,
-            user: u,
-            canEdit: s.myRole === "owner",
-          })),
-        ),
-    [loaderData.docoSections, scope],
-  );
+  const docoRows = useMemo(() => {
+    const flat: GroupedRow[] = loaderData.docoSections
+      .filter((s) => scope === "all" || scope === `doco:${s.doco.id}`)
+      .flatMap((s) =>
+        s.users.map<GroupedRow>((u) => ({
+          level: "doco",
+          principal: u,
+          role: u.role,
+          targets: [
+            {
+              id: s.doco.id,
+              label: s.doco.handle,
+              link: `/${s.doco.handle}`,
+              canEdit: s.myRole === "owner",
+              joined_at: u.joined_at,
+            },
+          ],
+          canEditAll: s.myRole === "owner",
+          earliestJoinedAt: u.joined_at,
+        })),
+      );
+    return groupRows(flat);
+  }, [loaderData.docoSections, scope]);
 
   // When scope filters to a specific org, hide the doco section entirely
   // (and vice-versa) so the page doesn't show "no docos match" noise.
@@ -230,31 +285,22 @@ export default function CollaboratorsPage({
 
         {showOrgSection ? (
           <Section
-            title="Org collaborators"
+            title="Org-wide collaborators"
             empty="You don't have any org grants yet."
-            rows={filteredOrgRows}
+            rows={orgRows}
           />
         ) : null}
 
         {showDocoSection ? (
           <Section
-            title="Doco collaborators"
+            title="Per-doco collaborators"
             empty="You don't have any doco grants yet."
-            rows={filteredDocoRows}
+            rows={docoRows}
           />
         ) : null}
       </SingleColumnPageMain>
     </div>
   );
-}
-
-interface SectionRow {
-  level: InviteLevel;
-  target_id: string;
-  target_label: string;
-  target_link: string;
-  user: UserCell & { role: DocoRole };
-  canEdit: boolean;
 }
 
 function Section({
@@ -264,8 +310,10 @@ function Section({
 }: {
   title: string;
   empty: string;
-  rows: SectionRow[];
+  rows: GroupedRow[];
 }) {
+  const people = rows.filter((r) => r.principal.kind === "person");
+  const agents = rows.filter((r) => r.principal.kind === "agent");
   return (
     <Card>
       <CardHeader>
@@ -275,38 +323,97 @@ function Section({
         {rows.length === 0 ? (
           <p className="text-sm text-muted-foreground">{empty}</p>
         ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left text-xs uppercase tracking-wide text-muted-foreground">
-                <th className="pb-2 font-medium">User</th>
-                <th className="pb-2 font-medium">Target</th>
-                <th className="pb-2 font-medium">Role</th>
-                <th className="pb-2 font-medium text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {rows.map((r, i) => (
-                <UserRow key={`${r.level}-${r.target_id}-${r.user.principal_id}-${i}`} row={r} />
-              ))}
-            </tbody>
-          </table>
+          <div className="space-y-6">
+            <Subsection kind="person" rows={people} empty="No people yet." />
+            <Subsection kind="agent" rows={agents} empty="No agents yet." />
+          </div>
         )}
       </CardContent>
     </Card>
   );
 }
 
-function UserRow({ row }: { row: SectionRow }) {
+function Subsection({
+  kind,
+  rows,
+  empty,
+}: {
+  kind: PrincipalKind;
+  rows: GroupedRow[];
+  empty: string;
+}) {
+  const heading = kind === "person" ? "People" : "Agents";
+  return (
+    <div>
+      <h3 className="mb-2 text-sm font-semibold">{heading}</h3>
+      {rows.length === 0 ? (
+        <p className="text-sm text-muted-foreground">{empty}</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-xs uppercase tracking-wide text-muted-foreground">
+                <th className="pb-2 font-medium">User</th>
+                <th className="pb-2 font-medium">Access to</th>
+                <th className="pb-2 font-medium">Role</th>
+                <th className="pb-2 font-medium">Last activity</th>
+                <th className="pb-2 font-medium">Granted</th>
+                <th className="pb-2 font-medium text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {rows.map((r) => (
+                <UserRow
+                  key={`${r.level}-${r.principal.principal_id}-${r.role}`}
+                  row={r}
+                />
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function formatRelative(iso: string | null): string {
+  if (!iso) return "—";
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return "—";
+  const now = Date.now();
+  const diff = Math.max(0, now - then);
+  const min = Math.floor(diff / 60_000);
+  if (min < 1) return "just now";
+  if (min < 60) return `${min}m ago`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}h ago`;
+  const day = Math.floor(hr / 24);
+  if (day < 30) return `${day}d ago`;
+  const mo = Math.floor(day / 30);
+  if (mo < 12) return `${mo}mo ago`;
+  const yr = Math.floor(day / 365);
+  return `${yr}y ago`;
+}
+
+function formatDate(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+}
+
+function UserRow({ row }: { row: GroupedRow }) {
   const roleFetcher = useFetcher<ActionResult>();
   const removeFetcher = useFetcher<ActionResult>();
+
+  const targetIdsCsv = row.targets.map((t) => t.id).join(",");
 
   const justSaved =
     roleFetcher.state === "idle" &&
     roleFetcher.data &&
     "intent" in roleFetcher.data &&
     roleFetcher.data.intent === "update" &&
-    roleFetcher.data.target_id === row.target_id &&
-    roleFetcher.data.principal_id === row.user.principal_id;
+    roleFetcher.data.principal_id === row.principal.principal_id &&
+    roleFetcher.data.target_ids.join(",") === targetIdsCsv;
   const error =
     roleFetcher.data && "error" in roleFetcher.data ? roleFetcher.data.error : undefined;
 
@@ -319,30 +426,47 @@ function UserRow({ row }: { row: SectionRow }) {
     }
   }, [justSaved]);
 
+  const username = row.principal.username;
+  const removeLabel =
+    row.targets.length === 1
+      ? `Remove ${username} from ${row.targets[0].label}?`
+      : `Remove ${username} from ${row.targets.length} places (${row.targets
+          .map((t) => t.label)
+          .join(", ")})?`;
+
   return (
-    <tr data-testid={`row-${row.level}-${row.user.username}`}>
+    <tr data-testid={`row-${row.level}-${username}-${row.role}`}>
       <td className="py-2 align-middle">
-        <div className="font-medium">{row.user.username}</div>
+        <div className="font-medium">{username}</div>
       </td>
       <td className="py-2 align-middle">
-        <Link to={row.target_link} className="text-xs underline">
-          {row.target_label}
-        </Link>
+        <div className="flex flex-wrap gap-x-2 gap-y-1">
+          {row.targets.map((t) => (
+            <Link
+              key={t.id}
+              to={t.link}
+              className="text-xs underline"
+              title={`Granted ${formatDate(t.joined_at)}`}
+            >
+              {t.label}
+            </Link>
+          ))}
+        </div>
       </td>
       <td className="py-2 align-middle">
         <div className="inline-flex items-center gap-2">
           <select
-            defaultValue={row.user.role}
-            disabled={!row.canEdit || roleFetcher.state !== "idle"}
-            data-testid={`role-${row.level}-${row.user.username}`}
+            defaultValue={row.role}
+            disabled={!row.canEditAll || roleFetcher.state !== "idle"}
+            data-testid={`role-${row.level}-${username}-${row.role}`}
             className="rounded-md border border-border bg-background px-2 py-1 text-sm disabled:opacity-50"
             onChange={(e) => {
               roleFetcher.submit(
                 {
                   intent: "update",
                   level: row.level,
-                  target_id: row.target_id,
-                  principal_id: row.user.principal_id,
+                  target_ids: targetIdsCsv,
+                  principal_id: row.principal.principal_id,
                   role: e.currentTarget.value,
                 },
                 { method: "post" },
@@ -357,7 +481,7 @@ function UserRow({ row }: { row: SectionRow }) {
           </select>
           <span
             className="text-xs text-muted-foreground"
-            data-testid={`status-${row.level}-${row.user.username}`}
+            data-testid={`status-${row.level}-${username}-${row.role}`}
             aria-live="polite"
           >
             {roleFetcher.state !== "idle" ? (
@@ -372,20 +496,26 @@ function UserRow({ row }: { row: SectionRow }) {
           </span>
         </div>
       </td>
+      <td className="py-2 align-middle text-xs text-muted-foreground">
+        {formatRelative(row.principal.last_activity_at)}
+      </td>
+      <td className="py-2 align-middle text-xs text-muted-foreground">
+        {formatDate(row.earliestJoinedAt)}
+      </td>
       <td className="py-2 align-middle text-right">
-        {row.canEdit ? (
+        {row.canEditAll ? (
           <button
             type="button"
             disabled={removeFetcher.state !== "idle"}
-            data-testid={`remove-${row.level}-${row.user.username}`}
+            data-testid={`remove-${row.level}-${username}-${row.role}`}
             onClick={() => {
-              if (!confirm(`Remove ${row.user.username} from ${row.target_label}?`)) return;
+              if (!confirm(removeLabel)) return;
               removeFetcher.submit(
                 {
                   intent: "remove",
                   level: row.level,
-                  target_id: row.target_id,
-                  principal_id: row.user.principal_id,
+                  target_ids: targetIdsCsv,
+                  principal_id: row.principal.principal_id,
                 },
                 { method: "post" },
               );

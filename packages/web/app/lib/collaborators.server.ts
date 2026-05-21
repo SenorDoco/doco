@@ -26,21 +26,30 @@ import { getCurrentPrincipal } from "~/lib/session";
 
 export type CurrentPrincipal = NonNullable<Awaited<ReturnType<typeof getCurrentPrincipal>>>;
 
+export type PrincipalKind = "person" | "agent";
+
 export interface UserCell {
   principal_id: string;
   username: string;
+  kind: PrincipalKind;
+  last_activity_at: string | null;
+}
+
+export interface GrantRow extends UserCell {
+  role: DocoRole;
+  joined_at: string;
 }
 
 export interface OrgSection {
   org: { id: string; slug: string; name: string };
   myRole: DocoRole;
-  users: (UserCell & { role: DocoRole })[];
+  users: GrantRow[];
 }
 
 export interface DocoSection {
   doco: { id: string; handle: string };
   myRole: DocoRole;
-  users: (UserCell & { role: DocoRole })[];
+  users: GrantRow[];
 }
 
 export interface CollaboratorsPageData {
@@ -55,12 +64,37 @@ export interface CollaboratorInvitePageData {
   invite: CollaboratorInviteData;
 }
 
-async function enrichPrincipal(id: string): Promise<UserCell> {
+async function enrichPrincipal(
+  id: string,
+  lastActivity: Map<string, string>,
+): Promise<UserCell> {
   const p = await getPrincipalById(id);
+  const kind: PrincipalKind = p?.type === "agent" ? "agent" : "person";
   return {
     principal_id: id,
     username: p?.username ?? id,
+    kind,
+    last_activity_at: lastActivity.get(id) ?? null,
   };
+}
+
+async function loadLastActivity(principalIds: string[]): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  if (principalIds.length === 0) return out;
+  const rows = await withClient((c) =>
+    c.query<{ by_principal: string; last_at: string | Date }>(
+      `SELECT by_principal, MAX(at) AS last_at
+       FROM audit_events
+       WHERE by_principal = ANY($1)
+       GROUP BY by_principal`,
+      [principalIds],
+    ),
+  );
+  for (const row of rows.rows) {
+    const at = row.last_at instanceof Date ? row.last_at.toISOString() : String(row.last_at);
+    out.set(row.by_principal, at);
+  }
+  return out;
 }
 
 function requestPath(request: Request): string {
@@ -79,25 +113,33 @@ export async function loadCollaboratorSections(principalId: string): Promise<{
   docoSections: DocoSection[];
 }> {
   const myOrgs = await listOrganizationsForPrincipal(principalId);
-  const orgSections: OrgSection[] = [];
+  const orgRoleRows: Array<{
+    org: { id: string; slug: string; name: string };
+    myRole: DocoRole;
+    rows: Array<{ principal_id: string; role: DocoRole; joined_at: string }>;
+  }> = [];
+  const allPrincipalIds = new Set<string>();
   for (const org of myOrgs) {
     const myRole = (await getOrgRole(org.id, principalId)) ?? "reader";
-    const rows = await withClient(async (c) =>
-      c.query<{ principal_id: string; role: string }>(
-        "SELECT principal_id, role FROM org_users WHERE org_id = $1 ORDER BY joined_at",
+    const result = await withClient(async (c) =>
+      c.query<{ principal_id: string; role: string; joined_at: string | Date }>(
+        "SELECT principal_id, role, joined_at FROM org_users WHERE org_id = $1 ORDER BY joined_at",
         [org.id],
       ),
     );
-    const users: OrgSection["users"] = await Promise.all(
-      rows.rows.map(async (row) => ({
-        ...(await enrichPrincipal(row.principal_id)),
+    const rows = result.rows.map((row) => {
+      allPrincipalIds.add(String(row.principal_id));
+      return {
+        principal_id: String(row.principal_id),
         role: row.role as DocoRole,
-      })),
-    );
-    orgSections.push({
+        joined_at:
+          row.joined_at instanceof Date ? row.joined_at.toISOString() : String(row.joined_at),
+      };
+    });
+    orgRoleRows.push({
       org: { id: org.id, slug: org.slug, name: org.name },
       myRole,
-      users,
+      rows,
     });
   }
 
@@ -120,24 +162,56 @@ export async function loadCollaboratorSections(principalId: string): Promise<{
   const myDocoUsersIds = await listDocoIdsForUserPrincipal(principalId);
   for (const id of myDocoUsersIds) accessibleDocoIds.add(id);
 
-  const docoSections: DocoSection[] = [];
+  const docoRoleRows: Array<{
+    doco: { id: string; handle: string; ownerId: string };
+    myRole: DocoRole;
+    rows: Array<{ principal_id: string; role: DocoRole; joined_at: string }>;
+  }> = [];
   for (const docoId of accessibleDocoIds) {
     const doco = await getDocoById(docoId);
     if (!doco) continue;
     const users = await listDocoUsers(docoId);
-    const enriched = await Promise.all(
-      users.map(async (u) => ({
-        ...(await enrichPrincipal(u.principal_id)),
-        role: u.role,
-      })),
-    );
+    const rows = users.map((u) => {
+      allPrincipalIds.add(u.principal_id);
+      return { principal_id: u.principal_id, role: u.role, joined_at: u.joined_at };
+    });
     const myRole =
       (await getDocoLevelRole({ ownerId: doco.owner_id, docoId: doco.id }, principalId)) ??
       "reader";
-    docoSections.push({
-      doco: { id: doco.id, handle: doco.handle },
+    docoRoleRows.push({
+      doco: { id: doco.id, handle: doco.handle, ownerId: doco.owner_id },
       myRole,
-      users: enriched,
+      rows,
+    });
+  }
+
+  const lastActivity = await loadLastActivity([...allPrincipalIds]);
+
+  const orgSections: OrgSection[] = [];
+  for (const entry of orgRoleRows) {
+    const users: GrantRow[] = await Promise.all(
+      entry.rows.map(async (row) => ({
+        ...(await enrichPrincipal(row.principal_id, lastActivity)),
+        role: row.role,
+        joined_at: row.joined_at,
+      })),
+    );
+    orgSections.push({ org: entry.org, myRole: entry.myRole, users });
+  }
+
+  const docoSections: DocoSection[] = [];
+  for (const entry of docoRoleRows) {
+    const users: GrantRow[] = await Promise.all(
+      entry.rows.map(async (row) => ({
+        ...(await enrichPrincipal(row.principal_id, lastActivity)),
+        role: row.role,
+        joined_at: row.joined_at,
+      })),
+    );
+    docoSections.push({
+      doco: { id: entry.doco.id, handle: entry.doco.handle },
+      myRole: entry.myRole,
+      users,
     });
   }
   docoSections.sort((a, b) => a.doco.handle.localeCompare(b.doco.handle));
