@@ -212,7 +212,7 @@ export default function OrgsIndexPage({
               + Org
             </Link>
             <Link
-              to="/collaborators"
+              to="/collaborators/invite"
               className="shrink-0 rounded-md border border-border px-3 py-1.5 text-sm font-semibold hover:bg-input"
             >
               + Collaborator (people/agents)

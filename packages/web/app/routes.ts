@@ -130,6 +130,7 @@ export default [
     "routes/orgs.$orgHandle.constitution.$nodeType.$articleId.edit.tsx",
   ),
   route("collaborators", "routes/collaborators.tsx"),
+  route("collaborators/invite", "routes/collaborators.invite.tsx"),
   // Onboarding (human paths only — agents authenticate via OAuth +
   // install the MCP connector at /mcp/<handle>, no recipe to walk
   // through). decision_01KS14CW9ZN23FF5CGG0Z7TH4G.

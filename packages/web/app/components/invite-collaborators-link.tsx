@@ -7,7 +7,7 @@ export function inviteCollaboratorsHref(level: InviteCollaboratorLevel, targetId
   const params = new URLSearchParams();
   params.set("level", level);
   params.set("target_id", targetId);
-  return `/collaborators?${params.toString()}`;
+  return `/collaborators/invite?${params.toString()}`;
 }
 
 export function InviteCollaboratorsLink({
