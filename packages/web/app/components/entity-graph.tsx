@@ -14,6 +14,7 @@ import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react"
 import { Link, useNavigate } from "react-router";
 import { NodeTypeIcon } from "~/components/node-type-icon";
 import { lifecycleColor } from "~/lib/node-colors";
+import { useNewNodeIds } from "~/lib/use-new-node-ids";
 import "@xyflow/react/dist/style.css";
 
 /**
@@ -536,6 +537,7 @@ interface EntityNodeCardProps {
   background: string;
   cardHeight: number;
   showPersonalizedRank: boolean;
+  isNew?: boolean;
 }
 
 function EntityNodeCard({
@@ -553,6 +555,7 @@ function EntityNodeCard({
   background,
   cardHeight,
   showPersonalizedRank,
+  isNew,
 }: EntityNodeCardProps) {
   const hasDistinctTitle = title !== summary;
   const clampStyle = {
@@ -565,8 +568,9 @@ function EntityNodeCard({
     <Link
       to={href}
       aria-label={`Open ${nodeType} ${title}`}
-      className="nodrag nopan relative flex cursor-pointer flex-col gap-1 overflow-visible py-3 pl-4 pr-10 text-left text-inherit no-underline shadow-sm transition-shadow duration-150 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className={`nodrag nopan relative flex cursor-pointer flex-col gap-1 overflow-visible py-3 pl-4 pr-10 text-left text-inherit no-underline shadow-sm transition-shadow duration-150 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring${isNew ? " doco-new-node-glow" : ""}`}
       data-entity-node-card={nodeType}
+      data-entity-node-new={isNew ? "true" : undefined}
       draggable={false}
       onClick={(event) => event.stopPropagation()}
       style={{
@@ -713,6 +717,13 @@ export function EntityGraph({
     });
     return { nodes: v, links: vl };
   }, [nodes, links, visibleLifecycles, centerId, showPersonalizedRank]);
+
+  // Track which nodes arrived via a live refresh (vs. were present on
+  // first mount). Diffed against the full incoming `nodes` set, not
+  // `visible.nodes`, so toggling a lifecycle filter back on doesn't
+  // glow nodes that have been around the whole time.
+  const allNodeIds = useMemo(() => nodes.map((n) => n.id), [nodes]);
+  const newNodeIds = useNewNodeIds(allNodeIds);
 
   const layout = useMemo(() => {
     if (layoutMode === "cluster") return clusterLayout(visible.nodes, centerId);
@@ -882,6 +893,7 @@ export function EntityGraph({
               accentColor={accentColor}
               background={bg}
               showPersonalizedRank={showPersonalizedRank}
+              isNew={newNodeIds.has(n.id)}
             />
           ),
         },
@@ -899,7 +911,7 @@ export function EntityGraph({
     });
 
     return [...laneNodes, ...entityNodes];
-  }, [visible.nodes, layout.lanes, positions, hrefFor, showPersonalizedRank]);
+  }, [visible.nodes, layout.lanes, positions, hrefFor, showPersonalizedRank, newNodeIds]);
 
   const laneLabelRails = useMemo(() => {
     const height = graphHeight || 480;

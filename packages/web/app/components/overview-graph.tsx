@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { NodeTypeIcon } from "~/components/node-type-icon";
 import { lifecycleColor } from "~/lib/node-colors";
+import { useNewNodeIds } from "~/lib/use-new-node-ids";
 import "@xyflow/react/dist/style.css";
 
 export interface OverviewGraphNode {
@@ -40,6 +41,7 @@ export interface OverviewNodeDetail {
 
 interface OverviewGraphProps extends OverviewGraphData {
   fillHeight?: boolean;
+  search?: ReactNode;
 }
 
 interface Point {
@@ -57,6 +59,7 @@ interface OverviewNodeData {
   node: OverviewGraphNode;
   detail?: OverviewNodeDetail;
   showDetail: boolean;
+  isNew: boolean;
 }
 
 const LIFECYCLE_ORDER = [
@@ -174,7 +177,8 @@ function OverviewFlowNode({ data }: { data: OverviewNodeData }) {
 
   return (
     <div
-      className="overview-graph-node nodrag nopan flex h-full w-full items-center gap-1.5 overflow-hidden rounded-[4px] border bg-card px-2 text-left shadow-sm"
+      className={`overview-graph-node nodrag nopan flex h-full w-full items-center gap-1.5 overflow-hidden rounded-[4px] border bg-card px-2 text-left shadow-sm${data.isNew ? " doco-new-node-glow" : ""}`}
+      data-overview-node-new={data.isNew ? "true" : undefined}
       style={{
         borderColor: data.node.is_center ? "var(--color-foreground)" : "var(--color-border)",
         borderLeft: `6px solid ${lifecycleColor(lifecycle)}`,
@@ -202,6 +206,7 @@ export function OverviewGraph({
   links,
   detailUrl,
   fillHeight = false,
+  search,
 }: OverviewGraphProps) {
   const navigate = useNavigate();
   const graphRef = useRef<HTMLDivElement>(null);
@@ -250,6 +255,12 @@ export function OverviewGraph({
     () => nodes.filter((node) => visibleLifecycles.has(nodeLifecycle(node))),
     [nodes, visibleLifecycles],
   );
+
+  // Diff against the full incoming `nodes` set, not `visibleNodes`, so
+  // toggling a lifecycle filter back on doesn't glow nodes that have
+  // been around the whole time.
+  const allNodeIds = useMemo(() => nodes.map((node) => node.id), [nodes]);
+  const newNodeIds = useNewNodeIds(allNodeIds);
   const visibleIds = useMemo(() => new Set(visibleNodes.map((node) => node.id)), [visibleNodes]);
   const visibleLinks = useMemo(
     () => links.filter((link) => visibleIds.has(link.source) && visibleIds.has(link.target)),
@@ -327,6 +338,7 @@ export function OverviewGraph({
             node,
             detail: details.get(node.id),
             showDetail: viewport.zoom >= DETAIL_ZOOM,
+            isNew: newNodeIds.has(node.id),
           } satisfies OverviewNodeData,
           draggable: false,
           selectable: false,
@@ -340,7 +352,7 @@ export function OverviewGraph({
           },
         };
       }),
-    [visibleNodes, positions, details, viewport.zoom],
+    [visibleNodes, positions, details, viewport.zoom, newNodeIds],
   );
 
   const flowEdges = useMemo(
@@ -413,6 +425,11 @@ export function OverviewGraph({
             : "relative h-[65vh] min-h-[480px] w-full overflow-hidden rounded-md border border-border bg-input"
         }
       >
+        {search ? (
+          <div className="nodrag nopan absolute left-3 top-3 z-10 w-64 max-w-[calc(100%-9rem)]">
+            {search}
+          </div>
+        ) : null}
         {Flow ? (
           <Flow.ReactFlow
             nodes={flowNodes}

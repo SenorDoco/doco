@@ -65,3 +65,32 @@ html, body {
   margin: 1em 0 0.5em;
   font-weight: 700;
 }
+
+/* Golden glow for nodes that just arrived from a live refresh.
+   The animation runs once for 60s and freezes at 0 opacity (`forwards`)
+   so a node that's been onscreen for >60s renders with no halo. The
+   filter approach (not box-shadow) avoids conflicting with the inset
+   accent stripe that EntityNodeCard already paints via box-shadow.
+   `pointer-events` and layout are unaffected. */
+@keyframes doco-new-node-glow {
+  0% {
+    filter: drop-shadow(0 0 14px rgba(255, 196, 64, 0.95))
+            drop-shadow(0 0 4px rgba(255, 196, 64, 0.85));
+  }
+  85% {
+    filter: drop-shadow(0 0 6px rgba(255, 196, 64, 0.25))
+            drop-shadow(0 0 2px rgba(255, 196, 64, 0.2));
+  }
+  100% {
+    filter: drop-shadow(0 0 0 rgba(255, 196, 64, 0));
+  }
+}
+.doco-new-node-glow {
+  animation: doco-new-node-glow 60s ease-out forwards;
+}
+@media (prefers-reduced-motion: reduce) {
+  .doco-new-node-glow {
+    animation-duration: 60s;
+    animation-timing-function: linear;
+  }
+}
