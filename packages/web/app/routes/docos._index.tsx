@@ -13,6 +13,7 @@ import { withClient } from "@doco/db";
 import { entityUrl } from "@doco/shared";
 import { Link, redirect } from "react-router";
 import { ActivityHeatmap } from "~/components/activity-heatmap";
+import { Breadcrumb, hostBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
 import { SiteHeader } from "~/components/site-header";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "~/components/table";
@@ -190,6 +191,7 @@ export default function DocosIndexPage({
     <div>
       <SiteHeader mode="host" me={me} />
       <main className="mx-auto max-w-6xl px-6 py-6 space-y-6">
+        <Breadcrumb items={hostBreadcrumb({ pageLabel: "Docos" })} />
         <header className="flex flex-wrap items-center justify-between gap-3">
           <h1 className="text-2xl font-semibold">Your docos</h1>
           <Link

@@ -10,6 +10,7 @@ import { bufferToEmbedding, cosineSimilarity, withClient } from "@doco/db";
 import type { PoolClient } from "pg";
 import { Form, Link } from "react-router";
 import { LifecycleBadge, NodeTypeBadge } from "~/components/badge";
+import { Breadcrumb, orgBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
 import { NodeTypeIcon } from "~/components/node-type-icon";
 import { SiteHeader } from "~/components/site-header";
@@ -252,12 +253,10 @@ export default function OrgSearch({
       <SiteHeader mode="host" me={me} />
       <main className="mx-auto max-w-5xl px-6 py-6 space-y-5">
         <header className="space-y-1">
-          <p className="text-xs text-muted-foreground">
-            <Link to={`/orgs/${org.handle}`} className="underline">
-              {org.handle}
-            </Link>{" "}
-            / search
-          </p>
+          <Breadcrumb
+            items={orgBreadcrumb({ orgSlug: org.handle, pageLabel: "Search" })}
+            className="mb-1"
+          />
           <h1 className="text-xl font-semibold">Search across {org.handle}</h1>
         </header>
 

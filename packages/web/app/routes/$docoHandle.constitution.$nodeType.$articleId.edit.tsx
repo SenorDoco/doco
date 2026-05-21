@@ -8,6 +8,7 @@
 
 import { useState } from "react";
 import { Form, Link, redirect, useActionData } from "react-router";
+import { Breadcrumb, docoBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent } from "~/components/card";
 import { SiteHeader } from "~/components/site-header";
 import {
@@ -216,6 +217,15 @@ export default function EditArticle({
       <SiteHeader mode="host" me={me} docoScope={{ ownerSlug, docoSlug, handle }} />
       <main className="mx-auto max-w-4xl px-6 py-6 space-y-4">
         <header>
+          <Breadcrumb
+            items={docoBreadcrumb({
+              ownerSlug,
+              handle,
+              parent: { label: "Constitution", to: `/${handle}/constitution` },
+              pageLabel: `Edit ${isNodeAuthoring ? "node-authoring" : "guidance"} article`,
+            })}
+            className="mb-1"
+          />
           <h1 className="text-2xl font-semibold">
             Edit {isNodeAuthoring ? "node-authoring" : "guidance"} article
           </h1>

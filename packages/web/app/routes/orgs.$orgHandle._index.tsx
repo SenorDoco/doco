@@ -14,6 +14,7 @@ import { entityUrl } from "@doco/shared";
 import { useEffect } from "react";
 import { Form, Link, useRevalidator } from "react-router";
 import { ActivityHeatmap } from "~/components/activity-heatmap";
+import { Breadcrumb, orgBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
 import { InviteCollaboratorsLink } from "~/components/invite-collaborators-link";
 import { OverviewGraph } from "~/components/overview-graph";
@@ -391,6 +392,7 @@ export default function OrgHome({
           <section className="min-w-0 space-y-5">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="space-y-1">
+                <Breadcrumb items={orgBreadcrumb({ orgSlug: org.handle })} />
                 <h1 className="text-lg font-semibold tracking-tight">{org.handle}</h1>
                 <p className="font-mono text-sm text-muted-foreground">{org.id}</p>
                 <p className="text-xs text-muted-foreground">
