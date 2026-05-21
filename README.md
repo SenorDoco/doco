@@ -3,11 +3,10 @@
 Alignment framework and runtime checking system. Documents and verifies the
 relationships between user intent, agent reasoning, and agent actions.
 
-This repository is itself a Doco Host serving its own Doco at
-[torrenegra/doco](docos/torrenegra/doco/doco.yaml). Entities (Intents,
-Decisions, Rules, Actions, Reasoning, Evals, References, Principals,
-Scopes) live in Postgres and are reached through the web app and HTTP
-API — there are no on-disk per-entity files to read here.
+This repository is a Doco Host. Entities (Intents, Decisions, Rules,
+Actions, Reasoning, Evals, References, Principals, Scopes) live in
+Postgres and are reached through the web app and HTTP API — there are
+no on-disk per-entity files to read here.
 
 ## Quick links
 
@@ -16,8 +15,6 @@ API — there are no on-disk per-entity files to read here.
   before doing anything else; the helper reads `DOCO_ACCESS` internally
   so the credential stays out of shell command text, and the
   response carries the live `canonical_instructions`.
-- [docos/torrenegra/doco/doco.yaml](docos/torrenegra/doco/doco.yaml) —
-  this Doco's identity stub. Durable data is in Postgres.
 - [packages/db/src/schema.sql](packages/db/src/schema.sql) — current
   database schema (single source of truth for storage).
 - [packages/shared/src/entities.ts](packages/shared/src/entities.ts) —
