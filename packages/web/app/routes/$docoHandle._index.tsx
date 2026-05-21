@@ -205,6 +205,18 @@ export async function loader({
     }));
     const graph = await loadOverviewGraph(c, ctx.meta.docoId, { handle });
 
+    // Constitution article count — guidance + node-authoring articles
+    // attached to this Doco.
+    const constitutionRow = (
+      await c.query<{ n: string }>(
+        `SELECT
+           ((SELECT COUNT(*) FROM guidance_articles WHERE doco_id = $1)
+          + (SELECT COUNT(*) FROM node_authoring_articles WHERE doco_id = $1))::text AS n`,
+        [ctx.meta.docoId],
+      )
+    ).rows[0];
+    const constitutionCount = Number(constitutionRow?.n ?? 0);
+
     return {
       items,
       facets,
@@ -219,6 +231,7 @@ export async function loader({
       host: await loadHostConfig(),
       me,
       graph,
+      constitutionCount,
     };
   });
 }
@@ -269,6 +282,7 @@ export default function DocoHome({
     canInviteCollaborators,
     me,
     graph,
+    constitutionCount,
   } = loaderData;
 
   // Live feed polling (ADR-089).
@@ -353,6 +367,19 @@ export default function DocoHome({
                   + Agent/Collaborator
                 </InviteCollaboratorsLink>
               ) : null}
+            </div>
+
+            <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-card px-4 py-2 text-xs">
+              <span>
+                Articles of the Constitution:{" "}
+                <span className="font-mono tabular-nums">{constitutionCount}</span>
+              </span>
+              <Link
+                to={`/${handle}/constitution`}
+                className="rounded-md border border-border px-2 py-1 text-[11px] font-semibold hover:bg-input"
+              >
+                Manage
+              </Link>
             </div>
 
             <NodesOverviewCard
