@@ -168,11 +168,10 @@ Op icons: ✍️ added · 📝 updated · 🧹 cleared · ➕ added/appended ·
 
 ## 3. BEFORE DECLARING DONE — capture is the default
 
-Every turn that produced changes should be captured somewhere. The
-question is *what to capture* — a new node or a patch on an existing
-one — not *whether*. Skipping requires naming what you're relying on
-instead. "Git will record it" is not a name; git records *what*, not
-*why*.
+When the changes you made relate to a Doco where you're an author or
+owner, capture them in that Doco. The question is *what* to capture —
+a new node or a patch on an existing one — not *whether*. Skipping
+requires naming the existing node you're relying on.
 
 If you ran the OAuth recipe and hold a Bearer token, you can capture
 directly via the HTTP API:
