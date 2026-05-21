@@ -7,13 +7,13 @@
 // just walked through.
 
 export const GUIDANCE_ARTICLE_EXPLAINER =
-  "Short prose AI agents read while working. Not auto-checked — they're a shared agreement.";
+  "Articles AI agents read while working. Not auto-checked — they're a shared agreement.";
 
 export const NODE_AUTHORING_ARTICLE_EXPLAINER =
-  'Rules the host evaluates when a node is captured. Either a deterministic predicate (e.g. "every Decision cites at least one Intent") or a probabilistic spec the host runs through an LLM. On violation: block, warn, or log.';
+  "Rules that are automatically evaluated when something is added to Doco.";
 
 export const AGENT_EXPOSURE_NOTE =
-  "AI agents are always exposed to both the org's and the doco's articles at the top of every session.";
+  "AI agents are always exposed to both the org's and the doco's articles on every session.";
 
 /**
  * Derive a one-line `summary` from an article body. Project owners

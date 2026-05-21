@@ -117,7 +117,7 @@ export async function action({
 }
 
 export function meta({ params }: { params: { orgHandle: string } }) {
-  return [{ title: `New node authoring article · ${params.orgHandle} · Doco` }];
+  return [{ title: `New node-authoring article · ${params.orgHandle} · Doco` }];
 }
 
 export default function NewOrgNodeAuthoringArticle({
@@ -137,12 +137,12 @@ export default function NewOrgNodeAuthoringArticle({
             items={orgBreadcrumb({
               orgSlug: org.slug,
               parent: { label: "Constitution", to: `/orgs/${org.slug}/constitution` },
-              pageLabel: "New node authoring article",
+              pageLabel: "New node-authoring article",
             })}
             className="mb-1"
           />
           <h1 className="text-2xl font-semibold">
-            New node authoring article · <span className="font-mono">{org.slug}</span>
+            New node-authoring article · <span className="font-mono">{org.slug}</span>
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
             An automatic check that runs every time someone adds a node in any of this org's docos.
@@ -255,7 +255,7 @@ export default function NewOrgNodeAuthoringArticle({
                   type="submit"
                   className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90"
                 >
-                  Add node authoring article
+                  Add node-authoring article
                 </button>
                 <Link
                   to={`/orgs/${org.slug}/constitution`}

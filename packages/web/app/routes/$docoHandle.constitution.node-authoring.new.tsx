@@ -82,7 +82,7 @@ export async function action({
 }
 
 export function meta({ params }: { params: { docoId: string } }) {
-  return [{ title: `New node authoring article · ${params.docoId} · Doco` }];
+  return [{ title: `New node-authoring article · ${params.docoId} · Doco` }];
 }
 
 export default function NewNodeAuthoringArticle({
@@ -103,11 +103,11 @@ export default function NewNodeAuthoringArticle({
               ownerSlug,
               handle,
               parent: { label: "Constitution", to: `/${handle}/constitution` },
-              pageLabel: "New node authoring article",
+              pageLabel: "New node-authoring article",
             })}
             className="mb-1"
           />
-          <h1 className="text-2xl font-semibold">New node authoring article</h1>
+          <h1 className="text-2xl font-semibold">New node-authoring article</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             An automatic check that runs every time someone adds a node to this doco. Write a strict
             rule, or describe what an LLM judge should look for. Pick what happens on failure: block
@@ -219,7 +219,7 @@ export default function NewNodeAuthoringArticle({
                   type="submit"
                   className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90"
                 >
-                  Add node authoring article
+                  Add node-authoring article
                 </button>
                 <Link
                   to={`/${handle}/constitution`}

@@ -107,7 +107,7 @@ export async function loader({
 }
 
 export function meta({ params }: { params: { orgHandle: string } }) {
-  return [{ title: `Constitution · ${params.orgHandle} · Doco` }];
+  return [{ title: `Articles of the Constitution · ${params.orgHandle} · Doco` }];
 }
 
 export default function OrgConstitution({
@@ -123,18 +123,18 @@ export default function OrgConstitution({
       <main className="mx-auto max-w-4xl px-6 py-6 space-y-4">
         <header>
           <Breadcrumb
-            items={orgBreadcrumb({ orgSlug: org.slug, pageLabel: "Constitution" })}
+            items={orgBreadcrumb({
+              orgSlug: org.slug,
+              pageLabel: "Articles of the Constitution",
+            })}
             className="mb-1"
           />
           <h1 className="text-2xl font-semibold">
-            Constitution · <span className="font-mono">{org.slug}</span>
+            Articles of the Constitution · <span className="font-mono">{org.slug}</span>
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Rules that govern how nodes get added to every doco owned by{" "}
-            <Link to="/orgs" className="underline">
-              {org.slug}
-            </Link>
-            . {AGENT_EXPOSURE_NOTE}
+            Rules that govern how nodes get added to every doco owned by {org.slug}.{" "}
+            {AGENT_EXPOSURE_NOTE}
           </p>
           {!canEdit ? (
             <p className="mt-2 text-xs italic text-muted-foreground">
@@ -153,12 +153,12 @@ export default function OrgConstitution({
         />
 
         <ArticleSection
-          title="Node authoring articles"
+          title="Node-authoring articles"
           nodeType="node_authoring_article"
           description={NODE_AUTHORING_ARTICLE_EXPLAINER}
           addHref={canEdit ? `/orgs/${org.slug}/constitution/node-authoring/new` : null}
           items={nodeAuthoringArticles}
-          empty="No node authoring articles yet."
+          empty="No node-authoring articles yet."
         />
       </main>
     </div>

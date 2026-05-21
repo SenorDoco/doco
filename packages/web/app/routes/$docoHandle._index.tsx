@@ -53,7 +53,7 @@ const NODE_TYPE_LABELS: Record<string, string> = {
   intent: "Intents",
   rule: "Rules",
   guidance_article: "Guidance articles",
-  node_authoring_article: "Node authoring articles",
+  node_authoring_article: "Node-authoring articles",
   eval: "Evals",
   reference: "References",
   idea: "Ideas",

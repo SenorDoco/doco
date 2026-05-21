@@ -81,7 +81,7 @@ export async function loader({
 }
 
 export function meta({ params }: { params: { docoId: string } }) {
-  return [{ title: `Constitution · ${params.docoId} · Doco` }];
+  return [{ title: `Articles of the Constitution · ${params.docoId} · Doco` }];
 }
 
 export default function Constitution({
@@ -98,10 +98,14 @@ export default function Constitution({
       <main className="mx-auto max-w-4xl px-6 py-6 space-y-4">
         <header>
           <Breadcrumb
-            items={docoBreadcrumb({ ownerSlug, handle, pageLabel: "Constitution" })}
+            items={docoBreadcrumb({
+              ownerSlug,
+              handle,
+              pageLabel: "Articles of the Constitution",
+            })}
             className="mb-1"
           />
-          <h1 className="text-2xl font-semibold">Constitution</h1>
+          <h1 className="text-2xl font-semibold">Articles of the Constitution</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             Rules that govern how nodes get added to this doco. {AGENT_EXPOSURE_NOTE}
           </p>
@@ -118,13 +122,13 @@ export default function Constitution({
         />
 
         <ArticleSection
-          title="Node authoring articles"
+          title="Node-authoring articles"
           nodeType="node_authoring_article"
           description={NODE_AUTHORING_ARTICLE_EXPLAINER}
           addHref={canEdit ? `/${handle}/constitution/node-authoring/new` : null}
           items={nodeAuthoringArticles}
           handle={handle}
-          empty="No node authoring articles yet."
+          empty="No node-authoring articles yet."
         />
       </main>
     </div>
