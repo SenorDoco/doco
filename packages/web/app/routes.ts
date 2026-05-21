@@ -109,7 +109,16 @@ export default [
   route("orgs", "routes/orgs._index.tsx"),
   // Org-level constitution: applies to every Doco owned by the org.
   // Same shape as the per-Doco constitution at /:docoHandle/constitution.
+  // Standalone add pages live one level deeper.
   route("orgs/:orgHandle/constitution", "routes/orgs.$orgHandle.constitution.tsx"),
+  route(
+    "orgs/:orgHandle/constitution/guidance/new",
+    "routes/orgs.$orgHandle.constitution.guidance.new.tsx",
+  ),
+  route(
+    "orgs/:orgHandle/constitution/node-authoring/new",
+    "routes/orgs.$orgHandle.constitution.node-authoring.new.tsx",
+  ),
   route("users", "routes/users.tsx"),
   // Onboarding (human paths only — agents authenticate via OAuth +
   // install the MCP connector at /mcp/<handle>, no recipe to walk
@@ -144,6 +153,11 @@ export default [
   route(":docoId/status.json", "routes/$docoHandle.status[.]json.tsx"),
   route(":docoId/settings", "routes/$docoHandle.settings.tsx"),
   route(":docoId/constitution", "routes/$docoHandle.constitution.tsx"),
+  route(":docoId/constitution/guidance/new", "routes/$docoHandle.constitution.guidance.new.tsx"),
+  route(
+    ":docoId/constitution/node-authoring/new",
+    "routes/$docoHandle.constitution.node-authoring.new.tsx",
+  ),
   route(":docoId/invites", "routes/$docoHandle.invites.tsx"),
   route(":docoId/api/invites.json", "routes/$docoHandle.api.invites[.]json.tsx"),
   route(":docoId/api/decisions.json", "routes/$docoHandle.api.decisions[.]json.tsx"),
