@@ -213,7 +213,7 @@ function ArticleSection({
                       to={`${editHrefBase}/${item.id}/edit`}
                       className="shrink-0 rounded-md border border-border px-2 py-1 text-[11px] font-semibold text-foreground hover:bg-muted"
                     >
-                      Edit
+                      Modify
                     </Link>
                   ) : null}
                 </div>

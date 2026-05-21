@@ -204,7 +204,7 @@ export async function action({
 }
 
 export function meta({ params }: { params: { orgHandle: string } }) {
-  return [{ title: `Edit article · ${params.orgHandle} · Doco` }];
+  return [{ title: `Modify article · ${params.orgHandle} · Doco` }];
 }
 
 export default function EditOrgArticle({
@@ -244,12 +244,12 @@ export default function EditOrgArticle({
             items={orgBreadcrumb({
               orgSlug: org.slug,
               parent: { label: "Constitution", to: `/orgs/${org.slug}/constitution` },
-              pageLabel: `Edit ${isNodeAuthoring ? "node-authoring" : "guidance"} article`,
+              pageLabel: `Modify ${isNodeAuthoring ? "node-authoring" : "guidance"} article`,
             })}
             className="mb-1"
           />
           <h1 className="text-2xl font-semibold">
-            Edit {isNodeAuthoring ? "node-authoring" : "guidance"} article ·{" "}
+            Modify {isNodeAuthoring ? "node-authoring" : "guidance"} article ·{" "}
             <span className="font-mono">{org.slug}</span>
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">

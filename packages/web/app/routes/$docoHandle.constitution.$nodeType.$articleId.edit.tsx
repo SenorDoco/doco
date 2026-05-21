@@ -181,7 +181,7 @@ export async function action({
 }
 
 export function meta({ params }: { params: { docoId: string } }) {
-  return [{ title: `Edit article · ${params.docoId} · Doco` }];
+  return [{ title: `Modify article · ${params.docoId} · Doco` }];
 }
 
 export default function EditArticle({
@@ -222,12 +222,12 @@ export default function EditArticle({
               ownerSlug,
               handle,
               parent: { label: "Constitution", to: `/${handle}/constitution` },
-              pageLabel: `Edit ${isNodeAuthoring ? "node-authoring" : "guidance"} article`,
+              pageLabel: `Modify ${isNodeAuthoring ? "node-authoring" : "guidance"} article`,
             })}
             className="mb-1"
           />
           <h1 className="text-2xl font-semibold">
-            Edit {isNodeAuthoring ? "node-authoring" : "guidance"} article
+            Modify {isNodeAuthoring ? "node-authoring" : "guidance"} article
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
             Saving changes creates a new article and marks this one as <em>superseded</em>.
