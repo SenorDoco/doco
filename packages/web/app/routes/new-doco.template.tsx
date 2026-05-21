@@ -91,7 +91,8 @@ export async function loader({ request }: { request: Request }) {
   const orgHandle = state.orgId
     ? (orgs.find((o) => o.id === state.orgId)?.handle ?? null)
     : state.newOrgHandle;
-  return { me, ...state, orgHandle };
+  const prefilledTemplate = url.searchParams.get("template_handle") ?? "";
+  return { me, ...state, orgHandle, prefilledTemplate };
 }
 
 export async function action({ request }: { request: Request }) {
@@ -197,10 +198,11 @@ export default function NewDocoStep3({
     form?: { templateHandle: string; visibility: string };
   };
 }) {
-  const { me, orgId, newOrgHandle, suffix, visibility, orgHandle } = loaderData;
+  const { me, orgId, newOrgHandle, suffix, visibility, orgHandle, prefilledTemplate } = loaderData;
   const state: ParsedState = { orgId, newOrgHandle, suffix, visibility };
   const finalHandle = `${orgHandle ?? "<org>"}-${suffix}`;
-  const selectedTemplate = actionData?.form?.templateHandle ?? "generic";
+  const selectedTemplate =
+    actionData?.form?.templateHandle ?? (prefilledTemplate || "generic");
 
   return (
     <div>

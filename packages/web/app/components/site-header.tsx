@@ -83,7 +83,7 @@ export function SiteHeader({ docoScope, me, shellOwner = false }: SiteHeaderProp
           {me ? (
             <>
               <NavLink
-                to="/dashboard"
+                to="/docos"
                 className={({ isActive }) =>
                   cn(
                     "whitespace-nowrap rounded-md border border-border px-3 py-1.5 font-semibold hover:bg-input",

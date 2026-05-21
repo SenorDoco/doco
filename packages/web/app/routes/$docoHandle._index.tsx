@@ -32,7 +32,7 @@ import { lifecycleColor } from "~/lib/node-colors";
 import { computeFilterFacets } from "~/lib/search-filters.server";
 import { timeAgo } from "~/lib/time-ago";
 
-const FEED_LIMIT = 30;
+const FEED_LIMIT = 20;
 const HEATMAP_WEEKS = 52;
 const TOP_CONTRIBUTORS_LIMIT = 10;
 
@@ -349,7 +349,9 @@ export default function DocoHome({
                 <p className="font-mono text-sm text-muted-foreground">{docoId}</p>
               </div>
               {canInviteCollaborators ? (
-                <InviteCollaboratorsLink level="doco" targetId={docoId} />
+                <InviteCollaboratorsLink level="doco" targetId={docoId}>
+                  + Agent/Collaborator
+                </InviteCollaboratorsLink>
               ) : null}
             </div>
 

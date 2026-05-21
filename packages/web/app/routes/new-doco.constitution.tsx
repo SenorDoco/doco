@@ -29,6 +29,7 @@ export async function loader({ request }: { request: Request }) {
   const newOrgHandle = url.searchParams.get("new_org_handle") ?? "";
   const suffix = url.searchParams.get("suffix") ?? "";
   const visibility = url.searchParams.get("visibility") === "public" ? "public" : "private";
+  const templateHandle = url.searchParams.get("template_handle") ?? "";
 
   // Bounce back to Step 1 if state is missing — every step validates
   // its own inputs so a deep-link with a half-baked URL can't slip
@@ -40,7 +41,7 @@ export async function loader({ request }: { request: Request }) {
   const orgs = await listMyOrgs(me.id);
   const orgHandle = orgId ? (orgs.find((o) => o.id === orgId)?.handle ?? null) : newOrgHandle;
 
-  return { me, orgId, newOrgHandle, suffix, visibility, orgHandle };
+  return { me, orgId, newOrgHandle, suffix, visibility, templateHandle, orgHandle };
 }
 
 export function meta() {
@@ -52,13 +53,14 @@ export default function NewDocoStep2({
 }: {
   loaderData: Awaited<ReturnType<typeof loader>>;
 }) {
-  const { me, orgId, newOrgHandle, suffix, visibility, orgHandle } = loaderData;
+  const { me, orgId, newOrgHandle, suffix, visibility, templateHandle, orgHandle } = loaderData;
   const finalHandle = `${orgHandle ?? "<org>"}-${suffix}`;
   const backHref = `/new-doco?${new URLSearchParams({
     ...(orgId ? { org_id: orgId } : {}),
     ...(newOrgHandle ? { new_org_handle: newOrgHandle } : {}),
     suffix,
     visibility,
+    ...(templateHandle ? { template_handle: templateHandle } : {}),
   }).toString()}`;
 
   return (
@@ -103,6 +105,9 @@ export default function NewDocoStep2({
           {newOrgHandle ? <input type="hidden" name="new_org_handle" value={newOrgHandle} /> : null}
           <input type="hidden" name="suffix" value={suffix} />
           <input type="hidden" name="visibility" value={visibility} />
+          {templateHandle ? (
+            <input type="hidden" name="template_handle" value={templateHandle} />
+          ) : null}
           <button
             type="submit"
             className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90"
