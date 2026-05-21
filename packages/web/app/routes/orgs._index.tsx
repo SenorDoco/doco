@@ -20,6 +20,7 @@ import {
 } from "~/lib/activity-feed";
 import { cn } from "~/lib/cn";
 import { isMyDoco, listInvitedDocoIdsForPrincipal } from "~/lib/doco-access.server";
+import { ENTITY_TABLES } from "~/lib/doco-stats.server";
 import { listAllDocos, listMyOrgs } from "~/lib/host";
 import { getCurrentPrincipal } from "~/lib/session";
 import { timeAgo } from "~/lib/time-ago";
@@ -32,7 +33,8 @@ interface OrgRow {
   slug: string;
   display_name: string;
   description?: string;
-  member_count?: number;
+  docoCount: number;
+  nodeCount: number;
   myRole: DocoRole;
   lastUpdatedAt: string | null;
 }
@@ -59,23 +61,54 @@ export async function loader({ request }: { request: Request }) {
 
   const orgsRaw = await listMyOrgs(me.id);
 
-  // Compute each org's most-recent-activity in one query: MAX(audit_events.at)
-  // across every doco the org owns.
+  // Per-org aggregates (last activity across owned docos, doco count, total
+  // node count summed across every entity table). Three pooled queries in
+  // parallel since a single PoolClient serializes queries.
   const orgIds = orgsRaw.map((o) => o.id);
-  const orgLastActivity = await withClient(async (c) => {
-    if (orgIds.length === 0) return new Map<string, string | null>();
-    const r = await c.query<{ owner_id: string; last_at: string | null }>(
-      `SELECT d.owner_id, MAX(a.at)::text AS last_at
-         FROM audit_events a
-         JOIN docos d ON d.id = a.doco_id
-        WHERE d.owner_id = ANY($1)
-        GROUP BY d.owner_id`,
-      [orgIds],
-    );
-    const m = new Map<string, string | null>();
-    for (const row of r.rows) m.set(String(row.owner_id), row.last_at);
-    return m;
-  });
+  const nodesUnionSql = ENTITY_TABLES.map((t) => `SELECT doco_id FROM ${t}`).join(" UNION ALL ");
+  const [orgLastActivity, orgDocoCount, orgNodeCount] = await Promise.all([
+    withClient(async (c) => {
+      if (orgIds.length === 0) return new Map<string, string | null>();
+      const r = await c.query<{ owner_id: string; last_at: string | null }>(
+        `SELECT d.owner_id, MAX(a.at)::text AS last_at
+           FROM audit_events a
+           JOIN docos d ON d.id = a.doco_id
+          WHERE d.owner_id = ANY($1)
+          GROUP BY d.owner_id`,
+        [orgIds],
+      );
+      const m = new Map<string, string | null>();
+      for (const row of r.rows) m.set(String(row.owner_id), row.last_at);
+      return m;
+    }),
+    withClient(async (c) => {
+      if (orgIds.length === 0) return new Map<string, number>();
+      const r = await c.query<{ owner_id: string; n: string }>(
+        `SELECT owner_id, COUNT(*)::text AS n
+           FROM docos
+          WHERE owner_id = ANY($1)
+          GROUP BY owner_id`,
+        [orgIds],
+      );
+      const m = new Map<string, number>();
+      for (const row of r.rows) m.set(String(row.owner_id), Number(row.n));
+      return m;
+    }),
+    withClient(async (c) => {
+      if (orgIds.length === 0) return new Map<string, number>();
+      const r = await c.query<{ owner_id: string; n: string }>(
+        `SELECT d.owner_id, COUNT(*)::text AS n
+           FROM (${nodesUnionSql}) t
+           JOIN docos d ON d.id = t.doco_id
+          WHERE d.owner_id = ANY($1)
+          GROUP BY d.owner_id`,
+        [orgIds],
+      );
+      const m = new Map<string, number>();
+      for (const row of r.rows) m.set(String(row.owner_id), Number(row.n));
+      return m;
+    }),
+  ]);
 
   const orgs: OrgRow[] = (
     await Promise.all(
@@ -83,6 +116,8 @@ export async function loader({ request }: { request: Request }) {
         ...o,
         myRole: ((await getOrgRole(o.id, me.id)) ?? "reader") as DocoRole,
         lastUpdatedAt: orgLastActivity.get(o.id) ?? null,
+        docoCount: orgDocoCount.get(o.id) ?? 0,
+        nodeCount: orgNodeCount.get(o.id) ?? 0,
       })),
     )
   ).sort((a, b) => {
@@ -242,10 +277,9 @@ export default function OrgsIndexPage({
                               {o.slug}
                             </Link>
                             <div className="text-xs text-muted-foreground">
-                              {o.display_name}
-                              {typeof o.member_count === "number"
-                                ? ` · ${o.member_count} member${o.member_count === 1 ? "" : "s"}`
-                                : ""}
+                              {o.docoCount} doco{o.docoCount === 1 ? "" : "s"}
+                              {" · "}
+                              {o.nodeCount} node{o.nodeCount === 1 ? "" : "s"}
                               {o.lastUpdatedAt ? (
                                 <>
                                   {" · "}
