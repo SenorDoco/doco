@@ -37,6 +37,18 @@ const TEMPLATES = [
     label: "State Machines",
     description: "Formal state-machine modeling — states, transitions, invariants.",
   },
+  {
+    handle: "business-processes",
+    label: "Business Processes",
+    description:
+      "Document repeatable business processes — actors, gateways, milestones, outcomes. BPMN-inspired.",
+  },
+  {
+    handle: "test",
+    label: "Test",
+    description:
+      "Executable tests inspired by TDD and AI evals. Each Eval pins one checkable claim about a decision, article, or action.",
+  },
 ] as const;
 
 interface ParsedState {
