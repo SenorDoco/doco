@@ -83,6 +83,7 @@ export default [
   // in their browser when a runtime requests Doco access.
   route("oauth/register", "routes/oauth.register.tsx"),
   route("oauth/authorize", "routes/oauth.authorize.tsx"),
+  route("oauth/approved", "routes/oauth.approved.tsx"),
   route("oauth/token", "routes/oauth.token.tsx"),
   route("oauth/revoke", "routes/oauth.revoke.tsx"),
   // Device Authorization Grant (RFC 8628). For agents that can't drive

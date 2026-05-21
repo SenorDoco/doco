@@ -279,6 +279,52 @@ export async function consumeAuthorizationCode(args: {
   });
 }
 
+export interface PeekedAuthCode {
+  client_id: string;
+  redirect_uri: string;
+  granted_doco_ids: string[];
+  granted_org_ids: string[];
+}
+
+/**
+ * Read an authorization code row WITHOUT consuming it. Returns null
+ * if the code is unknown, already consumed, or expired. Used by the
+ * `/oauth/approved` interstitial to validate that the user-supplied
+ * `?to=` redirect target actually corresponds to a real, pending
+ * auth code — so the route can't be abused as an open redirect.
+ *
+ * Never use this for the token exchange — that path must be atomic
+ * (claim + validate in one transaction). Use `consumeAuthorizationCode`.
+ */
+export async function peekAuthorizationCode(code: string): Promise<PeekedAuthCode | null> {
+  return await withClient(async (c) => {
+    const r = await c.query<{
+      client_id: string;
+      redirect_uri: string;
+      granted_doco_ids: string[];
+      granted_org_ids: string[] | null;
+      expires_at: Date;
+      consumed_at: Date | null;
+    }>(
+      `SELECT client_id, redirect_uri, granted_doco_ids,
+              granted_org_ids, expires_at, consumed_at
+         FROM oauth_authorization_codes
+        WHERE code = $1`,
+      [code],
+    );
+    const row = r.rows[0];
+    if (!row) return null;
+    if (row.consumed_at) return null;
+    if (row.expires_at.getTime() < Date.now()) return null;
+    return {
+      client_id: row.client_id,
+      redirect_uri: row.redirect_uri,
+      granted_doco_ids: row.granted_doco_ids,
+      granted_org_ids: row.granted_org_ids ?? [],
+    };
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Access + refresh tokens.
 // ---------------------------------------------------------------------------

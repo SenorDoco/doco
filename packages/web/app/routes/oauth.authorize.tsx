@@ -228,10 +228,18 @@ export async function action({ request }: { request: Request }) {
     granted_org_roles,
     scope: params.scope ?? undefined,
   });
-  // OAuth 2.1 §4.1.2: 302 to redirect_uri with ?code=...&state=...
-  // The runtime's local listener catches it and renders its own
-  // "you can return to your terminal" page.
-  return redirect(redirectWith(params, { code }));
+  // OAuth 2.1 §4.1.2 expects a 302 straight to redirect_uri with
+  // ?code=...&state=... — we 302 to /oauth/approved first, which
+  // paints a Doco-branded "Access approved" card and then meta-
+  // refreshes to the runtime's localhost listener. Without that step
+  // users land on an unstyled `localhost:53682/callback` page with no
+  // visual confirmation that their approval took effect on Doco.
+  //
+  // /oauth/approved validates the `to=` URL against the auth code
+  // it carries, so it can't be repurposed as an open redirect.
+  const runtimeRedirect = redirectWith(params, { code });
+  const approvedUrl = `/oauth/approved?to=${encodeURIComponent(runtimeRedirect)}`;
+  return redirect(approvedUrl);
 }
 
 export function meta() {
