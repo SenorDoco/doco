@@ -1,13 +1,21 @@
 // GET /api/v1/agent-bootstrap.json — agent-facing bootstrap manifest.
 //
-// Returns the constitutions the caller has read-or-above access to:
-//   - org constitutions: every org the agent is a member of (any role)
-//   - doco constitutions: every Doco the agent can read (direct owner,
+// Returns the Articles of the Constitution the caller has read-or-
+// above access to, grouped by constitution:
+//   - org_constitutions[]: every org the agent is a member of (any role)
+//   - doco_constitutions[]: every Doco the agent can read (direct owner,
 //     org-membership-inherited, doco_users grant, public visibility)
 //
-// Org constitutions apply to every Doco the org owns, so an agent that
+// Each constitution exposes two arrays of Articles of the
+// Constitution: `guidance_articles` (prose, no automated check) and
+// `node_authoring_articles` (rules evaluated at capture time). Org
+// articles apply to every Doco the org owns, so an agent that
 // bootstraps Doco-the-tool (not a single Doco) gets the full set of
 // authoring rules that govern its work across every project.
+//
+// The project owner can add, edit, or remove articles at any time
+// from /<handle>/constitution or /orgs/<org>/constitution — re-fetch
+// this endpoint if you suspect they've changed mid-session.
 //
 // Auth: optional. Anonymous callers receive only public-Doco
 // constitutions (no org constitutions, since org membership requires

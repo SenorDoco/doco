@@ -321,19 +321,24 @@ export default function OrgConstitution({
           </p>
         )}
 
-        <section className="grid gap-4 lg:grid-cols-2">
-          <ArticleList
-            title="Guidance articles"
-            items={guidanceArticles}
-            nodeType="guidance_article"
-            empty="No guidance articles yet."
-          />
-          <ArticleList
-            title="Node authoring articles"
-            items={nodeAuthoringArticles}
-            nodeType="node_authoring_article"
-            empty="No node authoring articles yet."
-          />
+        <section className="space-y-3">
+          <h2 className="text-base font-semibold tracking-tight">
+            Articles of the Constitution
+          </h2>
+          <div className="grid gap-4 lg:grid-cols-2">
+            <ArticleList
+              title="Guidance articles"
+              items={guidanceArticles}
+              nodeType="guidance_article"
+              empty="No guidance articles yet."
+            />
+            <ArticleList
+              title="Node authoring articles"
+              items={nodeAuthoringArticles}
+              nodeType="node_authoring_article"
+              empty="No node authoring articles yet."
+            />
+          </div>
         </section>
       </SingleColumnPageMain>
     </div>

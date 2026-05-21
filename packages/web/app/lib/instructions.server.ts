@@ -68,21 +68,40 @@ states, principals, invites, audit.
 Public Docos return 200 for unauthenticated reads; private Docos
 return 403 until you finish the OAuth recipe.
 
-## Bootstrap: read the constitutions you have access to
+## Bootstrap: read the Articles of the Constitution
+
+Every org and every Doco has a **constitution**. The constitution is
+made up of **Articles of the Constitution** — short, project-owner-
+authored statements that govern how you, the agent, author nodes
+inside it. Two kinds, both surfaced at bootstrap:
+
+  - **Guidance articles** (\`guidance_article\` nodes) — prose for
+    context. No automated check. Read them and let them shape your
+    judgement.
+  - **Node authoring articles** (\`node_authoring_article\` nodes) —
+    rules evaluated when you capture a node. Either a deterministic
+    predicate ("every Decision cites at least one Intent") or a
+    probabilistic spec the host evaluates with an LLM. \`on_violation:
+    block\` means the host will reject your capture.
+
+Org-level articles apply to every Doco that org owns. Doco-level
+articles apply only to that Doco. Treat both as binding on your
+authoring at all times.
+
+The project owner can **add, edit, or remove Articles of the
+Constitution any time**, at either the org level
+(\`/orgs/<org>/constitution\`) or the Doco level
+(\`/<handle>/constitution\`). Re-bootstrap if you suspect they've
+changed mid-session.
 
 Once you hold a Bearer token, hit:
 
     GET https://doco.to/api/v1/agent-bootstrap.json
     Authorization: Bearer doco_at_<token>
 
-The response carries the **constitutions** for every org and every
-Doco you have read-or-above access to. There are two article kinds at
-both levels (guidance_article + node_authoring_article); they govern
-how you author nodes (predicates that must hold, structural checks,
-prose guidance). Org-level articles apply to every Doco that org
-owns. Treat constitution articles as binding on your authoring —
-predicates with \`on_violation: block\` mean the host will reject
-captures that violate them.
+The response carries the constitutions for every org and every Doco
+you have read-or-above access to, with each article exposed as
+\`guidance_articles[]\` and \`node_authoring_articles[]\` arrays.
 
 The four invariants below apply whichever path you took — the
 protocol is about how you reply, not about how you authenticated.
@@ -228,10 +247,13 @@ Doco's data model is a graph of typed nodes:
 - **Log** — a recorded event that *did* happen (past-tense verb +
   \`happened_at\` + concrete outputs). Immutable once captured.
 - **Rule** — an ongoing domain constraint.
-- **Guidance Article** — a constitution article contributors read
-  while working; no automated check.
-- **Node Authoring Article** — a constitution article evaluated when
-  nodes are captured; deterministic predicates or probabilistic specs.
+- **Guidance Article** — one kind of Article of the Constitution.
+  Contributors read it while working; no automated check.
+- **Node Authoring Article** — the other kind of Article of the
+  Constitution. Evaluated when nodes are captured; deterministic
+  predicates or probabilistic specs. The project owner can edit either
+  kind any time from \`/<handle>/constitution\` or
+  \`/orgs/<org>/constitution\`.
 - **Eval** — a named, executable test pinning a load-bearing claim.
 - **Reference** — an external pointer (URL, file, doc) with a summary.
 - **State** — a node in a formal state machine.

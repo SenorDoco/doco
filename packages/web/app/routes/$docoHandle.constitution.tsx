@@ -291,21 +291,26 @@ export default function Constitution({
           </div>
         ) : null}
 
-        <section className="grid gap-4 lg:grid-cols-2">
-          <ArticleList
-            title="Guidance articles"
-            handle={handle}
-            nodeType="guidance_article"
-            items={guidanceArticles}
-            empty="No guidance articles yet."
-          />
-          <ArticleList
-            title="Node authoring articles"
-            handle={handle}
-            nodeType="node_authoring_article"
-            items={nodeAuthoringArticles}
-            empty="No node authoring articles yet."
-          />
+        <section className="space-y-3">
+          <h2 className="text-base font-semibold tracking-tight">
+            Articles of the Constitution
+          </h2>
+          <div className="grid gap-4 lg:grid-cols-2">
+            <ArticleList
+              title="Guidance articles"
+              handle={handle}
+              nodeType="guidance_article"
+              items={guidanceArticles}
+              empty="No guidance articles yet."
+            />
+            <ArticleList
+              title="Node authoring articles"
+              handle={handle}
+              nodeType="node_authoring_article"
+              items={nodeAuthoringArticles}
+              empty="No node authoring articles yet."
+            />
+          </div>
         </section>
       </SingleColumnPageMain>
     </div>

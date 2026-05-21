@@ -100,8 +100,11 @@ export default [
   // MCP runtime. Covers localhost-loopback (Recipe A) + Device Flow
   // (Recipe B). Public; served as text/markdown.
   route("protocol/agent-oauth-recipe", "routes/protocol.agent-oauth-recipe.tsx"),
-  // Self-service create
+  // Self-service create. The doco-create flow is a 4-step wizard;
+  // step 4 lives under :docoId/welcome alongside the per-Doco routes.
   route("new-doco", "routes/new-doco.tsx"),
+  route("new-doco/constitution", "routes/new-doco.constitution.tsx"),
+  route("new-doco/template", "routes/new-doco.template.tsx"),
   route("new-org", "routes/new-org.tsx"),
   route("orgs", "routes/orgs._index.tsx"),
   // Org-level constitution: applies to every Doco owned by the org.
@@ -137,6 +140,7 @@ export default [
   // param to a row. There is no owner profile page; the dashboard
   // is the single signed-in landing.
   route(":docoId", "routes/$docoHandle._index.tsx"),
+  route(":docoId/welcome", "routes/$docoHandle.welcome.tsx"),
   route(":docoId/status.json", "routes/$docoHandle.status[.]json.tsx"),
   route(":docoId/settings", "routes/$docoHandle.settings.tsx"),
   route(":docoId/constitution", "routes/$docoHandle.constitution.tsx"),
