@@ -185,18 +185,21 @@ async function buildBootstrapContext(principalId: string): Promise<BootstrapCont
     const meta = { ownerId: d.ownerId, visibility: d.visibility, docoId: d.docoId };
     if (!(await canAccessDoco(meta, principalId))) continue;
     docoLines.push(`- /${d.handle} (visibility ${d.visibility})`);
+    // No LIMIT — the agent's accuracy when asked "what is my constitution"
+    // depends on shipping every active article. A few hundred lines of
+    // article summaries is well under the context budget.
     const articles = await withClient(async (c) => {
       const [guidance, authoring] = await Promise.all([
         c.query<{ summary: string }>(
           `SELECT summary FROM guidance_articles
             WHERE doco_id = $1 AND COALESCE(lifecycle,'active') = 'active'
-            ORDER BY created_at DESC LIMIT 5`,
+            ORDER BY created_at DESC`,
           [d.docoId],
         ),
         c.query<{ summary: string }>(
           `SELECT summary FROM node_authoring_articles
             WHERE doco_id = $1 AND COALESCE(lifecycle,'active') = 'active'
-            ORDER BY created_at DESC LIMIT 5`,
+            ORDER BY created_at DESC`,
           [d.docoId],
         ),
       ]);
@@ -297,7 +300,9 @@ ${docoList}
 
 ${orgList}
 
-## Constitution articles that govern node authoring
+## Constitution articles — canonical
+
+The section below lists every ACTIVE guidance + node-authoring article for every Doco the user can access, fetched server-side at the start of each turn. It is COMPLETE — same SQL the /constitution page reads. When asked "what's the constitution of my Doco" or "how many rules do I have," answer from this list directly. Never say "I may have incomplete information" or offer to fetch the live version — this IS the live version. (Inactive / archived articles are excluded by design; flag that only if the user specifically asks about non-active ones.)
 
 ${constitutions}`;
 
