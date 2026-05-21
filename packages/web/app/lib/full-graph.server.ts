@@ -200,3 +200,80 @@ export async function loadOverviewNodeDetails(
     ];
   });
 }
+
+// ─── Org-level (cross-Doco) variants ───────────────────────────────
+//
+// Mirrors loadOverviewGraph but aggregates over every Doco the org
+// owns. Each node carries its own Doco handle so the href points at
+// the right per-Doco entity URL.
+
+function overviewRowsSqlMulti(): string {
+  return GRAPH_TABLES.map(
+    (entry) => `SELECT t.id,
+                     '${entry.nodeType}'::text AS node_type,
+                     NULL::text AS name,
+                     COALESCE(t.lifecycle, 'active') AS lifecycle,
+                     t.created_at::text AS created_at,
+                     t.doco_id AS doco_id
+                FROM ${entry.table} t
+               WHERE t.doco_id = ANY($1::text[])`,
+  ).join(" UNION ALL ");
+}
+
+export async function loadOrgOverviewGraph(
+  c: QueryClient,
+  docoIds: string[],
+  docoHandleByDocoId: Map<string, string>,
+  options: { fallbackCenterId?: string } = {},
+): Promise<OverviewGraphData> {
+  if (docoIds.length === 0) {
+    return {
+      centerId: options.fallbackCenterId ?? "",
+      nodes: [],
+      links: [],
+      detailUrl: null,
+    };
+  }
+  const rows = (
+    await c.query<OverviewGraphRow & { doco_id: string }>(overviewRowsSqlMulti(), [docoIds])
+  ).rows;
+  const nodeIds = rows.map((row) => row.id);
+  const links =
+    nodeIds.length === 0
+      ? []
+      : (
+          await c.query<EdgeRow>(
+            `SELECT from_id, to_id, edge_type, attribution
+               FROM edges
+              WHERE doco_id = ANY($1::text[])
+                AND from_id = ANY($2::text[])
+                AND to_id = ANY($2::text[])
+              ORDER BY CASE WHEN attribution = 'explicit' THEN 0 ELSE 1 END, edge_type
+              LIMIT $3`,
+            [docoIds, nodeIds, OVERVIEW_GRAPH_EDGE_LIMIT],
+          )
+        ).rows.map((edge) => ({
+          source: edge.from_id,
+          target: edge.to_id,
+          edge_type: edge.edge_type,
+          attribution: asAttribution(edge.attribution),
+        }));
+  const nodes: OverviewGraphNode[] = rows.map((row) => {
+    const handle = docoHandleByDocoId.get(String(row.doco_id));
+    return {
+      id: row.id,
+      node_type: row.node_type,
+      name: row.name,
+      lifecycle: row.lifecycle ?? "active",
+      created_at: toIso(row.created_at),
+      href: overviewEntityHref(handle, row.node_type, row.id),
+      is_center: false,
+    };
+  });
+  return {
+    centerId: nodes[0]?.id ?? options.fallbackCenterId ?? "",
+    nodes,
+    links,
+    detailUrl: null,
+  };
+}

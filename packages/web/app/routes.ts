@@ -109,6 +109,8 @@ export default [
   // every Doco the org owns (docos list, node-type/lifecycle facets,
   // activity heatmap + feed, top contributors, members).
   route("orgs/:orgHandle", "routes/orgs.$orgHandle._index.tsx"),
+  // Cross-Doco semantic search across every Doco the org owns.
+  route("orgs/:orgHandle/search", "routes/orgs.$orgHandle.search.tsx"),
   // Org-level constitution: applies to every Doco owned by the org.
   // Same shape as the per-Doco constitution at /:docoHandle/constitution.
   // Standalone add pages live one level deeper.
