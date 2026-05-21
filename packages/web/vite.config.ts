@@ -113,8 +113,21 @@ export default defineConfig({
   // pg uses native bindings and must not be bundled. @xyflow/react and
   // frimousse are client-only — keep them out of the SSR bundle so they
   // never try to call useRef/useState on a server-side null React.
+  //
+  // @dagrejs/dagre is bundled into the SSR chunk (noExternal) because
+  // Vercel's serverless runtime loads its `dist/dagre.esm.js` file via
+  // the CJS loader, which fails on `export {...}` with
+  // `SyntaxError: Unexpected token 'export'`. Inlining sidesteps the
+  // runtime resolution entirely. (Used server-side by entity-graph's
+  // SSR layout pass.)
   ssr: {
     external: ["pg", "@xyflow/react", "frimousse"],
-    noExternal: ["@doco/db", "@doco/host", "@doco/index", "@doco/shared"],
+    noExternal: [
+      "@doco/db",
+      "@doco/host",
+      "@doco/index",
+      "@doco/shared",
+      "@dagrejs/dagre",
+    ],
   },
 });
