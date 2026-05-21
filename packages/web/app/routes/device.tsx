@@ -18,6 +18,7 @@
 //      access_denied and stops.
 
 import type { DocoRole } from "@doco/db";
+import { getOrgRole } from "@doco/db";
 import { useState } from "react";
 import { Form, redirect, useLoaderData } from "react-router";
 import { Breadcrumb } from "~/components/breadcrumb";
@@ -25,10 +26,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/com
 import { SingleColumnPageMain } from "~/components/page-main";
 import { SiteHeader } from "~/components/site-header";
 import { getDocoById } from "~/lib/db.server";
-import {
-  getDocoLevelRole,
-  listAccessibleDocoIdsForPrincipal,
-} from "~/lib/doco-access.server";
+import { getDocoLevelRole, listAccessibleDocoIdsForPrincipal } from "~/lib/doco-access.server";
+import { listOrgsOwnedOrAdminedBy } from "~/lib/host";
 import {
   approveDeviceAuthorization,
   denyDeviceAuthorization,
@@ -46,6 +45,12 @@ interface LoaderData {
     id: string;
     handle: string;
     name: string | null;
+    my_role: DocoRole;
+  }[];
+  orgs?: {
+    id: string;
+    slug: string;
+    display_name: string;
     my_role: DocoRole;
   }[];
   target_doco_handle?: string | null;
@@ -115,10 +120,7 @@ export async function loader({ request }: { request: Request }) {
     candidateIds.map(async (id): Promise<DocoRow | null> => {
       const d = await getDocoById(id);
       if (!d) return null;
-      const my_role = await getDocoLevelRole(
-        { ownerId: d.owner_id, docoId: d.id },
-        me.id,
-      );
+      const my_role = await getDocoLevelRole({ ownerId: d.owner_id, docoId: d.id }, me.id);
       if (my_role !== "owner") return null;
       return { id: d.id, handle: d.handle, name: d.name, my_role };
     }),
@@ -144,17 +146,36 @@ export async function loader({ request }: { request: Request }) {
 
   const requestedRole: DocoRole | null =
     row.requested_role &&
-    (["reader", "author", "approver", "owner"] as const).includes(
-      row.requested_role as DocoRole,
-    )
+    (["reader", "author", "approver", "owner"] as const).includes(row.requested_role as DocoRole)
       ? (row.requested_role as DocoRole)
       : null;
+
+  // Orgs the user owns. Approving an org grants access to every Doco
+  // it owns now AND any Doco created under it later. Hidden when the
+  // agent narrowed the picker to a single target Doco — org-wide
+  // approval would defeat that narrowing.
+  type OrgRow = { id: string; slug: string; display_name: string; my_role: DocoRole };
+  let orgs: OrgRow[] = [];
+  if (!row.target_doco_handle) {
+    const owned = await listOrgsOwnedOrAdminedBy(me.id);
+    const enriched = await Promise.all(
+      owned.map(async (o): Promise<OrgRow | null> => {
+        const role = await getOrgRole(o.id, me.id);
+        if (role !== "owner") return null;
+        return { id: o.id, slug: o.slug, display_name: o.display_name, my_role: role };
+      }),
+    );
+    orgs = enriched
+      .filter((o): o is OrgRow => o !== null)
+      .sort((a, b) => a.display_name.localeCompare(b.display_name));
+  }
 
   return {
     user_code,
     stage: "approve" as const,
     client_name: client?.client_name ?? row.client_id.slice(0, 20),
     docos,
+    orgs,
     target_doco_handle: row.target_doco_handle,
     requested_role: requestedRole,
     targeted_message: targetedMessage,
@@ -194,8 +215,9 @@ export async function action({ request }: { request: Request }) {
 
   if (decision === "approve") {
     const selected = form.getAll("doco_id").map((v) => String(v));
-    if (selected.length === 0) {
-      throw new Response("at least one Doco must be selected", { status: 400 });
+    const selectedOrgs = form.getAll("org_id").map((v) => String(v));
+    if (selected.length === 0 && selectedOrgs.length === 0) {
+      throw new Response("at least one Doco or organization must be selected", { status: 400 });
     }
     // Defense against form tampering. Two checks per id:
     //   1. Principal must hold OWNER on this Doco — only owners can
@@ -223,11 +245,31 @@ export async function action({ request }: { request: Request }) {
       const requested = (DOCO_ROLES as string[]).includes(raw) ? (raw as DocoRole) : "owner";
       granted_doco_roles[id] = requested;
     }
+    // Org-level grants. Same defense-against-tampering shape: re-check
+    // OWNER on each org and validate the role is a real DocoRole.
+    const granted_org_roles: Record<string, DocoRole> = {};
+    for (const orgId of selectedOrgs) {
+      if (!orgId.startsWith("organization_")) {
+        throw new Response(`invalid org id: ${orgId}`, { status: 400 });
+      }
+      const myOrgRole = await getOrgRole(orgId, principal.id);
+      if (myOrgRole !== "owner") {
+        throw new Response(
+          `Only org owners can grant access; you hold '${myOrgRole ?? "no role"}' on ${orgId}.`,
+          { status: 403 },
+        );
+      }
+      const raw = String(form.get(`role_org_${orgId}`) ?? "owner").toLowerCase();
+      const requested = (DOCO_ROLES as string[]).includes(raw) ? (raw as DocoRole) : "owner";
+      granted_org_roles[orgId] = requested;
+    }
     await approveDeviceAuthorization({
       device_code: row.device_code,
       principal_id: principal.id,
       granted_doco_ids: selected,
       granted_doco_roles,
+      granted_org_ids: selectedOrgs,
+      granted_org_roles,
     });
     return redirect(`/device?user_code=${encodeURIComponent(user_code)}`);
   }
@@ -245,12 +287,7 @@ export default function DevicePage() {
     <div>
       <SiteHeader mode="host" me={data.me} />
       <SingleColumnPageMain className="py-8 space-y-4">
-        <Breadcrumb
-          items={[
-            { label: "Home", to: "/" },
-            { label: "Authorize device" },
-          ]}
-        />
+        <Breadcrumb items={[{ label: "Home", to: "/" }, { label: "Authorize device" }]} />
         <Card>{renderStage(data)}</Card>
       </SingleColumnPageMain>
     </div>
@@ -291,29 +328,32 @@ function renderStage(data: LoaderData) {
     );
   }
   if (data.stage === "approve") {
+    const docos = data.docos ?? [];
+    const orgs = data.orgs ?? [];
     return (
       <>
         <CardHeader>
           <CardTitle>Authorize agent access</CardTitle>
           <CardDescription>
-            <strong>{data.client_name}</strong> wants access to your Docos. Pick which Docos it
-            can read and write — code{" "}
+            <strong>{data.client_name}</strong> wants access to your Docos. Pick individual Docos or
+            grant access to an entire organization — code{" "}
             <code className="rounded bg-input px-1 py-0.5 text-xs">{data.user_code}</code>.
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {data.docos && data.docos.length === 0 ? (
+          {docos.length === 0 && orgs.length === 0 ? (
             <p className="text-sm text-destructive">
-              You don't own any Docos. Only Doco owners can grant agent access — create a Doco
-              first, then re-enter this code.
+              You don't own any Docos or organizations. Only owners can grant agent access — create
+              one first, then re-enter this code.
             </p>
           ) : (
             <DevicePickerForm
               userCode={data.user_code}
-              docos={data.docos!}
+              docos={docos}
+              orgs={orgs}
               requestedRole={data.requested_role ?? null}
               targetedMessage={data.targeted_message ?? null}
-              focused={Boolean(data.target_doco_handle && data.docos!.length === 1)}
+              focused={Boolean(data.target_doco_handle && docos.length === 1)}
             />
           )}
         </CardContent>
@@ -341,19 +381,21 @@ function renderStage(data: LoaderData) {
 }
 
 /**
- * Controlled approve form for /device. Per-Doco checkboxes + role
- * dropdowns plus bulk controls (select / deselect all + set all
- * roles). Mirrors the same shape on /oauth/authorize.
+ * Controlled approve form for /device. Per-Doco AND per-org
+ * checkboxes + role dropdowns plus bulk controls. Mirrors the same
+ * shape on /oauth/authorize.
  */
 function DevicePickerForm({
   userCode,
   docos,
+  orgs,
   requestedRole,
   targetedMessage,
   focused,
 }: {
   userCode: string;
   docos: { id: string; handle: string; name: string | null; my_role: DocoRole }[];
+  orgs: { id: string; slug: string; display_name: string; my_role: DocoRole }[];
   requestedRole: DocoRole | null;
   targetedMessage: string | null;
   focused: boolean;
@@ -362,18 +404,24 @@ function DevicePickerForm({
   // role dropdowns to that — otherwise default to the user's actual
   // role on each Doco (always "owner" here, since the loader
   // filtered to owner-only).
-  const defaultRole = (d: { my_role: DocoRole }): DocoRole =>
-    requestedRole ?? d.my_role;
-  const [selected, setSelected] = useState<Set<string>>(
-    () => new Set(docos.map((d) => d.id)),
+  const defaultRole = (d: { my_role: DocoRole }): DocoRole => requestedRole ?? d.my_role;
+  // Default selection: Docos pre-selected (existing behavior), orgs
+  // un-selected (org-wide grants are broader → require explicit opt-in).
+  const [selected, setSelected] = useState<Set<string>>(() => new Set(docos.map((d) => d.id)));
+  const [roles, setRoles] = useState<Record<string, DocoRole>>(() =>
+    Object.fromEntries(docos.map((d) => [d.id, defaultRole(d)])),
   );
-  const [roles, setRoles] = useState<Record<string, DocoRole>>(
-    () => Object.fromEntries(docos.map((d) => [d.id, defaultRole(d)])),
+  const [selectedOrgs, setSelectedOrgs] = useState<Set<string>>(() => new Set());
+  const [orgRoles, setOrgRoles] = useState<Record<string, DocoRole>>(() =>
+    Object.fromEntries(orgs.map((o) => [o.id, defaultRole(o)])),
   );
-  const allSelected = selected.size === docos.length;
-  const noneSelected = selected.size === 0;
+  const allDocosSelected = docos.length > 0 && selected.size === docos.length;
+  const noneDocosSelected = selected.size === 0;
+  const allOrgsSelected = orgs.length > 0 && selectedOrgs.size === orgs.length;
+  const noneOrgsSelected = selectedOrgs.size === 0;
+  const nothingSelected = selected.size === 0 && selectedOrgs.size === 0;
   return (
-    <Form method="post" className="space-y-3">
+    <Form method="post" className="space-y-4">
       <input type="hidden" name="user_code" value={userCode} />
 
       {targetedMessage ? (
@@ -382,108 +430,220 @@ function DevicePickerForm({
         </p>
       ) : null}
 
-      {/* Bulk controls — only useful when the picker shows multiple
-          Docos. Hidden in focused mode (agent targeted one Doco). */}
-      {focused ? null : (
-        <div className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-input/40 px-3 py-2">
-          <button
-            type="button"
-            onClick={() => setSelected(new Set(docos.map((d) => d.id)))}
-            disabled={allSelected}
-            className="rounded-md border border-border bg-card px-2.5 py-1 text-xs font-semibold text-foreground hover:bg-input disabled:opacity-50"
-          >
-            Select all
-          </button>
-          <button
-            type="button"
-            onClick={() => setSelected(new Set())}
-            disabled={noneSelected}
-            className="rounded-md border border-border bg-card px-2.5 py-1 text-xs font-semibold text-foreground hover:bg-input disabled:opacity-50"
-          >
-            Deselect all
-          </button>
-          <span className="text-xs text-muted-foreground">
-            {selected.size} of {docos.length} selected
-          </span>
-          <span className="ml-auto flex items-center gap-2 text-xs text-muted-foreground">
-            Set all roles to:
-            <select
-              aria-label="Set all roles"
-              defaultValue=""
-              onChange={(e) => {
-                const r = e.currentTarget.value as DocoRole | "";
-                if (!r) return;
-                setRoles(Object.fromEntries(docos.map((d) => [d.id, r])));
-                e.currentTarget.value = "";
-              }}
-              className="rounded-md border border-border bg-card px-2 py-1 text-xs text-foreground"
+      {/* Organizations picker. Approving an org grants the agent
+          access to every Doco the org owns now AND any Doco created
+          under it later. Hidden in focused mode (agent targeted one
+          Doco) — org-wide would defeat the narrowing. */}
+      {!focused && orgs.length > 0 ? (
+        <section className="space-y-2">
+          <h3 className="text-sm font-semibold text-foreground">Organizations</h3>
+          <p className="text-xs text-muted-foreground">
+            Approving an organization grants access to every Doco it owns, including ones added
+            later.
+          </p>
+          <div className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-input/40 px-3 py-2">
+            <button
+              type="button"
+              onClick={() => setSelectedOrgs(new Set(orgs.map((o) => o.id)))}
+              disabled={allOrgsSelected}
+              className="rounded-md border border-border bg-card px-2.5 py-1 text-xs font-semibold text-foreground hover:bg-input disabled:opacity-50"
             >
-              <option value="" disabled>
-                choose…
-              </option>
-              {DOCO_ROLES.map((r) => (
-                <option key={r} value={r}>
-                  {r}
-                </option>
-              ))}
-            </select>
-          </span>
-        </div>
-      )}
-
-      <ul className="divide-y divide-border rounded-md border border-border">
-        {docos.map((d) => (
-          <li key={d.id} className="flex items-center justify-between gap-3 px-3 py-2.5">
-            <label className="flex flex-1 cursor-pointer items-center gap-3">
-              <input
-                type="checkbox"
-                checked={selected.has(d.id)}
+              Select all
+            </button>
+            <button
+              type="button"
+              onClick={() => setSelectedOrgs(new Set())}
+              disabled={noneOrgsSelected}
+              className="rounded-md border border-border bg-card px-2.5 py-1 text-xs font-semibold text-foreground hover:bg-input disabled:opacity-50"
+            >
+              Deselect all
+            </button>
+            <span className="text-xs text-muted-foreground">
+              {selectedOrgs.size} of {orgs.length} selected
+            </span>
+            <span className="ml-auto flex items-center gap-2 text-xs text-muted-foreground">
+              Set all roles to:
+              <select
+                aria-label="Set all org roles"
+                defaultValue=""
                 onChange={(e) => {
-                  const next = new Set(selected);
-                  if (e.currentTarget.checked) next.add(d.id);
-                  else next.delete(d.id);
-                  setSelected(next);
+                  const r = e.currentTarget.value as DocoRole | "";
+                  if (!r) return;
+                  setOrgRoles(Object.fromEntries(orgs.map((o) => [o.id, r])));
+                  e.currentTarget.value = "";
                 }}
-                className="h-4 w-4 accent-primary"
-              />
-              <span className="text-sm">
-                <strong className="font-semibold">{d.handle}</strong>
-                {d.name && d.name !== d.handle ? (
-                  <span className="text-muted-foreground"> · {d.name}</span>
-                ) : null}
-              </span>
-            </label>
-            <select
-              aria-label={`Role on ${d.handle}`}
-              value={roles[d.id] ?? d.my_role}
-              onChange={(e) => setRoles({ ...roles, [d.id]: e.currentTarget.value as DocoRole })}
-              disabled={!selected.has(d.id)}
-              className="rounded-md border border-border bg-card px-2 py-1 text-xs text-foreground disabled:opacity-50"
-            >
-              {DOCO_ROLES.map((r) => (
-                <option key={r} value={r}>
-                  {r}
+                className="rounded-md border border-border bg-card px-2 py-1 text-xs text-foreground"
+              >
+                <option value="" disabled>
+                  choose…
                 </option>
-              ))}
-            </select>
-          </li>
-        ))}
-      </ul>
+                {DOCO_ROLES.map((r) => (
+                  <option key={r} value={r}>
+                    {r}
+                  </option>
+                ))}
+              </select>
+            </span>
+          </div>
+          <ul className="divide-y divide-border rounded-md border border-border">
+            {orgs.map((o) => (
+              <li key={o.id} className="flex items-center justify-between gap-3 px-3 py-2.5">
+                <label className="flex flex-1 cursor-pointer items-center gap-3">
+                  <input
+                    type="checkbox"
+                    checked={selectedOrgs.has(o.id)}
+                    onChange={(e) => {
+                      const next = new Set(selectedOrgs);
+                      if (e.currentTarget.checked) next.add(o.id);
+                      else next.delete(o.id);
+                      setSelectedOrgs(next);
+                    }}
+                    className="h-4 w-4 accent-primary"
+                  />
+                  <span className="text-sm">
+                    <strong className="font-semibold">{o.slug}</strong>
+                    {o.display_name && o.display_name !== o.slug ? (
+                      <span className="text-muted-foreground"> · {o.display_name}</span>
+                    ) : null}
+                  </span>
+                </label>
+                <select
+                  aria-label={`Role on ${o.slug}`}
+                  value={orgRoles[o.id] ?? o.my_role}
+                  onChange={(e) =>
+                    setOrgRoles({ ...orgRoles, [o.id]: e.currentTarget.value as DocoRole })
+                  }
+                  disabled={!selectedOrgs.has(o.id)}
+                  className="rounded-md border border-border bg-card px-2 py-1 text-xs text-foreground disabled:opacity-50"
+                >
+                  {DOCO_ROLES.map((r) => (
+                    <option key={r} value={r}>
+                      {r}
+                    </option>
+                  ))}
+                </select>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
+      {/* Docos picker. Bulk controls are hidden in focused mode
+          (agent targeted one Doco). */}
+      {docos.length > 0 ? (
+        <section className="space-y-2">
+          {!focused && orgs.length > 0 ? (
+            <h3 className="text-sm font-semibold text-foreground">Docos</h3>
+          ) : null}
+          {!focused ? (
+            <div className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-input/40 px-3 py-2">
+              <button
+                type="button"
+                onClick={() => setSelected(new Set(docos.map((d) => d.id)))}
+                disabled={allDocosSelected}
+                className="rounded-md border border-border bg-card px-2.5 py-1 text-xs font-semibold text-foreground hover:bg-input disabled:opacity-50"
+              >
+                Select all
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelected(new Set())}
+                disabled={noneDocosSelected}
+                className="rounded-md border border-border bg-card px-2.5 py-1 text-xs font-semibold text-foreground hover:bg-input disabled:opacity-50"
+              >
+                Deselect all
+              </button>
+              <span className="text-xs text-muted-foreground">
+                {selected.size} of {docos.length} selected
+              </span>
+              <span className="ml-auto flex items-center gap-2 text-xs text-muted-foreground">
+                Set all roles to:
+                <select
+                  aria-label="Set all roles"
+                  defaultValue=""
+                  onChange={(e) => {
+                    const r = e.currentTarget.value as DocoRole | "";
+                    if (!r) return;
+                    setRoles(Object.fromEntries(docos.map((d) => [d.id, r])));
+                    e.currentTarget.value = "";
+                  }}
+                  className="rounded-md border border-border bg-card px-2 py-1 text-xs text-foreground"
+                >
+                  <option value="" disabled>
+                    choose…
+                  </option>
+                  {DOCO_ROLES.map((r) => (
+                    <option key={r} value={r}>
+                      {r}
+                    </option>
+                  ))}
+                </select>
+              </span>
+            </div>
+          ) : null}
+          <ul className="divide-y divide-border rounded-md border border-border">
+            {docos.map((d) => (
+              <li key={d.id} className="flex items-center justify-between gap-3 px-3 py-2.5">
+                <label className="flex flex-1 cursor-pointer items-center gap-3">
+                  <input
+                    type="checkbox"
+                    checked={selected.has(d.id)}
+                    onChange={(e) => {
+                      const next = new Set(selected);
+                      if (e.currentTarget.checked) next.add(d.id);
+                      else next.delete(d.id);
+                      setSelected(next);
+                    }}
+                    className="h-4 w-4 accent-primary"
+                  />
+                  <span className="text-sm">
+                    <strong className="font-semibold">{d.handle}</strong>
+                    {d.name && d.name !== d.handle ? (
+                      <span className="text-muted-foreground"> · {d.name}</span>
+                    ) : null}
+                  </span>
+                </label>
+                <select
+                  aria-label={`Role on ${d.handle}`}
+                  value={roles[d.id] ?? d.my_role}
+                  onChange={(e) =>
+                    setRoles({ ...roles, [d.id]: e.currentTarget.value as DocoRole })
+                  }
+                  disabled={!selected.has(d.id)}
+                  className="rounded-md border border-border bg-card px-2 py-1 text-xs text-foreground disabled:opacity-50"
+                >
+                  {DOCO_ROLES.map((r) => (
+                    <option key={r} value={r}>
+                      {r}
+                    </option>
+                  ))}
+                </select>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
       {Array.from(selected).map((id) => (
         <input key={id} type="hidden" name="doco_id" value={id} />
       ))}
       {Array.from(selected).map((id) => (
+        <input key={`role_${id}`} type="hidden" name={`role_${id}`} value={roles[id] ?? "owner"} />
+      ))}
+      {Array.from(selectedOrgs).map((id) => (
+        <input key={`org_${id}`} type="hidden" name="org_id" value={id} />
+      ))}
+      {Array.from(selectedOrgs).map((id) => (
         <input
-          key={`role_${id}`}
+          key={`role_org_${id}`}
           type="hidden"
-          name={`role_${id}`}
-          value={roles[id] ?? "owner"}
+          name={`role_org_${id}`}
+          value={orgRoles[id] ?? "owner"}
         />
       ))}
 
       <p className="text-[11px] text-muted-foreground">
-        Lower a Doco's role to scope the agent down (e.g. give a research agent{" "}
+        Lower a Doco's or org's role to scope the agent down (e.g. give a research agent{" "}
         <code>reader</code> only). Owners can grant any role up to and including their own.
       </p>
 
@@ -492,7 +652,7 @@ function DevicePickerForm({
           type="submit"
           name="decision"
           value="approve"
-          disabled={selected.size === 0}
+          disabled={nothingSelected}
           className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
         >
           Approve

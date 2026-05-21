@@ -165,6 +165,14 @@ export interface IssueAuthCodeInput {
    * i.e. no scope-down for that Doco.
    */
   granted_doco_roles?: Record<string, string>;
+  /**
+   * Org-level grants. Listed org ids extend access to every Doco
+   * the org owns (live — including Docos created under the org
+   * after the token is minted). `granted_org_roles[org_id]` caps
+   * the effective role on Docos under that org.
+   */
+  granted_org_ids?: string[];
+  granted_org_roles?: Record<string, string>;
   scope?: string;
 }
 
@@ -178,8 +186,9 @@ export async function issueAuthorizationCode(
       `INSERT INTO oauth_authorization_codes
          (code, client_id, principal_id, redirect_uri,
           code_challenge, code_challenge_method, granted_doco_ids,
-          granted_doco_roles, scope, expires_at)
-       VALUES ($1, $2, $3, $4, $5, 'S256', $6, $7, $8, $9)`,
+          granted_doco_roles, granted_org_ids, granted_org_roles,
+          scope, expires_at)
+       VALUES ($1, $2, $3, $4, $5, 'S256', $6, $7, $8, $9, $10, $11)`,
       [
         code,
         input.client_id,
@@ -188,6 +197,8 @@ export async function issueAuthorizationCode(
         input.code_challenge,
         input.granted_doco_ids,
         JSON.stringify(input.granted_doco_roles ?? {}),
+        input.granted_org_ids ?? [],
+        JSON.stringify(input.granted_org_roles ?? {}),
         input.scope ?? null,
         expires_at,
       ],
@@ -200,6 +211,8 @@ export interface ConsumedAuthCode {
   principal_id: string;
   granted_doco_ids: string[];
   granted_doco_roles: Record<string, string>;
+  granted_org_ids: string[];
+  granted_org_roles: Record<string, string>;
   scope: string | null;
 }
 
@@ -222,12 +235,16 @@ export async function consumeAuthorizationCode(args: {
       code_challenge: string;
       granted_doco_ids: string[];
       granted_doco_roles: Record<string, string>;
+      granted_org_ids: string[];
+      granted_org_roles: Record<string, string>;
       scope: string | null;
       expires_at: Date;
       consumed_at: Date | null;
     }>(
       `SELECT client_id, principal_id, redirect_uri, code_challenge,
-              granted_doco_ids, granted_doco_roles, scope, expires_at, consumed_at
+              granted_doco_ids, granted_doco_roles,
+              granted_org_ids, granted_org_roles,
+              scope, expires_at, consumed_at
          FROM oauth_authorization_codes
         WHERE code = $1
         FOR UPDATE`,
@@ -255,6 +272,8 @@ export async function consumeAuthorizationCode(args: {
       principal_id: row.principal_id,
       granted_doco_ids: row.granted_doco_ids,
       granted_doco_roles: row.granted_doco_roles ?? {},
+      granted_org_ids: row.granted_org_ids ?? [],
+      granted_org_roles: row.granted_org_roles ?? {},
       scope: row.scope,
     };
   });
@@ -269,6 +288,8 @@ export interface IssueTokensInput {
   principal_id: string;
   granted_doco_ids: string[];
   granted_doco_roles?: Record<string, string>;
+  granted_org_ids?: string[];
+  granted_org_roles?: Record<string, string>;
   scope: string | null;
 }
 
@@ -286,18 +307,23 @@ export async function issueTokens(input: IssueTokensInput): Promise<IssuedTokens
   const access_expires = new Date(Date.now() + ACCESS_TOKEN_TTL_SECONDS * 1000);
   const refresh_expires = new Date(Date.now() + REFRESH_TOKEN_TTL_SECONDS * 1000);
   const rolesJson = JSON.stringify(input.granted_doco_roles ?? {});
+  const orgIds = input.granted_org_ids ?? [];
+  const orgRolesJson = JSON.stringify(input.granted_org_roles ?? {});
   await withTransaction(async (c) => {
     await c.query(
       `INSERT INTO oauth_access_tokens
          (token, client_id, principal_id, granted_doco_ids,
-          granted_doco_roles, scope, expires_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          granted_doco_roles, granted_org_ids, granted_org_roles,
+          scope, expires_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
       [
         access_token,
         input.client_id,
         input.principal_id,
         input.granted_doco_ids,
         rolesJson,
+        orgIds,
+        orgRolesJson,
         input.scope,
         access_expires,
       ],
@@ -305,14 +331,17 @@ export async function issueTokens(input: IssueTokensInput): Promise<IssuedTokens
     await c.query(
       `INSERT INTO oauth_refresh_tokens
          (token, client_id, principal_id, granted_doco_ids,
-          granted_doco_roles, scope, expires_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          granted_doco_roles, granted_org_ids, granted_org_roles,
+          scope, expires_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
       [
         refresh_token,
         input.client_id,
         input.principal_id,
         input.granted_doco_ids,
         rolesJson,
+        orgIds,
+        orgRolesJson,
         input.scope,
         refresh_expires,
       ],
@@ -333,6 +362,8 @@ export interface ValidAccessToken {
   principal_id: string;
   granted_doco_ids: string[];
   granted_doco_roles: Record<string, string>;
+  granted_org_ids: string[];
+  granted_org_roles: Record<string, string>;
   scope: string | null;
   expires_at: Date;
 }
@@ -347,14 +378,20 @@ export async function validateAccessToken(token: string): Promise<ValidAccessTok
   return await withClient(async (c) => {
     const r = await c.query<ValidAccessToken>(
       `SELECT token, client_id, principal_id, granted_doco_ids,
-              granted_doco_roles, scope, expires_at
+              granted_doco_roles, granted_org_ids, granted_org_roles,
+              scope, expires_at
          FROM oauth_access_tokens
         WHERE token = $1 AND revoked = false AND expires_at > now()`,
       [token],
     );
     const row = r.rows[0];
     if (!row) return null;
-    return { ...row, granted_doco_roles: row.granted_doco_roles ?? {} };
+    return {
+      ...row,
+      granted_doco_roles: row.granted_doco_roles ?? {},
+      granted_org_ids: row.granted_org_ids ?? [],
+      granted_org_roles: row.granted_org_roles ?? {},
+    };
   });
 }
 
@@ -368,12 +405,14 @@ export async function refreshTokens(args: {
       principal_id: string;
       granted_doco_ids: string[];
       granted_doco_roles: Record<string, string>;
+      granted_org_ids: string[];
+      granted_org_roles: Record<string, string>;
       scope: string | null;
       expires_at: Date;
       revoked: boolean;
     }>(
       `SELECT client_id, principal_id, granted_doco_ids, granted_doco_roles,
-              scope, expires_at, revoked
+              granted_org_ids, granted_org_roles, scope, expires_at, revoked
          FROM oauth_refresh_tokens
         WHERE token = $1
         FOR UPDATE`,
@@ -396,17 +435,22 @@ export async function refreshTokens(args: {
     const access_expires = new Date(Date.now() + ACCESS_TOKEN_TTL_SECONDS * 1000);
     const refresh_expires = new Date(Date.now() + REFRESH_TOKEN_TTL_SECONDS * 1000);
     const rolesJson = JSON.stringify(row.granted_doco_roles ?? {});
+    const orgIds = row.granted_org_ids ?? [];
+    const orgRolesJson = JSON.stringify(row.granted_org_roles ?? {});
     await c.query(
       `INSERT INTO oauth_access_tokens
          (token, client_id, principal_id, granted_doco_ids,
-          granted_doco_roles, scope, expires_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          granted_doco_roles, granted_org_ids, granted_org_roles,
+          scope, expires_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
       [
         access_token,
         row.client_id,
         row.principal_id,
         row.granted_doco_ids,
         rolesJson,
+        orgIds,
+        orgRolesJson,
         row.scope,
         access_expires,
       ],
@@ -414,14 +458,17 @@ export async function refreshTokens(args: {
     await c.query(
       `INSERT INTO oauth_refresh_tokens
          (token, client_id, principal_id, granted_doco_ids,
-          granted_doco_roles, scope, expires_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          granted_doco_roles, granted_org_ids, granted_org_roles,
+          scope, expires_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
       [
         refresh_token,
         row.client_id,
         row.principal_id,
         row.granted_doco_ids,
         rolesJson,
+        orgIds,
+        orgRolesJson,
         row.scope,
         refresh_expires,
       ],
@@ -496,6 +543,8 @@ export interface DeviceAuthorizationRow {
   principal_id: string | null;
   granted_doco_ids: string[];
   granted_doco_roles: Record<string, string>;
+  granted_org_ids: string[];
+  granted_org_roles: Record<string, string>;
   target_doco_handle: string | null;
   requested_role: string | null;
   expires_at: Date;
@@ -598,12 +647,21 @@ export async function getDeviceAuthorizationByUserCode(
   return await withClient(async (c) => {
     const r = await c.query<DeviceAuthorizationRow>(
       `SELECT device_code, user_code, client_id, scope, status,
-              principal_id, granted_doco_ids, granted_doco_roles, target_doco_handle, requested_role, expires_at, last_polled_at, created_at
+              principal_id, granted_doco_ids, granted_doco_roles,
+              granted_org_ids, granted_org_roles,
+              target_doco_handle, requested_role, expires_at, last_polled_at, created_at
          FROM oauth_device_authorizations
         WHERE user_code = $1`,
       [user_code.toUpperCase()],
     );
-    return r.rows[0] ?? null;
+    const row = r.rows[0];
+    if (!row) return null;
+    return {
+      ...row,
+      granted_doco_roles: row.granted_doco_roles ?? {},
+      granted_org_ids: row.granted_org_ids ?? [],
+      granted_org_roles: row.granted_org_roles ?? {},
+    };
   });
 }
 
@@ -618,6 +676,8 @@ export async function approveDeviceAuthorization(args: {
   principal_id: string;
   granted_doco_ids: string[];
   granted_doco_roles?: Record<string, string>;
+  granted_org_ids?: string[];
+  granted_org_roles?: Record<string, string>;
 }): Promise<void> {
   await withClient(async (c) => {
     const r = await c.query(
@@ -625,7 +685,9 @@ export async function approveDeviceAuthorization(args: {
           SET status = 'approved',
               principal_id = $2,
               granted_doco_ids = $3,
-              granted_doco_roles = $4
+              granted_doco_roles = $4,
+              granted_org_ids = $5,
+              granted_org_roles = $6
         WHERE device_code = $1
           AND status = 'pending'
           AND expires_at > now()`,
@@ -634,6 +696,8 @@ export async function approveDeviceAuthorization(args: {
         args.principal_id,
         args.granted_doco_ids,
         JSON.stringify(args.granted_doco_roles ?? {}),
+        args.granted_org_ids ?? [],
+        JSON.stringify(args.granted_org_roles ?? {}),
       ],
     );
     if ((r.rowCount ?? 0) === 0) {
@@ -679,7 +743,9 @@ export async function pollDeviceAuthorization(args: {
     // for the same approved authorization.
     const r = await c.query<DeviceAuthorizationRow>(
       `SELECT device_code, user_code, client_id, scope, status,
-              principal_id, granted_doco_ids, granted_doco_roles, target_doco_handle, requested_role, expires_at, last_polled_at, created_at
+              principal_id, granted_doco_ids, granted_doco_roles,
+              granted_org_ids, granted_org_roles,
+              target_doco_handle, requested_role, expires_at, last_polled_at, created_at
          FROM oauth_device_authorizations
         WHERE device_code = $1
         FOR UPDATE`,
@@ -731,17 +797,22 @@ export async function pollDeviceAuthorization(args: {
     const access_expires = new Date(Date.now() + ACCESS_TOKEN_TTL_SECONDS * 1000);
     const refresh_expires = new Date(Date.now() + REFRESH_TOKEN_TTL_SECONDS * 1000);
     const rolesJson = JSON.stringify(row.granted_doco_roles ?? {});
+    const orgIds = row.granted_org_ids ?? [];
+    const orgRolesJson = JSON.stringify(row.granted_org_roles ?? {});
     await c.query(
       `INSERT INTO oauth_access_tokens
          (token, client_id, principal_id, granted_doco_ids,
-          granted_doco_roles, scope, expires_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          granted_doco_roles, granted_org_ids, granted_org_roles,
+          scope, expires_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
       [
         access_token,
         row.client_id,
         row.principal_id,
         row.granted_doco_ids,
         rolesJson,
+        orgIds,
+        orgRolesJson,
         row.scope,
         access_expires,
       ],
@@ -749,14 +820,17 @@ export async function pollDeviceAuthorization(args: {
     await c.query(
       `INSERT INTO oauth_refresh_tokens
          (token, client_id, principal_id, granted_doco_ids,
-          granted_doco_roles, scope, expires_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          granted_doco_roles, granted_org_ids, granted_org_roles,
+          scope, expires_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
       [
         refresh_token,
         row.client_id,
         row.principal_id,
         row.granted_doco_ids,
         rolesJson,
+        orgIds,
+        orgRolesJson,
         row.scope,
         refresh_expires,
       ],

@@ -361,7 +361,7 @@ export async function loadDocoForRead(
   // request would fall through to the anonymous-on-private-Doco branch
   // and get a generic 403, which doesn't tell the runtime anything
   // about why.
-  await enforceOauthGrant(request, row.id, minRole);
+  await enforceOauthGrant(request, { docoId: row.id, ownerId: row.owner_id }, minRole);
   const me = await getCurrentPrincipalAsync(request);
   if (!(await canAccessDoco(meta, me?.id ?? null))) {
     throw accessDeniedResponse(row.handle, row.owner_slug, !!me);
@@ -422,10 +422,16 @@ export async function loadDocoRouteForAdmin(
 
 /**
  * If the request is authenticated via an OAuth access token, the
- * token's `granted_doco_ids` must include `docoId` AND the token's
- * `granted_doco_roles[docoId]` (if specified) must be at least
- * `minRole`. No-op for cookie sessions or anonymous reads on public
- * docos.
+ * token must grant access to this Doco — either:
+ *   (a) `docoId` is in `granted_doco_ids` (with the per-Doco role
+ *       at least `minRole`), OR
+ *   (b) the Doco's `ownerId` is an organization in `granted_org_ids`
+ *       (with the per-org role at least `minRole`).
+ *
+ * Org grants are "live": they cover every Doco the org owns now AND
+ * any Doco created under the org after the token was minted.
+ *
+ * No-op for cookie sessions or anonymous reads on public docos.
  *
  *   - No `Authorization` header → no-op; downstream anonymous /
  *     cookie logic handles the request.
@@ -436,14 +442,14 @@ export async function loadDocoRouteForAdmin(
  *   - Bearer that doesn't even look like an OAuth token → no-op;
  *     unrecognized credentials fall through to the route's normal
  *     anonymous/cookie path.
- *   - Valid bearer but `docoId` isn't in `granted_doco_ids` → 403.
- *   - Valid bearer with this `docoId` granted but the per-Doco role
- *     scope-down is below `minRole` (e.g. token grants reader, the
- *     route needs author) → 403 with `insufficient_scope`.
+ *   - Valid bearer but neither doco nor org grant matches → 403.
+ *   - Valid bearer with a matching grant but the role scope-down is
+ *     below `minRole` (e.g. token grants reader, the route needs
+ *     author) → 403 with `insufficient_scope`.
  */
 async function enforceOauthGrant(
   request: Request,
-  docoId: string,
+  doco: { docoId: string; ownerId: string },
   minRole: DocoRole = "reader",
 ): Promise<void> {
   const bearer = extractBearer(request);
@@ -468,7 +474,13 @@ async function enforceOauthGrant(
     }
     return;
   }
-  if (!token.granted_doco_ids.includes(docoId)) {
+
+  const docoGranted = token.granted_doco_ids.includes(doco.docoId);
+  const orgGranted =
+    doco.ownerId.startsWith("organization_") &&
+    (token.granted_org_ids ?? []).includes(doco.ownerId);
+
+  if (!docoGranted && !orgGranted) {
     throw new Response(
       JSON.stringify({
         kind: "access_denied",
@@ -477,16 +489,29 @@ async function enforceOauthGrant(
       { status: 403, headers: { "Content-Type": "application/json" } },
     );
   }
-  // Per-Doco role scope-down: the granting user can have lowered the
-  // token's effective role on this Doco below the operation's
-  // requirement. Missing entry means "no scope-down" → inherits the
-  // principal's actual role, which is enforced elsewhere.
-  const grantedRole = token.granted_doco_roles?.[docoId];
-  if (grantedRole && !roleAtLeast(grantedRole as DocoRole, minRole)) {
+
+  // Role scope-down. A grant matches the request only if the granted
+  // role (per-Doco or per-org, whichever applies) is ≥ minRole. If
+  // both grants apply, the operation passes when EITHER meets the
+  // threshold — the broader grant wins. Missing entry means "no
+  // scope-down" for that path → inherits the principal's actual role,
+  // which is enforced elsewhere.
+  const docoRole = docoGranted
+    ? (token.granted_doco_roles?.[doco.docoId] as DocoRole | undefined)
+    : undefined;
+  const orgRole = orgGranted
+    ? (token.granted_org_roles?.[doco.ownerId] as DocoRole | undefined)
+    : undefined;
+
+  const docoMeets = docoGranted && (!docoRole || roleAtLeast(docoRole, minRole));
+  const orgMeets = orgGranted && (!orgRole || roleAtLeast(orgRole, minRole));
+
+  if (!docoMeets && !orgMeets) {
+    const effective = docoRole ?? orgRole ?? "no role";
     throw new Response(
       JSON.stringify({
         kind: "insufficient_scope",
-        error: `OAuth token grants '${grantedRole}' on this Doco; this operation requires '${minRole}'. Re-authorize to widen the scope.`,
+        error: `OAuth token grants '${effective}' on this Doco; this operation requires '${minRole}'. Re-authorize to widen the scope.`,
       }),
       {
         status: 403,
