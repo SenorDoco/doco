@@ -1,8 +1,6 @@
 import { makeUpdateRoute } from "~/lib/api-capture-factory.server";
 import { type DecisionPatch, updateDecision } from "~/lib/capture.server";
-import { docoPath } from "~/lib/db.server";
-import { loadDocoForAdmin, normalizeDocoParams } from "~/lib/doco-access.server";
-import { readDocoMetadata } from "~/lib/doco-metadata.server";
+import { loadDocoRouteForAdmin } from "~/lib/doco-access.server";
 
 /**
  * GET /<doco-handle>/api/decisions/<id>.json — read the Decision body.
@@ -29,14 +27,8 @@ export async function action({
   request: Request;
   params: { docoId: string; id: string };
 }) {
-  const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
   const { id } = params;
-  const { me } = await loadDocoForAdmin(request, handle);
-  const dir = docoPath(handle);
-  const meta = await readDocoMetadata(dir);
-  if (!meta) {
-    return Response.json({ error: `Doco "${handle}" not found.` }, { status: 404 });
-  }
+  const { dir, docoSlug, me, meta, ownerSlug } = await loadDocoRouteForAdmin(request, params);
   if (request.method !== "PATCH" && request.method !== "POST") {
     return Response.json({ error: "Use PATCH or POST." }, { status: 405 });
   }

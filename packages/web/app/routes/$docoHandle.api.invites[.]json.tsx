@@ -34,7 +34,7 @@ import {
   buildHumanInvitePrompt,
 } from "~/components/collaboration-invite-prompt";
 import { rootDir } from "~/lib/db.server";
-import { getDocoLevelRole, loadDocoForRead, normalizeDocoParams } from "~/lib/doco-access.server";
+import { getDocoLevelRole, loadDocoRouteForRead } from "~/lib/doco-access.server";
 import { InviteStore } from "~/lib/invite-store.server";
 
 const ROLE_VALUES = new Set<DocoRole>(["owner", "approver", "author", "reader"]);
@@ -49,17 +49,16 @@ export async function action({
   request: Request;
   params: { docoId: string };
 }) {
-  const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
   if (request.method !== "POST") {
     return Response.json({ error: "method_not_allowed" }, { status: 405 });
   }
 
-  // loadDocoForRead resolves slug aliases (308s if needed), gates the
+  // loadDocoRouteForRead resolves slug aliases (308s if needed), gates the
   // caller against the Doco's visibility, and returns the canonical
   // metadata. Any user with read access can mint an invite — the
   // permission boundary is "you can read this Doco" rather than
   // "you can admin it," because invites are how memberships grow.
-  const { meta, me } = await loadDocoForRead(request, handle);
+  const { meta, me } = await loadDocoRouteForRead(request, params);
   if (!me) {
     // canAccessDoco may have let an anonymous caller pass for a public
     // Doco; minting invites still requires a Principal so we can

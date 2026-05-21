@@ -13,7 +13,7 @@ import { shouldStrikeActivityTarget } from "~/lib/activity-feed";
 import { type AuditOp, readAuditEvents } from "~/lib/audit-log.server";
 import { cn } from "~/lib/cn";
 import { docoPath } from "~/lib/db.server";
-import { loadDocoForRead, normalizeDocoParams } from "~/lib/doco-access.server";
+import { loadDocoRouteForRead } from "~/lib/doco-access.server";
 
 const VALID_OPS: ReadonlySet<string> = new Set([
   "entity.create",
@@ -23,8 +23,8 @@ const VALID_OPS: ReadonlySet<string> = new Set([
   "edge.add",
 ]);
 
-export function meta({ params }: { params: { docoId: string } }) {
-  return [{ title: `Activity · ${params.docoId} · Doco` }];
+export function meta({ params }: { params: { docoHandle?: string; docoId?: string } }) {
+  return [{ title: `Activity · ${params.docoHandle ?? params.docoId ?? ""} · Doco` }];
 }
 
 export async function loader({
@@ -34,8 +34,7 @@ export async function loader({
   request: Request;
   params: { docoId: string };
 }) {
-  const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
-  const { me } = await loadDocoForRead(request, handle);
+  const { docoSlug, handle, me, ownerSlug } = await loadDocoRouteForRead(request, params);
   const dir = docoPath(handle);
 
   const url = new URL(request.url);

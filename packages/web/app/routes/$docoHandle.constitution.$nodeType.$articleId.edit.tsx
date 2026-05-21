@@ -1,5 +1,5 @@
 // /<doco>/constitution/<nodeType>/<id>/edit — modify or abandon an
-// existing constitution article. Owner-only (loadDocoForAdmin gates
+// existing constitution article. Owner-only (loadDocoRouteForAdmin gates
 // both loader + action).
 //
 // POST intent=modify  → captures a new article with `supersedes: <id>`
@@ -19,8 +19,7 @@ import {
   transitionArticleLifecycle,
 } from "~/lib/capture.server";
 import { deriveArticleSummary } from "~/lib/constitution-copy";
-import { docoPath } from "~/lib/db.server";
-import { loadDocoForAdmin, normalizeDocoParams } from "~/lib/doco-access.server";
+import { loadDocoRouteForAdmin } from "~/lib/doco-access.server";
 import { loadHostConfig } from "~/lib/host";
 
 type NodeType = "guidance_article" | "node_authoring_article";
@@ -45,8 +44,8 @@ export async function loader({
 }) {
   const nodeType = parseNodeType(params.nodeType);
   if (!nodeType) throw new Response("Unknown article kind.", { status: 404 });
-  const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
-  const ctx = await loadDocoForAdmin(request, handle);
+  const ctx = await loadDocoRouteForAdmin(request, params);
+  const { docoSlug, handle, ownerSlug } = ctx;
   const result = await loadArticleForEdit({
     scope: "doco",
     scopeId: ctx.meta.docoId,
@@ -79,8 +78,8 @@ export async function action({
 }) {
   const nodeType = parseNodeType(params.nodeType);
   if (!nodeType) throw new Response("Unknown article kind.", { status: 404 });
-  const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
-  const ctx = await loadDocoForAdmin(request, handle);
+  const ctx = await loadDocoRouteForAdmin(request, params);
+  const { docoSlug, handle, ownerSlug } = ctx;
   const form = await request.formData();
   const intent = String(form.get("intent") ?? "");
 
@@ -103,7 +102,7 @@ export async function action({
     const body_md = String(form.get("body_md") ?? "").trim();
     const summary = deriveArticleSummary(body_md);
     if (!summary) return Response.json({ error: "Article is required." }, { status: 400 });
-    const docoDir = docoPath(handle);
+    const docoDir = ctx.dir;
     const docoHost = new URL(request.url).origin;
     const supersedes = params.articleId;
 
@@ -180,8 +179,8 @@ export async function action({
   return Response.json({ error: "Unknown intent." }, { status: 400 });
 }
 
-export function meta({ params }: { params: { docoId: string } }) {
-  return [{ title: `Modify article · ${params.docoId} · Doco` }];
+export function meta({ params }: { params: { docoHandle?: string; docoId?: string } }) {
+  return [{ title: `Modify article · ${params.docoHandle ?? params.docoId ?? ""} · Doco` }];
 }
 
 export default function EditArticle({

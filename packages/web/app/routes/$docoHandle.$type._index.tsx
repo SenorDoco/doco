@@ -12,7 +12,7 @@ import { Breadcrumb, docoBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
 import { SiteHeader } from "~/components/site-header";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "~/components/table";
-import { loadDocoForRead, normalizeDocoParams } from "~/lib/doco-access.server";
+import { loadDocoRouteForRead } from "~/lib/doco-access.server";
 import { loadHostConfig } from "~/lib/host";
 import { getCurrentPrincipal } from "~/lib/session";
 
@@ -25,12 +25,12 @@ export async function loader({
   params: { docoId: string; type: string };
   request: Request;
 }) {
-  const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
   const { type } = params;
   if (!KNOWN.has(type)) {
     throw new Response("Unknown type", { status: 404 });
   }
-  const ctx = await loadDocoForRead(request, handle);
+  const ctx = await loadDocoRouteForRead(request, params);
+  const { ownerSlug, docoSlug, handle } = ctx;
   return withClient(async (c) => {
     const table = TABLE_BY_TYPE[type] ?? type;
     const rows = (
@@ -79,8 +79,12 @@ const TABLE_BY_TYPE: Record<string, string> = {
   state: "states",
 };
 
-export function meta({ params }: { params: { docoId: string; type: string } }) {
-  return [{ title: `${params.type}s · ${params.docoId} · Doco` }];
+export function meta({
+  params,
+}: {
+  params: { docoHandle?: string; docoId?: string; type: string };
+}) {
+  return [{ title: `${params.type}s · ${params.docoHandle ?? params.docoId ?? ""} · Doco` }];
 }
 
 export default function ListByTypeInDoco({

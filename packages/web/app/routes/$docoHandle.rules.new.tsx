@@ -8,9 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/com
 import { SingleColumnPageMain } from "~/components/page-main";
 import { SiteHeader } from "~/components/site-header";
 import { captureRule } from "~/lib/capture.server";
-import { docoPath } from "~/lib/db.server";
-import { loadDocoForAdmin, normalizeDocoParams } from "~/lib/doco-access.server";
-import { readDocoMetadata } from "~/lib/doco-metadata.server";
+import { loadDocoRouteForAdmin } from "~/lib/doco-access.server";
 import { loadHostConfig } from "~/lib/host";
 
 interface IntentOption {
@@ -25,8 +23,7 @@ export async function loader({
   request: Request;
   params: { docoId: string };
 }) {
-  const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
-  const { meta, me } = await loadDocoForAdmin(request, handle);
+  const { docoSlug, handle, me, meta, ownerSlug } = await loadDocoRouteForAdmin(request, params);
   const intents = await withClient(async (c) => {
     const rows = (
       await c.query<IntentOption>(
@@ -56,13 +53,10 @@ export async function action({
   request: Request;
   params: { docoId: string };
 }) {
-  const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
-  const { me } = await loadDocoForAdmin(request, handle);
-  const dir = docoPath(handle);
-  const meta = await readDocoMetadata(dir);
-  if (!meta) {
-    return Response.json({ error: "Doco not found." }, { status: 404 });
-  }
+  const { dir, docoSlug, handle, me, meta, ownerSlug } = await loadDocoRouteForAdmin(
+    request,
+    params,
+  );
   const form = await request.formData();
   const summary = String(form.get("summary") ?? "").trim();
   const predicate = String(form.get("predicate") ?? "").trim();
@@ -98,8 +92,8 @@ export async function action({
   return redirect(`/${handle}/rule/${result.id}`);
 }
 
-export function meta({ params }: { params: { docoId: string } }) {
-  return [{ title: `New rule · ${params.docoId} · Doco` }];
+export function meta({ params }: { params: { docoHandle?: string; docoId?: string } }) {
+  return [{ title: `New rule · ${params.docoHandle ?? params.docoId ?? ""} · Doco` }];
 }
 
 export default function NewRule({

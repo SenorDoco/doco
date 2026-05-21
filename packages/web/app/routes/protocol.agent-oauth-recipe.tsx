@@ -256,6 +256,21 @@ GET ${baseUrl}/<handle>/                          # HTML home; no JSON form
 GET ${baseUrl}/<handle>/status.json               # counts + freshness (root, not /api/)
 \`\`\`
 
+**Create a Doco in one request:**
+
+\`\`\`
+POST ${baseUrl}/api/v1/docos.json
+Content-Type: application/json
+Authorization: Bearer doco_at_<your-access-token>
+
+{
+  "template_handle": "generic",
+  "org_id": "<organization-id>",
+  "name": "bpms",
+  "privacy": "private"
+}
+\`\`\`
+
 **List + capture per node type** — types are \`decisions\`,
 \`rules\`, \`intents\`, \`actions\`, \`logs\`, \`evals\`, \`references\`,
 \`states\`, \`principals\`, \`invites\`, \`audit\`:

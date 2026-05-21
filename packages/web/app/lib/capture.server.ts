@@ -485,10 +485,12 @@ async function applyListOp(
     const merged = [...current];
     const addedNames: string[] = [];
     for (let i = 0; i < r.ids.length; i++) {
-      const id = r.ids[i]!;
+      const id = r.ids[i];
+      const name = patch.add[i];
+      if (!id || !name) continue;
       if (!merged.includes(id)) {
         merged.push(id);
-        addedNames.push(patch.add[i]!);
+        addedNames.push(name);
       }
     }
     if (addedNames.length > 0) {
@@ -503,7 +505,9 @@ async function applyListOp(
     const current = Array.isArray(fm[fieldKey]) ? (fm[fieldKey] as string[]) : [];
     const removedNames: string[] = [];
     for (let i = 0; i < r.ids.length; i++) {
-      if (current.includes(r.ids[i]!)) removedNames.push(patch.remove[i]!);
+      const id = r.ids[i];
+      const name = patch.remove[i];
+      if (id && name && current.includes(id)) removedNames.push(name);
     }
     const filtered = current.filter((s) => !r.ids.includes(s));
     if (filtered.length !== current.length) {
@@ -524,7 +528,7 @@ export async function resolvePrincipalUsername(username: string): Promise<string
   try {
     return await withClient(async (c) => {
       const r = await c.query<{ id: string }>(
-        `SELECT id FROM principals WHERE username = $1 LIMIT 1`,
+        "SELECT id FROM principals WHERE username = $1 LIMIT 1",
         [username],
       );
       return r.rows[0]?.id ?? null;
@@ -823,7 +827,7 @@ export async function updateDecision(
   if (patch.born_from !== undefined) {
     if (patch.born_from === null || patch.born_from === "") {
       if ("born_from" in fm) {
-        delete fm.born_from;
+        fm.born_from = undefined;
         changed.push("born_from");
         ops.push({ kind: "cleared", field: "born_from" });
       }
@@ -836,7 +840,7 @@ export async function updateDecision(
   if (patch.superseded_by !== undefined) {
     if (patch.superseded_by === null || patch.superseded_by === "") {
       if ("superseded_by" in fm) {
-        delete fm.superseded_by;
+        fm.superseded_by = undefined;
         changed.push("superseded_by");
         ops.push({ kind: "cleared", field: "superseded_by" });
       }
@@ -1034,7 +1038,7 @@ export async function updateEntity(opts: {
   if (patch.born_from !== undefined) {
     if (patch.born_from === null || patch.born_from === "") {
       if ("born_from" in fm) {
-        delete fm.born_from;
+        fm.born_from = undefined;
         changed.push("born_from");
         ops.push({ kind: "cleared", field: "born_from" });
       }
@@ -1047,7 +1051,7 @@ export async function updateEntity(opts: {
   if (patch.superseded_by !== undefined) {
     if (patch.superseded_by === null || patch.superseded_by === "") {
       if ("superseded_by" in fm) {
-        delete fm.superseded_by;
+        fm.superseded_by = undefined;
         changed.push("superseded_by");
         ops.push({ kind: "cleared", field: "superseded_by" });
       }
@@ -1969,6 +1973,125 @@ export interface ArticleCaptureExtras {
   supersedes?: string;
 }
 
+type ArticleScope = "doco" | "org";
+type ArticleNodeType = "guidance_article" | "node_authoring_article";
+
+interface ArticlePayload {
+  id: string;
+  nodeType: ArticleNodeType;
+  summary: string;
+  lifecycle: string;
+  fm: Record<string, unknown>;
+  body: string;
+  authorId: string;
+  createdById: string;
+  now: string;
+}
+
+function articleScopeField(scope: ArticleScope, scopeId: string): Record<string, string> {
+  return scope === "doco" ? { doco_id: scopeId } : { org_id: scopeId };
+}
+
+function articleExtrasFm(extras: ArticleCaptureExtras): Record<string, string> {
+  return extras.supersedes ? { supersedes: extras.supersedes } : {};
+}
+
+function articleAuditAfter(payload: ArticlePayload, extras: ArticleCaptureExtras) {
+  return { summary: payload.summary, ...articleExtrasFm(extras) };
+}
+
+async function buildGuidanceArticlePayload(
+  scope: ArticleScope,
+  scopeId: string,
+  draft: GuidanceArticleDraft,
+  extras: ArticleCaptureExtras,
+): Promise<ArticlePayload | CaptureError> {
+  if (!draft.summary?.trim()) return { error: "summary is required." };
+  const author = await resolveArticleAuthor(draft);
+  if (typeof author !== "string") return author;
+
+  const id = `guidance_article_${generateUlid()}`;
+  const summary = draft.summary.trim();
+  const now = new Date().toISOString();
+  const lifecycle = draft.lifecycle ?? "active";
+  const createdById = draft.created_by_id ?? author;
+  const fm: Record<string, unknown> = {
+    id,
+    ...articleScopeField(scope, scopeId),
+    node_type: "guidance_article",
+    article_type: "guidance",
+    summary,
+    ...articleExtrasFm(extras),
+    created_at: now,
+    created_by: createdById,
+    lifecycle,
+  };
+
+  return {
+    id,
+    nodeType: "guidance_article",
+    summary,
+    lifecycle,
+    fm,
+    body: draft.body_md?.trim() || summary,
+    authorId: author,
+    createdById,
+    now,
+  };
+}
+
+async function buildNodeAuthoringArticlePayload(
+  scope: ArticleScope,
+  scopeId: string,
+  draft: NodeAuthoringArticleDraft,
+  extras: ArticleCaptureExtras,
+): Promise<ArticlePayload | CaptureError> {
+  if (!draft.summary?.trim()) return { error: "summary is required." };
+  if (draft.evaluation_kind !== "deterministic" && draft.evaluation_kind !== "probabilistic") {
+    return { error: "evaluation_kind must be deterministic or probabilistic." };
+  }
+  const author = await resolveArticleAuthor(draft);
+  if (typeof author !== "string") return author;
+  const predicate = normalizeNodeAuthoringPredicate(draft);
+  if ("error" in predicate) return predicate;
+
+  const id = `node_authoring_article_${generateUlid()}`;
+  const summary = draft.summary.trim();
+  const now = new Date().toISOString();
+  const lifecycle = draft.lifecycle ?? "active";
+  const createdById = draft.created_by_id ?? author;
+  const firesWhen = Array.isArray(draft.fires_when_node_lifecycle)
+    ? draft.fires_when_node_lifecycle.filter((v) => typeof v === "string" && v.length > 0)
+    : [];
+  const fm: Record<string, unknown> = {
+    id,
+    ...articleScopeField(scope, scopeId),
+    node_type: "node_authoring_article",
+    article_type: "node_authoring",
+    evaluation_kind: draft.evaluation_kind,
+    summary,
+    predicate,
+    ...(firesWhen.length > 0 ? { fires_when_node_lifecycle: firesWhen } : {}),
+    on_violation: draft.on_violation ?? "block",
+    ...articleExtrasFm(extras),
+    created_at: now,
+    created_by: createdById,
+    lifecycle,
+  };
+
+  return {
+    id,
+    nodeType: "node_authoring_article",
+    summary,
+    lifecycle,
+    fm,
+    body: draft.body_md?.trim() ?? "",
+    authorId: author,
+    createdById,
+    now,
+  };
+}
+
 export async function captureGuidanceArticle(
   docoDir: string,
   docoId: string,
@@ -1979,48 +2102,32 @@ export async function captureGuidanceArticle(
   extras: ArticleCaptureExtras = {},
 ): Promise<CaptureResult | CaptureError> {
   const startedAt = performance.now();
-  if (!draft.summary?.trim()) return { error: "summary is required." };
-  const author = await resolveArticleAuthor(draft);
-  if (typeof author !== "string") return author;
-
-  const id = `guidance_article_${generateUlid()}`;
-  const summary = draft.summary.trim();
-  const now = new Date().toISOString();
-  const fm: Record<string, unknown> = {
-    id,
-    doco_id: docoId,
-    node_type: "guidance_article",
-    article_type: "guidance",
-    summary,
-    ...(extras.supersedes ? { supersedes: extras.supersedes } : {}),
-    created_at: now,
-    created_by: draft.created_by_id ?? author,
-    lifecycle: draft.lifecycle ?? "active",
-  };
+  const payload = await buildGuidanceArticlePayload("doco", docoId, draft, extras);
+  if ("error" in payload) return payload;
 
   await persistEntity({
-    nodeType: "guidance_article",
-    id,
+    nodeType: payload.nodeType,
+    id: payload.id,
     docoId,
-    fm,
-    body: draft.body_md?.trim() || summary,
+    fm: payload.fm,
+    body: payload.body,
   });
   emitAuditForCreate({
     docoDir,
     docoId,
-    actorId: draft.created_by_id ?? author,
-    entity_type: "guidance_article",
-    entity_id: id,
-    summary,
+    actorId: payload.createdById,
+    entity_type: payload.nodeType,
+    entity_id: payload.id,
+    summary: payload.summary,
   });
-  await reindexAndScheduleAttach(docoDir, docoId, id, {
+  await reindexAndScheduleAttach(docoDir, docoId, payload.id, {
     docoDir,
     ownerSlug,
     docoSlug,
-    entityId: id,
-    entityType: "guidance_article",
-    entitySummary: summary,
-    alreadyReferenced: new Set([author]),
+    entityId: payload.id,
+    entityType: payload.nodeType,
+    entitySummary: payload.summary,
+    alreadyReferenced: new Set([payload.authorId]),
   });
 
   const duration_ms = Math.round(performance.now() - startedAt);
@@ -2028,17 +2135,17 @@ export async function captureGuidanceArticle(
     docoId,
     ownerSlug,
     docoSlug,
-    nodeType: "guidance_article",
-    id,
-    summary,
+    nodeType: payload.nodeType,
+    id: payload.id,
+    summary: payload.summary,
     docoHost,
-    ops: [{ kind: "added", summary }],
+    ops: [{ kind: "added", summary: payload.summary }],
     duration_ms,
   });
   return {
     ok: true,
-    id,
-    path: syntheticPath("guidance_article", id),
+    id: payload.id,
+    path: syntheticPath(payload.nodeType, payload.id),
     footer_lines,
     duration_ms,
   };
@@ -2054,60 +2161,32 @@ export async function captureNodeAuthoringArticle(
   extras: ArticleCaptureExtras = {},
 ): Promise<CaptureResult | CaptureError> {
   const startedAt = performance.now();
-  if (!draft.summary?.trim()) return { error: "summary is required." };
-  if (draft.evaluation_kind !== "deterministic" && draft.evaluation_kind !== "probabilistic") {
-    return { error: "evaluation_kind must be deterministic or probabilistic." };
-  }
-  const author = await resolveArticleAuthor(draft);
-  if (typeof author !== "string") return author;
-  const predicate = normalizeNodeAuthoringPredicate(draft);
-  if ("error" in predicate) return predicate;
-
-  const id = `node_authoring_article_${generateUlid()}`;
-  const summary = draft.summary.trim();
-  const now = new Date().toISOString();
-  const firesWhen = Array.isArray(draft.fires_when_node_lifecycle)
-    ? draft.fires_when_node_lifecycle.filter((v) => typeof v === "string" && v.length > 0)
-    : [];
-  const fm: Record<string, unknown> = {
-    id,
-    doco_id: docoId,
-    node_type: "node_authoring_article",
-    article_type: "node_authoring",
-    evaluation_kind: draft.evaluation_kind,
-    summary,
-    predicate,
-    ...(firesWhen.length > 0 ? { fires_when_node_lifecycle: firesWhen } : {}),
-    on_violation: draft.on_violation ?? "block",
-    ...(extras.supersedes ? { supersedes: extras.supersedes } : {}),
-    created_at: now,
-    created_by: draft.created_by_id ?? author,
-    lifecycle: draft.lifecycle ?? "active",
-  };
+  const payload = await buildNodeAuthoringArticlePayload("doco", docoId, draft, extras);
+  if ("error" in payload) return payload;
 
   await persistEntity({
-    nodeType: "node_authoring_article",
-    id,
+    nodeType: payload.nodeType,
+    id: payload.id,
     docoId,
-    fm,
-    body: draft.body_md?.trim() ?? "",
+    fm: payload.fm,
+    body: payload.body,
   });
   emitAuditForCreate({
     docoDir,
     docoId,
-    actorId: draft.created_by_id ?? author,
-    entity_type: "node_authoring_article",
-    entity_id: id,
-    summary,
+    actorId: payload.createdById,
+    entity_type: payload.nodeType,
+    entity_id: payload.id,
+    summary: payload.summary,
   });
-  await reindexAndScheduleAttach(docoDir, docoId, id, {
+  await reindexAndScheduleAttach(docoDir, docoId, payload.id, {
     docoDir,
     ownerSlug,
     docoSlug,
-    entityId: id,
-    entityType: "node_authoring_article",
-    entitySummary: summary,
-    alreadyReferenced: new Set([author]),
+    entityId: payload.id,
+    entityType: payload.nodeType,
+    entitySummary: payload.summary,
+    alreadyReferenced: new Set([payload.authorId]),
   });
 
   const duration_ms = Math.round(performance.now() - startedAt);
@@ -2115,17 +2194,17 @@ export async function captureNodeAuthoringArticle(
     docoId,
     ownerSlug,
     docoSlug,
-    nodeType: "node_authoring_article",
-    id,
-    summary,
+    nodeType: payload.nodeType,
+    id: payload.id,
+    summary: payload.summary,
     docoHost,
-    ops: [{ kind: "added", summary }],
+    ops: [{ kind: "added", summary: payload.summary }],
     duration_ms,
   });
   return {
     ok: true,
-    id,
-    path: syntheticPath("node_authoring_article", id),
+    id: payload.id,
+    path: syntheticPath(payload.nodeType, payload.id),
     footer_lines,
     duration_ms,
   };
@@ -2146,10 +2225,7 @@ export interface OrgArticleCaptureResult {
 }
 
 /** Optional fields applied during modify (creates new + supersedes old). */
-interface OrgArticleExtras {
-  /** When set, the new row carries `supersedes: <oldId>` in its frontmatter. */
-  supersedes?: string;
-}
+type OrgArticleExtras = ArticleCaptureExtras;
 
 function emitOrgAuditEvent(opts: {
   orgId: string;
@@ -2179,52 +2255,51 @@ function emitOrgAuditEvent(opts: {
   }
 }
 
+async function insertOrgArticle(orgId: string, payload: ArticlePayload): Promise<void> {
+  const table =
+    payload.nodeType === "guidance_article"
+      ? "org_guidance_articles"
+      : "org_node_authoring_articles";
+  await withClient(async (c) => {
+    await c.query(
+      `INSERT INTO ${table}
+         (id, org_id, summary, lifecycle, body_md, raw_yaml, created_at, created_by, updated_at, updated_by)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $7, $8)`,
+      [
+        payload.id,
+        orgId,
+        payload.summary,
+        payload.lifecycle,
+        payload.body,
+        JSON.stringify(payload.fm),
+        payload.now,
+        payload.createdById,
+      ],
+    );
+  });
+}
+
 export async function captureOrgGuidanceArticle(
   orgId: string,
   draft: GuidanceArticleDraft,
   extras: OrgArticleExtras = {},
 ): Promise<OrgArticleCaptureResult | CaptureError> {
   const startedAt = performance.now();
-  if (!draft.summary?.trim()) return { error: "summary is required." };
-  const author = await resolveArticleAuthor(draft);
-  if (typeof author !== "string") return author;
+  const payload = await buildGuidanceArticlePayload("org", orgId, draft, extras);
+  if ("error" in payload) return payload;
 
-  const id = `guidance_article_${generateUlid()}`;
-  const summary = draft.summary.trim();
-  const now = new Date().toISOString();
-  const lifecycle = draft.lifecycle ?? "active";
-  const fm: Record<string, unknown> = {
-    id,
-    org_id: orgId,
-    node_type: "guidance_article",
-    article_type: "guidance",
-    summary,
-    ...(extras.supersedes ? { supersedes: extras.supersedes } : {}),
-    created_at: now,
-    created_by: draft.created_by_id ?? author,
-    lifecycle,
-  };
-  const body = draft.body_md?.trim() || summary;
-
-  await withClient(async (c) => {
-    await c.query(
-      `INSERT INTO org_guidance_articles
-         (id, org_id, summary, lifecycle, body_md, raw_yaml, created_at, created_by, updated_at, updated_by)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $7, $8)`,
-      [id, orgId, summary, lifecycle, body, JSON.stringify(fm), now, draft.created_by_id ?? author],
-    );
-  });
+  await insertOrgArticle(orgId, payload);
 
   emitOrgAuditEvent({
     orgId,
-    actorId: draft.created_by_id ?? author ?? null,
-    entity_type: "guidance_article",
-    entity_id: id,
+    actorId: payload.createdById,
+    entity_type: payload.nodeType,
+    entity_id: payload.id,
     op: "entity.create",
-    after: { summary, ...(extras.supersedes ? { supersedes: extras.supersedes } : {}) },
+    after: articleAuditAfter(payload, extras),
   });
 
-  return { ok: true, id, duration_ms: Math.round(performance.now() - startedAt) };
+  return { ok: true, id: payload.id, duration_ms: Math.round(performance.now() - startedAt) };
 }
 
 export async function captureOrgNodeAuthoringArticle(
@@ -2233,58 +2308,21 @@ export async function captureOrgNodeAuthoringArticle(
   extras: OrgArticleExtras = {},
 ): Promise<OrgArticleCaptureResult | CaptureError> {
   const startedAt = performance.now();
-  if (!draft.summary?.trim()) return { error: "summary is required." };
-  if (draft.evaluation_kind !== "deterministic" && draft.evaluation_kind !== "probabilistic") {
-    return { error: "evaluation_kind must be deterministic or probabilistic." };
-  }
-  const author = await resolveArticleAuthor(draft);
-  if (typeof author !== "string") return author;
-  const predicate = normalizeNodeAuthoringPredicate(draft);
-  if ("error" in predicate) return predicate;
+  const payload = await buildNodeAuthoringArticlePayload("org", orgId, draft, extras);
+  if ("error" in payload) return payload;
 
-  const id = `node_authoring_article_${generateUlid()}`;
-  const summary = draft.summary.trim();
-  const now = new Date().toISOString();
-  const lifecycle = draft.lifecycle ?? "active";
-  const firesWhen = Array.isArray(draft.fires_when_node_lifecycle)
-    ? draft.fires_when_node_lifecycle.filter((v) => typeof v === "string" && v.length > 0)
-    : [];
-  const fm: Record<string, unknown> = {
-    id,
-    org_id: orgId,
-    node_type: "node_authoring_article",
-    article_type: "node_authoring",
-    evaluation_kind: draft.evaluation_kind,
-    summary,
-    predicate,
-    ...(firesWhen.length > 0 ? { fires_when_node_lifecycle: firesWhen } : {}),
-    on_violation: draft.on_violation ?? "block",
-    ...(extras.supersedes ? { supersedes: extras.supersedes } : {}),
-    created_at: now,
-    created_by: draft.created_by_id ?? author,
-    lifecycle,
-  };
-  const body = draft.body_md?.trim() ?? "";
-
-  await withClient(async (c) => {
-    await c.query(
-      `INSERT INTO org_node_authoring_articles
-         (id, org_id, summary, lifecycle, body_md, raw_yaml, created_at, created_by, updated_at, updated_by)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $7, $8)`,
-      [id, orgId, summary, lifecycle, body, JSON.stringify(fm), now, draft.created_by_id ?? author],
-    );
-  });
+  await insertOrgArticle(orgId, payload);
 
   emitOrgAuditEvent({
     orgId,
-    actorId: draft.created_by_id ?? author ?? null,
-    entity_type: "node_authoring_article",
-    entity_id: id,
+    actorId: payload.createdById,
+    entity_type: payload.nodeType,
+    entity_id: payload.id,
     op: "entity.create",
-    after: { summary, ...(extras.supersedes ? { supersedes: extras.supersedes } : {}) },
+    after: articleAuditAfter(payload, extras),
   });
 
-  return { ok: true, id, duration_ms: Math.round(performance.now() - startedAt) };
+  return { ok: true, id: payload.id, duration_ms: Math.round(performance.now() - startedAt) };
 }
 
 /**

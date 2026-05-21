@@ -12,8 +12,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/com
 import { CollaborationInvitePrompt } from "~/components/collaboration-invite-prompt";
 import { SingleColumnPageMain } from "~/components/page-main";
 import { SiteHeader } from "~/components/site-header";
+import { WizardStepper } from "~/components/wizard-stepper";
 import { rootDir } from "~/lib/db.server";
-import { loadDocoForAdmin, normalizeDocoParams } from "~/lib/doco-access.server";
+import { loadDocoRouteForAdmin } from "~/lib/doco-access.server";
 import { InviteStore } from "~/lib/invite-store.server";
 
 export async function loader({
@@ -23,8 +24,7 @@ export async function loader({
   request: Request;
   params: { docoId: string };
 }) {
-  const { handle, ownerSlug } = await normalizeDocoParams(params);
-  const { meta, me } = await loadDocoForAdmin(request, handle);
+  const { handle, me, meta, ownerSlug } = await loadDocoRouteForAdmin(request, params);
 
   const store = InviteStore.forDoco(rootDir());
   const invite = await store.issueInvite(
@@ -43,7 +43,7 @@ export async function loader({
 }
 
 export function meta() {
-  return [{ title: "Hand it to your AI agent · Doco" }];
+  return [{ title: "Bootstrap and collaborate · Doco" }];
 }
 
 export default function OnboardingAgent({
@@ -57,24 +57,33 @@ export default function OnboardingAgent({
       <SiteHeader mode="host" me={me} />
       <SingleColumnPageMain className="py-8 space-y-4">
         <Breadcrumb
-          items={docoBreadcrumb({ ownerSlug, handle, pageLabel: "Invite collaborators" })}
+          items={docoBreadcrumb({ ownerSlug, handle, pageLabel: "Bootstrap and collaborate" })}
         />
+        <WizardStepper current={3} />
         <Card>
           <CardHeader>
-            <CardTitle>Invite collaborators</CardTitle>
+            <CardTitle>Bootstrap and collaborate</CardTitle>
             <CardDescription>
-              Two prompts — one for a human collaborator (sign-in + Accept in a browser), one for an
-              AI agent (OAuth via Device Flow or localhost-loopback; recipe at
-              /protocol/agent-oauth-recipe).
+              Invite people, connect agents, and let each collaborator bootstrap from the Doco's
+              constitution before they work.
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-2">
+          <CardContent className="space-y-4">
+            <ul className="ml-5 list-disc space-y-2 text-sm">
+              <li>Share the human invite with teammates who should join this Doco.</li>
+              <li>Paste the agent prompt into an AI agent that should collaborate on the work.</li>
+              <li>
+                Agents use OAuth, then fetch the bootstrap manifest so they can read the relevant
+                org and Doco constitutions before writing nodes.
+              </li>
+            </ul>
             <CollaborationInvitePrompt
               inviteUrl={inviteUrl}
               docoUrl={docoUrl}
               recipeUrl={recipeUrl}
               deviceUrl={deviceUrl}
               continueTo={`/${handle}`}
+              continueLabel="Open your Doco ->"
             />
           </CardContent>
         </Card>

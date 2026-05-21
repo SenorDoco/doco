@@ -1,6 +1,4 @@
-import { cosineSimilarity, getAllEmbeddingsForDoco, withClient } from "@doco/db";
-import { globalPageRank } from "@doco/index";
-import type { PoolClient } from "pg";
+import { withClient } from "@doco/db";
 import type { ReactNode } from "react";
 // Per-Doco search — vector-only ranker (ADR-052, supersedes ADR-030)
 // + left-sidebar filters for lifecycle / node type.
@@ -15,7 +13,7 @@ import { Breadcrumb, docoBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
 import { NodeTypeIcon } from "~/components/node-type-icon";
 import { SiteHeader } from "~/components/site-header";
-import { loadDocoForRead, normalizeDocoParams } from "~/lib/doco-access.server";
+import { loadDocoRouteForRead } from "~/lib/doco-access.server";
 import { getDocoEmbeddingProvider } from "~/lib/embedding-provider.server";
 import { loadHostConfig } from "~/lib/host";
 import { lifecycleColor, nodeTypePlural } from "~/lib/node-colors";
@@ -24,8 +22,9 @@ import {
   type SearchFilters,
   computeFilterFacets,
   parseSearchFilters,
-  resolveFilteredCandidates,
 } from "~/lib/search-filters.server";
+import type { SearchHit } from "~/lib/search.server";
+import { loadFilteredSearchHits, rankSearchEmbeddings } from "~/lib/search.server";
 import { getCurrentPrincipal } from "~/lib/session";
 
 function relativeTimeIso(iso: string | null): string {
@@ -42,305 +41,11 @@ function relativeTimeIso(iso: string | null): string {
   return `${Math.floor(h / 24)}d ago`;
 }
 
-interface Hit {
-  id: string;
-  node_type: string;
-  summary?: string;
-  name: string | null;
-  lifecycle: string | null;
-  created_at: string | null;
-  gpr: number;
-  vector_score: number | null;
-}
-
-/**
- * Per-node-type hydration. PG plural names; principal/organization have
- * different "name-ish" columns.
- */
-interface TypeSpec {
-  table: string;
-  nodeType: string;
-  selectExtra: string;
-  /** Build the Hit shape from a row. */
-  toHit(row: Record<string, unknown>, vectorScore: number | null): Omit<Hit, "gpr">;
-  /** Doco-scoped or host-level? */
-  hostLevel: boolean;
-}
-
-const TYPE_SPECS: TypeSpec[] = [
-  {
-    table: "decisions",
-    nodeType: "decision",
-    selectExtra: "summary, lifecycle, created_at",
-    hostLevel: false,
-    toHit: (r, s) => ({
-      id: String(r.id),
-      node_type: "decision",
-      summary: (r.summary as string) ?? "",
-      name: null,
-      lifecycle: (r.lifecycle as string) ?? null,
-      created_at: (r.created_at as string) ?? null,
-      vector_score: s,
-    }),
-  },
-  {
-    table: "intents",
-    nodeType: "intent",
-    selectExtra: "summary, lifecycle, created_at",
-    hostLevel: false,
-    toHit: (r, s) => ({
-      id: String(r.id),
-      node_type: "intent",
-      summary: (r.summary as string) ?? "",
-      name: null,
-      lifecycle: (r.lifecycle as string) ?? null,
-      created_at: (r.created_at as string) ?? null,
-      vector_score: s,
-    }),
-  },
-  {
-    table: "rules",
-    nodeType: "rule",
-    selectExtra: "summary, lifecycle, created_at",
-    hostLevel: false,
-    toHit: (r, s) => ({
-      id: String(r.id),
-      node_type: "rule",
-      summary: (r.summary as string) ?? "",
-      name: null,
-      lifecycle: (r.lifecycle as string) ?? null,
-      created_at: (r.created_at as string) ?? null,
-      vector_score: s,
-    }),
-  },
-  {
-    table: "guidance_articles",
-    nodeType: "guidance_article",
-    selectExtra: "summary, lifecycle, created_at",
-    hostLevel: false,
-    toHit: (r, s) => ({
-      id: String(r.id),
-      node_type: "guidance_article",
-      summary: (r.summary as string) ?? "",
-      name: null,
-      lifecycle: (r.lifecycle as string) ?? null,
-      created_at: (r.created_at as string) ?? null,
-      vector_score: s,
-    }),
-  },
-  {
-    table: "node_authoring_articles",
-    nodeType: "node_authoring_article",
-    selectExtra: "summary, lifecycle, created_at",
-    hostLevel: false,
-    toHit: (r, s) => ({
-      id: String(r.id),
-      node_type: "node_authoring_article",
-      summary: (r.summary as string) ?? "",
-      name: null,
-      lifecycle: (r.lifecycle as string) ?? null,
-      created_at: (r.created_at as string) ?? null,
-      vector_score: s,
-    }),
-  },
-  {
-    table: "actions",
-    nodeType: "action",
-    selectExtra: "summary, lifecycle, created_at",
-    hostLevel: false,
-    toHit: (r, s) => ({
-      id: String(r.id),
-      node_type: "action",
-      summary: (r.summary as string) ?? "",
-      name: null,
-      lifecycle: (r.lifecycle as string) ?? null,
-      created_at: (r.created_at as string) ?? null,
-      vector_score: s,
-    }),
-  },
-  {
-    table: "logs",
-    nodeType: "log",
-    selectExtra: "summary, lifecycle, created_at",
-    hostLevel: false,
-    toHit: (r, s) => ({
-      id: String(r.id),
-      node_type: "log",
-      summary: (r.summary as string) ?? "",
-      name: null,
-      lifecycle: (r.lifecycle as string) ?? null,
-      created_at: (r.created_at as string) ?? null,
-      vector_score: s,
-    }),
-  },
-  {
-    table: "reference_entities",
-    nodeType: "reference",
-    selectExtra: "summary, lifecycle, created_at",
-    hostLevel: false,
-    toHit: (r, s) => ({
-      id: String(r.id),
-      node_type: "reference",
-      summary: (r.summary as string) ?? "",
-      name: null,
-      lifecycle: (r.lifecycle as string) ?? null,
-      created_at: (r.created_at as string) ?? null,
-      vector_score: s,
-    }),
-  },
-  {
-    table: "evals",
-    nodeType: "eval",
-    selectExtra: "summary, lifecycle, created_at",
-    hostLevel: false,
-    toHit: (r, s) => ({
-      id: String(r.id),
-      node_type: "eval",
-      summary: (r.summary as string) ?? "",
-      name: null,
-      lifecycle: (r.lifecycle as string) ?? null,
-      created_at: (r.created_at as string) ?? null,
-      vector_score: s,
-    }),
-  },
-  {
-    table: "ideas",
-    nodeType: "idea",
-    selectExtra: "summary, lifecycle, created_at",
-    hostLevel: false,
-    toHit: (r, s) => ({
-      id: String(r.id),
-      node_type: "idea",
-      summary: (r.summary as string) ?? "",
-      name: null,
-      lifecycle: (r.lifecycle as string) ?? null,
-      created_at: (r.created_at as string) ?? null,
-      vector_score: s,
-    }),
-  },
-  {
-    table: "principals",
-    nodeType: "principal",
-    selectExtra: "username, created_at",
-    hostLevel: true,
-    toHit: (r, s) => ({
-      id: String(r.id),
-      node_type: "principal",
-      summary: (r.username as string) ?? "",
-      name: (r.username as string) ?? null,
-      lifecycle: null,
-      created_at: (r.created_at as string) ?? null,
-      vector_score: s,
-    }),
-  },
-  {
-    table: "organizations",
-    nodeType: "organization",
-    selectExtra: "slug, name, created_at",
-    hostLevel: true,
-    toHit: (r, s) => ({
-      id: String(r.id),
-      node_type: "organization",
-      summary: (r.name as string) ?? "",
-      name: (r.slug as string) ?? null,
-      lifecycle: null,
-      created_at: (r.created_at as string) ?? null,
-      vector_score: s,
-    }),
-  },
-];
-
-const FILTER_PARAM_NAMES = ["lifecycle", "node_type"] as const;
 const SEARCH_PAGE_SIZE = 25;
+const FILTER_PARAM_NAMES = ["lifecycle", "node_type"] as const;
 
 function hasExplicitSearchFilter(params: URLSearchParams): boolean {
   return FILTER_PARAM_NAMES.some((name) => params.has(name));
-}
-
-async function loadFilteredHits(
-  c: PoolClient,
-  docoId: string,
-  filters: SearchFilters,
-): Promise<Hit[]> {
-  const candidateIds = await resolveFilteredCandidates(c, docoId, filters);
-  if (candidateIds !== null && candidateIds.size === 0) return [];
-
-  const ids =
-    candidateIds === null ? await loadAllDocoEntityIds(c, docoId) : Array.from(candidateIds);
-  const hits = await hydrateHits(c, ids, docoId, null);
-  await attachGlobalPageRank(c, docoId, hits);
-  hits.sort((a, b) => {
-    const byCreated = createdTime(b.created_at) - createdTime(a.created_at);
-    if (byCreated !== 0) return byCreated;
-    const byGpr = b.gpr - a.gpr;
-    if (byGpr !== 0) return byGpr;
-    return a.id.localeCompare(b.id);
-  });
-  return hits;
-}
-
-async function loadAllDocoEntityIds(c: PoolClient, docoId: string): Promise<string[]> {
-  const ids: string[] = [];
-  for (const spec of TYPE_SPECS) {
-    if (spec.hostLevel) continue;
-    const rows = (
-      await c.query<{ id: string }>(`SELECT id FROM ${spec.table} WHERE doco_id = $1`, [docoId])
-    ).rows;
-    for (const row of rows) ids.push(row.id);
-  }
-  return ids;
-}
-
-async function hydrateHits(
-  c: PoolClient,
-  ids: string[],
-  docoId: string,
-  scoreById: Map<string, number> | null,
-): Promise<Hit[]> {
-  if (ids.length === 0) return [];
-  const hits: Hit[] = [];
-  for (const spec of TYPE_SPECS) {
-    const sql = spec.hostLevel
-      ? `SELECT id, ${spec.selectExtra} FROM ${spec.table} WHERE id = ANY($1::text[])`
-      : `SELECT id, ${spec.selectExtra} FROM ${spec.table} WHERE id = ANY($1::text[]) AND doco_id = $2`;
-    const params = spec.hostLevel ? [ids] : [ids, docoId];
-    const rows = (await c.query(sql, params)).rows;
-    for (const row of rows) {
-      const rawScore = scoreById?.get(String(row.id));
-      const score = typeof rawScore === "number" ? Math.round(rawScore * 10000) / 10000 : null;
-      const hit = spec.toHit(row as Record<string, unknown>, score);
-      hits.push({ ...hit, gpr: 0 });
-    }
-  }
-  return hits;
-}
-
-async function attachGlobalPageRank(c: PoolClient, docoId: string, hits: Hit[]): Promise<void> {
-  if (hits.length === 0) return;
-  const edgeRows = (
-    await c.query<{ from_id: string; to_id: string; edge_type: string; attribution: string }>(
-      "SELECT from_id, to_id, edge_type, attribution FROM edges WHERE doco_id = $1",
-      [docoId],
-    )
-  ).rows;
-  const gpr = globalPageRank(
-    edgeRows.map((e) => ({
-      from: e.from_id,
-      to: e.to_id,
-      edge_type: e.edge_type,
-      attribution: e.attribution as "explicit" | "doco-auto",
-    })),
-    { alpha: 0.85 },
-  );
-  const gprById = new Map<string, number>();
-  for (const p of gpr) gprById.set(p.id, p.score);
-  for (const h of hits) h.gpr = gprById.get(h.id) ?? 0;
-}
-
-function createdTime(iso: string | null): number {
-  if (!iso) return 0;
-  const t = Date.parse(iso);
-  return Number.isNaN(t) ? 0 : t;
 }
 
 interface PaginationState {
@@ -380,8 +85,8 @@ export async function loader({
   request: Request;
   params: { docoId: string };
 }) {
-  const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
-  const ctx = await loadDocoForRead(request, handle);
+  const ctx = await loadDocoRouteForRead(request, params);
+  const { ownerSlug, docoSlug, handle } = ctx;
   const url = new URL(request.url);
   const q = (url.searchParams.get("q") ?? "").trim();
   const me = await getCurrentPrincipal(request);
@@ -393,10 +98,10 @@ export async function loader({
 
     if (!q) {
       const allHits = hasExplicitSearchFilter(url.searchParams)
-        ? await loadFilteredHits(c, ctx.meta.docoId, filters)
+        ? await loadFilteredSearchHits(c, ctx.meta.docoId, filters)
         : [];
       if (hasExplicitSearchFilter(url.searchParams)) {
-        facets = await withHitDerivedCounts(facets, c, ctx.meta.docoId, allHits);
+        facets = withHitDerivedCounts(facets, allHits);
       }
       const pagination = paginationState(url.searchParams, allHits.length);
       return {
@@ -419,7 +124,7 @@ export async function loader({
     if (!provider) {
       return {
         q,
-        hits: [] as Hit[],
+        hits: [] as SearchHit[],
         warning: "Vector search unavailable: no embedding provider configured (OPENAI_API_KEY).",
         ownerSlug,
         docoSlug,
@@ -438,7 +143,7 @@ export async function loader({
       if (!v || v.length === 0) {
         return {
           q,
-          hits: [] as Hit[],
+          hits: [] as SearchHit[],
           warning: "Vector search unavailable: provider returned empty embedding.",
           ownerSlug,
           docoSlug,
@@ -454,7 +159,7 @@ export async function loader({
     } catch (e) {
       return {
         q,
-        hits: [] as Hit[],
+        hits: [] as SearchHit[],
         warning: `Vector search unavailable: ${(e as Error).message}`,
         ownerSlug,
         docoSlug,
@@ -467,16 +172,13 @@ export async function loader({
       };
     }
 
-    const candidateIds = await resolveFilteredCandidates(c, ctx.meta.docoId, filters);
-    const all = (await getAllEmbeddingsForDoco(ctx.meta.docoId)).filter(
-      (e) => candidateIds === null || candidateIds.has(e.entity_id),
-    );
-    if (all.length === 0) {
+    const ranked = await rankSearchEmbeddings(c, ctx.meta.docoId, queryEmbedding, filters);
+    if (ranked.hits.length === 0) {
       return {
         q,
-        hits: [] as Hit[],
+        hits: [] as SearchHit[],
         warning:
-          candidateIds === null
+          ranked.candidateIds === null
             ? "No embeddings in this Doco yet — reindex first."
             : "No entities match the active filters.",
         ownerSlug,
@@ -490,19 +192,8 @@ export async function loader({
       };
     }
 
-    const scored = all.map((e) => ({
-      entity_id: e.entity_id,
-      score: cosineSimilarity(queryEmbedding, e.embedding),
-    }));
-    scored.sort((a, b) => b.score - a.score);
-    const scoreById = new Map(scored.map((t) => [t.entity_id, t.score]));
-    const allIds = scored.map((t) => t.entity_id);
-
-    const allHits = await hydrateHits(c, allIds, ctx.meta.docoId, scoreById);
-    await attachGlobalPageRank(c, ctx.meta.docoId, allHits);
-    allHits.sort((a, b) => (b.vector_score ?? 0) - (a.vector_score ?? 0));
-
-    facets = await withHitDerivedCounts(facets, c, ctx.meta.docoId, allHits);
+    const allHits = ranked.hits;
+    facets = withHitDerivedCounts(facets, allHits);
     const pagination = paginationState(url.searchParams, allHits.length);
 
     return {
@@ -521,12 +212,7 @@ export async function loader({
   });
 }
 
-async function withHitDerivedCounts(
-  facets: FilterFacets,
-  c: PoolClient,
-  docoId: string,
-  hits: Hit[],
-): Promise<FilterFacets> {
+function withHitDerivedCounts(facets: FilterFacets, hits: SearchHit[]): FilterFacets {
   const lifecycleCounts = new Map<string, number>();
   const nodeTypeCounts = new Map<string, number>();
   for (const h of hits) {
@@ -549,8 +235,8 @@ async function withHitDerivedCounts(
   };
 }
 
-export function meta({ params }: { params: { docoId: string } }) {
-  return [{ title: `Search · ${params.docoId}` }];
+export function meta({ params }: { params: { docoHandle?: string; docoId?: string } }) {
+  return [{ title: `Search · ${params.docoHandle ?? params.docoId ?? ""}` }];
 }
 
 export default function SearchInDoco({

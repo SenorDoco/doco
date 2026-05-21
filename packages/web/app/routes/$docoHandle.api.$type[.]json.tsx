@@ -10,6 +10,15 @@
 import { makeCaptureRoute } from "~/lib/api-capture-factory.server";
 import {
   type ActionDraft,
+  type DecisionDraft,
+  type EvalDraft,
+  type GuidanceArticleDraft,
+  type IntentDraft,
+  type LogDraft,
+  type NodeAuthoringArticleDraft,
+  type ReferenceDraft,
+  type RuleDraft,
+  type StateDraft,
   captureAction,
   captureDecision,
   captureEval,
@@ -20,16 +29,8 @@ import {
   captureReference,
   captureRule,
   captureState,
-  type DecisionDraft,
-  type EvalDraft,
-  type GuidanceArticleDraft,
-  type IntentDraft,
-  type LogDraft,
-  type NodeAuthoringArticleDraft,
-  type ReferenceDraft,
-  type RuleDraft,
-  type StateDraft,
 } from "~/lib/capture.server";
+import type { DocoRouteParams } from "~/lib/doco-access.server";
 
 interface MeLike {
   id: string | null;
@@ -106,10 +107,7 @@ const CAPTURE_REGISTRY: Record<string, RegistryEntry> = {
 };
 
 function notFound(type: string | undefined): Response {
-  return Response.json(
-    { error: `Unknown entity type "${type ?? ""}".` },
-    { status: 404 },
-  );
+  return Response.json({ error: `Unknown entity type "${type ?? ""}".` }, { status: 404 });
 }
 
 export async function loader({
@@ -117,11 +115,11 @@ export async function loader({
   params,
 }: {
   request: Request;
-  params: { docoId: string; type: string };
+  params: DocoRouteParams & { type: string };
 }) {
   const cfg = CAPTURE_REGISTRY[params.type];
   if (!cfg) return notFound(params.type);
-  return cfg.build().loader({ request, params: { docoId: params.docoId } });
+  return cfg.build().loader({ request, params });
 }
 
 export async function action({
@@ -129,9 +127,9 @@ export async function action({
   params,
 }: {
   request: Request;
-  params: { docoId: string; type: string };
+  params: DocoRouteParams & { type: string };
 }) {
   const cfg = CAPTURE_REGISTRY[params.type];
   if (!cfg) return notFound(params.type);
-  return cfg.build().action({ request, params: { docoId: params.docoId } });
+  return cfg.build().action({ request, params });
 }

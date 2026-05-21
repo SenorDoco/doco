@@ -8,8 +8,7 @@ import { ENTITY_TYPES, type EntityId, entityUrl, parseEntityId } from "@doco/sha
 import { useState } from "react";
 import { parse as parseYaml } from "yaml";
 import { readEntityHistory } from "~/lib/audit-log.server";
-import { docoPath } from "~/lib/db.server";
-import { loadDocoForRead, normalizeDocoParams } from "~/lib/doco-access.server";
+import { loadDocoRouteForRead } from "~/lib/doco-access.server";
 import { loadHostConfig } from "~/lib/host";
 
 /** External node_type → PG table name. */
@@ -104,13 +103,11 @@ import { SiteHeader } from "~/components/site-header";
 import { lifecycleColor } from "~/lib/node-colors";
 
 function prettyTypePlural(nodeType: string): string {
-  return (
-    nodeType
-      .split("_")
-      .filter(Boolean)
-      .map((p, i) => (i === 0 ? p.charAt(0).toUpperCase() + p.slice(1) : p))
-      .join(" ") + "s"
-  );
+  return `${nodeType
+    .split("_")
+    .filter(Boolean)
+    .map((p, i) => (i === 0 ? p.charAt(0).toUpperCase() + p.slice(1) : p))
+    .join(" ")}s`;
 }
 
 /** "Ns / Nm / Nh / Nd ago" — same shape the graph component uses. */
@@ -136,15 +133,15 @@ export async function loader({
   request: Request;
   params: { docoId: string; type: string; id: string };
 }) {
-  const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
   const { type, id: idParam } = params;
   if (!KNOWN.has(type)) {
     throw new Response("Unknown type", { status: 404 });
   }
-  const ctx = await loadDocoForRead(request, handle);
+  const ctx = await loadDocoRouteForRead(request, params);
+  const { ownerSlug, docoSlug, handle } = ctx;
   const me = ctx.me;
   const docoId = ctx.meta.docoId;
-  const dir = docoPath(handle);
+  const dir = ctx.dir;
 
   return withClient(async (c) => {
     const table = tableFor(type);

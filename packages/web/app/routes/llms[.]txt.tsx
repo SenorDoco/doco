@@ -58,11 +58,25 @@ for backwards compat.
   GET  ${baseUrl}/<handle>/api/<type>/<id>.json     # fetch one node
   PATCH ${baseUrl}/<handle>/api/<type>/<id>.json    # update fields (need 'author' role)
   GET  ${baseUrl}/<handle>/api/<type>.txt           # plain-text spec for the body shape
+  POST ${baseUrl}/api/v1/docos.json                 # create a Doco in one request
 
 Node types: \`decisions\`, \`rules\`, \`guidance_articles\`,
 \`node_authoring_articles\`, \`intents\`, \`actions\`, \`logs\`,
 \`evals\`, \`references\`, \`states\`, \`principals\`, \`invites\`,
 \`audit\`.
+
+Create a Doco with:
+
+    POST ${baseUrl}/api/v1/docos.json
+    Content-Type: application/json
+    Authorization: Bearer doco_at_<token>
+
+    {
+      "template_handle": "generic",
+      "org_id": "<organization-id>",
+      "name": "bpms",
+      "privacy": "private"
+    }
 
 ## Public Doco reads (no auth)
 

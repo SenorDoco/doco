@@ -11,11 +11,7 @@ import {
   NODE_AUTHORING_ARTICLE_EXPLAINER,
   articleFullText,
 } from "~/lib/constitution-copy";
-import {
-  canEditConstitution,
-  loadDocoForRead,
-  normalizeDocoParams,
-} from "~/lib/doco-access.server";
+import { canEditConstitution, loadDocoRouteForRead } from "~/lib/doco-access.server";
 import { loadHostConfig } from "~/lib/host";
 
 type ArticleKind = "deterministic" | "probabilistic";
@@ -49,8 +45,8 @@ export async function loader({
   request: Request;
   params: { docoId: string };
 }) {
-  const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
-  const ctx = await loadDocoForRead(request, handle);
+  const ctx = await loadDocoRouteForRead(request, params);
+  const { ownerSlug, docoSlug, handle } = ctx;
   const [guidanceRows, nodeAuthoringRows] = await withClient(async (c) => {
     const guidance = await c.query<ArticleRow>(
       `SELECT id, summary, lifecycle, created_at, body_md, raw_yaml
@@ -83,8 +79,10 @@ export async function loader({
   };
 }
 
-export function meta({ params }: { params: { docoId: string } }) {
-  return [{ title: `Articles of the Constitution · ${params.docoId} · Doco` }];
+export function meta({ params }: { params: { docoHandle?: string; docoId?: string } }) {
+  return [
+    { title: `Articles of the Constitution · ${params.docoHandle ?? params.docoId ?? ""} · Doco` },
+  ];
 }
 
 export default function Constitution({

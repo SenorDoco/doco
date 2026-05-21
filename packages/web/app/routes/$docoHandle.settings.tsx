@@ -1,4 +1,4 @@
-import { validateRequestedDocoId } from "@doco/shared";
+import { validateRequestedDocoId as validateRequestedDocoHandle } from "@doco/shared";
 // /<doco-handle>/settings — admin-only Doco settings page. Renames the
 // slug, edits description + display_name, toggles visibility
 // (private/public), or deletes the Doco.
@@ -12,7 +12,7 @@ import { Breadcrumb, docoBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { SiteHeader } from "~/components/site-header";
 import { rootDir } from "~/lib/db.server";
-import { loadDocoForAdmin, normalizeDocoParams } from "~/lib/doco-access.server";
+import { loadDocoRouteForAdmin } from "~/lib/doco-access.server";
 import { loadHostConfig } from "~/lib/host";
 import { reindex, renameDocoHandle, softDeleteDoco, updateDocoMeta } from "~/lib/redeem.server";
 import { isHumanPrincipal } from "~/lib/session";
@@ -24,8 +24,7 @@ export async function loader({
   request: Request;
   params: { docoId: string };
 }) {
-  const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
-  const { meta, me } = await loadDocoForAdmin(request, handle);
+  const { docoSlug, handle, me, meta, ownerSlug } = await loadDocoRouteForAdmin(request, params);
   return {
     ownerSlug,
     docoSlug,
@@ -45,8 +44,14 @@ export async function action({
   request: Request;
   params: { docoId: string };
 }) {
-  const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
-  const { dir: oldDir, meta, me } = await loadDocoForAdmin(request, handle);
+  const {
+    dir: oldDir,
+    docoSlug,
+    handle,
+    me,
+    meta,
+    ownerSlug,
+  } = await loadDocoRouteForAdmin(request, params);
   const form = await request.formData();
   const intent = String(form.get("intent") ?? "save");
 
@@ -80,7 +85,7 @@ export async function action({
   const visibility = (String(form.get("visibility") ?? "") as "private" | "public") || undefined;
 
   if (!newHandle) return { error: "Handle is required." };
-  const handleError = validateRequestedDocoId(newHandle);
+  const handleError = validateRequestedDocoHandle(newHandle);
   if (handleError) return { error: handleError };
   if (visibility && visibility !== "private" && visibility !== "public") {
     return { error: "Visibility must be private or public." };
@@ -110,8 +115,8 @@ export async function action({
   return redirect(`/${finalHandle}/settings`);
 }
 
-export function meta({ params }: { params: { docoId: string } }) {
-  return [{ title: `Settings · ${params.docoId} · Doco` }];
+export function meta({ params }: { params: { docoHandle?: string; docoId?: string } }) {
+  return [{ title: `Settings · ${params.docoHandle ?? params.docoId ?? ""} · Doco` }];
 }
 
 export default function DocoSettings({
@@ -211,7 +216,7 @@ export default function DocoSettings({
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Doco id</CardTitle>
+            <CardTitle className="text-base">Doco ID</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-[11px] text-muted-foreground">
@@ -225,8 +230,8 @@ export default function DocoSettings({
           <CardHeader>
             <CardTitle className="text-base text-destructive">Danger zone</CardTitle>
             <CardDescription>
-              Deleting permanently removes this Doco and every entity and edge inside it.
-              This cannot be undone. Per ADR-040, only people can delete docos.
+              Deleting permanently removes this Doco and every entity and edge inside it. This
+              cannot be undone. Per ADR-040, only people can delete docos.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -242,8 +247,8 @@ export default function DocoSettings({
                 <input type="hidden" name="intent" value="delete" />
                 <p className="text-xs">
                   Type the Doco's slug <span className="font-mono font-semibold">{docoSlug}</span>{" "}
-                  to confirm. This permanently deletes the Doco and every entity and edge
-                  inside it. It cannot be undone.
+                  to confirm. This permanently deletes the Doco and every entity and edge inside it.
+                  It cannot be undone.
                 </p>
                 <input
                   name="confirm_slug"

@@ -1,7 +1,7 @@
-import { validateRequestedDocoId } from "@doco/shared";
 import { getDocoByHandle } from "@doco/db";
+import { validateRequestedDocoId as validateRequestedDocoHandle } from "@doco/shared";
 import { parse as parseYaml } from "yaml";
-import { loadDocoForAdmin, loadDocoForRead, normalizeDocoParams } from "~/lib/doco-access.server";
+import { loadDocoRouteForAdmin, loadDocoRouteForRead } from "~/lib/doco-access.server";
 import { reindex, renameDocoHandle, updateDocoMeta } from "~/lib/redeem.server";
 
 interface SettingsPatch {
@@ -30,8 +30,7 @@ export async function loader({
   request: Request;
   params: { docoId: string };
 }) {
-  const { handle } = await normalizeDocoParams(params);
-  const { meta } = await loadDocoForRead(request, handle);
+  const { meta } = await loadDocoRouteForRead(request, params);
   return Response.json({
     doco_id: meta.docoId,
     doco_handle: meta.handle,
@@ -48,8 +47,7 @@ export async function action({
   request: Request;
   params: { docoId: string };
 }) {
-  const { handle } = await normalizeDocoParams(params);
-  const { dir: oldDir, meta } = await loadDocoForAdmin(request, handle);
+  const { dir: oldDir, handle, meta } = await loadDocoRouteForAdmin(request, params);
 
   if (request.method !== "POST" && request.method !== "PATCH") {
     return Response.json({ error: "Use POST or PATCH." }, { status: 405 });
@@ -67,7 +65,7 @@ export async function action({
 
   let finalHandle = handle;
   if (patch.handle !== undefined && patch.handle !== handle) {
-    const handleError = validateRequestedDocoId(patch.handle);
+    const handleError = validateRequestedDocoHandle(patch.handle);
     if (handleError) return Response.json({ error: handleError }, { status: 400 });
     try {
       await renameDocoHandle({ oldHandle: handle, newHandle: patch.handle });
@@ -96,7 +94,8 @@ export async function action({
     try {
       const parsed = parseYaml(row.raw_yaml) as Record<string, unknown>;
       if (typeof parsed.description === "string") description = parsed.description;
-      if (!display_name && typeof parsed.display_name === "string") display_name = parsed.display_name;
+      if (!display_name && typeof parsed.display_name === "string")
+        display_name = parsed.display_name;
     } catch {
       // raw_yaml unparseable — display_name + description fall back to defaults.
     }

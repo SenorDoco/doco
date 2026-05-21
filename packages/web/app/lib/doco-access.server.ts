@@ -158,7 +158,7 @@ export async function listInvitedDocoIdsForPrincipal(principalId: string): Promi
  *   2. Docos owned by an org they belong to (any role in `org_users`)
  *   3. Explicit `doco_users` grants
  *
- * Mirrors the /users page logic (single source of truth for "what
+ * Mirrors the /collaborators page logic (single source of truth for "what
  * Docos can this user see"). Use this for any UI that needs to
  * surface the user's full Doco set — including the OAuth approve
  * screen and the Device-Flow approve screen — instead of the bare
@@ -167,20 +167,26 @@ export async function listInvitedDocoIdsForPrincipal(principalId: string): Promi
 export async function listAccessibleDocoIdsForPrincipal(principalId: string): Promise<string[]> {
   const ids = new Set<string>();
   await withClient(async (c) => {
-    const direct = await c.query<{ id: string }>(`SELECT id FROM docos WHERE owner_id = $1`, [
+    const direct = await c.query<{ id: string }>("SELECT id FROM docos WHERE owner_id = $1", [
       principalId,
     ]);
-    direct.rows.forEach((r) => ids.add(String(r.id)));
+    for (const row of direct.rows) {
+      ids.add(String(row.id));
+    }
     const viaOrg = await c.query<{ id: string }>(
       `SELECT id FROM docos WHERE owner_id IN (
          SELECT org_id FROM org_users WHERE principal_id = $1
        )`,
       [principalId],
     );
-    viaOrg.rows.forEach((r) => ids.add(String(r.id)));
+    for (const row of viaOrg.rows) {
+      ids.add(String(row.id));
+    }
   });
   const viaDocoUsers = await listDocoIdsForUserPrincipal(principalId);
-  viaDocoUsers.forEach((id) => ids.add(id));
+  for (const id of viaDocoUsers) {
+    ids.add(id);
+  }
   return Array.from(ids);
 }
 
@@ -265,34 +271,44 @@ export function accessDeniedResponse(
   });
 }
 
-/**
- * Resolve `:docoId/*` route params to the canonical record. Accepts
- * the URL's single `params.docoId` segment, which may be a
- * human-readable handle (canonical) or a ULID. Throws a 404 if
- * nothing resolves. The returned `ownerSlug` and `docoSlug` are
- * back-compat fields synthesized by `mapDocoRow`: `ownerSlug` comes
- * from a JOIN to `principals.username` / `organizations.slug`,
- * `docoSlug` mirrors `handle`. Handlers that need the legacy slug
- * pair for internal plumbing (docoPath, captures) keep destructuring
- * them; new code should read `handle` directly.
- */
-export async function normalizeDocoParams(params: {
+export interface DocoRouteParams {
+  docoHandle?: string;
   docoId?: string;
-}): Promise<{
+}
+
+export function readDocoRouteParam(params: DocoRouteParams): string | null {
+  return params.docoHandle ?? params.docoId ?? null;
+}
+
+/**
+ * Resolve a public Doco route param to the canonical record. Current
+ * routes use `params.docoHandle`; `params.docoId` remains accepted for
+ * legacy callers and id-based APIs. The returned `ownerSlug` and
+ * `docoSlug` are back-compat fields synthesized by `mapDocoRow`:
+ * `ownerSlug` comes from a JOIN to `principals.username` /
+ * `organizations.slug`, `docoSlug` mirrors `handle`. Handlers that need
+ * the legacy slug pair for internal plumbing (docoPath, captures) keep
+ * destructuring them; new code should read `handle` directly.
+ */
+export async function normalizeDocoParams(params: DocoRouteParams): Promise<{
   ownerSlug: string;
   docoSlug: string;
   handle: DocoHandle;
+  docoHandle: DocoHandle;
   docoId: string;
 }> {
-  if (!params.docoId) {
+  const routeParam = readDocoRouteParam(params);
+  if (!routeParam) {
     throw notFoundForAccessDenied("", "");
   }
-  const row = await getDocoByIdOrHandle(params.docoId);
-  if (!row) throw notFoundForAccessDenied(params.docoId, "");
+  const row = await getDocoByIdOrHandle(routeParam);
+  if (!row) throw notFoundForAccessDenied(routeParam, "");
+  const handle = row.handle as DocoHandle;
   return {
     ownerSlug: row.owner_slug,
     docoSlug: row.handle,
-    handle: row.handle as DocoHandle,
+    handle,
+    docoHandle: handle,
     docoId: row.id,
   };
 }
@@ -359,6 +375,49 @@ export async function loadDocoForRead(
     canonicalHandle: row.handle,
     redirected: ownerResolved.redirected,
   };
+}
+
+export type LoadedDocoRoute = Awaited<ReturnType<typeof normalizeDocoParams>> &
+  Awaited<ReturnType<typeof loadDocoForRead>>;
+
+function loadedDocoRouteFields(
+  loaded: Awaited<ReturnType<typeof loadDocoForRead>>,
+): Awaited<ReturnType<typeof normalizeDocoParams>> {
+  const handle = loaded.canonicalHandle as DocoHandle;
+  return {
+    ownerSlug: loaded.canonicalOwnerSlug,
+    docoSlug: loaded.canonicalDocoSlug,
+    handle,
+    docoHandle: handle,
+    docoId: loaded.meta.docoId,
+  };
+}
+
+export async function loadDocoRouteForRead(
+  request: Request,
+  params: DocoRouteParams,
+  minRole: DocoRole = "reader",
+): Promise<LoadedDocoRoute> {
+  const routeParam = readDocoRouteParam(params);
+  if (!routeParam) {
+    throw notFoundForAccessDenied("", "");
+  }
+  const loaded = await loadDocoForRead(request, routeParam, minRole);
+  const route = loadedDocoRouteFields(loaded);
+  return { ...route, ...loaded };
+}
+
+export async function loadDocoRouteForAdmin(
+  request: Request,
+  params: DocoRouteParams,
+): Promise<LoadedDocoRoute> {
+  const routeParam = readDocoRouteParam(params);
+  if (!routeParam) {
+    throw notFoundForAccessDenied("", "");
+  }
+  const loaded = await loadDocoForAdmin(request, routeParam);
+  const route = loadedDocoRouteFields(loaded);
+  return { ...route, ...loaded };
 }
 
 /**
@@ -453,6 +512,7 @@ export async function loadDocoForAdmin(
   canonicalOwnerSlug: string;
   canonicalDocoSlug: string;
   canonicalHandle: string;
+  redirected: boolean;
 }> {
   // The OAuth-token role scope-down must grant at least "owner" on
   // this Doco — admin operations refuse a scoped-down token even if

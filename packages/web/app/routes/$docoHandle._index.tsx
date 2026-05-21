@@ -25,12 +25,7 @@ import { OverviewGraph } from "~/components/overview-graph";
 import { SearchBoxWithHistory } from "~/components/search-box-with-history";
 import { SiteHeader } from "~/components/site-header";
 import { docoPath } from "~/lib/db.server";
-import {
-  canAdminDoco,
-  loadDocoForRead,
-  normalizeDocoParams,
-  readDocoRouteParam,
-} from "~/lib/doco-access.server";
+import { canAdminDoco, loadDocoRouteForRead } from "~/lib/doco-access.server";
 import { loadOverviewGraph } from "~/lib/full-graph.server";
 import { loadHostConfig } from "~/lib/host";
 import { lifecycleColor } from "~/lib/node-colors";
@@ -82,8 +77,8 @@ export async function loader({
   request: Request;
   params: { docoId: string };
 }) {
-  const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
-  const ctx = await loadDocoForRead(request, handle);
+  const ctx = await loadDocoRouteForRead(request, params);
+  const { ownerSlug, docoSlug, handle } = ctx;
   const me = ctx.me;
   const dir = docoPath(handle);
   return withClient(async (c) => {
@@ -265,8 +260,8 @@ function lifecycleSearchPath(handle: string, lifecycle: string): string {
   return `/${handle}/search?${params.toString()}`;
 }
 
-export function meta({ params }: { params: { docoId: string } }) {
-  return [{ title: `${readDocoRouteParam(params) ?? ""} · Doco` }];
+export function meta({ params }: { params: { docoHandle?: string; docoId?: string } }) {
+  return [{ title: `${params.docoHandle ?? params.docoId ?? ""} · Doco` }];
 }
 
 export default function DocoHome({

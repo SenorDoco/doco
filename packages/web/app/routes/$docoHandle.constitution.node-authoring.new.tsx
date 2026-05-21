@@ -9,8 +9,7 @@ import { Card, CardContent } from "~/components/card";
 import { SiteHeader } from "~/components/site-header";
 import { type NodeAuthoringArticleDraft, captureNodeAuthoringArticle } from "~/lib/capture.server";
 import { deriveArticleSummary } from "~/lib/constitution-copy";
-import { docoPath } from "~/lib/db.server";
-import { loadDocoForAdmin, normalizeDocoParams } from "~/lib/doco-access.server";
+import { loadDocoRouteForAdmin } from "~/lib/doco-access.server";
 import { loadHostConfig } from "~/lib/host";
 
 type ArticleKind = "deterministic" | "probabilistic";
@@ -26,8 +25,7 @@ export async function loader({
   request: Request;
   params: { docoId: string };
 }) {
-  const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
-  const { me } = await loadDocoForAdmin(request, handle);
+  const { docoSlug, handle, me, ownerSlug } = await loadDocoRouteForAdmin(request, params);
   return { ownerSlug, docoSlug, handle, me, host: await loadHostConfig() };
 }
 
@@ -38,8 +36,8 @@ export async function action({
   request: Request;
   params: { docoId: string };
 }) {
-  const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
-  const ctx = await loadDocoForAdmin(request, handle);
+  const ctx = await loadDocoRouteForAdmin(request, params);
+  const { dir: docoDir, docoSlug, handle, ownerSlug } = ctx;
   const form = await request.formData();
   const body_md = String(form.get("body_md") ?? "").trim();
   const summary = deriveArticleSummary(body_md);
@@ -67,7 +65,6 @@ export async function action({
       ? { spec: String(form.get("probabilistic_spec") ?? "").trim() }
       : { predicate: String(form.get("deterministic_predicate") ?? "").trim() }),
   };
-  const docoDir = docoPath(handle);
   const docoHost = new URL(request.url).origin;
   const result = await captureNodeAuthoringArticle(
     docoDir,
@@ -81,8 +78,10 @@ export async function action({
   return redirect(`/${handle}/constitution`);
 }
 
-export function meta({ params }: { params: { docoId: string } }) {
-  return [{ title: `New node-authoring article · ${params.docoId} · Doco` }];
+export function meta({ params }: { params: { docoHandle?: string; docoId?: string } }) {
+  return [
+    { title: `New node-authoring article · ${params.docoHandle ?? params.docoId ?? ""} · Doco` },
+  ];
 }
 
 export default function NewNodeAuthoringArticle({

@@ -14,7 +14,7 @@ import { CollaborationInvitePrompt } from "~/components/collaboration-invite-pro
 import { SingleColumnPageMain } from "~/components/page-main";
 import { SiteHeader } from "~/components/site-header";
 import { rootDir } from "~/lib/db.server";
-import { loadDocoForRead, normalizeDocoParams } from "~/lib/doco-access.server";
+import { loadDocoRouteForRead } from "~/lib/doco-access.server";
 import { type Invite, InviteStore } from "~/lib/invite-store.server";
 
 type SerializedInvite = {
@@ -33,10 +33,9 @@ export async function loader({
   request: Request;
   params: { docoId: string };
 }) {
-  const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
-  const { meta, me, canonicalOwnerSlug, canonicalDocoSlug } = await loadDocoForRead(
+  const { handle, me, meta, canonicalOwnerSlug, canonicalDocoSlug } = await loadDocoRouteForRead(
     request,
-    handle,
+    params,
   );
   const store = InviteStore.forDoco(rootDir());
   const invites = await store.listInvitesForDoco(meta.docoId as EntityId<"doco">);
@@ -79,8 +78,7 @@ export async function action({
   request: Request;
   params: { docoId: string };
 }): Promise<ActionResult> {
-  const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
-  const { meta, me } = await loadDocoForRead(request, handle);
+  const { handle, me, meta } = await loadDocoRouteForRead(request, params);
   if (!me) {
     return { error: "Sign in to mint invites." };
   }

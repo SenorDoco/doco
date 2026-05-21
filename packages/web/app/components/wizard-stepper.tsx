@@ -1,11 +1,10 @@
 const STEPS = [
-  { n: 1, label: "Org + name" },
-  { n: 2, label: "Constitution" },
-  { n: 3, label: "Template" },
-  { n: 4, label: "All set" },
+  { n: 1, label: "Create" },
+  { n: 2, label: "Concepts" },
+  { n: 3, label: "Collaborate" },
 ] as const;
 
-export function WizardStepper({ current }: { current: 1 | 2 | 3 | 4 }) {
+export function WizardStepper({ current }: { current: 1 | 2 | 3 }) {
   return (
     <ol className="flex items-center gap-2 text-xs text-muted-foreground">
       {STEPS.map((s, i) => {

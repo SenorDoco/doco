@@ -9,8 +9,7 @@ import { Card, CardContent } from "~/components/card";
 import { SiteHeader } from "~/components/site-header";
 import { captureGuidanceArticle } from "~/lib/capture.server";
 import { deriveArticleSummary } from "~/lib/constitution-copy";
-import { docoPath } from "~/lib/db.server";
-import { loadDocoForAdmin, normalizeDocoParams } from "~/lib/doco-access.server";
+import { loadDocoRouteForAdmin } from "~/lib/doco-access.server";
 import { loadHostConfig } from "~/lib/host";
 
 interface ActionError {
@@ -24,8 +23,7 @@ export async function loader({
   request: Request;
   params: { docoId: string };
 }) {
-  const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
-  const { me } = await loadDocoForAdmin(request, handle);
+  const { docoSlug, handle, me, ownerSlug } = await loadDocoRouteForAdmin(request, params);
   return { ownerSlug, docoSlug, handle, me, host: await loadHostConfig() };
 }
 
@@ -36,13 +34,12 @@ export async function action({
   request: Request;
   params: { docoId: string };
 }) {
-  const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
-  const ctx = await loadDocoForAdmin(request, handle);
+  const ctx = await loadDocoRouteForAdmin(request, params);
+  const { dir: docoDir, docoSlug, handle, ownerSlug } = ctx;
   const form = await request.formData();
   const body_md = String(form.get("body_md") ?? "").trim();
   const summary = deriveArticleSummary(body_md);
   if (!summary) return Response.json({ error: "Article is required." }, { status: 400 });
-  const docoDir = docoPath(handle);
   const docoHost = new URL(request.url).origin;
 
   const result = await captureGuidanceArticle(
@@ -62,8 +59,8 @@ export async function action({
   return redirect(`/${handle}/constitution`);
 }
 
-export function meta({ params }: { params: { docoId: string } }) {
-  return [{ title: `New guidance article · ${params.docoId} · Doco` }];
+export function meta({ params }: { params: { docoHandle?: string; docoId?: string } }) {
+  return [{ title: `New guidance article · ${params.docoHandle ?? params.docoId ?? ""} · Doco` }];
 }
 
 export default function NewGuidanceArticle({

@@ -86,7 +86,7 @@ UPDATE AN EXISTING DECISION
 
 RELATED
   GET ${baseUrl}/${handle}/status.json   freshness + counts (footer)
-  POST /api/v1/agent-bootstrap                  canonical instructions
+  GET ${baseUrl}/api/v1/agent-bootstrap.json    canonical instructions
 `,
 
   intents: (baseUrl, handle) => `# Doco — Capture an Intent (single call)

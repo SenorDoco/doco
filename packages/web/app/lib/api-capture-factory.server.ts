@@ -10,9 +10,11 @@ import {
   type NodeTypeName,
   updateEntity,
 } from "~/lib/capture.server";
-import { docoPath } from "~/lib/db.server";
-import { getDocoLevelRole, loadDocoForRead, normalizeDocoParams } from "~/lib/doco-access.server";
-import { readDocoMetadata } from "~/lib/doco-metadata.server";
+import {
+  type DocoRouteParams,
+  getDocoLevelRole,
+  loadDocoRouteForRead,
+} from "~/lib/doco-access.server";
 import { withIdempotency } from "~/lib/idempotency.server";
 
 interface MeLike {
@@ -20,9 +22,7 @@ interface MeLike {
   username: string;
 }
 
-interface RouteParams {
-  docoId: string;
-}
+type RouteParams = DocoRouteParams;
 
 interface IdRouteParams extends RouteParams {
   id: string;
@@ -60,8 +60,7 @@ export function makeCaptureRoute<TDraft>(cfg: CaptureRouteConfig<TDraft>) {
       request: Request;
       params: RouteParams;
     }) {
-      const { handle } = await normalizeDocoParams(params);
-      await loadDocoForRead(request, handle);
+      await loadDocoRouteForRead(request, params);
       return Response.json(
         { error: `Use POST to capture. See /<doco-handle>/api/${cfg.type}.txt for the spec.` },
         { status: 405 },
@@ -75,18 +74,16 @@ export function makeCaptureRoute<TDraft>(cfg: CaptureRouteConfig<TDraft>) {
       request: Request;
       params: RouteParams;
     }) {
-      const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
       // Captures are writes — require the OAuth-token role gate to grant
       // at least "author" on this Doco. Cookie-session users are
       // unaffected (enforceOauthGrant only fires on Bearer auth).
-      const { me } = await loadDocoForRead(request, handle, "author");
+      const { dir, docoSlug, me, meta, ownerSlug } = await loadDocoRouteForRead(
+        request,
+        params,
+        "author",
+      );
       if (!me) {
         return Response.json({ error: "Authentication required to write." }, { status: 401 });
-      }
-      const dir = docoPath(handle);
-      const meta = await readDocoMetadata(dir);
-      if (!meta) {
-        return Response.json({ error: `Doco "${handle}" not found.` }, { status: 404 });
       }
       if (request.method !== "POST") {
         return Response.json({ error: "Use POST." }, { status: 405 });
@@ -173,8 +170,7 @@ export function makeUpdateRoute(cfg: UpdateRouteConfig) {
       params: IdRouteParams;
     }) {
       const { id } = params;
-      const { handle } = await normalizeDocoParams(params);
-      const ctx = await loadDocoForRead(request, handle);
+      const ctx = await loadDocoRouteForRead(request, params);
       const rec = await getEntity(cfg.nodeType, id);
       // Cross-doco probe by ULID is effectively unguessable (128 bits), but
       // we still gate on the doco the caller actually has read access to —
@@ -211,15 +207,15 @@ export function makeUpdateRoute(cfg: UpdateRouteConfig) {
       params: IdRouteParams;
     }) {
       const { id } = params;
-      const { ownerSlug, docoSlug, handle } = await normalizeDocoParams(params);
       // Patches are writes — gate on at least "author" via the token.
-      const { me } = await loadDocoForRead(request, handle, "author");
+      const { dir, docoSlug, me, meta, ownerSlug } = await loadDocoRouteForRead(
+        request,
+        params,
+        "author",
+      );
       if (!me) {
         return Response.json({ error: "Authentication required to edit." }, { status: 401 });
       }
-      const dir = docoPath(handle);
-      const meta = await readDocoMetadata(dir);
-      if (!meta) return Response.json({ error: "Doco not found." }, { status: 404 });
       if (request.method !== "PATCH" && request.method !== "POST") {
         return Response.json({ error: "Use PATCH or POST." }, { status: 405 });
       }

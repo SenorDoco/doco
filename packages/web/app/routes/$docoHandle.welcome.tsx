@@ -4,15 +4,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
 import { SingleColumnPageMain } from "~/components/page-main";
 import { SiteHeader } from "~/components/site-header";
 import { WizardStepper } from "~/components/wizard-stepper";
-import { loadDocoForRead, normalizeDocoParams } from "~/lib/doco-access.server";
+import { loadDocoRouteForRead } from "~/lib/doco-access.server";
 
 /**
- * /:handle/welcome — Step 4 of 4 in the doco creation wizard.
+ * /:handle/welcome — Step 2 of 3 in the doco creation wizard.
  *
- * Reached only after Step 3 creates the doco. Explains that the
- * project owner can update the Articles of the Constitution any time,
- * at both the org and the Doco level. The "Continue to your doco"
- * link drops the project owner onto /:handle.
+ * Reached after Step 1 creates the doco. Introduces the core Doco
+ * concepts before sending the user to bootstrap and collaboration
+ * setup.
  */
 
 export async function loader({
@@ -22,15 +21,13 @@ export async function loader({
   request: Request;
   params: { docoId: string };
 }) {
-  const handle = params.docoId;
-  const { me, canonicalHandle } = await loadDocoForRead(request, handle, "reader");
+  const { me, canonicalHandle, ownerSlug } = await loadDocoRouteForRead(request, params);
   if (!me) throw redirect(`/sign-in?next=%2F${canonicalHandle}%2Fwelcome`);
-  const { ownerSlug } = await normalizeDocoParams({ docoId: canonicalHandle });
   return { me, handle: canonicalHandle, ownerSlug };
 }
 
-export function meta({ params }: { params: { docoId: string } }) {
-  return [{ title: `Welcome to ${params.docoId} · Step 4 of 4 · Doco` }];
+export function meta({ params }: { params: { docoHandle?: string; docoId?: string } }) {
+  return [{ title: `Key Doco concepts · ${params.docoHandle ?? params.docoId ?? ""} · Doco` }];
 }
 
 export default function NewDocoStep4({
@@ -44,57 +41,34 @@ export default function NewDocoStep4({
       <SiteHeader mode="host" me={me} />
       <SingleColumnPageMain className="py-8 space-y-4">
         <Breadcrumb items={docoBreadcrumb({ ownerSlug, handle, pageLabel: "Welcome" })} />
-        <WizardStepper current={4} />
+        <WizardStepper current={2} />
         <Card>
           <CardHeader>
-            <CardTitle>{handle} is ready.</CardTitle>
+            <CardTitle>Key Doco concepts:</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4 text-sm">
-            <p>
-              Your Doco is live. AI agents joining it now see an empty
-              constitution — no Articles of the Constitution yet, so nothing
-              constrains how they author nodes.
-            </p>
-            <p>
-              You can change that <strong>any time</strong>. Two places to
-              author Articles of the Constitution:
-            </p>
             <ul className="ml-5 list-disc space-y-2">
+              <li>Doco helps keep people, agents, and work aligned</li>
+              <li>Docos are made of nodes (concepts) and edges (connections between nodes)</li>
               <li>
-                <Link
-                  to={`/${handle}/constitution`}
-                  className="text-primary underline"
-                >
-                  This Doco's constitution
-                </Link>{" "}
-                — articles that apply only to {handle}.
+                Collaborators can query docos and add information (nodes) to them (if they have the
+                permission)
               </li>
               <li>
-                The owning org's constitution — articles there apply to{" "}
-                <em>every</em> Doco the org owns. Visit the org page from
-                the dashboard to author them.
+                AI agents collaborating on a doco are always reminded of its constitution: a list of
+                articles telling them how to behave
               </li>
+              <li>An organization can have multiple interconnected docos</li>
             </ul>
-            <p className="text-muted-foreground">
-              Authoring rules can block, warn, or just log when a node
-              violates them. Guidance articles are prose for context —
-              agents read them, no automated check.
-            </p>
           </CardContent>
         </Card>
 
         <div className="flex items-center gap-2">
           <Link
-            to={`/${handle}`}
+            to={`/${handle}/onboarding/agent`}
             className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90"
           >
-            Continue to your doco →
-          </Link>
-          <Link
-            to={`/${handle}/constitution`}
-            className="rounded-md border border-border px-4 py-2 text-sm hover:bg-muted"
-          >
-            Open the constitution page
+            Continue -&gt;
           </Link>
         </div>
       </SingleColumnPageMain>

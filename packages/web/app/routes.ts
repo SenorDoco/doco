@@ -98,9 +98,11 @@ export default [
   // MCP runtime. Covers localhost-loopback (Recipe A) + Device Flow
   // (Recipe B). Public; served as text/markdown.
   route("protocol/agent-oauth-recipe", "routes/protocol.agent-oauth-recipe.tsx"),
-  // Self-service create. The doco-create flow is a 4-step wizard;
-  // step 4 lives under :docoId/welcome alongside the per-Doco routes.
+  // Self-service create. The doco-create flow starts with one form,
+  // then continues under :docoHandle/welcome and
+  // :docoHandle/onboarding/agent.
   route("new-doco", "routes/new-doco.tsx"),
+  // Legacy wizard URLs redirect back to the one-page create form.
   route("new-doco/constitution", "routes/new-doco.constitution.tsx"),
   route("new-doco/template", "routes/new-doco.template.tsx"),
   route("new-org", "routes/new-org.tsx"),
@@ -127,7 +129,7 @@ export default [
     "orgs/:orgHandle/constitution/:nodeType/:articleId/edit",
     "routes/orgs.$orgHandle.constitution.$nodeType.$articleId.edit.tsx",
   ),
-  route("users", "routes/users.tsx"),
+  route("collaborators", "routes/collaborators.tsx"),
   // Onboarding (human paths only — agents authenticate via OAuth +
   // install the MCP connector at /mcp/<handle>, no recipe to walk
   // through). decision_01KS14CW9ZN23FF5CGG0Z7TH4G.
@@ -152,61 +154,64 @@ export default [
   // union of org + Doco constitutions the caller can read. Auth-aware:
   // anonymous callers get public-Doco constitutions only.
   route("api/v1/agent-bootstrap.json", "routes/api.v1.agent-bootstrap[.]json.tsx"),
-  // Per-Doco routes: every Doco lives at `/<doco-id>/...` where
-  // doco-id is the handle. `normalizeDocoParams` resolves the URL
+  // Per-Doco routes: every Doco lives at `/<doco-handle>/...`.
+  // `normalizeDocoParams` resolves the public handle-shaped URL
   // param to a row. There is no owner profile page; the dashboard
   // is the single signed-in landing.
-  route(":docoId", "routes/$docoHandle._index.tsx"),
-  route(":docoId/welcome", "routes/$docoHandle.welcome.tsx"),
-  route(":docoId/status.json", "routes/$docoHandle.status[.]json.tsx"),
-  route(":docoId/settings", "routes/$docoHandle.settings.tsx"),
-  route(":docoId/constitution", "routes/$docoHandle.constitution.tsx"),
-  route(":docoId/constitution/guidance/new", "routes/$docoHandle.constitution.guidance.new.tsx"),
+  route(":docoHandle", "routes/$docoHandle._index.tsx"),
+  route(":docoHandle/welcome", "routes/$docoHandle.welcome.tsx"),
+  route(":docoHandle/status.json", "routes/$docoHandle.status[.]json.tsx"),
+  route(":docoHandle/settings", "routes/$docoHandle.settings.tsx"),
+  route(":docoHandle/constitution", "routes/$docoHandle.constitution.tsx"),
   route(
-    ":docoId/constitution/node-authoring/new",
+    ":docoHandle/constitution/guidance/new",
+    "routes/$docoHandle.constitution.guidance.new.tsx",
+  ),
+  route(
+    ":docoHandle/constitution/node-authoring/new",
     "routes/$docoHandle.constitution.node-authoring.new.tsx",
   ),
   route(
-    ":docoId/constitution/:nodeType/:articleId/edit",
+    ":docoHandle/constitution/:nodeType/:articleId/edit",
     "routes/$docoHandle.constitution.$nodeType.$articleId.edit.tsx",
   ),
-  route(":docoId/invites", "routes/$docoHandle.invites.tsx"),
-  route(":docoId/api/invites.json", "routes/$docoHandle.api.invites[.]json.tsx"),
+  route(":docoHandle/invites", "routes/$docoHandle.invites.tsx"),
+  route(":docoHandle/api/invites.json", "routes/$docoHandle.api.invites[.]json.tsx"),
   // Per-entity detail (PATCH/GET) routes. Most use the makeUpdateRoute
   // factory; decisions.$id has a custom action (ADR promotion logic).
-  route(":docoId/api/decisions/:id.json", "routes/$docoHandle.api.decisions.$id[.]json.tsx"),
-  route(":docoId/api/intents/:id.json", "routes/$docoHandle.api.intents.$id[.]json.tsx"),
-  route(":docoId/api/rules/:id.json", "routes/$docoHandle.api.rules.$id[.]json.tsx"),
+  route(":docoHandle/api/decisions/:id.json", "routes/$docoHandle.api.decisions.$id[.]json.tsx"),
+  route(":docoHandle/api/intents/:id.json", "routes/$docoHandle.api.intents.$id[.]json.tsx"),
+  route(":docoHandle/api/rules/:id.json", "routes/$docoHandle.api.rules.$id[.]json.tsx"),
   route(
-    ":docoId/api/guidance_articles/:id.json",
+    ":docoHandle/api/guidance_articles/:id.json",
     "routes/$docoHandle.api.guidance_articles.$id[.]json.tsx",
   ),
   route(
-    ":docoId/api/node_authoring_articles/:id.json",
+    ":docoHandle/api/node_authoring_articles/:id.json",
     "routes/$docoHandle.api.node_authoring_articles.$id[.]json.tsx",
   ),
-  route(":docoId/api/actions/:id.json", "routes/$docoHandle.api.actions.$id[.]json.tsx"),
-  route(":docoId/api/logs/:id.json", "routes/$docoHandle.api.logs.$id[.]json.tsx"),
-  route(":docoId/api/references/:id.json", "routes/$docoHandle.api.references.$id[.]json.tsx"),
+  route(":docoHandle/api/actions/:id.json", "routes/$docoHandle.api.actions.$id[.]json.tsx"),
+  route(":docoHandle/api/logs/:id.json", "routes/$docoHandle.api.logs.$id[.]json.tsx"),
+  route(":docoHandle/api/references/:id.json", "routes/$docoHandle.api.references.$id[.]json.tsx"),
   // Special-cased capture routes that need custom logic — listed BEFORE
   // the generic `:type.json` dispatcher so the static segment wins.
-  route(":docoId/api/principals.json", "routes/$docoHandle.api.principals[.]json.tsx"),
-  route(":docoId/api/settings.json", "routes/$docoHandle.api.settings[.]json.tsx"),
-  route(":docoId/api/audit.json", "routes/$docoHandle.api.audit[.]json.tsx"),
+  route(":docoHandle/api/principals.json", "routes/$docoHandle.api.principals[.]json.tsx"),
+  route(":docoHandle/api/settings.json", "routes/$docoHandle.api.settings[.]json.tsx"),
+  route(":docoHandle/api/audit.json", "routes/$docoHandle.api.audit[.]json.tsx"),
   // Generic capture dispatcher. Handles decisions, intents, actions,
   // references, rules, guidance_articles, node_authoring_articles, logs,
   // evals, states via CAPTURE_REGISTRY in the route file. Adding a new
   // simple-capture entity type is one registry row; no new route needed.
-  route(":docoId/api/:type.json", "routes/$docoHandle.api.$type[.]json.tsx"),
-  route(":docoId/api/:type.txt", "routes/$docoHandle.api.$type[.]txt.tsx"),
-  route(":docoId/activity", "routes/$docoHandle.activity.tsx"),
-  route(":docoId/graph-node-details.json", "routes/$docoHandle.graph-node-details[.]json.tsx"),
-  route(":docoId/search", "routes/$docoHandle.search.tsx"),
-  route(":docoId/search.json", "routes/$docoHandle.search[.]json.tsx"),
-  route(":docoId/onboarding/agent", "routes/$docoHandle.onboarding.agent.tsx"),
-  route(":docoId/rules/new", "routes/$docoHandle.rules.new.tsx"),
+  route(":docoHandle/api/:type.json", "routes/$docoHandle.api.$type[.]json.tsx"),
+  route(":docoHandle/api/:type.txt", "routes/$docoHandle.api.$type[.]txt.tsx"),
+  route(":docoHandle/activity", "routes/$docoHandle.activity.tsx"),
+  route(":docoHandle/graph-node-details.json", "routes/$docoHandle.graph-node-details[.]json.tsx"),
+  route(":docoHandle/search", "routes/$docoHandle.search.tsx"),
+  route(":docoHandle/search.json", "routes/$docoHandle.search[.]json.tsx"),
+  route(":docoHandle/onboarding/agent", "routes/$docoHandle.onboarding.agent.tsx"),
+  route(":docoHandle/rules/new", "routes/$docoHandle.rules.new.tsx"),
   // Short-form entity routes. `:type` is validated by the loader; reserved
   // feature paths above win the match for the static paths.
-  route(":docoId/:type", "routes/$docoHandle.$type._index.tsx"),
-  route(":docoId/:type/:id", "routes/$docoHandle.$type.$id.tsx"),
+  route(":docoHandle/:type", "routes/$docoHandle.$type._index.tsx"),
+  route(":docoHandle/:type/:id", "routes/$docoHandle.$type.$id.tsx"),
 ] satisfies RouteConfig;

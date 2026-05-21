@@ -33,7 +33,7 @@ try {
 async function runBootstrap() {
   const access = readAccess();
   if (!access) return finish(fail("missing_access", "missing DOCO_ACCESS"), 2);
-  const url = new URL("/api/v1/agent-bootstrap", host);
+  const url = new URL("/api/v1/agent-bootstrap.json", host);
   finish(await requestJson(url, access));
 }
 
@@ -45,7 +45,12 @@ async function runSearch() {
   if (!query) return finish(fail("usage", "search requires --q <query>"), 2);
 
   const handle = readEnv("DOCO_HANDLE") || readDocoHandle();
-  if (!handle) return finish(fail("missing_doco_handle", "missing Doco URL in doco.md"), 2);
+  if (!handle) {
+    return finish(
+      fail("missing_doco_handle", "missing Doco URL in .doco/connections.md, DOCO.md, or doco.md"),
+      2,
+    );
+  }
 
   const url = new URL(`/${encodeURIComponent(handle)}/search.json`, host);
   url.searchParams.set("q", query);
@@ -55,7 +60,10 @@ async function runSearch() {
 
 async function requestJson(url, access) {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), Number.isFinite(timeoutMs) ? timeoutMs : DEFAULT_TIMEOUT_MS);
+  const timer = setTimeout(
+    () => controller.abort(),
+    Number.isFinite(timeoutMs) ? timeoutMs : DEFAULT_TIMEOUT_MS,
+  );
   try {
     const response = await fetch(url, {
       headers: { Authorization: `Bearer ${access}` },
@@ -183,13 +191,15 @@ function unquote(value) {
 }
 
 function readDocoHandle() {
-  const path = join(process.cwd(), "doco.md");
-  if (!existsSync(path)) return "";
-  const text = readFileSync(path, "utf8");
-  const matches = text.matchAll(/https?:\/\/[^/\s)]+\/([A-Za-z0-9][A-Za-z0-9-]*)\/?/g);
-  for (const match of matches) {
-    const handle = match[1];
-    if (handle !== "invite" && handle !== "api") return handle;
+  for (const relativePath of [".doco/connections.md", "DOCO.md", "doco.md"]) {
+    const path = join(process.cwd(), relativePath);
+    if (!existsSync(path)) continue;
+    const text = readFileSync(path, "utf8");
+    const matches = text.matchAll(/https?:\/\/[^/\s)]+\/([A-Za-z0-9][A-Za-z0-9-]*)\/?/g);
+    for (const match of matches) {
+      const handle = match[1];
+      if (handle !== "invite" && handle !== "api") return handle;
+    }
   }
   return "";
 }

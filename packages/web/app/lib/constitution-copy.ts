@@ -1,5 +1,4 @@
 // Shared copy + helpers for constitution surfaces. Used by:
-//   - /new-doco/constitution           (wizard step 2)
 //   - /:docoHandle/constitution
 //   - /orgs/:orgHandle/constitution
 //   - the 4 new-article forms
