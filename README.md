@@ -52,9 +52,8 @@ An agent needs two pieces of state:
 2. `./.env` with `DOCO_ACCESS=<credential>`.
 
 From then on every API call sends `Authorization: Bearer
-$DOCO_ACCESS`; no secret appears in the URL. See
-`/onboarding/create/agent.txt` and `/onboarding/join/agent.txt` on
-this host for the complete recipes.
+$DOCO_ACCESS`; no secret appears in the URL. See `/llms.txt` on
+this host for the complete recipe.
 
 ## Reading order for a new agent
 

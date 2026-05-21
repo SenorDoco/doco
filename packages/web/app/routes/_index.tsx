@@ -72,7 +72,7 @@ export default function Home({ loaderData }: { loaderData: Awaited<ReturnType<ty
               </div>
             </Link>
             <Link
-              to="/onboarding/create"
+              to="/new-doco"
               className="group rounded-lg border border-border bg-card px-6 py-8 text-left transition-colors hover:border-primary"
             >
               <div className="text-base font-semibold">Create a new doco</div>
