@@ -37,8 +37,11 @@ import type {
 import { withClient } from "@doco/db";
 import { generateUlid } from "@doco/shared";
 import { canAccessDoco } from "./doco-access.server";
+import { ensureEnvLoaded } from "./dotenv.server";
 import { listAllDocos } from "./host";
 import type { CurrentPrincipal } from "./session";
+
+ensureEnvLoaded();
 
 // Haiku 4.5 over Sonnet — for an in-page assistant, sub-second first-
 // token latency beats the marginal reasoning gain. Snappy capture +
