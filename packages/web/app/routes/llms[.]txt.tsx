@@ -46,6 +46,22 @@ every API call is:
     GET ${baseUrl}/<handle>/<endpoint>
     Authorization: Bearer doco_at_<token>
 
+## Share the Doco connection through Git
+
+Tokens are per-agent secrets; repository connection files are not.
+When you connect a repo to Doco, commit and push the non-secret files
+that let other agents discover the same Doco:
+
+    git status --short
+    git add .doco/connections.md AGENTS.md CLAUDE.md .agents/doco-agent-client.mjs .claude
+    git diff --cached --stat
+    git commit -m "Connect repository to Doco"
+    git push
+
+Never stage or commit \`.env\`, \`DOCO_ACCESS\`, refresh tokens,
+OAuth client state, cookies, or any other credential. If the worktree
+has unrelated changes, stage only the Doco bootstrap files you touched.
+
 ## API endpoint shapes
 
 JSON lives under \`/api/\`. HTML pages live at the Doco root (no

@@ -58,6 +58,39 @@ it won't be used. Doco's redirect_uri validator accepts
 \`http://localhost:<port>/...\`, \`http://127.0.0.1:<port>/...\`, and
 \`https://...\` URLs.
 
+### Repo sharing rule: commit the non-secret Doco files
+
+OAuth tokens are per-agent secrets. The fact that this repository is
+connected to a Doco is not secret. After you connect a repo, make sure
+the non-secret bootstrap files are committed and pushed so agents
+working from another clone know to connect to Doco too.
+
+Commit these when they exist or changed:
+
+- \`.doco/connections.md\` — public Doco URL(s) for this repo.
+- \`AGENTS.md\` and \`CLAUDE.md\` — bootstrap pointers.
+- \`.agents/doco-agent-client.mjs\` — helper that reads credentials
+  inside Node.
+- \`.claude/settings.json\` and \`.claude/*.sh\` — Claude Code hooks,
+  when this repo uses them.
+
+Never commit \`.env\`, \`DOCO_ACCESS\`, refresh tokens, OAuth client
+state, browser cookies, or any other credential.
+
+If the worktree also contains unrelated user changes, stage only the
+Doco bootstrap files you touched:
+
+\`\`\`sh
+git status --short
+git add .doco/connections.md AGENTS.md CLAUDE.md .agents/doco-agent-client.mjs .claude
+git diff --cached --stat
+git commit -m "Connect repository to Doco"
+git push
+\`\`\`
+
+If there is no Git remote or the user asks you not to push, stop after
+explaining exactly which non-secret files should be committed.
+
 ---
 
 ## Recipe A — Localhost loopback (shell-capable agents)
@@ -144,7 +177,9 @@ Response:
 }
 \`\`\`
 
-Store both tokens in your credential store. Done.
+Store both tokens in your credential store. Then follow the repo
+sharing rule above: commit and push the non-secret Doco bootstrap
+files so the next agent clone discovers the Doco connection.
 
 ---
 
@@ -229,7 +264,9 @@ Possible responses:
 - **400** \`{"error": "expired_token"}\` — the device_code expired
   (15 min). Start over from step 1.
 - **200** \`{ access_token, refresh_token, token_type, expires_in, scope }\`
-  — user approved. Store the tokens. Done.
+  — user approved. Store the tokens. Then follow the repo sharing
+  rule above: commit and push the non-secret Doco bootstrap files so
+  the next agent clone discovers the Doco connection.
 
 ---
 

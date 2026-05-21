@@ -68,6 +68,18 @@ Two values, two homes:
 `doco login` writes `DOCO_ACCESS` to `./.env` and writes the Doco URL to `.doco/connections.md`
 in one step.
 
+After a repo is connected, commit and push the non-secret bootstrap files so other
+contributors and agents discover the same Doco from their own clones:
+
+```bash
+git add .doco/connections.md AGENTS.md CLAUDE.md .agents/doco-agent-client.mjs .claude
+git commit -m "Connect repository to Doco"
+git push
+```
+
+Never commit `./.env`, `DOCO_ACCESS`, refresh tokens, OAuth client state, cookies, or any
+other credential.
+
 ## License
 
 Apache-2.0 — see [LICENSE](./LICENSE).

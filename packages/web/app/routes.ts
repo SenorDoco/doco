@@ -162,6 +162,14 @@ export default [
   // fetches), no separate OAuth identity to authorize.
   route("api/v1/agent-chat/conversation.json", "routes/api.v1.agent-chat.conversation[.]json.tsx"),
   route("api/v1/agent-chat/messages.json", "routes/api.v1.agent-chat.messages[.]json.tsx"),
+  // Attachments — composer uploads files here (POST), then renders
+  // previews + sends a GET to /api/v1/agent-chat/attachments/:id for
+  // the bytes. 30-day retention enforced by purgeExpiredAttachments().
+  route("api/v1/agent-chat/attachments.json", "routes/api.v1.agent-chat.attachments[.]json.tsx"),
+  route(
+    "api/v1/agent-chat/attachments/:attachmentId",
+    "routes/api.v1.agent-chat.attachments.$attachmentId.tsx",
+  ),
   // Per-Doco routes: every Doco lives at `/<doco-handle>/...`.
   // `normalizeDocoParams` resolves the public handle-shaped URL
   // param to a row. There is no owner profile page; the dashboard

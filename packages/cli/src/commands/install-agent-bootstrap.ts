@@ -237,12 +237,14 @@ export const installAgentBootstrapCmd = defineCommand({
     console.log(rule());
     console.log(c.dim("Next:"));
     if (!docoId) {
-      console.log(c.dim("  1. Run `doco login --host https://doco.to` to authorize, or edit DOCO.md with the Doco URL."));
-    } else {
       console.log(
         c.dim(
-          `  1. Project Doco ref found: ${docoId}. To rotate access, re-run \`doco login\`.`,
+          "  1. Run `doco login --host https://doco.to` to authorize, or edit .doco/connections.md with the Doco URL.",
         ),
+      );
+    } else {
+      console.log(
+        c.dim(`  1. Project Doco ref found: ${docoId}. To rotate access, re-run \`doco login\`.`),
       );
     }
     console.log(c.dim("  2. cp .env.example .env  # fill in DOCO_ACCESS (mint via `doco login`)"));
@@ -256,6 +258,21 @@ export const installAgentBootstrapCmd = defineCommand({
       c.dim(
         "  5. Non-Claude agents: run `node .agents/doco-agent-client.mjs bootstrap` manually at the start of each task. It reads DOCO_ACCESS from ./.env without exposing the credential in the shell command.",
       ),
+    );
+    console.log(
+      c.dim(
+        "  6. Commit and push the non-secret Doco bootstrap files so other agent clones discover the connection:",
+      ),
+    );
+    console.log(
+      c.dim(
+        "     git add .doco/connections.md AGENTS.md CLAUDE.md .agents/doco-agent-client.mjs .claude",
+      ),
+    );
+    console.log(c.dim('     git commit -m "Connect repository to Doco"'));
+    console.log(c.dim("     git push"));
+    console.log(
+      c.dim("     Never commit .env, DOCO_ACCESS, refresh tokens, client state, or cookies."),
     );
     console.log();
   },

@@ -166,7 +166,8 @@ export const loginCmd = defineCommand({
           console.log();
           console.log(checkmark(`Authorized by ${c.warn(body.owner_username)}.`));
           // DOCO_ACCESS is secret → .env (gitignored). The Doco
-          // coordinate lives in DOCO.md.
+          // coordinate lives in .doco/connections.md and should be
+          // committed so other agents in other clones discover Doco too.
           //
           // Migration: strip old credential names so .env has one
           // canonical Doco secret.
@@ -262,6 +263,20 @@ export const loginCmd = defineCommand({
           console.log(
             c.dim(
               "Other agents: AGENTS.md is now in place; restart per their convention if needed.",
+            ),
+          );
+          console.log();
+          console.log(c.dim("Share this Doco connection with the repository:"));
+          console.log(
+            c.dim(
+              "  git add .doco/connections.md AGENTS.md CLAUDE.md .agents/doco-agent-client.mjs .claude",
+            ),
+          );
+          console.log(c.dim('  git commit -m "Connect repository to Doco"'));
+          console.log(c.dim("  git push"));
+          console.log(
+            c.dim(
+              "Do not commit .env, DOCO_ACCESS, refresh tokens, OAuth client state, or cookies.",
             ),
           );
           return;

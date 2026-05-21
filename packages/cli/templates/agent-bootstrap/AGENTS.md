@@ -25,6 +25,27 @@ Doco's HTTP API. If this Doco is public-visibility, anonymous reads
 work without auth at all — try
 `GET https://doco.to/<handle>/status.json`.
 
+## Share this setup with other agents
+
+Your OAuth token is private to you. The repo's Doco connection files
+are not private; they are how another agent in another clone discovers
+that this project uses Doco.
+
+After connecting a repo to Doco, commit and push the non-secret files
+that were created or updated:
+
+```sh
+git status --short
+git add .doco/connections.md AGENTS.md CLAUDE.md .agents/doco-agent-client.mjs .claude
+git diff --cached --stat
+git commit -m "Connect repository to Doco"
+git push
+```
+
+Never commit `.env`, `DOCO_ACCESS`, refresh tokens, OAuth client state,
+cookies, or any other credential. If the worktree contains unrelated
+user changes, stage only the Doco bootstrap files you touched.
+
 ## Your role
 
 - Get authenticated (recipe above) or browse anonymously if the

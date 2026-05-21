@@ -22,6 +22,7 @@ import { getCurrentPrincipal } from "~/lib/session";
 interface Body {
   text?: unknown;
   current_path?: unknown;
+  attachment_ids?: unknown;
 }
 
 export async function action({ request }: { request: Request }) {
@@ -40,8 +41,11 @@ export async function action({ request }: { request: Request }) {
     return Response.json({ error: "invalid_json" }, { status: 400 });
   }
   const text = typeof parsed.text === "string" ? parsed.text.trim() : "";
-  if (!text) {
-    return Response.json({ error: "text_required" }, { status: 400 });
+  const attachmentIds = Array.isArray(parsed.attachment_ids)
+    ? (parsed.attachment_ids.filter((v) => typeof v === "string" && v.length > 0) as string[])
+    : [];
+  if (!text && attachmentIds.length === 0) {
+    return Response.json({ error: "text_or_attachments_required" }, { status: 400 });
   }
   const currentPath =
     typeof parsed.current_path === "string" && parsed.current_path.length > 0
@@ -62,7 +66,7 @@ export async function action({ request }: { request: Request }) {
         for await (const event of runAssistantTurn({
           conversation,
           userText: text,
-          ctx: { origin, cookieHeader, principal: me, currentPath },
+          ctx: { origin, cookieHeader, principal: me, currentPath, attachmentIds },
         })) {
           send(event);
           if (event.kind === "done" || event.kind === "error") break;

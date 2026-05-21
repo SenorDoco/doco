@@ -41,12 +41,26 @@ HTTP API — there are no on-disk per-entity files to read here.
 
 An agent needs two pieces of state:
 
-1. `.doco/connections.md` with the public Doco URL.
-2. `./.env` with `DOCO_ACCESS=<oauth-access-token>`.
+1. `.doco/connections.md` with the public Doco URL. Commit and push
+   this file so agents in other clones know the repo is Doco-tracked.
+2. `./.env` with `DOCO_ACCESS=<oauth-access-token>`. This is secret
+   and must stay local or in the agent runtime's secret store.
 
 From then on every API call sends `Authorization: Bearer
 $DOCO_ACCESS`; no secret appears in the URL. See `/llms.txt` on
 this host for the complete recipe.
+
+When `doco login` or `doco install-agent-bootstrap` creates or updates
+bootstrap files, commit only the non-secret ones:
+
+```sh
+git add .doco/connections.md AGENTS.md CLAUDE.md .agents/doco-agent-client.mjs .claude
+git commit -m "Connect repository to Doco"
+git push
+```
+
+Never commit `.env`, `DOCO_ACCESS`, refresh tokens, OAuth client state,
+cookies, or other credentials.
 
 ## Reading order for a new agent
 
