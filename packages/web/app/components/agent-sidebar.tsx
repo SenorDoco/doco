@@ -1,4 +1,4 @@
-// AgentSidebar — 280px fixed left rail, persistent across SPA navigation.
+// AgentSidebar — 320px fixed left rail, persistent across SPA navigation.
 //
 // Mounted from app/root.tsx so its React state outlives the <Outlet/>
 // swaps that happen on client-side route changes. Loads the current
@@ -249,7 +249,7 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
 
   return (
     <aside
-      className="flex h-full w-[280px] shrink-0 flex-col border-r border-border bg-card"
+      className="flex h-full w-[320px] shrink-0 flex-col border-r border-border bg-card"
       aria-label="Señor Doco"
     >
       <div className="flex shrink-0 items-center border-b border-border px-3 py-2">

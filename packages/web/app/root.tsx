@@ -79,7 +79,7 @@ export default function App() {
     return <Outlet />;
   }
   // Signed-in chrome layout: top bar pinned, then a flex row with the
-  // assistant sidebar (280 px, always visible) and the scrolling main
+  // assistant sidebar (320 px, always visible) and the scrolling main
   // content. The outer div locks page height so the aside doesn't
   // scroll away with the rest of the body. We render SiteHeader here
   // once (shellOwner) and wrap the Outlet in SiteHeaderSuppressionProvider

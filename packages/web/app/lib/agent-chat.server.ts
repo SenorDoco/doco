@@ -232,7 +232,7 @@ function buildSystemBlocks(
     ? bootstrap.constitutionSnippets.join("\n\n")
     : "(no constitution articles authored in the visible Docos)";
 
-  const text = `You are Señor Doco, the in-page assistant embedded as a 280-px left-rail sidebar on every page. You act AS ${principal.username} — the signed-in human reading the page. Every doco_api call is authenticated as them; there is no separate agent identity.
+  const text = `You are Señor Doco, the in-page assistant embedded as a 320-px left-rail sidebar on every page. You act AS ${principal.username} — the signed-in human reading the page. Every doco_api call is authenticated as them; there is no separate agent identity.
 
 Doco is AI-native documentation of intent, decisions, rules, actions, logs. Node types: Decision, Intent, Action, Log, Rule, Guidance Article, Node Authoring Article, Eval, Reference, State, Idea.
 
