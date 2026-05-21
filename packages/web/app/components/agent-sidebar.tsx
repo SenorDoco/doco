@@ -239,22 +239,6 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
     }
   }, [inputText, busy, location.pathname, location.search, navigate]);
 
-  const startNewChat = useCallback(async () => {
-    if (busy) return;
-    try {
-      const res = await fetch("/api/v1/agent-chat/new.json", {
-        method: "POST",
-        credentials: "same-origin",
-      });
-      if (!res.ok) return;
-      const data = (await res.json()) as ConversationSnapshot;
-      setMessages(data.messages);
-      setInFlight(null);
-    } catch {
-      // surface in UI? for now silent — the next send retries
-    }
-  }, [busy]);
-
   const allMessages = useMemo<RenderableMessage[]>(() => {
     const out: RenderableMessage[] = messages.map((m) => ({ kind: "saved", message: m }));
     if (inFlight) {
@@ -268,17 +252,8 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
       className="flex h-full w-[280px] shrink-0 flex-col border-r border-border bg-card"
       aria-label="Doco assistant"
     >
-      <div className="flex shrink-0 items-center justify-between border-b border-border px-3 py-2">
+      <div className="flex shrink-0 items-center border-b border-border px-3 py-2">
         <div className="text-xs font-semibold">Doco assistant</div>
-        <button
-          type="button"
-          onClick={startNewChat}
-          disabled={busy}
-          className="rounded-md border border-border bg-background px-2 py-0.5 text-[10px] font-semibold text-muted-foreground hover:bg-input disabled:opacity-50"
-          title="Archive this thread and start a new one"
-        >
-          New chat
-        </button>
       </div>
 
       <div

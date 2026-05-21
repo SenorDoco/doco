@@ -95,15 +95,23 @@ export type ChatStreamEvent =
 // Persistence
 // ---------------------------------------------------------------------------
 
-export async function loadOrCreateActiveConversation(
+/**
+ * One conversation per principal, forever. Returns the principal's
+ * row if it exists, otherwise mints one. There is no archive / new-
+ * chat affordance — the thread is the user's single rolling memory.
+ * The `archived` column on the table is legacy from an earlier
+ * design; left in place because dropping it would require a migration
+ * and the dead column is harmless.
+ */
+export async function loadOrCreateConversation(
   principalId: string,
 ): Promise<ChatConversationRow> {
   return await withClient(async (c) => {
     const existing = await c.query<ChatConversationRow>(
       `SELECT id, principal_id, archived, created_at, updated_at
          FROM chat_conversations
-        WHERE principal_id = $1 AND archived = false
-        ORDER BY updated_at DESC
+        WHERE principal_id = $1
+        ORDER BY created_at ASC
         LIMIT 1`,
       [principalId],
     );
@@ -118,17 +126,6 @@ export async function loadOrCreateActiveConversation(
     const row = fresh.rows[0];
     if (!row) throw new Error("failed to create conversation row");
     return row;
-  });
-}
-
-export async function archiveConversation(conversationId: string, principalId: string): Promise<void> {
-  await withClient(async (c) => {
-    await c.query(
-      `UPDATE chat_conversations
-          SET archived = true, updated_at = now()
-        WHERE id = $1 AND principal_id = $2`,
-      [conversationId, principalId],
-    );
   });
 }
 
@@ -640,7 +637,7 @@ export interface ConversationSnapshot {
 }
 
 export async function loadSnapshotForPrincipal(principalId: string): Promise<ConversationSnapshot> {
-  const conv = await loadOrCreateActiveConversation(principalId);
+  const conv = await loadOrCreateConversation(principalId);
   const rows = await loadMessages(conv.id);
   return {
     conversation_id: conv.id,

@@ -157,12 +157,11 @@ export default [
   // anonymous callers get public-Doco constitutions only.
   route("api/v1/agent-bootstrap.json", "routes/api.v1.agent-bootstrap[.]json.tsx"),
   // In-page assistant — the left-rail sidebar visible to every signed-in
-  // user. One rolling conversation per Principal; "new chat" archives
-  // the current row. The agent acts as the signed-in user (cookie-
-  // relayed fetches), no separate OAuth identity to authorize.
+  // user. One conversation per Principal, forever (no archive / new-chat
+  // affordance). The agent acts as the signed-in user (cookie-relayed
+  // fetches), no separate OAuth identity to authorize.
   route("api/v1/agent-chat/conversation.json", "routes/api.v1.agent-chat.conversation[.]json.tsx"),
   route("api/v1/agent-chat/messages.json", "routes/api.v1.agent-chat.messages[.]json.tsx"),
-  route("api/v1/agent-chat/new.json", "routes/api.v1.agent-chat.new[.]json.tsx"),
   // Per-Doco routes: every Doco lives at `/<doco-handle>/...`.
   // `normalizeDocoParams` resolves the public handle-shaped URL
   // param to a row. There is no owner profile page; the dashboard

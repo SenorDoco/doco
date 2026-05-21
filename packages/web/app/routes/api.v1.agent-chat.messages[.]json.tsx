@@ -14,7 +14,7 @@
 
 import {
   type ChatStreamEvent,
-  loadOrCreateActiveConversation,
+  loadOrCreateConversation,
   runAssistantTurn,
 } from "~/lib/agent-chat.server";
 import { getCurrentPrincipal } from "~/lib/session";
@@ -48,7 +48,7 @@ export async function action({ request }: { request: Request }) {
       ? parsed.current_path
       : null;
 
-  const conversation = await loadOrCreateActiveConversation(me.id);
+  const conversation = await loadOrCreateConversation(me.id);
   const cookieHeader = request.headers.get("cookie") ?? "";
   const origin = new URL(request.url).origin;
 
