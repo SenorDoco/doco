@@ -250,10 +250,10 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
   return (
     <aside
       className="flex h-full w-[280px] shrink-0 flex-col border-r border-border bg-card"
-      aria-label="Doco assistant"
+      aria-label="Señor Doco"
     >
       <div className="flex shrink-0 items-center border-b border-border px-3 py-2">
-        <div className="text-xs font-semibold">Doco assistant</div>
+        <div className="text-xs font-semibold">Señor Doco</div>
       </div>
 
       <div
@@ -320,7 +320,7 @@ function SavedMessage({ message }: { message: ChatMessage }) {
   return (
     <div className={cn("mb-3", message.role === "user" ? "" : "")}>
       <div className="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground">
-        {message.role === "user" ? "You" : "Doco"}
+        {message.role === "user" ? "You" : "Señor Doco"}
       </div>
       <div className="space-y-1.5">
         {message.content.map((b, i) => (
@@ -334,7 +334,7 @@ function SavedMessage({ message }: { message: ChatMessage }) {
 function InFlightMessageView({ msg }: { msg: InFlightMessage }) {
   return (
     <div className="mb-3">
-      <div className="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground">Doco</div>
+      <div className="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground">Señor Doco</div>
       <div className="space-y-1.5">
         {msg.content.map((b, i) => {
           if (b.type === "tool_use") {
@@ -427,7 +427,7 @@ function Composer({
         ref={ref}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        placeholder={`Ask Doco as ${username}…`}
+        placeholder={`Ask Señor Doco as ${username}…`}
         rows={2}
         className="min-h-[44px] w-full resize-none rounded-md border border-border bg-background px-2 py-1.5 text-xs focus:border-primary focus:outline-none"
         onKeyDown={(e) => {
