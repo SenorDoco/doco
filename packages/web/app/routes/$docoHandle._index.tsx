@@ -347,23 +347,36 @@ export default function DocoHome({
 
   return (
     <div>
-      <SiteHeader mode="host" me={me} docoScope={{ ownerSlug, docoSlug, handle }} />
+      <SiteHeader mode="host" me={me} />
       <main className="mx-auto max-w-[1800px] px-6 py-6">
+        {/* Title row — spans both columns so the action buttons sit beside the
+            title rather than visually attached to the fishbone graph below. */}
+        <div className="mb-6 space-y-1">
+          <Breadcrumb items={docoBreadcrumb({ ownerSlug, handle })} />
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h1 className="text-lg font-semibold tracking-tight">
+              <Link to={allSearchHref} className="hover:text-primary">
+                {handle}
+              </Link>
+            </h1>
+            <div className="flex flex-wrap items-center gap-2">
+              {canInviteCollaborators ? (
+                <InviteCollaboratorsLink level="doco" targetId={docoId}>
+                  + Collaborator (people/agents)
+                </InviteCollaboratorsLink>
+              ) : null}
+              <Link
+                to={`/${handle}/constitution`}
+                className="shrink-0 rounded-md border border-border px-3 py-1.5 text-xs font-semibold hover:bg-input"
+              >
+                Constitution ({constitutionCount})
+              </Link>
+            </div>
+          </div>
+          <p className="font-mono text-sm text-muted-foreground">{docoId}</p>
+        </div>
         <div className="grid gap-6 md:grid-cols-[320px_minmax(0,1fr)] xl:grid-cols-[400px_minmax(0,1fr)]">
           <section className="min-w-0 space-y-5">
-            {/* Bare title — no card wrapper. */}
-            <div>
-              <div className="space-y-1">
-                <Breadcrumb items={docoBreadcrumb({ ownerSlug, handle })} />
-                <h1 className="text-lg font-semibold tracking-tight">
-                  <Link to={allSearchHref} className="hover:text-primary">
-                    {handle}
-                  </Link>
-                </h1>
-                <p className="font-mono text-sm text-muted-foreground">{docoId}</p>
-              </div>
-            </div>
-
             <NodesOverviewCard
               sections={sections}
               search={
@@ -418,25 +431,6 @@ export default function DocoHome({
           </section>
 
           <aside className="min-w-0 space-y-3 xl:sticky xl:top-4 xl:flex xl:h-[calc(100vh-7rem)] xl:flex-col">
-            <div className="flex flex-wrap justify-end gap-2">
-              {canInviteCollaborators ? (
-                <InviteCollaboratorsLink level="doco" targetId={docoId}>
-                  + Collaborator (people/agents)
-                </InviteCollaboratorsLink>
-              ) : null}
-              <Link
-                to={`/${handle}/constitution`}
-                className="shrink-0 rounded-md border border-border px-3 py-1.5 text-xs font-semibold hover:bg-input"
-              >
-                Constitution ({constitutionCount})
-              </Link>
-            </div>
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <h2 className="text-sm font-semibold tracking-tight">Doco graph</h2>
-              <span className="font-mono text-xs text-muted-foreground">
-                {graph.nodes.length} nodes · {graph.links.length} links
-              </span>
-            </div>
             <div className="h-[70vh] min-h-[520px] xl:min-h-0 xl:flex-1">
               <OverviewGraph
                 centerId={graph.centerId}
