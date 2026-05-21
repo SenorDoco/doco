@@ -242,6 +242,33 @@ authenticated request:
 Authorization: Bearer doco_at_<your-access-token>
 \`\`\`
 
+### First call after auth — fetch the bootstrap manifest
+
+Before anything else, hit the bootstrap endpoint. Don't guess this
+URL; it's exactly:
+
+\`\`\`
+GET ${baseUrl}/api/v1/agent-bootstrap.json
+Authorization: Bearer doco_at_<your-access-token>
+\`\`\`
+
+You get back:
+
+- \`principal\` — your authenticated identity (\`id\` + \`username\`).
+  Confirms the token works and tells you who you're acting as.
+- \`canonical_instructions\` — the Doco protocol you're now expected
+  to follow.
+- \`canonical_instructions_url\` — link to the same instructions in
+  case you want to refetch them later.
+- \`org_constitutions[]\` — Articles of the Constitution for every
+  org you're a member of. These govern every Doco the org owns.
+- \`doco_constitutions[]\` — Articles for every Doco you can read.
+
+The constitutions tell you what's expected when you capture or
+modify nodes in this Doco (or any Doco under those orgs). Cache the
+response for the session; refetch if the user tells you a
+constitution changed mid-session.
+
 ### Endpoint shapes
 
 Doco's HTTP API splits cleanly between page-level routes (under the
