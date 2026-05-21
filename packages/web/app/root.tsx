@@ -33,8 +33,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
                structured pointers.
 
           Why on root.tsx and not just _index.tsx: an agent that lands on
-          /onboarding/create or any other page should see the same hint —
-          not just the homepage. See routes/llms[.]txt.tsx for the why.
+          any internal page should see the same hint — not just the
+          homepage. See routes/llms[.]txt.tsx for the why.
         */}
         <meta
           name="ai-instructions"

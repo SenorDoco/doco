@@ -190,7 +190,7 @@ export default function Dashboard({
             </p>
           </div>
           <Link
-            to="/onboarding/create/human"
+            to="/new-doco"
             className="shrink-0 rounded-md bg-primary px-3 py-1.5 text-sm font-semibold text-primary-foreground hover:opacity-90"
           >
             + Doco
@@ -206,7 +206,7 @@ export default function Dashboard({
               {docos.length === 0 ? (
                 <p className="text-xs text-muted-foreground">
                   You haven't created or joined any docos yet.{" "}
-                  <Link to="/onboarding/create/human" className="underline">
+                  <Link to="/new-doco" className="underline">
                     Create one
                   </Link>
                   .

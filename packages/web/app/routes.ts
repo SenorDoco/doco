@@ -17,7 +17,7 @@ import { type RouteConfig, index, route } from "@react-router/dev/routes";
  *
  * Info-only agent paths can ship as `.txt` only — no HTML, no `.json` —
  * when the page is one screen of instructions and there is no state to
- * mutate. /onboarding/create/agent.txt is the standing example.
+ * mutate.
  *
  * Hosted-multi-tenant route table:
  *
@@ -110,8 +110,6 @@ export default [
   // through). decision_01KS14CW9ZN23FF5CGG0Z7TH4G.
   route("onboarding/join", "routes/onboarding.join._index.tsx"),
   route("onboarding/join/human", "routes/onboarding.join.human.tsx"),
-  route("onboarding/create", "routes/onboarding.create._index.tsx"),
-  route("onboarding/create/human", "routes/onboarding.create.human.tsx"),
   // API
   route("invite/:code", "routes/invite.$code.tsx"),
   // Agent-readable companion to /invite/:code. Agents that get pasted
