@@ -52,7 +52,7 @@ export const DOCO_TEMPLATES: DocoTemplateMeta[] = [
   },
   {
     handle: "test",
-    label: "Test",
+    label: "Tests",
     description:
       "Executable tests inspired by TDD and AI evals. Each Eval pins one checkable claim about a decision, article, or action.",
     updatedAt: "2026-05-12",
