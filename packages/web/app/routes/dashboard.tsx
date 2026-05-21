@@ -35,6 +35,12 @@ import { timeAgo } from "~/lib/time-ago";
 const HEATMAP_WEEKS = 52;
 const FEED_LIMIT = 10;
 const TEMPLATES_LIMIT = 5;
+const TEMPLATE_DATE_FORMATTER = new Intl.DateTimeFormat("en-US", {
+  month: "short",
+  day: "numeric",
+  year: "numeric",
+  timeZone: "UTC",
+});
 
 interface FeedEvent {
   event_id: string;
@@ -149,7 +155,7 @@ export async function loader({ request }: { request: Request }) {
   // Newly-available templates, most recent first. Drops "generic" —
   // it's not really a "template", it's the no-op starting point.
   const templates = DOCO_TEMPLATES.filter((t) => t.handle !== "generic")
-    .sort((a, b) => b.addedAt.localeCompare(a.addedAt))
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
     .slice(0, TEMPLATES_LIMIT);
 
   return {
@@ -241,15 +247,14 @@ export default function Dashboard({
                       key={t.handle}
                       className="space-y-1.5 border-b border-border pb-3 last:border-b-0 last:pb-0"
                     >
-                      <div className="flex items-baseline justify-between gap-2">
+                      <div className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5">
                         <span className="text-sm font-semibold">{t.label}</span>
                         <time
-                          dateTime={t.addedAt}
-                          title={t.addedAt}
-                          suppressHydrationWarning
-                          className="shrink-0 text-[10px] tabular-nums text-muted-foreground"
+                          dateTime={t.updatedAt}
+                          title={t.updatedAt}
+                          className="shrink-0 whitespace-nowrap text-right text-[10px] tabular-nums text-muted-foreground"
                         >
-                          {timeAgo(t.addedAt)}
+                          Last updated {formatTemplateUpdatedAt(t.updatedAt)}
                         </time>
                       </div>
                       <p className="text-[11px] leading-snug text-muted-foreground">
@@ -257,7 +262,7 @@ export default function Dashboard({
                       </p>
                       <div className="flex items-center justify-between gap-2 pt-0.5">
                         <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                          by {t.creator}
+                          by {t.owner}
                         </span>
                         <Link
                           to={`/new-doco?template_handle=${encodeURIComponent(t.handle)}`}
@@ -275,6 +280,16 @@ export default function Dashboard({
         </div>
       </main>
     </div>
+  );
+}
+
+function formatTemplateUpdatedAt(isoDate: string): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(isoDate);
+  if (!match) return isoDate;
+
+  const [, year, month, day] = match;
+  return TEMPLATE_DATE_FORMATTER.format(
+    new Date(Date.UTC(Number(year), Number(month) - 1, Number(day))),
   );
 }
 

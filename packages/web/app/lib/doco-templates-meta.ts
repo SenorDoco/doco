@@ -3,59 +3,60 @@
 // match the ones the host package's `findDocoTemplateByName` knows
 // about — they're passed verbatim to `createDocoInOrg`.
 //
-// `addedAt` is the ISO date the template first shipped on the host;
-// the dashboard sorts the panel by this descending and renders
-// `timeAgo(addedAt)` next to each entry. Add a new template? Bump
-// the date on the same commit so it surfaces as "added Ns ago" until
-// the next one ships.
+// `updatedAt` is the ISO date the template metadata last changed on
+// the host; the dashboard sorts the panel by this descending and
+// renders a stable "Last updated ..." label next to each entry. Add or
+// revise a template? Bump the date on the same commit.
 
 export interface DocoTemplateMeta {
   handle: string;
   label: string;
   description: string;
-  /** ISO-8601 date the template first shipped. */
-  addedAt: string;
-  /** Author label rendered under the template card on the dashboard. */
-  creator: string;
+  /** ISO-8601 date the template metadata last changed. */
+  updatedAt: string;
+  /** Owner label rendered under the template card on the dashboard. */
+  owner: string;
 }
+
+const TEMPLATE_OWNER = "@torrenegra";
 
 export const DOCO_TEMPLATES: DocoTemplateMeta[] = [
   {
     handle: "generic",
     label: "Generic (empty)",
     description: "Start with a blank doco. No rules, no node-type restrictions.",
-    addedAt: "2026-01-01",
-    creator: "Doco",
+    updatedAt: "2026-01-01",
+    owner: TEMPLATE_OWNER,
   },
   {
     handle: "user-flows",
     label: "User Flows",
     description: "Document end-to-end user journeys as steps, branches, and decisions.",
-    addedAt: "2026-02-15",
-    creator: "Doco",
+    updatedAt: "2026-02-15",
+    owner: TEMPLATE_OWNER,
   },
   {
     handle: "state-machines",
     label: "State Machines",
     description: "Formal state-machine modeling — states, transitions, invariants.",
-    addedAt: "2026-03-10",
-    creator: "Doco",
+    updatedAt: "2026-03-10",
+    owner: TEMPLATE_OWNER,
   },
   {
     handle: "business-processes",
     label: "Business Processes",
     description:
       "Document repeatable business processes — actors, gateways, milestones, outcomes. BPMN-inspired.",
-    addedAt: "2026-05-08",
-    creator: "Doco",
+    updatedAt: "2026-05-08",
+    owner: TEMPLATE_OWNER,
   },
   {
     handle: "test",
     label: "Test",
     description:
       "Executable tests inspired by TDD and AI evals. Each Eval pins one checkable claim about a decision, article, or action.",
-    addedAt: "2026-05-12",
-    creator: "Doco",
+    updatedAt: "2026-05-12",
+    owner: TEMPLATE_OWNER,
   },
 ];
 
