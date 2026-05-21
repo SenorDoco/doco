@@ -381,42 +381,6 @@ export function OverviewGraph({
 
   return (
     <div className={fillHeight ? "flex h-full min-h-0 flex-col gap-2" : "flex flex-col gap-2"}>
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-muted-foreground">Life cycle:</span>
-          {allLifecycles.map((lifecycle) => {
-            const checked = visibleLifecycles.has(lifecycle);
-            const color = lifecycleColor(lifecycle);
-            const label = lifecycleLabel(lifecycle);
-            return (
-              <label
-                key={lifecycle}
-                className="inline-flex cursor-pointer select-none items-center gap-1"
-                title={label}
-              >
-                <input
-                  type="checkbox"
-                  checked={checked}
-                  onChange={() => {
-                    setVisibleLifecycles((prev) => {
-                      const next = new Set(prev);
-                      if (checked) next.delete(lifecycle);
-                      else next.add(lifecycle);
-                      return next;
-                    });
-                  }}
-                  className="h-3 w-3"
-                  style={{ accentColor: color }}
-                />
-                <span className="capitalize" style={{ color }}>
-                  {label}
-                </span>
-              </label>
-            );
-          })}
-        </div>
-      </div>
-
       <div
         ref={graphRef}
         className={
@@ -494,6 +458,42 @@ export function OverviewGraph({
             Loading graph…
           </div>
         )}
+      </div>
+
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-muted-foreground">Life cycle:</span>
+          {allLifecycles.map((lifecycle) => {
+            const checked = visibleLifecycles.has(lifecycle);
+            const color = lifecycleColor(lifecycle);
+            const label = lifecycleLabel(lifecycle);
+            return (
+              <label
+                key={lifecycle}
+                className="inline-flex cursor-pointer select-none items-center gap-1"
+                title={label}
+              >
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  onChange={() => {
+                    setVisibleLifecycles((prev) => {
+                      const next = new Set(prev);
+                      if (checked) next.delete(lifecycle);
+                      else next.add(lifecycle);
+                      return next;
+                    });
+                  }}
+                  className="h-3 w-3"
+                  style={{ accentColor: color }}
+                />
+                <span className="capitalize" style={{ color }}>
+                  {label}
+                </span>
+              </label>
+            );
+          })}
+        </div>
       </div>
     </div>
   );
