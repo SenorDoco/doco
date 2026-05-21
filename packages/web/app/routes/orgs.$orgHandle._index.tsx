@@ -186,6 +186,19 @@ export async function loader({
       joinedAt: r.joined_at instanceof Date ? r.joined_at.toISOString() : String(r.joined_at),
     }));
 
+    // Constitution article count — guidance + node-authoring across the
+    // org's two article tables (org_guidance_articles +
+    // org_node_authoring_articles).
+    const constitutionRow = (
+      await c.query<{ n: string }>(
+        `SELECT
+           ((SELECT COUNT(*) FROM org_guidance_articles WHERE org_id = $1)
+          + (SELECT COUNT(*) FROM org_node_authoring_articles WHERE org_id = $1))::text AS n`,
+        [org.id],
+      )
+    ).rows[0];
+    const constitutionCount = Number(constitutionRow?.n ?? 0);
+
     const byDay: Record<string, number> = {};
     let topContributors: TopContributor[] = [];
     let items: FeedItem[] = [];
@@ -318,6 +331,7 @@ export async function loader({
       topContributors,
       items,
       graph,
+      constitutionCount,
     };
   });
 }
@@ -351,8 +365,18 @@ export default function OrgHome({
 }: {
   loaderData: Awaited<ReturnType<typeof loader>>;
 }) {
-  const { org, me, canInviteCollaborators, docos, members, byDay, topContributors, items, graph } =
-    loaderData;
+  const {
+    org,
+    me,
+    canInviteCollaborators,
+    docos,
+    members,
+    byDay,
+    topContributors,
+    items,
+    graph,
+    constitutionCount,
+  } = loaderData;
 
   const revalidator = useRevalidator();
   useEffect(() => {
@@ -393,11 +417,6 @@ export default function OrgHome({
               <div className="space-y-1">
                 <h1 className="text-lg font-semibold tracking-tight">{org.handle}</h1>
                 <p className="font-mono text-sm text-muted-foreground">{org.id}</p>
-                <p className="text-xs text-muted-foreground">
-                  <Link to={`/orgs/${org.handle}/constitution`} className="underline">
-                    Constitution
-                  </Link>
-                </p>
               </div>
               {canInviteCollaborators ? (
                 <InviteCollaboratorsLink level="org" targetId={org.id}>
@@ -420,6 +439,19 @@ export default function OrgHome({
                 Search
               </button>
             </Form>
+
+            <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-card px-4 py-2 text-xs">
+              <span>
+                Articles of the Constitution:{" "}
+                <span className="font-mono tabular-nums">{constitutionCount}</span>
+              </span>
+              <Link
+                to={`/orgs/${org.handle}/constitution`}
+                className="rounded-md border border-border px-2 py-1 text-[11px] font-semibold hover:bg-input"
+              >
+                Manage
+              </Link>
+            </div>
 
             <Card>
               <CardHeader className="flex flex-row items-center justify-between gap-3 px-4 py-3">
