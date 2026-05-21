@@ -156,6 +156,13 @@ export default [
   // union of org + Doco constitutions the caller can read. Auth-aware:
   // anonymous callers get public-Doco constitutions only.
   route("api/v1/agent-bootstrap.json", "routes/api.v1.agent-bootstrap[.]json.tsx"),
+  // In-page assistant — the left-rail sidebar visible to every signed-in
+  // user. One rolling conversation per Principal; "new chat" archives
+  // the current row. The agent acts as the signed-in user (cookie-
+  // relayed fetches), no separate OAuth identity to authorize.
+  route("api/v1/agent-chat/conversation.json", "routes/api.v1.agent-chat.conversation[.]json.tsx"),
+  route("api/v1/agent-chat/messages.json", "routes/api.v1.agent-chat.messages[.]json.tsx"),
+  route("api/v1/agent-chat/new.json", "routes/api.v1.agent-chat.new[.]json.tsx"),
   // Per-Doco routes: every Doco lives at `/<doco-handle>/...`.
   // `normalizeDocoParams` resolves the public handle-shaped URL
   // param to a row. There is no owner profile page; the dashboard
@@ -212,6 +219,13 @@ export default [
   route(":docoHandle/search.json", "routes/$docoHandle.search[.]json.tsx"),
   route(":docoHandle/onboarding/agent", "routes/$docoHandle.onboarding.agent.tsx"),
   route(":docoHandle/rules/new", "routes/$docoHandle.rules.new.tsx"),
+  // Edges — Doco's relationships materialize as rows in the `edges` table
+  // (D-017, fields-as-edges). The list view is one row per edge; the
+  // detail view renders the two connected nodes via EntityGraph plus the
+  // edge's metadata. Composite key `(edge_type, from_id, to_id)` is
+  // url-encoded as `edge_type__from_id__to_id`.
+  route(":docoHandle/edges", "routes/$docoHandle.edges._index.tsx"),
+  route(":docoHandle/edges/:edgeKey", "routes/$docoHandle.edges.$edgeKey.tsx"),
   // Short-form entity routes. `:type` is validated by the loader; reserved
   // feature paths above win the match for the static paths.
   route(":docoHandle/:type", "routes/$docoHandle.$type._index.tsx"),

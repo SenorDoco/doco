@@ -5,12 +5,28 @@ import {
   Scripts,
   ScrollRestoration,
   isRouteErrorResponse,
+  useLoaderData,
   useLocation,
   useRouteError,
 } from "react-router";
 
 import { AccessDeniedView, isAccessDeniedData } from "~/components/access-denied-view";
+import { AgentSidebar } from "~/components/agent-sidebar";
+import { type CurrentPrincipal, getCurrentPrincipal } from "~/lib/session";
 import "./app.css";
+
+// Root loader — fetch the current Principal once so the persistent
+// AgentSidebar in App() knows whether to render. Per-route loaders
+// still fetch `me` themselves where they need it; we don't try to
+// thread root data through context.
+export async function loader({ request }: { request: Request }) {
+  try {
+    const me = await getCurrentPrincipal(request);
+    return { me };
+  } catch {
+    return { me: null as CurrentPrincipal | null };
+  }
+}
 
 export function links() {
   return [
@@ -54,7 +70,21 @@ export function Layout({ children }: { children: React.ReactNode }) {
 }
 
 export default function App() {
-  return <Outlet />;
+  const data = useLoaderData() as { me: CurrentPrincipal | null } | undefined;
+  const me = data?.me ?? null;
+  // The sidebar is 280px wide, fixed to the left edge below the top bar.
+  // Sibling routes keep rendering their own SiteHeader; we only pad the
+  // outlet so its content sits to the right of the sidebar when it's
+  // visible. Signed-out users (sign-in / anonymous landing) see no
+  // sidebar and no padding.
+  return (
+    <>
+      {me ? <AgentSidebar me={me} /> : null}
+      <div style={me ? { paddingLeft: 280 } : undefined}>
+        <Outlet />
+      </div>
+    </>
+  );
 }
 
 export function ErrorBoundary() {
