@@ -24,7 +24,6 @@ import { ALL_ROLES, type InviteLevel } from "~/lib/collaborator-invite";
 import {
   type CollaboratorsPageData,
   type GrantRow,
-  type PrincipalKind,
   loadCollaboratorsPageData,
 } from "~/lib/collaborators.server";
 import { getDocoLevelRole } from "~/lib/doco-access.server";
@@ -389,6 +388,7 @@ export default function CollaboratorsPage({
             title="Org-wide collaborators"
             empty="You don't have any org grants yet."
             rows={orgRows}
+            myPrincipalId={loaderData.me.id}
           />
         ) : null}
 
@@ -397,6 +397,7 @@ export default function CollaboratorsPage({
             title="Per-doco collaborators"
             empty="You don't have any doco grants yet."
             rows={docoRows}
+            myPrincipalId={loaderData.me.id}
           />
         ) : null}
       </SingleColumnPageMain>
@@ -408,12 +409,21 @@ function Section({
   title,
   empty,
   rows,
+  myPrincipalId,
 }: {
   title: string;
   empty: string;
   rows: GroupedRow[];
+  myPrincipalId: string;
 }) {
-  const people = rows.filter((r) => r.principal.kind === "person");
+  const people = rows
+    .filter((r) => r.principal.kind === "person")
+    .sort((a, b) => {
+      const am = a.principal.principal_id === myPrincipalId;
+      const bm = b.principal.principal_id === myPrincipalId;
+      if (am !== bm) return am ? -1 : 1;
+      return a.principal.username.localeCompare(b.principal.username);
+    });
   const agents = rows.filter((r) => r.principal.kind === "agent");
   return (
     <Card>
@@ -424,13 +434,40 @@ function Section({
         {rows.length === 0 ? (
           <p className="text-sm text-muted-foreground">{empty}</p>
         ) : (
-          <div className="divide-y divide-border">
-            <div className="pb-6">
-              <Subsection kind="person" rows={people} empty="No people yet." />
-            </div>
-            <div className="pt-6">
-              <Subsection kind="agent" rows={agents} empty="No agents yet." />
-            </div>
+          <div className="overflow-x-auto">
+            <table className="w-full table-fixed text-sm">
+              <colgroup>
+                <col className="w-[26%]" />
+                <col className="w-[24%]" />
+                <col className="w-[14%]" />
+                <col className="w-[12%]" />
+                <col className="w-[12%]" />
+                <col className="w-[12%]" />
+              </colgroup>
+              <thead>
+                <tr className="text-left text-xs uppercase tracking-wide text-muted-foreground">
+                  <th className="pb-2 font-medium">User</th>
+                  <th className="pb-2 font-medium">Access to</th>
+                  <th className="pb-2 font-medium">Role</th>
+                  <th className="pb-2 font-medium">Last activity</th>
+                  <th className="pb-2 font-medium">Granted</th>
+                  <th className="pb-2 font-medium text-right">Actions</th>
+                </tr>
+              </thead>
+              <GroupBody
+                label="People"
+                rows={people}
+                empty="No people yet."
+                myPrincipalId={myPrincipalId}
+              />
+              <GroupBody
+                label="Agents"
+                rows={agents}
+                empty="No agents yet."
+                myPrincipalId={myPrincipalId}
+                topBorder
+              />
+            </table>
           </div>
         )}
       </CardContent>
@@ -438,54 +475,42 @@ function Section({
   );
 }
 
-function Subsection({
-  kind,
+function GroupBody({
+  label,
   rows,
   empty,
+  myPrincipalId,
+  topBorder,
 }: {
-  kind: PrincipalKind;
+  label: string;
   rows: GroupedRow[];
   empty: string;
+  myPrincipalId: string;
+  topBorder?: boolean;
 }) {
-  const heading = kind === "person" ? "People" : "Agents";
   return (
-    <div>
-      <h3 className="mb-2 text-sm font-semibold">{heading}</h3>
+    <tbody className={topBorder ? "border-t border-border" : undefined}>
+      <tr>
+        <td colSpan={6} className="pt-4 pb-2 text-sm font-semibold">
+          {label}
+        </td>
+      </tr>
       {rows.length === 0 ? (
-        <p className="text-sm text-muted-foreground">{empty}</p>
+        <tr>
+          <td colSpan={6} className="py-2 text-sm text-muted-foreground">
+            {empty}
+          </td>
+        </tr>
       ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full table-fixed text-sm">
-            <colgroup>
-              <col className="w-[26%]" />
-              <col className="w-[24%]" />
-              <col className="w-[14%]" />
-              <col className="w-[12%]" />
-              <col className="w-[12%]" />
-              <col className="w-[12%]" />
-            </colgroup>
-            <thead>
-              <tr className="text-left text-xs uppercase tracking-wide text-muted-foreground">
-                <th className="pb-2 font-medium">User</th>
-                <th className="pb-2 font-medium">Access to</th>
-                <th className="pb-2 font-medium">Role</th>
-                <th className="pb-2 font-medium">Last activity</th>
-                <th className="pb-2 font-medium">Granted</th>
-                <th className="pb-2 font-medium text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {rows.map((r) => (
-                <UserRow
-                  key={`${r.level}-${r.principal.principal_id}-${r.role}`}
-                  row={r}
-                />
-              ))}
-            </tbody>
-          </table>
-        </div>
+        rows.map((r) => (
+          <UserRow
+            key={`${r.level}-${r.principal.principal_id}-${r.role}`}
+            row={r}
+            myPrincipalId={myPrincipalId}
+          />
+        ))
       )}
-    </div>
+    </tbody>
   );
 }
 
@@ -514,7 +539,24 @@ function formatDate(iso: string): string {
   return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
 }
 
-function UserRow({ row }: { row: GroupedRow }) {
+function parseAgentName(full: string): { primary: string; caption: string | null } {
+  const m = full.match(/^(.+?)\s*\((.+)\)\s*$/);
+  if (!m) return { primary: full, caption: null };
+  const primary = m[1].trim();
+  const inside = m[2].trim();
+  const first = inside.split(/,\s*/)[0]?.trim() ?? "";
+  return { primary, caption: first || null };
+}
+
+const MAX_VISIBLE_TARGETS = 2;
+
+function UserRow({
+  row,
+  myPrincipalId,
+}: {
+  row: GroupedRow;
+  myPrincipalId: string;
+}) {
   const roleFetcher = useFetcher<ActionResult>();
   const removeFetcher = useFetcher<ActionResult>();
 
@@ -588,30 +630,58 @@ function UserRow({ row }: { row: GroupedRow }) {
     return base;
   })();
 
+  const parsed = isOauth ? parseAgentName(username) : null;
+  const primaryName = parsed?.primary ?? username;
+  const caption = parsed?.caption ?? null;
+  const isMe = !isOauth && row.principal.principal_id === myPrincipalId;
+
+  const visibleTargets = row.targets.slice(0, MAX_VISIBLE_TARGETS);
+  const overflowTargets = row.targets.slice(MAX_VISIBLE_TARGETS);
+
   return (
     <tr data-testid={`row-${row.level}-${username}-${row.role}`}>
       <td className="py-2 pr-3 align-middle">
-        <div className="truncate font-medium" title={username}>
-          {username}
+        <div className="flex items-center gap-1.5">
+          <span className="truncate font-medium" title={username}>
+            {primaryName}
+          </span>
+          {isOauth ? (
+            <span className="shrink-0 rounded border border-border bg-muted px-1.5 py-px text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+              agent
+            </span>
+          ) : null}
+          {isMe ? (
+            <span className="shrink-0 rounded border border-border bg-input px-1.5 py-px text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+              you
+            </span>
+          ) : null}
         </div>
-        {isOauth ? (
-          <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
-            OAuth client
+        {caption ? (
+          <div className="truncate text-xs text-muted-foreground" title={username}>
+            {caption}
           </div>
         ) : null}
       </td>
       <td className="py-2 pr-3 align-middle">
-        <div className="flex flex-wrap gap-x-2 gap-y-1">
-          {row.targets.map((t) => (
+        <div className="flex flex-wrap items-center gap-1">
+          {visibleTargets.map((t) => (
             <Link
               key={t.id}
               to={t.link}
-              className="truncate text-xs underline"
+              className="inline-flex max-w-[12rem] items-center truncate rounded-full border border-border bg-input px-2 py-0.5 text-xs hover:bg-card"
               title={`${t.label} — granted ${formatDate(t.joined_at)}`}
             >
               {t.label}
             </Link>
           ))}
+          {overflowTargets.length > 0 ? (
+            <span
+              className="inline-flex shrink-0 items-center rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground"
+              title={overflowTargets.map((t) => t.label).join(", ")}
+            >
+              +{overflowTargets.length} more
+            </span>
+          ) : null}
         </div>
       </td>
       <td className="py-2 pr-3 align-middle">
