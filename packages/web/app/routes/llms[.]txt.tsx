@@ -81,6 +81,19 @@ If you (the agent) need access, run the OAuth recipe above. The
 human approves your access at \`${baseUrl}/device\` (Recipe B) or in
 the authorize browser tab (Recipe A).
 
+## Bootstrap manifest
+
+Once you hold a Bearer token, hit:
+
+    GET ${baseUrl}/api/v1/agent-bootstrap.json
+    Authorization: Bearer doco_at_<token>
+
+You'll get the canonical instructions plus the union of every **org**
+and **Doco constitution** you have read-or-above access to. Org
+constitutions apply to every Doco the org owns, so an agent that
+bootstraps Doco (the tool) sees the full set of authoring rules
+governing its work across every project it can reach.
+
 ## Related routes
 
     ${baseUrl}/sign-in
@@ -88,6 +101,7 @@ the authorize browser tab (Recipe A).
     ${baseUrl}/.well-known/oauth-authorization-server
     ${baseUrl}/protocol/canonical-instructions
     ${baseUrl}/protocol/agent-oauth-recipe
+    ${baseUrl}/api/v1/agent-bootstrap.json
 `;
   return new Response(body, {
     headers: { "Content-Type": "text/plain; charset=utf-8" },

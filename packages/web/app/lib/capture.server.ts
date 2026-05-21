@@ -2203,6 +2203,107 @@ export async function captureNodeAuthoringArticle(
   };
 }
 
+// ─── Org-level constitution articles ─────────────────────────────────────
+//
+// Mirror the per-Doco capture helpers but key on `org_id`. Org constitution
+// articles apply to every Doco the org owns. They live in dedicated tables
+// (`org_guidance_articles` / `org_node_authoring_articles`) and bypass the
+// per-Doco entity pipeline — no edges/FTS/audit-events, since the org
+// constitution is read-mostly reference material aggregated at agent
+// bootstrap.
+
+export interface OrgArticleCaptureResult {
+  ok: true;
+  id: string;
+  duration_ms: number;
+}
+
+export async function captureOrgGuidanceArticle(
+  orgId: string,
+  draft: GuidanceArticleDraft,
+): Promise<OrgArticleCaptureResult | CaptureError> {
+  const startedAt = performance.now();
+  if (!draft.summary?.trim()) return { error: "summary is required." };
+  const author = await resolveArticleAuthor(draft);
+  if (typeof author !== "string") return author;
+
+  const id = `guidance_article_${generateUlid()}`;
+  const summary = draft.summary.trim();
+  const now = new Date().toISOString();
+  const lifecycle = draft.lifecycle ?? "active";
+  const fm: Record<string, unknown> = {
+    id,
+    org_id: orgId,
+    node_type: "guidance_article",
+    article_type: "guidance",
+    summary,
+    created_at: now,
+    created_by: draft.created_by_id ?? author,
+    lifecycle,
+  };
+  const body = draft.body_md?.trim() || summary;
+
+  await withClient(async (c) => {
+    await c.query(
+      `INSERT INTO org_guidance_articles
+         (id, org_id, summary, lifecycle, body_md, raw_yaml, created_at, created_by, updated_at, updated_by)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $7, $8)`,
+      [id, orgId, summary, lifecycle, body, JSON.stringify(fm), now, draft.created_by_id ?? author],
+    );
+  });
+
+  return { ok: true, id, duration_ms: Math.round(performance.now() - startedAt) };
+}
+
+export async function captureOrgNodeAuthoringArticle(
+  orgId: string,
+  draft: NodeAuthoringArticleDraft,
+): Promise<OrgArticleCaptureResult | CaptureError> {
+  const startedAt = performance.now();
+  if (!draft.summary?.trim()) return { error: "summary is required." };
+  if (draft.evaluation_kind !== "deterministic" && draft.evaluation_kind !== "probabilistic") {
+    return { error: "evaluation_kind must be deterministic or probabilistic." };
+  }
+  const author = await resolveArticleAuthor(draft);
+  if (typeof author !== "string") return author;
+  const predicate = normalizeNodeAuthoringPredicate(draft);
+  if ("error" in predicate) return predicate;
+
+  const id = `node_authoring_article_${generateUlid()}`;
+  const summary = draft.summary.trim();
+  const now = new Date().toISOString();
+  const lifecycle = draft.lifecycle ?? "active";
+  const firesWhen = Array.isArray(draft.fires_when_node_lifecycle)
+    ? draft.fires_when_node_lifecycle.filter((v) => typeof v === "string" && v.length > 0)
+    : [];
+  const fm: Record<string, unknown> = {
+    id,
+    org_id: orgId,
+    node_type: "node_authoring_article",
+    article_type: "node_authoring",
+    evaluation_kind: draft.evaluation_kind,
+    summary,
+    predicate,
+    ...(firesWhen.length > 0 ? { fires_when_node_lifecycle: firesWhen } : {}),
+    on_violation: draft.on_violation ?? "block",
+    created_at: now,
+    created_by: draft.created_by_id ?? author,
+    lifecycle,
+  };
+  const body = draft.body_md?.trim() ?? "";
+
+  await withClient(async (c) => {
+    await c.query(
+      `INSERT INTO org_node_authoring_articles
+         (id, org_id, summary, lifecycle, body_md, raw_yaml, created_at, created_by, updated_at, updated_by)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $7, $8)`,
+      [id, orgId, summary, lifecycle, body, JSON.stringify(fm), now, draft.created_by_id ?? author],
+    );
+  });
+
+  return { ok: true, id, duration_ms: Math.round(performance.now() - startedAt) };
+}
+
 const REF_TYPES = new Set(["file", "url", "ticket", "commit", "document", "other"]);
 
 export interface ReferenceDraft {

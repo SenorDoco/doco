@@ -104,6 +104,9 @@ export default [
   route("new-doco", "routes/new-doco.tsx"),
   route("new-org", "routes/new-org.tsx"),
   route("orgs", "routes/orgs._index.tsx"),
+  // Org-level constitution: applies to every Doco owned by the org.
+  // Same shape as the per-Doco constitution at /:docoHandle/constitution.
+  route("orgs/:orgHandle/constitution", "routes/orgs.$orgHandle.constitution.tsx"),
   route("users", "routes/users.tsx"),
   // Onboarding (human paths only — agents authenticate via OAuth +
   // install the MCP connector at /mcp/<handle>, no recipe to walk
@@ -125,6 +128,10 @@ export default [
   // suffixed) handle.
   route("api/v1/orgs.json", "routes/api.v1.orgs[.]json.tsx"),
   route("api/v1/docos.json", "routes/api.v1.docos[.]json.tsx"),
+  // Agent bootstrap. Returns the canonical-instructions prose plus the
+  // union of org + Doco constitutions the caller can read. Auth-aware:
+  // anonymous callers get public-Doco constitutions only.
+  route("api/v1/agent-bootstrap.json", "routes/api.v1.agent-bootstrap[.]json.tsx"),
   // Per-Doco routes: every Doco lives at `/<doco-id>/...` where
   // doco-id is the handle. `normalizeDocoParams` resolves the URL
   // param to a row. There is no owner profile page; the dashboard

@@ -219,6 +219,15 @@ on_violation: block | warn | log
 
 Markdown body: article prose, rationale, and examples.
 
+Constitution articles also exist at the **organization** level. Org-level
+articles use the same two shapes (`guidance_article` /
+`node_authoring_article`) and the same fields, but key on `org_id`
+instead of `doco_id` and live in `org_guidance_articles` /
+`org_node_authoring_articles`. An org's constitution applies to every
+Doco it owns; when an agent bootstraps, the host returns the union of
+every org and every Doco constitution the caller has read-or-above
+access to.
+
 ### 4.5 Decision — a recorded choice at a decision point
 
 ```yaml

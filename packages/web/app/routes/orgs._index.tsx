@@ -100,6 +100,14 @@ export default function OrgsIndexPage({
                         {o.description ? (
                           <div className="mt-1 text-sm text-muted-foreground">{o.description}</div>
                         ) : null}
+                        <div className="mt-1">
+                          <Link
+                            to={`/orgs/${o.slug}/constitution`}
+                            className="text-xs underline text-muted-foreground hover:text-foreground"
+                          >
+                            Constitution
+                          </Link>
+                        </div>
                       </div>
                       {o.myRole === "owner" ? (
                         <InviteCollaboratorsLink level="org" targetId={o.id} />

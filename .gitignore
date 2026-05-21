@@ -34,3 +34,4 @@ build/
 # Scratch
 /tmp/
 .vercel
+/.scratch/

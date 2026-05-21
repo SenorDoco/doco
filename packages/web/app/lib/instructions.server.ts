@@ -68,6 +68,22 @@ states, principals, invites, audit.
 Public Docos return 200 for unauthenticated reads; private Docos
 return 403 until you finish the OAuth recipe.
 
+## Bootstrap: read the constitutions you have access to
+
+Once you hold a Bearer token, hit:
+
+    GET https://doco.to/api/v1/agent-bootstrap.json
+    Authorization: Bearer doco_at_<token>
+
+The response carries the **constitutions** for every org and every
+Doco you have read-or-above access to. There are two article kinds at
+both levels (guidance_article + node_authoring_article); they govern
+how you author nodes (predicates that must hold, structural checks,
+prose guidance). Org-level articles apply to every Doco that org
+owns. Treat constitution articles as binding on your authoring —
+predicates with \`on_violation: block\` mean the host will reject
+captures that violate them.
+
 The four invariants below apply whichever path you took — the
 protocol is about how you reply, not about how you authenticated.
 

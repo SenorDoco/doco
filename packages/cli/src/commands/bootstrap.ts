@@ -80,7 +80,7 @@ export const bootstrapCmd = defineCommand({
           ? args.id.trim()
           : "";
     const ref = refArg || docoRef;
-    const url = new URL("/api/v1/agent-bootstrap", normalizedHost(args.host || host));
+    const url = new URL("/api/v1/agent-bootstrap.json", normalizedHost(args.host || host));
     if (ref) url.searchParams.set("id", ref);
     await fetchAgentJson({
       url,
