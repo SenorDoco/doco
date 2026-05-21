@@ -55,6 +55,7 @@ interface ParsedState {
   orgId: string;
   newOrgHandle: string;
   suffix: string;
+  visibility: "private" | "public";
 }
 
 function parseState(params: URLSearchParams): ParsedState {
@@ -62,6 +63,7 @@ function parseState(params: URLSearchParams): ParsedState {
     orgId: (params.get("org_id") ?? "").trim(),
     newOrgHandle: (params.get("new_org_handle") ?? "").trim().toLowerCase(),
     suffix: (params.get("suffix") ?? "").trim().toLowerCase(),
+    visibility: params.get("visibility") === "public" ? "public" : "private",
   };
 }
 
@@ -70,6 +72,7 @@ function carryForwardUrl(path: string, state: ParsedState): string {
     ...(state.orgId ? { org_id: state.orgId } : {}),
     ...(state.newOrgHandle ? { new_org_handle: state.newOrgHandle } : {}),
     suffix: state.suffix,
+    visibility: state.visibility,
   });
   return `${path}?${qs.toString()}`;
 }
@@ -99,11 +102,10 @@ export async function action({ request }: { request: Request }) {
     orgId: String(form.get("org_id") ?? "").trim(),
     newOrgHandle: String(form.get("new_org_handle") ?? "").trim().toLowerCase(),
     suffix: String(form.get("suffix") ?? "").trim().toLowerCase(),
+    visibility: String(form.get("visibility") ?? "private") === "public" ? "public" : "private",
   };
   const templateHandle = String(form.get("template_handle") ?? "generic").trim();
-  const visibility = (String(form.get("visibility") ?? "private") === "public"
-    ? "public"
-    : "private") as "private" | "public";
+  const visibility = state.visibility;
   const accept = form.get("accept_suggested_handle") === "1";
 
   if ((!state.orgId && !state.newOrgHandle) || !state.suffix) {
@@ -190,8 +192,8 @@ export default function NewDocoStep3({
     form?: { templateHandle: string; visibility: string };
   };
 }) {
-  const { me, orgId, newOrgHandle, suffix, orgHandle } = loaderData;
-  const state: ParsedState = { orgId, newOrgHandle, suffix };
+  const { me, orgId, newOrgHandle, suffix, visibility, orgHandle } = loaderData;
+  const state: ParsedState = { orgId, newOrgHandle, suffix, visibility };
   const finalHandle = `${orgHandle ?? "<org>"}-${suffix}`;
   const selectedTemplate = actionData?.form?.templateHandle ?? "generic";
   const selectedVisibility = actionData?.form?.visibility ?? "private";

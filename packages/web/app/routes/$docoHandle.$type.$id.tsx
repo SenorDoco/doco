@@ -103,6 +103,16 @@ import { NodeTypeIcon } from "~/components/node-type-icon";
 import { SiteHeader } from "~/components/site-header";
 import { lifecycleColor } from "~/lib/node-colors";
 
+function prettyTypePlural(nodeType: string): string {
+  return (
+    nodeType
+      .split("_")
+      .filter(Boolean)
+      .map((p, i) => (i === 0 ? p.charAt(0).toUpperCase() + p.slice(1) : p))
+      .join(" ") + "s"
+  );
+}
+
 /** "Ns / Nm / Nh / Nd ago" — same shape the graph component uses. */
 function relativeTimeIso(iso: string): string {
   const t = Date.parse(iso);
@@ -581,10 +591,7 @@ export default function EntityDetail({
           items={docoBreadcrumb({
             ownerSlug,
             handle,
-            parent: {
-              label: `${type.charAt(0).toUpperCase() + type.slice(1)}s`,
-              to: `/${handle}/${type}`,
-            },
+            parent: { label: prettyTypePlural(type), to: `/${handle}/${type}` },
             pageLabel: display,
           })}
           className="mb-1.5"

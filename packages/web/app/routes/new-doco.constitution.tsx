@@ -53,12 +53,13 @@ export default function NewDocoStep2({
 }: {
   loaderData: Awaited<ReturnType<typeof loader>>;
 }) {
-  const { me, orgId, newOrgHandle, suffix, orgHandle } = loaderData;
+  const { me, orgId, newOrgHandle, suffix, visibility, orgHandle } = loaderData;
   const finalHandle = `${orgHandle ?? "<org>"}-${suffix}`;
   const backHref = `/new-doco?${new URLSearchParams({
     ...(orgId ? { org_id: orgId } : {}),
     ...(newOrgHandle ? { new_org_handle: newOrgHandle } : {}),
     suffix,
+    visibility,
   }).toString()}`;
 
   return (
@@ -70,40 +71,22 @@ export default function NewDocoStep2({
           <CardHeader>
             <CardTitle>About the constitution of {finalHandle}</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4 text-sm">
+          <CardContent className="space-y-3 text-sm">
             <p>
-              Every organization and every Doco has a{" "}
-              <strong>constitution</strong> — a small body of prose and rules
-              that defines how nodes get authored inside it.
+              A constitution defines how nodes get authored. It's made of{" "}
+              <strong>articles</strong> in two kinds:
             </p>
-            <p>
-              The constitution is made up of{" "}
-              <strong>Articles of the Constitution</strong>. There are two
-              kinds:
-            </p>
-            <ul className="ml-5 list-disc space-y-2">
+            <ul className="ml-5 list-disc space-y-1.5">
               <li>
-                <strong>Guidance articles</strong> — short prose the project
-                owner writes for context. AI agents read them while working;
-                they aren't checked by any automated rule.
+                <strong>Guidance articles</strong> — {GUIDANCE_ARTICLE_EXPLAINER}
               </li>
               <li>
-                <strong>Node authoring articles</strong> — rules evaluated
-                when nodes are captured. They're either deterministic
-                predicates ("every Decision cites at least one Intent") or
-                probabilistic specs the host evaluates with an LLM.
+                <strong>Node authoring articles</strong> — {NODE_AUTHORING_ARTICLE_EXPLAINER}
               </li>
             </ul>
-            <p>
-              AI agents acting on your project are{" "}
-              <strong>always exposed</strong> to these articles. Both the
-              org's articles and the Doco's articles are surfaced at the top
-              of every agent session, so they shape every node the agent
-              proposes.
-            </p>
+            <p>{AGENT_EXPOSURE_NOTE}</p>
             <p className="text-muted-foreground">
-              Your new Doco starts with an empty constitution — you'll add
-              articles as the project owner finds what's worth writing down.
+              Your new doco starts empty. Add articles as you find what's worth writing down.
             </p>
           </CardContent>
         </Card>
@@ -114,6 +97,7 @@ export default function NewDocoStep2({
             <input type="hidden" name="new_org_handle" value={newOrgHandle} />
           ) : null}
           <input type="hidden" name="suffix" value={suffix} />
+          <input type="hidden" name="visibility" value={visibility} />
           <button
             type="submit"
             className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90"

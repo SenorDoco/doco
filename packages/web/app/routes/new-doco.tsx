@@ -38,6 +38,8 @@ export async function loader({ request }: { request: Request }) {
       orgId: url.searchParams.get("org_id") ?? "",
       newOrgHandle: url.searchParams.get("new_org_handle") ?? "",
       suffix: url.searchParams.get("suffix") ?? "",
+      visibility:
+        url.searchParams.get("visibility") === "public" ? "public" : "private",
     },
   };
 }
@@ -123,6 +125,23 @@ export default function NewDocoStep1({
                   <code data-testid="handle-preview">
                     {orgHandleDisplay}-{suffix || "<suffix>"}
                   </code>
+                </span>
+              </fieldset>
+
+              <fieldset className="space-y-2">
+                <legend className="text-xs font-semibold uppercase text-muted-foreground">
+                  3 · Visibility
+                </legend>
+                <select
+                  name="visibility"
+                  defaultValue={prefill.visibility}
+                  className="rounded-md border border-border bg-input px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
+                >
+                  <option value="private">Private</option>
+                  <option value="public">Public</option>
+                </select>
+                <span className="mt-1 block text-[11px] text-muted-foreground">
+                  Private docos return 403 to non-members on both the web and the API.
                 </span>
               </fieldset>
 

@@ -138,7 +138,11 @@ export default function ListByTypeInDoco({
 }
 
 function capitalize(s: string): string {
-  return s.charAt(0).toUpperCase() + s.slice(1);
+  return s
+    .split("_")
+    .filter(Boolean)
+    .map((p, i) => (i === 0 ? p.charAt(0).toUpperCase() + p.slice(1) : p))
+    .join(" ");
 }
 
 export { isEntityType };
