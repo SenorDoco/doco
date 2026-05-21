@@ -72,10 +72,17 @@ After a repo is connected, commit and push the non-secret bootstrap files so oth
 contributors and agents discover the same Doco from their own clones:
 
 ```bash
+test -f .doco/connections.md
+test -f AGENTS.md
+test -f CLAUDE.md
 git add .doco/connections.md AGENTS.md CLAUDE.md .agents/doco-agent-client.mjs .claude
 git commit -m "Connect repository to Doco"
 git push
 ```
+
+If `DOCO_ACCESS` already works but any of those files are missing, still add the
+missing bootstrap files. Authorization proves the local runtime can reach Doco; it
+does not tell the next clone that this repo is Doco-tracked.
 
 Never commit `./.env`, `DOCO_ACCESS`, refresh tokens, OAuth client state, cookies, or any
 other credential.

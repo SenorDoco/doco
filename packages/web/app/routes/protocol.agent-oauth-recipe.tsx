@@ -65,6 +65,34 @@ connected to a Doco is not secret. After you connect a repo, make sure
 the non-secret bootstrap files are committed and pushed so agents
 working from another clone know to connect to Doco too.
 
+This rule applies even when you were already authorized before this
+session started. A valid \`DOCO_ACCESS\` proves only that your local
+runtime can talk to Doco; it does not prove that future agents cloning
+the repo will know Doco exists.
+
+Before declaring setup done, check for the bootstrap files:
+
+\`\`\`sh
+test -f .doco/connections.md
+test -f AGENTS.md
+test -f CLAUDE.md
+\`\`\`
+
+If any are missing, add them. If \`doco-cli\` is installed, the easiest
+path is:
+
+\`\`\`sh
+doco install-agent-bootstrap
+\`\`\`
+
+Otherwise create \`.doco/connections.md\` with the public Doco URL,
+create \`AGENTS.md\` with the Doco connection/OAuth instructions, and
+create \`CLAUDE.md\` as a one-line shim:
+
+\`\`\`
+@./AGENTS.md
+\`\`\`
+
 Commit these when they exist or changed:
 
 - \`.doco/connections.md\` — public Doco URL(s) for this repo.

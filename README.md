@@ -54,10 +54,17 @@ When `doco login` or `doco install-agent-bootstrap` creates or updates
 bootstrap files, commit only the non-secret ones:
 
 ```sh
+test -f .doco/connections.md
+test -f AGENTS.md
+test -f CLAUDE.md
 git add .doco/connections.md AGENTS.md CLAUDE.md .agents/doco-agent-client.mjs .claude
 git commit -m "Connect repository to Doco"
 git push
 ```
+
+If you already have a working `DOCO_ACCESS` token but any of those
+files are missing, still add the missing bootstrap files before
+declaring setup done.
 
 Never commit `.env`, `DOCO_ACCESS`, refresh tokens, OAuth client state,
 cookies, or other credentials.

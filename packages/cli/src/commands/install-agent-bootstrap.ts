@@ -261,7 +261,7 @@ export const installAgentBootstrapCmd = defineCommand({
     );
     console.log(
       c.dim(
-        "  6. Commit and push the non-secret Doco bootstrap files so other agent clones discover the connection:",
+        "  6. Even if DOCO_ACCESS already works, verify .doco/connections.md, AGENTS.md, and CLAUDE.md exist. Then commit and push the non-secret bootstrap files so other agent clones discover the connection:",
       ),
     );
     console.log(

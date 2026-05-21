@@ -49,8 +49,22 @@ every API call is:
 ## Share the Doco connection through Git
 
 Tokens are per-agent secrets; repository connection files are not.
-When you connect a repo to Doco, commit and push the non-secret files
-that let other agents discover the same Doco:
+When you connect a repo to Doco, or when you discover you already have
+valid Doco auth in an unbootstrapped repo, verify the bootstrap files
+exist:
+
+    test -f .doco/connections.md
+    test -f AGENTS.md
+    test -f CLAUDE.md
+
+If any are missing, add them before you declare setup done. With the
+CLI installed, run \`doco install-agent-bootstrap\`; otherwise create
+\`.doco/connections.md\` with the public Doco URL, \`AGENTS.md\` with
+the Doco connection/OAuth instructions, and \`CLAUDE.md\` as
+\`@./AGENTS.md\`.
+
+Then commit and push the non-secret files that let other agents
+discover the same Doco:
 
     git status --short
     git add .doco/connections.md AGENTS.md CLAUDE.md .agents/doco-agent-client.mjs .claude

@@ -31,6 +31,22 @@ Your OAuth token is private to you. The repo's Doco connection files
 are not private; they are how another agent in another clone discovers
 that this project uses Doco.
 
+This applies even if you already have valid Doco auth. A working local
+`DOCO_ACCESS` token does not mean the repository has the bootstrap files
+future agents need. Before declaring Doco setup done, verify:
+
+```sh
+test -f .doco/connections.md
+test -f AGENTS.md
+test -f CLAUDE.md
+```
+
+If any are missing, add them. `CLAUDE.md` should be a one-line shim:
+
+```md
+@./AGENTS.md
+```
+
 After connecting a repo to Doco, commit and push the non-secret files
 that were created or updated:
 

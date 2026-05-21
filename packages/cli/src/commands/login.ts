@@ -269,6 +269,11 @@ export const loginCmd = defineCommand({
           console.log(c.dim("Share this Doco connection with the repository:"));
           console.log(
             c.dim(
+              "  First verify .doco/connections.md, AGENTS.md, and CLAUDE.md exist, even if DOCO_ACCESS already works.",
+            ),
+          );
+          console.log(
+            c.dim(
               "  git add .doco/connections.md AGENTS.md CLAUDE.md .agents/doco-agent-client.mjs .claude",
             ),
           );
