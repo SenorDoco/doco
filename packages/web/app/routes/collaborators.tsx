@@ -416,53 +416,32 @@ function Section({
   rows: GroupedRow[];
   myPrincipalId: string;
 }) {
-  const people = rows
-    .filter((r) => r.principal.kind === "person")
-    .sort((a, b) => {
-      const am = a.principal.principal_id === myPrincipalId;
-      const bm = b.principal.principal_id === myPrincipalId;
-      if (am !== bm) return am ? -1 : 1;
-      return a.principal.username.localeCompare(b.principal.username);
-    });
-  const agents = rows.filter((r) => r.principal.kind === "agent");
+  const sorted = [...rows].sort(activeFirst);
   return (
     <Card>
       <CardHeader>
         <CardTitle>{title}</CardTitle>
       </CardHeader>
-      <CardContent className="border-t border-border pt-4">
-        {rows.length === 0 ? (
-          <p className="text-sm text-muted-foreground">{empty}</p>
+      <CardContent className="border-t border-border pt-2">
+        {sorted.length === 0 ? (
+          <p className="pt-2 text-sm text-muted-foreground">{empty}</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full table-fixed text-sm">
               <colgroup>
                 <col className="w-[40%]" />
-                <col className="w-[28%]" />
-                <col className="w-[14%]" />
-                <col className="w-[18%]" />
+                <col className="w-[40%]" />
+                <col className="w-[20%]" />
               </colgroup>
-              <thead>
-                <tr className="text-left text-xs uppercase tracking-wide text-muted-foreground">
-                  <th className="pb-2 font-medium">User</th>
-                  <th className="pb-2 font-medium">Access to</th>
-                  <th className="pb-2 font-medium">Role</th>
-                  <th className="pb-2 font-medium text-right">Actions</th>
-                </tr>
-              </thead>
-              <GroupBody
-                label="People"
-                rows={people}
-                empty="No people yet."
-                myPrincipalId={myPrincipalId}
-              />
-              <GroupBody
-                label="Agents"
-                rows={agents}
-                empty="No agents yet."
-                myPrincipalId={myPrincipalId}
-                topBorder
-              />
+              <tbody className="divide-y divide-border">
+                {sorted.map((r) => (
+                  <UserRow
+                    key={`${r.level}-${r.principal.principal_id}-${r.role}`}
+                    row={r}
+                    myPrincipalId={myPrincipalId}
+                  />
+                ))}
+              </tbody>
             </table>
           </div>
         )}
@@ -471,43 +450,13 @@ function Section({
   );
 }
 
-function GroupBody({
-  label,
-  rows,
-  empty,
-  myPrincipalId,
-  topBorder,
-}: {
-  label: string;
-  rows: GroupedRow[];
-  empty: string;
-  myPrincipalId: string;
-  topBorder?: boolean;
-}) {
-  return (
-    <tbody className={topBorder ? "border-t border-border" : undefined}>
-      <tr>
-        <td colSpan={4} className="pt-4 pb-2 text-sm font-semibold">
-          {label}
-        </td>
-      </tr>
-      {rows.length === 0 ? (
-        <tr>
-          <td colSpan={4} className="py-2 text-sm text-muted-foreground">
-            {empty}
-          </td>
-        </tr>
-      ) : (
-        rows.map((r) => (
-          <UserRow
-            key={`${r.level}-${r.principal.principal_id}-${r.role}`}
-            row={r}
-            myPrincipalId={myPrincipalId}
-          />
-        ))
-      )}
-    </tbody>
-  );
+// Most-recently-active first. Rows with no recorded activity sink to the
+// bottom; ties break alphabetically by username.
+function activeFirst(a: GroupedRow, b: GroupedRow): number {
+  const at = a.principal.last_activity_at ? Date.parse(a.principal.last_activity_at) : -Infinity;
+  const bt = b.principal.last_activity_at ? Date.parse(b.principal.last_activity_at) : -Infinity;
+  if (at !== bt) return bt - at;
+  return a.principal.username.localeCompare(b.principal.username);
 }
 
 function formatRelative(iso: string | null): string {
@@ -669,7 +618,10 @@ function UserRow({
         </div>
       </td>
       <td className="py-3 pr-3 align-top">
-        <div className="flex flex-wrap items-center gap-1">
+        <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+          Access to
+        </div>
+        <div className="mt-1 flex flex-wrap items-center gap-1">
           {visibleTargets.map((t) => (
             <Link
               key={t.id}
@@ -690,8 +642,8 @@ function UserRow({
           ) : null}
         </div>
       </td>
-      <td className="py-3 pr-3 align-top">
-        <div className="inline-flex items-center gap-2">
+      <td className="py-3 align-top">
+        <div className="flex flex-col items-end gap-1.5">
           <select
             defaultValue={row.role}
             disabled={!row.canEditAll || roleFetcher.state !== "idle"}
@@ -707,8 +659,22 @@ function UserRow({
               </option>
             ))}
           </select>
+          {row.canEditAll ? (
+            <button
+              type="button"
+              disabled={removeFetcher.state !== "idle"}
+              data-testid={`remove-${row.level}-${username}-${row.role}`}
+              onClick={() => {
+                if (!confirm(removeLabel)) return;
+                removeFetcher.submit(removePayload, { method: "post" });
+              }}
+              className="rounded-md border border-border px-2 py-1 text-xs text-destructive hover:bg-card disabled:opacity-50"
+            >
+              {removeFetcher.state !== "idle" ? "Removing…" : "Remove"}
+            </button>
+          ) : null}
           <span
-            className="truncate text-xs text-muted-foreground"
+            className="truncate text-[10px] text-muted-foreground"
             data-testid={`status-${row.level}-${username}-${row.role}`}
             aria-live="polite"
           >
@@ -723,24 +689,6 @@ function UserRow({
             )}
           </span>
         </div>
-      </td>
-      <td className="py-3 align-top text-right">
-        {row.canEditAll ? (
-          <button
-            type="button"
-            disabled={removeFetcher.state !== "idle"}
-            data-testid={`remove-${row.level}-${username}-${row.role}`}
-            onClick={() => {
-              if (!confirm(removeLabel)) return;
-              removeFetcher.submit(removePayload, { method: "post" });
-            }}
-            className="rounded-md border border-border px-2 py-1 text-xs text-destructive hover:bg-card disabled:opacity-50"
-          >
-            {removeFetcher.state !== "idle" ? "Removing…" : "Remove"}
-          </button>
-        ) : (
-          <span className="text-xs text-muted-foreground">—</span>
-        )}
       </td>
     </tr>
   );
