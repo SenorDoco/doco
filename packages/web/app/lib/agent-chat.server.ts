@@ -34,7 +34,7 @@ import type {
   ToolResultBlockParam,
   ToolUseBlock,
 } from "@anthropic-ai/sdk/resources/messages";
-import { withClient } from "@doco/db";
+import { listOrganizationsForPrincipal, withClient } from "@doco/db";
 import { generateUlid } from "@doco/shared";
 import { canAccessDoco } from "./doco-access.server";
 import { ensureEnvLoaded } from "./dotenv.server";
@@ -167,19 +167,24 @@ async function appendMessage(
 // ---------------------------------------------------------------------------
 
 interface BootstrapContext {
-  visibleDocoLines: string[];
+  docoLines: string[];
+  orgLines: string[];
   constitutionSnippets: string[];
 }
 
 async function buildBootstrapContext(principalId: string): Promise<BootstrapContext> {
-  const allDocos = await listAllDocos();
-  const visibleDocoLines: string[] = [];
+  const [allDocos, orgs] = await Promise.all([
+    listAllDocos(),
+    listOrganizationsForPrincipal(principalId),
+  ]);
+  const docoLines: string[] = [];
+  const orgLines: string[] = orgs.map((o) => `- /orgs/${o.slug} (${o.name})`);
   const constitutionSnippets: string[] = [];
 
   for (const d of allDocos) {
     const meta = { ownerId: d.ownerId, visibility: d.visibility, docoId: d.docoId };
     if (!(await canAccessDoco(meta, principalId))) continue;
-    visibleDocoLines.push(`- /${d.handle} (visibility ${d.visibility})`);
+    docoLines.push(`- /${d.handle} (visibility ${d.visibility})`);
     const articles = await withClient(async (c) => {
       const [guidance, authoring] = await Promise.all([
         c.query<{ summary: string }>(
@@ -204,7 +209,7 @@ async function buildBootstrapContext(principalId: string): Promise<BootstrapCont
       constitutionSnippets.push(lines.join("\n"));
     }
   }
-  return { visibleDocoLines, constitutionSnippets };
+  return { docoLines, orgLines, constitutionSnippets };
 }
 
 /**
@@ -217,9 +222,12 @@ function buildSystemBlocks(
   principal: CurrentPrincipal,
   bootstrap: BootstrapContext,
 ): TextBlockParam[] {
-  const docoList = bootstrap.visibleDocoLines.length
-    ? bootstrap.visibleDocoLines.join("\n")
+  const docoList = bootstrap.docoLines.length
+    ? bootstrap.docoLines.join("\n")
     : "(none yet — the user can create one at /new-doco)";
+  const orgList = bootstrap.orgLines.length
+    ? bootstrap.orgLines.join("\n")
+    : "(no orgs — the user can create one at /new-org)";
   const constitutions = bootstrap.constitutionSnippets.length
     ? bootstrap.constitutionSnippets.join("\n\n")
     : "(no constitution articles authored in the visible Docos)";
@@ -241,8 +249,8 @@ Doco is AI-native documentation of intent, decisions, rules, actions, logs. Node
   GET   /<handle>/api/<type>/<id>.json
   PATCH /<handle>/api/<type>/<id>.json
   GET   /<handle>/search.json?q=<query>
-  POST  /api/v1/docos.json                       — create a Doco
-  POST  /api/v1/orgs.json                        — create an Org
+  POST  /api/v1/docos.json                       — create a Doco (NO GET — to list the user's Docos, see the "Your Docos" section below)
+  POST  /api/v1/orgs.json                        — create an Org (NO GET — to list the user's Orgs, see the "Your Orgs" section below)
   GET   /api/v1/agent-bootstrap.json             — re-read constitutions
 
 ## After every action — render the result
@@ -277,9 +285,17 @@ Edges in Doco are derived from reference fields on nodes (D-017, fields-as-edges
 - Deduplicate. Before a new node, scan for one already covering the territory; patch beats create.
 - Honor the constitution. Articles below govern your captures.
 
-## Visible Docos for this user
+## Your Docos and Orgs — canonical
+
+The two lists below are computed server-side at the start of each turn from the same access-control checks ${principal.username} sees in the UI. They are COMPLETE and AUTHORITATIVE — every Doco / Org the user can read or write is here. When asked "how many Docos do I have?" or "what's my org?", answer from these lists directly. Never hedge with "if there are others not visible…" — there aren't. Don't probe with HTTP GETs to discover Docos/Orgs; there is no listing endpoint for those.
+
+### Your Docos
 
 ${docoList}
+
+### Your Orgs
+
+${orgList}
 
 ## Constitution articles that govern node authoring
 
