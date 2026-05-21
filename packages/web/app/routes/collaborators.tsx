@@ -437,20 +437,16 @@ function Section({
           <div className="overflow-x-auto">
             <table className="w-full table-fixed text-sm">
               <colgroup>
-                <col className="w-[26%]" />
-                <col className="w-[24%]" />
+                <col className="w-[40%]" />
+                <col className="w-[28%]" />
                 <col className="w-[14%]" />
-                <col className="w-[12%]" />
-                <col className="w-[12%]" />
-                <col className="w-[12%]" />
+                <col className="w-[18%]" />
               </colgroup>
               <thead>
                 <tr className="text-left text-xs uppercase tracking-wide text-muted-foreground">
                   <th className="pb-2 font-medium">User</th>
                   <th className="pb-2 font-medium">Access to</th>
                   <th className="pb-2 font-medium">Role</th>
-                  <th className="pb-2 font-medium">Last activity</th>
-                  <th className="pb-2 font-medium">Granted</th>
                   <th className="pb-2 font-medium text-right">Actions</th>
                 </tr>
               </thead>
@@ -491,13 +487,13 @@ function GroupBody({
   return (
     <tbody className={topBorder ? "border-t border-border" : undefined}>
       <tr>
-        <td colSpan={6} className="pt-4 pb-2 text-sm font-semibold">
+        <td colSpan={4} className="pt-4 pb-2 text-sm font-semibold">
           {label}
         </td>
       </tr>
       {rows.length === 0 ? (
         <tr>
-          <td colSpan={6} className="py-2 text-sm text-muted-foreground">
+          <td colSpan={4} className="py-2 text-sm text-muted-foreground">
             {empty}
           </td>
         </tr>
@@ -638,9 +634,18 @@ function UserRow({
   const visibleTargets = row.targets.slice(0, MAX_VISIBLE_TARGETS);
   const overflowTargets = row.targets.slice(MAX_VISIBLE_TARGETS);
 
+  const grantedAbs = formatDate(row.earliestJoinedAt);
+  const grantedRel = formatRelative(row.earliestJoinedAt);
+  const lastActive = formatRelative(row.principal.last_activity_at);
+  const metaParts: string[] = [];
+  if (caption) metaParts.push(caption);
+  metaParts.push(`Granted ${grantedRel}`);
+  metaParts.push(`Active ${lastActive}`);
+  const metaTooltip = `Granted ${grantedAbs}${row.principal.last_activity_at ? ` · Last active ${row.principal.last_activity_at}` : ""}`;
+
   return (
     <tr data-testid={`row-${row.level}-${username}-${row.role}`}>
-      <td className="py-2 pr-3 align-middle">
+      <td className="py-3 pr-3 align-top">
         <div className="flex items-center gap-1.5">
           <span className="truncate font-medium" title={username}>
             {primaryName}
@@ -656,13 +661,14 @@ function UserRow({
             </span>
           ) : null}
         </div>
-        {caption ? (
-          <div className="truncate text-xs text-muted-foreground" title={username}>
-            {caption}
-          </div>
-        ) : null}
+        <div
+          className="mt-0.5 truncate text-xs text-muted-foreground"
+          title={metaTooltip}
+        >
+          {metaParts.join(" · ")}
+        </div>
       </td>
-      <td className="py-2 pr-3 align-middle">
+      <td className="py-3 pr-3 align-top">
         <div className="flex flex-wrap items-center gap-1">
           {visibleTargets.map((t) => (
             <Link
@@ -684,7 +690,7 @@ function UserRow({
           ) : null}
         </div>
       </td>
-      <td className="py-2 pr-3 align-middle">
+      <td className="py-3 pr-3 align-top">
         <div className="inline-flex items-center gap-2">
           <select
             defaultValue={row.role}
@@ -718,13 +724,7 @@ function UserRow({
           </span>
         </div>
       </td>
-      <td className="py-2 pr-3 align-middle text-xs text-muted-foreground">
-        {formatRelative(row.principal.last_activity_at)}
-      </td>
-      <td className="py-2 pr-3 align-middle text-xs text-muted-foreground">
-        {formatDate(row.earliestJoinedAt)}
-      </td>
-      <td className="py-2 align-middle text-right">
+      <td className="py-3 align-top text-right">
         {row.canEditAll ? (
           <button
             type="button"
