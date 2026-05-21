@@ -91,7 +91,7 @@ export default function NewOrg({
           </p>
         </header>
         <Card>
-          <CardContent>
+          <CardContent className="pt-4">
             <Form method="post" className="space-y-3">
               <label className="block text-xs">
                 <span className="mb-1 block text-muted-foreground">Handle</span>
