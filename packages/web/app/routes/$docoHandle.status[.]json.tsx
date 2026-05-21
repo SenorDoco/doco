@@ -39,43 +39,78 @@ export async function loader({
   });
 }
 
-/** Map of external node_type → (PG table, exposed plural key for the response counts). */
-const TYPE_MAP: { nodeType: string; table: string; plural: string }[] = [
-  { nodeType: "intent", table: "intents", plural: "intents" },
-  { nodeType: "idea", table: "ideas", plural: "ideas" },
-  { nodeType: "rule", table: "rules", plural: "rules" },
+/**
+ * Per-table accessor for the status counts. `group` tells consumers
+ * whether the table holds notes (domain entities a Doco captures) or
+ * articles (constitution metadata). Keeping the two apart in the
+ * response prevents callers from summing articles into a "node total"
+ * — an empty Doco with only a template constitution would otherwise
+ * misread as having captured work.
+ */
+type StatusGroup = "note" | "article";
+const TYPE_MAP: { nodeType: string; table: string; plural: string; group: StatusGroup }[] = [
+  { nodeType: "intent", table: "intents", plural: "intents", group: "note" },
+  { nodeType: "idea", table: "ideas", plural: "ideas", group: "note" },
+  { nodeType: "rule", table: "rules", plural: "rules", group: "note" },
   {
     nodeType: "guidance_article",
     table: "guidance_articles",
     plural: "guidance_articles",
+    group: "article",
   },
   {
     nodeType: "node_authoring_article",
     table: "node_authoring_articles",
     plural: "node_authoring_articles",
+    group: "article",
   },
-  { nodeType: "decision", table: "decisions", plural: "decisions" },
-  { nodeType: "action", table: "actions", plural: "actions" },
-  { nodeType: "log", table: "logs", plural: "logs" },
-  { nodeType: "eval", table: "evals", plural: "evals" },
-  { nodeType: "reference", table: "reference_entities", plural: "references" },
+  { nodeType: "decision", table: "decisions", plural: "decisions", group: "note" },
+  { nodeType: "action", table: "actions", plural: "actions", group: "note" },
+  { nodeType: "log", table: "logs", plural: "logs", group: "note" },
+  { nodeType: "eval", table: "evals", plural: "evals", group: "note" },
+  { nodeType: "reference", table: "reference_entities", plural: "references", group: "note" },
   // v7 (decision_01KRRR5BQ16ASY8HQEE0V499YG): State node type.
-  { nodeType: "state", table: "states", plural: "states" },
+  { nodeType: "state", table: "states", plural: "states", group: "note" },
 ];
+
+interface StatusCounts {
+  notes: Record<string, number>;
+  notes_total: number;
+  articles: Record<string, number>;
+  articles_total: number;
+  principals: number;
+}
+
+function emptyCounts(): StatusCounts {
+  const notes: Record<string, number> = {};
+  const articles: Record<string, number> = {};
+  for (const { plural, group } of TYPE_MAP) {
+    if (group === "note") notes[plural] = 0;
+    else articles[plural] = 0;
+  }
+  return { notes, notes_total: 0, articles, articles_total: 0, principals: 0 };
+}
 
 async function readStatusFromPg(
   docoId: string,
-): Promise<{ latest: string | null; counts: Record<string, number> }> {
-  const counts: Record<string, number> = {};
+): Promise<{ latest: string | null; counts: StatusCounts }> {
+  const counts = emptyCounts();
   let latest: string | null = null;
   try {
     await withClient(async (c) => {
-      for (const { table, plural } of TYPE_MAP) {
+      for (const { table, plural, group } of TYPE_MAP) {
         const r = await c.query<{ n: string; c: string | null }>(
           `SELECT COUNT(*)::text AS n, MAX(created_at)::text AS c FROM ${table} WHERE doco_id = $1`,
           [docoId],
         );
-        counts[plural] = Number(r.rows[0]?.n ?? 0);
+        const n = Number(r.rows[0]?.n ?? 0);
+        if (group === "note") {
+          counts.notes[plural] = n;
+          counts.notes_total += n;
+        } else {
+          counts.articles[plural] = n;
+          counts.articles_total += n;
+        }
         const ts = r.rows[0]?.c ?? null;
         if (ts && (latest === null || ts > latest)) latest = ts;
       }
@@ -84,8 +119,7 @@ async function readStatusFromPg(
       counts.principals = Number(p.rows[0]?.n ?? 0);
     });
   } catch {
-    for (const { plural } of TYPE_MAP) counts[plural] = 0;
-    counts.principals = 0;
+    // emptyCounts() already zero-initialized everything.
   }
   return { latest, counts };
 }

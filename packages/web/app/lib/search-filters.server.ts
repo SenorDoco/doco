@@ -83,13 +83,18 @@ function readMulti(params: URLSearchParams, key: string): string[] | null {
  * Doco-scoped per-type tables (PG plural names). Each carries a
  * `lifecycle` column directly. principals + organizations are
  * host-level, so they don't filter on doco_id.
+ *
+ * Notes vs articles: "notes" are the domain entities a Doco captures
+ * (intents, decisions, rules, ...). "Articles" are constitution
+ * metadata — the meta-rules governing how a Doco is authored — and
+ * have their own surface (the constitution page). Queries for the
+ * notes of a Doco must not include articles, otherwise an empty
+ * Doco with only a template constitution misreads as full.
  */
-const PG_DOCO_TABLES_WITH_LIFECYCLE = [
+const PG_DOCO_NOTE_TABLES_WITH_LIFECYCLE = [
   "intents",
   "ideas",
   "rules",
-  "guidance_articles",
-  "node_authoring_articles",
   "decisions",
   "actions",
   "logs",
@@ -97,6 +102,16 @@ const PG_DOCO_TABLES_WITH_LIFECYCLE = [
   "reference_entities",
   // v7 (decision_01KRRR5BQ16ASY8HQEE0V499YG): State node type.
   "states",
+] as const;
+
+const PG_DOCO_ARTICLE_TABLES_WITH_LIFECYCLE = [
+  "guidance_articles",
+  "node_authoring_articles",
+] as const;
+
+const PG_DOCO_TABLES_WITH_LIFECYCLE = [
+  ...PG_DOCO_NOTE_TABLES_WITH_LIFECYCLE,
+  ...PG_DOCO_ARTICLE_TABLES_WITH_LIFECYCLE,
 ] as const;
 
 /** Map from external node_type (singular) → PG table (plural). */
@@ -182,8 +197,12 @@ export interface FilterFacets {
 
 
 export async function computeFilterFacets(c: PoolClient, docoId: string): Promise<FilterFacets> {
+  // Facets describe the *notes* of a Doco. Articles (constitution
+  // metadata) are intentionally excluded — they have their own
+  // surface and counting them as nodes makes a Doco with only a
+  // template constitution misread as having captured work.
   const lifecycleFacets = new Map<string, { count: number; updatedAt: string | null }>();
-  for (const t of PG_DOCO_TABLES_WITH_LIFECYCLE) {
+  for (const t of PG_DOCO_NOTE_TABLES_WITH_LIFECYCLE) {
     const r = await c.query<{ value: string; n: string; updated_at: Date | string | null }>(
       `SELECT COALESCE(lifecycle, 'active') AS value,
               COUNT(*)::text AS n,
@@ -209,7 +228,7 @@ export async function computeFilterFacets(c: PoolClient, docoId: string): Promis
     activeCount: number;
     updatedAt: string | null;
   }[] = [];
-  for (const t of PG_DOCO_TABLES_WITH_LIFECYCLE) {
+  for (const t of PG_DOCO_NOTE_TABLES_WITH_LIFECYCLE) {
     const r = await c.query<{
       n: string;
       active_n: string;

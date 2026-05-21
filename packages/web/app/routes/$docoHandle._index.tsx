@@ -91,11 +91,16 @@ export async function loader({
       before_json: Record<string, unknown> | null;
       after_json: Record<string, unknown> | null;
     };
+    // Activity surfaces (feed, heatmap, contributors) reflect notes
+    // activity only — articles are constitution metadata with their
+    // own surface, and counting their bulk-imported writes here makes
+    // a fresh Doco look like work has been captured when none has.
     const rawItems = (
       await c.query<AuditFeedRow>(
         `SELECT event_id, at, entity_type, entity_id, op, before_json, after_json
            FROM audit_events
           WHERE doco_id = $1
+            AND entity_type NOT IN ('guidance_article', 'node_authoring_article')
           ORDER BY at DESC
           LIMIT $2`,
         [ctx.meta.docoId, FEED_LIMIT],
@@ -159,8 +164,6 @@ export async function loader({
            UNION ALL SELECT to_char(created_at, 'YYYY-MM-DD') FROM intents WHERE doco_id = $1
            UNION ALL SELECT to_char(created_at, 'YYYY-MM-DD') FROM ideas WHERE doco_id = $1
            UNION ALL SELECT to_char(created_at, 'YYYY-MM-DD') FROM rules WHERE doco_id = $1
-           UNION ALL SELECT to_char(created_at, 'YYYY-MM-DD') FROM guidance_articles WHERE doco_id = $1
-           UNION ALL SELECT to_char(created_at, 'YYYY-MM-DD') FROM node_authoring_articles WHERE doco_id = $1
            UNION ALL SELECT to_char(created_at, 'YYYY-MM-DD') FROM actions WHERE doco_id = $1
            UNION ALL SELECT to_char(created_at, 'YYYY-MM-DD') FROM logs WHERE doco_id = $1
            UNION ALL SELECT to_char(created_at, 'YYYY-MM-DD') FROM evals WHERE doco_id = $1
@@ -187,7 +190,9 @@ export async function loader({
                 COUNT(*)::text AS event_count
            FROM audit_events ae
            JOIN principals p ON p.id = ae.by_principal
-          WHERE ae.doco_id = $1 AND ae.by_principal IS NOT NULL
+          WHERE ae.doco_id = $1
+            AND ae.by_principal IS NOT NULL
+            AND ae.entity_type NOT IN ('guidance_article', 'node_authoring_article')
           GROUP BY ae.by_principal, p.username
           ORDER BY COUNT(*) DESC, MAX(ae.at) DESC
           LIMIT $2`,
@@ -375,10 +380,14 @@ export default function DocoHome({
           </div>
           <p className="font-mono text-sm text-muted-foreground">{docoId}</p>
         </div>
-        <div className="grid gap-6 md:grid-cols-[320px_minmax(0,1fr)] xl:grid-cols-[400px_minmax(0,1fr)]">
-          <section className="min-w-0 space-y-5">
-            <NodesOverviewCard
-              sections={sections}
+        <div className="grid grid-cols-1 gap-6 min-[1200px]:grid-cols-[minmax(0,1fr)_400px]">
+          <aside className="flex h-[calc(100vh-13rem)] min-h-[520px] min-w-0 flex-col min-[1200px]:sticky min-[1200px]:top-4 min-[1200px]:self-start">
+            <OverviewGraph
+              centerId={graph.centerId}
+              nodes={graph.nodes}
+              links={graph.links}
+              detailUrl={graph.detailUrl}
+              fillHeight
               search={
                 <SearchBoxWithHistory
                   handle={handle}
@@ -387,8 +396,15 @@ export default function DocoHome({
                       ? `Search ${totalNodes} node${totalNodes === 1 ? "" : "s"}…`
                       : "Search nodes…"
                   }
+                  compact
                 />
               }
+            />
+          </aside>
+
+          <section className="hidden min-w-0 space-y-5 min-[1200px]:block">
+            <NodesOverviewCard
+              sections={sections}
               empty={
                 <p className="text-xs italic text-muted-foreground">This Doco has no nodes yet.</p>
               }
@@ -429,18 +445,6 @@ export default function DocoHome({
               </CardContent>
             </Card>
           </section>
-
-          <aside className="min-w-0 space-y-3 xl:sticky xl:top-4 xl:flex xl:h-[calc(100vh-7rem)] xl:flex-col">
-            <div className="h-[70vh] min-h-[520px] xl:min-h-0 xl:flex-1">
-              <OverviewGraph
-                centerId={graph.centerId}
-                nodes={graph.nodes}
-                links={graph.links}
-                detailUrl={graph.detailUrl}
-                fillHeight
-              />
-            </div>
-          </aside>
         </div>
       </main>
     </div>
