@@ -432,7 +432,7 @@ export default function UsersPage({
               level: "org" as const,
               target_id: s.org.id,
               target_label: s.org.slug,
-              target_link: "/orgs",
+              target_link: `/orgs/${s.org.slug}`,
               user: u,
               canEdit: s.myRole === "owner",
             })),
