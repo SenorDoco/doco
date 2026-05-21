@@ -130,7 +130,7 @@ export default function NewNodeAuthoringArticle({
                   name="body_md"
                   required
                   rows={6}
-                  placeholder="Write the article. First line shows in the list view; rest is the full text contributors read."
+                  placeholder="Write the article."
                   className="mt-1 block w-full rounded-md border border-border bg-input px-3 py-2 text-sm"
                 />
               </label>

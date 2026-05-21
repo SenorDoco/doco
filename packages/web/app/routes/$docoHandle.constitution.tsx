@@ -9,6 +9,7 @@ import {
   AGENT_EXPOSURE_NOTE,
   GUIDANCE_ARTICLE_EXPLAINER,
   NODE_AUTHORING_ARTICLE_EXPLAINER,
+  articleFullText,
 } from "~/lib/constitution-copy";
 import {
   canEditConstitution,
@@ -184,25 +185,20 @@ function ArticleSection({
             {items.map((item) => (
               <li key={item.id} className="py-3 first:pt-0 last:pb-0">
                 <div className="flex items-start gap-3">
-                  <div className="min-w-0 flex-1">
-                    <Link
-                      to={`/${handle}/${nodeType}/${item.id}`}
-                      className="font-medium leading-snug hover:text-primary"
-                    >
-                      {item.summary}
-                    </Link>
+                  <Link
+                    to={`/${handle}/${nodeType}/${item.id}`}
+                    className="min-w-0 flex-1 hover:text-primary"
+                  >
+                    <p className="whitespace-pre-wrap text-sm leading-6">
+                      {articleFullText({ summary: item.summary, body: item.body })}
+                    </p>
                     {"evaluationKind" in item ? (
                       <div className="mt-1 flex flex-wrap gap-2 font-mono text-[10px] text-muted-foreground">
                         <span>{item.evaluationKind}</span>
                         <span>{item.predicateKind}</span>
                       </div>
                     ) : null}
-                    {item.body ? (
-                      <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">
-                        {item.body}
-                      </p>
-                    ) : null}
-                  </div>
+                  </Link>
                   <span className="shrink-0 rounded border border-border px-2 py-1 font-mono text-[10px] text-muted-foreground">
                     {item.lifecycle ?? "active"}
                   </span>

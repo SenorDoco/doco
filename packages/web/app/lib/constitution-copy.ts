@@ -31,3 +31,24 @@ export function deriveArticleSummary(body: string): string {
   const stripped = firstLine.replace(/^#+\s*/, "").trim();
   return stripped.length > 300 ? `${stripped.slice(0, 297)}...` : stripped;
 }
+
+/**
+ * Reconstruct the full article text from a row that may have been
+ * written under the old (summary + body separate) shape or the new
+ * (body contains the full article, summary is derived) shape. Lets
+ * the display surfaces render one block without worrying which
+ * vintage they're looking at.
+ */
+export function articleFullText(
+  row: { summary: string | null | undefined; body: string | null | undefined } | null,
+): string {
+  if (!row) return "";
+  const summary = (row.summary ?? "").trim();
+  const body = (row.body ?? "").trim();
+  if (!body) return summary;
+  if (!summary) return body;
+  // New shape: body already opens with the summary line.
+  if (body.startsWith(summary)) return body;
+  // Old shape: summary + body were authored separately; stitch them.
+  return `${summary}\n\n${body}`;
+}

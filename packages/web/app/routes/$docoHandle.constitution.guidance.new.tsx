@@ -105,7 +105,7 @@ export default function NewGuidanceArticle({
                 name="body_md"
                 required
                 rows={12}
-                placeholder="Write the article. First line shows in the list view; rest is the full text contributors read."
+                placeholder="Write the article."
                 className="block w-full rounded-md border border-border bg-input px-3 py-2 text-sm"
               />
               <div className="flex items-center gap-3">
