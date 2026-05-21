@@ -420,13 +420,17 @@ function Section({
       <CardHeader>
         <CardTitle>{title}</CardTitle>
       </CardHeader>
-      <CardContent>
+      <CardContent className="border-t border-border pt-4">
         {rows.length === 0 ? (
           <p className="text-sm text-muted-foreground">{empty}</p>
         ) : (
-          <div className="space-y-6">
-            <Subsection kind="person" rows={people} empty="No people yet." />
-            <Subsection kind="agent" rows={agents} empty="No agents yet." />
+          <div className="divide-y divide-border">
+            <div className="pb-6">
+              <Subsection kind="person" rows={people} empty="No people yet." />
+            </div>
+            <div className="pt-6">
+              <Subsection kind="agent" rows={agents} empty="No agents yet." />
+            </div>
           </div>
         )}
       </CardContent>
