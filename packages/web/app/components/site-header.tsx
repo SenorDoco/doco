@@ -7,15 +7,6 @@ import type { CurrentPrincipal } from "~/lib/session";
 
 interface SiteHeaderProps {
   /**
-   * When set, renders the breadcrumb and per-Doco nav.
-   *
-   * `handle` is the canonical URL identifier (phase 2d+). `ownerSlug`
-   * and `docoSlug` are kept as optional inputs for callers that still
-   * thread the legacy slug pair; they're used for the breadcrumb label
-   * only, never for building URLs.
-   */
-  docoScope?: { handle: string; ownerSlug?: string; docoSlug?: string };
-  /**
    * Mode parameter — historically toggled host vs. single-doco shape (per ADR-093
    * single-doco mode is removed). Kept on the props for caller-site compatibility;
    * the only legal value today is "host". The branch fields a tighter type later.
@@ -37,37 +28,12 @@ export function SiteHeaderSuppressionProvider({ children }: { children: React.Re
   );
 }
 
-/**
- * Two-row header: brand + breadcrumb + account on row 1, per-Doco
- * navigation on row 2 (sub-bar). Keeps the nav uncrowded as it grows.
- */
-export function SiteHeader({ docoScope, me, shellOwner = false }: SiteHeaderProps) {
+export function SiteHeader({ me, shellOwner = false }: SiteHeaderProps) {
   const suppressed = useContext(SiteHeaderSuppressionContext);
   if (suppressed && !shellOwner) return null;
 
-  // Per-Doco nav: per-type entity tabs and Search moved off the nav bar —
-  // the Doco home is the chronological feed AND the search front door.
-  // Breadcrumb label is the handle (the canonical URL identifier).
-  // The old `<owner>/<slug>` compound is gone — after slug-removal it
-  // would render as `<owner>/<handle>` which doubles the owner prefix
-  // visually (e.g. "torrenegra/torrenegra-doco").
-  // Per-doco sub-bar; host-mode shows nothing here (top-bar links cover
-  // Docos / Orgs / Users / account).
-  const nav = docoScope
-    ? [
-        { to: `/${docoScope.handle}`, label: docoScope.handle, isDocoName: true },
-        {
-          to: `/${docoScope.handle}/constitution`,
-          label: "Constitution",
-          isDocoName: false,
-        },
-        { to: `/${docoScope.handle}/settings`, label: "Settings", isDocoName: false },
-      ]
-    : [];
-
   return (
     <header className="border-b border-border bg-card">
-      {/* Row 1: brand + breadcrumb + (host-mode) account actions. */}
       <div className="flex w-full items-center gap-6 px-6 py-3">
         <h1 className="m-0 flex min-w-0 items-center gap-3 leading-none">
           <NavLink
@@ -140,34 +106,6 @@ export function SiteHeader({ docoScope, me, shellOwner = false }: SiteHeaderProp
           )}
         </div>
       </div>
-
-      {/* Row 2: per-Doco sub-bar. Rendered only when we're inside a
-          docoScope; host-mode pages get the top-bar links as their nav. */}
-      {nav.length > 0 ? (
-        <div className="border-t border-border/60">
-          <nav className="flex w-full items-center gap-5 px-6 py-2 text-xs">
-            {nav.map((n) => (
-              <NavLink
-                key={n.to}
-                to={n.to}
-                end={n.to === "/" || (docoScope?.handle ? n.to === `/${docoScope.handle}` : false)}
-                className={({ isActive }) =>
-                  cn(
-                    "transition-colors",
-                    n.isDocoName
-                      ? "font-bold text-foreground"
-                      : isActive
-                        ? "text-foreground font-medium"
-                        : "text-muted-foreground hover:text-foreground",
-                  )
-                }
-              >
-                {n.label}
-              </NavLink>
-            ))}
-          </nav>
-        </div>
-      ) : null}
     </header>
   );
 }

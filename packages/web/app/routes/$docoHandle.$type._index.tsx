@@ -96,7 +96,7 @@ export default function ListByTypeInDoco({
 
   return (
     <div>
-      <SiteHeader mode="host" me={me} docoScope={{ ownerSlug, docoSlug, handle }} />
+      <SiteHeader mode="host" me={me} />
       <main className="mx-auto max-w-6xl px-6 py-6 space-y-4">
         <Breadcrumb
           items={docoBreadcrumb({ ownerSlug, handle, pageLabel: `${capitalize(type)}s` })}

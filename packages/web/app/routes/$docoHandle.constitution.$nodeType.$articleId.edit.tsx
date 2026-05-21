@@ -213,7 +213,7 @@ export default function EditArticle({
 
   return (
     <div>
-      <SiteHeader mode="host" me={me} docoScope={{ ownerSlug, docoSlug, handle }} />
+      <SiteHeader mode="host" me={me} />
       <main className="mx-auto max-w-4xl px-6 py-6 space-y-4">
         <header>
           <Breadcrumb

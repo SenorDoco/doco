@@ -105,7 +105,7 @@ export default function NewRule({
 
   return (
     <div>
-      <SiteHeader mode="host" me={me} docoScope={{ ownerSlug, docoSlug, handle }} />
+      <SiteHeader mode="host" me={me} />
       <SingleColumnPageMain className="py-6 space-y-4">
         <Breadcrumb
           items={docoBreadcrumb({

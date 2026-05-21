@@ -255,7 +255,7 @@ export default function SearchInDoco({
 
   return (
     <div>
-      <SiteHeader mode="host" me={me} docoScope={{ ownerSlug, docoSlug, handle }} />
+      <SiteHeader mode="host" me={me} />
       <main className="mx-auto max-w-6xl space-y-6 px-6 py-6">
         <Breadcrumb items={docoBreadcrumb({ ownerSlug, handle, pageLabel: "Search" })} />
         <section className="space-y-4">

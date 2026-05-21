@@ -581,7 +581,7 @@ export default function EntityDetail({
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-background">
-      <SiteHeader mode="host" me={me} docoScope={{ ownerSlug, docoSlug, handle }} />
+      <SiteHeader mode="host" me={me} />
 
       <div className="shrink-0 border-b border-border bg-card px-4 py-2">
         <Breadcrumb
