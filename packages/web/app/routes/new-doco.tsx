@@ -40,6 +40,7 @@ export async function loader({ request }: { request: Request }) {
       newOrgHandle: url.searchParams.get("new_org_handle") ?? "",
       suffix: url.searchParams.get("suffix") ?? "",
       visibility: url.searchParams.get("visibility") === "public" ? "public" : "private",
+      templateHandle: url.searchParams.get("template_handle") ?? "",
     },
   };
 }
@@ -80,6 +81,9 @@ export default function NewDocoStep1({
           </CardHeader>
           <CardContent>
             <Form method="get" action="/new-doco/constitution" className="space-y-4">
+              {prefill.templateHandle ? (
+                <input type="hidden" name="template_handle" value={prefill.templateHandle} />
+              ) : null}
               <fieldset className="space-y-2">
                 <legend className="text-xs font-semibold uppercase text-muted-foreground">
                   1 · Organization

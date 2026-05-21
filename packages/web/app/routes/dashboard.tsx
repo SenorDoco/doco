@@ -1,12 +1,20 @@
+// /dashboard — signed-in welcome page.
+//
+// Three panels:
+//   - Header: "Good <verb>, <username>" with +Doco / +Org buttons
+//     on the right (desktop)
+//   - Main column: Activity heatmap + Latest activity feed (10 items)
+//     across every doco the user has a stake in
+//   - Right column (desktop) / below (mobile): "Newly available
+//     templates" — each template card carries a +Doco button that
+//     starts /new-doco with template_handle pre-passed
+
 import { withClient } from "@doco/db";
 import { entityUrl } from "@doco/shared";
 import { Link, redirect } from "react-router";
 import { ActivityHeatmap } from "~/components/activity-heatmap";
-import { Badge } from "~/components/badge";
-import { Breadcrumb, hostBreadcrumb } from "~/components/breadcrumb";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
+import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
 import { SiteHeader } from "~/components/site-header";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "~/components/table";
 import {
   auditSummaryFallback,
   capNodeType,
@@ -17,13 +25,15 @@ import {
 } from "~/lib/activity-feed";
 import { cn } from "~/lib/cn";
 import { isMyDoco, listInvitedDocoIdsForPrincipal } from "~/lib/doco-access.server";
-import { listDocoStats } from "~/lib/doco-stats.server";
-import { listAllDocos, listMyOrgs, loadHostConfig } from "~/lib/host";
+import { DOCO_TEMPLATES } from "~/lib/doco-templates-meta";
+import { pickGreetingVerb } from "~/lib/greeting";
+import { listAllDocos, loadHostConfig } from "~/lib/host";
 import { getCurrentPrincipal } from "~/lib/session";
 import { timeAgo } from "~/lib/time-ago";
 
 const HEATMAP_WEEKS = 52;
-const FEED_LIMIT = 20;
+const FEED_LIMIT = 10;
+const TEMPLATES_LIMIT = 5;
 
 interface FeedEvent {
   event_id: string;
@@ -39,16 +49,6 @@ interface FeedEvent {
   after: Record<string, unknown> | null;
 }
 
-/**
- * /dashboard — signed-in user's personal home. Three panels:
- *   - Left: docos the user has a stake in (owner, agent, or org member).
- *   - Top-right: GitHub-style heatmap of the user's own activity
- *     (audit events authored by them OR by an agent they own).
- *   - Bottom-right: chronological feed of recent audit events across
- *     the user's docos (any actor).
- * Strangers' public docos remain browseable at /<owner>/<slug>; they
- * do not surface here.
- */
 export async function loader({ request }: { request: Request }) {
   const me = await getCurrentPrincipal(request);
   if (!me) throw redirect("/sign-in");
@@ -58,9 +58,6 @@ export async function loader({ request }: { request: Request }) {
   const mine = await Promise.all(allDocos.map((d) => isMyDoco({ ownerId: d.ownerId }, me.id)));
   const docos = allDocos.filter((d, i) => mine[i] || invitedDocoIds.has(d.docoId));
   const myDocoIds = docos.map((d) => d.docoId);
-  const docoStats = await listDocoStats(myDocoIds);
-
-  const myOrgs = await listMyOrgs(me.id);
 
   const since = new Date();
   since.setDate(since.getDate() - HEATMAP_WEEKS * 7);
@@ -102,10 +99,6 @@ export async function loader({ request }: { request: Request }) {
          LIMIT $2`,
         [myDocoIds, FEED_LIMIT],
       );
-      // Look up each event's readable label so the row reads like the
-      // per-Doco FeedLine ("✍️ Decision added: <readable text>"). Entity ids
-      // are globally unique ULIDs, so one UNION across all node tables
-      // resolves them regardless of original type.
       const entityIds = Array.from(new Set(feedRows.rows.map((r) => r.entity_id)));
       const entityById = new Map<string, { label: string | null; lifecycle: string | null }>();
       if (entityIds.length > 0) {
@@ -123,7 +116,6 @@ export async function loader({ request }: { request: Request }) {
            UNION ALL SELECT id, summary AS label, lifecycle FROM actions WHERE id = ANY($1)
            UNION ALL SELECT id, summary AS label, lifecycle FROM logs WHERE id = ANY($1)
            UNION ALL SELECT id, summary AS label, lifecycle FROM evals WHERE id = ANY($1)
-           UNION ALL SELECT id, summary AS label, lifecycle FROM states WHERE id = ANY($1)
            UNION ALL SELECT id, summary AS label, lifecycle FROM reference_entities WHERE id = ANY($1)`,
           [entityIds],
         );
@@ -153,18 +145,19 @@ export async function loader({ request }: { request: Request }) {
     return { byDay, feed };
   });
 
-  const docosWithStats = docos.map((d) => ({
-    ...d,
-    stats: docoStats.get(d.docoId) ?? { nodes: 0, edges: 0, lastUpdatedAt: null },
-  }));
+  // Newly-available templates, most recent first. Drops "generic" —
+  // it's not really a "template", it's the no-op starting point.
+  const templates = DOCO_TEMPLATES.filter((t) => t.handle !== "generic")
+    .sort((a, b) => b.addedAt.localeCompare(a.addedAt))
+    .slice(0, TEMPLATES_LIMIT);
 
   return {
     host: await loadHostConfig(),
     me,
-    docos: docosWithStats,
-    myOrgs,
+    greetingVerb: pickGreetingVerb(),
     byDay,
     feed,
+    templates,
   };
 }
 
@@ -178,73 +171,33 @@ export default function Dashboard({
 }: {
   loaderData: Awaited<ReturnType<typeof loader>>;
 }) {
-  const { me, docos, myOrgs, byDay, feed } = loaderData;
+  const { me, greetingVerb, byDay, feed, templates } = loaderData;
   return (
     <div>
       <SiteHeader mode="host" me={me} />
-      <main className="mx-auto max-w-6xl px-6 py-6 space-y-4">
-        <Breadcrumb items={hostBreadcrumb({ pageLabel: "Docos" })} />
-        <header className="flex items-center justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-semibold">Docos</h1>
-            <p className="text-sm text-muted-foreground">
-              Your docos, plus docos owned by organizations you belong to.
-            </p>
+      <main className="mx-auto max-w-6xl px-6 py-6 space-y-6">
+        <header className="flex flex-wrap items-center justify-between gap-3">
+          <h1 className="text-2xl font-semibold">
+            Good {greetingVerb}, {me.username}
+          </h1>
+          <div className="flex shrink-0 items-center gap-2">
+            <Link
+              to="/new-doco"
+              className="rounded-md bg-primary px-3 py-1.5 text-sm font-semibold text-primary-foreground hover:opacity-90"
+            >
+              + Doco
+            </Link>
+            <Link
+              to="/new-org"
+              className="rounded-md border border-border bg-card px-3 py-1.5 text-sm font-semibold text-foreground hover:bg-input"
+            >
+              + Org
+            </Link>
           </div>
-          <Link
-            to="/new-doco"
-            className="shrink-0 rounded-md bg-primary px-3 py-1.5 text-sm font-semibold text-primary-foreground hover:opacity-90"
-          >
-            + Doco
-          </Link>
         </header>
 
-        <div className="grid grid-cols-1 gap-4 min-[840px]:grid-cols-2">
-          <Card>
-            <CardHeader>
-              <CardTitle>Your docos</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {docos.length === 0 ? (
-                <p className="text-xs text-muted-foreground">
-                  You haven't created or joined any docos yet.{" "}
-                  <Link to="/new-doco" className="underline">
-                    Create one
-                  </Link>
-                  .
-                </p>
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>slug</TableHead>
-                      <TableHead className="text-right">nodes</TableHead>
-                      <TableHead className="text-right">edges</TableHead>
-                      <TableHead className="text-right">last updated</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {docos.map((e) => (
-                      <TableRow key={e.docoId}>
-                        <TableCell>
-                          <Link to={`/${e.handle}`} className="text-primary hover:underline">
-                            {e.handle}
-                          </Link>
-                        </TableCell>
-                        <TableCell className="text-right font-mono">{e.stats.nodes}</TableCell>
-                        <TableCell className="text-right font-mono">{e.stats.edges}</TableCell>
-                        <TableCell className="text-right text-muted-foreground">
-                          {timeAgo(e.stats.lastUpdatedAt)}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              )}
-            </CardContent>
-          </Card>
-
-          <div className="space-y-4">
+        <div className="grid grid-cols-1 gap-6 min-[840px]:grid-cols-[minmax(0,1fr)_320px]">
+          <section className="space-y-4">
             <Card>
               <CardHeader>
                 <CardTitle>Your activity</CardTitle>
@@ -255,11 +208,8 @@ export default function Dashboard({
             </Card>
 
             <Card>
-              <CardHeader>
-                <CardTitle>Latest activity in your docos</CardTitle>
-                <CardDescription>
-                  Newest first across every doco listed on the left.
-                </CardDescription>
+              <CardHeader className="px-4 py-3">
+                <CardTitle className="text-sm">Latest activity in your docos</CardTitle>
               </CardHeader>
               <CardContent className="p-0">
                 {feed.length === 0 ? (
@@ -273,29 +223,54 @@ export default function Dashboard({
                 )}
               </CardContent>
             </Card>
-          </div>
-        </div>
+          </section>
 
-        {myOrgs.length > 0 ? (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-sm">Your organizations ({myOrgs.length})</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <ul className="space-y-1 text-sm">
-                {myOrgs.map((o) => (
-                  <li key={o.id} className="flex items-baseline gap-2">
-                    <Badge variant="accent">{o.slug}</Badge>
-                    <span className="text-muted-foreground text-xs">
-                      {o.member_count} member(s)
-                      {o.description ? ` · ${o.description}` : ""}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </CardContent>
-          </Card>
-        ) : null}
+          <aside className="space-y-4">
+            <Card>
+              <CardHeader className="px-4 py-3">
+                <CardTitle className="text-sm">Newly available templates</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3 p-4">
+                {templates.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">No templates available.</p>
+                ) : (
+                  templates.map((t) => (
+                    <div
+                      key={t.handle}
+                      className="space-y-1.5 border-b border-border pb-3 last:border-b-0 last:pb-0"
+                    >
+                      <div className="flex items-baseline justify-between gap-2">
+                        <span className="text-sm font-semibold">{t.label}</span>
+                        <time
+                          dateTime={t.addedAt}
+                          title={t.addedAt}
+                          suppressHydrationWarning
+                          className="shrink-0 text-[10px] tabular-nums text-muted-foreground"
+                        >
+                          {timeAgo(t.addedAt)}
+                        </time>
+                      </div>
+                      <p className="text-[11px] leading-snug text-muted-foreground">
+                        {t.description}
+                      </p>
+                      <div className="flex items-center justify-between gap-2 pt-0.5">
+                        <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                          by {t.creator}
+                        </span>
+                        <Link
+                          to={`/new-doco?template_handle=${encodeURIComponent(t.handle)}`}
+                          className="rounded-md bg-primary px-2 py-1 text-[11px] font-semibold text-primary-foreground hover:opacity-90"
+                        >
+                          + Doco
+                        </Link>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </CardContent>
+            </Card>
+          </aside>
+        </div>
       </main>
     </div>
   );

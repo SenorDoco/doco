@@ -1,14 +1,21 @@
-// /orgs — host-level "Your orgs" listing. Mirrors /docos: the orgs
-// the signed-in principal belongs to, ordered by recent activity
-// (MAX(audit_events.at) across each org's docos), plus an activity
-// heatmap + latest-activity feed sidebar.
+// /docos — host-level "Your docos" listing. Mirrors /orgs but for
+// every Doco the signed-in principal has a stake in. Ordered by the
+// Doco's most recent activity (audit_events MAX(at)) so the freshest
+// rises to the top.
+//
+// Layout matches /orgs (per spec):
+//   - Header: "Your docos" + "+ Agent/Collaborator" (desktop right)
+//   - Main column: docos list + "+ Doco" button at the top
+//   - Right (desktop) / bottom (mobile): Your activity heatmap +
+//     Latest activity feed (10 items)
 
-import { type DocoRole, getOrgRole, withClient } from "@doco/db";
+import { withClient } from "@doco/db";
 import { entityUrl } from "@doco/shared";
 import { Link, redirect } from "react-router";
 import { ActivityHeatmap } from "~/components/activity-heatmap";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
 import { SiteHeader } from "~/components/site-header";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "~/components/table";
 import {
   auditSummaryFallback,
   capNodeType,
@@ -19,20 +26,19 @@ import {
 } from "~/lib/activity-feed";
 import { cn } from "~/lib/cn";
 import { isMyDoco, listInvitedDocoIdsForPrincipal } from "~/lib/doco-access.server";
-import { listAllDocos, listMyOrgs } from "~/lib/host";
+import { listDocoStats } from "~/lib/doco-stats.server";
+import { listAllDocos } from "~/lib/host";
 import { getCurrentPrincipal } from "~/lib/session";
 import { timeAgo } from "~/lib/time-ago";
 
 const HEATMAP_WEEKS = 52;
 const FEED_LIMIT = 10;
 
-interface OrgRow {
-  id: string;
-  slug: string;
-  display_name: string;
-  description?: string;
-  member_count?: number;
-  myRole: DocoRole;
+interface DocoRow {
+  docoId: string;
+  handle: string;
+  nodes: number;
+  edges: number;
   lastUpdatedAt: string | null;
 }
 
@@ -53,50 +59,34 @@ interface FeedEvent {
 export async function loader({ request }: { request: Request }) {
   const me = await getCurrentPrincipal(request);
   if (!me) {
-    throw redirect(`/sign-in?next=${encodeURIComponent("/orgs")}`);
+    throw redirect(`/sign-in?next=${encodeURIComponent("/docos")}`);
   }
 
-  const orgsRaw = await listMyOrgs(me.id);
-
-  // Compute each org's most-recent-activity in one query: MAX(audit_events.at)
-  // across every doco the org owns.
-  const orgIds = orgsRaw.map((o) => o.id);
-  const orgLastActivity = await withClient(async (c) => {
-    if (orgIds.length === 0) return new Map<string, string | null>();
-    const r = await c.query<{ owner_id: string; last_at: string | null }>(
-      `SELECT d.owner_id, MAX(a.at)::text AS last_at
-         FROM audit_events a
-         JOIN docos d ON d.id = a.doco_id
-        WHERE d.owner_id = ANY($1)
-        GROUP BY d.owner_id`,
-      [orgIds],
-    );
-    const m = new Map<string, string | null>();
-    for (const row of r.rows) m.set(String(row.owner_id), row.last_at);
-    return m;
-  });
-
-  const orgs: OrgRow[] = (
-    await Promise.all(
-      orgsRaw.map(async (o) => ({
-        ...o,
-        myRole: ((await getOrgRole(o.id, me.id)) ?? "reader") as DocoRole,
-        lastUpdatedAt: orgLastActivity.get(o.id) ?? null,
-      })),
-    )
-  ).sort((a, b) => {
-    if (a.lastUpdatedAt && b.lastUpdatedAt) return b.lastUpdatedAt.localeCompare(a.lastUpdatedAt);
-    if (a.lastUpdatedAt) return -1;
-    if (b.lastUpdatedAt) return 1;
-    return a.slug.localeCompare(b.slug);
-  });
-
-  // Sidebar activity (same shape as /dashboard + /docos).
   const allDocos = await listAllDocos();
   const invitedDocoIds = await listInvitedDocoIdsForPrincipal(me.id);
   const mine = await Promise.all(allDocos.map((d) => isMyDoco({ ownerId: d.ownerId }, me.id)));
-  const myDocos = allDocos.filter((d, i) => mine[i] || invitedDocoIds.has(d.docoId));
-  const myDocoIds = myDocos.map((d) => d.docoId);
+  const docosRaw = allDocos.filter((d, i) => mine[i] || invitedDocoIds.has(d.docoId));
+  const myDocoIds = docosRaw.map((d) => d.docoId);
+  const stats = await listDocoStats(myDocoIds);
+
+  const docos: DocoRow[] = docosRaw
+    .map((d) => {
+      const s = stats.get(d.docoId) ?? { nodes: 0, edges: 0, lastUpdatedAt: null };
+      return {
+        docoId: d.docoId,
+        handle: d.handle,
+        nodes: s.nodes,
+        edges: s.edges,
+        lastUpdatedAt: s.lastUpdatedAt,
+      };
+    })
+    .sort((a, b) => {
+      // Most-recent-activity first; nulls last.
+      if (a.lastUpdatedAt && b.lastUpdatedAt) return b.lastUpdatedAt.localeCompare(a.lastUpdatedAt);
+      if (a.lastUpdatedAt) return -1;
+      if (b.lastUpdatedAt) return 1;
+      return a.handle.localeCompare(b.handle);
+    });
 
   const since = new Date();
   since.setDate(since.getDate() - HEATMAP_WEEKS * 7);
@@ -161,7 +151,7 @@ export async function loader({ request }: { request: Request }) {
           entityById.set(r.id, { label: r.label, lifecycle: r.lifecycle });
         }
       }
-      const docoMap = new Map(myDocos.map((d) => [d.docoId, d]));
+      const docoMap = new Map(docos.map((d) => [d.docoId, d]));
       feed = feedRows.rows.map((r) => {
         const d = docoMap.get(r.doco_id);
         const entity = entityById.get(r.entity_id);
@@ -183,25 +173,25 @@ export async function loader({ request }: { request: Request }) {
     return { byDay, feed };
   });
 
-  return { me, orgs, byDay, feed };
+  return { me, docos, byDay, feed };
 }
 
 export function meta() {
-  return [{ title: "Your orgs · Doco" }];
+  return [{ title: "Your docos · Doco" }];
 }
 
-export default function OrgsIndexPage({
+export default function DocosIndexPage({
   loaderData,
 }: {
   loaderData: Awaited<ReturnType<typeof loader>>;
 }) {
-  const { me, orgs, byDay, feed } = loaderData;
+  const { me, docos, byDay, feed } = loaderData;
   return (
     <div>
       <SiteHeader mode="host" me={me} />
       <main className="mx-auto max-w-6xl px-6 py-6 space-y-6">
         <header className="flex flex-wrap items-center justify-between gap-3">
-          <h1 className="text-2xl font-semibold">Your orgs</h1>
+          <h1 className="text-2xl font-semibold">Your docos</h1>
           <Link
             to="/users"
             className="shrink-0 rounded-md border border-border px-3 py-1.5 text-sm font-semibold hover:bg-input"
@@ -214,54 +204,50 @@ export default function OrgsIndexPage({
           <section className="space-y-4">
             <Card>
               <CardHeader className="flex flex-row items-center justify-between gap-3 px-4 py-3">
-                <CardTitle className="text-sm">Your orgs</CardTitle>
+                <CardTitle className="text-sm">Your docos</CardTitle>
                 <Link
-                  to="/new-org"
+                  to="/new-doco"
                   className="rounded-md bg-primary px-3 py-1 text-xs font-semibold text-primary-foreground hover:opacity-90"
                 >
-                  + Org
+                  + Doco
                 </Link>
               </CardHeader>
-              <CardContent>
-                {orgs.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">
-                    You aren't a member of any org yet.{" "}
-                    <Link to="/new-org" className="underline">
+              <CardContent className="p-0">
+                {docos.length === 0 ? (
+                  <p className="px-5 pb-5 text-xs text-muted-foreground">
+                    You haven't created or joined any docos yet.{" "}
+                    <Link to="/new-doco" className="underline">
                       Create one
                     </Link>
                     .
                   </p>
                 ) : (
-                  <ul className="divide-y divide-border">
-                    {orgs.map((o) => (
-                      <li key={o.id} className="py-3">
-                        <div className="flex flex-wrap items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <Link to={`/orgs/${o.slug}`} className="font-medium hover:underline">
-                              {o.slug}
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>handle</TableHead>
+                        <TableHead className="text-right">nodes</TableHead>
+                        <TableHead className="text-right">edges</TableHead>
+                        <TableHead className="text-right">last updated</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {docos.map((d) => (
+                        <TableRow key={d.docoId}>
+                          <TableCell>
+                            <Link to={`/${d.handle}`} className="text-primary hover:underline">
+                              {d.handle}
                             </Link>
-                            <div className="text-xs text-muted-foreground">
-                              {o.display_name}
-                              {typeof o.member_count === "number"
-                                ? ` · ${o.member_count} member${o.member_count === 1 ? "" : "s"}`
-                                : ""}
-                              {o.lastUpdatedAt ? (
-                                <>
-                                  {" · "}
-                                  <span title={o.lastUpdatedAt}>{timeAgo(o.lastUpdatedAt)}</span>
-                                </>
-                              ) : null}
-                            </div>
-                            {o.description ? (
-                              <div className="mt-1 text-sm text-muted-foreground">
-                                {o.description}
-                              </div>
-                            ) : null}
-                          </div>
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
+                          </TableCell>
+                          <TableCell className="text-right font-mono">{d.nodes}</TableCell>
+                          <TableCell className="text-right font-mono">{d.edges}</TableCell>
+                          <TableCell className="text-right text-muted-foreground">
+                            {timeAgo(d.lastUpdatedAt)}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
                 )}
               </CardContent>
             </Card>
@@ -287,7 +273,7 @@ export default function OrgsIndexPage({
                 ) : (
                   <div className="divide-y divide-border">
                     {feed.map((e) => (
-                      <OrgsFeedLine key={e.event_id} event={e} />
+                      <DocosFeedLine key={e.event_id} event={e} />
                     ))}
                   </div>
                 )}
@@ -300,7 +286,7 @@ export default function OrgsIndexPage({
   );
 }
 
-function OrgsFeedLine({ event }: { event: FeedEvent }) {
+function DocosFeedLine({ event }: { event: FeedEvent }) {
   const url = entityUrl({
     docoId: event.handle,
     nodeType: event.entity_type,

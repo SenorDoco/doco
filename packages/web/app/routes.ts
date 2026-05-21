@@ -64,6 +64,7 @@ export default [
   route("api", "routes/agent-probes[.]ts.tsx", { id: "probe-api" }),
   route("api/docs", "routes/agent-probes[.]ts.tsx", { id: "probe-api-docs" }),
   route("dashboard", "routes/dashboard.tsx"),
+  route("docos", "routes/docos._index.tsx"),
   // Auth
   route("sign-in", "routes/sign-in.tsx"),
   route("sign-out", "routes/sign-out.tsx"),
