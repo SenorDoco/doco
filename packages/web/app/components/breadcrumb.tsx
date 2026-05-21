@@ -103,3 +103,24 @@ export function orgBreadcrumb({
   if (pageLabel) items.push({ label: pageLabel });
   return items;
 }
+
+/**
+ * Build the breadcrumb trail for a top-level (host-scoped) page.
+ * Trail: `Home › [section?] › [pageLabel]`.
+ *
+ * `Home` links to `/` (the host landing / signed-in dashboard).
+ * Use `section` for sub-pages of a top-level section (e.g. `New doco`
+ * lives under `Docos`).
+ */
+export function hostBreadcrumb({
+  section,
+  pageLabel,
+}: {
+  section?: BreadcrumbItem;
+  pageLabel: string;
+}): BreadcrumbItem[] {
+  const items: BreadcrumbItem[] = [{ label: "Home", to: "/" }];
+  if (section) items.push(section);
+  items.push({ label: pageLabel });
+  return items;
+}

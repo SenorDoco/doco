@@ -21,14 +21,15 @@ import {
 import type { EntityId } from "@doco/shared";
 import { useEffect, useState } from "react";
 import { Link, redirect, useFetcher } from "react-router";
+import { Breadcrumb, hostBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { CollaborationInvitePrompt } from "~/components/collaboration-invite-prompt";
 import { SingleColumnPageMain } from "~/components/page-main";
 import { SiteHeader } from "~/components/site-header";
 import { rootDir } from "~/lib/db.server";
 import { getDocoLevelRole } from "~/lib/doco-access.server";
+import { InviteStore } from "~/lib/invite-store.server";
 import { getCurrentPrincipal } from "~/lib/session";
-import { TokenStore } from "~/lib/tokens.server";
 
 const ALL_ROLES: DocoRole[] = ["owner", "approver", "author", "reader"];
 type InviteLevel = "org" | "doco";
@@ -69,8 +70,7 @@ function resolveInviteDefaultSelection(args: {
   docos: InviteOption[];
 }): InviteDefaultSelection {
   const level =
-    args.requestedLevel ??
-    firstAvailableInviteLevel({ orgs: args.orgs, docos: args.docos });
+    args.requestedLevel ?? firstAvailableInviteLevel({ orgs: args.orgs, docos: args.docos });
   const options = optionsForInviteLevel(level, args);
   const targetId = options.some((opt) => opt.id === args.requestedTargetId)
     ? args.requestedTargetId
@@ -117,7 +117,7 @@ export async function loader({ request }: { request: Request }) {
     const myRole = (await getOrgRole(org.id, me.id)) ?? "reader";
     const rows = await withClient(async (c) =>
       c.query<{ principal_id: string; role: string }>(
-        `SELECT principal_id, role FROM org_users WHERE org_id = $1 ORDER BY joined_at`,
+        "SELECT principal_id, role FROM org_users WHERE org_id = $1 ORDER BY joined_at",
         [org.id],
       ),
     );
@@ -141,9 +141,9 @@ export async function loader({ request }: { request: Request }) {
   // doco_users row exists.
   const accessibleDocoIds = new Set<string>();
   const directDocos = await withClient((c) =>
-    c.query<{ id: string }>(`SELECT id FROM docos WHERE owner_id = $1`, [me.id]),
+    c.query<{ id: string }>("SELECT id FROM docos WHERE owner_id = $1", [me.id]),
   );
-  directDocos.rows.forEach((r) => accessibleDocoIds.add(String(r.id)));
+  for (const r of directDocos.rows) accessibleDocoIds.add(String(r.id));
   const orgDocos = await withClient((c) =>
     c.query<{ id: string }>(
       `SELECT id FROM docos WHERE owner_id IN (
@@ -152,9 +152,9 @@ export async function loader({ request }: { request: Request }) {
       [me.id],
     ),
   );
-  orgDocos.rows.forEach((r) => accessibleDocoIds.add(String(r.id)));
+  for (const r of orgDocos.rows) accessibleDocoIds.add(String(r.id));
   const myDocoUsersIds = await listDocoIdsForUserPrincipal(me.id);
-  myDocoUsersIds.forEach((id) => accessibleDocoIds.add(id));
+  for (const id of myDocoUsersIds) accessibleDocoIds.add(id);
 
   const docoSections: DocoSection[] = [];
   for (const docoId of accessibleDocoIds) {
@@ -169,8 +169,7 @@ export async function loader({ request }: { request: Request }) {
     );
     // Effective doco-level role (covers direct owner, org chain, doco_users).
     const myRole =
-      (await getDocoLevelRole({ ownerId: doco.owner_id, docoId: doco.id }, me.id)) ??
-      "reader";
+      (await getDocoLevelRole({ ownerId: doco.owner_id, docoId: doco.id }, me.id)) ?? "reader";
     docoSections.push({
       doco: { id: doco.id, handle: doco.handle },
       myRole,
@@ -267,10 +266,7 @@ export async function action({
     } else if (level === "doco") {
       const doco = await getDocoById(targetId);
       if (!doco) return { error: "Doco not found." };
-      const role = await getDocoLevelRole(
-        { ownerId: doco.owner_id, docoId: doco.id },
-        me.id,
-      );
+      const role = await getDocoLevelRole({ ownerId: doco.owner_id, docoId: doco.id }, me.id);
       if (role !== "owner") return { error: "Only doco owners can change doco users." };
     } else {
       return { error: "Invalid level." };
@@ -312,16 +308,13 @@ export async function action({
       // We still need a doco_id on the invite for back-links; pick any
       // doco the org owns, falling back to the first one we find.
       const docoRow = await withClient(async (c) =>
-        c.query<{ id: string }>(`SELECT id FROM docos WHERE owner_id=$1 LIMIT 1`, [targetId]),
+        c.query<{ id: string }>("SELECT id FROM docos WHERE owner_id=$1 LIMIT 1", [targetId]),
       );
       docoId = docoRow.rows[0]?.id ?? null;
     } else if (level === "doco") {
       const doco = await getDocoById(targetId);
       if (doco) {
-        inviterRole = await getDocoLevelRole(
-          { ownerId: doco.owner_id, docoId: doco.id },
-          me.id,
-        );
+        inviterRole = await getDocoLevelRole({ ownerId: doco.owner_id, docoId: doco.id }, me.id);
         docoId = doco.id;
       }
     } else {
@@ -348,7 +341,7 @@ export async function action({
       };
     }
 
-    const store = TokenStore.forDoco(rootDir());
+    const store = InviteStore.forDoco(rootDir());
     const invite = await store.issueInvite(
       docoId as EntityId<"doco">,
       me.id as EntityId<"principal">,
@@ -412,6 +405,7 @@ export default function UsersPage({
     <div className="min-h-screen flex flex-col bg-background text-foreground">
       <SiteHeader mode="host" me={loaderData.me} />
       <SingleColumnPageMain className="py-8 space-y-6">
+        <Breadcrumb items={hostBreadcrumb({ pageLabel: "Users (people/agents)" })} />
         <header>
           <h1 className="text-2xl font-semibold">Users (people/agents)</h1>
         </header>
@@ -453,7 +447,6 @@ export default function UsersPage({
             })),
           )}
         />
-
       </SingleColumnPageMain>
     </div>
   );
@@ -754,8 +747,8 @@ function InviteHumanCard({
             copyButtonTestId="invite-copy"
             note={
               <>
-                Single-use, expires in 72 hours. Grants{" "}
-                <strong>{inviteResult.role}</strong> at the {inviteResult.level} level.
+                Single-use, expires in 72 hours. Grants <strong>{inviteResult.role}</strong> at the{" "}
+                {inviteResult.level} level.
               </>
             }
           />
@@ -780,8 +773,8 @@ function InviteAgentCard({ host }: { host: string }) {
       <CardHeader>
         <CardTitle>Invite an AI agent</CardTitle>
         <CardDescription>
-          Agents authenticate via OAuth — there's no per-invite scoping here because you pick
-          which Docos and what role at approve time.
+          Agents authenticate via OAuth — there's no per-invite scoping here because you pick which
+          Docos and what role at approve time.
         </CardDescription>
       </CardHeader>
       <CardContent>

@@ -1,5 +1,5 @@
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { spawn } from "node:child_process";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { hostname } from "node:os";
 import { resolve } from "node:path";
 import { defineCommand } from "citty";
@@ -29,8 +29,7 @@ export const loginCmd = defineCommand({
   args: {
     host: {
       type: "string",
-      description:
-        "Doco host URL. Defaults to https://doco.to.",
+      description: "Doco host URL. Defaults to https://doco.to.",
     },
     create: {
       type: "string",
@@ -39,8 +38,7 @@ export const loginCmd = defineCommand({
     },
     "no-open": {
       type: "boolean",
-      description:
-        "Skip auto-opening the browser. Print the authorize URL instead.",
+      description: "Skip auto-opening the browser. Print the authorize URL instead.",
       default: false,
     },
     timeout: {
@@ -53,9 +51,7 @@ export const loginCmd = defineCommand({
     const envPath = resolve(process.cwd(), ".env");
     const env = readEnvFile(envPath);
 
-    const docoHost =
-      (typeof args.host === "string" ? args.host.trim() : "") ||
-      "https://doco.to";
+    const docoHost = (typeof args.host === "string" ? args.host.trim() : "") || "https://doco.to";
     const normalizedHost = docoHost.replace(/\/$/, "");
 
     const createSlug =
@@ -132,7 +128,9 @@ export const loginCmd = defineCommand({
     } else {
       console.log(`Opening ${c.dim(authorizeUrl)} in your browser…`);
       openInBrowser(authorizeUrl).catch((e) => {
-        console.error(c.dim(`(Auto-open failed: ${(e as Error).message}. Visit the URL above manually.)`));
+        console.error(
+          c.dim(`(Auto-open failed: ${(e as Error).message}. Visit the URL above manually.)`),
+        );
       });
     }
     console.log();
@@ -150,7 +148,9 @@ export const loginCmd = defineCommand({
           body: JSON.stringify({ state_nonce: init.state_nonce }),
         });
         if (res.status === 404) {
-          console.error(cross("Authorization request not found (expired?). Run `doco login` again."));
+          console.error(
+            cross("Authorization request not found (expired?). Run `doco login` again."),
+          );
           process.exitCode = 1;
           return;
         }
@@ -196,9 +196,7 @@ export const loginCmd = defineCommand({
               // surface the real error if any.
             }
             writeFileSync(target, renderConnectionsMd(docoUrl), "utf8");
-            console.log(
-              checkmark(`Wrote Doco URL to ${c.dim("./.doco/connections.md")}.`),
-            );
+            console.log(checkmark(`Wrote Doco URL to ${c.dim("./.doco/connections.md")}.`));
           }
 
           // Install the agent-bootstrap files (AGENTS.md + CLAUDE.md shim +
@@ -213,7 +211,10 @@ export const loginCmd = defineCommand({
             const originalLog = console.log;
             console.log = () => {};
             try {
-              await installAgentBootstrapCmd.run!({
+              if (!installAgentBootstrapCmd.run) {
+                throw new Error("install-agent-bootstrap command has no runner");
+              }
+              await installAgentBootstrapCmd.run({
                 args: {
                   root: process.cwd(),
                   force: !!idForInstall, // re-stamp AGENTS.md when we have a fresh id
@@ -231,7 +232,11 @@ export const loginCmd = defineCommand({
               ),
             );
           } catch (e) {
-            console.error(c.dim(`(install-agent-bootstrap failed: ${(e as Error).message}. Run \`doco install-agent-bootstrap\` manually.)`));
+            console.error(
+              c.dim(
+                `(install-agent-bootstrap failed: ${(e as Error).message}. Run \`doco install-agent-bootstrap\` manually.)`,
+              ),
+            );
           }
 
           if (body.doco_handle) {
@@ -240,11 +245,25 @@ export const loginCmd = defineCommand({
           }
           console.log();
           console.log(c.dim("Next, in this Claude Code session (no restart needed):"));
-          console.log(c.dim("  1. /hooks — review and approve the new SessionStart + UserPromptSubmit hooks."));
-          console.log(c.dim("  2. /clear (optional) — fires SessionStart fresh so the canonical_instructions"));
-          console.log(c.dim("     get injected. Without /clear, the per-prompt UserPromptSubmit hook still"));
+          console.log(
+            c.dim(
+              "  1. /hooks — review and approve the new SessionStart + UserPromptSubmit hooks.",
+            ),
+          );
+          console.log(
+            c.dim(
+              "  2. /clear (optional) — fires SessionStart fresh so the canonical_instructions",
+            ),
+          );
+          console.log(
+            c.dim("     get injected. Without /clear, the per-prompt UserPromptSubmit hook still"),
+          );
           console.log(c.dim("     re-pushes the protocol checklist on the next user message."));
-          console.log(c.dim("Other agents: AGENTS.md is now in place; restart per their convention if needed."));
+          console.log(
+            c.dim(
+              "Other agents: AGENTS.md is now in place; restart per their convention if needed.",
+            ),
+          );
           return;
         }
         if (body.status === "denied") {
@@ -306,8 +325,8 @@ curl -X POST "${docoUrl.replace(/\/+$/, "")}/api/invites.json" \\
   -d '{"expires_in_days": 7}'
 \`\`\`
 
-Agents should store their personal access credential in \`./.env\` as
-\`DOCO_ACCESS=<64-hex>\`. The credential is secret and gitignored; this
+Agents should store their OAuth access token in \`./.env\` as
+\`DOCO_ACCESS=<oauth-access-token>\`. The credential is secret and gitignored; this
 file is the committed, non-secret project coordinate.
 `;
 }
@@ -429,7 +448,8 @@ function writeEnvFile(
     filtered.push(line);
   }
   // Append keys that weren't present.
-  if (filtered.length > 0 && filtered[filtered.length - 1]!.trim() !== "") {
+  const last = filtered[filtered.length - 1];
+  if (last !== undefined && last.trim() !== "") {
     filtered.push("");
   }
   for (const [key, value] of Object.entries(updates)) {

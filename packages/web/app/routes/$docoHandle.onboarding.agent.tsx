@@ -14,7 +14,7 @@ import { SingleColumnPageMain } from "~/components/page-main";
 import { SiteHeader } from "~/components/site-header";
 import { rootDir } from "~/lib/db.server";
 import { loadDocoForAdmin, normalizeDocoParams } from "~/lib/doco-access.server";
-import { TokenStore } from "~/lib/tokens.server";
+import { InviteStore } from "~/lib/invite-store.server";
 
 export async function loader({
   request,
@@ -26,7 +26,7 @@ export async function loader({
   const { handle, ownerSlug } = await normalizeDocoParams(params);
   const { meta, me } = await loadDocoForAdmin(request, handle);
 
-  const store = TokenStore.forDoco(rootDir());
+  const store = InviteStore.forDoco(rootDir());
   const invite = await store.issueInvite(
     meta.docoId as EntityId<"doco">,
     (me?.id ?? null) as EntityId<"principal"> | null,
@@ -63,9 +63,9 @@ export default function OnboardingAgent({
           <CardHeader>
             <CardTitle>Invite collaborators</CardTitle>
             <CardDescription>
-              Two prompts — one for a human collaborator (sign-in + Accept in a
-              browser), one for an AI agent (OAuth via Device Flow or
-              localhost-loopback; recipe at /protocol/agent-oauth-recipe).
+              Two prompts — one for a human collaborator (sign-in + Accept in a browser), one for an
+              AI agent (OAuth via Device Flow or localhost-loopback; recipe at
+              /protocol/agent-oauth-recipe).
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-2">

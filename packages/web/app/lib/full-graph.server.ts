@@ -115,7 +115,6 @@ async function loadOverviewLinks(
       `SELECT from_id, to_id, edge_type, attribution
          FROM edges
         WHERE doco_id = $1
-          AND edge_type != 'in_scope_of'
           AND from_id = ANY($2::text[])
           AND to_id = ANY($2::text[])
         ORDER BY CASE WHEN attribution = 'explicit' THEN 0 ELSE 1 END, edge_type

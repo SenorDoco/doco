@@ -14,16 +14,10 @@ decided_at: 2026-05-13T21:52:31.132Z
 created_at: 2026-05-13T21:52:31.132Z
 created_by: principal_01KRHJQCG3HH5AYBZWEZHCS9MY
 lifecycle: active
-scopes:
-  - scope_01KRHMNZDV2WEP3XC8EY04X63K
 auto_edges:
   - to_id: decision_01KRHMZE5444PVATY5B3KYJBPM
     edge_type: supersedes
     reason: The decision to adopt Doco for project documentation replaces the
       previous documentation method, which is relevant to the JSON block-based
       schema.
-  - to_id: scope_01KRHMNFV0WZZ5A2HYZG6K53F9
-    edge_type: relates_to
-    reason: Architecture Decision Records (ADRs) provide a rationale for the
-      decisions made regarding the JSON block-based schema.
 ---

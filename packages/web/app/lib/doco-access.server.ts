@@ -143,10 +143,8 @@ export async function isMyDoco(
  * dashboard's "shared with me" listing.
  *
  * Post-decision_01KS0JBJ5X0AZ4XJJFKEWE1R62, this reads from `doco_users`
- * directly. The v8 backfill grandfathers existing SessionToken-bound
- * principals into doco_users with role='owner' so the answer is
- * unchanged for prior collaborators; new invite redemptions write the
- * doco_users row alongside the SessionToken.
+ * directly. Invite redemptions write the doco_users row themselves;
+ * OAuth tokens are only authentication, not membership storage.
  */
 export async function listInvitedDocoIdsForPrincipal(principalId: string): Promise<Set<string>> {
   const ids = await listDocoIdsForUserPrincipal(principalId);
@@ -189,12 +187,9 @@ export async function listAccessibleDocoIdsForPrincipal(principalId: string): Pr
 /**
  * Same as `canAccessDoco` but for write/admin operations — the
  * owner-tier gate. Per decision_01KS0JBJ5X0AZ4XJJFKEWE1R62, owner-tier
- * is the only role that can add users, delete the doco, manage scopes,
- * or edit #global Rules. Approver-tier can approve lifecycle but cannot
+ * is the only role that can add users, delete the doco, or edit
+ * constitution articles. Approver-tier can approve lifecycle but cannot
  * administer the doco; lower tiers can author or read only.
- *
- * Scope-level grants do NOT elevate to admin — even a scope-level owner
- * grant only governs that scope, not the doco as a whole.
  */
 export async function canAdminDoco(
   meta: { ownerId: string; docoId?: string },
@@ -206,7 +201,7 @@ export async function canAdminDoco(
   return role === "owner";
 }
 
-/** Approver-tier check — can flip lifecycle on any scope in this doco. */
+/** Approver-tier check — can flip lifecycle on authored nodes in this doco. */
 export async function canApproveDoco(
   meta: { ownerId: string; docoId?: string },
   principalId: string | null,

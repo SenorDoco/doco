@@ -86,7 +86,7 @@ const captureToolUse = {
         name: "Bash",
         input: {
           command:
-            'doco capture decision --question "How should footer drops be guarded?" --chosen "Compare tool output footer_lines to assistant text." --scope framework',
+            'doco capture decision --question "How should footer drops be guarded?" --chosen "Compare tool output footer_lines to assistant text."',
         },
       },
     ],

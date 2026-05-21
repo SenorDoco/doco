@@ -7,7 +7,7 @@
 //     claim, only `lifecycle`, `superseded_by`, and additive edge fields
 //     (`*_add`) can be patched. Body, summary, alternatives, and core fields
 //     are locked — editorial fixes happen via supersession.
-//   - Record: Principal, Organization, Scope, Doco metadata, Tag, Idea.
+//   - Record: Principal, Organization, Doco metadata, Tag, Idea.
 //     Always mutable via PATCH. They are state, not claims.
 //
 // Frozen lifecycles use the canonical six-value Lifecycle vocabulary
@@ -81,7 +81,6 @@ export function isFrozen(nodeType: string, lifecycle: string | undefined | null)
 const ALLOWED_ON_FROZEN: ReadonlySet<string> = new Set([
   "lifecycle",
   "superseded_by",
-  "scope_names_add",
   "intent_ids_add",
 ]);
 

@@ -27,19 +27,15 @@
 //   404 — Doco not found, or caller doesn't have access
 //   400 — invalid expires_in_days (must be 1..365)
 
+import { type DocoRole, ROLE_RANK } from "@doco/db";
 import type { EntityId } from "@doco/shared";
-import { ROLE_RANK, type DocoRole } from "@doco/db";
-import { TokenStore } from "~/lib/tokens.server";
 import {
   buildAgentInvitePrompt,
   buildHumanInvitePrompt,
 } from "~/components/collaboration-invite-prompt";
 import { rootDir } from "~/lib/db.server";
-import {
-  getDocoLevelRole,
-  loadDocoForRead,
-  normalizeDocoParams,
-} from "~/lib/doco-access.server";
+import { getDocoLevelRole, loadDocoForRead, normalizeDocoParams } from "~/lib/doco-access.server";
+import { InviteStore } from "~/lib/invite-store.server";
 
 const ROLE_VALUES = new Set<DocoRole>(["owner", "approver", "author", "reader"]);
 function parseRole(v: unknown): DocoRole | null {
@@ -68,10 +64,7 @@ export async function action({
     // canAccessDoco may have let an anonymous caller pass for a public
     // Doco; minting invites still requires a Principal so we can
     // record minted_by_principal_id on the invite row.
-    return Response.json(
-      { error: "anonymous_callers_cannot_mint_invites" },
-      { status: 403 },
-    );
+    return Response.json({ error: "anonymous_callers_cannot_mint_invites" }, { status: 403 });
   }
 
   let body: { expires_in_days?: number; role?: string } = {};
@@ -100,10 +93,7 @@ export async function action({
   // can't extend access — that's a permissions delegation that only
   // the Doco owner gets to do.
   const requestedRole: DocoRole = parseRole(body.role) ?? "author";
-  const inviterRole = await getDocoLevelRole(
-    { ownerId: meta.ownerId, docoId: meta.docoId },
-    me.id,
-  );
+  const inviterRole = await getDocoLevelRole({ ownerId: meta.ownerId, docoId: meta.docoId }, me.id);
   if (inviterRole !== "owner") {
     return Response.json(
       {
@@ -123,7 +113,7 @@ export async function action({
     );
   }
 
-  const store = TokenStore.forDoco(rootDir());
+  const store = InviteStore.forDoco(rootDir());
   const invite = await store.issueInvite(
     meta.docoId as EntityId<"doco">,
     me.id as EntityId<"principal">,
@@ -135,9 +125,7 @@ export async function action({
   const origin = `${url.protocol}//${url.host}`;
   // Phase 1 of slug-removal: prefer the handle URL; fall back to the
   // ULID /by-id/ form for pre-handle Docos.
-  const docoUrl = meta.handle
-    ? `${origin}/${meta.handle}/`
-    : `${origin}/by-id/${meta.docoId}/`;
+  const docoUrl = meta.handle ? `${origin}/${meta.handle}/` : `${origin}/by-id/${meta.docoId}/`;
   const inviteUrl = `${origin}/invite/${invite.code}`;
   const recipeUrl = `${origin}/protocol/agent-oauth-recipe`;
   const deviceUrl = `${origin}/device`;

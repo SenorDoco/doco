@@ -11,13 +11,9 @@ import {
   updateEntity,
 } from "~/lib/capture.server";
 import { docoPath } from "~/lib/db.server";
-import {
-  getDocoLevelRole,
-  loadDocoForRead,
-  normalizeDocoParams,
-} from "~/lib/doco-access.server";
-import { withIdempotency } from "~/lib/idempotency.server";
+import { getDocoLevelRole, loadDocoForRead, normalizeDocoParams } from "~/lib/doco-access.server";
 import { readDocoMetadata } from "~/lib/doco-metadata.server";
+import { withIdempotency } from "~/lib/idempotency.server";
 
 interface MeLike {
   id: string | null;
@@ -117,9 +113,8 @@ export function makeCaptureRoute<TDraft>(cfg: CaptureRouteConfig<TDraft>) {
             );
           }
 
-          // v16 (decision_01KS3DW9C2KN2X7Z80R18H1RAX): per-scope role
-          // gating was removed with the scopes concept. Role enforcement
-          // is now strictly doco-level — checked once below.
+          // Role enforcement is doco-level — checked once here before
+          // dispatching to the type-specific capture handler.
           const docoRole = await getDocoLevelRole(
             { ownerId: meta.ownerId, docoId: meta.docoId },
             me.id,

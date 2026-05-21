@@ -5,18 +5,17 @@
 // The just-minted invite's URL is highlighted at the top with a
 // copy-friendly text field.
 
+import type { EntityId } from "@doco/shared";
 import { useState } from "react";
 import { Form, Link, useNavigation } from "react-router";
-import type { EntityId } from "@doco/shared";
-import type { Invite } from "~/lib/agent-token-store.server";
-import { TokenStore } from "~/lib/tokens.server";
-import { rootDir } from "~/lib/db.server";
-import { loadDocoForRead, normalizeDocoParams } from "~/lib/doco-access.server";
 import { Breadcrumb, docoBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { CollaborationInvitePrompt } from "~/components/collaboration-invite-prompt";
 import { SingleColumnPageMain } from "~/components/page-main";
 import { SiteHeader } from "~/components/site-header";
+import { rootDir } from "~/lib/db.server";
+import { loadDocoForRead, normalizeDocoParams } from "~/lib/doco-access.server";
+import { type Invite, InviteStore } from "~/lib/invite-store.server";
 
 type SerializedInvite = {
   code: string;
@@ -39,7 +38,7 @@ export async function loader({
     request,
     handle,
   );
-  const store = TokenStore.forDoco(rootDir());
+  const store = InviteStore.forDoco(rootDir());
   const invites = await store.listInvitesForDoco(meta.docoId as EntityId<"doco">);
   const url = new URL(request.url);
   const origin = `${url.protocol}//${url.host}`;
@@ -90,7 +89,7 @@ export async function action({
   if (intent === "revoke") {
     const code = String(form.get("code") ?? "");
     if (!code) return { error: "Missing invite code." };
-    const store = TokenStore.forDoco(rootDir());
+    const store = InviteStore.forDoco(rootDir());
     const ok = await store.revokeInvite(code);
     if (!ok) return { error: "Invite not found or no longer pending." };
     return {
@@ -107,7 +106,7 @@ export async function action({
   if (!Number.isFinite(ttl) || ttl < 1 || ttl > 365) {
     return { error: "Pick an expiration between 1 and 365 days." };
   }
-  const store = TokenStore.forDoco(rootDir());
+  const store = InviteStore.forDoco(rootDir());
   const invite = await store.issueInvite(
     meta.docoId as EntityId<"doco">,
     me.id as EntityId<"principal">,
@@ -153,8 +152,8 @@ export default function Invites({
             <span className="text-muted-foreground"> · invites</span>
           </h1>
           <p className="text-sm text-muted-foreground">
-            Share an invite URL with a collaborator (person or agent). Each invite is
-            single-use and expires after the chosen window.
+            Share an invite URL with a collaborator (person or agent). Each invite is single-use and
+            expires after the chosen window.
           </p>
         </div>
 
@@ -213,10 +212,7 @@ export default function Invites({
                   recipeUrl={actionData.recipe_url}
                   deviceUrl={actionData.device_url}
                   note={
-                    <>
-                      Single-use, expires{" "}
-                      {new Date(actionData.expires_at).toLocaleString()}.
-                    </>
+                    <>Single-use, expires {new Date(actionData.expires_at).toLocaleString()}.</>
                   }
                 />
               </div>
@@ -228,9 +224,7 @@ export default function Invites({
           <CardHeader>
             <CardTitle>All invites</CardTitle>
             <CardDescription>
-              {invites.length === 0
-                ? "No invites yet."
-                : `${invites.length} total — newest first.`}
+              {invites.length === 0 ? "No invites yet." : `${invites.length} total — newest first.`}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-2">
@@ -267,10 +261,7 @@ function InviteRow({
           {invite.status === "pending" ? (
             <>Pending · expires {new Date(invite.expires_at).toLocaleString()}</>
           ) : invite.status === "consumed" ? (
-            <>
-              Consumed{" "}
-              {invite.redeemed_at ? new Date(invite.redeemed_at).toLocaleString() : ""}
-            </>
+            <>Consumed {invite.redeemed_at ? new Date(invite.redeemed_at).toLocaleString() : ""}</>
           ) : invite.status === "expired" ? (
             <>Expired {new Date(invite.expires_at).toLocaleString()}</>
           ) : (

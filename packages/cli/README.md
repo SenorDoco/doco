@@ -49,7 +49,7 @@ doco login --host https://doco.to --create my-project
 # In an existing Doco project (Doco URL in .doco/connections.md, DOCO_ACCESS in ./.env):
 doco bootstrap                              # fetch the agent canonical
 doco search "what we know about auth"       # query the graph
-doco capture decision --question "..." --chosen "..." --scope <comma,list>
+doco capture decision --question "..." --chosen "..."
 doco patch decision <id> --append-body "Update YYYY-MM-DD: <what + why>."
 ```
 

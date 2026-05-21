@@ -12,6 +12,4 @@ decided_at: 2026-05-13T21:49:58.579Z
 created_at: 2026-05-13T21:49:58.579Z
 created_by: principal_01KRHJQCG3HH5AYBZWEZHCS9MY
 lifecycle: active
-scopes:
-  - scope_01KRHMNFV0WZZ5A2HYZG6K53F9
 ---

@@ -5,8 +5,10 @@
 > read those if you want to understand *why* Doco is shaped the way it is.
 > Everything else has drifted:
 >
-> - The schema reference still says "Tag" (now `Scope`, per ADR-078);
->   "SQLite + FTS5" (now Postgres + pgvector, per
+> - The schema reference still describes the original file-backed tag
+>   model; the current implementation uses Postgres-backed entity tables and
+>   does not keep the old area node type or selector cache table.
+> - It also says "SQLite + FTS5" (now Postgres + pgvector, per
 >   `decision_01KRKEVEE3RQGPWHAPMZ0MS9G9`); "git repository as storage
 >   model" (Postgres took source-of-truth in Phase 2 of that same
 >   decision).
@@ -38,7 +40,7 @@ Every choice below is justified by Doco's strict-priority optimizations:
 | 1. AI agent comprehension | Self-describing entities, predictable names, explicit node_type+ID prefixes, schema-of-the-Doco embedded inside every Doco so an agent can read structure without external context. |
 | 2. AI agent updates | One file per entity (small, predictable diffs), additive evolution (new fields don't invalidate old data), stable IDs (inserts don't renumber peers), upsert-by-path semantics. |
 | 3. Human comprehension | Every entity has a `summary` field and a Markdown narrative body alongside its structured fields. |
-| 4. Scoping | Three levels: Doco > namespace (entity directory) > entity. Rules carry an explicit `applies_to` scope selector. |
+| 4. Applicability | Rules and articles declare the entities they cover with explicit applicability predicates. |
 | 5. Version control | Each Doco IS a git repository. Revisions are commits; diffs are file diffs; branches are branches. |
 | 6. Performance | References are flat IDs (no inlined data). Generated `index/` directory holds derived lookups (not source of truth). |
 | 7. Automated issue detection | Every Rule can carry a `predicate`; runtime-phase Rules produce Evaluations. |
@@ -170,7 +172,7 @@ parent_intent_id: intent_... | null
 title: "Ship feature X to production"
 priority: p0 | p1 | p2 | p3
 stakeholders: [principal_...]
-applies_to: <scope_selector>       # see §5
+applies_to: <selector>             # see §5
 ```
 
 Markdown body: motivation, examples, expected user-visible behavior.
@@ -185,7 +187,7 @@ node_type: rule
 modality: must | must_not | should | should_not
 severity: blocker | warning | info
 phase: declared | pre | post | invariant   # declared = policy / always holds; pre|post|invariant = runtime evaluation point
-applies_to: <scope_selector>       # what this Rule covers; a single-id selector targets one specific entity (replaces the old Assertion.target shape)
+applies_to: <selector>             # what this Rule covers; a single-id selector targets one specific entity (replaces the old Assertion.target shape)
 predicate: "..."                   # machine-checkable expression (optional when phase=declared)
 expected: true                     # what counts as passing (default true)
 on_violation: block | warn | log
@@ -297,7 +299,7 @@ A small set of tag names carries semantic meaning that tooling recognizes:
 
 Conventions like "every `tag_bugfix` Decision must have at least one `BornFrom` edge from a `tag_regression_guard` Rule" are documented expectations rather than enforced predicates.
 
-## 5. Scope selector
+## 5. Applicability selector
 
 Used by Intent.`applies_to` and Rule.`applies_to`. A predicate over entities. The grammar accepts both *broad* matches (node_type/tag/property) and *single-id* matches (replacing the old Assertion.target shape).
 
@@ -404,14 +406,8 @@ CREATE VIRTUAL TABLE fts USING fts5(
   id UNINDEXED, node_type UNINDEXED, summary, body
 );
 
--- Denormalized: which entities a scope selector currently matches.
-CREATE TABLE scope_match (
-  source_id    TEXT NOT NULL,  -- rule/intent with applies_to
-  target_id    TEXT NOT NULL,  -- matched entity
-  selector_rev INTEGER NOT NULL,
-  PRIMARY KEY (source_id, target_id)
-);
-CREATE INDEX scope_match_target ON scope_match(target_id);
+-- Historical design only: early drafts described a denormalized selector
+-- cache here. The live implementation does not keep that table.
 ```
 
 ### 8.3 How common queries get served
@@ -420,7 +416,7 @@ CREATE INDEX scope_match_target ON scope_match(target_id);
 |---|---|---|
 | "Active intents tagged 'auth'" | indexed SELECT | sub-ms |
 | "All decisions serving intent X" | `SELECT FROM edges WHERE to_id=X AND edge_type='serves'` | sub-ms |
-| "Which rules apply to this action?" | `SELECT FROM scope_match WHERE target_id=...` | O(1) |
+| "Which rules apply to this action?" | evaluate the current applicability predicates | bounded by selector shape |
 | "Path from action back to originating intent" | recursive CTE over `edges` | tens of ms |
 | "Anything mentioning 'session token'" | FTS5 | tens of ms |
 | "Failing rule evaluations on agent X's actions last 7 days" | join across actions × evaluations × rules | sub-10 ms |
@@ -433,11 +429,11 @@ CREATE INDEX scope_match_target ON scope_match(target_id);
 
 A 10k-entity full reindex is bound by file I/O (parsing YAML), not SQL — single-digit seconds on typical hardware.
 
-### 8.5 Scope-selector caching
+### 8.5 Applicability-selector caching
 
 `Rule.applies_to` (whether broad selector or single-id form) is evaluated **on write**, not on read:
 
-- When a Rule is created or its selector changes, evaluate once and store matches in `scope_match`. Bump `selector_rev`.
+- When a Rule is created or its selector changes, refresh the derived applicability data. Bump `selector_rev`.
 - When a new entity is created, evaluate active selectors against it once. Most selectors filter by `node_type` first, so the candidate set is small.
 - Lookups ("which rules apply to X?") become a single index hit.
 
@@ -476,13 +472,13 @@ The data is graph-shaped. Every entity is a node; every reference is an edge. Th
 
 **Swap path**: the index is rebuildable from source files. Replacing SQLite with Kuzu is a couple of weeks of engineering work and zero source-data migration. We do this if and only if profiling at real scale shows recursive-CTE traversal as the bottleneck.
 
-## 9. Scoping — global, local, hierarchical, cross-Doco
+## 9. Applicability — global, local, cross-Doco
 
-`applies_to` selectors and Doco membership give the building blocks; this section formalizes the four practical cases.
+`applies_to` selectors and Doco membership give the building blocks; this section formalizes the practical cases.
 
 ### 9.1 Global (within an Doco)
 
-A Rule that applies to every entity in its Doco uses the wildcard scope-selector form:
+A Rule that applies to every entity in its Doco uses the wildcard selector form:
 
 ```yaml
 applies_to: { all: true }            # matches every entity in this Doco
@@ -490,34 +486,20 @@ applies_to: { all: true }            # matches every entity in this Doco
 
 This is the catch-all baseline: privacy policies, organization-wide audit logging, Doco-wide naming conventions.
 
-### 9.2 Scope-specific (local) — via reserved tag convention
+### 9.2 Area-specific (local) — via tag convention
 
-Reserve the tag-name prefix `scope_*` for bounded sub-areas of an Doco (`scope_auth`, `scope_payments`, `scope_infrastructure`, ...). Rules target a scope by referencing the tag:
+Use tags for bounded sub-areas of a Doco (`area_auth`, `area_payments`, `area_infrastructure`, ...). Rules target an area by referencing the tag:
 
 ```yaml
 # rules/rule_01H...md
 applies_to:
   any_of:
-    - tag: "scope_auth"
+    - tag: "area_auth"
 ```
 
-Entities tagged with the matching scope inherit the Rule. Agents declare which scope an Intent or Action belongs to by tagging it. **No new node type required.**
+Entities tagged with the matching area inherit the Rule. Agents declare which area an Intent or Action belongs to by tagging it. **No new node type required.**
 
-### 9.3 Hierarchical scopes (deferred — promote only if tag convention proves insufficient)
-
-If sub-scope inheritance becomes important (e.g., `scope_payments_subscriptions` should automatically inherit Rules for `scope_payments`), promote `Scope` to a first-class entity:
-
-```yaml
-id: scope_payments_subscriptions
-node_type: scope
-name: "payments/subscriptions"
-parent_scope_id: scope_payments
-description: "..."
-```
-
-Resolution: a Rule applying to a Scope also applies to its descendants. Defer until v0.x usage shows the tag-only model running out of road.
-
-### 9.4 Cross-Doco — `imports`
+### 9.3 Cross-Doco — `imports`
 
 Shared Rule sets (compliance baselines, organization-wide policies, vendor SDKs that ship with their own constraints) live in dedicated docos and are pulled in via `doco.yaml`:
 
@@ -553,7 +535,7 @@ The discovery layer combines **five retrieval strategies**, ranked by precision.
 
 | # | Strategy | Mechanism | Precision |
 |---|---|---|---|
-| 1 | **Structural match** | `scope_match` index (§8.5) — Rules whose `applies_to` definitively matches the work item's `node_type`, `verb`, `tag`, or specific entity ID | Highest. **Blocks** on `must` violations. |
+| 1 | **Structural match** | Rules whose `applies_to` definitively matches the work item's `node_type`, `verb`, `tag`, or specific entity ID | Highest. **Blocks** on `must` violations. |
 | 2 | **Tag overlap** | Rules tagged with any tag carried by the work item (or its parent Intent / target Reference) | High. Cheap and symmetric. |
 | 3 | **Reference-graph expansion** | Rules attached to neighbors of the target Reference: same directory, same content-hash family, same parent module | Medium-high. |
 | 4 | **Semantic search** | Vector embedding NN-search over each Rule's `summary` + Markdown body, against an embedding of the agent's working context (Intent + draft Action + target content) | Medium. The lever for vocabulary-tolerance. |
@@ -604,8 +586,8 @@ Output groups results by precision tier:
 
 ```
 PRECISE (structural):
-  rule_01H... [must]   applies_to scope_auth
-                       — your Action is scope_auth-tagged
+  rule_01H... [must]   applies_to area_auth
+                       — your Action is area_auth-tagged
 
 RELATED (tag overlap):
   rule_01H... [should] tagged auth, validation

@@ -1,9 +1,8 @@
 // OAuth 2.1 authorization server — the doco.to side of MCP-OAuth
 // (decision_01KS14CW9ZN23FF5CGG0Z7TH4G).
 //
-// Replaces the legacy DOCO_ACCESS bearer in `./.env`. Agents no
-// longer hold credentials directly: an MCP runtime registers itself
-// (RFC 7591), opens the authorize URL in the user's browser, the
+// OAuth-backed DOCO_ACCESS tokens for agents. An MCP runtime registers
+// itself (RFC 7591), opens the authorize URL in the user's browser, the
 // user signs in with GitHub + approves which Docos this runtime can
 // touch, the runtime exchanges the resulting code for an access +
 // refresh token, and attaches `Authorization: Bearer <token>` on

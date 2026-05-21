@@ -1,11 +1,10 @@
 /**
  * Distinct hues, no two visually adjacent. The four most-visible
- * types in the entity-detail graph (decision, scope, intent, principal)
+ * types in the entity-detail graph (decision, action, intent, principal)
  * occupy widely-separated parts of the wheel so they never read as
  * "all sort of green-ish."
  *   decision  -> orange     (warm, action-shaped)
- *   scope     -> lime green (categorical neighborhood)
- *   intent    -> magenta    (was emerald, collided with scope/lime)
+ *   intent    -> magenta
  *   principal -> cyan       (was blue, collided with organization/indigo)
  */
 export const NODE_TYPE_COLOR: Record<string, string> = {
@@ -22,7 +21,6 @@ export const NODE_TYPE_COLOR: Record<string, string> = {
   log: "#14b8a6", // teal — instance-of-Action, distinct from purple
   eval: "#0ea5e9", // sky
   reference: "#a16207", // amber/brown
-  scope: "#84cc16", // lime
 };
 
 export const NODE_FALLBACK_COLOR = "#525252";
@@ -68,7 +66,6 @@ const NODE_TYPE_PLURAL: Record<string, string> = {
   log: "logs",
   eval: "evals",
   reference: "references",
-  scope: "scopes",
 };
 
 export function nodeTypePlural(type: string): string {

@@ -1,5 +1,5 @@
-// Server-only re-export. Keeps server-only dependencies (pg, etc.) out of
-// the client bundle. See lib/tokens.server.ts.
+// Server-only re-exports. Keeps server-only dependencies (pg, etc.) out of
+// the client bundle.
 export { addAgentPrincipal } from "./agents.server";
 export {
   // v15 (Phase B) creation surfaces.
@@ -15,8 +15,8 @@ export {
   updateDocoMeta,
 } from "@doco/host";
 import { type BuildReport, reindex as reindexBare } from "@doco/index";
-import { getDocoEmbeddingProvider } from "./embedding-provider.server";
 import { readDocoMetadata } from "./doco-metadata.server";
+import { getDocoEmbeddingProvider } from "./embedding-provider.server";
 
 export interface ReindexExtraOptions {
   /** Skip the OpenAI embedding pass (FTS + edges only). */

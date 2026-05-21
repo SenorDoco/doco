@@ -49,8 +49,6 @@ ended_at: 2026-04-29T23:45:37Z
 created_at: 2026-04-29T23:45:37Z
 created_by: principal_01KRF55AR9H0RDQREGYH7WQWMQ
 lifecycle: succeeded
-scopes:
-  - scope_01KRF7VQ4BXA38JM5DPJ2N67SS
 ---
 
 # Fix — force `[hidden]` to win against author `display:` rules

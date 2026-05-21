@@ -73,14 +73,14 @@ A consolidated record of every meaningful design decision made to date, intended
 ### D-009 — Final node type list
 
 - **Chosen:** `principal`, `doco`, `intent`, `rule`, `decision`, `action`, `reasoning`, `evaluation`, `reference`, `tag`. (10 kinds total.)
-- **Alternatives rejected:** Separate `Constraint` + `Assertion` (collapsed → Rule); `Membership` as a node (collapsed → MemberOf edge); `Plan`, `Question`, `Claim`, `Scope` as first-class entities (deferred — emergent or covered by simpler mechanisms).
+- **Alternatives rejected:** Separate `Constraint` + `Assertion` (collapsed → Rule); `Membership` as a node (collapsed → MemberOf edge); `Plan`, `Question`, and `Claim` as first-class entities (deferred — emergent or covered by simpler mechanisms).
 - **Why:** Each kind earns its place by having distinct shape and lifecycle. Aggressive consolidation kept the surface narrow.
 - **Ref:** SCHEMA.md §4.
 
 ### D-010 — Constraint + Assertion → unified `Rule` with `phase`
 
 - **Chosen:** A single `Rule` entity with a `phase: declared | pre | post | invariant` field. `declared` is the old Constraint (policy that holds); `pre|post|invariant` is the old Assertion (runtime evaluation point).
-- **Alternatives rejected:** Keep them separate (genuine duplication; same predicate language, same scope-matching, same Evaluation production).
+- **Alternatives rejected:** Keep them separate (genuine duplication; same predicate language, same Evaluation production).
 - **Why:** Same conceptual thing — "a statement of correctness" — distinguished only by *when* it's evaluated. Simpler vocabulary.
 - **Ref:** SCHEMA.md §4.4.
 
@@ -171,7 +171,7 @@ A consolidated record of every meaningful design decision made to date, intended
   - `tag_regression_guard` — Rule born from a bugfix Decision.
   - `tag_adr_consequence` — Rule born from an ADR's stated consequence.
   - `tag_userflow` — Decision is part of a user-flow design chain.
-  - `scope_*` — local scope (used in `applies_to` selectors).
+  - `area_*` — optional local applicability labels; no dedicated node type.
 - **Why:** Tooling can enforce conventions; vocabulary stays consistent across teams.
 - **Ref:** SCHEMA.md §4.10 (Tag).
 
@@ -196,7 +196,7 @@ A consolidated record of every meaningful design decision made to date, intended
 
 - **Original:** SQLite with FTS5 virtual table for full-text. Recursive CTEs for graph traversal.
 - **Superseded by:** PG-native indexing — `tsvector` + GIN for full-text, the `edges` table for traversal. pgvector is the optional ANN swap when sequential cosine stops scaling (still fine at Tier B per D-049).
-- **Migration phases:** (1) additive schema in PG, (2) embeddings → PG, (3) edges + FTS + scope_match → PG, (4) lints → PG, (5) web routes → PG, (6) SQLite layer deleted, (7) this decision marked superseded.
+- **Migration phases:** (1) additive schema in PG, (2) embeddings → PG, (3) edges + FTS → PG, (4) lints → PG, (5) web routes → PG, (6) SQLite layer deleted, (7) this decision marked superseded.
 - **Ref:** packages/db/src/schema.sql, packages/db/src/indexer.ts, packages/db/src/embeddings.ts.
 
 ### D-025 — Edges as adjacency table
@@ -205,9 +205,9 @@ A consolidated record of every meaningful design decision made to date, intended
 - **Why:** Standard relational-graph pattern. Works to ~1M edges. Simple to reason about.
 - **Ref:** SCHEMA.md §8.2.
 
-### D-026 — Denormalized scope-selector caching
+### D-026 — Denormalized selector caching [REMOVED]
 
-- **Chosen:** When a Rule is created or its `applies_to` selector changes, evaluate once and store matches in `scope_match` table. Bump `selector_rev`.
+- **Chosen:** Early drafts cached `applies_to` matches at write time. The cache table was later removed with the file-backed indexing model.
 - **Alternatives rejected:** Evaluate selectors on every read (linear in selectors × entities — slow at scale).
 - **Why:** Rules are read-heavy, written rarely; constant-time lookup is worth the on-write cost.
 - **Ref:** SCHEMA.md §8.5.
@@ -224,14 +224,13 @@ A consolidated record of every meaningful design decision made to date, intended
 
 ## 7. Scoping
 
-### D-028 — Four scope cases, three mechanisms
+### D-028 — Applicability cases
 
 - **Chosen:**
   - **Global within Doco** — `applies_to: { all: true }`.
-  - **Local sub-scope** — reserved `scope_*` tag prefix (`scope_auth`, `scope_payments`, ...).
-  - **Hierarchical scopes** — *deferred*; promote `Scope` to first-class entity only if tag-only proves insufficient.
+  - **Local area** — ordinary tags such as `area_auth` or `area_payments`.
   - **Cross-Doco** — `imports` field in `doco.yaml`.
-- **Why:** The first two cases are handled without new entity types. Hierarchical is deferred to avoid premature complexity. Cross-Doco gets a real mechanism.
+- **Why:** The first two cases are handled without new entity types. Cross-Doco gets a real mechanism.
 - **Ref:** SCHEMA.md §9.
 
 ### D-029 — Cross-Doco imports: pinned, namespaced, additive
@@ -247,7 +246,7 @@ A consolidated record of every meaningful design decision made to date, intended
 
 ### D-030 — Five-strategy retrieval
 
-- **Chosen:** Rule discovery combines (1) structural match via `scope_match`, (2) tag overlap, (3) reference-graph expansion, (4) semantic embedding search, (5) glossary expansion. Strategies 1–3 are precision-tight (block on `must` violations); 4–5 are advisory.
+- **Chosen:** Rule discovery combines (1) structural applicability match, (2) tag overlap, (3) reference-graph expansion, (4) semantic embedding search, (5) glossary expansion. Strategies 1–3 are precision-tight (block on `must` violations); 4–5 are advisory.
 - **Why:** Vocabulary mismatch is the hardest case. Multi-strategy ensures coverage without flooding agents with false positives in the blocking layer.
 - **Ref:** SCHEMA.md §10.1.
 
@@ -373,8 +372,8 @@ Roughly, in implementation-order:
 
 1. **CLI core** — `doco init`, `doco init --existing`, `doco show`, `doco query`. (PLANNING.md §1.)
 2. **Source-of-truth layer** — file readers/writers for entity YAML+Markdown; schema validation against `doco.schema.json`. (SCHEMA.md §2, §3, §4.)
-3. **Index layer** — Postgres-native: `tsvector` + GIN for full-text, `edges` adjacency table, `scope_match` denormalization, embeddings as `bytea` (pgvector optional). Reindex rebuilds derived data from canonical PG rows. (Originally SQLite + FTS5; superseded — see D-024.)
-4. **Identity** — GitHub OAuth for people; invitation credential + access credential issuance for agents; `DOCO_ACCESS` env-var consumption; revocation. (PLANNING.md §2, §3.)
+3. **Index layer** — Postgres-native: `tsvector` + GIN for full-text, `edges` adjacency table, embeddings as `bytea` (pgvector optional). Reindex rebuilds derived data from canonical PG rows. (Originally SQLite + FTS5; superseded — see D-024.)
+4. **Identity** — GitHub OAuth for people; invitation links for humans; OAuth access tokens for agents; `DOCO_ACCESS` env-var consumption; revocation. (PLANNING.md §2, §3.)
 5. **API server** — REST CRUD + query + discovery + events stream; OpenAPI generation. (PLANNING.md §5.2.)
 6. **Web app** — recent-changes feed, list-by-kind, search (Cmd-K + full page), entity detail page with neighborhood preview, graph view as secondary. (PLANNING.md §5.3.)
 7. **Importers** — Slack, email, Figma, Notion, GitHub PRs, agent transcripts. Each runs idempotently and emits `lifecycle: proposed` entities with Reference back-pointers. (PLANNING.md §4.)
@@ -416,7 +415,7 @@ Original question framings are preserved below for historical reference.
 6. **Token revocation cascade override.** Strict-cascade is the default (D-038). The "scoped" override flag is mentioned but not specified — define semantics, persistence, and audit trail. (PLANNING.md §6 #2.)
 7. **GitHub-only sign-in: hard constraint or v0 simplification?** OIDC/SAML support is deferred but not killed. Decide when adoption signal demands broader support. (PLANNING.md §6 #1.)
 8. **`Token` as a first-class entity?** Currently kept external (server DB). Promote to entity if Doco-internal queries on token metadata become valuable. (PLANNING.md §6 #6.)
-9. **Hierarchical Scope entity.** Deferred. Promote only when tag-only model proves insufficient. (SCHEMA.md §9.3.)
+9. **Hierarchical area taxonomy.** Deferred. Promote only if ordinary tags prove insufficient. (SCHEMA.md §9.3.)
 10. **`conclusion_node_type` on Reasoning is redundant** (the conclusion's ID prefix carries the type). Could be dropped. Mentioned in conversation; not yet acted on.
 11. **`Plan` and `Question` as entities.** Both deferred; Plan is emergent, Question is folded into Decision. Promote only if real use cases demand. (SCHEMA.md §11 #8, #9.)
 12. **Public-Doco PII leakage in agent ancestry chain.** Confirm `Principal.identifier` can't leak email patterns. (PLANNING.md §6 #4.)

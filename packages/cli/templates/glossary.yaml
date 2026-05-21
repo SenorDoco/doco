@@ -31,10 +31,6 @@
   synonyms: [bot, AI, automated principal, assistant]
   description: A principal that is not a person. Created via invitation credential (D-035).
 
-- term: scope
-  synonyms: [boundary, area, domain, namespace]
-  description: Sub-area of an Doco, expressed via reserved scope_* tags (D-028).
-
 - term: evaluation
   synonyms: [check, assertion result, audit]
   description: Append-only record of running a Rule against a target (§4.8).
@@ -44,8 +40,8 @@
   description: Any check applied to data crossing a trust boundary.
 
 - term: access credential
-  synonyms: [auth credential, session cookie, DOCO_ACCESS]
-  description: Long-lived agent credential (D-037), revocable.
+  synonyms: [auth credential, OAuth token, DOCO_ACCESS]
+  description: Bearer credential issued through OAuth and stored by local tooling.
 
 - term: PII
   synonyms: [personal information, personal data, user data]

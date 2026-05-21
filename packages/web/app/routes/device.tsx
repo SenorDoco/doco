@@ -20,6 +20,7 @@
 import type { DocoRole } from "@doco/db";
 import { useState } from "react";
 import { Form, redirect, useLoaderData } from "react-router";
+import { Breadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { SingleColumnPageMain } from "~/components/page-main";
 import { SiteHeader } from "~/components/site-header";
@@ -245,6 +246,12 @@ export default function DevicePage() {
     <div>
       <SiteHeader mode="host" me={data.me} />
       <SingleColumnPageMain className="py-8 space-y-4">
+        <Breadcrumb
+          items={[
+            { label: "Home", to: "/" },
+            { label: "Authorize device" },
+          ]}
+        />
         <Card>{renderStage(data)}</Card>
       </SingleColumnPageMain>
     </div>

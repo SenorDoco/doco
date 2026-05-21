@@ -1,4 +1,5 @@
 import { Link } from "react-router";
+import { Breadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { DocoMark } from "~/components/doco-mark";
 import { SingleColumnPageMain } from "~/components/page-main";
@@ -52,7 +53,13 @@ export default function AuthGitHub({
           <VersionPill />
         </div>
       </header>
-      <SingleColumnPageMain className="py-10">
+      <SingleColumnPageMain className="py-10 space-y-4">
+        <Breadcrumb
+          items={[
+            { label: "Home", to: "/" },
+            { label: "GitHub OAuth" },
+          ]}
+        />
         <Card>
           <CardHeader>
             <CardTitle>GitHub OAuth not configured</CardTitle>

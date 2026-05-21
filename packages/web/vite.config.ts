@@ -104,15 +104,14 @@ export default defineConfig({
       "@xyflow/react",
       "class-variance-authority",
       "clsx",
-      "frimousse",
       "lucide-react",
       "tailwind-merge",
       "yaml",
     ],
   },
-  // pg uses native bindings and must not be bundled. @xyflow/react and
-  // frimousse are client-only — keep them out of the SSR bundle so they
-  // never try to call useRef/useState on a server-side null React.
+  // pg uses native bindings and must not be bundled. @xyflow/react is
+  // client-only — keep it out of the SSR bundle so it never tries to call
+  // useRef/useState on a server-side null React.
   //
   // @dagrejs/dagre is bundled into the SSR chunk (noExternal) because
   // Vercel's serverless runtime loads its `dist/dagre.esm.js` file via
@@ -121,7 +120,7 @@ export default defineConfig({
   // runtime resolution entirely. (Used server-side by entity-graph's
   // SSR layout pass.)
   ssr: {
-    external: ["pg", "@xyflow/react", "frimousse"],
+    external: ["pg", "@xyflow/react"],
     noExternal: [
       "@doco/db",
       "@doco/host",

@@ -1,6 +1,7 @@
 // Person + Join. Per ADR-073.
 import { useState } from "react";
 import { Link } from "react-router";
+import { Breadcrumb } from "~/components/breadcrumb";
 
 import { loadHostConfig } from "~/lib/host";
 import { getPublicBaseUrl } from "@doco/shared";
@@ -42,6 +43,13 @@ export default function JoinHuman({
         </div>
       </header>
       <SingleColumnPageMain className="py-12 space-y-4">
+        <Breadcrumb
+          items={[
+            { label: "Home", to: "/" },
+            { label: "Join a doco", to: "/onboarding/join" },
+            { label: "Human" },
+          ]}
+        />
         <h1 className="text-xl font-bold">Joining an existing doco</h1>
         <p className="text-sm text-muted-foreground">Two ways to get started.</p>
 

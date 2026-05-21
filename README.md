@@ -3,21 +3,16 @@
 Alignment framework and runtime checking system. Documents and verifies the
 relationships between user intent, agent reasoning, and agent actions.
 
-This repository is itself a Doco Host serving its own Doco at
-[torrenegra/doco](docos/torrenegra/doco/doco.yaml). Entities (Intents,
-Decisions, Rules, Actions, Reasoning, Evals, References, Principals,
-Scopes) live in Postgres and are reached through the web app and HTTP
-API — there are no on-disk per-entity files to read here.
+This repository is itself a Doco Host. Durable entities (Intents,
+Decisions, Rules, Actions, Logs, Evals, References, Principals, and
+Organizations) live in Postgres and are reached through the web app and
+HTTP API — there are no on-disk per-entity files to read here.
 
 ## Quick links
 
-- [AGENTS.md](AGENTS.md) — agent bootstrap. Every agent working in this
-  repo should run `node .agents/doco-agent-client.mjs bootstrap`
-  before doing anything else; the helper reads `DOCO_ACCESS` internally
-  so the credential stays out of shell command text, and the
-  response carries the live `canonical_instructions`.
-- [docos/torrenegra/doco/doco.yaml](docos/torrenegra/doco/doco.yaml) —
-  this Doco's identity stub. Durable data is in Postgres.
+- [.agents/doco-agent-client.mjs](.agents/doco-agent-client.mjs) —
+  local helper that reads credentials inside Node so bearer tokens stay
+  out of shell command text.
 - [packages/db/src/schema.sql](packages/db/src/schema.sql) — current
   database schema (single source of truth for storage).
 - [packages/shared/src/entities.ts](packages/shared/src/entities.ts) —
@@ -31,11 +26,9 @@ API — there are no on-disk per-entity files to read here.
 
 ```
 .
-├── AGENTS.md                # Agent bootstrap (also imported by CLAUDE.md)
 ├── host.yaml                # Host root marker (Postgres `hosts` table is authoritative)
-├── docos/<owner>/<slug>/    # Per-Doco scaffolding stubs (doco.yaml only — entities are in PG)
+├── docos/<owner>/<slug>/    # Historical scaffolding stubs; durable entities are in PG
 ├── packages/
-│   ├── api/                 # JSON/text routes
 │   ├── db/                  # Postgres adapter + schema.sql
 │   ├── host/                # Host/Doco/Principal/Organization domain layer
 │   ├── index/               # Edge derivation + embedding index helpers
@@ -48,8 +41,8 @@ API — there are no on-disk per-entity files to read here.
 
 An agent needs two pieces of state:
 
-1. `doco.md` with the public Doco URL.
-2. `./.env` with `DOCO_ACCESS=<credential>`.
+1. `.doco/connections.md` with the public Doco URL.
+2. `./.env` with `DOCO_ACCESS=<oauth-access-token>`.
 
 From then on every API call sends `Authorization: Bearer
 $DOCO_ACCESS`; no secret appears in the URL. See `/llms.txt` on
@@ -57,9 +50,11 @@ this host for the complete recipe.
 
 ## Reading order for a new agent
 
-1. [AGENTS.md](AGENTS.md) — protocol, bootstrap, env setup.
-2. `node .agents/doco-agent-client.mjs bootstrap` — live `canonical_instructions`, including the four invariants every reply must follow.
-3. `node .agents/doco-agent-client.mjs search --q "<task>"` — query Doco before drafting a Decision, Rule, or Intent.
+1. `node .agents/doco-agent-client.mjs bootstrap` — live
+   `canonical_instructions`, including the invariants every reply must
+   follow.
+2. `node .agents/doco-agent-client.mjs search --q "<task>"` — query
+   Doco before drafting a Decision, Rule, or Intent.
 
 ## Reading order for a new person
 

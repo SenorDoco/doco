@@ -1,4 +1,5 @@
 import { Form, Link, redirect } from "react-router";
+import { Breadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { DocoMark } from "~/components/doco-mark";
 import { VersionPill } from "~/components/version-pill";
@@ -52,7 +53,13 @@ export default function SignUp({
           <VersionPill />
         </div>
       </header>
-      <main className="mx-auto max-w-md px-6 py-10">
+      <main className="mx-auto max-w-md px-6 py-10 space-y-4">
+        <Breadcrumb
+          items={[
+            { label: "Home", to: "/" },
+            { label: "Sign up" },
+          ]}
+        />
         <Card>
           <CardHeader>
             <CardTitle>Create an account</CardTitle>

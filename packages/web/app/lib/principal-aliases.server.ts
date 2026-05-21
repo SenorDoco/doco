@@ -1,5 +1,4 @@
-// Username aliases for Principals. Symmetric extension of the slug
-// alias system in doco-aliases.server.ts. When a Principal is renamed
+// Username aliases for Principals. When a Principal is renamed
 // (or a host transfers ownership of an org), every `/<old-username>/*`
 // URL must keep resolving to the new canonical username — same idea
 // as GitHub's username history.
@@ -77,9 +76,7 @@ export interface UsernameResolution {
  * username actually exists (e.g. via `getPrincipalByUsername`) —
  * the alias resolver only redirects; existence is the route's job.
  */
-export function resolvePrincipalUsernameAlias(
-  username: string,
-): UsernameResolution {
+export function resolvePrincipalUsernameAlias(username: string): UsernameResolution {
   const aliases = loadAliases();
   if (!aliases.has(username)) {
     return { canonical: username, redirected: false };
@@ -92,4 +89,3 @@ export function resolvePrincipalUsernameAlias(
   }
   return { canonical: cur, redirected: cur !== username };
 }
-

@@ -98,10 +98,9 @@ export async function getCurrentPrincipal(request: Request): Promise<CurrentPrin
  *   2. `Authorization: Bearer <oauth-access-token>` header — OAuth 2.1
  *      tokens issued via /oauth/token (decision_01KS14CW9ZN23FF5CGG0Z7TH4G).
  *
- * Legacy 64-hex DOCO_ACCESS bearers, the /agent/<cred>/* URL path,
- * and the ?_a=<cred> query parameter are all removed — the v12
- * cutover migration invalidates any historical credentials, and
- * runtimes get a 401 + WWW-Authenticate that kicks off the OAuth flow.
+ * OAuth is the only bearer credential path for API callers. Runtimes
+ * without a valid token get a 401 + WWW-Authenticate that kicks off
+ * the OAuth flow.
  */
 export async function getCurrentPrincipalAsync(request: Request): Promise<CurrentPrincipal | null> {
   const cookieId = getSessionPrincipalId(request);
@@ -137,8 +136,7 @@ export function extractBearer(request: Request): string | null {
 
 /**
  * Back-compat alias kept while older callers still reference this
- * name. The wire format is now opaque OAuth tokens; the 64-hex
- * shape + URL-path / query-param fallbacks are gone.
+ * name. The wire format is now opaque OAuth tokens.
  */
 export function extractCredential(request: Request): string | null {
   return extractBearer(request);

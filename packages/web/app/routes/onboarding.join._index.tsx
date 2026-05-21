@@ -1,5 +1,6 @@
 // /onboarding/join — role question (Human vs Agent). Per ADR-073.
 import { Link } from "react-router";
+import { Breadcrumb } from "~/components/breadcrumb";
 
 import { DocoMark } from "~/components/doco-mark";
 import { VersionPill } from "~/components/version-pill";
@@ -55,6 +56,12 @@ export function RoleSplitPage({
       </header>
       <main className="flex flex-1 flex-col items-center justify-center px-6 py-16">
         <div className="flex max-w-2xl flex-col items-center gap-8 text-center">
+          <Breadcrumb
+            items={[
+              { label: "Home", to: "/" },
+              { label: "Join a doco" },
+            ]}
+          />
           <h1 className="text-lg font-bold tracking-tight">{title}</h1>
           <div className="grid w-full grid-cols-1 gap-3 md:grid-cols-2 md:gap-4">
             <Link

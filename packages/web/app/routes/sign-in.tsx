@@ -1,4 +1,5 @@
 import { Link, redirect } from "react-router";
+import { Breadcrumb } from "~/components/breadcrumb";
 
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
 import { DocoMark } from "~/components/doco-mark";
@@ -48,7 +49,13 @@ export default function SignIn({
           <VersionPill />
         </div>
       </header>
-      <main className="mx-auto max-w-md px-6 py-10">
+      <main className="mx-auto max-w-md px-6 py-10 space-y-4">
+        <Breadcrumb
+          items={[
+            { label: "Home", to: "/" },
+            { label: "Sign in" },
+          ]}
+        />
         <Card>
           <CardHeader>
             <CardTitle>Sign in</CardTitle>

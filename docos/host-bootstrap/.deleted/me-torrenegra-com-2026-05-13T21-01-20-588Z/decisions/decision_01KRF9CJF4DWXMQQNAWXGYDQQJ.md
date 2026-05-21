@@ -40,8 +40,6 @@ decided_at: 2026-05-12T23:47:06.341Z
 created_at: 2026-05-12T23:47:06.341Z
 created_by: principal_01KREVW1FB0H73HQN9C4J0H8JX
 lifecycle: active
-scopes:
-  - scope_01KRF7VQ4BXA38JM5DPJ2N67SS
 ---
 
 ## Why this fix is correct
@@ -70,4 +68,4 @@ In an incognito window, open `/post.html?id=<any-id>`. The Edit/Delete toolbar m
 
 - Report Action: `action_01KRF9AA8CQ94FSQRX90Z91F51` (verb: `report_bug`).
 - Fix Action: linked from this Decision's `id` once the fix Action is captured (verb: `apply_fix`, ref commit `d5a9206`).
-- A regression guard Rule could be added later (`scope_regression_guard`) that forbids using a class with an explicit `display:` on elements that also carry the `hidden` attribute — but this static site has no test harness, so the regression test would have to be a lint or manual checklist.
+- A regression guard Rule could be added later that forbids using a class with an explicit `display:` on elements that also carry the `hidden` attribute — but this static site has no test harness, so the regression test would have to be a lint or manual checklist.

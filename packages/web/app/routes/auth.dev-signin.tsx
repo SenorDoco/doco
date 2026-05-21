@@ -18,6 +18,7 @@
 
 import { Form, redirect } from "react-router";
 import { withClient } from "@doco/db";
+import { Breadcrumb } from "~/components/breadcrumb";
 import { findPrincipalByUsername, setSessionCookie } from "~/lib/session";
 
 const TEST_USERNAMES = ["doco-test-harness", "doco-test-alice", "doco-test-bob"] as const;
@@ -129,6 +130,13 @@ export default function DevSignin({
 }) {
   return (
     <main style={{ maxWidth: 480, margin: "60px auto", padding: 24, fontFamily: "system-ui" }}>
+      <Breadcrumb
+        items={[
+          { label: "Home", to: "/" },
+          { label: "Dev sign-in" },
+        ]}
+        className="mb-2"
+      />
       <h1>Dev sign-in</h1>
       <p style={{ color: "#a00", marginBottom: 16 }}>
         ⚠️ Testing-only. Signs in as one of the dedicated test principals. Each starts with no

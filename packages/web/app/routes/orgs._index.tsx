@@ -4,6 +4,7 @@
 
 import { type DocoRole, getOrgRole } from "@doco/db";
 import { Link, redirect } from "react-router";
+import { Breadcrumb, hostBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
 import { InviteCollaboratorsLink } from "~/components/invite-collaborators-link";
 import { SingleColumnPageMain } from "~/components/page-main";
@@ -50,6 +51,7 @@ export default function OrgsIndexPage({
     <div className="min-h-screen flex flex-col bg-background text-foreground">
       <SiteHeader mode="host" me={loaderData.me} />
       <SingleColumnPageMain className="py-8 space-y-6">
+        <Breadcrumb items={hostBreadcrumb({ pageLabel: "Orgs" })} />
         <header className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-semibold">Orgs</h1>

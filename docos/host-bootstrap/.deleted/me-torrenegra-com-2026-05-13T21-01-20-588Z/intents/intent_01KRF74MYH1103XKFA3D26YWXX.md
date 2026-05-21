@@ -7,8 +7,6 @@ title: Reader catches up on thoughts
 created_at: 2026-05-12T23:07:49.585Z
 created_by: principal_01KRF55AR9H0RDQREGYH7WQWMQ
 lifecycle: active
-scopes:
-  - scope_01KRF57XG0YD45SHA8FM8EDZPB
 ---
 
 **Who:** an anonymous visitor (no auth, no session).

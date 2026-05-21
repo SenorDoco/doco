@@ -8,8 +8,7 @@
 // "Accept" only after they are signed in:
 //
 //   - If signed in: the invite is redeemed, the human Principal is
-//     joined to the Doco as a member, and a personal SessionToken is
-//     minted for them. The success card is intentionally minimal —
+//     joined to the Doco or Organization. The success card is intentionally minimal —
 //     just a "Continue" button to /<owner>/<slug>/.
 //   - If not signed in: ask whether the visitor is human or agent. Humans
 //     sign in and come back here to accept; agents get the plain-text
@@ -24,12 +23,13 @@ import {
 } from "@doco/db";
 import type { EntityId } from "@doco/shared";
 import { Form, Link, redirect } from "react-router";
+import { Breadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { DocoMark } from "~/components/doco-mark";
 import { VersionPill } from "~/components/version-pill";
 import { rootDir } from "~/lib/db.server";
+import { InviteStore } from "~/lib/invite-store.server";
 import { getCurrentPrincipal } from "~/lib/session";
-import { TokenStore } from "~/lib/tokens.server";
 
 type LoaderError =
   | { error: "missing_code" }
@@ -52,7 +52,7 @@ export async function loader({ request, params }: { request: Request; params: { 
   const code = (params.code ?? "").trim();
   if (!code) return { error: "missing_code" } satisfies LoaderError;
 
-  const store = TokenStore.forDoco(rootDir());
+  const store = InviteStore.forDoco(rootDir());
   const invite = await store.findInvite(code);
   if (!invite) return { error: "not_found" } satisfies LoaderError;
   if (invite.status === "expired") return { error: "expired" } satisfies LoaderError;
@@ -82,7 +82,6 @@ type ActionResult =
       ok: true;
       doco_url: string;
       doco_handle: string;
-      doco_access: string;
     };
 
 export async function action({
@@ -101,7 +100,7 @@ export async function action({
   const code = (params.code ?? "").trim();
   if (!code) return { error: "Missing invite code." };
 
-  const store = TokenStore.forDoco(rootDir());
+  const store = InviteStore.forDoco(rootDir());
   const invite = await store.findInvite(code);
   if (!invite) return { error: "Invite not found." };
   if (invite.status === "expired") return { error: "This invite has expired." };
@@ -111,17 +110,8 @@ export async function action({
   const doco = await getDocoById(invite.doco_id);
   if (!doco) return { error: "The Doco this invite points at no longer exists." };
 
-  // Bind the existing human Principal to the Doco — no new Principal
-  // minted. The session secret is the human's personal Doco access
-  // credential for this Doco.
-  const session = await store.issueSessionToken(
-    principal.id as EntityId<"principal">,
-    invite.minted_by_principal_id ?? undefined,
-    invite.doco_id,
-  );
   const consumed = await store.consumeInvite(code, principal.id as EntityId<"principal">);
   if (!consumed) {
-    await store.revoke(session.token, false);
     return {
       error:
         "This invite was claimed by someone else in the same moment. Ask the minter for a fresh one.",
@@ -154,7 +144,6 @@ export async function action({
     ok: true,
     doco_url: `${origin}/${handle}/`,
     doco_handle: handle,
-    doco_access: session.token,
   };
 }
 
@@ -307,7 +296,10 @@ function Shell({ children }: { children: React.ReactNode }) {
           <VersionPill />
         </div>
       </header>
-      <main className="mx-auto max-w-xl px-6 py-12 w-full">{children}</main>
+      <main className="mx-auto max-w-xl px-6 py-12 w-full space-y-4">
+        <Breadcrumb items={[{ label: "Home", to: "/" }, { label: "Invite" }]} />
+        {children}
+      </main>
     </div>
   );
 }

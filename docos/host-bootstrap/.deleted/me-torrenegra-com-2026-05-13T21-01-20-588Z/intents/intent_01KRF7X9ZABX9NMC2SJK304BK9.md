@@ -8,8 +8,6 @@ title: Admin manages thoughts
 created_at: 2026-05-12T23:21:17.546Z
 created_by: principal_01KRF55AR9H0RDQREGYH7WQWMQ
 lifecycle: active
-scopes:
-  - scope_01KRF57XG0YD45SHA8FM8EDZPB
 ---
 
 **Who:** Alex (the site owner), authenticating with a shared admin password held in `sessionStorage.admin_pw` and sent on every request as `X-Admin-Password`.

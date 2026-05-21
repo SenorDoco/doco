@@ -1,8 +1,8 @@
+import { makeUpdateRoute } from "~/lib/api-capture-factory.server";
+import { type DecisionPatch, updateDecision } from "~/lib/capture.server";
 import { docoPath } from "~/lib/db.server";
 import { loadDocoForAdmin, normalizeDocoParams } from "~/lib/doco-access.server";
 import { readDocoMetadata } from "~/lib/doco-metadata.server";
-import { updateDecision, type DecisionPatch } from "~/lib/capture.server";
-import { makeUpdateRoute } from "~/lib/api-capture-factory.server";
 
 /**
  * GET /<doco-handle>/api/decisions/<id>.json — read the Decision body.
@@ -11,9 +11,7 @@ import { makeUpdateRoute } from "~/lib/api-capture-factory.server";
  *
  * PATCH /<doco-handle>/api/decisions/<id>.json — update an existing
  * Decision in place. Custom action (not the factory's `updateEntity`)
- * because decisions carry ADR-specific logic: setting `is_adr: false`
- * demotes (clears scope_adr + number); `is_adr: true` promotes (adds
- * scope_adr + assigns next number).
+ * because decisions carry rich structured fields and list patch helpers.
  *
  * Resource route — no default export.
  */
@@ -53,7 +51,16 @@ export async function action({
     return Response.json({ error: `Invalid JSON body: ${(e as Error).message}` }, { status: 400 });
   }
   const docoHost = new URL(request.url).origin;
-  const result = await updateDecision(dir, meta.docoId, ownerSlug, docoSlug, id, patch, docoHost, me?.id ?? null);
+  const result = await updateDecision(
+    dir,
+    meta.docoId,
+    ownerSlug,
+    docoSlug,
+    id,
+    patch,
+    docoHost,
+    me?.id ?? null,
+  );
   if ("error" in result) {
     return Response.json(result, { status: result.status ?? 400 });
   }

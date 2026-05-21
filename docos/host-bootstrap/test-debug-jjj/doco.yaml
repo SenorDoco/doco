@@ -10,7 +10,6 @@ summary: Created in host on 2026-05-12T20:04:27.547Z.
 created_at: 2026-05-12T20:04:27.547Z
 created_by: principal_01KREVW1FB0H73HQN9C4J0H8JX
 lifecycle: active
-scopes: []
 members:
   - principal_id: principal_01KREVW1FB0H73HQN9C4J0H8JX
     role: owner

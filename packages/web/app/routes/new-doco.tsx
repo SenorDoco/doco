@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Form, Link, redirect } from "react-router";
+import { Breadcrumb, hostBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
 import { SingleColumnPageMain } from "~/components/page-main";
 import { SiteHeader } from "~/components/site-header";
@@ -66,6 +67,12 @@ export default function NewDocoStep1({
     <div>
       <SiteHeader mode="host" me={me} />
       <SingleColumnPageMain className="py-8 space-y-4">
+        <Breadcrumb
+          items={hostBreadcrumb({
+            section: { label: "Docos", to: "/dashboard" },
+            pageLabel: "New doco",
+          })}
+        />
         <WizardStepper current={1} />
         <Card>
           <CardHeader>

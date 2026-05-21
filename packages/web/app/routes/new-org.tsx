@@ -1,4 +1,5 @@
 import { Form, Link, redirect } from "react-router";
+import { Breadcrumb, hostBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { SingleColumnPageMain } from "~/components/page-main";
 import { SiteHeader } from "~/components/site-header";
@@ -75,7 +76,13 @@ export default function NewOrg({
   return (
     <div>
       <SiteHeader mode="host" me={me} />
-      <SingleColumnPageMain className="py-8">
+      <SingleColumnPageMain className="py-8 space-y-4">
+        <Breadcrumb
+          items={hostBreadcrumb({
+            section: { label: "Orgs", to: "/orgs" },
+            pageLabel: "New organization",
+          })}
+        />
         <Card>
           <CardHeader>
             <CardTitle>New organization</CardTitle>

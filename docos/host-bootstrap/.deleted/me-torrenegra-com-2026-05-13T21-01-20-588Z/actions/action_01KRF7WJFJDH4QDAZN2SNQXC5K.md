@@ -44,8 +44,6 @@ constraints_observed:
 created_at: 2026-05-12T23:13:01Z
 created_by: principal_01KRF55AR9H0RDQREGYH7WQWMQ
 lifecycle: active
-scopes:
-  - scope_01KRF57XG0YD45SHA8FM8EDZPB
 ---
 
 # Step 2 — Pick a branch
