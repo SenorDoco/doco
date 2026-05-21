@@ -105,7 +105,7 @@ export default function NewOrg({
                   className="w-full rounded-md border border-border bg-input px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
                 />
                 <span className="mt-1 block text-[11px] text-muted-foreground">
-                  Lowercase kebab-case ([a-z0-9][a-z0-9_-]*). The handle is the org's only property.
+                  Lowercase kebab-case.
                 </span>
               </label>
               {actionData?.error ? (
