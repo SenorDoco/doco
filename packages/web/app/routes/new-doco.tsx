@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Form, Link, redirect } from "react-router";
 import { Breadcrumb, hostBreadcrumb } from "~/components/breadcrumb";
-import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
+import { Card, CardContent } from "~/components/card";
 import { SingleColumnPageMain } from "~/components/page-main";
 import { SiteHeader } from "~/components/site-header";
 import { WizardStepper } from "~/components/wizard-stepper";
@@ -74,11 +74,11 @@ export default function NewDocoStep1({
             pageLabel: "New doco",
           })}
         />
+        <header>
+          <h1 className="text-2xl font-semibold">New doco</h1>
+        </header>
         <WizardStepper current={1} />
         <Card>
-          <CardHeader>
-            <CardTitle>New doco</CardTitle>
-          </CardHeader>
           <CardContent>
             <Form method="get" action="/new-doco/constitution" className="space-y-4">
               {prefill.templateHandle ? (

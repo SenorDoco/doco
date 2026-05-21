@@ -1,6 +1,6 @@
 import { Form, Link, redirect } from "react-router";
 import { Breadcrumb, hostBreadcrumb } from "~/components/breadcrumb";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
+import { Card, CardContent } from "~/components/card";
 import { SingleColumnPageMain } from "~/components/page-main";
 import { SiteHeader } from "~/components/site-header";
 import { loadHostConfig } from "~/lib/host";
@@ -83,14 +83,14 @@ export default function NewOrg({
             pageLabel: "New organization",
           })}
         />
+        <header className="space-y-1">
+          <h1 className="text-2xl font-semibold">New organization</h1>
+          <p className="text-xs text-muted-foreground">
+            You become the owner. The handle is the org's only public identifier — your Docos will
+            live at <code>/&lt;handle&gt;-&lt;doco-suffix&gt;/</code>.
+          </p>
+        </header>
         <Card>
-          <CardHeader>
-            <CardTitle>New organization</CardTitle>
-            <CardDescription>
-              You become the owner. The handle is the org's only public identifier — your Docos
-              will live at <code>/&lt;handle&gt;-&lt;doco-suffix&gt;/</code>.
-            </CardDescription>
-          </CardHeader>
           <CardContent>
             <Form method="post" className="space-y-3">
               <label className="block text-xs">
@@ -100,14 +100,12 @@ export default function NewOrg({
                   name="handle"
                   required
                   pattern="[a-z0-9][a-z0-9_-]*"
-                  autoFocus
                   defaultValue={suggested ?? ""}
                   placeholder="my-org"
                   className="w-full rounded-md border border-border bg-input px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
                 />
                 <span className="mt-1 block text-[11px] text-muted-foreground">
-                  Lowercase kebab-case ([a-z0-9][a-z0-9_-]*). The handle is the org's only
-                  property.
+                  Lowercase kebab-case ([a-z0-9][a-z0-9_-]*). The handle is the org's only property.
                 </span>
               </label>
               {actionData?.error ? (

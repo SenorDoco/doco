@@ -1,6 +1,6 @@
 import { Form, Link, redirect } from "react-router";
 import { Breadcrumb } from "~/components/breadcrumb";
-import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
+import { Card, CardContent } from "~/components/card";
 import { SingleColumnPageMain } from "~/components/page-main";
 import { SiteHeader } from "~/components/site-header";
 import { WizardStepper } from "~/components/wizard-stepper";
@@ -201,8 +201,7 @@ export default function NewDocoStep3({
   const { me, orgId, newOrgHandle, suffix, visibility, orgHandle, prefilledTemplate } = loaderData;
   const state: ParsedState = { orgId, newOrgHandle, suffix, visibility };
   const finalHandle = `${orgHandle ?? "<org>"}-${suffix}`;
-  const selectedTemplate =
-    actionData?.form?.templateHandle ?? (prefilledTemplate || "generic");
+  const selectedTemplate = actionData?.form?.templateHandle ?? (prefilledTemplate || "generic");
 
   return (
     <div>
@@ -216,11 +215,11 @@ export default function NewDocoStep3({
             { label: "Template" },
           ]}
         />
+        <header>
+          <h1 className="text-2xl font-semibold">Template for {finalHandle}</h1>
+        </header>
         <WizardStepper current={3} />
         <Card>
-          <CardHeader>
-            <CardTitle>Template for {finalHandle}</CardTitle>
-          </CardHeader>
           <CardContent>
             <Form method="post" className="space-y-4">
               {orgId ? <input type="hidden" name="org_id" value={orgId} /> : null}

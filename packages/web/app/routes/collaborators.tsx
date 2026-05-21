@@ -1,4 +1,4 @@
-// /users — global user-management page (decision_01KS0JBJ5X0AZ4XJJFKEWE1R62).
+// /collaborators — global collaborator-management page (decision_01KS0JBJ5X0AZ4XJJFKEWE1R62).
 // Replaces the per-doco / per-org members pages. Top-level link in
 // the host nav. Shows every org/doco grant the signed-in principal
 // can see, lets owners edit roles inline (auto-save), and mints
@@ -19,8 +19,8 @@ import {
   withClient,
 } from "@doco/db";
 import type { EntityId } from "@doco/shared";
-import { useEffect, useState } from "react";
-import { Link, redirect, useFetcher } from "react-router";
+import { useEffect, useMemo, useState } from "react";
+import { Link, redirect, useFetcher, useSearchParams } from "react-router";
 import { Breadcrumb, hostBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { CollaborationInvitePrompt } from "~/components/collaboration-invite-prompt";
@@ -106,7 +106,7 @@ async function enrichPrincipal(id: string): Promise<UserCell> {
 export async function loader({ request }: { request: Request }) {
   const me = await getCurrentPrincipal(request);
   if (!me) {
-    return redirect(`/sign-in?next=${encodeURIComponent("/users")}`);
+    return redirect(`/sign-in?next=${encodeURIComponent("/collaborators")}`);
   }
   const url = new URL(request.url);
 
@@ -136,7 +136,7 @@ export async function loader({ request }: { request: Request }) {
 
   // ── Docos the signed-in user has any access to ───────────────────
   // Union of three sources: direct owner_id match, owning org I belong
-  // to, and explicit doco_users row. The /users invite picker needs the
+  // to, and explicit doco_users row. The /collaborators invite picker needs the
   // direct-owner path so freshly-created docos show up before any
   // doco_users row exists.
   const accessibleDocoIds = new Set<string>();
@@ -245,7 +245,7 @@ export async function action({
   request: Request;
 }): Promise<ActionResult> {
   const me = await getCurrentPrincipal(request);
-  if (!me) return { error: "Sign in to manage users." };
+  if (!me) return { error: "Sign in to manage collaborators." };
 
   const form = await request.formData();
   const intent = String(form.get("intent") ?? "");
@@ -262,12 +262,12 @@ export async function action({
     // the check.
     if (level === "org") {
       const role = await getOrgRole(targetId, me.id);
-      if (role !== "owner") return { error: "Only org owners can change org users." };
+      if (role !== "owner") return { error: "Only org owners can change org collaborators." };
     } else if (level === "doco") {
       const doco = await getDocoById(targetId);
       if (!doco) return { error: "Doco not found." };
       const role = await getDocoLevelRole({ ownerId: doco.owner_id, docoId: doco.id }, me.id);
-      if (role !== "owner") return { error: "Only doco owners can change doco users." };
+      if (role !== "owner") return { error: "Only doco owners can change doco collaborators." };
     } else {
       return { error: "Invalid level." };
     }
@@ -375,10 +375,10 @@ export async function action({
 }
 
 export function meta() {
-  return [{ title: "Users · Doco" }];
+  return [{ title: "Collaborators · Doco" }];
 }
 
-interface UsersLoaderData {
+interface CollaboratorsLoaderData {
   me: {
     id: string;
     username: string;
@@ -396,57 +396,156 @@ interface UsersLoaderData {
   };
 }
 
-export default function UsersPage({
+export default function CollaboratorsPage({
   loaderData,
 }: {
-  loaderData: UsersLoaderData;
+  loaderData: CollaboratorsLoaderData;
 }) {
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // Scope filter: "all" | "org:<id>" | "doco:<id>". Also derives from legacy
+  // ?level=&target_id= URLs so "+ Collaborator" links from org/doco pages
+  // arrive filtered to that scope automatically.
+  const explicitScope = searchParams.get("scope");
+  const legacyLevel = searchParams.get("level");
+  const legacyTargetId = searchParams.get("target_id");
+  const scope =
+    explicitScope ?? (legacyLevel && legacyTargetId ? `${legacyLevel}:${legacyTargetId}` : "all");
+
+  // Invite section opens by default when the user arrived from a "+
+  // Collaborator" button (level + target_id), otherwise it's collapsed
+  // behind the explicit Invite button.
+  const arrivedWithInvite = Boolean(legacyLevel && legacyTargetId);
+  const [showInvite, setShowInvite] = useState(arrivedWithInvite);
+
+  function applyScope(value: string) {
+    const next = new URLSearchParams(searchParams);
+    if (value === "all") next.delete("scope");
+    else next.set("scope", value);
+    // Drop the legacy level/target_id once the user picks a new scope so
+    // the URL stays clean.
+    next.delete("level");
+    next.delete("target_id");
+    setSearchParams(next, { replace: true });
+  }
+
+  const filteredOrgRows = useMemo(
+    () =>
+      loaderData.orgSections
+        .filter((s) => scope === "all" || scope === `org:${s.org.id}`)
+        .flatMap((s) =>
+          s.users.map((u) => ({
+            level: "org" as const,
+            target_id: s.org.id,
+            target_label: s.org.slug,
+            target_link: `/orgs/${s.org.slug}`,
+            user: u,
+            canEdit: s.myRole === "owner",
+          })),
+        ),
+    [loaderData.orgSections, scope],
+  );
+
+  const filteredDocoRows = useMemo(
+    () =>
+      loaderData.docoSections
+        .filter((s) => scope === "all" || scope === `doco:${s.doco.id}`)
+        .flatMap((s) =>
+          s.users.map((u) => ({
+            level: "doco" as const,
+            target_id: s.doco.id,
+            target_label: s.doco.handle,
+            target_link: `/${s.doco.handle}`,
+            user: u,
+            canEdit: s.myRole === "owner",
+          })),
+        ),
+    [loaderData.docoSections, scope],
+  );
+
+  // When scope filters to a specific org, hide the doco section entirely
+  // (and vice-versa) so the page doesn't show "no docos match" noise.
+  const showOrgSection = scope === "all" || scope.startsWith("org:");
+  const showDocoSection = scope === "all" || scope.startsWith("doco:");
+
   return (
     <div className="min-h-screen flex flex-col bg-background text-foreground">
       <SiteHeader mode="host" me={loaderData.me} />
       <SingleColumnPageMain className="py-8 space-y-6">
-        <Breadcrumb items={hostBreadcrumb({ pageLabel: "Users (people/agents)" })} />
+        <Breadcrumb items={hostBreadcrumb({ pageLabel: "Collaborators" })} />
         <header>
-          <h1 className="text-2xl font-semibold">Users (people/agents)</h1>
+          <h1 className="text-2xl font-semibold">Collaborators</h1>
         </header>
 
-        <InviteHumanCard
-          orgs={loaderData.invite.orgs}
-          docos={loaderData.invite.docos}
-          defaultSelection={loaderData.invite.defaultSelection}
-        />
+        <div className="space-y-3">
+          <label className="flex flex-col gap-1 text-sm">
+            <span className="text-xs uppercase tracking-wide text-muted-foreground">
+              Show collaborators for
+            </span>
+            <select
+              value={scope}
+              onChange={(e) => applyScope(e.currentTarget.value)}
+              data-testid="scope-filter"
+              className="w-full rounded-md border border-border bg-background px-3 py-2 sm:max-w-sm"
+            >
+              <option value="all">All collaborators</option>
+              {loaderData.orgSections.length > 0 ? (
+                <optgroup label="By org">
+                  {loaderData.orgSections.map((s) => (
+                    <option key={s.org.id} value={`org:${s.org.id}`}>
+                      {s.org.slug}
+                    </option>
+                  ))}
+                </optgroup>
+              ) : null}
+              {loaderData.docoSections.length > 0 ? (
+                <optgroup label="By doco">
+                  {loaderData.docoSections.map((s) => (
+                    <option key={s.doco.id} value={`doco:${s.doco.id}`}>
+                      {s.doco.handle}
+                    </option>
+                  ))}
+                </optgroup>
+              ) : null}
+            </select>
+          </label>
 
-        <InviteAgentCard host={loaderData.host} />
+          <button
+            type="button"
+            data-testid="invite-toggle"
+            onClick={() => setShowInvite((v) => !v)}
+            className="rounded-md bg-primary px-3 py-1.5 text-sm font-semibold text-primary-foreground hover:opacity-90"
+          >
+            {showInvite ? "Hide invite form" : "+ Invite collaborator (people/agents)"}
+          </button>
+        </div>
 
-        <Section
-          title="Org users"
-          empty="You don't have any org grants yet."
-          rows={loaderData.orgSections.flatMap((s) =>
-            s.users.map((u) => ({
-              level: "org" as const,
-              target_id: s.org.id,
-              target_label: s.org.slug,
-              target_link: `/orgs/${s.org.slug}`,
-              user: u,
-              canEdit: s.myRole === "owner",
-            })),
-          )}
-        />
+        {showInvite ? (
+          <>
+            <InviteHumanCard
+              orgs={loaderData.invite.orgs}
+              docos={loaderData.invite.docos}
+              defaultSelection={loaderData.invite.defaultSelection}
+            />
+            <InviteAgentCard host={loaderData.host} />
+          </>
+        ) : null}
 
-        <Section
-          title="Doco users"
-          empty="You don't have any doco grants yet."
-          rows={loaderData.docoSections.flatMap((s) =>
-            s.users.map((u) => ({
-              level: "doco" as const,
-              target_id: s.doco.id,
-              target_label: s.doco.handle,
-              target_link: `/${s.doco.handle}`,
-              user: u,
-              canEdit: s.myRole === "owner",
-            })),
-          )}
-        />
+        {showOrgSection ? (
+          <Section
+            title="Org collaborators"
+            empty="You don't have any org grants yet."
+            rows={filteredOrgRows}
+          />
+        ) : null}
+
+        {showDocoSection ? (
+          <Section
+            title="Doco collaborators"
+            empty="You don't have any doco grants yet."
+            rows={filteredDocoRows}
+          />
+        ) : null}
       </SingleColumnPageMain>
     </div>
   );

@@ -194,26 +194,25 @@ export default function DocosIndexPage({
         <Breadcrumb items={hostBreadcrumb({ pageLabel: "Docos" })} />
         <header className="flex flex-wrap items-center justify-between gap-3">
           <h1 className="text-2xl font-semibold">Your docos</h1>
-          <Link
-            to="/users"
-            className="shrink-0 rounded-md border border-border px-3 py-1.5 text-sm font-semibold hover:bg-input"
-          >
-            + Agent/Collaborator
-          </Link>
+          <div className="flex flex-wrap gap-2">
+            <Link
+              to="/new-doco"
+              className="shrink-0 rounded-md bg-primary px-3 py-1.5 text-sm font-semibold text-primary-foreground hover:opacity-90"
+            >
+              + Doco
+            </Link>
+            <Link
+              to="/collaborators"
+              className="shrink-0 rounded-md border border-border px-3 py-1.5 text-sm font-semibold hover:bg-input"
+            >
+              + Collaborator (people/agents)
+            </Link>
+          </div>
         </header>
 
         <div className="grid grid-cols-1 gap-6 min-[840px]:grid-cols-[minmax(0,1fr)_320px]">
           <section className="space-y-4">
             <Card>
-              <CardHeader className="flex flex-row items-center justify-between gap-3 px-4 py-3">
-                <CardTitle className="text-sm">Your docos</CardTitle>
-                <Link
-                  to="/new-doco"
-                  className="rounded-md bg-primary px-3 py-1 text-xs font-semibold text-primary-foreground hover:opacity-90"
-                >
-                  + Doco
-                </Link>
-              </CardHeader>
               <CardContent className="p-0">
                 {docos.length === 0 ? (
                   <p className="px-5 pb-5 text-xs text-muted-foreground">

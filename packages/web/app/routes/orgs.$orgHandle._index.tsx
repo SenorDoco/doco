@@ -420,11 +420,19 @@ export default function OrgHome({
                 <h1 className="text-lg font-semibold tracking-tight">{org.handle}</h1>
                 <p className="font-mono text-sm text-muted-foreground">{org.id}</p>
               </div>
-              {canInviteCollaborators ? (
-                <InviteCollaboratorsLink level="org" targetId={org.id}>
-                  + Agent/Collaborator
-                </InviteCollaboratorsLink>
-              ) : null}
+              <div className="flex flex-wrap gap-2">
+                {canInviteCollaborators ? (
+                  <InviteCollaboratorsLink level="org" targetId={org.id}>
+                    + Collaborator (people/agents)
+                  </InviteCollaboratorsLink>
+                ) : null}
+                <Link
+                  to={`/orgs/${org.handle}/constitution`}
+                  className="shrink-0 rounded-md border border-border px-3 py-1.5 text-xs font-semibold hover:bg-input"
+                >
+                  Constitution
+                </Link>
+              </div>
             </div>
 
             <Form method="get" action={`/orgs/${org.handle}/search`} className="flex gap-2">
@@ -541,8 +549,8 @@ export default function OrgHome({
             </Card>
 
             <Card>
-              <CardHeader>
-                <CardTitle>Activity</CardTitle>
+              <CardHeader className="px-4 py-3">
+                <CardTitle className="text-sm">Activity</CardTitle>
               </CardHeader>
               <CardContent>
                 <ActivityHeatmap byDay={byDay} weeks={HEATMAP_WEEKS} />

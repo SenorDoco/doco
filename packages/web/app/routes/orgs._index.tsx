@@ -204,26 +204,25 @@ export default function OrgsIndexPage({
         <Breadcrumb items={hostBreadcrumb({ pageLabel: "Orgs" })} />
         <header className="flex flex-wrap items-center justify-between gap-3">
           <h1 className="text-2xl font-semibold">Your orgs</h1>
-          <Link
-            to="/users"
-            className="shrink-0 rounded-md border border-border px-3 py-1.5 text-sm font-semibold hover:bg-input"
-          >
-            + Agent/Collaborator
-          </Link>
+          <div className="flex flex-wrap gap-2">
+            <Link
+              to="/new-org"
+              className="shrink-0 rounded-md bg-primary px-3 py-1.5 text-sm font-semibold text-primary-foreground hover:opacity-90"
+            >
+              + Org
+            </Link>
+            <Link
+              to="/collaborators"
+              className="shrink-0 rounded-md border border-border px-3 py-1.5 text-sm font-semibold hover:bg-input"
+            >
+              + Collaborator (people/agents)
+            </Link>
+          </div>
         </header>
 
         <div className="grid grid-cols-1 gap-6 min-[840px]:grid-cols-[minmax(0,1fr)_320px]">
           <section className="space-y-4">
             <Card>
-              <CardHeader className="flex flex-row items-center justify-between gap-3 px-4 py-3">
-                <CardTitle className="text-sm">Your orgs</CardTitle>
-                <Link
-                  to="/new-org"
-                  className="rounded-md bg-primary px-3 py-1 text-xs font-semibold text-primary-foreground hover:opacity-90"
-                >
-                  + Org
-                </Link>
-              </CardHeader>
               <CardContent>
                 {orgs.length === 0 ? (
                   <p className="text-sm text-muted-foreground">

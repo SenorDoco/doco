@@ -105,7 +105,7 @@ export function SiteHeader({ docoScope, me, shellOwner = false }: SiteHeaderProp
                 Orgs
               </NavLink>
               <NavLink
-                to="/users"
+                to="/collaborators"
                 className={({ isActive }) =>
                   cn(
                     "whitespace-nowrap rounded-md border border-border px-3 py-1.5 font-semibold hover:bg-input",
@@ -113,7 +113,7 @@ export function SiteHeader({ docoScope, me, shellOwner = false }: SiteHeaderProp
                   )
                 }
               >
-                Users (people/agents)
+                Collaborators
               </NavLink>
               <NavLink
                 to={`/${me.username}`}

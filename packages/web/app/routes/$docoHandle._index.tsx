@@ -25,7 +25,12 @@ import { OverviewGraph } from "~/components/overview-graph";
 import { SearchBoxWithHistory } from "~/components/search-box-with-history";
 import { SiteHeader } from "~/components/site-header";
 import { docoPath } from "~/lib/db.server";
-import { canAdminDoco, loadDocoForRead, normalizeDocoParams } from "~/lib/doco-access.server";
+import {
+  canAdminDoco,
+  loadDocoForRead,
+  normalizeDocoParams,
+  readDocoRouteParam,
+} from "~/lib/doco-access.server";
 import { loadOverviewGraph } from "~/lib/full-graph.server";
 import { loadHostConfig } from "~/lib/host";
 import { lifecycleColor } from "~/lib/node-colors";
@@ -261,7 +266,7 @@ function lifecycleSearchPath(handle: string, lifecycle: string): string {
 }
 
 export function meta({ params }: { params: { docoId: string } }) {
-  return [{ title: `${params.docoId} · Doco` }];
+  return [{ title: `${readDocoRouteParam(params) ?? ""} · Doco` }];
 }
 
 export default function DocoHome({
@@ -362,11 +367,19 @@ export default function DocoHome({
                 </h1>
                 <p className="font-mono text-sm text-muted-foreground">{docoId}</p>
               </div>
-              {canInviteCollaborators ? (
-                <InviteCollaboratorsLink level="doco" targetId={docoId}>
-                  + Agent/Collaborator
-                </InviteCollaboratorsLink>
-              ) : null}
+              <div className="flex flex-wrap gap-2">
+                {canInviteCollaborators ? (
+                  <InviteCollaboratorsLink level="doco" targetId={docoId}>
+                    + Collaborator (people/agents)
+                  </InviteCollaboratorsLink>
+                ) : null}
+                <Link
+                  to={`/${handle}/constitution`}
+                  className="shrink-0 rounded-md border border-border px-3 py-1.5 text-xs font-semibold hover:bg-input"
+                >
+                  Constitution
+                </Link>
+              </div>
             </div>
 
             <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-card px-4 py-2 text-xs">
@@ -401,8 +414,8 @@ export default function DocoHome({
             />
 
             <Card>
-              <CardHeader>
-                <CardTitle>Activity</CardTitle>
+              <CardHeader className="px-4 py-3">
+                <CardTitle className="text-sm">Activity</CardTitle>
               </CardHeader>
               <CardContent>
                 <ActivityHeatmap byDay={byDay} weeks={HEATMAP_WEEKS} />

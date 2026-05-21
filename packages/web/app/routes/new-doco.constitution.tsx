@@ -1,6 +1,6 @@
 import { Form, Link, redirect } from "react-router";
 import { Breadcrumb, hostBreadcrumb } from "~/components/breadcrumb";
-import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
+import { Card, CardContent } from "~/components/card";
 import { SingleColumnPageMain } from "~/components/page-main";
 import { SiteHeader } from "~/components/site-header";
 import { WizardStepper } from "~/components/wizard-stepper";
@@ -75,11 +75,11 @@ export default function NewDocoStep2({
             { label: "Constitution" },
           ]}
         />
+        <header>
+          <h1 className="text-2xl font-semibold">About the constitution of {finalHandle}</h1>
+        </header>
         <WizardStepper current={2} />
         <Card>
-          <CardHeader>
-            <CardTitle>About the constitution of {finalHandle}</CardTitle>
-          </CardHeader>
           <CardContent className="space-y-3 text-sm">
             <p>
               A constitution defines how nodes get authored. It's made of <strong>articles</strong>{" "}
