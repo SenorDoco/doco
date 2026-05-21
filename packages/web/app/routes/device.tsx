@@ -93,8 +93,7 @@ export async function loader({ request }: { request: Request }) {
     return {
       user_code,
       stage: "done" as const,
-      message:
-        "You already approved this agent. It should pick up its access on its next poll (within a few seconds).",
+      message: "Approved.",
       me,
     };
   }
