@@ -1,26 +1,26 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_DOCO_TEMPLATES, findDocoTemplateByName } from "../doco-templates.js";
 
-describe("#business-processes template", () => {
-  const template = findDocoTemplateByName("#business-processes");
-  if (!template) throw new Error("#business-processes template not registered");
+describe("business-processes template", () => {
+  const template = findDocoTemplateByName("business-processes");
+  if (!template) throw new Error("business-processes template not registered");
 
-  it("is registered in DEFAULT_DOCO_TEMPLATES with the canonical hashtag name", () => {
-    expect(DEFAULT_DOCO_TEMPLATES.find((t) => t.name === "#business-processes")).toBeDefined();
+  it("is registered in DEFAULT_DOCO_TEMPLATES under its plain handle", () => {
+    expect(DEFAULT_DOCO_TEMPLATES.find((t) => t.name === "business-processes")).toBeDefined();
   });
 
-  it("is reachable via both canonical and bare names", () => {
-    const canonical = findDocoTemplateByName("#business-processes");
+  it("is reachable via bare and (back-compat) hashtag-prefixed names", () => {
     const bare = findDocoTemplateByName("business-processes");
-    expect(canonical).toBeDefined();
+    const hashtagged = findDocoTemplateByName("#business-processes");
     expect(bare).toBeDefined();
-    expect(canonical?.name).toBe("#business-processes");
-    expect(bare?.name).toBe("#business-processes");
+    expect(hashtagged).toBeDefined();
+    expect(bare?.name).toBe("business-processes");
+    expect(hashtagged?.name).toBe("business-processes");
   });
 
   it("has the expected metadata (icon, label, default_node_lifecycle)", () => {
     expect(template.icon).toBe("🏭");
-    expect(template.label).toBe("#business-processes");
+    expect(template.label).toBe("business-processes");
     expect(template.default_node_lifecycle).toBe("drafted");
     expect(template.purpose).toMatch(/repeatable business processes/i);
     expect(template.purpose).toMatch(/BPMN/);
@@ -31,7 +31,7 @@ describe("#business-processes template", () => {
     expect(template.auto_install_watched).toBeUndefined();
   });
 
-  it("does NOT set the constitutional `allowed_node_types` field — that's reserved for #global", () => {
+  it("does NOT set the constitutional `allowed_node_types` field — that's reserved for `global`", () => {
     expect(template.allowed_node_types).toBeUndefined();
   });
 

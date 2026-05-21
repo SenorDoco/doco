@@ -2,18 +2,19 @@
  * Default scope templates (ADR-082; v7 reshape per
  * decision_01KRRR5BQ16ASY8HQEE0V499YG).
  *
- * The framework ships five curated scopes. Two are auto-installed on
- * every new Doco (flagged `auto_install: true`): `#global` (the
- * Constitution) and `#important` (catch-all for important Doco-wide
+ * The framework ships five curated templates. Two are auto-installed
+ * on every new Doco (flagged `auto_install: true`): `global` (the
+ * Constitution) and `important` (catch-all for important Doco-wide
  * decisions that don't fit a topical scope). The other three are
- * opt-in: `#user-flows` (opt-in at create time), `#state-machines`
- * (opt-in via `doco install-template #state-machines`), and
- * `#business-processes` (opt-in via `doco install-template
- * #business-processes`). Per the successor to
+ * opt-in: `user-flows` (opt-in at create time), `state-machines`
+ * (opt-in via `doco install-template state-machines`), and
+ * `business-processes` (opt-in via `doco install-template
+ * business-processes`). Per the successor to
  * decision_01KRFG5BAJ1ATHX0QE0HHX0QEV (which trimmed thirteen
  * templates down to two) — every other previously-shipped template
- * stays project-owner-authored. All scope names are hashtag-shaped —
- * the leading `#` is part of the canonical name on every surface.
+ * stays project-owner-authored. Template names are plain handles (no
+ * leading `#`); the lookup helpers strip a leading `#` from input for
+ * backwards compat with callers that still pass hashtag-shaped names.
  *
  * Each template ships:
  * - `purpose` — the description text rendered under the scope name on
@@ -126,12 +127,11 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
   {
     // Per decision_01KRPNZY7W6CCMYNKGND67BP0B the framework-seeded
     // scope renamed from "constitution" → "global". The label keeps
-    // "Constitution" as the readable handle next to "#global" on the
-    // scope list ("your doco's constitution"); the canonical name is
-    // `#global` so it sorts predictably and reads as a hashtag tag
-    // wherever it appears.
-    name: "#global",
-    label: "#global (your doco's constitution)",
+    // "Constitution" as the readable handle next to "global" on the
+    // scope list ("your doco's constitution"); template names are
+    // plain handles — the hashtag-shaped form is back-compat only.
+    name: "global",
+    label: "global (your doco's constitution)",
     icon: "🌐",
     auto_install: true,
     auto_install_watched: true,
@@ -162,8 +162,8 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
     // cross-cutting decisions from day one — the alternative is
     // letting orphan decisions push agents toward minting new scopes
     // (which Global Rule 1 explicitly forbids without confirmation).
-    name: "#important",
-    label: "#important",
+    name: "important",
+    label: "important",
     icon: "⭐",
     auto_install: true,
     auto_install_watched: true,
@@ -175,8 +175,8 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
     // Per decision_01KRRD6QM7NN2EV56NZK96DNKY the #user-flows template
     // collapses from six guidance rules to deterministic authoring
     // articles + a concise summary for picker/manifest surfaces.
-    name: "#user-flows",
-    label: "#user-flows",
+    name: "user-flows",
+    label: "user-flows",
     icon: "🌊",
     purpose: "Document end-to-end user journeys as ordered steps, branches, and decisions.",
     rules: [
@@ -294,8 +294,8 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
     // treats every scope through the same generic interface (Global
     // rules rule_01KRRPY12JEVQABNNRJ96YB91J,
     // rule_01KRRPZTKDXT0RREZB37VPX2AG).
-    name: "#state-machines",
-    label: "#state-machines",
+    name: "state-machines",
+    label: "state-machines",
     icon: "🔁",
     purpose:
       "Track anything that moves through stages — orders, tasks, bug tickets, deploys. Each stage is a State; transitions are Actions.",
@@ -462,8 +462,8 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
     // were removed in v16 (decision_01KS3DW9C2KN2X7Z80R18H1RAX); they
     // ship here as guidance until a v16-shape evaluator lands, mirroring
     // the same fallback in #state-machines.
-    name: "#business-processes",
-    label: "#business-processes",
+    name: "business-processes",
+    label: "business-processes",
     icon: "🏭",
     purpose:
       "Document repeatable business processes — the flow of work through actors, gateways, and milestones to a business outcome. Inspired by BPMN swimlanes and gateways.",
@@ -927,13 +927,12 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
 /**
  * Lookup a template by name. Returns undefined for unknown names.
  *
- * Templates are stored with their canonical hashtag-shaped names
- * (`#global`, `#user-flows`, `#state-machines`). For back-compat, the
- * lookup also accepts the bare form (`global`, `user-flows`,
- * `state-machines`) — older clients that POST `template_name: "global"`
- * continue to work.
+ * Templates are stored under plain handles (`global`, `user-flows`,
+ * `state-machines`, `business-processes`). The lookup strips a
+ * leading `#` from input for backwards compat with older clients
+ * that still POST `template_name: "#user-flows"`.
  */
 export function findDocoTemplateByName(name: string): DocoTemplate | undefined {
-  const canonical = name.startsWith("#") ? name : `#${name}`;
+  const canonical = name.startsWith("#") ? name.slice(1) : name;
   return DEFAULT_DOCO_TEMPLATES.find((t) => t.name === canonical);
 }
