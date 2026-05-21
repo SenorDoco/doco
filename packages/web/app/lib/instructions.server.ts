@@ -60,10 +60,16 @@ the endpoint shapes are:
     GET   https://doco.to/<handle>/api/<type>/<id>.json     # one node
     PATCH https://doco.to/<handle>/api/<type>/<id>.json     # patch (needs author)
     GET   https://doco.to/<handle>/api/<type>.txt           # plain-text spec
+    GET   https://doco.to/<handle>/api/articles.json        # list constitution articles
+    POST  https://doco.to/<handle>/api/articles.json        # capture an article (needs author)
 
-Node types: decisions, rules, guidance_articles,
-node_authoring_articles, intents, actions, logs, evals, references,
+Node types: decisions, rules, intents, actions, logs, evals, references,
 states, principals, invites, audit.
+
+Articles are NOT nodes. Constitution articles
+(\`guidance_article\`, \`node_authoring_article\`) live on the
+dedicated \`/api/articles.json\` endpoint and inside the bootstrap
+payload — never on the generic \`/api/<type>.json\` route.
 
 Public Docos return 200 for unauthenticated reads; private Docos
 return 403 until you finish the OAuth recipe.

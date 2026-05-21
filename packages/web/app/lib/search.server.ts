@@ -40,12 +40,13 @@ function entitySpec(table: string, nodeType: string): SearchTypeSpec {
   };
 }
 
+// Note types only — articles (constitution metadata) are not nodes
+// and do not participate in node search/ranking. To fetch articles,
+// hit /<handle>/api/articles.json or read the bootstrap payload.
 export const SEARCH_TYPE_SPECS: SearchTypeSpec[] = [
   entitySpec("decisions", "decision"),
   entitySpec("intents", "intent"),
   entitySpec("rules", "rule"),
-  entitySpec("guidance_articles", "guidance_article"),
-  entitySpec("node_authoring_articles", "node_authoring_article"),
   entitySpec("actions", "action"),
   entitySpec("logs", "log"),
   entitySpec("reference_entities", "reference"),

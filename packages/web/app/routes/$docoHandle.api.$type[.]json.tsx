@@ -12,20 +12,16 @@ import {
   type ActionDraft,
   type DecisionDraft,
   type EvalDraft,
-  type GuidanceArticleDraft,
   type IntentDraft,
   type LogDraft,
-  type NodeAuthoringArticleDraft,
   type ReferenceDraft,
   type RuleDraft,
   type StateDraft,
   captureAction,
   captureDecision,
   captureEval,
-  captureGuidanceArticle,
   captureIntent,
   captureLog,
-  captureNodeAuthoringArticle,
   captureReference,
   captureRule,
   captureState,
@@ -57,6 +53,10 @@ function entry<TDraft>(
   };
 }
 
+// Notes only — `guidance_articles` and `node_authoring_articles`
+// are not nodes and are served by the dedicated articles endpoint at
+// /<handle>/api/articles.json. Routing them here would conflate the
+// constitution with domain captures.
 const CAPTURE_REGISTRY: Record<string, RegistryEntry> = {
   decisions: entry<DecisionDraft>("decisions", captureDecision, (draft, me) => {
     if (!draft.decided_by_username) draft.decided_by_username = me.username;
@@ -77,22 +77,6 @@ const CAPTURE_REGISTRY: Record<string, RegistryEntry> = {
     if (!draft.authored_by_username) draft.authored_by_username = me.username;
     if (!draft.created_by_id && me.id) draft.created_by_id = me.id;
   }),
-  guidance_articles: entry<GuidanceArticleDraft>(
-    "guidance_articles",
-    captureGuidanceArticle,
-    (draft, me) => {
-      if (!draft.authored_by_username) draft.authored_by_username = me.username;
-      if (!draft.created_by_id && me.id) draft.created_by_id = me.id;
-    },
-  ),
-  node_authoring_articles: entry<NodeAuthoringArticleDraft>(
-    "node_authoring_articles",
-    captureNodeAuthoringArticle,
-    (draft, me) => {
-      if (!draft.authored_by_username) draft.authored_by_username = me.username;
-      if (!draft.created_by_id && me.id) draft.created_by_id = me.id;
-    },
-  ),
   logs: entry<LogDraft>("logs", captureLog, (draft, me) => {
     if (!draft.performed_by_username) draft.performed_by_username = me.username;
     if (!draft.created_by_id && me.id) draft.created_by_id = me.id;
@@ -107,6 +91,14 @@ const CAPTURE_REGISTRY: Record<string, RegistryEntry> = {
 };
 
 function notFound(type: string | undefined): Response {
+  if (type === "guidance_articles" || type === "node_authoring_articles") {
+    return Response.json(
+      {
+        error: `${type} are constitution articles, not nodes. Use /api/articles.json instead (GET to list, POST with "article_type" to capture). See /api/articles.txt for the body shape.`,
+      },
+      { status: 404 },
+    );
+  }
   return Response.json({ error: `Unknown entity type "${type ?? ""}".` }, { status: 404 });
 }
 

@@ -102,6 +102,7 @@ export async function loader({ request }: { request: Request }) {
          FROM audit_events a
          LEFT JOIN principals p ON p.id = a.by_principal
          WHERE a.doco_id = ANY($1)
+           AND a.entity_type NOT IN ('guidance_article', 'node_authoring_article')
          ORDER BY a.at DESC
          LIMIT $2`,
         [myDocoIds, FEED_LIMIT],
@@ -118,8 +119,6 @@ export async function loader({ request }: { request: Request }) {
            UNION ALL SELECT id, summary AS label, lifecycle FROM intents WHERE id = ANY($1)
            UNION ALL SELECT id, summary AS label, lifecycle FROM ideas WHERE id = ANY($1)
            UNION ALL SELECT id, summary AS label, lifecycle FROM rules WHERE id = ANY($1)
-           UNION ALL SELECT id, summary AS label, lifecycle FROM guidance_articles WHERE id = ANY($1)
-           UNION ALL SELECT id, summary AS label, lifecycle FROM node_authoring_articles WHERE id = ANY($1)
            UNION ALL SELECT id, summary AS label, lifecycle FROM actions WHERE id = ANY($1)
            UNION ALL SELECT id, summary AS label, lifecycle FROM logs WHERE id = ANY($1)
            UNION ALL SELECT id, summary AS label, lifecycle FROM evals WHERE id = ANY($1)

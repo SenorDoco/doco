@@ -519,10 +519,12 @@ Retention: every uploaded file is kept for ${ATTACHMENT_RETENTION_DAYS} days, th
 ## Endpoint surface
 
   GET   /<handle>/status.json
-  GET   /<handle>/api/<type>.json                — list (type ∈ decisions, intents, actions, rules, logs, evals, references, guidance_articles, node_authoring_articles, ideas, states, principals, invites, audit)
+  GET   /<handle>/api/<type>.json                — list (type ∈ decisions, intents, actions, rules, logs, evals, references, ideas, states, principals, invites, audit). Articles are NOT in this list.
   POST  /<handle>/api/<type>.json                — capture; returns { id, footer_lines, duration_ms }
   GET   /<handle>/api/<type>/<id>.json
   PATCH /<handle>/api/<type>/<id>.json
+  GET   /<handle>/api/articles.json              — list constitution articles (guidance + node-authoring) for this Doco
+  POST  /<handle>/api/articles.json              — capture an article; body needs "article_type": "guidance" | "node_authoring"
   GET   /<handle>/search.json?q=<query>
   POST  /api/v1/docos.json                       — create a Doco (NO GET — to list the user's Docos, see the "Your Docos" section below)
   POST  /api/v1/orgs.json                        — create an Org (NO GET — to list the user's Orgs, see the "Your Orgs" section below)

@@ -80,16 +80,15 @@ function readMulti(params: URLSearchParams, key: string): string[] | null {
 }
 
 /**
- * Doco-scoped per-type tables (PG plural names). Each carries a
+ * Doco-scoped note tables (PG plural names). Each carries a
  * `lifecycle` column directly. principals + organizations are
  * host-level, so they don't filter on doco_id.
  *
- * Notes vs articles: "notes" are the domain entities a Doco captures
- * (intents, decisions, rules, ...). "Articles" are constitution
- * metadata — the meta-rules governing how a Doco is authored — and
- * have their own surface (the constitution page). Queries for the
- * notes of a Doco must not include articles, otherwise an empty
- * Doco with only a template constitution misreads as full.
+ * Articles (`guidance_articles`, `node_authoring_articles`) are not
+ * nodes — they are constitution metadata with their own surface
+ * (/<handle>/constitution and /<handle>/api/articles.json) and are
+ * intentionally absent here. Anything iterating "nodes of a Doco"
+ * must use this list, never a list that includes article tables.
  */
 const PG_DOCO_NOTE_TABLES_WITH_LIFECYCLE = [
   "intents",
@@ -104,23 +103,16 @@ const PG_DOCO_NOTE_TABLES_WITH_LIFECYCLE = [
   "states",
 ] as const;
 
-const PG_DOCO_ARTICLE_TABLES_WITH_LIFECYCLE = [
-  "guidance_articles",
-  "node_authoring_articles",
-] as const;
-
-const PG_DOCO_TABLES_WITH_LIFECYCLE = [
-  ...PG_DOCO_NOTE_TABLES_WITH_LIFECYCLE,
-  ...PG_DOCO_ARTICLE_TABLES_WITH_LIFECYCLE,
-] as const;
-
-/** Map from external node_type (singular) → PG table (plural). */
+/**
+ * Map from external node_type (singular) → PG table (plural).
+ * Articles (`guidance_article`, `node_authoring_article`) are not
+ * nodes and are intentionally omitted — they are reachable only via
+ * /<handle>/api/articles.json and the constitution surface.
+ */
 const NODE_TYPE_TO_TABLE: Record<string, string> = {
   intent: "intents",
   idea: "ideas",
   rule: "rules",
-  guidance_article: "guidance_articles",
-  node_authoring_article: "node_authoring_articles",
   decision: "decisions",
   action: "actions",
   log: "logs",
@@ -148,7 +140,9 @@ export async function resolveFilteredCandidates(
   let lifecycleIds: Set<string> | null = null;
   if (filters.lifecycle !== null) {
     lifecycleIds = new Set();
-    for (const t of PG_DOCO_TABLES_WITH_LIFECYCLE) {
+    // Notes only — articles are not nodes and never participate in
+    // node search results, even when their lifecycle matches.
+    for (const t of PG_DOCO_NOTE_TABLES_WITH_LIFECYCLE) {
       const r = await c.query<{ id: string }>(
         `SELECT id FROM ${t}
           WHERE doco_id = $1

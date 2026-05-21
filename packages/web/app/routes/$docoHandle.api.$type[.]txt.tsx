@@ -6,9 +6,13 @@ import { normalizeDocoParams } from "~/lib/doco-access.server";
  *
  *   GET /<doco-handle>/api/<type>.txt
  *
- * `type` is one of: decisions, intents, guidance_articles,
- * node_authoring_articles, settings.
+ * `type` is one of: decisions, intents, articles, settings.
  * Returns plain-prose spec for the corresponding .json endpoint.
+ *
+ * Note: articles (`guidance_article`, `node_authoring_article`) are
+ * NOT nodes and do not have per-type capture routes. The dedicated
+ * articles endpoint lives at /<handle>/api/articles.json and is
+ * documented under `articles` here.
  */
 
 type SpecRenderer = (baseUrl: string, handle: string) => string;
@@ -141,44 +145,60 @@ RELATED
   GET  ${baseUrl}/${handle}/status.json          freshness + counts
 `,
 
-  guidance_articles: (baseUrl, handle) => `# Doco — Capture a Guidance Article
+  articles: (baseUrl, handle) => `# Doco — Articles (constitution metadata)
 
-Guidance Articles are constitution articles contributors read while
-working. They are not evaluated by the capture engine.
+Articles are **not nodes**. They are constitution metadata that
+governs how a Doco is authored, and they live on a dedicated
+endpoint — separate from the generic node-capture API.
 
-ENDPOINT
-  POST ${baseUrl}/${handle}/api/guidance_articles.json
+Two kinds:
+  - guidance       contributor-facing prose; not engine-evaluated.
+  - node_authoring engine-evaluated capture-time checks
+                   (deterministic predicate or probabilistic spec).
+
+ENDPOINT (list)
+  GET ${baseUrl}/${handle}/api/articles.json
+
+  Returns every article in the Doco, both kinds, with an
+  \`article_type\` discriminator:
+
+  {
+    "doco_id": "doco_...",
+    "doco_handle": "<handle>",
+    "count": <int>,
+    "guidance_count": <int>,
+    "node_authoring_count": <int>,
+    "items": [
+      {
+        "article_type": "guidance",
+        "node_type": "guidance_article",
+        "id": "guidance_article_<ULID>",
+        "summary": "...",
+        "lifecycle": "active",
+        "body_md": "...",
+        "created_at": "...",
+        "updated_at": "..."
+      },
+      ...
+    ]
+  }
+
+ENDPOINT (capture)
+  POST ${baseUrl}/${handle}/api/articles.json
   Content-Type: application/json
 
-BODY (JSON)
+  Body MUST include \`article_type\` to disambiguate; remaining
+  fields match the per-kind draft below.
+
+BODY — article_type = "guidance"
+  article_type          required   "guidance"
   summary               required   one-line article summary
   body_md               optional   markdown article body
   authored_by_username  optional   host-level username; auth fills this
   lifecycle             optional   default "active"
 
-SUCCESS RESPONSE (HTTP 201)
-  {
-    "ok": true,
-    "id": "guidance_article_<ULID>",
-    "footer_lines": ["[🔮 Doco] ✍️ Guidance Article added: ..."]
-  }
-
-RELATED
-  GET  ${baseUrl}/${handle}/constitution
-  POST ${baseUrl}/${handle}/api/node_authoring_articles.json
-`,
-
-  node_authoring_articles: (baseUrl, handle) => `# Doco — Capture a Node Authoring Article
-
-Node Authoring Articles are constitution articles the engine evaluates
-when nodes are captured. \`evaluation_kind\` is either deterministic
-(structured predicate) or probabilistic (LLM-judged spec).
-
-ENDPOINT
-  POST ${baseUrl}/${handle}/api/node_authoring_articles.json
-  Content-Type: application/json
-
-BODY (JSON)
+BODY — article_type = "node_authoring"
+  article_type          required   "node_authoring"
   summary               required   one-line article summary
   evaluation_kind       required   "deterministic" | "probabilistic"
   predicate             required*  deterministic AuthoringPredicate object
@@ -195,16 +215,27 @@ BODY (JSON)
 SUCCESS RESPONSE (HTTP 201)
   {
     "ok": true,
-    "id": "node_authoring_article_<ULID>",
-    "footer_lines": ["[🔮 Doco] ✍️ Node Authoring Article added: ..."]
+    "id": "guidance_article_<ULID>" | "node_authoring_article_<ULID>",
+    "footer_lines": ["[🔮 Doco] ✍️ ... Article added: ..."]
   }
 
-EXAMPLE — deterministic
+EXAMPLE — guidance
   curl -sS -X POST \\
     -H "Content-Type: application/json" \\
     -H "Authorization: Bearer $DOCO_ACCESS" \\
-    ${baseUrl}/${handle}/api/node_authoring_articles.json \\
+    ${baseUrl}/${handle}/api/articles.json \\
     -d '{
+      "article_type": "guidance",
+      "summary": "Prefer concrete examples over abstract prose."
+    }'
+
+EXAMPLE — node_authoring (deterministic)
+  curl -sS -X POST \\
+    -H "Content-Type: application/json" \\
+    -H "Authorization: Bearer $DOCO_ACCESS" \\
+    ${baseUrl}/${handle}/api/articles.json \\
+    -d '{
+      "article_type": "node_authoring",
       "summary": "Every Decision cites at least one Intent.",
       "evaluation_kind": "deterministic",
       "predicate": {
@@ -215,20 +246,29 @@ EXAMPLE — deterministic
       }
     }'
 
-EXAMPLE — probabilistic
+EXAMPLE — node_authoring (probabilistic)
   curl -sS -X POST \\
     -H "Content-Type: application/json" \\
     -H "Authorization: Bearer $DOCO_ACCESS" \\
-    ${baseUrl}/${handle}/api/node_authoring_articles.json \\
+    ${baseUrl}/${handle}/api/articles.json \\
     -d '{
+      "article_type": "node_authoring",
       "summary": "Decision rationale names the rejected alternatives.",
       "evaluation_kind": "probabilistic",
       "spec": "Pass when the Decision explains at least one alternative and why it was rejected."
     }'
 
+UPDATE A SPECIFIC ARTICLE
+  PATCH ${baseUrl}/${handle}/api/guidance_articles/<id>.json
+  PATCH ${baseUrl}/${handle}/api/node_authoring_articles/<id>.json
+  Content-Type: application/json
+
+  Per-id endpoints remain available for editing existing articles.
+  Body shape mirrors the relevant capture draft.
+
 RELATED
-  GET  ${baseUrl}/${handle}/constitution
-  POST ${baseUrl}/${handle}/api/guidance_articles.json
+  GET  ${baseUrl}/${handle}/constitution           HTML view of the constitution
+  GET  ${baseUrl}/api/v1/agent-bootstrap.json      bootstrap payload includes articles
 `,
 
   settings: (baseUrl, handle) => `# Doco — Settings (read + patch)

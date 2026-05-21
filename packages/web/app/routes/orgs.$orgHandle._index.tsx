@@ -83,12 +83,13 @@ interface FeedItem {
   after: Record<string, unknown> | null;
 }
 
+// Note tables only — articles (constitution metadata) are not nodes
+// and do not count toward "active nodes" per Doco. They are exposed
+// via /<handle>/constitution and /<handle>/api/articles.json.
 const NODE_TABLES_WITH_LIFECYCLE = [
   "intents",
   "ideas",
   "rules",
-  "guidance_articles",
-  "node_authoring_articles",
   "decisions",
   "actions",
   "logs",

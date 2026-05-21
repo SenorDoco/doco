@@ -214,10 +214,15 @@ export default [
   route(":docoHandle/api/principals.json", "routes/$docoHandle.api.principals[.]json.tsx"),
   route(":docoHandle/api/settings.json", "routes/$docoHandle.api.settings[.]json.tsx"),
   route(":docoHandle/api/audit.json", "routes/$docoHandle.api.audit[.]json.tsx"),
+  // Articles (constitution metadata) are not nodes; they live on a
+  // dedicated endpoint and are intentionally absent from the generic
+  // capture dispatcher below.
+  route(":docoHandle/api/articles.json", "routes/$docoHandle.api.articles[.]json.tsx"),
   // Generic capture dispatcher. Handles decisions, intents, actions,
-  // references, rules, guidance_articles, node_authoring_articles, logs,
-  // evals, states via CAPTURE_REGISTRY in the route file. Adding a new
-  // simple-capture entity type is one registry row; no new route needed.
+  // references, rules, logs, evals, states via CAPTURE_REGISTRY in the
+  // route file. Adding a new simple-capture entity type is one registry
+  // row; no new route needed. Article types are deliberately not in this
+  // registry — see /api/articles.json above.
   route(":docoHandle/api/:type.json", "routes/$docoHandle.api.$type[.]json.tsx"),
   route(":docoHandle/api/:type.txt", "routes/$docoHandle.api.$type[.]txt.tsx"),
   route(":docoHandle/activity", "routes/$docoHandle.activity.tsx"),

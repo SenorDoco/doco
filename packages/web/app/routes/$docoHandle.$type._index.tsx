@@ -16,7 +16,11 @@ import { loadDocoRouteForRead } from "~/lib/doco-access.server";
 import { loadHostConfig } from "~/lib/host";
 import { getCurrentPrincipal } from "~/lib/session";
 
-const KNOWN = new Set<string>(ENTITY_TYPES);
+// Articles are constitution metadata, not nodes — the generic
+// "/<handle>/<type>" list view exists for notes only. Article lists
+// live at /<handle>/constitution and /<handle>/api/articles.json.
+const ARTICLE_TYPES = new Set<string>(["guidance_article", "node_authoring_article"]);
+const KNOWN = new Set<string>(ENTITY_TYPES.filter((t) => !ARTICLE_TYPES.has(t)));
 
 export async function loader({
   params,
@@ -66,8 +70,6 @@ const TABLE_BY_TYPE: Record<string, string> = {
   decision: "decisions",
   intent: "intents",
   rule: "rules",
-  guidance_article: "guidance_articles",
-  node_authoring_article: "node_authoring_articles",
   action: "actions",
   log: "logs",
   reference: "reference_entities",

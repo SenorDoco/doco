@@ -40,13 +40,14 @@ interface Hit {
   vector_score: number;
 }
 
+// Note tables only — articles are constitution metadata, not nodes,
+// and don't participate in org-wide search. They are reachable via
+// /<handle>/constitution and /<handle>/api/articles.json.
 const TYPE_SPECS = [
   { table: "decisions", nodeType: "decision" },
   { table: "intents", nodeType: "intent" },
   { table: "ideas", nodeType: "idea" },
   { table: "rules", nodeType: "rule" },
-  { table: "guidance_articles", nodeType: "guidance_article" },
-  { table: "node_authoring_articles", nodeType: "node_authoring_article" },
   { table: "actions", nodeType: "action" },
   { table: "logs", nodeType: "log" },
   { table: "evals", nodeType: "eval" },

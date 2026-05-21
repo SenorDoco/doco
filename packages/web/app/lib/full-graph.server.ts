@@ -25,6 +25,9 @@ interface OverviewGraphRow {
   created_at: string | null;
 }
 
+// Note tables only — articles (constitution metadata) are not nodes
+// and are deliberately excluded from the graph. Articles have their
+// own surface: /<handle>/constitution and /<handle>/api/articles.json.
 const GRAPH_TABLES: {
   table: string;
   nodeType: string;
@@ -36,8 +39,6 @@ const GRAPH_TABLES: {
   { table: "actions", nodeType: "action" },
   { table: "logs", nodeType: "log" },
   { table: "rules", nodeType: "rule" },
-  { table: "guidance_articles", nodeType: "guidance_article" },
-  { table: "node_authoring_articles", nodeType: "node_authoring_article" },
   { table: "evals", nodeType: "eval" },
   { table: "reference_entities", nodeType: "reference" },
   { table: "ideas", nodeType: "idea" },

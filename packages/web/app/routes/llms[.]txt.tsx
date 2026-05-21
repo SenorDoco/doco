@@ -88,12 +88,17 @@ for backwards compat.
   GET  ${baseUrl}/<handle>/api/<type>/<id>.json     # fetch one node
   PATCH ${baseUrl}/<handle>/api/<type>/<id>.json    # update fields (need 'author' role)
   GET  ${baseUrl}/<handle>/api/<type>.txt           # plain-text spec for the body shape
+  GET  ${baseUrl}/<handle>/api/articles.json        # list constitution articles (NOT nodes)
+  POST ${baseUrl}/<handle>/api/articles.json        # capture a constitution article
   POST ${baseUrl}/api/v1/docos.json                 # create a Doco in one request
 
-Node types: \`decisions\`, \`rules\`, \`guidance_articles\`,
-\`node_authoring_articles\`, \`intents\`, \`actions\`, \`logs\`,
-\`evals\`, \`references\`, \`states\`, \`principals\`, \`invites\`,
-\`audit\`.
+Node types: \`decisions\`, \`rules\`, \`intents\`, \`actions\`,
+\`logs\`, \`evals\`, \`references\`, \`states\`, \`principals\`,
+\`invites\`, \`audit\`.
+
+Articles are not nodes. Constitution articles (guidance + node-authoring)
+live on \`/api/articles.json\`. The generic \`/api/<type>.json\` route
+refuses article types.
 
 Create a Doco with:
 
