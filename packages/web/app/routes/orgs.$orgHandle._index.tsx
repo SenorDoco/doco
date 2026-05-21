@@ -1,22 +1,22 @@
 // /orgs/:orgHandle — per-Org home. Mirrors the Doco home page
 // structure but at the org level. Main column carries:
 //   - Header (org handle + ULID, +Agent/Collaborator on desktop)
+//   - Search box (submits to /orgs/:orgHandle/search)
 //   - Docos in this org (with a +Doco button)
 //   - Top contributors across the org's Docos
 //   - Activity heatmap (52w)
 //   - Latest activity feed (20 events, with per-row Doco context)
 //
-// Sidebar (desktop) carries Members. (Search box + cross-Doco graph
-// are part of the spec but require infrastructure that doesn't exist
-// yet — tracked as follow-ups in the PR.)
+// Sidebar (desktop): cross-Doco overview graph + Members card.
 
 import { type DocoRole, getOrgRole, withClient } from "@doco/db";
 import { entityUrl } from "@doco/shared";
 import { useEffect } from "react";
-import { Link, useRevalidator } from "react-router";
+import { Form, Link, useRevalidator } from "react-router";
 import { ActivityHeatmap } from "~/components/activity-heatmap";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
 import { InviteCollaboratorsLink } from "~/components/invite-collaborators-link";
+import { OverviewGraph } from "~/components/overview-graph";
 import { SiteHeader } from "~/components/site-header";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "~/components/table";
 import {
@@ -29,6 +29,7 @@ import {
 } from "~/lib/activity-feed";
 import { cn } from "~/lib/cn";
 import { listDocoStats } from "~/lib/doco-stats.server";
+import { loadOrgOverviewGraph } from "~/lib/full-graph.server";
 import { getCurrentPrincipal } from "~/lib/session";
 import { timeAgo } from "~/lib/time-ago";
 
@@ -301,6 +302,11 @@ export async function loader({
       });
     }
 
+    const docoHandleById = new Map(docos.map((d) => [d.docoId, d.handle]));
+    const graph = await loadOrgOverviewGraph(c, docoIds, docoHandleById, {
+      fallbackCenterId: org.id,
+    });
+
     return {
       org,
       me,
@@ -311,6 +317,7 @@ export async function loader({
       byDay,
       topContributors,
       items,
+      graph,
     };
   });
 }
@@ -344,7 +351,7 @@ export default function OrgHome({
 }: {
   loaderData: Awaited<ReturnType<typeof loader>>;
 }) {
-  const { org, me, canInviteCollaborators, docos, members, byDay, topContributors, items } =
+  const { org, me, canInviteCollaborators, docos, members, byDay, topContributors, items, graph } =
     loaderData;
 
   const revalidator = useRevalidator();
@@ -398,6 +405,21 @@ export default function OrgHome({
                 </InviteCollaboratorsLink>
               ) : null}
             </div>
+
+            <Form method="get" action={`/orgs/${org.handle}/search`} className="flex gap-2">
+              <input
+                name="q"
+                type="search"
+                placeholder={`Search across ${docos.length} doco${docos.length === 1 ? "" : "s"}…`}
+                className="w-full rounded-md border border-border bg-input px-4 py-2.5 text-sm text-foreground outline-none focus:border-primary"
+              />
+              <button
+                type="submit"
+                className="rounded-md border border-border bg-card px-4 py-2.5 text-sm font-semibold text-foreground hover:bg-muted"
+              >
+                Search
+              </button>
+            </Form>
 
             <Card>
               <CardHeader className="flex flex-row items-center justify-between gap-3 px-4 py-3">
@@ -514,6 +536,24 @@ export default function OrgHome({
           </section>
 
           <aside className="min-w-0 space-y-5">
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <h2 className="text-sm font-semibold tracking-tight">Org graph</h2>
+                <span className="font-mono text-xs text-muted-foreground">
+                  {graph.nodes.length} nodes · {graph.links.length} links
+                </span>
+              </div>
+              <div className="h-[55vh] min-h-[400px]">
+                <OverviewGraph
+                  centerId={graph.centerId}
+                  nodes={graph.nodes}
+                  links={graph.links}
+                  detailUrl={graph.detailUrl}
+                  fillHeight
+                />
+              </div>
+            </div>
+
             <Card>
               <CardHeader className="px-4 py-3">
                 <CardTitle className="text-sm">Members</CardTitle>
