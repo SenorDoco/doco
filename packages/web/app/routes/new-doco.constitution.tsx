@@ -37,9 +37,7 @@ export async function loader({ request }: { request: Request }) {
   }
 
   const orgs = await listMyOrgs(me.id);
-  const orgHandle = orgId
-    ? (orgs.find((o) => o.id === orgId)?.handle ?? null)
-    : newOrgHandle;
+  const orgHandle = orgId ? (orgs.find((o) => o.id === orgId)?.handle ?? null) : newOrgHandle;
 
   return { me, orgId, newOrgHandle, suffix, visibility, orgHandle };
 }
@@ -73,8 +71,8 @@ export default function NewDocoStep2({
           </CardHeader>
           <CardContent className="space-y-3 text-sm">
             <p>
-              A constitution defines how nodes get authored. It's made of{" "}
-              <strong>articles</strong> in two kinds:
+              A constitution defines how nodes get authored. It's made of <strong>articles</strong>{" "}
+              in two kinds:
             </p>
             <ul className="ml-5 list-disc space-y-1.5">
               <li>
@@ -93,9 +91,7 @@ export default function NewDocoStep2({
 
         <Form method="get" action="/new-doco/template" className="flex items-center gap-2">
           {orgId ? <input type="hidden" name="org_id" value={orgId} /> : null}
-          {newOrgHandle ? (
-            <input type="hidden" name="new_org_handle" value={newOrgHandle} />
-          ) : null}
+          {newOrgHandle ? <input type="hidden" name="new_org_handle" value={newOrgHandle} /> : null}
           <input type="hidden" name="suffix" value={suffix} />
           <input type="hidden" name="visibility" value={visibility} />
           <button

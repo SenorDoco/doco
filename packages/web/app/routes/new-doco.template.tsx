@@ -100,8 +100,12 @@ export async function action({ request }: { request: Request }) {
   const form = await request.formData();
   const state: ParsedState = {
     orgId: String(form.get("org_id") ?? "").trim(),
-    newOrgHandle: String(form.get("new_org_handle") ?? "").trim().toLowerCase(),
-    suffix: String(form.get("suffix") ?? "").trim().toLowerCase(),
+    newOrgHandle: String(form.get("new_org_handle") ?? "")
+      .trim()
+      .toLowerCase(),
+    suffix: String(form.get("suffix") ?? "")
+      .trim()
+      .toLowerCase(),
     visibility: String(form.get("visibility") ?? "private") === "public" ? "public" : "private",
   };
   const templateHandle = String(form.get("template_handle") ?? "generic").trim();
@@ -196,7 +200,6 @@ export default function NewDocoStep3({
   const state: ParsedState = { orgId, newOrgHandle, suffix, visibility };
   const finalHandle = `${orgHandle ?? "<org>"}-${suffix}`;
   const selectedTemplate = actionData?.form?.templateHandle ?? "generic";
-  const selectedVisibility = actionData?.form?.visibility ?? "private";
 
   return (
     <div>
@@ -205,7 +208,7 @@ export default function NewDocoStep3({
         <WizardStepper current={3} />
         <Card>
           <CardHeader>
-            <CardTitle>Template + visibility for {finalHandle}</CardTitle>
+            <CardTitle>Template for {finalHandle}</CardTitle>
           </CardHeader>
           <CardContent>
             <Form method="post" className="space-y-4">
@@ -214,10 +217,11 @@ export default function NewDocoStep3({
                 <input type="hidden" name="new_org_handle" value={newOrgHandle} />
               ) : null}
               <input type="hidden" name="suffix" value={suffix} />
+              <input type="hidden" name="visibility" value={visibility} />
 
               <fieldset className="space-y-2">
                 <legend className="text-xs font-semibold uppercase text-muted-foreground">
-                  3 · Template
+                  4 · Template
                 </legend>
                 <div className="grid grid-cols-2 gap-2">
                   {TEMPLATES.map((t) => (
@@ -241,20 +245,6 @@ export default function NewDocoStep3({
                     </label>
                   ))}
                 </div>
-              </fieldset>
-
-              <fieldset className="space-y-2">
-                <legend className="text-xs font-semibold uppercase text-muted-foreground">
-                  4 · Visibility
-                </legend>
-                <select
-                  name="visibility"
-                  defaultValue={selectedVisibility}
-                  className="rounded-md border border-border bg-input px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
-                >
-                  <option value="private">Private</option>
-                  <option value="public">Public</option>
-                </select>
               </fieldset>
 
               {actionData?.error ? (

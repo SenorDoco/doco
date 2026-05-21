@@ -38,8 +38,7 @@ export async function loader({ request }: { request: Request }) {
       orgId: url.searchParams.get("org_id") ?? "",
       newOrgHandle: url.searchParams.get("new_org_handle") ?? "",
       suffix: url.searchParams.get("suffix") ?? "",
-      visibility:
-        url.searchParams.get("visibility") === "public" ? "public" : "private",
+      visibility: url.searchParams.get("visibility") === "public" ? "public" : "private",
     },
   };
 }
