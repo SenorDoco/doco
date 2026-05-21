@@ -20,8 +20,8 @@ import { getCurrentPrincipal } from "~/lib/session";
  *   - `org_id`: ULID of the chosen org, or empty when creating a new one inline.
  *   - `new_org_handle`: optional new-org handle (used when org_id is empty).
  *   - `suffix`: the suffix after `<org-handle>-` (e.g. `bpms` → `acme-bpms`).
- *   - `template_handle`: one of "generic" | "user-flows" | "state-machines"
- *     — the v15 template tile picker.
+ *   - `template_handle`: one of "generic" | "user-flows" | "state-machines" |
+ *     "business-processes" — the template tile picker.
  *   - `visibility`: "private" | "public".
  *   - `accept_suggested_handle`: "1" to silently accept a server-suggested
  *     collision-free handle.
@@ -47,6 +47,12 @@ const TEMPLATES = [
     label: "State Machines",
     description: "Formal state-machine modeling — states, transitions, invariants.",
   },
+  {
+    handle: "business-processes",
+    label: "Business Processes",
+    description:
+      "Document repeatable business processes — actors, gateways, milestones, outcomes. BPMN-inspired.",
+  },
 ] as const;
 
 export async function loader({ request }: { request: Request }) {
@@ -66,7 +72,9 @@ export async function action({ request }: { request: Request }) {
   const newOrgHandleRaw = String(form.get("new_org_handle") ?? "")
     .trim()
     .toLowerCase();
-  const suffix = String(form.get("suffix") ?? "").trim().toLowerCase();
+  const suffix = String(form.get("suffix") ?? "")
+    .trim()
+    .toLowerCase();
   const templateHandle = String(form.get("template_handle") ?? "generic").trim();
   const visibility = String(form.get("visibility") ?? "private") as "private" | "public";
   const accept = form.get("accept_suggested_handle") === "1";
@@ -185,7 +193,7 @@ export default function NewDoco({
 }) {
   const { me, orgs } = loaderData;
   const f = actionData?.form;
-  const initialOrgId = f?.orgId ?? (orgs[0]?.id ?? "");
+  const initialOrgId = f?.orgId ?? orgs[0]?.id ?? "";
   const [orgId, setOrgId] = useState(initialOrgId);
   const [newOrgHandle, setNewOrgHandle] = useState(f?.newOrgHandle ?? "");
   const [suffix, setSuffix] = useState(f?.suffix ?? "");
