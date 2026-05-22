@@ -465,7 +465,7 @@ describe("doco-mcp-server", () => {
         content: Array<{ type: string; text: string }>;
       };
       expect(result.isError).toBeFalsy();
-      expect(result.content[0].text).toMatch(/Found \d+ nodes? in Doco|No matches in Doco/);
+      expect(result.content[0].text).toMatch(/Found \d+ neurons? in Doco|No matches in Doco/);
     },
     20000,
   );

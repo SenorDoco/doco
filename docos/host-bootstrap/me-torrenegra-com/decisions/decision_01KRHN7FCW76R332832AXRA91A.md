@@ -14,10 +14,4 @@ decided_at: 2026-05-13T21:52:31.132Z
 created_at: 2026-05-13T21:52:31.132Z
 created_by: principal_01KRHJQCG3HH5AYBZWEZHCS9MY
 lifecycle: active
-auto_synapses:
-  - to_id: decision_01KRHMZE5444PVATY5B3KYJBPM
-    synapse_type: supersedes
-    reason: The decision to adopt Doco for project documentation replaces the
-      previous documentation method, which is relevant to the JSON block-based
-      schema.
 ---
