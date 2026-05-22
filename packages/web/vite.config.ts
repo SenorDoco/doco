@@ -59,40 +59,24 @@ function findAssetDirs(dir: string): string[] {
 }
 
 function copyDbSchemaIntoServerBuild(): Plugin {
+  // Schema.sql + every migrations/*.sql are now bundled into the JS
+  // module via @doco/db/scripts/embed-schema.mjs (regenerated at the
+  // db package's build step into src/schema-embedded.ts). Nothing to
+  // copy into the server build anymore — the strings ship with the
+  // bundle. Vercel's serverless function packaging used to drop the
+  // sibling .sql files, which is why the embed-into-JS approach is now
+  // the source of truth.
+  //
+  // Kept as a no-op shell so the plugins array signature doesn't change
+  // and any local dev flow that referenced this plugin name keeps
+  // resolving. The compatibility comment will be removed once the
+  // ssr.noExternal + vercel-react-router preset combination is fully
+  // verified across all environments.
   return {
     name: "doco-copy-db-schema",
     apply: "build",
     closeBundle() {
-      const schemaSrc = resolve(rootDir, "packages/db/src/schema.sql");
-      const migrationsSrcDir = resolve(rootDir, "packages/db/migrations");
-      const migrationsModulePath = resolve(rootDir, "packages/db/dist/migrations.js");
-      const migrationFiles = existsSync(migrationsSrcDir)
-        ? readdirSync(migrationsSrcDir).filter((f) => f.endsWith(".sql"))
-        : [];
-      const serverRoot = resolve(import.meta.dirname, "build/server");
-      for (const assetDir of findAssetDirs(serverRoot)) {
-        copyFileSync(schemaSrc, join(assetDir, "schema.sql"));
-        // `applySchema` dynamically imports `./migrations.js` via an
-        // indirect specifier so vite can't trace it into the client
-        // bundle. That also means vite doesn't bundle it into the SSR
-        // chunk — copy the pre-compiled file from @doco/db's dist so
-        // the runtime resolves the import alongside the bundled
-        // schema.sql.
-        if (existsSync(migrationsModulePath)) {
-          copyFileSync(migrationsModulePath, join(assetDir, "migrations.js"));
-        }
-        // Numbered .sql migrations. `locateMigrationsDir()` in
-        // @doco/db walks up from migrations.js' location; a sibling
-        // `migrations/` here lands inside one of the candidate
-        // `../migrations` / `../../migrations` paths.
-        if (migrationFiles.length > 0) {
-          const dest = join(assetDir, "migrations");
-          mkdirSync(dest, { recursive: true });
-          for (const f of migrationFiles) {
-            copyFileSync(join(migrationsSrcDir, f), join(dest, f));
-          }
-        }
-      }
+      // intentionally empty
     },
   };
 }
