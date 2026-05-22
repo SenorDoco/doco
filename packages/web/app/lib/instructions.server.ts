@@ -7,7 +7,7 @@
  * will also be exposed as the `doco://protocol/canonical-instructions`
  * MCP resource.
  *
- * `AGENT_REFERENCE` is the long-form deep reference (node walkthrough,
+ * `AGENT_REFERENCE` is the long-form deep reference (neuron walkthrough,
  * placement examples).
  */
 
@@ -21,7 +21,7 @@ Use Doco naturally as a verb when you talk with the project owner:
 "Want me to doco it?", "Doco this decision", "Doco this ADR", and
 "Doco the flow" are all normal client-facing phrases. When a project
 owner says "doco it", interpret that as a request to capture the
-appropriate Doco nodes.
+appropriate Doco neurons.
 
 This document carries the **four invariants** every reply must follow.
 
@@ -55,47 +55,47 @@ If the Doco is **public**, you can skip OAuth entirely. Either way,
 the endpoint shapes are:
 
     GET   https://doco.to/<handle>/status.json              # counts + freshness
-    GET   https://doco.to/<handle>/api/<type>.json          # list nodes
+    GET   https://doco.to/<handle>/api/<type>.json          # list neurons
     POST  https://doco.to/<handle>/api/<type>.json          # capture (needs author)
-    GET   https://doco.to/<handle>/api/<type>/<id>.json     # one node
+    GET   https://doco.to/<handle>/api/<type>/<id>.json     # one neuron
     PATCH https://doco.to/<handle>/api/<type>/<id>.json     # patch (needs author)
     GET   https://doco.to/<handle>/api/<type>.txt           # plain-text spec
-    GET   https://doco.to/<handle>/api/articles.json        # list constitution articles
-    POST  https://doco.to/<handle>/api/articles.json        # capture an article (needs author)
+    GET   https://doco.to/<handle>/api/primitives.json      # list constitution primitives
+    POST  https://doco.to/<handle>/api/primitives.json      # capture a primitive (needs author)
 
-Node types: decisions, rules, intents, actions, logs, evals, references,
+Neuron types: decisions, rules, intents, actions, logs, evals, references,
 states, principals, invites, audit.
 
-Articles are NOT nodes. Constitution articles
+Primitives are NOT neurons. Constitution primitives
 (\`guidance_primitive\`, \`neuron_authoring_primitive\`) live on the
-dedicated \`/api/articles.json\` endpoint and inside the bootstrap
+dedicated \`/api/primitives.json\` endpoint and inside the bootstrap
 payload — never on the generic \`/api/<type>.json\` route.
 
 Public Docos return 200 for unauthenticated reads; private Docos
 return 403 until you finish the OAuth recipe.
 
-## Bootstrap: read the Articles of the Constitution
+## Bootstrap: read the Constitution's primitives
 
 Every org and every Doco has a **constitution**. The constitution is
-made up of **Articles of the Constitution** — short, project-owner-
-authored statements that govern how you, the agent, author nodes
+made up of **Constitution primitives** — short, project-owner-
+authored statements that govern how you, the agent, author neurons
 inside it. Two kinds, both surfaced at bootstrap:
 
-  - **Guidance articles** (\`guidance_primitive\` nodes) — prose for
+  - **Guidance primitives** (\`guidance_primitive\`) — prose for
     context. No automated check. Read them and let them shape your
     judgement.
-  - **Node authoring articles** (\`neuron_authoring_primitive\` nodes) —
-    rules evaluated when you capture a node. Either a deterministic
+  - **Neuron-authoring primitives** (\`neuron_authoring_primitive\`) —
+    rules evaluated when you capture a neuron. Either a deterministic
     predicate ("every Decision cites at least one Intent") or a
     probabilistic spec the host evaluates with an LLM. \`on_violation:
     block\` means the host will reject your capture.
 
-Org-level articles apply to every Doco that org owns. Doco-level
-articles apply only to that Doco. Treat both as binding on your
+Org-level primitives apply to every Doco that org owns. Doco-level
+primitives apply only to that Doco. Treat both as binding on your
 authoring at all times.
 
-The project owner can **add, edit, or remove Articles of the
-Constitution any time**, at either the org level
+The project owner can **add, edit, or remove constitution primitives
+any time**, at either the org level
 (\`/orgs/<org>/constitution\`) or the Doco level
 (\`/<handle>/constitution\`). Re-bootstrap if you suspect they've
 changed mid-session.
@@ -106,7 +106,7 @@ Once you hold a Bearer token, hit:
     Authorization: Bearer doco_at_<token>
 
 The response carries the constitutions for every org and every Doco
-you have read-or-above access to, with each article exposed as
+you have read-or-above access to, with each primitive exposed as
 \`guidance_primitives[]\` and \`neuron_authoring_primitives[]\` arrays.
 
 The four invariants below apply whichever path you took — the
@@ -134,7 +134,7 @@ prior art), render two lines at the top of the first text output:
 
 \`\`\`
 [🔮 Doco] <querying-verb>
-[🔮 Doco] <N> relevant nodes found (<X.X>s)
+[🔮 Doco] <N> relevant neurons found (<X.X>s)
 \`\`\`
 
 Pick \`<querying-verb>\` at random:
@@ -154,13 +154,13 @@ at the top — no "Not querying" placeholder. Absence is the signal.
 1. **Inform.** Let prior Decisions, Rules, and Intents shape what
    you say and do. An answer that contradicts a documented Decision
    because you didn't check is a defect.
-2. **Deduplicate.** Before suggesting a new node, scan for nodes
+2. **Deduplicate.** Before suggesting a new neuron, scan for neurons
    that already cover the same territory. Patch the existing one
    rather than create a near-duplicate.
 
 ## 2. AFTER EVERY WRITE — footer_lines verbatim
 
-When the project owner captures a node on your behalf (via the web
+When the project owner captures a neuron on your behalf (via the web
 UI), the host returns \`footer_lines: string[]\` from the capture
 endpoint. If they share those with you, paste them verbatim, one
 per line:
@@ -176,8 +176,8 @@ Op icons: ✍️ added · 📝 updated · 🧹 cleared · ➕ added/appended ·
 
 When the changes you made relate to a Doco where you're an author or
 owner, capture them in that Doco. The question is *what* to capture —
-a new node or a patch on an existing one — not *whether*. Skipping
-requires naming the existing node you're relying on.
+a new neuron or a patch on an existing one — not *whether*. Skipping
+requires naming the existing neuron you're relying on.
 
 If you ran the OAuth recipe and hold a Bearer token, you can capture
 directly via the HTTP API:
@@ -185,7 +185,7 @@ directly via the HTTP API:
     POST https://doco.to/<handle>/api/<type>.json
     Authorization: Bearer doco_at_<token>
     Content-Type: application/json
-    { ...fields per the node's schema... }
+    { ...fields per the neuron's schema... }
 
 If you haven't authenticated (anonymous reader / public Doco only),
 call out the capture for the project owner instead:
@@ -214,7 +214,7 @@ Intent fits, the project owner creates one first.
 ## 4. CLOSING LINE OF THE TURN — tally (no exceptions, once per turn)
 
 \`\`\`
-[🔮 Doco] <doco_handle>: **<N>** node(s) added/updated
+[🔮 Doco] <doco_handle>: **<N>** neuron(s) added/updated
 \`\`\`
 
 The tally is the LAST line of the LAST text output of the turn.
@@ -241,9 +241,10 @@ This is the deep reference the canonical
 (/protocol/canonical-instructions) points to. Fetch on demand, not
 preemptively.
 
-## The 12-node-type model
+## The neuron + primitive model
 
-Doco's data model is a graph of typed nodes:
+Doco's data model is a graph of typed neurons, plus two kinds of
+constitution primitives that govern how neurons are authored:
 
 - **Intent** — what someone wants. Source of every downstream Decision.
 - **Decision** — a chosen resolution to a question, with alternatives
@@ -252,19 +253,20 @@ Doco's data model is a graph of typed nodes:
 - **Log** — a recorded event that *did* happen (past-tense verb +
   \`happened_at\` + concrete outputs). Immutable once captured.
 - **Rule** — an ongoing domain constraint.
-- **Guidance Article** — one kind of Article of the Constitution.
+- **Guidance primitive** — one kind of Constitution primitive.
   Contributors read it while working; no automated check.
-- **Node Authoring Article** — the other kind of Article of the
-  Constitution. Evaluated when nodes are captured; deterministic
+- **Neuron-authoring primitive** — the other kind of Constitution
+  primitive. Evaluated when neurons are captured; deterministic
   predicates or probabilistic specs. The project owner can edit either
   kind any time from \`/<handle>/constitution\` or
   \`/orgs/<org>/constitution\`.
 - **Eval** — a named, executable test pinning a load-bearing claim.
 - **Reference** — an external pointer (URL, file, doc) with a summary.
-- **State** — a node in a formal state machine.
+- **State** — a neuron in a formal state machine.
 - **Idea** — exploratory capture; promote to Intent / Decision once
   it firms up.
-- **Tag**, **Principal** — supporting types.
+- **Principal** — a role-persona neuron referenced by actor_id /
+  actors[]. Distinct from a Collaborator (the OAuth identity layer).
 
 ## Things only people can do
 

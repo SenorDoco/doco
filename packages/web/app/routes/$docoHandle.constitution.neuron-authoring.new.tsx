@@ -1,6 +1,6 @@
 // /<doco-handle>/constitution/neuron-authoring/new — standalone form for
-// authoring a Doco-level node authoring article. Carries a predicate
-// evaluated when a node is captured.
+// authoring a Doco-level neuron-authoring primitive. Carries a predicate
+// evaluated when a neuron is captured.
 
 import { useState } from "react";
 import { Form, Link, redirect, useActionData } from "react-router";
@@ -41,7 +41,7 @@ export async function action({
   const form = await request.formData();
   const body_md = String(form.get("body_md") ?? "").trim();
   const summary = deriveArticleSummary(body_md);
-  if (!summary) return Response.json({ error: "Article is required." }, { status: 400 });
+  if (!summary) return Response.json({ error: "Primitive is required." }, { status: 400 });
   const evaluationKind =
     String(form.get("evaluation_kind") ?? "deterministic") === "probabilistic"
       ? "probabilistic"
@@ -84,7 +84,7 @@ export function meta({ params }: { params: { docoHandle?: string; docoId?: strin
   ];
 }
 
-export default function NewNodeAuthoringArticle({
+export default function NewNeuronAuthoringPrimitive({
   loaderData,
 }: {
   loaderData: Awaited<ReturnType<typeof loader>>;
@@ -108,9 +108,9 @@ export default function NewNodeAuthoringArticle({
           />
           <h1 className="text-2xl font-semibold">New neuron-authoring primitive</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            An automatic check that runs every time someone adds a node to this doco. Write a strict
-            rule, or describe what an LLM judge should look for. Pick what happens on failure: block
-            the capture, warn, or just log.
+            An automatic check that runs every time someone adds a neuron to this doco. Write a
+            strict rule, or describe what an LLM judge should look for. Pick what happens on
+            failure: block the capture, warn, or just log.
           </p>
         </header>
         <Card>
@@ -123,13 +123,13 @@ export default function NewNodeAuthoringArticle({
             <Form method="post" className="space-y-4">
               <label className="block">
                 <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  Article
+                  Primitive
                 </span>
                 <textarea
                   name="body_md"
                   required
                   rows={6}
-                  placeholder="Write the article."
+                  placeholder="Write the primitive."
                   className="mt-1 block w-full rounded-md border border-border bg-input px-3 py-2 text-sm"
                 />
               </label>
@@ -182,7 +182,7 @@ export default function NewNodeAuthoringArticle({
                   <textarea
                     name="probabilistic_spec"
                     rows={10}
-                    placeholder="Judge only the node being captured. Pass when..."
+                    placeholder="Judge only the neuron being captured. Pass when..."
                     className="mt-1 block w-full rounded-md border border-border bg-input px-3 py-2 text-sm"
                   />
                 </label>
@@ -218,7 +218,7 @@ export default function NewNodeAuthoringArticle({
                   type="submit"
                   className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90"
                 >
-                  Add node-authoring article
+                  Add neuron-authoring primitive
                 </button>
                 <Link
                   to={`/${handle}/constitution`}

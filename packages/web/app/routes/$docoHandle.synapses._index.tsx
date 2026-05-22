@@ -114,15 +114,16 @@ export default function EdgesIndex({
           <CardContent className="p-0">
             {synapses.length === 0 ? (
               <p className="px-5 py-6 text-xs text-muted-foreground">
-                No synapses yet. Synapses materialize automatically when a neuron references another neuron
-                (e.g. a Decision's intent_ids). Patch a node's reference field and the edge appears.
+                No synapses yet. Synapses materialize automatically when a neuron references
+                another neuron (e.g. a Decision's intent_ids). Patch a neuron's reference field and
+                the synapse appears.
               </p>
             ) : (
               <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead className="w-[28%]">From</TableHead>
-                    <TableHead className="w-[14%]">Edge</TableHead>
+                    <TableHead className="w-[14%]">Synapse</TableHead>
                     <TableHead className="w-[28%]">To</TableHead>
                     <TableHead className="w-[12%]">Source</TableHead>
                     <TableHead className="w-[18%] text-right">Detail</TableHead>

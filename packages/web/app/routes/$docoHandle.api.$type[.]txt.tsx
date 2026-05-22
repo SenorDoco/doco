@@ -6,13 +6,13 @@ import { normalizeDocoParams } from "~/lib/doco-access.server";
  *
  *   GET /<doco-handle>/api/<type>.txt
  *
- * `type` is one of: decisions, intents, articles, settings.
+ * `type` is one of: decisions, intents, primitives, settings.
  * Returns plain-prose spec for the corresponding .json endpoint.
  *
- * Note: articles (`guidance_primitive`, `neuron_authoring_primitive`) are
- * NOT nodes and do not have per-type capture routes. The dedicated
- * articles endpoint lives at /<handle>/api/articles.json and is
- * documented under `articles` here.
+ * Note: primitives (`guidance_primitive`, `neuron_authoring_primitive`)
+ * are NOT neurons and do not have per-type capture routes. The dedicated
+ * primitives endpoint lives at /<handle>/api/primitives.json and is
+ * documented under `primitives` here.
  */
 
 type SpecRenderer = (baseUrl: string, handle: string) => string;
@@ -145,21 +145,21 @@ RELATED
   GET  ${baseUrl}/${handle}/status.json          freshness + counts
 `,
 
-  articles: (baseUrl, handle) => `# Doco — Articles (constitution metadata)
+  primitives: (baseUrl, handle) => `# Doco — Primitives (constitution metadata)
 
-Articles are **not nodes**. They are constitution metadata that
+Primitives are **not neurons**. They are constitution metadata that
 governs how a Doco is authored, and they live on a dedicated
-endpoint — separate from the generic node-capture API.
+endpoint — separate from the generic neuron-capture API.
 
 Two kinds:
-  - guidance       contributor-facing prose; not engine-evaluated.
-  - node_authoring engine-evaluated capture-time checks
-                   (deterministic predicate or probabilistic spec).
+  - guidance         contributor-facing prose; not engine-evaluated.
+  - neuron_authoring engine-evaluated capture-time checks
+                     (deterministic predicate or probabilistic spec).
 
 ENDPOINT (list)
-  GET ${baseUrl}/${handle}/api/articles.json
+  GET ${baseUrl}/${handle}/api/primitives.json
 
-  Returns every article in the Doco, both kinds, with an
+  Returns every primitive in the Doco, both kinds, with a
   \`primitive_kind\` discriminator:
 
   {
@@ -167,12 +167,11 @@ ENDPOINT (list)
     "doco_handle": "<handle>",
     "count": <int>,
     "guidance_count": <int>,
-    "node_authoring_count": <int>,
+    "neuron_authoring_count": <int>,
     "items": [
       {
         "primitive_kind": "guidance",
-        "entity_type": "guidance_primitive",
-        "id": "guidance_article_<ULID>",
+        "id": "guidance_primitive_<ULID>",
         "summary": "...",
         "lifecycle": "active",
         "body_md": "...",
@@ -184,7 +183,7 @@ ENDPOINT (list)
   }
 
 ENDPOINT (capture)
-  POST ${baseUrl}/${handle}/api/articles.json
+  POST ${baseUrl}/${handle}/api/primitives.json
   Content-Type: application/json
 
   Body MUST include \`primitive_kind\` to disambiguate; remaining
@@ -192,14 +191,14 @@ ENDPOINT (capture)
 
 BODY — primitive_kind = "guidance"
   primitive_kind          required   "guidance"
-  summary               required   one-line article summary
-  body_md               optional   markdown article body
+  summary               required   one-line primitive summary
+  body_md               optional   markdown primitive body
   authored_by_username  optional   host-level username; auth fills this
   lifecycle             optional   default "active"
 
-BODY — primitive_kind = "node_authoring"
-  primitive_kind          required   "node_authoring"
-  summary               required   one-line article summary
+BODY — primitive_kind = "neuron_authoring"
+  primitive_kind          required   "neuron_authoring"
+  summary               required   one-line primitive summary
   evaluation_kind       required   "deterministic" | "probabilistic"
   predicate             required*  deterministic AuthoringPredicate object
                                   or JSON string. Must not have
@@ -208,34 +207,34 @@ BODY — primitive_kind = "node_authoring"
                                   {kind:"probabilistic", spec}
   fires_when_neuron_lifecycle optional ["active", ...]
   on_violation          optional   "block" | "warn" | "log"; default "block"
-  body_md               optional   markdown article body
+  body_md               optional   markdown primitive body
   authored_by_username  optional   host-level username; auth fills this
   lifecycle             optional   default "active"
 
 SUCCESS RESPONSE (HTTP 201)
   {
     "ok": true,
-    "id": "guidance_article_<ULID>" | "node_authoring_article_<ULID>",
-    "footer_lines": ["[🔮 Doco] ✍️ ... Article added: ..."]
+    "id": "guidance_primitive_<ULID>" | "neuron_authoring_primitive_<ULID>",
+    "footer_lines": ["[🔮 Doco] ✍️ ... Primitive added: ..."]
   }
 
 EXAMPLE — guidance
   curl -sS -X POST \\
     -H "Content-Type: application/json" \\
     -H "Authorization: Bearer $DOCO_ACCESS" \\
-    ${baseUrl}/${handle}/api/articles.json \\
+    ${baseUrl}/${handle}/api/primitives.json \\
     -d '{
       "primitive_kind": "guidance",
       "summary": "Prefer concrete examples over abstract prose."
     }'
 
-EXAMPLE — node_authoring (deterministic)
+EXAMPLE — neuron_authoring (deterministic)
   curl -sS -X POST \\
     -H "Content-Type: application/json" \\
     -H "Authorization: Bearer $DOCO_ACCESS" \\
-    ${baseUrl}/${handle}/api/articles.json \\
+    ${baseUrl}/${handle}/api/primitives.json \\
     -d '{
-      "primitive_kind": "node_authoring",
+      "primitive_kind": "neuron_authoring",
       "summary": "Every Decision cites at least one Intent.",
       "evaluation_kind": "deterministic",
       "predicate": {
@@ -246,29 +245,29 @@ EXAMPLE — node_authoring (deterministic)
       }
     }'
 
-EXAMPLE — node_authoring (probabilistic)
+EXAMPLE — neuron_authoring (probabilistic)
   curl -sS -X POST \\
     -H "Content-Type: application/json" \\
     -H "Authorization: Bearer $DOCO_ACCESS" \\
-    ${baseUrl}/${handle}/api/articles.json \\
+    ${baseUrl}/${handle}/api/primitives.json \\
     -d '{
-      "primitive_kind": "node_authoring",
+      "primitive_kind": "neuron_authoring",
       "summary": "Decision rationale names the rejected alternatives.",
       "evaluation_kind": "probabilistic",
       "spec": "Pass when the Decision explains at least one alternative and why it was rejected."
     }'
 
-UPDATE A SPECIFIC ARTICLE
+UPDATE A SPECIFIC PRIMITIVE
   PATCH ${baseUrl}/${handle}/api/guidance_primitives/<id>.json
   PATCH ${baseUrl}/${handle}/api/neuron_authoring_primitives/<id>.json
   Content-Type: application/json
 
-  Per-id endpoints remain available for editing existing articles.
+  Per-id endpoints remain available for editing existing primitives.
   Body shape mirrors the relevant capture draft.
 
 RELATED
   GET  ${baseUrl}/${handle}/constitution           HTML view of the constitution
-  GET  ${baseUrl}/api/v1/agent-bootstrap.json      bootstrap payload includes articles
+  GET  ${baseUrl}/api/v1/agent-bootstrap.json      bootstrap payload includes primitives
 `,
 
   settings: (baseUrl, handle) => `# Doco — Settings (read + patch)

@@ -1,5 +1,5 @@
 // /orgs/:orgHandle/constitution/guidance/new — standalone form for
-// authoring an org-level guidance article. Applies to every Doco the
+// authoring an org-level guidance primitive. Applies to every Doco the
 // org owns.
 
 import { getOrgRole, withClient } from "@doco/db";
@@ -54,7 +54,7 @@ export async function loader({
   }
   const role = await getOrgRole(org.id, me.id);
   if (role !== "owner") {
-    throw new Response("Only org owners can add articles.", { status: 403 });
+    throw new Response("Only org owners can add primitives.", { status: 403 });
   }
   return { org, me, host: await loadHostConfig() };
 }
@@ -76,12 +76,12 @@ export async function action({
   }
   const role = await getOrgRole(org.id, me.id);
   if (role !== "owner") {
-    throw new Response("Only org owners can add articles.", { status: 403 });
+    throw new Response("Only org owners can add primitives.", { status: 403 });
   }
   const form = await request.formData();
   const body_md = String(form.get("body_md") ?? "").trim();
   const summary = deriveArticleSummary(body_md);
-  if (!summary) return Response.json({ error: "Article is required." }, { status: 400 });
+  if (!summary) return Response.json({ error: "Primitive is required." }, { status: 400 });
   const result = await captureOrgGuidanceArticle(org.id, {
     summary,
     body_md,
@@ -93,10 +93,10 @@ export async function action({
 }
 
 export function meta({ params }: { params: { orgHandle: string } }) {
-  return [{ title: `New guidance article · ${params.orgHandle} · Doco` }];
+  return [{ title: `New guidance primitive · ${params.orgHandle} · Doco` }];
 }
 
-export default function NewOrgGuidanceArticle({
+export default function NewOrgGuidancePrimitive({
   loaderData,
 }: {
   loaderData: Awaited<ReturnType<typeof loader>>;
@@ -112,12 +112,12 @@ export default function NewOrgGuidanceArticle({
             items={orgBreadcrumb({
               orgSlug: org.slug,
               parent: { label: "Constitution", to: `/orgs/${org.slug}/constitution` },
-              pageLabel: "New guidance article",
+              pageLabel: "New guidance primitive",
             })}
             className="mb-1"
           />
           <h1 className="text-2xl font-semibold">
-            New guidance article · <span className="font-mono">{org.slug}</span>
+            New guidance primitive · <span className="font-mono">{org.slug}</span>
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
             A plain-English rule you want everyone working on this org's docos to follow. Nothing
@@ -136,7 +136,7 @@ export default function NewOrgGuidanceArticle({
                 name="body_md"
                 required
                 rows={12}
-                placeholder="Write the article."
+                placeholder="Write the primitive."
                 className="block w-full rounded-md border border-border bg-input px-3 py-2 text-sm"
               />
               <div className="flex items-center gap-3">
@@ -144,7 +144,7 @@ export default function NewOrgGuidanceArticle({
                   type="submit"
                   className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90"
                 >
-                  Add guidance article
+                  Add guidance primitive
                 </button>
                 <Link
                   to={`/orgs/${org.slug}/constitution`}

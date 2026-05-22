@@ -1,14 +1,14 @@
-// Per-Doco edge detail at /<handle>/synapses/<edge-key>.
+// Per-Doco synapse detail at /<handle>/synapses/<synapse-key>.
 //
-// `edgeKey` encodes the composite PK as `<synapse_type>__<from_id>__<to_id>`.
-// Underscore-double is rare in any of the prefixes — node ids are
+// `synapseKey` encodes the composite PK as `<synapse_type>__<from_id>__<to_id>`.
+// Underscore-double is rare in any of the prefixes — neuron ids are
 // `<type>_<ULID>`, synapse_type is a single lowercase word with no double
 // underscore, and the type prefix never contains an underscore-pair
 // either — so the simple split-on-`__` is unambiguous.
 //
-// Renders the two connected nodes via EntityGraph (the same mini-graph
-// component the entity detail page uses) and surfaces the metadata an
-// edge carries: type, attribution, and props blob if present.
+// Renders the two connected neurons via EntityGraph (the same mini-graph
+// component the entity detail page uses) and surfaces the metadata a
+// synapse carries: type, attribution, and props blob if present.
 
 import { withClient } from "@doco/db";
 import { Link } from "react-router";
@@ -20,7 +20,7 @@ import { loadDocoRouteForRead } from "~/lib/doco-access.server";
 import { loadHostConfig } from "~/lib/host.server";
 import { getCurrentPrincipal } from "~/lib/session.server";
 
-interface EdgeRow {
+interface SynapseRow {
   from_id: string;
   from_neuron_type: string;
   to_id: string;
@@ -30,17 +30,17 @@ interface EdgeRow {
   synapse_props_json: Record<string, unknown> | null;
 }
 
-interface NodeLabel {
+interface NeuronLabel {
   id: string;
   summary: string | null;
   lifecycle: string | null;
   created_at: string | null;
 }
 
-function parseEdgeKey(
-  edgeKey: string,
+function parseSynapseKey(
+  synapseKey: string,
 ): { synapse_type: string; from_id: string; to_id: string } | null {
-  const parts = edgeKey.split("__");
+  const parts = synapseKey.split("__");
   if (parts.length !== 3) return null;
   const [synapse_type, from_id, to_id] = parts as [string, string, string];
   if (!synapse_type || !from_id || !to_id) return null;
@@ -51,29 +51,29 @@ export async function loader({
   params,
   request,
 }: {
-  params: { docoHandle: string; edgeKey: string };
+  params: { docoHandle: string; synapseKey: string };
   request: Request;
 }) {
-  const parsed = parseEdgeKey(params.edgeKey);
+  const parsed = parseSynapseKey(params.synapseKey);
   if (!parsed) {
-    throw new Response(`Bad edge key: ${params.edgeKey}`, { status: 404 });
+    throw new Response(`Bad synapse key: ${params.synapseKey}`, { status: 404 });
   }
   const ctx = await loadDocoRouteForRead(request, params);
   const { handle, ownerSlug } = ctx;
 
   return withClient(async (c) => {
-    const edgeQuery = await c.query<EdgeRow>(
+    const synapseQuery = await c.query<SynapseRow>(
       `SELECT from_id, from_neuron_type, to_id, to_neuron_type, synapse_type, attribution, synapse_props_json
          FROM synapses
         WHERE doco_id = $1 AND synapse_type = $2 AND from_id = $3 AND to_id = $4`,
       [ctx.meta.docoId, parsed.synapse_type, parsed.from_id, parsed.to_id],
     );
-    const edge = edgeQuery.rows[0];
-    if (!edge) {
-      throw new Response("Edge not found", { status: 404 });
+    const synapse = synapseQuery.rows[0];
+    if (!synapse) {
+      throw new Response("Synapse not found", { status: 404 });
     }
     const labelRows = (
-      await c.query<NodeLabel>(
+      await c.query<NeuronLabel>(
         `WITH labels AS (
            SELECT id, summary, lifecycle, created_at FROM decisions             WHERE doco_id = $1
            UNION ALL SELECT id, summary, lifecycle, created_at FROM intents                  WHERE doco_id = $1
@@ -87,14 +87,14 @@ export async function loader({
            UNION ALL SELECT id, summary, lifecycle, created_at FROM reference_entities       WHERE doco_id = $1
          )
          SELECT id, summary, lifecycle, created_at FROM labels WHERE id = ANY($2)`,
-        [ctx.meta.docoId, [edge.from_id, edge.to_id]],
+        [ctx.meta.docoId, [synapse.from_id, synapse.to_id]],
       )
     ).rows;
     const byId = new Map(labelRows.map((r) => [r.id, r] as const));
     return {
-      edge,
-      from_label: byId.get(edge.from_id) ?? null,
-      to_label: byId.get(edge.to_id) ?? null,
+      synapse,
+      from_label: byId.get(synapse.from_id) ?? null,
+      to_label: byId.get(synapse.to_id) ?? null,
       handle,
       ownerSlug,
       host: await loadHostConfig(),
@@ -104,22 +104,22 @@ export async function loader({
 }
 
 export function meta({ data }: { data: Awaited<ReturnType<typeof loader>> | undefined }) {
-  if (!data) return [{ title: "Edge · Doco" }];
-  return [{ title: `${data.edge.synapse_type} · ${data.handle} · Doco` }];
+  if (!data) return [{ title: "Synapse · Doco" }];
+  return [{ title: `${data.synapse.synapse_type} · ${data.handle} · Doco` }];
 }
 
-export default function EdgeDetail({
+export default function SynapseDetail({
   loaderData,
 }: {
   loaderData: Awaited<ReturnType<typeof loader>>;
 }) {
-  const { edge, from_label, to_label, handle, ownerSlug, me } = loaderData;
+  const { synapse, from_label, to_label, handle, ownerSlug, me } = loaderData;
 
   const nodes: GraphNode[] = [
     {
-      id: edge.from_id,
-      entity_type: edge.from_neuron_type,
-      summary: from_label?.summary ?? edge.from_id,
+      id: synapse.from_id,
+      entity_type: synapse.from_neuron_type,
+      summary: from_label?.summary ?? synapse.from_id,
       name: null,
       lifecycle: from_label?.lifecycle ?? "active",
       created_at: from_label?.created_at ?? null,
@@ -128,9 +128,9 @@ export default function EdgeDetail({
       is_center: true,
     },
     {
-      id: edge.to_id,
-      entity_type: edge.to_neuron_type,
-      summary: to_label?.summary ?? edge.to_id,
+      id: synapse.to_id,
+      entity_type: synapse.to_neuron_type,
+      summary: to_label?.summary ?? synapse.to_id,
       name: null,
       lifecycle: to_label?.lifecycle ?? "active",
       created_at: to_label?.created_at ?? null,
@@ -140,15 +140,15 @@ export default function EdgeDetail({
   ];
   const links: GraphLink[] = [
     {
-      source: edge.from_id,
-      target: edge.to_id,
-      synapse_type: edge.synapse_type,
-      attribution: edge.attribution,
+      source: synapse.from_id,
+      target: synapse.to_id,
+      synapse_type: synapse.synapse_type,
+      attribution: synapse.attribution,
     },
   ];
 
-  const propsEntries: [string, unknown][] = edge.synapse_props_json
-    ? Object.entries(edge.synapse_props_json)
+  const propsEntries: [string, unknown][] = synapse.synapse_props_json
+    ? Object.entries(synapse.synapse_props_json)
     : [];
 
   return (
@@ -160,28 +160,28 @@ export default function EdgeDetail({
             ownerSlug,
             handle,
             parent: { label: "Synapses", to: `/${handle}/synapses` },
-            pageLabel: edge.synapse_type,
+            pageLabel: synapse.synapse_type,
           })}
         />
         <header className="flex flex-wrap items-baseline justify-between gap-3">
           <h1 className="text-2xl font-semibold">
             <Link
-              to={`/${handle}/${edge.from_neuron_type}/${edge.from_id}`}
+              to={`/${handle}/${synapse.from_neuron_type}/${synapse.from_id}`}
               className="text-primary hover:underline"
             >
-              {from_label?.summary ?? edge.from_id}
+              {from_label?.summary ?? synapse.from_id}
             </Link>{" "}
             <code className="rounded bg-input px-1.5 py-0.5 font-mono text-base">
-              {edge.synapse_type}
+              {synapse.synapse_type}
             </code>{" "}
             <Link
-              to={`/${handle}/${edge.to_neuron_type}/${edge.to_id}`}
+              to={`/${handle}/${synapse.to_neuron_type}/${synapse.to_id}`}
               className="text-primary hover:underline"
             >
-              {to_label?.summary ?? edge.to_id}
+              {to_label?.summary ?? synapse.to_id}
             </Link>
           </h1>
-          <div className="text-xs text-muted-foreground">{edge.attribution}</div>
+          <div className="text-xs text-muted-foreground">{synapse.attribution}</div>
         </header>
 
         <Card>
@@ -191,7 +191,7 @@ export default function EdgeDetail({
           <CardContent>
             <div className="h-[420px] w-full">
               <EntityGraph
-                centerId={edge.from_id}
+                centerId={synapse.from_id}
                 nodes={nodes}
                 links={links}
                 hrefFor={(id, nt) => `/${handle}/${nt}/${id}`}
@@ -211,26 +211,26 @@ export default function EdgeDetail({
             <dl className="grid grid-cols-[160px_1fr] gap-x-4 gap-y-1 px-5 py-3 text-xs">
               <dt className="text-muted-foreground">synapse_type</dt>
               <dd>
-                <code className="font-mono">{edge.synapse_type}</code>
+                <code className="font-mono">{synapse.synapse_type}</code>
               </dd>
               <dt className="text-muted-foreground">from</dt>
               <dd>
-                <code className="font-mono text-[11px]">{edge.from_id}</code>{" "}
-                <span className="text-muted-foreground">({edge.from_neuron_type})</span>
+                <code className="font-mono text-[11px]">{synapse.from_id}</code>{" "}
+                <span className="text-muted-foreground">({synapse.from_neuron_type})</span>
               </dd>
               <dt className="text-muted-foreground">to</dt>
               <dd>
-                <code className="font-mono text-[11px]">{edge.to_id}</code>{" "}
-                <span className="text-muted-foreground">({edge.to_neuron_type})</span>
+                <code className="font-mono text-[11px]">{synapse.to_id}</code>{" "}
+                <span className="text-muted-foreground">({synapse.to_neuron_type})</span>
               </dd>
               <dt className="text-muted-foreground">attribution</dt>
-              <dd>{edge.attribution}</dd>
+              <dd>{synapse.attribution}</dd>
               {propsEntries.length > 0 ? (
                 <>
                   <dt className="text-muted-foreground">props</dt>
                   <dd>
                     <pre className="overflow-auto rounded bg-input px-2 py-1.5 font-mono text-[11px]">
-                      {JSON.stringify(edge.synapse_props_json, null, 2)}
+                      {JSON.stringify(synapse.synapse_props_json, null, 2)}
                     </pre>
                   </dd>
                 </>
