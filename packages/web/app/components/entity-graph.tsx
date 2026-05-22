@@ -13,6 +13,11 @@ import dagre from "@dagrejs/dagre";
 import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { NeuronTypeIcon } from "~/components/neuron-type-icon";
+import {
+  type GraphReferenceItem,
+  clearGraphReferences,
+  publishGraphReferences,
+} from "~/lib/graph-references";
 import { lifecycleColor } from "~/lib/neuron-colors";
 import { useNewNodeIds } from "~/lib/use-new-neuron-ids";
 import "@xyflow/react/dist/style.css";
@@ -126,6 +131,11 @@ interface FlowViewport {
   zoom: number;
 }
 
+interface GraphSize {
+  width: number;
+  height: number;
+}
+
 // Canonical Lifecycle (@doco/shared) — four stages, in progression
 // order.
 const LIFECYCLE_ORDER = ["drafted", "proposed", "active", "retired"];
@@ -216,6 +226,8 @@ const GRID_MIN_COLUMNS = 2;
 const GRID_MAX_COLUMNS = 18;
 const GRAPH_MIN_ZOOM = 0.02;
 const GRAPH_FIT_VIEW_OPTIONS = { padding: 0.05, maxZoom: 1.6 };
+const GRAPH_REFERENCE_ZOOM = 0.85;
+const MAX_GRAPH_REFERENCES = 120;
 const CLUSTER_CHILD_RADIUS = 190;
 const GRID_TYPE_ORDER = new Map(
   [
@@ -256,6 +268,30 @@ function nodeRenderHeight(node: GraphNode): number {
   const title = node.name ?? node.summary ?? "";
   const summary = node.summary ?? "";
   return estimateCardHeight(summary, title !== summary);
+}
+
+function screenPosition(position: { x: number; y: number }, viewport: FlowViewport) {
+  return {
+    x: position.x * viewport.zoom + viewport.x,
+    y: position.y * viewport.zoom + viewport.y,
+  };
+}
+
+function isNodeVisibleInViewport(
+  position: { x: number; y: number },
+  viewport: FlowViewport,
+  size: GraphSize,
+  height: number,
+): boolean {
+  const screen = screenPosition(position, viewport);
+  const scaledWidth = NODE_WIDTH * viewport.zoom;
+  const scaledHeight = height * viewport.zoom;
+  return (
+    screen.x > -scaledWidth &&
+    screen.y > -scaledHeight &&
+    screen.x < size.width + scaledWidth &&
+    screen.y < size.height + scaledHeight
+  );
 }
 
 function rankedGridLayout(nodes: GraphNode[]): GraphLayout {
@@ -521,10 +557,12 @@ interface EntityNodeCardProps {
   background: string;
   cardHeight: number;
   showPersonalizedRank: boolean;
+  referenceNumber?: number;
   isNew?: boolean;
 }
 
 function EntityNodeCard({
+  id,
   href,
   entityType,
   title,
@@ -539,6 +577,7 @@ function EntityNodeCard({
   background,
   cardHeight,
   showPersonalizedRank,
+  referenceNumber,
   isNew,
 }: EntityNodeCardProps) {
   const hasDistinctTitle = title !== summary;
@@ -555,6 +594,12 @@ function EntityNodeCard({
       className={`nodrag nopan relative flex cursor-pointer flex-col gap-1 overflow-visible py-3 pl-4 pr-10 text-left text-inherit no-underline shadow-sm transition-shadow duration-150 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring${isNew ? " doco-new-node-glow" : ""}`}
       data-entity-node-card={entityType}
       data-entity-node-new={isNew ? "true" : undefined}
+      data-graph-reference-number={referenceNumber ?? undefined}
+      data-neuron-href={href}
+      data-neuron-id={id}
+      data-neuron-label={title}
+      data-neuron-lifecycle={lifecycle}
+      data-neuron-type={entityType}
       draggable={false}
       onClick={(event) => event.stopPropagation()}
       style={{
@@ -566,6 +611,15 @@ function EntityNodeCard({
         boxShadow: `inset -${NODE_STRIPE_WIDTH}px 0 0 ${accentColor}`,
       }}
     >
+      {referenceNumber ? (
+        <span
+          aria-label={`Graph reference ${referenceNumber}: ${title}`}
+          className="pointer-events-none absolute -left-3 -top-3 z-30 flex h-6 min-w-6 items-center justify-center rounded-full bg-primary px-1.5 text-[11px] font-bold leading-none text-primary-foreground shadow-sm ring-2 ring-card"
+          title={`Graph reference ${referenceNumber}`}
+        >
+          {referenceNumber}
+        </span>
+      ) : null}
       <div
         aria-hidden="true"
         className="pointer-events-none absolute right-0 top-0 z-20 flex flex-col items-center pt-2 text-white"
@@ -648,6 +702,7 @@ export function EntityGraph({
   fillHeight = false,
 }: EntityGraphProps) {
   const navigate = useNavigate();
+  const graphReferenceIdRef = useRef(`entity-${Math.random().toString(36).slice(2)}`);
 
   const allLifecycles = useMemo(() => {
     const set = new Set<string>(["active"]);
@@ -726,7 +781,7 @@ export function EntityGraph({
   // biome-ignore lint/suspicious/noExplicitAny: dynamic-import escape hatch
   const [Flow, setFlow] = useState<any>(null);
   const [viewport, setViewport] = useState<FlowViewport>({ x: 0, y: 0, zoom: 1 });
-  const [graphHeight, setGraphHeight] = useState(0);
+  const [graphSize, setGraphSize] = useState<GraphSize>({ width: 1, height: 1 });
   const updateViewport = (next: FlowViewport) => {
     setViewport((prev) =>
       prev.x === next.x && prev.y === next.y && prev.zoom === next.zoom ? prev : next,
@@ -754,7 +809,11 @@ export function EntityGraph({
   useEffect(() => {
     const el = graphRef.current;
     if (!el) return;
-    const update = () => setGraphHeight(el.clientHeight);
+    const update = () =>
+      setGraphSize({
+        width: Math.max(1, el.clientWidth),
+        height: Math.max(1, el.clientHeight),
+      });
     update();
     const obs = new ResizeObserver(update);
     obs.observe(el);
@@ -814,6 +873,58 @@ export function EntityGraph({
       obs?.disconnect();
     };
   }, [Flow]);
+
+  const graphReferences = useMemo<GraphReferenceItem[]>(() => {
+    if (viewport.zoom < GRAPH_REFERENCE_ZOOM) return [];
+    return visible.nodes
+      .flatMap((node) => {
+        const position = positions.get(node.id);
+        if (!position) return [];
+        const cardHeight = nodeRenderHeight(node);
+        if (!isNodeVisibleInViewport(position, viewport, graphSize, cardHeight)) return [];
+        const href =
+          node.href ??
+          (hrefFor ? hrefFor(node.id, node.entity_type) : `/${node.entity_type}/${node.id}`);
+        return [
+          {
+            node,
+            position: screenPosition(position, viewport),
+            href,
+          },
+        ];
+      })
+      .sort((a, b) => {
+        const rowDiff = a.position.y - b.position.y;
+        if (Math.abs(rowDiff) > NODE_HEIGHT * viewport.zoom) return rowDiff;
+        const colDiff = a.position.x - b.position.x;
+        if (colDiff !== 0) return colDiff;
+        return a.node.id.localeCompare(b.node.id);
+      })
+      .slice(0, MAX_GRAPH_REFERENCES)
+      .map((entry, index) => ({
+        number: index + 1,
+        id: entry.node.id,
+        entity_type: entry.node.entity_type,
+        label: entry.node.name ?? entry.node.summary ?? entry.node.id,
+        lifecycle: entry.node.lifecycle ?? "active",
+        href: entry.href,
+      }));
+  }, [visible.nodes, positions, viewport, graphSize, hrefFor]);
+
+  const referenceNumberByNodeId = useMemo(
+    () => new Map(graphReferences.map((reference) => [reference.id, reference.number])),
+    [graphReferences],
+  );
+
+  useEffect(() => {
+    const graphId = graphReferenceIdRef.current;
+    publishGraphReferences(graphId, "entity", graphReferences);
+  }, [graphReferences]);
+
+  useEffect(() => {
+    const graphId = graphReferenceIdRef.current;
+    return () => clearGraphReferences(graphId);
+  }, []);
 
   const flowNodes = useMemo(() => {
     const laneNodes = layout.lanes.map((lane) => ({
@@ -877,6 +988,7 @@ export function EntityGraph({
               accentColor={accentColor}
               background={bg}
               showPersonalizedRank={showPersonalizedRank}
+              referenceNumber={referenceNumberByNodeId.get(n.id)}
               isNew={newNodeIds.has(n.id)}
             />
           ),
@@ -895,10 +1007,18 @@ export function EntityGraph({
     });
 
     return [...laneNodes, ...entityNodes];
-  }, [visible.nodes, layout.lanes, positions, hrefFor, showPersonalizedRank, newNodeIds]);
+  }, [
+    visible.nodes,
+    layout.lanes,
+    positions,
+    hrefFor,
+    showPersonalizedRank,
+    referenceNumberByNodeId,
+    newNodeIds,
+  ]);
 
   const laneLabelRails = useMemo(() => {
-    const height = graphHeight || 480;
+    const height = graphSize.height || 480;
     return layout.lanes.map((lane) => {
       const laneTop = lane.y * viewport.zoom + viewport.y;
       const laneBottom = (lane.y + lane.height) * viewport.zoom + viewport.y;
@@ -930,7 +1050,7 @@ export function EntityGraph({
         </div>
       );
     });
-  }, [layout.lanes, viewport, graphHeight]);
+  }, [layout.lanes, viewport, graphSize.height]);
 
   const flowEdges = useMemo(
     () =>

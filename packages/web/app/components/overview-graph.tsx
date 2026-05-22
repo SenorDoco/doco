@@ -2,6 +2,11 @@ import { Handle, Position } from "@xyflow/react";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { NeuronTypeIcon } from "~/components/neuron-type-icon";
+import {
+  type GraphReferenceItem,
+  clearGraphReferences,
+  publishGraphReferences,
+} from "~/lib/graph-references";
 import { lifecycleColor } from "~/lib/neuron-colors";
 import { useNewNodeIds } from "~/lib/use-new-neuron-ids";
 import "@xyflow/react/dist/style.css";
@@ -69,6 +74,7 @@ interface OverviewNodeData {
   node: OverviewGraphNode;
   detail?: OverviewNodeDetail;
   showDetail: boolean;
+  referenceNumber?: number;
   isNew: boolean;
 }
 
@@ -99,6 +105,7 @@ const MAX_DETAIL_FETCH = 80;
 const GRAPH_MIN_ZOOM = 0.03;
 const GRAPH_MAX_ZOOM = 2.5;
 const GRAPH_FIT_VIEW_OPTIONS = { padding: 0.12, maxZoom: 1.2 };
+const MAX_GRAPH_REFERENCES = 120;
 
 function lifecycleLabel(lifecycle: string): string {
   return lifecycle.replaceAll("_", " ");
@@ -169,6 +176,13 @@ function isVisibleInViewport(
   );
 }
 
+function screenPosition(position: Point, viewport: FlowViewport): Point {
+  return {
+    x: position.x * viewport.zoom + viewport.x,
+    y: position.y * viewport.zoom + viewport.y,
+  };
+}
+
 const HIDDEN_HANDLE_STYLE = {
   width: 1,
   height: 1,
@@ -188,38 +202,55 @@ function OverviewFlowNode({ data }: { data: OverviewNodeData }) {
   const showDetail = data.showDetail && Boolean(detail);
 
   return (
-    <div
-      className={`overview-graph-node nodrag nopan flex h-full w-full items-center gap-1.5 overflow-hidden rounded-[4px] border bg-card px-2 text-left shadow-sm${data.isNew ? " doco-new-node-glow" : ""}`}
-      data-overview-node-new={data.isNew ? "true" : undefined}
-      style={{
-        borderColor: data.node.is_center ? "var(--color-foreground)" : "var(--color-border)",
-        borderLeft: `6px solid ${lifecycleColor(lifecycle)}`,
-      }}
-      title={showDetail ? title : `${data.node.entity_type} · ${lifecycle}`}
-    >
-      <Handle
-        type="target"
-        position={Position.Left}
-        style={HIDDEN_HANDLE_STYLE}
-        isConnectable={false}
-      />
-      <NeuronTypeIcon entityType={data.node.entity_type} className="!h-3.5 !w-3.5 shrink-0" />
-      {showDetail ? (
-        <span className="min-w-0 flex-1 truncate font-mono text-[10px] font-semibold leading-none text-foreground">
-          {title}
+    <div className="relative h-full w-full overflow-visible">
+      <div
+        className={`overview-graph-node nodrag nopan flex h-full w-full items-center gap-1.5 overflow-hidden rounded-[4px] border bg-card px-2 text-left shadow-sm${data.isNew ? " doco-new-node-glow" : ""}`}
+        data-graph-reference-number={data.referenceNumber ?? undefined}
+        data-neuron-href={detail?.href ?? data.node.href ?? undefined}
+        data-neuron-id={data.node.id}
+        data-neuron-label={showDetail ? title : undefined}
+        data-neuron-lifecycle={lifecycle}
+        data-neuron-type={data.node.entity_type}
+        data-overview-node-new={data.isNew ? "true" : undefined}
+        style={{
+          borderColor: data.node.is_center ? "var(--color-foreground)" : "var(--color-border)",
+          borderLeft: `6px solid ${lifecycleColor(lifecycle)}`,
+        }}
+        title={showDetail ? title : `${data.node.entity_type} · ${lifecycle}`}
+      >
+        <Handle
+          type="target"
+          position={Position.Left}
+          style={HIDDEN_HANDLE_STYLE}
+          isConnectable={false}
+        />
+        <NeuronTypeIcon entityType={data.node.entity_type} className="!h-3.5 !w-3.5 shrink-0" />
+        {showDetail ? (
+          <span className="min-w-0 flex-1 truncate font-mono text-[10px] font-semibold leading-none text-foreground">
+            {title}
+          </span>
+        ) : (
+          <span className="min-w-0 flex-1 truncate text-[9px] font-semibold uppercase leading-none text-muted-foreground">
+            {data.node.entity_type}
+          </span>
+        )}
+        {showDetail && title !== subtitle ? <span className="sr-only">{subtitle}</span> : null}
+        <Handle
+          type="source"
+          position={Position.Right}
+          style={HIDDEN_HANDLE_STYLE}
+          isConnectable={false}
+        />
+      </div>
+      {data.referenceNumber ? (
+        <span
+          aria-label={`Graph reference ${data.referenceNumber}: ${title}`}
+          className="pointer-events-none absolute -left-2 -top-2 z-30 flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold leading-none text-primary-foreground shadow-sm ring-2 ring-card"
+          title={`Graph reference ${data.referenceNumber}`}
+        >
+          {data.referenceNumber}
         </span>
-      ) : (
-        <span className="min-w-0 flex-1 truncate text-[9px] font-semibold uppercase leading-none text-muted-foreground">
-          {data.node.entity_type}
-        </span>
-      )}
-      {showDetail && title !== subtitle ? <span className="sr-only">{subtitle}</span> : null}
-      <Handle
-        type="source"
-        position={Position.Right}
-        style={HIDDEN_HANDLE_STYLE}
-        isConnectable={false}
-      />
+      ) : null}
     </div>
   );
 }
@@ -236,6 +267,7 @@ export function OverviewGraph({
 }: OverviewGraphProps) {
   const navigate = useNavigate();
   const graphRef = useRef<HTMLDivElement>(null);
+  const graphReferenceIdRef = useRef(`overview-${Math.random().toString(36).slice(2)}`);
   const hasFitRef = useRef(false);
   const [size, setSize] = useState({ width: 1, height: 1 });
   const [viewport, setViewport] = useState<FlowViewport>({ x: 0, y: 0, zoom: 1 });
@@ -341,6 +373,55 @@ export function OverviewGraph({
       .filter((id) => !details.has(id));
   }, [visibleNodes, positions, viewport, size, details]);
 
+  const graphReferences = useMemo<GraphReferenceItem[]>(() => {
+    if (viewport.zoom < DETAIL_ZOOM) return [];
+    return visibleNodes
+      .flatMap((node) => {
+        const detail = details.get(node.id);
+        const position = positions.get(node.id);
+        if (!detail || !position || !isVisibleInViewport(position, viewport, size)) return [];
+        return [
+          {
+            node,
+            detail,
+            position: screenPosition(position, viewport),
+            label: detail.name ?? detail.summary ?? node.name ?? node.id,
+          },
+        ];
+      })
+      .sort((a, b) => {
+        const rowDiff = a.position.y - b.position.y;
+        if (Math.abs(rowDiff) > OVERVIEW_NODE_HEIGHT * viewport.zoom) return rowDiff;
+        const colDiff = a.position.x - b.position.x;
+        if (colDiff !== 0) return colDiff;
+        return a.node.id.localeCompare(b.node.id);
+      })
+      .slice(0, MAX_GRAPH_REFERENCES)
+      .map((entry, index) => ({
+        number: index + 1,
+        id: entry.node.id,
+        entity_type: entry.node.entity_type,
+        label: entry.label,
+        lifecycle: entry.node.lifecycle,
+        href: entry.detail.href ?? entry.node.href ?? null,
+      }));
+  }, [visibleNodes, details, positions, viewport, size]);
+
+  const referenceNumberByNodeId = useMemo(
+    () => new Map(graphReferences.map((reference) => [reference.id, reference.number])),
+    [graphReferences],
+  );
+
+  useEffect(() => {
+    const graphId = graphReferenceIdRef.current;
+    publishGraphReferences(graphId, "overview", graphReferences);
+  }, [graphReferences]);
+
+  useEffect(() => {
+    const graphId = graphReferenceIdRef.current;
+    return () => clearGraphReferences(graphId);
+  }, []);
+
   useEffect(() => {
     if (!detailUrl || detailIds.length === 0) return;
     const timeout = window.setTimeout(async () => {
@@ -372,6 +453,7 @@ export function OverviewGraph({
             node,
             detail: details.get(node.id),
             showDetail: viewport.zoom >= DETAIL_ZOOM,
+            referenceNumber: referenceNumberByNodeId.get(node.id),
             isNew: newNodeIds.has(node.id),
           } satisfies OverviewNodeData,
           draggable: false,
@@ -386,7 +468,7 @@ export function OverviewGraph({
           },
         };
       }),
-    [visibleNodes, positions, details, viewport.zoom, newNodeIds],
+    [visibleNodes, positions, details, viewport.zoom, referenceNumberByNodeId, newNodeIds],
   );
 
   const flowEdges = useMemo(

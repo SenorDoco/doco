@@ -124,6 +124,21 @@ export interface ChatStreamContext {
   principal: CurrentPrincipal;
   currentPath: string | null;
   attachmentIds: string[];
+  graphReferences: VisibleGraphReferenceGroup[];
+}
+
+export interface VisibleGraphReference {
+  number: number;
+  id: string;
+  entity_type: string;
+  label: string;
+  lifecycle: string | null;
+  href: string | null;
+}
+
+export interface VisibleGraphReferenceGroup {
+  source: string;
+  references: VisibleGraphReference[];
 }
 
 export type ChatStreamEvent =
@@ -510,6 +525,10 @@ Doco is AI-native documentation of intent, decisions, rules, actions, logs. Neur
 - doco_api({method, path, body?}): HTTP request to the Doco host with the user's session. Path starts with /. Returns {status, ok, body}.
 - navigate({url}): SPA-navigate the user's browser. No full reload. Use after captures, when the user asks to be taken somewhere, or when a dedicated page would answer their question better than prose.
 
+## Visible graph references
+
+When the per-turn user header includes "Visible graph neuron references", the purple numbered circles currently attached to graph neurons map to those listed ids. Treat shorthand commands like "activate 5", "activeate 5", "deprecate 20", "deprecated 20", "retire 20", or "open 3" as referring to that numbered neuron. "activate" means PATCH lifecycle to "active"; "deprecate", "deprecated", "archive", and "retire" mean PATCH lifecycle to "retired"; "propose" means "proposed"; "draft" means "drafted". If the requested number is absent from the visible reference list, ask one brief clarification question instead of guessing.
+
 ## Attachments
 
 The composer accepts image (jpeg, png, gif, webp), PDF, and short text/markdown files (up to 10 MB each). The user may attach files to a turn; you'll see them inline in the message as image / document blocks. Use them as evidence when capturing neurons (drop quotes / screenshots into the body) or to answer questions about the content.
@@ -801,6 +820,24 @@ async function rowsToHistory(rows: ChatMessageRow[]): Promise<MessageParam[]> {
   return out;
 }
 
+function formatVisibleGraphReferences(groups: VisibleGraphReferenceGroup[]): string {
+  const lines: string[] = [];
+  for (const group of groups) {
+    for (const reference of group.references) {
+      const href = reference.href ? ` ${reference.href}` : "";
+      const lifecycle = reference.lifecycle ? ` lifecycle=${reference.lifecycle}` : "";
+      lines.push(
+        `${reference.number}. ${reference.entity_type} ${reference.id}${lifecycle}${href} — ${reference.label}`,
+      );
+    }
+  }
+  if (lines.length === 0) return "";
+  return [
+    "Visible graph neuron references (numbers match the purple circles on the graph):",
+    ...lines,
+  ].join("\n");
+}
+
 export async function* runAssistantTurn(args: {
   conversation: ChatConversationRow;
   userText: string;
@@ -860,7 +897,10 @@ export async function* runAssistantTurn(args: {
     turnAttachmentRefs.length > 0
       ? `\nAttachments this turn: ${turnAttachmentRefs.length}. Begin your reply with: "${ATTACHMENT_RETENTION_NOTICE}"`
       : "";
-  const turnHeader = `[Today ${todayIso}. ${pageLine}.${attachmentLine}]\n\n`;
+  const graphReferenceText = formatVisibleGraphReferences(args.ctx.graphReferences);
+  const turnHeader = `[Today ${todayIso}. ${pageLine}.${attachmentLine}]\n\n${
+    graphReferenceText ? `${graphReferenceText}\n\n` : ""
+  }`;
   const userContent: ContentBlockParam[] = [
     { type: "text", text: `${turnHeader}${args.userText}` },
     ...turnAttachmentBlocks,

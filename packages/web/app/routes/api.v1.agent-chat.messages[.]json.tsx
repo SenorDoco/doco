@@ -14,6 +14,7 @@
 
 import {
   type ChatStreamEvent,
+  type VisibleGraphReferenceGroup,
   loadOrCreateConversation,
   runAssistantTurn,
 } from "~/lib/agent-chat.server";
@@ -23,6 +24,45 @@ interface Body {
   text?: unknown;
   current_path?: unknown;
   attachment_ids?: unknown;
+  graph_references?: unknown;
+}
+
+function cleanString(value: unknown, maxLength: number): string {
+  return typeof value === "string" ? value.slice(0, maxLength) : "";
+}
+
+function parseGraphReferences(value: unknown): VisibleGraphReferenceGroup[] {
+  if (!Array.isArray(value)) return [];
+  return value.slice(0, 4).flatMap((group): VisibleGraphReferenceGroup[] => {
+    if (!group || typeof group !== "object") return [];
+    const raw = group as { source?: unknown; references?: unknown };
+    if (!Array.isArray(raw.references)) return [];
+    const references = raw.references.slice(0, 120).flatMap((item) => {
+      if (!item || typeof item !== "object") return [];
+      const candidate = item as Record<string, unknown>;
+      const number = Number(candidate.number);
+      const id = cleanString(candidate.id, 128);
+      const entityType = cleanString(candidate.entity_type, 64);
+      if (!Number.isInteger(number) || number < 1 || !id || !entityType) return [];
+      return [
+        {
+          number,
+          id,
+          entity_type: entityType,
+          label: cleanString(candidate.label, 220) || id,
+          lifecycle: cleanString(candidate.lifecycle, 40) || null,
+          href: cleanString(candidate.href, 240) || null,
+        },
+      ];
+    });
+    if (references.length === 0) return [];
+    return [
+      {
+        source: cleanString(raw.source, 40) || "graph",
+        references,
+      },
+    ];
+  });
 }
 
 export async function action({ request }: { request: Request }) {
@@ -51,6 +91,7 @@ export async function action({ request }: { request: Request }) {
     typeof parsed.current_path === "string" && parsed.current_path.length > 0
       ? parsed.current_path
       : null;
+  const graphReferences = parseGraphReferences(parsed.graph_references);
 
   const conversation = await loadOrCreateConversation(me.id);
   const cookieHeader = request.headers.get("cookie") ?? "";
@@ -66,7 +107,7 @@ export async function action({ request }: { request: Request }) {
         for await (const event of runAssistantTurn({
           conversation,
           userText: text,
-          ctx: { origin, cookieHeader, principal: me, currentPath, attachmentIds },
+          ctx: { origin, cookieHeader, principal: me, currentPath, attachmentIds, graphReferences },
         })) {
           send(event);
           if (event.kind === "done" || event.kind === "error") break;

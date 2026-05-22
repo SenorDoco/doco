@@ -9,6 +9,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router";
 import { cn } from "~/lib/cn";
+import { type GraphReferenceGroup, readGraphReferenceGroups } from "~/lib/graph-references";
 import type { CurrentPrincipal } from "~/lib/session.server";
 
 interface ContentBlockText {
@@ -282,6 +283,7 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
   const send = useCallback(async () => {
     const text = inputText.trim();
     const attachmentIds = staged.map((a) => a.id);
+    const graphReferenceGroups: GraphReferenceGroup[] = readGraphReferenceGroups();
     if ((!text && attachmentIds.length === 0) || busy) return;
     setInputText("");
     const sentAttachments = staged;
@@ -334,6 +336,7 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
           text,
           current_path: location.pathname + location.search,
           attachment_ids: attachmentIds,
+          graph_references: graphReferenceGroups,
         }),
         signal: controller.signal,
       });
