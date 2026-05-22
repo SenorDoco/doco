@@ -142,8 +142,7 @@ export async function loader({ request }: { request: Request }) {
     const heatRows = await c.query<{ day: string; n: string }>(
       `SELECT to_char(at, 'YYYY-MM-DD') AS day, COUNT(*)::text AS n
          FROM audit_events
-        WHERE (by_collaborator = $1
-               OR by_collaborator IN (SELECT id FROM principals WHERE owner_id = $1))
+        WHERE by_collaborator = $1
           AND at >= $2
         GROUP BY day`,
       [me.id, sinceIso],
