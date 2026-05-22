@@ -56,32 +56,22 @@ if [ -z "$DOCO_HANDLE" ] && [ -n "$DOCO_MD_PATH" ]; then
 fi
 
 # 3. Build the protocol reminder — short, deterministic, every turn.
+# This is a per-turn pointer, NOT a restatement of canonical. The full
+# canonical_instructions was loaded at SessionStart; duplicating it here
+# creates drift the moment canonical is updated server-side.
 read -r -d '' PROTOCOL_REMINDER <<'EOF' || true
-## Doco protocol — apply this in your reply
+## Doco protocol — per-turn reminder
 
-Use Doco as a verb in client-facing prose: "Want me to doco it?", "Doco this decision", "Doco this ADR", "Doco the flow".
+Full canonical was loaded at SessionStart. This is the per-turn nudge, not a restatement.
 
-1. TOP OF THE TURN'S FIRST TEXT OUTPUT (once per turn, NOT on intermediate progress updates between tool calls): paste the pre-fetched Doco block FIRST.
+**Query first.** The user's question — whatever it is — may already have a documented answer in this Doco. Skipping the query risks contradicting prior Decisions or duplicating nodes.
 
-   If the pre-fetched block says "[🔮 Doco] Not connected yet: <reason>", paste that exact line instead of any connected indicator. Do not render query/count/tally/footer lines while disconnected. Ask the project owner for an invite URL or to re-onboard at https://doco.to/onboarding/create/agent.
+**Non-negotiable** every turn (one user prompt → your final answer, regardless of intermediate tool calls):
 
-   If connected and queried, render the two-line query indicator:
-   [🔮 Doco] <querying-verb>
-   [🔮 Doco] <N> relevant nodes found (<X.X>s)
-   If you didn't query (greeting, one-word ack), emit nothing at the top — no "Not querying" placeholder, no fallback line. Absence is the signal.
-   The pre-fetched connected block below has the verbs already picked at random plus real <N>/<X.Xs> — paste it verbatim.
+- Top of your first text output: render the `[🔮 Doco]` indicator (pre-built block below; paste verbatim). If it says `Not connected yet`, paste that line and skip the tally/footer until connection is fixed.
+- Last line of your last text output: `[🔮 Doco] <handle>: **<N>** node(s) added/updated`. Renders even when N=0 — that's the no-op signal.
 
-2. AFTER EVERY WRITE (POST/PATCH/DELETE on Doco API endpoints), only when connected: render every returned footer_lines entry verbatim, one per line, before the closing tally. Curl returning JSON is not enough; the user-facing reply must contain the operation lines. Shape:
-   [🔮 Doco] <op-icon> <Type> <verb>: [<summary>](<url>) — <icon> <scope1>, <icon> <scope2>
-   The summary is the markdown link to the entity. Never show the raw ULID. Scope tail omitted when no scopes. Last line in a batch carries (X.Xs) timing AFTER the scope tail — already there.
-
-3. BEFORE DECLARING DONE: scan capture triggers. Scope names are BARE (no scope_ prefix) and come from the live bootstrap/search context. User-flow changed → `user-flows` Decision when that scope is active. Bug fixed → Decision + born-from Rule in the active bug/project scope when one exists. Framework/templates/hooks/canonical touched → patch or supersede the existing governing node when search returns one; otherwise use the most specific active scope from the bootstrap. POST to /<doco-handle>/api/decisions.json etc. **If instinct says skip, name the existing node you're relying on. If a high-vector_score hit already governs the change, PATCH it instead of skipping.**
-
-4. CLOSING LINE OF THE TURN (once per turn, on the LAST text output only — NOT on intermediate progress updates between tool calls; even when 0 writes):
-   [🔮 Doco] <owner>/<doco>: **<N>** node(s) added/updated
-   <N> = count of distinct entities you added/updated this turn (PATCH-3-fields-of-1-Decision = 1, not 3). The number MUST be wrapped in markdown bold (`**N**`). Singular when N == 1, plural otherwise (0 is plural). A "turn" is one user prompt → your complete answer, even when threaded through many tool calls; the tally bookends the turn, not each chunk.
-
-The full canonical_instructions was loaded at session start. Re-fetch via `node .agents/doco-agent-client.mjs bootstrap` if you've lost track and are connected; the helper reads DOCO_ACCESS internally so the credential stays out of shell command text.
+Lost the canonical from your context? Re-fetch with `node .agents/doco-agent-client.mjs bootstrap`.
 EOF
 
 # 4. Pre-fetch /search.json for the user's prompt.
