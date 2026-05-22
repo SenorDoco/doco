@@ -16,6 +16,7 @@
 
 import {
   type DocoRole,
+  getCollaboratorById,
   getDocoById,
   getPrincipalById,
   upsertDocoUser,
@@ -62,15 +63,15 @@ export async function loader({ request, params }: { request: Request; params: { 
   const doco = await getDocoById(invite.doco_id);
   if (!doco) return { error: "doco_not_found" } satisfies LoaderError;
 
-  const inviter = invite.minted_by_principal_id
-    ? await getPrincipalById(invite.minted_by_principal_id)
+  const inviter = invite.minted_by_collaborator_id
+    ? await getCollaboratorById(invite.minted_by_collaborator_id)
     : null;
   const principal = await getCurrentPrincipal(request);
   return {
     ok: true,
     code,
     doco: { id: doco.id, handle: doco.handle },
-    inviter: inviter ? { username: inviter.username } : null,
+    inviter: inviter ? { username: inviter.github_login ?? inviter.id } : null,
     expires_at: invite.expires_at,
     signedIn: principal ? { id: principal.id, username: principal.username } : null,
   } satisfies LoaderOk;
@@ -126,13 +127,13 @@ export async function action({
   if (inviteLevel === "org" && consumed.org_id) {
     await upsertOrgUser({
       org_id: consumed.org_id,
-      principal_id: principal.id,
+      collaborator_id: principal.id,
       role: grantedRole,
     });
   } else {
     await upsertDocoUser({
       doco_id: invite.doco_id,
-      principal_id: principal.id,
+      collaborator_id: principal.id,
       role: grantedRole,
     });
   }

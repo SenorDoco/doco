@@ -38,7 +38,7 @@ export async function addAgentPrincipal(
   const yamlObj = {
     id,
     doco_id: `doco_${generateUlid()}` as EntityId<"doco">,
-    node_type: "principal",
+    entity_type: "principal",
     summary: `Agent ${opts.username}.`,
     type: "agent",
     username: opts.username,
@@ -54,7 +54,7 @@ export async function addAgentPrincipal(
   await upsertEntity({
     id,
     doco_id: yamlObj.doco_id,
-    node_type: "principal",
+    entity_type: "principal",
     raw_yaml: JSON.stringify(yamlObj),
     summary: yamlObj.summary,
     lifecycle: yamlObj.lifecycle,

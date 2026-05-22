@@ -67,7 +67,7 @@ Node types: decisions, rules, intents, actions, logs, evals, references,
 states, principals, invites, audit.
 
 Articles are NOT nodes. Constitution articles
-(\`guidance_article\`, \`node_authoring_article\`) live on the
+(\`guidance_primitive\`, \`neuron_authoring_primitive\`) live on the
 dedicated \`/api/articles.json\` endpoint and inside the bootstrap
 payload — never on the generic \`/api/<type>.json\` route.
 
@@ -81,10 +81,10 @@ made up of **Articles of the Constitution** — short, project-owner-
 authored statements that govern how you, the agent, author nodes
 inside it. Two kinds, both surfaced at bootstrap:
 
-  - **Guidance articles** (\`guidance_article\` nodes) — prose for
+  - **Guidance articles** (\`guidance_primitive\` nodes) — prose for
     context. No automated check. Read them and let them shape your
     judgement.
-  - **Node authoring articles** (\`node_authoring_article\` nodes) —
+  - **Node authoring articles** (\`neuron_authoring_primitive\` nodes) —
     rules evaluated when you capture a node. Either a deterministic
     predicate ("every Decision cites at least one Intent") or a
     probabilistic spec the host evaluates with an LLM. \`on_violation:
@@ -107,7 +107,7 @@ Once you hold a Bearer token, hit:
 
 The response carries the constitutions for every org and every Doco
 you have read-or-above access to, with each article exposed as
-\`guidance_articles[]\` and \`node_authoring_articles[]\` arrays.
+\`guidance_primitives[]\` and \`neuron_authoring_primitives[]\` arrays.
 
 The four invariants below apply whichever path you took — the
 protocol is about how you reply, not about how you authenticated.

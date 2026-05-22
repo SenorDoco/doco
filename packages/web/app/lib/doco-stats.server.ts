@@ -5,7 +5,7 @@
 // actions, evals, ideas, reference_entities, logs, states. Articles
 // (constitution metadata) are not nodes and are deliberately
 // excluded — they are surfaced via /<handle>/api/articles.json.
-// Edges reads the materialized `edges` table.
+// Edges reads the materialized `synapses` table.
 // Last updated is the max `at` from `audit_events` — that captures both
 // inserts and updates and is cheap because audit_events is already
 // indexed by doco_id.
@@ -14,7 +14,7 @@ import { withClient } from "@doco/db";
 
 export interface DocoStats {
   nodes: number;
-  edges: number;
+  synapses: number;
   lastUpdatedAt: string | null;
 }
 
@@ -31,7 +31,7 @@ export const ENTITY_TABLES = [
   "states",
 ] as const;
 
-const EMPTY: DocoStats = { nodes: 0, edges: 0, lastUpdatedAt: null };
+const EMPTY: DocoStats = { nodes: 0, synapses: 0, lastUpdatedAt: null };
 
 export async function listDocoStats(docoIds: readonly string[]): Promise<Map<string, DocoStats>> {
   const out = new Map<string, DocoStats>();
@@ -48,7 +48,7 @@ export async function listDocoStats(docoIds: readonly string[]): Promise<Map<str
         [ids],
       ),
       c.query<{ doco_id: string; n: string }>(
-        `SELECT doco_id, COUNT(*)::text AS n FROM edges WHERE doco_id = ANY($1) GROUP BY doco_id`,
+        `SELECT doco_id, COUNT(*)::text AS n FROM synapses WHERE doco_id = ANY($1) GROUP BY doco_id`,
         [ids],
       ),
       c.query<{ doco_id: string; last_at: string }>(
@@ -64,7 +64,7 @@ export async function listDocoStats(docoIds: readonly string[]): Promise<Map<str
     }
     for (const r of edgesRows.rows) {
       const s = out.get(r.doco_id);
-      if (s) s.edges = Number(r.n);
+      if (s) s.synapses = Number(r.n);
     }
     for (const r of updatedRows.rows) {
       const s = out.get(r.doco_id);

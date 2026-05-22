@@ -70,7 +70,7 @@ export const showCmd = defineCommand({
     if (data.name) console.log(c.dim(`name: ${data.name}`));
     if (data.username) console.log(c.dim(`username: ${data.username}`));
     console.log(rule());
-    console.log(`${c.bold("type:")}    ${entity.node_type}`);
+    console.log(`${c.bold("type:")}    ${entity.entity_type}`);
     if (data.lifecycle) console.log(`${c.bold("lifecycle:")} ${data.lifecycle}`);
     if (data.purpose) console.log(`${c.bold("purpose:")} ${data.purpose}`);
     if (data.summary) {

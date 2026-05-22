@@ -1,5 +1,5 @@
 id: doco_01KREWMEHJRVS0KRPKZM16D239
-node_type: doco
+entity_type: doco
 slug: test-agent-route
 display_name: test-agent-route
 visibility: private

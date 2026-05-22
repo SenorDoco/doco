@@ -16,8 +16,8 @@ const NODE_DIRS: Record<string, { dir: string; ext: "md" | "yaml" }> = {
   intent: { dir: "intents", ext: "md" },
   decision: { dir: "decisions", ext: "md" },
   rule: { dir: "rules", ext: "md" },
-  guidance_article: { dir: "guidance_articles", ext: "md" },
-  node_authoring_article: { dir: "node_authoring_articles", ext: "md" },
+  guidance_primitive: { dir: "guidance_primitives", ext: "md" },
+  neuron_authoring_primitive: { dir: "neuron_authoring_primitives", ext: "md" },
   action: { dir: "actions", ext: "md" },
   eval: { dir: "evals", ext: "md" },
   reference: { dir: "references", ext: "yaml" },
@@ -28,7 +28,7 @@ const NODE_DIRS: Record<string, { dir: string; ext: "md" | "yaml" }> = {
 interface ExportedRow {
   id: string;
   doco_id: string;
-  node_type: string;
+  entity_type: string;
   raw_yaml: string; // canonical JSON serialization of frontmatter
   body_md?: string;
   summary?: string | null;
@@ -40,7 +40,7 @@ interface ExportedRow {
   updated_by?: string | null;
 }
 
-function parseEntityFile(filePath: string, nodeType: string): ExportedRow | null {
+function parseEntityFile(filePath: string, entityType: string): ExportedRow | null {
   const text = readFileSync(filePath, "utf8");
   let fm: Record<string, unknown>;
   let body: string | undefined;
@@ -58,7 +58,7 @@ function parseEntityFile(filePath: string, nodeType: string): ExportedRow | null
   const out: ExportedRow = {
     id,
     doco_id: docoId,
-    node_type: nodeType,
+    entity_type: entityType,
     raw_yaml: JSON.stringify(fm),
   };
   if (body) out.body_md = body;
@@ -74,14 +74,14 @@ function parseEntityFile(filePath: string, nodeType: string): ExportedRow | null
   return out;
 }
 
-function walkType(srcRoot: string, nodeType: string): ExportedRow[] {
-  const spec = NODE_DIRS[nodeType];
+function walkType(srcRoot: string, entityType: string): ExportedRow[] {
+  const spec = NODE_DIRS[entityType];
   if (!spec) return [];
   const dir = join(srcRoot, spec.dir);
   if (!existsSync(dir)) return [];
   const out: ExportedRow[] = [];
   const stack = [dir];
-  const filenameRe = new RegExp(`^${nodeType}_[A-Z0-9]{26}\\.${spec.ext}$`);
+  const filenameRe = new RegExp(`^${entityType}_[A-Z0-9]{26}\\.${spec.ext}$`);
   while (stack.length) {
     const cur = stack.pop()!;
     let entries: string[] = [];
@@ -103,20 +103,20 @@ function walkType(srcRoot: string, nodeType: string): ExportedRow[] {
         continue;
       }
       if (!filenameRe.test(e)) continue;
-      const row = parseEntityFile(path, nodeType);
+      const row = parseEntityFile(path, entityType);
       if (row) out.push(row);
     }
   }
   return out;
 }
 
-function walkIdentity(hostRoot: string, nodeType: "principal" | "organization"): ExportedRow[] {
-  const dir = join(hostRoot, nodeType === "principal" ? "principals" : "organizations");
+function walkIdentity(hostRoot: string, entityType: "principal" | "organization"): ExportedRow[] {
+  const dir = join(hostRoot, entityType === "principal" ? "principals" : "organizations");
   if (!existsSync(dir)) return [];
   const out: ExportedRow[] = [];
   for (const f of readdirSync(dir)) {
     if (!f.endsWith(".yaml")) continue;
-    const row = parseEntityFile(join(dir, f), nodeType);
+    const row = parseEntityFile(join(dir, f), entityType);
     if (row) {
       // Identity rows have no doco_id
       row.doco_id = "";
@@ -134,7 +134,7 @@ function readDocoYaml(srcRoot: string): ExportedRow | null {
   return {
     id: String(fm.id ?? ""),
     doco_id: String(fm.id ?? ""),
-    node_type: "doco",
+    entity_type: "doco",
     raw_yaml: JSON.stringify(fm),
     name: typeof fm.name === "string" ? fm.name : null,
   };
@@ -197,12 +197,12 @@ export const exportCmd = defineCommand({
     totalRows++;
 
     // Per-type entities.
-    for (const nodeType of Object.keys(NODE_DIRS)) {
-      const rows = walkType(srcRoot, nodeType);
+    for (const entityType of Object.keys(NODE_DIRS)) {
+      const rows = walkType(srcRoot, entityType);
       if (rows.length === 0) continue;
-      const file = join(outDir, `${nodeType}.jsonl`);
+      const file = join(outDir, `${entityType}.jsonl`);
       writeFileSync(file, rows.map((r) => JSON.stringify(r)).join("\n") + "\n", "utf8");
-      counts[nodeType] = rows.length;
+      counts[entityType] = rows.length;
       totalRows += rows.length;
     }
 

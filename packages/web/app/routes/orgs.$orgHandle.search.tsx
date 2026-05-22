@@ -12,11 +12,11 @@ import { Form, Link } from "react-router";
 import { LifecycleBadge, NodeTypeBadge } from "~/components/badge";
 import { Breadcrumb, orgBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
-import { NodeTypeIcon } from "~/components/node-type-icon";
+import { NeuronTypeIcon } from "~/components/neuron-type-icon";
 import { SiteHeader } from "~/components/site-header";
 import { getDocoEmbeddingProvider } from "~/lib/embedding-provider.server";
 import { loadHostConfig } from "~/lib/host";
-import { nodeTypePlural } from "~/lib/node-colors";
+import { nodeTypePlural } from "~/lib/neuron-colors";
 import { getCurrentPrincipal } from "~/lib/session";
 import { timeAgo } from "~/lib/time-ago";
 
@@ -31,7 +31,7 @@ interface OrgRow {
 
 interface Hit {
   id: string;
-  node_type: string;
+  entity_type: string;
   summary: string;
   lifecycle: string | null;
   created_at: string | null;
@@ -44,15 +44,15 @@ interface Hit {
 // and don't participate in org-wide search. They are reachable via
 // /<handle>/constitution and /<handle>/api/articles.json.
 const TYPE_SPECS = [
-  { table: "decisions", nodeType: "decision" },
-  { table: "intents", nodeType: "intent" },
-  { table: "ideas", nodeType: "idea" },
-  { table: "rules", nodeType: "rule" },
-  { table: "actions", nodeType: "action" },
-  { table: "logs", nodeType: "log" },
-  { table: "evals", nodeType: "eval" },
-  { table: "reference_entities", nodeType: "reference" },
-  { table: "states", nodeType: "state" },
+  { table: "decisions", entityType: "decision" },
+  { table: "intents", entityType: "intent" },
+  { table: "ideas", entityType: "idea" },
+  { table: "rules", entityType: "rule" },
+  { table: "actions", entityType: "action" },
+  { table: "logs", entityType: "log" },
+  { table: "evals", entityType: "eval" },
+  { table: "reference_entities", entityType: "reference" },
+  { table: "states", entityType: "state" },
 ] as const;
 
 async function resolveOrgByHandle(orgHandle: string): Promise<OrgRow | null> {
@@ -122,7 +122,7 @@ async function hydrateHits(
       if (!docoHandle) continue;
       hits.push({
         id,
-        node_type: spec.nodeType,
+        entity_type: spec.entityType,
         summary: row.summary ?? "",
         lifecycle: row.lifecycle,
         created_at: row.created_at ? String(row.created_at) : null,
@@ -299,11 +299,11 @@ export default function OrgSearch({
                     <li key={h.id} className="px-5 py-3 text-sm">
                       <div className="flex flex-wrap items-baseline justify-between gap-3">
                         <Link
-                          to={`/${h.docoHandle}/${h.node_type}/${h.id}`}
+                          to={`/${h.docoHandle}/${h.entity_type}/${h.id}`}
                           className="font-medium text-primary hover:underline"
                         >
                           <span aria-hidden className="mr-1.5">
-                            <NodeTypeIcon nodeType={h.node_type} />
+                            <NeuronTypeIcon entityType={h.entity_type} />
                           </span>
                           {h.summary || h.id}
                         </Link>
@@ -312,8 +312,8 @@ export default function OrgSearch({
                         </span>
                       </div>
                       <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
-                        <NodeTypeBadge nodeType={h.node_type}>
-                          {nodeTypePlural(h.node_type)}
+                        <NodeTypeBadge entityType={h.entity_type}>
+                          {nodeTypePlural(h.entity_type)}
                         </NodeTypeBadge>
                         {h.lifecycle ? <LifecycleBadge lifecycle={h.lifecycle} /> : null}
                         <Link

@@ -148,8 +148,8 @@ export function makeCaptureRoute<TDraft>(cfg: CaptureRouteConfig<TDraft>) {
 export interface UpdateRouteConfig {
   /** Plural url segment (e.g. "intents"). */
   type: string;
-  /** Singular node_type stored on the YAML (e.g. "intent"). */
-  nodeType: NodeTypeName;
+  /** Singular entity_type stored on the YAML (e.g. "intent"). */
+  entityType: NodeTypeName;
   /** Plural directory name under docoDir (usually matches `type`). */
   pluralDir: string;
   /** Fields the PATCH body is allowed to touch. */
@@ -171,12 +171,12 @@ export function makeUpdateRoute(cfg: UpdateRouteConfig) {
     }) {
       const { id } = params;
       const ctx = await loadDocoRouteForRead(request, params);
-      const rec = await getEntity(cfg.nodeType, id);
+      const rec = await getEntity(cfg.entityType, id);
       // Cross-doco probe by ULID is effectively unguessable (128 bits), but
       // we still gate on the doco the caller actually has read access to —
       // returning 404 for "wrong doco" matches the agent-facing contract.
       if (!rec || rec.doco_id !== ctx.meta.docoId) {
-        return Response.json({ error: `${cfg.nodeType} not found: ${id}` }, { status: 404 });
+        return Response.json({ error: `${cfg.entityType} not found: ${id}` }, { status: 404 });
       }
       let parsed: unknown = null;
       try {
@@ -187,7 +187,7 @@ export function makeUpdateRoute(cfg: UpdateRouteConfig) {
       }
       return Response.json({
         id: rec.id,
-        node_type: rec.node_type,
+        entity_type: rec.entity_type,
         doco_id: rec.doco_id,
         summary: rec.summary ?? null,
         lifecycle: rec.lifecycle ?? null,
@@ -232,9 +232,9 @@ export function makeUpdateRoute(cfg: UpdateRouteConfig) {
 
       // v16: role enforcement is strictly doco-level now. Lifecycle
       // PATCH requires approver+; everything else requires author+.
-      const existing = await getEntity(cfg.nodeType, id);
+      const existing = await getEntity(cfg.entityType, id);
       if (!existing || existing.doco_id !== meta.docoId) {
-        return Response.json({ error: `${cfg.nodeType} not found: ${id}` }, { status: 404 });
+        return Response.json({ error: `${cfg.entityType} not found: ${id}` }, { status: 404 });
       }
       const lifecycleChange =
         patch.lifecycle !== undefined && patch.lifecycle !== existing.lifecycle;
@@ -260,7 +260,7 @@ export function makeUpdateRoute(cfg: UpdateRouteConfig) {
         docoId: meta.docoId,
         ownerSlug,
         docoSlug,
-        nodeType: cfg.nodeType,
+        entityType: cfg.entityType,
         pluralDir: cfg.pluralDir,
         id,
         patch,

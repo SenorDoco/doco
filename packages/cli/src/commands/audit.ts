@@ -48,7 +48,7 @@ function formatEvent(e: AuditEvent): string {
     if (e.op === "lifecycle.transition" && e.before && e.after) {
       return ` ${String(e.before.lifecycle ?? "?")} → ${String(e.after.lifecycle ?? "?")}`;
     }
-    if (e.op === "edge.add" && e.after) {
+    if (e.op === "synapse.add" && e.after) {
       const keys = Object.keys(e.after);
       const k = keys[0];
       if (k) return ` +${k} ${JSON.stringify(e.after[k])}`;

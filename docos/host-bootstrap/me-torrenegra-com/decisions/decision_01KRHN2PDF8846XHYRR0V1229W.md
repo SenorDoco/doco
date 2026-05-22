@@ -1,7 +1,7 @@
 ---
 id: decision_01KRHN2PDF8846XHYRR0V1229W
 doco_id: doco_01KRHJQC0YMK6VEPZSMCQVP1QD
-node_type: decision
+entity_type: decision
 summary: No local dev — verify only on hosted previews
 question: How do agents test and verify changes to me.torrenegra.com?
 chosen: "Never run, build, or serve the site locally. No python3 -m http.server,

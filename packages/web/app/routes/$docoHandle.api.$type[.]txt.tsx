@@ -9,7 +9,7 @@ import { normalizeDocoParams } from "~/lib/doco-access.server";
  * `type` is one of: decisions, intents, articles, settings.
  * Returns plain-prose spec for the corresponding .json endpoint.
  *
- * Note: articles (`guidance_article`, `node_authoring_article`) are
+ * Note: articles (`guidance_primitive`, `neuron_authoring_primitive`) are
  * NOT nodes and do not have per-type capture routes. The dedicated
  * articles endpoint lives at /<handle>/api/articles.json and is
  * documented under `articles` here.
@@ -160,7 +160,7 @@ ENDPOINT (list)
   GET ${baseUrl}/${handle}/api/articles.json
 
   Returns every article in the Doco, both kinds, with an
-  \`article_type\` discriminator:
+  \`primitive_kind\` discriminator:
 
   {
     "doco_id": "doco_...",
@@ -170,8 +170,8 @@ ENDPOINT (list)
     "node_authoring_count": <int>,
     "items": [
       {
-        "article_type": "guidance",
-        "node_type": "guidance_article",
+        "primitive_kind": "guidance",
+        "entity_type": "guidance_primitive",
         "id": "guidance_article_<ULID>",
         "summary": "...",
         "lifecycle": "active",
@@ -187,18 +187,18 @@ ENDPOINT (capture)
   POST ${baseUrl}/${handle}/api/articles.json
   Content-Type: application/json
 
-  Body MUST include \`article_type\` to disambiguate; remaining
+  Body MUST include \`primitive_kind\` to disambiguate; remaining
   fields match the per-kind draft below.
 
-BODY — article_type = "guidance"
-  article_type          required   "guidance"
+BODY — primitive_kind = "guidance"
+  primitive_kind          required   "guidance"
   summary               required   one-line article summary
   body_md               optional   markdown article body
   authored_by_username  optional   host-level username; auth fills this
   lifecycle             optional   default "active"
 
-BODY — article_type = "node_authoring"
-  article_type          required   "node_authoring"
+BODY — primitive_kind = "node_authoring"
+  primitive_kind          required   "node_authoring"
   summary               required   one-line article summary
   evaluation_kind       required   "deterministic" | "probabilistic"
   predicate             required*  deterministic AuthoringPredicate object
@@ -206,7 +206,7 @@ BODY — article_type = "node_authoring"
                                   kind="probabilistic".
   spec                  required*  probabilistic spec; stored as
                                   {kind:"probabilistic", spec}
-  fires_when_node_lifecycle optional ["active", ...]
+  fires_when_neuron_lifecycle optional ["active", ...]
   on_violation          optional   "block" | "warn" | "log"; default "block"
   body_md               optional   markdown article body
   authored_by_username  optional   host-level username; auth fills this
@@ -225,7 +225,7 @@ EXAMPLE — guidance
     -H "Authorization: Bearer $DOCO_ACCESS" \\
     ${baseUrl}/${handle}/api/articles.json \\
     -d '{
-      "article_type": "guidance",
+      "primitive_kind": "guidance",
       "summary": "Prefer concrete examples over abstract prose."
     }'
 
@@ -235,14 +235,14 @@ EXAMPLE — node_authoring (deterministic)
     -H "Authorization: Bearer $DOCO_ACCESS" \\
     ${baseUrl}/${handle}/api/articles.json \\
     -d '{
-      "article_type": "node_authoring",
+      "primitive_kind": "node_authoring",
       "summary": "Every Decision cites at least one Intent.",
       "evaluation_kind": "deterministic",
       "predicate": {
-        "kind": "requires_edge",
-        "edge_type": "serves",
-        "target_node_type": "intent",
-        "when_node_type": ["decision"]
+        "kind": "requires_synapse",
+        "synapse_type": "serves",
+        "target_neuron_type": "intent",
+        "when_neuron_type": ["decision"]
       }
     }'
 
@@ -252,15 +252,15 @@ EXAMPLE — node_authoring (probabilistic)
     -H "Authorization: Bearer $DOCO_ACCESS" \\
     ${baseUrl}/${handle}/api/articles.json \\
     -d '{
-      "article_type": "node_authoring",
+      "primitive_kind": "node_authoring",
       "summary": "Decision rationale names the rejected alternatives.",
       "evaluation_kind": "probabilistic",
       "spec": "Pass when the Decision explains at least one alternative and why it was rejected."
     }'
 
 UPDATE A SPECIFIC ARTICLE
-  PATCH ${baseUrl}/${handle}/api/guidance_articles/<id>.json
-  PATCH ${baseUrl}/${handle}/api/node_authoring_articles/<id>.json
+  PATCH ${baseUrl}/${handle}/api/guidance_primitives/<id>.json
+  PATCH ${baseUrl}/${handle}/api/neuron_authoring_primitives/<id>.json
   Content-Type: application/json
 
   Per-id endpoints remain available for editing existing articles.

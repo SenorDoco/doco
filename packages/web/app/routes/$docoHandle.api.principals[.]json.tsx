@@ -1,4 +1,9 @@
-import { getPrincipalById, listDocoUsers, upsertEntity, withClient } from "@doco/db";
+import {
+  getCollaboratorById,
+  listDocoUsers,
+  upsertEntity,
+  withClient,
+} from "@doco/db";
 import { type EntityId, generateUlid, makeEntityId, nowIso } from "@doco/shared";
 import { loadDocoRouteForAdmin, loadDocoRouteForRead } from "~/lib/doco-access.server";
 
@@ -76,7 +81,7 @@ export async function action({
   const raw = {
     id,
     doco_id: meta.docoId,
-    node_type: "principal",
+    entity_type: "principal",
     summary,
     type,
     username,
@@ -89,7 +94,7 @@ export async function action({
   await upsertEntity({
     id,
     doco_id: meta.docoId,
-    node_type: "principal",
+    entity_type: "principal",
     raw_yaml: JSON.stringify(raw),
     summary,
     lifecycle: "active",
@@ -129,17 +134,21 @@ export async function loader({
 }) {
   const { meta } = await loadDocoRouteForRead(request, params);
   const docoUsers = await listDocoUsers(meta.docoId);
+  // Post-rename: doco_users.collaborator_id points at the collaborators
+  // table (the OAuth identity layer). The legacy field names — username,
+  // type, github_login, email — are preserved in the response shape for
+  // API back-compat with existing consumers.
   const principals = await Promise.all(
     docoUsers.map(async (u) => {
-      const p = await getPrincipalById(u.principal_id);
-      return p
+      const c = await getCollaboratorById(u.collaborator_id);
+      return c
         ? {
-            id: p.id,
-            username: p.username,
-            type: p.type,
+            id: c.id,
+            username: c.github_login ?? c.id,
+            type: c.kind,
             role: u.role,
-            github_login: p.github_login ?? null,
-            email: p.email ?? null,
+            github_login: c.github_login,
+            email: c.email,
           }
         : null;
     }),

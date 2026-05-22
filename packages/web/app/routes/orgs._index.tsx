@@ -142,8 +142,8 @@ export async function loader({ request }: { request: Request }) {
     const heatRows = await c.query<{ day: string; n: string }>(
       `SELECT to_char(at, 'YYYY-MM-DD') AS day, COUNT(*)::text AS n
          FROM audit_events
-        WHERE (by_principal = $1
-               OR by_principal IN (SELECT id FROM principals WHERE owner_id = $1))
+        WHERE (by_collaborator = $1
+               OR by_collaborator IN (SELECT id FROM principals WHERE owner_id = $1))
           AND at >= $2
         GROUP BY day`,
       [me.id, sinceIso],
@@ -167,9 +167,9 @@ export async function loader({ request }: { request: Request }) {
         `SELECT a.event_id, a.at, a.doco_id, a.entity_type, a.entity_id, a.op,
                 a.before_json, a.after_json, p.username
            FROM audit_events a
-           LEFT JOIN principals p ON p.id = a.by_principal
+           LEFT JOIN principals p ON p.id = a.by_collaborator
           WHERE a.doco_id = ANY($1)
-            AND a.entity_type NOT IN ('guidance_article', 'node_authoring_article')
+            AND a.entity_type NOT IN ('guidance_primitive', 'neuron_authoring_primitive')
           ORDER BY a.at DESC
           LIMIT $2`,
         [myDocoIds, FEED_LIMIT],
@@ -337,7 +337,7 @@ export default function OrgsIndexPage({
 function OrgsFeedLine({ event }: { event: FeedEvent }) {
   const url = entityUrl({
     docoId: event.handle,
-    nodeType: event.entity_type,
+    entityType: event.entity_type,
     id: event.entity_id,
   });
   const summary = event.summary ?? auditSummaryFallback(event.entity_type, event.entity_id);

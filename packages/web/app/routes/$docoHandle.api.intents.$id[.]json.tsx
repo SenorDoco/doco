@@ -2,7 +2,7 @@ import { makeUpdateRoute } from "~/lib/api-capture-factory.server";
 
 const route = makeUpdateRoute({
   type: "intents",
-  nodeType: "intent",
+  entityType: "intent",
   pluralDir: "intents",
   allowedFields: ["slug", "title", "wanted_by", "lifecycle", "summary", "body_md"],
 });

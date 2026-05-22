@@ -1,14 +1,14 @@
 import { Handle, Position } from "@xyflow/react";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
-import { NodeTypeIcon } from "~/components/node-type-icon";
-import { lifecycleColor } from "~/lib/node-colors";
-import { useNewNodeIds } from "~/lib/use-new-node-ids";
+import { NeuronTypeIcon } from "~/components/neuron-type-icon";
+import { lifecycleColor } from "~/lib/neuron-colors";
+import { useNewNodeIds } from "~/lib/use-new-neuron-ids";
 import "@xyflow/react/dist/style.css";
 
 export interface OverviewGraphNode {
   id: string;
-  node_type: string;
+  entity_type: string;
   name: string | null;
   lifecycle: string | null;
   created_at: string | null;
@@ -19,7 +19,7 @@ export interface OverviewGraphNode {
 export interface OverviewGraphLink {
   source: string;
   target: string;
-  edge_type: string;
+  synapse_type: string;
   attribution?: "explicit" | "doco-auto";
 }
 
@@ -32,7 +32,7 @@ export interface OverviewGraphData {
 
 export interface OverviewNodeDetail {
   id: string;
-  node_type: string;
+  entity_type: string;
   summary: string;
   name: string | null;
   lifecycle: string | null;
@@ -82,8 +82,8 @@ const NODE_TYPE_ORDER = new Map(
     "decision",
     "action",
     "rule",
-    "guidance_article",
-    "node_authoring_article",
+    "guidance_primitive",
+    "neuron_authoring_primitive",
     "log",
     "eval",
     "reference",
@@ -135,8 +135,8 @@ function layoutNodes(nodes: OverviewGraphNode[], centerId: string): Map<string, 
   }
 
   others.sort((a, b) => {
-    const ai = NODE_TYPE_ORDER.get(a.node_type) ?? 999;
-    const bi = NODE_TYPE_ORDER.get(b.node_type) ?? 999;
+    const ai = NODE_TYPE_ORDER.get(a.entity_type) ?? 999;
+    const bi = NODE_TYPE_ORDER.get(b.entity_type) ?? 999;
     if (ai !== bi) return ai - bi;
     return a.id.localeCompare(b.id);
   });
@@ -183,7 +183,7 @@ const HIDDEN_HANDLE_STYLE = {
 function OverviewFlowNode({ data }: { data: OverviewNodeData }) {
   const lifecycle = nodeLifecycle(data.node);
   const detail = data.detail;
-  const title = detail?.name ?? data.node.name ?? detail?.summary ?? data.node.node_type;
+  const title = detail?.name ?? data.node.name ?? detail?.summary ?? data.node.entity_type;
   const subtitle = detail?.summary ?? data.node.name ?? data.node.id;
   const showDetail = data.showDetail && Boolean(detail);
 
@@ -195,17 +195,17 @@ function OverviewFlowNode({ data }: { data: OverviewNodeData }) {
         borderColor: data.node.is_center ? "var(--color-foreground)" : "var(--color-border)",
         borderLeft: `6px solid ${lifecycleColor(lifecycle)}`,
       }}
-      title={showDetail ? title : `${data.node.node_type} · ${lifecycle}`}
+      title={showDetail ? title : `${data.node.entity_type} · ${lifecycle}`}
     >
       <Handle type="target" position={Position.Left} style={HIDDEN_HANDLE_STYLE} isConnectable={false} />
-      <NodeTypeIcon nodeType={data.node.node_type} className="!h-3.5 !w-3.5 shrink-0" />
+      <NeuronTypeIcon entityType={data.node.entity_type} className="!h-3.5 !w-3.5 shrink-0" />
       {showDetail ? (
         <span className="min-w-0 flex-1 truncate font-mono text-[10px] font-semibold leading-none text-foreground">
           {title}
         </span>
       ) : (
         <span className="min-w-0 flex-1 truncate text-[9px] font-semibold uppercase leading-none text-muted-foreground">
-          {data.node.node_type}
+          {data.node.entity_type}
         </span>
       )}
       {showDetail && title !== subtitle ? <span className="sr-only">{subtitle}</span> : null}

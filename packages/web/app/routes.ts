@@ -33,7 +33,7 @@ import { type RouteConfig, index, route } from "@react-router/dev/routes";
  *   /<doco-handle>/<type>/<id>     per-Doco entity detail (id is the ULID)
  *   /<doco-handle>/search          per-Doco search (richer results — GPR / age / lifecycle)
  *   /<doco-handle>/settings        per-Doco settings (admin only; danger zone soft-delete; ADR-124)
- *   /<doco-handle>/constitution    per-Doco constitution page: guidance_articles + node_authoring_articles
+ *   /<doco-handle>/constitution    per-Doco constitution page: guidance_primitives + neuron_authoring_primitives
  *   /<doco-handle>/status.json     per-Doco status (connection signal for agent footer line)
  *   /<doco-handle>/api/*           per-Doco capture + update endpoints
  *                                  (decisions / intents / settings; ADR-128)
@@ -123,12 +123,12 @@ export default [
     "routes/orgs.$orgHandle.constitution.guidance.new.tsx",
   ),
   route(
-    "orgs/:orgHandle/constitution/node-authoring/new",
-    "routes/orgs.$orgHandle.constitution.node-authoring.new.tsx",
+    "orgs/:orgHandle/constitution/neuron-authoring/new",
+    "routes/orgs.$orgHandle.constitution.neuron-authoring.new.tsx",
   ),
   route(
-    "orgs/:orgHandle/constitution/:nodeType/:articleId/edit",
-    "routes/orgs.$orgHandle.constitution.$nodeType.$articleId.edit.tsx",
+    "orgs/:orgHandle/constitution/:entityType/:primitiveId/edit",
+    "routes/orgs.$orgHandle.constitution.$entityType.$primitiveId.edit.tsx",
   ),
   route("collaborators", "routes/collaborators.tsx"),
   route("collaborators/invite", "routes/collaborators.invite.tsx"),
@@ -184,12 +184,12 @@ export default [
     "routes/$docoHandle.constitution.guidance.new.tsx",
   ),
   route(
-    ":docoHandle/constitution/node-authoring/new",
-    "routes/$docoHandle.constitution.node-authoring.new.tsx",
+    ":docoHandle/constitution/neuron-authoring/new",
+    "routes/$docoHandle.constitution.neuron-authoring.new.tsx",
   ),
   route(
-    ":docoHandle/constitution/:nodeType/:articleId/edit",
-    "routes/$docoHandle.constitution.$nodeType.$articleId.edit.tsx",
+    ":docoHandle/constitution/:entityType/:primitiveId/edit",
+    "routes/$docoHandle.constitution.$entityType.$primitiveId.edit.tsx",
   ),
   route(":docoHandle/invites", "routes/$docoHandle.invites.tsx"),
   route(":docoHandle/api/invites.json", "routes/$docoHandle.api.invites[.]json.tsx"),
@@ -199,12 +199,12 @@ export default [
   route(":docoHandle/api/intents/:id.json", "routes/$docoHandle.api.intents.$id[.]json.tsx"),
   route(":docoHandle/api/rules/:id.json", "routes/$docoHandle.api.rules.$id[.]json.tsx"),
   route(
-    ":docoHandle/api/guidance_articles/:id.json",
-    "routes/$docoHandle.api.guidance_articles.$id[.]json.tsx",
+    ":docoHandle/api/guidance_primitives/:id.json",
+    "routes/$docoHandle.api.guidance_primitives.$id[.]json.tsx",
   ),
   route(
-    ":docoHandle/api/node_authoring_articles/:id.json",
-    "routes/$docoHandle.api.node_authoring_articles.$id[.]json.tsx",
+    ":docoHandle/api/neuron_authoring_primitives/:id.json",
+    "routes/$docoHandle.api.neuron_authoring_primitives.$id[.]json.tsx",
   ),
   route(":docoHandle/api/actions/:id.json", "routes/$docoHandle.api.actions.$id[.]json.tsx"),
   route(":docoHandle/api/logs/:id.json", "routes/$docoHandle.api.logs.$id[.]json.tsx"),
@@ -217,27 +217,27 @@ export default [
   // Articles (constitution metadata) are not nodes; they live on a
   // dedicated endpoint and are intentionally absent from the generic
   // capture dispatcher below.
-  route(":docoHandle/api/articles.json", "routes/$docoHandle.api.articles[.]json.tsx"),
+  route(":docoHandle/api/primitives.json", "routes/$docoHandle.api.primitives[.]json.tsx"),
   // Generic capture dispatcher. Handles decisions, intents, actions,
   // references, rules, logs, evals, states via CAPTURE_REGISTRY in the
   // route file. Adding a new simple-capture entity type is one registry
   // row; no new route needed. Article types are deliberately not in this
-  // registry — see /api/articles.json above.
+  // registry — see /api/primitives.json above.
   route(":docoHandle/api/:type.json", "routes/$docoHandle.api.$type[.]json.tsx"),
   route(":docoHandle/api/:type.txt", "routes/$docoHandle.api.$type[.]txt.tsx"),
   route(":docoHandle/activity", "routes/$docoHandle.activity.tsx"),
-  route(":docoHandle/graph-node-details.json", "routes/$docoHandle.graph-node-details[.]json.tsx"),
+  route(":docoHandle/graph-neuron-details.json", "routes/$docoHandle.graph-neuron-details[.]json.tsx"),
   route(":docoHandle/search", "routes/$docoHandle.search.tsx"),
   route(":docoHandle/search.json", "routes/$docoHandle.search[.]json.tsx"),
   route(":docoHandle/onboarding/agent", "routes/$docoHandle.onboarding.agent.tsx"),
   route(":docoHandle/rules/new", "routes/$docoHandle.rules.new.tsx"),
-  // Edges — Doco's relationships materialize as rows in the `edges` table
-  // (D-017, fields-as-edges). The list view is one row per edge; the
+  // Edges — Doco's relationships materialize as rows in the `synapses` table
+  // (D-017, fields-as-synapses). The list view is one row per edge; the
   // detail view renders the two connected nodes via EntityGraph plus the
-  // edge's metadata. Composite key `(edge_type, from_id, to_id)` is
+  // edge's metadata. Composite key `(synapse_type, from_id, to_id)` is
   // url-encoded as `edge_type__from_id__to_id`.
-  route(":docoHandle/edges", "routes/$docoHandle.edges._index.tsx"),
-  route(":docoHandle/edges/:edgeKey", "routes/$docoHandle.edges.$edgeKey.tsx"),
+  route(":docoHandle/synapses", "routes/$docoHandle.synapses._index.tsx"),
+  route(":docoHandle/synapses/:synapseKey", "routes/$docoHandle.synapses.$synapseKey.tsx"),
   // Short-form entity routes. `:type` is validated by the loader; reserved
   // feature paths above win the match for the static paths.
   route(":docoHandle/:type", "routes/$docoHandle.$type._index.tsx"),

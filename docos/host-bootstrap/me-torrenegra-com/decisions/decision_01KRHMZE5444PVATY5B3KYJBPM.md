@@ -1,7 +1,7 @@
 ---
 id: decision_01KRHMZE5444PVATY5B3KYJBPM
 doco_id: doco_01KRHJQC0YMK6VEPZSMCQVP1QD
-node_type: decision
+entity_type: decision
 summary: Adopt Doco for project documentation, replacing Speco.
 question: Where do we document important ideas, rules, and decisions for
   me.torrenegra.com?

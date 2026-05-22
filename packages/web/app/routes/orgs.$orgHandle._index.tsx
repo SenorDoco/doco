@@ -50,7 +50,7 @@ interface OrgDoco {
   handle: string;
   visibility: "private" | "public";
   nodes: number;
-  edges: number;
+  synapses: number;
   activeNodes: number;
   lastUpdatedAt: string | null;
 }
@@ -146,13 +146,13 @@ export async function loader({
     const docos: OrgDoco[] = docoRows
       .map((r): OrgDoco => {
         const id = String(r.id);
-        const stats = statsByDocoId.get(id) ?? { nodes: 0, edges: 0, lastUpdatedAt: null };
+        const stats = statsByDocoId.get(id) ?? { nodes: 0, synapses: 0, lastUpdatedAt: null };
         return {
           docoId: id,
           handle: String(r.handle),
           visibility: r.visibility === "public" ? "public" : "private",
           nodes: stats.nodes,
-          edges: stats.edges,
+          synapses: stats.synapses,
           activeNodes: activeByDocoId.get(id) ?? 0,
           lastUpdatedAt: stats.lastUpdatedAt,
         };
@@ -168,34 +168,34 @@ export async function loader({
     // Members.
     const memberRows = (
       await c.query<{
-        principal_id: string;
+        collaborator_id: string;
         username: string;
         role: string;
         joined_at: Date | string;
       }>(
-        `SELECT m.principal_id, p.username, m.role, m.joined_at
+        `SELECT m.collaborator_id, p.username, m.role, m.joined_at
            FROM org_users m
-           JOIN principals p ON p.id = m.principal_id
+           JOIN principals p ON p.id = m.collaborator_id
           WHERE m.org_id = $1
           ORDER BY m.joined_at`,
         [org.id],
       )
     ).rows;
     const members: MemberRow[] = memberRows.map((r) => ({
-      principalId: String(r.principal_id),
+      principalId: String(r.collaborator_id),
       username: String(r.username),
       role: (r.role as DocoRole) ?? "reader",
       joinedAt: r.joined_at instanceof Date ? r.joined_at.toISOString() : String(r.joined_at),
     }));
 
     // Constitution article count — guidance + node-authoring across the
-    // org's two article tables (org_guidance_articles +
-    // org_node_authoring_articles).
+    // org's two article tables (org_guidance_primitives +
+    // org_neuron_authoring_primitives).
     const constitutionRow = (
       await c.query<{ n: string }>(
         `SELECT
-           ((SELECT COUNT(*) FROM org_guidance_articles WHERE org_id = $1)
-          + (SELECT COUNT(*) FROM org_node_authoring_articles WHERE org_id = $1))::text AS n`,
+           ((SELECT COUNT(*) FROM org_guidance_primitives WHERE org_id = $1)
+          + (SELECT COUNT(*) FROM org_neuron_authoring_primitives WHERE org_id = $1))::text AS n`,
         [org.id],
       )
     ).rows[0];
@@ -222,26 +222,26 @@ export async function loader({
 
       const contributorRows = (
         await c.query<{
-          principal_id: string;
+          collaborator_id: string;
           username: string;
           last_at: Date | string;
           event_count: string;
         }>(
-          `SELECT ae.by_principal AS principal_id,
+          `SELECT ae.by_collaborator AS collaborator_id,
                   p.username,
                   MAX(ae.at) AS last_at,
                   COUNT(*)::text AS event_count
              FROM audit_events ae
-             JOIN principals p ON p.id = ae.by_principal
-            WHERE ae.doco_id = ANY($1::text[]) AND ae.by_principal IS NOT NULL
-            GROUP BY ae.by_principal, p.username
+             JOIN principals p ON p.id = ae.by_collaborator
+            WHERE ae.doco_id = ANY($1::text[]) AND ae.by_collaborator IS NOT NULL
+            GROUP BY ae.by_collaborator, p.username
             ORDER BY COUNT(*) DESC, MAX(ae.at) DESC
             LIMIT $2`,
           [docoIds, TOP_CONTRIBUTORS_LIMIT],
         )
       ).rows;
       topContributors = contributorRows.map((r) => ({
-        principalId: String(r.principal_id),
+        principalId: String(r.collaborator_id),
         username: String(r.username),
         lastAt:
           r.last_at instanceof Date
@@ -265,7 +265,7 @@ export async function loader({
           `SELECT a.event_id, a.at, a.doco_id, a.entity_type, a.entity_id, a.op,
                   a.before_json, a.after_json, p.username
              FROM audit_events a
-             LEFT JOIN principals p ON p.id = a.by_principal
+             LEFT JOIN principals p ON p.id = a.by_collaborator
             WHERE a.doco_id = ANY($1::text[])
             ORDER BY a.at DESC
             LIMIT $2`,
@@ -284,8 +284,8 @@ export async function loader({
            UNION ALL SELECT id, summary AS label, lifecycle FROM intents WHERE id = ANY($1::text[])
            UNION ALL SELECT id, summary AS label, lifecycle FROM ideas WHERE id = ANY($1::text[])
            UNION ALL SELECT id, summary AS label, lifecycle FROM rules WHERE id = ANY($1::text[])
-           UNION ALL SELECT id, summary AS label, lifecycle FROM guidance_articles WHERE id = ANY($1::text[])
-           UNION ALL SELECT id, summary AS label, lifecycle FROM node_authoring_articles WHERE id = ANY($1::text[])
+           UNION ALL SELECT id, summary AS label, lifecycle FROM guidance_primitives WHERE id = ANY($1::text[])
+           UNION ALL SELECT id, summary AS label, lifecycle FROM neuron_authoring_primitives WHERE id = ANY($1::text[])
            UNION ALL SELECT id, summary AS label, lifecycle FROM actions WHERE id = ANY($1::text[])
            UNION ALL SELECT id, summary AS label, lifecycle FROM logs WHERE id = ANY($1::text[])
            UNION ALL SELECT id, summary AS label, lifecycle FROM evals WHERE id = ANY($1::text[])
@@ -485,7 +485,7 @@ export default function OrgHome({
                       <TableRow>
                         <TableHead>handle</TableHead>
                         <TableHead className="text-right">active/nodes</TableHead>
-                        <TableHead className="text-right">edges</TableHead>
+                        <TableHead className="text-right">synapses</TableHead>
                         <TableHead className="text-right">last updated</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -500,7 +500,7 @@ export default function OrgHome({
                           <TableCell className="text-right font-mono">
                             {d.activeNodes}/{d.nodes}
                           </TableCell>
-                          <TableCell className="text-right font-mono">{d.edges}</TableCell>
+                          <TableCell className="text-right font-mono">{d.synapses}</TableCell>
                           <TableCell className="text-right text-muted-foreground">
                             {timeAgo(d.lastUpdatedAt)}
                           </TableCell>
@@ -634,7 +634,7 @@ export default function OrgHome({
 function OrgFeedLine({ event }: { event: FeedItem }) {
   const url = entityUrl({
     docoId: event.handle,
-    nodeType: event.entity_type,
+    entityType: event.entity_type,
     id: event.entity_id,
   });
   const summary = event.summary ?? auditSummaryFallback(event.entity_type, event.entity_id);

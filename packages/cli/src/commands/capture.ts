@@ -41,8 +41,8 @@ async function postCapture(
     | "actions"
     | "logs"
     | "rules"
-    | "guidance_articles"
-    | "node_authoring_articles"
+    | "guidance_primitives"
+    | "neuron_authoring_primitives"
     | "references"
     | "states",
   body: Record<string, unknown>,
@@ -613,7 +613,7 @@ const stateCmd = defineCommand({
     lifecycle: {
       type: "string",
       description:
-        "Optional. When unset, the State's lifecycle defaults to the Doco's `default_node_lifecycle` (set by the template chosen at create time) — `drafted` for the state-machines template, otherwise `active`.",
+        "Optional. When unset, the State's lifecycle defaults to the Doco's `default_neuron_lifecycle` (set by the template chosen at create time) — `drafted` for the state-machines template, otherwise `active`.",
     },
   },
   async run({ args }) {

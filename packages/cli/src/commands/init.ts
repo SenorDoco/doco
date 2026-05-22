@@ -87,7 +87,7 @@ export const initCmd = defineCommand({
     // Write doco.yaml.
     const docoYaml = `# Doco — root identity. See https://doco.to (eventually) for docs.
 id: ${docoId}
-node_type: doco
+entity_type: doco
 
 slug: ${slug}
 display_name: ${slug.split("/")[1] ?? slug}
@@ -106,7 +106,7 @@ lifecycle: active
 tags: []
 
 members:
-  - principal_id: ${principalId}
+  - collaborator_id: ${principalId}
     role: owner
     permissions: [read, write, execute, admin]
 
@@ -120,7 +120,7 @@ imports: []
       : `github_identity:\n  github_login: ${ownerUsername}\n`;
     const principalYaml = `id: ${principalId}
 doco_id: ${docoId}
-node_type: principal
+entity_type: principal
 summary: "Owner of ${slug}."
 
 type: person

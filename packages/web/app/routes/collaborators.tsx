@@ -39,7 +39,7 @@ type ActionResult =
       ok: true;
       level: InviteLevel;
       target_ids: string[];
-      principal_id: string;
+      collaborator_id: string;
       role: DocoRole;
     }
   | {
@@ -47,7 +47,7 @@ type ActionResult =
       ok: true;
       level: InviteLevel;
       target_ids: string[];
-      principal_id: string;
+      collaborator_id: string;
     }
   | {
       intent: "oauth_update";
@@ -86,9 +86,9 @@ export async function action({
       .split(",")
       .map((s) => s.trim())
       .filter(Boolean);
-    const principalId = String(form.get("principal_id") ?? "").trim();
+    const principalId = String(form.get("collaborator_id") ?? "").trim();
     if (targetIds.length === 0) return { error: "target_ids missing." };
-    if (!principalId) return { error: "principal_id missing." };
+    if (!principalId) return { error: "collaborator_id missing." };
 
     if (level !== "org" && level !== "doco") return { error: "Invalid level." };
 
@@ -109,16 +109,16 @@ export async function action({
       if (!ALL_ROLES.includes(role)) return { error: "Invalid role." };
       for (const targetId of targetIds) {
         if (level === "org")
-          await upsertOrgUser({ org_id: targetId, principal_id: principalId, role });
-        else await upsertDocoUser({ doco_id: targetId, principal_id: principalId, role });
+          await upsertOrgUser({ org_id: targetId, collaborator_id: principalId, role });
+        else await upsertDocoUser({ doco_id: targetId, collaborator_id: principalId, role });
       }
-      return { intent: "update", ok: true, level, target_ids: targetIds, principal_id: principalId, role };
+      return { intent: "update", ok: true, level, target_ids: targetIds, collaborator_id: principalId, role };
     }
     for (const targetId of targetIds) {
       if (level === "org") await removeOrgUser(targetId, principalId);
       else await removeDocoUser(targetId, principalId);
     }
-    return { intent: "remove", ok: true, level, target_ids: targetIds, principal_id: principalId };
+    return { intent: "remove", ok: true, level, target_ids: targetIds, collaborator_id: principalId };
   }
 
   if (intent === "oauth_update" || intent === "oauth_remove") {
@@ -156,14 +156,14 @@ export async function action({
           await c.query(
             `UPDATE oauth_access_tokens
                 SET ${rolesCol} = jsonb_set(${rolesCol}, ARRAY[$3], to_jsonb($4::text), true)
-              WHERE principal_id = $1 AND client_id = $2 AND revoked = false
+              WHERE collaborator_id = $1 AND client_id = $2 AND revoked = false
                 AND $3 = ANY(${idsCol})`,
             [me.id, clientId, targetId, role],
           );
           await c.query(
             `UPDATE oauth_refresh_tokens
                 SET ${rolesCol} = jsonb_set(${rolesCol}, ARRAY[$3], to_jsonb($4::text), true)
-              WHERE principal_id = $1 AND client_id = $2 AND revoked = false
+              WHERE collaborator_id = $1 AND client_id = $2 AND revoked = false
                 AND $3 = ANY(${idsCol})`,
             [me.id, clientId, targetId, role],
           );
@@ -185,14 +185,14 @@ export async function action({
           `UPDATE oauth_access_tokens
               SET ${idsCol}   = array_remove(${idsCol}, $3),
                   ${rolesCol} = ${rolesCol} - $3
-            WHERE principal_id = $1 AND client_id = $2 AND revoked = false`,
+            WHERE collaborator_id = $1 AND client_id = $2 AND revoked = false`,
           [me.id, clientId, targetId],
         );
         await c.query(
           `UPDATE oauth_refresh_tokens
               SET ${idsCol}   = array_remove(${idsCol}, $3),
                   ${rolesCol} = ${rolesCol} - $3
-            WHERE principal_id = $1 AND client_id = $2 AND revoked = false`,
+            WHERE collaborator_id = $1 AND client_id = $2 AND revoked = false`,
           [me.id, clientId, targetId],
         );
       });
@@ -236,7 +236,7 @@ interface GroupedRow {
 function groupByPrincipal(rows: GroupedRow[]): GroupedRow[] {
   const map = new Map<string, GroupedRow>();
   for (const row of rows) {
-    const key = row.principal.principal_id;
+    const key = row.principal.collaborator_id;
     const existing = map.get(key);
     if (existing) {
       existing.grants.push(...row.grants);
@@ -436,7 +436,7 @@ function Section({
               <tbody className="divide-y divide-border">
                 {sorted.map((r) => (
                   <UserRow
-                    key={`${r.level}-${r.principal.principal_id}`}
+                    key={`${r.level}-${r.principal.collaborator_id}`}
                     row={r}
                     myPrincipalId={myPrincipalId}
                   />
@@ -506,7 +506,7 @@ function UserRow({
   const parsed = isOauth ? parseAgentName(username) : null;
   const primaryName = parsed?.primary ?? username;
   const caption = parsed?.caption ?? null;
-  const isMe = !isOauth && row.principal.principal_id === myPrincipalId;
+  const isMe = !isOauth && row.principal.collaborator_id === myPrincipalId;
 
   const grantedAbs = formatDate(row.earliestJoinedAt);
   const grantedRel = formatRelative(row.earliestJoinedAt);
@@ -552,7 +552,7 @@ function UserRow({
               key={g.target_id}
               level={row.level}
               isOauth={isOauth}
-              principalId={row.principal.principal_id}
+              principalId={row.principal.collaborator_id}
               clientId={clientId}
               username={username}
               grant={g}
@@ -590,7 +590,7 @@ function AccessLine({
       role: newRole,
     };
     if (isOauth) base.client_id = clientId;
-    else base.principal_id = principalId;
+    else base.collaborator_id = principalId;
     return base;
   };
   const removePayload: Record<string, string> = (() => {
@@ -600,7 +600,7 @@ function AccessLine({
       target_ids: grant.target_id,
     };
     if (isOauth) base.client_id = clientId;
-    else base.principal_id = principalId;
+    else base.collaborator_id = principalId;
     return base;
   })();
 

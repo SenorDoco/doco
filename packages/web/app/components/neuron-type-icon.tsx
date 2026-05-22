@@ -2,11 +2,11 @@ import type * as React from "react";
 import { cn } from "~/lib/cn";
 
 export interface NodeTypeIconProps extends React.SVGAttributes<SVGSVGElement> {
-  nodeType: string;
+  entityType: string;
 }
 
-function iconPath(nodeType: string) {
-  switch (nodeType) {
+function iconPath(entityType: string) {
+  switch (entityType) {
     case "principal":
       return (
         <>
@@ -60,14 +60,14 @@ function iconPath(nodeType: string) {
           <path d="m8.5 7.5 8 8" />
         </>
       );
-    case "guidance_article":
+    case "guidance_primitive":
       return (
         <>
           <path d="M6.5 5.5h11v13h-11z" />
           <path d="M9 9h6M9 12h4M9 15h5" />
         </>
       );
-    case "node_authoring_article":
+    case "neuron_authoring_primitive":
       return (
         <>
           <path d="M5.5 6.5h13v11h-13z" />
@@ -135,7 +135,7 @@ function iconPath(nodeType: string) {
   }
 }
 
-export function NodeTypeIcon({ nodeType, className, ...props }: NodeTypeIconProps) {
+export function NeuronTypeIcon({ entityType, className, ...props }: NodeTypeIconProps) {
   return (
     <svg
       aria-hidden="true"
@@ -148,7 +148,7 @@ export function NodeTypeIcon({ nodeType, className, ...props }: NodeTypeIconProp
       className={cn("h-3.5 w-3.5 shrink-0", className)}
       {...props}
     >
-      {iconPath(nodeType)}
+      {iconPath(entityType)}
     </svg>
   );
 }

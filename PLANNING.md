@@ -97,7 +97,7 @@ The schema-level expression of "only people can delete docos" is a built-in **sy
 id: rule_system_only_people_delete
 modality: must
 phase: pre
-applies_to: { node_type: action, verb: delete_doco }
+applies_to: { entity_type: action, verb: delete_doco }
 predicate: "actor.type == 'person'"
 on_violation: block
 summary: "Only person Principals may delete docos"
@@ -228,7 +228,7 @@ The web interface is **not** a parallel implementation — it is a consumer of t
 ### 5.2 API surface
 
 REST + JSON, with:
-- Standard CRUD on every node type: `/api/v1/doco/{slug}/{node_type}/{id}`.
+- Standard CRUD on every node type: `/api/v1/doco/{slug}/{entity_type}/{id}`.
 - Bulk endpoints for import / export.
 - Query endpoint accepting SQL or Cypher (matches §8.6 of SCHEMA.md).
 - Discovery endpoint (`POST /api/v1/doco/{slug}/find-rules` — matches §10.3 of SCHEMA.md).

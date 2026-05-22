@@ -1,9 +1,9 @@
 import { makeUpdateRoute } from "~/lib/api-capture-factory.server";
 
 const route = makeUpdateRoute({
-  type: "node_authoring_articles",
-  nodeType: "node_authoring_article",
-  pluralDir: "node_authoring_articles",
+  type: "neuron_authoring_primitives",
+  entityType: "neuron_authoring_primitive",
+  pluralDir: "neuron_authoring_primitives",
   allowedFields: [
     "summary",
     "body_md",
@@ -11,7 +11,7 @@ const route = makeUpdateRoute({
     "born_from",
     "predicate",
     "evaluation_kind",
-    "fires_when_node_lifecycle",
+    "fires_when_neuron_lifecycle",
     "on_violation",
   ],
 });

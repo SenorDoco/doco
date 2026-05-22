@@ -12,7 +12,7 @@ export type AuditOp =
   | "entity.update"
   | "entity.delete"
   | "lifecycle.transition"
-  | "edge.add";
+  | "synapse.add";
 
 export interface AuditEvent {
   event_id: string;
@@ -67,7 +67,7 @@ export function appendAuditEvent(input: AppendEventInput): AuditEvent {
   appendAuditEventRow({
     event_id: event.event_id,
     at: event.at,
-    by_principal: event.by,
+    by_collaborator: event.by,
     doco_id: event.doco_id,
     org_id: event.org_id,
     entity_type: event.entity_type,
@@ -116,7 +116,7 @@ export async function readAuditEvents(
     const evt: AuditEvent = {
       event_id: r.event_id,
       at: r.at,
-      by: r.by_principal,
+      by: r.by_collaborator,
       doco_id: r.doco_id,
       org_id: r.org_id ?? null,
       entity_type: r.entity_type,

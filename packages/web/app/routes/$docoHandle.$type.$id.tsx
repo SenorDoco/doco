@@ -11,13 +11,13 @@ import { readEntityHistory } from "~/lib/audit-log.server";
 import { loadDocoRouteForRead } from "~/lib/doco-access.server";
 import { loadHostConfig } from "~/lib/host";
 
-/** External node_type → PG table name. */
+/** External entity_type → PG table name. */
 const TABLE_BY_TYPE: Record<string, string> = {
   decision: "decisions",
   intent: "intents",
   rule: "rules",
-  guidance_article: "guidance_articles",
-  node_authoring_article: "node_authoring_articles",
+  guidance_primitive: "guidance_primitives",
+  neuron_authoring_primitive: "neuron_authoring_primitives",
   action: "actions",
   log: "logs",
   reference: "reference_entities",
@@ -32,8 +32,8 @@ const TABLE_BY_TYPE: Record<string, string> = {
   organization: "organizations",
 };
 
-function tableFor(nodeType: string): string {
-  return TABLE_BY_TYPE[nodeType] ?? nodeType;
+function tableFor(entityType: string): string {
+  return TABLE_BY_TYPE[entityType] ?? entityType;
 }
 
 /** Tables that live at host level (no doco_id column). */
@@ -41,7 +41,7 @@ const HOST_LEVEL_TABLES = new Set(["principals", "organizations"]);
 
 type IdentitySummary = {
   id: string;
-  node_type: "principal" | "organization";
+  entity_type: "principal" | "organization";
   label: string;
   detail: string;
 };
@@ -82,13 +82,13 @@ function stringField(fm: Record<string, unknown>, field: string): string | null 
 }
 
 function graphLanePrincipalId(
-  nodeType: string,
+  entityType: string,
   fm: Record<string, unknown>,
   createdBy: string | null,
 ): string | null {
-  if (nodeType === "intent") return stringField(fm, "wanted_by") ?? createdBy;
-  if (nodeType === "action" || nodeType === "log") return stringField(fm, "actor_id") ?? createdBy;
-  if (nodeType === "decision") return stringField(fm, "decided_by") ?? createdBy;
+  if (entityType === "intent") return stringField(fm, "wanted_by") ?? createdBy;
+  if (entityType === "action" || entityType === "log") return stringField(fm, "actor_id") ?? createdBy;
+  if (entityType === "decision") return stringField(fm, "decided_by") ?? createdBy;
   return createdBy;
 }
 import { Breadcrumb, docoBreadcrumb } from "~/components/breadcrumb";
@@ -96,14 +96,14 @@ import { EntityGraph, type GraphLink, type GraphNode } from "~/components/entity
 import {
   type DrawerEdge,
   type DrawerKind,
-  NodeDetailDrawer,
-} from "~/components/node-detail-drawer";
-import { NodeTypeIcon } from "~/components/node-type-icon";
+  NeuronDetailDrawer,
+} from "~/components/neuron-detail-drawer";
+import { NeuronTypeIcon } from "~/components/neuron-type-icon";
 import { SiteHeader } from "~/components/site-header";
-import { lifecycleColor } from "~/lib/node-colors";
+import { lifecycleColor } from "~/lib/neuron-colors";
 
-function prettyTypePlural(nodeType: string): string {
-  return `${nodeType
+function prettyTypePlural(entityType: string): string {
+  return `${entityType
     .split("_")
     .filter(Boolean)
     .map((p, i) => (i === 0 ? p.charAt(0).toUpperCase() + p.slice(1) : p))
@@ -169,35 +169,35 @@ export async function loader({
     const outgoing = (
       await c.query<{
         to_id: string;
-        to_node_type: string;
-        edge_type: string;
+        to_neuron_type: string;
+        synapse_type: string;
         attribution: string;
       }>(
-        `SELECT to_id, to_node_type, edge_type, attribution
-           FROM edges
+        `SELECT to_id, to_neuron_type, synapse_type, attribution
+           FROM synapses
           WHERE from_id = $1 AND doco_id = $2
-          ORDER BY edge_type, to_id`,
+          ORDER BY synapse_type, to_id`,
         [id, docoId],
       )
     ).rows;
     const incoming = (
       await c.query<{
         from_id: string;
-        from_node_type: string;
-        edge_type: string;
+        from_neuron_type: string;
+        synapse_type: string;
         attribution: string;
       }>(
-        `SELECT from_id, from_node_type, edge_type, attribution
-           FROM edges
+        `SELECT from_id, from_neuron_type, synapse_type, attribution
+           FROM synapses
           WHERE to_id = $1 AND doco_id = $2
-          ORDER BY edge_type, from_id`,
+          ORDER BY synapse_type, from_id`,
         [id, docoId],
       )
     ).rows;
 
     const allEdgesRows = (
-      await c.query<{ from_id: string; to_id: string; edge_type: string; attribution: string }>(
-        "SELECT from_id, to_id, edge_type, attribution FROM edges WHERE doco_id = $1",
+      await c.query<{ from_id: string; to_id: string; synapse_type: string; attribution: string }>(
+        "SELECT from_id, to_id, synapse_type, attribution FROM synapses WHERE doco_id = $1",
         [docoId],
       )
     ).rows;
@@ -206,7 +206,7 @@ export async function loader({
     const pprEdges = graphEdgesRows.map((e) => ({
       from: e.from_id,
       to: e.to_id,
-      edge_type: e.edge_type,
+      synapse_type: e.synapse_type,
       attribution: e.attribution as "explicit" | "doco-auto",
     }));
     const ppr = personalizedPageRank(pprEdges, id, { topK: 25, alpha: 0.85 });
@@ -235,8 +235,8 @@ export async function loader({
         name: string | null;
         lifecycle: string | null;
         created_at: string | null;
-        node_type: string;
-        principal_id: string | null;
+        entity_type: string;
+        collaborator_id: string | null;
         principal_label: string | null;
       }
     >();
@@ -250,7 +250,7 @@ export async function loader({
                         username AS name,
                         NULL::text AS lifecycle,
                         created_at::text,
-                        id AS principal_id,
+                        id AS collaborator_id,
                         username AS principal_label,
                         NULL::text AS created_by,
                         raw_yaml
@@ -263,7 +263,7 @@ export async function loader({
                         slug AS name,
                         NULL::text AS lifecycle,
                         created_at::text,
-                        NULL::text AS principal_id,
+                        NULL::text AS collaborator_id,
                         NULL::text AS principal_label,
                         NULL::text AS created_by,
                         raw_yaml
@@ -276,7 +276,7 @@ export async function loader({
                         NULL::text AS name,
                         t.lifecycle,
                         t.created_at::text,
-                        NULL::text AS principal_id,
+                        NULL::text AS collaborator_id,
                         NULL::text AS principal_label,
                         t.created_by,
                         t.raw_yaml
@@ -290,7 +290,7 @@ export async function loader({
           name: string | null;
           lifecycle: string | null;
           created_at: string | null;
-          principal_id: string | null;
+          collaborator_id: string | null;
           principal_label: string | null;
           created_by: string | null;
           raw_yaml: string | null;
@@ -300,12 +300,12 @@ export async function loader({
           const nt = m?.[1] ?? "";
           const fm = storedFrontmatter(row.raw_yaml);
           neighborMeta.set(row.id, {
-            node_type: nt,
+            entity_type: nt,
             summary: row.label ?? row.id,
             name: row.name ?? null,
             lifecycle: row.lifecycle ?? null,
             created_at: row.created_at ?? null,
-            principal_id: row.principal_id ?? graphLanePrincipalId(nt, fm, row.created_by ?? null),
+            collaborator_id: row.collaborator_id ?? graphLanePrincipalId(nt, fm, row.created_by ?? null),
             principal_label: row.principal_label ?? null,
           });
         }
@@ -316,7 +316,7 @@ export async function loader({
     const graphPrincipalIds = Array.from(
       new Set(
         Array.from(neighborMeta.values())
-          .map((meta) => meta.principal_id)
+          .map((meta) => meta.collaborator_id)
           .filter((principalId): principalId is string => Boolean(principalId)),
       ),
     );
@@ -327,8 +327,8 @@ export async function loader({
       );
       const principalLabelById = new Map(principalRows.rows.map((row) => [row.id, row.label]));
       for (const meta of neighborMeta.values()) {
-        if (!meta.principal_id || meta.principal_label) continue;
-        meta.principal_label = principalLabelById.get(meta.principal_id) ?? null;
+        if (!meta.collaborator_id || meta.principal_label) continue;
+        meta.principal_label = principalLabelById.get(meta.collaborator_id) ?? null;
       }
     }
     // For every visible node, scan the audit log to find when it last
@@ -378,16 +378,16 @@ export async function loader({
     for (const nid of neighborIds) {
       const meta = neighborMeta.get(nid);
       const m = /^([a-z_]+)_/.exec(nid);
-      const nt = meta?.node_type ?? m?.[1] ?? "";
+      const nt = meta?.entity_type ?? m?.[1] ?? "";
       if (!nt) continue;
       const lifecycleSince = lifecycleSinceById.get(nid) ?? meta?.created_at ?? null;
       graphNodes.push({
         id: nid,
-        node_type: nt,
+        entity_type: nt,
         summary: meta?.summary ?? nid,
         name: meta?.name ?? null,
         lifecycle: meta?.lifecycle ?? null,
-        principal_id: meta?.principal_id ?? (nt === "principal" ? nid : null),
+        collaborator_id: meta?.collaborator_id ?? (nt === "principal" ? nid : null),
         principal_label:
           meta?.principal_label ??
           (nt === "principal" ? (meta?.name ?? meta?.summary ?? nid) : null),
@@ -404,7 +404,7 @@ export async function loader({
       .map((e) => ({
         source: e.from_id,
         target: e.to_id,
-        edge_type: e.edge_type,
+        synapse_type: e.synapse_type,
         attribution: (e.attribution as "explicit" | "doco-auto") ?? "explicit",
       }));
 
@@ -441,7 +441,7 @@ export async function loader({
       for (const p of principals) {
         identityMap[p.id] = {
           id: p.id,
-          node_type: "principal",
+          entity_type: "principal",
           label: p.username ?? p.id,
           detail: `${p.type} · ${p.username}`,
         };
@@ -466,7 +466,7 @@ export async function loader({
       for (const org of organizations) {
         identityMap[org.id] = {
           id: org.id,
-          node_type: "organization",
+          entity_type: "organization",
           label: org.name ?? org.slug ?? org.id,
           detail: `organization · ${org.slug}`,
         };
@@ -535,7 +535,7 @@ export default function EntityDetail({
     (ent.summary as string | undefined) ??
     id;
   const linkTo = (kind: string, otherId: string) =>
-    entityUrl({ ownerSlug, docoSlug, nodeType: kind, id: otherId });
+    entityUrl({ ownerSlug, docoSlug, entityType: kind, id: otherId });
   const [openDrawer, setOpenDrawer] = useState<DrawerKind | null>(null);
 
   // Focal node's GPR (computed in the loader for every neighbor including center).
@@ -554,14 +554,14 @@ export default function EntityDetail({
     .slice(0, 10);
 
   const drawerOutgoing: DrawerEdge[] = outgoing.map((e) => ({
-    edge_type: e.edge_type,
+    synapse_type: e.synapse_type,
     other_id: e.to_id,
-    other_node_type: e.to_node_type,
+    other_node_type: e.to_neuron_type,
   }));
   const drawerIncoming: DrawerEdge[] = incoming.map((e) => ({
-    edge_type: e.edge_type,
+    synapse_type: e.synapse_type,
     other_id: e.from_id,
-    other_node_type: e.from_node_type,
+    other_node_type: e.from_neuron_type,
   }));
   const drawerHistory = history.map((e) => ({
     event_id: e.event_id,
@@ -574,7 +574,7 @@ export default function EntityDetail({
 
   const drawerButtons: { kind: DrawerKind; label: string }[] = [
     { kind: "relevant", label: "Relevant nodes" },
-    { kind: "edges", label: "Edges" },
+    { kind: "synapses", label: "Edges" },
     { kind: "history", label: "History" },
     { kind: "metadata", label: "Metadata" },
   ];
@@ -594,8 +594,8 @@ export default function EntityDetail({
           className="mb-1.5"
         />
         <div className="flex items-start gap-2">
-          <NodeTypeIcon
-            nodeType={type}
+          <NeuronTypeIcon
+            entityType={type}
             aria-label={type}
             className="!h-5 !w-5 mt-0.5 shrink-0 text-foreground"
           />
@@ -651,7 +651,7 @@ export default function EntityDetail({
             hrefFor={(nid, nt) => linkTo(nt, nid)}
             fillHeight
           />
-          <NodeDetailDrawer
+          <NeuronDetailDrawer
             open={openDrawer}
             onClose={() => setOpenDrawer(null)}
             linkTo={linkTo}

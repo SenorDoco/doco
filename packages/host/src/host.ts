@@ -4,7 +4,6 @@ import {
   type EntityId,
   HOST_RESERVED_SLUGS,
   type Organization,
-  type Principal,
   generateUlid,
   makeEntityId,
   nowIso,
@@ -26,7 +25,7 @@ export interface HostConfig {
   schema_version: string;
   name: string;
   created_at: string;
-  created_by: EntityId<"principal"> | null;
+  created_by: EntityId<"collaborator"> | null;
   visibility: "private" | "public";
 }
 
@@ -40,7 +39,7 @@ export interface CreateHostOptions {
 export async function createHost(
   root: string,
   opts: CreateHostOptions,
-): Promise<{ host: HostConfig; bootstrapPrincipalId: EntityId<"principal"> | null }> {
+): Promise<{ host: HostConfig; bootstrapPrincipalId: EntityId<"collaborator"> | null }> {
   if (detectMode(root) !== "empty") {
     throw new Error(`Refusing to overwrite: ${root} is already a Host or Doco.`);
   }
@@ -52,31 +51,26 @@ export async function createHost(
   await mkdir(hostOrganizationsDir(root), { recursive: true });
   await mkdir(hostDocosDir(root), { recursive: true });
 
-  // Optional bootstrap Principal.
-  let bootstrapId: EntityId<"principal"> | null = null;
+  // Optional bootstrap Collaborator (was "Principal" pre-rename; the
+  // OAuth identity layer is now `collaborators`).
+  let bootstrapId: EntityId<"collaborator"> | null = null;
   if (opts.ownerUsername) {
     const created = nowIso();
-    const id = makeEntityId("principal", generateUlid()) as EntityId<"principal">;
-    const principal: Principal = {
+    const id = makeEntityId("collaborator", generateUlid()) as EntityId<"collaborator">;
+    const collaborator = {
       id,
-      // host bootstrap: principals at host level live without a single doco_id;
-      // we synthesize a host self-id below for the schema's required field.
-      doco_id: `doco_${generateUlid()}` as EntityId<"doco">,
-      node_type: "principal",
-      summary: `Host owner ${opts.ownerUsername}.`,
-      type: "person",
-      username: opts.ownerUsername,
-      ...(opts.ownerEmail
-        ? { github_identity: { github_login: opts.ownerUsername, email: opts.ownerEmail } }
-        : { github_identity: { github_login: opts.ownerUsername } }),
+      entity_type: "collaborator",
+      kind: "person",
+      github_login: opts.ownerUsername,
+      ...(opts.ownerEmail ? { email: opts.ownerEmail } : {}),
       created_at: created,
-      created_by: id,
-      lifecycle: "active",
     };
     const { withClient } = await import("@doco/db");
     await withClient(async (c) => {
       const dup = await c.query(
-        `SELECT 1 FROM principals WHERE username = $1
+        `SELECT 1 FROM collaborators WHERE github_login = $1
+         UNION
+         SELECT 1 FROM principals WHERE username = $1
          UNION
          SELECT 1 FROM organizations WHERE slug = $1
          LIMIT 1`,
@@ -86,23 +80,23 @@ export async function createHost(
         throw new Error(`Slug "${opts.ownerUsername}" is already taken.`);
       }
       await c.query(
-        `INSERT INTO principals
-          (id, username, type, email, github_login, avatar_url, owner_id, raw_yaml, created_at, updated_at, deactivated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9, NULL)`,
+        `INSERT INTO collaborators
+          (id, kind, github_login, email, raw_yaml, created_at, updated_at)
+         VALUES ($1, 'person', $2, $3, $4, $5, $5)`,
         [
           id,
           opts.ownerUsername,
-          "person",
           opts.ownerEmail ?? null,
-          opts.ownerUsername,
-          null,
-          null,
-          JSON.stringify(principal),
+          JSON.stringify(collaborator),
           created,
         ],
       );
     });
-    await writeFile(join(hostPrincipalsDir(root), `${id}.yaml`), stringifyYaml(principal), "utf8");
+    await writeFile(
+      join(hostPrincipalsDir(root), `${id}.yaml`),
+      stringifyYaml(collaborator),
+      "utf8",
+    );
     bootstrapId = id;
   }
 
@@ -159,17 +153,20 @@ export type OwnerSummary =
   | { kind: "organization"; id: EntityId<"organization">; slug: string; display_name: string };
 
 export async function listPrincipals(_root: string): Promise<OwnerSummary[]> {
+  // Post-rename: list users-of-the-host = list collaborators (the OAuth
+  // identity layer). The function name is kept for caller compatibility;
+  // role-personas (the neuron type "principal") aren't host-level users.
   const { withClient } = await import("@doco/db");
   const r = await withClient((c) =>
-    c.query<{ id: string; username: string }>(
-      "SELECT id, username FROM principals WHERE deactivated_at IS NULL ORDER BY username",
+    c.query<{ id: string; github_login: string | null }>(
+      "SELECT id, github_login FROM collaborators WHERE deactivated_at IS NULL ORDER BY github_login NULLS LAST",
     ),
   );
   return r.rows.map((row) => ({
     kind: "principal" as const,
     id: row.id as EntityId<"principal">,
-    slug: row.username,
-    label: row.username,
+    slug: row.github_login ?? row.id,
+    label: row.github_login ?? row.id,
   }));
 }
 
@@ -244,48 +241,53 @@ export async function findPrincipalByGitHubLogin(
   _root: string,
   githubLogin: string,
 ): Promise<{ id: EntityId<"principal">; username: string } | null> {
+  // Post-rename: lookup by github_login lives on collaborators.
   const { withClient } = await import("@doco/db");
   const r = await withClient((c) =>
-    c.query<{ id: string; username: string }>(
-      "SELECT id, username FROM principals WHERE LOWER(github_login) = LOWER($1) LIMIT 1",
+    c.query<{ id: string; github_login: string | null }>(
+      "SELECT id, github_login FROM collaborators WHERE LOWER(github_login) = LOWER($1) LIMIT 1",
       [githubLogin],
     ),
   );
   if (!r.rows[0]) return null;
   return {
     id: r.rows[0].id as EntityId<"principal">,
-    username: r.rows[0].username,
+    username: r.rows[0].github_login ?? r.rows[0].id,
   };
 }
 
+/**
+ * Add a new collaborator (OAuth-identity user) to the host. Function
+ * name kept for caller compatibility, but post-rename the entity is a
+ * Collaborator, not a Principal. Returns the new collaborator id.
+ */
 export async function addPrincipal(
   _root: string,
   opts: AddPrincipalOptions,
-): Promise<EntityId<"principal">> {
+): Promise<EntityId<"collaborator">> {
   assertSlugAllowed(opts.username, "principal");
-  const id = makeEntityId("principal", generateUlid()) as EntityId<"principal">;
+  const id = makeEntityId("collaborator", generateUlid()) as EntityId<"collaborator">;
   const created = nowIso();
   const gh = opts.github_identity ?? {
     github_login: opts.username,
     ...(opts.email ? { email: opts.email } : {}),
   };
-  const yaml: Principal = {
+  const collaborator = {
     id,
-    doco_id: `doco_${generateUlid()}` as EntityId<"doco">,
-    node_type: "principal",
-    summary: `User ${opts.username}.`,
-    type: "person",
-    username: opts.username,
-    github_identity: gh,
+    entity_type: "collaborator",
+    kind: "person",
+    github_login: gh.github_login,
+    ...(gh.email ? { email: gh.email } : {}),
+    ...(opts.email && !gh.email ? { email: opts.email } : {}),
     created_at: created,
-    created_by: id,
-    lifecycle: "active",
   };
 
   const { withClient } = await import("@doco/db");
   await withClient(async (c) => {
     const dup = await c.query(
-      `SELECT 1 FROM principals WHERE username = $1
+      `SELECT 1 FROM collaborators WHERE github_login = $1
+       UNION
+       SELECT 1 FROM principals WHERE username = $1
        UNION
        SELECT 1 FROM organizations WHERE slug = $1
        LIMIT 1`,
@@ -295,25 +297,20 @@ export async function addPrincipal(
       throw new Error(`Slug "${opts.username}" is already taken.`);
     }
     await c.query(
-      `INSERT INTO principals
-        (id, username, type, email, github_login, avatar_url, owner_id, raw_yaml, created_at, updated_at, deactivated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9, NULL)`,
+      `INSERT INTO collaborators
+        (id, kind, github_login, email, raw_yaml, created_at, updated_at)
+       VALUES ($1, 'person', $2, $3, $4, $5, $5)`,
       [
         id,
-        opts.username,
-        "person",
-        opts.email ?? null,
-        gh.github_login ?? null,
-        null,
-        null,
-        JSON.stringify(yaml),
+        gh.github_login ?? opts.username,
+        opts.email ?? gh.email ?? null,
+        JSON.stringify(collaborator),
         created,
       ],
     );
   });
-  // v16: every Principal gets a personal Organization with
-  // handle = username at sign-up. Idempotent — no-op if one already
-  // exists from an earlier sign-in pass.
+  // Every collaborator gets a personal Organization with handle =
+  // username at sign-up. Idempotent.
   await ensurePersonalOrganization(id, opts.username);
   return id;
 }
@@ -343,9 +340,9 @@ export async function ensurePersonalOrganization(
     );
     if (existing.rows[0]) {
       await c.query(
-        `INSERT INTO org_users (org_id, principal_id, role)
+        `INSERT INTO org_users (org_id, collaborator_id, role)
          VALUES ($1, $2, 'owner')
-         ON CONFLICT (org_id, principal_id) DO NOTHING`,
+         ON CONFLICT (org_id, collaborator_id) DO NOTHING`,
         [existing.rows[0].id, principalId],
       );
       return existing.rows[0].id as EntityId<"organization">;
@@ -372,7 +369,7 @@ export async function ensurePersonalOrganization(
       ],
     );
     await c.query(
-      `INSERT INTO org_users (org_id, principal_id, role, joined_at)
+      `INSERT INTO org_users (org_id, collaborator_id, role, joined_at)
        VALUES ($1, $2, 'owner', $3)`,
       [id, principalId, created],
     );
@@ -481,7 +478,7 @@ export async function addOrganizationByHandle(opts: {
       ],
     );
     await c.query(
-      `INSERT INTO org_users (org_id, principal_id, role, joined_at)
+      `INSERT INTO org_users (org_id, collaborator_id, role, joined_at)
        VALUES ($1, $2, 'owner', $3)`,
       [id, opts.ownerPrincipalId, created],
     );
@@ -557,7 +554,7 @@ export async function createDocoInOrg(opts: {
     const visibility = opts.visibility ?? "private";
     const docoYaml = {
       id: docoId,
-      node_type: "doco",
+      entity_type: "doco",
       handle,
       visibility,
       owner_id: opts.orgId,
@@ -571,21 +568,21 @@ export async function createDocoInOrg(opts: {
     // owner_id is still NOT NULL on the legacy schema; populate it
     // alongside org_id so existing readers keep working.
     // v15: template-driven Doco creation. The picked template seeds
-    // constitution articles + sets the doco-level `allowed_node_types`
-    // and `default_node_lifecycle` columns. `generic` (or unknown
+    // constitution articles + sets the doco-level `allowed_neuron_types`
+    // and `default_neuron_lifecycle` columns. `generic` (or unknown
     // handle) seeds nothing.
     const template = opts.templateHandle ? findDocoTemplate(opts.templateHandle) : null;
-    const allowedNodeTypes = template?.allowedNodeTypes ?? null;
-    const defaultNodeLifecycle = template?.defaultNodeLifecycle ?? null;
-    if (allowedNodeTypes) {
-      (docoYaml as Record<string, unknown>).allowed_node_types = allowedNodeTypes;
+    const allowedNeuronTypes = template?.allowedNeuronTypes ?? null;
+    const defaultNeuronLifecycle = template?.defaultNeuronLifecycle ?? null;
+    if (allowedNeuronTypes) {
+      (docoYaml as Record<string, unknown>).allowed_neuron_types = allowedNeuronTypes;
     }
-    if (defaultNodeLifecycle) {
-      (docoYaml as Record<string, unknown>).default_node_lifecycle = defaultNodeLifecycle;
+    if (defaultNeuronLifecycle) {
+      (docoYaml as Record<string, unknown>).default_neuron_lifecycle = defaultNeuronLifecycle;
     }
     await c.query(
       `INSERT INTO docos (id, handle, owner_id, org_id, visibility, raw_yaml,
-                          allowed_node_types, default_node_lifecycle,
+                          allowed_neuron_types, default_neuron_lifecycle,
                           created_at, updated_at)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9)`,
       [
@@ -595,35 +592,35 @@ export async function createDocoInOrg(opts: {
         opts.orgId,
         visibility,
         JSON.stringify(docoYaml),
-        allowedNodeTypes,
-        defaultNodeLifecycle,
+        allowedNeuronTypes,
+        defaultNeuronLifecycle,
         created,
       ],
     );
     await c.query(
-      `INSERT INTO doco_users (doco_id, principal_id, role, joined_at)
+      `INSERT INTO doco_users (doco_id, collaborator_id, role, joined_at)
        VALUES ($1, $2, 'owner', $3)
-       ON CONFLICT (doco_id, principal_id) DO UPDATE SET role = 'owner'`,
+       ON CONFLICT (doco_id, collaborator_id) DO UPDATE SET role = 'owner'`,
       [docoId, opts.createdByPrincipalId, created],
     );
     // Seed each template article as a Constitution Article. Prose-only
-    // entries become guidance_articles; predicate-bearing entries become
-    // node_authoring_articles. Domain Rule nodes stay available for
+    // entries become guidance_primitives; predicate-bearing entries become
+    // neuron_authoring_primitives. Domain Rule nodes stay available for
     // project/business constraints.
     if (template && template.articles.length > 0) {
       for (const article of template.articles) {
         const isAuthoring = Boolean(article.predicate);
-        const firesWhen = Array.isArray(article.fires_when_node_lifecycle)
-          ? article.fires_when_node_lifecycle
+        const firesWhen = Array.isArray(article.fires_when_neuron_lifecycle)
+          ? article.fires_when_neuron_lifecycle
           : [];
-        const nodeType = isAuthoring ? "node_authoring_article" : "guidance_article";
-        const table = isAuthoring ? "node_authoring_articles" : "guidance_articles";
-        const articleId = `${nodeType}_${generateUlid()}`;
+        const entityType = isAuthoring ? "neuron_authoring_primitive" : "guidance_primitive";
+        const table = isAuthoring ? "neuron_authoring_primitives" : "guidance_primitives";
+        const articleId = `${entityType}_${generateUlid()}`;
         const articleYaml: Record<string, unknown> = {
           id: articleId,
           doco_id: docoId,
-          node_type: nodeType,
-          article_type: isAuthoring ? "node_authoring" : "guidance",
+          entity_type: entityType,
+          primitive_kind: isAuthoring ? "node_authoring" : "guidance",
           summary: article.summary,
           ...(article.predicate
             ? {
@@ -633,7 +630,7 @@ export async function createDocoInOrg(opts: {
                 on_violation: "block",
               }
             : {}),
-          ...(firesWhen.length > 0 ? { fires_when_node_lifecycle: firesWhen } : {}),
+          ...(firesWhen.length > 0 ? { fires_when_neuron_lifecycle: firesWhen } : {}),
           template_seeded: true,
           template_handle: opts.templateHandle ?? null,
           created_at: created,
@@ -700,7 +697,7 @@ export async function addOrganization(
   const yaml: Organization = {
     id,
     doco_id: `doco_${generateUlid()}` as EntityId<"doco">,
-    node_type: "organization",
+    entity_type: "organization",
     summary: `Organization ${opts.slug}.`,
     slug: opts.slug,
     display_name: opts.display_name ?? opts.slug,
@@ -708,13 +705,13 @@ export async function addOrganization(
     visibility: opts.visibility ?? "private",
     members: [
       {
-        principal_id: owner.id,
+        collaborator_id: owner.id as unknown as EntityId<"collaborator">,
         role: "owner",
         permissions: ["read", "write", "execute", "admin"],
       },
     ],
     created_at: created,
-    created_by: owner.id,
+    created_by: owner.id as unknown as EntityId<"collaborator">,
     lifecycle: "active",
   };
 
@@ -734,7 +731,7 @@ export async function addOrganization(
       [id, opts.slug, opts.display_name ?? opts.slug, JSON.stringify(yaml), created],
     );
     await c.query(
-      `INSERT INTO org_users (org_id, principal_id, role, joined_at)
+      `INSERT INTO org_users (org_id, collaborator_id, role, joined_at)
        VALUES ($1, $2, 'owner', $3)`,
       [id, owner.id, created],
     );
@@ -840,7 +837,7 @@ export async function createDocoInHost(
   const created = nowIso();
   const docoYaml = {
     id: docoId,
-    node_type: "doco",
+    entity_type: "doco",
     handle,
     display_name: handle,
     visibility: opts.visibility ?? "private",
@@ -856,7 +853,7 @@ export async function createDocoInHost(
       owner.kind === "principal"
         ? [
             {
-              principal_id: owner.id,
+              collaborator_id: owner.id,
               role: "owner",
               permissions: ["read", "write", "execute", "admin"],
             },
@@ -881,7 +878,7 @@ export async function createDocoInHost(
   );
 
   // Stamp the creator as the owner in `doco_users` so downstream
-  // role + listing queries find them. `listDocoIdsForUserPrincipal`
+  // role + listing queries find them. `listDocoIdsForCollaborator`
   // (used by the OAuth authorize page + the dashboard's "your docos"
   // panel) reads from this table, not from `docos.owner_id` — a fresh
   // creator who isn't grandfathered in by the v8 backfill is otherwise
@@ -891,9 +888,9 @@ export async function createDocoInHost(
   if (owner.kind === "principal") {
     await withClient((c) =>
       c.query(
-        `INSERT INTO doco_users (doco_id, principal_id, role)
+        `INSERT INTO doco_users (doco_id, collaborator_id, role)
          VALUES ($1, $2, 'owner')
-         ON CONFLICT (doco_id, principal_id) DO UPDATE SET role = 'owner'`,
+         ON CONFLICT (doco_id, collaborator_id) DO UPDATE SET role = 'owner'`,
         [docoId, owner.id],
       ),
     );
@@ -1028,14 +1025,14 @@ export async function softDeleteDoco(opts: {
 
 export async function listDocos(root: string): Promise<DocoRecord[]> {
   const { withClient } = await import("@doco/db");
-  // Phase 3a: slug columns dropped. Derive owner_slug via JOIN to
-  // identity tables and use the doco's handle as its slug stand-in.
+  // Post-rename: doco.owner_id is collaborator_<ulid> or organization_<ulid>.
+  // Owner-slug derives from collaborators.github_login or organizations.slug.
   const r = await withClient((c) =>
     c.query<{ id: string; handle: string; owner_slug: string; owner_id: string }>(
       `SELECT d.id, d.handle, d.owner_id,
-              COALESCE(p.username, o.slug, '') AS owner_slug
+              COALESCE(c.github_login, o.slug, '') AS owner_slug
          FROM docos d
-         LEFT JOIN principals p ON p.id = d.owner_id
+         LEFT JOIN collaborators c ON c.id = d.owner_id
          LEFT JOIN organizations o ON o.id = d.owner_id
         ORDER BY d.handle`,
     ),

@@ -12,27 +12,27 @@
 import dagre from "@dagrejs/dagre";
 import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router";
-import { NodeTypeIcon } from "~/components/node-type-icon";
-import { lifecycleColor } from "~/lib/node-colors";
-import { useNewNodeIds } from "~/lib/use-new-node-ids";
+import { NeuronTypeIcon } from "~/components/neuron-type-icon";
+import { lifecycleColor } from "~/lib/neuron-colors";
+import { useNewNodeIds } from "~/lib/use-new-neuron-ids";
 import "@xyflow/react/dist/style.css";
 
 /**
  * Administrative edge types that carry no reading value in the rendered
  * graph and clutter every neighborhood. Filtered out at render time
- * (decision_01KRRJTW39THBW0C943G0GTH0M). The underlying edges remain in
+ * (decision_01KRRJTW39THBW0C943G0GTH0M). The underlying synapses remain in
  * the index — this is a visualization-only filter.
  *
  * Note: `created_by` / `updated_by` used to be filtered here. They're now
- * skipped at index time (see SKIP_FIELDS in packages/index/src/edges.ts),
- * so the runtime filter is just for legacy edges still sitting in the DB
+ * skipped at index time (see SKIP_FIELDS in packages/index/src/synapses.ts),
+ * so the runtime filter is just for legacy synapses still sitting in the DB
  * from before the change.
  */
 const ALWAYS_HIDDEN_EDGE_TYPES: ReadonlySet<string> = new Set(["created_by", "updated_by"]);
 
 export interface GraphNode {
   id: string;
-  node_type: string;
+  entity_type: string;
   summary: string;
   /** Display name; not all entity types populate this. */
   name: string | null;
@@ -42,7 +42,7 @@ export interface GraphNode {
   count?: number;
   lifecycle?: string | null;
   /** Principal who owns this node's lane in the rendered graph. */
-  principal_id?: string | null;
+  collaborator_id?: string | null;
   principal_label?: string | null;
   created_at: string | null;
   /**
@@ -62,12 +62,12 @@ export interface GraphNode {
 export interface GraphLink {
   source: string;
   target: string;
-  edge_type: string;
+  synapse_type: string;
   /**
-   * Where the edge came from. Explicit edges render solid; doco-auto
-   * edges render dashed + lighter so the viewer can see which links the
+   * Where the edge came from. Explicit synapses render solid; doco-auto
+   * synapses render dashed + lighter so the viewer can see which links the
    * LLM proposed vs. which the source declared. Per the
-   * `llm-auto-edge-detection-on-capture` ADR.
+   * `llm-auto-synapse-detection-on-capture` ADR.
    */
   attribution?: "explicit" | "doco-auto";
 }
@@ -76,7 +76,7 @@ interface EntityGraphProps {
   centerId: string;
   nodes: GraphNode[];
   links: GraphLink[];
-  hrefFor?: (id: string, nodeType: string) => string;
+  hrefFor?: (id: string, entityType: string) => string;
   /**
    * Entity-detail pages use principal swim lanes. Collection overview graphs
    * can render compact ranked grids or semantic clusters.
@@ -160,7 +160,7 @@ const UNKNOWN_PRINCIPAL_KEY = "__unknown_principal__";
 const UNKNOWN_PRINCIPAL_LABEL = "Unknown principal";
 
 function principalLaneFor(node: GraphNode): { key: string; id: string | null; label: string } {
-  if (node.node_type === "principal") {
+  if (node.entity_type === "principal") {
     return {
       key: node.id,
       id: node.id,
@@ -168,11 +168,11 @@ function principalLaneFor(node: GraphNode): { key: string; id: string | null; la
     };
   }
 
-  if (node.principal_id) {
+  if (node.collaborator_id) {
     return {
-      key: node.principal_id,
-      id: node.principal_id,
-      label: node.principal_label ?? node.principal_id,
+      key: node.collaborator_id,
+      id: node.collaborator_id,
+      label: node.principal_label ?? node.collaborator_id,
     };
   }
 
@@ -239,8 +239,8 @@ const GRID_TYPE_ORDER = new Map(
     "decision",
     "action",
     "rule",
-    "guidance_article",
-    "node_authoring_article",
+    "guidance_primitive",
+    "neuron_authoring_primitive",
     "log",
     "eval",
     "reference",
@@ -287,8 +287,8 @@ function rankedGridLayout(nodes: GraphNode[]): GraphLayout {
         );
   const columnHeights = Array.from({ length: columns }, () => 0);
   const ordered = nodes.slice().sort((a, b) => {
-    const ai = GRID_TYPE_ORDER.get(a.node_type) ?? 999;
-    const bi = GRID_TYPE_ORDER.get(b.node_type) ?? 999;
+    const ai = GRID_TYPE_ORDER.get(a.entity_type) ?? 999;
+    const bi = GRID_TYPE_ORDER.get(b.entity_type) ?? 999;
     if (ai !== bi) return ai - bi;
     if ((b.gpr ?? 0) !== (a.gpr ?? 0)) return (b.gpr ?? 0) - (a.gpr ?? 0);
     return a.id.localeCompare(b.id);
@@ -346,8 +346,8 @@ function clusterLayout(nodes: GraphNode[], centerId: string): GraphLayout {
   if (nodes.length === 0) return { positions, lanes: [] };
 
   const ordered = nodes.slice().sort((a, b) => {
-    const at = GRID_TYPE_ORDER.get(a.node_type) ?? 999;
-    const bt = GRID_TYPE_ORDER.get(b.node_type) ?? 999;
+    const at = GRID_TYPE_ORDER.get(a.entity_type) ?? 999;
+    const bt = GRID_TYPE_ORDER.get(b.entity_type) ?? 999;
     if (at !== bt) return at - bt;
     return (a.name ?? a.summary ?? a.id).localeCompare(b.name ?? b.summary ?? b.id);
   });
@@ -386,7 +386,7 @@ function dagreLayout(nodes: GraphNode[], links: GraphLink[], centerId: string): 
   for (const n of nodes) {
     g.setNode(n.id, { width: NODE_WIDTH, height: heightById.get(n.id) ?? NODE_HEIGHT });
   }
-  // Use a deterministic edge key (the index) so duplicate edges between
+  // Use a deterministic edge key (the index) so duplicate synapses between
   // the same pair don't clobber each other.
   links.forEach((l, i) => {
     const src = typeof l.source === "string" ? l.source : (l.source as { id: string }).id;
@@ -524,7 +524,7 @@ function SwimLaneNode() {
 interface EntityNodeCardProps {
   id: string;
   href: string;
-  nodeType: string;
+  entityType: string;
   title: string;
   summary: string;
   count?: number;
@@ -542,7 +542,7 @@ interface EntityNodeCardProps {
 
 function EntityNodeCard({
   href,
-  nodeType,
+  entityType,
   title,
   summary,
   count,
@@ -567,9 +567,9 @@ function EntityNodeCard({
   return (
     <Link
       to={href}
-      aria-label={`Open ${nodeType} ${title}`}
+      aria-label={`Open ${entityType} ${title}`}
       className={`nodrag nopan relative flex cursor-pointer flex-col gap-1 overflow-visible py-3 pl-4 pr-10 text-left text-inherit no-underline shadow-sm transition-shadow duration-150 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring${isNew ? " doco-new-node-glow" : ""}`}
-      data-entity-node-card={nodeType}
+      data-entity-node-card={entityType}
       data-entity-node-new={isNew ? "true" : undefined}
       draggable={false}
       onClick={(event) => event.stopPropagation()}
@@ -602,8 +602,8 @@ function EntityNodeCard({
       </div>
       <div className="relative z-10 flex items-center gap-2 text-left">
         <span className="inline-flex items-center gap-1.5 text-sm font-semibold uppercase tracking-wider text-foreground">
-          <NodeTypeIcon nodeType={nodeType} className="!h-4 !w-4 shrink-0" />
-          <span>{nodeType}</span>
+          <NeuronTypeIcon entityType={entityType} className="!h-4 !w-4 shrink-0" />
+          <span>{entityType}</span>
         </span>
         <span className="ml-auto flex shrink-0 items-center gap-2 font-mono text-[11px] text-muted-foreground">
           {isCenter ? (
@@ -668,7 +668,7 @@ export function EntityGraph({
   const allLifecycles = useMemo(() => {
     const set = new Set<string>(["active"]);
     for (const n of nodes) {
-      if (n.node_type === "principal") continue;
+      if (n.entity_type === "principal") continue;
       set.add(nodeLifecycle(n));
     }
     return Array.from(set).sort((a, b) => {
@@ -701,16 +701,16 @@ export function EntityGraph({
 
   const visible = useMemo(() => {
     const v = nodes.filter((n) => {
-      if (n.node_type === "principal") return false;
+      if (n.entity_type === "principal") return false;
       if (!visibleLifecycles.has(nodeLifecycle(n))) return false;
       if (showPersonalizedRank && n.id === centerId) return true;
       return true;
     });
     const ids = new Set(v.map((n) => n.id));
     const vl = links.filter((l) => {
-      // Drop administrative edges that clutter the render and carry no
+      // Drop administrative synapses that clutter the render and carry no
       // process / reasoning value (decision_01KRRJTW39THBW0C943G0GTH0M).
-      if (ALWAYS_HIDDEN_EDGE_TYPES.has(l.edge_type)) return false;
+      if (ALWAYS_HIDDEN_EDGE_TYPES.has(l.synapse_type)) return false;
       const src = typeof l.source === "string" ? l.source : (l.source as { id: string }).id;
       const tgt = typeof l.target === "string" ? l.target : (l.target as { id: string }).id;
       return ids.has(src) && ids.has(tgt);
@@ -863,7 +863,7 @@ export function EntityGraph({
       const cardHeight = nodeRenderHeight(n);
       // Make the card itself a real link. React Flow's node-level click
       // remains as a fallback, but the anchor gives expected browser affordances.
-      const href = n.href ?? (hrefFor ? hrefFor(n.id, n.node_type) : `/${n.node_type}/${n.id}`);
+      const href = n.href ?? (hrefFor ? hrefFor(n.id, n.entity_type) : `/${n.entity_type}/${n.id}`);
       return {
         id: n.id,
         position: pos,
@@ -880,7 +880,7 @@ export function EntityGraph({
             <EntityNodeCard
               id={n.id}
               href={href}
-              nodeType={n.node_type}
+              entityType={n.entity_type}
               title={title}
               summary={n.summary}
               count={n.count}
@@ -955,10 +955,10 @@ export function EntityGraph({
         const tgt = typeof l.target === "string" ? l.target : (l.target as { id: string }).id;
         const isAuto = l.attribution === "doco-auto";
         return {
-          id: `${src}-${tgt}-${l.edge_type}-${i}`,
+          id: `${src}-${tgt}-${l.synapse_type}-${i}`,
           source: src,
           target: tgt,
-          label: isAuto ? `${l.edge_type} (auto)` : l.edge_type,
+          label: isAuto ? `${l.synapse_type} (auto)` : l.synapse_type,
           labelStyle: {
             fontSize: 9,
             fill: isAuto ? "#a3a3a3" : "#737373",
@@ -974,7 +974,7 @@ export function EntityGraph({
           selectable: false,
           focusable: false,
           interactionWidth: 0,
-          // Auto-detected edges render dashed + lighter so the eye can tell
+          // Auto-detected synapses render dashed + lighter so the eye can tell
           // them apart from explicit (person/agent-authored) ones.
           style: isAuto
             ? {
@@ -1123,7 +1123,7 @@ export function EntityGraph({
                 // only for ad-hoc tests/storybook. Use the short form (no `/e/`).
                 const href =
                   node.href ??
-                  (hrefFor ? hrefFor(node.id, node.node_type) : `/${node.node_type}/${node.id}`);
+                  (hrefFor ? hrefFor(node.id, node.entity_type) : `/${node.entity_type}/${node.id}`);
                 navigate(href);
               }}
               proOptions={{ hideAttribution: true }}

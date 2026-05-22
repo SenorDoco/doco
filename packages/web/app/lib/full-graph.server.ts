@@ -13,13 +13,13 @@ type QueryClient = {
 interface EdgeRow {
   from_id: string;
   to_id: string;
-  edge_type: string;
+  synapse_type: string;
   attribution: string | null;
 }
 
 interface OverviewGraphRow {
   id: string;
-  node_type: string;
+  entity_type: string;
   name: string | null;
   lifecycle: string | null;
   created_at: string | null;
@@ -30,19 +30,19 @@ interface OverviewGraphRow {
 // own surface: /<handle>/constitution and /<handle>/api/articles.json.
 const GRAPH_TABLES: {
   table: string;
-  nodeType: string;
+  entityType: string;
   labelExpr?: string;
   nameExpr?: string;
 }[] = [
-  { table: "decisions", nodeType: "decision" },
-  { table: "intents", nodeType: "intent" },
-  { table: "actions", nodeType: "action" },
-  { table: "logs", nodeType: "log" },
-  { table: "rules", nodeType: "rule" },
-  { table: "evals", nodeType: "eval" },
-  { table: "reference_entities", nodeType: "reference" },
-  { table: "ideas", nodeType: "idea" },
-  { table: "states", nodeType: "state" },
+  { table: "decisions", entityType: "decision" },
+  { table: "intents", entityType: "intent" },
+  { table: "actions", entityType: "action" },
+  { table: "logs", entityType: "log" },
+  { table: "rules", entityType: "rule" },
+  { table: "evals", entityType: "eval" },
+  { table: "reference_entities", entityType: "reference" },
+  { table: "ideas", entityType: "idea" },
+  { table: "states", entityType: "state" },
 ];
 
 const OVERVIEW_GRAPH_EDGE_LIMIT = 5000;
@@ -79,11 +79,11 @@ function asAttribution(value: string | null): "explicit" | "doco-auto" {
 
 function overviewEntityHref(
   handle: string | undefined,
-  nodeType: string,
+  entityType: string,
   id: string,
 ): string | undefined {
   if (!handle) return undefined;
-  return `/${handle}/${nodeType}/${id}`;
+  return `/${handle}/${entityType}/${id}`;
 }
 
 function overviewRowsSql(includeLabel = false): string {
@@ -91,7 +91,7 @@ function overviewRowsSql(includeLabel = false): string {
     const labelExpr = entry.labelExpr ?? "t.summary";
     const nameExpr = entry.nameExpr ?? "NULL::text";
     return `SELECT t.id,
-                   '${entry.nodeType}'::text AS node_type,
+                   '${entry.entityType}'::text AS entity_type,
                    ${nameExpr} AS name,
                    COALESCE(t.lifecycle, 'active') AS lifecycle,
                    t.created_at::text AS created_at
@@ -113,12 +113,12 @@ async function loadOverviewLinks(
   if (nodeIds.length === 0) return [];
   const rows = (
     await c.query<EdgeRow>(
-      `SELECT from_id, to_id, edge_type, attribution
-         FROM edges
+      `SELECT from_id, to_id, synapse_type, attribution
+         FROM synapses
         WHERE doco_id = $1
           AND from_id = ANY($2::text[])
           AND to_id = ANY($2::text[])
-        ORDER BY CASE WHEN attribution = 'explicit' THEN 0 ELSE 1 END, edge_type
+        ORDER BY CASE WHEN attribution = 'explicit' THEN 0 ELSE 1 END, synapse_type
         LIMIT $3`,
       [docoId, nodeIds, OVERVIEW_GRAPH_EDGE_LIMIT],
     )
@@ -126,7 +126,7 @@ async function loadOverviewLinks(
   return rows.map((edge) => ({
     source: edge.from_id,
     target: edge.to_id,
-    edge_type: edge.edge_type,
+    synapse_type: edge.synapse_type,
     attribution: asAttribution(edge.attribution),
   }));
 }
@@ -141,11 +141,11 @@ export async function loadOverviewGraph(
   const links = await loadOverviewLinks(c, docoId, nodeIds);
   const nodes: OverviewGraphNode[] = rows.map((row) => ({
     id: row.id,
-    node_type: row.node_type,
+    entity_type: row.entity_type,
     name: row.name,
     lifecycle: row.lifecycle ?? "active",
     created_at: toIso(row.created_at),
-    href: overviewEntityHref(options.handle, row.node_type, row.id),
+    href: overviewEntityHref(options.handle, row.entity_type, row.id),
     is_center: row.id === options.centerId,
   }));
   const centerId =
@@ -160,7 +160,7 @@ export async function loadOverviewGraph(
     centerId,
     nodes,
     links,
-    detailUrl: options.handle ? `/${options.handle}/graph-node-details.json` : null,
+    detailUrl: options.handle ? `/${options.handle}/graph-neuron-details.json` : null,
   };
 }
 
@@ -191,12 +191,12 @@ export async function loadOverviewNodeDetails(
     return [
       {
         id: row.id,
-        node_type: row.node_type,
+        entity_type: row.entity_type,
         summary: row.label ?? row.name ?? row.id,
         name: row.name,
         lifecycle: row.lifecycle ?? "active",
         created_at: toIso(row.created_at),
-        href: overviewEntityHref(handle, row.node_type, row.id),
+        href: overviewEntityHref(handle, row.entity_type, row.id),
       },
     ];
   });
@@ -211,7 +211,7 @@ export async function loadOverviewNodeDetails(
 function overviewRowsSqlMulti(): string {
   return GRAPH_TABLES.map(
     (entry) => `SELECT t.id,
-                     '${entry.nodeType}'::text AS node_type,
+                     '${entry.entityType}'::text AS entity_type,
                      NULL::text AS name,
                      COALESCE(t.lifecycle, 'active') AS lifecycle,
                      t.created_at::text AS created_at,
@@ -244,30 +244,30 @@ export async function loadOrgOverviewGraph(
       ? []
       : (
           await c.query<EdgeRow>(
-            `SELECT from_id, to_id, edge_type, attribution
-               FROM edges
+            `SELECT from_id, to_id, synapse_type, attribution
+               FROM synapses
               WHERE doco_id = ANY($1::text[])
                 AND from_id = ANY($2::text[])
                 AND to_id = ANY($2::text[])
-              ORDER BY CASE WHEN attribution = 'explicit' THEN 0 ELSE 1 END, edge_type
+              ORDER BY CASE WHEN attribution = 'explicit' THEN 0 ELSE 1 END, synapse_type
               LIMIT $3`,
             [docoIds, nodeIds, OVERVIEW_GRAPH_EDGE_LIMIT],
           )
         ).rows.map((edge) => ({
           source: edge.from_id,
           target: edge.to_id,
-          edge_type: edge.edge_type,
+          synapse_type: edge.synapse_type,
           attribution: asAttribution(edge.attribution),
         }));
   const nodes: OverviewGraphNode[] = rows.map((row) => {
     const handle = docoHandleByDocoId.get(String(row.doco_id));
     return {
       id: row.id,
-      node_type: row.node_type,
+      entity_type: row.entity_type,
       name: row.name,
       lifecycle: row.lifecycle ?? "active",
       created_at: toIso(row.created_at),
-      href: overviewEntityHref(handle, row.node_type, row.id),
+      href: overviewEntityHref(handle, row.entity_type, row.id),
       is_center: false,
     };
   });

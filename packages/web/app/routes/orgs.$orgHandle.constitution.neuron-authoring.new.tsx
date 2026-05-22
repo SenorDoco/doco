@@ -92,7 +92,7 @@ export async function action({
     String(form.get("evaluation_kind") ?? "deterministic") === "probabilistic"
       ? "probabilistic"
       : "deterministic";
-  const lifecycle = String(form.get("fires_when_node_lifecycle") ?? "")
+  const lifecycle = String(form.get("fires_when_neuron_lifecycle") ?? "")
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean);
@@ -106,7 +106,7 @@ export async function action({
     on_violation,
     authored_by_username: me.username,
     created_by_id: me.id,
-    ...(lifecycle.length > 0 ? { fires_when_node_lifecycle: lifecycle } : {}),
+    ...(lifecycle.length > 0 ? { fires_when_neuron_lifecycle: lifecycle } : {}),
     ...(evaluationKind === "probabilistic"
       ? { spec: String(form.get("probabilistic_spec") ?? "").trim() }
       : { predicate: String(form.get("deterministic_predicate") ?? "").trim() }),
@@ -200,10 +200,10 @@ export default function NewOrgNodeAuthoringArticle({
                     rows={10}
                     defaultValue={JSON.stringify(
                       {
-                        kind: "requires_edge",
-                        edge_type: "serves",
-                        target_node_type: "intent",
-                        when_node_type: ["decision"],
+                        kind: "requires_synapse",
+                        synapse_type: "serves",
+                        target_neuron_type: "intent",
+                        when_neuron_type: ["decision"],
                       },
                       null,
                       2,
@@ -230,7 +230,7 @@ export default function NewOrgNodeAuthoringArticle({
                     Fires on lifecycles (comma-separated)
                   </span>
                   <input
-                    name="fires_when_node_lifecycle"
+                    name="fires_when_neuron_lifecycle"
                     placeholder="active"
                     className="mt-1 block w-full rounded-md border border-border bg-input px-3 py-2 text-sm"
                   />

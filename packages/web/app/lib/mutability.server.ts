@@ -21,8 +21,8 @@ export type ClaimNodeType =
   | "decision"
   | "intent"
   | "rule"
-  | "guidance_article"
-  | "node_authoring_article"
+  | "guidance_primitive"
+  | "neuron_authoring_primitive"
   | "action"
   | "log"
   | "eval"
@@ -34,16 +34,16 @@ const CLAIM_TYPES: ReadonlySet<string> = new Set<ClaimNodeType>([
   "decision",
   "intent",
   "rule",
-  "guidance_article",
-  "node_authoring_article",
+  "guidance_primitive",
+  "neuron_authoring_primitive",
   "action",
   "log",
   "eval",
   "reference",
 ]);
 
-export function nodeClassOf(nodeType: string): NodeClass {
-  return CLAIM_TYPES.has(nodeType) ? "claim" : "record";
+export function nodeClassOf(entityType: string): NodeClass {
+  return CLAIM_TYPES.has(entityType) ? "claim" : "record";
 }
 
 // Per-type lifecycle states that put a claim into the frozen state.
@@ -52,8 +52,8 @@ const FROZEN_LIFECYCLES: Record<ClaimNodeType, ReadonlySet<string>> = {
   decision: new Set(["active", "succeeded", "failed", "superseded", "abandoned"]),
   intent: new Set(["active", "succeeded", "failed", "superseded", "abandoned"]),
   rule: new Set(["active", "succeeded", "failed", "superseded", "abandoned"]),
-  guidance_article: new Set(["active", "succeeded", "failed", "superseded", "abandoned"]),
-  node_authoring_article: new Set(["active", "succeeded", "failed", "superseded", "abandoned"]),
+  guidance_primitive: new Set(["active", "succeeded", "failed", "superseded", "abandoned"]),
+  neuron_authoring_primitive: new Set(["active", "succeeded", "failed", "superseded", "abandoned"]),
   action: new Set(["active", "succeeded", "failed", "superseded", "abandoned"]),
   eval: new Set(["active", "succeeded", "failed", "superseded", "abandoned"]),
   // Log records a thing that happened — frozen from creation so the audit
@@ -68,9 +68,9 @@ const FROZEN_LIFECYCLES: Record<ClaimNodeType, ReadonlySet<string>> = {
  * Is the given claim frozen at the given lifecycle? Records are never
  * frozen — they always return false here.
  */
-export function isFrozen(nodeType: string, lifecycle: string | undefined | null): boolean {
-  if (nodeClassOf(nodeType) !== "claim") return false;
-  const frozenStates = FROZEN_LIFECYCLES[nodeType as ClaimNodeType];
+export function isFrozen(entityType: string, lifecycle: string | undefined | null): boolean {
+  if (nodeClassOf(entityType) !== "claim") return false;
+  const frozenStates = FROZEN_LIFECYCLES[entityType as ClaimNodeType];
   if (!frozenStates) return false;
   if (frozenStates.has("*")) return true;
   return typeof lifecycle === "string" && frozenStates.has(lifecycle);
@@ -96,11 +96,11 @@ export interface PatchValidation {
  * included.
  */
 export function validatePatch(
-  nodeType: string,
+  entityType: string,
   currentLifecycle: string | undefined | null,
   patch: Record<string, unknown>,
 ): PatchValidation {
-  if (!isFrozen(nodeType, currentLifecycle)) {
+  if (!isFrozen(entityType, currentLifecycle)) {
     return { allowed: true, rejected: [] };
   }
   const rejected: string[] = [];
@@ -110,9 +110,9 @@ export function validatePatch(
     if (!ALLOWED_ON_FROZEN.has(key)) rejected.push(key);
   }
   if (rejected.length === 0) return { allowed: true, rejected: [] };
-  const noun = nodeType.charAt(0).toUpperCase() + nodeType.slice(1);
+  const noun = entityType.charAt(0).toUpperCase() + entityType.slice(1);
   const hint =
-    nodeType === "decision"
+    entityType === "decision"
       ? `This ${noun} is frozen (lifecycle=${currentLifecycle}). Use POST /api/decisions.json to capture a superseding ${noun}, then PATCH the prior with {lifecycle: "superseded"}.`
       : `This ${noun} is frozen (lifecycle=${currentLifecycle}). Capture a new ${noun} that supersedes it, then transition this one's lifecycle.`;
   return { allowed: false, rejected, hint };

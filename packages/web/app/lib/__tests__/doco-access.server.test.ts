@@ -6,7 +6,7 @@ function token(overrides: Partial<ValidAccessToken>): ValidAccessToken {
   return {
     token: "doco_at_x",
     client_id: "doco_client_x",
-    principal_id: "principal_X",
+    collaborator_id: "principal_X",
     granted_doco_ids: [],
     granted_doco_roles: {},
     granted_org_ids: [],

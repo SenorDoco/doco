@@ -4,7 +4,7 @@
 // Actions / Evals. The GitHub-style contract:
 //
 //   - Client sends `Idempotency-Key: <opaque-string>` on POST.
-//   - Server stores (key, principal_id, body_hash) -> response for
+//   - Server stores (key, collaborator_id, body_hash) -> response for
 //     RETENTION_MS. Same (key, principal) returns the cached response
 //     verbatim — same status, same headers, same body.
 //   - If the body hash differs (client bug: reused key with new body),

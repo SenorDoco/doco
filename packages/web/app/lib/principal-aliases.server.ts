@@ -4,9 +4,9 @@
 // as GitHub's username history.
 //
 // Storage: `<host-root>/principals/_aliases.yaml`. Format mirrors the
-// doco alias file: array of {from, to, principal_id, created_at}.
+// doco alias file: array of {from, to, collaborator_id, created_at}.
 // Resolution: direct match wins (if `/principals/<username>.yaml`
-// exists — but the principals/ dir is keyed by principal_id not
+// exists — but the principals/ dir is keyed by collaborator_id not
 // username, so we check the cache/db); otherwise walk the alias chain.
 //
 // Read-side only. The host has no Principal-rename route today; the
@@ -20,7 +20,7 @@ import { rootDir } from "./db.server";
 interface PrincipalAliasEntry {
   from: string;
   to: string;
-  principal_id: string;
+  collaborator_id: string;
   created_at: string;
 }
 

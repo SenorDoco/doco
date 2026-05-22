@@ -53,7 +53,7 @@ function entry<TDraft>(
   };
 }
 
-// Notes only — `guidance_articles` and `node_authoring_articles`
+// Notes only — `guidance_primitives` and `neuron_authoring_primitives`
 // are not nodes and are served by the dedicated articles endpoint at
 // /<handle>/api/articles.json. Routing them here would conflate the
 // constitution with domain captures.
@@ -91,10 +91,10 @@ const CAPTURE_REGISTRY: Record<string, RegistryEntry> = {
 };
 
 function notFound(type: string | undefined): Response {
-  if (type === "guidance_articles" || type === "node_authoring_articles") {
+  if (type === "guidance_primitives" || type === "neuron_authoring_primitives") {
     return Response.json(
       {
-        error: `${type} are constitution articles, not nodes. Use /api/articles.json instead (GET to list, POST with "article_type" to capture). See /api/articles.txt for the body shape.`,
+        error: `${type} are constitution articles, not nodes. Use /api/articles.json instead (GET to list, POST with "primitive_kind" to capture). See /api/articles.txt for the body shape.`,
       },
       { status: 404 },
     );

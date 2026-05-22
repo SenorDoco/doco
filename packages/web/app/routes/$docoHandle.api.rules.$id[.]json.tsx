@@ -2,7 +2,7 @@ import { makeUpdateRoute } from "~/lib/api-capture-factory.server";
 
 const route = makeUpdateRoute({
   type: "rules",
-  nodeType: "rule",
+  entityType: "rule",
   pluralDir: "rules",
   allowedFields: [
     "slug",

@@ -36,7 +36,7 @@ import type {
   ToolResultBlockParam,
   ToolUseBlock,
 } from "@anthropic-ai/sdk/resources/messages";
-import { listOrganizationsForPrincipal, withClient } from "@doco/db";
+import { listOrganizationsForCollaborator, withClient } from "@doco/db";
 import { generateUlid } from "@doco/shared";
 import { canAccessDoco } from "./doco-access.server";
 import { ensureEnvLoaded } from "./dotenv.server";
@@ -81,7 +81,7 @@ type StoredAssistantBlock = TextBlock | ToolUseBlock;
 
 export interface ChatConversationRow {
   id: string;
-  principal_id: string;
+  collaborator_id: string;
   archived: boolean;
   created_at: Date;
   updated_at: Date;
@@ -151,9 +151,9 @@ export type ChatStreamEvent =
 export async function loadOrCreateConversation(principalId: string): Promise<ChatConversationRow> {
   return await withClient(async (c) => {
     const existing = await c.query<ChatConversationRow>(
-      `SELECT id, principal_id, archived, created_at, updated_at
+      `SELECT id, collaborator_id, archived, created_at, updated_at
          FROM chat_conversations
-        WHERE principal_id = $1
+        WHERE collaborator_id = $1
         ORDER BY created_at ASC
         LIMIT 1`,
       [principalId],
@@ -161,9 +161,9 @@ export async function loadOrCreateConversation(principalId: string): Promise<Cha
     if (existing.rows[0]) return existing.rows[0];
     const id = `conv_${generateUlid()}`;
     const fresh = await c.query<ChatConversationRow>(
-      `INSERT INTO chat_conversations (id, principal_id)
+      `INSERT INTO chat_conversations (id, collaborator_id)
        VALUES ($1, $2)
-       RETURNING id, principal_id, archived, created_at, updated_at`,
+       RETURNING id, collaborator_id, archived, created_at, updated_at`,
       [id, principalId],
     );
     const row = fresh.rows[0];
@@ -261,7 +261,7 @@ export async function purgeExpiredAttachments(): Promise<number> {
 interface ChatAttachmentRow {
   id: string;
   conversation_id: string;
-  principal_id: string;
+  collaborator_id: string;
   filename: string;
   mime_type: string;
   size_bytes: number;
@@ -290,7 +290,7 @@ export async function saveAttachment(args: {
     const id = `att_${generateUlid()}`;
     const r = await c.query<{ created_at: Date; expires_at: Date }>(
       `INSERT INTO chat_attachments
-         (id, conversation_id, principal_id, filename, mime_type, size_bytes, content)
+         (id, conversation_id, collaborator_id, filename, mime_type, size_bytes, content)
        VALUES ($1, $2, $3, $4, $5, $6, $7)
        RETURNING created_at, expires_at`,
       [
@@ -328,11 +328,11 @@ export async function loadAttachmentForPrincipal(
 ): Promise<ChatAttachmentRow | null> {
   return await withClient(async (c) => {
     const r = await c.query<ChatAttachmentRow>(
-      `SELECT id, conversation_id, principal_id, filename, mime_type, size_bytes,
+      `SELECT id, conversation_id, collaborator_id, filename, mime_type, size_bytes,
               content, created_at, expires_at
          FROM chat_attachments
         WHERE id = $1
-          AND principal_id = $2
+          AND collaborator_id = $2
           AND expires_at > now()`,
       [attachmentId, principalId],
     );
@@ -347,7 +347,7 @@ async function loadAttachmentsByIds(
   if (ids.length === 0) return new Map();
   return await withClient(async (c) => {
     const r = await c.query<ChatAttachmentRow>(
-      `SELECT id, conversation_id, principal_id, filename, mime_type, size_bytes,
+      `SELECT id, conversation_id, collaborator_id, filename, mime_type, size_bytes,
               content, created_at, expires_at
          FROM chat_attachments
         WHERE id = ANY($1::text[])
@@ -441,7 +441,7 @@ interface BootstrapContext {
 async function buildBootstrapContext(principalId: string): Promise<BootstrapContext> {
   const [allDocos, orgs] = await Promise.all([
     listAllDocos(),
-    listOrganizationsForPrincipal(principalId),
+    listOrganizationsForCollaborator(principalId),
   ]);
   const docoLines: string[] = [];
   const orgLines: string[] = orgs.map((o) => `- /orgs/${o.slug} (${o.name})`);
@@ -457,13 +457,13 @@ async function buildBootstrapContext(principalId: string): Promise<BootstrapCont
     const articles = await withClient(async (c) => {
       const [guidance, authoring] = await Promise.all([
         c.query<{ summary: string }>(
-          `SELECT summary FROM guidance_articles
+          `SELECT summary FROM guidance_primitives
             WHERE doco_id = $1 AND COALESCE(lifecycle,'active') = 'active'
             ORDER BY created_at DESC`,
           [d.docoId],
         ),
         c.query<{ summary: string }>(
-          `SELECT summary FROM node_authoring_articles
+          `SELECT summary FROM neuron_authoring_primitives
             WHERE doco_id = $1 AND COALESCE(lifecycle,'active') = 'active'
             ORDER BY created_at DESC`,
           [d.docoId],
@@ -524,7 +524,7 @@ Retention: every uploaded file is kept for ${ATTACHMENT_RETENTION_DAYS} days, th
   GET   /<handle>/api/<type>/<id>.json
   PATCH /<handle>/api/<type>/<id>.json
   GET   /<handle>/api/articles.json              — list constitution articles (guidance + node-authoring) for this Doco
-  POST  /<handle>/api/articles.json              — capture an article; body needs "article_type": "guidance" | "node_authoring"
+  POST  /<handle>/api/articles.json              — capture an article; body needs "primitive_kind": "guidance" | "node_authoring"
   GET   /<handle>/search.json?q=<query>
   POST  /api/v1/docos.json                       — create a Doco (NO GET — to list the user's Docos, see the "Your Docos" section below)
   POST  /api/v1/orgs.json                        — create an Org (NO GET — to list the user's Orgs, see the "Your Orgs" section below)
@@ -538,7 +538,7 @@ When the user asks you to DO something concrete, you must end the turn on a page
 |---|---|
 | Captured a new node | /<handle>/<type>/<id> — entity-detail page with mini graph |
 | Added/changed an edge (patched a ref field on a node) | /<handle>/<type>/<from-id> — source node's graph neighborhood now shows the edge |
-| Browsing edges in general | /<handle>/edges (list) or /<handle>/edges/<edge-key> (detail with two-node graph) |
+| Browsing synapses in general | /<handle>/synapses (list) or /<handle>/synapses/<edge-key> (detail with two-node graph) |
 | Created a new Doco / Org | /<new-handle> |
 | User asked "show me X" | the page that lists or details X |
 
@@ -546,14 +546,14 @@ After the navigate, end the text reply with at most ONE short line (e.g. "Decisi
 
 ## Adding an edge
 
-Edges in Doco are derived from reference fields on nodes (D-017, fields-as-edges). To add an edge from A to B with type T, PATCH the source node A to add B's id into the appropriate ref field. Map (mostly): intent_ids → serves · decision_ids → enacts · rules_consulted → consults · born_from → born_from · superseded_by → superseded_by · target_ref → tests · stakeholders → has_stakeholder · parent_intent_id → has_parent · owner_id → owned_by · member → member_of · follows → follows. There is no POST /<handle>/api/edges.json — patch a node's ref field; the indexer materializes the edge synchronously.
+Edges in Doco are derived from reference fields on nodes (D-017, fields-as-synapses). To add an edge from A to B with type T, PATCH the source node A to add B's id into the appropriate ref field. Map (mostly): intent_ids → serves · decision_ids → enacts · rules_consulted → consults · born_from → born_from · superseded_by → superseded_by · target_ref → tests · stakeholders → has_stakeholder · parent_intent_id → has_parent · owner_id → owned_by · member → member_of · follows → follows. There is no POST /<handle>/api/synapses.json — patch a node's ref field; the indexer materializes the edge synchronously.
 
 ## Scope — what you handle vs. what you decline
 
-You are the in-page assistant for Doco. Your job: read, write, navigate inside Doco — Docos, Orgs, nodes (Decisions / Intents / Rules / Actions / Logs / Evals / References / States / Ideas / Guidance + Node Authoring Articles), edges, collaborators, constitutions, audit history.
+You are the in-page assistant for Doco. Your job: read, write, navigate inside Doco — Docos, Orgs, nodes (Decisions / Intents / Rules / Actions / Logs / Evals / References / States / Ideas / Guidance + Node Authoring Articles), synapses, collaborators, constitutions, audit history.
 
 IN SCOPE — answer or act WITHOUT a decline preamble:
-- Anything about ${principal.username}'s Docos, Orgs, nodes, edges, collaborators, constitution, audit log, settings.
+- Anything about ${principal.username}'s Docos, Orgs, nodes, synapses, collaborators, constitution, audit log, settings.
 - How Doco concepts work — Decision, Intent, Rule, Action, Log, Eval, Reference, State, Idea, Guidance Article, Node Authoring Article, edge, lifecycle, principal, attribution, doco-auto, doco_handle, footer line, tally line, OAuth grant, born_from, intent_ids, etc. **Any term mentioned in this system prompt is by definition Doco-internal — explain it directly, no "is this Doco-specific?" hedge.**
 - How to do things in Doco ("how do I invite a collaborator?", "how do I make a Doco public?").
 - Drafting Doco-internal content (e.g. drafting a Decision body, summarizing a Doco's constitution, suggesting which node type fits a piece of work).

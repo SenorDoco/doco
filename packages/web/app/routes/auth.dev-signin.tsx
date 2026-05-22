@@ -29,19 +29,19 @@ async function ensureTestPrincipal(username: TestUsername): Promise<string> {
   const existing = await findPrincipalByUsername(username);
   if (existing) {
     // Repair raw_yaml if the row was minted by an older version of
-    // this route that omitted node_type — the indexer NULL-checks
-    // entity_fts.node_type, so a malformed principal blocks every
+    // this route that omitted entity_type — the indexer NULL-checks
+    // entity_fts.entity_type, so a malformed principal blocks every
     // future Doco-create rebuild on this host.
     await withClient(async (c) => {
       await c.query(
         `UPDATE principals
             SET raw_yaml = jsonb_set(
               COALESCE(raw_yaml::jsonb, '{}'::jsonb),
-              '{node_type}',
+              '{entity_type}',
               '"principal"'::jsonb,
               true
             )::text
-          WHERE id = $1 AND (raw_yaml::jsonb ->> 'node_type') IS DISTINCT FROM 'principal'`,
+          WHERE id = $1 AND (raw_yaml::jsonb ->> 'entity_type') IS DISTINCT FROM 'principal'`,
         [existing.id],
       );
     });
@@ -50,7 +50,7 @@ async function ensureTestPrincipal(username: TestUsername): Promise<string> {
   const id = `principal_${ulid()}`;
   const raw_yaml = JSON.stringify({
     id,
-    node_type: "principal",
+    entity_type: "principal",
     username,
     type: "person",
     note: "Lazy-created by /auth/dev-signin for testing. Has no doco_users grants by default.",

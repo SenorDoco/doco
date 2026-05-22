@@ -1,59 +1,38 @@
-// /orgs/<org>/constitution/<nodeType>/<id>/edit — modify or abandon
-// an existing org-level constitution article. Owner-only.
+// /<doco>/constitution/<entityType>/<id>/edit — modify or abandon an
+// existing constitution article. Owner-only (loadDocoRouteForAdmin gates
+// both loader + action).
 //
 // POST intent=modify  → captures a new article with `supersedes: <id>`
 //                       and flips the old to lifecycle='superseded'.
 // POST intent=abandon → flips the old to lifecycle='abandoned'.
 
-import { getOrgRole, withClient } from "@doco/db";
 import { useState } from "react";
 import { Form, Link, redirect, useActionData } from "react-router";
-import { Breadcrumb, orgBreadcrumb } from "~/components/breadcrumb";
+import { Breadcrumb, docoBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent } from "~/components/card";
 import { SiteHeader } from "~/components/site-header";
 import {
   type NodeAuthoringArticleDraft,
-  captureOrgGuidanceArticle,
-  captureOrgNodeAuthoringArticle,
+  captureGuidanceArticle,
+  captureNodeAuthoringArticle,
   loadArticleForEdit,
   transitionArticleLifecycle,
 } from "~/lib/capture.server";
 import { deriveArticleSummary } from "~/lib/constitution-copy";
+import { loadDocoRouteForAdmin } from "~/lib/doco-access.server";
 import { loadHostConfig } from "~/lib/host";
-import { getCurrentPrincipalAsync } from "~/lib/session";
 
-type NodeType = "guidance_article" | "node_authoring_article";
+type EntityType = "guidance_primitive" | "neuron_authoring_primitive";
 type ArticleKind = "deterministic" | "probabilistic";
 
 interface ActionError {
   error: string;
 }
 
-interface OrgRow {
-  id: string;
-  slug: string;
-  name: string;
-}
-
-function parseNodeType(raw: string | undefined): NodeType | null {
-  if (raw === "guidance" || raw === "guidance_article") return "guidance_article";
-  if (raw === "node-authoring" || raw === "node_authoring_article") return "node_authoring_article";
+function parseNodeType(raw: string | undefined): EntityType | null {
+  if (raw === "guidance" || raw === "guidance_primitive") return "guidance_primitive";
+  if (raw === "node-authoring" || raw === "neuron_authoring_primitive") return "neuron_authoring_primitive";
   return null;
-}
-
-async function resolveOrgByHandle(orgHandle: string): Promise<OrgRow | null> {
-  return withClient(async (c) => {
-    const r = await c.query<{ id: string; slug: string; name: string }>(
-      `SELECT id, slug, name FROM organizations
-        WHERE handle = $1 OR slug = $1
-        LIMIT 1`,
-      [orgHandle],
-    );
-    if (r.rowCount === 0) return null;
-    const row = r.rows[0];
-    if (!row) return null;
-    return { id: String(row.id), slug: String(row.slug), name: String(row.name) };
-  });
 }
 
 export async function loader({
@@ -61,37 +40,27 @@ export async function loader({
   params,
 }: {
   request: Request;
-  params: { orgHandle: string; nodeType: string; articleId: string };
+  params: { docoId: string; entityType: string; articleId: string };
 }) {
-  const nodeType = parseNodeType(params.nodeType);
-  if (!nodeType) throw new Response("Unknown article kind.", { status: 404 });
-  const org = await resolveOrgByHandle(params.orgHandle);
-  if (!org) throw new Response(`Org "${params.orgHandle}" not found.`, { status: 404 });
-  const me = await getCurrentPrincipalAsync(request);
-  if (!me) {
-    throw redirect(
-      `/sign-in?next=${encodeURIComponent(
-        `/orgs/${org.slug}/constitution/${params.nodeType}/${params.articleId}/edit`,
-      )}`,
-    );
-  }
-  const role = await getOrgRole(org.id, me.id);
-  if (role !== "owner") {
-    throw new Response("Only org owners can edit articles.", { status: 403 });
-  }
+  const entityType = parseNodeType(params.entityType);
+  if (!entityType) throw new Response("Unknown article kind.", { status: 404 });
+  const ctx = await loadDocoRouteForAdmin(request, params);
+  const { docoSlug, handle, ownerSlug } = ctx;
   const result = await loadArticleForEdit({
-    scope: "org",
-    scopeId: org.id,
-    nodeType,
+    scope: "doco",
+    scopeId: ctx.meta.docoId,
+    entityType,
     articleId: params.articleId,
   });
   if ("error" in result) {
     throw new Response(result.error, { status: result.status ?? 404 });
   }
   return {
-    org,
-    me,
-    nodeType,
+    ownerSlug,
+    docoSlug,
+    handle,
+    me: ctx.me,
+    entityType,
     articleId: params.articleId,
     body_md: result.body_md,
     lifecycle: result.lifecycle,
@@ -105,55 +74,54 @@ export async function action({
   params,
 }: {
   request: Request;
-  params: { orgHandle: string; nodeType: string; articleId: string };
+  params: { docoId: string; entityType: string; articleId: string };
 }) {
-  const nodeType = parseNodeType(params.nodeType);
-  if (!nodeType) throw new Response("Unknown article kind.", { status: 404 });
-  const org = await resolveOrgByHandle(params.orgHandle);
-  if (!org) throw new Response(`Org "${params.orgHandle}" not found.`, { status: 404 });
-  const me = await getCurrentPrincipalAsync(request);
-  if (!me) throw redirect(`/sign-in?next=${encodeURIComponent(`/orgs/${org.slug}/constitution`)}`);
-  const role = await getOrgRole(org.id, me.id);
-  if (role !== "owner") {
-    throw new Response("Only org owners can edit articles.", { status: 403 });
-  }
-
+  const entityType = parseNodeType(params.entityType);
+  if (!entityType) throw new Response("Unknown article kind.", { status: 404 });
+  const ctx = await loadDocoRouteForAdmin(request, params);
+  const { docoSlug, handle, ownerSlug } = ctx;
   const form = await request.formData();
   const intent = String(form.get("intent") ?? "");
 
   if (intent === "abandon") {
     const result = await transitionArticleLifecycle({
-      scope: "org",
-      scopeId: org.id,
-      nodeType,
+      scope: "doco",
+      scopeId: ctx.meta.docoId,
+      entityType,
       articleId: params.articleId,
       newLifecycle: "abandoned",
-      actorId: me.id,
+      actorId: ctx.me?.id ?? null,
     });
     if ("error" in result) {
       return Response.json({ error: result.error }, { status: result.status ?? 400 });
     }
-    return redirect(`/orgs/${org.slug}/constitution`);
+    return redirect(`/${handle}/constitution`);
   }
 
   if (intent === "modify") {
     const body_md = String(form.get("body_md") ?? "").trim();
     const summary = deriveArticleSummary(body_md);
     if (!summary) return Response.json({ error: "Article is required." }, { status: 400 });
+    const docoDir = ctx.dir;
+    const docoHost = new URL(request.url).origin;
     const supersedes = params.articleId;
 
     let captured: Awaited<
-      ReturnType<typeof captureOrgGuidanceArticle | typeof captureOrgNodeAuthoringArticle>
+      ReturnType<typeof captureGuidanceArticle | typeof captureNodeAuthoringArticle>
     >;
-    if (nodeType === "guidance_article") {
-      captured = await captureOrgGuidanceArticle(
-        org.id,
+    if (entityType === "guidance_primitive") {
+      captured = await captureGuidanceArticle(
+        docoDir,
+        ctx.meta.docoId,
+        ownerSlug,
+        docoSlug,
         {
           summary,
           body_md,
-          authored_by_username: me.username,
-          created_by_id: me.id,
+          authored_by_username: ctx.me?.username,
+          created_by_id: ctx.me?.id,
         },
+        docoHost,
         { supersedes },
       );
     } else {
@@ -161,7 +129,7 @@ export async function action({
         String(form.get("evaluation_kind") ?? "deterministic") === "probabilistic"
           ? "probabilistic"
           : "deterministic";
-      const lifecycle = String(form.get("fires_when_node_lifecycle") ?? "")
+      const lifecycle = String(form.get("fires_when_neuron_lifecycle") ?? "")
         .split(",")
         .map((s) => s.trim())
         .filter(Boolean);
@@ -173,48 +141,56 @@ export async function action({
         body_md,
         evaluation_kind: evaluationKind,
         on_violation,
-        authored_by_username: me.username,
-        created_by_id: me.id,
-        ...(lifecycle.length > 0 ? { fires_when_node_lifecycle: lifecycle } : {}),
+        authored_by_username: ctx.me?.username,
+        created_by_id: ctx.me?.id,
+        ...(lifecycle.length > 0 ? { fires_when_neuron_lifecycle: lifecycle } : {}),
         ...(evaluationKind === "probabilistic"
           ? { spec: String(form.get("probabilistic_spec") ?? "").trim() }
           : { predicate: String(form.get("deterministic_predicate") ?? "").trim() }),
       };
-      captured = await captureOrgNodeAuthoringArticle(org.id, draft, { supersedes });
+      captured = await captureNodeAuthoringArticle(
+        docoDir,
+        ctx.meta.docoId,
+        ownerSlug,
+        docoSlug,
+        draft,
+        docoHost,
+        { supersedes },
+      );
     }
     if ("error" in captured) {
-      return Response.json(captured, { status: 400 });
+      return Response.json(captured, { status: captured.status ?? 400 });
     }
     const transitioned = await transitionArticleLifecycle({
-      scope: "org",
-      scopeId: org.id,
-      nodeType,
+      scope: "doco",
+      scopeId: ctx.meta.docoId,
+      entityType,
       articleId: params.articleId,
       newLifecycle: "superseded",
-      actorId: me.id,
+      actorId: ctx.me?.id ?? null,
       reason: `superseded_by:${captured.id}`,
     });
     if ("error" in transitioned) {
       return Response.json({ error: transitioned.error }, { status: 500 });
     }
-    return redirect(`/orgs/${org.slug}/constitution`);
+    return redirect(`/${handle}/constitution`);
   }
 
   return Response.json({ error: "Unknown intent." }, { status: 400 });
 }
 
-export function meta({ params }: { params: { orgHandle: string } }) {
-  return [{ title: `Modify article · ${params.orgHandle} · Doco` }];
+export function meta({ params }: { params: { docoHandle?: string; docoId?: string } }) {
+  return [{ title: `Modify article · ${params.docoHandle ?? params.docoId ?? ""} · Doco` }];
 }
 
-export default function EditOrgArticle({
+export default function EditArticle({
   loaderData,
 }: {
   loaderData: Awaited<ReturnType<typeof loader>>;
 }) {
-  const { org, me, nodeType, articleId, body_md, raw_yaml } = loaderData;
+  const { ownerSlug, docoSlug, handle, me, entityType, articleId, body_md, raw_yaml } = loaderData;
   const actionData = useActionData<ActionError>();
-  const isNodeAuthoring = nodeType === "node_authoring_article";
+  const isNodeAuthoring = entityType === "neuron_authoring_primitive";
   const initialEvalKind: ArticleKind =
     raw_yaml.evaluation_kind === "probabilistic" ? "probabilistic" : "deterministic";
   const [evaluationKind, setEvaluationKind] = useState<ArticleKind>(initialEvalKind);
@@ -229,8 +205,8 @@ export default function EditOrgArticle({
     typeof (raw_yaml.predicate as { spec?: string }).spec === "string"
       ? (raw_yaml.predicate as { spec: string }).spec
       : "";
-  const initialFiresOn = Array.isArray(raw_yaml.fires_when_node_lifecycle)
-    ? (raw_yaml.fires_when_node_lifecycle as string[]).join(", ")
+  const initialFiresOn = Array.isArray(raw_yaml.fires_when_neuron_lifecycle)
+    ? (raw_yaml.fires_when_neuron_lifecycle as string[]).join(", ")
     : "";
   const initialOnViolation =
     typeof raw_yaml.on_violation === "string" ? raw_yaml.on_violation : "block";
@@ -241,16 +217,16 @@ export default function EditOrgArticle({
       <main className="mx-auto max-w-4xl px-6 py-6 space-y-4">
         <header>
           <Breadcrumb
-            items={orgBreadcrumb({
-              orgSlug: org.slug,
-              parent: { label: "Constitution", to: `/orgs/${org.slug}/constitution` },
+            items={docoBreadcrumb({
+              ownerSlug,
+              handle,
+              parent: { label: "Constitution", to: `/${handle}/constitution` },
               pageLabel: `Modify ${isNodeAuthoring ? "node-authoring" : "guidance"} article`,
             })}
             className="mb-1"
           />
           <h1 className="text-2xl font-semibold">
-            Modify {isNodeAuthoring ? "node-authoring" : "guidance"} article ·{" "}
-            <span className="font-mono">{org.slug}</span>
+            Modify {isNodeAuthoring ? "node-authoring" : "guidance"} article
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
             Saving changes creates a new article and marks this one as <em>superseded</em>.
@@ -327,7 +303,7 @@ export default function EditOrgArticle({
                         Fires on lifecycles (comma-separated)
                       </span>
                       <input
-                        name="fires_when_node_lifecycle"
+                        name="fires_when_neuron_lifecycle"
                         defaultValue={initialFiresOn}
                         placeholder="active"
                         className="mt-1 block w-full rounded-md border border-border bg-input px-3 py-2 text-sm"
@@ -368,7 +344,7 @@ export default function EditOrgArticle({
                   Abandon article
                 </button>
                 <Link
-                  to={`/orgs/${org.slug}/constitution`}
+                  to={`/${handle}/constitution`}
                   className="ml-auto text-xs text-muted-foreground hover:underline"
                 >
                   Cancel

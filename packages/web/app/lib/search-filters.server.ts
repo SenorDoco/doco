@@ -1,5 +1,5 @@
 // Shared filter logic for /search.json and /search HTML page. Both
-// surfaces accept the same `lifecycle` / `node_type` filters applied
+// surfaces accept the same `lifecycle` / `entity_type` filters applied
 // BEFORE the cosine top-N slice.
 import type { PoolClient } from "pg";
 
@@ -12,7 +12,7 @@ export interface SearchFilters {
   /** Allowed lifecycle values. `null` = no filter (all values). */
   lifecycle: string[] | null;
   /** Allowed node types. `null` = no filter (all types). */
-  nodeType: string[] | null;
+  entityType: string[] | null;
   /** Top-N to return after filtering + cosine. */
   limit: number;
 }
@@ -49,17 +49,17 @@ export function parseSearchFilters(params: URLSearchParams, facets: FilterFacets
     lifecycle = lifecycleVals;
   }
 
-  const nodeTypeVals = readMulti(params, "node_type");
-  let nodeType: string[] | null;
+  const nodeTypeVals = readMulti(params, "entity_type");
+  let entityType: string[] | null;
   if (nodeTypeVals === null) {
-    nodeType = facets.nodeType.map((f) => f.value);
+    entityType = facets.entityType.map((f) => f.value);
   } else if (nodeTypeVals.length === 1 && nodeTypeVals[0] === "*") {
-    nodeType = null;
+    entityType = null;
   } else {
-    nodeType = nodeTypeVals;
+    entityType = nodeTypeVals;
   }
 
-  return { lifecycle, nodeType, limit };
+  return { lifecycle, entityType, limit };
 }
 
 function readMulti(params: URLSearchParams, key: string): string[] | null {
@@ -84,7 +84,7 @@ function readMulti(params: URLSearchParams, key: string): string[] | null {
  * `lifecycle` column directly. principals + organizations are
  * host-level, so they don't filter on doco_id.
  *
- * Articles (`guidance_articles`, `node_authoring_articles`) are not
+ * Articles (`guidance_primitives`, `neuron_authoring_primitives`) are not
  * nodes — they are constitution metadata with their own surface
  * (/<handle>/constitution and /<handle>/api/articles.json) and are
  * intentionally absent here. Anything iterating "nodes of a Doco"
@@ -104,8 +104,8 @@ const PG_DOCO_NOTE_TABLES_WITH_LIFECYCLE = [
 ] as const;
 
 /**
- * Map from external node_type (singular) → PG table (plural).
- * Articles (`guidance_article`, `node_authoring_article`) are not
+ * Map from external entity_type (singular) → PG table (plural).
+ * Articles (`guidance_primitive`, `neuron_authoring_primitive`) are not
  * nodes and are intentionally omitted — they are reachable only via
  * /<handle>/api/articles.json and the constitution surface.
  */
@@ -123,7 +123,7 @@ const NODE_TYPE_TO_TABLE: Record<string, string> = {
   organization: "organizations",
 };
 
-/** Inverse: PG table → external node_type used on the wire. */
+/** Inverse: PG table → external entity_type used on the wire. */
 const TABLE_TO_NODE_TYPE: Record<string, string> = Object.fromEntries(
   Object.entries(NODE_TYPE_TO_TABLE).map(([nt, tbl]) => [tbl, nt]),
 );
@@ -133,7 +133,7 @@ export async function resolveFilteredCandidates(
   docoId: string,
   filters: SearchFilters,
 ): Promise<Set<string> | null> {
-  if (filters.lifecycle === null && filters.nodeType === null) {
+  if (filters.lifecycle === null && filters.entityType === null) {
     return null;
   }
 
@@ -154,9 +154,9 @@ export async function resolveFilteredCandidates(
   }
 
   let nodeTypeIds: Set<string> | null = null;
-  if (filters.nodeType !== null) {
+  if (filters.entityType !== null) {
     nodeTypeIds = new Set();
-    for (const nt of filters.nodeType) {
+    for (const nt of filters.entityType) {
       const table = NODE_TYPE_TO_TABLE[nt];
       if (!table) continue;
       if (table === "principals" || table === "organizations") continue;
@@ -181,7 +181,7 @@ export async function resolveFilteredCandidates(
 
 export interface FilterFacets {
   lifecycle: { value: string; count: number; updatedAt: string | null }[];
-  nodeType: {
+  entityType: {
     value: string;
     count: number;
     activeCount?: number;
@@ -255,7 +255,7 @@ export async function computeFilterFacets(c: PoolClient, docoId: string): Promis
         if (b.value === "active") return 1;
         return a.value.localeCompare(b.value);
       }),
-    nodeType: nodeTypeCounts,
+    entityType: nodeTypeCounts,
   };
 }
 

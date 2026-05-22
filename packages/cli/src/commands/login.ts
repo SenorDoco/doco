@@ -157,7 +157,7 @@ export const loginCmd = defineCommand({
         const body = (await res.json()) as {
           status: string;
           token?: string;
-          principal_id?: string;
+          collaborator_id?: string;
           owner_username?: string;
           doco_handle?: string | null;
           doco_id?: string | null;

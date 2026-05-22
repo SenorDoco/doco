@@ -124,7 +124,7 @@ export const importCmd = defineCommand({
           await appendAuditEventRow({
             event_id: evt.event_id,
             at: evt.at,
-            by_principal: evt.by,
+            by_collaborator: evt.by,
             doco_id: evt.doco_id,
             entity_type: evt.entity_type,
             entity_id: evt.entity_id,
