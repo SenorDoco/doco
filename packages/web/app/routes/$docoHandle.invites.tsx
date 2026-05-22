@@ -177,7 +177,7 @@ export default function Invites({
                     defaultValue={7}
                     min={1}
                     max={365}
-                    className="block w-24 rounded-md border border-border bg-input px-2 py-1 text-sm font-mono"
+                    className="block w-24 rounded-md px-2 py-1 text-sm font-mono"
                   />
                 </label>
                 <button
@@ -185,7 +185,7 @@ export default function Invites({
                   name="intent"
                   value="mint"
                   disabled={minting}
-                  className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
+                  className="neo-raised-primary rounded-md px-4 py-2 text-sm font-semibold disabled:opacity-50"
                 >
                   {minting ? "Minting…" : "Mint invite"}
                 </button>
@@ -250,7 +250,7 @@ function InviteRow({
         ? "text-muted-foreground"
         : "text-muted-foreground";
   return (
-    <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-card px-3 py-2 text-xs">
+    <div className="neo-raised flex items-center justify-between gap-3 rounded-md bg-card px-3 py-2 text-xs">
       <div className="min-w-0 flex-1">
         <div className={`font-mono break-all ${statusColor}`}>
           {invite.status === "pending" ? invite.url : `${invite.code.slice(0, 12)}…`}
@@ -273,7 +273,7 @@ function InviteRow({
           <input type="hidden" name="code" value={invite.code} />
           <button
             type="submit"
-            className="rounded-md border border-border px-2 py-1 text-xs hover:bg-input"
+            className="neo-raised-sm rounded-md px-2 py-1 text-xs"
           >
             Revoke
           </button>

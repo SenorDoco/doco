@@ -28,7 +28,7 @@ function bucket(n: number): number {
 }
 
 const BUCKET_CLASS = [
-  "bg-input border border-border/60",
+  "bg-card neo-inset",
   "bg-primary/20",
   "bg-primary/45",
   "bg-primary/70",
@@ -200,7 +200,7 @@ export function ActivityHeatmap({ byDay, weeks = 52 }: ActivityHeatmapProps) {
       {tip ? (
         <div
           role="tooltip"
-          className="pointer-events-none fixed z-50 -translate-x-1/2 -translate-y-full whitespace-nowrap rounded-md border border-border bg-card px-2 py-1 text-xs text-card-foreground shadow-md"
+          className="neo-raised pointer-events-none fixed z-50 -translate-x-1/2 -translate-y-full whitespace-nowrap rounded-md bg-card px-2 py-1 text-xs text-card-foreground shadow-md"
           style={{ left: tip.x, top: tip.y - 6 }}
         >
           {tip.text}

@@ -173,7 +173,7 @@ function ArticleSection({
           {addHref ? (
             <Link
               to={addHref}
-              className="shrink-0 rounded-md bg-primary px-3 py-1.5 text-sm font-semibold text-primary-foreground hover:opacity-90"
+              className="neo-raised-primary shrink-0 rounded-md px-3 py-1.5 text-sm font-semibold"
             >
               + Add
             </Link>
@@ -208,7 +208,7 @@ function ArticleSection({
                   {editHrefBase ? (
                     <Link
                       to={`${editHrefBase}/${item.id}/edit`}
-                      className="shrink-0 rounded-md border border-border px-2 py-1 text-[11px] font-semibold text-foreground hover:bg-muted"
+                      className="neo-raised-sm shrink-0 rounded-md px-2 py-1 text-[11px] font-semibold text-foreground"
                     >
                       Modify
                     </Link>

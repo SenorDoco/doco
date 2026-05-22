@@ -236,7 +236,7 @@ export default function NewDocoStep1({
                   {DOCO_TEMPLATES.map((template) => (
                     <label
                       key={template.handle}
-                      className="flex cursor-pointer items-start gap-2 rounded-md border border-border p-2 hover:bg-muted"
+                      className="neo-raised-sm flex cursor-pointer items-start gap-2 rounded-md p-2"
                     >
                       <input
                         type="radio"
@@ -265,7 +265,7 @@ export default function NewDocoStep1({
                   name="org_id"
                   value={orgId}
                   onChange={(e) => setOrgId(e.target.value)}
-                  className="rounded-md border border-border bg-input px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
+                  className="rounded-md px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
                 >
                   {orgs.map((o) => (
                     <option key={o.id} value={o.id}>
@@ -296,7 +296,7 @@ export default function NewDocoStep1({
                       placeholder="Organization handle"
                       title={HANDLE_FORMAT_HELP}
                       aria-describedby="new-doco-org-handle-help"
-                      className="w-full rounded-md border border-border bg-input px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
+                      className="w-full rounded-md px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
                     />
                     <span
                       id="new-doco-org-handle-help"
@@ -328,7 +328,7 @@ export default function NewDocoStep1({
                   placeholder=""
                   title={HANDLE_FORMAT_HELP}
                   aria-describedby="new-doco-suffix-help"
-                  className="w-[20ch] rounded-md border border-border bg-input px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
+                  className="w-[20ch] rounded-md px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
                 />
                 <span
                   id="new-doco-suffix-help"
@@ -352,7 +352,7 @@ export default function NewDocoStep1({
                   name="visibility"
                   value={visibility}
                   onChange={(e) => setVisibility(e.currentTarget.value as "private" | "public")}
-                  className="rounded-md border border-border bg-input px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
+                  className="rounded-md px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
                 >
                   <option value="private">Private</option>
                   <option value="public">Public</option>
@@ -368,7 +368,7 @@ export default function NewDocoStep1({
               <div className="flex items-center gap-2">
                 <button
                   type="submit"
-                  className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90"
+                  className="neo-raised-primary rounded-md px-4 py-2 text-sm font-semibold"
                 >
                   Create doco
                 </button>
@@ -377,7 +377,7 @@ export default function NewDocoStep1({
                     type="submit"
                     name="accept_suggested_handle"
                     value="1"
-                    className="rounded-md border border-border px-4 py-2 text-sm hover:bg-muted"
+                    className="neo-raised-sm rounded-md px-4 py-2 text-sm"
                   >
                     Use "{actionData.suggestedHandle}" instead
                   </button>

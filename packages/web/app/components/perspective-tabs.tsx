@@ -49,7 +49,7 @@ export function PerspectiveTabs({
           to={`/${handle}/perspectives`}
           aria-label="Add perspective"
           title="Add perspective"
-          className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-dashed border-border text-muted-foreground hover:bg-input hover:text-foreground"
+          className="neo-raised-sm inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:text-foreground"
         >
           <span aria-hidden className="text-base leading-none">
             +
@@ -85,10 +85,8 @@ function PerspectiveTab({
   // active tab.
   const isPosting = fetcher.state === "submitting";
   const tabClass = cn(
-    "group inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs font-medium",
-    active
-      ? "border-foreground/40 bg-input text-foreground"
-      : "border-border text-muted-foreground hover:bg-input hover:text-foreground",
+    "group inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium",
+    active ? "neo-pressed text-foreground" : "neo-raised-sm text-muted-foreground hover:text-foreground",
     isPosting && "opacity-50",
   );
   const title = perspective.ownerHandle

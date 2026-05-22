@@ -134,7 +134,7 @@ export default function NewRule({
                   required
                   maxLength={300}
                   placeholder="One-line statement of the rule."
-                  className="mt-1 block w-full rounded-md border border-border bg-input px-3 py-2 text-sm"
+                  className="mt-1 block w-full rounded-md px-3 py-2 text-sm"
                 />
               </label>
               <label className="block">
@@ -146,7 +146,7 @@ export default function NewRule({
                   required
                   rows={4}
                   placeholder="The machine-checkable or prose predicate the rule asserts."
-                  className="mt-1 block w-full rounded-md border border-border bg-input px-3 py-2 text-sm font-mono"
+                  className="mt-1 block w-full rounded-md px-3 py-2 text-sm font-mono"
                 />
               </label>
               <label className="block">
@@ -155,7 +155,7 @@ export default function NewRule({
                 </span>
                 <select
                   name="intent_id"
-                  className="mt-1 block w-full rounded-md border border-border bg-input px-3 py-2 text-sm"
+                  className="mt-1 block w-full rounded-md px-3 py-2 text-sm"
                   defaultValue=""
                 >
                   <option value="">(none)</option>
@@ -202,7 +202,7 @@ export default function NewRule({
               <div className="flex items-center gap-3 pt-2">
                 <button
                   type="submit"
-                  className="rounded-md border border-primary bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90"
+                  className="neo-raised-primary rounded-md px-4 py-2 text-sm font-semibold"
                 >
                   Capture rule
                 </button>

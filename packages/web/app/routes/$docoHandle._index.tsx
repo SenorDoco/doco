@@ -684,14 +684,14 @@ export default function DocoHome({
               {canInviteCollaborators ? <CollaboratorsLink level="doco" targetId={docoId} /> : null}
               <Link
                 to={`/${handle}/constitution`}
-                className="shrink-0 rounded-md border border-border px-3 py-1.5 text-xs font-semibold hover:bg-input"
+                className="neo-raised-sm shrink-0 rounded-md px-3 py-1.5 text-xs font-semibold"
               >
                 Primitives ({constitutionCount})
               </Link>
               {canInviteCollaborators ? (
                 <Link
                   to={`/${handle}/settings`}
-                  className="shrink-0 rounded-md border border-border px-3 py-1.5 text-xs font-semibold hover:bg-input"
+                  className="neo-raised-sm shrink-0 rounded-md px-3 py-1.5 text-xs font-semibold"
                 >
                   Settings
                 </Link>

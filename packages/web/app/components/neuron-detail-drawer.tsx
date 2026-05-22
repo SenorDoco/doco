@@ -98,10 +98,10 @@ export function NeuronDetailDrawer(props: NeuronDetailDrawerProps) {
   if (!open) return null;
   return (
     <aside
-      className="absolute inset-y-0 right-0 z-20 flex w-full max-w-md flex-col border-l border-border bg-card shadow-lg"
+      className="neo-raised absolute inset-y-0 right-0 z-20 flex w-full max-w-md flex-col bg-card shadow-lg"
       aria-label={`${paneTitle(open)} pane`}
     >
-      <header className="flex items-center justify-between border-b border-border px-4 py-2.5">
+      <header className="flex items-center justify-between px-4 py-2.5">
         <h2 className="text-sm font-semibold tracking-tight">{paneTitle(open)}</h2>
         <button
           type="button"
@@ -135,10 +135,10 @@ function RelevantNeuronsPane({ rankedNeighbors, linkTo }: NeuronDetailDrawerProp
       <p className="mb-2 text-[11px] text-muted-foreground">
         Ranked by personalized PageRank from this neuron (ADR-076).
       </p>
-      <ul className="divide-y divide-border rounded-md border border-border">
+      <ul className="neo-raised divide-y divide-border rounded-md">
         {rankedNeighbors.map((n) => (
           <li key={n.id}>
-            <Link to={linkTo(n.entity_type, n.id)} className="block px-3 py-2 hover:bg-input/40">
+            <Link to={linkTo(n.entity_type, n.id)} className="block px-3 py-2">
               <div className="flex items-center gap-1.5 text-[10px] uppercase text-muted-foreground">
                 <NeuronTypeIcon entityType={n.entity_type} />
                 <span>{n.entity_type}</span>
@@ -242,7 +242,7 @@ function HistoryPane({ history }: NeuronDetailDrawerProps) {
             <span className="font-medium text-foreground">{e.op}</span>
           </div>
           {e.before || e.after ? (
-            <pre className="mt-1 whitespace-pre-wrap break-words rounded-md border border-border bg-input p-2 text-[11px] leading-snug">
+            <pre className="neo-inset mt-1 whitespace-pre-wrap break-words rounded-md bg-card p-2 text-[11px] leading-snug">
               {JSON.stringify({ before: e.before, after: e.after }, null, 2)}
             </pre>
           ) : null}
@@ -261,7 +261,7 @@ function MetadataPane({
 }: NeuronDetailDrawerProps) {
   return (
     <div className="space-y-3 text-xs">
-      <dl className="grid grid-cols-[max-content_1fr] gap-x-3 gap-y-2 border-b border-border pb-3">
+      <dl className="grid grid-cols-[max-content_1fr] gap-x-3 gap-y-2 pb-3">
         <dt className="text-muted-foreground">Id</dt>
         <dd className="break-all font-mono">{nodeId}</dd>
         <dt className="text-muted-foreground">Created</dt>
@@ -271,7 +271,7 @@ function MetadataPane({
         <dt className="text-muted-foreground">Global PageRank</dt>
         <dd className="font-mono">{nodeGpr !== null ? nodeGpr.toFixed(4) : "—"}</dd>
       </dl>
-      <section className="border-b border-border pb-3">
+      <section className="pb-3">
         <h3 className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
           Lifecycle history ({lifecycleHistory.length})
         </h3>
@@ -314,7 +314,7 @@ function MetadataPane({
         <summary className="cursor-pointer text-xs font-medium text-muted-foreground hover:text-foreground">
           Raw JSON
         </summary>
-        <pre className="mt-2 overflow-x-auto rounded-md border border-border bg-input p-3 text-[11px] leading-snug">
+        <pre className="neo-inset mt-2 overflow-x-auto rounded-md bg-card p-3 text-[11px] leading-snug">
           {JSON.stringify(ent, null, 2)}
         </pre>
       </details>

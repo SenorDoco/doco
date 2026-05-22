@@ -169,7 +169,7 @@ export default function InviteLanding({
           <CardContent>
             <Link
               to={`/${actionData.doco_handle}`}
-              className="inline-flex items-center rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90"
+              className="neo-raised-primary inline-flex items-center rounded-md px-4 py-2 text-sm font-semibold"
             >
               Continue
             </Link>
@@ -223,13 +223,13 @@ export default function InviteLanding({
               <Form method="post" className="flex gap-2">
                 <button
                   type="submit"
-                  className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90"
+                  className="neo-raised-primary rounded-md px-4 py-2 text-sm font-semibold"
                 >
                   Accept invite
                 </button>
                 <Link
                   to="/"
-                  className="rounded-md border border-border px-4 py-2 text-sm font-semibold hover:bg-card"
+                  className="neo-raised-sm rounded-md px-4 py-2 text-sm font-semibold"
                 >
                   Decline
                 </Link>
@@ -241,7 +241,7 @@ export default function InviteLanding({
               <div className="grid gap-2 sm:grid-cols-2">
                 <Link
                   to={`/auth/github?return=${encodeURIComponent(`/invite/${loaderData.code}`)}`}
-                  className="rounded-md border border-border bg-card p-3 hover:border-primary"
+                  className="neo-raised rounded-md bg-card p-3 hover:border-primary"
                 >
                   <span className="block text-sm font-semibold text-foreground">Human</span>
                   <span className="mt-1 block text-xs text-muted-foreground">
@@ -251,7 +251,7 @@ export default function InviteLanding({
                 <Link
                   to={`/invite/${loaderData.code}/agent.txt`}
                   reloadDocument
-                  className="rounded-md border border-border bg-card p-3 hover:border-primary"
+                  className="neo-raised rounded-md bg-card p-3 hover:border-primary"
                 >
                   <span className="block text-sm font-semibold text-foreground">Agent</span>
                   <span className="mt-1 block text-xs text-muted-foreground">
@@ -289,7 +289,7 @@ function errorDescription(err: LoaderError["error"]): string {
 function Shell({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen flex flex-col">
-      <header className="border-b border-border bg-card">
+      <header>
         <div className="mx-auto flex max-w-6xl items-center gap-4 px-6 py-3">
           <Link to="/" className="inline-flex items-center hover:opacity-80" aria-label="Doco home">
             <DocoMark height={28} />

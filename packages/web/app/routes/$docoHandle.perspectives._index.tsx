@@ -102,7 +102,7 @@ export default function PerspectivesPicker({
             <h1 className="text-lg font-semibold tracking-tight">Perspectives</h1>
             <Link
               to={`/${handle}`}
-              className="rounded-md border border-border px-3 py-1.5 text-xs font-semibold hover:bg-input"
+              className="neo-raised-sm rounded-md px-3 py-1.5 text-xs font-semibold"
             >
               ← Back to {handle}
             </Link>
@@ -117,7 +117,7 @@ export default function PerspectivesPicker({
             ) : null}
           </p>
         </div>
-        <ul className="divide-y divide-border rounded-md border border-border">
+        <ul className="neo-raised divide-y divide-border rounded-md bg-card">
           {available.map((p) => {
             const isAttached = attachedSet.has(p.id);
             return (
@@ -153,7 +153,7 @@ export default function PerspectivesPicker({
                       <button
                         type="submit"
                         disabled={submitting}
-                        className="inline-block rounded-md border border-border px-3 py-1 text-xs font-semibold hover:bg-input disabled:opacity-50"
+                        className="neo-raised-sm inline-block rounded-md px-3 py-1 text-xs font-semibold disabled:opacity-50"
                       >
                         Attach
                       </button>

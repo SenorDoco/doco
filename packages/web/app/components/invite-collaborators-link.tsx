@@ -31,7 +31,7 @@ export function CollaboratorsLink({
     <Link
       to={collaboratorsHref(level, targetId)}
       className={[
-        "shrink-0 rounded-md border border-border px-3 py-1.5 text-xs font-semibold hover:bg-input",
+        "neo-raised-sm shrink-0 rounded-md px-3 py-1.5 text-xs font-semibold",
         className,
       ]
         .filter(Boolean)
@@ -57,7 +57,7 @@ export function InviteCollaboratorsLink({
     <Link
       to={inviteCollaboratorsHref(level, targetId)}
       className={[
-        "shrink-0 rounded-md border border-border px-3 py-1.5 text-xs font-semibold hover:bg-input",
+        "neo-raised-sm shrink-0 rounded-md px-3 py-1.5 text-xs font-semibold",
         className,
       ]
         .filter(Boolean)

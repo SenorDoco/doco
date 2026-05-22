@@ -45,7 +45,7 @@ export default function AuthGitHub({
   if (!loaderData || loaderData.error !== "missing_config") return null;
   return (
     <div>
-      <header className="border-b border-border bg-card">
+      <header>
         <div className="mx-auto flex max-w-6xl items-center gap-4 px-6 py-3">
           <Link to="/" className="inline-flex items-center hover:opacity-80" aria-label="Doco home">
             <DocoMark height={28} />

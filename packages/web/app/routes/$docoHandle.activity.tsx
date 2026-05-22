@@ -133,7 +133,7 @@ export default function ActivityPage({
                       </Link>
                     </div>
                     {e.before || e.after ? (
-                      <pre className="mt-1 whitespace-pre-wrap break-words rounded-md border border-border bg-input p-2 text-[11px] leading-snug">
+                      <pre className="neo-inset mt-1 whitespace-pre-wrap break-words rounded-md bg-card p-2 text-[11px] leading-snug">
                         {JSON.stringify({ before: e.before, after: e.after }, null, 2)}
                       </pre>
                     ) : null}

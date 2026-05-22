@@ -240,13 +240,13 @@ export default function Dashboard({
           <div className="flex shrink-0 items-center gap-2">
             <Link
               to="/new-doco"
-              className="rounded-md bg-primary px-3 py-1.5 text-sm font-semibold text-primary-foreground hover:opacity-90"
+              className="neo-raised-primary rounded-md px-3 py-1.5 text-sm font-semibold"
             >
               + Doco
             </Link>
             <Link
               to="/new-org"
-              className="rounded-md border border-border bg-card px-3 py-1.5 text-sm font-semibold text-foreground hover:bg-input"
+              className="neo-raised-sm rounded-md px-3 py-1.5 text-sm font-semibold text-foreground"
             >
               + Org
             </Link>
@@ -272,7 +272,7 @@ export default function Dashboard({
                   templates.map((t) => (
                     <div
                       key={t.handle}
-                      className="space-y-1.5 border-b border-border pb-3 last:border-b-0 last:pb-0"
+                      className="space-y-1.5 pb-3 last:pb-0"
                     >
                       <div className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5">
                         <span className="text-sm font-semibold">{t.label}</span>
@@ -293,7 +293,7 @@ export default function Dashboard({
                         </span>
                         <Link
                           to={`/new-doco?template_handle=${encodeURIComponent(t.handle)}`}
-                          className="rounded-md bg-primary px-2 py-1 text-[11px] font-semibold text-primary-foreground hover:opacity-90"
+                          className="neo-raised-primary rounded-md px-2 py-1 text-[11px] font-semibold"
                         >
                           + Doco
                         </Link>

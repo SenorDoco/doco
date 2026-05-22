@@ -489,15 +489,16 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
 
   return (
     <aside
-      className="flex h-full w-[320px] shrink-0 flex-col border-r border-border bg-card"
+      className="flex h-full w-[320px] shrink-0 flex-col bg-background"
+      style={{ boxShadow: "inset -8px 0 16px -8px rgba(150, 160, 185, 0.35)" }}
       aria-label="Señor Doco"
     >
-      <div className="flex shrink-0 items-center justify-between border-b border-border px-3 py-2">
+      <div className="flex shrink-0 items-center justify-between px-3 py-2.5">
         <div className="text-xs font-semibold">Señor Doco</div>
         <button
           type="button"
           onClick={() => setCollapsedPersistent(true)}
-          className="rounded p-0.5 text-muted-foreground hover:bg-input hover:text-foreground"
+          className="neo-raised-sm rounded-md p-1 text-muted-foreground hover:text-foreground"
           aria-label="Collapse Señor Doco"
           title="Collapse"
         >
@@ -511,7 +512,7 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
         className="flex-1 overflow-y-auto px-3 py-3 text-xs leading-relaxed"
       >
         {loadError ? (
-          <div className="rounded-md bg-destructive/10 px-2 py-1.5 text-[11px] text-destructive">
+          <div className="neo-inset rounded-md bg-destructive/10 px-2 py-1.5 text-[11px] text-destructive">
             Couldn't load chat history: {loadError}
           </div>
         ) : null}
@@ -572,10 +573,12 @@ export function CollapsedRail({
       type="button"
       onClick={onExpand}
       aria-label={`Expand ${label}`}
-      className={
-        "group relative flex h-full w-[32px] shrink-0 cursor-pointer flex-col items-center gap-2 bg-card py-3 hover:bg-input " +
-        (isLeft ? "border-r border-border" : "border-l border-border")
-      }
+      className="group relative flex h-full w-[32px] shrink-0 cursor-pointer flex-col items-center gap-2 bg-background py-3 hover:text-primary"
+      style={{
+        boxShadow: isLeft
+          ? "inset -6px 0 12px -6px rgba(150, 160, 185, 0.3)"
+          : "inset 6px 0 12px -6px rgba(150, 160, 185, 0.3)",
+      }}
     >
       <CollapseIcon side={isLeft ? "right" : "left"} />
       <div
@@ -704,7 +707,7 @@ function BlockView({ block }: { block: AnyBlock }) {
   }
   if (block.type === "tool_use") {
     return (
-      <div className="rounded-md bg-background px-2 py-1 font-mono text-[10px] text-muted-foreground">
+      <div className="neo-inset rounded-md bg-card px-2 py-1 font-mono text-[10px] text-muted-foreground">
         <div className="font-semibold text-foreground">{toolLabel(block.name, block.input)}</div>
       </div>
     );
@@ -727,7 +730,7 @@ function AttachmentBlockView({ block }: { block: ContentBlockAttachmentRef }) {
         href={href}
         target="_blank"
         rel="noreferrer"
-        className="block overflow-hidden rounded-md border border-border bg-background"
+        className="neo-raised-sm block overflow-hidden rounded-md bg-card"
       >
         <img
           src={href}
@@ -746,7 +749,7 @@ function AttachmentBlockView({ block }: { block: ContentBlockAttachmentRef }) {
       href={href}
       target="_blank"
       rel="noreferrer"
-      className="flex items-center gap-1.5 rounded-md border border-border bg-background px-2 py-1 text-[10px] text-foreground hover:bg-input/40"
+      className="neo-raised-sm flex items-center gap-1.5 rounded-md bg-card px-2 py-1 text-[10px] text-foreground"
     >
       <span className="font-mono text-muted-foreground">📎</span>
       <span className="truncate">{block.filename}</span>
@@ -765,8 +768,8 @@ function ToolResultRow({ result }: { result: ContentBlockToolResult }) {
   return (
     <div
       className={cn(
-        "rounded-md px-2 py-1 font-mono text-[10px]",
-        result.is_error ? "bg-destructive/10 text-destructive" : "bg-background text-muted-foreground",
+        "neo-inset rounded-md px-2 py-1 font-mono text-[10px]",
+        result.is_error ? "bg-destructive/10 text-destructive" : "bg-card text-muted-foreground",
       )}
     >
       → {result.content}
@@ -823,7 +826,7 @@ function Composer({
   return (
     <div
       className={cn(
-        "shrink-0 border-t border-border bg-card px-3 py-2",
+        "shrink-0 bg-background px-3 py-3",
         dragOver && "ring-2 ring-primary/40",
       )}
       onDragOver={(e) => {
@@ -843,7 +846,7 @@ function Composer({
           {staged.map((a) => (
             <div
               key={a.id}
-              className="flex items-center gap-1.5 rounded-md border border-border bg-background px-2 py-1 text-[10px]"
+              className="neo-inset flex items-center gap-1.5 rounded-md bg-card px-2 py-1 text-[10px]"
             >
               <span className="font-mono text-muted-foreground">📎</span>
               <span className="truncate">{a.filename}</span>
@@ -872,7 +875,8 @@ function Composer({
         onChange={(e) => onChange(e.target.value)}
         placeholder={`Ask Señor Doco as ${username}…`}
         rows={2}
-        className="min-h-[44px] w-full resize-none rounded-md border border-border bg-background px-2 py-1.5 text-xs focus:border-primary focus:outline-none"
+        data-flat
+        className="neo-inset min-h-[44px] w-full resize-none rounded-md bg-card px-3 py-2 text-xs focus:outline-none"
         onKeyDown={(e) => {
           if (e.key === "Enter" && !e.shiftKey) {
             e.preventDefault();
@@ -899,7 +903,7 @@ function Composer({
             type="button"
             onClick={() => fileInputRef.current?.click()}
             disabled={busy || uploading}
-            className="rounded-md border border-border px-2 py-0.5 text-[10px] text-muted-foreground hover:bg-input/60 hover:text-foreground disabled:opacity-50"
+            className="neo-raised-sm rounded-md px-2 py-1 text-[10px] text-muted-foreground hover:text-foreground disabled:opacity-50"
             aria-label="Attach a file"
           >
             {uploading ? "Uploading…" : "📎 Attach"}
@@ -910,7 +914,7 @@ function Composer({
           type="button"
           onClick={onSend}
           disabled={!canSend}
-          className="rounded-md bg-primary px-3 py-1 text-[11px] font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
+          className="neo-raised-primary rounded-md px-4 py-1.5 text-[11px] font-semibold disabled:opacity-50"
         >
           {busy ? "…" : "Send"}
         </button>

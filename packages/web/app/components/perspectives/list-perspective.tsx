@@ -134,7 +134,7 @@ export function ListPerspective({ nodes, pageRanks, visibleLifecycles }: ListPer
           <select
             value={sort}
             onChange={(e) => setSort(e.target.value as ListSortKey)}
-            className="rounded-md border border-border bg-background px-2 py-1 text-xs"
+            className="rounded-md px-2 py-1 text-xs"
           >
             {SORT_OPTIONS.map((key) => (
               <option key={key} value={key}>
@@ -144,7 +144,7 @@ export function ListPerspective({ nodes, pageRanks, visibleLifecycles }: ListPer
           </select>
         </label>
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto rounded-md border border-border bg-input">
+      <div className="neo-inset min-h-0 flex-1 overflow-y-auto rounded-md bg-card">
         {sorted.length === 0 ? (
           <p className="px-4 py-3 text-xs italic text-muted-foreground">
             This Doco has no neurons yet.
@@ -225,7 +225,7 @@ function ListRow({ node, sort, rank, referenceNumber }: ListRowProps) {
   return (
     <li>
       {node.href ? (
-        <Link to={node.href} className="block hover:bg-background">
+        <Link to={node.href} className="block">
           {inner}
         </Link>
       ) : (

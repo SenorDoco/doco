@@ -19,7 +19,8 @@
   --color-muted-foreground: oklch(0.48 0.014 268);
   --color-card: oklch(0.935 0.006 270);
   --color-card-foreground: oklch(0.22 0.018 268);
-  --color-border: oklch(0.86 0.008 270 / 35%);
+  --color-border: oklch(0.86 0.008 270 / 0%);
+  --color-border-soft: oklch(0.86 0.008 270 / 30%);
   --color-input: oklch(0.92 0.006 270);
   --color-primary: oklch(0.55 0.17 324);
   --color-primary-foreground: oklch(0.985 0.004 270);
@@ -107,6 +108,109 @@ html, body {
   box-shadow: inset -2px -2px 5px rgba(255, 255, 255, 0.25),
     inset 2px 2px 5px rgba(60, 18, 50, 0.45);
   transform: translateY(1px);
+}
+
+/* Default neumorphic styling for any text-entry element. Opt out by
+   adding `data-flat` to the element, e.g. on the in-graph search box
+   when the surrounding context already provides its own well. */
+input:not([type]):not([data-flat]),
+input[type="text"]:not([data-flat]),
+input[type="search"]:not([data-flat]),
+input[type="email"]:not([data-flat]),
+input[type="url"]:not([data-flat]),
+input[type="password"]:not([data-flat]),
+input[type="number"]:not([data-flat]),
+textarea:not([data-flat]),
+select:not([data-flat]) {
+  background-color: var(--color-card);
+  box-shadow: var(--shadow-neo-inset);
+  border-radius: var(--radius-sm);
+  border: none;
+  outline: none;
+  transition: box-shadow 160ms ease;
+}
+input:not([data-flat]):focus,
+textarea:not([data-flat]):focus,
+select:not([data-flat]):focus {
+  box-shadow: var(--shadow-neo-inset),
+    0 0 0 2px color-mix(in oklch, var(--color-primary) 35%, transparent);
+}
+
+/* React Flow controls — the +/-/fitView buttons sit on top of the graph
+   canvas. Convert them to small neumorphic raised buttons. */
+.react-flow__controls {
+  background: transparent !important;
+  box-shadow: none !important;
+  display: flex !important;
+  flex-direction: column;
+  gap: 6px;
+}
+.react-flow__controls-button {
+  background-color: var(--color-card) !important;
+  border: none !important;
+  box-shadow: var(--shadow-neo-sm) !important;
+  border-radius: var(--radius-sm) !important;
+  width: 26px !important;
+  height: 26px !important;
+  color: var(--color-foreground) !important;
+  transition: box-shadow 160ms ease, transform 160ms ease;
+}
+.react-flow__controls-button:hover {
+  box-shadow: var(--shadow-neo) !important;
+}
+.react-flow__controls-button:active {
+  box-shadow: var(--shadow-neo-pressed) !important;
+  transform: translateY(1px);
+}
+.react-flow__controls-button svg {
+  fill: var(--color-foreground);
+  max-width: 14px;
+  max-height: 14px;
+}
+.react-flow__minimap {
+  box-shadow: var(--shadow-neo) !important;
+  border: none !important;
+  border-radius: var(--radius) !important;
+  background-color: var(--color-card) !important;
+}
+.react-flow__attribution {
+  background: transparent !important;
+}
+
+/* Divider replacement: components frequently set `border-b border-border`
+   for row separators (tables, lists, drawers). With `--color-border` at
+   0% alpha those become invisible. For the cases that genuinely need a
+   visible divider, components can use `data-soft-divider` instead. */
+[data-soft-divider] {
+  border-color: var(--color-border-soft) !important;
+}
+
+/* Graph nodes need a subtle elevation without overpowering the lifecycle
+   stripe on the left edge. The existing rendering set Tailwind's
+   `shadow-sm` — upgrade to a tighter neo shadow that reads as soft
+   plastic at small scale. The lifecycle stripe (borderLeft inline style)
+   stays on top. */
+.overview-graph-node {
+  box-shadow: -1px -1px 3px rgba(255, 255, 255, 0.6),
+    1.5px 1.5px 4px rgba(150, 160, 185, 0.35) !important;
+}
+
+/* Selection ring on links/buttons: use a single neo shadow lift instead
+   of the default browser focus outline, except where explicitly opted
+   out via data-flat. Keyboard nav still gets the input-focus ring above. */
+a:focus-visible,
+button:focus-visible {
+  outline: 2px solid color-mix(in oklch, var(--color-primary) 50%, transparent);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+/* `divide-y divide-border` row separators have invisible color (since
+   --color-border is transparent). Add a soft alternative selector for
+   lists that genuinely need a visible row divider: add `data-divided`
+   to the parent. */
+[data-divided] > *:not(:last-child) {
+  border-bottom: 1px solid var(--color-border-soft);
 }
 
 ::selection {

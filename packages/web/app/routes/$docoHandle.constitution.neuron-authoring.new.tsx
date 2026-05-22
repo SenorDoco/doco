@@ -130,7 +130,7 @@ export default function NewNeuronAuthoringPrimitive({
                   required
                   rows={6}
                   placeholder="Write the primitive."
-                  className="mt-1 block w-full rounded-md border border-border bg-input px-3 py-2 text-sm"
+                  className="mt-1 block w-full rounded-md px-3 py-2 text-sm"
                 />
               </label>
               <fieldset className="flex flex-wrap gap-2">
@@ -140,7 +140,7 @@ export default function NewNeuronAuthoringPrimitive({
                 {(["deterministic", "probabilistic"] as const).map((kind) => (
                   <label
                     key={kind}
-                    className="inline-flex items-center gap-2 rounded-md border border-border bg-input px-3 py-2 text-xs font-semibold"
+                    className="neo-raised-sm inline-flex items-center gap-2 rounded-md px-3 py-2 text-xs font-semibold"
                   >
                     <input
                       type="radio"
@@ -171,7 +171,7 @@ export default function NewNeuronAuthoringPrimitive({
                       null,
                       2,
                     )}
-                    className="mt-1 block w-full rounded-md border border-border bg-input px-3 py-2 font-mono text-xs"
+                    className="mt-1 block w-full rounded-md px-3 py-2 font-mono text-xs"
                   />
                 </label>
               ) : (
@@ -183,7 +183,7 @@ export default function NewNeuronAuthoringPrimitive({
                     name="probabilistic_spec"
                     rows={10}
                     placeholder="Judge only the neuron being captured. Pass when..."
-                    className="mt-1 block w-full rounded-md border border-border bg-input px-3 py-2 text-sm"
+                    className="mt-1 block w-full rounded-md px-3 py-2 text-sm"
                   />
                 </label>
               )}
@@ -195,7 +195,7 @@ export default function NewNeuronAuthoringPrimitive({
                   <input
                     name="fires_when_neuron_lifecycle"
                     placeholder="active"
-                    className="mt-1 block w-full rounded-md border border-border bg-input px-3 py-2 text-sm"
+                    className="mt-1 block w-full rounded-md px-3 py-2 text-sm"
                   />
                 </label>
                 <label className="block">
@@ -205,7 +205,7 @@ export default function NewNeuronAuthoringPrimitive({
                   <select
                     name="on_violation"
                     defaultValue="block"
-                    className="mt-1 block w-full rounded-md border border-border bg-input px-3 py-2 text-sm"
+                    className="mt-1 block w-full rounded-md px-3 py-2 text-sm"
                   >
                     <option value="block">block</option>
                     <option value="warn">warn</option>
@@ -216,7 +216,7 @@ export default function NewNeuronAuthoringPrimitive({
               <div className="flex items-center gap-3 pt-2">
                 <button
                   type="submit"
-                  className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90"
+                  className="neo-raised-primary rounded-md px-4 py-2 text-sm font-semibold"
                 >
                   Add neuron-authoring primitive
                 </button>
