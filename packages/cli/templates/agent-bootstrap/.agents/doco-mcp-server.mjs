@@ -389,11 +389,13 @@ async function handleAuthenticate(message) {
   // Return a ready-to-render block. The agent should quote this verbatim
   // at the top of its reply. Markdown link syntax renders the URL clickable
   // in chat clients that render markdown (Claude Code, Cursor, etc.).
+  // The indicator line uses the requested handle/org name so the user
+  // sees exactly which scope they're being asked to grant.
   const text = [
     "Device-flow authentication started. Render the following block at the top of your reply (the URL is in markdown-link syntax so it renders clickable):",
     "",
     "---",
-    "[🔮 Doco] Doco access not granted yet",
+    `[🔮 Doco] ${handle} access not granted yet`,
     "",
     `To let me read this project's prior decisions and rules, open [${verifyUrl}](${verifyUrl}) and click Approve. I'll pause here until you do.`,
     "---",
@@ -402,6 +404,8 @@ async function handleAuthenticate(message) {
     `Device code expires in ${Math.round(expiresIn / 60)} minutes.`,
     "",
     "Then call doco_complete_authentication with wait_seconds=120 to pause while the user approves. DO NOT continue substantive work until it succeeds — the pause is intentional. If it returns 'still pending', end your turn with the tally and ask the user to send any message after approving.",
+    "",
+    `In the closing tally for this turn, render: [🔮 Doco] ⚠️ ${handle} not queried or updated as access hasn't been granted yet. (until completion succeeds; then switch to the normal tally line for ${handle}).`,
   ].join("\n");
 
   return send({

@@ -215,7 +215,7 @@ returned 401/403, or the bootstrap couldn't reach Doco):
    your reply:
 
    \`\`\`
-   [🔮 Doco] Doco access not granted yet
+   [🔮 Doco] <doco-or-org-name> access not granted yet
 
    To let me read this project's prior decisions and rules, open
    [<URL>](<URL>) and click Approve. I'll pause here until you do.
@@ -258,18 +258,34 @@ Op icons: ✍️ added · 📝 updated · 🧹 cleared · ➕ added/appended ·
 
 ## 3. CLOSING LINE OF THE TURN — tally (no exceptions, once per turn)
 
+Render one tally line per source the agent has potential access to
+(each Doco or organization listed in the project's connections).
+
+**Connected source** (you queried or wrote — even if N == 0):
+
 \`\`\`
-[🔮 Doco] <doco_handle>: **<N>** neuron(s) added/updated
+[🔮 Doco] <doco-or-org-name>: **<N>** neurons added/updated
 \`\`\`
 
-The tally is the LAST line of the LAST text output of the turn.
+**Source whose access hasn't been granted yet**:
 
-- \`<doco_handle>\` is the human-readable handle from the Doco URL.
+\`\`\`
+[🔮 Doco] ⚠️ <doco-or-org-name> not queried or updated as access hasn't been granted yet.
+\`\`\`
+
+The tally lines are the LAST lines of the LAST text output of the turn.
+
+- \`<doco-or-org-name>\` is the human-readable Doco handle if access is
+  scoped to one Doco, or the organization name if access is granted
+  org-wide (covering multiple Docos under that org).
 - \`<N>\` counts distinct entities the project owner captured on your
   behalf this turn (patch-3-fields-of-1-Decision = 1).
 - \`<N>\` MUST be wrapped in markdown bold (\`**N**\`).
 - Singular form for \`**1**\`; plural otherwise (zero is plural).
-- Renders EVEN when N == 0 — that's the explicit no-op signal.
+- The connected-source line renders EVEN when N == 0 — that's the
+  explicit no-op signal.
+- The not-granted-yet line replaces the normal tally for that source
+  until access is granted (then switch to the normal line).
 
 ## Doco is the memory — your private memory isn't
 

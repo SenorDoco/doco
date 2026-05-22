@@ -92,14 +92,17 @@ between tool calls IS shown to the user as those tool calls run, so
 use that to communicate "what I'm about to do" vs. "what I just
 finished." Once per turn — not on intermediate progress updates.
 
-**On the first reply of a session that uses the Doco** — render the
-Loading line as the very first text, BEFORE any MCP tool call:
+**On the first reply of a session that uses the Doco** — render one
+Loading line per source listed in `.doco/connections.md` (use the Doco
+handle, or the organization name if access is granted org-wide).
+Render as the very first text, BEFORE any MCP tool call:
 ```
-[🔮 Doco] Loading <handle>...
+[🔮 Doco] Loading <doco-or-org-name>...
 ```
 
 (Trailing `...` is required. If this turn doesn't touch Doco at all,
-emit nothing — see "didn't query" below.)
+emit nothing — see "didn't query" below. If multiple sources are
+listed, render one Loading line per source.)
 
 **When you call `doco_search`** — render the corky verb on its own
 line IMMEDIATELY BEFORE the tool call (so the user sees it as the
@@ -138,7 +141,7 @@ block is in your context):
 2. Render the block returned by `doco_authenticate` at the top of
    your reply. Shape:
    ```
-   [🔮 Doco] Doco access not granted yet
+   [🔮 Doco] <doco-or-org-name> access not granted yet
 
    To let me read this project's prior decisions and rules, open
    [https://doco.to/device?user_code=XXXX-YYYY](https://doco.to/device?user_code=XXXX-YYYY)
@@ -177,15 +180,29 @@ contain the operation lines.
 
 ### 3. Tally at the closing line of every turn
 
+Render one line per source the agent has potential access to (each Doco
+or organization listed in `.doco/connections.md`). Render at the very
+end of the response.
+
+**Connected source** (you queried or wrote to it this turn — even if
+N == 0):
 ```
-[🔮 Doco] <owner>/<doco>: **<N>** node(s) added/updated
+[🔮 Doco] <doco-or-org-name>: **<N>** nodes added/updated
 ```
+
+**Source whose access hasn't been granted yet**:
+```
+[🔮 Doco] ⚠️ <doco-or-org-name> not queried or updated as access hasn't been granted yet.
+```
+
+Use the Doco handle when access is scoped to one Doco, or the
+organization name when access is granted org-wide (covering multiple
+Docos under that org).
 
 `<N>` MUST be wrapped in markdown bold. Singular when `N == 1`, plural
 otherwise (0 is plural). PATCH-3-fields-of-1-Decision = 1, not 3. A
 turn is one user prompt → your complete answer, even when threaded
-through many tool calls. When you can't write directly, `<N>` counts
-captures you recommended to the project owner.
+through many tool calls.
 
 ---
 
