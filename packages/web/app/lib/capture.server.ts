@@ -30,6 +30,15 @@ async function enforceAuthoringPrimitives(
 }
 
 /**
+ * Render non-blocking authoring-primitive warnings as footer lines.
+ * Appended after the operation lines so the agent sees them inline
+ * with the capture result.
+ */
+function renderAuthoringWarnings(warnings: AuthoringResult["warnings"]): string[] {
+  return warnings.map((w) => `[🔮 Doco] ⚠️ Authoring warning: ${w.reason}`);
+}
+
+/**
  * Synthetic "path" returned in CaptureResult.path. Postgres is the only
  * storage; there is no on-disk file. Callers (footer renderer, CLI)
  * already key off the entity URL, not this string.
@@ -703,6 +712,7 @@ export async function captureDecision(
     ops: [{ kind: "added", summary }],
     duration_ms,
   });
+  footer_lines.push(...renderAuthoringWarnings(pred.warnings));
   return {
     ok: true,
     id,
@@ -929,6 +939,7 @@ export async function updateDecision(
     ops,
     duration_ms,
   });
+  footer_lines.push(...renderAuthoringWarnings(pred.warnings));
   return {
     ok: true,
     id: decisionId,
@@ -1181,6 +1192,7 @@ export async function updateEntity(opts: {
     ops,
     duration_ms,
   });
+  footer_lines.push(...renderAuthoringWarnings(pred.warnings));
   return {
     ok: true,
     id,
@@ -1309,6 +1321,7 @@ export async function captureIntent(
     ops: [{ kind: "added", summary }],
     duration_ms,
   });
+  footer_lines.push(...renderAuthoringWarnings(pred.warnings));
   return {
     ok: true,
     id,
@@ -1459,6 +1472,7 @@ export async function captureEval(
     ops: [{ kind: "added", summary }],
     duration_ms,
   });
+  footer_lines.push(...renderAuthoringWarnings(pred.warnings));
   return {
     ok: true,
     id,
@@ -1594,6 +1608,7 @@ export async function captureAction(
     ops: [{ kind: "added", summary }],
     duration_ms,
   });
+  footer_lines.push(...renderAuthoringWarnings(pred.warnings));
   return {
     ok: true,
     id,
@@ -1742,6 +1757,7 @@ export async function captureLog(
     ops: [{ kind: "added", summary }],
     duration_ms,
   });
+  footer_lines.push(...renderAuthoringWarnings(pred.warnings));
   return {
     ok: true,
     id,
@@ -1896,6 +1912,7 @@ export async function captureRule(
     ops: [{ kind: "added", summary }],
     duration_ms,
   });
+  footer_lines.push(...renderAuthoringWarnings(pred.warnings));
   return {
     ok: true,
     id,
@@ -2170,6 +2187,7 @@ export async function captureGuidancePrimitive(
     ops: [{ kind: "added", summary: payload.summary }],
     duration_ms,
   });
+  footer_lines.push(...renderAuthoringWarnings(pred.warnings));
   return {
     ok: true,
     id: payload.id,
@@ -2231,6 +2249,7 @@ export async function captureNeuronAuthoringPrimitive(
     ops: [{ kind: "added", summary: payload.summary }],
     duration_ms,
   });
+  footer_lines.push(...renderAuthoringWarnings(pred.warnings));
   return {
     ok: true,
     id: payload.id,
@@ -2475,6 +2494,7 @@ export async function captureReference(
     ops: [{ kind: "added", summary }],
     duration_ms,
   });
+  footer_lines.push(...renderAuthoringWarnings(pred.warnings));
   return {
     ok: true,
     id,
@@ -2601,6 +2621,7 @@ export async function captureState(
     ops: [{ kind: "added", summary }],
     duration_ms,
   });
+  footer_lines.push(...renderAuthoringWarnings(pred.warnings));
   return {
     ok: true,
     id,
