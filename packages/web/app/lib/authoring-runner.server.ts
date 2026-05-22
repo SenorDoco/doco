@@ -152,7 +152,7 @@ type PgClient = Parameters<Parameters<typeof withClient>[0]>[0];
 
 async function loadPrimitives(c: PgClient, docoId: string): Promise<LoadedPrimitive[]> {
   const r = await c.query<{ id: string; summary: string; raw_yaml: string }>(
-    `SELECT id, summary, raw_yaml
+    `SELECT id, summary, data::text AS raw_yaml
        FROM neuron_authoring_primitives
        WHERE doco_id = $1 AND lifecycle = 'active'`,
     [docoId],
@@ -213,7 +213,7 @@ async function loadPopulation(
   const out: CandidateFields[] = [];
   for (const table of tables) {
     const r = await c.query<{ id: string; raw_yaml: string }>(
-      `SELECT id, raw_yaml FROM ${table} WHERE doco_id = $1 AND id <> $2`,
+      `SELECT id, data::text AS raw_yaml FROM ${table} WHERE doco_id = $1 AND id <> $2`,
       [docoId, excludeId],
     );
     for (const row of r.rows) {
