@@ -8,9 +8,9 @@
 import {
   listAllDocos as _dbListAllDocos,
   getHostConfig,
+  listCollaborators,
   listOrganizations,
   listOrganizationsForCollaborator,
-  listPrincipals,
 } from "@doco/db";
 
 export interface HostConfig {
@@ -57,15 +57,16 @@ export async function loadHostConfig(): Promise<HostConfig> {
 }
 
 export async function listUsers(): Promise<HostUser[]> {
-  const rows = await listPrincipals({ type: "person" });
+  // Post-rename: OAuth identities (humans + agent runtimes) live in
+  // the `collaborators` table, not `principals`. Principals are
+  // role-personas referenced by actor_id, not users-of-the-system.
+  const rows = await listCollaborators({ kind: "person" });
   return rows.map((r) => {
-    const fm = JSON.parse(r.raw_yaml) as Record<string, unknown>;
-    const email = r.email ?? (fm.github_identity as { email?: string } | undefined)?.email ?? null;
     const out: HostUser = {
       id: r.id,
-      username: r.username,
+      username: r.github_login ?? r.id,
     };
-    if (typeof email === "string") out.email = email;
+    if (r.email) out.email = r.email;
     return out;
   });
 }

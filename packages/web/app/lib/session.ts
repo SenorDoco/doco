@@ -75,13 +75,13 @@ export function isHumanPrincipal(principal: CurrentPrincipal | null | undefined)
 export async function findPrincipalById(principalId: string): Promise<CurrentPrincipal | null> {
   const row = await getPrincipalById(principalId);
   if (!row) return null;
-  return rowToPrincipal(row);
+  return rowToPrincipal(row as unknown as { id: string; username: string; email: string | null; type: string; raw_yaml: string });
 }
 
 export async function findPrincipalByUsername(username: string): Promise<CurrentPrincipal | null> {
   const row = await getPrincipalByUsername(username);
   if (!row) return null;
-  return rowToPrincipal(row);
+  return rowToPrincipal(row as unknown as { id: string; username: string; email: string | null; type: string; raw_yaml: string });
 }
 
 export async function getCurrentPrincipal(request: Request): Promise<CurrentPrincipal | null> {

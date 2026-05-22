@@ -136,10 +136,10 @@ export async function loader({
         ? {
             id: p.id,
             username: p.username,
-            type: p.type,
+            type: (p as unknown as { type?: string }).type ?? "person",
             role: u.role,
-            github_login: p.github_login ?? null,
-            email: p.email ?? null,
+            github_login: (p as unknown as { github_login?: string }).github_login ?? null,
+            email: (p as unknown as { email?: string }).email ?? null,
           }
         : null;
     }),

@@ -128,7 +128,7 @@ export default [
   ),
   route(
     "orgs/:orgHandle/constitution/:entityType/:primitiveId/edit",
-    "routes/orgs.$orgHandle.constitution.$entityType.$articleId.edit.tsx",
+    "routes/orgs.$orgHandle.constitution.$entityType.$primitiveId.edit.tsx",
   ),
   route("collaborators", "routes/collaborators.tsx"),
   route("collaborators/invite", "routes/collaborators.invite.tsx"),
@@ -189,7 +189,7 @@ export default [
   ),
   route(
     ":docoHandle/constitution/:entityType/:primitiveId/edit",
-    "routes/$docoHandle.constitution.$entityType.$articleId.edit.tsx",
+    "routes/$docoHandle.constitution.$entityType.$primitiveId.edit.tsx",
   ),
   route(":docoHandle/invites", "routes/$docoHandle.invites.tsx"),
   route(":docoHandle/api/invites.json", "routes/$docoHandle.api.invites[.]json.tsx"),
@@ -237,7 +237,7 @@ export default [
   // edge's metadata. Composite key `(synapse_type, from_id, to_id)` is
   // url-encoded as `edge_type__from_id__to_id`.
   route(":docoHandle/synapses", "routes/$docoHandle.synapses._index.tsx"),
-  route(":docoHandle/synapses/:synapseKey", "routes/$docoHandle.synapses.$edgeKey.tsx"),
+  route(":docoHandle/synapses/:synapseKey", "routes/$docoHandle.synapses.$synapseKey.tsx"),
   // Short-form entity routes. `:type` is validated by the loader; reserved
   // feature paths above win the match for the static paths.
   route(":docoHandle/:type", "routes/$docoHandle.$type._index.tsx"),

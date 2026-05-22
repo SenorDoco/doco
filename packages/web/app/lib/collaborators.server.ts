@@ -73,7 +73,7 @@ async function enrichPrincipal(
   lastActivity: Map<string, string>,
 ): Promise<UserCell> {
   const p = await getPrincipalById(id);
-  const kind: PrincipalKind = p?.type === "agent" ? "agent" : "person";
+  const kind: PrincipalKind = (p as { type?: string } | null)?.type === "agent" ? "agent" : "person";
   return {
     collaborator_id: id,
     username: p?.username ?? id,

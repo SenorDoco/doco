@@ -411,7 +411,7 @@ export function OverviewGraph({
         {Flow ? (
           <Flow.ReactFlow
             nodes={flowNodes}
-            synapses={flowEdges}
+            edges={flowEdges}
             nodeTypes={nodeTypes}
             nodesDraggable={false}
             nodesConnectable={false}

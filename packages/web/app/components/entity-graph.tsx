@@ -1104,7 +1104,7 @@ export function EntityGraph({
           <>
             <Flow.ReactFlow
               nodes={flowNodes}
-              synapses={flowEdges}
+              edges={flowEdges}
               nodeTypes={nodeTypes}
               nodesDraggable={false}
               nodesConnectable={false}

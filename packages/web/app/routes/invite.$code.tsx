@@ -16,6 +16,7 @@
 
 import {
   type DocoRole,
+  getCollaboratorById,
   getDocoById,
   getPrincipalById,
   upsertDocoUser,
@@ -70,7 +71,7 @@ export async function loader({ request, params }: { request: Request; params: { 
     ok: true,
     code,
     doco: { id: doco.id, handle: doco.handle },
-    inviter: inviter ? { username: inviter.username } : null,
+    inviter: inviter ? { username: inviter.github_login ?? inviter.id } : null,
     expires_at: invite.expires_at,
     signedIn: principal ? { id: principal.id, username: principal.username } : null,
   } satisfies LoaderOk;
