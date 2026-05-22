@@ -39,7 +39,7 @@ export async function loader({
     const table = TABLE_BY_TYPE[type] ?? type;
     const rows = (
       await c.query<{ id: string; summary: string; raw_yaml: string }>(
-        `SELECT id, summary, raw_yaml FROM ${table}
+        `SELECT id, summary, data::text AS raw_yaml FROM ${table}
           WHERE doco_id = $1
           ORDER BY id DESC LIMIT 200`,
         [ctx.meta.docoId],

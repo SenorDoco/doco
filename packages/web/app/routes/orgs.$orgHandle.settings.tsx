@@ -80,7 +80,7 @@ async function renameOrganizationHandle(opts: {
     }
 
     const current = await c.query<{ raw_yaml: string }>(
-      "SELECT raw_yaml FROM organizations WHERE id = $1 LIMIT 1",
+      "SELECT data::text AS raw_yaml FROM organizations WHERE id = $1 LIMIT 1",
       [opts.orgId],
     );
     const rawYaml = current.rows[0]?.raw_yaml;
@@ -94,7 +94,7 @@ async function renameOrganizationHandle(opts: {
           SET handle = $2,
               slug = $2,
               name = $2,
-              raw_yaml = $3,
+              data = $3::jsonb,
               updated_at = now()
         WHERE id = $1`,
       [opts.orgId, opts.nextHandle, JSON.stringify(yaml)],

@@ -35,13 +35,13 @@ async function ensureTestPrincipal(username: TestUsername): Promise<string> {
     await withClient(async (c) => {
       await c.query(
         `UPDATE principals
-            SET raw_yaml = jsonb_set(
-              COALESCE(raw_yaml::jsonb, '{}'::jsonb),
+            SET data = jsonb_set(
+              COALESCE(data, '{}'::jsonb),
               '{entity_type}',
               '"principal"'::jsonb,
               true
-            )::text
-          WHERE id = $1 AND (raw_yaml::jsonb ->> 'entity_type') IS DISTINCT FROM 'principal'`,
+            )
+          WHERE id = $1 AND (data ->> 'entity_type') IS DISTINCT FROM 'principal'`,
         [existing.id],
       );
     });
@@ -57,8 +57,8 @@ async function ensureTestPrincipal(username: TestUsername): Promise<string> {
   });
   await withClient(async (c) => {
     await c.query(
-      `INSERT INTO principals (id, username, type, raw_yaml)
-       VALUES ($1, $2, 'person', $3)
+      `INSERT INTO principals (id, username, data)
+       VALUES ($1, $2, $3::jsonb)
        ON CONFLICT (username) DO NOTHING`,
       [id, username, raw_yaml],
     );

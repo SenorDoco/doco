@@ -49,7 +49,7 @@ export async function loader({
   const { ownerSlug, docoSlug, handle } = ctx;
   const [guidanceRows, nodeAuthoringRows] = await withClient(async (c) => {
     const guidance = await c.query<ArticleRow>(
-      `SELECT id, summary, lifecycle, created_at, body_md, raw_yaml
+      `SELECT id, summary, lifecycle, created_at, body_md, data::text AS raw_yaml
          FROM guidance_primitives
         WHERE doco_id = $1
           AND COALESCE(lifecycle, 'active') = 'active'
@@ -57,7 +57,7 @@ export async function loader({
       [ctx.meta.docoId],
     );
     const nodeAuthoring = await c.query<ArticleRow>(
-      `SELECT id, summary, lifecycle, created_at, body_md, raw_yaml
+      `SELECT id, summary, lifecycle, created_at, body_md, data::text AS raw_yaml
          FROM neuron_authoring_primitives
         WHERE doco_id = $1
           AND COALESCE(lifecycle, 'active') = 'active'

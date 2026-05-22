@@ -36,7 +36,7 @@ async function transferDocoToOrganization(opts: {
 }): Promise<void> {
   await withClient(async (c) => {
     const current = await c.query<{ raw_yaml: string }>(
-      "SELECT raw_yaml FROM docos WHERE id = $1 LIMIT 1",
+      "SELECT data::text AS raw_yaml FROM docos WHERE id = $1 LIMIT 1",
       [opts.docoId],
     );
     const rawYaml = current.rows[0]?.raw_yaml;
@@ -48,7 +48,7 @@ async function transferDocoToOrganization(opts: {
       `UPDATE docos
           SET owner_id = $2,
               org_id = $2,
-              raw_yaml = $3,
+              data = $3::jsonb,
               updated_at = now()
         WHERE id = $1`,
       [opts.docoId, opts.targetOrgId, JSON.stringify(yaml)],
