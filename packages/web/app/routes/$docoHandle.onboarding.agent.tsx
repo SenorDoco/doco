@@ -1,4 +1,4 @@
-// Onboarding step: hand the Doco off to an AI agent.
+// Onboarding page: hand the Doco off to an AI agent.
 //
 // Mints a fresh 7-day invite for the signed-in admin and renders the
 // single collaboration prompt the project owner can hand to a human
@@ -12,9 +12,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/com
 import { CollaborationInvitePrompt } from "~/components/collaboration-invite-prompt";
 import { SingleColumnPageMain } from "~/components/page-main";
 import { SiteHeader } from "~/components/site-header";
-import { WizardStepper } from "~/components/wizard-stepper";
 import { rootDir } from "~/lib/db.server";
-import { loadDocoRouteForAdmin } from "~/lib/doco-access.server";
+import { loadPostCreateDocoRouteForAdmin } from "~/lib/doco-access.server";
 import { InviteStore } from "~/lib/invite-store.server";
 
 export async function loader({
@@ -22,9 +21,9 @@ export async function loader({
   params,
 }: {
   request: Request;
-  params: { docoId: string };
+  params: { docoHandle?: string; docoId?: string };
 }) {
-  const { handle, me, meta, ownerSlug } = await loadDocoRouteForAdmin(request, params);
+  const { handle, me, meta, ownerSlug } = await loadPostCreateDocoRouteForAdmin(request, params);
 
   const store = InviteStore.forDoco(rootDir());
   const invite = await store.issueInvite(
@@ -59,7 +58,6 @@ export default function OnboardingAgent({
         <Breadcrumb
           items={docoBreadcrumb({ ownerSlug, handle, pageLabel: "Bootstrap and collaborate" })}
         />
-        <WizardStepper current={3} />
         <Card>
           <CardHeader>
             <CardTitle>Bootstrap and collaborate</CardTitle>

@@ -3,11 +3,10 @@ import { Breadcrumb, docoBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
 import { SingleColumnPageMain } from "~/components/page-main";
 import { SiteHeader } from "~/components/site-header";
-import { WizardStepper } from "~/components/wizard-stepper";
-import { loadDocoRouteForRead } from "~/lib/doco-access.server";
+import { loadPostCreateDocoRouteForRead, withCreatedDocoId } from "~/lib/doco-access.server";
 
 /**
- * /:handle/welcome — Step 2 of 3 in the doco creation wizard.
+ * /:handle/welcome — post-create Doco concepts page.
  *
  * Reached after Step 1 creates the doco. Introduces the core Doco
  * concepts before sending the user to bootstrap and collaboration
@@ -19,11 +18,12 @@ export async function loader({
   params,
 }: {
   request: Request;
-  params: { docoId: string };
+  params: { docoHandle?: string; docoId?: string };
 }) {
-  const { me, canonicalHandle, ownerSlug } = await loadDocoRouteForRead(request, params);
+  const { me, canonicalHandle, ownerSlug, createdDocoId } =
+    await loadPostCreateDocoRouteForRead(request, params);
   if (!me) throw redirect(`/sign-in?next=%2F${canonicalHandle}%2Fwelcome`);
-  return { me, handle: canonicalHandle, ownerSlug };
+  return { me, handle: canonicalHandle, ownerSlug, createdDocoId };
 }
 
 export function meta({ params }: { params: { docoHandle?: string; docoId?: string } }) {
@@ -35,13 +35,15 @@ export default function NewDocoStep4({
 }: {
   loaderData: Awaited<ReturnType<typeof loader>>;
 }) {
-  const { me, handle, ownerSlug } = loaderData;
+  const { me, handle, ownerSlug, createdDocoId } = loaderData;
+  const onboardingPath = createdDocoId
+    ? withCreatedDocoId(`/${handle}/onboarding/agent`, createdDocoId)
+    : `/${handle}/onboarding/agent`;
   return (
     <div>
       <SiteHeader mode="host" me={me} />
       <SingleColumnPageMain className="py-8 space-y-4">
         <Breadcrumb items={docoBreadcrumb({ ownerSlug, handle, pageLabel: "Welcome" })} />
-        <WizardStepper current={2} />
         <Card>
           <CardHeader>
             <CardTitle>Key Doco concepts:</CardTitle>
@@ -67,7 +69,7 @@ export default function NewDocoStep4({
 
         <div className="flex items-center gap-2">
           <Link
-            to={`/${handle}/onboarding/agent`}
+            to={onboardingPath}
             className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90"
           >
             Continue -&gt;
