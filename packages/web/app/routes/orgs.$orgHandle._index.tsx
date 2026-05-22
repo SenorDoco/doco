@@ -467,7 +467,7 @@ export default function OrgHome({
               <CardHeader className="flex flex-row items-center justify-between gap-3 px-4 py-3">
                 <CardTitle className="text-sm">Docos in this org</CardTitle>
                 <Link
-                  to="/new-doco"
+                  to={`/new-doco?org_id=${encodeURIComponent(org.id)}`}
                   className="rounded-md bg-primary px-3 py-1 text-xs font-semibold text-primary-foreground hover:opacity-90"
                 >
                   + Doco
