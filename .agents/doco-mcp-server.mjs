@@ -18,10 +18,10 @@
 // dominate the file size.
 
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, writeFileSync, unlinkSync } from "node:fs";
+import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { stdin, stdout, stderr } from "node:process";
+import { stderr, stdin, stdout } from "node:process";
 import { createInterface } from "node:readline";
 import { setTimeout as delay } from "node:timers/promises";
 
@@ -55,11 +55,14 @@ const SERVER_INSTRUCTIONS = [
   "There is almost always prior art you'd otherwise miss. Cheap to call;",
   "skip only for greetings or trivially scoped questions.",
   "",
-  "If doco_search returns 401 (no credential) or 403 (wrong credential):",
-  "1. Call doco_authenticate. It returns a verification URL.",
-  "2. Show the URL to the user verbatim. Tell them to open it and approve.",
+  "If doco_search returns 401 or 403:",
+  "1. Call doco_authenticate. It returns a ready-to-render block with a",
+  "   clickable verification URL in markdown-link form.",
+  "2. Render that block at the top of your reply. The user clicks the link,",
+  "   signs in to Doco, and clicks Approve.",
   "3. Call doco_complete_authentication. It polls until they approve, then",
   "   writes the token into ./.env so subsequent doco_search calls work.",
+  "   If it returns 'still pending', call it again.",
   "4. Retry doco_search.",
   "",
   "Auth: this server reads DOCO_ACCESS from ./.env or the spawning shell",
@@ -123,13 +126,15 @@ const AUTH_TOOL = {
     properties: {
       target_doco_handle: {
         type: "string",
-        description: "Doco handle to request access to. Defaults to the first handle found in .doco/connections.md or DOCO.md.",
+        description:
+          "Doco handle to request access to. Defaults to the first handle found in .doco/connections.md or DOCO.md.",
       },
       requested_role: {
         type: "string",
         enum: ["reader", "author", "approver", "owner"],
         default: "reader",
-        description: "Role level to request. 'reader' suffices for doco_search; 'author' is needed for future capture tools.",
+        description:
+          "Role level to request. 'reader' suffices for doco_search; 'author' is needed for future capture tools.",
       },
     },
   },
@@ -170,7 +175,7 @@ const TOOLS = [SEARCH_TOOL, AUTH_TOOL, COMPLETE_AUTH_TOOL];
 
 let envFileCache;
 
-const rl = createInterface({ input: stdin, crlfDelay: Infinity });
+const rl = createInterface({ input: stdin, crlfDelay: Number.POSITIVE_INFINITY });
 rl.on("line", (line) => {
   const trimmed = line.trim();
   if (!trimmed) return;
@@ -201,7 +206,10 @@ async function handleMessage(message) {
 
   // Notifications have no id and expect no response.
   if (message.id === undefined) {
-    if (message.method === "notifications/initialized" || message.method === "notifications/cancelled") {
+    if (
+      message.method === "notifications/initialized" ||
+      message.method === "notifications/cancelled"
+    ) {
       return;
     }
     return;
@@ -298,7 +306,8 @@ async function handleSearch(message) {
 
 async function handleAuthenticate(message) {
   const args = message.params?.arguments || {};
-  const handle = String(args.target_doco_handle || "").trim() || readEnv("DOCO_HANDLE") || readDocoHandle();
+  const handle =
+    String(args.target_doco_handle || "").trim() || readEnv("DOCO_HANDLE") || readDocoHandle();
   if (!handle) {
     return errorResult(
       message.id,
@@ -312,7 +321,10 @@ async function handleAuthenticate(message) {
   if (!clientId) {
     const reg = await registerClient(host);
     if (!reg.ok) {
-      return errorResult(message.id, `OAuth client registration failed (HTTP ${reg.status}): ${reg.error || reg.code}`);
+      return errorResult(
+        message.id,
+        `OAuth client registration failed (HTTP ${reg.status}): ${reg.error || reg.code}`,
+      );
     }
     clientId = String(reg.body?.client_id || "");
     if (!clientId) {
@@ -323,15 +335,23 @@ async function handleAuthenticate(message) {
 
   const auth = await initiateDeviceFlow(host, { clientId, handle, role });
   if (!auth.ok) {
-    return errorResult(message.id, `Device authorization failed (HTTP ${auth.status}): ${auth.error || auth.code}`);
+    return errorResult(
+      message.id,
+      `Device authorization failed (HTTP ${auth.status}): ${auth.error || auth.code}`,
+    );
   }
   const deviceCode = String(auth.body?.device_code || "");
   const userCode = String(auth.body?.user_code || "");
-  const verifyUrl = String(auth.body?.verification_uri_complete || auth.body?.verification_uri || "");
+  const verifyUrl = String(
+    auth.body?.verification_uri_complete || auth.body?.verification_uri || "",
+  );
   const interval = Math.max(1, Number(auth.body?.interval ?? 5));
   const expiresIn = Math.max(60, Number(auth.body?.expires_in ?? 900));
   if (!deviceCode || !userCode || !verifyUrl) {
-    return errorResult(message.id, `Device authorization response missing required fields: ${JSON.stringify(auth.body)}`);
+    return errorResult(
+      message.id,
+      `Device authorization response missing required fields: ${JSON.stringify(auth.body)}`,
+    );
   }
 
   writeDeviceState({
@@ -343,16 +363,22 @@ async function handleAuthenticate(message) {
     requested_role: role,
   });
 
+  // Return a ready-to-render block. The agent should quote this verbatim
+  // at the top of its reply. Markdown link syntax renders the URL clickable
+  // in chat clients that render markdown (Claude Code, Cursor, etc.).
   const text = [
-    "Device-flow authentication started. Show this URL to the user verbatim:",
+    "Device-flow authentication started. Render the following block at the top of your reply (the URL is in markdown-link syntax so it renders clickable):",
     "",
-    verifyUrl,
+    "---",
+    "[🔮 Doco] Doco access not granted yet",
+    "",
+    `To let me read this project's prior decisions and rules, open [${verifyUrl}](${verifyUrl}) and click Approve. I'll proceed using just the codebase in the meantime.`,
+    "---",
     "",
     `User code (if the URL doesn't auto-fill): ${userCode}`,
-    `Expires in ${Math.round(expiresIn / 60)} minutes.`,
+    `Device code expires in ${Math.round(expiresIn / 60)} minutes.`,
     "",
-    "After the user opens the URL and approves, call doco_complete_authentication.",
-    "It polls the token endpoint and writes the credential to ./.env on success.",
+    "Then call doco_complete_authentication. It polls the token endpoint and writes the credential to ./.env on approval. Re-call it if it returns 'still pending'.",
   ].join("\n");
 
   return send({
@@ -374,7 +400,10 @@ async function handleCompleteAuthenticate(message) {
   const nowSec = Math.floor(Date.now() / 1000);
   if (nowSec >= state.expires_at) {
     clearDeviceState();
-    return errorResult(message.id, "Device code expired. Call doco_authenticate to start a fresh flow.");
+    return errorResult(
+      message.id,
+      "Device code expired. Call doco_authenticate to start a fresh flow.",
+    );
   }
 
   const host = normalizeHost(readEnv("DOCO_HOST") || DEFAULT_HOST);
@@ -409,11 +438,17 @@ async function handleCompleteAuthenticate(message) {
     }
     if (poll.kind === "denied") {
       clearDeviceState();
-      return errorResult(message.id, "Authorization denied by the user. Call doco_authenticate to retry.");
+      return errorResult(
+        message.id,
+        "Authorization denied by the user. Call doco_authenticate to retry.",
+      );
     }
     if (poll.kind === "expired") {
       clearDeviceState();
-      return errorResult(message.id, "Device code expired. Call doco_authenticate to start a fresh flow.");
+      return errorResult(
+        message.id,
+        "Device code expired. Call doco_authenticate to start a fresh flow.",
+      );
     }
     if (poll.kind === "slow_down") {
       interval += 5;
@@ -514,7 +549,10 @@ function formatHits(body, handle) {
     return `No matches in Doco '${handle}' (${secs}s). Either the project has no prior nodes covering this, or the query phrasing missed them — try synonyms.`;
   }
 
-  const lines = [`Found ${count} node${count === 1 ? "" : "s"} in Doco '${handle}' (${secs}s):`, ""];
+  const lines = [
+    `Found ${count} node${count === 1 ? "" : "s"} in Doco '${handle}' (${secs}s):`,
+    "",
+  ];
   for (const hit of hits) {
     const type = hit.node_type || "node";
     const id = hit.slug || hit.seq_id || hit.id || "?";
@@ -540,9 +578,7 @@ function formatErrorForAgent(result, handle, hadAccess) {
   if (status === 403) {
     return `Doco search forbidden (403) for handle '${handle}'. ${
       hadAccess
-        ? "The current credential lacks read access to this Doco. Call doco_authenticate with target_doco_handle='" +
-          handle +
-          "' to request access (a project owner will need to approve)."
+        ? `The current credential lacks read access to this Doco. Call doco_authenticate with target_doco_handle='${handle}' to request access (a project owner will need to approve).`
         : "No DOCO_ACCESS sent (and the Doco is private). Call doco_authenticate to start the OAuth device flow."
     }`;
   }
@@ -569,16 +605,28 @@ async function requestJson(url, options = {}) {
     });
     const text = await response.text();
     const body = parseJson(text);
-    const out = { ok: response.ok, status: response.status, code: response.ok ? "ok" : "http", body };
+    const out = {
+      ok: response.ok,
+      status: response.status,
+      code: response.ok ? "ok" : "http",
+      body,
+    };
     if (!response.ok) {
       out.error =
-        (body && typeof body === "object" && (body.error_description || body.error || body.warning || body.message)) ||
+        (body &&
+          typeof body === "object" &&
+          (body.error_description || body.error || body.warning || body.message)) ||
         `HTTP ${response.status}`;
     }
     return out;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    return { ok: false, status: 0, code: error?.name === "AbortError" ? "timeout" : "network", error: message };
+    return {
+      ok: false,
+      status: 0,
+      code: error?.name === "AbortError" ? "timeout" : "network",
+      error: message,
+    };
   } finally {
     clearTimeout(timer);
   }
@@ -635,12 +683,10 @@ function writeEnvUpdates(updates) {
   const path = join(process.cwd(), ".env");
   const existing = existsSync(path) ? readFileSync(path, "utf8") : "";
   const updateKeys = new Set(Object.keys(updates));
-  const keepLines = existing
-    .split(/\r?\n/)
-    .filter((line) => {
-      const match = line.match(/^([A-Za-z_][A-Za-z0-9_]*)=/);
-      return !(match && updateKeys.has(match[1]));
-    });
+  const keepLines = existing.split(/\r?\n/).filter((line) => {
+    const match = line.match(/^([A-Za-z_][A-Za-z0-9_]*)=/);
+    return !(match && updateKeys.has(match[1]));
+  });
   while (keepLines.length > 0 && keepLines[keepLines.length - 1] === "") keepLines.pop();
   for (const [k, v] of Object.entries(updates)) {
     keepLines.push(`${k}=${v}`);
@@ -651,7 +697,10 @@ function writeEnvUpdates(updates) {
 }
 
 function unquote(value) {
-  if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+  if (
+    (value.startsWith('"') && value.endsWith('"')) ||
+    (value.startsWith("'") && value.endsWith("'"))
+  ) {
     return value.slice(1, -1);
   }
   return value;
