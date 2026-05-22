@@ -1,33 +1,50 @@
 @import url("https://fonts.googleapis.com/css2?family=Ubuntu+Mono:ital,wght@0,400;0,700;1,400;1,700&family=Space+Mono:wght@400;700&display=swap");
 @import "tailwindcss";
 
-/* shadcn-style theme tokens — light theme + Ubuntu Mono everywhere */
+/* Neumorphic theme tokens — soft warm-gray monochromatic surface,
+   dual-shadow elevation, Ubuntu Mono everywhere. The defining trait
+   of neumorphism is that "raised" surfaces are the same color as the
+   background — depth comes from a light highlight on the top-left and
+   a dark shadow on the bottom-right, both in the background's hue
+   family. Borders are kept but tinted near-transparent so existing
+   `border-border` usages fade behind the shadows without churning
+   every component file. */
 @theme {
   --font-sans: "Ubuntu Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   --font-mono: "Ubuntu Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
-  --color-background: oklch(0.99 0.002 240);
-  --color-foreground: oklch(0.20 0.015 248);
-  --color-muted: oklch(0.96 0.005 248);
-  --color-muted-foreground: oklch(0.46 0.012 248);
-  --color-card: oklch(1.00 0 0);
-  --color-card-foreground: oklch(0.20 0.015 248);
-  --color-border: oklch(0.91 0.006 248);
-  --color-input: oklch(0.97 0.004 248);
-  --color-primary: oklch(0.53 0.16 324);
-  --color-primary-foreground: oklch(0.99 0.002 240);
-  --color-accent: oklch(0.53 0.16 324);
-  --color-accent-foreground: oklch(0.99 0.002 240);
-  --color-destructive: oklch(0.55 0.22 25);
-  --color-destructive-foreground: oklch(0.99 0.002 240);
-  --color-success: oklch(0.50 0.14 165);
-  --color-success-foreground: oklch(0.99 0.002 240);
-  --color-warning: oklch(0.62 0.15 75);
-  --color-warning-foreground: oklch(0.20 0.015 248);
+  --color-background: oklch(0.935 0.006 270);
+  --color-foreground: oklch(0.22 0.018 268);
+  --color-muted: oklch(0.91 0.006 270);
+  --color-muted-foreground: oklch(0.48 0.014 268);
+  --color-card: oklch(0.935 0.006 270);
+  --color-card-foreground: oklch(0.22 0.018 268);
+  --color-border: oklch(0.86 0.008 270 / 35%);
+  --color-input: oklch(0.92 0.006 270);
+  --color-primary: oklch(0.55 0.17 324);
+  --color-primary-foreground: oklch(0.985 0.004 270);
+  --color-accent: oklch(0.55 0.17 324);
+  --color-accent-foreground: oklch(0.985 0.004 270);
+  --color-destructive: oklch(0.57 0.22 25);
+  --color-destructive-foreground: oklch(0.985 0.004 270);
+  --color-success: oklch(0.52 0.14 165);
+  --color-success-foreground: oklch(0.985 0.004 270);
+  --color-warning: oklch(0.64 0.15 75);
+  --color-warning-foreground: oklch(0.22 0.018 268);
 
-  --radius-sm: 4px;
-  --radius: 6px;
-  --radius-lg: 10px;
+  --radius-sm: 8px;
+  --radius: 14px;
+  --radius-lg: 22px;
+
+  /* Dual-shadow elevation system. Light comes from top-left, dark
+     sinks into bottom-right. Distances scale with elevation. */
+  --neo-light: rgba(255, 255, 255, 0.78);
+  --neo-dark: rgba(150, 160, 185, 0.45);
+  --shadow-neo-sm: -2px -2px 5px var(--neo-light), 2px 2px 5px var(--neo-dark);
+  --shadow-neo: -6px -6px 14px var(--neo-light), 6px 6px 14px var(--neo-dark);
+  --shadow-neo-lg: -10px -10px 24px var(--neo-light), 10px 10px 24px var(--neo-dark);
+  --shadow-neo-inset: inset -3px -3px 6px var(--neo-light), inset 3px 3px 6px var(--neo-dark);
+  --shadow-neo-pressed: inset -2px -2px 4px var(--neo-light), inset 2px 2px 4px var(--neo-dark);
 }
 
 html, body {
@@ -37,6 +54,59 @@ html, body {
   font-size: 16px;
   line-height: 1.55;
   accent-color: var(--color-primary);
+}
+
+/* Neumorphic elevation utilities. Use .neo-raised on cards/buttons,
+   .neo-inset on inputs/wells, .neo-pressed on :active or selected
+   states. `transition` keeps the depth swap from feeling jarring. */
+.neo-raised {
+  box-shadow: var(--shadow-neo);
+  transition: box-shadow 160ms ease, transform 160ms ease;
+}
+.neo-raised-sm {
+  box-shadow: var(--shadow-neo-sm);
+  transition: box-shadow 160ms ease, transform 160ms ease;
+}
+.neo-raised-lg {
+  box-shadow: var(--shadow-neo-lg);
+  transition: box-shadow 160ms ease, transform 160ms ease;
+}
+.neo-inset {
+  box-shadow: var(--shadow-neo-inset);
+}
+.neo-pressed {
+  box-shadow: var(--shadow-neo-pressed);
+}
+.neo-raised:hover {
+  box-shadow: var(--shadow-neo-lg);
+}
+.neo-raised:active {
+  box-shadow: var(--shadow-neo-pressed);
+  transform: translateY(1px);
+}
+.neo-raised-sm:hover {
+  box-shadow: var(--shadow-neo);
+}
+.neo-raised-sm:active {
+  box-shadow: var(--shadow-neo-pressed);
+}
+
+/* Soft accent-tinted raised state for primary CTAs — keeps the
+   neo light/dark shadow pair but warms the highlight with the
+   accent hue so the button reads as "this is the primary action". */
+.neo-raised-primary {
+  background-color: var(--color-primary);
+  color: var(--color-primary-foreground);
+  box-shadow: -4px -4px 10px rgba(255, 255, 255, 0.35), 4px 4px 12px rgba(96, 30, 80, 0.35);
+  transition: box-shadow 160ms ease, transform 160ms ease;
+}
+.neo-raised-primary:hover {
+  box-shadow: -5px -5px 14px rgba(255, 255, 255, 0.4), 5px 5px 16px rgba(96, 30, 80, 0.45);
+}
+.neo-raised-primary:active {
+  box-shadow: inset -2px -2px 5px rgba(255, 255, 255, 0.25),
+    inset 2px 2px 5px rgba(60, 18, 50, 0.45);
+  transform: translateY(1px);
 }
 
 ::selection {

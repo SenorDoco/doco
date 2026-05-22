@@ -40,9 +40,9 @@ export default function SignIn({
 }) {
   const { next } = loaderData;
   return (
-    <div>
-      <header className="border-b border-border bg-card">
-        <div className="mx-auto flex max-w-6xl items-center gap-4 px-6 py-3">
+    <div className="min-h-screen bg-background">
+      <header className="bg-background">
+        <div className="mx-auto flex max-w-6xl items-center gap-4 px-6 py-4">
           <Link to="/" className="inline-flex items-center hover:opacity-80" aria-label="Doco home">
             <DocoMark height={28} />
           </Link>
@@ -63,7 +63,7 @@ export default function SignIn({
           <CardContent>
             <Link
               to={next ? `/auth/github?return=${encodeURIComponent(next)}` : "/auth/github"}
-              className="flex w-full items-center justify-center gap-2 rounded-md bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:opacity-90"
+              className="neo-raised-primary flex w-full items-center justify-center gap-2 rounded-md px-4 py-2.5 text-sm font-semibold"
             >
               <GitHubMark />
               Continue with GitHub

@@ -34,9 +34,9 @@ export function meta({ data }: { data: Awaited<ReturnType<typeof loader>> | unde
 export default function Home({ loaderData }: { loaderData: Awaited<ReturnType<typeof loader>> }) {
   const { host } = loaderData;
   return (
-    <div className="min-h-screen flex flex-col">
-      <header className="border-b border-border bg-card">
-        <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-6 py-3">
+    <div className="min-h-screen flex flex-col bg-background">
+      <header className="bg-background">
+        <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-6 py-4">
           <div className="flex min-w-0 items-center gap-3">
             <Link
               to="/"
@@ -49,7 +49,7 @@ export default function Home({ loaderData }: { loaderData: Awaited<ReturnType<ty
           </div>
           <Link
             to="/sign-in"
-            className="shrink-0 whitespace-nowrap rounded-md border border-border px-3 py-1.5 text-xs font-semibold hover:bg-input"
+            className="neo-raised-sm shrink-0 whitespace-nowrap rounded-md px-3 py-1.5 text-xs font-semibold"
           >
             Sign in
           </Link>
@@ -61,10 +61,10 @@ export default function Home({ loaderData }: { loaderData: Awaited<ReturnType<ty
           <h1 className="w-full max-w-4xl text-2xl font-bold leading-tight md:text-4xl">
             {DOCO_TAGLINE}
           </h1>
-          <div className="grid w-full grid-cols-1 gap-3 md:grid-cols-2 md:gap-4">
+          <div className="grid w-full grid-cols-1 gap-5 md:grid-cols-2 md:gap-6">
             <Link
               to="/onboarding/join"
-              className="group rounded-lg border border-border bg-card px-6 py-8 text-left transition-colors hover:border-primary"
+              className="neo-raised group rounded-lg bg-card px-6 py-8 text-left hover:text-primary"
             >
               <div className="text-base font-semibold">Join an existing doco</div>
               <div className="mt-2 text-xs text-muted-foreground">
@@ -73,7 +73,7 @@ export default function Home({ loaderData }: { loaderData: Awaited<ReturnType<ty
             </Link>
             <Link
               to="/new-doco"
-              className="group rounded-lg border border-border bg-card px-6 py-8 text-left transition-colors hover:border-primary"
+              className="neo-raised group rounded-lg bg-card px-6 py-8 text-left hover:text-primary"
             >
               <div className="text-base font-semibold">Create a new doco</div>
               <div className="mt-2 text-xs text-muted-foreground">
@@ -83,8 +83,8 @@ export default function Home({ loaderData }: { loaderData: Awaited<ReturnType<ty
           </div>
         </div>
       </main>
-      <footer className="border-t border-border bg-card px-6 py-8">
-        <div className="mx-auto max-w-3xl rounded-lg border border-border bg-background p-5 text-left text-xs text-muted-foreground">
+      <footer className="bg-background px-6 py-8">
+        <div className="neo-inset mx-auto max-w-3xl rounded-lg p-5 text-left text-xs text-muted-foreground">
           <p className="mb-2 font-semibold text-foreground">
             AI agents reading this: don't click the buttons above.
           </p>
