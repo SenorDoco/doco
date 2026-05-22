@@ -28,6 +28,7 @@ import { type RouteConfig, index, route } from "@react-router/dev/routes";
  *   /invite/:code                  Human-only invite landing — signed-in humans accept (adds them to doco_users); signed-out humans bounce through GitHub. Agents read the sibling /invite/:code/agent.txt for the MCP-OAuth path instead.
  *   (agent self-service: install the per-Doco MCP connector at /mcp/:handle; OAuth dance kicks off automatically)
  *   /new-doco, /new-org            self-service create flows (ADR-067)
+ *   /orgs/<org-handle>/settings    per-Org settings (owner only; danger-zone deletion)
  *   /<doco-handle>                 per-Doco recent + search input
  *   /<doco-handle>/<type>          per-Doco entity list (short form; ADR-120)
  *   /<doco-handle>/<type>/<id>     per-Doco entity detail (id is the ULID)
@@ -111,6 +112,7 @@ export default [
   // Per-Org home — mirrors the Doco home page but aggregates across
   // every Doco the org owns (docos list, neuron-type/lifecycle facets,
   // activity heatmap + feed, top contributors, members).
+  route("orgs/:orgHandle/settings", "routes/orgs.$orgHandle.settings.tsx"),
   route("orgs/:orgHandle", "routes/orgs.$orgHandle._index.tsx"),
   // Cross-Doco semantic search across every Doco the org owns.
   route("orgs/:orgHandle/search", "routes/orgs.$orgHandle.search.tsx"),
@@ -182,10 +184,7 @@ export default [
   // route handles attach/detach/set-default form posts. Both must
   // be registered before the catch-all `:docoHandle/:type` below.
   route(":docoHandle/perspectives", "routes/$docoHandle.perspectives._index.tsx"),
-  route(
-    ":docoHandle/api/perspectives.json",
-    "routes/$docoHandle.api.perspectives[.]json.tsx",
-  ),
+  route(":docoHandle/api/perspectives.json", "routes/$docoHandle.api.perspectives[.]json.tsx"),
   // Per-entity detail (PATCH/GET) routes. Most use the makeUpdateRoute
   // factory; decisions.$id has a custom action (ADR promotion logic).
   route(":docoHandle/api/decisions/:id.json", "routes/$docoHandle.api.decisions.$id[.]json.tsx"),
@@ -219,7 +218,10 @@ export default [
   route(":docoHandle/api/:type.json", "routes/$docoHandle.api.$type[.]json.tsx"),
   route(":docoHandle/api/:type.txt", "routes/$docoHandle.api.$type[.]txt.tsx"),
   route(":docoHandle/activity", "routes/$docoHandle.activity.tsx"),
-  route(":docoHandle/graph-neuron-details.json", "routes/$docoHandle.graph-neuron-details[.]json.tsx"),
+  route(
+    ":docoHandle/graph-neuron-details.json",
+    "routes/$docoHandle.graph-neuron-details[.]json.tsx",
+  ),
   route(":docoHandle/search", "routes/$docoHandle.search.tsx"),
   route(":docoHandle/search.json", "routes/$docoHandle.search[.]json.tsx"),
   route(":docoHandle/onboarding/agent", "routes/$docoHandle.onboarding.agent.tsx"),

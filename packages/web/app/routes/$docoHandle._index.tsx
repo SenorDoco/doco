@@ -18,27 +18,26 @@ import { ActivityFeedLine, type ActivityFeedLineItem } from "~/components/activi
 import { ActivityHeatmap } from "~/components/activity-heatmap";
 import { Breadcrumb, docoBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
-import { InviteCollaboratorsLink } from "~/components/invite-collaborators-link";
+import { CollaboratorsLink } from "~/components/invite-collaborators-link";
 import {
   LIFECYCLE_ORDER,
   LifecycleFilter,
   initialVisibleLifecycles,
 } from "~/components/lifecycle-filter";
 import { NeuronTypeIcon } from "~/components/neuron-type-icon";
-import { NeuronsOverviewCard, type NeuronsOverviewSection } from "~/components/neurons-overview-card";
+import {
+  NeuronsOverviewCard,
+  type NeuronsOverviewSection,
+} from "~/components/neurons-overview-card";
 import { OverviewGraph } from "~/components/overview-graph";
 import { PerspectiveTabs } from "~/components/perspective-tabs";
 import { BpmnPerspective } from "~/components/perspectives/bpmn-perspective";
 import { ListPerspective } from "~/components/perspectives/list-perspective";
 import { SearchBoxWithHistory } from "~/components/search-box-with-history";
 import { SiteHeader } from "~/components/site-header";
-import { docoPath } from "~/lib/db.server";
-import {
-  canAdminDoco,
-  canApproveDoco,
-  loadDocoRouteForRead,
-} from "~/lib/doco-access.server";
 import { loadBpmnGraph } from "~/lib/bpmn-perspective.server";
+import { docoPath } from "~/lib/db.server";
+import { canAdminDoco, canApproveDoco, loadDocoRouteForRead } from "~/lib/doco-access.server";
 import { loadOverviewGraph } from "~/lib/full-graph.server";
 import { loadHostConfig } from "~/lib/host.server";
 import { lifecycleColor } from "~/lib/neuron-colors";
@@ -468,17 +467,21 @@ export default function DocoHome({
               </Link>
             </h1>
             <div className="flex flex-wrap items-center gap-2">
-              {canInviteCollaborators ? (
-                <InviteCollaboratorsLink level="doco" targetId={docoId}>
-                  + Collaborator (people/agents)
-                </InviteCollaboratorsLink>
-              ) : null}
+              {canInviteCollaborators ? <CollaboratorsLink level="doco" targetId={docoId} /> : null}
               <Link
                 to={`/${handle}/constitution`}
                 className="shrink-0 rounded-md border border-border px-3 py-1.5 text-xs font-semibold hover:bg-input"
               >
                 Primitives ({constitutionCount})
               </Link>
+              {canInviteCollaborators ? (
+                <Link
+                  to={`/${handle}/settings`}
+                  className="shrink-0 rounded-md border border-border px-3 py-1.5 text-xs font-semibold hover:bg-input"
+                >
+                  Settings
+                </Link>
+              ) : null}
             </div>
           </div>
           <p className="font-mono text-sm text-muted-foreground">{docoId}</p>

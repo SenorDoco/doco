@@ -1,3 +1,4 @@
+import { getOrgRole, withClient } from "@doco/db";
 import { validateRequestedDocoId as validateRequestedDocoHandle } from "@doco/shared";
 // /<doco-handle>/settings — admin-only Doco settings page. Renames the
 // slug, edits description + display_name, toggles visibility
@@ -8,6 +9,7 @@ import { validateRequestedDocoId as validateRequestedDocoHandle } from "@doco/sh
 // CASCADE — not recoverable. Per the `settings-page-delete-doco` Intent +
 // ADR.
 import { Form, Link, redirect, useSearchParams } from "react-router";
+import { parse as parseYaml } from "yaml";
 import { Breadcrumb, docoBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { SiteHeader } from "~/components/site-header";
@@ -19,9 +21,40 @@ import {
   friendlyHandleValidationError,
   handleValidityMessage,
 } from "~/lib/handle-format";
-import { loadHostConfig } from "~/lib/host.server";
+import { listOrgsOwnedOrAdminedBy } from "~/lib/host.server";
+import {
+  ensureDefaultsAttached,
+  listPerspectivesForDoco,
+  setDefaultPerspective,
+} from "~/lib/perspectives.server";
 import { reindex, renameDocoHandle, softDeleteDoco, updateDocoMeta } from "~/lib/redeem.server";
 import { isHumanPrincipal } from "~/lib/session.server";
+
+async function transferDocoToOrganization(opts: {
+  docoId: string;
+  targetOrgId: string;
+}): Promise<void> {
+  await withClient(async (c) => {
+    const current = await c.query<{ raw_yaml: string }>(
+      "SELECT raw_yaml FROM docos WHERE id = $1 LIMIT 1",
+      [opts.docoId],
+    );
+    const rawYaml = current.rows[0]?.raw_yaml;
+    if (!rawYaml) throw new Error("Doco not found.");
+    const yaml = parseYaml(rawYaml) as Record<string, unknown>;
+    yaml.owner_id = opts.targetOrgId;
+    yaml.org_id = opts.targetOrgId;
+    await c.query(
+      `UPDATE docos
+          SET owner_id = $2,
+              org_id = $2,
+              raw_yaml = $3,
+              updated_at = now()
+        WHERE id = $1`,
+      [opts.docoId, opts.targetOrgId, JSON.stringify(yaml)],
+    );
+  });
+}
 
 export async function loader({
   request,
@@ -31,14 +64,18 @@ export async function loader({
   params: { docoId: string };
 }) {
   const { docoSlug, handle, me, meta, ownerSlug } = await loadDocoRouteForAdmin(request, params);
+  await ensureDefaultsAttached(meta.docoId);
+  const perspectives = await listPerspectivesForDoco(meta.docoId);
   return {
     ownerSlug,
     docoSlug,
     handle,
     docoId: meta.docoId,
+    ownerId: meta.ownerId,
     description: meta.description,
     visibility: meta.visibility,
-    host: await loadHostConfig(),
+    perspectives,
+    availableOwnerOrgs: me ? await listOrgsOwnedOrAdminedBy(me.id) : [],
     me,
   };
 }
@@ -82,6 +119,35 @@ export async function action({
     // with a flash-shaped query param the dashboard can surface.
     return redirect(`/dashboard?deleted=${encodeURIComponent(handle)}`);
   }
+
+  // ── Default perspective ───────────────────────────────────────────
+  if (intent === "set-default-perspective") {
+    const perspectiveId = String(form.get("perspective_id") ?? "").trim();
+    if (!perspectiveId) return { error: "Choose a default perspective." };
+    const result = await setDefaultPerspective({ docoId: meta.docoId, perspectiveId });
+    if (!result.ok) return { error: "That perspective is not attached to this Doco." };
+    return redirect(`/${handle}/settings`);
+  }
+
+  // ── Change owning organization (danger zone) ──────────────────────
+  if (intent === "change-organization") {
+    if (!me) return { error: "Sign in to change this Doco's organization." };
+    const targetOrgId = String(form.get("target_org_id") ?? "").trim();
+    if (!targetOrgId) return { error: "Choose an organization." };
+    const targetRole = await getOrgRole(targetOrgId, me.id);
+    if (targetRole !== "owner") {
+      return { error: "Only organization owners can move a Doco into that organization." };
+    }
+    try {
+      await transferDocoToOrganization({ docoId: meta.docoId, targetOrgId });
+      await reindex(oldDir, meta.docoId);
+    } catch (e) {
+      return { error: `Failed to change organization: ${(e as Error).message}` };
+    }
+    return redirect(`/${handle}/settings`);
+  }
+
+  if (intent !== "save") return { error: `Unknown intent: ${intent}` };
 
   // ── Default: save edits ───────────────────────────────────────────
   const newHandle = String(form.get("doco_handle") ?? "")
@@ -134,9 +200,21 @@ export default function DocoSettings({
   loaderData: Awaited<ReturnType<typeof loader>>;
   actionData?: { error?: string } | undefined;
 }) {
-  const { ownerSlug, docoSlug, handle, description, visibility, docoId, host, me } = loaderData;
+  const {
+    ownerSlug,
+    docoSlug,
+    handle,
+    description,
+    visibility,
+    docoId,
+    ownerId,
+    perspectives,
+    availableOwnerOrgs,
+    me,
+  } = loaderData;
   const [searchParams] = useSearchParams();
   const isConfirmingDelete = searchParams.get("confirm") === "delete";
+  const currentOrgOptions = availableOwnerOrgs.filter((org) => org.id !== ownerId);
 
   return (
     <div>
@@ -151,7 +229,8 @@ export default function DocoSettings({
 
         <Card>
           <CardHeader>
-            <CardTitle>Settings · {handle}</CardTitle>
+            <CardTitle>Rename</CardTitle>
+            <CardDescription>Update the Doco handle and public metadata.</CardDescription>
           </CardHeader>
           <CardContent>
             <Form method="post" className="space-y-3">
@@ -235,6 +314,44 @@ export default function DocoSettings({
 
         <Card>
           <CardHeader>
+            <CardTitle className="text-base">Default perspective</CardTitle>
+            <CardDescription>Choose the overview that opens first for this Doco.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {perspectives.length > 0 ? (
+              <Form method="post" className="flex flex-wrap items-end gap-2">
+                <input type="hidden" name="intent" value="set-default-perspective" />
+                <label className="flex min-w-[220px] flex-1 flex-col gap-1 text-xs">
+                  <span className="font-semibold text-foreground">Perspective</span>
+                  <select
+                    name="perspective_id"
+                    defaultValue={perspectives.find((p) => p.isDefault)?.id ?? perspectives[0].id}
+                    className="rounded-md border border-border bg-input px-3 py-2 text-xs text-foreground outline-none focus:border-primary"
+                  >
+                    {perspectives.map((perspective) => (
+                      <option key={perspective.id} value={perspective.id}>
+                        {perspective.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <button
+                  type="submit"
+                  className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90"
+                >
+                  Save default
+                </button>
+              </Form>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                No perspectives are attached to this Doco yet.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
             <CardTitle className="text-base">Doco ID</CardTitle>
           </CardHeader>
           <CardContent>
@@ -249,49 +366,88 @@ export default function DocoSettings({
           <CardHeader>
             <CardTitle className="text-base text-destructive">Danger zone</CardTitle>
             <CardDescription>
-              Deleting permanently removes this Doco and every entity and edge inside it. This
-              cannot be undone. Per ADR-040, only people can delete docos.
+              Organization changes can alter who has access. Deletion permanently removes this Doco
+              and every entity and edge inside it.
             </CardDescription>
           </CardHeader>
-          <CardContent>
-            {!isConfirmingDelete ? (
-              <Link
-                to={`/${handle}/settings?confirm=delete`}
-                className="inline-block rounded-md border border-destructive px-3 py-1.5 text-xs font-semibold text-destructive hover:bg-destructive/10"
-              >
-                Delete this Doco…
-              </Link>
-            ) : (
-              <Form method="post" className="space-y-3">
-                <input type="hidden" name="intent" value="delete" />
-                <p className="text-xs">
-                  Type the Doco's slug <span className="font-mono font-semibold">{docoSlug}</span>{" "}
-                  to confirm. This permanently deletes the Doco and every entity and edge inside it.
-                  It cannot be undone.
+          <CardContent className="space-y-6">
+            <section className="space-y-3">
+              <div>
+                <h2 className="text-sm font-semibold text-foreground">Change organization</h2>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Move this Doco to an organization you own. The Doco handle stays the same.
                 </p>
-                <input
-                  name="confirm_slug"
-                  required
-                  autoComplete="off"
-                  placeholder={docoSlug}
-                  className="w-full rounded-md border border-border bg-input px-3 py-2 font-mono text-xs text-foreground outline-none focus:border-destructive"
-                />
-                <div className="flex items-center gap-2">
+              </div>
+              {currentOrgOptions.length > 0 ? (
+                <Form method="post" className="flex flex-wrap items-end gap-2">
+                  <input type="hidden" name="intent" value="change-organization" />
+                  <label className="flex min-w-[220px] flex-1 flex-col gap-1 text-xs">
+                    <span className="font-semibold text-foreground">Organization</span>
+                    <select
+                      name="target_org_id"
+                      className="rounded-md border border-border bg-input px-3 py-2 text-xs text-foreground outline-none focus:border-destructive"
+                    >
+                      {currentOrgOptions.map((org) => (
+                        <option key={org.id} value={org.id}>
+                          {org.slug}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
                   <button
                     type="submit"
-                    className="rounded-md bg-destructive px-4 py-2 text-xs font-semibold text-destructive-foreground hover:opacity-90"
+                    className="rounded-md border border-destructive px-4 py-2 text-xs font-semibold text-destructive hover:bg-destructive/10"
                   >
-                    Delete permanently
+                    Change organization
                   </button>
-                  <Link
-                    to={`/${handle}/settings`}
-                    className="text-xs text-muted-foreground hover:text-foreground"
-                  >
-                    Cancel
-                  </Link>
-                </div>
-              </Form>
-            )}
+                </Form>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  You do not own another organization this Doco can move to.
+                </p>
+              )}
+            </section>
+
+            <section className="border-t border-destructive/20 pt-4">
+              {!isConfirmingDelete ? (
+                <Link
+                  to={`/${handle}/settings?confirm=delete`}
+                  className="inline-block rounded-md border border-destructive px-3 py-1.5 text-xs font-semibold text-destructive hover:bg-destructive/10"
+                >
+                  Delete this Doco...
+                </Link>
+              ) : (
+                <Form method="post" className="space-y-3">
+                  <input type="hidden" name="intent" value="delete" />
+                  <p className="text-xs">
+                    Type the Doco's slug <span className="font-mono font-semibold">{docoSlug}</span>{" "}
+                    to confirm. This permanently deletes the Doco and every entity and edge inside
+                    it. It cannot be undone. Per ADR-040, only people can delete docos.
+                  </p>
+                  <input
+                    name="confirm_slug"
+                    required
+                    autoComplete="off"
+                    placeholder={docoSlug}
+                    className="w-full rounded-md border border-border bg-input px-3 py-2 font-mono text-xs text-foreground outline-none focus:border-destructive"
+                  />
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="submit"
+                      className="rounded-md bg-destructive px-4 py-2 text-xs font-semibold text-destructive-foreground hover:opacity-90"
+                    >
+                      Delete permanently
+                    </button>
+                    <Link
+                      to={`/${handle}/settings`}
+                      className="text-xs text-muted-foreground hover:text-foreground"
+                    >
+                      Cancel
+                    </Link>
+                  </div>
+                </Form>
+              )}
+            </section>
           </CardContent>
         </Card>
       </main>

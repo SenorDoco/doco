@@ -16,7 +16,7 @@ import { Form, Link, useRevalidator } from "react-router";
 import { ActivityHeatmap } from "~/components/activity-heatmap";
 import { Breadcrumb, orgBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
-import { InviteCollaboratorsLink } from "~/components/invite-collaborators-link";
+import { CollaboratorsLink } from "~/components/invite-collaborators-link";
 import { OverviewGraph } from "~/components/overview-graph";
 import { SiteHeader } from "~/components/site-header";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "~/components/table";
@@ -353,17 +353,8 @@ export default function OrgHome({
 }: {
   loaderData: Awaited<ReturnType<typeof loader>>;
 }) {
-  const {
-    org,
-    me,
-    canInviteCollaborators,
-    docos,
-    members,
-    byDay,
-    topContributors,
-    items,
-    graph,
-  } = loaderData;
+  const { org, me, canInviteCollaborators, docos, members, byDay, topContributors, items, graph } =
+    loaderData;
 
   const revalidator = useRevalidator();
   useEffect(() => {
@@ -406,11 +397,19 @@ export default function OrgHome({
                 <h1 className="text-lg font-semibold tracking-tight">{org.handle}</h1>
                 <p className="font-mono text-sm text-muted-foreground">{org.id}</p>
               </div>
-              {canInviteCollaborators ? (
-                <InviteCollaboratorsLink level="org" targetId={org.id}>
-                  + Collaborator (people/agents)
-                </InviteCollaboratorsLink>
-              ) : null}
+              <div className="flex flex-wrap items-center gap-2">
+                {canInviteCollaborators ? (
+                  <CollaboratorsLink level="org" targetId={org.id} />
+                ) : null}
+                {canInviteCollaborators ? (
+                  <Link
+                    to={`/orgs/${org.handle}/settings`}
+                    className="shrink-0 rounded-md border border-border px-3 py-1.5 text-xs font-semibold hover:bg-input"
+                  >
+                    Settings
+                  </Link>
+                ) : null}
+              </div>
             </div>
 
             <Form method="get" action={`/orgs/${org.handle}/search`} className="flex gap-2">
