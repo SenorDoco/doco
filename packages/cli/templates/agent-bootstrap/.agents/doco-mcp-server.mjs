@@ -40,6 +40,14 @@ const DEFAULT_REDIRECT_URI = "http://localhost:53682/callback";
 
 const PROJECT_HASH = createHash("sha256").update(process.cwd()).digest("hex").slice(0, 16);
 const DEVICE_STATE_FILE = join(tmpdir(), `doco-mcp-device-${PROJECT_HASH}.json`);
+const DEVICE_ENV_KEYS = [
+  "DOCO_DEVICE_CLIENT_ID",
+  "DOCO_DEVICE_CODE",
+  "DOCO_DEVICE_INTERVAL",
+  "DOCO_DEVICE_EXPIRES_AT",
+  "DOCO_DEVICE_TARGET_HANDLE",
+  "DOCO_DEVICE_REQUESTED_ROLE",
+];
 
 const SERVER_INSTRUCTIONS = [
   "This project is tracked in a Doco. Doco is institutional memory for",
@@ -72,15 +80,16 @@ const SERVER_INSTRUCTIONS = [
   "  if you have DOCO_ACCESS and expect success — skip otherwise).",
   "- After doco_search succeeds, render `[🔮 Doco] N nodes found (X.Xs)`.",
   "  On the first reply, also append `[🔮 Doco] To document anything,",
-  "  just ask me to \"doco it\"` (tagline only after successful connection).",
+  '  just ask me to "doco it"` (tagline only after successful connection).',
   "",
   "If doco_search returns 401/403 (or you have no DOCO_ACCESS):",
   "1. Call doco_authenticate. It returns a ready-to-render block with a",
   "   clickable verification URL in markdown-link form.",
   "2. Render that block at the top of your reply. The user clicks the link,",
   "   signs in to Doco, and clicks Approve.",
-  "3. Call doco_complete_authentication with wait_seconds=120. It blocks",
-  "   while polling — that's the intentional pause.",
+  "3. Immediately call doco_complete_authentication with wait_seconds=120",
+  "   in the same turn. Do not wait for the user to send another message;",
+  "   the tool blocks while polling — that's the intentional pause.",
   "4. If it succeeds: retry doco_search and continue normally.",
   "5. If it returns 'still pending' or any error: end your reply with the",
   "   tally and a brief 'send any message after approving'. DO NOT",
@@ -138,8 +147,9 @@ const AUTH_TOOL = {
     "to the user verbatim and tell them to open it in their browser and",
     "approve. The device code is valid for 15 minutes.",
     "",
-    "After showing the URL, call doco_complete_authentication to finalize.",
-    "That tool polls and writes the access token to ./.env on approval.",
+    "After showing the URL, immediately call doco_complete_authentication",
+    "in the same turn to finalize. Do not wait for the user to send another",
+    "message; that tool polls and writes the access token to ./.env on approval.",
     "",
     "This server reuses an OAuth client_id across calls (stored in .env as",
     "DOCO_CLIENT_ID), so registration only happens on first use.",
@@ -166,9 +176,10 @@ const AUTH_TOOL = {
 const COMPLETE_AUTH_TOOL = {
   name: "doco_complete_authentication",
   description: [
-    "After the user opens the URL returned by doco_authenticate and approves,",
-    "call this tool to finalize the flow. It polls the token endpoint until",
-    "the user approves (or the wait_seconds budget expires).",
+    "Call this immediately after rendering the URL returned by",
+    "doco_authenticate. It polls the token endpoint until the user approves",
+    "(or the wait_seconds budget expires), so the agent can learn about",
+    "approval without waiting for another user message.",
     "",
     "On success: writes DOCO_ACCESS, DOCO_REFRESH, DOCO_CLIENT_ID to ./.env",
     "(mode 0600). Subsequent doco_search calls will use the new token.",
@@ -403,7 +414,7 @@ async function handleAuthenticate(message) {
     `User code (if the URL doesn't auto-fill): ${userCode}`,
     `Device code expires in ${Math.round(expiresIn / 60)} minutes.`,
     "",
-    "Then call doco_complete_authentication with wait_seconds=120 to pause while the user approves. DO NOT continue substantive work until it succeeds — the pause is intentional. If it returns 'still pending', end your turn with the tally and ask the user to send any message after approving.",
+    "Then immediately call doco_complete_authentication with wait_seconds=120 in this same turn to pause while the user approves. DO NOT wait for the user to send another message, and DO NOT continue substantive work until it succeeds — the pause is intentional. If it returns 'still pending', end your turn with the tally and ask the user to send any message after approving.",
     "",
     `In the closing tally for this turn, render: [🔮 Doco] ⚠️ ${handle} not queried or updated as access hasn't been granted yet. (until completion succeeds; then switch to the normal tally line for ${handle}).`,
   ].join("\n");
@@ -723,6 +734,22 @@ function writeEnvUpdates(updates) {
   envFileCache = undefined;
 }
 
+function clearEnvKeys(keys) {
+  const path = join(process.cwd(), ".env");
+  if (!existsSync(path)) return;
+  const deleteKeys = new Set(keys);
+  const keepLines = readFileSync(path, "utf8")
+    .split(/\r?\n/)
+    .filter((line) => {
+      const match = line.match(/^([A-Za-z_][A-Za-z0-9_]*)=/);
+      return !(match && deleteKeys.has(match[1]));
+    });
+  while (keepLines.length > 0 && keepLines[keepLines.length - 1] === "") keepLines.pop();
+  keepLines.push("");
+  writeFileSync(path, keepLines.join("\n"), { mode: 0o600 });
+  envFileCache = undefined;
+}
+
 function unquote(value) {
   if (
     (value.startsWith('"') && value.endsWith('"')) ||
@@ -748,20 +775,60 @@ function readDocoHandle() {
 }
 
 function readDeviceState() {
+  const fileState = readDeviceStateFile();
+  if (fileState) return fileState;
+  return readDeviceStateEnv();
+}
+
+function readDeviceStateFile() {
   if (!existsSync(DEVICE_STATE_FILE)) return null;
   try {
     const raw = readFileSync(DEVICE_STATE_FILE, "utf8");
     const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== "object") return null;
-    if (!parsed.client_id || !parsed.device_code || !parsed.expires_at) return null;
-    return parsed;
+    return normalizeDeviceState(parsed);
   } catch {
     return null;
   }
 }
 
+function readDeviceStateEnv() {
+  const env = readEnvFile();
+  return normalizeDeviceState({
+    client_id: env.DOCO_DEVICE_CLIENT_ID,
+    device_code: env.DOCO_DEVICE_CODE,
+    interval: env.DOCO_DEVICE_INTERVAL,
+    expires_at: env.DOCO_DEVICE_EXPIRES_AT,
+    target_doco_handle: env.DOCO_DEVICE_TARGET_HANDLE,
+    requested_role: env.DOCO_DEVICE_REQUESTED_ROLE,
+  });
+}
+
+function normalizeDeviceState(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  const clientId = String(raw.client_id || "").trim();
+  const deviceCode = String(raw.device_code || "").trim();
+  const expiresAt = Number(raw.expires_at);
+  if (!clientId || !deviceCode || !Number.isFinite(expiresAt)) return null;
+  return {
+    client_id: clientId,
+    device_code: deviceCode,
+    interval: Math.max(1, Number(raw.interval || 5)),
+    expires_at: expiresAt,
+    target_doco_handle: String(raw.target_doco_handle || "").trim(),
+    requested_role: String(raw.requested_role || "reader").trim() || "reader",
+  };
+}
+
 function writeDeviceState(state) {
   writeFileSync(DEVICE_STATE_FILE, JSON.stringify(state, null, 2), { mode: 0o600 });
+  writeEnvUpdates({
+    DOCO_DEVICE_CLIENT_ID: state.client_id,
+    DOCO_DEVICE_CODE: state.device_code,
+    DOCO_DEVICE_INTERVAL: String(state.interval),
+    DOCO_DEVICE_EXPIRES_AT: String(state.expires_at),
+    DOCO_DEVICE_TARGET_HANDLE: state.target_doco_handle,
+    DOCO_DEVICE_REQUESTED_ROLE: state.requested_role,
+  });
 }
 
 function clearDeviceState() {
@@ -770,6 +837,7 @@ function clearDeviceState() {
   } catch {
     // Already gone — fine.
   }
+  clearEnvKeys(DEVICE_ENV_KEYS);
 }
 
 function errorResult(id, text) {

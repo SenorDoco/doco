@@ -63,13 +63,6 @@ export interface GraphLink {
   source: string;
   target: string;
   synapse_type: string;
-  /**
-   * Where the edge came from. Explicit synapses render solid; doco-auto
-   * synapses render dashed + lighter so the viewer can see which links the
-   * LLM proposed vs. which the source declared. Per the
-   * `llm-auto-synapse-detection-on-capture` ADR.
-   */
-  attribution?: "explicit" | "doco-auto";
 }
 
 interface EntityGraphProps {
@@ -944,15 +937,14 @@ export function EntityGraph({
       visible.links.map((l, i) => {
         const src = typeof l.source === "string" ? l.source : (l.source as { id: string }).id;
         const tgt = typeof l.target === "string" ? l.target : (l.target as { id: string }).id;
-        const isAuto = l.attribution === "doco-auto";
         return {
           id: `${src}-${tgt}-${l.synapse_type}-${i}`,
           source: src,
           target: tgt,
-          label: isAuto ? `${l.synapse_type} (auto)` : l.synapse_type,
+          label: l.synapse_type,
           labelStyle: {
             fontSize: 9,
-            fill: isAuto ? "#a3a3a3" : "#737373",
+            fill: "#737373",
             pointerEvents: "none" as const,
           },
           labelBgPadding: [2, 4] as [number, number],
@@ -965,15 +957,7 @@ export function EntityGraph({
           selectable: false,
           focusable: false,
           interactionWidth: 0,
-          // Auto-detected synapses render dashed + lighter so the eye can tell
-          // them apart from explicit (person/agent-authored) ones.
-          style: isAuto
-            ? {
-                stroke: "rgba(115, 115, 115, 0.25)",
-                strokeDasharray: "4 4",
-                pointerEvents: "none" as const,
-              }
-            : { stroke: "rgba(115, 115, 115, 0.5)", pointerEvents: "none" as const },
+          style: { stroke: "rgba(115, 115, 115, 0.5)", pointerEvents: "none" as const },
         };
       }),
     [visible.links],

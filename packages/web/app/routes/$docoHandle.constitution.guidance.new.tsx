@@ -7,8 +7,8 @@ import { Form, Link, redirect, useActionData } from "react-router";
 import { Breadcrumb, docoBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent } from "~/components/card";
 import { SiteHeader } from "~/components/site-header";
-import { captureGuidanceArticle } from "~/lib/capture.server";
-import { deriveArticleSummary } from "~/lib/constitution-copy";
+import { captureGuidancePrimitive } from "~/lib/capture.server";
+import { derivePrimitiveSummary } from "~/lib/constitution-copy";
 import { loadDocoRouteForAdmin } from "~/lib/doco-access.server";
 import { loadHostConfig } from "~/lib/host.server";
 
@@ -38,11 +38,11 @@ export async function action({
   const { dir: docoDir, docoSlug, handle, ownerSlug } = ctx;
   const form = await request.formData();
   const body_md = String(form.get("body_md") ?? "").trim();
-  const summary = deriveArticleSummary(body_md);
+  const summary = derivePrimitiveSummary(body_md);
   if (!summary) return Response.json({ error: "Primitive is required." }, { status: 400 });
   const docoHost = new URL(request.url).origin;
 
-  const result = await captureGuidanceArticle(
+  const result = await captureGuidancePrimitive(
     docoDir,
     ctx.meta.docoId,
     ownerSlug,

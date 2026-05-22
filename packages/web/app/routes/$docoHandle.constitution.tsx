@@ -7,9 +7,9 @@ import { NeuronTypeIcon } from "~/components/neuron-type-icon";
 import { SiteHeader } from "~/components/site-header";
 import {
   AGENT_EXPOSURE_NOTE,
-  GUIDANCE_ARTICLE_EXPLAINER,
-  NODE_AUTHORING_ARTICLE_EXPLAINER,
-  articleFullText,
+  GUIDANCE_PRIMITIVE_EXPLAINER,
+  NEURON_AUTHORING_PRIMITIVE_EXPLAINER,
+  primitiveFullText,
 } from "~/lib/constitution-copy";
 import { canEditConstitution, loadDocoRouteForRead } from "~/lib/doco-access.server";
 import { loadHostConfig } from "~/lib/host.server";
@@ -115,7 +115,7 @@ export default function Constitution({
         <ArticleSection
           title="Guidance primitives"
           entityType="guidance_primitive"
-          description={GUIDANCE_ARTICLE_EXPLAINER}
+          description={GUIDANCE_PRIMITIVE_EXPLAINER}
           addHref={canEdit ? `/${handle}/constitution/guidance/new` : null}
           editHrefBase={canEdit ? `/${handle}/constitution/guidance` : null}
           items={guidanceArticles}
@@ -126,9 +126,9 @@ export default function Constitution({
         <ArticleSection
           title="Neuron-authoring primitives"
           entityType="neuron_authoring_primitive"
-          description={NODE_AUTHORING_ARTICLE_EXPLAINER}
+          description={NEURON_AUTHORING_PRIMITIVE_EXPLAINER}
           addHref={canEdit ? `/${handle}/constitution/neuron-authoring/new` : null}
-          editHrefBase={canEdit ? `/${handle}/constitution/node-authoring` : null}
+          editHrefBase={canEdit ? `/${handle}/constitution/neuron-authoring` : null}
           items={nodeAuthoringArticles}
           handle={handle}
           empty="No neuron-authoring primitives yet."
@@ -194,7 +194,7 @@ function ArticleSection({
                     className="min-w-0 flex-1 hover:text-primary"
                   >
                     <p className="whitespace-pre-wrap text-sm leading-6">
-                      {articleFullText({ summary: item.summary, body: item.body })}
+                      {primitiveFullText({ summary: item.summary, body: item.body })}
                     </p>
                     {"evaluationKind" in item ? (
                       <div className="mt-1 flex flex-wrap gap-2 font-mono text-[10px] text-muted-foreground">

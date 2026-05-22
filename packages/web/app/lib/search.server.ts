@@ -156,8 +156,8 @@ export async function attachSearchGlobalPageRank(
 ): Promise<void> {
   if (hits.length === 0) return;
   const synapseRows = (
-    await c.query<{ from_id: string; to_id: string; synapse_type: string; attribution: string }>(
-      "SELECT from_id, to_id, synapse_type, attribution FROM synapses WHERE doco_id = $1",
+    await c.query<{ from_id: string; to_id: string; synapse_type: string }>(
+      "SELECT from_id, to_id, synapse_type FROM synapses WHERE doco_id = $1",
       [docoId],
     )
   ).rows;
@@ -166,7 +166,6 @@ export async function attachSearchGlobalPageRank(
       from: s.from_id,
       to: s.to_id,
       synapse_type: s.synapse_type,
-      attribution: s.attribution as "explicit" | "doco-auto",
     })),
     { alpha: 0.85 },
   );

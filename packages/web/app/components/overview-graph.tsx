@@ -20,7 +20,6 @@ export interface OverviewGraphLink {
   source: string;
   target: string;
   synapse_type: string;
-  attribution?: "explicit" | "doco-auto";
 }
 
 export interface OverviewGraphData {
@@ -389,11 +388,7 @@ export function OverviewGraph({
         focusable: false,
         interactionWidth: 0,
         style: {
-          stroke:
-            link.attribution === "doco-auto"
-              ? "rgba(115, 115, 115, 0.16)"
-              : "rgba(115, 115, 115, 0.3)",
-          strokeDasharray: link.attribution === "doco-auto" ? "4 4" : undefined,
+          stroke: "rgba(115, 115, 115, 0.3)",
           pointerEvents: "none" as const,
         },
       })),

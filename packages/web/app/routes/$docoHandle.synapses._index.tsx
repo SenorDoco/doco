@@ -1,10 +1,10 @@
-// Per-Doco edge list at /<handle>/synapses.
+// Per-Doco synapse list at /<handle>/synapses.
 //
 // Doco's synapses are derived from reference fields on nodes (D-017,
 // fields-as-synapses). They have no surrogate id — composite PK is
-// (from_id, to_id, synapse_type). This page surfaces the whole edge set
+// (from_id, to_id, synapse_type). This page surfaces the whole synapse set
 // of the Doco so a human (or the in-page assistant) can scan how
-// nodes connect, and click through to a single edge's detail view.
+// nodes connect, and click through to a single synapse's detail view.
 //
 // Listing is ordered by synapse_type, then from_id, then to_id — stable
 // and predictable. We render summaries from the joined node tables
@@ -21,7 +21,7 @@ import { loadDocoRouteForRead } from "~/lib/doco-access.server";
 import { loadHostConfig } from "~/lib/host.server";
 import { getCurrentPrincipal } from "~/lib/session.server";
 
-interface EdgeRow {
+interface SynapseRow {
   from_id: string;
   from_neuron_type: string;
   from_summary: string | null;
@@ -29,7 +29,6 @@ interface EdgeRow {
   to_neuron_type: string;
   to_summary: string | null;
   synapse_type: string;
-  attribution: string;
 }
 
 export async function loader({
@@ -43,7 +42,7 @@ export async function loader({
   const { ownerSlug, docoSlug, handle } = ctx;
   return withClient(async (c) => {
     const rows = (
-      await c.query<EdgeRow>(
+      await c.query<SynapseRow>(
         `WITH labels AS (
            SELECT id, summary FROM decisions          WHERE doco_id = $1
            UNION ALL SELECT id, summary FROM intents             WHERE doco_id = $1
@@ -58,7 +57,7 @@ export async function loader({
          )
          SELECT e.from_id, e.from_neuron_type, fl.summary AS from_summary,
                 e.to_id,   e.to_neuron_type,   tl.summary AS to_summary,
-                e.synapse_type, e.attribution
+                e.synapse_type
            FROM synapses e
            LEFT JOIN labels fl ON fl.id = e.from_id
            LEFT JOIN labels tl ON tl.id = e.to_id
@@ -84,11 +83,11 @@ export function meta({ data }: { data: Awaited<ReturnType<typeof loader>> | unde
   return [{ title: `Synapses · ${data.handle} · Doco` }];
 }
 
-function edgeKey(e: { synapse_type: string; from_id: string; to_id: string }): string {
+function synapseKey(e: { synapse_type: string; from_id: string; to_id: string }): string {
   return `${e.synapse_type}__${e.from_id}__${e.to_id}`;
 }
 
-export default function EdgesIndex({
+export default function SynapsesIndex({
   loaderData,
 }: {
   loaderData: Awaited<ReturnType<typeof loader>>;
@@ -104,12 +103,12 @@ export default function EdgesIndex({
         <header className="flex items-baseline justify-between gap-3">
           <h1 className="text-2xl font-semibold">Synapses</h1>
           <div className="text-xs text-muted-foreground">
-            {synapses.length} edge{synapses.length === 1 ? "" : "s"}
+            {synapses.length} synapse{synapses.length === 1 ? "" : "s"}
           </div>
         </header>
         <Card>
           <CardHeader>
-            <CardTitle className="text-sm">Every edge in this Doco</CardTitle>
+            <CardTitle className="text-sm">Every synapse in this Doco</CardTitle>
           </CardHeader>
           <CardContent className="p-0">
             {synapses.length === 0 ? (
@@ -123,15 +122,14 @@ export default function EdgesIndex({
                 <TableHeader>
                   <TableRow>
                     <TableHead className="w-[28%]">From</TableHead>
-                    <TableHead className="w-[14%]">Synapse</TableHead>
-                    <TableHead className="w-[28%]">To</TableHead>
-                    <TableHead className="w-[12%]">Source</TableHead>
+                    <TableHead className="w-[18%]">Synapse</TableHead>
+                    <TableHead className="w-[34%]">To</TableHead>
                     <TableHead className="w-[18%] text-right">Detail</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {synapses.map((e) => (
-                    <TableRow key={edgeKey(e)}>
+                    <TableRow key={synapseKey(e)}>
                       <TableCell>
                         <Link
                           to={`/${handle}/${e.from_neuron_type}/${e.from_id}`}
@@ -155,20 +153,9 @@ export default function EdgesIndex({
                         </Link>
                         <div className="text-[10px] text-muted-foreground">{e.to_neuron_type}</div>
                       </TableCell>
-                      <TableCell>
-                        <span
-                          className={
-                            e.attribution === "doco-auto"
-                              ? "text-[10px] italic text-muted-foreground"
-                              : "text-[10px] text-muted-foreground"
-                          }
-                        >
-                          {e.attribution}
-                        </span>
-                      </TableCell>
                       <TableCell className="text-right">
                         <Link
-                          to={`/${handle}/synapses/${edgeKey(e)}`}
+                          to={`/${handle}/synapses/${synapseKey(e)}`}
                           className="text-xs text-primary hover:underline"
                         >
                           open →

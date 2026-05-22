@@ -309,11 +309,6 @@ function layOutBpmn(
   const flowEdges: FlowEdge[] = links
     .filter((link) => nodeSet.has(link.source) && nodeSet.has(link.target))
     .map((link, index) => {
-      const isAuto = link.attribution === "doco-auto";
-      // BPMN sequence-flow convention: solid arrow with a visible
-      // arrowhead. doco-auto edges stay dashed and lighter so the
-      // distinction from author-asserted edges is preserved.
-      const stroke = isAuto ? "#737373" : "#262626";
       return {
         id: `${link.source}-${link.target}-${index}`,
         source: link.source,
@@ -323,15 +318,14 @@ function layOutBpmn(
         focusable: false,
         interactionWidth: 0,
         style: {
-          stroke,
+          stroke: "#262626",
           strokeWidth: 1.75,
-          strokeDasharray: isAuto ? "5 5" : undefined,
         },
         markerEnd: {
           type: MarkerType.ArrowClosed,
           width: 18,
           height: 18,
-          color: stroke,
+          color: "#262626",
         },
       };
     });

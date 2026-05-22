@@ -329,8 +329,6 @@ export const installAgentBootstrapCmd = defineCommand({
 // The Doco section is wrapped in BEGIN/END markers so it can be
 // spliced in without clobbering surrounding content.
 
-const DOCO_BEGIN_MARKER = "<!-- BEGIN DOCO -->";
-const DOCO_END_MARKER = "<!-- END DOCO -->";
 const CLAUDE_AGENTS_IMPORT = "@./AGENTS.md";
 
 // Markers must be on their own line (start-of-line + end-of-line),

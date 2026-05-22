@@ -1791,7 +1791,7 @@ export async function captureRule(
 
 // ─── Constitution Primitives ──────────────────────────────────────────────
 
-export interface GuidanceArticleDraft {
+export interface GuidancePrimitiveDraft {
   /** Required: one-line summary of the guidance. */
   summary: string;
   /** Optional markdown body. Defaults to the summary so the article is readable. */
@@ -1806,7 +1806,7 @@ export interface GuidanceArticleDraft {
   outcome?: "succeeded" | "failed";
 }
 
-export interface NodeAuthoringArticleDraft {
+export interface NeuronAuthoringPrimitiveDraft {
   /** Required: one-line summary of the capture-time check. */
   summary: string;
   /** Required: deterministic structural check or probabilistic LLM check. */
@@ -1831,7 +1831,7 @@ export interface NodeAuthoringArticleDraft {
   outcome?: "succeeded" | "failed";
 }
 
-async function resolveArticleAuthor(draft: {
+async function resolvePrimitiveAuthor(draft: {
   authored_by_username?: string;
   created_by_id?: string;
 }): Promise<string | CaptureError> {
@@ -1862,7 +1862,7 @@ function parsePredicate(value: AuthoringPredicate | string | undefined): unknown
 }
 
 function normalizeNodeAuthoringPredicate(
-  draft: NodeAuthoringArticleDraft,
+  draft: NeuronAuthoringPrimitiveDraft,
 ): AuthoringPredicate | CaptureError {
   if (draft.evaluation_kind === "probabilistic") {
     const spec =
@@ -1894,13 +1894,13 @@ function normalizeNodeAuthoringPredicate(
   return predicate;
 }
 
-export type ArticleCaptureExtras = Record<string, never>;
+export type PrimitiveCaptureExtras = Record<string, never>;
 
-type ArticleNodeType = "guidance_primitive" | "neuron_authoring_primitive";
+type PrimitiveType = "guidance_primitive" | "neuron_authoring_primitive";
 
-interface ArticlePayload {
+interface PrimitivePayload {
   id: string;
-  entityType: ArticleNodeType;
+  entityType: PrimitiveType;
   summary: string;
   lifecycle: string;
   fm: Record<string, unknown>;
@@ -1910,13 +1910,13 @@ interface ArticlePayload {
   now: string;
 }
 
-async function buildGuidanceArticlePayload(
+async function buildGuidancePrimitivePayload(
   docoId: string,
-  draft: GuidanceArticleDraft,
-  _extras: ArticleCaptureExtras,
-): Promise<ArticlePayload | CaptureError> {
+  draft: GuidancePrimitiveDraft,
+  _extras: PrimitiveCaptureExtras,
+): Promise<PrimitivePayload | CaptureError> {
   if (!draft.summary?.trim()) return { error: "summary is required." };
-  const author = await resolveArticleAuthor(draft);
+  const author = await resolvePrimitiveAuthor(draft);
   if (typeof author !== "string") return author;
 
   const id = `guidance_primitive_${generateUlid()}`;
@@ -1949,16 +1949,16 @@ async function buildGuidanceArticlePayload(
   };
 }
 
-async function buildNodeAuthoringArticlePayload(
+async function buildNeuronAuthoringPrimitivePayload(
   docoId: string,
-  draft: NodeAuthoringArticleDraft,
-  _extras: ArticleCaptureExtras,
-): Promise<ArticlePayload | CaptureError> {
+  draft: NeuronAuthoringPrimitiveDraft,
+  _extras: PrimitiveCaptureExtras,
+): Promise<PrimitivePayload | CaptureError> {
   if (!draft.summary?.trim()) return { error: "summary is required." };
   if (draft.evaluation_kind !== "deterministic" && draft.evaluation_kind !== "probabilistic") {
     return { error: "evaluation_kind must be deterministic or probabilistic." };
   }
-  const author = await resolveArticleAuthor(draft);
+  const author = await resolvePrimitiveAuthor(draft);
   if (typeof author !== "string") return author;
   const predicate = normalizeNodeAuthoringPredicate(draft);
   if ("error" in predicate) return predicate;
@@ -2000,17 +2000,17 @@ async function buildNodeAuthoringArticlePayload(
   };
 }
 
-export async function captureGuidanceArticle(
+export async function captureGuidancePrimitive(
   docoDir: string,
   docoId: string,
   ownerSlug: string,
   docoSlug: string,
-  draft: GuidanceArticleDraft,
+  draft: GuidancePrimitiveDraft,
   docoHost?: string,
-  extras: ArticleCaptureExtras = {},
+  extras: PrimitiveCaptureExtras = {},
 ): Promise<CaptureResult | CaptureError> {
   const startedAt = performance.now();
-  const payload = await buildGuidanceArticlePayload(docoId, draft, extras);
+  const payload = await buildGuidancePrimitivePayload(docoId, draft, extras);
   if ("error" in payload) return payload;
 
   await persistEntity({
@@ -2051,17 +2051,17 @@ export async function captureGuidanceArticle(
   };
 }
 
-export async function captureNodeAuthoringArticle(
+export async function captureNeuronAuthoringPrimitive(
   docoDir: string,
   docoId: string,
   ownerSlug: string,
   docoSlug: string,
-  draft: NodeAuthoringArticleDraft,
+  draft: NeuronAuthoringPrimitiveDraft,
   docoHost?: string,
-  extras: ArticleCaptureExtras = {},
+  extras: PrimitiveCaptureExtras = {},
 ): Promise<CaptureResult | CaptureError> {
   const startedAt = performance.now();
-  const payload = await buildNodeAuthoringArticlePayload(docoId, draft, extras);
+  const payload = await buildNeuronAuthoringPrimitivePayload(docoId, draft, extras);
   if ("error" in payload) return payload;
 
   await persistEntity({
@@ -2107,11 +2107,11 @@ export async function captureNodeAuthoringArticle(
  * lifecycle to the underlying table and emits a `lifecycle.transition`
  * audit event under the Doco scope.
  */
-export async function transitionArticleLifecycle(opts: {
+export async function transitionPrimitiveLifecycle(opts: {
   scope: "doco";
   scopeId: string;
   entityType: "guidance_primitive" | "neuron_authoring_primitive";
-  articleId: string;
+  primitiveId: string;
   newLifecycle: "active" | "retired";
   supersededBy?: string;
   actorId: string | null;
@@ -2126,12 +2126,12 @@ export async function transitionArticleLifecycle(opts: {
   const before = await withClient(async (c) => {
     const r = await c.query<{ lifecycle: string | null; raw_yaml: string }>(
       `SELECT lifecycle, raw_yaml FROM ${table} WHERE id = $1 AND ${scopeCol} = $2`,
-      [opts.articleId, opts.scopeId],
+      [opts.primitiveId, opts.scopeId],
     );
     return r.rows[0] ?? null;
   });
   if (!before) {
-    return { error: `Primitive ${opts.articleId} not found in scope.`, status: 404 };
+    return { error: `Primitive ${opts.primitiveId} not found in scope.`, status: 404 };
   }
 
   const fm = (() => {
@@ -2158,7 +2158,7 @@ export async function transitionArticleLifecycle(opts: {
         JSON.stringify(fm),
         updated_at,
         opts.actorId,
-        opts.articleId,
+        opts.primitiveId,
         opts.scopeId,
       ],
     );
@@ -2169,7 +2169,7 @@ export async function transitionArticleLifecycle(opts: {
     docoId: opts.scopeId,
     by: opts.actorId,
     entity_type: opts.entityType,
-    entity_id: opts.articleId,
+    entity_id: opts.primitiveId,
     op: "lifecycle.transition",
     before: { lifecycle: before.lifecycle ?? "active" },
     after: {
@@ -2188,11 +2188,11 @@ export async function transitionArticleLifecycle(opts: {
 }
 
 /** Fetch a Doco constitution primitive's persisted fields (for the edit page). */
-export async function loadArticleForEdit(opts: {
+export async function loadPrimitiveForEdit(opts: {
   scope: "doco";
   scopeId: string;
   entityType: "guidance_primitive" | "neuron_authoring_primitive";
-  articleId: string;
+  primitiveId: string;
 }): Promise<
   | {
       ok: true;
@@ -2217,11 +2217,11 @@ export async function loadArticleForEdit(opts: {
     }>(
       `SELECT summary, body_md, lifecycle, raw_yaml FROM ${table}
         WHERE id = $1 AND ${scopeCol} = $2`,
-      [opts.articleId, opts.scopeId],
+      [opts.primitiveId, opts.scopeId],
     );
     return r.rows[0] ?? null;
   });
-  if (!row) return { error: `Primitive ${opts.articleId} not found.`, status: 404 };
+  if (!row) return { error: `Primitive ${opts.primitiveId} not found.`, status: 404 };
   let parsed: Record<string, unknown> = {};
   try {
     parsed = JSON.parse(row.raw_yaml) as Record<string, unknown>;

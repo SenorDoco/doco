@@ -3,8 +3,7 @@
 // callers all hit the same file; second + later calls are no-ops once
 // process.env carries the relevant key.
 //
-// Used by both the OpenAI-backed implicit-edge detector (llm.server.ts)
-// and the Anthropic-backed in-page assistant (agent-chat.server.ts) so
+// Used by the Anthropic-backed in-page assistant (agent-chat.server.ts) so
 // neither has to source the .env at launch.
 
 import { existsSync } from "node:fs";

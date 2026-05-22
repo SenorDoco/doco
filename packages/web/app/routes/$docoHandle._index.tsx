@@ -1,5 +1,5 @@
 import { withClient } from "@doco/db";
-// Per-Doco home — bare title up top, then the search input, node overview,
+// Per-Doco home — bare title up top, then the search input, neuron overview,
 // activity heatmap, and latest activity feed in a single content column.
 //
 // The feed renders one line per recent audit event in the same family as
@@ -25,7 +25,7 @@ import {
   initialVisibleLifecycles,
 } from "~/components/lifecycle-filter";
 import { NeuronTypeIcon } from "~/components/neuron-type-icon";
-import { NeuronsOverviewCard, type NodesOverviewSection } from "~/components/neurons-overview-card";
+import { NeuronsOverviewCard, type NeuronsOverviewSection } from "~/components/neurons-overview-card";
 import { OverviewGraph } from "~/components/overview-graph";
 import { PerspectiveTabs } from "~/components/perspective-tabs";
 import { BpmnPerspective } from "~/components/perspectives/bpmn-perspective";
@@ -66,7 +66,7 @@ interface TopContributor {
   eventCount: number;
 }
 
-const NODE_TYPE_LABELS: Record<string, string> = {
+const NEURON_TYPE_LABELS: Record<string, string> = {
   decision: "Decisions",
   action: "Actions",
   intent: "Intents",
@@ -78,9 +78,9 @@ const NODE_TYPE_LABELS: Record<string, string> = {
   idea: "Ideas",
 };
 
-function nodeTypeLabel(type: string): string {
+function neuronTypeLabel(type: string): string {
   return (
-    NODE_TYPE_LABELS[type] ??
+    NEURON_TYPE_LABELS[type] ??
     `${type
       .split("_")
       .filter(Boolean)
@@ -425,17 +425,17 @@ export default function DocoHome({
 
   const allSearchHref = allNodesSearchPath(handle);
 
-  const sections: NodesOverviewSection[] = [
+  const sections: NeuronsOverviewSection[] = [
     {
-      title: "Node types",
+      title: "Neuron types",
       items: facets.entityType.map((t) => ({
         key: `type-${t.value}`,
         href: nodeTypeSearchPath(handle, t.value),
-        label: nodeTypeLabel(t.value),
+        label: neuronTypeLabel(t.value),
         icon: <NeuronTypeIcon entityType={t.value} />,
         count: t.count,
         activeCount: t.activeCount,
-        ariaLabel: `Search ${t.count} ${nodeTypeLabel(t.value).toLowerCase()}`,
+        ariaLabel: `Search ${t.count} ${neuronTypeLabel(t.value).toLowerCase()}`,
         updatedAt: t.updatedAt,
       })),
     },
@@ -446,7 +446,7 @@ export default function DocoHome({
         href: lifecycleSearchPath(handle, l.value),
         label: l.value,
         count: l.count,
-        ariaLabel: `Search ${l.count} nodes in lifecycle ${l.value}`,
+        ariaLabel: `Search ${l.count} neurons in lifecycle ${l.value}`,
         color: lifecycleColor(l.value),
         updatedAt: l.updatedAt,
       })),

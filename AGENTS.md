@@ -149,8 +149,10 @@ block is in your context):
    ```
    The URL is wrapped in markdown link syntax so it renders
    clickable in chat.
-3. **Call `doco_complete_authentication` (with `wait_seconds: 120`
-   for a longer pause).** This blocks while polling.
+3. **Immediately call `doco_complete_authentication` (with
+   `wait_seconds: 120`) in the same turn.** Do not wait for the user
+   to send another message saying they approved; the tool blocks while
+   polling so the agent can learn when approval lands.
 4. **If it succeeds** (user approved): retry `doco_search` and
    continue with the substantive answer using the now-available
    Doco. Render the corky verb / N found / tagline as above.

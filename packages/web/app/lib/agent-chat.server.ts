@@ -454,7 +454,7 @@ async function buildBootstrapContext(principalId: string): Promise<BootstrapCont
     // No LIMIT — the agent's accuracy when asked "what is my constitution"
     // depends on shipping every active article. A few hundred lines of
     // article summaries is well under the context budget.
-    const articles = await withClient(async (c) => {
+    const primitives = await withClient(async (c) => {
       const [guidance, authoring] = await Promise.all([
         c.query<{ summary: string }>(
           `SELECT summary FROM guidance_primitives
@@ -471,10 +471,10 @@ async function buildBootstrapContext(principalId: string): Promise<BootstrapCont
       ]);
       return { guidance: guidance.rows, authoring: authoring.rows };
     });
-    if (articles.guidance.length || articles.authoring.length) {
+    if (primitives.guidance.length || primitives.authoring.length) {
       const lines = [`Constitution for /${d.handle}:`];
-      for (const a of articles.guidance) lines.push(`  - guidance: ${a.summary}`);
-      for (const a of articles.authoring) lines.push(`  - rule: ${a.summary}`);
+      for (const a of primitives.guidance) lines.push(`  - guidance: ${a.summary}`);
+      for (const a of primitives.authoring) lines.push(`  - rule: ${a.summary}`);
       constitutionSnippets.push(lines.join("\n"));
     }
   }
@@ -554,7 +554,7 @@ You are the in-page assistant for Doco. Your job: read, write, navigate inside D
 
 IN SCOPE — answer or act WITHOUT a decline preamble:
 - Anything about ${principal.username}'s Docos, Orgs, neurons, primitives, synapses, collaborators, audit log, settings.
-- How Doco concepts work — Decision, Intent, Rule, Action, Log, Eval, Reference, State, Idea, Principal, Guidance primitive, Neuron-authoring primitive, synapse, lifecycle, collaborator, attribution, doco-auto, doco_handle, footer line, tally line, OAuth grant, born_from, intent_ids, etc. **Any term mentioned in this system prompt is by definition Doco-internal — explain it directly, no "is this Doco-specific?" hedge.**
+- How Doco concepts work — Decision, Intent, Rule, Action, Log, Eval, Reference, State, Idea, Principal, Guidance primitive, Neuron-authoring primitive, synapse, lifecycle, collaborator, doco_handle, footer line, tally line, OAuth grant, born_from, intent_ids, etc. **Any term mentioned in this system prompt is by definition Doco-internal — explain it directly, no "is this Doco-specific?" hedge.**
 - How to do things in Doco ("how do I invite a collaborator?", "how do I make a Doco public?").
 - Drafting Doco-internal content (e.g. drafting a Decision body, summarizing a Doco's primitives, suggesting which neuron type fits a piece of work).
 - Navigating to any Doco page on the user's behalf.

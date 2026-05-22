@@ -17,7 +17,7 @@ export interface NodesOverviewItem {
   updatedAt?: string | null;
 }
 
-export interface NodesOverviewSection {
+export interface NeuronsOverviewSection {
   title: string;
   items: NodesOverviewItem[];
 }
@@ -29,7 +29,7 @@ export function NeuronsOverviewCard({
   aside,
 }: {
   search?: ReactNode;
-  sections: NodesOverviewSection[];
+  sections: NeuronsOverviewSection[];
   empty?: ReactNode;
   aside?: ReactNode;
 }) {

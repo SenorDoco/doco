@@ -16,7 +16,7 @@ import { NeuronTypeIcon } from "~/components/neuron-type-icon";
 import { SiteHeader } from "~/components/site-header";
 import { getDocoEmbeddingProvider } from "~/lib/embedding-provider.server";
 import { loadHostConfig } from "~/lib/host.server";
-import { nodeTypePlural } from "~/lib/neuron-colors";
+import { neuronTypePlural } from "~/lib/neuron-colors";
 import { getCurrentPrincipal } from "~/lib/session.server";
 import { timeAgo } from "~/lib/time-ago";
 
@@ -313,7 +313,7 @@ export default function OrgSearch({
                       </div>
                       <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
                         <NodeTypeBadge entityType={h.entity_type}>
-                          {nodeTypePlural(h.entity_type)}
+                          {neuronTypePlural(h.entity_type)}
                         </NodeTypeBadge>
                         {h.lifecycle ? <LifecycleBadge lifecycle={h.lifecycle} /> : null}
                         <Link

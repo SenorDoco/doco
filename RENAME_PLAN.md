@@ -44,7 +44,6 @@ Apply only when the token refers to the graph/constitution concept — preserve 
 | `node_type` (field name) | `neuron_type` | Discriminator on every neuron. |
 | `article_type` (field name) | `primitive_kind` | Values: `"guidance"`, `"neuron_authoring"`. |
 | `NODE_TYPES` (TS const) | `NEURON_TYPES` + new `PRIMITIVE_TYPES` | See §7. |
-| `auto_edges` (frontmatter field) | `auto_synapses` | Field name + nested keys (`edge_type` → `synapse_type`). |
 | `allowed_node_types` (Doco column) | `allowed_neuron_types` | |
 | `default_node_lifecycle` (Doco column) | `default_neuron_lifecycle` | |
 | `fires_when_node_lifecycle` (Rule/predicate) | `fires_when_neuron_lifecycle` | |
@@ -330,14 +329,14 @@ Helpers: `isNeuronType`, `isPrimitiveType`, `isEntityType`, `parseEntityId` (ret
 | `packages/web/app/lib/use-new-node-ids.ts` | `packages/web/app/lib/use-new-neuron-ids.ts` |
 | `packages/web/app/lib/principal-aliases.server.ts` | `packages/web/app/lib/collaborator-aliases.server.ts` (or split into both if both kinds of alias exist) |
 
-`packages/index/src/edges.ts` becomes `synapses.ts`. Identifiers: `Edge → Synapse`, `EdgeAttribution → SynapseAttribution`, `deriveEdges → deriveSynapses`, `FIELD_TO_EDGE_TYPE → FIELD_TO_SYNAPSE_TYPE`, `AUTO_EDGES_FIELD = "auto_edges" → AUTO_SYNAPSES_FIELD = "auto_synapses"`.
+`packages/index/src/edges.ts` becomes `synapses.ts`. Identifiers: `Edge → Synapse`, `deriveEdges → deriveSynapses`, `FIELD_TO_EDGE_TYPE → FIELD_TO_SYNAPSE_TYPE`.
 
 ### 7.4 Generic identifiers
 
 | Old | New |
 |---|---|
 | `EdgeRowInput` | `SynapseRowInput` |
-| `PprEdge`, `PprEdgeAttribution`, `PprNeighbor` | `PprSynapse`, `PprSynapseAttribution`, `PprNeighbor` (neighbor stays) |
+| `PprEdge`, `PprNeighbor` | `PprSynapse`, `PprNeighbor` (neighbor stays) |
 | `NODE_TABLES` (in `db/src/types.ts`) | `NEURON_TABLES` + new `PRIMITIVE_TABLES` (or a flat `ENTITY_TABLES` map keyed by `EntityType`) |
 | `EntityRecord.node_type` | `EntityRecord.entity_type` (since the record may be any category) |
 | `OverviewGraphNode`, `OverviewGraphLink` | `OverviewGraphNeuron`, `OverviewGraphSynapse` |
@@ -413,7 +412,6 @@ These are surfaces that agents and bookmark holders MUST be migrated on.
 | `/<handle>/api/<type>.json` 404 branch | `packages/web/app/routes/$docoHandle.api.$type[.]json.tsx` | Rejected names update: `guidance_primitives`/`neuron_authoring_primitives`/`collaborators` are routed differently — pointer says "use `/api/primitives.json` for primitives, `/api/collaborators.json` for collaborators". |
 | `/dashboard`, `/docos`, `/orgs` UIs | various | Article-count UI → primitive-count; `entity_type IN (...)` SQL literal strings update. |
 | Audit-log clients | `audit-log.server.ts`, `activity-feed.ts` | `"edge.add"` → `"synapse.add"`. The op enum visible at `/api/audit.json` changes — agents that read audit MUST update. |
-| `auto_edges` writers | external agents | Field rename to `auto_synapses` + nested `edge_type` → `synapse_type`. Migration rewrites in storage; agents writing fresh must use the new name. |
 | OAuth token shape | unchanged | Token strings unchanged; the principal_id claim renames to collaborator_id in any token-introspection responses (§6.3). |
 
 External-discoverable surfaces not breaking: the OAuth metadata endpoints (`/.well-known/oauth-authorization-server`), the `/sign-in`/`/sign-out`/`/sign-up` paths, `/<handle>` index, `/<handle>/<type>/<id>` generic detail (URL shape stays, type slot accepts new values).
@@ -430,7 +428,7 @@ External-discoverable surfaces not breaking: the OAuth metadata endpoints (`/.we
   - Keep in `/Users/torrenegra/Doco/principals/principal_*.yaml` only the rows that are pure role/persona (none currently exist on disk — all 13 carry `github_identity`).
   - For the dual-residence row (`principal_01KR441EA199MZCP7RDMADFZW9` — torrenegra), the CLI emits BOTH files at the same ULID with different prefixes.
 - `/Users/torrenegra/Doco/docos/host-bootstrap/*/doco.yaml` (14 files) — `node_type: doco` → `neuron_type: doco` (or use `entity_type` here; see §7.4 open recommendation). `owner_id: principal_<ulid>` → `owner_id: collaborator_<ulid>`. `members[].principal_id` → `members[].collaborator_id`.
-- `/Users/torrenegra/Doco/docos/host-bootstrap/me-torrenegra-com/decisions/decision_*.md` (5 files, 2 with `auto_edges`) — frontmatter `node_type:` → `neuron_type:`; `auto_edges:` → `auto_synapses:` (with `edge_type:` → `synapse_type:` inside each entry); `created_by` references rewrite to collaborator prefix.
+- `/Users/torrenegra/Doco/docos/host-bootstrap/me-torrenegra-com/decisions/decision_*.md` (5 files) — frontmatter `node_type:` → `neuron_type:`; `created_by` references rewrite to collaborator prefix.
 - `/Users/torrenegra/Doco/docos/host-bootstrap/.deleted/...` — out of scope (soft-deleted snapshots).
 
 ### 10.2 Doco templates (code)
@@ -478,11 +476,11 @@ Land in one PR; within the patch, the diff is structured into these phases so re
 - `packages/cli/README.md`.
 
 **Phase 5 — Web server lib (the heavy bulk).**
-- `capture.server.ts` (largest file). Rename article handlers to primitive handlers; rename `nodeType` parameter to `neuronType`/`entityType`; ID prefix construction; `auto_edges` → `auto_synapses`.
+- `capture.server.ts` (largest file). Rename article handlers to primitive handlers; rename `nodeType` parameter to `neuronType`/`entityType`; ID prefix construction.
 - `agent-chat.server.ts` — system prompt + tool descriptions + queries against renamed tables.
 - `instructions.server.ts` — full prose rewrite of canonical instructions.
 - `constitution-copy.ts` — rename explainers + helpers.
-- `full-graph.server.ts`, `search.server.ts`, `search-filters.server.ts`, `doco-stats.server.ts`, `mutability.server.ts`, `activity-feed.ts`, `audit-log.server.ts`, `node-colors.ts` (file rename), `agents.server.ts`, `principal-aliases.server.ts` (file rename or split), `llm.server.ts`, `redeem.server.ts`, `api-capture-factory.server.ts`, `use-new-node-ids.ts` (file rename).
+- `full-graph.server.ts`, `search.server.ts`, `search-filters.server.ts`, `doco-stats.server.ts`, `mutability.server.ts`, `activity-feed.ts`, `audit-log.server.ts`, `node-colors.ts` (file rename), `agents.server.ts`, `principal-aliases.server.ts` (file rename or split), `redeem.server.ts`, `api-capture-factory.server.ts`, `use-new-node-ids.ts` (file rename).
 
 **Phase 6 — Web components + routes.**
 - Components: file renames (`node-*` → `neuron-*`); type prop renames; activity-feed line.
@@ -511,13 +509,11 @@ The 38-step micro-order from the earlier plan is preserved in the appendix.
 
 4. **External agent breakage on audit-op enum.** The `'edge.add'` → `'synapse.add'` rename is read by every audit consumer. There is no shim. Document loudly in `llms.txt` and the protocol prose.
 
-5. **`auto_edges` in fixtures.** The two decision_*.md fixtures carry `auto_edges:` blocks. The migration rewrites in storage; the on-disk fixtures rewrite via Phase 7. If a fresh checkout runs `doco import` before the migration runs, the YAML parser will accept both keys — confirm.
+5. **`entity_fts` shape change (one table → five).** Search queries that union categories now do five-way reads. Performance should be fine (small per-table indexes; same total rows), but spot-check `/<handle>/search` and `/dashboard` queries before merge.
 
-6. **`entity_fts` shape change (one table → five).** Search queries that union categories now do five-way reads. Performance should be fine (small per-table indexes; same total rows), but spot-check `/<handle>/search` and `/dashboard` queries before merge.
+6. **`Doco.owner_id` polymorphism.** Currently `principal | organization`. After: `collaborator | organization`. Spot-check the `mapDocoOwner` SQL joins (`LEFT JOIN principals` becomes `LEFT JOIN collaborators` for the identity branch).
 
-7. **`Doco.owner_id` polymorphism.** Currently `principal | organization`. After: `collaborator | organization`. Spot-check the `mapDocoOwner` SQL joins (`LEFT JOIN principals` becomes `LEFT JOIN collaborators` for the identity branch).
-
-8. **Generated columns and indexes.** Postgres tracks columns by oid through RENAME — but verify the `entity_fts*.search_tsv` GIN indexes survive the table rename, and that the `tsvector` GENERATED expressions don't reference the old column name (`node_type`) which then breaks.
+7. **Generated columns and indexes.** Postgres tracks columns by oid through RENAME — but verify the `entity_fts*.search_tsv` GIN indexes survive the table rename, and that the `tsvector` GENERATED expressions don't reference the old column name (`node_type`) which then breaks.
 
 9. **`/constitution` URL stays, but its contents now describe primitives.** The vocabulary mismatch between "constitution" (kept) and "primitives" (new content noun) is intentional — the constitution is a collection of primitives — but document it in the page header so users don't think the page renamed.
 
@@ -611,7 +607,6 @@ Drawn from the earlier 66KB plan (file paths verified; categorization refreshed 
 - `/Users/torrenegra/Doco/packages/web/app/lib/node-colors.ts` → `neuron-colors.ts`
 - `/Users/torrenegra/Doco/packages/web/app/lib/principal-aliases.server.ts` → split / rename
 - `/Users/torrenegra/Doco/packages/web/app/lib/role-helpers.ts`
-- `/Users/torrenegra/Doco/packages/web/app/lib/llm.server.ts`
 - `/Users/torrenegra/Doco/packages/web/app/lib/redeem.server.ts`
 - `/Users/torrenegra/Doco/packages/web/app/lib/use-new-node-ids.ts` → `use-new-neuron-ids.ts`
 - `/Users/torrenegra/Doco/packages/web/app/lib/invite-store.server.ts`, `invite.server.ts`
@@ -700,7 +695,7 @@ Generic dispatchers (content update, possibly file rename):
 - `/Users/torrenegra/Doco/principals/principal_*.yaml` (13 files) — most move to `/Users/torrenegra/Doco/collaborators/collaborator_*.yaml`
 - `/Users/torrenegra/Doco/docos/host-bootstrap/*/doco.yaml` (14 files)
 - `/Users/torrenegra/Doco/docos/torrenegra/*/doco.yaml` (2 files)
-- `/Users/torrenegra/Doco/docos/host-bootstrap/me-torrenegra-com/decisions/decision_*.md` (5 files; 2 with `auto_edges` blocks)
+- `/Users/torrenegra/Doco/docos/host-bootstrap/me-torrenegra-com/decisions/decision_*.md` (5 files)
 - `/Users/torrenegra/Doco/docos/host-bootstrap/.deleted/...` — OUT OF SCOPE
 
 ---
