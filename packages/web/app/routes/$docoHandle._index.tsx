@@ -52,8 +52,8 @@ const NODE_TYPE_LABELS: Record<string, string> = {
   action: "Actions",
   intent: "Intents",
   rule: "Rules",
-  guidance_article: "Guidance articles",
-  node_authoring_article: "Node-authoring articles",
+  guidance_primitive: "Guidance articles",
+  neuron_authoring_primitive: "Node-authoring articles",
   eval: "Evals",
   reference: "References",
   idea: "Ideas",
@@ -100,7 +100,7 @@ export async function loader({
         `SELECT event_id, at, entity_type, entity_id, op, before_json, after_json
            FROM audit_events
           WHERE doco_id = $1
-            AND entity_type NOT IN ('guidance_article', 'node_authoring_article')
+            AND entity_type NOT IN ('guidance_primitive', 'neuron_authoring_primitive')
           ORDER BY at DESC
           LIMIT $2`,
         [ctx.meta.docoId, FEED_LIMIT],
@@ -119,8 +119,8 @@ export async function loader({
          UNION ALL SELECT id, summary AS label, lifecycle FROM intents WHERE doco_id = $1 AND id = ANY($2::text[])
          UNION ALL SELECT id, summary AS label, lifecycle FROM ideas WHERE doco_id = $1 AND id = ANY($2::text[])
          UNION ALL SELECT id, summary AS label, lifecycle FROM rules WHERE doco_id = $1 AND id = ANY($2::text[])
-         UNION ALL SELECT id, summary AS label, lifecycle FROM guidance_articles WHERE doco_id = $1 AND id = ANY($2::text[])
-         UNION ALL SELECT id, summary AS label, lifecycle FROM node_authoring_articles WHERE doco_id = $1 AND id = ANY($2::text[])
+         UNION ALL SELECT id, summary AS label, lifecycle FROM guidance_primitives WHERE doco_id = $1 AND id = ANY($2::text[])
+         UNION ALL SELECT id, summary AS label, lifecycle FROM neuron_authoring_primitives WHERE doco_id = $1 AND id = ANY($2::text[])
          UNION ALL SELECT id, summary AS label, lifecycle FROM actions WHERE doco_id = $1 AND id = ANY($2::text[])
          UNION ALL SELECT id, summary AS label, lifecycle FROM logs WHERE doco_id = $1 AND id = ANY($2::text[])
          UNION ALL SELECT id, summary AS label, lifecycle FROM evals WHERE doco_id = $1 AND id = ANY($2::text[])
@@ -138,7 +138,7 @@ export async function loader({
       return {
         event_id: it.event_id,
         id: it.entity_id,
-        node_type: it.entity_type,
+        entity_type: it.entity_type,
         summary:
           entity?.label ??
           stringField(it.after_json, "summary") ??
@@ -152,7 +152,7 @@ export async function loader({
     });
 
     const facets = await computeFilterFacets(c, ctx.meta.docoId);
-    const totalNodes = facets.nodeType.reduce((sum, t) => sum + t.count, 0);
+    const totalNodes = facets.entityType.reduce((sum, t) => sum + t.count, 0);
 
     const since = new Date();
     since.setDate(since.getDate() - HEATMAP_WEEKS * 7);
@@ -179,28 +179,28 @@ export async function loader({
 
     const contributorRows = (
       await c.query<{
-        principal_id: string;
+        collaborator_id: string;
         username: string;
         last_at: Date | string;
         event_count: string;
       }>(
-        `SELECT ae.by_principal AS principal_id,
+        `SELECT ae.by_collaborator AS collaborator_id,
                 p.username,
                 MAX(ae.at) AS last_at,
                 COUNT(*)::text AS event_count
            FROM audit_events ae
-           JOIN principals p ON p.id = ae.by_principal
+           JOIN principals p ON p.id = ae.by_collaborator
           WHERE ae.doco_id = $1
-            AND ae.by_principal IS NOT NULL
-            AND ae.entity_type NOT IN ('guidance_article', 'node_authoring_article')
-          GROUP BY ae.by_principal, p.username
+            AND ae.by_collaborator IS NOT NULL
+            AND ae.entity_type NOT IN ('guidance_primitive', 'neuron_authoring_primitive')
+          GROUP BY ae.by_collaborator, p.username
           ORDER BY COUNT(*) DESC, MAX(ae.at) DESC
           LIMIT $2`,
         [ctx.meta.docoId, TOP_CONTRIBUTORS_LIMIT],
       )
     ).rows;
     const topContributors: TopContributor[] = contributorRows.map((r) => ({
-      principalId: r.principal_id,
+      principalId: r.collaborator_id,
       username: r.username,
       lastAt:
         r.last_at instanceof Date
@@ -215,8 +215,8 @@ export async function loader({
     const constitutionRow = (
       await c.query<{ n: string }>(
         `SELECT
-           ((SELECT COUNT(*) FROM guidance_articles WHERE doco_id = $1)
-          + (SELECT COUNT(*) FROM node_authoring_articles WHERE doco_id = $1))::text AS n`,
+           ((SELECT COUNT(*) FROM guidance_primitives WHERE doco_id = $1)
+          + (SELECT COUNT(*) FROM neuron_authoring_primitives WHERE doco_id = $1))::text AS n`,
         [ctx.meta.docoId],
       )
     ).rows[0];
@@ -243,15 +243,15 @@ export async function loader({
 
 function allNodesSearchPath(handle: string): string {
   const params = new URLSearchParams();
-  params.set("node_type", "*");
+  params.set("entity_type", "*");
   params.set("lifecycle", "*");
   params.set("limit", "500");
   return `/${handle}/search?${params.toString()}`;
 }
 
-function nodeTypeSearchPath(handle: string, nodeType: string): string {
+function nodeTypeSearchPath(handle: string, entityType: string): string {
   const params = new URLSearchParams();
-  params.set("node_type", nodeType);
+  params.set("entity_type", entityType);
   params.set("lifecycle", "*");
   params.set("limit", "500");
   return `/${handle}/search?${params.toString()}`;
@@ -260,7 +260,7 @@ function nodeTypeSearchPath(handle: string, nodeType: string): string {
 function lifecycleSearchPath(handle: string, lifecycle: string): string {
   const params = new URLSearchParams();
   params.set("lifecycle", lifecycle);
-  params.set("node_type", "*");
+  params.set("entity_type", "*");
   params.set("limit", "500");
   return `/${handle}/search?${params.toString()}`;
 }
@@ -325,11 +325,11 @@ export default function DocoHome({
   const sections: NodesOverviewSection[] = [
     {
       title: "Node types",
-      items: facets.nodeType.map((t) => ({
+      items: facets.entityType.map((t) => ({
         key: `type-${t.value}`,
         href: nodeTypeSearchPath(handle, t.value),
         label: nodeTypeLabel(t.value),
-        icon: <NodeTypeIcon nodeType={t.value} />,
+        icon: <NodeTypeIcon entityType={t.value} />,
         count: t.count,
         activeCount: t.activeCount,
         ariaLabel: `Search ${t.count} ${nodeTypeLabel(t.value).toLowerCase()}`,

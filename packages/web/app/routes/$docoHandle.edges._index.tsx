@@ -1,12 +1,12 @@
-// Per-Doco edge list at /<handle>/edges.
+// Per-Doco edge list at /<handle>/synapses.
 //
-// Doco's edges are derived from reference fields on nodes (D-017,
-// fields-as-edges). They have no surrogate id — composite PK is
-// (from_id, to_id, edge_type). This page surfaces the whole edge set
+// Doco's synapses are derived from reference fields on nodes (D-017,
+// fields-as-synapses). They have no surrogate id — composite PK is
+// (from_id, to_id, synapse_type). This page surfaces the whole edge set
 // of the Doco so a human (or the in-page assistant) can scan how
 // nodes connect, and click through to a single edge's detail view.
 //
-// Listing is ordered by edge_type, then from_id, then to_id — stable
+// Listing is ordered by synapse_type, then from_id, then to_id — stable
 // and predictable. We render summaries from the joined node tables
 // (best-effort UNION across every entity table) so each row reads as
 // "<from-summary> --serves--> <to-summary>" instead of bare IDs.
@@ -23,12 +23,12 @@ import { getCurrentPrincipal } from "~/lib/session";
 
 interface EdgeRow {
   from_id: string;
-  from_node_type: string;
+  from_neuron_type: string;
   from_summary: string | null;
   to_id: string;
-  to_node_type: string;
+  to_neuron_type: string;
   to_summary: string | null;
-  edge_type: string;
+  synapse_type: string;
   attribution: string;
 }
 
@@ -49,27 +49,27 @@ export async function loader({
            UNION ALL SELECT id, summary FROM intents             WHERE doco_id = $1
            UNION ALL SELECT id, summary FROM ideas               WHERE doco_id = $1
            UNION ALL SELECT id, summary FROM rules               WHERE doco_id = $1
-           UNION ALL SELECT id, summary FROM guidance_articles   WHERE doco_id = $1
-           UNION ALL SELECT id, summary FROM node_authoring_articles WHERE doco_id = $1
+           UNION ALL SELECT id, summary FROM guidance_primitives   WHERE doco_id = $1
+           UNION ALL SELECT id, summary FROM neuron_authoring_primitives WHERE doco_id = $1
            UNION ALL SELECT id, summary FROM actions             WHERE doco_id = $1
            UNION ALL SELECT id, summary FROM logs                WHERE doco_id = $1
            UNION ALL SELECT id, summary FROM evals               WHERE doco_id = $1
            UNION ALL SELECT id, summary FROM reference_entities  WHERE doco_id = $1
          )
-         SELECT e.from_id, e.from_node_type, fl.summary AS from_summary,
-                e.to_id,   e.to_node_type,   tl.summary AS to_summary,
-                e.edge_type, e.attribution
-           FROM edges e
+         SELECT e.from_id, e.from_neuron_type, fl.summary AS from_summary,
+                e.to_id,   e.to_neuron_type,   tl.summary AS to_summary,
+                e.synapse_type, e.attribution
+           FROM synapses e
            LEFT JOIN labels fl ON fl.id = e.from_id
            LEFT JOIN labels tl ON tl.id = e.to_id
           WHERE e.doco_id = $1
-          ORDER BY e.edge_type, e.from_id, e.to_id
+          ORDER BY e.synapse_type, e.from_id, e.to_id
           LIMIT 500`,
         [ctx.meta.docoId],
       )
     ).rows;
     return {
-      edges: rows,
+      synapses: rows,
       handle,
       ownerSlug,
       docoSlug,
@@ -84,8 +84,8 @@ export function meta({ data }: { data: Awaited<ReturnType<typeof loader>> | unde
   return [{ title: `Edges · ${data.handle} · Doco` }];
 }
 
-function edgeKey(e: { edge_type: string; from_id: string; to_id: string }): string {
-  return `${e.edge_type}__${e.from_id}__${e.to_id}`;
+function edgeKey(e: { synapse_type: string; from_id: string; to_id: string }): string {
+  return `${e.synapse_type}__${e.from_id}__${e.to_id}`;
 }
 
 export default function EdgesIndex({
@@ -93,7 +93,7 @@ export default function EdgesIndex({
 }: {
   loaderData: Awaited<ReturnType<typeof loader>>;
 }) {
-  const { edges, handle, ownerSlug, me } = loaderData;
+  const { synapses, handle, ownerSlug, me } = loaderData;
   return (
     <div>
       <SiteHeader mode="host" me={me} />
@@ -104,7 +104,7 @@ export default function EdgesIndex({
         <header className="flex items-baseline justify-between gap-3">
           <h1 className="text-2xl font-semibold">Edges</h1>
           <div className="text-xs text-muted-foreground">
-            {edges.length} edge{edges.length === 1 ? "" : "s"}
+            {synapses.length} edge{synapses.length === 1 ? "" : "s"}
           </div>
         </header>
         <Card>
@@ -112,9 +112,9 @@ export default function EdgesIndex({
             <CardTitle className="text-sm">Every edge in this Doco</CardTitle>
           </CardHeader>
           <CardContent className="p-0">
-            {edges.length === 0 ? (
+            {synapses.length === 0 ? (
               <p className="px-5 py-6 text-xs text-muted-foreground">
-                No edges yet. Edges materialize automatically when a node references another node
+                No synapses yet. Edges materialize automatically when a node references another node
                 (e.g. a Decision's intent_ids). Patch a node's reference field and the edge appears.
               </p>
             ) : (
@@ -129,30 +129,30 @@ export default function EdgesIndex({
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {edges.map((e) => (
+                  {synapses.map((e) => (
                     <TableRow key={edgeKey(e)}>
                       <TableCell>
                         <Link
-                          to={`/${handle}/${e.from_node_type}/${e.from_id}`}
+                          to={`/${handle}/${e.from_neuron_type}/${e.from_id}`}
                           className="text-primary hover:underline"
                         >
                           {e.from_summary ?? e.from_id}
                         </Link>
-                        <div className="text-[10px] text-muted-foreground">{e.from_node_type}</div>
+                        <div className="text-[10px] text-muted-foreground">{e.from_neuron_type}</div>
                       </TableCell>
                       <TableCell>
                         <code className="rounded bg-input px-1.5 py-0.5 font-mono text-[11px]">
-                          {e.edge_type}
+                          {e.synapse_type}
                         </code>
                       </TableCell>
                       <TableCell>
                         <Link
-                          to={`/${handle}/${e.to_node_type}/${e.to_id}`}
+                          to={`/${handle}/${e.to_neuron_type}/${e.to_id}`}
                           className="text-primary hover:underline"
                         >
                           {e.to_summary ?? e.to_id}
                         </Link>
-                        <div className="text-[10px] text-muted-foreground">{e.to_node_type}</div>
+                        <div className="text-[10px] text-muted-foreground">{e.to_neuron_type}</div>
                       </TableCell>
                       <TableCell>
                         <span
@@ -167,7 +167,7 @@ export default function EdgesIndex({
                       </TableCell>
                       <TableCell className="text-right">
                         <Link
-                          to={`/${handle}/edges/${edgeKey(e)}`}
+                          to={`/${handle}/synapses/${edgeKey(e)}`}
                           className="text-xs text-primary hover:underline"
                         >
                           open →

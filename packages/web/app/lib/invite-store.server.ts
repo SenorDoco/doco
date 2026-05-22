@@ -37,7 +37,7 @@ export interface Invite {
   /** Org targeted by org-level invites. Required when level === "org". */
   org_id?: EntityId<"organization">;
   /** Principal that minted this invite (null for anonymous-creation seed). */
-  minted_by_principal_id: EntityId<"principal"> | null;
+  minted_by_collaborator_id: EntityId<"principal"> | null;
   /**
    * Role the redeemer receives on the targeted level. Written into the
    * level-appropriate users table on consume. Optional in storage for
@@ -57,7 +57,7 @@ export interface Invite {
    * "consumed". For multi-use invites (future), this would be the
    * most-recent redeemer.
    */
-  redeemed_by_principal_id: EntityId<"principal"> | null;
+  redeemed_by_collaborator_id: EntityId<"principal"> | null;
   /** ISO timestamp of redemption. Null until consumed. */
   redeemed_at: string | null;
 }
@@ -117,13 +117,13 @@ export class InviteStore {
    * the caller renders `invite_url = https://<host>/invite/<code>`.
    *
    * @param docoId             Doco the invite grants access to.
-   * @param mintedByPrincipalId Principal that issued the invite (null for the
+   * @param mintedByCollaboratorId Principal that issued the invite (null for the
    *                            anonymous-create seed invite).
    * @param ttlDays             Days until the invite expires (default 7).
    */
   async issueInvite(
     docoId: EntityId<"doco">,
-    mintedByPrincipalId: EntityId<"principal"> | null,
+    mintedByCollaboratorId: EntityId<"principal"> | null,
     ttlDays = 7,
     role: "owner" | "approver" | "author" | "reader" = "author",
     opts: {
@@ -141,12 +141,12 @@ export class InviteStore {
       level,
       doco_id: docoId,
       ...(opts.org_id ? { org_id: opts.org_id } : {}),
-      minted_by_principal_id: mintedByPrincipalId,
+      minted_by_collaborator_id: mintedByCollaboratorId,
       role,
       expires_at: expires.toISOString(),
       issued_at: now.toISOString(),
       status: "pending",
-      redeemed_by_principal_id: null,
+      redeemed_by_collaborator_id: null,
       redeemed_at: null,
     };
     file.tokens.push(invite);
@@ -179,7 +179,7 @@ export class InviteStore {
    */
   async consumeInvite(
     code: string,
-    redeemedByPrincipalId: EntityId<"principal">,
+    redeemedByCollaboratorId: EntityId<"principal">,
   ): Promise<Invite | null> {
     const file = await this.load();
     const row = file.tokens.find((t) => t.kind === "invite" && t.code === code) as
@@ -193,7 +193,7 @@ export class InviteStore {
     }
     if (row.status !== "pending") return null;
     row.status = "consumed";
-    row.redeemed_by_principal_id = redeemedByPrincipalId;
+    row.redeemed_by_collaborator_id = redeemedByCollaboratorId;
     row.redeemed_at = new Date().toISOString();
     await this.save(file);
     return row;

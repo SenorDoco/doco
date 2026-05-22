@@ -76,7 +76,7 @@ export async function action({
   const raw = {
     id,
     doco_id: meta.docoId,
-    node_type: "principal",
+    entity_type: "principal",
     summary,
     type,
     username,
@@ -89,7 +89,7 @@ export async function action({
   await upsertEntity({
     id,
     doco_id: meta.docoId,
-    node_type: "principal",
+    entity_type: "principal",
     raw_yaml: JSON.stringify(raw),
     summary,
     lifecycle: "active",
@@ -131,7 +131,7 @@ export async function loader({
   const docoUsers = await listDocoUsers(meta.docoId);
   const principals = await Promise.all(
     docoUsers.map(async (u) => {
-      const p = await getPrincipalById(u.principal_id);
+      const p = await getPrincipalById(u.collaborator_id);
       return p
         ? {
             id: p.id,

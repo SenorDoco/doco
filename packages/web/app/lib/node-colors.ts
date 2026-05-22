@@ -14,8 +14,8 @@ export const NODE_TYPE_COLOR: Record<string, string> = {
   intent: "#d946ef", // magenta
   idea: "#f43f5e", // rose
   rule: "#dc2626", // red
-  guidance_article: "#8b5cf6", // violet
-  node_authoring_article: "#0891b2", // cyan-blue
+  guidance_primitive: "#8b5cf6", // violet
+  neuron_authoring_primitive: "#0891b2", // cyan-blue
   decision: "#f97316", // orange
   action: "#7c3aed", // purple
   log: "#14b8a6", // teal — instance-of-Action, distinct from purple
@@ -59,8 +59,8 @@ const NODE_TYPE_PLURAL: Record<string, string> = {
   intent: "intents",
   idea: "ideas",
   rule: "rules",
-  guidance_article: "guidance articles",
-  node_authoring_article: "node authoring articles",
+  guidance_primitive: "guidance articles",
+  neuron_authoring_primitive: "node authoring articles",
   decision: "decisions",
   action: "actions",
   log: "logs",

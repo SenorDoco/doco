@@ -1,7 +1,7 @@
 import { withClient } from "@doco/db";
 // /<doco-handle>/rules/new — minimal capture form for a domain Rule entity.
-// Constitution meta-rules live in guidance_articles and
-// node_authoring_articles instead.
+// Constitution meta-rules live in guidance_primitives and
+// neuron_authoring_primitives instead.
 import { Form, redirect } from "react-router";
 import { Breadcrumb, docoBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";

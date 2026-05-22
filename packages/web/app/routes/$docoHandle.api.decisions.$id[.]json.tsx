@@ -15,7 +15,7 @@ import { loadDocoRouteForAdmin } from "~/lib/doco-access.server";
  */
 export const loader = makeUpdateRoute({
   type: "decisions",
-  nodeType: "decision",
+  entityType: "decision",
   pluralDir: "decisions",
   allowedFields: [],
 }).loader;

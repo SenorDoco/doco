@@ -48,29 +48,29 @@ export async function loader({
  * misread as having captured work.
  */
 type StatusGroup = "note" | "article";
-const TYPE_MAP: { nodeType: string; table: string; plural: string; group: StatusGroup }[] = [
-  { nodeType: "intent", table: "intents", plural: "intents", group: "note" },
-  { nodeType: "idea", table: "ideas", plural: "ideas", group: "note" },
-  { nodeType: "rule", table: "rules", plural: "rules", group: "note" },
+const TYPE_MAP: { entityType: string; table: string; plural: string; group: StatusGroup }[] = [
+  { entityType: "intent", table: "intents", plural: "intents", group: "note" },
+  { entityType: "idea", table: "ideas", plural: "ideas", group: "note" },
+  { entityType: "rule", table: "rules", plural: "rules", group: "note" },
   {
-    nodeType: "guidance_article",
-    table: "guidance_articles",
-    plural: "guidance_articles",
+    entityType: "guidance_primitive",
+    table: "guidance_primitives",
+    plural: "guidance_primitives",
     group: "article",
   },
   {
-    nodeType: "node_authoring_article",
-    table: "node_authoring_articles",
-    plural: "node_authoring_articles",
+    entityType: "neuron_authoring_primitive",
+    table: "neuron_authoring_primitives",
+    plural: "neuron_authoring_primitives",
     group: "article",
   },
-  { nodeType: "decision", table: "decisions", plural: "decisions", group: "note" },
-  { nodeType: "action", table: "actions", plural: "actions", group: "note" },
-  { nodeType: "log", table: "logs", plural: "logs", group: "note" },
-  { nodeType: "eval", table: "evals", plural: "evals", group: "note" },
-  { nodeType: "reference", table: "reference_entities", plural: "references", group: "note" },
+  { entityType: "decision", table: "decisions", plural: "decisions", group: "note" },
+  { entityType: "action", table: "actions", plural: "actions", group: "note" },
+  { entityType: "log", table: "logs", plural: "logs", group: "note" },
+  { entityType: "eval", table: "evals", plural: "evals", group: "note" },
+  { entityType: "reference", table: "reference_entities", plural: "references", group: "note" },
   // v7 (decision_01KRRR5BQ16ASY8HQEE0V499YG): State node type.
-  { nodeType: "state", table: "states", plural: "states", group: "note" },
+  { entityType: "state", table: "states", plural: "states", group: "note" },
 ];
 
 interface StatusCounts {

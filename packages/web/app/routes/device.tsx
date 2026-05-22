@@ -265,7 +265,7 @@ export async function action({ request }: { request: Request }) {
     }
     await approveDeviceAuthorization({
       device_code: row.device_code,
-      principal_id: principal.id,
+      collaborator_id: principal.id,
       granted_doco_ids: selected,
       granted_doco_roles,
       granted_org_ids: selectedOrgs,

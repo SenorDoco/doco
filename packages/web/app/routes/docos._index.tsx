@@ -39,7 +39,7 @@ interface DocoRow {
   docoId: string;
   handle: string;
   nodes: number;
-  edges: number;
+  synapses: number;
   lastUpdatedAt: string | null;
 }
 
@@ -72,12 +72,12 @@ export async function loader({ request }: { request: Request }) {
 
   const docos: DocoRow[] = docosRaw
     .map((d) => {
-      const s = stats.get(d.docoId) ?? { nodes: 0, edges: 0, lastUpdatedAt: null };
+      const s = stats.get(d.docoId) ?? { nodes: 0, synapses: 0, lastUpdatedAt: null };
       return {
         docoId: d.docoId,
         handle: d.handle,
         nodes: s.nodes,
-        edges: s.edges,
+        synapses: s.synapses,
         lastUpdatedAt: s.lastUpdatedAt,
       };
     })
@@ -97,8 +97,8 @@ export async function loader({ request }: { request: Request }) {
     const heatRows = await c.query<{ day: string; n: string }>(
       `SELECT to_char(at, 'YYYY-MM-DD') AS day, COUNT(*)::text AS n
          FROM audit_events
-        WHERE (by_principal = $1
-               OR by_principal IN (SELECT id FROM principals WHERE owner_id = $1))
+        WHERE (by_collaborator = $1
+               OR by_collaborator IN (SELECT id FROM principals WHERE owner_id = $1))
           AND at >= $2
         GROUP BY day`,
       [me.id, sinceIso],
@@ -122,7 +122,7 @@ export async function loader({ request }: { request: Request }) {
         `SELECT a.event_id, a.at, a.doco_id, a.entity_type, a.entity_id, a.op,
                 a.before_json, a.after_json, p.username
            FROM audit_events a
-           LEFT JOIN principals p ON p.id = a.by_principal
+           LEFT JOIN principals p ON p.id = a.by_collaborator
           WHERE a.doco_id = ANY($1)
           ORDER BY a.at DESC
           LIMIT $2`,
@@ -140,8 +140,8 @@ export async function loader({ request }: { request: Request }) {
            UNION ALL SELECT id, summary AS label, lifecycle FROM intents WHERE id = ANY($1)
            UNION ALL SELECT id, summary AS label, lifecycle FROM ideas WHERE id = ANY($1)
            UNION ALL SELECT id, summary AS label, lifecycle FROM rules WHERE id = ANY($1)
-           UNION ALL SELECT id, summary AS label, lifecycle FROM guidance_articles WHERE id = ANY($1)
-           UNION ALL SELECT id, summary AS label, lifecycle FROM node_authoring_articles WHERE id = ANY($1)
+           UNION ALL SELECT id, summary AS label, lifecycle FROM guidance_primitives WHERE id = ANY($1)
+           UNION ALL SELECT id, summary AS label, lifecycle FROM neuron_authoring_primitives WHERE id = ANY($1)
            UNION ALL SELECT id, summary AS label, lifecycle FROM actions WHERE id = ANY($1)
            UNION ALL SELECT id, summary AS label, lifecycle FROM logs WHERE id = ANY($1)
            UNION ALL SELECT id, summary AS label, lifecycle FROM evals WHERE id = ANY($1)
@@ -228,7 +228,7 @@ export default function DocosIndexPage({
                       <TableRow>
                         <TableHead>handle</TableHead>
                         <TableHead className="text-right">nodes</TableHead>
-                        <TableHead className="text-right">edges</TableHead>
+                        <TableHead className="text-right">synapses</TableHead>
                         <TableHead className="text-right">last updated</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -241,7 +241,7 @@ export default function DocosIndexPage({
                             </Link>
                           </TableCell>
                           <TableCell className="text-right font-mono">{d.nodes}</TableCell>
-                          <TableCell className="text-right font-mono">{d.edges}</TableCell>
+                          <TableCell className="text-right font-mono">{d.synapses}</TableCell>
                           <TableCell className="text-right text-muted-foreground">
                             {timeAgo(d.lastUpdatedAt)}
                           </TableCell>
@@ -290,7 +290,7 @@ export default function DocosIndexPage({
 function DocosFeedLine({ event }: { event: FeedEvent }) {
   const url = entityUrl({
     docoId: event.handle,
-    nodeType: event.entity_type,
+    entityType: event.entity_type,
     id: event.entity_id,
   });
   const summary = event.summary ?? auditSummaryFallback(event.entity_type, event.entity_id);

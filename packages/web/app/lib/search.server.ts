@@ -5,7 +5,7 @@ import { type SearchFilters, resolveFilteredCandidates } from "~/lib/search-filt
 
 export interface SearchHit {
   id: string;
-  node_type: string;
+  entity_type: string;
   summary?: string;
   name: string | null;
   lifecycle: string | null;
@@ -16,21 +16,21 @@ export interface SearchHit {
 
 export interface SearchTypeSpec {
   table: string;
-  nodeType: string;
+  entityType: string;
   selectExtra: string;
   hostLevel: boolean;
   toHit(row: Record<string, unknown>, vectorScore: number | null): Omit<SearchHit, "gpr">;
 }
 
-function entitySpec(table: string, nodeType: string): SearchTypeSpec {
+function entitySpec(table: string, entityType: string): SearchTypeSpec {
   return {
     table,
-    nodeType,
+    entityType,
     selectExtra: "summary, lifecycle, created_at",
     hostLevel: false,
     toHit: (row, score) => ({
       id: String(row.id),
-      node_type: nodeType,
+      entity_type: entityType,
       summary: (row.summary as string) ?? "",
       name: null,
       lifecycle: (row.lifecycle as string) ?? null,
@@ -55,12 +55,12 @@ export const SEARCH_TYPE_SPECS: SearchTypeSpec[] = [
   entitySpec("states", "state"),
   {
     table: "principals",
-    nodeType: "principal",
+    entityType: "principal",
     selectExtra: "username, created_at",
     hostLevel: true,
     toHit: (row, score) => ({
       id: String(row.id),
-      node_type: "principal",
+      entity_type: "principal",
       summary: (row.username as string) ?? "",
       name: (row.username as string) ?? null,
       lifecycle: null,
@@ -70,12 +70,12 @@ export const SEARCH_TYPE_SPECS: SearchTypeSpec[] = [
   },
   {
     table: "organizations",
-    nodeType: "organization",
+    entityType: "organization",
     selectExtra: "slug, name, created_at",
     hostLevel: true,
     toHit: (row, score) => ({
       id: String(row.id),
-      node_type: "organization",
+      entity_type: "organization",
       summary: (row.name as string) ?? "",
       name: (row.slug as string) ?? null,
       lifecycle: null,
@@ -85,7 +85,7 @@ export const SEARCH_TYPE_SPECS: SearchTypeSpec[] = [
   },
 ];
 
-const FILTER_PARAM_NAMES = ["lifecycle", "node_type"] as const;
+const FILTER_PARAM_NAMES = ["lifecycle", "entity_type"] as const;
 
 export function hasExplicitSearchFilter(params: URLSearchParams): boolean {
   return FILTER_PARAM_NAMES.some((name) => params.has(name));
@@ -156,8 +156,8 @@ export async function attachSearchGlobalPageRank(
 ): Promise<void> {
   if (hits.length === 0) return;
   const edgeRows = (
-    await c.query<{ from_id: string; to_id: string; edge_type: string; attribution: string }>(
-      "SELECT from_id, to_id, edge_type, attribution FROM edges WHERE doco_id = $1",
+    await c.query<{ from_id: string; to_id: string; synapse_type: string; attribution: string }>(
+      "SELECT from_id, to_id, synapse_type, attribution FROM synapses WHERE doco_id = $1",
       [docoId],
     )
   ).rows;
@@ -165,7 +165,7 @@ export async function attachSearchGlobalPageRank(
     edgeRows.map((edge) => ({
       from: edge.from_id,
       to: edge.to_id,
-      edge_type: edge.edge_type,
+      synapse_type: edge.synapse_type,
       attribution: edge.attribution as "explicit" | "doco-auto",
     })),
     { alpha: 0.85 },

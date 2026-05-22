@@ -112,8 +112,8 @@ export async function getCurrentPrincipalAsync(request: Request): Promise<Curren
   if (credential) {
     const { validateAccessToken } = await import("./oauth-server.server");
     const token = await validateAccessToken(credential);
-    if (token?.principal_id) {
-      const p = await findPrincipalById(token.principal_id);
+    if (token?.collaborator_id) {
+      const p = await findPrincipalById(token.collaborator_id);
       if (p) return p;
     }
   }

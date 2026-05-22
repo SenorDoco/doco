@@ -8,7 +8,7 @@ import {
   getDocoUserRole,
   getOrgRole,
   getPrincipalById,
-  listDocoIdsForUserPrincipal,
+  listDocoIdsForCollaborator,
   maxRole,
   roleAtLeast,
   withClient,
@@ -207,14 +207,14 @@ export async function isMyDoco(
  * OAuth tokens are only authentication, not membership storage.
  */
 export async function listInvitedDocoIdsForPrincipal(principalId: string): Promise<Set<string>> {
-  const ids = await listDocoIdsForUserPrincipal(principalId);
+  const ids = await listDocoIdsForCollaborator(principalId);
   return new Set(ids);
 }
 
 /**
  * Every Doco the principal can read or write — the union of three
  * sources:
- *   1. Docos they own directly (`docos.owner_id = principal_id`)
+ *   1. Docos they own directly (`docos.owner_id = collaborator_id`)
  *   2. Docos owned by an org they belong to (any role in `org_users`)
  *   3. Explicit `doco_users` grants
  *
@@ -222,7 +222,7 @@ export async function listInvitedDocoIdsForPrincipal(principalId: string): Promi
  * Docos can this user see"). Use this for any UI that needs to
  * surface the user's full Doco set — including the OAuth approve
  * screen and the Device-Flow approve screen — instead of the bare
- * `listDocoIdsForUserPrincipal`, which only sees source #3.
+ * `listDocoIdsForCollaborator`, which only sees source #3.
  */
 export async function listAccessibleDocoIdsForPrincipal(principalId: string): Promise<string[]> {
   const ids = new Set<string>();
@@ -235,7 +235,7 @@ export async function listAccessibleDocoIdsForPrincipal(principalId: string): Pr
     }
     const viaOrg = await c.query<{ id: string }>(
       `SELECT id FROM docos WHERE owner_id IN (
-         SELECT org_id FROM org_users WHERE principal_id = $1
+         SELECT org_id FROM org_users WHERE collaborator_id = $1
        )`,
       [principalId],
     );
@@ -243,7 +243,7 @@ export async function listAccessibleDocoIdsForPrincipal(principalId: string): Pr
       ids.add(String(row.id));
     }
   });
-  const viaDocoUsers = await listDocoIdsForUserPrincipal(principalId);
+  const viaDocoUsers = await listDocoIdsForCollaborator(principalId);
   for (const id of viaDocoUsers) {
     ids.add(id);
   }

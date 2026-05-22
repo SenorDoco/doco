@@ -12,7 +12,7 @@ import { cn } from "~/lib/cn";
 
 export interface ActivityFeedLineItem {
   id: string;
-  node_type: string;
+  entity_type: string;
   summary: string | null;
   at: string;
   op: string;
@@ -37,11 +37,11 @@ export function ActivityFeedLine({
   const url = entityUrl({
     ownerSlug,
     docoSlug,
-    nodeType: item.node_type,
+    entityType: item.entity_type,
     id: item.id,
   });
-  const summary = item.summary ?? auditSummaryFallback(item.node_type, item.id);
-  const Type = capNodeType(item.node_type);
+  const summary = item.summary ?? auditSummaryFallback(item.entity_type, item.id);
+  const Type = capNodeType(item.entity_type);
   const detail = lifecycleTransitionText(item);
   const strikeTarget = shouldStrikeActivityTarget(item);
   return (

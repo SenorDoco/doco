@@ -62,7 +62,7 @@ export async function action({
   if (!me) {
     // canAccessDoco may have let an anonymous caller pass for a public
     // Doco; minting invites still requires a Principal so we can
-    // record minted_by_principal_id on the invite row.
+    // record minted_by_collaborator_id on the invite row.
     return Response.json({ error: "anonymous_callers_cannot_mint_invites" }, { status: 403 });
   }
 

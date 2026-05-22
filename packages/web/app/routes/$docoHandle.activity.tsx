@@ -20,7 +20,7 @@ const VALID_OPS: ReadonlySet<string> = new Set([
   "entity.update",
   "entity.delete",
   "lifecycle.transition",
-  "edge.add",
+  "synapse.add",
 ]);
 
 export function meta({ params }: { params: { docoHandle?: string; docoId?: string } }) {
@@ -120,7 +120,7 @@ export default function ActivityPage({
                         to={entityUrl({
                           ownerSlug,
                           docoSlug,
-                          nodeType: e.entity_type as never,
+                          entityType: e.entity_type as never,
                           id: e.entity_id as EntityId<never>,
                         })}
                         className={cn(
@@ -128,7 +128,7 @@ export default function ActivityPage({
                           shouldStrikeActivityTarget(e) && "line-through decoration-2",
                         )}
                       >
-                        <NodeTypeBadge nodeType={e.entity_type} />
+                        <NodeTypeBadge entityType={e.entity_type} />
                         <span className="font-mono">{e.entity_id}</span>
                       </Link>
                     </div>
@@ -177,7 +177,7 @@ function FilterChips({
             className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-0.5 font-mono"
           >
             <span>entity_type=</span>
-            <NodeTypeBadge nodeType={String(v)} />
+            <NodeTypeBadge entityType={String(v)} />
           </span>
         ) : (
           <code key={k} className="rounded-md border border-border px-2 py-0.5 font-mono">

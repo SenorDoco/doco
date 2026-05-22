@@ -10,7 +10,7 @@ export function verbFromAuditOp(op: string): string {
   if (op === "entity.update") return "updated";
   if (op === "entity.delete") return "deleted";
   if (op === "lifecycle.transition") return "transitioned";
-  if (op === "edge.add") return "linked";
+  if (op === "synapse.add") return "linked";
   return op;
 }
 
@@ -19,7 +19,7 @@ export function iconFromAuditOp(op: string): string {
   if (op === "entity.update") return "📝";
   if (op === "entity.delete") return "🗑️";
   if (op === "lifecycle.transition") return "🔁";
-  if (op === "edge.add") return "➕";
+  if (op === "synapse.add") return "➕";
   return "•";
 }
 
@@ -52,8 +52,8 @@ export function shouldStrikeActivityTarget(
   return lifecycle != null && STRUCK_ACTIVITY_LIFECYCLES.has(lifecycle);
 }
 
-export function auditSummaryFallback(nodeType: string, id: string): string {
-  return `${nodeType}_${id.slice(-6)}`;
+export function auditSummaryFallback(entityType: string, id: string): string {
+  return `${entityType}_${id.slice(-6)}`;
 }
 
 function stringField(

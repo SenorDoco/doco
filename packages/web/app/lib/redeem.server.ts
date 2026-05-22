@@ -19,9 +19,9 @@ import { readDocoMetadata } from "./doco-metadata.server";
 import { getDocoEmbeddingProvider } from "./embedding-provider.server";
 
 export interface ReindexExtraOptions {
-  /** Skip the OpenAI embedding pass (FTS + edges only). */
+  /** Skip the OpenAI embedding pass (FTS + synapses only). */
   skipEmbeddings?: boolean;
-  /** Skip the structural FTS + edges pass (embeddings only). */
+  /** Skip the structural FTS + synapses pass (embeddings only). */
   skipStructural?: boolean;
 }
 
@@ -36,7 +36,7 @@ export interface ReindexExtraOptions {
  * from the synthetic `<root>/docos/<owner>/<slug>` path.
  *
  * `changedEntityIds` triggers the incremental path: only those entities'
- * derived rows are rebuilt, the rest of the Doco's edges/FTS/embeddings
+ * derived rows are rebuilt, the rest of the Doco's synapses/FTS/embeddings
  * stay in place. Used by single-entity capture/patch handlers. Omit
  * for full rebuilds — first build, bulk import, settings.
  *
@@ -69,7 +69,7 @@ export async function reindex(
 
 /**
  * Shorthand for the "second phase" reindex — runs only the embedding
- * pass, leaving FTS + edges untouched. Used by capture flows that
+ * pass, leaving FTS + synapses untouched. Used by capture flows that
  * already ran the structural pass inline and now want the embeddings
  * to catch up off the request path (`waitUntil`).
  *

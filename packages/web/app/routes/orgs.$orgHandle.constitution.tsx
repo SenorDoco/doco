@@ -82,7 +82,7 @@ export async function loader({
   const [guidanceRows, nodeAuthoringRows] = await withClient(async (c) => {
     const guidance = await c.query<ArticleRow>(
       `SELECT id, summary, lifecycle, created_at, body_md, raw_yaml
-         FROM org_guidance_articles
+         FROM org_guidance_primitives
         WHERE org_id = $1
           AND COALESCE(lifecycle, 'active') = 'active'
         ORDER BY created_at DESC`,
@@ -90,7 +90,7 @@ export async function loader({
     );
     const nodeAuthoring = await c.query<ArticleRow>(
       `SELECT id, summary, lifecycle, created_at, body_md, raw_yaml
-         FROM org_node_authoring_articles
+         FROM org_neuron_authoring_primitives
         WHERE org_id = $1
           AND COALESCE(lifecycle, 'active') = 'active'
         ORDER BY created_at DESC`,
@@ -148,7 +148,7 @@ export default function OrgConstitution({
 
         <ArticleSection
           title="Guidance articles"
-          nodeType="guidance_article"
+          entityType="guidance_primitive"
           description={GUIDANCE_ARTICLE_EXPLAINER}
           addHref={canEdit ? `/orgs/${org.slug}/constitution/guidance/new` : null}
           editHrefBase={canEdit ? `/orgs/${org.slug}/constitution/guidance` : null}
@@ -158,7 +158,7 @@ export default function OrgConstitution({
 
         <ArticleSection
           title="Node-authoring articles"
-          nodeType="node_authoring_article"
+          entityType="neuron_authoring_primitive"
           description={NODE_AUTHORING_ARTICLE_EXPLAINER}
           addHref={canEdit ? `/orgs/${org.slug}/constitution/node-authoring/new` : null}
           editHrefBase={canEdit ? `/orgs/${org.slug}/constitution/node-authoring` : null}
@@ -172,7 +172,7 @@ export default function OrgConstitution({
 
 function ArticleSection({
   title,
-  nodeType,
+  entityType,
   description,
   addHref,
   editHrefBase,
@@ -180,7 +180,7 @@ function ArticleSection({
   empty,
 }: {
   title: string;
-  nodeType: "guidance_article" | "node_authoring_article";
+  entityType: "guidance_primitive" | "neuron_authoring_primitive";
   description: string;
   addHref: string | null;
   editHrefBase: string | null;
@@ -193,7 +193,7 @@ function ArticleSection({
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0 flex-1 space-y-1.5">
             <CardTitle className="flex items-center gap-2">
-              <NodeTypeIcon nodeType={nodeType} className="h-4 w-4" />
+              <NodeTypeIcon entityType={entityType} className="h-4 w-4" />
               <span>{title}</span>
               <span className="font-mono text-xs font-normal text-muted-foreground">
                 {items.length}

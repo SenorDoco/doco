@@ -49,7 +49,7 @@ export default function NewDocoStep4({
           <CardContent className="space-y-4 text-sm">
             <ul className="ml-5 list-disc space-y-2">
               <li>Doco helps keep people, agents, and work aligned</li>
-              <li>Docos are made of nodes (concepts) and edges (connections between nodes)</li>
+              <li>Docos are made of nodes (concepts) and synapses (connections between nodes)</li>
               <li>
                 Collaborators can query docos and add information (nodes) to them (if they have the
                 permission)

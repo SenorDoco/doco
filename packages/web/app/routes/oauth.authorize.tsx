@@ -219,7 +219,7 @@ export async function action({ request }: { request: Request }) {
 
   const { code } = await issueAuthorizationCode({
     client_id: params.client_id,
-    principal_id: principal.id,
+    collaborator_id: principal.id,
     redirect_uri: params.redirect_uri,
     code_challenge: params.code_challenge,
     granted_doco_ids: selected,

@@ -13,10 +13,10 @@ import { Link } from "react-router";
 import { NodeTypeIcon } from "~/components/node-type-icon";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "~/components/table";
 
-export type DrawerKind = "relevant" | "edges" | "history" | "metadata";
+export type DrawerKind = "relevant" | "synapses" | "history" | "metadata";
 
 export interface DrawerEdge {
-  edge_type: string;
+  synapse_type: string;
   /** The id of the OTHER node — to_id for outgoing, from_id for incoming. */
   other_id: string;
   other_node_type: string;
@@ -33,7 +33,7 @@ export interface DrawerHistoryEvent {
 
 export interface DrawerRelevantNode {
   id: string;
-  node_type: string;
+  entity_type: string;
   summary: string;
   name: string | null;
   ppr: number;
@@ -84,7 +84,7 @@ function paneTitle(kind: DrawerKind): string {
   switch (kind) {
     case "relevant":
       return "Relevant nodes";
-    case "edges":
+    case "synapses":
       return "Edges";
     case "history":
       return "History";
@@ -114,7 +114,7 @@ export function NodeDetailDrawer(props: NodeDetailDrawerProps) {
       </header>
       <div className="min-h-0 flex-1 overflow-auto px-4 py-3">
         {open === "relevant" ? <RelevantNodesPane {...props} /> : null}
-        {open === "edges" ? <EdgesPane {...props} /> : null}
+        {open === "synapses" ? <EdgesPane {...props} /> : null}
         {open === "history" ? <HistoryPane {...props} /> : null}
         {open === "metadata" ? <MetadataPane {...props} /> : null}
       </div>
@@ -138,10 +138,10 @@ function RelevantNodesPane({ rankedNeighbors, linkTo }: NodeDetailDrawerProps) {
       <ul className="divide-y divide-border rounded-md border border-border">
         {rankedNeighbors.map((n) => (
           <li key={n.id}>
-            <Link to={linkTo(n.node_type, n.id)} className="block px-3 py-2 hover:bg-input/40">
+            <Link to={linkTo(n.entity_type, n.id)} className="block px-3 py-2 hover:bg-input/40">
               <div className="flex items-center gap-1.5 text-[10px] uppercase text-muted-foreground">
-                <NodeTypeIcon nodeType={n.node_type} />
-                <span>{n.node_type}</span>
+                <NodeTypeIcon entityType={n.entity_type} />
+                <span>{n.entity_type}</span>
                 <span className="ml-2 font-mono normal-case">PPR {n.ppr.toFixed(3)}</span>
               </div>
               <p className="mt-0.5 text-foreground">{n.summary?.slice(0, 120) ?? n.id}</p>
@@ -161,7 +161,7 @@ function EdgesPane({ outgoing, incoming, linkTo }: NodeDetailDrawerProps) {
           Outgoing ({outgoing.length})
         </h3>
         {outgoing.length === 0 ? (
-          <p className="mt-2 text-muted-foreground">No outgoing edges.</p>
+          <p className="mt-2 text-muted-foreground">No outgoing synapses.</p>
         ) : (
           <Table>
             <TableHeader>
@@ -172,8 +172,8 @@ function EdgesPane({ outgoing, incoming, linkTo }: NodeDetailDrawerProps) {
             </TableHeader>
             <TableBody>
               {outgoing.map((e) => (
-                <TableRow key={`out-${e.edge_type}-${e.other_id}`}>
-                  <TableCell className="font-mono text-[11px]">{e.edge_type}</TableCell>
+                <TableRow key={`out-${e.synapse_type}-${e.other_id}`}>
+                  <TableCell className="font-mono text-[11px]">{e.synapse_type}</TableCell>
                   <TableCell>
                     <Link
                       to={linkTo(e.other_node_type, e.other_id)}
@@ -205,8 +205,8 @@ function EdgesPane({ outgoing, incoming, linkTo }: NodeDetailDrawerProps) {
             </TableHeader>
             <TableBody>
               {incoming.map((e) => (
-                <TableRow key={`in-${e.edge_type}-${e.other_id}`}>
-                  <TableCell className="font-mono text-[11px]">{e.edge_type}</TableCell>
+                <TableRow key={`in-${e.synapse_type}-${e.other_id}`}>
+                  <TableCell className="font-mono text-[11px]">{e.synapse_type}</TableCell>
                   <TableCell>
                     <Link
                       to={linkTo(e.other_node_type, e.other_id)}

@@ -3,9 +3,9 @@ import {
   getDocoById,
   getOrgRole,
   getPrincipalById,
-  listDocoIdsForUserPrincipal,
+  listDocoIdsForCollaborator,
   listDocoUsers,
-  listOrganizationsForPrincipal,
+  listOrganizationsForCollaborator,
   withClient,
 } from "@doco/db";
 import type { EntityId } from "@doco/shared";
@@ -29,7 +29,7 @@ export type CurrentPrincipal = NonNullable<Awaited<ReturnType<typeof getCurrentP
 export type PrincipalKind = "person" | "agent";
 
 export interface UserCell {
-  principal_id: string;
+  collaborator_id: string;
   username: string;
   kind: PrincipalKind;
   last_activity_at: string | null;
@@ -75,7 +75,7 @@ async function enrichPrincipal(
   const p = await getPrincipalById(id);
   const kind: PrincipalKind = p?.type === "agent" ? "agent" : "person";
   return {
-    principal_id: id,
+    collaborator_id: id,
     username: p?.username ?? id,
     kind,
     last_activity_at: lastActivity.get(id) ?? null,
@@ -86,17 +86,17 @@ async function loadLastActivity(principalIds: string[]): Promise<Map<string, str
   const out = new Map<string, string>();
   if (principalIds.length === 0) return out;
   const rows = await withClient((c) =>
-    c.query<{ by_principal: string; last_at: string | Date }>(
-      `SELECT by_principal, MAX(at) AS last_at
+    c.query<{ by_collaborator: string; last_at: string | Date }>(
+      `SELECT by_collaborator, MAX(at) AS last_at
        FROM audit_events
-       WHERE by_principal = ANY($1)
-       GROUP BY by_principal`,
+       WHERE by_collaborator = ANY($1)
+       GROUP BY by_collaborator`,
       [principalIds],
     ),
   );
   for (const row of rows.rows) {
     const at = row.last_at instanceof Date ? row.last_at.toISOString() : String(row.last_at);
-    out.set(row.by_principal, at);
+    out.set(row.by_collaborator, at);
   }
   return out;
 }
@@ -136,7 +136,7 @@ async function loadOauthAgentGrants(principalId: string): Promise<{
          JOIN oauth_clients c ON c.client_id = rt.client_id
         WHERE rt.revoked = false
           AND rt.expires_at > now()
-          AND rt.principal_id = $1
+          AND rt.collaborator_id = $1
         ORDER BY rt.client_id, rt.created_at DESC`,
       [principalId],
     ),
@@ -173,7 +173,7 @@ async function loadOauthAgentGrants(principalId: string): Promise<{
 
 function oauthSliceToGrantRow(slice: OauthGrantSlice): GrantRow {
   return {
-    principal_id: `oauth:${slice.client_id}`,
+    collaborator_id: `oauth:${slice.client_id}`,
     username: slice.client_name,
     kind: "agent",
     last_activity_at: null,
@@ -199,25 +199,25 @@ export async function loadCollaboratorSections(principalId: string): Promise<{
   orgSections: OrgSection[];
   docoSections: DocoSection[];
 }> {
-  const myOrgs = await listOrganizationsForPrincipal(principalId);
+  const myOrgs = await listOrganizationsForCollaborator(principalId);
   const orgRoleRows: Array<{
     org: { id: string; slug: string; name: string };
     myRole: DocoRole;
-    rows: Array<{ principal_id: string; role: DocoRole; joined_at: string }>;
+    rows: Array<{ collaborator_id: string; role: DocoRole; joined_at: string }>;
   }> = [];
   const allPrincipalIds = new Set<string>();
   for (const org of myOrgs) {
     const myRole = (await getOrgRole(org.id, principalId)) ?? "reader";
     const result = await withClient(async (c) =>
-      c.query<{ principal_id: string; role: string; joined_at: string | Date }>(
-        "SELECT principal_id, role, joined_at FROM org_users WHERE org_id = $1 ORDER BY joined_at",
+      c.query<{ collaborator_id: string; role: string; joined_at: string | Date }>(
+        "SELECT collaborator_id, role, joined_at FROM org_users WHERE org_id = $1 ORDER BY joined_at",
         [org.id],
       ),
     );
     const rows = result.rows.map((row) => {
-      allPrincipalIds.add(String(row.principal_id));
+      allPrincipalIds.add(String(row.collaborator_id));
       return {
-        principal_id: String(row.principal_id),
+        collaborator_id: String(row.collaborator_id),
         role: row.role as DocoRole,
         joined_at:
           row.joined_at instanceof Date ? row.joined_at.toISOString() : String(row.joined_at),
@@ -240,27 +240,27 @@ export async function loadCollaboratorSections(principalId: string): Promise<{
   const orgDocos = await withClient((c) =>
     c.query<{ id: string }>(
       `SELECT id FROM docos WHERE owner_id IN (
-         SELECT org_id FROM org_users WHERE principal_id = $1
+         SELECT org_id FROM org_users WHERE collaborator_id = $1
        )`,
       [principalId],
     ),
   );
   for (const r of orgDocos.rows) accessibleDocoIds.add(String(r.id));
-  const myDocoUsersIds = await listDocoIdsForUserPrincipal(principalId);
+  const myDocoUsersIds = await listDocoIdsForCollaborator(principalId);
   for (const id of myDocoUsersIds) accessibleDocoIds.add(id);
 
   const docoRoleRows: Array<{
     doco: { id: string; handle: string; ownerId: string };
     myRole: DocoRole;
-    rows: Array<{ principal_id: string; role: DocoRole; joined_at: string }>;
+    rows: Array<{ collaborator_id: string; role: DocoRole; joined_at: string }>;
   }> = [];
   for (const docoId of accessibleDocoIds) {
     const doco = await getDocoById(docoId);
     if (!doco) continue;
     const users = await listDocoUsers(docoId);
     const rows = users.map((u) => {
-      allPrincipalIds.add(u.principal_id);
-      return { principal_id: u.principal_id, role: u.role, joined_at: u.joined_at };
+      allPrincipalIds.add(u.collaborator_id);
+      return { collaborator_id: u.collaborator_id, role: u.role, joined_at: u.joined_at };
     });
     const myRole =
       (await getDocoLevelRole({ ownerId: doco.owner_id, docoId: doco.id }, principalId)) ??
@@ -292,7 +292,7 @@ export async function loadCollaboratorSections(principalId: string): Promise<{
   for (const entry of orgRoleRows) {
     const users: GrantRow[] = await Promise.all(
       entry.rows.map(async (row) => ({
-        ...(await enrichPrincipal(row.principal_id, lastActivity)),
+        ...(await enrichPrincipal(row.collaborator_id, lastActivity)),
         role: row.role,
         joined_at: row.joined_at,
         source: "principal" as const,
@@ -306,7 +306,7 @@ export async function loadCollaboratorSections(principalId: string): Promise<{
   for (const entry of docoRoleRows) {
     const users: GrantRow[] = await Promise.all(
       entry.rows.map(async (row) => ({
-        ...(await enrichPrincipal(row.principal_id, lastActivity)),
+        ...(await enrichPrincipal(row.collaborator_id, lastActivity)),
         role: row.role,
         joined_at: row.joined_at,
         source: "principal" as const,

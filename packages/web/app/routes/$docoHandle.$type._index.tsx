@@ -19,7 +19,7 @@ import { getCurrentPrincipal } from "~/lib/session";
 // Articles are constitution metadata, not nodes — the generic
 // "/<handle>/<type>" list view exists for notes only. Article lists
 // live at /<handle>/constitution and /<handle>/api/articles.json.
-const ARTICLE_TYPES = new Set<string>(["guidance_article", "node_authoring_article"]);
+const ARTICLE_TYPES = new Set<string>(["guidance_primitive", "neuron_authoring_primitive"]);
 const KNOWN = new Set<string>(ENTITY_TYPES.filter((t) => !ARTICLE_TYPES.has(t)));
 
 export async function loader({
@@ -76,7 +76,7 @@ const TABLE_BY_TYPE: Record<string, string> = {
   eval: "evals",
   idea: "ideas",
   // v7 (decision_01KRRR5BQ16ASY8HQEE0V499YG): State node type maps to
-  // the `states` table; the default `nodeType + "s"` fallback would
+  // the `states` table; the default `entityType + "s"` fallback would
   // resolve to `state` and crash the list query.
   state: "states",
 };
@@ -126,7 +126,7 @@ export default function ListByTypeInDoco({
                 <TableRow key={it.id}>
                   <TableCell>
                     <Link
-                      to={entityUrl({ ownerSlug, docoSlug, nodeType: type, id: it.id })}
+                      to={entityUrl({ ownerSlug, docoSlug, entityType: type, id: it.id })}
                       className="text-primary hover:underline"
                     >
                       {it.title ?? it.name ?? it.id}

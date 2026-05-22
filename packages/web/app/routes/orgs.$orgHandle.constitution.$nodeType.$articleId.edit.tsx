@@ -1,4 +1,4 @@
-// /orgs/<org>/constitution/<nodeType>/<id>/edit — modify or abandon
+// /orgs/<org>/constitution/<entityType>/<id>/edit — modify or abandon
 // an existing org-level constitution article. Owner-only.
 //
 // POST intent=modify  → captures a new article with `supersedes: <id>`
@@ -22,7 +22,7 @@ import { deriveArticleSummary } from "~/lib/constitution-copy";
 import { loadHostConfig } from "~/lib/host";
 import { getCurrentPrincipalAsync } from "~/lib/session";
 
-type NodeType = "guidance_article" | "node_authoring_article";
+type EntityType = "guidance_primitive" | "neuron_authoring_primitive";
 type ArticleKind = "deterministic" | "probabilistic";
 
 interface ActionError {
@@ -35,9 +35,9 @@ interface OrgRow {
   name: string;
 }
 
-function parseNodeType(raw: string | undefined): NodeType | null {
-  if (raw === "guidance" || raw === "guidance_article") return "guidance_article";
-  if (raw === "node-authoring" || raw === "node_authoring_article") return "node_authoring_article";
+function parseNodeType(raw: string | undefined): EntityType | null {
+  if (raw === "guidance" || raw === "guidance_primitive") return "guidance_primitive";
+  if (raw === "node-authoring" || raw === "neuron_authoring_primitive") return "neuron_authoring_primitive";
   return null;
 }
 
@@ -61,17 +61,17 @@ export async function loader({
   params,
 }: {
   request: Request;
-  params: { orgHandle: string; nodeType: string; articleId: string };
+  params: { orgHandle: string; entityType: string; articleId: string };
 }) {
-  const nodeType = parseNodeType(params.nodeType);
-  if (!nodeType) throw new Response("Unknown article kind.", { status: 404 });
+  const entityType = parseNodeType(params.entityType);
+  if (!entityType) throw new Response("Unknown article kind.", { status: 404 });
   const org = await resolveOrgByHandle(params.orgHandle);
   if (!org) throw new Response(`Org "${params.orgHandle}" not found.`, { status: 404 });
   const me = await getCurrentPrincipalAsync(request);
   if (!me) {
     throw redirect(
       `/sign-in?next=${encodeURIComponent(
-        `/orgs/${org.slug}/constitution/${params.nodeType}/${params.articleId}/edit`,
+        `/orgs/${org.slug}/constitution/${params.entityType}/${params.articleId}/edit`,
       )}`,
     );
   }
@@ -82,7 +82,7 @@ export async function loader({
   const result = await loadArticleForEdit({
     scope: "org",
     scopeId: org.id,
-    nodeType,
+    entityType,
     articleId: params.articleId,
   });
   if ("error" in result) {
@@ -91,7 +91,7 @@ export async function loader({
   return {
     org,
     me,
-    nodeType,
+    entityType,
     articleId: params.articleId,
     body_md: result.body_md,
     lifecycle: result.lifecycle,
@@ -105,10 +105,10 @@ export async function action({
   params,
 }: {
   request: Request;
-  params: { orgHandle: string; nodeType: string; articleId: string };
+  params: { orgHandle: string; entityType: string; articleId: string };
 }) {
-  const nodeType = parseNodeType(params.nodeType);
-  if (!nodeType) throw new Response("Unknown article kind.", { status: 404 });
+  const entityType = parseNodeType(params.entityType);
+  if (!entityType) throw new Response("Unknown article kind.", { status: 404 });
   const org = await resolveOrgByHandle(params.orgHandle);
   if (!org) throw new Response(`Org "${params.orgHandle}" not found.`, { status: 404 });
   const me = await getCurrentPrincipalAsync(request);
@@ -125,7 +125,7 @@ export async function action({
     const result = await transitionArticleLifecycle({
       scope: "org",
       scopeId: org.id,
-      nodeType,
+      entityType,
       articleId: params.articleId,
       newLifecycle: "abandoned",
       actorId: me.id,
@@ -145,7 +145,7 @@ export async function action({
     let captured: Awaited<
       ReturnType<typeof captureOrgGuidanceArticle | typeof captureOrgNodeAuthoringArticle>
     >;
-    if (nodeType === "guidance_article") {
+    if (entityType === "guidance_primitive") {
       captured = await captureOrgGuidanceArticle(
         org.id,
         {
@@ -161,7 +161,7 @@ export async function action({
         String(form.get("evaluation_kind") ?? "deterministic") === "probabilistic"
           ? "probabilistic"
           : "deterministic";
-      const lifecycle = String(form.get("fires_when_node_lifecycle") ?? "")
+      const lifecycle = String(form.get("fires_when_neuron_lifecycle") ?? "")
         .split(",")
         .map((s) => s.trim())
         .filter(Boolean);
@@ -175,7 +175,7 @@ export async function action({
         on_violation,
         authored_by_username: me.username,
         created_by_id: me.id,
-        ...(lifecycle.length > 0 ? { fires_when_node_lifecycle: lifecycle } : {}),
+        ...(lifecycle.length > 0 ? { fires_when_neuron_lifecycle: lifecycle } : {}),
         ...(evaluationKind === "probabilistic"
           ? { spec: String(form.get("probabilistic_spec") ?? "").trim() }
           : { predicate: String(form.get("deterministic_predicate") ?? "").trim() }),
@@ -188,7 +188,7 @@ export async function action({
     const transitioned = await transitionArticleLifecycle({
       scope: "org",
       scopeId: org.id,
-      nodeType,
+      entityType,
       articleId: params.articleId,
       newLifecycle: "superseded",
       actorId: me.id,
@@ -212,9 +212,9 @@ export default function EditOrgArticle({
 }: {
   loaderData: Awaited<ReturnType<typeof loader>>;
 }) {
-  const { org, me, nodeType, articleId, body_md, raw_yaml } = loaderData;
+  const { org, me, entityType, articleId, body_md, raw_yaml } = loaderData;
   const actionData = useActionData<ActionError>();
-  const isNodeAuthoring = nodeType === "node_authoring_article";
+  const isNodeAuthoring = entityType === "neuron_authoring_primitive";
   const initialEvalKind: ArticleKind =
     raw_yaml.evaluation_kind === "probabilistic" ? "probabilistic" : "deterministic";
   const [evaluationKind, setEvaluationKind] = useState<ArticleKind>(initialEvalKind);
@@ -229,8 +229,8 @@ export default function EditOrgArticle({
     typeof (raw_yaml.predicate as { spec?: string }).spec === "string"
       ? (raw_yaml.predicate as { spec: string }).spec
       : "";
-  const initialFiresOn = Array.isArray(raw_yaml.fires_when_node_lifecycle)
-    ? (raw_yaml.fires_when_node_lifecycle as string[]).join(", ")
+  const initialFiresOn = Array.isArray(raw_yaml.fires_when_neuron_lifecycle)
+    ? (raw_yaml.fires_when_neuron_lifecycle as string[]).join(", ")
     : "";
   const initialOnViolation =
     typeof raw_yaml.on_violation === "string" ? raw_yaml.on_violation : "block";
@@ -327,7 +327,7 @@ export default function EditOrgArticle({
                         Fires on lifecycles (comma-separated)
                       </span>
                       <input
-                        name="fires_when_node_lifecycle"
+                        name="fires_when_neuron_lifecycle"
                         defaultValue={initialFiresOn}
                         placeholder="active"
                         className="mt-1 block w-full rounded-md border border-border bg-input px-3 py-2 text-sm"

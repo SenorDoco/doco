@@ -6,7 +6,7 @@ import { c, checkmark, cross } from "../output.js";
 export const reindexCmd = defineCommand({
   meta: {
     name: "reindex",
-    description: "Rebuild the Postgres-side derived data (edges, FTS, embeddings) for the Doco at the current root.",
+    description: "Rebuild the Postgres-side derived data (synapses, FTS, embeddings) for the Doco at the current root.",
   },
   args: {
     root: { type: "string", description: "Path to the Doco root (default: walk upward from cwd)." },

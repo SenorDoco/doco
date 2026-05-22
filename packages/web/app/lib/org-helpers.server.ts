@@ -20,7 +20,7 @@ export async function listMyOrgs(principalId: string): Promise<MyOrgRow[]> {
          FROM organizations o
         WHERE EXISTS (
           SELECT 1 FROM org_users m
-           WHERE m.org_id = o.id AND m.principal_id = $1
+           WHERE m.org_id = o.id AND m.collaborator_id = $1
         )
         ORDER BY handle`,
       [principalId],
@@ -45,7 +45,7 @@ export async function lookupOrgHandle(orgId: string): Promise<string | null> {
 export async function isOrgMember(orgId: string, principalId: string): Promise<boolean> {
   return withClient(async (c) => {
     const r = await c.query(
-      "SELECT 1 FROM org_users WHERE org_id = $1 AND principal_id = $2 LIMIT 1",
+      "SELECT 1 FROM org_users WHERE org_id = $1 AND collaborator_id = $2 LIMIT 1",
       [orgId, principalId],
     );
     return (r.rowCount ?? 0) > 0;

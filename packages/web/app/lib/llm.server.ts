@@ -34,16 +34,16 @@ function loadDotEnvFromAncestors(): void {
 if (!process.env.OPENAI_API_KEY) loadDotEnvFromAncestors();
 
 // ────────────────────────────────────────────────────────────────────────
-// Implicit-edge detection (per the `llm-auto-edge-detection-on-capture` ADR).
+// Implicit-edge detection (per the `llm-auto-synapse-detection-on-capture` ADR).
 //
 // When a new node enters the Doco, ask the LLM to look at the node + a
 // summary pool of other nodes in the Doco and propose which existing
-// nodes it relates to. Returned edges are written to the new node's
-// `auto_edges` field with `attribution: 'doco-auto'`.
+// nodes it relates to. Returned synapses are written to the new node's
+// `auto_synapses` field with `attribution: 'doco-auto'`.
 
 export interface ImplicitEdgeCandidate {
   id: string;
-  node_type: string;
+  entity_type: string;
   summary: string;
   /** Optional name (used by eval) for readable identification in the LLM's response. */
   name?: string;
@@ -51,13 +51,13 @@ export interface ImplicitEdgeCandidate {
 
 export interface ImplicitEdgeSuggestion {
   to_id: string;
-  edge_type: string;
+  synapse_type: string;
   reason: string;
 }
 
 export interface SuggestImplicitEdgesOptions {
   /** The node we're trying to find connections for. */
-  source: { id: string; node_type: string; summary: string };
+  source: { id: string; entity_type: string; summary: string };
   /** Other nodes in the Doco the LLM can pick from. Cap at ~50 in caller. */
   candidates: ImplicitEdgeCandidate[];
   model?: string;
@@ -80,11 +80,11 @@ Edge types you may use:
 - "tests" (source is an eval/test of the candidate)
 
 Rules:
-- Be conservative — only propose edges you're confident about. Quality over quantity.
-- Maximum 6 edges. Better to return 2 strong ones than 6 weak ones.
+- Be conservative — only propose synapses you're confident about. Quality over quantity.
+- Maximum 6 synapses. Better to return 2 strong ones than 6 weak ones.
 - Each edge has a one-sentence \`reason\` explaining why.
-- Skip edges already implied by explicit refs (the caller filters those).
-- Output JSON only: {"edges": [{"to_id": "...", "edge_type": "...", "reason": "..."}, ...]}.`;
+- Skip synapses already implied by explicit refs (the caller filters those).
+- Output JSON only: {"synapses": [{"to_id": "...", "synapse_type": "...", "reason": "..."}, ...]}.`;
 
 export async function suggestImplicitEdges(
   opts: SuggestImplicitEdgesOptions,
@@ -94,12 +94,12 @@ export async function suggestImplicitEdges(
   const candidatesText = opts.candidates
     .map(
       (c) =>
-        `  - id: ${c.id}\n    type: ${c.node_type}\n${c.name ? `    name: ${c.name}\n` : ""}    summary: ${c.summary}`,
+        `  - id: ${c.id}\n    type: ${c.entity_type}\n${c.name ? `    name: ${c.name}\n` : ""}    summary: ${c.summary}`,
     )
     .join("\n");
   const userPrompt = `SOURCE:
   id: ${opts.source.id}
-  node_type: ${opts.source.node_type}
+  entity_type: ${opts.source.entity_type}
   summary: ${opts.source.summary}
 
 CANDIDATES (${opts.candidates.length}):
@@ -128,18 +128,18 @@ ${candidatesText}`;
     const data = (await res.json()) as { choices?: { message?: { content?: string } }[] };
     const text = data.choices?.[0]?.message?.content;
     if (!text) return [];
-    const parsed = JSON.parse(text) as { edges?: unknown };
-    if (!Array.isArray(parsed.edges)) return [];
+    const parsed = JSON.parse(text) as { synapses?: unknown };
+    if (!Array.isArray(parsed.synapses)) return [];
     const candidateIds = new Set(opts.candidates.map((c) => c.id));
-    return (parsed.edges as Record<string, unknown>[])
+    return (parsed.synapses as Record<string, unknown>[])
       .map((e): ImplicitEdgeSuggestion | null => {
         const to_id = typeof e.to_id === "string" ? e.to_id.trim() : "";
-        const edge_type = typeof e.edge_type === "string" ? e.edge_type.trim() : "";
+        const synapse_type = typeof e.synapse_type === "string" ? e.synapse_type.trim() : "";
         const reason = typeof e.reason === "string" ? e.reason.trim() : "";
-        if (!to_id || !edge_type || !reason) return null;
+        if (!to_id || !synapse_type || !reason) return null;
         if (!candidateIds.has(to_id)) return null; // hallucinated id
         if (to_id === opts.source.id) return null;
-        return { to_id, edge_type, reason };
+        return { to_id, synapse_type, reason };
       })
       .filter((e): e is ImplicitEdgeSuggestion => e !== null)
       .slice(0, 6);

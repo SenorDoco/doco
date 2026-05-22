@@ -5,7 +5,7 @@ import { makeUpdateRoute } from "~/lib/api-capture-factory.server";
 // additive list operations survive — see mutability.server.ts.
 const route = makeUpdateRoute({
   type: "logs",
-  nodeType: "log",
+  entityType: "log",
   pluralDir: "logs",
   allowedFields: [
     "slug",

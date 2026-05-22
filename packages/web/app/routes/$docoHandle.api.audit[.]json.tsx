@@ -4,7 +4,7 @@
 //   entity_id=<id>           events for one entity
 //   entity_type=<type>       events for one node type
 //   op=<op>[,<op>,...]       comma-separated op-type filter
-//   by=<principal_id>        events authored by a given Principal
+//   by=<collaborator_id>        events authored by a given Principal
 //   since=<ISO8601>          inclusive lower bound (event.at >= since)
 //   until=<ISO8601>          inclusive upper bound (event.at <= until)
 //   limit=<int>              cap response size (default 200, max 1000)
@@ -22,7 +22,7 @@ const VALID_OPS: ReadonlySet<string> = new Set([
   "entity.update",
   "entity.delete",
   "lifecycle.transition",
-  "edge.add",
+  "synapse.add",
 ]);
 
 export async function loader({

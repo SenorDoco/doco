@@ -1,14 +1,14 @@
 // GET/POST /<doco-handle>/api/articles.json — dedicated articles endpoint.
 //
-// Articles (`guidance_article`, `node_authoring_article`) are not nodes.
+// Articles (`guidance_primitive`, `neuron_authoring_primitive`) are not nodes.
 // They are constitution metadata and are *only* reachable from this
 // endpoint, the agent bootstrap response, or the HTML constitution page.
 // The generic /<handle>/api/<type>.json dispatcher refuses article types.
 //
 // GET  → list every article in the Doco, both kinds, with an
-//        `article_type` discriminator.
+//        `primitive_kind` discriminator.
 // POST → capture a new article. Body shape:
-//        { "article_type": "guidance" | "node_authoring", ...draft }
+//        { "primitive_kind": "guidance" | "node_authoring", ...draft }
 //        Where `...draft` follows GuidanceArticleDraft or
 //        NodeAuthoringArticleDraft from capture.server.ts.
 
@@ -36,8 +36,8 @@ interface ArticleRow {
 }
 
 interface ArticleListEntry extends ArticleRow {
-  article_type: "guidance" | "node_authoring";
-  node_type: "guidance_article" | "node_authoring_article";
+  primitive_kind: "guidance" | "node_authoring";
+  entity_type: "guidance_primitive" | "neuron_authoring_primitive";
 }
 
 export async function loader({
@@ -54,7 +54,7 @@ export async function loader({
         `SELECT id, summary, lifecycle, body_md,
                 created_at::text AS created_at,
                 updated_at::text AS updated_at
-           FROM guidance_articles
+           FROM guidance_primitives
           WHERE doco_id = $1
           ORDER BY created_at DESC`,
         [ctx.meta.docoId],
@@ -63,7 +63,7 @@ export async function loader({
         `SELECT id, summary, lifecycle, body_md,
                 created_at::text AS created_at,
                 updated_at::text AS updated_at
-           FROM node_authoring_articles
+           FROM neuron_authoring_primitives
           WHERE doco_id = $1
           ORDER BY created_at DESC`,
         [ctx.meta.docoId],
@@ -72,13 +72,13 @@ export async function loader({
     const items: ArticleListEntry[] = [
       ...guidance.rows.map((r) => ({
         ...r,
-        article_type: "guidance" as const,
-        node_type: "guidance_article" as const,
+        primitive_kind: "guidance" as const,
+        entity_type: "guidance_primitive" as const,
       })),
       ...nodeAuthoring.rows.map((r) => ({
         ...r,
-        article_type: "node_authoring" as const,
-        node_type: "node_authoring_article" as const,
+        primitive_kind: "node_authoring" as const,
+        entity_type: "neuron_authoring_primitive" as const,
       })),
     ];
     return Response.json({
@@ -122,7 +122,7 @@ export async function action({
     me.id ?? null,
     bodyText,
     async () => {
-      let parsed: { article_type?: unknown } & Record<string, unknown>;
+      let parsed: { primitive_kind?: unknown } & Record<string, unknown>;
       try {
         parsed = JSON.parse(bodyText);
       } catch (e) {
@@ -131,12 +131,12 @@ export async function action({
           { status: 400 },
         );
       }
-      const articleType = parsed.article_type;
-      if (articleType !== "guidance" && articleType !== "node_authoring") {
+      const primitiveKind = parsed.primitive_kind;
+      if (primitiveKind !== "guidance" && primitiveKind !== "node_authoring") {
         return Response.json(
           {
             error:
-              'Body must include "article_type": "guidance" | "node_authoring" to disambiguate.',
+              'Body must include "primitive_kind": "guidance" | "node_authoring" to disambiguate.',
           },
           { status: 400 },
         );
@@ -154,9 +154,9 @@ export async function action({
       }
 
       const docoHost = new URL(request.url).origin;
-      const { article_type: _discarded, ...rest } = parsed;
+      const { primitive_kind: _discarded, ...rest } = parsed;
 
-      if (articleType === "guidance") {
+      if (primitiveKind === "guidance") {
         const draft = rest as unknown as GuidanceArticleDraft;
         if (!draft.authored_by_username) draft.authored_by_username = me.username;
         if (!draft.created_by_id && me.id) draft.created_by_id = me.id;

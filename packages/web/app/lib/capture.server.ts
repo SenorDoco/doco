@@ -18,8 +18,8 @@ import { reindex, reindexEmbeddingsOnly } from "./redeem.server";
  * storage; there is no on-disk file. Callers (footer renderer, CLI)
  * already key off the entity URL, not this string.
  */
-function syntheticPath(nodeType: string, id: string): string {
-  return `<postgres>:${nodeType}s/${id}`;
+function syntheticPath(entityType: string, id: string): string {
+  return `<postgres>:${entityType}s/${id}`;
 }
 
 /**
@@ -28,10 +28,10 @@ function syntheticPath(nodeType: string, id: string): string {
  * alpha forbids back-compat).
  */
 async function readEntityFromPostgres(
-  nodeType: string,
+  entityType: string,
   id: string,
 ): Promise<{ fm: Record<string, unknown>; body: string } | null> {
-  const row = await getEntity(nodeType, id);
+  const row = await getEntity(entityType, id);
   if (!row) return null;
   const fm = JSON.parse(row.raw_yaml) as Record<string, unknown>;
   const body = row.body_md ?? "";
@@ -48,7 +48,7 @@ async function readEntityFromPostgres(
  * reindex would race the upsert and may not see the new row.
  */
 async function persistEntity(args: {
-  nodeType: string;
+  entityType: string;
   id: string;
   docoId: string;
   fm: Record<string, unknown>;
@@ -59,7 +59,7 @@ async function persistEntity(args: {
     await upsertEntity({
       id: args.id,
       doco_id: args.docoId,
-      node_type: args.nodeType,
+      entity_type: args.entityType,
       raw_yaml: JSON.stringify(fm),
       body_md: args.body,
       summary: typeof fm.summary === "string" ? fm.summary : null,
@@ -71,33 +71,33 @@ async function persistEntity(args: {
       updated_by: typeof fm.updated_by === "string" ? fm.updated_by : null,
     });
   } catch (err) {
-    console.error(`postgres persist failed for ${args.nodeType}/${args.id}:`, err);
+    console.error(`postgres persist failed for ${args.entityType}/${args.id}:`, err);
     throw err;
   }
 }
 
 /**
  * Reindex synchronously (so the caller's response reflects materialized
- * edges/FTS/embeddings) and schedule the optional LLM-based
+ * synapses/FTS/embeddings) and schedule the optional LLM-based
  * `attachImplicitEdges` pass in the background. The caller must have
  * already `await`-ed `persistEntity` so the new row is durably written
  * before the reindex reads it back.
  *
  * Why sync reindex: on Vercel-style serverless deploys the lambda is
  * frozen once the response is sent — a fire-and-forget background
- * promise may never run to completion, leaving the `edges` table empty
+ * promise may never run to completion, leaving the `synapses` table empty
  * even though the entity row carries `intent_ids` / `born_from`. The
  * fix: await the reindex before responding. Adds a few hundred ms to
  * capture/PATCH latency; in return the graph is always consistent the
  * moment the agent sees the success line.
  *
  * `changedEntityId` triggers the incremental reindex path: only that
- * entity's FTS row + outgoing edges are rebuilt, leaving the rest of
+ * entity's FTS row + outgoing synapses are rebuilt, leaving the rest of
  * the Doco's derived data untouched. Capture/patch handlers always
  * know the id of the row they just wrote, so they all pass it.
  *
  * Two-phase reindex (decision_01KRP… two-phase-reindex):
- *  1. Structural pass (FTS + edges) — runs inline, awaited. Fast: one
+ *  1. Structural pass (FTS + synapses) — runs inline, awaited. Fast: one
  *     batched INSERT per table on the changed entity's rows, ~50ms.
  *     The agent's success line reflects a real graph.
  *  2. Embedding pass — wrapped in Vercel `waitUntil` so the response
@@ -108,7 +108,7 @@ async function persistEntity(args: {
  *
  * `attachImplicitEdges` stays background because it issues an LLM call
  * (multi-second, optional). If it doesn't complete on serverless the
- * worst case is no auto-edges suggested — explicit edges still land.
+ * worst case is no auto-synapses suggested — explicit synapses still land.
  */
 async function reindexAndScheduleAttach(
   docoDir: string,
@@ -256,7 +256,7 @@ export async function renderOperationLines(opts: {
    * the handle differs from `<owner>-<slug>` (e.g., custom requested_id).
    */
   docoId?: string;
-  nodeType: string;
+  entityType: string;
   /** Entity ULID id — used to build the markdown link URL. */
   id: string;
   /**
@@ -272,7 +272,7 @@ export async function renderOperationLines(opts: {
   ops: Op[];
   duration_ms?: number;
 }): Promise<string[]> {
-  const Type = capType(opts.nodeType);
+  const Type = capType(opts.entityType);
   // Phase 2d of slug-removal: every Doco URL is `/<handle>/...`. Use
   // the explicit handle when given; otherwise look it up by docoId;
   // otherwise fall back to `<owner>-<slug>` synthesis (correct for
@@ -287,7 +287,7 @@ export async function renderOperationLines(opts: {
   } else {
     handle = `${opts.ownerSlug}-${opts.docoSlug}`;
   }
-  const linkUrl = opts.docoHost ? `${opts.docoHost}/${handle}/${opts.nodeType}/${opts.id}` : null;
+  const linkUrl = opts.docoHost ? `${opts.docoHost}/${handle}/${opts.entityType}/${opts.id}` : null;
   const buildAnchor = (summaryForLine: string): string => {
     const text = trunc(summaryForLine);
     return linkUrl ? `[${mdLinkText(text)}](${linkUrl})` : text;
@@ -366,13 +366,13 @@ function emitAuditForUpdate(opts: {
   const { changed, beforeFm, afterFm, patchKeys } = opts;
   if (changed.length === 0) return;
 
-  let op: "lifecycle.transition" | "edge.add" | "entity.update";
+  let op: "lifecycle.transition" | "synapse.add" | "entity.update";
   if (changed.includes("lifecycle")) {
     op = "lifecycle.transition";
   } else {
     const hasAddPatch = patchKeys.some((k) => k.endsWith("_add"));
     const allChangesAreEdges = changed.every((f) => f === "intent_ids");
-    op = hasAddPatch && allChangesAreEdges ? "edge.add" : "entity.update";
+    op = hasAddPatch && allChangesAreEdges ? "synapse.add" : "entity.update";
   }
 
   const before: Record<string, unknown> = {};
@@ -547,24 +547,24 @@ async function attachImplicitEdges(opts: {
   entitySummary: string;
   alreadyReferenced: Set<string>;
 }): Promise<number> {
-  type CandidateRow = { id: string; node_type: string; summary: string; name?: string };
+  type CandidateRow = { id: string; entity_type: string; summary: string; name?: string };
   let candidates: CandidateRow[] = [];
   const meta = await readDocoMetadata(opts.docoDir);
   if (!meta?.docoId) return 0;
   try {
     await withClient(async (c) => {
-      const types: { table: string; nodeType: string; hasName: boolean }[] = [
-        { table: "decisions", nodeType: "decision", hasName: false },
-        { table: "intents", nodeType: "intent", hasName: false },
-        { table: "rules", nodeType: "rule", hasName: false },
-        { table: "guidance_articles", nodeType: "guidance_article", hasName: false },
+      const types: { table: string; entityType: string; hasName: boolean }[] = [
+        { table: "decisions", entityType: "decision", hasName: false },
+        { table: "intents", entityType: "intent", hasName: false },
+        { table: "rules", entityType: "rule", hasName: false },
+        { table: "guidance_primitives", entityType: "guidance_primitive", hasName: false },
         {
-          table: "node_authoring_articles",
-          nodeType: "node_authoring_article",
+          table: "neuron_authoring_primitives",
+          entityType: "neuron_authoring_primitive",
           hasName: false,
         },
-        { table: "actions", nodeType: "action", hasName: false },
-        { table: "evals", nodeType: "eval", hasName: true },
+        { table: "actions", entityType: "action", hasName: false },
+        { table: "evals", entityType: "eval", hasName: true },
       ];
       for (const t of types) {
         try {
@@ -581,7 +581,7 @@ async function attachImplicitEdges(opts: {
             if (opts.alreadyReferenced.has(row.id)) continue;
             const cand: CandidateRow = {
               id: row.id,
-              node_type: t.nodeType,
+              entity_type: t.entityType,
               summary: row.summary ?? "",
             };
             if (row.name) cand.name = row.name;
@@ -600,7 +600,7 @@ async function attachImplicitEdges(opts: {
   const proposed = await suggestImplicitEdges({
     source: {
       id: opts.entityId,
-      node_type: opts.entityType,
+      entity_type: opts.entityType,
       summary: opts.entitySummary,
     },
     candidates,
@@ -610,14 +610,14 @@ async function attachImplicitEdges(opts: {
     const existing = await readEntityFromPostgres(opts.entityType, opts.entityId);
     if (!existing) return 0;
     const fm = existing.fm;
-    const prior = Array.isArray(fm.auto_edges) ? (fm.auto_edges as unknown[]) : [];
-    fm.auto_edges = [
+    const prior = Array.isArray(fm.auto_synapses) ? (fm.auto_synapses as unknown[]) : [];
+    fm.auto_synapses = [
       ...prior,
-      ...proposed.map((p) => ({ to_id: p.to_id, edge_type: p.edge_type, reason: p.reason })),
+      ...proposed.map((p) => ({ to_id: p.to_id, synapse_type: p.synapse_type, reason: p.reason })),
     ];
     const docoId = String(fm.doco_id ?? "");
     await persistEntity({
-      nodeType: opts.entityType,
+      entityType: opts.entityType,
       id: opts.entityId,
       docoId,
       fm,
@@ -671,7 +671,7 @@ export async function captureDecision(
   const fm: Record<string, unknown> = {
     id,
     doco_id: docoId,
-    node_type: "decision",
+    entity_type: "decision",
     summary,
     ...(draft.born_from ? { born_from: draft.born_from } : {}),
     ...(intentIds.length > 0 ? { intent_ids: intentIds } : {}),
@@ -688,7 +688,7 @@ export async function captureDecision(
   };
 
   await persistEntity({
-    nodeType: "decision",
+    entityType: "decision",
     id,
     docoId,
     fm,
@@ -719,7 +719,7 @@ export async function captureDecision(
     docoId,
     ownerSlug,
     docoSlug,
-    nodeType: "decision",
+    entityType: "decision",
     id,
     summary,
     docoHost,
@@ -899,7 +899,7 @@ export async function updateDecision(
   }
 
   await persistEntity({
-    nodeType: "decision",
+    entityType: "decision",
     id: decisionId,
     docoId,
     fm,
@@ -923,7 +923,7 @@ export async function updateDecision(
     docoId,
     ownerSlug,
     docoSlug,
-    nodeType: "decision",
+    entityType: "decision",
     id: decisionId,
     summary,
     docoHost,
@@ -944,8 +944,8 @@ export type NodeTypeName =
   | "decision"
   | "intent"
   | "rule"
-  | "guidance_article"
-  | "node_authoring_article"
+  | "guidance_primitive"
+  | "neuron_authoring_primitive"
   | "action"
   | "log"
   | "reference";
@@ -968,7 +968,7 @@ export async function updateEntity(opts: {
   docoId: string;
   ownerSlug: string;
   docoSlug: string;
-  nodeType: NodeTypeName;
+  entityType: NodeTypeName;
   pluralDir: string;
   id: string;
   patch: EntityPatch;
@@ -982,7 +982,7 @@ export async function updateEntity(opts: {
     docoId,
     ownerSlug,
     docoSlug,
-    nodeType,
+    entityType,
     id,
     patch,
     allowedFields,
@@ -990,22 +990,22 @@ export async function updateEntity(opts: {
     actorId,
   } = opts;
 
-  const existing = await readEntityFromPostgres(nodeType, id);
-  if (!existing) return { error: `${nodeType} not found: ${id}` };
+  const existing = await readEntityFromPostgres(entityType, id);
+  if (!existing) return { error: `${entityType} not found: ${id}` };
   const fm = existing.fm;
   const existingBody = existing.body;
   // Types with a markdown body get body_md; `reference` is pure YAML
   // and ignores body operations.
-  const isMd = nodeType !== "reference";
+  const isMd = entityType !== "reference";
 
   const gate = validatePatch(
-    nodeType,
+    entityType,
     fm.lifecycle as string | undefined,
     patch as Record<string, unknown>,
   );
   if (!gate.allowed) {
     return {
-      error: `${nodeType} is frozen — patch touched disallowed field(s): ${gate.rejected.join(", ")}.`,
+      error: `${entityType} is frozen — patch touched disallowed field(s): ${gate.rejected.join(", ")}.`,
       status: 409,
       rejected: gate.rejected,
       hint: gate.hint,
@@ -1126,7 +1126,7 @@ export async function updateEntity(opts: {
     }
   }
   await persistEntity({
-    nodeType,
+    entityType,
     id,
     docoId,
     fm,
@@ -1136,7 +1136,7 @@ export async function updateEntity(opts: {
     docoDir,
     docoId,
     actorId: actorId ?? null,
-    entity_type: nodeType,
+    entity_type: entityType,
     entity_id: id,
     changed,
     beforeFm,
@@ -1151,7 +1151,7 @@ export async function updateEntity(opts: {
     docoId,
     ownerSlug,
     docoSlug,
-    nodeType,
+    entityType,
     id,
     summary,
     docoHost,
@@ -1161,7 +1161,7 @@ export async function updateEntity(opts: {
   return {
     ok: true,
     id,
-    path: syntheticPath(nodeType, id),
+    path: syntheticPath(entityType, id),
     footer_lines,
     changed,
     duration_ms,
@@ -1181,7 +1181,7 @@ export interface IntentDraft {
   /**
    * Optional: principals expected to act in this flow. Each username
    * resolves to a principal id; the resulting list is stored on the
-   * Intent as `actors: [principal_id, ...]`. Used by the user-flows
+   * Intent as `actors: [collaborator_id, ...]`. Used by the user-flows
    * `graph-completeness` rule to require an Action per actor before
    * the Intent moves to `active`.
    */
@@ -1234,7 +1234,7 @@ export async function captureIntent(
   const fm: Record<string, unknown> = {
     id,
     doco_id: docoId,
-    node_type: "intent",
+    entity_type: "intent",
     summary,
     title,
     wanted_by: wantedById,
@@ -1245,7 +1245,7 @@ export async function captureIntent(
   };
 
   await persistEntity({
-    nodeType: "intent",
+    entityType: "intent",
     id,
     docoId,
     fm,
@@ -1273,7 +1273,7 @@ export async function captureIntent(
     docoId,
     ownerSlug,
     docoSlug,
-    nodeType: "intent",
+    entityType: "intent",
     id,
     summary,
     docoHost,
@@ -1369,7 +1369,7 @@ export async function captureEval(
   const fm: Record<string, unknown> = {
     id,
     doco_id: docoId,
-    node_type: "eval",
+    entity_type: "eval",
     summary,
     name: draft.name.trim(),
     ...(draft.kind ? { kind: draft.kind } : {}),
@@ -1388,7 +1388,7 @@ export async function captureEval(
   };
 
   await persistEntity({
-    nodeType: "eval",
+    entityType: "eval",
     id,
     docoId,
     fm,
@@ -1417,7 +1417,7 @@ export async function captureEval(
     docoId,
     ownerSlug,
     docoSlug,
-    nodeType: "eval",
+    entityType: "eval",
     id,
     summary,
     docoHost,
@@ -1501,7 +1501,7 @@ export async function captureAction(
   const fm: Record<string, unknown> = {
     id,
     doco_id: docoId,
-    node_type: "action",
+    entity_type: "action",
     summary,
     actor_id: actorId,
     verb: draft.verb.trim(),
@@ -1517,7 +1517,7 @@ export async function captureAction(
   };
 
   await persistEntity({
-    nodeType: "action",
+    entityType: "action",
     id,
     docoId,
     fm,
@@ -1551,7 +1551,7 @@ export async function captureAction(
     docoId,
     ownerSlug,
     docoSlug,
-    nodeType: "action",
+    entityType: "action",
     id,
     summary,
     docoHost,
@@ -1647,7 +1647,7 @@ export async function captureLog(
   const fm: Record<string, unknown> = {
     id,
     doco_id: docoId,
-    node_type: "log",
+    entity_type: "log",
     summary,
     actor_id: actorId,
     verb: draft.verb.trim(),
@@ -1664,7 +1664,7 @@ export async function captureLog(
   };
 
   await persistEntity({
-    nodeType: "log",
+    entityType: "log",
     id,
     docoId,
     fm,
@@ -1699,7 +1699,7 @@ export async function captureLog(
     docoId,
     ownerSlug,
     docoSlug,
-    nodeType: "log",
+    entityType: "log",
     id,
     summary,
     docoHost,
@@ -1800,7 +1800,7 @@ export async function captureRule(
   const fm: Record<string, unknown> = {
     id,
     doco_id: docoId,
-    node_type: "rule",
+    entity_type: "rule",
     summary,
     ...(draft.born_from ? { born_from: draft.born_from } : {}),
     ...(intentIds.length > 0 ? { intent_ids: intentIds } : {}),
@@ -1818,7 +1818,7 @@ export async function captureRule(
   };
 
   await persistEntity({
-    nodeType: "rule",
+    entityType: "rule",
     id,
     docoId,
     fm,
@@ -1851,7 +1851,7 @@ export async function captureRule(
     docoId,
     ownerSlug,
     docoSlug,
-    nodeType: "rule",
+    entityType: "rule",
     id,
     summary,
     docoHost,
@@ -1897,7 +1897,7 @@ export interface NodeAuthoringArticleDraft {
    * { kind: "probabilistic", spec }.
    */
   spec?: string;
-  fires_when_node_lifecycle?: string[];
+  fires_when_neuron_lifecycle?: string[];
   on_violation?: "block" | "warn" | "log";
   body_md?: string;
   authored_by_username?: string;
@@ -1947,19 +1947,19 @@ function normalizeNodeAuthoringPredicate(
             draft.predicate.kind === "probabilistic"
           ? draft.predicate.spec.trim()
           : "";
-    if (!spec) return { error: "spec is required for probabilistic node_authoring_articles." };
+    if (!spec) return { error: "spec is required for probabilistic neuron_authoring_primitives." };
     return { kind: "probabilistic", spec };
   }
 
   const parsed = parsePredicate(draft.predicate);
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-    return { error: "predicate must be a JSON object for deterministic node_authoring_articles." };
+    return { error: "predicate must be a JSON object for deterministic neuron_authoring_primitives." };
   }
   const predicate = parsed as AuthoringPredicate;
   if (predicate.kind === "probabilistic") {
     return {
       error:
-        "deterministic node_authoring_articles cannot use a probabilistic predicate; choose probabilistic instead.",
+        "deterministic neuron_authoring_primitives cannot use a probabilistic predicate; choose probabilistic instead.",
     };
   }
   if (typeof predicate.kind !== "string" || predicate.kind.length === 0) {
@@ -1974,11 +1974,11 @@ export interface ArticleCaptureExtras {
 }
 
 type ArticleScope = "doco" | "org";
-type ArticleNodeType = "guidance_article" | "node_authoring_article";
+type ArticleNodeType = "guidance_primitive" | "neuron_authoring_primitive";
 
 interface ArticlePayload {
   id: string;
-  nodeType: ArticleNodeType;
+  entityType: ArticleNodeType;
   summary: string;
   lifecycle: string;
   fm: Record<string, unknown>;
@@ -2018,8 +2018,8 @@ async function buildGuidanceArticlePayload(
   const fm: Record<string, unknown> = {
     id,
     ...articleScopeField(scope, scopeId),
-    node_type: "guidance_article",
-    article_type: "guidance",
+    entity_type: "guidance_primitive",
+    primitive_kind: "guidance",
     summary,
     ...articleExtrasFm(extras),
     created_at: now,
@@ -2029,7 +2029,7 @@ async function buildGuidanceArticlePayload(
 
   return {
     id,
-    nodeType: "guidance_article",
+    entityType: "guidance_primitive",
     summary,
     lifecycle,
     fm,
@@ -2060,18 +2060,18 @@ async function buildNodeAuthoringArticlePayload(
   const now = new Date().toISOString();
   const lifecycle = draft.lifecycle ?? "active";
   const createdById = draft.created_by_id ?? author;
-  const firesWhen = Array.isArray(draft.fires_when_node_lifecycle)
-    ? draft.fires_when_node_lifecycle.filter((v) => typeof v === "string" && v.length > 0)
+  const firesWhen = Array.isArray(draft.fires_when_neuron_lifecycle)
+    ? draft.fires_when_neuron_lifecycle.filter((v) => typeof v === "string" && v.length > 0)
     : [];
   const fm: Record<string, unknown> = {
     id,
     ...articleScopeField(scope, scopeId),
-    node_type: "node_authoring_article",
-    article_type: "node_authoring",
+    entity_type: "neuron_authoring_primitive",
+    primitive_kind: "node_authoring",
     evaluation_kind: draft.evaluation_kind,
     summary,
     predicate,
-    ...(firesWhen.length > 0 ? { fires_when_node_lifecycle: firesWhen } : {}),
+    ...(firesWhen.length > 0 ? { fires_when_neuron_lifecycle: firesWhen } : {}),
     on_violation: draft.on_violation ?? "block",
     ...articleExtrasFm(extras),
     created_at: now,
@@ -2081,7 +2081,7 @@ async function buildNodeAuthoringArticlePayload(
 
   return {
     id,
-    nodeType: "node_authoring_article",
+    entityType: "neuron_authoring_primitive",
     summary,
     lifecycle,
     fm,
@@ -2106,7 +2106,7 @@ export async function captureGuidanceArticle(
   if ("error" in payload) return payload;
 
   await persistEntity({
-    nodeType: payload.nodeType,
+    entityType: payload.entityType,
     id: payload.id,
     docoId,
     fm: payload.fm,
@@ -2116,7 +2116,7 @@ export async function captureGuidanceArticle(
     docoDir,
     docoId,
     actorId: payload.createdById,
-    entity_type: payload.nodeType,
+    entity_type: payload.entityType,
     entity_id: payload.id,
     summary: payload.summary,
   });
@@ -2125,7 +2125,7 @@ export async function captureGuidanceArticle(
     ownerSlug,
     docoSlug,
     entityId: payload.id,
-    entityType: payload.nodeType,
+    entityType: payload.entityType,
     entitySummary: payload.summary,
     alreadyReferenced: new Set([payload.authorId]),
   });
@@ -2135,7 +2135,7 @@ export async function captureGuidanceArticle(
     docoId,
     ownerSlug,
     docoSlug,
-    nodeType: payload.nodeType,
+    entityType: payload.entityType,
     id: payload.id,
     summary: payload.summary,
     docoHost,
@@ -2145,7 +2145,7 @@ export async function captureGuidanceArticle(
   return {
     ok: true,
     id: payload.id,
-    path: syntheticPath(payload.nodeType, payload.id),
+    path: syntheticPath(payload.entityType, payload.id),
     footer_lines,
     duration_ms,
   };
@@ -2165,7 +2165,7 @@ export async function captureNodeAuthoringArticle(
   if ("error" in payload) return payload;
 
   await persistEntity({
-    nodeType: payload.nodeType,
+    entityType: payload.entityType,
     id: payload.id,
     docoId,
     fm: payload.fm,
@@ -2175,7 +2175,7 @@ export async function captureNodeAuthoringArticle(
     docoDir,
     docoId,
     actorId: payload.createdById,
-    entity_type: payload.nodeType,
+    entity_type: payload.entityType,
     entity_id: payload.id,
     summary: payload.summary,
   });
@@ -2184,7 +2184,7 @@ export async function captureNodeAuthoringArticle(
     ownerSlug,
     docoSlug,
     entityId: payload.id,
-    entityType: payload.nodeType,
+    entityType: payload.entityType,
     entitySummary: payload.summary,
     alreadyReferenced: new Set([payload.authorId]),
   });
@@ -2194,7 +2194,7 @@ export async function captureNodeAuthoringArticle(
     docoId,
     ownerSlug,
     docoSlug,
-    nodeType: payload.nodeType,
+    entityType: payload.entityType,
     id: payload.id,
     summary: payload.summary,
     docoHost,
@@ -2204,7 +2204,7 @@ export async function captureNodeAuthoringArticle(
   return {
     ok: true,
     id: payload.id,
-    path: syntheticPath(payload.nodeType, payload.id),
+    path: syntheticPath(payload.entityType, payload.id),
     footer_lines,
     duration_ms,
   };
@@ -2214,7 +2214,7 @@ export async function captureNodeAuthoringArticle(
 //
 // Mirror the per-Doco capture helpers but key on `org_id`. Org constitution
 // articles apply to every Doco the org owns. They live in dedicated tables
-// (`org_guidance_articles` / `org_node_authoring_articles`) and emit audit
+// (`org_guidance_primitives` / `org_neuron_authoring_primitives`) and emit audit
 // events under the `org_id` scope of audit_events — they are first-class
 // node-like records, just under an org scope rather than a doco scope.
 
@@ -2257,9 +2257,9 @@ function emitOrgAuditEvent(opts: {
 
 async function insertOrgArticle(orgId: string, payload: ArticlePayload): Promise<void> {
   const table =
-    payload.nodeType === "guidance_article"
-      ? "org_guidance_articles"
-      : "org_node_authoring_articles";
+    payload.entityType === "guidance_primitive"
+      ? "org_guidance_primitives"
+      : "org_neuron_authoring_primitives";
   await withClient(async (c) => {
     await c.query(
       `INSERT INTO ${table}
@@ -2293,7 +2293,7 @@ export async function captureOrgGuidanceArticle(
   emitOrgAuditEvent({
     orgId,
     actorId: payload.createdById,
-    entity_type: payload.nodeType,
+    entity_type: payload.entityType,
     entity_id: payload.id,
     op: "entity.create",
     after: articleAuditAfter(payload, extras),
@@ -2316,7 +2316,7 @@ export async function captureOrgNodeAuthoringArticle(
   emitOrgAuditEvent({
     orgId,
     actorId: payload.createdById,
-    entity_type: payload.nodeType,
+    entity_type: payload.entityType,
     entity_id: payload.id,
     op: "entity.create",
     after: articleAuditAfter(payload, extras),
@@ -2333,20 +2333,20 @@ export async function captureOrgNodeAuthoringArticle(
 export async function transitionArticleLifecycle(opts: {
   scope: "doco" | "org";
   scopeId: string;
-  nodeType: "guidance_article" | "node_authoring_article";
+  entityType: "guidance_primitive" | "neuron_authoring_primitive";
   articleId: string;
   newLifecycle: "active" | "superseded" | "abandoned";
   actorId: string | null;
   reason?: string;
 }): Promise<{ ok: true } | CaptureError> {
   const table =
-    opts.nodeType === "guidance_article"
+    opts.entityType === "guidance_primitive"
       ? opts.scope === "doco"
-        ? "guidance_articles"
-        : "org_guidance_articles"
+        ? "guidance_primitives"
+        : "org_guidance_primitives"
       : opts.scope === "doco"
-        ? "node_authoring_articles"
-        : "org_node_authoring_articles";
+        ? "neuron_authoring_primitives"
+        : "org_neuron_authoring_primitives";
   const scopeCol = opts.scope === "doco" ? "doco_id" : "org_id";
 
   const before = await withClient(async (c) => {
@@ -2392,7 +2392,7 @@ export async function transitionArticleLifecycle(opts: {
   const evt: Parameters<typeof appendAuditEvent>[0] = {
     docoDir: "",
     by: opts.actorId,
-    entity_type: opts.nodeType,
+    entity_type: opts.entityType,
     entity_id: opts.articleId,
     op: "lifecycle.transition",
     before: { lifecycle: before.lifecycle ?? "active" },
@@ -2414,7 +2414,7 @@ export async function transitionArticleLifecycle(opts: {
 export async function loadArticleForEdit(opts: {
   scope: "doco" | "org";
   scopeId: string;
-  nodeType: "guidance_article" | "node_authoring_article";
+  entityType: "guidance_primitive" | "neuron_authoring_primitive";
   articleId: string;
 }): Promise<
   | {
@@ -2427,13 +2427,13 @@ export async function loadArticleForEdit(opts: {
   | CaptureError
 > {
   const table =
-    opts.nodeType === "guidance_article"
+    opts.entityType === "guidance_primitive"
       ? opts.scope === "doco"
-        ? "guidance_articles"
-        : "org_guidance_articles"
+        ? "guidance_primitives"
+        : "org_guidance_primitives"
       : opts.scope === "doco"
-        ? "node_authoring_articles"
-        : "org_node_authoring_articles";
+        ? "neuron_authoring_primitives"
+        : "org_neuron_authoring_primitives";
   const scopeCol = opts.scope === "doco" ? "doco_id" : "org_id";
   const row = await withClient(async (c) => {
     const r = await c.query<{
@@ -2510,7 +2510,7 @@ export async function captureReference(
   const fm: Record<string, unknown> = {
     id,
     doco_id: docoId,
-    node_type: "reference",
+    entity_type: "reference",
     summary,
     ref_type: draft.ref_type,
     locator,
@@ -2522,7 +2522,7 @@ export async function captureReference(
   };
 
   await persistEntity({
-    nodeType: "reference",
+    entityType: "reference",
     id,
     docoId,
     fm,
@@ -2551,7 +2551,7 @@ export async function captureReference(
     docoId,
     ownerSlug,
     docoSlug,
-    nodeType: "reference",
+    entityType: "reference",
     id,
     summary,
     docoHost,
@@ -2632,7 +2632,7 @@ export async function captureState(
   const fm: Record<string, unknown> = {
     id,
     doco_id: docoId,
-    node_type: "state",
+    entity_type: "state",
     summary,
     kind: draft.kind,
     ...(invariants.length > 0 ? { invariants } : {}),
@@ -2643,7 +2643,7 @@ export async function captureState(
   };
 
   await persistEntity({
-    nodeType: "state",
+    entityType: "state",
     id,
     docoId,
     fm,
@@ -2672,7 +2672,7 @@ export async function captureState(
     docoId,
     ownerSlug,
     docoSlug,
-    nodeType: "state",
+    entityType: "state",
     id,
     summary,
     docoHost,

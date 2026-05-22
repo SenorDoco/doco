@@ -1,4 +1,4 @@
-// /<doco>/constitution/<nodeType>/<id>/edit — modify or abandon an
+// /<doco>/constitution/<entityType>/<id>/edit — modify or abandon an
 // existing constitution article. Owner-only (loadDocoRouteForAdmin gates
 // both loader + action).
 //
@@ -22,16 +22,16 @@ import { deriveArticleSummary } from "~/lib/constitution-copy";
 import { loadDocoRouteForAdmin } from "~/lib/doco-access.server";
 import { loadHostConfig } from "~/lib/host";
 
-type NodeType = "guidance_article" | "node_authoring_article";
+type EntityType = "guidance_primitive" | "neuron_authoring_primitive";
 type ArticleKind = "deterministic" | "probabilistic";
 
 interface ActionError {
   error: string;
 }
 
-function parseNodeType(raw: string | undefined): NodeType | null {
-  if (raw === "guidance" || raw === "guidance_article") return "guidance_article";
-  if (raw === "node-authoring" || raw === "node_authoring_article") return "node_authoring_article";
+function parseNodeType(raw: string | undefined): EntityType | null {
+  if (raw === "guidance" || raw === "guidance_primitive") return "guidance_primitive";
+  if (raw === "node-authoring" || raw === "neuron_authoring_primitive") return "neuron_authoring_primitive";
   return null;
 }
 
@@ -40,16 +40,16 @@ export async function loader({
   params,
 }: {
   request: Request;
-  params: { docoId: string; nodeType: string; articleId: string };
+  params: { docoId: string; entityType: string; articleId: string };
 }) {
-  const nodeType = parseNodeType(params.nodeType);
-  if (!nodeType) throw new Response("Unknown article kind.", { status: 404 });
+  const entityType = parseNodeType(params.entityType);
+  if (!entityType) throw new Response("Unknown article kind.", { status: 404 });
   const ctx = await loadDocoRouteForAdmin(request, params);
   const { docoSlug, handle, ownerSlug } = ctx;
   const result = await loadArticleForEdit({
     scope: "doco",
     scopeId: ctx.meta.docoId,
-    nodeType,
+    entityType,
     articleId: params.articleId,
   });
   if ("error" in result) {
@@ -60,7 +60,7 @@ export async function loader({
     docoSlug,
     handle,
     me: ctx.me,
-    nodeType,
+    entityType,
     articleId: params.articleId,
     body_md: result.body_md,
     lifecycle: result.lifecycle,
@@ -74,10 +74,10 @@ export async function action({
   params,
 }: {
   request: Request;
-  params: { docoId: string; nodeType: string; articleId: string };
+  params: { docoId: string; entityType: string; articleId: string };
 }) {
-  const nodeType = parseNodeType(params.nodeType);
-  if (!nodeType) throw new Response("Unknown article kind.", { status: 404 });
+  const entityType = parseNodeType(params.entityType);
+  if (!entityType) throw new Response("Unknown article kind.", { status: 404 });
   const ctx = await loadDocoRouteForAdmin(request, params);
   const { docoSlug, handle, ownerSlug } = ctx;
   const form = await request.formData();
@@ -87,7 +87,7 @@ export async function action({
     const result = await transitionArticleLifecycle({
       scope: "doco",
       scopeId: ctx.meta.docoId,
-      nodeType,
+      entityType,
       articleId: params.articleId,
       newLifecycle: "abandoned",
       actorId: ctx.me?.id ?? null,
@@ -109,7 +109,7 @@ export async function action({
     let captured: Awaited<
       ReturnType<typeof captureGuidanceArticle | typeof captureNodeAuthoringArticle>
     >;
-    if (nodeType === "guidance_article") {
+    if (entityType === "guidance_primitive") {
       captured = await captureGuidanceArticle(
         docoDir,
         ctx.meta.docoId,
@@ -129,7 +129,7 @@ export async function action({
         String(form.get("evaluation_kind") ?? "deterministic") === "probabilistic"
           ? "probabilistic"
           : "deterministic";
-      const lifecycle = String(form.get("fires_when_node_lifecycle") ?? "")
+      const lifecycle = String(form.get("fires_when_neuron_lifecycle") ?? "")
         .split(",")
         .map((s) => s.trim())
         .filter(Boolean);
@@ -143,7 +143,7 @@ export async function action({
         on_violation,
         authored_by_username: ctx.me?.username,
         created_by_id: ctx.me?.id,
-        ...(lifecycle.length > 0 ? { fires_when_node_lifecycle: lifecycle } : {}),
+        ...(lifecycle.length > 0 ? { fires_when_neuron_lifecycle: lifecycle } : {}),
         ...(evaluationKind === "probabilistic"
           ? { spec: String(form.get("probabilistic_spec") ?? "").trim() }
           : { predicate: String(form.get("deterministic_predicate") ?? "").trim() }),
@@ -164,7 +164,7 @@ export async function action({
     const transitioned = await transitionArticleLifecycle({
       scope: "doco",
       scopeId: ctx.meta.docoId,
-      nodeType,
+      entityType,
       articleId: params.articleId,
       newLifecycle: "superseded",
       actorId: ctx.me?.id ?? null,
@@ -188,9 +188,9 @@ export default function EditArticle({
 }: {
   loaderData: Awaited<ReturnType<typeof loader>>;
 }) {
-  const { ownerSlug, docoSlug, handle, me, nodeType, articleId, body_md, raw_yaml } = loaderData;
+  const { ownerSlug, docoSlug, handle, me, entityType, articleId, body_md, raw_yaml } = loaderData;
   const actionData = useActionData<ActionError>();
-  const isNodeAuthoring = nodeType === "node_authoring_article";
+  const isNodeAuthoring = entityType === "neuron_authoring_primitive";
   const initialEvalKind: ArticleKind =
     raw_yaml.evaluation_kind === "probabilistic" ? "probabilistic" : "deterministic";
   const [evaluationKind, setEvaluationKind] = useState<ArticleKind>(initialEvalKind);
@@ -205,8 +205,8 @@ export default function EditArticle({
     typeof (raw_yaml.predicate as { spec?: string }).spec === "string"
       ? (raw_yaml.predicate as { spec: string }).spec
       : "";
-  const initialFiresOn = Array.isArray(raw_yaml.fires_when_node_lifecycle)
-    ? (raw_yaml.fires_when_node_lifecycle as string[]).join(", ")
+  const initialFiresOn = Array.isArray(raw_yaml.fires_when_neuron_lifecycle)
+    ? (raw_yaml.fires_when_neuron_lifecycle as string[]).join(", ")
     : "";
   const initialOnViolation =
     typeof raw_yaml.on_violation === "string" ? raw_yaml.on_violation : "block";
@@ -303,7 +303,7 @@ export default function EditArticle({
                         Fires on lifecycles (comma-separated)
                       </span>
                       <input
-                        name="fires_when_node_lifecycle"
+                        name="fires_when_neuron_lifecycle"
                         defaultValue={initialFiresOn}
                         placeholder="active"
                         className="mt-1 block w-full rounded-md border border-border bg-input px-3 py-2 text-sm"

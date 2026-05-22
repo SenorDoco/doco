@@ -9,7 +9,7 @@ import {
   listAllDocos as _dbListAllDocos,
   getHostConfig,
   listOrganizations,
-  listOrganizationsForPrincipal,
+  listOrganizationsForCollaborator,
   listPrincipals,
 } from "@doco/db";
 
@@ -86,7 +86,7 @@ export async function listOrgs(): Promise<HostOrg[]> {
 }
 
 export async function listMyOrgs(principalId: string): Promise<HostOrg[]> {
-  const rows = await listOrganizationsForPrincipal(principalId);
+  const rows = await listOrganizationsForCollaborator(principalId);
   return rows.map((r) => {
     const fm = JSON.parse(r.raw_yaml) as Record<string, unknown>;
     const out: HostOrg = {
@@ -101,7 +101,7 @@ export async function listMyOrgs(principalId: string): Promise<HostOrg[]> {
 }
 
 export async function listOrgsOwnedOrAdminedBy(principalId: string): Promise<HostOrg[]> {
-  const rows = await listOrganizationsForPrincipal(principalId, ["owner"]);
+  const rows = await listOrganizationsForCollaborator(principalId, ["owner"]);
   return rows.map((r) => {
     const fm = JSON.parse(r.raw_yaml) as Record<string, unknown>;
     const out: HostOrg = {

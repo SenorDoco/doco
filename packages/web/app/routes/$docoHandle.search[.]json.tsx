@@ -16,7 +16,7 @@ import { type SearchHit, rankSearchEmbeddings } from "~/lib/search.server";
 
 interface JsonSearchHit {
   id: string;
-  node_type: string;
+  entity_type: string;
   name: string | null;
   summary?: string;
   lifecycle: string | null;
@@ -56,7 +56,7 @@ export async function loader({
 
     const filtersOut = {
       lifecycle: filters.lifecycle,
-      node_type: filters.nodeType,
+      entity_type: filters.entityType,
       limit: filters.limit,
     };
 
