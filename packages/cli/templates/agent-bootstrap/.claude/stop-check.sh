@@ -156,8 +156,10 @@ for line in lines[last_user_idx + 1:]:
             elif name == 'Bash':
                 cmd = inp.get('command', '') or ''
                 # Match CLI write surfaces and raw HTTP writes to capture
-                # endpoints.
+                # endpoints. `doco scope add-rule` writes Rule nodes.
                 if re.search(r'\bdoco\s+(capture|patch|supersede)\b', cmd):
+                    doco_writes += 1
+                elif re.search(r'\bdoco\s+scope\s+add-rule\b', cmd):
                     doco_writes += 1
                 elif re.search(r'curl[^|;&]*-X\s*(POST|PATCH|DELETE)[^|;&]*/api/[a-z]+(?:/\S*)?\.json', cmd, re.IGNORECASE):
                     doco_writes += 1

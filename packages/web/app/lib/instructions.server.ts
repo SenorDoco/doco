@@ -146,7 +146,7 @@ The response carries the primitives for every org and every Doco you
 have read-or-above access to, exposed as \`guidance_primitives[]\` and
 \`neuron_authoring_primitives[]\` arrays.
 
-The four invariants below apply whichever path you took — the
+The three invariants below apply whichever path you took — the
 protocol is about how you reply, not about how you authenticated.
 
 ## 1. TOP OF EVERY REPLY — connection indicator
