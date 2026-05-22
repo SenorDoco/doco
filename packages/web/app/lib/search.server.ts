@@ -40,9 +40,9 @@ function entitySpec(table: string, entityType: string): SearchTypeSpec {
   };
 }
 
-// Note types only — articles (constitution metadata) are not nodes
-// and do not participate in node search/ranking. To fetch articles,
-// hit /<handle>/api/articles.json or read the bootstrap payload.
+// Note types only — primitives (constitution metadata) are not neurons
+// and do not participate in neuron search/ranking. To fetch primitives,
+// hit /<handle>/api/primitives.json or read the bootstrap payload.
 export const SEARCH_TYPE_SPECS: SearchTypeSpec[] = [
   entitySpec("decisions", "decision"),
   entitySpec("intents", "intent"),
@@ -155,18 +155,18 @@ export async function attachSearchGlobalPageRank(
   hits: SearchHit[],
 ): Promise<void> {
   if (hits.length === 0) return;
-  const edgeRows = (
+  const synapseRows = (
     await c.query<{ from_id: string; to_id: string; synapse_type: string; attribution: string }>(
       "SELECT from_id, to_id, synapse_type, attribution FROM synapses WHERE doco_id = $1",
       [docoId],
     )
   ).rows;
   const gpr = globalPageRank(
-    edgeRows.map((edge) => ({
-      from: edge.from_id,
-      to: edge.to_id,
-      synapse_type: edge.synapse_type,
-      attribution: edge.attribution as "explicit" | "doco-auto",
+    synapseRows.map((s) => ({
+      from: s.from_id,
+      to: s.to_id,
+      synapse_type: s.synapse_type,
+      attribution: s.attribution as "explicit" | "doco-auto",
     })),
     { alpha: 0.85 },
   );

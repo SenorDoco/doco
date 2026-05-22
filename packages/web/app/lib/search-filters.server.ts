@@ -11,7 +11,7 @@ import type { PoolClient } from "pg";
 export interface SearchFilters {
   /** Allowed lifecycle values. `null` = no filter (all values). */
   lifecycle: string[] | null;
-  /** Allowed node types. `null` = no filter (all types). */
+  /** Allowed neuron types. `null` = no filter (all types). */
   entityType: string[] | null;
   /** Top-N to return after filtering + cosine. */
   limit: number;
@@ -84,11 +84,12 @@ function readMulti(params: URLSearchParams, key: string): string[] | null {
  * `lifecycle` column directly. principals + organizations are
  * host-level, so they don't filter on doco_id.
  *
- * Articles (`guidance_primitives`, `neuron_authoring_primitives`) are not
- * nodes — they are constitution metadata with their own surface
- * (/<handle>/constitution and /<handle>/api/articles.json) and are
- * intentionally absent here. Anything iterating "nodes of a Doco"
- * must use this list, never a list that includes article tables.
+ * Primitives (`guidance_primitives`, `neuron_authoring_primitives`)
+ * are not neurons — they are constitution metadata with their own
+ * surface (/<handle>/constitution and /<handle>/api/primitives.json)
+ * and are intentionally absent here. Anything iterating "neurons of
+ * a Doco" must use this list, never a list that includes primitive
+ * tables.
  */
 const PG_DOCO_NOTE_TABLES_WITH_LIFECYCLE = [
   "intents",
@@ -99,17 +100,18 @@ const PG_DOCO_NOTE_TABLES_WITH_LIFECYCLE = [
   "logs",
   "evals",
   "reference_entities",
-  // v7 (decision_01KRRR5BQ16ASY8HQEE0V499YG): State node type.
+  // v7 (decision_01KRRR5BQ16ASY8HQEE0V499YG): State neuron type.
   "states",
 ] as const;
 
 /**
  * Map from external entity_type (singular) → PG table (plural).
- * Articles (`guidance_primitive`, `neuron_authoring_primitive`) are not
- * nodes and are intentionally omitted — they are reachable only via
- * /<handle>/api/articles.json and the constitution surface.
+ * Primitives (`guidance_primitive`, `neuron_authoring_primitive`) are
+ * not neurons and are intentionally omitted — they are reachable
+ * only via /<handle>/api/primitives.json and the constitution
+ * surface.
  */
-const NODE_TYPE_TO_TABLE: Record<string, string> = {
+const NEURON_TYPE_TO_TABLE: Record<string, string> = {
   intent: "intents",
   idea: "ideas",
   rule: "rules",
@@ -125,7 +127,7 @@ const NODE_TYPE_TO_TABLE: Record<string, string> = {
 
 /** Inverse: PG table → external entity_type used on the wire. */
 const TABLE_TO_NODE_TYPE: Record<string, string> = Object.fromEntries(
-  Object.entries(NODE_TYPE_TO_TABLE).map(([nt, tbl]) => [tbl, nt]),
+  Object.entries(NEURON_TYPE_TO_TABLE).map(([nt, tbl]) => [tbl, nt]),
 );
 
 export async function resolveFilteredCandidates(
@@ -140,8 +142,8 @@ export async function resolveFilteredCandidates(
   let lifecycleIds: Set<string> | null = null;
   if (filters.lifecycle !== null) {
     lifecycleIds = new Set();
-    // Notes only — articles are not nodes and never participate in
-    // node search results, even when their lifecycle matches.
+    // Notes only — primitives are not neurons and never participate in
+    // neuron search results, even when their lifecycle matches.
     for (const t of PG_DOCO_NOTE_TABLES_WITH_LIFECYCLE) {
       const r = await c.query<{ id: string }>(
         `SELECT id FROM ${t}
@@ -157,7 +159,7 @@ export async function resolveFilteredCandidates(
   if (filters.entityType !== null) {
     nodeTypeIds = new Set();
     for (const nt of filters.entityType) {
-      const table = NODE_TYPE_TO_TABLE[nt];
+      const table = NEURON_TYPE_TO_TABLE[nt];
       if (!table) continue;
       if (table === "principals" || table === "organizations") continue;
       const r = await c.query<{ id: string }>(`SELECT id FROM ${table} WHERE doco_id = $1`, [
@@ -191,9 +193,9 @@ export interface FilterFacets {
 
 
 export async function computeFilterFacets(c: PoolClient, docoId: string): Promise<FilterFacets> {
-  // Facets describe the *notes* of a Doco. Articles (constitution
+  // Facets describe the *notes* of a Doco. Primitives (constitution
   // metadata) are intentionally excluded — they have their own
-  // surface and counting them as nodes makes a Doco with only a
+  // surface and counting them as neurons makes a Doco with only a
   // template constitution misread as having captured work.
   const lifecycleFacets = new Map<string, { count: number; updatedAt: string | null }>();
   for (const t of PG_DOCO_NOTE_TABLES_WITH_LIFECYCLE) {
