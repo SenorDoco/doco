@@ -22,6 +22,13 @@ format. It is the source of truth for how you reply; do not infer
 it from memory. Fetch it before your first substantive reply, and
 apply it on every reply for the rest of the session.
 
+**Do not infer the protocol from this file's mentions of it.** This
+file describes WHAT the protocol enforces; the canonical URL holds
+the LITERAL strings (specific emoji, verb lists, exact format).
+Reinventing a tally or indicator from inference — e.g., "Tally: 0
+captures this turn" instead of `[🔮 Doco] <handle>: **<N>** node(s)
+added/updated` — is non-compliant. Fetch the URL.
+
 ## Step 2 — Check Doco access
 
 ```
