@@ -13,7 +13,7 @@ import {
 import { AccessDeniedView, isAccessDeniedData } from "~/components/access-denied-view";
 import { AgentSidebar } from "~/components/agent-sidebar";
 import { SiteHeader, SiteHeaderSuppressionProvider } from "~/components/site-header";
-import { type CurrentPrincipal, getCurrentPrincipal } from "~/lib/session";
+import { type CurrentPrincipal, getCurrentPrincipal } from "~/lib/session.server";
 import "./app.css";
 
 // Root loader — fetch the current Principal once so the persistent

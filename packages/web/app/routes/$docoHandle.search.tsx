@@ -15,7 +15,7 @@ import { NeuronTypeIcon } from "~/components/neuron-type-icon";
 import { SiteHeader } from "~/components/site-header";
 import { loadDocoRouteForRead } from "~/lib/doco-access.server";
 import { getDocoEmbeddingProvider } from "~/lib/embedding-provider.server";
-import { loadHostConfig } from "~/lib/host";
+import { loadHostConfig } from "~/lib/host.server";
 import { lifecycleColor, nodeTypePlural } from "~/lib/neuron-colors";
 import {
   type FilterFacets,
@@ -25,7 +25,7 @@ import {
 } from "~/lib/search-filters.server";
 import type { SearchHit } from "~/lib/search.server";
 import { loadFilteredSearchHits, rankSearchEmbeddings } from "~/lib/search.server";
-import { getCurrentPrincipal } from "~/lib/session";
+import { getCurrentPrincipal } from "~/lib/session.server";
 
 function relativeTimeIso(iso: string | null): string {
   if (!iso) return "—";

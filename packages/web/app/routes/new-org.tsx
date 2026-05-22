@@ -3,13 +3,13 @@ import { Breadcrumb, hostBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent } from "~/components/card";
 import { SingleColumnPageMain } from "~/components/page-main";
 import { SiteHeader } from "~/components/site-header";
-import { loadHostConfig } from "~/lib/host";
+import { loadHostConfig } from "~/lib/host.server";
 import {
   addOrganizationByHandle,
   ensurePersonalOrganization,
   findAvailableOrgHandle,
 } from "~/lib/redeem.server";
-import { getCurrentPrincipal } from "~/lib/session";
+import { getCurrentPrincipal } from "~/lib/session.server";
 
 /**
  * /new-org — create an Organization (v15 single-property model).

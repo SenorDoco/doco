@@ -40,8 +40,8 @@ import { listOrganizationsForCollaborator, withClient } from "@doco/db";
 import { generateUlid } from "@doco/shared";
 import { canAccessDoco } from "./doco-access.server";
 import { ensureEnvLoaded } from "./dotenv.server";
-import { listAllDocos } from "./host";
-import type { CurrentPrincipal } from "./session";
+import { listAllDocos } from "./host.server";
+import type { CurrentPrincipal } from "./session.server";
 
 ensureEnvLoaded();
 

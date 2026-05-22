@@ -15,9 +15,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
 import { NeuronTypeIcon } from "~/components/neuron-type-icon";
 import { SiteHeader } from "~/components/site-header";
 import { getDocoEmbeddingProvider } from "~/lib/embedding-provider.server";
-import { loadHostConfig } from "~/lib/host";
+import { loadHostConfig } from "~/lib/host.server";
 import { nodeTypePlural } from "~/lib/neuron-colors";
-import { getCurrentPrincipal } from "~/lib/session";
+import { getCurrentPrincipal } from "~/lib/session.server";
 import { timeAgo } from "~/lib/time-ago";
 
 const RESULTS_LIMIT = 50;

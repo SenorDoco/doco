@@ -12,7 +12,7 @@ import {
   articleFullText,
 } from "~/lib/constitution-copy";
 import { canEditConstitution, loadDocoRouteForRead } from "~/lib/doco-access.server";
-import { loadHostConfig } from "~/lib/host";
+import { loadHostConfig } from "~/lib/host.server";
 
 type ArticleKind = "deterministic" | "probabilistic";
 

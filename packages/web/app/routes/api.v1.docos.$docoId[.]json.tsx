@@ -16,7 +16,7 @@ import {
   hostFromRequest,
   missingDocoResponse,
 } from "~/lib/missing-doco-guidance.server";
-import { getCurrentPrincipalAsync } from "~/lib/session";
+import { getCurrentPrincipalAsync } from "~/lib/session.server";
 
 export async function loader({
   request,

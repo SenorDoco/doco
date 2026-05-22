@@ -14,7 +14,7 @@
 import { docoPath } from "~/lib/db.server";
 import { canReadDocoForRequest, normalizeDocoParams } from "~/lib/doco-access.server";
 import { readDocoMetadata } from "~/lib/doco-metadata.server";
-import { getCurrentPrincipalAsync } from "~/lib/session";
+import { getCurrentPrincipalAsync } from "~/lib/session.server";
 import { readAuditEvents, type AuditOp } from "~/lib/audit-log.server";
 
 const VALID_OPS: ReadonlySet<string> = new Set([

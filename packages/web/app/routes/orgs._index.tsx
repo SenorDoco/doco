@@ -21,8 +21,8 @@ import {
 import { cn } from "~/lib/cn";
 import { isMyDoco, listInvitedDocoIdsForPrincipal } from "~/lib/doco-access.server";
 import { ENTITY_TABLES } from "~/lib/doco-stats.server";
-import { listAllDocos, listMyOrgs } from "~/lib/host";
-import { getCurrentPrincipal } from "~/lib/session";
+import { listAllDocos, listMyOrgs } from "~/lib/host.server";
+import { getCurrentPrincipal } from "~/lib/session.server";
 import { timeAgo } from "~/lib/time-ago";
 
 const HEATMAP_WEEKS = 52;

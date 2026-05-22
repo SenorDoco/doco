@@ -19,8 +19,8 @@ import {
   transitionArticleLifecycle,
 } from "~/lib/capture.server";
 import { deriveArticleSummary } from "~/lib/constitution-copy";
-import { loadHostConfig } from "~/lib/host";
-import { getCurrentPrincipalAsync } from "~/lib/session";
+import { loadHostConfig } from "~/lib/host.server";
+import { getCurrentPrincipalAsync } from "~/lib/session.server";
 
 type EntityType = "guidance_primitive" | "neuron_authoring_primitive";
 type ArticleKind = "deterministic" | "probabilistic";

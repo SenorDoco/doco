@@ -27,7 +27,7 @@ import { SiteHeader } from "~/components/site-header";
 import { docoPath } from "~/lib/db.server";
 import { canAdminDoco, loadDocoRouteForRead } from "~/lib/doco-access.server";
 import { loadOverviewGraph } from "~/lib/full-graph.server";
-import { loadHostConfig } from "~/lib/host";
+import { loadHostConfig } from "~/lib/host.server";
 import { lifecycleColor } from "~/lib/neuron-colors";
 import { computeFilterFacets } from "~/lib/search-filters.server";
 import { timeAgo } from "~/lib/time-ago";

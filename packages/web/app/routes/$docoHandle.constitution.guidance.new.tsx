@@ -10,7 +10,7 @@ import { SiteHeader } from "~/components/site-header";
 import { captureGuidanceArticle } from "~/lib/capture.server";
 import { deriveArticleSummary } from "~/lib/constitution-copy";
 import { loadDocoRouteForAdmin } from "~/lib/doco-access.server";
-import { loadHostConfig } from "~/lib/host";
+import { loadHostConfig } from "~/lib/host.server";
 
 interface ActionError {
   error: string;

@@ -27,7 +27,7 @@ import {
   loadCollaboratorsPageData,
 } from "~/lib/collaborators.server";
 import { getDocoLevelRole } from "~/lib/doco-access.server";
-import { getCurrentPrincipal } from "~/lib/session";
+import { getCurrentPrincipal } from "~/lib/session.server";
 
 export async function loader({ request }: { request: Request }) {
   return loadCollaboratorsPageData(request);

@@ -12,7 +12,7 @@
 // bearer). Rate-limiting is out of scope.
 
 import { addOrganizationByHandle } from "~/lib/redeem.server";
-import { getCurrentPrincipal } from "~/lib/session";
+import { getCurrentPrincipal } from "~/lib/session.server";
 
 export async function loader() {
   return Response.json({ error: "Use POST to create an organization." }, { status: 405 });

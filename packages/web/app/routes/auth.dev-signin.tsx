@@ -19,7 +19,7 @@
 import { Form, redirect } from "react-router";
 import { withClient } from "@doco/db";
 import { Breadcrumb } from "~/components/breadcrumb";
-import { findPrincipalByUsername, setSessionCookie } from "~/lib/session";
+import { findPrincipalByUsername, setSessionCookie } from "~/lib/session.server";
 
 const TEST_USERNAMES = ["doco-test-harness", "doco-test-alice", "doco-test-bob"] as const;
 type TestUsername = (typeof TEST_USERNAMES)[number];

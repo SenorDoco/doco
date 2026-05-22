@@ -31,7 +31,7 @@ import {
 import { cn } from "~/lib/cn";
 import { listDocoStats } from "~/lib/doco-stats.server";
 import { loadOrgOverviewGraph } from "~/lib/full-graph.server";
-import { getCurrentPrincipal } from "~/lib/session";
+import { getCurrentPrincipal } from "~/lib/session.server";
 import { timeAgo } from "~/lib/time-ago";
 
 const FEED_LIMIT = 20;

@@ -19,7 +19,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/com
 import { SingleColumnPageMain } from "~/components/page-main";
 import { SiteHeader } from "~/components/site-header";
 import { getClient, peekAuthorizationCode } from "~/lib/oauth-server.server";
-import { type CurrentPrincipal, getCurrentPrincipalAsync } from "~/lib/session";
+import { type CurrentPrincipal, getCurrentPrincipalAsync } from "~/lib/session.server";
 
 interface LoaderData {
   to: string;

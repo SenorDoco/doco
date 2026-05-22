@@ -9,8 +9,8 @@ import { Card, CardContent } from "~/components/card";
 import { SiteHeader } from "~/components/site-header";
 import { captureOrgGuidanceArticle } from "~/lib/capture.server";
 import { deriveArticleSummary } from "~/lib/constitution-copy";
-import { loadHostConfig } from "~/lib/host";
-import { getCurrentPrincipalAsync } from "~/lib/session";
+import { loadHostConfig } from "~/lib/host.server";
+import { getCurrentPrincipalAsync } from "~/lib/session.server";
 
 interface OrgRow {
   id: string;

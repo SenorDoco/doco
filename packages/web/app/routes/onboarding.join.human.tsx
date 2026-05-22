@@ -3,7 +3,7 @@ import { useState } from "react";
 import { Link } from "react-router";
 import { Breadcrumb } from "~/components/breadcrumb";
 
-import { loadHostConfig } from "~/lib/host";
+import { loadHostConfig } from "~/lib/host.server";
 import { getPublicBaseUrl } from "@doco/shared";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { DocoMark } from "~/components/doco-mark";

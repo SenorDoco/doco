@@ -20,7 +20,7 @@ import {
 } from "~/lib/capture.server";
 import { deriveArticleSummary } from "~/lib/constitution-copy";
 import { loadDocoRouteForAdmin } from "~/lib/doco-access.server";
-import { loadHostConfig } from "~/lib/host";
+import { loadHostConfig } from "~/lib/host.server";
 
 type EntityType = "guidance_primitive" | "neuron_authoring_primitive";
 type ArticleKind = "deterministic" | "probabilistic";

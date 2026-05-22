@@ -1,8 +1,8 @@
 import { Link, redirect } from "react-router";
 import { DocoMark } from "~/components/doco-mark";
 import { DOCO_TAGLINE, VersionPill } from "~/components/version-pill";
-import { loadHostConfig } from "~/lib/host";
-import { getCurrentPrincipal } from "~/lib/session";
+import { loadHostConfig } from "~/lib/host.server";
+import { getCurrentPrincipal } from "~/lib/session.server";
 
 const FALLBACK_HOST = { id: "host_fallback", name: "torrenegra", visibility: "public" } as const;
 

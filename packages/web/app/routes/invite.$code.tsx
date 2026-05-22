@@ -30,7 +30,7 @@ import { DocoMark } from "~/components/doco-mark";
 import { VersionPill } from "~/components/version-pill";
 import { rootDir } from "~/lib/db.server";
 import { InviteStore } from "~/lib/invite-store.server";
-import { getCurrentPrincipal } from "~/lib/session";
+import { getCurrentPrincipal } from "~/lib/session.server";
 
 type LoaderError =
   | { error: "missing_code" }
