@@ -15,7 +15,7 @@ The simple case — you don't have prior project history to absorb.
 doco init my-project
 ```
 
-**Web:** *New Doco* → fill out the form (slug, display name, visibility, description) → *Create*.
+**Web:** *New Doco* → fill out the form (slug, display name, visibility) → *Create*.
 
 **What you get:**
 - Empty Doco with you as `owner` (and a `MemberOf` edge with role `owner`).

@@ -166,7 +166,6 @@ display_name: "Alignment Runtime"
 visibility: private | public
 owner_id: principal_...
 default_branch: main
-description: "..."
 members:
   - { principal_id: principal_..., role: owner | maintainer | contributor | viewer, permissions: [read, write, execute, admin] }
 imports:                              # cross-Doco rule sharing — see §9.4

@@ -4,8 +4,7 @@
 //   { template_handle?: string,        // "generic" | "user-flows" | ...
 //     org_id: string,                  // ULID of the owning organization
 //     name: string,                    // the part after `<org-handle>-`
-//     privacy?: "private"|"public",    // alias: visibility
-//     description?: string }
+//     privacy?: "private"|"public" }   // alias: visibility
 //
 // Back-compat: `requested_suffix` and `visibility` are still accepted.
 //
@@ -42,7 +41,6 @@ export async function action({ request }: { request: Request }) {
     template_handle?: unknown;
     privacy?: unknown;
     visibility?: unknown;
-    description?: unknown;
   };
   try {
     body = (await request.json()) as typeof body;
@@ -59,7 +57,6 @@ export async function action({ request }: { request: Request }) {
     typeof body.template_handle === "string" ? body.template_handle.trim() : null;
   const privacy = body.privacy ?? body.visibility;
   const visibility = privacy === "public" ? "public" : "private";
-  const description = typeof body.description === "string" ? body.description : undefined;
 
   if (!orgId) return Response.json({ error: "`org_id` is required." }, { status: 400 });
   if (!suffix) return Response.json({ error: "`name` is required." }, { status: 400 });
@@ -78,7 +75,6 @@ export async function action({ request }: { request: Request }) {
       ...(templateHandle && templateHandle !== "generic"
         ? { templateHandle }
         : { templateHandle: null }),
-      ...(description ? { description } : {}),
     });
     return Response.json(
       {

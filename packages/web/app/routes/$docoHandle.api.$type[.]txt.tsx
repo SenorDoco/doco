@@ -303,7 +303,6 @@ BODY (JSON) — write
                             immediately and the response carries the new
                             handle so you can update bookmarks.
   display_name   optional   string. Empty string clears.
-  description    optional   string. Empty string clears.
   visibility     optional   "private" or "public".
 
 SUCCESS RESPONSE — write (HTTP 200, application/json)
@@ -312,7 +311,6 @@ SUCCESS RESPONSE — write (HTTP 200, application/json)
     "doco_id": "doco_...",
     "doco_handle": "<possibly-new-handle>",
     "display_name": "...",
-    "description": "...",
     "visibility": "private" | "public"
   }
 
@@ -329,12 +327,12 @@ EXAMPLE — read current settings
   curl -sS ${baseUrl}/${handle}/api/settings.json \\
     -H "Authorization: Bearer $DOCO_ACCESS"
 
-EXAMPLE — flip to public + edit description
+EXAMPLE — flip to public
   curl -sS -X POST \\
     -H "Content-Type: application/json" \\
     -H "Authorization: Bearer $DOCO_ACCESS" \\
     ${baseUrl}/${handle}/api/settings.json \\
-    -d '{ "visibility": "public", "description": "Now open-source." }'
+    -d '{ "visibility": "public" }'
 
 EXAMPLE — rename the handle
   curl -sS -X POST \\
