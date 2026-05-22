@@ -16,30 +16,21 @@ import { lifecycleColor } from "~/lib/neuron-colors";
  * order regardless of which lifecycles the data actually contains;
  * the `available` arg trims unused stages out of the visible UI.
  */
-// The canonical seven lifecycle stages from @doco/shared, in the
-// order they appear in the filter row. Active anchors the left, the
-// "no longer current" cluster sits to the right.
+// The four canonical lifecycle stages from @doco/shared, in
+// progression order. The filter row renders them in this sequence.
 export const LIFECYCLE_ORDER: readonly string[] = [
-  "active",
   "drafted",
   "proposed",
-  "succeeded",
-  "failed",
-  "superseded",
-  "abandoned",
+  "active",
+  "retired",
 ];
 
 /**
- * Lifecycles hidden out of the box. The four terminal stages that
- * have no current authoring value tend to dominate large Docos —
- * surfacing them by default makes the graph harder to read.
+ * Lifecycles hidden out of the box. `retired` is the "no longer
+ * current" stage; surfacing it by default would clutter the active
+ * picture. Authors can toggle it on to audit historical state.
  */
-export const HIDDEN_LIFECYCLES_BY_DEFAULT: ReadonlySet<string> = new Set([
-  "abandoned",
-  "superseded",
-  "failed",
-  "succeeded",
-]);
+export const HIDDEN_LIFECYCLES_BY_DEFAULT: ReadonlySet<string> = new Set(["retired"]);
 
 export function lifecycleLabel(lifecycle: string): string {
   return lifecycle.replaceAll("_", " ");

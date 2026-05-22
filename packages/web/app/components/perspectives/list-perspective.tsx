@@ -49,18 +49,11 @@ const NEURON_TYPE_ORDER = new Map(
   ].map((type, index) => [type, index]),
 );
 
-// Canonical Lifecycle (@doco/shared) — seven stages, ranked here
-// for tiebreaker sort within a neuron type. Lower index = preferred.
+// Canonical Lifecycle (@doco/shared) — four stages, ranked here
+// for tiebreaker sort within a neuron type. Lower index = preferred
+// (active first since it's the most current state).
 const LIFECYCLE_RANK = new Map(
-  [
-    "active",
-    "drafted",
-    "proposed",
-    "succeeded",
-    "superseded",
-    "abandoned",
-    "failed",
-  ].map((lifecycle, index) => [lifecycle, index]),
+  ["active", "drafted", "proposed", "retired"].map((lifecycle, index) => [lifecycle, index]),
 );
 
 const CONSTITUTION_TYPES = new Set(["guidance_primitive", "neuron_authoring_primitive"]);

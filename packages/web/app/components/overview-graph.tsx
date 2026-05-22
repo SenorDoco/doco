@@ -72,17 +72,10 @@ interface OverviewNodeData {
   isNew: boolean;
 }
 
-// Canonical Lifecycle (@doco/shared) — seven stages.
-const LIFECYCLE_ORDER = [
-  "active",
-  "drafted",
-  "proposed",
-  "succeeded",
-  "failed",
-  "superseded",
-  "abandoned",
-];
-const HIDDEN_LIFECYCLES_BY_DEFAULT = new Set(["abandoned", "superseded", "failed", "succeeded"]);
+// Canonical Lifecycle (@doco/shared) — four stages, in progression
+// order.
+const LIFECYCLE_ORDER = ["drafted", "proposed", "active", "retired"];
+const HIDDEN_LIFECYCLES_BY_DEFAULT = new Set(["retired"]);
 const NODE_TYPE_ORDER = new Map(
   [
     "intent",

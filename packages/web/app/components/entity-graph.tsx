@@ -133,18 +133,11 @@ interface FlowViewport {
   zoom: number;
 }
 
-// Canonical Lifecycle (@doco/shared) — seven stages.
-const LIFECYCLE_ORDER = [
-  "active",
-  "drafted",
-  "proposed",
-  "succeeded",
-  "failed",
-  "superseded",
-  "abandoned",
-];
+// Canonical Lifecycle (@doco/shared) — four stages, in progression
+// order.
+const LIFECYCLE_ORDER = ["drafted", "proposed", "active", "retired"];
 
-const HIDDEN_LIFECYCLES_BY_DEFAULT = new Set(["abandoned", "superseded", "failed", "succeeded"]);
+const HIDDEN_LIFECYCLES_BY_DEFAULT = new Set(["retired"]);
 
 function lifecycleLabel(lifecycle: string): string {
   return lifecycle.replaceAll("_", " ");

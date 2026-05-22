@@ -7,28 +7,23 @@
  * diluted the meaning of color overall.
  */
 
-// Canonical Lifecycle (packages/shared/src/entities.ts) has exactly
-// seven stages: drafted, proposed, active, succeeded, failed,
-// superseded, abandoned. Per project owner:
+// Lifecycle is being simplified in @doco/shared to four stages:
+// drafted, proposed, active, retired. Per project owner the color
+// mapping is, in that order:
+//   drafted  → yellow  (provisional / work in motion)
+//   proposed → blue    (under review)
 //   active   → black   (settled, in force)
-//   drafted  → sky-400 (provisional, not yet ratified)
-//   proposed → blue    (under consideration)
-//   failed   → red     (bad outcome — alone on red)
-//   the "no longer current" cluster (abandoned / succeeded /
-//   superseded) stays gray.
-// `draft` / `successed` / `superseeded` are kept as aliases for
-// legacy data drift; their canonical spellings drive the color.
+//   retired  → red     (no longer in use)
+// `draft` is kept as an alias for legacy data drift. Pre-simplified
+// stages (succeeded / superseded / abandoned / failed) intentionally
+// fall through to LIFECYCLE_FALLBACK_COLOR so they read as "unknown
+// — not migrated yet" until the data migration runs.
 export const LIFECYCLE_COLOR: Record<string, string> = {
-  active: "#171717", // black — settled and in force
-  drafted: "#38bdf8", // sky-400 — provisional, not yet ratified
-  draft: "#38bdf8", // alias
-  proposed: "#2563eb", // blue — under consideration
-  failed: "#dc2626", // red — bad outcome
-  succeeded: "#737373", // gray — no longer current
-  successed: "#737373", // typo alias
-  superseded: "#737373",
-  superseeded: "#737373", // typo alias
-  abandoned: "#737373",
+  drafted: "#eab308", // yellow-500 — provisional
+  draft: "#eab308", // alias
+  proposed: "#2563eb", // blue-600 — under review
+  active: "#171717", // gray-900 — settled and in force
+  retired: "#dc2626", // red-600 — no longer in use
 };
 
 export const LIFECYCLE_FALLBACK_COLOR = "#737373";
