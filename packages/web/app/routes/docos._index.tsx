@@ -4,8 +4,8 @@
 // rises to the top.
 //
 // Layout matches /orgs (per spec):
-//   - Header: "Your docos" + "+ Agent/Collaborator" (desktop right)
-//   - Main column: docos list + "+ Doco" button at the top
+//   - Header: "Your docos" + "+ Doco" (desktop right)
+//   - Main column: docos list
 //   - Right (desktop) / bottom (mobile): Your activity heatmap +
 //     Latest activity feed (10 items)
 
@@ -204,12 +204,6 @@ export default function DocosIndexPage({
               className="shrink-0 rounded-md bg-primary px-3 py-1.5 text-sm font-semibold text-primary-foreground hover:opacity-90"
             >
               + Doco
-            </Link>
-            <Link
-              to="/collaborators"
-              className="shrink-0 rounded-md border border-border px-3 py-1.5 text-sm font-semibold hover:bg-input"
-            >
-              Collaborator (people/agents)
             </Link>
           </div>
         </header>
