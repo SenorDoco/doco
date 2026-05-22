@@ -200,6 +200,8 @@ export default [
   ),
   route(":docoHandle/api/actions/:id.json", "routes/$docoHandle.api.actions.$id[.]json.tsx"),
   route(":docoHandle/api/logs/:id.json", "routes/$docoHandle.api.logs.$id[.]json.tsx"),
+  route(":docoHandle/api/evals/:id.json", "routes/$docoHandle.api.evals.$id[.]json.tsx"),
+  route(":docoHandle/api/states/:id.json", "routes/$docoHandle.api.states.$id[.]json.tsx"),
   route(":docoHandle/api/references/:id.json", "routes/$docoHandle.api.references.$id[.]json.tsx"),
   // Special-cased capture routes that need custom logic — listed BEFORE
   // the generic `:type.json` dispatcher so the static segment wins.

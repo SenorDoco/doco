@@ -42,6 +42,7 @@ export interface OverviewNodeDetail {
 interface OverviewGraphProps extends OverviewGraphData {
   fillHeight?: boolean;
   search?: ReactNode;
+  onNeuronClick?: (node: OverviewGraphNode) => void;
   /**
    * Externally-controlled lifecycle visibility set. When provided, the
    * graph uses it and DOES NOT render its own lifecycle filter row —
@@ -196,7 +197,12 @@ function OverviewFlowNode({ data }: { data: OverviewNodeData }) {
       }}
       title={showDetail ? title : `${data.node.entity_type} · ${lifecycle}`}
     >
-      <Handle type="target" position={Position.Left} style={HIDDEN_HANDLE_STYLE} isConnectable={false} />
+      <Handle
+        type="target"
+        position={Position.Left}
+        style={HIDDEN_HANDLE_STYLE}
+        isConnectable={false}
+      />
       <NeuronTypeIcon entityType={data.node.entity_type} className="!h-3.5 !w-3.5 shrink-0" />
       {showDetail ? (
         <span className="min-w-0 flex-1 truncate font-mono text-[10px] font-semibold leading-none text-foreground">
@@ -208,7 +214,12 @@ function OverviewFlowNode({ data }: { data: OverviewNodeData }) {
         </span>
       )}
       {showDetail && title !== subtitle ? <span className="sr-only">{subtitle}</span> : null}
-      <Handle type="source" position={Position.Right} style={HIDDEN_HANDLE_STYLE} isConnectable={false} />
+      <Handle
+        type="source"
+        position={Position.Right}
+        style={HIDDEN_HANDLE_STYLE}
+        isConnectable={false}
+      />
     </div>
   );
 }
@@ -220,6 +231,7 @@ export function OverviewGraph({
   detailUrl,
   fillHeight = false,
   search,
+  onNeuronClick,
   visibleLifecycles: externalVisibleLifecycles,
 }: OverviewGraphProps) {
   const navigate = useNavigate();
@@ -443,6 +455,10 @@ export function OverviewGraph({
             onMove={(_event: unknown, next: FlowViewport) => updateViewport(next)}
             onNodeClick={(_event: unknown, node: { id: string }) => {
               const target = nodeById.get(node.id);
+              if (target && onNeuronClick) {
+                onNeuronClick(target);
+                return;
+              }
               if (target?.href) navigate(target.href);
             }}
             proOptions={{ hideAttribution: true }}
@@ -479,41 +495,41 @@ export function OverviewGraph({
       </div>
 
       {controlledMode ? null : (
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-muted-foreground">Life cycle:</span>
-          {allLifecycles.map((lifecycle) => {
-            const checked = visibleLifecycles.has(lifecycle);
-            const color = lifecycleColor(lifecycle);
-            const label = lifecycleLabel(lifecycle);
-            return (
-              <label
-                key={lifecycle}
-                className="inline-flex cursor-pointer select-none items-center gap-1"
-                title={label}
-              >
-                <input
-                  type="checkbox"
-                  checked={checked}
-                  onChange={() => {
-                    setVisibleLifecycles((prev) => {
-                      const next = new Set(prev);
-                      if (checked) next.delete(lifecycle);
-                      else next.add(lifecycle);
-                      return next;
-                    });
-                  }}
-                  className="h-3 w-3"
-                  style={{ accentColor: color }}
-                />
-                <span className="capitalize" style={{ color }}>
-                  {label}
-                </span>
-              </label>
-            );
-          })}
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-muted-foreground">Life cycle:</span>
+            {allLifecycles.map((lifecycle) => {
+              const checked = visibleLifecycles.has(lifecycle);
+              const color = lifecycleColor(lifecycle);
+              const label = lifecycleLabel(lifecycle);
+              return (
+                <label
+                  key={lifecycle}
+                  className="inline-flex cursor-pointer select-none items-center gap-1"
+                  title={label}
+                >
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={() => {
+                      setVisibleLifecycles((prev) => {
+                        const next = new Set(prev);
+                        if (checked) next.delete(lifecycle);
+                        else next.add(lifecycle);
+                        return next;
+                      });
+                    }}
+                    className="h-3 w-3"
+                    style={{ accentColor: color }}
+                  />
+                  <span className="capitalize" style={{ color }}>
+                    {label}
+                  </span>
+                </label>
+              );
+            })}
+          </div>
         </div>
-      </div>
       )}
     </div>
   );

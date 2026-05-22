@@ -29,6 +29,7 @@ interface BpmnPerspectiveProps {
   lanes: BpmnLane[];
   nodes: BpmnNode[];
   links: OverviewGraphLink[];
+  onNeuronClick?: (node: BpmnNode) => void;
   /**
    * Page-level lifecycle filter set. Nodes whose lifecycle isn't in
    * this set are excluded; lanes that end up empty after filtering
@@ -56,6 +57,7 @@ export function BpmnPerspective({
   lanes,
   nodes,
   links,
+  onNeuronClick,
   visibleLifecycles,
 }: BpmnPerspectiveProps) {
   const navigate = useNavigate();
@@ -104,16 +106,13 @@ export function BpmnPerspective({
     }),
     [],
   );
-  const nodeById = useMemo(
-    () => new Map(filteredNodes.map((n) => [n.id, n])),
-    [filteredNodes],
-  );
+  const nodeById = useMemo(() => new Map(filteredNodes.map((n) => [n.id, n])), [filteredNodes]);
 
   if (filteredLanes.length === 0 || filteredNodes.length === 0) {
     return (
       <div className="flex h-full min-h-[320px] items-center justify-center rounded-md border border-border bg-input text-xs italic text-muted-foreground">
-        No neurons assigned to any swim lane yet. Add `actor_id`, `decided_by`, or `wanted_by`
-        to neurons to populate this perspective.
+        No neurons assigned to any swim lane yet. Add `actor_id`, `decided_by`, or `wanted_by` to
+        neurons to populate this perspective.
       </div>
     );
   }
@@ -142,6 +141,10 @@ export function BpmnPerspective({
           }}
           onNodeClick={(_e: unknown, node: { id: string }) => {
             const target = nodeById.get(node.id);
+            if (target && onNeuronClick) {
+              onNeuronClick(target);
+              return;
+            }
             if (target?.href) navigate(target.href);
           }}
           proOptions={{ hideAttribution: true }}
@@ -185,6 +188,8 @@ interface FlowNode {
   draggable: boolean;
   selectable: boolean;
   connectable: boolean;
+  initialWidth?: number;
+  initialHeight?: number;
   parentId?: string;
   extent?: "parent";
   style?: CSSProperties;
@@ -208,11 +213,7 @@ interface BpmnLayout {
   flowEdges: FlowEdge[];
 }
 
-function layOutBpmn(
-  lanes: BpmnLane[],
-  nodes: BpmnNode[],
-  links: OverviewGraphLink[],
-): BpmnLayout {
+function layOutBpmn(lanes: BpmnLane[], nodes: BpmnNode[], links: OverviewGraphLink[]): BpmnLayout {
   const byLane = new Map<string, BpmnNode[]>();
   for (const lane of lanes) byLane.set(lane.id, []);
   for (const node of nodes) {
@@ -264,8 +265,7 @@ function layOutBpmn(
   }
 
   const maxColumn = Math.max(0, ...Array.from(columnByNode.values()));
-  const laneWidth =
-    LANE_LABEL_WIDTH + (maxColumn + 1) * (NODE_WIDTH + NODE_GAP_X) + NODE_GAP_X;
+  const laneWidth = LANE_LABEL_WIDTH + (maxColumn + 1) * (NODE_WIDTH + NODE_GAP_X) + NODE_GAP_X;
 
   const flowNodes: FlowNode[] = [];
 
@@ -279,12 +279,14 @@ function layOutBpmn(
       draggable: false,
       selectable: false,
       connectable: false,
+      initialWidth: laneWidth,
+      initialHeight: LANE_HEIGHT,
       style: { width: laneWidth, height: LANE_HEIGHT, zIndex: 0, padding: 0 },
     });
   });
 
   // Emit neuron nodes nested in their lane.
-  lanes.forEach((lane) => {
+  for (const lane of lanes) {
     const list = orderedByLane.get(lane.id) ?? [];
     for (const node of list) {
       const column = columnByNode.get(node.id) ?? 0;
@@ -300,10 +302,12 @@ function layOutBpmn(
         draggable: false,
         selectable: false,
         connectable: false,
+        initialWidth: NODE_WIDTH,
+        initialHeight: NODE_HEIGHT,
         style: { width: NODE_WIDTH, height: NODE_HEIGHT, zIndex: 1 },
       });
     }
-  });
+  }
 
   const nodeSet = new Set(nodes.map((n) => n.id));
   const flowEdges: FlowEdge[] = links
@@ -383,7 +387,6 @@ function nodeTypeForShape(shape: BpmnShape): string {
       return "bpmnDocument";
     case "rounded":
       return "bpmnRounded";
-    case "rectangle":
     default:
       return "bpmnRectangle";
   }
@@ -465,8 +468,16 @@ function ShapeLabel({ node }: { node: BpmnNode }) {
 function commonHandles() {
   return (
     <>
-      <Handle type="target" position={Position.Left} style={{ background: "transparent", border: "none" }} />
-      <Handle type="source" position={Position.Right} style={{ background: "transparent", border: "none" }} />
+      <Handle
+        type="target"
+        position={Position.Left}
+        style={{ background: "transparent", border: "none" }}
+      />
+      <Handle
+        type="source"
+        position={Position.Right}
+        style={{ background: "transparent", border: "none" }}
+      />
     </>
   );
 }
@@ -626,6 +637,8 @@ function BpmnDocumentNode({ data }: { data: BpmnNodeData }) {
       <svg
         viewBox="0 0 140 60"
         preserveAspectRatio="none"
+        aria-hidden="true"
+        focusable="false"
         style={{
           position: "absolute",
           inset: 0,
@@ -654,7 +667,10 @@ function BpmnDocumentNode({ data }: { data: BpmnNodeData }) {
  * shape stroke (also lifecycle color) to form a consistent color
  * triplet. Text identifies what the pill represents (type vs stage).
  */
-function badgeStyle(node: BpmnNode, anchor: "left" | "right" | "centered-top" | "centered-bottom"): CSSProperties {
+function badgeStyle(
+  node: BpmnNode,
+  anchor: "left" | "right" | "centered-top" | "centered-bottom",
+): CSSProperties {
   const bg = lifecycleColor(node.lifecycle);
   const fg = textOnLifecycle(node.lifecycle);
   const base: CSSProperties = {

@@ -1,6 +1,7 @@
+import { getEntity, roleAtLeast } from "@doco/db";
 import { makeUpdateRoute } from "~/lib/api-capture-factory.server";
 import { type DecisionPatch, updateDecision } from "~/lib/capture.server";
-import { loadDocoRouteForAdmin } from "~/lib/doco-access.server";
+import { getDocoLevelRole, loadDocoRouteForRead } from "~/lib/doco-access.server";
 
 /**
  * GET /<doco-handle>/api/decisions/<id>.json — read the Decision body.
@@ -28,7 +29,14 @@ export async function action({
   params: { docoId: string; id: string };
 }) {
   const { id } = params;
-  const { dir, docoSlug, me, meta, ownerSlug } = await loadDocoRouteForAdmin(request, params);
+  const { dir, docoSlug, me, meta, ownerSlug } = await loadDocoRouteForRead(
+    request,
+    params,
+    "author",
+  );
+  if (!me) {
+    return Response.json({ error: "Authentication required to edit." }, { status: 401 });
+  }
   if (request.method !== "PATCH" && request.method !== "POST") {
     return Response.json({ error: "Use PATCH or POST." }, { status: 405 });
   }
@@ -41,6 +49,23 @@ export async function action({
     patch = (await request.json()) as DecisionPatch;
   } catch (e) {
     return Response.json({ error: `Invalid JSON body: ${(e as Error).message}` }, { status: 400 });
+  }
+  const existing = await getEntity("decision", id);
+  if (!existing || existing.doco_id !== meta.docoId) {
+    return Response.json({ error: `decision not found: ${id}` }, { status: 404 });
+  }
+  const lifecycleChange = patch.lifecycle !== undefined && patch.lifecycle !== existing.lifecycle;
+  const claimStateChange =
+    lifecycleChange || patch.deprecated !== undefined || patch.outcome !== undefined;
+  const docoRole = await getDocoLevelRole({ ownerId: meta.ownerId, docoId: meta.docoId }, me.id);
+  if (!roleAtLeast(docoRole, "author")) {
+    return Response.json({ error: "Forbidden: author role required to edit." }, { status: 403 });
+  }
+  if (claimStateChange && !roleAtLeast(docoRole, "approver")) {
+    return Response.json(
+      { error: "Forbidden: approver role required to change lifecycle/deprecated/outcome." },
+      { status: 403 },
+    );
   }
   const docoHost = new URL(request.url).origin;
   const result = await updateDecision(
