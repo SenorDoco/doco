@@ -42,6 +42,11 @@ const DOCO_ID_PLACEHOLDER = /__DOCO_ID__/g;
  *   .claude/stop-check.sh           (Stop hook — edits-without-captures nudge per ADR-141)
  *   .agents/doco-agent-client.mjs   (dependency-free Node fetch helper; keeps
  *                                    DOCO_ACCESS out of shell command text)
+ *   .agents/doco-mcp-server.mjs     (zero-dep MCP server exposing doco_search,
+ *                                    doco_authenticate, doco_complete_authentication —
+ *                                    the discoverability channel where hooks don't fire)
+ *   .mcp.json                       (MCP server registration — auto-discovered by
+ *                                    Claude Code, Cursor, Codex CLI)
  *
  * Source of truth: `packages/cli/templates/agent-bootstrap/`. Edits there
  * propagate to every Doco that runs this command (or `doco init`, which
@@ -105,6 +110,8 @@ export const installAgentBootstrapCmd = defineCommand({
     const postToolUseHookSrc = join(TEMPLATES_DIR, ".claude", "post-tool-use-check.sh");
     const stopHookSrc = join(TEMPLATES_DIR, ".claude", "stop-check.sh");
     const agentClientSrc = join(TEMPLATES_DIR, ".agents", "doco-agent-client.mjs");
+    const mcpServerSrc = join(TEMPLATES_DIR, ".agents", "doco-mcp-server.mjs");
+    const mcpJsonSrc = join(TEMPLATES_DIR, ".mcp.json");
     for (const p of [
       agentsMdSrc,
       claudeMdSrc,
@@ -116,6 +123,8 @@ export const installAgentBootstrapCmd = defineCommand({
       postToolUseHookSrc,
       stopHookSrc,
       agentClientSrc,
+      mcpServerSrc,
+      mcpJsonSrc,
     ]) {
       if (!existsSync(p)) {
         console.error(cross(`Template missing: ${p}. Reinstall doco-cli.`));
@@ -136,6 +145,8 @@ export const installAgentBootstrapCmd = defineCommand({
     const stopHookDst = join(claudeDir, "stop-check.sh");
     const agentsDir = join(target, ".agents");
     const agentClientDst = join(agentsDir, "doco-agent-client.mjs");
+    const mcpServerDst = join(agentsDir, "doco-mcp-server.mjs");
+    const mcpJsonDst = join(target, ".mcp.json");
 
     const actions: string[] = [];
 
@@ -211,6 +222,8 @@ export const installAgentBootstrapCmd = defineCommand({
       [postToolUseHookSrc, postToolUseHookDst, 0o755],
       [stopHookSrc, stopHookDst, 0o755],
       [agentClientSrc, agentClientDst, 0o755],
+      [mcpServerSrc, mcpServerDst, 0o755],
+      [mcpJsonSrc, mcpJsonDst, 0o644],
     ] as const) {
       const label = dst.replace(`${target}/`, "");
       if (existsSync(dst) && !force) {
@@ -266,7 +279,7 @@ export const installAgentBootstrapCmd = defineCommand({
     );
     console.log(
       c.dim(
-        "     git add .doco/connections.md AGENTS.md CLAUDE.md .agents/doco-agent-client.mjs .claude",
+        "     git add .doco/connections.md AGENTS.md CLAUDE.md .mcp.json .agents .claude",
       ),
     );
     console.log(c.dim('     git commit -m "Connect repository to Doco"'));
