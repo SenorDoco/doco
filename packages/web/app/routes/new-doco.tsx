@@ -5,7 +5,14 @@ import { Card, CardContent } from "~/components/card";
 import { SingleColumnPageMain } from "~/components/page-main";
 import { SiteHeader } from "~/components/site-header";
 import { DOCO_TEMPLATES } from "~/lib/doco-templates-meta";
+import {
+  HANDLE_FORMAT_HELP,
+  HANDLE_INPUT_PATTERN,
+  friendlyHandleValidationError,
+  handleValidityMessage,
+} from "~/lib/handle-format";
 import { isOrgMember, listMyOrgs, lookupOrgHandle } from "~/lib/org-helpers.server";
+import { withCreatedDocoId } from "~/lib/post-create-doco-route";
 import {
   addOrganizationByHandle,
   createDocoInOrg,
@@ -142,7 +149,11 @@ export async function action({ request }: { request: Request }) {
       chosenOrgHandle = created.handle;
     }
   } catch (e) {
-    return { error: (e as Error).message, suggestedHandle: null, state };
+    return {
+      error: friendlyHandleValidationError((e as Error).message, "Organization handle"),
+      suggestedHandle: null,
+      state,
+    };
   }
 
   try {
@@ -155,7 +166,7 @@ export async function action({ request }: { request: Request }) {
         state.templateHandle === DEFAULT_TEMPLATE_HANDLE ? null : state.templateHandle,
       autoSuffix: accept,
     });
-    throw redirect(`/${rec.handle}/welcome`);
+    throw redirect(withCreatedDocoId(`/${rec.handle}/welcome`, rec.docoId));
   } catch (e) {
     if (e instanceof Response) throw e;
     const message = (e as Error).message;
@@ -167,7 +178,11 @@ export async function action({ request }: { request: Request }) {
         state,
       };
     }
-    return { error: message, suggestedHandle: null, state };
+    return {
+      error: friendlyHandleValidationError(message, "Doco name"),
+      suggestedHandle: null,
+      state,
+    };
   }
 }
 
@@ -261,16 +276,35 @@ export default function NewDocoStep1({
                   <option value="">+ Create a new organization</option>
                 </select>
                 {isCreateNewOrg ? (
-                  <input
-                    type="text"
-                    name="new_org_handle"
-                    required
-                    pattern="[a-z0-9][a-z0-9_-]*"
-                    value={newOrgHandle}
-                    onChange={(e) => setNewOrgHandle(e.target.value.toLowerCase())}
-                    placeholder="Organization handle"
-                    className="w-full rounded-md border border-border bg-input px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
-                  />
+                  <>
+                    <input
+                      type="text"
+                      name="new_org_handle"
+                      required
+                      pattern={HANDLE_INPUT_PATTERN}
+                      value={newOrgHandle}
+                      onChange={(e) => setNewOrgHandle(e.target.value.toLowerCase())}
+                      onInvalid={(event) => {
+                        event.currentTarget.setCustomValidity(
+                          handleValidityMessage(
+                            event.currentTarget.validity,
+                            "Organization handle",
+                          ),
+                        );
+                      }}
+                      onInput={(event) => event.currentTarget.setCustomValidity("")}
+                      placeholder="Organization handle"
+                      title={HANDLE_FORMAT_HELP}
+                      aria-describedby="new-doco-org-handle-help"
+                      className="w-full rounded-md border border-border bg-input px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
+                    />
+                    <span
+                      id="new-doco-org-handle-help"
+                      className="block text-[11px] text-muted-foreground"
+                    >
+                      {HANDLE_FORMAT_HELP}
+                    </span>
+                  </>
                 ) : null}
               </fieldset>
 
@@ -282,12 +316,26 @@ export default function NewDocoStep1({
                   type="text"
                   name="suffix"
                   required
-                  pattern="[a-z0-9][a-z0-9_-]*"
+                  pattern={HANDLE_INPUT_PATTERN}
                   value={suffix}
                   onChange={(e) => setSuffix(e.target.value.toLowerCase())}
+                  onInvalid={(event) => {
+                    event.currentTarget.setCustomValidity(
+                      handleValidityMessage(event.currentTarget.validity, "Doco name"),
+                    );
+                  }}
+                  onInput={(event) => event.currentTarget.setCustomValidity("")}
                   placeholder=""
+                  title={HANDLE_FORMAT_HELP}
+                  aria-describedby="new-doco-suffix-help"
                   className="w-[20ch] rounded-md border border-border bg-input px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
                 />
+                <span
+                  id="new-doco-suffix-help"
+                  className="mt-1 block text-[11px] text-muted-foreground"
+                >
+                  {HANDLE_FORMAT_HELP}
+                </span>
                 <span className="mt-1 block text-[11px] text-muted-foreground">
                   Final handle:{" "}
                   <code data-testid="handle-preview">

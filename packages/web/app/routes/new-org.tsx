@@ -3,6 +3,12 @@ import { Breadcrumb, hostBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent } from "~/components/card";
 import { SingleColumnPageMain } from "~/components/page-main";
 import { SiteHeader } from "~/components/site-header";
+import {
+  HANDLE_FORMAT_HELP,
+  HANDLE_INPUT_PATTERN,
+  friendlyHandleValidationError,
+  handleValidityMessage,
+} from "~/lib/handle-format";
 import { loadHostConfig } from "~/lib/host.server";
 import {
   addOrganizationByHandle,
@@ -56,7 +62,10 @@ export async function action({ request }: { request: Request }) {
         suggested,
       };
     }
-    return { error: message, suggested: null };
+    return {
+      error: friendlyHandleValidationError(message, "Organization handle"),
+      suggested: null,
+    };
   }
 }
 
@@ -99,13 +108,24 @@ export default function NewOrg({
                   type="text"
                   name="handle"
                   required
-                  pattern="[a-z0-9][a-z0-9_-]*"
+                  pattern={HANDLE_INPUT_PATTERN}
                   defaultValue={suggested ?? ""}
                   placeholder="my-org"
+                  title={HANDLE_FORMAT_HELP}
+                  aria-describedby="organization-handle-help"
+                  onInvalid={(event) => {
+                    event.currentTarget.setCustomValidity(
+                      handleValidityMessage(event.currentTarget.validity, "Organization handle"),
+                    );
+                  }}
+                  onInput={(event) => event.currentTarget.setCustomValidity("")}
                   className="w-full rounded-md border border-border bg-input px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
                 />
-                <span className="mt-1 block text-[11px] text-muted-foreground">
-                  Lowercase kebab-case.
+                <span
+                  id="organization-handle-help"
+                  className="mt-1 block text-[11px] text-muted-foreground"
+                >
+                  {HANDLE_FORMAT_HELP}
                 </span>
               </label>
               {actionData?.error ? (

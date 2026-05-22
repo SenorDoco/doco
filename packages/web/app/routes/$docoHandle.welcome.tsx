@@ -3,7 +3,8 @@ import { Breadcrumb, docoBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
 import { SingleColumnPageMain } from "~/components/page-main";
 import { SiteHeader } from "~/components/site-header";
-import { loadPostCreateDocoRouteForRead, withCreatedDocoId } from "~/lib/doco-access.server";
+import { loadPostCreateDocoRouteForRead } from "~/lib/doco-access.server";
+import { withCreatedDocoId } from "~/lib/post-create-doco-route";
 
 /**
  * /:handle/welcome — post-create Doco concepts page.
@@ -20,8 +21,10 @@ export async function loader({
   request: Request;
   params: { docoHandle?: string; docoId?: string };
 }) {
-  const { me, canonicalHandle, ownerSlug, createdDocoId } =
-    await loadPostCreateDocoRouteForRead(request, params);
+  const { me, canonicalHandle, ownerSlug, createdDocoId } = await loadPostCreateDocoRouteForRead(
+    request,
+    params,
+  );
   if (!me) throw redirect(`/sign-in?next=%2F${canonicalHandle}%2Fwelcome`);
   return { me, handle: canonicalHandle, ownerSlug, createdDocoId };
 }

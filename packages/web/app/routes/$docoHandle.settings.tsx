@@ -13,6 +13,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/com
 import { SiteHeader } from "~/components/site-header";
 import { rootDir } from "~/lib/db.server";
 import { loadDocoRouteForAdmin } from "~/lib/doco-access.server";
+import {
+  HANDLE_FORMAT_HELP,
+  HANDLE_INPUT_PATTERN,
+  friendlyHandleValidationError,
+  handleValidityMessage,
+} from "~/lib/handle-format";
 import { loadHostConfig } from "~/lib/host.server";
 import { reindex, renameDocoHandle, softDeleteDoco, updateDocoMeta } from "~/lib/redeem.server";
 import { isHumanPrincipal } from "~/lib/session.server";
@@ -86,7 +92,9 @@ export async function action({
 
   if (!newHandle) return { error: "Handle is required." };
   const handleError = validateRequestedDocoHandle(newHandle);
-  if (handleError) return { error: handleError };
+  if (handleError) {
+    return { error: friendlyHandleValidationError(handleError, "Doco handle") };
+  }
   if (visibility && visibility !== "private" && visibility !== "public") {
     return { error: "Visibility must be private or public." };
   }
@@ -153,12 +161,23 @@ export default function DocoSettings({
                 <input
                   name="doco_handle"
                   required
-                  pattern="[a-z0-9_-]+"
+                  pattern={HANDLE_INPUT_PATTERN}
                   defaultValue={handle}
+                  title={HANDLE_FORMAT_HELP}
+                  aria-describedby="doco-handle-help"
+                  onInvalid={(event) => {
+                    event.currentTarget.setCustomValidity(
+                      handleValidityMessage(event.currentTarget.validity, "Doco handle"),
+                    );
+                  }}
+                  onInput={(event) => event.currentTarget.setCustomValidity("")}
                   className="w-full rounded-md border border-border bg-input px-3 py-2 font-mono text-xs text-foreground outline-none focus:border-primary"
                 />
-                <span className="mt-1 block text-[11px] text-muted-foreground">
-                  Lowercase kebab-case. Renaming takes effect immediately and updates every URL.
+                <span
+                  id="doco-handle-help"
+                  className="mt-1 block text-[11px] text-muted-foreground"
+                >
+                  {HANDLE_FORMAT_HELP} Renaming takes effect immediately and updates every URL.
                 </span>
               </label>
 

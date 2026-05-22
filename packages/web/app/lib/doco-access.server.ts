@@ -18,6 +18,7 @@ import { redirect } from "react-router";
 import { docoPath } from "./db.server";
 import { type DocoMetadata, readDocoMetadata } from "./doco-metadata.server";
 import { type ValidAccessToken, validateAccessToken } from "./oauth-server.server";
+import { readCreatedDocoIdSearchParam } from "./post-create-doco-route";
 import { resolvePrincipalUsernameAlias } from "./principal-aliases.server";
 import { type CurrentPrincipal, extractBearer, getCurrentPrincipalAsync } from "./session.server";
 
@@ -94,9 +95,7 @@ export async function canAccessDoco(
  * on an invalid bearer, route through `loadDocoForRead` instead, which
  * also emits the RFC 6750 `WWW-Authenticate` header.
  */
-export async function getOauthTokenForRequest(
-  request: Request,
-): Promise<ValidAccessToken | null> {
+export async function getOauthTokenForRequest(request: Request): Promise<ValidAccessToken | null> {
   const bearer = extractBearer(request);
   if (!bearer) return null;
   return await validateAccessToken(bearer);
@@ -467,6 +466,25 @@ export async function loadDocoRouteForRead(
   return { ...route, ...loaded };
 }
 
+export type LoadedPostCreateDocoRoute = LoadedDocoRoute & {
+  createdDocoId: string | null;
+};
+
+export async function loadPostCreateDocoRouteForRead(
+  request: Request,
+  params: DocoRouteParams,
+  minRole: DocoRole = "reader",
+): Promise<LoadedPostCreateDocoRoute> {
+  const createdDocoId = readCreatedDocoIdSearchParam(request);
+  const routeParam = createdDocoId ?? readDocoRouteParam(params);
+  if (!routeParam) {
+    throw notFoundForAccessDenied("", "");
+  }
+  const loaded = await loadDocoForRead(request, routeParam, minRole);
+  const route = loadedDocoRouteFields(loaded);
+  return { ...route, ...loaded, createdDocoId };
+}
+
 export async function loadDocoRouteForAdmin(
   request: Request,
   params: DocoRouteParams,
@@ -478,6 +496,20 @@ export async function loadDocoRouteForAdmin(
   const loaded = await loadDocoForAdmin(request, routeParam);
   const route = loadedDocoRouteFields(loaded);
   return { ...route, ...loaded };
+}
+
+export async function loadPostCreateDocoRouteForAdmin(
+  request: Request,
+  params: DocoRouteParams,
+): Promise<LoadedPostCreateDocoRoute> {
+  const createdDocoId = readCreatedDocoIdSearchParam(request);
+  const routeParam = createdDocoId ?? readDocoRouteParam(params);
+  if (!routeParam) {
+    throw notFoundForAccessDenied("", "");
+  }
+  const loaded = await loadDocoForAdmin(request, routeParam);
+  const route = loadedDocoRouteFields(loaded);
+  return { ...route, ...loaded, createdDocoId };
 }
 
 /**

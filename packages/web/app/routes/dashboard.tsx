@@ -3,7 +3,7 @@
 // Two evenly-split columns:
 //   - Header: "Good <verb>, <username>" with +Doco / +Org buttons
 //     on the right (desktop)
-//   - Left column: one-click org/Doco access rows and newly available
+//   - Left column: nested org/Doco access list and newly available
 //     templates
 //   - Right column: Activity heatmap + Latest activity feed (10 items)
 //     across every doco the user has a stake in
@@ -25,7 +25,7 @@ import {
 } from "~/lib/activity-feed";
 import { cn } from "~/lib/cn";
 import { isMyDoco, listInvitedDocoIdsForPrincipal } from "~/lib/doco-access.server";
-import { ENTITY_TABLES, listDocoStats } from "~/lib/doco-stats.server";
+import { listDocoStats } from "~/lib/doco-stats.server";
 import { DOCO_TEMPLATES } from "~/lib/doco-templates-meta";
 import { pickGreetingVerb } from "~/lib/greeting";
 import { listAllDocos, listMyOrgs, loadHostConfig } from "~/lib/host.server";
@@ -56,27 +56,24 @@ interface FeedEvent {
   after: Record<string, unknown> | null;
 }
 
-interface AccessRow {
+interface DocoAccessRow {
   id: string;
   href: string;
   label: string;
-  eyebrow: string;
   activeNodes: number;
   totalNodes: number;
   lastUpdatedAt: string | null;
 }
 
-interface NodeActivityStats {
+interface AccessGroup {
+  id: string;
+  href: string;
+  label: string;
   activeNodes: number;
   totalNodes: number;
   lastUpdatedAt: string | null;
+  docos: DocoAccessRow[];
 }
-
-const EMPTY_NODE_ACTIVITY: NodeActivityStats = {
-  activeNodes: 0,
-  totalNodes: 0,
-  lastUpdatedAt: null,
-};
 
 export async function loader({ request }: { request: Request }) {
   const me = await getCurrentPrincipal(request);
@@ -89,37 +86,57 @@ export async function loader({ request }: { request: Request }) {
   const myDocoIds = docos.map((d) => d.docoId);
 
   const [docoStats, orgsRaw] = await Promise.all([listDocoStats(myDocoIds), listMyOrgs(me.id)]);
-  const orgStats = await listOrgActivityStats(orgsRaw.map((o) => o.id));
 
-  const orgs: AccessRow[] = orgsRaw
-    .map((o) => {
-      const stats = orgStats.get(o.id) ?? EMPTY_NODE_ACTIVITY;
-      return {
-        id: o.id,
-        href: `/orgs/${o.slug}`,
-        label: o.display_name || o.slug,
-        eyebrow: `Org · ${o.slug}`,
-        activeNodes: stats.activeNodes,
-        totalNodes: stats.totalNodes,
-        lastUpdatedAt: stats.lastUpdatedAt,
-      };
-    })
-    .sort(sortAccessRows);
+  const accessGroupsByOwner = new Map<string, AccessGroup>();
+  for (const org of orgsRaw) {
+    accessGroupsByOwner.set(org.id, {
+      id: org.id,
+      href: `/orgs/${org.slug}`,
+      label: org.display_name || org.slug,
+      activeNodes: 0,
+      totalNodes: 0,
+      lastUpdatedAt: null,
+      docos: [],
+    });
+  }
 
-  const docoRows: AccessRow[] = docos
-    .map((d) => {
-      const stats = docoStats.get(d.docoId);
-      return {
-        id: d.docoId,
-        href: `/${d.handle}`,
-        label: d.handle,
-        eyebrow: `Doco · ${d.ownerUsername}`,
-        activeNodes: stats?.activeNeurons ?? 0,
-        totalNodes: stats?.neurons ?? 0,
-        lastUpdatedAt: stats?.lastUpdatedAt ?? null,
+  for (const d of docos) {
+    const stats = docoStats.get(d.docoId);
+    const row: DocoAccessRow = {
+      id: d.docoId,
+      href: `/${d.handle}`,
+      label: d.handle,
+      activeNodes: stats?.activeNeurons ?? 0,
+      totalNodes: stats?.neurons ?? 0,
+      lastUpdatedAt: stats?.lastUpdatedAt ?? null,
+    };
+
+    let group = accessGroupsByOwner.get(d.ownerId);
+    if (!group) {
+      group = {
+        id: d.ownerId,
+        href: d.ownerKind === "organization" ? `/orgs/${d.ownerUsername}` : `/${d.ownerUsername}`,
+        label: d.ownerId === me.id ? "Personal" : d.ownerUsername,
+        activeNodes: 0,
+        totalNodes: 0,
+        lastUpdatedAt: null,
+        docos: [],
       };
-    })
-    .sort(sortAccessRows);
+      accessGroupsByOwner.set(d.ownerId, group);
+    }
+
+    group.docos.push(row);
+    group.activeNodes += row.activeNodes;
+    group.totalNodes += row.totalNodes;
+    group.lastUpdatedAt = newestIso(group.lastUpdatedAt, row.lastUpdatedAt);
+  }
+
+  const accessGroups = Array.from(accessGroupsByOwner.values())
+    .map((group) => ({
+      ...group,
+      docos: group.docos.sort(sortAccessItems),
+    }))
+    .sort(sortAccessItems);
 
   const since = new Date();
   since.setDate(since.getDate() - HEATMAP_WEEKS * 7);
@@ -215,8 +232,7 @@ export async function loader({ request }: { request: Request }) {
     host: await loadHostConfig(),
     me,
     greetingVerb: pickGreetingVerb(),
-    orgs,
-    docos: docoRows,
+    accessGroups,
     byDay,
     feed,
     templates,
@@ -233,7 +249,7 @@ export default function Dashboard({
 }: {
   loaderData: Awaited<ReturnType<typeof loader>>;
 }) {
-  const { me, greetingVerb, orgs, docos, byDay, feed, templates } = loaderData;
+  const { me, greetingVerb, accessGroups, byDay, feed, templates } = loaderData;
   return (
     <div>
       <SiteHeader mode="host" me={me} />
@@ -261,8 +277,7 @@ export default function Dashboard({
 
         <div className="grid grid-cols-1 gap-6 min-[840px]:grid-cols-2">
           <section className="space-y-4">
-            <AccessListCard title="Your orgs" rows={orgs} emptyLabel="No orgs yet." />
-            <AccessListCard title="Your Docos" rows={docos} emptyLabel="No Docos yet." />
+            <AccessTreeCard groups={accessGroups} />
 
             <Card>
               <CardHeader className="px-4 py-3">
@@ -320,7 +335,7 @@ export default function Dashboard({
 
             <Card>
               <CardHeader className="px-4 py-3">
-                <CardTitle className="text-sm">Latest activity in your Docos</CardTitle>
+                <CardTitle className="text-sm">Latest activity in your docos</CardTitle>
               </CardHeader>
               <CardContent className="p-0">
                 {feed.length === 0 ? (
@@ -341,118 +356,101 @@ export default function Dashboard({
   );
 }
 
-async function listOrgActivityStats(
-  orgIds: readonly string[],
-): Promise<Map<string, NodeActivityStats>> {
-  const out = new Map<string, NodeActivityStats>();
-  for (const id of orgIds) out.set(id, { ...EMPTY_NODE_ACTIVITY });
-  if (orgIds.length === 0) return out;
-
-  const nodesUnionSql = ENTITY_TABLES.map((t) => `SELECT doco_id, lifecycle FROM ${t}`).join(
-    " UNION ALL ",
-  );
-
-  return withClient(async (c) => {
-    const [nodeRows, updatedRows] = await Promise.all([
-      c.query<{ owner_id: string; total_nodes: string; active_nodes: string }>(
-        `SELECT d.owner_id,
-                COUNT(*)::text AS total_nodes,
-                COUNT(*) FILTER (WHERE COALESCE(t.lifecycle, 'active') = 'active')::text AS active_nodes
-           FROM (${nodesUnionSql}) t
-           JOIN docos d ON d.id = t.doco_id
-          WHERE d.owner_id = ANY($1)
-          GROUP BY d.owner_id`,
-        [[...orgIds]],
-      ),
-      c.query<{ owner_id: string; last_at: string | null }>(
-        `SELECT d.owner_id, MAX(a.at)::text AS last_at
-           FROM audit_events a
-           JOIN docos d ON d.id = a.doco_id
-          WHERE d.owner_id = ANY($1)
-          GROUP BY d.owner_id`,
-        [[...orgIds]],
-      ),
-    ]);
-
-    for (const row of nodeRows.rows) {
-      const stats = out.get(row.owner_id);
-      if (stats) {
-        stats.activeNodes = Number(row.active_nodes);
-        stats.totalNodes = Number(row.total_nodes);
-      }
-    }
-    for (const row of updatedRows.rows) {
-      const stats = out.get(row.owner_id);
-      if (stats) stats.lastUpdatedAt = row.last_at;
-    }
-    return out;
-  });
+function newestIso(a: string | null, b: string | null): string | null {
+  if (!a) return b;
+  if (!b) return a;
+  return a.localeCompare(b) >= 0 ? a : b;
 }
 
-function sortAccessRows(a: AccessRow, b: AccessRow): number {
+function sortAccessItems(
+  a: { label: string; lastUpdatedAt: string | null },
+  b: { label: string; lastUpdatedAt: string | null },
+): number {
   if (a.lastUpdatedAt && b.lastUpdatedAt) return b.lastUpdatedAt.localeCompare(a.lastUpdatedAt);
   if (a.lastUpdatedAt) return -1;
   if (b.lastUpdatedAt) return 1;
   return a.label.localeCompare(b.label);
 }
 
-function AccessListCard({
-  title,
-  rows,
-  emptyLabel,
-}: {
-  title: string;
-  rows: AccessRow[];
-  emptyLabel: string;
-}) {
+function AccessTreeCard({ groups }: { groups: AccessGroup[] }) {
   return (
     <Card>
-      <CardHeader className="px-4 py-3">
-        <CardTitle className="text-sm">{title}</CardTitle>
+      <CardHeader className="px-4 pb-2 pt-3">
+        <CardTitle className="text-sm">Your orgs and docos</CardTitle>
       </CardHeader>
-      <CardContent className="p-0">
-        {rows.length === 0 ? (
-          <p className="px-5 py-6 text-xs text-muted-foreground">{emptyLabel}</p>
+      <CardContent className="px-4 pb-3 pt-1">
+        {groups.length === 0 ? (
+          <p className="text-xs text-muted-foreground">No orgs or docos yet.</p>
         ) : (
-          <ul className="divide-y divide-border">
-            {rows.map((row) => (
-              <li key={row.id}>
-                <Link to={row.href} className="block px-4 py-3 hover:bg-input">
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="min-w-0">
-                      <div className="truncate text-sm font-semibold text-primary">{row.label}</div>
-                      <div className="mt-0.5 truncate text-[11px] uppercase tracking-wide text-muted-foreground">
-                        {row.eyebrow}
-                      </div>
-                    </div>
-                    <div className="shrink-0 text-right">
-                      <div className="font-mono text-sm tabular-nums text-foreground">
-                        {row.activeNodes}/{row.totalNodes}
-                      </div>
-                      <div className="text-[11px] text-muted-foreground">active nodes</div>
-                    </div>
-                  </div>
-                  <div className="mt-2 text-xs text-muted-foreground">
-                    Last modified{" "}
-                    {row.lastUpdatedAt ? (
-                      <time
-                        dateTime={row.lastUpdatedAt}
-                        title={row.lastUpdatedAt}
-                        suppressHydrationWarning
-                      >
-                        {timeAgo(row.lastUpdatedAt)}
-                      </time>
-                    ) : (
-                      "—"
-                    )}
-                  </div>
-                </Link>
+          <ul className="space-y-1.5">
+            {groups.map((group) => (
+              <li key={group.id} className="grid grid-cols-[0.5rem_minmax(0,1fr)] gap-1.5">
+                <span className="pt-[0.42rem] text-muted-foreground">•</span>
+                <AccessLine item={group} />
+                {group.docos.length === 0 ? (
+                  <p className="col-start-2 mt-1 text-xs text-muted-foreground">No docos yet.</p>
+                ) : (
+                  <ul className="col-start-2 mt-1 space-y-1">
+                    {group.docos.map((doco) => (
+                      <li key={doco.id} className="grid grid-cols-[0.5rem_minmax(0,1fr)] gap-1.5">
+                        <span className="pt-[0.34rem] text-muted-foreground">•</span>
+                        <AccessLine item={doco} compact />
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </li>
             ))}
           </ul>
         )}
       </CardContent>
     </Card>
+  );
+}
+
+function AccessLine({
+  item,
+  compact = false,
+}: {
+  item: {
+    href: string;
+    label: string;
+    activeNodes: number;
+    totalNodes: number;
+    lastUpdatedAt: string | null;
+  };
+  compact?: boolean;
+}) {
+  return (
+    <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-baseline gap-3">
+      <div className="flex min-w-0 items-baseline">
+        <Link
+          to={item.href}
+          className={cn(
+            "block min-w-0 truncate font-semibold text-primary hover:underline",
+            compact ? "text-xs" : "text-sm",
+          )}
+        >
+          {item.label}
+        </Link>
+        <span className="ml-1 whitespace-nowrap text-[11px] text-muted-foreground">
+          ({item.totalNodes})
+        </span>
+      </div>
+      <div className="shrink-0 whitespace-nowrap text-right text-[11px] text-muted-foreground">
+        <span>last modified </span>
+        <LastModified iso={item.lastUpdatedAt} />
+      </div>
+    </div>
+  );
+}
+
+function LastModified({ iso }: { iso: string | null }) {
+  if (!iso) return <span>never</span>;
+  return (
+    <time dateTime={iso} title={iso} suppressHydrationWarning>
+      {timeAgo(iso)}
+    </time>
   );
 }
 
