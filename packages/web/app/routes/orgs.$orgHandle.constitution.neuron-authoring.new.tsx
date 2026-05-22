@@ -136,7 +136,7 @@ export default function NewOrgNeuronAuthoringPrimitive({
           <Breadcrumb
             items={orgBreadcrumb({
               orgSlug: org.slug,
-              parent: { label: "Constitution", to: `/orgs/${org.slug}/constitution` },
+              parent: { label: "Primitives", to: `/orgs/${org.slug}/constitution` },
               pageLabel: "New neuron-authoring primitive",
             })}
             className="mb-1"

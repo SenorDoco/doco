@@ -110,7 +110,7 @@ export async function loader({
 }
 
 export function meta({ params }: { params: { orgHandle: string } }) {
-  return [{ title: `Articles of the Constitution · ${params.orgHandle} · Doco` }];
+  return [{ title: `Primitives · ${params.orgHandle} · Doco` }];
 }
 
 export default function OrgConstitution({
@@ -128,20 +128,20 @@ export default function OrgConstitution({
           <Breadcrumb
             items={orgBreadcrumb({
               orgSlug: org.slug,
-              pageLabel: "The Constitution",
+              pageLabel: "Primitives",
             })}
             className="mb-1"
           />
           <h1 className="text-2xl font-semibold">
-            Articles of the Constitution · <span className="font-mono">{org.slug}</span>
+            Primitives · <span className="font-mono">{org.slug}</span>
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Rules that govern how nodes get added to every doco owned by {org.slug}.{" "}
+            Rules that govern how neurons get added to every doco owned by {org.slug}.{" "}
             {AGENT_EXPOSURE_NOTE}
           </p>
           {!canEdit ? (
             <p className="mt-2 text-xs italic text-muted-foreground">
-              Only an org owner can add articles. You are viewing read-only.
+              Only an org owner can add primitives. You are viewing read-only.
             </p>
           ) : null}
         </header>

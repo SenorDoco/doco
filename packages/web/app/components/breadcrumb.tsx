@@ -64,7 +64,7 @@ export function Breadcrumb({
  * to the doco home (`/<handle>`).
  *
  * Pass `parent` for subpages like `.../constitution/guidance/new`:
- * `parent: { label: "Constitution", to: "/<handle>/constitution" }`.
+ * `parent: { label: "Primitives", to: "/<handle>/constitution" }`.
  */
 export function docoBreadcrumb({
   ownerSlug,

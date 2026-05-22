@@ -111,7 +111,7 @@ export default function NewOrgGuidancePrimitive({
           <Breadcrumb
             items={orgBreadcrumb({
               orgSlug: org.slug,
-              parent: { label: "Constitution", to: `/orgs/${org.slug}/constitution` },
+              parent: { label: "Primitives", to: `/orgs/${org.slug}/constitution` },
               pageLabel: "New guidance primitive",
             })}
             className="mb-1"

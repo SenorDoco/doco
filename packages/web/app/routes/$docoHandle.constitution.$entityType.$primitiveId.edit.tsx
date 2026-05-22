@@ -221,7 +221,7 @@ export default function EditPrimitive({
             items={docoBreadcrumb({
               ownerSlug,
               handle,
-              parent: { label: "Constitution", to: `/${handle}/constitution` },
+              parent: { label: "Primitives", to: `/${handle}/constitution` },
               pageLabel: `Modify ${isNeuronAuthoring ? "neuron-authoring" : "guidance"} primitive`,
             })}
             className="mb-1"
