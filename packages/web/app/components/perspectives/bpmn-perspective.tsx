@@ -22,6 +22,11 @@ import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react"
 import { useNavigate } from "react-router";
 import type { OverviewGraphLink } from "~/components/overview-graph";
 import type { BpmnLane, BpmnNode, BpmnShape } from "~/lib/bpmn-perspective.server";
+import {
+  type GraphReferenceItem,
+  clearGraphReferences,
+  publishGraphReferences,
+} from "~/lib/graph-references";
 import { lifecycleColor, lifecycleLabel, textOnLifecycle } from "~/lib/neuron-colors";
 import "@xyflow/react/dist/style.css";
 
@@ -45,6 +50,19 @@ const NODE_WIDTH = 140;
 const NODE_HEIGHT = 60;
 const NODE_GAP_X = 60;
 const NODE_GAP_Y = 20; // padding above/below row inside the lane
+const BPMN_REFERENCE_ZOOM = 0.35;
+const MAX_GRAPH_REFERENCES = 120;
+
+interface FlowViewport {
+  x: number;
+  y: number;
+  zoom: number;
+}
+
+interface GraphSize {
+  width: number;
+  height: number;
+}
 
 interface FlowModule {
   ReactFlow: typeof import("@xyflow/react").ReactFlow;
@@ -61,8 +79,17 @@ export function BpmnPerspective({
   visibleLifecycles,
 }: BpmnPerspectiveProps) {
   const navigate = useNavigate();
+  const graphRef = useRef<HTMLDivElement>(null);
+  const graphReferenceIdRef = useRef(`bpmn-${Math.random().toString(36).slice(2)}`);
   const [Flow, setFlow] = useState<FlowModule | null>(null);
+  const [viewport, setViewport] = useState<FlowViewport>({ x: 0, y: 0, zoom: 1 });
+  const [graphSize, setGraphSize] = useState<GraphSize>({ width: 1, height: 1 });
   const hasFitRef = useRef(false);
+  const updateViewport = (next: FlowViewport) => {
+    setViewport((prev) =>
+      prev.x === next.x && prev.y === next.y && prev.zoom === next.zoom ? prev : next,
+    );
+  };
 
   // Drop nodes whose lifecycle is filtered out, then drop empty
   // lanes so the lane stack collapses cleanly. Links are filtered
@@ -91,6 +118,20 @@ export function BpmnPerspective({
     };
   }, []);
 
+  useEffect(() => {
+    const el = graphRef.current;
+    if (!el) return;
+    const update = () =>
+      setGraphSize({
+        width: Math.max(1, el.clientWidth),
+        height: Math.max(1, el.clientHeight),
+      });
+    update();
+    const obs = new ResizeObserver(update);
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, []);
+
   const layout = useMemo(
     () => layOutBpmn(filteredLanes, filteredNodes, links),
     [filteredLanes, filteredNodes, links],
@@ -108,6 +149,65 @@ export function BpmnPerspective({
   );
   const nodeById = useMemo(() => new Map(filteredNodes.map((n) => [n.id, n])), [filteredNodes]);
 
+  const graphReferences = useMemo<GraphReferenceItem[]>(() => {
+    if (viewport.zoom < BPMN_REFERENCE_ZOOM) return [];
+    return filteredNodes
+      .flatMap((node) => {
+        const position = layout.nodePositions.get(node.id);
+        if (!position || !isNodeVisibleInViewport(position, viewport, graphSize)) return [];
+        return [
+          {
+            node,
+            position: screenPosition(position, viewport),
+          },
+        ];
+      })
+      .sort((a, b) => {
+        const rowDiff = a.position.y - b.position.y;
+        if (Math.abs(rowDiff) > NODE_HEIGHT * viewport.zoom) return rowDiff;
+        const colDiff = a.position.x - b.position.x;
+        if (colDiff !== 0) return colDiff;
+        return a.node.id.localeCompare(b.node.id);
+      })
+      .slice(0, MAX_GRAPH_REFERENCES)
+      .map((entry, index) => ({
+        number: index + 1,
+        id: entry.node.id,
+        entity_type: entry.node.entity_type,
+        label: entry.node.name ?? entry.node.id,
+        lifecycle: entry.node.lifecycle ?? "active",
+        href: entry.node.href ?? null,
+      }));
+  }, [filteredNodes, layout.nodePositions, viewport, graphSize]);
+
+  const referenceNumberByNodeId = useMemo(
+    () => new Map(graphReferences.map((reference) => [reference.id, reference.number])),
+    [graphReferences],
+  );
+
+  const flowNodes = useMemo(
+    () =>
+      layout.flowNodes.map((node) => {
+        const referenceNumber = referenceNumberByNodeId.get(node.id);
+        if (!referenceNumber || !nodeById.has(node.id)) return node;
+        return {
+          ...node,
+          data: { ...node.data, referenceNumber },
+        };
+      }),
+    [layout.flowNodes, referenceNumberByNodeId, nodeById],
+  );
+
+  useEffect(() => {
+    const graphId = graphReferenceIdRef.current;
+    publishGraphReferences(graphId, "bpmn", graphReferences);
+  }, [graphReferences]);
+
+  useEffect(() => {
+    const graphId = graphReferenceIdRef.current;
+    return () => clearGraphReferences(graphId);
+  }, []);
+
   if (filteredLanes.length === 0 || filteredNodes.length === 0) {
     return (
       <div className="flex h-full min-h-[320px] items-center justify-center rounded-md border border-border bg-input text-xs italic text-muted-foreground">
@@ -118,10 +218,13 @@ export function BpmnPerspective({
   }
 
   return (
-    <div className="relative h-full min-h-[420px] w-full overflow-hidden rounded-md border border-border bg-input">
+    <div
+      ref={graphRef}
+      className="relative h-full min-h-[420px] w-full overflow-hidden rounded-md border border-border bg-input"
+    >
       {Flow ? (
         <Flow.ReactFlow
-          nodes={layout.flowNodes}
+          nodes={flowNodes}
           edges={layout.flowEdges}
           nodeTypes={nodeTypes}
           nodesDraggable={false}
@@ -133,12 +236,18 @@ export function BpmnPerspective({
           zoomOnScroll
           zoomOnPinch
           preventScrolling
-          onInit={(instance: { fitView?: (options?: { padding?: number }) => void }) => {
+          onInit={(instance: {
+            fitView?: (options?: { padding?: number }) => void;
+            getViewport?: () => FlowViewport;
+          }) => {
             if (!hasFitRef.current) {
               instance.fitView?.({ padding: 0.18 });
               hasFitRef.current = true;
             }
+            const current = instance.getViewport?.();
+            if (current) updateViewport(current);
           }}
+          onMove={(_event: unknown, next: FlowViewport) => updateViewport(next)}
           onNodeClick={(_e: unknown, node: { id: string }) => {
             const target = nodeById.get(node.id);
             if (target && onNeuronClick) {
@@ -211,6 +320,7 @@ interface FlowEdge {
 interface BpmnLayout {
   flowNodes: FlowNode[];
   flowEdges: FlowEdge[];
+  nodePositions: Map<string, { x: number; y: number }>;
 }
 
 function layOutBpmn(lanes: BpmnLane[], nodes: BpmnNode[], links: OverviewGraphLink[]): BpmnLayout {
@@ -268,13 +378,17 @@ function layOutBpmn(lanes: BpmnLane[], nodes: BpmnNode[], links: OverviewGraphLi
   const laneWidth = LANE_LABEL_WIDTH + (maxColumn + 1) * (NODE_WIDTH + NODE_GAP_X) + NODE_GAP_X;
 
   const flowNodes: FlowNode[] = [];
+  const laneYById = new Map<string, number>();
+  const nodePositions = new Map<string, { x: number; y: number }>();
 
   // Emit lane parent nodes first; child neurons reference parentId.
   lanes.forEach((lane, laneIndex) => {
+    const laneY = laneIndex * LANE_HEIGHT;
+    laneYById.set(lane.id, laneY);
     flowNodes.push({
       id: laneNodeId(lane.id),
       type: "bpmnLane",
-      position: { x: 0, y: laneIndex * LANE_HEIGHT },
+      position: { x: 0, y: laneY },
       data: { lane, height: LANE_HEIGHT, width: laneWidth, labelWidth: LANE_LABEL_WIDTH },
       draggable: false,
       selectable: false,
@@ -292,6 +406,8 @@ function layOutBpmn(lanes: BpmnLane[], nodes: BpmnNode[], links: OverviewGraphLi
       const column = columnByNode.get(node.id) ?? 0;
       const x = LANE_LABEL_WIDTH + column * (NODE_WIDTH + NODE_GAP_X);
       const y = (LANE_HEIGHT - NODE_HEIGHT) / 2;
+      const laneY = laneYById.get(node.laneId) ?? 0;
+      nodePositions.set(node.id, { x, y: laneY + y });
       flowNodes.push({
         id: node.id,
         type: nodeTypeForShape(node.shape),
@@ -334,7 +450,30 @@ function layOutBpmn(lanes: BpmnLane[], nodes: BpmnNode[], links: OverviewGraphLi
       };
     });
 
-  return { flowNodes, flowEdges };
+  return { flowNodes, flowEdges, nodePositions };
+}
+
+function screenPosition(position: { x: number; y: number }, viewport: FlowViewport) {
+  return {
+    x: position.x * viewport.zoom + viewport.x,
+    y: position.y * viewport.zoom + viewport.y,
+  };
+}
+
+function isNodeVisibleInViewport(
+  position: { x: number; y: number },
+  viewport: FlowViewport,
+  size: GraphSize,
+): boolean {
+  const screen = screenPosition(position, viewport);
+  const scaledWidth = NODE_WIDTH * viewport.zoom;
+  const scaledHeight = NODE_HEIGHT * viewport.zoom;
+  return (
+    screen.x > -scaledWidth &&
+    screen.y > -scaledHeight &&
+    screen.x < size.width + scaledWidth &&
+    screen.y < size.height + scaledHeight
+  );
 }
 
 /**
@@ -400,6 +539,7 @@ function laneNodeId(laneId: string): string {
 
 interface BpmnNodeData {
   node: BpmnNode;
+  referenceNumber?: number;
 }
 
 interface BpmnLaneData {
@@ -486,6 +626,7 @@ function BpmnRectangleNode({ data }: { data: BpmnNodeData }) {
   const stroke = lifecycleColor(data.node.lifecycle);
   return (
     <div
+      {...graphReferenceAttributes(data)}
       style={{
         width: "100%",
         height: "100%",
@@ -499,6 +640,7 @@ function BpmnRectangleNode({ data }: { data: BpmnNodeData }) {
         boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
       }}
     >
+      <ReferenceBadge data={data} />
       <TypeBadge node={data.node} />
       <LifecycleBadge node={data.node} />
       <ShapeLabel node={data.node} />
@@ -511,6 +653,7 @@ function BpmnRoundedNode({ data }: { data: BpmnNodeData }) {
   const stroke = lifecycleColor(data.node.lifecycle);
   return (
     <div
+      {...graphReferenceAttributes(data)}
       style={{
         width: "100%",
         height: "100%",
@@ -524,6 +667,7 @@ function BpmnRoundedNode({ data }: { data: BpmnNodeData }) {
         boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
       }}
     >
+      <ReferenceBadge data={data} />
       <TypeBadge node={data.node} />
       <LifecycleBadge node={data.node} />
       <ShapeLabel node={data.node} />
@@ -539,6 +683,7 @@ function BpmnCircleNode({ data }: { data: BpmnNodeData }) {
   // for layout consistency.
   return (
     <div
+      {...graphReferenceAttributes(data)}
       style={{
         width: "100%",
         height: "100%",
@@ -548,6 +693,7 @@ function BpmnCircleNode({ data }: { data: BpmnNodeData }) {
         justifyContent: "center",
       }}
     >
+      <ReferenceBadge data={data} circular />
       <div
         style={{
           width: NODE_HEIGHT,
@@ -579,6 +725,7 @@ function BpmnDiamondNode({ data }: { data: BpmnNodeData }) {
   const inner = Math.min(NODE_WIDTH, NODE_HEIGHT) - 6;
   return (
     <div
+      {...graphReferenceAttributes(data)}
       style={{
         width: "100%",
         height: "100%",
@@ -588,6 +735,7 @@ function BpmnDiamondNode({ data }: { data: BpmnNodeData }) {
         justifyContent: "center",
       }}
     >
+      <ReferenceBadge data={data} />
       <div
         style={{
           width: inner,
@@ -625,6 +773,7 @@ function BpmnDocumentNode({ data }: { data: BpmnNodeData }) {
   // zoom.
   return (
     <div
+      {...graphReferenceAttributes(data)}
       style={{
         width: "100%",
         height: "100%",
@@ -634,6 +783,7 @@ function BpmnDocumentNode({ data }: { data: BpmnNodeData }) {
         justifyContent: "center",
       }}
     >
+      <ReferenceBadge data={data} />
       <svg
         viewBox="0 0 140 60"
         preserveAspectRatio="none"
@@ -658,6 +808,31 @@ function BpmnDocumentNode({ data }: { data: BpmnNodeData }) {
       <ShapeLabel node={data.node} />
       {commonHandles()}
     </div>
+  );
+}
+
+function graphReferenceAttributes(data: BpmnNodeData): Record<string, string | number | undefined> {
+  return {
+    "data-graph-reference-number": data.referenceNumber,
+    "data-neuron-href": data.node.href ?? undefined,
+    "data-neuron-id": data.node.id,
+    "data-neuron-label": data.node.name ?? data.node.id,
+    "data-neuron-lifecycle": data.node.lifecycle ?? "active",
+    "data-neuron-type": data.node.entity_type,
+  };
+}
+
+function ReferenceBadge({ data, circular = false }: { data: BpmnNodeData; circular?: boolean }) {
+  if (!data.referenceNumber) return null;
+  return (
+    <span
+      aria-label={`Graph reference ${data.referenceNumber}: ${data.node.name ?? data.node.id}`}
+      className="pointer-events-none absolute z-30 flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold leading-none text-primary-foreground shadow-sm ring-2 ring-card"
+      style={circular ? { left: "calc(50% - 42px)", top: -10 } : { left: -10, top: -10 }}
+      title={`Graph reference ${data.referenceNumber}`}
+    >
+      {data.referenceNumber}
+    </span>
   );
 }
 

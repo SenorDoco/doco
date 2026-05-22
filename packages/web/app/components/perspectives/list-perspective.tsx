@@ -16,9 +16,14 @@
 // Primitives are pinned ABOVE the body for `rank_desc` since they're
 // the Doco's authoring contract.
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router";
 import { NeuronTypeIcon } from "~/components/neuron-type-icon";
+import {
+  type GraphReferenceItem,
+  clearGraphReferences,
+  publishGraphReferences,
+} from "~/lib/graph-references";
 import { lifecycleColor } from "~/lib/neuron-colors";
 import { timeAgo } from "~/lib/time-ago";
 
@@ -57,6 +62,7 @@ const LIFECYCLE_RANK = new Map(
 );
 
 const CONSTITUTION_TYPES = new Set(["guidance_primitive", "neuron_authoring_primitive"]);
+const MAX_GRAPH_REFERENCES = 120;
 
 export interface ListPerspectiveNode {
   id: string;
@@ -79,6 +85,7 @@ interface ListPerspectiveProps {
 }
 
 export function ListPerspective({ nodes, pageRanks, visibleLifecycles }: ListPerspectiveProps) {
+  const graphReferenceIdRef = useRef(`list-${Math.random().toString(36).slice(2)}`);
   const [sort, setSort] = useState<ListSortKey>("recent");
 
   const filtered = useMemo(() => {
@@ -86,10 +93,35 @@ export function ListPerspective({ nodes, pageRanks, visibleLifecycles }: ListPer
     return nodes.filter((node) => visibleLifecycles.has(node.lifecycle ?? "active"));
   }, [nodes, visibleLifecycles]);
 
-  const sorted = useMemo(
-    () => sortNodes(filtered, sort, pageRanks),
-    [filtered, sort, pageRanks],
+  const sorted = useMemo(() => sortNodes(filtered, sort, pageRanks), [filtered, sort, pageRanks]);
+
+  const graphReferences = useMemo<GraphReferenceItem[]>(
+    () =>
+      sorted.slice(0, MAX_GRAPH_REFERENCES).map((node, index) => ({
+        number: index + 1,
+        id: node.id,
+        entity_type: node.entity_type,
+        label: node.name ?? node.id,
+        lifecycle: node.lifecycle ?? "active",
+        href: node.href ?? null,
+      })),
+    [sorted],
   );
+
+  const referenceNumberByNodeId = useMemo(
+    () => new Map(graphReferences.map((reference) => [reference.id, reference.number])),
+    [graphReferences],
+  );
+
+  useEffect(() => {
+    const graphId = graphReferenceIdRef.current;
+    publishGraphReferences(graphId, "list", graphReferences);
+  }, [graphReferences]);
+
+  useEffect(() => {
+    const graphId = graphReferenceIdRef.current;
+    return () => clearGraphReferences(graphId);
+  }, []);
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-3">
@@ -120,7 +152,13 @@ export function ListPerspective({ nodes, pageRanks, visibleLifecycles }: ListPer
         ) : (
           <ul className="divide-y divide-border">
             {sorted.map((node) => (
-              <ListRow key={node.id} node={node} sort={sort} rank={pageRanks.get(node.id)} />
+              <ListRow
+                key={node.id}
+                node={node}
+                sort={sort}
+                rank={pageRanks.get(node.id)}
+                referenceNumber={referenceNumberByNodeId.get(node.id)}
+              />
             ))}
           </ul>
         )}
@@ -133,11 +171,29 @@ interface ListRowProps {
   node: ListPerspectiveNode;
   sort: ListSortKey;
   rank: number | undefined;
+  referenceNumber?: number;
 }
 
-function ListRow({ node, sort, rank }: ListRowProps) {
+function ListRow({ node, sort, rank, referenceNumber }: ListRowProps) {
   const inner = (
-    <div className="flex items-center gap-3 px-3 py-2 text-xs">
+    <div
+      className="flex items-center gap-3 px-3 py-2 text-xs"
+      data-graph-reference-number={referenceNumber ?? undefined}
+      data-neuron-href={node.href ?? undefined}
+      data-neuron-id={node.id}
+      data-neuron-label={node.name ?? node.id}
+      data-neuron-lifecycle={node.lifecycle ?? "active"}
+      data-neuron-type={node.entity_type}
+    >
+      {referenceNumber ? (
+        <span
+          aria-label={`Graph reference ${referenceNumber}: ${node.name ?? node.id}`}
+          className="flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold leading-none text-primary-foreground shadow-sm ring-2 ring-card"
+          title={`Graph reference ${referenceNumber}`}
+        >
+          {referenceNumber}
+        </span>
+      ) : null}
       <span aria-hidden className="shrink-0">
         <NeuronTypeIcon entityType={node.entity_type} />
       </span>
@@ -147,7 +203,10 @@ function ListRow({ node, sort, rank }: ListRowProps) {
       {node.lifecycle ? (
         <span
           className="shrink-0 rounded px-1.5 py-0.5 text-[10px] uppercase tracking-wide"
-          style={{ color: lifecycleColor(node.lifecycle), borderColor: lifecycleColor(node.lifecycle) }}
+          style={{
+            color: lifecycleColor(node.lifecycle),
+            borderColor: lifecycleColor(node.lifecycle),
+          }}
         >
           {node.lifecycle}
         </span>
