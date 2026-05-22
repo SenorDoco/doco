@@ -80,6 +80,27 @@ interface InFlightMessage {
   toolResults: Map<string, ContentBlockToolResult>;
 }
 
+const COLLAPSE_KEY = "senor-doco:collapsed";
+const UNREAD_KEY = "senor-doco:unread";
+
+function readBoolFlag(key: string): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    return window.localStorage.getItem(key) === "1";
+  } catch {
+    return false;
+  }
+}
+function writeBoolFlag(key: string, value: boolean): void {
+  if (typeof window === "undefined") return;
+  try {
+    if (value) window.localStorage.setItem(key, "1");
+    else window.localStorage.removeItem(key);
+  } catch {
+    // localStorage blocked (private mode, etc.) — silently degrade
+  }
+}
+
 export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inFlight, setInFlight] = useState<InFlightMessage | null>(null);
@@ -92,10 +113,32 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
   const [hasMore, setHasMore] = useState(false);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [bootstrapped, setBootstrapped] = useState(false);
+  // Lazy initializers so SSR doesn't touch localStorage; the first
+  // client render hydrates from the stored value.
+  const [collapsed, setCollapsed] = useState<boolean>(() => readBoolFlag(COLLAPSE_KEY));
+  const [unread, setUnread] = useState<boolean>(() => readBoolFlag(UNREAD_KEY));
+  const collapsedRef = useRef(collapsed);
+  useEffect(() => {
+    collapsedRef.current = collapsed;
+  }, [collapsed]);
   const navigate = useNavigate();
   const location = useLocation();
   const messageListRef = useRef<HTMLDivElement | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+
+  const setCollapsedPersistent = useCallback((next: boolean) => {
+    setCollapsed(next);
+    writeBoolFlag(COLLAPSE_KEY, next);
+    if (!next) {
+      // Expanding clears unread.
+      setUnread(false);
+      writeBoolFlag(UNREAD_KEY, false);
+    }
+  }, []);
+  const markUnread = useCallback(() => {
+    setUnread(true);
+    writeBoolFlag(UNREAD_KEY, true);
+  }, []);
   // Tracks the earliest loaded message so concurrent state reads (the
   // scroll handler closes over stale `messages`) always page from the
   // true top of the loaded window.
@@ -411,13 +454,52 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
     return out;
   }, [messages, inFlight]);
 
+  // While collapsed, any new content from the server (a fresh message
+  // saved, or an in-flight stream still landing) flips the unread flag.
+  const assistantSavedCount = useMemo(
+    () => messages.filter((m) => m.role === "assistant").length,
+    [messages],
+  );
+  const prevAssistantCountRef = useRef(assistantSavedCount);
+  useEffect(() => {
+    if (assistantSavedCount > prevAssistantCountRef.current && collapsedRef.current) {
+      markUnread();
+    }
+    prevAssistantCountRef.current = assistantSavedCount;
+  }, [assistantSavedCount, markUnread]);
+  useEffect(() => {
+    if (inFlight && (inFlight.content.length > 0 || inFlight.toolResults.size > 0)) {
+      if (collapsedRef.current) markUnread();
+    }
+  }, [inFlight, markUnread]);
+
+  if (collapsed) {
+    return (
+      <CollapsedRail
+        label="Señor Doco"
+        side="left"
+        unread={unread}
+        onExpand={() => setCollapsedPersistent(false)}
+      />
+    );
+  }
+
   return (
     <aside
       className="flex h-full w-[320px] shrink-0 flex-col border-r border-border bg-card"
       aria-label="Señor Doco"
     >
-      <div className="flex shrink-0 items-center border-b border-border px-3 py-2">
+      <div className="flex shrink-0 items-center justify-between border-b border-border px-3 py-2">
         <div className="text-xs font-semibold">Señor Doco</div>
+        <button
+          type="button"
+          onClick={() => setCollapsedPersistent(true)}
+          className="rounded p-0.5 text-muted-foreground hover:bg-input hover:text-foreground"
+          aria-label="Collapse Señor Doco"
+          title="Collapse"
+        >
+          <CollapseIcon side="left" />
+        </button>
       </div>
 
       <div
@@ -459,6 +541,79 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
         onRemoveStaged={removeStaged}
       />
     </aside>
+  );
+}
+
+/**
+ * Thin (32 px) vertical rail rendered when a collapsible sidebar is in
+ * its collapsed state. Shows the side's label written vertically + an
+ * optional unread dot. Click anywhere on the rail expands it.
+ *
+ * Exported so other pages (e.g. the per-Doco home's right column) can
+ * reuse the same chrome.
+ */
+export function CollapsedRail({
+  label,
+  side,
+  unread,
+  onExpand,
+}: {
+  label: string;
+  side: "left" | "right";
+  unread?: boolean;
+  onExpand: () => void;
+}) {
+  const isLeft = side === "left";
+  return (
+    <button
+      type="button"
+      onClick={onExpand}
+      aria-label={`Expand ${label}`}
+      className={
+        "group relative flex h-full w-[32px] shrink-0 cursor-pointer flex-col items-center justify-between bg-card py-3 hover:bg-input " +
+        (isLeft ? "border-r border-border" : "border-l border-border")
+      }
+    >
+      <CollapseIcon side={isLeft ? "right" : "left"} />
+      <div
+        className="flex-1 select-none text-[11px] font-semibold uppercase tracking-wider text-foreground"
+        style={{
+          writingMode: "vertical-rl",
+          transform: isLeft ? "rotate(180deg)" : undefined,
+          padding: "0.5rem 0",
+        }}
+      >
+        {label}
+      </div>
+      {unread ? (
+        <span
+          aria-label="unread"
+          className="h-2 w-2 rounded-full bg-primary"
+          style={{ boxShadow: "0 0 0 2px var(--color-card)" }}
+        />
+      ) : (
+        <span aria-hidden className="h-2 w-2" />
+      )}
+    </button>
+  );
+}
+
+function CollapseIcon({ side }: { side: "left" | "right" }) {
+  // A small chevron pointing in the collapse direction.
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      {side === "left" ? <polyline points="10 4 5 8 10 12" /> : <polyline points="6 4 11 8 6 12" />}
+    </svg>
   );
 }
 
