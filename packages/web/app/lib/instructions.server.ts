@@ -15,17 +15,36 @@
 
 export const CANONICAL_INSTRUCTIONS = `# Doco — agent protocol (slim)
 
-You're working on a project that uses **Doco** — AI-native
-documentation of intent, decisions, rules, actions, logs. Every
-meaningful decision leaves a trail.
+## What is Doco?
+
+You're working on a project that uses **Doco** — institutional memory
+for software projects. Doco is a structured, searchable record of
+intent, decisions, rules, actions, and history, purpose-built for AI
+agents and humans to share context.
+
+Git captures *what* changed in code. PR descriptions capture some of
+the *why* at merge time. Doco captures the *why* as it forms — the
+alternatives weighed, the constraints that shaped a decision, the
+rules that emerged from a bug fix — in typed neurons you can query
+across the whole project's lifetime.
+
+For you, the agent, this means:
+
+- Before answering substantive questions, search the Doco. Prior
+  decisions and rules likely shape the right answer.
+- When you make a non-trivial choice or finish load-bearing work,
+  follow this Doco's primitives to decide what, if anything, to
+  capture. **Each Doco sets its own capture rules — the universal
+  protocol does not mandate captures.**
+- Avoid contradicting Decisions and Rules already in the Doco.
 
 Use Doco naturally as a verb when you talk with the project owner:
 "Want me to doco it?", "Doco this decision", "Doco this ADR", and
 "Doco the flow" are all normal client-facing phrases. When a project
-owner says "doco it", interpret that as a request to capture the
-appropriate Doco neurons.
+owner says "doco it", interpret that as a request to capture per
+this Doco's primitives.
 
-This document carries the **four invariants** every reply must follow.
+This document carries the **three invariants** every reply must follow.
 
 ## How you read + write Doco today
 
@@ -237,46 +256,7 @@ per line:
 Op icons: ✍️ added · 📝 updated · 🧹 cleared · ➕ added/appended ·
 ➖ removed · 🔁 replaced · 🏷️ renamed · 🗑️ deleted.
 
-## 3. BEFORE DECLARING DONE — capture is the default
-
-When the changes you made relate to a Doco where you're an author or
-owner, capture them in that Doco. The question is *what* to capture —
-a new neuron or a patch on an existing one — not *whether*. Skipping
-requires naming the existing neuron you're relying on.
-
-If you ran the OAuth recipe and hold a Bearer token, you can capture
-directly via the HTTP API:
-
-    POST https://doco.to/<handle>/api/<type>.json
-    Authorization: Bearer doco_at_<token>
-    Content-Type: application/json
-    { ...fields per the neuron's schema... }
-
-If you haven't authenticated (anonymous reader / public Doco only),
-call out the capture for the project owner instead:
-
-- If you made a Decision (a choice between alternatives with a why),
-  tell the project owner: "this is decision-worthy — want me to draft
-  it for you to capture?"
-- If you wrote code that satisfies a Decision's consequence, tell
-  them: "this would be worth capturing as a Rule born from
-  decision_…"
-- If a bug got fixed, tell them: "Decision + a born-from Rule would
-  lock this in."
-
-| Change made | What to capture |
-|---|---|
-| User-flow (route/redirect/form/banner/multi-step UX) | Decision |
-| Bug fix | Decision + a Rule (\`born_from: <decision_id>\`) |
-| Code satisfies an architectural Decision's consequence | Rule with \`born_from: <decision_id>\` |
-| Recorded event (commit pushed, deploy ran) | **Log** with past-tense verb + \`happened_at\` + outputs |
-| Designed step in a process | **Action** with imperative verb |
-| Aspirational goal / backlog item | **Intent** |
-
-Every Decision needs at least one Intent in \`intent_ids\`. If no
-Intent fits, the project owner creates one first.
-
-## 4. CLOSING LINE OF THE TURN — tally (no exceptions, once per turn)
+## 3. CLOSING LINE OF THE TURN — tally (no exceptions, once per turn)
 
 \`\`\`
 [🔮 Doco] <doco_handle>: **<N>** neuron(s) added/updated

@@ -150,28 +150,59 @@ export const installAgentBootstrapCmd = defineCommand({
 
     const actions: string[] = [];
 
-    // AGENTS.md (canonical) + CLAUDE.md (one-line shim) — write/skip.
-    // Substitute __DOCO_ID__ in legacy rendered output. When docoId is empty
-    // we leave the literal placeholder alone so the project owner can
-    // spot what's missing and re-run `doco login`.
-    for (const [src, dst, label] of [
-      [agentsMdSrc, agentsMdDst, "AGENTS.md"],
-      [claudeMdSrc, claudeMdDst, "CLAUDE.md"],
-    ] as const) {
-      const tplRaw = readFileSync(src, "utf8");
-      const fromTpl = docoId ? tplRaw.replace(DOCO_ID_PLACEHOLDER, docoId) : tplRaw;
-      if (existsSync(dst) && !force) {
-        const onDisk = readFileSync(dst, "utf8");
-        if (onDisk === fromTpl) {
-          actions.push(`${c.dim("=")} ${c.dim(`${label} (already at template version)`)}`);
+    // AGENTS.md: merge-aware. The Doco section is wrapped in
+    // `<!-- BEGIN DOCO -->` … `<!-- END DOCO -->` markers in the template,
+    // so we can splice it into existing files without clobbering other
+    // content (project-specific guidance, build instructions, etc.).
+    //
+    //   exists with markers   → replace just the bracketed section
+    //   exists without markers → append the Doco section at end
+    //   doesn't exist          → write the full template
+    {
+      const tplRaw = readFileSync(agentsMdSrc, "utf8");
+      const tplResolved = docoId ? tplRaw.replace(DOCO_ID_PLACEHOLDER, docoId) : tplRaw;
+      const docoSection = extractDocoSection(tplResolved);
+      if (!docoSection) {
+        console.error(cross("AGENTS.md template is missing <!-- BEGIN DOCO --> … <!-- END DOCO --> markers."));
+        process.exitCode = 2;
+        return;
+      }
+      const existing = existsSync(agentsMdDst) ? readFileSync(agentsMdDst, "utf8") : null;
+      const merged = mergeDocoSection(existing, docoSection);
+      if (existing === merged) {
+        actions.push(`${c.dim("=")} ${c.dim("AGENTS.md (Doco section already current)")}`);
+      } else if (existing && !BEGIN_LINE_RE.test(existing)) {
+        writeFileSync(agentsMdDst, merged, "utf8");
+        actions.push(checkmark("AGENTS.md (Doco section appended — existing content preserved)"));
+      } else if (existing) {
+        if (force || hasOnlyDocoSection(existing)) {
+          writeFileSync(agentsMdDst, merged, "utf8");
+          actions.push(checkmark(`AGENTS.md (Doco section updated${force ? ", --force" : ""})`));
         } else {
           actions.push(
-            `${c.warn("!")} ${label} exists and differs from template — re-run with --force to overwrite.`,
+            `${c.warn("!")} AGENTS.md Doco section differs from template — re-run with --force to update (other content preserved).`,
           );
         }
       } else {
-        writeFileSync(dst, fromTpl, "utf8");
-        actions.push(checkmark(`${label} ${force ? "(overwritten)" : "written"}`));
+        writeFileSync(agentsMdDst, merged, "utf8");
+        actions.push(checkmark("AGENTS.md written"));
+      }
+    }
+
+    // CLAUDE.md: ensure-line semantics. Claude Code auto-loads CLAUDE.md
+    // by name, so the file just needs to import AGENTS.md. We never
+    // overwrite other content — only ensure `@./AGENTS.md` is present.
+    {
+      const existing = existsSync(claudeMdDst) ? readFileSync(claudeMdDst, "utf8") : null;
+      const merged = mergeClaudeMd(existing);
+      if (existing === merged) {
+        actions.push(`${c.dim("=")} ${c.dim("CLAUDE.md (@./AGENTS.md already imported)")}`);
+      } else if (existing) {
+        writeFileSync(claudeMdDst, merged, "utf8");
+        actions.push(checkmark("CLAUDE.md (@./AGENTS.md import appended — existing content preserved)"));
+      } else {
+        writeFileSync(claudeMdDst, merged, "utf8");
+        actions.push(checkmark("CLAUDE.md written"));
       }
     }
 
@@ -290,3 +321,63 @@ export const installAgentBootstrapCmd = defineCommand({
     console.log();
   },
 });
+
+// --- AGENTS.md / CLAUDE.md merge helpers ---
+//
+// AGENTS.md often carries project-specific guidance unrelated to Doco
+// (build instructions, codebase conventions, agent-specific overrides).
+// The Doco section is wrapped in BEGIN/END markers so it can be
+// spliced in without clobbering surrounding content.
+
+const DOCO_BEGIN_MARKER = "<!-- BEGIN DOCO -->";
+const DOCO_END_MARKER = "<!-- END DOCO -->";
+const CLAUDE_AGENTS_IMPORT = "@./AGENTS.md";
+
+// Markers must be on their own line (start-of-line + end-of-line),
+// so inline mentions in backticks within the prose don't get matched
+// as real markers.
+const BEGIN_LINE_RE = /^<!-- BEGIN DOCO -->$/m;
+const END_LINE_RE = /^<!-- END DOCO -->$/m;
+
+function extractDocoSection(template: string): string | null {
+  const begin = BEGIN_LINE_RE.exec(template);
+  const end = END_LINE_RE.exec(template);
+  if (!begin || !end) return null;
+  const endPos = end.index + end[0].length;
+  if (endPos <= begin.index) return null;
+  return template.slice(begin.index, endPos);
+}
+
+function mergeDocoSection(existing: string | null, docoSection: string): string {
+  if (existing === null) return `${docoSection}\n`;
+  const begin = BEGIN_LINE_RE.exec(existing);
+  const end = END_LINE_RE.exec(existing);
+  if (begin && end && end.index + end[0].length > begin.index) {
+    const before = existing.slice(0, begin.index);
+    const after = existing.slice(end.index + end[0].length);
+    return before + docoSection + after;
+  }
+  const trimmed = existing.replace(/\s+$/, "");
+  return `${trimmed}\n\n${docoSection}\n`;
+}
+
+// If the existing AGENTS.md contains ONLY the Doco section (nothing else
+// outside the markers), treat updates as non-destructive. Used to decide
+// whether --force is required for in-place protocol revisions.
+function hasOnlyDocoSection(existing: string): boolean {
+  const begin = BEGIN_LINE_RE.exec(existing);
+  const end = END_LINE_RE.exec(existing);
+  if (!begin || !end) return false;
+  const before = existing.slice(0, begin.index).trim();
+  const after = existing.slice(end.index + end[0].length).trim();
+  return before === "" && after === "";
+}
+
+function mergeClaudeMd(existing: string | null): string {
+  if (existing === null) return `${CLAUDE_AGENTS_IMPORT}\n`;
+  const lines = existing.split(/\r?\n/);
+  const hasImport = lines.some((line) => line.trim() === CLAUDE_AGENTS_IMPORT);
+  if (hasImport) return existing;
+  const trimmed = existing.replace(/\s+$/, "");
+  return `${trimmed}\n${CLAUDE_AGENTS_IMPORT}\n`;
+}

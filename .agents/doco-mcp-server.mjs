@@ -42,8 +42,12 @@ const PROJECT_HASH = createHash("sha256").update(process.cwd()).digest("hex").sl
 const DEVICE_STATE_FILE = join(tmpdir(), `doco-mcp-device-${PROJECT_HASH}.json`);
 
 const SERVER_INSTRUCTIONS = [
-  "This project is tracked in a Doco — institutional memory of decisions,",
-  "rules, intents, actions, and history, with vector search across nodes.",
+  "This project is tracked in a Doco. Doco is institutional memory for",
+  "software projects — a structured, searchable record of intent,",
+  "decisions, rules, actions, and history. It captures the WHY as it",
+  "forms (alternatives weighed, constraints, rules emerging from bugs),",
+  "complementing git (which captures the WHAT) and PR descriptions",
+  "(which capture some WHY at merge time only).",
   "",
   "Available tools:",
   "- doco_search: query the project's Doco for relevant prior context.",
@@ -54,6 +58,10 @@ const SERVER_INSTRUCTIONS = [
   "this project's conventions, prior decisions, or architectural history.",
   "There is almost always prior art you'd otherwise miss. Cheap to call;",
   "skip only for greetings or trivially scoped questions.",
+  "",
+  "Capture rules are per-Doco. Each Doco's primitives (fetched at bootstrap)",
+  "decide what — if anything — to capture. The universal protocol does NOT",
+  "mandate captures; follow whatever the active Doco's primitives say.",
   "",
   "Rendering order matters. Text between tool calls is shown to the user",
   "as those tool calls run, so render indicators AROUND tool calls, not all",
