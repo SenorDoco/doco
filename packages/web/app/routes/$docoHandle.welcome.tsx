@@ -49,14 +49,16 @@ export default function NewDocoStep4({
           <CardContent className="space-y-4 text-sm">
             <ul className="ml-5 list-disc space-y-2">
               <li>Doco helps keep people, agents, and work aligned</li>
-              <li>Docos are made of nodes (concepts) and synapses (connections between nodes)</li>
               <li>
-                Collaborators can query docos and add information (nodes) to them (if they have the
-                permission)
+                Docos are made of neurons (concepts) and synapses (connections between neurons)
+              </li>
+              <li>
+                Collaborators can query docos and add information (neurons) to them (if they have
+                the permission)
               </li>
               <li>
                 AI agents collaborating on a doco are always reminded of its constitution: a list of
-                articles telling them how to behave
+                primitives telling them how to behave
               </li>
               <li>An organization can have multiple interconnected docos</li>
             </ul>

@@ -64,13 +64,13 @@ export interface SuggestImplicitEdgesOptions {
   timeoutMs?: number;
 }
 
-const IMPLICIT_EDGE_SYSTEM_PROMPT = `You connect related nodes in a documentation graph.
+const IMPLICIT_EDGE_SYSTEM_PROMPT = `You connect related neurons in a documentation graph.
 
-You'll see one SOURCE node and a list of CANDIDATE nodes from the same
+You'll see one SOURCE neuron and a list of CANDIDATE neurons from the same
 project. For each candidate that has a meaningful semantic relationship
-to the source, propose ONE edge.
+to the source, propose ONE synapse.
 
-Edge types you may use:
+Synapse types you may use:
 - "relates_to" (default — semantically related, no stronger label fits)
 - "depends_on" (source needs the candidate to make sense)
 - "supports" (candidate provides evidence for the source)
@@ -82,7 +82,7 @@ Edge types you may use:
 Rules:
 - Be conservative — only propose synapses you're confident about. Quality over quantity.
 - Maximum 6 synapses. Better to return 2 strong ones than 6 weak ones.
-- Each edge has a one-sentence \`reason\` explaining why.
+- Each synapse has a one-sentence \`reason\` explaining why.
 - Skip synapses already implied by explicit refs (the caller filters those).
 - Output JSON only: {"synapses": [{"to_id": "...", "synapse_type": "...", "reason": "..."}, ...]}.`;
 

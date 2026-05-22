@@ -52,8 +52,8 @@ const NODE_TYPE_LABELS: Record<string, string> = {
   action: "Actions",
   intent: "Intents",
   rule: "Rules",
-  guidance_primitive: "Guidance articles",
-  neuron_authoring_primitive: "Node-authoring articles",
+  guidance_primitive: "Guidance primitives",
+  neuron_authoring_primitive: "Neuron-authoring primitives",
   eval: "Evals",
   reference: "References",
   idea: "Ideas",
@@ -393,8 +393,8 @@ export default function DocoHome({
                   handle={handle}
                   placeholder={
                     totalNodes > 0
-                      ? `Search ${totalNodes} node${totalNodes === 1 ? "" : "s"}…`
-                      : "Search nodes…"
+                      ? `Search ${totalNodes} neuron${totalNodes === 1 ? "" : "s"}…`
+                      : "Search neurons…"
                   }
                   compact
                 />
@@ -406,7 +406,9 @@ export default function DocoHome({
             <NeuronsOverviewCard
               sections={sections}
               empty={
-                <p className="text-xs italic text-muted-foreground">This Doco has no nodes yet.</p>
+                <p className="text-xs italic text-muted-foreground">
+                  This Doco has no neurons yet.
+                </p>
               }
               aside={<TopContributorsList contributors={topContributors} />}
             />
@@ -427,8 +429,8 @@ export default function DocoHome({
               <CardContent className="p-0">
                 {items.length === 0 ? (
                   <div className="px-4 pb-4 text-xs leading-5 text-muted-foreground">
-                    No recorded activity yet. Capture a node from the API or CLI; this feed records
-                    UI, CLI, and API writes.
+                    No recorded activity yet. Capture a neuron from the API or CLI; this feed
+                    records UI, CLI, and API writes.
                   </div>
                 ) : (
                   <div className="divide-y divide-border">

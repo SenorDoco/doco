@@ -24,7 +24,7 @@ export const DOCO_TEMPLATES: DocoTemplateMeta[] = [
   {
     handle: "generic",
     label: "Generic (empty)",
-    description: "Start with a blank doco. No rules, no node-type restrictions.",
+    description: "Start with a blank doco. No rules, no neuron-type restrictions.",
     updatedAt: "2026-01-01",
     owner: TEMPLATE_OWNER,
   },
@@ -54,7 +54,7 @@ export const DOCO_TEMPLATES: DocoTemplateMeta[] = [
     handle: "test",
     label: "Tests",
     description:
-      "Executable tests inspired by TDD and AI evals. Each Eval pins one checkable claim about a decision, article, or action.",
+      "Executable tests inspired by TDD and AI evals. Each Eval pins one checkable claim about a decision, primitive, or action.",
     updatedAt: "2026-05-12",
     owner: TEMPLATE_OWNER,
   },

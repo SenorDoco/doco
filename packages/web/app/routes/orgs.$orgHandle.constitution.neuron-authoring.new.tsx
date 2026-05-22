@@ -1,5 +1,5 @@
 // /orgs/:orgHandle/constitution/neuron-authoring/new — standalone form
-// for authoring an org-level node authoring article. The predicate
+// for authoring an org-level neuron-authoring primitive. The predicate
 // fires for every Doco the org owns.
 
 import { getOrgRole, withClient } from "@doco/db";
@@ -60,7 +60,7 @@ export async function loader({
   }
   const role = await getOrgRole(org.id, me.id);
   if (role !== "owner") {
-    throw new Response("Only org owners can add articles.", { status: 403 });
+    throw new Response("Only org owners can add primitives.", { status: 403 });
   }
   return { org, me, host: await loadHostConfig() };
 }
@@ -82,12 +82,12 @@ export async function action({
   }
   const role = await getOrgRole(org.id, me.id);
   if (role !== "owner") {
-    throw new Response("Only org owners can add articles.", { status: 403 });
+    throw new Response("Only org owners can add primitives.", { status: 403 });
   }
   const form = await request.formData();
   const body_md = String(form.get("body_md") ?? "").trim();
   const summary = deriveArticleSummary(body_md);
-  if (!summary) return Response.json({ error: "Article is required." }, { status: 400 });
+  if (!summary) return Response.json({ error: "Primitive is required." }, { status: 400 });
   const evaluationKind =
     String(form.get("evaluation_kind") ?? "deterministic") === "probabilistic"
       ? "probabilistic"
@@ -120,7 +120,7 @@ export function meta({ params }: { params: { orgHandle: string } }) {
   return [{ title: `New neuron-authoring primitive · ${params.orgHandle} · Doco` }];
 }
 
-export default function NewOrgNodeAuthoringArticle({
+export default function NewOrgNeuronAuthoringPrimitive({
   loaderData,
 }: {
   loaderData: Awaited<ReturnType<typeof loader>>;
@@ -145,9 +145,9 @@ export default function NewOrgNodeAuthoringArticle({
             New neuron-authoring primitive · <span className="font-mono">{org.slug}</span>
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            An automatic check that runs every time someone adds a node in any of this org's docos.
-            Write a strict rule, or describe what an LLM judge should look for. Pick what happens on
-            failure: block the capture, warn, or just log.
+            An automatic check that runs every time someone adds a neuron in any of this org's
+            docos. Write a strict rule, or describe what an LLM judge should look for. Pick what
+            happens on failure: block the capture, warn, or just log.
           </p>
         </header>
         <Card>
@@ -160,13 +160,13 @@ export default function NewOrgNodeAuthoringArticle({
             <Form method="post" className="space-y-4">
               <label className="block">
                 <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  Article
+                  Primitive
                 </span>
                 <textarea
                   name="body_md"
                   required
                   rows={6}
-                  placeholder="Write the article."
+                  placeholder="Write the primitive."
                   className="mt-1 block w-full rounded-md border border-border bg-input px-3 py-2 text-sm"
                 />
               </label>
@@ -219,7 +219,7 @@ export default function NewOrgNodeAuthoringArticle({
                   <textarea
                     name="probabilistic_spec"
                     rows={10}
-                    placeholder="Judge only the node being captured. Pass when..."
+                    placeholder="Judge only the neuron being captured. Pass when..."
                     className="mt-1 block w-full rounded-md border border-border bg-input px-3 py-2 text-sm"
                   />
                 </label>
@@ -255,7 +255,7 @@ export default function NewOrgNodeAuthoringArticle({
                   type="submit"
                   className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90"
                 >
-                  Add node-authoring article
+                  Add neuron-authoring primitive
                 </button>
                 <Link
                   to={`/orgs/${org.slug}/constitution`}

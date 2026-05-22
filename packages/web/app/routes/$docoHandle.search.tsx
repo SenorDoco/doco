@@ -319,7 +319,7 @@ export default function SearchInDoco({
                 {activeQ
                   ? "No hits."
                   : hasFilters
-                    ? "No nodes match these filters."
+                    ? "No neurons match these filters."
                     : "Type a query to search."}
               </CardContent>
             </Card>

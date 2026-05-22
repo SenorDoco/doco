@@ -1,14 +1,15 @@
-// GET/POST /<doco-handle>/api/articles.json — dedicated articles endpoint.
+// GET/POST /<doco-handle>/api/primitives.json — dedicated primitives endpoint.
 //
-// Articles (`guidance_primitive`, `neuron_authoring_primitive`) are not nodes.
-// They are constitution metadata and are *only* reachable from this
-// endpoint, the agent bootstrap response, or the HTML constitution page.
-// The generic /<handle>/api/<type>.json dispatcher refuses article types.
+// Primitives (`guidance_primitive`, `neuron_authoring_primitive`) are not
+// neurons. They are constitution metadata and are *only* reachable from
+// this endpoint, the agent bootstrap response, or the HTML constitution
+// page. The generic /<handle>/api/<type>.json dispatcher refuses
+// primitive types.
 //
-// GET  → list every article in the Doco, both kinds, with an
+// GET  → list every primitive in the Doco, both kinds, with a
 //        `primitive_kind` discriminator.
-// POST → capture a new article. Body shape:
-//        { "primitive_kind": "guidance" | "node_authoring", ...draft }
+// POST → capture a new primitive. Body shape:
+//        { "primitive_kind": "guidance" | "neuron_authoring", ...draft }
 //        Where `...draft` follows GuidanceArticleDraft or
 //        NodeAuthoringArticleDraft from capture.server.ts.
 
@@ -26,7 +27,7 @@ import {
 } from "~/lib/doco-access.server";
 import { withIdempotency } from "~/lib/idempotency.server";
 
-interface ArticleRow {
+interface PrimitiveRow {
   id: string;
   summary: string;
   lifecycle: string | null;
@@ -35,9 +36,8 @@ interface ArticleRow {
   updated_at: string | null;
 }
 
-interface ArticleListEntry extends ArticleRow {
-  primitive_kind: "guidance" | "node_authoring";
-  entity_type: "guidance_primitive" | "neuron_authoring_primitive";
+interface PrimitiveListEntry extends PrimitiveRow {
+  primitive_kind: "guidance" | "neuron_authoring";
 }
 
 export async function loader({
@@ -49,8 +49,8 @@ export async function loader({
 }) {
   const ctx = await loadDocoRouteForRead(request, params);
   return withClient(async (c) => {
-    const [guidance, nodeAuthoring] = await Promise.all([
-      c.query<ArticleRow>(
+    const [guidance, neuronAuthoring] = await Promise.all([
+      c.query<PrimitiveRow>(
         `SELECT id, summary, lifecycle, body_md,
                 created_at::text AS created_at,
                 updated_at::text AS updated_at
@@ -59,7 +59,7 @@ export async function loader({
           ORDER BY created_at DESC`,
         [ctx.meta.docoId],
       ),
-      c.query<ArticleRow>(
+      c.query<PrimitiveRow>(
         `SELECT id, summary, lifecycle, body_md,
                 created_at::text AS created_at,
                 updated_at::text AS updated_at
@@ -69,16 +69,14 @@ export async function loader({
         [ctx.meta.docoId],
       ),
     ]);
-    const items: ArticleListEntry[] = [
+    const items: PrimitiveListEntry[] = [
       ...guidance.rows.map((r) => ({
         ...r,
         primitive_kind: "guidance" as const,
-        entity_type: "guidance_primitive" as const,
       })),
-      ...nodeAuthoring.rows.map((r) => ({
+      ...neuronAuthoring.rows.map((r) => ({
         ...r,
-        primitive_kind: "node_authoring" as const,
-        entity_type: "neuron_authoring_primitive" as const,
+        primitive_kind: "neuron_authoring" as const,
       })),
     ];
     return Response.json({
@@ -86,7 +84,7 @@ export async function loader({
       doco_handle: ctx.handle,
       count: items.length,
       guidance_count: guidance.rows.length,
-      node_authoring_count: nodeAuthoring.rows.length,
+      neuron_authoring_count: neuronAuthoring.rows.length,
       items,
     });
   });
@@ -118,7 +116,7 @@ export async function action({
 
   return withIdempotency(
     request,
-    "POST /api/articles",
+    "POST /api/primitives",
     me.id ?? null,
     bodyText,
     async () => {
@@ -132,11 +130,11 @@ export async function action({
         );
       }
       const primitiveKind = parsed.primitive_kind;
-      if (primitiveKind !== "guidance" && primitiveKind !== "node_authoring") {
+      if (primitiveKind !== "guidance" && primitiveKind !== "neuron_authoring") {
         return Response.json(
           {
             error:
-              'Body must include "primitive_kind": "guidance" | "node_authoring" to disambiguate.',
+              'Body must include "primitive_kind": "guidance" | "neuron_authoring" to disambiguate.',
           },
           { status: 400 },
         );

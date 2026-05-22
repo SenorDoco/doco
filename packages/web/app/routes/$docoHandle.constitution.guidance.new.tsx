@@ -1,5 +1,5 @@
 // /<doco-handle>/constitution/guidance/new — standalone form for
-// authoring a Doco-level guidance article. Prose-only meta-rule; no
+// authoring a Doco-level guidance primitive. Prose-only meta-rule; no
 // automated check. The landing page at /<doco>/constitution links
 // here from the "Add guidance primitive" button.
 
@@ -39,7 +39,7 @@ export async function action({
   const form = await request.formData();
   const body_md = String(form.get("body_md") ?? "").trim();
   const summary = deriveArticleSummary(body_md);
-  if (!summary) return Response.json({ error: "Article is required." }, { status: 400 });
+  if (!summary) return Response.json({ error: "Primitive is required." }, { status: 400 });
   const docoHost = new URL(request.url).origin;
 
   const result = await captureGuidanceArticle(
@@ -60,10 +60,10 @@ export async function action({
 }
 
 export function meta({ params }: { params: { docoHandle?: string; docoId?: string } }) {
-  return [{ title: `New guidance article · ${params.docoHandle ?? params.docoId ?? ""} · Doco` }];
+  return [{ title: `New guidance primitive · ${params.docoHandle ?? params.docoId ?? ""} · Doco` }];
 }
 
-export default function NewGuidanceArticle({
+export default function NewGuidancePrimitive({
   loaderData,
 }: {
   loaderData: Awaited<ReturnType<typeof loader>>;
@@ -80,11 +80,11 @@ export default function NewGuidanceArticle({
               ownerSlug,
               handle,
               parent: { label: "Constitution", to: `/${handle}/constitution` },
-              pageLabel: "New guidance article",
+              pageLabel: "New guidance primitive",
             })}
             className="mb-1"
           />
-          <h1 className="text-2xl font-semibold">New guidance article</h1>
+          <h1 className="text-2xl font-semibold">New guidance primitive</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             A plain-English rule you want everyone working on this doco to follow. Nothing checks it
             automatically — it's a shared agreement.
@@ -102,7 +102,7 @@ export default function NewGuidanceArticle({
                 name="body_md"
                 required
                 rows={12}
-                placeholder="Write the article."
+                placeholder="Write the primitive."
                 className="block w-full rounded-md border border-border bg-input px-3 py-2 text-sm"
               />
               <div className="flex items-center gap-3">
@@ -110,7 +110,7 @@ export default function NewGuidanceArticle({
                   type="submit"
                   className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90"
                 >
-                  Add guidance article
+                  Add guidance primitive
                 </button>
                 <Link
                   to={`/${handle}/constitution`}

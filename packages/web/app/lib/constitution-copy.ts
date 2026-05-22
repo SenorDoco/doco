@@ -1,18 +1,18 @@
 // Shared copy + helpers for constitution surfaces. Used by:
 //   - /:docoHandle/constitution
 //   - /orgs/:orgHandle/constitution
-//   - the 4 new-article forms
+//   - the 4 new-primitive forms
 // Keep them DRY so the wording matches the wizard the project owner
 // just walked through.
 
 export const GUIDANCE_ARTICLE_EXPLAINER =
-  "Articles AI agents read while working. Not auto-checked — they're a shared agreement.";
+  "Primitives AI agents read while working. Not auto-checked — they're a shared agreement.";
 
 export const NODE_AUTHORING_ARTICLE_EXPLAINER =
   "Rules that are automatically evaluated when something is added to Doco.";
 
 export const AGENT_EXPOSURE_NOTE =
-  "AI agents are always exposed to both the org's and the doco's articles on every session.";
+  "AI agents are always exposed to both the org's and the doco's primitives on every session.";
 
 /**
  * Derive a one-line `summary` from an article body. Project owners

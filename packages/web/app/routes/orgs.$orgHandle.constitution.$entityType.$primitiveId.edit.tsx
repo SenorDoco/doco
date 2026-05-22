@@ -1,5 +1,5 @@
 // /orgs/<org>/constitution/<entityType>/<id>/edit — modify or abandon
-// an existing org-level constitution article. Owner-only.
+// an existing org-level constitution primitive. Owner-only.
 //
 // POST intent=modify  → captures a new primitive with `supersedes: <id>`
 //                       and flips the old to lifecycle='superseded'.
@@ -61,7 +61,7 @@ export async function loader({
   params,
 }: {
   request: Request;
-  params: { orgHandle: string; entityType: string; articleId: string };
+  params: { orgHandle: string; entityType: string; primitiveId: string };
 }) {
   const entityType = parseNodeType(params.entityType);
   if (!entityType) throw new Response("Unknown primitive kind.", { status: 404 });
@@ -71,19 +71,19 @@ export async function loader({
   if (!me) {
     throw redirect(
       `/sign-in?next=${encodeURIComponent(
-        `/orgs/${org.slug}/constitution/${params.entityType}/${params.articleId}/edit`,
+        `/orgs/${org.slug}/constitution/${params.entityType}/${params.primitiveId}/edit`,
       )}`,
     );
   }
   const role = await getOrgRole(org.id, me.id);
   if (role !== "owner") {
-    throw new Response("Only org owners can edit articles.", { status: 403 });
+    throw new Response("Only org owners can edit primitives.", { status: 403 });
   }
   const result = await loadArticleForEdit({
     scope: "org",
     scopeId: org.id,
     entityType,
-    articleId: params.articleId,
+    articleId: params.primitiveId,
   });
   if ("error" in result) {
     throw new Response(result.error, { status: result.status ?? 404 });
@@ -92,7 +92,7 @@ export async function loader({
     org,
     me,
     entityType,
-    articleId: params.articleId,
+    primitiveId: params.primitiveId,
     body_md: result.body_md,
     lifecycle: result.lifecycle,
     raw_yaml: result.raw_yaml,
@@ -105,7 +105,7 @@ export async function action({
   params,
 }: {
   request: Request;
-  params: { orgHandle: string; entityType: string; articleId: string };
+  params: { orgHandle: string; entityType: string; primitiveId: string };
 }) {
   const entityType = parseNodeType(params.entityType);
   if (!entityType) throw new Response("Unknown primitive kind.", { status: 404 });
@@ -115,7 +115,7 @@ export async function action({
   if (!me) throw redirect(`/sign-in?next=${encodeURIComponent(`/orgs/${org.slug}/constitution`)}`);
   const role = await getOrgRole(org.id, me.id);
   if (role !== "owner") {
-    throw new Response("Only org owners can edit articles.", { status: 403 });
+    throw new Response("Only org owners can edit primitives.", { status: 403 });
   }
 
   const form = await request.formData();
@@ -126,7 +126,7 @@ export async function action({
       scope: "org",
       scopeId: org.id,
       entityType,
-      articleId: params.articleId,
+      articleId: params.primitiveId,
       newLifecycle: "abandoned",
       actorId: me.id,
     });
@@ -139,8 +139,8 @@ export async function action({
   if (intent === "modify") {
     const body_md = String(form.get("body_md") ?? "").trim();
     const summary = deriveArticleSummary(body_md);
-    if (!summary) return Response.json({ error: "Article is required." }, { status: 400 });
-    const supersedes = params.articleId;
+    if (!summary) return Response.json({ error: "Primitive is required." }, { status: 400 });
+    const supersedes = params.primitiveId;
 
     let captured: Awaited<
       ReturnType<typeof captureOrgGuidanceArticle | typeof captureOrgNodeAuthoringArticle>
@@ -189,7 +189,7 @@ export async function action({
       scope: "org",
       scopeId: org.id,
       entityType,
-      articleId: params.articleId,
+      articleId: params.primitiveId,
       newLifecycle: "superseded",
       actorId: me.id,
       reason: `superseded_by:${captured.id}`,
@@ -204,17 +204,17 @@ export async function action({
 }
 
 export function meta({ params }: { params: { orgHandle: string } }) {
-  return [{ title: `Modify article · ${params.orgHandle} · Doco` }];
+  return [{ title: `Modify primitive · ${params.orgHandle} · Doco` }];
 }
 
-export default function EditOrgArticle({
+export default function EditOrgPrimitive({
   loaderData,
 }: {
   loaderData: Awaited<ReturnType<typeof loader>>;
 }) {
-  const { org, me, entityType, articleId, body_md, raw_yaml } = loaderData;
+  const { org, me, entityType, primitiveId, body_md, raw_yaml } = loaderData;
   const actionData = useActionData<ActionError>();
-  const isNodeAuthoring = entityType === "neuron_authoring_primitive";
+  const isNeuronAuthoring = entityType === "neuron_authoring_primitive";
   const initialEvalKind: ArticleKind =
     raw_yaml.evaluation_kind === "probabilistic" ? "probabilistic" : "deterministic";
   const [evaluationKind, setEvaluationKind] = useState<ArticleKind>(initialEvalKind);
@@ -244,16 +244,16 @@ export default function EditOrgArticle({
             items={orgBreadcrumb({
               orgSlug: org.slug,
               parent: { label: "Constitution", to: `/orgs/${org.slug}/constitution` },
-              pageLabel: `Modify ${isNodeAuthoring ? "neuron-authoring" : "guidance"} primitive`,
+              pageLabel: `Modify ${isNeuronAuthoring ? "neuron-authoring" : "guidance"} primitive`,
             })}
             className="mb-1"
           />
           <h1 className="text-2xl font-semibold">
-            Modify {isNodeAuthoring ? "neuron-authoring" : "guidance"} primitive ·{" "}
+            Modify {isNeuronAuthoring ? "neuron-authoring" : "guidance"} primitive ·{" "}
             <span className="font-mono">{org.slug}</span>
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Saving changes creates a new article and marks this one as <em>superseded</em>.
+            Saving changes creates a new primitive and marks this one as <em>superseded</em>.
             Abandoning leaves the old one in place but flips it to <em>abandoned</em>. Either way
             the audit log retains the full history.
           </p>
@@ -271,10 +271,10 @@ export default function EditOrgArticle({
                 required
                 rows={12}
                 defaultValue={body_md}
-                placeholder="Write the article."
+                placeholder="Write the primitive."
                 className="block w-full rounded-md border border-border bg-input px-3 py-2 text-sm"
               />
-              {isNodeAuthoring ? (
+              {isNeuronAuthoring ? (
                 <>
                   <fieldset className="flex flex-wrap gap-2">
                     <legend className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
@@ -365,7 +365,7 @@ export default function EditOrgArticle({
                   value="abandon"
                   className="rounded-md border border-destructive px-4 py-2 text-sm font-semibold text-destructive hover:bg-destructive/10"
                 >
-                  Abandon article
+                  Abandon primitive
                 </button>
                 <Link
                   to={`/orgs/${org.slug}/constitution`}
@@ -375,7 +375,7 @@ export default function EditOrgArticle({
                 </Link>
               </div>
               <p className="text-[11px] text-muted-foreground">
-                Article id: <code>{articleId}</code>
+                Primitive id: <code>{primitiveId}</code>
               </p>
             </Form>
           </CardContent>

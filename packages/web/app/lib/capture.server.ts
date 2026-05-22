@@ -1867,7 +1867,7 @@ export async function captureRule(
   };
 }
 
-// ─── Constitution Articles ────────────────────────────────────────────────
+// ─── Constitution Primitives ──────────────────────────────────────────────
 
 export interface GuidanceArticleDraft {
   /** Required: one-line summary of the guidance. */
@@ -2010,7 +2010,7 @@ async function buildGuidanceArticlePayload(
   const author = await resolveArticleAuthor(draft);
   if (typeof author !== "string") return author;
 
-  const id = `guidance_article_${generateUlid()}`;
+  const id = `guidance_primitive_${generateUlid()}`;
   const summary = draft.summary.trim();
   const now = new Date().toISOString();
   const lifecycle = draft.lifecycle ?? "active";
@@ -2018,7 +2018,6 @@ async function buildGuidanceArticlePayload(
   const fm: Record<string, unknown> = {
     id,
     ...articleScopeField(scope, scopeId),
-    entity_type: "guidance_primitive",
     primitive_kind: "guidance",
     summary,
     ...articleExtrasFm(extras),
@@ -2055,7 +2054,7 @@ async function buildNodeAuthoringArticlePayload(
   const predicate = normalizeNodeAuthoringPredicate(draft);
   if ("error" in predicate) return predicate;
 
-  const id = `node_authoring_article_${generateUlid()}`;
+  const id = `neuron_authoring_primitive_${generateUlid()}`;
   const summary = draft.summary.trim();
   const now = new Date().toISOString();
   const lifecycle = draft.lifecycle ?? "active";
@@ -2066,8 +2065,7 @@ async function buildNodeAuthoringArticlePayload(
   const fm: Record<string, unknown> = {
     id,
     ...articleScopeField(scope, scopeId),
-    entity_type: "neuron_authoring_primitive",
-    primitive_kind: "node_authoring",
+    primitive_kind: "neuron_authoring",
     evaluation_kind: draft.evaluation_kind,
     summary,
     predicate,
@@ -2357,7 +2355,7 @@ export async function transitionArticleLifecycle(opts: {
     return r.rows[0] ?? null;
   });
   if (!before) {
-    return { error: `Article ${opts.articleId} not found in scope.`, status: 404 };
+    return { error: `Primitive ${opts.articleId} not found in scope.`, status: 404 };
   }
 
   const fm = (() => {
@@ -2448,7 +2446,7 @@ export async function loadArticleForEdit(opts: {
     );
     return r.rows[0] ?? null;
   });
-  if (!row) return { error: `Article ${opts.articleId} not found.`, status: 404 };
+  if (!row) return { error: `Primitive ${opts.articleId} not found.`, status: 404 };
   let parsed: Record<string, unknown> = {};
   try {
     parsed = JSON.parse(row.raw_yaml) as Record<string, unknown>;

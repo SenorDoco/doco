@@ -40,7 +40,7 @@ export async function loader({
   params,
 }: {
   request: Request;
-  params: { docoId: string; entityType: string; articleId: string };
+  params: { docoId: string; entityType: string; primitiveId: string };
 }) {
   const entityType = parseNodeType(params.entityType);
   if (!entityType) throw new Response("Unknown primitive kind.", { status: 404 });
@@ -50,7 +50,7 @@ export async function loader({
     scope: "doco",
     scopeId: ctx.meta.docoId,
     entityType,
-    articleId: params.articleId,
+    articleId: params.primitiveId,
   });
   if ("error" in result) {
     throw new Response(result.error, { status: result.status ?? 404 });
@@ -61,7 +61,7 @@ export async function loader({
     handle,
     me: ctx.me,
     entityType,
-    articleId: params.articleId,
+    primitiveId: params.primitiveId,
     body_md: result.body_md,
     lifecycle: result.lifecycle,
     raw_yaml: result.raw_yaml,
@@ -74,7 +74,7 @@ export async function action({
   params,
 }: {
   request: Request;
-  params: { docoId: string; entityType: string; articleId: string };
+  params: { docoId: string; entityType: string; primitiveId: string };
 }) {
   const entityType = parseNodeType(params.entityType);
   if (!entityType) throw new Response("Unknown primitive kind.", { status: 404 });
@@ -88,7 +88,7 @@ export async function action({
       scope: "doco",
       scopeId: ctx.meta.docoId,
       entityType,
-      articleId: params.articleId,
+      articleId: params.primitiveId,
       newLifecycle: "abandoned",
       actorId: ctx.me?.id ?? null,
     });
@@ -101,10 +101,10 @@ export async function action({
   if (intent === "modify") {
     const body_md = String(form.get("body_md") ?? "").trim();
     const summary = deriveArticleSummary(body_md);
-    if (!summary) return Response.json({ error: "Article is required." }, { status: 400 });
+    if (!summary) return Response.json({ error: "Primitive is required." }, { status: 400 });
     const docoDir = ctx.dir;
     const docoHost = new URL(request.url).origin;
-    const supersedes = params.articleId;
+    const supersedes = params.primitiveId;
 
     let captured: Awaited<
       ReturnType<typeof captureGuidanceArticle | typeof captureNodeAuthoringArticle>
@@ -165,7 +165,7 @@ export async function action({
       scope: "doco",
       scopeId: ctx.meta.docoId,
       entityType,
-      articleId: params.articleId,
+      articleId: params.primitiveId,
       newLifecycle: "superseded",
       actorId: ctx.me?.id ?? null,
       reason: `superseded_by:${captured.id}`,
@@ -180,17 +180,18 @@ export async function action({
 }
 
 export function meta({ params }: { params: { docoHandle?: string; docoId?: string } }) {
-  return [{ title: `Modify article · ${params.docoHandle ?? params.docoId ?? ""} · Doco` }];
+  return [{ title: `Modify primitive · ${params.docoHandle ?? params.docoId ?? ""} · Doco` }];
 }
 
-export default function EditArticle({
+export default function EditPrimitive({
   loaderData,
 }: {
   loaderData: Awaited<ReturnType<typeof loader>>;
 }) {
-  const { ownerSlug, docoSlug, handle, me, entityType, articleId, body_md, raw_yaml } = loaderData;
+  const { ownerSlug, docoSlug, handle, me, entityType, primitiveId, body_md, raw_yaml } =
+    loaderData;
   const actionData = useActionData<ActionError>();
-  const isNodeAuthoring = entityType === "neuron_authoring_primitive";
+  const isNeuronAuthoring = entityType === "neuron_authoring_primitive";
   const initialEvalKind: ArticleKind =
     raw_yaml.evaluation_kind === "probabilistic" ? "probabilistic" : "deterministic";
   const [evaluationKind, setEvaluationKind] = useState<ArticleKind>(initialEvalKind);
@@ -221,15 +222,15 @@ export default function EditArticle({
               ownerSlug,
               handle,
               parent: { label: "Constitution", to: `/${handle}/constitution` },
-              pageLabel: `Modify ${isNodeAuthoring ? "neuron-authoring" : "guidance"} primitive`,
+              pageLabel: `Modify ${isNeuronAuthoring ? "neuron-authoring" : "guidance"} primitive`,
             })}
             className="mb-1"
           />
           <h1 className="text-2xl font-semibold">
-            Modify {isNodeAuthoring ? "neuron-authoring" : "guidance"} primitive
+            Modify {isNeuronAuthoring ? "neuron-authoring" : "guidance"} primitive
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Saving changes creates a new article and marks this one as <em>superseded</em>.
+            Saving changes creates a new primitive and marks this one as <em>superseded</em>.
             Abandoning leaves the old one in place but flips it to <em>abandoned</em>. Either way
             the audit log retains the full history.
           </p>
@@ -247,10 +248,10 @@ export default function EditArticle({
                 required
                 rows={12}
                 defaultValue={body_md}
-                placeholder="Write the article."
+                placeholder="Write the primitive."
                 className="block w-full rounded-md border border-border bg-input px-3 py-2 text-sm"
               />
-              {isNodeAuthoring ? (
+              {isNeuronAuthoring ? (
                 <>
                   <fieldset className="flex flex-wrap gap-2">
                     <legend className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
@@ -341,7 +342,7 @@ export default function EditArticle({
                   value="abandon"
                   className="rounded-md border border-destructive px-4 py-2 text-sm font-semibold text-destructive hover:bg-destructive/10"
                 >
-                  Abandon article
+                  Abandon primitive
                 </button>
                 <Link
                   to={`/${handle}/constitution`}
@@ -351,7 +352,7 @@ export default function EditArticle({
                 </Link>
               </div>
               <p className="text-[11px] text-muted-foreground">
-                Article id: <code>{articleId}</code>
+                Primitive id: <code>{primitiveId}</code>
               </p>
             </Form>
           </CardContent>
