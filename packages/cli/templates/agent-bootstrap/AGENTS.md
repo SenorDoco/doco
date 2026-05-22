@@ -6,34 +6,78 @@ URL(s) this repo connects to live in:
 
 @./.doco/connections.md
 
-## Getting access to this Doco (agent OAuth)
+Everything below is **binding instructions you execute now, in
+order**, not background reading. If you skip them, your reply will
+violate the protocol.
 
-The MCP connector layer is removed for now — you drive OAuth
-directly. Recipe lives at `https://doco.to/protocol/agent-oauth-recipe`.
+## Step 1 — Fetch the reply protocol
 
-  - **Shell-capable agents (Claude Code, Cursor, …)**: use Recipe A
-    (localhost-loopback). Same shape as `gh auth login`. You'll
-    open a browser tab, the project owner approves, you get a
-    Bearer token.
-  - **Chat-only / sandboxed agents**: use Recipe B (RFC 8628 Device
-    Authorization Grant). You'll show the project owner a short
-    code like `WXYZ-1234`, they approve at `https://doco.to/device`,
-    you poll until you get a Bearer token.
+```
+GET https://doco.to/protocol/canonical-instructions
+```
 
-Both end with `Authorization: Bearer doco_at_<token>` against the
-Doco's HTTP API. If this Doco is public-visibility, anonymous reads
-work without auth at all — try
-`GET https://doco.to/<handle>/status.json`.
+This doc carries the **four invariants every reply must follow** —
+the literal indicator strings, verb lists, capture rules, tally
+format. It is the source of truth for how you reply; do not infer
+it from memory. Fetch it before your first substantive reply, and
+apply it on every reply for the rest of the session.
+
+## Step 2 — Check Doco access
+
+```
+GET https://doco.to/<handle>/status.json
+```
+
+- **200** → the Doco is public. Read freely (lists, nodes,
+  constitution) without auth. You still need OAuth to **capture**.
+- **401 / 403** → the Doco is private. Run the OAuth recipe at
+  `https://doco.to/protocol/agent-oauth-recipe` before answering
+  any Doco-relevant question.
+
+OAuth recipes:
+
+  - **Shell-capable agents (Claude Code, Cursor, Codex CLI, …)**:
+    Recipe A (localhost-loopback). Same shape as `gh auth login`.
+  - **Chat-only / sandboxed agents**: Recipe B (RFC 8628 Device
+    Authorization Grant). Show the project owner a short
+    `WXYZ-1234` code, they approve at `https://doco.to/device`,
+    poll until you get the token.
+
+Both end with `Authorization: Bearer doco_at_<token>` on every API
+call.
+
+## Step 3 — Read the Articles of the Constitution
+
+```
+GET https://doco.to/api/v1/agent-bootstrap.json
+Authorization: Bearer doco_at_<token>     # only if private
+```
+
+Fetch once per session and re-fetch if you suspect the constitution
+changed mid-session. The canonical doc explains how to treat
+`guidance_articles[]` and `node_authoring_articles[]`.
+
+## How agents fail at the bootstrap
+
+- **Treating this file as background context.** It's instructions
+  to execute. If you finish reading it and answer a Doco-relevant
+  question without rendering the connection indicator at the top
+  and the tally at the bottom, you skipped Step 1.
+- **Skipping the canonical-instructions fetch because "it's just a
+  reply protocol."** Without it you won't know the literal
+  `[🔮 Doco]` strings, the verb lists, or the tally rules.
+- **Skipping anonymous browse because OAuth feels heavy.** Try
+  `status.json` first — many Docos let you read freely.
 
 ## Share this setup with other agents
 
-Your OAuth token is private to you. The repo's Doco connection files
-are not private; they are how another agent in another clone discovers
-that this project uses Doco.
+Your OAuth token is private to you. The repo's Doco connection
+files are not private; they are how another agent in another clone
+discovers that this project uses Doco.
 
-This applies even if you already have valid Doco auth. A working local
-`DOCO_ACCESS` token does not mean the repository has the bootstrap files
-future agents need. Before declaring Doco setup done, verify:
+Even with valid local auth, a working `DOCO_ACCESS` token does not
+mean the repository has the bootstrap files future agents need.
+Before declaring Doco setup done, verify:
 
 ```sh
 test -f .doco/connections.md
@@ -41,14 +85,15 @@ test -f AGENTS.md
 test -f CLAUDE.md
 ```
 
-If any are missing, add them. `CLAUDE.md` should be a one-line shim:
+If any are missing, add them. `CLAUDE.md` should be a one-line
+shim:
 
 ```md
 @./AGENTS.md
 ```
 
-After connecting a repo to Doco, commit and push the non-secret files
-that were created or updated:
+After connecting a repo to Doco, commit and push the non-secret
+files that were created or updated:
 
 ```sh
 git status --short
@@ -58,22 +103,10 @@ git commit -m "Connect repository to Doco"
 git push
 ```
 
-Never commit `.env`, `DOCO_ACCESS`, refresh tokens, OAuth client state,
-cookies, or any other credential. If the worktree contains unrelated
-user changes, stage only the Doco bootstrap files you touched.
-
-## Your role
-
-- Get authenticated (recipe above) or browse anonymously if the
-  Doco is public.
-- Call out work that should be captured. When you make a Decision,
-  fix a bug, or finish a load-bearing chunk of code, capture it
-  directly if you're authenticated, or tell the project owner what
-  to capture if you're not.
-- Follow the four-invariant reply protocol at
-  `https://doco.to/protocol/canonical-instructions` — query
-  indicator at the top, footer lines after captures, capture-before-
-  declaring-done discipline, tally line at the close.
+Never commit `.env`, `DOCO_ACCESS`, refresh tokens, OAuth client
+state, cookies, or any other credential. If the worktree contains
+unrelated user changes, stage only the Doco bootstrap files you
+touched.
 
 ## What lives where
 
