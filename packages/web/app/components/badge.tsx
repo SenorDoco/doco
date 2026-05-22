@@ -5,16 +5,16 @@ import { cn } from "~/lib/cn";
 import { lifecycleColor } from "~/lib/neuron-colors";
 
 const badgeVariants = cva(
-  "inline-flex items-center rounded-md border px-2 py-0.5 text-[11px] font-mono transition-colors",
+  "neo-raised-sm inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-mono",
   {
     variants: {
       variant: {
-        default: "border-border bg-card text-muted-foreground",
-        accent: "border-accent text-accent",
-        success: "border-success text-success",
-        warning: "border-warning text-warning",
-        destructive: "border-destructive text-destructive",
-        primary: "border-primary text-primary",
+        default: "bg-card text-muted-foreground",
+        accent: "text-accent",
+        success: "text-success",
+        warning: "text-warning",
+        destructive: "text-destructive",
+        primary: "text-primary",
       },
     },
     defaultVariants: { variant: "default" },
