@@ -12,22 +12,23 @@ Doco URL(s) for this repo: @./.doco/connections.md
 
 ---
 
-## Which connection mode are you in?
+## How the Doco protocol reaches you in different environments
 
-Determine your mode before the first reply. Default to HOOKS-OFF when
-ambiguous.
+The protocol arrives via three possible channels. Check your context
+for these blocks before the first reply; default to "neither block"
+when ambiguous.
 
-| Mode | Detection | Top-of-reply line |
-|---|---|---|
-| **CONNECTED** | Context contains a `## Pre-fetched query for THIS prompt` block | paste the block verbatim |
-| **DISCONNECTED** | Context contains `[🔮 Doco] Not connected yet: <reason>` | paste that line; skip indicator / footer / tally |
-| **HOOKS-OFF** | Neither block present | `[🔮 Doco] Hooks not loaded — protocol active from AGENTS.md` |
+| Block in your context | What it means / what to do |
+|---|---|
+| `## Pre-fetched query for THIS prompt` | A hook fired and pre-queried the Doco. Paste the block verbatim as your top-of-reply indicator. |
+| `[🔮 Doco] Not connected yet: <reason>` | A hook tried but couldn't reach the Doco. Render the not-connected indicator (see Invariant 1) — call `doco_authenticate` for the URL. |
+| Neither block | No hook fired (web sandbox, runtime without hook support, etc.). Decide whether to query the Doco yourself via `doco_search` based on the user's question, and render indicators per Invariant 1. |
 
-In HOOKS-OFF mode with shell access and `.env` present, you can run
-`bash .claude/bootstrap-fetch.sh` to upgrade to CONNECTED for the
-session.
+In environments with shell access and `.env` present, you can run
+`bash .claude/bootstrap-fetch.sh` to manually populate the pre-fetched
+block for the session.
 
-### MCP server (preferred in HOOKS-OFF environments)
+### MCP server (preferred where hooks don't fire)
 
 This repo ships an MCP server at `.agents/doco-mcp-server.mjs`,
 registered via `.mcp.json`. MCP-aware clients (Claude Code, Cursor,
@@ -59,20 +60,47 @@ The essentials, applied every turn:
 
 ### 1. Indicator at top of first text output
 
-Render the mode-appropriate indicator FIRST, before any prose. Once
-per turn — not on intermediate progress updates between tool calls.
-If you didn't query (greeting, one-word ack), emit nothing at the
-top — absence is the signal.
+Render indicators FIRST, before any prose. Once per turn — not on
+intermediate progress updates between tool calls.
 
-Compliant first reply, CONNECTED mode:
+**On the first reply of a session**, regardless of query state:
 ```
 [🔮 Doco] Loading doco-bpms
 [🔮 Doco] To document anything, just ask me to "doco it"
-
-Sure — here's what I found about …
 ```
 
-Non-compliant (this is the demotion failure mode):
+**If you queried the Doco** (called `doco_search` or had a pre-fetched
+block), follow with the query result line:
+```
+[🔮 Doco] <corky verb>...
+[🔮 Doco] <N> nodes found (<X>s)
+```
+
+The corky verb is randomized — "Searching the lore...", "Polling the
+Doco...", "Peering into the orb...", etc. Pre-fetched blocks already
+include one. When calling `doco_search` yourself, pick one.
+
+**If access to the Doco isn't granted** (`doco_search` returned 401/403,
+or a `[🔮 Doco] Not connected yet:` block is in your context), call
+`doco_authenticate` to get a URL, then render:
+
+```
+[🔮 Doco] Doco access not granted yet
+
+To let me read this project's prior decisions and rules, open
+[https://doco.to/device?user_code=XXXX-YYYY](https://doco.to/device?user_code=XXXX-YYYY)
+and click Approve. I'll proceed using just the codebase in the
+meantime.
+```
+
+The URL must be wrapped in markdown link syntax so it renders
+clickable in chat. Substitute the actual `user_code` returned by
+`doco_authenticate`.
+
+**If you didn't query** (greeting, one-word ack, off-topic chat):
+emit nothing at the top. Absence is the signal.
+
+Non-compliant first reply that needed a query:
 ```
 Sure — here's what I found about …
 ```
@@ -93,9 +121,9 @@ hook / canonical-instructions touched, architectural choice, convention
 revised). If a high-vector_score hit already governs the change, PATCH
 it instead of creating a new node.
 
-In HOOKS-OFF or DISCONNECTED mode you can't write — your obligation is
-to tell the project owner what to capture (node type, scope, summary).
-Don't skip the step.
+If you can't write (no `author`-role credential or the capture tools
+aren't available yet), your obligation is to tell the project owner
+what to capture (node type, scope, summary). Don't skip the step.
 
 ### 4. Tally at the closing line of every turn
 
@@ -106,8 +134,8 @@ Don't skip the step.
 `<N>` MUST be wrapped in markdown bold. Singular when `N == 1`, plural
 otherwise (0 is plural). PATCH-3-fields-of-1-Decision = 1, not 3. A
 turn is one user prompt → your complete answer, even when threaded
-through many tool calls. In HOOKS-OFF mode `<N>` counts captures you
-recommended to the project owner.
+through many tool calls. When you can't write directly, `<N>` counts
+captures you recommended to the project owner.
 
 ---
 
@@ -156,8 +184,8 @@ Never commit `.env`, `DOCO_ACCESS`, refresh tokens, or any credential.
 - `.doco/connections.md` — list of Doco URLs this repo connects to.
 - `AGENTS.md` — this file. Read every turn.
 - `CLAUDE.md` — one-line shim `@./AGENTS.md`.
-- `.claude/bootstrap-fetch.sh` — SessionStart hook; fetches bootstrap, pre-builds the connection indicator. Bypassed in HOOKS-OFF mode.
-- `.claude/user-prompt-fetch.sh` — UserPromptSubmit hook; re-pushes the protocol and pre-fetches search for the user's prompt. Bypassed in HOOKS-OFF mode.
+- `.claude/bootstrap-fetch.sh` — SessionStart hook; fetches bootstrap, pre-builds the connection indicator. Bypassed where hooks don't fire.
+- `.claude/user-prompt-fetch.sh` — UserPromptSubmit hook; re-pushes the protocol and pre-fetches search for the user's prompt. Bypassed where hooks don't fire.
 - `.agents/doco-agent-client.mjs` — Doco API HTTP client; `bootstrap` and `search` subcommands callable directly.
-- `.agents/doco-mcp-server.mjs` — MCP server (stdio, JSON-RPC 2.0, zero-dep) exposing `doco_search`. The discoverability floor for HOOKS-OFF environments.
+- `.agents/doco-mcp-server.mjs` — MCP server (stdio, JSON-RPC 2.0, zero-dep) exposing `doco_search`, `doco_authenticate`, `doco_complete_authentication`. The discoverability floor where hooks don't fire.
 - `.mcp.json` — MCP server registration; auto-discovered by Claude Code, Cursor, Codex CLI.
