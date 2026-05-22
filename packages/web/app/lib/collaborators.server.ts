@@ -1,8 +1,8 @@
 import {
   type DocoRole,
+  getCollaboratorById,
   getDocoById,
   getOrgRole,
-  getPrincipalById,
   listDocoIdsForCollaborator,
   listDocoUsers,
   listOrganizationsForCollaborator,
@@ -72,11 +72,13 @@ async function enrichPrincipal(
   id: string,
   lastActivity: Map<string, string>,
 ): Promise<UserCell> {
-  const p = await getPrincipalById(id);
-  const kind: PrincipalKind = (p as { type?: string } | null)?.type === "agent" ? "agent" : "person";
+  // Post-rename: per-collaborator metadata lives in the collaborators
+  // table; getCollaboratorById returns the kind/github_login directly.
+  const c = await getCollaboratorById(id);
+  const kind: PrincipalKind = c?.kind === "agent" ? "agent" : "person";
   return {
     collaborator_id: id,
-    username: p?.username ?? id,
+    username: c?.github_login ?? id,
     kind,
     last_activity_at: lastActivity.get(id) ?? null,
   };

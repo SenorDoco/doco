@@ -1,7 +1,9 @@
-// Session + Principal lookup — Phase 3 Postgres-only
-// (rule_01KRKQDHWNWJAF4YKTMCB2A0D9 — alpha forbids back-compat).
+// Session + Collaborator lookup — Phase 3 Postgres-only.
+// Post-rename: session cookie stores the collaborator id (OAuth identity).
+// The `CurrentPrincipal` shape and `findPrincipalById` names are kept
+// for caller compatibility, but the underlying lookups read collaborators.
 
-import { getPrincipalById, getPrincipalByUsername } from "@doco/db";
+import { type CollaboratorRow, getCollaboratorById, getCollaboratorByGithubLogin } from "@doco/db";
 
 const COOKIE_NAME = "doco_session";
 
@@ -14,7 +16,12 @@ export function getSessionPrincipalId(request: Request): string | null {
     if (eq < 0) continue;
     const name = p.slice(0, eq);
     const value = decodeURIComponent(p.slice(eq + 1));
-    if (name === COOKIE_NAME && /^principal_[0-9A-HJKMNP-TV-Z]{26}$/.test(value)) return value;
+    if (
+      name === COOKIE_NAME &&
+      /^(collaborator|principal)_[0-9A-HJKMNP-TV-Z]{26}$/.test(value)
+    ) {
+      return value;
+    }
   }
   return null;
 }
@@ -36,35 +43,16 @@ export interface CurrentPrincipal {
   email?: string;
 }
 
-function rowToPrincipal(row: {
-  id: string;
-  username: string;
-  email: string | null;
-  type: string;
-  raw_yaml: string;
-}): CurrentPrincipal {
-  const fm = (() => {
-    try {
-      return JSON.parse(row.raw_yaml) as Record<string, unknown>;
-    } catch {
-      return {} as Record<string, unknown>;
-    }
-  })();
-  const email = row.email ?? (fm.github_identity as { email?: string } | undefined)?.email ?? null;
-  const hasGitHubIdentity = Boolean(
-    fm.github_identity &&
-      typeof fm.github_identity === "object" &&
-      !Array.isArray(fm.github_identity),
-  );
-  const isHuman = row.type === "person" || hasGitHubIdentity;
-  const type: "person" | "agent" = row.type === "agent" ? "agent" : "person";
+function rowToPrincipal(row: CollaboratorRow): CurrentPrincipal {
+  const type: "person" | "agent" = row.kind === "agent" ? "agent" : "person";
+  const isHuman = row.kind === "person" || Boolean(row.github_login);
   const out: CurrentPrincipal = {
     id: row.id,
-    username: row.username,
+    username: row.github_login ?? row.id,
     type,
     isHuman,
   };
-  if (typeof email === "string") out.email = email;
+  if (row.email) out.email = row.email;
   return out;
 }
 
@@ -73,15 +61,16 @@ export function isHumanPrincipal(principal: CurrentPrincipal | null | undefined)
 }
 
 export async function findPrincipalById(principalId: string): Promise<CurrentPrincipal | null> {
-  const row = await getPrincipalById(principalId);
+  const row = await getCollaboratorById(principalId);
   if (!row) return null;
-  return rowToPrincipal(row as unknown as { id: string; username: string; email: string | null; type: string; raw_yaml: string });
+  return rowToPrincipal(row);
 }
 
 export async function findPrincipalByUsername(username: string): Promise<CurrentPrincipal | null> {
-  const row = await getPrincipalByUsername(username);
+  // Post-rename: "username" → github_login on collaborators.
+  const row = await getCollaboratorByGithubLogin(username);
   if (!row) return null;
-  return rowToPrincipal(row as unknown as { id: string; username: string; email: string | null; type: string; raw_yaml: string });
+  return rowToPrincipal(row);
 }
 
 export async function getCurrentPrincipal(request: Request): Promise<CurrentPrincipal | null> {
