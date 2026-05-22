@@ -1,7 +1,7 @@
 import { getOrgRole, withClient } from "@doco/db";
 import { validateRequestedDocoId as validateRequestedDocoHandle } from "@doco/shared";
-// /<doco-handle>/settings — admin-only Doco settings page. Renames the
-// handle, toggles visibility (private/public), or deletes the Doco.
+// /<doco-handle>/settings — admin-only Doco settings page. Updates Doco
+// metadata or performs high-risk actions such as renaming/deleting the Doco.
 //
 // Delete: people only (ADR-040). Two-step confirmation — type the handle to
 // activate the "Delete permanently" button. Hard-delete via ON DELETE
@@ -84,7 +84,7 @@ export async function action({
 }) {
   const { dir: oldDir, handle, me, meta } = await loadDocoRouteForAdmin(request, params);
   const form = await request.formData();
-  const intent = String(form.get("intent") ?? "save");
+  const intent = String(form.get("intent") ?? "");
 
   // ── Delete (ADR-040: people only) ─────────────────────────────────
   if (intent === "delete") {
@@ -119,6 +119,43 @@ export async function action({
     return redirect(`/${handle}/settings`);
   }
 
+  // ── Visibility ───────────────────────────────────────────────────
+  if (intent === "update-visibility") {
+    const visibility = String(form.get("visibility") ?? "") as "private" | "public";
+    if (visibility !== "private" && visibility !== "public") {
+      return { error: "Visibility must be private or public." };
+    }
+    try {
+      await updateDocoMeta({ handle, visibility });
+      await reindex(oldDir, meta.docoId);
+    } catch (e) {
+      return { error: (e as Error).message };
+    }
+    return redirect(`/${handle}/settings`);
+  }
+
+  // ── Rename handle (danger zone) ──────────────────────────────────
+  if (intent === "rename-handle") {
+    const newHandle = String(form.get("doco_handle") ?? "")
+      .trim()
+      .toLowerCase();
+
+    if (!newHandle) return { error: "Handle is required." };
+    const handleError = validateRequestedDocoHandle(newHandle);
+    if (handleError) {
+      return { error: friendlyHandleValidationError(handleError, "Doco handle") };
+    }
+    if (newHandle === handle) return redirect(`/${handle}/settings`);
+
+    try {
+      await renameDocoHandle({ oldHandle: handle, newHandle });
+      await reindex(oldDir, meta.docoId);
+    } catch (e) {
+      return { error: (e as Error).message };
+    }
+    return redirect(`/${newHandle}/settings`);
+  }
+
   // ── Change owning organization (danger zone) ──────────────────────
   if (intent === "change-organization") {
     if (!me) return { error: "Sign in to change this Doco's organization." };
@@ -137,49 +174,7 @@ export async function action({
     return redirect(`/${handle}/settings`);
   }
 
-  if (intent !== "save") return { error: `Unknown intent: ${intent}` };
-
-  // ── Default: save edits ───────────────────────────────────────────
-  const newHandle = String(form.get("doco_handle") ?? "")
-    .trim()
-    .toLowerCase();
-  const visibility = (String(form.get("visibility") ?? "") as "private" | "public") || undefined;
-  const perspectiveId = String(form.get("perspective_id") ?? "").trim();
-
-  if (!newHandle) return { error: "Handle is required." };
-  const handleError = validateRequestedDocoHandle(newHandle);
-  if (handleError) {
-    return { error: friendlyHandleValidationError(handleError, "Doco handle") };
-  }
-  if (visibility && visibility !== "private" && visibility !== "public") {
-    return { error: "Visibility must be private or public." };
-  }
-
-  let finalHandle = handle;
-  if (newHandle !== handle) {
-    try {
-      await renameDocoHandle({ oldHandle: handle, newHandle });
-      finalHandle = newHandle as typeof handle;
-    } catch (e) {
-      return { error: (e as Error).message };
-    }
-  }
-
-  try {
-    await updateDocoMeta({
-      handle: finalHandle,
-      ...(visibility ? { visibility } : {}),
-    });
-    if (perspectiveId) {
-      const result = await setDefaultPerspective({ docoId: meta.docoId, perspectiveId });
-      if (!result.ok) return { error: "That perspective is not attached to this Doco." };
-    }
-  } catch (e) {
-    return { error: (e as Error).message };
-  }
-
-  await reindex(oldDir, meta.docoId);
-  return redirect(`/${finalHandle}/settings`);
+  return { error: `Unknown intent: ${intent}` };
 }
 
 export function meta({ params }: { params: { docoHandle?: string; docoId?: string } }) {
@@ -202,7 +197,7 @@ export default function DocoSettings({
   return (
     <div>
       <SiteHeader mode="host" me={me} />
-      <main className="mx-auto max-w-6xl px-6 py-6 space-y-4">
+      <main className="mx-auto max-w-6xl px-6 py-6 space-y-5">
         <Breadcrumb items={docoBreadcrumb({ ownerSlug, handle, pageLabel: "Settings" })} />
         {actionData?.error ? (
           <div className="rounded-md border border-destructive bg-destructive/5 px-4 py-3 text-xs text-destructive">
@@ -223,41 +218,16 @@ export default function DocoSettings({
 
         <Card>
           <CardHeader>
-            <CardTitle>Settings</CardTitle>
+            <CardTitle>Visibility</CardTitle>
             <CardDescription>
-              Update the Doco handle, visibility, and default perspective.
+              Control whether this Doco can be viewed by anyone with the URL.
             </CardDescription>
           </CardHeader>
           <CardContent>
             <Form method="post" className="space-y-3">
-              <input type="hidden" name="intent" value="save" />
-              <label className="block text-xs">
-                <span className="mb-1 block font-semibold text-foreground">Handle *</span>
-                <input
-                  name="doco_handle"
-                  required
-                  pattern={HANDLE_INPUT_PATTERN}
-                  defaultValue={handle}
-                  title={HANDLE_FORMAT_HELP}
-                  aria-describedby="doco-handle-help"
-                  onInvalid={(event) => {
-                    event.currentTarget.setCustomValidity(
-                      handleValidityMessage(event.currentTarget.validity, "Doco handle"),
-                    );
-                  }}
-                  onInput={(event) => event.currentTarget.setCustomValidity("")}
-                  className="w-full rounded-md border border-border bg-input px-3 py-2 font-mono text-xs text-foreground outline-none focus:border-primary"
-                />
-                <span
-                  id="doco-handle-help"
-                  className="mt-1 block text-[11px] text-muted-foreground"
-                >
-                  {HANDLE_FORMAT_HELP} Renaming takes effect immediately and updates every URL.
-                </span>
-              </label>
-
+              <input type="hidden" name="intent" value="update-visibility" />
               <fieldset className="block text-xs">
-                <legend className="mb-1 block font-semibold text-foreground">Visibility</legend>
+                <legend className="sr-only">Visibility</legend>
                 <div className="space-y-1.5">
                   <label className="flex items-start gap-2 cursor-pointer">
                     <input
@@ -285,9 +255,26 @@ export default function DocoSettings({
                   isn't leaked.
                 </span>
               </fieldset>
+              <button
+                type="submit"
+                className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90"
+              >
+                Save visibility
+              </button>
+            </Form>
+          </CardContent>
+        </Card>
 
-              <div className="space-y-1 text-xs">
-                {perspectives.length > 0 ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Default perspective</CardTitle>
+            <CardDescription>Choose the overview that opens first for this Doco.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {perspectives.length > 0 ? (
+              <Form method="post" className="space-y-3">
+                <input type="hidden" name="intent" value="set-default-perspective" />
+                <div className="space-y-1 text-xs">
                   <label className="inline-flex flex-col gap-1">
                     <span className="font-semibold text-foreground">Perspective</span>
                     <select
@@ -305,116 +292,160 @@ export default function DocoSettings({
                       ))}
                     </select>
                   </label>
-                ) : (
-                  <div className="inline-flex flex-col gap-1">
-                    <span className="font-semibold text-foreground">Perspective</span>
-                    <span className="text-xs text-muted-foreground">
-                      No perspectives are attached to this Doco yet.
-                    </span>
-                  </div>
-                )}
-                <span className="block text-[11px] text-muted-foreground">
-                  Choose the overview that opens first for this Doco.
-                </span>
-              </div>
+                </div>
+                <button
+                  type="submit"
+                  className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90"
+                >
+                  Save perspective
+                </button>
+              </Form>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                No perspectives are attached to this Doco yet.
+              </p>
+            )}
+          </CardContent>
+        </Card>
 
+        <section className="space-y-1 pt-2">
+          <h1 className="text-base font-semibold text-destructive">Danger zone</h1>
+          <p className="text-xs text-muted-foreground">
+            These changes can update every Doco URL, alter who has access, or permanently remove
+            this Doco.
+          </p>
+        </section>
+
+        <Card className="border-destructive/40">
+          <CardHeader>
+            <CardTitle className="text-base text-destructive">Rename handle</CardTitle>
+            <CardDescription>
+              Renaming takes effect immediately and updates every URL for this Doco.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Form method="post" className="space-y-3">
+              <input type="hidden" name="intent" value="rename-handle" />
+              <label className="block text-xs">
+                <span className="mb-1 block font-semibold text-foreground">Handle *</span>
+                <input
+                  name="doco_handle"
+                  required
+                  pattern={HANDLE_INPUT_PATTERN}
+                  defaultValue={handle}
+                  title={HANDLE_FORMAT_HELP}
+                  aria-describedby="doco-handle-help"
+                  onInvalid={(event) => {
+                    event.currentTarget.setCustomValidity(
+                      handleValidityMessage(event.currentTarget.validity, "Doco handle"),
+                    );
+                  }}
+                  onInput={(event) => event.currentTarget.setCustomValidity("")}
+                  className="w-full rounded-md border border-border bg-input px-3 py-2 font-mono text-xs text-foreground outline-none focus:border-destructive"
+                />
+                <span
+                  id="doco-handle-help"
+                  className="mt-1 block text-[11px] text-muted-foreground"
+                >
+                  {HANDLE_FORMAT_HELP}
+                </span>
+              </label>
               <button
                 type="submit"
-                className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90"
+                className="rounded-md border border-destructive px-4 py-2 text-xs font-semibold text-destructive hover:bg-destructive/10"
               >
-                Save settings
+                Rename handle
               </button>
             </Form>
           </CardContent>
         </Card>
 
-        {/* Danger zone — delete (ADR-040: people only). */}
         <Card className="border-destructive/40">
           <CardHeader>
-            <CardTitle className="text-base text-destructive">Danger zone</CardTitle>
+            <CardTitle className="text-base text-destructive">Change organization</CardTitle>
             <CardDescription>
-              Organization changes can alter who has access. Deletion permanently removes this Doco
-              and every entity and edge inside it.
+              Move this Doco to an organization you own. This can alter who has access.
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-6">
-            <section className="space-y-3">
-              <div>
-                <h2 className="text-sm font-semibold text-foreground">Change organization</h2>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Move this Doco to an organization you own. The Doco handle stays the same.
+          <CardContent>
+            {currentOrgOptions.length > 0 ? (
+              <Form method="post" className="flex flex-wrap items-end gap-2">
+                <input type="hidden" name="intent" value="change-organization" />
+                <label className="inline-flex flex-col gap-1 text-xs">
+                  <span className="font-semibold text-foreground">Organization</span>
+                  <select
+                    name="target_org_id"
+                    className="w-auto max-w-full rounded-md border border-border bg-input px-3 py-2 text-xs text-foreground outline-none focus:border-destructive"
+                  >
+                    {currentOrgOptions.map((org) => (
+                      <option key={org.id} value={org.id}>
+                        {org.slug}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <button
+                  type="submit"
+                  className="rounded-md border border-destructive px-4 py-2 text-xs font-semibold text-destructive hover:bg-destructive/10"
+                >
+                  Change organization
+                </button>
+              </Form>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                You do not own another organization this Doco can move to.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Delete is ADR-040: people only. */}
+        <Card className="border-destructive/40">
+          <CardHeader>
+            <CardTitle className="text-base text-destructive">Delete Doco</CardTitle>
+            <CardDescription>
+              Deletion permanently removes this Doco and every entity and edge inside it.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {!isConfirmingDelete ? (
+              <Link
+                to={`/${handle}/settings?confirm=delete`}
+                className="inline-block rounded-md border border-destructive px-3 py-1.5 text-xs font-semibold text-destructive hover:bg-destructive/10"
+              >
+                Delete this Doco...
+              </Link>
+            ) : (
+              <Form method="post" className="space-y-3">
+                <input type="hidden" name="intent" value="delete" />
+                <p className="text-xs">
+                  Type the Doco handle <span className="font-mono font-semibold">{handle}</span> to
+                  confirm. This permanently deletes the Doco and every entity and edge inside it. It
+                  cannot be undone. Per ADR-040, only people can delete docos.
                 </p>
-              </div>
-              {currentOrgOptions.length > 0 ? (
-                <Form method="post" className="flex flex-wrap items-end gap-2">
-                  <input type="hidden" name="intent" value="change-organization" />
-                  <label className="inline-flex flex-col gap-1 text-xs">
-                    <span className="font-semibold text-foreground">Organization</span>
-                    <select
-                      name="target_org_id"
-                      className="w-auto max-w-full rounded-md border border-border bg-input px-3 py-2 text-xs text-foreground outline-none focus:border-destructive"
-                    >
-                      {currentOrgOptions.map((org) => (
-                        <option key={org.id} value={org.id}>
-                          {org.slug}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
+                <input
+                  name="confirm_handle"
+                  required
+                  autoComplete="off"
+                  placeholder={handle}
+                  className="w-full rounded-md border border-border bg-input px-3 py-2 font-mono text-xs text-foreground outline-none focus:border-destructive"
+                />
+                <div className="flex items-center gap-2">
                   <button
                     type="submit"
-                    className="rounded-md border border-destructive px-4 py-2 text-xs font-semibold text-destructive hover:bg-destructive/10"
+                    className="rounded-md bg-destructive px-4 py-2 text-xs font-semibold text-destructive-foreground hover:opacity-90"
                   >
-                    Change organization
+                    Delete permanently
                   </button>
-                </Form>
-              ) : (
-                <p className="text-xs text-muted-foreground">
-                  You do not own another organization this Doco can move to.
-                </p>
-              )}
-            </section>
-
-            <section className="border-t border-destructive/20 pt-4">
-              {!isConfirmingDelete ? (
-                <Link
-                  to={`/${handle}/settings?confirm=delete`}
-                  className="inline-block rounded-md border border-destructive px-3 py-1.5 text-xs font-semibold text-destructive hover:bg-destructive/10"
-                >
-                  Delete this Doco...
-                </Link>
-              ) : (
-                <Form method="post" className="space-y-3">
-                  <input type="hidden" name="intent" value="delete" />
-                  <p className="text-xs">
-                    Type the Doco handle <span className="font-mono font-semibold">{handle}</span>{" "}
-                    to confirm. This permanently deletes the Doco and every entity and edge inside
-                    it. It cannot be undone. Per ADR-040, only people can delete docos.
-                  </p>
-                  <input
-                    name="confirm_handle"
-                    required
-                    autoComplete="off"
-                    placeholder={handle}
-                    className="w-full rounded-md border border-border bg-input px-3 py-2 font-mono text-xs text-foreground outline-none focus:border-destructive"
-                  />
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="submit"
-                      className="rounded-md bg-destructive px-4 py-2 text-xs font-semibold text-destructive-foreground hover:opacity-90"
-                    >
-                      Delete permanently
-                    </button>
-                    <Link
-                      to={`/${handle}/settings`}
-                      className="text-xs text-muted-foreground hover:text-foreground"
-                    >
-                      Cancel
-                    </Link>
-                  </div>
-                </Form>
-              )}
-            </section>
+                  <Link
+                    to={`/${handle}/settings`}
+                    className="text-xs text-muted-foreground hover:text-foreground"
+                  >
+                    Cancel
+                  </Link>
+                </div>
+              </Form>
+            )}
           </CardContent>
         </Card>
       </main>
