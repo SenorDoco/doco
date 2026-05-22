@@ -1,33 +1,11 @@
 /**
- * Distinct hues, no two visually adjacent. The four most-visible
- * types in the entity-detail graph (decision, action, intent, principal)
- * occupy widely-separated parts of the wheel so they never read as
- * "all sort of green-ish."
- *   decision  -> orange     (warm, action-shaped)
- *   intent    -> magenta
- *   principal -> cyan       (was blue, collided with organization/indigo)
+ * Color in Doco encodes *lifecycle stage* only — anywhere, in any
+ * perspective or view. Neuron type is communicated by shape, icon,
+ * and text labels; color is reserved so it always means lifecycle.
+ * The previous per-type color palette (NODE_TYPE_COLOR / nodeTypeColor)
+ * was removed because it competed with the lifecycle stroke and
+ * diluted the meaning of color overall.
  */
-export const NODE_TYPE_COLOR: Record<string, string> = {
-  doco: "#525252", // gray
-  principal: "#06b6d4", // cyan
-  organization: "#6366f1", // indigo
-  intent: "#d946ef", // magenta
-  idea: "#f43f5e", // rose
-  rule: "#dc2626", // red
-  guidance_primitive: "#8b5cf6", // violet
-  neuron_authoring_primitive: "#0891b2", // cyan-blue
-  decision: "#f97316", // orange
-  action: "#7c3aed", // purple
-  log: "#14b8a6", // teal — instance-of-Action, distinct from purple
-  eval: "#0ea5e9", // sky
-  reference: "#a16207", // amber/brown
-};
-
-export const NODE_FALLBACK_COLOR = "#525252";
-
-export function nodeTypeColor(type: string): string {
-  return NODE_TYPE_COLOR[type] ?? NODE_FALLBACK_COLOR;
-}
 
 export const LIFECYCLE_COLOR: Record<string, string> = {
   active: "#16a34a",

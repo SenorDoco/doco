@@ -22,7 +22,7 @@ import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react"
 import { useNavigate } from "react-router";
 import type { OverviewGraphLink } from "~/components/overview-graph";
 import type { BpmnLane, BpmnNode, BpmnShape } from "~/lib/bpmn-perspective.server";
-import { lifecycleColor, nodeTypeColor } from "~/lib/neuron-colors";
+import { lifecycleColor } from "~/lib/neuron-colors";
 import "@xyflow/react/dist/style.css";
 
 interface BpmnPerspectiveProps {
@@ -418,10 +418,20 @@ function BpmnLaneNode({ data }: { data: BpmnLaneData }) {
 }
 
 function ShapeLabel({ node }: { node: BpmnNode }) {
+  // `position: relative` + zIndex puts this in the same paint tier as
+  // sibling absolutely-positioned shape outlines (the SVG in the
+  // Document shape, the rotated div in the Diamond), so DOM order
+  // wins and the label paints OVER the fill instead of under it.
   return (
     <div
       className="pointer-events-none flex items-center justify-center px-2 text-center text-[10px] font-medium leading-tight"
-      style={{ width: "100%", height: "100%", color: "#1f1f1f" }}
+      style={{
+        width: "100%",
+        height: "100%",
+        color: "#1f1f1f",
+        position: "relative",
+        zIndex: 1,
+      }}
       title={node.name ?? ""}
     >
       <span className="line-clamp-3">{node.name ?? <em>(unnamed)</em>}</span>
@@ -611,7 +621,11 @@ function BpmnDocumentNode({ data }: { data: BpmnNodeData }) {
 }
 
 function TypeBadge({ node, circular = false }: { node: BpmnNode; circular?: boolean }) {
-  const color = nodeTypeColor(node.entity_type);
+  // Color in Doco encodes *lifecycle stage* only — across every
+  // perspective. The type label here disambiguates which kind of
+  // neuron a shape is (the shape geometry already gestures at it);
+  // color on the type would compete with the lifecycle-color stroke
+  // and dilute the meaning of color overall. Hence: monochrome badge.
   return (
     <span
       style={{
@@ -619,7 +633,7 @@ function TypeBadge({ node, circular = false }: { node: BpmnNode; circular?: bool
         top: circular ? -8 : -7,
         left: circular ? "50%" : 6,
         transform: circular ? "translateX(-50%)" : undefined,
-        background: color,
+        background: "#262626",
         color: "#fff",
         fontSize: 9,
         fontWeight: 700,
@@ -629,6 +643,7 @@ function TypeBadge({ node, circular = false }: { node: BpmnNode; circular?: bool
         letterSpacing: 0.3,
         pointerEvents: "none",
         textTransform: "uppercase",
+        zIndex: 2,
       }}
     >
       {labelForType(node.entity_type)}
