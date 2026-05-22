@@ -22,13 +22,27 @@ import { InviteCollaboratorsLink } from "~/components/invite-collaborators-link"
 import { NeuronTypeIcon } from "~/components/neuron-type-icon";
 import { NeuronsOverviewCard, type NodesOverviewSection } from "~/components/neurons-overview-card";
 import { OverviewGraph } from "~/components/overview-graph";
+import { PerspectiveTabs } from "~/components/perspective-tabs";
+import { BpmnPerspective } from "~/components/perspectives/bpmn-perspective";
+import { ListPerspective } from "~/components/perspectives/list-perspective";
 import { SearchBoxWithHistory } from "~/components/search-box-with-history";
 import { SiteHeader } from "~/components/site-header";
 import { docoPath } from "~/lib/db.server";
-import { canAdminDoco, loadDocoRouteForRead } from "~/lib/doco-access.server";
+import {
+  canAdminDoco,
+  canApproveDoco,
+  loadDocoRouteForRead,
+} from "~/lib/doco-access.server";
+import { loadBpmnGraph } from "~/lib/bpmn-perspective.server";
 import { loadOverviewGraph } from "~/lib/full-graph.server";
 import { loadHostConfig } from "~/lib/host.server";
 import { lifecycleColor } from "~/lib/neuron-colors";
+import { computePageRank } from "~/lib/page-rank";
+import {
+  ensureDefaultsAttached,
+  listPerspectivesForDoco,
+  resolveActivePerspective,
+} from "~/lib/perspectives.server";
 import { computeFilterFacets } from "~/lib/search-filters.server";
 import { timeAgo } from "~/lib/time-ago";
 
@@ -210,6 +224,30 @@ export async function loader({
     }));
     const graph = await loadOverviewGraph(c, ctx.meta.docoId, { handle });
 
+    // Visualization perspectives — tabs above the graph body. Existing
+    // Docos created before migration 007 may have no perspectives
+    // attached; ensureDefaultsAttached backfills graph + list on first
+    // load so the UI always has at least one tab.
+    await ensureDefaultsAttached(ctx.meta.docoId);
+    const perspectives = await listPerspectivesForDoco(ctx.meta.docoId);
+    const requestedSlug = new URL(request.url).searchParams.get("perspective");
+    const activePerspective = resolveActivePerspective(perspectives, requestedSlug);
+    const canAdminPerspectives = await canApproveDoco(ctx.meta, me?.id ?? null);
+
+    // PageRank over the loaded graph, for the List perspective's rank
+    // sort options. Cheap (~ms even for thousands of neurons) so we
+    // compute it on every load rather than caching.
+    const pageRankMap = computePageRank(graph.nodes, graph.links);
+    const pageRanks: Record<string, number> = {};
+    for (const [id, rank] of pageRankMap.entries()) pageRanks[id] = rank;
+
+    // BPMN data is only needed when the active perspective is bpmn —
+    // skip the principal+raw_yaml join otherwise.
+    const bpmnGraph =
+      activePerspective?.kind === "bpmn"
+        ? await loadBpmnGraph(c, ctx.meta.docoId, { handle })
+        : null;
+
     // Constitution article count — guidance + node-authoring articles
     // attached to this Doco.
     const constitutionRow = (
@@ -237,6 +275,12 @@ export async function loader({
       me,
       graph,
       constitutionCount,
+      perspectives,
+      activePerspectiveSlug: activePerspective?.slug ?? null,
+      activePerspectiveKind: activePerspective?.kind ?? null,
+      canAdminPerspectives,
+      pageRanks,
+      bpmnGraph,
     };
   });
 }
@@ -288,7 +332,16 @@ export default function DocoHome({
     me,
     graph,
     constitutionCount,
+    perspectives,
+    activePerspectiveSlug,
+    activePerspectiveKind,
+    canAdminPerspectives,
+    pageRanks,
+    bpmnGraph,
   } = loaderData;
+
+  const pageRanksMap = new Map(Object.entries(pageRanks));
+  const activeSlug = activePerspectiveSlug ?? "graph";
 
   // Live feed polling (ADR-089).
   const revalidator = useRevalidator();
@@ -382,12 +435,11 @@ export default function DocoHome({
         </div>
         <div className="grid grid-cols-1 gap-6 min-[1200px]:grid-cols-[minmax(0,1fr)_400px]">
           <aside className="flex h-[calc(100vh-13rem)] min-h-[520px] min-w-0 flex-col min-[1200px]:sticky min-[1200px]:top-4 min-[1200px]:self-start">
-            <OverviewGraph
-              centerId={graph.centerId}
-              nodes={graph.nodes}
-              links={graph.links}
-              detailUrl={graph.detailUrl}
-              fillHeight
+            <PerspectiveTabs
+              handle={handle}
+              perspectives={perspectives}
+              activeSlug={activeSlug}
+              canAdmin={canAdminPerspectives}
               search={
                 <SearchBoxWithHistory
                   handle={handle}
@@ -400,6 +452,25 @@ export default function DocoHome({
                 />
               }
             />
+            <div className="flex min-h-0 flex-1 flex-col">
+              {activePerspectiveKind === "list" ? (
+                <ListPerspective nodes={graph.nodes} pageRanks={pageRanksMap} />
+              ) : activePerspectiveKind === "bpmn" && bpmnGraph ? (
+                <BpmnPerspective
+                  lanes={bpmnGraph.lanes}
+                  nodes={bpmnGraph.nodes}
+                  links={bpmnGraph.links}
+                />
+              ) : (
+                <OverviewGraph
+                  centerId={graph.centerId}
+                  nodes={graph.nodes}
+                  links={graph.links}
+                  detailUrl={graph.detailUrl}
+                  fillHeight
+                />
+              )}
+            </div>
           </aside>
 
           <section className="hidden min-w-0 space-y-5 min-[1200px]:block">
