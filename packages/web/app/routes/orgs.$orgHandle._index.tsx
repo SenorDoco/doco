@@ -431,7 +431,7 @@ export default function OrgHome({
                   to={`/orgs/${org.handle}/constitution`}
                   className="shrink-0 rounded-md border border-border px-3 py-1.5 text-xs font-semibold hover:bg-input"
                 >
-                  Constitution
+                  Primitives ({constitutionCount})
                 </Link>
               </div>
             </div>
@@ -453,8 +453,7 @@ export default function OrgHome({
 
             <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-card px-4 py-2 text-xs">
               <span>
-                Articles of the Constitution:{" "}
-                <span className="font-mono tabular-nums">{constitutionCount}</span>
+                Primitives: <span className="font-mono tabular-nums">{constitutionCount}</span>
               </span>
               <Link
                 to={`/orgs/${org.handle}/constitution`}

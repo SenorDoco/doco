@@ -57,8 +57,8 @@ export default function NewDocoStep4({
                 the permission)
               </li>
               <li>
-                AI agents collaborating on a doco are always reminded of its constitution: a list of
-                primitives telling them how to behave
+                AI agents collaborating on a doco are always reminded of its primitives — a list
+                telling them how to behave
               </li>
               <li>An organization can have multiple interconnected docos</li>
             </ul>

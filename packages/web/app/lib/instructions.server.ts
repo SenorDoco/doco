@@ -60,13 +60,13 @@ the endpoint shapes are:
     GET   https://doco.to/<handle>/api/<type>/<id>.json     # one neuron
     PATCH https://doco.to/<handle>/api/<type>/<id>.json     # patch (needs author)
     GET   https://doco.to/<handle>/api/<type>.txt           # plain-text spec
-    GET   https://doco.to/<handle>/api/primitives.json      # list constitution primitives
+    GET   https://doco.to/<handle>/api/primitives.json      # list primitives
     POST  https://doco.to/<handle>/api/primitives.json      # capture a primitive (needs author)
 
 Neuron types: decisions, rules, intents, actions, logs, evals, references,
 states, principals, invites, audit.
 
-Primitives are NOT neurons. Constitution primitives
+Primitives are NOT neurons. Primitives
 (\`guidance_primitive\`, \`neuron_authoring_primitive\`) live on the
 dedicated \`/api/primitives.json\` endpoint and inside the bootstrap
 payload — never on the generic \`/api/<type>.json\` route.
@@ -74,12 +74,11 @@ payload — never on the generic \`/api/<type>.json\` route.
 Public Docos return 200 for unauthenticated reads; private Docos
 return 403 until you finish the OAuth recipe.
 
-## Bootstrap: read the Constitution's primitives
+## Bootstrap: read the primitives
 
-Every org and every Doco has a **constitution**. The constitution is
-made up of **Constitution primitives** — short, project-owner-
-authored statements that govern how you, the agent, author neurons
-inside it. Two kinds, both surfaced at bootstrap:
+Every org and every Doco has a set of **primitives** — short,
+project-owner-authored statements that govern how you, the agent,
+author neurons inside it. Two kinds, both surfaced at bootstrap:
 
   - **Guidance primitives** (\`guidance_primitive\`) — prose for
     context. No automated check. Read them and let them shape your
@@ -94,10 +93,9 @@ Org-level primitives apply to every Doco that org owns. Doco-level
 primitives apply only to that Doco. Treat both as binding on your
 authoring at all times.
 
-The project owner can **add, edit, or remove constitution primitives
-any time**, at either the org level
-(\`/orgs/<org>/constitution\`) or the Doco level
-(\`/<handle>/constitution\`). Re-bootstrap if you suspect they've
+The project owner can **add, edit, or remove primitives any time**,
+at either the org level (\`/orgs/<org>/constitution\`) or the Doco
+level (\`/<handle>/constitution\`). Re-bootstrap if you suspect they've
 changed mid-session.
 
 Once you hold a Bearer token, hit:
@@ -105,9 +103,9 @@ Once you hold a Bearer token, hit:
     GET https://doco.to/api/v1/agent-bootstrap.json
     Authorization: Bearer doco_at_<token>
 
-The response carries the constitutions for every org and every Doco
-you have read-or-above access to, with each primitive exposed as
-\`guidance_primitives[]\` and \`neuron_authoring_primitives[]\` arrays.
+The response carries the primitives for every org and every Doco you
+have read-or-above access to, exposed as \`guidance_primitives[]\` and
+\`neuron_authoring_primitives[]\` arrays.
 
 The four invariants below apply whichever path you took — the
 protocol is about how you reply, not about how you authenticated.
@@ -244,7 +242,7 @@ preemptively.
 ## The neuron + primitive model
 
 Doco's data model is a graph of typed neurons, plus two kinds of
-constitution primitives that govern how neurons are authored:
+primitives that govern how neurons are authored:
 
 - **Intent** — what someone wants. Source of every downstream Decision.
 - **Decision** — a chosen resolution to a question, with alternatives
@@ -253,13 +251,12 @@ constitution primitives that govern how neurons are authored:
 - **Log** — a recorded event that *did* happen (past-tense verb +
   \`happened_at\` + concrete outputs). Immutable once captured.
 - **Rule** — an ongoing domain constraint.
-- **Guidance primitive** — one kind of Constitution primitive.
-  Contributors read it while working; no automated check.
-- **Neuron-authoring primitive** — the other kind of Constitution
-  primitive. Evaluated when neurons are captured; deterministic
-  predicates or probabilistic specs. The project owner can edit either
-  kind any time from \`/<handle>/constitution\` or
-  \`/orgs/<org>/constitution\`.
+- **Guidance primitive** — one kind of primitive. Contributors read
+  it while working; no automated check.
+- **Neuron-authoring primitive** — the other kind. Evaluated when
+  neurons are captured; deterministic predicates or probabilistic
+  specs. The project owner can edit either kind any time from
+  \`/<handle>/constitution\` or \`/orgs/<org>/constitution\`.
 - **Eval** — a named, executable test pinning a load-bearing claim.
 - **Reference** — an external pointer (URL, file, doc) with a summary.
 - **State** — a neuron in a formal state machine.

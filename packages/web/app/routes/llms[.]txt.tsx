@@ -88,15 +88,15 @@ for backwards compat.
   GET  ${baseUrl}/<handle>/api/<type>/<id>.json     # fetch one neuron
   PATCH ${baseUrl}/<handle>/api/<type>/<id>.json    # update fields (need 'author' role)
   GET  ${baseUrl}/<handle>/api/<type>.txt           # plain-text spec for the body shape
-  GET  ${baseUrl}/<handle>/api/primitives.json      # list constitution primitives (NOT neurons)
-  POST ${baseUrl}/<handle>/api/primitives.json      # capture a constitution primitive
+  GET  ${baseUrl}/<handle>/api/primitives.json      # list primitives (NOT neurons)
+  POST ${baseUrl}/<handle>/api/primitives.json      # capture a primitive
   POST ${baseUrl}/api/v1/docos.json                 # create a Doco in one request
 
 Neuron types: \`decisions\`, \`rules\`, \`intents\`, \`actions\`,
 \`logs\`, \`evals\`, \`references\`, \`states\`, \`principals\`,
 \`invites\`, \`audit\`.
 
-Primitives are not neurons. Constitution primitives (guidance + neuron-authoring)
+Primitives are not neurons. Primitives (guidance + neuron-authoring)
 live on \`/api/primitives.json\`. The generic \`/api/<type>.json\` route
 refuses primitive types.
 
@@ -138,8 +138,8 @@ Once you hold a Bearer token, hit:
     Authorization: Bearer doco_at_<token>
 
 You'll get the canonical instructions plus the union of every **org**
-and **Doco constitution** you have read-or-above access to. Org
-constitutions apply to every Doco the org owns, so an agent that
+and **Doco primitives set** you have read-or-above access to. Org
+primitives apply to every Doco the org owns, so an agent that
 bootstraps Doco (the tool) sees the full set of authoring rules
 governing its work across every project it can reach.
 
