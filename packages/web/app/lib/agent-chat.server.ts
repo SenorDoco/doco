@@ -19,7 +19,7 @@
 //
 // The conversation system prompt is bootstrapped much like the agent-
 // bootstrap endpoint feeds external agents — the canonical protocol
-// prose + the union of org + Doco constitutions the user can read —
+// prose + the Doco constitutions the user can read —
 // but reframed for an in-page sidebar (no two-line connection header,
 // no footer-lines / tally lines).
 

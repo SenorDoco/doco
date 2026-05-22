@@ -115,9 +115,9 @@ return 403 until you finish the OAuth recipe.
 
 ## Bootstrap: read the primitives
 
-Every org and every Doco has a set of **primitives** — short,
-project-owner-authored statements that govern how you, the agent,
-author neurons inside it. Two kinds, both surfaced at bootstrap:
+Every Doco has a set of **primitives** — short, project-owner-authored
+statements that govern how you, the agent, author neurons inside it.
+Two kinds, both surfaced at bootstrap:
 
   - **Guidance primitives** (\`guidance_primitive\`) — prose for
     context. No automated check. Read them and let them shape your
@@ -128,13 +128,11 @@ author neurons inside it. Two kinds, both surfaced at bootstrap:
     probabilistic spec the host evaluates with an LLM. \`on_violation:
     block\` means the host will reject your capture.
 
-Org-level primitives apply to every Doco that org owns. Doco-level
-primitives apply only to that Doco. Treat both as binding on your
+Primitives apply only to their Doco. Treat them as binding on your
 authoring at all times.
 
 The project owner can **add, edit, or remove primitives any time**,
-at either the org level (\`/orgs/<org>/constitution\`) or the Doco
-level (\`/<handle>/constitution\`). Re-bootstrap if you suspect they've
+at \`/<handle>/constitution\`. Re-bootstrap if you suspect they've
 changed mid-session.
 
 Once you hold a Bearer token, hit:
@@ -142,8 +140,8 @@ Once you hold a Bearer token, hit:
     GET https://doco.to/api/v1/agent-bootstrap.json
     Authorization: Bearer doco_at_<token>
 
-The response carries the primitives for every org and every Doco you
-have read-or-above access to, exposed as \`guidance_primitives[]\` and
+The response carries the primitives for every Doco you have
+read-or-above access to, exposed as \`guidance_primitives[]\` and
 \`neuron_authoring_primitives[]\` arrays.
 
 The three invariants below apply whichever path you took — the
@@ -319,7 +317,7 @@ primitives that govern how neurons are authored:
 - **Neuron-authoring primitive** — the other kind. Evaluated when
   neurons are captured; deterministic predicates or probabilistic
   specs. The project owner can edit either kind any time from
-  \`/<handle>/constitution\` or \`/orgs/<org>/constitution\`.
+  \`/<handle>/constitution\`.
 - **Eval** — a named, executable test pinning a load-bearing claim.
 - **Reference** — an external pointer (URL, file, doc) with a summary.
 - **State** — a neuron in a formal state machine.

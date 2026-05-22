@@ -114,22 +114,6 @@ export default [
   route("orgs/:orgHandle", "routes/orgs.$orgHandle._index.tsx"),
   // Cross-Doco semantic search across every Doco the org owns.
   route("orgs/:orgHandle/search", "routes/orgs.$orgHandle.search.tsx"),
-  // Org-level constitution: applies to every Doco owned by the org.
-  // Same shape as the per-Doco constitution at /:docoHandle/constitution.
-  // Standalone add pages live one level deeper.
-  route("orgs/:orgHandle/constitution", "routes/orgs.$orgHandle.constitution.tsx"),
-  route(
-    "orgs/:orgHandle/constitution/guidance/new",
-    "routes/orgs.$orgHandle.constitution.guidance.new.tsx",
-  ),
-  route(
-    "orgs/:orgHandle/constitution/neuron-authoring/new",
-    "routes/orgs.$orgHandle.constitution.neuron-authoring.new.tsx",
-  ),
-  route(
-    "orgs/:orgHandle/constitution/:entityType/:primitiveId/edit",
-    "routes/orgs.$orgHandle.constitution.$entityType.$primitiveId.edit.tsx",
-  ),
   route("collaborators", "routes/collaborators.tsx"),
   route("collaborators/invite", "routes/collaborators.invite.tsx"),
   // Onboarding (human paths only — agents authenticate via OAuth +
@@ -153,8 +137,8 @@ export default [
   route("api/v1/orgs.json", "routes/api.v1.orgs[.]json.tsx"),
   route("api/v1/docos.json", "routes/api.v1.docos[.]json.tsx"),
   // Agent bootstrap. Returns the canonical-instructions prose plus the
-  // union of org + Doco constitutions the caller can read. Auth-aware:
-  // anonymous callers get public-Doco constitutions only.
+  // Doco constitutions the caller can read. Auth-aware: anonymous callers
+  // get public-Doco constitutions only.
   route("api/v1/agent-bootstrap.json", "routes/api.v1.agent-bootstrap[.]json.tsx"),
   // In-page assistant — the left-rail sidebar visible to every signed-in
   // user. One conversation per Principal, forever (no archive / new-chat

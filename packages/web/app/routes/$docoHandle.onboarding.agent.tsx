@@ -72,7 +72,7 @@ export default function OnboardingAgent({
               <li>Paste the agent prompt into an AI agent that should collaborate on the work.</li>
               <li>
                 Agents use OAuth, then fetch the bootstrap manifest so they can read the relevant
-                org and Doco primitives before writing neurons.
+                Doco primitives before writing neurons.
               </li>
             </ul>
             <CollaborationInvitePrompt

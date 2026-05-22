@@ -18,8 +18,7 @@ export interface AuditEvent {
   event_id: string;
   at: string;
   by: string | null;
-  /** Exactly one of doco_id or org_id is set. Org-constitution articles
-   *  travel under org_id; per-Doco entities under doco_id. */
+  /** Per-Doco entity events set doco_id. Org-scoped host events may set org_id. */
   doco_id: string | null;
   org_id: string | null;
   entity_type: string;
@@ -32,9 +31,9 @@ export interface AuditEvent {
 
 export interface AppendEventInput {
   docoDir: string;
-  /** Set when the event is per-Doco; leave undefined for org-scope events. */
+  /** Set when the event is per-Doco. */
   docoId?: string | null;
-  /** Set when the event is org-scope (org constitution articles). */
+  /** Set when the event is org-scope. */
   orgId?: string | null;
   by: string | null;
   entity_type: string;

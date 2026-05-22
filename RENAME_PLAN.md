@@ -23,7 +23,7 @@ Five top-level categories. Every persisted thing in Doco belongs to exactly one.
 | Category | Members (count) | Role | Persistence |
 |---|---|---|---|
 | **Neurons** (10) | `intent`, `idea`, `rule`, `decision`, `action`, `log`, `eval`, `reference`, `state`, `principal` | Knowledge-graph entities. Connect to each other via synapses. `principal` is the documented role/persona (NOT the OAuth identity). | One table per type. Indexed in `entity_fts_neurons`. |
-| **Primitives** (2) | `guidance_primitive`, `neuron_authoring_primitive` | Constitution metadata. Govern how neurons may be authored. NOT on the neuron graph; do not appear as endpoints of synapses. | Tables `guidance_primitives`, `neuron_authoring_primitives` (plus org variants). Indexed in `entity_fts_primitives`. |
+| **Primitives** (2) | `guidance_primitive`, `neuron_authoring_primitive` | Doco-scoped constitution metadata. Govern how neurons may be authored. NOT on the neuron graph; do not appear as endpoints of synapses. | Tables `guidance_primitives`, `neuron_authoring_primitives`. Indexed in `entity_fts_primitives`. |
 | **Collaborators** (1) | `collaborator` (`kind: "person" \| "agent"`) | OAuth identity layer. Carries `github_id`, `github_login`, `email`, tokens, session state. Owns audit `created_by` references. | New table `collaborators`. Indexed in `entity_fts_collaborators`. |
 | **Docos** (1) | `doco` | Workspace container. | Table `docos`. Indexed in `entity_fts_docos`. |
 | **Organizations** (1) | `organization` | Org container. | Table `organizations`. Indexed in `entity_fts_organizations`. |
@@ -188,7 +188,7 @@ The `synapses` table (renamed from `edges`) is **derived** — D-017 fields-as-e
 ### 5.6 Order within the migration
 
 1. Begin tx + sentinel check.
-2. Rename tables (`edges → synapses`, `guidance_articles → guidance_primitives`, `node_authoring_articles → neuron_authoring_primitives`, plus the four org variants).
+2. Rename tables (`edges → synapses`, `guidance_articles → guidance_primitives`, `node_authoring_articles → neuron_authoring_primitives`).
 3. Rename columns (`edge_type → synapse_type`, `from_node_type → from_neuron_type`, etc.; `allowed_node_types → allowed_neuron_types`).
 4. Rename indexes and PK/CHECK constraints.
 5. Create new tables: `collaborators`, plus five FTS tables (see §6).
@@ -213,8 +213,6 @@ The `synapses` table (renamed from `edges`) is **derived** — D-017 fields-as-e
 | `edges` | `synapses` |
 | `guidance_articles` | `guidance_primitives` |
 | `node_authoring_articles` | `neuron_authoring_primitives` |
-| `org_guidance_articles` | `org_guidance_primitives` |
-| `org_node_authoring_articles` | `org_neuron_authoring_primitives` |
 
 ### 6.2 New tables
 
@@ -242,7 +240,7 @@ Five FTS tables (one per category):
 
 ```sql
 CREATE TABLE entity_fts_neurons       (entity_id text PRIMARY KEY, doco_id text NOT NULL, neuron_type text NOT NULL, search_tsv tsvector NOT NULL, body_md text, ...);
-CREATE TABLE entity_fts_primitives    (entity_id text PRIMARY KEY, doco_id text, org_id text, primitive_kind text NOT NULL, search_tsv tsvector NOT NULL, body_md text, ...);
+CREATE TABLE entity_fts_primitives    (entity_id text PRIMARY KEY, doco_id text NOT NULL, primitive_kind text NOT NULL, search_tsv tsvector NOT NULL, body_md text, ...);
 CREATE TABLE entity_fts_collaborators (entity_id text PRIMARY KEY, search_tsv tsvector NOT NULL, ...);
 CREATE TABLE entity_fts_docos         (entity_id text PRIMARY KEY, search_tsv tsvector NOT NULL, ...);
 CREATE TABLE entity_fts_organizations (entity_id text PRIMARY KEY, search_tsv tsvector NOT NULL, ...);
@@ -365,8 +363,6 @@ Helpers: `isNeuronType`, `isPrimitiveType`, `isEntityType`, `parseEntityId` (ret
 | `GET /:docoHandle/edges` | `GET /:docoHandle/synapses` |
 | `GET /:docoHandle/edges/:edgeKey` | `GET /:docoHandle/synapses/:synapseKey` |
 | `GET /:docoHandle/graph-node-details.json` | `GET /:docoHandle/graph-neuron-details.json` |
-| `GET/POST /orgs/:orgHandle/constitution/node-authoring/new` | `.../neuron-authoring/new` |
-| `GET/POST /orgs/:orgHandle/constitution/:nodeType/:articleId/edit` | `.../:neuronType/:primitiveId/edit` |
 | `GET /:docoHandle/constitution` | unchanged (constitution stays as a domain concept) |
 | `GET /:docoHandle/api/principals.json` | unchanged (still creates documented role principals) |
 
@@ -390,8 +386,6 @@ NEW endpoints (collaborator surface):
 | `$docoHandle.edges._index.tsx` | `$docoHandle.synapses._index.tsx` |
 | `$docoHandle.edges.$edgeKey.tsx` | `$docoHandle.synapses.$synapseKey.tsx` |
 | `$docoHandle.graph-node-details[.]json.tsx` | `$docoHandle.graph-neuron-details[.]json.tsx` |
-| `orgs.$orgHandle.constitution.$nodeType.$articleId.edit.tsx` | `orgs.$orgHandle.constitution.$neuronType.$primitiveId.edit.tsx` |
-| `orgs.$orgHandle.constitution.node-authoring.new.tsx` | `orgs.$orgHandle.constitution.neuron-authoring.new.tsx` |
 | NEW: `$docoHandle.api.collaborators[.]json.tsx` | (collaborator listing) |
 
 ### 8.3 JSON body field renames (per-endpoint)
@@ -646,10 +640,6 @@ Article + edges (rename path + file):
 - `/Users/torrenegra/Doco/packages/web/app/routes/$docoHandle.constitution.guidance.new.tsx`
 - `/Users/torrenegra/Doco/packages/web/app/routes/$docoHandle.constitution.node-authoring.new.tsx`
 - `/Users/torrenegra/Doco/packages/web/app/routes/$docoHandle.constitution.$nodeType.$articleId.edit.tsx`
-- `/Users/torrenegra/Doco/packages/web/app/routes/orgs.$orgHandle.constitution.tsx`
-- `/Users/torrenegra/Doco/packages/web/app/routes/orgs.$orgHandle.constitution.guidance.new.tsx`
-- `/Users/torrenegra/Doco/packages/web/app/routes/orgs.$orgHandle.constitution.node-authoring.new.tsx`
-- `/Users/torrenegra/Doco/packages/web/app/routes/orgs.$orgHandle.constitution.$nodeType.$articleId.edit.tsx`
 - `/Users/torrenegra/Doco/packages/web/app/routes/$docoHandle.edges._index.tsx`
 - `/Users/torrenegra/Doco/packages/web/app/routes/$docoHandle.edges.$edgeKey.tsx`
 

@@ -8,8 +8,6 @@ import { waitUntil } from "@vercel/functions";
 // Identifiers: every node has exactly one id — the ULID. URLs use the
 // ULID; agents/users read the readable field (`summary` for most nodes).
 import { appendAuditEvent } from "./audit-log.server";
-import { readDocoMetadata } from "./doco-metadata.server";
-import { suggestImplicitEdges } from "./llm.server";
 import { validatePatch } from "./mutability.server";
 import { reindex, reindexEmbeddingsOnly } from "./redeem.server";
 
@@ -78,10 +76,9 @@ async function persistEntity(args: {
 
 /**
  * Reindex synchronously (so the caller's response reflects materialized
- * synapses/FTS/embeddings) and schedule the optional LLM-based
- * `attachImplicitEdges` pass in the background. The caller must have
- * already `await`-ed `persistEntity` so the new row is durably written
- * before the reindex reads it back.
+ * synapses/FTS/embeddings). The caller must have already `await`-ed
+ * `persistEntity` so the new row is durably written before the reindex
+ * reads it back.
  *
  * Why sync reindex: on Vercel-style serverless deploys the lambda is
  * frozen once the response is sent — a fire-and-forget background
@@ -105,16 +102,11 @@ async function persistEntity(args: {
  *     up within a second or two of the response; explicit FTS keyword
  *     hits work immediately. On non-Vercel runtimes `waitUntil` is a
  *     no-op shim that runs the promise like normal `void`.
- *
- * `attachImplicitEdges` stays background because it issues an LLM call
- * (multi-second, optional). If it doesn't complete on serverless the
- * worst case is no auto-synapses suggested — explicit synapses still land.
  */
 async function reindexAndScheduleAttach(
   docoDir: string,
   docoId: string,
   changedEntityId: string,
-  attachOpts?: Parameters<typeof attachImplicitEdges>[0],
 ): Promise<void> {
   try {
     await reindex(docoDir, docoId, [changedEntityId], { skipEmbeddings: true });
@@ -127,16 +119,6 @@ async function reindexAndScheduleAttach(
         await reindexEmbeddingsOnly(docoDir, docoId, [changedEntityId]);
       } catch (err) {
         console.error(`reindex embeddings failed for ${docoDir}:`, err);
-      }
-    })(),
-  );
-  if (!attachOpts) return;
-  waitUntil(
-    (async () => {
-      try {
-        await attachImplicitEdges(attachOpts);
-      } catch (err) {
-        console.error("background attachImplicitEdges failed:", err);
       }
     })(),
   );
@@ -588,98 +570,6 @@ export async function resolvePrincipalUsername(username: string): Promise<string
   }
 }
 
-async function attachImplicitEdges(opts: {
-  docoDir: string;
-  ownerSlug: string;
-  docoSlug: string;
-  entityId: string;
-  entityType: string;
-  entitySummary: string;
-  alreadyReferenced: Set<string>;
-}): Promise<number> {
-  type CandidateRow = { id: string; entity_type: string; summary: string; name?: string };
-  let candidates: CandidateRow[] = [];
-  const meta = await readDocoMetadata(opts.docoDir);
-  if (!meta?.docoId) return 0;
-  try {
-    await withClient(async (c) => {
-      const types: { table: string; entityType: string; hasName: boolean }[] = [
-        { table: "decisions", entityType: "decision", hasName: false },
-        { table: "intents", entityType: "intent", hasName: false },
-        { table: "rules", entityType: "rule", hasName: false },
-        { table: "guidance_primitives", entityType: "guidance_primitive", hasName: false },
-        {
-          table: "neuron_authoring_primitives",
-          entityType: "neuron_authoring_primitive",
-          hasName: false,
-        },
-        { table: "actions", entityType: "action", hasName: false },
-        { table: "evals", entityType: "eval", hasName: true },
-      ];
-      for (const t of types) {
-        try {
-          const cols = t.hasName ? "id, summary, name" : "id, summary";
-          const r = await c.query<Record<string, string>>(
-            `SELECT ${cols} FROM ${t.table}
-              WHERE doco_id = $1
-              ORDER BY created_at DESC
-              LIMIT 20`,
-            [meta.docoId],
-          );
-          for (const row of r.rows) {
-            if (row.id === opts.entityId) continue;
-            if (opts.alreadyReferenced.has(row.id)) continue;
-            const cand: CandidateRow = {
-              id: row.id,
-              entity_type: t.entityType,
-              summary: row.summary ?? "",
-            };
-            if (row.name) cand.name = row.name;
-            candidates.push(cand);
-          }
-        } catch {
-          /* table missing */
-        }
-      }
-    });
-  } catch {
-    return 0;
-  }
-  candidates = candidates.slice(0, 50);
-  if (candidates.length === 0) return 0;
-  const proposed = await suggestImplicitEdges({
-    source: {
-      id: opts.entityId,
-      entity_type: opts.entityType,
-      summary: opts.entitySummary,
-    },
-    candidates,
-  });
-  if (proposed.length === 0) return 0;
-  try {
-    const existing = await readEntityFromPostgres(opts.entityType, opts.entityId);
-    if (!existing) return 0;
-    const fm = existing.fm;
-    const prior = Array.isArray(fm.auto_synapses) ? (fm.auto_synapses as unknown[]) : [];
-    fm.auto_synapses = [
-      ...prior,
-      ...proposed.map((p) => ({ to_id: p.to_id, synapse_type: p.synapse_type, reason: p.reason })),
-    ];
-    const docoId = String(fm.doco_id ?? "");
-    await persistEntity({
-      entityType: opts.entityType,
-      id: opts.entityId,
-      docoId,
-      fm,
-      body: existing.body,
-    });
-    await reindex(opts.docoDir, docoId || undefined, [opts.entityId]);
-    return proposed.length;
-  } catch {
-    return 0;
-  }
-}
-
 export async function captureDecision(
   docoDir: string,
   docoId: string,
@@ -754,18 +644,7 @@ export async function captureDecision(
     entity_id: id,
     summary,
   });
-  await reindexAndScheduleAttach(docoDir, docoId, id, {
-    docoDir,
-    ownerSlug,
-    docoSlug,
-    entityId: id,
-    entityType: "decision",
-    entitySummary: summary,
-    alreadyReferenced: new Set([
-      ...intentIds,
-      ...(typeof draft.born_from === "string" ? [draft.born_from] : []),
-    ]),
-  });
+  await reindexAndScheduleAttach(docoDir, docoId, id);
   const duration_ms = Math.round(performance.now() - startedAt);
   const footer_lines = await renderOperationLines({
     docoId,
@@ -1341,15 +1220,7 @@ export async function captureIntent(
     entity_id: id,
     summary,
   });
-  await reindexAndScheduleAttach(docoDir, docoId, id, {
-    docoDir,
-    ownerSlug,
-    docoSlug,
-    entityId: id,
-    entityType: "intent",
-    entitySummary: summary,
-    alreadyReferenced: new Set([...(wantedById ? [wantedById] : []), ...actorIds]),
-  });
+  await reindexAndScheduleAttach(docoDir, docoId, id);
   const duration_ms = Math.round(performance.now() - startedAt);
   const footer_lines = await renderOperationLines({
     docoId,
@@ -1488,15 +1359,7 @@ export async function captureEval(
     entity_id: id,
     summary,
   });
-  await reindexAndScheduleAttach(docoDir, docoId, id, {
-    docoDir,
-    ownerSlug,
-    docoSlug,
-    entityId: id,
-    entityType: "eval",
-    entitySummary: summary,
-    alreadyReferenced: new Set([...(draft.target_ref ? [draft.target_ref] : [])]),
-  });
+  await reindexAndScheduleAttach(docoDir, docoId, id);
 
   const duration_ms = Math.round(performance.now() - startedAt);
   const footer_lines = await renderOperationLines({
@@ -1621,20 +1484,7 @@ export async function captureAction(
     entity_id: id,
     summary,
   });
-  await reindexAndScheduleAttach(docoDir, docoId, id, {
-    docoDir,
-    ownerSlug,
-    docoSlug,
-    entityId: id,
-    entityType: "action",
-    entitySummary: summary,
-    alreadyReferenced: new Set([
-      ...intentIds,
-      ...decisionIds,
-      ...follows,
-      ...(actorId ? [actorId] : []),
-    ]),
-  });
+  await reindexAndScheduleAttach(docoDir, docoId, id);
 
   const duration_ms = Math.round(performance.now() - startedAt);
   const footer_lines = await renderOperationLines({
@@ -1772,21 +1622,7 @@ export async function captureLog(
     entity_id: id,
     summary,
   });
-  await reindexAndScheduleAttach(docoDir, docoId, id, {
-    docoDir,
-    ownerSlug,
-    docoSlug,
-    entityId: id,
-    entityType: "log",
-    entitySummary: summary,
-    alreadyReferenced: new Set([
-      ...intentIds,
-      ...decisionIds,
-      ...follows,
-      ...(actorId ? [actorId] : []),
-      ...(draft.template_id ? [draft.template_id] : []),
-    ]),
-  });
+  await reindexAndScheduleAttach(docoDir, docoId, id);
 
   const duration_ms = Math.round(performance.now() - startedAt);
   const footer_lines = await renderOperationLines({
@@ -1930,19 +1766,7 @@ export async function captureRule(
     entity_id: id,
     summary,
   });
-  await reindexAndScheduleAttach(docoDir, docoId, id, {
-    docoDir,
-    ownerSlug,
-    docoSlug,
-    entityId: id,
-    entityType: "rule",
-    entitySummary: summary,
-    alreadyReferenced: new Set([
-      ...intentIds,
-      ...(authorId ? [authorId] : []),
-      ...(typeof draft.born_from === "string" ? [draft.born_from] : []),
-    ]),
-  });
+  await reindexAndScheduleAttach(docoDir, docoId, id);
 
   const duration_ms = Math.round(performance.now() - startedAt);
   const footer_lines = await renderOperationLines({
@@ -2072,7 +1896,6 @@ function normalizeNodeAuthoringPredicate(
 
 export type ArticleCaptureExtras = Record<string, never>;
 
-type ArticleScope = "doco" | "org";
 type ArticleNodeType = "guidance_primitive" | "neuron_authoring_primitive";
 
 interface ArticlePayload {
@@ -2087,17 +1910,8 @@ interface ArticlePayload {
   now: string;
 }
 
-function articleScopeField(scope: ArticleScope, scopeId: string): Record<string, string> {
-  return scope === "doco" ? { doco_id: scopeId } : { org_id: scopeId };
-}
-
-function articleAuditAfter(payload: ArticlePayload) {
-  return { summary: payload.summary };
-}
-
 async function buildGuidanceArticlePayload(
-  scope: ArticleScope,
-  scopeId: string,
+  docoId: string,
   draft: GuidanceArticleDraft,
   _extras: ArticleCaptureExtras,
 ): Promise<ArticlePayload | CaptureError> {
@@ -2114,7 +1928,7 @@ async function buildGuidanceArticlePayload(
   const createdById = draft.created_by_id ?? author;
   const fm: Record<string, unknown> = {
     id,
-    ...articleScopeField(scope, scopeId),
+    doco_id: docoId,
     primitive_kind: "guidance",
     summary,
     created_at: now,
@@ -2136,8 +1950,7 @@ async function buildGuidanceArticlePayload(
 }
 
 async function buildNodeAuthoringArticlePayload(
-  scope: ArticleScope,
-  scopeId: string,
+  docoId: string,
   draft: NodeAuthoringArticleDraft,
   _extras: ArticleCaptureExtras,
 ): Promise<ArticlePayload | CaptureError> {
@@ -2162,7 +1975,7 @@ async function buildNodeAuthoringArticlePayload(
     : [];
   const fm: Record<string, unknown> = {
     id,
-    ...articleScopeField(scope, scopeId),
+    doco_id: docoId,
     primitive_kind: "neuron_authoring",
     evaluation_kind: draft.evaluation_kind,
     summary,
@@ -2197,7 +2010,7 @@ export async function captureGuidanceArticle(
   extras: ArticleCaptureExtras = {},
 ): Promise<CaptureResult | CaptureError> {
   const startedAt = performance.now();
-  const payload = await buildGuidanceArticlePayload("doco", docoId, draft, extras);
+  const payload = await buildGuidanceArticlePayload(docoId, draft, extras);
   if ("error" in payload) return payload;
 
   await persistEntity({
@@ -2215,15 +2028,7 @@ export async function captureGuidanceArticle(
     entity_id: payload.id,
     summary: payload.summary,
   });
-  await reindexAndScheduleAttach(docoDir, docoId, payload.id, {
-    docoDir,
-    ownerSlug,
-    docoSlug,
-    entityId: payload.id,
-    entityType: payload.entityType,
-    entitySummary: payload.summary,
-    alreadyReferenced: new Set([payload.authorId]),
-  });
+  await reindexAndScheduleAttach(docoDir, docoId, payload.id);
 
   const duration_ms = Math.round(performance.now() - startedAt);
   const footer_lines = await renderOperationLines({
@@ -2256,7 +2061,7 @@ export async function captureNodeAuthoringArticle(
   extras: ArticleCaptureExtras = {},
 ): Promise<CaptureResult | CaptureError> {
   const startedAt = performance.now();
-  const payload = await buildNodeAuthoringArticlePayload("doco", docoId, draft, extras);
+  const payload = await buildNodeAuthoringArticlePayload(docoId, draft, extras);
   if ("error" in payload) return payload;
 
   await persistEntity({
@@ -2274,15 +2079,7 @@ export async function captureNodeAuthoringArticle(
     entity_id: payload.id,
     summary: payload.summary,
   });
-  await reindexAndScheduleAttach(docoDir, docoId, payload.id, {
-    docoDir,
-    ownerSlug,
-    docoSlug,
-    entityId: payload.id,
-    entityType: payload.entityType,
-    entitySummary: payload.summary,
-    alreadyReferenced: new Set([payload.authorId]),
-  });
+  await reindexAndScheduleAttach(docoDir, docoId, payload.id);
 
   const duration_ms = Math.round(performance.now() - startedAt);
   const footer_lines = await renderOperationLines({
@@ -2305,128 +2102,13 @@ export async function captureNodeAuthoringArticle(
   };
 }
 
-// ─── Org-level constitution articles ─────────────────────────────────────
-//
-// Mirror the per-Doco capture helpers but key on `org_id`. Org constitution
-// articles apply to every Doco the org owns. They live in dedicated tables
-// (`org_guidance_primitives` / `org_neuron_authoring_primitives`) and emit audit
-// events under the `org_id` scope of audit_events — they are first-class
-// node-like records, just under an org scope rather than a doco scope.
-
-export interface OrgArticleCaptureResult {
-  ok: true;
-  id: string;
-  duration_ms: number;
-}
-
-/** Optional fields applied during modify (creates new + supersedes old). */
-type OrgArticleExtras = ArticleCaptureExtras;
-
-function emitOrgAuditEvent(opts: {
-  orgId: string;
-  actorId: string | null;
-  entity_type: string;
-  entity_id: string;
-  op: "entity.create" | "entity.update" | "lifecycle.transition";
-  before?: Record<string, unknown>;
-  after?: Record<string, unknown>;
-  reason?: string | null;
-}): void {
-  try {
-    const input: Parameters<typeof appendAuditEvent>[0] = {
-      docoDir: "",
-      orgId: opts.orgId,
-      by: opts.actorId,
-      entity_type: opts.entity_type,
-      entity_id: opts.entity_id,
-      op: opts.op,
-    };
-    if (opts.before !== undefined) input.before = opts.before;
-    if (opts.after !== undefined) input.after = opts.after;
-    if (opts.reason !== undefined && opts.reason !== null) input.reason = opts.reason;
-    appendAuditEvent(input);
-  } catch (err) {
-    console.error("audit-log: failed to append org event", err);
-  }
-}
-
-async function insertOrgArticle(orgId: string, payload: ArticlePayload): Promise<void> {
-  const table =
-    payload.entityType === "guidance_primitive"
-      ? "org_guidance_primitives"
-      : "org_neuron_authoring_primitives";
-  await withClient(async (c) => {
-    await c.query(
-      `INSERT INTO ${table}
-         (id, org_id, summary, lifecycle, body_md, raw_yaml, created_at, created_by, updated_at, updated_by)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $7, $8)`,
-      [
-        payload.id,
-        orgId,
-        payload.summary,
-        payload.lifecycle,
-        payload.body,
-        JSON.stringify(payload.fm),
-        payload.now,
-        payload.createdById,
-      ],
-    );
-  });
-}
-
-export async function captureOrgGuidanceArticle(
-  orgId: string,
-  draft: GuidanceArticleDraft,
-  extras: OrgArticleExtras = {},
-): Promise<OrgArticleCaptureResult | CaptureError> {
-  const startedAt = performance.now();
-  const payload = await buildGuidanceArticlePayload("org", orgId, draft, extras);
-  if ("error" in payload) return payload;
-
-  await insertOrgArticle(orgId, payload);
-
-  emitOrgAuditEvent({
-    orgId,
-    actorId: payload.createdById,
-    entity_type: payload.entityType,
-    entity_id: payload.id,
-    op: "entity.create",
-    after: articleAuditAfter(payload),
-  });
-
-  return { ok: true, id: payload.id, duration_ms: Math.round(performance.now() - startedAt) };
-}
-
-export async function captureOrgNodeAuthoringArticle(
-  orgId: string,
-  draft: NodeAuthoringArticleDraft,
-  extras: OrgArticleExtras = {},
-): Promise<OrgArticleCaptureResult | CaptureError> {
-  const startedAt = performance.now();
-  const payload = await buildNodeAuthoringArticlePayload("org", orgId, draft, extras);
-  if ("error" in payload) return payload;
-
-  await insertOrgArticle(orgId, payload);
-
-  emitOrgAuditEvent({
-    orgId,
-    actorId: payload.createdById,
-    entity_type: payload.entityType,
-    entity_id: payload.id,
-    op: "entity.create",
-    after: articleAuditAfter(payload),
-  });
-
-  return { ok: true, id: payload.id, duration_ms: Math.round(performance.now() - startedAt) };
-}
-
 /**
- * Lifecycle transition for an article (doco-scope or org-scope). Writes
- * the new lifecycle to the underlying table and emits a
- * `lifecycle.transition` audit event under the appropriate scope.
+ * Lifecycle transition for a Doco constitution primitive. Writes the new
+ * lifecycle to the underlying table and emits a `lifecycle.transition`
+ * audit event under the Doco scope.
  */
 export async function transitionArticleLifecycle(opts: {
-  scope: "doco" | "org";
+  scope: "doco";
   scopeId: string;
   entityType: "guidance_primitive" | "neuron_authoring_primitive";
   articleId: string;
@@ -2437,13 +2119,9 @@ export async function transitionArticleLifecycle(opts: {
 }): Promise<{ ok: true } | CaptureError> {
   const table =
     opts.entityType === "guidance_primitive"
-      ? opts.scope === "doco"
-        ? "guidance_primitives"
-        : "org_guidance_primitives"
-      : opts.scope === "doco"
-        ? "neuron_authoring_primitives"
-        : "org_neuron_authoring_primitives";
-  const scopeCol = opts.scope === "doco" ? "doco_id" : "org_id";
+      ? "guidance_primitives"
+      : "neuron_authoring_primitives";
+  const scopeCol = "doco_id";
 
   const before = await withClient(async (c) => {
     const r = await c.query<{ lifecycle: string | null; raw_yaml: string }>(
@@ -2488,6 +2166,7 @@ export async function transitionArticleLifecycle(opts: {
 
   const evt: Parameters<typeof appendAuditEvent>[0] = {
     docoDir: "",
+    docoId: opts.scopeId,
     by: opts.actorId,
     entity_type: opts.entityType,
     entity_id: opts.articleId,
@@ -2498,8 +2177,6 @@ export async function transitionArticleLifecycle(opts: {
       ...(opts.supersededBy ? { superseded_by: opts.supersededBy } : {}),
     },
   };
-  if (opts.scope === "doco") evt.docoId = opts.scopeId;
-  else evt.orgId = opts.scopeId;
   if (opts.reason !== undefined) evt.reason = opts.reason;
   try {
     appendAuditEvent(evt);
@@ -2510,9 +2187,9 @@ export async function transitionArticleLifecycle(opts: {
   return { ok: true };
 }
 
-/** Fetch a constitution article's persisted fields (for the edit page). */
+/** Fetch a Doco constitution primitive's persisted fields (for the edit page). */
 export async function loadArticleForEdit(opts: {
-  scope: "doco" | "org";
+  scope: "doco";
   scopeId: string;
   entityType: "guidance_primitive" | "neuron_authoring_primitive";
   articleId: string;
@@ -2528,13 +2205,9 @@ export async function loadArticleForEdit(opts: {
 > {
   const table =
     opts.entityType === "guidance_primitive"
-      ? opts.scope === "doco"
-        ? "guidance_primitives"
-        : "org_guidance_primitives"
-      : opts.scope === "doco"
-        ? "neuron_authoring_primitives"
-        : "org_neuron_authoring_primitives";
-  const scopeCol = opts.scope === "doco" ? "doco_id" : "org_id";
+      ? "guidance_primitives"
+      : "neuron_authoring_primitives";
+  const scopeCol = "doco_id";
   const row = await withClient(async (c) => {
     const r = await c.query<{
       summary: string | null;
@@ -2640,15 +2313,7 @@ export async function captureReference(
     entity_id: id,
     summary,
   });
-  await reindexAndScheduleAttach(docoDir, docoId, id, {
-    docoDir,
-    ownerSlug,
-    docoSlug,
-    entityId: id,
-    entityType: "reference",
-    entitySummary: `${summary} ${locator}`,
-    alreadyReferenced: new Set([...intentIds, ...(createdById ? [createdById] : [])]),
-  });
+  await reindexAndScheduleAttach(docoDir, docoId, id);
 
   const duration_ms = Math.round(performance.now() - startedAt);
   const footer_lines = await renderOperationLines({
@@ -2764,15 +2429,7 @@ export async function captureState(
     entity_id: id,
     summary,
   });
-  await reindexAndScheduleAttach(docoDir, docoId, id, {
-    docoDir,
-    ownerSlug,
-    docoSlug,
-    entityId: id,
-    entityType: "state",
-    entitySummary: summary,
-    alreadyReferenced: new Set([...follows]),
-  });
+  await reindexAndScheduleAttach(docoDir, docoId, id);
 
   const duration_ms = Math.round(performance.now() - startedAt);
   const footer_lines = await renderOperationLines({

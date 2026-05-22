@@ -330,16 +330,12 @@ You get back:
   \`granted_org_roles\`, \`scope\`, \`expires_at\`. Null for cookie
   callers. Read this to know exactly which Docos and orgs your token
   covers without inferring from the constitution lists.
-- \`org_constitutions[]\` — Articles of the Constitution for the orgs
-  in \`granted_org_ids\` (or for every org you're a member of, when
-  authed by cookie). These govern every Doco the org owns.
 - \`doco_constitutions[]\` — Articles for every Doco your grants
   cover.
 
 The constitutions tell you what's expected when you capture or
-modify nodes in this Doco (or any Doco under those orgs). Cache the
-response for the session; refetch if the user tells you a
-constitution changed mid-session.
+modify nodes in each Doco. Cache the response for the session;
+refetch if the user tells you a constitution changed mid-session.
 
 ### Org grants are live — don't ask for re-auth on new Docos
 

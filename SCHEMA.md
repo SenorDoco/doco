@@ -233,14 +233,9 @@ on_violation: block | warn | log
 
 Markdown body: article prose, rationale, and examples.
 
-Constitution articles also exist at the **organization** level. Org-level
-articles use the same two shapes (`guidance_primitive` /
-`neuron_authoring_primitive`) and the same fields, but key on `org_id`
-instead of `doco_id` and live in `org_guidance_primitives` /
-`org_neuron_authoring_primitives`. An org's constitution applies to every
-Doco it owns; when an agent bootstraps, the host returns the union of
-every org and every Doco constitution the caller has read-or-above
-access to.
+Constitution primitives are Doco-level only. Organizations own Docos and
+grant access to them, but they do not have their own primitives. Shared
+policy should live in a dedicated Doco and be pulled in explicitly.
 
 ### 4.5 Decision — a recorded choice at a decision point
 
