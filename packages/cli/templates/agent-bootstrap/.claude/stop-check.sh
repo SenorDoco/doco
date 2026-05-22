@@ -155,16 +155,16 @@ for line in lines[last_user_idx + 1:]:
                 edits += 1
             elif name == 'Bash':
                 cmd = inp.get('command', '') or ''
-                # Match CLI write surfaces and raw HTTP writes to capture
-                # endpoints. `doco scope add-rule` writes Rule nodes.
-                if re.search(r'\bdoco\s+(capture|patch|supersede)\b', cmd):
-                    doco_writes += 1
-                elif re.search(r'\bdoco\s+scope\s+add-rule\b', cmd):
-                    doco_writes += 1
-                elif re.search(r'curl[^|;&]*-X\s*(POST|PATCH|DELETE)[^|;&]*/api/[a-z]+(?:/\S*)?\.json', cmd, re.IGNORECASE):
+                # Raw HTTP writes to capture endpoints. The MCP write
+                # tools (when present) show up as separate tool_use
+                # events and are picked up by the MCP-name check below.
+                if re.search(r'curl[^|;&]*-X\s*(POST|PATCH|DELETE)[^|;&]*/api/[a-z]+(?:/\S*)?\.json', cmd, re.IGNORECASE):
                     doco_writes += 1
                 elif re.search(r'curl[^|;&]*/api/[a-z]+(?:/\S*)?\.json[^|;&]*-X\s*(POST|PATCH|DELETE)', cmd, re.IGNORECASE):
                     doco_writes += 1
+            elif name.startswith('mcp__doco__') and name not in ('mcp__doco__doco_search', 'mcp__doco__doco_authenticate', 'mcp__doco__doco_complete_authentication'):
+                # Any Doco MCP tool that isn't search/auth counts as a write.
+                doco_writes += 1
         elif d.get('type') == 'assistant' and c.get('type') == 'text':
             assistant_footer_lines += count_footer_lines(c.get('text', '') or '')
         elif d.get('type') == 'user' and c.get('type') == 'tool_result':
@@ -199,7 +199,7 @@ if [ "$EDITS" = "0" ] || [ "$DOCO_WRITES" != "0" ] || [ "$ASSISTANT_FOOTERS" != 
   exit 0
 fi
 
-NUDGE=$(printf '🔮 Doco Stop nudge — turn had edits but no captures\n\nThis turn made %s Edit/Write tool call(s) but no Doco capture call was detected and no footer-line was emitted. Before declaring done:\n\n1. **Name the existing node you'\''re relying on.** If a Decision, Rule, or Action already covers what you changed, the capture obligation is satisfied — but say *which* node. "Too small for a Decision" is not naming a node.\n2. **If no node fits**, capture one now with `doco capture decision ...` (or PATCH an existing entity via `doco patch <type> <id> --append-body ...`). One short Decision beats a months-from-now archaeology dig through `git log`.\n3. The Stop hook reminded you. Suppress this nudge by either capturing or by stating the node-name you'\''re relying on in your final summary.' \
+NUDGE=$(printf '🔮 Doco Stop nudge — turn had edits but no captures\n\nThis turn made %s Edit/Write tool call(s) but no Doco capture was detected and no footer-line was emitted. Before declaring done:\n\n1. **Name the existing node you'\''re relying on.** If a Decision, Rule, or Action already covers what you changed, the capture obligation is satisfied — but say *which* node. "Too small for a Decision" is not naming a node.\n2. **If no node fits**, capture one now via the Doco MCP write tools or a direct POST to `https://doco.to/<handle>/api/<type>.json`. One short Decision beats a months-from-now archaeology dig through `git log`.\n3. The Stop hook reminded you. Suppress this nudge by either capturing or by stating the node-name you'\''re relying on in your final summary.' \
   "$EDITS")
 
 jq -nc --arg c "$NUDGE" \

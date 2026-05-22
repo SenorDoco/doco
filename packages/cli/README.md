@@ -47,14 +47,15 @@ node .agents/doco-agent-client.mjs search --q "what we know about auth"
 doco login --host https://doco.to --create my-project
 
 # In an existing Doco project (Doco URL in .doco/connections.md, DOCO_ACCESS in ./.env):
-doco bootstrap                              # fetch the agent canonical
-doco search "what we know about auth"       # query the graph
-doco capture decision --question "..." --chosen "..."
-doco patch decision <id> --append-body "Update YYYY-MM-DD: <what + why>."
+doco install-agent-bootstrap                # drop AGENTS.md, MCP server, hooks
 ```
 
-Run `doco --help` for the full command list, and `doco <command> --help` for any
-subcommand's flags.
+Run `doco --help` for the full command list. The CLI carries just two commands —
+`login` (mint a token, write `.env` + `.doco/connections.md` + install bootstrap)
+and `install-agent-bootstrap` (drop the discovery files into an existing repo).
+Searching, capturing, and patching neurons all flow through the MCP server at
+`.agents/doco-mcp-server.mjs` (auto-discovered by Claude Code, Cursor, and
+Codex CLI) or the HTTP API at `https://doco.to/<handle>/api/`.
 
 ## Authentication
 

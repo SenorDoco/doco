@@ -24,8 +24,8 @@ const DOCO_ID_PLACEHOLDER = /__DOCO_ID__/g;
  * `doco install-agent-bootstrap` — drop the agent bootstrap files into a
  * repo so any AI agent (via the cross-agent `AGENTS.md` convention, or
  * via Claude Code's auto-loaded CLAUDE.md + SessionStart +
- * UserPromptSubmit hooks) is forced to run `doco bootstrap` before
- * responding.
+ * UserPromptSubmit hooks) discovers the Doco and picks up the protocol
+ * on first turn.
  *
  * Files installed at the repo root (the cwd, or --root):
  *
@@ -34,7 +34,7 @@ const DOCO_ID_PLACEHOLDER = /__DOCO_ID__/g;
  *   CLAUDE.md                       (one-line shim: `@./AGENTS.md` — only
  *                                    exists because Claude Code auto-loads
  *                                    CLAUDE.md by name, not AGENTS.md)
- *   DOCO.md                         (committed, non-secret Doco URL)
+ *   .doco/connections.md            (committed, non-secret Doco URL)
  *   .claude/settings.json           (SessionStart + UserPromptSubmit + PostToolUse + Stop hooks)
  *   .claude/bootstrap-fetch.sh      (SessionStart hook script)
  *   .claude/user-prompt-fetch.sh    (UserPromptSubmit hook script)
@@ -49,13 +49,12 @@ const DOCO_ID_PLACEHOLDER = /__DOCO_ID__/g;
  *                                    Claude Code, Cursor, Codex CLI)
  *
  * Source of truth: `packages/cli/templates/agent-bootstrap/`. Edits there
- * propagate to every Doco that runs this command (or `doco init`, which
- * runs it automatically).
+ * propagate to every Doco that runs this command.
  *
- * Non-Claude agents read AGENTS.md directly (the convention any modern
- * coding agent honors) and additionally run `doco bootstrap` at the start
- * of each task to get the live canonical_instructions. The `.claude/`
- * hooks are Claude-Code-specific and have no equivalent for other agents.
+ * The protocol reaches agents through three channels (in order of
+ * preference): MCP tools (doco_search etc.), Claude Code hooks (the
+ * `.claude/` scripts above), and AGENTS.md (read every turn). Each is a
+ * fallback when the more-preferred channel isn't available.
  */
 const __dirname = dirname(fileURLToPath(import.meta.url));
 // Walk up from this file's directory until templates/ is found. Works
