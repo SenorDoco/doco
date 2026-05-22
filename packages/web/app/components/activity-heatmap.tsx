@@ -13,7 +13,7 @@
 import { useEffect, useRef, useState } from "react";
 
 interface ActivityHeatmapProps {
-  /** Map of yyyy-mm-dd → count of nodes added that day. */
+  /** Map of yyyy-mm-dd → count of neurons added that day. */
   byDay: Record<string, number>;
   /** Number of week-columns to render. Default 52 (~1 year). */
   weeks?: number;
@@ -164,11 +164,11 @@ export function ActivityHeatmap({ byDay, weeks = 52 }: ActivityHeatmapProps) {
                       <div
                         key={di}
                         className={`${cell} ${BUCKET_CLASS[bucket(d.count)]}`}
-                        aria-label={`${d.date}: ${d.count} node${d.count === 1 ? "" : "s"}`}
+                        aria-label={`${d.date}: ${d.count} neuron${d.count === 1 ? "" : "s"}`}
                         onMouseEnter={(e) =>
                           showTip(
                             e,
-                            `${d.date}: ${d.count} node${d.count === 1 ? "" : "s"}`,
+                            `${d.date}: ${d.count} neuron${d.count === 1 ? "" : "s"}`,
                           )
                         }
                         onMouseLeave={hideTip}

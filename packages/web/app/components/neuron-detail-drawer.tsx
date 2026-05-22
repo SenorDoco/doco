@@ -46,7 +46,7 @@ export interface DrawerLifecycleChange {
   to: string;
 }
 
-export interface NodeDetailDrawerProps {
+export interface NeuronDetailDrawerProps {
   open: DrawerKind | null;
   onClose: () => void;
   /** Builds the URL for a related entity (kind + id). */
@@ -93,7 +93,7 @@ function paneTitle(kind: DrawerKind): string {
   }
 }
 
-export function NeuronDetailDrawer(props: NodeDetailDrawerProps) {
+export function NeuronDetailDrawer(props: NeuronDetailDrawerProps) {
   const { open, onClose } = props;
   if (!open) return null;
   return (
@@ -113,8 +113,8 @@ export function NeuronDetailDrawer(props: NodeDetailDrawerProps) {
         </button>
       </header>
       <div className="min-h-0 flex-1 overflow-auto px-4 py-3">
-        {open === "relevant" ? <RelevantNodesPane {...props} /> : null}
-        {open === "synapses" ? <EdgesPane {...props} /> : null}
+        {open === "relevant" ? <RelevantNeuronsPane {...props} /> : null}
+        {open === "synapses" ? <SynapsesPane {...props} /> : null}
         {open === "history" ? <HistoryPane {...props} /> : null}
         {open === "metadata" ? <MetadataPane {...props} /> : null}
       </div>
@@ -122,18 +122,18 @@ export function NeuronDetailDrawer(props: NodeDetailDrawerProps) {
   );
 }
 
-function RelevantNodesPane({ rankedNeighbors, linkTo }: NodeDetailDrawerProps) {
+function RelevantNeuronsPane({ rankedNeighbors, linkTo }: NeuronDetailDrawerProps) {
   if (rankedNeighbors.length === 0) {
     return (
       <p className="text-xs text-muted-foreground">
-        No neighbors yet. This node sits as a leaf in the graph.
+        No neighbors yet. This neuron sits as a leaf in the graph.
       </p>
     );
   }
   return (
     <div className="text-xs">
       <p className="mb-2 text-[11px] text-muted-foreground">
-        Ranked by personalized PageRank from this node (ADR-076).
+        Ranked by personalized PageRank from this neuron (ADR-076).
       </p>
       <ul className="divide-y divide-border rounded-md border border-border">
         {rankedNeighbors.map((n) => (
@@ -153,7 +153,7 @@ function RelevantNodesPane({ rankedNeighbors, linkTo }: NodeDetailDrawerProps) {
   );
 }
 
-function EdgesPane({ outgoing, incoming, linkTo }: NodeDetailDrawerProps) {
+function SynapsesPane({ outgoing, incoming, linkTo }: NeuronDetailDrawerProps) {
   return (
     <div className="space-y-4 text-xs">
       <section>
@@ -166,7 +166,7 @@ function EdgesPane({ outgoing, incoming, linkTo }: NodeDetailDrawerProps) {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>edge</TableHead>
+                <TableHead>synapse</TableHead>
                 <TableHead>target</TableHead>
               </TableRow>
             </TableHeader>
@@ -199,7 +199,7 @@ function EdgesPane({ outgoing, incoming, linkTo }: NodeDetailDrawerProps) {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>edge</TableHead>
+                <TableHead>synapse</TableHead>
                 <TableHead>source</TableHead>
               </TableRow>
             </TableHeader>
@@ -226,7 +226,7 @@ function EdgesPane({ outgoing, incoming, linkTo }: NodeDetailDrawerProps) {
   );
 }
 
-function HistoryPane({ history }: NodeDetailDrawerProps) {
+function HistoryPane({ history }: NeuronDetailDrawerProps) {
   if (!history || history.length === 0) {
     return <p className="text-xs text-muted-foreground">No audit events yet for this node.</p>;
   }
@@ -258,7 +258,7 @@ function MetadataPane({
   nodeGpr,
   lifecycleHistory,
   ent,
-}: NodeDetailDrawerProps) {
+}: NeuronDetailDrawerProps) {
   return (
     <div className="space-y-3 text-xs">
       <dl className="grid grid-cols-[max-content_1fr] gap-x-3 gap-y-2 border-b border-border pb-3">
@@ -277,7 +277,8 @@ function MetadataPane({
         </h3>
         {lifecycleHistory.length === 0 ? (
           <p className="mt-1 text-muted-foreground">
-            No lifecycle transitions recorded. The node remains at its initial stage since creation.
+            No lifecycle transitions recorded. The neuron remains at its initial stage since
+            creation.
           </p>
         ) : (
           <ol className="mt-2 space-y-1">
