@@ -51,7 +51,7 @@ export interface BpmnGraphData {
   links: OverviewGraphLink[];
 }
 
-// Tables that contain raw_yaml whose contents may carry lane-bearing
+// Tables that contain data whose contents may carry lane-bearing
 // fields (actor_id / decided_by / wanted_by). Limited to the neuron
 // tables already in the overview graph; primitives are excluded.
 const BPMN_TABLES: { table: string; entityType: string }[] = [
@@ -116,7 +116,7 @@ export async function loadBpmnGraph(
               t.summary,
               COALESCE(t.lifecycle, 'active') AS lifecycle,
               t.created_at::text AS created_at,
-              t.raw_yaml
+              t.data::text AS raw_yaml
          FROM ${entry.table} t
         WHERE t.doco_id = $1`,
   ).join(" UNION ALL ");

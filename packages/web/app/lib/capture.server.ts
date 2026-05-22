@@ -959,6 +959,8 @@ export type NodeTypeName =
   | "neuron_authoring_primitive"
   | "action"
   | "log"
+  | "eval"
+  | "state"
   | "reference";
 
 export interface EntityPatch {
@@ -2283,7 +2285,7 @@ export async function transitionPrimitiveLifecycle(opts: {
 
   const before = await withClient(async (c) => {
     const r = await c.query<{ lifecycle: string | null; raw_yaml: string }>(
-      `SELECT lifecycle, raw_yaml FROM ${table} WHERE id = $1 AND ${scopeCol} = $2`,
+      `SELECT lifecycle, data::text AS raw_yaml FROM ${table} WHERE id = $1 AND ${scopeCol} = $2`,
       [opts.primitiveId, opts.scopeId],
     );
     return r.rows[0] ?? null;
@@ -2307,7 +2309,7 @@ export async function transitionPrimitiveLifecycle(opts: {
     await c.query(
       `UPDATE ${table}
           SET lifecycle = $1,
-              raw_yaml  = $2,
+              data      = $2::jsonb,
               updated_at = $3,
               updated_by = $4
         WHERE id = $5 AND ${scopeCol} = $6`,
@@ -2373,7 +2375,7 @@ export async function loadPrimitiveForEdit(opts: {
       lifecycle: string | null;
       raw_yaml: string;
     }>(
-      `SELECT summary, body_md, lifecycle, raw_yaml FROM ${table}
+      `SELECT summary, body_md, lifecycle, data::text AS raw_yaml FROM ${table}
         WHERE id = $1 AND ${scopeCol} = $2`,
       [opts.primitiveId, opts.scopeId],
     );
