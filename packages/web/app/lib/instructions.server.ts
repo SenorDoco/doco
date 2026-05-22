@@ -1,11 +1,13 @@
 /**
  * Canonical agent-protocol prose, served at
- * /protocol/canonical-instructions (public, text/markdown).
+ * /protocol/canonical-instructions (public, text/markdown) and
+ * embedded in /api/v1/agent-bootstrap.json.
  *
- * The MCP connector layer is currently removed — the protocol is
- * served via plain HTTP for now. When MCP returns, the same prose
- * will also be exposed as the `doco://protocol/canonical-instructions`
- * MCP resource.
+ * MCP delivery: agents in MCP-aware runtimes (Claude Code, Cursor,
+ * Codex CLI) auto-discover this project's MCP server via .mcp.json
+ * and read the protocol summary from the server's
+ * `serverInfo.instructions` field. This file remains the authoritative
+ * long-form source — agents fetch it on demand for the full reference.
  *
  * `AGENT_REFERENCE` is the long-form deep reference (neuron walkthrough,
  * placement examples).
@@ -27,9 +29,27 @@ This document carries the **four invariants** every reply must follow.
 
 ## How you read + write Doco today
 
-The MCP connector layer is removed for now — you drive OAuth
-directly against the host. Two recipes, pick whichever your runtime
-supports; the full step-by-step is at:
+There are two access channels — pick the one your runtime supports.
+
+**MCP** (preferred, MCP-aware runtimes). Doco-tracked repos ship
+\`.mcp.json\` registering an MCP server at
+\`.agents/doco-mcp-server.mjs\`. The server exposes three tools:
+
+  - \`doco_search\` — query the project's Doco for relevant prior
+    context. Cheap; call before answering substantive questions.
+  - \`doco_authenticate\` — start OAuth device flow when search
+    returns 401/403. Returns a ready-to-render block with a
+    clickable verification URL.
+  - \`doco_complete_authentication\` — finalize after the user
+    approves. Writes DOCO_ACCESS to ./.env and clears state.
+
+MCP delivers tool descriptions and the \`serverInfo.instructions\`
+field in clean framing (no claudeMd-style "may not be relevant"
+wrapper), so this is the channel that survives sandboxed agent
+runtimes where project-scope hooks are filtered.
+
+**Direct HTTP** (any runtime, or when MCP isn't available). You
+drive OAuth directly. Two recipes, full step-by-step at:
 
     https://doco.to/protocol/agent-oauth-recipe
 
@@ -43,7 +63,7 @@ supports; the full step-by-step is at:
     port binding). You POST to /oauth/device_authorization, get
     back a short user_code like \`WXYZ-1234\`, show it to the user,
     they approve at /device, you poll /oauth/token until you get
-    the token.
+    the token. The MCP tool \`doco_authenticate\` automates this.
 
 Both recipes end with you holding a \`doco_at_…\` Bearer token. After
 that, every API call is:
@@ -146,6 +166,22 @@ Polling the Doco... · Skimming the index... · Asking the oracle... · Searchin
 
 If you didn't need to query (greeting, one-word ack), emit nothing
 at the top — no "Not querying" placeholder. Absence is the signal.
+
+**If Doco access isn't granted** (\`doco_search\` returned 401/403, or
+the bootstrap couldn't reach Doco), call \`doco_authenticate\` to get
+a verification URL, then render:
+
+\`\`\`
+[🔮 Doco] Doco access not granted yet
+
+To let me read this project's prior decisions and rules, open
+[<URL>](<URL>) and click Approve. I'll proceed using just the
+codebase in the meantime.
+\`\`\`
+
+The URL must be wrapped in markdown link syntax so it renders
+clickable in chat clients. Call \`doco_complete_authentication\`
+after the user approves.
 
 **The query has two jobs:**
 
@@ -269,6 +305,6 @@ primitives that govern how neurons are authored:
 
 - Sign in to the host (via whichever providers it offers).
 - Create / delete a Doco.
-- Approve OAuth connector installs (when MCP returns).
+- Approve OAuth device-flow grants at /device.
 - Mint human collaboration invites.
 `;

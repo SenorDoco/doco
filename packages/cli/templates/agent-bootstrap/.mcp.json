@@ -1,0 +1,9 @@
+{
+  "$schema": "https://modelcontextprotocol.io/schemas/mcp.json",
+  "mcpServers": {
+    "doco": {
+      "command": "node",
+      "args": [".agents/doco-mcp-server.mjs"]
+    }
+  }
+}
