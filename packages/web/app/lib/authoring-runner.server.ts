@@ -23,6 +23,7 @@ import {
   evaluatePrimitives,
 } from "@doco/shared";
 import type { Entity } from "@doco/shared";
+import { judgeProbabilisticPredicate } from "./llm-judge.server";
 
 export interface AuthoringResult {
   /** Every violation produced by the engine. */
@@ -77,7 +78,7 @@ export async function runAuthoringPrimitives(opts: {
         : Promise.resolve<CandidateFields[]>([]),
     ]);
 
-    const violations = evaluatePrimitives({
+    const rawViolations = evaluatePrimitives({
       candidate: opts.candidate,
       primitives,
       candidateSynapses,
@@ -85,10 +86,56 @@ export async function runAuthoringPrimitives(opts: {
       principals,
       population,
     });
+    const violations = await resolveProbabilistic(rawViolations, primitives, opts.candidate);
     const blocking = violations.find((v) => v.on_violation === "block") ?? null;
     const warnings = violations.filter((v) => v.on_violation === "warn");
     return { violations, blocking, warnings };
   });
+}
+
+/**
+ * Resolve `probabilistic` violations by handing the pending spec to an
+ * LLM judge. Returned violations have three possible outcomes:
+ *
+ *   - judge says PASS  → violation dropped from the list
+ *   - judge says FAIL  → violation kept, reason replaced with the judge's
+ *   - judge unavailable → violation kept but demoted to "warn" so the
+ *     LLM being down doesn't take a capture path offline
+ *
+ * Deterministic violations pass through unchanged. Probabilistic specs
+ * are resolved in parallel.
+ */
+async function resolveProbabilistic(
+  violations: Violation[],
+  primitives: LoadedPrimitive[],
+  candidate: CandidateFields,
+): Promise<Violation[]> {
+  const summaryById = new Map(primitives.map((p) => [p.primitive_id, p.summary]));
+  return (
+    await Promise.all(
+      violations.map(async (v) => {
+        if (v.predicate_kind !== "probabilistic" || !v.pending_spec) {
+          return v;
+        }
+        const judgment = await judgeProbabilisticPredicate(v.pending_spec, candidate);
+        if (judgment === null) {
+          // LLM unavailable — demote a block to a warning so a flaky
+          // judge can't take captures offline. `warn` and `log` pass
+          // through unchanged.
+          if (v.on_violation === "block") {
+            return { ...v, on_violation: "warn" as const };
+          }
+          return v;
+        }
+        if (judgment.ok) {
+          return null; // Filtered out below.
+        }
+        const summary = summaryById.get(v.primitive_id) ?? "";
+        const reason = judgment.reason?.trim() || "judge rejected the candidate";
+        return { ...v, reason: summary ? `${summary} — ${reason}` : reason };
+      }),
+    )
+  ).filter((v): v is Violation => v !== null);
 }
 
 function collectIncomingNeuronTypes(primitives: LoadedPrimitive[]): Set<string> {
