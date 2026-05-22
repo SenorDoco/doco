@@ -1,9 +1,9 @@
 import { getOrgRole, withClient } from "@doco/db";
 import { validateRequestedDocoId as validateRequestedDocoHandle } from "@doco/shared";
 // /<doco-handle>/settings — admin-only Doco settings page. Renames the
-// slug, toggles visibility (private/public), or deletes the Doco.
+// handle, toggles visibility (private/public), or deletes the Doco.
 //
-// Delete: people only (ADR-040). Two-step confirmation — type the slug to
+// Delete: people only (ADR-040). Two-step confirmation — type the handle to
 // activate the "Delete permanently" button. Hard-delete via ON DELETE
 // CASCADE — not recoverable. Per the `settings-page-delete-doco` Intent +
 // ADR.
@@ -11,7 +11,6 @@ import { Form, Link, redirect, useSearchParams } from "react-router";
 import { Breadcrumb, docoBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { SiteHeader } from "~/components/site-header";
-import { rootDir } from "~/lib/db.server";
 import { loadDocoRouteForAdmin } from "~/lib/doco-access.server";
 import {
   HANDLE_FORMAT_HELP,
@@ -61,12 +60,11 @@ export async function loader({
   request: Request;
   params: { docoId: string };
 }) {
-  const { docoSlug, handle, me, meta, ownerSlug } = await loadDocoRouteForAdmin(request, params);
+  const { handle, me, meta, ownerSlug } = await loadDocoRouteForAdmin(request, params);
   await ensureDefaultsAttached(meta.docoId);
   const perspectives = await listPerspectivesForDoco(meta.docoId);
   return {
     ownerSlug,
-    docoSlug,
     handle,
     docoId: meta.docoId,
     ownerId: meta.ownerId,
@@ -84,35 +82,30 @@ export async function action({
   request: Request;
   params: { docoId: string };
 }) {
-  const {
-    dir: oldDir,
-    docoSlug,
-    handle,
-    me,
-    meta,
-    ownerSlug,
-  } = await loadDocoRouteForAdmin(request, params);
+  const { dir: oldDir, handle, me, meta } = await loadDocoRouteForAdmin(request, params);
   const form = await request.formData();
   const intent = String(form.get("intent") ?? "save");
 
-  // ── Soft-delete (ADR-040: people only) ────────────────────────────
+  // ── Delete (ADR-040: people only) ─────────────────────────────────
   if (intent === "delete") {
     if (!me) return { error: "Sign in to delete this Doco." };
     if (!isHumanPrincipal(me)) {
       return { error: "Per ADR-040, only human accounts can delete docos. Ask the Doco's owner." };
     }
-    const confirmSlug = String(form.get("confirm_slug") ?? "").trim();
-    if (confirmSlug !== docoSlug) {
+    const confirmHandle = String(
+      form.get("confirm_handle") ?? form.get("confirm_slug") ?? "",
+    ).trim();
+    if (confirmHandle !== handle) {
       return {
-        error: `To confirm, type the Doco's slug exactly: "${docoSlug}".`,
+        error: `To confirm, type the Doco handle exactly: "${handle}".`,
       };
     }
     try {
-      await softDeleteDoco({ root: rootDir(), ownerSlug, docoSlug });
+      await softDeleteDoco({ docoId: meta.docoId, handle });
     } catch (e) {
       return { error: `Failed to delete: ${(e as Error).message}` };
     }
-    // The dashboard listing already excludes `.deleted/`. Redirect home
+    // The dashboard listing reads the remaining docos rows. Redirect home
     // with a flash-shaped query param the dashboard can surface.
     return redirect(`/dashboard?deleted=${encodeURIComponent(handle)}`);
   }
@@ -200,17 +193,8 @@ export default function DocoSettings({
   loaderData: Awaited<ReturnType<typeof loader>>;
   actionData?: { error?: string } | undefined;
 }) {
-  const {
-    ownerSlug,
-    docoSlug,
-    handle,
-    visibility,
-    docoId,
-    ownerId,
-    perspectives,
-    availableOwnerOrgs,
-    me,
-  } = loaderData;
+  const { ownerSlug, handle, visibility, docoId, ownerId, perspectives, availableOwnerOrgs, me } =
+    loaderData;
   const [searchParams] = useSearchParams();
   const isConfirmingDelete = searchParams.get("confirm") === "delete";
   const currentOrgOptions = availableOwnerOrgs.filter((org) => org.id !== ownerId);
@@ -303,9 +287,9 @@ export default function DocoSettings({
               </fieldset>
 
               <div className="space-y-1 text-xs">
-                <label className="inline-flex flex-col gap-1">
-                  <span className="font-semibold text-foreground">Perspective</span>
-                  {perspectives.length > 0 ? (
+                {perspectives.length > 0 ? (
+                  <label className="inline-flex flex-col gap-1">
+                    <span className="font-semibold text-foreground">Perspective</span>
                     <select
                       name="perspective_id"
                       defaultValue={
@@ -320,12 +304,15 @@ export default function DocoSettings({
                         </option>
                       ))}
                     </select>
-                  ) : (
+                  </label>
+                ) : (
+                  <div className="inline-flex flex-col gap-1">
+                    <span className="font-semibold text-foreground">Perspective</span>
                     <span className="text-xs text-muted-foreground">
                       No perspectives are attached to this Doco yet.
                     </span>
-                  )}
-                </label>
+                  </div>
+                )}
                 <span className="block text-[11px] text-muted-foreground">
                   Choose the overview that opens first for this Doco.
                 </span>
@@ -341,7 +328,7 @@ export default function DocoSettings({
           </CardContent>
         </Card>
 
-        {/* Danger zone — soft-delete (ADR-040: people only). */}
+        {/* Danger zone — delete (ADR-040: people only). */}
         <Card className="border-destructive/40">
           <CardHeader>
             <CardTitle className="text-base text-destructive">Danger zone</CardTitle>
@@ -400,15 +387,15 @@ export default function DocoSettings({
                 <Form method="post" className="space-y-3">
                   <input type="hidden" name="intent" value="delete" />
                   <p className="text-xs">
-                    Type the Doco's slug <span className="font-mono font-semibold">{docoSlug}</span>{" "}
+                    Type the Doco handle <span className="font-mono font-semibold">{handle}</span>{" "}
                     to confirm. This permanently deletes the Doco and every entity and edge inside
                     it. It cannot be undone. Per ADR-040, only people can delete docos.
                   </p>
                   <input
-                    name="confirm_slug"
+                    name="confirm_handle"
                     required
                     autoComplete="off"
-                    placeholder={docoSlug}
+                    placeholder={handle}
                     className="w-full rounded-md border border-border bg-input px-3 py-2 font-mono text-xs text-foreground outline-none focus:border-destructive"
                   />
                   <div className="flex items-center gap-2">
