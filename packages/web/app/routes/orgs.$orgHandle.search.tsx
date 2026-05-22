@@ -267,11 +267,11 @@ export default function OrgSearch({
             name="q"
             defaultValue={q}
             placeholder={`Search across this org's Docos…`}
-            className="w-full rounded-md border border-border bg-input px-4 py-2.5 text-sm text-foreground outline-none focus:border-primary"
+            className="w-full rounded-md px-4 py-2.5 text-sm text-foreground outline-none focus:border-primary"
           />
           <button
             type="submit"
-            className="rounded-md border border-border bg-card px-4 py-2.5 text-sm font-semibold text-foreground hover:bg-muted"
+            className="neo-raised-sm rounded-md px-4 py-2.5 text-sm font-semibold text-foreground"
           >
             Search
           </button>

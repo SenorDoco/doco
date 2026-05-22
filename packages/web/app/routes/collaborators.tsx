@@ -525,12 +525,12 @@ function UserRow({
             {primaryName}
           </span>
           {isOauth ? (
-            <span className="shrink-0 rounded border border-border bg-muted px-1.5 py-px text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+            <span className="neo-raised-sm shrink-0 rounded px-1.5 py-px text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
               agent
             </span>
           ) : null}
           {isMe ? (
-            <span className="shrink-0 rounded border border-border bg-input px-1.5 py-px text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+            <span className="neo-raised-sm shrink-0 rounded px-1.5 py-px text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
               you
             </span>
           ) : null}

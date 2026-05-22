@@ -37,7 +37,7 @@ export function RoleSplitPage({
 }) {
   return (
     <div className="min-h-screen flex flex-col">
-      <header className="border-b border-border bg-card">
+      <header>
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-6 py-3">
           <div className="flex items-center gap-3">
             <Link
@@ -66,7 +66,7 @@ export function RoleSplitPage({
           <div className="grid w-full grid-cols-1 gap-3 md:grid-cols-2 md:gap-4">
             <Link
               to={humanHref}
-              className="rounded-lg border border-border bg-card px-6 py-8 text-left transition-colors hover:border-primary"
+              className="neo-raised rounded-lg bg-card px-6 py-8 text-left transition-colors hover:border-primary"
             >
               <div className="text-base font-semibold">You are human</div>
               <div className="mt-2 text-xs text-muted-foreground">
@@ -76,7 +76,7 @@ export function RoleSplitPage({
             <Link
               to={agentHref}
               reloadDocument={agentReloadDocument}
-              className="rounded-lg border border-border bg-card px-6 py-8 text-left transition-colors hover:border-primary"
+              className="neo-raised rounded-lg bg-card px-6 py-8 text-left transition-colors hover:border-primary"
             >
               <div className="text-base font-semibold">You are an AI agent</div>
               <div className="mt-2 text-xs text-muted-foreground">

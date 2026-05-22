@@ -132,7 +132,7 @@ export default function PerspectivesPicker({
                       <span className="text-xs text-muted-foreground">by {p.ownerHandle}</span>
                     ) : null}
                     {p.isBuiltin ? (
-                      <span className="rounded-sm border border-border px-1 text-[10px] uppercase tracking-wide text-muted-foreground">
+                      <span className="neo-raised-sm rounded-sm px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
                         builtin
                       </span>
                     ) : null}

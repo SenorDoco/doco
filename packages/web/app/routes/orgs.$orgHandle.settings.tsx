@@ -218,7 +218,7 @@ export default function OrgSettings({
                     );
                   }}
                   onInput={(event) => event.currentTarget.setCustomValidity("")}
-                  className="w-full rounded-md border border-border bg-input px-3 py-2 font-mono text-xs text-foreground outline-none focus:border-primary"
+                  className="w-full rounded-md px-3 py-2 font-mono text-xs text-foreground outline-none focus:border-primary"
                 />
                 <span id="org-handle-help" className="mt-1 block text-[11px] text-muted-foreground">
                   {HANDLE_FORMAT_HELP} Renaming takes effect immediately.
@@ -226,7 +226,7 @@ export default function OrgSettings({
               </label>
               <button
                 type="submit"
-                className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90"
+                className="neo-raised-primary rounded-md px-4 py-2 text-sm font-semibold"
               >
                 Rename organization
               </button>
@@ -262,7 +262,7 @@ export default function OrgSettings({
                   required
                   autoComplete="off"
                   placeholder={org.handle}
-                  className="w-full rounded-md border border-border bg-input px-3 py-2 font-mono text-xs text-foreground outline-none focus:border-destructive"
+                  className="w-full rounded-md px-3 py-2 font-mono text-xs text-foreground outline-none focus:border-destructive"
                 />
                 <div className="flex items-center gap-2">
                   <button

@@ -443,12 +443,12 @@ function DocoPickerForm({
             <h3 className="text-sm font-semibold text-foreground">Docos</h3>
           ) : null}
           {!focused ? (
-            <div className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-input/40 px-3 py-2">
+            <div className="neo-inset flex flex-wrap items-center gap-2 rounded-md bg-card px-3 py-2">
               <button
                 type="button"
                 onClick={() => setSelected(new Set(docos.map((d) => d.id)))}
                 disabled={allDocosSelected}
-                className="rounded-md border border-border bg-card px-2.5 py-1 text-xs font-semibold text-foreground hover:bg-input disabled:opacity-50"
+                className="neo-raised-sm rounded-md px-2.5 py-1 text-xs font-semibold text-foreground disabled:opacity-50"
               >
                 Select all
               </button>
@@ -456,7 +456,7 @@ function DocoPickerForm({
                 type="button"
                 onClick={() => setSelected(new Set())}
                 disabled={noneDocosSelected}
-                className="rounded-md border border-border bg-card px-2.5 py-1 text-xs font-semibold text-foreground hover:bg-input disabled:opacity-50"
+                className="neo-raised-sm rounded-md px-2.5 py-1 text-xs font-semibold text-foreground disabled:opacity-50"
               >
                 Deselect all
               </button>
@@ -474,7 +474,7 @@ function DocoPickerForm({
                     setRoles(Object.fromEntries(docos.map((d) => [d.id, r])));
                     e.currentTarget.value = "";
                   }}
-                  className="rounded-md border border-border bg-card px-2 py-1 text-xs text-foreground"
+                  className="rounded-md px-2 py-1 text-xs text-foreground"
                 >
                   <option value="" disabled>
                     choose…
@@ -488,7 +488,7 @@ function DocoPickerForm({
               </span>
             </div>
           ) : null}
-          <ul className="divide-y divide-border rounded-md border border-border">
+          <ul className="neo-raised divide-y divide-border rounded-md bg-card">
             {docos.map((d) => (
               <li key={d.id} className="flex items-center justify-between gap-3 px-3 py-2.5">
                 <label className="flex flex-1 cursor-pointer items-center gap-3">
@@ -517,7 +517,7 @@ function DocoPickerForm({
                     setRoles({ ...roles, [d.id]: e.currentTarget.value as DocoRole })
                   }
                   disabled={!selected.has(d.id)}
-                  className="rounded-md border border-border bg-card px-2 py-1 text-xs text-foreground disabled:opacity-50"
+                  className="rounded-md px-2 py-1 text-xs text-foreground disabled:opacity-50"
                 >
                   {DOCO_ROLES.map((r) => (
                     <option key={r} value={r}>
@@ -558,7 +558,7 @@ function DocoPickerForm({
           name="decision"
           value="approve"
           disabled={nothingSelected}
-          className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
+          className="neo-raised-primary rounded-md px-4 py-2 text-sm font-semibold disabled:opacity-50"
         >
           Approve
         </button>
@@ -566,7 +566,7 @@ function DocoPickerForm({
           type="submit"
           name="decision"
           value="cancel"
-          className="rounded-md border border-border bg-card px-4 py-2 text-sm font-semibold text-foreground hover:bg-input"
+          className="neo-raised-sm rounded-md px-4 py-2 text-sm font-semibold text-foreground"
         >
           Cancel
         </button>

@@ -230,13 +230,13 @@ export default function OrgsIndexPage({
           <div className="flex flex-wrap gap-2">
             <Link
               to="/new-org"
-              className="shrink-0 rounded-md bg-primary px-3 py-1.5 text-sm font-semibold text-primary-foreground hover:opacity-90"
+              className="neo-raised-primary shrink-0 rounded-md px-3 py-1.5 text-sm font-semibold"
             >
               + Org
             </Link>
             <Link
               to="/collaborators"
-              className="shrink-0 rounded-md border border-border px-3 py-1.5 text-sm font-semibold hover:bg-input"
+              className="neo-raised-sm shrink-0 rounded-md px-3 py-1.5 text-sm font-semibold"
             >
               Collaborator (people/agents)
             </Link>

@@ -31,7 +31,7 @@ export default function JoinHuman({
   const message = `We're using Doco on this project. Visit ${baseUrl} and follow the wizard for joining an existing Doco.`;
   return (
     <div className="min-h-screen flex flex-col">
-      <header className="border-b border-border bg-card">
+      <header>
         <div className="mx-auto flex max-w-6xl items-center gap-4 px-6 py-3">
           <Link to="/" className="inline-flex items-center hover:opacity-80" aria-label="Doco home">
             <DocoMark height={28} />
@@ -62,7 +62,7 @@ export default function JoinHuman({
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-2">
-            <pre className="rounded-md border border-border bg-input p-3 text-[11px] whitespace-pre-wrap break-words">
+            <pre className="neo-inset rounded-md bg-card p-3 text-[11px] whitespace-pre-wrap break-words">
 {message}
             </pre>
             <button
@@ -72,7 +72,7 @@ export default function JoinHuman({
                 setCopied(true);
                 setTimeout(() => setCopied(false), 1500);
               }}
-              className="rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90"
+              className="neo-raised-primary rounded-md px-3 py-1.5 text-xs font-semibold"
             >
               {copied ? "Copied!" : "Copy message"}
             </button>

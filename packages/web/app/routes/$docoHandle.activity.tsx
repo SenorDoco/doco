@@ -174,13 +174,13 @@ function FilterChips({
         k === "entity_type" ? (
           <span
             key={k}
-            className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-0.5 font-mono"
+            className="neo-raised-sm inline-flex items-center gap-1 rounded-md px-2 py-0.5 font-mono"
           >
             <span>entity_type=</span>
             <NodeTypeBadge entityType={String(v)} />
           </span>
         ) : (
-          <code key={k} className="rounded-md border border-border px-2 py-0.5 font-mono">
+          <code key={k} className="neo-raised-sm rounded-md px-2 py-0.5 font-mono">
             {k}={String(v)}
           </code>
         ),
