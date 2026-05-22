@@ -2,7 +2,11 @@ import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   test: {
-    include: ["packages/*/src/**/*.test.ts", "packages/*/src/**/__tests__/**/*.test.ts"],
+    include: [
+      "packages/*/src/**/*.test.ts",
+      "packages/*/src/**/__tests__/**/*.test.ts",
+      ".agents/**/*.test.ts",
+    ],
     globals: false,
     pool: "threads",
     coverage: {
