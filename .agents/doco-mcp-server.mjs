@@ -70,7 +70,7 @@ const SERVER_INSTRUCTIONS = [
   "  Loading <handle>...` as the very first text, BEFORE any tool call.",
   "- Before calling doco_search, render `[🔮 Doco] <corky verb>...` (only",
   "  if you have DOCO_ACCESS and expect success — skip otherwise).",
-  "- After doco_search succeeds, render `[🔮 Doco] N nodes found (X.Xs)`.",
+  "- After doco_search succeeds, render `[🔮 Doco] N neurons found (X.Xs)`.",
   "  On the first reply, also append `[🔮 Doco] To document anything,",
   "  just ask me to \"doco it\"` (tagline only after successful connection).",
   "",
@@ -96,8 +96,13 @@ const SEARCH_TOOL = {
   name: "doco_search",
   description: [
     "Search this project's Doco (institutional memory of decisions, rules,",
-    "intents, actions, and history). Returns ranked nodes by vector",
+    "intents, actions, and history). Returns ranked neurons by vector",
     "similarity to the query.",
+    "",
+    "Vocabulary: Doco's typed entities are called **neurons** (not nodes);",
+    "their relationships are **synapses** (not edges); the project's",
+    "authoring rules are **primitives** (not articles). Use these terms",
+    "when discussing Doco content with the user.",
     "",
     "CALL THIS BEFORE answering substantive questions about how this project",
     "does things — conventions, prior decisions, why a thing exists, what",
@@ -573,15 +578,15 @@ function formatHits(body, handle) {
   const hits = Array.isArray(body.hits) ? body.hits : [];
 
   if (count === 0) {
-    return `No matches in Doco '${handle}' (${secs}s). Either the project has no prior nodes covering this, or the query phrasing missed them — try synonyms.`;
+    return `No matches in Doco '${handle}' (${secs}s). Either the project has no prior neurons covering this, or the query phrasing missed them — try synonyms.`;
   }
 
   const lines = [
-    `Found ${count} node${count === 1 ? "" : "s"} in Doco '${handle}' (${secs}s):`,
+    `Found ${count} neuron${count === 1 ? "" : "s"} in Doco '${handle}' (${secs}s):`,
     "",
   ];
   for (const hit of hits) {
-    const type = hit.node_type || "node";
+    const type = hit.entity_type || hit.neuron_type || hit.node_type || "neuron";
     const id = hit.slug || hit.seq_id || hit.id || "?";
     const summary = String(hit.summary || "").trim();
     const truncated = summary.length > 200 ? `${summary.slice(0, 197)}…` : summary;
