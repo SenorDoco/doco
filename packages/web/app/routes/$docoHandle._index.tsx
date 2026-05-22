@@ -18,7 +18,6 @@ import { ActivityFeedLine, type ActivityFeedLineItem } from "~/components/activi
 import { ActivityHeatmap } from "~/components/activity-heatmap";
 import { Breadcrumb, docoBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
-import { CollapsibleRightColumn } from "~/components/collapsible-right-column";
 import { InviteCollaboratorsLink } from "~/components/invite-collaborators-link";
 import { NeuronTypeIcon } from "~/components/neuron-type-icon";
 import { NeuronsOverviewCard, type NodesOverviewSection } from "~/components/neurons-overview-card";
@@ -474,57 +473,51 @@ export default function DocoHome({
             </div>
           </aside>
 
-          <div className="hidden min-w-0 min-[1200px]:block">
-            <CollapsibleRightColumn
-              label="Stats & Activity"
-              storageKey="stats-activity:doco-home"
-              expandedClassName="space-y-5"
-            >
-              <NeuronsOverviewCard
-                sections={sections}
-                empty={
-                  <p className="text-xs italic text-muted-foreground">
-                    This Doco has no neurons yet.
-                  </p>
-                }
-                aside={<TopContributorsList contributors={topContributors} />}
-              />
+          <section className="hidden min-w-0 space-y-5 min-[1200px]:block">
+            <NeuronsOverviewCard
+              sections={sections}
+              empty={
+                <p className="text-xs italic text-muted-foreground">
+                  This Doco has no neurons yet.
+                </p>
+              }
+              aside={<TopContributorsList contributors={topContributors} />}
+            />
 
-              <Card>
-                <CardHeader className="px-4 py-3">
-                  <CardTitle className="text-sm">Activity</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <ActivityHeatmap byDay={byDay} weeks={HEATMAP_WEEKS} />
-                </CardContent>
-              </Card>
+            <Card>
+              <CardHeader className="px-4 py-3">
+                <CardTitle className="text-sm">Activity</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ActivityHeatmap byDay={byDay} weeks={HEATMAP_WEEKS} />
+              </CardContent>
+            </Card>
 
-              <Card>
-                <CardHeader className="px-4 py-3">
-                  <CardTitle className="text-sm">Latest activity</CardTitle>
-                </CardHeader>
-                <CardContent className="p-0">
-                  {items.length === 0 ? (
-                    <div className="px-4 pb-4 text-xs leading-5 text-muted-foreground">
-                      No recorded activity yet. Capture a neuron from the API or CLI; this feed
-                      records UI, CLI, and API writes.
-                    </div>
-                  ) : (
-                    <div className="divide-y divide-border">
-                      {items.map((it) => (
-                        <ActivityFeedLine
-                          key={it.event_id}
-                          item={it}
-                          ownerSlug={ownerSlug}
-                          docoSlug={docoSlug}
-                        />
-                      ))}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            </CollapsibleRightColumn>
-          </div>
+            <Card>
+              <CardHeader className="px-4 py-3">
+                <CardTitle className="text-sm">Latest activity</CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                {items.length === 0 ? (
+                  <div className="px-4 pb-4 text-xs leading-5 text-muted-foreground">
+                    No recorded activity yet. Capture a neuron from the API or CLI; this feed
+                    records UI, CLI, and API writes.
+                  </div>
+                ) : (
+                  <div className="divide-y divide-border">
+                    {items.map((it) => (
+                      <ActivityFeedLine
+                        key={it.event_id}
+                        item={it}
+                        ownerSlug={ownerSlug}
+                        docoSlug={docoSlug}
+                      />
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </section>
         </div>
       </main>
     </div>

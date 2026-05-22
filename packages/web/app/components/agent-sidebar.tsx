@@ -570,17 +570,16 @@ export function CollapsedRail({
       onClick={onExpand}
       aria-label={`Expand ${label}`}
       className={
-        "group relative flex h-full w-[32px] shrink-0 cursor-pointer flex-col items-center justify-between bg-card py-3 hover:bg-input " +
+        "group relative flex h-full w-[32px] shrink-0 cursor-pointer flex-col items-center gap-2 bg-card py-3 hover:bg-input " +
         (isLeft ? "border-r border-border" : "border-l border-border")
       }
     >
       <CollapseIcon side={isLeft ? "right" : "left"} />
       <div
-        className="flex-1 select-none text-[11px] font-semibold uppercase tracking-wider text-foreground"
+        className="select-none text-[11px] font-semibold uppercase tracking-wider text-foreground"
         style={{
           writingMode: "vertical-rl",
           transform: isLeft ? "rotate(180deg)" : undefined,
-          padding: "0.5rem 0",
         }}
       >
         {label}
@@ -591,9 +590,7 @@ export function CollapsedRail({
           className="h-2 w-2 rounded-full bg-primary"
           style={{ boxShadow: "0 0 0 2px var(--color-card)" }}
         />
-      ) : (
-        <span aria-hidden className="h-2 w-2" />
-      )}
+      ) : null}
     </button>
   );
 }
