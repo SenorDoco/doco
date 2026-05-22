@@ -1,10 +1,18 @@
 import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
+import { existsSync, unlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SERVER_PATH = join(__dirname, "doco-mcp-server.mjs");
+
+// Mirror the server's project-scoped state-file path so we can isolate
+// the device-flow state between tests.
+const PROJECT_HASH = createHash("sha256").update(process.cwd()).digest("hex").slice(0, 16);
+const DEVICE_STATE_FILE = join(tmpdir(), `doco-mcp-device-${PROJECT_HASH}.json`);
 
 interface JsonRpcMessage {
   jsonrpc: "2.0";
@@ -92,8 +100,6 @@ async function exchange(
   for (const msg of messages) {
     child.stdin.write(`${JSON.stringify(msg)}\n`);
   }
-  // If the caller expects zero responses (e.g. notification-only),
-  // close stdin so the server can exit.
   if (expectedResponses === 0 && !stdinClosed) {
     stdinClosed = true;
     child.stdin.end();
@@ -118,7 +124,24 @@ const INITIALIZED_NOTIFICATION: JsonRpcMessage = {
   method: "notifications/initialized",
 };
 
+function clearDeviceState() {
+  if (existsSync(DEVICE_STATE_FILE)) {
+    try {
+      unlinkSync(DEVICE_STATE_FILE);
+    } catch {
+      // Best effort.
+    }
+  }
+}
+
 describe("doco-mcp-server", () => {
+  beforeEach(() => {
+    clearDeviceState();
+  });
+  afterEach(() => {
+    clearDeviceState();
+  });
+
   it("returns initialize result with capabilities, serverInfo, and instructions", async () => {
     const [init] = await exchange([INIT_MESSAGE], 1);
     expect(init.jsonrpc).toBe("2.0");
@@ -134,10 +157,11 @@ describe("doco-mcp-server", () => {
     expect(result.serverInfo.name).toBe("doco");
     expect(result.serverInfo.version).toMatch(/^\d+\.\d+\.\d+$/);
     expect(result.instructions).toContain("doco_search");
-    expect(result.instructions).toContain("Doco");
+    expect(result.instructions).toContain("doco_authenticate");
+    expect(result.instructions).toContain("doco_complete_authentication");
   });
 
-  it("advertises doco_search via tools/list with an imperative description and a query argument", async () => {
+  it("advertises doco_search, doco_authenticate, and doco_complete_authentication via tools/list", async () => {
     const responses = await exchange(
       [
         INIT_MESSAGE,
@@ -149,13 +173,17 @@ describe("doco-mcp-server", () => {
     const listResp = responses.find((r) => r.id === 2);
     expect(listResp).toBeDefined();
     const tools = (listResp?.result as { tools: Array<{ name: string; description: string; inputSchema: { required?: string[] } }> }).tools;
-    expect(tools).toHaveLength(1);
-    expect(tools[0].name).toBe("doco_search");
-    expect(tools[0].description).toMatch(/CALL THIS BEFORE/);
-    expect(tools[0].inputSchema.required).toContain("query");
+    expect(tools.map((t) => t.name)).toEqual(["doco_search", "doco_authenticate", "doco_complete_authentication"]);
+    const search = tools.find((t) => t.name === "doco_search");
+    expect(search?.description).toMatch(/CALL THIS BEFORE/);
+    expect(search?.inputSchema.required).toContain("query");
+    const authenticate = tools.find((t) => t.name === "doco_authenticate");
+    expect(authenticate?.description).toMatch(/device-flow/);
+    const complete = tools.find((t) => t.name === "doco_complete_authentication");
+    expect(complete?.description).toMatch(/polls the token endpoint/);
   });
 
-  it("returns an MCP isError result when query is empty", async () => {
+  it("returns an MCP isError result when doco_search is called with an empty query", async () => {
     const responses = await exchange(
       [
         INIT_MESSAGE,
@@ -219,8 +247,64 @@ describe("doco-mcp-server", () => {
     expect((promptsResp?.result as { prompts: unknown[] }).prompts).toEqual([]);
   });
 
+  it("doco_complete_authentication returns isError when no device flow is in progress", async () => {
+    const responses = await exchange(
+      [
+        INIT_MESSAGE,
+        INITIALIZED_NOTIFICATION,
+        {
+          jsonrpc: "2.0",
+          id: 2,
+          method: "tools/call",
+          params: { name: "doco_complete_authentication", arguments: {} },
+        },
+      ],
+      2,
+    );
+    const callResp = responses.find((r) => r.id === 2);
+    const result = callResp?.result as { isError: boolean; content: Array<{ type: string; text: string }> };
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toMatch(/no device-authorization flow in progress/i);
+  });
+
+  it("doco_complete_authentication returns isError when device code has expired", async () => {
+    // Plant an expired state file.
+    writeFileSync(
+      DEVICE_STATE_FILE,
+      JSON.stringify({
+        client_id: "doco_client_test",
+        device_code: "doco_dc_test",
+        interval: 5,
+        expires_at: Math.floor(Date.now() / 1000) - 60,
+        target_doco_handle: "doco-bpms",
+        requested_role: "reader",
+      }),
+      { mode: 0o600 },
+    );
+
+    const responses = await exchange(
+      [
+        INIT_MESSAGE,
+        INITIALIZED_NOTIFICATION,
+        {
+          jsonrpc: "2.0",
+          id: 2,
+          method: "tools/call",
+          params: { name: "doco_complete_authentication", arguments: {} },
+        },
+      ],
+      2,
+    );
+    const callResp = responses.find((r) => r.id === 2);
+    const result = callResp?.result as { isError: boolean; content: Array<{ type: string; text: string }> };
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toMatch(/expired/i);
+    // The server should have cleared the state file.
+    expect(existsSync(DEVICE_STATE_FILE)).toBe(false);
+  });
+
   it.skipIf(!process.env.DOCO_ACCESS)(
-    "returns search hits (or a clean empty-result message) when DOCO_ACCESS is available",
+    "doco_search returns hits (or a clean empty-result message) when DOCO_ACCESS is available",
     async () => {
       const responses = await exchange(
         [
