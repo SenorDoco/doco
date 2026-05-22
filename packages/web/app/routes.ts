@@ -193,6 +193,15 @@ export default [
   ),
   route(":docoHandle/invites", "routes/$docoHandle.invites.tsx"),
   route(":docoHandle/api/invites.json", "routes/$docoHandle.api.invites[.]json.tsx"),
+  // Visualization perspectives — tabs above the overview body.
+  // Picker page lists builtin + user-owned perspectives; the API
+  // route handles attach/detach/set-default form posts. Both must
+  // be registered before the catch-all `:docoHandle/:type` below.
+  route(":docoHandle/perspectives", "routes/$docoHandle.perspectives._index.tsx"),
+  route(
+    ":docoHandle/api/perspectives.json",
+    "routes/$docoHandle.api.perspectives[.]json.tsx",
+  ),
   // Per-entity detail (PATCH/GET) routes. Most use the makeUpdateRoute
   // factory; decisions.$id has a custom action (ADR promotion logic).
   route(":docoHandle/api/decisions/:id.json", "routes/$docoHandle.api.decisions.$id[.]json.tsx"),
