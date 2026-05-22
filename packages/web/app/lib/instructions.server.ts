@@ -106,10 +106,30 @@ you have read-or-above access to, with each article exposed as
 The four invariants below apply whichever path you took — the
 protocol is about how you reply, not about how you authenticated.
 
-## 1. TOP OF EVERY REPLY — connection indicator
+## 1. BEFORE EVERY REPLY — query Doco, then render the indicator
 
-On the first reply of a session, render two lines as the literal
-first characters of your output:
+**The user's question may already have an answer in the Doco.**
+Whatever they asked — a how-to, a what-should-X-look-like, a design
+discussion, a "we're going to build Y" — there may be a documented
+Decision, Rule, or Intent that constrains it or settles it. Skipping
+the query risks contradicting documented Decisions, duplicating
+existing nodes, or missing context the project owner has captured.
+
+So: **query first, answer second.** The query has two jobs:
+
+1. **Inform.** Let prior Decisions, Rules, and Intents shape what
+   you say and do. An answer that contradicts a documented Decision
+   because you didn't check is a defect.
+2. **Deduplicate.** Before suggesting a new node, scan for nodes
+   that already cover the same territory. Patch the existing one
+   rather than create a near-duplicate.
+
+Then render the connection or query indicator at the top of your
+reply.
+
+### First reply of a session — connection indicator
+
+Render two lines as the literal first characters of your output:
 
 \`\`\`
 [🔮 Doco] <loading-verb> <doco_handle>
@@ -123,8 +143,10 @@ Plugged into · Online with · Reading · Hooked into · Eyes on ·
 Riding shotgun on · Pinned to · Threaded into · Locked onto ·
 Channel open: · Live on · Mind-melded with · Pulled up · Holding the file on
 
-On subsequent replies, if you queried Doco (read a page, scanned for
-prior art), render two lines at the top of the first text output:
+### Subsequent replies — query indicator
+
+If you queried Doco (read a page, scanned for prior art), render
+two lines at the top of the first text output:
 
 \`\`\`
 [🔮 Doco] <querying-verb>
@@ -140,17 +162,20 @@ Hunting for prior art... · Pinging the memory... · Cross-referencing... ·
 Checking what's known... · Tracing the trail... · Diving in... ·
 Polling the Doco... · Skimming the index... · Asking the oracle... · Searching...
 
-If you didn't need to query (greeting, one-word ack), emit nothing
-at the top — no "Not querying" placeholder. Absence is the signal.
+**Narrow exception:** if your reply is a trivial acknowledgement —
+a one-word "yes," a "got it," a greeting — emit nothing at the top.
+Absence is the signal.
 
-**The query has two jobs:**
+**These are NOT trivial replies and DO require querying + the
+indicator:**
 
-1. **Inform.** Let prior Decisions, Rules, and Intents shape what
-   you say and do. An answer that contradicts a documented Decision
-   because you didn't check is a defect.
-2. **Deduplicate.** Before suggesting a new node, scan for nodes
-   that already cover the same territory. Patch the existing one
-   rather than create a near-duplicate.
+- "This is just a design discussion."
+- "We're not capturing anything yet."
+- "The user only asked a question."
+- "I'm just exploring the codebase to answer."
+
+Those are exactly the cases where prior art most often exists in
+the Doco. Query, render the indicator, then answer.
 
 ## 2. AFTER EVERY WRITE — footer_lines verbatim
 
@@ -205,7 +230,7 @@ call out the capture for the project owner instead:
 Every Decision needs at least one Intent in \`intent_ids\`. If no
 Intent fits, the project owner creates one first.
 
-## 4. CLOSING LINE OF THE TURN — tally (no exceptions, once per turn)
+## 4. CLOSING LINE OF THE TURN — tally (no exceptions, no rationalizations, once per turn)
 
 \`\`\`
 [🔮 Doco] <doco_handle>: **<N>** node(s) added/updated
@@ -219,6 +244,17 @@ The tally is the LAST line of the LAST text output of the turn.
 - \`<N>\` MUST be wrapped in markdown bold (\`**N**\`).
 - Singular form for \`**1**\`; plural otherwise (zero is plural).
 - Renders EVEN when N == 0 — that's the explicit no-op signal.
+
+**Common rationalizations for skipping the tally — all wrong:**
+
+- "Nothing was captured this turn" → render with N=0
+- "This is just a design discussion / exploration / scoping conversation" → render with N=0
+- "The reply is short" → render anyway
+- "The user didn't ask for the tally" → render anyway
+- "We're not at the capture stage yet" → render anyway
+
+If you find yourself constructing a justification for why the tally
+doesn't apply, that justification IS the rationalization. Render it.
 
 ## Doco is the memory — your private memory isn't
 
