@@ -22,6 +22,7 @@
 
 import { parse as parseYaml } from "yaml";
 import type { OverviewGraphLink } from "~/components/overview-graph";
+import { extractInlineSynapses, mergeUniqueLinks } from "~/lib/inline-synapses";
 
 type QueryClient = {
   query<T>(sql: string, params?: unknown[]): Promise<{ rows: T[] }>;
@@ -155,9 +156,19 @@ export async function loadBpmnGraph(
   }
 
   // Synapses: only those whose endpoints are both in this node set.
+  // Two sources, merged with dedup:
+  //   1. Authoritative rows from the `synapses` table.
+  //   2. Inline fallback derived from each neuron's raw_yaml
+  //      structured fields (serves / follows / intent_ids / ...).
+  //      The capture path is supposed to materialize these into the
+  //      synapses table, but the gap leaves freshly-captured Docos
+  //      reading as edgeless. The fallback covers that case
+  //      without depending on a backfill migration; once capture
+  //      is fixed, the synapses table will already contain the
+  //      same edges and the merge dedupes them.
   const nodeIdSet = new Set(nodes.map((n) => n.id));
   const ids = Array.from(nodeIdSet);
-  let links: OverviewGraphLink[] = [];
+  let tableLinks: OverviewGraphLink[] = [];
   if (ids.length > 0) {
     const synapseRows = await c.query<SynapseRow>(
       `SELECT from_id, to_id, synapse_type, attribution
@@ -168,13 +179,18 @@ export async function loadBpmnGraph(
         LIMIT 5000`,
       [docoId, ids],
     );
-    links = synapseRows.rows.map((r) => ({
+    tableLinks = synapseRows.rows.map((r) => ({
       source: r.from_id,
       target: r.to_id,
       synapse_type: r.synapse_type,
       attribution: r.attribution === "doco-auto" ? "doco-auto" : "explicit",
     }));
   }
+  const inlineLinks = extractInlineSynapses(
+    neuronRows.rows.map((r) => ({ id: r.id, raw_yaml: r.raw_yaml })),
+    nodeIdSet,
+  );
+  const links = mergeUniqueLinks(tableLinks, inlineLinks);
 
   // Ensure the unassigned lane always exists last when present, and
   // sort the rest alphabetically for stable lane order across reloads.

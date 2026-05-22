@@ -5,6 +5,7 @@ import type {
   OverviewGraphNode,
   OverviewNodeDetail,
 } from "~/components/overview-graph";
+import { extractInlineSynapses, mergeUniqueLinks } from "~/lib/inline-synapses";
 
 type QueryClient = {
   query<T>(sql: string, params?: unknown[]): Promise<{ rows: T[] }>;
@@ -132,6 +133,25 @@ async function loadOverviewLinks(
   }));
 }
 
+/**
+ * Load raw_yaml for the given neuron ids across every neuron table.
+ * Used to feed the inline-synapses fallback when the synapses table
+ * doesn't have the structured-ref edges materialized. Returns a
+ * sparse list — IDs missing from any neuron table are dropped.
+ */
+async function loadRawYamlForOverview(
+  c: QueryClient,
+  docoId: string,
+  ids: string[],
+): Promise<{ id: string; raw_yaml: string | null }[]> {
+  if (ids.length === 0) return [];
+  const sql = GRAPH_TABLES.map(
+    (entry) =>
+      `SELECT t.id, t.raw_yaml FROM ${entry.table} t WHERE t.doco_id = $1 AND t.id = ANY($2::text[])`,
+  ).join(" UNION ALL ");
+  return (await c.query<{ id: string; raw_yaml: string | null }>(sql, [docoId, ids])).rows;
+}
+
 export async function loadOverviewGraph(
   c: QueryClient,
   docoId: string,
@@ -139,7 +159,17 @@ export async function loadOverviewGraph(
 ): Promise<OverviewGraphData> {
   const rows = await loadOverviewRows(c, docoId);
   const nodeIds = rows.map((row) => row.id);
-  const links = await loadOverviewLinks(c, docoId, nodeIds);
+  const tableLinks = await loadOverviewLinks(c, docoId, nodeIds);
+  // Inline fallback: derive missing edges from structured raw_yaml
+  // fields (serves / follows / intent_ids / ...). The capture path
+  // is supposed to materialize these into the synapses table but
+  // doesn't always — patch a neuron's reference field and the row
+  // appears, but freshly captured Docos can read as "all nodes,
+  // no edges" without this fallback. Merge-and-dedup keeps it
+  // idempotent once capture is fixed.
+  const rawYamlRows = await loadRawYamlForOverview(c, docoId, nodeIds);
+  const inlineLinks = extractInlineSynapses(rawYamlRows, new Set(nodeIds));
+  const links = mergeUniqueLinks(tableLinks, inlineLinks);
   const nodes: OverviewGraphNode[] = rows.map((row) => ({
     id: row.id,
     entity_type: row.entity_type,
