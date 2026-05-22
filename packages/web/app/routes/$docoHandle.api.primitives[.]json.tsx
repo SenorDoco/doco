@@ -10,15 +10,15 @@
 //        `primitive_kind` discriminator.
 // POST → capture a new primitive. Body shape:
 //        { "primitive_kind": "guidance" | "neuron_authoring", ...draft }
-//        Where `...draft` follows GuidanceArticleDraft or
-//        NodeAuthoringArticleDraft from capture.server.ts.
+//        Where `...draft` follows GuidancePrimitiveDraft or
+//        NeuronAuthoringPrimitiveDraft from capture.server.ts.
 
 import { roleAtLeast, withClient } from "@doco/db";
 import {
-  type GuidanceArticleDraft,
-  type NodeAuthoringArticleDraft,
-  captureGuidanceArticle,
-  captureNodeAuthoringArticle,
+  type GuidancePrimitiveDraft,
+  type NeuronAuthoringPrimitiveDraft,
+  captureGuidancePrimitive,
+  captureNeuronAuthoringPrimitive,
 } from "~/lib/capture.server";
 import {
   type DocoRouteParams,
@@ -155,10 +155,10 @@ export async function action({
       const { primitive_kind: _discarded, ...rest } = parsed;
 
       if (primitiveKind === "guidance") {
-        const draft = rest as unknown as GuidanceArticleDraft;
+        const draft = rest as unknown as GuidancePrimitiveDraft;
         if (!draft.authored_by_username) draft.authored_by_username = me.username;
         if (!draft.created_by_id && me.id) draft.created_by_id = me.id;
-        const result = await captureGuidanceArticle(
+        const result = await captureGuidancePrimitive(
           dir,
           meta.docoId,
           ownerSlug,
@@ -170,10 +170,10 @@ export async function action({
         return Response.json(result, { status: 201 });
       }
 
-      const draft = rest as unknown as NodeAuthoringArticleDraft;
+      const draft = rest as unknown as NeuronAuthoringPrimitiveDraft;
       if (!draft.authored_by_username) draft.authored_by_username = me.username;
       if (!draft.created_by_id && me.id) draft.created_by_id = me.id;
-      const result = await captureNodeAuthoringArticle(
+      const result = await captureNeuronAuthoringPrimitive(
         dir,
         meta.docoId,
         ownerSlug,

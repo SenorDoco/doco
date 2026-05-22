@@ -14,7 +14,6 @@ interface EdgeRow {
   from_id: string;
   to_id: string;
   synapse_type: string;
-  attribution: string | null;
 }
 
 interface OverviewGraphRow {
@@ -74,10 +73,6 @@ function toIso(value: Date | string | null | undefined): string | null {
   return Number.isNaN(d.getTime()) ? null : d.toISOString();
 }
 
-function asAttribution(value: string | null): "explicit" | "doco-auto" {
-  return value === "doco-auto" ? "doco-auto" : "explicit";
-}
-
 function overviewEntityHref(
   handle: string | undefined,
   entityType: string,
@@ -114,12 +109,12 @@ async function loadOverviewLinks(
   if (nodeIds.length === 0) return [];
   const rows = (
     await c.query<EdgeRow>(
-      `SELECT from_id, to_id, synapse_type, attribution
+      `SELECT from_id, to_id, synapse_type
          FROM synapses
         WHERE doco_id = $1
           AND from_id = ANY($2::text[])
           AND to_id = ANY($2::text[])
-        ORDER BY CASE WHEN attribution = 'explicit' THEN 0 ELSE 1 END, synapse_type
+        ORDER BY synapse_type
         LIMIT $3`,
       [docoId, nodeIds, OVERVIEW_GRAPH_SYNAPSE_LIMIT],
     )
@@ -128,7 +123,6 @@ async function loadOverviewLinks(
     source: s.from_id,
     target: s.to_id,
     synapse_type: s.synapse_type,
-    attribution: asAttribution(s.attribution),
   }));
 }
 
@@ -245,12 +239,12 @@ export async function loadOrgOverviewGraph(
       ? []
       : (
           await c.query<EdgeRow>(
-            `SELECT from_id, to_id, synapse_type, attribution
+            `SELECT from_id, to_id, synapse_type
                FROM synapses
               WHERE doco_id = ANY($1::text[])
                 AND from_id = ANY($2::text[])
                 AND to_id = ANY($2::text[])
-              ORDER BY CASE WHEN attribution = 'explicit' THEN 0 ELSE 1 END, synapse_type
+              ORDER BY synapse_type
               LIMIT $3`,
             [docoIds, nodeIds, OVERVIEW_GRAPH_SYNAPSE_LIMIT],
           )
@@ -258,7 +252,6 @@ export async function loadOrgOverviewGraph(
           source: s.from_id,
           target: s.to_id,
           synapse_type: s.synapse_type,
-          attribution: asAttribution(s.attribution),
         }));
   const nodes: OverviewGraphNode[] = rows.map((row) => {
     const handle = docoHandleByDocoId.get(String(row.doco_id));

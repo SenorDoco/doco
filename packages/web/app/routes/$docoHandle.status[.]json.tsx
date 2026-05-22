@@ -76,19 +76,19 @@ const TYPE_MAP: { entityType: string; table: string; plural: string; group: Stat
 interface StatusCounts {
   notes: Record<string, number>;
   notes_total: number;
-  articles: Record<string, number>;
-  articles_total: number;
+  primitives: Record<string, number>;
+  primitives_total: number;
   principals: number;
 }
 
 function emptyCounts(): StatusCounts {
   const notes: Record<string, number> = {};
-  const articles: Record<string, number> = {};
+  const primitives: Record<string, number> = {};
   for (const { plural, group } of TYPE_MAP) {
     if (group === "note") notes[plural] = 0;
-    else articles[plural] = 0;
+    else primitives[plural] = 0;
   }
-  return { notes, notes_total: 0, articles, articles_total: 0, principals: 0 };
+  return { notes, notes_total: 0, primitives, primitives_total: 0, principals: 0 };
 }
 
 async function readStatusFromPg(
@@ -108,8 +108,8 @@ async function readStatusFromPg(
           counts.notes[plural] = n;
           counts.notes_total += n;
         } else {
-          counts.articles[plural] = n;
-          counts.articles_total += n;
+          counts.primitives[plural] = n;
+          counts.primitives_total += n;
         }
         const ts = r.rows[0]?.c ?? null;
         if (ts && (latest === null || ts > latest)) latest = ts;

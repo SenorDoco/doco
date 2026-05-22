@@ -16,7 +16,7 @@ import { SiteHeader } from "~/components/site-header";
 import { loadDocoRouteForRead } from "~/lib/doco-access.server";
 import { getDocoEmbeddingProvider } from "~/lib/embedding-provider.server";
 import { loadHostConfig } from "~/lib/host.server";
-import { lifecycleColor, nodeTypePlural } from "~/lib/neuron-colors";
+import { lifecycleColor, neuronTypePlural } from "~/lib/neuron-colors";
 import {
   type FilterFacets,
   type SearchFilters,
@@ -283,7 +283,7 @@ export default function SearchInDoco({
               searchParams={sp}
               options={facets.entityType.map((f) => ({
                 value: f.value,
-                label: nodeTypePlural(f.value),
+                label: neuronTypePlural(f.value),
                 count: f.count,
                 icon: <NeuronTypeIcon entityType={f.value} />,
               }))}

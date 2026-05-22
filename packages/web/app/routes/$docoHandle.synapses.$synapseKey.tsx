@@ -8,7 +8,7 @@
 //
 // Renders the two connected neurons via EntityGraph (the same mini-graph
 // component the entity detail page uses) and surfaces the metadata a
-// synapse carries: type, attribution, and props blob if present.
+// synapse carries: type and props blob if present.
 
 import { withClient } from "@doco/db";
 import { Link } from "react-router";
@@ -26,7 +26,6 @@ interface SynapseRow {
   to_id: string;
   to_neuron_type: string;
   synapse_type: string;
-  attribution: "explicit" | "doco-auto";
   synapse_props_json: Record<string, unknown> | null;
 }
 
@@ -63,7 +62,7 @@ export async function loader({
 
   return withClient(async (c) => {
     const synapseQuery = await c.query<SynapseRow>(
-      `SELECT from_id, from_neuron_type, to_id, to_neuron_type, synapse_type, attribution, synapse_props_json
+      `SELECT from_id, from_neuron_type, to_id, to_neuron_type, synapse_type, synapse_props_json
          FROM synapses
         WHERE doco_id = $1 AND synapse_type = $2 AND from_id = $3 AND to_id = $4`,
       [ctx.meta.docoId, parsed.synapse_type, parsed.from_id, parsed.to_id],
@@ -143,7 +142,6 @@ export default function SynapseDetail({
       source: synapse.from_id,
       target: synapse.to_id,
       synapse_type: synapse.synapse_type,
-      attribution: synapse.attribution,
     },
   ];
 
@@ -181,7 +179,6 @@ export default function SynapseDetail({
               {to_label?.summary ?? synapse.to_id}
             </Link>
           </h1>
-          <div className="text-xs text-muted-foreground">{synapse.attribution}</div>
         </header>
 
         <Card>
@@ -223,8 +220,6 @@ export default function SynapseDetail({
                 <code className="font-mono text-[11px]">{synapse.to_id}</code>{" "}
                 <span className="text-muted-foreground">({synapse.to_neuron_type})</span>
               </dd>
-              <dt className="text-muted-foreground">attribution</dt>
-              <dd>{synapse.attribution}</dd>
               {propsEntries.length > 0 ? (
                 <>
                   <dt className="text-muted-foreground">props</dt>

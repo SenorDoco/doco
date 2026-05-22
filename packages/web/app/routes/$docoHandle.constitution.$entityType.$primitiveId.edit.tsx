@@ -12,13 +12,13 @@ import { Breadcrumb, docoBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent } from "~/components/card";
 import { SiteHeader } from "~/components/site-header";
 import {
-  type NodeAuthoringArticleDraft,
-  captureGuidanceArticle,
-  captureNodeAuthoringArticle,
-  loadArticleForEdit,
-  transitionArticleLifecycle,
+  type NeuronAuthoringPrimitiveDraft,
+  captureGuidancePrimitive,
+  captureNeuronAuthoringPrimitive,
+  loadPrimitiveForEdit,
+  transitionPrimitiveLifecycle,
 } from "~/lib/capture.server";
-import { deriveArticleSummary } from "~/lib/constitution-copy";
+import { derivePrimitiveSummary } from "~/lib/constitution-copy";
 import { loadDocoRouteForAdmin } from "~/lib/doco-access.server";
 import { loadHostConfig } from "~/lib/host.server";
 
@@ -29,9 +29,9 @@ interface ActionError {
   error: string;
 }
 
-function parseNodeType(raw: string | undefined): EntityType | null {
+function parsePrimitiveType(raw: string | undefined): EntityType | null {
   if (raw === "guidance" || raw === "guidance_primitive") return "guidance_primitive";
-  if (raw === "node-authoring" || raw === "neuron_authoring_primitive") return "neuron_authoring_primitive";
+  if (raw === "neuron-authoring" || raw === "neuron_authoring_primitive") return "neuron_authoring_primitive";
   return null;
 }
 
@@ -42,15 +42,15 @@ export async function loader({
   request: Request;
   params: { docoId: string; entityType: string; primitiveId: string };
 }) {
-  const entityType = parseNodeType(params.entityType);
+  const entityType = parsePrimitiveType(params.entityType);
   if (!entityType) throw new Response("Unknown primitive kind.", { status: 404 });
   const ctx = await loadDocoRouteForAdmin(request, params);
   const { docoSlug, handle, ownerSlug } = ctx;
-  const result = await loadArticleForEdit({
+  const result = await loadPrimitiveForEdit({
     scope: "doco",
     scopeId: ctx.meta.docoId,
     entityType,
-    articleId: params.primitiveId,
+    primitiveId: params.primitiveId,
   });
   if ("error" in result) {
     throw new Response(result.error, { status: result.status ?? 404 });
@@ -76,7 +76,7 @@ export async function action({
   request: Request;
   params: { docoId: string; entityType: string; primitiveId: string };
 }) {
-  const entityType = parseNodeType(params.entityType);
+  const entityType = parsePrimitiveType(params.entityType);
   if (!entityType) throw new Response("Unknown primitive kind.", { status: 404 });
   const ctx = await loadDocoRouteForAdmin(request, params);
   const { docoSlug, handle, ownerSlug } = ctx;
@@ -84,11 +84,11 @@ export async function action({
   const intent = String(form.get("intent") ?? "");
 
   if (intent === "retire") {
-    const result = await transitionArticleLifecycle({
+    const result = await transitionPrimitiveLifecycle({
       scope: "doco",
       scopeId: ctx.meta.docoId,
       entityType,
-      articleId: params.primitiveId,
+      primitiveId: params.primitiveId,
       newLifecycle: "retired",
       actorId: ctx.me?.id ?? null,
     });
@@ -100,15 +100,15 @@ export async function action({
 
   if (intent === "modify") {
     const body_md = String(form.get("body_md") ?? "").trim();
-    const summary = deriveArticleSummary(body_md);
+    const summary = derivePrimitiveSummary(body_md);
     if (!summary) return Response.json({ error: "Primitive is required." }, { status: 400 });
     const docoDir = ctx.dir;
     const docoHost = new URL(request.url).origin;
     let captured: Awaited<
-      ReturnType<typeof captureGuidanceArticle | typeof captureNodeAuthoringArticle>
+      ReturnType<typeof captureGuidancePrimitive | typeof captureNeuronAuthoringPrimitive>
     >;
     if (entityType === "guidance_primitive") {
-      captured = await captureGuidanceArticle(
+      captured = await captureGuidancePrimitive(
         docoDir,
         ctx.meta.docoId,
         ownerSlug,
@@ -133,7 +133,7 @@ export async function action({
       const onViolationRaw = String(form.get("on_violation") ?? "block");
       const on_violation =
         onViolationRaw === "warn" || onViolationRaw === "log" ? onViolationRaw : "block";
-      const draft: NodeAuthoringArticleDraft = {
+      const draft: NeuronAuthoringPrimitiveDraft = {
         summary,
         body_md,
         evaluation_kind: evaluationKind,
@@ -145,7 +145,7 @@ export async function action({
           ? { spec: String(form.get("probabilistic_spec") ?? "").trim() }
           : { predicate: String(form.get("deterministic_predicate") ?? "").trim() }),
       };
-      captured = await captureNodeAuthoringArticle(
+      captured = await captureNeuronAuthoringPrimitive(
         docoDir,
         ctx.meta.docoId,
         ownerSlug,
@@ -157,11 +157,11 @@ export async function action({
     if ("error" in captured) {
       return Response.json(captured, { status: captured.status ?? 400 });
     }
-    const transitioned = await transitionArticleLifecycle({
+    const transitioned = await transitionPrimitiveLifecycle({
       scope: "doco",
       scopeId: ctx.meta.docoId,
       entityType,
-      articleId: params.primitiveId,
+      primitiveId: params.primitiveId,
       newLifecycle: "retired",
       supersededBy: captured.id,
       actorId: ctx.me?.id ?? null,

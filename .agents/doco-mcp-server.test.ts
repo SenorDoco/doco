@@ -1,6 +1,16 @@
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, unlinkSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -37,10 +47,19 @@ async function exchange(
   expectedResponses: number,
   opts: ExchangeOptions = {},
 ): Promise<JsonRpcMessage[]> {
+  const env = { ...process.env } as NodeJS.ProcessEnv;
+  for (const [key, value] of Object.entries(opts.env ?? {})) {
+    if (value === undefined) {
+      delete env[key];
+    } else {
+      env[key] = value;
+    }
+  }
+
   const child = spawn("node", [SERVER_PATH], {
     stdio: ["pipe", "pipe", "pipe"],
     cwd: opts.cwd ?? process.cwd(),
-    env: { ...process.env, ...(opts.env ?? {}) } as NodeJS.ProcessEnv,
+    env,
   });
 
   let stderrText = "";
@@ -172,8 +191,16 @@ describe("doco-mcp-server", () => {
     );
     const listResp = responses.find((r) => r.id === 2);
     expect(listResp).toBeDefined();
-    const tools = (listResp?.result as { tools: Array<{ name: string; description: string; inputSchema: { required?: string[] } }> }).tools;
-    expect(tools.map((t) => t.name)).toEqual(["doco_search", "doco_authenticate", "doco_complete_authentication"]);
+    const tools = (
+      listResp?.result as {
+        tools: Array<{ name: string; description: string; inputSchema: { required?: string[] } }>;
+      }
+    ).tools;
+    expect(tools.map((t) => t.name)).toEqual([
+      "doco_search",
+      "doco_authenticate",
+      "doco_complete_authentication",
+    ]);
     const search = tools.find((t) => t.name === "doco_search");
     expect(search?.description).toMatch(/CALL THIS BEFORE/);
     expect(search?.inputSchema.required).toContain("query");
@@ -198,13 +225,19 @@ describe("doco-mcp-server", () => {
       2,
     );
     const callResp = responses.find((r) => r.id === 2);
-    const result = callResp?.result as { isError: boolean; content: Array<{ type: string; text: string }> };
+    const result = callResp?.result as {
+      isError: boolean;
+      content: Array<{ type: string; text: string }>;
+    };
     expect(result.isError).toBe(true);
     expect(result.content[0].text).toMatch(/non-empty/);
   });
 
   it("returns JSON-RPC -32601 for unknown methods", async () => {
-    const [resp] = await exchange([{ jsonrpc: "2.0", id: 1, method: "frobnicate/widget", params: {} }], 1);
+    const [resp] = await exchange(
+      [{ jsonrpc: "2.0", id: 1, method: "frobnicate/widget", params: {} }],
+      1,
+    );
     expect(resp.error?.code).toBe(-32601);
   });
 
@@ -262,7 +295,10 @@ describe("doco-mcp-server", () => {
       2,
     );
     const callResp = responses.find((r) => r.id === 2);
-    const result = callResp?.result as { isError: boolean; content: Array<{ type: string; text: string }> };
+    const result = callResp?.result as {
+      isError: boolean;
+      content: Array<{ type: string; text: string }>;
+    };
     expect(result.isError).toBe(true);
     expect(result.content[0].text).toMatch(/no device-authorization flow in progress/i);
   });
@@ -296,11 +332,114 @@ describe("doco-mcp-server", () => {
       2,
     );
     const callResp = responses.find((r) => r.id === 2);
-    const result = callResp?.result as { isError: boolean; content: Array<{ type: string; text: string }> };
+    const result = callResp?.result as {
+      isError: boolean;
+      content: Array<{ type: string; text: string }>;
+    };
     expect(result.isError).toBe(true);
     expect(result.content[0].text).toMatch(/expired/i);
     // The server should have cleared the state file.
     expect(existsSync(DEVICE_STATE_FILE)).toBe(false);
+  });
+
+  it("doco_complete_authentication recovers pending device state from .env", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "doco-mcp-env-state-"));
+    const docoDir = join(projectDir, ".doco");
+    mkdirSync(docoDir);
+    writeFileSync(join(docoDir, "connections.md"), "https://doco.to/doco-bpms/\n");
+
+    let tokenRequests = 0;
+    const tokenServer = createServer((req, res) => {
+      if (req.method === "POST" && req.url === "/oauth/token") {
+        tokenRequests += 1;
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            access_token: "doco_at_env_state",
+            refresh_token: "doco_rt_env_state",
+          }),
+        );
+        return;
+      }
+      res.writeHead(404, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "not_found" }));
+    });
+
+    await new Promise<void>((resolve) => {
+      tokenServer.listen(0, "127.0.0.1", resolve);
+    });
+
+    const address = tokenServer.address() as AddressInfo;
+    const host = `http://127.0.0.1:${address.port}`;
+    const expiresAt = Math.floor(Date.now() / 1000) + 300;
+    writeFileSync(
+      join(projectDir, ".env"),
+      [
+        `DOCO_HOST=${host}`,
+        "DOCO_DEVICE_CLIENT_ID=doco_client_env_state",
+        "DOCO_DEVICE_CODE=doco_dc_env_state",
+        "DOCO_DEVICE_INTERVAL=1",
+        `DOCO_DEVICE_EXPIRES_AT=${expiresAt}`,
+        "DOCO_DEVICE_TARGET_HANDLE=doco-bpms",
+        "DOCO_DEVICE_REQUESTED_ROLE=reader",
+        "",
+      ].join("\n"),
+      { mode: 0o600 },
+    );
+
+    try {
+      const responses = await exchange(
+        [
+          INIT_MESSAGE,
+          INITIALIZED_NOTIFICATION,
+          {
+            jsonrpc: "2.0",
+            id: 2,
+            method: "tools/call",
+            params: {
+              name: "doco_complete_authentication",
+              arguments: { wait_seconds: 5 },
+            },
+          },
+        ],
+        2,
+        {
+          cwd: projectDir,
+          env: {
+            DOCO_HOST: undefined,
+            DOCO_ACCESS: undefined,
+            DOCO_DEVICE_CLIENT_ID: undefined,
+            DOCO_DEVICE_CODE: undefined,
+            DOCO_DEVICE_INTERVAL: undefined,
+            DOCO_DEVICE_EXPIRES_AT: undefined,
+            DOCO_DEVICE_TARGET_HANDLE: undefined,
+            DOCO_DEVICE_REQUESTED_ROLE: undefined,
+          },
+          timeoutMs: 10000,
+        },
+      );
+
+      const callResp = responses.find((r) => r.id === 2);
+      const result = callResp?.result as {
+        isError?: boolean;
+        content: Array<{ type: string; text: string }>;
+      };
+      expect(result.isError).toBeFalsy();
+      expect(result.content[0].text).toMatch(/Authenticated/);
+      expect(tokenRequests).toBe(1);
+
+      const envText = readFileSync(join(projectDir, ".env"), "utf8");
+      expect(envText).toContain("DOCO_ACCESS=doco_at_env_state");
+      expect(envText).toContain("DOCO_REFRESH=doco_rt_env_state");
+      expect(envText).toContain("DOCO_CLIENT_ID=doco_client_env_state");
+      expect(envText).not.toContain("DOCO_DEVICE_CODE=");
+      expect(envText).not.toContain("DOCO_DEVICE_EXPIRES_AT=");
+    } finally {
+      await new Promise<void>((resolve) => {
+        tokenServer.close(() => resolve());
+      });
+      rmSync(projectDir, { recursive: true, force: true });
+    }
   });
 
   it.skipIf(!process.env.DOCO_ACCESS)(
@@ -321,7 +460,10 @@ describe("doco-mcp-server", () => {
         { timeoutMs: 15000 },
       );
       const callResp = responses.find((r) => r.id === 2);
-      const result = callResp?.result as { isError?: boolean; content: Array<{ type: string; text: string }> };
+      const result = callResp?.result as {
+        isError?: boolean;
+        content: Array<{ type: string; text: string }>;
+      };
       expect(result.isError).toBeFalsy();
       expect(result.content[0].text).toMatch(/Found \d+ nodes? in Doco|No matches in Doco/);
     },

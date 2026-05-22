@@ -171,9 +171,8 @@ export async function loader({
         to_id: string;
         to_neuron_type: string;
         synapse_type: string;
-        attribution: string;
       }>(
-        `SELECT to_id, to_neuron_type, synapse_type, attribution
+        `SELECT to_id, to_neuron_type, synapse_type
            FROM synapses
           WHERE from_id = $1 AND doco_id = $2
           ORDER BY synapse_type, to_id`,
@@ -185,9 +184,8 @@ export async function loader({
         from_id: string;
         from_neuron_type: string;
         synapse_type: string;
-        attribution: string;
       }>(
-        `SELECT from_id, from_neuron_type, synapse_type, attribution
+        `SELECT from_id, from_neuron_type, synapse_type
            FROM synapses
           WHERE to_id = $1 AND doco_id = $2
           ORDER BY synapse_type, from_id`,
@@ -196,8 +194,8 @@ export async function loader({
     ).rows;
 
     const allEdgesRows = (
-      await c.query<{ from_id: string; to_id: string; synapse_type: string; attribution: string }>(
-        "SELECT from_id, to_id, synapse_type, attribution FROM synapses WHERE doco_id = $1",
+      await c.query<{ from_id: string; to_id: string; synapse_type: string }>(
+        "SELECT from_id, to_id, synapse_type FROM synapses WHERE doco_id = $1",
         [docoId],
       )
     ).rows;
@@ -207,7 +205,6 @@ export async function loader({
       from: e.from_id,
       to: e.to_id,
       synapse_type: e.synapse_type,
-      attribution: e.attribution as "explicit" | "doco-auto",
     }));
     const ppr = personalizedPageRank(pprEdges, id, { topK: 25, alpha: 0.85 });
     const neighborIds = new Set([id, ...ppr.map((p) => p.id)]);
@@ -405,7 +402,6 @@ export async function loader({
         source: e.from_id,
         target: e.to_id,
         synapse_type: e.synapse_type,
-        attribution: (e.attribution as "explicit" | "doco-auto") ?? "explicit",
       }));
 
     const history = await readEntityHistory(

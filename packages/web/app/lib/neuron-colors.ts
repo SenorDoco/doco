@@ -51,7 +51,7 @@ export function lifecycleLabel(lifecycle: string | null | undefined): string {
   return (lifecycle ?? "active").replaceAll("_", " ");
 }
 
-const NODE_TYPE_PLURAL: Record<string, string> = {
+const NEURON_TYPE_PLURAL: Record<string, string> = {
   doco: "docos",
   principal: "principals",
   organization: "organizations",
@@ -67,6 +67,6 @@ const NODE_TYPE_PLURAL: Record<string, string> = {
   reference: "references",
 };
 
-export function nodeTypePlural(type: string): string {
-  return NODE_TYPE_PLURAL[type] ?? `${type}s`;
+export function neuronTypePlural(type: string): string {
+  return NEURON_TYPE_PLURAL[type] ?? `${type}s`;
 }
