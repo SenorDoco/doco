@@ -7,33 +7,59 @@
  * diluted the meaning of color overall.
  */
 
-// Per project owner: `active` is black (settled, in force);
-// `in_progress` is green (work in motion); `drafted` is light blue
-// (provisional, not yet ratified). `planned` moves to amber (queued)
-// to free the black slot; `failed` keeps red on its own; the
-// "no longer current" cluster (abandoned/retired/succeeded/superseded)
-// stays gray.
+// Canonical Lifecycle (packages/shared/src/entities.ts) has exactly
+// seven stages: drafted, proposed, active, succeeded, failed,
+// superseded, abandoned. Per project owner:
+//   active   → black   (settled, in force)
+//   drafted  → sky-400 (provisional, not yet ratified)
+//   proposed → blue    (under consideration)
+//   failed   → red     (bad outcome — alone on red)
+//   the "no longer current" cluster (abandoned / succeeded /
+//   superseded) stays gray.
+// `draft` / `successed` / `superseeded` are kept as aliases for
+// legacy data drift; their canonical spellings drive the color.
 export const LIFECYCLE_COLOR: Record<string, string> = {
   active: "#171717", // black — settled and in force
-  in_progress: "#16a34a", // green — work in motion
-  in_progess: "#16a34a", // typo alias
-  planned: "#ca8a04", // amber — queued / upcoming
-  proposed: "#2563eb", // blue — under consideration
   drafted: "#38bdf8", // sky-400 — provisional, not yet ratified
   draft: "#38bdf8", // alias
+  proposed: "#2563eb", // blue — under consideration
   failed: "#dc2626", // red — bad outcome
-  abandoned: "#737373", // gray — no longer current
-  retired: "#737373",
-  succeeded: "#737373",
+  succeeded: "#737373", // gray — no longer current
   successed: "#737373", // typo alias
   superseded: "#737373",
   superseeded: "#737373", // typo alias
+  abandoned: "#737373",
 };
 
 export const LIFECYCLE_FALLBACK_COLOR = "#737373";
 
 export function lifecycleColor(lifecycle: string | null | undefined): string {
   return LIFECYCLE_COLOR[lifecycle ?? "active"] ?? LIFECYCLE_FALLBACK_COLOR;
+}
+
+/**
+ * Picks a readable foreground color (dark or white) for text placed
+ * on a lifecycle-colored background. Uses WCAG relative luminance:
+ * light backgrounds (e.g. the sky-400 used for `drafted`) get dark
+ * text; everything else gets white. Returns hex.
+ */
+export function textOnLifecycle(lifecycle: string | null | undefined): string {
+  const bg = lifecycleColor(lifecycle);
+  const hex = bg.startsWith("#") ? bg.slice(1) : bg;
+  if (hex.length !== 6) return "#ffffff";
+  const r = Number.parseInt(hex.slice(0, 2), 16);
+  const g = Number.parseInt(hex.slice(2, 4), 16);
+  const b = Number.parseInt(hex.slice(4, 6), 16);
+  if (!Number.isFinite(r) || !Number.isFinite(g) || !Number.isFinite(b)) return "#ffffff";
+  // WCAG relative luminance (simplified: skip the gamma correction
+  // since we only need a coarse light-vs-dark threshold).
+  const lum = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+  return lum > 0.6 ? "#0f172a" : "#ffffff";
+}
+
+/** Human-readable label for a lifecycle stage. */
+export function lifecycleLabel(lifecycle: string | null | undefined): string {
+  return (lifecycle ?? "active").replaceAll("_", " ");
 }
 
 const NODE_TYPE_PLURAL: Record<string, string> = {

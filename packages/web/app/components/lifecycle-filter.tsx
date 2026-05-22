@@ -16,17 +16,17 @@ import { lifecycleColor } from "~/lib/neuron-colors";
  * order regardless of which lifecycles the data actually contains;
  * the `available` arg trims unused stages out of the visible UI.
  */
+// The canonical seven lifecycle stages from @doco/shared, in the
+// order they appear in the filter row. Active anchors the left, the
+// "no longer current" cluster sits to the right.
 export const LIFECYCLE_ORDER: readonly string[] = [
   "active",
   "drafted",
   "proposed",
-  "planned",
-  "in_progress",
+  "succeeded",
+  "failed",
   "superseded",
   "abandoned",
-  "succeeded",
-  "retired",
-  "failed",
 ];
 
 /**
