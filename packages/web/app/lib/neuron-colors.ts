@@ -7,20 +7,14 @@
  * diluted the meaning of color overall.
  */
 
-// Lifecycle is being simplified in @doco/shared to four stages:
-// drafted, proposed, active, retired. Per project owner the color
-// mapping is, in that order:
+// Canonical lifecycle has four stages: drafted, proposed, active, retired.
+// Per project owner the color mapping is, in that order:
 //   drafted  → yellow  (provisional / work in motion)
 //   proposed → blue    (under review)
 //   active   → black   (settled, in force)
 //   retired  → red     (no longer in use)
-// `draft` is kept as an alias for legacy data drift. Pre-simplified
-// stages (succeeded / superseded / abandoned / failed) intentionally
-// fall through to LIFECYCLE_FALLBACK_COLOR so they read as "unknown
-// — not migrated yet" until the data migration runs.
 export const LIFECYCLE_COLOR: Record<string, string> = {
   drafted: "#eab308", // yellow-500 — provisional
-  draft: "#eab308", // alias
   proposed: "#2563eb", // blue-600 — under review
   active: "#171717", // gray-900 — settled and in force
   retired: "#dc2626", // red-600 — no longer in use

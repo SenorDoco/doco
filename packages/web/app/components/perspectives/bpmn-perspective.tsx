@@ -22,7 +22,7 @@ import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react"
 import { useNavigate } from "react-router";
 import type { OverviewGraphLink } from "~/components/overview-graph";
 import type { BpmnLane, BpmnNode, BpmnShape } from "~/lib/bpmn-perspective.server";
-import { lifecycleColor } from "~/lib/neuron-colors";
+import { lifecycleColor, lifecycleLabel, textOnLifecycle } from "~/lib/neuron-colors";
 import "@xyflow/react/dist/style.css";
 
 interface BpmnPerspectiveProps {
@@ -495,6 +495,7 @@ function BpmnRectangleNode({ data }: { data: BpmnNodeData }) {
       }}
     >
       <TypeBadge node={data.node} />
+      <LifecycleBadge node={data.node} />
       <ShapeLabel node={data.node} />
       {commonHandles()}
     </div>
@@ -519,6 +520,7 @@ function BpmnRoundedNode({ data }: { data: BpmnNodeData }) {
       }}
     >
       <TypeBadge node={data.node} />
+      <LifecycleBadge node={data.node} />
       <ShapeLabel node={data.node} />
       {commonHandles()}
     </div>
@@ -556,6 +558,7 @@ function BpmnCircleNode({ data }: { data: BpmnNodeData }) {
         }}
       >
         <TypeBadge node={data.node} circular />
+        <LifecycleBadge node={data.node} circular />
         <ShapeLabel node={data.node} />
       </div>
       {commonHandles()}
@@ -604,6 +607,7 @@ function BpmnDiamondNode({ data }: { data: BpmnNodeData }) {
         <ShapeLabel node={data.node} />
       </div>
       <TypeBadge node={data.node} />
+      <LifecycleBadge node={data.node} />
       {commonHandles()}
     </div>
   );
@@ -643,39 +647,61 @@ function BpmnDocumentNode({ data }: { data: BpmnNodeData }) {
         />
       </svg>
       <TypeBadge node={data.node} />
+      <LifecycleBadge node={data.node} />
       <ShapeLabel node={data.node} />
       {commonHandles()}
     </div>
   );
 }
 
+/**
+ * Shared style for both the type badge and the lifecycle badge —
+ * they're two pills of the same lifecycle color, paired with the
+ * shape stroke (also lifecycle color) to form a consistent color
+ * triplet. Text identifies what the pill represents (type vs stage).
+ */
+function badgeStyle(node: BpmnNode, anchor: "left" | "right" | "centered-top" | "centered-bottom"): CSSProperties {
+  const bg = lifecycleColor(node.lifecycle);
+  const fg = textOnLifecycle(node.lifecycle);
+  const base: CSSProperties = {
+    position: "absolute",
+    background: bg,
+    color: fg,
+    fontSize: 9,
+    fontWeight: 700,
+    lineHeight: 1,
+    padding: "2px 5px",
+    borderRadius: 3,
+    letterSpacing: 0.3,
+    pointerEvents: "none",
+    textTransform: "uppercase",
+    zIndex: 2,
+    whiteSpace: "nowrap",
+  };
+  switch (anchor) {
+    case "left":
+      return { ...base, top: -7, left: 6 };
+    case "right":
+      return { ...base, top: -7, right: 6 };
+    case "centered-top":
+      return { ...base, top: -8, left: "50%", transform: "translateX(-50%)" };
+    case "centered-bottom":
+      return { ...base, bottom: -8, left: "50%", transform: "translateX(-50%)" };
+  }
+}
+
 function TypeBadge({ node, circular = false }: { node: BpmnNode; circular?: boolean }) {
-  // Color in Doco encodes *lifecycle stage* only — across every
-  // perspective. The type label here disambiguates which kind of
-  // neuron a shape is (the shape geometry already gestures at it);
-  // color on the type would compete with the lifecycle-color stroke
-  // and dilute the meaning of color overall. Hence: monochrome badge.
   return (
-    <span
-      style={{
-        position: "absolute",
-        top: circular ? -8 : -7,
-        left: circular ? "50%" : 6,
-        transform: circular ? "translateX(-50%)" : undefined,
-        background: "#262626",
-        color: "#fff",
-        fontSize: 9,
-        fontWeight: 700,
-        lineHeight: 1,
-        padding: "2px 5px",
-        borderRadius: 3,
-        letterSpacing: 0.3,
-        pointerEvents: "none",
-        textTransform: "uppercase",
-        zIndex: 2,
-      }}
-    >
+    <span style={badgeStyle(node, circular ? "centered-top" : "left")}>
       {labelForType(node.entity_type)}
+    </span>
+  );
+}
+
+function LifecycleBadge({ node, circular = false }: { node: BpmnNode; circular?: boolean }) {
+  return (
+    <span style={badgeStyle(node, circular ? "centered-bottom" : "right")}>
+      {lifecycleLabel(node.lifecycle)}
     </span>
   );
 }
