@@ -1,10 +1,10 @@
-// /<doco>/constitution/<entityType>/<id>/edit — modify or abandon an
+// /<doco>/constitution/<entityType>/<id>/edit — modify or retire an
 // existing constitution primitive. Owner-only (loadDocoRouteForAdmin gates
 // both loader + action).
 //
-// POST intent=modify  → captures a new primitive with `supersedes: <id>`
-//                       and flips the old to lifecycle='superseded'.
-// POST intent=abandon → flips the old to lifecycle='abandoned'.
+// POST intent=modify → captures a new primitive and retires the old one
+//                      with `superseded_by: <new id>`.
+// POST intent=retire → flips the old to lifecycle='retired'.
 
 import { useState } from "react";
 import { Form, Link, redirect, useActionData } from "react-router";
@@ -83,13 +83,13 @@ export async function action({
   const form = await request.formData();
   const intent = String(form.get("intent") ?? "");
 
-  if (intent === "abandon") {
+  if (intent === "retire") {
     const result = await transitionArticleLifecycle({
       scope: "doco",
       scopeId: ctx.meta.docoId,
       entityType,
       articleId: params.primitiveId,
-      newLifecycle: "abandoned",
+      newLifecycle: "retired",
       actorId: ctx.me?.id ?? null,
     });
     if ("error" in result) {
@@ -104,8 +104,6 @@ export async function action({
     if (!summary) return Response.json({ error: "Primitive is required." }, { status: 400 });
     const docoDir = ctx.dir;
     const docoHost = new URL(request.url).origin;
-    const supersedes = params.primitiveId;
-
     let captured: Awaited<
       ReturnType<typeof captureGuidanceArticle | typeof captureNodeAuthoringArticle>
     >;
@@ -122,7 +120,6 @@ export async function action({
           created_by_id: ctx.me?.id,
         },
         docoHost,
-        { supersedes },
       );
     } else {
       const evaluationKind =
@@ -155,7 +152,6 @@ export async function action({
         docoSlug,
         draft,
         docoHost,
-        { supersedes },
       );
     }
     if ("error" in captured) {
@@ -166,7 +162,8 @@ export async function action({
       scopeId: ctx.meta.docoId,
       entityType,
       articleId: params.primitiveId,
-      newLifecycle: "superseded",
+      newLifecycle: "retired",
+      supersededBy: captured.id,
       actorId: ctx.me?.id ?? null,
       reason: `superseded_by:${captured.id}`,
     });
@@ -230,8 +227,8 @@ export default function EditPrimitive({
             Modify {isNeuronAuthoring ? "neuron-authoring" : "guidance"} primitive
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Saving changes creates a new primitive and marks this one as <em>superseded</em>.
-            Abandoning leaves the old one in place but flips it to <em>abandoned</em>. Either way
+            Saving changes creates a new primitive and retires this one with a{" "}
+            <code>superseded_by</code> synapse. Retiring leaves the old one in place. Either way
             the audit log retains the full history.
           </p>
         </header>
@@ -339,10 +336,10 @@ export default function EditPrimitive({
                 <button
                   type="submit"
                   name="intent"
-                  value="abandon"
+                  value="retire"
                   className="rounded-md border border-destructive px-4 py-2 text-sm font-semibold text-destructive hover:bg-destructive/10"
                 >
-                  Abandon primitive
+                  Retire primitive
                 </button>
                 <Link
                   to={`/${handle}/constitution`}

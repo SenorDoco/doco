@@ -211,7 +211,7 @@ After extraction, the user lands in a **review UI**:
 - Bulk filters (node type / source / time / confidence).
 - Bulk-accept / bulk-reject affordances.
 - Per-entity edit and grouping (combine related items into a Reasoning chain).
-- **Accepted entities flip from `lifecycle: proposed` to `active`** (or `accepted` for Decisions).
+- **Accepted entities flip from `lifecycle: proposed` to `active`**.
 - The user can mark backfill as "complete," establishing a baseline; from then on, new Decisions are tracked in real time.
 
 Importer pipelines must be **idempotent and auditable**: re-running the same source with the same scope produces the same proposed entities. This is critical because users will iterate (refine the time range, add a channel, retry after edits).

@@ -54,9 +54,9 @@ A consolidated record of every meaningful design decision made to date, intended
 
 ### D-007 — Canonical lifecycle across all stateful entities
 
-- **Chosen:** One canonical state field, `lifecycle`, with six values: `proposed → active → succeeded | superseded | abandoned | failed`. UI can render kind-specific labels at display time (e.g. show "completed" for an Action's `succeeded`) but nothing is stored.
-- **Alternatives rejected:** Per-kind status enums only (synonym sprawl, hard to query "everything currently active" across kinds); dual `lifecycle` + `status` field (originally chosen — superseded because the `status` alias was always set from `lifecycle` and added no information, only coupling).
-- **Why:** Cross-kind queries become trivial; one source of truth instead of two.
+- **Chosen:** One canonical currentness field, `lifecycle`, with four values: `drafted → proposed → active → retired`. Success/failure is stored separately as optional `outcome: succeeded | failed`; replacement is represented by the `superseded_by` synapse.
+- **Alternatives rejected:** Per-kind status enums only (synonym sprawl, hard to query "everything currently active" across kinds); folding result and replacement into lifecycle (mixed axes: currentness, result, and graph replacement).
+- **Why:** Cross-kind currentness queries stay trivial while outcome and replacement keep their own precise homes.
 - **Ref:** SCHEMA.md §3.1.
 
 ### D-008 — Per-Doco `schema_version` (additive evolution)
@@ -331,7 +331,7 @@ A consolidated record of every meaningful design decision made to date, intended
 
 ### D-042 — Backfill workflow with `proposed` quarantine
 
-- **Chosen:** Importers (Slack, email, Figma, Notion, code, agent transcripts) extract candidate entities, all entering with `lifecycle: proposed`. A review UI bulk-accepts/rejects; only on accept do entities flip to `active`/`accepted`.
+- **Chosen:** Importers (Slack, email, Figma, Notion, code, agent transcripts) extract candidate entities, all entering with `lifecycle: proposed`. A review UI bulk-accepts/rejects; only on accept do entities flip to `active`.
 - **Why:** Extracted entities are lossy; quarantine prevents bad data from entering the live alignment graph; provides a clear "complete-baseline" event.
 - **Ref:** PLANNING.md §4.
 

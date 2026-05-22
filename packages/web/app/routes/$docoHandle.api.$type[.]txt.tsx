@@ -37,7 +37,10 @@ BODY (JSON)
   created_by_id      optional   principal id; defaults to decided_by
   body_md            optional   markdown body appended after the frontmatter
   born_from          optional   reference id (e.g. born_from a bugfix decision)
-  lifecycle          optional   default "active"
+  lifecycle          optional   one of "drafted" | "proposed" | "active" | "retired"; default "active"
+  deprecated         optional   boolean warning label; lifecycle is unchanged
+  outcome            optional   "succeeded" | "failed"
+  superseded_by      optional   id of the Decision that replaces this one; pair with lifecycle="retired"
 
   Note: Projects that want ADR-style identifiers can mention them in
   the summary or body_md. The framework provides no native ADR field.
@@ -81,6 +84,7 @@ UPDATE AN EXISTING DECISION
 
   Body fields are all optional (only the keys you include are touched):
     summary / question / chosen / alternatives / body_md / lifecycle
+    deprecated / outcome / superseded_by
     intent_ids / intent_ids_add / intent_ids_remove
     decided_by_username / born_from
 
@@ -108,7 +112,9 @@ BODY (JSON)
   title               optional   short title (defaults to summary).
   body_md             optional   markdown body — context, non-goals, success criteria.
   wanted_by_username  optional   host-level username; resolved to principal id.
-  lifecycle           optional   default "active".
+  lifecycle           optional   one of "drafted" | "proposed" | "active" | "retired"; default "active".
+  deprecated          optional   boolean warning label; lifecycle is unchanged.
+  outcome             optional   "succeeded" | "failed".
 
 SUCCESS RESPONSE (HTTP 201, application/json)
   {
@@ -194,7 +200,9 @@ BODY — primitive_kind = "guidance"
   summary               required   one-line primitive summary
   body_md               optional   markdown primitive body
   authored_by_username  optional   host-level username; auth fills this
-  lifecycle             optional   default "active"
+  lifecycle             optional   one of "drafted" | "proposed" | "active" | "retired"; default "active"
+  deprecated            optional   boolean warning label; lifecycle is unchanged
+  outcome               optional   "succeeded" | "failed"
 
 BODY — primitive_kind = "neuron_authoring"
   primitive_kind          required   "neuron_authoring"
@@ -209,7 +217,9 @@ BODY — primitive_kind = "neuron_authoring"
   on_violation          optional   "block" | "warn" | "log"; default "block"
   body_md               optional   markdown primitive body
   authored_by_username  optional   host-level username; auth fills this
-  lifecycle             optional   default "active"
+  lifecycle             optional   one of "drafted" | "proposed" | "active" | "retired"; default "active"
+  deprecated            optional   boolean warning label; lifecycle is unchanged
+  outcome               optional   "succeeded" | "failed"
 
 SUCCESS RESPONSE (HTTP 201)
   {

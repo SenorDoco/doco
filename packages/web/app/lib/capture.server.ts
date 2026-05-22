@@ -164,6 +164,8 @@ export interface DecisionDraft {
   born_from?: string;
   /** Optional: defaults to "active". */
   lifecycle?: string;
+  deprecated?: boolean;
+  outcome?: "succeeded" | "failed";
 }
 
 export interface CaptureResult {
@@ -197,7 +199,55 @@ export type Op =
   | { kind: "deleted" };
 
 const TRUNC = 120;
-const STRUCK_LIFECYCLES = new Set(["abandoned", "superseded"]);
+const STRUCK_LIFECYCLES = new Set(["retired"]);
+const VALID_LIFECYCLES = new Set(["drafted", "proposed", "active", "retired"]);
+const VALID_OUTCOMES = new Set(["succeeded", "failed"]);
+
+interface LifecycleAttrs {
+  lifecycle?: string;
+  deprecated?: boolean;
+  outcome?: "succeeded" | "failed";
+}
+
+interface ResolvedLifecycleAttrs {
+  lifecycle: string;
+  deprecated?: boolean;
+  outcome?: "succeeded" | "failed";
+}
+
+function normalizeLifecycle(value: unknown, fallback: string): string | CaptureError {
+  const lifecycle = typeof value === "string" && value.trim() ? value.trim() : fallback;
+  if (!VALID_LIFECYCLES.has(lifecycle)) {
+    return {
+      error: `Unknown lifecycle: ${lifecycle}. Expected one of: ${[...VALID_LIFECYCLES].join(", ")}.`,
+    };
+  }
+  return lifecycle;
+}
+
+function normalizeOutcome(value: unknown): "succeeded" | "failed" | undefined | CaptureError {
+  if (value === undefined || value === null || value === "") return undefined;
+  if (value === "succeeded" || value === "failed") return value;
+  return {
+    error: `Unknown outcome: ${String(value)}. Expected one of: ${[...VALID_OUTCOMES].join(", ")}.`,
+  };
+}
+
+function lifecycleAttrs(
+  draft: LifecycleAttrs,
+  defaultLifecycle: string,
+  defaultOutcome?: "succeeded" | "failed",
+): ResolvedLifecycleAttrs | CaptureError {
+  const lifecycle = normalizeLifecycle(draft.lifecycle, defaultLifecycle);
+  if (typeof lifecycle !== "string") return lifecycle;
+  const outcome = normalizeOutcome(draft.outcome ?? defaultOutcome);
+  if (outcome && typeof outcome !== "string") return outcome;
+  return {
+    lifecycle,
+    ...(draft.deprecated !== undefined ? { deprecated: Boolean(draft.deprecated) } : {}),
+    ...(outcome ? { outcome } : {}),
+  };
+}
 
 /**
  * Escape `\`, `[`, `]` for safe use inside the text portion of a markdown
@@ -667,6 +717,8 @@ export async function captureDecision(
 
   const now = new Date().toISOString();
   const createdById = draft.created_by_id ?? decidedById ?? null;
+  const status = lifecycleAttrs(draft, "active");
+  if ("error" in status) return status;
 
   const fm: Record<string, unknown> = {
     id,
@@ -684,7 +736,7 @@ export async function captureDecision(
     decided_at: now,
     created_at: now,
     ...(createdById ? { created_by: createdById } : {}),
-    lifecycle: draft.lifecycle ?? "active",
+    ...status,
   };
 
   await persistEntity({
@@ -749,6 +801,8 @@ export interface DecisionPatch {
   born_from?: string | null;
   superseded_by?: string | null;
   lifecycle?: string;
+  deprecated?: boolean | null;
+  outcome?: "succeeded" | "failed" | null;
 }
 
 export interface UpdateResult extends CaptureResult {
@@ -793,7 +847,7 @@ export async function updateDecision(
   const changed: string[] = [];
   const ops: Op[] = [];
 
-  const setScalar = (key: string, value: string | undefined) => {
+  const setScalar = (key: string, value: unknown) => {
     if (value === undefined) return;
     const v = value;
     if (v === "" || v === null) {
@@ -805,7 +859,7 @@ export async function updateDecision(
     } else if (fm[key] !== v) {
       fm[key] = v;
       changed.push(key);
-      ops.push({ kind: "set", field: key, value: v });
+      ops.push({ kind: "set", field: key, value: typeof v === "string" ? v : JSON.stringify(v) });
     }
   };
 
@@ -822,7 +876,17 @@ export async function updateDecision(
     });
   }
   if (patch.lifecycle !== undefined) {
-    setScalar("lifecycle", patch.lifecycle);
+    const lifecycle = normalizeLifecycle(patch.lifecycle, "active");
+    if (typeof lifecycle !== "string") return lifecycle;
+    setScalar("lifecycle", lifecycle);
+  }
+  if (patch.deprecated !== undefined) {
+    setScalar("deprecated", patch.deprecated);
+  }
+  if (patch.outcome !== undefined) {
+    const outcome = normalizeOutcome(patch.outcome);
+    if (outcome && typeof outcome !== "string") return outcome;
+    setScalar("outcome", outcome ?? null);
   }
   if (patch.born_from !== undefined) {
     if (patch.born_from === null || patch.born_from === "") {
@@ -953,6 +1017,8 @@ export type NodeTypeName =
 export interface EntityPatch {
   summary?: string;
   lifecycle?: string;
+  deprecated?: boolean | null;
+  outcome?: "succeeded" | "failed" | null;
   intent_ids?: string[];
   intent_ids_add?: string[];
   intent_ids_remove?: string[];
@@ -1034,7 +1100,19 @@ export async function updateEntity(opts: {
   };
 
   setScalar("summary", typeof patch.summary === "string" ? patch.summary.trim() : undefined);
-  setScalar("lifecycle", patch.lifecycle);
+  if (patch.lifecycle !== undefined) {
+    const lifecycle = normalizeLifecycle(patch.lifecycle, "active");
+    if (typeof lifecycle !== "string") return lifecycle;
+    setScalar("lifecycle", lifecycle);
+  }
+  if (patch.deprecated !== undefined) {
+    setScalar("deprecated", patch.deprecated);
+  }
+  if (patch.outcome !== undefined) {
+    const outcome = normalizeOutcome(patch.outcome);
+    if (outcome && typeof outcome !== "string") return outcome;
+    setScalar("outcome", outcome ?? null);
+  }
   if (patch.born_from !== undefined) {
     if (patch.born_from === null || patch.born_from === "") {
       if ("born_from" in fm) {
@@ -1188,6 +1266,8 @@ export interface IntentDraft {
   actors_usernames?: string[];
   /** Optional: defaults to "active". */
   lifecycle?: string;
+  deprecated?: boolean;
+  outcome?: "succeeded" | "failed";
 }
 
 export async function captureIntent(
@@ -1231,6 +1311,8 @@ export async function captureIntent(
   const title = draft.title?.trim() || summary;
 
   const now = new Date().toISOString();
+  const status = lifecycleAttrs(draft, "active");
+  if ("error" in status) return status;
   const fm: Record<string, unknown> = {
     id,
     doco_id: docoId,
@@ -1241,7 +1323,7 @@ export async function captureIntent(
     ...(actorIds.length > 0 ? { actors: actorIds } : {}),
     created_at: now,
     created_by: wantedById,
-    lifecycle: draft.lifecycle ?? "active",
+    ...status,
   };
 
   await persistEntity({
@@ -1318,6 +1400,8 @@ export interface EvalDraft {
   authored_by_username?: string;
   /** Optional default: lifecycle = "active". */
   lifecycle?: string;
+  deprecated?: boolean;
+  outcome?: "succeeded" | "failed";
 }
 
 export async function captureEval(
@@ -1366,6 +1450,8 @@ export async function captureEval(
     draft.summary?.trim() ||
     (typeof draft.description === "string" && draft.description.trim()) ||
     `Eval: ${draft.name.trim()}`;
+  const status = lifecycleAttrs(draft, "active");
+  if ("error" in status) return status;
   const fm: Record<string, unknown> = {
     id,
     doco_id: docoId,
@@ -1384,7 +1470,7 @@ export async function captureEval(
     last_status: "pending",
     created_at: now,
     created_by: authoredById,
-    lifecycle: draft.lifecycle ?? "active",
+    ...status,
   };
 
   await persistEntity({
@@ -1457,8 +1543,10 @@ export interface ActionDraft {
   created_by_id?: string;
   /** Optional: raw markdown body appended after frontmatter. */
   body_md?: string;
-  /** Optional: defaults to "succeeded". */
+  /** Optional: defaults to "retired" with `outcome: "succeeded"`. */
   lifecycle?: string;
+  deprecated?: boolean;
+  outcome?: "succeeded" | "failed";
 }
 
 export async function captureAction(
@@ -1497,6 +1585,8 @@ export async function captureAction(
   const summary = draft.summary.trim();
   const now = new Date().toISOString();
   const createdById = draft.created_by_id ?? actorId;
+  const status = lifecycleAttrs(draft, "retired", "succeeded");
+  if ("error" in status) return status;
 
   const fm: Record<string, unknown> = {
     id,
@@ -1513,7 +1603,7 @@ export async function captureAction(
     performed_at: now,
     created_at: now,
     ...(createdById ? { created_by: createdById } : {}),
-    lifecycle: draft.lifecycle ?? "succeeded",
+    ...status,
   };
 
   await persistEntity({
@@ -1592,8 +1682,10 @@ export interface LogDraft {
   performed_by_username?: string;
   created_by_id?: string;
   body_md?: string;
-  /** Optional override. Logs default to "succeeded" (the event happened). */
+  /** Optional override. Logs default to "retired" with `outcome: "succeeded"`. */
   lifecycle?: string;
+  deprecated?: boolean;
+  outcome?: "succeeded" | "failed";
 }
 
 export async function captureLog(
@@ -1643,6 +1735,8 @@ export async function captureLog(
   const summary = draft.summary.trim();
   const now = new Date().toISOString();
   const createdById = draft.created_by_id ?? actorId;
+  const status = lifecycleAttrs(draft, "retired", "succeeded");
+  if ("error" in status) return status;
 
   const fm: Record<string, unknown> = {
     id,
@@ -1660,7 +1754,7 @@ export async function captureLog(
     ...(draft.inputs !== undefined ? { inputs: draft.inputs } : {}),
     created_at: now,
     ...(createdById ? { created_by: createdById } : {}),
-    lifecycle: draft.lifecycle ?? "succeeded",
+    ...status,
   };
 
   await persistEntity({
@@ -1745,6 +1839,8 @@ export interface RuleDraft {
   body_md?: string;
   /** Optional: defaults to "active". */
   lifecycle?: string;
+  deprecated?: boolean;
+  outcome?: "succeeded" | "failed";
 }
 
 export async function captureRule(
@@ -1792,6 +1888,8 @@ export async function captureRule(
   const summary = draft.summary.trim();
   const now = new Date().toISOString();
   const createdById = draft.created_by_id ?? authorId;
+  const status = lifecycleAttrs(draft, "active");
+  if ("error" in status) return status;
 
   // Empty selector — matches everything by having nothing to filter
   // on. Authors can still hand-edit `applies_to` via patch.
@@ -1814,7 +1912,7 @@ export async function captureRule(
     on_violation: severity === "blocker" ? "block" : "warn",
     created_at: now,
     ...(createdById ? { created_by: createdById } : {}),
-    lifecycle: draft.lifecycle ?? "active",
+    ...status,
   };
 
   await persistEntity({
@@ -1880,6 +1978,8 @@ export interface GuidanceArticleDraft {
   created_by_id?: string;
   /** Optional: defaults to "active". */
   lifecycle?: string;
+  deprecated?: boolean;
+  outcome?: "succeeded" | "failed";
 }
 
 export interface NodeAuthoringArticleDraft {
@@ -1903,6 +2003,8 @@ export interface NodeAuthoringArticleDraft {
   authored_by_username?: string;
   created_by_id?: string;
   lifecycle?: string;
+  deprecated?: boolean;
+  outcome?: "succeeded" | "failed";
 }
 
 async function resolveArticleAuthor(draft: {
@@ -1968,10 +2070,7 @@ function normalizeNodeAuthoringPredicate(
   return predicate;
 }
 
-export interface ArticleCaptureExtras {
-  /** When set, the new row carries `supersedes: <oldId>` in its frontmatter. */
-  supersedes?: string;
-}
+export type ArticleCaptureExtras = Record<string, never>;
 
 type ArticleScope = "doco" | "org";
 type ArticleNodeType = "guidance_primitive" | "neuron_authoring_primitive";
@@ -1992,19 +2091,15 @@ function articleScopeField(scope: ArticleScope, scopeId: string): Record<string,
   return scope === "doco" ? { doco_id: scopeId } : { org_id: scopeId };
 }
 
-function articleExtrasFm(extras: ArticleCaptureExtras): Record<string, string> {
-  return extras.supersedes ? { supersedes: extras.supersedes } : {};
-}
-
-function articleAuditAfter(payload: ArticlePayload, extras: ArticleCaptureExtras) {
-  return { summary: payload.summary, ...articleExtrasFm(extras) };
+function articleAuditAfter(payload: ArticlePayload) {
+  return { summary: payload.summary };
 }
 
 async function buildGuidanceArticlePayload(
   scope: ArticleScope,
   scopeId: string,
   draft: GuidanceArticleDraft,
-  extras: ArticleCaptureExtras,
+  _extras: ArticleCaptureExtras,
 ): Promise<ArticlePayload | CaptureError> {
   if (!draft.summary?.trim()) return { error: "summary is required." };
   const author = await resolveArticleAuthor(draft);
@@ -2013,17 +2108,18 @@ async function buildGuidanceArticlePayload(
   const id = `guidance_primitive_${generateUlid()}`;
   const summary = draft.summary.trim();
   const now = new Date().toISOString();
-  const lifecycle = draft.lifecycle ?? "active";
+  const status = lifecycleAttrs(draft, "active");
+  if ("error" in status) return status;
+  const lifecycle = String(status.lifecycle);
   const createdById = draft.created_by_id ?? author;
   const fm: Record<string, unknown> = {
     id,
     ...articleScopeField(scope, scopeId),
     primitive_kind: "guidance",
     summary,
-    ...articleExtrasFm(extras),
     created_at: now,
     created_by: createdById,
-    lifecycle,
+    ...status,
   };
 
   return {
@@ -2043,7 +2139,7 @@ async function buildNodeAuthoringArticlePayload(
   scope: ArticleScope,
   scopeId: string,
   draft: NodeAuthoringArticleDraft,
-  extras: ArticleCaptureExtras,
+  _extras: ArticleCaptureExtras,
 ): Promise<ArticlePayload | CaptureError> {
   if (!draft.summary?.trim()) return { error: "summary is required." };
   if (draft.evaluation_kind !== "deterministic" && draft.evaluation_kind !== "probabilistic") {
@@ -2057,7 +2153,9 @@ async function buildNodeAuthoringArticlePayload(
   const id = `neuron_authoring_primitive_${generateUlid()}`;
   const summary = draft.summary.trim();
   const now = new Date().toISOString();
-  const lifecycle = draft.lifecycle ?? "active";
+  const status = lifecycleAttrs(draft, "active");
+  if ("error" in status) return status;
+  const lifecycle = String(status.lifecycle);
   const createdById = draft.created_by_id ?? author;
   const firesWhen = Array.isArray(draft.fires_when_neuron_lifecycle)
     ? draft.fires_when_neuron_lifecycle.filter((v) => typeof v === "string" && v.length > 0)
@@ -2071,10 +2169,9 @@ async function buildNodeAuthoringArticlePayload(
     predicate,
     ...(firesWhen.length > 0 ? { fires_when_neuron_lifecycle: firesWhen } : {}),
     on_violation: draft.on_violation ?? "block",
-    ...articleExtrasFm(extras),
     created_at: now,
     created_by: createdById,
-    lifecycle,
+    ...status,
   };
 
   return {
@@ -2294,7 +2391,7 @@ export async function captureOrgGuidanceArticle(
     entity_type: payload.entityType,
     entity_id: payload.id,
     op: "entity.create",
-    after: articleAuditAfter(payload, extras),
+    after: articleAuditAfter(payload),
   });
 
   return { ok: true, id: payload.id, duration_ms: Math.round(performance.now() - startedAt) };
@@ -2317,7 +2414,7 @@ export async function captureOrgNodeAuthoringArticle(
     entity_type: payload.entityType,
     entity_id: payload.id,
     op: "entity.create",
-    after: articleAuditAfter(payload, extras),
+    after: articleAuditAfter(payload),
   });
 
   return { ok: true, id: payload.id, duration_ms: Math.round(performance.now() - startedAt) };
@@ -2333,7 +2430,8 @@ export async function transitionArticleLifecycle(opts: {
   scopeId: string;
   entityType: "guidance_primitive" | "neuron_authoring_primitive";
   articleId: string;
-  newLifecycle: "active" | "superseded" | "abandoned";
+  newLifecycle: "active" | "retired";
+  supersededBy?: string;
   actorId: string | null;
   reason?: string;
 }): Promise<{ ok: true } | CaptureError> {
@@ -2366,6 +2464,7 @@ export async function transitionArticleLifecycle(opts: {
     }
   })();
   fm.lifecycle = opts.newLifecycle;
+  if (opts.supersededBy) fm.superseded_by = opts.supersededBy;
   const updated_at = new Date().toISOString();
 
   await withClient(async (c) => {
@@ -2394,7 +2493,10 @@ export async function transitionArticleLifecycle(opts: {
     entity_id: opts.articleId,
     op: "lifecycle.transition",
     before: { lifecycle: before.lifecycle ?? "active" },
-    after: { lifecycle: opts.newLifecycle },
+    after: {
+      lifecycle: opts.newLifecycle,
+      ...(opts.supersededBy ? { superseded_by: opts.supersededBy } : {}),
+    },
   };
   if (opts.scope === "doco") evt.docoId = opts.scopeId;
   else evt.orgId = opts.scopeId;
@@ -2474,6 +2576,8 @@ export interface ReferenceDraft {
   created_by_username?: string;
   created_by_id?: string;
   lifecycle?: string;
+  deprecated?: boolean;
+  outcome?: "succeeded" | "failed";
 }
 
 export async function captureReference(
@@ -2504,6 +2608,8 @@ export async function captureReference(
   const locator = draft.locator.trim();
   const summary = draft.summary?.trim() || `${draft.ref_type}: ${locator}`;
   const now = new Date().toISOString();
+  const status = lifecycleAttrs(draft, "active");
+  if ("error" in status) return status;
 
   const fm: Record<string, unknown> = {
     id,
@@ -2516,7 +2622,7 @@ export async function captureReference(
     ...(intentIds.length > 0 ? { intent_ids: intentIds } : {}),
     created_at: now,
     ...(createdById ? { created_by: createdById } : {}),
-    lifecycle: draft.lifecycle ?? "active",
+    ...status,
   };
 
   await persistEntity({
@@ -2590,6 +2696,8 @@ export interface StateDraft {
   body_md?: string;
   /** Optional: explicit lifecycle override. Defaults to "active". */
   lifecycle?: string;
+  deprecated?: boolean;
+  outcome?: "succeeded" | "failed";
 }
 
 export async function captureState(
@@ -2620,7 +2728,8 @@ export async function captureState(
   const summary = draft.summary.trim();
   const now = new Date().toISOString();
 
-  const lifecycle = draft.lifecycle?.trim() || "active";
+  const status = lifecycleAttrs(draft, "active");
+  if ("error" in status) return status;
 
   const follows: string[] = Array.isArray(draft.follows) ? draft.follows : [];
   const invariants: string[] = Array.isArray(draft.invariants)
@@ -2637,7 +2746,7 @@ export async function captureState(
     ...(follows.length > 0 ? { follows } : {}),
     created_at: now,
     ...(createdById ? { created_by: createdById } : {}),
-    lifecycle,
+    ...status,
   };
 
   await persistEntity({

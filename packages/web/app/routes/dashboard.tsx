@@ -1,13 +1,12 @@
 // /dashboard — signed-in welcome page.
 //
-// Three panels:
+// Two evenly-split columns:
 //   - Header: "Good <verb>, <username>" with +Doco / +Org buttons
 //     on the right (desktop)
-//   - Main column: Activity heatmap + Latest activity feed (10 items)
+//   - Left column: one-click org/Doco access rows and newly available
+//     templates
+//   - Right column: Activity heatmap + Latest activity feed (10 items)
 //     across every doco the user has a stake in
-//   - Right column (desktop) / below (mobile): "Newly available
-//     templates" — each template card carries a +Doco button that
-//     starts /new-doco with template_handle pre-passed
 
 import { withClient } from "@doco/db";
 import { entityUrl } from "@doco/shared";
@@ -26,9 +25,10 @@ import {
 } from "~/lib/activity-feed";
 import { cn } from "~/lib/cn";
 import { isMyDoco, listInvitedDocoIdsForPrincipal } from "~/lib/doco-access.server";
+import { ENTITY_TABLES, listDocoStats } from "~/lib/doco-stats.server";
 import { DOCO_TEMPLATES } from "~/lib/doco-templates-meta";
 import { pickGreetingVerb } from "~/lib/greeting";
-import { listAllDocos, loadHostConfig } from "~/lib/host.server";
+import { listAllDocos, listMyOrgs, loadHostConfig } from "~/lib/host.server";
 import { getCurrentPrincipal } from "~/lib/session.server";
 import { timeAgo } from "~/lib/time-ago";
 
@@ -56,6 +56,28 @@ interface FeedEvent {
   after: Record<string, unknown> | null;
 }
 
+interface AccessRow {
+  id: string;
+  href: string;
+  label: string;
+  eyebrow: string;
+  activeNodes: number;
+  totalNodes: number;
+  lastUpdatedAt: string | null;
+}
+
+interface NodeActivityStats {
+  activeNodes: number;
+  totalNodes: number;
+  lastUpdatedAt: string | null;
+}
+
+const EMPTY_NODE_ACTIVITY: NodeActivityStats = {
+  activeNodes: 0,
+  totalNodes: 0,
+  lastUpdatedAt: null,
+};
+
 export async function loader({ request }: { request: Request }) {
   const me = await getCurrentPrincipal(request);
   if (!me) throw redirect("/sign-in");
@@ -65,6 +87,39 @@ export async function loader({ request }: { request: Request }) {
   const mine = await Promise.all(allDocos.map((d) => isMyDoco({ ownerId: d.ownerId }, me.id)));
   const docos = allDocos.filter((d, i) => mine[i] || invitedDocoIds.has(d.docoId));
   const myDocoIds = docos.map((d) => d.docoId);
+
+  const [docoStats, orgsRaw] = await Promise.all([listDocoStats(myDocoIds), listMyOrgs(me.id)]);
+  const orgStats = await listOrgActivityStats(orgsRaw.map((o) => o.id));
+
+  const orgs: AccessRow[] = orgsRaw
+    .map((o) => {
+      const stats = orgStats.get(o.id) ?? EMPTY_NODE_ACTIVITY;
+      return {
+        id: o.id,
+        href: `/orgs/${o.slug}`,
+        label: o.display_name || o.slug,
+        eyebrow: `Org · ${o.slug}`,
+        activeNodes: stats.activeNodes,
+        totalNodes: stats.totalNodes,
+        lastUpdatedAt: stats.lastUpdatedAt,
+      };
+    })
+    .sort(sortAccessRows);
+
+  const docoRows: AccessRow[] = docos
+    .map((d) => {
+      const stats = docoStats.get(d.docoId);
+      return {
+        id: d.docoId,
+        href: `/${d.handle}`,
+        label: d.handle,
+        eyebrow: `Doco · ${d.ownerUsername}`,
+        activeNodes: stats?.activeNeurons ?? 0,
+        totalNodes: stats?.neurons ?? 0,
+        lastUpdatedAt: stats?.lastUpdatedAt ?? null,
+      };
+    })
+    .sort(sortAccessRows);
 
   const since = new Date();
   since.setDate(since.getDate() - HEATMAP_WEEKS * 7);
@@ -160,6 +215,8 @@ export async function loader({ request }: { request: Request }) {
     host: await loadHostConfig(),
     me,
     greetingVerb: pickGreetingVerb(),
+    orgs,
+    docos: docoRows,
     byDay,
     feed,
     templates,
@@ -176,7 +233,7 @@ export default function Dashboard({
 }: {
   loaderData: Awaited<ReturnType<typeof loader>>;
 }) {
-  const { me, greetingVerb, byDay, feed, templates } = loaderData;
+  const { me, greetingVerb, orgs, docos, byDay, feed, templates } = loaderData;
   return (
     <div>
       <SiteHeader mode="host" me={me} />
@@ -202,36 +259,11 @@ export default function Dashboard({
           </div>
         </header>
 
-        <div className="grid grid-cols-1 gap-6 min-[840px]:grid-cols-[minmax(0,1fr)_320px]">
+        <div className="grid grid-cols-1 gap-6 min-[840px]:grid-cols-2">
           <section className="space-y-4">
-            <Card>
-              <CardHeader>
-                <CardTitle>Your activity</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ActivityHeatmap byDay={byDay} weeks={HEATMAP_WEEKS} />
-              </CardContent>
-            </Card>
+            <AccessListCard title="Your orgs" rows={orgs} emptyLabel="No orgs yet." />
+            <AccessListCard title="Your Docos" rows={docos} emptyLabel="No Docos yet." />
 
-            <Card>
-              <CardHeader className="px-4 py-3">
-                <CardTitle className="text-sm">Latest activity in your docos</CardTitle>
-              </CardHeader>
-              <CardContent className="p-0">
-                {feed.length === 0 ? (
-                  <p className="px-5 py-6 text-xs text-muted-foreground">No activity yet.</p>
-                ) : (
-                  <div className="divide-y divide-border">
-                    {feed.map((e) => (
-                      <DashboardFeedLine key={e.event_id} event={e} />
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </section>
-
-          <aside className="space-y-4">
             <Card>
               <CardHeader className="px-4 py-3">
                 <CardTitle className="text-sm">Newly available templates</CardTitle>
@@ -274,10 +306,153 @@ export default function Dashboard({
                 )}
               </CardContent>
             </Card>
+          </section>
+
+          <aside className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle>Your activity matrix</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ActivityHeatmap byDay={byDay} weeks={HEATMAP_WEEKS} />
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="px-4 py-3">
+                <CardTitle className="text-sm">Latest activity in your Docos</CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                {feed.length === 0 ? (
+                  <p className="px-5 py-6 text-xs text-muted-foreground">No activity yet.</p>
+                ) : (
+                  <div className="divide-y divide-border">
+                    {feed.map((e) => (
+                      <DashboardFeedLine key={e.event_id} event={e} />
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           </aside>
         </div>
       </main>
     </div>
+  );
+}
+
+async function listOrgActivityStats(
+  orgIds: readonly string[],
+): Promise<Map<string, NodeActivityStats>> {
+  const out = new Map<string, NodeActivityStats>();
+  for (const id of orgIds) out.set(id, { ...EMPTY_NODE_ACTIVITY });
+  if (orgIds.length === 0) return out;
+
+  const nodesUnionSql = ENTITY_TABLES.map((t) => `SELECT doco_id, lifecycle FROM ${t}`).join(
+    " UNION ALL ",
+  );
+
+  return withClient(async (c) => {
+    const [nodeRows, updatedRows] = await Promise.all([
+      c.query<{ owner_id: string; total_nodes: string; active_nodes: string }>(
+        `SELECT d.owner_id,
+                COUNT(*)::text AS total_nodes,
+                COUNT(*) FILTER (WHERE COALESCE(t.lifecycle, 'active') = 'active')::text AS active_nodes
+           FROM (${nodesUnionSql}) t
+           JOIN docos d ON d.id = t.doco_id
+          WHERE d.owner_id = ANY($1)
+          GROUP BY d.owner_id`,
+        [[...orgIds]],
+      ),
+      c.query<{ owner_id: string; last_at: string | null }>(
+        `SELECT d.owner_id, MAX(a.at)::text AS last_at
+           FROM audit_events a
+           JOIN docos d ON d.id = a.doco_id
+          WHERE d.owner_id = ANY($1)
+          GROUP BY d.owner_id`,
+        [[...orgIds]],
+      ),
+    ]);
+
+    for (const row of nodeRows.rows) {
+      const stats = out.get(row.owner_id);
+      if (stats) {
+        stats.activeNodes = Number(row.active_nodes);
+        stats.totalNodes = Number(row.total_nodes);
+      }
+    }
+    for (const row of updatedRows.rows) {
+      const stats = out.get(row.owner_id);
+      if (stats) stats.lastUpdatedAt = row.last_at;
+    }
+    return out;
+  });
+}
+
+function sortAccessRows(a: AccessRow, b: AccessRow): number {
+  if (a.lastUpdatedAt && b.lastUpdatedAt) return b.lastUpdatedAt.localeCompare(a.lastUpdatedAt);
+  if (a.lastUpdatedAt) return -1;
+  if (b.lastUpdatedAt) return 1;
+  return a.label.localeCompare(b.label);
+}
+
+function AccessListCard({
+  title,
+  rows,
+  emptyLabel,
+}: {
+  title: string;
+  rows: AccessRow[];
+  emptyLabel: string;
+}) {
+  return (
+    <Card>
+      <CardHeader className="px-4 py-3">
+        <CardTitle className="text-sm">{title}</CardTitle>
+      </CardHeader>
+      <CardContent className="p-0">
+        {rows.length === 0 ? (
+          <p className="px-5 py-6 text-xs text-muted-foreground">{emptyLabel}</p>
+        ) : (
+          <ul className="divide-y divide-border">
+            {rows.map((row) => (
+              <li key={row.id}>
+                <Link to={row.href} className="block px-4 py-3 hover:bg-input">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-semibold text-primary">{row.label}</div>
+                      <div className="mt-0.5 truncate text-[11px] uppercase tracking-wide text-muted-foreground">
+                        {row.eyebrow}
+                      </div>
+                    </div>
+                    <div className="shrink-0 text-right">
+                      <div className="font-mono text-sm tabular-nums text-foreground">
+                        {row.activeNodes}/{row.totalNodes}
+                      </div>
+                      <div className="text-[11px] text-muted-foreground">active nodes</div>
+                    </div>
+                  </div>
+                  <div className="mt-2 text-xs text-muted-foreground">
+                    Last modified{" "}
+                    {row.lastUpdatedAt ? (
+                      <time
+                        dateTime={row.lastUpdatedAt}
+                        title={row.lastUpdatedAt}
+                        suppressHydrationWarning
+                      >
+                        {timeAgo(row.lastUpdatedAt)}
+                      </time>
+                    ) : (
+                      "—"
+                    )}
+                  </div>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 

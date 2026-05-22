@@ -238,6 +238,8 @@ export function makeUpdateRoute(cfg: UpdateRouteConfig) {
       }
       const lifecycleChange =
         patch.lifecycle !== undefined && patch.lifecycle !== existing.lifecycle;
+      const claimStateChange =
+        lifecycleChange || patch.deprecated !== undefined || patch.outcome !== undefined;
       const docoRole = await getDocoLevelRole(
         { ownerId: meta.ownerId, docoId: meta.docoId },
         me.id,
@@ -248,9 +250,9 @@ export function makeUpdateRoute(cfg: UpdateRouteConfig) {
           { status: 403 },
         );
       }
-      if (lifecycleChange && !roleAtLeast(docoRole, "approver")) {
+      if (claimStateChange && !roleAtLeast(docoRole, "approver")) {
         return Response.json(
-          { error: "Forbidden: approver role required to change lifecycle." },
+          { error: "Forbidden: approver role required to change lifecycle/deprecated/outcome." },
           { status: 403 },
         );
       }

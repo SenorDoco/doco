@@ -5,7 +5,9 @@
 //   1. POST /<doco-handle>/api/decisions.json — capture a new Decision
 //                                                  that supersedes the prior.
 //   2. PATCH /<doco-handle>/api/decisions/<prior>.json — set lifecycle to
-//                                                           "superseded".
+//                                                           "retired" and
+//                                                           superseded_by to
+//                                                           the new Decision.
 //
 // Today only Decisions are supported (the most common case). Intent,
 // Rule, Action supersession would mirror this — followup if needed.
@@ -22,7 +24,7 @@ export const supersedeCmd = defineCommand({
   meta: {
     name: "supersede",
     description:
-      "Capture a new Decision that supersedes the prior, then mark the prior as superseded. Two HTTP calls hidden behind one CLI invocation.",
+      "Capture a new Decision that supersedes the prior, then retire the prior with a superseded_by synapse.",
   },
   args: {
     id: {
@@ -59,11 +61,6 @@ export const supersedeCmd = defineCommand({
     "decided-by-username": {
       type: "string",
       description: "Optional principal username to set as decided_by on the new Decision.",
-    },
-    "prior-lifecycle": {
-      type: "string",
-      description:
-        "Lifecycle to set on the prior Decision. Default 'superseded'; pass 'abandoned' to abandon without a successor (rare in supersede flow).",
     },
   },
   async run({ args }) {
@@ -134,30 +131,29 @@ export const supersedeCmd = defineCommand({
     }
     console.log(checkmark(`Captured new Decision: ${newId}`));
 
-    const priorLifecycle = String(args["prior-lifecycle"] ?? "superseded");
     const patchUrl = `${host}/${encodeURIComponent(docoRef)}/api/decisions/${priorId}.json`;
     let patchResp: Response;
     try {
       patchResp = await fetch(patchUrl, {
         method: "PATCH",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${access}` },
-        body: JSON.stringify({ lifecycle: priorLifecycle }),
+        body: JSON.stringify({ lifecycle: "retired", superseded_by: newId }),
       });
     } catch (e) {
       console.error(cross(`Network error PATCHing ${patchUrl}: ${(e as Error).message}`));
-      console.error(c.warn(`  The new Decision ${newId} was captured but the prior was NOT marked as superseded. Retry: doco patch decision ${priorId} --lifecycle ${priorLifecycle}`));
+      console.error(c.warn(`  The new Decision ${newId} was captured but the prior was NOT retired. Retry: doco patch decision ${priorId} --lifecycle retired --superseded-by ${newId}`));
       process.exit(1);
     }
     if (!patchResp.ok) {
       const text = await patchResp.text();
       console.error(cross(`PATCH on prior failed (HTTP ${patchResp.status}): ${text}`));
-      console.error(c.warn(`  The new Decision ${newId} is in place. Retry the prior PATCH manually: doco patch decision ${priorId} --lifecycle ${priorLifecycle}`));
+      console.error(c.warn(`  The new Decision ${newId} is in place. Retry the prior PATCH manually: doco patch decision ${priorId} --lifecycle retired --superseded-by ${newId}`));
       process.exit(1);
     }
     const patchJson = (await patchResp.json()) as { footer_lines?: string[] };
     if (Array.isArray(patchJson.footer_lines)) {
       for (const line of patchJson.footer_lines) console.log(line);
     }
-    console.log(checkmark(`Marked prior Decision ${priorId} as ${priorLifecycle}.`));
+    console.log(checkmark(`Retired prior Decision ${priorId} with superseded_by ${newId}.`));
   },
 });

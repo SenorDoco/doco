@@ -4,16 +4,16 @@
 // Two classes of node:
 //   - Claim: Decision, Intent, Rule, Action, Eval, Reference.
 //     Mutable while in a draft lifecycle; frozen on activation. On a frozen
-//     claim, only `lifecycle`, `superseded_by`, and additive edge fields
+//     claim, only lifecycle metadata, `superseded_by`, and additive edge fields
 //     (`*_add`) can be patched. Body, summary, alternatives, and core fields
 //     are locked — editorial fixes happen via supersession.
 //   - Record: Principal, Organization, Doco metadata, Tag, Idea.
 //     Always mutable via PATCH. They are state, not claims.
 //
-// Frozen lifecycles use the canonical six-value Lifecycle vocabulary
-// (proposed, active, succeeded, failed, superseded, abandoned) — see
-// shared/entities.ts. `proposed` is always mutable (drafting); the rest
-// freeze the claim except for the supersession path.
+// Frozen lifecycles use the canonical Lifecycle vocabulary
+// (drafted, proposed, active, retired) — see shared/entities.ts.
+// `drafted` and `proposed` are mutable; `active` and `retired` freeze
+// the claim except for lifecycle metadata and the supersession path.
 
 export type NodeClass = "claim" | "record";
 
@@ -49,13 +49,13 @@ export function nodeClassOf(entityType: string): NodeClass {
 // Per-type lifecycle states that put a claim into the frozen state.
 // `proposed` (and unset) leaves the claim mutable for drafting.
 const FROZEN_LIFECYCLES: Record<ClaimNodeType, ReadonlySet<string>> = {
-  decision: new Set(["active", "succeeded", "failed", "superseded", "abandoned"]),
-  intent: new Set(["active", "succeeded", "failed", "superseded", "abandoned"]),
-  rule: new Set(["active", "succeeded", "failed", "superseded", "abandoned"]),
-  guidance_primitive: new Set(["active", "succeeded", "failed", "superseded", "abandoned"]),
-  neuron_authoring_primitive: new Set(["active", "succeeded", "failed", "superseded", "abandoned"]),
-  action: new Set(["active", "succeeded", "failed", "superseded", "abandoned"]),
-  eval: new Set(["active", "succeeded", "failed", "superseded", "abandoned"]),
+  decision: new Set(["active", "retired"]),
+  intent: new Set(["active", "retired"]),
+  rule: new Set(["active", "retired"]),
+  guidance_primitive: new Set(["active", "retired"]),
+  neuron_authoring_primitive: new Set(["active", "retired"]),
+  action: new Set(["active", "retired"]),
+  eval: new Set(["active", "retired"]),
   // Log records a thing that happened — frozen from creation so the audit
   // trail stays trustworthy. Editorial fixes go through supersession.
   // Sentinel "*" is matched specially below to mean "any lifecycle, including unset".
@@ -80,6 +80,8 @@ export function isFrozen(entityType: string, lifecycle: string | undefined | nul
 // Everything else is rejected.
 const ALLOWED_ON_FROZEN: ReadonlySet<string> = new Set([
   "lifecycle",
+  "deprecated",
+  "outcome",
   "superseded_by",
   "intent_ids_add",
 ]);
@@ -113,7 +115,7 @@ export function validatePatch(
   const noun = entityType.charAt(0).toUpperCase() + entityType.slice(1);
   const hint =
     entityType === "decision"
-      ? `This ${noun} is frozen (lifecycle=${currentLifecycle}). Use POST /api/decisions.json to capture a superseding ${noun}, then PATCH the prior with {lifecycle: "superseded"}.`
+      ? `This ${noun} is frozen (lifecycle=${currentLifecycle}). Use POST /api/decisions.json to capture a superseding ${noun}, then PATCH the prior with {lifecycle: "retired", superseded_by: <new id>}.`
       : `This ${noun} is frozen (lifecycle=${currentLifecycle}). Capture a new ${noun} that supersedes it, then transition this one's lifecycle.`;
   return { allowed: false, rejected, hint };
 }

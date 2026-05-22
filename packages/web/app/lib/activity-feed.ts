@@ -3,7 +3,7 @@ export interface ActivityFeedDelta {
   after?: Record<string, unknown> | null;
 }
 
-const STRUCK_ACTIVITY_LIFECYCLES: ReadonlySet<string> = new Set(["abandoned", "superseded"]);
+const STRUCK_ACTIVITY_LIFECYCLES: ReadonlySet<string> = new Set(["retired"]);
 
 export function verbFromAuditOp(op: string): string {
   if (op === "entity.create") return "added";

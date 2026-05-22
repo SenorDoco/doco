@@ -333,7 +333,8 @@ const actionCmd = defineCommand({
       type: "string",
       description: "Optional path to a file whose contents become body_md.",
     },
-    lifecycle: { type: "string", description: "Optional. Defaults to 'succeeded'." },
+    lifecycle: { type: "string", description: "Optional. Defaults to 'retired'." },
+    outcome: { type: "string", description: "Optional. Defaults to 'succeeded'." },
   },
   async run({ args }) {
     const body: Record<string, unknown> = {
@@ -357,6 +358,7 @@ const actionCmd = defineCommand({
     );
     if (bodyMd !== undefined) body.body_md = bodyMd;
     if (args.lifecycle) body.lifecycle = args.lifecycle;
+    if (args.outcome) body.outcome = args.outcome;
     await postCapture("actions", body);
   },
 });
@@ -415,7 +417,8 @@ const logCmd = defineCommand({
       type: "string",
       description: "Optional path to a file whose contents become body_md.",
     },
-    lifecycle: { type: "string", description: "Optional. Defaults to 'succeeded'." },
+    lifecycle: { type: "string", description: "Optional. Defaults to 'retired'." },
+    outcome: { type: "string", description: "Optional. Defaults to 'succeeded'." },
   },
   async run({ args }) {
     const outputs = parseJson<Record<string, unknown>>(args.outputs as string, "outputs");
@@ -445,6 +448,7 @@ const logCmd = defineCommand({
     );
     if (bodyMd !== undefined) body.body_md = bodyMd;
     if (args.lifecycle) body.lifecycle = args.lifecycle;
+    if (args.outcome) body.outcome = args.outcome;
     await postCapture("logs", body);
   },
 });

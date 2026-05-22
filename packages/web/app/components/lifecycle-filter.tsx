@@ -6,8 +6,7 @@
 //
 // The component is "controlled" — state lives in the caller. Use
 // `initialVisibleLifecycles(...)` to seed the state with the project
-// default (everything except the four terminal lifecycles that hide
-// out of the box).
+// default (everything except retired, which hides out of the box).
 
 import { lifecycleColor } from "~/lib/neuron-colors";
 

@@ -1,9 +1,9 @@
-// /orgs/<org>/constitution/<entityType>/<id>/edit — modify or abandon
+// /orgs/<org>/constitution/<entityType>/<id>/edit — modify or retire
 // an existing org-level constitution primitive. Owner-only.
 //
-// POST intent=modify  → captures a new primitive with `supersedes: <id>`
-//                       and flips the old to lifecycle='superseded'.
-// POST intent=abandon → flips the old to lifecycle='abandoned'.
+// POST intent=modify → captures a new primitive and retires the old one
+//                      with `superseded_by: <new id>`.
+// POST intent=retire → flips the old to lifecycle='retired'.
 
 import { getOrgRole, withClient } from "@doco/db";
 import { useState } from "react";
@@ -121,13 +121,13 @@ export async function action({
   const form = await request.formData();
   const intent = String(form.get("intent") ?? "");
 
-  if (intent === "abandon") {
+  if (intent === "retire") {
     const result = await transitionArticleLifecycle({
       scope: "org",
       scopeId: org.id,
       entityType,
       articleId: params.primitiveId,
-      newLifecycle: "abandoned",
+      newLifecycle: "retired",
       actorId: me.id,
     });
     if ("error" in result) {
@@ -140,8 +140,6 @@ export async function action({
     const body_md = String(form.get("body_md") ?? "").trim();
     const summary = deriveArticleSummary(body_md);
     if (!summary) return Response.json({ error: "Primitive is required." }, { status: 400 });
-    const supersedes = params.primitiveId;
-
     let captured: Awaited<
       ReturnType<typeof captureOrgGuidanceArticle | typeof captureOrgNodeAuthoringArticle>
     >;
@@ -154,7 +152,6 @@ export async function action({
           authored_by_username: me.username,
           created_by_id: me.id,
         },
-        { supersedes },
       );
     } else {
       const evaluationKind =
@@ -180,7 +177,7 @@ export async function action({
           ? { spec: String(form.get("probabilistic_spec") ?? "").trim() }
           : { predicate: String(form.get("deterministic_predicate") ?? "").trim() }),
       };
-      captured = await captureOrgNodeAuthoringArticle(org.id, draft, { supersedes });
+      captured = await captureOrgNodeAuthoringArticle(org.id, draft);
     }
     if ("error" in captured) {
       return Response.json(captured, { status: 400 });
@@ -190,7 +187,8 @@ export async function action({
       scopeId: org.id,
       entityType,
       articleId: params.primitiveId,
-      newLifecycle: "superseded",
+      newLifecycle: "retired",
+      supersededBy: captured.id,
       actorId: me.id,
       reason: `superseded_by:${captured.id}`,
     });
@@ -253,8 +251,8 @@ export default function EditOrgPrimitive({
             <span className="font-mono">{org.slug}</span>
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Saving changes creates a new primitive and marks this one as <em>superseded</em>.
-            Abandoning leaves the old one in place but flips it to <em>abandoned</em>. Either way
+            Saving changes creates a new primitive and retires this one with a{" "}
+            <code>superseded_by</code> synapse. Retiring leaves the old one in place. Either way
             the audit log retains the full history.
           </p>
         </header>
@@ -362,10 +360,10 @@ export default function EditOrgPrimitive({
                 <button
                   type="submit"
                   name="intent"
-                  value="abandon"
+                  value="retire"
                   className="rounded-md border border-destructive px-4 py-2 text-sm font-semibold text-destructive hover:bg-destructive/10"
                 >
-                  Abandon primitive
+                  Retire primitive
                 </button>
                 <Link
                   to={`/orgs/${org.slug}/constitution`}
