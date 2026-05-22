@@ -4,7 +4,6 @@ import { Breadcrumb, hostBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent } from "~/components/card";
 import { SingleColumnPageMain } from "~/components/page-main";
 import { SiteHeader } from "~/components/site-header";
-import { WizardStepper } from "~/components/wizard-stepper";
 import { DOCO_TEMPLATES } from "~/lib/doco-templates-meta";
 import { isOrgMember, listMyOrgs, lookupOrgHandle } from "~/lib/org-helpers.server";
 import {
@@ -16,16 +15,16 @@ import {
 import { getCurrentPrincipal } from "~/lib/session.server";
 
 /**
- * /new-doco — Step 1 of 3 in the doco creation wizard.
+ * /new-doco — doco creation form.
  *
  * Captures the template, org, doco name, and privacy settings in one
  * form. Submitting creates the Doco immediately, then redirects to the
  * post-create concepts page.
  *
- * Wizard map:
- *   /new-doco                  Step 1 · Create the Doco
- *   /:handle/welcome           Step 2 · Key Doco concepts
- *   /:handle/onboarding/agent  Step 3 · Bootstrap and collaborate
+ * Flow map:
+ *   /new-doco                  Create the Doco
+ *   /:handle/welcome           Key Doco concepts
+ *   /:handle/onboarding/agent  Bootstrap and collaborate
  */
 
 const DEFAULT_TEMPLATE_HANDLE = "generic";
@@ -173,7 +172,7 @@ export async function action({ request }: { request: Request }) {
 }
 
 export function meta() {
-  return [{ title: "New doco · Step 1 of 3 · Doco" }];
+  return [{ title: "New doco · Doco" }];
 }
 
 export default function NewDocoStep1({
@@ -211,13 +210,12 @@ export default function NewDocoStep1({
         <header>
           <h1 className="text-2xl font-semibold">New doco</h1>
         </header>
-        <WizardStepper current={1} />
         <Card>
-          <CardContent>
+          <CardContent className="pt-4">
             <Form method="post" className="space-y-5">
               <fieldset className="space-y-2">
-                <legend className="text-xs font-semibold uppercase text-muted-foreground">
-                  Template
+                <legend className="text-sm font-semibold text-foreground">
+                  With this new doco, do you want to document something in particular?
                 </legend>
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                   {DOCO_TEMPLATES.map((template) => (
