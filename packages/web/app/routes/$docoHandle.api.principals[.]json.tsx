@@ -81,7 +81,7 @@ export async function action({
   const raw = {
     id,
     doco_id: meta.docoId,
-    entity_type: "principal",
+    neuron_type: "principal",
     summary,
     type,
     username,

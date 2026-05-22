@@ -38,7 +38,7 @@ export async function addAgentPrincipal(
   const yamlObj = {
     id,
     doco_id: `doco_${generateUlid()}` as EntityId<"doco">,
-    entity_type: "principal",
+    neuron_type: "principal",
     summary: `Agent ${opts.username}.`,
     type: "agent",
     username: opts.username,

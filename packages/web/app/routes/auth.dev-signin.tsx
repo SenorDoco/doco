@@ -50,7 +50,7 @@ async function ensureTestPrincipal(username: TestUsername): Promise<string> {
   const id = `principal_${ulid()}`;
   const raw_yaml = JSON.stringify({
     id,
-    entity_type: "principal",
+    neuron_type: "principal",
     username,
     type: "person",
     note: "Lazy-created by /auth/dev-signin for testing. Has no doco_users grants by default.",
