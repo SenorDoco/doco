@@ -1,7 +1,7 @@
 // /<doco-handle>/constitution/guidance/new — standalone form for
 // authoring a Doco-level guidance article. Prose-only meta-rule; no
 // automated check. The landing page at /<doco>/constitution links
-// here from the "Add guidance article" button.
+// here from the "Add guidance primitive" button.
 
 import { Form, Link, redirect, useActionData } from "react-router";
 import { Breadcrumb, docoBreadcrumb } from "~/components/breadcrumb";

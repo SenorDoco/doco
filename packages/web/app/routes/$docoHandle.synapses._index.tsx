@@ -80,8 +80,8 @@ export async function loader({
 }
 
 export function meta({ data }: { data: Awaited<ReturnType<typeof loader>> | undefined }) {
-  if (!data) return [{ title: "Edges · Doco" }];
-  return [{ title: `Edges · ${data.handle} · Doco` }];
+  if (!data) return [{ title: "Synapses · Doco" }];
+  return [{ title: `Synapses · ${data.handle} · Doco` }];
 }
 
 function edgeKey(e: { synapse_type: string; from_id: string; to_id: string }): string {
@@ -99,10 +99,10 @@ export default function EdgesIndex({
       <SiteHeader mode="host" me={me} />
       <main className="mx-auto max-w-6xl px-6 py-6 space-y-4">
         <Breadcrumb
-          items={docoBreadcrumb({ ownerSlug, handle, pageLabel: "Edges" })}
+          items={docoBreadcrumb({ ownerSlug, handle, pageLabel: "Synapses" })}
         />
         <header className="flex items-baseline justify-between gap-3">
-          <h1 className="text-2xl font-semibold">Edges</h1>
+          <h1 className="text-2xl font-semibold">Synapses</h1>
           <div className="text-xs text-muted-foreground">
             {synapses.length} edge{synapses.length === 1 ? "" : "s"}
           </div>
@@ -114,7 +114,7 @@ export default function EdgesIndex({
           <CardContent className="p-0">
             {synapses.length === 0 ? (
               <p className="px-5 py-6 text-xs text-muted-foreground">
-                No synapses yet. Edges materialize automatically when a node references another node
+                No synapses yet. Synapses materialize automatically when a neuron references another neuron
                 (e.g. a Decision's intent_ids). Patch a node's reference field and the edge appears.
               </p>
             ) : (

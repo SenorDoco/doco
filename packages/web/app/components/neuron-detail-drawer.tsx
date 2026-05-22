@@ -1,5 +1,5 @@
 // Side drawer that overlays the entity graph on the node detail view.
-// Renders one detail "page" at a time — Relevant nodes, Edges, History,
+// Renders one detail "page" at a time — Relevant neurons, Synapses, History,
 // or Metadata — based on the `open` kind. Closing returns control to
 // the graph.
 //
@@ -58,7 +58,7 @@ export interface NodeDetailDrawerProps {
   rankedNeighbors: DrawerRelevantNode[];
   /** Lifecycle transitions in newest-first order. Surfaced in the Metadata pane. */
   lifecycleHistory: DrawerLifecycleChange[];
-  // Edges pane
+  // Synapses pane
   outgoing: DrawerEdge[];
   incoming: DrawerEdge[];
   // History pane
@@ -83,9 +83,9 @@ function relativeTimeIso(iso: string): string {
 function paneTitle(kind: DrawerKind): string {
   switch (kind) {
     case "relevant":
-      return "Relevant nodes";
+      return "Relevant neurons";
     case "synapses":
-      return "Edges";
+      return "Synapses";
     case "history":
       return "History";
     case "metadata":

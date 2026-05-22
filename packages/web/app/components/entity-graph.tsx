@@ -615,7 +615,7 @@ function EntityNodeCard({
             </>
           ) : showPersonalizedRank ? (
             <>
-              <span title="Personalized PageRank from focal node">
+              <span title="Personalized PageRank from focal neuron">
                 PPR <span className="text-foreground">{ppr.toFixed(3)}</span>
               </span>
               <span title="Global PageRank (over the whole Doco graph)">
@@ -623,7 +623,7 @@ function EntityNodeCard({
               </span>
             </>
           ) : count != null ? (
-            <span title="Nodes represented by this cluster">
+            <span title="Neurons represented by this cluster">
               <span className="text-foreground">{count.toLocaleString()}</span> nodes
             </span>
           ) : (

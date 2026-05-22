@@ -573,8 +573,8 @@ export default function EntityDetail({
   }));
 
   const drawerButtons: { kind: DrawerKind; label: string }[] = [
-    { kind: "relevant", label: "Relevant nodes" },
-    { kind: "synapses", label: "Edges" },
+    { kind: "relevant", label: "Relevant neurons" },
+    { kind: "synapses", label: "Synapses" },
     { kind: "history", label: "History" },
     { kind: "metadata", label: "Metadata" },
   ];
