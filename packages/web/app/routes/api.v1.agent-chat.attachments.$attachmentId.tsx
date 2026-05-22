@@ -6,7 +6,7 @@
 // Other principals also 404 — the row is scoped to its uploader.
 
 import { loadAttachmentForPrincipal } from "~/lib/agent-chat.server";
-import { getCurrentPrincipal } from "~/lib/session";
+import { getCurrentPrincipal } from "~/lib/session.server";
 
 export async function loader({
   request,

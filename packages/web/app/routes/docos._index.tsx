@@ -28,8 +28,8 @@ import {
 import { cn } from "~/lib/cn";
 import { isMyDoco, listInvitedDocoIdsForPrincipal } from "~/lib/doco-access.server";
 import { listDocoStats } from "~/lib/doco-stats.server";
-import { listAllDocos } from "~/lib/host";
-import { getCurrentPrincipal } from "~/lib/session";
+import { listAllDocos } from "~/lib/host.server";
+import { getCurrentPrincipal } from "~/lib/session.server";
 import { timeAgo } from "~/lib/time-ago";
 
 const HEATMAP_WEEKS = 52;

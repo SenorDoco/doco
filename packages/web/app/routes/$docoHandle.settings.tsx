@@ -13,9 +13,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/com
 import { SiteHeader } from "~/components/site-header";
 import { rootDir } from "~/lib/db.server";
 import { loadDocoRouteForAdmin } from "~/lib/doco-access.server";
-import { loadHostConfig } from "~/lib/host";
+import { loadHostConfig } from "~/lib/host.server";
 import { reindex, renameDocoHandle, softDeleteDoco, updateDocoMeta } from "~/lib/redeem.server";
-import { isHumanPrincipal } from "~/lib/session";
+import { isHumanPrincipal } from "~/lib/session.server";
 
 export async function loader({
   request,

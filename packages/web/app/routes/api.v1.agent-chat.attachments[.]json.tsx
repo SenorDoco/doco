@@ -21,7 +21,7 @@ import {
   loadOrCreateConversation,
   saveAttachment,
 } from "~/lib/agent-chat.server";
-import { getCurrentPrincipal } from "~/lib/session";
+import { getCurrentPrincipal } from "~/lib/session.server";
 
 export async function action({ request }: { request: Request }) {
   if (request.method !== "POST") {

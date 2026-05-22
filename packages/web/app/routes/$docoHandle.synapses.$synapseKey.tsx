@@ -17,8 +17,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
 import { EntityGraph, type GraphLink, type GraphNode } from "~/components/entity-graph";
 import { SiteHeader } from "~/components/site-header";
 import { loadDocoRouteForRead } from "~/lib/doco-access.server";
-import { loadHostConfig } from "~/lib/host";
-import { getCurrentPrincipal } from "~/lib/session";
+import { loadHostConfig } from "~/lib/host.server";
+import { getCurrentPrincipal } from "~/lib/session.server";
 
 interface EdgeRow {
   from_id: string;

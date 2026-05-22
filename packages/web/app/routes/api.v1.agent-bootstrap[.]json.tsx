@@ -42,7 +42,7 @@ import {
 } from "~/lib/doco-access.server";
 import { CANONICAL_INSTRUCTIONS } from "~/lib/instructions.server";
 import type { ValidAccessToken } from "~/lib/oauth-server.server";
-import { getCurrentPrincipalAsync } from "~/lib/session";
+import { getCurrentPrincipalAsync } from "~/lib/session.server";
 
 interface ArticleSummary {
   id: string;

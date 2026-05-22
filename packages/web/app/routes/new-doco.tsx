@@ -13,7 +13,7 @@ import {
   ensurePersonalOrganization,
   findAvailableDocoHandle,
 } from "~/lib/redeem.server";
-import { getCurrentPrincipal } from "~/lib/session";
+import { getCurrentPrincipal } from "~/lib/session.server";
 
 /**
  * /new-doco — Step 1 of 3 in the doco creation wizard.

@@ -12,7 +12,7 @@ import {
   readOAuthReturnCookie,
   verifyOAuthState,
 } from "~/lib/oauth.server";
-import { setSessionCookie } from "~/lib/session";
+import { setSessionCookie } from "~/lib/session.server";
 
 /**
  * GET /auth/github/callback — finishes the OAuth round-trip (ADR-095).

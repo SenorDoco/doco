@@ -3,7 +3,7 @@ import { Form, NavLink } from "react-router";
 import { DocoMark } from "~/components/doco-mark";
 import { VersionPill } from "~/components/version-pill";
 import { cn } from "~/lib/cn";
-import type { CurrentPrincipal } from "~/lib/session";
+import type { CurrentPrincipal } from "~/lib/session.server";
 
 interface SiteHeaderProps {
   /**

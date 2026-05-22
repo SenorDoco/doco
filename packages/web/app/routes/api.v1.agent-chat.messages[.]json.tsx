@@ -17,7 +17,7 @@ import {
   loadOrCreateConversation,
   runAssistantTurn,
 } from "~/lib/agent-chat.server";
-import { getCurrentPrincipal } from "~/lib/session";
+import { getCurrentPrincipal } from "~/lib/session.server";
 
 interface Body {
   text?: unknown;

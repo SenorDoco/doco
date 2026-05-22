@@ -27,7 +27,7 @@ import { SingleColumnPageMain } from "~/components/page-main";
 import { SiteHeader } from "~/components/site-header";
 import { getDocoById } from "~/lib/db.server";
 import { getDocoLevelRole, listAccessibleDocoIdsForPrincipal } from "~/lib/doco-access.server";
-import { listOrgsOwnedOrAdminedBy } from "~/lib/host";
+import { listOrgsOwnedOrAdminedBy } from "~/lib/host.server";
 import {
   approveDeviceAuthorization,
   denyDeviceAuthorization,
@@ -35,7 +35,7 @@ import {
   getDeviceAuthorizationByUserCode,
 } from "~/lib/oauth-server.server";
 import { DOCO_ROLES } from "~/lib/role-helpers";
-import { getCurrentPrincipal } from "~/lib/session";
+import { getCurrentPrincipal } from "~/lib/session.server";
 
 interface LoaderData {
   user_code: string;

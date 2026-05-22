@@ -4,7 +4,7 @@ import { Breadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
 import { DocoMark } from "~/components/doco-mark";
 import { VersionPill } from "~/components/version-pill";
-import { findPrincipalById, getSessionPrincipalId } from "~/lib/session";
+import { findPrincipalById, getSessionPrincipalId } from "~/lib/session.server";
 
 /**
  * /sign-in (ADR-095) — GitHub OAuth is the only path. Anyone with a

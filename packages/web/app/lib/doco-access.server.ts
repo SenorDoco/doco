@@ -19,7 +19,7 @@ import { docoPath } from "./db.server";
 import { type DocoMetadata, readDocoMetadata } from "./doco-metadata.server";
 import { type ValidAccessToken, validateAccessToken } from "./oauth-server.server";
 import { resolvePrincipalUsernameAlias } from "./principal-aliases.server";
-import { type CurrentPrincipal, extractBearer, getCurrentPrincipalAsync } from "./session";
+import { type CurrentPrincipal, extractBearer, getCurrentPrincipalAsync } from "./session.server";
 
 /**
  * Doco-level role for this principal — max of (direct owner_id match,

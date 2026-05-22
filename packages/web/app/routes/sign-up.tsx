@@ -4,7 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/com
 import { DocoMark } from "~/components/doco-mark";
 import { VersionPill } from "~/components/version-pill";
 import { isValidSignupInviteCode, setSignupInviteCookie } from "~/lib/invite.server";
-import { getCurrentPrincipal } from "~/lib/session";
+import { getCurrentPrincipal } from "~/lib/session.server";
 
 /**
  * /sign-up — invite-gated, GitHub-OAuth account creation (ADR-095).

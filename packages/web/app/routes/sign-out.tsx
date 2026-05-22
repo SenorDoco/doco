@@ -1,5 +1,5 @@
 import { redirect } from "react-router";
-import { clearSessionCookie } from "~/lib/session";
+import { clearSessionCookie } from "~/lib/session.server";
 
 export function action() {
   return redirect("/", { headers: { "Set-Cookie": clearSessionCookie() } });

@@ -9,7 +9,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router";
 import { cn } from "~/lib/cn";
-import type { CurrentPrincipal } from "~/lib/session";
+import type { CurrentPrincipal } from "~/lib/session.server";
 
 interface ContentBlockText {
   type: "text";

@@ -9,7 +9,7 @@ import { useState } from "react";
 import { parse as parseYaml } from "yaml";
 import { readEntityHistory } from "~/lib/audit-log.server";
 import { loadDocoRouteForRead } from "~/lib/doco-access.server";
-import { loadHostConfig } from "~/lib/host";
+import { loadHostConfig } from "~/lib/host.server";
 
 /** External entity_type → PG table name. */
 const TABLE_BY_TYPE: Record<string, string> = {

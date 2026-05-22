@@ -2,7 +2,7 @@ import { withClient } from "@doco/db";
 import { docoPath } from "~/lib/db.server";
 import { canReadDocoForRequest, normalizeDocoParams } from "~/lib/doco-access.server";
 import { readDocoMetadata } from "~/lib/doco-metadata.server";
-import { getCurrentPrincipalAsync } from "~/lib/session";
+import { getCurrentPrincipalAsync } from "~/lib/session.server";
 
 /**
  * /<doco-handle>/status.json — agent-polled freshness signal.

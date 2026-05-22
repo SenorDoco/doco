@@ -13,8 +13,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
 import { SiteHeader } from "~/components/site-header";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "~/components/table";
 import { loadDocoRouteForRead } from "~/lib/doco-access.server";
-import { loadHostConfig } from "~/lib/host";
-import { getCurrentPrincipal } from "~/lib/session";
+import { loadHostConfig } from "~/lib/host.server";
+import { getCurrentPrincipal } from "~/lib/session.server";
 
 // Articles are constitution metadata, not nodes — the generic
 // "/<handle>/<type>" list view exists for notes only. Article lists

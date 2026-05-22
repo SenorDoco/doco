@@ -16,7 +16,7 @@
 
 import { isOrgMember } from "~/lib/org-helpers.server";
 import { createDocoInOrg } from "~/lib/redeem.server";
-import { getCurrentPrincipalAsync } from "~/lib/session";
+import { getCurrentPrincipalAsync } from "~/lib/session.server";
 
 export async function loader() {
   return Response.json({ error: "Use POST to create a Doco." }, { status: 405 });

@@ -9,7 +9,7 @@
 // anonymously in normal flow.
 
 import { loadSnapshotForPrincipal } from "~/lib/agent-chat.server";
-import { getCurrentPrincipal } from "~/lib/session";
+import { getCurrentPrincipal } from "~/lib/session.server";
 
 export async function loader({ request }: { request: Request }) {
   const me = await getCurrentPrincipal(request);
