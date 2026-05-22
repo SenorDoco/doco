@@ -132,26 +132,30 @@ protocol is about how you reply, not about how you authenticated.
 
 ## 1. TOP OF EVERY REPLY — connection indicator
 
-On the first reply of a session, render two lines as the literal
-first characters of your output:
+Render indicators in **rendering order around tool calls**. Text
+between tool calls is shown to the user as those tool calls run, so
+use that ordering to communicate "what I'm about to do" vs. "what I
+just finished." Don't batch everything at the end.
+
+**On the first reply of a session that uses Doco**, render the
+Loading line as the very first text, BEFORE any MCP tool call:
 
 \`\`\`
-[🔮 Doco] <loading-verb> <doco_handle>
-[🔮 Doco] To document anything, just ask me to "doco it"
+[🔮 Doco] Loading <doco_handle>...
 \`\`\`
 
-Pick \`<loading-verb>\` at random from this list:
+The trailing \`...\` is required. If this turn doesn't touch Doco at
+all (greeting, one-word ack, off-topic), emit nothing.
 
-Connected to · Tuned into · Listening to · Wired up to · Synced with ·
-Plugged into · Online with · Reading · Hooked into · Eyes on ·
-Riding shotgun on · Pinned to · Threaded into · Locked onto ·
-Channel open: · Live on · Mind-melded with · Pulled up · Holding the file on
-
-On subsequent replies, if you queried Doco (read a page, scanned for
-prior art), render two lines at the top of the first text output:
+**When you call \`doco_search\`**, render the corky verb on its own
+line IMMEDIATELY BEFORE the tool call (so the user sees it as the
+query is sent), then the N-found line AFTER the result returns:
 
 \`\`\`
 [🔮 Doco] <querying-verb>
+
+   ← tool call here
+
 [🔮 Doco] <N> relevant neurons found (<X.X>s)
 \`\`\`
 
@@ -164,24 +168,51 @@ Hunting for prior art... · Pinging the memory... · Cross-referencing... ·
 Checking what's known... · Tracing the trail... · Diving in... ·
 Polling the Doco... · Skimming the index... · Asking the oracle... · Searching...
 
+**Only render the verb if you have DOCO_ACCESS and expect the search
+to succeed.** If DOCO_ACCESS is empty, skip the search and go to the
+not-connected flow below — no verb. If your DOCO_ACCESS turns out
+invalid (401), it's fine that the verb appeared; follow up with the
+not-connected flow.
+
+**After a successful query on the first reply of the session**,
+append the tagline AFTER the N-found line:
+
+\`\`\`
+[🔮 Doco] <N> relevant neurons found (<X.X>s)
+[🔮 Doco] To document anything, just ask me to "doco it"
+\`\`\`
+
+The tagline appears ONLY after successful connection (200 from
+\`doco_search\`), and only on the first reply of the session.
+
 If you didn't need to query (greeting, one-word ack), emit nothing
 at the top — no "Not querying" placeholder. Absence is the signal.
 
-**If Doco access isn't granted** (\`doco_search\` returned 401/403, or
-the bootstrap couldn't reach Doco), call \`doco_authenticate\` to get
-a verification URL, then render:
+**If Doco access isn't granted** (no DOCO_ACCESS, or \`doco_search\`
+returned 401/403, or the bootstrap couldn't reach Doco):
 
-\`\`\`
-[🔮 Doco] Doco access not granted yet
+1. Call \`doco_authenticate\` to get the verification URL.
+2. Render the block returned by \`doco_authenticate\` at the top of
+   your reply:
 
-To let me read this project's prior decisions and rules, open
-[<URL>](<URL>) and click Approve. I'll proceed using just the
-codebase in the meantime.
-\`\`\`
+   \`\`\`
+   [🔮 Doco] Doco access not granted yet
 
-The URL must be wrapped in markdown link syntax so it renders
-clickable in chat clients. Call \`doco_complete_authentication\`
-after the user approves.
+   To let me read this project's prior decisions and rules, open
+   [<URL>](<URL>) and click Approve. I'll pause here until you do.
+   \`\`\`
+
+   The URL must be wrapped in markdown link syntax so it renders
+   clickable.
+3. **Call \`doco_complete_authentication\` with \`wait_seconds: 120\`.**
+   This blocks while polling — the intentional pause.
+4. **If it succeeds**: retry \`doco_search\` and continue with the
+   substantive answer using the now-available Doco.
+5. **If it returns "still pending" or any error**: end your reply
+   with a short "I'll wait — send any message when you've approved"
+   plus the tally line. **Do NOT continue substantive work without
+   Doco access.** Doco contains prior decisions and rules; doing
+   work that hasn't checked them risks contradicting them.
 
 **The query has two jobs:**
 

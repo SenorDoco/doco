@@ -60,45 +60,80 @@ The essentials, applied every turn:
 
 ### 1. Indicator at top of first text output
 
-Render indicators FIRST, before any prose. Once per turn — not on
-intermediate progress updates between tool calls.
+Render indicators in **rendering order around tool calls** — text
+between tool calls IS shown to the user as those tool calls run, so
+use that to communicate "what I'm about to do" vs. "what I just
+finished." Once per turn — not on intermediate progress updates.
 
-**On the first reply of a session**, regardless of query state:
+**On the first reply of a session that uses the Doco** — render the
+Loading line as the very first text, BEFORE any MCP tool call:
 ```
-[🔮 Doco] Loading doco-bpms
-[🔮 Doco] To document anything, just ask me to "doco it"
+[🔮 Doco] Loading <handle>...
 ```
 
-**If you queried the Doco** (called `doco_search` or had a pre-fetched
-block), follow with the query result line:
+(Trailing `...` is required. If this turn doesn't touch Doco at all,
+emit nothing — see "didn't query" below.)
+
+**When you call `doco_search`** — render the corky verb on its own
+line IMMEDIATELY BEFORE the tool call (so the user sees it as the
+query is sent), then the N-found line AFTER the result returns:
+
 ```
 [🔮 Doco] <corky verb>...
+
+   ← tool call here
+
 [🔮 Doco] <N> nodes found (<X>s)
 ```
 
-The corky verb is randomized — "Searching the lore...", "Polling the
-Doco...", "Peering into the orb...", etc. Pre-fetched blocks already
-include one. When calling `doco_search` yourself, pick one.
+The verb is randomized — "Searching the lore...", "Polling the
+Doco...", "Peering into the orb..." etc. **Only render the verb if
+you have `DOCO_ACCESS` and expect the search to succeed.** If
+DOCO_ACCESS is empty, skip the search and go to the not-connected
+flow below — no verb.
 
-**If access to the Doco isn't granted** (`doco_search` returned 401/403,
-or a `[🔮 Doco] Not connected yet:` block is in your context), call
-`doco_authenticate` to get a URL, then render:
+**After a successful query on the first reply of the session**,
+append the tagline AFTER the N-found line:
 
 ```
-[🔮 Doco] Doco access not granted yet
-
-To let me read this project's prior decisions and rules, open
-[https://doco.to/device?user_code=XXXX-YYYY](https://doco.to/device?user_code=XXXX-YYYY)
-and click Approve. I'll proceed using just the codebase in the
-meantime.
+[🔮 Doco] <N> nodes found (<X>s)
+[🔮 Doco] To document anything, just ask me to "doco it"
 ```
 
-The URL must be wrapped in markdown link syntax so it renders
-clickable in chat. Substitute the actual `user_code` returned by
-`doco_authenticate`.
+The tagline appears ONLY after successful connection (confirmed by a
+200 from `doco_search`), and only on the first reply of the session.
 
-**If you didn't query** (greeting, one-word ack, off-topic chat):
-emit nothing at the top. Absence is the signal.
+**If you need the Doco but access isn't set up yet** (no DOCO_ACCESS,
+or `doco_search` returned 401/403, or a `[🔮 Doco] Not connected yet:`
+block is in your context):
+
+1. Call `doco_authenticate` to get the verification URL.
+2. Render the block returned by `doco_authenticate` at the top of
+   your reply. Shape:
+   ```
+   [🔮 Doco] Doco access not granted yet
+
+   To let me read this project's prior decisions and rules, open
+   [https://doco.to/device?user_code=XXXX-YYYY](https://doco.to/device?user_code=XXXX-YYYY)
+   and click Approve. I'll pause here until you do.
+   ```
+   The URL is wrapped in markdown link syntax so it renders
+   clickable in chat.
+3. **Call `doco_complete_authentication` (with `wait_seconds: 120`
+   for a longer pause).** This blocks while polling.
+4. **If it succeeds** (user approved): retry `doco_search` and
+   continue with the substantive answer using the now-available
+   Doco. Render the corky verb / N found / tagline as above.
+5. **If it returns "still pending" or any error**: end your reply
+   with a short "I'll wait — send any message when you've approved"
+   plus the tally line. **Do NOT continue substantive work without
+   Doco access.** The pause is intentional — the Doco contains prior
+   decisions; doing work that hasn't checked them risks producing
+   answers that contradict established conventions.
+
+**If you didn't query** (greeting, one-word ack, off-topic chat,
+nothing in the turn needs the Doco): emit nothing at the top. Absence
+is the signal.
 
 Non-compliant first reply that needed a query:
 ```
