@@ -177,8 +177,7 @@ else
   DOCO_FOR_LINE="this Doco"
 fi
 SESSION_LOAD_LINE="[🔮 Doco] ${LOADING_VERB} ${DOCO_FOR_LINE}"
-SESSION_LOAD_HINT='[🔮 Doco] To document anything, just ask me to "doco it"'
-SESSION_LOAD_BLOCK="    ${SESSION_LOAD_LINE}"$'\n'"    ${SESSION_LOAD_HINT}"
+SESSION_LOAD_BLOCK="    ${SESSION_LOAD_LINE}"
 
 CONSTITUTION_BLOCK=""
 if printf '%s' "$RESP" | jq -e '.constitution and (.constitution | type == "object")' >/dev/null 2>&1; then

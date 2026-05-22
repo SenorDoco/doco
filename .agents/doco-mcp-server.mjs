@@ -79,8 +79,6 @@ const SERVER_INSTRUCTIONS = [
   "- Before calling doco_search, render `[🔮 Doco] <corky verb>...` (only",
   "  if you have DOCO_ACCESS and expect success — skip otherwise).",
   "- After doco_search succeeds, render `[🔮 Doco] N neurons found (X.Xs)`.",
-  "  On the first reply, also append `[🔮 Doco] To document anything,",
-  '  just ask me to "doco it"` (tagline only after successful connection).',
   "",
   "If doco_search returns 401/403 (or you have no DOCO_ACCESS):",
   "1. Call doco_authenticate. It returns a ready-to-render block with a",
