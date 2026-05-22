@@ -111,7 +111,7 @@ export async function loader({
       after_json: Record<string, unknown> | null;
     };
     // Activity surfaces (feed, heatmap, contributors) reflect notes
-    // activity only — articles are constitution metadata with their
+    // activity only — primitives are constitution metadata with their
     // own surface, and counting their bulk-imported writes here makes
     // a fresh Doco look like work has been captured when none has.
     const rawItems = (
@@ -253,7 +253,7 @@ export async function loader({
         ? await loadBpmnGraph(c, ctx.meta.docoId, { handle })
         : null;
 
-    // Constitution article count — guidance + node-authoring articles
+    // Primitive count — guidance + neuron-authoring primitives
     // attached to this Doco.
     const constitutionRow = (
       await c.query<{ n: string }>(
@@ -457,7 +457,7 @@ export default function DocoHome({
   return (
     <div>
       <SiteHeader mode="host" me={me} />
-      <main className="mx-auto max-w-[1800px] px-6 py-6">
+      <main className="mx-auto max-w-[1800px] px-6 pb-8 pt-6">
         {/* Title row — spans both columns so the action buttons sit beside the
             title rather than visually attached to the fishbone graph below. */}
         <div className="mb-6 space-y-1">
@@ -478,14 +478,14 @@ export default function DocoHome({
                 to={`/${handle}/constitution`}
                 className="shrink-0 rounded-md border border-border px-3 py-1.5 text-xs font-semibold hover:bg-input"
               >
-                Constitution ({constitutionCount})
+                Primitives ({constitutionCount})
               </Link>
             </div>
           </div>
           <p className="font-mono text-sm text-muted-foreground">{docoId}</p>
         </div>
         <div className="grid grid-cols-1 gap-6 min-[1200px]:grid-cols-[minmax(0,1fr)_400px]">
-          <aside className="flex h-[calc(100vh-13rem)] min-h-[520px] min-w-0 flex-col min-[1200px]:sticky min-[1200px]:top-4 min-[1200px]:self-start">
+          <aside className="flex h-[calc(100vh-17rem)] min-h-[480px] min-w-0 flex-col min-[1200px]:sticky min-[1200px]:top-4 min-[1200px]:self-start">
             <PerspectiveTabs
               handle={handle}
               perspectives={perspectives}
