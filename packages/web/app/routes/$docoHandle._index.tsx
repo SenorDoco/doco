@@ -698,10 +698,9 @@ export default function DocoHome({
               ) : null}
             </div>
           </div>
-          <p className="font-mono text-sm text-muted-foreground">{docoId}</p>
         </div>
         <div className="grid grid-cols-1 gap-6 min-[1200px]:grid-cols-[minmax(0,1fr)_400px]">
-          <aside className="flex h-[calc(100vh-17rem)] min-h-[480px] min-w-0 flex-col min-[1200px]:sticky min-[1200px]:top-4 min-[1200px]:self-start">
+          <aside className="flex h-[calc(100vh-13rem)] min-h-[480px] min-w-0 flex-col min-[1200px]:sticky min-[1200px]:top-4 min-[1200px]:self-start">
             <PerspectiveTabs
               handle={handle}
               perspectives={perspectives}
@@ -754,67 +753,69 @@ export default function DocoHome({
             </div>
           </aside>
 
-          <section className="hidden min-w-0 space-y-5 min-[1200px]:block">
-            <NeuronsOverviewCard
-              sections={sections}
-              empty={
-                <p className="text-xs italic text-muted-foreground">
-                  This Doco has no neurons yet.
-                </p>
-              }
-              aside={<TopContributorsList contributors={topContributors} />}
-            />
-
-            <Card>
-              <CardHeader className="px-4 py-3">
-                <CardTitle className="text-sm">Activity</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ActivityHeatmap byDay={byDay} weeks={HEATMAP_WEEKS} />
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="px-4 py-3">
-                <CardTitle className="text-sm">Latest activity</CardTitle>
-              </CardHeader>
-              <CardContent className="p-0">
-                {items.length === 0 ? (
-                  <div className="px-4 pb-4 text-xs leading-5 text-muted-foreground">
-                    No recorded activity yet. Capture a neuron from the API or CLI; this feed
-                    records UI, CLI, and API writes.
-                  </div>
-                ) : (
-                  <div className="divide-y divide-border">
-                    {items.map((it) => (
-                      <ActivityFeedLine
-                        key={it.event_id}
-                        item={it}
-                        ownerSlug={ownerSlug}
-                        docoSlug={docoSlug}
-                      />
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </section>
-          {neuronDialog ? (
-            <div className="fixed inset-x-3 bottom-4 top-20 z-30 min-[1200px]:sticky min-[1200px]:bottom-auto min-[1200px]:left-auto min-[1200px]:right-auto min-[1200px]:top-4 min-[1200px]:col-start-2 min-[1200px]:row-start-1 min-[1200px]:h-[calc(100vh-17rem)] min-[1200px]:min-h-[480px] min-[1200px]:self-start">
-              <NeuronDialog
-                detail={neuronDialog.detail}
-                loading={neuronDialog.loading}
-                error={neuronDialog.error}
-                lifecycleUpdating={lifecycleUpdating}
-                lifecycleError={lifecycleError}
-                onClose={closeNeuronDialog}
-                onLifecycleChange={handleLifecycleChange}
-                onOpenNeuron={(entityType, id, href) => {
-                  void loadNeuronDialog(entityType, id, href);
-                }}
+          <div className="relative min-w-0">
+            <section className="hidden min-w-0 space-y-5 min-[1200px]:block">
+              <NeuronsOverviewCard
+                sections={sections}
+                empty={
+                  <p className="text-xs italic text-muted-foreground">
+                    This Doco has no neurons yet.
+                  </p>
+                }
+                aside={<TopContributorsList contributors={topContributors} />}
               />
-            </div>
-          ) : null}
+
+              <Card>
+                <CardHeader className="px-4 py-3">
+                  <CardTitle className="text-sm">Activity</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ActivityHeatmap byDay={byDay} weeks={HEATMAP_WEEKS} />
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="px-4 py-3">
+                  <CardTitle className="text-sm">Latest activity</CardTitle>
+                </CardHeader>
+                <CardContent className="p-0">
+                  {items.length === 0 ? (
+                    <div className="px-4 pb-4 text-xs leading-5 text-muted-foreground">
+                      No recorded activity yet. Capture a neuron from the API or CLI; this feed
+                      records UI, CLI, and API writes.
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-border">
+                      {items.map((it) => (
+                        <ActivityFeedLine
+                          key={it.event_id}
+                          item={it}
+                          ownerSlug={ownerSlug}
+                          docoSlug={docoSlug}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </section>
+            {neuronDialog ? (
+              <div className="fixed inset-x-3 bottom-4 top-20 z-30 min-[1200px]:absolute min-[1200px]:inset-x-0 min-[1200px]:bottom-auto min-[1200px]:top-0 min-[1200px]:h-[calc(100vh-13rem)] min-[1200px]:min-h-[480px]">
+                <NeuronDialog
+                  detail={neuronDialog.detail}
+                  loading={neuronDialog.loading}
+                  error={neuronDialog.error}
+                  lifecycleUpdating={lifecycleUpdating}
+                  lifecycleError={lifecycleError}
+                  onClose={closeNeuronDialog}
+                  onLifecycleChange={handleLifecycleChange}
+                  onOpenNeuron={(entityType, id, href) => {
+                    void loadNeuronDialog(entityType, id, href);
+                  }}
+                />
+              </div>
+            ) : null}
+          </div>
         </div>
 
         {/* Page-level lifecycle filter — shared across every
