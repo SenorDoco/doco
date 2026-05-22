@@ -65,16 +65,26 @@ function copyDbSchemaIntoServerBuild(): Plugin {
     closeBundle() {
       const schemaSrc = resolve(rootDir, "packages/db/src/schema.sql");
       const migrationsSrcDir = resolve(rootDir, "packages/db/migrations");
+      const migrationsModulePath = resolve(rootDir, "packages/db/dist/migrations.js");
       const migrationFiles = existsSync(migrationsSrcDir)
         ? readdirSync(migrationsSrcDir).filter((f) => f.endsWith(".sql"))
         : [];
       const serverRoot = resolve(import.meta.dirname, "build/server");
       for (const assetDir of findAssetDirs(serverRoot)) {
         copyFileSync(schemaSrc, join(assetDir, "schema.sql"));
-        // Migrations: `locateMigrationsDir()` in @doco/db walks up from
-        // its own location; the bundled migrations.js sits inside the
-        // asset dir, so a sibling `migrations/` here lands inside one
-        // of the candidate `../migrations` / `../../migrations` paths.
+        // `applySchema` dynamically imports `./migrations.js` via an
+        // indirect specifier so vite can't trace it into the client
+        // bundle. That also means vite doesn't bundle it into the SSR
+        // chunk — copy the pre-compiled file from @doco/db's dist so
+        // the runtime resolves the import alongside the bundled
+        // schema.sql.
+        if (existsSync(migrationsModulePath)) {
+          copyFileSync(migrationsModulePath, join(assetDir, "migrations.js"));
+        }
+        // Numbered .sql migrations. `locateMigrationsDir()` in
+        // @doco/db walks up from migrations.js' location; a sibling
+        // `migrations/` here lands inside one of the candidate
+        // `../migrations` / `../../migrations` paths.
         if (migrationFiles.length > 0) {
           const dest = join(assetDir, "migrations");
           mkdirSync(dest, { recursive: true });
