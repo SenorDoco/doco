@@ -671,7 +671,7 @@ export async function captureDecision(
   const fm: Record<string, unknown> = {
     id,
     doco_id: docoId,
-    entity_type: "decision",
+    neuron_type: "decision",
     summary,
     ...(draft.born_from ? { born_from: draft.born_from } : {}),
     ...(intentIds.length > 0 ? { intent_ids: intentIds } : {}),
@@ -1234,7 +1234,7 @@ export async function captureIntent(
   const fm: Record<string, unknown> = {
     id,
     doco_id: docoId,
-    entity_type: "intent",
+    neuron_type: "intent",
     summary,
     title,
     wanted_by: wantedById,
@@ -1369,7 +1369,7 @@ export async function captureEval(
   const fm: Record<string, unknown> = {
     id,
     doco_id: docoId,
-    entity_type: "eval",
+    neuron_type: "eval",
     summary,
     name: draft.name.trim(),
     ...(draft.kind ? { kind: draft.kind } : {}),
@@ -1501,7 +1501,7 @@ export async function captureAction(
   const fm: Record<string, unknown> = {
     id,
     doco_id: docoId,
-    entity_type: "action",
+    neuron_type: "action",
     summary,
     actor_id: actorId,
     verb: draft.verb.trim(),
@@ -1647,7 +1647,7 @@ export async function captureLog(
   const fm: Record<string, unknown> = {
     id,
     doco_id: docoId,
-    entity_type: "log",
+    neuron_type: "log",
     summary,
     actor_id: actorId,
     verb: draft.verb.trim(),
@@ -1800,7 +1800,7 @@ export async function captureRule(
   const fm: Record<string, unknown> = {
     id,
     doco_id: docoId,
-    entity_type: "rule",
+    neuron_type: "rule",
     summary,
     ...(draft.born_from ? { born_from: draft.born_from } : {}),
     ...(intentIds.length > 0 ? { intent_ids: intentIds } : {}),
@@ -2510,7 +2510,7 @@ export async function captureReference(
   const fm: Record<string, unknown> = {
     id,
     doco_id: docoId,
-    entity_type: "reference",
+    neuron_type: "reference",
     summary,
     ref_type: draft.ref_type,
     locator,
@@ -2632,7 +2632,7 @@ export async function captureState(
   const fm: Record<string, unknown> = {
     id,
     doco_id: docoId,
-    entity_type: "state",
+    neuron_type: "state",
     summary,
     kind: draft.kind,
     ...(invariants.length > 0 ? { invariants } : {}),
