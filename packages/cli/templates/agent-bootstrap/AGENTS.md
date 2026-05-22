@@ -122,17 +122,6 @@ you have `DOCO_ACCESS` and expect the search to succeed.** If
 DOCO_ACCESS is empty, skip the search and go to the not-connected
 flow below — no verb.
 
-**After a successful query on the first reply of the session**,
-append the tagline AFTER the N-found line:
-
-```
-[🔮 Doco] <N> neurons found (<X>s)
-[🔮 Doco] To document anything, just ask me to "doco it"
-```
-
-The tagline appears ONLY after successful connection (confirmed by a
-200 from `doco_search`), and only on the first reply of the session.
-
 **If you need the Doco but access isn't set up yet** (no DOCO_ACCESS,
 or `doco_search` returned 401/403, or a `[🔮 Doco] Not connected yet:`
 block is in your context):
@@ -155,7 +144,7 @@ block is in your context):
    polling so the agent can learn when approval lands.
 4. **If it succeeds** (user approved): retry `doco_search` and
    continue with the substantive answer using the now-available
-   Doco. Render the corky verb / N found / tagline as above.
+   Doco. Render the corky verb / N found lines as above.
 5. **If it returns "still pending" or any error**: end your reply
    with a short "I'll wait — send any message when you've approved"
    plus the tally line. **Do NOT continue substantive work without

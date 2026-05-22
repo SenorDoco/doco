@@ -191,17 +191,6 @@ not-connected flow below — no verb. If your DOCO_ACCESS turns out
 invalid (401), it's fine that the verb appeared; follow up with the
 not-connected flow.
 
-**After a successful query on the first reply of the session**,
-append the tagline AFTER the N-found line:
-
-\`\`\`
-[🔮 Doco] <N> relevant neurons found (<X.X>s)
-[🔮 Doco] To document anything, just ask me to "doco it"
-\`\`\`
-
-The tagline appears ONLY after successful connection (200 from
-\`doco_search\`), and only on the first reply of the session.
-
 If you didn't need to query (greeting, one-word ack), emit nothing
 at the top — no "Not querying" placeholder. Absence is the signal.
 
