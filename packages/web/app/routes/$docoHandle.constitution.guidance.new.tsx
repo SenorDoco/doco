@@ -79,7 +79,7 @@ export default function NewGuidancePrimitive({
             items={docoBreadcrumb({
               ownerSlug,
               handle,
-              parent: { label: "Constitution", to: `/${handle}/constitution` },
+              parent: { label: "Primitives", to: `/${handle}/constitution` },
               pageLabel: "New guidance primitive",
             })}
             className="mb-1"

@@ -81,7 +81,7 @@ export async function loader({
 
 export function meta({ params }: { params: { docoHandle?: string; docoId?: string } }) {
   return [
-    { title: `Articles of the Constitution · ${params.docoHandle ?? params.docoId ?? ""} · Doco` },
+    { title: `Primitives · ${params.docoHandle ?? params.docoId ?? ""} · Doco` },
   ];
 }
 
@@ -102,13 +102,13 @@ export default function Constitution({
             items={docoBreadcrumb({
               ownerSlug,
               handle,
-              pageLabel: "The Constitution",
+              pageLabel: "Primitives",
             })}
             className="mb-1"
           />
-          <h1 className="text-2xl font-semibold">The Constitution</h1>
+          <h1 className="text-2xl font-semibold">Primitives</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Rules that govern how nodes get added to this doco. {AGENT_EXPOSURE_NOTE}
+            Rules that govern how neurons get added to this doco. {AGENT_EXPOSURE_NOTE}
           </p>
         </header>
 

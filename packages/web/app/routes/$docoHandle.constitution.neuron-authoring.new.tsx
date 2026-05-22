@@ -101,7 +101,7 @@ export default function NewNeuronAuthoringPrimitive({
             items={docoBreadcrumb({
               ownerSlug,
               handle,
-              parent: { label: "Constitution", to: `/${handle}/constitution` },
+              parent: { label: "Primitives", to: `/${handle}/constitution` },
               pageLabel: "New neuron-authoring primitive",
             })}
             className="mb-1"

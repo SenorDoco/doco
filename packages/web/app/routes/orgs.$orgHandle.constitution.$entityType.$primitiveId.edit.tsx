@@ -243,7 +243,7 @@ export default function EditOrgPrimitive({
           <Breadcrumb
             items={orgBreadcrumb({
               orgSlug: org.slug,
-              parent: { label: "Constitution", to: `/orgs/${org.slug}/constitution` },
+              parent: { label: "Primitives", to: `/orgs/${org.slug}/constitution` },
               pageLabel: `Modify ${isNeuronAuthoring ? "neuron-authoring" : "guidance"} primitive`,
             })}
             className="mb-1"
