@@ -1,18 +1,30 @@
 import { withClient } from "@doco/db";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { judgeProbabilisticPredicate } from "../llm-judge.server";
 import { runAuthoringPrimitives } from "../authoring-runner.server";
 
 // Required test DB lifecycle hooks (beforeAll/beforeEach/afterAll).
 import "./db-isolation";
 
+vi.mock("../llm-judge.server", () => ({
+  judgeProbabilisticPredicate: vi.fn(),
+}));
+const mockedJudge = vi.mocked(judgeProbabilisticPredicate);
+
+beforeEach(() => {
+  mockedJudge.mockReset();
+});
+
 const DOCO_ID = "doco_01TEST00000000000000000001";
 const PRINCIPAL_ALICE = "principal_01TESTALICE0000000000001";
 const PRIMITIVE_ID_PRINCIPAL = "neuron_authoring_primitive_01TESTPRINCIPAL000000001";
 const PRIMITIVE_ID_FIELD = "neuron_authoring_primitive_01TESTFIELD000000000001";
+const PRIMITIVE_ID_PROBABILISTIC = "neuron_authoring_primitive_01TESTPROB0000000000001";
 
 interface SeedOpts {
   withPrincipalRule?: boolean;
   withRequiredFieldRule?: boolean;
+  withProbabilisticRule?: boolean;
   firesOnActive?: boolean;
 }
 
@@ -78,6 +90,29 @@ async function seed(opts: SeedOpts = {}): Promise<void> {
            (id, doco_id, summary, data, lifecycle, created_at, updated_at)
            VALUES ($1, $2, $3, $4::jsonb, 'active', now(), now())`,
         [PRIMITIVE_ID_FIELD, DOCO_ID, "Action.actor_id is set", yaml],
+      );
+    }
+
+    if (opts.withProbabilisticRule) {
+      const yaml = JSON.stringify({
+        id: PRIMITIVE_ID_PROBABILISTIC,
+        doco_id: DOCO_ID,
+        neuron_type: "neuron_authoring_primitive",
+        primitive_kind: "neuron_authoring",
+        summary: "Action summary is atomic",
+        evaluation_kind: "probabilistic",
+        predicate: {
+          kind: "probabilistic",
+          spec: "The Action's summary reads as an atomic business activity, not a vague umbrella phase.",
+          when_neuron_type: ["action"],
+        },
+        on_violation: "block",
+      });
+      await c.query(
+        `INSERT INTO neuron_authoring_primitives
+           (id, doco_id, summary, data, lifecycle, created_at, updated_at)
+           VALUES ($1, $2, $3, $4::jsonb, 'active', now(), now())`,
+        [PRIMITIVE_ID_PROBABILISTIC, DOCO_ID, "Action summary is atomic", yaml],
       );
     }
   });
@@ -179,5 +214,67 @@ describe("authoring runner — integration", () => {
     expect(result.violations).toEqual([]);
     expect(result.blocking).toBeNull();
     expect(result.warnings).toEqual([]);
+  });
+
+  it("blocks an Action when the LLM judge rejects a probabilistic predicate", async () => {
+    mockedJudge.mockResolvedValue({ ok: false, reason: "summary 'handle order' is a vague umbrella phase" });
+    await seed({ withProbabilisticRule: true });
+    const result = await runAuthoringPrimitives({
+      docoId: DOCO_ID,
+      candidate: {
+        id: "action_01TESTVAGUE000000000000001",
+        neuron_type: "action",
+        doco_id: DOCO_ID,
+        summary: "handle order",
+        verb: "handle",
+      },
+    });
+
+    expect(mockedJudge).toHaveBeenCalledTimes(1);
+    expect(result.blocking).not.toBeNull();
+    expect(result.blocking?.predicate_kind).toBe("probabilistic");
+    expect(result.blocking?.primitive_id).toBe(PRIMITIVE_ID_PROBABILISTIC);
+    expect(result.blocking?.reason).toMatch(/umbrella phase/);
+  });
+
+  it("passes when the LLM judge approves a probabilistic predicate", async () => {
+    mockedJudge.mockResolvedValue({ ok: true });
+    await seed({ withProbabilisticRule: true });
+    const result = await runAuthoringPrimitives({
+      docoId: DOCO_ID,
+      candidate: {
+        id: "action_01TESTATOMIC00000000000001",
+        neuron_type: "action",
+        doco_id: DOCO_ID,
+        summary: "invoice mailed to customer",
+        verb: "mail",
+      },
+    });
+
+    expect(mockedJudge).toHaveBeenCalledTimes(1);
+    expect(result.violations).toEqual([]);
+    expect(result.blocking).toBeNull();
+    expect(result.warnings).toEqual([]);
+  });
+
+  it("demotes block to warn when the judge is unavailable (returns null)", async () => {
+    mockedJudge.mockResolvedValue(null);
+    await seed({ withProbabilisticRule: true });
+    const result = await runAuthoringPrimitives({
+      docoId: DOCO_ID,
+      candidate: {
+        id: "action_01TESTJUDGEDOWN000000000001",
+        neuron_type: "action",
+        doco_id: DOCO_ID,
+        summary: "handle order",
+        verb: "handle",
+      },
+    });
+
+    expect(mockedJudge).toHaveBeenCalledTimes(1);
+    expect(result.blocking).toBeNull();
+    expect(result.warnings).toHaveLength(1);
+    expect(result.warnings[0]?.predicate_kind).toBe("probabilistic");
+    expect(result.warnings[0]?.on_violation).toBe("warn");
   });
 });
