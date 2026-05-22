@@ -17,7 +17,7 @@
 // sit on left/right edges so synapses connect cleanly regardless of
 // lane vertical offset.
 
-import { Handle, Position } from "@xyflow/react";
+import { Handle, MarkerType, Position } from "@xyflow/react";
 import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import type { OverviewGraphLink } from "~/components/overview-graph";
@@ -171,6 +171,7 @@ interface FlowEdge {
   interactionWidth: number;
   style?: CSSProperties;
   animated?: boolean;
+  markerEnd?: { type: MarkerType; width?: number; height?: number; color?: string };
 }
 
 interface BpmnLayout {
@@ -190,18 +191,28 @@ function layOutBpmn(
     if (list) list.push(node);
   }
 
-  // Topological sort within the whole graph; then for each lane, use
-  // the global topo order as the in-lane order. Ties fall back to
-  // created_at, then id.
-  const topoOrder = topoSort(nodes, links);
-  const orderIndex = new Map<string, number>();
-  topoOrder.forEach((id, index) => orderIndex.set(id, index));
+  // Compute one global column per node so that nodes in the same
+  // topological depth line up vertically across lanes — left-to-right
+  // flow reads cleanly even when a synapse crosses from alice's lane
+  // into bob's lane. depth(n) = 1 + max(depth(predecessors)) or 0 if
+  // none. Cycle survivors are placed at depth(0) so they still appear.
+  const depthByNode = computeDepths(nodes, links);
 
-  for (const list of byLane.values()) {
+  // Within each lane, nodes are sorted by depth so they appear left to
+  // right regardless of created_at. Then we pack rows: if two nodes
+  // in the same lane share a depth (unlikely but possible), we shove
+  // the second one one column to the right.
+  const orderedByLane = new Map<string, BpmnNode[]>();
+  for (const lane of lanes) orderedByLane.set(lane.id, []);
+  for (const node of nodes) {
+    const list = orderedByLane.get(node.laneId);
+    if (list) list.push(node);
+  }
+  for (const list of orderedByLane.values()) {
     list.sort((a, b) => {
-      const ai = orderIndex.get(a.id) ?? Number.POSITIVE_INFINITY;
-      const bi = orderIndex.get(b.id) ?? Number.POSITIVE_INFINITY;
-      if (ai !== bi) return ai - bi;
+      const da = depthByNode.get(a.id) ?? 0;
+      const db = depthByNode.get(b.id) ?? 0;
+      if (da !== db) return da - db;
       const at = a.created_at ? Date.parse(a.created_at) : 0;
       const bt = b.created_at ? Date.parse(b.created_at) : 0;
       if (at !== bt) return at - bt;
@@ -209,11 +220,23 @@ function layOutBpmn(
     });
   }
 
-  const maxColumns = Math.max(
-    1,
-    ...Array.from(byLane.values()).map((list) => list.length),
-  );
-  const laneWidth = LANE_LABEL_WIDTH + maxColumns * (NODE_WIDTH + NODE_GAP_X) + NODE_GAP_X;
+  // For each node, the absolute column position is its depth — but if
+  // two nodes in the same lane share a depth, the later one bumps
+  // right by one column to avoid overlap.
+  const columnByNode = new Map<string, number>();
+  for (const list of orderedByLane.values()) {
+    let lastColumn = -1;
+    for (const node of list) {
+      const wanted = depthByNode.get(node.id) ?? 0;
+      const column = Math.max(wanted, lastColumn + 1);
+      columnByNode.set(node.id, column);
+      lastColumn = column;
+    }
+  }
+
+  const maxColumn = Math.max(0, ...Array.from(columnByNode.values()));
+  const laneWidth =
+    LANE_LABEL_WIDTH + (maxColumn + 1) * (NODE_WIDTH + NODE_GAP_X) + NODE_GAP_X;
 
   const flowNodes: FlowNode[] = [];
 
@@ -233,9 +256,10 @@ function layOutBpmn(
 
   // Emit neuron nodes nested in their lane.
   lanes.forEach((lane) => {
-    const list = byLane.get(lane.id) ?? [];
-    list.forEach((node, columnIndex) => {
-      const x = LANE_LABEL_WIDTH + columnIndex * (NODE_WIDTH + NODE_GAP_X);
+    const list = orderedByLane.get(lane.id) ?? [];
+    for (const node of list) {
+      const column = columnByNode.get(node.id) ?? 0;
+      const x = LANE_LABEL_WIDTH + column * (NODE_WIDTH + NODE_GAP_X);
       const y = (LANE_HEIGHT - NODE_HEIGHT) / 2;
       flowNodes.push({
         id: node.id,
@@ -249,30 +273,81 @@ function layOutBpmn(
         connectable: false,
         style: { width: NODE_WIDTH, height: NODE_HEIGHT, zIndex: 1 },
       });
-    });
+    }
   });
 
   const nodeSet = new Set(nodes.map((n) => n.id));
   const flowEdges: FlowEdge[] = links
     .filter((link) => nodeSet.has(link.source) && nodeSet.has(link.target))
-    .map((link, index) => ({
-      id: `${link.source}-${link.target}-${index}`,
-      source: link.source,
-      target: link.target,
-      type: "smoothstep",
-      selectable: false,
-      focusable: false,
-      interactionWidth: 0,
-      style: {
-        stroke:
-          link.attribution === "doco-auto"
-            ? "rgba(115, 115, 115, 0.35)"
-            : "rgba(80, 80, 80, 0.7)",
-        strokeDasharray: link.attribution === "doco-auto" ? "4 4" : undefined,
-      },
-    }));
+    .map((link, index) => {
+      const isAuto = link.attribution === "doco-auto";
+      // BPMN sequence-flow convention: solid arrow with a visible
+      // arrowhead. doco-auto edges stay dashed and lighter so the
+      // distinction from author-asserted edges is preserved.
+      const stroke = isAuto ? "#737373" : "#262626";
+      return {
+        id: `${link.source}-${link.target}-${index}`,
+        source: link.source,
+        target: link.target,
+        type: "smoothstep",
+        selectable: false,
+        focusable: false,
+        interactionWidth: 0,
+        style: {
+          stroke,
+          strokeWidth: 1.75,
+          strokeDasharray: isAuto ? "5 5" : undefined,
+        },
+        markerEnd: {
+          type: MarkerType.ArrowClosed,
+          width: 18,
+          height: 18,
+          color: stroke,
+        },
+      };
+    });
 
   return { flowNodes, flowEdges };
+}
+
+/**
+ * Longest-path depth for each node. A node with no predecessors has
+ * depth 0; otherwise it sits one beyond the max depth of its
+ * predecessors. Cycle survivors (no zero-indegree entry point) fall
+ * back to depth 0 and are sorted by created_at within their lane.
+ */
+function computeDepths(
+  nodes: readonly BpmnNode[],
+  links: readonly OverviewGraphLink[],
+): Map<string, number> {
+  const depth = new Map<string, number>();
+  const nodeIds = new Set(nodes.map((n) => n.id));
+  const predecessors = new Map<string, string[]>();
+  for (const id of nodeIds) predecessors.set(id, []);
+  for (const link of links) {
+    if (!nodeIds.has(link.source) || !nodeIds.has(link.target)) continue;
+    (predecessors.get(link.target) as string[]).push(link.source);
+  }
+  // Memoized DFS — handles DAGs and is safe against cycles via the
+  // `visiting` guard which treats a back-edge predecessor as depth 0.
+  const visiting = new Set<string>();
+  function depthOf(id: string): number {
+    const cached = depth.get(id);
+    if (cached !== undefined) return cached;
+    if (visiting.has(id)) return 0;
+    visiting.add(id);
+    const preds = predecessors.get(id) ?? [];
+    let max = 0;
+    for (const pred of preds) {
+      const d = depthOf(pred) + 1;
+      if (d > max) max = d;
+    }
+    visiting.delete(id);
+    depth.set(id, max);
+    return max;
+  }
+  for (const id of nodeIds) depthOf(id);
+  return depth;
 }
 
 function nodeTypeForShape(shape: BpmnShape): string {
@@ -293,44 +368,6 @@ function nodeTypeForShape(shape: BpmnShape): string {
 
 function laneNodeId(laneId: string): string {
   return `lane:${laneId}`;
-}
-
-function topoSort(nodes: readonly BpmnNode[], links: readonly OverviewGraphLink[]): string[] {
-  const indegree = new Map<string, number>();
-  const adj = new Map<string, string[]>();
-  for (const n of nodes) {
-    indegree.set(n.id, 0);
-    adj.set(n.id, []);
-  }
-  for (const link of links) {
-    if (!indegree.has(link.source) || !indegree.has(link.target)) continue;
-    indegree.set(link.target, (indegree.get(link.target) ?? 0) + 1);
-    (adj.get(link.source) as string[]).push(link.target);
-  }
-  const queue: string[] = [];
-  for (const [id, deg] of indegree.entries()) if (deg === 0) queue.push(id);
-  // Stable order: sort by created_at within zero-indegree set.
-  const tsById = new Map<string, number>(
-    nodes.map((n) => [n.id, n.created_at ? Date.parse(n.created_at) : 0]),
-  );
-  queue.sort((a, b) => (tsById.get(a) ?? 0) - (tsById.get(b) ?? 0));
-  const order: string[] = [];
-  while (queue.length > 0) {
-    const current = queue.shift() as string;
-    order.push(current);
-    const next = adj.get(current) ?? [];
-    for (const target of next) {
-      const deg = (indegree.get(target) ?? 1) - 1;
-      indegree.set(target, deg);
-      if (deg === 0) queue.push(target);
-    }
-  }
-  // Append cycle survivors (if any) at the end so we still place them.
-  if (order.length < nodes.length) {
-    const placed = new Set(order);
-    for (const n of nodes) if (!placed.has(n.id)) order.push(n.id);
-  }
-  return order;
 }
 
 // ─── Custom node components ────────────────────────────────────────
