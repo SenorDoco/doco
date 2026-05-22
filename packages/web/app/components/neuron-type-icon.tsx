@@ -135,7 +135,7 @@ function iconPath(entityType: string) {
   }
 }
 
-export function NodeTypeIcon({ entityType, className, ...props }: NodeTypeIconProps) {
+export function NeuronTypeIcon({ entityType, className, ...props }: NodeTypeIconProps) {
   return (
     <svg
       aria-hidden="true"

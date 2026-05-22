@@ -1,9 +1,9 @@
 import { Handle, Position } from "@xyflow/react";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
-import { NodeTypeIcon } from "~/components/node-type-icon";
-import { lifecycleColor } from "~/lib/node-colors";
-import { useNewNodeIds } from "~/lib/use-new-node-ids";
+import { NeuronTypeIcon } from "~/components/neuron-type-icon";
+import { lifecycleColor } from "~/lib/neuron-colors";
+import { useNewNodeIds } from "~/lib/use-new-neuron-ids";
 import "@xyflow/react/dist/style.css";
 
 export interface OverviewGraphNode {
@@ -198,7 +198,7 @@ function OverviewFlowNode({ data }: { data: OverviewNodeData }) {
       title={showDetail ? title : `${data.node.entity_type} · ${lifecycle}`}
     >
       <Handle type="target" position={Position.Left} style={HIDDEN_HANDLE_STYLE} isConnectable={false} />
-      <NodeTypeIcon entityType={data.node.entity_type} className="!h-3.5 !w-3.5 shrink-0" />
+      <NeuronTypeIcon entityType={data.node.entity_type} className="!h-3.5 !w-3.5 shrink-0" />
       {showDetail ? (
         <span className="min-w-0 flex-1 truncate font-mono text-[10px] font-semibold leading-none text-foreground">
           {title}

@@ -12,9 +12,9 @@
 import dagre from "@dagrejs/dagre";
 import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router";
-import { NodeTypeIcon } from "~/components/node-type-icon";
-import { lifecycleColor } from "~/lib/node-colors";
-import { useNewNodeIds } from "~/lib/use-new-node-ids";
+import { NeuronTypeIcon } from "~/components/neuron-type-icon";
+import { lifecycleColor } from "~/lib/neuron-colors";
+import { useNewNodeIds } from "~/lib/use-new-neuron-ids";
 import "@xyflow/react/dist/style.css";
 
 /**
@@ -602,7 +602,7 @@ function EntityNodeCard({
       </div>
       <div className="relative z-10 flex items-center gap-2 text-left">
         <span className="inline-flex items-center gap-1.5 text-sm font-semibold uppercase tracking-wider text-foreground">
-          <NodeTypeIcon entityType={entityType} className="!h-4 !w-4 shrink-0" />
+          <NeuronTypeIcon entityType={entityType} className="!h-4 !w-4 shrink-0" />
           <span>{entityType}</span>
         </span>
         <span className="ml-auto flex shrink-0 items-center gap-2 font-mono text-[11px] text-muted-foreground">

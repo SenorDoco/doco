@@ -96,11 +96,11 @@ import { EntityGraph, type GraphLink, type GraphNode } from "~/components/entity
 import {
   type DrawerEdge,
   type DrawerKind,
-  NodeDetailDrawer,
-} from "~/components/node-detail-drawer";
-import { NodeTypeIcon } from "~/components/node-type-icon";
+  NeuronDetailDrawer,
+} from "~/components/neuron-detail-drawer";
+import { NeuronTypeIcon } from "~/components/neuron-type-icon";
 import { SiteHeader } from "~/components/site-header";
-import { lifecycleColor } from "~/lib/node-colors";
+import { lifecycleColor } from "~/lib/neuron-colors";
 
 function prettyTypePlural(entityType: string): string {
   return `${entityType
@@ -594,7 +594,7 @@ export default function EntityDetail({
           className="mb-1.5"
         />
         <div className="flex items-start gap-2">
-          <NodeTypeIcon
+          <NeuronTypeIcon
             entityType={type}
             aria-label={type}
             className="!h-5 !w-5 mt-0.5 shrink-0 text-foreground"
@@ -651,7 +651,7 @@ export default function EntityDetail({
             hrefFor={(nid, nt) => linkTo(nt, nid)}
             fillHeight
           />
-          <NodeDetailDrawer
+          <NeuronDetailDrawer
             open={openDrawer}
             onClose={() => setOpenDrawer(null)}
             linkTo={linkTo}

@@ -1,8 +1,8 @@
 import { type VariantProps, cva } from "class-variance-authority";
 import type * as React from "react";
-import { NodeTypeIcon } from "~/components/node-type-icon";
+import { NeuronTypeIcon } from "~/components/neuron-type-icon";
 import { cn } from "~/lib/cn";
-import { lifecycleColor } from "~/lib/node-colors";
+import { lifecycleColor } from "~/lib/neuron-colors";
 
 const badgeVariants = cva(
   "inline-flex items-center rounded-md border px-2 py-0.5 text-[11px] font-mono transition-colors",
@@ -48,7 +48,7 @@ export function NodeTypeBadge({
       }}
       {...props}
     >
-      <NodeTypeIcon entityType={entityType} />
+      <NeuronTypeIcon entityType={entityType} />
       {children ?? entityType}
     </Badge>
   );

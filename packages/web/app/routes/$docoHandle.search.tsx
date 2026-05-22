@@ -11,12 +11,12 @@ import { Form, Link, useSearchParams } from "react-router";
 import { LifecycleBadge, NodeTypeBadge } from "~/components/badge";
 import { Breadcrumb, docoBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
-import { NodeTypeIcon } from "~/components/node-type-icon";
+import { NeuronTypeIcon } from "~/components/neuron-type-icon";
 import { SiteHeader } from "~/components/site-header";
 import { loadDocoRouteForRead } from "~/lib/doco-access.server";
 import { getDocoEmbeddingProvider } from "~/lib/embedding-provider.server";
 import { loadHostConfig } from "~/lib/host";
-import { lifecycleColor, nodeTypePlural } from "~/lib/node-colors";
+import { lifecycleColor, nodeTypePlural } from "~/lib/neuron-colors";
 import {
   type FilterFacets,
   type SearchFilters,
@@ -285,7 +285,7 @@ export default function SearchInDoco({
                 value: f.value,
                 label: nodeTypePlural(f.value),
                 count: f.count,
-                icon: <NodeTypeIcon entityType={f.value} />,
+                icon: <NeuronTypeIcon entityType={f.value} />,
               }))}
               selected={new Set(filters.entityType ?? [])}
               wildcardActive={filters.entityType === null}

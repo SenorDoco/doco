@@ -19,8 +19,8 @@ import { ActivityHeatmap } from "~/components/activity-heatmap";
 import { Breadcrumb, docoBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
 import { InviteCollaboratorsLink } from "~/components/invite-collaborators-link";
-import { NodeTypeIcon } from "~/components/node-type-icon";
-import { NodesOverviewCard, type NodesOverviewSection } from "~/components/nodes-overview-card";
+import { NeuronTypeIcon } from "~/components/neuron-type-icon";
+import { NeuronsOverviewCard, type NodesOverviewSection } from "~/components/neurons-overview-card";
 import { OverviewGraph } from "~/components/overview-graph";
 import { SearchBoxWithHistory } from "~/components/search-box-with-history";
 import { SiteHeader } from "~/components/site-header";
@@ -28,7 +28,7 @@ import { docoPath } from "~/lib/db.server";
 import { canAdminDoco, loadDocoRouteForRead } from "~/lib/doco-access.server";
 import { loadOverviewGraph } from "~/lib/full-graph.server";
 import { loadHostConfig } from "~/lib/host";
-import { lifecycleColor } from "~/lib/node-colors";
+import { lifecycleColor } from "~/lib/neuron-colors";
 import { computeFilterFacets } from "~/lib/search-filters.server";
 import { timeAgo } from "~/lib/time-ago";
 
@@ -329,7 +329,7 @@ export default function DocoHome({
         key: `type-${t.value}`,
         href: nodeTypeSearchPath(handle, t.value),
         label: nodeTypeLabel(t.value),
-        icon: <NodeTypeIcon entityType={t.value} />,
+        icon: <NeuronTypeIcon entityType={t.value} />,
         count: t.count,
         activeCount: t.activeCount,
         ariaLabel: `Search ${t.count} ${nodeTypeLabel(t.value).toLowerCase()}`,
@@ -403,7 +403,7 @@ export default function DocoHome({
           </aside>
 
           <section className="hidden min-w-0 space-y-5 min-[1200px]:block">
-            <NodesOverviewCard
+            <NeuronsOverviewCard
               sections={sections}
               empty={
                 <p className="text-xs italic text-muted-foreground">This Doco has no nodes yet.</p>

@@ -160,7 +160,7 @@ export async function loadOverviewGraph(
     centerId,
     nodes,
     links,
-    detailUrl: options.handle ? `/${options.handle}/graph-node-details.json` : null,
+    detailUrl: options.handle ? `/${options.handle}/graph-neuron-details.json` : null,
   };
 }
 

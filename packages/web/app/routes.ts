@@ -123,11 +123,11 @@ export default [
     "routes/orgs.$orgHandle.constitution.guidance.new.tsx",
   ),
   route(
-    "orgs/:orgHandle/constitution/node-authoring/new",
-    "routes/orgs.$orgHandle.constitution.node-authoring.new.tsx",
+    "orgs/:orgHandle/constitution/neuron-authoring/new",
+    "routes/orgs.$orgHandle.constitution.neuron-authoring.new.tsx",
   ),
   route(
-    "orgs/:orgHandle/constitution/:entityType/:articleId/edit",
+    "orgs/:orgHandle/constitution/:entityType/:primitiveId/edit",
     "routes/orgs.$orgHandle.constitution.$entityType.$articleId.edit.tsx",
   ),
   route("collaborators", "routes/collaborators.tsx"),
@@ -184,11 +184,11 @@ export default [
     "routes/$docoHandle.constitution.guidance.new.tsx",
   ),
   route(
-    ":docoHandle/constitution/node-authoring/new",
-    "routes/$docoHandle.constitution.node-authoring.new.tsx",
+    ":docoHandle/constitution/neuron-authoring/new",
+    "routes/$docoHandle.constitution.neuron-authoring.new.tsx",
   ),
   route(
-    ":docoHandle/constitution/:entityType/:articleId/edit",
+    ":docoHandle/constitution/:entityType/:primitiveId/edit",
     "routes/$docoHandle.constitution.$entityType.$articleId.edit.tsx",
   ),
   route(":docoHandle/invites", "routes/$docoHandle.invites.tsx"),
@@ -217,16 +217,16 @@ export default [
   // Articles (constitution metadata) are not nodes; they live on a
   // dedicated endpoint and are intentionally absent from the generic
   // capture dispatcher below.
-  route(":docoHandle/api/articles.json", "routes/$docoHandle.api.articles[.]json.tsx"),
+  route(":docoHandle/api/primitives.json", "routes/$docoHandle.api.primitives[.]json.tsx"),
   // Generic capture dispatcher. Handles decisions, intents, actions,
   // references, rules, logs, evals, states via CAPTURE_REGISTRY in the
   // route file. Adding a new simple-capture entity type is one registry
   // row; no new route needed. Article types are deliberately not in this
-  // registry — see /api/articles.json above.
+  // registry — see /api/primitives.json above.
   route(":docoHandle/api/:type.json", "routes/$docoHandle.api.$type[.]json.tsx"),
   route(":docoHandle/api/:type.txt", "routes/$docoHandle.api.$type[.]txt.tsx"),
   route(":docoHandle/activity", "routes/$docoHandle.activity.tsx"),
-  route(":docoHandle/graph-node-details.json", "routes/$docoHandle.graph-node-details[.]json.tsx"),
+  route(":docoHandle/graph-neuron-details.json", "routes/$docoHandle.graph-neuron-details[.]json.tsx"),
   route(":docoHandle/search", "routes/$docoHandle.search.tsx"),
   route(":docoHandle/search.json", "routes/$docoHandle.search[.]json.tsx"),
   route(":docoHandle/onboarding/agent", "routes/$docoHandle.onboarding.agent.tsx"),
@@ -237,7 +237,7 @@ export default [
   // edge's metadata. Composite key `(synapse_type, from_id, to_id)` is
   // url-encoded as `edge_type__from_id__to_id`.
   route(":docoHandle/synapses", "routes/$docoHandle.synapses._index.tsx"),
-  route(":docoHandle/synapses/:edgeKey", "routes/$docoHandle.synapses.$edgeKey.tsx"),
+  route(":docoHandle/synapses/:synapseKey", "routes/$docoHandle.synapses.$edgeKey.tsx"),
   // Short-form entity routes. `:type` is validated by the loader; reserved
   // feature paths above win the match for the static paths.
   route(":docoHandle/:type", "routes/$docoHandle.$type._index.tsx"),

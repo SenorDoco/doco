@@ -12,11 +12,11 @@ import { Form, Link } from "react-router";
 import { LifecycleBadge, NodeTypeBadge } from "~/components/badge";
 import { Breadcrumb, orgBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
-import { NodeTypeIcon } from "~/components/node-type-icon";
+import { NeuronTypeIcon } from "~/components/neuron-type-icon";
 import { SiteHeader } from "~/components/site-header";
 import { getDocoEmbeddingProvider } from "~/lib/embedding-provider.server";
 import { loadHostConfig } from "~/lib/host";
-import { nodeTypePlural } from "~/lib/node-colors";
+import { nodeTypePlural } from "~/lib/neuron-colors";
 import { getCurrentPrincipal } from "~/lib/session";
 import { timeAgo } from "~/lib/time-ago";
 
@@ -303,7 +303,7 @@ export default function OrgSearch({
                           className="font-medium text-primary hover:underline"
                         >
                           <span aria-hidden className="mr-1.5">
-                            <NodeTypeIcon entityType={h.entity_type} />
+                            <NeuronTypeIcon entityType={h.entity_type} />
                           </span>
                           {h.summary || h.id}
                         </Link>

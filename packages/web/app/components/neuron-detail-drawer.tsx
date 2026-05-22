@@ -10,7 +10,7 @@
 // Driven by the parent route's state; no internal route, no portals.
 
 import { Link } from "react-router";
-import { NodeTypeIcon } from "~/components/node-type-icon";
+import { NeuronTypeIcon } from "~/components/neuron-type-icon";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "~/components/table";
 
 export type DrawerKind = "relevant" | "synapses" | "history" | "metadata";
@@ -93,7 +93,7 @@ function paneTitle(kind: DrawerKind): string {
   }
 }
 
-export function NodeDetailDrawer(props: NodeDetailDrawerProps) {
+export function NeuronDetailDrawer(props: NodeDetailDrawerProps) {
   const { open, onClose } = props;
   if (!open) return null;
   return (
@@ -140,7 +140,7 @@ function RelevantNodesPane({ rankedNeighbors, linkTo }: NodeDetailDrawerProps) {
           <li key={n.id}>
             <Link to={linkTo(n.entity_type, n.id)} className="block px-3 py-2 hover:bg-input/40">
               <div className="flex items-center gap-1.5 text-[10px] uppercase text-muted-foreground">
-                <NodeTypeIcon entityType={n.entity_type} />
+                <NeuronTypeIcon entityType={n.entity_type} />
                 <span>{n.entity_type}</span>
                 <span className="ml-2 font-mono normal-case">PPR {n.ppr.toFixed(3)}</span>
               </div>
