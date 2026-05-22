@@ -145,11 +145,11 @@ RELATED
   GET  ${baseUrl}/${handle}/status.json          freshness + counts
 `,
 
-  primitives: (baseUrl, handle) => `# Doco — Primitives (constitution metadata)
+  primitives: (baseUrl, handle) => `# Doco — Primitives
 
-Primitives are **not neurons**. They are constitution metadata that
-governs how a Doco is authored, and they live on a dedicated
-endpoint — separate from the generic neuron-capture API.
+Primitives are **not neurons**. They govern how a Doco is authored,
+and they live on a dedicated endpoint — separate from the generic
+neuron-capture API.
 
 Two kinds:
   - guidance         contributor-facing prose; not engine-evaluated.
@@ -266,7 +266,7 @@ UPDATE A SPECIFIC PRIMITIVE
   Body shape mirrors the relevant capture draft.
 
 RELATED
-  GET  ${baseUrl}/${handle}/constitution           HTML view of the constitution
+  GET  ${baseUrl}/${handle}/constitution           HTML view of the primitives
   GET  ${baseUrl}/api/v1/agent-bootstrap.json      bootstrap payload includes primitives
 `,
 
