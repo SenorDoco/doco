@@ -99,9 +99,12 @@ created_at: 2026-05-08T15:42:00Z
 created_by: principal_...
 updated_at: 2026-05-08T15:42:00Z
 updated_by: principal_...
-lifecycle: proposed | active | succeeded | superseded | abandoned | failed   # canonical state machine across stateful entities (see §3.1)
+lifecycle: drafted | proposed | active | retired   # canonical state machine across stateful entities (see §3.1)
+deprecated: false                    # optional warning label; still current enough to read, discouraged for new dependencies
+outcome: succeeded | failed          # optional result once retired
 tags: [tag_..., tag_...]
 born_from: decision_... | null     # optional provenance: this entity exists because of another (e.g., regression Rule born from a bugfix Decision)
+superseded_by: entity_... | null   # optional replacement synapse; usually paired with lifecycle: retired
 ```
 
 ### 3.1 Lifecycle — canonical states across stateful entities
@@ -109,23 +112,24 @@ born_from: decision_... | null     # optional provenance: this entity exists bec
 Every stateful entity moves through a shared lifecycle:
 
 ```
-proposed → active → succeeded
-                 ↘ failed
-                 ↘ superseded
-                 ↘ abandoned
+drafted → proposed → active → retired
 ```
 
-`lifecycle` is the only stored state field — there's no per-kind alias on disk. "Show me everything currently *active*" is one query across node types. UI may render kind-friendly labels at display time (e.g. "completed" for an Action's `succeeded`), but nothing is persisted alongside `lifecycle`.
+`lifecycle` answers whether the entity is still current. `outcome`
+stores success/failure when that distinction matters. Replacement is
+modeled by the `superseded_by` reference field, which materializes as a
+synapse. "Show me everything currently *active*" stays one query across
+neuron types.
 
 Display-only label suggestions (UI may use; not stored):
 
-| Entity | proposed | active | succeeded | superseded | abandoned | failed |
-|---|---|---|---|---|---|---|
-| Intent | proposed | active | achieved | superseded | abandoned | — |
-| Decision | proposed | active | accepted | superseded | reverted | — |
-| Action | planned | in_progress | completed | — | blocked | failed |
-| Rule | proposed | active | — | superseded | abandoned | — |
-| Eval | proposed | active | passed | superseded | abandoned | failed |
+| Entity | drafted | proposed | active | retired |
+|---|---|---|---|---|
+| Intent | drafted | proposed | active | retired |
+| Decision | drafted | proposed | active | retired |
+| Action | drafted | proposed | active | retired |
+| Rule | drafted | proposed | active | retired |
+| Eval | drafted | proposed | active | retired |
 
 ## 4. Entities
 

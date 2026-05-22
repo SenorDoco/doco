@@ -350,8 +350,7 @@ export default function DocoHome({
 
   // Lifecycle filter is page-level so it persists across perspective
   // tab switches. The set of lifecycles present in the data drives
-  // which checkboxes appear; defaults hide terminal stages
-  // (abandoned/superseded/failed/succeeded).
+  // which checkboxes appear; defaults hide retired neurons.
   const availableLifecycles = useMemo(() => {
     const set = new Set<string>(LIFECYCLE_ORDER);
     for (const node of graph.nodes) set.add(node.lifecycle ?? "active");

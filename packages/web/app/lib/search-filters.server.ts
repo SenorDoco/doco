@@ -22,15 +22,9 @@ const MAX_LIMIT = 500;
 
 /**
  * Lifecycle values that signal the entity should be hidden by default.
- * Other values (active, accepted, …) are treated as "current" and surface
- * in default search results.
+ * Other values are treated as current and surface in default search results.
  */
-export const HIDDEN_BY_DEFAULT_LIFECYCLE_VALUES = [
-  "succeeded",
-  "superseded",
-  "abandoned",
-  "failed",
-] as const;
+export const HIDDEN_BY_DEFAULT_LIFECYCLE_VALUES = ["retired"] as const;
 
 export function parseSearchFilters(params: URLSearchParams, facets: FilterFacets): SearchFilters {
   const rawLimit = Number.parseInt(params.get("limit") ?? "", 10);

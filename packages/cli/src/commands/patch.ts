@@ -77,7 +77,7 @@ async function sendPatch(type: string, id: string, body: Record<string, unknown>
   if (Object.keys(body).length === 0) {
     console.error(
       cross(
-        "Nothing to patch. Pass at least one of: --append-body / --body / --summary / --purpose / --lifecycle / --superseded-by / --add-intent / --remove-intent.",
+        "Nothing to patch. Pass at least one of: --append-body / --body / --summary / --purpose / --lifecycle / --deprecated / --outcome / --superseded-by / --add-intent / --remove-intent.",
       ),
     );
     process.exit(2);
@@ -149,6 +149,8 @@ function buildPatchBody(_type: string, args: Record<string, unknown>): Record<st
   }
   if (args.purpose) body.purpose = args.purpose;
   if (args.lifecycle) body.lifecycle = args.lifecycle;
+  if (args.deprecated !== undefined) body.deprecated = args.deprecated === true || args.deprecated === "true";
+  if (args.outcome) body.outcome = args.outcome;
   if (args["superseded-by"] !== undefined) body.superseded_by = args["superseded-by"];
 
   const addIntents = splitList(args["add-intent"] as string | undefined);
@@ -188,12 +190,20 @@ const commonArgs = {
   },
   lifecycle: {
     type: "string" as const,
-    description: "Set lifecycle (e.g. 'active', 'superseded', 'abandoned', 'failed').",
+    description: "Set lifecycle (drafted, proposed, active, retired).",
+  },
+  deprecated: {
+    type: "boolean" as const,
+    description: "Mark the entity as deprecated while leaving its lifecycle unchanged.",
+  },
+  outcome: {
+    type: "string" as const,
+    description: "Set outcome (succeeded or failed).",
   },
   "superseded-by": {
     type: "string" as const,
     description:
-      "Record the supersession edge: id of the entity that replaces this one. Allowed on frozen claims (per the mutability gate). Pair with --lifecycle superseded for the full supersession transition.",
+      "Record the supersession synapse: id of the entity that replaces this one. Pair with --lifecycle retired for the full supersession transition.",
   },
   "add-intent": {
     type: "string" as const,

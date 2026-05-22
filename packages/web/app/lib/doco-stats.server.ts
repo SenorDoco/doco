@@ -1,5 +1,5 @@
-// Per-Doco aggregate stats (Neurons, Synapses, Last updated) shown on the
-// dashboard and owner-profile docos tables.
+// Per-Doco aggregate stats (Neurons, Active neurons, Synapses, Last updated)
+// shown on the dashboard and owner-profile docos tables.
 //
 // `neurons` counts only domain entities: decisions, intents, rules,
 // actions, evals, ideas, reference_entities, logs, states. Primitives
@@ -14,6 +14,7 @@ import { withClient } from "@doco/db";
 
 export interface DocoStats {
   neurons: number;
+  activeNeurons: number;
   synapses: number;
   lastUpdatedAt: string | null;
 }
@@ -31,7 +32,7 @@ export const ENTITY_TABLES = [
   "states",
 ] as const;
 
-const EMPTY: DocoStats = { neurons: 0, synapses: 0, lastUpdatedAt: null };
+const EMPTY: DocoStats = { neurons: 0, activeNeurons: 0, synapses: 0, lastUpdatedAt: null };
 
 export async function listDocoStats(docoIds: readonly string[]): Promise<Map<string, DocoStats>> {
   const out = new Map<string, DocoStats>();
@@ -40,19 +41,23 @@ export async function listDocoStats(docoIds: readonly string[]): Promise<Map<str
 
   return withClient(async (c) => {
     const neuronsSql = ENTITY_TABLES.map(
-      (t) => `SELECT doco_id FROM ${t} WHERE doco_id = ANY($1)`,
+      (t) => `SELECT doco_id, lifecycle FROM ${t} WHERE doco_id = ANY($1)`,
     ).join(" UNION ALL ");
     const [neuronsRows, synapsesRows, updatedRows] = await Promise.all([
-      c.query<{ doco_id: string; n: string }>(
-        `SELECT doco_id, COUNT(*)::text AS n FROM (${neuronsSql}) t GROUP BY doco_id`,
+      c.query<{ doco_id: string; n: string; active_n: string }>(
+        `SELECT doco_id,
+                COUNT(*)::text AS n,
+                COUNT(*) FILTER (WHERE COALESCE(lifecycle, 'active') = 'active')::text AS active_n
+           FROM (${neuronsSql}) t
+          GROUP BY doco_id`,
         [ids],
       ),
       c.query<{ doco_id: string; n: string }>(
-        `SELECT doco_id, COUNT(*)::text AS n FROM synapses WHERE doco_id = ANY($1) GROUP BY doco_id`,
+        "SELECT doco_id, COUNT(*)::text AS n FROM synapses WHERE doco_id = ANY($1) GROUP BY doco_id",
         [ids],
       ),
       c.query<{ doco_id: string; last_at: string }>(
-        `SELECT doco_id, MAX(at)::text AS last_at FROM audit_events WHERE doco_id = ANY($1) GROUP BY doco_id`,
+        "SELECT doco_id, MAX(at)::text AS last_at FROM audit_events WHERE doco_id = ANY($1) GROUP BY doco_id",
         [ids],
       ),
     ]);
@@ -60,7 +65,10 @@ export async function listDocoStats(docoIds: readonly string[]): Promise<Map<str
     for (const id of ids) out.set(id, { ...EMPTY });
     for (const r of neuronsRows.rows) {
       const s = out.get(r.doco_id);
-      if (s) s.neurons = Number(r.n);
+      if (s) {
+        s.neurons = Number(r.n);
+        s.activeNeurons = Number(r.active_n);
+      }
     }
     for (const r of synapsesRows.rows) {
       const s = out.get(r.doco_id);
