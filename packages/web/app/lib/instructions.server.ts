@@ -221,8 +221,10 @@ returned 401/403, or the bootstrap couldn't reach Doco):
 
    The URL must be wrapped in markdown link syntax so it renders
    clickable.
-3. **Call \`doco_complete_authentication\` with \`wait_seconds: 120\`.**
-   This blocks while polling — the intentional pause.
+3. **Immediately call \`doco_complete_authentication\` with
+   \`wait_seconds: 120\` in the same turn.** Do not wait for the user
+   to send another message saying they approved; the tool blocks while
+   polling so the agent can learn when approval lands.
 4. **If it succeeds**: retry \`doco_search\` and continue with the
    substantive answer using the now-available Doco.
 5. **If it returns "still pending" or any error**: end your reply

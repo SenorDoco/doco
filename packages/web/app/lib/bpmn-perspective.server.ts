@@ -102,7 +102,6 @@ interface SynapseRow {
   from_id: string;
   to_id: string;
   synapse_type: string;
-  attribution: string | null;
 }
 
 export async function loadBpmnGraph(
@@ -160,7 +159,7 @@ export async function loadBpmnGraph(
   let links: OverviewGraphLink[] = [];
   if (ids.length > 0) {
     const synapseRows = await c.query<SynapseRow>(
-      `SELECT from_id, to_id, synapse_type, attribution
+      `SELECT from_id, to_id, synapse_type
          FROM synapses
         WHERE doco_id = $1
           AND from_id = ANY($2::text[])
@@ -172,7 +171,6 @@ export async function loadBpmnGraph(
       source: r.from_id,
       target: r.to_id,
       synapse_type: r.synapse_type,
-      attribution: r.attribution === "doco-auto" ? "doco-auto" : "explicit",
     }));
   }
 

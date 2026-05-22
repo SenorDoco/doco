@@ -120,7 +120,7 @@ describe("agent bootstrap Stop hook", () => {
           content: [
             {
               type: "text",
-              text: "Captured the rationale.\n\n[🔮 Doco] doco_abc: **2** nodes added/updated",
+              text: "Captured the rationale.\n\n[🔮 Doco] doco_abc: **2** neurons added/updated",
             },
           ],
         },
@@ -143,7 +143,7 @@ describe("agent bootstrap Stop hook", () => {
           content: [
             {
               type: "text",
-              text: "[🔮 Doco] ✍️ Intent added: [Agents must keep capture feedback visible.](https://doco.to/intent) — ⚙️ framework\n\n[🔮 Doco] doco_abc: **2** nodes added/updated",
+              text: "[🔮 Doco] ✍️ Intent added: [Agents must keep capture feedback visible.](https://doco.to/intent) — ⚙️ framework\n\n[🔮 Doco] doco_abc: **2** neurons added/updated",
             },
           ],
         },
@@ -166,7 +166,7 @@ describe("agent bootstrap Stop hook", () => {
           content: [
             {
               type: "text",
-              text: "[🔮 Doco] ✍️ Intent added: [Agents must keep capture feedback visible.](https://doco.to/intent) — ⚙️ framework\n[🔮 Doco] ✍️ Decision added: [Compare Doco write footer_lines against assistant text before Stop.](https://doco.to/decision) — ⚙️ framework (0.2s)\n\n[🔮 Doco] doco_abc: **2** nodes added/updated",
+              text: "[🔮 Doco] ✍️ Intent added: [Agents must keep capture feedback visible.](https://doco.to/intent) — ⚙️ framework\n[🔮 Doco] ✍️ Decision added: [Compare Doco write footer_lines against assistant text before Stop.](https://doco.to/decision) — ⚙️ framework (0.2s)\n\n[🔮 Doco] doco_abc: **2** neurons added/updated",
             },
           ],
         },

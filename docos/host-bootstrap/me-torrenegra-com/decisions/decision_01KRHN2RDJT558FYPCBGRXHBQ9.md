@@ -12,10 +12,4 @@ decided_at: 2026-05-13T21:49:56.531Z
 created_at: 2026-05-13T21:49:56.531Z
 created_by: principal_01KRHJQCG3HH5AYBZWEZHCS9MY
 lifecycle: active
-auto_synapses:
-  - to_id: decision_01KRHMZE5444PVATY5B3KYJBPM
-    synapse_type: supersedes
-    reason: The decision to commit only on explicit ask is a more refined guideline
-      that likely replaces broader documentation practices, such as those
-      previously established by Speco.
 ---

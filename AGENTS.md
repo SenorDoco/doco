@@ -23,7 +23,7 @@ purpose-built for AI agents and humans to share context.
 Git captures *what* changed in code. PR descriptions capture some of
 the *why* at merge time. Doco captures the *why* as it forms — the
 alternatives weighed, the constraints that shaped a decision, the
-rules that emerged from a bug fix — in typed nodes you can query
+rules that emerged from a bug fix — in typed neurons you can query
 across the whole project's lifetime.
 
 For you, the agent, this means:
@@ -113,7 +113,7 @@ query is sent), then the N-found line AFTER the result returns:
 
    ← tool call here
 
-[🔮 Doco] <N> nodes found (<X>s)
+[🔮 Doco] <N> neurons found (<X>s)
 ```
 
 The verb is randomized — "Searching the lore...", "Polling the
@@ -126,7 +126,7 @@ flow below — no verb.
 append the tagline AFTER the N-found line:
 
 ```
-[🔮 Doco] <N> nodes found (<X>s)
+[🔮 Doco] <N> neurons found (<X>s)
 [🔮 Doco] To document anything, just ask me to "doco it"
 ```
 
@@ -189,7 +189,7 @@ end of the response.
 **Connected source** (you queried or wrote to it this turn — even if
 N == 0):
 ```
-[🔮 Doco] <doco-or-org-name>: **<N>** nodes added/updated
+[🔮 Doco] <doco-or-org-name>: **<N>** neurons added/updated
 ```
 
 **Source whose access hasn't been granted yet**:
