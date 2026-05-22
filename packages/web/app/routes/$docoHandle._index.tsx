@@ -11,7 +11,7 @@ import { withClient } from "@doco/db";
 // without a manual refresh. React Router 7's useRevalidator re-runs the
 // loader. We only poll when the tab is visible to avoid burning cycles
 // on idle tabs.
-import { useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useRevalidator } from "react-router";
 import { parse as parseYaml } from "yaml";
 import { ActivityFeedLine, type ActivityFeedLineItem } from "~/components/activity-feed-line";
@@ -19,6 +19,11 @@ import { ActivityHeatmap } from "~/components/activity-heatmap";
 import { Breadcrumb, docoBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
 import { InviteCollaboratorsLink } from "~/components/invite-collaborators-link";
+import {
+  LIFECYCLE_ORDER,
+  LifecycleFilter,
+  initialVisibleLifecycles,
+} from "~/components/lifecycle-filter";
 import { NeuronTypeIcon } from "~/components/neuron-type-icon";
 import { NeuronsOverviewCard, type NodesOverviewSection } from "~/components/neurons-overview-card";
 import { OverviewGraph } from "~/components/overview-graph";
@@ -343,6 +348,52 @@ export default function DocoHome({
   const pageRanksMap = new Map(Object.entries(pageRanks));
   const activeSlug = activePerspectiveSlug ?? "graph";
 
+  // Lifecycle filter is page-level so it persists across perspective
+  // tab switches. The set of lifecycles present in the data drives
+  // which checkboxes appear; defaults hide terminal stages
+  // (abandoned/superseded/failed/succeeded).
+  const availableLifecycles = useMemo(() => {
+    const set = new Set<string>(LIFECYCLE_ORDER);
+    for (const node of graph.nodes) set.add(node.lifecycle ?? "active");
+    return set;
+  }, [graph.nodes]);
+
+  const [visibleLifecycles, setVisibleLifecycles] = useState<Set<string>>(() =>
+    initialVisibleLifecycles(availableLifecycles),
+  );
+
+  // Keep visible set in sync if the data introduces a new lifecycle.
+  useEffect(() => {
+    setVisibleLifecycles((prev) => {
+      let changed = false;
+      const next = new Set(prev);
+      for (const lifecycle of availableLifecycles) {
+        // Don't auto-show stages that should be hidden by default.
+        if (!next.has(lifecycle) && !prev.has(lifecycle)) {
+          // initial-hidden stages stay hidden; new not-hidden stages
+          // become visible.
+          // initialVisibleLifecycles enforces hide-by-default policy.
+        }
+      }
+      const seed = initialVisibleLifecycles(availableLifecycles);
+      for (const lifecycle of seed) {
+        if (!next.has(lifecycle) && !prev.has(lifecycle)) {
+          next.add(lifecycle);
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [availableLifecycles]);
+
+  const toggleLifecycle = (lifecycle: string) =>
+    setVisibleLifecycles((prev) => {
+      const next = new Set(prev);
+      if (next.has(lifecycle)) next.delete(lifecycle);
+      else next.add(lifecycle);
+      return next;
+    });
+
   // Live feed polling (ADR-089).
   const revalidator = useRevalidator();
   useEffect(() => {
@@ -454,12 +505,17 @@ export default function DocoHome({
             />
             <div className="flex min-h-0 flex-1 flex-col">
               {activePerspectiveKind === "list" ? (
-                <ListPerspective nodes={graph.nodes} pageRanks={pageRanksMap} />
+                <ListPerspective
+                  nodes={graph.nodes}
+                  pageRanks={pageRanksMap}
+                  visibleLifecycles={visibleLifecycles}
+                />
               ) : activePerspectiveKind === "bpmn" && bpmnGraph ? (
                 <BpmnPerspective
                   lanes={bpmnGraph.lanes}
                   nodes={bpmnGraph.nodes}
                   links={bpmnGraph.links}
+                  visibleLifecycles={visibleLifecycles}
                 />
               ) : (
                 <OverviewGraph
@@ -468,6 +524,7 @@ export default function DocoHome({
                   links={graph.links}
                   detailUrl={graph.detailUrl}
                   fillHeight
+                  visibleLifecycles={visibleLifecycles}
                 />
               )}
             </div>
@@ -518,6 +575,18 @@ export default function DocoHome({
               </CardContent>
             </Card>
           </section>
+        </div>
+
+        {/* Page-level lifecycle filter — shared across every
+            perspective (graph / list / BPMN) so toggles persist when
+            switching tabs. Sits below the perspective body, full
+            width. */}
+        <div className="mt-6">
+          <LifecycleFilter
+            available={availableLifecycles}
+            visible={visibleLifecycles}
+            onToggle={toggleLifecycle}
+          />
         </div>
       </main>
     </div>

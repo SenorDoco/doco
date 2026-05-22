@@ -43,6 +43,15 @@ export interface OverviewNodeDetail {
 interface OverviewGraphProps extends OverviewGraphData {
   fillHeight?: boolean;
   search?: ReactNode;
+  /**
+   * Externally-controlled lifecycle visibility set. When provided, the
+   * graph uses it and DOES NOT render its own lifecycle filter row —
+   * the caller is expected to render `<LifecycleFilter>` somewhere
+   * else (typically the page bottom, shared across perspectives).
+   * When omitted, the graph manages lifecycle state internally for
+   * backwards compatibility (e.g. the org overview).
+   */
+  visibleLifecycles?: Set<string>;
 }
 
 interface Point {
@@ -221,6 +230,7 @@ export function OverviewGraph({
   detailUrl,
   fillHeight = false,
   search,
+  visibleLifecycles: externalVisibleLifecycles,
 }: OverviewGraphProps) {
   const navigate = useNavigate();
   const graphRef = useRef<HTMLDivElement>(null);
@@ -248,12 +258,18 @@ export function OverviewGraph({
       return a.localeCompare(b);
     });
   }, [nodes]);
-  const [visibleLifecycles, setVisibleLifecycles] = useState<Set<string>>(
+  // When the caller passes a `visibleLifecycles` set, the graph is
+  // "controlled" — external state wins and we don't render the
+  // internal filter UI below. Otherwise we manage state locally
+  // (legacy/uncontrolled).
+  const controlledMode = externalVisibleLifecycles !== undefined;
+  const [internalVisibleLifecycles, setVisibleLifecycles] = useState<Set<string>>(
     () =>
       new Set(allLifecycles.filter((lifecycle) => !HIDDEN_LIFECYCLES_BY_DEFAULT.has(lifecycle))),
   );
 
   useEffect(() => {
+    if (controlledMode) return;
     setVisibleLifecycles((prev) => {
       const next = new Set<string>();
       for (const lifecycle of allLifecycles) {
@@ -263,7 +279,9 @@ export function OverviewGraph({
       }
       return next;
     });
-  }, [allLifecycles]);
+  }, [allLifecycles, controlledMode]);
+
+  const visibleLifecycles = externalVisibleLifecycles ?? internalVisibleLifecycles;
 
   const visibleNodes = useMemo(
     () => nodes.filter((node) => visibleLifecycles.has(nodeLifecycle(node))),
@@ -474,6 +492,7 @@ export function OverviewGraph({
         )}
       </div>
 
+      {controlledMode ? null : (
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-muted-foreground">Life cycle:</span>
@@ -509,6 +528,7 @@ export function OverviewGraph({
           })}
         </div>
       </div>
+      )}
     </div>
   );
 }

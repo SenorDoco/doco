@@ -29,6 +29,13 @@ interface BpmnPerspectiveProps {
   lanes: BpmnLane[];
   nodes: BpmnNode[];
   links: OverviewGraphLink[];
+  /**
+   * Page-level lifecycle filter set. Nodes whose lifecycle isn't in
+   * this set are excluded; lanes that end up empty after filtering
+   * are dropped from the lane list. When omitted, every node is
+   * shown.
+   */
+  visibleLifecycles?: Set<string>;
 }
 
 const LANE_HEIGHT = 140;
@@ -45,10 +52,26 @@ interface FlowModule {
   MiniMap: typeof import("@xyflow/react").MiniMap;
 }
 
-export function BpmnPerspective({ lanes, nodes, links }: BpmnPerspectiveProps) {
+export function BpmnPerspective({
+  lanes,
+  nodes,
+  links,
+  visibleLifecycles,
+}: BpmnPerspectiveProps) {
   const navigate = useNavigate();
   const [Flow, setFlow] = useState<FlowModule | null>(null);
   const hasFitRef = useRef(false);
+
+  // Drop nodes whose lifecycle is filtered out, then drop empty
+  // lanes so the lane stack collapses cleanly. Links are filtered
+  // by the existing nodeSet check inside layOutBpmn.
+  const { filteredNodes, filteredLanes } = useMemo(() => {
+    if (!visibleLifecycles) return { filteredNodes: nodes, filteredLanes: lanes };
+    const fn = nodes.filter((n) => visibleLifecycles.has(n.lifecycle ?? "active"));
+    const lanesWithNodes = new Set(fn.map((n) => n.laneId));
+    const fl = lanes.filter((l) => lanesWithNodes.has(l.id));
+    return { filteredNodes: fn, filteredLanes: fl };
+  }, [nodes, lanes, visibleLifecycles]);
 
   useEffect(() => {
     let alive = true;
@@ -66,7 +89,10 @@ export function BpmnPerspective({ lanes, nodes, links }: BpmnPerspectiveProps) {
     };
   }, []);
 
-  const layout = useMemo(() => layOutBpmn(lanes, nodes, links), [lanes, nodes, links]);
+  const layout = useMemo(
+    () => layOutBpmn(filteredLanes, filteredNodes, links),
+    [filteredLanes, filteredNodes, links],
+  );
   const nodeTypes = useMemo(
     () => ({
       bpmnLane: BpmnLaneNode,
@@ -78,9 +104,12 @@ export function BpmnPerspective({ lanes, nodes, links }: BpmnPerspectiveProps) {
     }),
     [],
   );
-  const nodeById = useMemo(() => new Map(nodes.map((n) => [n.id, n])), [nodes]);
+  const nodeById = useMemo(
+    () => new Map(filteredNodes.map((n) => [n.id, n])),
+    [filteredNodes],
+  );
 
-  if (lanes.length === 0 || nodes.length === 0) {
+  if (filteredLanes.length === 0 || filteredNodes.length === 0) {
     return (
       <div className="flex h-full min-h-[320px] items-center justify-center rounded-md border border-border bg-input text-xs italic text-muted-foreground">
         No neurons assigned to any swim lane yet. Add `actor_id`, `decided_by`, or `wanted_by`

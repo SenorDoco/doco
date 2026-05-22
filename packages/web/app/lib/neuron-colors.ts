@@ -7,21 +7,27 @@
  * diluted the meaning of color overall.
  */
 
+// Per project owner: `active` is black (settled, in force);
+// `in_progress` is green (work in motion); `drafted` is light blue
+// (provisional, not yet ratified). `planned` moves to amber (queued)
+// to free the black slot; `failed` keeps red on its own; the
+// "no longer current" cluster (abandoned/retired/succeeded/superseded)
+// stays gray.
 export const LIFECYCLE_COLOR: Record<string, string> = {
-  active: "#16a34a",
-  in_progress: "#ca8a04",
-  in_progess: "#ca8a04",
-  planned: "#171717",
-  proposed: "#2563eb",
-  abandoned: "#737373",
+  active: "#171717", // black — settled and in force
+  in_progress: "#16a34a", // green — work in motion
+  in_progess: "#16a34a", // typo alias
+  planned: "#ca8a04", // amber — queued / upcoming
+  proposed: "#2563eb", // blue — under consideration
+  drafted: "#38bdf8", // sky-400 — provisional, not yet ratified
+  draft: "#38bdf8", // alias
+  failed: "#dc2626", // red — bad outcome
+  abandoned: "#737373", // gray — no longer current
   retired: "#737373",
   succeeded: "#737373",
-  successed: "#737373",
+  successed: "#737373", // typo alias
   superseded: "#737373",
-  superseeded: "#737373",
-  draft: "#dc2626",
-  drafted: "#dc2626",
-  failed: "#dc2626",
+  superseeded: "#737373", // typo alias
 };
 
 export const LIFECYCLE_FALLBACK_COLOR = "#737373";

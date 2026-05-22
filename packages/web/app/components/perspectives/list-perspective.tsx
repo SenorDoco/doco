@@ -78,18 +78,32 @@ export interface ListPerspectiveNode {
 interface ListPerspectiveProps {
   nodes: readonly ListPerspectiveNode[];
   pageRanks: Map<string, number>;
+  /**
+   * Page-level lifecycle filter set. Nodes whose lifecycle isn't in
+   * this set are excluded before sort. When omitted, every node
+   * is shown.
+   */
+  visibleLifecycles?: Set<string>;
 }
 
-export function ListPerspective({ nodes, pageRanks }: ListPerspectiveProps) {
+export function ListPerspective({ nodes, pageRanks, visibleLifecycles }: ListPerspectiveProps) {
   const [sort, setSort] = useState<ListSortKey>("recent");
 
-  const sorted = useMemo(() => sortNodes(nodes, sort, pageRanks), [nodes, sort, pageRanks]);
+  const filtered = useMemo(() => {
+    if (!visibleLifecycles) return nodes;
+    return nodes.filter((node) => visibleLifecycles.has(node.lifecycle ?? "active"));
+  }, [nodes, visibleLifecycles]);
+
+  const sorted = useMemo(
+    () => sortNodes(filtered, sort, pageRanks),
+    [filtered, sort, pageRanks],
+  );
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-3">
       <div className="flex items-center justify-between gap-2">
         <p className="text-xs text-muted-foreground">
-          {nodes.length} neuron{nodes.length === 1 ? "" : "s"}
+          {filtered.length} neuron{filtered.length === 1 ? "" : "s"}
         </p>
         <label className="inline-flex items-center gap-2 text-xs">
           <span className="text-muted-foreground">Sort by</span>
