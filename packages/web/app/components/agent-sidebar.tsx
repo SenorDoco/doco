@@ -7,7 +7,7 @@
 // events from the agent.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useLocation, useNavigate } from "react-router";
+import { Link, useLocation, useNavigate } from "react-router";
 import { cn } from "~/lib/cn";
 import type { CurrentPrincipal } from "~/lib/session.server";
 
@@ -911,6 +911,16 @@ function Composer({
         >
           {busy ? "…" : "Send"}
         </button>
+      </div>
+      <div className="mt-1.5 border-t border-border/70 pt-1.5 text-[10px] leading-snug text-muted-foreground">
+        Señor Doco runs on Claude Haiku 4.5 inside Doco. Want to collaborate with your own agent?{" "}
+        <Link
+          to="/collaborators/invite"
+          className="font-semibold text-foreground hover:text-primary"
+        >
+          Invite them
+        </Link>
+        .
       </div>
     </div>
   );
