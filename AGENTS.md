@@ -27,6 +27,21 @@ In HOOKS-OFF mode with shell access and `.env` present, you can run
 `bash .claude/bootstrap-fetch.sh` to upgrade to CONNECTED for the
 session.
 
+### MCP server (preferred in HOOKS-OFF environments)
+
+This repo ships an MCP server at `.agents/doco-mcp-server.mjs`,
+registered via `.mcp.json`. MCP-aware clients (Claude Code, Cursor,
+Codex CLI) auto-discover it. The server exposes `doco_search` as a
+first-class tool with an imperative description — tool descriptions
+reach the model without the `<system-reminder>` wrapper that demotes
+AGENTS.md, so this is the preferred discoverability channel where
+project-scope hooks are filtered.
+
+When `doco_search` is available, call it before answering substantive
+questions about this project's conventions, prior decisions, or
+architectural history. The per-turn search injection that hooks used
+to deliver is now agent-initiated via this tool.
+
 ---
 
 ## The four invariants
@@ -135,4 +150,6 @@ Never commit `.env`, `DOCO_ACCESS`, refresh tokens, or any credential.
 - `CLAUDE.md` — one-line shim `@./AGENTS.md`.
 - `.claude/bootstrap-fetch.sh` — SessionStart hook; fetches bootstrap, pre-builds the connection indicator. Bypassed in HOOKS-OFF mode.
 - `.claude/user-prompt-fetch.sh` — UserPromptSubmit hook; re-pushes the protocol and pre-fetches search for the user's prompt. Bypassed in HOOKS-OFF mode.
-- `.agents/doco-agent-client.mjs` — Doco API client; `bootstrap` and `search` subcommands callable directly.
+- `.agents/doco-agent-client.mjs` — Doco API HTTP client; `bootstrap` and `search` subcommands callable directly.
+- `.agents/doco-mcp-server.mjs` — MCP server (stdio, JSON-RPC 2.0, zero-dep) exposing `doco_search`. The discoverability floor for HOOKS-OFF environments.
+- `.mcp.json` — MCP server registration; auto-discovered by Claude Code, Cursor, Codex CLI.
