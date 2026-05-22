@@ -64,7 +64,7 @@ export async function loader({
     primitiveId: params.primitiveId,
     body_md: result.body_md,
     lifecycle: result.lifecycle,
-    raw_yaml: result.raw_yaml,
+    data: result.data,
     host: await loadHostConfig(),
   };
 }
@@ -185,29 +185,29 @@ export default function EditPrimitive({
 }: {
   loaderData: Awaited<ReturnType<typeof loader>>;
 }) {
-  const { ownerSlug, docoSlug, handle, me, entityType, primitiveId, body_md, raw_yaml } =
+  const { ownerSlug, docoSlug, handle, me, entityType, primitiveId, body_md, data } =
     loaderData;
   const actionData = useActionData<ActionError>();
   const isNeuronAuthoring = entityType === "neuron_authoring_primitive";
   const initialEvalKind: ArticleKind =
-    raw_yaml.evaluation_kind === "probabilistic" ? "probabilistic" : "deterministic";
+    data.evaluation_kind === "probabilistic" ? "probabilistic" : "deterministic";
   const [evaluationKind, setEvaluationKind] = useState<ArticleKind>(initialEvalKind);
   const initialPredicate =
-    raw_yaml.predicate && typeof raw_yaml.predicate === "object"
-      ? JSON.stringify(raw_yaml.predicate, null, 2)
+    data.predicate && typeof data.predicate === "object"
+      ? JSON.stringify(data.predicate, null, 2)
       : "";
   const initialSpec =
-    raw_yaml.predicate &&
-    typeof raw_yaml.predicate === "object" &&
-    (raw_yaml.predicate as { kind?: string }).kind === "probabilistic" &&
-    typeof (raw_yaml.predicate as { spec?: string }).spec === "string"
-      ? (raw_yaml.predicate as { spec: string }).spec
+    data.predicate &&
+    typeof data.predicate === "object" &&
+    (data.predicate as { kind?: string }).kind === "probabilistic" &&
+    typeof (data.predicate as { spec?: string }).spec === "string"
+      ? (data.predicate as { spec: string }).spec
       : "";
-  const initialFiresOn = Array.isArray(raw_yaml.fires_when_neuron_lifecycle)
-    ? (raw_yaml.fires_when_neuron_lifecycle as string[]).join(", ")
+  const initialFiresOn = Array.isArray(data.fires_when_neuron_lifecycle)
+    ? (data.fires_when_neuron_lifecycle as string[]).join(", ")
     : "";
   const initialOnViolation =
-    typeof raw_yaml.on_violation === "string" ? raw_yaml.on_violation : "block";
+    typeof data.on_violation === "string" ? data.on_violation : "block";
 
   return (
     <div>

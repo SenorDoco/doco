@@ -1,13 +1,11 @@
 import { getDocoByHandle } from "@doco/db";
 import { validateRequestedDocoId as validateRequestedDocoHandle } from "@doco/shared";
-import { parse as parseYaml } from "yaml";
 import { loadDocoRouteForAdmin, loadDocoRouteForRead } from "~/lib/doco-access.server";
 import { reindex, renameDocoHandle, updateDocoMeta } from "~/lib/redeem.server";
 
 interface SettingsPatch {
   handle?: string;
   display_name?: string | null;
-  description?: string | null;
   visibility?: "private" | "public";
 }
 
@@ -35,7 +33,6 @@ export async function loader({
     doco_id: meta.docoId,
     doco_handle: meta.handle,
     display_name: meta.displayName,
-    description: meta.description,
     visibility: meta.visibility,
   });
 }
@@ -78,7 +75,6 @@ export async function action({
   try {
     await updateDocoMeta({
       handle: finalHandle,
-      ...(patch.description !== undefined ? { description: patch.description } : {}),
       ...(patch.display_name !== undefined ? { display_name: patch.display_name } : {}),
       ...(patch.visibility !== undefined ? { visibility: patch.visibility } : {}),
     });
@@ -89,16 +85,8 @@ export async function action({
 
   const row = await getDocoByHandle(finalHandle);
   let display_name = row?.name ?? "";
-  let description = "";
-  if (row) {
-    try {
-      const parsed = parseYaml(row.raw_yaml) as Record<string, unknown>;
-      if (typeof parsed.description === "string") description = parsed.description;
-      if (!display_name && typeof parsed.display_name === "string")
-        display_name = parsed.display_name;
-    } catch {
-      // raw_yaml unparseable — display_name + description fall back to defaults.
-    }
+  if (row && !display_name && typeof row.data.display_name === "string") {
+    display_name = row.data.display_name;
   }
   return Response.json(
     {
@@ -106,7 +94,6 @@ export async function action({
       doco_id: row?.id ?? meta.docoId,
       doco_handle: finalHandle,
       display_name,
-      description,
       visibility: row?.visibility ?? "private",
     },
     { status: 200 },

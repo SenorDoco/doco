@@ -90,7 +90,7 @@ interface NeuronRow {
   summary: string | null;
   lifecycle: string | null;
   created_at: string | null;
-  raw_yaml: string | null;
+  data: Record<string, unknown> | null;
 }
 
 interface PrincipalRow {
@@ -116,7 +116,7 @@ export async function loadBpmnGraph(
               t.summary,
               COALESCE(t.lifecycle, 'active') AS lifecycle,
               t.created_at::text AS created_at,
-              t.data::text AS raw_yaml
+              t.data
          FROM ${entry.table} t
         WHERE t.doco_id = $1`,
   ).join(" UNION ALL ");
@@ -137,8 +137,8 @@ export async function loadBpmnGraph(
   const nodes: BpmnNode[] = [];
 
   for (const row of neuronRows.rows) {
-    const data = parseRawYaml(row.raw_yaml);
-    const laneRef = laneReferenceFor(row.entity_type, data);
+    const fields = row.data ?? {};
+    const laneRef = laneReferenceFor(row.entity_type, fields);
     const lane = resolveLane(laneRef, principalById, principalByUsername);
     if (!lanesById.has(lane.id)) lanesById.set(lane.id, lane);
     nodes.push({

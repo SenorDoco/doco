@@ -278,7 +278,7 @@ export async function loader({
     for (const [id, rank] of pageRankMap.entries()) pageRanks[id] = rank;
 
     // BPMN data is only needed when the active perspective is bpmn —
-    // skip the principal+raw_yaml join otherwise.
+    // skip the principal+data join otherwise.
     const bpmnGraph =
       activePerspective?.kind === "bpmn"
         ? await loadBpmnGraph(c, ctx.meta.docoId, { handle })

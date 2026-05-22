@@ -43,7 +43,6 @@ export interface HostDoco {
   ownerId: string;
   /** Internal ULID — FK target for every entity table. */
   docoId: string;
-  description?: string;
   hasIndex: boolean;
   visibility: "private" | "public";
 }
@@ -74,7 +73,7 @@ export async function listUsers(): Promise<HostUser[]> {
 export async function listOrgs(): Promise<HostOrg[]> {
   const rows = await listOrganizations();
   return rows.map((r) => {
-    const fm = JSON.parse(r.raw_yaml) as Record<string, unknown>;
+    const fm = r.data;
     const out: HostOrg = {
       id: r.id,
       slug: r.slug,
@@ -89,7 +88,7 @@ export async function listOrgs(): Promise<HostOrg[]> {
 export async function listMyOrgs(principalId: string): Promise<HostOrg[]> {
   const rows = await listOrganizationsForCollaborator(principalId);
   return rows.map((r) => {
-    const fm = JSON.parse(r.raw_yaml) as Record<string, unknown>;
+    const fm = r.data;
     const out: HostOrg = {
       id: r.id,
       slug: r.slug,
@@ -104,7 +103,7 @@ export async function listMyOrgs(principalId: string): Promise<HostOrg[]> {
 export async function listOrgsOwnedOrAdminedBy(principalId: string): Promise<HostOrg[]> {
   const rows = await listOrganizationsForCollaborator(principalId, ["owner"]);
   return rows.map((r) => {
-    const fm = JSON.parse(r.raw_yaml) as Record<string, unknown>;
+    const fm = r.data;
     const out: HostOrg = {
       id: r.id,
       slug: r.slug,
@@ -119,11 +118,10 @@ export async function listOrgsOwnedOrAdminedBy(principalId: string): Promise<Hos
 export async function listAllDocos(): Promise<HostDoco[]> {
   const rows = await _dbListAllDocos();
   return rows.map((r) => {
-    const fm = JSON.parse(r.raw_yaml) as Record<string, unknown>;
     const ownerKind: "principal" | "organization" = r.owner_id.startsWith("organization_")
       ? "organization"
       : "principal";
-    const out: HostDoco = {
+    return {
       handle: r.handle,
       ownerUsername: r.owner_slug,
       ownerKind,
@@ -132,7 +130,5 @@ export async function listAllDocos(): Promise<HostDoco[]> {
       hasIndex: true,
       visibility: r.visibility,
     };
-    if (typeof fm.description === "string") out.description = fm.description;
-    return out;
   });
 }

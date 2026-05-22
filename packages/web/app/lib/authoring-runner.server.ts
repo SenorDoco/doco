@@ -151,20 +151,16 @@ function collectIncomingNeuronTypes(primitives: LoadedPrimitive[]): Set<string> 
 type PgClient = Parameters<Parameters<typeof withClient>[0]>[0];
 
 async function loadPrimitives(c: PgClient, docoId: string): Promise<LoadedPrimitive[]> {
-  const r = await c.query<{ id: string; summary: string; raw_yaml: string }>(
-    `SELECT id, summary, data::text AS raw_yaml
+  const r = await c.query<{ id: string; summary: string; data: Record<string, unknown> | null }>(
+    `SELECT id, summary, data
        FROM neuron_authoring_primitives
        WHERE doco_id = $1 AND lifecycle = 'active'`,
     [docoId],
   );
   const out: LoadedPrimitive[] = [];
   for (const row of r.rows) {
-    let yaml: Record<string, unknown>;
-    try {
-      yaml = JSON.parse(row.raw_yaml) as Record<string, unknown>;
-    } catch {
-      continue;
-    }
+    const yaml = row.data;
+    if (!yaml) continue;
     const predicate = yaml.predicate;
     if (!predicate || typeof predicate !== "object") continue;
     const onViolation = yaml.on_violation;
@@ -212,17 +208,13 @@ async function loadPopulation(
   if (tables.length === 0) return [];
   const out: CandidateFields[] = [];
   for (const table of tables) {
-    const r = await c.query<{ id: string; raw_yaml: string }>(
-      `SELECT id, data::text AS raw_yaml FROM ${table} WHERE doco_id = $1 AND id <> $2`,
+    const r = await c.query<{ id: string; data: Record<string, unknown> | null }>(
+      `SELECT id, data FROM ${table} WHERE doco_id = $1 AND id <> $2`,
       [docoId, excludeId],
     );
     for (const row of r.rows) {
-      try {
-        const fm = JSON.parse(row.raw_yaml) as CandidateFields;
-        if (fm && typeof fm === "object") out.push(fm);
-      } catch {
-        // Skip malformed rows.
-      }
+      const fm = row.data as CandidateFields | null;
+      if (fm && typeof fm === "object") out.push(fm);
     }
   }
   return out;

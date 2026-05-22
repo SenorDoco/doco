@@ -1,6 +1,5 @@
 import { withClient } from "@doco/db";
 import { Link } from "react-router";
-import { parse as parseYaml } from "yaml";
 import { Breadcrumb, docoBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { NeuronTypeIcon } from "~/components/neuron-type-icon";
@@ -22,7 +21,7 @@ interface ArticleRow {
   lifecycle: string | null;
   created_at: Date | string | null;
   body_md: string | null;
-  raw_yaml: string;
+  data: Record<string, unknown> | null;
 }
 
 interface GuidanceArticleItem {
@@ -49,7 +48,7 @@ export async function loader({
   const { ownerSlug, docoSlug, handle } = ctx;
   const [guidanceRows, nodeAuthoringRows] = await withClient(async (c) => {
     const guidance = await c.query<ArticleRow>(
-      `SELECT id, summary, lifecycle, created_at, body_md, data::text AS raw_yaml
+      `SELECT id, summary, lifecycle, created_at, body_md, data
          FROM guidance_primitives
         WHERE doco_id = $1
           AND COALESCE(lifecycle, 'active') = 'active'
@@ -57,7 +56,7 @@ export async function loader({
       [ctx.meta.docoId],
     );
     const nodeAuthoring = await c.query<ArticleRow>(
-      `SELECT id, summary, lifecycle, created_at, body_md, data::text AS raw_yaml
+      `SELECT id, summary, lifecycle, created_at, body_md, data
          FROM neuron_authoring_primitives
         WHERE doco_id = $1
           AND COALESCE(lifecycle, 'active') = 'active'
@@ -235,7 +234,7 @@ function toGuidanceArticle(row: ArticleRow): GuidanceArticleItem {
 }
 
 function toNodeAuthoringArticle(row: ArticleRow): NodeAuthoringArticleItem {
-  const fm = readFrontmatter(row.raw_yaml);
+  const fm = row.data ?? {};
   const predicate =
     fm.predicate && typeof fm.predicate === "object"
       ? (fm.predicate as Record<string, unknown>)
@@ -245,17 +244,6 @@ function toNodeAuthoringArticle(row: ArticleRow): NodeAuthoringArticleItem {
     evaluationKind: fm.evaluation_kind === "probabilistic" ? "probabilistic" : "deterministic",
     predicateKind: typeof predicate.kind === "string" ? predicate.kind : "unknown",
   };
-}
-
-function readFrontmatter(rawYaml: string): Record<string, unknown> {
-  try {
-    const parsed = parseYaml(rawYaml);
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-      ? (parsed as Record<string, unknown>)
-      : {};
-  } catch {
-    return {};
-  }
 }
 
 function toIso(value: Date | string | null): string | null {

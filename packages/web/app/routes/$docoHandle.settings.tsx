@@ -1,15 +1,13 @@
 import { getOrgRole, withClient } from "@doco/db";
 import { validateRequestedDocoId as validateRequestedDocoHandle } from "@doco/shared";
 // /<doco-handle>/settings — admin-only Doco settings page. Renames the
-// slug, edits description + display_name, toggles visibility
-// (private/public), or deletes the Doco.
+// slug, toggles visibility (private/public), or deletes the Doco.
 //
 // Delete: people only (ADR-040). Two-step confirmation — type the slug to
 // activate the "Delete permanently" button. Hard-delete via ON DELETE
 // CASCADE — not recoverable. Per the `settings-page-delete-doco` Intent +
 // ADR.
 import { Form, Link, redirect, useSearchParams } from "react-router";
-import { parse as parseYaml } from "yaml";
 import { Breadcrumb, docoBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { SiteHeader } from "~/components/site-header";
@@ -35,13 +33,13 @@ async function transferDocoToOrganization(opts: {
   targetOrgId: string;
 }): Promise<void> {
   await withClient(async (c) => {
-    const current = await c.query<{ raw_yaml: string }>(
-      "SELECT data::text AS raw_yaml FROM docos WHERE id = $1 LIMIT 1",
+    const current = await c.query<{ data: Record<string, unknown> | null }>(
+      "SELECT data FROM docos WHERE id = $1 LIMIT 1",
       [opts.docoId],
     );
-    const rawYaml = current.rows[0]?.raw_yaml;
-    if (!rawYaml) throw new Error("Doco not found.");
-    const yaml = parseYaml(rawYaml) as Record<string, unknown>;
+    const existing = current.rows[0]?.data;
+    if (!existing) throw new Error("Doco not found.");
+    const yaml: Record<string, unknown> = { ...existing };
     yaml.owner_id = opts.targetOrgId;
     yaml.org_id = opts.targetOrgId;
     await c.query(
@@ -72,7 +70,6 @@ export async function loader({
     handle,
     docoId: meta.docoId,
     ownerId: meta.ownerId,
-    description: meta.description,
     visibility: meta.visibility,
     perspectives,
     availableOwnerOrgs: me ? await listOrgsOwnedOrAdminedBy(me.id) : [],
@@ -153,8 +150,8 @@ export async function action({
   const newHandle = String(form.get("doco_handle") ?? "")
     .trim()
     .toLowerCase();
-  const description = String(form.get("description") ?? "");
   const visibility = (String(form.get("visibility") ?? "") as "private" | "public") || undefined;
+  const perspectiveId = String(form.get("perspective_id") ?? "").trim();
 
   if (!newHandle) return { error: "Handle is required." };
   const handleError = validateRequestedDocoHandle(newHandle);
@@ -178,9 +175,12 @@ export async function action({
   try {
     await updateDocoMeta({
       handle: finalHandle,
-      description,
       ...(visibility ? { visibility } : {}),
     });
+    if (perspectiveId) {
+      const result = await setDefaultPerspective({ docoId: meta.docoId, perspectiveId });
+      if (!result.ok) return { error: "That perspective is not attached to this Doco." };
+    }
   } catch (e) {
     return { error: (e as Error).message };
   }
@@ -204,7 +204,6 @@ export default function DocoSettings({
     ownerSlug,
     docoSlug,
     handle,
-    description,
     visibility,
     docoId,
     ownerId,
@@ -229,8 +228,21 @@ export default function DocoSettings({
 
         <Card>
           <CardHeader>
-            <CardTitle>Rename</CardTitle>
-            <CardDescription>Update the Doco handle and public metadata.</CardDescription>
+            <CardTitle className="text-base">Doco ID</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-[11px] text-muted-foreground">
+              <span className="font-mono">{docoId}</span>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Settings</CardTitle>
+            <CardDescription>
+              Update the Doco handle, visibility, and default perspective.
+            </CardDescription>
           </CardHeader>
           <CardContent>
             <Form method="post" className="space-y-3">
@@ -258,18 +270,6 @@ export default function DocoSettings({
                 >
                   {HANDLE_FORMAT_HELP} Renaming takes effect immediately and updates every URL.
                 </span>
-              </label>
-
-              <label className="block text-xs">
-                <span className="mb-1 block font-semibold text-foreground">Description</span>
-                <textarea
-                  name="description"
-                  rows={1}
-                  defaultValue={description}
-                  placeholder="One or two sentences describing the project."
-                  style={{ fieldSizing: "content" } as Record<string, string>}
-                  className="w-full resize-none overflow-hidden rounded-md border border-border bg-input px-3 py-2 text-xs text-foreground outline-none focus:border-primary"
-                />
               </label>
 
               <fieldset className="block text-xs">
@@ -302,6 +302,35 @@ export default function DocoSettings({
                 </span>
               </fieldset>
 
+              <div className="space-y-1 text-xs">
+                <label className="inline-flex flex-col gap-1">
+                  <span className="font-semibold text-foreground">Perspective</span>
+                  {perspectives.length > 0 ? (
+                    <select
+                      name="perspective_id"
+                      defaultValue={
+                        perspectives.find((perspective) => perspective.isDefault)?.id ??
+                        perspectives[0].id
+                      }
+                      className="w-auto max-w-full rounded-md border border-border bg-input px-3 py-2 text-xs text-foreground outline-none focus:border-primary"
+                    >
+                      {perspectives.map((perspective) => (
+                        <option key={perspective.id} value={perspective.id}>
+                          {perspective.name}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <span className="text-xs text-muted-foreground">
+                      No perspectives are attached to this Doco yet.
+                    </span>
+                  )}
+                </label>
+                <span className="block text-[11px] text-muted-foreground">
+                  Choose the overview that opens first for this Doco.
+                </span>
+              </div>
+
               <button
                 type="submit"
                 className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90"
@@ -309,55 +338,6 @@ export default function DocoSettings({
                 Save settings
               </button>
             </Form>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Default perspective</CardTitle>
-            <CardDescription>Choose the overview that opens first for this Doco.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {perspectives.length > 0 ? (
-              <Form method="post" className="flex flex-wrap items-end gap-2">
-                <input type="hidden" name="intent" value="set-default-perspective" />
-                <label className="flex min-w-[220px] flex-1 flex-col gap-1 text-xs">
-                  <span className="font-semibold text-foreground">Perspective</span>
-                  <select
-                    name="perspective_id"
-                    defaultValue={perspectives.find((p) => p.isDefault)?.id ?? perspectives[0].id}
-                    className="rounded-md border border-border bg-input px-3 py-2 text-xs text-foreground outline-none focus:border-primary"
-                  >
-                    {perspectives.map((perspective) => (
-                      <option key={perspective.id} value={perspective.id}>
-                        {perspective.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <button
-                  type="submit"
-                  className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90"
-                >
-                  Save default
-                </button>
-              </Form>
-            ) : (
-              <p className="text-xs text-muted-foreground">
-                No perspectives are attached to this Doco yet.
-              </p>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Doco ID</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-[11px] text-muted-foreground">
-              <span className="font-mono">{docoId}</span>
-            </div>
           </CardContent>
         </Card>
 
@@ -381,11 +361,11 @@ export default function DocoSettings({
               {currentOrgOptions.length > 0 ? (
                 <Form method="post" className="flex flex-wrap items-end gap-2">
                   <input type="hidden" name="intent" value="change-organization" />
-                  <label className="flex min-w-[220px] flex-1 flex-col gap-1 text-xs">
+                  <label className="inline-flex flex-col gap-1 text-xs">
                     <span className="font-semibold text-foreground">Organization</span>
                     <select
                       name="target_org_id"
-                      className="rounded-md border border-border bg-input px-3 py-2 text-xs text-foreground outline-none focus:border-destructive"
+                      className="w-auto max-w-full rounded-md border border-border bg-input px-3 py-2 text-xs text-foreground outline-none focus:border-destructive"
                     >
                       {currentOrgOptions.map((org) => (
                         <option key={org.id} value={org.id}>

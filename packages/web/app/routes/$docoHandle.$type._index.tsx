@@ -7,7 +7,6 @@ import { ENTITY_TYPES, entityUrl, isEntityType } from "@doco/shared";
 // search, status.json, api/*) are registered before this in routes.ts
 // and win the match. For an unrecognized type we return 404.
 import { Link } from "react-router";
-import { parse as parseYaml } from "yaml";
 import { Breadcrumb, docoBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
 import { SiteHeader } from "~/components/site-header";
@@ -38,15 +37,15 @@ export async function loader({
   return withClient(async (c) => {
     const table = TABLE_BY_TYPE[type] ?? type;
     const rows = (
-      await c.query<{ id: string; summary: string; raw_yaml: string }>(
-        `SELECT id, summary, data::text AS raw_yaml FROM ${table}
+      await c.query<{ id: string; summary: string; data: Record<string, unknown> | null }>(
+        `SELECT id, summary, data FROM ${table}
           WHERE doco_id = $1
           ORDER BY id DESC LIMIT 200`,
         [ctx.meta.docoId],
       )
     ).rows;
     const items = rows.map((r) => {
-      const ent = (parseYaml(r.raw_yaml) ?? {}) as Record<string, unknown>;
+      const ent = r.data ?? {};
       return {
         id: r.id,
         summary: r.summary,

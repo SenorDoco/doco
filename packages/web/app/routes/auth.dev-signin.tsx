@@ -28,8 +28,8 @@ const TEST_USERNAME = TEST_USERNAMES[0];
 async function ensureTestPrincipal(username: TestUsername): Promise<string> {
   const existing = await findPrincipalByUsername(username);
   if (existing) {
-    // Repair raw_yaml if the row was minted by an older version of
-    // this route that omitted entity_type — the indexer NULL-checks
+    // Repair the `data` column if the row was minted by an older version
+    // of this route that omitted entity_type — the indexer NULL-checks
     // entity_fts.entity_type, so a malformed principal blocks every
     // future Doco-create rebuild on this host.
     await withClient(async (c) => {
@@ -48,11 +48,10 @@ async function ensureTestPrincipal(username: TestUsername): Promise<string> {
     return existing.id;
   }
   const id = `principal_${ulid()}`;
-  const raw_yaml = JSON.stringify({
+  const data = JSON.stringify({
     id,
     neuron_type: "principal",
     username,
-    type: "person",
     note: "Lazy-created by /auth/dev-signin for testing. Has no doco_users grants by default.",
   });
   await withClient(async (c) => {
@@ -60,7 +59,7 @@ async function ensureTestPrincipal(username: TestUsername): Promise<string> {
       `INSERT INTO principals (id, username, data)
        VALUES ($1, $2, $3::jsonb)
        ON CONFLICT (username) DO NOTHING`,
-      [id, username, raw_yaml],
+      [id, username, data],
     );
   });
   const reloaded = await findPrincipalByUsername(username);

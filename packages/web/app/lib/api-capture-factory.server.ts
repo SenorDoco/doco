@@ -178,13 +178,6 @@ export function makeUpdateRoute(cfg: UpdateRouteConfig) {
       if (!rec || rec.doco_id !== ctx.meta.docoId) {
         return Response.json({ error: `${cfg.entityType} not found: ${id}` }, { status: 404 });
       }
-      let parsed: unknown = null;
-      try {
-        parsed = parseYaml(rec.raw_yaml);
-      } catch {
-        // Malformed YAML on disk — return raw_yaml only and let the
-        // caller cope. Don't 500 — the row exists.
-      }
       return Response.json({
         id: rec.id,
         entity_type: rec.entity_type,
@@ -194,8 +187,7 @@ export function makeUpdateRoute(cfg: UpdateRouteConfig) {
         body_md: rec.body_md ?? null,
         created_at: rec.created_at ?? null,
         updated_at: rec.updated_at ?? null,
-        raw_yaml: rec.raw_yaml,
-        parsed,
+        data: rec.data,
       });
     },
 

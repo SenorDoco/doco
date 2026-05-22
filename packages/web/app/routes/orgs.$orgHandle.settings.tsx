@@ -1,7 +1,6 @@
 import { getOrgRole, withClient } from "@doco/db";
 import { validateRequestedDocoHandle as validateRequestedOrgHandle } from "@doco/shared";
 import { Form, Link, redirect, useSearchParams } from "react-router";
-import { parse as parseYaml } from "yaml";
 import { Breadcrumb, orgBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { SingleColumnPageMain } from "~/components/page-main";
@@ -79,13 +78,13 @@ async function renameOrganizationHandle(opts: {
       throw new Error(`Organization handle "${opts.nextHandle}" is already taken.`);
     }
 
-    const current = await c.query<{ raw_yaml: string }>(
-      "SELECT data::text AS raw_yaml FROM organizations WHERE id = $1 LIMIT 1",
+    const current = await c.query<{ data: Record<string, unknown> | null }>(
+      "SELECT data FROM organizations WHERE id = $1 LIMIT 1",
       [opts.orgId],
     );
-    const rawYaml = current.rows[0]?.raw_yaml;
-    if (!rawYaml) throw new Error(`Organization "${opts.currentHandle}" not found.`);
-    const yaml = parseYaml(rawYaml) as Record<string, unknown>;
+    const existing = current.rows[0]?.data;
+    if (!existing) throw new Error(`Organization "${opts.currentHandle}" not found.`);
+    const yaml: Record<string, unknown> = { ...existing };
     yaml.handle = opts.nextHandle;
     yaml.slug = opts.nextHandle;
 

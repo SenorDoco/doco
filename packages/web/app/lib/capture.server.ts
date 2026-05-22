@@ -58,7 +58,7 @@ async function readEntityFromPostgres(
 ): Promise<{ fm: Record<string, unknown>; body: string } | null> {
   const row = await getEntity(entityType, id);
   if (!row) return null;
-  const fm = JSON.parse(row.raw_yaml) as Record<string, unknown>;
+  const fm = row.data;
   const body = row.body_md ?? "";
   return { fm, body };
 }
@@ -85,7 +85,7 @@ async function persistEntity(args: {
       id: args.id,
       doco_id: args.docoId,
       entity_type: args.entityType,
-      raw_yaml: JSON.stringify(fm),
+      data: fm,
       body_md: args.body,
       summary: typeof fm.summary === "string" ? fm.summary : null,
       lifecycle: typeof fm.lifecycle === "string" ? fm.lifecycle : null,
@@ -2284,8 +2284,8 @@ export async function transitionPrimitiveLifecycle(opts: {
   const scopeCol = "doco_id";
 
   const before = await withClient(async (c) => {
-    const r = await c.query<{ lifecycle: string | null; raw_yaml: string }>(
-      `SELECT lifecycle, data::text AS raw_yaml FROM ${table} WHERE id = $1 AND ${scopeCol} = $2`,
+    const r = await c.query<{ lifecycle: string | null; data: Record<string, unknown> }>(
+      `SELECT lifecycle, data FROM ${table} WHERE id = $1 AND ${scopeCol} = $2`,
       [opts.primitiveId, opts.scopeId],
     );
     return r.rows[0] ?? null;
@@ -2294,13 +2294,7 @@ export async function transitionPrimitiveLifecycle(opts: {
     return { error: `Primitive ${opts.primitiveId} not found in scope.`, status: 404 };
   }
 
-  const fm = (() => {
-    try {
-      return JSON.parse(before.raw_yaml) as Record<string, unknown>;
-    } catch {
-      return {} as Record<string, unknown>;
-    }
-  })();
+  const fm: Record<string, unknown> = { ...(before.data ?? {}) };
   fm.lifecycle = opts.newLifecycle;
   if (opts.supersededBy) fm.superseded_by = opts.supersededBy;
   const updated_at = new Date().toISOString();
@@ -2359,7 +2353,7 @@ export async function loadPrimitiveForEdit(opts: {
       summary: string;
       body_md: string;
       lifecycle: string;
-      raw_yaml: Record<string, unknown>;
+      data: Record<string, unknown>;
     }
   | CaptureError
 > {
@@ -2373,27 +2367,21 @@ export async function loadPrimitiveForEdit(opts: {
       summary: string | null;
       body_md: string | null;
       lifecycle: string | null;
-      raw_yaml: string;
+      data: Record<string, unknown> | null;
     }>(
-      `SELECT summary, body_md, lifecycle, data::text AS raw_yaml FROM ${table}
+      `SELECT summary, body_md, lifecycle, data FROM ${table}
         WHERE id = $1 AND ${scopeCol} = $2`,
       [opts.primitiveId, opts.scopeId],
     );
     return r.rows[0] ?? null;
   });
   if (!row) return { error: `Primitive ${opts.primitiveId} not found.`, status: 404 };
-  let parsed: Record<string, unknown> = {};
-  try {
-    parsed = JSON.parse(row.raw_yaml) as Record<string, unknown>;
-  } catch {
-    parsed = {};
-  }
   return {
     ok: true,
     summary: row.summary ?? "",
     body_md: row.body_md ?? "",
     lifecycle: row.lifecycle ?? "active",
-    raw_yaml: parsed,
+    data: row.data ?? {},
   };
 }
 

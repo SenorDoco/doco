@@ -155,13 +155,7 @@ async function getPrincipalOwnerId(principalId: string): Promise<string | null> 
   if (!principalId.startsWith("principal_")) return null;
   const p = await getPrincipalById(principalId);
   if (!p) return null;
-  let raw: Record<string, unknown> = {};
-  try {
-    raw = JSON.parse(p.raw_yaml) as Record<string, unknown>;
-  } catch {
-    return null;
-  }
-  const ownerId = raw.owner_id;
+  const ownerId = p.data.owner_id;
   if (typeof ownerId !== "string") return null;
   if (!ownerId.startsWith("principal_") && !ownerId.startsWith("organization_")) {
     return null;

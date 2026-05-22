@@ -95,7 +95,7 @@ export async function action({
     id,
     doco_id: meta.docoId,
     entity_type: "principal",
-    raw_yaml: JSON.stringify(raw),
+    data: raw,
     summary,
     lifecycle: "active",
     created_at: now,

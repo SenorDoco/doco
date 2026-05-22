@@ -1,9 +1,8 @@
 // Server-only Doco metadata helper. Reads a Doco's row from Postgres
-// + parses its raw_yaml so route loaders can render description /
-// display name / visibility without each one doing its own SELECT.
+// + reads its `data` jsonb so route loaders can render display name /
+// visibility without each one doing its own SELECT.
 import { basename } from "node:path";
 import { getDocoByHandle } from "@doco/db";
-import { parse as parseYaml } from "yaml";
 
 export interface DocoMetadata {
   docoId: string;
@@ -11,7 +10,6 @@ export interface DocoMetadata {
   handle: string;
   ownerId: string;
   displayName: string;
-  description: string;
   visibility: "private" | "public";
 }
 
@@ -25,23 +23,15 @@ export async function readDocoMetadata(docoDir: string): Promise<DocoMetadata | 
   if (!handle) return null;
   const row = await getDocoByHandle(handle);
   if (!row) return null;
-  let description = "";
   let displayName = row.name ?? "";
-  try {
-    const parsed = parseYaml(row.raw_yaml) as Record<string, unknown>;
-    if (typeof parsed.description === "string") description = parsed.description;
-    if (!displayName && typeof parsed.display_name === "string") {
-      displayName = parsed.display_name;
-    }
-  } catch {
-    // raw_yaml unparseable — fall back to row.name and empty description.
+  if (!displayName && typeof row.data.display_name === "string") {
+    displayName = row.data.display_name;
   }
   return {
     docoId: row.id,
     handle: row.handle,
     ownerId: row.owner_id,
     displayName,
-    description,
     visibility: row.visibility,
   };
 }

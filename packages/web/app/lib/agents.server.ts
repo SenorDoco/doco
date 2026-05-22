@@ -55,7 +55,7 @@ export async function addAgentPrincipal(
     id,
     doco_id: yamlObj.doco_id,
     entity_type: "principal",
-    raw_yaml: JSON.stringify(yamlObj),
+    data: yamlObj as unknown as Record<string, unknown>,
     summary: yamlObj.summary,
     lifecycle: yamlObj.lifecycle,
     created_at: yamlObj.created_at,
