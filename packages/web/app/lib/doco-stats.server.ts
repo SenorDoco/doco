@@ -1,11 +1,11 @@
-// Per-Doco aggregate stats (Nodes, Edges, Last updated) shown on the
+// Per-Doco aggregate stats (Neurons, Synapses, Last updated) shown on the
 // dashboard and owner-profile docos tables.
 //
 // Nodes counts only domain entities: decisions, intents, rules,
 // actions, evals, ideas, reference_entities, logs, states. Articles
 // (constitution metadata) are not nodes and are deliberately
 // excluded — they are surfaced via /<handle>/api/articles.json.
-// Edges reads the materialized `synapses` table.
+// Synapses reads the materialized `synapses` table.
 // Last updated is the max `at` from `audit_events` — that captures both
 // inserts and updates and is cheap because audit_events is already
 // indexed by doco_id.

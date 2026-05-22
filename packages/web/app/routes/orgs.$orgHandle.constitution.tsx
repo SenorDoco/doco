@@ -128,7 +128,7 @@ export default function OrgConstitution({
           <Breadcrumb
             items={orgBreadcrumb({
               orgSlug: org.slug,
-              pageLabel: "Articles of the Constitution",
+              pageLabel: "The Constitution",
             })}
             className="mb-1"
           />
@@ -147,23 +147,23 @@ export default function OrgConstitution({
         </header>
 
         <ArticleSection
-          title="Guidance articles"
+          title="Guidance primitives"
           entityType="guidance_primitive"
           description={GUIDANCE_ARTICLE_EXPLAINER}
           addHref={canEdit ? `/orgs/${org.slug}/constitution/guidance/new` : null}
           editHrefBase={canEdit ? `/orgs/${org.slug}/constitution/guidance` : null}
           items={guidanceArticles}
-          empty="No guidance articles yet."
+          empty="No guidance primitives yet."
         />
 
         <ArticleSection
-          title="Node-authoring articles"
+          title="Neuron-authoring primitives"
           entityType="neuron_authoring_primitive"
           description={NODE_AUTHORING_ARTICLE_EXPLAINER}
-          addHref={canEdit ? `/orgs/${org.slug}/constitution/node-authoring/new` : null}
+          addHref={canEdit ? `/orgs/${org.slug}/constitution/neuron-authoring/new` : null}
           editHrefBase={canEdit ? `/orgs/${org.slug}/constitution/node-authoring` : null}
           items={nodeAuthoringArticles}
-          empty="No node-authoring articles yet."
+          empty="No neuron-authoring primitives yet."
         />
       </main>
     </div>

@@ -159,7 +159,7 @@ export default function EdgeDetail({
           items={docoBreadcrumb({
             ownerSlug,
             handle,
-            parent: { label: "Edges", to: `/${handle}/synapses` },
+            parent: { label: "Synapses", to: `/${handle}/synapses` },
             pageLabel: edge.synapse_type,
           })}
         />

@@ -1,8 +1,8 @@
 // /<doco>/constitution/<entityType>/<id>/edit — modify or abandon an
-// existing constitution article. Owner-only (loadDocoRouteForAdmin gates
+// existing constitution primitive. Owner-only (loadDocoRouteForAdmin gates
 // both loader + action).
 //
-// POST intent=modify  → captures a new article with `supersedes: <id>`
+// POST intent=modify  → captures a new primitive with `supersedes: <id>`
 //                       and flips the old to lifecycle='superseded'.
 // POST intent=abandon → flips the old to lifecycle='abandoned'.
 
@@ -43,7 +43,7 @@ export async function loader({
   params: { docoId: string; entityType: string; articleId: string };
 }) {
   const entityType = parseNodeType(params.entityType);
-  if (!entityType) throw new Response("Unknown article kind.", { status: 404 });
+  if (!entityType) throw new Response("Unknown primitive kind.", { status: 404 });
   const ctx = await loadDocoRouteForAdmin(request, params);
   const { docoSlug, handle, ownerSlug } = ctx;
   const result = await loadArticleForEdit({
@@ -77,7 +77,7 @@ export async function action({
   params: { docoId: string; entityType: string; articleId: string };
 }) {
   const entityType = parseNodeType(params.entityType);
-  if (!entityType) throw new Response("Unknown article kind.", { status: 404 });
+  if (!entityType) throw new Response("Unknown primitive kind.", { status: 404 });
   const ctx = await loadDocoRouteForAdmin(request, params);
   const { docoSlug, handle, ownerSlug } = ctx;
   const form = await request.formData();
@@ -221,12 +221,12 @@ export default function EditArticle({
               ownerSlug,
               handle,
               parent: { label: "Constitution", to: `/${handle}/constitution` },
-              pageLabel: `Modify ${isNodeAuthoring ? "node-authoring" : "guidance"} article`,
+              pageLabel: `Modify ${isNodeAuthoring ? "neuron-authoring" : "guidance"} primitive`,
             })}
             className="mb-1"
           />
           <h1 className="text-2xl font-semibold">
-            Modify {isNodeAuthoring ? "node-authoring" : "guidance"} article
+            Modify {isNodeAuthoring ? "neuron-authoring" : "guidance"} primitive
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
             Saving changes creates a new article and marks this one as <em>superseded</em>.

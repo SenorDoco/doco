@@ -546,7 +546,7 @@ After the navigate, end the text reply with at most ONE short line (e.g. "Decisi
 
 ## Adding an edge
 
-Edges in Doco are derived from reference fields on nodes (D-017, fields-as-synapses). To add an edge from A to B with type T, PATCH the source node A to add B's id into the appropriate ref field. Map (mostly): intent_ids → serves · decision_ids → enacts · rules_consulted → consults · born_from → born_from · superseded_by → superseded_by · target_ref → tests · stakeholders → has_stakeholder · parent_intent_id → has_parent · owner_id → owned_by · member → member_of · follows → follows. There is no POST /<handle>/api/synapses.json — patch a node's ref field; the indexer materializes the edge synchronously.
+Synapses in Doco are derived from reference fields on neurons (D-017, fields-as-synapses). To add a synapse from A to B with type T, PATCH the source node A to add B's id into the appropriate ref field. Map (mostly): intent_ids → serves · decision_ids → enacts · rules_consulted → consults · born_from → born_from · superseded_by → superseded_by · target_ref → tests · stakeholders → has_stakeholder · parent_intent_id → has_parent · owner_id → owned_by · member → member_of · follows → follows. There is no POST /<handle>/api/synapses.json — patch a neuron's ref field; the indexer materializes the synapse synchronously.
 
 ## Scope — what you handle vs. what you decline
 

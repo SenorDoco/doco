@@ -1,4 +1,4 @@
-// /<doco-handle>/constitution/node-authoring/new — standalone form for
+// /<doco-handle>/constitution/neuron-authoring/new — standalone form for
 // authoring a Doco-level node authoring article. Carries a predicate
 // evaluated when a node is captured.
 
@@ -80,7 +80,7 @@ export async function action({
 
 export function meta({ params }: { params: { docoHandle?: string; docoId?: string } }) {
   return [
-    { title: `New node-authoring article · ${params.docoHandle ?? params.docoId ?? ""} · Doco` },
+    { title: `New neuron-authoring primitive · ${params.docoHandle ?? params.docoId ?? ""} · Doco` },
   ];
 }
 
@@ -102,11 +102,11 @@ export default function NewNodeAuthoringArticle({
               ownerSlug,
               handle,
               parent: { label: "Constitution", to: `/${handle}/constitution` },
-              pageLabel: "New node-authoring article",
+              pageLabel: "New neuron-authoring primitive",
             })}
             className="mb-1"
           />
-          <h1 className="text-2xl font-semibold">New node-authoring article</h1>
+          <h1 className="text-2xl font-semibold">New neuron-authoring primitive</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             An automatic check that runs every time someone adds a node to this doco. Write a strict
             rule, or describe what an LLM judge should look for. Pick what happens on failure: block

@@ -227,7 +227,7 @@ export default function DocosIndexPage({
                     <TableHeader>
                       <TableRow>
                         <TableHead>handle</TableHead>
-                        <TableHead className="text-right">nodes</TableHead>
+                        <TableHead className="text-right">neurons</TableHead>
                         <TableHead className="text-right">synapses</TableHead>
                         <TableHead className="text-right">last updated</TableHead>
                       </TableRow>

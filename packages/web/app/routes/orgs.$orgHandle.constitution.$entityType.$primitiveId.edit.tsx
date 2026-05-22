@@ -1,7 +1,7 @@
 // /orgs/<org>/constitution/<entityType>/<id>/edit — modify or abandon
 // an existing org-level constitution article. Owner-only.
 //
-// POST intent=modify  → captures a new article with `supersedes: <id>`
+// POST intent=modify  → captures a new primitive with `supersedes: <id>`
 //                       and flips the old to lifecycle='superseded'.
 // POST intent=abandon → flips the old to lifecycle='abandoned'.
 
@@ -64,7 +64,7 @@ export async function loader({
   params: { orgHandle: string; entityType: string; articleId: string };
 }) {
   const entityType = parseNodeType(params.entityType);
-  if (!entityType) throw new Response("Unknown article kind.", { status: 404 });
+  if (!entityType) throw new Response("Unknown primitive kind.", { status: 404 });
   const org = await resolveOrgByHandle(params.orgHandle);
   if (!org) throw new Response(`Org "${params.orgHandle}" not found.`, { status: 404 });
   const me = await getCurrentPrincipalAsync(request);
@@ -108,7 +108,7 @@ export async function action({
   params: { orgHandle: string; entityType: string; articleId: string };
 }) {
   const entityType = parseNodeType(params.entityType);
-  if (!entityType) throw new Response("Unknown article kind.", { status: 404 });
+  if (!entityType) throw new Response("Unknown primitive kind.", { status: 404 });
   const org = await resolveOrgByHandle(params.orgHandle);
   if (!org) throw new Response(`Org "${params.orgHandle}" not found.`, { status: 404 });
   const me = await getCurrentPrincipalAsync(request);
@@ -244,12 +244,12 @@ export default function EditOrgArticle({
             items={orgBreadcrumb({
               orgSlug: org.slug,
               parent: { label: "Constitution", to: `/orgs/${org.slug}/constitution` },
-              pageLabel: `Modify ${isNodeAuthoring ? "node-authoring" : "guidance"} article`,
+              pageLabel: `Modify ${isNodeAuthoring ? "neuron-authoring" : "guidance"} primitive`,
             })}
             className="mb-1"
           />
           <h1 className="text-2xl font-semibold">
-            Modify {isNodeAuthoring ? "node-authoring" : "guidance"} article ·{" "}
+            Modify {isNodeAuthoring ? "neuron-authoring" : "guidance"} primitive ·{" "}
             <span className="font-mono">{org.slug}</span>
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">

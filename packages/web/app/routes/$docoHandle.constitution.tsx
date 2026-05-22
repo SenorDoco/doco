@@ -102,36 +102,36 @@ export default function Constitution({
             items={docoBreadcrumb({
               ownerSlug,
               handle,
-              pageLabel: "Articles of the Constitution",
+              pageLabel: "The Constitution",
             })}
             className="mb-1"
           />
-          <h1 className="text-2xl font-semibold">Articles of the Constitution</h1>
+          <h1 className="text-2xl font-semibold">The Constitution</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             Rules that govern how nodes get added to this doco. {AGENT_EXPOSURE_NOTE}
           </p>
         </header>
 
         <ArticleSection
-          title="Guidance articles"
+          title="Guidance primitives"
           entityType="guidance_primitive"
           description={GUIDANCE_ARTICLE_EXPLAINER}
           addHref={canEdit ? `/${handle}/constitution/guidance/new` : null}
           editHrefBase={canEdit ? `/${handle}/constitution/guidance` : null}
           items={guidanceArticles}
           handle={handle}
-          empty="No guidance articles yet."
+          empty="No guidance primitives yet."
         />
 
         <ArticleSection
-          title="Node-authoring articles"
+          title="Neuron-authoring primitives"
           entityType="neuron_authoring_primitive"
           description={NODE_AUTHORING_ARTICLE_EXPLAINER}
-          addHref={canEdit ? `/${handle}/constitution/node-authoring/new` : null}
+          addHref={canEdit ? `/${handle}/constitution/neuron-authoring/new` : null}
           editHrefBase={canEdit ? `/${handle}/constitution/node-authoring` : null}
           items={nodeAuthoringArticles}
           handle={handle}
-          empty="No node-authoring articles yet."
+          empty="No neuron-authoring primitives yet."
         />
       </main>
     </div>
