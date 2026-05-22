@@ -11,6 +11,7 @@
 import { withClient } from "@doco/db";
 import { entityUrl } from "@doco/shared";
 import { Link, redirect } from "react-router";
+import { AccessListCard, type AccessListItem } from "~/components/access-list-card";
 import { ActivityHeatmap } from "~/components/activity-heatmap";
 import { Breadcrumb, hostBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
@@ -56,25 +57,6 @@ interface FeedEvent {
   after: Record<string, unknown> | null;
 }
 
-interface DocoAccessRow {
-  id: string;
-  href: string;
-  label: string;
-  activeNodes: number;
-  totalNodes: number;
-  lastUpdatedAt: string | null;
-}
-
-interface AccessGroup {
-  id: string;
-  href: string;
-  label: string;
-  activeNodes: number;
-  totalNodes: number;
-  lastUpdatedAt: string | null;
-  docos: DocoAccessRow[];
-}
-
 export async function loader({ request }: { request: Request }) {
   const me = await getCurrentPrincipal(request);
   if (!me) throw redirect("/sign-in");
@@ -87,27 +69,25 @@ export async function loader({ request }: { request: Request }) {
 
   const [docoStats, orgsRaw] = await Promise.all([listDocoStats(myDocoIds), listMyOrgs(me.id)]);
 
-  const accessGroupsByOwner = new Map<string, AccessGroup>();
+  const accessGroupsByOwner = new Map<string, AccessListItem>();
   for (const org of orgsRaw) {
     accessGroupsByOwner.set(org.id, {
       id: org.id,
       href: `/orgs/${org.slug}`,
       label: org.display_name || org.slug,
-      activeNodes: 0,
-      totalNodes: 0,
+      count: 0,
       lastUpdatedAt: null,
-      docos: [],
+      children: [],
     });
   }
 
   for (const d of docos) {
     const stats = docoStats.get(d.docoId);
-    const row: DocoAccessRow = {
+    const row: AccessListItem = {
       id: d.docoId,
       href: `/${d.handle}`,
       label: d.handle,
-      activeNodes: stats?.activeNeurons ?? 0,
-      totalNodes: stats?.neurons ?? 0,
+      count: stats?.neurons ?? 0,
       lastUpdatedAt: stats?.lastUpdatedAt ?? null,
     };
 
@@ -117,24 +97,22 @@ export async function loader({ request }: { request: Request }) {
         id: d.ownerId,
         href: d.ownerKind === "organization" ? `/orgs/${d.ownerUsername}` : `/${d.ownerUsername}`,
         label: d.ownerId === me.id ? "Personal" : d.ownerUsername,
-        activeNodes: 0,
-        totalNodes: 0,
+        count: 0,
         lastUpdatedAt: null,
-        docos: [],
+        children: [],
       };
       accessGroupsByOwner.set(d.ownerId, group);
     }
 
-    group.docos.push(row);
-    group.activeNodes += row.activeNodes;
-    group.totalNodes += row.totalNodes;
+    group.children?.push(row);
+    group.count += row.count;
     group.lastUpdatedAt = newestIso(group.lastUpdatedAt, row.lastUpdatedAt);
   }
 
   const accessGroups = Array.from(accessGroupsByOwner.values())
     .map((group) => ({
       ...group,
-      docos: group.docos.sort(sortAccessItems),
+      children: (group.children ?? []).sort(sortAccessItems),
     }))
     .sort(sortAccessItems);
 
@@ -277,7 +255,11 @@ export default function Dashboard({
 
         <div className="grid grid-cols-1 gap-6 min-[840px]:grid-cols-2">
           <section className="space-y-4">
-            <AccessTreeCard groups={accessGroups} />
+            <AccessListCard
+              title="Your orgs and docos"
+              items={accessGroups}
+              empty="No orgs or docos yet."
+            />
 
             <Card>
               <CardHeader className="px-4 py-3">
@@ -370,88 +352,6 @@ function sortAccessItems(
   if (a.lastUpdatedAt) return -1;
   if (b.lastUpdatedAt) return 1;
   return a.label.localeCompare(b.label);
-}
-
-function AccessTreeCard({ groups }: { groups: AccessGroup[] }) {
-  return (
-    <Card>
-      <CardHeader className="px-4 pb-2 pt-3">
-        <CardTitle className="text-sm">Your orgs and docos</CardTitle>
-      </CardHeader>
-      <CardContent className="px-4 pb-3 pt-1">
-        {groups.length === 0 ? (
-          <p className="text-xs text-muted-foreground">No orgs or docos yet.</p>
-        ) : (
-          <ul className="space-y-1.5">
-            {groups.map((group) => (
-              <li key={group.id} className="grid grid-cols-[0.5rem_minmax(0,1fr)] gap-1.5">
-                <span className="pt-[0.42rem] text-muted-foreground">•</span>
-                <AccessLine item={group} />
-                {group.docos.length === 0 ? (
-                  <p className="col-start-2 mt-1 text-xs text-muted-foreground">No docos yet.</p>
-                ) : (
-                  <ul className="col-start-2 mt-1 space-y-1">
-                    {group.docos.map((doco) => (
-                      <li key={doco.id} className="grid grid-cols-[0.5rem_minmax(0,1fr)] gap-1.5">
-                        <span className="pt-[0.34rem] text-muted-foreground">•</span>
-                        <AccessLine item={doco} compact />
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </li>
-            ))}
-          </ul>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
-function AccessLine({
-  item,
-  compact = false,
-}: {
-  item: {
-    href: string;
-    label: string;
-    activeNodes: number;
-    totalNodes: number;
-    lastUpdatedAt: string | null;
-  };
-  compact?: boolean;
-}) {
-  return (
-    <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-baseline gap-3">
-      <div className="flex min-w-0 items-baseline">
-        <Link
-          to={item.href}
-          className={cn(
-            "block min-w-0 truncate font-semibold text-primary hover:underline",
-            compact ? "text-xs" : "text-sm",
-          )}
-        >
-          {item.label}
-        </Link>
-        <span className="ml-1 whitespace-nowrap text-[11px] text-muted-foreground">
-          ({item.totalNodes})
-        </span>
-      </div>
-      <div className="shrink-0 whitespace-nowrap text-right text-[11px] text-muted-foreground">
-        <span>last modified </span>
-        <LastModified iso={item.lastUpdatedAt} />
-      </div>
-    </div>
-  );
-}
-
-function LastModified({ iso }: { iso: string | null }) {
-  if (!iso) return <span>never</span>;
-  return (
-    <time dateTime={iso} title={iso} suppressHydrationWarning>
-      {timeAgo(iso)}
-    </time>
-  );
 }
 
 function formatTemplateUpdatedAt(isoDate: string): string {

@@ -12,11 +12,11 @@
 import { withClient } from "@doco/db";
 import { entityUrl } from "@doco/shared";
 import { Link, redirect } from "react-router";
+import { AccessListCard, type AccessListItem } from "~/components/access-list-card";
 import { ActivityHeatmap } from "~/components/activity-heatmap";
 import { Breadcrumb, hostBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
 import { SiteHeader } from "~/components/site-header";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "~/components/table";
 import {
   auditSummaryFallback,
   capNodeType,
@@ -39,7 +39,6 @@ interface DocoRow {
   docoId: string;
   handle: string;
   neurons: number;
-  synapses: number;
   lastUpdatedAt: string | null;
 }
 
@@ -72,12 +71,11 @@ export async function loader({ request }: { request: Request }) {
 
   const docos: DocoRow[] = docosRaw
     .map((d) => {
-      const s = stats.get(d.docoId) ?? { neurons: 0, synapses: 0, lastUpdatedAt: null };
+      const s = stats.get(d.docoId) ?? { neurons: 0, lastUpdatedAt: null };
       return {
         docoId: d.docoId,
         handle: d.handle,
         neurons: s.neurons,
-        synapses: s.synapses,
         lastUpdatedAt: s.lastUpdatedAt,
       };
     })
@@ -186,6 +184,13 @@ export default function DocosIndexPage({
   loaderData: Awaited<ReturnType<typeof loader>>;
 }) {
   const { me, docos, byDay, feed } = loaderData;
+  const docoItems: AccessListItem[] = docos.map((d) => ({
+    id: d.docoId,
+    href: `/${d.handle}`,
+    label: d.handle,
+    count: d.neurons,
+    lastUpdatedAt: d.lastUpdatedAt,
+  }));
   return (
     <div>
       <SiteHeader mode="host" me={me} />
@@ -211,46 +216,19 @@ export default function DocosIndexPage({
 
         <div className="grid grid-cols-1 gap-6 min-[840px]:grid-cols-[minmax(0,1fr)_320px]">
           <section className="space-y-4">
-            <Card>
-              <CardContent className="p-0">
-                {docos.length === 0 ? (
-                  <p className="px-5 pb-5 text-xs text-muted-foreground">
-                    You haven't created or joined any docos yet.{" "}
-                    <Link to="/new-doco" className="underline">
-                      Create one
-                    </Link>
-                    .
-                  </p>
-                ) : (
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>handle</TableHead>
-                        <TableHead className="text-right">neurons</TableHead>
-                        <TableHead className="text-right">synapses</TableHead>
-                        <TableHead className="text-right">last updated</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {docos.map((d) => (
-                        <TableRow key={d.docoId}>
-                          <TableCell>
-                            <Link to={`/${d.handle}`} className="text-primary hover:underline">
-                              {d.handle}
-                            </Link>
-                          </TableCell>
-                          <TableCell className="text-right font-mono">{d.neurons}</TableCell>
-                          <TableCell className="text-right font-mono">{d.synapses}</TableCell>
-                          <TableCell className="text-right text-muted-foreground">
-                            {timeAgo(d.lastUpdatedAt)}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                )}
-              </CardContent>
-            </Card>
+            <AccessListCard
+              title="Your docos"
+              items={docoItems}
+              empty={
+                <>
+                  You haven't created or joined any docos yet.{" "}
+                  <Link to="/new-doco" className="underline">
+                    Create one
+                  </Link>
+                  .
+                </>
+              }
+            />
           </section>
 
           <aside className="space-y-4">

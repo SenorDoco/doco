@@ -3,9 +3,10 @@
 // (MAX(audit_events.at) across each org's docos), plus an activity
 // heatmap + latest-activity feed sidebar.
 
-import { type DocoRole, getOrgRole, withClient } from "@doco/db";
+import { withClient } from "@doco/db";
 import { entityUrl } from "@doco/shared";
 import { Link, redirect } from "react-router";
+import { AccessListCard, type AccessListItem } from "~/components/access-list-card";
 import { ActivityHeatmap } from "~/components/activity-heatmap";
 import { Breadcrumb, hostBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
@@ -32,10 +33,7 @@ interface OrgRow {
   id: string;
   slug: string;
   display_name: string;
-  description?: string;
-  docoCount: number;
   nodeCount: number;
-  myRole: DocoRole;
   lastUpdatedAt: string | null;
 }
 
@@ -61,12 +59,12 @@ export async function loader({ request }: { request: Request }) {
 
   const orgsRaw = await listMyOrgs(me.id);
 
-  // Per-org aggregates (last activity across owned docos, doco count, total
-  // node count summed across every entity table). Three pooled queries in
-  // parallel since a single PoolClient serializes queries.
+  // Per-org aggregates: last activity across owned docos and total node
+  // count summed across every entity table. Separate pooled queries avoid
+  // serializing work through a single PoolClient.
   const orgIds = orgsRaw.map((o) => o.id);
   const nodesUnionSql = ENTITY_TABLES.map((t) => `SELECT doco_id FROM ${t}`).join(" UNION ALL ");
-  const [orgLastActivity, orgDocoCount, orgNodeCount] = await Promise.all([
+  const [orgLastActivity, orgNodeCount] = await Promise.all([
     withClient(async (c) => {
       if (orgIds.length === 0) return new Map<string, string | null>();
       const r = await c.query<{ owner_id: string; last_at: string | null }>(
@@ -79,19 +77,6 @@ export async function loader({ request }: { request: Request }) {
       );
       const m = new Map<string, string | null>();
       for (const row of r.rows) m.set(String(row.owner_id), row.last_at);
-      return m;
-    }),
-    withClient(async (c) => {
-      if (orgIds.length === 0) return new Map<string, number>();
-      const r = await c.query<{ owner_id: string; n: string }>(
-        `SELECT owner_id, COUNT(*)::text AS n
-           FROM docos
-          WHERE owner_id = ANY($1)
-          GROUP BY owner_id`,
-        [orgIds],
-      );
-      const m = new Map<string, number>();
-      for (const row of r.rows) m.set(String(row.owner_id), Number(row.n));
       return m;
     }),
     withClient(async (c) => {
@@ -114,9 +99,7 @@ export async function loader({ request }: { request: Request }) {
     await Promise.all(
       orgsRaw.map(async (o) => ({
         ...o,
-        myRole: ((await getOrgRole(o.id, me.id)) ?? "reader") as DocoRole,
         lastUpdatedAt: orgLastActivity.get(o.id) ?? null,
-        docoCount: orgDocoCount.get(o.id) ?? 0,
         nodeCount: orgNodeCount.get(o.id) ?? 0,
       })),
     )
@@ -230,6 +213,13 @@ export default function OrgsIndexPage({
   loaderData: Awaited<ReturnType<typeof loader>>;
 }) {
   const { me, orgs, byDay, feed } = loaderData;
+  const orgItems: AccessListItem[] = orgs.map((o) => ({
+    id: o.id,
+    href: `/orgs/${o.slug}`,
+    label: o.display_name || o.slug,
+    count: o.nodeCount,
+    lastUpdatedAt: o.lastUpdatedAt,
+  }));
   return (
     <div>
       <SiteHeader mode="host" me={me} />
@@ -255,49 +245,19 @@ export default function OrgsIndexPage({
 
         <div className="grid grid-cols-1 gap-6 min-[840px]:grid-cols-[minmax(0,1fr)_320px]">
           <section className="space-y-4">
-            <Card>
-              <CardContent>
-                {orgs.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">
-                    You aren't a member of any org yet.{" "}
-                    <Link to="/new-org" className="underline">
-                      Create one
-                    </Link>
-                    .
-                  </p>
-                ) : (
-                  <ul className="divide-y divide-border">
-                    {orgs.map((o) => (
-                      <li key={o.id} className="py-3">
-                        <div className="flex flex-wrap items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <Link to={`/orgs/${o.slug}`} className="font-medium hover:underline">
-                              {o.slug}
-                            </Link>
-                            <div className="text-xs text-muted-foreground">
-                              {o.docoCount} doco{o.docoCount === 1 ? "" : "s"}
-                              {" · "}
-                              {o.nodeCount} node{o.nodeCount === 1 ? "" : "s"}
-                              {o.lastUpdatedAt ? (
-                                <>
-                                  {" · "}
-                                  <span title={o.lastUpdatedAt}>{timeAgo(o.lastUpdatedAt)}</span>
-                                </>
-                              ) : null}
-                            </div>
-                            {o.description ? (
-                              <div className="mt-1 text-sm text-muted-foreground">
-                                {o.description}
-                              </div>
-                            ) : null}
-                          </div>
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </CardContent>
-            </Card>
+            <AccessListCard
+              title="Your orgs"
+              items={orgItems}
+              empty={
+                <>
+                  You aren't a member of any org yet.{" "}
+                  <Link to="/new-org" className="underline">
+                    Create one
+                  </Link>
+                  .
+                </>
+              }
+            />
           </section>
 
           <aside className="space-y-4">
