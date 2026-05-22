@@ -1,7 +1,7 @@
 ---
 id: decision_01KRHN2TDKP8ERGM82684HYNFV
 doco_id: doco_01KRHJQC0YMK6VEPZSMCQVP1QD
-node_type: decision
+entity_type: decision
 summary: Deploy via Vercel on push to main; no branches or PRs
 question: How is me.torrenegra.com hosted and deployed?
 chosen: Static HTML/JS/CSS hosted on Vercel (vercel.json at repo root). Vercel

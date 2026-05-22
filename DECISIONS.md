@@ -28,16 +28,16 @@ A consolidated record of every meaningful design decision made to date, intended
 - **Why:** Agents parse YAML cleanly; people read Markdown narrative. Single-file model keeps the unit of change atomic.
 - **Ref:** SCHEMA.md §2.
 
-### D-004 — IDs = `{node_type}_{ULID}`
+### D-004 — IDs = `{entity_type}_{ULID}`
 
-- **Chosen:** Every entity gets a ULID prefixed by its `node_type`. ULIDs sort by creation time, are URL-safe, and need no central coordinator.
+- **Chosen:** Every entity gets a ULID prefixed by its `entity_type`. ULIDs sort by creation time, are URL-safe, and need no central coordinator.
 - **Alternatives rejected:** UUIDv4 (no time order; longer); auto-increment per Doco (forces coordination on writes — bad for agent updates).
 - **Why:** No coordination, time-sortable, type discoverable from ID alone (priority 1).
 - **Ref:** SCHEMA.md §7.
 
-### D-005 — Discriminator field is `node_type`
+### D-005 — Discriminator field is `entity_type`
 
-- **Chosen:** Every entity has a `node_type:` field in its frontmatter. The umbrella noun for entities is **node**.
+- **Chosen:** Every entity has a `entity_type:` field in its frontmatter. The umbrella noun for entities is **node**.
 - **Alternatives rejected:** `kind:` (unclear — "kind of what?"); `type:` (collides with `User.type`); `entity_type:` (more verbose, less aligned with "graph" framing).
 - **Why:** Reads as "type of node" — unambiguous; aligns with the graph framing of Doco's data model.
 - **Ref:** SCHEMA.md §3 + every §4 entity.
@@ -48,7 +48,7 @@ A consolidated record of every meaningful design decision made to date, intended
 
 ### D-006 — Common fields on every entity
 
-- **Chosen:** `id`, `doco_id`, `node_type`, `summary`, `created_at`/`by`, `updated_at`/`by`, `lifecycle`, `tags`, `born_from` (optional).
+- **Chosen:** `id`, `doco_id`, `entity_type`, `summary`, `created_at`/`by`, `updated_at`/`by`, `lifecycle`, `tags`, `born_from` (optional).
 - **Why:** Common fields are the API surface every consumer can rely on. `summary` serves readability (priority 3); `lifecycle` standardizes state across all stateful entities.
 - **Ref:** SCHEMA.md §3.
 
@@ -159,7 +159,7 @@ A consolidated record of every meaningful design decision made to date, intended
 
 ### D-020 — URL form
 
-- **Chosen:** `doco://{doco_slug}/{node_type}/{slug_or_id}`. Both slug and ID resolve.
+- **Chosen:** `doco://{doco_slug}/{entity_type}/{slug_or_id}`. Both slug and ID resolve.
 - **Why:** Agents link by ID (forever-stable); people link by slug (readable).
 - **Ref:** Conversation.
 
@@ -195,13 +195,13 @@ A consolidated record of every meaningful design decision made to date, intended
 ### D-024 — Index = SQLite + FTS5 (Kuzu deferred) [SUPERSEDED]
 
 - **Original:** SQLite with FTS5 virtual table for full-text. Recursive CTEs for graph traversal.
-- **Superseded by:** PG-native indexing — `tsvector` + GIN for full-text, the `edges` table for traversal. pgvector is the optional ANN swap when sequential cosine stops scaling (still fine at Tier B per D-049).
+- **Superseded by:** PG-native indexing — `tsvector` + GIN for full-text, the `synapses` table for traversal. pgvector is the optional ANN swap when sequential cosine stops scaling (still fine at Tier B per D-049).
 - **Migration phases:** (1) additive schema in PG, (2) embeddings → PG, (3) edges + FTS → PG, (4) lints → PG, (5) web routes → PG, (6) SQLite layer deleted, (7) this decision marked superseded.
 - **Ref:** packages/db/src/schema.sql, packages/db/src/indexer.ts, packages/db/src/embeddings.ts.
 
 ### D-025 — Edges as adjacency table
 
-- **Chosen:** Single `edges(from_id, from_node_type, to_id, to_node_type, edge_type)` table. Recursive CTEs for traversal.
+- **Chosen:** Single `edges(from_id, from_neuron_type, to_id, to_neuron_type, synapse_type)` table. Recursive CTEs for traversal.
 - **Why:** Standard relational-graph pattern. Works to ~1M edges. Simple to reason about.
 - **Ref:** SCHEMA.md §8.2.
 

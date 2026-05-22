@@ -37,7 +37,7 @@ Every choice below is justified by Doco's strict-priority optimizations:
 
 | Priority | How the schema serves it |
 |---|---|
-| 1. AI agent comprehension | Self-describing entities, predictable names, explicit node_type+ID prefixes, schema-of-the-Doco embedded inside every Doco so an agent can read structure without external context. |
+| 1. AI agent comprehension | Self-describing entities, predictable names, explicit entity_type+ID prefixes, schema-of-the-Doco embedded inside every Doco so an agent can read structure without external context. |
 | 2. AI agent updates | One file per entity (small, predictable diffs), additive evolution (new fields don't invalidate old data), stable IDs (inserts don't renumber peers), upsert-by-path semantics. |
 | 3. Human comprehension | Every entity has a `summary` field and a Markdown narrative body alongside its structured fields. |
 | 4. Applicability | Rules and articles declare the entities they cover with explicit applicability predicates. |
@@ -85,7 +85,7 @@ Markdown entities use **YAML frontmatter** (structured fields, agent-parseable) 
 ```yaml
 id: intent_01H8XYZ...              # ULID, prefixed by node type
 doco_id: doco_01H...
-node_type: intent                       # entity discriminator (matches directory name)
+entity_type: intent                       # entity discriminator (matches directory name)
 summary: "One-line summary."       # priority 3: reader comprehension
 created_at: 2026-05-08T15:42:00Z
 created_by: principal_...
@@ -127,7 +127,7 @@ Same shape for both, so they get the same affordances.
 
 ```yaml
 id: principal_...
-node_type: principal
+entity_type: principal
 type: person | agent
 username: "torrenegra"             # GitHub login (people) or "{owner_username}/{creation_timestamp}" (agents) — see PLANNING.md §2.3
 github_identity:                   # only when type=person; people sign in exclusively via GitHub (PLANNING.md §2.1)
@@ -148,7 +148,7 @@ Stored in `doco.yaml` at repo root.
 
 ```yaml
 id: doco_...
-node_type: doco
+entity_type: doco
 slug: torre/alignment-runtime
 display_name: "Alignment Runtime"
 visibility: private | public
@@ -167,7 +167,7 @@ Decomposable: an intent can have a parent intent.
 
 ```yaml
 id: intent_...
-node_type: intent
+entity_type: intent
 parent_intent_id: intent_... | null
 title: "Ship feature X to production"
 priority: p0 | p1 | p2 | p3
@@ -183,7 +183,7 @@ A Rule subsumes what v0.1 called *Constraint* and *Assertion*. Both are statemen
 
 ```yaml
 id: rule_...
-node_type: rule
+entity_type: rule
 modality: must | must_not | should | should_not
 severity: blocker | warning | info
 phase: declared | pre | post | invariant   # declared = policy / always holds; pre|post|invariant = runtime evaluation point
@@ -204,28 +204,28 @@ authored.
 
 ```yaml
 id: guidance_article_...
-node_type: guidance_article
-article_type: guidance
+entity_type: guidance_primitive
+primitive_kind: guidance
 summary: "Prefer concrete examples over abstract prose."
 ```
 
 ```yaml
 id: node_authoring_article_...
-node_type: node_authoring_article
-article_type: node_authoring
+entity_type: neuron_authoring_primitive
+primitive_kind: node_authoring
 evaluation_kind: deterministic | probabilistic
 predicate:
-  kind: requires_edge | requires_field | probabilistic | ...
+  kind: requires_synapse | requires_field | probabilistic | ...
 on_violation: block | warn | log
 ```
 
 Markdown body: article prose, rationale, and examples.
 
 Constitution articles also exist at the **organization** level. Org-level
-articles use the same two shapes (`guidance_article` /
-`node_authoring_article`) and the same fields, but key on `org_id`
-instead of `doco_id` and live in `org_guidance_articles` /
-`org_node_authoring_articles`. An org's constitution applies to every
+articles use the same two shapes (`guidance_primitive` /
+`neuron_authoring_primitive`) and the same fields, but key on `org_id`
+instead of `doco_id` and live in `org_guidance_primitives` /
+`org_neuron_authoring_primitives`. An org's constitution applies to every
 Doco it owns; when an agent bootstraps, the host returns the union of
 every org and every Doco constitution the caller has read-or-above
 access to.
@@ -234,7 +234,7 @@ access to.
 
 ```yaml
 id: decision_...
-node_type: decision
+entity_type: decision
 number: "ADR-0042"                 # optional: sequential identifier when the Decision is promoted to ADR (set when tag_adr applied)
 intent_ids: [intent_...]           # what intents this serves
 question: "Which database for the events store?"
@@ -252,7 +252,7 @@ superseded_by: decision_... | null
 
 ```yaml
 id: action_...
-node_type: action
+entity_type: action
 actor_id: principal_...
 verb: edit_file | send_message | deploy | call_api | ...
 target: reference_...
@@ -270,7 +270,7 @@ Markdown body: narrative description, post-hoc commentary.
 
 ```yaml
 id: reference_...
-node_type: reference
+entity_type: reference
 ref_type: file | url | ticket | commit | document | other
 locator: "src/foo.ts:42" | "https://..." | "linear/ENG-123"
 content_hash: sha256:...           # optional, for immutability checks
@@ -280,7 +280,7 @@ content_hash: sha256:...           # optional, for immutability checks
 
 ```yaml
 id: tag_...
-node_type: tag
+entity_type: tag
 name: "auth"
 description: "..."
 ```
@@ -301,17 +301,17 @@ Conventions like "every `tag_bugfix` Decision must have at least one `BornFrom` 
 
 ## 5. Applicability selector
 
-Used by Intent.`applies_to` and Rule.`applies_to`. A predicate over entities. The grammar accepts both *broad* matches (node_type/tag/property) and *single-id* matches (replacing the old Assertion.target shape).
+Used by Intent.`applies_to` and Rule.`applies_to`. A predicate over entities. The grammar accepts both *broad* matches (entity_type/tag/property) and *single-id* matches (replacing the old Assertion.target shape).
 
 ```yaml
 applies_to:
   any_of:
     - tag: "auth"
-    - { node_type: action, verb: deploy }
+    - { entity_type: action, verb: deploy }
     - { intent_id: intent_... }
     - { id: action_01H... }              # single-entity target
     - { all: true }                      # wildcard: every entity in this Doco (used by global Rules — §9.1)
-    - { all_of: [ { node_type: action }, { actor_type: agent } ] }
+    - { all_of: [ { entity_type: action }, { actor_type: agent } ] }
 ```
 
 ## 6. Relationships at a glance
@@ -365,7 +365,7 @@ Adding a new ID-valued field automatically gets it picked up by the index — ag
 
 ## 7. ID convention
 
-`{node_type}_{ULID}` — e.g., `intent_01H8XYZK6F...`. ULIDs sort by creation time, are URL-safe, and need no central coordinator. The node_type prefix lets agents identify the type from IDs alone (priority 1).
+`{entity_type}_{ULID}` — e.g., `intent_01H8XYZK6F...`. ULIDs sort by creation time, are URL-safe, and need no central coordinator. The entity_type prefix lets agents identify the type from IDs alone (priority 1).
 
 ## 8. Query model — fast queries at 10k+ entities
 
@@ -393,17 +393,17 @@ One table per node type, mirroring its frontmatter (so column names match field 
 -- Every reference between entities, forward + reverse.
 CREATE TABLE edges (
   from_id    TEXT NOT NULL,
-  from_node_type  TEXT NOT NULL,
+  from_neuron_type  TEXT NOT NULL,
   to_id      TEXT NOT NULL,
-  to_node_type    TEXT NOT NULL,
-  edge_type  TEXT NOT NULL,    -- serves, enacts, consults, concludes, applies_to, runs_rule, tagged, decomposes_into, born_from, follows, ...
-  PRIMARY KEY (from_id, to_id, edge_type)
+  to_neuron_type    TEXT NOT NULL,
+  synapse_type  TEXT NOT NULL,    -- serves, enacts, consults, concludes, applies_to, runs_rule, tagged, decomposes_into, born_from, follows, ...
+  PRIMARY KEY (from_id, to_id, synapse_type)
 );
-CREATE INDEX edges_to ON edges(to_id, edge_type);
+CREATE INDEX edges_to ON edges(to_id, synapse_type);
 
 -- Full-text over summary + Markdown body of every entity.
 CREATE VIRTUAL TABLE fts USING fts5(
-  id UNINDEXED, node_type UNINDEXED, summary, body
+  id UNINDEXED, entity_type UNINDEXED, summary, body
 );
 
 -- Historical design only: early drafts described a denormalized selector
@@ -415,7 +415,7 @@ CREATE VIRTUAL TABLE fts USING fts5(
 | Question | Mechanism | Latency at 10k |
 |---|---|---|
 | "Active intents tagged 'auth'" | indexed SELECT | sub-ms |
-| "All decisions serving intent X" | `SELECT FROM edges WHERE to_id=X AND edge_type='serves'` | sub-ms |
+| "All decisions serving intent X" | `SELECT FROM edges WHERE to_id=X AND synapse_type='serves'` | sub-ms |
 | "Which rules apply to this action?" | evaluate the current applicability predicates | bounded by selector shape |
 | "Path from action back to originating intent" | recursive CTE over `edges` | tens of ms |
 | "Anything mentioning 'session token'" | FTS5 | tens of ms |
@@ -434,7 +434,7 @@ A 10k-entity full reindex is bound by file I/O (parsing YAML), not SQL — singl
 `Rule.applies_to` (whether broad selector or single-id form) is evaluated **on write**, not on read:
 
 - When a Rule is created or its selector changes, refresh the derived applicability data. Bump `selector_rev`.
-- When a new entity is created, evaluate active selectors against it once. Most selectors filter by `node_type` first, so the candidate set is small.
+- When a new entity is created, evaluate active selectors against it once. Most selectors filter by `entity_type` first, so the candidate set is small.
 - Lookups ("which rules apply to X?") become a single index hit.
 
 Alternative is evaluate-on-read — simpler but linear in selectors × entities. Denormalize wins because rules are read-heavy and rarely change.
@@ -461,7 +461,7 @@ The data is graph-shaped. Every entity is a node; every reference is an edge. Th
 
 | Option | Pros | Cons | Verdict |
 |---|---|---|---|
-| **SQLite + `edges` table** (proposed) | Embedded, zero-ops; universal SQL (priority 1); FTS5 built-in; ubiquitous tooling | Recursive CTEs slow on dense graphs past ~1M entities at depth 5+ | Best fit for v0.x |
+| **SQLite + `synapses` table** (proposed) | Embedded, zero-ops; universal SQL (priority 1); FTS5 built-in; ubiquitous tooling | Recursive CTEs slow on dense graphs past ~1M entities at depth 5+ | Best fit for v0.x |
 | **Kuzu** | Embedded, native Cypher, columnar/fast traversal, no server | Newer (less battle-tested), C++ deps, smaller ecosystem | Strongest swap if perf bites |
 | **Memgraph / Neo4j** | Mature graph DBs, max perf, rich tooling | Separate server, ops cost, less embedded-friendly | Overkill at v0.x scale |
 | **TerminusDB** | Git-like branching/merging *natively* on a graph DB; conceptually aligned with Doco's repo model | Smaller ecosystem; would replace files-as-source-of-truth — much bigger architectural commitment | Revisit if we ever go DB-as-source-of-truth |
@@ -535,7 +535,7 @@ The discovery layer combines **five retrieval strategies**, ranked by precision.
 
 | # | Strategy | Mechanism | Precision |
 |---|---|---|---|
-| 1 | **Structural match** | Rules whose `applies_to` definitively matches the work item's `node_type`, `verb`, `tag`, or specific entity ID | Highest. **Blocks** on `must` violations. |
+| 1 | **Structural match** | Rules whose `applies_to` definitively matches the work item's `entity_type`, `verb`, `tag`, or specific entity ID | Highest. **Blocks** on `must` violations. |
 | 2 | **Tag overlap** | Rules tagged with any tag carried by the work item (or its parent Intent / target Reference) | High. Cheap and symmetric. |
 | 3 | **Reference-graph expansion** | Rules attached to neighbors of the target Reference: same directory, same content-hash family, same parent module | Medium-high. |
 | 4 | **Semantic search** | Vector embedding NN-search over each Rule's `summary` + Markdown body, against an embedding of the agent's working context (Intent + draft Action + target content) | Medium. The lever for vocabulary-tolerance. |
