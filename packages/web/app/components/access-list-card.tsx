@@ -59,16 +59,13 @@ function AccessListEntry({
   emptyChildrenLabel: string;
 }) {
   return (
-    <li className="grid grid-cols-[0.5rem_minmax(0,1fr)] gap-1.5">
-      <span className={cn("text-muted-foreground", depth > 0 ? "pt-[0.34rem]" : "pt-[0.42rem]")}>
-        •
-      </span>
+    <li>
       <AccessLine item={item} compact={depth > 0} />
       {item.children ? (
         item.children.length === 0 ? (
-          <p className="col-start-2 mt-1 text-xs text-muted-foreground">{emptyChildrenLabel}</p>
+          <p className="ml-4 mt-1 text-xs text-muted-foreground">{emptyChildrenLabel}</p>
         ) : (
-          <ul className="col-start-2 mt-1 space-y-1">
+          <ul className="ml-5 mt-1 space-y-1">
             {item.children.map((child) => (
               <AccessListEntry
                 key={child.id}
@@ -86,24 +83,33 @@ function AccessListEntry({
 
 function AccessLine({ item, compact = false }: { item: AccessListItem; compact?: boolean }) {
   return (
-    <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-baseline gap-3">
-      <div className="flex min-w-0 items-baseline">
-        <Link
-          to={item.href}
-          className={cn(
-            "block min-w-0 truncate font-semibold text-primary hover:underline",
-            compact ? "text-xs" : "text-sm",
-          )}
-        >
-          {item.label}
-        </Link>
-        <span className="ml-1 whitespace-nowrap text-[11px] text-muted-foreground">
-          ({item.count})
-        </span>
-      </div>
-      <div className="shrink-0 whitespace-nowrap text-right text-[11px] text-muted-foreground">
-        <span>last modified </span>
-        <LastModified iso={item.lastUpdatedAt} />
+    <div className="flex min-w-0 items-start gap-2">
+      <span
+        aria-hidden
+        className={cn(
+          "shrink-0 rounded-full bg-muted-foreground",
+          compact ? "mt-[0.42rem] size-1" : "mt-[0.5rem] size-1.5",
+        )}
+      />
+      <div className="grid min-w-0 flex-1 grid-cols-[minmax(0,1fr)_auto] items-baseline gap-3">
+        <div className="flex min-w-0 items-baseline">
+          <Link
+            to={item.href}
+            className={cn(
+              "block min-w-0 truncate font-semibold text-primary hover:underline",
+              compact ? "text-xs" : "text-sm",
+            )}
+          >
+            {item.label}
+          </Link>
+          <span className="ml-1 whitespace-nowrap text-[11px] text-muted-foreground">
+            ({item.count})
+          </span>
+        </div>
+        <div className="shrink-0 whitespace-nowrap text-right text-[11px] text-muted-foreground">
+          <span>last modified </span>
+          <LastModified iso={item.lastUpdatedAt} />
+        </div>
       </div>
     </div>
   );
