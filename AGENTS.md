@@ -31,16 +31,24 @@ session.
 
 This repo ships an MCP server at `.agents/doco-mcp-server.mjs`,
 registered via `.mcp.json`. MCP-aware clients (Claude Code, Cursor,
-Codex CLI) auto-discover it. The server exposes `doco_search` as a
-first-class tool with an imperative description — tool descriptions
-reach the model without the `<system-reminder>` wrapper that demotes
-AGENTS.md, so this is the preferred discoverability channel where
-project-scope hooks are filtered.
+Codex CLI) auto-discover it. Tool descriptions reach the model without
+the `<system-reminder>` wrapper that demotes AGENTS.md, so this is the
+preferred discoverability channel where project-scope hooks are
+filtered.
 
-When `doco_search` is available, call it before answering substantive
-questions about this project's conventions, prior decisions, or
-architectural history. The per-turn search injection that hooks used
-to deliver is now agent-initiated via this tool.
+Tools exposed:
+
+- `doco_search` — query the Doco for relevant prior context.
+- `doco_authenticate` — start OAuth device-flow auth (returns a URL
+  immediately, does not block).
+- `doco_complete_authentication` — finalize after user approves
+  (polls; writes `DOCO_ACCESS` to `./.env` on success).
+
+Call `doco_search` before answering substantive questions about this
+project's conventions, prior decisions, or architectural history. If
+it returns 401/403, call `doco_authenticate` → show the user the URL
+→ `doco_complete_authentication`. The per-turn search injection that
+hooks used to deliver is now agent-initiated via these tools.
 
 ---
 
