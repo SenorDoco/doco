@@ -107,19 +107,18 @@ function AccessLine({ item, compact = false }: { item: AccessListItem; compact?:
           </span>
         </div>
         <div className="shrink-0 whitespace-nowrap text-right text-[11px] text-muted-foreground">
-          <span>last modified </span>
-          <LastModified iso={item.lastUpdatedAt} />
+          <LastUpdatedLabel iso={item.lastUpdatedAt} />
         </div>
       </div>
     </div>
   );
 }
 
-function LastModified({ iso }: { iso: string | null }) {
-  if (!iso) return <span>never</span>;
+function LastUpdatedLabel({ iso }: { iso: string | null }) {
+  if (!iso) return <span>no activity yet</span>;
   return (
     <time dateTime={iso} title={iso} suppressHydrationWarning>
-      {timeAgo(iso)}
+      last updated {timeAgo(iso)}
     </time>
   );
 }
