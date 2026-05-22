@@ -8,8 +8,35 @@ import { waitUntil } from "@vercel/functions";
 // Identifiers: every node has exactly one id — the ULID. URLs use the
 // ULID; agents/users read the readable field (`summary` for most nodes).
 import { appendAuditEvent } from "./audit-log.server";
+import { type AuthoringResult, runAuthoringPrimitives } from "./authoring-runner.server";
 import { validatePatch } from "./mutability.server";
 import { reindex, reindexEmbeddingsOnly } from "./redeem.server";
+
+/**
+ * Run the doco's authoring primitives against a candidate's full
+ * frontmatter. Centralized here so every captureX / updateEntity path
+ * applies the same enforcement: blocking violations short-circuit
+ * before persistEntity, warnings get attached to the result. Replaces
+ * the pre-v16 `runScopeRules` call (deleted in commit 4974339).
+ */
+async function enforceAuthoringPrimitives(
+  docoId: string,
+  fm: Record<string, unknown>,
+): Promise<AuthoringResult> {
+  return runAuthoringPrimitives({
+    docoId,
+    candidate: fm as Parameters<typeof runAuthoringPrimitives>[0]["candidate"],
+  });
+}
+
+/**
+ * Render non-blocking authoring-primitive warnings as footer lines.
+ * Appended after the operation lines so the agent sees them inline
+ * with the capture result.
+ */
+function renderAuthoringWarnings(warnings: AuthoringResult["warnings"]): string[] {
+  return warnings.map((w) => `[🔮 Doco] ⚠️ Authoring warning: ${w.reason}`);
+}
 
 /**
  * Synthetic "path" returned in CaptureResult.path. Postgres is the only
@@ -162,6 +189,13 @@ export interface CaptureResult {
    * renderer appends this as ` (X.Xs)` to the last footer line.
    */
   duration_ms: number;
+  /**
+   * Non-blocking authoring-primitive violations produced by the
+   * evaluator (on_violation = "warn"). Empty when no warnings fired.
+   * Blocking violations short-circuit before persistence and surface as
+   * a CaptureError instead.
+   */
+  warnings?: import("@doco/shared").Violation[];
 }
 
 /**
@@ -374,6 +408,18 @@ export interface CaptureError {
   rejected?: string[];
   /** Human-readable hint pointing at the supersession affordance for frozen claims. */
   hint?: string;
+  /**
+   * When the authoring-primitives evaluator blocks the capture, the
+   * id of the primitive whose predicate produced the violation. Lets
+   * the route surface a deep-link to the constitution article.
+   */
+  primitive_id?: string;
+  /**
+   * Any additional non-blocking warnings produced alongside the
+   * blocking violation. Useful when an agent's request fails multiple
+   * checks at once.
+   */
+  warnings?: import("@doco/shared").Violation[];
 }
 
 /**
@@ -629,6 +675,15 @@ export async function captureDecision(
     ...status,
   };
 
+  const pred = await enforceAuthoringPrimitives(docoId, fm);
+  if (pred.blocking) {
+    return {
+      error: `Authoring primitive violation: ${pred.blocking.reason}`,
+      primitive_id: pred.blocking.primitive_id,
+      ...(pred.warnings.length > 0 ? { warnings: pred.warnings } : {}),
+    };
+  }
+
   await persistEntity({
     entityType: "decision",
     id,
@@ -657,12 +712,14 @@ export async function captureDecision(
     ops: [{ kind: "added", summary }],
     duration_ms,
   });
+  footer_lines.push(...renderAuthoringWarnings(pred.warnings));
   return {
     ok: true,
     id,
     path: syntheticPath("decision", id),
     footer_lines,
     duration_ms,
+    ...(pred.warnings.length > 0 ? { warnings: pred.warnings } : {}),
   };
 }
 
@@ -841,6 +898,15 @@ export async function updateDecision(
     return { error: "No fields changed." };
   }
 
+  const pred = await enforceAuthoringPrimitives(docoId, fm);
+  if (pred.blocking) {
+    return {
+      error: `Authoring primitive violation: ${pred.blocking.reason}`,
+      primitive_id: pred.blocking.primitive_id,
+      ...(pred.warnings.length > 0 ? { warnings: pred.warnings } : {}),
+    };
+  }
+
   await persistEntity({
     entityType: "decision",
     id: decisionId,
@@ -873,6 +939,7 @@ export async function updateDecision(
     ops,
     duration_ms,
   });
+  footer_lines.push(...renderAuthoringWarnings(pred.warnings));
   return {
     ok: true,
     id: decisionId,
@@ -880,6 +947,7 @@ export async function updateDecision(
     footer_lines,
     changed,
     duration_ms,
+    ...(pred.warnings.length > 0 ? { warnings: pred.warnings } : {}),
   };
 }
 
@@ -1082,6 +1150,15 @@ export async function updateEntity(opts: {
       nextBody = existingBody.trim();
     }
   }
+  const pred = await enforceAuthoringPrimitives(docoId, fm);
+  if (pred.blocking) {
+    return {
+      error: `Authoring primitive violation: ${pred.blocking.reason}`,
+      primitive_id: pred.blocking.primitive_id,
+      ...(pred.warnings.length > 0 ? { warnings: pred.warnings } : {}),
+    };
+  }
+
   await persistEntity({
     entityType,
     id,
@@ -1115,6 +1192,7 @@ export async function updateEntity(opts: {
     ops,
     duration_ms,
   });
+  footer_lines.push(...renderAuthoringWarnings(pred.warnings));
   return {
     ok: true,
     id,
@@ -1122,6 +1200,7 @@ export async function updateEntity(opts: {
     footer_lines,
     changed,
     duration_ms,
+    ...(pred.warnings.length > 0 ? { warnings: pred.warnings } : {}),
   };
 }
 
@@ -1205,6 +1284,15 @@ export async function captureIntent(
     ...status,
   };
 
+  const pred = await enforceAuthoringPrimitives(docoId, fm);
+  if (pred.blocking) {
+    return {
+      error: `Authoring primitive violation: ${pred.blocking.reason}`,
+      primitive_id: pred.blocking.primitive_id,
+      ...(pred.warnings.length > 0 ? { warnings: pred.warnings } : {}),
+    };
+  }
+
   await persistEntity({
     entityType: "intent",
     id,
@@ -1233,12 +1321,14 @@ export async function captureIntent(
     ops: [{ kind: "added", summary }],
     duration_ms,
   });
+  footer_lines.push(...renderAuthoringWarnings(pred.warnings));
   return {
     ok: true,
     id,
     path: syntheticPath("intent", id),
     footer_lines,
     duration_ms,
+    ...(pred.warnings.length > 0 ? { warnings: pred.warnings } : {}),
   };
 }
 
@@ -1344,6 +1434,15 @@ export async function captureEval(
     ...status,
   };
 
+  const pred = await enforceAuthoringPrimitives(docoId, fm);
+  if (pred.blocking) {
+    return {
+      error: `Authoring primitive violation: ${pred.blocking.reason}`,
+      primitive_id: pred.blocking.primitive_id,
+      ...(pred.warnings.length > 0 ? { warnings: pred.warnings } : {}),
+    };
+  }
+
   await persistEntity({
     entityType: "eval",
     id,
@@ -1373,12 +1472,14 @@ export async function captureEval(
     ops: [{ kind: "added", summary }],
     duration_ms,
   });
+  footer_lines.push(...renderAuthoringWarnings(pred.warnings));
   return {
     ok: true,
     id,
     path: syntheticPath("eval", id),
     footer_lines,
     duration_ms,
+    ...(pred.warnings.length > 0 ? { warnings: pred.warnings } : {}),
   };
 }
 
@@ -1469,6 +1570,15 @@ export async function captureAction(
     ...status,
   };
 
+  const pred = await enforceAuthoringPrimitives(docoId, fm);
+  if (pred.blocking) {
+    return {
+      error: `Authoring primitive violation: ${pred.blocking.reason}`,
+      primitive_id: pred.blocking.primitive_id,
+      ...(pred.warnings.length > 0 ? { warnings: pred.warnings } : {}),
+    };
+  }
+
   await persistEntity({
     entityType: "action",
     id,
@@ -1498,12 +1608,14 @@ export async function captureAction(
     ops: [{ kind: "added", summary }],
     duration_ms,
   });
+  footer_lines.push(...renderAuthoringWarnings(pred.warnings));
   return {
     ok: true,
     id,
     path: syntheticPath("action", id),
     footer_lines,
     duration_ms,
+    ...(pred.warnings.length > 0 ? { warnings: pred.warnings } : {}),
   };
 }
 
@@ -1607,6 +1719,15 @@ export async function captureLog(
     ...status,
   };
 
+  const pred = await enforceAuthoringPrimitives(docoId, fm);
+  if (pred.blocking) {
+    return {
+      error: `Authoring primitive violation: ${pred.blocking.reason}`,
+      primitive_id: pred.blocking.primitive_id,
+      ...(pred.warnings.length > 0 ? { warnings: pred.warnings } : {}),
+    };
+  }
+
   await persistEntity({
     entityType: "log",
     id,
@@ -1636,12 +1757,14 @@ export async function captureLog(
     ops: [{ kind: "added", summary }],
     duration_ms,
   });
+  footer_lines.push(...renderAuthoringWarnings(pred.warnings));
   return {
     ok: true,
     id,
     path: syntheticPath("log", id),
     footer_lines,
     duration_ms,
+    ...(pred.warnings.length > 0 ? { warnings: pred.warnings } : {}),
   };
 }
 
@@ -1751,6 +1874,15 @@ export async function captureRule(
     ...status,
   };
 
+  const pred = await enforceAuthoringPrimitives(docoId, fm);
+  if (pred.blocking) {
+    return {
+      error: `Authoring primitive violation: ${pred.blocking.reason}`,
+      primitive_id: pred.blocking.primitive_id,
+      ...(pred.warnings.length > 0 ? { warnings: pred.warnings } : {}),
+    };
+  }
+
   await persistEntity({
     entityType: "rule",
     id,
@@ -1780,12 +1912,14 @@ export async function captureRule(
     ops: [{ kind: "added", summary }],
     duration_ms,
   });
+  footer_lines.push(...renderAuthoringWarnings(pred.warnings));
   return {
     ok: true,
     id,
     path: syntheticPath("rule", id),
     footer_lines,
     duration_ms,
+    ...(pred.warnings.length > 0 ? { warnings: pred.warnings } : {}),
   };
 }
 
@@ -1879,7 +2013,9 @@ function normalizeNodeAuthoringPredicate(
 
   const parsed = parsePredicate(draft.predicate);
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-    return { error: "predicate must be a JSON object for deterministic neuron_authoring_primitives." };
+    return {
+      error: "predicate must be a JSON object for deterministic neuron_authoring_primitives.",
+    };
   }
   const predicate = parsed as AuthoringPredicate;
   if (predicate.kind === "probabilistic") {
@@ -2013,6 +2149,15 @@ export async function captureGuidancePrimitive(
   const payload = await buildGuidancePrimitivePayload(docoId, draft, extras);
   if ("error" in payload) return payload;
 
+  const pred = await enforceAuthoringPrimitives(docoId, payload.fm);
+  if (pred.blocking) {
+    return {
+      error: `Authoring primitive violation: ${pred.blocking.reason}`,
+      primitive_id: pred.blocking.primitive_id,
+      ...(pred.warnings.length > 0 ? { warnings: pred.warnings } : {}),
+    };
+  }
+
   await persistEntity({
     entityType: payload.entityType,
     id: payload.id,
@@ -2042,12 +2187,14 @@ export async function captureGuidancePrimitive(
     ops: [{ kind: "added", summary: payload.summary }],
     duration_ms,
   });
+  footer_lines.push(...renderAuthoringWarnings(pred.warnings));
   return {
     ok: true,
     id: payload.id,
     path: syntheticPath(payload.entityType, payload.id),
     footer_lines,
     duration_ms,
+    ...(pred.warnings.length > 0 ? { warnings: pred.warnings } : {}),
   };
 }
 
@@ -2064,6 +2211,15 @@ export async function captureNeuronAuthoringPrimitive(
   const payload = await buildNeuronAuthoringPrimitivePayload(docoId, draft, extras);
   if ("error" in payload) return payload;
 
+  const pred = await enforceAuthoringPrimitives(docoId, payload.fm);
+  if (pred.blocking) {
+    return {
+      error: `Authoring primitive violation: ${pred.blocking.reason}`,
+      primitive_id: pred.blocking.primitive_id,
+      ...(pred.warnings.length > 0 ? { warnings: pred.warnings } : {}),
+    };
+  }
+
   await persistEntity({
     entityType: payload.entityType,
     id: payload.id,
@@ -2093,12 +2249,14 @@ export async function captureNeuronAuthoringPrimitive(
     ops: [{ kind: "added", summary: payload.summary }],
     duration_ms,
   });
+  footer_lines.push(...renderAuthoringWarnings(pred.warnings));
   return {
     ok: true,
     id: payload.id,
     path: syntheticPath(payload.entityType, payload.id),
     footer_lines,
     duration_ms,
+    ...(pred.warnings.length > 0 ? { warnings: pred.warnings } : {}),
   };
 }
 
@@ -2298,6 +2456,15 @@ export async function captureReference(
     ...status,
   };
 
+  const pred = await enforceAuthoringPrimitives(docoId, fm);
+  if (pred.blocking) {
+    return {
+      error: `Authoring primitive violation: ${pred.blocking.reason}`,
+      primitive_id: pred.blocking.primitive_id,
+      ...(pred.warnings.length > 0 ? { warnings: pred.warnings } : {}),
+    };
+  }
+
   await persistEntity({
     entityType: "reference",
     id,
@@ -2327,12 +2494,14 @@ export async function captureReference(
     ops: [{ kind: "added", summary }],
     duration_ms,
   });
+  footer_lines.push(...renderAuthoringWarnings(pred.warnings));
   return {
     ok: true,
     id,
     path: syntheticPath("reference", id),
     footer_lines,
     duration_ms,
+    ...(pred.warnings.length > 0 ? { warnings: pred.warnings } : {}),
   };
 }
 
@@ -2414,6 +2583,15 @@ export async function captureState(
     ...status,
   };
 
+  const pred = await enforceAuthoringPrimitives(docoId, fm);
+  if (pred.blocking) {
+    return {
+      error: `Authoring primitive violation: ${pred.blocking.reason}`,
+      primitive_id: pred.blocking.primitive_id,
+      ...(pred.warnings.length > 0 ? { warnings: pred.warnings } : {}),
+    };
+  }
+
   await persistEntity({
     entityType: "state",
     id,
@@ -2443,11 +2621,13 @@ export async function captureState(
     ops: [{ kind: "added", summary }],
     duration_ms,
   });
+  footer_lines.push(...renderAuthoringWarnings(pred.warnings));
   return {
     ok: true,
     id,
     path: syntheticPath("state", id),
     footer_lines,
     duration_ms,
+    ...(pred.warnings.length > 0 ? { warnings: pred.warnings } : {}),
   };
 }
