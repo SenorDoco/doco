@@ -109,7 +109,7 @@ export default [
   route("new-org", "routes/new-org.tsx"),
   route("orgs", "routes/orgs._index.tsx"),
   // Per-Org home — mirrors the Doco home page but aggregates across
-  // every Doco the org owns (docos list, node-type/lifecycle facets,
+  // every Doco the org owns (docos list, neuron-type/lifecycle facets,
   // activity heatmap + feed, top contributors, members).
   route("orgs/:orgHandle", "routes/orgs.$orgHandle._index.tsx"),
   // Cross-Doco semantic search across every Doco the org owns.
@@ -214,15 +214,15 @@ export default [
   route(":docoHandle/api/principals.json", "routes/$docoHandle.api.principals[.]json.tsx"),
   route(":docoHandle/api/settings.json", "routes/$docoHandle.api.settings[.]json.tsx"),
   route(":docoHandle/api/audit.json", "routes/$docoHandle.api.audit[.]json.tsx"),
-  // Articles (constitution metadata) are not nodes; they live on a
+  // Primitives (constitution metadata) are not neurons; they live on a
   // dedicated endpoint and are intentionally absent from the generic
   // capture dispatcher below.
   route(":docoHandle/api/primitives.json", "routes/$docoHandle.api.primitives[.]json.tsx"),
   // Generic capture dispatcher. Handles decisions, intents, actions,
   // references, rules, logs, evals, states via CAPTURE_REGISTRY in the
   // route file. Adding a new simple-capture entity type is one registry
-  // row; no new route needed. Article types are deliberately not in this
-  // registry — see /api/primitives.json above.
+  // row; no new route needed. Primitive types are deliberately not in
+  // this registry — see /api/primitives.json above.
   route(":docoHandle/api/:type.json", "routes/$docoHandle.api.$type[.]json.tsx"),
   route(":docoHandle/api/:type.txt", "routes/$docoHandle.api.$type[.]txt.tsx"),
   route(":docoHandle/activity", "routes/$docoHandle.activity.tsx"),
@@ -231,11 +231,12 @@ export default [
   route(":docoHandle/search.json", "routes/$docoHandle.search[.]json.tsx"),
   route(":docoHandle/onboarding/agent", "routes/$docoHandle.onboarding.agent.tsx"),
   route(":docoHandle/rules/new", "routes/$docoHandle.rules.new.tsx"),
-  // Edges — Doco's relationships materialize as rows in the `synapses` table
-  // (D-017, fields-as-synapses). The list view is one row per edge; the
-  // detail view renders the two connected nodes via EntityGraph plus the
-  // edge's metadata. Composite key `(synapse_type, from_id, to_id)` is
-  // url-encoded as `edge_type__from_id__to_id`.
+  // Synapses — Doco's relationships materialize as rows in the `synapses`
+  // table (D-017, fields-as-synapses). The list view is one row per
+  // synapse; the detail view renders the two connected neurons via
+  // EntityGraph plus the synapse's metadata. Composite key
+  // `(synapse_type, from_id, to_id)` is url-encoded as
+  // `synapse_type__from_id__to_id`.
   route(":docoHandle/synapses", "routes/$docoHandle.synapses._index.tsx"),
   route(":docoHandle/synapses/:synapseKey", "routes/$docoHandle.synapses.$synapseKey.tsx"),
   // Short-form entity routes. `:type` is validated by the loader; reserved

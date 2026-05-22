@@ -2,7 +2,7 @@
 //
 // Postgres-backed `audit_events` table. Five op types cover the
 // mutation surface: entity.create, entity.update, entity.delete,
-// lifecycle.transition, edge.add.
+// lifecycle.transition, synapse.add.
 
 import { generateUlid } from "@doco/shared";
 import { appendAuditEventRow, readAuditEventRows } from "@doco/db";

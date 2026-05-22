@@ -25,9 +25,10 @@ interface OverviewGraphRow {
   created_at: string | null;
 }
 
-// Note tables only — articles (constitution metadata) are not nodes
-// and are deliberately excluded from the graph. Articles have their
-// own surface: /<handle>/constitution and /<handle>/api/articles.json.
+// Note tables only — primitives (constitution metadata) are not
+// neurons and are deliberately excluded from the graph. Primitives
+// have their own surface: /<handle>/constitution and
+// /<handle>/api/primitives.json.
 const GRAPH_TABLES: {
   table: string;
   entityType: string;
@@ -45,7 +46,7 @@ const GRAPH_TABLES: {
   { table: "states", entityType: "state" },
 ];
 
-const OVERVIEW_GRAPH_EDGE_LIMIT = 5000;
+const OVERVIEW_GRAPH_SYNAPSE_LIMIT = 5000;
 const OVERVIEW_DETAIL_LIMIT = 120;
 
 function storedFrontmatter(rawYaml: string | null | undefined): Record<string, unknown> {
@@ -120,14 +121,14 @@ async function loadOverviewLinks(
           AND to_id = ANY($2::text[])
         ORDER BY CASE WHEN attribution = 'explicit' THEN 0 ELSE 1 END, synapse_type
         LIMIT $3`,
-      [docoId, nodeIds, OVERVIEW_GRAPH_EDGE_LIMIT],
+      [docoId, nodeIds, OVERVIEW_GRAPH_SYNAPSE_LIMIT],
     )
   ).rows;
-  return rows.map((edge) => ({
-    source: edge.from_id,
-    target: edge.to_id,
-    synapse_type: edge.synapse_type,
-    attribution: asAttribution(edge.attribution),
+  return rows.map((s) => ({
+    source: s.from_id,
+    target: s.to_id,
+    synapse_type: s.synapse_type,
+    attribution: asAttribution(s.attribution),
   }));
 }
 
@@ -251,13 +252,13 @@ export async function loadOrgOverviewGraph(
                 AND to_id = ANY($2::text[])
               ORDER BY CASE WHEN attribution = 'explicit' THEN 0 ELSE 1 END, synapse_type
               LIMIT $3`,
-            [docoIds, nodeIds, OVERVIEW_GRAPH_EDGE_LIMIT],
+            [docoIds, nodeIds, OVERVIEW_GRAPH_SYNAPSE_LIMIT],
           )
-        ).rows.map((edge) => ({
-          source: edge.from_id,
-          target: edge.to_id,
-          synapse_type: edge.synapse_type,
-          attribution: asAttribution(edge.attribution),
+        ).rows.map((s) => ({
+          source: s.from_id,
+          target: s.to_id,
+          synapse_type: s.synapse_type,
+          attribution: asAttribution(s.attribution),
         }));
   const nodes: OverviewGraphNode[] = rows.map((row) => {
     const handle = docoHandleByDocoId.get(String(row.doco_id));

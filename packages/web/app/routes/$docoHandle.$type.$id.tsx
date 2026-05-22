@@ -556,12 +556,12 @@ export default function EntityDetail({
   const drawerOutgoing: DrawerEdge[] = outgoing.map((e) => ({
     synapse_type: e.synapse_type,
     other_id: e.to_id,
-    other_node_type: e.to_neuron_type,
+    other_neuron_type: e.to_neuron_type,
   }));
   const drawerIncoming: DrawerEdge[] = incoming.map((e) => ({
     synapse_type: e.synapse_type,
     other_id: e.from_id,
-    other_node_type: e.from_neuron_type,
+    other_neuron_type: e.from_neuron_type,
   }));
   const drawerHistory = history.map((e) => ({
     event_id: e.event_id,

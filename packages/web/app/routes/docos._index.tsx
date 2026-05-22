@@ -38,7 +38,7 @@ const FEED_LIMIT = 10;
 interface DocoRow {
   docoId: string;
   handle: string;
-  nodes: number;
+  neurons: number;
   synapses: number;
   lastUpdatedAt: string | null;
 }
@@ -72,11 +72,11 @@ export async function loader({ request }: { request: Request }) {
 
   const docos: DocoRow[] = docosRaw
     .map((d) => {
-      const s = stats.get(d.docoId) ?? { nodes: 0, synapses: 0, lastUpdatedAt: null };
+      const s = stats.get(d.docoId) ?? { neurons: 0, synapses: 0, lastUpdatedAt: null };
       return {
         docoId: d.docoId,
         handle: d.handle,
-        nodes: s.nodes,
+        neurons: s.neurons,
         synapses: s.synapses,
         lastUpdatedAt: s.lastUpdatedAt,
       };
@@ -239,7 +239,7 @@ export default function DocosIndexPage({
                               {d.handle}
                             </Link>
                           </TableCell>
-                          <TableCell className="text-right font-mono">{d.nodes}</TableCell>
+                          <TableCell className="text-right font-mono">{d.neurons}</TableCell>
                           <TableCell className="text-right font-mono">{d.synapses}</TableCell>
                           <TableCell className="text-right text-muted-foreground">
                             {timeAgo(d.lastUpdatedAt)}

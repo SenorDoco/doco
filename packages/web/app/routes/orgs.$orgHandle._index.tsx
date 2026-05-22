@@ -49,9 +49,9 @@ interface OrgDoco {
   docoId: string;
   handle: string;
   visibility: "private" | "public";
-  nodes: number;
+  neurons: number;
   synapses: number;
-  activeNodes: number;
+  activeNeurons: number;
   lastUpdatedAt: string | null;
 }
 
@@ -83,10 +83,10 @@ interface FeedItem {
   after: Record<string, unknown> | null;
 }
 
-// Note tables only — articles (constitution metadata) are not nodes
-// and do not count toward "active nodes" per Doco. They are exposed
-// via /<handle>/constitution and /<handle>/api/articles.json.
-const NODE_TABLES_WITH_LIFECYCLE = [
+// Note tables only — primitives (constitution metadata) are not neurons
+// and do not count toward "active neurons" per Doco. They are exposed
+// via /<handle>/constitution and /<handle>/api/primitives.json.
+const NEURON_TABLES_WITH_LIFECYCLE = [
   "intents",
   "ideas",
   "rules",
@@ -127,7 +127,7 @@ export async function loader({
     // Active-node counts per doco, for the "active/total" display.
     const activeByDocoId = new Map<string, number>();
     if (docoIds.length > 0) {
-      for (const t of NODE_TABLES_WITH_LIFECYCLE) {
+      for (const t of NEURON_TABLES_WITH_LIFECYCLE) {
         const r = await c.query<{ doco_id: string; n: string }>(
           `SELECT doco_id, COUNT(*)::text AS n FROM ${t}
             WHERE doco_id = ANY($1::text[]) AND COALESCE(lifecycle, 'active') = 'active'
@@ -146,14 +146,14 @@ export async function loader({
     const docos: OrgDoco[] = docoRows
       .map((r): OrgDoco => {
         const id = String(r.id);
-        const stats = statsByDocoId.get(id) ?? { nodes: 0, synapses: 0, lastUpdatedAt: null };
+        const stats = statsByDocoId.get(id) ?? { neurons: 0, synapses: 0, lastUpdatedAt: null };
         return {
           docoId: id,
           handle: String(r.handle),
           visibility: r.visibility === "public" ? "public" : "private",
-          nodes: stats.nodes,
+          neurons: stats.neurons,
           synapses: stats.synapses,
-          activeNodes: activeByDocoId.get(id) ?? 0,
+          activeNeurons: activeByDocoId.get(id) ?? 0,
           lastUpdatedAt: stats.lastUpdatedAt,
         };
       })
@@ -484,7 +484,7 @@ export default function OrgHome({
                     <TableHeader>
                       <TableRow>
                         <TableHead>handle</TableHead>
-                        <TableHead className="text-right">active/nodes</TableHead>
+                        <TableHead className="text-right">active/neurons</TableHead>
                         <TableHead className="text-right">synapses</TableHead>
                         <TableHead className="text-right">last updated</TableHead>
                       </TableRow>
@@ -498,7 +498,7 @@ export default function OrgHome({
                             </Link>
                           </TableCell>
                           <TableCell className="text-right font-mono">
-                            {d.activeNodes}/{d.nodes}
+                            {d.activeNeurons}/{d.neurons}
                           </TableCell>
                           <TableCell className="text-right font-mono">{d.synapses}</TableCell>
                           <TableCell className="text-right text-muted-foreground">
@@ -583,7 +583,7 @@ export default function OrgHome({
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <h2 className="text-sm font-semibold tracking-tight">Org graph</h2>
                 <span className="font-mono text-xs text-muted-foreground">
-                  {graph.nodes.length} nodes · {graph.links.length} links
+                  {graph.nodes.length} neurons · {graph.links.length} synapses
                 </span>
               </div>
               <div className="h-[55vh] min-h-[400px]">

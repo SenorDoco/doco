@@ -1,9 +1,9 @@
-// Side drawer that overlays the entity graph on the node detail view.
+// Side drawer that overlays the entity graph on the neuron detail view.
 // Renders one detail "page" at a time — Relevant neurons, Synapses, History,
 // or Metadata — based on the `open` kind. Closing returns control to
 // the graph.
 //
-// Metadata also carries the focal node's id / created / Global PageRank
+// Metadata also carries the focal neuron's id / created / Global PageRank
 // stats (folded in after the standalone Info pane was retired — they
 // were redundant with the YAML frontmatter dump).
 //
@@ -17,9 +17,9 @@ export type DrawerKind = "relevant" | "synapses" | "history" | "metadata";
 
 export interface DrawerEdge {
   synapse_type: string;
-  /** The id of the OTHER node — to_id for outgoing, from_id for incoming. */
+  /** The id of the OTHER neuron — to_id for outgoing, from_id for incoming. */
   other_id: string;
-  other_node_type: string;
+  other_neuron_type: string;
 }
 
 export interface DrawerHistoryEvent {
@@ -176,12 +176,12 @@ function EdgesPane({ outgoing, incoming, linkTo }: NodeDetailDrawerProps) {
                   <TableCell className="font-mono text-[11px]">{e.synapse_type}</TableCell>
                   <TableCell>
                     <Link
-                      to={linkTo(e.other_node_type, e.other_id)}
+                      to={linkTo(e.other_neuron_type, e.other_id)}
                       className="text-primary hover:underline"
                     >
                       {e.other_id}
                     </Link>
-                    <span className="ml-2 text-muted-foreground">({e.other_node_type})</span>
+                    <span className="ml-2 text-muted-foreground">({e.other_neuron_type})</span>
                   </TableCell>
                 </TableRow>
               ))}
@@ -209,12 +209,12 @@ function EdgesPane({ outgoing, incoming, linkTo }: NodeDetailDrawerProps) {
                   <TableCell className="font-mono text-[11px]">{e.synapse_type}</TableCell>
                   <TableCell>
                     <Link
-                      to={linkTo(e.other_node_type, e.other_id)}
+                      to={linkTo(e.other_neuron_type, e.other_id)}
                       className="text-primary hover:underline"
                     >
                       {e.other_id}
                     </Link>
-                    <span className="ml-2 text-muted-foreground">({e.other_node_type})</span>
+                    <span className="ml-2 text-muted-foreground">({e.other_neuron_type})</span>
                   </TableCell>
                 </TableRow>
               ))}

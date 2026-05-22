@@ -41,13 +41,13 @@ export async function loader({
 
 /**
  * Per-table accessor for the status counts. `group` tells consumers
- * whether the table holds notes (domain entities a Doco captures) or
- * articles (constitution metadata). Keeping the two apart in the
- * response prevents callers from summing articles into a "node total"
- * — an empty Doco with only a template constitution would otherwise
- * misread as having captured work.
+ * whether the table holds notes (domain neurons a Doco captures) or
+ * primitives (constitution metadata). Keeping the two apart in the
+ * response prevents callers from summing primitives into a "neuron
+ * total" — an empty Doco with only a template constitution would
+ * otherwise misread as having captured work.
  */
-type StatusGroup = "note" | "article";
+type StatusGroup = "note" | "primitive";
 const TYPE_MAP: { entityType: string; table: string; plural: string; group: StatusGroup }[] = [
   { entityType: "intent", table: "intents", plural: "intents", group: "note" },
   { entityType: "idea", table: "ideas", plural: "ideas", group: "note" },
@@ -56,13 +56,13 @@ const TYPE_MAP: { entityType: string; table: string; plural: string; group: Stat
     entityType: "guidance_primitive",
     table: "guidance_primitives",
     plural: "guidance_primitives",
-    group: "article",
+    group: "primitive",
   },
   {
     entityType: "neuron_authoring_primitive",
     table: "neuron_authoring_primitives",
     plural: "neuron_authoring_primitives",
-    group: "article",
+    group: "primitive",
   },
   { entityType: "decision", table: "decisions", plural: "decisions", group: "note" },
   { entityType: "action", table: "actions", plural: "actions", group: "note" },
