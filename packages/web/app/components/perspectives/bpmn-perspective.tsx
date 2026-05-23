@@ -30,13 +30,6 @@ import {
 import { useNavigate } from "react-router";
 import type { OverviewGraphLink } from "~/components/overview-graph";
 import type { BpmnLane, BpmnNode, BpmnShape } from "~/lib/bpmn-perspective.server";
-
-// MUST stay in sync with the matching exports in
-// `~/lib/bpmn-perspective.server`. Can't import the values here —
-// `.server.ts` modules are stripped from the client bundle, so
-// value-imports from them fail the build.
-const MILESTONE_LANE_ID = "__milestones__";
-const ARTIFACTS_LANE_ID = "__artifacts__";
 import {
   computeDepthFromCenter,
   hasFocalNode,
@@ -50,6 +43,13 @@ import {
 } from "~/lib/graph-references";
 import { lifecycleColor, lifecycleLabel, textOnLifecycle } from "~/lib/neuron-colors";
 import "@xyflow/react/dist/style.css";
+
+// MUST stay in sync with the matching exports in
+// `~/lib/bpmn-perspective.server`. Can't import the values here —
+// `.server.ts` modules are stripped from the client bundle, so
+// value-imports from them fail the build.
+const MILESTONE_LANE_ID = "__milestones__";
+const ARTIFACTS_LANE_ID = "__artifacts__";
 
 interface BpmnPerspectiveProps {
   lanes: BpmnLane[];

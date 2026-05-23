@@ -534,7 +534,9 @@ export default function DocoHome({
   // Native browser fullscreen on the aside (tabs + search + canvas +
   // lifecycle filter ride along because they're all inside the aside).
   // Native API gives an actual OS-level fullscreen — Esc exits per
-  // browser convention.
+  // browser convention. The neuron dialog also moves inside the aside
+  // when fullscreen so it stays visible on top of the graph (the right
+  // column is outside the fullscreen tree and not rendered).
   const asideRef = useRef<HTMLElement>(null);
   const { isFullscreen: isPerspectiveFullscreen, toggle: togglePerspectiveFullscreen } =
     useFullscreen(asideRef);
@@ -812,6 +814,25 @@ export default function DocoHome({
                   />
                 </div>
               </div>
+              {/* Fullscreen-only: render the neuron dialog inside the aside,
+                  anchored to the right of the canvas. Outside fullscreen, the
+                  same dialog renders in the right column (further down). */}
+              {isPerspectiveFullscreen && neuronDialog ? (
+                <div className="absolute bottom-3 right-3 top-3 z-20 w-[min(440px,40%)]">
+                  <NeuronDialog
+                    detail={neuronDialog.detail}
+                    loading={neuronDialog.loading}
+                    error={neuronDialog.error}
+                    lifecycleUpdating={lifecycleUpdating}
+                    lifecycleError={lifecycleError}
+                    onClose={closeNeuronDialog}
+                    onLifecycleChange={handleLifecycleChange}
+                    onOpenNeuron={(entityType, id, href) => {
+                      void loadNeuronDialog(entityType, id, href);
+                    }}
+                  />
+                </div>
+              ) : null}
             </div>
           </aside>
 
@@ -856,12 +877,14 @@ export default function DocoHome({
                 </CardContent>
               </Card>
             </section>
-            {neuronDialog ? (
+            {neuronDialog && !isPerspectiveFullscreen ? (
               // Small screens: float over the perspective canvas but leave
               // the app bar (top-20) and the Señor Doco rail (variable
               // left edge — set by AgentSidebar as a CSS var on
               // documentElement so we don't have to thread state) visible.
               // ≥1200px: absolute, anchored to the right column's parent.
+              // In fullscreen the dialog renders inside the aside instead —
+              // the right column is outside the fullscreen tree.
               <div className="fixed bottom-4 right-3 top-20 z-30 [left:calc(var(--senor-doco-rail-width,320px)+0.75rem)] min-[1200px]:absolute min-[1200px]:inset-x-0 min-[1200px]:bottom-auto min-[1200px]:top-0 min-[1200px]:h-[calc(100vh-10rem)] min-[1200px]:min-h-[480px]">
                 <NeuronDialog
                   detail={neuronDialog.detail}
