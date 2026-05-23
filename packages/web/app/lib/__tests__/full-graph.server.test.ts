@@ -82,4 +82,31 @@ describe("loadOverviewGraph", () => {
     const types = graph.nodes.map((n) => n.entity_type).sort();
     expect(types).toEqual(["decision", "principal"]);
   });
+
+  it("loads the first-line neuron name with the base graph nodes", async () => {
+    const { client } = makeQueryClient({
+      entities: [
+        {
+          id: "state_01TEST0000000000000000001",
+          entity_type: "state",
+          name: null,
+          label: "Waiting for approval",
+          lifecycle: "active",
+          created_at: "2026-05-23T20:00:00.000Z",
+        },
+      ],
+      synapses: [],
+    });
+
+    const graph = await loadOverviewGraph(client, "doco_01TEST00000000000000000001", {
+      handle: "test-doco",
+    });
+
+    expect(graph.nodes).toEqual([
+      expect.objectContaining({
+        id: "state_01TEST0000000000000000001",
+        name: "Waiting for approval",
+      }),
+    ]);
+  });
 });

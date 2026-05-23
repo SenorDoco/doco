@@ -255,7 +255,7 @@ function OverviewFlowNode({ data }: { data: OverviewNodeData }) {
         data-graph-reference-number={data.referenceNumber ?? undefined}
         data-neuron-href={detail?.href ?? data.node.href ?? undefined}
         data-neuron-id={data.node.id}
-        data-neuron-label={showDetail ? title : undefined}
+        data-neuron-label={title}
         data-neuron-lifecycle={lifecycle}
         data-neuron-type={data.node.entity_type}
         data-overview-node-new={data.isNew ? "true" : undefined}
@@ -263,7 +263,7 @@ function OverviewFlowNode({ data }: { data: OverviewNodeData }) {
           borderColor: data.node.is_center ? "var(--color-foreground)" : "var(--color-border)",
           borderLeft: `6px solid ${lifecycleColor(lifecycle)}`,
         }}
-        title={showDetail ? title : `${data.node.entity_type} · ${lifecycle}`}
+        title={title}
       >
         <Handle
           type="target"
@@ -272,15 +272,9 @@ function OverviewFlowNode({ data }: { data: OverviewNodeData }) {
           isConnectable={false}
         />
         <NeuronTypeIcon entityType={data.node.entity_type} className="!h-3.5 !w-3.5 shrink-0" />
-        {showDetail ? (
-          <span className="min-w-0 flex-1 truncate font-mono text-[10px] font-semibold leading-none text-foreground">
-            {title}
-          </span>
-        ) : (
-          <span className="min-w-0 flex-1 truncate text-[9px] font-semibold uppercase leading-none text-muted-foreground">
-            {data.node.entity_type}
-          </span>
-        )}
+        <span className="min-w-0 flex-1 truncate font-mono text-[10px] font-semibold leading-none text-foreground">
+          {title}
+        </span>
         {showDetail && title !== subtitle ? <span className="sr-only">{subtitle}</span> : null}
         <Handle
           type="source"
