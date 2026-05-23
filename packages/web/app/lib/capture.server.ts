@@ -228,7 +228,7 @@ export type Op =
 
 const TRUNC = 120;
 const STRUCK_LIFECYCLES = new Set(["retired"]);
-const VALID_LIFECYCLES = new Set(["drafted", "proposed", "active", "retired"]);
+const VALID_LIFECYCLES = new Set(["drafting", "proposed", "active", "retired"]);
 const VALID_OUTCOMES = new Set(["succeeded", "failed"]);
 
 interface LifecycleAttrs {
@@ -1435,7 +1435,7 @@ export async function captureIdea(
   const id = `idea_${generateUlid()}`;
   const summary = draft.summary.trim();
   const now = new Date().toISOString();
-  const status = lifecycleAttrs(draft, "drafted");
+  const status = lifecycleAttrs(draft, "drafting");
   if ("error" in status) return status;
   const fm: Record<string, unknown> = {
     id,

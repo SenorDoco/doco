@@ -11,8 +11,8 @@
 //     Always mutable via PATCH. They are state, not claims.
 //
 // Frozen lifecycles use the canonical Lifecycle vocabulary
-// (drafted, proposed, active, retired) — see shared/entities.ts.
-// `drafted` and `proposed` are mutable; `active` and `retired` freeze
+// (drafting, proposed, active, retired) — see shared/entities.ts.
+// `drafting` and `proposed` are mutable; `active` and `retired` freeze
 // the claim except for lifecycle metadata and the supersession path.
 
 export type NodeClass = "claim" | "record";

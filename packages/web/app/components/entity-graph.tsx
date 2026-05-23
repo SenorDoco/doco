@@ -138,7 +138,7 @@ interface GraphSize {
 
 // Canonical Lifecycle (@doco/shared) — four stages, in progression
 // order.
-const LIFECYCLE_ORDER = ["drafted", "proposed", "active", "retired"];
+const LIFECYCLE_ORDER = ["drafting", "proposed", "active", "retired"];
 
 const HIDDEN_LIFECYCLES_BY_DEFAULT = new Set(["retired"]);
 
