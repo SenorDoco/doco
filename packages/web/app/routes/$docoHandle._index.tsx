@@ -731,7 +731,7 @@ export default function DocoHome({
           </div>
           {goal ? <p className="text-[11px] text-muted-foreground">{goal}</p> : null}
         </div>
-        <div className="grid grid-cols-1 gap-6 min-[1200px]:grid-cols-[minmax(0,1fr)_400px]">
+        <div className="grid grid-cols-1 gap-6 min-[1200px]:grid-cols-[minmax(0,1fr)_320px]">
           <aside className="flex h-[calc(100vh-9rem)] min-h-[480px] min-w-0 flex-col min-[1200px]:sticky min-[1200px]:top-4 min-[1200px]:self-start">
             <PerspectiveTabs
               handle={handle}
