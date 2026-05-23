@@ -42,6 +42,7 @@ const NEURON_TYPE_ORDER = new Map(
   [
     "guidance_primitive",
     "neuron_authoring_primitive",
+    "principal",
     "intent",
     "decision",
     "action",
