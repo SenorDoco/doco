@@ -1,26 +1,32 @@
 // BPMN perspective server-side data loader. Augments the standard
 // overview graph with two things the default view doesn't carry:
 //
-//   1. Swim-lane assignment — which principal "owns" each neuron, by
-//      reading the lane-bearing field for each neuron type:
+//   1. Lane assignment — which principal "owns" each neuron:
 //        Action   → actor_id
-//        Decision → decided_by   (Collaborator post-rename; if it
-//                                 isn't already a Principal id, the
-//                                 Decision goes to Unassigned —
-//                                 phase 2 of the BPMN rework adds a
-//                                 Collaborator → Principal walk and
-//                                 places gateways on lane boundaries
-//                                 per the BPMN 2.0 standard.)
+//        Decision → decided_by   (Collaborator id post-rename; we walk
+//                                 Collaborator → github_login →
+//                                 matching Principal name. Falls to
+//                                 Unassigned when the Collaborator has
+//                                 no Principal counterpart.)
 //        Intent   → actors[0] (first principal if multi-valued)
+//        State    → milestone band (a special non-actor band rendered
+//                                   above the lanes — States aren't
+//                                   work performed by an actor, they
+//                                   represent the position the process
+//                                   holds, which in BPMN is a
+//                                   milestone / phase axis perpendicular
+//                                   to lanes.)
 //      Neurons without a lane-bearing field, or with a value that
-//      doesn't resolve to a known principal, fall into the
-//      "unassigned" lane.
+//      doesn't resolve, fall into Unassigned.
 //
 //   2. BPMN shape — the visual primitive a neuron renders as:
-//        intent, state           → circle      (events)
-//        decision                → diamond     (gateway)
-//        action, rule            → rectangle   (task / policy)
-//        eval, reference         → document    (artifact)
+//        intent                  → circle      (BPMN start event)
+//        decision                → diamond     (BPMN gateway)
+//        action                  → task        (BPMN rounded-rect task)
+//        rule                    → rectangle   (policy box)
+//        state                   → milestone   (compact labeled box in
+//                                               the band above lanes)
+//        eval, reference         → document    (data artifact)
 //
 // Lifecycle color from neuron-colors.ts is preserved as an accent on
 // each shape — bordered/edge-tinted in the renderer.
@@ -31,6 +37,12 @@
 //             Logs; surface them here only via References")
 //   - Idea  — speculative, no BPMN counterpart until promoted to
 //             Decision/Action/Intent
+//
+// Still drawn in lanes (defer to a later phase): References, Evals,
+// and Rules belong in BPMN as floating data objects / annotations
+// outside the swim lanes, but the React-Flow layout currently nests
+// every node inside a lane parent. Moving them out needs a renderer
+// rework.
 
 import { ALL_ENTITY_TABLES } from "@doco/db";
 import { parse as parseYaml } from "yaml";
@@ -40,7 +52,14 @@ type QueryClient = {
   query<T>(sql: string, params?: unknown[]): Promise<{ rows: T[] }>;
 };
 
-export type BpmnShape = "circle" | "diamond" | "rectangle" | "document" | "rounded";
+export type BpmnShape =
+  | "circle"
+  | "diamond"
+  | "rectangle"
+  | "document"
+  | "rounded"
+  | "task"
+  | "milestone";
 
 export interface BpmnLane {
   id: string; // principal id, or "__unassigned__"
@@ -78,12 +97,16 @@ const BPMN_TABLES: { table: string; entityType: string }[] = [
 ];
 
 const UNASSIGNED_LANE_ID = "__unassigned__";
+// Special non-actor band rendered above the lane stack. States live
+// here regardless of who's acting — milestones are a phase axis,
+// perpendicular to who's doing the work.
+export const MILESTONE_LANE_ID = "__milestones__";
 
 const SHAPE_BY_TYPE: Record<string, BpmnShape> = {
   intent: "circle",
-  state: "circle",
+  state: "milestone",
   decision: "diamond",
-  action: "rectangle",
+  action: "task",
   rule: "rectangle",
   eval: "document",
   reference: "document",
@@ -105,6 +128,11 @@ interface NeuronRow {
 interface PrincipalRow {
   id: string;
   name: string;
+}
+
+interface CollaboratorRow {
+  id: string;
+  github_login: string | null;
 }
 
 interface SynapseRow {
@@ -134,7 +162,7 @@ export async function loadBpmnGraph(
           AND COALESCE(t.lifecycle, 'active') <> 'retired'`;
   }).join(" UNION ALL ");
 
-  const [neuronRows, principalRows] = await Promise.all([
+  const [neuronRows, principalRows, collaboratorRows] = await Promise.all([
     c.query<NeuronRow>(neuronSql, [docoId]),
     // Principals are Doco-scoped (migration 020); filter by the typed
     // column and drop retired role-personas.
@@ -145,6 +173,18 @@ export async function loadBpmnGraph(
           AND COALESCE(lifecycle, 'active') = 'active'`,
       [docoId],
     ),
+    // Collaborators who are members of this Doco. Decision.decided_by
+    // references a Collaborator (post-rename split); we translate that
+    // id to the Collaborator's github_login so the existing
+    // principal-by-name match can find an owning Principal.
+    c.query<CollaboratorRow>(
+      `SELECT c.id, c.github_login
+         FROM collaborators c
+         JOIN doco_users du ON du.collaborator_id = c.id
+        WHERE du.doco_id = $1
+          AND c.github_login IS NOT NULL`,
+      [docoId],
+    ),
   ]);
 
   const principalByName = new Map<string, PrincipalRow>();
@@ -153,15 +193,30 @@ export async function loadBpmnGraph(
     principalByName.set(p.name.toLowerCase(), p);
     principalById.set(p.id, p);
   }
+  const collaboratorById = new Map<string, CollaboratorRow>();
+  for (const c of collaboratorRows.rows) {
+    collaboratorById.set(c.id, c);
+  }
 
   const lanesById = new Map<string, BpmnLane>();
   const nodes: BpmnNode[] = [];
 
   for (const row of neuronRows.rows) {
-    const fields = row.data ?? {};
-    const laneRef = laneReferenceFor(row.entity_type, fields);
-    const lane = resolveLane(laneRef, principalById, principalByName);
-    if (!lanesById.has(lane.id)) lanesById.set(lane.id, lane);
+    // States bypass actor-lane resolution entirely — they live in the
+    // milestone band above the lanes. See the file header.
+    let laneId: string;
+    if (row.entity_type === "state") {
+      laneId = MILESTONE_LANE_ID;
+      if (!lanesById.has(MILESTONE_LANE_ID)) {
+        lanesById.set(MILESTONE_LANE_ID, { id: MILESTONE_LANE_ID, label: "Milestones" });
+      }
+    } else {
+      const fields = row.data ?? {};
+      const laneRef = laneReferenceFor(row.entity_type, fields, collaboratorById);
+      const lane = resolveLane(laneRef, principalById, principalByName);
+      if (!lanesById.has(lane.id)) lanesById.set(lane.id, lane);
+      laneId = lane.id;
+    }
     nodes.push({
       id: row.id,
       entity_type: row.entity_type,
@@ -170,7 +225,7 @@ export async function loadBpmnGraph(
       created_at: row.created_at,
       href: opts.handle ? `/${opts.handle}/${row.entity_type}/${row.id}` : null,
       shape: shapeForEntityType(row.entity_type),
-      laneId: lane.id,
+      laneId,
     });
   }
 
@@ -204,13 +259,23 @@ export async function loadBpmnGraph(
     }));
   }
 
-  // Ensure the unassigned lane always exists last when present, and
-  // sort the rest alphabetically for stable lane order across reloads.
+  // Lane order:
+  //   1. Milestone band (if present) — pinned to the top so phases
+  //      read above the work that crosses them.
+  //   2. Principal lanes — alphabetical for stable ordering.
+  //   3. Unassigned lane (if present) — pinned to the bottom.
   const lanes: BpmnLane[] = [];
-  for (const lane of lanesById.values()) {
-    if (lane.id !== UNASSIGNED_LANE_ID) lanes.push(lane);
+  if (lanesById.has(MILESTONE_LANE_ID)) {
+    lanes.push(lanesById.get(MILESTONE_LANE_ID) as BpmnLane);
   }
-  lanes.sort((a, b) => a.label.localeCompare(b.label));
+  const principalLanes: BpmnLane[] = [];
+  for (const lane of lanesById.values()) {
+    if (lane.id !== MILESTONE_LANE_ID && lane.id !== UNASSIGNED_LANE_ID) {
+      principalLanes.push(lane);
+    }
+  }
+  principalLanes.sort((a, b) => a.label.localeCompare(b.label));
+  lanes.push(...principalLanes);
   if (lanesById.has(UNASSIGNED_LANE_ID)) {
     lanes.push(lanesById.get(UNASSIGNED_LANE_ID) as BpmnLane);
   }
@@ -233,24 +298,32 @@ function parseRawYaml(rawYaml: string | null): Record<string, unknown> {
 
 /**
  * The field on this neuron type that names the responsible principal.
- * Returns null when the neuron has no lane-bearing field or when the
- * value can't be made into a principal reference.
+ * Returns a string the lane resolver can match against principals
+ * (either a principal id or a bare role name), or null when the
+ * neuron has no lane-bearing field or no resolvable value.
+ *
+ * Decisions are special: `decided_by` is a Collaborator id post-rename
+ * (entities.ts:290), not a Principal. We translate via the
+ * collaborator map to a github_login, which `resolveLane` then matches
+ * against Principal `name`. When the Collaborator has no Principal
+ * counterpart, the Decision lands in Unassigned cleanly rather than
+ * spawning a per-Collaborator unresolved lane.
  */
-function laneReferenceFor(entityType: string, data: Record<string, unknown>): string | null {
+function laneReferenceFor(
+  entityType: string,
+  data: Record<string, unknown>,
+  collaboratorById: Map<string, CollaboratorRow>,
+): string | null {
   switch (entityType) {
     case "action":
       return firstString(data.actor_id) ?? firstString(data.actor);
     case "decision": {
-      // Decision.decided_by references a Collaborator post-rename
-      // (entities.ts:290), not a Principal. We can't map Collaborator
-      // → Principal without a separate query — defer to phase 2 of
-      // the BPMN rework. For now, only honor `decided_by` when the
-      // author wrote a Principal id directly (legacy data); when it's
-      // a Collaborator id, return null so the Decision lands cleanly
-      // in Unassigned rather than creating a per-Collaborator
-      // unresolved lane.
       const ref = firstString(data.decided_by);
-      if (!ref || ref.startsWith("collaborator_")) return null;
+      if (!ref) return null;
+      if (ref.startsWith("collaborator_")) {
+        const collab = collaboratorById.get(ref);
+        return collab?.github_login ?? null;
+      }
       return ref;
     }
     case "intent":
