@@ -4,8 +4,14 @@
 //   1. Swim-lane assignment — which principal "owns" each neuron, by
 //      reading the lane-bearing field for each neuron type:
 //        Action   → actor_id
-//        Decision → decided_by
-//        Intent   → wanted_by (first principal if multi-valued)
+//        Decision → decided_by   (Collaborator post-rename; if it
+//                                 isn't already a Principal id, the
+//                                 Decision goes to Unassigned —
+//                                 phase 2 of the BPMN rework adds a
+//                                 Collaborator → Principal walk and
+//                                 places gateways on lane boundaries
+//                                 per the BPMN 2.0 standard.)
+//        Intent   → actors[0] (first principal if multi-valued)
 //      Neurons without a lane-bearing field, or with a value that
 //      doesn't resolve to a known principal, fall into the
 //      "unassigned" lane.
@@ -14,11 +20,17 @@
 //        intent, state           → circle      (events)
 //        decision                → diamond     (gateway)
 //        action, rule            → rectangle   (task / policy)
-//        log, eval, reference    → document    (artifact)
-//        idea                    → rounded     (soft)
+//        eval, reference         → document    (artifact)
 //
 // Lifecycle color from neuron-colors.ts is preserved as an accent on
 // each shape — bordered/edge-tinted in the renderer.
+//
+// Not rendered in BPMN (per BPMN 2.0 + the business-processes template):
+//   - Log   — instances, not designs (template guidance: "Process
+//             *instances* (recorded runs) live in a separate Doco as
+//             Logs; surface them here only via References")
+//   - Idea  — speculative, no BPMN counterpart until promoted to
+//             Decision/Action/Intent
 
 import { ALL_ENTITY_TABLES } from "@doco/db";
 import { parse as parseYaml } from "yaml";
@@ -52,18 +64,16 @@ export interface BpmnGraphData {
   links: OverviewGraphLink[];
 }
 
-// Tables that contain data whose contents may carry lane-bearing
-// fields (actor_id / decided_by / wanted_by). Limited to the neuron
-// tables already in the overview graph; primitives are excluded.
+// Tables included in the BPMN view. Logs (instances) and Ideas
+// (speculative, no BPMN counterpart) are deliberately excluded —
+// see the file header for rationale.
 const BPMN_TABLES: { table: string; entityType: string }[] = [
   { table: "decisions", entityType: "decision" },
   { table: "intents", entityType: "intent" },
   { table: "actions", entityType: "action" },
-  { table: "logs", entityType: "log" },
   { table: "rules", entityType: "rule" },
   { table: "evals", entityType: "eval" },
   { table: "reference_entities", entityType: "reference" },
-  { table: "ideas", entityType: "idea" },
   { table: "states", entityType: "state" },
 ];
 
@@ -75,10 +85,8 @@ const SHAPE_BY_TYPE: Record<string, BpmnShape> = {
   decision: "diamond",
   action: "rectangle",
   rule: "rectangle",
-  log: "document",
   eval: "document",
   reference: "document",
-  idea: "rounded",
 };
 
 export function shapeForEntityType(entityType: string): BpmnShape {
@@ -225,17 +233,28 @@ function parseRawYaml(rawYaml: string | null): Record<string, unknown> {
 
 /**
  * The field on this neuron type that names the responsible principal.
- * `wanted_by` may be a single value or a list — we return the first.
+ * Returns null when the neuron has no lane-bearing field or when the
+ * value can't be made into a principal reference.
  */
 function laneReferenceFor(entityType: string, data: Record<string, unknown>): string | null {
   switch (entityType) {
     case "action":
-    case "log":
       return firstString(data.actor_id) ?? firstString(data.actor);
-    case "decision":
-      return firstString(data.decided_by);
+    case "decision": {
+      // Decision.decided_by references a Collaborator post-rename
+      // (entities.ts:290), not a Principal. We can't map Collaborator
+      // → Principal without a separate query — defer to phase 2 of
+      // the BPMN rework. For now, only honor `decided_by` when the
+      // author wrote a Principal id directly (legacy data); when it's
+      // a Collaborator id, return null so the Decision lands cleanly
+      // in Unassigned rather than creating a per-Collaborator
+      // unresolved lane.
+      const ref = firstString(data.decided_by);
+      if (!ref || ref.startsWith("collaborator_")) return null;
+      return ref;
+    }
     case "intent":
-      return firstString(data.wanted_by) ?? firstString(data.actors);
+      return firstString(data.actors) ?? firstString(data.wanted_by);
     default:
       return null;
   }
