@@ -4,9 +4,9 @@
 // The Noop provider is intentionally NOT returned here — passing a Noop
 // would walk every entity to no effect; absence skips the loop.
 import {
-  getDefaultEmbeddingProvider,
-  NoopEmbeddingProvider,
   type EmbeddingProvider,
+  NoopEmbeddingProvider,
+  getDefaultEmbeddingProvider,
 } from "@doco/index";
 
 let cached: EmbeddingProvider | undefined | null = null;

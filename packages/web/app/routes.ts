@@ -34,7 +34,7 @@ import { type RouteConfig, index, route } from "@react-router/dev/routes";
  *   /<doco-handle>/<type>/<id>     per-Doco entity detail (id is the ULID)
  *   /<doco-handle>/search          per-Doco search (richer results — GPR / age / lifecycle)
  *   /<doco-handle>/settings        per-Doco settings (admin only; danger zone soft-delete; ADR-124)
- *   /<doco-handle>/constitution    per-Doco constitution page: guidance_primitives + neuron_authoring_primitives
+ *   /<doco-handle>/primitives      per-Doco primitives page: guidance_primitives + neuron_authoring_primitives
  *   /<doco-handle>/status.json     per-Doco status (connection signal for agent footer line)
  *   /<doco-handle>/api/*           per-Doco capture + update endpoints
  *                                  (decisions / intents / settings; ADR-128)
@@ -105,7 +105,7 @@ export default [
   // :docoHandle/onboarding/agent.
   route("new-doco", "routes/new-doco.tsx"),
   // Legacy wizard URLs redirect back to the one-page create form.
-  route("new-doco/constitution", "routes/new-doco.constitution.tsx"),
+  route("new-doco/constitution", "routes/new-doco.legacy-template.tsx"),
   route("new-doco/template", "routes/new-doco.template.tsx"),
   route("new-org", "routes/new-org.tsx"),
   route("orgs", "routes/orgs._index.tsx"),
@@ -139,8 +139,8 @@ export default [
   route("api/v1/orgs.json", "routes/api.v1.orgs[.]json.tsx"),
   route("api/v1/docos.json", "routes/api.v1.docos[.]json.tsx"),
   // Agent bootstrap. Returns the canonical-instructions prose plus the
-  // Doco constitutions the caller can read. Auth-aware: anonymous callers
-  // get public-Doco constitutions only.
+  // Doco primitives the caller can read. Auth-aware: anonymous callers
+  // get public-Doco primitives only.
   route("api/v1/agent-bootstrap.json", "routes/api.v1.agent-bootstrap[.]json.tsx"),
   // In-page assistant — the left-rail sidebar visible to every signed-in
   // user. One conversation per Principal, forever (no archive / new-chat
@@ -164,18 +164,32 @@ export default [
   route(":docoHandle/welcome", "routes/$docoHandle.welcome.tsx"),
   route(":docoHandle/status.json", "routes/$docoHandle.status[.]json.tsx"),
   route(":docoHandle/settings", "routes/$docoHandle.settings.tsx"),
-  route(":docoHandle/constitution", "routes/$docoHandle.constitution.tsx"),
+  route(":docoHandle/primitives", "routes/$docoHandle.primitives.tsx"),
+  route(":docoHandle/primitives/guidance/new", "routes/$docoHandle.primitives.guidance.new.tsx"),
   route(
-    ":docoHandle/constitution/guidance/new",
-    "routes/$docoHandle.constitution.guidance.new.tsx",
+    ":docoHandle/primitives/neuron-authoring/new",
+    "routes/$docoHandle.primitives.neuron-authoring.new.tsx",
   ),
   route(
+    ":docoHandle/primitives/:entityType/:primitiveId/edit",
+    "routes/$docoHandle.primitives.$entityType.$primitiveId.edit.tsx",
+  ),
+  // Legacy primitives URLs. Route modules redirect GETs to /primitives.
+  route(":docoHandle/constitution", "routes/$docoHandle.primitives.tsx", {
+    id: "legacy-doco-constitution",
+  }),
+  route(":docoHandle/constitution/guidance/new", "routes/$docoHandle.primitives.guidance.new.tsx", {
+    id: "legacy-doco-constitution-guidance-new",
+  }),
+  route(
     ":docoHandle/constitution/neuron-authoring/new",
-    "routes/$docoHandle.constitution.neuron-authoring.new.tsx",
+    "routes/$docoHandle.primitives.neuron-authoring.new.tsx",
+    { id: "legacy-doco-constitution-neuron-authoring-new" },
   ),
   route(
     ":docoHandle/constitution/:entityType/:primitiveId/edit",
-    "routes/$docoHandle.constitution.$entityType.$primitiveId.edit.tsx",
+    "routes/$docoHandle.primitives.$entityType.$primitiveId.edit.tsx",
+    { id: "legacy-doco-constitution-edit" },
   ),
   route(":docoHandle/invites", "routes/$docoHandle.invites.tsx"),
   route(":docoHandle/api/invites.json", "routes/$docoHandle.api.invites[.]json.tsx"),
@@ -201,6 +215,7 @@ export default [
   route(":docoHandle/api/actions/:id.json", "routes/$docoHandle.api.actions.$id[.]json.tsx"),
   route(":docoHandle/api/logs/:id.json", "routes/$docoHandle.api.logs.$id[.]json.tsx"),
   route(":docoHandle/api/evals/:id.json", "routes/$docoHandle.api.evals.$id[.]json.tsx"),
+  route(":docoHandle/api/ideas/:id.json", "routes/$docoHandle.api.ideas.$id[.]json.tsx"),
   route(":docoHandle/api/states/:id.json", "routes/$docoHandle.api.states.$id[.]json.tsx"),
   route(":docoHandle/api/references/:id.json", "routes/$docoHandle.api.references.$id[.]json.tsx"),
   // Special-cased capture routes that need custom logic — listed BEFORE
@@ -208,11 +223,11 @@ export default [
   route(":docoHandle/api/principals.json", "routes/$docoHandle.api.principals[.]json.tsx"),
   route(":docoHandle/api/settings.json", "routes/$docoHandle.api.settings[.]json.tsx"),
   route(":docoHandle/api/audit.json", "routes/$docoHandle.api.audit[.]json.tsx"),
-  // Primitives (constitution metadata) are not neurons; they live on a
+  // Primitives are not neurons; they live on a
   // dedicated endpoint and are intentionally absent from the generic
   // capture dispatcher below.
   route(":docoHandle/api/primitives.json", "routes/$docoHandle.api.primitives[.]json.tsx"),
-  // Generic capture dispatcher. Handles decisions, intents, actions,
+  // Generic capture dispatcher. Handles decisions, intents, ideas, actions,
   // references, rules, logs, evals, states via CAPTURE_REGISTRY in the
   // route file. Adding a new simple-capture entity type is one registry
   // row; no new route needed. Primitive types are deliberately not in

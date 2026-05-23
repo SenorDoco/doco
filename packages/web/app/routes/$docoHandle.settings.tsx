@@ -1,5 +1,5 @@
 import { getOrgRole, withClient } from "@doco/db";
-import { validateRequestedDocoId as validateRequestedDocoHandle } from "@doco/shared";
+import { validateRequestedDocoHandle } from "@doco/shared";
 // /<doco-handle>/settings — admin-only Doco settings page. Updates Doco
 // metadata or performs high-risk actions such as renaming/deleting the Doco.
 //
@@ -379,7 +379,7 @@ export default function DocoSettings({
                   >
                     {currentOrgOptions.map((org) => (
                       <option key={org.id} value={org.id}>
-                        {org.slug}
+                        {org.handle}
                       </option>
                     ))}
                   </select>

@@ -1,17 +1,17 @@
 import { withClient } from "@doco/db";
-import { Link } from "react-router";
+import { Link, redirect } from "react-router";
 import { Breadcrumb, docoBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { NeuronTypeIcon } from "~/components/neuron-type-icon";
 import { SiteHeader } from "~/components/site-header";
+import { canEditPrimitives, loadDocoRouteForRead } from "~/lib/doco-access.server";
+import { loadHostConfig } from "~/lib/host.server";
 import {
   AGENT_EXPOSURE_NOTE,
   GUIDANCE_PRIMITIVE_EXPLAINER,
   NEURON_AUTHORING_PRIMITIVE_EXPLAINER,
   primitiveFullText,
-} from "~/lib/constitution-copy";
-import { canEditConstitution, loadDocoRouteForRead } from "~/lib/doco-access.server";
-import { loadHostConfig } from "~/lib/host.server";
+} from "~/lib/primitive-copy";
 
 type ArticleKind = "deterministic" | "probabilistic";
 
@@ -44,6 +44,7 @@ export async function loader({
   request: Request;
   params: { docoId: string };
 }) {
+  redirectLegacyPrimitivePath(request);
   const ctx = await loadDocoRouteForRead(request, params);
   const { ownerSlug, docoSlug, handle } = ctx;
   const [guidanceRows, nodeAuthoringRows] = await withClient(async (c) => {
@@ -72,19 +73,17 @@ export async function loader({
     handle,
     me: ctx.me,
     host: await loadHostConfig(),
-    canEdit: await canEditConstitution(ctx.meta, ctx.me?.id ?? null),
+    canEdit: await canEditPrimitives(ctx.meta, ctx.me?.id ?? null),
     guidanceArticles: guidanceRows.map(toGuidanceArticle),
     nodeAuthoringArticles: nodeAuthoringRows.map(toNodeAuthoringArticle),
   };
 }
 
 export function meta({ params }: { params: { docoHandle?: string; docoId?: string } }) {
-  return [
-    { title: `Primitives · ${params.docoHandle ?? params.docoId ?? ""} · Doco` },
-  ];
+  return [{ title: `Primitives · ${params.docoHandle ?? params.docoId ?? ""} · Doco` }];
 }
 
-export default function Constitution({
+export default function Primitives({
   loaderData,
 }: {
   loaderData: Awaited<ReturnType<typeof loader>>;
@@ -115,8 +114,8 @@ export default function Constitution({
           title="Guidance primitives"
           entityType="guidance_primitive"
           description={GUIDANCE_PRIMITIVE_EXPLAINER}
-          addHref={canEdit ? `/${handle}/constitution/guidance/new` : null}
-          editHrefBase={canEdit ? `/${handle}/constitution/guidance` : null}
+          addHref={canEdit ? `/${handle}/primitives/guidance/new` : null}
+          editHrefBase={canEdit ? `/${handle}/primitives/guidance` : null}
           items={guidanceArticles}
           handle={handle}
           empty="No guidance primitives yet."
@@ -126,8 +125,8 @@ export default function Constitution({
           title="Neuron-authoring primitives"
           entityType="neuron_authoring_primitive"
           description={NEURON_AUTHORING_PRIMITIVE_EXPLAINER}
-          addHref={canEdit ? `/${handle}/constitution/neuron-authoring/new` : null}
-          editHrefBase={canEdit ? `/${handle}/constitution/neuron-authoring` : null}
+          addHref={canEdit ? `/${handle}/primitives/neuron-authoring/new` : null}
+          editHrefBase={canEdit ? `/${handle}/primitives/neuron-authoring` : null}
           items={nodeAuthoringArticles}
           handle={handle}
           empty="No neuron-authoring primitives yet."
@@ -135,6 +134,13 @@ export default function Constitution({
       </main>
     </div>
   );
+}
+
+function redirectLegacyPrimitivePath(request: Request): void {
+  const url = new URL(request.url);
+  if (!url.pathname.includes("/constitution")) return;
+  url.pathname = url.pathname.replace("/constitution", "/primitives");
+  throw redirect(`${url.pathname}${url.search}`);
 }
 
 function ArticleSection({
@@ -173,7 +179,7 @@ function ArticleSection({
           {addHref ? (
             <Link
               to={addHref}
-              className="neo-raised-primary shrink-0 rounded-md px-3 py-1.5 text-sm font-semibold"
+              className="neu-button bg-primary text-primary-foreground hover:opacity-90 shrink-0 rounded-md px-3 py-1.5 text-sm font-semibold"
             >
               + Add
             </Link>
@@ -202,13 +208,13 @@ function ArticleSection({
                       </div>
                     ) : null}
                   </Link>
-                  <span className="neo-etched shrink-0 rounded px-2 py-1 font-mono text-[10px] text-muted-foreground">
+                  <span className="neu-surface shrink-0 rounded px-2 py-1 font-mono text-[10px] text-muted-foreground">
                     {item.lifecycle ?? "active"}
                   </span>
                   {editHrefBase ? (
                     <Link
                       to={`${editHrefBase}/${item.id}/edit`}
-                      className="neo-raised-sm shrink-0 rounded-md px-2 py-1 text-[11px] font-semibold text-foreground"
+                      className="neu-button shrink-0 rounded-md px-2 py-1 text-[11px] font-semibold text-foreground"
                     >
                       Modify
                     </Link>

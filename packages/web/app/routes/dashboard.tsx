@@ -73,8 +73,8 @@ export async function loader({ request }: { request: Request }) {
   for (const org of orgsRaw) {
     accessGroupsByOwner.set(org.id, {
       id: org.id,
-      href: `/orgs/${org.slug}`,
-      label: org.display_name || org.slug,
+      href: `/orgs/${org.handle}`,
+      label: org.display_name || org.handle,
       count: 0,
       lastUpdatedAt: null,
       children: [],
@@ -240,13 +240,13 @@ export default function Dashboard({
           <div className="flex shrink-0 items-center gap-2">
             <Link
               to="/new-doco"
-              className="neo-raised-primary rounded-md px-3 py-1.5 text-sm font-semibold"
+              className="neu-button bg-primary text-primary-foreground hover:opacity-90 rounded-md px-3 py-1.5 text-sm font-semibold"
             >
               + Doco
             </Link>
             <Link
               to="/new-org"
-              className="neo-raised-sm rounded-md px-3 py-1.5 text-sm font-semibold text-foreground"
+              className="neu-button rounded-md px-3 py-1.5 text-sm font-semibold text-foreground"
             >
               + Org
             </Link>
@@ -270,10 +270,7 @@ export default function Dashboard({
                   <p className="text-xs text-muted-foreground">No templates available.</p>
                 ) : (
                   templates.map((t) => (
-                    <div
-                      key={t.handle}
-                      className="space-y-1.5 pb-3 last:pb-0"
-                    >
+                    <div key={t.handle} className="space-y-1.5 pb-3 last:pb-0">
                       <div className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5">
                         <span className="text-sm font-semibold">{t.label}</span>
                         <time
@@ -293,7 +290,7 @@ export default function Dashboard({
                         </span>
                         <Link
                           to={`/new-doco?template_handle=${encodeURIComponent(t.handle)}`}
-                          className="neo-raised-primary rounded-md px-2 py-1 text-[11px] font-semibold"
+                          className="neu-button bg-primary text-primary-foreground hover:opacity-90 rounded-md px-2 py-1 text-[11px] font-semibold"
                         >
                           + Doco
                         </Link>
@@ -371,7 +368,7 @@ function formatTemplateUpdatedAt(isoDate: string): string {
 // it.
 function DashboardFeedLine({ event }: { event: FeedEvent }) {
   const url = entityUrl({
-    docoId: event.handle,
+    docoHandle: event.handle,
     entityType: event.entity_type,
     id: event.entity_id,
   });

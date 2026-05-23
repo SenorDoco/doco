@@ -69,7 +69,7 @@ export function NeuronDialog({
 
   return (
     <aside
-      className="neo-etched z-30 flex h-full min-h-0 flex-col overflow-hidden bg-card"
+      className="neu-surface z-30 flex h-full min-h-0 flex-col overflow-hidden bg-card"
       aria-label="Neuron details"
     >
       <header className="px-4 py-3">
@@ -90,7 +90,7 @@ export function NeuronDialog({
               <button
                 type="button"
                 onClick={onClose}
-                className="neo-raised-sm inline-flex h-8 w-8 shrink-0 items-center justify-center text-muted-foreground transition-colors hover:text-foreground"
+                className="neu-button inline-flex h-8 w-8 shrink-0 items-center justify-center text-muted-foreground transition-colors hover:text-foreground"
                 aria-label="Close neuron details"
               >
                 <X className="h-4 w-4" aria-hidden="true" />
@@ -224,7 +224,7 @@ export function NeuronDialog({
                         <span className="text-foreground">{event.op}</span>
                       </div>
                       {event.before || event.after ? (
-                        <pre className="neo-inset mt-1 max-h-56 overflow-auto whitespace-pre-wrap break-words bg-card p-2 text-[11px] leading-snug">
+                        <pre className="neu-inset mt-1 max-h-56 overflow-auto whitespace-pre-wrap break-words bg-card p-2 text-[11px] leading-snug">
                           {JSON.stringify({ before: event.before, after: event.after }, null, 2)}
                         </pre>
                       ) : null}
@@ -254,7 +254,7 @@ export function NeuronDialog({
                 <summary className="cursor-pointer text-xs font-medium text-muted-foreground hover:text-foreground">
                   Raw JSON
                 </summary>
-                <pre className="neo-inset mt-2 overflow-auto bg-card p-3 text-[11px] leading-snug">
+                <pre className="neu-inset mt-2 overflow-auto bg-card p-3 text-[11px] leading-snug">
                   {detail.raw_json}
                 </pre>
               </details>
@@ -283,7 +283,7 @@ function EdgeList({
       {edges.length === 0 ? (
         <p className="text-muted-foreground">None.</p>
       ) : (
-        <ul className="neo-etched divide-y divide-border">
+        <ul className="neu-surface divide-y divide-border">
           {edges.map((edge) => {
             const edgeTitle = edge.other_name ?? edge.other_summary ?? edge.other_id;
             return (

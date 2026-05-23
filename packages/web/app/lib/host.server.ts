@@ -27,7 +27,7 @@ export interface HostUser {
 
 export interface HostOrg {
   id: string;
-  slug: string;
+  handle: string;
   display_name: string;
   description?: string;
   member_count: number;
@@ -36,7 +36,7 @@ export interface HostOrg {
 export interface HostDoco {
   /** Public globally-unique URL identifier. */
   handle: string;
-  /** Owner's username (Principal.username) or org slug, derived via
+  /** Owner's collaborator username or org handle, derived via
    *  JOIN in mapDocoRow. Useful for "owned by alice" labels. */
   ownerUsername: string;
   ownerKind: "principal" | "organization";
@@ -76,7 +76,7 @@ export async function listOrgs(): Promise<HostOrg[]> {
     const fm = r.data;
     const out: HostOrg = {
       id: r.id,
-      slug: r.slug,
+      handle: r.handle,
       display_name: (fm.display_name as string) ?? r.name,
       member_count: r.member_count,
     };
@@ -85,13 +85,13 @@ export async function listOrgs(): Promise<HostOrg[]> {
   });
 }
 
-export async function listMyOrgs(principalId: string): Promise<HostOrg[]> {
-  const rows = await listOrganizationsForCollaborator(principalId);
+export async function listMyOrgs(collaboratorId: string): Promise<HostOrg[]> {
+  const rows = await listOrganizationsForCollaborator(collaboratorId);
   return rows.map((r) => {
     const fm = r.data;
     const out: HostOrg = {
       id: r.id,
-      slug: r.slug,
+      handle: r.handle,
       display_name: (fm.display_name as string) ?? r.name,
       member_count: r.member_count,
     };
@@ -100,13 +100,13 @@ export async function listMyOrgs(principalId: string): Promise<HostOrg[]> {
   });
 }
 
-export async function listOrgsOwnedOrAdminedBy(principalId: string): Promise<HostOrg[]> {
-  const rows = await listOrganizationsForCollaborator(principalId, ["owner"]);
+export async function listOrgsOwnedOrAdminedBy(collaboratorId: string): Promise<HostOrg[]> {
+  const rows = await listOrganizationsForCollaborator(collaboratorId, ["owner"]);
   return rows.map((r) => {
     const fm = r.data;
     const out: HostOrg = {
       id: r.id,
-      slug: r.slug,
+      handle: r.handle,
       display_name: (fm.display_name as string) ?? r.name,
       member_count: r.member_count,
     };

@@ -3,12 +3,12 @@ import { useState } from "react";
 import { Link } from "react-router";
 import { Breadcrumb } from "~/components/breadcrumb";
 
-import { loadHostConfig } from "~/lib/host.server";
 import { getPublicBaseUrl } from "@doco/shared";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { DocoMark } from "~/components/doco-mark";
 import { SingleColumnPageMain } from "~/components/page-main";
 import { VersionPill } from "~/components/version-pill";
+import { loadHostConfig } from "~/lib/host.server";
 
 export async function loader({ request }: { request: Request }) {
   return {
@@ -31,13 +31,16 @@ export default function JoinHuman({
   const message = `We're using Doco on this project. Visit ${baseUrl} and follow the wizard for joining an existing Doco.`;
   return (
     <div className="min-h-screen flex flex-col">
-      <header>
+      <header className="border-b border-border bg-card">
         <div className="mx-auto flex max-w-6xl items-center gap-4 px-6 py-3">
           <Link to="/" className="inline-flex items-center hover:opacity-80" aria-label="Doco home">
             <DocoMark height={28} />
           </Link>
           <VersionPill />
-          <Link to="/onboarding/join" className="ml-auto text-xs text-muted-foreground hover:text-foreground">
+          <Link
+            to="/onboarding/join"
+            className="ml-auto text-xs text-muted-foreground hover:text-foreground"
+          >
             ← Back
           </Link>
         </div>
@@ -62,8 +65,8 @@ export default function JoinHuman({
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-2">
-            <pre className="neo-inset rounded-md bg-card p-3 text-[11px] whitespace-pre-wrap break-words">
-{message}
+            <pre className="rounded-md border border-border bg-input p-3 text-[11px] whitespace-pre-wrap break-words">
+              {message}
             </pre>
             <button
               type="button"
@@ -72,7 +75,7 @@ export default function JoinHuman({
                 setCopied(true);
                 setTimeout(() => setCopied(false), 1500);
               }}
-              className="neo-raised-primary rounded-md px-3 py-1.5 text-xs font-semibold"
+              className="rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90"
             >
               {copied ? "Copied!" : "Copy message"}
             </button>

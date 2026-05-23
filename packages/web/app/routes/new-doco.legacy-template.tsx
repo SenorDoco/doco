@@ -10,6 +10,6 @@ export function meta() {
   return [{ title: "New doco · Doco" }];
 }
 
-export default function LegacyNewDocoConstitutionRedirect() {
+export default function LegacyNewDocoTemplateRedirect() {
   return null;
 }

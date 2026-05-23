@@ -57,10 +57,8 @@ export function buildMissingDocoGuidance(args: {
         "Either the id is wrong (typo, deleted, wrong host) or no Doco has been created yet under this id.",
       actions: [
         {
-          label: "Create a new Doco for this project",
-          command: `doco login --host ${host} --create <slug>`,
-          explainer:
-            "Opens the browser-authorize flow and creates a Doco under your account. Pick a kebab-case slug naming the project. The CLI writes the Doco URL to .doco/connections.md and writes DOCO_ACCESS to .env.",
+          label: "Create a new Doco in the web UI",
+          explainer: `Open ${host}/new-doco in a browser, create the Doco there, then rerun \`doco login --host ${host}\` to authorize this checkout. The CLI writes the Doco URL to .doco/connections.md and stores the OAuth credentials in .env.`,
         },
         {
           label: "Recover the right id for an existing Doco",
@@ -90,9 +88,9 @@ export function buildMissingDocoGuidance(args: {
           "Mints a fresh access credential. If you have access under a different account or organization, switch to that one in the browser flow.",
       },
       {
-        label: "Do NOT run `doco login --create`",
+        label: "Do NOT try to create a second Doco",
         explainer:
-          "That would fork a NEW Doco alongside this one — graph fragmentation. The Doco you want is already here; you just can't reach it yet.",
+          "The Doco you want is already here; the fix is getting the right access, not creating a parallel Doco alongside it.",
       },
     ],
   };
@@ -109,12 +107,11 @@ export function formatMissingDocoLine(g: MissingDocoGuidance): string {
   if (!first) return g.title;
   const cmd = first.command ? ` Run: \`${first.command}\`` : "";
   const secondary = g.actions[1];
-  const tail =
-    secondary && secondary.command
-      ? ` Or: \`${secondary.command}\`.`
-      : secondary
-        ? ` Or: ${secondary.label.toLowerCase()}.`
-        : "";
+  const tail = secondary?.command
+    ? ` Or: \`${secondary.command}\`.`
+    : secondary
+      ? ` Or: ${secondary.label.toLowerCase()}.`
+      : "";
   return `${g.title} ${first.label}.${cmd}.${tail}`.replace(/\.+/g, ".");
 }
 
@@ -131,7 +128,7 @@ export function formatMissingDocoText(g: MissingDocoGuidance): string {
     lines.push(`     ${a.explainer}`);
     lines.push("");
   });
-  return lines.join("\n").trimEnd() + "\n";
+  return `${lines.join("\n").trimEnd()}\n`;
 }
 
 /**

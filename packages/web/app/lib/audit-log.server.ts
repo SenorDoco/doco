@@ -4,8 +4,8 @@
 // mutation surface: entity.create, entity.update, entity.delete,
 // lifecycle.transition, synapse.add.
 
-import { generateUlid } from "@doco/shared";
 import { appendAuditEventRow, readAuditEventRows } from "@doco/db";
+import { generateUlid } from "@doco/shared";
 
 export type AuditOp =
   | "entity.create"

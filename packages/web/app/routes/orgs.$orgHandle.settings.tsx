@@ -26,13 +26,13 @@ async function loadOrgSettingsRow(orgHandle: string): Promise<OrgSettingsRow | n
       handle: string;
       doco_count: string;
     }>(
-      `SELECT id, COALESCE(handle, slug) AS handle,
+      `SELECT id, handle,
               (
                 SELECT COUNT(*)::text FROM docos d
-                 WHERE d.owner_id = organizations.id OR d.org_id = organizations.id
+                 WHERE d.org_id = organizations.id
               ) AS doco_count
          FROM organizations
-        WHERE handle = $1 OR slug = $1
+        WHERE handle = $1
         LIMIT 1`,
       [orgHandle],
     );
@@ -70,7 +70,7 @@ async function renameOrganizationHandle(opts: {
   await withClient(async (c) => {
     const duplicate = await c.query(
       `SELECT 1 FROM organizations
-        WHERE (handle = $1 OR slug = $1) AND id <> $2
+        WHERE handle = $1 AND id <> $2
         LIMIT 1`,
       [opts.nextHandle, opts.orgId],
     );
@@ -86,12 +86,10 @@ async function renameOrganizationHandle(opts: {
     if (!existing) throw new Error(`Organization "${opts.currentHandle}" not found.`);
     const yaml: Record<string, unknown> = { ...existing };
     yaml.handle = opts.nextHandle;
-    yaml.slug = opts.nextHandle;
 
     await c.query(
       `UPDATE organizations
           SET handle = $2,
-              slug = $2,
               name = $2,
               data = $3::jsonb,
               updated_at = now()
@@ -105,7 +103,7 @@ async function deleteOrganizationAndDocos(orgId: string): Promise<void> {
   await withClient(async (c) => {
     await c.query("BEGIN");
     try {
-      await c.query("DELETE FROM docos WHERE owner_id = $1 OR org_id = $1", [orgId]);
+      await c.query("DELETE FROM docos WHERE org_id = $1", [orgId]);
       await c.query("DELETE FROM organizations WHERE id = $1", [orgId]);
       await c.query("COMMIT");
     } catch (error) {
@@ -226,7 +224,7 @@ export default function OrgSettings({
               </label>
               <button
                 type="submit"
-                className="neo-raised-primary rounded-md px-4 py-2 text-sm font-semibold"
+                className="neu-button bg-primary text-primary-foreground hover:opacity-90 rounded-md px-4 py-2 text-sm font-semibold"
               >
                 Rename organization
               </button>

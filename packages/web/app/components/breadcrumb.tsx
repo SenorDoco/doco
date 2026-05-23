@@ -16,10 +16,7 @@ export function Breadcrumb({
 }) {
   if (items.length === 0) return null;
   return (
-    <nav
-      aria-label="Breadcrumb"
-      className={cn("text-xs text-muted-foreground", className)}
-    >
+    <nav aria-label="Breadcrumb" className={cn("text-xs text-muted-foreground", className)}>
       <ol className="flex flex-wrap items-center gap-1.5">
         {items.map((item, index) => {
           const isLast = index === items.length - 1;
@@ -63,8 +60,8 @@ export function Breadcrumb({
  * for both user-owned and org-owned docos. The doco short name points
  * to the doco home (`/<handle>`).
  *
- * Pass `parent` for subpages like `.../constitution/guidance/new`:
- * `parent: { label: "Primitives", to: "/<handle>/constitution" }`.
+ * Pass `parent` for subpages like `.../primitives/guidance/new`:
+ * `parent: { label: "Primitives", to: "/<handle>/primitives" }`.
  */
 export function docoBreadcrumb({
   ownerSlug,

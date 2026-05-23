@@ -8,6 +8,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router";
+import { DocoMark } from "~/components/doco-mark";
 import { cn } from "~/lib/cn";
 import { type GraphReferenceGroup, readGraphReferenceGroups } from "~/lib/graph-references";
 import type { CurrentPrincipal } from "~/lib/session.server";
@@ -57,8 +58,7 @@ interface UploadAcceptedMeta {
   expires_at: string;
 }
 
-const ATTACHMENT_RETENTION_NOTICE =
-  "Attachments are stored for 30 days, then deleted.";
+const ATTACHMENT_RETENTION_NOTICE = "Attachments are stored for 30 days, then deleted.";
 const ATTACHMENT_ACCEPT =
   "image/jpeg,image/png,image/gif,image/webp,application/pdf,text/plain,text/markdown,.md";
 
@@ -181,11 +181,18 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
     if (el) el.scrollTop = el.scrollHeight;
   }, [bootstrapped]);
 
+  const newestMessageId = messages[messages.length - 1]?.id ?? null;
+  const autoScrollTrigger =
+    newestMessageId || inFlight
+      ? `${newestMessageId ?? "none"}:${inFlight?.content.length ?? 0}:${inFlight?.toolResults.size ?? 0}`
+      : null;
+
   // Auto-scroll on new content.
   useEffect(() => {
+    if (!autoScrollTrigger) return;
     const el = messageListRef.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [inFlight]);
+  }, [autoScrollTrigger]);
 
   const loadOlder = useCallback(async () => {
     const earliest = earliestRef.current;
@@ -254,9 +261,7 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
         rejected: Array<{ filename: string; reason: string }>;
       };
       if (data.rejected.length > 0) {
-        setUploadError(
-          data.rejected.map((r) => `${r.filename}: ${r.reason}`).join("; "),
-        );
+        setUploadError(data.rejected.map((r) => `${r.filename}: ${r.reason}`).join("; "));
       }
       if (data.accepted.length > 0) {
         setStaged((prev) => [
@@ -356,9 +361,10 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
         const { done, value } = await reader.read();
         if (done) break;
         buf += decoder.decode(value, { stream: true });
-        let nlIdx: number;
         // Parse SSE frames: separated by \n\n, each frame is `data: <json>`.
-        while ((nlIdx = buf.indexOf("\n\n")) >= 0) {
+        for (;;) {
+          const nlIdx = buf.indexOf("\n\n");
+          if (nlIdx < 0) break;
           const frame = buf.slice(0, nlIdx);
           buf = buf.slice(nlIdx + 2);
           const line = frame.split("\n").find((l) => l.startsWith("data: "));
@@ -456,6 +462,7 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
     }
     return out;
   }, [messages, inFlight]);
+  const agentActive = busy || inFlight !== null;
 
   // While collapsed, any new content from the server (a fresh message
   // saved, or an in-flight stream still landing) flips the unread flag.
@@ -482,6 +489,7 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
         label="Señor Doco"
         side="left"
         unread={unread}
+        active={agentActive}
         onExpand={() => setCollapsedPersistent(false)}
       />
     );
@@ -489,16 +497,19 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
 
   return (
     <aside
-      className="flex h-full w-[320px] shrink-0 flex-col bg-background"
-      style={{ boxShadow: "inset -8px 0 16px -8px rgba(150, 160, 185, 0.35)" }}
-      aria-label="Señor Doco"
+      className="neu-panel flex h-full w-[320px] shrink-0 flex-col border-r border-border bg-card"
+      aria-busy={agentActive}
+      aria-label={agentActive ? "Señor Doco, working" : "Señor Doco"}
     >
-      <div className="flex shrink-0 items-center justify-between px-3 py-2.5">
-        <div className="text-xs font-semibold">Señor Doco</div>
+      <div className="flex shrink-0 items-center justify-between border-b border-border px-3 py-2">
+        <div className="flex min-w-0 items-center gap-2">
+          <DocoMark height={20} variant="mark" active={agentActive} decorative />
+          <div className="truncate text-xs font-semibold">Señor Doco</div>
+        </div>
         <button
           type="button"
           onClick={() => setCollapsedPersistent(true)}
-          className="neo-raised-sm rounded-md p-1 text-muted-foreground hover:text-foreground"
+          className="neu-button rounded p-0.5 text-muted-foreground hover:bg-input hover:text-foreground"
           aria-label="Collapse Señor Doco"
           title="Collapse"
         >
@@ -512,7 +523,7 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
         className="flex-1 overflow-y-auto px-3 py-3 text-xs leading-relaxed"
       >
         {loadError ? (
-          <div className="rounded-r-md border-l-2 border-destructive/70 bg-destructive/8 px-2.5 py-1.5 text-[11px] text-destructive">
+          <div className="rounded-md bg-destructive/10 px-2 py-1.5 text-[11px] text-destructive">
             Couldn't load chat history: {loadError}
           </div>
         ) : null}
@@ -527,8 +538,8 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
             orgs, invite collaborators, and take you to any page.
           </div>
         ) : null}
-        {allMessages.map((rm, idx) => (
-          <MessageBlock key={rm.kind === "saved" ? rm.message.id : `inflight-${idx}`} rm={rm} />
+        {allMessages.map((rm) => (
+          <MessageBlock key={rm.kind === "saved" ? rm.message.id : "inflight"} rm={rm} />
         ))}
       </div>
 
@@ -560,11 +571,13 @@ export function CollapsedRail({
   label,
   side,
   unread,
+  active,
   onExpand,
 }: {
   label: string;
   side: "left" | "right";
   unread?: boolean;
+  active?: boolean;
   onExpand: () => void;
 }) {
   const isLeft = side === "left";
@@ -572,15 +585,15 @@ export function CollapsedRail({
     <button
       type="button"
       onClick={onExpand}
-      aria-label={`Expand ${label}`}
-      className="group relative flex h-full w-[32px] shrink-0 cursor-pointer flex-col items-center gap-2 bg-background py-3 hover:text-primary"
-      style={{
-        boxShadow: isLeft
-          ? "inset -6px 0 12px -6px rgba(150, 160, 185, 0.3)"
-          : "inset 6px 0 12px -6px rgba(150, 160, 185, 0.3)",
-      }}
+      aria-busy={active}
+      aria-label={active ? `Expand ${label} (working)` : `Expand ${label}`}
+      className={cn(
+        "neu-panel group relative flex h-full w-[32px] shrink-0 cursor-pointer flex-col items-center gap-2 bg-card py-3 hover:bg-input",
+        isLeft ? "border-r border-border" : "border-l border-border",
+      )}
     >
       <CollapseIcon side={isLeft ? "right" : "left"} />
+      <DocoMark height={18} variant="mark" active={active} decorative />
       <div
         className="select-none text-[11px] font-semibold uppercase tracking-wider text-foreground"
         style={{
@@ -628,6 +641,21 @@ type RenderableMessage =
   | { kind: "saved"; message: ChatMessage }
   | { kind: "inflight"; message: InFlightMessage };
 
+function hashText(value: string): string {
+  let hash = 0;
+  for (let i = 0; i < value.length; i++) {
+    hash = Math.imul(31, hash) + value.charCodeAt(i);
+  }
+  return (hash >>> 0).toString(36);
+}
+
+function blockKey(block: AnyBlock): string {
+  if (block.type === "tool_use") return `tool-use-${block.id}`;
+  if (block.type === "tool_result") return `tool-result-${block.tool_use_id}`;
+  if (block.type === "attachment_ref") return `attachment-${block.attachment_id}`;
+  return `text-${hashText(block.text)}`;
+}
+
 function MessageBlock({ rm }: { rm: RenderableMessage }) {
   if (rm.kind === "saved") {
     const m = rm.message;
@@ -638,9 +666,9 @@ function MessageBlock({ rm }: { rm: RenderableMessage }) {
     if (m.role === "user" && m.content.every((b) => b.type === "tool_result")) {
       return (
         <div className="mb-2 flex justify-end">
-          <div className="max-w-[90%] space-y-1 rounded-lg bg-primary/10 px-2 py-1.5">
-            {m.content.map((b, i) =>
-              b.type === "tool_result" ? <ToolResultRow key={i} result={b} /> : null,
+          <div className="neu-bubble max-w-[90%] space-y-1 rounded-lg bg-primary/10 px-2 py-1.5">
+            {m.content.map((b) =>
+              b.type === "tool_result" ? <ToolResultRow key={blockKey(b)} result={b} /> : null,
             )}
           </div>
         </div>
@@ -660,12 +688,12 @@ function SavedMessage({ message }: { message: ChatMessage }) {
       </div>
       <div
         className={cn(
-          "max-w-[90%] space-y-1.5 rounded-lg px-2.5 py-1.5",
-          isAssistant ? "bg-primary/10" : "bg-input/60",
+          "neu-bubble max-w-[90%] space-y-1.5 rounded-lg px-2.5 py-1.5",
+          isAssistant ? "bg-primary/10" : "neu-inset bg-input/60",
         )}
       >
-        {message.content.map((b, i) => (
-          <BlockView key={i} block={b} />
+        {message.content.map((b) => (
+          <BlockView key={blockKey(b)} block={b} />
         ))}
       </div>
     </div>
@@ -678,18 +706,18 @@ function InFlightMessageView({ msg }: { msg: InFlightMessage }) {
       <div className="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground">
         Señor Doco
       </div>
-      <div className="max-w-[90%] space-y-1.5 rounded-lg bg-primary/10 px-2.5 py-1.5">
-        {msg.content.map((b, i) => {
+      <div className="neu-bubble max-w-[90%] space-y-1.5 rounded-lg bg-primary/10 px-2.5 py-1.5">
+        {msg.content.map((b) => {
           if (b.type === "tool_use") {
             const result = msg.toolResults.get(b.id);
             return (
-              <div key={i} className="space-y-1">
+              <div key={blockKey(b)} className="space-y-1">
                 <BlockView block={b} />
                 {result ? <ToolResultRow result={result} /> : null}
               </div>
             );
           }
-          return <BlockView key={i} block={b} />;
+          return <BlockView key={blockKey(b)} block={b} />;
         })}
         {msg.content.length === 0 ? (
           <div className="text-muted-foreground">
@@ -707,7 +735,7 @@ function BlockView({ block }: { block: AnyBlock }) {
   }
   if (block.type === "tool_use") {
     return (
-      <div className="neo-etched rounded-md bg-card px-2.5 py-1.5 font-mono text-[10px] text-muted-foreground">
+      <div className="neu-inset rounded-md bg-background px-2 py-1 font-mono text-[10px] text-muted-foreground">
         <div className="font-semibold text-foreground">{toolLabel(block.name, block.input)}</div>
       </div>
     );
@@ -730,7 +758,7 @@ function AttachmentBlockView({ block }: { block: ContentBlockAttachmentRef }) {
         href={href}
         target="_blank"
         rel="noreferrer"
-        className="neo-raised-sm block overflow-hidden rounded-md bg-card"
+        className="neu-surface block overflow-hidden rounded-md border border-border bg-background"
       >
         <img
           src={href}
@@ -749,7 +777,7 @@ function AttachmentBlockView({ block }: { block: ContentBlockAttachmentRef }) {
       href={href}
       target="_blank"
       rel="noreferrer"
-      className="neo-raised-sm flex items-center gap-1.5 rounded-md bg-card px-2 py-1 text-[10px] text-foreground"
+      className="neu-button flex items-center gap-1.5 rounded-md border border-border bg-background px-2 py-1 text-[10px] text-foreground hover:bg-input/40"
     >
       <span className="font-mono text-muted-foreground">📎</span>
       <span className="truncate">{block.filename}</span>
@@ -768,10 +796,10 @@ function ToolResultRow({ result }: { result: ContentBlockToolResult }) {
   return (
     <div
       className={cn(
-        "ml-2 rounded-r-md border-l-2 px-2.5 py-1.5 font-mono text-[10px] leading-relaxed",
+        "rounded-md px-2 py-1 font-mono text-[10px]",
         result.is_error
-          ? "border-destructive/70 bg-destructive/8 text-destructive"
-          : "border-muted-foreground/30 bg-card/70 text-muted-foreground",
+          ? "bg-destructive/10 text-destructive"
+          : "neu-inset bg-background text-muted-foreground",
       )}
     >
       → {result.content}
@@ -823,12 +851,12 @@ function Composer({
     if (!el) return;
     el.style.height = "auto";
     el.style.height = `${Math.min(160, el.scrollHeight)}px`;
-  }, [value]);
+  });
   const canSend = !busy && (value.trim().length > 0 || staged.length > 0);
   return (
     <div
       className={cn(
-        "shrink-0 bg-background px-3 py-3",
+        "shrink-0 border-t border-border bg-card px-3 py-2",
         dragOver && "ring-2 ring-primary/40",
       )}
       onDragOver={(e) => {
@@ -848,7 +876,7 @@ function Composer({
           {staged.map((a) => (
             <div
               key={a.id}
-              className="neo-inset flex items-center gap-1.5 rounded-md bg-card px-2 py-1 text-[10px]"
+              className="neu-inset flex items-center gap-1.5 rounded-md border border-border bg-background px-2 py-1 text-[10px]"
             >
               <span className="font-mono text-muted-foreground">📎</span>
               <span className="truncate">{a.filename}</span>
@@ -857,7 +885,7 @@ function Composer({
                 type="button"
                 aria-label={`Remove ${a.filename}`}
                 onClick={() => onRemoveStaged(a.id)}
-                className="rounded px-1 text-muted-foreground hover:bg-input/60 hover:text-foreground"
+                className="neu-button rounded px-1 text-muted-foreground hover:bg-input/60 hover:text-foreground"
               >
                 ×
               </button>
@@ -877,8 +905,7 @@ function Composer({
         onChange={(e) => onChange(e.target.value)}
         placeholder={`Ask Señor Doco as ${username}…`}
         rows={2}
-        data-flat
-        className="neo-inset min-h-[44px] w-full resize-none rounded-md bg-card px-3 py-2 text-xs focus:outline-none"
+        className="min-h-[44px] w-full resize-none rounded-md border border-border bg-background px-2 py-1.5 text-xs focus:border-primary focus:outline-none"
         onKeyDown={(e) => {
           if (e.key === "Enter" && !e.shiftKey) {
             e.preventDefault();
@@ -905,7 +932,7 @@ function Composer({
             type="button"
             onClick={() => fileInputRef.current?.click()}
             disabled={busy || uploading}
-            className="neo-raised-sm rounded-md px-2 py-1 text-[10px] text-muted-foreground hover:text-foreground disabled:opacity-50"
+            className="neu-button rounded-md border border-border px-2 py-0.5 text-[10px] text-muted-foreground hover:bg-input/60 hover:text-foreground disabled:opacity-50"
             aria-label="Attach a file"
           >
             {uploading ? "Uploading…" : "📎 Attach"}
@@ -916,7 +943,7 @@ function Composer({
           type="button"
           onClick={onSend}
           disabled={!canSend}
-          className="neo-raised-primary rounded-md px-4 py-1.5 text-[11px] font-semibold disabled:opacity-50"
+          className="neu-button rounded-md bg-primary px-3 py-1 text-[11px] font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
         >
           {busy ? "…" : "Send"}
         </button>

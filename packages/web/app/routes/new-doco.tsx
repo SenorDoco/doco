@@ -113,7 +113,7 @@ export async function action({ request }: { request: Request }) {
   const accept = form.get("accept_suggested_handle") === "1";
 
   if (!state.templateHandle) {
-    return { error: "Pick a constitution template.", suggestedHandle: null, state };
+    return { error: "Pick a primitives template.", suggestedHandle: null, state };
   }
   if (!state.orgId && !state.newOrgHandle) {
     return { error: "Pick an organization or create a new one.", suggestedHandle: null, state };
@@ -142,7 +142,7 @@ export async function action({ request }: { request: Request }) {
     } else {
       const created = await addOrganizationByHandle({
         handle: state.newOrgHandle,
-        ownerPrincipalId: me.id,
+        ownerCollaboratorId: me.id,
         autoSuffix: true,
       });
       chosenOrgId = created.id;
@@ -160,7 +160,7 @@ export async function action({ request }: { request: Request }) {
     const rec = await createDocoInOrg({
       orgId: chosenOrgId,
       requestedSuffix: state.suffix,
-      createdByPrincipalId: me.id,
+      createdByCollaboratorId: me.id,
       visibility: state.visibility,
       templateHandle:
         state.templateHandle === DEFAULT_TEMPLATE_HANDLE ? null : state.templateHandle,
@@ -236,7 +236,7 @@ export default function NewDocoStep1({
                   {DOCO_TEMPLATES.map((template) => (
                     <label
                       key={template.handle}
-                      className="neo-raised-sm flex cursor-pointer items-start gap-2 rounded-md p-2"
+                      className="neu-button flex cursor-pointer items-start gap-2 rounded-md p-2"
                     >
                       <input
                         type="radio"
@@ -368,7 +368,7 @@ export default function NewDocoStep1({
               <div className="flex items-center gap-2">
                 <button
                   type="submit"
-                  className="neo-raised-primary rounded-md px-4 py-2 text-sm font-semibold"
+                  className="neu-button bg-primary text-primary-foreground hover:opacity-90 rounded-md px-4 py-2 text-sm font-semibold"
                 >
                   Create doco
                 </button>
@@ -377,7 +377,7 @@ export default function NewDocoStep1({
                     type="submit"
                     name="accept_suggested_handle"
                     value="1"
-                    className="neo-raised-sm rounded-md px-4 py-2 text-sm"
+                    className="neu-button rounded-md px-4 py-2 text-sm"
                   >
                     Use "{actionData.suggestedHandle}" instead
                   </button>

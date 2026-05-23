@@ -28,7 +28,7 @@ function bucket(n: number): number {
 }
 
 const BUCKET_CLASS = [
-  "bg-card neo-inset",
+  "bg-card neu-inset",
   "bg-primary/20",
   "bg-primary/45",
   "bg-primary/70",
@@ -115,9 +115,9 @@ export function ActivityHeatmap({ byDay, weeks = 52 }: ActivityHeatmapProps) {
       <div className="flex gap-1.5">
         {/* Weekday labels — fixed, outside the scroll area. */}
         <div className={`flex flex-col gap-[3px] ${weekdayTopPad}`}>
-          {WEEKDAY_LABEL.map((label, i) => (
+          {WEEKDAY_LABEL.map((label) => (
             <div
-              key={i}
+              key={label}
               className="h-[11px] w-[24px] text-[10px] leading-none text-muted-foreground"
             >
               {label}
@@ -142,11 +142,13 @@ export function ActivityHeatmap({ byDay, weeks = 52 }: ActivityHeatmapProps) {
               under-reserved. */}
           <div className="inline-flex flex-col gap-1.5 pb-5 align-top">
             <div className="flex gap-[3px]">
-              {cols.map((_, c) => {
+              {cols.map((col, c) => {
                 const m = monthLabels.find((ml) => ml.col === c);
+                const firstReal = col.find((x) => x != null);
+                const colKey = firstReal?.date ?? "empty";
                 return (
                   <div
-                    key={c}
+                    key={`month-${colKey}`}
                     className="w-[11px] text-[10px] leading-none text-muted-foreground"
                   >
                     {m ? <span className="whitespace-nowrap">{m.label}</span> : null}
@@ -155,28 +157,29 @@ export function ActivityHeatmap({ byDay, weeks = 52 }: ActivityHeatmapProps) {
               })}
             </div>
             <div className="flex gap-[3px]">
-              {cols.map((col, ci) => (
-                <div key={ci} className="flex flex-col gap-[3px]">
-                  {col.map((d, di) =>
-                    d == null ? (
-                      <div key={di} className={cell} />
-                    ) : (
-                      <div
-                        key={di}
-                        className={`${cell} ${BUCKET_CLASS[bucket(d.count)]}`}
-                        aria-label={`${d.date}: ${d.count} neuron${d.count === 1 ? "" : "s"}`}
-                        onMouseEnter={(e) =>
-                          showTip(
-                            e,
-                            `${d.date}: ${d.count} neuron${d.count === 1 ? "" : "s"}`,
-                          )
-                        }
-                        onMouseLeave={hideTip}
-                      />
-                    ),
-                  )}
-                </div>
-              ))}
+              {cols.map((col) => {
+                const firstReal = col.find((x) => x != null);
+                const colKey = firstReal?.date ?? "empty";
+                return (
+                  <div key={`cells-${colKey}`} className="flex flex-col gap-[3px]">
+                    {col.map((d, di) =>
+                      d == null ? (
+                        <div key={`empty-${colKey}-${WEEKDAY_LABEL[di]}`} className={cell} />
+                      ) : (
+                        <div
+                          key={d.date}
+                          className={`${cell} ${BUCKET_CLASS[bucket(d.count)]}`}
+                          aria-label={`${d.date}: ${d.count} neuron${d.count === 1 ? "" : "s"}`}
+                          onMouseEnter={(e) =>
+                            showTip(e, `${d.date}: ${d.count} neuron${d.count === 1 ? "" : "s"}`)
+                          }
+                          onMouseLeave={hideTip}
+                        />
+                      ),
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
         </div>
@@ -187,7 +190,7 @@ export function ActivityHeatmap({ byDay, weeks = 52 }: ActivityHeatmapProps) {
         <span>Less</span>
         {BUCKET_CLASS.map((cls, i) => (
           <span
-            key={i}
+            key={cls}
             className={`${cell} ${cls}`}
             aria-label={BUCKET_LABEL[i]}
             onMouseEnter={(e) => showTip(e, BUCKET_LABEL[i])}
@@ -200,7 +203,7 @@ export function ActivityHeatmap({ byDay, weeks = 52 }: ActivityHeatmapProps) {
       {tip ? (
         <div
           role="tooltip"
-          className="neo-etched pointer-events-none fixed z-50 -translate-x-1/2 -translate-y-full whitespace-nowrap rounded-md bg-card px-2 py-1 text-xs text-card-foreground"
+          className="neu-surface pointer-events-none fixed z-50 -translate-x-1/2 -translate-y-full whitespace-nowrap rounded-md bg-card px-2 py-1 text-xs text-card-foreground"
           style={{ left: tip.x, top: tip.y - 6 }}
         >
           {tip.text}

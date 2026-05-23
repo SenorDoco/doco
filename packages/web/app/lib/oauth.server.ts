@@ -32,8 +32,7 @@ export function readOAuthConfig(request: Request): OAuthConfig | null {
 
   const url = new URL(request.url);
   const redirectUri =
-    process.env.DOCO_GITHUB_REDIRECT_URI ??
-    `${url.protocol}//${url.host}/auth/github/callback`;
+    process.env.DOCO_GITHUB_REDIRECT_URI ?? `${url.protocol}//${url.host}/auth/github/callback`;
 
   const stateKeyRaw = process.env.DOCO_GITHUB_STATE_KEY ?? "doco-dev-default-state-key";
   return {

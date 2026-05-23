@@ -30,10 +30,7 @@ export function CollaboratorsLink({
   return (
     <Link
       to={collaboratorsHref(level, targetId)}
-      className={[
-        "neo-raised-sm shrink-0 rounded-md px-3 py-1.5 text-xs font-semibold",
-        className,
-      ]
+      className={["neu-button shrink-0 rounded-md px-3 py-1.5 text-xs font-semibold", className]
         .filter(Boolean)
         .join(" ")}
     >
@@ -56,10 +53,7 @@ export function InviteCollaboratorsLink({
   return (
     <Link
       to={inviteCollaboratorsHref(level, targetId)}
-      className={[
-        "neo-raised-sm shrink-0 rounded-md px-3 py-1.5 text-xs font-semibold",
-        className,
-      ]
+      className={["neu-button shrink-0 rounded-md px-3 py-1.5 text-xs font-semibold", className]
         .filter(Boolean)
         .join(" ")}
     >

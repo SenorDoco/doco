@@ -72,6 +72,13 @@ Tools exposed:
 - `doco_complete_authentication` — finalize after user approves
   (polls; writes `DOCO_ACCESS` to `./.env` on success).
 
+Agents working in the **same local repository checkout** share the
+repo-root `.env` credential. The MCP server rereads that file for each
+Doco call and writes successful auth back there, so if another agent in
+this checkout already authorized, retry `doco_search` before asking the
+user to approve again. Separate clones, worktrees, machines, or remote
+sandboxes need their own local `.env`; never commit credentials.
+
 Call `doco_search` before answering substantive questions about this
 project's conventions, prior decisions, or architectural history. If
 it returns 401/403, call `doco_authenticate` → show the user the URL
@@ -122,9 +129,9 @@ you have `DOCO_ACCESS` and expect the search to succeed.** If
 DOCO_ACCESS is empty, skip the search and go to the not-connected
 flow below — no verb.
 
-**If you need the Doco but access isn't set up yet** (no DOCO_ACCESS,
-or `doco_search` returned 401/403, or a `[🔮 Doco] Not connected yet:`
-block is in your context):
+**If you need the Doco but access isn't set up yet** (no DOCO_ACCESS
+after checking the shared repo-root `.env`, or `doco_search` returned
+401/403, or a `[🔮 Doco] Not connected yet:` block is in your context):
 
 1. Call `doco_authenticate` to get the verification URL.
 2. Render the block returned by `doco_authenticate` at the top of
@@ -218,12 +225,22 @@ Both end with `Authorization: Bearer doco_at_<token>`. Public Docos
 allow anonymous reads — try
 `GET https://doco.to/<handle>/status.json`.
 
+Store the token in the repository root `.env` as `DOCO_ACCESS`. That
+file is the shared credential store for agents running in this same
+checkout, so successful authorization by one local agent should stop
+other local agents from asking again. `.env` is still secret and local:
+do not commit it, and do not assume another clone or machine has it.
+
 ---
 
 ## Share this setup with other agents
 
 Your OAuth token is private; the repo's Doco files are not — they're
 how other agents discover this project uses Doco.
+
+Same-checkout agents share credentials through the local `.env`; agents
+in other clones discover the connection through committed bootstrap
+files and then create their own local `.env` credential.
 
 **When you set up Doco in a repo, preserve any existing AGENTS.md or
 CLAUDE.md content.** Those files often carry project-specific guidance

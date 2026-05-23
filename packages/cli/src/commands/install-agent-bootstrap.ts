@@ -9,16 +9,8 @@ import {
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineCommand } from "citty";
-import { readDocoRefFromProject } from "../env.js";
 import { findTemplatesDir } from "../find-templates.js";
 import { c, checkmark, cross, header, rule } from "../output.js";
-
-/**
- * AGENTS.md / CLAUDE.md placeholder substituted with the project's
- * Legacy placeholder support for older template builds. Current
- * templates read the Doco coordinate from DOCO.md instead.
- */
-const DOCO_ID_PLACEHOLDER = /__DOCO_ID__/g;
 
 /**
  * `doco install-agent-bootstrap` — drop the agent bootstrap files into a
@@ -77,11 +69,6 @@ export const installAgentBootstrapCmd = defineCommand({
       description: "Overwrite existing files. Default: skip and warn.",
       default: false,
     },
-    "doco-id": {
-      type: "string",
-      description:
-        "Legacy Doco ref to stamp if an older template contains a placeholder. Current templates read DOCO.md.",
-    },
   },
   async run({ args }) {
     const target = resolve((args.root as string | undefined) ?? process.cwd());
@@ -91,16 +78,8 @@ export const installAgentBootstrapCmd = defineCommand({
       return;
     }
     const force = args.force as boolean;
-    // Resolve the legacy Doco ref to substitute: explicit arg > env >
-    // existing project files. Empty string
-    // when none is known — the template keeps the literal placeholder
-    // so the project owner can see what's missing.
-    const docoIdArg = (args["doco-id"] as string | undefined)?.trim();
-    const docoId = docoIdArg || process.env.DOCO_ID || readDocoRefFromProject(target) || "";
-
     const agentsMdSrc = join(TEMPLATES_DIR, "AGENTS.md");
     const claudeMdSrc = join(TEMPLATES_DIR, "CLAUDE.md");
-    // v15: pointer file moved from DOCO.md to .doco/connections.md.
     const connectionsMdSrc = join(TEMPLATES_DIR, ".doco", "connections.md");
     const envExampleSrc = join(TEMPLATES_DIR, ".env.example");
     const settingsSrc = join(TEMPLATES_DIR, ".claude", "settings.json");
@@ -159,10 +138,11 @@ export const installAgentBootstrapCmd = defineCommand({
     //   doesn't exist          → write the full template
     {
       const tplRaw = readFileSync(agentsMdSrc, "utf8");
-      const tplResolved = docoId ? tplRaw.replace(DOCO_ID_PLACEHOLDER, docoId) : tplRaw;
-      const docoSection = extractDocoSection(tplResolved);
+      const docoSection = extractDocoSection(tplRaw);
       if (!docoSection) {
-        console.error(cross("AGENTS.md template is missing <!-- BEGIN DOCO --> … <!-- END DOCO --> markers."));
+        console.error(
+          cross("AGENTS.md template is missing <!-- BEGIN DOCO --> … <!-- END DOCO --> markers."),
+        );
         process.exitCode = 2;
         return;
       }
@@ -198,15 +178,17 @@ export const installAgentBootstrapCmd = defineCommand({
         actions.push(`${c.dim("=")} ${c.dim("CLAUDE.md (@./AGENTS.md already imported)")}`);
       } else if (existing) {
         writeFileSync(claudeMdDst, merged, "utf8");
-        actions.push(checkmark("CLAUDE.md (@./AGENTS.md import appended — existing content preserved)"));
+        actions.push(
+          checkmark("CLAUDE.md (@./AGENTS.md import appended — existing content preserved)"),
+        );
       } else {
         writeFileSync(claudeMdDst, merged, "utf8");
         actions.push(checkmark("CLAUDE.md written"));
       }
     }
 
-    // .doco/connections.md — committed, non-secret project coordinate
-    // (v15). If the CLI login flow has a concrete URL it writes this
+    // .doco/connections.md — committed, non-secret project coordinate.
+    // If the CLI login flow has a concrete URL it writes this
     // before invoking the installer, so don't overwrite it here.
     {
       const label = ".doco/connections.md";
@@ -279,18 +261,16 @@ export const installAgentBootstrapCmd = defineCommand({
     for (const a of actions) console.log(a);
     console.log(rule());
     console.log(c.dim("Next:"));
-    if (!docoId) {
-      console.log(
-        c.dim(
-          "  1. Run `doco login --host https://doco.to` to authorize, or edit .doco/connections.md with the Doco URL.",
-        ),
-      );
-    } else {
-      console.log(
-        c.dim(`  1. Project Doco ref found: ${docoId}. To rotate access, re-run \`doco login\`.`),
-      );
-    }
-    console.log(c.dim("  2. cp .env.example .env  # fill in DOCO_ACCESS (mint via `doco login`)"));
+    console.log(
+      c.dim(
+        "  1. If this checkout already has .env with DOCO_ACCESS, reuse it. Otherwise run `doco login --host https://doco.to` to authorize, or edit .doco/connections.md with the Doco URL.",
+      ),
+    );
+    console.log(
+      c.dim(
+        "  2. Use the repo-root .env as the shared local credential store for agents in this checkout (`cp .env.example .env` only if .env is missing).",
+      ),
+    );
     console.log(c.dim("  3. Restart your Claude Code session in this directory."));
     console.log(
       c.dim(
@@ -304,13 +284,16 @@ export const installAgentBootstrapCmd = defineCommand({
     );
     console.log(
       c.dim(
-        "  6. Even if DOCO_ACCESS already works, verify .doco/connections.md, AGENTS.md, and CLAUDE.md exist. Then commit and push the non-secret bootstrap files so other agent clones discover the connection:",
+        "     If another agent in this same checkout already authorized, the MCP server and helper will reuse that .env credential instead of asking again.",
       ),
     );
     console.log(
       c.dim(
-        "     git add .doco/connections.md AGENTS.md CLAUDE.md .mcp.json .agents .claude",
+        "  6. Even if DOCO_ACCESS already works, verify .doco/connections.md, AGENTS.md, and CLAUDE.md exist. Then commit and push the non-secret bootstrap files so other agent clones discover the connection:",
       ),
+    );
+    console.log(
+      c.dim("     git add .doco/connections.md AGENTS.md CLAUDE.md .mcp.json .agents .claude"),
     );
     console.log(c.dim('     git commit -m "Connect repository to Doco"'));
     console.log(c.dim("     git push"));

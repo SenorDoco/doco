@@ -67,26 +67,22 @@ export function CollaborationInvitePrompt({
   copyButtonTestId?: string;
   className?: string;
 }) {
-  const showAgent = Boolean(docoUrl && recipeUrl && deviceUrl);
+  const agentPrompt =
+    docoUrl && recipeUrl && deviceUrl
+      ? buildAgentInvitePrompt({ docoUrl, recipeUrl, deviceUrl })
+      : null;
   return (
-    <div
-      className={["space-y-4", className].filter(Boolean).join(" ")}
-      data-testid={testId}
-    >
+    <div className={["space-y-4", className].filter(Boolean).join(" ")} data-testid={testId}>
       <PromptBox
         title="Invite for humans"
         body={buildHumanInvitePrompt(inviteUrl)}
         promptTestId={promptTestId}
         copyButtonTestId={copyButtonTestId}
       />
-      {showAgent ? (
+      {agentPrompt ? (
         <PromptBox
           title="Invite for AI agents"
-          body={buildAgentInvitePrompt({
-            docoUrl: docoUrl!,
-            recipeUrl: recipeUrl!,
-            deviceUrl: deviceUrl!,
-          })}
+          body={agentPrompt}
           promptTestId={promptTestId ? `${promptTestId}-agent` : undefined}
           copyButtonTestId={copyButtonTestId ? `${copyButtonTestId}-agent` : undefined}
         />
@@ -95,7 +91,7 @@ export function CollaborationInvitePrompt({
       {continueTo ? (
         <Link
           to={continueTo}
-          className="neo-raised-primary inline-flex rounded-md px-3 py-1.5 text-xs font-semibold"
+          className="neu-button bg-primary text-primary-foreground hover:opacity-90 inline-flex rounded-md px-3 py-1.5 text-xs font-semibold"
         >
           {continueLabel}
         </Link>
@@ -120,7 +116,7 @@ function PromptBox({
     <div className="space-y-2">
       <p className="text-xs font-semibold text-foreground">{title}</p>
       <pre
-        className="neo-inset rounded-md bg-card p-3 text-[11px] whitespace-pre-wrap break-words"
+        className="neu-inset rounded-md bg-card p-3 text-[11px] whitespace-pre-wrap break-words"
         data-testid={promptTestId}
       >
         {body}
@@ -133,7 +129,7 @@ function PromptBox({
           setCopied(true);
           setTimeout(() => setCopied(false), 1500);
         }}
-        className="neo-raised-sm rounded-md bg-card px-3 py-1.5 text-xs font-semibold text-foreground"
+        className="neu-button rounded-md bg-card px-3 py-1.5 text-xs font-semibold text-foreground"
       >
         {copied ? "Copied!" : "Copy prompt"}
       </button>

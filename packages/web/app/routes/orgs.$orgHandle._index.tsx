@@ -31,19 +31,13 @@ import {
 import { cn } from "~/lib/cn";
 import { listDocoStats } from "~/lib/doco-stats.server";
 import { loadOrgOverviewGraph } from "~/lib/full-graph.server";
+import { resolveOrgByHandle } from "~/lib/org-helpers.server";
 import { getCurrentPrincipal } from "~/lib/session.server";
 import { timeAgo } from "~/lib/time-ago";
 
 const FEED_LIMIT = 20;
 const HEATMAP_WEEKS = 52;
 const TOP_CONTRIBUTORS_LIMIT = 10;
-
-interface OrgRow {
-  id: string;
-  slug: string;
-  handle: string;
-  name: string;
-}
 
 interface OrgDoco {
   docoId: string;
@@ -83,9 +77,9 @@ interface FeedItem {
   after: Record<string, unknown> | null;
 }
 
-// Note tables only — primitives (constitution metadata) are not neurons
+// Note tables only — primitives are not neurons
 // and do not count toward "active neurons" per Doco. They are exposed
-// via /<handle>/constitution and /<handle>/api/primitives.json.
+// via /<handle>/primitives and /<handle>/api/primitives.json.
 const NEURON_TABLES_WITH_LIFECYCLE = [
   "intents",
   "ideas",
@@ -117,7 +111,7 @@ export async function loader({
     // Docos owned by this org.
     const docoRows = (
       await c.query<{ id: string; handle: string; visibility: string }>(
-        "SELECT id, handle, visibility FROM docos WHERE owner_id = $1 ORDER BY handle",
+        "SELECT id, handle, visibility FROM docos WHERE org_id = $1 ORDER BY handle",
         [org.id],
       )
     ).rows;
@@ -324,26 +318,6 @@ export async function loader({
   });
 }
 
-async function resolveOrgByHandle(orgHandle: string): Promise<OrgRow | null> {
-  return withClient(async (c) => {
-    const r = await c.query<{ id: string; slug: string; handle: string | null; name: string }>(
-      `SELECT id, slug, handle, name FROM organizations
-        WHERE handle = $1 OR slug = $1
-        LIMIT 1`,
-      [orgHandle],
-    );
-    if (r.rowCount === 0) return null;
-    const row = r.rows[0];
-    if (!row) return null;
-    return {
-      id: String(row.id),
-      slug: String(row.slug),
-      handle: String(row.handle ?? row.slug),
-      name: String(row.name),
-    };
-  });
-}
-
 export function meta({ params }: { params: { orgHandle: string } }) {
   return [{ title: `${params.orgHandle} · Doco` }];
 }
@@ -404,7 +378,7 @@ export default function OrgHome({
                 {canInviteCollaborators ? (
                   <Link
                     to={`/orgs/${org.handle}/settings`}
-                    className="neo-raised-sm shrink-0 rounded-md px-3 py-1.5 text-xs font-semibold"
+                    className="neu-button shrink-0 rounded-md px-3 py-1.5 text-xs font-semibold"
                   >
                     Settings
                   </Link>
@@ -421,7 +395,7 @@ export default function OrgHome({
               />
               <button
                 type="submit"
-                className="neo-raised-sm rounded-md px-4 py-2.5 text-sm font-semibold text-foreground"
+                className="neu-button rounded-md px-4 py-2.5 text-sm font-semibold text-foreground"
               >
                 Search
               </button>
@@ -432,7 +406,7 @@ export default function OrgHome({
                 <CardTitle className="text-sm">Docos in this org</CardTitle>
                 <Link
                   to={`/new-doco?org_id=${encodeURIComponent(org.id)}`}
-                  className="neo-raised-primary rounded-md px-3 py-1 text-xs font-semibold"
+                  className="neu-button bg-primary text-primary-foreground hover:opacity-90 rounded-md px-3 py-1 text-xs font-semibold"
                 >
                   + Doco
                 </Link>
@@ -596,7 +570,7 @@ export default function OrgHome({
 // because an org's feed spans every Doco it owns.
 function OrgFeedLine({ event }: { event: FeedItem }) {
   const url = entityUrl({
-    docoId: event.handle,
+    docoHandle: event.handle,
     entityType: event.entity_type,
     id: event.entity_id,
   });

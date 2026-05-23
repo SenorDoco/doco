@@ -43,8 +43,10 @@ node .agents/doco-agent-client.mjs search --q "what we know about auth"
 ## Quick start
 
 ```bash
-# In a new directory:
-doco login --host https://doco.to --create my-project
+# First create the Doco in the web UI:
+#   https://doco.to/new-doco
+# Then authorize this checkout:
+doco login --host https://doco.to
 
 # In an existing Doco project (Doco URL in .doco/connections.md, DOCO_ACCESS in ./.env):
 doco install-agent-bootstrap                # drop AGENTS.md, MCP server, hooks
@@ -59,15 +61,16 @@ Codex CLI) or the HTTP API at `https://doco.to/<handle>/api/`.
 
 ## Authentication
 
-Two values, two homes:
+Two kinds of state, two homes:
 
-- **`DOCO_ACCESS`** — bearer; *secret*. Lives in `./.env` (gitignored) or as an
-  environment secret in your CI/agent runtime. Minted by `doco login`.
+- **`DOCO_ACCESS`, `DOCO_REFRESH`, `DOCO_CLIENT_ID`, `DOCO_HOST`** — OAuth credential set;
+  *secret*. Lives in `./.env` (gitignored) or as environment secrets in your CI/agent runtime.
+  Minted by `doco login`.
 - **`.doco/connections.md`** — the public Doco URL; *non-secret*. Lives in the repo so every
   contributor and agent picks up the same project coordinate.
 
-`doco login` writes `DOCO_ACCESS` to `./.env` and writes the Doco URL to `.doco/connections.md`
-in one step.
+`doco login` writes the OAuth credential set to `./.env` and writes the Doco URL to
+`.doco/connections.md` in one step.
 
 After a repo is connected, commit and push the non-secret bootstrap files so other
 contributors and agents discover the same Doco from their own clones:

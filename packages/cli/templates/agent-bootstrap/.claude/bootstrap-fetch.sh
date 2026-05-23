@@ -14,9 +14,10 @@
 
 set -u
 
-# Load .env if present. The only secret env var Doco needs is
-# DOCO_ACCESS. The project coordinate lives in DOCO.md, and bound
-# credentials let the bootstrap endpoint infer it.
+# Load the repo-root .env if present. DOCO_ACCESS is shared by agents
+# in this same local checkout. The project coordinate lives in
+# .doco/connections.md, and bound credentials let the bootstrap endpoint
+# infer it.
 if [ -f "$PWD/.env" ]; then
   # shellcheck disable=SC1091
   set -a
@@ -51,7 +52,7 @@ emit_disconnected() {
       recovery=""
       ;;
     default|*)
-      recovery=$'Ask the project owner for an invite URL or re-onboard the agent at https://doco.to/onboarding/create/agent.txt. Write the returned access credential into ./.env as DOCO_ACCESS. After that, restart or `/clear` so SessionStart runs again.'
+      recovery=$'Complete the Doco OAuth device flow for this checkout and write the resulting access credential into the repo-root ./.env as DOCO_ACCESS so agents here share it. After that, restart or `/clear` so SessionStart runs again.'
       ;;
   esac
   local body
@@ -82,20 +83,8 @@ if [ ! -f "$CLIENT" ]; then
   exit 0
 fi
 
-# Prefer DOCO_ACCESS. Older env names are accepted only as migration
-# fallbacks so existing sessions can load and rewrite themselves.
-if [ -z "${DOCO_ACCESS:-}" ] && [ -n "${DOCO_KEY:-}" ]; then
-  DOCO_ACCESS="$DOCO_KEY"
-fi
-if [ -z "${DOCO_ACCESS:-}" ] && [ -n "${DOCO_TOKEN:-}" ]; then
-  DOCO_ACCESS="$DOCO_TOKEN"
-fi
-if [ -z "${DOCO_ACCESS:-}" ] && [ -n "${DOCO_URL:-}" ]; then
-  DOCO_ACCESS=$(printf '%s' "$DOCO_URL" | sed -nE 's|.*/agent/([0-9a-f]{64})/?$|\1|p')
-fi
-
 if [ -z "${DOCO_ACCESS:-}" ]; then
-  emit_disconnected "missing DOCO_ACCESS — ask the project owner for an invite URL (or create a new Doco via POST https://doco.to/api/v1/docos.json)" default
+  emit_disconnected "missing DOCO_ACCESS — complete the Doco OAuth device flow for this checkout" default
   exit 0
 fi
 
@@ -119,7 +108,7 @@ BOOT_CODE=$(printf '%s' "$BOOT_META" | jq -r '.code // empty' 2>/dev/null)
 BOOT_ERROR=$(printf '%s' "$BOOT_META" | jq -r '.error // empty' 2>/dev/null)
 RESP=$(printf '%s' "$BOOT_META" | jq -c '.body // empty' 2>/dev/null)
 if [ "$BOOT_CODE" = "missing_access" ]; then
-  emit_disconnected "missing DOCO_ACCESS — ask the project owner for an invite URL (or create a new Doco via POST https://doco.to/api/v1/docos.json)" default
+  emit_disconnected "missing DOCO_ACCESS — complete the Doco OAuth device flow for this checkout" default
   exit 0
 fi
 if [ "$BOOT_CODE" = "network" ] || [ "$BOOT_CODE" = "timeout" ] || [ "$HTTP_STATUS" = "0" ]; then
@@ -128,7 +117,7 @@ if [ "$BOOT_CODE" = "network" ] || [ "$BOOT_CODE" = "timeout" ] || [ "$HTTP_STAT
 fi
 if [ "$HTTP_STATUS" != "200" ]; then
   case "$HTTP_STATUS" in
-    401) emit_disconnected "DOCO_ACCESS invalid or revoked (HTTP 401) — ask for a fresh invite URL" default ;;
+    401) emit_disconnected "DOCO_ACCESS invalid or revoked (HTTP 401) — re-authenticate with the Doco OAuth device flow" default ;;
     403) emit_disconnected "DOCO_ACCESS cannot reach this Doco (HTTP 403)" default ;;
     404) emit_disconnected "Doco not found for this DOCO_ACCESS (HTTP 404)" default ;;
     5*) emit_disconnected "doco.to returned ${HTTP_STATUS} — host outage; wait and retry." network ;;
@@ -145,7 +134,7 @@ fi
 
 WARNING_TEXT=$(printf '%s' "$RESP" | jq -r '.warning // empty' 2>/dev/null)
 HAS_GUIDANCE=$(printf '%s' "$RESP" | jq -r '.missing_doco_guidance // empty | if type == "object" then "1" else "" end' 2>/dev/null)
-RESP_DOCO=$(printf '%s' "$RESP" | jq -r '.doco_handle // .doco_slug // empty' 2>/dev/null)
+RESP_DOCO=$(printf '%s' "$RESP" | jq -r '.doco_handle // empty' 2>/dev/null)
 
 if [ -n "$HAS_GUIDANCE" ]; then
   GUIDANCE_TITLE=$(printf '%s' "$RESP" | jq -r '.missing_doco_guidance.title // empty' 2>/dev/null)
@@ -198,7 +187,7 @@ if printf '%s' "$RESP" | jq -e '.constitution and (.constitution | type == "obje
               elif .kind == "forbids_field" then
                 "- `forbids_field` `" + .field + "`" + (if .reason then " — " + .reason else "" end)
               elif .kind == "mandatory_scope" then
-                "- `mandatory_scope` → every node must list scope `" + .scope_id + "`" + (if .reason then " — " + .reason else "" end)
+                "- `mandatory_scope` → every neuron must list scope `" + .scope_id + "`" + (if .reason then " — " + .reason else "" end)
               elif .kind == "probabilistic" then
                 "- `probabilistic` (LLM-judged) — " + (.spec // "")
               else
@@ -218,14 +207,14 @@ if printf '%s' "$RESP" | jq -e '.scopes and (.scopes | type == "array") and ((.s
   SCOPES_TEXT=$(printf '%s' "$RESP" | jq -r '
     (.scopes | map(select(.is_mandatory == true))) as $mand |
     (.scopes | map(select(.is_mandatory != true))) as $opt |
-    "### Mandatory — every node must list these (capture aborts without them)\n\n"
+    "### Mandatory — every neuron must list these (capture aborts without them)\n\n"
     + (if ($mand | length) > 0
         then (($mand | map(
             "- " + (.icon // "🏷️") + " `" + .name + "` — " + (.purpose // "(no purpose set)")
           )) | join("\n"))
         else "_(none in this Doco — no `mandatory_scope` rule on the Constitution)_"
         end)
-    + "\n\n### Optional — pick by what the node is about\n\n"
+    + "\n\n### Optional — pick by what the neuron is about\n\n"
     + (if ($opt | length) > 0
         then (($opt | map(
             "- " + (.icon // "🏷️") + " `" + .name + "` — " + (.purpose // "(no purpose set)")
@@ -235,11 +224,11 @@ if printf '%s' "$RESP" | jq -e '.scopes and (.scopes | type == "array") and ((.s
         end)
   ' 2>/dev/null)
   if [ -n "$SCOPES_TEXT" ]; then
-    SCOPES_BLOCK=$(printf '\n\n---\n\n## scopes — this Doco\047s topical neighborhoods\n\nEvery captured node must list at least one scope. Mandatory scopes apply to ALL nodes; optional scopes are picked by what the node is about.\n\n%s\n' "$SCOPES_TEXT")
+    SCOPES_BLOCK=$(printf '\n\n---\n\n## scopes — this Doco\047s topical neighborhoods\n\nEvery captured neuron must list at least one scope. Mandatory scopes apply to ALL neurons; optional scopes are picked by what the neuron is about.\n\n%s\n' "$SCOPES_TEXT")
   fi
 fi
 
 TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-HEADER=$'🔒 Doco canonical_instructions — auto-loaded by SessionStart hook at '"${TIMESTAMP}"$'\n\n⚠️ **The literal first lines of your first reply must be the session-load block** — emitted BEFORE any prose, narration, or tool calls. Pre-built for you here (verb already randomized — paste verbatim):\n\n'"${SESSION_LOAD_BLOCK}"$'\n\nNo "let me read this first" preface. No "I see this repo has Doco" prose. The block IS the acknowledgement. Then your per-reply [🔮 Doco] querying / count lines, then prose. See canonical § 1a below.\n\nThis IS the canonical. **Do NOT re-fetch via raw curl** — re-read the block below instead. The protocol applies to every connected reply (query indicator at top, footer_lines after writes, tally at end). For deep reference (model walkthrough, scope onboarding, placement examples), the long form is at `https://doco.to/api/v1/agent-reference` — fetch only on demand.\n\n---\n\n'
+HEADER=$'🔒 Doco canonical_instructions — auto-loaded by SessionStart hook at '"${TIMESTAMP}"$'\n\n⚠️ **The literal first lines of your first reply must be the session-load block** — emitted BEFORE any prose, narration, or tool calls. Pre-built for you here (verb already randomized — paste verbatim):\n\n'"${SESSION_LOAD_BLOCK}"$'\n\nNo "let me read this first" preface. No "I see this repo has Doco" prose. The block IS the acknowledgement. Then your per-reply [🔮 Doco] querying / count lines, then prose. See canonical § 1a below.\n\nThis IS the canonical. **Do NOT re-fetch via raw curl** — re-read the block below instead. The protocol applies to every connected reply (query indicator at top, footer_lines after writes, tally at end). For deep reference (model walkthrough and placement examples), the long form is at `https://doco.to/api/v1/agent-reference` — fetch only on demand.\n\n---\n\n'
 printf '%s' "$RESP" | jq -nc --arg c "${HEADER}${INSTR}${CONSTITUTION_BLOCK}${SCOPES_BLOCK}" \
   '{hookSpecificOutput: {hookEventName: "SessionStart", additionalContext: $c}}'

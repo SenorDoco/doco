@@ -45,7 +45,7 @@ export default function InviteCollaboratorsPage({
           </div>
           <Link
             to="/collaborators"
-            className="neo-raised-sm shrink-0 rounded-md px-3 py-1.5 text-xs font-semibold"
+            className="neu-button shrink-0 rounded-md px-3 py-1.5 text-xs font-semibold"
           >
             View collaborators
           </Link>

@@ -1,4 +1,4 @@
-import { type DocoRole, roleAtLeast } from "@doco/db";
+import { DOCO_NEURON_TABLE_BY_TYPE, type DocoRole, roleAtLeast } from "@doco/db";
 import { parse as parseYaml } from "yaml";
 import { getDocoLevelRole } from "~/lib/doco-access.server";
 import { loadOverviewNodeDetails } from "~/lib/full-graph.server";
@@ -65,24 +65,34 @@ export interface NeuronDialogDetail {
   lifecycle_history: NeuronDialogLifecycleChange[];
 }
 
-const GRAPH_NEURON_TABLES: Record<
-  string,
-  {
-    table: string;
-    hasBody: boolean;
-    updateSegment: string | null;
-  }
-> = {
-  decision: { table: "decisions", hasBody: true, updateSegment: "decisions" },
-  intent: { table: "intents", hasBody: true, updateSegment: "intents" },
-  action: { table: "actions", hasBody: true, updateSegment: "actions" },
-  log: { table: "logs", hasBody: true, updateSegment: "logs" },
-  rule: { table: "rules", hasBody: true, updateSegment: "rules" },
-  eval: { table: "evals", hasBody: true, updateSegment: "evals" },
-  reference: { table: "reference_entities", hasBody: false, updateSegment: "references" },
-  state: { table: "states", hasBody: true, updateSegment: "states" },
-  idea: { table: "ideas", hasBody: true, updateSegment: null },
+const UPDATE_SEGMENTS: Record<string, string> = {
+  decision: "decisions",
+  intent: "intents",
+  action: "actions",
+  log: "logs",
+  rule: "rules",
+  eval: "evals",
+  reference: "references",
+  state: "states",
+  idea: "ideas",
 };
+
+type GraphNeuronConfig = {
+  table: string;
+  hasBody: boolean;
+  updateSegment: string;
+};
+
+const GRAPH_NEURON_TABLES: Record<string, GraphNeuronConfig> = Object.fromEntries(
+  Object.entries(DOCO_NEURON_TABLE_BY_TYPE).map(([entityType, spec]) => [
+    entityType,
+    {
+      table: spec.table,
+      hasBody: spec.body,
+      updateSegment: UPDATE_SEGMENTS[entityType] ?? entityType,
+    },
+  ]),
+) as Record<string, GraphNeuronConfig>;
 
 function parseFrontmatter(rawJson: string | null | undefined): Record<string, unknown> {
   if (!rawJson) return {};

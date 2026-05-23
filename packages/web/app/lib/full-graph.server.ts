@@ -1,3 +1,4 @@
+import { DOCO_NEURON_TABLE_SPECS } from "@doco/db";
 import { parse as parseYaml } from "yaml";
 import type {
   OverviewGraphData,
@@ -24,26 +25,11 @@ interface OverviewGraphRow {
   created_at: string | null;
 }
 
-// Note tables only — primitives (constitution metadata) are not
+// Note tables only — primitives are not
 // neurons and are deliberately excluded from the graph. Primitives
-// have their own surface: /<handle>/constitution and
+// have their own surface: /<handle>/primitives and
 // /<handle>/api/primitives.json.
-const GRAPH_TABLES: {
-  table: string;
-  entityType: string;
-  labelExpr?: string;
-  nameExpr?: string;
-}[] = [
-  { table: "decisions", entityType: "decision" },
-  { table: "intents", entityType: "intent" },
-  { table: "actions", entityType: "action" },
-  { table: "logs", entityType: "log" },
-  { table: "rules", entityType: "rule" },
-  { table: "evals", entityType: "eval" },
-  { table: "reference_entities", entityType: "reference" },
-  { table: "ideas", entityType: "idea" },
-  { table: "states", entityType: "state" },
-];
+const GRAPH_TABLES = DOCO_NEURON_TABLE_SPECS;
 
 const OVERVIEW_GRAPH_SYNAPSE_LIMIT = 5000;
 const OVERVIEW_DETAIL_LIMIT = 120;

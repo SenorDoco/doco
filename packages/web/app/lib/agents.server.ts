@@ -23,12 +23,6 @@ export interface AddAgentPrincipalOpts {
   };
 }
 
-/**
- * Wraps host.addPrincipal but passes type='agent' + owner_id + agent_metadata.
- * The host package's existing addPrincipal helper hardcodes type='person',
- * so we hand-roll the agent path here. Once @doco/host gains a dedicated
- * addAgent function this can collapse.
- */
 export async function addAgentPrincipal(
   root: string,
   opts: AddAgentPrincipalOpts,

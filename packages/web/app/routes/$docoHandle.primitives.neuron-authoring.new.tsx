@@ -1,4 +1,4 @@
-// /<doco-handle>/constitution/neuron-authoring/new — standalone form for
+// /<doco-handle>/primitives/neuron-authoring/new — standalone form for
 // authoring a Doco-level neuron-authoring primitive. Carries a predicate
 // evaluated when a neuron is captured.
 
@@ -7,10 +7,13 @@ import { Form, Link, redirect, useActionData } from "react-router";
 import { Breadcrumb, docoBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent } from "~/components/card";
 import { SiteHeader } from "~/components/site-header";
-import { type NeuronAuthoringPrimitiveDraft, captureNeuronAuthoringPrimitive } from "~/lib/capture.server";
-import { derivePrimitiveSummary } from "~/lib/constitution-copy";
+import {
+  type NeuronAuthoringPrimitiveDraft,
+  captureNeuronAuthoringPrimitive,
+} from "~/lib/capture.server";
 import { loadDocoRouteForAdmin } from "~/lib/doco-access.server";
 import { loadHostConfig } from "~/lib/host.server";
+import { derivePrimitiveSummary } from "~/lib/primitive-copy";
 
 type ArticleKind = "deterministic" | "probabilistic";
 
@@ -25,6 +28,7 @@ export async function loader({
   request: Request;
   params: { docoId: string };
 }) {
+  redirectLegacyPrimitivePath(request);
   const { docoSlug, handle, me, ownerSlug } = await loadDocoRouteForAdmin(request, params);
   return { ownerSlug, docoSlug, handle, me, host: await loadHostConfig() };
 }
@@ -75,12 +79,14 @@ export async function action({
     docoHost,
   );
   if ("error" in result) return Response.json(result, { status: result.status ?? 400 });
-  return redirect(`/${handle}/constitution`);
+  return redirect(`/${handle}/primitives`);
 }
 
 export function meta({ params }: { params: { docoHandle?: string; docoId?: string } }) {
   return [
-    { title: `New neuron-authoring primitive · ${params.docoHandle ?? params.docoId ?? ""} · Doco` },
+    {
+      title: `New neuron-authoring primitive · ${params.docoHandle ?? params.docoId ?? ""} · Doco`,
+    },
   ];
 }
 
@@ -101,7 +107,7 @@ export default function NewNeuronAuthoringPrimitive({
             items={docoBreadcrumb({
               ownerSlug,
               handle,
-              parent: { label: "Primitives", to: `/${handle}/constitution` },
+              parent: { label: "Primitives", to: `/${handle}/primitives` },
               pageLabel: "New neuron-authoring primitive",
             })}
             className="mb-1"
@@ -140,7 +146,7 @@ export default function NewNeuronAuthoringPrimitive({
                 {(["deterministic", "probabilistic"] as const).map((kind) => (
                   <label
                     key={kind}
-                    className="neo-raised-sm inline-flex items-center gap-2 rounded-md px-3 py-2 text-xs font-semibold"
+                    className="neu-button inline-flex items-center gap-2 rounded-md px-3 py-2 text-xs font-semibold"
                   >
                     <input
                       type="radio"
@@ -216,12 +222,12 @@ export default function NewNeuronAuthoringPrimitive({
               <div className="flex items-center gap-3 pt-2">
                 <button
                   type="submit"
-                  className="neo-raised-primary rounded-md px-4 py-2 text-sm font-semibold"
+                  className="neu-button bg-primary text-primary-foreground hover:opacity-90 rounded-md px-4 py-2 text-sm font-semibold"
                 >
                   Add neuron-authoring primitive
                 </button>
                 <Link
-                  to={`/${handle}/constitution`}
+                  to={`/${handle}/primitives`}
                   className="text-xs text-muted-foreground hover:underline"
                 >
                   Cancel
@@ -233,4 +239,11 @@ export default function NewNeuronAuthoringPrimitive({
       </main>
     </div>
   );
+}
+
+function redirectLegacyPrimitivePath(request: Request): void {
+  const url = new URL(request.url);
+  if (!url.pathname.includes("/constitution")) return;
+  url.pathname = url.pathname.replace("/constitution", "/primitives");
+  throw redirect(`${url.pathname}${url.search}`);
 }

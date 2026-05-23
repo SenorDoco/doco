@@ -1,6 +1,5 @@
-import { addPrincipal, findPrincipalByGitHubLogin } from "@doco/host";
+import { addCollaborator, findCollaboratorByGitHubLogin } from "@doco/host";
 import { redirect } from "react-router";
-import { rootDir } from "~/lib/db.server";
 import { clearSignupInviteCookie, hasValidSignupInviteCookie } from "~/lib/invite.server";
 import {
   clearOAuthReturnCookie,
@@ -16,8 +15,8 @@ import { setSessionCookie } from "~/lib/session.server";
 
 /**
  * GET /auth/github/callback — finishes the OAuth round-trip (ADR-095).
- * On success: creates a Principal (type:person) if first time, or signs in
- * the existing one. Sets the session cookie and redirects home.
+ * On success: creates a collaborator if first time, or signs in the
+ * existing one. Sets the session cookie and redirects home.
  */
 export async function loader({ request }: { request: Request }) {
   const config = readOAuthConfig(request);
@@ -39,12 +38,10 @@ export async function loader({ request }: { request: Request }) {
   const gh = await fetchGitHubUser(accessToken);
   const email = (await fetchGitHubPrimaryEmail(accessToken)) ?? gh.email ?? undefined;
 
-  // create-or-find on GitHub login. @doco/host persists through Postgres.
-  const root = rootDir();
-  let principalId: string;
-  const existing = await findPrincipalByGitHubLogin(root, gh.login);
+  let collaboratorId: string;
+  const existing = await findCollaboratorByGitHubLogin(gh.login);
   if (existing) {
-    principalId = existing.id;
+    collaboratorId = existing.id;
   } else {
     if (!hasValidSignupInviteCookie(cookieHeader)) {
       const headers = oauthCleanupHeaders();
@@ -52,7 +49,7 @@ export async function loader({ request }: { request: Request }) {
       headers.set("Location", "/sign-up?error=invite_required");
       return new Response(null, { status: 302, headers });
     }
-    principalId = await addPrincipal(root, {
+    collaboratorId = await addCollaborator({
       username: gh.login.toLowerCase(),
       ...(email ? { email } : {}),
       github_identity: {
@@ -69,7 +66,7 @@ export async function loader({ request }: { request: Request }) {
   // is captured; default to /dashboard.
   const headers = oauthCleanupHeaders();
   headers.append("Set-Cookie", clearSignupInviteCookie());
-  headers.append("Set-Cookie", setSessionCookie(principalId));
+  headers.append("Set-Cookie", setSessionCookie(collaboratorId));
   const returnPath = readOAuthReturnCookie(cookieHeader);
   headers.set("Location", returnPath ?? "/dashboard");
   return new Response(null, { status: 302, headers });

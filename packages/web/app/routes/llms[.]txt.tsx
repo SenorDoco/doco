@@ -18,10 +18,10 @@ If a user just told you something like "let's start using Doco" or
 ## Agent auth in one sentence
 
 Doco runs a standard OAuth 2.1 authorization server (RFC 8414 +
-PKCE S256 + dynamic client registration). The MCP convenience layer
-is currently removed, so YOU (the agent) drive the OAuth dance
-directly. Pick one of two recipes depending on your runtime, both
-documented step by step at:
+PKCE S256 + dynamic client registration). Doco-tracked repos may ship
+an MCP helper that automates the same flow; if MCP is unavailable,
+YOU (the agent) drive the OAuth dance directly. Pick one of two
+recipes depending on your runtime, both documented step by step at:
 
     ${baseUrl}/protocol/agent-oauth-recipe
 
@@ -45,6 +45,26 @@ every API call is:
 
     GET ${baseUrl}/<handle>/<endpoint>
     Authorization: Bearer doco_at_<token>
+
+## Avoid repeated authorization in one local repo
+
+If you are running inside a Doco-tracked repository, first check the
+repository root \`.env\`. Agents in the same local checkout share
+\`DOCO_ACCESS\`, \`DOCO_REFRESH\`, \`DOCO_CLIENT_ID\`, and \`DOCO_HOST\`
+through that file.
+
+If \`DOCO_ACCESS\` from repo-root \`.env\` works, reuse it and do not
+ask the user to approve another authorization flow. When OAuth
+succeeds, write the returned tokens back to that same \`.env\` so the
+next agent in this checkout can reuse them. Long-running agents should
+reread \`.env\` before Doco calls because another same-checkout agent
+may have authorized or refreshed credentials after this process
+started.
+
+This sharing is local and secret. Never commit \`.env\` or token
+values. Separate clones, worktrees, machines, and remote sandboxes
+need their own local \`.env\`; the committed bootstrap files below
+only tell them which Doco to connect to.
 
 ## Share the Doco connection through Git
 

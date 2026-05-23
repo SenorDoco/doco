@@ -33,10 +33,7 @@
 //   400 invalid_request  — missing/malformed client_id
 //   401 invalid_client   — unknown client_id (must be registered first)
 
-import {
-  OauthError,
-  createDeviceAuthorization,
-} from "~/lib/oauth-server.server";
+import { OauthError, createDeviceAuthorization } from "~/lib/oauth-server.server";
 
 export async function action({ request }: { request: Request }) {
   if (request.method !== "POST") {

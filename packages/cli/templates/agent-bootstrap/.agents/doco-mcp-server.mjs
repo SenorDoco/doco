@@ -20,7 +20,7 @@
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { stderr, stdin, stdout } from "node:process";
 import { createInterface } from "node:readline";
 import { setTimeout as delay } from "node:timers/promises";
@@ -38,7 +38,8 @@ const DEFAULT_WAIT_SECONDS = 60;
 const MAX_WAIT_SECONDS = 120;
 const DEFAULT_REDIRECT_URI = "http://localhost:53682/callback";
 
-const PROJECT_HASH = createHash("sha256").update(process.cwd()).digest("hex").slice(0, 16);
+const PROJECT_ROOT = findProjectRoot(process.cwd());
+const PROJECT_HASH = createHash("sha256").update(PROJECT_ROOT).digest("hex").slice(0, 16);
 const DEVICE_STATE_FILE = join(tmpdir(), `doco-mcp-device-${PROJECT_HASH}.json`);
 const DEVICE_ENV_KEYS = [
   "DOCO_DEVICE_CLIENT_ID",
@@ -62,6 +63,13 @@ const SERVER_INSTRUCTIONS = [
   "- doco_authenticate: start OAuth device flow when search returns 401/403.",
   "- doco_complete_authentication: finalize OAuth after the user approves.",
   "",
+  "Credential sharing: agents working in the same local repository share",
+  "the repo-root .env credential. This server rereads .env for every Doco",
+  "call and prefers it over stale inherited environment variables, so if",
+  "another agent in this checkout just authorized, retry doco_search before",
+  "asking the user to approve again. Separate clones or machines need their",
+  "own local .env because credentials are secret and must not be committed.",
+  "",
   "When to call doco_search: before answering substantive questions about",
   "this project's conventions, prior decisions, or architectural history.",
   "There is almost always prior art you'd otherwise miss. Cheap to call;",
@@ -80,7 +88,8 @@ const SERVER_INSTRUCTIONS = [
   "  if you have DOCO_ACCESS and expect success — skip otherwise).",
   "- After doco_search succeeds, render `[🔮 Doco] N neurons found (X.Xs)`.",
   "",
-  "If doco_search returns 401/403 (or you have no DOCO_ACCESS):",
+  "If doco_search returns 401/403 (or you have no DOCO_ACCESS after this",
+  "server has checked the shared repo .env):",
   "1. Call doco_authenticate. It returns a ready-to-render block with a",
   "   clickable verification URL in markdown-link form.",
   "2. Render that block at the top of your reply. The user clicks the link,",
@@ -95,8 +104,10 @@ const SERVER_INSTRUCTIONS = [
   "   intentional. Doco contains prior decisions and rules; doing work",
   "   that hasn't checked them risks contradicting them.",
   "",
-  "Auth: this server reads DOCO_ACCESS from ./.env or the spawning shell",
-  "and forwards it as a Bearer token. Public Docos work without auth.",
+  "Auth: this server reads DOCO_ACCESS from the repo-root .env first, then",
+  "the spawning shell, and forwards it as a Bearer token. Successful device",
+  "auth writes back to that same .env so other agents in this local checkout",
+  "reuse the credential. Public Docos work without auth.",
 ].join("\n");
 
 const SEARCH_TOOL = {
@@ -147,7 +158,8 @@ const AUTH_TOOL = {
     "",
     "After showing the URL, immediately call doco_complete_authentication",
     "in the same turn to finalize. Do not wait for the user to send another",
-    "message; that tool polls and writes the access token to ./.env on approval.",
+    "message; that tool polls and writes the access token to the shared",
+    "repo-root .env on approval so other agents in this checkout can reuse it.",
     "",
     "This server reuses an OAuth client_id across calls (stored in .env as",
     "DOCO_CLIENT_ID), so registration only happens on first use.",
@@ -158,7 +170,7 @@ const AUTH_TOOL = {
       target_doco_handle: {
         type: "string",
         description:
-          "Doco handle to request access to. Defaults to the first handle found in .doco/connections.md or DOCO.md.",
+          "Doco handle to request access to. Defaults to the first handle found in .doco/connections.md.",
       },
       requested_role: {
         type: "string",
@@ -180,7 +192,8 @@ const COMPLETE_AUTH_TOOL = {
     "approval without waiting for another user message.",
     "",
     "On success: writes DOCO_ACCESS, DOCO_REFRESH, DOCO_CLIENT_ID to ./.env",
-    "(mode 0600). Subsequent doco_search calls will use the new token.",
+    "(mode 0600). Subsequent doco_search calls from any agent in this local",
+    "checkout will use the new token.",
     "",
     "If this returns 'still pending', the user hasn't approved yet. Wait a",
     "few seconds and call again — the device code remains valid for 15",
@@ -204,8 +217,6 @@ const COMPLETE_AUTH_TOOL = {
 };
 
 const TOOLS = [SEARCH_TOOL, AUTH_TOOL, COMPLETE_AUTH_TOOL];
-
-let envFileCache;
 
 const rl = createInterface({ input: stdin, crlfDelay: Number.POSITIVE_INFINITY });
 rl.on("line", (line) => {
@@ -315,7 +326,7 @@ async function handleSearch(message) {
   if (!handle) {
     return errorResult(
       message.id,
-      "No Doco URL found in .doco/connections.md, DOCO.md, or doco.md. Set DOCO_HANDLE in .env or add the connections file.",
+      "No Doco URL found in .doco/connections.md. Set DOCO_HANDLE in .env or add the connections file.",
     );
   }
 
@@ -343,7 +354,7 @@ async function handleAuthenticate(message) {
   if (!handle) {
     return errorResult(
       message.id,
-      "No target_doco_handle and no Doco URL found in .doco/connections.md, DOCO.md, or doco.md.",
+      "No target_doco_handle and no Doco URL found in .doco/connections.md.",
     );
   }
   const role = String(args.requested_role || "reader");
@@ -608,18 +619,18 @@ function formatErrorForAgent(result, handle, hadAccess) {
     return `Doco search unauthorized (401) for handle '${handle}'. ${
       hadAccess
         ? "Your DOCO_ACCESS is invalid or expired — call doco_authenticate to acquire a fresh credential."
-        : "No DOCO_ACCESS in ./.env. Call doco_authenticate to start the OAuth device flow."
+        : "No DOCO_ACCESS in the shared repo-root .env. Call doco_authenticate to start the OAuth device flow."
     }`;
   }
   if (status === 403) {
     return `Doco search forbidden (403) for handle '${handle}'. ${
       hadAccess
         ? `The current credential lacks read access to this Doco. Call doco_authenticate with target_doco_handle='${handle}' to request access (a project owner will need to approve).`
-        : "No DOCO_ACCESS sent (and the Doco is private). Call doco_authenticate to start the OAuth device flow."
+        : "No DOCO_ACCESS sent from the shared repo-root .env (and the Doco is private). Call doco_authenticate to start the OAuth device flow."
     }`;
   }
   if (status === 404) {
-    return `Doco '${handle}' not found (404). Verify the URL in .doco/connections.md or DOCO.md.`;
+    return `Doco '${handle}' not found (404). Verify the URL in .doco/connections.md.`;
   }
   if (code === "network" || code === "timeout" || status === 0) {
     return `Could not reach Doco at the configured host (${code}: ${error}). Check network policy / allowlist for doco.to.`;
@@ -696,17 +707,16 @@ function parseJson(text) {
 }
 
 function readEnv(name) {
-  if (process.env[name]) return process.env[name];
-  envFileCache ??= readEnvFile();
-  return envFileCache[name] || "";
+  const envFile = readEnvFile();
+  return envFile[name] || process.env[name] || "";
 }
 
 function readEnvFile() {
-  const path = join(process.cwd(), ".env");
+  const path = join(PROJECT_ROOT, ".env");
   if (!existsSync(path)) return {};
   const out = {};
   for (const rawLine of readFileSync(path, "utf8").split(/\r?\n/)) {
-    const line = rawLine.trim();
+    const line = rawLine.trim().replace(/^export\s+/, "");
     if (!line || line.startsWith("#")) continue;
     const match = line.match(/^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/);
     if (!match) continue;
@@ -716,7 +726,7 @@ function readEnvFile() {
 }
 
 function writeEnvUpdates(updates) {
-  const path = join(process.cwd(), ".env");
+  const path = join(PROJECT_ROOT, ".env");
   const existing = existsSync(path) ? readFileSync(path, "utf8") : "";
   const updateKeys = new Set(Object.keys(updates));
   const keepLines = existing.split(/\r?\n/).filter((line) => {
@@ -729,11 +739,10 @@ function writeEnvUpdates(updates) {
   }
   keepLines.push("");
   writeFileSync(path, keepLines.join("\n"), { mode: 0o600 });
-  envFileCache = undefined;
 }
 
 function clearEnvKeys(keys) {
-  const path = join(process.cwd(), ".env");
+  const path = join(PROJECT_ROOT, ".env");
   if (!existsSync(path)) return;
   const deleteKeys = new Set(keys);
   const keepLines = readFileSync(path, "utf8")
@@ -745,7 +754,6 @@ function clearEnvKeys(keys) {
   while (keepLines.length > 0 && keepLines[keepLines.length - 1] === "") keepLines.pop();
   keepLines.push("");
   writeFileSync(path, keepLines.join("\n"), { mode: 0o600 });
-  envFileCache = undefined;
 }
 
 function unquote(value) {
@@ -759,8 +767,8 @@ function unquote(value) {
 }
 
 function readDocoHandle() {
-  for (const relativePath of [".doco/connections.md", "DOCO.md", "doco.md"]) {
-    const path = join(process.cwd(), relativePath);
+  for (const relativePath of [".doco/connections.md"]) {
+    const path = join(PROJECT_ROOT, relativePath);
     if (!existsSync(path)) continue;
     const text = readFileSync(path, "utf8");
     const matches = text.matchAll(/https?:\/\/[^/\s)]+\/([A-Za-z0-9][A-Za-z0-9-]*)\/?/g);
@@ -770,6 +778,18 @@ function readDocoHandle() {
     }
   }
   return "";
+}
+
+function findProjectRoot(start) {
+  let dir = resolve(start);
+  while (true) {
+    if (existsSync(join(dir, ".doco", "connections.md"))) {
+      return dir;
+    }
+    const parent = dirname(dir);
+    if (parent === dir) return resolve(start);
+    dir = parent;
+  }
 }
 
 function readDeviceState() {

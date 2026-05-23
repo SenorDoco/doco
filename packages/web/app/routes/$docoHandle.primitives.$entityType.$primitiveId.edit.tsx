@@ -1,5 +1,5 @@
-// /<doco>/constitution/<entityType>/<id>/edit — modify or retire an
-// existing constitution primitive. Owner-only (loadDocoRouteForAdmin gates
+// /<doco>/primitives/<entityType>/<id>/edit — modify or retire an
+// existing primitive. Owner-only (loadDocoRouteForAdmin gates
 // both loader + action).
 //
 // POST intent=modify → captures a new primitive and retires the old one
@@ -18,9 +18,9 @@ import {
   loadPrimitiveForEdit,
   transitionPrimitiveLifecycle,
 } from "~/lib/capture.server";
-import { derivePrimitiveSummary } from "~/lib/constitution-copy";
 import { loadDocoRouteForAdmin } from "~/lib/doco-access.server";
 import { loadHostConfig } from "~/lib/host.server";
+import { derivePrimitiveSummary } from "~/lib/primitive-copy";
 
 type EntityType = "guidance_primitive" | "neuron_authoring_primitive";
 type ArticleKind = "deterministic" | "probabilistic";
@@ -31,7 +31,8 @@ interface ActionError {
 
 function parsePrimitiveType(raw: string | undefined): EntityType | null {
   if (raw === "guidance" || raw === "guidance_primitive") return "guidance_primitive";
-  if (raw === "neuron-authoring" || raw === "neuron_authoring_primitive") return "neuron_authoring_primitive";
+  if (raw === "neuron-authoring" || raw === "neuron_authoring_primitive")
+    return "neuron_authoring_primitive";
   return null;
 }
 
@@ -42,6 +43,7 @@ export async function loader({
   request: Request;
   params: { docoId: string; entityType: string; primitiveId: string };
 }) {
+  redirectLegacyPrimitivePath(request);
   const entityType = parsePrimitiveType(params.entityType);
   if (!entityType) throw new Response("Unknown primitive kind.", { status: 404 });
   const ctx = await loadDocoRouteForAdmin(request, params);
@@ -95,7 +97,7 @@ export async function action({
     if ("error" in result) {
       return Response.json({ error: result.error }, { status: result.status ?? 400 });
     }
-    return redirect(`/${handle}/constitution`);
+    return redirect(`/${handle}/primitives`);
   }
 
   if (intent === "modify") {
@@ -170,7 +172,7 @@ export async function action({
     if ("error" in transitioned) {
       return Response.json({ error: transitioned.error }, { status: 500 });
     }
-    return redirect(`/${handle}/constitution`);
+    return redirect(`/${handle}/primitives`);
   }
 
   return Response.json({ error: "Unknown intent." }, { status: 400 });
@@ -185,8 +187,7 @@ export default function EditPrimitive({
 }: {
   loaderData: Awaited<ReturnType<typeof loader>>;
 }) {
-  const { ownerSlug, docoSlug, handle, me, entityType, primitiveId, body_md, data } =
-    loaderData;
+  const { ownerSlug, docoSlug, handle, me, entityType, primitiveId, body_md, data } = loaderData;
   const actionData = useActionData<ActionError>();
   const isNeuronAuthoring = entityType === "neuron_authoring_primitive";
   const initialEvalKind: ArticleKind =
@@ -206,8 +207,7 @@ export default function EditPrimitive({
   const initialFiresOn = Array.isArray(data.fires_when_neuron_lifecycle)
     ? (data.fires_when_neuron_lifecycle as string[]).join(", ")
     : "";
-  const initialOnViolation =
-    typeof data.on_violation === "string" ? data.on_violation : "block";
+  const initialOnViolation = typeof data.on_violation === "string" ? data.on_violation : "block";
 
   return (
     <div>
@@ -218,7 +218,7 @@ export default function EditPrimitive({
             items={docoBreadcrumb({
               ownerSlug,
               handle,
-              parent: { label: "Primitives", to: `/${handle}/constitution` },
+              parent: { label: "Primitives", to: `/${handle}/primitives` },
               pageLabel: `Modify ${isNeuronAuthoring ? "neuron-authoring" : "guidance"} primitive`,
             })}
             className="mb-1"
@@ -228,8 +228,8 @@ export default function EditPrimitive({
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
             Saving changes creates a new primitive and retires this one with a{" "}
-            <code>superseded_by</code> synapse. Retiring leaves the old one in place. Either way
-            the audit log retains the full history.
+            <code>superseded_by</code> synapse. Retiring leaves the old one in place. Either way the
+            audit log retains the full history.
           </p>
         </header>
         <Card>
@@ -257,7 +257,7 @@ export default function EditPrimitive({
                     {(["deterministic", "probabilistic"] as const).map((kind) => (
                       <label
                         key={kind}
-                        className="neo-raised-sm inline-flex items-center gap-2 rounded-md px-3 py-2 text-xs font-semibold"
+                        className="neu-button inline-flex items-center gap-2 rounded-md px-3 py-2 text-xs font-semibold"
                       >
                         <input
                           type="radio"
@@ -329,7 +329,7 @@ export default function EditPrimitive({
                   type="submit"
                   name="intent"
                   value="modify"
-                  className="neo-raised-primary rounded-md px-4 py-2 text-sm font-semibold"
+                  className="neu-button bg-primary text-primary-foreground hover:opacity-90 rounded-md px-4 py-2 text-sm font-semibold"
                 >
                   Save changes
                 </button>
@@ -342,7 +342,7 @@ export default function EditPrimitive({
                   Retire primitive
                 </button>
                 <Link
-                  to={`/${handle}/constitution`}
+                  to={`/${handle}/primitives`}
                   className="ml-auto text-xs text-muted-foreground hover:underline"
                 >
                   Cancel
@@ -357,4 +357,11 @@ export default function EditPrimitive({
       </main>
     </div>
   );
+}
+
+function redirectLegacyPrimitivePath(request: Request): void {
+  const url = new URL(request.url);
+  if (!url.pathname.includes("/constitution")) return;
+  url.pathname = url.pathname.replace("/constitution", "/primitives");
+  throw redirect(`${url.pathname}${url.search}`);
 }

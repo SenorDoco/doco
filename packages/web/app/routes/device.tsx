@@ -49,7 +49,7 @@ interface LoaderData {
   }[];
   orgs?: {
     id: string;
-    slug: string;
+    handle: string;
     display_name: string;
     my_role: DocoRole;
   }[];
@@ -154,7 +154,7 @@ export async function loader({ request }: { request: Request }) {
   // it owns now AND any Doco created under it later. Hidden when the
   // agent narrowed the picker to a single target Doco — org-wide
   // approval would defeat that narrowing.
-  type OrgRow = { id: string; slug: string; display_name: string; my_role: DocoRole };
+  type OrgRow = { id: string; handle: string; display_name: string; my_role: DocoRole };
   let orgs: OrgRow[] = [];
   if (!row.target_doco_handle) {
     const owned = await listOrgsOwnedOrAdminedBy(me.id);
@@ -162,7 +162,7 @@ export async function loader({ request }: { request: Request }) {
       owned.map(async (o): Promise<OrgRow | null> => {
         const role = await getOrgRole(o.id, me.id);
         if (role !== "owner") return null;
-        return { id: o.id, slug: o.slug, display_name: o.display_name, my_role: role };
+        return { id: o.id, handle: o.handle, display_name: o.display_name, my_role: role };
       }),
     );
     orgs = enriched
@@ -310,7 +310,6 @@ function renderStage(data: LoaderData) {
             <input
               type="text"
               name="user_code"
-              autoFocus
               autoComplete="off"
               spellCheck={false}
               placeholder="WXYZ-1234"
@@ -318,7 +317,7 @@ function renderStage(data: LoaderData) {
             />
             <button
               type="submit"
-              className="neo-raised-primary rounded-md px-4 py-2 text-sm font-semibold"
+              className="neu-button bg-primary text-primary-foreground hover:opacity-90 rounded-md px-4 py-2 text-sm font-semibold"
             >
               Continue
             </button>
@@ -395,7 +394,7 @@ function DevicePickerForm({
 }: {
   userCode: string;
   docos: { id: string; handle: string; name: string | null; my_role: DocoRole }[];
-  orgs: { id: string; slug: string; display_name: string; my_role: DocoRole }[];
+  orgs: { id: string; handle: string; display_name: string; my_role: DocoRole }[];
   requestedRole: DocoRole | null;
   targetedMessage: string | null;
   focused: boolean;
@@ -441,12 +440,12 @@ function DevicePickerForm({
             Approving an organization grants access to every Doco it owns, including ones added
             later.
           </p>
-          <div className="neo-inset flex flex-wrap items-center gap-2 rounded-md bg-card px-3 py-2">
+          <div className="neu-inset flex flex-wrap items-center gap-2 rounded-md bg-card px-3 py-2">
             <button
               type="button"
               onClick={() => setSelectedOrgs(new Set(orgs.map((o) => o.id)))}
               disabled={allOrgsSelected}
-              className="neo-raised-sm rounded-md px-2.5 py-1 text-xs font-semibold text-foreground disabled:opacity-50"
+              className="neu-button rounded-md px-2.5 py-1 text-xs font-semibold text-foreground disabled:opacity-50"
             >
               Select all
             </button>
@@ -454,7 +453,7 @@ function DevicePickerForm({
               type="button"
               onClick={() => setSelectedOrgs(new Set())}
               disabled={noneOrgsSelected}
-              className="neo-raised-sm rounded-md px-2.5 py-1 text-xs font-semibold text-foreground disabled:opacity-50"
+              className="neu-button rounded-md px-2.5 py-1 text-xs font-semibold text-foreground disabled:opacity-50"
             >
               Deselect all
             </button>
@@ -485,7 +484,7 @@ function DevicePickerForm({
               </select>
             </span>
           </div>
-          <ul className="neo-etched divide-y divide-border rounded-md bg-card">
+          <ul className="neu-surface divide-y divide-border rounded-md bg-card">
             {orgs.map((o) => (
               <li key={o.id} className="flex items-center justify-between gap-3 px-3 py-2.5">
                 <label className="flex flex-1 cursor-pointer items-center gap-3">
@@ -501,14 +500,14 @@ function DevicePickerForm({
                     className="h-4 w-4 accent-primary"
                   />
                   <span className="text-sm">
-                    <strong className="font-semibold">{o.slug}</strong>
-                    {o.display_name && o.display_name !== o.slug ? (
+                    <strong className="font-semibold">{o.handle}</strong>
+                    {o.display_name && o.display_name !== o.handle ? (
                       <span className="text-muted-foreground"> · {o.display_name}</span>
                     ) : null}
                   </span>
                 </label>
                 <select
-                  aria-label={`Role on ${o.slug}`}
+                  aria-label={`Role on ${o.handle}`}
                   value={orgRoles[o.id] ?? o.my_role}
                   onChange={(e) =>
                     setOrgRoles({ ...orgRoles, [o.id]: e.currentTarget.value as DocoRole })
@@ -536,12 +535,12 @@ function DevicePickerForm({
             <h3 className="text-sm font-semibold text-foreground">Docos</h3>
           ) : null}
           {!focused ? (
-            <div className="neo-inset flex flex-wrap items-center gap-2 rounded-md bg-card px-3 py-2">
+            <div className="neu-inset flex flex-wrap items-center gap-2 rounded-md bg-card px-3 py-2">
               <button
                 type="button"
                 onClick={() => setSelected(new Set(docos.map((d) => d.id)))}
                 disabled={allDocosSelected}
-                className="neo-raised-sm rounded-md px-2.5 py-1 text-xs font-semibold text-foreground disabled:opacity-50"
+                className="neu-button rounded-md px-2.5 py-1 text-xs font-semibold text-foreground disabled:opacity-50"
               >
                 Select all
               </button>
@@ -549,7 +548,7 @@ function DevicePickerForm({
                 type="button"
                 onClick={() => setSelected(new Set())}
                 disabled={noneDocosSelected}
-                className="neo-raised-sm rounded-md px-2.5 py-1 text-xs font-semibold text-foreground disabled:opacity-50"
+                className="neu-button rounded-md px-2.5 py-1 text-xs font-semibold text-foreground disabled:opacity-50"
               >
                 Deselect all
               </button>
@@ -581,7 +580,7 @@ function DevicePickerForm({
               </span>
             </div>
           ) : null}
-          <ul className="neo-etched divide-y divide-border rounded-md bg-card">
+          <ul className="neu-surface divide-y divide-border rounded-md bg-card">
             {docos.map((d) => (
               <li key={d.id} className="flex items-center justify-between gap-3 px-3 py-2.5">
                 <label className="flex flex-1 cursor-pointer items-center gap-3">
@@ -653,7 +652,7 @@ function DevicePickerForm({
           name="decision"
           value="approve"
           disabled={nothingSelected}
-          className="neo-raised-primary rounded-md px-4 py-2 text-sm font-semibold disabled:opacity-50"
+          className="neu-button bg-primary text-primary-foreground hover:opacity-90 rounded-md px-4 py-2 text-sm font-semibold disabled:opacity-50"
         >
           Approve
         </button>
@@ -661,7 +660,7 @@ function DevicePickerForm({
           type="submit"
           name="decision"
           value="deny"
-          className="neo-raised-sm rounded-md px-4 py-2 text-sm font-semibold text-foreground"
+          className="neu-button rounded-md px-4 py-2 text-sm font-semibold text-foreground"
         >
           Deny
         </button>

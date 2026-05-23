@@ -98,7 +98,7 @@ export function NeuronDetailDrawer(props: NeuronDetailDrawerProps) {
   if (!open) return null;
   return (
     <aside
-      className="neo-etched absolute inset-y-0 right-0 z-20 flex w-full max-w-md flex-col bg-card"
+      className="neu-surface absolute inset-y-0 right-0 z-20 flex w-full max-w-md flex-col bg-card"
       aria-label={`${paneTitle(open)} pane`}
     >
       <header className="flex items-center justify-between px-4 py-2.5">
@@ -135,7 +135,7 @@ function RelevantNeuronsPane({ rankedNeighbors, linkTo }: NeuronDetailDrawerProp
       <p className="mb-2 text-[11px] text-muted-foreground">
         Ranked by personalized PageRank from this neuron (ADR-076).
       </p>
-      <ul className="neo-etched divide-y divide-border rounded-md">
+      <ul className="neu-surface divide-y divide-border rounded-md">
         {rankedNeighbors.map((n) => (
           <li key={n.id}>
             <Link to={linkTo(n.entity_type, n.id)} className="block px-3 py-2">
@@ -242,7 +242,7 @@ function HistoryPane({ history }: NeuronDetailDrawerProps) {
             <span className="font-medium text-foreground">{e.op}</span>
           </div>
           {e.before || e.after ? (
-            <pre className="neo-inset mt-1 whitespace-pre-wrap break-words rounded-md bg-card p-2 text-[11px] leading-snug">
+            <pre className="neu-inset mt-1 whitespace-pre-wrap break-words rounded-md bg-card p-2 text-[11px] leading-snug">
               {JSON.stringify({ before: e.before, after: e.after }, null, 2)}
             </pre>
           ) : null}
@@ -314,7 +314,7 @@ function MetadataPane({
         <summary className="cursor-pointer text-xs font-medium text-muted-foreground hover:text-foreground">
           Raw JSON
         </summary>
-        <pre className="neo-inset mt-2 overflow-x-auto rounded-md bg-card p-3 text-[11px] leading-snug">
+        <pre className="neu-inset mt-2 overflow-x-auto rounded-md bg-card p-3 text-[11px] leading-snug">
           {JSON.stringify(ent, null, 2)}
         </pre>
       </details>

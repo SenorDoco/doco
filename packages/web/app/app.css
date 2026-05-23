@@ -1,54 +1,54 @@
 @import url("https://fonts.googleapis.com/css2?family=Ubuntu+Mono:ital,wght@0,400;0,700;1,400;1,700&family=Space+Mono:wght@400;700&display=swap");
 @import "tailwindcss";
 
-/* Neumorphic theme tokens — soft warm-gray monochromatic surface,
-   dual-shadow elevation, Ubuntu Mono everywhere. The defining trait
-   of neumorphism is that "raised" surfaces are the same color as the
-   background — depth comes from a light highlight on the top-left and
-   a dark shadow on the bottom-right, both in the background's hue
-   family. Borders are kept but tinted near-transparent so existing
-   `border-border` usages fade behind the shadows without churning
-   every component file. */
+/* shadcn-style theme tokens — light neumorphic theme + Ubuntu Mono everywhere */
 @theme {
   --font-sans: "Ubuntu Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   --font-mono: "Ubuntu Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
-  --color-background: oklch(0.935 0.006 270);
-  --color-foreground: oklch(0.22 0.018 268);
-  --color-muted: oklch(0.91 0.006 270);
-  --color-muted-foreground: oklch(0.48 0.014 268);
-  --color-card: oklch(0.935 0.006 270);
-  --color-card-foreground: oklch(0.22 0.018 268);
-  --color-border: oklch(0.86 0.008 270 / 0%);
-  --color-border-soft: oklch(0.86 0.008 270 / 30%);
-  --color-input: oklch(0.92 0.006 270);
-  --color-primary: oklch(0.55 0.17 324);
-  --color-primary-foreground: oklch(0.985 0.004 270);
-  --color-accent: oklch(0.55 0.17 324);
-  --color-accent-foreground: oklch(0.985 0.004 270);
-  --color-destructive: oklch(0.57 0.22 25);
-  --color-destructive-foreground: oklch(0.985 0.004 270);
-  --color-success: oklch(0.52 0.14 165);
-  --color-success-foreground: oklch(0.985 0.004 270);
-  --color-warning: oklch(0.64 0.15 75);
-  --color-warning-foreground: oklch(0.22 0.018 268);
+  --color-background: oklch(0.94 0.012 245);
+  --color-foreground: oklch(0.2 0.015 248);
+  --color-muted: oklch(0.9 0.011 248);
+  --color-muted-foreground: oklch(0.47 0.013 248);
+  --color-card: oklch(0.94 0.012 245);
+  --color-card-foreground: oklch(0.2 0.015 248);
+  --color-border: oklch(0.83 0.014 248);
+  --color-input: oklch(0.91 0.013 248);
+  --color-primary: oklch(0.54 0.17 324);
+  --color-primary-foreground: oklch(0.99 0.003 245);
+  --color-accent: oklch(0.55 0.14 195);
+  --color-accent-foreground: oklch(0.99 0.003 245);
+  --color-destructive: oklch(0.55 0.22 25);
+  --color-destructive-foreground: oklch(0.99 0.003 245);
+  --color-success: oklch(0.5 0.14 165);
+  --color-success-foreground: oklch(0.99 0.003 245);
+  --color-warning: oklch(0.62 0.15 75);
+  --color-warning-foreground: oklch(0.2 0.015 248);
+  --color-ring: oklch(0.62 0.12 324);
 
-  --radius-sm: 8px;
-  --radius: 14px;
-  --radius-lg: 22px;
-
-  /* Dual-shadow elevation system. Light comes from top-left, dark
-     sinks into bottom-right. Distances scale with elevation. */
-  --neo-light: rgba(255, 255, 255, 0.78);
-  --neo-dark: rgba(150, 160, 185, 0.45);
-  --shadow-neo-sm: -2px -2px 5px var(--neo-light), 2px 2px 5px var(--neo-dark);
-  --shadow-neo: -6px -6px 14px var(--neo-light), 6px 6px 14px var(--neo-dark);
-  --shadow-neo-lg: -10px -10px 24px var(--neo-light), 10px 10px 24px var(--neo-dark);
-  --shadow-neo-inset: inset -3px -3px 6px var(--neo-light), inset 3px 3px 6px var(--neo-dark);
-  --shadow-neo-pressed: inset -2px -2px 4px var(--neo-light), inset 2px 2px 4px var(--neo-dark);
+  --radius-sm: 4px;
+  --radius: 6px;
+  --radius-lg: 8px;
 }
 
-html, body {
+:root {
+  --neu-highlight: color-mix(in oklch, white 88%, var(--color-background));
+  --neu-shadow: color-mix(in oklch, var(--color-foreground) 19%, transparent);
+  --neu-shadow-soft: color-mix(in oklch, var(--color-foreground) 11%, transparent);
+  --neu-border: color-mix(in oklch, var(--neu-highlight) 72%, var(--color-border));
+  --neu-raised: 9px 9px 20px var(--neu-shadow-soft), -9px -9px 20px var(--neu-highlight);
+  --neu-raised-strong: 14px 14px 30px color-mix(in oklch, var(--color-foreground) 16%, transparent),
+    -14px -14px 30px var(--neu-highlight);
+  --neu-inset: inset 4px 4px 9px color-mix(in oklch, var(--color-foreground) 13%, transparent),
+    inset -4px -4px 9px color-mix(in oklch, white 86%, var(--color-background));
+  --neu-pressed: inset 2px 2px 5px color-mix(in oklch, var(--color-foreground) 18%, transparent),
+    inset -2px -2px 5px var(--neu-highlight);
+  --neu-focus: 0 0 0 2px color-mix(in oklch, var(--color-primary) 18%, transparent),
+    var(--neu-raised);
+}
+
+html,
+body {
   background-color: var(--color-background);
   color: var(--color-foreground);
   font-family: var(--font-sans);
@@ -57,183 +57,209 @@ html, body {
   accent-color: var(--color-primary);
 }
 
-/* Neumorphic elevation utilities. Use .neo-raised on cards/buttons,
-   .neo-inset on inputs/wells, .neo-pressed on :active or selected
-   states. `transition` keeps the depth swap from feeling jarring. */
-.neo-raised {
-  box-shadow: var(--shadow-neo);
-  transition: box-shadow 160ms ease, transform 160ms ease;
-}
-.neo-raised-sm {
-  box-shadow: var(--shadow-neo-sm);
-  transition: box-shadow 160ms ease, transform 160ms ease;
-}
-.neo-raised-lg {
-  box-shadow: var(--shadow-neo-lg);
-  transition: box-shadow 160ms ease, transform 160ms ease;
-}
-.neo-inset {
-  box-shadow: var(--shadow-neo-inset);
-}
-.neo-pressed {
-  box-shadow: var(--shadow-neo-pressed);
-}
-.neo-raised:hover {
-  box-shadow: var(--shadow-neo-lg);
-}
-.neo-raised:active {
-  box-shadow: var(--shadow-neo-pressed);
-  transform: translateY(1px);
-}
-.neo-raised-sm:hover {
-  box-shadow: var(--shadow-neo);
-}
-.neo-raised-sm:active {
-  box-shadow: var(--shadow-neo-pressed);
-}
-
-/* Soft accent-tinted raised state for primary CTAs — keeps the
-   neo light/dark shadow pair but warms the highlight with the
-   accent hue so the button reads as "this is the primary action". */
-.neo-raised-primary {
-  background-color: var(--color-primary);
-  color: var(--color-primary-foreground);
-  box-shadow: -4px -4px 10px rgba(255, 255, 255, 0.35), 4px 4px 12px rgba(96, 30, 80, 0.35);
-  transition: box-shadow 160ms ease, transform 160ms ease;
-}
-.neo-raised-primary:hover {
-  box-shadow: -5px -5px 14px rgba(255, 255, 255, 0.4), 5px 5px 16px rgba(96, 30, 80, 0.45);
-}
-.neo-raised-primary:active {
-  box-shadow: inset -2px -2px 5px rgba(255, 255, 255, 0.25),
-    inset 2px 2px 5px rgba(60, 18, 50, 0.45);
-  transform: translateY(1px);
-}
-
-/* Non-button surface treatment — for content cards, empty states,
-   read-only panels, badges. Etched outline: a 1px inner highlight on
-   top, a thin dark inner shade at the bottom, and a 1px outer ring.
-   The surface reads as "an outlined zone on the page" with zero depth
-   claim, so it can never be mistaken for a pressable button. Reserve
-   `.neo-raised*` strictly for clickable affordances. */
-.neo-etched {
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.85),
-    inset 0 -1px 0 rgba(150, 160, 185, 0.18),
-    0 0 0 1px rgba(150, 160, 185, 0.18);
-}
-
-/* Default neumorphic styling for any text-entry element. Opt out by
-   adding `data-flat` to the element, e.g. on the in-graph search box
-   when the surrounding context already provides its own well. */
-input:not([type]):not([data-flat]),
-input[type="text"]:not([data-flat]),
-input[type="search"]:not([data-flat]),
-input[type="email"]:not([data-flat]),
-input[type="url"]:not([data-flat]),
-input[type="password"]:not([data-flat]),
-input[type="number"]:not([data-flat]),
-textarea:not([data-flat]),
-select:not([data-flat]) {
-  background-color: var(--color-card);
-  box-shadow: var(--shadow-neo-inset);
-  border-radius: var(--radius-sm);
-  border: none;
-  outline: none;
-  transition: box-shadow 160ms ease;
-}
-input:not([data-flat]):focus,
-textarea:not([data-flat]):focus,
-select:not([data-flat]):focus {
-  box-shadow: var(--shadow-neo-inset),
-    0 0 0 2px color-mix(in oklch, var(--color-primary) 35%, transparent);
-}
-
-/* React Flow controls — the +/-/fitView buttons sit on top of the graph
-   canvas. Convert them to small neumorphic raised buttons. */
-.react-flow__controls {
-  background: transparent !important;
-  box-shadow: none !important;
-  display: flex !important;
-  flex-direction: column;
-  gap: 6px;
-}
-.react-flow__controls-button {
-  background-color: var(--color-card) !important;
-  border: none !important;
-  box-shadow: var(--shadow-neo-sm) !important;
-  border-radius: var(--radius-sm) !important;
-  width: 26px !important;
-  height: 26px !important;
-  color: var(--color-foreground) !important;
-  transition: box-shadow 160ms ease, transform 160ms ease;
-}
-.react-flow__controls-button:hover {
-  box-shadow: var(--shadow-neo) !important;
-}
-.react-flow__controls-button:active {
-  box-shadow: var(--shadow-neo-pressed) !important;
-  transform: translateY(1px);
-}
-.react-flow__controls-button svg {
-  fill: var(--color-foreground);
-  max-width: 14px;
-  max-height: 14px;
-}
-.react-flow__minimap {
-  box-shadow: var(--shadow-neo) !important;
-  border: none !important;
-  border-radius: var(--radius) !important;
-  background-color: var(--color-card) !important;
-}
-.react-flow__attribution {
-  background: transparent !important;
-}
-
-/* Divider replacement: components frequently set `border-b border-border`
-   for row separators (tables, lists, drawers). With `--color-border` at
-   0% alpha those become invisible. For the cases that genuinely need a
-   visible divider, components can use `data-soft-divider` instead. */
-[data-soft-divider] {
-  border-color: var(--color-border-soft) !important;
-}
-
-/* Graph nodes need a subtle elevation without overpowering the lifecycle
-   stripe on the left edge. The existing rendering set Tailwind's
-   `shadow-sm` — upgrade to a tighter neo shadow that reads as soft
-   plastic at small scale. The lifecycle stripe (borderLeft inline style)
-   stays on top. */
-.overview-graph-node {
-  box-shadow: -1px -1px 3px rgba(255, 255, 255, 0.6),
-    1.5px 1.5px 4px rgba(150, 160, 185, 0.35) !important;
-}
-
-/* Selection ring on links/buttons: use a single neo shadow lift instead
-   of the default browser focus outline, except where explicitly opted
-   out via data-flat. Keyboard nav still gets the input-focus ring above. */
-a:focus-visible,
-button:focus-visible {
-  outline: 2px solid color-mix(in oklch, var(--color-primary) 50%, transparent);
-  outline-offset: 2px;
-  border-radius: var(--radius-sm);
-}
-
-/* `divide-y divide-border` row separators have invisible color (since
-   --color-border is transparent). Add a soft alternative selector for
-   lists that genuinely need a visible row divider: add `data-divided`
-   to the parent. */
-[data-divided] > *:not(:last-child) {
-  border-bottom: 1px solid var(--color-border-soft);
+body {
+  background: linear-gradient(
+    145deg,
+    color-mix(in oklch, white 20%, var(--color-background)),
+    var(--color-background) 42%,
+    color-mix(in oklch, var(--color-accent) 7%, var(--color-background))
+  );
 }
 
 ::selection {
   background-color: color-mix(in oklch, var(--color-primary) 25%, transparent);
 }
 
-.body-md p { margin: 0.5em 0; }
+button,
+a,
+input,
+textarea,
+select {
+  transition:
+    background-color 150ms ease,
+    border-color 150ms ease,
+    box-shadow 150ms ease,
+    color 150ms ease,
+    opacity 150ms ease,
+    transform 150ms ease;
+}
+
+input:not([type="checkbox"]):not([type="radio"]),
+textarea,
+select {
+  box-shadow: var(--neu-inset);
+}
+
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible,
+button:focus-visible,
+a:focus-visible {
+  outline: none;
+  box-shadow: var(--neu-focus);
+}
+
+a[class*="bg-primary"],
+button[class*="bg-primary"],
+a[class*="rounded-md"][class*="border-border"],
+button[class*="rounded-md"][class*="border-border"],
+a[class*="rounded-lg"][class*="border-border"],
+button[class*="rounded-lg"][class*="border-border"] {
+  box-shadow: 5px 5px 12px var(--neu-shadow-soft), -5px -5px 12px var(--neu-highlight);
+}
+
+a[class*="bg-primary"]:hover,
+button[class*="bg-primary"]:hover,
+a[class*="rounded-md"][class*="border-border"]:hover,
+button[class*="rounded-md"][class*="border-border"]:hover,
+a[class*="rounded-lg"][class*="border-border"]:hover,
+button[class*="rounded-lg"][class*="border-border"]:hover {
+  box-shadow: 7px 7px 16px var(--neu-shadow-soft), -7px -7px 16px var(--neu-highlight);
+  transform: translateY(-1px);
+}
+
+a[class*="bg-primary"]:active,
+button[class*="bg-primary"]:active,
+a[class*="rounded-md"][class*="border-border"]:active,
+button[class*="rounded-md"][class*="border-border"]:active,
+a[class*="rounded-lg"][class*="border-border"]:active,
+button[class*="rounded-lg"][class*="border-border"]:active {
+  box-shadow: var(--neu-pressed);
+  transform: translateY(0);
+}
+
+@layer utilities {
+  .neu-surface {
+    border-color: var(--neu-border);
+    box-shadow: var(--neu-raised);
+  }
+
+  .neu-surface-strong {
+    border-color: var(--neu-border);
+    box-shadow: var(--neu-raised-strong);
+  }
+
+  .neu-surface-interactive {
+    border-color: var(--neu-border);
+    box-shadow: var(--neu-raised);
+  }
+
+  .neu-surface-interactive:hover {
+    border-color: color-mix(in oklch, var(--color-primary) 32%, var(--neu-border));
+    box-shadow: var(--neu-raised-strong);
+    transform: translateY(-1px);
+  }
+
+  .neu-inset {
+    border-color: color-mix(in oklch, var(--color-border) 80%, transparent);
+    box-shadow: var(--neu-inset);
+  }
+
+  .neu-pressed {
+    box-shadow: var(--neu-pressed);
+  }
+
+  .neu-button {
+    border-color: var(--neu-border);
+    box-shadow: 5px 5px 12px var(--neu-shadow-soft), -5px -5px 12px var(--neu-highlight);
+  }
+
+  .neu-button:hover {
+    box-shadow: 7px 7px 16px var(--neu-shadow-soft), -7px -7px 16px var(--neu-highlight);
+    transform: translateY(-1px);
+  }
+
+  .neu-button:active {
+    box-shadow: var(--neu-pressed);
+    transform: translateY(0);
+  }
+
+  .neu-header {
+    background-color: color-mix(in oklch, var(--color-card) 92%, white);
+    border-color: color-mix(in oklch, var(--color-border) 55%, transparent);
+    box-shadow: 0 10px 24px color-mix(in oklch, var(--color-foreground) 8%, transparent);
+  }
+
+  .neu-panel {
+    background-color: color-mix(in oklch, var(--color-card) 96%, white);
+    border-color: color-mix(in oklch, var(--color-border) 65%, transparent);
+    box-shadow: 10px 0 24px color-mix(in oklch, var(--color-foreground) 8%, transparent);
+  }
+
+  .neu-bubble {
+    box-shadow: 4px 4px 10px var(--neu-shadow-soft), -4px -4px 10px var(--neu-highlight);
+  }
+
+  .neu-shadow-sm {
+    box-shadow: 4px 4px 10px var(--neu-shadow-soft), -4px -4px 10px var(--neu-highlight);
+  }
+}
+
+@keyframes doco-mark-working-breathe {
+  0%,
+  100% {
+    filter: drop-shadow(0 0 0 color-mix(in oklch, var(--color-primary) 0%, transparent));
+    transform: translateY(0) scale(1);
+  }
+  50% {
+    filter: drop-shadow(0 0 9px color-mix(in oklch, var(--color-primary) 56%, transparent));
+    transform: translateY(-2px) scale(1.025);
+  }
+}
+
+@keyframes doco-mark-working-spark {
+  0%,
+  100% {
+    opacity: 0.58;
+    transform: scale(0.76) rotate(0deg);
+  }
+  45% {
+    opacity: 1;
+    transform: scale(1.2) rotate(18deg);
+  }
+}
+
+.doco-mark-glyph-motion,
+.doco-mark-spark {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.doco-mark-active .doco-mark-glyph-motion {
+  animation: doco-mark-working-breathe 1.45s ease-in-out infinite;
+}
+
+.doco-mark-active .doco-mark-spark {
+  animation: doco-mark-working-spark 1.1s ease-in-out infinite;
+}
+
+.doco-mark-active .doco-mark-spark-md {
+  animation-delay: 160ms;
+}
+
+.doco-mark-active .doco-mark-spark-sm {
+  animation-delay: 320ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .doco-mark-active .doco-mark-glyph-motion,
+  .doco-mark-active .doco-mark-spark {
+    animation: none;
+  }
+
+  .doco-mark-active .doco-mark-glyph-motion {
+    filter: drop-shadow(0 0 7px color-mix(in oklch, var(--color-primary) 42%, transparent));
+  }
+}
+
+.body-md p {
+  margin: 0.5em 0;
+}
 .body-md code {
   background-color: var(--color-input);
   padding: 1px 6px;
   border-radius: var(--radius-sm);
+  box-shadow: var(--neu-inset);
   font-family: var(--font-mono);
   font-size: 0.9em;
 }
@@ -242,12 +268,15 @@ button:focus-visible {
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
   padding: 12px;
+  box-shadow: var(--neu-inset);
   overflow-x: auto;
   font-family: var(--font-mono);
   font-size: 14px;
   line-height: 1.45;
 }
-.body-md h1, .body-md h2, .body-md h3 {
+.body-md h1,
+.body-md h2,
+.body-md h3 {
   margin: 1em 0 0.5em;
   font-weight: 700;
 }
@@ -261,11 +290,11 @@ button:focus-visible {
 @keyframes doco-new-node-glow {
   0% {
     filter: drop-shadow(0 0 14px rgba(255, 196, 64, 0.95))
-            drop-shadow(0 0 4px rgba(255, 196, 64, 0.85));
+      drop-shadow(0 0 4px rgba(255, 196, 64, 0.85));
   }
   85% {
     filter: drop-shadow(0 0 6px rgba(255, 196, 64, 0.25))
-            drop-shadow(0 0 2px rgba(255, 196, 64, 0.2));
+      drop-shadow(0 0 2px rgba(255, 196, 64, 0.2));
   }
   100% {
     filter: drop-shadow(0 0 0 rgba(255, 196, 64, 0));

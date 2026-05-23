@@ -1,9 +1,9 @@
 // Per-Doco aggregate stats (Neurons, Active neurons, Synapses, Last updated)
 // shown on the dashboard and owner-profile docos tables.
 //
-// `neurons` counts only domain entities: decisions, intents, rules,
-// actions, evals, ideas, reference_entities, logs, states. Primitives
-// (constitution metadata) are not neurons and are deliberately
+// `neurons` counts domain neurons: decisions, intents, rules,
+// actions, evals, ideas, reference_entities, logs, states, and
+// role-principals authored for a Doco. Primitives are not neurons and are deliberately
 // excluded — they are surfaced via /<handle>/api/primitives.json.
 // `synapses` reads the materialized `synapses` table.
 // `lastUpdatedAt` is the max `at` from `audit_events` — that captures
@@ -19,18 +19,24 @@ export interface DocoStats {
   lastUpdatedAt: string | null;
 }
 
-export const ENTITY_TABLES = [
-  "decisions",
-  "intents",
-  "rules",
-  "actions",
-  "evals",
-  "ideas",
-  "reference_entities",
-  "logs",
-  // v7 (decision_01KRRR5BQ16ASY8HQEE0V499YG): State neuron type.
-  "states",
-] as const;
+const STATS_ENTITY_TABLE_SPECS = [
+  { table: "decisions", docoIdSql: "doco_id", docoWhereSql: "doco_id = ANY($1)" },
+  { table: "intents", docoIdSql: "doco_id", docoWhereSql: "doco_id = ANY($1)" },
+  { table: "rules", docoIdSql: "doco_id", docoWhereSql: "doco_id = ANY($1)" },
+  { table: "actions", docoIdSql: "doco_id", docoWhereSql: "doco_id = ANY($1)" },
+  { table: "evals", docoIdSql: "doco_id", docoWhereSql: "doco_id = ANY($1)" },
+  { table: "ideas", docoIdSql: "doco_id", docoWhereSql: "doco_id = ANY($1)" },
+  { table: "reference_entities", docoIdSql: "doco_id", docoWhereSql: "doco_id = ANY($1)" },
+  { table: "logs", docoIdSql: "doco_id", docoWhereSql: "doco_id = ANY($1)" },
+  { table: "states", docoIdSql: "doco_id", docoWhereSql: "doco_id = ANY($1)" },
+  {
+    table: "principals",
+    docoIdSql: "data->>'doco_id'",
+    docoWhereSql: "data->>'doco_id' = ANY($1)",
+  },
+];
+
+export const ENTITY_TABLES = STATS_ENTITY_TABLE_SPECS.map((spec) => spec.table);
 
 const EMPTY: DocoStats = { neurons: 0, activeNeurons: 0, synapses: 0, lastUpdatedAt: null };
 
@@ -40,8 +46,9 @@ export async function listDocoStats(docoIds: readonly string[]): Promise<Map<str
   const ids = [...docoIds];
 
   return withClient(async (c) => {
-    const neuronsSql = ENTITY_TABLES.map(
-      (t) => `SELECT doco_id, lifecycle FROM ${t} WHERE doco_id = ANY($1)`,
+    const neuronsSql = STATS_ENTITY_TABLE_SPECS.map(
+      (spec) =>
+        `SELECT ${spec.docoIdSql} AS doco_id, lifecycle FROM ${spec.table} WHERE ${spec.docoWhereSql}`,
     ).join(" UNION ALL ");
     const [neuronsRows, synapsesRows, updatedRows] = await Promise.all([
       c.query<{ doco_id: string; n: string; active_n: string }>(

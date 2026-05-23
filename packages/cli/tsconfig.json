@@ -4,13 +4,8 @@
     "rootDir": "./src",
     "outDir": "./dist"
   },
-  "include": [
-    "src/**/*"
-  ],
-  "exclude": [
-    "src/**/__tests__/**",
-    "src/**/*.test.ts"
-  ],
+  "include": ["src/**/*"],
+  "exclude": ["src/**/__tests__/**", "src/**/*.test.ts"],
   "references": [
     {
       "path": "../shared"

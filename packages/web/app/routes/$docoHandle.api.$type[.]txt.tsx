@@ -6,7 +6,7 @@ import { normalizeDocoParams } from "~/lib/doco-access.server";
  *
  *   GET /<doco-handle>/api/<type>.txt
  *
- * `type` is one of: decisions, intents, primitives, settings.
+ * `type` is one of the capture types, plus primitives and settings.
  * Returns plain-prose spec for the corresponding .json endpoint.
  *
  * Note: primitives (`guidance_primitive`, `neuron_authoring_primitive`)
@@ -95,6 +95,41 @@ UPDATE AN EXISTING DECISION
 RELATED
   GET ${baseUrl}/${handle}/status.json   freshness + counts (footer)
   GET ${baseUrl}/api/v1/agent-bootstrap.json    canonical instructions
+`,
+
+  ideas: (baseUrl, handle) => `# Doco — Capture an Idea (single call)
+
+Ideas are lightweight possibilities. They default to drafted and can
+later be promoted by linking \`promoted_to\` to the entity they became.
+
+ENDPOINT
+  POST ${baseUrl}/${handle}/api/ideas.json
+  Content-Type: application/json
+
+BODY (JSON)
+  summary             required   one-line idea summary
+  body_md             optional   markdown body with context or tradeoffs
+  promoted_to         optional   entity id once the idea is picked up
+  rejection_reason    optional   why the idea was rejected or parked
+  lifecycle           optional   one of "drafted" | "proposed" | "active" | "retired"; default "drafted"
+  deprecated          optional   boolean warning label; lifecycle is unchanged
+  outcome             optional   "succeeded" | "failed"
+
+SUCCESS RESPONSE (HTTP 201, application/json)
+  {
+    "ok": true,
+    "id": "idea_<ULID>",
+    "path": "<postgres>:ideas/idea_<ULID>",
+    "footer_lines": ["[🔮 Doco] ✍️ Idea added: [<summary>](<url>)"]
+  }
+
+UPDATE AN EXISTING IDEA
+  PATCH ${baseUrl}/${handle}/api/ideas/<id>.json
+  Content-Type: application/json
+
+  Body fields are all optional:
+    summary / body_md / lifecycle / deprecated / outcome
+    proposer_id / promoted_to / rejection_reason
 `,
 
   intents: (baseUrl, handle) => `# Doco — Capture an Intent (single call)
@@ -276,7 +311,7 @@ UPDATE A SPECIFIC PRIMITIVE
   Body shape mirrors the relevant capture draft.
 
 RELATED
-  GET  ${baseUrl}/${handle}/constitution           HTML view of the primitives
+  GET  ${baseUrl}/${handle}/primitives             HTML view of the primitives
   GET  ${baseUrl}/api/v1/agent-bootstrap.json      bootstrap payload includes primitives
 `,
 

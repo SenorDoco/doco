@@ -411,7 +411,7 @@ export interface CaptureError {
   /**
    * When the authoring-primitives evaluator blocks the capture, the
    * id of the primitive whose predicate produced the violation. Lets
-   * the route surface a deep-link to the constitution article.
+   * the route surface a deep-link to the primitive.
    */
   primitive_id?: string;
   /**
@@ -960,6 +960,7 @@ export type NodeTypeName =
   | "action"
   | "log"
   | "eval"
+  | "idea"
   | "state"
   | "reference";
 
@@ -1328,6 +1329,102 @@ export async function captureIntent(
     ok: true,
     id,
     path: syntheticPath("intent", id),
+    footer_lines,
+    duration_ms,
+    ...(pred.warnings.length > 0 ? { warnings: pred.warnings } : {}),
+  };
+}
+
+export interface IdeaDraft {
+  /** Required: one-line idea summary. */
+  summary: string;
+  /** Optional: markdown body with context, tradeoffs, or sketch notes. */
+  body_md?: string;
+  /** Optional: authenticated caller id; routes fill this automatically. */
+  created_by_id?: string;
+  /** Optional: entity this idea became once promoted. */
+  promoted_to?: string | null;
+  /** Optional: why the idea was rejected or parked. */
+  rejection_reason?: string | null;
+  lifecycle?: string;
+  deprecated?: boolean;
+  outcome?: "succeeded" | "failed";
+}
+
+export async function captureIdea(
+  docoDir: string,
+  docoId: string,
+  ownerSlug: string,
+  docoSlug: string,
+  draft: IdeaDraft,
+  docoHost?: string,
+): Promise<CaptureResult | CaptureError> {
+  const startedAt = performance.now();
+  if (!draft.summary?.trim()) return { error: "summary is required." };
+  if (!draft.created_by_id) {
+    return { error: "Authentication is required to capture an idea." };
+  }
+
+  const id = `idea_${generateUlid()}`;
+  const summary = draft.summary.trim();
+  const now = new Date().toISOString();
+  const status = lifecycleAttrs(draft, "drafted");
+  if ("error" in status) return status;
+  const fm: Record<string, unknown> = {
+    id,
+    doco_id: docoId,
+    neuron_type: "idea",
+    summary,
+    proposer_id: draft.created_by_id,
+    ...(draft.promoted_to ? { promoted_to: draft.promoted_to } : {}),
+    ...(draft.rejection_reason ? { rejection_reason: draft.rejection_reason } : {}),
+    created_at: now,
+    created_by: draft.created_by_id,
+    ...status,
+  };
+
+  const pred = await enforceAuthoringPrimitives(docoId, fm);
+  if (pred.blocking) {
+    return {
+      error: `Authoring primitive violation: ${pred.blocking.reason}`,
+      primitive_id: pred.blocking.primitive_id,
+      ...(pred.warnings.length > 0 ? { warnings: pred.warnings } : {}),
+    };
+  }
+
+  await persistEntity({
+    entityType: "idea",
+    id,
+    docoId,
+    fm,
+    body: draft.body_md?.trim() ?? "",
+  });
+  emitAuditForCreate({
+    docoDir,
+    docoId,
+    actorId: draft.created_by_id,
+    entity_type: "idea",
+    entity_id: id,
+    summary,
+  });
+  await reindexAndScheduleAttach(docoDir, docoId, id);
+  const duration_ms = Math.round(performance.now() - startedAt);
+  const footer_lines = await renderOperationLines({
+    docoId,
+    ownerSlug,
+    docoSlug,
+    entityType: "idea",
+    id,
+    summary,
+    docoHost,
+    ops: [{ kind: "added", summary }],
+    duration_ms,
+  });
+  footer_lines.push(...renderAuthoringWarnings(pred.warnings));
+  return {
+    ok: true,
+    id,
+    path: syntheticPath("idea", id),
     footer_lines,
     duration_ms,
     ...(pred.warnings.length > 0 ? { warnings: pred.warnings } : {}),
@@ -1925,7 +2022,7 @@ export async function captureRule(
   };
 }
 
-// ─── Constitution Primitives ──────────────────────────────────────────────
+// ─── Primitives ───────────────────────────────────────────────────────────
 
 export interface GuidancePrimitiveDraft {
   /** Required: one-line summary of the guidance. */
@@ -2263,7 +2360,7 @@ export async function captureNeuronAuthoringPrimitive(
 }
 
 /**
- * Lifecycle transition for a Doco constitution primitive. Writes the new
+ * Lifecycle transition for a Doco primitive. Writes the new
  * lifecycle to the underlying table and emits a `lifecycle.transition`
  * audit event under the Doco scope.
  */
@@ -2341,7 +2438,7 @@ export async function transitionPrimitiveLifecycle(opts: {
   return { ok: true };
 }
 
-/** Fetch a Doco constitution primitive's persisted fields (for the edit page). */
+/** Fetch a Doco primitive's persisted fields (for the edit page). */
 export async function loadPrimitiveForEdit(opts: {
   scope: "doco";
   scopeId: string;

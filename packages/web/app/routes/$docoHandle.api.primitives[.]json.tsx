@@ -1,8 +1,8 @@
 // GET/POST /<doco-handle>/api/primitives.json — dedicated primitives endpoint.
 //
 // Primitives (`guidance_primitive`, `neuron_authoring_primitive`) are not
-// neurons. They are constitution metadata and are *only* reachable from
-// this endpoint, the agent bootstrap response, or the HTML constitution
+// neurons. They are Doco-level metadata and are *only* reachable from
+// this endpoint, the agent bootstrap response, or the HTML primitives
 // page. The generic /<handle>/api/<type>.json dispatcher refuses
 // primitive types.
 //
@@ -114,66 +114,40 @@ export async function action({
   }
   const bodyText = await request.text();
 
-  return withIdempotency(
-    request,
-    "POST /api/primitives",
-    me.id ?? null,
-    bodyText,
-    async () => {
-      let parsed: { primitive_kind?: unknown } & Record<string, unknown>;
-      try {
-        parsed = JSON.parse(bodyText);
-      } catch (e) {
-        return Response.json(
-          { error: `Invalid JSON body: ${(e as Error).message}` },
-          { status: 400 },
-        );
-      }
-      const primitiveKind = parsed.primitive_kind;
-      if (primitiveKind !== "guidance" && primitiveKind !== "neuron_authoring") {
-        return Response.json(
-          {
-            error:
-              'Body must include "primitive_kind": "guidance" | "neuron_authoring" to disambiguate.',
-          },
-          { status: 400 },
-        );
-      }
-
-      const docoRole = await getDocoLevelRole(
-        { ownerId: meta.ownerId, docoId: meta.docoId },
-        me.id,
+  return withIdempotency(request, "POST /api/primitives", me.id ?? null, bodyText, async () => {
+    let parsed: { primitive_kind?: unknown } & Record<string, unknown>;
+    try {
+      parsed = JSON.parse(bodyText);
+    } catch (e) {
+      return Response.json(
+        { error: `Invalid JSON body: ${(e as Error).message}` },
+        { status: 400 },
       );
-      if (!docoRole || !roleAtLeast(docoRole, "author")) {
-        return Response.json(
-          { error: "Forbidden: author role required to write." },
-          { status: 403 },
-        );
-      }
+    }
+    const primitiveKind = parsed.primitive_kind;
+    if (primitiveKind !== "guidance" && primitiveKind !== "neuron_authoring") {
+      return Response.json(
+        {
+          error:
+            'Body must include "primitive_kind": "guidance" | "neuron_authoring" to disambiguate.',
+        },
+        { status: 400 },
+      );
+    }
 
-      const docoHost = new URL(request.url).origin;
-      const { primitive_kind: _discarded, ...rest } = parsed;
+    const docoRole = await getDocoLevelRole({ ownerId: meta.ownerId, docoId: meta.docoId }, me.id);
+    if (!docoRole || !roleAtLeast(docoRole, "author")) {
+      return Response.json({ error: "Forbidden: author role required to write." }, { status: 403 });
+    }
 
-      if (primitiveKind === "guidance") {
-        const draft = rest as unknown as GuidancePrimitiveDraft;
-        if (!draft.authored_by_username) draft.authored_by_username = me.username;
-        if (!draft.created_by_id && me.id) draft.created_by_id = me.id;
-        const result = await captureGuidancePrimitive(
-          dir,
-          meta.docoId,
-          ownerSlug,
-          docoSlug,
-          draft,
-          docoHost,
-        );
-        if ("error" in result) return Response.json(result, { status: 400 });
-        return Response.json(result, { status: 201 });
-      }
+    const docoHost = new URL(request.url).origin;
+    const { primitive_kind: _discarded, ...rest } = parsed;
 
-      const draft = rest as unknown as NeuronAuthoringPrimitiveDraft;
+    if (primitiveKind === "guidance") {
+      const draft = rest as unknown as GuidancePrimitiveDraft;
       if (!draft.authored_by_username) draft.authored_by_username = me.username;
       if (!draft.created_by_id && me.id) draft.created_by_id = me.id;
-      const result = await captureNeuronAuthoringPrimitive(
+      const result = await captureGuidancePrimitive(
         dir,
         meta.docoId,
         ownerSlug,
@@ -183,6 +157,20 @@ export async function action({
       );
       if ("error" in result) return Response.json(result, { status: 400 });
       return Response.json(result, { status: 201 });
-    },
-  );
+    }
+
+    const draft = rest as unknown as NeuronAuthoringPrimitiveDraft;
+    if (!draft.authored_by_username) draft.authored_by_username = me.username;
+    if (!draft.created_by_id && me.id) draft.created_by_id = me.id;
+    const result = await captureNeuronAuthoringPrimitive(
+      dir,
+      meta.docoId,
+      ownerSlug,
+      docoSlug,
+      draft,
+      docoHost,
+    );
+    if ("error" in result) return Response.json(result, { status: 400 });
+    return Response.json(result, { status: 201 });
+  });
 }

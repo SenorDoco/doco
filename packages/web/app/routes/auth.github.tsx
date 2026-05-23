@@ -54,12 +54,7 @@ export default function AuthGitHub({
         </div>
       </header>
       <SingleColumnPageMain className="py-10 space-y-4">
-        <Breadcrumb
-          items={[
-            { label: "Home", to: "/" },
-            { label: "GitHub OAuth" },
-          ]}
-        />
+        <Breadcrumb items={[{ label: "Home", to: "/" }, { label: "GitHub OAuth" }]} />
         <Card>
           <CardHeader>
             <CardTitle>GitHub OAuth not configured</CardTitle>

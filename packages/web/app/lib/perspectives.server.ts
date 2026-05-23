@@ -96,7 +96,7 @@ export async function listPerspectivesForDoco(docoId: string): Promise<AttachedP
 export async function ensureDefaultsAttached(docoId: string): Promise<void> {
   await withClient(async (c) => {
     const { rows } = await c.query<{ n: string }>(
-      `SELECT COUNT(*)::text AS n FROM doco_perspectives WHERE doco_id = $1`,
+      "SELECT COUNT(*)::text AS n FROM doco_perspectives WHERE doco_id = $1",
       [docoId],
     );
     if (Number(rows[0]?.n ?? 0) > 0) return;
@@ -189,10 +189,10 @@ export async function detachPerspectiveFromDoco(args: {
     );
     if (rows.length === 0) return { ok: false, error: "not_attached" as const };
     if (rows[0].is_default) return { ok: false, error: "is_default" as const };
-    await c.query(
-      `DELETE FROM doco_perspectives WHERE doco_id = $1 AND perspective_id = $2`,
-      [args.docoId, args.perspectiveId],
-    );
+    await c.query("DELETE FROM doco_perspectives WHERE doco_id = $1 AND perspective_id = $2", [
+      args.docoId,
+      args.perspectiveId,
+    ]);
     return { ok: true };
   });
 }

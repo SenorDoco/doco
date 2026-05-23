@@ -201,7 +201,7 @@ export default function DocosIndexPage({
           <div className="flex flex-wrap gap-2">
             <Link
               to="/new-doco"
-              className="neo-raised-primary shrink-0 rounded-md px-3 py-1.5 text-sm font-semibold"
+              className="neu-button bg-primary text-primary-foreground hover:opacity-90 shrink-0 rounded-md px-3 py-1.5 text-sm font-semibold"
             >
               + Doco
             </Link>
@@ -260,7 +260,7 @@ export default function DocosIndexPage({
 
 function DocosFeedLine({ event }: { event: FeedEvent }) {
   const url = entityUrl({
-    docoId: event.handle,
+    docoHandle: event.handle,
     entityType: event.entity_type,
     id: event.entity_id,
   });

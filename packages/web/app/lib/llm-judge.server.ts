@@ -23,7 +23,7 @@ export interface JudgeResult {
   reason?: string;
 }
 
-const SYSTEM_PROMPT = `You are an authoring-primitive judge for a knowledge graph that stores neurons (graph nodes) and primitives (constitution metadata) in a project doco.
+const SYSTEM_PROMPT = `You are an authoring-primitive judge for a knowledge graph that stores neurons (graph nodes) and primitives in a project doco.
 
 You receive two inputs:
 1. A SPEC describing a quality predicate the author wants enforced on neurons of a given type.

@@ -11,11 +11,11 @@
 //
 // Response: `{ ok, count, events: AuditEvent[] }` newest-first.
 
+import { type AuditOp, readAuditEvents } from "~/lib/audit-log.server";
 import { docoPath } from "~/lib/db.server";
 import { canReadDocoForRequest, normalizeDocoParams } from "~/lib/doco-access.server";
 import { readDocoMetadata } from "~/lib/doco-metadata.server";
 import { getCurrentPrincipalAsync } from "~/lib/session.server";
-import { readAuditEvents, type AuditOp } from "~/lib/audit-log.server";
 
 const VALID_OPS: ReadonlySet<string> = new Set([
   "entity.create",
@@ -52,7 +52,10 @@ export async function loader({
   const opParam = url.searchParams.get("op");
   let op: AuditOp[] | undefined;
   if (opParam) {
-    const parts = opParam.split(",").map((s) => s.trim()).filter(Boolean);
+    const parts = opParam
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
     const invalid = parts.filter((p) => !VALID_OPS.has(p));
     if (invalid.length > 0) {
       return Response.json(
@@ -74,6 +77,14 @@ export async function loader({
     limit = Math.min(n, 1000);
   }
 
-  const events = await readAuditEvents(dir, { entity_id, entity_type, by, op, since, until, limit });
+  const events = await readAuditEvents(dir, {
+    entity_id,
+    entity_type,
+    by,
+    op,
+    since,
+    until,
+    limit,
+  });
   return Response.json({ ok: true, count: events.length, events });
 }

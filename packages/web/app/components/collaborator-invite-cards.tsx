@@ -134,7 +134,7 @@ function InviteHumanCard({
               type="submit"
               data-testid="invite-submit"
               disabled={fetcher.state !== "idle" || noTargets}
-              className="neo-raised-primary rounded-md px-4 py-2 text-sm font-semibold disabled:opacity-50"
+              className="neu-button bg-primary text-primary-foreground hover:opacity-90 rounded-md px-4 py-2 text-sm font-semibold disabled:opacity-50"
             >
               {fetcher.state !== "idle" ? "Generating..." : "Generate invite link"}
             </button>
@@ -197,7 +197,7 @@ function AgentPromptBlock({ body }: { body: string }) {
   return (
     <div className="space-y-2">
       <pre
-        className="neo-inset rounded-md bg-card p-3 text-[11px] whitespace-pre-wrap break-words"
+        className="neu-inset rounded-md bg-card p-3 text-[11px] whitespace-pre-wrap break-words"
         data-testid="invite-agent-prompt"
       >
         {body}
@@ -213,7 +213,7 @@ function AgentPromptBlock({ body }: { body: string }) {
             });
           }
         }}
-        className="neo-raised-sm rounded-md px-2 py-1 text-xs"
+        className="neu-button rounded-md px-2 py-1 text-xs"
       >
         {copied ? "Copied!" : "Copy prompt"}
       </button>

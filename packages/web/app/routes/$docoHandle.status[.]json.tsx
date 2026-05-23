@@ -1,4 +1,4 @@
-import { withClient } from "@doco/db";
+import { DOCO_NEURON_TABLE_SPECS, withClient } from "@doco/db";
 import { docoPath } from "~/lib/db.server";
 import { canReadDocoForRequest, normalizeDocoParams } from "~/lib/doco-access.server";
 import { readDocoMetadata } from "~/lib/doco-metadata.server";
@@ -42,16 +42,19 @@ export async function loader({
 /**
  * Per-table accessor for the status counts. `group` tells consumers
  * whether the table holds notes (domain neurons a Doco captures) or
- * primitives (constitution metadata). Keeping the two apart in the
+ * primitives. Keeping the two apart in the
  * response prevents callers from summing primitives into a "neuron
- * total" — an empty Doco with only a template constitution would
+ * total" — an empty Doco with only template primitives would
  * otherwise misread as having captured work.
  */
 type StatusGroup = "note" | "primitive";
 const TYPE_MAP: { entityType: string; table: string; plural: string; group: StatusGroup }[] = [
-  { entityType: "intent", table: "intents", plural: "intents", group: "note" },
-  { entityType: "idea", table: "ideas", plural: "ideas", group: "note" },
-  { entityType: "rule", table: "rules", plural: "rules", group: "note" },
+  ...DOCO_NEURON_TABLE_SPECS.map((spec) => ({
+    entityType: spec.entityType,
+    table: spec.table,
+    plural: spec.entityType === "reference" ? "references" : `${spec.table}`,
+    group: "note" as const,
+  })),
   {
     entityType: "guidance_primitive",
     table: "guidance_primitives",
@@ -64,13 +67,6 @@ const TYPE_MAP: { entityType: string; table: string; plural: string; group: Stat
     plural: "neuron_authoring_primitives",
     group: "primitive",
   },
-  { entityType: "decision", table: "decisions", plural: "decisions", group: "note" },
-  { entityType: "action", table: "actions", plural: "actions", group: "note" },
-  { entityType: "log", table: "logs", plural: "logs", group: "note" },
-  { entityType: "eval", table: "evals", plural: "evals", group: "note" },
-  { entityType: "reference", table: "reference_entities", plural: "references", group: "note" },
-  // v7 (decision_01KRRR5BQ16ASY8HQEE0V499YG): State node type.
-  { entityType: "state", table: "states", plural: "states", group: "note" },
 ];
 
 interface StatusCounts {
@@ -115,7 +111,7 @@ async function readStatusFromPg(
         if (ts && (latest === null || ts > latest)) latest = ts;
       }
       // Principals are host-level (no doco_id) — count them globally.
-      const p = await c.query<{ n: string }>(`SELECT COUNT(*)::text AS n FROM principals`);
+      const p = await c.query<{ n: string }>("SELECT COUNT(*)::text AS n FROM principals");
       counts.principals = Number(p.rows[0]?.n ?? 0);
     });
   } catch {

@@ -39,6 +39,12 @@ interface ExchangeOptions {
   timeoutMs?: number;
 }
 
+interface McpSession {
+  send(message: JsonRpcMessage): void;
+  readNext(timeoutMs?: number): Promise<JsonRpcMessage>;
+  close(): Promise<void>;
+}
+
 // Spawn the MCP server, send a list of messages over stdin, collect
 // `expectedResponses` newline-delimited JSON responses from stdout,
 // then close stdin so the server's event loop drains and exits.
@@ -127,6 +133,107 @@ async function exchange(
   return done;
 }
 
+function startMcpSession(opts: ExchangeOptions = {}): McpSession {
+  const env = { ...process.env } as NodeJS.ProcessEnv;
+  for (const [key, value] of Object.entries(opts.env ?? {})) {
+    if (value === undefined) {
+      delete env[key];
+    } else {
+      env[key] = value;
+    }
+  }
+
+  const child = spawn("node", [SERVER_PATH], {
+    stdio: ["pipe", "pipe", "pipe"],
+    cwd: opts.cwd ?? process.cwd(),
+    env,
+  });
+
+  let stderrText = "";
+  child.stderr.setEncoding("utf8");
+  child.stderr.on("data", (chunk: string) => {
+    stderrText += chunk;
+  });
+
+  const responses: JsonRpcMessage[] = [];
+  const waiters: Array<{
+    resolve: (message: JsonRpcMessage) => void;
+    reject: (error: Error) => void;
+    timer: ReturnType<typeof setTimeout>;
+  }> = [];
+  let buffer = "";
+  let exited = false;
+
+  child.stdout.setEncoding("utf8");
+  child.stdout.on("data", (chunk: string) => {
+    buffer += chunk;
+    let nl = buffer.indexOf("\n");
+    while (nl !== -1) {
+      const line = buffer.slice(0, nl).trim();
+      buffer = buffer.slice(nl + 1);
+      if (line) {
+        let parsed: JsonRpcMessage;
+        try {
+          parsed = JSON.parse(line) as JsonRpcMessage;
+        } catch (error) {
+          const waiter = waiters.shift();
+          if (waiter) {
+            clearTimeout(waiter.timer);
+            waiter.reject(new Error(`Bad JSON from server: ${line} (${(error as Error).message})`));
+          }
+          return;
+        }
+        const waiter = waiters.shift();
+        if (waiter) {
+          clearTimeout(waiter.timer);
+          waiter.resolve(parsed);
+        } else {
+          responses.push(parsed);
+        }
+      }
+      nl = buffer.indexOf("\n");
+    }
+  });
+
+  child.on("exit", () => {
+    exited = true;
+    while (waiters.length > 0) {
+      const waiter = waiters.shift();
+      if (!waiter) continue;
+      clearTimeout(waiter.timer);
+      waiter.reject(new Error(`MCP server exited before response. stderr=${stderrText}`));
+    }
+  });
+
+  return {
+    send(message: JsonRpcMessage) {
+      child.stdin.write(`${JSON.stringify(message)}\n`);
+    },
+    readNext(timeoutMs = opts.timeoutMs ?? 8000) {
+      const ready = responses.shift();
+      if (ready) return Promise.resolve(ready);
+      return new Promise<JsonRpcMessage>((resolve, reject) => {
+        const timer = setTimeout(() => {
+          try {
+            child.kill("SIGKILL");
+          } catch {
+            // Best effort.
+          }
+          reject(new Error(`MCP server timed out. stderr=${stderrText}`));
+        }, timeoutMs);
+        waiters.push({ resolve, reject, timer });
+      });
+    },
+    async close() {
+      if (exited) return;
+      if (!child.killed) child.stdin.end();
+      await new Promise<void>((resolve) => {
+        child.on("exit", () => resolve());
+      });
+    },
+  };
+}
+
 const INIT_MESSAGE: JsonRpcMessage = {
   jsonrpc: "2.0",
   id: 1,
@@ -178,6 +285,9 @@ describe("doco-mcp-server", () => {
     expect(result.instructions).toContain("doco_search");
     expect(result.instructions).toContain("doco_authenticate");
     expect(result.instructions).toContain("doco_complete_authentication");
+    expect(result.instructions).toContain("same local repository");
+    expect(result.instructions).toContain("retry doco_search before");
+    expect(result.instructions).toContain("asking the user to approve again");
   });
 
   it("advertises doco_search, doco_authenticate, and doco_complete_authentication via tools/list", async () => {
@@ -206,8 +316,10 @@ describe("doco-mcp-server", () => {
     expect(search?.inputSchema.required).toContain("query");
     const authenticate = tools.find((t) => t.name === "doco_authenticate");
     expect(authenticate?.description).toMatch(/device-flow/);
+    expect(authenticate?.description).toMatch(/shared/);
     const complete = tools.find((t) => t.name === "doco_complete_authentication");
     expect(complete?.description).toMatch(/polls the token endpoint/);
+    expect(complete?.description).toMatch(/any agent in this local/);
   });
 
   it("returns an MCP isError result when doco_search is called with an empty query", async () => {
@@ -437,6 +549,150 @@ describe("doco-mcp-server", () => {
     } finally {
       await new Promise<void>((resolve) => {
         tokenServer.close(() => resolve());
+      });
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
+  it("doco_search prefers the shared repo .env credential over inherited process env", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "doco-mcp-env-precedence-"));
+    const docoDir = join(projectDir, ".doco");
+    mkdirSync(docoDir);
+    writeFileSync(join(docoDir, "connections.md"), "https://doco.to/doco-bpms/\n");
+
+    const seenAuth: string[] = [];
+    const searchServer = createServer((req, res) => {
+      if (req.method === "GET" && req.url?.startsWith("/doco-bpms/search.json")) {
+        seenAuth.push(String(req.headers.authorization || ""));
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ count: 0, duration_ms: 1, hits: [] }));
+        return;
+      }
+      res.writeHead(404, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "not_found" }));
+    });
+
+    await new Promise<void>((resolve) => {
+      searchServer.listen(0, "127.0.0.1", resolve);
+    });
+
+    const address = searchServer.address() as AddressInfo;
+    const host = `http://127.0.0.1:${address.port}`;
+    writeFileSync(
+      join(projectDir, ".env"),
+      [`DOCO_HOST=${host}`, "DOCO_ACCESS=doco_at_file_token", ""].join("\n"),
+      { mode: 0o600 },
+    );
+
+    try {
+      const responses = await exchange(
+        [
+          INIT_MESSAGE,
+          INITIALIZED_NOTIFICATION,
+          {
+            jsonrpc: "2.0",
+            id: 2,
+            method: "tools/call",
+            params: { name: "doco_search", arguments: { query: "credential precedence" } },
+          },
+        ],
+        2,
+        {
+          cwd: projectDir,
+          env: {
+            DOCO_HOST: undefined,
+            DOCO_ACCESS: "doco_at_stale_inherited_token",
+          },
+        },
+      );
+
+      const callResp = responses.find((r) => r.id === 2);
+      const result = callResp?.result as {
+        isError?: boolean;
+        content: Array<{ type: string; text: string }>;
+      };
+      expect(result.isError).toBeFalsy();
+      expect(seenAuth).toEqual(["Bearer doco_at_file_token"]);
+    } finally {
+      await new Promise<void>((resolve) => {
+        searchServer.close(() => resolve());
+      });
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
+  it("doco_search rereads .env so one agent can see another agent's fresh token", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "doco-mcp-env-refresh-"));
+    const docoDir = join(projectDir, ".doco");
+    mkdirSync(docoDir);
+    writeFileSync(join(docoDir, "connections.md"), "https://doco.to/doco-bpms/\n");
+
+    const seenAuth: string[] = [];
+    let host = "";
+    const searchServer = createServer((req, res) => {
+      if (req.method === "GET" && req.url?.startsWith("/doco-bpms/search.json")) {
+        seenAuth.push(String(req.headers.authorization || ""));
+        if (seenAuth.length === 1) {
+          writeFileSync(
+            join(projectDir, ".env"),
+            [`DOCO_HOST=${host}`, "DOCO_ACCESS=doco_at_fresh_token", ""].join("\n"),
+            { mode: 0o600 },
+          );
+        }
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ count: 0, duration_ms: 1, hits: [] }));
+        return;
+      }
+      res.writeHead(404, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "not_found" }));
+    });
+
+    await new Promise<void>((resolve) => {
+      searchServer.listen(0, "127.0.0.1", resolve);
+    });
+
+    const address = searchServer.address() as AddressInfo;
+    host = `http://127.0.0.1:${address.port}`;
+    writeFileSync(
+      join(projectDir, ".env"),
+      [`DOCO_HOST=${host}`, "DOCO_ACCESS=doco_at_initial_token", ""].join("\n"),
+      { mode: 0o600 },
+    );
+
+    const session = startMcpSession({
+      cwd: projectDir,
+      env: { DOCO_HOST: undefined, DOCO_ACCESS: undefined },
+      timeoutMs: 10000,
+    });
+
+    try {
+      session.send(INIT_MESSAGE);
+      await session.readNext();
+      session.send(INITIALIZED_NOTIFICATION);
+      session.send({
+        jsonrpc: "2.0",
+        id: 2,
+        method: "tools/call",
+        params: { name: "doco_search", arguments: { query: "first search" } },
+      });
+      await session.readNext();
+      session.send({
+        jsonrpc: "2.0",
+        id: 3,
+        method: "tools/call",
+        params: { name: "doco_search", arguments: { query: "second search" } },
+      });
+      const second = await session.readNext();
+      const result = second.result as {
+        isError?: boolean;
+        content: Array<{ type: string; text: string }>;
+      };
+      expect(result.isError).toBeFalsy();
+      expect(seenAuth).toEqual(["Bearer doco_at_initial_token", "Bearer doco_at_fresh_token"]);
+    } finally {
+      await session.close();
+      await new Promise<void>((resolve) => {
+        searchServer.close(() => resolve());
       });
       rmSync(projectDir, { recursive: true, force: true });
     }

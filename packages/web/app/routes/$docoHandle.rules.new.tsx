@@ -1,6 +1,6 @@
 import { withClient } from "@doco/db";
 // /<doco-handle>/rules/new — minimal capture form for a domain Rule entity.
-// Constitution meta-rules live in guidance_primitives and
+// Primitive meta-rules live in guidance_primitives and
 // neuron_authoring_primitives instead.
 import { Form, redirect } from "react-router";
 import { Breadcrumb, docoBreadcrumb } from "~/components/breadcrumb";
@@ -202,7 +202,7 @@ export default function NewRule({
               <div className="flex items-center gap-3 pt-2">
                 <button
                   type="submit"
-                  className="neo-raised-primary rounded-md px-4 py-2 text-sm font-semibold"
+                  className="neu-button bg-primary text-primary-foreground hover:opacity-90 rounded-md px-4 py-2 text-sm font-semibold"
                 >
                   Capture rule
                 </button>

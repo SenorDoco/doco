@@ -2,15 +2,16 @@
 // Minimal Doco agent client.
 //
 // Purpose: keep DOCO_ACCESS out of shell command text. The script reads
-// ./.env internally, then sends the bearer credential from inside Node's
-// fetch call. No dependencies; requires Node 18+ for global fetch.
+// the repo-root .env internally (shared by agents in this checkout),
+// then sends the bearer credential from inside Node's fetch call. No
+// dependencies; requires Node 18+ for global fetch.
 
 import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 
 const DEFAULT_HOST = "https://doco.to";
 const DEFAULT_TIMEOUT_MS = 8000;
-let envFileCache;
+const PROJECT_ROOT = findProjectRoot(process.cwd());
 
 const args = process.argv.slice(2);
 const command = args.shift() ?? "";
@@ -46,10 +47,7 @@ async function runSearch() {
 
   const handle = readEnv("DOCO_HANDLE") || readDocoHandle();
   if (!handle) {
-    return finish(
-      fail("missing_doco_handle", "missing Doco URL in .doco/connections.md, DOCO.md, or doco.md"),
-      2,
-    );
+    return finish(fail("missing_doco_handle", "missing Doco URL in .doco/connections.md"), 2);
   }
 
   const url = new URL(`/${encodeURIComponent(handle)}/search.json`, host);
@@ -157,9 +155,8 @@ function errorFromBody(body) {
 }
 
 function readEnv(name) {
-  if (process.env[name]) return process.env[name];
-  envFileCache ??= readEnvFile();
-  return envFileCache[name] || "";
+  const envFile = readEnvFile();
+  return envFile[name] || process.env[name] || "";
 }
 
 function readAccess() {
@@ -167,11 +164,11 @@ function readAccess() {
 }
 
 function readEnvFile() {
-  const path = join(process.cwd(), ".env");
+  const path = join(PROJECT_ROOT, ".env");
   if (!existsSync(path)) return {};
   const out = {};
   for (const rawLine of readFileSync(path, "utf8").split(/\r?\n/)) {
-    const line = rawLine.trim();
+    const line = rawLine.trim().replace(/^export\s+/, "");
     if (!line || line.startsWith("#")) continue;
     const match = line.match(/^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/);
     if (!match) continue;
@@ -191,8 +188,8 @@ function unquote(value) {
 }
 
 function readDocoHandle() {
-  for (const relativePath of [".doco/connections.md", "DOCO.md", "doco.md"]) {
-    const path = join(process.cwd(), relativePath);
+  for (const relativePath of [".doco/connections.md"]) {
+    const path = join(PROJECT_ROOT, relativePath);
     if (!existsSync(path)) continue;
     const text = readFileSync(path, "utf8");
     const matches = text.matchAll(/https?:\/\/[^/\s)]+\/([A-Za-z0-9][A-Za-z0-9-]*)\/?/g);
@@ -202,4 +199,16 @@ function readDocoHandle() {
     }
   }
   return "";
+}
+
+function findProjectRoot(start) {
+  let dir = resolve(start);
+  while (true) {
+    if (existsSync(join(dir, ".doco", "connections.md"))) {
+      return dir;
+    }
+    const parent = dirname(dir);
+    if (parent === dir) return resolve(start);
+    dir = parent;
+  }
 }

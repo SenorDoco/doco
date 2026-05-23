@@ -26,6 +26,29 @@ If the Doco is **public**, you don't need any of this — just fetch
 
 Both recipes start the same way. **Do this once per agent install.**
 
+### Reuse same-checkout credentials first
+
+If you are running inside a Doco-tracked repository, check the
+repository root \`.env\` before starting OAuth. Agents in the **same
+local checkout** share that file:
+
+- Read \`DOCO_ACCESS\`, \`DOCO_REFRESH\`, \`DOCO_CLIENT_ID\`, and
+  \`DOCO_HOST\` from repo-root \`.env\`.
+- If \`DOCO_ACCESS\` works, use it. Do not ask the user to approve
+  another device/browser authorization just because this agent process
+  did not start with the token.
+- If OAuth succeeds, write the returned tokens back to the same
+  repo-root \`.env\` with private permissions. Long-running agents
+  should reread \`.env\` before Doco calls because another local agent
+  may have refreshed or created the credential.
+- Prefer repo-root \`.env\` over stale inherited environment
+  variables.
+
+This sharing is intentionally local to one checkout. Separate clones,
+worktrees, machines, and remote sandboxes need their own local
+\`.env\`; never commit \`.env\`, access tokens, refresh tokens, OAuth
+client state, or cookies.
+
 ### Register an OAuth client
 
 \`\`\`
@@ -49,8 +72,9 @@ Response:
 }
 \`\`\`
 
-Keep \`client_id\` somewhere persistent. You'll reuse it across all
-future auth flows for the same agent install.
+Keep \`client_id\` somewhere persistent, preferably repo-root \`.env\`
+as \`DOCO_CLIENT_ID\` when you are inside a Doco-tracked repo. You'll
+reuse it across all future auth flows for the same local checkout.
 
 If you don't plan to use the localhost-loopback recipe (you're going
 to use Device Flow only), you can register with any redirect_uri —
@@ -205,9 +229,12 @@ Response:
 }
 \`\`\`
 
-Store both tokens in your credential store. Then follow the repo
-sharing rule above: commit and push the non-secret Doco bootstrap
-files so the next agent clone discovers the Doco connection.
+Store both tokens in your credential store. In a Doco-tracked repo,
+write them to repo-root \`.env\` as \`DOCO_ACCESS\` and
+\`DOCO_REFRESH\` so every agent in this same checkout can reuse them.
+Then follow the repo sharing rule above: commit and push the
+non-secret Doco bootstrap files so the next agent clone discovers the
+Doco connection and can create its own local credential.
 
 ---
 
@@ -292,9 +319,11 @@ Possible responses:
 - **400** \`{"error": "expired_token"}\` — the device_code expired
   (15 min). Start over from step 1.
 - **200** \`{ access_token, refresh_token, token_type, expires_in, scope }\`
-  — user approved. Store the tokens. Then follow the repo sharing
+  — user approved. Store the tokens in the repo-root \`.env\` when
+  you are inside a Doco-tracked repo, then follow the repo sharing
   rule above: commit and push the non-secret Doco bootstrap files so
-  the next agent clone discovers the Doco connection.
+  the next agent clone discovers the Doco connection and can create
+  its own local credential.
 
 ---
 
@@ -329,13 +358,13 @@ You get back:
   \`granted_doco_ids\`, \`granted_org_ids\`, \`granted_doco_roles\`,
   \`granted_org_roles\`, \`scope\`, \`expires_at\`. Null for cookie
   callers. Read this to know exactly which Docos and orgs your token
-  covers without inferring from the constitution lists.
-- \`doco_constitutions[]\` — Articles for every Doco your grants
+  covers without inferring from the primitives lists.
+- \`doco_primitives[]\` — Primitives for every Doco your grants
   cover.
 
-The constitutions tell you what's expected when you capture or
+The primitives tell you what's expected when you capture or
 modify nodes in each Doco. Cache the response for the session;
-refetch if the user tells you a constitution changed mid-session.
+refetch if the user tells you primitives changed mid-session.
 
 ### Org grants are live — don't ask for re-auth on new Docos
 

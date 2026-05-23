@@ -27,16 +27,13 @@ export interface ActivityFeedLineItem {
  */
 export function ActivityFeedLine({
   item,
-  ownerSlug,
-  docoSlug,
+  docoHandle,
 }: {
   item: ActivityFeedLineItem;
-  ownerSlug: string;
-  docoSlug: string;
+  docoHandle: string;
 }) {
   const url = entityUrl({
-    ownerSlug,
-    docoSlug,
+    docoHandle,
     entityType: item.entity_type,
     id: item.id,
   });

@@ -19,7 +19,7 @@
 //
 // The conversation system prompt is bootstrapped much like the agent-
 // bootstrap endpoint feeds external agents — the canonical protocol
-// prose + the Doco constitutions the user can read —
+// prose + the Doco primitives the user can read —
 // but reframed for an in-page sidebar (no two-line connection header,
 // no footer-lines / tally lines).
 
@@ -450,7 +450,7 @@ async function hydrateMessageContent(
 interface BootstrapContext {
   docoLines: string[];
   orgLines: string[];
-  constitutionSnippets: string[];
+  primitiveSnippets: string[];
 }
 
 async function buildBootstrapContext(principalId: string): Promise<BootstrapContext> {
@@ -459,14 +459,14 @@ async function buildBootstrapContext(principalId: string): Promise<BootstrapCont
     listOrganizationsForCollaborator(principalId),
   ]);
   const docoLines: string[] = [];
-  const orgLines: string[] = orgs.map((o) => `- /orgs/${o.slug} (${o.name})`);
-  const constitutionSnippets: string[] = [];
+  const orgLines: string[] = orgs.map((o) => `- /orgs/${o.handle} (${o.name})`);
+  const primitiveSnippets: string[] = [];
 
   for (const d of allDocos) {
     const meta = { ownerId: d.ownerId, visibility: d.visibility, docoId: d.docoId };
     if (!(await canAccessDoco(meta, principalId))) continue;
     docoLines.push(`- /${d.handle} (visibility ${d.visibility})`);
-    // No LIMIT — the agent's accuracy when asked "what is my constitution"
+    // No LIMIT — the agent's accuracy when asked about primitives
     // depends on shipping every active article. A few hundred lines of
     // article summaries is well under the context budget.
     const primitives = await withClient(async (c) => {
@@ -487,18 +487,18 @@ async function buildBootstrapContext(principalId: string): Promise<BootstrapCont
       return { guidance: guidance.rows, authoring: authoring.rows };
     });
     if (primitives.guidance.length || primitives.authoring.length) {
-      const lines = [`Constitution for /${d.handle}:`];
+      const lines = [`Primitives for /${d.handle}:`];
       for (const a of primitives.guidance) lines.push(`  - guidance: ${a.summary}`);
       for (const a of primitives.authoring) lines.push(`  - rule: ${a.summary}`);
-      constitutionSnippets.push(lines.join("\n"));
+      primitiveSnippets.push(lines.join("\n"));
     }
   }
-  return { docoLines, orgLines, constitutionSnippets };
+  return { docoLines, orgLines, primitiveSnippets };
 }
 
 /**
  * Build the system prompt as a two-block array so Anthropic can cache
- * the large, stable prefix (identity + endpoint surface + constitutions)
+ * the large, stable prefix (identity + endpoint surface + primitives)
  * across turns. The dynamic tail (today + current page) goes in the
  * user message instead — that keeps every cache key identical.
  */
@@ -512,13 +512,15 @@ function buildSystemBlocks(
   const orgList = bootstrap.orgLines.length
     ? bootstrap.orgLines.join("\n")
     : "(no orgs — the user can create one at /new-org)";
-  const constitutions = bootstrap.constitutionSnippets.length
-    ? bootstrap.constitutionSnippets.join("\n\n")
-    : "(no constitution primitives authored in the visible Docos)";
+  const primitiveSections = bootstrap.primitiveSnippets.length
+    ? bootstrap.primitiveSnippets.join("\n\n")
+    : "(no primitives authored in the visible Docos)";
 
   const text = `You are Señor Doco, the in-page assistant embedded as a 320-px left-rail sidebar on every page. You act AS ${principal.username} — the signed-in human reading the page. Every doco_api call is authenticated as them; there is no separate agent identity.
 
-Doco is AI-native documentation of intent, decisions, rules, actions, logs. Neuron types: Decision, Intent, Action, Log, Rule, Eval, Reference, State, Idea, Principal. Constitution primitive kinds: Guidance, Neuron-authoring.
+Doco is AI-native documentation of intent, decisions, rules, actions, logs. Neuron types: Decision, Intent, Action, Log, Rule, Eval, Reference, State, Idea, Principal. Primitive kinds: Guidance, Neuron-authoring.
+
+User-facing vocabulary: say "primitives", never "constitution". The old word may appear in legacy URLs or API compatibility fields, but you should translate it to "primitives" in replies.
 
 ## Tools
 
@@ -542,12 +544,12 @@ Retention: every uploaded file is kept for ${ATTACHMENT_RETENTION_DAYS} days, th
   POST  /<handle>/api/<type>.json                — capture; returns { id, footer_lines, duration_ms }
   GET   /<handle>/api/<type>/<id>.json
   PATCH /<handle>/api/<type>/<id>.json
-  GET   /<handle>/api/primitives.json            — list constitution primitives (guidance + neuron-authoring) for this Doco
+  GET   /<handle>/api/primitives.json            — list primitives (guidance + neuron-authoring) for this Doco
   POST  /<handle>/api/primitives.json            — capture a primitive; body needs "primitive_kind": "guidance" | "neuron_authoring"
   GET   /<handle>/search.json?q=<query>
   POST  /api/v1/docos.json                       — create a Doco (NO GET — to list the user's Docos, see the "Your Docos" section below)
   POST  /api/v1/orgs.json                        — create an Org (NO GET — to list the user's Orgs, see the "Your Orgs" section below)
-  GET   /api/v1/agent-bootstrap.json             — re-read constitutions
+  GET   /api/v1/agent-bootstrap.json             — re-read primitives
 
 ## After every action — render the result
 
@@ -569,7 +571,7 @@ Synapses in Doco are derived from reference fields on neurons (D-017, fields-as-
 
 ## Scope — what you handle vs. what you decline
 
-You are the in-page assistant for Doco. Your job: read, write, navigate inside Doco — Docos, Orgs, neurons (Decisions / Intents / Rules / Actions / Logs / Evals / References / States / Ideas / Principals), constitution primitives (Guidance + Neuron-authoring), synapses, collaborators, constitutions, audit history.
+You are the in-page assistant for Doco. Your job: read, write, navigate inside Doco — Docos, Orgs, neurons (Decisions / Intents / Rules / Actions / Logs / Evals / References / States / Ideas / Principals), primitives (Guidance + Neuron-authoring), synapses, collaborators, audit history.
 
 IN SCOPE — answer or act WITHOUT a decline preamble:
 - Anything about ${principal.username}'s Docos, Orgs, neurons, primitives, synapses, collaborators, audit log, settings.
@@ -628,9 +630,9 @@ ${orgList}
 
 ## Primitives — canonical
 
-The section below lists every ACTIVE guidance + neuron-authoring primitive for every Doco the user can access, fetched server-side at the start of each turn. It is COMPLETE — same SQL the /constitution page reads. When asked "what's the constitution of my Doco" or "how many rules do I have," answer from this list directly. Never say "I may have incomplete information" or offer to fetch the live version — this IS the live version. (Inactive / archived primitives are excluded by design; flag that only if the user specifically asks about non-active ones.)
+The section below lists every ACTIVE guidance + neuron-authoring primitive for every Doco the user can access, fetched server-side at the start of each turn. It is COMPLETE — same SQL the /primitives page reads. When asked about a Doco's primitives or rules, answer from this list directly. Never say "I may have incomplete information" or offer to fetch the live version — this IS the live version. (Inactive / archived primitives are excluded by design; flag that only if the user specifically asks about non-active ones.)
 
-${constitutions}`;
+${primitiveSections}`;
 
   return [
     {

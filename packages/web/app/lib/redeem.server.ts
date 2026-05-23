@@ -2,9 +2,7 @@
 // the client bundle.
 export { addAgentPrincipal } from "./agents.server";
 export {
-  // v15 (Phase B) creation surfaces.
   addOrganizationByHandle,
-  createDocoInHost,
   createDocoInOrg,
   ensurePersonalOrganization,
   findAvailableDocoHandle,
@@ -15,7 +13,6 @@ export {
   updateDocoMeta,
 } from "@doco/host";
 import { type BuildReport, reindex as reindexBare } from "@doco/index";
-import { readDocoMetadata } from "./doco-metadata.server";
 import { getDocoEmbeddingProvider } from "./embedding-provider.server";
 
 export interface ReindexExtraOptions {
@@ -31,9 +28,8 @@ export interface ReindexExtraOptions {
  * configured (no OPENAI_API_KEY). Every web-app reindex call site funnels
  * through here so embeddings stay in sync with the index.
  *
- * `docoId` is optional: when the caller already holds it (capture/patch
- * handlers), pass it directly. Otherwise this wrapper resolves the id
- * from the synthetic `<root>/docos/<owner>/<slug>` path.
+ * `docoId` is required. Route loaders resolve it from Postgres before
+ * write handlers call into indexing.
  *
  * `changedEntityIds` triggers the incremental path: only those entities'
  * derived rows are rebuilt, the rest of the Doco's synapses/FTS/embeddings
@@ -45,21 +41,14 @@ export interface ReindexExtraOptions {
  */
 export async function reindex(
   docoRoot: string,
-  docoId?: string,
+  docoId: string,
   changedEntityIds?: string[],
   extra?: ReindexExtraOptions,
 ): Promise<BuildReport> {
   const embeddingProvider = getDocoEmbeddingProvider();
-  // Resolve from the docoRoot's slug pair so callers that hold only the
-  // synthetic dir path still work.
-  let resolvedDocoId = docoId;
-  if (!resolvedDocoId) {
-    const meta = await readDocoMetadata(docoRoot);
-    if (meta) resolvedDocoId = meta.docoId;
-  }
   const opts = {
     ...(embeddingProvider ? { embeddingProvider } : {}),
-    ...(resolvedDocoId ? { docoId: resolvedDocoId } : {}),
+    docoId,
     ...(changedEntityIds && changedEntityIds.length > 0 ? { changedEntityIds } : {}),
     ...(extra?.skipEmbeddings ? { skipEmbeddings: true } : {}),
     ...(extra?.skipStructural ? { skipStructural: true } : {}),
@@ -77,7 +66,7 @@ export async function reindex(
  */
 export function reindexEmbeddingsOnly(
   docoRoot: string,
-  docoId?: string,
+  docoId: string,
   changedEntityIds?: string[],
 ): Promise<BuildReport> {
   return reindex(docoRoot, docoId, changedEntityIds, { skipStructural: true });

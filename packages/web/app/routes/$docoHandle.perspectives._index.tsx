@@ -102,22 +102,20 @@ export default function PerspectivesPicker({
             <h1 className="text-lg font-semibold tracking-tight">Perspectives</h1>
             <Link
               to={`/${handle}`}
-              className="neo-raised-sm rounded-md px-3 py-1.5 text-xs font-semibold"
+              className="neu-button rounded-md px-3 py-1.5 text-xs font-semibold"
             >
               ← Back to {handle}
             </Link>
           </div>
           <p className="text-sm text-muted-foreground">
-            Visualization perspectives switch how the Doco's neurons and synapses render. Attach
-            any of the perspectives below to add a tab to this Doco's overview page.
+            Visualization perspectives switch how the Doco's neurons and synapses render. Attach any
+            of the perspectives below to add a tab to this Doco's overview page.
             {!canAdmin ? (
-              <span className="ml-1 italic">
-                Attaching requires owner or approver access.
-              </span>
+              <span className="ml-1 italic">Attaching requires owner or approver access.</span>
             ) : null}
           </p>
         </div>
-        <ul className="neo-etched divide-y divide-border rounded-md bg-card">
+        <ul className="neu-surface divide-y divide-border rounded-md bg-card">
           {available.map((p) => {
             const isAttached = attachedSet.has(p.id);
             return (
@@ -132,7 +130,7 @@ export default function PerspectivesPicker({
                       <span className="text-xs text-muted-foreground">by {p.ownerHandle}</span>
                     ) : null}
                     {p.isBuiltin ? (
-                      <span className="neo-etched rounded-sm px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
+                      <span className="neu-surface rounded-sm px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
                         builtin
                       </span>
                     ) : null}
@@ -153,7 +151,7 @@ export default function PerspectivesPicker({
                       <button
                         type="submit"
                         disabled={submitting}
-                        className="neo-raised-sm inline-block rounded-md px-3 py-1 text-xs font-semibold disabled:opacity-50"
+                        className="neu-button inline-block rounded-md px-3 py-1 text-xs font-semibold disabled:opacity-50"
                       >
                         Attach
                       </button>

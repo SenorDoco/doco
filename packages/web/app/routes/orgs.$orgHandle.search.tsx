@@ -6,7 +6,7 @@
 // filtering yet (a follow-up to the doco-level search, which carries
 // lifecycle / node-type filters).
 
-import { bufferToEmbedding, cosineSimilarity, withClient } from "@doco/db";
+import { DOCO_NEURON_TABLE_SPECS, bufferToEmbedding, cosineSimilarity, withClient } from "@doco/db";
 import type { PoolClient } from "pg";
 import { Form, Link } from "react-router";
 import { LifecycleBadge, NodeTypeBadge } from "~/components/badge";
@@ -17,17 +17,11 @@ import { SiteHeader } from "~/components/site-header";
 import { getDocoEmbeddingProvider } from "~/lib/embedding-provider.server";
 import { loadHostConfig } from "~/lib/host.server";
 import { neuronTypePlural } from "~/lib/neuron-colors";
+import { resolveOrgByHandle } from "~/lib/org-helpers.server";
 import { getCurrentPrincipal } from "~/lib/session.server";
 import { timeAgo } from "~/lib/time-ago";
 
 const RESULTS_LIMIT = 50;
-
-interface OrgRow {
-  id: string;
-  slug: string;
-  handle: string;
-  name: string;
-}
 
 interface Hit {
   id: string;
@@ -40,40 +34,7 @@ interface Hit {
   vector_score: number;
 }
 
-// Note tables only — articles are constitution metadata, not nodes,
-// and don't participate in org-wide search. They are reachable via
-// /<handle>/constitution and /<handle>/api/articles.json.
-const TYPE_SPECS = [
-  { table: "decisions", entityType: "decision" },
-  { table: "intents", entityType: "intent" },
-  { table: "ideas", entityType: "idea" },
-  { table: "rules", entityType: "rule" },
-  { table: "actions", entityType: "action" },
-  { table: "logs", entityType: "log" },
-  { table: "evals", entityType: "eval" },
-  { table: "reference_entities", entityType: "reference" },
-  { table: "states", entityType: "state" },
-] as const;
-
-async function resolveOrgByHandle(orgHandle: string): Promise<OrgRow | null> {
-  return withClient(async (c) => {
-    const r = await c.query<{ id: string; slug: string; handle: string | null; name: string }>(
-      `SELECT id, slug, handle, name FROM organizations
-        WHERE handle = $1 OR slug = $1
-        LIMIT 1`,
-      [orgHandle],
-    );
-    if (r.rowCount === 0) return null;
-    const row = r.rows[0];
-    if (!row) return null;
-    return {
-      id: String(row.id),
-      slug: String(row.slug),
-      handle: String(row.handle ?? row.slug),
-      name: String(row.name),
-    };
-  });
-}
+const TYPE_SPECS = DOCO_NEURON_TABLE_SPECS;
 
 async function getEmbeddingsForDocos(
   c: PoolClient,
@@ -157,7 +118,7 @@ export async function loader({
   return withClient(async (c) => {
     const docoRows = (
       await c.query<{ id: string; handle: string }>(
-        "SELECT id, handle FROM docos WHERE owner_id = $1",
+        "SELECT id, handle FROM docos WHERE org_id = $1",
         [org.id],
       )
     ).rows;
@@ -271,7 +232,7 @@ export default function OrgSearch({
           />
           <button
             type="submit"
-            className="neo-raised-sm rounded-md px-4 py-2.5 text-sm font-semibold text-foreground"
+            className="neu-button rounded-md px-4 py-2.5 text-sm font-semibold text-foreground"
           >
             Search
           </button>

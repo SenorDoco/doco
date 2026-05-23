@@ -19,8 +19,8 @@ export interface RankableGraphNode {
 }
 
 export interface PageRankOptions {
-  damping?: number;     // d, default 0.85
-  iterations?: number;  // default 30
+  damping?: number; // d, default 0.85
+  iterations?: number; // default 30
 }
 
 /**

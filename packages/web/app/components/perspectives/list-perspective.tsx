@@ -8,7 +8,7 @@
 //
 // Type-aware secondary sort: when two neurons tie on the primary key,
 // they're broken first by neuron-type rank (intents → decisions →
-// actions → … → constitution primitives stay pinned near the top
+// actions → … → primitives stay pinned near the top
 // because they're meta), then by a type-specific tiebreaker:
 //   decision/intent/rule/action → lifecycle rank (active first)
 //   log/eval                     → created_at desc (recent matters more)
@@ -61,7 +61,7 @@ const LIFECYCLE_RANK = new Map(
   ["active", "drafted", "proposed", "retired"].map((lifecycle, index) => [lifecycle, index]),
 );
 
-const CONSTITUTION_TYPES = new Set(["guidance_primitive", "neuron_authoring_primitive"]);
+const PRIMITIVE_TYPES = new Set(["guidance_primitive", "neuron_authoring_primitive"]);
 const MAX_GRAPH_REFERENCES = 120;
 
 export interface ListPerspectiveNode {
@@ -134,7 +134,7 @@ export function ListPerspective({ nodes, pageRanks, visibleLifecycles }: ListPer
           <select
             value={sort}
             onChange={(e) => setSort(e.target.value as ListSortKey)}
-            className="rounded-md px-2 py-1 text-xs"
+            className="rounded-md border border-border bg-background px-2 py-1 text-xs"
           >
             {SORT_OPTIONS.map((key) => (
               <option key={key} value={key}>
@@ -144,7 +144,7 @@ export function ListPerspective({ nodes, pageRanks, visibleLifecycles }: ListPer
           </select>
         </label>
       </div>
-      <div className="neo-inset min-h-0 flex-1 overflow-y-auto rounded-md bg-card">
+      <div className="min-h-0 flex-1 overflow-y-auto rounded-md border border-border bg-input">
         {sorted.length === 0 ? (
           <p className="px-4 py-3 text-xs italic text-muted-foreground">
             This Doco has no neurons yet.
@@ -225,7 +225,7 @@ function ListRow({ node, sort, rank, referenceNumber }: ListRowProps) {
   return (
     <li>
       {node.href ? (
-        <Link to={node.href} className="block">
+        <Link to={node.href} className="block hover:bg-background">
           {inner}
         </Link>
       ) : (
@@ -268,9 +268,9 @@ function primaryCompare(
     case "oldest":
       return tsValue(a.created_at) - tsValue(b.created_at);
     case "rank_desc": {
-      // Constitution primitives pin above the body: they're not graph
+      // Primitives pin above the body: they're not graph
       // citizens in the same sense, so ranking them by PR is misleading.
-      const pinDiff = constitutionPin(a) - constitutionPin(b);
+      const pinDiff = primitivePin(a) - primitivePin(b);
       if (pinDiff !== 0) return pinDiff;
       return (pageRanks.get(b.id) ?? 0) - (pageRanks.get(a.id) ?? 0);
     }
@@ -320,8 +320,8 @@ function lifecycleRank(lifecycle: string | null): number {
   return LIFECYCLE_RANK.get(lifecycle ?? "active") ?? LIFECYCLE_RANK.size + 1;
 }
 
-function constitutionPin(node: ListPerspectiveNode): number {
-  return CONSTITUTION_TYPES.has(node.entity_type) ? 0 : 1;
+function primitivePin(node: ListPerspectiveNode): number {
+  return PRIMITIVE_TYPES.has(node.entity_type) ? 0 : 1;
 }
 
 function tsValue(value: string | null): number {

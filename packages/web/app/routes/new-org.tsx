@@ -48,7 +48,7 @@ export async function action({ request }: { request: Request }) {
   try {
     const { handle } = await addOrganizationByHandle({
       handle: requested,
-      ownerPrincipalId: me.id,
+      ownerCollaboratorId: me.id,
       autoSuffix: accept,
     });
     throw redirect(`/orgs/${handle}`);
@@ -134,7 +134,7 @@ export default function NewOrg({
               <div className="flex items-center gap-2">
                 <button
                   type="submit"
-                  className="neo-raised-primary rounded-md px-4 py-2 text-sm font-semibold"
+                  className="neu-button bg-primary text-primary-foreground hover:opacity-90 rounded-md px-4 py-2 text-sm font-semibold"
                 >
                   Create organization
                 </button>
@@ -143,7 +143,7 @@ export default function NewOrg({
                     type="submit"
                     name="accept_suggested"
                     value="1"
-                    className="neo-raised-sm rounded-md px-4 py-2 text-sm"
+                    className="neu-button rounded-md px-4 py-2 text-sm"
                   >
                     Use "{suggested}" instead
                   </button>

@@ -43,14 +43,14 @@ export function parseSearchFilters(params: URLSearchParams, facets: FilterFacets
     lifecycle = lifecycleVals;
   }
 
-  const nodeTypeVals = readMulti(params, "entity_type");
+  const entityTypeVals = readMulti(params, "entity_type");
   let entityType: string[] | null;
-  if (nodeTypeVals === null) {
+  if (entityTypeVals === null) {
     entityType = facets.entityType.map((f) => f.value);
-  } else if (nodeTypeVals.length === 1 && nodeTypeVals[0] === "*") {
+  } else if (entityTypeVals.length === 1 && entityTypeVals[0] === "*") {
     entityType = null;
   } else {
-    entityType = nodeTypeVals;
+    entityType = entityTypeVals;
   }
 
   return { lifecycle, entityType, limit };
@@ -74,54 +74,75 @@ function readMulti(params: URLSearchParams, key: string): string[] | null {
 }
 
 /**
- * Doco-scoped note tables (PG plural names). Each carries a
- * `lifecycle` column directly. principals + organizations are
- * host-level, so they don't filter on doco_id.
+ * Doco-scoped neuron tables (PG plural names). Each carries a
+ * `lifecycle` column directly. Principals are stored in the
+ * host-level table, but role-principals authored for a Doco carry
+ * `data.doco_id`, so they participate in Doco stats/search too.
  *
  * Primitives (`guidance_primitives`, `neuron_authoring_primitives`)
- * are not neurons — they are constitution metadata with their own
- * surface (/<handle>/constitution and /<handle>/api/primitives.json)
+ * are not neurons — they are Doco-level metadata with their own
+ * surface (/<handle>/primitives and /<handle>/api/primitives.json)
  * and are intentionally absent here. Anything iterating "neurons of
  * a Doco" must use this list, never a list that includes primitive
  * tables.
  */
-const PG_DOCO_NOTE_TABLES_WITH_LIFECYCLE = [
-  "intents",
-  "ideas",
-  "rules",
-  "decisions",
-  "actions",
-  "logs",
-  "evals",
-  "reference_entities",
-  // v7 (decision_01KRRR5BQ16ASY8HQEE0V499YG): State neuron type.
-  "states",
-] as const;
+interface DocoNeuronTableFilterSpec {
+  table: string;
+  entityType: string;
+  docoWhereSql: string;
+}
+
+const PG_DOCO_NOTE_TABLES_WITH_LIFECYCLE: DocoNeuronTableFilterSpec[] = [
+  { table: "intents", entityType: "intent", docoWhereSql: "doco_id = $1" },
+  { table: "ideas", entityType: "idea", docoWhereSql: "doco_id = $1" },
+  { table: "rules", entityType: "rule", docoWhereSql: "doco_id = $1" },
+  { table: "decisions", entityType: "decision", docoWhereSql: "doco_id = $1" },
+  { table: "actions", entityType: "action", docoWhereSql: "doco_id = $1" },
+  { table: "logs", entityType: "log", docoWhereSql: "doco_id = $1" },
+  { table: "evals", entityType: "eval", docoWhereSql: "doco_id = $1" },
+  { table: "reference_entities", entityType: "reference", docoWhereSql: "doco_id = $1" },
+  { table: "states", entityType: "state", docoWhereSql: "doco_id = $1" },
+  {
+    table: "principals",
+    entityType: "principal",
+    docoWhereSql: "data->>'doco_id' = $1",
+  },
+];
 
 /**
  * Map from external entity_type (singular) → PG table (plural).
  * Primitives (`guidance_primitive`, `neuron_authoring_primitive`) are
  * not neurons and are intentionally omitted — they are reachable
- * only via /<handle>/api/primitives.json and the constitution
+ * only via /<handle>/api/primitives.json and the primitives
  * surface.
  */
-const NEURON_TYPE_TO_TABLE: Record<string, string> = {
-  intent: "intents",
-  idea: "ideas",
-  rule: "rules",
-  decision: "decisions",
-  action: "actions",
-  log: "logs",
-  eval: "evals",
-  reference: "reference_entities",
-  state: "states",
-  principal: "principals",
-  organization: "organizations",
+const NEURON_TYPE_TO_TABLE: Record<string, DocoNeuronTableFilterSpec | null> = {
+  intent: { table: "intents", entityType: "intent", docoWhereSql: "doco_id = $1" },
+  idea: { table: "ideas", entityType: "idea", docoWhereSql: "doco_id = $1" },
+  rule: { table: "rules", entityType: "rule", docoWhereSql: "doco_id = $1" },
+  decision: { table: "decisions", entityType: "decision", docoWhereSql: "doco_id = $1" },
+  action: { table: "actions", entityType: "action", docoWhereSql: "doco_id = $1" },
+  log: { table: "logs", entityType: "log", docoWhereSql: "doco_id = $1" },
+  eval: { table: "evals", entityType: "eval", docoWhereSql: "doco_id = $1" },
+  reference: {
+    table: "reference_entities",
+    entityType: "reference",
+    docoWhereSql: "doco_id = $1",
+  },
+  state: { table: "states", entityType: "state", docoWhereSql: "doco_id = $1" },
+  principal: {
+    table: "principals",
+    entityType: "principal",
+    docoWhereSql: "data->>'doco_id' = $1",
+  },
+  organization: null,
 };
 
 /** Inverse: PG table → external entity_type used on the wire. */
-const TABLE_TO_NODE_TYPE: Record<string, string> = Object.fromEntries(
-  Object.entries(NEURON_TYPE_TO_TABLE).map(([nt, tbl]) => [tbl, nt]),
+const TABLE_TO_ENTITY_TYPE: Record<string, string> = Object.fromEntries(
+  Object.entries(NEURON_TYPE_TO_TABLE)
+    .filter((entry): entry is [string, DocoNeuronTableFilterSpec] => entry[1] !== null)
+    .map(([nt, spec]) => [spec.table, nt]),
 );
 
 export async function resolveFilteredCandidates(
@@ -138,10 +159,10 @@ export async function resolveFilteredCandidates(
     lifecycleIds = new Set();
     // Notes only — primitives are not neurons and never participate in
     // neuron search results, even when their lifecycle matches.
-    for (const t of PG_DOCO_NOTE_TABLES_WITH_LIFECYCLE) {
+    for (const spec of PG_DOCO_NOTE_TABLES_WITH_LIFECYCLE) {
       const r = await c.query<{ id: string }>(
-        `SELECT id FROM ${t}
-          WHERE doco_id = $1
+        `SELECT id FROM ${spec.table}
+          WHERE ${spec.docoWhereSql}
             AND COALESCE(lifecycle, 'active') = ANY($2::text[])`,
         [docoId, filters.lifecycle],
       );
@@ -149,21 +170,21 @@ export async function resolveFilteredCandidates(
     }
   }
 
-  let nodeTypeIds: Set<string> | null = null;
+  let entityTypeIds: Set<string> | null = null;
   if (filters.entityType !== null) {
-    nodeTypeIds = new Set();
+    entityTypeIds = new Set();
     for (const nt of filters.entityType) {
-      const table = NEURON_TYPE_TO_TABLE[nt];
-      if (!table) continue;
-      if (table === "principals" || table === "organizations") continue;
-      const r = await c.query<{ id: string }>(`SELECT id FROM ${table} WHERE doco_id = $1`, [
-        docoId,
-      ]);
-      for (const row of r.rows) nodeTypeIds.add(row.id);
+      const spec = NEURON_TYPE_TO_TABLE[nt];
+      if (!spec) continue;
+      const r = await c.query<{ id: string }>(
+        `SELECT id FROM ${spec.table} WHERE ${spec.docoWhereSql}`,
+        [docoId],
+      );
+      for (const row of r.rows) entityTypeIds.add(row.id);
     }
   }
 
-  const sets = [lifecycleIds, nodeTypeIds].filter((s): s is Set<string> => s !== null);
+  const sets = [lifecycleIds, entityTypeIds].filter((s): s is Set<string> => s !== null);
   if (sets.length === 0) return null;
   if (sets.length === 1) return sets[0];
 
@@ -185,20 +206,20 @@ export interface FilterFacets {
   }[];
 }
 
-
 export async function computeFilterFacets(c: PoolClient, docoId: string): Promise<FilterFacets> {
-  // Facets describe the *notes* of a Doco. Primitives (constitution
-  // metadata) are intentionally excluded — they have their own
+  // Facets describe the neuron records of a Doco. Primitives are
+  // intentionally excluded — they have their own
   // surface and counting them as neurons makes a Doco with only a
-  // template constitution misread as having captured work.
+  // template primitives misread as having captured work. Principals
+  // are included because role-personas are first-class neurons.
   const lifecycleFacets = new Map<string, { count: number; updatedAt: string | null }>();
-  for (const t of PG_DOCO_NOTE_TABLES_WITH_LIFECYCLE) {
+  for (const spec of PG_DOCO_NOTE_TABLES_WITH_LIFECYCLE) {
     const r = await c.query<{ value: string; n: string; updated_at: Date | string | null }>(
       `SELECT COALESCE(lifecycle, 'active') AS value,
               COUNT(*)::text AS n,
               MAX(updated_at) AS updated_at
-         FROM ${t}
-        WHERE doco_id = $1
+         FROM ${spec.table}
+        WHERE ${spec.docoWhereSql}
         GROUP BY value`,
       [docoId],
     );
@@ -212,13 +233,13 @@ export async function computeFilterFacets(c: PoolClient, docoId: string): Promis
     }
   }
 
-  const nodeTypeCounts: {
+  const entityTypeCounts: {
     value: string;
     count: number;
     activeCount: number;
     updatedAt: string | null;
   }[] = [];
-  for (const t of PG_DOCO_NOTE_TABLES_WITH_LIFECYCLE) {
+  for (const spec of PG_DOCO_NOTE_TABLES_WITH_LIFECYCLE) {
     const r = await c.query<{
       n: string;
       active_n: string;
@@ -227,21 +248,21 @@ export async function computeFilterFacets(c: PoolClient, docoId: string): Promis
       `SELECT COUNT(*)::text AS n,
               (COUNT(*) FILTER (WHERE COALESCE(lifecycle, 'active') = 'active'))::text AS active_n,
               MAX(updated_at) AS updated_at
-         FROM ${t} WHERE doco_id = $1`,
+         FROM ${spec.table} WHERE ${spec.docoWhereSql}`,
       [docoId],
     );
     const row = r.rows[0];
     const n = Number(row?.n ?? 0);
     if (n > 0) {
-      nodeTypeCounts.push({
-        value: TABLE_TO_NODE_TYPE[t] ?? t,
+      entityTypeCounts.push({
+        value: TABLE_TO_ENTITY_TYPE[spec.table] ?? spec.entityType,
         count: n,
         activeCount: Number(row?.active_n ?? 0),
         updatedAt: toIso(row?.updated_at),
       });
     }
   }
-  nodeTypeCounts.sort((a, b) => b.count - a.count);
+  entityTypeCounts.sort((a, b) => b.count - a.count);
 
   return {
     lifecycle: Array.from(lifecycleFacets.entries())
@@ -251,7 +272,7 @@ export async function computeFilterFacets(c: PoolClient, docoId: string): Promis
         if (b.value === "active") return 1;
         return a.value.localeCompare(b.value);
       }),
-    entityType: nodeTypeCounts,
+    entityType: entityTypeCounts,
   };
 }
 

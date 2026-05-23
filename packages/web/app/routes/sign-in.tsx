@@ -50,12 +50,7 @@ export default function SignIn({
         </div>
       </header>
       <main className="mx-auto max-w-md px-6 py-10 space-y-4">
-        <Breadcrumb
-          items={[
-            { label: "Home", to: "/" },
-            { label: "Sign in" },
-          ]}
-        />
+        <Breadcrumb items={[{ label: "Home", to: "/" }, { label: "Sign in" }]} />
         <Card>
           <CardHeader>
             <CardTitle>Sign in</CardTitle>
@@ -63,7 +58,7 @@ export default function SignIn({
           <CardContent>
             <Link
               to={next ? `/auth/github?return=${encodeURIComponent(next)}` : "/auth/github"}
-              className="neo-raised-primary flex w-full items-center justify-center gap-2 rounded-md px-4 py-2.5 text-sm font-semibold"
+              className="neu-button bg-primary text-primary-foreground hover:opacity-90 flex w-full items-center justify-center gap-2 rounded-md px-4 py-2.5 text-sm font-semibold"
             >
               <GitHubMark />
               Continue with GitHub

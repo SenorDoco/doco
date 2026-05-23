@@ -69,7 +69,7 @@ export async function action({ request }: { request: Request }) {
     const rec = await createDocoInOrg({
       orgId,
       requestedSuffix: suffix,
-      createdByPrincipalId: me.id,
+      createdByCollaboratorId: me.id,
       visibility,
       autoSuffix: true,
       ...(templateHandle && templateHandle !== "generic"

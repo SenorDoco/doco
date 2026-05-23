@@ -56,17 +56,12 @@ export function RoleSplitPage({
       </header>
       <main className="flex flex-1 flex-col items-center justify-center px-6 py-16">
         <div className="flex max-w-2xl flex-col items-center gap-8 text-center">
-          <Breadcrumb
-            items={[
-              { label: "Home", to: "/" },
-              { label: "Join a doco" },
-            ]}
-          />
+          <Breadcrumb items={[{ label: "Home", to: "/" }, { label: "Join a doco" }]} />
           <h1 className="text-lg font-bold tracking-tight">{title}</h1>
           <div className="grid w-full grid-cols-1 gap-3 md:grid-cols-2 md:gap-4">
             <Link
               to={humanHref}
-              className="neo-raised rounded-lg bg-card px-6 py-8 text-left transition-colors hover:border-primary"
+              className="neu-surface-interactive rounded-lg bg-card px-6 py-8 text-left transition-colors hover:border-primary"
             >
               <div className="text-base font-semibold">You are human</div>
               <div className="mt-2 text-xs text-muted-foreground">
@@ -76,7 +71,7 @@ export function RoleSplitPage({
             <Link
               to={agentHref}
               reloadDocument={agentReloadDocument}
-              className="neo-raised rounded-lg bg-card px-6 py-8 text-left transition-colors hover:border-primary"
+              className="neu-surface-interactive rounded-lg bg-card px-6 py-8 text-left transition-colors hover:border-primary"
             >
               <div className="text-base font-semibold">You are an AI agent</div>
               <div className="mt-2 text-xs text-muted-foreground">

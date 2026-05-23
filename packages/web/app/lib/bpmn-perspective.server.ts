@@ -30,8 +30,8 @@ type QueryClient = {
 export type BpmnShape = "circle" | "diamond" | "rectangle" | "document" | "rounded";
 
 export interface BpmnLane {
-  id: string;             // principal id, or "__unassigned__"
-  label: string;          // principal username, or "Unassigned"
+  id: string; // principal id, or "__unassigned__"
+  label: string; // principal username, or "Unassigned"
 }
 
 export interface BpmnNode {
@@ -123,7 +123,7 @@ export async function loadBpmnGraph(
 
   const [neuronRows, principalRows] = await Promise.all([
     c.query<NeuronRow>(neuronSql, [docoId]),
-    c.query<PrincipalRow>(`SELECT id, username FROM principals`, []),
+    c.query<PrincipalRow>("SELECT id, username FROM principals", []),
   ]);
 
   const principalByUsername = new Map<string, PrincipalRow>();
@@ -209,11 +209,11 @@ function laneReferenceFor(entityType: string, data: Record<string, unknown>): st
   switch (entityType) {
     case "action":
     case "log":
-      return firstString(data["actor_id"]) ?? firstString(data["actor"]);
+      return firstString(data.actor_id) ?? firstString(data.actor);
     case "decision":
-      return firstString(data["decided_by"]);
+      return firstString(data.decided_by);
     case "intent":
-      return firstString(data["wanted_by"]) ?? firstString(data["actors"]);
+      return firstString(data.wanted_by) ?? firstString(data.actors);
     default:
       return null;
   }

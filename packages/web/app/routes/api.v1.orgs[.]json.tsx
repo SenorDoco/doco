@@ -43,7 +43,7 @@ export async function action({ request }: { request: Request }) {
   try {
     const { id, handle } = await addOrganizationByHandle({
       handle: requested.trim().toLowerCase(),
-      ownerPrincipalId: me.id,
+      ownerCollaboratorId: me.id,
       autoSuffix: true,
     });
     return Response.json({ id, handle }, { status: 201 });

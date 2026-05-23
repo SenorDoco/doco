@@ -42,8 +42,7 @@ export function etaggedJson(
   options: { stableData?: unknown; extraHeaders?: Record<string, string> } = {},
 ): Response {
   const body = JSON.stringify(data);
-  const hashInput =
-    options.stableData === undefined ? body : JSON.stringify(options.stableData);
+  const hashInput = options.stableData === undefined ? body : JSON.stringify(options.stableData);
   const etag = `"${computeETag(hashInput)}"`;
   const extraHeaders = options.extraHeaders ?? {};
   const ifNoneMatch = request.headers.get("if-none-match");

@@ -1,5 +1,5 @@
-// Shared copy + helpers for constitution surfaces. Used by:
-//   - /:docoHandle/constitution
+// Shared copy + helpers for primitive surfaces. Used by:
+//   - /:docoHandle/primitives
 //   - the Doco new-primitive forms
 // Keep them DRY so the wording matches the wizard the project owner
 // just walked through.

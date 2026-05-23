@@ -1,5 +1,5 @@
 import { getDocoByHandle } from "@doco/db";
-import { validateRequestedDocoId as validateRequestedDocoHandle } from "@doco/shared";
+import { validateRequestedDocoHandle } from "@doco/shared";
 import { loadDocoRouteForAdmin, loadDocoRouteForRead } from "~/lib/doco-access.server";
 import { reindex, renameDocoHandle, updateDocoMeta } from "~/lib/redeem.server";
 

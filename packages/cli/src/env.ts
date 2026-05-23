@@ -1,9 +1,6 @@
 // Doco config resolution for the CLI. The secret is `DOCO_ACCESS` in
 // `./.env`; the project coordinate is the committed URL(s) in
-// `./.doco/connections.md` (v15 — decision_01KS3DX190V93NGR3QQ37J8TVQ).
-// Older installs that still carry the legacy `./DOCO.md` keep working
-// as a read-only fallback so a fresh CLI on an older repo doesn't
-// pretend the coordinate is missing.
+// `./.doco/connections.md`.
 
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -29,11 +26,11 @@ export function resolveDocoHost(): string {
 /**
  * Read `./.env` into `process.env` for any DOCO_* keys that aren't
  * already set. Lazy: returns immediately if every key is already in env.
- * Used by the capture / patch / supersede / audit commands so they can
- * be invoked from a shell that hasn't sourced .env.
+ * Used by login/bootstrap helpers so they can be invoked from a shell
+ * that hasn't sourced .env.
  */
 export function loadDotenv(): void {
-  for (const k of ["DOCO_ACCESS", "DOCO_TOKEN", "DOCO_KEY", "DOCO_ID", "DOCO_URL"] as const) {
+  for (const k of ["DOCO_ACCESS", "DOCO_HOST"] as const) {
     if (process.env[k]) continue;
     try {
       const text = readFileSync(resolve(process.cwd(), ".env"), "utf8");
@@ -42,10 +39,7 @@ export function loadDotenv(): void {
         const m = line.match(/^([A-Z_][A-Z0-9_]*)\s*=\s*(.*?)\s*$/);
         if (!m) continue;
         let v = m[2];
-        if (
-          (v.startsWith('"') && v.endsWith('"')) ||
-          (v.startsWith("'") && v.endsWith("'"))
-        ) {
+        if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) {
           v = v.slice(1, -1);
         }
         if (!process.env[m[1]]) process.env[m[1]] = v;
@@ -55,58 +49,32 @@ export function loadDotenv(): void {
       break;
     }
   }
-  if (!process.env.DOCO_ACCESS) {
-    process.env.DOCO_ACCESS = process.env.DOCO_TOKEN || process.env.DOCO_KEY || "";
-  }
-  if (!process.env.DOCO_ACCESS && process.env.DOCO_URL) {
-    const m = process.env.DOCO_URL.match(/\/agent\/([0-9a-f]{64})\/?$/);
-    if (m?.[1]) process.env.DOCO_ACCESS = m[1];
-  }
 }
 
 /**
  * Pull the public Doco coordinate from the project's pointer file.
- * v15 (decision_01KS3DX190V93NGR3QQ37J8TVQ): the canonical location is
- * `.doco/connections.md` — a markdown file listing one or more Doco
- * URLs (a repo can connect to multiple Docos). The first URL wins;
- * multi-Doco-aware commands can override via `DOCO_ID` in env.
- *
- * Legacy fallback: pre-v15 repos carry `./DOCO.md` (lowercase
- * `doco.md` on case-sensitive filesystems). Reads continue to work
- * until those repos migrate; new writes by `doco login` go to
- * `.doco/connections.md`.
+ * `.doco/connections.md` is a markdown file listing one or more Doco
+ * URLs. The first URL wins.
  */
 export function readDocoRefFromProject(cwd: string = process.cwd()): string | null {
-  const candidates = [".doco/connections.md", "DOCO.md", "doco.md"];
-  for (const fname of candidates) {
-    try {
-      const text = readFileSync(resolve(cwd, fname), "utf8");
-      const urlMatch = text.match(/https?:\/\/[^/\s)]+\/([A-Za-z0-9][A-Za-z0-9-]*)(?:\/|\b)/);
-      if (urlMatch?.[1]) return urlMatch[1];
-    } catch {
-      // Try the next candidate, then fall through to legacy ID discovery.
-    }
-  }
-  for (const name of ["AGENTS.md", "CLAUDE.md"]) {
-    try {
-      const text = readFileSync(resolve(cwd, name), "utf8");
-      const m = text.match(/\bdoco_[A-Za-z0-9]+/);
-      if (m) return m[0];
-    } catch {
-      // ignore missing files; try the next one
-    }
+  try {
+    const text = readFileSync(resolve(cwd, ".doco/connections.md"), "utf8");
+    const urlMatch = text.match(/https?:\/\/[^/\s)]+\/([A-Za-z0-9][A-Za-z0-9-]*)(?:\/|\b)/);
+    if (urlMatch?.[1]) return urlMatch[1];
+  } catch {
+    return null;
   }
   return null;
 }
 
 /**
  * Resolve access credential + Doco ref or exit 2 with a missing-config
- * message. Read order: process.env → ./.env (via loadDotenv) → DOCO.md.
+ * message.
  */
 export function requireDocoConfig(): DocoConfig {
   loadDotenv();
   const access = process.env.DOCO_ACCESS ?? "";
-  const docoRef = readDocoRefFromProject() ?? process.env.DOCO_ID ?? "";
+  const docoRef = readDocoRefFromProject() ?? "";
   const missing: string[] = [];
   if (!access) missing.push("DOCO_ACCESS (./.env)");
   if (!docoRef) missing.push(".doco/connections.md URL");

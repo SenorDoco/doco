@@ -204,7 +204,7 @@ function OverviewFlowNode({ data }: { data: OverviewNodeData }) {
   return (
     <div className="relative h-full w-full overflow-visible">
       <div
-        className={`overview-graph-node nodrag nopan flex h-full w-full items-center gap-1.5 overflow-hidden rounded-[4px] border bg-card px-2 text-left shadow-sm${data.isNew ? " doco-new-node-glow" : ""}`}
+        className={`neu-surface overview-graph-node nodrag nopan flex h-full w-full items-center gap-1.5 overflow-hidden rounded-[4px] border bg-card px-2 text-left shadow-sm${data.isNew ? " doco-new-node-glow" : ""}`}
         data-graph-reference-number={data.referenceNumber ?? undefined}
         data-neuron-href={detail?.href ?? data.node.href ?? undefined}
         data-neuron-id={data.node.id}
@@ -245,7 +245,7 @@ function OverviewFlowNode({ data }: { data: OverviewNodeData }) {
       {data.referenceNumber ? (
         <span
           aria-label={`Graph reference ${data.referenceNumber}: ${title}`}
-          className="pointer-events-none absolute -left-2 -top-2 z-30 flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold leading-none text-primary-foreground shadow-sm ring-2 ring-card"
+          className="neu-button pointer-events-none absolute -left-2 -top-2 z-30 flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold leading-none text-primary-foreground shadow-sm ring-2 ring-card"
           title={`Graph reference ${data.referenceNumber}`}
         >
           {data.referenceNumber}
@@ -497,8 +497,8 @@ export function OverviewGraph({
         ref={graphRef}
         className={
           fillHeight
-            ? "neo-inset relative min-h-0 w-full flex-1 overflow-hidden rounded-lg bg-card"
-            : "neo-inset relative h-[65vh] min-h-[480px] w-full overflow-hidden rounded-lg bg-card"
+            ? "neu-inset relative min-h-0 w-full flex-1 overflow-hidden rounded-md border border-border bg-input"
+            : "neu-inset relative h-[65vh] min-h-[480px] w-full overflow-hidden rounded-md border border-border bg-input"
         }
       >
         {search ? (

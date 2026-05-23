@@ -1,5 +1,5 @@
-import { withClient } from "@doco/db";
-import { ENTITY_TYPES, entityUrl, isEntityType } from "@doco/shared";
+import { DOCO_NEURON_TABLE_SPECS, withClient } from "@doco/db";
+import { entityUrl, isEntityType } from "@doco/shared";
 // Per-Doco entity list at the short URL `/<doco-handle>/<type>`.
 //
 // Note: this route IS the catch-all for any unknown `<type>` segment
@@ -15,11 +15,10 @@ import { loadDocoRouteForRead } from "~/lib/doco-access.server";
 import { loadHostConfig } from "~/lib/host.server";
 import { getCurrentPrincipal } from "~/lib/session.server";
 
-// Articles are constitution metadata, not nodes — the generic
-// "/<handle>/<type>" list view exists for notes only. Article lists
-// live at /<handle>/constitution and /<handle>/api/articles.json.
-const ARTICLE_TYPES = new Set<string>(["guidance_primitive", "neuron_authoring_primitive"]);
-const KNOWN = new Set<string>(ENTITY_TYPES.filter((t) => !ARTICLE_TYPES.has(t)));
+const TABLE_BY_TYPE: Record<string, string> = Object.fromEntries(
+  DOCO_NEURON_TABLE_SPECS.map((spec) => [spec.entityType, spec.table]),
+);
+const KNOWN = new Set<string>(Object.keys(TABLE_BY_TYPE));
 
 export async function loader({
   params,
@@ -64,21 +63,6 @@ export async function loader({
     };
   });
 }
-
-const TABLE_BY_TYPE: Record<string, string> = {
-  decision: "decisions",
-  intent: "intents",
-  rule: "rules",
-  action: "actions",
-  log: "logs",
-  reference: "reference_entities",
-  eval: "evals",
-  idea: "ideas",
-  // v7 (decision_01KRRR5BQ16ASY8HQEE0V499YG): State node type maps to
-  // the `states` table; the default `entityType + "s"` fallback would
-  // resolve to `state` and crash the list query.
-  state: "states",
-};
 
 export function meta({
   params,
@@ -125,7 +109,7 @@ export default function ListByTypeInDoco({
                 <TableRow key={it.id}>
                   <TableCell>
                     <Link
-                      to={entityUrl({ ownerSlug, docoSlug, entityType: type, id: it.id })}
+                      to={entityUrl({ docoHandle: handle, entityType: type, id: it.id })}
                       className="text-primary hover:underline"
                     >
                       {it.title ?? it.name ?? it.id}

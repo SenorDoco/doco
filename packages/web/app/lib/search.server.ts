@@ -40,7 +40,7 @@ function entitySpec(table: string, entityType: string): SearchTypeSpec {
   };
 }
 
-// Note types only — primitives (constitution metadata) are not neurons
+// Note types only — primitives are not neurons
 // and do not participate in neuron search/ranking. To fetch primitives,
 // hit /<handle>/api/primitives.json or read the bootstrap payload.
 export const SEARCH_TYPE_SPECS: SearchTypeSpec[] = [
@@ -71,13 +71,13 @@ export const SEARCH_TYPE_SPECS: SearchTypeSpec[] = [
   {
     table: "organizations",
     entityType: "organization",
-    selectExtra: "slug, name, created_at",
+    selectExtra: "handle, name, created_at",
     hostLevel: true,
     toHit: (row, score) => ({
       id: String(row.id),
       entity_type: "organization",
       summary: (row.name as string) ?? "",
-      name: (row.slug as string) ?? null,
+      name: (row.handle as string) ?? null,
       lifecycle: null,
       created_at: (row.created_at as string) ?? null,
       vector_score: score,
@@ -122,6 +122,10 @@ export async function loadAllDocoEntityIds(c: PoolClient, docoId: string): Promi
     ).rows;
     for (const row of rows) ids.push(row.id);
   }
+  const principalRows = (
+    await c.query<{ id: string }>("SELECT id FROM principals WHERE data->>'doco_id' = $1", [docoId])
+  ).rows;
+  for (const row of principalRows) ids.push(row.id);
   return ids;
 }
 

@@ -49,13 +49,10 @@ fi
 DOCO_BASE_URL="${DOCO_HOST:-https://doco.to}"
 DOCO_BASE_URL="${DOCO_BASE_URL%/}"
 DOCO_HANDLE="${DOCO_HANDLE:-}"
-# Canonical filename is DOCO.md; older repos shipped lowercase doco.md.
-# On case-insensitive filesystems the two resolve to one file.
-DOCO_MD_PATH=""
-[ -f "$PWD/DOCO.md" ] && DOCO_MD_PATH="$PWD/DOCO.md"
-[ -z "$DOCO_MD_PATH" ] && [ -f "$PWD/doco.md" ] && DOCO_MD_PATH="$PWD/doco.md"
-if [ -z "$DOCO_HANDLE" ] && [ -n "$DOCO_MD_PATH" ]; then
-  DOCO_HANDLE=$(sed -nE 's|.*https?://[^/ ]+/([A-Za-z0-9][A-Za-z0-9-]*)/?[ ).]*.*|\1|p' "$DOCO_MD_PATH" | head -1)
+DOCO_CONNECTION_PATH=""
+[ -f "$PWD/.doco/connections.md" ] && DOCO_CONNECTION_PATH="$PWD/.doco/connections.md"
+if [ -z "$DOCO_HANDLE" ] && [ -n "$DOCO_CONNECTION_PATH" ]; then
+  DOCO_HANDLE=$(sed -nE 's|.*https?://[^/ ]+/([A-Za-z0-9][A-Za-z0-9-]*)/?[ ).]*.*|\1|p' "$DOCO_CONNECTION_PATH" | head -1)
 fi
 
 # 3. Locate the pre-fetched hits file written by user-prompt-fetch.sh.
@@ -77,8 +74,8 @@ esac
 # 5. Find Decisions with vector_score > 0.45 whose body mentions either
 #    substring. We need the body, which /search.json hits DON'T carry —
 #    they expose summary + file_path. Match against summary first; if no
-#    summary hit, optionally fall back to reading the file_path (it's
-#    local: docos/<owner>/<doco>/decisions/<id>.md).
+#    summary hit, optionally fall back to reading the file_path when a
+#    search result includes one.
 MATCH_JSON=$(jq -c --arg b "$BASENAME" --arg r "$RELPATH" '
   [ .hits[]?
     | select(.node_type == "decision")
@@ -134,7 +131,7 @@ NUDGE_BODY=$(printf '%s' "$FINAL_MATCHES" | jq -r --arg host "$DOCO_BASE_URL" --
 
 [ -z "$NUDGE_BODY" ] && exit 0
 
-NUDGE=$(printf '🔮 Doco PostToolUse — file just edited (%s) is referenced in an existing Decision\n\nThis edit touched **%s**. The following Decision(s) from this prompt'\''s search hits cite this path in their body (vector_score > 0.45):\n\n%s\n\n**Consider PATCHing one of these Decisions** instead of opening a sibling. If a high-vector_score hit already governs the change, PATCH it via the Doco MCP write tools or `PATCH https://doco.to/<handle>/api/decisions/<id>.json` rather than skipping the capture or creating a near-duplicate. Two overlapping nodes are strictly worse than one stale one.' \
+NUDGE=$(printf '🔮 Doco PostToolUse — file just edited (%s) is referenced in an existing Decision\n\nThis edit touched **%s**. The following Decision(s) from this prompt'\''s search hits cite this path in their body (vector_score > 0.45):\n\n%s\n\n**Consider PATCHing one of these Decisions** instead of opening a sibling. If a high-vector_score hit already governs the change, PATCH it via the Doco MCP write tools or `PATCH https://doco.to/<handle>/api/decisions/<id>.json` rather than skipping the capture or creating a near-duplicate. Two overlapping neurons are strictly worse than one stale one.' \
   "$RELPATH" "$RELPATH" "$NUDGE_BODY")
 
 # 7. Emit the JSON envelope.

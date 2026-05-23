@@ -169,7 +169,7 @@ export default function InviteLanding({
           <CardContent>
             <Link
               to={`/${actionData.doco_handle}`}
-              className="neo-raised-primary inline-flex items-center rounded-md px-4 py-2 text-sm font-semibold"
+              className="neu-button bg-primary text-primary-foreground hover:opacity-90 inline-flex items-center rounded-md px-4 py-2 text-sm font-semibold"
             >
               Continue
             </Link>
@@ -223,14 +223,11 @@ export default function InviteLanding({
               <Form method="post" className="flex gap-2">
                 <button
                   type="submit"
-                  className="neo-raised-primary rounded-md px-4 py-2 text-sm font-semibold"
+                  className="neu-button bg-primary text-primary-foreground hover:opacity-90 rounded-md px-4 py-2 text-sm font-semibold"
                 >
                   Accept invite
                 </button>
-                <Link
-                  to="/"
-                  className="neo-raised-sm rounded-md px-4 py-2 text-sm font-semibold"
-                >
+                <Link to="/" className="neu-button rounded-md px-4 py-2 text-sm font-semibold">
                   Decline
                 </Link>
               </Form>
@@ -241,7 +238,7 @@ export default function InviteLanding({
               <div className="grid gap-2 sm:grid-cols-2">
                 <Link
                   to={`/auth/github?return=${encodeURIComponent(`/invite/${loaderData.code}`)}`}
-                  className="neo-raised rounded-md bg-card p-3 hover:border-primary"
+                  className="neu-surface-interactive rounded-md bg-card p-3 hover:border-primary"
                 >
                   <span className="block text-sm font-semibold text-foreground">Human</span>
                   <span className="mt-1 block text-xs text-muted-foreground">
@@ -251,7 +248,7 @@ export default function InviteLanding({
                 <Link
                   to={`/invite/${loaderData.code}/agent.txt`}
                   reloadDocument
-                  className="neo-raised rounded-md bg-card p-3 hover:border-primary"
+                  className="neu-surface-interactive rounded-md bg-card p-3 hover:border-primary"
                 >
                   <span className="block text-sm font-semibold text-foreground">Agent</span>
                   <span className="mt-1 block text-xs text-muted-foreground">

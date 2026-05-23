@@ -97,9 +97,7 @@ export default function SynapsesIndex({
     <div>
       <SiteHeader mode="host" me={me} />
       <main className="mx-auto max-w-6xl px-6 py-6 space-y-4">
-        <Breadcrumb
-          items={docoBreadcrumb({ ownerSlug, handle, pageLabel: "Synapses" })}
-        />
+        <Breadcrumb items={docoBreadcrumb({ ownerSlug, handle, pageLabel: "Synapses" })} />
         <header className="flex items-baseline justify-between gap-3">
           <h1 className="text-2xl font-semibold">Synapses</h1>
           <div className="text-xs text-muted-foreground">
@@ -113,9 +111,9 @@ export default function SynapsesIndex({
           <CardContent className="p-0">
             {synapses.length === 0 ? (
               <p className="px-5 py-6 text-xs text-muted-foreground">
-                No synapses yet. Synapses materialize automatically when a neuron references
-                another neuron (e.g. a Decision's intent_ids). Patch a neuron's reference field and
-                the synapse appears.
+                No synapses yet. Synapses materialize automatically when a neuron references another
+                neuron (e.g. a Decision's intent_ids). Patch a neuron's reference field and the
+                synapse appears.
               </p>
             ) : (
               <Table>
@@ -137,7 +135,9 @@ export default function SynapsesIndex({
                         >
                           {e.from_summary ?? e.from_id}
                         </Link>
-                        <div className="text-[10px] text-muted-foreground">{e.from_neuron_type}</div>
+                        <div className="text-[10px] text-muted-foreground">
+                          {e.from_neuron_type}
+                        </div>
                       </TableCell>
                       <TableCell>
                         <code className="rounded bg-input px-1.5 py-0.5 font-mono text-[11px]">

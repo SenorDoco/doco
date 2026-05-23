@@ -534,7 +534,7 @@ function dagreLayout(nodes: GraphNode[], links: GraphLink[], centerId: string): 
 function SwimLaneNode() {
   return (
     <div
-      className="neo-inset h-full w-full rounded-lg bg-card/55"
+      className="neu-inset h-full w-full rounded-lg bg-card/55"
       aria-hidden="true"
       data-swim-lane-band="principal"
     />
@@ -1191,8 +1191,8 @@ export function EntityGraph({
         ref={graphRef}
         className={
           fillHeight
-            ? "neo-inset relative min-h-0 w-full flex-1 overflow-hidden rounded-lg bg-card"
-            : "neo-inset relative h-[65vh] min-h-[480px] w-full overflow-hidden rounded-lg bg-card"
+            ? "neu-inset relative min-h-0 w-full flex-1 overflow-hidden rounded-lg bg-card"
+            : "neu-inset relative h-[65vh] min-h-[480px] w-full overflow-hidden rounded-lg bg-card"
         }
       >
         {visible.nodes.length === 0 ? (

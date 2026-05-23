@@ -12,10 +12,7 @@
 
 import { getDocoByIdOrHandle } from "@doco/db";
 import { canReadDocoForRequest } from "~/lib/doco-access.server";
-import {
-  hostFromRequest,
-  missingDocoResponse,
-} from "~/lib/missing-doco-guidance.server";
+import { hostFromRequest, missingDocoResponse } from "~/lib/missing-doco-guidance.server";
 import { getCurrentPrincipalAsync } from "~/lib/session.server";
 
 export async function loader({
@@ -38,11 +35,11 @@ export async function loader({
   }
   const me = await getCurrentPrincipalAsync(request);
   if (
-    !await canReadDocoForRequest(
+    !(await canReadDocoForRequest(
       request,
       { ownerId: row.owner_id, visibility: row.visibility, docoId: row.id },
       me?.id ?? null,
-    )
+    ))
   ) {
     return missingDocoResponse({
       state: "no_access",

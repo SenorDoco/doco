@@ -17,12 +17,7 @@ import { lifecycleColor } from "~/lib/neuron-colors";
  */
 // The four canonical lifecycle stages from @doco/shared, in
 // progression order. The filter row renders them in this sequence.
-export const LIFECYCLE_ORDER: readonly string[] = [
-  "drafted",
-  "proposed",
-  "active",
-  "retired",
-];
+export const LIFECYCLE_ORDER: readonly string[] = ["drafted", "proposed", "active", "retired"];
 
 /**
  * Lifecycles hidden out of the box. `retired` is the "no longer
@@ -82,18 +77,11 @@ interface LifecycleFilterProps {
   className?: string;
 }
 
-export function LifecycleFilter({
-  available,
-  visible,
-  onToggle,
-  className,
-}: LifecycleFilterProps) {
+export function LifecycleFilter({ available, visible, onToggle, className }: LifecycleFilterProps) {
   const ordered = orderLifecycles(available);
   if (ordered.length === 0) return null;
   return (
-    <div
-      className={`flex flex-wrap items-center gap-x-4 gap-y-2 text-xs ${className ?? ""}`}
-    >
+    <div className={`flex flex-wrap items-center gap-x-4 gap-y-2 text-xs ${className ?? ""}`}>
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-muted-foreground">Life cycle:</span>
         {ordered.map((lifecycle) => {

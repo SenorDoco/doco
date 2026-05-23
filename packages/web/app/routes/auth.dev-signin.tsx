@@ -16,8 +16,8 @@
 // shortcut WITHOUT widening the credential surface — any other
 // username request is rejected.
 
-import { Form, redirect } from "react-router";
 import { withClient } from "@doco/db";
+import { Form, redirect } from "react-router";
 import { Breadcrumb } from "~/components/breadcrumb";
 import { findPrincipalByUsername, setSessionCookie } from "~/lib/session.server";
 
@@ -129,17 +129,11 @@ export default function DevSignin({
 }) {
   return (
     <main style={{ maxWidth: 480, margin: "60px auto", padding: 24, fontFamily: "system-ui" }}>
-      <Breadcrumb
-        items={[
-          { label: "Home", to: "/" },
-          { label: "Dev sign-in" },
-        ]}
-        className="mb-2"
-      />
+      <Breadcrumb items={[{ label: "Home", to: "/" }, { label: "Dev sign-in" }]} className="mb-2" />
       <h1>Dev sign-in</h1>
       <p style={{ color: "#a00", marginBottom: 16 }}>
-        ⚠️ Testing-only. Signs in as one of the dedicated test principals. Each starts with no
-        Doco grants — pair this with an invite mint to give it access for a specific test run.
+        ⚠️ Testing-only. Signs in as one of the dedicated test principals. Each starts with no Doco
+        grants — pair this with an invite mint to give it access for a specific test run.
       </p>
       <Form method="post" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         <label>

@@ -60,7 +60,8 @@ There are two access channels — pick the one your runtime supports.
     returns 401/403. Returns a ready-to-render block with a
     clickable verification URL.
   - \`doco_complete_authentication\` — finalize after the user
-    approves. Writes DOCO_ACCESS to ./.env and clears state.
+    approves. Writes DOCO_ACCESS to the repo-root ./.env and clears
+    state.
 
 MCP delivers tool descriptions and the \`serverInfo.instructions\`
 field in clean framing (no claudeMd-style "may not be relevant"
@@ -89,6 +90,31 @@ that, every API call is:
 
     GET https://doco.to/<handle>/<endpoint>
     Authorization: Bearer doco_at_<token>
+
+### Repo-local credential sharing
+
+If you are operating inside a Doco-tracked repository, the repository
+root \`.env\` is the shared credential store for agents running in
+that **same local checkout**:
+
+- Read \`DOCO_ACCESS\`, \`DOCO_REFRESH\`, \`DOCO_CLIENT_ID\`, and
+  \`DOCO_HOST\` from repo-root \`.env\` before asking the user to
+  authorize.
+- When OAuth succeeds, write the tokens back to that same \`.env\`
+  with private permissions (0600 where your runtime supports it).
+- Prefer the repo-root \`.env\` value over stale inherited
+  \`process.env\` values, and reread it before each Doco call if your
+  process is long-lived. Another local agent may have refreshed or
+  created the credential moments ago.
+- Never commit \`.env\` or token values. Separate clones, worktrees,
+  machines, and remote sandboxes need their own local \`.env\` because
+  credentials are secret; they share only the committed Doco bootstrap
+  files.
+
+Do not ask the user to approve a new device/browser authorization
+just because this agent process did not start with credentials. First
+check the shared repo-root \`.env\`; if another same-checkout agent
+already authorized, reuse that token and continue.
 
 If the Doco is **public**, you can skip OAuth entirely. Either way,
 the endpoint shapes are:
@@ -132,7 +158,7 @@ Primitives apply only to their Doco. Treat them as binding on your
 authoring at all times.
 
 The project owner can **add, edit, or remove primitives any time**,
-at \`/<handle>/constitution\`. Re-bootstrap if you suspect they've
+at \`/<handle>/primitives\`. Re-bootstrap if you suspect they've
 changed mid-session.
 
 Once you hold a Bearer token, hit:
@@ -194,8 +220,9 @@ not-connected flow.
 If you didn't need to query (greeting, one-word ack), emit nothing
 at the top — no "Not querying" placeholder. Absence is the signal.
 
-**If Doco access isn't granted** (no DOCO_ACCESS, or \`doco_search\`
-returned 401/403, or the bootstrap couldn't reach Doco):
+**If Doco access isn't granted** (no DOCO_ACCESS after checking the
+shared repo-root \`.env\`, or \`doco_search\` returned 401/403, or the
+bootstrap couldn't reach Doco):
 
 1. Call \`doco_authenticate\` to get the verification URL.
 2. Render the block returned by \`doco_authenticate\` at the top of
@@ -308,7 +335,7 @@ primitives that govern how neurons are authored:
 - **Neuron-authoring primitive** — the other kind. Evaluated when
   neurons are captured; deterministic predicates or probabilistic
   specs. The project owner can edit either kind any time from
-  \`/<handle>/constitution\`.
+  \`/<handle>/primitives\`.
 - **Eval** — a named, executable test pinning a load-bearing claim.
 - **Reference** — an external pointer (URL, file, doc) with a summary.
 - **State** — a neuron in a formal state machine.

@@ -210,7 +210,7 @@ export function BpmnPerspective({
 
   if (filteredLanes.length === 0 || filteredNodes.length === 0) {
     return (
-      <div className="neo-inset flex h-full min-h-[420px] items-center justify-center rounded-md bg-card text-center text-sm font-medium text-muted-foreground">
+      <div className="flex h-full min-h-[420px] items-center justify-center rounded-md border border-border bg-input text-center text-sm font-medium text-muted-foreground">
         So empty
       </div>
     );
@@ -219,7 +219,7 @@ export function BpmnPerspective({
   return (
     <div
       ref={graphRef}
-      className="neo-inset relative h-full min-h-[420px] w-full overflow-hidden rounded-md bg-card"
+      className="relative h-full min-h-[420px] w-full overflow-hidden rounded-md border border-border bg-input"
     >
       {Flow ? (
         <Flow.ReactFlow

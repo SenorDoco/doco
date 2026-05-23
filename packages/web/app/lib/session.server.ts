@@ -3,7 +3,7 @@
 // The `CurrentPrincipal` shape and `findPrincipalById` names are kept
 // for caller compatibility, but the underlying lookups read collaborators.
 
-import { type CollaboratorRow, getCollaboratorById, getCollaboratorByGithubLogin } from "@doco/db";
+import { type CollaboratorRow, getCollaboratorByGithubLogin, getCollaboratorById } from "@doco/db";
 
 const COOKIE_NAME = "doco_session";
 
@@ -16,10 +16,7 @@ export function getSessionPrincipalId(request: Request): string | null {
     if (eq < 0) continue;
     const name = p.slice(0, eq);
     const value = decodeURIComponent(p.slice(eq + 1));
-    if (
-      name === COOKIE_NAME &&
-      /^(collaborator|principal)_[0-9A-HJKMNP-TV-Z]{26}$/.test(value)
-    ) {
+    if (name === COOKIE_NAME && /^(collaborator|principal)_[0-9A-HJKMNP-TV-Z]{26}$/.test(value)) {
       return value;
     }
   }

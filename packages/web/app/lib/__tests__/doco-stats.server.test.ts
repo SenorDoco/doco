@@ -19,4 +19,8 @@ describe("dashboard doco stats entity tables", () => {
       expect(tableRegex("DROP TABLE IF EXISTS", table).test(schemaSql)).toBe(false);
     }
   });
+
+  it("counts Doco-authored role principals as neuron stats", () => {
+    expect(ENTITY_TABLES).toContain("principals");
+  });
 });

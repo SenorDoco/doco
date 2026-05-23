@@ -112,13 +112,26 @@ export async function action({
           await upsertOrgUser({ org_id: targetId, collaborator_id: principalId, role });
         else await upsertDocoUser({ doco_id: targetId, collaborator_id: principalId, role });
       }
-      return { intent: "update", ok: true, level, target_ids: targetIds, collaborator_id: principalId, role };
+      return {
+        intent: "update",
+        ok: true,
+        level,
+        target_ids: targetIds,
+        collaborator_id: principalId,
+        role,
+      };
     }
     for (const targetId of targetIds) {
       if (level === "org") await removeOrgUser(targetId, principalId);
       else await removeDocoUser(targetId, principalId);
     }
-    return { intent: "remove", ok: true, level, target_ids: targetIds, collaborator_id: principalId };
+    return {
+      intent: "remove",
+      ok: true,
+      level,
+      target_ids: targetIds,
+      collaborator_id: principalId,
+    };
   }
 
   if (intent === "oauth_update" || intent === "oauth_remove") {
@@ -251,9 +264,7 @@ function groupByPrincipal(rows: GroupedRow[]): GroupedRow[] {
   for (const row of map.values()) {
     row.grants.sort((a, b) => a.target_label.localeCompare(b.target_label));
   }
-  return [...map.values()].sort((a, b) =>
-    a.principal.username.localeCompare(b.principal.username),
-  );
+  return [...map.values()].sort((a, b) => a.principal.username.localeCompare(b.principal.username));
 }
 
 export default function CollaboratorsPage({
@@ -290,8 +301,8 @@ export default function CollaboratorsPage({
           grants: [
             {
               target_id: s.org.id,
-              target_label: s.org.slug,
-              target_link: `/orgs/${s.org.slug}`,
+              target_label: s.org.handle,
+              target_link: `/orgs/${s.org.handle}`,
               joined_at: u.joined_at,
               role: u.role,
               canEdit: s.myRole === "owner",
@@ -358,7 +369,7 @@ export default function CollaboratorsPage({
                 <optgroup label="By org">
                   {loaderData.orgSections.map((s) => (
                     <option key={s.org.id} value={`org:${s.org.id}`}>
-                      {s.org.slug}
+                      {s.org.handle}
                     </option>
                   ))}
                 </optgroup>
@@ -378,7 +389,7 @@ export default function CollaboratorsPage({
           <Link
             to="/collaborators/invite"
             data-testid="invite-toggle"
-            className="neo-raised-primary rounded-md px-3 py-2 text-sm font-semibold"
+            className="neu-button bg-primary text-primary-foreground hover:opacity-90 rounded-md px-3 py-2 text-sm font-semibold"
           >
             + Invite collaborator
           </Link>
@@ -453,8 +464,12 @@ function Section({
 // Most-recently-active first. Rows with no recorded activity sink to the
 // bottom; ties break alphabetically by username.
 function activeFirst(a: GroupedRow, b: GroupedRow): number {
-  const at = a.principal.last_activity_at ? Date.parse(a.principal.last_activity_at) : -Infinity;
-  const bt = b.principal.last_activity_at ? Date.parse(b.principal.last_activity_at) : -Infinity;
+  const at = a.principal.last_activity_at
+    ? Date.parse(a.principal.last_activity_at)
+    : Number.NEGATIVE_INFINITY;
+  const bt = b.principal.last_activity_at
+    ? Date.parse(b.principal.last_activity_at)
+    : Number.NEGATIVE_INFINITY;
   if (at !== bt) return bt - at;
   return a.principal.username.localeCompare(b.principal.username);
 }
@@ -525,27 +540,22 @@ function UserRow({
             {primaryName}
           </span>
           {isOauth ? (
-            <span className="neo-etched shrink-0 rounded px-1.5 py-px text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+            <span className="neu-surface shrink-0 rounded px-1.5 py-px text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
               agent
             </span>
           ) : null}
           {isMe ? (
-            <span className="neo-etched shrink-0 rounded px-1.5 py-px text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+            <span className="neu-surface shrink-0 rounded px-1.5 py-px text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
               you
             </span>
           ) : null}
         </div>
-        <div
-          className="mt-0.5 truncate text-xs text-muted-foreground"
-          title={metaTooltip}
-        >
+        <div className="mt-0.5 truncate text-xs text-muted-foreground" title={metaTooltip}>
           {metaParts.join(" · ")}
         </div>
       </td>
       <td className="py-3 align-top">
-        <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
-          Access to
-        </div>
+        <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Access to</div>
         <div className="mt-1 flex flex-col gap-1.5">
           {row.grants.map((g) => (
             <AccessLine
@@ -624,7 +634,7 @@ function AccessLine({
     <div className="flex items-center gap-1.5">
       <Link
         to={grant.target_link}
-        className="neo-raised-sm inline-flex min-w-0 flex-1 items-center truncate rounded-full px-2 py-0.5 text-xs"
+        className="neu-button inline-flex min-w-0 flex-1 items-center truncate rounded-full px-2 py-0.5 text-xs"
         title={`${grant.target_label} — granted ${formatDate(grant.joined_at)}`}
       >
         {grant.target_label}
@@ -654,17 +664,20 @@ function AccessLine({
             removeFetcher.submit(removePayload, { method: "post" });
           }}
           title={`Remove ${username} from ${grant.target_label}`}
-          className="neo-raised-sm shrink-0 rounded-md px-1.5 py-0.5 text-xs text-destructive disabled:opacity-50"
+          className="neu-button shrink-0 rounded-md px-1.5 py-0.5 text-xs text-destructive disabled:opacity-50"
         >
           {removeFetcher.state !== "idle" ? "…" : "×"}
         </button>
       ) : null}
       {roleFetcher.state !== "idle" || error || showSaved ? (
-        <span
-          className="text-[10px] text-muted-foreground"
-          aria-live="polite"
-        >
-          {roleFetcher.state !== "idle" ? "Saving…" : error ? <span className="text-destructive">{error}</span> : "Saved"}
+        <span className="text-[10px] text-muted-foreground" aria-live="polite">
+          {roleFetcher.state !== "idle" ? (
+            "Saving…"
+          ) : error ? (
+            <span className="text-destructive">{error}</span>
+          ) : (
+            "Saved"
+          )}
         </span>
       ) : null}
     </div>

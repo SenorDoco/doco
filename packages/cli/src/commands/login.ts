@@ -3,38 +3,31 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { hostname } from "node:os";
 import { resolve } from "node:path";
 import { defineCommand } from "citty";
+import { readDocoRefFromProject } from "../env.js";
 import { c, checkmark, cross, header, rule } from "../output.js";
 
 /**
- * `doco login` — Vercel-style browser-authorize flow
- * (decision_01KRKZM14WNA1685GN0F12WCKM).
+ * `doco login` — OAuth Device Authorization Grant for shell-capable
+ * agents that can open a browser but want a credential written back to
+ * the repo-local `.env`.
  *
- * Posts to https://doco.to/api/v1/cli/device-init for a state nonce + short
- * code + authorize URL, opens the URL in the project owner's default
- * browser, then polls /api/v1/cli/device-exchange until the project
- * owner clicks Authorize. On approval, writes DOCO_ACCESS to ./.env
- * (gitignored secret) so the bootstrap hooks pick up the new
- * credentials on the next session.
- *
- * Replaces the host-bootstrap detour + /claim/<token> handoff: the Doco
- * is created directly under the authorizing project owner with no
- * intermediate "unclaimed" state.
+ * Flow:
+ *   1. Register a public OAuth client with the host.
+ *   2. Start RFC 8628 device authorization.
+ *   3. Open /device?user_code=... for the user.
+ *   4. Poll /oauth/token until the user approves.
+ *   5. Store DOCO_ACCESS / DOCO_REFRESH / DOCO_CLIENT_ID / DOCO_HOST in ./.env.
  */
 export const loginCmd = defineCommand({
   meta: {
     name: "login",
     description:
-      "Authorize this CLI session in the browser (Vercel-style). Writes DOCO_ACCESS to ./.env on success.",
+      "Authorize this CLI session with OAuth device flow. Writes Doco OAuth credentials to ./.env on success.",
   },
   args: {
     host: {
       type: "string",
       description: "Doco host URL. Defaults to https://doco.to.",
-    },
-    create: {
-      type: "string",
-      description:
-        "Optional Doco slug to create as part of authorization (lowercase kebab-case, no owner prefix — uses the authorizing user's username).",
     },
     "no-open": {
       type: "boolean",
@@ -54,73 +47,34 @@ export const loginCmd = defineCommand({
     const docoHost = (typeof args.host === "string" ? args.host.trim() : "") || "https://doco.to";
     const normalizedHost = docoHost.replace(/\/$/, "");
 
-    const createSlug =
-      typeof args.create === "string" && args.create.trim().length > 0
-        ? args.create.trim().toLowerCase()
-        : null;
-    if (createSlug && !/^[a-z0-9][a-z0-9-]*[a-z0-9]?$/.test(createSlug)) {
-      console.error(
-        cross(`Invalid --create slug "${createSlug}". Use lowercase letters, digits, and hyphens.`),
-      );
-      process.exitCode = 2;
-      return;
-    }
-
     const timeoutSec = Math.max(60, Number(args.timeout) || 600);
+    const targetDocoHandle = readTargetDocoHandle();
 
     console.log(header("Doco — authorize CLI session"));
     console.log(rule());
     console.log(c.dim(`Host:     ${normalizedHost}`));
     console.log(c.dim(`Machine:  ${hostname()} (${process.platform})`));
-    if (createSlug) console.log(c.dim(`Create:   ${createSlug}`));
+    if (targetDocoHandle) console.log(c.dim(`Target:   ${targetDocoHandle} (author)`));
     console.log();
 
-    // 1. POST /api/v1/cli/device-init
-    let init: {
-      id: string;
-      state_nonce: string;
-      short_code: string;
-      authorize_url: string;
-      expires_at: string;
-    };
+    // 1. Register a public OAuth client, then start the device flow.
+    let client: RegisteredClientResponse;
+    let init: DeviceAuthorizationResponse;
     try {
-      const res = await fetch(`${normalizedHost}/api/v1/cli/device-init`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "User-Agent": `doco-cli/${cliVersion()} (node ${process.version}; ${process.platform})`,
-        },
-        body: JSON.stringify({
-          cli_version: cliVersion(),
-          cli_hostname: hostname(),
-        }),
-      });
-      if (!res.ok) {
-        console.error(cross(`device-init failed: ${res.status} ${res.statusText}`));
-        const body = await safeText(res);
-        if (body) console.error(c.dim(body.slice(0, 500)));
-        process.exitCode = 1;
-        return;
-      }
-      init = (await res.json()) as typeof init;
+      client = await registerCliClient(normalizedHost);
+      init = await startDeviceAuthorization(normalizedHost, client.client_id, targetDocoHandle);
     } catch (e) {
-      console.error(cross(`device-init request failed: ${(e as Error).message}`));
+      console.error(cross(`Device authorization start failed: ${(e as Error).message}`));
       console.error(c.dim(`Check that ${normalizedHost} is reachable from this machine.`));
       process.exitCode = 1;
       return;
     }
 
-    // The authorize_url has /cli/authorize?state=<nonce> — if the user
-    // intends to create a Doco at the same step we pre-fill it.
-    const authorizeUrl = (() => {
-      if (!createSlug) return init.authorize_url;
-      const u = new URL(init.authorize_url);
-      u.searchParams.set("create", createSlug);
-      return u.toString();
-    })();
+    const authorizeUrl = init.verification_uri_complete;
+    const expiresAt = new Date(Date.now() + init.expires_in * 1000).toISOString();
 
-    console.log(checkmark(`Authorization initiated. Short code: ${c.warn(init.short_code)}`));
-    console.log(c.dim(`Expires at ${init.expires_at}.`));
+    console.log(checkmark(`Authorization initiated. Short code: ${c.warn(init.user_code)}`));
+    console.log(c.dim(`Expires at ${expiresAt}.`));
     console.log();
     if (args["no-open"]) {
       console.log("Open this URL in your browser to authorize:");
@@ -136,58 +90,56 @@ export const loginCmd = defineCommand({
     console.log();
     console.log(c.dim(`Waiting for approval (up to ${timeoutSec}s)…`));
 
-    // 2. Poll /api/v1/cli/device-exchange
+    // 2. Poll /oauth/token until the device authorization resolves.
     const deadline = Date.now() + timeoutSec * 1000;
-    let pollDelayMs = 1500;
+    let pollDelayMs = Math.max(1000, init.interval * 1000);
     while (Date.now() < deadline) {
       await sleep(pollDelayMs);
       try {
-        const res = await fetch(`${normalizedHost}/api/v1/cli/device-exchange`, {
+        const res = await fetch(`${normalizedHost}/oauth/token`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ state_nonce: init.state_nonce }),
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams({
+            grant_type: DEVICE_CODE_GRANT_TYPE,
+            device_code: init.device_code,
+            client_id: client.client_id,
+          }).toString(),
         });
-        if (res.status === 404) {
-          console.error(
-            cross("Authorization request not found (expired?). Run `doco login` again."),
+        if (res.ok) {
+          const tokens = (await res.json()) as IssuedTokens;
+          const bootstrap = await fetchBootstrap(normalizedHost, tokens.access_token);
+          const resolvedDoco = await resolveGrantedDoco(
+            normalizedHost,
+            tokens.access_token,
+            targetDocoHandle,
+            bootstrap?.oauth_grant?.granted_doco_ids ?? [],
           );
-          process.exitCode = 1;
-          return;
-        }
-        const body = (await res.json()) as {
-          status: string;
-          token?: string;
-          collaborator_id?: string;
-          owner_username?: string;
-          doco_handle?: string | null;
-          doco_id?: string | null;
-        };
-        if (body.status === "approved" && body.token && body.owner_username) {
+
           console.log();
-          console.log(checkmark(`Authorized by ${c.warn(body.owner_username)}.`));
+          console.log(
+            checkmark(
+              `Authorized by ${c.warn(bootstrap?.principal?.username ?? "the approving user")}.`,
+            ),
+          );
           // DOCO_ACCESS is secret → .env (gitignored). The Doco
           // coordinate lives in .doco/connections.md and should be
           // committed so other agents in other clones discover Doco too.
           //
-          // Migration: strip old credential names so .env has one
-          // canonical Doco secret.
-          const updates: Record<string, string> = { DOCO_ACCESS: body.token };
-          const removeFromEnv: string[] = [];
-          if (env.DOCO_TOKEN) removeFromEnv.push("DOCO_TOKEN");
-          if (env.DOCO_KEY) removeFromEnv.push("DOCO_KEY");
-          if (env.DOCO_URL) removeFromEnv.push("DOCO_URL");
-          if (env.DOCO_ID) removeFromEnv.push("DOCO_ID");
-          writeEnvFile(envPath, env, updates, removeFromEnv);
+          const updates: Record<string, string> = {
+            DOCO_ACCESS: tokens.access_token,
+            DOCO_REFRESH: tokens.refresh_token,
+            DOCO_CLIENT_ID: client.client_id,
+            DOCO_HOST: normalizedHost,
+          };
+          writeEnvFile(envPath, env, updates, []);
           console.log(
             checkmark(
-              `Wrote DOCO_ACCESS to ${c.dim("./.env")}${
-                removeFromEnv.length ? c.dim(" (removed legacy Doco env names)") : ""
-              }.`,
+              `Wrote DOCO_ACCESS, DOCO_REFRESH, DOCO_CLIENT_ID, and DOCO_HOST to shared repo credential store ${c.dim("./.env")}.`,
             ),
           );
 
-          if (body.doco_handle) {
-            const docoUrl = `${normalizedHost}/${body.doco_handle}/`;
+          if (resolvedDoco?.doco_handle) {
+            const docoUrl = `${normalizedHost}/${resolvedDoco.doco_handle}/`;
             const target = resolve(process.cwd(), ".doco/connections.md");
             try {
               const { mkdirSync } = await import("node:fs");
@@ -206,7 +158,6 @@ export const loginCmd = defineCommand({
           // pick up DOCO_ACCESS — once they're approved (Claude Code:
           // /hooks) the very next UserPromptSubmit picks up the fresh
           // credential (no full session restart needed).
-          const idForInstall = body.doco_id || env.DOCO_ID || "";
           try {
             const { installAgentBootstrapCmd } = await import("./install-agent-bootstrap.js");
             const originalLog = console.log;
@@ -218,8 +169,7 @@ export const loginCmd = defineCommand({
               await installAgentBootstrapCmd.run({
                 args: {
                   root: process.cwd(),
-                  force: !!idForInstall, // re-stamp AGENTS.md when we have a fresh id
-                  "doco-id": idForInstall,
+                  force: true,
                 },
               } as never);
             } finally {
@@ -227,9 +177,7 @@ export const loginCmd = defineCommand({
             }
             console.log(
               checkmark(
-                `Installed agent bootstrap (${c.dim("AGENTS.md + CLAUDE.md + .claude/")})${
-                  idForInstall ? c.dim(` — stamped with ${idForInstall}`) : ""
-                }.`,
+                `Installed agent bootstrap (${c.dim("AGENTS.md + CLAUDE.md + .claude/")}).`,
               ),
             );
           } catch (e) {
@@ -240,9 +188,9 @@ export const loginCmd = defineCommand({
             );
           }
 
-          if (body.doco_handle) {
+          if (resolvedDoco?.doco_handle) {
             console.log();
-            console.log(c.dim(`Doco URL: ${normalizedHost}/${body.doco_handle}`));
+            console.log(c.dim(`Doco URL: ${normalizedHost}/${resolvedDoco.doco_handle}`));
           }
           console.log();
           console.log(c.dim("Next, in this Claude Code session (no restart needed):"));
@@ -269,6 +217,11 @@ export const loginCmd = defineCommand({
           console.log(c.dim("Share this Doco connection with the repository:"));
           console.log(
             c.dim(
+              "  Agents in this same local checkout share ./.env, so this authorization should stop repeated approval prompts here.",
+            ),
+          );
+          console.log(
+            c.dim(
               "  First verify .doco/connections.md, AGENTS.md, and CLAUDE.md exist, even if DOCO_ACCESS already works.",
             ),
           );
@@ -286,23 +239,30 @@ export const loginCmd = defineCommand({
           );
           return;
         }
-        if (body.status === "denied") {
-          console.error(cross("Authorization denied in the browser. No changes made to ./.env."));
-          process.exitCode = 1;
-          return;
+        const body = (await safeJson<OauthErrorResponse>(res)) ?? {};
+        switch (body.error) {
+          case "authorization_pending":
+            break;
+          case "slow_down":
+            pollDelayMs += 5000;
+            break;
+          case "access_denied":
+            console.error(cross("Authorization denied in the browser. No changes made to ./.env."));
+            process.exitCode = 1;
+            return;
+          case "expired_token":
+            console.error(cross("Authorization request expired. Run `doco login` again."));
+            process.exitCode = 1;
+            return;
+          default:
+            console.error(
+              cross(
+                `Token exchange failed: ${res.status} ${body.error_description ?? body.error ?? res.statusText}`,
+              ),
+            );
+            process.exitCode = 1;
+            return;
         }
-        if (body.status === "expired") {
-          console.error(cross("Authorization request expired. Run `doco login` again."));
-          process.exitCode = 1;
-          return;
-        }
-        if (body.status === "already_consumed") {
-          console.error(cross("Authorization was already exchanged. Run `doco login` again."));
-          process.exitCode = 1;
-          return;
-        }
-        // status === "pending" — keep polling, with mild backoff.
-        pollDelayMs = Math.min(pollDelayMs + 500, 4000);
       } catch (e) {
         // Transient network — don't bail, but slow down.
         console.error(c.dim(`(poll error: ${(e as Error).message} — retrying)`));
@@ -318,7 +278,7 @@ export const loginCmd = defineCommand({
 function cliVersion(): string {
   // Hard-coded matches package.json — keeps the CLI dependency-free.
   // Re-source from package.json once the package gets versioned.
-  return "0.0.1";
+  return "0.1.1";
 }
 
 function renderConnectionsMd(docoUrl: string): string {
@@ -345,10 +305,137 @@ curl -X POST "${docoUrl.replace(/\/+$/, "")}/api/invites.json" \\
   -d '{"expires_in_days": 7}'
 \`\`\`
 
-Agents should store their OAuth access token in \`./.env\` as
-\`DOCO_ACCESS=<oauth-access-token>\`. The credential is secret and gitignored; this
-file is the committed, non-secret project coordinate.
+Agents should store their OAuth credentials in repo-root \`./.env\`
+as \`DOCO_ACCESS\`, \`DOCO_REFRESH\`, \`DOCO_CLIENT_ID\`, and
+\`DOCO_HOST\`. Agents in the same local checkout share that
+credential set. The credentials are secret and gitignored; this file
+is the committed, non-secret project coordinate.
 `;
+}
+
+const DEVICE_CODE_GRANT_TYPE = "urn:ietf:params:oauth:grant-type:device_code";
+
+interface RegisteredClientResponse {
+  client_id: string;
+}
+
+interface DeviceAuthorizationResponse {
+  device_code: string;
+  user_code: string;
+  verification_uri_complete: string;
+  expires_in: number;
+  interval: number;
+}
+
+interface IssuedTokens {
+  access_token: string;
+  refresh_token: string;
+}
+
+interface OauthErrorResponse {
+  error?: string;
+  error_description?: string;
+}
+
+interface BootstrapResponse {
+  principal: { id: string; username: string } | null;
+  oauth_grant: { granted_doco_ids: string[] } | null;
+}
+
+interface DocoLookupResponse {
+  doco_id: string;
+  doco_handle: string;
+}
+
+function readTargetDocoHandle(): string | null {
+  const ref = readDocoRefFromProject();
+  if (!ref || ref.startsWith("doco_")) return null;
+  return ref;
+}
+
+async function registerCliClient(normalizedHost: string): Promise<RegisteredClientResponse> {
+  const res = await fetch(`${normalizedHost}/oauth/register`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "User-Agent": `doco-cli/${cliVersion()} (node ${process.version}; ${process.platform})`,
+    },
+    body: JSON.stringify({
+      client_name: `doco-cli (${hostname()})`,
+      redirect_uris: ["urn:ietf:wg:oauth:2.0:oob"],
+      software_id: "doco-cli",
+      software_version: cliVersion(),
+    }),
+  });
+  if (!res.ok) {
+    throw new Error(`client registration failed: ${res.status} ${await renderHttpError(res)}`);
+  }
+  return (await res.json()) as RegisteredClientResponse;
+}
+
+async function startDeviceAuthorization(
+  normalizedHost: string,
+  clientId: string,
+  targetDocoHandle: string | null,
+): Promise<DeviceAuthorizationResponse> {
+  const body = new URLSearchParams({
+    client_id: clientId,
+    scope: "doco",
+  });
+  if (targetDocoHandle) {
+    body.set("target_doco_handle", targetDocoHandle);
+    body.set("requested_role", "author");
+  }
+  const res = await fetch(`${normalizedHost}/oauth/device_authorization`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      "User-Agent": `doco-cli/${cliVersion()} (node ${process.version}; ${process.platform})`,
+    },
+    body: body.toString(),
+  });
+  if (!res.ok) {
+    throw new Error(`device authorization failed: ${res.status} ${await renderHttpError(res)}`);
+  }
+  return (await res.json()) as DeviceAuthorizationResponse;
+}
+
+async function fetchBootstrap(
+  normalizedHost: string,
+  accessToken: string,
+): Promise<BootstrapResponse | null> {
+  const res = await fetch(`${normalizedHost}/api/v1/agent-bootstrap.json`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!res.ok) return null;
+  return (await res.json()) as BootstrapResponse;
+}
+
+async function resolveGrantedDoco(
+  normalizedHost: string,
+  accessToken: string,
+  targetDocoHandle: string | null,
+  grantedDocoIds: string[],
+): Promise<DocoLookupResponse | null> {
+  if (grantedDocoIds.length === 1) {
+    const resolved = await fetchGrantedDoco(normalizedHost, accessToken, grantedDocoIds[0] ?? "");
+    if (resolved) return resolved;
+  }
+  if (!targetDocoHandle) return null;
+  return grantedDocoIds[0] ? { doco_id: grantedDocoIds[0], doco_handle: targetDocoHandle } : null;
+}
+
+async function fetchGrantedDoco(
+  normalizedHost: string,
+  accessToken: string,
+  docoId: string,
+): Promise<DocoLookupResponse | null> {
+  if (!docoId) return null;
+  const res = await fetch(`${normalizedHost}/api/v1/docos/${encodeURIComponent(docoId)}.json`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!res.ok) return null;
+  return (await res.json()) as DocoLookupResponse;
 }
 
 async function safeText(res: Response): Promise<string | null> {
@@ -357,6 +444,22 @@ async function safeText(res: Response): Promise<string | null> {
   } catch {
     return null;
   }
+}
+
+async function safeJson<T>(res: Response): Promise<T | null> {
+  try {
+    return (await res.json()) as T;
+  } catch {
+    return null;
+  }
+}
+
+async function renderHttpError(res: Response): Promise<string> {
+  const body = await safeJson<OauthErrorResponse>(res);
+  if (body?.error_description) return body.error_description;
+  if (body?.error) return body.error;
+  const text = await safeText(res);
+  return text?.slice(0, 200) ?? res.statusText;
 }
 
 function sleep(ms: number): Promise<void> {

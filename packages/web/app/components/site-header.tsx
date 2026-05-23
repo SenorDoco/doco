@@ -33,8 +33,8 @@ export function SiteHeader({ me, shellOwner = false }: SiteHeaderProps) {
   if (suppressed && !shellOwner) return null;
 
   return (
-    <header className="bg-background">
-      <div className="flex w-full items-center gap-6 px-6 py-4">
+    <header className="neu-header border-b border-border bg-card">
+      <div className="flex w-full items-center gap-6 px-6 py-3">
         <h1 className="m-0 flex min-w-0 items-center gap-3 leading-none">
           <NavLink
             to="/"
@@ -52,8 +52,8 @@ export function SiteHeader({ me, shellOwner = false }: SiteHeaderProps) {
                 to="/docos"
                 className={({ isActive }) =>
                   cn(
-                    "whitespace-nowrap rounded-md px-3 py-1.5 font-semibold",
-                    isActive ? "neo-pressed" : "neo-raised-sm",
+                    "whitespace-nowrap rounded-md border border-border px-3 py-1.5 font-semibold hover:bg-input",
+                    isActive ? "neu-pressed bg-input" : "neu-button",
                   )
                 }
               >
@@ -63,8 +63,8 @@ export function SiteHeader({ me, shellOwner = false }: SiteHeaderProps) {
                 to="/orgs"
                 className={({ isActive }) =>
                   cn(
-                    "whitespace-nowrap rounded-md px-3 py-1.5 font-semibold",
-                    isActive ? "neo-pressed" : "neo-raised-sm",
+                    "whitespace-nowrap rounded-md border border-border px-3 py-1.5 font-semibold hover:bg-input",
+                    isActive ? "neu-pressed bg-input" : "neu-button",
                   )
                 }
               >
@@ -74,8 +74,8 @@ export function SiteHeader({ me, shellOwner = false }: SiteHeaderProps) {
                 to="/collaborators"
                 className={({ isActive }) =>
                   cn(
-                    "whitespace-nowrap rounded-md px-3 py-1.5 font-semibold",
-                    isActive ? "neo-pressed" : "neo-raised-sm",
+                    "whitespace-nowrap rounded-md border border-border px-3 py-1.5 font-semibold hover:bg-input",
+                    isActive ? "neu-pressed bg-input" : "neu-button",
                   )
                 }
               >
@@ -83,7 +83,7 @@ export function SiteHeader({ me, shellOwner = false }: SiteHeaderProps) {
               </NavLink>
               <NavLink
                 to={`/${me.username}`}
-                className="neo-raised-sm whitespace-nowrap rounded-full px-3 py-1 font-semibold text-foreground hover:text-primary"
+                className="neu-pressed whitespace-nowrap rounded-full border border-border bg-input px-3 py-1 font-semibold text-foreground hover:border-primary"
               >
                 {me.username}
               </NavLink>
@@ -99,7 +99,7 @@ export function SiteHeader({ me, shellOwner = false }: SiteHeaderProps) {
           ) : (
             <NavLink
               to="/sign-in"
-              className="neo-raised-primary whitespace-nowrap rounded-md px-3 py-1.5 font-semibold"
+              className="neu-button whitespace-nowrap rounded-md bg-primary px-3 py-1.5 font-semibold text-primary-foreground hover:opacity-90"
             >
               Sign in
             </NavLink>

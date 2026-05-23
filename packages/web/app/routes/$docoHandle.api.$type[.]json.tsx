@@ -12,6 +12,7 @@ import {
   type ActionDraft,
   type DecisionDraft,
   type EvalDraft,
+  type IdeaDraft,
   type IntentDraft,
   type LogDraft,
   type ReferenceDraft,
@@ -20,6 +21,7 @@ import {
   captureAction,
   captureDecision,
   captureEval,
+  captureIdea,
   captureIntent,
   captureLog,
   captureReference,
@@ -53,10 +55,8 @@ function entry<TDraft>(
   };
 }
 
-// Notes only — `guidance_primitives` and `neuron_authoring_primitives`
-// are not nodes and are served by the dedicated articles endpoint at
-// /<handle>/api/articles.json. Routing them here would conflate the
-// constitution with domain captures.
+// Neurons only — primitives use /<handle>/api/primitives.json so they
+// stay separate from domain captures.
 const CAPTURE_REGISTRY: Record<string, RegistryEntry> = {
   decisions: entry<DecisionDraft>("decisions", captureDecision, (draft, me) => {
     if (!draft.decided_by_username) draft.decided_by_username = me.username;
@@ -64,6 +64,9 @@ const CAPTURE_REGISTRY: Record<string, RegistryEntry> = {
   }),
   intents: entry<IntentDraft>("intents", captureIntent, (draft, me) => {
     if (!draft.wanted_by_username) draft.wanted_by_username = me.username;
+  }),
+  ideas: entry<IdeaDraft>("ideas", captureIdea, (draft, me) => {
+    if (!draft.created_by_id && me.id) draft.created_by_id = me.id;
   }),
   actions: entry<ActionDraft>("actions", captureAction, (draft, me) => {
     if (!draft.performed_by_username) draft.performed_by_username = me.username;
@@ -94,7 +97,7 @@ function notFound(type: string | undefined): Response {
   if (type === "guidance_primitives" || type === "neuron_authoring_primitives") {
     return Response.json(
       {
-        error: `${type} are constitution articles, not nodes. Use /api/articles.json instead (GET to list, POST with "primitive_kind" to capture). See /api/articles.txt for the body shape.`,
+        error: `${type} are primitives, not neurons. Use /api/primitives.json instead (GET to list, POST with "primitive_kind" to capture). See /api/primitives.txt for the body shape.`,
       },
       { status: 404 },
     );

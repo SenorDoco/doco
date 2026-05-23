@@ -31,7 +31,7 @@ const FEED_LIMIT = 10;
 
 interface OrgRow {
   id: string;
-  slug: string;
+  handle: string;
   display_name: string;
   nodeCount: number;
   lastUpdatedAt: string | null;
@@ -63,7 +63,11 @@ export async function loader({ request }: { request: Request }) {
   // count summed across every entity table. Separate pooled queries avoid
   // serializing work through a single PoolClient.
   const orgIds = orgsRaw.map((o) => o.id);
-  const nodesUnionSql = ENTITY_TABLES.map((t) => `SELECT doco_id FROM ${t}`).join(" UNION ALL ");
+  const nodesUnionSql = ENTITY_TABLES.map((t) =>
+    t === "principals"
+      ? "SELECT data->>'doco_id' AS doco_id FROM principals WHERE data->>'doco_id' IS NOT NULL"
+      : `SELECT doco_id FROM ${t}`,
+  ).join(" UNION ALL ");
   const [orgLastActivity, orgNodeCount] = await Promise.all([
     withClient(async (c) => {
       if (orgIds.length === 0) return new Map<string, string | null>();
@@ -107,7 +111,7 @@ export async function loader({ request }: { request: Request }) {
     if (a.lastUpdatedAt && b.lastUpdatedAt) return b.lastUpdatedAt.localeCompare(a.lastUpdatedAt);
     if (a.lastUpdatedAt) return -1;
     if (b.lastUpdatedAt) return 1;
-    return a.slug.localeCompare(b.slug);
+    return a.handle.localeCompare(b.handle);
   });
 
   // Sidebar activity (same shape as /dashboard + /docos).
@@ -215,8 +219,8 @@ export default function OrgsIndexPage({
   const { me, orgs, byDay, feed } = loaderData;
   const orgItems: AccessListItem[] = orgs.map((o) => ({
     id: o.id,
-    href: `/orgs/${o.slug}`,
-    label: o.display_name || o.slug,
+    href: `/orgs/${o.handle}`,
+    label: o.display_name || o.handle,
     count: o.nodeCount,
     lastUpdatedAt: o.lastUpdatedAt,
   }));
@@ -230,13 +234,13 @@ export default function OrgsIndexPage({
           <div className="flex flex-wrap gap-2">
             <Link
               to="/new-org"
-              className="neo-raised-primary shrink-0 rounded-md px-3 py-1.5 text-sm font-semibold"
+              className="neu-button bg-primary text-primary-foreground hover:opacity-90 shrink-0 rounded-md px-3 py-1.5 text-sm font-semibold"
             >
               + Org
             </Link>
             <Link
               to="/collaborators"
-              className="neo-raised-sm shrink-0 rounded-md px-3 py-1.5 text-sm font-semibold"
+              className="neu-button shrink-0 rounded-md px-3 py-1.5 text-sm font-semibold"
             >
               Collaborator (people/agents)
             </Link>
@@ -295,7 +299,7 @@ export default function OrgsIndexPage({
 
 function OrgsFeedLine({ event }: { event: FeedEvent }) {
   const url = entityUrl({
-    docoId: event.handle,
+    docoHandle: event.handle,
     entityType: event.entity_type,
     id: event.entity_id,
   });

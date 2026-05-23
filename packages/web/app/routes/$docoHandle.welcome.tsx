@@ -74,7 +74,7 @@ export default function NewDocoStep4({
         <div className="flex items-center gap-2">
           <Link
             to={onboardingPath}
-            className="neo-raised-primary rounded-md px-4 py-2 text-sm font-semibold"
+            className="neu-button bg-primary text-primary-foreground hover:opacity-90 rounded-md px-4 py-2 text-sm font-semibold"
           >
             Continue -&gt;
           </Link>

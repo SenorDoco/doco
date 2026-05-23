@@ -1,19 +1,18 @@
 // GET /api/v1/agent-bootstrap.json — agent-facing bootstrap manifest.
 //
-// Returns the constitution primitives the caller has read-or-above
-// access to, grouped by Doco constitution:
-//   - doco_constitutions[]: every Doco the agent can read (direct owner,
+// Returns the primitives the caller has read-or-above access to:
+//   - doco_primitives[]: every Doco the agent can read (direct owner,
 //     org-membership-inherited, doco_users grant, public visibility)
 //
-// Each constitution exposes two arrays: `guidance_primitives` (prose, no automated check) and
+// Each primitive set exposes two arrays: `guidance_primitives` (prose, no automated check) and
 // `neuron_authoring_primitives` (rules evaluated at capture time).
 //
 // The project owner can add, edit, or remove primitives at any time
-// from /<handle>/constitution — re-fetch this endpoint if you suspect
+// from /<handle>/primitives — re-fetch this endpoint if you suspect
 // they've changed mid-session.
 //
 // Auth: optional. Anonymous callers receive only public-Doco
-// constitutions. Cookie callers receive everything they can read. OAuth-
+// primitives. Cookie callers receive everything they can read. OAuth-
 // bearer callers receive everything the token's grants cover: Docos in
 // `granted_doco_ids` and Docos owned by an
 // org in `granted_org_ids`). The bootstrap response never exceeds the
@@ -45,7 +44,7 @@ interface ArticleSummary {
   body_md: string | null;
 }
 
-interface DocoConstitution {
+interface DocoPrimitiveSet {
   doco_id: string;
   doco_handle: string;
   owner_id: string;
@@ -57,10 +56,7 @@ export async function loader({ request }: { request: Request }) {
   const me = await getCurrentPrincipalAsync(request);
   const oauthGrant = await getOauthTokenForRequest(request);
 
-  const docoConstitutions = await loadDocoConstitutionsForPrincipal(
-    me?.id ?? null,
-    oauthGrant,
-  );
+  const docoPrimitives = await loadDocoPrimitivesForPrincipal(me?.id ?? null, oauthGrant);
 
   return Response.json({
     principal: me ? { id: me.id, username: me.username } : null,
@@ -80,16 +76,18 @@ export async function loader({ request }: { request: Request }) {
           expires_at: oauthGrant.expires_at.toISOString(),
         }
       : null,
-    doco_constitutions: docoConstitutions,
+    doco_primitives: docoPrimitives,
+    // Legacy alias for agents pinned to the old bootstrap field name.
+    doco_constitutions: docoPrimitives,
   });
 }
 
-async function loadDocoConstitutionsForPrincipal(
+async function loadDocoPrimitivesForPrincipal(
   principalId: string | null,
   oauthGrant: ValidAccessToken | null,
-): Promise<DocoConstitution[]> {
+): Promise<DocoPrimitiveSet[]> {
   const all = await listAllDocos();
-  const out: DocoConstitution[] = [];
+  const out: DocoPrimitiveSet[] = [];
   for (const d of all) {
     const meta = { ownerId: d.owner_id, visibility: d.visibility, docoId: d.id };
     // OAuth-bearer callers: token's per-Doco or per-org grant must

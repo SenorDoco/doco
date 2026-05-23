@@ -45,7 +45,7 @@ export interface GrantRow extends UserCell {
 }
 
 export interface OrgSection {
-  org: { id: string; slug: string; name: string };
+  org: { id: string; handle: string; name: string };
   myRole: DocoRole;
   users: GrantRow[];
 }
@@ -68,10 +68,7 @@ export interface CollaboratorInvitePageData {
   invite: CollaboratorInviteData;
 }
 
-async function enrichPrincipal(
-  id: string,
-  lastActivity: Map<string, string>,
-): Promise<UserCell> {
+async function enrichPrincipal(id: string, lastActivity: Map<string, string>): Promise<UserCell> {
   // Post-rename: per-collaborator metadata lives in the collaborators
   // table; getCollaboratorById returns the kind/github_login directly.
   const c = await getCollaboratorById(id);
@@ -203,7 +200,7 @@ export async function loadCollaboratorSections(principalId: string): Promise<{
 }> {
   const myOrgs = await listOrganizationsForCollaborator(principalId);
   const orgRoleRows: Array<{
-    org: { id: string; slug: string; name: string };
+    org: { id: string; handle: string; name: string };
     myRole: DocoRole;
     rows: Array<{ collaborator_id: string; role: DocoRole; joined_at: string }>;
   }> = [];
@@ -226,7 +223,7 @@ export async function loadCollaboratorSections(principalId: string): Promise<{
       };
     });
     orgRoleRows.push({
-      org: { id: org.id, slug: org.slug, name: org.name },
+      org: { id: org.id, handle: org.handle, name: org.name },
       myRole,
       rows,
     });
@@ -346,7 +343,7 @@ function buildCollaboratorInviteData({
     .filter((s) => s.myRole === "owner")
     .map((s) => ({
       id: s.org.id,
-      label: s.org.slug,
+      label: s.org.handle,
     }));
   const inviteDocos = docoSections
     .filter((s) => s.myRole === "owner")

@@ -128,7 +128,7 @@ export async function loader({
       after_json: Record<string, unknown> | null;
     };
     // Activity surfaces (feed, heatmap, contributors) reflect notes
-    // activity only — primitives are constitution metadata with their
+    // activity only — primitives are Doco-level metadata with their
     // own surface, and counting their bulk-imported writes here makes
     // a fresh Doco look like work has been captured when none has.
     const rawItems = (
@@ -161,7 +161,8 @@ export async function loader({
          UNION ALL SELECT id, summary AS label, lifecycle FROM logs WHERE doco_id = $1 AND id = ANY($2::text[])
          UNION ALL SELECT id, summary AS label, lifecycle FROM evals WHERE doco_id = $1 AND id = ANY($2::text[])
          UNION ALL SELECT id, summary AS label, lifecycle FROM states WHERE doco_id = $1 AND id = ANY($2::text[])
-         UNION ALL SELECT id, summary AS label, lifecycle FROM reference_entities WHERE doco_id = $1 AND id = ANY($2::text[])`,
+         UNION ALL SELECT id, summary AS label, lifecycle FROM reference_entities WHERE doco_id = $1 AND id = ANY($2::text[])
+         UNION ALL SELECT id, COALESCE(summary, username) AS label, lifecycle FROM principals WHERE data->>'doco_id' = $1 AND id = ANY($2::text[])`,
         [ctx.meta.docoId, entityIds],
       );
       for (const row of entityLabelRows.rows) {
@@ -205,6 +206,7 @@ export async function loader({
            UNION ALL SELECT to_char(created_at, 'YYYY-MM-DD') FROM evals WHERE doco_id = $1
            UNION ALL SELECT to_char(created_at, 'YYYY-MM-DD') FROM reference_entities WHERE doco_id = $1
            UNION ALL SELECT to_char(created_at, 'YYYY-MM-DD') FROM states WHERE doco_id = $1
+           UNION ALL SELECT to_char(created_at, 'YYYY-MM-DD') FROM principals WHERE data->>'doco_id' = $1
          ) t WHERE day >= $2
          GROUP BY day`,
         [ctx.meta.docoId, sinceIso.slice(0, 10)],
@@ -286,7 +288,7 @@ export async function loader({
 
     // Primitive count — guidance + neuron-authoring primitives
     // attached to this Doco.
-    const constitutionRow = (
+    const primitiveRow = (
       await c.query<{ n: string }>(
         `SELECT
            ((SELECT COUNT(*) FROM guidance_primitives WHERE doco_id = $1)
@@ -294,7 +296,7 @@ export async function loader({
         [ctx.meta.docoId],
       )
     ).rows[0];
-    const constitutionCount = Number(constitutionRow?.n ?? 0);
+    const primitiveCount = Number(primitiveRow?.n ?? 0);
 
     return {
       items,
@@ -310,7 +312,7 @@ export async function loader({
       host: await loadHostConfig(),
       me,
       graph,
-      constitutionCount,
+      primitiveCount,
       perspectives,
       activePerspectiveSlug: activePerspective?.slug ?? null,
       activePerspectiveKind: activePerspective?.kind ?? null,
@@ -416,7 +418,7 @@ export default function DocoHome({
     canInviteCollaborators,
     me,
     graph,
-    constitutionCount,
+    primitiveCount,
     perspectives,
     activePerspectiveSlug,
     activePerspectiveKind,
@@ -683,15 +685,15 @@ export default function DocoHome({
             <div className="flex flex-wrap items-center gap-2">
               {canInviteCollaborators ? <CollaboratorsLink level="doco" targetId={docoId} /> : null}
               <Link
-                to={`/${handle}/constitution`}
-                className="neo-raised-sm shrink-0 rounded-md px-3 py-1.5 text-xs font-semibold"
+                to={`/${handle}/primitives`}
+                className="shrink-0 rounded-md border border-border px-3 py-1.5 text-xs font-semibold hover:bg-input"
               >
-                Primitives ({constitutionCount})
+                Primitives ({primitiveCount})
               </Link>
               {canInviteCollaborators ? (
                 <Link
                   to={`/${handle}/settings`}
-                  className="neo-raised-sm shrink-0 rounded-md px-3 py-1.5 text-xs font-semibold"
+                  className="shrink-0 rounded-md border border-border px-3 py-1.5 text-xs font-semibold hover:bg-input"
                 >
                   Settings
                 </Link>
@@ -787,12 +789,7 @@ export default function DocoHome({
                   ) : (
                     <div className="divide-y divide-border">
                       {items.map((it) => (
-                        <ActivityFeedLine
-                          key={it.event_id}
-                          item={it}
-                          ownerSlug={ownerSlug}
-                          docoSlug={docoSlug}
-                        />
+                        <ActivityFeedLine key={it.event_id} item={it} docoHandle={handle} />
                       ))}
                     </div>
                   )}

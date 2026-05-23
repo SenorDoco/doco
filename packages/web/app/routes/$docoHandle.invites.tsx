@@ -185,7 +185,7 @@ export default function Invites({
                   name="intent"
                   value="mint"
                   disabled={minting}
-                  className="neo-raised-primary rounded-md px-4 py-2 text-sm font-semibold disabled:opacity-50"
+                  className="neu-button bg-primary text-primary-foreground hover:opacity-90 rounded-md px-4 py-2 text-sm font-semibold disabled:opacity-50"
                 >
                   {minting ? "Minting…" : "Mint invite"}
                 </button>
@@ -250,7 +250,7 @@ function InviteRow({
         ? "text-muted-foreground"
         : "text-muted-foreground";
   return (
-    <div className="neo-etched flex items-center justify-between gap-3 rounded-md bg-card px-3 py-2 text-xs">
+    <div className="neu-surface flex items-center justify-between gap-3 rounded-md bg-card px-3 py-2 text-xs">
       <div className="min-w-0 flex-1">
         <div className={`font-mono break-all ${statusColor}`}>
           {invite.status === "pending" ? invite.url : `${invite.code.slice(0, 12)}…`}
@@ -271,10 +271,7 @@ function InviteRow({
         <Form method="post">
           <input type="hidden" name="intent" value="revoke" />
           <input type="hidden" name="code" value={invite.code} />
-          <button
-            type="submit"
-            className="neo-raised-sm rounded-md px-2 py-1 text-xs"
-          >
+          <button type="submit" className="neu-button rounded-md px-2 py-1 text-xs">
             Revoke
           </button>
         </Form>
