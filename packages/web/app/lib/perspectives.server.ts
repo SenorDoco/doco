@@ -77,7 +77,7 @@ export async function listPerspectivesForDoco(docoId: string): Promise<AttachedP
          FROM doco_perspectives dp
          JOIN perspectives p ON p.id = dp.perspective_id
         WHERE dp.doco_id = $1
-        ORDER BY dp.position ASC, p.slug ASC`,
+        ORDER BY LOWER(p.name) ASC`,
       [docoId],
     );
     return rows.map((r) => ({
@@ -126,7 +126,7 @@ export async function listAvailablePerspectives(): Promise<Perspective[]> {
       `SELECT id, slug, kind, name, description, icon,
               owner_handle, is_builtin, config
          FROM perspectives
-        ORDER BY is_builtin DESC, name ASC`,
+        ORDER BY LOWER(name) ASC`,
     );
     return rows.map(rowToPerspective);
   });
