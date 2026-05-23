@@ -122,6 +122,16 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
   useEffect(() => {
     collapsedRef.current = collapsed;
   }, [collapsed]);
+  // Publish the rail's current width as a CSS variable so floating
+  // overlays (the neuron-detail dialog, etc.) can avoid covering it on
+  // small screens. Expanded: 320px; collapsed: 32px.
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    document.documentElement.style.setProperty(
+      "--senor-doco-rail-width",
+      collapsed ? "32px" : "320px",
+    );
+  }, [collapsed]);
   const navigate = useNavigate();
   const location = useLocation();
   const messageListRef = useRef<HTMLDivElement | null>(null);

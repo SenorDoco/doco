@@ -101,7 +101,7 @@ export function NeuronDialog({
 
   return (
     <aside
-      className="neu-floating z-30 flex h-full min-h-0 flex-col overflow-hidden bg-card"
+      className="neu-floating relative z-30 flex h-full min-h-0 flex-col overflow-hidden rounded-lg border border-border bg-card"
       aria-label="Neuron details"
     >
       <header className="px-4 py-3">
@@ -164,7 +164,10 @@ export function NeuronDialog({
         </div>
       </header>
 
-      <div className="min-h-0 flex-1 overflow-auto px-4 py-4">
+      <div
+        className="neuron-dialog-scroll min-h-0 flex-1 overflow-y-scroll px-4 pb-8 pt-4"
+        style={{ scrollbarGutter: "stable" }}
+      >
         {loading ? (
           <div className="flex min-h-40 items-center justify-center text-xs text-muted-foreground">
             <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />
@@ -304,6 +307,13 @@ export function NeuronDialog({
           </div>
         ) : null}
       </div>
+      {/* Bottom fade — tells the user content extends below the visible
+          area even when the OS auto-hides the scrollbar. pointer-events
+          off so it doesn't swallow clicks on the last row of content. */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-x-0 bottom-0 h-8 rounded-b-lg bg-gradient-to-t from-card to-transparent"
+      />
     </aside>
   );
 }
