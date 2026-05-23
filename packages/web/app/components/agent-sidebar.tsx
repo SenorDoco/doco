@@ -526,6 +526,20 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
         </button>
       </div>
 
+      {/* Persistent "what this is" line, sitting right under the title so
+          new collaborators immediately know what Señor Doco is and how to
+          invite their own agent. */}
+      <div className="shrink-0 border-b border-border/70 px-3 py-1.5 text-[10px] leading-snug text-muted-foreground">
+        Señor Doco runs on Claude Haiku 4.5 inside Doco. Want to collaborate with your own agent?{" "}
+        <Link
+          to="/collaborators/invite"
+          className="font-semibold text-foreground hover:text-primary"
+        >
+          Invite them
+        </Link>
+        .
+      </div>
+
       <div
         ref={messageListRef}
         onScroll={onMessagesScroll}
@@ -691,9 +705,6 @@ function SavedMessage({ message }: { message: ChatMessage }) {
   const isAssistant = message.role === "assistant";
   return (
     <div className={cn("mb-3 flex flex-col", isAssistant ? "items-end" : "items-start")}>
-      <div className="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground">
-        {isAssistant ? "Señor Doco" : "You"}
-      </div>
       <div
         className={cn(
           "neu-bubble max-w-[90%] space-y-1.5 rounded-lg px-2.5 py-1.5",
@@ -704,6 +715,9 @@ function SavedMessage({ message }: { message: ChatMessage }) {
           <BlockView key={blockKey(b)} block={b} />
         ))}
       </div>
+      <div className="mt-1 text-[10px] uppercase tracking-wide text-muted-foreground">
+        {isAssistant ? "Señor Doco" : "You"}
+      </div>
     </div>
   );
 }
@@ -711,13 +725,6 @@ function SavedMessage({ message }: { message: ChatMessage }) {
 function InFlightMessageView({ msg }: { msg: InFlightMessage }) {
   return (
     <div className="mb-3 flex flex-col items-end">
-      {/* In-flight assistant messages render the animated doco mark next
-          to the label so the "Señor Doco is replying" cue lives with the
-          bubble itself, not the sidebar header. */}
-      <div className="mb-1 flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-muted-foreground">
-        <DocoMark height={14} variant="mark" active decorative />
-        Señor Doco
-      </div>
       <div className="neu-bubble max-w-[90%] space-y-1.5 rounded-lg bg-primary/10 px-2.5 py-1.5">
         {msg.content.map((b) => {
           if (b.type === "tool_use") {
@@ -736,6 +743,14 @@ function InFlightMessageView({ msg }: { msg: InFlightMessage }) {
             <span className="inline-block animate-pulse">…</span>
           </div>
         ) : null}
+      </div>
+      {/* In-flight assistant messages render the animated doco mark next
+          to the label so the "Señor Doco is replying" cue lives with the
+          bubble itself. Label sits BELOW the bubble to match the saved
+          message layout. */}
+      <div className="mt-1 flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-muted-foreground">
+        <DocoMark height={14} variant="mark" active decorative />
+        Señor Doco
       </div>
     </div>
   );
@@ -961,16 +976,6 @@ function Composer({
         >
           {busy ? "…" : "Send"}
         </button>
-      </div>
-      <div className="mt-1.5 border-t border-border/70 pt-1.5 text-[10px] leading-snug text-muted-foreground">
-        Señor Doco runs on Claude Haiku 4.5 inside Doco. Want to collaborate with your own agent?{" "}
-        <Link
-          to="/collaborators/invite"
-          className="font-semibold text-foreground hover:text-primary"
-        >
-          Invite them
-        </Link>
-        .
       </div>
     </div>
   );
