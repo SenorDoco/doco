@@ -55,6 +55,7 @@ import {
 import { computePageRank } from "~/lib/page-rank";
 import {
   ensureDefaultsAttached,
+  listAvailablePerspectives,
   listPerspectivesForDoco,
   resolveActivePerspective,
 } from "~/lib/perspectives.server";
@@ -267,7 +268,10 @@ export async function loader({
     // attached; ensureDefaultsAttached backfills graph + list on first
     // load so the UI always has at least one tab.
     await ensureDefaultsAttached(ctx.meta.docoId);
-    const perspectives = await listPerspectivesForDoco(ctx.meta.docoId);
+    const [perspectives, availablePerspectives] = await Promise.all([
+      listPerspectivesForDoco(ctx.meta.docoId),
+      listAvailablePerspectives(),
+    ]);
     const requestedSlug = new URL(request.url).searchParams.get("perspective");
     const activePerspective = resolveActivePerspective(perspectives, requestedSlug);
     const canAdminPerspectives = await canApproveDoco(ctx.meta, me?.id ?? null);
@@ -315,6 +319,7 @@ export async function loader({
       graph,
       primitiveCount,
       perspectives,
+      availablePerspectives,
       activePerspectiveSlug: activePerspective?.slug ?? null,
       activePerspectiveKind: activePerspective?.kind ?? null,
       canAdminPerspectives,
@@ -422,6 +427,7 @@ export default function DocoHome({
     graph,
     primitiveCount,
     perspectives,
+    availablePerspectives,
     activePerspectiveSlug,
     activePerspectiveKind,
     canAdminPerspectives,
@@ -709,6 +715,7 @@ export default function DocoHome({
             <PerspectiveTabs
               handle={handle}
               perspectives={perspectives}
+              availablePerspectives={availablePerspectives}
               activeSlug={activeSlug}
               canAdmin={canAdminPerspectives}
               search={
