@@ -114,10 +114,10 @@ export async function loader({ request }: { request: Request }) {
         op: string;
         before_json: Record<string, unknown> | null;
         after_json: Record<string, unknown> | null;
-        username: string | null;
+        principal_name: string | null;
       }>(
         `SELECT a.event_id, a.at, a.doco_id, a.entity_type, a.entity_id, a.op,
-                a.before_json, a.after_json, p.username
+                a.before_json, a.after_json, p.name AS principal_name
            FROM audit_events a
            LEFT JOIN principals p ON p.id = a.by_collaborator
           WHERE a.doco_id = ANY($1)
@@ -156,7 +156,7 @@ export async function loader({ request }: { request: Request }) {
         return {
           event_id: r.event_id,
           at: r.at instanceof Date ? r.at.toISOString() : String(r.at),
-          byUsername: r.username,
+          byUsername: r.principal_name,
           handle: d?.handle ?? "?",
           entity_type: r.entity_type,
           entity_id: r.entity_id,

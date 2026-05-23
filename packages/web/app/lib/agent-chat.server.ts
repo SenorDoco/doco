@@ -665,7 +665,7 @@ bodies for them from the generic capture pattern.
 
 Principal references in request bodies use principal ids only:
 *_principal_id for one principal and *_principal_ids for arrays. Do
-not send usernames, *_username fields, or comma-separated strings;
+not send principal names, *_name fields, or comma-separated strings;
 there are no aliases.
 
 Common API-facing fields:
@@ -833,7 +833,7 @@ const TOOLS: Tool[] = [
         },
         body: {
           description:
-            "JSON body. Required for POST/PATCH on capture endpoints; omit for GET. Pass an object — the tool stringifies it. Principal references must use principal-id fields such as wanted_by_principal_id, actors_principal_ids, actor_principal_id, decided_by_principal_id, authored_by_principal_id, and created_by_principal_id; do not send usernames.",
+            "JSON body. Required for POST/PATCH on capture endpoints; omit for GET. Pass an object — the tool stringifies it. Principal references must use principal-id fields such as wanted_by_principal_id, actors_principal_ids, actor_principal_id, decided_by_principal_id, authored_by_principal_id, and created_by_principal_id; do not send principal names.",
         },
       },
       required: ["method", "path"],
