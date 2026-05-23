@@ -452,6 +452,21 @@ export default function DocoHome({
   const [lifecycleError, setLifecycleError] = useState<string | null>(null);
   const clientDialogOverrideRef = useRef(false);
 
+  // While the neuron dialog is open it overlays the right column on
+  // wide screens and the whole content area on narrow screens. The
+  // audit panel underneath shouldn't scroll out of position when the
+  // user wheels over (or near) the dialog — only the dialog's own
+  // body should scroll. Lock body scroll for the duration the dialog
+  // is open and restore on close.
+  useEffect(() => {
+    if (!neuronDialog) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [neuronDialog]);
+
   useEffect(() => {
     setGraphState((prev) => {
       const preferredCenter = prev.nodes.some((node) => node.id === prev.centerId)
