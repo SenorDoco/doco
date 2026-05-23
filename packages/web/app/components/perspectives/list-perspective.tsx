@@ -59,7 +59,7 @@ const NEURON_TYPE_ORDER = new Map(
 // for tiebreaker sort within a neuron type. Lower index = preferred
 // (active first since it's the most current state).
 const LIFECYCLE_RANK = new Map(
-  ["active", "drafted", "proposed", "retired"].map((lifecycle, index) => [lifecycle, index]),
+  ["active", "drafting", "proposed", "retired"].map((lifecycle, index) => [lifecycle, index]),
 );
 
 const PRIMITIVE_TYPES = new Set(["guidance_primitive", "neuron_authoring_primitive"]);

@@ -7,7 +7,7 @@ type QueryClient = {
   query<T>(sql: string, params?: unknown[]): Promise<{ rows: T[] }>;
 };
 
-const LIFECYCLE_STAGES = ["drafted", "proposed", "active", "retired"] as const;
+const LIFECYCLE_STAGES = ["drafting", "proposed", "active", "retired"] as const;
 
 export type LifecycleStage = (typeof LIFECYCLE_STAGES)[number];
 
@@ -118,13 +118,13 @@ function toIso(value: Date | string | null | undefined): string | null {
 }
 
 // Stage labels read as state names when the option is the current
-// lifecycle ("Drafted", "Proposed", "Active", "Retired") and as the
+// lifecycle ("Drafting", "Proposed", "Active", "Retired") and as the
 // action verb that would move into that stage when the option is one
 // of the other (clickable) choices ("Draft", "Propose", "Activate",
 // "Retire"). Combined with the press-down state in the UI, this makes
 // the row read like "you ARE here / click to GO there."
 const LIFECYCLE_VERB: Record<string, string> = {
-  drafted: "draft",
+  drafting: "draft",
   proposed: "propose",
   active: "activate",
   retired: "retire",

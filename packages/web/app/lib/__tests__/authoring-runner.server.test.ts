@@ -195,7 +195,7 @@ describe("authoring runner — integration", () => {
         summary: "send invoice",
         verb: "send",
         actor_id: "principal_01GHOST000000000000000001",
-        lifecycle: "drafted",
+        lifecycle: "drafting",
       },
     });
 
