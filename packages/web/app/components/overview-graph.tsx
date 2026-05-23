@@ -8,6 +8,7 @@ import {
   publishGraphReferences,
 } from "~/lib/graph-references";
 import { lifecycleColor } from "~/lib/neuron-colors";
+import { overviewNodeDisplayLabel } from "~/lib/overview-graph-labels";
 import { useNewNodeIds } from "~/lib/use-new-neuron-ids";
 import "@xyflow/react/dist/style.css";
 
@@ -244,7 +245,7 @@ const HIDDEN_HANDLE_STYLE = {
 function OverviewFlowNode({ data }: { data: OverviewNodeData }) {
   const lifecycle = nodeLifecycle(data.node);
   const detail = data.detail;
-  const title = detail?.name ?? data.node.name ?? detail?.summary ?? data.node.entity_type;
+  const title = overviewNodeDisplayLabel(data.node, detail);
   const subtitle = detail?.summary ?? data.node.name ?? data.node.id;
   const showDetail = data.showDetail && Boolean(detail);
 
@@ -427,7 +428,7 @@ export function OverviewGraph({
             node,
             detail,
             position: screenPosition(position, viewport),
-            label: detail.name ?? detail.summary ?? node.name ?? node.id,
+            label: overviewNodeDisplayLabel(node, detail),
           },
         ];
       })
