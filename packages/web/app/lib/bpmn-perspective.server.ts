@@ -31,7 +31,7 @@ export type BpmnShape = "circle" | "diamond" | "rectangle" | "document" | "round
 
 export interface BpmnLane {
   id: string; // principal id, or "__unassigned__"
-  label: string; // principal username, or "Unassigned"
+  label: string; // principal name, or "Unassigned"
 }
 
 export interface BpmnNode {
@@ -95,7 +95,7 @@ interface NeuronRow {
 
 interface PrincipalRow {
   id: string;
-  username: string;
+  name: string;
 }
 
 interface SynapseRow {
@@ -126,7 +126,7 @@ export async function loadBpmnGraph(
     // Principals are Doco-scoped (migration 020); filter by the typed
     // column and drop retired role-personas.
     c.query<PrincipalRow>(
-      `SELECT id, username
+      `SELECT id, name
          FROM principals
         WHERE doco_id = $1
           AND COALESCE(lifecycle, 'active') = 'active'`,
@@ -134,10 +134,10 @@ export async function loadBpmnGraph(
     ),
   ]);
 
-  const principalByUsername = new Map<string, PrincipalRow>();
+  const principalByName = new Map<string, PrincipalRow>();
   const principalById = new Map<string, PrincipalRow>();
   for (const p of principalRows.rows) {
-    principalByUsername.set(p.username.toLowerCase(), p);
+    principalByName.set(p.name.toLowerCase(), p);
     principalById.set(p.id, p);
   }
 
@@ -147,7 +147,7 @@ export async function loadBpmnGraph(
   for (const row of neuronRows.rows) {
     const fields = row.data ?? {};
     const laneRef = laneReferenceFor(row.entity_type, fields);
-    const lane = resolveLane(laneRef, principalById, principalByUsername);
+    const lane = resolveLane(laneRef, principalById, principalByName);
     if (!lanesById.has(lane.id)) lanesById.set(lane.id, lane);
     nodes.push({
       id: row.id,
@@ -166,7 +166,7 @@ export async function loadBpmnGraph(
   // the swimlane structure of the doco explicit at a glance.
   for (const p of principalRows.rows) {
     if (!lanesById.has(p.id)) {
-      lanesById.set(p.id, { id: p.id, label: p.username });
+      lanesById.set(p.id, { id: p.id, label: p.name });
     }
   }
 
@@ -249,19 +249,19 @@ function firstString(value: unknown): string | null {
 function resolveLane(
   ref: string | null,
   byId: Map<string, PrincipalRow>,
-  byUsername: Map<string, PrincipalRow>,
+  byName: Map<string, PrincipalRow>,
 ): BpmnLane {
   if (!ref) return { id: UNASSIGNED_LANE_ID, label: "Unassigned" };
   // Refs may be either a principal id (principal_<ulid>) or a bare
-  // username depending on how the author wrote them. Try both.
+  // role label depending on how the author wrote them. Try both.
   const byIdMatch = byId.get(ref);
   if (byIdMatch) {
-    return { id: byIdMatch.id, label: byIdMatch.username };
+    return { id: byIdMatch.id, label: byIdMatch.name };
   }
   const cleaned = ref.replace(/^principal_/, "").toLowerCase();
-  const byUsernameMatch = byUsername.get(cleaned);
-  if (byUsernameMatch) {
-    return { id: byUsernameMatch.id, label: byUsernameMatch.username };
+  const byNameMatch = byName.get(cleaned);
+  if (byNameMatch) {
+    return { id: byNameMatch.id, label: byNameMatch.name };
   }
   // Unknown principal — still give it its own lane so the author can
   // see which value is unresolved, rather than dumping into Unassigned.

@@ -56,13 +56,13 @@ export const SEARCH_TYPE_SPECS: SearchTypeSpec[] = [
   {
     table: "principals",
     entityType: "principal",
-    selectExtra: "username, created_at",
+    selectExtra: "name, created_at",
     hostLevel: false,
     toHit: (row, score) => ({
       id: String(row.id),
       entity_type: "principal",
-      summary: (row.username as string) ?? "",
-      name: (row.username as string) ?? null,
+      summary: (row.name as string) ?? "",
+      name: (row.name as string) ?? null,
       lifecycle: null,
       created_at: (row.created_at as string) ?? null,
       vector_score: score,

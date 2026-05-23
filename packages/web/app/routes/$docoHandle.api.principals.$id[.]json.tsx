@@ -108,7 +108,7 @@ export async function action({
   }
 
   // Retirement is the only PATCH operation currently supported. Principal
-  // identity fields (username, display_name, …) stay immutable — if you
+  // identity fields (name, display_name, …) stay immutable — if you
   // need a different identity, create a new principal.
   if (patch.lifecycle !== "retired") {
     return Response.json(
@@ -122,14 +122,14 @@ export async function action({
     return Response.json({ error: `principal not found: ${params.id}` }, { status: 404 });
   }
 
-  const username = String(existing.data?.username ?? existing.id);
+  const name = String(existing.data?.name ?? existing.id);
 
   if (existing.lifecycle === "retired") {
     return Response.json({
       ok: true,
       id: existing.id,
       already_retired: true,
-      footer_lines: [`[🔮 Doco] 👤 Principal already retired: ${username} (${existing.id})`],
+      footer_lines: [`[🔮 Doco] 👤 Principal already retired: ${name} (${existing.id})`],
     });
   }
 
@@ -165,6 +165,6 @@ export async function action({
     ok: true,
     id: existing.id,
     lifecycle: "retired",
-    footer_lines: [`[🔮 Doco] 👤 Principal retired: ${username} (${existing.id})`],
+    footer_lines: [`[🔮 Doco] 👤 Principal retired: ${name} (${existing.id})`],
   });
 }
