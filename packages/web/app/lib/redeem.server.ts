@@ -14,6 +14,7 @@ export {
 } from "@doco/host";
 import { type BuildReport, reindex as reindexBare } from "@doco/index";
 import { getDocoEmbeddingProvider } from "./embedding-provider.server";
+import { recordReindexLoad } from "./telemetry.server";
 
 export interface ReindexExtraOptions {
   /** Skip the OpenAI embedding pass (FTS + synapses only). */
@@ -53,7 +54,12 @@ export async function reindex(
     ...(extra?.skipEmbeddings ? { skipEmbeddings: true } : {}),
     ...(extra?.skipStructural ? { skipStructural: true } : {}),
   };
-  return reindexBare(docoRoot, opts);
+  const report = await reindexBare(docoRoot, opts);
+  // Bubble the load cost into the active capture-telemetry context so the
+  // per-capture row records how much time the reindex spent reading rows
+  // vs. doing actual work. No-op outside capture (CLI reindex, etc.).
+  recordReindexLoad(report.loadMs, report.loadedEntityCount);
+  return report;
 }
 
 /**

@@ -17,6 +17,7 @@
  */
 
 import Anthropic from "@anthropic-ai/sdk";
+import { recordPhase, recordPhaseCount } from "./telemetry.server";
 
 export interface JudgeResult {
   ok: boolean;
@@ -57,13 +58,31 @@ export async function judgeProbabilisticPredicate(
   const client = getClient();
   if (!client) return null;
 
-  const model = process.env.DOCO_JUDGE_MODEL ?? "claude-opus-4-7";
+  // Haiku 4.5 over Opus: the judge is a binary verdict on a small
+  // spec+candidate pair — it doesn't need long-form reasoning. Haiku is
+  // ~5x faster TTFB and ~10x cheaper, and the conservative "pass when
+  // plausible" instruction in SYSTEM_PROMPT compensates for any borderline
+  // accuracy gap. Override with DOCO_JUDGE_MODEL if a Doco needs Opus
+  // (e.g. legal-grade rule enforcement).
+  const model = process.env.DOCO_JUDGE_MODEL ?? "claude-haiku-4-5";
+
+  const start = performance.now();
+  recordPhaseCount("judge_calls", 1);
 
   try {
     const response = await client.messages.create({
       model,
       max_tokens: 1024,
-      system: SYSTEM_PROMPT,
+      // cache_control: ephemeral lets the SYSTEM_PROMPT be reused across
+      // judge calls — every probabilistic primitive in the Doco shares this
+      // exact prefix, so a burst of captures benefits.
+      system: [
+        {
+          type: "text",
+          text: SYSTEM_PROMPT,
+          cache_control: { type: "ephemeral" },
+        },
+      ],
       messages: [
         {
           role: "user",
@@ -105,5 +124,7 @@ export async function judgeProbabilisticPredicate(
       err instanceof Error ? err.message : String(err),
     );
     return null;
+  } finally {
+    recordPhase("judge_ms", performance.now() - start);
   }
 }

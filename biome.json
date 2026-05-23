@@ -9,7 +9,8 @@
       "*.md",
       "*.yaml",
       "*.yml",
-      "schema/doco.schema.json"
+      "schema/doco.schema.json",
+      "packages/db/src/schema-embedded.ts"
     ]
   },
   "organizeImports": { "enabled": true },

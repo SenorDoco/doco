@@ -2,6 +2,7 @@
 // Collapses ~13 near-identical handler files into one parameter set per route.
 
 import { getEntity, roleAtLeast } from "@doco/db";
+import { waitUntil } from "@vercel/functions";
 import { parse as parseYaml } from "yaml";
 import {
   type CaptureError,
@@ -16,6 +17,7 @@ import {
   loadDocoRouteForRead,
 } from "~/lib/doco-access.server";
 import { withIdempotency } from "~/lib/idempotency.server";
+import { recordCaptureTiming, withCaptureTelemetry } from "~/lib/telemetry.server";
 
 interface MeLike {
   id: string | null;
@@ -127,18 +129,27 @@ export function makeCaptureRoute<TDraft>(cfg: CaptureRouteConfig<TDraft>) {
             cfg.fillFromAuth(draft, { id: me.id, username: me.username });
           }
           const docoHost = new URL(request.url).origin;
-          const result = await cfg.captureFn(
-            dir,
-            meta.docoId,
-            ownerSlug,
-            docoSlug,
-            draft,
-            docoHost,
+          const start = performance.now();
+          const { result, bag } = await withCaptureTelemetry(() =>
+            cfg.captureFn(dir, meta.docoId, ownerSlug, docoSlug, draft, docoHost),
           );
-          if ("error" in result) {
-            return Response.json(result, { status: 400 });
-          }
-          return Response.json(result, { status: 201 });
+          const totalMs = Math.round(performance.now() - start);
+          const isError = "error" in result;
+          const status = isError ? 400 : 201;
+          waitUntil(
+            recordCaptureTiming({
+              doco_id: meta.docoId,
+              entity_type: cfg.type,
+              http_method: "POST",
+              principal_id: me?.id ?? null,
+              total_ms: totalMs,
+              bag,
+              status_code: status,
+              user_agent: request.headers.get("user-agent"),
+              error: isError ? String((result as CaptureError).error) : null,
+            }),
+          );
+          return Response.json(result, { status });
         },
       );
     },
@@ -249,24 +260,39 @@ export function makeUpdateRoute(cfg: UpdateRouteConfig) {
         );
       }
 
-      const result = await updateEntity({
-        docoDir: dir,
-        docoId: meta.docoId,
-        ownerSlug,
-        docoSlug,
-        entityType: cfg.entityType,
-        pluralDir: cfg.pluralDir,
-        id,
-        patch,
-        allowedFields: [...cfg.allowedFields],
-        docoHost: new URL(request.url).origin,
-        actorId: me?.id ?? null,
-      });
-      if ("error" in result) {
-        const status = (result as { status?: number }).status ?? 400;
-        return Response.json(result, { status });
-      }
-      return Response.json(result, { status: 200 });
+      const start = performance.now();
+      const { result, bag } = await withCaptureTelemetry(() =>
+        updateEntity({
+          docoDir: dir,
+          docoId: meta.docoId,
+          ownerSlug,
+          docoSlug,
+          entityType: cfg.entityType,
+          pluralDir: cfg.pluralDir,
+          id,
+          patch,
+          allowedFields: [...cfg.allowedFields],
+          docoHost: new URL(request.url).origin,
+          actorId: me?.id ?? null,
+        }),
+      );
+      const totalMs = Math.round(performance.now() - start);
+      const isError = "error" in result;
+      const status = isError ? ((result as { status?: number }).status ?? 400) : 200;
+      waitUntil(
+        recordCaptureTiming({
+          doco_id: meta.docoId,
+          entity_type: cfg.entityType,
+          http_method: "PATCH",
+          principal_id: me?.id ?? null,
+          total_ms: totalMs,
+          bag,
+          status_code: status,
+          user_agent: request.headers.get("user-agent"),
+          error: isError ? String((result as { error?: unknown }).error ?? "error") : null,
+        }),
+      );
+      return Response.json(result, { status });
     },
   };
 }
