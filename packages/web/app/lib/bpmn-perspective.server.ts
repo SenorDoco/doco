@@ -122,7 +122,8 @@ export async function loadBpmnGraph(
               t.created_at::text AS created_at,
               t.data
          FROM ${entry.table} t
-        WHERE t.doco_id = $1`;
+        WHERE t.doco_id = $1
+          AND COALESCE(t.lifecycle, 'active') <> 'retired'`;
   }).join(" UNION ALL ");
 
   const [neuronRows, principalRows] = await Promise.all([
