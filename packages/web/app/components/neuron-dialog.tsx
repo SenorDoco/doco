@@ -88,6 +88,16 @@ export function NeuronDialog({
   const disabledReason = detail?.lifecycle_options.find(
     (option) => option.disabled && !option.current,
   )?.reason;
+  // Migrated neurons carry their full prose in a single type-named
+  // field; for those we render the prose as a card at the top of the
+  // content area and skip both the truncated h2 title and the separate
+  // "body" section heading — otherwise the first line shows twice
+  // (once as the title, once as the start of the prose) and the type
+  // label appears twice (once as the chip, once as the section
+  // heading). Non-migrated entities (principals, primitives) still
+  // have a distinct short name + long body, so they keep the legacy
+  // title + body-section rendering.
+  const isMigratedNeuron = Boolean(detail && PROSE_FIELD_NAME[detail.entity_type]);
 
   return (
     <aside
@@ -105,9 +115,11 @@ export function NeuronDialog({
                 <p className="text-[11px] font-semibold uppercase text-muted-foreground">
                   {detail?.entity_type ?? "Neuron"}
                 </p>
-                <h2 className="mt-0.5 break-words text-sm font-semibold leading-snug text-foreground">
-                  {title}
-                </h2>
+                {isMigratedNeuron ? null : (
+                  <h2 className="mt-0.5 break-words text-sm font-semibold leading-snug text-foreground">
+                    {title}
+                  </h2>
+                )}
               </div>
               <button
                 type="button"
@@ -166,6 +178,14 @@ export function NeuronDialog({
         ) : null}
         {detail && !loading ? (
           <div className="space-y-5 text-xs">
+            {isMigratedNeuron && detail.body_md ? (
+              <section>
+                <div className="whitespace-pre-wrap break-words text-sm leading-6 text-foreground">
+                  {detail.body_md}
+                </div>
+              </section>
+            ) : null}
+
             <section>
               <dl className="grid grid-cols-[6.5rem_minmax(0,1fr)] gap-x-3 gap-y-2">
                 <dt className="text-muted-foreground">Id</dt>
@@ -183,7 +203,7 @@ export function NeuronDialog({
               </dl>
             </section>
 
-            {detail.body_md ? (
+            {!isMigratedNeuron && detail.body_md ? (
               <section className="pt-4">
                 <h3 className="mb-2 text-[11px] font-semibold uppercase text-muted-foreground">
                   {proseFieldName(detail.entity_type)}
