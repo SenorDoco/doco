@@ -503,7 +503,6 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
     >
       <div className="flex shrink-0 items-center justify-between border-b border-border px-3 py-2">
         <div className="flex min-w-0 items-center gap-2">
-          <DocoMark height={20} variant="mark" active={agentActive} decorative />
           <div className="truncate text-xs font-semibold">Señor Doco</div>
         </div>
         <button
@@ -703,7 +702,11 @@ function SavedMessage({ message }: { message: ChatMessage }) {
 function InFlightMessageView({ msg }: { msg: InFlightMessage }) {
   return (
     <div className="mb-3 flex flex-col items-end">
-      <div className="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground">
+      {/* In-flight assistant messages render the animated doco mark next
+          to the label so the "Señor Doco is replying" cue lives with the
+          bubble itself, not the sidebar header. */}
+      <div className="mb-1 flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-muted-foreground">
+        <DocoMark height={14} variant="mark" active decorative />
         Señor Doco
       </div>
       <div className="neu-bubble max-w-[90%] space-y-1.5 rounded-lg bg-primary/10 px-2.5 py-1.5">
