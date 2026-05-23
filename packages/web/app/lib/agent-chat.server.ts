@@ -42,6 +42,7 @@ import { waitUntil } from "@vercel/functions";
 import { canAccessDoco } from "./doco-access.server";
 import { ensureEnvLoaded } from "./dotenv.server";
 import { listAllDocos } from "./host.server";
+import { internalFetch } from "./internal-fetch.server";
 import type { CurrentPrincipal } from "./session.server";
 import { recordAgentTurn } from "./telemetry.server";
 
@@ -940,19 +941,34 @@ async function runTool(block: ToolUseBlock, ctx: ChatStreamContext): Promise<Too
     }
     const url = new URL(path, ctx.origin).toString();
     try {
-      const init: RequestInit = {
+      // Try the in-process router first. Calls the SAME loader/action
+      // module HTTP would reach — no logic duplication — but skips the
+      // socket / parse round-trip. Returns null when no registered route
+      // matches; we then fall back to a real fetch so unmapped routes
+      // (HTML pages, dynamic plugins, etc.) keep working.
+      let res = await internalFetch({
         method,
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json",
-          Cookie: ctx.cookieHeader,
-          "User-Agent": "Doco-In-Page-Assistant/1",
-        },
-      };
-      if (method !== "GET" && method !== "DELETE" && input?.body !== undefined) {
-        init.body = typeof input.body === "string" ? input.body : JSON.stringify(input.body);
+        path,
+        origin: ctx.origin,
+        cookieHeader: ctx.cookieHeader,
+        body: input?.body,
+        userAgent: "Doco-In-Page-Assistant/1",
+      });
+      if (!res) {
+        const init: RequestInit = {
+          method,
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+            Cookie: ctx.cookieHeader,
+            "User-Agent": "Doco-In-Page-Assistant/1",
+          },
+        };
+        if (method !== "GET" && method !== "DELETE" && input?.body !== undefined) {
+          init.body = typeof input.body === "string" ? input.body : JSON.stringify(input.body);
+        }
+        res = await fetch(url, init);
       }
-      const res = await fetch(url, init);
       const text = await res.text();
       let parsed: unknown = text;
       try {
