@@ -91,15 +91,16 @@ export function BpmnPerspective({
     );
   };
 
-  // Drop nodes whose lifecycle is filtered out, then drop empty
-  // lanes so the lane stack collapses cleanly. Links are filtered
+  // Drop nodes whose lifecycle is filtered out. Lanes are NEVER
+  // dropped — every Principal lane stays visible regardless of which
+  // nodes are filtered in. Matches the server-side guarantee that
+  // loadBpmnGraph emits a lane for every Principal in the doco, even
+  // when zero neurons are assigned to them. Links are still filtered
   // by the existing nodeSet check inside layOutBpmn.
   const { filteredNodes, filteredLanes } = useMemo(() => {
     if (!visibleLifecycles) return { filteredNodes: nodes, filteredLanes: lanes };
     const fn = nodes.filter((n) => visibleLifecycles.has(n.lifecycle ?? "active"));
-    const lanesWithNodes = new Set(fn.map((n) => n.laneId));
-    const fl = lanes.filter((l) => lanesWithNodes.has(l.id));
-    return { filteredNodes: fn, filteredLanes: fl };
+    return { filteredNodes: fn, filteredLanes: lanes };
   }, [nodes, lanes, visibleLifecycles]);
 
   useEffect(() => {
