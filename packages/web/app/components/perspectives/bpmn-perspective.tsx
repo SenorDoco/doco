@@ -53,6 +53,33 @@ const NODE_GAP_Y = 20; // padding above/below row inside the lane
 const BPMN_REFERENCE_ZOOM = 0.35;
 const MAX_GRAPH_REFERENCES = 120;
 
+/**
+ * Per-node box sizing — the label's character count drives how big
+ * the React Flow box needs to be to fit the text without truncation.
+ *
+ * Formula: text area ≈ N * char_w * line_h, padded by `pad`. For
+ * circles we square the box so the inscribed circle stays round.
+ * NODE_WIDTH x NODE_HEIGHT is the floor — short labels keep the
+ * default size so existing layouts don't shift unexpectedly.
+ */
+function sizeForNode(node: BpmnNode): { width: number; height: number } {
+  const label = node.name ?? "";
+  const N = Math.max(label.length, 1);
+  const CHAR_W = 5.5; // approx px per char at 10px font, leading-tight
+  const LINE_H = 13;
+  const PAD = 24; // total horizontal padding inside the shape
+  const PAD_Y = 16;
+  // Target a roughly square text block so wrapping looks balanced.
+  const sqrtPx = Math.sqrt(N * CHAR_W * LINE_H);
+  const w = Math.max(NODE_WIDTH, Math.ceil(sqrtPx) + PAD);
+  const h = Math.max(NODE_HEIGHT, Math.ceil(sqrtPx) + PAD_Y);
+  if (node.shape === "circle") {
+    const dim = Math.max(w, h);
+    return { width: dim, height: dim };
+  }
+  return { width: w, height: h };
+}
+
 interface FlowViewport {
   x: number;
   y: number;
@@ -397,7 +424,22 @@ function layOutBpmn(lanes: BpmnLane[], nodes: BpmnNode[], links: OverviewGraphLi
   }
 
   const maxColumn = Math.max(0, ...Array.from(columnByNode.values()));
-  const laneWidth = LANE_LABEL_WIDTH + (maxColumn + 1) * (NODE_WIDTH + NODE_GAP_X) + NODE_GAP_X;
+
+  // Per-node sizes. Compute first so column step and lane height can
+  // accommodate the widest / tallest node anywhere in the graph —
+  // keeps vertical alignment of columns across lanes.
+  const sizeByNode = new Map<string, { width: number; height: number }>();
+  let maxNodeWidth = NODE_WIDTH;
+  let maxNodeHeight = NODE_HEIGHT;
+  for (const node of nodes) {
+    const size = sizeForNode(node);
+    sizeByNode.set(node.id, size);
+    if (size.width > maxNodeWidth) maxNodeWidth = size.width;
+    if (size.height > maxNodeHeight) maxNodeHeight = size.height;
+  }
+  const columnStep = maxNodeWidth + NODE_GAP_X;
+  const dynLaneHeight = Math.max(LANE_HEIGHT, maxNodeHeight + NODE_GAP_Y * 2);
+  const laneWidth = LANE_LABEL_WIDTH + (maxColumn + 1) * columnStep + NODE_GAP_X;
 
   const flowNodes: FlowNode[] = [];
   const laneYById = new Map<string, number>();
@@ -405,19 +447,19 @@ function layOutBpmn(lanes: BpmnLane[], nodes: BpmnNode[], links: OverviewGraphLi
 
   // Emit lane parent nodes first; child neurons reference parentId.
   lanes.forEach((lane, laneIndex) => {
-    const laneY = laneIndex * LANE_HEIGHT;
+    const laneY = laneIndex * dynLaneHeight;
     laneYById.set(lane.id, laneY);
     flowNodes.push({
       id: laneNodeId(lane.id),
       type: "bpmnLane",
       position: { x: 0, y: laneY },
-      data: { lane, height: LANE_HEIGHT, width: laneWidth, labelWidth: LANE_LABEL_WIDTH },
+      data: { lane, height: dynLaneHeight, width: laneWidth, labelWidth: LANE_LABEL_WIDTH },
       draggable: false,
       selectable: false,
       connectable: false,
       initialWidth: laneWidth,
-      initialHeight: LANE_HEIGHT,
-      style: { width: laneWidth, height: LANE_HEIGHT, zIndex: 0, padding: 0 },
+      initialHeight: dynLaneHeight,
+      style: { width: laneWidth, height: dynLaneHeight, zIndex: 0, padding: 0 },
     });
   });
 
@@ -426,8 +468,12 @@ function layOutBpmn(lanes: BpmnLane[], nodes: BpmnNode[], links: OverviewGraphLi
     const list = orderedByLane.get(lane.id) ?? [];
     for (const node of list) {
       const column = columnByNode.get(node.id) ?? 0;
-      const x = LANE_LABEL_WIDTH + column * (NODE_WIDTH + NODE_GAP_X);
-      const y = (LANE_HEIGHT - NODE_HEIGHT) / 2;
+      const size = sizeByNode.get(node.id) ?? { width: NODE_WIDTH, height: NODE_HEIGHT };
+      // Center the node within its column slot so wider/narrower
+      // nodes still line up by their middle on the same x axis.
+      const slotX = LANE_LABEL_WIDTH + column * columnStep;
+      const x = slotX + (maxNodeWidth - size.width) / 2;
+      const y = (dynLaneHeight - size.height) / 2;
       const laneY = laneYById.get(node.laneId) ?? 0;
       nodePositions.set(node.id, { x, y: laneY + y });
       flowNodes.push({
@@ -440,9 +486,9 @@ function layOutBpmn(lanes: BpmnLane[], nodes: BpmnNode[], links: OverviewGraphLi
         draggable: false,
         selectable: false,
         connectable: false,
-        initialWidth: NODE_WIDTH,
-        initialHeight: NODE_HEIGHT,
-        style: { width: NODE_WIDTH, height: NODE_HEIGHT, zIndex: 1 },
+        initialWidth: size.width,
+        initialHeight: size.height,
+        style: { width: size.width, height: size.height, zIndex: 1 },
       });
     }
   }
@@ -719,9 +765,10 @@ function BpmnRoundedNode({ data }: { data: BpmnNodeData }) {
 
 function BpmnCircleNode({ data }: { data: BpmnNodeData }) {
   const stroke = lifecycleColor(data.node.lifecycle);
-  // Circles are drawn at the lane's vertical center; we shrink width
-  // visually to look round but the React Flow box stays NODE_WIDTH
-  // for layout consistency.
+  // Circle fills the React Flow box (sized per-node via sizeForNode
+  // upstream). Because the box is squared for circles, border-radius:50%
+  // gives a true round shape; longer summaries grow the box and the
+  // circle scales accordingly.
   return (
     <div
       {...graphReferenceAttributes(data)}
@@ -737,8 +784,8 @@ function BpmnCircleNode({ data }: { data: BpmnNodeData }) {
       <ReferenceBadge data={data} circular />
       <div
         style={{
-          width: NODE_HEIGHT,
-          height: NODE_HEIGHT,
+          width: "100%",
+          height: "100%",
           background: "#fff",
           border: `2px solid ${stroke}`,
           borderRadius: "50%",
