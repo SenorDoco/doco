@@ -31,11 +31,12 @@ import { useNavigate } from "react-router";
 import type { OverviewGraphLink } from "~/components/overview-graph";
 import type { BpmnLane, BpmnNode, BpmnShape } from "~/lib/bpmn-perspective.server";
 
-// MUST stay in sync with `MILESTONE_LANE_ID` exported from
-// `~/lib/bpmn-perspective.server`. Can't import the value here —
+// MUST stay in sync with the matching exports in
+// `~/lib/bpmn-perspective.server`. Can't import the values here —
 // `.server.ts` modules are stripped from the client bundle, so
 // value-imports from them fail the build.
 const MILESTONE_LANE_ID = "__milestones__";
+const ARTIFACTS_LANE_ID = "__artifacts__";
 import {
   type GraphReferenceItem,
   clearGraphReferences,
@@ -67,6 +68,12 @@ const LANE_HEIGHT = 140;
 const MILESTONE_BAND_HEIGHT = 90;
 const MILESTONE_NODE_HEIGHT = 44;
 const MILESTONE_NODE_WIDTH = 120;
+// The artifacts band sits below the actor lanes and holds References,
+// Evals, Ideas, and Rules — the BPMN data objects / annotations /
+// business-rule tasks that sit *alongside* the flow rather than in a
+// swim lane. Slightly taller than the milestone band so the documents
+// inside don't crowd, but still shorter than an actor lane.
+const ARTIFACTS_BAND_HEIGHT = 120;
 const LANE_LABEL_WIDTH = 140;
 const NODE_WIDTH = 140;
 const NODE_HEIGHT = 60;
@@ -304,13 +311,10 @@ export function BpmnPerspective({
   // Size the React Flow container to the actual graph height so few-lane
   // BPMN doesn't leave a tall empty grid beneath the lanes. Cap at the
   // available aside height so very many lanes still scroll within the
-  // canvas instead of pushing the page. The milestone band (if
-  // present) is shorter than an actor lane.
+  // canvas instead of pushing the page. The milestone band and the
+  // artifacts band are both shorter than an actor lane.
   const naturalCanvasHeight =
-    filteredLanes.reduce(
-      (sum, lane) => sum + (lane.id === MILESTONE_LANE_ID ? MILESTONE_BAND_HEIGHT : LANE_HEIGHT),
-      0,
-    ) + 32;
+    filteredLanes.reduce((sum, lane) => sum + heightForLane(lane.id), 0) + 32;
 
   return (
     <div
@@ -504,11 +508,18 @@ function layOutBpmn(lanes: BpmnLane[], nodes: BpmnNode[], links: OverviewGraphLi
   const nodePositions = new Map<string, { x: number; y: number }>();
 
   // Emit lane parent nodes first; child neurons reference parentId.
-  // Heights vary: the milestone band (if present) is shorter than an
+  // Heights vary: milestone and artifacts bands are shorter than an
   // actor lane, so we accumulate y instead of multiplying by index.
   let cursorY = 0;
   for (const lane of lanes) {
-    const laneHeight = lane.id === MILESTONE_LANE_ID ? MILESTONE_BAND_HEIGHT : dynLaneHeight;
+    let laneHeight: number;
+    if (lane.id === MILESTONE_LANE_ID) {
+      laneHeight = MILESTONE_BAND_HEIGHT;
+    } else if (lane.id === ARTIFACTS_LANE_ID) {
+      laneHeight = ARTIFACTS_BAND_HEIGHT;
+    } else {
+      laneHeight = dynLaneHeight;
+    }
     laneYById.set(lane.id, cursorY);
     laneHeightById.set(lane.id, laneHeight);
     flowNodes.push({
@@ -521,6 +532,7 @@ function layOutBpmn(lanes: BpmnLane[], nodes: BpmnNode[], links: OverviewGraphLi
         width: laneWidth,
         labelWidth: LANE_LABEL_WIDTH,
         isMilestoneBand: lane.id === MILESTONE_LANE_ID,
+        isArtifactsBand: lane.id === ARTIFACTS_LANE_ID,
       },
       draggable: false,
       selectable: false,
@@ -677,6 +689,14 @@ function laneNodeId(laneId: string): string {
   return `lane:${laneId}`;
 }
 
+// Used by the outer container sizing — keeps the band-height knowledge
+// in one place rather than scattering ternaries through the layout.
+function heightForLane(laneId: string): number {
+  if (laneId === MILESTONE_LANE_ID) return MILESTONE_BAND_HEIGHT;
+  if (laneId === ARTIFACTS_LANE_ID) return ARTIFACTS_BAND_HEIGHT;
+  return LANE_HEIGHT;
+}
+
 // Lanes that map to a real Principal carry the principal_<ulid> id.
 // Synthetic lanes use the `__unassigned__` / `__unresolved__:<ref>`
 // sentinel; reference numbering and "keep on filter" treat the two
@@ -699,17 +719,26 @@ interface BpmnLaneData {
   labelWidth: number;
   referenceNumber?: number;
   isMilestoneBand?: boolean;
+  isArtifactsBand?: boolean;
 }
 
 function BpmnLaneNode({ data }: { data: BpmnLaneData }) {
-  // The milestone band is a phase axis perpendicular to the actor
-  // lanes — render it with a tinted background and solid edges so it
-  // reads as structurally distinct from the swim lanes below.
-  const bandBg = data.isMilestoneBand ? "rgba(80, 110, 200, 0.07)" : "rgba(0, 0, 0, 0.03)";
-  const edge = data.isMilestoneBand
-    ? "1px solid var(--color-border)"
-    : "1px dashed var(--color-border)";
-  const labelBg = data.isMilestoneBand ? "rgba(80, 110, 200, 0.12)" : "rgba(0, 0, 0, 0.04)";
+  // The milestone band and the artifacts band are both phase / data
+  // axes perpendicular to the actor lanes — render each with a
+  // distinct tint and solid edges so they read as structurally
+  // different from (and from each other) the swim lanes between them.
+  const isBand = data.isMilestoneBand || data.isArtifactsBand;
+  let bandBg = "rgba(0, 0, 0, 0.03)";
+  let labelBg = "rgba(0, 0, 0, 0.04)";
+  if (data.isMilestoneBand) {
+    bandBg = "rgba(80, 110, 200, 0.07)";
+    labelBg = "rgba(80, 110, 200, 0.12)";
+  } else if (data.isArtifactsBand) {
+    // Warm tint, distinct from the milestone band's cool blue.
+    bandBg = "rgba(180, 130, 60, 0.07)";
+    labelBg = "rgba(180, 130, 60, 0.13)";
+  }
+  const edge = isBand ? "1px solid var(--color-border)" : "1px dashed var(--color-border)";
   return (
     <div
       style={{
@@ -735,8 +764,8 @@ function BpmnLaneNode({ data }: { data: BpmnLaneData }) {
           textAlign: "center",
           padding: "0 8px",
           boxSizing: "border-box",
-          textTransform: data.isMilestoneBand ? "uppercase" : "none",
-          letterSpacing: data.isMilestoneBand ? 0.6 : 0,
+          textTransform: isBand ? "uppercase" : "none",
+          letterSpacing: isBand ? 0.6 : 0,
         }}
         title={data.lane.label}
       >
