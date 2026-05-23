@@ -50,7 +50,7 @@ export async function loader({
   return Response.json({
     doco_id: row.id,
     doco_handle: row.handle,
-    goal_description: row.goal_description,
+    goal: row.goal,
     owner_username: row.owner_slug,
     canonical_path: `/${row.handle}`,
     visibility: row.visibility,

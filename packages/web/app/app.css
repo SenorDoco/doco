@@ -143,6 +143,20 @@ button[class*="rounded-full"][class*="border-border"]:active {
   transform: translateY(0);
 }
 
+/* `.neu-pressed` is a state-override class — it has to beat the
+   auto-neumorphism selectors above (which use attribute selectors with
+   specificity 0,2,1 and would otherwise outrank a single class). The
+   `!important` is intentional: when an element opts into `.neu-pressed`,
+   no other rule in the file should be allowed to lift it. The :hover /
+   :active variants pin transform so an auto-CSS hover lift can't
+   briefly un-press the button mid-interaction. */
+.neu-pressed,
+.neu-pressed:hover,
+.neu-pressed:active {
+  box-shadow: var(--neu-pressed) !important;
+  transform: none !important;
+}
+
 @layer utilities {
   .neu-surface {
     border-color: var(--neu-border);
@@ -170,9 +184,8 @@ button[class*="rounded-full"][class*="border-border"]:active {
     box-shadow: var(--neu-inset);
   }
 
-  .neu-pressed {
-    box-shadow: var(--neu-pressed);
-  }
+  /* `.neu-pressed` is hoisted above out of `@layer utilities` so the
+     unlayered auto-neumorphism selectors don't outrank it. */
 
   .neu-button {
     border-color: var(--neu-border);

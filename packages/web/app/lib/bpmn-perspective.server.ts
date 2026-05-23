@@ -123,7 +123,15 @@ export async function loadBpmnGraph(
 
   const [neuronRows, principalRows] = await Promise.all([
     c.query<NeuronRow>(neuronSql, [docoId]),
-    c.query<PrincipalRow>("SELECT id, username FROM principals", []),
+    // Principals are host-scoped (no doco_id column); scope to this
+    // Doco via the data jsonb bag and drop retired role-personas.
+    c.query<PrincipalRow>(
+      `SELECT id, username
+         FROM principals
+        WHERE data->>'doco_id' = $1
+          AND COALESCE(lifecycle, 'active') = 'active'`,
+      [docoId],
+    ),
   ]);
 
   const principalByUsername = new Map<string, PrincipalRow>();

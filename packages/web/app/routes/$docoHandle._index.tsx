@@ -308,7 +308,7 @@ export async function loader({
       docoSlug,
       handle,
       docoId: ctx.meta.docoId,
-      goalDescription: ctx.meta.goalDescription,
+      goal: ctx.meta.goal,
       canInviteCollaborators: await canAdminDoco(ctx.meta, me?.id ?? null),
       host: await loadHostConfig(),
       me,
@@ -416,7 +416,7 @@ export default function DocoHome({
     docoSlug,
     handle,
     docoId,
-    goalDescription,
+    goal,
     canInviteCollaborators,
     me,
     graph,
@@ -702,9 +702,7 @@ export default function DocoHome({
               ) : null}
             </div>
           </div>
-          {goalDescription ? (
-            <p className="text-[11px] text-muted-foreground">{goalDescription}</p>
-          ) : null}
+          {goal ? <p className="text-[11px] text-muted-foreground">{goal}</p> : null}
         </div>
         <div className="grid grid-cols-1 gap-6 min-[1200px]:grid-cols-[minmax(0,1fr)_400px]">
           <aside className="flex h-[calc(100vh-13rem)] min-h-[480px] min-w-0 flex-col min-[1200px]:sticky min-[1200px]:top-4 min-[1200px]:self-start">

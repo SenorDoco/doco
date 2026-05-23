@@ -47,7 +47,7 @@ export async function loader({
   const start = performance.now();
   const ctx = await loadDocoRouteForRead(request, params);
   const { handle } = ctx;
-  const goalDescription = ctx.meta.goalDescription;
+  const goal = ctx.meta.goal;
   const url = new URL(request.url);
   const q = (url.searchParams.get("q") ?? "").trim();
 
@@ -64,7 +64,7 @@ export async function loader({
     if (!q) {
       return Response.json({
         query: "",
-        doco_goal_description: goalDescription,
+        doco_goal: goal,
         count: 0,
         duration_ms: Math.round(performance.now() - start),
         filters: filtersOut,
@@ -76,7 +76,7 @@ export async function loader({
     if (!provider) {
       return Response.json({
         query: q,
-        doco_goal_description: goalDescription,
+        doco_goal: goal,
         count: 0,
         duration_ms: Math.round(performance.now() - start),
         filters: filtersOut,
@@ -91,7 +91,7 @@ export async function loader({
       if (!v || v.length === 0) {
         return Response.json({
           query: q,
-          doco_goal_description: goalDescription,
+          doco_goal: goal,
           count: 0,
           duration_ms: Math.round(performance.now() - start),
           filters: filtersOut,
@@ -103,7 +103,7 @@ export async function loader({
     } catch (e) {
       return Response.json({
         query: q,
-        doco_goal_description: goalDescription,
+        doco_goal: goal,
         count: 0,
         duration_ms: Math.round(performance.now() - start),
         filters: filtersOut,
@@ -122,7 +122,7 @@ export async function loader({
     if (ranked.hits.length === 0) {
       return Response.json({
         query: q,
-        doco_goal_description: goalDescription,
+        doco_goal: goal,
         count: 0,
         duration_ms: Math.round(performance.now() - start),
         filters: filtersOut,
@@ -137,7 +137,7 @@ export async function loader({
 
     const stableData = {
       query: q,
-      doco_goal_description: goalDescription,
+      doco_goal: goal,
       count: allHits.length,
       filters: filtersOut,
       hits: allHits,
