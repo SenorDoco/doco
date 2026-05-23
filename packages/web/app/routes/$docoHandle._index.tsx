@@ -732,7 +732,7 @@ export default function DocoHome({
           {goal ? <p className="text-[11px] text-muted-foreground">{goal}</p> : null}
         </div>
         <div className="grid grid-cols-1 gap-6 min-[1200px]:grid-cols-[minmax(0,1fr)_320px]">
-          <aside className="flex h-[calc(100vh-6rem)] min-h-[480px] min-w-0 flex-col min-[1200px]:sticky min-[1200px]:top-4 min-[1200px]:self-start">
+          <aside className="flex h-[calc(100vh-9rem)] min-h-[480px] min-w-0 flex-col min-[1200px]:sticky min-[1200px]:top-4 min-[1200px]:self-start">
             <PerspectiveTabs
               handle={handle}
               perspectives={perspectives}
@@ -844,7 +844,7 @@ export default function DocoHome({
               // left edge — set by AgentSidebar as a CSS var on
               // documentElement so we don't have to thread state) visible.
               // ≥1200px: absolute, anchored to the right column's parent.
-              <div className="fixed bottom-4 right-3 top-20 z-30 [left:calc(var(--senor-doco-rail-width,320px)+0.75rem)] min-[1200px]:absolute min-[1200px]:inset-x-0 min-[1200px]:bottom-auto min-[1200px]:top-0 min-[1200px]:h-[calc(100vh-6rem)] min-[1200px]:min-h-[480px]">
+              <div className="fixed bottom-4 right-3 top-20 z-30 [left:calc(var(--senor-doco-rail-width,320px)+0.75rem)] min-[1200px]:absolute min-[1200px]:inset-x-0 min-[1200px]:bottom-auto min-[1200px]:top-0 min-[1200px]:h-[calc(100vh-9rem)] min-[1200px]:min-h-[480px]">
                 <NeuronDialog
                   detail={neuronDialog.detail}
                   loading={neuronDialog.loading}
