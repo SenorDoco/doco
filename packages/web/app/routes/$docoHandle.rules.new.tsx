@@ -13,7 +13,7 @@ import { loadHostConfig } from "~/lib/host.server";
 
 interface IntentOption {
   id: string;
-  summary: string;
+  label: string;
 }
 
 export async function loader({
@@ -27,7 +27,7 @@ export async function loader({
   const intents = await withClient(async (c) => {
     const rows = (
       await c.query<IntentOption>(
-        `SELECT id, summary FROM intents
+        `SELECT id, split_part(intent, E'\n', 1) AS label FROM intents
           WHERE doco_id = $1
             AND COALESCE(lifecycle, 'active') = 'active'
           ORDER BY created_at DESC`,
@@ -58,7 +58,7 @@ export async function action({
     params,
   );
   const form = await request.formData();
-  const summary = String(form.get("summary") ?? "").trim();
+  const ruleText = String(form.get("rule") ?? form.get("summary") ?? "").trim();
   const predicate = String(form.get("predicate") ?? "").trim();
   const intentId = String(form.get("intent_id") ?? "").trim();
   const severityRaw = String(form.get("severity") ?? "hard");
@@ -77,7 +77,7 @@ export async function action({
     ownerSlug,
     docoSlug,
     {
-      summary,
+      rule: ruleText,
       predicate,
       intent_ids: intentId ? [intentId] : [],
       severity,
@@ -162,8 +162,8 @@ export default function NewRule({
                   <option value="">(none)</option>
                   {intents.map((i) => (
                     <option key={i.id} value={i.id}>
-                      {i.summary.slice(0, 100)}
-                      {i.summary.length > 100 ? "…" : ""}
+                      {i.label.slice(0, 100)}
+                      {i.label.length > 100 ? "…" : ""}
                     </option>
                   ))}
                 </select>

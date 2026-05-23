@@ -44,16 +44,16 @@ export async function loader({
     const rows = (
       await c.query<SynapseRow>(
         `WITH labels AS (
-           SELECT id, summary FROM decisions          WHERE doco_id = $1
-           UNION ALL SELECT id, summary FROM intents             WHERE doco_id = $1
-           UNION ALL SELECT id, summary FROM ideas               WHERE doco_id = $1
-           UNION ALL SELECT id, summary FROM rules               WHERE doco_id = $1
-           UNION ALL SELECT id, summary FROM guidance_primitives   WHERE doco_id = $1
-           UNION ALL SELECT id, summary FROM neuron_authoring_primitives WHERE doco_id = $1
-           UNION ALL SELECT id, summary FROM actions             WHERE doco_id = $1
-           UNION ALL SELECT id, summary FROM logs                WHERE doco_id = $1
-           UNION ALL SELECT id, summary FROM evals               WHERE doco_id = $1
-           UNION ALL SELECT id, summary FROM reference_entities  WHERE doco_id = $1
+           SELECT id, split_part(decision, E'\n', 1) AS summary FROM decisions          WHERE doco_id = $1
+           UNION ALL SELECT id, split_part(intent, E'\n', 1)   FROM intents             WHERE doco_id = $1
+           UNION ALL SELECT id, split_part(idea, E'\n', 1)     FROM ideas               WHERE doco_id = $1
+           UNION ALL SELECT id, split_part(rule, E'\n', 1)     FROM rules               WHERE doco_id = $1
+           UNION ALL SELECT id, summary                         FROM guidance_primitives   WHERE doco_id = $1
+           UNION ALL SELECT id, summary                         FROM neuron_authoring_primitives WHERE doco_id = $1
+           UNION ALL SELECT id, split_part(action, E'\n', 1)   FROM actions             WHERE doco_id = $1
+           UNION ALL SELECT id, split_part(log, E'\n', 1)      FROM logs                WHERE doco_id = $1
+           UNION ALL SELECT id, split_part(eval, E'\n', 1)     FROM evals               WHERE doco_id = $1
+           UNION ALL SELECT id, split_part(reference, E'\n', 1) FROM reference_entities WHERE doco_id = $1
          )
          SELECT e.from_id, e.from_neuron_type, fl.summary AS from_summary,
                 e.to_id,   e.to_neuron_type,   tl.summary AS to_summary,
