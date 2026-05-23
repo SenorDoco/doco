@@ -824,7 +824,12 @@ export default function DocoHome({
               </Card>
             </section>
             {neuronDialog ? (
-              <div className="fixed inset-x-3 bottom-4 top-20 z-30 min-[1200px]:absolute min-[1200px]:inset-x-0 min-[1200px]:bottom-auto min-[1200px]:top-0 min-[1200px]:h-[calc(100vh-13rem)] min-[1200px]:min-h-[480px]">
+              // Small screens: float over the perspective canvas but leave
+              // the app bar (top-20) and the Señor Doco rail (variable
+              // left edge — set by AgentSidebar as a CSS var on
+              // documentElement so we don't have to thread state) visible.
+              // ≥1200px: absolute, anchored to the right column's parent.
+              <div className="fixed bottom-4 right-3 top-20 z-30 [left:calc(var(--senor-doco-rail-width,320px)+0.75rem)] min-[1200px]:absolute min-[1200px]:inset-x-0 min-[1200px]:bottom-auto min-[1200px]:top-0 min-[1200px]:h-[calc(100vh-13rem)] min-[1200px]:min-h-[480px]">
                 <NeuronDialog
                   detail={neuronDialog.detail}
                   loading={neuronDialog.loading}
