@@ -1,23 +1,31 @@
 // BPMN perspective server-side data loader. Augments the standard
 // overview graph with two things the default view doesn't carry:
 //
-//   1. Lane assignment — which principal "owns" each neuron:
-//        Action   → actor_id
-//        Decision → decided_by   (Collaborator id post-rename; we walk
-//                                 Collaborator → github_login →
-//                                 matching Principal name. Falls to
-//                                 Unassigned when the Collaborator has
-//                                 no Principal counterpart.)
-//        Intent   → actors[0] (first principal if multi-valued)
-//        State    → milestone band (a special non-actor band rendered
-//                                   above the lanes — States aren't
-//                                   work performed by an actor, they
-//                                   represent the position the process
-//                                   holds, which in BPMN is a
-//                                   milestone / phase axis perpendicular
-//                                   to lanes.)
-//      Neurons without a lane-bearing field, or with a value that
-//      doesn't resolve, fall into Unassigned.
+//   1. Lane assignment — three categories:
+//
+//      a) Actor lanes (one per Principal):
+//           Action   → actor_id
+//           Decision → decided_by   (Collaborator id post-rename; we
+//                                    walk Collaborator → github_login
+//                                    → matching Principal name. Falls
+//                                    to Unassigned when no Principal
+//                                    counterpart exists.)
+//           Intent   → actors[0] (first principal if multi-valued)
+//         Neurons without a lane-bearing field, or with a value that
+//         doesn't resolve, fall into Unassigned.
+//
+//      b) Milestone band — pinned to the TOP. States live here
+//         regardless of who's acting. In BPMN, milestones / phases
+//         are an axis perpendicular to the actor swim lanes; the
+//         process passes *through* a State rather than someone
+//         *performing* it.
+//
+//      c) Artifacts band — pinned to the BOTTOM. References, Evals,
+//         Ideas, and Rules live here. BPMN puts these alongside the
+//         flow as data objects / annotations / business-rule tasks,
+//         not in the actor swim lanes. The artifacts band is the
+//         flat-list approximation until we can lay them out as
+//         floating elements with dashed associations (phase 4).
 //
 //   2. BPMN shape — the visual primitive a neuron renders as:
 //        intent                  → circle      (BPMN start event)
@@ -25,8 +33,12 @@
 //        action                  → task        (BPMN rounded-rect task)
 //        rule                    → rectangle   (policy box)
 //        state                   → milestone   (compact labeled box in
-//                                               the band above lanes)
-//        eval, reference         → document    (data artifact)
+//                                               the milestone band)
+//        eval, reference         → document    (BPMN data object)
+//        idea                    → rounded     (capsule — distinct
+//                                               from Task so an Idea
+//                                               doesn't read as a
+//                                               flow step)
 //
 // Lifecycle color from neuron-colors.ts is preserved as an accent on
 // each shape — bordered/edge-tinted in the renderer.
@@ -35,14 +47,6 @@
 //   - Log   — instances, not designs (template guidance: "Process
 //             *instances* (recorded runs) live in a separate Doco as
 //             Logs; surface them here only via References")
-//   - Idea  — speculative, no BPMN counterpart until promoted to
-//             Decision/Action/Intent
-//
-// Still drawn in lanes (defer to a later phase): References, Evals,
-// and Rules belong in BPMN as floating data objects / annotations
-// outside the swim lanes, but the React-Flow layout currently nests
-// every node inside a lane parent. Moving them out needs a renderer
-// rework.
 
 import { ALL_ENTITY_TABLES } from "@doco/db";
 import { parse as parseYaml } from "yaml";
@@ -83,9 +87,8 @@ export interface BpmnGraphData {
   links: OverviewGraphLink[];
 }
 
-// Tables included in the BPMN view. Logs (instances) and Ideas
-// (speculative, no BPMN counterpart) are deliberately excluded —
-// see the file header for rationale.
+// Tables included in the BPMN view. Logs (instances) are excluded —
+// see the file header.
 const BPMN_TABLES: { table: string; entityType: string }[] = [
   { table: "decisions", entityType: "decision" },
   { table: "intents", entityType: "intent" },
@@ -94,13 +97,20 @@ const BPMN_TABLES: { table: string; entityType: string }[] = [
   { table: "evals", entityType: "eval" },
   { table: "reference_entities", entityType: "reference" },
   { table: "states", entityType: "state" },
+  { table: "ideas", entityType: "idea" },
 ];
 
 const UNASSIGNED_LANE_ID = "__unassigned__";
-// Special non-actor band rendered above the lane stack. States live
-// here regardless of who's acting — milestones are a phase axis,
-// perpendicular to who's doing the work.
+// Milestone band — pinned to the top of the canvas. States live here.
 export const MILESTONE_LANE_ID = "__milestones__";
+// Artifacts band — pinned to the bottom. References, Evals, Ideas,
+// and Rules live here (BPMN data objects / annotations / business-rule
+// tasks, flat-list approximation until phase 4 adds floating layout).
+export const ARTIFACTS_LANE_ID = "__artifacts__";
+
+// Non-actor neuron types: assigned by category, not by an actor field.
+// State → milestone band; the rest → artifacts band.
+const ARTIFACT_TYPES = new Set(["reference", "eval", "idea", "rule"]);
 
 const SHAPE_BY_TYPE: Record<string, BpmnShape> = {
   intent: "circle",
@@ -110,6 +120,7 @@ const SHAPE_BY_TYPE: Record<string, BpmnShape> = {
   rule: "rectangle",
   eval: "document",
   reference: "document",
+  idea: "rounded",
 };
 
 export function shapeForEntityType(entityType: string): BpmnShape {
@@ -202,13 +213,19 @@ export async function loadBpmnGraph(
   const nodes: BpmnNode[] = [];
 
   for (const row of neuronRows.rows) {
-    // States bypass actor-lane resolution entirely — they live in the
-    // milestone band above the lanes. See the file header.
+    // Non-actor neuron types bypass actor-lane resolution: States go
+    // to the milestone band (top); References/Evals/Ideas/Rules go to
+    // the artifacts band (bottom). See the file header.
     let laneId: string;
     if (row.entity_type === "state") {
       laneId = MILESTONE_LANE_ID;
       if (!lanesById.has(MILESTONE_LANE_ID)) {
         lanesById.set(MILESTONE_LANE_ID, { id: MILESTONE_LANE_ID, label: "Milestones" });
+      }
+    } else if (ARTIFACT_TYPES.has(row.entity_type)) {
+      laneId = ARTIFACTS_LANE_ID;
+      if (!lanesById.has(ARTIFACTS_LANE_ID)) {
+        lanesById.set(ARTIFACTS_LANE_ID, { id: ARTIFACTS_LANE_ID, label: "Artifacts" });
       }
     } else {
       const fields = row.data ?? {};
@@ -260,22 +277,33 @@ export async function loadBpmnGraph(
   }
 
   // Lane order:
-  //   1. Milestone band (if present) — pinned to the top so phases
-  //      read above the work that crosses them.
+  //   1. Milestone band (if present) — top, so phases read above the
+  //      work that crosses them.
   //   2. Principal lanes — alphabetical for stable ordering.
-  //   3. Unassigned lane (if present) — pinned to the bottom.
+  //   3. Artifacts band (if present) — bottom-most of the work area,
+  //      below the actor lanes so the artifact cluster reads as
+  //      "alongside the flow" rather than "another actor".
+  //   4. Unassigned lane (if present) — very bottom; catchall for
+  //      actor-type neurons whose actor didn't resolve.
   const lanes: BpmnLane[] = [];
   if (lanesById.has(MILESTONE_LANE_ID)) {
     lanes.push(lanesById.get(MILESTONE_LANE_ID) as BpmnLane);
   }
   const principalLanes: BpmnLane[] = [];
   for (const lane of lanesById.values()) {
-    if (lane.id !== MILESTONE_LANE_ID && lane.id !== UNASSIGNED_LANE_ID) {
+    if (
+      lane.id !== MILESTONE_LANE_ID &&
+      lane.id !== ARTIFACTS_LANE_ID &&
+      lane.id !== UNASSIGNED_LANE_ID
+    ) {
       principalLanes.push(lane);
     }
   }
   principalLanes.sort((a, b) => a.label.localeCompare(b.label));
   lanes.push(...principalLanes);
+  if (lanesById.has(ARTIFACTS_LANE_ID)) {
+    lanes.push(lanesById.get(ARTIFACTS_LANE_ID) as BpmnLane);
+  }
   if (lanesById.has(UNASSIGNED_LANE_ID)) {
     lanes.push(lanesById.get(UNASSIGNED_LANE_ID) as BpmnLane);
   }
