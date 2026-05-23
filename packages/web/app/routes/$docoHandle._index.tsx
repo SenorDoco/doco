@@ -776,6 +776,7 @@ export default function DocoHome({
                   nodes={bpmnGraph.nodes}
                   links={bpmnGraph.links}
                   visibleLifecycles={visibleLifecycles}
+                  centerId={graphState.centerId}
                   isFullscreen={isPerspectiveFullscreen}
                   onToggleFullscreen={togglePerspectiveFullscreen}
                   onNeuronClick={(node) => {
