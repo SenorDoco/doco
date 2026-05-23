@@ -58,8 +58,11 @@ const NEURON_TYPE_ORDER = new Map(
 // Canonical Lifecycle (@doco/shared) — four stages, ranked here
 // for tiebreaker sort within a neuron type. Lower index = preferred
 // (active first since it's the most current state).
+// Canonical lifecycle progression (drafting → proposed → active → retired).
+// Used here as a tiebreaker sort within a neuron type so lists agree with
+// the lifecycle filter row and the doco-stats card on render order.
 const LIFECYCLE_RANK = new Map(
-  ["active", "drafting", "proposed", "retired"].map((lifecycle, index) => [lifecycle, index]),
+  ["drafting", "proposed", "active", "retired"].map((lifecycle, index) => [lifecycle, index]),
 );
 
 const PRIMITIVE_TYPES = new Set(["guidance_primitive", "neuron_authoring_primitive"]);
