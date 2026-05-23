@@ -162,7 +162,7 @@ export async function loader({
          UNION ALL SELECT id, summary AS label, lifecycle FROM evals WHERE doco_id = $1 AND id = ANY($2::text[])
          UNION ALL SELECT id, summary AS label, lifecycle FROM states WHERE doco_id = $1 AND id = ANY($2::text[])
          UNION ALL SELECT id, summary AS label, lifecycle FROM reference_entities WHERE doco_id = $1 AND id = ANY($2::text[])
-         UNION ALL SELECT id, COALESCE(summary, username) AS label, lifecycle FROM principals WHERE doco_id = $1 AND id = ANY($2::text[])`,
+         UNION ALL SELECT id, COALESCE(summary, name) AS label, lifecycle FROM principals WHERE doco_id = $1 AND id = ANY($2::text[])`,
         [ctx.meta.docoId, entityIds],
       );
       for (const row of entityLabelRows.rows) {
@@ -218,12 +218,12 @@ export async function loader({
     const contributorRows = (
       await c.query<{
         collaborator_id: string;
-        username: string;
+        principal_name: string;
         last_at: Date | string;
         event_count: string;
       }>(
         `SELECT ae.by_collaborator AS collaborator_id,
-                p.username,
+                p.name AS principal_name,
                 MAX(ae.at) AS last_at,
                 COUNT(*)::text AS event_count
            FROM audit_events ae
@@ -231,7 +231,7 @@ export async function loader({
           WHERE ae.doco_id = $1
             AND ae.by_collaborator IS NOT NULL
             AND ae.entity_type NOT IN ('guidance_primitive', 'neuron_authoring_primitive')
-          GROUP BY ae.by_collaborator, p.username
+          GROUP BY ae.by_collaborator, p.name
           ORDER BY COUNT(*) DESC, MAX(ae.at) DESC
           LIMIT $2`,
         [ctx.meta.docoId, TOP_CONTRIBUTORS_LIMIT],
@@ -239,7 +239,7 @@ export async function loader({
     ).rows;
     const topContributors: TopContributor[] = contributorRows.map((r) => ({
       principalId: r.collaborator_id,
-      username: r.username,
+      username: r.principal_name,
       lastAt:
         r.last_at instanceof Date
           ? r.last_at.toISOString()

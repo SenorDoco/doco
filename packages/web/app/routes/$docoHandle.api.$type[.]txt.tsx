@@ -19,8 +19,8 @@ type SpecRenderer = (baseUrl: string, handle: string) => string;
 
 const PRINCIPAL_ID_CONVENTION = `PRINCIPAL ID FIELDS
   API request bodies use principal ids only. Use *_principal_id for one
-  principal and *_principal_ids for arrays. Do not send usernames,
-  *_username fields, or comma-separated strings; there are no aliases.
+  principal and *_principal_ids for arrays. Do not send principal names,
+  *_name fields, or comma-separated strings; there are no aliases.
 
   Read responses may expose stored graph fields such as wanted_by,
   actors, stakeholders, actor_id, decided_by, and created_by. When you

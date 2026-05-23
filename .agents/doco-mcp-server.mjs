@@ -88,7 +88,7 @@ const SERVER_INSTRUCTIONS = [
   "Before POST/PATCH, read `GET /<handle>/api/<type>.txt` for the exact",
   "request body when that spec exists. Principal references in request",
   "bodies use principal ids only: `*_principal_id` for one principal and",
-  "`*_principal_ids` for arrays. Do not send usernames, `*_username`",
+  "`*_principal_ids` for arrays. Do not send principal names, `*_name`",
   "fields, or comma-separated strings; there are no aliases.",
   "",
   "Common API-facing principal fields:",

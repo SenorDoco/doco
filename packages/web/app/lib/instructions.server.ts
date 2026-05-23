@@ -146,8 +146,8 @@ payload — never on the generic \`/api/<type>.json\` route.
 Before POST/PATCH, read \`GET /<handle>/api/<type>.txt\` for the
 exact per-type body when that spec exists. Principal references in
 request bodies use principal ids only: use \`*_principal_id\` for one
-principal and \`*_principal_ids\` for arrays. Do not send usernames,
-\`*_username\` fields, or comma-separated strings; there are no
+principal and \`*_principal_ids\` for arrays. Do not send principal
+names, \`*_name\` fields, or comma-separated strings; there are no
 compatibility aliases.
 
 Common principal-id fields:

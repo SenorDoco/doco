@@ -1,16 +1,16 @@
-// Username aliases for Principals. When a Principal is renamed
-// (or a host transfers ownership of an org), every `/<old-username>/*`
-// URL must keep resolving to the new canonical username — same idea
-// as GitHub's username history.
+// Name aliases for Principals. When a Principal is renamed (or a host
+// transfers ownership of an org), every `/<old-name>/*` URL must keep
+// resolving to the new canonical name — same idea as GitHub's username
+// history, just applied to Principal role-persona names.
 //
 // Storage: `<host-root>/principals/_aliases.yaml`. Format mirrors the
 // doco alias file: array of {from, to, collaborator_id, created_at}.
-// Resolution: direct match wins (if `/principals/<username>.yaml`
-// exists — but the principals/ dir is keyed by collaborator_id not
-// username, so we check the cache/db); otherwise walk the alias chain.
+// Resolution: direct match wins (if `/principals/<name>.yaml` exists
+// — but the principals/ dir is keyed by collaborator_id not name, so
+// we check the cache/db); otherwise walk the alias chain.
 //
 // Read-side only. The host has no Principal-rename route today; the
-// writer (`recordPrincipalUsernameAlias`) lands when that flow is built.
+// writer (`recordPrincipalNameAlias`) lands when that flow is built.
 
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
@@ -58,34 +58,34 @@ function loadAliases(): Map<string, PrincipalAliasEntry> {
   }
 }
 
-export interface UsernameResolution {
+export interface NameResolution {
   canonical: string;
   redirected: boolean;
 }
 
 /**
- * Resolve `<username>` through the alias map. Returns either:
+ * Resolve `<name>` through the alias map. Returns either:
  *   - `{canonical: <input>, redirected: false}` when the input is
  *     already canonical (no alias entry).
  *   - `{canonical: <new>, redirected: true}` when an alias chain
- *     leads to a different canonical username.
+ *     leads to a different canonical name.
  *
  * Never returns null — if the chain depth would exceed MAX_HOPS,
  * stops walking and returns the current value (defensive against
  * cycles). The caller is responsible for verifying the canonical
- * username actually exists (e.g. via `getPrincipalByUsername`) —
- * the alias resolver only redirects; existence is the route's job.
+ * name actually exists (e.g. via `getPrincipalByName`) — the alias
+ * resolver only redirects; existence is the route's job.
  */
-export function resolvePrincipalUsernameAlias(username: string): UsernameResolution {
+export function resolvePrincipalNameAlias(name: string): NameResolution {
   const aliases = loadAliases();
-  if (!aliases.has(username)) {
-    return { canonical: username, redirected: false };
+  if (!aliases.has(name)) {
+    return { canonical: name, redirected: false };
   }
-  let cur = username;
+  let cur = name;
   for (let i = 0; i < MAX_HOPS; i++) {
     const entry = aliases.get(cur);
-    if (!entry) return { canonical: cur, redirected: cur !== username };
+    if (!entry) return { canonical: cur, redirected: cur !== name };
     cur = entry.to;
   }
-  return { canonical: cur, redirected: cur !== username };
+  return { canonical: cur, redirected: cur !== name };
 }

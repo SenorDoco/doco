@@ -14,7 +14,7 @@
 // can't drive the full OAuth dance end-to-end without a way to
 // shortcut the human GitHub-sign-in step. This route gives them that
 // shortcut WITHOUT widening the credential surface — any other
-// username request is rejected.
+// name request is rejected.
 
 import { withClient } from "@doco/db";
 import { Form, redirect } from "react-router";
@@ -25,8 +25,8 @@ const TEST_USERNAMES = ["doco-test-harness", "doco-test-alice", "doco-test-bob"]
 type TestUsername = (typeof TEST_USERNAMES)[number];
 const TEST_USERNAME = TEST_USERNAMES[0];
 
-async function ensureTestPrincipal(username: TestUsername): Promise<string> {
-  const existing = await findPrincipalByUsername(username);
+async function ensureTestPrincipal(name: TestUsername): Promise<string> {
+  const existing = await findPrincipalByUsername(name);
   if (existing) {
     // Repair the `data` column if the row was minted by an older version
     // of this route that omitted entity_type — the indexer NULL-checks
@@ -51,18 +51,18 @@ async function ensureTestPrincipal(username: TestUsername): Promise<string> {
   const data = JSON.stringify({
     id,
     neuron_type: "principal",
-    username,
+    name,
     note: "Lazy-created by /auth/dev-signin for testing. Has no doco_users grants by default.",
   });
   await withClient(async (c) => {
     await c.query(
-      `INSERT INTO principals (id, username, data)
+      `INSERT INTO principals (id, name, data)
        VALUES ($1, $2, $3::jsonb)
-       ON CONFLICT (username) DO NOTHING`,
-      [id, username, data],
+       ON CONFLICT (name) DO NOTHING`,
+      [id, name, data],
     );
   });
-  const reloaded = await findPrincipalByUsername(username);
+  const reloaded = await findPrincipalByUsername(name);
   if (!reloaded) throw new Error("ensureTestPrincipal: post-insert lookup failed");
   return reloaded.id;
 }
