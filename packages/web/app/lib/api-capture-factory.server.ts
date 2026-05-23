@@ -189,6 +189,12 @@ export function makeUpdateRoute(cfg: UpdateRouteConfig) {
       if (!rec || rec.doco_id !== ctx.meta.docoId) {
         return Response.json({ error: `${cfg.entityType} not found: ${id}` }, { status: 404 });
       }
+      // Migration-022: GET responses additionally expose the
+      // type-named prose field (intent/decision/rule/...) under a key
+      // matching the entity type. During the additive window this
+      // mirrors `summary` + `body_md`; once the rename completes it
+      // becomes the canonical prose carrier and the legacy keys are
+      // dropped from the response.
       return Response.json({
         id: rec.id,
         entity_type: rec.entity_type,
@@ -196,6 +202,7 @@ export function makeUpdateRoute(cfg: UpdateRouteConfig) {
         summary: rec.summary ?? null,
         lifecycle: rec.lifecycle ?? null,
         body_md: rec.body_md ?? null,
+        [cfg.entityType]: rec.type_named_value ?? null,
         created_at: rec.created_at ?? null,
         updated_at: rec.updated_at ?? null,
         data: rec.data,

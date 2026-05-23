@@ -97,6 +97,7 @@ async function persistEntity(args: {
       summary: typeof fm.summary === "string" ? fm.summary : null,
       lifecycle: typeof fm.lifecycle === "string" ? fm.lifecycle : null,
       name: typeof fm.name === "string" ? fm.name : null,
+      type_named_value: computeTypeNamedValue(args.entityType, fm, args.body),
       created_at: typeof fm.created_at === "string" ? fm.created_at : null,
       created_by: typeof fm.created_by === "string" ? fm.created_by : null,
       updated_at: typeof fm.updated_at === "string" ? fm.updated_at : null,
@@ -108,6 +109,45 @@ async function persistEntity(args: {
   } finally {
     recordPhase("persist_ms", performance.now() - start);
   }
+}
+
+/**
+ * Migration-022: derive the type-named column value for a neuron
+ * (`intent` for intent rows, `decision` for decision rows, ...). When
+ * the caller already supplied the new field name in `fm` we use it
+ * verbatim; otherwise we synthesize it from the legacy fields so every
+ * write — including the wide variety of capture paths that still hand
+ * us `{ summary, body_md }` — populates the new column.
+ *
+ * Order: type-named field if explicit → `title` (intent) / `name` +
+ * `description` (eval) → `summary` → `body_md`. Empty pieces are
+ * dropped; duplicates of `summary` are not re-added.
+ */
+function computeTypeNamedValue(
+  entityType: string,
+  fm: Record<string, unknown>,
+  body?: string,
+): string {
+  const direct = fm[entityType];
+  if (typeof direct === "string" && direct.trim().length > 0) return direct;
+
+  const parts: string[] = [];
+  const summary = typeof fm.summary === "string" ? fm.summary.trim() : "";
+
+  if (entityType === "intent") {
+    const title = typeof fm.title === "string" ? fm.title.trim() : "";
+    if (title && title !== summary) parts.push(title);
+  }
+  if (entityType === "eval") {
+    const name = typeof fm.name === "string" ? fm.name.trim() : "";
+    if (name && name !== summary) parts.push(name);
+    const description = typeof fm.description === "string" ? fm.description.trim() : "";
+    if (description && description !== name && description !== summary) parts.push(description);
+  }
+  if (summary) parts.push(summary);
+  if (typeof body === "string" && body.trim().length > 0) parts.push(body.trim());
+
+  return parts.join("\n\n");
 }
 
 /**
