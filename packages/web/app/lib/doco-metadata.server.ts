@@ -11,6 +11,13 @@ export interface DocoMetadata {
   ownerId: string;
   displayName: string;
   visibility: "private" | "public";
+  /**
+   * Project-owner-authored sentence (or template-seeded default)
+   * describing what this Doco is for. Surfaced under the title on
+   * the Doco home page and at the top of each Doco's primitive set
+   * in the agent-bootstrap manifest. Empty string when unset.
+   */
+  goalDescription: string;
 }
 
 /**
@@ -33,5 +40,6 @@ export async function readDocoMetadata(docoDir: string): Promise<DocoMetadata | 
     ownerId: row.owner_id,
     displayName,
     visibility: row.visibility,
+    goalDescription: row.goal_description,
   };
 }

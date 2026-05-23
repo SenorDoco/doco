@@ -69,6 +69,7 @@ export async function loader({
     docoId: meta.docoId,
     ownerId: meta.ownerId,
     visibility: meta.visibility,
+    goalDescription: meta.goalDescription,
     perspectives,
     availableOwnerOrgs: me ? await listOrgsOwnedOrAdminedBy(me.id) : [],
     me,
@@ -134,6 +135,17 @@ export async function action({
     return redirect(`/${handle}/settings`);
   }
 
+  // ── Goal description ─────────────────────────────────────────────
+  if (intent === "update-goal-description") {
+    const goalDescription = String(form.get("goal_description") ?? "");
+    try {
+      await updateDocoMeta({ handle, goal_description: goalDescription });
+    } catch (e) {
+      return { error: (e as Error).message };
+    }
+    return redirect(`/${handle}/settings`);
+  }
+
   // ── Rename handle (danger zone) ──────────────────────────────────
   if (intent === "rename-handle") {
     const newHandle = String(form.get("doco_handle") ?? "")
@@ -188,8 +200,17 @@ export default function DocoSettings({
   loaderData: Awaited<ReturnType<typeof loader>>;
   actionData?: { error?: string } | undefined;
 }) {
-  const { ownerSlug, handle, visibility, docoId, ownerId, perspectives, availableOwnerOrgs, me } =
-    loaderData;
+  const {
+    ownerSlug,
+    handle,
+    visibility,
+    goalDescription,
+    docoId,
+    ownerId,
+    perspectives,
+    availableOwnerOrgs,
+    me,
+  } = loaderData;
   const [searchParams] = useSearchParams();
   const isConfirmingDelete = searchParams.get("confirm") === "delete";
   const currentOrgOptions = availableOwnerOrgs.filter((org) => org.id !== ownerId);
@@ -213,6 +234,34 @@ export default function DocoSettings({
             <div className="text-[11px] text-muted-foreground">
               <span className="font-mono">{docoId}</span>
             </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Goal description</CardTitle>
+            <CardDescription>
+              Shown under the title on this doco's page, and at the top of the primitives agents
+              read when bootstrapping. Leave blank to hide it.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Form method="post" className="space-y-3">
+              <input type="hidden" name="intent" value="update-goal-description" />
+              <textarea
+                name="goal_description"
+                rows={3}
+                defaultValue={goalDescription}
+                placeholder="What is this doco for? Agents read this first when they bootstrap."
+                className="w-full rounded-md border border-border bg-input px-3 py-2 text-xs text-foreground outline-none focus:border-primary"
+              />
+              <button
+                type="submit"
+                className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90"
+              >
+                Save goal description
+              </button>
+            </Form>
           </CardContent>
         </Card>
 

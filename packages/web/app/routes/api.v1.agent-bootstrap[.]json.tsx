@@ -47,6 +47,13 @@ interface ArticleSummary {
 interface DocoPrimitiveSet {
   doco_id: string;
   doco_handle: string;
+  /**
+   * Project-owner-authored sentence (or template-seeded default)
+   * describing what this Doco is for. Rendered at the top of the
+   * Doco's primitive set so agents read the goal before the rules.
+   * Empty string when unset.
+   */
+  goal_description: string;
   owner_id: string;
   guidance_primitives: ArticleSummary[];
   neuron_authoring_primitives: ArticleSummary[];
@@ -115,10 +122,20 @@ async function loadDocoPrimitivesForPrincipal(
         ),
       ]),
     );
-    if (guidance.rows.length === 0 && nodeAuthoring.rows.length === 0) continue;
+    // A Doco shows up in bootstrap when it has at least one primitive
+    // OR a non-empty goal description — the goal is itself bootstrap
+    // context, not just decoration on top of primitives.
+    if (
+      guidance.rows.length === 0 &&
+      nodeAuthoring.rows.length === 0 &&
+      d.goal_description.length === 0
+    ) {
+      continue;
+    }
     out.push({
       doco_id: d.id,
       doco_handle: d.handle,
+      goal_description: d.goal_description,
       owner_id: d.owner_id,
       guidance_primitives: guidance.rows,
       neuron_authoring_primitives: nodeAuthoring.rows,

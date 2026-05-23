@@ -42,6 +42,7 @@ interface CreationState {
   newOrgHandle: string;
   suffix: string;
   visibility: "private" | "public";
+  goalDescription: string;
 }
 
 interface ActionData {
@@ -70,6 +71,15 @@ function readDocoName(params: URLSearchParams): string {
   );
 }
 
+/**
+ * Default goal description for a template. Empty for "generic" (no
+ * template); the chosen template's description text otherwise.
+ */
+function defaultGoalDescriptionForTemplate(templateHandle: string): string {
+  if (templateHandle === DEFAULT_TEMPLATE_HANDLE) return "";
+  return DOCO_TEMPLATES.find((t) => t.handle === templateHandle)?.description ?? "";
+}
+
 function parseFormState(form: FormData): CreationState {
   return {
     templateHandle: normalizeTemplateHandle(String(form.get("template_handle") ?? "").trim()),
@@ -81,6 +91,7 @@ function parseFormState(form: FormData): CreationState {
       .trim()
       .toLowerCase(),
     visibility: parseVisibility(form.get("visibility")),
+    goalDescription: String(form.get("goal_description") ?? ""),
   };
 }
 
@@ -90,12 +101,16 @@ export async function loader({ request }: { request: Request }) {
   await ensurePersonalOrganization(me.id, me.username);
   const orgs = await listMyOrgs(me.id);
   const url = new URL(request.url);
+  const prefillTemplate = normalizeTemplateHandle(url.searchParams.get("template_handle") ?? "");
   const prefill: CreationState = {
-    templateHandle: normalizeTemplateHandle(url.searchParams.get("template_handle") ?? ""),
+    templateHandle: prefillTemplate,
     orgId: url.searchParams.get("org_id") ?? "",
     newOrgHandle: url.searchParams.get("new_org_handle") ?? "",
     suffix: readDocoName(url.searchParams),
     visibility: parseVisibility(url.searchParams.get("visibility")),
+    goalDescription:
+      url.searchParams.get("goal_description") ??
+      defaultGoalDescriptionForTemplate(prefillTemplate),
   };
   return {
     me,
@@ -165,6 +180,7 @@ export async function action({ request }: { request: Request }) {
       templateHandle:
         state.templateHandle === DEFAULT_TEMPLATE_HANDLE ? null : state.templateHandle,
       autoSuffix: accept,
+      goalDescription: state.goalDescription,
     });
     throw redirect(withCreatedDocoId(`/${rec.handle}/welcome`, rec.docoId));
   } catch (e) {
@@ -200,13 +216,26 @@ export default function NewDocoStep1({
   const { me, orgs, prefill } = loaderData;
   const formState = actionData?.state ?? prefill;
   const initialOrgId = formState.orgId || orgs[0]?.id || "";
-  const [templateHandle, setTemplateHandle] = useState(
-    normalizeTemplateHandle(formState.templateHandle),
-  );
+  const initialTemplate = normalizeTemplateHandle(formState.templateHandle);
+  const [templateHandle, setTemplateHandle] = useState(initialTemplate);
   const [orgId, setOrgId] = useState(initialOrgId);
   const [newOrgHandle, setNewOrgHandle] = useState(formState.newOrgHandle);
   const [suffix, setSuffix] = useState(formState.suffix);
   const [visibility, setVisibility] = useState(formState.visibility);
+  // Goal description is prefilled with the chosen template's
+  // description and tracks template changes — unless the user has
+  // edited it, in which case we keep their text.
+  const [goalDescription, setGoalDescription] = useState(formState.goalDescription);
+  const [goalDescriptionEdited, setGoalDescriptionEdited] = useState(
+    formState.goalDescription !== defaultGoalDescriptionForTemplate(initialTemplate),
+  );
+  const handleTemplateChange = (value: string) => {
+    const next = normalizeTemplateHandle(value);
+    setTemplateHandle(next);
+    if (!goalDescriptionEdited) {
+      setGoalDescription(defaultGoalDescriptionForTemplate(next));
+    }
+  };
   const isCreateNewOrg = orgId === "";
   const orgHandleDisplay = isCreateNewOrg
     ? newOrgHandle || "<org>"
@@ -243,7 +272,7 @@ export default function NewDocoStep1({
                         name="template_handle"
                         value={template.handle}
                         checked={templateHandle === template.handle}
-                        onChange={(e) => setTemplateHandle(e.currentTarget.value)}
+                        onChange={(e) => handleTemplateChange(e.currentTarget.value)}
                         className="mt-0.5"
                       />
                       <span className="block">
@@ -255,6 +284,27 @@ export default function NewDocoStep1({
                     </label>
                   ))}
                 </div>
+              </fieldset>
+
+              <fieldset className="space-y-2">
+                <legend className="text-xs font-semibold uppercase text-muted-foreground">
+                  Goal description
+                </legend>
+                <textarea
+                  name="goal_description"
+                  rows={3}
+                  value={goalDescription}
+                  onChange={(e) => {
+                    setGoalDescription(e.currentTarget.value);
+                    setGoalDescriptionEdited(true);
+                  }}
+                  placeholder="What is this doco for? Agents read this first when they bootstrap."
+                  className="w-full rounded-md px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
+                />
+                <span className="block text-[11px] text-muted-foreground">
+                  Shown under the title on the doco page, and at the top of the primitives agents
+                  read when bootstrapping. Templates prefill this; edit to make it your own.
+                </span>
               </fieldset>
 
               <fieldset className="space-y-2">
