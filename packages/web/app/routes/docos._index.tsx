@@ -201,7 +201,7 @@ export default function DocosIndexPage({
           <div className="flex flex-wrap gap-2">
             <Link
               to="/new-doco"
-              className="shrink-0 rounded-md bg-primary px-3 py-1.5 text-sm font-semibold text-primary-foreground hover:opacity-90"
+              className="neo-raised-primary shrink-0 rounded-md px-3 py-1.5 text-sm font-semibold"
             >
               + Doco
             </Link>

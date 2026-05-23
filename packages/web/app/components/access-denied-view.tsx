@@ -32,7 +32,7 @@ export function AccessDeniedView({
   const { doco_handle, signed_in } = data;
   return (
     <div>
-      <header className="border-b border-border bg-card">
+      <header className="bg-background">
         <div className="mx-auto flex max-w-6xl items-center gap-4 px-6 py-3">
           <Link
             to="/"
@@ -63,7 +63,7 @@ export function AccessDeniedView({
                 <p className="mt-3 text-sm">Sign in to continue.</p>
                 <Link
                   to={`/sign-in?next=${encodeURIComponent(currentPath)}`}
-                  className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-md bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:opacity-90"
+                  className="neo-raised-primary mt-4 inline-flex w-full items-center justify-center gap-2 rounded-md px-4 py-2.5 text-sm font-semibold"
                 >
                   Sign in
                 </Link>

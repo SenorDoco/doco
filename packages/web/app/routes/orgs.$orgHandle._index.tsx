@@ -404,7 +404,7 @@ export default function OrgHome({
                 {canInviteCollaborators ? (
                   <Link
                     to={`/orgs/${org.handle}/settings`}
-                    className="shrink-0 rounded-md border border-border px-3 py-1.5 text-xs font-semibold hover:bg-input"
+                    className="neo-raised-sm shrink-0 rounded-md px-3 py-1.5 text-xs font-semibold"
                   >
                     Settings
                   </Link>
@@ -417,11 +417,11 @@ export default function OrgHome({
                 name="q"
                 type="search"
                 placeholder={`Search across ${docos.length} doco${docos.length === 1 ? "" : "s"}…`}
-                className="w-full rounded-md border border-border bg-input px-4 py-2.5 text-sm text-foreground outline-none focus:border-primary"
+                className="w-full rounded-md px-4 py-2.5 text-sm text-foreground outline-none focus:border-primary"
               />
               <button
                 type="submit"
-                className="rounded-md border border-border bg-card px-4 py-2.5 text-sm font-semibold text-foreground hover:bg-muted"
+                className="neo-raised-sm rounded-md px-4 py-2.5 text-sm font-semibold text-foreground"
               >
                 Search
               </button>
@@ -432,7 +432,7 @@ export default function OrgHome({
                 <CardTitle className="text-sm">Docos in this org</CardTitle>
                 <Link
                   to={`/new-doco?org_id=${encodeURIComponent(org.id)}`}
-                  className="rounded-md bg-primary px-3 py-1 text-xs font-semibold text-primary-foreground hover:opacity-90"
+                  className="neo-raised-primary rounded-md px-3 py-1 text-xs font-semibold"
                 >
                   + Doco
                 </Link>

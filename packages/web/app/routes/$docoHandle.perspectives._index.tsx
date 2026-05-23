@@ -102,7 +102,7 @@ export default function PerspectivesPicker({
             <h1 className="text-lg font-semibold tracking-tight">Perspectives</h1>
             <Link
               to={`/${handle}`}
-              className="rounded-md border border-border px-3 py-1.5 text-xs font-semibold hover:bg-input"
+              className="neo-raised-sm rounded-md px-3 py-1.5 text-xs font-semibold"
             >
               ← Back to {handle}
             </Link>
@@ -117,7 +117,7 @@ export default function PerspectivesPicker({
             ) : null}
           </p>
         </div>
-        <ul className="divide-y divide-border rounded-md border border-border">
+        <ul className="neo-etched divide-y divide-border rounded-md bg-card">
           {available.map((p) => {
             const isAttached = attachedSet.has(p.id);
             return (
@@ -132,7 +132,7 @@ export default function PerspectivesPicker({
                       <span className="text-xs text-muted-foreground">by {p.ownerHandle}</span>
                     ) : null}
                     {p.isBuiltin ? (
-                      <span className="rounded-sm border border-border px-1 text-[10px] uppercase tracking-wide text-muted-foreground">
+                      <span className="neo-etched rounded-sm px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
                         builtin
                       </span>
                     ) : null}
@@ -153,7 +153,7 @@ export default function PerspectivesPicker({
                       <button
                         type="submit"
                         disabled={submitting}
-                        className="inline-block rounded-md border border-border px-3 py-1 text-xs font-semibold hover:bg-input disabled:opacity-50"
+                        className="neo-raised-sm inline-block rounded-md px-3 py-1 text-xs font-semibold disabled:opacity-50"
                       >
                         Attach
                       </button>

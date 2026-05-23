@@ -103,12 +103,12 @@ export default function NewGuidancePrimitive({
                 required
                 rows={12}
                 placeholder="Write the primitive."
-                className="block w-full rounded-md border border-border bg-input px-3 py-2 text-sm"
+                className="block w-full rounded-md px-3 py-2 text-sm"
               />
               <div className="flex items-center gap-3">
                 <button
                   type="submit"
-                  className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90"
+                  className="neo-raised-primary rounded-md px-4 py-2 text-sm font-semibold"
                 >
                   Add guidance primitive
                 </button>

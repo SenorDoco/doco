@@ -84,7 +84,7 @@ function InviteHumanCard({
                   setTargetId(nextOptions[0]?.id ?? "");
                 }}
                 data-testid="invite-level"
-                className="rounded-md border border-border bg-background px-3 py-2"
+                className="rounded-md px-3 py-2"
               >
                 <option value="org">Org</option>
                 <option value="doco">Doco</option>
@@ -100,7 +100,7 @@ function InviteHumanCard({
                 onChange={(e) => setTargetId(e.currentTarget.value)}
                 disabled={noTargets}
                 data-testid="invite-target"
-                className="rounded-md border border-border bg-background px-3 py-2 disabled:opacity-50"
+                className="rounded-md px-3 py-2 disabled:opacity-50"
               >
                 {noTargets ? (
                   <option value="">(no targets you can invite into)</option>
@@ -119,7 +119,7 @@ function InviteHumanCard({
                 name="role"
                 defaultValue="author"
                 data-testid="invite-role"
-                className="rounded-md border border-border bg-background px-3 py-2"
+                className="rounded-md px-3 py-2"
               >
                 {ALL_ROLES.map((r) => (
                   <option key={r} value={r}>
@@ -134,7 +134,7 @@ function InviteHumanCard({
               type="submit"
               data-testid="invite-submit"
               disabled={fetcher.state !== "idle" || noTargets}
-              className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
+              className="neo-raised-primary rounded-md px-4 py-2 text-sm font-semibold disabled:opacity-50"
             >
               {fetcher.state !== "idle" ? "Generating..." : "Generate invite link"}
             </button>
@@ -197,7 +197,7 @@ function AgentPromptBlock({ body }: { body: string }) {
   return (
     <div className="space-y-2">
       <pre
-        className="rounded-md border border-border bg-input p-3 text-[11px] whitespace-pre-wrap break-words"
+        className="neo-inset rounded-md bg-card p-3 text-[11px] whitespace-pre-wrap break-words"
         data-testid="invite-agent-prompt"
       >
         {body}
@@ -213,7 +213,7 @@ function AgentPromptBlock({ body }: { body: string }) {
             });
           }
         }}
-        className="rounded-md border border-border px-2 py-1 text-xs hover:bg-card"
+        className="neo-raised-sm rounded-md px-2 py-1 text-xs"
       >
         {copied ? "Copied!" : "Copy prompt"}
       </button>

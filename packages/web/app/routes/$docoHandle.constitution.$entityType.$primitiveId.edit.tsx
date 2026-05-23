@@ -246,7 +246,7 @@ export default function EditPrimitive({
                 rows={12}
                 defaultValue={body_md}
                 placeholder="Write the primitive."
-                className="block w-full rounded-md border border-border bg-input px-3 py-2 text-sm"
+                className="block w-full rounded-md px-3 py-2 text-sm"
               />
               {isNeuronAuthoring ? (
                 <>
@@ -257,7 +257,7 @@ export default function EditPrimitive({
                     {(["deterministic", "probabilistic"] as const).map((kind) => (
                       <label
                         key={kind}
-                        className="inline-flex items-center gap-2 rounded-md border border-border bg-input px-3 py-2 text-xs font-semibold"
+                        className="neo-raised-sm inline-flex items-center gap-2 rounded-md px-3 py-2 text-xs font-semibold"
                       >
                         <input
                           type="radio"
@@ -279,7 +279,7 @@ export default function EditPrimitive({
                         name="deterministic_predicate"
                         rows={10}
                         defaultValue={initialPredicate}
-                        className="mt-1 block w-full rounded-md border border-border bg-input px-3 py-2 font-mono text-xs"
+                        className="mt-1 block w-full rounded-md px-3 py-2 font-mono text-xs"
                       />
                     </label>
                   ) : (
@@ -291,7 +291,7 @@ export default function EditPrimitive({
                         name="probabilistic_spec"
                         rows={10}
                         defaultValue={initialSpec}
-                        className="mt-1 block w-full rounded-md border border-border bg-input px-3 py-2 text-sm"
+                        className="mt-1 block w-full rounded-md px-3 py-2 text-sm"
                       />
                     </label>
                   )}
@@ -304,7 +304,7 @@ export default function EditPrimitive({
                         name="fires_when_neuron_lifecycle"
                         defaultValue={initialFiresOn}
                         placeholder="active"
-                        className="mt-1 block w-full rounded-md border border-border bg-input px-3 py-2 text-sm"
+                        className="mt-1 block w-full rounded-md px-3 py-2 text-sm"
                       />
                     </label>
                     <label className="block">
@@ -314,7 +314,7 @@ export default function EditPrimitive({
                       <select
                         name="on_violation"
                         defaultValue={initialOnViolation}
-                        className="mt-1 block w-full rounded-md border border-border bg-input px-3 py-2 text-sm"
+                        className="mt-1 block w-full rounded-md px-3 py-2 text-sm"
                       >
                         <option value="block">block</option>
                         <option value="warn">warn</option>
@@ -329,7 +329,7 @@ export default function EditPrimitive({
                   type="submit"
                   name="intent"
                   value="modify"
-                  className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90"
+                  className="neo-raised-primary rounded-md px-4 py-2 text-sm font-semibold"
                 >
                   Save changes
                 </button>

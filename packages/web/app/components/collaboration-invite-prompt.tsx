@@ -95,7 +95,7 @@ export function CollaborationInvitePrompt({
       {continueTo ? (
         <Link
           to={continueTo}
-          className="inline-flex rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90"
+          className="neo-raised-primary inline-flex rounded-md px-3 py-1.5 text-xs font-semibold"
         >
           {continueLabel}
         </Link>
@@ -120,7 +120,7 @@ function PromptBox({
     <div className="space-y-2">
       <p className="text-xs font-semibold text-foreground">{title}</p>
       <pre
-        className="rounded-md border border-border bg-input p-3 text-[11px] whitespace-pre-wrap break-words"
+        className="neo-inset rounded-md bg-card p-3 text-[11px] whitespace-pre-wrap break-words"
         data-testid={promptTestId}
       >
         {body}
@@ -133,7 +133,7 @@ function PromptBox({
           setCopied(true);
           setTimeout(() => setCopied(false), 1500);
         }}
-        className="rounded-md border border-border bg-card px-3 py-1.5 text-xs font-semibold text-foreground hover:bg-input"
+        className="neo-raised-sm rounded-md bg-card px-3 py-1.5 text-xs font-semibold text-foreground"
       >
         {copied ? "Copied!" : "Copy prompt"}
       </button>

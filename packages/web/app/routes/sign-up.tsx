@@ -45,7 +45,7 @@ export default function SignUp({
   const error = actionData?.error ?? loaderData.error;
   return (
     <div>
-      <header className="border-b border-border bg-card">
+      <header>
         <div className="mx-auto flex max-w-6xl items-center gap-4 px-6 py-3">
           <Link to="/" className="inline-flex items-center hover:opacity-80" aria-label="Doco home">
             <DocoMark height={28} />
@@ -74,7 +74,7 @@ export default function SignUp({
                   name="invite_code"
                   required
                   autoComplete="one-time-code"
-                  className="w-full rounded-md border border-border bg-input px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
+                  className="w-full rounded-md px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
                 />
               </label>
               {error ? (
@@ -84,7 +84,7 @@ export default function SignUp({
               ) : null}
               <button
                 type="submit"
-                className="flex w-full items-center justify-center gap-2 rounded-md bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:opacity-90"
+                className="neo-raised-primary flex w-full items-center justify-center gap-2 rounded-md px-4 py-2.5 text-sm font-semibold"
               >
                 <GitHubMark />
                 Continue with GitHub

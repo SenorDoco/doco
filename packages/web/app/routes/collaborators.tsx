@@ -351,7 +351,7 @@ export default function CollaboratorsPage({
               value={scope}
               onChange={(e) => applyScope(e.currentTarget.value)}
               data-testid="scope-filter"
-              className="w-auto rounded-md border border-border bg-background px-3 py-2"
+              className="w-auto rounded-md px-3 py-2"
             >
               <option value="all">All collaborators</option>
               {loaderData.orgSections.length > 0 ? (
@@ -378,7 +378,7 @@ export default function CollaboratorsPage({
           <Link
             to="/collaborators/invite"
             data-testid="invite-toggle"
-            className="rounded-md bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90"
+            className="neo-raised-primary rounded-md px-3 py-2 text-sm font-semibold"
           >
             + Invite collaborator
           </Link>
@@ -525,12 +525,12 @@ function UserRow({
             {primaryName}
           </span>
           {isOauth ? (
-            <span className="shrink-0 rounded border border-border bg-muted px-1.5 py-px text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+            <span className="neo-etched shrink-0 rounded px-1.5 py-px text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
               agent
             </span>
           ) : null}
           {isMe ? (
-            <span className="shrink-0 rounded border border-border bg-input px-1.5 py-px text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+            <span className="neo-etched shrink-0 rounded px-1.5 py-px text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
               you
             </span>
           ) : null}
@@ -624,7 +624,7 @@ function AccessLine({
     <div className="flex items-center gap-1.5">
       <Link
         to={grant.target_link}
-        className="inline-flex min-w-0 flex-1 items-center truncate rounded-full border border-border bg-input px-2 py-0.5 text-xs hover:bg-card"
+        className="neo-raised-sm inline-flex min-w-0 flex-1 items-center truncate rounded-full px-2 py-0.5 text-xs"
         title={`${grant.target_label} — granted ${formatDate(grant.joined_at)}`}
       >
         {grant.target_label}
@@ -633,7 +633,7 @@ function AccessLine({
         defaultValue={grant.role}
         disabled={!grant.canEdit || roleFetcher.state !== "idle"}
         data-testid={`role-${level}-${username}-${grant.target_id}`}
-        className="rounded-md border border-border bg-background px-1.5 py-0.5 text-xs disabled:opacity-50"
+        className="rounded-md px-1.5 py-0.5 text-xs disabled:opacity-50"
         onChange={(e) => {
           roleFetcher.submit(updatePayload(e.currentTarget.value), { method: "post" });
         }}
@@ -654,7 +654,7 @@ function AccessLine({
             removeFetcher.submit(removePayload, { method: "post" });
           }}
           title={`Remove ${username} from ${grant.target_label}`}
-          className="shrink-0 rounded-md border border-border px-1.5 py-0.5 text-xs text-destructive hover:bg-card disabled:opacity-50"
+          className="neo-raised-sm shrink-0 rounded-md px-1.5 py-0.5 text-xs text-destructive disabled:opacity-50"
         >
           {removeFetcher.state !== "idle" ? "…" : "×"}
         </button>

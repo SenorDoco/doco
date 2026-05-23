@@ -133,7 +133,7 @@ export default function ActivityPage({
                       </Link>
                     </div>
                     {e.before || e.after ? (
-                      <pre className="mt-1 whitespace-pre-wrap break-words rounded-md border border-border bg-input p-2 text-[11px] leading-snug">
+                      <pre className="neo-inset mt-1 whitespace-pre-wrap break-words rounded-md bg-card p-2 text-[11px] leading-snug">
                         {JSON.stringify({ before: e.before, after: e.after }, null, 2)}
                       </pre>
                     ) : null}
@@ -174,13 +174,13 @@ function FilterChips({
         k === "entity_type" ? (
           <span
             key={k}
-            className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-0.5 font-mono"
+            className="neo-etched inline-flex items-center gap-1 rounded-md px-2 py-0.5 font-mono"
           >
             <span>entity_type=</span>
             <NodeTypeBadge entityType={String(v)} />
           </span>
         ) : (
-          <code key={k} className="rounded-md border border-border px-2 py-0.5 font-mono">
+          <code key={k} className="neo-etched rounded-md px-2 py-0.5 font-mono">
             {k}={String(v)}
           </code>
         ),

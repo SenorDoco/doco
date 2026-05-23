@@ -314,11 +314,11 @@ function renderStage(data: LoaderData) {
               autoComplete="off"
               spellCheck={false}
               placeholder="WXYZ-1234"
-              className="block w-full rounded-md border border-border bg-input px-3 py-2 font-mono text-xl uppercase tracking-widest text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
+              className="block w-full rounded-md px-3 py-2 font-mono text-xl uppercase tracking-widest text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
             />
             <button
               type="submit"
-              className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90"
+              className="neo-raised-primary rounded-md px-4 py-2 text-sm font-semibold"
             >
               Continue
             </button>
@@ -441,12 +441,12 @@ function DevicePickerForm({
             Approving an organization grants access to every Doco it owns, including ones added
             later.
           </p>
-          <div className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-input/40 px-3 py-2">
+          <div className="neo-inset flex flex-wrap items-center gap-2 rounded-md bg-card px-3 py-2">
             <button
               type="button"
               onClick={() => setSelectedOrgs(new Set(orgs.map((o) => o.id)))}
               disabled={allOrgsSelected}
-              className="rounded-md border border-border bg-card px-2.5 py-1 text-xs font-semibold text-foreground hover:bg-input disabled:opacity-50"
+              className="neo-raised-sm rounded-md px-2.5 py-1 text-xs font-semibold text-foreground disabled:opacity-50"
             >
               Select all
             </button>
@@ -454,7 +454,7 @@ function DevicePickerForm({
               type="button"
               onClick={() => setSelectedOrgs(new Set())}
               disabled={noneOrgsSelected}
-              className="rounded-md border border-border bg-card px-2.5 py-1 text-xs font-semibold text-foreground hover:bg-input disabled:opacity-50"
+              className="neo-raised-sm rounded-md px-2.5 py-1 text-xs font-semibold text-foreground disabled:opacity-50"
             >
               Deselect all
             </button>
@@ -472,7 +472,7 @@ function DevicePickerForm({
                   setOrgRoles(Object.fromEntries(orgs.map((o) => [o.id, r])));
                   e.currentTarget.value = "";
                 }}
-                className="rounded-md border border-border bg-card px-2 py-1 text-xs text-foreground"
+                className="rounded-md px-2 py-1 text-xs text-foreground"
               >
                 <option value="" disabled>
                   choose…
@@ -485,7 +485,7 @@ function DevicePickerForm({
               </select>
             </span>
           </div>
-          <ul className="divide-y divide-border rounded-md border border-border">
+          <ul className="neo-etched divide-y divide-border rounded-md bg-card">
             {orgs.map((o) => (
               <li key={o.id} className="flex items-center justify-between gap-3 px-3 py-2.5">
                 <label className="flex flex-1 cursor-pointer items-center gap-3">
@@ -514,7 +514,7 @@ function DevicePickerForm({
                     setOrgRoles({ ...orgRoles, [o.id]: e.currentTarget.value as DocoRole })
                   }
                   disabled={!selectedOrgs.has(o.id)}
-                  className="rounded-md border border-border bg-card px-2 py-1 text-xs text-foreground disabled:opacity-50"
+                  className="rounded-md px-2 py-1 text-xs text-foreground disabled:opacity-50"
                 >
                   {DOCO_ROLES.map((r) => (
                     <option key={r} value={r}>
@@ -536,12 +536,12 @@ function DevicePickerForm({
             <h3 className="text-sm font-semibold text-foreground">Docos</h3>
           ) : null}
           {!focused ? (
-            <div className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-input/40 px-3 py-2">
+            <div className="neo-inset flex flex-wrap items-center gap-2 rounded-md bg-card px-3 py-2">
               <button
                 type="button"
                 onClick={() => setSelected(new Set(docos.map((d) => d.id)))}
                 disabled={allDocosSelected}
-                className="rounded-md border border-border bg-card px-2.5 py-1 text-xs font-semibold text-foreground hover:bg-input disabled:opacity-50"
+                className="neo-raised-sm rounded-md px-2.5 py-1 text-xs font-semibold text-foreground disabled:opacity-50"
               >
                 Select all
               </button>
@@ -549,7 +549,7 @@ function DevicePickerForm({
                 type="button"
                 onClick={() => setSelected(new Set())}
                 disabled={noneDocosSelected}
-                className="rounded-md border border-border bg-card px-2.5 py-1 text-xs font-semibold text-foreground hover:bg-input disabled:opacity-50"
+                className="neo-raised-sm rounded-md px-2.5 py-1 text-xs font-semibold text-foreground disabled:opacity-50"
               >
                 Deselect all
               </button>
@@ -567,7 +567,7 @@ function DevicePickerForm({
                     setRoles(Object.fromEntries(docos.map((d) => [d.id, r])));
                     e.currentTarget.value = "";
                   }}
-                  className="rounded-md border border-border bg-card px-2 py-1 text-xs text-foreground"
+                  className="rounded-md px-2 py-1 text-xs text-foreground"
                 >
                   <option value="" disabled>
                     choose…
@@ -581,7 +581,7 @@ function DevicePickerForm({
               </span>
             </div>
           ) : null}
-          <ul className="divide-y divide-border rounded-md border border-border">
+          <ul className="neo-etched divide-y divide-border rounded-md bg-card">
             {docos.map((d) => (
               <li key={d.id} className="flex items-center justify-between gap-3 px-3 py-2.5">
                 <label className="flex flex-1 cursor-pointer items-center gap-3">
@@ -610,7 +610,7 @@ function DevicePickerForm({
                     setRoles({ ...roles, [d.id]: e.currentTarget.value as DocoRole })
                   }
                   disabled={!selected.has(d.id)}
-                  className="rounded-md border border-border bg-card px-2 py-1 text-xs text-foreground disabled:opacity-50"
+                  className="rounded-md px-2 py-1 text-xs text-foreground disabled:opacity-50"
                 >
                   {DOCO_ROLES.map((r) => (
                     <option key={r} value={r}>
@@ -653,7 +653,7 @@ function DevicePickerForm({
           name="decision"
           value="approve"
           disabled={nothingSelected}
-          className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
+          className="neo-raised-primary rounded-md px-4 py-2 text-sm font-semibold disabled:opacity-50"
         >
           Approve
         </button>
@@ -661,7 +661,7 @@ function DevicePickerForm({
           type="submit"
           name="decision"
           value="deny"
-          className="rounded-md border border-border bg-card px-4 py-2 text-sm font-semibold text-foreground hover:bg-input"
+          className="neo-raised-sm rounded-md px-4 py-2 text-sm font-semibold text-foreground"
         >
           Deny
         </button>

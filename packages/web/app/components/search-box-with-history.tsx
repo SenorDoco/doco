@@ -95,11 +95,11 @@ export function SearchBoxWithHistory({
   const showDropdown = focused && query.trim().length === 0 && recent.length > 0;
 
   const inputClass = compact
-    ? "w-full rounded-md border border-border bg-input/95 px-3 py-1.5 text-xs text-foreground outline-none focus:border-primary"
-    : "w-full rounded-md border border-border bg-input px-4 py-2.5 text-sm text-foreground outline-none focus:border-primary";
+    ? "neo-inset w-full rounded-md bg-card px-3 py-1.5 text-xs text-foreground outline-none"
+    : "neo-inset w-full rounded-md bg-card px-4 py-2.5 text-sm text-foreground outline-none";
   const buttonClass = compact
-    ? "rounded-md border border-border bg-card px-3 py-1.5 text-xs font-semibold text-foreground hover:bg-muted"
-    : "rounded-md border border-border bg-card px-4 py-2.5 text-sm font-semibold text-foreground hover:bg-muted";
+    ? "neo-raised-sm rounded-md px-3 py-1.5 text-xs font-semibold text-foreground"
+    : "neo-raised-sm rounded-md px-4 py-2.5 text-sm font-semibold text-foreground";
 
   return (
     <Form
@@ -126,7 +126,7 @@ export function SearchBoxWithHistory({
         {showDropdown ? (
           <ul
             aria-label="Recent searches"
-            className="absolute left-0 right-0 top-full z-10 mt-1 overflow-hidden rounded-md border border-border bg-card text-sm text-card-foreground shadow-sm"
+            className="neo-etched absolute left-0 right-0 top-full z-10 mt-1 overflow-hidden rounded-md bg-card text-sm text-card-foreground"
           >
             {recent.map((r) => (
               <li key={r.q} className="flex items-center hover:bg-muted">
