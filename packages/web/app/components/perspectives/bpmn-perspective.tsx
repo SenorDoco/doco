@@ -268,7 +268,7 @@ export function BpmnPerspective({
 
   if (filteredLanes.length === 0) {
     return (
-      <div className="flex h-full min-h-[420px] items-center justify-center rounded-md border border-border bg-input text-center text-sm font-medium text-muted-foreground">
+      <div className="flex h-full min-h-[420px] items-center justify-center rounded-md border border-border text-center text-sm font-medium text-muted-foreground">
         So empty
       </div>
     );
@@ -277,7 +277,7 @@ export function BpmnPerspective({
   return (
     <div
       ref={graphRef}
-      className="relative h-full min-h-[420px] w-full overflow-hidden rounded-md border border-border bg-input"
+      className="relative h-full min-h-[420px] w-full overflow-hidden rounded-md border border-border"
     >
       {Flow ? (
         <Flow.ReactFlow

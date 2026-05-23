@@ -545,8 +545,8 @@ export function OverviewGraph({
         ref={graphRef}
         className={
           fillHeight
-            ? "neu-inset relative min-h-0 w-full flex-1 overflow-hidden rounded-md border border-border bg-input"
-            : "neu-inset relative h-[65vh] min-h-[480px] w-full overflow-hidden rounded-md border border-border bg-input"
+            ? "relative min-h-0 w-full flex-1 overflow-hidden rounded-md border border-border"
+            : "relative h-[65vh] min-h-[480px] w-full overflow-hidden rounded-md border border-border"
         }
       >
         {search ? (
