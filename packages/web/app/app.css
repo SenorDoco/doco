@@ -223,59 +223,75 @@ button[class*="rounded-full"][class*="border-border"]:active {
   }
 }
 
-@keyframes doco-mark-working-breathe {
-  0%,
-  100% {
-    filter: drop-shadow(0 0 0 color-mix(in oklch, var(--color-primary) 0%, transparent));
-    transform: translateY(0) scale(1);
+/* ─── Señor Doco working-state animation ─────────────────────────────
+ *
+ * Idle: nothing animates; the orb shows its three sparkle cut-outs as
+ * normal (defined by the SVG mask in <DocoMark>).
+ *
+ * Active (.doco-mark-active): three soft tinted blobs fade in inside
+ * the orb (clipped to the orb circle) and rotate at different speeds
+ * and directions — "swirling mist inside a crystal ball." Sparkle
+ * cut-outs are covered by the mist while it's swirling, so the
+ * transition from idle → active is a clean visual swap rather than a
+ * mixed-state collage.
+ *
+ * Why this over the prior translateY/scale breathe: at the 18-20px
+ * sizes the mark is rendered in the sidebar, sub-pixel SVG transforms
+ * weren't perceptible. Rotating the entire blob group around the orb
+ * center reads at any size because the whole shape moves together.
+ */
+@keyframes doco-mark-mist-cw {
+  to {
+    transform: rotate(360deg);
   }
-  50% {
-    filter: drop-shadow(0 0 9px color-mix(in oklch, var(--color-primary) 56%, transparent));
-    transform: translateY(-2px) scale(1.025);
+}
+@keyframes doco-mark-mist-ccw {
+  to {
+    transform: rotate(-360deg);
   }
 }
 
-@keyframes doco-mark-working-spark {
-  0%,
-  100% {
-    opacity: 0.58;
-    transform: scale(0.76) rotate(0deg);
-  }
-  45% {
-    opacity: 1;
-    transform: scale(1.2) rotate(18deg);
-  }
+.doco-mark-mist {
+  /* Hidden when not working; fades in when .doco-mark-active is on the
+     SVG. Sits over the orb (clipped to its circle) so it covers the
+     idle sparkle cut-outs while it's swirling. */
+  opacity: 0;
+  transition: opacity 220ms ease-out;
 }
 
-.doco-mark-glyph-motion,
-.doco-mark-spark {
-  transform-box: fill-box;
-  transform-origin: center;
+.doco-mark-mist-blob {
+  /* The blobs rotate around the orb's center, which in the SVG's
+     absolute viewBox coordinates (after the inner translate+scale on
+     the glyph group) sits at (90.59, 68.31). */
+  transform-origin: 90.59px 68.31px;
 }
 
-.doco-mark-active .doco-mark-glyph-motion {
-  animation: doco-mark-working-breathe 1.45s ease-in-out infinite;
+.doco-mark-active .doco-mark-mist {
+  opacity: 1;
 }
 
-.doco-mark-active .doco-mark-spark {
-  animation: doco-mark-working-spark 1.1s ease-in-out infinite;
+.doco-mark-active .doco-mark-mist-1 {
+  animation: doco-mark-mist-cw 2s linear infinite;
 }
 
-.doco-mark-active .doco-mark-spark-md {
-  animation-delay: 160ms;
+.doco-mark-active .doco-mark-mist-2 {
+  animation: doco-mark-mist-ccw 1.4s linear infinite;
 }
 
-.doco-mark-active .doco-mark-spark-sm {
-  animation-delay: 320ms;
+.doco-mark-active .doco-mark-mist-3 {
+  animation: doco-mark-mist-cw 2.8s linear infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .doco-mark-active .doco-mark-glyph-motion,
-  .doco-mark-active .doco-mark-spark {
+  /* No motion: drop the swirl, fall back to a static drop-shadow halo
+     on the glyph so the working state is still distinguishable. */
+  .doco-mark-active .doco-mark-mist-1,
+  .doco-mark-active .doco-mark-mist-2,
+  .doco-mark-active .doco-mark-mist-3 {
     animation: none;
   }
 
-  .doco-mark-active .doco-mark-glyph-motion {
+  .doco-mark-active {
     filter: drop-shadow(0 0 7px color-mix(in oklch, var(--color-primary) 42%, transparent));
   }
 }

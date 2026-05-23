@@ -23,7 +23,9 @@ export function DocoMark({
   decorative = false,
   variant = "logo",
 }: DocoMarkProps) {
-  const maskId = useId();
+  const reactId = useId();
+  const maskId = `${reactId}-mask`;
+  const clipId = `${reactId}-orb-clip`;
   const showWordmark = variant === "logo";
   const viewBoxWidth = showWordmark ? VIEWBOX_WIDTH : MARK_VIEWBOX_WIDTH;
   const width = height * (showWordmark ? ASPECT : MARK_VIEWBOX_WIDTH / VIEWBOX_HEIGHT);
@@ -60,11 +62,57 @@ export function DocoMark({
             points="68,70 69.76,76.24 76,78 69.76,79.76 68,86 66.24,79.76 60,78 66.24,76.24"
           />
         </mask>
+        {/* Orb circle in absolute viewBox coordinates — i.e. cx=100*0.8259+8,
+            cy=82*0.8259+0.588, r=70*0.8259 — so the clipped mist group
+            below can reference it without inheriting the glyph's inner
+            translate+scale. */}
+        <clipPath id={clipId} clipPathUnits="userSpaceOnUse">
+          <circle cx="90.59" cy="68.31" r="57.81" />
+        </clipPath>
       </defs>
       <g className="doco-mark-glyph-motion">
         <g fill="#9945A1" transform="translate(8 0.588) scale(0.8259)">
           <path d="M 56 182 L 144 182 L 130 158 L 70 158 Z" />
           <circle cx="100" cy="82" r="70" mask={`url(#${maskId})`} />
+        </g>
+      </g>
+      {/* "Crystal-ball mist" — only visible when the mark is .doco-mark-active.
+          Three soft tinted blobs rotate at different speeds and directions
+          inside the orb. Clipped to the orb circle. Sits in front of the
+          glyph so the swirl reads cleanly over the purple fill. */}
+      <g className="doco-mark-mist" clipPath={`url(#${clipId})`} aria-hidden>
+        <g className="doco-mark-mist-blob doco-mark-mist-1">
+          <ellipse
+            cx="73.27"
+            cy="53.86"
+            rx="31.80"
+            ry="20.23"
+            fill="#e3afff"
+            opacity="0.55"
+            filter="blur(3px)"
+          />
+        </g>
+        <g className="doco-mark-mist-blob doco-mark-mist-2">
+          <ellipse
+            cx="102.15"
+            cy="78.71"
+            rx="34.69"
+            ry="17.34"
+            fill="#ffd1f5"
+            opacity="0.45"
+            filter="blur(3px)"
+          />
+        </g>
+        <g className="doco-mark-mist-blob doco-mark-mist-3">
+          <ellipse
+            cx="90.59"
+            cy="72.93"
+            rx="26.01"
+            ry="14.45"
+            fill="#ffffff"
+            opacity="0.55"
+            filter="blur(3px)"
+          />
         </g>
       </g>
       {showWordmark ? (
