@@ -145,8 +145,8 @@ export async function action({
 
     if (primitiveKind === "guidance") {
       const draft = rest as unknown as GuidancePrimitiveDraft;
-      if (!draft.authored_by_username) draft.authored_by_username = me.username;
-      if (!draft.created_by_id && me.id) draft.created_by_id = me.id;
+      if (!draft.authored_by_principal_id && me.id) draft.authored_by_principal_id = me.id;
+      if (!draft.created_by_principal_id && me.id) draft.created_by_principal_id = me.id;
       const result = await captureGuidancePrimitive(
         dir,
         meta.docoId,
@@ -160,8 +160,8 @@ export async function action({
     }
 
     const draft = rest as unknown as NeuronAuthoringPrimitiveDraft;
-    if (!draft.authored_by_username) draft.authored_by_username = me.username;
-    if (!draft.created_by_id && me.id) draft.created_by_id = me.id;
+    if (!draft.authored_by_principal_id && me.id) draft.authored_by_principal_id = me.id;
+    if (!draft.created_by_principal_id && me.id) draft.created_by_principal_id = me.id;
     const result = await captureNeuronAuthoringPrimitive(
       dir,
       meta.docoId,

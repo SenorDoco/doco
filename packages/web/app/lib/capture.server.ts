@@ -163,10 +163,10 @@ export interface DecisionDraft {
   alternatives?: { name: string; rejected_because: string }[];
   /** Optional: intent ids to link via `intent_ids`. */
   intent_ids?: string[];
-  /** Optional: principal username who made the decision (resolves to id). */
-  decided_by_username?: string;
+  /** Optional: principal id who made the decision. */
+  decided_by_principal_id?: string;
   /** Optional: principal id who created this entry; defaults to decided_by. */
-  created_by_id?: string;
+  created_by_principal_id?: string;
   /** Optional: raw markdown body appended after frontmatter. */
   body_md?: string;
   /** Optional: reference another entity as origin (e.g. born_from a bugfix). */
@@ -597,23 +597,28 @@ async function applyListOp(
   return { changed: changedField, ops };
 }
 
-/**
- * Look up a host-level Principal by username from Postgres. Returns null
- * if no row matches or the lookup fails (alpha: PG unreachable is a
- * soft-null, not a throw).
- */
-export async function resolvePrincipalUsername(username: string): Promise<string | null> {
-  try {
-    return await withClient(async (c) => {
-      const r = await c.query<{ id: string }>(
-        "SELECT id FROM principals WHERE username = $1 LIMIT 1",
-        [username],
-      );
-      return r.rows[0]?.id ?? null;
-    });
-  } catch {
-    return null;
+function requiredPrincipalId(
+  value: string | undefined,
+  field: string,
+  fallbackDescription?: string,
+): string | CaptureError {
+  const principalId = value?.trim();
+  if (principalId) return principalId;
+
+  return {
+    error: `${field} is required${fallbackDescription ? ` (${fallbackDescription})` : ""}.`,
+  };
+}
+
+function uniquePrincipalIds(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const ids: string[] = [];
+  for (const raw of value) {
+    if (typeof raw !== "string") continue;
+    const id = raw.trim();
+    if (id && !ids.includes(id)) ids.push(id);
   }
+  return ids;
 }
 
 export async function captureDecision(
@@ -630,29 +635,20 @@ export async function captureDecision(
 
   const intentIds: string[] = Array.isArray(draft.intent_ids) ? draft.intent_ids : [];
 
-  let decidedById: string | null = null;
-  if (draft.decided_by_username) {
-    decidedById = await resolvePrincipalUsername(draft.decided_by_username);
-    if (!decidedById) {
-      return { error: `Unknown principal username: ${draft.decided_by_username}` };
-    }
-  }
-  if (!decidedById && draft.created_by_id) {
-    decidedById = draft.created_by_id;
-  }
-  if (!decidedById) {
-    return {
-      error:
-        "decided_by_username is required (or pass an authenticated request — the route fills it from `me.username`).",
-    };
-  }
+  const decidedBy = requiredPrincipalId(
+    draft.decided_by_principal_id,
+    "decided_by_principal_id",
+    "or pass an authenticated request; the route fills it from `me.id`",
+  );
+  if (typeof decidedBy !== "string") return decidedBy;
+  const decidedById = decidedBy;
 
   const id = `decision_${generateUlid()}`;
 
   const summary = draft.summary?.trim() || distillSummary(draft.chosen) || `Decision: ${id}`;
 
   const now = new Date().toISOString();
-  const createdById = draft.created_by_id ?? decidedById ?? null;
+  const createdById = draft.created_by_principal_id ?? decidedById ?? null;
   const status = lifecycleAttrs(draft, "active");
   if ("error" in status) return status;
 
@@ -731,7 +727,7 @@ export interface DecisionPatch {
   intent_ids?: string[];
   intent_ids_add?: string[];
   intent_ids_remove?: string[];
-  decided_by_username?: string;
+  decided_by_principal_id?: string;
   body_md?: string;
   body_md_append?: string;
   born_from?: string | null;
@@ -867,13 +863,13 @@ export async function updateDecision(
     ops.push(...intentResult.ops);
   }
 
-  if (patch.decided_by_username !== undefined) {
-    const pid = await resolvePrincipalUsername(patch.decided_by_username);
-    if (!pid) return { error: `Unknown principal username: ${patch.decided_by_username}` };
+  if (patch.decided_by_principal_id !== undefined) {
+    const pid = patch.decided_by_principal_id.trim();
+    if (!pid) return { error: "decided_by_principal_id cannot be empty." };
     if (fm.decided_by !== pid) {
       fm.decided_by = pid;
       changed.push("decided_by");
-      ops.push({ kind: "set", field: "decided_by", value: patch.decided_by_username });
+      ops.push({ kind: "set", field: "decided_by", value: pid });
     }
   }
 
@@ -979,6 +975,44 @@ export interface EntityPatch {
   [k: string]: unknown;
 }
 
+function normalizePrincipalIdPatchFields(
+  entityType: NodeTypeName,
+  patch: EntityPatch,
+): EntityPatch {
+  const normalized: EntityPatch = { ...patch };
+  const copy = (inputField: string, target: string) => {
+    if (inputField in patch && patch[inputField] !== undefined) {
+      normalized[target] = patch[inputField];
+    }
+  };
+
+  switch (entityType) {
+    case "intent":
+      copy("wanted_by_principal_id", "wanted_by");
+      copy("actors_principal_ids", "actors");
+      copy("stakeholders_principal_ids", "stakeholders");
+      break;
+    case "action":
+    case "log":
+      copy("actor_principal_id", "actor_id");
+      break;
+    case "decision":
+      copy("decided_by_principal_id", "decided_by");
+      break;
+    case "rule":
+    case "eval":
+    case "reference":
+    case "state":
+    case "guidance_primitive":
+    case "neuron_authoring_primitive":
+    case "idea":
+      copy("created_by_principal_id", "created_by");
+      break;
+  }
+
+  return normalized;
+}
+
 export async function updateEntity(opts: {
   docoDir: string;
   docoId: string;
@@ -1010,6 +1044,7 @@ export async function updateEntity(opts: {
   if (!existing) return { error: `${entityType} not found: ${id}` };
   const fm = existing.fm;
   const existingBody = existing.body;
+  const normalizedPatch = normalizePrincipalIdPatchFields(entityType, patch);
   // Types with a markdown body get body_md; `reference` is pure YAML
   // and ignores body operations.
   const isMd = entityType !== "reference";
@@ -1017,7 +1052,7 @@ export async function updateEntity(opts: {
   const gate = validatePatch(
     entityType,
     fm.lifecycle as string | undefined,
-    patch as Record<string, unknown>,
+    normalizedPatch as Record<string, unknown>,
   );
   if (!gate.allowed) {
     return {
@@ -1049,51 +1084,54 @@ export async function updateEntity(opts: {
     }
   };
 
-  setScalar("summary", typeof patch.summary === "string" ? patch.summary.trim() : undefined);
-  if (patch.lifecycle !== undefined) {
-    const lifecycle = normalizeLifecycle(patch.lifecycle, "active");
+  setScalar(
+    "summary",
+    typeof normalizedPatch.summary === "string" ? normalizedPatch.summary.trim() : undefined,
+  );
+  if (normalizedPatch.lifecycle !== undefined) {
+    const lifecycle = normalizeLifecycle(normalizedPatch.lifecycle, "active");
     if (typeof lifecycle !== "string") return lifecycle;
     setScalar("lifecycle", lifecycle);
   }
-  if (patch.deprecated !== undefined) {
-    setScalar("deprecated", patch.deprecated);
+  if (normalizedPatch.deprecated !== undefined) {
+    setScalar("deprecated", normalizedPatch.deprecated);
   }
-  if (patch.outcome !== undefined) {
-    const outcome = normalizeOutcome(patch.outcome);
+  if (normalizedPatch.outcome !== undefined) {
+    const outcome = normalizeOutcome(normalizedPatch.outcome);
     if (outcome && typeof outcome !== "string") return outcome;
     setScalar("outcome", outcome ?? null);
   }
-  if (patch.born_from !== undefined) {
-    if (patch.born_from === null || patch.born_from === "") {
+  if (normalizedPatch.born_from !== undefined) {
+    if (normalizedPatch.born_from === null || normalizedPatch.born_from === "") {
       if ("born_from" in fm) {
         fm.born_from = undefined;
         changed.push("born_from");
         ops.push({ kind: "cleared", field: "born_from" });
       }
     } else {
-      fm.born_from = patch.born_from;
+      fm.born_from = normalizedPatch.born_from;
       changed.push("born_from");
-      ops.push({ kind: "set", field: "born_from", value: patch.born_from });
+      ops.push({ kind: "set", field: "born_from", value: normalizedPatch.born_from });
     }
   }
-  if (patch.superseded_by !== undefined) {
-    if (patch.superseded_by === null || patch.superseded_by === "") {
+  if (normalizedPatch.superseded_by !== undefined) {
+    if (normalizedPatch.superseded_by === null || normalizedPatch.superseded_by === "") {
       if ("superseded_by" in fm) {
         fm.superseded_by = undefined;
         changed.push("superseded_by");
         ops.push({ kind: "cleared", field: "superseded_by" });
       }
     } else {
-      fm.superseded_by = patch.superseded_by;
+      fm.superseded_by = normalizedPatch.superseded_by;
       changed.push("superseded_by");
-      ops.push({ kind: "set", field: "superseded_by", value: patch.superseded_by });
+      ops.push({ kind: "set", field: "superseded_by", value: normalizedPatch.superseded_by });
     }
   }
 
   for (const k of allowedFields) {
     if (k === "summary") continue;
-    if (k in patch && patch[k] !== undefined) {
-      const v = patch[k];
+    if (k in normalizedPatch && normalizedPatch[k] !== undefined) {
+      const v = normalizedPatch[k];
       if (v === null || v === "") {
         if (k in fm) {
           delete fm[k];
@@ -1126,13 +1164,13 @@ export async function updateEntity(opts: {
 
   let bodyOp: "replace" | "append" | "none" = "none";
   if (isMd) {
-    if (patch.body_md !== undefined) bodyOp = "replace";
-    else if (patch.body_md_append !== undefined) bodyOp = "append";
+    if (normalizedPatch.body_md !== undefined) bodyOp = "replace";
+    else if (normalizedPatch.body_md_append !== undefined) bodyOp = "append";
   }
   if (bodyOp !== "none") {
     changed.push("body");
     if (bodyOp === "replace") ops.push({ kind: "replaced_body" });
-    else ops.push({ kind: "appended_body", preview: String(patch.body_md_append ?? "") });
+    else ops.push({ kind: "appended_body", preview: String(normalizedPatch.body_md_append ?? "") });
   }
 
   if (changed.length === 0) {
@@ -1143,12 +1181,12 @@ export async function updateEntity(opts: {
   // YAML and carries no body.
   let nextBody = "";
   if (isMd) {
-    if (patch.body_md !== undefined) {
-      nextBody = String(patch.body_md).trim();
-    } else if (patch.body_md_append !== undefined) {
+    if (normalizedPatch.body_md !== undefined) {
+      nextBody = String(normalizedPatch.body_md).trim();
+    } else if (normalizedPatch.body_md_append !== undefined) {
       nextBody = existingBody
-        ? `${existingBody.replace(/\n+$/, "")}\n\n${String(patch.body_md_append).trim()}`
-        : String(patch.body_md_append).trim();
+        ? `${existingBody.replace(/\n+$/, "")}\n\n${String(normalizedPatch.body_md_append).trim()}`
+        : String(normalizedPatch.body_md_append).trim();
     } else {
       nextBody = existingBody.trim();
     }
@@ -1215,16 +1253,16 @@ export interface IntentDraft {
   title?: string;
   /** Optional: markdown body — context + non-goals + success criteria. */
   body_md?: string;
-  /** Optional: principal username who wants this. Resolves to id. */
-  wanted_by_username?: string;
+  /** Optional: principal id who wants this. */
+  wanted_by_principal_id?: string;
   /**
-   * Optional: principals expected to act in this flow. Each username
-   * resolves to a principal id; the resulting list is stored on the
-   * Intent as `actors: [collaborator_id, ...]`. Used by the user-flows
-   * `graph-completeness` rule to require an Action per actor before
-   * the Intent moves to `active`.
+   * Optional: principal ids expected to act in this flow. Stored as
+   * `actors: [principal_id, ...]` and used by process graph-completeness
+   * rules to require an Action per actor before the Intent moves to active.
    */
-  actors_usernames?: string[];
+  actors_principal_ids?: string[];
+  /** Optional: principal ids with a say in the outcome even if they do not act directly. */
+  stakeholders_principal_ids?: string[];
   /** Optional: defaults to "active". */
   lifecycle?: string;
   deprecated?: boolean;
@@ -1241,31 +1279,16 @@ export async function captureIntent(
 ): Promise<CaptureResult | CaptureError> {
   const startedAt = performance.now();
   if (!draft.summary?.trim()) return { error: "summary is required." };
-  let wantedById: string | null = null;
-  if (draft.wanted_by_username) {
-    wantedById = await resolvePrincipalUsername(draft.wanted_by_username);
-    if (!wantedById) {
-      return { error: `Unknown principal username: ${draft.wanted_by_username}` };
-    }
-  }
-  if (!wantedById) {
-    return {
-      error:
-        "wanted_by_username is required (or pass an authenticated request — the route fills it from `me.username`).",
-    };
-  }
+  const wantedBy = requiredPrincipalId(
+    draft.wanted_by_principal_id,
+    "wanted_by_principal_id",
+    "or pass an authenticated request; the route fills it from `me.id`",
+  );
+  if (typeof wantedBy !== "string") return wantedBy;
+  const wantedById = wantedBy;
 
-  // Resolve actors_usernames → principal_ids. Each must resolve; an
-  // unknown username is a typo and we'd rather catch it at capture
-  // than ship a broken Intent.
-  const actorIds: string[] = [];
-  if (Array.isArray(draft.actors_usernames) && draft.actors_usernames.length > 0) {
-    for (const uname of draft.actors_usernames) {
-      const pid = await resolvePrincipalUsername(uname);
-      if (!pid) return { error: `Unknown principal username in actors: ${uname}` };
-      if (!actorIds.includes(pid)) actorIds.push(pid);
-    }
-  }
+  const actorIds = uniquePrincipalIds(draft.actors_principal_ids);
+  const stakeholderIds = uniquePrincipalIds(draft.stakeholders_principal_ids);
 
   const id = `intent_${generateUlid()}`;
   const summary = draft.summary.trim();
@@ -1282,6 +1305,7 @@ export async function captureIntent(
     title,
     wanted_by: wantedById,
     ...(actorIds.length > 0 ? { actors: actorIds } : {}),
+    ...(stakeholderIds.length > 0 ? { stakeholders: stakeholderIds } : {}),
     created_at: now,
     created_by: wantedById,
     ...status,
@@ -1341,7 +1365,7 @@ export interface IdeaDraft {
   /** Optional: markdown body with context, tradeoffs, or sketch notes. */
   body_md?: string;
   /** Optional: authenticated caller id; routes fill this automatically. */
-  created_by_id?: string;
+  created_by_principal_id?: string;
   /** Optional: entity this idea became once promoted. */
   promoted_to?: string | null;
   /** Optional: why the idea was rejected or parked. */
@@ -1361,7 +1385,8 @@ export async function captureIdea(
 ): Promise<CaptureResult | CaptureError> {
   const startedAt = performance.now();
   if (!draft.summary?.trim()) return { error: "summary is required." };
-  if (!draft.created_by_id) {
+  const createdById = draft.created_by_principal_id;
+  if (!createdById) {
     return { error: "Authentication is required to capture an idea." };
   }
 
@@ -1375,11 +1400,11 @@ export async function captureIdea(
     doco_id: docoId,
     neuron_type: "idea",
     summary,
-    proposer_id: draft.created_by_id,
+    proposer_id: createdById,
     ...(draft.promoted_to ? { promoted_to: draft.promoted_to } : {}),
     ...(draft.rejection_reason ? { rejection_reason: draft.rejection_reason } : {}),
     created_at: now,
-    created_by: draft.created_by_id,
+    created_by: createdById,
     ...status,
   };
 
@@ -1402,7 +1427,7 @@ export async function captureIdea(
   emitAuditForCreate({
     docoDir,
     docoId,
-    actorId: draft.created_by_id,
+    actorId: createdById,
     entity_type: "idea",
     entity_id: id,
     summary,
@@ -1456,8 +1481,8 @@ export interface EvalDraft {
   target_ref?: string;
   /** Optional: intent ids to link via `intent_ids`. */
   intent_ids?: string[];
-  /** Optional: principal username who authored the Eval. */
-  authored_by_username?: string;
+  /** Optional: principal id who authored the Eval. */
+  authored_by_principal_id?: string;
   /** Optional default: lifecycle = "active". */
   lifecycle?: string;
   deprecated?: boolean;
@@ -1487,19 +1512,13 @@ export async function captureEval(
   if (draft.expected_status !== undefined && !["pass", "fail"].includes(draft.expected_status)) {
     return { error: `Unknown expected_status: ${draft.expected_status}` };
   }
-  let authoredById: string | null = null;
-  if (draft.authored_by_username) {
-    authoredById = await resolvePrincipalUsername(draft.authored_by_username);
-    if (!authoredById) {
-      return { error: `Unknown principal username: ${draft.authored_by_username}` };
-    }
-  }
-  if (!authoredById) {
-    return {
-      error:
-        "authored_by_username is required (or pass an authenticated request — the route fills it from `me.username`).",
-    };
-  }
+  const authoredBy = requiredPrincipalId(
+    draft.authored_by_principal_id,
+    "authored_by_principal_id",
+    "or pass an authenticated request; the route fills it from `me.id`",
+  );
+  if (typeof authoredBy !== "string") return authoredBy;
+  const authoredById = authoredBy;
 
   const intentIds: string[] = Array.isArray(draft.intent_ids) ? draft.intent_ids : [];
 
@@ -1600,10 +1619,10 @@ export interface ActionDraft {
   inputs?: unknown;
   /** Optional: verb-specific outputs (any shape). */
   outputs?: unknown;
-  /** Optional: principal username who performed the action. Resolves to id. */
-  performed_by_username?: string;
+  /** Optional: principal id who performs the action. */
+  actor_principal_id?: string;
   /** Optional: principal id who created this entry; defaults to performed_by. */
-  created_by_id?: string;
+  created_by_principal_id?: string;
   /** Optional: raw markdown body appended after frontmatter. */
   body_md?: string;
   /** Optional: defaults to "retired" with `outcome: "succeeded"`. */
@@ -1623,22 +1642,13 @@ export async function captureAction(
   const startedAt = performance.now();
   if (!draft.summary?.trim()) return { error: "summary is required." };
   if (!draft.verb?.trim()) return { error: "verb is required." };
-  let actorId: string | null = null;
-  if (draft.performed_by_username) {
-    actorId = await resolvePrincipalUsername(draft.performed_by_username);
-    if (!actorId) {
-      return { error: `Unknown principal username: ${draft.performed_by_username}` };
-    }
-  }
-  if (!actorId && draft.created_by_id) {
-    actorId = draft.created_by_id;
-  }
-  if (!actorId) {
-    return {
-      error:
-        "performed_by_username is required (or pass an authenticated request — the route fills it from `me.username`).",
-    };
-  }
+  const actor = requiredPrincipalId(
+    draft.actor_principal_id,
+    "actor_principal_id",
+    "or pass an authenticated request; the route fills it from `me.id`",
+  );
+  if (typeof actor !== "string") return actor;
+  const actorId = actor;
 
   const intentIds: string[] = Array.isArray(draft.intent_ids) ? draft.intent_ids : [];
   const decisionIds: string[] = Array.isArray(draft.decision_ids) ? draft.decision_ids : [];
@@ -1647,7 +1657,7 @@ export async function captureAction(
   const id = `action_${generateUlid()}`;
   const summary = draft.summary.trim();
   const now = new Date().toISOString();
-  const createdById = draft.created_by_id ?? actorId;
+  const createdById = draft.created_by_principal_id ?? actorId;
   const status = lifecycleAttrs(draft, "retired", "succeeded");
   if ("error" in status) return status;
 
@@ -1740,8 +1750,8 @@ export interface LogDraft {
   decision_ids?: string[];
   follows?: string[];
   inputs?: unknown;
-  performed_by_username?: string;
-  created_by_id?: string;
+  actor_principal_id?: string;
+  created_by_principal_id?: string;
   body_md?: string;
   /** Optional override. Logs default to "retired" with `outcome: "succeeded"`. */
   lifecycle?: string;
@@ -1773,20 +1783,13 @@ export async function captureLog(
         "outputs is required and must be a non-empty object — Logs record concrete results (commit hash, deploy URL, etc.).",
     };
   }
-  let actorId: string | null = null;
-  if (draft.performed_by_username) {
-    actorId = await resolvePrincipalUsername(draft.performed_by_username);
-    if (!actorId) {
-      return { error: `Unknown principal username: ${draft.performed_by_username}` };
-    }
-  }
-  if (!actorId && draft.created_by_id) actorId = draft.created_by_id;
-  if (!actorId) {
-    return {
-      error:
-        "performed_by_username is required (or pass an authenticated request — the route fills it from `me.username`).",
-    };
-  }
+  const actor = requiredPrincipalId(
+    draft.actor_principal_id,
+    "actor_principal_id",
+    "or pass an authenticated request; the route fills it from `me.id`",
+  );
+  if (typeof actor !== "string") return actor;
+  const actorId = actor;
 
   const intentIds: string[] = Array.isArray(draft.intent_ids) ? draft.intent_ids : [];
   const decisionIds: string[] = Array.isArray(draft.decision_ids) ? draft.decision_ids : [];
@@ -1795,7 +1798,7 @@ export async function captureLog(
   const id = `log_${generateUlid()}`;
   const summary = draft.summary.trim();
   const now = new Date().toISOString();
-  const createdById = draft.created_by_id ?? actorId;
+  const createdById = draft.created_by_principal_id ?? actorId;
   const status = lifecycleAttrs(draft, "retired", "succeeded");
   if ("error" in status) return status;
 
@@ -1889,10 +1892,10 @@ export interface RuleDraft {
   severity?: "hard" | "soft";
   /** Optional: id of the Decision this Rule was born from. */
   born_from?: string;
-  /** Optional: principal username who authored the Rule. */
-  authored_by_username?: string;
+  /** Optional: principal id who authored the Rule. */
+  authored_by_principal_id?: string;
   /** Optional: principal id who created this entry; defaults to authored_by. */
-  created_by_id?: string;
+  created_by_principal_id?: string;
   /** Optional: raw markdown body appended after frontmatter. */
   body_md?: string;
   /** Optional: defaults to "active". */
@@ -1912,22 +1915,13 @@ export async function captureRule(
   const startedAt = performance.now();
   if (!draft.summary?.trim()) return { error: "summary is required." };
   if (!draft.predicate?.trim()) return { error: "predicate is required." };
-  let authorId: string | null = null;
-  if (draft.authored_by_username) {
-    authorId = await resolvePrincipalUsername(draft.authored_by_username);
-    if (!authorId) {
-      return { error: `Unknown principal username: ${draft.authored_by_username}` };
-    }
-  }
-  if (!authorId && draft.created_by_id) {
-    authorId = draft.created_by_id;
-  }
-  if (!authorId) {
-    return {
-      error:
-        "authored_by_username is required (or pass an authenticated request — the route fills it from `me.username`).",
-    };
-  }
+  const author = requiredPrincipalId(
+    draft.authored_by_principal_id,
+    "authored_by_principal_id",
+    "or pass an authenticated request; the route fills it from `me.id`",
+  );
+  if (typeof author !== "string") return author;
+  const authorId = author;
 
   const intentIds: string[] = Array.isArray(draft.intent_ids) ? draft.intent_ids : [];
 
@@ -1945,7 +1939,7 @@ export async function captureRule(
   const id = `rule_${generateUlid()}`;
   const summary = draft.summary.trim();
   const now = new Date().toISOString();
-  const createdById = draft.created_by_id ?? authorId;
+  const createdById = draft.created_by_principal_id ?? authorId;
   const status = lifecycleAttrs(draft, "active");
   if ("error" in status) return status;
 
@@ -2029,10 +2023,10 @@ export interface GuidancePrimitiveDraft {
   summary: string;
   /** Optional markdown body. Defaults to the summary so the article is readable. */
   body_md?: string;
-  /** Optional: principal username who authored the article. */
-  authored_by_username?: string;
+  /** Optional: principal id who authored the article. */
+  authored_by_principal_id?: string;
   /** Optional: principal id who created this entry; defaults to authored_by. */
-  created_by_id?: string;
+  created_by_principal_id?: string;
   /** Optional: defaults to "active". */
   lifecycle?: string;
   deprecated?: boolean;
@@ -2057,32 +2051,23 @@ export interface NeuronAuthoringPrimitiveDraft {
   fires_when_neuron_lifecycle?: string[];
   on_violation?: "block" | "warn" | "log";
   body_md?: string;
-  authored_by_username?: string;
-  created_by_id?: string;
+  authored_by_principal_id?: string;
+  created_by_principal_id?: string;
   lifecycle?: string;
   deprecated?: boolean;
   outcome?: "succeeded" | "failed";
 }
 
 async function resolvePrimitiveAuthor(draft: {
-  authored_by_username?: string;
-  created_by_id?: string;
+  authored_by_principal_id?: string;
+  created_by_principal_id?: string;
 }): Promise<string | CaptureError> {
-  let authorId: string | null = null;
-  if (draft.authored_by_username) {
-    authorId = await resolvePrincipalUsername(draft.authored_by_username);
-    if (!authorId) {
-      return { error: `Unknown principal username: ${draft.authored_by_username}` };
-    }
-  }
-  if (!authorId && draft.created_by_id) authorId = draft.created_by_id;
-  if (!authorId) {
-    return {
-      error:
-        "authored_by_username is required (or pass an authenticated request — the route fills it from `me.username`).",
-    };
-  }
-  return authorId;
+  const author = requiredPrincipalId(
+    draft.authored_by_principal_id,
+    "authored_by_principal_id",
+    "or pass an authenticated request; the route fills it from `me.id`",
+  );
+  return author;
 }
 
 function parsePredicate(value: AuthoringPredicate | string | undefined): unknown {
@@ -2160,7 +2145,7 @@ async function buildGuidancePrimitivePayload(
   const status = lifecycleAttrs(draft, "active");
   if ("error" in status) return status;
   const lifecycle = String(status.lifecycle);
-  const createdById = draft.created_by_id ?? author;
+  const createdById = draft.created_by_principal_id ?? author;
   const fm: Record<string, unknown> = {
     id,
     doco_id: docoId,
@@ -2204,7 +2189,7 @@ async function buildNeuronAuthoringPrimitivePayload(
   const status = lifecycleAttrs(draft, "active");
   if ("error" in status) return status;
   const lifecycle = String(status.lifecycle);
-  const createdById = draft.created_by_id ?? author;
+  const createdById = draft.created_by_principal_id ?? author;
   const firesWhen = Array.isArray(draft.fires_when_neuron_lifecycle)
     ? draft.fires_when_neuron_lifecycle.filter((v) => typeof v === "string" && v.length > 0)
     : [];
@@ -2491,8 +2476,7 @@ export interface ReferenceDraft {
   body_md?: string;
   content_hash?: string | null;
   intent_ids?: string[];
-  created_by_username?: string;
-  created_by_id?: string;
+  created_by_principal_id?: string;
   lifecycle?: string;
   deprecated?: boolean;
   outcome?: "succeeded" | "failed";
@@ -2511,14 +2495,7 @@ export async function captureReference(
     return { error: `ref_type must be one of: ${[...REF_TYPES].join(", ")}.` };
   }
   if (!draft.locator?.trim()) return { error: "locator is required." };
-  let createdById: string | null = null;
-  if (draft.created_by_username) {
-    createdById = await resolvePrincipalUsername(draft.created_by_username);
-    if (!createdById) {
-      return { error: `Unknown principal username: ${draft.created_by_username}` };
-    }
-  }
-  if (!createdById && draft.created_by_id) createdById = draft.created_by_id;
+  const createdById = draft.created_by_principal_id ?? null;
 
   const intentIds: string[] = Array.isArray(draft.intent_ids) ? draft.intent_ids : [];
 
@@ -2610,9 +2587,7 @@ export interface StateDraft {
   /** Optional: entity ids this state follows (typically a transition Action). */
   follows?: string[];
   /** Optional: principal id who created this entry. */
-  created_by_id?: string;
-  /** Optional: principal username (resolves to id). */
-  created_by_username?: string;
+  created_by_principal_id?: string;
   /** Optional: raw markdown body. */
   body_md?: string;
   /** Optional: explicit lifecycle override. Defaults to "active". */
@@ -2637,13 +2612,7 @@ export async function captureState(
       error: `kind must be one of initial / intermediate / terminal — got "${draft.kind}".`,
     };
   }
-  let createdById: string | null = draft.created_by_id ?? null;
-  if (!createdById && draft.created_by_username) {
-    createdById = await resolvePrincipalUsername(draft.created_by_username);
-    if (!createdById) {
-      return { error: `Unknown principal username: ${draft.created_by_username}` };
-    }
-  }
+  const createdById = draft.created_by_principal_id ?? null;
 
   const id = `state_${generateUlid()}`;
   const summary = draft.summary.trim();

@@ -51,8 +51,8 @@ export async function action({
     {
       summary,
       body_md,
-      authored_by_username: ctx.me?.username,
-      created_by_id: ctx.me?.id,
+      authored_by_principal_id: ctx.me?.id,
+      created_by_principal_id: ctx.me?.id,
     },
     docoHost,
   );

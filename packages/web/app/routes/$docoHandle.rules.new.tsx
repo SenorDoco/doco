@@ -82,7 +82,8 @@ export async function action({
       intent_ids: intentId ? [intentId] : [],
       severity,
       enforced_by: enforcedBy,
-      created_by_id: me?.id ?? undefined,
+      authored_by_principal_id: me?.id ?? undefined,
+      created_by_principal_id: me?.id ?? undefined,
     },
     new URL(request.url).origin,
   );

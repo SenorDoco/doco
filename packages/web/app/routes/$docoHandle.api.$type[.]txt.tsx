@@ -20,8 +20,8 @@ type SpecRenderer = (baseUrl: string, handle: string) => string;
 const SPECS: Record<string, SpecRenderer> = {
   decisions: (baseUrl, handle) => `# Doco — Capture a Decision (single call)
 
-Single POST. Server resolves usernames to ids, generates the
-ULID, writes the row, and reindexes.
+Single POST. Server accepts principal ids, generates the ULID, writes
+the row, and reindexes.
 
 ENDPOINT
   POST ${baseUrl}/${handle}/api/decisions.json
@@ -33,8 +33,8 @@ BODY (JSON)
   summary            optional   one-line summary; derived from chosen if omitted
   alternatives       required   non-empty [{ "name": "...", "rejected_because": "..." }, ...]
   intent_ids         optional   ["intent_01...", ...]; ULID references to Intents
-  decided_by_username optional  host-level username; resolved to principal id
-  created_by_id      optional   principal id; defaults to decided_by
+  decided_by_principal_id optional  principal id who made the decision; auth fills this
+  created_by_principal_id optional  principal id; defaults to decided_by
   body_md            optional   markdown body appended after the frontmatter
   born_from          optional   reference id (e.g. born_from a bugfix decision)
   lifecycle          optional   one of "drafted" | "proposed" | "active" | "retired"; default "active"
@@ -57,9 +57,6 @@ SUCCESS RESPONSE (HTTP 201, application/json)
 ERROR RESPONSE (HTTP 400 / 404 / 405, application/json)
   { "error": "<reason>" }
 
-  Common errors:
-    - "Unknown principal username: ..."  (typo or not yet registered)
-
 EXAMPLE
   curl -sS -X POST \\
     -H "Content-Type: application/json" \\
@@ -67,7 +64,7 @@ EXAMPLE
     -d '{
       "question": "Where should the Doco-created confirmation live?",
       "chosen": "Each creation entry point renders its own success card.",
-      "decided_by_username": "torrenegra",
+      "decided_by_principal_id": "principal_01...",
       "alternatives": [
         { "name": "Keep the banner on the next-step page", "rejected_because": "Content belongs to the creation flow." }
       ]
@@ -86,7 +83,7 @@ UPDATE AN EXISTING DECISION
     summary / question / chosen / alternatives / body_md / lifecycle
     deprecated / outcome / superseded_by
     intent_ids / intent_ids_add / intent_ids_remove
-    decided_by_username / born_from
+    decided_by_principal_id / born_from
 
   Response is the same shape as the capture endpoint (ok, id, path,
   footer_lines) plus a \`changed: string[]\` listing the fields
@@ -146,7 +143,9 @@ BODY (JSON)
   summary             required   "What someone wants" — one-line.
   title               optional   short title (defaults to summary).
   body_md             optional   markdown body — context, non-goals, success criteria.
-  wanted_by_username  optional   host-level username; resolved to principal id.
+  wanted_by_principal_id optional principal id who wants this; auth fills this.
+  actors_principal_ids optional  principal ids expected to act in the process.
+  stakeholders_principal_ids optional principal ids with a say in the outcome.
   lifecycle           optional   one of "drafted" | "proposed" | "active" | "retired"; default "active".
   deprecated          optional   boolean warning label; lifecycle is unchanged.
   outcome             optional   "succeeded" | "failed".
@@ -171,7 +170,9 @@ EXAMPLE
     ${baseUrl}/${handle}/api/intents.json \\
     -d '{
       "summary": "Agent capture friction is bounded to a few seconds end-to-end.",
-      "wanted_by_username": "torrenegra",
+      "wanted_by_principal_id": "principal_01...",
+      "actors_principal_ids": ["principal_01..."],
+      "stakeholders_principal_ids": ["principal_01..."],
       "body_md": "Background: writing two ADRs by hand took >5 minutes (70% plumbing). This Intent motivates the single-call capture endpoints."
     }'
 
@@ -234,7 +235,8 @@ BODY — primitive_kind = "guidance"
   primitive_kind          required   "guidance"
   summary               required   one-line primitive summary
   body_md               optional   markdown primitive body
-  authored_by_username  optional   host-level username; auth fills this
+  authored_by_principal_id optional principal id; auth fills this
+  created_by_principal_id  optional principal id; defaults to authored_by_principal_id
   lifecycle             optional   one of "drafted" | "proposed" | "active" | "retired"; default "active"
   deprecated            optional   boolean warning label; lifecycle is unchanged
   outcome               optional   "succeeded" | "failed"
@@ -251,7 +253,8 @@ BODY — primitive_kind = "neuron_authoring"
   fires_when_neuron_lifecycle optional ["active", ...]
   on_violation          optional   "block" | "warn" | "log"; default "block"
   body_md               optional   markdown primitive body
-  authored_by_username  optional   host-level username; auth fills this
+  authored_by_principal_id optional principal id; auth fills this
+  created_by_principal_id  optional principal id; defaults to authored_by_principal_id
   lifecycle             optional   one of "drafted" | "proposed" | "active" | "retired"; default "active"
   deprecated            optional   boolean warning label; lifecycle is unchanged
   outcome               optional   "succeeded" | "failed"

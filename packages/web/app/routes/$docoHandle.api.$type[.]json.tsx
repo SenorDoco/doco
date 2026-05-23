@@ -59,37 +59,35 @@ function entry<TDraft>(
 // stay separate from domain captures.
 const CAPTURE_REGISTRY: Record<string, RegistryEntry> = {
   decisions: entry<DecisionDraft>("decisions", captureDecision, (draft, me) => {
-    if (!draft.decided_by_username) draft.decided_by_username = me.username;
-    if (!draft.created_by_id && me.id) draft.created_by_id = me.id;
+    if (!draft.decided_by_principal_id && me.id) draft.decided_by_principal_id = me.id;
+    if (!draft.created_by_principal_id && me.id) draft.created_by_principal_id = me.id;
   }),
   intents: entry<IntentDraft>("intents", captureIntent, (draft, me) => {
-    if (!draft.wanted_by_username) draft.wanted_by_username = me.username;
+    if (!draft.wanted_by_principal_id && me.id) draft.wanted_by_principal_id = me.id;
   }),
   ideas: entry<IdeaDraft>("ideas", captureIdea, (draft, me) => {
-    if (!draft.created_by_id && me.id) draft.created_by_id = me.id;
+    if (!draft.created_by_principal_id && me.id) draft.created_by_principal_id = me.id;
   }),
   actions: entry<ActionDraft>("actions", captureAction, (draft, me) => {
-    if (!draft.performed_by_username) draft.performed_by_username = me.username;
-    if (!draft.created_by_id && me.id) draft.created_by_id = me.id;
+    if (!draft.actor_principal_id && me.id) draft.actor_principal_id = me.id;
+    if (!draft.created_by_principal_id && me.id) draft.created_by_principal_id = me.id;
   }),
   references: entry<ReferenceDraft>("references", captureReference, (draft, me) => {
-    if (!draft.created_by_username) draft.created_by_username = me.username;
-    if (!draft.created_by_id && me.id) draft.created_by_id = me.id;
+    if (!draft.created_by_principal_id && me.id) draft.created_by_principal_id = me.id;
   }),
   rules: entry<RuleDraft>("rules", captureRule, (draft, me) => {
-    if (!draft.authored_by_username) draft.authored_by_username = me.username;
-    if (!draft.created_by_id && me.id) draft.created_by_id = me.id;
+    if (!draft.authored_by_principal_id && me.id) draft.authored_by_principal_id = me.id;
+    if (!draft.created_by_principal_id && me.id) draft.created_by_principal_id = me.id;
   }),
   logs: entry<LogDraft>("logs", captureLog, (draft, me) => {
-    if (!draft.performed_by_username) draft.performed_by_username = me.username;
-    if (!draft.created_by_id && me.id) draft.created_by_id = me.id;
+    if (!draft.actor_principal_id && me.id) draft.actor_principal_id = me.id;
+    if (!draft.created_by_principal_id && me.id) draft.created_by_principal_id = me.id;
   }),
   evals: entry<EvalDraft>("evals", captureEval, (draft, me) => {
-    if (!draft.authored_by_username) draft.authored_by_username = me.username;
+    if (!draft.authored_by_principal_id && me.id) draft.authored_by_principal_id = me.id;
   }),
   states: entry<StateDraft>("states", captureState, (draft, me) => {
-    if (!draft.created_by_id && me.id) draft.created_by_id = me.id;
-    if (!draft.created_by_username) draft.created_by_username = me.username;
+    if (!draft.created_by_principal_id && me.id) draft.created_by_principal_id = me.id;
   }),
 };
 

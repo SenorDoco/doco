@@ -62,8 +62,8 @@ export async function action({
     body_md,
     evaluation_kind: evaluationKind,
     on_violation,
-    authored_by_username: ctx.me?.username,
-    created_by_id: ctx.me?.id,
+    authored_by_principal_id: ctx.me?.id,
+    created_by_principal_id: ctx.me?.id,
     ...(lifecycle.length > 0 ? { fires_when_neuron_lifecycle: lifecycle } : {}),
     ...(evaluationKind === "probabilistic"
       ? { spec: String(form.get("probabilistic_spec") ?? "").trim() }
