@@ -1,4 +1,4 @@
-import { cosineSimilarity, getAllEmbeddingsForDoco } from "@doco/db";
+import { ALL_ENTITY_TABLES, cosineSimilarity, getAllEmbeddingsForDoco } from "@doco/db";
 import { globalPageRank } from "@doco/index";
 import type { PoolClient } from "pg";
 import { type SearchFilters, resolveFilteredCandidates } from "~/lib/search-filters.server";
@@ -23,10 +23,17 @@ export interface SearchTypeSpec {
 }
 
 function entitySpec(table: string, entityType: string): SearchTypeSpec {
+  // Migrated neurons carry prose in a type-named column; everything
+  // else still uses `summary`. Either way the projected alias here is
+  // `summary` so the rest of the search hit shape doesn't change.
+  const tnCol = ALL_ENTITY_TABLES[entityType]?.typeNamedColumn;
+  const summarySelect = tnCol
+    ? `split_part(${tnCol}, E'\n', 1) AS summary`
+    : "summary";
   return {
     table,
     entityType,
-    selectExtra: "summary, lifecycle, created_at",
+    selectExtra: `${summarySelect}, lifecycle, created_at`,
     hostLevel: false,
     toHit: (row, score) => ({
       id: String(row.id),

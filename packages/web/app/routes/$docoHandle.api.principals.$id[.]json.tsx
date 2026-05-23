@@ -24,21 +24,21 @@ async function findActiveReferencesToPrincipal(
 ): Promise<ActiveReference[]> {
   return withClient(async (c) => {
     const sql = `
-      SELECT a.id AS id, 'action'::text AS neuron_type, a.summary AS summary, s.synapse_type AS synapse_type
+      SELECT a.id AS id, 'action'::text AS neuron_type, split_part(a.action, E'\n', 1) AS summary, s.synapse_type AS synapse_type
         FROM actions a
         JOIN synapses s
           ON s.from_id = a.id
          AND s.from_neuron_type = 'action'
        WHERE s.doco_id = $1 AND s.to_id = $2 AND a.lifecycle = 'active'
       UNION ALL
-      SELECT l.id, 'log'::text, l.summary, s.synapse_type
+      SELECT l.id, 'log'::text, split_part(l.log, E'\n', 1), s.synapse_type
         FROM logs l
         JOIN synapses s
           ON s.from_id = l.id
          AND s.from_neuron_type = 'log'
        WHERE s.doco_id = $1 AND s.to_id = $2 AND l.lifecycle = 'active'
       UNION ALL
-      SELECT i.id, 'intent'::text, i.summary, s.synapse_type
+      SELECT i.id, 'intent'::text, split_part(i.intent, E'\n', 1), s.synapse_type
         FROM intents i
         JOIN synapses s
           ON s.from_id = i.id

@@ -261,17 +261,17 @@ export async function loader({
           label: string | null;
           lifecycle: string | null;
         }>(
-          `SELECT id, summary AS label, lifecycle FROM decisions WHERE id = ANY($1::text[])
-           UNION ALL SELECT id, summary AS label, lifecycle FROM intents WHERE id = ANY($1::text[])
-           UNION ALL SELECT id, summary AS label, lifecycle FROM ideas WHERE id = ANY($1::text[])
-           UNION ALL SELECT id, summary AS label, lifecycle FROM rules WHERE id = ANY($1::text[])
+          `SELECT id, split_part(decision, E'\n', 1) AS label, lifecycle FROM decisions WHERE id = ANY($1::text[])
+           UNION ALL SELECT id, split_part(intent, E'\n', 1) AS label, lifecycle FROM intents WHERE id = ANY($1::text[])
+           UNION ALL SELECT id, split_part(idea, E'\n', 1) AS label, lifecycle FROM ideas WHERE id = ANY($1::text[])
+           UNION ALL SELECT id, split_part(rule, E'\n', 1) AS label, lifecycle FROM rules WHERE id = ANY($1::text[])
            UNION ALL SELECT id, summary AS label, lifecycle FROM guidance_primitives WHERE id = ANY($1::text[])
            UNION ALL SELECT id, summary AS label, lifecycle FROM neuron_authoring_primitives WHERE id = ANY($1::text[])
-           UNION ALL SELECT id, summary AS label, lifecycle FROM actions WHERE id = ANY($1::text[])
-           UNION ALL SELECT id, summary AS label, lifecycle FROM logs WHERE id = ANY($1::text[])
-           UNION ALL SELECT id, summary AS label, lifecycle FROM evals WHERE id = ANY($1::text[])
-           UNION ALL SELECT id, summary AS label, lifecycle FROM states WHERE id = ANY($1::text[])
-           UNION ALL SELECT id, summary AS label, lifecycle FROM reference_entities WHERE id = ANY($1::text[])`,
+           UNION ALL SELECT id, split_part(action, E'\n', 1) AS label, lifecycle FROM actions WHERE id = ANY($1::text[])
+           UNION ALL SELECT id, split_part(log, E'\n', 1) AS label, lifecycle FROM logs WHERE id = ANY($1::text[])
+           UNION ALL SELECT id, split_part(eval, E'\n', 1) AS label, lifecycle FROM evals WHERE id = ANY($1::text[])
+           UNION ALL SELECT id, split_part(state, E'\n', 1) AS label, lifecycle FROM states WHERE id = ANY($1::text[])
+           UNION ALL SELECT id, split_part(reference, E'\n', 1) AS label, lifecycle FROM reference_entities WHERE id = ANY($1::text[])`,
           [entityIds],
         );
         for (const r of entityLabelRows.rows) {

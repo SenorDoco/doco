@@ -152,17 +152,17 @@ export async function loader({
         label: string | null;
         lifecycle: string | null;
       }>(
-        `SELECT id, summary AS label, lifecycle FROM decisions WHERE doco_id = $1 AND id = ANY($2::text[])
-         UNION ALL SELECT id, summary AS label, lifecycle FROM intents WHERE doco_id = $1 AND id = ANY($2::text[])
-         UNION ALL SELECT id, summary AS label, lifecycle FROM ideas WHERE doco_id = $1 AND id = ANY($2::text[])
-         UNION ALL SELECT id, summary AS label, lifecycle FROM rules WHERE doco_id = $1 AND id = ANY($2::text[])
+        `SELECT id, split_part(decision, E'\n', 1) AS label, lifecycle FROM decisions WHERE doco_id = $1 AND id = ANY($2::text[])
+         UNION ALL SELECT id, split_part(intent, E'\n', 1) AS label, lifecycle FROM intents WHERE doco_id = $1 AND id = ANY($2::text[])
+         UNION ALL SELECT id, split_part(idea, E'\n', 1) AS label, lifecycle FROM ideas WHERE doco_id = $1 AND id = ANY($2::text[])
+         UNION ALL SELECT id, split_part(rule, E'\n', 1) AS label, lifecycle FROM rules WHERE doco_id = $1 AND id = ANY($2::text[])
          UNION ALL SELECT id, summary AS label, lifecycle FROM guidance_primitives WHERE doco_id = $1 AND id = ANY($2::text[])
          UNION ALL SELECT id, summary AS label, lifecycle FROM neuron_authoring_primitives WHERE doco_id = $1 AND id = ANY($2::text[])
-         UNION ALL SELECT id, summary AS label, lifecycle FROM actions WHERE doco_id = $1 AND id = ANY($2::text[])
-         UNION ALL SELECT id, summary AS label, lifecycle FROM logs WHERE doco_id = $1 AND id = ANY($2::text[])
-         UNION ALL SELECT id, summary AS label, lifecycle FROM evals WHERE doco_id = $1 AND id = ANY($2::text[])
-         UNION ALL SELECT id, summary AS label, lifecycle FROM states WHERE doco_id = $1 AND id = ANY($2::text[])
-         UNION ALL SELECT id, summary AS label, lifecycle FROM reference_entities WHERE doco_id = $1 AND id = ANY($2::text[])
+         UNION ALL SELECT id, split_part(action, E'\n', 1) AS label, lifecycle FROM actions WHERE doco_id = $1 AND id = ANY($2::text[])
+         UNION ALL SELECT id, split_part(log, E'\n', 1) AS label, lifecycle FROM logs WHERE doco_id = $1 AND id = ANY($2::text[])
+         UNION ALL SELECT id, split_part(eval, E'\n', 1) AS label, lifecycle FROM evals WHERE doco_id = $1 AND id = ANY($2::text[])
+         UNION ALL SELECT id, split_part(state, E'\n', 1) AS label, lifecycle FROM states WHERE doco_id = $1 AND id = ANY($2::text[])
+         UNION ALL SELECT id, split_part(reference, E'\n', 1) AS label, lifecycle FROM reference_entities WHERE doco_id = $1 AND id = ANY($2::text[])
          UNION ALL SELECT id, COALESCE(summary, name) AS label, lifecycle FROM principals WHERE doco_id = $1 AND id = ANY($2::text[])`,
         [ctx.meta.docoId, entityIds],
       );
@@ -173,12 +173,18 @@ export async function loader({
 
     const items: FeedItem[] = rawItems.map((it) => {
       const entity = entityById.get(it.entity_id);
+      // Audit events may carry the prose under the type-named key for
+      // migrated neurons (intent/decision/...) or `summary` for legacy
+      // captures. Look both up; the first non-empty line wins.
+      const proseKey = it.entity_type;
       return {
         event_id: it.event_id,
         id: it.entity_id,
         entity_type: it.entity_type,
         summary:
           entity?.label ??
+          firstLine(stringField(it.after_json, proseKey)) ??
+          firstLine(stringField(it.before_json, proseKey)) ??
           stringField(it.after_json, "summary") ??
           stringField(it.before_json, "summary"),
         lifecycle: entity?.lifecycle ?? null,
@@ -847,6 +853,12 @@ function stringField(
 ): string | null {
   const value = obj?.[field];
   return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+function firstLine(value: string | null): string | null {
+  if (!value) return null;
+  const line = value.split("\n", 1)[0];
+  return line ?? value;
 }
 
 function TopContributorsList({ contributors }: { contributors: TopContributor[] }) {

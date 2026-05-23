@@ -1,4 +1,4 @@
-import { getDocoById, getEntity, upsertEntity, withClient } from "@doco/db";
+import { ALL_ENTITY_TABLES, getDocoById, getEntity, upsertEntity, withClient } from "@doco/db";
 import { type AuthoringPredicate, generateUlid } from "@doco/shared";
 import { waitUntil } from "@vercel/functions";
 // Server-only helpers for "capture an entity" endpoints. Single-call API
@@ -97,7 +97,7 @@ async function persistEntity(args: {
       summary: typeof fm.summary === "string" ? fm.summary : null,
       lifecycle: typeof fm.lifecycle === "string" ? fm.lifecycle : null,
       name: typeof fm.name === "string" ? fm.name : null,
-      type_named_value: computeTypeNamedValue(args.entityType, fm, args.body),
+      type_named_value: computeTypeNamedValue(args.entityType, fm),
       created_at: typeof fm.created_at === "string" ? fm.created_at : null,
       created_by: typeof fm.created_by === "string" ? fm.created_by : null,
       updated_at: typeof fm.updated_at === "string" ? fm.updated_at : null,
@@ -112,42 +112,17 @@ async function persistEntity(args: {
 }
 
 /**
- * Migration-022: derive the type-named column value for a neuron
- * (`intent` for intent rows, `decision` for decision rows, ...). When
- * the caller already supplied the new field name in `fm` we use it
- * verbatim; otherwise we synthesize it from the legacy fields so every
- * write — including the wide variety of capture paths that still hand
- * us `{ summary, body_md }` — populates the new column.
- *
- * Order: type-named field if explicit → `title` (intent) / `name` +
- * `description` (eval) → `summary` → `body_md`. Empty pieces are
- * dropped; duplicates of `summary` are not re-added.
+ * Migration-022/023: derive the type-named column value for a migrated
+ * neuron (`intent` for intent rows, `decision` for decision rows, …).
+ * After PR #80 every captureX path populates `fm[entityType]` directly
+ * with the full prose content; the value is whatever the caller stored
+ * there. Non-migrated entities (primitives, principal) have no
+ * type-named column and the empty string is fine — `upsertEntity` only
+ * binds this column when the table spec declares one.
  */
-function computeTypeNamedValue(
-  entityType: string,
-  fm: Record<string, unknown>,
-  body?: string,
-): string {
+function computeTypeNamedValue(entityType: string, fm: Record<string, unknown>): string {
   const direct = fm[entityType];
-  if (typeof direct === "string" && direct.trim().length > 0) return direct;
-
-  const parts: string[] = [];
-  const summary = typeof fm.summary === "string" ? fm.summary.trim() : "";
-
-  if (entityType === "intent") {
-    const title = typeof fm.title === "string" ? fm.title.trim() : "";
-    if (title && title !== summary) parts.push(title);
-  }
-  if (entityType === "eval") {
-    const name = typeof fm.name === "string" ? fm.name.trim() : "";
-    if (name && name !== summary) parts.push(name);
-    const description = typeof fm.description === "string" ? fm.description.trim() : "";
-    if (description && description !== name && description !== summary) parts.push(description);
-  }
-  if (summary) parts.push(summary);
-  if (typeof body === "string" && body.trim().length > 0) parts.push(body.trim());
-
-  return parts.join("\n\n");
+  return typeof direct === "string" ? direct : "";
 }
 
 /**
@@ -204,13 +179,13 @@ async function reindexAndScheduleAttach(
 }
 
 export interface DecisionDraft {
+  /** Required: the full Decision prose (first line = label). */
+  decision: string;
   /** Required: the question the Decision answers. */
   question: string;
   /** Required: chosen resolution (multi-line ok). */
   chosen: string;
 
-  /** Optional: one-line summary; derived from chosen if absent. */
-  summary?: string;
   /** Optional: rejected alternatives. */
   alternatives?: { name: string; rejected_because: string }[];
   /** Optional: intent ids to link via `intent_ids`. */
@@ -219,8 +194,6 @@ export interface DecisionDraft {
   decided_by_principal_id?: string;
   /** Optional: principal id who created this entry; defaults to decided_by. */
   created_by_principal_id?: string;
-  /** Optional: raw markdown body appended after frontmatter. */
-  body_md?: string;
   /** Optional: reference another entity as origin (e.g. born_from a bugfix). */
   born_from?: string;
   /** Optional: defaults to "active". */
@@ -337,6 +310,20 @@ function trunc(s: string, cap = TRUNC): string {
 }
 
 /**
+ * First non-empty line of a (possibly multi-line) prose string. Used to
+ * derive the short label that identifies a migrated neuron in footer
+ * lines and audit events from the type-named prose field.
+ */
+function firstLine(text: string): string {
+  const lines = text.split(/\n/);
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (trimmed) return trimmed;
+  }
+  return text.trim();
+}
+
+/**
  * Render one footer line per operation.
  *
  * Format: `[🔮 Doco] {icon} {Type} {verb}: {body}`
@@ -378,9 +365,12 @@ export async function renderOperationLines(opts: {
   /** Entity ULID id — used to build the markdown link URL. */
   id: string;
   /**
-   * Readable summary used as the link text on every op line.
+   * Readable label used as the link text on every op line. For migrated
+   * neurons this is the first line of the type-named prose field
+   * (`firstLine(fm[entityType])`); for primitives/principals it is the
+   * legacy `summary`.
    */
-  summary: string;
+  label: string;
   /**
    * Absolute base URL for entity links (e.g., `http://localhost:5173`).
    * Typically `new URL(request.url).origin` from the API route. When
@@ -406,19 +396,19 @@ export async function renderOperationLines(opts: {
     handle = `${opts.ownerSlug}-${opts.docoSlug}`;
   }
   const linkUrl = opts.docoHost ? `${opts.docoHost}/${handle}/${opts.entityType}/${opts.id}` : null;
-  const buildAnchor = (summaryForLine: string): string => {
-    const text = trunc(summaryForLine);
+  const buildAnchor = (labelForLine: string): string => {
+    const text = trunc(labelForLine);
     return linkUrl ? `[${mdLinkText(text)}](${linkUrl})` : text;
   };
   // Mutation lines append `.<field>` after the anchor as dot-notation
-  // (entity.property). If the summary text ends with a period, the
+  // (entity.property). If the label text ends with a period, the
   // link text's trailing `.` plus the separator `.` render as `..` —
   // strip the trailing period so the dot-notation stays clean.
   const shouldStrikeMutationAnchor = opts.ops.some(
     (op) => op.kind === "set" && op.field === "lifecycle" && STRUCK_LIFECYCLES.has(op.value),
   );
   const mutationAnchor = (): string => {
-    const anchor = buildAnchor(opts.summary.replace(/\.+$/, ""));
+    const anchor = buildAnchor(opts.label.replace(/\.+$/, ""));
     return shouldStrikeMutationAnchor ? `~~${anchor}~~` : anchor;
   };
   const lines = opts.ops.map((op) => {
@@ -442,7 +432,7 @@ export async function renderOperationLines(opts: {
       case "renamed":
         return `[🔮 Doco] 🏷️ ${Type} renamed: ${op.from} → ${buildAnchor(op.to)}`;
       case "deleted":
-        return `[🔮 Doco] 🗑️ ${Type} deleted: ${buildAnchor(opts.summary)}`;
+        return `[🔮 Doco] 🗑️ ${Type} deleted: ${buildAnchor(opts.label)}`;
     }
   });
   if (typeof opts.duration_ms === "number" && lines.length > 0) {
@@ -538,6 +528,11 @@ function emitAuditForUpdate(opts: {
 
 /**
  * Emit an entity.create audit event after a successful capture write.
+ *
+ * `label` is the short identifier — for migrated neurons it's the first
+ * line of the type-named prose field, for primitives/principals it's
+ * the legacy `summary`. The audit event records it under the type-named
+ * key for migrated neurons and `summary` for non-migrated ones.
  */
 function emitAuditForCreate(opts: {
   docoDir: string;
@@ -545,9 +540,14 @@ function emitAuditForCreate(opts: {
   actorId: string | null;
   entity_type: string;
   entity_id: string;
-  summary?: string;
+  label?: string;
 }): void {
   try {
+    let after: Record<string, unknown> | undefined;
+    if (opts.label) {
+      const typeNamedColumn = ALL_ENTITY_TABLES[opts.entity_type]?.typeNamedColumn;
+      after = typeNamedColumn ? { [typeNamedColumn]: opts.label } : { summary: opts.label };
+    }
     appendAuditEvent({
       docoDir: opts.docoDir,
       docoId: opts.docoId,
@@ -555,26 +555,11 @@ function emitAuditForCreate(opts: {
       entity_type: opts.entity_type,
       entity_id: opts.entity_id,
       op: "entity.create",
-      after: opts.summary ? { summary: opts.summary } : undefined,
+      after,
     });
   } catch (err) {
     console.error("audit-log: failed to append create event", err);
   }
-}
-
-/**
- * Distill a one-line summary from a (possibly multi-paragraph) body.
- */
-function distillSummary(body: string, cap = 180): string {
-  const firstLine = body.trim().split(/\n/)[0]?.trim() ?? "";
-  if (!firstLine) return "";
-  const sentenceMatch = firstLine.match(/^.{1,300}?[.!?](?=\s|$)/);
-  const firstSentence = sentenceMatch ? sentenceMatch[0].trim() : firstLine;
-  if (firstSentence.length <= cap) return firstSentence;
-  const cut = firstSentence.slice(0, cap);
-  const lastSpace = cut.lastIndexOf(" ");
-  const snapped = lastSpace > cap / 2 ? cut.slice(0, lastSpace) : cut;
-  return `${snapped.replace(/[\s.,;:!?-]+$/, "")}…`;
 }
 
 /**
@@ -705,6 +690,7 @@ export async function captureDecision(
   docoHost?: string,
 ): Promise<CaptureResult | CaptureError> {
   const startedAt = performance.now();
+  if (!draft.decision?.trim()) return { error: "decision is required." };
   if (!draft.question?.trim()) return { error: "question is required." };
   if (!draft.chosen?.trim()) return { error: "chosen is required." };
 
@@ -720,7 +706,8 @@ export async function captureDecision(
 
   const id = `decision_${generateUlid()}`;
 
-  const summary = draft.summary?.trim() || distillSummary(draft.chosen) || `Decision: ${id}`;
+  const decisionText = draft.decision.trim();
+  const label = firstLine(decisionText);
 
   const now = new Date().toISOString();
   const createdById = draft.created_by_principal_id ?? decidedById ?? null;
@@ -731,7 +718,7 @@ export async function captureDecision(
     id,
     doco_id: docoId,
     neuron_type: "decision",
-    summary,
+    decision: decisionText,
     ...(draft.born_from ? { born_from: draft.born_from } : {}),
     ...(intentIds.length > 0 ? { intent_ids: intentIds } : {}),
     question: draft.question.trim(),
@@ -760,7 +747,6 @@ export async function captureDecision(
     id,
     docoId,
     fm,
-    body: draft.body_md?.trim() ?? "",
   });
   emitAuditForCreate({
     docoDir,
@@ -768,7 +754,7 @@ export async function captureDecision(
     actorId: createdById ?? decidedById ?? null,
     entity_type: "decision",
     entity_id: id,
-    summary,
+    label,
   });
   await reindexAndScheduleAttach(docoDir, docoId, id);
   const duration_ms = Math.round(performance.now() - startedAt);
@@ -778,9 +764,9 @@ export async function captureDecision(
     docoSlug,
     entityType: "decision",
     id,
-    summary,
+    label,
     docoHost,
-    ops: [{ kind: "added", summary }],
+    ops: [{ kind: "added", summary: label }],
     duration_ms,
   });
   footer_lines.push(...renderAuthoringWarnings(pred.warnings));
@@ -795,7 +781,7 @@ export async function captureDecision(
 }
 
 export interface DecisionPatch {
-  summary?: string;
+  decision?: string;
   question?: string;
   chosen?: string;
   alternatives?: { name: string; rejected_because: string }[];
@@ -803,8 +789,6 @@ export interface DecisionPatch {
   intent_ids_add?: string[];
   intent_ids_remove?: string[];
   decided_by_principal_id?: string;
-  body_md?: string;
-  body_md_append?: string;
   born_from?: string | null;
   superseded_by?: string | null;
   lifecycle?: string;
@@ -830,7 +814,6 @@ export async function updateDecision(
   const existing = await readEntityFromPostgres("decision", decisionId);
   if (!existing) return { error: `Decision not found: ${decisionId}` };
   const fm = existing.fm;
-  const existingBody = existing.body;
 
   const gate = validatePatch(
     "decision",
@@ -870,7 +853,7 @@ export async function updateDecision(
     }
   };
 
-  setScalar("summary", patch.summary?.trim());
+  setScalar("decision", patch.decision?.trim());
   setScalar("question", patch.question?.trim());
   setScalar("chosen", patch.chosen?.trim());
   if (patch.alternatives !== undefined) {
@@ -948,23 +931,6 @@ export async function updateDecision(
     }
   }
 
-  let finalBody: string;
-  if (patch.body_md !== undefined) {
-    finalBody = `\n${patch.body_md.trim()}\n`;
-    if (patch.body_md.trim() !== existingBody.trim()) {
-      changed.push("body");
-      ops.push({ kind: "replaced_body" });
-    }
-  } else if (patch.body_md_append !== undefined) {
-    finalBody = existingBody
-      ? `\n${existingBody.replace(/\n+$/, "")}\n\n${patch.body_md_append.trim()}\n`
-      : `\n${patch.body_md_append.trim()}\n`;
-    changed.push("body");
-    ops.push({ kind: "appended_body", preview: patch.body_md_append });
-  } else {
-    finalBody = `\n${existingBody}`;
-  }
-
   if (changed.length === 0) {
     return { error: "No fields changed." };
   }
@@ -983,7 +949,6 @@ export async function updateDecision(
     id: decisionId,
     docoId,
     fm,
-    body: finalBody.trim(),
   });
   emitAuditForUpdate({
     docoDir,
@@ -997,7 +962,7 @@ export async function updateDecision(
     patchKeys: Object.keys(patch),
   });
   await reindexAndScheduleAttach(docoDir, docoId, decisionId);
-  const summary = String(fm.summary ?? decisionId);
+  const label = firstLine(typeof fm.decision === "string" ? fm.decision : decisionId);
   const duration_ms = Math.round(performance.now() - startedAt);
   const footer_lines = await renderOperationLines({
     docoId,
@@ -1005,7 +970,7 @@ export async function updateDecision(
     docoSlug,
     entityType: "decision",
     id: decisionId,
-    summary,
+    label,
     docoHost,
     ops,
     duration_ms,
@@ -1036,15 +1001,12 @@ export type NodeTypeName =
   | "reference";
 
 export interface EntityPatch {
-  summary?: string;
   lifecycle?: string;
   deprecated?: boolean | null;
   outcome?: "succeeded" | "failed" | null;
   intent_ids?: string[];
   intent_ids_add?: string[];
   intent_ids_remove?: string[];
-  body_md?: string;
-  body_md_append?: string;
   born_from?: string | null;
   superseded_by?: string | null;
   [k: string]: unknown;
@@ -1120,9 +1082,15 @@ export async function updateEntity(opts: {
   const fm = existing.fm;
   const existingBody = existing.body;
   const normalizedPatch = normalizePrincipalIdPatchFields(entityType, patch);
+  // Migration-022/023: 9 neuron types collapsed summary+body_md+extras
+  // into a single type-named prose column. Primitives + principal still
+  // ride the legacy summary+body_md shape — distinguished by whether
+  // ALL_ENTITY_TABLES exposes a `typeNamedColumn`.
+  const typeNamedColumn = ALL_ENTITY_TABLES[entityType]?.typeNamedColumn;
   // Types with a markdown body get body_md; `reference` is pure YAML
-  // and ignores body operations.
-  const isMd = entityType !== "reference";
+  // and ignores body operations. For migrated neurons body_md is gone
+  // entirely; only primitives/principal still carry it.
+  const isMd = !typeNamedColumn && entityType !== "reference";
 
   const gate = validatePatch(
     entityType,
@@ -1159,10 +1127,18 @@ export async function updateEntity(opts: {
     }
   };
 
-  setScalar(
-    "summary",
-    typeof normalizedPatch.summary === "string" ? normalizedPatch.summary.trim() : undefined,
-  );
+  if (typeNamedColumn) {
+    // Migrated neuron: the type-named prose field replaces summary +
+    // body_md (+ title on intent, name/description on eval).
+    const v = normalizedPatch[typeNamedColumn];
+    setScalar(typeNamedColumn, typeof v === "string" ? v.trim() : undefined);
+  } else {
+    // Primitive / principal still use summary.
+    setScalar(
+      "summary",
+      typeof normalizedPatch.summary === "string" ? normalizedPatch.summary.trim() : undefined,
+    );
+  }
   if (normalizedPatch.lifecycle !== undefined) {
     const lifecycle = normalizeLifecycle(normalizedPatch.lifecycle, "active");
     if (typeof lifecycle !== "string") return lifecycle;
@@ -1204,7 +1180,7 @@ export async function updateEntity(opts: {
   }
 
   for (const k of allowedFields) {
-    if (k === "summary") continue;
+    if (k === "summary" || k === typeNamedColumn) continue;
     if (k in normalizedPatch && normalizedPatch[k] !== undefined) {
       const v = normalizedPatch[k];
       if (v === null || v === "") {
@@ -1252,9 +1228,10 @@ export async function updateEntity(opts: {
     return { error: "No fields changed." };
   }
 
-  // Compute the new body for Postgres storage. `reference` is pure
-  // YAML and carries no body.
-  let nextBody = "";
+  // Compute the new body for Postgres storage. Only primitives/principal
+  // still have a separate body_md column; the migrated neurons fold
+  // prose into the type-named column above.
+  let nextBody: string | undefined;
   if (isMd) {
     if (normalizedPatch.body_md !== undefined) {
       nextBody = String(normalizedPatch.body_md).trim();
@@ -1295,7 +1272,9 @@ export async function updateEntity(opts: {
   });
   await reindexAndScheduleAttach(docoDir, docoId, id);
 
-  const summary = String(fm.summary ?? fm.name ?? id);
+  const label = typeNamedColumn
+    ? firstLine(typeof fm[typeNamedColumn] === "string" ? (fm[typeNamedColumn] as string) : id)
+    : String(fm.summary ?? fm.name ?? id);
   const duration_ms = Math.round(performance.now() - startedAt);
   const footer_lines = await renderOperationLines({
     docoId,
@@ -1303,7 +1282,7 @@ export async function updateEntity(opts: {
     docoSlug,
     entityType,
     id,
-    summary,
+    label,
     docoHost,
     ops,
     duration_ms,
@@ -1321,13 +1300,9 @@ export async function updateEntity(opts: {
 }
 
 export interface IntentDraft {
-  /** Required: one-line "what someone wants" summary. */
-  summary: string;
+  /** Required: the full Intent prose (first line = label). */
+  intent: string;
 
-  /** Optional: short title (defaults to summary). */
-  title?: string;
-  /** Optional: markdown body — context + non-goals + success criteria. */
-  body_md?: string;
   /** Optional: principal id who wants this. */
   wanted_by_principal_id?: string;
   /**
@@ -1353,7 +1328,7 @@ export async function captureIntent(
   docoHost?: string,
 ): Promise<CaptureResult | CaptureError> {
   const startedAt = performance.now();
-  if (!draft.summary?.trim()) return { error: "summary is required." };
+  if (!draft.intent?.trim()) return { error: "intent is required." };
   const wantedBy = requiredPrincipalId(
     draft.wanted_by_principal_id,
     "wanted_by_principal_id",
@@ -1373,8 +1348,8 @@ export async function captureIntent(
   const stakeholderIds = stakeholderIdsResult;
 
   const id = `intent_${generateUlid()}`;
-  const summary = draft.summary.trim();
-  const title = draft.title?.trim() || summary;
+  const intentText = draft.intent.trim();
+  const label = firstLine(intentText);
 
   const now = new Date().toISOString();
   const status = lifecycleAttrs(draft, "active");
@@ -1383,8 +1358,7 @@ export async function captureIntent(
     id,
     doco_id: docoId,
     neuron_type: "intent",
-    summary,
-    title,
+    intent: intentText,
     wanted_by: wantedById,
     ...(actorIds.length > 0 ? { actors: actorIds } : {}),
     ...(stakeholderIds.length > 0 ? { stakeholders: stakeholderIds } : {}),
@@ -1407,7 +1381,6 @@ export async function captureIntent(
     id,
     docoId,
     fm,
-    body: draft.body_md?.trim() ?? "",
   });
   emitAuditForCreate({
     docoDir,
@@ -1415,7 +1388,7 @@ export async function captureIntent(
     actorId: wantedById,
     entity_type: "intent",
     entity_id: id,
-    summary,
+    label,
   });
   await reindexAndScheduleAttach(docoDir, docoId, id);
   const duration_ms = Math.round(performance.now() - startedAt);
@@ -1425,9 +1398,9 @@ export async function captureIntent(
     docoSlug,
     entityType: "intent",
     id,
-    summary,
+    label,
     docoHost,
-    ops: [{ kind: "added", summary }],
+    ops: [{ kind: "added", summary: label }],
     duration_ms,
   });
   footer_lines.push(...renderAuthoringWarnings(pred.warnings));
@@ -1442,10 +1415,8 @@ export async function captureIntent(
 }
 
 export interface IdeaDraft {
-  /** Required: one-line idea summary. */
-  summary: string;
-  /** Optional: markdown body with context, tradeoffs, or sketch notes. */
-  body_md?: string;
+  /** Required: the full Idea prose (first line = label). */
+  idea: string;
   /** Optional: authenticated caller id; routes fill this automatically. */
   created_by_principal_id?: string;
   /** Optional: entity this idea became once promoted. */
@@ -1466,14 +1437,15 @@ export async function captureIdea(
   docoHost?: string,
 ): Promise<CaptureResult | CaptureError> {
   const startedAt = performance.now();
-  if (!draft.summary?.trim()) return { error: "summary is required." };
+  if (!draft.idea?.trim()) return { error: "idea is required." };
   const createdById = draft.created_by_principal_id;
   if (!createdById) {
     return { error: "Authentication is required to capture an idea." };
   }
 
   const id = `idea_${generateUlid()}`;
-  const summary = draft.summary.trim();
+  const ideaText = draft.idea.trim();
+  const label = firstLine(ideaText);
   const now = new Date().toISOString();
   const status = lifecycleAttrs(draft, "drafting");
   if ("error" in status) return status;
@@ -1481,7 +1453,7 @@ export async function captureIdea(
     id,
     doco_id: docoId,
     neuron_type: "idea",
-    summary,
+    idea: ideaText,
     proposer_id: createdById,
     ...(draft.promoted_to ? { promoted_to: draft.promoted_to } : {}),
     ...(draft.rejection_reason ? { rejection_reason: draft.rejection_reason } : {}),
@@ -1504,7 +1476,6 @@ export async function captureIdea(
     id,
     docoId,
     fm,
-    body: draft.body_md?.trim() ?? "",
   });
   emitAuditForCreate({
     docoDir,
@@ -1512,7 +1483,7 @@ export async function captureIdea(
     actorId: createdById,
     entity_type: "idea",
     entity_id: id,
-    summary,
+    label,
   });
   await reindexAndScheduleAttach(docoDir, docoId, id);
   const duration_ms = Math.round(performance.now() - startedAt);
@@ -1522,9 +1493,9 @@ export async function captureIdea(
     docoSlug,
     entityType: "idea",
     id,
-    summary,
+    label,
     docoHost,
-    ops: [{ kind: "added", summary }],
+    ops: [{ kind: "added", summary: label }],
     duration_ms,
   });
   footer_lines.push(...renderAuthoringWarnings(pred.warnings));
@@ -1539,18 +1510,12 @@ export async function captureIdea(
 }
 
 export interface EvalDraft {
-  /** Required: short readable name. */
-  name: string;
+  /** Required: the full Eval prose (first line = label). */
+  eval: string;
   /** Required: criterion shape. */
   criterion: { kind: "exact" | "shape" | "llm-judge"; spec?: string };
-  /** Optional: prose body. */
-  body_md?: string;
-  /** Optional: one-line summary; derived from description / name if absent. */
-  summary?: string;
   /** Optional: what flavor of test this is. */
   kind?: "unit" | "integration" | "eval" | "process" | "doc-consistency";
-  /** Optional: free-form description. */
-  description?: string;
   /** Optional: status the author expects the runner to report. Defaults to "pass". */
   expected_status?: "pass" | "fail";
   /** Optional: free-form reproduction steps that produce `actual`. */
@@ -1580,7 +1545,7 @@ export async function captureEval(
   docoHost?: string,
 ): Promise<CaptureResult | CaptureError> {
   const startedAt = performance.now();
-  if (!draft.name?.trim()) return { error: "name is required." };
+  if (!draft.eval?.trim()) return { error: "eval is required." };
   if (!draft.criterion?.kind) return { error: "criterion.kind is required." };
   if (!["exact", "shape", "llm-judge"].includes(draft.criterion.kind)) {
     return { error: `Unknown criterion.kind: ${draft.criterion.kind}` };
@@ -1605,23 +1570,19 @@ export async function captureEval(
   const intentIds: string[] = Array.isArray(draft.intent_ids) ? draft.intent_ids : [];
 
   const id = `eval_${generateUlid()}`;
+  const evalText = draft.eval.trim();
+  const label = firstLine(evalText);
 
   const now = new Date().toISOString();
-  const summary =
-    draft.summary?.trim() ||
-    (typeof draft.description === "string" && draft.description.trim()) ||
-    `Eval: ${draft.name.trim()}`;
   const status = lifecycleAttrs(draft, "active");
   if ("error" in status) return status;
   const fm: Record<string, unknown> = {
     id,
     doco_id: docoId,
     neuron_type: "eval",
-    summary,
-    name: draft.name.trim(),
+    eval: evalText,
     ...(draft.kind ? { kind: draft.kind } : {}),
     ...(intentIds.length > 0 ? { intent_ids: intentIds } : {}),
-    ...(draft.description ? { description: draft.description } : {}),
     ...(draft.expected_status ? { expected_status: draft.expected_status } : {}),
     ...(draft.how_to_run ? { how_to_run: draft.how_to_run } : {}),
     ...(draft.input !== undefined ? { input: draft.input } : {}),
@@ -1648,7 +1609,6 @@ export async function captureEval(
     id,
     docoId,
     fm,
-    body: draft.body_md?.trim() ?? "",
   });
   emitAuditForCreate({
     docoDir,
@@ -1656,7 +1616,7 @@ export async function captureEval(
     actorId: authoredById,
     entity_type: "eval",
     entity_id: id,
-    summary,
+    label,
   });
   await reindexAndScheduleAttach(docoDir, docoId, id);
 
@@ -1667,9 +1627,9 @@ export async function captureEval(
     docoSlug,
     entityType: "eval",
     id,
-    summary,
+    label,
     docoHost,
-    ops: [{ kind: "added", summary }],
+    ops: [{ kind: "added", summary: label }],
     duration_ms,
   });
   footer_lines.push(...renderAuthoringWarnings(pred.warnings));
@@ -1686,8 +1646,8 @@ export async function captureEval(
 // ─── Action ───────────────────────────────────────────────────────────────
 
 export interface ActionDraft {
-  /** Required: one-line summary of what was done. */
-  summary: string;
+  /** Required: the full Action prose (first line = label). */
+  action: string;
   /** Required: short verb naming the action (`refactor`, `migrate`, …). */
   verb: string;
 
@@ -1705,8 +1665,6 @@ export interface ActionDraft {
   actor_principal_id?: string;
   /** Optional: principal id who created this entry; defaults to performed_by. */
   created_by_principal_id?: string;
-  /** Optional: raw markdown body appended after frontmatter. */
-  body_md?: string;
   /** Optional: defaults to "retired" with `outcome: "succeeded"`. */
   lifecycle?: string;
   deprecated?: boolean;
@@ -1722,7 +1680,7 @@ export async function captureAction(
   docoHost?: string,
 ): Promise<CaptureResult | CaptureError> {
   const startedAt = performance.now();
-  if (!draft.summary?.trim()) return { error: "summary is required." };
+  if (!draft.action?.trim()) return { error: "action is required." };
   if (!draft.verb?.trim()) return { error: "verb is required." };
   const actor = requiredPrincipalId(
     draft.actor_principal_id,
@@ -1737,7 +1695,8 @@ export async function captureAction(
   const follows: string[] = Array.isArray(draft.follows) ? draft.follows : [];
 
   const id = `action_${generateUlid()}`;
-  const summary = draft.summary.trim();
+  const actionText = draft.action.trim();
+  const label = firstLine(actionText);
   const now = new Date().toISOString();
   const createdById = draft.created_by_principal_id ?? actorId;
   const status = lifecycleAttrs(draft, "retired", "succeeded");
@@ -1747,7 +1706,7 @@ export async function captureAction(
     id,
     doco_id: docoId,
     neuron_type: "action",
-    summary,
+    action: actionText,
     actor_id: actorId,
     verb: draft.verb.trim(),
     ...(intentIds.length > 0 ? { intent_ids: intentIds } : {}),
@@ -1775,7 +1734,6 @@ export async function captureAction(
     id,
     docoId,
     fm,
-    body: draft.body_md?.trim() ?? "",
   });
   emitAuditForCreate({
     docoDir,
@@ -1783,7 +1741,7 @@ export async function captureAction(
     actorId: createdById ?? actorId ?? null,
     entity_type: "action",
     entity_id: id,
-    summary,
+    label,
   });
   await reindexAndScheduleAttach(docoDir, docoId, id);
 
@@ -1794,9 +1752,9 @@ export async function captureAction(
     docoSlug,
     entityType: "action",
     id,
-    summary,
+    label,
     docoHost,
-    ops: [{ kind: "added", summary }],
+    ops: [{ kind: "added", summary: label }],
     duration_ms,
   });
   footer_lines.push(...renderAuthoringWarnings(pred.warnings));
@@ -1817,7 +1775,8 @@ export async function captureAction(
 // `outputs` (what concrete results came out).
 
 export interface LogDraft {
-  summary: string;
+  /** Required: the full Log prose (first line = label). */
+  log: string;
   /** Past-tense verb naming what happened ("pushed", "deployed", "verified"). */
   verb: string;
   /** When the event occurred. ISO 8601 UTC. */
@@ -1834,7 +1793,6 @@ export interface LogDraft {
   inputs?: unknown;
   actor_principal_id?: string;
   created_by_principal_id?: string;
-  body_md?: string;
   /** Optional override. Logs default to "retired" with `outcome: "succeeded"`. */
   lifecycle?: string;
   deprecated?: boolean;
@@ -1850,7 +1808,7 @@ export async function captureLog(
   docoHost?: string,
 ): Promise<CaptureResult | CaptureError> {
   const startedAt = performance.now();
-  if (!draft.summary?.trim()) return { error: "summary is required." };
+  if (!draft.log?.trim()) return { error: "log is required." };
   if (!draft.verb?.trim()) return { error: "verb is required." };
   if (!draft.happened_at?.trim()) {
     return { error: "happened_at is required (ISO 8601 UTC) — Logs record a moment in time." };
@@ -1878,7 +1836,8 @@ export async function captureLog(
   const follows: string[] = Array.isArray(draft.follows) ? draft.follows : [];
 
   const id = `log_${generateUlid()}`;
-  const summary = draft.summary.trim();
+  const logText = draft.log.trim();
+  const label = firstLine(logText);
   const now = new Date().toISOString();
   const createdById = draft.created_by_principal_id ?? actorId;
   const status = lifecycleAttrs(draft, "retired", "succeeded");
@@ -1888,7 +1847,7 @@ export async function captureLog(
     id,
     doco_id: docoId,
     neuron_type: "log",
-    summary,
+    log: logText,
     actor_id: actorId,
     verb: draft.verb.trim(),
     happened_at: draft.happened_at,
@@ -1917,7 +1876,6 @@ export async function captureLog(
     id,
     docoId,
     fm,
-    body: draft.body_md?.trim() ?? "",
   });
   emitAuditForCreate({
     docoDir,
@@ -1925,7 +1883,7 @@ export async function captureLog(
     actorId: createdById ?? actorId ?? null,
     entity_type: "log",
     entity_id: id,
-    summary,
+    label,
   });
   await reindexAndScheduleAttach(docoDir, docoId, id);
 
@@ -1936,9 +1894,9 @@ export async function captureLog(
     docoSlug,
     entityType: "log",
     id,
-    summary,
+    label,
     docoHost,
-    ops: [{ kind: "added", summary }],
+    ops: [{ kind: "added", summary: label }],
     duration_ms,
   });
   footer_lines.push(...renderAuthoringWarnings(pred.warnings));
@@ -1955,8 +1913,8 @@ export async function captureLog(
 // ─── Rule ─────────────────────────────────────────────────────────────────
 
 export interface RuleDraft {
-  /** Required: one-line summary of the policy. */
-  summary: string;
+  /** Required: the full Rule prose (first line = label). */
+  rule: string;
   /** Required: machine-checkable / prose predicate the Rule asserts. */
   predicate: string;
 
@@ -1978,8 +1936,6 @@ export interface RuleDraft {
   authored_by_principal_id?: string;
   /** Optional: principal id who created this entry; defaults to authored_by. */
   created_by_principal_id?: string;
-  /** Optional: raw markdown body appended after frontmatter. */
-  body_md?: string;
   /** Optional: defaults to "active". */
   lifecycle?: string;
   deprecated?: boolean;
@@ -1995,7 +1951,7 @@ export async function captureRule(
   docoHost?: string,
 ): Promise<CaptureResult | CaptureError> {
   const startedAt = performance.now();
-  if (!draft.summary?.trim()) return { error: "summary is required." };
+  if (!draft.rule?.trim()) return { error: "rule is required." };
   if (!draft.predicate?.trim()) return { error: "predicate is required." };
   const author = requiredPrincipalId(
     draft.authored_by_principal_id,
@@ -2019,7 +1975,8 @@ export async function captureRule(
   if (draft.severity === "hard") severity = "blocker";
 
   const id = `rule_${generateUlid()}`;
-  const summary = draft.summary.trim();
+  const ruleText = draft.rule.trim();
+  const label = firstLine(ruleText);
   const now = new Date().toISOString();
   const createdById = draft.created_by_principal_id ?? authorId;
   const status = lifecycleAttrs(draft, "active");
@@ -2033,7 +1990,7 @@ export async function captureRule(
     id,
     doco_id: docoId,
     neuron_type: "rule",
-    summary,
+    rule: ruleText,
     ...(draft.born_from ? { born_from: draft.born_from } : {}),
     ...(intentIds.length > 0 ? { intent_ids: intentIds } : {}),
     modality: "must",
@@ -2063,7 +2020,6 @@ export async function captureRule(
     id,
     docoId,
     fm,
-    body: draft.body_md?.trim() ?? "",
   });
   emitAuditForCreate({
     docoDir,
@@ -2071,7 +2027,7 @@ export async function captureRule(
     actorId: createdById ?? authorId ?? null,
     entity_type: "rule",
     entity_id: id,
-    summary,
+    label,
   });
   await reindexAndScheduleAttach(docoDir, docoId, id);
 
@@ -2082,9 +2038,9 @@ export async function captureRule(
     docoSlug,
     entityType: "rule",
     id,
-    summary,
+    label,
     docoHost,
-    ops: [{ kind: "added", summary }],
+    ops: [{ kind: "added", summary: label }],
     duration_ms,
   });
   footer_lines.push(...renderAuthoringWarnings(pred.warnings));
@@ -2337,7 +2293,7 @@ export async function captureGuidancePrimitive(
     actorId: payload.createdById,
     entity_type: payload.entityType,
     entity_id: payload.id,
-    summary: payload.summary,
+    label: payload.summary,
   });
   await reindexAndScheduleAttach(docoDir, docoId, payload.id);
 
@@ -2348,7 +2304,7 @@ export async function captureGuidancePrimitive(
     docoSlug,
     entityType: payload.entityType,
     id: payload.id,
-    summary: payload.summary,
+    label: payload.summary,
     docoHost,
     ops: [{ kind: "added", summary: payload.summary }],
     duration_ms,
@@ -2399,7 +2355,7 @@ export async function captureNeuronAuthoringPrimitive(
     actorId: payload.createdById,
     entity_type: payload.entityType,
     entity_id: payload.id,
-    summary: payload.summary,
+    label: payload.summary,
   });
   await reindexAndScheduleAttach(docoDir, docoId, payload.id);
 
@@ -2410,7 +2366,7 @@ export async function captureNeuronAuthoringPrimitive(
     docoSlug,
     entityType: payload.entityType,
     id: payload.id,
-    summary: payload.summary,
+    label: payload.summary,
     docoHost,
     ops: [{ kind: "added", summary: payload.summary }],
     duration_ms,
@@ -2552,10 +2508,10 @@ export async function loadPrimitiveForEdit(opts: {
 const REF_TYPES = new Set(["file", "url", "ticket", "commit", "document", "other"]);
 
 export interface ReferenceDraft {
+  /** Required: the full Reference prose (first line = label). */
+  reference: string;
   ref_type: string;
   locator: string;
-  summary?: string;
-  body_md?: string;
   content_hash?: string | null;
   intent_ids?: string[];
   created_by_principal_id?: string;
@@ -2573,6 +2529,7 @@ export async function captureReference(
   docoHost?: string,
 ): Promise<CaptureResult | CaptureError> {
   const startedAt = performance.now();
+  if (!draft.reference?.trim()) return { error: "reference is required." };
   if (!draft.ref_type || !REF_TYPES.has(draft.ref_type)) {
     return { error: `ref_type must be one of: ${[...REF_TYPES].join(", ")}.` };
   }
@@ -2583,7 +2540,8 @@ export async function captureReference(
 
   const id = `reference_${generateUlid()}`;
   const locator = draft.locator.trim();
-  const summary = draft.summary?.trim() || `${draft.ref_type}: ${locator}`;
+  const referenceText = draft.reference.trim();
+  const label = firstLine(referenceText);
   const now = new Date().toISOString();
   const status = lifecycleAttrs(draft, "active");
   if ("error" in status) return status;
@@ -2592,7 +2550,7 @@ export async function captureReference(
     id,
     doco_id: docoId,
     neuron_type: "reference",
-    summary,
+    reference: referenceText,
     ref_type: draft.ref_type,
     locator,
     ...(draft.content_hash ? { content_hash: draft.content_hash } : {}),
@@ -2616,7 +2574,6 @@ export async function captureReference(
     id,
     docoId,
     fm,
-    body: draft.body_md?.trim() ?? "",
   });
   emitAuditForCreate({
     docoDir,
@@ -2624,7 +2581,7 @@ export async function captureReference(
     actorId: createdById ?? null,
     entity_type: "reference",
     entity_id: id,
-    summary,
+    label,
   });
   await reindexAndScheduleAttach(docoDir, docoId, id);
 
@@ -2635,9 +2592,9 @@ export async function captureReference(
     docoSlug,
     entityType: "reference",
     id,
-    summary,
+    label,
     docoHost,
-    ops: [{ kind: "added", summary }],
+    ops: [{ kind: "added", summary: label }],
     duration_ms,
   });
   footer_lines.push(...renderAuthoringWarnings(pred.warnings));
@@ -2659,8 +2616,8 @@ export async function captureReference(
 // shape is state-machines-specific.
 
 export interface StateDraft {
-  /** Required: one-line summary (the State's display name, e.g. "paid", "cart"). */
-  summary: string;
+  /** Required: the full State prose (first line = label / display name). */
+  state: string;
   /** Required: initial / intermediate / terminal. */
   kind: "initial" | "intermediate" | "terminal";
 
@@ -2670,8 +2627,6 @@ export interface StateDraft {
   follows?: string[];
   /** Optional: principal id who created this entry. */
   created_by_principal_id?: string;
-  /** Optional: raw markdown body. */
-  body_md?: string;
   /** Optional: explicit lifecycle override. Defaults to "active". */
   lifecycle?: string;
   deprecated?: boolean;
@@ -2687,7 +2642,7 @@ export async function captureState(
   docoHost?: string,
 ): Promise<CaptureResult | CaptureError> {
   const startedAt = performance.now();
-  if (!draft.summary?.trim()) return { error: "summary is required." };
+  if (!draft.state?.trim()) return { error: "state is required." };
   if (!draft.kind) return { error: "kind is required (initial | intermediate | terminal)." };
   if (draft.kind !== "initial" && draft.kind !== "intermediate" && draft.kind !== "terminal") {
     return {
@@ -2697,7 +2652,8 @@ export async function captureState(
   const createdById = draft.created_by_principal_id ?? null;
 
   const id = `state_${generateUlid()}`;
-  const summary = draft.summary.trim();
+  const stateText = draft.state.trim();
+  const label = firstLine(stateText);
   const now = new Date().toISOString();
 
   const status = lifecycleAttrs(draft, "active");
@@ -2712,7 +2668,7 @@ export async function captureState(
     id,
     doco_id: docoId,
     neuron_type: "state",
-    summary,
+    state: stateText,
     kind: draft.kind,
     ...(invariants.length > 0 ? { invariants } : {}),
     ...(follows.length > 0 ? { follows } : {}),
@@ -2735,7 +2691,6 @@ export async function captureState(
     id,
     docoId,
     fm,
-    body: draft.body_md?.trim() ?? "",
   });
   emitAuditForCreate({
     docoDir,
@@ -2743,7 +2698,7 @@ export async function captureState(
     actorId: createdById ?? null,
     entity_type: "state",
     entity_id: id,
-    summary,
+    label,
   });
   await reindexAndScheduleAttach(docoDir, docoId, id);
 
@@ -2754,9 +2709,9 @@ export async function captureState(
     docoSlug,
     entityType: "state",
     id,
-    summary,
+    label,
     docoHost,
-    ops: [{ kind: "added", summary }],
+    ops: [{ kind: "added", summary: label }],
     duration_ms,
   });
   footer_lines.push(...renderAuthoringWarnings(pred.warnings));
