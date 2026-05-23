@@ -47,7 +47,7 @@ async function seed(opts: SeedOpts = {}): Promise<void> {
 
     // Insert a Principal (Alice) scoped to the test Doco.
     await c.query(
-      `INSERT INTO principals (id, doco_id, username, data, created_at, updated_at)
+      `INSERT INTO principals (id, doco_id, name, data, created_at, updated_at)
          VALUES ($1, $2, 'alice', '{}'::jsonb, now(), now())`,
       [PRINCIPAL_ALICE, DOCO_ID],
     );

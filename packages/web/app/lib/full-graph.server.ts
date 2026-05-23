@@ -85,10 +85,10 @@ function overviewRowsSql(includeLabel = false): string {
   // column and drop retired role-personas.
   const principalLeg = `SELECT id,
                                 'principal'::text AS entity_type,
-                                username AS name,
+                                name,
                                 COALESCE(lifecycle, 'active') AS lifecycle,
                                 created_at::text AS created_at
-                                ${includeLabel ? ", COALESCE(summary, username) AS label" : ""}
+                                ${includeLabel ? ", COALESCE(summary, name) AS label" : ""}
                            FROM principals
                           WHERE doco_id = $1
                             AND COALESCE(lifecycle, 'active') = 'active'`;
@@ -214,7 +214,7 @@ function overviewRowsSqlMulti(): string {
   );
   const principalLeg = `SELECT id,
                               'principal'::text AS entity_type,
-                              username AS name,
+                              name,
                               COALESCE(lifecycle, 'active') AS lifecycle,
                               created_at::text AS created_at,
                               doco_id AS doco_id

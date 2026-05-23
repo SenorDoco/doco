@@ -147,7 +147,7 @@ export async function canReadDocoForRequest(
 async function isHostBootstrapOwned(ownerId: string): Promise<boolean> {
   if (!ownerId.startsWith("principal_")) return false;
   const p = await getPrincipalById(ownerId);
-  return p?.username === "host-bootstrap";
+  return p?.name === "host-bootstrap";
 }
 
 /** Read the `owner_id` field of a Principal record. */

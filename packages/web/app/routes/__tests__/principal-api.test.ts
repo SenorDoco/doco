@@ -50,7 +50,7 @@ describe("principal API", () => {
   it("allows an author to create an arbitrary role principal", async () => {
     const response = await action({
       request: principalRequest({
-        username: "Visitor",
+        name: "Visitor",
         display_name: "Visitor",
         description: "Someone browsing the public site.",
       }),
@@ -77,7 +77,7 @@ describe("principal API", () => {
         data: expect.objectContaining({
           doco_id: "doco_acme",
           neuron_type: "principal",
-          username: "visitor",
+          name: "visitor",
           display_name: "Visitor",
           description: "Someone browsing the public site.",
           created_by: "collaborator_author",
@@ -86,12 +86,12 @@ describe("principal API", () => {
       }),
     );
     expect(mocks.upsertEntity.mock.calls[0]?.[0].data).not.toHaveProperty("role_principal");
-    await expect(response.json()).resolves.toMatchObject({ ok: true, username: "visitor" });
+    await expect(response.json()).resolves.toMatchObject({ ok: true, name: "visitor" });
   });
 
   it("keeps the built-in role-principal defaults", async () => {
     const response = await action({
-      request: principalRequest({ username: "human" }),
+      request: principalRequest({ name: "human" }),
       params: { docoHandle: "acme" } as never,
     });
 
@@ -100,7 +100,7 @@ describe("principal API", () => {
       expect.objectContaining({
         summary: "Role principal for the person-only subset of users.",
         data: expect.objectContaining({
-          username: "human",
+          name: "human",
           role_principal: true,
           type: "person",
         }),
@@ -112,7 +112,7 @@ describe("principal API", () => {
     mocks.getDocoLevelRole.mockResolvedValue("reader");
 
     const response = await action({
-      request: principalRequest({ username: "visitor" }),
+      request: principalRequest({ name: "visitor" }),
       params: { docoHandle: "acme" } as never,
     });
 
