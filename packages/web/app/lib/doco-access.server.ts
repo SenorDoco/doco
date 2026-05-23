@@ -19,7 +19,6 @@ import { docoPath } from "./db.server";
 import { type DocoMetadata, readDocoMetadata } from "./doco-metadata.server";
 import { type ValidAccessToken, validateAccessToken } from "./oauth-server.server";
 import { readCreatedDocoIdSearchParam } from "./post-create-doco-route";
-import { resolvePrincipalNameAlias } from "./principal-aliases.server";
 import { type CurrentPrincipal, extractBearer, getCurrentPrincipalAsync } from "./session.server";
 
 /**
@@ -337,10 +336,10 @@ export function readDocoRouteParam(params: DocoRouteParams): string | null {
  * routes use `params.docoHandle`; `params.docoId` remains accepted for
  * legacy callers and id-based APIs. The returned `ownerSlug` and
  * `docoSlug` are back-compat fields synthesized by `mapDocoRow`:
- * `ownerSlug` comes from a JOIN to `principals.name` /
- * `organizations.slug`, `docoSlug` mirrors `handle`. Handlers that need
- * the legacy slug pair for internal plumbing (docoPath, captures) keep
- * destructuring them; new code should read `handle` directly.
+ * `ownerSlug` comes from a JOIN to `collaborators.github_login` /
+ * `organizations.handle`, `docoSlug` mirrors `handle`. Handlers that
+ * need the legacy slug pair for internal plumbing (docoPath, captures)
+ * keep destructuring them; new code should read `handle` directly.
  */
 export async function normalizeDocoParams(params: DocoRouteParams): Promise<{
   ownerSlug: string;
@@ -383,26 +382,9 @@ export async function loadDocoForRead(
   canonicalOwnerSlug: string;
   canonicalDocoSlug: string;
   canonicalHandle: string;
-  redirected: boolean;
 }> {
   const row = await getDocoByIdOrHandle(handleOrId);
   if (!row) throw notFoundForAccessDenied(handleOrId, "");
-  // Principal-name alias compat (e.g., name renames). Drives a 308
-  // from the old handle to the canonical one when the JOINed
-  // owner_slug indicates the principal has been renamed since the
-  // handle was originally minted. Rare in practice.
-  const ownerResolved = resolvePrincipalNameAlias(row.owner_slug);
-  if (ownerResolved.redirected && handleOrId !== row.handle) {
-    const url = new URL(request.url);
-    const oldPrefix = `/${handleOrId}`;
-    if (url.pathname === oldPrefix || url.pathname.startsWith(`${oldPrefix}/`)) {
-      const newPath = `/${row.handle}${url.pathname.slice(oldPrefix.length)}`;
-      throw new Response(null, {
-        status: 308,
-        headers: { Location: newPath + url.search },
-      });
-    }
-  }
   const dir = docoPath(row.handle);
   const meta = await readDocoMetadata(dir);
   if (!meta) throw notFoundForAccessDenied(handleOrId, "");
@@ -425,7 +407,6 @@ export async function loadDocoForRead(
     canonicalOwnerSlug: row.owner_slug,
     canonicalDocoSlug: row.handle,
     canonicalHandle: row.handle,
-    redirected: ownerResolved.redirected,
   };
 }
 
@@ -622,7 +603,6 @@ export async function loadDocoForAdmin(
   canonicalOwnerSlug: string;
   canonicalDocoSlug: string;
   canonicalHandle: string;
-  redirected: boolean;
 }> {
   // The OAuth-token role scope-down must grant at least "owner" on
   // this Doco — admin operations refuse a scoped-down token even if
