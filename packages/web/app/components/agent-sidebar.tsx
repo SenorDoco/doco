@@ -512,7 +512,7 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
         className="flex-1 overflow-y-auto px-3 py-3 text-xs leading-relaxed"
       >
         {loadError ? (
-          <div className="neo-inset rounded-md bg-destructive/10 px-2 py-1.5 text-[11px] text-destructive">
+          <div className="rounded-r-md border-l-2 border-destructive/70 bg-destructive/8 px-2.5 py-1.5 text-[11px] text-destructive">
             Couldn't load chat history: {loadError}
           </div>
         ) : null}
@@ -707,7 +707,7 @@ function BlockView({ block }: { block: AnyBlock }) {
   }
   if (block.type === "tool_use") {
     return (
-      <div className="neo-inset rounded-md bg-card px-2 py-1 font-mono text-[10px] text-muted-foreground">
+      <div className="neo-etched rounded-md bg-card px-2.5 py-1.5 font-mono text-[10px] text-muted-foreground">
         <div className="font-semibold text-foreground">{toolLabel(block.name, block.input)}</div>
       </div>
     );
@@ -768,8 +768,10 @@ function ToolResultRow({ result }: { result: ContentBlockToolResult }) {
   return (
     <div
       className={cn(
-        "neo-inset rounded-md px-2 py-1 font-mono text-[10px]",
-        result.is_error ? "bg-destructive/10 text-destructive" : "bg-card text-muted-foreground",
+        "ml-2 rounded-r-md border-l-2 px-2.5 py-1.5 font-mono text-[10px] leading-relaxed",
+        result.is_error
+          ? "border-destructive/70 bg-destructive/8 text-destructive"
+          : "border-muted-foreground/30 bg-card/70 text-muted-foreground",
       )}
     >
       → {result.content}
