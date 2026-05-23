@@ -613,11 +613,11 @@ function EntityNodeCard({
     >
       {referenceNumber ? (
         <span
-          aria-label={`Graph reference ${referenceNumber}: ${title}`}
+          aria-label={`Graph reference #${referenceNumber}: ${title}`}
           className="pointer-events-none absolute -left-3 -top-3 z-30 flex h-6 min-w-6 items-center justify-center rounded-full bg-primary px-1.5 text-[11px] font-bold leading-none text-primary-foreground shadow-sm ring-2 ring-card"
-          title={`Graph reference ${referenceNumber}`}
+          title={`Graph reference #${referenceNumber}`}
         >
-          {referenceNumber}
+          #{referenceNumber}
         </span>
       ) : null}
       <div

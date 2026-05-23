@@ -825,12 +825,12 @@ function ReferenceBadge({ data, circular = false }: { data: BpmnNodeData; circul
   if (!data.referenceNumber) return null;
   return (
     <span
-      aria-label={`Graph reference ${data.referenceNumber}: ${data.node.name ?? data.node.id}`}
+      aria-label={`Graph reference #${data.referenceNumber}: ${data.node.name ?? data.node.id}`}
       className="pointer-events-none absolute z-30 flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold leading-none text-primary-foreground shadow-sm ring-2 ring-card"
       style={circular ? { left: "calc(50% - 42px)", top: -10 } : { left: -10, top: -10 }}
-      title={`Graph reference ${data.referenceNumber}`}
+      title={`Graph reference #${data.referenceNumber}`}
     >
-      {data.referenceNumber}
+      #{data.referenceNumber}
     </span>
   );
 }
