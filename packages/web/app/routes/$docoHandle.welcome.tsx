@@ -55,7 +55,8 @@ export default function NewDocoStep4({
             <ul className="ml-5 list-disc space-y-2">
               <li>Doco helps keep people, agents, and work aligned</li>
               <li>
-                Docos are made of neurons (concepts) and synapses (connections between neurons)
+                Docos are made of neurons (any type of information) and synapses (connections
+                between neurons)
               </li>
               <li>
                 Collaborators can query docos and add information (neurons) to them (if they have
