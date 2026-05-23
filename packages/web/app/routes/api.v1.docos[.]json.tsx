@@ -4,14 +4,18 @@
 //   { template_handle?: string,        // "generic" | "user-flows" | ...
 //     org_id: string,                  // ULID of the owning organization
 //     name: string,                    // the part after `<org-handle>-`
-//     privacy?: "private"|"public" }   // alias: visibility
+//     privacy?: "private"|"public",    // alias: visibility
+//     goal_description?: string }      // free-form sentence about
+//                                      // what the Doco is for; defaults
+//                                      // to the template's description
+//                                      // (or empty for no template)
 //
 // Back-compat: `requested_suffix` and `visibility` are still accepted.
 //
 // Behavior: caller must have any role on the org. The full handle is
 // composed as `<org-handle>-<name>` and silently
 // auto-suffixed on collision. Returns 201 with `{ id, handle, name,
-// org_id, org_handle, visibility }`.
+// org_id, org_handle, visibility, goal_description }`.
 
 import { isOrgMember } from "~/lib/org-helpers.server";
 import { createDocoInOrg } from "~/lib/redeem.server";
@@ -41,6 +45,7 @@ export async function action({ request }: { request: Request }) {
     template_handle?: unknown;
     privacy?: unknown;
     visibility?: unknown;
+    goal_description?: unknown;
   };
   try {
     body = (await request.json()) as typeof body;
@@ -57,6 +62,12 @@ export async function action({ request }: { request: Request }) {
     typeof body.template_handle === "string" ? body.template_handle.trim() : null;
   const privacy = body.privacy ?? body.visibility;
   const visibility = privacy === "public" ? "public" : "private";
+  // Goal description is optional. If the caller omits it, the host
+  // defaults to the chosen template's description (or empty when no
+  // template). If the caller supplies any string — including "" — the
+  // host treats that as an explicit override.
+  const goalDescription =
+    typeof body.goal_description === "string" ? body.goal_description : undefined;
 
   if (!orgId) return Response.json({ error: "`org_id` is required." }, { status: 400 });
   if (!suffix) return Response.json({ error: "`name` is required." }, { status: 400 });
@@ -75,6 +86,7 @@ export async function action({ request }: { request: Request }) {
       ...(templateHandle && templateHandle !== "generic"
         ? { templateHandle }
         : { templateHandle: null }),
+      ...(goalDescription !== undefined ? { goalDescription } : {}),
     });
     return Response.json(
       {
@@ -84,6 +96,7 @@ export async function action({ request }: { request: Request }) {
         org_id: rec.orgId,
         org_handle: rec.orgHandle,
         visibility,
+        goal_description: rec.goalDescription,
       },
       { status: 201 },
     );

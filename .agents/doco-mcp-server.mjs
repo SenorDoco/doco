@@ -617,13 +617,17 @@ function formatHits(body, handle) {
   const ms = Number(body.duration_ms ?? 0);
   const secs = (ms / 1000).toFixed(1);
   const hits = Array.isArray(body.hits) ? body.hits : [];
+  // Doco-level goal description rides along on every search response so
+  // the agent sees what this Doco is for the moment it queries it.
+  const goalDescription = String(body.doco_goal_description || "").trim();
+  const goalPrefix = goalDescription ? `Doco goal: ${goalDescription}\n\n` : "";
 
   if (count === 0) {
-    return `No matches in Doco '${handle}' (${secs}s). Either the project has no prior neurons covering this, or the query phrasing missed them — try synonyms.`;
+    return `${goalPrefix}No matches in Doco '${handle}' (${secs}s). Either the project has no prior neurons covering this, or the query phrasing missed them — try synonyms.`;
   }
 
   const lines = [
-    `Found ${count} neuron${count === 1 ? "" : "s"} in Doco '${handle}' (${secs}s):`,
+    `${goalPrefix}Found ${count} neuron${count === 1 ? "" : "s"} in Doco '${handle}' (${secs}s):`,
     "",
   ];
   for (const hit of hits) {

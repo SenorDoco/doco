@@ -7,6 +7,7 @@ interface SettingsPatch {
   handle?: string;
   display_name?: string | null;
   visibility?: "private" | "public";
+  goal_description?: string;
 }
 
 /**
@@ -34,6 +35,7 @@ export async function loader({
     doco_handle: meta.handle,
     display_name: meta.displayName,
     visibility: meta.visibility,
+    goal_description: meta.goalDescription,
   });
 }
 
@@ -77,6 +79,7 @@ export async function action({
       handle: finalHandle,
       ...(patch.display_name !== undefined ? { display_name: patch.display_name } : {}),
       ...(patch.visibility !== undefined ? { visibility: patch.visibility } : {}),
+      ...(patch.goal_description !== undefined ? { goal_description: patch.goal_description } : {}),
     });
   } catch (e) {
     return Response.json({ error: (e as Error).message }, { status: 400 });
@@ -95,6 +98,7 @@ export async function action({
       doco_handle: finalHandle,
       display_name,
       visibility: row?.visibility ?? "private",
+      goal_description: row?.goal_description ?? "",
     },
     { status: 200 },
   );
