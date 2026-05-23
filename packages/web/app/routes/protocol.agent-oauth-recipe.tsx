@@ -466,8 +466,35 @@ PATCH ${baseUrl}/<handle>/api/<type>/<id>.json    # update fields
 **Per-type write spec** (request-body shape for POST/PATCH):
 
 \`\`\`
-GET ${baseUrl}/<handle>/api/<type>.txt            # plain-text spec for that node type
+GET ${baseUrl}/<handle>/api/<type>.txt            # plain-text spec for capture-capable node types
 \`\`\`
+
+Capture body specs exist for decisions, intents, actions, logs, rules,
+evals, references, states, ideas, primitives, and settings. Principals,
+invites, and audit have dedicated route behavior; don't infer write
+bodies for them from the generic capture pattern.
+
+**Capture body convention:** request bodies identify principals by
+principal id, never username. Use \`*_principal_id\` for one principal
+and \`*_principal_ids\` for arrays. Do not send \`*_username\` fields
+or comma-separated strings; there are no aliases.
+
+Common API-facing fields:
+
+\`\`\`
+wanted_by_principal_id        # Intent owner; auth fills this
+actors_principal_ids          # Intent actors, array of principal ids
+stakeholders_principal_ids    # Intent stakeholders, array of principal ids
+actor_principal_id            # Action/Log actor; auth fills this
+decided_by_principal_id       # Decision maker; auth fills this
+authored_by_principal_id      # Rule/Eval/Primitive author; auth fills this
+created_by_principal_id       # Creator override where supported
+\`\`\`
+
+Read responses may expose stored graph fields such as \`wanted_by\`,
+\`actors\`, \`stakeholders\`, \`actor_id\`, \`decided_by\`, and
+\`created_by\`. Those are storage field names; POST/PATCH bodies should
+use the API-facing principal-id fields above.
 
 ### Scope enforcement
 

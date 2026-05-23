@@ -544,12 +544,46 @@ Retention: every uploaded file is kept for ${ATTACHMENT_RETENTION_DAYS} days, th
   POST  /<handle>/api/<type>.json                — capture; returns { id, footer_lines, duration_ms }
   GET   /<handle>/api/<type>/<id>.json
   PATCH /<handle>/api/<type>/<id>.json
+  GET   /<handle>/api/<type>.txt                 — plain-text POST/PATCH body spec for capture-capable types
   GET   /<handle>/api/primitives.json            — list primitives (guidance + neuron-authoring) for this Doco
   POST  /<handle>/api/primitives.json            — capture a primitive; body needs "primitive_kind": "guidance" | "neuron_authoring"
   GET   /<handle>/search.json?q=<query>
   POST  /api/v1/docos.json                       — create a Doco (NO GET — to list the user's Docos, see the "Your Docos" section below)
   POST  /api/v1/orgs.json                        — create an Org (NO GET — to list the user's Orgs, see the "Your Orgs" section below)
   GET   /api/v1/agent-bootstrap.json             — re-read primitives
+
+## Capture body structure
+
+Capture body specs exist for decisions, intents, actions, logs, rules,
+evals, references, states, ideas, primitives, and settings. Principals,
+invites, and audit have dedicated route behavior; do not infer write
+bodies for them from the generic capture pattern.
+
+Before POST/PATCH, use GET /<handle>/api/<type>.txt when you need the
+exact body shape and that spec exists. Principal references in request
+bodies use principal ids only: *_principal_id for one principal and
+*_principal_ids for arrays. Do not send usernames, *_username fields,
+or comma-separated strings; there are no aliases.
+
+Common API-facing fields:
+- wanted_by_principal_id: Intent owner; auth fills this from the signed-in principal when omitted.
+- actors_principal_ids: Intent actors, always an array like ["principal_01..."].
+- stakeholders_principal_ids: Intent stakeholders, always an array.
+- actor_principal_id: Action/Log actor; auth fills this when omitted.
+- decided_by_principal_id: Decision maker; auth fills this when omitted.
+- authored_by_principal_id: Rule/Eval/Primitive author; auth fills this when omitted.
+- created_by_principal_id: creator override where supported.
+
+Read responses may expose stored graph fields such as wanted_by,
+actors, stakeholders, actor_id, decided_by, and created_by. Those are
+storage field names; when writing via doco_api, use the API-facing
+principal-id fields above.
+
+Intent body example:
+{ "summary": "Checkout can be completed without support.", "wanted_by_principal_id": "principal_01...", "actors_principal_ids": ["principal_01..."], "stakeholders_principal_ids": ["principal_01..."] }
+
+Action body example:
+{ "summary": "Implemented principal-id capture fields.", "verb": "implemented", "actor_principal_id": "principal_01...", "outputs": { "commit": "abc123" } }
 
 ## After every action — render the result
 
@@ -567,7 +601,7 @@ After the navigate, end the text reply with at most ONE short line (e.g. "Decisi
 
 ## Adding a synapse
 
-Synapses in Doco are derived from reference fields on neurons (D-017, fields-as-synapses). To add a synapse from A to B with type T, PATCH the source neuron A to add B's id into the appropriate ref field. Map (mostly): intent_ids → serves · decision_ids → enacts · rules_consulted → consults · born_from → born_from · superseded_by → superseded_by · target_ref → tests · stakeholders → has_stakeholder · parent_intent_id → has_parent · owner_id → owned_by · member → member_of · follows → follows. There is no POST /<handle>/api/synapses.json — patch a neuron's ref field; the indexer materializes the synapse synchronously.
+Synapses in Doco are derived from reference fields on neurons (D-017, fields-as-synapses). To add a synapse from A to B with type T, PATCH the source neuron A to add B's id into the appropriate ref field. API input uses principal-id field names where applicable (stakeholders_principal_ids writes stored stakeholders; actor_principal_id writes stored actor_id). Map (mostly): intent_ids → serves · decision_ids → enacts · rules_consulted → consults · born_from → born_from · superseded_by → superseded_by · target_ref → tests · stakeholders → has_stakeholder · parent_intent_id → has_parent · owner_id → owned_by · member → member_of · follows → follows. There is no POST /<handle>/api/synapses.json — patch a neuron's ref field; the indexer materializes the synapse synchronously.
 
 ## Scope — what you handle vs. what you decline
 
@@ -670,7 +704,7 @@ const TOOLS: Tool[] = [
         },
         body: {
           description:
-            "JSON body. Required for POST/PATCH on capture endpoints; omit for GET. Pass an object — the tool stringifies it.",
+            "JSON body. Required for POST/PATCH on capture endpoints; omit for GET. Pass an object — the tool stringifies it. Principal references must use principal-id fields such as wanted_by_principal_id, actors_principal_ids, actor_principal_id, decided_by_principal_id, authored_by_principal_id, and created_by_principal_id; do not send usernames.",
         },
       },
       required: ["method", "path"],

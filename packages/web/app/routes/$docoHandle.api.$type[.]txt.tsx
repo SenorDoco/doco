@@ -17,6 +17,18 @@ import { normalizeDocoParams } from "~/lib/doco-access.server";
 
 type SpecRenderer = (baseUrl: string, handle: string) => string;
 
+const PRINCIPAL_ID_CONVENTION = `PRINCIPAL ID FIELDS
+  API request bodies use principal ids only. Use *_principal_id for one
+  principal and *_principal_ids for arrays. Do not send usernames,
+  *_username fields, or comma-separated strings; there are no aliases.
+
+  Read responses may expose stored graph fields such as wanted_by,
+  actors, stakeholders, actor_id, decided_by, and created_by. When you
+  POST or PATCH through this API, use the API-facing principal-id fields
+  documented here. For arrays, even one principal is an array:
+    "actors_principal_ids": ["principal_01..."]
+`;
+
 const SPECS: Record<string, SpecRenderer> = {
   decisions: (baseUrl, handle) => `# Doco — Capture a Decision (single call)
 
@@ -26,6 +38,8 @@ the row, and reindexes.
 ENDPOINT
   POST ${baseUrl}/${handle}/api/decisions.json
   Content-Type: application/json
+
+${PRINCIPAL_ID_CONVENTION}
 
 BODY (JSON)
   question           required   the question the Decision answers
@@ -103,9 +117,12 @@ ENDPOINT
   POST ${baseUrl}/${handle}/api/ideas.json
   Content-Type: application/json
 
+${PRINCIPAL_ID_CONVENTION}
+
 BODY (JSON)
   summary             required   one-line idea summary
   body_md             optional   markdown body with context or tradeoffs
+  created_by_principal_id optional principal id; auth fills this
   promoted_to         optional   entity id once the idea is picked up
   rejection_reason    optional   why the idea was rejected or parked
   lifecycle           optional   one of "drafted" | "proposed" | "active" | "retired"; default "drafted"
@@ -138,6 +155,8 @@ way the Decision can reference it via \`intent_ids\`.
 ENDPOINT
   POST ${baseUrl}/${handle}/api/intents.json
   Content-Type: application/json
+
+${PRINCIPAL_ID_CONVENTION}
 
 BODY (JSON)
   summary             required   "What someone wants" — one-line.
@@ -187,6 +206,344 @@ RELATED
   GET  ${baseUrl}/${handle}/status.json          freshness + counts
 `,
 
+  actions: (baseUrl, handle) => `# Doco — Capture an Action (single call)
+
+Actions are reusable or completed units of work that serve Intents and
+can enact Decisions. They default to lifecycle="retired" and
+outcome="succeeded" because a capture usually records work already done.
+
+ENDPOINT
+  POST ${baseUrl}/${handle}/api/actions.json
+  Content-Type: application/json
+
+${PRINCIPAL_ID_CONVENTION}
+
+BODY (JSON)
+  summary             required   one-line summary of what was done
+  verb                required   short verb such as "refactor", "migrate", "deploy"
+  intent_ids          optional   ["intent_01...", ...]
+  decision_ids        optional   ["decision_01...", ...]
+  follows             optional   entity ids this action follows causally or chronologically
+  inputs              optional   verb-specific input object or value
+  outputs             optional   verb-specific output object or value
+  actor_principal_id  optional   principal id who performs the action; auth fills this
+  created_by_principal_id optional principal id; defaults to actor_principal_id
+  body_md             optional   markdown body appended after frontmatter
+  lifecycle           optional   one of "drafted" | "proposed" | "active" | "retired"; default "retired"
+  deprecated          optional   boolean warning label; lifecycle is unchanged
+  outcome             optional   "succeeded" | "failed"; default "succeeded"
+
+SUCCESS RESPONSE (HTTP 201, application/json)
+  {
+    "ok": true,
+    "id": "action_<ULID>",
+    "path": "docos/<doco-handle>/actions/action_<ULID>.md",
+    "footer_lines": ["[🔮 Doco] ✍️ Action added: [<summary>](<url>)"]
+  }
+
+EXAMPLE
+  curl -sS -X POST \\
+    -H "Content-Type: application/json" \\
+    -H "Authorization: Bearer $DOCO_ACCESS" \\
+    ${baseUrl}/${handle}/api/actions.json \\
+    -d '{
+      "summary": "Use principal-id fields in the capture API.",
+      "verb": "update",
+      "actor_principal_id": "principal_01...",
+      "intent_ids": ["intent_01..."],
+      "outputs": { "commit": "abc123" }
+    }'
+
+UPDATE AN EXISTING ACTION
+  PATCH ${baseUrl}/${handle}/api/actions/<id>.json
+  Content-Type: application/json
+
+  Body fields are all optional. API-facing principal input:
+    actor_principal_id -> stored actor_id
+
+  Other patchable fields include summary, lifecycle, deprecated,
+  outcome, superseded_by, intent_ids/add/remove, body_md/body_md_append,
+  slug, verb, outputs, follows, decision_ids, and performed_at.
+`,
+
+  logs: (baseUrl, handle) => `# Doco — Capture a Log (single call)
+
+Logs record concrete happenings: a deploy that ran, a commit that
+pushed, or an eval that verified. They are frozen from creation, so
+capture the exact event shape up front.
+
+ENDPOINT
+  POST ${baseUrl}/${handle}/api/logs.json
+  Content-Type: application/json
+
+${PRINCIPAL_ID_CONVENTION}
+
+BODY (JSON)
+  summary             required   one-line summary of what happened
+  verb                required   past-tense verb such as "pushed", "deployed", "verified"
+  happened_at         required   ISO 8601 timestamp
+  outputs             required   non-empty object with concrete results
+  template_id         optional   Action id this Log instances
+  intent_ids          optional   ["intent_01...", ...]
+  decision_ids        optional   ["decision_01...", ...]
+  follows             optional   entity ids this Log follows
+  inputs              optional   event input object or value
+  actor_principal_id  optional   principal id who performed it; auth fills this
+  created_by_principal_id optional principal id; defaults to actor_principal_id
+  body_md             optional   markdown body appended after frontmatter
+  lifecycle           optional   one of "drafted" | "proposed" | "active" | "retired"; default "retired"
+  deprecated          optional   boolean warning label; lifecycle is unchanged
+  outcome             optional   "succeeded" | "failed"; default "succeeded"
+
+SUCCESS RESPONSE (HTTP 201, application/json)
+  {
+    "ok": true,
+    "id": "log_<ULID>",
+    "path": "docos/<doco-handle>/logs/log_<ULID>.md",
+    "footer_lines": ["[🔮 Doco] ✍️ Log added: [<summary>](<url>)"]
+  }
+
+EXAMPLE
+  curl -sS -X POST \\
+    -H "Content-Type: application/json" \\
+    -H "Authorization: Bearer $DOCO_ACCESS" \\
+    ${baseUrl}/${handle}/api/logs.json \\
+    -d '{
+      "summary": "Pushed principal-id capture docs.",
+      "verb": "pushed",
+      "happened_at": "2026-05-23T12:00:00.000Z",
+      "actor_principal_id": "principal_01...",
+      "outputs": { "branch": "main", "commit": "abc123" }
+    }'
+
+UPDATE AN EXISTING LOG
+  PATCH ${baseUrl}/${handle}/api/logs/<id>.json
+  Content-Type: application/json
+
+  Logs are frozen from creation. In practice, patch lifecycle metadata,
+  superseded_by, or additive intent_ids via intent_ids_add. For a
+  corrected event body, capture a superseding Log.
+`,
+
+  rules: (baseUrl, handle) => `# Doco — Capture a Rule (single call)
+
+Rules state policies or invariants the project should keep true.
+
+ENDPOINT
+  POST ${baseUrl}/${handle}/api/rules.json
+  Content-Type: application/json
+
+${PRINCIPAL_ID_CONVENTION}
+
+BODY (JSON)
+  summary             required   one-line policy summary
+  predicate           required   machine-checkable or prose predicate
+  intent_ids          optional   ["intent_01...", ...]
+  enforced_by         optional   "runtime" | "review" | "manual"
+  severity            optional   "hard" | "soft"
+  born_from           optional   Decision id this Rule came from
+  authored_by_principal_id optional principal id who authored it; auth fills this
+  created_by_principal_id  optional principal id; defaults to authored_by_principal_id
+  body_md             optional   markdown body appended after frontmatter
+  lifecycle           optional   one of "drafted" | "proposed" | "active" | "retired"; default "active"
+  deprecated          optional   boolean warning label; lifecycle is unchanged
+  outcome             optional   "succeeded" | "failed"
+
+SUCCESS RESPONSE (HTTP 201, application/json)
+  {
+    "ok": true,
+    "id": "rule_<ULID>",
+    "path": "docos/<doco-handle>/rules/rule_<ULID>.md",
+    "footer_lines": ["[🔮 Doco] ✍️ Rule added: [<summary>](<url>)"]
+  }
+
+EXAMPLE
+  curl -sS -X POST \\
+    -H "Content-Type: application/json" \\
+    -H "Authorization: Bearer $DOCO_ACCESS" \\
+    ${baseUrl}/${handle}/api/rules.json \\
+    -d '{
+      "summary": "Capture API requests identify principals by id.",
+      "predicate": "POST and PATCH request bodies use *_principal_id fields, never usernames.",
+      "authored_by_principal_id": "principal_01...",
+      "severity": "hard",
+      "enforced_by": "review"
+    }'
+
+UPDATE AN EXISTING RULE
+  PATCH ${baseUrl}/${handle}/api/rules/<id>.json
+  Content-Type: application/json
+
+  Body fields are all optional. Patchable fields include summary,
+  lifecycle, deprecated, outcome, superseded_by, intent_ids/add/remove,
+  body_md/body_md_append, slug, kind, predicate, modality, severity,
+  phase, expected, on_violation, and applies_to.
+`,
+
+  evals: (baseUrl, handle) => `# Doco — Capture an Eval (single call)
+
+Evals define checks for behavior, documentation consistency, or process
+quality.
+
+ENDPOINT
+  POST ${baseUrl}/${handle}/api/evals.json
+  Content-Type: application/json
+
+${PRINCIPAL_ID_CONVENTION}
+
+BODY (JSON)
+  name                required   short readable name
+  criterion           required   { "kind": "exact" | "shape" | "llm-judge", "spec": "..." }
+  summary             optional   one-line summary; derived from description/name if omitted
+  kind                optional   "unit" | "integration" | "eval" | "process" | "doc-consistency"
+  description         optional   free-form description
+  expected_status     optional   "pass" | "fail"; default "pass"
+  how_to_run          optional   reproduction steps
+  input               optional   input value, any JSON shape
+  expected            optional   expected outcome, any JSON shape
+  target_ref          optional   id of the entity this Eval tests
+  intent_ids          optional   ["intent_01...", ...]
+  authored_by_principal_id optional principal id who authored it; auth fills this
+  body_md             optional   markdown body appended after frontmatter
+  lifecycle           optional   one of "drafted" | "proposed" | "active" | "retired"; default "active"
+  deprecated          optional   boolean warning label; lifecycle is unchanged
+  outcome             optional   "succeeded" | "failed"
+
+SUCCESS RESPONSE (HTTP 201, application/json)
+  {
+    "ok": true,
+    "id": "eval_<ULID>",
+    "path": "docos/<doco-handle>/evals/eval_<ULID>.md",
+    "footer_lines": ["[🔮 Doco] ✍️ Eval added: [<name>](<url>)"]
+  }
+
+EXAMPLE
+  curl -sS -X POST \\
+    -H "Content-Type: application/json" \\
+    -H "Authorization: Bearer $DOCO_ACCESS" \\
+    ${baseUrl}/${handle}/api/evals.json \\
+    -d '{
+      "name": "Intent capture body shape",
+      "criterion": {
+        "kind": "shape",
+        "spec": "Intents use wanted_by_principal_id and actors_principal_ids."
+      },
+      "authored_by_principal_id": "principal_01..."
+    }'
+
+UPDATE AN EXISTING EVAL
+  PATCH ${baseUrl}/${handle}/api/evals/<id>.json
+  Content-Type: application/json
+
+  Body fields are all optional. Patchable fields include summary,
+  lifecycle, deprecated, outcome, superseded_by, intent_ids/add/remove,
+  body_md/body_md_append, name, criterion, kind, description,
+  expected_status, how_to_run, input, expected, and target_ref.
+`,
+
+  references: (baseUrl, handle) => `# Doco — Capture a Reference (single call)
+
+References point to external or repository artifacts such as URLs,
+files, commits, documents, and tickets.
+
+ENDPOINT
+  POST ${baseUrl}/${handle}/api/references.json
+  Content-Type: application/json
+
+${PRINCIPAL_ID_CONVENTION}
+
+BODY (JSON)
+  ref_type            required   "file" | "url" | "ticket" | "commit" | "document" | "other"
+  locator             required   path, URL, ticket id, commit sha, or other locator
+  summary             optional   one-line summary; derived from ref_type/locator if omitted
+  body_md             optional   markdown context
+  content_hash        optional   content hash when available
+  intent_ids          optional   ["intent_01...", ...]
+  created_by_principal_id optional principal id; auth fills this
+  lifecycle           optional   one of "drafted" | "proposed" | "active" | "retired"; default "active"
+  deprecated          optional   boolean warning label; lifecycle is unchanged
+  outcome             optional   "succeeded" | "failed"
+
+SUCCESS RESPONSE (HTTP 201, application/json)
+  {
+    "ok": true,
+    "id": "reference_<ULID>",
+    "path": "docos/<doco-handle>/references/reference_<ULID>.md",
+    "footer_lines": ["[🔮 Doco] ✍️ Reference added: [<summary>](<url>)"]
+  }
+
+EXAMPLE
+  curl -sS -X POST \\
+    -H "Content-Type: application/json" \\
+    -H "Authorization: Bearer $DOCO_ACCESS" \\
+    ${baseUrl}/${handle}/api/references.json \\
+    -d '{
+      "ref_type": "file",
+      "locator": "packages/web/app/routes/$docoHandle.api.$type[.]txt.tsx",
+      "summary": "Plain-text capture API specs",
+      "created_by_principal_id": "principal_01..."
+    }'
+
+UPDATE AN EXISTING REFERENCE
+  PATCH ${baseUrl}/${handle}/api/references/<id>.json
+  Content-Type: application/json
+
+  References are frozen from creation. In practice, patch lifecycle
+  metadata, superseded_by, or additive intent_ids via intent_ids_add.
+  For a corrected locator/body, capture a superseding Reference.
+`,
+
+  states: (baseUrl, handle) => `# Doco — Capture a State (single call)
+
+States name meaningful process states such as initial, intermediate, or
+terminal conditions.
+
+ENDPOINT
+  POST ${baseUrl}/${handle}/api/states.json
+  Content-Type: application/json
+
+${PRINCIPAL_ID_CONVENTION}
+
+BODY (JSON)
+  summary             required   one-line state name or summary
+  kind                required   "initial" | "intermediate" | "terminal"
+  invariants          optional   ["condition true while in this state", ...]
+  follows             optional   entity ids this state follows
+  created_by_principal_id optional principal id; auth fills this
+  body_md             optional   markdown body appended after frontmatter
+  lifecycle           optional   one of "drafted" | "proposed" | "active" | "retired"; default "active"
+  deprecated          optional   boolean warning label; lifecycle is unchanged
+  outcome             optional   "succeeded" | "failed"
+
+SUCCESS RESPONSE (HTTP 201, application/json)
+  {
+    "ok": true,
+    "id": "state_<ULID>",
+    "path": "docos/<doco-handle>/states/state_<ULID>.md",
+    "footer_lines": ["[🔮 Doco] ✍️ State added: [<summary>](<url>)"]
+  }
+
+EXAMPLE
+  curl -sS -X POST \\
+    -H "Content-Type: application/json" \\
+    -H "Authorization: Bearer $DOCO_ACCESS" \\
+    ${baseUrl}/${handle}/api/states.json \\
+    -d '{
+      "summary": "Capture API contract documented",
+      "kind": "terminal",
+      "created_by_principal_id": "principal_01...",
+      "invariants": ["Agents can discover the expected body shape."]
+    }'
+
+UPDATE AN EXISTING STATE
+  PATCH ${baseUrl}/${handle}/api/states/<id>.json
+  Content-Type: application/json
+
+  Body fields are all optional. Patchable fields include summary,
+  lifecycle, deprecated, outcome, superseded_by, intent_ids/add/remove,
+  body_md/body_md_append, kind, invariants, and follows.
+`,
+
   primitives: (baseUrl, handle) => `# Doco — Primitives
 
 Primitives are **not neurons**. They govern how a Doco is authored,
@@ -227,6 +584,8 @@ ENDPOINT (list)
 ENDPOINT (capture)
   POST ${baseUrl}/${handle}/api/primitives.json
   Content-Type: application/json
+
+${PRINCIPAL_ID_CONVENTION}
 
   Body MUST include \`primitive_kind\` to disambiguate; remaining
   fields match the per-kind draft below.

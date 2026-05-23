@@ -124,17 +124,66 @@ the endpoint shapes are:
     POST  https://doco.to/<handle>/api/<type>.json          # capture (needs author)
     GET   https://doco.to/<handle>/api/<type>/<id>.json     # one neuron
     PATCH https://doco.to/<handle>/api/<type>/<id>.json     # patch (needs author)
-    GET   https://doco.to/<handle>/api/<type>.txt           # plain-text spec
+    GET   https://doco.to/<handle>/api/<type>.txt           # plain-text spec for capture-capable types
     GET   https://doco.to/<handle>/api/primitives.json      # list primitives
     POST  https://doco.to/<handle>/api/primitives.json      # capture a primitive (needs author)
 
-Neuron types: decisions, rules, intents, actions, logs, evals, references,
-states, principals, invites, audit.
+Neuron types: decisions, ideas, rules, intents, actions, logs, evals,
+references, states, principals, invites, audit.
+
+Capture body specs exist for decisions, intents, actions, logs, rules,
+evals, references, states, ideas, primitives, and settings. Principals,
+invites, and audit have dedicated route behavior; don't infer write
+bodies for them from the generic capture pattern.
 
 Primitives are NOT neurons. Primitives
 (\`guidance_primitive\`, \`neuron_authoring_primitive\`) live on the
 dedicated \`/api/primitives.json\` endpoint and inside the bootstrap
 payload — never on the generic \`/api/<type>.json\` route.
+
+### Capture body structure
+
+Before POST/PATCH, read \`GET /<handle>/api/<type>.txt\` for the
+exact per-type body when that spec exists. Principal references in
+request bodies use principal ids only: use \`*_principal_id\` for one
+principal and \`*_principal_ids\` for arrays. Do not send usernames,
+\`*_username\` fields, or comma-separated strings; there are no
+compatibility aliases.
+
+Common principal-id fields:
+
+    wanted_by_principal_id        # Intent owner; auth fills this
+    actors_principal_ids          # Intent actors, array of principal ids
+    stakeholders_principal_ids    # Intent stakeholders, array of principal ids
+    actor_principal_id            # Action/Log actor; auth fills this
+    decided_by_principal_id       # Decision maker; auth fills this
+    authored_by_principal_id      # Rule/Eval/Primitive author; auth fills this
+    created_by_principal_id       # Creator override where supported
+
+Read responses may expose stored graph fields such as \`wanted_by\`,
+\`actors\`, \`stakeholders\`, \`actor_id\`, \`decided_by\`, and
+\`created_by\`. Those are stored field names; request bodies should
+use the API-facing principal-id fields above.
+
+Intent capture example:
+
+    POST https://doco.to/<handle>/api/intents.json
+    {
+      "summary": "Checkout can be completed without support.",
+      "wanted_by_principal_id": "principal_01...",
+      "actors_principal_ids": ["principal_01..."],
+      "stakeholders_principal_ids": ["principal_01..."]
+    }
+
+Action capture example:
+
+    POST https://doco.to/<handle>/api/actions.json
+    {
+      "summary": "Implemented principal-id capture fields.",
+      "verb": "implemented",
+      "actor_principal_id": "principal_01...",
+      "outputs": { "commit": "abc123" }
+    }
 
 Public Docos return 200 for unauthenticated reads; private Docos
 return 403 until you finish the OAuth recipe.
