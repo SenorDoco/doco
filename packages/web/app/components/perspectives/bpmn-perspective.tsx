@@ -274,10 +274,17 @@ export function BpmnPerspective({
     );
   }
 
+  // Size the React Flow container to the actual graph height so few-lane
+  // BPMN doesn't leave a tall empty grid beneath the lanes. Cap at the
+  // available aside height so very many lanes still scroll within the
+  // canvas instead of pushing the page.
+  const naturalCanvasHeight = filteredLanes.length * LANE_HEIGHT + 32;
+
   return (
     <div
       ref={graphRef}
-      className="relative h-full min-h-[420px] w-full overflow-hidden rounded-md border border-border"
+      className="relative w-full overflow-hidden rounded-md border border-border"
+      style={{ height: `min(100%, ${naturalCanvasHeight}px)`, minHeight: 420 }}
     >
       {Flow ? (
         <Flow.ReactFlow
