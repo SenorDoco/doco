@@ -41,15 +41,15 @@ function formatValue(value: unknown): string {
 
 function lifecycleButtonClass(detail: NeuronDialogDetail, stage: LifecycleStage, active: boolean) {
   const base =
-    "inline-flex h-8 min-w-0 items-center justify-center border px-2.5 text-[11px] font-semibold capitalize transition-colors";
+    "inline-flex h-8 min-w-0 items-center justify-center rounded-md border border-border px-3 text-[11px] font-semibold capitalize";
   if (active) {
-    return `${base} border-foreground bg-foreground text-background`;
+    return `${base} neu-pressed`;
   }
   const option = detail.lifecycle_options.find((candidate) => candidate.value === stage);
   if (option?.disabled) {
-    return `${base} cursor-not-allowed border-border bg-input text-muted-foreground opacity-55`;
+    return `${base} neu-button cursor-not-allowed opacity-55`;
   }
-  return `${base} border-border bg-background text-foreground hover:border-foreground`;
+  return `${base} neu-button`;
 }
 
 export function NeuronDialog({
@@ -110,7 +110,7 @@ export function NeuronDialog({
                         onClick={() => onLifecycleChange(option.value)}
                         title={option.reason ?? `Move to ${option.label}`}
                         className={lifecycleButtonClass(detail, option.value, option.current)}
-                        style={option.current ? undefined : { borderLeft: `4px solid ${color}` }}
+                        style={{ color }}
                       >
                         {busy ? <Loader2 className="mr-1.5 h-3 w-3 animate-spin" /> : null}
                         {option.label}
