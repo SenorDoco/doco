@@ -1,4 +1,4 @@
-import { DOCO_NEURON_TABLE_SPECS } from "@doco/db";
+import { ALL_ENTITY_TABLES, DOCO_NEURON_TABLE_SPECS } from "@doco/db";
 import { parse as parseYaml } from "yaml";
 import type {
   OverviewGraphData,
@@ -70,7 +70,11 @@ function overviewEntityHref(
 
 function overviewRowsSql(includeLabel = false): string {
   const neuronLegs = GRAPH_TABLES.map((entry) => {
-    const labelExpr = entry.labelExpr ?? "t.summary";
+    // Migrated neurons project the first line of the type-named column
+    // as the graph node label (intent first line for intents, ...).
+    // Non-migrated tables fall back to the legacy summary.
+    const tnCol = ALL_ENTITY_TABLES[entry.entityType]?.typeNamedColumn;
+    const labelExpr = entry.labelExpr ?? (tnCol ? `split_part(t.${tnCol}, E'\n', 1)` : "t.summary");
     const nameExpr = entry.nameExpr ?? "NULL::text";
     return `SELECT t.id,
                    '${entry.entityType}'::text AS entity_type,

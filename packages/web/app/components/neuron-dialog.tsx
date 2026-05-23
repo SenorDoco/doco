@@ -3,6 +3,28 @@ import { NeuronTypeIcon } from "~/components/neuron-type-icon";
 import { lifecycleColor } from "~/lib/neuron-colors";
 import type { LifecycleStage, NeuronDialogDetail } from "~/lib/neuron-detail.server";
 
+// Per-entity-type prose-field-name lookup. Migrated neurons carry
+// their full prose under a key matching the entity type (intent,
+// decision, ...); non-migrated entities (principals, primitives) still
+// use the legacy summary/body_md pair. The dialog uses this to label
+// the prose section heading appropriately.
+const PROSE_FIELD_NAME: Record<string, string> = {
+  intent: "intent",
+  decision: "decision",
+  rule: "rule",
+  action: "action",
+  log: "log",
+  eval: "eval",
+  reference: "reference",
+  state: "state",
+  idea: "idea",
+};
+
+function proseFieldName(entityType: string | undefined): string {
+  if (!entityType) return "summary";
+  return PROSE_FIELD_NAME[entityType] ?? "summary";
+}
+
 interface NeuronDialogProps {
   detail: NeuronDialogDetail | null;
   loading: boolean;
@@ -164,7 +186,7 @@ export function NeuronDialog({
             {detail.body_md ? (
               <section className="pt-4">
                 <h3 className="mb-2 text-[11px] font-semibold uppercase text-muted-foreground">
-                  Body
+                  {proseFieldName(detail.entity_type)}
                 </h3>
                 <div className="whitespace-pre-wrap break-words leading-5">{detail.body_md}</div>
               </section>

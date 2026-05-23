@@ -27,9 +27,7 @@ function entitySpec(table: string, entityType: string): SearchTypeSpec {
   // else still uses `summary`. Either way the projected alias here is
   // `summary` so the rest of the search hit shape doesn't change.
   const tnCol = ALL_ENTITY_TABLES[entityType]?.typeNamedColumn;
-  const summarySelect = tnCol
-    ? `split_part(${tnCol}, E'\n', 1) AS summary`
-    : "summary";
+  const summarySelect = tnCol ? `split_part(${tnCol}, E'\n', 1) AS summary` : "summary";
   return {
     table,
     entityType,

@@ -5,14 +5,13 @@ const route = makeUpdateRoute({
   entityType: "idea",
   pluralDir: "ideas",
   allowedFields: [
-    "summary",
+    "idea",
     "proposer_id",
     "promoted_to",
     "rejection_reason",
     "lifecycle",
     "deprecated",
     "outcome",
-    "body_md",
   ],
 });
 

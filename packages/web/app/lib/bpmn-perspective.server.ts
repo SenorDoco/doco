@@ -20,6 +20,7 @@
 // Lifecycle color from neuron-colors.ts is preserved as an accent on
 // each shape — bordered/edge-tinted in the renderer.
 
+import { ALL_ENTITY_TABLES } from "@doco/db";
 import { parse as parseYaml } from "yaml";
 import type { OverviewGraphLink } from "~/components/overview-graph";
 
@@ -109,17 +110,20 @@ export async function loadBpmnGraph(
   docoId: string,
   opts: { handle?: string } = {},
 ): Promise<BpmnGraphData> {
-  const neuronSql = BPMN_TABLES.map(
-    (entry) =>
-      `SELECT t.id,
+  const neuronSql = BPMN_TABLES.map((entry) => {
+    // Migrated neurons use the type-named column's first line as the
+    // "summary" projected here so the BPMN node label fits the lane.
+    const tnCol = ALL_ENTITY_TABLES[entry.entityType]?.typeNamedColumn;
+    const summarySelect = tnCol ? `split_part(t.${tnCol}, E'\n', 1) AS summary` : "t.summary";
+    return `SELECT t.id,
               '${entry.entityType}'::text AS entity_type,
-              t.summary,
+              ${summarySelect},
               COALESCE(t.lifecycle, 'active') AS lifecycle,
               t.created_at::text AS created_at,
               t.data
          FROM ${entry.table} t
-        WHERE t.doco_id = $1`,
-  ).join(" UNION ALL ");
+        WHERE t.doco_id = $1`;
+  }).join(" UNION ALL ");
 
   const [neuronRows, principalRows] = await Promise.all([
     c.query<NeuronRow>(neuronSql, [docoId]),
