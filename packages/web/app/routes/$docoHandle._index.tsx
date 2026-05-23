@@ -162,7 +162,7 @@ export async function loader({
          UNION ALL SELECT id, summary AS label, lifecycle FROM evals WHERE doco_id = $1 AND id = ANY($2::text[])
          UNION ALL SELECT id, summary AS label, lifecycle FROM states WHERE doco_id = $1 AND id = ANY($2::text[])
          UNION ALL SELECT id, summary AS label, lifecycle FROM reference_entities WHERE doco_id = $1 AND id = ANY($2::text[])
-         UNION ALL SELECT id, COALESCE(summary, username) AS label, lifecycle FROM principals WHERE data->>'doco_id' = $1 AND id = ANY($2::text[])`,
+         UNION ALL SELECT id, COALESCE(summary, username) AS label, lifecycle FROM principals WHERE doco_id = $1 AND id = ANY($2::text[])`,
         [ctx.meta.docoId, entityIds],
       );
       for (const row of entityLabelRows.rows) {
@@ -206,7 +206,7 @@ export async function loader({
            UNION ALL SELECT to_char(created_at, 'YYYY-MM-DD') FROM evals WHERE doco_id = $1
            UNION ALL SELECT to_char(created_at, 'YYYY-MM-DD') FROM reference_entities WHERE doco_id = $1
            UNION ALL SELECT to_char(created_at, 'YYYY-MM-DD') FROM states WHERE doco_id = $1
-           UNION ALL SELECT to_char(created_at, 'YYYY-MM-DD') FROM principals WHERE data->>'doco_id' = $1
+           UNION ALL SELECT to_char(created_at, 'YYYY-MM-DD') FROM principals WHERE doco_id = $1
          ) t WHERE day >= $2
          GROUP BY day`,
         [ctx.meta.docoId, sinceIso.slice(0, 10)],

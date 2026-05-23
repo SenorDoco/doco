@@ -63,11 +63,7 @@ export async function loader({ request }: { request: Request }) {
   // count summed across every entity table. Separate pooled queries avoid
   // serializing work through a single PoolClient.
   const orgIds = orgsRaw.map((o) => o.id);
-  const nodesUnionSql = ENTITY_TABLES.map((t) =>
-    t === "principals"
-      ? "SELECT data->>'doco_id' AS doco_id FROM principals WHERE data->>'doco_id' IS NOT NULL"
-      : `SELECT doco_id FROM ${t}`,
-  ).join(" UNION ALL ");
+  const nodesUnionSql = ENTITY_TABLES.map((t) => `SELECT doco_id FROM ${t}`).join(" UNION ALL ");
   const [orgLastActivity, orgNodeCount] = await Promise.all([
     withClient(async (c) => {
       if (orgIds.length === 0) return new Map<string, string | null>();

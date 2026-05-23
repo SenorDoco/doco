@@ -86,8 +86,8 @@ export async function action({
 
   const existing = await withClient(async (c) =>
     c.query<{ id: string; username: string }>(
-      "SELECT id, username FROM principals WHERE username = $1 LIMIT 1",
-      [username],
+      "SELECT id, username FROM principals WHERE username = $1 AND doco_id = $2 LIMIT 1",
+      [username, meta.docoId],
     ),
   );
   if (existing.rows[0]) {

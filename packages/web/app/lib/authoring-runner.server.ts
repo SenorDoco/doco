@@ -82,7 +82,7 @@ export async function runAuthoringPrimitives(opts: {
     );
 
     const [principals, synapses, population] = await Promise.all([
-      needsPrincipals ? loadPrincipals(c) : Promise.resolve<PrincipalIndex>(new Set()),
+      needsPrincipals ? loadPrincipals(c, opts.docoId) : Promise.resolve<PrincipalIndex>(new Set()),
       needsGraphCompleteness ? loadSynapses(c, opts.docoId) : Promise.resolve<EngineSynapse[]>([]),
       needsGraphCompleteness
         ? loadPopulation(c, opts.docoId, incomingNeuronTypes, opts.candidate.id)
@@ -225,8 +225,8 @@ async function loadPrimitives(c: PgClient, docoId: string): Promise<LoadedPrimit
   return out;
 }
 
-async function loadPrincipals(c: PgClient): Promise<PrincipalIndex> {
-  const r = await c.query<{ id: string }>("SELECT id FROM principals");
+async function loadPrincipals(c: PgClient, docoId: string): Promise<PrincipalIndex> {
+  const r = await c.query<{ id: string }>("SELECT id FROM principals WHERE doco_id = $1", [docoId]);
   return new Set(r.rows.map((row) => row.id));
 }
 

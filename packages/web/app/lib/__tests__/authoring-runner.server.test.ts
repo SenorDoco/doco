@@ -45,11 +45,11 @@ async function seed(opts: SeedOpts = {}): Promise<void> {
       [DOCO_ID, ORG_ID],
     );
 
-    // Insert a Principal (Alice).
+    // Insert a Principal (Alice) scoped to the test Doco.
     await c.query(
-      `INSERT INTO principals (id, username, data, created_at, updated_at)
-         VALUES ($1, 'alice', '{}'::jsonb, now(), now())`,
-      [PRINCIPAL_ALICE],
+      `INSERT INTO principals (id, doco_id, username, data, created_at, updated_at)
+         VALUES ($1, $2, 'alice', '{}'::jsonb, now(), now())`,
+      [PRINCIPAL_ALICE, DOCO_ID],
     );
 
     if (opts.withPrincipalRule) {
