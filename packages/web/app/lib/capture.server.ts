@@ -615,22 +615,45 @@ function requiredPrincipalId(
   fallbackDescription?: string,
 ): string | CaptureError {
   const principalId = value?.trim();
-  if (principalId) return principalId;
-
-  return {
-    error: `${field} is required${fallbackDescription ? ` (${fallbackDescription})` : ""}.`,
-  };
+  if (!principalId) {
+    return {
+      error: `${field} is required${fallbackDescription ? ` (${fallbackDescription})` : ""}.`,
+    };
+  }
+  const bad = assertNotCollaboratorId(principalId, field);
+  if (bad) return bad;
+  return principalId;
 }
 
-function uniquePrincipalIds(value: unknown): string[] {
+function uniquePrincipalIds(value: unknown, field: string): string[] | CaptureError {
   if (!Array.isArray(value)) return [];
   const ids: string[] = [];
   for (const raw of value) {
     if (typeof raw !== "string") continue;
     const id = raw.trim();
-    if (id && !ids.includes(id)) ids.push(id);
+    if (!id) continue;
+    const bad = assertNotCollaboratorId(id, field);
+    if (bad) return bad;
+    if (!ids.includes(id)) ids.push(id);
   }
   return ids;
+}
+
+/**
+ * Refuse `collaborator_*` ids on capture paths that expect a Principal.
+ * Collaborators are the OAuth identity layer; Principals are the
+ * role-personas Actions / Decisions / Intents reference. They share
+ * humans but they aren't interchangeable — agents that grab a
+ * collaborator id from the principals endpoint and pass it into
+ * `actor_id` ship a broken record (the BPMN renderer can't resolve
+ * it; the `requires_field_resolves_to_principal` primitive can't
+ * either). Catch it at the door rather than tolerate it downstream.
+ */
+function assertNotCollaboratorId(value: string, field: string): CaptureError | null {
+  if (!value.startsWith("collaborator_")) return null;
+  return {
+    error: `${field} must be a principal id (\`principal_...\`), not a collaborator id (\`${value}\`). Collaborators are OAuth identities; Principals are the role-personas Actions reference. Look up or create the matching Principal first.`,
+  };
 }
 
 export async function captureDecision(
@@ -1299,8 +1322,15 @@ export async function captureIntent(
   if (typeof wantedBy !== "string") return wantedBy;
   const wantedById = wantedBy;
 
-  const actorIds = uniquePrincipalIds(draft.actors_principal_ids);
-  const stakeholderIds = uniquePrincipalIds(draft.stakeholders_principal_ids);
+  const actorIdsResult = uniquePrincipalIds(draft.actors_principal_ids, "actors_principal_ids");
+  if (!Array.isArray(actorIdsResult)) return actorIdsResult;
+  const actorIds = actorIdsResult;
+  const stakeholderIdsResult = uniquePrincipalIds(
+    draft.stakeholders_principal_ids,
+    "stakeholders_principal_ids",
+  );
+  if (!Array.isArray(stakeholderIdsResult)) return stakeholderIdsResult;
+  const stakeholderIds = stakeholderIdsResult;
 
   const id = `intent_${generateUlid()}`;
   const summary = draft.summary.trim();
