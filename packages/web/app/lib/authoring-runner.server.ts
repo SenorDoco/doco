@@ -10,7 +10,7 @@
  * inheritance, no `excluded_rules` opt-out.
  */
 
-import { withClient } from "@doco/db";
+import { type PoolClient, withClient } from "@doco/db";
 import { NEURON_TABLES } from "@doco/db";
 import { deriveSynapses } from "@doco/index";
 import {
@@ -47,6 +47,13 @@ export interface AuthoringResult {
 export async function runAuthoringPrimitives(opts: {
   docoId: string;
   candidate: CandidateFields;
+  /**
+   * When provided, every load runs on this client (typically a
+   * transaction client opened in capture.server.ts so the enforcer and
+   * the upsert see the same DB snapshot). Without it the runner opens
+   * its own pooled connection.
+   */
+  client?: PoolClient;
 }): Promise<AuthoringResult> {
   // Skip enforcement when the candidate is in a terminal lifecycle.
   // Retire is a winding-down operation: the content was valid when it
@@ -67,7 +74,7 @@ export async function runAuthoringPrimitives(opts: {
     }),
   );
 
-  return withClient(async (c) => {
+  const run = async (c: PoolClient): Promise<AuthoringResult> => {
     const primitives = await loadPrimitives(c, opts.docoId);
     if (primitives.length === 0) {
       return { violations: [], blocking: null, warnings: [] };
@@ -81,13 +88,15 @@ export async function runAuthoringPrimitives(opts: {
       (p) => p.predicate.kind === "graph-completeness",
     );
 
-    const [principals, synapses, population] = await Promise.all([
-      needsPrincipals ? loadPrincipals(c, opts.docoId) : Promise.resolve<PrincipalIndex>(new Set()),
-      needsGraphCompleteness ? loadSynapses(c, opts.docoId) : Promise.resolve<EngineSynapse[]>([]),
-      needsGraphCompleteness
-        ? loadPopulation(c, opts.docoId, incomingNeuronTypes, opts.candidate.id)
-        : Promise.resolve<CandidateFields[]>([]),
-    ]);
+    // Sequential when sharing a transaction client (pg can't pipeline
+    // statements on a single client); the perf cost is a few ms.
+    const principals = needsPrincipals
+      ? await loadPrincipals(c, opts.docoId)
+      : (new Set() as PrincipalIndex);
+    const synapses = needsGraphCompleteness ? await loadSynapses(c, opts.docoId) : [];
+    const population = needsGraphCompleteness
+      ? await loadPopulation(c, opts.docoId, incomingNeuronTypes, opts.candidate.id)
+      : [];
 
     const rawViolations = evaluatePrimitives({
       candidate: opts.candidate,
@@ -101,7 +110,9 @@ export async function runAuthoringPrimitives(opts: {
     const blocking = violations.find((v) => v.on_violation === "block") ?? null;
     const warnings = violations.filter((v) => v.on_violation === "warn");
     return { violations, blocking, warnings };
-  });
+  };
+
+  return opts.client ? run(opts.client) : withClient(run);
 }
 
 /**
@@ -189,18 +200,34 @@ function normalizePredicateKeys(predicate: unknown): unknown {
 }
 
 async function loadPrimitives(c: PgClient, docoId: string): Promise<LoadedPrimitive[]> {
+  // COALESCE so a NULL lifecycle column behaves as "active" — the rest of
+  // the codebase treats NULL that way (search-filters, doco-stats,
+  // full-graph, bpmn-perspective, agent-chat). Without it, a primitive
+  // whose lifecycle column is NULL (e.g. seeded by a migration or
+  // restored from backup) is silently invisible to the enforcer while
+  // looking active everywhere else.
   const r = await c.query<{ id: string; summary: string; data: Record<string, unknown> | null }>(
     `SELECT id, summary, data
        FROM neuron_authoring_primitives
-       WHERE doco_id = $1 AND lifecycle = 'active'`,
+       WHERE doco_id = $1 AND COALESCE(lifecycle, 'active') = 'active'`,
     [docoId],
   );
   const out: LoadedPrimitive[] = [];
   for (const row of r.rows) {
     const yaml = row.data;
-    if (!yaml) continue;
+    if (!yaml) {
+      console.warn(
+        `[authoring-runner] dropping primitive ${row.id} from doco ${docoId}: row.data is null`,
+      );
+      continue;
+    }
     const predicate = normalizePredicateKeys(yaml.predicate);
-    if (!predicate || typeof predicate !== "object") continue;
+    if (!predicate || typeof predicate !== "object") {
+      console.warn(
+        `[authoring-runner] dropping primitive ${row.id} from doco ${docoId}: predicate is missing or not an object`,
+      );
+      continue;
+    }
     const onViolation = yaml.on_violation;
     // Honor both the post-rename `fires_when_neuron_lifecycle` and the
     // pre-rename `fires_when_node_lifecycle` — primitives seeded before
@@ -226,7 +253,13 @@ async function loadPrimitives(c: PgClient, docoId: string): Promise<LoadedPrimit
 }
 
 async function loadPrincipals(c: PgClient, docoId: string): Promise<PrincipalIndex> {
-  const r = await c.query<{ id: string }>("SELECT id FROM principals WHERE doco_id = $1", [docoId]);
+  // Filter to active principals so `requires_field_resolves_to_principal`
+  // doesn't accept a retired actor. COALESCE matches the rest of the
+  // codebase's NULL-as-active convention.
+  const r = await c.query<{ id: string }>(
+    "SELECT id FROM principals WHERE doco_id = $1 AND COALESCE(lifecycle, 'active') = 'active'",
+    [docoId],
+  );
   return new Set(r.rows.map((row) => row.id));
 }
 
@@ -249,8 +282,12 @@ async function loadPopulation(
   if (tables.length === 0) return [];
   const out: CandidateFields[] = [];
   for (const table of tables) {
+    // Filter to active neurons so a retired covering neuron doesn't
+    // satisfy a `graph-completeness` check — retired = no longer trusted
+    // to back a relationship.
     const r = await c.query<{ id: string; data: Record<string, unknown> | null }>(
-      `SELECT id, data FROM ${table} WHERE doco_id = $1 AND id <> $2`,
+      `SELECT id, data FROM ${table}
+         WHERE doco_id = $1 AND id <> $2 AND COALESCE(lifecycle, 'active') = 'active'`,
       [docoId, excludeId],
     );
     for (const row of r.rows) {

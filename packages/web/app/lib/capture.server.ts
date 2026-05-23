@@ -1,4 +1,13 @@
-import { ALL_ENTITY_TABLES, getDocoById, getEntity, upsertEntity, withClient } from "@doco/db";
+import {
+  ALL_ENTITY_TABLES,
+  type PoolClient,
+  getDocoById,
+  getEntity,
+  upsertEntity,
+  withClient,
+  withTransaction,
+} from "@doco/db";
+import { FIELD_TO_SYNAPSE_TYPE, SKIP_FIELDS } from "@doco/index";
 import { type AuthoringPredicate, generateUlid } from "@doco/shared";
 import { waitUntil } from "@vercel/functions";
 // Server-only helpers for "capture an entity" endpoints. Single-call API
@@ -19,20 +28,59 @@ import { recordPhase } from "./telemetry.server";
  * applies the same enforcement: blocking violations short-circuit
  * before persistEntity, warnings get attached to the result. Replaces
  * the pre-v16 `runScopeRules` call (deleted in commit 4974339).
+ *
+ * When `client` is provided, the enforcer reads on that connection so
+ * the load and the subsequent upsert share one DB snapshot.
  */
 async function enforceAuthoringPrimitives(
   docoId: string,
   fm: Record<string, unknown>,
+  client?: PoolClient,
 ): Promise<AuthoringResult> {
   const start = performance.now();
   try {
     return await runAuthoringPrimitives({
       docoId,
       candidate: fm as Parameters<typeof runAuthoringPrimitives>[0]["candidate"],
+      ...(client ? { client } : {}),
     });
   } finally {
     recordPhase("authoring_ms", performance.now() - start);
   }
+}
+
+/**
+ * Atomic enforce-then-persist: opens one transaction, evaluates the
+ * doco's authoring primitives against `fm`, and — if nothing blocks —
+ * upserts the entity on the same connection. Concurrent writers can no
+ * longer slip a new active block primitive into the doco between the
+ * check and the write, and the loader / persister see the same row
+ * snapshot.
+ *
+ * Returns the AuthoringResult unchanged so callers keep their existing
+ * blocking/warnings branches. When `result.blocking` is set the upsert
+ * was skipped.
+ */
+async function enforceAndPersist(args: {
+  docoId: string;
+  fm: Record<string, unknown>;
+  entityType: string;
+  id: string;
+  body?: string;
+}): Promise<AuthoringResult> {
+  return withTransaction(async (c) => {
+    const pred = await enforceAuthoringPrimitives(args.docoId, args.fm, c);
+    if (pred.blocking) return pred;
+    await persistEntity({
+      entityType: args.entityType,
+      id: args.id,
+      docoId: args.docoId,
+      fm: args.fm,
+      ...(args.body !== undefined ? { body: args.body } : {}),
+      client: c,
+    });
+    return pred;
+  });
 }
 
 /**
@@ -84,25 +132,31 @@ async function persistEntity(args: {
   docoId: string;
   fm: Record<string, unknown>;
   body?: string;
+  /** When provided, the upsert runs on this client (used to share a
+   *  transaction with the authoring enforcer). */
+  client?: PoolClient;
 }): Promise<void> {
   const { fm } = args;
   const start = performance.now();
   try {
-    await upsertEntity({
-      id: args.id,
-      doco_id: args.docoId,
-      entity_type: args.entityType,
-      data: fm,
-      body_md: args.body,
-      summary: typeof fm.summary === "string" ? fm.summary : null,
-      lifecycle: typeof fm.lifecycle === "string" ? fm.lifecycle : null,
-      name: typeof fm.name === "string" ? fm.name : null,
-      type_named_value: computeTypeNamedValue(args.entityType, fm),
-      created_at: typeof fm.created_at === "string" ? fm.created_at : null,
-      created_by: typeof fm.created_by === "string" ? fm.created_by : null,
-      updated_at: typeof fm.updated_at === "string" ? fm.updated_at : null,
-      updated_by: typeof fm.updated_by === "string" ? fm.updated_by : null,
-    });
+    await upsertEntity(
+      {
+        id: args.id,
+        doco_id: args.docoId,
+        entity_type: args.entityType,
+        data: fm,
+        body_md: args.body,
+        summary: typeof fm.summary === "string" ? fm.summary : null,
+        lifecycle: typeof fm.lifecycle === "string" ? fm.lifecycle : null,
+        name: typeof fm.name === "string" ? fm.name : null,
+        type_named_value: computeTypeNamedValue(args.entityType, fm),
+        created_at: typeof fm.created_at === "string" ? fm.created_at : null,
+        created_by: typeof fm.created_by === "string" ? fm.created_by : null,
+        updated_at: typeof fm.updated_at === "string" ? fm.updated_at : null,
+        updated_by: typeof fm.updated_by === "string" ? fm.updated_by : null,
+      },
+      args.client,
+    );
   } catch (err) {
     console.error(`postgres persist failed for ${args.entityType}/${args.id}:`, err);
     throw err;
@@ -733,7 +787,7 @@ export async function captureDecision(
     ...status,
   };
 
-  const pred = await enforceAuthoringPrimitives(docoId, fm);
+  const pred = await enforceAndPersist({ docoId, fm, entityType: "decision", id });
   if (pred.blocking) {
     return {
       error: `Authoring primitive violation: ${pred.blocking.reason}`,
@@ -742,12 +796,6 @@ export async function captureDecision(
     };
   }
 
-  await persistEntity({
-    entityType: "decision",
-    id,
-    docoId,
-    fm,
-  });
   emitAuditForCreate({
     docoDir,
     docoId,
@@ -935,7 +983,7 @@ export async function updateDecision(
     return { error: "No fields changed." };
   }
 
-  const pred = await enforceAuthoringPrimitives(docoId, fm);
+  const pred = await enforceAndPersist({ docoId, fm, entityType: "decision", id: decisionId });
   if (pred.blocking) {
     return {
       error: `Authoring primitive violation: ${pred.blocking.reason}`,
@@ -943,13 +991,6 @@ export async function updateDecision(
       ...(pred.warnings.length > 0 ? { warnings: pred.warnings } : {}),
     };
   }
-
-  await persistEntity({
-    entityType: "decision",
-    id: decisionId,
-    docoId,
-    fm,
-  });
   emitAuditForUpdate({
     docoDir,
     docoId,
@@ -1243,7 +1284,13 @@ export async function updateEntity(opts: {
       nextBody = existingBody.trim();
     }
   }
-  const pred = await enforceAuthoringPrimitives(docoId, fm);
+  const pred = await enforceAndPersist({
+    docoId,
+    fm,
+    entityType,
+    id,
+    ...(nextBody !== undefined ? { body: nextBody } : {}),
+  });
   if (pred.blocking) {
     return {
       error: `Authoring primitive violation: ${pred.blocking.reason}`,
@@ -1251,14 +1298,6 @@ export async function updateEntity(opts: {
       ...(pred.warnings.length > 0 ? { warnings: pred.warnings } : {}),
     };
   }
-
-  await persistEntity({
-    entityType,
-    id,
-    docoId,
-    fm,
-    body: nextBody,
-  });
   emitAuditForUpdate({
     docoDir,
     docoId,
@@ -1367,7 +1406,7 @@ export async function captureIntent(
     ...status,
   };
 
-  const pred = await enforceAuthoringPrimitives(docoId, fm);
+  const pred = await enforceAndPersist({ docoId, fm, entityType: "intent", id });
   if (pred.blocking) {
     return {
       error: `Authoring primitive violation: ${pred.blocking.reason}`,
@@ -1375,13 +1414,6 @@ export async function captureIntent(
       ...(pred.warnings.length > 0 ? { warnings: pred.warnings } : {}),
     };
   }
-
-  await persistEntity({
-    entityType: "intent",
-    id,
-    docoId,
-    fm,
-  });
   emitAuditForCreate({
     docoDir,
     docoId,
@@ -1462,7 +1494,7 @@ export async function captureIdea(
     ...status,
   };
 
-  const pred = await enforceAuthoringPrimitives(docoId, fm);
+  const pred = await enforceAndPersist({ docoId, fm, entityType: "idea", id });
   if (pred.blocking) {
     return {
       error: `Authoring primitive violation: ${pred.blocking.reason}`,
@@ -1470,13 +1502,6 @@ export async function captureIdea(
       ...(pred.warnings.length > 0 ? { warnings: pred.warnings } : {}),
     };
   }
-
-  await persistEntity({
-    entityType: "idea",
-    id,
-    docoId,
-    fm,
-  });
   emitAuditForCreate({
     docoDir,
     docoId,
@@ -1595,7 +1620,7 @@ export async function captureEval(
     ...status,
   };
 
-  const pred = await enforceAuthoringPrimitives(docoId, fm);
+  const pred = await enforceAndPersist({ docoId, fm, entityType: "eval", id });
   if (pred.blocking) {
     return {
       error: `Authoring primitive violation: ${pred.blocking.reason}`,
@@ -1603,13 +1628,6 @@ export async function captureEval(
       ...(pred.warnings.length > 0 ? { warnings: pred.warnings } : {}),
     };
   }
-
-  await persistEntity({
-    entityType: "eval",
-    id,
-    docoId,
-    fm,
-  });
   emitAuditForCreate({
     docoDir,
     docoId,
@@ -1720,7 +1738,7 @@ export async function captureAction(
     ...status,
   };
 
-  const pred = await enforceAuthoringPrimitives(docoId, fm);
+  const pred = await enforceAndPersist({ docoId, fm, entityType: "action", id });
   if (pred.blocking) {
     return {
       error: `Authoring primitive violation: ${pred.blocking.reason}`,
@@ -1728,13 +1746,6 @@ export async function captureAction(
       ...(pred.warnings.length > 0 ? { warnings: pred.warnings } : {}),
     };
   }
-
-  await persistEntity({
-    entityType: "action",
-    id,
-    docoId,
-    fm,
-  });
   emitAuditForCreate({
     docoDir,
     docoId,
@@ -1862,7 +1873,7 @@ export async function captureLog(
     ...status,
   };
 
-  const pred = await enforceAuthoringPrimitives(docoId, fm);
+  const pred = await enforceAndPersist({ docoId, fm, entityType: "log", id });
   if (pred.blocking) {
     return {
       error: `Authoring primitive violation: ${pred.blocking.reason}`,
@@ -1870,13 +1881,6 @@ export async function captureLog(
       ...(pred.warnings.length > 0 ? { warnings: pred.warnings } : {}),
     };
   }
-
-  await persistEntity({
-    entityType: "log",
-    id,
-    docoId,
-    fm,
-  });
   emitAuditForCreate({
     docoDir,
     docoId,
@@ -2006,7 +2010,7 @@ export async function captureRule(
     ...status,
   };
 
-  const pred = await enforceAuthoringPrimitives(docoId, fm);
+  const pred = await enforceAndPersist({ docoId, fm, entityType: "rule", id });
   if (pred.blocking) {
     return {
       error: `Authoring primitive violation: ${pred.blocking.reason}`,
@@ -2014,13 +2018,6 @@ export async function captureRule(
       ...(pred.warnings.length > 0 ? { warnings: pred.warnings } : {}),
     };
   }
-
-  await persistEntity({
-    entityType: "rule",
-    id,
-    docoId,
-    fm,
-  });
   emitAuditForCreate({
     docoDir,
     docoId,
@@ -2149,7 +2146,42 @@ function normalizeNodeAuthoringPredicate(
   if (typeof predicate.kind !== "string" || predicate.kind.length === 0) {
     return { error: "predicate.kind is required." };
   }
+  const synapseTypeError = validateSynapseTypeReference(predicate);
+  if (synapseTypeError) return synapseTypeError;
   return predicate;
+}
+
+/**
+ * Reject predicates whose `synapse_type` is a *field name* (a key in
+ * `FIELD_TO_SYNAPSE_TYPE`) rather than the canonical mapped synapse type
+ * — those would never match because `deriveSynapses` rewrites the field
+ * name to the canonical value before the engine sees it.
+ *
+ * Also reject predicates whose `synapse_type` lives under a `SKIP_FIELDS`
+ * field — `deriveSynapses` doesn't walk those, so no synapse with that
+ * type can exist for a `requires_synapse` to find (or `forbids_synapse`
+ * to flag), making the predicate dead-on-arrival.
+ */
+function validateSynapseTypeReference(predicate: AuthoringPredicate): CaptureError | null {
+  if (predicate.kind !== "requires_synapse" && predicate.kind !== "forbids_synapse") {
+    return null;
+  }
+  const synapseType = predicate.synapse_type;
+  if (typeof synapseType !== "string" || synapseType.length === 0) {
+    return { error: `predicate.synapse_type is required for \`${predicate.kind}\`.` };
+  }
+  const canonical = FIELD_TO_SYNAPSE_TYPE[synapseType];
+  if (canonical) {
+    return {
+      error: `predicate.synapse_type \`${synapseType}\` is a field name; use the canonical synapse type \`${canonical}\` (deriveSynapses rewrites the field name to its canonical type).`,
+    };
+  }
+  if (SKIP_FIELDS.has(synapseType)) {
+    return {
+      error: `predicate.synapse_type \`${synapseType}\` refers to a SKIP_FIELDS field that deriveSynapses never walks; no synapse with this type can exist.`,
+    };
+  }
+  return null;
 }
 
 export type PrimitiveCaptureExtras = Record<string, never>;
@@ -2271,7 +2303,13 @@ export async function captureGuidancePrimitive(
   const payload = await buildGuidancePrimitivePayload(docoId, draft, extras);
   if ("error" in payload) return payload;
 
-  const pred = await enforceAuthoringPrimitives(docoId, payload.fm);
+  const pred = await enforceAndPersist({
+    docoId,
+    fm: payload.fm,
+    entityType: payload.entityType,
+    id: payload.id,
+    body: payload.body,
+  });
   if (pred.blocking) {
     return {
       error: `Authoring primitive violation: ${pred.blocking.reason}`,
@@ -2279,14 +2317,6 @@ export async function captureGuidancePrimitive(
       ...(pred.warnings.length > 0 ? { warnings: pred.warnings } : {}),
     };
   }
-
-  await persistEntity({
-    entityType: payload.entityType,
-    id: payload.id,
-    docoId,
-    fm: payload.fm,
-    body: payload.body,
-  });
   emitAuditForCreate({
     docoDir,
     docoId,
@@ -2333,7 +2363,13 @@ export async function captureNeuronAuthoringPrimitive(
   const payload = await buildNeuronAuthoringPrimitivePayload(docoId, draft, extras);
   if ("error" in payload) return payload;
 
-  const pred = await enforceAuthoringPrimitives(docoId, payload.fm);
+  const pred = await enforceAndPersist({
+    docoId,
+    fm: payload.fm,
+    entityType: payload.entityType,
+    id: payload.id,
+    body: payload.body,
+  });
   if (pred.blocking) {
     return {
       error: `Authoring primitive violation: ${pred.blocking.reason}`,
@@ -2341,14 +2377,6 @@ export async function captureNeuronAuthoringPrimitive(
       ...(pred.warnings.length > 0 ? { warnings: pred.warnings } : {}),
     };
   }
-
-  await persistEntity({
-    entityType: payload.entityType,
-    id: payload.id,
-    docoId,
-    fm: payload.fm,
-    body: payload.body,
-  });
   emitAuditForCreate({
     docoDir,
     docoId,
@@ -2560,7 +2588,7 @@ export async function captureReference(
     ...status,
   };
 
-  const pred = await enforceAuthoringPrimitives(docoId, fm);
+  const pred = await enforceAndPersist({ docoId, fm, entityType: "reference", id });
   if (pred.blocking) {
     return {
       error: `Authoring primitive violation: ${pred.blocking.reason}`,
@@ -2568,13 +2596,6 @@ export async function captureReference(
       ...(pred.warnings.length > 0 ? { warnings: pred.warnings } : {}),
     };
   }
-
-  await persistEntity({
-    entityType: "reference",
-    id,
-    docoId,
-    fm,
-  });
   emitAuditForCreate({
     docoDir,
     docoId,
@@ -2677,7 +2698,7 @@ export async function captureState(
     ...status,
   };
 
-  const pred = await enforceAuthoringPrimitives(docoId, fm);
+  const pred = await enforceAndPersist({ docoId, fm, entityType: "state", id });
   if (pred.blocking) {
     return {
       error: `Authoring primitive violation: ${pred.blocking.reason}`,
@@ -2685,13 +2706,6 @@ export async function captureState(
       ...(pred.warnings.length > 0 ? { warnings: pred.warnings } : {}),
     };
   }
-
-  await persistEntity({
-    entityType: "state",
-    id,
-    docoId,
-    fm,
-  });
   emitAuditForCreate({
     docoDir,
     docoId,
