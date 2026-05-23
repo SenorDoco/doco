@@ -132,8 +132,10 @@ Neuron types: decisions, ideas, rules, intents, actions, logs, evals,
 references, states, principals, invites, audit.
 
 Capture body specs exist for decisions, intents, actions, logs, rules,
-evals, references, states, ideas, primitives, and settings. Principals,
-invites, and audit have dedicated route behavior; don't infer write
+evals, references, states, ideas, primitives, settings, and principals.
+Principals expose a smaller surface (create + retire only) — read the
+\`principals.txt\` spec rather than assuming the generic capture body.
+Invites and audit have dedicated route behavior; don't infer write
 bodies for them from the generic capture pattern.
 
 Primitives are NOT neurons. Primitives
