@@ -530,6 +530,19 @@ export default function DocoHome({
       return next;
     });
 
+  // Fullscreen toggle for the perspective aside (tabs + search +
+  // canvas + lifecycle filter all expand to fill the viewport).
+  const [isPerspectiveFullscreen, setIsPerspectiveFullscreen] = useState(false);
+  const togglePerspectiveFullscreen = useCallback(() => setIsPerspectiveFullscreen((v) => !v), []);
+  useEffect(() => {
+    if (!isPerspectiveFullscreen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setIsPerspectiveFullscreen(false);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [isPerspectiveFullscreen]);
+
   // Live feed polling (ADR-089).
   const revalidator = useRevalidator();
   useEffect(() => {
@@ -732,13 +745,21 @@ export default function DocoHome({
           {goal ? <p className="text-[11px] text-muted-foreground">{goal}</p> : null}
         </div>
         <div className="grid grid-cols-1 gap-6 min-[1200px]:grid-cols-[minmax(0,1fr)_320px]">
-          <aside className="flex h-[calc(100vh-10rem)] min-h-[480px] min-w-0 flex-col min-[1200px]:sticky min-[1200px]:top-4 min-[1200px]:self-start">
+          <aside
+            className={
+              isPerspectiveFullscreen
+                ? "fixed inset-0 z-50 flex h-screen min-h-screen min-w-0 flex-col bg-background p-4"
+                : "flex h-[calc(100vh-10rem)] min-h-[480px] min-w-0 flex-col min-[1200px]:sticky min-[1200px]:top-4 min-[1200px]:self-start"
+            }
+          >
             <PerspectiveTabs
               handle={handle}
               perspectives={perspectives}
               availablePerspectives={availablePerspectives}
               activeSlug={activeSlug}
               canAdmin={canAdminPerspectives}
+              isFullscreen={isPerspectiveFullscreen}
+              onToggleFullscreen={togglePerspectiveFullscreen}
               search={
                 <SearchBoxWithHistory
                   handle={handle}
