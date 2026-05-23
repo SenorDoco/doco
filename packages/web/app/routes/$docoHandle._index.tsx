@@ -751,7 +751,7 @@ export default function DocoHome({
                 />
               }
             />
-            <div className="flex min-h-0 flex-1 flex-col">
+            <div className="relative flex min-h-0 flex-1 flex-col">
               {activePerspectiveKind === "list" ? (
                 <ListPerspective
                   nodes={graphState.nodes}
@@ -783,17 +783,18 @@ export default function DocoHome({
                   onNeuronClick={handleGraphNeuronClick}
                 />
               )}
-            </div>
-            {/* Lifecycle filter sits directly under the perspective
-                canvas so the controls line up with what they toggle,
-                rather than under the right-hand column where the user
-                would have to scroll past the audit panel to find them. */}
-            <div className="mt-3 shrink-0">
-              <LifecycleFilter
-                available={availableLifecycles}
-                visible={visibleLifecycles}
-                onToggle={toggleLifecycle}
-              />
+              {/* Lifecycle filter floats inside the canvas, bottom-left,
+                  so the canvas itself fills the entire aside height —
+                  no separate filter row eating space underneath. */}
+              <div className="pointer-events-none absolute bottom-3 left-3 z-10">
+                <div className="pointer-events-auto rounded-md border border-border bg-card/90 px-2 py-1 shadow-sm backdrop-blur">
+                  <LifecycleFilter
+                    available={availableLifecycles}
+                    visible={visibleLifecycles}
+                    onToggle={toggleLifecycle}
+                  />
+                </div>
+              </div>
             </div>
           </aside>
 
