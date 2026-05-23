@@ -1,4 +1,5 @@
-import { createContext, useContext } from "react";
+import { Menu } from "lucide-react";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { Form, NavLink } from "react-router";
 import { DocoMark } from "~/components/doco-mark";
 import { VersionPill } from "~/components/version-pill";
@@ -48,53 +49,14 @@ export function SiteHeader({ me, shellOwner = false }: SiteHeaderProps) {
         <div className="ml-auto flex shrink-0 items-center gap-3 text-xs">
           {me ? (
             <>
-              <NavLink
-                to="/docos"
-                className={({ isActive }) =>
-                  cn(
-                    "neu-button whitespace-nowrap rounded-md border border-border px-3 py-1.5 font-semibold",
-                    isActive ? "text-primary" : "text-foreground hover:text-primary",
-                  )
-                }
-              >
-                Docos
-              </NavLink>
-              <NavLink
-                to="/orgs"
-                className={({ isActive }) =>
-                  cn(
-                    "neu-button whitespace-nowrap rounded-md border border-border px-3 py-1.5 font-semibold",
-                    isActive ? "text-primary" : "text-foreground hover:text-primary",
-                  )
-                }
-              >
-                Orgs
-              </NavLink>
-              <NavLink
-                to="/collaborators"
-                className={({ isActive }) =>
-                  cn(
-                    "neu-button whitespace-nowrap rounded-md border border-border px-3 py-1.5 font-semibold",
-                    isActive ? "text-primary" : "text-foreground hover:text-primary",
-                  )
-                }
-              >
-                Collaborators
-              </NavLink>
-              <NavLink
-                to={`/${me.username}`}
-                className="neu-button whitespace-nowrap rounded-full border border-border px-3 py-1.5 font-semibold text-foreground hover:text-primary"
-              >
-                {me.username}
-              </NavLink>
-              <Form method="post" action="/sign-out">
-                <button
-                  type="submit"
-                  className="text-muted-foreground hover:text-foreground transition-colors"
-                >
-                  Sign out
-                </button>
-              </Form>
+              {/* md+: nav rendered inline. */}
+              <nav className="hidden items-center gap-3 md:flex">
+                <NavButtons me={me} />
+              </nav>
+              {/* < md: collapsed into a hamburger popover so the
+                  buttons don't wrap into the title / version pill on
+                  narrow screens. */}
+              <MobileNavMenu me={me} />
             </>
           ) : (
             <NavLink
@@ -107,5 +69,84 @@ export function SiteHeader({ me, shellOwner = false }: SiteHeaderProps) {
         </div>
       </div>
     </header>
+  );
+}
+
+function NavButtons({ me, onNavigate }: { me: CurrentPrincipal; onNavigate?: () => void }) {
+  const linkClass = ({ isActive }: { isActive: boolean }) =>
+    cn(
+      "neu-button whitespace-nowrap rounded-md border border-border px-3 py-1.5 font-semibold",
+      isActive ? "text-primary" : "text-foreground hover:text-primary",
+    );
+  return (
+    <>
+      <NavLink to="/docos" className={linkClass} onClick={onNavigate}>
+        Docos
+      </NavLink>
+      <NavLink to="/orgs" className={linkClass} onClick={onNavigate}>
+        Orgs
+      </NavLink>
+      <NavLink to="/collaborators" className={linkClass} onClick={onNavigate}>
+        Collaborators
+      </NavLink>
+      <NavLink
+        to={`/${me.username}`}
+        className="neu-button whitespace-nowrap rounded-full border border-border px-3 py-1.5 font-semibold text-foreground hover:text-primary"
+        onClick={onNavigate}
+      >
+        {me.username}
+      </NavLink>
+      <Form method="post" action="/sign-out">
+        <button
+          type="submit"
+          className="text-muted-foreground transition-colors hover:text-foreground"
+        >
+          Sign out
+        </button>
+      </Form>
+    </>
+  );
+}
+
+function MobileNavMenu({ me }: { me: CurrentPrincipal }) {
+  const [open, setOpen] = useState(false);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function onDocClick(e: MouseEvent) {
+      if (!wrapperRef.current?.contains(e.target as Node)) setOpen(false);
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("mousedown", onDocClick);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDocClick);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  return (
+    <div ref={wrapperRef} className="relative md:hidden">
+      <button
+        type="button"
+        aria-label="Open navigation menu"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+        className="neu-button inline-flex h-9 w-9 items-center justify-center rounded-md border border-border text-foreground hover:text-primary"
+      >
+        <Menu className="h-4 w-4" />
+      </button>
+      {open ? (
+        <div
+          aria-label="Navigation"
+          className="neu-surface absolute right-0 top-full z-50 mt-2 flex w-48 flex-col gap-2 rounded-md border border-border bg-card p-2 shadow-md"
+        >
+          <NavButtons me={me} onNavigate={() => setOpen(false)} />
+        </div>
+      ) : null}
+    </div>
   );
 }
