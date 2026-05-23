@@ -28,8 +28,13 @@ import {
 } from "react";
 import { useNavigate } from "react-router";
 import type { OverviewGraphLink } from "~/components/overview-graph";
-import { MILESTONE_LANE_ID } from "~/lib/bpmn-perspective.server";
 import type { BpmnLane, BpmnNode, BpmnShape } from "~/lib/bpmn-perspective.server";
+
+// MUST stay in sync with `MILESTONE_LANE_ID` exported from
+// `~/lib/bpmn-perspective.server`. Can't import the value here —
+// `.server.ts` modules are stripped from the client bundle, so
+// value-imports from them fail the build.
+const MILESTONE_LANE_ID = "__milestones__";
 import {
   type GraphReferenceItem,
   clearGraphReferences,
