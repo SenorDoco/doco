@@ -153,6 +153,15 @@ export async function loadBpmnGraph(
     });
   }
 
+  // Every Principal gets a lane, even when no neuron is assigned to it
+  // yet — gives authors a visible target to drag neurons onto and makes
+  // the swimlane structure of the doco explicit at a glance.
+  for (const p of principalRows.rows) {
+    if (!lanesById.has(p.id)) {
+      lanesById.set(p.id, { id: p.id, label: p.username });
+    }
+  }
+
   // Synapses: only those whose endpoints are both in this node set.
   const nodeIdSet = new Set(nodes.map((n) => n.id));
   const ids = Array.from(nodeIdSet);
