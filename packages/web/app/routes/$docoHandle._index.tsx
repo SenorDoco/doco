@@ -763,6 +763,17 @@ export default function DocoHome({
                 />
               )}
             </div>
+            {/* Lifecycle filter sits directly under the perspective
+                canvas so the controls line up with what they toggle,
+                rather than under the right-hand column where the user
+                would have to scroll past the audit panel to find them. */}
+            <div className="mt-3 shrink-0">
+              <LifecycleFilter
+                available={availableLifecycles}
+                visible={visibleLifecycles}
+                onToggle={toggleLifecycle}
+              />
+            </div>
           </aside>
 
           <div className="relative min-w-0">
@@ -823,18 +834,6 @@ export default function DocoHome({
               </div>
             ) : null}
           </div>
-        </div>
-
-        {/* Page-level lifecycle filter — shared across every
-            perspective (graph / list / BPMN) so toggles persist when
-            switching tabs. Sits below the perspective body, full
-            width. */}
-        <div className="mt-6">
-          <LifecycleFilter
-            available={availableLifecycles}
-            visible={visibleLifecycles}
-            onToggle={toggleLifecycle}
-          />
         </div>
       </main>
     </div>
