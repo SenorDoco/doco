@@ -221,6 +221,7 @@ export default [
   // Special-cased capture routes that need custom logic — listed BEFORE
   // the generic `:type.json` dispatcher so the static segment wins.
   route(":docoHandle/api/principals.json", "routes/$docoHandle.api.principals[.]json.tsx"),
+  route(":docoHandle/api/principals/:id.json", "routes/$docoHandle.api.principals.$id[.]json.tsx"),
   route(":docoHandle/api/settings.json", "routes/$docoHandle.api.settings[.]json.tsx"),
   route(":docoHandle/api/audit.json", "routes/$docoHandle.api.audit[.]json.tsx"),
   // Primitives are not neurons; they live on a
