@@ -244,11 +244,11 @@ function OverviewFlowNode({ data }: { data: OverviewNodeData }) {
       </div>
       {data.referenceNumber ? (
         <span
-          aria-label={`Graph reference ${data.referenceNumber}: ${title}`}
+          aria-label={`Graph reference #${data.referenceNumber}: ${title}`}
           className="neu-button pointer-events-none absolute -left-2 -top-2 z-30 flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold leading-none text-primary-foreground shadow-sm ring-2 ring-card"
-          title={`Graph reference ${data.referenceNumber}`}
+          title={`Graph reference #${data.referenceNumber}`}
         >
-          {data.referenceNumber}
+          #{data.referenceNumber}
         </span>
       ) : null}
     </div>

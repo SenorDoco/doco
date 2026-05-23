@@ -187,11 +187,11 @@ function ListRow({ node, sort, rank, referenceNumber }: ListRowProps) {
     >
       {referenceNumber ? (
         <span
-          aria-label={`Graph reference ${referenceNumber}: ${node.name ?? node.id}`}
+          aria-label={`Graph reference #${referenceNumber}: ${node.name ?? node.id}`}
           className="flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold leading-none text-primary-foreground shadow-sm ring-2 ring-card"
-          title={`Graph reference ${referenceNumber}`}
+          title={`Graph reference #${referenceNumber}`}
         >
-          {referenceNumber}
+          #{referenceNumber}
         </span>
       ) : null}
       <span aria-hidden className="shrink-0">
