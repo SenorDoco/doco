@@ -57,7 +57,7 @@ export const SEARCH_TYPE_SPECS: SearchTypeSpec[] = [
     table: "principals",
     entityType: "principal",
     selectExtra: "username, created_at",
-    hostLevel: true,
+    hostLevel: false,
     toHit: (row, score) => ({
       id: String(row.id),
       entity_type: "principal",
@@ -123,7 +123,7 @@ export async function loadAllDocoEntityIds(c: PoolClient, docoId: string): Promi
     for (const row of rows) ids.push(row.id);
   }
   const principalRows = (
-    await c.query<{ id: string }>("SELECT id FROM principals WHERE data->>'doco_id' = $1", [docoId])
+    await c.query<{ id: string }>("SELECT id FROM principals WHERE doco_id = $1", [docoId])
   ).rows;
   for (const row of principalRows) ids.push(row.id);
   return ids;

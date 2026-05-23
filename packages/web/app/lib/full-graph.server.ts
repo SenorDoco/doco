@@ -81,8 +81,8 @@ function overviewRowsSql(includeLabel = false): string {
               FROM ${entry.table} t
              WHERE t.doco_id = $1`;
   });
-  // Principals are host-scoped (no doco_id column); scope to this Doco
-  // via the data jsonb bag and drop retired role-personas.
+  // Principals are Doco-scoped (migration 020); filter by the typed
+  // column and drop retired role-personas.
   const principalLeg = `SELECT id,
                                 'principal'::text AS entity_type,
                                 username AS name,
@@ -90,7 +90,7 @@ function overviewRowsSql(includeLabel = false): string {
                                 created_at::text AS created_at
                                 ${includeLabel ? ", COALESCE(summary, username) AS label" : ""}
                            FROM principals
-                          WHERE data->>'doco_id' = $1
+                          WHERE doco_id = $1
                             AND COALESCE(lifecycle, 'active') = 'active'`;
   return [...neuronLegs, principalLeg].join(" UNION ALL ");
 }
@@ -217,9 +217,9 @@ function overviewRowsSqlMulti(): string {
                               username AS name,
                               COALESCE(lifecycle, 'active') AS lifecycle,
                               created_at::text AS created_at,
-                              data->>'doco_id' AS doco_id
+                              doco_id AS doco_id
                          FROM principals
-                        WHERE data->>'doco_id' = ANY($1::text[])
+                        WHERE doco_id = ANY($1::text[])
                           AND COALESCE(lifecycle, 'active') = 'active'`;
   return [...neuronLegs, principalLeg].join(" UNION ALL ");
 }

@@ -25,7 +25,7 @@ function makeQueryClient(rows: Record<string, unknown[]>) {
 }
 
 describe("loadOverviewGraph", () => {
-  it("includes a principals leg scoped via data->>'doco_id'", async () => {
+  it("includes a principals leg scoped by the typed doco_id column", async () => {
     const { client, captured } = makeQueryClient({
       entities: [
         {
@@ -43,7 +43,8 @@ describe("loadOverviewGraph", () => {
 
     const entityQuery = captured.find((c) => /FROM principals/i.test(c.sql));
     expect(entityQuery, "principals leg should be present in the UNION").toBeDefined();
-    expect(entityQuery?.sql).toMatch(/data->>'doco_id'\s*=\s*\$1/);
+    expect(entityQuery?.sql).toMatch(/\bdoco_id\s*=\s*\$1/);
+    expect(entityQuery?.sql).not.toMatch(/data->>'doco_id'/);
     expect(entityQuery?.sql).toMatch(/lifecycle.*=\s*'active'/i);
     expect(entityQuery?.params).toEqual(["doco_acme"]);
 

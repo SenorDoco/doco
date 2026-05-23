@@ -2,8 +2,8 @@
 // shown on the dashboard and owner-profile docos tables.
 //
 // `neurons` counts domain neurons: decisions, intents, rules,
-// actions, evals, ideas, reference_entities, logs, states, and
-// role-principals authored for a Doco. Primitives are not neurons and are deliberately
+// actions, evals, ideas, reference_entities, logs, states, and the
+// Doco's principals. Primitives are not neurons and are deliberately
 // excluded — they are surfaced via /<handle>/api/primitives.json.
 // `synapses` reads the materialized `synapses` table.
 // `lastUpdatedAt` is the max `at` from `audit_events` — that captures
@@ -29,11 +29,7 @@ const STATS_ENTITY_TABLE_SPECS = [
   { table: "reference_entities", docoIdSql: "doco_id", docoWhereSql: "doco_id = ANY($1)" },
   { table: "logs", docoIdSql: "doco_id", docoWhereSql: "doco_id = ANY($1)" },
   { table: "states", docoIdSql: "doco_id", docoWhereSql: "doco_id = ANY($1)" },
-  {
-    table: "principals",
-    docoIdSql: "data->>'doco_id'",
-    docoWhereSql: "data->>'doco_id' = ANY($1)",
-  },
+  { table: "principals", docoIdSql: "doco_id", docoWhereSql: "doco_id = ANY($1)" },
 ];
 
 export const ENTITY_TABLES = STATS_ENTITY_TABLE_SPECS.map((spec) => spec.table);

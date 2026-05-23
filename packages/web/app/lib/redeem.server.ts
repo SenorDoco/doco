@@ -1,6 +1,5 @@
 // Server-only re-exports. Keeps server-only dependencies (pg, etc.) out of
 // the client bundle.
-export { addAgentPrincipal } from "./agents.server";
 export {
   addOrganizationByHandle,
   createDocoInOrg,
