@@ -6,7 +6,7 @@
 // perspectives and pin the default one from inside the popover. The
 // tab pills themselves are now plain links with no inline controls.
 
-import { Maximize2, Minimize2, Pin, Settings } from "lucide-react";
+import { Pin, Settings } from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { Link, useFetcher, useNavigate } from "react-router";
 import { cn } from "~/lib/cn";
@@ -19,8 +19,6 @@ interface PerspectiveTabsProps {
   activeSlug: string;
   canAdmin: boolean;
   search?: ReactNode;
-  isFullscreen?: boolean;
-  onToggleFullscreen?: () => void;
 }
 
 export function PerspectiveTabs({
@@ -30,8 +28,6 @@ export function PerspectiveTabs({
   activeSlug,
   canAdmin,
   search,
-  isFullscreen,
-  onToggleFullscreen,
 }: PerspectiveTabsProps) {
   return (
     <div className="mb-2 flex flex-wrap items-start justify-between gap-3">
@@ -54,22 +50,6 @@ export function PerspectiveTabs({
             availablePerspectives={availablePerspectives}
             activeSlug={activeSlug}
           />
-        ) : null}
-        {onToggleFullscreen ? (
-          <button
-            type="button"
-            aria-label={isFullscreen ? "Exit full screen" : "Enter full screen"}
-            aria-pressed={isFullscreen}
-            title={isFullscreen ? "Exit full screen (Esc)" : "Enter full screen"}
-            onClick={onToggleFullscreen}
-            className="neu-button inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:text-foreground"
-          >
-            {isFullscreen ? (
-              <Minimize2 className="h-3.5 w-3.5" />
-            ) : (
-              <Maximize2 className="h-3.5 w-3.5" />
-            )}
-          </button>
         ) : null}
       </nav>
       {search ? <div className="w-full sm:w-72 sm:flex-none">{search}</div> : null}

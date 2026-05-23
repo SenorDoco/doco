@@ -61,6 +61,7 @@ import {
 } from "~/lib/perspectives.server";
 import { computeFilterFacets } from "~/lib/search-filters.server";
 import { timeAgo } from "~/lib/time-ago";
+import { useFullscreen } from "~/lib/use-fullscreen";
 
 const FEED_LIMIT = 20;
 const HEATMAP_WEEKS = 52;
@@ -530,18 +531,13 @@ export default function DocoHome({
       return next;
     });
 
-  // Fullscreen toggle for the perspective aside (tabs + search +
-  // canvas + lifecycle filter all expand to fill the viewport).
-  const [isPerspectiveFullscreen, setIsPerspectiveFullscreen] = useState(false);
-  const togglePerspectiveFullscreen = useCallback(() => setIsPerspectiveFullscreen((v) => !v), []);
-  useEffect(() => {
-    if (!isPerspectiveFullscreen) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setIsPerspectiveFullscreen(false);
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [isPerspectiveFullscreen]);
+  // Native browser fullscreen on the aside (tabs + search + canvas +
+  // lifecycle filter ride along because they're all inside the aside).
+  // Native API gives an actual OS-level fullscreen — Esc exits per
+  // browser convention.
+  const asideRef = useRef<HTMLElement>(null);
+  const { isFullscreen: isPerspectiveFullscreen, toggle: togglePerspectiveFullscreen } =
+    useFullscreen(asideRef);
 
   // Live feed polling (ADR-089).
   const revalidator = useRevalidator();
@@ -746,11 +742,8 @@ export default function DocoHome({
         </div>
         <div className="grid grid-cols-1 gap-6 min-[1200px]:grid-cols-[minmax(0,1fr)_320px]">
           <aside
-            className={
-              isPerspectiveFullscreen
-                ? "fixed inset-0 z-50 flex h-screen min-h-screen min-w-0 flex-col bg-background p-4"
-                : "flex h-[calc(100vh-10rem)] min-h-[480px] min-w-0 flex-col min-[1200px]:sticky min-[1200px]:top-4 min-[1200px]:self-start"
-            }
+            ref={asideRef}
+            className="flex h-[calc(100vh-10rem)] min-h-[480px] min-w-0 flex-col bg-background min-[1200px]:sticky min-[1200px]:top-4 min-[1200px]:self-start"
           >
             <PerspectiveTabs
               handle={handle}
@@ -758,8 +751,6 @@ export default function DocoHome({
               availablePerspectives={availablePerspectives}
               activeSlug={activeSlug}
               canAdmin={canAdminPerspectives}
-              isFullscreen={isPerspectiveFullscreen}
-              onToggleFullscreen={togglePerspectiveFullscreen}
               search={
                 <SearchBoxWithHistory
                   handle={handle}
@@ -785,6 +776,8 @@ export default function DocoHome({
                   nodes={bpmnGraph.nodes}
                   links={bpmnGraph.links}
                   visibleLifecycles={visibleLifecycles}
+                  isFullscreen={isPerspectiveFullscreen}
+                  onToggleFullscreen={togglePerspectiveFullscreen}
                   onNeuronClick={(node) => {
                     void loadNeuronDialog(
                       node.entity_type,
@@ -801,6 +794,8 @@ export default function DocoHome({
                   detailUrl={graphState.detailUrl}
                   fillHeight
                   visibleLifecycles={visibleLifecycles}
+                  isFullscreen={isPerspectiveFullscreen}
+                  onToggleFullscreen={togglePerspectiveFullscreen}
                   onNeuronClick={handleGraphNeuronClick}
                 />
               )}

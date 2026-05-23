@@ -1,4 +1,5 @@
 import { Handle, type MiniMapNodeProps, Position } from "@xyflow/react";
+import { Maximize2, Minimize2 } from "lucide-react";
 import { type ComponentType, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { NeuronTypeIcon } from "~/components/neuron-type-icon";
@@ -58,6 +59,15 @@ interface OverviewGraphProps extends OverviewGraphData {
    * backwards compatibility (e.g. the org overview).
    */
   visibleLifecycles?: Set<string>;
+  /**
+   * When provided, render a fourth React Flow control button (below
+   * zoom +/-/fit) that calls this callback. The button shows
+   * Maximize2 when `isFullscreen` is false, Minimize2 when true.
+   * The caller owns the actual fullscreen request — the button is
+   * just the trigger inside the canvas controls.
+   */
+  isFullscreen?: boolean;
+  onToggleFullscreen?: () => void;
 }
 
 interface Point {
@@ -306,6 +316,8 @@ export function OverviewGraph({
   search,
   onNeuronClick,
   visibleLifecycles: externalVisibleLifecycles,
+  isFullscreen,
+  onToggleFullscreen,
 }: OverviewGraphProps) {
   const navigate = useNavigate();
   const graphRef = useRef<HTMLDivElement>(null);
@@ -597,7 +609,17 @@ export function OverviewGraph({
               position="top-right"
               showInteractive={false}
               fitViewOptions={GRAPH_FIT_VIEW_OPTIONS}
-            />
+            >
+              {onToggleFullscreen ? (
+                <Flow.ControlButton
+                  onClick={onToggleFullscreen}
+                  title={isFullscreen ? "Exit full screen" : "Enter full screen"}
+                  aria-label={isFullscreen ? "Exit full screen" : "Enter full screen"}
+                >
+                  {isFullscreen ? <Minimize2 /> : <Maximize2 />}
+                </Flow.ControlButton>
+              ) : null}
+            </Flow.Controls>
             <Flow.MiniMap
               pannable
               zoomable

@@ -18,6 +18,7 @@
 // lane vertical offset.
 
 import { Handle, MarkerType, type MiniMapNodeProps, Position } from "@xyflow/react";
+import { Maximize2, Minimize2 } from "lucide-react";
 import {
   type CSSProperties,
   type ComponentType,
@@ -49,6 +50,8 @@ interface BpmnPerspectiveProps {
    * shown.
    */
   visibleLifecycles?: Set<string>;
+  isFullscreen?: boolean;
+  onToggleFullscreen?: () => void;
 }
 
 const LANE_HEIGHT = 140;
@@ -102,6 +105,7 @@ interface FlowModule {
   ReactFlow: typeof import("@xyflow/react").ReactFlow;
   Background: typeof import("@xyflow/react").Background;
   Controls: typeof import("@xyflow/react").Controls;
+  ControlButton: typeof import("@xyflow/react").ControlButton;
   MiniMap: typeof import("@xyflow/react").MiniMap;
 }
 
@@ -111,6 +115,8 @@ export function BpmnPerspective({
   links,
   onNeuronClick,
   visibleLifecycles,
+  isFullscreen,
+  onToggleFullscreen,
 }: BpmnPerspectiveProps) {
   const navigate = useNavigate();
   const graphRef = useRef<HTMLDivElement>(null);
@@ -145,6 +151,7 @@ export function BpmnPerspective({
         ReactFlow: mod.ReactFlow,
         Background: mod.Background,
         Controls: mod.Controls,
+        ControlButton: mod.ControlButton,
         MiniMap: mod.MiniMap,
       });
     });
@@ -323,7 +330,17 @@ export function BpmnPerspective({
           proOptions={{ hideAttribution: true }}
         >
           <Flow.Background gap={24} size={1} />
-          <Flow.Controls position="top-right" showInteractive={false} />
+          <Flow.Controls position="top-right" showInteractive={false}>
+            {onToggleFullscreen ? (
+              <Flow.ControlButton
+                onClick={onToggleFullscreen}
+                title={isFullscreen ? "Exit full screen" : "Enter full screen"}
+                aria-label={isFullscreen ? "Exit full screen" : "Enter full screen"}
+              >
+                {isFullscreen ? <Minimize2 /> : <Maximize2 />}
+              </Flow.ControlButton>
+            ) : null}
+          </Flow.Controls>
           <Flow.MiniMap
             pannable
             zoomable
