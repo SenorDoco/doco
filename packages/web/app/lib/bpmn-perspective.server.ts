@@ -20,12 +20,26 @@
 //         process passes *through* a State rather than someone
 //         *performing* it.
 //
-//      c) Artifacts band — pinned to the BOTTOM. References, Evals,
-//         Ideas, and Rules live here. BPMN puts these alongside the
-//         flow as data objects / annotations / business-rule tasks,
-//         not in the actor swim lanes. The artifacts band is the
-//         flat-list approximation until we can lay them out as
-//         floating elements with dashed associations (phase 4).
+//      c) Artifacts band — pinned to the BOTTOM. References, Ideas,
+//         and any Rule/Eval that doesn't have a flow-neuron host live
+//         here. BPMN puts these alongside the flow as data objects /
+//         annotations / business-rule tasks, not in the actor swim
+//         lanes. The artifacts band is the flat-list approximation
+//         until we can lay them out as floating elements with dashed
+//         associations (a later phase).
+//
+//      The lane assignment runs in two passes so Rule and Eval
+//      neurons can be relocated *into* an actor's lane when they
+//      have a clear host:
+//
+//        - Rule: an Action whose `gated_by` includes this Rule is the
+//          host; the Rule renders inside that Action's actor lane as
+//          a BPMN business-rule-task neighbour. Rules with no
+//          `gated_by` host stay in the artifacts band.
+//        - Eval: `target_ref` is the host pointer; when the target
+//          lives in an actor lane (not a band or unassigned), the
+//          Eval moves into that same lane as a BPMN annotation
+//          neighbour. Otherwise it stays in the artifacts band.
 //
 //   2. BPMN shape — the visual primitive a neuron renders as:
 //        intent                  → circle      (BPMN start event)
@@ -212,27 +226,88 @@ export async function loadBpmnGraph(
   const lanesById = new Map<string, BpmnLane>();
   const nodes: BpmnNode[] = [];
 
+  // Pass 1 — compute each neuron's base laneId. Actor-type neurons
+  // register their lane immediately (so principals with neurons are
+  // visible); milestone / artifacts bands are registered lazily in the
+  // construction pass below, after Rule/Eval re-homing has run, so we
+  // don't add an empty Artifacts band when every Rule and Eval has
+  // moved into an actor lane.
+  const baseLaneIdByRowId = new Map<string, string>();
   for (const row of neuronRows.rows) {
-    // Non-actor neuron types bypass actor-lane resolution: States go
-    // to the milestone band (top); References/Evals/Ideas/Rules go to
-    // the artifacts band (bottom). See the file header.
     let laneId: string;
     if (row.entity_type === "state") {
       laneId = MILESTONE_LANE_ID;
-      if (!lanesById.has(MILESTONE_LANE_ID)) {
-        lanesById.set(MILESTONE_LANE_ID, { id: MILESTONE_LANE_ID, label: "Milestones" });
-      }
     } else if (ARTIFACT_TYPES.has(row.entity_type)) {
       laneId = ARTIFACTS_LANE_ID;
-      if (!lanesById.has(ARTIFACTS_LANE_ID)) {
-        lanesById.set(ARTIFACTS_LANE_ID, { id: ARTIFACTS_LANE_ID, label: "Artifacts" });
-      }
     } else {
-      const fields = row.data ?? {};
-      const laneRef = laneReferenceFor(row.entity_type, fields, collaboratorById);
+      const laneRef = laneReferenceFor(row.entity_type, row.data ?? {}, collaboratorById);
       const lane = resolveLane(laneRef, principalById, principalByName);
       if (!lanesById.has(lane.id)) lanesById.set(lane.id, lane);
       laneId = lane.id;
+    }
+    baseLaneIdByRowId.set(row.id, laneId);
+  }
+
+  // Pass 2 — Rule re-homing. A Rule cited in any Action's `gated_by`
+  // lives in that Action's actor lane (BPMN business-rule-task
+  // semantics). First Action wins when a Rule is gated by multiple
+  // (cross-lane duplication ships in a later phase).
+  const ruleHostLaneByRuleId = new Map<string, string>();
+  for (const row of neuronRows.rows) {
+    if (row.entity_type !== "action") continue;
+    const data = row.data ?? {};
+    const gatedBy = toStringArray(data.gated_by);
+    if (gatedBy.length === 0) continue;
+    const actorLane = baseLaneIdByRowId.get(row.id);
+    if (!actorLane || actorLane === UNASSIGNED_LANE_ID || actorLane.startsWith("__unresolved__")) {
+      continue;
+    }
+    for (const ruleId of gatedBy) {
+      if (!ruleHostLaneByRuleId.has(ruleId)) {
+        ruleHostLaneByRuleId.set(ruleId, actorLane);
+      }
+    }
+  }
+
+  // Pass 3 — Eval re-homing. An Eval's `target_ref` points at the
+  // neuron whose claim it pins; when that neuron lives in an actor
+  // lane, the Eval moves alongside it as a BPMN annotation. Evals
+  // whose target lives in a band (milestone / artifacts) or whose
+  // target isn't in this graph stay in the artifacts band.
+  const evalHostLaneByEvalId = new Map<string, string>();
+  for (const row of neuronRows.rows) {
+    if (row.entity_type !== "eval") continue;
+    const targetRef = typeof row.data?.target_ref === "string" ? row.data.target_ref : null;
+    if (!targetRef) continue;
+    const targetLane = baseLaneIdByRowId.get(targetRef);
+    if (
+      !targetLane ||
+      targetLane === MILESTONE_LANE_ID ||
+      targetLane === ARTIFACTS_LANE_ID ||
+      targetLane === UNASSIGNED_LANE_ID ||
+      targetLane.startsWith("__unresolved__")
+    ) {
+      continue;
+    }
+    evalHostLaneByEvalId.set(row.id, targetLane);
+  }
+
+  // Pass 4 — construct nodes with the final laneId (base, or re-homed
+  // when a host was found). Register the milestone and artifacts bands
+  // lazily so they don't appear empty when every State/artifact moved.
+  for (const row of neuronRows.rows) {
+    let laneId = baseLaneIdByRowId.get(row.id) ?? UNASSIGNED_LANE_ID;
+    if (row.entity_type === "rule") {
+      const host = ruleHostLaneByRuleId.get(row.id);
+      if (host) laneId = host;
+    } else if (row.entity_type === "eval") {
+      const host = evalHostLaneByEvalId.get(row.id);
+      if (host) laneId = host;
+    }
+    if (laneId === MILESTONE_LANE_ID && !lanesById.has(MILESTONE_LANE_ID)) {
+      lanesById.set(MILESTONE_LANE_ID, { id: MILESTONE_LANE_ID, label: "Milestones" });
+    } else if (laneId === ARTIFACTS_LANE_ID && !lanesById.has(ARTIFACTS_LANE_ID)) {
+      lanesById.set(ARTIFACTS_LANE_ID, { id: ARTIFACTS_LANE_ID, label: "Artifacts" });
     }
     nodes.push({
       id: row.id,
@@ -369,6 +444,14 @@ function firstString(value: unknown): string | null {
     }
   }
   return null;
+}
+
+function toStringArray(value: unknown): string[] {
+  if (typeof value === "string") return value ? [value] : [];
+  if (Array.isArray(value)) {
+    return value.filter((v): v is string => typeof v === "string" && v.length > 0);
+  }
+  return [];
 }
 
 function resolveLane(
