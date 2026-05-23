@@ -592,7 +592,6 @@ export function CollapsedRail({
       )}
     >
       <CollapseIcon side={isLeft ? "right" : "left"} />
-      <DocoMark height={18} variant="mark" active={active} decorative />
       <div
         className="select-none text-[11px] font-semibold uppercase tracking-wider text-foreground"
         style={{
