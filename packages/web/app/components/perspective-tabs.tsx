@@ -85,10 +85,8 @@ function PerspectiveTab({
   // active tab.
   const isPosting = fetcher.state === "submitting";
   const tabClass = cn(
-    "group inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium",
-    active
-      ? "neu-pressed text-foreground"
-      : "neu-button text-muted-foreground hover:text-foreground",
+    "neu-button group inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-xs font-medium",
+    active ? "text-primary" : "text-muted-foreground hover:text-foreground",
     isPosting && "opacity-50",
   );
   const title = perspective.ownerHandle
