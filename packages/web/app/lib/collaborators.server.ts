@@ -106,6 +106,7 @@ interface OauthGrantSlice {
   target_id: string;
   role: DocoRole;
   granted_at: string;
+  last_activity_at: string | null;
 }
 
 async function loadOauthAgentGrants(principalId: string): Promise<{
@@ -115,7 +116,10 @@ async function loadOauthAgentGrants(principalId: string): Promise<{
   // One active grant per OAuth client × principal — pick the most recent
   // non-revoked, non-expired refresh token (refresh tokens are long-lived
   // and survive across access-token rotation, so they're the stable
-  // signal that an agent still has access).
+  // signal that an agent still has access). Pull the most recent access
+  // token's created_at as a proxy for "last seen" — access tokens are
+  // short-lived and minted on each refresh, so their freshness tracks
+  // whether the agent is actively running.
   const rows = await withClient((c) =>
     c.query<{
       client_id: string;
@@ -125,12 +129,17 @@ async function loadOauthAgentGrants(principalId: string): Promise<{
       granted_org_ids: string[];
       granted_org_roles: Record<string, string> | null;
       created_at: Date | string;
+      last_seen_at: Date | string | null;
     }>(
       `SELECT DISTINCT ON (rt.client_id)
               rt.client_id, c.client_name,
               rt.granted_doco_ids, rt.granted_doco_roles,
               rt.granted_org_ids, rt.granted_org_roles,
-              rt.created_at
+              rt.created_at,
+              (SELECT MAX(at.created_at)
+                 FROM oauth_access_tokens at
+                WHERE at.client_id = rt.client_id
+                  AND at.collaborator_id = rt.collaborator_id) AS last_seen_at
          FROM oauth_refresh_tokens rt
          JOIN oauth_clients c ON c.client_id = rt.client_id
         WHERE rt.revoked = false
@@ -145,6 +154,11 @@ async function loadOauthAgentGrants(principalId: string): Promise<{
   for (const row of rows.rows) {
     const grantedAt =
       row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at);
+    const lastSeenAt = row.last_seen_at
+      ? row.last_seen_at instanceof Date
+        ? row.last_seen_at.toISOString()
+        : String(row.last_seen_at)
+      : null;
     const clientName = row.client_name ?? row.client_id;
     for (const orgId of row.granted_org_ids ?? []) {
       const role = (row.granted_org_roles?.[orgId] ?? "reader") as DocoRole;
@@ -154,6 +168,7 @@ async function loadOauthAgentGrants(principalId: string): Promise<{
         target_id: orgId,
         role,
         granted_at: grantedAt,
+        last_activity_at: lastSeenAt,
       });
     }
     for (const docoId of row.granted_doco_ids ?? []) {
@@ -164,6 +179,7 @@ async function loadOauthAgentGrants(principalId: string): Promise<{
         target_id: docoId,
         role,
         granted_at: grantedAt,
+        last_activity_at: lastSeenAt,
       });
     }
   }
@@ -175,7 +191,7 @@ function oauthSliceToGrantRow(slice: OauthGrantSlice): GrantRow {
     collaborator_id: `oauth:${slice.client_id}`,
     username: slice.client_name,
     kind: "agent",
-    last_activity_at: null,
+    last_activity_at: slice.last_activity_at,
     role: slice.role,
     joined_at: slice.granted_at,
     source: "oauth",
