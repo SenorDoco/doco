@@ -34,8 +34,8 @@ export function SiteHeader({ me, shellOwner = false }: SiteHeaderProps) {
   if (suppressed && !shellOwner) return null;
 
   return (
-    <header className="neu-header border-b border-border bg-card">
-      <div className="flex w-full items-center gap-6 px-6 py-3">
+    <header className="neu-header h-14 border-b border-border bg-card">
+      <div className="flex h-full w-full items-center gap-6 px-6">
         <h1 className="m-0 flex min-w-0 items-center gap-3 leading-none">
           <NavLink
             to="/"
@@ -49,13 +49,12 @@ export function SiteHeader({ me, shellOwner = false }: SiteHeaderProps) {
         <div className="ml-auto flex shrink-0 items-center gap-3 text-xs">
           {me ? (
             <>
-              {/* md+: nav rendered inline. */}
-              <nav className="hidden items-center gap-3 md:flex">
+              {/* lg+: nav rendered inline. */}
+              <nav className="hidden items-center gap-3 lg:flex">
                 <NavButtons me={me} />
               </nav>
-              {/* < md: collapsed into a hamburger popover so the
-                  buttons don't wrap into the title / version pill on
-                  narrow screens. */}
+              {/* < lg: collapsed into a hamburger popover so the
+                  buttons don't crowd the title / version pill. */}
               <MobileNavMenu me={me} />
             </>
           ) : (
@@ -129,7 +128,7 @@ function MobileNavMenu({ me }: { me: CurrentPrincipal }) {
   }, [open]);
 
   return (
-    <div ref={wrapperRef} className="relative md:hidden">
+    <div ref={wrapperRef} className="relative lg:hidden">
       <button
         type="button"
         aria-label="Open navigation menu"
