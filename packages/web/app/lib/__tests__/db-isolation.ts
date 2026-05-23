@@ -67,6 +67,7 @@ beforeEach(async () => {
     await client.query(
       `TRUNCATE
         principals,
+        organizations,
         docos,
         neuron_authoring_primitives,
         actions,

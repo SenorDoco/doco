@@ -150,6 +150,33 @@ function collectIncomingNeuronTypes(primitives: LoadedPrimitive[]): Set<string> 
 
 type PgClient = Parameters<Parameters<typeof withClient>[0]>[0];
 
+/**
+ * Normalize legacy predicate keys to their post-rename names.
+ *
+ * Primitives seeded before the vocab sweep (nodes → neurons, edges →
+ * synapses) persisted predicate JSON with `when_node_type`,
+ * `target_node_type`, and `incoming_node_type`. The engine reads the
+ * post-rename keys (`when_neuron_type`, etc.); when the stored payload
+ * carries the old keys, the engine treats them as absent and the
+ * filter is silently dropped — so a predicate scoped to `["eval"]`
+ * fires against every candidate. Rewrite at read time so old data
+ * still gates correctly. Idempotent; the new keys win on conflict.
+ */
+function normalizePredicateKeys(predicate: unknown): unknown {
+  if (!predicate || typeof predicate !== "object") return predicate;
+  const p = { ...(predicate as Record<string, unknown>) };
+  if (!("when_neuron_type" in p) && "when_node_type" in p) {
+    p.when_neuron_type = p.when_node_type;
+  }
+  if (!("target_neuron_type" in p) && "target_node_type" in p) {
+    p.target_neuron_type = p.target_node_type;
+  }
+  if (!("incoming_neuron_type" in p) && "incoming_node_type" in p) {
+    p.incoming_neuron_type = p.incoming_node_type;
+  }
+  return p;
+}
+
 async function loadPrimitives(c: PgClient, docoId: string): Promise<LoadedPrimitive[]> {
   const r = await c.query<{ id: string; summary: string; data: Record<string, unknown> | null }>(
     `SELECT id, summary, data
@@ -161,10 +188,13 @@ async function loadPrimitives(c: PgClient, docoId: string): Promise<LoadedPrimit
   for (const row of r.rows) {
     const yaml = row.data;
     if (!yaml) continue;
-    const predicate = yaml.predicate;
+    const predicate = normalizePredicateKeys(yaml.predicate);
     if (!predicate || typeof predicate !== "object") continue;
     const onViolation = yaml.on_violation;
-    const lifecycleFilter = yaml.fires_when_neuron_lifecycle;
+    // Honor both the post-rename `fires_when_neuron_lifecycle` and the
+    // pre-rename `fires_when_node_lifecycle` — primitives seeded before
+    // the vocab sweep persist the old key.
+    const lifecycleFilter = yaml.fires_when_neuron_lifecycle ?? yaml.fires_when_node_lifecycle;
     out.push({
       primitive_id: row.id,
       summary: row.summary ?? "",
