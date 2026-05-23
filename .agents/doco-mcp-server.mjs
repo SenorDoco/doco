@@ -619,8 +619,8 @@ function formatHits(body, handle) {
   const hits = Array.isArray(body.hits) ? body.hits : [];
   // Doco-level goal description rides along on every search response so
   // the agent sees what this Doco is for the moment it queries it.
-  const goalDescription = String(body.doco_goal_description || "").trim();
-  const goalPrefix = goalDescription ? `Doco goal: ${goalDescription}\n\n` : "";
+  const goal = String(body.doco_goal || "").trim();
+  const goalPrefix = goal ? `Doco goal: ${goal}\n\n` : "";
 
   if (count === 0) {
     return `${goalPrefix}No matches in Doco '${handle}' (${secs}s). Either the project has no prior neurons covering this, or the query phrasing missed them — try synonyms.`;

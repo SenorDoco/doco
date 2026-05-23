@@ -42,7 +42,7 @@ interface CreationState {
   newOrgHandle: string;
   suffix: string;
   visibility: "private" | "public";
-  goalDescription: string;
+  goal: string;
 }
 
 interface ActionData {
@@ -72,10 +72,10 @@ function readDocoName(params: URLSearchParams): string {
 }
 
 /**
- * Default goal description for a template. Empty for "generic" (no
- * template); the chosen template's description text otherwise.
+ * Default goal for a template. Empty for "generic" (no template); the
+ * chosen template's description text otherwise.
  */
-function defaultGoalDescriptionForTemplate(templateHandle: string): string {
+function defaultGoalForTemplate(templateHandle: string): string {
   if (templateHandle === DEFAULT_TEMPLATE_HANDLE) return "";
   return DOCO_TEMPLATES.find((t) => t.handle === templateHandle)?.description ?? "";
 }
@@ -91,7 +91,7 @@ function parseFormState(form: FormData): CreationState {
       .trim()
       .toLowerCase(),
     visibility: parseVisibility(form.get("visibility")),
-    goalDescription: String(form.get("goal_description") ?? ""),
+    goal: String(form.get("goal") ?? ""),
   };
 }
 
@@ -108,9 +108,7 @@ export async function loader({ request }: { request: Request }) {
     newOrgHandle: url.searchParams.get("new_org_handle") ?? "",
     suffix: readDocoName(url.searchParams),
     visibility: parseVisibility(url.searchParams.get("visibility")),
-    goalDescription:
-      url.searchParams.get("goal_description") ??
-      defaultGoalDescriptionForTemplate(prefillTemplate),
+    goal: url.searchParams.get("goal") ?? defaultGoalForTemplate(prefillTemplate),
   };
   return {
     me,
@@ -180,7 +178,7 @@ export async function action({ request }: { request: Request }) {
       templateHandle:
         state.templateHandle === DEFAULT_TEMPLATE_HANDLE ? null : state.templateHandle,
       autoSuffix: accept,
-      goalDescription: state.goalDescription,
+      goal: state.goal,
     });
     throw redirect(withCreatedDocoId(`/${rec.handle}/welcome`, rec.docoId));
   } catch (e) {
@@ -222,18 +220,18 @@ export default function NewDocoStep1({
   const [newOrgHandle, setNewOrgHandle] = useState(formState.newOrgHandle);
   const [suffix, setSuffix] = useState(formState.suffix);
   const [visibility, setVisibility] = useState(formState.visibility);
-  // Goal description is prefilled with the chosen template's
-  // description and tracks template changes — unless the user has
-  // edited it, in which case we keep their text.
-  const [goalDescription, setGoalDescription] = useState(formState.goalDescription);
-  const [goalDescriptionEdited, setGoalDescriptionEdited] = useState(
-    formState.goalDescription !== defaultGoalDescriptionForTemplate(initialTemplate),
+  // Goal is prefilled with the chosen template's description and
+  // tracks template changes — unless the user has edited it, in which
+  // case we keep their text.
+  const [goal, setGoal] = useState(formState.goal);
+  const [goalEdited, setGoalEdited] = useState(
+    formState.goal !== defaultGoalForTemplate(initialTemplate),
   );
   const handleTemplateChange = (value: string) => {
     const next = normalizeTemplateHandle(value);
     setTemplateHandle(next);
-    if (!goalDescriptionEdited) {
-      setGoalDescription(defaultGoalDescriptionForTemplate(next));
+    if (!goalEdited) {
+      setGoal(defaultGoalForTemplate(next));
     }
   };
   const isCreateNewOrg = orgId === "";
@@ -288,22 +286,21 @@ export default function NewDocoStep1({
 
               <fieldset className="space-y-2">
                 <legend className="text-xs font-semibold uppercase text-muted-foreground">
-                  Goal description
+                  Doco's goal
                 </legend>
                 <textarea
-                  name="goal_description"
+                  name="goal"
                   rows={3}
-                  value={goalDescription}
+                  value={goal}
                   onChange={(e) => {
-                    setGoalDescription(e.currentTarget.value);
-                    setGoalDescriptionEdited(true);
+                    setGoal(e.currentTarget.value);
+                    setGoalEdited(true);
                   }}
                   placeholder="What is this doco for? Agents read this first when they bootstrap."
                   className="w-full rounded-md px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
                 />
                 <span className="block text-[11px] text-muted-foreground">
-                  Shown under the title on the doco page, and at the top of the primitives agents
-                  read when bootstrapping. Templates prefill this; edit to make it your own.
+                  Templates prefill this; edit to make it your own.
                 </span>
               </fieldset>
 
