@@ -173,6 +173,21 @@ button[class*="rounded-full"][class*="border-border"]:active {
     box-shadow: var(--neu-raised);
   }
 
+  /* Floating element (dialog / drawer / dropdown / tooltip). These
+     overlays live above page content and need to read as truly
+     elevated — not as a content surface contained within the page.
+     Asymmetric drop shadow (no light highlight, only darker shadow
+     pointing down and slightly to the side) communicates "above" and
+     drops the etched outline that `.neu-surface` paints. Border is
+     forced transparent so existing `border border-border` markup on
+     these wrappers doesn't draw an outline. */
+  .neu-floating {
+    border-color: transparent !important;
+    box-shadow:
+      0 18px 36px color-mix(in oklch, var(--color-foreground) 16%, transparent),
+      0 4px 10px color-mix(in oklch, var(--color-foreground) 10%, transparent) !important;
+  }
+
   .neu-surface-interactive:hover {
     border-color: color-mix(in oklch, var(--color-primary) 32%, var(--neu-border));
     box-shadow: var(--neu-raised-strong);

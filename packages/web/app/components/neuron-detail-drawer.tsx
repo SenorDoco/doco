@@ -105,7 +105,7 @@ export function NeuronDetailDrawer(props: NeuronDetailDrawerProps) {
   if (!open) return null;
   return (
     <aside
-      className="neu-surface absolute inset-y-0 right-0 z-20 flex w-full max-w-md flex-col bg-card"
+      className="neu-floating absolute inset-y-0 right-0 z-20 flex w-full max-w-md flex-col bg-card"
       aria-label={`${paneTitle(open)} pane`}
     >
       <header className="flex items-center justify-between px-4 py-2.5">
