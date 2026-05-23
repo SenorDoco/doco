@@ -69,7 +69,7 @@ export async function loader({
     docoId: meta.docoId,
     ownerId: meta.ownerId,
     visibility: meta.visibility,
-    goalDescription: meta.goalDescription,
+    goal: meta.goal,
     perspectives,
     availableOwnerOrgs: me ? await listOrgsOwnedOrAdminedBy(me.id) : [],
     me,
@@ -135,11 +135,11 @@ export async function action({
     return redirect(`/${handle}/settings`);
   }
 
-  // ── Goal description ─────────────────────────────────────────────
-  if (intent === "update-goal-description") {
-    const goalDescription = String(form.get("goal_description") ?? "");
+  // ── Goal ─────────────────────────────────────────────────────────
+  if (intent === "update-goal") {
+    const goal = String(form.get("goal") ?? "");
     try {
-      await updateDocoMeta({ handle, goal_description: goalDescription });
+      await updateDocoMeta({ handle, goal });
     } catch (e) {
       return { error: (e as Error).message };
     }
@@ -204,7 +204,7 @@ export default function DocoSettings({
     ownerSlug,
     handle,
     visibility,
-    goalDescription,
+    goal,
     docoId,
     ownerId,
     perspectives,
@@ -239,19 +239,15 @@ export default function DocoSettings({
 
         <Card>
           <CardHeader>
-            <CardTitle>Goal description</CardTitle>
-            <CardDescription>
-              Shown under the title on this doco's page, and at the top of the primitives agents
-              read when bootstrapping. Leave blank to hide it.
-            </CardDescription>
+            <CardTitle>Doco's goal</CardTitle>
           </CardHeader>
           <CardContent>
             <Form method="post" className="space-y-3">
-              <input type="hidden" name="intent" value="update-goal-description" />
+              <input type="hidden" name="intent" value="update-goal" />
               <textarea
-                name="goal_description"
+                name="goal"
                 rows={3}
-                defaultValue={goalDescription}
+                defaultValue={goal}
                 placeholder="What is this doco for? Agents read this first when they bootstrap."
                 className="w-full rounded-md border border-border bg-input px-3 py-2 text-xs text-foreground outline-none focus:border-primary"
               />
@@ -259,7 +255,7 @@ export default function DocoSettings({
                 type="submit"
                 className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90"
               >
-                Save goal description
+                Save goal
               </button>
             </Form>
           </CardContent>

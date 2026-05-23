@@ -53,7 +53,7 @@ interface DocoPrimitiveSet {
    * Doco's primitive set so agents read the goal before the rules.
    * Empty string when unset.
    */
-  goal_description: string;
+  goal: string;
   owner_id: string;
   guidance_primitives: ArticleSummary[];
   neuron_authoring_primitives: ArticleSummary[];
@@ -123,19 +123,15 @@ async function loadDocoPrimitivesForPrincipal(
       ]),
     );
     // A Doco shows up in bootstrap when it has at least one primitive
-    // OR a non-empty goal description — the goal is itself bootstrap
-    // context, not just decoration on top of primitives.
-    if (
-      guidance.rows.length === 0 &&
-      nodeAuthoring.rows.length === 0 &&
-      d.goal_description.length === 0
-    ) {
+    // OR a non-empty goal — the goal is itself bootstrap context, not
+    // just decoration on top of primitives.
+    if (guidance.rows.length === 0 && nodeAuthoring.rows.length === 0 && d.goal.length === 0) {
       continue;
     }
     out.push({
       doco_id: d.id,
       doco_handle: d.handle,
-      goal_description: d.goal_description,
+      goal: d.goal,
       owner_id: d.owner_id,
       guidance_primitives: guidance.rows,
       neuron_authoring_primitives: nodeAuthoring.rows,

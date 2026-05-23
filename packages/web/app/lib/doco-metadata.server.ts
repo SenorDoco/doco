@@ -17,7 +17,7 @@ export interface DocoMetadata {
    * the Doco home page and at the top of each Doco's primitive set
    * in the agent-bootstrap manifest. Empty string when unset.
    */
-  goalDescription: string;
+  goal: string;
 }
 
 /**
@@ -40,6 +40,6 @@ export async function readDocoMetadata(docoDir: string): Promise<DocoMetadata | 
     ownerId: row.owner_id,
     displayName,
     visibility: row.visibility,
-    goalDescription: row.goal_description,
+    goal: row.goal,
   };
 }
