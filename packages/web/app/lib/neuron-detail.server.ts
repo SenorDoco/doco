@@ -117,8 +117,22 @@ function toIso(value: Date | string | null | undefined): string | null {
   return Number.isNaN(d.getTime()) ? null : d.toISOString();
 }
 
-function lifecycleLabel(value: string): string {
-  return value.replaceAll("_", " ");
+// Stage labels read as state names when the option is the current
+// lifecycle ("Drafted", "Proposed", "Active", "Retired") and as the
+// action verb that would move into that stage when the option is one
+// of the other (clickable) choices ("Draft", "Propose", "Activate",
+// "Retire"). Combined with the press-down state in the UI, this makes
+// the row read like "you ARE here / click to GO there."
+const LIFECYCLE_VERB: Record<string, string> = {
+  drafted: "draft",
+  proposed: "propose",
+  active: "activate",
+  retired: "retire",
+};
+
+function lifecycleLabel(value: string, isCurrent: boolean): string {
+  if (isCurrent) return value.replaceAll("_", " ");
+  return LIFECYCLE_VERB[value] ?? value.replaceAll("_", " ");
 }
 
 function lifecycleOptions(input: {
@@ -141,7 +155,7 @@ function lifecycleOptions(input: {
     else if (!input.canChange) reason = roleReason;
     return {
       value: stage,
-      label: lifecycleLabel(stage),
+      label: lifecycleLabel(stage, isCurrent),
       current: isCurrent,
       disabled: Boolean(reason),
       reason,

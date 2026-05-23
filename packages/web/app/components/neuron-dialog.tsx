@@ -108,7 +108,7 @@ export function NeuronDialog({
                         type="button"
                         disabled={option.disabled || busy || lifecycleUpdating !== null}
                         onClick={() => onLifecycleChange(option.value)}
-                        title={option.reason ?? `Move to ${option.label}`}
+                        title={option.reason ?? `Mark as ${option.value}`}
                         className={lifecycleButtonClass(detail, option.value, option.current)}
                         style={{ color }}
                       >
