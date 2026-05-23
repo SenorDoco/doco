@@ -30,13 +30,12 @@ import {
 import { useNavigate } from "react-router";
 import type { OverviewGraphLink } from "~/components/overview-graph";
 import type { BpmnLane, BpmnNode, BpmnShape } from "~/lib/bpmn-perspective.server";
-
-// MUST stay in sync with the matching exports in
-// `~/lib/bpmn-perspective.server`. Can't import the values here —
-// `.server.ts` modules are stripped from the client bundle, so
-// value-imports from them fail the build.
-const MILESTONE_LANE_ID = "__milestones__";
-const ARTIFACTS_LANE_ID = "__artifacts__";
+import {
+  computeDepthFromCenter,
+  hasFocalNode,
+  opacityForDepth,
+  opacityForEdge,
+} from "~/lib/graph-depth";
 import {
   type GraphReferenceItem,
   clearGraphReferences,
@@ -44,6 +43,13 @@ import {
 } from "~/lib/graph-references";
 import { lifecycleColor, lifecycleLabel, textOnLifecycle } from "~/lib/neuron-colors";
 import "@xyflow/react/dist/style.css";
+
+// MUST stay in sync with the matching exports in
+// `~/lib/bpmn-perspective.server`. Can't import the values here —
+// `.server.ts` modules are stripped from the client bundle, so
+// value-imports from them fail the build.
+const MILESTONE_LANE_ID = "__milestones__";
+const ARTIFACTS_LANE_ID = "__artifacts__";
 
 interface BpmnPerspectiveProps {
   lanes: BpmnLane[];
@@ -57,6 +63,13 @@ interface BpmnPerspectiveProps {
    * shown.
    */
   visibleLifecycles?: Set<string>;
+  /**
+   * When set, the BPMN canvas fades non-neighbours of this neuron
+   * based on BFS depth (1st-degree solid, 2nd 75%, 3rd 50%, 4+ 25%).
+   * Edges fade with their deepest endpoint. When null/undefined,
+   * every node and edge renders at full opacity.
+   */
+  centerId?: string | null;
   isFullscreen?: boolean;
   onToggleFullscreen?: () => void;
 }
@@ -140,6 +153,7 @@ export function BpmnPerspective({
   links,
   onNeuronClick,
   visibleLifecycles,
+  centerId,
   isFullscreen,
   onToggleFullscreen,
 }: BpmnPerspectiveProps) {
@@ -200,8 +214,8 @@ export function BpmnPerspective({
   }, []);
 
   const layout = useMemo(
-    () => layOutBpmn(filteredLanes, filteredNodes, links),
-    [filteredLanes, filteredNodes, links],
+    () => layOutBpmn(filteredLanes, filteredNodes, links, centerId),
+    [filteredLanes, filteredNodes, links, centerId],
   );
   const nodeTypes = useMemo(
     () => ({
@@ -430,7 +444,18 @@ interface BpmnLayout {
   nodePositions: Map<string, { x: number; y: number }>;
 }
 
-function layOutBpmn(lanes: BpmnLane[], nodes: BpmnNode[], links: OverviewGraphLink[]): BpmnLayout {
+function layOutBpmn(
+  lanes: BpmnLane[],
+  nodes: BpmnNode[],
+  links: OverviewGraphLink[],
+  centerId: string | null | undefined,
+): BpmnLayout {
+  // Per-node BFS depth from the focal neuron — used to fade non-
+  // neighbours. Separate from `computeDepths` below, which is the
+  // topological column position used for left-to-right layout.
+  const focalDepthByNode = computeDepthFromCenter(nodes, links, centerId);
+  const focalActive = hasFocalNode(centerId, nodes);
+
   const byLane = new Map<string, BpmnNode[]>();
   for (const lane of lanes) byLane.set(lane.id, []);
   for (const node of nodes) {
@@ -558,6 +583,7 @@ function layOutBpmn(lanes: BpmnLane[], nodes: BpmnNode[], links: OverviewGraphLi
       const y = (containerHeight - size.height) / 2;
       const laneY = laneYById.get(node.laneId) ?? 0;
       nodePositions.set(node.id, { x, y: laneY + y });
+      const nodeOpacity = focalActive ? opacityForDepth(focalDepthByNode.get(node.id)) : 1;
       flowNodes.push({
         id: node.id,
         type: nodeTypeForShape(node.shape),
@@ -570,7 +596,7 @@ function layOutBpmn(lanes: BpmnLane[], nodes: BpmnNode[], links: OverviewGraphLi
         connectable: false,
         initialWidth: size.width,
         initialHeight: size.height,
-        style: { width: size.width, height: size.height, zIndex: 1 },
+        style: { width: size.width, height: size.height, zIndex: 1, opacity: nodeOpacity },
       });
     }
   }
@@ -579,6 +605,9 @@ function layOutBpmn(lanes: BpmnLane[], nodes: BpmnNode[], links: OverviewGraphLi
   const flowEdges: FlowEdge[] = links
     .filter((link) => nodeSet.has(link.source) && nodeSet.has(link.target))
     .map((link, index) => {
+      const edgeOpacity = focalActive
+        ? opacityForEdge(focalDepthByNode.get(link.source), focalDepthByNode.get(link.target))
+        : 1;
       return {
         id: `${link.source}-${link.target}-${index}`,
         source: link.source,
@@ -590,6 +619,7 @@ function layOutBpmn(lanes: BpmnLane[], nodes: BpmnNode[], links: OverviewGraphLi
         style: {
           stroke: "#262626",
           strokeWidth: 1.75,
+          opacity: edgeOpacity,
         },
         markerEnd: {
           type: MarkerType.ArrowClosed,

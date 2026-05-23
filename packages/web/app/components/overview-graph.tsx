@@ -4,6 +4,12 @@ import { type ComponentType, type ReactNode, useEffect, useMemo, useRef, useStat
 import { useNavigate } from "react-router";
 import { NeuronTypeIcon } from "~/components/neuron-type-icon";
 import {
+  computeDepthFromCenter,
+  hasFocalNode,
+  opacityForDepth,
+  opacityForEdge,
+} from "~/lib/graph-depth";
+import {
   type GraphReferenceItem,
   clearGraphReferences,
   publishGraphReferences,
@@ -87,6 +93,7 @@ interface OverviewNodeData {
   showDetail: boolean;
   referenceNumber?: number;
   isNew: boolean;
+  opacity: number;
 }
 
 // Canonical Lifecycle (@doco/shared) — four stages, in progression
@@ -260,7 +267,7 @@ function OverviewFlowNode({ data }: { data: OverviewNodeData }) {
   const showDetail = data.showDetail && Boolean(detail);
 
   return (
-    <div className="relative h-full w-full overflow-visible">
+    <div className="relative h-full w-full overflow-visible" style={{ opacity: data.opacity }}>
       <div
         className={`neu-surface overview-graph-node nodrag nopan flex h-full w-full items-center gap-1.5 overflow-hidden rounded-[4px] border bg-card px-2 text-left shadow-sm${data.isNew ? " doco-new-node-glow" : ""}`}
         data-graph-reference-number={data.referenceNumber ?? undefined}
@@ -494,10 +501,17 @@ export function OverviewGraph({
     return () => window.clearTimeout(timeout);
   }, [detailUrl, detailIds]);
 
+  const depthByNodeId = useMemo(
+    () => computeDepthFromCenter(visibleNodes, visibleLinks, centerId),
+    [visibleNodes, visibleLinks, centerId],
+  );
+  const focalActive = useMemo(() => hasFocalNode(centerId, visibleNodes), [centerId, visibleNodes]);
+
   const flowNodes = useMemo(
     () =>
       visibleNodes.map((node) => {
         const position = positions.get(node.id) ?? { x: 0, y: 0 };
+        const opacity = focalActive ? opacityForDepth(depthByNodeId.get(node.id)) : 1;
         return {
           id: node.id,
           type: "overviewNode",
@@ -510,6 +524,7 @@ export function OverviewGraph({
             showDetail: viewport.zoom >= DETAIL_ZOOM,
             referenceNumber: referenceNumberByNodeId.get(node.id),
             isNew: newNodeIds.has(node.id),
+            opacity,
           } satisfies OverviewNodeData,
           draggable: false,
           selectable: false,
@@ -523,25 +538,42 @@ export function OverviewGraph({
           },
         };
       }),
-    [visibleNodes, positions, details, viewport.zoom, referenceNumberByNodeId, newNodeIds],
+    [
+      visibleNodes,
+      positions,
+      details,
+      viewport.zoom,
+      referenceNumberByNodeId,
+      newNodeIds,
+      depthByNodeId,
+      focalActive,
+    ],
   );
 
   const flowEdges = useMemo(
     () =>
-      visibleLinks.map((link, index) => ({
-        id: `${link.source}-${link.target}-${index}`,
-        source: link.source,
-        target: link.target,
-        type: "default",
-        selectable: false,
-        focusable: false,
-        interactionWidth: 0,
-        style: {
-          stroke: "rgba(115, 115, 115, 0.3)",
-          pointerEvents: "none" as const,
-        },
-      })),
-    [visibleLinks],
+      visibleLinks.map((link, index) => {
+        const edgeOpacity = focalActive
+          ? opacityForEdge(depthByNodeId.get(link.source), depthByNodeId.get(link.target))
+          : 1;
+        // 0.3 was the baseline stroke alpha pre-focus; the depth ramp
+        // multiplies it so unfocused legs stay readable.
+        const stroke = `rgba(115, 115, 115, ${0.3 * edgeOpacity})`;
+        return {
+          id: `${link.source}-${link.target}-${index}`,
+          source: link.source,
+          target: link.target,
+          type: "default",
+          selectable: false,
+          focusable: false,
+          interactionWidth: 0,
+          style: {
+            stroke,
+            pointerEvents: "none" as const,
+          },
+        };
+      }),
+    [visibleLinks, depthByNodeId, focalActive],
   );
 
   const nodeTypes = useMemo(() => ({ overviewNode: OverviewFlowNode }), []);
