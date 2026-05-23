@@ -202,7 +202,7 @@ function ArticleSection({
                       </div>
                     ) : null}
                   </Link>
-                  <span className="neo-raised-sm shrink-0 rounded px-2 py-1 font-mono text-[10px] text-muted-foreground">
+                  <span className="neo-etched shrink-0 rounded px-2 py-1 font-mono text-[10px] text-muted-foreground">
                     {item.lifecycle ?? "active"}
                   </span>
                   {editHrefBase ? (

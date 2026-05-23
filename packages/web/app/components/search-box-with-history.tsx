@@ -126,7 +126,7 @@ export function SearchBoxWithHistory({
         {showDropdown ? (
           <ul
             aria-label="Recent searches"
-            className="neo-raised absolute left-0 right-0 top-full z-10 mt-1 overflow-hidden rounded-md bg-card text-sm text-card-foreground"
+            className="neo-etched absolute left-0 right-0 top-full z-10 mt-1 overflow-hidden rounded-md bg-card text-sm text-card-foreground"
           >
             {recent.map((r) => (
               <li key={r.q} className="flex items-center hover:bg-muted">

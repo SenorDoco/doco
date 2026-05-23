@@ -69,7 +69,7 @@ export function NeuronDialog({
 
   return (
     <aside
-      className="neo-raised z-30 flex h-full min-h-0 flex-col overflow-hidden bg-card shadow-xl"
+      className="neo-etched z-30 flex h-full min-h-0 flex-col overflow-hidden bg-card"
       aria-label="Neuron details"
     >
       <header className="px-4 py-3">
@@ -283,7 +283,7 @@ function EdgeList({
       {edges.length === 0 ? (
         <p className="text-muted-foreground">None.</p>
       ) : (
-        <ul className="neo-raised divide-y divide-border">
+        <ul className="neo-etched divide-y divide-border">
           {edges.map((edge) => {
             const edgeTitle = edge.other_name ?? edge.other_summary ?? edge.other_id;
             return (

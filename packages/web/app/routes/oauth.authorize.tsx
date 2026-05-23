@@ -392,7 +392,7 @@ function DocoPickerForm({
               </select>
             </span>
           </div>
-          <ul className="neo-raised divide-y divide-border rounded-md bg-card">
+          <ul className="neo-etched divide-y divide-border rounded-md bg-card">
             {orgs.map((o) => (
               <li key={o.id} className="flex items-center justify-between gap-3 px-3 py-2.5">
                 <label className="flex flex-1 cursor-pointer items-center gap-3">
@@ -488,7 +488,7 @@ function DocoPickerForm({
               </span>
             </div>
           ) : null}
-          <ul className="neo-raised divide-y divide-border rounded-md bg-card">
+          <ul className="neo-etched divide-y divide-border rounded-md bg-card">
             {docos.map((d) => (
               <li key={d.id} className="flex items-center justify-between gap-3 px-3 py-2.5">
                 <label className="flex flex-1 cursor-pointer items-center gap-3">

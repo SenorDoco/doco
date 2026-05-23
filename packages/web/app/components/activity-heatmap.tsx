@@ -200,7 +200,7 @@ export function ActivityHeatmap({ byDay, weeks = 52 }: ActivityHeatmapProps) {
       {tip ? (
         <div
           role="tooltip"
-          className="neo-raised pointer-events-none fixed z-50 -translate-x-1/2 -translate-y-full whitespace-nowrap rounded-md bg-card px-2 py-1 text-xs text-card-foreground shadow-md"
+          className="neo-etched pointer-events-none fixed z-50 -translate-x-1/2 -translate-y-full whitespace-nowrap rounded-md bg-card px-2 py-1 text-xs text-card-foreground"
           style={{ left: tip.x, top: tip.y - 6 }}
         >
           {tip.text}

@@ -98,7 +98,7 @@ export function NeuronDetailDrawer(props: NeuronDetailDrawerProps) {
   if (!open) return null;
   return (
     <aside
-      className="neo-raised absolute inset-y-0 right-0 z-20 flex w-full max-w-md flex-col bg-card shadow-lg"
+      className="neo-etched absolute inset-y-0 right-0 z-20 flex w-full max-w-md flex-col bg-card"
       aria-label={`${paneTitle(open)} pane`}
     >
       <header className="flex items-center justify-between px-4 py-2.5">
@@ -135,7 +135,7 @@ function RelevantNeuronsPane({ rankedNeighbors, linkTo }: NeuronDetailDrawerProp
       <p className="mb-2 text-[11px] text-muted-foreground">
         Ranked by personalized PageRank from this neuron (ADR-076).
       </p>
-      <ul className="neo-raised divide-y divide-border rounded-md">
+      <ul className="neo-etched divide-y divide-border rounded-md">
         {rankedNeighbors.map((n) => (
           <li key={n.id}>
             <Link to={linkTo(n.entity_type, n.id)} className="block px-3 py-2">

@@ -117,7 +117,7 @@ export default function PerspectivesPicker({
             ) : null}
           </p>
         </div>
-        <ul className="neo-raised divide-y divide-border rounded-md bg-card">
+        <ul className="neo-etched divide-y divide-border rounded-md bg-card">
           {available.map((p) => {
             const isAttached = attachedSet.has(p.id);
             return (
@@ -132,7 +132,7 @@ export default function PerspectivesPicker({
                       <span className="text-xs text-muted-foreground">by {p.ownerHandle}</span>
                     ) : null}
                     {p.isBuiltin ? (
-                      <span className="neo-raised-sm rounded-sm px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
+                      <span className="neo-etched rounded-sm px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
                         builtin
                       </span>
                     ) : null}
