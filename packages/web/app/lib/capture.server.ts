@@ -11,6 +11,7 @@ import { appendAuditEvent } from "./audit-log.server";
 import { type AuthoringResult, runAuthoringPrimitives } from "./authoring-runner.server";
 import { validatePatch } from "./mutability.server";
 import { reindex, reindexEmbeddingsOnly } from "./redeem.server";
+import { recordPhase } from "./telemetry.server";
 
 /**
  * Run the doco's authoring primitives against a candidate's full
@@ -23,10 +24,15 @@ async function enforceAuthoringPrimitives(
   docoId: string,
   fm: Record<string, unknown>,
 ): Promise<AuthoringResult> {
-  return runAuthoringPrimitives({
-    docoId,
-    candidate: fm as Parameters<typeof runAuthoringPrimitives>[0]["candidate"],
-  });
+  const start = performance.now();
+  try {
+    return await runAuthoringPrimitives({
+      docoId,
+      candidate: fm as Parameters<typeof runAuthoringPrimitives>[0]["candidate"],
+    });
+  } finally {
+    recordPhase("authoring_ms", performance.now() - start);
+  }
 }
 
 /**
@@ -80,6 +86,7 @@ async function persistEntity(args: {
   body?: string;
 }): Promise<void> {
   const { fm } = args;
+  const start = performance.now();
   try {
     await upsertEntity({
       id: args.id,
@@ -98,6 +105,8 @@ async function persistEntity(args: {
   } catch (err) {
     console.error(`postgres persist failed for ${args.entityType}/${args.id}:`, err);
     throw err;
+  } finally {
+    recordPhase("persist_ms", performance.now() - start);
   }
 }
 
@@ -135,10 +144,13 @@ async function reindexAndScheduleAttach(
   docoId: string,
   changedEntityId: string,
 ): Promise<void> {
+  const start = performance.now();
   try {
     await reindex(docoDir, docoId, [changedEntityId], { skipEmbeddings: true });
   } catch (err) {
     console.error(`reindex failed for ${docoDir}:`, err);
+  } finally {
+    recordPhase("reindex_structural_ms", performance.now() - start);
   }
   waitUntil(
     (async () => {

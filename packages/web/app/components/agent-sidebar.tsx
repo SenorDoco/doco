@@ -736,7 +736,9 @@ function BlockView({ block }: { block: AnyBlock }) {
   if (block.type === "tool_use") {
     return (
       <div className="neu-inset rounded-md bg-background px-2 py-1 font-mono text-[10px] text-muted-foreground">
-        <div className="break-all font-semibold text-foreground">{toolLabel(block.name, block.input)}</div>
+        <div className="break-all font-semibold text-foreground">
+          {toolLabel(block.name, block.input)}
+        </div>
       </div>
     );
   }
