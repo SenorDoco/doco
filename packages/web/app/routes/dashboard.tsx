@@ -253,7 +253,7 @@ export default function Dashboard({
           </div>
         </header>
 
-        <div className="grid grid-cols-1 gap-6 min-[840px]:grid-cols-2">
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(320px,1fr))] gap-6">
           <section className="space-y-4">
             <AccessListCard
               title="Your orgs and docos"
