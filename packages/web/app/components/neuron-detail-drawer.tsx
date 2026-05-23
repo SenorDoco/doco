@@ -34,7 +34,14 @@ export interface DrawerHistoryEvent {
 export interface DrawerRelevantNode {
   id: string;
   entity_type: string;
-  summary: string;
+  /**
+   * Human-readable one-line label. For migrated neurons this is the
+   * first line of the type-named column (intent/decision/...); for
+   * non-migrated neurons (principals) this is the legacy summary. The
+   * route building the list is responsible for picking the right
+   * source — the drawer just renders it.
+   */
+  label: string;
   name: string | null;
   ppr: number;
   gpr: number;
@@ -144,7 +151,7 @@ function RelevantNeuronsPane({ rankedNeighbors, linkTo }: NeuronDetailDrawerProp
                 <span>{n.entity_type}</span>
                 <span className="ml-2 font-mono normal-case">PPR {n.ppr.toFixed(3)}</span>
               </div>
-              <p className="mt-0.5 text-foreground">{n.summary?.slice(0, 120) ?? n.id}</p>
+              <p className="mt-0.5 text-foreground">{n.label?.slice(0, 120) ?? n.id}</p>
             </Link>
           </li>
         ))}
