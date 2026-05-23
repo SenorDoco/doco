@@ -108,10 +108,10 @@ export default function PerspectivesPicker({
             </Link>
           </div>
           <p className="text-sm text-muted-foreground">
-            Visualization perspectives switch how the Doco's neurons and synapses render. Attach any
-            of the perspectives below to add a tab to this Doco's overview page.
+            Visualization perspectives switch how the Doco's neurons and synapses render. Add any of
+            the perspectives below to put a tab on this Doco's overview page.
             {!canAdmin ? (
-              <span className="ml-1 italic">Attaching requires owner or approver access.</span>
+              <span className="ml-1 italic">Adding requires owner or approver access.</span>
             ) : null}
           </p>
         </div>
@@ -142,7 +142,7 @@ export default function PerspectivesPicker({
                 <div className="shrink-0">
                   {isAttached ? (
                     <span className="inline-block rounded-md bg-input px-2 py-1 text-xs text-muted-foreground">
-                      Attached
+                      Added
                     </span>
                   ) : canAdmin ? (
                     <Form method="post">
@@ -153,7 +153,7 @@ export default function PerspectivesPicker({
                         disabled={submitting}
                         className="neu-button inline-block rounded-md px-3 py-1 text-xs font-semibold disabled:opacity-50"
                       >
-                        Attach
+                        Add
                       </button>
                     </Form>
                   ) : (

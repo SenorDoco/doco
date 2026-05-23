@@ -1,22 +1,21 @@
 // Perspective tabs row that sits above the active perspective body.
 //
-// Layout: tabs on the left, the search box on the right. The trailing
-// "+" tab links to the picker page where additional perspectives can
-// be attached.
-//
-// A tab is `<Link>` (navigation), but its trailing star and detach
-// affordances post forms to /api/perspectives.json — the star toggles
-// default, the detach button removes the tab. Both are gated by
-// `canAdmin` (owner or approver) and hidden otherwise.
+// Layout: tab pills on the left, a gear (settings) icon next to them
+// for admins, and the search box on the right. The settings popover
+// replaces the old "+" tab — owners/approvers add or remove
+// perspectives and pin the default one from inside the popover. The
+// tab pills themselves are now plain links with no inline controls.
 
-import type { ReactNode } from "react";
+import { Pin, Settings } from "lucide-react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { Link, useFetcher, useNavigate } from "react-router";
 import { cn } from "~/lib/cn";
-import type { AttachedPerspective } from "~/lib/perspectives.server";
+import type { AttachedPerspective, Perspective } from "~/lib/perspectives.server";
 
 interface PerspectiveTabsProps {
   handle: string;
   perspectives: AttachedPerspective[];
+  availablePerspectives: Perspective[];
   activeSlug: string;
   canAdmin: boolean;
   search?: ReactNode;
@@ -25,6 +24,7 @@ interface PerspectiveTabsProps {
 export function PerspectiveTabs({
   handle,
   perspectives,
+  availablePerspectives,
   activeSlug,
   canAdmin,
   search,
@@ -41,20 +41,16 @@ export function PerspectiveTabs({
             handle={handle}
             perspective={p}
             active={p.slug === activeSlug}
-            canAdmin={canAdmin}
-            totalAttached={perspectives.length}
           />
         ))}
-        <Link
-          to={`/${handle}/perspectives`}
-          aria-label="Add perspective"
-          title="Add perspective"
-          className="neu-button inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:text-foreground"
-        >
-          <span aria-hidden className="text-base leading-none">
-            +
-          </span>
-        </Link>
+        {canAdmin ? (
+          <PerspectiveSettingsMenu
+            handle={handle}
+            perspectives={perspectives}
+            availablePerspectives={availablePerspectives}
+            activeSlug={activeSlug}
+          />
+        ) : null}
       </nav>
       {search ? <div className="w-full sm:w-72 sm:flex-none">{search}</div> : null}
     </div>
@@ -65,106 +61,192 @@ interface PerspectiveTabProps {
   handle: string;
   perspective: AttachedPerspective;
   active: boolean;
-  canAdmin: boolean;
-  totalAttached: number;
 }
 
-function PerspectiveTab({
-  handle,
-  perspective,
-  active,
-  canAdmin,
-  totalAttached,
-}: PerspectiveTabProps) {
-  const fetcher = useFetcher();
-  const navigate = useNavigate();
+function PerspectiveTab({ handle, perspective, active }: PerspectiveTabProps) {
   const href = `/${handle}?perspective=${encodeURIComponent(perspective.slug)}`;
-  // Setting default and detaching post to the resource route; on success
-  // we revalidate the page (React Router does this automatically for
-  // fetcher.Form). Detach also navigates away if the user removed the
-  // active tab.
-  const isPosting = fetcher.state === "submitting";
   const tabClass = cn(
-    "group inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-xs font-medium",
-    active
-      ? "neu-pressed text-primary"
-      : "neu-button text-muted-foreground hover:text-foreground",
-    isPosting && "opacity-50",
+    "inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-xs font-medium",
+    active ? "neu-pressed text-primary" : "neu-button text-muted-foreground hover:text-foreground",
   );
   const title = perspective.ownerHandle
     ? `${perspective.name} — by ${perspective.ownerHandle}`
     : perspective.name;
 
   return (
-    <div className={tabClass} title={title}>
-      <Link to={href} className="inline-flex items-center gap-1.5">
-        {perspective.icon ? (
-          <span aria-hidden className="text-sm leading-none">
-            {perspective.icon}
-          </span>
-        ) : null}
-        <span>{perspective.name}</span>
-      </Link>
-      {canAdmin ? (
-        <>
-          <fetcher.Form method="post" action={`/${handle}/api/perspectives.json`}>
-            <input type="hidden" name="_action" value="set_default" />
-            <input type="hidden" name="perspective_id" value={perspective.id} />
-            <button
-              type="submit"
-              aria-label={
-                perspective.isDefault ? "Default perspective" : "Set as default perspective"
-              }
-              title={perspective.isDefault ? "Default perspective" : "Set as default perspective"}
-              className={cn(
-                "inline-flex h-4 w-4 items-center justify-center text-[14px] leading-none",
-                perspective.isDefault
-                  ? "text-amber-500"
-                  : "text-muted-foreground/40 opacity-0 group-hover:opacity-100 hover:text-amber-500",
-              )}
-              disabled={isPosting || perspective.isDefault}
-            >
-              {perspective.isDefault ? "★" : "☆"}
-            </button>
-          </fetcher.Form>
-          {!perspective.isDefault && totalAttached > 1 ? (
-            <fetcher.Form
-              method="post"
-              action={`/${handle}/api/perspectives.json`}
-              onSubmit={(event) => {
-                if (active) {
-                  // Pre-navigate to the doco root so the user doesn't
-                  // stay on a now-missing perspective slug after detach.
-                  event.preventDefault();
-                  const formData = new FormData(event.currentTarget);
-                  fetcher.submit(formData, {
-                    method: "post",
-                    action: `/${handle}/api/perspectives.json`,
-                  });
-                  navigate(`/${handle}`, { replace: true });
-                }
-              }}
-            >
-              <input type="hidden" name="_action" value="detach" />
-              <input type="hidden" name="perspective_id" value={perspective.id} />
-              <button
-                type="submit"
-                aria-label="Detach perspective"
-                title="Detach perspective"
-                className="inline-flex h-4 w-4 items-center justify-center text-xs leading-none text-muted-foreground/40 opacity-0 group-hover:opacity-100 hover:text-foreground"
-                disabled={isPosting}
-              >
-                ×
-              </button>
-            </fetcher.Form>
-          ) : null}
-        </>
-      ) : perspective.isDefault ? (
-        // Show the star (non-interactive) to non-admins so they can see
-        // which perspective is the default.
-        <span aria-label="Default perspective" className="text-[14px] leading-none text-amber-500">
-          ★
+    <Link to={href} className={tabClass} title={title}>
+      {perspective.icon ? (
+        <span aria-hidden className="text-sm leading-none">
+          {perspective.icon}
         </span>
+      ) : null}
+      <span>{perspective.name}</span>
+    </Link>
+  );
+}
+
+interface PerspectiveSettingsMenuProps {
+  handle: string;
+  perspectives: AttachedPerspective[];
+  availablePerspectives: Perspective[];
+  activeSlug: string;
+}
+
+function PerspectiveSettingsMenu({
+  handle,
+  perspectives,
+  availablePerspectives,
+  activeSlug,
+}: PerspectiveSettingsMenuProps) {
+  const [open, setOpen] = useState(false);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const fetcher = useFetcher();
+  const navigate = useNavigate();
+  const isPosting = fetcher.state === "submitting";
+
+  // Close on click outside / Escape.
+  useEffect(() => {
+    if (!open) return;
+    function onDocClick(e: MouseEvent) {
+      if (!wrapperRef.current?.contains(e.target as Node)) setOpen(false);
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("mousedown", onDocClick);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDocClick);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  const attachedIds = new Set(perspectives.map((p) => p.id));
+  const unattached = availablePerspectives.filter((p) => !attachedIds.has(p.id));
+  const canDetachAny = perspectives.length > 1;
+  const apiAction = `/${handle}/api/perspectives.json`;
+
+  return (
+    <div ref={wrapperRef} className="relative">
+      <button
+        type="button"
+        aria-label="Perspective settings"
+        title="Perspective settings"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+        className="neu-button inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:text-foreground"
+      >
+        <Settings className="h-3.5 w-3.5" />
+      </button>
+      {open ? (
+        <div
+          aria-label="Perspectives"
+          className="neu-surface absolute left-0 top-full z-40 mt-1 w-80 rounded-md border border-border bg-card p-2 shadow-md"
+        >
+          <p className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+            Attached
+          </p>
+          {perspectives.map((p) => {
+            const isActive = p.slug === activeSlug;
+            return (
+              <div
+                key={p.id}
+                className="flex items-center gap-2 rounded-md px-2 py-1.5 text-xs hover:bg-input/40"
+              >
+                <fetcher.Form method="post" action={apiAction}>
+                  <input type="hidden" name="_action" value="set_default" />
+                  <input type="hidden" name="perspective_id" value={p.id} />
+                  <button
+                    type="submit"
+                    aria-label={
+                      p.isDefault ? "Pinned (default perspective)" : "Pin as default perspective"
+                    }
+                    title={
+                      p.isDefault ? "Pinned (default perspective)" : "Pin as default perspective"
+                    }
+                    className={cn(
+                      "inline-flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:text-primary",
+                      p.isDefault && "text-primary",
+                    )}
+                    disabled={isPosting || p.isDefault}
+                  >
+                    <Pin className={cn("h-3.5 w-3.5", p.isDefault && "fill-current")} />
+                  </button>
+                </fetcher.Form>
+                {p.icon ? (
+                  <span aria-hidden className="text-sm leading-none">
+                    {p.icon}
+                  </span>
+                ) : null}
+                <span className="min-w-0 flex-1 truncate" title={p.name}>
+                  {p.name}
+                </span>
+                {!p.isDefault && canDetachAny ? (
+                  <fetcher.Form
+                    method="post"
+                    action={apiAction}
+                    onSubmit={(event) => {
+                      if (isActive) {
+                        event.preventDefault();
+                        const formData = new FormData(event.currentTarget);
+                        fetcher.submit(formData, { method: "post", action: apiAction });
+                        navigate(`/${handle}`, { replace: true });
+                      }
+                    }}
+                  >
+                    <input type="hidden" name="_action" value="detach" />
+                    <input type="hidden" name="perspective_id" value={p.id} />
+                    <button
+                      type="submit"
+                      className="neu-button rounded px-2 py-0.5 text-[11px] font-semibold text-muted-foreground hover:text-foreground"
+                      disabled={isPosting}
+                    >
+                      Remove
+                    </button>
+                  </fetcher.Form>
+                ) : (
+                  <span className="text-[10px] italic text-muted-foreground/60">
+                    {p.isDefault ? "default" : ""}
+                  </span>
+                )}
+              </div>
+            );
+          })}
+          {unattached.length > 0 ? (
+            <>
+              <p className="px-2 pb-1 pt-3 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                Available
+              </p>
+              {unattached.map((p) => (
+                <div
+                  key={p.id}
+                  className="flex items-center gap-2 rounded-md px-2 py-1.5 text-xs hover:bg-input/40"
+                >
+                  <span aria-hidden className="inline-block h-5 w-5" />
+                  {p.icon ? (
+                    <span aria-hidden className="text-sm leading-none">
+                      {p.icon}
+                    </span>
+                  ) : null}
+                  <span className="min-w-0 flex-1 truncate" title={p.name}>
+                    {p.name}
+                  </span>
+                  <fetcher.Form method="post" action={apiAction}>
+                    <input type="hidden" name="_action" value="attach" />
+                    <input type="hidden" name="perspective_id" value={p.id} />
+                    <button
+                      type="submit"
+                      className="neu-button rounded px-2 py-0.5 text-[11px] font-semibold text-primary"
+                      disabled={isPosting}
+                    >
+                      Add
+                    </button>
+                  </fetcher.Form>
+                </div>
+              ))}
+            </>
+          ) : null}
+        </div>
       ) : null}
     </div>
   );
