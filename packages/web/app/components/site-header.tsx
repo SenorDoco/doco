@@ -52,8 +52,8 @@ export function SiteHeader({ me, shellOwner = false }: SiteHeaderProps) {
                 to="/docos"
                 className={({ isActive }) =>
                   cn(
-                    "whitespace-nowrap rounded-md border border-border px-3 py-1.5 font-semibold hover:bg-input",
-                    isActive ? "neu-pressed bg-input" : "neu-button",
+                    "neu-button whitespace-nowrap rounded-md border border-border px-3 py-1.5 font-semibold",
+                    isActive ? "text-primary" : "text-foreground hover:text-primary",
                   )
                 }
               >
@@ -63,8 +63,8 @@ export function SiteHeader({ me, shellOwner = false }: SiteHeaderProps) {
                 to="/orgs"
                 className={({ isActive }) =>
                   cn(
-                    "whitespace-nowrap rounded-md border border-border px-3 py-1.5 font-semibold hover:bg-input",
-                    isActive ? "neu-pressed bg-input" : "neu-button",
+                    "neu-button whitespace-nowrap rounded-md border border-border px-3 py-1.5 font-semibold",
+                    isActive ? "text-primary" : "text-foreground hover:text-primary",
                   )
                 }
               >
@@ -74,8 +74,8 @@ export function SiteHeader({ me, shellOwner = false }: SiteHeaderProps) {
                 to="/collaborators"
                 className={({ isActive }) =>
                   cn(
-                    "whitespace-nowrap rounded-md border border-border px-3 py-1.5 font-semibold hover:bg-input",
-                    isActive ? "neu-pressed bg-input" : "neu-button",
+                    "neu-button whitespace-nowrap rounded-md border border-border px-3 py-1.5 font-semibold",
+                    isActive ? "text-primary" : "text-foreground hover:text-primary",
                   )
                 }
               >
@@ -83,7 +83,7 @@ export function SiteHeader({ me, shellOwner = false }: SiteHeaderProps) {
               </NavLink>
               <NavLink
                 to={`/${me.username}`}
-                className="neu-pressed whitespace-nowrap rounded-full border border-border bg-input px-3 py-1 font-semibold text-foreground hover:border-primary"
+                className="neu-button whitespace-nowrap rounded-full border border-border px-3 py-1.5 font-semibold text-foreground hover:text-primary"
               >
                 {me.username}
               </NavLink>
