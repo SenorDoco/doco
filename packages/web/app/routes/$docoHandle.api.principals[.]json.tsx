@@ -1,6 +1,7 @@
 import {
   getCollaboratorById,
   listDocoUsers,
+  listEntitiesByDoco,
   roleAtLeast,
   upsertEntity,
   withClient,
@@ -166,28 +167,56 @@ export async function loader({
   params: { docoId: string };
 }) {
   const { meta } = await loadDocoRouteForRead(request, params);
-  const docoUsers = await listDocoUsers(meta.docoId);
-  // Post-rename: doco_users.collaborator_id points at the collaborators
-  // table (the OAuth identity layer). The legacy field names — username,
-  // type, github_login, email — are preserved in the response shape for
-  // API back-compat with existing consumers.
-  const principals = await Promise.all(
-    docoUsers.map(async (u) => {
-      const c = await getCollaboratorById(u.collaborator_id);
-      return c
-        ? {
-            id: c.id,
-            username: c.github_login ?? c.id,
-            type: c.kind,
-            role: u.role,
-            github_login: c.github_login,
-            email: c.email,
-          }
-        : null;
-    }),
-  );
+  // Two distinct concepts share the URL for historical reasons:
+  //
+  //   * `principals` (legacy field) — OAuth collaborators of this doco.
+  //     Pre-v16 we called them "principals"; the new vocab calls them
+  //     "collaborators" but the field name stays for API back-compat.
+  //
+  //   * `principal_neurons` (new field) — actual Principal neurons in
+  //     this doco (role-personas referenced by Action.actor_id,
+  //     Intent.actors[], etc.). These are what the BPMN swim-lane view
+  //     renders. Agents that want to mutate / list the visible Principal
+  //     neurons read this field, not `principals`.
+  //
+  // `collaborators` is exposed as a clearer alias for the legacy
+  // `principals` field — pick whichever name a caller prefers.
+  const [docoUsers, neuronRows] = await Promise.all([
+    listDocoUsers(meta.docoId),
+    listEntitiesByDoco("principal", meta.docoId),
+  ]);
+  const collaborators = (
+    await Promise.all(
+      docoUsers.map(async (u) => {
+        const c = await getCollaboratorById(u.collaborator_id);
+        return c
+          ? {
+              id: c.id,
+              username: c.github_login ?? c.id,
+              type: c.kind,
+              role: u.role,
+              github_login: c.github_login,
+              email: c.email,
+            }
+          : null;
+      }),
+    )
+  ).filter((p) => p !== null);
+  const principal_neurons = neuronRows.map((r) => ({
+    id: r.id,
+    summary: r.summary ?? null,
+    lifecycle: r.lifecycle ?? null,
+    created_at: r.created_at ?? null,
+    updated_at: r.updated_at ?? null,
+    data: r.data,
+    body_md: r.body_md ?? null,
+  }));
   return Response.json({
     ok: true,
-    principals: principals.filter((p) => p !== null),
+    principals: collaborators,
+    collaborators,
+    principal_neurons,
+    collaborator_count: collaborators.length,
+    principal_neuron_count: principal_neurons.length,
   });
 }
