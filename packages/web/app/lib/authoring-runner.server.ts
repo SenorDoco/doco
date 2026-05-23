@@ -48,6 +48,17 @@ export async function runAuthoringPrimitives(opts: {
   docoId: string;
   candidate: CandidateFields;
 }): Promise<AuthoringResult> {
+  // Skip enforcement when the candidate is in a terminal lifecycle.
+  // Retire is a winding-down operation: the content was valid when it
+  // was active, and gating the transition behind content-quality rules
+  // would block authors from ever closing out stale neurons. The
+  // structural-validity story is "you can't get here without having
+  // passed validation already" — re-validating on the way out adds no
+  // safety and a lot of friction.
+  if (opts.candidate.lifecycle === "retired") {
+    return { violations: [], blocking: null, warnings: [] };
+  }
+
   const candidateSynapses = deriveSynapses(opts.candidate as unknown as Entity).map(
     (s): EngineSynapse => ({
       from_id: s.from_id,

@@ -346,4 +346,30 @@ describe("authoring runner — integration", () => {
     expect(result.blocking).toBeNull();
     expect(result.violations).toEqual([]);
   });
+
+  it("skips enforcement entirely when the candidate is transitioning to retired", async () => {
+    // Reported in chat: a probabilistic primitive (no fires_when_neuron_lifecycle
+    // filter) blocked a State's retirement because the current content didn't
+    // satisfy a quality rule. Retiring is a winding-down operation — the runner
+    // should short-circuit and let the lifecycle transition through.
+    await seed({ withPrincipalRule: true, withRequiredFieldRule: true });
+    const result = await runAuthoringPrimitives({
+      docoId: DOCO_ID,
+      candidate: {
+        id: "action_01TESTRETIRE00000000000001",
+        neuron_type: "action",
+        doco_id: DOCO_ID,
+        summary: "send invoice",
+        verb: "send",
+        // Both rules above would fire on this candidate at active —
+        // requires_field on missing actor_id, requires_field_resolves_to_principal
+        // would also fail. But the lifecycle is retired, so nothing fires.
+        lifecycle: "retired",
+      },
+    });
+
+    expect(result.blocking).toBeNull();
+    expect(result.violations).toEqual([]);
+    expect(result.warnings).toEqual([]);
+  });
 });
