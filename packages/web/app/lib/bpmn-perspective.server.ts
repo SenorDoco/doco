@@ -30,8 +30,8 @@ type QueryClient = {
 export type BpmnShape = "circle" | "diamond" | "rectangle" | "document" | "rounded";
 
 export interface BpmnLane {
-  id: string;             // principal id, or "__unassigned__"
-  label: string;          // principal username, or "Unassigned"
+  id: string; // principal id, or "__unassigned__"
+  label: string; // principal username, or "Unassigned"
 }
 
 export interface BpmnNode {
@@ -151,6 +151,15 @@ export async function loadBpmnGraph(
       shape: shapeForEntityType(row.entity_type),
       laneId: lane.id,
     });
+  }
+
+  // Every Principal gets a lane, even when no neuron is assigned to it
+  // yet — gives authors a visible target to drag neurons onto and makes
+  // the swimlane structure of the doco explicit at a glance.
+  for (const p of principalRows.rows) {
+    if (!lanesById.has(p.id)) {
+      lanesById.set(p.id, { id: p.id, label: p.username });
+    }
   }
 
   // Synapses: only those whose endpoints are both in this node set.
