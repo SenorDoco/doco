@@ -28,6 +28,7 @@ import {
 } from "react";
 import { useNavigate } from "react-router";
 import type { OverviewGraphLink } from "~/components/overview-graph";
+import { MILESTONE_LANE_ID } from "~/lib/bpmn-perspective.server";
 import type { BpmnLane, BpmnNode, BpmnShape } from "~/lib/bpmn-perspective.server";
 import {
   type GraphReferenceItem,
@@ -52,6 +53,12 @@ interface BpmnPerspectiveProps {
 }
 
 const LANE_HEIGHT = 140;
+// The milestone band runs perpendicular to the lanes in BPMN, so it
+// reads as a phase ribbon rather than a swim lane. Keep it compact so
+// it doesn't compete visually with the actor lanes below.
+const MILESTONE_BAND_HEIGHT = 90;
+const MILESTONE_NODE_HEIGHT = 44;
+const MILESTONE_NODE_WIDTH = 120;
 const LANE_LABEL_WIDTH = 140;
 const NODE_WIDTH = 140;
 const NODE_HEIGHT = 60;
@@ -70,6 +77,12 @@ const MAX_GRAPH_REFERENCES = 120;
  * default size so existing layouts don't shift unexpectedly.
  */
 function sizeForNode(node: BpmnNode): { width: number; height: number } {
+  // Milestones are a compact label band, not a flow node — keep them
+  // small and uniform regardless of label length (the title still
+  // wraps inside via line-clamp).
+  if (node.shape === "milestone") {
+    return { width: MILESTONE_NODE_WIDTH, height: MILESTONE_NODE_HEIGHT };
+  }
   const label = node.name ?? "";
   const N = Math.max(label.length, 1);
   const CHAR_W = 5.5; // approx px per char at 10px font, leading-tight
@@ -179,6 +192,8 @@ export function BpmnPerspective({
       bpmnRectangle: BpmnRectangleNode,
       bpmnDocument: BpmnDocumentNode,
       bpmnRounded: BpmnRoundedNode,
+      bpmnTask: BpmnTaskNode,
+      bpmnMilestone: BpmnMilestoneNode,
     }),
     [],
   );
@@ -277,8 +292,13 @@ export function BpmnPerspective({
   // Size the React Flow container to the actual graph height so few-lane
   // BPMN doesn't leave a tall empty grid beneath the lanes. Cap at the
   // available aside height so very many lanes still scroll within the
-  // canvas instead of pushing the page.
-  const naturalCanvasHeight = filteredLanes.length * LANE_HEIGHT + 32;
+  // canvas instead of pushing the page. The milestone band (if
+  // present) is shorter than an actor lane.
+  const naturalCanvasHeight =
+    filteredLanes.reduce(
+      (sum, lane) => sum + (lane.id === MILESTONE_LANE_ID ? MILESTONE_BAND_HEIGHT : LANE_HEIGHT),
+      0,
+    ) + 32;
 
   return (
     <div
@@ -439,13 +459,16 @@ function layOutBpmn(lanes: BpmnLane[], nodes: BpmnNode[], links: OverviewGraphLi
 
   // Per-node sizes. Compute first so column step and lane height can
   // accommodate the widest / tallest node anywhere in the graph —
-  // keeps vertical alignment of columns across lanes.
+  // keeps vertical alignment of columns across lanes. Milestones use
+  // their own fixed compact size and don't count toward the lane-sizing
+  // max (they live in a shorter band of their own).
   const sizeByNode = new Map<string, { width: number; height: number }>();
   let maxNodeWidth = NODE_WIDTH;
   let maxNodeHeight = NODE_HEIGHT;
   for (const node of nodes) {
     const size = sizeForNode(node);
     sizeByNode.set(node.id, size);
+    if (node.shape === "milestone") continue;
     if (size.width > maxNodeWidth) maxNodeWidth = size.width;
     if (size.height > maxNodeHeight) maxNodeHeight = size.height;
   }
@@ -455,29 +478,42 @@ function layOutBpmn(lanes: BpmnLane[], nodes: BpmnNode[], links: OverviewGraphLi
 
   const flowNodes: FlowNode[] = [];
   const laneYById = new Map<string, number>();
+  const laneHeightById = new Map<string, number>();
   const nodePositions = new Map<string, { x: number; y: number }>();
 
   // Emit lane parent nodes first; child neurons reference parentId.
-  lanes.forEach((lane, laneIndex) => {
-    const laneY = laneIndex * dynLaneHeight;
-    laneYById.set(lane.id, laneY);
+  // Heights vary: the milestone band (if present) is shorter than an
+  // actor lane, so we accumulate y instead of multiplying by index.
+  let cursorY = 0;
+  for (const lane of lanes) {
+    const laneHeight = lane.id === MILESTONE_LANE_ID ? MILESTONE_BAND_HEIGHT : dynLaneHeight;
+    laneYById.set(lane.id, cursorY);
+    laneHeightById.set(lane.id, laneHeight);
     flowNodes.push({
       id: laneNodeId(lane.id),
       type: "bpmnLane",
-      position: { x: 0, y: laneY },
-      data: { lane, height: dynLaneHeight, width: laneWidth, labelWidth: LANE_LABEL_WIDTH },
+      position: { x: 0, y: cursorY },
+      data: {
+        lane,
+        height: laneHeight,
+        width: laneWidth,
+        labelWidth: LANE_LABEL_WIDTH,
+        isMilestoneBand: lane.id === MILESTONE_LANE_ID,
+      },
       draggable: false,
       selectable: false,
       connectable: false,
       initialWidth: laneWidth,
-      initialHeight: dynLaneHeight,
-      style: { width: laneWidth, height: dynLaneHeight, zIndex: 0, padding: 0 },
+      initialHeight: laneHeight,
+      style: { width: laneWidth, height: laneHeight, zIndex: 0, padding: 0 },
     });
-  });
+    cursorY += laneHeight;
+  }
 
   // Emit neuron nodes nested in their lane.
   for (const lane of lanes) {
     const list = orderedByLane.get(lane.id) ?? [];
+    const containerHeight = laneHeightById.get(lane.id) ?? dynLaneHeight;
     for (const node of list) {
       const column = columnByNode.get(node.id) ?? 0;
       const size = sizeByNode.get(node.id) ?? { width: NODE_WIDTH, height: NODE_HEIGHT };
@@ -485,7 +521,7 @@ function layOutBpmn(lanes: BpmnLane[], nodes: BpmnNode[], links: OverviewGraphLi
       // nodes still line up by their middle on the same x axis.
       const slotX = LANE_LABEL_WIDTH + column * columnStep;
       const x = slotX + (maxNodeWidth - size.width) / 2;
-      const y = (dynLaneHeight - size.height) / 2;
+      const y = (containerHeight - size.height) / 2;
       const laneY = laneYById.get(node.laneId) ?? 0;
       nodePositions.set(node.id, { x, y: laneY + y });
       flowNodes.push({
@@ -606,6 +642,10 @@ function nodeTypeForShape(shape: BpmnShape): string {
       return "bpmnDocument";
     case "rounded":
       return "bpmnRounded";
+    case "task":
+      return "bpmnTask";
+    case "milestone":
+      return "bpmnMilestone";
     default:
       return "bpmnRectangle";
   }
@@ -636,17 +676,26 @@ interface BpmnLaneData {
   width: number;
   labelWidth: number;
   referenceNumber?: number;
+  isMilestoneBand?: boolean;
 }
 
 function BpmnLaneNode({ data }: { data: BpmnLaneData }) {
+  // The milestone band is a phase axis perpendicular to the actor
+  // lanes — render it with a tinted background and solid edges so it
+  // reads as structurally distinct from the swim lanes below.
+  const bandBg = data.isMilestoneBand ? "rgba(80, 110, 200, 0.07)" : "rgba(0, 0, 0, 0.03)";
+  const edge = data.isMilestoneBand
+    ? "1px solid var(--color-border)"
+    : "1px dashed var(--color-border)";
+  const labelBg = data.isMilestoneBand ? "rgba(80, 110, 200, 0.12)" : "rgba(0, 0, 0, 0.04)";
   return (
     <div
       style={{
         width: data.width,
         height: data.height,
-        background: "rgba(0, 0, 0, 0.03)",
-        borderTop: "1px dashed var(--color-border)",
-        borderBottom: "1px dashed var(--color-border)",
+        background: bandBg,
+        borderTop: edge,
+        borderBottom: edge,
       }}
     >
       <div
@@ -654,7 +703,7 @@ function BpmnLaneNode({ data }: { data: BpmnLaneData }) {
         style={{
           width: data.labelWidth,
           height: "100%",
-          background: "rgba(0, 0, 0, 0.04)",
+          background: labelBg,
           borderRight: "1px solid var(--color-border)",
           display: "flex",
           alignItems: "center",
@@ -664,6 +713,8 @@ function BpmnLaneNode({ data }: { data: BpmnLaneData }) {
           textAlign: "center",
           padding: "0 8px",
           boxSizing: "border-box",
+          textTransform: data.isMilestoneBand ? "uppercase" : "none",
+          letterSpacing: data.isMilestoneBand ? 0.6 : 0,
         }}
         title={data.lane.label}
       >
@@ -770,6 +821,73 @@ function BpmnRoundedNode({ data }: { data: BpmnNodeData }) {
       <TypeBadge node={data.node} />
       <LifecycleBadge node={data.node} />
       <ShapeLabel node={data.node} />
+      {commonHandles()}
+    </div>
+  );
+}
+
+// BPMN Task — rounded rectangle. Sits between the sharp Rectangle (a
+// policy box) and the fully-pill Rounded (an Idea capsule); the radius
+// matches the OMG BPMN 2.0 task glyph.
+function BpmnTaskNode({ data }: { data: BpmnNodeData }) {
+  const stroke = lifecycleColor(data.node.lifecycle);
+  return (
+    <div
+      {...graphReferenceAttributes(data)}
+      style={{
+        width: "100%",
+        height: "100%",
+        background: "#fff",
+        border: `2px solid ${stroke}`,
+        borderRadius: 12,
+        position: "relative",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
+      }}
+    >
+      <ReferenceBadge data={data} />
+      <TypeBadge node={data.node} />
+      <LifecycleBadge node={data.node} />
+      <ShapeLabel node={data.node} />
+      {commonHandles()}
+    </div>
+  );
+}
+
+// Milestone — compact labeled box. Lives in the milestone band above
+// the swim lanes; the band's tinted background does most of the visual
+// work, so the node itself is intentionally subdued (thin border,
+// uppercase compact label) so a row of milestones reads as a phase
+// timeline rather than a row of flow shapes.
+function BpmnMilestoneNode({ data }: { data: BpmnNodeData }) {
+  const stroke = lifecycleColor(data.node.lifecycle);
+  return (
+    <div
+      {...graphReferenceAttributes(data)}
+      style={{
+        width: "100%",
+        height: "100%",
+        background: "#fff",
+        border: `1px solid ${stroke}`,
+        borderRadius: 4,
+        position: "relative",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: "0 8px",
+        boxSizing: "border-box",
+      }}
+    >
+      <ReferenceBadge data={data} />
+      <span
+        className="pointer-events-none line-clamp-2 text-center text-[10px] font-semibold uppercase tracking-wide"
+        style={{ color: "#1f1f1f", letterSpacing: 0.4 }}
+        title={data.node.name ?? ""}
+      >
+        {data.node.name ?? <em>(unnamed)</em>}
+      </span>
       {commonHandles()}
     </div>
   );
@@ -1025,6 +1143,46 @@ function makeBpmnMiniMapNode(nodeById: Map<string, BpmnNode>): ComponentType<Min
               height={height}
               rx={r}
               ry={r}
+              fill={fill}
+              stroke={stroke}
+              strokeWidth={sw}
+              style={{ vectorEffect: "non-scaling-stroke" }}
+            />
+          </g>
+        );
+      }
+      case "task": {
+        // BPMN Task glyph — modest corner radius.
+        const r = Math.min(width, height) * 0.2;
+        return (
+          <g className={classes} shapeRendering={shapeRendering}>
+            <rect
+              x={x}
+              y={y}
+              width={width}
+              height={height}
+              rx={r}
+              ry={r}
+              fill={fill}
+              stroke={stroke}
+              strokeWidth={sw}
+              style={{ vectorEffect: "non-scaling-stroke" }}
+            />
+          </g>
+        );
+      }
+      case "milestone": {
+        // Compact rectangle with a thin stroke — milestones read as
+        // labels on the band, not as flow shapes.
+        return (
+          <g className={classes} shapeRendering={shapeRendering}>
+            <rect
+              x={x}
+              y={y}
+              width={width}
+              height={height}
+              rx={2}
+              ry={2}
               fill={fill}
               stroke={stroke}
               strokeWidth={sw}
