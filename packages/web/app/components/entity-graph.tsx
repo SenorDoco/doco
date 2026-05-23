@@ -1195,7 +1195,11 @@ export function EntityGraph({
             : "relative h-[65vh] min-h-[480px] w-full overflow-hidden rounded-md border border-border bg-input"
         }
       >
-        {Flow ? (
+        {visible.nodes.length === 0 ? (
+          <div className="flex h-full w-full items-center justify-center text-center text-sm font-medium text-muted-foreground">
+            So empty
+          </div>
+        ) : Flow ? (
           <>
             <Flow.ReactFlow
               nodes={flowNodes}
@@ -1218,7 +1222,9 @@ export function EntityGraph({
                 // only for ad-hoc tests/storybook. Use the short form (no `/e/`).
                 const href =
                   node.href ??
-                  (hrefFor ? hrefFor(node.id, node.entity_type) : `/${node.entity_type}/${node.id}`);
+                  (hrefFor
+                    ? hrefFor(node.id, node.entity_type)
+                    : `/${node.entity_type}/${node.id}`);
                 navigate(href);
               }}
               proOptions={{ hideAttribution: true }}

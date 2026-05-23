@@ -506,7 +506,11 @@ export function OverviewGraph({
             {search}
           </div>
         ) : null}
-        {Flow ? (
+        {visibleNodes.length === 0 ? (
+          <div className="flex h-full w-full items-center justify-center text-center text-sm font-medium text-muted-foreground">
+            So empty
+          </div>
+        ) : Flow ? (
           <Flow.ReactFlow
             nodes={flowNodes}
             edges={flowEdges}

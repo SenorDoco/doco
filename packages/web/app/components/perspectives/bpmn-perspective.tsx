@@ -210,9 +210,8 @@ export function BpmnPerspective({
 
   if (filteredLanes.length === 0 || filteredNodes.length === 0) {
     return (
-      <div className="flex h-full min-h-[320px] items-center justify-center rounded-md border border-border bg-input text-xs italic text-muted-foreground">
-        No neurons assigned to any swim lane yet. Add `actor_id`, `decided_by`, or `wanted_by` to
-        neurons to populate this perspective.
+      <div className="flex h-full min-h-[420px] items-center justify-center rounded-md border border-border bg-input text-center text-sm font-medium text-muted-foreground">
+        So empty
       </div>
     );
   }
