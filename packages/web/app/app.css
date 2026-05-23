@@ -99,12 +99,23 @@ a:focus-visible {
   box-shadow: var(--neu-focus);
 }
 
+/* Auto-neumorphism for any button-like element matching one of:
+   - `bg-primary` (the brand-tinted primary CTA pattern)
+   - `border border-border` paired with `rounded-md|rounded-lg|rounded-full`
+   Applies the same dual-shadow + softened border color that `.neu-button`
+   gets explicitly, so an `<a>`/`<button>` styled inline matches one
+   styled with the utility class. Without the border-color override, the
+   raw `--color-border` token reads as a darker outline next to elements
+   that use `.neu-button` directly — that's the inconsistency users see. */
 a[class*="bg-primary"],
 button[class*="bg-primary"],
 a[class*="rounded-md"][class*="border-border"],
 button[class*="rounded-md"][class*="border-border"],
 a[class*="rounded-lg"][class*="border-border"],
-button[class*="rounded-lg"][class*="border-border"] {
+button[class*="rounded-lg"][class*="border-border"],
+a[class*="rounded-full"][class*="border-border"],
+button[class*="rounded-full"][class*="border-border"] {
+  border-color: var(--neu-border);
   box-shadow: 5px 5px 12px var(--neu-shadow-soft), -5px -5px 12px var(--neu-highlight);
 }
 
@@ -113,7 +124,9 @@ button[class*="bg-primary"]:hover,
 a[class*="rounded-md"][class*="border-border"]:hover,
 button[class*="rounded-md"][class*="border-border"]:hover,
 a[class*="rounded-lg"][class*="border-border"]:hover,
-button[class*="rounded-lg"][class*="border-border"]:hover {
+button[class*="rounded-lg"][class*="border-border"]:hover,
+a[class*="rounded-full"][class*="border-border"]:hover,
+button[class*="rounded-full"][class*="border-border"]:hover {
   box-shadow: 7px 7px 16px var(--neu-shadow-soft), -7px -7px 16px var(--neu-highlight);
   transform: translateY(-1px);
 }
@@ -123,7 +136,9 @@ button[class*="bg-primary"]:active,
 a[class*="rounded-md"][class*="border-border"]:active,
 button[class*="rounded-md"][class*="border-border"]:active,
 a[class*="rounded-lg"][class*="border-border"]:active,
-button[class*="rounded-lg"][class*="border-border"]:active {
+button[class*="rounded-lg"][class*="border-border"]:active,
+a[class*="rounded-full"][class*="border-border"]:active,
+button[class*="rounded-full"][class*="border-border"]:active {
   box-shadow: var(--neu-pressed);
   transform: translateY(0);
 }
