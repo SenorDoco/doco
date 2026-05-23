@@ -170,8 +170,11 @@ button[class*="rounded-full"][class*="border-border"]:active {
     box-shadow: var(--neu-inset);
   }
 
-  .neu-pressed {
+  .neu-pressed,
+  .neu-pressed:hover,
+  .neu-pressed:active {
     box-shadow: var(--neu-pressed);
+    transform: none;
   }
 
   .neu-button {
