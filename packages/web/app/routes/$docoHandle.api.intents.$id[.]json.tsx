@@ -4,16 +4,7 @@ const route = makeUpdateRoute({
   type: "intents",
   entityType: "intent",
   pluralDir: "intents",
-  allowedFields: [
-    "slug",
-    "title",
-    "wanted_by",
-    "actors",
-    "stakeholders",
-    "lifecycle",
-    "summary",
-    "body_md",
-  ],
+  allowedFields: ["slug", "intent", "wanted_by", "actors", "stakeholders", "lifecycle"],
 });
 
 export const loader = route.loader;

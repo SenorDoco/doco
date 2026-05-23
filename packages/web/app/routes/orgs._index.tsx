@@ -63,11 +63,7 @@ export async function loader({ request }: { request: Request }) {
   // count summed across every entity table. Separate pooled queries avoid
   // serializing work through a single PoolClient.
   const orgIds = orgsRaw.map((o) => o.id);
-  const nodesUnionSql = ENTITY_TABLES.map((t) =>
-    t === "principals"
-      ? "SELECT data->>'doco_id' AS doco_id FROM principals WHERE data->>'doco_id' IS NOT NULL"
-      : `SELECT doco_id FROM ${t}`,
-  ).join(" UNION ALL ");
+  const nodesUnionSql = ENTITY_TABLES.map((t) => `SELECT doco_id FROM ${t}`).join(" UNION ALL ");
   const [orgLastActivity, orgNodeCount] = await Promise.all([
     withClient(async (c) => {
       if (orgIds.length === 0) return new Map<string, string | null>();
@@ -148,10 +144,10 @@ export async function loader({ request }: { request: Request }) {
         op: string;
         before_json: Record<string, unknown> | null;
         after_json: Record<string, unknown> | null;
-        username: string | null;
+        principal_name: string | null;
       }>(
         `SELECT a.event_id, a.at, a.doco_id, a.entity_type, a.entity_id, a.op,
-                a.before_json, a.after_json, p.username
+                a.before_json, a.after_json, p.name AS principal_name
            FROM audit_events a
            LEFT JOIN principals p ON p.id = a.by_collaborator
           WHERE a.doco_id = ANY($1)
@@ -168,14 +164,14 @@ export async function loader({ request }: { request: Request }) {
           label: string | null;
           lifecycle: string | null;
         }>(
-          `SELECT id, summary AS label, lifecycle FROM decisions WHERE id = ANY($1)
-           UNION ALL SELECT id, summary AS label, lifecycle FROM intents WHERE id = ANY($1)
-           UNION ALL SELECT id, summary AS label, lifecycle FROM ideas WHERE id = ANY($1)
-           UNION ALL SELECT id, summary AS label, lifecycle FROM rules WHERE id = ANY($1)
-           UNION ALL SELECT id, summary AS label, lifecycle FROM actions WHERE id = ANY($1)
-           UNION ALL SELECT id, summary AS label, lifecycle FROM logs WHERE id = ANY($1)
-           UNION ALL SELECT id, summary AS label, lifecycle FROM evals WHERE id = ANY($1)
-           UNION ALL SELECT id, summary AS label, lifecycle FROM reference_entities WHERE id = ANY($1)`,
+          `SELECT id, split_part(decision, E'\n', 1) AS label, lifecycle FROM decisions WHERE id = ANY($1)
+           UNION ALL SELECT id, split_part(intent, E'\n', 1) AS label, lifecycle FROM intents WHERE id = ANY($1)
+           UNION ALL SELECT id, split_part(idea, E'\n', 1) AS label, lifecycle FROM ideas WHERE id = ANY($1)
+           UNION ALL SELECT id, split_part(rule, E'\n', 1) AS label, lifecycle FROM rules WHERE id = ANY($1)
+           UNION ALL SELECT id, split_part(action, E'\n', 1) AS label, lifecycle FROM actions WHERE id = ANY($1)
+           UNION ALL SELECT id, split_part(log, E'\n', 1) AS label, lifecycle FROM logs WHERE id = ANY($1)
+           UNION ALL SELECT id, split_part(eval, E'\n', 1) AS label, lifecycle FROM evals WHERE id = ANY($1)
+           UNION ALL SELECT id, split_part(reference, E'\n', 1) AS label, lifecycle FROM reference_entities WHERE id = ANY($1)`,
           [entityIds],
         );
         for (const r of entityLabelRows.rows) {
@@ -189,7 +185,7 @@ export async function loader({ request }: { request: Request }) {
         return {
           event_id: r.event_id,
           at: r.at instanceof Date ? r.at.toISOString() : String(r.at),
-          byUsername: r.username,
+          byUsername: r.principal_name,
           handle: d?.handle ?? "?",
           entity_type: r.entity_type,
           entity_id: r.entity_id,

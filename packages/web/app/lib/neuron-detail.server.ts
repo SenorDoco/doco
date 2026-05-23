@@ -1,4 +1,4 @@
-import { DOCO_NEURON_TABLE_BY_TYPE, type DocoRole, roleAtLeast } from "@doco/db";
+import { ALL_ENTITY_TABLES, DOCO_NEURON_TABLE_BY_TYPE, type DocoRole, roleAtLeast } from "@doco/db";
 import { parse as parseYaml } from "yaml";
 import { getDocoLevelRole } from "~/lib/doco-access.server";
 import { loadOverviewNodeDetails } from "~/lib/full-graph.server";
@@ -7,7 +7,7 @@ type QueryClient = {
   query<T>(sql: string, params?: unknown[]): Promise<{ rows: T[] }>;
 };
 
-const LIFECYCLE_STAGES = ["drafted", "proposed", "active", "retired"] as const;
+const LIFECYCLE_STAGES = ["drafting", "proposed", "active", "retired"] as const;
 
 export type LifecycleStage = (typeof LIFECYCLE_STAGES)[number];
 
@@ -80,6 +80,7 @@ const UPDATE_SEGMENTS: Record<string, string> = {
 type GraphNeuronConfig = {
   table: string;
   hasBody: boolean;
+  typeNamedColumn: string | null;
   updateSegment: string;
 };
 
@@ -89,6 +90,7 @@ const GRAPH_NEURON_TABLES: Record<string, GraphNeuronConfig> = Object.fromEntrie
     {
       table: spec.table,
       hasBody: spec.body,
+      typeNamedColumn: ALL_ENTITY_TABLES[entityType]?.typeNamedColumn ?? null,
       updateSegment: UPDATE_SEGMENTS[entityType] ?? entityType,
     },
   ]),
@@ -118,13 +120,13 @@ function toIso(value: Date | string | null | undefined): string | null {
 }
 
 // Stage labels read as state names when the option is the current
-// lifecycle ("Drafted", "Proposed", "Active", "Retired") and as the
+// lifecycle ("Drafting", "Proposed", "Active", "Retired") and as the
 // action verb that would move into that stage when the option is one
 // of the other (clickable) choices ("Draft", "Propose", "Activate",
 // "Retire"). Combined with the press-down state in the UI, this makes
 // the row read like "you ARE here / click to GO there."
 const LIFECYCLE_VERB: Record<string, string> = {
-  drafted: "draft",
+  drafting: "draft",
   proposed: "propose",
   active: "activate",
   retired: "retire",
@@ -182,10 +184,16 @@ export async function loadNeuronDialogDetail(
   const cfg = GRAPH_NEURON_TABLES[options.entityType];
   if (!cfg) return null;
 
+  // Post-migration: migrated neurons store prose in a type-named
+  // column (intent/decision/...); non-migrated neurons still carry
+  // summary + body_md. Select whichever this entity type uses.
+  const proseSelect = cfg.typeNamedColumn
+    ? `${cfg.typeNamedColumn} AS prose, NULL::text AS body_md`
+    : `summary AS prose, ${cfg.hasBody ? "body_md" : "NULL::text AS body_md"}`;
   const row = (
     await c.query<{
       id: string;
-      summary: string | null;
+      prose: string | null;
       lifecycle: string | null;
       body_md: string | null;
       raw_json: string;
@@ -193,9 +201,8 @@ export async function loadNeuronDialogDetail(
       updated_at: Date | string | null;
     }>(
       `SELECT id,
-              summary,
+              ${proseSelect},
               COALESCE(lifecycle, 'active') AS lifecycle,
-              ${cfg.hasBody ? "body_md" : "NULL::text AS body_md"},
               data::text AS raw_json,
               created_at,
               updated_at
@@ -211,7 +218,15 @@ export async function loadNeuronDialogDetail(
     stringField(frontmatter, "name") ??
     stringField(frontmatter, "title") ??
     stringField(frontmatter, "locator");
-  const summary = row.summary ?? stringField(frontmatter, "summary") ?? name ?? row.id;
+  // For migrated neurons, `prose` is the full type-named text — the
+  // "summary" surfaced here is the first line so headers and labels
+  // stay one-line. For non-migrated neurons it is the legacy summary.
+  const proseFirstLine = row.prose ? row.prose.split("\n")[0] || row.prose : null;
+  const summary = proseFirstLine ?? stringField(frontmatter, "summary") ?? name ?? row.id;
+  // The full prose body — surfaced as `body_md` on the detail object
+  // for backwards-compat with the renderer. For migrated neurons this
+  // is the type-named field; for non-migrated, the legacy body_md.
+  const fullProse = cfg.typeNamedColumn ? (row.prose ?? null) : row.body_md;
 
   const outgoingRows = (
     await c.query<{
@@ -328,7 +343,7 @@ export async function loadNeuronDialogDetail(
     lifecycle: row.lifecycle ?? "active",
     created_at: toIso(row.created_at),
     updated_at: toIso(row.updated_at),
-    body_md: row.body_md,
+    body_md: fullProse,
     frontmatter,
     raw_json: row.raw_json,
     href: `/${options.handle}/${options.entityType}/${row.id}`,

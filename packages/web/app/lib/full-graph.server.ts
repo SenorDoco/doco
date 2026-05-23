@@ -1,4 +1,4 @@
-import { DOCO_NEURON_TABLE_SPECS } from "@doco/db";
+import { ALL_ENTITY_TABLES, DOCO_NEURON_TABLE_SPECS } from "@doco/db";
 import { parse as parseYaml } from "yaml";
 import type {
   OverviewGraphData,
@@ -70,7 +70,11 @@ function overviewEntityHref(
 
 function overviewRowsSql(includeLabel = false): string {
   const neuronLegs = GRAPH_TABLES.map((entry) => {
-    const labelExpr = entry.labelExpr ?? "t.summary";
+    // Migrated neurons project the first line of the type-named column
+    // as the graph node label (intent first line for intents, ...).
+    // Non-migrated tables fall back to the legacy summary.
+    const tnCol = ALL_ENTITY_TABLES[entry.entityType]?.typeNamedColumn;
+    const labelExpr = entry.labelExpr ?? (tnCol ? `split_part(t.${tnCol}, E'\n', 1)` : "t.summary");
     const nameExpr = entry.nameExpr ?? "NULL::text";
     return `SELECT t.id,
                    '${entry.entityType}'::text AS entity_type,
@@ -81,16 +85,16 @@ function overviewRowsSql(includeLabel = false): string {
               FROM ${entry.table} t
              WHERE t.doco_id = $1`;
   });
-  // Principals are host-scoped (no doco_id column); scope to this Doco
-  // via the data jsonb bag and drop retired role-personas.
+  // Principals are Doco-scoped (migration 020); filter by the typed
+  // column and drop retired role-personas.
   const principalLeg = `SELECT id,
                                 'principal'::text AS entity_type,
-                                username AS name,
+                                name,
                                 COALESCE(lifecycle, 'active') AS lifecycle,
                                 created_at::text AS created_at
-                                ${includeLabel ? ", COALESCE(summary, username) AS label" : ""}
+                                ${includeLabel ? ", COALESCE(summary, name) AS label" : ""}
                            FROM principals
-                          WHERE data->>'doco_id' = $1
+                          WHERE doco_id = $1
                             AND COALESCE(lifecycle, 'active') = 'active'`;
   return [...neuronLegs, principalLeg].join(" UNION ALL ");
 }
@@ -214,12 +218,12 @@ function overviewRowsSqlMulti(): string {
   );
   const principalLeg = `SELECT id,
                               'principal'::text AS entity_type,
-                              username AS name,
+                              name,
                               COALESCE(lifecycle, 'active') AS lifecycle,
                               created_at::text AS created_at,
-                              data->>'doco_id' AS doco_id
+                              doco_id AS doco_id
                          FROM principals
-                        WHERE data->>'doco_id' = ANY($1::text[])
+                        WHERE doco_id = ANY($1::text[])
                           AND COALESCE(lifecycle, 'active') = 'active'`;
   return [...neuronLegs, principalLeg].join(" UNION ALL ");
 }

@@ -24,21 +24,21 @@ async function findActiveReferencesToPrincipal(
 ): Promise<ActiveReference[]> {
   return withClient(async (c) => {
     const sql = `
-      SELECT a.id AS id, 'action'::text AS neuron_type, a.summary AS summary, s.synapse_type AS synapse_type
+      SELECT a.id AS id, 'action'::text AS neuron_type, split_part(a.action, E'\n', 1) AS summary, s.synapse_type AS synapse_type
         FROM actions a
         JOIN synapses s
           ON s.from_id = a.id
          AND s.from_neuron_type = 'action'
        WHERE s.doco_id = $1 AND s.to_id = $2 AND a.lifecycle = 'active'
       UNION ALL
-      SELECT l.id, 'log'::text, l.summary, s.synapse_type
+      SELECT l.id, 'log'::text, split_part(l.log, E'\n', 1), s.synapse_type
         FROM logs l
         JOIN synapses s
           ON s.from_id = l.id
          AND s.from_neuron_type = 'log'
        WHERE s.doco_id = $1 AND s.to_id = $2 AND l.lifecycle = 'active'
       UNION ALL
-      SELECT i.id, 'intent'::text, i.summary, s.synapse_type
+      SELECT i.id, 'intent'::text, split_part(i.intent, E'\n', 1), s.synapse_type
         FROM intents i
         JOIN synapses s
           ON s.from_id = i.id
@@ -108,7 +108,7 @@ export async function action({
   }
 
   // Retirement is the only PATCH operation currently supported. Principal
-  // identity fields (username, display_name, …) stay immutable — if you
+  // identity fields (name, display_name, …) stay immutable — if you
   // need a different identity, create a new principal.
   if (patch.lifecycle !== "retired") {
     return Response.json(
@@ -122,14 +122,14 @@ export async function action({
     return Response.json({ error: `principal not found: ${params.id}` }, { status: 404 });
   }
 
-  const username = String(existing.data?.username ?? existing.id);
+  const name = String(existing.data?.name ?? existing.id);
 
   if (existing.lifecycle === "retired") {
     return Response.json({
       ok: true,
       id: existing.id,
       already_retired: true,
-      footer_lines: [`[🔮 Doco] 👤 Principal already retired: ${username} (${existing.id})`],
+      footer_lines: [`[🔮 Doco] 👤 Principal already retired: ${name} (${existing.id})`],
     });
   }
 
@@ -165,6 +165,6 @@ export async function action({
     ok: true,
     id: existing.id,
     lifecycle: "retired",
-    footer_lines: [`[🔮 Doco] 👤 Principal retired: ${username} (${existing.id})`],
+    footer_lines: [`[🔮 Doco] 👤 Principal retired: ${name} (${existing.id})`],
   });
 }

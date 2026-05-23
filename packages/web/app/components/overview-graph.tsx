@@ -1,5 +1,5 @@
-import { Handle, Position } from "@xyflow/react";
-import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { Handle, type MiniMapNodeProps, Position } from "@xyflow/react";
+import { type ComponentType, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { NeuronTypeIcon } from "~/components/neuron-type-icon";
 import {
@@ -80,7 +80,7 @@ interface OverviewNodeData {
 
 // Canonical Lifecycle (@doco/shared) — four stages, in progression
 // order.
-const LIFECYCLE_ORDER = ["drafted", "proposed", "active", "retired"];
+const LIFECYCLE_ORDER = ["drafting", "proposed", "active", "retired"];
 const HIDDEN_LIFECYCLES_BY_DEFAULT = new Set(["retired"]);
 const NODE_TYPE_ORDER = new Map(
   [
@@ -181,6 +181,52 @@ function screenPosition(position: Point, viewport: FlowViewport): Point {
   return {
     x: position.x * viewport.zoom + viewport.x,
     y: position.y * viewport.zoom + viewport.y,
+  };
+}
+
+// MiniMap node component — mirrors the rounded-rectangle nodes drawn on
+// the canvas, filled with the node's lifecycle color so the minimap is
+// a true scaled silhouette rather than a uniform grid of beige boxes.
+function makeOverviewMiniMapNode(
+  nodeById: Map<string, OverviewGraphNode>,
+): ComponentType<MiniMapNodeProps> {
+  return function OverviewMiniMapNode({
+    id,
+    x,
+    y,
+    width,
+    height,
+    strokeColor,
+    strokeWidth,
+    className,
+    selected,
+    shapeRendering,
+  }: MiniMapNodeProps) {
+    const graphNode = nodeById.get(id);
+    if (!graphNode) return null;
+    const fill = lifecycleColor(nodeLifecycle(graphNode));
+    const stroke = strokeColor ?? "rgba(0,0,0,0.5)";
+    const sw = (strokeWidth ?? 1) * (graphNode.is_center ? 2 : 1);
+    const radius = Math.min(width, height) / 3;
+    const classes = ["react-flow__minimap-node", selected ? "selected" : "", className]
+      .filter(Boolean)
+      .join(" ");
+    return (
+      <g className={classes} shapeRendering={shapeRendering}>
+        <rect
+          x={x}
+          y={y}
+          width={width}
+          height={height}
+          rx={radius}
+          ry={radius}
+          fill={fill}
+          stroke={stroke}
+          strokeWidth={sw}
+          style={{ vectorEffect: "non-scaling-stroke" }}
+        />
+      </g>
+    );
   };
 }
 
@@ -338,6 +384,7 @@ export function OverviewGraph({
     () => new Map(visibleNodes.map((node) => [node.id, node])),
     [visibleNodes],
   );
+  const MiniMapNode = useMemo(() => makeOverviewMiniMapNode(nodeById), [nodeById]);
 
   // Dynamic import — React Flow touches the DOM during module init.
   const [Flow, setFlow] = useState<null | typeof import("@xyflow/react")>(null);
@@ -498,8 +545,8 @@ export function OverviewGraph({
         ref={graphRef}
         className={
           fillHeight
-            ? "neu-inset relative min-h-0 w-full flex-1 overflow-hidden rounded-md border border-border bg-input"
-            : "neu-inset relative h-[65vh] min-h-[480px] w-full overflow-hidden rounded-md border border-border bg-input"
+            ? "relative min-h-0 w-full flex-1 overflow-hidden rounded-md border border-border"
+            : "relative h-[65vh] min-h-[480px] w-full overflow-hidden rounded-md border border-border"
         }
       >
         {search ? (
@@ -560,11 +607,8 @@ export function OverviewGraph({
               pannable
               zoomable
               maskColor="rgba(0, 0, 0, 0.35)"
-              nodeColor={(node: { id: string }) => {
-                const graphNode = nodeById.get(node.id);
-                return graphNode ? lifecycleColor(nodeLifecycle(graphNode)) : "#d4d4d4";
-              }}
-              nodeStrokeWidth={2}
+              nodeComponent={MiniMapNode}
+              nodeStrokeWidth={1}
               style={{
                 width: 120,
                 height: 90,

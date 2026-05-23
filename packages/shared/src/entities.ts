@@ -23,7 +23,7 @@
 
 import type { EntityId, EntityType, NeuronType } from "./branded.js";
 
-export type Lifecycle = "drafted" | "proposed" | "active" | "retired";
+export type Lifecycle = "drafting" | "proposed" | "active" | "retired";
 
 export type Outcome = "succeeded" | "failed";
 
@@ -53,6 +53,15 @@ export interface CommonFields {
 export interface SummarizedFields extends CommonFields {
   summary: string;
 }
+
+/**
+ * Migration-022: each neuron type gains a type-named prose field
+ * (`intent` on intents, `rule` on rules, etc.). During the additive
+ * window the field is optional and parallel to `summary` + `body_md`;
+ * once the rename completes it becomes the single required prose
+ * carrier and `summary` / `body_md` / `title` / `name` / `description`
+ * are dropped.
+ */
 
 // ─── Collaborator (OAuth identity — new category) ─────────────────────────
 
@@ -102,7 +111,8 @@ export interface Collaborator {
  */
 export interface Principal extends SummarizedFields {
   neuron_type: "principal";
-  username: string; // role label: "system", "customer-service-rep", "user"
+  /** Role label / slug. e.g. "system", "customer-service-rep", "cook". */
+  name: string;
   display_name?: string;
   description?: string;
 }
@@ -145,9 +155,10 @@ export interface Doco {
 
 // ─── Intent ───────────────────────────────────────────────────────────────
 
-export interface Intent extends SummarizedFields {
+export interface Intent extends CommonFields {
   neuron_type: "intent";
-  title: string;
+  /** Full prose: what someone wants, why, success criteria. */
+  intent: string;
   parent_intent_id?: EntityId<"intent"> | null;
   priority?: "p0" | "p1" | "p2" | "p3";
   stakeholders?: EntityId<"principal">[];
@@ -160,11 +171,12 @@ export interface Intent extends SummarizedFields {
 
 // ─── Idea ─────────────────────────────────────────────────────────────────
 
-export interface Idea extends SummarizedFields {
+export interface Idea extends CommonFields {
   neuron_type: "idea";
+  /** Full prose: the idea, context, tradeoffs. */
+  idea: string;
   /** Who proposed it. Collaborator (the OAuth identity), not a principal. */
   proposer_id?: EntityId<"collaborator">;
-  body?: string;
   promoted_to?: EntityId; // Intent / Decision / Action when picked up
   rejection_reason?: string;
 }
@@ -230,8 +242,10 @@ export type AuthoringPredicate =
     }
   | { kind: "descriptive"; spec: string; when_neuron_type?: NeuronType[] };
 
-export interface Rule extends SummarizedFields {
+export interface Rule extends CommonFields {
   neuron_type: "rule";
+  /** Full prose: the rule statement, rationale, scope, exceptions. */
+  rule: string;
   kind?: RuleKind;
   predicate?: AuthoringPredicate;
   fires_when_neuron_lifecycle?: Lifecycle[];
@@ -263,8 +277,10 @@ export interface DecisionAlternative {
   rejected_because?: string;
 }
 
-export interface Decision extends SummarizedFields {
+export interface Decision extends CommonFields {
   neuron_type: "decision";
+  /** Full prose: the decision narrative — context, chosen path, why. */
+  decision: string;
   intent_ids?: EntityId<"intent">[];
   question: string;
   chosen: string | null; // null when lifecycle is "proposed"
@@ -278,8 +294,10 @@ export interface Decision extends SummarizedFields {
 
 // ─── Action (designed step) ───────────────────────────────────────────────
 
-export interface Action extends SummarizedFields {
+export interface Action extends CommonFields {
   neuron_type: "action";
+  /** Full prose: past-tense verb phrase describing what was done + context. */
+  action: string;
   verb: string;
   /** Who performs the step — a role-principal. */
   actor_id: EntityId<"principal">;
@@ -294,8 +312,10 @@ export interface Action extends SummarizedFields {
 
 // ─── Log (recorded happening) ─────────────────────────────────────────────
 
-export interface Log extends SummarizedFields {
+export interface Log extends CommonFields {
   neuron_type: "log";
+  /** Full prose: what happened, when, in what state. */
+  log: string;
   verb: string;
   /** The principal (role) who performed it. */
   actor_id: EntityId<"principal">;
@@ -317,11 +337,11 @@ export interface EvalCriterion {
 
 export type EvalKind = "unit" | "integration" | "eval" | "process" | "doc-consistency";
 
-export interface Eval extends SummarizedFields {
+export interface Eval extends CommonFields {
   neuron_type: "eval";
-  name: string;
+  /** Full prose: what's being checked, plus rationale. */
+  eval: string;
   kind?: EvalKind;
-  description?: string;
   expected_status?: "pass" | "fail";
   how_to_run?: string;
   input?: unknown;
@@ -336,8 +356,10 @@ export interface Eval extends SummarizedFields {
 
 // ─── Reference ────────────────────────────────────────────────────────────
 
-export interface Reference extends SummarizedFields {
+export interface Reference extends CommonFields {
   neuron_type: "reference";
+  /** Full prose: human-readable label for the external thing. */
+  reference: string;
   ref_type: "file" | "url" | "ticket" | "commit" | "document" | "other";
   locator: string;
   content_hash?: string | null;
@@ -347,8 +369,10 @@ export interface Reference extends SummarizedFields {
 
 export type StateKind = "initial" | "intermediate" | "terminal";
 
-export interface State extends SummarizedFields {
+export interface State extends CommonFields {
   neuron_type: "state";
+  /** Full prose: state description, invariants explained. */
+  state: string;
   kind: StateKind;
   invariants?: string[];
 }

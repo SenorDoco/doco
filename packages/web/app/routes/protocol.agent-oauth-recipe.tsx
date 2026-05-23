@@ -475,8 +475,8 @@ invites, and audit have dedicated route behavior; don't infer write
 bodies for them from the generic capture pattern.
 
 **Capture body convention:** request bodies identify principals by
-principal id, never username. Use \`*_principal_id\` for one principal
-and \`*_principal_ids\` for arrays. Do not send \`*_username\` fields
+principal id, never by name. Use \`*_principal_id\` for one principal
+and \`*_principal_ids\` for arrays. Do not send \`*_name\` fields
 or comma-separated strings; there are no aliases.
 
 Common API-facing fields:

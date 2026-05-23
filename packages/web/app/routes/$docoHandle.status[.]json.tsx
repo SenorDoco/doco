@@ -110,8 +110,10 @@ async function readStatusFromPg(
         const ts = r.rows[0]?.c ?? null;
         if (ts && (latest === null || ts > latest)) latest = ts;
       }
-      // Principals are host-level (no doco_id) — count them globally.
-      const p = await c.query<{ n: string }>("SELECT COUNT(*)::text AS n FROM principals");
+      const p = await c.query<{ n: string }>(
+        "SELECT COUNT(*)::text AS n FROM principals WHERE doco_id = $1",
+        [docoId],
+      );
       counts.principals = Number(p.rows[0]?.n ?? 0);
     });
   } catch {

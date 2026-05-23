@@ -17,8 +17,15 @@
 // sit on left/right edges so synapses connect cleanly regardless of
 // lane vertical offset.
 
-import { Handle, MarkerType, Position } from "@xyflow/react";
-import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react";
+import { Handle, MarkerType, type MiniMapNodeProps, Position } from "@xyflow/react";
+import {
+  type CSSProperties,
+  type ComponentType,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useNavigate } from "react-router";
 import type { OverviewGraphLink } from "~/components/overview-graph";
 import type { BpmnLane, BpmnNode, BpmnShape } from "~/lib/bpmn-perspective.server";
@@ -176,6 +183,7 @@ export function BpmnPerspective({
     [],
   );
   const nodeById = useMemo(() => new Map(filteredNodes.map((n) => [n.id, n])), [filteredNodes]);
+  const MiniMapNode = useMemo(() => makeBpmnMiniMapNode(nodeById), [nodeById]);
 
   const graphReferences = useMemo<GraphReferenceItem[]>(() => {
     if (viewport.zoom < BPMN_REFERENCE_ZOOM) return [];
@@ -260,7 +268,7 @@ export function BpmnPerspective({
 
   if (filteredLanes.length === 0) {
     return (
-      <div className="flex h-full min-h-[420px] items-center justify-center rounded-md border border-border bg-input text-center text-sm font-medium text-muted-foreground">
+      <div className="flex h-full min-h-[420px] items-center justify-center rounded-md border border-border text-center text-sm font-medium text-muted-foreground">
         So empty
       </div>
     );
@@ -269,7 +277,7 @@ export function BpmnPerspective({
   return (
     <div
       ref={graphRef}
-      className="relative h-full min-h-[420px] w-full overflow-hidden rounded-md border border-border bg-input"
+      className="relative h-full min-h-[420px] w-full overflow-hidden rounded-md border border-border"
     >
       {Flow ? (
         <Flow.ReactFlow
@@ -313,11 +321,8 @@ export function BpmnPerspective({
             pannable
             zoomable
             maskColor="rgba(0, 0, 0, 0.35)"
-            nodeColor={(n: { id: string }) => {
-              const found = nodeById.get(n.id);
-              return found ? lifecycleColor(found.lifecycle) : "#d4d4d4";
-            }}
-            nodeStrokeWidth={2}
+            nodeComponent={MiniMapNode}
+            nodeStrokeWidth={1}
             style={{
               width: 140,
               height: 100,
@@ -897,6 +902,149 @@ function BpmnDocumentNode({ data }: { data: BpmnNodeData }) {
       {commonHandles()}
     </div>
   );
+}
+
+// MiniMap node component — renders each canvas node in its actual BPMN
+// shape so the minimap is a true scaled-down silhouette of the
+// perspective, not a grid of identical rectangles. Lane parents render
+// as faint horizontal bands to suggest the swimlane structure without
+// dominating the SVG.
+function makeBpmnMiniMapNode(nodeById: Map<string, BpmnNode>): ComponentType<MiniMapNodeProps> {
+  return function BpmnMiniMapNode({
+    id,
+    x,
+    y,
+    width,
+    height,
+    strokeColor,
+    strokeWidth,
+    className,
+    selected,
+    shapeRendering,
+  }: MiniMapNodeProps) {
+    const classes = ["react-flow__minimap-node", selected ? "selected" : "", className]
+      .filter(Boolean)
+      .join(" ");
+    if (id.startsWith("lane:")) {
+      return (
+        <g className={classes} shapeRendering={shapeRendering}>
+          <rect
+            x={x}
+            y={y}
+            width={width}
+            height={height}
+            fill="rgba(0,0,0,0.04)"
+            stroke="rgba(0,0,0,0.08)"
+            strokeWidth={strokeWidth ?? 1}
+            style={{ vectorEffect: "non-scaling-stroke" }}
+          />
+        </g>
+      );
+    }
+    const node = nodeById.get(id);
+    if (!node) return null;
+    const fill = lifecycleColor(node.lifecycle);
+    const stroke = strokeColor ?? "rgba(0,0,0,0.5)";
+    const sw = strokeWidth ?? 1;
+    const cx = x + width / 2;
+    const cy = y + height / 2;
+    switch (node.shape) {
+      case "circle": {
+        const r = Math.min(width, height) / 2;
+        return (
+          <g className={classes} shapeRendering={shapeRendering}>
+            <circle
+              cx={cx}
+              cy={cy}
+              r={r}
+              fill={fill}
+              stroke={stroke}
+              strokeWidth={sw}
+              style={{ vectorEffect: "non-scaling-stroke" }}
+            />
+          </g>
+        );
+      }
+      case "diamond": {
+        const points = `${cx},${y} ${x + width},${cy} ${cx},${y + height} ${x},${cy}`;
+        return (
+          <g className={classes} shapeRendering={shapeRendering}>
+            <polygon
+              points={points}
+              fill={fill}
+              stroke={stroke}
+              strokeWidth={sw}
+              style={{ vectorEffect: "non-scaling-stroke" }}
+            />
+          </g>
+        );
+      }
+      case "document": {
+        // Rectangle with a wavy bottom edge — matches BpmnDocumentNode's
+        // canvas silhouette, simplified for the minimap's small footprint.
+        const dipDepth = Math.min(height * 0.18, 6);
+        const baselineY = y + height - dipDepth;
+        const midY = y + height - dipDepth / 2;
+        const q1x = x + width * 0.25;
+        const q2x = x + width * 0.75;
+        const path = [
+          `M${x},${y}`,
+          `H${x + width}`,
+          `V${baselineY}`,
+          `Q${q2x},${y + height} ${cx},${midY}`,
+          `Q${q1x},${y + height - dipDepth * 1.5} ${x},${baselineY}`,
+          "Z",
+        ].join(" ");
+        return (
+          <g className={classes} shapeRendering={shapeRendering}>
+            <path
+              d={path}
+              fill={fill}
+              stroke={stroke}
+              strokeWidth={sw}
+              style={{ vectorEffect: "non-scaling-stroke" }}
+            />
+          </g>
+        );
+      }
+      case "rounded": {
+        const r = Math.min(width, height) / 2;
+        return (
+          <g className={classes} shapeRendering={shapeRendering}>
+            <rect
+              x={x}
+              y={y}
+              width={width}
+              height={height}
+              rx={r}
+              ry={r}
+              fill={fill}
+              stroke={stroke}
+              strokeWidth={sw}
+              style={{ vectorEffect: "non-scaling-stroke" }}
+            />
+          </g>
+        );
+      }
+      default:
+        return (
+          <g className={classes} shapeRendering={shapeRendering}>
+            <rect
+              x={x}
+              y={y}
+              width={width}
+              height={height}
+              rx={2}
+              ry={2}
+              fill={fill}
+              stroke={stroke}
+              strokeWidth={sw}
+              style={{ vectorEffect: "non-scaling-stroke" }}
+            />
+          </g>
+        );
+    }
+  };
 }
 
 function graphReferenceAttributes(data: BpmnNodeData): Record<string, string | number | undefined> {

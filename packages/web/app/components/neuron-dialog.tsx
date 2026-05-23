@@ -3,6 +3,28 @@ import { NeuronTypeIcon } from "~/components/neuron-type-icon";
 import { lifecycleColor } from "~/lib/neuron-colors";
 import type { LifecycleStage, NeuronDialogDetail } from "~/lib/neuron-detail.server";
 
+// Per-entity-type prose-field-name lookup. Migrated neurons carry
+// their full prose under a key matching the entity type (intent,
+// decision, ...); non-migrated entities (principals, primitives) still
+// use the legacy summary/body_md pair. The dialog uses this to label
+// the prose section heading appropriately.
+const PROSE_FIELD_NAME: Record<string, string> = {
+  intent: "intent",
+  decision: "decision",
+  rule: "rule",
+  action: "action",
+  log: "log",
+  eval: "eval",
+  reference: "reference",
+  state: "state",
+  idea: "idea",
+};
+
+function proseFieldName(entityType: string | undefined): string {
+  if (!entityType) return "summary";
+  return PROSE_FIELD_NAME[entityType] ?? "summary";
+}
+
 interface NeuronDialogProps {
   detail: NeuronDialogDetail | null;
   loading: boolean;
@@ -66,10 +88,20 @@ export function NeuronDialog({
   const disabledReason = detail?.lifecycle_options.find(
     (option) => option.disabled && !option.current,
   )?.reason;
+  // Migrated neurons carry their full prose in a single type-named
+  // field; for those we render the prose as a card at the top of the
+  // content area and skip both the truncated h2 title and the separate
+  // "body" section heading — otherwise the first line shows twice
+  // (once as the title, once as the start of the prose) and the type
+  // label appears twice (once as the chip, once as the section
+  // heading). Non-migrated entities (principals, primitives) still
+  // have a distinct short name + long body, so they keep the legacy
+  // title + body-section rendering.
+  const isMigratedNeuron = Boolean(detail && PROSE_FIELD_NAME[detail.entity_type]);
 
   return (
     <aside
-      className="neu-surface z-30 flex h-full min-h-0 flex-col overflow-hidden bg-card"
+      className="neu-floating relative z-30 flex h-full min-h-0 flex-col overflow-hidden rounded-lg border border-border bg-card"
       aria-label="Neuron details"
     >
       <header className="px-4 py-3">
@@ -83,9 +115,11 @@ export function NeuronDialog({
                 <p className="text-[11px] font-semibold uppercase text-muted-foreground">
                   {detail?.entity_type ?? "Neuron"}
                 </p>
-                <h2 className="mt-0.5 break-words text-sm font-semibold leading-snug text-foreground">
-                  {title}
-                </h2>
+                {isMigratedNeuron ? null : (
+                  <h2 className="mt-0.5 break-words text-sm font-semibold leading-snug text-foreground">
+                    {title}
+                  </h2>
+                )}
               </div>
               <button
                 type="button"
@@ -130,7 +164,10 @@ export function NeuronDialog({
         </div>
       </header>
 
-      <div className="min-h-0 flex-1 overflow-auto px-4 py-4">
+      <div
+        className="neuron-dialog-scroll min-h-0 flex-1 overflow-y-scroll px-4 pb-8 pt-4"
+        style={{ scrollbarGutter: "stable" }}
+      >
         {loading ? (
           <div className="flex min-h-40 items-center justify-center text-xs text-muted-foreground">
             <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />
@@ -144,6 +181,14 @@ export function NeuronDialog({
         ) : null}
         {detail && !loading ? (
           <div className="space-y-5 text-xs">
+            {isMigratedNeuron && detail.body_md ? (
+              <section>
+                <div className="whitespace-pre-wrap break-words text-sm leading-6 text-foreground">
+                  {detail.body_md}
+                </div>
+              </section>
+            ) : null}
+
             <section>
               <dl className="grid grid-cols-[6.5rem_minmax(0,1fr)] gap-x-3 gap-y-2">
                 <dt className="text-muted-foreground">Id</dt>
@@ -161,10 +206,10 @@ export function NeuronDialog({
               </dl>
             </section>
 
-            {detail.body_md ? (
+            {!isMigratedNeuron && detail.body_md ? (
               <section className="pt-4">
                 <h3 className="mb-2 text-[11px] font-semibold uppercase text-muted-foreground">
-                  Body
+                  {proseFieldName(detail.entity_type)}
                 </h3>
                 <div className="whitespace-pre-wrap break-words leading-5">{detail.body_md}</div>
               </section>
@@ -262,6 +307,13 @@ export function NeuronDialog({
           </div>
         ) : null}
       </div>
+      {/* Bottom fade — tells the user content extends below the visible
+          area even when the OS auto-hides the scrollbar. pointer-events
+          off so it doesn't swallow clicks on the last row of content. */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-x-0 bottom-0 h-8 rounded-b-lg bg-gradient-to-t from-card to-transparent"
+      />
     </aside>
   );
 }

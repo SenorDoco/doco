@@ -6,7 +6,13 @@
 // filtering yet (a follow-up to the doco-level search, which carries
 // lifecycle / node-type filters).
 
-import { DOCO_NEURON_TABLE_SPECS, bufferToEmbedding, cosineSimilarity, withClient } from "@doco/db";
+import {
+  ALL_ENTITY_TABLES,
+  DOCO_NEURON_TABLE_SPECS,
+  bufferToEmbedding,
+  cosineSimilarity,
+  withClient,
+} from "@doco/db";
 import type { PoolClient } from "pg";
 import { Form, Link } from "react-router";
 import { LifecycleBadge, NodeTypeBadge } from "~/components/badge";
@@ -62,6 +68,9 @@ async function hydrateHits(
   if (ids.length === 0) return [];
   const hits: Hit[] = [];
   for (const spec of TYPE_SPECS) {
+    // Every entry in DOCO_NEURON_TABLE_SPECS is one of the 9 migrated
+    // neuron types — they all carry prose in a type-named column.
+    const tnCol = ALL_ENTITY_TABLES[spec.entityType]?.typeNamedColumn ?? "summary";
     const rows = (
       await c.query<{
         id: string;
@@ -69,7 +78,7 @@ async function hydrateHits(
         lifecycle: string | null;
         created_at: string | Date | null;
       }>(
-        `SELECT id, summary, lifecycle, created_at::text AS created_at
+        `SELECT id, split_part(${tnCol}, E'\n', 1) AS summary, lifecycle, created_at::text AS created_at
            FROM ${spec.table}
           WHERE id = ANY($1::text[])`,
         [ids],

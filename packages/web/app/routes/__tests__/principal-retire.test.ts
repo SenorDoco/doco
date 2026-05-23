@@ -51,7 +51,7 @@ describe("principal retire API", () => {
       id: PRINCIPAL_ID,
       doco_id: "doco_acme",
       entity_type: "principal",
-      data: { neuron_type: "principal", username: "visitor" },
+      data: { neuron_type: "principal", name: "visitor" },
       summary: "Visitor",
       lifecycle: "active",
       created_at: "2026-01-01T00:00:00.000Z",
@@ -71,7 +71,7 @@ describe("principal retire API", () => {
         id: PRINCIPAL_ID,
         entity_type: "principal",
         lifecycle: "retired",
-        data: expect.objectContaining({ lifecycle: "retired", username: "visitor" }),
+        data: expect.objectContaining({ lifecycle: "retired", name: "visitor" }),
         updated_by: "collaborator_author",
       }),
     );
@@ -113,7 +113,7 @@ describe("principal retire API", () => {
       id: PRINCIPAL_ID,
       doco_id: "doco_acme",
       entity_type: "principal",
-      data: { neuron_type: "principal", username: "visitor", lifecycle: "retired" },
+      data: { neuron_type: "principal", name: "visitor", lifecycle: "retired" },
       summary: "Visitor",
       lifecycle: "retired",
     });
@@ -158,7 +158,7 @@ describe("principal retire API", () => {
       id: PRINCIPAL_ID,
       doco_id: "doco_other",
       entity_type: "principal",
-      data: { neuron_type: "principal", username: "visitor" },
+      data: { neuron_type: "principal", name: "visitor" },
       summary: "Visitor",
       lifecycle: "active",
     });

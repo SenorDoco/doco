@@ -34,7 +34,14 @@ export interface DrawerHistoryEvent {
 export interface DrawerRelevantNode {
   id: string;
   entity_type: string;
-  summary: string;
+  /**
+   * Human-readable one-line label. For migrated neurons this is the
+   * first line of the type-named column (intent/decision/...); for
+   * non-migrated neurons (principals) this is the legacy summary. The
+   * route building the list is responsible for picking the right
+   * source — the drawer just renders it.
+   */
+  label: string;
   name: string | null;
   ppr: number;
   gpr: number;
@@ -98,7 +105,7 @@ export function NeuronDetailDrawer(props: NeuronDetailDrawerProps) {
   if (!open) return null;
   return (
     <aside
-      className="neu-surface absolute inset-y-0 right-0 z-20 flex w-full max-w-md flex-col bg-card"
+      className="neu-floating absolute inset-y-0 right-0 z-20 flex w-full max-w-md flex-col bg-card"
       aria-label={`${paneTitle(open)} pane`}
     >
       <header className="flex items-center justify-between px-4 py-2.5">
@@ -144,7 +151,7 @@ function RelevantNeuronsPane({ rankedNeighbors, linkTo }: NeuronDetailDrawerProp
                 <span>{n.entity_type}</span>
                 <span className="ml-2 font-mono normal-case">PPR {n.ppr.toFixed(3)}</span>
               </div>
-              <p className="mt-0.5 text-foreground">{n.summary?.slice(0, 120) ?? n.id}</p>
+              <p className="mt-0.5 text-foreground">{n.label?.slice(0, 120) ?? n.id}</p>
             </Link>
           </li>
         ))}

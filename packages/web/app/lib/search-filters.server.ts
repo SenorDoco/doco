@@ -75,9 +75,7 @@ function readMulti(params: URLSearchParams, key: string): string[] | null {
 
 /**
  * Doco-scoped neuron tables (PG plural names). Each carries a
- * `lifecycle` column directly. Principals are stored in the
- * host-level table, but role-principals authored for a Doco carry
- * `data.doco_id`, so they participate in Doco stats/search too.
+ * `lifecycle` column directly and a typed `doco_id` column.
  *
  * Primitives (`guidance_primitives`, `neuron_authoring_primitives`)
  * are not neurons — they are Doco-level metadata with their own
@@ -102,11 +100,7 @@ const PG_DOCO_NOTE_TABLES_WITH_LIFECYCLE: DocoNeuronTableFilterSpec[] = [
   { table: "evals", entityType: "eval", docoWhereSql: "doco_id = $1" },
   { table: "reference_entities", entityType: "reference", docoWhereSql: "doco_id = $1" },
   { table: "states", entityType: "state", docoWhereSql: "doco_id = $1" },
-  {
-    table: "principals",
-    entityType: "principal",
-    docoWhereSql: "data->>'doco_id' = $1",
-  },
+  { table: "principals", entityType: "principal", docoWhereSql: "doco_id = $1" },
 ];
 
 /**
@@ -133,7 +127,7 @@ const NEURON_TYPE_TO_TABLE: Record<string, DocoNeuronTableFilterSpec | null> = {
   principal: {
     table: "principals",
     entityType: "principal",
-    docoWhereSql: "data->>'doco_id' = $1",
+    docoWhereSql: "doco_id = $1",
   },
   organization: null,
 };
@@ -268,8 +262,15 @@ export async function computeFilterFacets(c: PoolClient, docoId: string): Promis
     lifecycle: Array.from(lifecycleFacets.entries())
       .map(([value, facet]) => ({ value, count: facet.count, updatedAt: facet.updatedAt }))
       .sort((a, b) => {
-        if (a.value === "active") return -1;
-        if (b.value === "active") return 1;
+        // Canonical lifecycle progression — render in the same order
+        // everywhere so the stats card, the filter row, and the audit
+        // panel agree.
+        const order = ["drafting", "proposed", "active", "retired"];
+        const ai = order.indexOf(a.value);
+        const bi = order.indexOf(b.value);
+        if (ai !== -1 && bi !== -1) return ai - bi;
+        if (ai !== -1) return -1;
+        if (bi !== -1) return 1;
         return a.value.localeCompare(b.value);
       }),
     entityType: entityTypeCounts,

@@ -11,10 +11,51 @@ import type pg from "pg";
 import { withClient } from "./client.js";
 import { ALL_ENTITY_TABLES, type EntityRecord } from "./types.js";
 
-function tableFor(entityType: string): { table: string; body: boolean } {
+function tableFor(entityType: string): {
+  table: string;
+  body: boolean;
+  typeNamedColumn?: string;
+} {
   const spec = ALL_ENTITY_TABLES[entityType];
   if (!spec) throw new Error(`Unknown entity type for storage: ${entityType}`);
   return spec;
+}
+
+/**
+ * Drop the legacy prose keys from a migrated neuron's `data` jsonb
+ * before persisting. The merged content already lives in the
+ * type-named column; keeping a stale copy in `data` would diverge on
+ * subsequent updates and leak into JSON API responses.
+ */
+const LEGACY_PROSE_KEYS = ["summary", "body_md", "title", "name", "description"] as const;
+
+function stripLegacyProseKeys(data: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...data };
+  for (const key of LEGACY_PROSE_KEYS) delete out[key];
+  return out;
+}
+
+/**
+ * Derive the `lifecycle` column from `data.lifecycle` (the source of
+ * truth). If the caller also supplied `rec.lifecycle` and it disagrees,
+ * log a warning — the call site is fighting itself.
+ *
+ * Returning a value from `data` keeps the column and the jsonb perfectly
+ * aligned; the runner's loaders filter on the column, so drift would
+ * silently disable enforcement.
+ */
+function deriveLifecycleColumn(rec: EntityRecord, data: Record<string, unknown>): string | null {
+  const dataLifecycle = typeof data.lifecycle === "string" ? data.lifecycle : null;
+  if (
+    typeof rec.lifecycle === "string" &&
+    dataLifecycle !== null &&
+    rec.lifecycle !== dataLifecycle
+  ) {
+    console.warn(
+      `[repo] lifecycle mismatch for ${rec.entity_type}/${rec.id}: rec.lifecycle=${rec.lifecycle} vs data.lifecycle=${dataLifecycle} — using data.lifecycle`,
+    );
+  }
+  return dataLifecycle;
 }
 
 /**
@@ -32,13 +73,31 @@ export async function upsertEntity(rec: EntityRecord, client?: pg.PoolClient): P
   ) {
     return upsertIdentity(rec, client);
   }
+  // Migrated neurons store prose in a single type-named column
+  // (intents.intent, decisions.decision, …); the legacy `summary`,
+  // `body_md`, `title`, `name`, and `description` keys were dropped by
+  // migration 023 and must not leak back into `data` jsonb either.
+  // Tables without a typeNamedColumn (principal, primitives) still use
+  // the legacy shape.
+  const cleanData = spec.typeNamedColumn ? stripLegacyProseKeys(rec.data) : rec.data;
+  // Single source of truth for lifecycle: `data.lifecycle`. The column
+  // is a denormalized mirror used for filtering/indexing — derive it
+  // from `data` instead of trusting the caller-supplied `rec.lifecycle`
+  // so the two can never drift. Warn if the caller passed a value that
+  // disagrees, since that signals a bug at the call site.
+  const lifecycleCol = deriveLifecycleColumn(rec, cleanData);
   const cols = ["id", "doco_id", "lifecycle", "data"];
-  const vals: unknown[] = [rec.id, rec.doco_id, rec.lifecycle ?? null, JSON.stringify(rec.data)];
-  cols.push("summary");
-  vals.push(rec.summary ?? null);
-  if (spec.body) {
-    cols.push("body_md");
-    vals.push(rec.body_md ?? null);
+  const vals: unknown[] = [rec.id, rec.doco_id, lifecycleCol, JSON.stringify(cleanData)];
+  if (spec.typeNamedColumn) {
+    cols.push(spec.typeNamedColumn);
+    vals.push(rec.type_named_value ?? "");
+  } else {
+    cols.push("summary");
+    vals.push(rec.summary ?? null);
+    if (spec.body) {
+      cols.push("body_md");
+      vals.push(rec.body_md ?? null);
+    }
   }
   // Promoted FK columns (real foreign keys). Extract from rec.data so
   // captures land typed-column values on the way in — the synapses
@@ -116,21 +175,24 @@ async function upsertIdentity(rec: EntityRecord, client?: pg.PoolClient): Promis
   const dataJson = JSON.stringify(fields);
   const run = async (c: pg.PoolClient) => {
     if (rec.entity_type === "principal") {
-      const username = String(fields.username ?? rec.id);
+      const name = String(fields.name ?? rec.id);
+      // Same drift-prevention as upsertEntity: principals' lifecycle
+      // column mirrors data.lifecycle.
+      const lifecycleCol = deriveLifecycleColumn(rec, fields);
       await c.query(
-        `INSERT INTO principals (id, username, doco_id, summary, lifecycle, body_md, data,
+        `INSERT INTO principals (id, name, doco_id, summary, lifecycle, body_md, data,
                                   created_at, created_by, updated_at, updated_by)
          VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10,$11)
-         ON CONFLICT (id) DO UPDATE SET username=EXCLUDED.username,
+         ON CONFLICT (id) DO UPDATE SET name=EXCLUDED.name,
            doco_id=EXCLUDED.doco_id, summary=EXCLUDED.summary, lifecycle=EXCLUDED.lifecycle,
            body_md=EXCLUDED.body_md, data=EXCLUDED.data,
            updated_at=EXCLUDED.updated_at, updated_by=EXCLUDED.updated_by`,
         [
           rec.id,
-          username,
+          name,
           rec.doco_id || null,
           rec.summary ?? null,
-          rec.lifecycle ?? null,
+          lifecycleCol,
           rec.body_md ?? null,
           dataJson,
           rec.created_at ?? new Date().toISOString(),
@@ -266,6 +328,14 @@ function rowToRecord(entityType: string, row: Record<string, unknown>): EntityRe
   if ("summary" in row && row.summary !== null) rec.summary = String(row.summary);
   if ("lifecycle" in row && row.lifecycle !== null) rec.lifecycle = String(row.lifecycle);
   if ("name" in row && row.name !== null) rec.name = String(row.name);
+  // Migration-022: hydrate the type-named column (intent/decision/…)
+  // off whichever key the row carries. Empty string is treated as
+  // "not set yet" so callers can fall back to summary cleanly during
+  // the additive window.
+  const tnCol = ALL_ENTITY_TABLES[entityType]?.typeNamedColumn;
+  if (tnCol && tnCol in row && row[tnCol] !== null && row[tnCol] !== "") {
+    rec.type_named_value = String(row[tnCol]);
+  }
   if (row.created_at instanceof Date) rec.created_at = row.created_at.toISOString();
   if ("created_by" in row && row.created_by !== null) rec.created_by = String(row.created_by);
   if (row.updated_at instanceof Date) rec.updated_at = row.updated_at.toISOString();
@@ -392,11 +462,15 @@ export async function listCollaborators(
 }
 
 // ─── Principals (role-personas, neuron) ───────────────────────────────────
+//
+// Principals are Doco-scoped (migration 020). Each Doco owns its own
+// role-personas; the same name in two different Docos is two
+// different rows.
 
 export interface PrincipalRow {
   id: string;
-  username: string;
-  doco_id: string | null;
+  name: string;
+  doco_id: string;
   summary: string | null;
   data: Record<string, unknown>;
 }
@@ -404,8 +478,8 @@ export interface PrincipalRow {
 function mapPrincipalRow(row: Record<string, unknown>): PrincipalRow {
   return {
     id: String(row.id),
-    username: String(row.username),
-    doco_id: row.doco_id === null || row.doco_id === undefined ? null : String(row.doco_id),
+    name: String(row.name),
+    doco_id: String(row.doco_id),
     summary: row.summary === null || row.summary === undefined ? null : String(row.summary),
     data: (row.data && typeof row.data === "object" ? row.data : {}) as Record<string, unknown>,
   };
@@ -414,7 +488,7 @@ function mapPrincipalRow(row: Record<string, unknown>): PrincipalRow {
 export async function getPrincipalById(id: string): Promise<PrincipalRow | null> {
   return withClient(async (c) => {
     const r = await c.query(
-      "SELECT id, username, doco_id, summary, data FROM principals WHERE id = $1",
+      "SELECT id, name, doco_id, summary, data FROM principals WHERE id = $1",
       [id],
     );
     if (r.rowCount === 0) return null;
@@ -422,11 +496,14 @@ export async function getPrincipalById(id: string): Promise<PrincipalRow | null>
   });
 }
 
-export async function getPrincipalByUsername(username: string): Promise<PrincipalRow | null> {
+export async function getPrincipalByName(
+  name: string,
+  docoId: string,
+): Promise<PrincipalRow | null> {
   return withClient(async (c) => {
     const r = await c.query(
-      "SELECT id, username, doco_id, summary, data FROM principals WHERE username = $1",
-      [username],
+      "SELECT id, name, doco_id, summary, data FROM principals WHERE name = $1 AND doco_id = $2",
+      [name, docoId],
     );
     if (r.rowCount === 0) return null;
     return mapPrincipalRow(r.rows[0]);
@@ -434,17 +511,16 @@ export async function getPrincipalByUsername(username: string): Promise<Principa
 }
 
 /**
- * List Principals (role-personas). `bootstrap_placeholder: true` rows
- * (per ADR-073) are filtered out — they exist only to own host-bootstrap
- * docos and are never user-facing.
+ * List Principals (role-personas) in a Doco.
  */
-export async function listPrincipals(): Promise<PrincipalRow[]> {
+export async function listPrincipals(docoId: string): Promise<PrincipalRow[]> {
   return withClient(async (c) => {
     const r = await c.query(
-      `SELECT id, username, doco_id, summary, data
+      `SELECT id, name, doco_id, summary, data
        FROM principals
-       WHERE (data->>'bootstrap_placeholder' IS NULL OR data->>'bootstrap_placeholder' != 'true')
-       ORDER BY username`,
+       WHERE doco_id = $1
+       ORDER BY name`,
+      [docoId],
     );
     return r.rows.map(mapPrincipalRow);
   });

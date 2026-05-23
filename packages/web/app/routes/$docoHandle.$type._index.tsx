@@ -1,4 +1,4 @@
-import { DOCO_NEURON_TABLE_SPECS, withClient } from "@doco/db";
+import { ALL_ENTITY_TABLES, DOCO_NEURON_TABLE_SPECS, withClient } from "@doco/db";
 import { entityUrl, isEntityType } from "@doco/shared";
 // Per-Doco entity list at the short URL `/<doco-handle>/<type>`.
 //
@@ -35,9 +35,13 @@ export async function loader({
   const { ownerSlug, docoSlug, handle } = ctx;
   return withClient(async (c) => {
     const table = TABLE_BY_TYPE[type] ?? type;
+    // Post-migration: all 9 neuron tables here carry prose in the
+    // type-named column (intent on intents, decision on decisions,
+    // ...). Project the first line for the list "summary" cell.
+    const tnCol = ALL_ENTITY_TABLES[type]?.typeNamedColumn ?? "summary";
     const rows = (
       await c.query<{ id: string; summary: string; data: Record<string, unknown> | null }>(
-        `SELECT id, summary, data FROM ${table}
+        `SELECT id, split_part(${tnCol}, E'\n', 1) AS summary, data FROM ${table}
           WHERE doco_id = $1
           ORDER BY id DESC LIMIT 200`,
         [ctx.meta.docoId],

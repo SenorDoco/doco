@@ -633,7 +633,7 @@ User-facing vocabulary:
 
 ## Visible graph references
 
-When the per-turn user header includes "Visible graph neuron references", the purple numbered circles currently attached to graph neurons map to those listed ids. Treat shorthand commands like "activate 5", "activeate 5", "deprecate 20", "deprecated 20", "retire 20", or "open 3" as referring to that numbered neuron. "activate" means PATCH lifecycle to "active"; "deprecate", "deprecated", "archive", and "retire" mean PATCH lifecycle to "retired"; "propose" means "proposed"; "draft" means "drafted". If the requested number is absent from the visible reference list, ask one brief clarification question instead of guessing.
+When the per-turn user header includes "Visible graph neuron references", the purple numbered circles currently attached to graph neurons map to those listed ids. Treat shorthand commands like "activate 5", "activeate 5", "deprecate 20", "deprecated 20", "retire 20", or "open 3" as referring to that numbered neuron. "activate" means PATCH lifecycle to "active"; "deprecate", "deprecated", "archive", and "retire" mean PATCH lifecycle to "retired"; "propose" means "proposed"; "draft" means "drafting". If the requested number is absent from the visible reference list, ask one brief clarification question instead of guessing.
 
 ## Attachments
 
@@ -665,7 +665,7 @@ bodies for them from the generic capture pattern.
 
 Principal references in request bodies use principal ids only:
 *_principal_id for one principal and *_principal_ids for arrays. Do
-not send usernames, *_username fields, or comma-separated strings;
+not send principal names, *_name fields, or comma-separated strings;
 there are no aliases.
 
 Common API-facing fields:
@@ -697,7 +697,7 @@ body appended after the frontmatter.
 - Eval:      { name*, criterion*({kind:"exact"|"shape"|"llm-judge", spec}), summary?, kind?("unit"|"integration"|"eval"|"process"|"doc-consistency"), description?, expected_status?("pass"|"fail"), target_ref?, intent_ids?[], authored_by_principal_id? }
 - Reference: { ref_type*("file"|"url"|"ticket"|"commit"|"document"|"other"), locator*, summary?, content_hash?, intent_ids?[], created_by_principal_id? }
 - State:     { summary*, kind*("initial"|"intermediate"|"terminal"), invariants?[], follows?[], created_by_principal_id? }
-- Idea:      { summary*, created_by_principal_id?, promoted_to?, rejection_reason?, lifecycle?(default "drafted") }
+- Idea:      { summary*, created_by_principal_id?, promoted_to?, rejection_reason?, lifecycle?(default "drafting") }
 - Primitive: POST /<handle>/api/primitives.json with primitive_kind*("guidance"|"neuron_authoring"). For neuron_authoring also evaluation_kind*("deterministic"|"probabilistic"), then either predicate* or spec*, and optional fires_when_neuron_lifecycle?[], on_violation?("block"|"warn"|"log", default "block").
 
 Examples (minimal):
@@ -833,7 +833,7 @@ const TOOLS: Tool[] = [
         },
         body: {
           description:
-            "JSON body. Required for POST/PATCH on capture endpoints; omit for GET. Pass an object — the tool stringifies it. Principal references must use principal-id fields such as wanted_by_principal_id, actors_principal_ids, actor_principal_id, decided_by_principal_id, authored_by_principal_id, and created_by_principal_id; do not send usernames.",
+            "JSON body. Required for POST/PATCH on capture endpoints; omit for GET. Pass an object — the tool stringifies it. Principal references must use principal-id fields such as wanted_by_principal_id, actors_principal_ids, actor_principal_id, decided_by_principal_id, authored_by_principal_id, and created_by_principal_id; do not send principal names.",
         },
       },
       required: ["method", "path"],

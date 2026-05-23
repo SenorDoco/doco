@@ -122,6 +122,16 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
   useEffect(() => {
     collapsedRef.current = collapsed;
   }, [collapsed]);
+  // Publish the rail's current width as a CSS variable so floating
+  // overlays (the neuron-detail dialog, etc.) can avoid covering it on
+  // small screens. Expanded: 320px; collapsed: 32px.
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    document.documentElement.style.setProperty(
+      "--senor-doco-rail-width",
+      collapsed ? "32px" : "320px",
+    );
+  }, [collapsed]);
   const navigate = useNavigate();
   const location = useLocation();
   const messageListRef = useRef<HTMLDivElement | null>(null);
@@ -514,6 +524,20 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
         >
           <CollapseIcon side="left" />
         </button>
+      </div>
+
+      {/* Persistent "what this is" line, sitting right under the title so
+          new collaborators immediately know what Señor Doco is and how to
+          invite their own agent. */}
+      <div className="shrink-0 border-b border-border/70 px-3 py-1.5 text-[10px] leading-snug text-muted-foreground">
+        Señor Doco runs on Claude Haiku 4.5 inside Doco. Want to collaborate with your own agent?{" "}
+        <Link
+          to="/collaborators/invite"
+          className="font-semibold text-foreground hover:text-primary"
+        >
+          Invite them
+        </Link>
+        .
       </div>
 
       <div
@@ -952,16 +976,6 @@ function Composer({
         >
           {busy ? "…" : "Send"}
         </button>
-      </div>
-      <div className="mt-1.5 border-t border-border/70 pt-1.5 text-[10px] leading-snug text-muted-foreground">
-        Señor Doco runs on Claude Haiku 4.5 inside Doco. Want to collaborate with your own agent?{" "}
-        <Link
-          to="/collaborators/invite"
-          className="font-semibold text-foreground hover:text-primary"
-        >
-          Invite them
-        </Link>
-        .
       </div>
     </div>
   );

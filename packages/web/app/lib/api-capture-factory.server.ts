@@ -189,17 +189,28 @@ export function makeUpdateRoute(cfg: UpdateRouteConfig) {
       if (!rec || rec.doco_id !== ctx.meta.docoId) {
         return Response.json({ error: `${cfg.entityType} not found: ${id}` }, { status: 404 });
       }
-      return Response.json({
+      // Post-rename: migrated neurons expose their prose under a
+      // single key matching the entity type (intent/decision/rule/...);
+      // `summary` and `body_md` are gone. Non-migrated entities still
+      // ship the legacy pair.
+      const response: Record<string, unknown> = {
         id: rec.id,
         entity_type: rec.entity_type,
         doco_id: rec.doco_id,
-        summary: rec.summary ?? null,
         lifecycle: rec.lifecycle ?? null,
-        body_md: rec.body_md ?? null,
         created_at: rec.created_at ?? null,
         updated_at: rec.updated_at ?? null,
         data: rec.data,
-      });
+      };
+      if (rec.type_named_value !== undefined && rec.type_named_value !== null) {
+        response[cfg.entityType] = rec.type_named_value;
+      } else if (rec.summary !== undefined || rec.body_md !== undefined) {
+        response.summary = rec.summary ?? null;
+        response.body_md = rec.body_md ?? null;
+      } else {
+        response[cfg.entityType] = "";
+      }
+      return Response.json(response);
     },
 
     async action({

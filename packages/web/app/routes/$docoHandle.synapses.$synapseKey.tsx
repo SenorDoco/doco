@@ -74,16 +74,16 @@ export async function loader({
     const labelRows = (
       await c.query<NeuronLabel>(
         `WITH labels AS (
-           SELECT id, summary, lifecycle, created_at FROM decisions             WHERE doco_id = $1
-           UNION ALL SELECT id, summary, lifecycle, created_at FROM intents                  WHERE doco_id = $1
-           UNION ALL SELECT id, summary, lifecycle, created_at FROM ideas                    WHERE doco_id = $1
-           UNION ALL SELECT id, summary, lifecycle, created_at FROM rules                    WHERE doco_id = $1
+           SELECT id, split_part(decision, E'\n', 1) AS summary, lifecycle, created_at FROM decisions             WHERE doco_id = $1
+           UNION ALL SELECT id, split_part(intent, E'\n', 1), lifecycle, created_at FROM intents                  WHERE doco_id = $1
+           UNION ALL SELECT id, split_part(idea, E'\n', 1), lifecycle, created_at FROM ideas                    WHERE doco_id = $1
+           UNION ALL SELECT id, split_part(rule, E'\n', 1), lifecycle, created_at FROM rules                    WHERE doco_id = $1
            UNION ALL SELECT id, summary, lifecycle, created_at FROM guidance_primitives        WHERE doco_id = $1
            UNION ALL SELECT id, summary, lifecycle, created_at FROM neuron_authoring_primitives  WHERE doco_id = $1
-           UNION ALL SELECT id, summary, lifecycle, created_at FROM actions                  WHERE doco_id = $1
-           UNION ALL SELECT id, summary, lifecycle, created_at FROM logs                     WHERE doco_id = $1
-           UNION ALL SELECT id, summary, lifecycle, created_at FROM evals                    WHERE doco_id = $1
-           UNION ALL SELECT id, summary, lifecycle, created_at FROM reference_entities       WHERE doco_id = $1
+           UNION ALL SELECT id, split_part(action, E'\n', 1), lifecycle, created_at FROM actions                  WHERE doco_id = $1
+           UNION ALL SELECT id, split_part(log, E'\n', 1), lifecycle, created_at FROM logs                     WHERE doco_id = $1
+           UNION ALL SELECT id, split_part(eval, E'\n', 1), lifecycle, created_at FROM evals                    WHERE doco_id = $1
+           UNION ALL SELECT id, split_part(reference, E'\n', 1), lifecycle, created_at FROM reference_entities       WHERE doco_id = $1
          )
          SELECT id, summary, lifecycle, created_at FROM labels WHERE id = ANY($2)`,
         [ctx.meta.docoId, [synapse.from_id, synapse.to_id]],

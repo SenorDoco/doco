@@ -55,6 +55,7 @@ import {
 import { computePageRank } from "~/lib/page-rank";
 import {
   ensureDefaultsAttached,
+  listAvailablePerspectives,
   listPerspectivesForDoco,
   resolveActivePerspective,
 } from "~/lib/perspectives.server";
@@ -151,18 +152,18 @@ export async function loader({
         label: string | null;
         lifecycle: string | null;
       }>(
-        `SELECT id, summary AS label, lifecycle FROM decisions WHERE doco_id = $1 AND id = ANY($2::text[])
-         UNION ALL SELECT id, summary AS label, lifecycle FROM intents WHERE doco_id = $1 AND id = ANY($2::text[])
-         UNION ALL SELECT id, summary AS label, lifecycle FROM ideas WHERE doco_id = $1 AND id = ANY($2::text[])
-         UNION ALL SELECT id, summary AS label, lifecycle FROM rules WHERE doco_id = $1 AND id = ANY($2::text[])
+        `SELECT id, split_part(decision, E'\n', 1) AS label, lifecycle FROM decisions WHERE doco_id = $1 AND id = ANY($2::text[])
+         UNION ALL SELECT id, split_part(intent, E'\n', 1) AS label, lifecycle FROM intents WHERE doco_id = $1 AND id = ANY($2::text[])
+         UNION ALL SELECT id, split_part(idea, E'\n', 1) AS label, lifecycle FROM ideas WHERE doco_id = $1 AND id = ANY($2::text[])
+         UNION ALL SELECT id, split_part(rule, E'\n', 1) AS label, lifecycle FROM rules WHERE doco_id = $1 AND id = ANY($2::text[])
          UNION ALL SELECT id, summary AS label, lifecycle FROM guidance_primitives WHERE doco_id = $1 AND id = ANY($2::text[])
          UNION ALL SELECT id, summary AS label, lifecycle FROM neuron_authoring_primitives WHERE doco_id = $1 AND id = ANY($2::text[])
-         UNION ALL SELECT id, summary AS label, lifecycle FROM actions WHERE doco_id = $1 AND id = ANY($2::text[])
-         UNION ALL SELECT id, summary AS label, lifecycle FROM logs WHERE doco_id = $1 AND id = ANY($2::text[])
-         UNION ALL SELECT id, summary AS label, lifecycle FROM evals WHERE doco_id = $1 AND id = ANY($2::text[])
-         UNION ALL SELECT id, summary AS label, lifecycle FROM states WHERE doco_id = $1 AND id = ANY($2::text[])
-         UNION ALL SELECT id, summary AS label, lifecycle FROM reference_entities WHERE doco_id = $1 AND id = ANY($2::text[])
-         UNION ALL SELECT id, COALESCE(summary, username) AS label, lifecycle FROM principals WHERE data->>'doco_id' = $1 AND id = ANY($2::text[])`,
+         UNION ALL SELECT id, split_part(action, E'\n', 1) AS label, lifecycle FROM actions WHERE doco_id = $1 AND id = ANY($2::text[])
+         UNION ALL SELECT id, split_part(log, E'\n', 1) AS label, lifecycle FROM logs WHERE doco_id = $1 AND id = ANY($2::text[])
+         UNION ALL SELECT id, split_part(eval, E'\n', 1) AS label, lifecycle FROM evals WHERE doco_id = $1 AND id = ANY($2::text[])
+         UNION ALL SELECT id, split_part(state, E'\n', 1) AS label, lifecycle FROM states WHERE doco_id = $1 AND id = ANY($2::text[])
+         UNION ALL SELECT id, split_part(reference, E'\n', 1) AS label, lifecycle FROM reference_entities WHERE doco_id = $1 AND id = ANY($2::text[])
+         UNION ALL SELECT id, COALESCE(summary, name) AS label, lifecycle FROM principals WHERE doco_id = $1 AND id = ANY($2::text[])`,
         [ctx.meta.docoId, entityIds],
       );
       for (const row of entityLabelRows.rows) {
@@ -172,12 +173,18 @@ export async function loader({
 
     const items: FeedItem[] = rawItems.map((it) => {
       const entity = entityById.get(it.entity_id);
+      // Audit events may carry the prose under the type-named key for
+      // migrated neurons (intent/decision/...) or `summary` for legacy
+      // captures. Look both up; the first non-empty line wins.
+      const proseKey = it.entity_type;
       return {
         event_id: it.event_id,
         id: it.entity_id,
         entity_type: it.entity_type,
         summary:
           entity?.label ??
+          firstLine(stringField(it.after_json, proseKey)) ??
+          firstLine(stringField(it.before_json, proseKey)) ??
           stringField(it.after_json, "summary") ??
           stringField(it.before_json, "summary"),
         lifecycle: entity?.lifecycle ?? null,
@@ -206,7 +213,7 @@ export async function loader({
            UNION ALL SELECT to_char(created_at, 'YYYY-MM-DD') FROM evals WHERE doco_id = $1
            UNION ALL SELECT to_char(created_at, 'YYYY-MM-DD') FROM reference_entities WHERE doco_id = $1
            UNION ALL SELECT to_char(created_at, 'YYYY-MM-DD') FROM states WHERE doco_id = $1
-           UNION ALL SELECT to_char(created_at, 'YYYY-MM-DD') FROM principals WHERE data->>'doco_id' = $1
+           UNION ALL SELECT to_char(created_at, 'YYYY-MM-DD') FROM principals WHERE doco_id = $1
          ) t WHERE day >= $2
          GROUP BY day`,
         [ctx.meta.docoId, sinceIso.slice(0, 10)],
@@ -218,12 +225,12 @@ export async function loader({
     const contributorRows = (
       await c.query<{
         collaborator_id: string;
-        username: string;
+        principal_name: string;
         last_at: Date | string;
         event_count: string;
       }>(
         `SELECT ae.by_collaborator AS collaborator_id,
-                p.username,
+                p.name AS principal_name,
                 MAX(ae.at) AS last_at,
                 COUNT(*)::text AS event_count
            FROM audit_events ae
@@ -231,7 +238,7 @@ export async function loader({
           WHERE ae.doco_id = $1
             AND ae.by_collaborator IS NOT NULL
             AND ae.entity_type NOT IN ('guidance_primitive', 'neuron_authoring_primitive')
-          GROUP BY ae.by_collaborator, p.username
+          GROUP BY ae.by_collaborator, p.name
           ORDER BY COUNT(*) DESC, MAX(ae.at) DESC
           LIMIT $2`,
         [ctx.meta.docoId, TOP_CONTRIBUTORS_LIMIT],
@@ -239,7 +246,7 @@ export async function loader({
     ).rows;
     const topContributors: TopContributor[] = contributorRows.map((r) => ({
       principalId: r.collaborator_id,
-      username: r.username,
+      username: r.principal_name,
       lastAt:
         r.last_at instanceof Date
           ? r.last_at.toISOString()
@@ -267,7 +274,10 @@ export async function loader({
     // attached; ensureDefaultsAttached backfills graph + list on first
     // load so the UI always has at least one tab.
     await ensureDefaultsAttached(ctx.meta.docoId);
-    const perspectives = await listPerspectivesForDoco(ctx.meta.docoId);
+    const [perspectives, availablePerspectives] = await Promise.all([
+      listPerspectivesForDoco(ctx.meta.docoId),
+      listAvailablePerspectives(),
+    ]);
     const requestedSlug = new URL(request.url).searchParams.get("perspective");
     const activePerspective = resolveActivePerspective(perspectives, requestedSlug);
     const canAdminPerspectives = await canApproveDoco(ctx.meta, me?.id ?? null);
@@ -315,6 +325,7 @@ export async function loader({
       graph,
       primitiveCount,
       perspectives,
+      availablePerspectives,
       activePerspectiveSlug: activePerspective?.slug ?? null,
       activePerspectiveKind: activePerspective?.kind ?? null,
       canAdminPerspectives,
@@ -422,6 +433,7 @@ export default function DocoHome({
     graph,
     primitiveCount,
     perspectives,
+    availablePerspectives,
     activePerspectiveSlug,
     activePerspectiveKind,
     canAdminPerspectives,
@@ -439,6 +451,21 @@ export default function DocoHome({
   const [lifecycleUpdating, setLifecycleUpdating] = useState<LifecycleStage | null>(null);
   const [lifecycleError, setLifecycleError] = useState<string | null>(null);
   const clientDialogOverrideRef = useRef(false);
+
+  // While the neuron dialog is open it overlays the right column on
+  // wide screens and the whole content area on narrow screens. The
+  // audit panel underneath shouldn't scroll out of position when the
+  // user wheels over (or near) the dialog — only the dialog's own
+  // body should scroll. Lock body scroll for the duration the dialog
+  // is open and restore on close.
+  useEffect(() => {
+    if (!neuronDialog) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [neuronDialog]);
 
   useEffect(() => {
     setGraphState((prev) => {
@@ -705,10 +732,11 @@ export default function DocoHome({
           {goal ? <p className="text-[11px] text-muted-foreground">{goal}</p> : null}
         </div>
         <div className="grid grid-cols-1 gap-6 min-[1200px]:grid-cols-[minmax(0,1fr)_400px]">
-          <aside className="flex h-[calc(100vh-13rem)] min-h-[480px] min-w-0 flex-col min-[1200px]:sticky min-[1200px]:top-4 min-[1200px]:self-start">
+          <aside className="flex h-[calc(100vh-9rem)] min-h-[480px] min-w-0 flex-col min-[1200px]:sticky min-[1200px]:top-4 min-[1200px]:self-start">
             <PerspectiveTabs
               handle={handle}
               perspectives={perspectives}
+              availablePerspectives={availablePerspectives}
               activeSlug={activeSlug}
               canAdmin={canAdminPerspectives}
               search={
@@ -756,6 +784,17 @@ export default function DocoHome({
                 />
               )}
             </div>
+            {/* Lifecycle filter sits directly under the perspective
+                canvas so the controls line up with what they toggle,
+                rather than under the right-hand column where the user
+                would have to scroll past the audit panel to find them. */}
+            <div className="mt-3 shrink-0">
+              <LifecycleFilter
+                available={availableLifecycles}
+                visible={visibleLifecycles}
+                onToggle={toggleLifecycle}
+              />
+            </div>
           </aside>
 
           <div className="relative min-w-0">
@@ -800,7 +839,12 @@ export default function DocoHome({
               </Card>
             </section>
             {neuronDialog ? (
-              <div className="fixed inset-x-3 bottom-4 top-20 z-30 min-[1200px]:absolute min-[1200px]:inset-x-0 min-[1200px]:bottom-auto min-[1200px]:top-0 min-[1200px]:h-[calc(100vh-13rem)] min-[1200px]:min-h-[480px]">
+              // Small screens: float over the perspective canvas but leave
+              // the app bar (top-20) and the Señor Doco rail (variable
+              // left edge — set by AgentSidebar as a CSS var on
+              // documentElement so we don't have to thread state) visible.
+              // ≥1200px: absolute, anchored to the right column's parent.
+              <div className="fixed bottom-4 right-3 top-20 z-30 [left:calc(var(--senor-doco-rail-width,320px)+0.75rem)] min-[1200px]:absolute min-[1200px]:inset-x-0 min-[1200px]:bottom-auto min-[1200px]:top-0 min-[1200px]:h-[calc(100vh-13rem)] min-[1200px]:min-h-[480px]">
                 <NeuronDialog
                   detail={neuronDialog.detail}
                   loading={neuronDialog.loading}
@@ -817,18 +861,6 @@ export default function DocoHome({
             ) : null}
           </div>
         </div>
-
-        {/* Page-level lifecycle filter — shared across every
-            perspective (graph / list / BPMN) so toggles persist when
-            switching tabs. Sits below the perspective body, full
-            width. */}
-        <div className="mt-6">
-          <LifecycleFilter
-            available={availableLifecycles}
-            visible={visibleLifecycles}
-            onToggle={toggleLifecycle}
-          />
-        </div>
       </main>
     </div>
   );
@@ -840,6 +872,12 @@ function stringField(
 ): string | null {
   const value = obj?.[field];
   return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+function firstLine(value: string | null): string | null {
+  if (!value) return null;
+  const line = value.split("\n", 1)[0];
+  return line ?? value;
 }
 
 function TopContributorsList({ contributors }: { contributors: TopContributor[] }) {

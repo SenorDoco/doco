@@ -84,13 +84,13 @@ CREATE INDEX IF NOT EXISTS collaborators_kind_idx          ON collaborators (kin
 
 CREATE TABLE IF NOT EXISTS principals (
   id              text PRIMARY KEY,            -- principal_<ulid>
-  username        text NOT NULL UNIQUE,        -- role string (e.g. "system",
-                                               -- "customer-service-rep")
-  -- Principals are host-scoped (no doco_id NOT NULL) so role-personas can
-  -- be shared across Docos. The optional doco_id, set lazily when a role
-  -- is authored within a specific Doco, lives in the `data` jsonb bag
-  -- and is hydrated at read time by the repo. No FK constraint to avoid
-  -- a forward ref to the docos table that is created later in this file.
+  -- Principals are Doco-scoped (migration 020). The FK + NOT NULL +
+  -- UNIQUE(doco_id, name) are added by 020 after the docos table
+  -- exists; declared nullable here only so the schema baseline parses
+  -- before docos is created later in this file.
+  doco_id         text,
+  name            text NOT NULL,                -- role label (e.g. "system",
+                                                -- "customer-service-rep")
   summary         text,
   lifecycle       text,
   body_md         text,
@@ -151,9 +151,11 @@ CREATE TABLE IF NOT EXISTS docos (
 CREATE TABLE IF NOT EXISTS intents (
   id          text PRIMARY KEY,
   doco_id     text NOT NULL REFERENCES docos(id) ON DELETE CASCADE,
-  summary     text,
   lifecycle   text,
-  body_md     text,
+  -- Type-named prose column (post-rename). Holds all the prose; the
+  -- legacy headline/body/title trio was collapsed by migrations 022
+  -- and 023. Structural data (actors, wanted_by, ...) lives in `data`.
+  intent      text NOT NULL DEFAULT '',
   data        jsonb NOT NULL,
   created_at  timestamptz NOT NULL DEFAULT now(),
   created_by  text,
@@ -166,9 +168,8 @@ CREATE INDEX IF NOT EXISTS intents_lifecycle_idx ON intents (doco_id, lifecycle)
 CREATE TABLE IF NOT EXISTS decisions (
   id          text PRIMARY KEY,
   doco_id     text NOT NULL REFERENCES docos(id) ON DELETE CASCADE,
-  summary     text,
   lifecycle   text,
-  body_md     text,
+  decision    text NOT NULL DEFAULT '',  -- see intents.intent
   data        jsonb NOT NULL,
   created_at  timestamptz NOT NULL DEFAULT now(),
   created_by  text,
@@ -181,9 +182,8 @@ CREATE INDEX IF NOT EXISTS decisions_lifecycle_idx ON decisions (doco_id, lifecy
 CREATE TABLE IF NOT EXISTS rules (
   id          text PRIMARY KEY,
   doco_id     text NOT NULL REFERENCES docos(id) ON DELETE CASCADE,
-  summary     text,
   lifecycle   text,
-  body_md     text,
+  rule        text NOT NULL DEFAULT '',  -- see intents.intent
   data        jsonb NOT NULL,
   created_at  timestamptz NOT NULL DEFAULT now(),
   created_by  text,
@@ -230,9 +230,8 @@ CREATE INDEX IF NOT EXISTS neuron_authoring_primitives_lifecycle_idx
 CREATE TABLE IF NOT EXISTS actions (
   id          text PRIMARY KEY,
   doco_id     text NOT NULL REFERENCES docos(id) ON DELETE CASCADE,
-  summary     text,
   lifecycle   text,
-  body_md     text,
+  action      text NOT NULL DEFAULT '',  -- see intents.intent
   data        jsonb NOT NULL,
   created_at  timestamptz NOT NULL DEFAULT now(),
   created_by  text,
@@ -245,9 +244,8 @@ CREATE INDEX IF NOT EXISTS actions_lifecycle_idx ON actions (doco_id, lifecycle)
 CREATE TABLE IF NOT EXISTS logs (
   id          text PRIMARY KEY,
   doco_id     text NOT NULL REFERENCES docos(id) ON DELETE CASCADE,
-  summary     text,
   lifecycle   text,
-  body_md     text,
+  log         text NOT NULL DEFAULT '',  -- see intents.intent
   data        jsonb NOT NULL,
   created_at  timestamptz NOT NULL DEFAULT now(),
   created_by  text,
@@ -260,9 +258,8 @@ CREATE INDEX IF NOT EXISTS logs_lifecycle_idx ON logs (doco_id, lifecycle);
 CREATE TABLE IF NOT EXISTS evals (
   id          text PRIMARY KEY,
   doco_id     text NOT NULL REFERENCES docos(id) ON DELETE CASCADE,
-  summary     text,
   lifecycle   text,
-  body_md     text,
+  eval        text NOT NULL DEFAULT '',  -- see intents.intent (also folded in: name, description)
   data        jsonb NOT NULL,
   created_at  timestamptz NOT NULL DEFAULT now(),
   created_by  text,
@@ -278,9 +275,8 @@ CREATE INDEX IF NOT EXISTS evals_lifecycle_idx ON evals (doco_id, lifecycle);
 CREATE TABLE IF NOT EXISTS states (
   id          text PRIMARY KEY,
   doco_id     text NOT NULL REFERENCES docos(id) ON DELETE CASCADE,
-  summary     text,
   lifecycle   text,
-  body_md     text,
+  state       text NOT NULL DEFAULT '',  -- see intents.intent
   data        jsonb NOT NULL,
   created_at  timestamptz NOT NULL DEFAULT now(),
   created_by  text,
@@ -302,9 +298,8 @@ CREATE TABLE IF NOT EXISTS tags (
 CREATE TABLE IF NOT EXISTS ideas (
   id          text PRIMARY KEY,
   doco_id     text NOT NULL REFERENCES docos(id) ON DELETE CASCADE,
-  summary     text,
   lifecycle   text,
-  body_md     text,
+  idea        text NOT NULL DEFAULT '',  -- see intents.intent
   data        jsonb NOT NULL,
   created_at  timestamptz NOT NULL DEFAULT now(),
   created_by  text,
@@ -315,8 +310,8 @@ CREATE TABLE IF NOT EXISTS ideas (
 CREATE TABLE IF NOT EXISTS reference_entities (
   id          text PRIMARY KEY,
   doco_id     text NOT NULL REFERENCES docos(id) ON DELETE CASCADE,
-  summary     text,
   lifecycle   text,
+  reference   text NOT NULL DEFAULT '',  -- see intents.intent
   data        jsonb NOT NULL,
   created_at  timestamptz NOT NULL DEFAULT now(),
   created_by  text,

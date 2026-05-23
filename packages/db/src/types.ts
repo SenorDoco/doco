@@ -4,20 +4,35 @@
 // Each category maps to one or more tables; the type discriminator string
 // (e.g. "intent", "guidance_primitive", "collaborator") names the row.
 
-/** The 10 neuron types (graph-knowledge entities). */
-export const NEURON_TABLES: Record<string, { table: string; body: boolean }> = {
-  intent: { table: "intents", body: true },
-  idea: { table: "ideas", body: true },
-  rule: { table: "rules", body: true },
-  decision: { table: "decisions", body: true },
-  action: { table: "actions", body: true },
-  log: { table: "logs", body: true },
-  eval: { table: "evals", body: true },
-  reference: { table: "reference_entities", body: false },
-  state: { table: "states", body: true },
+/**
+ * The 10 neuron types (graph-knowledge entities).
+ *
+ * `typeNamedColumn`, where present, is the per-table text column that
+ * holds the full prose content for that neuron — the destination of
+ * the old `summary` + `body_md` (+ `title` on intents, + `name`/
+ * `description` on evals) collapse landed by migrations 022 and 023.
+ *
+ * `body` reflects whether the table physically has a `body_md`
+ * column. For the 9 migrated neurons it is false (prose lives in the
+ * type-named column). Principal still carries summary + body_md.
+ */
+export const NEURON_TABLES: Record<
+  string,
+  { table: string; body: boolean; typeNamedColumn?: string }
+> = {
+  intent: { table: "intents", body: false, typeNamedColumn: "intent" },
+  idea: { table: "ideas", body: false, typeNamedColumn: "idea" },
+  rule: { table: "rules", body: false, typeNamedColumn: "rule" },
+  decision: { table: "decisions", body: false, typeNamedColumn: "decision" },
+  action: { table: "actions", body: false, typeNamedColumn: "action" },
+  log: { table: "logs", body: false, typeNamedColumn: "log" },
+  eval: { table: "evals", body: false, typeNamedColumn: "eval" },
+  reference: { table: "reference_entities", body: false, typeNamedColumn: "reference" },
+  state: { table: "states", body: false, typeNamedColumn: "state" },
   // Principal = documented role/persona, referenced by actor_id/actors[].
   // NOT the OAuth identity layer — that lives in collaborators.
-  // body_md carries prose description of the role.
+  // body_md carries prose description of the role. Principal is
+  // intentionally excluded from the type-named-column rename for now.
   principal: { table: "principals", body: true },
 };
 
@@ -30,15 +45,15 @@ export interface EntityTableSpec {
 }
 
 export const DOCO_NEURON_TABLE_SPECS: readonly EntityTableSpec[] = [
-  { table: "decisions", entityType: "decision", body: true },
-  { table: "intents", entityType: "intent", body: true },
-  { table: "actions", entityType: "action", body: true },
-  { table: "logs", entityType: "log", body: true },
-  { table: "rules", entityType: "rule", body: true },
-  { table: "evals", entityType: "eval", body: true },
+  { table: "decisions", entityType: "decision", body: false },
+  { table: "intents", entityType: "intent", body: false },
+  { table: "actions", entityType: "action", body: false },
+  { table: "logs", entityType: "log", body: false },
+  { table: "rules", entityType: "rule", body: false },
+  { table: "evals", entityType: "eval", body: false },
   { table: "reference_entities", entityType: "reference", body: false },
-  { table: "ideas", entityType: "idea", body: true },
-  { table: "states", entityType: "state", body: true },
+  { table: "ideas", entityType: "idea", body: false },
+  { table: "states", entityType: "state", body: false },
 ] as const;
 
 export const DOCO_NEURON_TABLE_BY_TYPE: Readonly<Record<string, EntityTableSpec>> =
@@ -77,7 +92,10 @@ export const AUX_TABLES: Record<string, { table: string; body: boolean }> = {
  * Used when callers don't need to distinguish the category (audit log,
  * generic ID parser, etc.).
  */
-export const ALL_ENTITY_TABLES: Record<string, { table: string; body: boolean }> = {
+export const ALL_ENTITY_TABLES: Record<
+  string,
+  { table: string; body: boolean; typeNamedColumn?: string }
+> = {
   ...NEURON_TABLES,
   ...COLLABORATOR_TABLES,
   ...CONTAINER_TABLES,
@@ -112,6 +130,14 @@ export interface EntityRecord {
   summary?: string | null;
   lifecycle?: string | null;
   name?: string | null;
+  /**
+   * Migration-022 type-named column — `intent` for intent rows,
+   * `decision` for decision rows, etc. Holds the full prose content
+   * for the neuron once the rename completes. During the additive
+   * window this carries the same content as `summary` (+ optional
+   * `body_md` and type-specific extras, merged at backfill time).
+   */
+  type_named_value?: string | null;
   created_at?: string | null;
   created_by?: string | null;
   updated_at?: string | null;

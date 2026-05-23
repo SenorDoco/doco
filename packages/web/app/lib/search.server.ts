@@ -1,4 +1,4 @@
-import { cosineSimilarity, getAllEmbeddingsForDoco } from "@doco/db";
+import { ALL_ENTITY_TABLES, cosineSimilarity, getAllEmbeddingsForDoco } from "@doco/db";
 import { globalPageRank } from "@doco/index";
 import type { PoolClient } from "pg";
 import { type SearchFilters, resolveFilteredCandidates } from "~/lib/search-filters.server";
@@ -23,10 +23,15 @@ export interface SearchTypeSpec {
 }
 
 function entitySpec(table: string, entityType: string): SearchTypeSpec {
+  // Migrated neurons carry prose in a type-named column; everything
+  // else still uses `summary`. Either way the projected alias here is
+  // `summary` so the rest of the search hit shape doesn't change.
+  const tnCol = ALL_ENTITY_TABLES[entityType]?.typeNamedColumn;
+  const summarySelect = tnCol ? `split_part(${tnCol}, E'\n', 1) AS summary` : "summary";
   return {
     table,
     entityType,
-    selectExtra: "summary, lifecycle, created_at",
+    selectExtra: `${summarySelect}, lifecycle, created_at`,
     hostLevel: false,
     toHit: (row, score) => ({
       id: String(row.id),
@@ -56,13 +61,13 @@ export const SEARCH_TYPE_SPECS: SearchTypeSpec[] = [
   {
     table: "principals",
     entityType: "principal",
-    selectExtra: "username, created_at",
-    hostLevel: true,
+    selectExtra: "name, created_at",
+    hostLevel: false,
     toHit: (row, score) => ({
       id: String(row.id),
       entity_type: "principal",
-      summary: (row.username as string) ?? "",
-      name: (row.username as string) ?? null,
+      summary: (row.name as string) ?? "",
+      name: (row.name as string) ?? null,
       lifecycle: null,
       created_at: (row.created_at as string) ?? null,
       vector_score: score,
@@ -123,7 +128,7 @@ export async function loadAllDocoEntityIds(c: PoolClient, docoId: string): Promi
     for (const row of rows) ids.push(row.id);
   }
   const principalRows = (
-    await c.query<{ id: string }>("SELECT id FROM principals WHERE data->>'doco_id' = $1", [docoId])
+    await c.query<{ id: string }>("SELECT id FROM principals WHERE doco_id = $1", [docoId])
   ).rows;
   for (const row of principalRows) ids.push(row.id);
   return ids;

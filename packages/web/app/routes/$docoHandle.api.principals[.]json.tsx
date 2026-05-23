@@ -8,8 +8,8 @@ import {
 import { type EntityId, generateUlid, makeEntityId, nowIso } from "@doco/shared";
 import { getDocoLevelRole, loadDocoRouteForRead } from "~/lib/doco-access.server";
 
-const ROLE_PRINCIPAL_USERNAMES = new Set(["user", "human", "doco-host", "github"]);
-const PRINCIPAL_USERNAME_PATTERN = /^[a-z0-9][a-z0-9_-]*$/;
+const ROLE_PRINCIPAL_NAMES = new Set(["user", "human", "doco-host", "github"]);
+const PRINCIPAL_NAME_PATTERN = /^[a-z0-9][a-z0-9_-]*$/;
 
 const DEFAULTS: Record<string, { type: "person" | "agent"; summary: string }> = {
   user: {
@@ -58,24 +58,24 @@ export async function action({
   }
 
   const body = (await request.json().catch(() => ({}))) as {
-    username?: string;
+    name?: string;
     type?: "person" | "agent";
     summary?: string;
     display_name?: string;
     description?: string;
     body_md?: string;
   };
-  const username = String(body.username ?? "")
+  const name = String(body.name ?? "")
     .trim()
     .toLowerCase();
-  if (!username) {
-    return Response.json({ error: "username is required." }, { status: 400 });
+  if (!name) {
+    return Response.json({ error: "name is required." }, { status: 400 });
   }
-  if (!PRINCIPAL_USERNAME_PATTERN.test(username)) {
+  if (!PRINCIPAL_NAME_PATTERN.test(name)) {
     return Response.json(
       {
         error:
-          "Principal username can use lowercase letters, numbers, hyphens, or underscores, and must start with a letter or number.",
+          "Principal name can use lowercase letters, numbers, hyphens, or underscores, and must start with a letter or number.",
       },
       { status: 400 },
     );
@@ -85,28 +85,28 @@ export async function action({
   }
 
   const existing = await withClient(async (c) =>
-    c.query<{ id: string; username: string }>(
-      "SELECT id, username FROM principals WHERE username = $1 LIMIT 1",
-      [username],
+    c.query<{ id: string; name: string }>(
+      "SELECT id, name FROM principals WHERE name = $1 AND doco_id = $2 LIMIT 1",
+      [name, meta.docoId],
     ),
   );
   if (existing.rows[0]) {
     return Response.json({
       ok: true,
       id: existing.rows[0].id,
-      username,
+      name,
       existed: true,
-      footer_lines: [`[🔮 Doco] 👤 Principal already exists: ${username} (${existing.rows[0].id})`],
+      footer_lines: [`[🔮 Doco] 👤 Principal already exists: ${name} (${existing.rows[0].id})`],
     });
   }
 
   const id = makeEntityId("principal", generateUlid()) as EntityId<"principal">;
   const now = nowIso();
-  const defaults = DEFAULTS[username];
+  const defaults = DEFAULTS[name];
   const type = body.type ?? defaults?.type;
   const displayName = body.display_name?.trim();
   const description = body.description?.trim();
-  const summary = body.summary?.trim() || defaults?.summary || displayName || username;
+  const summary = body.summary?.trim() || defaults?.summary || displayName || name;
   const bodyMd = body.body_md?.trim() ?? "";
   const raw = {
     id,
@@ -114,10 +114,10 @@ export async function action({
     neuron_type: "principal",
     summary,
     ...(type ? { type } : {}),
-    username,
+    name,
     ...(displayName ? { display_name: displayName } : {}),
     ...(description ? { description } : {}),
-    ...(ROLE_PRINCIPAL_USERNAMES.has(username) ? { role_principal: true } : {}),
+    ...(ROLE_PRINCIPAL_NAMES.has(name) ? { role_principal: true } : {}),
     created_at: now,
     created_by: me.id,
     lifecycle: "active",
@@ -141,9 +141,9 @@ export async function action({
     {
       ok: true,
       id,
-      username,
+      name,
       existed: false,
-      footer_lines: [`[🔮 Doco] 👤 Principal added: ${username} (${id})`],
+      footer_lines: [`[🔮 Doco] 👤 Principal added: ${name} (${id})`],
     },
     { status: 201 },
   );

@@ -138,7 +138,7 @@ interface GraphSize {
 
 // Canonical Lifecycle (@doco/shared) — four stages, in progression
 // order.
-const LIFECYCLE_ORDER = ["drafted", "proposed", "active", "retired"];
+const LIFECYCLE_ORDER = ["drafting", "proposed", "active", "retired"];
 
 const HIDDEN_LIFECYCLES_BY_DEFAULT = new Set(["retired"]);
 
@@ -534,7 +534,7 @@ function dagreLayout(nodes: GraphNode[], links: GraphLink[], centerId: string): 
 function SwimLaneNode() {
   return (
     <div
-      className="neu-inset h-full w-full rounded-lg bg-card/55"
+      className="h-full w-full rounded-md border border-border"
       aria-hidden="true"
       data-swim-lane-band="principal"
     />
@@ -1191,8 +1191,8 @@ export function EntityGraph({
         ref={graphRef}
         className={
           fillHeight
-            ? "neu-inset relative min-h-0 w-full flex-1 overflow-hidden rounded-lg bg-card"
-            : "neu-inset relative h-[65vh] min-h-[480px] w-full overflow-hidden rounded-lg bg-card"
+            ? "relative min-h-0 w-full flex-1 overflow-hidden rounded-md border border-border"
+            : "relative h-[65vh] min-h-[480px] w-full overflow-hidden rounded-md border border-border"
         }
       >
         {visible.nodes.length === 0 ? (
