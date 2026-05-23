@@ -1168,12 +1168,12 @@ export async function updateEntity(opts: {
     }
   };
 
-  if (typeNamedColumn) {
+  if (typeNamedColumn && allowedFields.includes(typeNamedColumn)) {
     // Migrated neuron: the type-named prose field replaces summary +
     // body_md (+ title on intent, name/description on eval).
     const v = normalizedPatch[typeNamedColumn];
     setScalar(typeNamedColumn, typeof v === "string" ? v.trim() : undefined);
-  } else {
+  } else if (!typeNamedColumn && allowedFields.includes("summary")) {
     // Primitive / principal still use summary.
     setScalar(
       "summary",
