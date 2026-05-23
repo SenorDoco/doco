@@ -69,7 +69,7 @@ function overviewEntityHref(
 }
 
 function overviewRowsSql(includeLabel = false): string {
-  return GRAPH_TABLES.map((entry) => {
+  const neuronLegs = GRAPH_TABLES.map((entry) => {
     const labelExpr = entry.labelExpr ?? "t.summary";
     const nameExpr = entry.nameExpr ?? "NULL::text";
     return `SELECT t.id,
@@ -80,7 +80,19 @@ function overviewRowsSql(includeLabel = false): string {
                    ${includeLabel ? `, ${labelExpr} AS label` : ""}
               FROM ${entry.table} t
              WHERE t.doco_id = $1`;
-  }).join(" UNION ALL ");
+  });
+  // Principals are host-scoped (no doco_id column); scope to this Doco
+  // via the data jsonb bag and drop retired role-personas.
+  const principalLeg = `SELECT id,
+                                'principal'::text AS entity_type,
+                                username AS name,
+                                COALESCE(lifecycle, 'active') AS lifecycle,
+                                created_at::text AS created_at
+                                ${includeLabel ? ", COALESCE(summary, username) AS label" : ""}
+                           FROM principals
+                          WHERE data->>'doco_id' = $1
+                            AND COALESCE(lifecycle, 'active') = 'active'`;
+  return [...neuronLegs, principalLeg].join(" UNION ALL ");
 }
 
 async function loadOverviewRows(c: QueryClient, docoId: string): Promise<OverviewGraphRow[]> {
@@ -190,7 +202,7 @@ export async function loadOverviewNodeDetails(
 // the right per-Doco entity URL.
 
 function overviewRowsSqlMulti(): string {
-  return GRAPH_TABLES.map(
+  const neuronLegs = GRAPH_TABLES.map(
     (entry) => `SELECT t.id,
                      '${entry.entityType}'::text AS entity_type,
                      NULL::text AS name,
@@ -199,7 +211,17 @@ function overviewRowsSqlMulti(): string {
                      t.doco_id AS doco_id
                 FROM ${entry.table} t
                WHERE t.doco_id = ANY($1::text[])`,
-  ).join(" UNION ALL ");
+  );
+  const principalLeg = `SELECT id,
+                              'principal'::text AS entity_type,
+                              username AS name,
+                              COALESCE(lifecycle, 'active') AS lifecycle,
+                              created_at::text AS created_at,
+                              data->>'doco_id' AS doco_id
+                         FROM principals
+                        WHERE data->>'doco_id' = ANY($1::text[])
+                          AND COALESCE(lifecycle, 'active') = 'active'`;
+  return [...neuronLegs, principalLeg].join(" UNION ALL ");
 }
 
 export async function loadOrgOverviewGraph(

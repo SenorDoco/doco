@@ -84,6 +84,7 @@ const LIFECYCLE_ORDER = ["drafted", "proposed", "active", "retired"];
 const HIDDEN_LIFECYCLES_BY_DEFAULT = new Set(["retired"]);
 const NODE_TYPE_ORDER = new Map(
   [
+    "principal",
     "intent",
     "decision",
     "action",

@@ -152,7 +152,22 @@ export function BpmnPerspective({
 
   const graphReferences = useMemo<GraphReferenceItem[]>(() => {
     if (viewport.zoom < BPMN_REFERENCE_ZOOM) return [];
-    return filteredNodes
+    // Lanes that map to a real principal are first-class references
+    // — number them ahead of the shapes, in lane display order, so a
+    // viewer can jump straight to the swimlane owner from the sidebar
+    // before the per-shape numbers begin.
+    const laneRefs: GraphReferenceItem[] = filteredLanes
+      .filter((lane) => isPrincipalLaneId(lane.id))
+      .map((lane, index) => ({
+        number: index + 1,
+        id: lane.id,
+        entity_type: "principal",
+        label: lane.label,
+        lifecycle: "active",
+        href: null,
+      }));
+    const remaining = Math.max(0, MAX_GRAPH_REFERENCES - laneRefs.length);
+    const nodeRefs: GraphReferenceItem[] = filteredNodes
       .flatMap((node) => {
         const position = layout.nodePositions.get(node.id);
         if (!position || !isNodeVisibleInViewport(position, viewport, graphSize)) return [];
@@ -170,18 +185,19 @@ export function BpmnPerspective({
         if (colDiff !== 0) return colDiff;
         return a.node.id.localeCompare(b.node.id);
       })
-      .slice(0, MAX_GRAPH_REFERENCES)
+      .slice(0, remaining)
       .map((entry, index) => ({
-        number: index + 1,
+        number: laneRefs.length + index + 1,
         id: entry.node.id,
         entity_type: entry.node.entity_type,
         label: entry.node.name ?? entry.node.id,
         lifecycle: entry.node.lifecycle ?? "active",
         href: entry.node.href ?? null,
       }));
-  }, [filteredNodes, layout.nodePositions, viewport, graphSize]);
+    return [...laneRefs, ...nodeRefs];
+  }, [filteredLanes, filteredNodes, layout.nodePositions, viewport, graphSize]);
 
-  const referenceNumberByNodeId = useMemo(
+  const referenceNumberByEntityId = useMemo(
     () => new Map(graphReferences.map((reference) => [reference.id, reference.number])),
     [graphReferences],
   );
@@ -189,14 +205,20 @@ export function BpmnPerspective({
   const flowNodes = useMemo(
     () =>
       layout.flowNodes.map((node) => {
-        const referenceNumber = referenceNumberByNodeId.get(node.id);
+        // Lane FlowNodes carry data.lane; shape FlowNodes carry data.node.
+        // Each pulls its reference number from the unified map by the
+        // underlying entity id (principal_<ulid> or neuron id).
+        const laneData = (node.data as { lane?: BpmnLane }).lane;
+        if (laneData) {
+          const referenceNumber = referenceNumberByEntityId.get(laneData.id);
+          if (!referenceNumber) return node;
+          return { ...node, data: { ...node.data, referenceNumber } };
+        }
+        const referenceNumber = referenceNumberByEntityId.get(node.id);
         if (!referenceNumber || !nodeById.has(node.id)) return node;
-        return {
-          ...node,
-          data: { ...node.data, referenceNumber },
-        };
+        return { ...node, data: { ...node.data, referenceNumber } };
       }),
-    [layout.flowNodes, referenceNumberByNodeId, nodeById],
+    [layout.flowNodes, referenceNumberByEntityId, nodeById],
   );
 
   useEffect(() => {
@@ -209,7 +231,7 @@ export function BpmnPerspective({
     return () => clearGraphReferences(graphId);
   }, []);
 
-  if (filteredLanes.length === 0 || filteredNodes.length === 0) {
+  if (filteredLanes.length === 0) {
     return (
       <div className="flex h-full min-h-[420px] items-center justify-center rounded-md border border-border bg-input text-center text-sm font-medium text-muted-foreground">
         So empty
@@ -535,6 +557,14 @@ function laneNodeId(laneId: string): string {
   return `lane:${laneId}`;
 }
 
+// Lanes that map to a real Principal carry the principal_<ulid> id.
+// Synthetic lanes use the `__unassigned__` / `__unresolved__:<ref>`
+// sentinel; reference numbering and "keep on filter" treat the two
+// differently.
+function isPrincipalLaneId(laneId: string): boolean {
+  return laneId.startsWith("principal_");
+}
+
 // ─── Custom node components ────────────────────────────────────────
 
 interface BpmnNodeData {
@@ -547,6 +577,7 @@ interface BpmnLaneData {
   height: number;
   width: number;
   labelWidth: number;
+  referenceNumber?: number;
 }
 
 function BpmnLaneNode({ data }: { data: BpmnLaneData }) {
@@ -561,6 +592,7 @@ function BpmnLaneNode({ data }: { data: BpmnLaneData }) {
       }}
     >
       <div
+        className="relative"
         style={{
           width: data.labelWidth,
           height: "100%",
@@ -577,6 +609,15 @@ function BpmnLaneNode({ data }: { data: BpmnLaneData }) {
         }}
         title={data.lane.label}
       >
+        {data.referenceNumber ? (
+          <span
+            aria-label={`Graph reference #${data.referenceNumber}: ${data.lane.label}`}
+            className="pointer-events-none absolute -left-2.5 top-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold leading-none text-primary-foreground shadow-sm ring-2 ring-card"
+            title={`Graph reference #${data.referenceNumber}`}
+          >
+            #{data.referenceNumber}
+          </span>
+        ) : null}
         {data.lane.label}
       </div>
     </div>
