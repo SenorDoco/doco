@@ -196,6 +196,23 @@ export type ChatStreamEvent =
       cache_read_tokens: number;
       cache_creation_tokens: number;
     }
+  | {
+      // Server-side progress heartbeat. Streamed at milestones inside
+      // a turn so the user sees activity even before the first text
+      // delta arrives — without this, a slow Anthropic TTFT or a
+      // long-running tool result looks like the agent froze.
+      kind: "status";
+      phase:
+        | "loading_history"
+        | "loading_bootstrap"
+        | "calling_anthropic"
+        | "anthropic_returned"
+        | "rate_limited_retrying"
+        | "running_tool"
+        | "tool_returned"
+        | "settling";
+      detail?: string;
+    }
   | { kind: "done" }
   | { kind: "error"; message: string };
 
@@ -1317,6 +1334,12 @@ export async function* runAssistantTurn(args: {
   // completion, errors, and aborts.
   await markActiveTurnStarted(args.conversation.id);
 
+  // First user-facing event in the stream. Without this, the
+  // sidebar's thinking column shows "0 events / waiting for first
+  // event…" until Anthropic produces its first content block —
+  // which can take several seconds and look frozen.
+  yield { kind: "status", phase: "loading_history" };
+
   const histStart = performance.now();
   const allHistory = await loadMessages(args.conversation.id);
   const history = trimHistoryToWindow(allHistory);
@@ -1382,6 +1405,7 @@ export async function* runAssistantTurn(args: {
     yield { kind: "message_saved", message_id: userRow.id, role: "user" };
 
     const bootstrapStart = performance.now();
+    yield { kind: "status", phase: "loading_bootstrap" };
     const bootstrap = await buildBootstrapContext(args.ctx.principal.id);
     bootstrapMs = performance.now() - bootstrapStart;
     const systemBlocks = buildSystemBlocks(args.ctx.principal, bootstrap);
@@ -1394,6 +1418,11 @@ export async function* runAssistantTurn(args: {
       // error, so the flag is checked in the catch below.
       let retriedThisTurn = false;
       numAnthropicCalls++;
+      yield {
+        kind: "status",
+        phase: "calling_anthropic",
+        detail: `call ${numAnthropicCalls}`,
+      };
       let stream: MessageStream;
       try {
         stream = client.messages.stream({
@@ -1454,6 +1483,11 @@ export async function* runAssistantTurn(args: {
         if ((err as { status?: number }).status === 429 && !retriedThisTurn) {
           retriedThisTurn = true;
           const waitMs = parseAnthropicRetryAfterMs(err);
+          yield {
+            kind: "status",
+            phase: "rate_limited_retrying",
+            detail: `retry in ${Math.round(waitMs / 1000)}s`,
+          };
           // Tell the user we're holding rather than going silent for a
           // potentially-long sleep.
           yield {
@@ -1471,6 +1505,11 @@ export async function* runAssistantTurn(args: {
       }
 
       const finalMessage = await stream.finalMessage();
+      yield {
+        kind: "status",
+        phase: "anthropic_returned",
+        detail: `stop=${finalMessage.stop_reason ?? "unknown"}`,
+      };
       stopReason = finalMessage.stop_reason ?? stopReason;
       const usage = finalMessage.usage;
       inputTokens += usage.input_tokens ?? 0;
@@ -1529,9 +1568,15 @@ export async function* runAssistantTurn(args: {
       const toolUseBlocks = collectedBlocks.filter((b): b is ToolUseBlock => b.type === "tool_use");
       const toolResults: ToolResultBlockParam[] = [];
       for (const block of toolUseBlocks) {
+        yield { kind: "status", phase: "running_tool", detail: block.name };
         const toolStart = performance.now();
         const tr = await runTool(block, args.ctx);
         const toolElapsed = Math.round(performance.now() - toolStart);
+        yield {
+          kind: "status",
+          phase: "tool_returned",
+          detail: `${block.name} ${tr.ok ? "ok" : "err"} ${toolElapsed}ms`,
+        };
         numToolCalls++;
         toolCallStats.push({
           name: block.name,
