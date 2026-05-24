@@ -447,9 +447,9 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
   {
     // Executable tests inspired by TDD and AI evals. Each Eval pins one
     // checkable claim about a Decision, Policy, Action, or other
-    // load-bearing neuron; the template seeds the policies
-    // policies that govern how those Evals are authored. Opt-in
-    // (not auto-installed) — projects that want test add it explicitly.
+    // load-bearing neuron; the template seeds the policies that govern
+    // how those Evals are authored. Opt-in (not auto-installed) —
+    // projects that want tests add it explicitly.
     name: "test",
     label: "Tests",
     icon: "🧪",
@@ -459,13 +459,15 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
     policies: [
       // ── Deterministic structural gates ──
       {
-        // D1 — content-type gate. Evals belong here; policies
-        // seeded by this template live alongside them.
+        // D1 — content-type gate. Evals belong here; policies seeded
+        // by this template live alongside them. Intent is admitted so
+        // the doco can declare its purpose (e.g., "Lock in the
+        // contract for /api/auth"); domain content lives elsewhere.
         summary:
-          "Only Eval neurons and policies (guidance_policy, neuron_authoring_policy) belong to test. Domain content lives in its own Doco.",
+          "Only Intent, Eval neurons and policies (guidance_policy, neuron_authoring_policy) belong to test. Use Intent to declare the doco's purpose; Evals pin the checkable claims; policies govern how Evals are authored. Domain content lives in its own Doco.",
         predicate: {
           kind: "requires_entity_type",
-          entity_types: ["eval", "guidance_policy", "neuron_authoring_policy"],
+          entity_types: ["intent", "eval", "guidance_policy", "neuron_authoring_policy"],
         },
       },
       {
@@ -511,8 +513,12 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
         fires_when_neuron_lifecycle: ["active"],
       },
       // ── Probabilistic style gates ──
+      // Soft semantic checks — flagged as `warn`, not block. An LLM
+      // judge can be wrong about style; surfacing the concern lets the
+      // author reconsider without hard-failing capture.
       {
         // P1
+        on_violation: "warn",
         summary:
           "Eval `eval` reads as a checkable property of the system (e.g. `user-email-validation accepts .+@.+ form`), not a serial label (`test 1`, `eval A`, `it works`).",
         predicate: {
@@ -523,6 +529,7 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
       },
       {
         // P2
+        on_violation: "warn",
         summary:
           "An Eval tests one property. If `eval` or `criterion.spec` joins multiple independent claims with 'and', it's a split candidate.",
         predicate: {
@@ -533,6 +540,7 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
       },
       {
         // P3
+        on_violation: "warn",
         summary:
           "`exact` and `shape` criteria need a concrete `expected` value, not prose. `llm-judge` criteria put the prose property into `criterion.spec` (or `expected` when more natural) and read crisply enough that two reviewers would reach the same verdict.",
         predicate: {
@@ -555,7 +563,7 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
       {
         kind: "guidance",
         summary:
-          'To track per-run history (e.g. for flakiness), capture a Log per run with `Log.target` pointing at the Eval, `verb` set to `"passed"` or `"failed"`, and `happened_at` set to the run time. The Eval\'s `last_*` fields are a snapshot of the most recent Log.',
+          'To track per-run history (e.g. for flakiness), capture a Log per run with `Log.target` pointing at the Eval, `verb` set to `"passed"` or `"failed"`, `happened_at` set to the run time, and `outputs` populated with non-empty run details (e.g. `{ duration_ms, run_id, reason }`). The Eval\'s `last_*` fields are a snapshot of the most recent Log.',
       },
       {
         kind: "guidance",
@@ -575,7 +583,7 @@ export const DEFAULT_DOCO_TEMPLATES: DocoTemplate[] = [
       {
         kind: "guidance",
         summary:
-          "An Eval tests entities in its own doco via `target_ref`. Tests that span multiple docos wait for the imports machinery — the framework doesn't yet resolve cross-doco refs (refs.ts:14-15).",
+          "An Eval tests entities in its own doco via `target_ref`. Tests that span multiple docos wait for the imports machinery — the framework doesn't yet resolve cross-doco refs.",
       },
     ],
   },
