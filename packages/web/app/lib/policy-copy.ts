@@ -1,17 +1,17 @@
-// Shared copy + helpers for primitive surfaces. Used by:
-//   - /:docoHandle/primitives
-//   - the Doco new-primitive forms
+// Shared copy + helpers for policy surfaces. Used by:
+//   - /:docoHandle/policies
+//   - the Doco new-policy forms
 // Keep them DRY so the wording matches the wizard the project owner
 // just walked through.
 
-export const GUIDANCE_PRIMITIVE_EXPLAINER =
-  "Primitives AI agents read while working. Not auto-checked — they're a shared agreement.";
+export const GUIDANCE_POLICY_EXPLAINER =
+  "Policies AI agents read while working. Not auto-checked — they're a shared agreement.";
 
-export const NEURON_AUTHORING_PRIMITIVE_EXPLAINER =
+export const NEURON_AUTHORING_POLICY_EXPLAINER =
   "Rules that are automatically evaluated when something is added to Doco.";
 
 export const AGENT_EXPOSURE_NOTE =
-  "AI agents are always exposed to this Doco's primitives on every session.";
+  "AI agents are always exposed to this Doco's policies on every session.";
 
 /**
  * Derive a one-line `summary` from an article body. Project owners
@@ -20,7 +20,7 @@ export const AGENT_EXPOSURE_NOTE =
  * server pulls the first non-blank line (stripped of markdown
  * heading hashes) and caps it at 300 chars.
  */
-export function derivePrimitiveSummary(body: string): string {
+export function derivePolicySummary(body: string): string {
   const firstLine = body
     .split(/\r?\n/)
     .map((line) => line.trim())
@@ -37,7 +37,7 @@ export function derivePrimitiveSummary(body: string): string {
  * the display surfaces render one block without worrying which
  * vintage they're looking at.
  */
-export function primitiveFullText(
+export function policyFullText(
   row: { summary: string | null | undefined; body: string | null | undefined } | null,
 ): string {
   if (!row) return "";

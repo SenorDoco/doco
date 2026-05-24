@@ -6,13 +6,13 @@ import { normalizeDocoParams } from "~/lib/doco-access.server";
  *
  *   GET /<doco-handle>/api/<type>.txt
  *
- * `type` is one of the capture types, plus primitives and settings.
+ * `type` is one of the capture types, plus policies and settings.
  * Returns plain-prose spec for the corresponding .json endpoint.
  *
- * Note: primitives (`guidance_primitive`, `neuron_authoring_primitive`)
+ * Note: policies (`guidance_policy`, `neuron_authoring_policy`)
  * are NOT neurons and do not have per-type capture routes. The dedicated
- * primitives endpoint lives at /<handle>/api/primitives.json and is
- * documented under `primitives` here.
+ * policies endpoint lives at /<handle>/api/policies.json and is
+ * documented under `policies` here.
  */
 
 type SpecRenderer = (baseUrl: string, handle: string) => string;
@@ -532,9 +532,9 @@ UPDATE AN EXISTING STATE
   kind, invariants, and follows.
 `,
 
-  primitives: (baseUrl, handle) => `# Doco — Primitives
+  policies: (baseUrl, handle) => `# Doco — Policies
 
-Primitives are **not neurons**. They govern how a Doco is authored,
+Policies are **not neurons**. They govern how a Doco is authored,
 and they live on a dedicated endpoint — separate from the generic
 neuron-capture API.
 
@@ -544,10 +544,10 @@ Two kinds:
                      (deterministic predicate or probabilistic spec).
 
 ENDPOINT (list)
-  GET ${baseUrl}/${handle}/api/primitives.json
+  GET ${baseUrl}/${handle}/api/policies.json
 
-  Returns every primitive in the Doco, both kinds, with a
-  \`primitive_kind\` discriminator:
+  Returns every policy in the Doco, both kinds, with a
+  \`policy_kind\` discriminator:
 
   {
     "doco_id": "doco_...",
@@ -557,8 +557,8 @@ ENDPOINT (list)
     "neuron_authoring_count": <int>,
     "items": [
       {
-        "primitive_kind": "guidance",
-        "id": "guidance_primitive_<ULID>",
+        "policy_kind": "guidance",
+        "id": "guidance_policy_<ULID>",
         "summary": "...",
         "lifecycle": "active",
         "body_md": "...",
@@ -570,27 +570,27 @@ ENDPOINT (list)
   }
 
 ENDPOINT (capture)
-  POST ${baseUrl}/${handle}/api/primitives.json
+  POST ${baseUrl}/${handle}/api/policies.json
   Content-Type: application/json
 
 ${PRINCIPAL_ID_CONVENTION}
 
-  Body MUST include \`primitive_kind\` to disambiguate; remaining
+  Body MUST include \`policy_kind\` to disambiguate; remaining
   fields match the per-kind draft below.
 
-BODY — primitive_kind = "guidance"
-  primitive_kind          required   "guidance"
-  summary               required   one-line primitive summary
-  body_md               optional   markdown primitive body
+BODY — policy_kind = "guidance"
+  policy_kind          required   "guidance"
+  summary               required   one-line policy summary
+  body_md               optional   markdown policy body
   authored_by_principal_id optional principal id; auth fills this
   created_by_principal_id  optional principal id; defaults to authored_by_principal_id
   lifecycle             optional   one of "drafting" | "proposed" | "active" | "retired"; default "active"
   deprecated            optional   boolean warning label; lifecycle is unchanged
   outcome               optional   "succeeded" | "failed"
 
-BODY — primitive_kind = "neuron_authoring"
-  primitive_kind          required   "neuron_authoring"
-  summary               required   one-line primitive summary
+BODY — policy_kind = "neuron_authoring"
+  policy_kind          required   "neuron_authoring"
+  summary               required   one-line policy summary
   evaluation_kind       required   "deterministic" | "probabilistic"
   predicate             required*  deterministic AuthoringPredicate object
                                   or JSON string. Must not have
@@ -599,7 +599,7 @@ BODY — primitive_kind = "neuron_authoring"
                                   {kind:"probabilistic", spec}
   fires_when_neuron_lifecycle optional ["active", ...]
   on_violation          optional   "block" | "warn" | "log"; default "block"
-  body_md               optional   markdown primitive body
+  body_md               optional   markdown policy body
   authored_by_principal_id optional principal id; auth fills this
   created_by_principal_id  optional principal id; defaults to authored_by_principal_id
   lifecycle             optional   one of "drafting" | "proposed" | "active" | "retired"; default "active"
@@ -609,17 +609,17 @@ BODY — primitive_kind = "neuron_authoring"
 SUCCESS RESPONSE (HTTP 201)
   {
     "ok": true,
-    "id": "guidance_primitive_<ULID>" | "neuron_authoring_primitive_<ULID>",
-    "footer_lines": ["[🔮 Doco] ✍️ ... Primitive added: ..."]
+    "id": "guidance_policy_<ULID>" | "neuron_authoring_policy_<ULID>",
+    "footer_lines": ["[🔮 Doco] ✍️ ... Policy added: ..."]
   }
 
 EXAMPLE — guidance
   curl -sS -X POST \\
     -H "Content-Type: application/json" \\
     -H "Authorization: Bearer $DOCO_ACCESS" \\
-    ${baseUrl}/${handle}/api/primitives.json \\
+    ${baseUrl}/${handle}/api/policies.json \\
     -d '{
-      "primitive_kind": "guidance",
+      "policy_kind": "guidance",
       "summary": "Prefer concrete examples over abstract prose."
     }'
 
@@ -627,9 +627,9 @@ EXAMPLE — neuron_authoring (deterministic)
   curl -sS -X POST \\
     -H "Content-Type: application/json" \\
     -H "Authorization: Bearer $DOCO_ACCESS" \\
-    ${baseUrl}/${handle}/api/primitives.json \\
+    ${baseUrl}/${handle}/api/policies.json \\
     -d '{
-      "primitive_kind": "neuron_authoring",
+      "policy_kind": "neuron_authoring",
       "summary": "Every Decision cites at least one Intent.",
       "evaluation_kind": "deterministic",
       "predicate": {
@@ -644,25 +644,25 @@ EXAMPLE — neuron_authoring (probabilistic)
   curl -sS -X POST \\
     -H "Content-Type: application/json" \\
     -H "Authorization: Bearer $DOCO_ACCESS" \\
-    ${baseUrl}/${handle}/api/primitives.json \\
+    ${baseUrl}/${handle}/api/policies.json \\
     -d '{
-      "primitive_kind": "neuron_authoring",
+      "policy_kind": "neuron_authoring",
       "summary": "Decision rationale names the rejected alternatives.",
       "evaluation_kind": "probabilistic",
       "spec": "Pass when the Decision explains at least one alternative and why it was rejected."
     }'
 
-UPDATE A SPECIFIC PRIMITIVE
-  PATCH ${baseUrl}/${handle}/api/guidance_primitives/<id>.json
-  PATCH ${baseUrl}/${handle}/api/neuron_authoring_primitives/<id>.json
+UPDATE A SPECIFIC POLICY
+  PATCH ${baseUrl}/${handle}/api/guidance_policies/<id>.json
+  PATCH ${baseUrl}/${handle}/api/neuron_authoring_policies/<id>.json
   Content-Type: application/json
 
-  Per-id endpoints remain available for editing existing primitives.
+  Per-id endpoints remain available for editing existing policies.
   Body shape mirrors the relevant capture draft.
 
 RELATED
-  GET  ${baseUrl}/${handle}/primitives             HTML view of the primitives
-  GET  ${baseUrl}/api/v1/agent-bootstrap.json      bootstrap payload includes primitives
+  GET  ${baseUrl}/${handle}/policies             HTML view of the policies
+  GET  ${baseUrl}/api/v1/agent-bootstrap.json      bootstrap payload includes policies
 `,
 
   settings: (baseUrl, handle) => `# Doco — Settings (read + patch)

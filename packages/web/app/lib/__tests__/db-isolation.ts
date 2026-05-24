@@ -69,7 +69,7 @@ beforeEach(async () => {
         principals,
         organizations,
         docos,
-        neuron_authoring_primitives,
+        neuron_authoring_policies,
         actions,
         intents,
         synapses

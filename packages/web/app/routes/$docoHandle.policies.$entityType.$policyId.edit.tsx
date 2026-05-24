@@ -1,8 +1,8 @@
-// /<doco>/primitives/<entityType>/<id>/edit — modify or retire an
-// existing primitive. Owner-only (loadDocoRouteForAdmin gates
+// /<doco>/policies/<entityType>/<id>/edit — modify or retire an
+// existing policy. Owner-only (loadDocoRouteForAdmin gates
 // both loader + action).
 //
-// POST intent=modify → captures a new primitive and retires the old one
+// POST intent=modify → captures a new policy and retires the old one
 //                      with `superseded_by: <new id>`.
 // POST intent=retire → flips the old to lifecycle='retired'.
 
@@ -12,27 +12,27 @@ import { Breadcrumb, docoBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent } from "~/components/card";
 import { SiteHeader } from "~/components/site-header";
 import {
-  type NeuronAuthoringPrimitiveDraft,
-  captureGuidancePrimitive,
-  captureNeuronAuthoringPrimitive,
-  loadPrimitiveForEdit,
-  transitionPrimitiveLifecycle,
+  type NeuronAuthoringPolicyDraft,
+  captureGuidancePolicy,
+  captureNeuronAuthoringPolicy,
+  loadPolicyForEdit,
+  transitionPolicyLifecycle,
 } from "~/lib/capture.server";
 import { loadDocoRouteForAdmin } from "~/lib/doco-access.server";
 import { loadHostConfig } from "~/lib/host.server";
-import { derivePrimitiveSummary } from "~/lib/primitive-copy";
+import { derivePolicySummary } from "~/lib/policy-copy";
 
-type EntityType = "guidance_primitive" | "neuron_authoring_primitive";
+type EntityType = "guidance_policy" | "neuron_authoring_policy";
 type ArticleKind = "deterministic" | "probabilistic";
 
 interface ActionError {
   error: string;
 }
 
-function parsePrimitiveType(raw: string | undefined): EntityType | null {
-  if (raw === "guidance" || raw === "guidance_primitive") return "guidance_primitive";
-  if (raw === "neuron-authoring" || raw === "neuron_authoring_primitive")
-    return "neuron_authoring_primitive";
+function parsePolicyType(raw: string | undefined): EntityType | null {
+  if (raw === "guidance" || raw === "guidance_policy") return "guidance_policy";
+  if (raw === "neuron-authoring" || raw === "neuron_authoring_policy")
+    return "neuron_authoring_policy";
   return null;
 }
 
@@ -41,18 +41,18 @@ export async function loader({
   params,
 }: {
   request: Request;
-  params: { docoId: string; entityType: string; primitiveId: string };
+  params: { docoId: string; entityType: string; policyId: string };
 }) {
-  redirectLegacyPrimitivePath(request);
-  const entityType = parsePrimitiveType(params.entityType);
-  if (!entityType) throw new Response("Unknown primitive kind.", { status: 404 });
+  redirectLegacyPolicyPath(request);
+  const entityType = parsePolicyType(params.entityType);
+  if (!entityType) throw new Response("Unknown policy kind.", { status: 404 });
   const ctx = await loadDocoRouteForAdmin(request, params);
   const { docoSlug, handle, ownerSlug } = ctx;
-  const result = await loadPrimitiveForEdit({
+  const result = await loadPolicyForEdit({
     scope: "doco",
     scopeId: ctx.meta.docoId,
     entityType,
-    primitiveId: params.primitiveId,
+    policyId: params.policyId,
   });
   if ("error" in result) {
     throw new Response(result.error, { status: result.status ?? 404 });
@@ -63,7 +63,7 @@ export async function loader({
     handle,
     me: ctx.me,
     entityType,
-    primitiveId: params.primitiveId,
+    policyId: params.policyId,
     body_md: result.body_md,
     lifecycle: result.lifecycle,
     data: result.data,
@@ -76,41 +76,41 @@ export async function action({
   params,
 }: {
   request: Request;
-  params: { docoId: string; entityType: string; primitiveId: string };
+  params: { docoId: string; entityType: string; policyId: string };
 }) {
-  const entityType = parsePrimitiveType(params.entityType);
-  if (!entityType) throw new Response("Unknown primitive kind.", { status: 404 });
+  const entityType = parsePolicyType(params.entityType);
+  if (!entityType) throw new Response("Unknown policy kind.", { status: 404 });
   const ctx = await loadDocoRouteForAdmin(request, params);
   const { docoSlug, handle, ownerSlug } = ctx;
   const form = await request.formData();
   const intent = String(form.get("intent") ?? "");
 
   if (intent === "retire") {
-    const result = await transitionPrimitiveLifecycle({
+    const result = await transitionPolicyLifecycle({
       scope: "doco",
       scopeId: ctx.meta.docoId,
       entityType,
-      primitiveId: params.primitiveId,
+      policyId: params.policyId,
       newLifecycle: "retired",
       actorId: ctx.me?.id ?? null,
     });
     if ("error" in result) {
       return Response.json({ error: result.error }, { status: result.status ?? 400 });
     }
-    return redirect(`/${handle}/primitives`);
+    return redirect(`/${handle}/policies`);
   }
 
   if (intent === "modify") {
     const body_md = String(form.get("body_md") ?? "").trim();
-    const summary = derivePrimitiveSummary(body_md);
-    if (!summary) return Response.json({ error: "Primitive is required." }, { status: 400 });
+    const summary = derivePolicySummary(body_md);
+    if (!summary) return Response.json({ error: "Policy is required." }, { status: 400 });
     const docoDir = ctx.dir;
     const docoHost = new URL(request.url).origin;
     let captured: Awaited<
-      ReturnType<typeof captureGuidancePrimitive | typeof captureNeuronAuthoringPrimitive>
+      ReturnType<typeof captureGuidancePolicy | typeof captureNeuronAuthoringPolicy>
     >;
-    if (entityType === "guidance_primitive") {
-      captured = await captureGuidancePrimitive(
+    if (entityType === "guidance_policy") {
+      captured = await captureGuidancePolicy(
         docoDir,
         ctx.meta.docoId,
         ownerSlug,
@@ -135,7 +135,7 @@ export async function action({
       const onViolationRaw = String(form.get("on_violation") ?? "block");
       const on_violation =
         onViolationRaw === "warn" || onViolationRaw === "log" ? onViolationRaw : "block";
-      const draft: NeuronAuthoringPrimitiveDraft = {
+      const draft: NeuronAuthoringPolicyDraft = {
         summary,
         body_md,
         evaluation_kind: evaluationKind,
@@ -147,7 +147,7 @@ export async function action({
           ? { spec: String(form.get("probabilistic_spec") ?? "").trim() }
           : { predicate: String(form.get("deterministic_predicate") ?? "").trim() }),
       };
-      captured = await captureNeuronAuthoringPrimitive(
+      captured = await captureNeuronAuthoringPolicy(
         docoDir,
         ctx.meta.docoId,
         ownerSlug,
@@ -159,11 +159,11 @@ export async function action({
     if ("error" in captured) {
       return Response.json(captured, { status: captured.status ?? 400 });
     }
-    const transitioned = await transitionPrimitiveLifecycle({
+    const transitioned = await transitionPolicyLifecycle({
       scope: "doco",
       scopeId: ctx.meta.docoId,
       entityType,
-      primitiveId: params.primitiveId,
+      policyId: params.policyId,
       newLifecycle: "retired",
       supersededBy: captured.id,
       actorId: ctx.me?.id ?? null,
@@ -172,24 +172,24 @@ export async function action({
     if ("error" in transitioned) {
       return Response.json({ error: transitioned.error }, { status: 500 });
     }
-    return redirect(`/${handle}/primitives`);
+    return redirect(`/${handle}/policies`);
   }
 
   return Response.json({ error: "Unknown intent." }, { status: 400 });
 }
 
 export function meta({ params }: { params: { docoHandle?: string; docoId?: string } }) {
-  return [{ title: `Modify primitive · ${params.docoHandle ?? params.docoId ?? ""} · Doco` }];
+  return [{ title: `Modify policy · ${params.docoHandle ?? params.docoId ?? ""} · Doco` }];
 }
 
-export default function EditPrimitive({
+export default function EditPolicy({
   loaderData,
 }: {
   loaderData: Awaited<ReturnType<typeof loader>>;
 }) {
-  const { ownerSlug, docoSlug, handle, me, entityType, primitiveId, body_md, data } = loaderData;
+  const { ownerSlug, docoSlug, handle, me, entityType, policyId, body_md, data } = loaderData;
   const actionData = useActionData<ActionError>();
-  const isNeuronAuthoring = entityType === "neuron_authoring_primitive";
+  const isNeuronAuthoring = entityType === "neuron_authoring_policy";
   const initialEvalKind: ArticleKind =
     data.evaluation_kind === "probabilistic" ? "probabilistic" : "deterministic";
   const [evaluationKind, setEvaluationKind] = useState<ArticleKind>(initialEvalKind);
@@ -218,16 +218,16 @@ export default function EditPrimitive({
             items={docoBreadcrumb({
               ownerSlug,
               handle,
-              parent: { label: "Primitives", to: `/${handle}/primitives` },
-              pageLabel: `Modify ${isNeuronAuthoring ? "neuron-authoring" : "guidance"} primitive`,
+              parent: { label: "Policies", to: `/${handle}/policies` },
+              pageLabel: `Modify ${isNeuronAuthoring ? "neuron-authoring" : "guidance"} policy`,
             })}
             className="mb-1"
           />
           <h1 className="text-2xl font-semibold">
-            Modify {isNeuronAuthoring ? "neuron-authoring" : "guidance"} primitive
+            Modify {isNeuronAuthoring ? "neuron-authoring" : "guidance"} policy
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Saving changes creates a new primitive and retires this one with a{" "}
+            Saving changes creates a new policy and retires this one with a{" "}
             <code>superseded_by</code> synapse. Retiring leaves the old one in place. Either way the
             audit log retains the full history.
           </p>
@@ -245,7 +245,7 @@ export default function EditPrimitive({
                 required
                 rows={12}
                 defaultValue={body_md}
-                placeholder="Write the primitive."
+                placeholder="Write the policy."
                 className="block w-full rounded-md px-3 py-2 text-sm"
               />
               {isNeuronAuthoring ? (
@@ -339,17 +339,17 @@ export default function EditPrimitive({
                   value="retire"
                   className="rounded-md border border-destructive px-4 py-2 text-sm font-semibold text-destructive hover:bg-destructive/10"
                 >
-                  Retire primitive
+                  Retire policy
                 </button>
                 <Link
-                  to={`/${handle}/primitives`}
+                  to={`/${handle}/policies`}
                   className="ml-auto text-xs text-muted-foreground hover:underline"
                 >
                   Cancel
                 </Link>
               </div>
               <p className="text-[11px] text-muted-foreground">
-                Primitive id: <code>{primitiveId}</code>
+                Policy id: <code>{policyId}</code>
               </p>
             </Form>
           </CardContent>
@@ -359,9 +359,9 @@ export default function EditPrimitive({
   );
 }
 
-function redirectLegacyPrimitivePath(request: Request): void {
+function redirectLegacyPolicyPath(request: Request): void {
   const url = new URL(request.url);
   if (!url.pathname.includes("/constitution")) return;
-  url.pathname = url.pathname.replace("/constitution", "/primitives");
+  url.pathname = url.pathname.replace("/constitution", "/policies");
   throw redirect(`${url.pathname}${url.search}`);
 }

@@ -1,5 +1,5 @@
 /**
- * LLM judge for probabilistic authoring primitives.
+ * LLM judge for probabilistic authoring policies.
  *
  * The pure evaluator in `@doco/shared/authoring-evaluator.ts` cannot
  * resolve `probabilistic` predicates on its own — it emits them as
@@ -24,7 +24,7 @@ export interface JudgeResult {
   reason?: string;
 }
 
-const SYSTEM_PROMPT = `You are an authoring-primitive judge for a knowledge graph that stores neurons (graph nodes) and primitives in a project doco.
+const SYSTEM_PROMPT = `You are an authoring-policy judge for a knowledge graph that stores neurons (graph nodes) and policies in a project doco.
 
 You receive two inputs:
 1. A SPEC describing a quality predicate the author wants enforced on neurons of a given type.
@@ -74,7 +74,7 @@ export async function judgeProbabilisticPredicate(
       model,
       max_tokens: 1024,
       // cache_control: ephemeral lets the SYSTEM_PROMPT be reused across
-      // judge calls — every probabilistic primitive in the Doco shares this
+      // judge calls — every probabilistic policy in the Doco shares this
       // exact prefix, so a burst of captures benefits.
       system: [
         {

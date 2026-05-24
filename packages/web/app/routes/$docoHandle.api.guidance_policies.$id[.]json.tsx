@@ -1,9 +1,9 @@
 import { makeUpdateRoute } from "~/lib/api-capture-factory.server";
 
 const route = makeUpdateRoute({
-  type: "guidance_primitives",
-  entityType: "guidance_primitive",
-  pluralDir: "guidance_primitives",
+  type: "guidance_policies",
+  entityType: "guidance_policy",
+  pluralDir: "guidance_policies",
   allowedFields: ["summary", "body_md", "lifecycle", "born_from"],
 });
 

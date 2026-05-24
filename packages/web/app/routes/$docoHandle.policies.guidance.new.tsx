@@ -1,16 +1,16 @@
-// /<doco-handle>/primitives/guidance/new — standalone form for
-// authoring a Doco-level guidance primitive. Prose-only meta-rule; no
-// automated check. The landing page at /<doco>/primitives links
-// here from the "Add guidance primitive" button.
+// /<doco-handle>/policies/guidance/new — standalone form for
+// authoring a Doco-level guidance policy. Prose-only meta-rule; no
+// automated check. The landing page at /<doco>/policies links
+// here from the "Add guidance policy" button.
 
 import { Form, Link, redirect, useActionData } from "react-router";
 import { Breadcrumb, docoBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent } from "~/components/card";
 import { SiteHeader } from "~/components/site-header";
-import { captureGuidancePrimitive } from "~/lib/capture.server";
+import { captureGuidancePolicy } from "~/lib/capture.server";
 import { loadDocoRouteForAdmin } from "~/lib/doco-access.server";
 import { loadHostConfig } from "~/lib/host.server";
-import { derivePrimitiveSummary } from "~/lib/primitive-copy";
+import { derivePolicySummary } from "~/lib/policy-copy";
 
 interface ActionError {
   error: string;
@@ -23,7 +23,7 @@ export async function loader({
   request: Request;
   params: { docoId: string };
 }) {
-  redirectLegacyPrimitivePath(request);
+  redirectLegacyPolicyPath(request);
   const { docoSlug, handle, me, ownerSlug } = await loadDocoRouteForAdmin(request, params);
   return { ownerSlug, docoSlug, handle, me, host: await loadHostConfig() };
 }
@@ -39,11 +39,11 @@ export async function action({
   const { dir: docoDir, docoSlug, handle, ownerSlug } = ctx;
   const form = await request.formData();
   const body_md = String(form.get("body_md") ?? "").trim();
-  const summary = derivePrimitiveSummary(body_md);
-  if (!summary) return Response.json({ error: "Primitive is required." }, { status: 400 });
+  const summary = derivePolicySummary(body_md);
+  if (!summary) return Response.json({ error: "Policy is required." }, { status: 400 });
   const docoHost = new URL(request.url).origin;
 
-  const result = await captureGuidancePrimitive(
+  const result = await captureGuidancePolicy(
     docoDir,
     ctx.meta.docoId,
     ownerSlug,
@@ -57,14 +57,14 @@ export async function action({
     docoHost,
   );
   if ("error" in result) return Response.json(result, { status: result.status ?? 400 });
-  return redirect(`/${handle}/primitives`);
+  return redirect(`/${handle}/policies`);
 }
 
 export function meta({ params }: { params: { docoHandle?: string; docoId?: string } }) {
-  return [{ title: `New guidance primitive · ${params.docoHandle ?? params.docoId ?? ""} · Doco` }];
+  return [{ title: `New guidance policy · ${params.docoHandle ?? params.docoId ?? ""} · Doco` }];
 }
 
-export default function NewGuidancePrimitive({
+export default function NewGuidancePolicy({
   loaderData,
 }: {
   loaderData: Awaited<ReturnType<typeof loader>>;
@@ -80,12 +80,12 @@ export default function NewGuidancePrimitive({
             items={docoBreadcrumb({
               ownerSlug,
               handle,
-              parent: { label: "Primitives", to: `/${handle}/primitives` },
-              pageLabel: "New guidance primitive",
+              parent: { label: "Policies", to: `/${handle}/policies` },
+              pageLabel: "New guidance policy",
             })}
             className="mb-1"
           />
-          <h1 className="text-2xl font-semibold">New guidance primitive</h1>
+          <h1 className="text-2xl font-semibold">New guidance policy</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             A plain-English rule you want everyone working on this doco to follow. Nothing checks it
             automatically — it's a shared agreement.
@@ -103,7 +103,7 @@ export default function NewGuidancePrimitive({
                 name="body_md"
                 required
                 rows={12}
-                placeholder="Write the primitive."
+                placeholder="Write the policy."
                 className="block w-full rounded-md px-3 py-2 text-sm"
               />
               <div className="flex items-center gap-3">
@@ -111,10 +111,10 @@ export default function NewGuidancePrimitive({
                   type="submit"
                   className="neu-button bg-primary text-primary-foreground hover:opacity-90 rounded-md px-4 py-2 text-sm font-semibold"
                 >
-                  Add guidance primitive
+                  Add guidance policy
                 </button>
                 <Link
-                  to={`/${handle}/primitives`}
+                  to={`/${handle}/policies`}
                   className="text-xs text-muted-foreground hover:underline"
                 >
                   Cancel
@@ -128,9 +128,9 @@ export default function NewGuidancePrimitive({
   );
 }
 
-function redirectLegacyPrimitivePath(request: Request): void {
+function redirectLegacyPolicyPath(request: Request): void {
   const url = new URL(request.url);
   if (!url.pathname.includes("/constitution")) return;
-  url.pathname = url.pathname.replace("/constitution", "/primitives");
+  url.pathname = url.pathname.replace("/constitution", "/policies");
   throw redirect(`${url.pathname}${url.search}`);
 }

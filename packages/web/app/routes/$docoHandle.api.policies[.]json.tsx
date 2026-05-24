@@ -1,24 +1,24 @@
-// GET/POST /<doco-handle>/api/primitives.json — dedicated primitives endpoint.
+// GET/POST /<doco-handle>/api/policies.json — dedicated policies endpoint.
 //
-// Primitives (`guidance_primitive`, `neuron_authoring_primitive`) are not
+// Policies (`guidance_policy`, `neuron_authoring_policy`) are not
 // neurons. They are Doco-level metadata and are *only* reachable from
-// this endpoint, the agent bootstrap response, or the HTML primitives
+// this endpoint, the agent bootstrap response, or the HTML policies
 // page. The generic /<handle>/api/<type>.json dispatcher refuses
-// primitive types.
+// policy types.
 //
-// GET  → list every primitive in the Doco, both kinds, with a
-//        `primitive_kind` discriminator.
-// POST → capture a new primitive. Body shape:
-//        { "primitive_kind": "guidance" | "neuron_authoring", ...draft }
-//        Where `...draft` follows GuidancePrimitiveDraft or
-//        NeuronAuthoringPrimitiveDraft from capture.server.ts.
+// GET  → list every policy in the Doco, both kinds, with a
+//        `policy_kind` discriminator.
+// POST → capture a new policy. Body shape:
+//        { "policy_kind": "guidance" | "neuron_authoring", ...draft }
+//        Where `...draft` follows GuidancePolicyDraft or
+//        NeuronAuthoringPolicyDraft from capture.server.ts.
 
 import { roleAtLeast, withClient } from "@doco/db";
 import {
-  type GuidancePrimitiveDraft,
-  type NeuronAuthoringPrimitiveDraft,
-  captureGuidancePrimitive,
-  captureNeuronAuthoringPrimitive,
+  type GuidancePolicyDraft,
+  type NeuronAuthoringPolicyDraft,
+  captureGuidancePolicy,
+  captureNeuronAuthoringPolicy,
 } from "~/lib/capture.server";
 import {
   type DocoRouteParams,
@@ -27,7 +27,7 @@ import {
 } from "~/lib/doco-access.server";
 import { withIdempotency } from "~/lib/idempotency.server";
 
-interface PrimitiveRow {
+interface PolicyRow {
   id: string;
   summary: string;
   lifecycle: string | null;
@@ -36,8 +36,8 @@ interface PrimitiveRow {
   updated_at: string | null;
 }
 
-interface PrimitiveListEntry extends PrimitiveRow {
-  primitive_kind: "guidance" | "neuron_authoring";
+interface PolicyListEntry extends PolicyRow {
+  policy_kind: "guidance" | "neuron_authoring";
 }
 
 export async function loader({
@@ -50,33 +50,33 @@ export async function loader({
   const ctx = await loadDocoRouteForRead(request, params);
   return withClient(async (c) => {
     const [guidance, neuronAuthoring] = await Promise.all([
-      c.query<PrimitiveRow>(
+      c.query<PolicyRow>(
         `SELECT id, summary, lifecycle, body_md,
                 created_at::text AS created_at,
                 updated_at::text AS updated_at
-           FROM guidance_primitives
+           FROM guidance_policies
           WHERE doco_id = $1
           ORDER BY created_at DESC`,
         [ctx.meta.docoId],
       ),
-      c.query<PrimitiveRow>(
+      c.query<PolicyRow>(
         `SELECT id, summary, lifecycle, body_md,
                 created_at::text AS created_at,
                 updated_at::text AS updated_at
-           FROM neuron_authoring_primitives
+           FROM neuron_authoring_policies
           WHERE doco_id = $1
           ORDER BY created_at DESC`,
         [ctx.meta.docoId],
       ),
     ]);
-    const items: PrimitiveListEntry[] = [
+    const items: PolicyListEntry[] = [
       ...guidance.rows.map((r) => ({
         ...r,
-        primitive_kind: "guidance" as const,
+        policy_kind: "guidance" as const,
       })),
       ...neuronAuthoring.rows.map((r) => ({
         ...r,
-        primitive_kind: "neuron_authoring" as const,
+        policy_kind: "neuron_authoring" as const,
       })),
     ];
     return Response.json({
@@ -114,8 +114,8 @@ export async function action({
   }
   const bodyText = await request.text();
 
-  return withIdempotency(request, "POST /api/primitives", me.id ?? null, bodyText, async () => {
-    let parsed: { primitive_kind?: unknown } & Record<string, unknown>;
+  return withIdempotency(request, "POST /api/policies", me.id ?? null, bodyText, async () => {
+    let parsed: { policy_kind?: unknown } & Record<string, unknown>;
     try {
       parsed = JSON.parse(bodyText);
     } catch (e) {
@@ -124,12 +124,12 @@ export async function action({
         { status: 400 },
       );
     }
-    const primitiveKind = parsed.primitive_kind;
-    if (primitiveKind !== "guidance" && primitiveKind !== "neuron_authoring") {
+    const policyKind = parsed.policy_kind;
+    if (policyKind !== "guidance" && policyKind !== "neuron_authoring") {
       return Response.json(
         {
           error:
-            'Body must include "primitive_kind": "guidance" | "neuron_authoring" to disambiguate.',
+            'Body must include "policy_kind": "guidance" | "neuron_authoring" to disambiguate.',
         },
         { status: 400 },
       );
@@ -141,13 +141,13 @@ export async function action({
     }
 
     const docoHost = new URL(request.url).origin;
-    const { primitive_kind: _discarded, ...rest } = parsed;
+    const { policy_kind: _discarded, ...rest } = parsed;
 
-    if (primitiveKind === "guidance") {
-      const draft = rest as unknown as GuidancePrimitiveDraft;
+    if (policyKind === "guidance") {
+      const draft = rest as unknown as GuidancePolicyDraft;
       if (!draft.authored_by_principal_id && me.id) draft.authored_by_principal_id = me.id;
       if (!draft.created_by_principal_id && me.id) draft.created_by_principal_id = me.id;
-      const result = await captureGuidancePrimitive(
+      const result = await captureGuidancePolicy(
         dir,
         meta.docoId,
         ownerSlug,
@@ -159,10 +159,10 @@ export async function action({
       return Response.json(result, { status: 201 });
     }
 
-    const draft = rest as unknown as NeuronAuthoringPrimitiveDraft;
+    const draft = rest as unknown as NeuronAuthoringPolicyDraft;
     if (!draft.authored_by_principal_id && me.id) draft.authored_by_principal_id = me.id;
     if (!draft.created_by_principal_id && me.id) draft.created_by_principal_id = me.id;
-    const result = await captureNeuronAuthoringPrimitive(
+    const result = await captureNeuronAuthoringPolicy(
       dir,
       meta.docoId,
       ownerSlug,

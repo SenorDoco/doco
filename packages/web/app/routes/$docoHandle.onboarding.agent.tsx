@@ -63,7 +63,7 @@ export default function OnboardingAgent({
             <CardTitle>Bootstrap and collaborate</CardTitle>
             <CardDescription>
               Invite people, connect agents, and let each collaborator bootstrap from the Doco's
-              primitives before they work.
+              policies before they work.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -72,7 +72,7 @@ export default function OnboardingAgent({
               <li>Paste the agent prompt into an AI agent that should collaborate on the work.</li>
               <li>
                 Agents use OAuth, then fetch the bootstrap manifest so they can read the relevant
-                Doco primitives before writing neurons.
+                Doco policies before writing neurons.
               </li>
             </ul>
             <CollaborationInvitePrompt

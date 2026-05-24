@@ -358,13 +358,13 @@ You get back:
   \`granted_doco_ids\`, \`granted_org_ids\`, \`granted_doco_roles\`,
   \`granted_org_roles\`, \`scope\`, \`expires_at\`. Null for cookie
   callers. Read this to know exactly which Docos and orgs your token
-  covers without inferring from the primitives lists.
-- \`doco_primitives[]\` — Primitives for every Doco your grants
+  covers without inferring from the policies lists.
+- \`doco_policies[]\` — Policies for every Doco your grants
   cover.
 
-The primitives tell you what's expected when you capture or
+The policies tell you what's expected when you capture or
 modify nodes in each Doco. Cache the response for the session;
-refetch if the user tells you primitives changed mid-session.
+refetch if the user tells you policies changed mid-session.
 
 ### Org grants are live — don't ask for re-auth on new Docos
 
@@ -470,7 +470,7 @@ GET ${baseUrl}/<handle>/api/<type>.txt            # plain-text spec for capture-
 \`\`\`
 
 Capture body specs exist for decisions, intents, actions, logs, rules,
-evals, references, states, ideas, primitives, and settings. Principals,
+evals, references, states, ideas, policies, and settings. Principals,
 invites, and audit have dedicated route behavior; don't infer write
 bodies for them from the generic capture pattern.
 
@@ -487,7 +487,7 @@ actors_principal_ids          # Intent actors, array of principal ids
 stakeholders_principal_ids    # Intent stakeholders, array of principal ids
 actor_principal_id            # Action/Log actor; auth fills this
 decided_by_principal_id       # Decision maker; auth fills this
-authored_by_principal_id      # Rule/Eval/Primitive author; auth fills this
+authored_by_principal_id      # Rule/Eval/Policy author; auth fills this
 created_by_principal_id       # Creator override where supported
 \`\`\`
 

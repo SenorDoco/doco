@@ -34,7 +34,7 @@ import { type RouteConfig, index, route } from "@react-router/dev/routes";
  *   /<doco-handle>/<type>/<id>     per-Doco entity detail (id is the ULID)
  *   /<doco-handle>/search          per-Doco search (richer results — GPR / age / lifecycle)
  *   /<doco-handle>/settings        per-Doco settings (admin only; danger zone soft-delete; ADR-124)
- *   /<doco-handle>/primitives      per-Doco primitives page: guidance_primitives + neuron_authoring_primitives
+ *   /<doco-handle>/policies      per-Doco policies page: guidance_policies + neuron_authoring_policies
  *   /<doco-handle>/status.json     per-Doco status (connection signal for agent footer line)
  *   /<doco-handle>/api/*           per-Doco capture + update endpoints
  *                                  (decisions / intents / settings; ADR-128)
@@ -139,8 +139,8 @@ export default [
   route("api/v1/orgs.json", "routes/api.v1.orgs[.]json.tsx"),
   route("api/v1/docos.json", "routes/api.v1.docos[.]json.tsx"),
   // Agent bootstrap. Returns the canonical-instructions prose plus the
-  // Doco primitives the caller can read. Auth-aware: anonymous callers
-  // get public-Doco primitives only.
+  // Doco policies the caller can read. Auth-aware: anonymous callers
+  // get public-Doco policies only.
   route("api/v1/agent-bootstrap.json", "routes/api.v1.agent-bootstrap[.]json.tsx"),
   // In-page assistant — the left-rail sidebar visible to every signed-in
   // user. One conversation per Principal, forever (no archive / new-chat
@@ -164,31 +164,31 @@ export default [
   route(":docoHandle/welcome", "routes/$docoHandle.welcome.tsx"),
   route(":docoHandle/status.json", "routes/$docoHandle.status[.]json.tsx"),
   route(":docoHandle/settings", "routes/$docoHandle.settings.tsx"),
-  route(":docoHandle/primitives", "routes/$docoHandle.primitives.tsx"),
-  route(":docoHandle/primitives/guidance/new", "routes/$docoHandle.primitives.guidance.new.tsx"),
+  route(":docoHandle/policies", "routes/$docoHandle.policies.tsx"),
+  route(":docoHandle/policies/guidance/new", "routes/$docoHandle.policies.guidance.new.tsx"),
   route(
-    ":docoHandle/primitives/neuron-authoring/new",
-    "routes/$docoHandle.primitives.neuron-authoring.new.tsx",
+    ":docoHandle/policies/neuron-authoring/new",
+    "routes/$docoHandle.policies.neuron-authoring.new.tsx",
   ),
   route(
-    ":docoHandle/primitives/:entityType/:primitiveId/edit",
-    "routes/$docoHandle.primitives.$entityType.$primitiveId.edit.tsx",
+    ":docoHandle/policies/:entityType/:policyId/edit",
+    "routes/$docoHandle.policies.$entityType.$policyId.edit.tsx",
   ),
-  // Legacy primitives URLs. Route modules redirect GETs to /primitives.
-  route(":docoHandle/constitution", "routes/$docoHandle.primitives.tsx", {
+  // Legacy policies URLs. Route modules redirect GETs to /policies.
+  route(":docoHandle/constitution", "routes/$docoHandle.policies.tsx", {
     id: "legacy-doco-constitution",
   }),
-  route(":docoHandle/constitution/guidance/new", "routes/$docoHandle.primitives.guidance.new.tsx", {
+  route(":docoHandle/constitution/guidance/new", "routes/$docoHandle.policies.guidance.new.tsx", {
     id: "legacy-doco-constitution-guidance-new",
   }),
   route(
     ":docoHandle/constitution/neuron-authoring/new",
-    "routes/$docoHandle.primitives.neuron-authoring.new.tsx",
+    "routes/$docoHandle.policies.neuron-authoring.new.tsx",
     { id: "legacy-doco-constitution-neuron-authoring-new" },
   ),
   route(
-    ":docoHandle/constitution/:entityType/:primitiveId/edit",
-    "routes/$docoHandle.primitives.$entityType.$primitiveId.edit.tsx",
+    ":docoHandle/constitution/:entityType/:policyId/edit",
+    "routes/$docoHandle.policies.$entityType.$policyId.edit.tsx",
     { id: "legacy-doco-constitution-edit" },
   ),
   route(":docoHandle/invites", "routes/$docoHandle.invites.tsx"),
@@ -205,12 +205,12 @@ export default [
   route(":docoHandle/api/intents/:id.json", "routes/$docoHandle.api.intents.$id[.]json.tsx"),
   route(":docoHandle/api/rules/:id.json", "routes/$docoHandle.api.rules.$id[.]json.tsx"),
   route(
-    ":docoHandle/api/guidance_primitives/:id.json",
-    "routes/$docoHandle.api.guidance_primitives.$id[.]json.tsx",
+    ":docoHandle/api/guidance_policies/:id.json",
+    "routes/$docoHandle.api.guidance_policies.$id[.]json.tsx",
   ),
   route(
-    ":docoHandle/api/neuron_authoring_primitives/:id.json",
-    "routes/$docoHandle.api.neuron_authoring_primitives.$id[.]json.tsx",
+    ":docoHandle/api/neuron_authoring_policies/:id.json",
+    "routes/$docoHandle.api.neuron_authoring_policies.$id[.]json.tsx",
   ),
   route(":docoHandle/api/actions/:id.json", "routes/$docoHandle.api.actions.$id[.]json.tsx"),
   route(":docoHandle/api/logs/:id.json", "routes/$docoHandle.api.logs.$id[.]json.tsx"),
@@ -223,15 +223,15 @@ export default [
   route(":docoHandle/api/principals.json", "routes/$docoHandle.api.principals[.]json.tsx"),
   route(":docoHandle/api/settings.json", "routes/$docoHandle.api.settings[.]json.tsx"),
   route(":docoHandle/api/audit.json", "routes/$docoHandle.api.audit[.]json.tsx"),
-  // Primitives are not neurons; they live on a
+  // Policies are not neurons; they live on a
   // dedicated endpoint and are intentionally absent from the generic
   // capture dispatcher below.
-  route(":docoHandle/api/primitives.json", "routes/$docoHandle.api.primitives[.]json.tsx"),
+  route(":docoHandle/api/policies.json", "routes/$docoHandle.api.policies[.]json.tsx"),
   // Generic capture dispatcher. Handles decisions, intents, ideas, actions,
   // references, rules, logs, evals, states via CAPTURE_REGISTRY in the
   // route file. Adding a new simple-capture entity type is one registry
-  // row; no new route needed. Primitive types are deliberately not in
-  // this registry — see /api/primitives.json above.
+  // row; no new route needed. Policy types are deliberately not in
+  // this registry — see /api/policies.json above.
   route(":docoHandle/api/:type.json", "routes/$docoHandle.api.$type[.]json.tsx"),
   route(":docoHandle/api/:type.txt", "routes/$docoHandle.api.$type[.]txt.tsx"),
   route(":docoHandle/activity", "routes/$docoHandle.activity.tsx"),

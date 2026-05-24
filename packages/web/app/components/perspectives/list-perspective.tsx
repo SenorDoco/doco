@@ -8,12 +8,12 @@
 //
 // Type-aware secondary sort: when two neurons tie on the primary key,
 // they're broken first by neuron-type rank (intents → decisions →
-// actions → … → primitives stay pinned near the top
+// actions → … → policies stay pinned near the top
 // because they're meta), then by a type-specific tiebreaker:
 //   decision/intent/rule/action → lifecycle rank (active first)
 //   log/eval                     → created_at desc (recent matters more)
-//   guidance/auth primitives     → name asc (stable alphabetical)
-// Primitives are pinned ABOVE the body for `rank_desc` since they're
+//   guidance/auth policies     → name asc (stable alphabetical)
+// Policies are pinned ABOVE the body for `rank_desc` since they're
 // the Doco's authoring contract.
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -40,8 +40,8 @@ const SORT_OPTIONS: ListSortKey[] = ["recent", "oldest", "rank_desc", "rank_asc"
 
 const NEURON_TYPE_ORDER = new Map(
   [
-    "guidance_primitive",
-    "neuron_authoring_primitive",
+    "guidance_policy",
+    "neuron_authoring_policy",
     "principal",
     "intent",
     "decision",
@@ -62,7 +62,7 @@ const LIFECYCLE_RANK = new Map(
   ["active", "drafting", "proposed", "retired"].map((lifecycle, index) => [lifecycle, index]),
 );
 
-const PRIMITIVE_TYPES = new Set(["guidance_primitive", "neuron_authoring_primitive"]);
+const POLICY_TYPES = new Set(["guidance_policy", "neuron_authoring_policy"]);
 const MAX_GRAPH_REFERENCES = 120;
 
 export interface ListPerspectiveNode {
@@ -269,9 +269,9 @@ function primaryCompare(
     case "oldest":
       return tsValue(a.created_at) - tsValue(b.created_at);
     case "rank_desc": {
-      // Primitives pin above the body: they're not graph
+      // Policies pin above the body: they're not graph
       // citizens in the same sense, so ranking them by PR is misleading.
-      const pinDiff = primitivePin(a) - primitivePin(b);
+      const pinDiff = policyPin(a) - policyPin(b);
       if (pinDiff !== 0) return pinDiff;
       return (pageRanks.get(b.id) ?? 0) - (pageRanks.get(a.id) ?? 0);
     }
@@ -301,8 +301,8 @@ function typeAwareCompare(
     case "log":
     case "eval":
       return tsValue(b.created_at) - tsValue(a.created_at);
-    case "guidance_primitive":
-    case "neuron_authoring_primitive":
+    case "guidance_policy":
+    case "neuron_authoring_policy":
     case "reference":
       return (a.name ?? "").localeCompare(b.name ?? "");
   }
@@ -321,8 +321,8 @@ function lifecycleRank(lifecycle: string | null): number {
   return LIFECYCLE_RANK.get(lifecycle ?? "active") ?? LIFECYCLE_RANK.size + 1;
 }
 
-function primitivePin(node: ListPerspectiveNode): number {
-  return PRIMITIVE_TYPES.has(node.entity_type) ? 0 : 1;
+function policyPin(node: ListPerspectiveNode): number {
+  return POLICY_TYPES.has(node.entity_type) ? 0 : 1;
 }
 
 function tsValue(value: string | null): number {

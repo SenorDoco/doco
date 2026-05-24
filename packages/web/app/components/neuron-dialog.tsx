@@ -5,7 +5,7 @@ import type { LifecycleStage, NeuronDialogDetail } from "~/lib/neuron-detail.ser
 
 // Per-entity-type prose-field-name lookup. Migrated neurons carry
 // their full prose under a key matching the entity type (intent,
-// decision, ...); non-migrated entities (principals, primitives) still
+// decision, ...); non-migrated entities (principals, policies) still
 // use the legacy summary/body_md pair. The dialog uses this to label
 // the prose section heading appropriately.
 const PROSE_FIELD_NAME: Record<string, string> = {

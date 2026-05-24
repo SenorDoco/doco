@@ -126,7 +126,7 @@ export async function action({ request }: { request: Request }) {
   const accept = form.get("accept_suggested_handle") === "1";
 
   if (!state.templateHandle) {
-    return { error: "Pick a primitives template.", suggestedHandle: null, state };
+    return { error: "Pick a policies template.", suggestedHandle: null, state };
   }
   if (!state.orgId && !state.newOrgHandle) {
     return { error: "Pick an organization or create a new one.", suggestedHandle: null, state };

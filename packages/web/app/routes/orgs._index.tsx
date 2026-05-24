@@ -151,7 +151,7 @@ export async function loader({ request }: { request: Request }) {
            FROM audit_events a
            LEFT JOIN principals p ON p.id = a.by_collaborator
           WHERE a.doco_id = ANY($1)
-            AND a.entity_type NOT IN ('guidance_primitive', 'neuron_authoring_primitive')
+            AND a.entity_type NOT IN ('guidance_policy', 'neuron_authoring_policy')
           ORDER BY a.at DESC
           LIMIT $2`,
         [myDocoIds, FEED_LIMIT],

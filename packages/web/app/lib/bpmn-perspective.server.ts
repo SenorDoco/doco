@@ -10,7 +10,7 @@
 //      doesn't resolve to a known principal, fall into the
 //      "unassigned" lane.
 //
-//   2. BPMN shape — the visual primitive a neuron renders as:
+//   2. BPMN shape — the visual policy a neuron renders as:
 //        intent, state           → circle      (events)
 //        decision                → diamond     (gateway)
 //        action, rule            → rectangle   (task / policy)
@@ -54,7 +54,7 @@ export interface BpmnGraphData {
 
 // Tables that contain data whose contents may carry lane-bearing
 // fields (actor_id / decided_by / wanted_by). Limited to the neuron
-// tables already in the overview graph; primitives are excluded.
+// tables already in the overview graph; policies are excluded.
 const BPMN_TABLES: { table: string; entityType: string }[] = [
   { table: "decisions", entityType: "decision" },
   { table: "intents", entityType: "intent" },
