@@ -444,7 +444,10 @@ export function BpmnPerspective({
 
   if (filteredLanes.length === 0) {
     return (
-      <div className="flex h-full min-h-0 flex-1 items-center justify-center rounded-md rounded-tl-none border border-border bg-background text-center text-sm font-medium text-muted-foreground">
+      <div
+        className="flex h-full min-h-0 flex-1 items-center justify-center rounded-md rounded-tl-none border border-border bg-background text-center text-sm font-medium text-muted-foreground"
+        style={{ boxShadow: "none" }}
+      >
         So empty
       </div>
     );
@@ -530,10 +533,29 @@ export function BpmnPerspective({
       })
     : null;
 
+  // Sticky pool header band — top-edge analogue of the lane rails.
+  // When a pool's in-canvas header has scrolled past the top of the
+  // canvas but the pool's body is still showing, pin the header to
+  // top=0 so the Intent label stays readable. Hidden once the
+  // in-canvas header is visible again (no double-label).
+  const POOL_RAIL_HEIGHT = Math.max(28, POOL_HEADER_HEIGHT * viewport.zoom);
+  const stickyPools = layout.poolGeometry
+    .map((pool) => {
+      const poolTopScreen = pool.y * viewport.zoom + viewport.y;
+      const poolBottomScreen = (pool.y + pool.height) * viewport.zoom + viewport.y;
+      const canvasHeight = graphSize.height || 480;
+      const headerVisible = poolTopScreen >= 0;
+      const poolOnScreen = poolBottomScreen > POOL_RAIL_HEIGHT && poolTopScreen < canvasHeight;
+      if (headerVisible || !poolOnScreen) return null;
+      return pool;
+    })
+    .filter((p): p is NonNullable<typeof p> => p !== null);
+
   return (
     <div
       ref={graphRef}
       className="relative h-full min-h-0 w-full flex-1 overflow-hidden rounded-md rounded-tl-none border border-border bg-background"
+      style={{ boxShadow: "none" }}
     >
       {Flow ? (
         <Flow.ReactFlow
@@ -615,6 +637,50 @@ export function BpmnPerspective({
           aria-hidden="true"
         >
           {laneRails}
+        </div>
+      ) : null}
+      {Flow && stickyPools.length > 0 ? (
+        <div
+          className="pointer-events-none absolute left-0 right-0 top-0 z-10 flex flex-col"
+          style={{ paddingLeft: SWIM_RAIL_WIDTH }}
+          aria-hidden="true"
+        >
+          {stickyPools.map((pool) => {
+            const isUnassigned = pool.intent_id === null;
+            return (
+              <div
+                key={pool.id}
+                className="flex items-center gap-2 border-b shadow-sm"
+                style={{
+                  height: POOL_RAIL_HEIGHT,
+                  background: isUnassigned
+                    ? "rgba(245, 245, 245, 0.94)"
+                    : "rgba(230, 236, 250, 0.94)",
+                  borderBottomColor: isUnassigned
+                    ? "var(--color-border)"
+                    : "rgba(40, 70, 160, 0.35)",
+                  padding: "0 14px",
+                  fontSize: 12,
+                  fontWeight: 700,
+                  textTransform: "uppercase",
+                  letterSpacing: 0.8,
+                  color: isUnassigned ? "var(--color-muted-foreground, #525252)" : "#1f2937",
+                  backdropFilter: "blur(4px)",
+                }}
+                title={pool.label}
+              >
+                {!isUnassigned && pool.intent_id ? (
+                  <span style={{ display: "inline-flex", gap: 4, flexShrink: 0 }}>
+                    <TypeBadge entityType="intent" lifecycle={pool.lifecycle} anchor="inline" />
+                    <LifecycleBadge lifecycle={pool.lifecycle} anchor="inline" />
+                  </span>
+                ) : null}
+                <span className="overflow-hidden text-ellipsis whitespace-nowrap">
+                  {pool.label}
+                </span>
+              </div>
+            );
+          })}
         </div>
       ) : null}
       {/* Lifecycle filter overlay — lives inside the BPMN canvas so the
@@ -712,6 +778,8 @@ interface BpmnLayout {
     label: string;
     y: number;
     height: number;
+    intent_id: string | null;
+    lifecycle: string | null;
   }>;
 }
 
@@ -887,6 +955,8 @@ function layOutBpmn(
       label: pool.label,
       y: poolStartY,
       height: cursorY - poolStartY,
+      intent_id: pool.intent_id,
+      lifecycle: pool.lifecycle,
     });
   }
 
@@ -927,23 +997,23 @@ function layOutBpmn(
   const flowEdges: FlowEdge[] = links
     .filter((link) => nodeSet.has(link.source) && nodeSet.has(link.target))
     .map((link, index) => {
-      // Some synapses are stored downstream→upstream in the data but
-      // their BPMN sequence flow runs the other way:
+      // Every sequence-flow synapse is stored downstream→upstream:
       //
-      // - `serves` is stored Action→Intent (Action serves Intent), but
-      //   the Intent is the start event at the origin of the flow —
-      //   arrows fan *out* from it.
-      // - `enacts` is stored Action→Decision (Action enacts a prior
-      //   Decision), but the Decision is the gateway and the Action is
-      //   the downstream branch — arrows go from the gateway *to* each
-      //   branch.
+      // - `follows`       `A.follows=[B]`        — B precedes A
+      // - `triggered_by`  `A.triggered_by=[B]`   — B triggers A
+      // - `enacts`        `A.decision_ids=[D]`   — D is the gateway, A is
+      //                                            the downstream branch
       //
-      // For both, flip the visual edge so the arrowhead lands on the
-      // downstream side. The underlying synapse direction in the data
-      // is unchanged; only the rendered edge is swapped. (And these
-      // matches the depth-walk direction: gateways/start-events end up
-      // at the lower depth, branches/actions at the higher depth.)
-      const flip = link.synapse_type === "serves" || link.synapse_type === "enacts";
+      // …plus `serves`, which is stored Action→Intent but the Intent
+      // is the start event at the origin of the flow — arrows fan
+      // *out* from it.
+      //
+      // For all of these, flip the visual edge so the arrowhead lands
+      // on the downstream side. The underlying synapse direction in
+      // the data is unchanged; only the rendered edge is swapped.
+      // Matches `computeDepths`, which already treats `target` as the
+      // predecessor for every entry in `SEQUENCE_FLOW_SYNAPSES`.
+      const flip = VISUAL_FLIP_SYNAPSES.has(link.synapse_type);
       const source = flip ? link.target : link.source;
       const target = flip ? link.source : link.target;
       const edgeOpacity = focalActive
@@ -1047,6 +1117,18 @@ function isNodeVisibleInViewport(
  * which is the opposite direction.
  */
 const SEQUENCE_FLOW_SYNAPSES: ReadonlySet<string> = new Set(["follows", "triggered_by", "enacts"]);
+
+// Synapses whose stored direction is downstream→upstream. The
+// renderer swaps source/target on these so the arrowhead lands on
+// the downstream node, matching BPMN sequence-flow convention. All
+// three sequence-flow synapses qualify, plus `serves` (Action→Intent,
+// but the Intent is the start event the flow fans out from).
+const VISUAL_FLIP_SYNAPSES: ReadonlySet<string> = new Set([
+  "follows",
+  "triggered_by",
+  "enacts",
+  "serves",
+]);
 
 function computeDepths(
   nodes: readonly BpmnNode[],

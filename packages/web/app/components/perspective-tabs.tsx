@@ -6,7 +6,7 @@
 // connection. Page-level chrome (search, action buttons) lives in the
 // title row above the perspective area.
 
-import { Pin, Settings } from "lucide-react";
+import { ChevronDown, Pin } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link, useFetcher, useNavigate } from "react-router";
 import { cn } from "~/lib/cn";
@@ -40,7 +40,11 @@ export function PerspectiveTabs({
           perspective={p}
           active={p.slug === activeSlug}
           isFirst={i === 0}
-          isLast={i === perspectives.length - 1}
+          // Last perspective tab only rounds its top-right when the
+          // settings chevron-tab ISN'T rendered after it. When canAdmin
+          // is true, the settings tab is the visually-last cell and
+          // owns the rounded outer corner.
+          isLast={i === perspectives.length - 1 && !canAdmin}
         />
       ))}
       {canAdmin ? (
@@ -87,7 +91,11 @@ function PerspectiveTab({ handle, perspective, active, isFirst, isLast }: Perspe
         // canvas without a visible seam. border-b-background occludes
         // the canvas's top border at the tab's footprint.
         "z-10 border-b-background bg-background text-foreground"
-      : "bg-input/40 text-muted-foreground hover:bg-input/60 hover:text-foreground",
+      : // border-b-transparent on inactive tabs so the tab's bottom
+        // border (22%-alpha border-border) doesn't STACK on top of
+        // the canvas's top border (also 22% alpha) and render as a
+        // ~39%-alpha darker line where they overlap.
+        "border-b-transparent bg-input/40 text-muted-foreground hover:bg-input/60 hover:text-foreground",
   );
   const title = perspective.ownerHandle
     ? `${perspective.name} — by ${perspective.ownerHandle}`
@@ -147,16 +155,22 @@ function PerspectiveSettingsMenu({
   const apiAction = `/${handle}/api/perspectives.json`;
 
   return (
-    <div ref={wrapperRef} className="relative ml-1 self-end pb-px">
+    <div ref={wrapperRef} className="relative">
       <button
         type="button"
         aria-label="Perspective settings"
         title="Perspective settings"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
-        className="neu-button inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:text-foreground"
+        // Styled to match an inactive perspective tab so it reads as
+        // part of the tab strip — same padding / border / colours,
+        // left-border overlap (`-ml-px`) so the last tab's right edge
+        // is shared. `rounded-tr-md` because this is now the visually
+        // last cell on the strip. `border-b-transparent` matches the
+        // inactive-tab treatment.
+        className="relative -ml-px inline-flex items-center gap-1.5 rounded-tr-md border border-border border-b-transparent bg-input/40 px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-input/60 hover:text-foreground"
       >
-        <Settings className="h-3.5 w-3.5" />
+        <ChevronDown className="h-4 w-4" />
       </button>
       {open ? (
         <div

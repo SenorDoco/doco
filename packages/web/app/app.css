@@ -104,6 +104,35 @@ select {
   box-shadow: var(--neu-inset);
 }
 
+/* Platform rule for `<select>` dropdowns:
+   1. Width sized to the widest <option>, never stretched to fill
+      its parent. Browser default is `width: auto`; Tailwind's
+      `w-full` is a common reflexive add that breaks this — a
+      select for {"block", "warn", "log"} ends up the same width
+      as a multi-line textarea above it, which reads as "this is a
+      free-form input, type anything" instead of "pick one of three
+      short labels." `width: max-content` is the explicit form of
+      the default; only override with `w-full`/`w-auto`/`max-w-…`
+      if the surrounding form's column rhythm genuinely calls for it
+      (e.g. the Señor Doco composer's full-row controls).
+   2. `appearance: none` disables the OS-native widget so the
+      `--neu-inset` shadow applied above is visible — without this,
+      `<select>` ignores box-shadow and renders as a chrome-styled
+      OS dropdown, breaking the "pressed like a text field" look the
+      platform wants. Paint a chevron via background-image so users
+      still see it's a dropdown. */
+select {
+  width: max-content;
+  max-width: 100%;
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 1.75rem;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='currentColor' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'><polyline points='3 4.5 6 7.5 9 4.5'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 0.5rem center;
+  background-size: 0.75rem 0.75rem;
+}
+
 input:focus-visible,
 textarea:focus-visible,
 select:focus-visible,

@@ -156,7 +156,7 @@ export default function NewRule({
                 </span>
                 <select
                   name="intent_id"
-                  className="mt-1 block w-full rounded-md px-3 py-2 text-sm"
+                  className="mt-1 block rounded-md px-3 py-2 text-sm"
                   defaultValue=""
                 >
                   <option value="">(none)</option>

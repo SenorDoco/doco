@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
-import { Link, useFetcher } from "react-router";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
+import { useEffect, useMemo, useState } from "react";
+import { useFetcher } from "react-router";
+import { Card, CardContent } from "~/components/card";
 import { CollaborationInvitePrompt } from "~/components/collaboration-invite-prompt";
 import {
   ALL_ROLES,
@@ -8,8 +8,36 @@ import {
   type CollaboratorInviteData,
   type InviteDefaultSelection,
   type InviteLevel,
-  optionsForInviteLevel,
 } from "~/lib/collaborator-invite";
+
+interface CombinedTargetOption {
+  key: string; // "<level>:<id>"
+  level: InviteLevel;
+  id: string;
+  label: string;
+}
+
+function buildCombinedOptions(
+  orgs: { id: string; label: string }[],
+  docos: { id: string; label: string }[],
+): CombinedTargetOption[] {
+  const out: CombinedTargetOption[] = [
+    ...orgs.map<CombinedTargetOption>((o) => ({
+      key: `org:${o.id}`,
+      level: "org",
+      id: o.id,
+      label: o.label,
+    })),
+    ...docos.map<CombinedTargetOption>((d) => ({
+      key: `doco:${d.id}`,
+      level: "doco",
+      id: d.id,
+      label: d.label,
+    })),
+  ];
+  out.sort((a, b) => a.label.localeCompare(b.label));
+  return out;
+}
 
 export function CollaboratorInviteCards({
   invite,
@@ -17,14 +45,11 @@ export function CollaboratorInviteCards({
   invite: CollaboratorInviteData;
 }) {
   return (
-    <div className="space-y-4">
-      <InviteHumanCard
-        orgs={invite.orgs}
-        docos={invite.docos}
-        defaultSelection={invite.defaultSelection}
-      />
-      <AgentRedirectCard />
-    </div>
+    <InviteHumanCard
+      orgs={invite.orgs}
+      docos={invite.docos}
+      defaultSelection={invite.defaultSelection}
+    />
   );
 }
 
@@ -41,61 +66,42 @@ function InviteHumanCard({
   const result = fetcher.data;
   const inviteResult = result && "intent" in result && result.intent === "invite" ? result : null;
   const error = result && "error" in result ? result.error : undefined;
-  const [level, setLevel] = useState<InviteLevel>(defaultSelection.level);
-  const [targetId, setTargetId] = useState(defaultSelection.targetId);
 
-  const options = optionsForInviteLevel(level, { orgs, docos });
-  const noTargets = options.length === 0;
+  const combinedOptions = useMemo(() => buildCombinedOptions(orgs, docos), [orgs, docos]);
+  const defaultKey = `${defaultSelection.level}:${defaultSelection.targetId}`;
+  const initialSelected = combinedOptions.some((o) => o.key === defaultKey)
+    ? defaultKey
+    : (combinedOptions[0]?.key ?? "");
+  const [selectedKey, setSelectedKey] = useState(initialSelected);
+  const noTargets = combinedOptions.length === 0;
 
   useEffect(() => {
-    if (options.length === 0) {
-      if (targetId !== "") setTargetId("");
+    if (noTargets) {
+      if (selectedKey !== "") setSelectedKey("");
       return;
     }
-    if (!options.some((opt) => opt.id === targetId)) {
-      setTargetId(options[0]?.id ?? "");
+    if (!combinedOptions.some((opt) => opt.key === selectedKey)) {
+      setSelectedKey(combinedOptions[0]?.key ?? "");
     }
-  }, [options, targetId]);
+  }, [combinedOptions, noTargets, selectedKey]);
+
+  const selected = combinedOptions.find((o) => o.key === selectedKey);
 
   return (
     <Card>
-      <CardHeader>
-        <CardTitle>Invite a human</CardTitle>
-        <CardDescription>
-          They click the URL, sign in with GitHub, and land in your Doco with the exact role you
-          pick.
-        </CardDescription>
-      </CardHeader>
       <CardContent className="space-y-3">
         <fetcher.Form method="post" className="flex flex-col gap-3">
           <input type="hidden" name="intent" value="invite" />
-          <div className="flex flex-wrap items-end gap-3">
+          <input type="hidden" name="level" value={selected?.level ?? ""} />
+          <input type="hidden" name="target_id" value={selected?.id ?? ""} />
+          <div className="flex flex-wrap items-end justify-start gap-3">
             <label className="flex flex-col gap-1 text-sm">
-              <span className="text-xs uppercase tracking-wide text-muted-foreground">Level</span>
-              <select
-                name="level"
-                value={level}
-                onChange={(e) => {
-                  const nextLevel = e.currentTarget.value as InviteLevel;
-                  setLevel(nextLevel);
-                  const nextOptions = optionsForInviteLevel(nextLevel, { orgs, docos });
-                  setTargetId(nextOptions[0]?.id ?? "");
-                }}
-                data-testid="invite-level"
-                className="rounded-md px-3 py-2"
-              >
-                <option value="org">Org</option>
-                <option value="doco">Doco</option>
-              </select>
-            </label>
-            <label className="flex flex-1 flex-col gap-1 text-sm">
               <span className="text-xs uppercase tracking-wide text-muted-foreground">
-                {level === "org" ? "Organization" : "Doco"}
+                Org / Doco
               </span>
               <select
-                name="target_id"
-                value={targetId}
-                onChange={(e) => setTargetId(e.currentTarget.value)}
+                value={selectedKey}
+                onChange={(e) => setSelectedKey(e.currentTarget.value)}
                 disabled={noTargets}
                 data-testid="invite-target"
                 className="rounded-md px-3 py-2 disabled:opacity-50"
@@ -103,9 +109,9 @@ function InviteHumanCard({
                 {noTargets ? (
                   <option value="">(no targets you can invite into)</option>
                 ) : (
-                  options.map((opt) => (
-                    <option key={opt.id} value={opt.id}>
-                      {opt.label}
+                  combinedOptions.map((opt) => (
+                    <option key={opt.key} value={opt.key}>
+                      [{opt.level}] {opt.label}
                     </option>
                   ))
                 )}
@@ -159,29 +165,6 @@ function InviteHumanCard({
             }
           />
         ) : null}
-      </CardContent>
-    </Card>
-  );
-}
-
-function AgentRedirectCard() {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Looking to add an AI agent?</CardTitle>
-        <CardDescription>
-          Agents authenticate via OAuth and don't redeem an invite URL. Mint an API key on the API
-          keys page — it's bound to your account and you pick which orgs / docos it can reach.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <Link
-          to="/api-keys"
-          data-testid="invite-agent-redirect"
-          className="neu-button bg-primary text-primary-foreground hover:opacity-90 inline-flex rounded-md px-3 py-1.5 text-xs font-semibold"
-        >
-          Go to API keys →
-        </Link>
       </CardContent>
     </Card>
   );

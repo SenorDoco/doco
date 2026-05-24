@@ -133,7 +133,10 @@ export function ListPerspective({ nodes, pageRanks, visibleLifecycles }: ListPer
     // absolutely-positions at top-3 left-3 sits INSIDE this container,
     // above the list — `pt-12` reserves the vertical room the search
     // needs without covering the count + sort row or the first item.
-    <div className="flex h-full min-h-0 flex-col gap-3 rounded-md rounded-tl-none border border-border bg-background px-3 pb-3 pt-12">
+    <div
+      className="flex h-full min-h-0 flex-col gap-3 rounded-md rounded-tl-none border border-border bg-background px-3 pb-3 pt-12"
+      style={{ boxShadow: "none" }}
+    >
       <div className="flex items-center justify-between gap-2">
         <p className="text-xs text-muted-foreground">
           {filtered.length} neuron{filtered.length === 1 ? "" : "s"}

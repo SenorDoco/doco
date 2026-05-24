@@ -1024,6 +1024,16 @@ function visibleChatBlocks(blocks: readonly AnyBlock[]): AnyBlock[] {
   return blocks.filter((b) => b.type !== "tool_use" && b.type !== "tool_result");
 }
 
+/**
+ * Filter block list for the main chat. Tool-use chips are
+ * intermediate "agent is calling X" affordances that belong in the
+ * Thinking column, not the user-facing message stream. Text +
+ * attachments stay.
+ */
+function visibleChatBlocks(blocks: readonly AnyBlock[]): AnyBlock[] {
+  return blocks.filter((b) => b.type !== "tool_use" && b.type !== "tool_result");
+}
+
 function SavedMessage({ message }: { message: ChatMessage }) {
   const isAssistant = message.role === "assistant";
   const visible = visibleChatBlocks(message.content);
