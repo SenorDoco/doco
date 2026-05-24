@@ -1322,7 +1322,20 @@ function summarizeToolResult(content: unknown, isError: boolean | undefined): st
       const b = body as Record<string, unknown>;
       const footers = b.footer_lines;
       if (Array.isArray(footers) && footers.length > 0 && typeof footers[0] === "string") {
-        return `✓ ${footers[0]}`;
+        // Footer-lines are the Doco agent-protocol format, designed
+        // for external agents to paste verbatim in chat. In our own
+        // sidebar that's noise — strip the `[🔮 Doco]` prefix, the
+        // emoji decoration, the `[label](url)` markdown wrap, and the
+        // trailing `(0.0s)` / `(id_xxx)` tails so what's left is the
+        // human bit.
+        const cleaned = footers[0]
+          .replace(/^\[🔮 Doco\]\s*/u, "")
+          .replace(/^[\p{Emoji}\p{Extended_Pictographic}‍️\s]+/u, "")
+          .replace(/\s*\(\d+(\.\d+)?s\)\s*$/u, "")
+          .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+          .replace(/\s*\([a-z]+_[A-Z0-9]+\)\s*$/i, "")
+          .trim();
+        return `✓ ${cleaned || `HTTP ${status ?? 200}`}`;
       }
       const id = typeof b.id === "string" ? b.id : null;
       if (id) return `✓ ${status ?? 200} — ${id}`;
@@ -1360,15 +1373,63 @@ function ToolResultRow({ result }: { result: ContentBlockToolResult }) {
   );
 }
 
+/**
+ * Type-named prose field per neuron type (post-migration 023). The
+ * server stores the prose under this field name; the agent's POST
+ * bodies use the same key. Lets the chip label show the actual
+ * intent of a capture instead of just the URL.
+ */
+const NEURON_PROSE_FIELD: Record<string, string> = {
+  decisions: "decision",
+  intents: "intent",
+  ideas: "idea",
+  actions: "action",
+  references: "reference",
+  rules: "rule",
+  logs: "log",
+  evals: "eval",
+  states: "state",
+  principals: "principal",
+};
+
+/**
+ * First-line preview of a possibly-multiline prose field. The first
+ * line of every neuron's prose is the headline (the Decision summary,
+ * the Intent statement, etc.) — perfect for a one-line chip.
+ */
+function firstLine(s: unknown, cap = 60): string {
+  if (typeof s !== "string") return "";
+  const head = s.split(/\r?\n/)[0]?.trim() ?? "";
+  return head.length > cap ? `${head.slice(0, cap - 1)}…` : head;
+}
+
 function toolLabel(name: string, input: unknown): string {
   if (name === "navigate" && input && typeof input === "object") {
     const url = (input as { url?: unknown }).url;
-    return `navigate(${typeof url === "string" ? url : ""})`;
+    return `→ ${typeof url === "string" ? url : ""}`;
   }
   if (name === "doco_api" && input && typeof input === "object") {
-    const method = (input as { method?: unknown }).method;
-    const path = (input as { path?: unknown }).path;
-    return `${typeof method === "string" ? method : "?"} ${typeof path === "string" ? path : ""}`;
+    const i = input as { method?: unknown; path?: unknown; body?: unknown };
+    const method = typeof i.method === "string" ? i.method.toUpperCase() : "GET";
+    const path = typeof i.path === "string" ? i.path : "";
+    // Parse "/<handle>/api/<type>(/<id>)?.json" so the chip can show
+    // what the agent is actually doing instead of a raw URL.
+    const m = path.match(/\/api\/([a-z_-]+)(?:\/([^/.]+))?\.(?:json|txt)$/);
+    if (m) {
+      const type = m[1] ?? "";
+      const id = m[2] ?? "";
+      const body = i.body as Record<string, unknown> | undefined;
+      const proseField = NEURON_PROSE_FIELD[type];
+      const label = proseField && body ? firstLine(body[proseField], 60) : "";
+      const typeLabel = type.replace(/_/g, " ");
+      if (method === "POST" && label) return `Adding ${typeLabel.replace(/s$/, "")}: ${label}`;
+      if (method === "POST") return `Adding ${typeLabel.replace(/s$/, "")}`;
+      if (method === "PATCH" && id) return `Updating ${typeLabel.replace(/s$/, "")}`;
+      if (method === "DELETE" && id) return `Deleting ${typeLabel.replace(/s$/, "")}`;
+      if (method === "GET" && id) return `Reading ${typeLabel.replace(/s$/, "")}`;
+      if (method === "GET") return `Listing ${typeLabel}`;
+    }
+    return `${method} ${path}`;
   }
   return name;
 }
