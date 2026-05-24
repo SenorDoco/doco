@@ -750,14 +750,30 @@ function layOutBpmn(
   const flowEdges: FlowEdge[] = links
     .filter((link) => nodeSet.has(link.source) && nodeSet.has(link.target))
     .map((link, index) => {
+      // `serves` is stored Action→Intent in the data (an Action serves
+      // an Intent), but in BPMN the Intent sits at the *origin* of the
+      // flow — start events (circles) point outward to the work that
+      // fulfils them. Flip the visual direction so the arrow reads
+      // "this Intent drives this Action" rather than "this Action
+      // points at its goal." Data model is unchanged; only the rendered
+      // edge is swapped.
+      const flip = link.synapse_type === "serves";
+      const source = flip ? link.target : link.source;
+      const target = flip ? link.source : link.target;
       const edgeOpacity = focalActive
-        ? opacityForEdge(focalDepthByNode.get(link.source), focalDepthByNode.get(link.target))
+        ? opacityForEdge(focalDepthByNode.get(source), focalDepthByNode.get(target))
         : 1;
       return {
         id: `${link.source}-${link.target}-${index}`,
-        source: link.source,
-        target: link.target,
-        type: "smoothstep",
+        source,
+        target,
+        // bezier (vs the prior smoothstep) curves naturally away from
+        // its endpoints, which spreads convergent fans (many edges into
+        // a single node) and divergent fans (many edges out of one)
+        // visually. Orthogonal smoothstep routing tended to stack
+        // multiple edges on the same segment near the endpoints —
+        // crossings still happen but parallel runs no longer overlap.
+        type: "bezier",
         selectable: false,
         focusable: false,
         interactionWidth: 0,
