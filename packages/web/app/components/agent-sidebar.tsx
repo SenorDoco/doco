@@ -60,7 +60,11 @@ interface UploadAcceptedMeta {
 
 const ATTACHMENT_RETENTION_NOTICE = "Attachments are stored for 30 days, then deleted.";
 const ATTACHMENT_ACCEPT =
-  "image/jpeg,image/png,image/gif,image/webp,application/pdf,text/plain,text/markdown,.md";
+  // The trailing extension hints (.md, .bpmn, .xml) cover formats
+  // browsers don't have a built-in MIME type for. The server
+  // normalizes octet-stream uploads with these extensions to
+  // application/xml so the upload survives the MIME allowlist.
+  "image/jpeg,image/png,image/gif,image/webp,application/pdf,text/plain,text/markdown,text/xml,application/xml,.md,.bpmn,.xml";
 
 interface ChatMessage {
   id: string;
@@ -83,6 +87,12 @@ interface InFlightMessage {
 
 const COLLAPSE_KEY = "senor-doco:collapsed";
 const UNREAD_KEY = "senor-doco:unread";
+// Broadcast channel name shared across tabs in the same browser
+// origin. Same session → same conversation, so any change in one tab
+// pings the others to reload.
+const SYNC_CHANNEL = "doco:senor-doco-sync";
+
+type SyncMessage = { kind: "changed" } | { kind: "remote-inflight"; busy: boolean };
 
 function readBoolFlag(key: string): boolean {
   if (typeof window === "undefined") return false;
@@ -114,6 +124,10 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
   const [hasMore, setHasMore] = useState(false);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [bootstrapped, setBootstrapped] = useState(false);
+  // Another tab on this origin is currently streaming a reply. Used
+  // to show a "Señor Doco is replying…" placeholder bubble in tabs
+  // that didn't initiate the send.
+  const [remoteInflight, setRemoteInflight] = useState(false);
   // Lazy initializers so SSR doesn't touch localStorage; the first
   // client render hydrates from the stored value.
   const [collapsed, setCollapsed] = useState<boolean>(() => readBoolFlag(COLLAPSE_KEY));
@@ -150,6 +164,20 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
     setUnread(true);
     writeBoolFlag(UNREAD_KEY, true);
   }, []);
+  // Cross-tab sync — BroadcastChannel posts a message to every other
+  // tab on this origin (the sender doesn't receive its own posts).
+  // Same browser session → same conversation, so any change in one tab
+  // pings the others to re-fetch.
+  const syncChannelRef = useRef<BroadcastChannel | null>(null);
+  const broadcastSync = useCallback((msg: SyncMessage) => {
+    const ch = syncChannelRef.current;
+    if (!ch) return;
+    try {
+      ch.postMessage(msg);
+    } catch {
+      // BroadcastChannel can throw if the page is unloading — safe to ignore.
+    }
+  }, []);
   // Tracks the earliest loaded message so concurrent state reads (the
   // scroll handler closes over stale `messages`) always page from the
   // true top of the loaded window.
@@ -180,6 +208,40 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
     void reload();
     return () => abortRef.current?.abort();
   }, [reload]);
+
+  // Subscribe to cross-tab sync messages. SSR-guarded — BroadcastChannel
+  // doesn't exist on the server, and older browsers without it just
+  // skip the feature (the sidebar continues to work, just without
+  // cross-tab updates).
+  useEffect(() => {
+    if (typeof BroadcastChannel === "undefined") return;
+    const ch = new BroadcastChannel(SYNC_CHANNEL);
+    syncChannelRef.current = ch;
+    ch.onmessage = (event) => {
+      const msg = event.data as SyncMessage | undefined;
+      if (!msg) return;
+      if (msg.kind === "changed") {
+        // Another tab saved / received a message. Re-fetch the
+        // canonical conversation snapshot so this tab catches up.
+        void reload();
+        // Re-fetch implies the remote stream landed; clear any
+        // lingering "Señor Doco is replying somewhere else" indicator.
+        setRemoteInflight(false);
+        // If this tab is collapsed, surface the new content via the
+        // unread dot.
+        if (collapsedRef.current) markUnread();
+      } else if (msg.kind === "remote-inflight") {
+        // Only show the placeholder when THIS tab isn't already
+        // streaming locally; otherwise the local in-flight bubble
+        // covers it.
+        setRemoteInflight(msg.busy);
+      }
+    };
+    return () => {
+      ch.close();
+      syncChannelRef.current = null;
+    };
+  }, [reload, markUnread]);
 
   // After the first hydration completes, jump straight to the bottom so
   // the user sees the most recent turn. Runs once, after `messages` has
@@ -305,6 +367,9 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
     setStaged([]);
     setUploadError(null);
     setBusy(true);
+    // Tell other tabs that Señor Doco is busy — they'll show a
+    // "replying somewhere else" placeholder until our stream ends.
+    broadcastSync({ kind: "remote-inflight", busy: true });
 
     // Local accumulator — sole source of truth for what to commit at end
     // of stream. React state lags async updates, so we can't read it from
@@ -420,6 +485,11 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
             bumpInFlight();
           } else if (event.kind === "navigate") {
             navigate(event.url);
+          } else if (event.kind === "message_saved") {
+            // Server just persisted a user or assistant message. Tell
+            // other tabs so they re-fetch the canonical snapshot and
+            // see the message in real time.
+            broadcastSync({ kind: "changed" });
           } else if (event.kind === "error") {
             localContent.push({ type: "text", text: `[error] ${event.message}` });
             bumpInFlight();
@@ -462,17 +532,31 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
       }
       setInFlight(null);
       setBusy(false);
+      // Settled — tell other tabs to re-fetch the final state (covers
+      // the late-arriving assistant message) and that Señor Doco is
+      // no longer mid-reply.
+      broadcastSync({ kind: "remote-inflight", busy: false });
+      broadcastSync({ kind: "changed" });
     }
-  }, [inputText, busy, staged, location.pathname, location.search, navigate]);
+  }, [inputText, busy, staged, location.pathname, location.search, navigate, broadcastSync]);
 
   const allMessages = useMemo<RenderableMessage[]>(() => {
     const out: RenderableMessage[] = messages.map((m) => ({ kind: "saved", message: m }));
     if (inFlight) {
       out.push({ kind: "inflight", message: inFlight });
+    } else if (remoteInflight) {
+      // Another tab is mid-reply. Show an empty in-flight bubble so
+      // this tab tells the user something's happening; the content
+      // arrives via the `changed` broadcast once the remote stream
+      // settles and we re-fetch.
+      out.push({
+        kind: "inflight",
+        message: { content: [], toolResults: new Map() },
+      });
     }
     return out;
-  }, [messages, inFlight]);
-  const agentActive = busy || inFlight !== null;
+  }, [messages, inFlight, remoteInflight]);
+  const agentActive = busy || inFlight !== null || remoteInflight;
 
   // While collapsed, any new content from the server (a fresh message
   // saved, or an in-flight stream still landing) flips the unread flag.
