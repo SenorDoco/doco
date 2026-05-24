@@ -1262,8 +1262,8 @@ function BpmnLaneNode({ data }: { data: BpmnLaneData }) {
             #{data.referenceNumber}
           </span>
         ) : null}
-        <LaneBadgeRow lane={data.lane} />
         <span>{data.lane.label}</span>
+        <LaneBadgeRow lane={data.lane} />
       </div>
     </div>
   );
