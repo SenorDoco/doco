@@ -58,6 +58,14 @@ export const DOCO_TEMPLATES: DocoTemplateMeta[] = [
     updatedAt: "2026-05-12",
     owner: TEMPLATE_OWNER,
   },
+  {
+    handle: "org-chart",
+    label: "Org Chart",
+    description:
+      "Map the people and AI agents in an organization — reporting lines, teams, and appointments. Every member must declare whether they're a person or an AI agent.",
+    updatedAt: "2026-05-24",
+    owner: TEMPLATE_OWNER,
+  },
 ];
 
 /** Look up a single template by handle (used to re-render label/desc
