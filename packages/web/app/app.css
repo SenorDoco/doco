@@ -175,6 +175,13 @@ button[class*="bg-primary"]:active {
 [class~="divide-y"] > * + * {
   box-shadow: inset 0 1px 0 color-mix(in oklch, white 75%, transparent);
 }
+/* `<tr>` elements ignore `box-shadow` in some browsers (table-row
+   display is special-cased). When a `divide-y` lands on a `<tbody>`,
+   paint the highlight on the child cells instead so the etched
+   divider actually shows up on table rows. */
+[class~="divide-y"] > tr + tr > * {
+  box-shadow: inset 0 1px 0 color-mix(in oklch, white 75%, transparent);
+}
 [class~="divide-x"] > * + * {
   box-shadow: inset 1px 0 0 color-mix(in oklch, white 75%, transparent);
 }

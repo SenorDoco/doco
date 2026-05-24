@@ -776,7 +776,7 @@ EXAMPLE — neuron_authoring (probabilistic)
       "spec": "Pass when the Decision explains at least one alternative and why it was rejected."
     }'
 
-UPDATE A SPECIFIC PRIMITIVE
+UPDATE A SPECIFIC POLICY
   PATCH ${baseUrl}/${handle}/api/guidance_policies/<id>.json
   PATCH ${baseUrl}/${handle}/api/neuron_authoring_policies/<id>.json
   Content-Type: application/json

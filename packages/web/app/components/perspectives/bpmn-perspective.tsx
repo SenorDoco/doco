@@ -84,6 +84,12 @@ interface BpmnPerspectiveProps {
 }
 
 const LANE_HEIGHT = 140;
+// Small inset on every lane so the dashed swimlane separator doesn't
+// touch the canvas's absolute left edge. Reads as a margin between
+// the page chrome and the BPMN visualization. Lanes start at canvas
+// x=LANE_LEFT_INSET; children sit relative to their parent so they
+// shift right with it.
+const LANE_LEFT_INSET = 16;
 // The milestone band runs perpendicular to the lanes in BPMN, so it
 // reads as a phase ribbon rather than a swim lane. Keep it compact so
 // it doesn't compete visually with the actor lanes below.
@@ -342,65 +348,76 @@ export function BpmnPerspective({
   // label visually matches the in-canvas BpmnLaneNode label (which lives
   // inside React Flow's zoom transform). Font family/weight/case mirror
   // the in-canvas styling so the two reads as the same label.
+  //
+  // Suppress the rail when the in-canvas label is clearly visible past
+  // the rail's right edge — otherwise the label reads twice. The
+  // in-canvas label spans canvas x=LANE_LEFT_INSET..(LANE_LEFT_INSET +
+  // LANE_LABEL_WIDTH); in screen coords that's viewport.x + lo*zoom
+  // through viewport.x + hi*zoom. When the right edge is past the
+  // rail's right edge the user can already read the lane name.
   const SWIM_RAIL_WIDTH = 32;
   const RAIL_LABEL_BASE_FONT = 11;
   const RAIL_BADGE_BASE_FONT = 10;
-  const laneRails = layout.lanes.map((lane) => {
-    const laneTop = lane.y * viewport.zoom + viewport.y;
-    const laneBottom = (lane.y + lane.height) * viewport.zoom + viewport.y;
-    const canvasHeight = graphSize.height || 480;
-    if (laneBottom <= 0 || laneTop >= canvasHeight) return null;
-    const visibleTop = Math.max(0, laneTop);
-    const visibleBottom = Math.min(canvasHeight, laneBottom);
-    const railHeight = Math.max(44, visibleBottom - visibleTop);
-    const top = Math.min(Math.max(0, visibleTop), Math.max(0, canvasHeight - railHeight));
-    const isBand = lane.kind !== "principal";
-    const referenceNumber = referenceNumberByEntityId.get(lane.id);
-    const labelFontPx = RAIL_LABEL_BASE_FONT * viewport.zoom;
-    const badgeFontPx = RAIL_BADGE_BASE_FONT * viewport.zoom;
-    const badgeBox = badgeFontPx * 2;
-    return (
-      <div
-        key={lane.id}
-        className={`absolute left-0 flex items-center justify-center border-r shadow-sm ${
-          isBand ? "border-border bg-card/85" : "border-border bg-card/90"
-        }`}
-        style={{ top, height: railHeight, width: SWIM_RAIL_WIDTH }}
-        data-bpmn-lane-rail={lane.id}
-        title={lane.label}
-      >
-        {referenceNumber ? (
-          <span
-            aria-label={`Graph reference #${referenceNumber}: ${lane.label}`}
-            className="pointer-events-none absolute left-1/2 flex -translate-x-1/2 items-center justify-center rounded-full bg-primary font-bold leading-none text-primary-foreground shadow-sm ring-2 ring-card"
-            style={{
-              top: 4,
-              minWidth: badgeBox,
-              height: badgeBox,
-              padding: `0 ${Math.max(2, badgeFontPx * 0.4)}px`,
-              fontSize: badgeFontPx,
-            }}
-            title={`Graph reference #${referenceNumber}`}
+  const inCanvasLabelRightEdge = viewport.x + (LANE_LEFT_INSET + LANE_LABEL_WIDTH) * viewport.zoom;
+  const showRailLabels = inCanvasLabelRightEdge <= SWIM_RAIL_WIDTH;
+  const laneRails = showRailLabels
+    ? layout.lanes.map((lane) => {
+        const laneTop = lane.y * viewport.zoom + viewport.y;
+        const laneBottom = (lane.y + lane.height) * viewport.zoom + viewport.y;
+        const canvasHeight = graphSize.height || 480;
+        if (laneBottom <= 0 || laneTop >= canvasHeight) return null;
+        const visibleTop = Math.max(0, laneTop);
+        const visibleBottom = Math.min(canvasHeight, laneBottom);
+        const railHeight = Math.max(44, visibleBottom - visibleTop);
+        const top = Math.min(Math.max(0, visibleTop), Math.max(0, canvasHeight - railHeight));
+        const isBand = lane.kind !== "principal";
+        const referenceNumber = referenceNumberByEntityId.get(lane.id);
+        const labelFontPx = RAIL_LABEL_BASE_FONT * viewport.zoom;
+        const badgeFontPx = RAIL_BADGE_BASE_FONT * viewport.zoom;
+        const badgeBox = badgeFontPx * 2;
+        return (
+          <div
+            key={lane.id}
+            className={`absolute left-0 flex items-center justify-center border-r shadow-sm ${
+              isBand ? "border-border bg-card/85" : "border-border bg-card/90"
+            }`}
+            style={{ top, height: railHeight, width: SWIM_RAIL_WIDTH }}
+            data-bpmn-lane-rail={lane.id}
+            title={lane.label}
           >
-            #{referenceNumber}
-          </span>
-        ) : null}
-        <span
-          className="block max-h-full overflow-hidden whitespace-nowrap px-1 font-mono font-semibold text-foreground"
-          style={{
-            writingMode: "vertical-rl",
-            transform: "rotate(180deg)",
-            textOverflow: "ellipsis",
-            fontSize: labelFontPx,
-            textTransform: isBand ? "uppercase" : "none",
-            letterSpacing: isBand ? 0.6 : 0,
-          }}
-        >
-          {lane.label}
-        </span>
-      </div>
-    );
-  });
+            {referenceNumber ? (
+              <span
+                aria-label={`Graph reference #${referenceNumber}: ${lane.label}`}
+                className="pointer-events-none absolute left-1/2 flex -translate-x-1/2 items-center justify-center rounded-full bg-primary font-bold leading-none text-primary-foreground shadow-sm ring-2 ring-card"
+                style={{
+                  top: 4,
+                  minWidth: badgeBox,
+                  height: badgeBox,
+                  padding: `0 ${Math.max(2, badgeFontPx * 0.4)}px`,
+                  fontSize: badgeFontPx,
+                }}
+                title={`Graph reference #${referenceNumber}`}
+              >
+                #{referenceNumber}
+              </span>
+            ) : null}
+            <span
+              className="block max-h-full overflow-hidden whitespace-nowrap px-1 font-mono font-semibold text-foreground"
+              style={{
+                writingMode: "vertical-rl",
+                transform: "rotate(180deg)",
+                textOverflow: "ellipsis",
+                fontSize: labelFontPx,
+                textTransform: isBand ? "uppercase" : "none",
+                letterSpacing: isBand ? 0.6 : 0,
+              }}
+            >
+              {lane.label}
+            </span>
+          </div>
+        );
+      })
+    : null;
 
   return (
     <div
@@ -678,7 +695,7 @@ function layOutBpmn(
     flowNodes.push({
       id: laneNodeId(lane.id),
       type: "bpmnLane",
-      position: { x: 0, y: cursorY },
+      position: { x: LANE_LEFT_INSET, y: cursorY },
       data: {
         lane,
         height: laneHeight,
@@ -733,14 +750,30 @@ function layOutBpmn(
   const flowEdges: FlowEdge[] = links
     .filter((link) => nodeSet.has(link.source) && nodeSet.has(link.target))
     .map((link, index) => {
+      // `serves` is stored Action→Intent in the data (an Action serves
+      // an Intent), but in BPMN the Intent sits at the *origin* of the
+      // flow — start events (circles) point outward to the work that
+      // fulfils them. Flip the visual direction so the arrow reads
+      // "this Intent drives this Action" rather than "this Action
+      // points at its goal." Data model is unchanged; only the rendered
+      // edge is swapped.
+      const flip = link.synapse_type === "serves";
+      const source = flip ? link.target : link.source;
+      const target = flip ? link.source : link.target;
       const edgeOpacity = focalActive
-        ? opacityForEdge(focalDepthByNode.get(link.source), focalDepthByNode.get(link.target))
+        ? opacityForEdge(focalDepthByNode.get(source), focalDepthByNode.get(target))
         : 1;
       return {
         id: `${link.source}-${link.target}-${index}`,
-        source: link.source,
-        target: link.target,
-        type: "smoothstep",
+        source,
+        target,
+        // bezier (vs the prior smoothstep) curves naturally away from
+        // its endpoints, which spreads convergent fans (many edges into
+        // a single node) and divergent fans (many edges out of one)
+        // visually. Orthogonal smoothstep routing tended to stack
+        // multiple edges on the same segment near the endpoints —
+        // crossings still happen but parallel runs no longer overlap.
+        type: "bezier",
         selectable: false,
         focusable: false,
         interactionWidth: 0,
