@@ -718,8 +718,8 @@ export function OverviewGraph({
         ref={graphRef}
         className={
           fillHeight
-            ? "relative min-h-0 w-full flex-1 overflow-hidden rounded-md rounded-tl-none border border-border bg-white"
-            : "relative h-[65vh] min-h-[480px] w-full overflow-hidden rounded-md rounded-tl-none border border-border bg-white"
+            ? "relative min-h-0 w-full flex-1 overflow-hidden rounded-md rounded-tl-none border border-border bg-background"
+            : "relative h-[65vh] min-h-[480px] w-full overflow-hidden rounded-md rounded-tl-none border border-border bg-background"
         }
       >
         {search ? (
@@ -804,6 +804,7 @@ export function OverviewGraph({
               style={{
                 width: 120,
                 height: 90,
+                background: "var(--color-background)",
                 border: "1px solid var(--color-border)",
                 borderRadius: "var(--radius)",
                 overflow: "hidden",

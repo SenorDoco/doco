@@ -444,7 +444,7 @@ export function BpmnPerspective({
 
   if (filteredLanes.length === 0) {
     return (
-      <div className="flex h-full min-h-0 flex-1 items-center justify-center rounded-md rounded-tl-none border border-border bg-white text-center text-sm font-medium text-muted-foreground">
+      <div className="flex h-full min-h-0 flex-1 items-center justify-center rounded-md rounded-tl-none border border-border bg-background text-center text-sm font-medium text-muted-foreground">
         So empty
       </div>
     );
@@ -533,7 +533,7 @@ export function BpmnPerspective({
   return (
     <div
       ref={graphRef}
-      className="relative h-full min-h-0 w-full flex-1 overflow-hidden rounded-md rounded-tl-none border border-border bg-white"
+      className="relative h-full min-h-0 w-full flex-1 overflow-hidden rounded-md rounded-tl-none border border-border bg-background"
     >
       {Flow ? (
         <Flow.ReactFlow
@@ -596,6 +596,7 @@ export function BpmnPerspective({
             style={{
               width: 140,
               height: 100,
+              background: "var(--color-background)",
               border: "1px solid var(--color-border)",
               borderRadius: "var(--radius)",
               overflow: "hidden",
@@ -1262,8 +1263,8 @@ function BpmnLaneNode({ data }: { data: BpmnLaneData }) {
             #{data.referenceNumber}
           </span>
         ) : null}
-        <LaneBadgeRow lane={data.lane} />
         <span>{data.lane.label}</span>
+        <LaneBadgeRow lane={data.lane} />
       </div>
     </div>
   );
@@ -1483,10 +1484,10 @@ function BpmnCircleNode({ data }: { data: BpmnNodeData }) {
 
 function BpmnDiamondNode({ data }: { data: BpmnNodeData }) {
   const stroke = lifecycleColor(data.node.lifecycle);
-  // The wrapper is the React Flow box; we rotate an inner square 45°
-  // for the diamond outline, but keep a counter-rotated label so text
-  // reads horizontally.
-  const inner = Math.min(NODE_WIDTH, NODE_HEIGHT) - 6;
+  // The diamond fills the full React Flow box so gateways line up
+  // visually with Task rectangles. For a non-square box that means
+  // an elongated rhombus rather than a perfect diamond — acceptable
+  // by design so process columns share one horizontal rhythm.
   return (
     <div
       {...graphReferenceAttributes(data)}
@@ -1500,22 +1501,26 @@ function BpmnDiamondNode({ data }: { data: BpmnNodeData }) {
       }}
     >
       <BpmnBadgeRow data={data} />
-      <div
+      <svg
+        aria-hidden="true"
         style={{
-          width: inner,
-          height: inner,
-          background: "#fff",
-          border: `2px solid ${stroke}`,
-          transform: "rotate(45deg)",
           position: "absolute",
-          boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
+          inset: 0,
+          width: "100%",
+          height: "100%",
+          filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.04))",
+          pointerEvents: "none",
         }}
-      />
+        preserveAspectRatio="none"
+        viewBox="0 0 100 100"
+      >
+        <polygon points="50,2 98,50 50,98 2,50" fill="#fff" stroke={stroke} strokeWidth={2} />
+      </svg>
       <div
         style={{
           position: "relative",
-          width: NODE_WIDTH - 16,
-          height: NODE_HEIGHT - 16,
+          width: "60%",
+          height: "60%",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
