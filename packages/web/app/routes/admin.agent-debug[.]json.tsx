@@ -71,6 +71,14 @@ interface OpenAiErr {
   error: string | null;
 }
 
+interface StuckMessage {
+  id: string;
+  conversation_id: string;
+  role: string;
+  content: unknown;
+  created_at: string;
+}
+
 export async function loader({ request }: { request: Request }) {
   // `getCurrentPrincipalAsync` accepts both the browser session
   // cookie AND `Authorization: Bearer <oauth-access-token>`. The
@@ -90,7 +98,7 @@ export async function loader({ request }: { request: Request }) {
   const limit = Number.isFinite(limitRaw) ? Math.max(1, Math.min(100, Math.round(limitRaw))) : 20;
 
   const data = await withClient(async (c) => {
-    const [turns, stuck, captures, openai] = await Promise.all([
+    const [turns, stuck, captures, openai, stuckMsgs] = await Promise.all([
       c.query<TurnRow>(
         `SELECT id, conversation_id, collaborator_id, model,
                 started_at::text AS started_at, total_ms,
@@ -129,11 +137,28 @@ export async function loader({ request }: { request: Request }) {
           LIMIT $1`,
         [limit],
       ),
+      // Last 6 messages for every conversation that currently has a
+      // turn in-flight. When the lambda dies after persisting the
+      // user message but before the assistant reply, this is the
+      // only record of what the user actually sent vs. what (if
+      // anything) the assistant managed to write.
+      c.query<StuckMessage>(
+        `SELECT m.id, m.conversation_id, m.role, m.content,
+                m.created_at::text AS created_at
+           FROM chat_messages m
+          WHERE m.conversation_id IN (
+                  SELECT id FROM chat_conversations
+                   WHERE active_turn_started_at IS NOT NULL
+                )
+          ORDER BY m.created_at DESC
+          LIMIT 24`,
+      ),
     ]);
 
     return {
       recent_turns: turns.rows,
       stuck_conversations: stuck.rows,
+      stuck_conversation_messages: stuckMsgs.rows,
       recent_capture_errors: captures.rows,
       recent_openai_errors: openai.rows,
     };
