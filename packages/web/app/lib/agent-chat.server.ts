@@ -69,7 +69,27 @@ export const ATTACHMENT_ALLOWED_MIME = new Set<string>([
   "application/pdf",
   "text/plain",
   "text/markdown",
+  // XML-shaped formats (.bpmn, .xml). Browsers pick text/xml or
+  // application/xml depending on the platform; some pick
+  // application/octet-stream for less-known extensions like .bpmn —
+  // see normalizeUploadMime below for that fallback.
+  "text/xml",
+  "application/xml",
 ]);
+
+/**
+ * Some browsers ship .bpmn / .xml uploads as `application/octet-stream`
+ * because the extension isn't in their built-in MIME table. We trust
+ * the extension for the small allowlist of XML-ish formats we know
+ * are safe to read as text; everything else stays as the browser
+ * reported it (so an actual binary upload keeps failing the gate).
+ */
+export function normalizeUploadMime(filename: string, reportedMime: string): string {
+  if (reportedMime !== "application/octet-stream" && reportedMime !== "") return reportedMime;
+  const lower = filename.toLowerCase();
+  if (lower.endsWith(".bpmn") || lower.endsWith(".xml")) return "application/xml";
+  return reportedMime;
+}
 // Stable user-facing line. The sidebar shows this whenever a file is
 // staged; the system prompt also instructs the model to repeat it when
 // a message arrives with attachments.
@@ -339,7 +359,8 @@ export async function saveAttachment(args: {
   mimeType: string;
   bytes: Buffer;
 }): Promise<ChatAttachmentMeta> {
-  if (!ATTACHMENT_ALLOWED_MIME.has(args.mimeType)) {
+  const mimeType = normalizeUploadMime(args.filename, args.mimeType);
+  if (!ATTACHMENT_ALLOWED_MIME.has(mimeType)) {
     throw new Error(`unsupported mime type: ${args.mimeType}`);
   }
   if (args.bytes.byteLength > ATTACHMENT_MAX_BYTES) {
@@ -360,7 +381,7 @@ export async function saveAttachment(args: {
         args.conversationId,
         args.principalId,
         args.filename,
-        args.mimeType,
+        mimeType,
         args.bytes.byteLength,
         args.bytes,
       ],
@@ -370,7 +391,7 @@ export async function saveAttachment(args: {
     return {
       id,
       filename: args.filename,
-      mime_type: args.mimeType,
+      mime_type: mimeType,
       size_bytes: args.bytes.byteLength,
       created_at: row.created_at.toISOString(),
       expires_at: row.expires_at.toISOString(),
