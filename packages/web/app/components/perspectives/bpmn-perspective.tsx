@@ -647,30 +647,51 @@ export function BpmnPerspective({
         >
           {stickyPools.map((pool) => {
             const isUnassigned = pool.intent_id === null;
+            // Mirror the in-canvas BpmnPoolHeaderNode look: same overlay
+            // color over an opaque card so the sticky band reads as a
+            // pinned copy of the natural header (not a different chrome
+            // element). Font, padding, badges, and letterSpacing all
+            // scale with viewport.zoom — like the swim-lane rails — so
+            // the sticky doesn't grow visually huge when zoomed out.
+            const overlay = isUnassigned ? "rgba(0, 0, 0, 0.05)" : "rgba(40, 70, 160, 0.08)";
+            const borderColor = isUnassigned ? "var(--color-border)" : "rgba(40, 70, 160, 0.35)";
+            const labelFontPx = 12 * viewport.zoom;
+            const padX = 14 * viewport.zoom;
+            const gapPx = 8 * viewport.zoom;
             return (
               <div
                 key={pool.id}
-                className="flex items-center gap-2 border-b shadow-sm"
+                className="flex items-center border-b shadow-sm"
                 style={{
                   height: POOL_RAIL_HEIGHT,
-                  background: isUnassigned
-                    ? "rgba(245, 245, 245, 0.94)"
-                    : "rgba(230, 236, 250, 0.94)",
-                  borderBottomColor: isUnassigned
-                    ? "var(--color-border)"
-                    : "rgba(40, 70, 160, 0.35)",
-                  padding: "0 14px",
-                  fontSize: 12,
+                  backgroundColor: "var(--color-card)",
+                  backgroundImage: `linear-gradient(${overlay}, ${overlay})`,
+                  borderTop: `${2 * viewport.zoom}px solid ${borderColor}`,
+                  borderBottomColor: borderColor,
+                  padding: `0 ${padX}px`,
+                  gap: gapPx,
+                  fontSize: labelFontPx,
                   fontWeight: 700,
                   textTransform: "uppercase",
-                  letterSpacing: 0.8,
+                  letterSpacing: 0.8 * viewport.zoom,
                   color: isUnassigned ? "var(--color-muted-foreground, #525252)" : "#1f2937",
-                  backdropFilter: "blur(4px)",
                 }}
                 title={pool.label}
               >
                 {!isUnassigned && pool.intent_id ? (
-                  <span style={{ display: "inline-flex", gap: 4, flexShrink: 0 }}>
+                  <span
+                    style={{
+                      display: "inline-flex",
+                      gap: 4 * viewport.zoom,
+                      flexShrink: 0,
+                      transform: `scale(${viewport.zoom})`,
+                      transformOrigin: "left center",
+                      // Keep the badges' bounding box from claiming
+                      // their pre-scale width — the inline-flex above
+                      // shrinks proportionally with `transform`.
+                      width: 0,
+                    }}
+                  >
                     <TypeBadge entityType="intent" lifecycle={pool.lifecycle} anchor="inline" />
                     <LifecycleBadge lifecycle={pool.lifecycle} anchor="inline" />
                   </span>
