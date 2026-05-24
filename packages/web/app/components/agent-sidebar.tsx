@@ -788,33 +788,54 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
     location.pathname === "/sign-out" ||
     location.pathname.startsWith("/auth/");
 
-  if (collapsed || isAuthPage) {
-    return (
-      <CollapsedRail
-        label="Señor Doco"
-        side="left"
-        unread={unread}
-        active={agentActive}
-        onExpand={() => setCollapsedPersistent(false)}
-      />
-    );
-  }
+  // Single-element render: the aside is always present so its
+  // width transition runs for BOTH the show-thinking expansion AND
+  // the chevron-click collapse. Content swaps based on `collapsedDisplay`,
+  // and `overflow-hidden` keeps the inner content from spilling while
+  // the width animates.
+  const collapsedDisplay = collapsed || isAuthPage;
 
   return (
     <aside
-      className="neu-panel flex h-full shrink-0 flex-col border-r border-border bg-card"
+      className="neu-panel flex h-full shrink-0 flex-col overflow-hidden border-r border-border bg-card"
       style={{ width: railWidth, transition: "width 180ms ease-out" }}
       aria-busy={agentActive}
       aria-label={agentActive ? "Señor Doco, working" : "Señor Doco"}
     >
+      {collapsedDisplay ? (
+        <button
+          type="button"
+          onClick={() => setCollapsedPersistent(false)}
+          aria-busy={agentActive}
+          aria-label={agentActive ? "Expand Señor Doco (working)" : "Expand Señor Doco"}
+          className="group relative flex h-full w-full shrink-0 cursor-pointer flex-col items-center gap-2 py-3 hover:bg-input"
+        >
+          <CollapseIcon side="right" />
+          <div
+            className="select-none text-[11px] font-semibold uppercase tracking-wider text-foreground"
+            style={{ writingMode: "vertical-rl", transform: "rotate(180deg)" }}
+          >
+            Señor Doco
+          </div>
+          {unread ? (
+            <span
+              aria-label="unread"
+              className="h-2 w-2 rounded-full bg-primary"
+              style={{ boxShadow: "0 0 0 2px var(--color-card)" }}
+            />
+          ) : null}
+        </button>
+      ) : (
+        <>
       <div className="flex shrink-0 items-center justify-between border-b border-border px-3 py-2">
         <div className="flex min-w-0 items-center gap-2">
           <div className="truncate text-xs font-semibold">Señor Doco</div>
         </div>
         <div className="flex items-center gap-1.5">
           {/* Show-thinking toggle. Sits left of the collapse chevron;
-              pressed-state styling uses .neu-pressed so the user can
-              see at a glance whether the panel is on. */}
+              pressed when on (neu-pressed), raised when off
+              (neu-button) — same depth treatment as the rest of the
+              platform's buttons. */}
           <button
             type="button"
             onClick={toggleShowThinking}
@@ -822,7 +843,7 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
             aria-label={showThinking ? "Hide thinking column" : "Show thinking column"}
             title={showThinking ? "Hide thinking column" : "Show thinking column"}
             className={cn(
-              "rounded px-1.5 py-0.5 text-[10px] uppercase tracking-wide",
+              "rounded-md border border-border px-2 py-0.5 text-[10px] uppercase tracking-wide",
               showThinking
                 ? "neu-pressed bg-input text-foreground"
                 : "neu-button text-muted-foreground hover:bg-input hover:text-foreground",
@@ -833,7 +854,7 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
           <button
             type="button"
             onClick={() => setCollapsedPersistent(true)}
-            className="neu-button rounded p-0.5 text-muted-foreground hover:bg-input hover:text-foreground"
+            className="neu-button rounded-md border border-border px-1.5 py-0.5 text-muted-foreground hover:bg-input hover:text-foreground"
             aria-label="Collapse Señor Doco"
             title="Collapse"
           >
@@ -906,6 +927,8 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
         onUploadFiles={uploadFiles}
         onRemoveStaged={removeStaged}
       />
+        </>
+      )}
     </aside>
   );
 }
