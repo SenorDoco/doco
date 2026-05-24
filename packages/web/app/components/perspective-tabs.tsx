@@ -93,7 +93,11 @@ function PerspectiveTab({
     isFirst && "rounded-tl-md",
     isLast && "rounded-tr-md",
     active
-      ? "z-10 border-b-transparent bg-white text-foreground"
+      ? // border-b-white (not transparent!) so the tab's bottom-border
+        // pixel OCCLUDES the canvas's top border at the tab's footprint.
+        // Transparent would let the canvas's border-border show through
+        // and produce a visible seam between the tab and the canvas.
+        "z-10 border-b-white bg-white text-foreground"
       : "bg-input/40 text-muted-foreground hover:bg-input/60 hover:text-foreground",
   );
   const title = perspective.ownerHandle
