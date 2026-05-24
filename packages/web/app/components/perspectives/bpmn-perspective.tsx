@@ -481,7 +481,7 @@ export function BpmnPerspective({
         const visibleBottom = Math.min(canvasHeight, laneBottom);
         const railHeight = Math.max(44, visibleBottom - visibleTop);
         const top = Math.min(Math.max(0, visibleTop), Math.max(0, canvasHeight - railHeight));
-        const isBand = lane.kind !== "principal";
+        const isBand = lane.kind !== "actor";
         const referenceNumber = referenceNumberByEntityId.get(lane.id);
         const labelFontPx = RAIL_LABEL_BASE_FONT * viewport.zoom;
         const badgeFontPx = RAIL_BADGE_BASE_FONT * viewport.zoom;
@@ -1271,29 +1271,18 @@ function BpmnLaneNode({ data }: { data: BpmnLaneData }) {
 
 /**
  * Type + lifecycle badges above a lane's label, matching the badge
- * row that lives at the top of every neuron card. Bands don't have a
- * single owning neuron, so they get just a type badge (no lifecycle)
- * coloured by the lane's tint. Actor lanes get both — the Principal's
- * type and the Principal's lifecycle.
+ * row at the top of every neuron card. Only actor lanes have a
+ * single owning neuron (the Principal), so they get the type +
+ * lifecycle pair. Bands (milestone / artifacts) are structural
+ * containers that hold a set of neurons — labelling the band itself
+ * with one of those neuron types is misleading, so we render nothing.
  */
 function LaneBadgeRow({ lane }: { lane: BpmnLane }) {
-  if (lane.kind === "unassigned" || lane.kind === "unresolved") return null;
-  if (lane.kind === "actor") {
-    return (
-      <span style={{ display: "inline-flex", gap: 4 }}>
-        <TypeBadge entityType="principal" lifecycle={lane.lifecycle} anchor="inline" />
-        <LifecycleBadge lifecycle={lane.lifecycle} anchor="inline" />
-      </span>
-    );
-  }
-  // Bands (milestone / artifacts): one type tag, no lifecycle pill.
-  // Milestone band holds States; the artifacts band is mixed, so we
-  // label it with the BPMN-standard "artifact" term rather than a
-  // single neuron type.
-  const entityType = lane.kind === "milestone" ? "state" : "reference";
+  if (lane.kind !== "actor") return null;
   return (
-    <span style={{ display: "inline-flex" }}>
-      <TypeBadge entityType={entityType} lifecycle={null} anchor="inline" />
+    <span style={{ display: "inline-flex", gap: 4 }}>
+      <TypeBadge entityType="principal" lifecycle={lane.lifecycle} anchor="inline" />
+      <LifecycleBadge lifecycle={lane.lifecycle} anchor="inline" />
     </span>
   );
 }
