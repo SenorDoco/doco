@@ -1,5 +1,5 @@
 import { withClient } from "@doco/db";
-import { Link, redirect } from "react-router";
+import { Link } from "react-router";
 import { Breadcrumb, docoBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { NeuronTypeIcon } from "~/components/neuron-type-icon";
@@ -44,7 +44,6 @@ export async function loader({
   request: Request;
   params: { docoId: string };
 }) {
-  redirectLegacyPolicyPath(request);
   const ctx = await loadDocoRouteForRead(request, params);
   const { ownerSlug, docoSlug, handle } = ctx;
   const [guidanceRows, nodeAuthoringRows] = await withClient(async (c) => {
@@ -134,13 +133,6 @@ export default function Policies({
       </main>
     </div>
   );
-}
-
-function redirectLegacyPolicyPath(request: Request): void {
-  const url = new URL(request.url);
-  if (!url.pathname.includes("/constitution")) return;
-  url.pathname = url.pathname.replace("/constitution", "/policies");
-  throw redirect(`${url.pathname}${url.search}`);
 }
 
 function ArticleSection({

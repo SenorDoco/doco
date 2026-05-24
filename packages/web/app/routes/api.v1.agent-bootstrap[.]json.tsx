@@ -85,7 +85,6 @@ export async function loader({ request }: { request: Request }) {
         role: "reader",
       },
       doco_policies: docoPolicies,
-      doco_constitutions: docoPolicies,
     });
   }
 
@@ -114,8 +113,6 @@ export async function loader({ request }: { request: Request }) {
       : null,
     project_token_grant: null,
     doco_policies: docoPolicies,
-    // Legacy alias for agents pinned to the old bootstrap field name.
-    doco_constitutions: docoPolicies,
   });
 }
 

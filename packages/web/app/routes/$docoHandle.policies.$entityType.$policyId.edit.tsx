@@ -43,7 +43,6 @@ export async function loader({
   request: Request;
   params: { docoId: string; entityType: string; policyId: string };
 }) {
-  redirectLegacyPolicyPath(request);
   const entityType = parsePolicyType(params.entityType);
   if (!entityType) throw new Response("Unknown policy kind.", { status: 404 });
   const ctx = await loadDocoRouteForAdmin(request, params);
@@ -357,11 +356,4 @@ export default function EditPolicy({
       </main>
     </div>
   );
-}
-
-function redirectLegacyPolicyPath(request: Request): void {
-  const url = new URL(request.url);
-  if (!url.pathname.includes("/constitution")) return;
-  url.pathname = url.pathname.replace("/constitution", "/policies");
-  throw redirect(`${url.pathname}${url.search}`);
 }

@@ -28,7 +28,6 @@ export async function loader({
   request: Request;
   params: { docoId: string };
 }) {
-  redirectLegacyPolicyPath(request);
   const { docoSlug, handle, me, ownerSlug } = await loadDocoRouteForAdmin(request, params);
   return { ownerSlug, docoSlug, handle, me, host: await loadHostConfig() };
 }
@@ -239,11 +238,4 @@ export default function NewNeuronAuthoringPolicy({
       </main>
     </div>
   );
-}
-
-function redirectLegacyPolicyPath(request: Request): void {
-  const url = new URL(request.url);
-  if (!url.pathname.includes("/constitution")) return;
-  url.pathname = url.pathname.replace("/constitution", "/policies");
-  throw redirect(`${url.pathname}${url.search}`);
 }
