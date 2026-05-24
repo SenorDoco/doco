@@ -533,6 +533,24 @@ export function BpmnPerspective({
       })
     : null;
 
+  // Sticky pool header band — top-edge analogue of the lane rails.
+  // When a pool's in-canvas header has scrolled past the top of the
+  // canvas but the pool's body is still showing, pin the header to
+  // top=0 so the Intent label stays readable. Hidden once the
+  // in-canvas header is visible again (no double-label).
+  const POOL_RAIL_HEIGHT = Math.max(28, POOL_HEADER_HEIGHT * viewport.zoom);
+  const stickyPools = layout.poolGeometry
+    .map((pool) => {
+      const poolTopScreen = pool.y * viewport.zoom + viewport.y;
+      const poolBottomScreen = (pool.y + pool.height) * viewport.zoom + viewport.y;
+      const canvasHeight = graphSize.height || 480;
+      const headerVisible = poolTopScreen >= 0;
+      const poolOnScreen = poolBottomScreen > POOL_RAIL_HEIGHT && poolTopScreen < canvasHeight;
+      if (headerVisible || !poolOnScreen) return null;
+      return pool;
+    })
+    .filter((p): p is NonNullable<typeof p> => p !== null);
+
   return (
     <div
       ref={graphRef}
@@ -619,6 +637,50 @@ export function BpmnPerspective({
           aria-hidden="true"
         >
           {laneRails}
+        </div>
+      ) : null}
+      {Flow && stickyPools.length > 0 ? (
+        <div
+          className="pointer-events-none absolute left-0 right-0 top-0 z-10 flex flex-col"
+          style={{ paddingLeft: SWIM_RAIL_WIDTH }}
+          aria-hidden="true"
+        >
+          {stickyPools.map((pool) => {
+            const isUnassigned = pool.intent_id === null;
+            return (
+              <div
+                key={pool.id}
+                className="flex items-center gap-2 border-b shadow-sm"
+                style={{
+                  height: POOL_RAIL_HEIGHT,
+                  background: isUnassigned
+                    ? "rgba(245, 245, 245, 0.94)"
+                    : "rgba(230, 236, 250, 0.94)",
+                  borderBottomColor: isUnassigned
+                    ? "var(--color-border)"
+                    : "rgba(40, 70, 160, 0.35)",
+                  padding: "0 14px",
+                  fontSize: 12,
+                  fontWeight: 700,
+                  textTransform: "uppercase",
+                  letterSpacing: 0.8,
+                  color: isUnassigned ? "var(--color-muted-foreground, #525252)" : "#1f2937",
+                  backdropFilter: "blur(4px)",
+                }}
+                title={pool.label}
+              >
+                {!isUnassigned && pool.intent_id ? (
+                  <span style={{ display: "inline-flex", gap: 4, flexShrink: 0 }}>
+                    <TypeBadge entityType="intent" lifecycle={pool.lifecycle} anchor="inline" />
+                    <LifecycleBadge lifecycle={pool.lifecycle} anchor="inline" />
+                  </span>
+                ) : null}
+                <span className="overflow-hidden text-ellipsis whitespace-nowrap">
+                  {pool.label}
+                </span>
+              </div>
+            );
+          })}
         </div>
       ) : null}
       {/* Lifecycle filter overlay — lives inside the BPMN canvas so the
@@ -716,6 +778,8 @@ interface BpmnLayout {
     label: string;
     y: number;
     height: number;
+    intent_id: string | null;
+    lifecycle: string | null;
   }>;
 }
 
@@ -891,6 +955,8 @@ function layOutBpmn(
       label: pool.label,
       y: poolStartY,
       height: cursorY - poolStartY,
+      intent_id: pool.intent_id,
+      lifecycle: pool.lifecycle,
     });
   }
 
