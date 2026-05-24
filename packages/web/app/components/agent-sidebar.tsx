@@ -138,7 +138,8 @@ type ThinkingEvent =
       output_tokens: number;
     }
   | { id: string; at_ms: number; kind: "navigate"; url: string }
-  | { id: string; at_ms: number; kind: "error"; message: string };
+  | { id: string; at_ms: number; kind: "error"; message: string }
+  | { id: string; at_ms: number; kind: "status"; phase: string; detail?: string };
 // Broadcast channel name shared across tabs in the same browser
 // origin. Same session → same conversation, so any change in one tab
 // pings the others to reload.
@@ -464,7 +465,8 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
         | Omit<Extract<ThinkingEvent, { kind: "text" }>, "id" | "at_ms">
         | Omit<Extract<ThinkingEvent, { kind: "usage" }>, "id" | "at_ms">
         | Omit<Extract<ThinkingEvent, { kind: "navigate" }>, "id" | "at_ms">
-        | Omit<Extract<ThinkingEvent, { kind: "error" }>, "id" | "at_ms">,
+        | Omit<Extract<ThinkingEvent, { kind: "error" }>, "id" | "at_ms">
+        | Omit<Extract<ThinkingEvent, { kind: "status" }>, "id" | "at_ms">,
     ) => {
       const at_ms = Math.round(performance.now() - turnStartRef.current);
       const id = `t_${at_ms}_${Math.random().toString(36).slice(2, 7)}`;
@@ -650,6 +652,8 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
               localContent.push({ type: "text", text: `[error] ${event.message}` });
               bumpInFlight();
               appendThinking({ kind: "error", message: event.message });
+            } else if (event.kind === "status") {
+              appendThinking({ kind: "status", phase: event.phase, detail: event.detail });
             } else if (event.kind === "usage_update") {
               setTurnUsage({
                 input_tokens: event.input_tokens,
@@ -1203,6 +1207,14 @@ function ThinkingRow({ ev }: { ev: ThinkingEvent }) {
       </div>
     );
   }
+  if (ev.kind === "status") {
+    return (
+      <div className="mb-1 text-muted-foreground">
+        {elapsed} {ev.phase}
+        {ev.detail ? ` (${ev.detail})` : ""}
+      </div>
+    );
+  }
   return null;
 }
 
@@ -1442,6 +1454,11 @@ type StreamEvent =
   | { kind: "tool_use_result"; tool_use_id: string; ok: boolean; preview: string }
   | { kind: "navigate"; url: string }
   | { kind: "message_saved"; message_id: string; role: "user" | "assistant" }
+  | {
+      kind: "status";
+      phase: string;
+      detail?: string;
+    }
   | {
       kind: "usage_update";
       input_tokens: number;
