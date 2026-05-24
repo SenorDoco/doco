@@ -43,6 +43,7 @@ import {
   publishGraphReferences,
 } from "~/lib/graph-references";
 import { lifecycleColor, lifecycleLabel } from "~/lib/neuron-colors";
+import { highestRanked, pageRank } from "~/lib/pagerank";
 import "@xyflow/react/dist/style.css";
 
 // MUST stay in sync with the matching exports in
@@ -69,6 +70,15 @@ interface BpmnPerspectiveProps {
   lanes: BpmnLane[];
   nodes: BpmnNode[];
   links: OverviewGraphLink[];
+  /**
+   * Per-neuron global PageRank score on the doco's synapse graph,
+   * emitted by `loadBpmnGraph`. When `centerId` is set, the client
+   * re-runs PageRank with the teleport vector biased to that focal
+   * neuron, and re-picks the primary intent for each multi-intent
+   * node — so neurons can swap pools as the user clicks into the
+   * graph without a round-trip to the server.
+   */
+  globalPagerank?: Record<string, number>;
   onNeuronClick?: (node: BpmnNode) => void;
   /**
    * Lift focal-node state to the parent. Clicking a neuron on the
@@ -186,9 +196,10 @@ interface FlowModule {
 
 export function BpmnPerspective({
   pools,
-  lanes,
-  nodes,
+  lanes: lanesRaw,
+  nodes: nodesRaw,
   links,
+  globalPagerank,
   onNeuronClick,
   onCenterChange,
   visibleLifecycles,
@@ -198,6 +209,81 @@ export function BpmnPerspective({
   isFullscreen,
   onToggleFullscreen,
 }: BpmnPerspectiveProps) {
+  // ── Personalized PageRank re-pool ─────────────────────────────────
+  // The server picked each multi-intent neuron's primary intent using
+  // GLOBAL PageRank. When the user clicks into a focal neuron, we
+  // re-run PageRank with the teleport vector biased to that focal
+  // node and re-pick the primary intent for each multi-intent neuron;
+  // that may move them into a different pool. The pool list itself
+  // doesn't change order (server-emitted order is keyed to global PR,
+  // which is the most stable read), but a node migrating to a pool
+  // that didn't have its actor lane yet adds the lane on the fly.
+  const { lanes, nodes } = useMemo(() => {
+    const hasFocal = !!centerId && nodesRaw.some((n) => n.id === centerId);
+    const multiIntentNodes = nodesRaw.filter((n) => (n.intent_ids?.length ?? 0) > 1);
+    if (!hasFocal || multiIntentNodes.length === 0) {
+      return { lanes: lanesRaw, nodes: nodesRaw };
+    }
+
+    const personalized = pageRank(
+      nodesRaw.map((n) => ({ id: n.id })),
+      links,
+      { personalization: new Map([[centerId as string, 1]]) },
+    );
+
+    // Build new node list with adjusted pool_id / laneId for any
+    // multi-intent neuron whose primary intent changed under
+    // personalized PR. base_id (the part after "::") is preserved —
+    // the actor lane within the destination pool keeps the same
+    // Principal label, it just lives in a different pool.
+    const movedNodes = nodesRaw.map((node) => {
+      const candidates = node.intent_ids;
+      if (!candidates || candidates.length < 2) return node;
+      const newPrimary = highestRanked(candidates, personalized);
+      if (!newPrimary) return node;
+      const currentPoolIntent = node.pool_id.startsWith("pool:")
+        ? node.pool_id.slice("pool:".length)
+        : null;
+      if (newPrimary === currentPoolIntent) return node;
+      const newPoolId = `pool:${newPrimary}`;
+      const colonIdx = node.laneId.indexOf("::");
+      const base = colonIdx >= 0 ? node.laneId.slice(colonIdx + 2) : node.laneId;
+      const newLaneId = `${newPoolId}::${base}`;
+      return { ...node, pool_id: newPoolId, laneId: newLaneId };
+    });
+
+    // Synthesize any missing lanes. When a node moves to a destination
+    // pool that already had the same actor lane (e.g. alice already
+    // had work in the destination pool), no new lane needed. Otherwise
+    // clone the matching base lane from any pool that has it and
+    // re-prefix to the destination pool.
+    const existingLaneIds = new Set(lanesRaw.map((l) => l.id));
+    const lanesByBase = new Map<string, BpmnLane>();
+    for (const l of lanesRaw) {
+      if (!lanesByBase.has(l.base_id)) lanesByBase.set(l.base_id, l);
+    }
+    const synthesizedLanes: BpmnLane[] = [];
+    for (const node of movedNodes) {
+      if (existingLaneIds.has(node.laneId)) continue;
+      const colonIdx = node.laneId.indexOf("::");
+      if (colonIdx < 0) continue;
+      const base = node.laneId.slice(colonIdx + 2);
+      const template = lanesByBase.get(base);
+      if (!template) continue;
+      synthesizedLanes.push({
+        id: node.laneId,
+        pool_id: node.pool_id,
+        base_id: template.base_id,
+        label: template.label,
+        kind: template.kind,
+      });
+      existingLaneIds.add(node.laneId);
+    }
+    return {
+      lanes: synthesizedLanes.length > 0 ? [...lanesRaw, ...synthesizedLanes] : lanesRaw,
+      nodes: movedNodes,
+    };
+  }, [lanesRaw, nodesRaw, links, centerId]);
   const navigate = useNavigate();
   const graphRef = useRef<HTMLDivElement>(null);
   const graphReferenceIdRef = useRef(`bpmn-${Math.random().toString(36).slice(2)}`);
