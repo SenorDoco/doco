@@ -220,12 +220,8 @@ export function NeuronDialog({
                 Synapses
               </h3>
               <div className="space-y-4">
+                <EdgeList label="Incoming" edges={detail.incoming} onOpenNeuron={onOpenNeuron} />
                 <EdgeList label="Outgoing" edges={detail.outgoing} onOpenNeuron={onOpenNeuron} />
-                <EdgeList
-                  label="Referenced by"
-                  edges={detail.incoming}
-                  onOpenNeuron={onOpenNeuron}
-                />
               </div>
             </section>
 

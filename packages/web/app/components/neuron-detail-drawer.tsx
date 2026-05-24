@@ -165,21 +165,21 @@ function SynapsesPane({ outgoing, incoming, linkTo }: NeuronDetailDrawerProps) {
     <div className="space-y-4 text-xs">
       <section>
         <h3 className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-          Outgoing ({outgoing.length})
+          Incoming ({incoming.length})
         </h3>
-        {outgoing.length === 0 ? (
-          <p className="mt-2 text-muted-foreground">No outgoing synapses.</p>
+        {incoming.length === 0 ? (
+          <p className="mt-2 text-muted-foreground">No incoming synapses.</p>
         ) : (
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>synapse</TableHead>
-                <TableHead>target</TableHead>
+                <TableHead>source</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {outgoing.map((e) => (
-                <TableRow key={`out-${e.synapse_type}-${e.other_id}`}>
+              {incoming.map((e) => (
+                <TableRow key={`in-${e.synapse_type}-${e.other_id}`}>
                   <TableCell className="font-mono text-[11px]">{e.synapse_type}</TableCell>
                   <TableCell>
                     <Link
@@ -198,21 +198,21 @@ function SynapsesPane({ outgoing, incoming, linkTo }: NeuronDetailDrawerProps) {
       </section>
       <section>
         <h3 className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-          Referenced by ({incoming.length})
+          Outgoing ({outgoing.length})
         </h3>
-        {incoming.length === 0 ? (
-          <p className="mt-2 text-muted-foreground">No incoming references.</p>
+        {outgoing.length === 0 ? (
+          <p className="mt-2 text-muted-foreground">No outgoing synapses.</p>
         ) : (
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>synapse</TableHead>
-                <TableHead>source</TableHead>
+                <TableHead>target</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {incoming.map((e) => (
-                <TableRow key={`in-${e.synapse_type}-${e.other_id}`}>
+              {outgoing.map((e) => (
+                <TableRow key={`out-${e.synapse_type}-${e.other_id}`}>
                   <TableCell className="font-mono text-[11px]">{e.synapse_type}</TableCell>
                   <TableCell>
                     <Link
