@@ -22,6 +22,88 @@ authorized it directly.
 
 ---
 
+## Visually verify UI changes against the live app
+
+Sandboxed agent runtimes (no local Postgres, no headless browser
+deployed) can't spin up the dev server end-to-end, and the Vercel
+preview URL sits behind Vercel deployment protection (returns 403
+without a project bypass token). The path that works from any
+sandbox: drive `https://doco.to` (production) with a dev-signin
+session and exercise the change there.
+
+### One-shot recipe
+
+```sh
+# 1. Grab a session cookie. Three reserved test names are accepted —
+#    `doco-test-harness`, `doco-test-alice`, `doco-test-bob`. The
+#    route is `/auth/dev-signin` and is implemented in
+#    `packages/web/app/routes/auth.dev-signin.tsx`. Any other name
+#    returns 403.
+COOKIE=$(curl -sS -i -X POST \
+  -d "username=doco-test-harness&next=/dashboard" \
+  https://doco.to/auth/dev-signin \
+  | awk -F'[ =;]' '/^set-cookie: doco_session=/ {print "doco_session=" $3}')
+
+# 2. Use the cookie on any subsequent request.
+curl -sS -b "$COOKIE" https://doco.to/dashboard | head
+```
+
+The test collaborator starts with **no Doco grants** — same shape
+as a brand-new GitHub sign-in. To get something to look at:
+
+- **Create a Doco of your own** via `POST /api/v1/docos.json`
+  (body: `{"name": "<suffix>", "template_handle": "generic"}`) and
+  navigate to `/<your-doco-handle>/...` to exercise the change.
+- **Or have an owner mint an invite** for `doco-test-harness` on
+  an existing Doco, then `GET /invite/<code>` while signed in to
+  accept it.
+
+### Pointing a headless browser
+
+A Playwright-bundled Chromium ships at
+`/opt/pw-browsers/chromium-1194/chrome-linux/chrome` in the default
+sandbox. Drive it with `puppeteer-core` (no browser download needed):
+
+```js
+import puppeteer from "puppeteer-core";
+const browser = await puppeteer.launch({
+  executablePath: "/opt/pw-browsers/chromium-1194/chrome-linux/chrome",
+  headless: true,
+  args: ["--no-sandbox"],
+});
+const page = await browser.newPage();
+await page.setCookie({
+  name: "doco_session",
+  value: process.env.DOCO_SESSION,  // the value from the curl recipe above
+  domain: "doco.to",
+  path: "/",
+  httpOnly: true,
+  secure: true,
+});
+await page.goto("https://doco.to/<your-doco-handle>/decision/decision_01...");
+await page.screenshot({ path: "/tmp/card.png", fullPage: false });
+await browser.close();
+```
+
+The screenshot is the evidence. Save it and reference it in your
+verification report.
+
+### Caveats
+
+- This signs you in against **production**, not the Vercel preview
+  for your branch. If the change behaves identically on production
+  and the branch (most pure-UI changes do, because the deployed
+  bundle is what the user will see post-merge), this is enough. If
+  the behavior is branch-specific, ship to main first and verify
+  there.
+- The test collaborator's session is real — don't make destructive
+  writes against Docos you didn't create. Stick to your own newly
+  created test Doco.
+- Don't commit `DOCO_SESSION` or the cookie value anywhere; it's a
+  bearer credential for the test collaborator.
+
+---
+
 <!-- BEGIN DOCO -->
 # STOP — read this every turn, not just once
 
