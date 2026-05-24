@@ -95,11 +95,11 @@ export function SearchBoxWithHistory({
   const showDropdown = focused && query.trim().length === 0 && recent.length > 0;
 
   const inputClass = compact
-    ? "neu-inset w-full rounded-md bg-card px-3 py-1.5 text-xs text-foreground outline-none"
-    : "neu-inset w-full rounded-md bg-card px-4 py-2.5 text-sm text-foreground outline-none";
+    ? "neu-inset w-full rounded-md bg-background px-3 py-1.5 text-xs text-foreground outline-none"
+    : "neu-inset w-full rounded-md bg-background px-4 py-2.5 text-sm text-foreground outline-none";
   const buttonClass = compact
-    ? "neu-button rounded-md px-3 py-1.5 text-xs font-semibold text-foreground"
-    : "neu-button rounded-md px-4 py-2.5 text-sm font-semibold text-foreground";
+    ? "neu-button rounded-md bg-background px-3 py-1.5 text-xs font-semibold text-foreground"
+    : "neu-button rounded-md bg-background px-4 py-2.5 text-sm font-semibold text-foreground";
 
   return (
     <Form
