@@ -144,15 +144,18 @@ button[class*="bg-primary"]:active {
   transform: none !important;
 }
 
-/* Etched dividers consistent with a top-left light source.
-   Horizontal dividers (`border-b` / `divide-y > *+*` / `border-t`)
-   get a 1px white highlight just below the dark line — that highlight
-   is the lit top edge of the row underneath the divider, matching the
-   top-left light convention used on `.neu-surface` cards. Vertical
-   dividers (`border-l` / `border-r`) get NO extra highlight: with
-   light from top-left, the left edge of an element is already lit and
-   the right edge is already in shadow, so the existing dark
-   `border-border` line on either side reads correctly on its own.
+/* Etched dividers consistent with a top-left light source. Every
+   directional `border-{side} border-border` divider gets a 1px white
+   highlight painted adjacent to the dark line on the LIT side of that
+   edge, matching the top-left light convention on `.neu-surface`.
+     - border-b: dark line at the bottom, highlight 1px below (the
+       next row's top edge is lit).
+     - border-t: dark line at the top, inset highlight just inside
+       the line (the element's own top is lit).
+     - border-r: dark line on the right, highlight 1px to the right
+       (the next column's left edge is lit).
+     - border-l: dark line on the left, inset highlight just inside
+       (the element's own left is lit).
    Selectors use `[class~="…"]` (whitespace-token match) so `border-b`
    doesn't accidentally match `border-border` (which contains "border-b"
    as a substring). Excluded: `.neu-button` / `.neu-pressed` /
@@ -163,8 +166,17 @@ button[class*="bg-primary"]:active {
 [class~="border-t"][class~="border-border"]:not([class~="neu-button"]):not([class~="neu-pressed"]):not([class*="bg-primary"]) {
   box-shadow: inset 0 1px 0 color-mix(in oklch, white 75%, transparent);
 }
+[class~="border-r"][class~="border-border"]:not([class~="neu-button"]):not([class~="neu-pressed"]):not([class*="bg-primary"]) {
+  box-shadow: 1px 0 0 color-mix(in oklch, white 75%, transparent);
+}
+[class~="border-l"][class~="border-border"]:not([class~="neu-button"]):not([class~="neu-pressed"]):not([class*="bg-primary"]) {
+  box-shadow: inset 1px 0 0 color-mix(in oklch, white 75%, transparent);
+}
 [class~="divide-y"] > * + * {
   box-shadow: inset 0 1px 0 color-mix(in oklch, white 75%, transparent);
+}
+[class~="divide-x"] > * + * {
+  box-shadow: inset 1px 0 0 color-mix(in oklch, white 75%, transparent);
 }
 
 @layer utilities {
