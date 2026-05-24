@@ -58,7 +58,14 @@ ensureEnvLoaded();
 // surfacing as forever-stuck in-flight bubbles.
 const MODEL = "claude-sonnet-4-6";
 const MAX_TURNS_PER_REPLY = 12;
-const MAX_TOKENS = 2048;
+// Per-Anthropic-call output cap. 2048 was the old Haiku-era setting
+// and proved way too tight for Sonnet on multi-tool batches: a single
+// "create 8 actions in parallel" reply truncates mid-tool-JSON
+// (stop_reason = max_tokens) and silently drops the rest of the work
+// because runAssistantTurn only loops on stop_reason === "tool_use".
+// 8192 matches Sonnet 4.6's default budget and comfortably covers
+// the largest parallel tool batches we issue in one round-trip.
+const MAX_TOKENS = 8192;
 // Cap the tool-result body fed back to the model on each Anthropic
 // round trip. Without this cap a single `GET /api/intents.json` on a
 // busy doco can shove tens of KB into the next call's input tokens,
@@ -1697,6 +1704,16 @@ export async function* runAssistantTurn(args: {
       messages.push({ role: "assistant", content: collectedBlocks as ContentBlockParam[] });
 
       if (finalMessage.stop_reason !== "tool_use") {
+        // max_tokens means the model was cut off mid-output (could be
+        // mid-text or mid-tool-JSON). Without a visible signal the
+        // user thinks the agent just stopped early. Surface a short
+        // note so they know to ask me to continue.
+        if (finalMessage.stop_reason === "max_tokens") {
+          yield {
+            kind: "text_delta",
+            text: `\n\n_(hit the per-call output cap mid-reply — ask me to continue and I'll pick up where I left off)_`,
+          };
+        }
         // Save assistant turn (text-only) and finish.
         const saved = await appendMessage(
           args.conversation.id,
