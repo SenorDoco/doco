@@ -791,23 +791,40 @@ principal-id fields above.
 
 Required fields marked *; everything else is optional. lifecycle
 defaults to "active" except where noted. Auth fills the principal-id
-fields when you omit them. For every type, body_md adds a markdown
-body appended after the frontmatter.
+fields when you omit them.
 
-- Decision:  { question*, chosen*, alternatives* [{name, rejected_because}], summary?, intent_ids?[], born_from?, decided_by_principal_id?, lifecycle?, deprecated?, outcome?("succeeded"|"failed"), superseded_by? }
-- Intent:    { summary*, title?, wanted_by_principal_id?, actors_principal_ids?[], stakeholders_principal_ids?[], lifecycle?, deprecated?, outcome? }
-- Action:    { summary*, verb*, intent_ids?[], decision_ids?[], follows?[], inputs?, outputs?, actor_principal_id?, lifecycle?(default "retired"), outcome?(default "succeeded") }
-- Log:       { summary*, verb*, happened_at*(ISO8601), outputs*(non-empty obj), template_id?, intent_ids?[], decision_ids?[], follows?[], inputs?, actor_principal_id?, lifecycle?(default "retired"), outcome?(default "succeeded") }
-- Rule:      { summary*, predicate*, intent_ids?[], enforced_by?("runtime"|"review"|"manual"), severity?("hard"|"soft"), born_from?, authored_by_principal_id? }
-- Eval:      { name*, criterion*({kind:"exact"|"shape"|"llm-judge", spec}), summary?, kind?("unit"|"integration"|"eval"|"process"|"doc-consistency"), description?, expected_status?("pass"|"fail"), target_ref?, intent_ids?[], authored_by_principal_id? }
-- Reference: { ref_type*("file"|"url"|"ticket"|"commit"|"document"|"other"), locator*, summary?, content_hash?, intent_ids?[], created_by_principal_id? }
-- State:     { summary*, kind*("initial"|"intermediate"|"terminal"), invariants?[], follows?[], created_by_principal_id? }
-- Idea:      { summary*, created_by_principal_id?, promoted_to?, rejection_reason?, lifecycle?(default "drafting") }
-- Primitive: POST /<handle>/api/primitives.json with primitive_kind*("guidance"|"neuron_authoring"). For neuron_authoring also evaluation_kind*("deterministic"|"probabilistic"), then either predicate* or spec*, and optional fires_when_neuron_lifecycle?[], on_violation?("block"|"warn"|"log", default "block").
+**Migration 022/023 prose-field rename.** Every neuron type now
+stores its full markdown body in a single TYPE-NAMED field — there
+is no separate \`summary\` / \`body_md\` / \`title\` / \`name\` /
+\`description\` field anymore. The first line of the prose IS the
+label shown in lists; the rest is the body. POSTs that send the old
+\`summary\` field will fail with \`<type> is required.\` because the
+required prose key is now \`intent\` / \`decision\` / \`action\` /
+etc., not \`summary\`.
 
-Examples (minimal):
-{ "summary": "Checkout can be completed without support.", "wanted_by_principal_id": "principal_01..." }            ← Intent
-{ "summary": "Implemented principal-id capture fields.", "verb": "implemented", "outputs": { "commit": "abc123" } }  ← Action
+- Decision:  { decision*, question*, chosen*, alternatives?[{name, rejected_because}], intent_ids?[], born_from?, decided_by_principal_id?, lifecycle?, deprecated?, outcome?("succeeded"|"failed"), superseded_by? }
+- Intent:    { intent*, wanted_by_principal_id?, actors_principal_ids?[], stakeholders_principal_ids?[], lifecycle?, deprecated?, outcome? }
+- Action:    { action*, verb*, intent_ids?[], decision_ids?[], follows?[], gated_by?[], inputs?, outputs?, actor_principal_id?, lifecycle?(default "retired"), outcome?(default "succeeded") }
+- Log:       { log*, verb*, happened_at*(ISO8601), outputs*(non-empty obj), template_id?, intent_ids?[], decision_ids?[], follows?[], inputs?, actor_principal_id?, lifecycle?(default "retired"), outcome?(default "succeeded") }
+- Rule:      { rule*, predicate*, intent_ids?[], enforced_by?("runtime"|"review"|"manual"), severity?("hard"|"soft"), born_from?, authored_by_principal_id? }
+- Eval:      { eval*, criterion*({kind:"exact"|"shape"|"llm-judge", spec}), kind?("unit"|"integration"|"eval"|"process"|"doc-consistency"), expected_status?("pass"|"fail"), target_ref?, intent_ids?[], authored_by_principal_id? }
+- Reference: { reference*, ref_type*("file"|"url"|"ticket"|"commit"|"document"|"other"), locator*, content_hash?, intent_ids?[], created_by_principal_id? }
+- State:     { state*, kind*("initial"|"intermediate"|"terminal"), invariants?[], follows?[], created_by_principal_id? }
+- Idea:      { idea*, created_by_principal_id?, promoted_to?, rejection_reason?, lifecycle?(default "drafting") }
+- Primitive (Guidance): POST /<handle>/api/primitives.json with primitive_kind*("guidance"), summary*, body_md?, authored_by_principal_id?. (Primitives keep the legacy summary/body_md shape — they did NOT migrate to type-named columns.)
+- Primitive (Neuron-authoring): same endpoint with primitive_kind*("neuron_authoring"), summary*, evaluation_kind*("deterministic"|"probabilistic"), then either predicate*(deterministic AuthoringPredicate object) or spec*(probabilistic prose), and optional fires_when_neuron_lifecycle?[], on_violation?("block"|"warn"|"log", default "block").
+
+The TYPE-NAMED field carries multi-line markdown; the first line is
+the row label that shows up in lists and BPMN swim lanes. Example:
+
+  POST /<handle>/api/intents.json
+  { "intent": "Talent seeker pays to activate Torre Reach\\n\\nThe buyer can complete the purchase without support intervention…",
+    "wanted_by_principal_id": "principal_01..." }
+
+More examples (minimal — first line of the type-named field is the label):
+{ "intent": "Checkout can be completed without support.\\n\\nBackground: support tickets averaged 3/week before this work.", "wanted_by_principal_id": "principal_01..." }   ← Intent
+{ "action": "Implement principal-id capture fields.\\n\\nReplaced the username-based path…", "verb": "implement", "outputs": { "commit": "abc123" } }                          ← Action
+{ "decision": "Use ULIDs for all entity ids.", "question": "What identifier scheme should every entity use?", "chosen": "ULID — time-sortable, URL-safe, no collisions in practice." } ← Decision
 
 Only call GET /<handle>/api/<type>.txt when you need detail beyond
 this cheatsheet (long-form error semantics, deep PATCH field list,
