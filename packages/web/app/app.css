@@ -140,34 +140,27 @@ button[class*="bg-primary"]:active {
   transform: none !important;
 }
 
-/* Etched dividers: any element with a directional `border-{side}` +
-   `border-border` (or a `divide-y` / `divide-x` parent) gets a 1px
-   white highlight painted adjacent to the dark border via box-shadow.
-   Combined with the existing 1px border-border line, the divider
-   reads as a continuation of `.neu-surface`'s etched edge — dark +
-   highlight — instead of a single solid line. `[class~="…"]` uses
-   whitespace-token matching so `border-b` doesn't also match
-   `border-border` (which contains "border-b" as a substring).
-   Excluded: `.neu-button`, `.neu-pressed`, anything with `bg-primary`
-   — those have their own shadow treatment and we don't want to
-   add a stray highlight outside them. */
+/* Etched dividers consistent with a top-left light source.
+   Horizontal dividers (`border-b` / `divide-y > *+*` / `border-t`)
+   get a 1px white highlight just below the dark line — that highlight
+   is the lit top edge of the row underneath the divider, matching the
+   top-left light convention used on `.neu-surface` cards. Vertical
+   dividers (`border-l` / `border-r`) get NO extra highlight: with
+   light from top-left, the left edge of an element is already lit and
+   the right edge is already in shadow, so the existing dark
+   `border-border` line on either side reads correctly on its own.
+   Selectors use `[class~="…"]` (whitespace-token match) so `border-b`
+   doesn't accidentally match `border-border` (which contains "border-b"
+   as a substring). Excluded: `.neu-button` / `.neu-pressed` /
+   `bg-primary` — those carry their own shadow treatments. */
 [class~="border-b"][class~="border-border"]:not([class~="neu-button"]):not([class~="neu-pressed"]):not([class*="bg-primary"]) {
-  box-shadow: 0 1px 0 color-mix(in oklch, white 65%, transparent);
+  box-shadow: 0 1px 0 color-mix(in oklch, white 75%, transparent);
 }
 [class~="border-t"][class~="border-border"]:not([class~="neu-button"]):not([class~="neu-pressed"]):not([class*="bg-primary"]) {
-  box-shadow: 0 -1px 0 color-mix(in oklch, white 65%, transparent);
+  box-shadow: inset 0 1px 0 color-mix(in oklch, white 75%, transparent);
 }
-[class~="border-r"][class~="border-border"]:not([class~="neu-button"]):not([class~="neu-pressed"]):not([class*="bg-primary"]) {
-  box-shadow: 1px 0 0 color-mix(in oklch, white 65%, transparent);
-}
-[class~="border-l"][class~="border-border"]:not([class~="neu-button"]):not([class~="neu-pressed"]):not([class*="bg-primary"]) {
-  box-shadow: -1px 0 0 color-mix(in oklch, white 65%, transparent);
-}
-/* Tailwind `divide-y` puts a `border-t` on each non-first child via a
-   generated rule. Pair it with the same highlight so the row divider
-   reads etched. */
 [class~="divide-y"] > * + * {
-  box-shadow: 0 -1px 0 color-mix(in oklch, white 65%, transparent);
+  box-shadow: inset 0 1px 0 color-mix(in oklch, white 75%, transparent);
 }
 
 @layer utilities {
@@ -180,30 +173,30 @@ button[class*="bg-primary"]:active {
      The same color sets `--color-border` below, so any `border-b` /
      `divide-y` divider reads as a continuation of this ring, not a
      harder solid line. */
-  /* Non-button content surfaces. Etched-outline treatment — a uniform
-     1px white inner highlight all around PLUS a 1px outer ring in the
-     foreground tint. The inner highlight is what gives the engraved
-     "Option B" feel the user picked earlier; combined with the outer
-     ring it reads as a thin double-stroke etched edge that's
-     consistent on all four sides (no top/bottom asymmetry from the
-     previous inset-top + inset-bottom variant). Only actual buttons
-     get raised; everything else, even when clickable as a whole, uses
-     this etched ring. */
+  /* Non-button content surfaces. Etched edge with directional shading
+     consistent with a top-left light source (matches the rest of the
+     platform's neu treatments):
+       - top + left inside: 1px white highlight (the lit facet)
+       - bottom + right inside: 1px dark shadow (in shadow)
+     The two diagonal insets together draw the whole edge — no need
+     for the separate outer ring; the dark edge at bottom-right reads
+     as the card's grounded shadow. */
   .neu-surface,
   .neu-surface-strong,
   .neu-surface-interactive {
     border-color: transparent;
     box-shadow:
-      inset 0 0 0 1px color-mix(in oklch, white 65%, transparent),
-      0 0 0 1px color-mix(in oklch, var(--color-foreground) 22%, transparent);
+      inset 1px 1px 0 color-mix(in oklch, white 75%, transparent),
+      inset -1px -1px 0 color-mix(in oklch, var(--color-foreground) 22%, transparent);
   }
 
-  /* Clickable variant — same etched ring at rest. Hover shifts the
-     outer ring to a primary tint; no depth change. */
+  /* Clickable variant — same edge at rest. Hover shifts the
+     bottom-right shadow to a primary tint so the affordance is
+     color-only; depth and direction don't change. */
   .neu-surface-interactive:hover {
     box-shadow:
-      inset 0 0 0 1px color-mix(in oklch, white 65%, transparent),
-      0 0 0 1px color-mix(in oklch, var(--color-primary) 55%, transparent);
+      inset 1px 1px 0 color-mix(in oklch, white 75%, transparent),
+      inset -1px -1px 0 color-mix(in oklch, var(--color-primary) 55%, transparent);
   }
 
   /* Floating element (dialog / drawer / dropdown / tooltip). These
@@ -255,13 +248,11 @@ button[class*="bg-primary"]:active {
     box-shadow: 10px 0 24px color-mix(in oklch, var(--color-foreground) 8%, transparent);
   }
 
-  /* Chat message bubble — etched outline. Was raised (dual-shadow)
-     but bubbles aren't buttons; the platform-wide rule says only
-     buttons get raised. Same etched treatment as `.neu-surface`. */
+  /* Chat message bubble — same directional etched edge as `.neu-surface`. */
   .neu-bubble {
     box-shadow:
-      inset 0 0 0 1px color-mix(in oklch, white 65%, transparent),
-      0 0 0 1px color-mix(in oklch, var(--color-foreground) 22%, transparent);
+      inset 1px 1px 0 color-mix(in oklch, white 75%, transparent),
+      inset -1px -1px 0 color-mix(in oklch, var(--color-foreground) 22%, transparent);
   }
 
   .neu-shadow-sm {
