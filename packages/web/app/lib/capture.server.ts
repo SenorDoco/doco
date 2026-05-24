@@ -2177,7 +2177,7 @@ function validateSynapseTypeReference(predicate: AuthoringPredicate): CaptureErr
     return { error: `predicate.synapse_type is required for \`${predicate.kind}\`.` };
   }
   const canonical = FIELD_TO_SYNAPSE_TYPE[synapseType];
-  if (canonical) {
+  if (canonical && canonical !== synapseType) {
     return {
       error: `predicate.synapse_type \`${synapseType}\` is a field name; use the canonical synapse type \`${canonical}\` (deriveSynapses rewrites the field name to its canonical type).`,
     };
