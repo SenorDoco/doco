@@ -143,12 +143,12 @@ const NODE_TYPE_ORDER = new Map(
   ].map((type, index) => [type, index]),
 );
 
-// Card size — wide and tall enough to fit two badges (type / lifecycle)
-// at the top and several lines of title/summary below. Width was 112,
-// height was 34; the larger box matches the user's "200% wider, 300%
-// taller" ask so the graph reads as cards rather than pills.
-const OVERVIEW_NODE_WIDTH = 336;
-const OVERVIEW_NODE_HEIGHT = 136;
+// Card size — wide and tall enough to fit the badge row plus a few
+// lines of title/summary. 336x136 (the previous bump) felt oversized,
+// so this is 33% smaller in both dimensions per user feedback while
+// keeping the card-shaped read.
+const OVERVIEW_NODE_WIDTH = 224;
+const OVERVIEW_NODE_HEIGHT = 91;
 const DETAIL_ZOOM = 0.95;
 const MAX_DETAIL_FETCH = 80;
 const GRAPH_MIN_ZOOM = 0.03;
@@ -384,7 +384,7 @@ function OverviewFlowNode({ data }: { data: OverviewNodeData }) {
   return (
     <div className="relative h-full w-full overflow-visible" style={{ opacity: data.opacity }}>
       <div
-        className={`neu-surface overview-graph-node nodrag nopan relative flex h-full w-full flex-col justify-center gap-1.5 overflow-hidden rounded-md border bg-card px-3 py-2 pl-4 text-left shadow-sm${data.isNew ? " doco-new-node-glow" : ""}`}
+        className={`neu-surface overview-graph-node nodrag nopan relative flex h-full w-full flex-col justify-center gap-1.5 overflow-hidden rounded-md border bg-white px-3 py-2 pl-4 text-left shadow-sm${data.isNew ? " doco-new-node-glow" : ""}`}
         data-graph-reference-number={data.referenceNumber ?? undefined}
         data-neuron-href={detail?.href ?? data.node.href ?? undefined}
         data-neuron-id={data.node.id}
