@@ -9,13 +9,6 @@ export function collaboratorsHref(level: InviteCollaboratorLevel, targetId: stri
   return `/collaborators?${params.toString()}`;
 }
 
-export function inviteCollaboratorsHref(level: InviteCollaboratorLevel, targetId: string): string {
-  const params = new URLSearchParams();
-  params.set("level", level);
-  params.set("target_id", targetId);
-  return `/collaborators/invite?${params.toString()}`;
-}
-
 export function CollaboratorsLink({
   level,
   targetId,
@@ -30,29 +23,6 @@ export function CollaboratorsLink({
   return (
     <Link
       to={collaboratorsHref(level, targetId)}
-      className={["neu-button shrink-0 rounded-md px-3 py-1.5 text-xs font-semibold", className]
-        .filter(Boolean)
-        .join(" ")}
-    >
-      {children}
-    </Link>
-  );
-}
-
-export function InviteCollaboratorsLink({
-  level,
-  targetId,
-  className,
-  children = "Invite collaborators",
-}: {
-  level: InviteCollaboratorLevel;
-  targetId: string;
-  className?: string;
-  children?: ReactNode;
-}) {
-  return (
-    <Link
-      to={inviteCollaboratorsHref(level, targetId)}
       className={["neu-button shrink-0 rounded-md px-3 py-1.5 text-xs font-semibold", className]
         .filter(Boolean)
         .join(" ")}
