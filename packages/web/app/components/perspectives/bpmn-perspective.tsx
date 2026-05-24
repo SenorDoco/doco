@@ -570,7 +570,7 @@ export function BpmnPerspective({
           proOptions={{ hideAttribution: true }}
         >
           <Flow.Background gap={24} size={1} />
-          <Flow.Controls position="top-right" showInteractive={false}>
+          <Flow.Controls position="top-right" showInteractive={false} style={{ top: 44 }}>
             {onToggleFullscreen ? (
               <Flow.ControlButton
                 onClick={onToggleFullscreen}
