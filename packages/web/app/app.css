@@ -225,8 +225,13 @@ button[class*="bg-primary"]:active {
     box-shadow: 10px 0 24px color-mix(in oklch, var(--color-foreground) 8%, transparent);
   }
 
+  /* Chat message bubble — etched outline. Was raised (dual-shadow)
+     but bubbles aren't buttons; the platform-wide rule says only
+     buttons get raised. Same etched treatment as `.neu-surface`. */
   .neu-bubble {
-    box-shadow: 4px 4px 10px var(--neu-shadow-soft), -4px -4px 10px var(--neu-highlight);
+    box-shadow:
+      inset 0 0 0 1px color-mix(in oklch, white 65%, transparent),
+      0 0 0 1px color-mix(in oklch, var(--color-foreground) 22%, transparent);
   }
 
   .neu-shadow-sm {

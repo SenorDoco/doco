@@ -249,7 +249,7 @@ function HistoryPane({ history }: NeuronDetailDrawerProps) {
             <span className="font-medium text-foreground">{e.op}</span>
           </div>
           {e.before || e.after ? (
-            <pre className="neu-inset mt-1 whitespace-pre-wrap break-words rounded-md bg-card p-2 text-[11px] leading-snug">
+            <pre className="neu-surface mt-1 whitespace-pre-wrap break-words rounded-md bg-card p-2 text-[11px] leading-snug">
               {JSON.stringify({ before: e.before, after: e.after }, null, 2)}
             </pre>
           ) : null}
@@ -321,7 +321,7 @@ function MetadataPane({
         <summary className="cursor-pointer text-xs font-medium text-muted-foreground hover:text-foreground">
           Raw JSON
         </summary>
-        <pre className="neu-inset mt-2 overflow-x-auto rounded-md bg-card p-3 text-[11px] leading-snug">
+        <pre className="neu-surface mt-2 overflow-x-auto rounded-md bg-card p-3 text-[11px] leading-snug">
           {JSON.stringify(ent, null, 2)}
         </pre>
       </details>

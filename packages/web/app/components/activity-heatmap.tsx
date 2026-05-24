@@ -28,7 +28,7 @@ function bucket(n: number): number {
 }
 
 const BUCKET_CLASS = [
-  "bg-card neu-inset",
+  "bg-card neu-surface",
   "bg-primary/20",
   "bg-primary/45",
   "bg-primary/70",

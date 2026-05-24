@@ -134,7 +134,7 @@ export default function ActivityPage({
                       </Link>
                     </div>
                     {e.before || e.after ? (
-                      <pre className="neu-inset mt-1 whitespace-pre-wrap break-words rounded-md bg-card p-2 text-[11px] leading-snug">
+                      <pre className="neu-surface mt-1 whitespace-pre-wrap break-words rounded-md bg-card p-2 text-[11px] leading-snug">
                         {JSON.stringify({ before: e.before, after: e.after }, null, 2)}
                       </pre>
                     ) : null}

@@ -116,7 +116,7 @@ function PromptBox({
     <div className="space-y-2">
       <p className="text-xs font-semibold text-foreground">{title}</p>
       <pre
-        className="neu-inset rounded-md bg-card p-3 text-[11px] whitespace-pre-wrap break-words"
+        className="neu-surface rounded-md bg-card p-3 text-[11px] whitespace-pre-wrap break-words"
         data-testid={promptTestId}
       >
         {body}

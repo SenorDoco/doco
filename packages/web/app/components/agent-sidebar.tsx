@@ -1040,7 +1040,7 @@ function SavedMessage({ message }: { message: ChatMessage }) {
       <div
         className={cn(
           "neu-bubble max-w-[90%] space-y-1.5 rounded-lg px-2.5 py-1.5",
-          isAssistant ? "bg-primary/10" : "neu-inset bg-input/60",
+          isAssistant ? "bg-primary/10" : "neu-surface bg-card",
         )}
       >
         {message.content.map((b) => (
@@ -1212,7 +1212,7 @@ function BlockView({ block }: { block: AnyBlock }) {
   }
   if (block.type === "tool_use") {
     return (
-      <div className="neu-inset rounded-md bg-background px-2 py-1 font-mono text-[10px] text-muted-foreground">
+      <div className="neu-surface rounded-md bg-card px-2 py-1 font-mono text-[10px] text-muted-foreground">
         <div className="break-all font-semibold text-foreground">
           {toolLabel(block.name, block.input)}
         </div>
@@ -1275,10 +1275,8 @@ function ToolResultRow({ result }: { result: ContentBlockToolResult }) {
   return (
     <div
       className={cn(
-        "whitespace-pre-wrap break-all rounded-md px-2 py-1 font-mono text-[10px]",
-        result.is_error
-          ? "bg-destructive/10 text-destructive"
-          : "neu-inset bg-background text-muted-foreground",
+        "neu-surface whitespace-pre-wrap break-all rounded-md px-2 py-1 font-mono text-[10px]",
+        result.is_error ? "bg-destructive/10 text-destructive" : "bg-card text-muted-foreground",
       )}
     >
       → {result.content}
@@ -1355,7 +1353,7 @@ function Composer({
           {staged.map((a) => (
             <div
               key={a.id}
-              className="neu-inset flex items-center gap-1.5 rounded-md border border-border bg-background px-2 py-1 text-[10px]"
+              className="neu-surface flex items-center gap-1.5 rounded-md bg-card px-2 py-1 text-[10px]"
             >
               <span className="font-mono text-muted-foreground">📎</span>
               <span className="truncate">{a.filename}</span>
