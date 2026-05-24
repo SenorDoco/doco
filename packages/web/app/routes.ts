@@ -117,8 +117,6 @@ export default [
   // then continues under :docoHandle/welcome and
   // :docoHandle/onboarding/agent.
   route("new-doco", "routes/new-doco.tsx"),
-  // Legacy wizard URLs redirect back to the one-page create form.
-  route("new-doco/constitution", "routes/new-doco.legacy-template.tsx"),
   route("new-doco/template", "routes/new-doco.template.tsx"),
   route("new-org", "routes/new-org.tsx"),
   route("orgs", "routes/orgs._index.tsx"),
@@ -189,23 +187,6 @@ export default [
   route(
     ":docoHandle/policies/:entityType/:policyId/edit",
     "routes/$docoHandle.policies.$entityType.$policyId.edit.tsx",
-  ),
-  // Legacy policies URLs. Route modules redirect GETs to /policies.
-  route(":docoHandle/constitution", "routes/$docoHandle.policies.tsx", {
-    id: "legacy-doco-constitution",
-  }),
-  route(":docoHandle/constitution/guidance/new", "routes/$docoHandle.policies.guidance.new.tsx", {
-    id: "legacy-doco-constitution-guidance-new",
-  }),
-  route(
-    ":docoHandle/constitution/neuron-authoring/new",
-    "routes/$docoHandle.policies.neuron-authoring.new.tsx",
-    { id: "legacy-doco-constitution-neuron-authoring-new" },
-  ),
-  route(
-    ":docoHandle/constitution/:entityType/:policyId/edit",
-    "routes/$docoHandle.policies.$entityType.$policyId.edit.tsx",
-    { id: "legacy-doco-constitution-edit" },
   ),
   route(":docoHandle/invites", "routes/$docoHandle.invites.tsx"),
   route(":docoHandle/api/invites.json", "routes/$docoHandle.api.invites[.]json.tsx"),

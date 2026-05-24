@@ -170,33 +170,6 @@ function collectIncomingNeuronTypes(policies: LoadedPolicy[]): Set<string> {
 
 type PgClient = Parameters<Parameters<typeof withClient>[0]>[0];
 
-/**
- * Normalize legacy predicate keys to their post-rename names.
- *
- * Policies seeded before the vocab sweep (nodes → neurons, edges →
- * synapses) persisted predicate JSON with `when_node_type`,
- * `target_node_type`, and `incoming_node_type`. The engine reads the
- * post-rename keys (`when_neuron_type`, etc.); when the stored payload
- * carries the old keys, the engine treats them as absent and the
- * filter is silently dropped — so a predicate scoped to `["eval"]`
- * fires against every candidate. Rewrite at read time so old data
- * still gates correctly. Idempotent; the new keys win on conflict.
- */
-function normalizePredicateKeys(predicate: unknown): unknown {
-  if (!predicate || typeof predicate !== "object") return predicate;
-  const p = { ...(predicate as Record<string, unknown>) };
-  if (!("when_neuron_type" in p) && "when_node_type" in p) {
-    p.when_neuron_type = p.when_node_type;
-  }
-  if (!("target_neuron_type" in p) && "target_node_type" in p) {
-    p.target_neuron_type = p.target_node_type;
-  }
-  if (!("incoming_neuron_type" in p) && "incoming_node_type" in p) {
-    p.incoming_neuron_type = p.incoming_node_type;
-  }
-  return p;
-}
-
 async function loadPolicies(c: PgClient, docoId: string): Promise<LoadedPolicy[]> {
   // COALESCE so a NULL lifecycle column behaves as "active" — the rest of
   // the codebase treats NULL that way (search-filters, doco-stats,
@@ -219,7 +192,7 @@ async function loadPolicies(c: PgClient, docoId: string): Promise<LoadedPolicy[]
       );
       continue;
     }
-    const predicate = normalizePredicateKeys(yaml.predicate);
+    const predicate = yaml.predicate;
     if (!predicate || typeof predicate !== "object") {
       console.warn(
         `[authoring-runner] dropping policy ${row.id} from doco ${docoId}: predicate is missing or not an object`,
@@ -227,10 +200,7 @@ async function loadPolicies(c: PgClient, docoId: string): Promise<LoadedPolicy[]
       continue;
     }
     const onViolation = yaml.on_violation;
-    // Honor both the post-rename `fires_when_neuron_lifecycle` and the
-    // pre-rename `fires_when_node_lifecycle` — policies seeded before
-    // the vocab sweep persist the old key.
-    const lifecycleFilter = yaml.fires_when_neuron_lifecycle ?? yaml.fires_when_node_lifecycle;
+    const lifecycleFilter = yaml.fires_when_neuron_lifecycle;
     out.push({
       policy_id: row.id,
       summary: row.summary ?? "",
