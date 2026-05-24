@@ -33,7 +33,8 @@ export function PerspectiveTabs({
     <div className="mb-2 flex flex-wrap items-start justify-between gap-3">
       <nav
         aria-label="Visualization perspectives"
-        className="flex min-w-0 flex-wrap items-center gap-1"
+        role="tablist"
+        className="-mb-px flex min-w-0 flex-wrap items-end gap-px"
       >
         {perspectives.map((p) => (
           <PerspectiveTab
@@ -65,16 +66,30 @@ interface PerspectiveTabProps {
 
 function PerspectiveTab({ handle, perspective, active }: PerspectiveTabProps) {
   const href = `/${handle}?perspective=${encodeURIComponent(perspective.slug)}`;
+  // Real tab-strip styling: tabs sit flush above the canvas and the
+  // active tab merges with the canvas's top edge (no bottom border, same
+  // bg as the canvas). Inactive tabs keep their bottom border so they
+  // visually sit BELOW the canvas's top line. The container above pulls
+  // the row down by 1px (`-mb-px`) so the active tab's missing bottom
+  // border lands exactly on top of the canvas border.
   const tabClass = cn(
-    "inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-xs font-medium",
-    active ? "neu-pressed text-primary" : "neu-button text-muted-foreground hover:text-foreground",
+    "relative inline-flex items-center gap-1.5 rounded-t-md border border-border px-3 py-1.5 text-xs font-medium",
+    active
+      ? "border-b-transparent bg-white text-foreground"
+      : "bg-input/40 text-muted-foreground hover:bg-input/60 hover:text-foreground",
   );
   const title = perspective.ownerHandle
     ? `${perspective.name} — by ${perspective.ownerHandle}`
     : perspective.name;
 
   return (
-    <Link to={href} className={tabClass} title={title}>
+    <Link
+      to={href}
+      role="tab"
+      aria-selected={active}
+      className={tabClass}
+      title={title}
+    >
       {perspective.icon ? (
         <span aria-hidden className="text-sm leading-none">
           {perspective.icon}
@@ -127,7 +142,7 @@ function PerspectiveSettingsMenu({
   const apiAction = `/${handle}/api/perspectives.json`;
 
   return (
-    <div ref={wrapperRef} className="relative">
+    <div ref={wrapperRef} className="relative ml-1 self-end pb-px">
       <button
         type="button"
         aria-label="Perspective settings"
