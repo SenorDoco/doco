@@ -812,6 +812,7 @@ export default function DocoHome({
                   lanes={bpmnGraph.lanes}
                   nodes={bpmnGraph.nodes}
                   links={bpmnGraph.links}
+                  globalPagerank={bpmnGraph.global_pagerank}
                   visibleLifecycles={visibleLifecycles}
                   availableLifecycles={availableLifecycles}
                   onLifecycleToggle={toggleLifecycle}
