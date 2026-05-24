@@ -1015,17 +1015,27 @@ function isNodeVisibleInViewport(
  * `tests`, `consults`, `has_parent`, …) renders an arrow but doesn't
  * push the target node to a later column.
  *
- * Direction note: all three sequence-flow synapses store the
- * data-model link from the *successor* to the *predecessor* (e.g.
- * `Action.follows=[B]` is stored as `{from: Action, to: B}`, meaning
- * B happens before the Action). `computeDepths` reads `link.target`
- * as the predecessor for these types so depth grows left → right in
- * BPMN reading order.
+ * Direction is per-type:
+ *
+ * - `follows` and `triggered_by` store the link successor → predecessor
+ *   in the data (`A.follows=[B]` is `{from: A, to: B}` meaning B
+ *   happens before A). Depth reads `link.target` as the predecessor.
+ *
+ * - `enacts` is the BPMN-gateway case: `Action.decision_ids=[D]`
+ *   stores `{from: Action, to: Decision}` and for the BPMN view the
+ *   Action *precedes* the Decision (which is rendered as the gateway
+ *   the Action's flow reaches). Depth reads `link.source` as the
+ *   predecessor for `enacts` so gateways appear to the right of the
+ *   work that leads to them — matching how every BPMN modeler lays
+ *   them out. The synapse direction in the underlying data is
+ *   unchanged; only this depth-walk's interpretation differs.
  */
-const SEQUENCE_FLOW_SYNAPSES: ReadonlySet<string> = new Set([
+const SEQUENCE_FLOW_TARGET_IS_PRED: ReadonlySet<string> = new Set([
   "follows", // A.follows=[B] → B is predecessor of A
   "triggered_by", // Action.triggered_by=[B] → B is predecessor of A
-  "enacts", // Action.decision_ids=[D] → D is predecessor of A
+]);
+const SEQUENCE_FLOW_SOURCE_IS_PRED: ReadonlySet<string> = new Set([
+  "enacts", // Action.decision_ids=[D] → Action precedes Decision
 ]);
 
 function computeDepths(
@@ -1038,10 +1048,11 @@ function computeDepths(
   for (const id of nodeIds) predecessors.set(id, []);
   for (const link of links) {
     if (!nodeIds.has(link.source) || !nodeIds.has(link.target)) continue;
-    if (!SEQUENCE_FLOW_SYNAPSES.has(link.synapse_type)) continue;
-    // Sequence-flow synapses point successor → predecessor in our
-    // data; link.target is the predecessor of link.source.
-    (predecessors.get(link.source) as string[]).push(link.target);
+    if (SEQUENCE_FLOW_TARGET_IS_PRED.has(link.synapse_type)) {
+      (predecessors.get(link.source) as string[]).push(link.target);
+    } else if (SEQUENCE_FLOW_SOURCE_IS_PRED.has(link.synapse_type)) {
+      (predecessors.get(link.target) as string[]).push(link.source);
+    }
   }
   // Memoized DFS — handles DAGs and is safe against cycles via the
   // `visiting` guard which treats a back-edge predecessor as depth 0.
