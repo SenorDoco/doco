@@ -287,9 +287,7 @@ export default function CollaboratorsPage({
 
         <div className="flex flex-wrap items-end justify-between gap-3">
           <label className="flex flex-col gap-1 text-sm">
-            <span className="text-xs uppercase tracking-wide text-muted-foreground">
-              Show collaborators for
-            </span>
+            <span className="text-base font-semibold">Show collaborators for</span>
             <select
               value={scope}
               onChange={(e) => applyScope(e.currentTarget.value)}
