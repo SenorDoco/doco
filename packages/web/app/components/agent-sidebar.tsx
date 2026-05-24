@@ -109,16 +109,12 @@ const COLLAPSE_KEY = "senor-doco:collapsed";
 const UNREAD_KEY = "senor-doco:unread";
 const SHOW_THINKING_KEY = "senor-doco:show-thinking";
 
-// Sidebar widths. Header collapsed → 32px rail. When expanded the
-// chat column is 320px and a 32px vertical "Thinking" tab sits to
-// its right (the toggle handle). When the Thinking column itself is
-// open, the panel adds another 288px → 640px total.
+// Sidebar widths. Collapsed → 32px rail. Default expanded → 320px
+// (chat only). When the user toggles "Show thinking" in the header,
+// the Thinking panel doubles the sidebar to 640px.
 const RAIL_COLLAPSED = "32px";
-const CHAT_COL_WIDTH = 320;
-const THINKING_TAB_WIDTH = 32;
-const THINKING_PANEL_WIDTH = 288;
-const RAIL_DEFAULT = `${CHAT_COL_WIDTH + THINKING_TAB_WIDTH}px`; // 352px
-const RAIL_THINKING = `${CHAT_COL_WIDTH + THINKING_TAB_WIDTH + THINKING_PANEL_WIDTH}px`; // 640px
+const RAIL_DEFAULT = "320px";
+const RAIL_THINKING = "640px";
 
 /** One chronological entry in the per-turn thinking log. Populated as
  *  SSE events arrive; cleared at the start of every new send. */
@@ -815,15 +811,35 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
         <div className="flex min-w-0 items-center gap-2">
           <div className="truncate text-xs font-semibold">Señor Doco</div>
         </div>
-        <button
-          type="button"
-          onClick={() => setCollapsedPersistent(true)}
-          className="neu-button rounded p-0.5 text-muted-foreground hover:bg-input hover:text-foreground"
-          aria-label="Collapse Señor Doco"
-          title="Collapse"
-        >
-          <CollapseIcon side="left" />
-        </button>
+        <div className="flex items-center gap-1.5">
+          {/* Show-thinking toggle. Sits left of the collapse chevron;
+              pressed-state styling uses .neu-pressed so the user can
+              see at a glance whether the panel is on. */}
+          <button
+            type="button"
+            onClick={toggleShowThinking}
+            aria-pressed={showThinking}
+            aria-label={showThinking ? "Hide thinking column" : "Show thinking column"}
+            title={showThinking ? "Hide thinking column" : "Show thinking column"}
+            className={cn(
+              "rounded px-1.5 py-0.5 text-[10px] uppercase tracking-wide",
+              showThinking
+                ? "neu-pressed bg-input text-foreground"
+                : "neu-button text-muted-foreground hover:bg-input hover:text-foreground",
+            )}
+          >
+            {showThinking ? "Hide thinking" : "Show thinking"}
+          </button>
+          <button
+            type="button"
+            onClick={() => setCollapsedPersistent(true)}
+            className="neu-button rounded p-0.5 text-muted-foreground hover:bg-input hover:text-foreground"
+            aria-label="Collapse Señor Doco"
+            title="Collapse"
+          >
+            <CollapseIcon side="left" />
+          </button>
+        </div>
       </div>
 
       {/* Persistent "what this is" line, sitting right under the title so
@@ -841,7 +857,10 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
         <div
           ref={messageListRef}
           onScroll={onMessagesScroll}
-          className="min-h-0 w-[320px] shrink-0 overflow-y-auto border-r border-border px-3 py-3 text-xs leading-relaxed"
+          className={cn(
+            "min-h-0 overflow-y-auto px-3 py-3 text-xs leading-relaxed",
+            showThinking ? "w-[320px] shrink-0 border-r border-border" : "flex-1",
+          )}
         >
           {loadError ? (
             <div className="rounded-md bg-destructive/10 px-2 py-1.5 text-[11px] text-destructive">
@@ -867,11 +886,6 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
             />
           ))}
         </div>
-        <ThinkingTab
-          active={busy || inFlight !== null || remoteInflight}
-          open={showThinking}
-          onToggle={toggleShowThinking}
-        />
         {showThinking ? (
           <ThinkingPanel
             events={thinkingEvents}
@@ -1094,54 +1108,6 @@ function InFlightMessageView({
           mirroring the collapse-rail pattern of the Señor Doco bar
           itself. The bubble stays prose-only. */}
     </div>
-  );
-}
-
-/**
- * Vertical "Thinking" tab — sits between the chat column and the
- * (optional) Thinking panel. Same chrome as `CollapsedRail`: 32px
- * wide, vertical label, click toggles. The tab is only mounted when
- * Señor Doco's main sidebar is expanded (the outer `if (collapsed)
- * return <CollapsedRail/>` short-circuit), so the user's rule
- * "Show thinking tab only when Señor Doco is extended" is enforced
- * by mount location.
- */
-function ThinkingTab({
-  active,
-  open,
-  onToggle,
-}: {
-  active: boolean;
-  open: boolean;
-  onToggle: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onToggle}
-      aria-pressed={open}
-      aria-label={open ? "Hide thinking column" : "Show thinking column"}
-      title={open ? "Hide thinking column" : "Show thinking column"}
-      className={cn(
-        "neu-panel group relative flex h-full w-[32px] shrink-0 cursor-pointer flex-col items-center gap-2 py-3 hover:bg-input",
-        open ? "border-r border-border bg-card/50" : "border-r border-border bg-card",
-      )}
-    >
-      <CollapseIcon side={open ? "right" : "left"} />
-      <div
-        className="select-none text-[11px] font-semibold uppercase tracking-wider text-foreground"
-        style={{ writingMode: "vertical-rl", transform: "rotate(180deg)" }}
-      >
-        Thinking
-      </div>
-      {active ? (
-        <span
-          aria-label="working"
-          className="h-2 w-2 animate-pulse rounded-full bg-primary"
-          style={{ boxShadow: "0 0 0 2px var(--color-card)" }}
-        />
-      ) : null}
-    </button>
   );
 }
 
