@@ -137,6 +137,10 @@ button[class*="bg-primary"]:active {
 .neu-pressed:hover,
 .neu-pressed:active {
   box-shadow: var(--neu-pressed) !important;
+  /* Pressed buttons shouldn't carry a visible border — the inset
+     shadow IS the edge. Forces transparent over any `border-border`
+     the element also has. */
+  border-color: transparent !important;
   transform: none !important;
 }
 
