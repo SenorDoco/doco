@@ -731,7 +731,7 @@ function uniquePrincipalIds(value: unknown, field: string): string[] | CaptureEr
 function assertNotCollaboratorId(value: string, field: string): CaptureError | null {
   if (!value.startsWith("collaborator_")) return null;
   return {
-    error: `${field} must be a principal id (\`principal_...\`), not a collaborator id (\`${value}\`). Collaborators are OAuth identities; Principals are the role-personas Actions reference. Look up or create the matching Principal first.`,
+    error: `${field} must be a Principal NEURON id (\`principal_<ulid>\`), not a collaborator id (\`${value}\`). Collaborators are OAuth identities; Principals are the role-personas neurons reference. To fix: GET /<doco-handle>/api/principals.json and read \`principal_neurons\`. If empty or no matching role exists, POST /<doco-handle>/api/principals.json with body {"name": "user"} (or another role name) to create one — that endpoint returns the new id. Then retry the capture with the explicit principal id in \`${field}\`.`,
   };
 }
 
