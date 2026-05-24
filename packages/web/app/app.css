@@ -99,57 +99,36 @@ a:focus-visible {
   box-shadow: var(--neu-focus);
 }
 
-/* Auto-neumorphism for any button-like element matching one of:
-   - `bg-primary` (the brand-tinted primary CTA pattern)
-   - `border border-border` paired with `rounded-md|rounded-lg|rounded-full`
-   Applies the same dual-shadow + softened border color that `.neu-button`
-   gets explicitly, so an `<a>`/`<button>` styled inline matches one
-   styled with the utility class. Without the border-color override, the
-   raw `--color-border` token reads as a darker outline next to elements
-   that use `.neu-button` directly — that's the inconsistency users see. */
+/* Auto-raise ONLY primary CTAs (the `bg-primary` pattern). Anchors and
+   buttons styled inline with `border border-border + rounded-*` used to
+   auto-raise here too, but that wrongly lifted clickable cards and
+   content areas. Now: explicit `.neu-button` opts in; everything else
+   without `.neu-button` or `bg-primary` is a flat etched surface. */
 a[class*="bg-primary"],
-button[class*="bg-primary"],
-a[class*="rounded-md"][class*="border-border"],
-button[class*="rounded-md"][class*="border-border"],
-a[class*="rounded-lg"][class*="border-border"],
-button[class*="rounded-lg"][class*="border-border"],
-a[class*="rounded-full"][class*="border-border"],
-button[class*="rounded-full"][class*="border-border"] {
+button[class*="bg-primary"] {
   border-color: var(--neu-border);
   box-shadow: 5px 5px 12px var(--neu-shadow-soft), -5px -5px 12px var(--neu-highlight);
 }
 
 a[class*="bg-primary"]:hover,
-button[class*="bg-primary"]:hover,
-a[class*="rounded-md"][class*="border-border"]:hover,
-button[class*="rounded-md"][class*="border-border"]:hover,
-a[class*="rounded-lg"][class*="border-border"]:hover,
-button[class*="rounded-lg"][class*="border-border"]:hover,
-a[class*="rounded-full"][class*="border-border"]:hover,
-button[class*="rounded-full"][class*="border-border"]:hover {
+button[class*="bg-primary"]:hover {
   box-shadow: 7px 7px 16px var(--neu-shadow-soft), -7px -7px 16px var(--neu-highlight);
   transform: translateY(-1px);
 }
 
 a[class*="bg-primary"]:active,
-button[class*="bg-primary"]:active,
-a[class*="rounded-md"][class*="border-border"]:active,
-button[class*="rounded-md"][class*="border-border"]:active,
-a[class*="rounded-lg"][class*="border-border"]:active,
-button[class*="rounded-lg"][class*="border-border"]:active,
-a[class*="rounded-full"][class*="border-border"]:active,
-button[class*="rounded-full"][class*="border-border"]:active {
+button[class*="bg-primary"]:active {
   box-shadow: var(--neu-pressed);
   transform: translateY(0);
 }
 
-/* `.neu-pressed` is a state-override class — it has to beat the
-   auto-neumorphism selectors above (which use attribute selectors with
-   specificity 0,2,1 and would otherwise outrank a single class). The
-   `!important` is intentional: when an element opts into `.neu-pressed`,
-   no other rule in the file should be allowed to lift it. The :hover /
-   :active variants pin transform so an auto-CSS hover lift can't
-   briefly un-press the button mid-interaction. */
+/* `.neu-pressed` is a state-override class — it has to beat any auto-raise
+   above (those use attribute selectors with specificity 0,2,1 and would
+   otherwise outrank a single class). The `!important` is intentional:
+   when an element opts into `.neu-pressed`, no other rule in the file
+   should be allowed to lift it. The :hover / :active variants pin
+   transform so an auto-CSS hover lift can't briefly un-press the button
+   mid-interaction. */
 .neu-pressed,
 .neu-pressed:hover,
 .neu-pressed:active {
@@ -158,19 +137,31 @@ button[class*="rounded-full"][class*="border-border"]:active {
 }
 
 @layer utilities {
-  .neu-surface {
-    border-color: var(--neu-border);
-    box-shadow: var(--neu-raised);
-  }
-
-  .neu-surface-strong {
-    border-color: var(--neu-border);
-    box-shadow: var(--neu-raised-strong);
-  }
-
+  /* Non-button content surfaces (cards, badges, list rows, info
+     panels, table containers, clickable anchor-cards). Etched outline
+     only — NO raised shadow. The whole-platform rule is: only actual
+     buttons get raised. Anything else, even when clickable, is flat
+     with a thin border. Box-shadow combines a 1px outer ring with a
+     top-inside highlight and a faint bottom-inside shade so the edge
+     reads as engraved on the page rather than floating over it. */
+  .neu-surface,
+  .neu-surface-strong,
   .neu-surface-interactive {
-    border-color: var(--neu-border);
-    box-shadow: var(--neu-raised);
+    border-color: transparent;
+    box-shadow:
+      inset 0 1px 0 color-mix(in oklch, white 88%, transparent),
+      inset 0 -1px 0 color-mix(in oklch, var(--color-foreground) 6%, transparent),
+      0 0 0 1px color-mix(in oklch, var(--color-foreground) 8%, transparent);
+  }
+
+  /* Clickable variant — same etched look at rest. Hover bumps the
+     outer ring to a primary tint so the affordance is color-only,
+     no depth change. */
+  .neu-surface-interactive:hover {
+    box-shadow:
+      inset 0 1px 0 color-mix(in oklch, white 88%, transparent),
+      inset 0 -1px 0 color-mix(in oklch, var(--color-foreground) 6%, transparent),
+      0 0 0 1px color-mix(in oklch, var(--color-primary) 40%, transparent);
   }
 
   /* Floating element (dialog / drawer / dropdown / tooltip). These
@@ -183,14 +174,9 @@ button[class*="rounded-full"][class*="border-border"]:active {
      these wrappers doesn't draw an outline. */
   .neu-floating {
     border-color: transparent !important;
-    box-shadow: 0 18px 36px color-mix(in oklch, var(--color-foreground) 16%, transparent), 0 4px
-      10px color-mix(in oklch, var(--color-foreground) 10%, transparent) !important;
-  }
-
-  .neu-surface-interactive:hover {
-    border-color: color-mix(in oklch, var(--color-primary) 32%, var(--neu-border));
-    box-shadow: var(--neu-raised-strong);
-    transform: translateY(-1px);
+    box-shadow:
+      0 18px 36px color-mix(in oklch, var(--color-foreground) 16%, transparent),
+      0 4px 10px color-mix(in oklch, var(--color-foreground) 10%, transparent) !important;
   }
 
   .neu-inset {

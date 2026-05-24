@@ -141,7 +141,7 @@ function PerspectiveSettingsMenu({
       {open ? (
         <div
           aria-label="Perspectives"
-          className="neu-surface absolute left-0 top-full z-40 mt-1 w-80 rounded-md border border-border bg-card p-2 shadow-md"
+          className="neu-floating absolute left-0 top-full z-40 mt-1 w-80 rounded-md bg-card p-2"
         >
           <p className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
             Attached

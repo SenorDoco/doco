@@ -20,6 +20,7 @@ import {
   activityRowLifecycle,
   auditSummaryFallback,
   capNodeType,
+  activityRowLifecycle,
   iconFromAuditOp,
   lifecycleTransitionText,
   shouldStrikeActivityTarget,
