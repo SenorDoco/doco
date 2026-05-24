@@ -12,9 +12,9 @@ import { SiteHeader } from "~/components/site-header";
 import { activityRowLifecycle, shouldStrikeActivityTarget } from "~/lib/activity-feed";
 import { type AuditOp, readAuditEvents } from "~/lib/audit-log.server";
 import { cn } from "~/lib/cn";
-import { lifecycleColor } from "~/lib/neuron-colors";
 import { docoPath } from "~/lib/db.server";
 import { loadDocoRouteForRead } from "~/lib/doco-access.server";
+import { lifecycleColor } from "~/lib/neuron-colors";
 
 const VALID_OPS: ReadonlySet<string> = new Set([
   "entity.create",

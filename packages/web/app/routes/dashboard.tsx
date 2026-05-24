@@ -17,9 +17,9 @@ import { Breadcrumb, hostBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
 import { SiteHeader } from "~/components/site-header";
 import {
+  activityRowLifecycle,
   auditSummaryFallback,
   capNodeType,
-  activityRowLifecycle,
   iconFromAuditOp,
   lifecycleTransitionText,
   shouldStrikeActivityTarget,
