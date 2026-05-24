@@ -12,7 +12,12 @@
   --color-muted-foreground: oklch(0.47 0.013 248);
   --color-card: oklch(0.94 0.012 245);
   --color-card-foreground: oklch(0.2 0.015 248);
-  --color-border: oklch(0.83 0.014 248);
+  /* Same near-foreground tint at ~9% alpha that `.neu-surface` paints
+     around the outside of every card. Using the same token here means
+     `border-b border-border` and `divide-y divide-border` lines read
+     as a continuation of the etched ring rather than a darker solid
+     line. */
+  --color-border: oklch(0.2 0.015 248 / 9%);
   --color-input: oklch(0.91 0.013 248);
   --color-primary: oklch(0.54 0.17 324);
   --color-primary-foreground: oklch(0.99 0.003 245);
@@ -138,28 +143,25 @@ button[class*="bg-primary"]:active {
 
 @layer utilities {
   /* Non-button content surfaces (cards, badges, list rows, info
-     panels, table containers, clickable anchor-cards). Etched outline
-     only — NO raised shadow. The whole-platform rule is: only actual
-     buttons get raised. Anything else, even when clickable, is flat
-     with a thin border. Box-shadow combines a 1px outer ring with a
-     top-inside highlight and a faint bottom-inside shade so the edge
-     reads as engraved on the page rather than floating over it. */
+     panels, table containers, clickable anchor-cards). The whole-
+     platform rule is: only actual buttons get raised. Everything else
+     gets a clean 1px outer ring in the same near-foreground tint —
+     uniform on all four sides (the earlier inset-top + inset-bottom
+     variant made the lateral edges read thinner than the top/bottom).
+     The same color sets `--color-border` below, so any `border-b` /
+     `divide-y` divider reads as a continuation of this ring, not a
+     harder solid line. */
   .neu-surface,
   .neu-surface-strong,
   .neu-surface-interactive {
     border-color: transparent;
-    box-shadow: inset 0 1px 0 color-mix(in oklch, white 88%, transparent), inset 0 -1px 0
-      color-mix(in oklch, var(--color-foreground) 6%, transparent), 0 0 0 1px
-      color-mix(in oklch, var(--color-foreground) 8%, transparent);
+    box-shadow: 0 0 0 1px color-mix(in oklch, var(--color-foreground) 9%, transparent);
   }
 
-  /* Clickable variant — same etched look at rest. Hover bumps the
-     outer ring to a primary tint so the affordance is color-only,
-     no depth change. */
+  /* Clickable variant — same etched ring at rest. Hover shifts the
+     ring to a primary tint; no depth change. */
   .neu-surface-interactive:hover {
-    box-shadow: inset 0 1px 0 color-mix(in oklch, white 88%, transparent), inset 0 -1px 0
-      color-mix(in oklch, var(--color-foreground) 6%, transparent), 0 0 0 1px
-      color-mix(in oklch, var(--color-primary) 40%, transparent);
+    box-shadow: 0 0 0 1px color-mix(in oklch, var(--color-primary) 45%, transparent);
   }
 
   /* Floating element (dialog / drawer / dropdown / tooltip). These
