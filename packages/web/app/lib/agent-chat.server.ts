@@ -19,9 +19,11 @@
 //
 // The conversation system prompt is bootstrapped much like the agent-
 // bootstrap endpoint feeds external agents — the canonical protocol
-// prose + the Doco policies the user can read —
-// but reframed for an in-page sidebar (no two-line connection header,
-// no footer-lines / tally lines).
+// prose + the Doco policies the user can read. Señor Doco follows the
+// SAME protocol as any other agent (footer-lines verbatim after every
+// write); the only thing he gets that external agents don't is an
+// internal API route via the doco_api tool, so his fetches skip the
+// HTTP round-trip.
 
 import Anthropic from "@anthropic-ai/sdk";
 import type { MessageStream } from "@anthropic-ai/sdk/lib/MessageStream";
@@ -877,9 +879,11 @@ Only call GET /<handle>/api/<type>.txt when you need detail beyond
 this cheatsheet (long-form error semantics, deep PATCH field list,
 or a type not enumerated above). Routine captures POST directly.
 
-## After every action — render the result
+## After every write — paste footer_lines verbatim, then navigate
 
-When the user asks you to DO something concrete, you must end the turn on a page that visibly proves it happened. Default destinations:
+Every POST / PATCH / DELETE on a Doco endpoint returns a \`footer_lines: string[]\` in the response body. Paste every entry **verbatim**, one per line, as plain text in your reply — same canonical protocol every other agent on Doco follows. The lines already carry the entity name, an emoji marker, a markdown link to the new neuron, and the timing; they are the canonical user-visible record of what happened. Don't paraphrase them, don't summarize them, don't drop the link, don't add your own "Decision captured — see graph." line on top — the footer line is the line.
+
+Then navigate to the page that visibly proves the change:
 
 | Action | Navigate to |
 |---|---|
@@ -889,7 +893,7 @@ When the user asks you to DO something concrete, you must end the turn on a page
 | Created a new doco / org | /<new-handle> |
 | User asked "show me X" | the page that lists or details X |
 
-After the navigate, end the text reply with at most ONE short line (e.g. "Decision captured — see graph." or just "✓"). Never paste the URL — the navigate already moved them there.
+Never paste the URL on a separate line — the footer-line's link covers it, and the navigate already moved them there. If the response also returns \`warnings[]\`, those are model-facing hints, not user-facing; do not paste them.
 
 ## Adding a synapse
 

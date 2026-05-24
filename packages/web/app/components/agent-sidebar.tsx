@@ -1316,26 +1316,15 @@ function summarizeToolResult(content: unknown, isError: boolean | undefined): st
     const ok = p.ok === true;
     const body = p.body;
     if (ok && body && typeof body === "object" && !Array.isArray(body)) {
-      const b = body as Record<string, unknown>;
-      const footers = b.footer_lines;
-      if (Array.isArray(footers) && footers.length > 0 && typeof footers[0] === "string") {
-        // Footer-lines are the Doco agent-protocol format, designed
-        // for external agents to paste verbatim in chat. In our own
-        // sidebar that's noise — strip the `[🔮 Doco]` prefix, the
-        // emoji decoration, the `[label](url)` markdown wrap, and the
-        // trailing `(0.0s)` / `(id_xxx)` tails so what's left is the
-        // human bit.
-        const cleaned = footers[0]
-          .replace(/^\[🔮 Doco\]\s*/u, "")
-          .replace(/^[\p{Emoji}\p{Extended_Pictographic}‍️\s]+/u, "")
-          .replace(/\s*\(\d+(\.\d+)?s\)\s*$/u, "")
-          .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
-          .replace(/\s*\([a-z]+_[A-Z0-9]+\)\s*$/i, "")
-          .trim();
-        return `✓ ${cleaned || `HTTP ${status ?? 200}`}`;
+      // Don't extract footer_lines here. Señor Doco follows the same
+      // Doco agent-protocol as every other agent: he pastes the
+      // footer-line verbatim in his next text response. The chip just
+      // confirms the round-trip succeeded — pulling the same footer
+      // text into the chip would show the user the same line twice.
+      const duration = (body as Record<string, unknown>).duration_ms;
+      if (typeof duration === "number") {
+        return `✓ ${status ?? 200} (${(duration / 1000).toFixed(1)}s)`;
       }
-      const id = typeof b.id === "string" ? b.id : null;
-      if (id) return `✓ ${status ?? 200} — ${id}`;
       return `✓ ${status ?? 200}`;
     }
     if (!ok && body && typeof body === "object" && !Array.isArray(body)) {
