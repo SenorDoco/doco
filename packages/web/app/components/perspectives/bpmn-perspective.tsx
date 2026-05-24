@@ -28,6 +28,10 @@ import {
   useState,
 } from "react";
 import { useNavigate } from "react-router";
+import {
+  LifecycleBadge as SharedLifecycleBadge,
+  TypeBadge as SharedTypeBadge,
+} from "~/components/neuron-badges";
 import type { OverviewGraphLink } from "~/components/overview-graph";
 import type { BpmnLane, BpmnNode, BpmnShape } from "~/lib/bpmn-perspective.server";
 import {
@@ -41,7 +45,7 @@ import {
   clearGraphReferences,
   publishGraphReferences,
 } from "~/lib/graph-references";
-import { lifecycleColor, lifecycleLabel, textOnLifecycle } from "~/lib/neuron-colors";
+import { lifecycleColor, lifecycleLabel } from "~/lib/neuron-colors";
 import "@xyflow/react/dist/style.css";
 
 // MUST stay in sync with the matching exports in
@@ -1514,77 +1518,26 @@ function ReferenceBadge({ data, circular = false }: { data: BpmnNodeData; circul
  * they're two pills of the same lifecycle color, paired with the
  * shape stroke (also lifecycle color) to form a consistent color
  * triplet. Text identifies what the pill represents (type vs stage).
+ *
+ * Implementation lives in `~/components/neuron-badges`; this perspective
+ * just adapts the BpmnNode prop to the entityType/lifecycle pair the
+ * shared component expects, plus the BPMN-only `circular` anchor swap.
  */
-function badgeStyle(
-  node: BpmnNode,
-  anchor: "left" | "right" | "centered-top" | "centered-bottom",
-): CSSProperties {
-  const bg = lifecycleColor(node.lifecycle);
-  const fg = textOnLifecycle(node.lifecycle);
-  const base: CSSProperties = {
-    position: "absolute",
-    background: bg,
-    color: fg,
-    fontSize: 9,
-    fontWeight: 700,
-    lineHeight: 1,
-    padding: "2px 5px",
-    borderRadius: 3,
-    letterSpacing: 0.3,
-    pointerEvents: "none",
-    textTransform: "uppercase",
-    zIndex: 2,
-    whiteSpace: "nowrap",
-  };
-  switch (anchor) {
-    case "left":
-      return { ...base, top: -7, left: 6 };
-    case "right":
-      return { ...base, top: -7, right: 6 };
-    case "centered-top":
-      return { ...base, top: -8, left: "50%", transform: "translateX(-50%)" };
-    case "centered-bottom":
-      return { ...base, bottom: -8, left: "50%", transform: "translateX(-50%)" };
-  }
-}
-
 function TypeBadge({ node, circular = false }: { node: BpmnNode; circular?: boolean }) {
   return (
-    <span style={badgeStyle(node, circular ? "centered-top" : "left")}>
-      {labelForType(node.entity_type)}
-    </span>
+    <SharedTypeBadge
+      entityType={node.entity_type}
+      lifecycle={node.lifecycle}
+      anchor={circular ? "centered-top" : "left"}
+    />
   );
 }
 
 function LifecycleBadge({ node, circular = false }: { node: BpmnNode; circular?: boolean }) {
   return (
-    <span style={badgeStyle(node, circular ? "centered-bottom" : "right")}>
-      {lifecycleLabel(node.lifecycle)}
-    </span>
+    <SharedLifecycleBadge
+      lifecycle={node.lifecycle}
+      anchor={circular ? "centered-bottom" : "right"}
+    />
   );
-}
-
-function labelForType(type: string): string {
-  switch (type) {
-    case "intent":
-      return "Intent";
-    case "decision":
-      return "Decision";
-    case "action":
-      return "Action";
-    case "rule":
-      return "Rule";
-    case "state":
-      return "State";
-    case "log":
-      return "Log";
-    case "eval":
-      return "Eval";
-    case "reference":
-      return "Ref";
-    case "idea":
-      return "Idea";
-    default:
-      return type;
-  }
 }
