@@ -104,6 +104,22 @@ select {
   box-shadow: var(--neu-inset);
 }
 
+/* Platform rule for `<select>` dropdowns: width is sized to the
+   widest <option>, never stretched to fill its parent. The browser
+   default is `width: auto` which already does this, but Tailwind's
+   `w-full` is a common reflexive add that breaks it — a select for
+   {"block", "warn", "log"} ends up the same width as a multi-line
+   textarea above it, which reads as "this is a free-form input,
+   type anything" instead of "pick one of three short labels."
+   `select { width: max-content }` is the explicit form of the
+   default; only override with `w-full`/`w-auto`/`max-w-…` if the
+   surrounding form's column rhythm genuinely calls for it
+   (e.g. the Señor Doco composer's full-row controls). */
+select {
+  width: max-content;
+  max-width: 100%;
+}
+
 input:focus-visible,
 textarea:focus-visible,
 select:focus-visible,
