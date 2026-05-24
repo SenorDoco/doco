@@ -199,7 +199,7 @@ function relativeTime(iso: string | null): string {
  * Swim-lane graph layout: Principal controls the horizontal lane, while
  * Dagre's left-to-right rank controls ordering inside each lane.
  *
- * Process-shaped data (Intent + Actions chained via `follows` + Decisions
+ * Process-shaped data (Intent + Actions chained via `preceded_by` + Decisions
  * via `decision_ids`) keeps the same left-to-right reading order, but lanes
  * make ownership / authorship scannable before the viewer reads card copy.
  *

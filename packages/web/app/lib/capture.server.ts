@@ -1673,8 +1673,8 @@ export interface ActionDraft {
   intent_ids?: string[];
   /** Optional: decision ids the action enacts. */
   decision_ids?: string[];
-  /** Optional: entity ids this action follows (chronological / causal). */
-  follows?: string[];
+  /** Optional: entity ids that precede this action (chronological / causal). */
+  preceded_by?: string[];
   /** Optional: rule ids that gate this action (BPMN-style policy guards). */
   gated_by?: string[];
   /** Optional: verb-specific inputs (any shape). */
@@ -1712,7 +1712,7 @@ export async function captureAction(
 
   const intentIds: string[] = Array.isArray(draft.intent_ids) ? draft.intent_ids : [];
   const decisionIds: string[] = Array.isArray(draft.decision_ids) ? draft.decision_ids : [];
-  const follows: string[] = Array.isArray(draft.follows) ? draft.follows : [];
+  const precededBy: string[] = Array.isArray(draft.preceded_by) ? draft.preceded_by : [];
   const gatedBy: string[] = Array.isArray(draft.gated_by)
     ? draft.gated_by.filter((r): r is string => typeof r === "string" && r.startsWith("rule_"))
     : [];
@@ -1734,7 +1734,7 @@ export async function captureAction(
     verb: draft.verb.trim(),
     ...(intentIds.length > 0 ? { intent_ids: intentIds } : {}),
     ...(decisionIds.length > 0 ? { decision_ids: decisionIds } : {}),
-    ...(follows.length > 0 ? { follows } : {}),
+    ...(precededBy.length > 0 ? { preceded_by: precededBy } : {}),
     ...(gatedBy.length > 0 ? { gated_by: gatedBy } : {}),
     ...(draft.inputs !== undefined ? { inputs: draft.inputs } : {}),
     ...(draft.outputs !== undefined ? { outputs: draft.outputs } : {}),
@@ -1806,7 +1806,7 @@ export interface LogDraft {
   template_id?: string;
   intent_ids?: string[];
   decision_ids?: string[];
-  follows?: string[];
+  preceded_by?: string[];
   inputs?: unknown;
   actor_principal_id?: string;
   created_by_principal_id?: string;
@@ -1850,7 +1850,7 @@ export async function captureLog(
 
   const intentIds: string[] = Array.isArray(draft.intent_ids) ? draft.intent_ids : [];
   const decisionIds: string[] = Array.isArray(draft.decision_ids) ? draft.decision_ids : [];
-  const follows: string[] = Array.isArray(draft.follows) ? draft.follows : [];
+  const precededBy: string[] = Array.isArray(draft.preceded_by) ? draft.preceded_by : [];
 
   const id = `log_${generateUlid()}`;
   const logText = draft.log.trim();
@@ -1872,7 +1872,7 @@ export async function captureLog(
     ...(draft.template_id ? { template_id: draft.template_id } : {}),
     ...(intentIds.length > 0 ? { intent_ids: intentIds } : {}),
     ...(decisionIds.length > 0 ? { decision_ids: decisionIds } : {}),
-    ...(follows.length > 0 ? { follows } : {}),
+    ...(precededBy.length > 0 ? { preceded_by: precededBy } : {}),
     ...(draft.inputs !== undefined ? { inputs: draft.inputs } : {}),
     created_at: now,
     ...(createdById ? { created_by: createdById } : {}),
@@ -2635,8 +2635,8 @@ export async function captureReference(
 // Per decision_01KRRR5BQ16ASY8HQEE0V499YG. A State is a node in a formal
 // state machine: a position the modeled entity occupies for some span of
 // time. Holds invariants while occupied; reached via Actions whose
-// `follows` includes this State. Framework-general — nothing about the
-// shape is state-machines-specific.
+// `preceded_by` includes this State. Framework-general — nothing about
+// the shape is state-machines-specific.
 
 export interface StateDraft {
   /** Required: the full State prose (first line = label / display name). */
@@ -2646,8 +2646,8 @@ export interface StateDraft {
 
   /** Optional: predicates true while in this State. Free-form prose. */
   invariants?: string[];
-  /** Optional: entity ids this state follows (typically a transition Action). */
-  follows?: string[];
+  /** Optional: entity ids that precede this state (typically a transition Action). */
+  preceded_by?: string[];
   /** Optional: principal id who created this entry. */
   created_by_principal_id?: string;
   /** Optional: explicit lifecycle override. Defaults to "active". */
@@ -2682,7 +2682,7 @@ export async function captureState(
   const status = lifecycleAttrs(draft, "active");
   if ("error" in status) return status;
 
-  const follows: string[] = Array.isArray(draft.follows) ? draft.follows : [];
+  const precededBy: string[] = Array.isArray(draft.preceded_by) ? draft.preceded_by : [];
   const invariants: string[] = Array.isArray(draft.invariants)
     ? draft.invariants.filter((s): s is string => typeof s === "string" && s.length > 0)
     : [];
@@ -2694,7 +2694,7 @@ export async function captureState(
     state: stateText,
     kind: draft.kind,
     ...(invariants.length > 0 ? { invariants } : {}),
-    ...(follows.length > 0 ? { follows } : {}),
+    ...(precededBy.length > 0 ? { preceded_by: precededBy } : {}),
     created_at: now,
     ...(createdById ? { created_by: createdById } : {}),
     ...status,

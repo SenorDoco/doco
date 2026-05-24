@@ -219,7 +219,7 @@ BODY (JSON)
   verb                required   short verb such as "refactor", "migrate", "deploy"
   intent_ids          optional   ["intent_01...", ...]
   decision_ids        optional   ["decision_01...", ...]
-  follows             optional   entity ids this action follows causally or chronologically
+  preceded_by         optional   entity ids that precede this action (causally or chronologically)
   gated_by            optional   ["rule_01...", ...] rule ids that gate this action (BPMN-style policy guards)
   inputs              optional   verb-specific input object or value
   outputs             optional   verb-specific output object or value
@@ -259,7 +259,7 @@ UPDATE AN EXISTING ACTION
 
   Other patchable fields include action, lifecycle, deprecated,
   outcome, superseded_by, intent_ids/add/remove, slug, verb,
-  outputs, follows, decision_ids, and performed_at.
+  outputs, preceded_by, decision_ids, and performed_at.
 `,
 
   logs: (baseUrl, handle) => `# Doco — Capture a Log (single call)
@@ -282,7 +282,7 @@ BODY (JSON)
   template_id         optional   Action id this Log instances
   intent_ids          optional   ["intent_01...", ...]
   decision_ids        optional   ["decision_01...", ...]
-  follows             optional   entity ids this Log follows
+  preceded_by         optional   entity ids that precede this Log
   inputs              optional   event input object or value
   actor_principal_id  optional   principal id who performed it; auth fills this
   created_by_principal_id optional principal id; defaults to actor_principal_id
@@ -498,7 +498,7 @@ BODY (JSON)
   state               required   full prose: state description, invariants explained
   kind                required   "initial" | "intermediate" | "terminal"
   invariants          optional   ["condition true while in this state", ...]
-  follows             optional   entity ids this state follows
+  preceded_by         optional   entity ids that precede this state
   created_by_principal_id optional principal id; auth fills this
   lifecycle           optional   one of "drafting" | "proposed" | "active" | "retired"; default "active"
   deprecated          optional   boolean warning label; lifecycle is unchanged
@@ -530,7 +530,7 @@ UPDATE AN EXISTING STATE
 
   Body fields are all optional. Patchable fields include state,
   lifecycle, deprecated, outcome, superseded_by, intent_ids/add/remove,
-  kind, invariants, and follows.
+  kind, invariants, and preceded_by.
 `,
 
   principals: (baseUrl, handle) => `# Doco — Principals (create + retire)

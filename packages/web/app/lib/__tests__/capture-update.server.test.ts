@@ -78,7 +78,7 @@ describe("updateEntity", () => {
         state: "Renamed state name",
         kind: "terminal",
       },
-      allowedFields: ["kind", "invariants", "follows"],
+      allowedFields: ["kind", "invariants", "preceded_by"],
       docoHost: "https://doco.test",
       actorId: null,
     });

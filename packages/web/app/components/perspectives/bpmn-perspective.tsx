@@ -1020,7 +1020,7 @@ function layOutBpmn(
     .map((link, index) => {
       // Every sequence-flow synapse is stored downstream→upstream:
       //
-      // - `follows`       `A.follows=[B]`        — B precedes A
+      // - `preceded_by`   `A.preceded_by=[B]`    — B precedes A
       // - `triggered_by`  `A.triggered_by=[B]`   — B triggers A
       // - `enacts`        `A.decision_ids=[D]`   — D is the gateway, A is
       //                                            the downstream branch
@@ -1119,7 +1119,7 @@ function isNodeVisibleInViewport(
  *
  * All three store the link successor → predecessor in the data:
  *
- * - `A.follows=[B]` is `{from: A, to: B}` meaning B happens before A.
+ * - `A.preceded_by=[B]` is `{from: A, to: B}` meaning B happens before A.
  * - `Action.triggered_by=[B]` is `{from: Action, to: B}` meaning B
  *   happened first and triggered the Action.
  * - `Action.decision_ids=[D]` is `{from: Action, to: D}` and semantically
@@ -1133,11 +1133,15 @@ function isNodeVisibleInViewport(
  *
  * If you want an upstream Action to render LEFT of a gateway it
  * leads to (not enacts), encode that in the data as
- * `Decision.follows = [Action]`, not `Action.decision_ids =
+ * `Decision.preceded_by = [Action]`, not `Action.decision_ids =
  * [Decision]` — the latter says "Action enacts a prior Decision"
  * which is the opposite direction.
  */
-const SEQUENCE_FLOW_SYNAPSES: ReadonlySet<string> = new Set(["follows", "triggered_by", "enacts"]);
+const SEQUENCE_FLOW_SYNAPSES: ReadonlySet<string> = new Set([
+  "preceded_by",
+  "triggered_by",
+  "enacts",
+]);
 
 // Synapses whose stored direction is downstream→upstream. The
 // renderer swaps source/target on these so the arrowhead lands on
@@ -1145,7 +1149,7 @@ const SEQUENCE_FLOW_SYNAPSES: ReadonlySet<string> = new Set(["follows", "trigger
 // three sequence-flow synapses qualify, plus `serves` (Action→Intent,
 // but the Intent is the start event the flow fans out from).
 const VISUAL_FLIP_SYNAPSES: ReadonlySet<string> = new Set([
-  "follows",
+  "preceded_by",
   "triggered_by",
   "enacts",
   "serves",
@@ -1188,7 +1192,7 @@ function computeDepths(
   // anchor (Intent / kind=initial State) over the full synapse graph.
   // For neurons with no incoming sequence-flow synapse, this is the
   // only signal that places them somewhere other than column 0. Take
-  // MAX(sequence-flow depth, bfs_depth) so explicit `follows` chains
+  // MAX(sequence-flow depth, bfs_depth) so explicit `preceded_by` chains
   // (which can produce deeper depths) still win when they exist.
   for (const node of nodes) {
     const bfs = node.bfs_depth;
