@@ -727,8 +727,8 @@ export function OverviewGraph({
         ref={graphRef}
         className={
           fillHeight
-            ? "relative min-h-0 w-full flex-1 overflow-hidden rounded-md border border-border"
-            : "relative h-[65vh] min-h-[480px] w-full overflow-hidden rounded-md border border-border"
+            ? "relative min-h-0 w-full flex-1 overflow-hidden rounded-md border border-border bg-white"
+            : "relative h-[65vh] min-h-[480px] w-full overflow-hidden rounded-md border border-border bg-white"
         }
       >
         {search ? (
