@@ -778,6 +778,17 @@ export default function DocoHome({
             </div>
           </div>
           {goal ? <p className="text-[11px] text-muted-foreground">{goal}</p> : null}
+          <div className="pt-2">
+            <SearchBoxWithHistory
+              handle={handle}
+              placeholder={
+                totalNodes > 0
+                  ? `Search ${totalNodes} neuron${totalNodes === 1 ? "" : "s"}…`
+                  : "Search neurons…"
+              }
+              compact
+            />
+          </div>
         </div>
         <div className="grid min-h-0 flex-1 grid-cols-1 gap-6 min-[1200px]:grid-cols-[minmax(0,1fr)_320px]">
           <aside ref={asideRef} className="flex min-h-0 min-w-0 flex-col bg-background">
@@ -787,17 +798,6 @@ export default function DocoHome({
               availablePerspectives={availablePerspectives}
               activeSlug={activeSlug}
               canAdmin={canAdminPerspectives}
-              search={
-                <SearchBoxWithHistory
-                  handle={handle}
-                  placeholder={
-                    totalNodes > 0
-                      ? `Search ${totalNodes} neuron${totalNodes === 1 ? "" : "s"}…`
-                      : "Search neurons…"
-                  }
-                  compact
-                />
-              }
             />
             <div className="relative flex min-h-0 flex-1 flex-col">
               {activePerspectiveKind === "list" ? (

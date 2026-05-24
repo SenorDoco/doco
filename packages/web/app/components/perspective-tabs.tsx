@@ -1,13 +1,13 @@
 // Perspective tabs row that sits above the active perspective body.
 //
-// Layout: tab pills on the left, a gear (settings) icon next to them
-// for admins, and the search box on the right. The settings popover
-// replaces the old "+" tab — owners/approvers add or remove
-// perspectives and pin the default one from inside the popover. The
-// tab pills themselves are now plain links with no inline controls.
+// The tabs are the ONLY thing in this row — nothing (search box, etc.)
+// is allowed inside, because anything that wraps to a second line would
+// push the canvas down and break the visual "tabs attached to canvas"
+// connection. Page-level chrome (search, action buttons) lives in the
+// title row above the perspective area.
 
 import { Pin, Settings } from "lucide-react";
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useFetcher, useNavigate } from "react-router";
 import { cn } from "~/lib/cn";
 import type { AttachedPerspective, Perspective } from "~/lib/perspectives.server";
@@ -18,7 +18,6 @@ interface PerspectiveTabsProps {
   availablePerspectives: Perspective[];
   activeSlug: string;
   canAdmin: boolean;
-  search?: ReactNode;
 }
 
 export function PerspectiveTabs({
@@ -27,36 +26,32 @@ export function PerspectiveTabs({
   availablePerspectives,
   activeSlug,
   canAdmin,
-  search,
 }: PerspectiveTabsProps) {
   return (
-    <div className="-mb-px flex flex-wrap items-end justify-between gap-3">
-      <nav
-        aria-label="Visualization perspectives"
-        role="tablist"
-        className="flex min-w-0 flex-wrap items-end"
-      >
-        {perspectives.map((p, i) => (
-          <PerspectiveTab
-            key={p.id}
-            handle={handle}
-            perspective={p}
-            active={p.slug === activeSlug}
-            isFirst={i === 0}
-            isLast={i === perspectives.length - 1}
-          />
-        ))}
-        {canAdmin ? (
-          <PerspectiveSettingsMenu
-            handle={handle}
-            perspectives={perspectives}
-            availablePerspectives={availablePerspectives}
-            activeSlug={activeSlug}
-          />
-        ) : null}
-      </nav>
-      {search ? <div className="w-full sm:w-72 sm:flex-none">{search}</div> : null}
-    </div>
+    <nav
+      aria-label="Visualization perspectives"
+      role="tablist"
+      className="-mb-px flex min-w-0 flex-wrap items-end"
+    >
+      {perspectives.map((p, i) => (
+        <PerspectiveTab
+          key={p.id}
+          handle={handle}
+          perspective={p}
+          active={p.slug === activeSlug}
+          isFirst={i === 0}
+          isLast={i === perspectives.length - 1}
+        />
+      ))}
+      {canAdmin ? (
+        <PerspectiveSettingsMenu
+          handle={handle}
+          perspectives={perspectives}
+          availablePerspectives={availablePerspectives}
+          activeSlug={activeSlug}
+        />
+      ) : null}
+    </nav>
   );
 }
 
