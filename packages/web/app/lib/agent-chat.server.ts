@@ -1268,12 +1268,73 @@ async function runTool(block: ToolUseBlock, ctx: ChatStreamContext): Promise<Too
 // Streaming turn
 // ---------------------------------------------------------------------------
 
-async function rowsToHistory(rows: ChatMessageRow[]): Promise<MessageParam[]> {
+/**
+ * Walk the message list looking for assistant turns with `tool_use`
+ * blocks that lack matching `tool_result` blocks in the immediately
+ * following user message — and backfill synthetic results so the
+ * Anthropic API contract holds. Happens when a prior lambda was
+ * SIGKILL'd after persisting the assistant message but before
+ * persisting the tool-result user message.
+ *
+ * Without this, every subsequent turn on that conversation 400s
+ * ("`tool_use` ids were found without `tool_result` blocks").
+ * Placeholder results are marked `is_error: true` so the model can
+ * tell the run was interrupted.
+ */
+function stitchMissingToolResults(messages: MessageParam[]): MessageParam[] {
   const out: MessageParam[] = [];
+  for (let i = 0; i < messages.length; i++) {
+    const m = messages[i];
+    out.push(m);
+    if (!m || m.role !== "assistant" || !Array.isArray(m.content)) continue;
+    const toolUseIds: string[] = [];
+    for (const b of m.content) {
+      if (b && typeof b === "object" && (b as { type?: string }).type === "tool_use") {
+        const id = (b as { id?: string }).id;
+        if (typeof id === "string") toolUseIds.push(id);
+      }
+    }
+    if (toolUseIds.length === 0) continue;
+    const next = messages[i + 1];
+    const nextContent: ContentBlockParam[] =
+      next && next.role === "user" && Array.isArray(next.content)
+        ? (next.content.slice() as ContentBlockParam[])
+        : [];
+    const presentIds = new Set<string>();
+    for (const b of nextContent) {
+      if (b && typeof b === "object" && (b as { type?: string }).type === "tool_result") {
+        const id = (b as { tool_use_id?: string }).tool_use_id;
+        if (typeof id === "string") presentIds.add(id);
+      }
+    }
+    const missing = toolUseIds.filter((id) => !presentIds.has(id));
+    if (missing.length === 0) continue;
+    const synthetic: ContentBlockParam[] = missing.map((id) => ({
+      type: "tool_result" as const,
+      tool_use_id: id,
+      content: "(turn was interrupted before the result was recorded)",
+      is_error: true,
+    }));
+    if (next && next.role === "user") {
+      // Augment the existing tool-result message with the missing ids.
+      out[out.length - 1] = m;
+      messages[i + 1] = { role: "user", content: [...synthetic, ...nextContent] };
+    } else {
+      // No follow-up user message at all → inject a fresh one before
+      // whatever comes next.
+      out.push({ role: "user", content: synthetic });
+    }
+  }
+  return out;
+}
+
+async function rowsToHistory(rows: ChatMessageRow[]): Promise<MessageParam[]> {
+  const raw: MessageParam[] = [];
   for (const r of rows) {
     const content = await hydrateMessageContent(r.content, r.conversation_id);
-    out.push({ role: r.role, content });
+    raw.push({ role: r.role, content });
   }
+  const out = stitchMissingToolResults(raw);
   // Cross-turn prompt caching. Anthropic re-uses cached prefixes when
   // a subsequent request starts byte-identically; the breakpoint lives
   // on the LAST content block of whatever message we mark. By tagging
