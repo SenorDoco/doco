@@ -141,7 +141,7 @@ function MobileNavMenu({ me }: { me: CurrentPrincipal }) {
       {open ? (
         <div
           aria-label="Navigation"
-          className="neu-surface absolute right-0 top-full z-50 mt-2 flex w-48 flex-col gap-2 rounded-md border border-border bg-card p-2 shadow-md"
+          className="neu-floating absolute right-0 top-full z-50 mt-2 flex w-48 flex-col gap-2 rounded-md bg-card p-2"
         >
           <NavButtons me={me} onNavigate={() => setOpen(false)} />
         </div>
