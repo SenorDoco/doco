@@ -673,9 +673,10 @@ export function OverviewGraph({
         const edgeOpacity = focalActive
           ? opacityForEdge(depthByNodeId.get(link.source), depthByNodeId.get(link.target))
           : 1;
-        // 0.3 was the baseline stroke alpha pre-focus; the depth ramp
-        // multiplies it so unfocused legs stay readable.
-        const stroke = `rgba(115, 115, 115, ${0.3 * edgeOpacity})`;
+        // Synapse inherits the origin neuron's lifecycle colour. 0.5 is
+        // the baseline stroke alpha so coloured lines stay readable on
+        // the pale canvas without competing with the node strokes.
+        const sourceLifecycle = nodeById.get(link.source)?.lifecycle ?? "active";
         return {
           id: `${link.source}-${link.target}-${index}`,
           source: link.source,
@@ -685,12 +686,13 @@ export function OverviewGraph({
           focusable: false,
           interactionWidth: 0,
           style: {
-            stroke,
+            stroke: lifecycleColor(sourceLifecycle),
+            strokeOpacity: 0.5 * edgeOpacity,
             pointerEvents: "none" as const,
           },
         };
       }),
-    [visibleLinks, depthByNodeId, focalActive],
+    [visibleLinks, depthByNodeId, focalActive, nodeById],
   );
 
   const nodeTypes = useMemo(() => ({ overviewNode: OverviewFlowNode }), []);
