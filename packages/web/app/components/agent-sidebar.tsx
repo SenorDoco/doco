@@ -1283,16 +1283,80 @@ function formatBytes(n: number): string {
   return `${(n / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+/**
+ * Compress a tool-result body into a one-line, human-readable summary.
+ *
+ * The model sees the full `{status, ok, body, warnings[].pending_spec}`
+ * envelope so it can iterate against the validator. The user does not
+ * need any of that — they need "did it work, and if not, why." Picks
+ * the most informative one-liner from the envelope:
+ *
+ *   - 2xx success → "✓ added <Type>: <label>" if the response has a
+ *     `footer_lines` entry (every successful capture sets one), else
+ *     "✓ HTTP <status>".
+ *   - 4xx / 5xx → "✗ <error.message>" — drops warnings, pending_spec,
+ *     policy_id, and other model-facing context.
+ *   - Non-JSON or unrecognized shape → truncated raw text (the prior
+ *     behaviour, capped to one line).
+ */
+function summarizeToolResult(content: unknown, isError: boolean | undefined): string {
+  if (typeof content !== "string") {
+    return isError ? `✗ ${String(content).slice(0, 200)}` : `→ ${String(content).slice(0, 200)}`;
+  }
+  // Plain navigate/text results — already short, render as-is.
+  if (!content.startsWith("{") && !content.startsWith("[")) {
+    return content.slice(0, 200);
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(content);
+  } catch {
+    return content.slice(0, 200);
+  }
+  if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+    const p = parsed as Record<string, unknown>;
+    const status = typeof p.status === "number" ? p.status : null;
+    const ok = p.ok === true;
+    const body = p.body;
+    if (ok && body && typeof body === "object" && !Array.isArray(body)) {
+      const b = body as Record<string, unknown>;
+      const footers = b.footer_lines;
+      if (Array.isArray(footers) && footers.length > 0 && typeof footers[0] === "string") {
+        return `✓ ${footers[0]}`;
+      }
+      const id = typeof b.id === "string" ? b.id : null;
+      if (id) return `✓ ${status ?? 200} — ${id}`;
+      return `✓ ${status ?? 200}`;
+    }
+    if (!ok && body && typeof body === "object" && !Array.isArray(body)) {
+      const errMsg = (body as Record<string, unknown>).error;
+      if (typeof errMsg === "string") {
+        // Trim the long "— pending LLM judge" / "<spec text>" tails the
+        // validator appends for the model's benefit; the lead sentence
+        // already names the policy.
+        const trimmed = errMsg.split(" — ")[0] ?? errMsg;
+        return `✗ ${status ?? "?"}: ${trimmed.slice(0, 240)}`;
+      }
+    }
+    return isError ? `✗ ${status ?? "?"}` : `✓ ${status ?? 200}`;
+  }
+  return content.slice(0, 200);
+}
+
 function ToolResultRow({ result }: { result: ContentBlockToolResult }) {
+  const summary = summarizeToolResult(result.content, result.is_error);
   return (
-    <div
+    <details
       className={cn(
-        "neu-surface whitespace-pre-wrap break-all rounded-md px-2 py-1 font-mono text-[10px]",
+        "neu-surface group rounded-md px-2 py-1 font-mono text-[10px]",
         result.is_error ? "bg-destructive/10 text-destructive" : "bg-card text-muted-foreground",
       )}
     >
-      → {result.content}
-    </div>
+      <summary className="cursor-pointer list-none truncate">{summary}</summary>
+      <pre className="mt-1 max-h-64 overflow-auto whitespace-pre-wrap break-all opacity-70">
+        {typeof result.content === "string" ? result.content : JSON.stringify(result.content)}
+      </pre>
+    </details>
   );
 }
 
