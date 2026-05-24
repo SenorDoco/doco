@@ -14,7 +14,7 @@
 //   active   → black   (settled, in force)
 //   retired  → red     (no longer in use)
 export const LIFECYCLE_COLOR: Record<string, string> = {
-  drafting: "#eab308", // yellow-500 — provisional
+  drafting: "#ca8a04", // yellow-600 — provisional
   proposed: "#2563eb", // blue-600 — under review
   active: "#171717", // gray-900 — settled and in force
   retired: "#dc2626", // red-600 — no longer in use
