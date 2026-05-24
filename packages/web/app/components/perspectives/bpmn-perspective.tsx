@@ -152,12 +152,6 @@ const MAX_GRAPH_REFERENCES = 120;
  * default size so existing layouts don't shift unexpectedly.
  */
 function sizeForNode(node: BpmnNode): { width: number; height: number } {
-  // Milestones are a compact label band, not a flow node — keep them
-  // small and uniform regardless of label length (the title still
-  // wraps inside via line-clamp).
-  if (node.shape === "milestone") {
-    return { width: MILESTONE_NODE_WIDTH, height: MILESTONE_NODE_HEIGHT };
-  }
   const label = node.name ?? "";
   const N = Math.max(label.length, 1);
   const CHAR_W = 5.5; // approx px per char at 10px font, leading-tight
@@ -793,7 +787,6 @@ function layOutBpmn(
   for (const node of nodes) {
     const size = sizeForNode(node);
     sizeByNode.set(node.id, size);
-    if (node.shape === "milestone") continue;
     if (size.width > maxNodeWidth) maxNodeWidth = size.width;
     if (size.height > maxNodeHeight) maxNodeHeight = size.height;
   }
@@ -852,10 +845,12 @@ function layOutBpmn(
     // Lanes inside this pool (sorted server-side by kind +
     // alphabetical label; we just iterate).
     for (const lane of poolLanes) {
-      let laneHeight: number;
-      if (lane.kind === "milestone") laneHeight = MILESTONE_BAND_HEIGHT;
-      else if (lane.kind === "artifacts") laneHeight = ARTIFACTS_BAND_HEIGHT;
-      else laneHeight = dynLaneHeight;
+      // All lanes (actor + milestone + artifacts band) now use the
+      // same dynamic height. States render as Task glyphs (same size
+      // as Actions), so the milestone band needs full lane height to
+      // fit them; the artifacts band follows the same rule for
+      // consistency.
+      const laneHeight = dynLaneHeight;
 
       laneYById.set(lane.id, cursorY);
       laneHeightById.set(lane.id, laneHeight);
@@ -1078,6 +1073,19 @@ function computeDepths(
     return max;
   }
   for (const id of nodeIds) depthOf(id);
+  // BFS-from-start fallback. The server tags each node with
+  // `bfs_depth` — its undirected distance from the nearest start
+  // anchor (Intent / kind=initial State) over the full synapse graph.
+  // For neurons with no incoming sequence-flow synapse, this is the
+  // only signal that places them somewhere other than column 0. Take
+  // MAX(sequence-flow depth, bfs_depth) so explicit `follows` chains
+  // (which can produce deeper depths) still win when they exist.
+  for (const node of nodes) {
+    const bfs = node.bfs_depth;
+    if (bfs === undefined || bfs <= 0) continue;
+    const current = depth.get(node.id) ?? 0;
+    if (bfs > current) depth.set(node.id, bfs);
+  }
   return depth;
 }
 

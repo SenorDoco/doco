@@ -96,6 +96,15 @@ export interface BpmnNode {
    *  candidate intent ids (so the client can recompute the primary
    *  intent under personalized PageRank without re-fetching). */
   intent_ids?: string[];
+  /**
+   * Undirected BFS distance from the nearest "start anchor" — Intent
+   * (pool header), or State with kind=initial — over the full synapse
+   * graph. Renderer uses MAX(sequence-flow depth, bfs_depth) as the
+   * horizontal column so neurons connected to the flow get positioned
+   * even when no explicit `follows` / `triggered_by` / `enacts` synapse
+   * exists between them. Falls back to 0 when unreachable.
+   */
+  bfs_depth?: number;
 }
 
 export interface BpmnGraphData {
@@ -134,7 +143,7 @@ export const POOL_UNASSIGNED_ID = "pool:unassigned";
 const ARTIFACT_TYPES = new Set(["reference", "eval", "idea", "rule"]);
 
 const SHAPE_BY_TYPE: Record<string, BpmnShape> = {
-  state: "milestone",
+  state: "task", // same glyph as Action — full-sized, readable, not a compact band label
   decision: "diamond",
   action: "task",
   rule: "rectangle",
@@ -249,6 +258,29 @@ export async function loadBpmnGraph(
       synapse_type: r.synapse_type,
     }));
   }
+
+  // ── BFS depth from start anchors ──────────────────────────────────
+  // Undirected BFS distance from the nearest start anchor (every Intent
+  // and every State with kind=initial), walked over the full synapse
+  // graph. The renderer takes MAX(sequence-flow depth, bfs_depth) for
+  // each neuron's horizontal column — so a node connected to the flow
+  // via *any* synapse (not just `follows` / `triggered_by` / `enacts`)
+  // still gets positioned relative to the start. Without this, neurons
+  // missing an explicit sequence-flow synapse fall to depth 0 and the
+  // chronological tiebreaker decides — which has nothing to do with
+  // process order.
+  const startAnchors: string[] = [];
+  for (const row of allRows) {
+    if (row.entity_type === "intent") startAnchors.push(row.id);
+    else if (row.entity_type === "state" && row.data?.kind === "initial") {
+      startAnchors.push(row.id);
+    }
+  }
+  const bfsDepthById = computeBfsDepths(
+    allRows.map((r) => r.id),
+    links,
+    startAnchors,
+  );
 
   // ── Global PageRank over the synapse graph ────────────────────────
   // Drives:
@@ -419,6 +451,7 @@ export async function loadBpmnGraph(
       shape: shapeForEntityType(row.entity_type),
       laneId,
       pool_id: poolId,
+      bfs_depth: bfsDepthById.get(row.id),
     };
     const intentIds = intentIdsByNeuron.get(row.id);
     if (intentIds && intentIds.length > 0) node.intent_ids = intentIds;
@@ -614,4 +647,46 @@ function resolveRehomeHostLane(
     return null;
   }
   return null;
+}
+
+/**
+ * Undirected BFS distance from the nearest `starts` anchor over the
+ * synapse graph induced by `links`. Returns a map of node id → BFS
+ * distance for every reachable node; unreachable nodes are absent
+ * from the map (callers default to 0 or treat as unknown). Anchors
+ * themselves get distance 0.
+ */
+function computeBfsDepths(
+  nodeIds: readonly string[],
+  links: readonly OverviewGraphLink[],
+  starts: readonly string[],
+): Map<string, number> {
+  const result = new Map<string, number>();
+  if (starts.length === 0 || nodeIds.length === 0) return result;
+  const nodeIdSet = new Set(nodeIds);
+  const adj = new Map<string, Set<string>>();
+  for (const id of nodeIds) adj.set(id, new Set());
+  for (const link of links) {
+    if (!nodeIdSet.has(link.source) || !nodeIdSet.has(link.target)) continue;
+    adj.get(link.source)?.add(link.target);
+    adj.get(link.target)?.add(link.source);
+  }
+  const queue: string[] = [];
+  for (const start of starts) {
+    if (!nodeIdSet.has(start) || result.has(start)) continue;
+    result.set(start, 0);
+    queue.push(start);
+  }
+  while (queue.length > 0) {
+    const current = queue.shift() as string;
+    const d = result.get(current) as number;
+    const neighbors = adj.get(current);
+    if (!neighbors) continue;
+    for (const neighbor of neighbors) {
+      if (result.has(neighbor)) continue;
+      result.set(neighbor, d + 1);
+      queue.push(neighbor);
+    }
+  }
+  return result;
 }
