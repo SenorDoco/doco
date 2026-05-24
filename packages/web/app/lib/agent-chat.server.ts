@@ -48,11 +48,14 @@ import { recordAgentTurn } from "./telemetry.server";
 
 ensureEnvLoaded();
 
-// Haiku 4.5 over Sonnet — for an in-page assistant, sub-second first-
-// token latency beats the marginal reasoning gain. Snappy capture +
-// navigate flows matter more than careful prose. Bump to Sonnet here
-// if tool-routing accuracy regresses.
-const MODEL = "claude-haiku-4-5";
+// Sonnet 4.6 over Haiku — per-tier ITPM on Sonnet is roughly 3-5x the
+// per-tier ITPM on Haiku at the same Anthropic-org tier, so multi-tool
+// turns (which compound the input token usage) survive a much lower
+// account tier before tripping rate-limit retry loops. Trade-off: ~1-2s
+// slower first-token latency and ~5x cost per token. Previous setting
+// was Haiku 4.5; flipped when prod 429s on the 10K-ITPM Haiku tier kept
+// surfacing as forever-stuck in-flight bubbles.
+const MODEL = "claude-sonnet-4-6";
 const MAX_TURNS_PER_REPLY = 12;
 const MAX_TOKENS = 2048;
 // Cap the tool-result body fed back to the model on each Anthropic
@@ -1262,6 +1265,29 @@ async function rowsToHistory(rows: ChatMessageRow[]): Promise<MessageParam[]> {
   for (const r of rows) {
     const content = await hydrateMessageContent(r.content, r.conversation_id);
     out.push({ role: r.role, content });
+  }
+  // Cross-turn prompt caching. Anthropic re-uses cached prefixes when
+  // a subsequent request starts byte-identically; the breakpoint lives
+  // on the LAST content block of whatever message we mark. By tagging
+  // the final block of the last persisted message, every later turn
+  // re-uses the entire prior history without re-spending input tokens
+  // against the per-minute rate limit. (Up to 4 breakpoints allowed;
+  // the system block already uses one — this adds the second.)
+  const last = out[out.length - 1];
+  if (last && Array.isArray(last.content) && last.content.length > 0) {
+    const tail = last.content[last.content.length - 1] as unknown as Record<string, unknown>;
+    if (
+      tail &&
+      typeof tail === "object" &&
+      typeof tail.type === "string" &&
+      (tail.type === "text" ||
+        tail.type === "tool_use" ||
+        tail.type === "tool_result" ||
+        tail.type === "image" ||
+        tail.type === "document")
+    ) {
+      tail.cache_control = { type: "ephemeral" };
+    }
   }
   return out;
 }
