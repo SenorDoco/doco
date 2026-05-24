@@ -219,3 +219,40 @@ export async function recordAgentTurn(row: AgentTurnRow): Promise<void> {
     console.error("[telemetry] agent_turn_metrics insert failed:", (err as Error).message);
   }
 }
+
+export interface OpenAiUsageRow {
+  model: string;
+  input_count: number;
+  total_chars: number;
+  request_ms: number | null;
+  ok: boolean;
+  error: string | null;
+}
+
+/**
+ * Persist one OpenAI embedding-call usage record. Fire-and-forget
+ * via the caller's `waitUntil` so the embedding call itself isn't
+ * delayed by the telemetry write.
+ */
+export async function recordOpenAiUsage(row: OpenAiUsageRow): Promise<void> {
+  try {
+    await withClient(async (c) => {
+      await c.query(
+        `INSERT INTO openai_usage_log
+           (id, model, input_count, total_chars, request_ms, ok, error)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [
+          `oai_${generateUlid()}`,
+          row.model,
+          row.input_count,
+          row.total_chars,
+          row.request_ms,
+          row.ok,
+          row.error,
+        ],
+      );
+    });
+  } catch (err) {
+    console.error("[telemetry] openai_usage_log insert failed:", (err as Error).message);
+  }
+}
