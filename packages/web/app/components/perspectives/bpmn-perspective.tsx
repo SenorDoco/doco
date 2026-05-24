@@ -64,6 +64,15 @@ interface BpmnPerspectiveProps {
    */
   visibleLifecycles?: Set<string>;
   /**
+   * Lifecycles present in the underlying data. Drives which
+   * checkboxes appear in the in-canvas filter overlay. Required when
+   * `visibleLifecycles` is provided so the overlay can render the
+   * controls.
+   */
+  availableLifecycles?: Iterable<string>;
+  /** Called when the user toggles a lifecycle stage. */
+  onLifecycleToggle?: (lifecycle: string) => void;
+  /**
    * When set, the BPMN canvas fades non-neighbours of this neuron
    * based on BFS depth (1st-degree solid, 2nd 75%, 3rd 50%, 4+ 25%).
    * Edges fade with their deepest endpoint. When null/undefined,
@@ -153,6 +162,8 @@ export function BpmnPerspective({
   links,
   onNeuronClick,
   visibleLifecycles,
+  availableLifecycles,
+  onLifecycleToggle,
   centerId,
   isFullscreen,
   onToggleFullscreen,
@@ -316,25 +327,24 @@ export function BpmnPerspective({
 
   if (filteredLanes.length === 0) {
     return (
-      <div className="flex h-full min-h-[420px] items-center justify-center rounded-md border border-border text-center text-sm font-medium text-muted-foreground">
+      <div className="flex h-full min-h-0 flex-1 items-center justify-center rounded-md border border-border text-center text-sm font-medium text-muted-foreground">
         So empty
       </div>
     );
   }
 
-  // Size the React Flow container to the actual graph height so few-lane
-  // BPMN doesn't leave a tall empty grid beneath the lanes. Cap at the
-  // available aside height so very many lanes still scroll within the
-  // canvas instead of pushing the page. The milestone band and the
-  // artifacts band are both shorter than an actor lane.
-  const naturalCanvasHeight =
-    filteredLanes.reduce((sum, lane) => sum + heightForLane(lane.id), 0) + 32;
-
   // Sticky lane label rails — overlays anchored to the left edge of the
   // canvas so the principal label + lane outline stay visible even when
   // the user pans horizontally past the lane's natural x=0 origin.
   // Mirrors the EntityGraph rail pattern (entity-graph.tsx ~1045).
+  //
+  // Text + reference badge sizes scale with viewport.zoom so the sticky
+  // label visually matches the in-canvas BpmnLaneNode label (which lives
+  // inside React Flow's zoom transform). Font family/weight/case mirror
+  // the in-canvas styling so the two reads as the same label.
   const SWIM_RAIL_WIDTH = 32;
+  const RAIL_LABEL_BASE_FONT = 11;
+  const RAIL_BADGE_BASE_FONT = 10;
   const laneRails = layout.lanes.map((lane) => {
     const laneTop = lane.y * viewport.zoom + viewport.y;
     const laneBottom = (lane.y + lane.height) * viewport.zoom + viewport.y;
@@ -345,6 +355,10 @@ export function BpmnPerspective({
     const railHeight = Math.max(44, visibleBottom - visibleTop);
     const top = Math.min(Math.max(0, visibleTop), Math.max(0, canvasHeight - railHeight));
     const isBand = lane.kind !== "principal";
+    const referenceNumber = referenceNumberByEntityId.get(lane.id);
+    const labelFontPx = RAIL_LABEL_BASE_FONT * viewport.zoom;
+    const badgeFontPx = RAIL_BADGE_BASE_FONT * viewport.zoom;
+    const badgeBox = badgeFontPx * 2;
     return (
       <div
         key={lane.id}
@@ -355,13 +369,31 @@ export function BpmnPerspective({
         data-bpmn-lane-rail={lane.id}
         title={lane.label}
       >
+        {referenceNumber ? (
+          <span
+            aria-label={`Graph reference #${referenceNumber}: ${lane.label}`}
+            className="pointer-events-none absolute left-1/2 flex -translate-x-1/2 items-center justify-center rounded-full bg-primary font-bold leading-none text-primary-foreground shadow-sm ring-2 ring-card"
+            style={{
+              top: 4,
+              minWidth: badgeBox,
+              height: badgeBox,
+              padding: `0 ${Math.max(2, badgeFontPx * 0.4)}px`,
+              fontSize: badgeFontPx,
+            }}
+            title={`Graph reference #${referenceNumber}`}
+          >
+            #{referenceNumber}
+          </span>
+        ) : null}
         <span
-          className="block max-h-full overflow-hidden whitespace-nowrap px-1 text-[10px] font-semibold uppercase text-muted-foreground"
+          className="block max-h-full overflow-hidden whitespace-nowrap px-1 font-mono font-semibold text-foreground"
           style={{
             writingMode: "vertical-rl",
             transform: "rotate(180deg)",
             textOverflow: "ellipsis",
-            letterSpacing: isBand ? 0.8 : 0.4,
+            fontSize: labelFontPx,
+            textTransform: isBand ? "uppercase" : "none",
+            letterSpacing: isBand ? 0.6 : 0,
           }}
         >
           {lane.label}
@@ -373,8 +405,7 @@ export function BpmnPerspective({
   return (
     <div
       ref={graphRef}
-      className="relative w-full overflow-hidden rounded-md border border-border"
-      style={{ height: `min(100%, ${naturalCanvasHeight}px)`, minHeight: 420 }}
+      className="relative h-full min-h-0 w-full flex-1 overflow-hidden rounded-md border border-border"
     >
       {Flow ? (
         <Flow.ReactFlow
@@ -451,6 +482,40 @@ export function BpmnPerspective({
           aria-hidden="true"
         >
           {laneRails}
+        </div>
+      ) : null}
+      {/* Lifecycle filter overlay — lives inside the BPMN canvas so the
+          aside can fill its container vertically (no row above or below
+          the perspective eating space). Only renders when the parent
+          provides controlled lifecycle state + the toggle callback. */}
+      {visibleLifecycles && availableLifecycles && onLifecycleToggle && Flow ? (
+        <div className="pointer-events-none absolute bottom-3 left-3 z-10">
+          <div className="pointer-events-auto flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border border-border bg-card/90 px-2 py-1 text-xs shadow-sm backdrop-blur">
+            <span className="text-muted-foreground">Life cycle:</span>
+            {Array.from(availableLifecycles).map((lifecycle) => {
+              const checked = visibleLifecycles.has(lifecycle);
+              const color = lifecycleColor(lifecycle);
+              const label = lifecycleLabel(lifecycle);
+              return (
+                <label
+                  key={lifecycle}
+                  className="inline-flex cursor-pointer select-none items-center gap-1"
+                  title={label}
+                >
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={() => onLifecycleToggle(lifecycle)}
+                    className="h-3 w-3"
+                    style={{ accentColor: color }}
+                  />
+                  <span className="capitalize" style={{ color }}>
+                    {label}
+                  </span>
+                </label>
+              );
+            })}
+          </div>
         </div>
       ) : null}
     </div>

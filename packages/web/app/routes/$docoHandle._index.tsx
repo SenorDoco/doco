@@ -728,7 +728,7 @@ export default function DocoHome({
   return (
     <div>
       <SiteHeader mode="host" me={me} />
-      <main className="mx-auto max-w-[1800px] px-6 pb-8 pt-6">
+      <main className="px-6 pb-6 pt-6">
         {/* Title row — spans both columns so the action buttons sit beside the
             title rather than visually attached to the fishbone graph below. */}
         <div className="mb-6 space-y-1">
@@ -795,6 +795,8 @@ export default function DocoHome({
                   nodes={bpmnGraph.nodes}
                   links={bpmnGraph.links}
                   visibleLifecycles={visibleLifecycles}
+                  availableLifecycles={availableLifecycles}
+                  onLifecycleToggle={toggleLifecycle}
                   centerId={graphState.centerId}
                   isFullscreen={isPerspectiveFullscreen}
                   onToggleFullscreen={togglePerspectiveFullscreen}
@@ -845,8 +847,8 @@ export default function DocoHome({
             </div>
           </aside>
 
-          <div className="relative min-w-0">
-            <section className="hidden min-w-0 space-y-5 min-[1200px]:block">
+          <div className="relative min-w-0 min-[1200px]:h-[calc(100vh-10rem)] min-[1200px]:min-h-[480px]">
+            <section className="hidden min-w-0 space-y-5 min-[1200px]:block min-[1200px]:h-full min-[1200px]:overflow-y-auto min-[1200px]:pr-1">
               <NeuronsOverviewCard
                 sections={sections}
                 empty={
