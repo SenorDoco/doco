@@ -25,7 +25,7 @@
 
 import { withClient } from "@doco/db";
 import { redirect } from "react-router";
-import { getCurrentPrincipal } from "~/lib/session.server";
+import { getCurrentPrincipalAsync } from "~/lib/session.server";
 
 interface TurnRow {
   id: string;
@@ -72,8 +72,15 @@ interface OpenAiErr {
 }
 
 export async function loader({ request }: { request: Request }) {
-  const me = await getCurrentPrincipal(request);
-  if (!me) throw redirect(`/sign-in?next=${encodeURIComponent("/admin/agent-debug.json")}`);
+  // `getCurrentPrincipalAsync` accepts both the browser session
+  // cookie AND `Authorization: Bearer <oauth-access-token>`. The
+  // bearer path lets an out-of-band agent (running with a
+  // device-flow-issued token in its .env) hit this endpoint to
+  // diagnose a stuck turn without needing to share session cookies.
+  const me = await getCurrentPrincipalAsync(request);
+  if (!me) {
+    throw redirect(`/sign-in?next=${encodeURIComponent("/admin/agent-debug.json")}`);
+  }
   if (me.username !== "torrenegra") {
     throw new Response("Not Found", { status: 404 });
   }
