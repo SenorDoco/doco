@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useFetcher } from "react-router";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
+import { useFetcher } from "react-router";
+import { Card, CardContent } from "~/components/card";
 import { CollaborationInvitePrompt } from "~/components/collaboration-invite-prompt";
 import {
   ALL_ROLES,
@@ -45,14 +45,11 @@ export function CollaboratorInviteCards({
   invite: CollaboratorInviteData;
 }) {
   return (
-    <div className="space-y-4">
-      <InviteHumanCard
-        orgs={invite.orgs}
-        docos={invite.docos}
-        defaultSelection={invite.defaultSelection}
-      />
-      <AgentRedirectCard />
-    </div>
+    <InviteHumanCard
+      orgs={invite.orgs}
+      docos={invite.docos}
+      defaultSelection={invite.defaultSelection}
+    />
   );
 }
 
@@ -92,20 +89,13 @@ function InviteHumanCard({
 
   return (
     <Card>
-      <CardHeader>
-        <CardTitle>Invite a human</CardTitle>
-        <CardDescription>
-          They click the URL, sign in with GitHub, and land in your Doco with the exact role you
-          pick.
-        </CardDescription>
-      </CardHeader>
       <CardContent className="space-y-3">
         <fetcher.Form method="post" className="flex flex-col gap-3">
           <input type="hidden" name="intent" value="invite" />
           <input type="hidden" name="level" value={selected?.level ?? ""} />
           <input type="hidden" name="target_id" value={selected?.id ?? ""} />
-          <div className="flex flex-wrap items-end gap-3">
-            <label className="flex flex-1 flex-col gap-1 text-sm">
+          <div className="flex flex-wrap items-end justify-start gap-3">
+            <label className="flex flex-col gap-1 text-sm">
               <span className="text-xs uppercase tracking-wide text-muted-foreground">
                 Org / Doco
               </span>
@@ -142,8 +132,6 @@ function InviteHumanCard({
                 ))}
               </select>
             </label>
-          </div>
-          <div className="flex justify-end">
             <button
               type="submit"
               data-testid="invite-submit"
@@ -180,25 +168,3 @@ function InviteHumanCard({
   );
 }
 
-function AgentRedirectCard() {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Looking to add an AI agent?</CardTitle>
-        <CardDescription>
-          Agents authenticate via OAuth and don't redeem an invite URL. Mint an API key on the API
-          keys page — it's bound to your account and you pick which orgs / docos it can reach.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <Link
-          to="/api-keys"
-          data-testid="invite-agent-redirect"
-          className="neu-button bg-primary text-primary-foreground hover:opacity-90 inline-flex rounded-md px-3 py-1.5 text-xs font-semibold"
-        >
-          Go to API keys →
-        </Link>
-      </CardContent>
-    </Card>
-  );
-}
