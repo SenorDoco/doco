@@ -1280,28 +1280,142 @@ function formatBytes(n: number): string {
   return `${(n / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+/**
+ * Compress a tool-result body into a one-line, human-readable summary.
+ *
+ * The model sees the full `{status, ok, body, warnings[].pending_spec}`
+ * envelope so it can iterate against the validator. The user does not
+ * need any of that — they need "did it work, and if not, why." Picks
+ * the most informative one-liner from the envelope:
+ *
+ *   - 2xx success → "✓ added <Type>: <label>" if the response has a
+ *     `footer_lines` entry (every successful capture sets one), else
+ *     "✓ HTTP <status>".
+ *   - 4xx / 5xx → "✗ <error.message>" — drops warnings, pending_spec,
+ *     policy_id, and other model-facing context.
+ *   - Non-JSON or unrecognized shape → truncated raw text (the prior
+ *     behaviour, capped to one line).
+ */
+function summarizeToolResult(content: unknown, isError: boolean | undefined): string {
+  if (typeof content !== "string") {
+    return isError ? `✗ ${String(content).slice(0, 200)}` : `→ ${String(content).slice(0, 200)}`;
+  }
+  // Plain navigate/text results — already short, render as-is.
+  if (!content.startsWith("{") && !content.startsWith("[")) {
+    return content.slice(0, 200);
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(content);
+  } catch {
+    return content.slice(0, 200);
+  }
+  if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+    const p = parsed as Record<string, unknown>;
+    const status = typeof p.status === "number" ? p.status : null;
+    const ok = p.ok === true;
+    const body = p.body;
+    if (ok && body && typeof body === "object" && !Array.isArray(body)) {
+      // Don't extract footer_lines here. Señor Doco follows the same
+      // Doco agent-protocol as every other agent: he pastes the
+      // footer-line verbatim in his next text response. The chip just
+      // confirms the round-trip succeeded — pulling the same footer
+      // text into the chip would show the user the same line twice.
+      const duration = (body as Record<string, unknown>).duration_ms;
+      if (typeof duration === "number") {
+        return `✓ ${status ?? 200} (${(duration / 1000).toFixed(1)}s)`;
+      }
+      return `✓ ${status ?? 200}`;
+    }
+    if (!ok && body && typeof body === "object" && !Array.isArray(body)) {
+      const errMsg = (body as Record<string, unknown>).error;
+      if (typeof errMsg === "string") {
+        // Trim the long "— pending LLM judge" / "<spec text>" tails the
+        // validator appends for the model's benefit; the lead sentence
+        // already names the policy.
+        const trimmed = errMsg.split(" — ")[0] ?? errMsg;
+        return `✗ ${status ?? "?"}: ${trimmed.slice(0, 240)}`;
+      }
+    }
+    return isError ? `✗ ${status ?? "?"}` : `✓ ${status ?? 200}`;
+  }
+  return content.slice(0, 200);
+}
+
 function ToolResultRow({ result }: { result: ContentBlockToolResult }) {
+  const summary = summarizeToolResult(result.content, result.is_error);
   return (
-    <div
+    <details
       className={cn(
-        "neu-surface whitespace-pre-wrap break-all rounded-md px-2 py-1 font-mono text-[10px]",
+        "neu-surface group rounded-md px-2 py-1 font-mono text-[10px]",
         result.is_error ? "bg-destructive/10 text-destructive" : "bg-card text-muted-foreground",
       )}
     >
-      → {result.content}
-    </div>
+      <summary className="cursor-pointer list-none truncate">{summary}</summary>
+      <pre className="mt-1 max-h-64 overflow-auto whitespace-pre-wrap break-all opacity-70">
+        {typeof result.content === "string" ? result.content : JSON.stringify(result.content)}
+      </pre>
+    </details>
   );
+}
+
+/**
+ * Type-named prose field per neuron type (post-migration 023). The
+ * server stores the prose under this field name; the agent's POST
+ * bodies use the same key. Lets the chip label show the actual
+ * intent of a capture instead of just the URL.
+ */
+const NEURON_PROSE_FIELD: Record<string, string> = {
+  decisions: "decision",
+  intents: "intent",
+  ideas: "idea",
+  actions: "action",
+  references: "reference",
+  rules: "rule",
+  logs: "log",
+  evals: "eval",
+  states: "state",
+  principals: "principal",
+};
+
+/**
+ * First-line preview of a possibly-multiline prose field. The first
+ * line of every neuron's prose is the headline (the Decision summary,
+ * the Intent statement, etc.) — perfect for a one-line chip.
+ */
+function firstLine(s: unknown, cap = 60): string {
+  if (typeof s !== "string") return "";
+  const head = s.split(/\r?\n/)[0]?.trim() ?? "";
+  return head.length > cap ? `${head.slice(0, cap - 1)}…` : head;
 }
 
 function toolLabel(name: string, input: unknown): string {
   if (name === "navigate" && input && typeof input === "object") {
     const url = (input as { url?: unknown }).url;
-    return `navigate(${typeof url === "string" ? url : ""})`;
+    return `→ ${typeof url === "string" ? url : ""}`;
   }
   if (name === "doco_api" && input && typeof input === "object") {
-    const method = (input as { method?: unknown }).method;
-    const path = (input as { path?: unknown }).path;
-    return `${typeof method === "string" ? method : "?"} ${typeof path === "string" ? path : ""}`;
+    const i = input as { method?: unknown; path?: unknown; body?: unknown };
+    const method = typeof i.method === "string" ? i.method.toUpperCase() : "GET";
+    const path = typeof i.path === "string" ? i.path : "";
+    // Parse "/<handle>/api/<type>(/<id>)?.json" so the chip can show
+    // what the agent is actually doing instead of a raw URL.
+    const m = path.match(/\/api\/([a-z_-]+)(?:\/([^/.]+))?\.(?:json|txt)$/);
+    if (m) {
+      const type = m[1] ?? "";
+      const id = m[2] ?? "";
+      const body = i.body as Record<string, unknown> | undefined;
+      const proseField = NEURON_PROSE_FIELD[type];
+      const label = proseField && body ? firstLine(body[proseField], 60) : "";
+      const typeLabel = type.replace(/_/g, " ");
+      if (method === "POST" && label) return `Adding ${typeLabel.replace(/s$/, "")}: ${label}`;
+      if (method === "POST") return `Adding ${typeLabel.replace(/s$/, "")}`;
+      if (method === "PATCH" && id) return `Updating ${typeLabel.replace(/s$/, "")}`;
+      if (method === "DELETE" && id) return `Deleting ${typeLabel.replace(/s$/, "")}`;
+      if (method === "GET" && id) return `Reading ${typeLabel.replace(/s$/, "")}`;
+      if (method === "GET") return `Listing ${typeLabel}`;
+    }
+    return `${method} ${path}`;
   }
   return name;
 }

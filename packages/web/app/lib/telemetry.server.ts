@@ -175,6 +175,78 @@ export interface AgentTurnRow {
   phases: Record<string, unknown>;
 }
 
+/**
+ * Eager / incremental write of an agent_turn_metrics row. INSERTs on
+ * first call, UPDATEs on subsequent ones. Callers generate the `id`
+ * up front so the same row can be progressively filled in as the
+ * turn progresses — critical for diagnosing lambdas that get SIGKILL'd
+ * before the `finally` block fires (a fire-and-forget flush in finally
+ * loses everything when Vercel kills the function on timeout).
+ *
+ * Idempotent on (id). The `started_at` column keeps its original
+ * INSERT-time value across UPDATEs.
+ */
+export async function upsertAgentTurn(id: string, row: AgentTurnRow): Promise<void> {
+  try {
+    await withClient(async (c) => {
+      await c.query(
+        `INSERT INTO agent_turn_metrics (
+            id, conversation_id, collaborator_id, model, total_ms,
+            bootstrap_ms, history_load_ms, first_text_token_ms,
+            num_anthropic_calls, num_tool_calls,
+            input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens,
+            history_message_count, attachment_count, stop_reason, error, phases
+         ) VALUES (
+            $1, $2, $3, $4, $5,
+            $6, $7, $8,
+            $9, $10,
+            $11, $12, $13, $14,
+            $15, $16, $17, $18, $19::jsonb
+         )
+         ON CONFLICT (id) DO UPDATE SET
+            total_ms = EXCLUDED.total_ms,
+            bootstrap_ms = EXCLUDED.bootstrap_ms,
+            history_load_ms = EXCLUDED.history_load_ms,
+            first_text_token_ms = EXCLUDED.first_text_token_ms,
+            num_anthropic_calls = EXCLUDED.num_anthropic_calls,
+            num_tool_calls = EXCLUDED.num_tool_calls,
+            input_tokens = EXCLUDED.input_tokens,
+            output_tokens = EXCLUDED.output_tokens,
+            cache_read_tokens = EXCLUDED.cache_read_tokens,
+            cache_creation_tokens = EXCLUDED.cache_creation_tokens,
+            history_message_count = EXCLUDED.history_message_count,
+            attachment_count = EXCLUDED.attachment_count,
+            stop_reason = EXCLUDED.stop_reason,
+            error = EXCLUDED.error,
+            phases = EXCLUDED.phases`,
+        [
+          id,
+          row.conversation_id,
+          row.collaborator_id,
+          row.model,
+          row.total_ms,
+          row.bootstrap_ms,
+          row.history_load_ms,
+          row.first_text_token_ms,
+          row.num_anthropic_calls,
+          row.num_tool_calls,
+          row.input_tokens,
+          row.output_tokens,
+          row.cache_read_tokens,
+          row.cache_creation_tokens,
+          row.history_message_count,
+          row.attachment_count,
+          row.stop_reason,
+          row.error,
+          JSON.stringify(row.phases),
+        ],
+      );
+    });
+  } catch (err) {
+    console.error("[telemetry] agent_turn_metrics upsert failed:", (err as Error).message);
+  }
+}
+
 export async function recordAgentTurn(row: AgentTurnRow): Promise<void> {
   try {
     await withClient(async (c) => {

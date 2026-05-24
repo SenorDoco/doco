@@ -19,9 +19,11 @@
 //
 // The conversation system prompt is bootstrapped much like the agent-
 // bootstrap endpoint feeds external agents — the canonical protocol
-// prose + the Doco policies the user can read —
-// but reframed for an in-page sidebar (no two-line connection header,
-// no footer-lines / tally lines).
+// prose + the Doco policies the user can read. Señor Doco follows the
+// SAME protocol as any other agent (footer-lines verbatim after every
+// write); the only thing he gets that external agents don't is an
+// internal API route via the doco_api tool, so his fetches skip the
+// HTTP round-trip.
 
 import Anthropic from "@anthropic-ai/sdk";
 import type { MessageStream } from "@anthropic-ai/sdk/lib/MessageStream";
@@ -38,13 +40,12 @@ import type {
 } from "@anthropic-ai/sdk/resources/messages";
 import { listOrganizationsForCollaborator, withClient } from "@doco/db";
 import { generateUlid } from "@doco/shared";
-import { waitUntil } from "@vercel/functions";
 import { canAccessDoco } from "./doco-access.server";
 import { ensureEnvLoaded } from "./dotenv.server";
 import { listAllDocos } from "./host.server";
 import { internalFetch } from "./internal-fetch.server";
 import type { CurrentPrincipal } from "./session.server";
-import { recordAgentTurn } from "./telemetry.server";
+import { upsertAgentTurn } from "./telemetry.server";
 
 ensureEnvLoaded();
 
@@ -878,9 +879,11 @@ Only call GET /<handle>/api/<type>.txt when you need detail beyond
 this cheatsheet (long-form error semantics, deep PATCH field list,
 or a type not enumerated above). Routine captures POST directly.
 
-## After every action — render the result
+## After every write — paste footer_lines verbatim, then navigate
 
-When the user asks you to DO something concrete, you must end the turn on a page that visibly proves it happened. Default destinations:
+Every POST / PATCH / DELETE on a Doco endpoint returns a \`footer_lines: string[]\` in the response body. Paste every entry **verbatim**, one per line, as plain text in your reply — same canonical protocol every other agent on Doco follows. The lines already carry the entity name, an emoji marker, a markdown link to the new neuron, and the timing; they are the canonical user-visible record of what happened. Don't paraphrase them, don't summarize them, don't drop the link, don't add your own "Decision captured — see graph." line on top — the footer line is the line.
+
+Then navigate to the page that visibly proves the change:
 
 | Action | Navigate to |
 |---|---|
@@ -890,7 +893,7 @@ When the user asks you to DO something concrete, you must end the turn on a page
 | Created a new doco / org | /<new-handle> |
 | User asked "show me X" | the page that lists or details X |
 
-After the navigate, end the text reply with at most ONE short line (e.g. "Decision captured — see graph." or just "✓"). Never paste the URL — the navigate already moved them there.
+Never paste the URL on a separate line — the footer-line's link covers it, and the navigate already moved them there. If the response also returns \`warnings[]\`, those are model-facing hints, not user-facing; do not paste them.
 
 ## Adding a synapse
 
@@ -1332,9 +1335,13 @@ export async function* runAssistantTurn(args: {
 
   const client = new Anthropic({ apiKey });
   const turnStart = performance.now();
+  // Stable id so the same row can be progressively filled in via
+  // upsertAgentTurn — survives Vercel SIGKILL because every milestone
+  // writes synchronously.
+  const turnId = `atm_${generateUlid()}`;
 
-  // Per-turn metrics. Filled in as we go; flushed in a finally so a
-  // mid-turn error still produces a record.
+  // Per-turn metrics. Filled in as we go; written eagerly on every
+  // boundary so a SIGKILL'd lambda still leaves a row behind.
   let bootstrapMs = 0;
   let historyLoadMs = 0;
   let firstTextTokenMs: number | null = null;
@@ -1350,33 +1357,44 @@ export async function* runAssistantTurn(args: {
   const anthropicCallStats: Array<Record<string, unknown>> = [];
   const toolCallStats: Array<Record<string, unknown>> = [];
 
-  const flushMetrics = () => {
-    waitUntil(
-      recordAgentTurn({
-        conversation_id: args.conversation.id,
-        collaborator_id: args.conversation.collaborator_id,
-        model: MODEL,
-        total_ms: Math.round(performance.now() - turnStart),
-        bootstrap_ms: Math.round(bootstrapMs),
-        history_load_ms: Math.round(historyLoadMs),
-        first_text_token_ms:
-          firstTextTokenMs === null ? null : Math.round(firstTextTokenMs - turnStart),
-        num_anthropic_calls: numAnthropicCalls,
-        num_tool_calls: numToolCalls,
-        input_tokens: inputTokens,
-        output_tokens: outputTokens,
-        cache_read_tokens: cacheReadTokens,
-        cache_creation_tokens: cacheCreationTokens,
-        history_message_count: historyMessageCount,
-        attachment_count: args.ctx.attachmentIds.length,
-        stop_reason: stopReason,
-        error: turnError,
-        phases: {
-          anthropic_calls: anthropicCallStats,
-          tool_calls: toolCallStats,
-        },
-      }),
-    );
+  const buildMetricsRow = () => ({
+    conversation_id: args.conversation.id,
+    collaborator_id: args.conversation.collaborator_id,
+    model: MODEL,
+    total_ms: Math.round(performance.now() - turnStart),
+    bootstrap_ms: Math.round(bootstrapMs),
+    history_load_ms: Math.round(historyLoadMs),
+    first_text_token_ms:
+      firstTextTokenMs === null ? null : Math.round(firstTextTokenMs - turnStart),
+    num_anthropic_calls: numAnthropicCalls,
+    num_tool_calls: numToolCalls,
+    input_tokens: inputTokens,
+    output_tokens: outputTokens,
+    cache_read_tokens: cacheReadTokens,
+    cache_creation_tokens: cacheCreationTokens,
+    history_message_count: historyMessageCount,
+    attachment_count: args.ctx.attachmentIds.length,
+    stop_reason: stopReason,
+    error: turnError,
+    phases: {
+      anthropic_calls: anthropicCallStats,
+      tool_calls: toolCallStats,
+    },
+  });
+
+  // Synchronous checkpoint write. Called at every milestone so a
+  // mid-turn lambda kill still leaves a row with the last known state
+  // (which Anthropic call hung, how many tokens it had consumed). The
+  // await costs ~5-15ms per checkpoint — acceptable insurance.
+  const checkpointMetrics = async () => {
+    await upsertAgentTurn(turnId, buildMetricsRow());
+  };
+  // Final write — still eager (not waitUntil) so we hold the
+  // AsyncGenerator open until the row is persisted. Better than
+  // fire-and-forget; the response is already streamed by this point
+  // so latency here doesn't affect the user.
+  const flushMetrics = async () => {
+    await upsertAgentTurn(turnId, buildMetricsRow());
   };
 
   // Opportunistic cleanup at the top of every turn so retention is
@@ -1387,6 +1405,13 @@ export async function* runAssistantTurn(args: {
   // initiate. Cleared in the finally below — covers normal
   // completion, errors, and aborts.
   await markActiveTurnStarted(args.conversation.id);
+  // Eager metrics insert with the "in_flight" sentinel. Establishes
+  // the row before any long anthropic call runs so a SIGKILL leaves
+  // forensic evidence (vs. the prior flush-in-finally pattern which
+  // lost the row when the function timed out).
+  turnError = "(in_flight)";
+  await checkpointMetrics();
+  turnError = null;
 
   // First user-facing event in the stream. Without this, the
   // sidebar's thinking column shows "0 events / waiting for first
@@ -1589,6 +1614,11 @@ export async function* runAssistantTurn(args: {
         cache_creation_tokens: usage.cache_creation_input_tokens ?? 0,
         stop_reason: finalMessage.stop_reason ?? null,
       });
+      // Checkpoint after each Anthropic call so a kill on the NEXT
+      // call still leaves a row pointing at the last completed one.
+      turnError = "(in_flight)";
+      await checkpointMetrics();
+      turnError = null;
       for (const block of finalMessage.content) {
         if (block.type === "text" || block.type === "tool_use") {
           collectedBlocks.push(block);
@@ -1671,9 +1701,18 @@ export async function* runAssistantTurn(args: {
       message: `Hit MAX_TURNS_PER_REPLY=${MAX_TURNS_PER_REPLY} without completing — stopping to avoid a tool-call loop.`,
     };
   } finally {
-    flushMetrics();
-    // Best-effort marker clear. Swallow errors so a DB hiccup at the
-    // end of a turn doesn't surface as a turn-level failure.
+    // Final synchronous flush so a turn that completed normally (or
+    // errored cleanly) overwrites the "in_flight" sentinel with the
+    // real outcome. Swallow errors so a DB hiccup at the end of a
+    // turn doesn't surface as a turn-level failure.
+    try {
+      await flushMetrics();
+    } catch (err) {
+      console.warn(
+        "[agent-chat] final flushMetrics failed:",
+        err instanceof Error ? err.message : String(err),
+      );
+    }
     try {
       await markActiveTurnEnded(args.conversation.id);
     } catch (err) {

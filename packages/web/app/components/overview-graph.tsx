@@ -718,8 +718,8 @@ export function OverviewGraph({
         ref={graphRef}
         className={
           fillHeight
-            ? "relative min-h-0 w-full flex-1 overflow-hidden rounded-md border border-border bg-white"
-            : "relative h-[65vh] min-h-[480px] w-full overflow-hidden rounded-md border border-border bg-white"
+            ? "relative min-h-0 w-full flex-1 overflow-hidden rounded-md rounded-tl-none border border-border bg-background"
+            : "relative h-[65vh] min-h-[480px] w-full overflow-hidden rounded-md rounded-tl-none border border-border bg-background"
         }
       >
         {search ? (
@@ -781,6 +781,9 @@ export function OverviewGraph({
               position="top-right"
               showInteractive={false}
               fitViewOptions={GRAPH_FIT_VIEW_OPTIONS}
+              // Pushed down so the Reorder-automatically toggle (also
+              // top-right) sits above without overlap.
+              style={{ top: 44 }}
             >
               {onToggleFullscreen ? (
                 <Flow.ControlButton
@@ -801,6 +804,7 @@ export function OverviewGraph({
               style={{
                 width: 120,
                 height: 90,
+                background: "var(--color-background)",
                 border: "1px solid var(--color-border)",
                 borderRadius: "var(--radius)",
                 overflow: "hidden",
@@ -812,14 +816,14 @@ export function OverviewGraph({
             Loading graph…
           </div>
         )}
-        {/* Reorder-automatically toggle. Floats in the top-left of the
-            canvas (the minimap stays in its default bottom-right spot).
-            z-index above the React Flow canvas but below the search
+        {/* Reorder-automatically toggle. Floats in the top-RIGHT of the
+            canvas above the React Flow zoom controls (which are pushed
+            down via the .react-flow__controls.doco-controls-below-toggle
+            class in app.css so the toggle and the controls don't
+            overlap). z-index above the canvas but below the search
             input that floats top-left at z-20 when present. */}
         {visibleNodes.length > 0 && Flow ? (
-          <div
-            className={`pointer-events-none absolute z-10 ${search ? "left-3 top-12" : "left-3 top-3"}`}
-          >
+          <div className="pointer-events-none absolute right-3 top-3 z-10">
             <div className="pointer-events-auto rounded-md border border-border bg-card/90 px-2 py-1 shadow-sm backdrop-blur">
               <label className="inline-flex cursor-pointer select-none items-center gap-1.5 text-[11px]">
                 <input

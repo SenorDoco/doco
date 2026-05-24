@@ -788,19 +788,24 @@ export default function DocoHome({
               availablePerspectives={availablePerspectives}
               activeSlug={activeSlug}
               canAdmin={canAdminPerspectives}
-              search={
-                <SearchBoxWithHistory
-                  handle={handle}
-                  placeholder={
-                    totalNodes > 0
-                      ? `Search ${totalNodes} neuron${totalNodes === 1 ? "" : "s"}…`
-                      : "Search neurons…"
-                  }
-                  compact
-                />
-              }
             />
             <div className="relative flex min-h-0 flex-1 flex-col">
+              {/* Search floats over the top-left of whichever perspective
+                  is active. Absolute so it sits inside the canvas without
+                  pushing it down — keeps the tab/canvas seam clean. */}
+              <div className="pointer-events-none absolute left-3 top-3 z-20 w-64 max-w-[calc(100%-2rem)]">
+                <div className="pointer-events-auto">
+                  <SearchBoxWithHistory
+                    handle={handle}
+                    placeholder={
+                      totalNodes > 0
+                        ? `Search ${totalNodes} neuron${totalNodes === 1 ? "" : "s"}…`
+                        : "Search neurons…"
+                    }
+                    compact
+                  />
+                </div>
+              </div>
               {activePerspectiveKind === "list" ? (
                 <ListPerspective
                   nodes={graphState.nodes}
