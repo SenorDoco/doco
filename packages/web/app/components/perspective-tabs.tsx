@@ -155,12 +155,16 @@ function PerspectiveSettingsMenu({
   const apiAction = `/${handle}/api/perspectives.json`;
 
   return (
-    // `flex items-end` so the button inside aligns to the bottom of
-    // this wrapper just like the perspective tabs align to the bottom
-    // of the nav. Without it, the wrapper's default block layout +
-    // inherited 1.55 line-height left the button sitting ~0.8px
-    // higher than the tabs — visible as a misaligned top edge.
-    <div ref={wrapperRef} className="relative flex items-end">
+    // The wrapper has to be `relative` so the dropdown menu can
+    // position-absolute against it. But as a flex child of the tab
+    // nav, the wrapper picked up the page's inherited 1.55 line-height
+    // and computed ~0.8px taller than the button inside, leaving the
+    // chevron's bottom 0.8px above the perspective tabs' bottoms.
+    // `flex items-end` alone didn't kill that gap — the inherited
+    // line-height contributes to the wrapper's CONTENT height, not
+    // just leading inside text. Force `leading-none` (line-height:1)
+    // on the wrapper so it shrinks to exactly the button's box.
+    <div ref={wrapperRef} className="relative flex items-end leading-none">
       <button
         type="button"
         aria-label="Perspective settings"
