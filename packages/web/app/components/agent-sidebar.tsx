@@ -1104,26 +1104,31 @@ function InFlightMessageView({
   msg: InFlightMessage;
   usage: TurnUsage | null;
 }) {
-  // Same rule as SavedMessage: tool_use / tool_result chips live in
-  // the Thinking column, not the main chat. Stream the text deltas
-  // and attachments only.
+  // tool_use / tool_result chips live in the Thinking column; the
+  // main chat only sees text + attachments.
   const visible = visibleChatBlocks(msg.content);
+  // Pre-text "thinking" state: no bubble, no pulsing dots, no label —
+  // just the doco mark at 2× normal size. Persists until the model
+  // emits the first text delta of the turn.
+  if (visible.length === 0) {
+    return (
+      <div className="mb-3 flex justify-end pr-1">
+        <DocoMark height={28} variant="mark" active decorative />
+      </div>
+    );
+  }
+  // Once text streams in, render the bubble normally AND keep the
+  // animated doco mark below it. The animation only disappears when
+  // the turn fully settles and the in-flight view unmounts — so
+  // mid-stream pauses (e.g. between tool round trips on a multi-
+  // call turn) still show the thinking cue.
   return (
     <div className="mb-3 flex flex-col items-end">
       <div className="neu-bubble max-w-[90%] space-y-1.5 rounded-lg bg-primary/10 px-2.5 py-1.5">
         {visible.map((b) => (
           <BlockView key={blockKey(b)} block={b} />
         ))}
-        {visible.length === 0 ? (
-          <div className="text-muted-foreground">
-            <span className="inline-block animate-pulse">…</span>
-          </div>
-        ) : null}
       </div>
-      {/* In-flight assistant messages render the animated doco mark next
-          to the label so the "Señor Doco is replying" cue lives with the
-          bubble itself. Label sits BELOW the bubble to match the saved
-          message layout. */}
       <div className="mt-1 flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-muted-foreground">
         <DocoMark height={14} variant="mark" active decorative />
         Señor Doco
@@ -1137,10 +1142,6 @@ function InFlightMessageView({
           </span>
         ) : null}
       </div>
-      {/* Thinking-column toggle moved to the vertical `ThinkingTab` —
-          a dedicated 32px rail on the right edge of the chat column,
-          mirroring the collapse-rail pattern of the Señor Doco bar
-          itself. The bubble stays prose-only. */}
     </div>
   );
 }
