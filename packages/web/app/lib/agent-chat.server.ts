@@ -38,13 +38,12 @@ import type {
 } from "@anthropic-ai/sdk/resources/messages";
 import { listOrganizationsForCollaborator, withClient } from "@doco/db";
 import { generateUlid } from "@doco/shared";
-import { waitUntil } from "@vercel/functions";
 import { canAccessDoco } from "./doco-access.server";
 import { ensureEnvLoaded } from "./dotenv.server";
 import { listAllDocos } from "./host.server";
 import { internalFetch } from "./internal-fetch.server";
 import type { CurrentPrincipal } from "./session.server";
-import { recordAgentTurn } from "./telemetry.server";
+import { upsertAgentTurn } from "./telemetry.server";
 
 ensureEnvLoaded();
 
@@ -1332,9 +1331,13 @@ export async function* runAssistantTurn(args: {
 
   const client = new Anthropic({ apiKey });
   const turnStart = performance.now();
+  // Stable id so the same row can be progressively filled in via
+  // upsertAgentTurn — survives Vercel SIGKILL because every milestone
+  // writes synchronously.
+  const turnId = `atm_${generateUlid()}`;
 
-  // Per-turn metrics. Filled in as we go; flushed in a finally so a
-  // mid-turn error still produces a record.
+  // Per-turn metrics. Filled in as we go; written eagerly on every
+  // boundary so a SIGKILL'd lambda still leaves a row behind.
   let bootstrapMs = 0;
   let historyLoadMs = 0;
   let firstTextTokenMs: number | null = null;
@@ -1350,33 +1353,44 @@ export async function* runAssistantTurn(args: {
   const anthropicCallStats: Array<Record<string, unknown>> = [];
   const toolCallStats: Array<Record<string, unknown>> = [];
 
-  const flushMetrics = () => {
-    waitUntil(
-      recordAgentTurn({
-        conversation_id: args.conversation.id,
-        collaborator_id: args.conversation.collaborator_id,
-        model: MODEL,
-        total_ms: Math.round(performance.now() - turnStart),
-        bootstrap_ms: Math.round(bootstrapMs),
-        history_load_ms: Math.round(historyLoadMs),
-        first_text_token_ms:
-          firstTextTokenMs === null ? null : Math.round(firstTextTokenMs - turnStart),
-        num_anthropic_calls: numAnthropicCalls,
-        num_tool_calls: numToolCalls,
-        input_tokens: inputTokens,
-        output_tokens: outputTokens,
-        cache_read_tokens: cacheReadTokens,
-        cache_creation_tokens: cacheCreationTokens,
-        history_message_count: historyMessageCount,
-        attachment_count: args.ctx.attachmentIds.length,
-        stop_reason: stopReason,
-        error: turnError,
-        phases: {
-          anthropic_calls: anthropicCallStats,
-          tool_calls: toolCallStats,
-        },
-      }),
-    );
+  const buildMetricsRow = () => ({
+    conversation_id: args.conversation.id,
+    collaborator_id: args.conversation.collaborator_id,
+    model: MODEL,
+    total_ms: Math.round(performance.now() - turnStart),
+    bootstrap_ms: Math.round(bootstrapMs),
+    history_load_ms: Math.round(historyLoadMs),
+    first_text_token_ms:
+      firstTextTokenMs === null ? null : Math.round(firstTextTokenMs - turnStart),
+    num_anthropic_calls: numAnthropicCalls,
+    num_tool_calls: numToolCalls,
+    input_tokens: inputTokens,
+    output_tokens: outputTokens,
+    cache_read_tokens: cacheReadTokens,
+    cache_creation_tokens: cacheCreationTokens,
+    history_message_count: historyMessageCount,
+    attachment_count: args.ctx.attachmentIds.length,
+    stop_reason: stopReason,
+    error: turnError,
+    phases: {
+      anthropic_calls: anthropicCallStats,
+      tool_calls: toolCallStats,
+    },
+  });
+
+  // Synchronous checkpoint write. Called at every milestone so a
+  // mid-turn lambda kill still leaves a row with the last known state
+  // (which Anthropic call hung, how many tokens it had consumed). The
+  // await costs ~5-15ms per checkpoint — acceptable insurance.
+  const checkpointMetrics = async () => {
+    await upsertAgentTurn(turnId, buildMetricsRow());
+  };
+  // Final write — still eager (not waitUntil) so we hold the
+  // AsyncGenerator open until the row is persisted. Better than
+  // fire-and-forget; the response is already streamed by this point
+  // so latency here doesn't affect the user.
+  const flushMetrics = async () => {
+    await upsertAgentTurn(turnId, buildMetricsRow());
   };
 
   // Opportunistic cleanup at the top of every turn so retention is
@@ -1387,6 +1401,13 @@ export async function* runAssistantTurn(args: {
   // initiate. Cleared in the finally below — covers normal
   // completion, errors, and aborts.
   await markActiveTurnStarted(args.conversation.id);
+  // Eager metrics insert with the "in_flight" sentinel. Establishes
+  // the row before any long anthropic call runs so a SIGKILL leaves
+  // forensic evidence (vs. the prior flush-in-finally pattern which
+  // lost the row when the function timed out).
+  turnError = "(in_flight)";
+  await checkpointMetrics();
+  turnError = null;
 
   // First user-facing event in the stream. Without this, the
   // sidebar's thinking column shows "0 events / waiting for first
@@ -1589,6 +1610,11 @@ export async function* runAssistantTurn(args: {
         cache_creation_tokens: usage.cache_creation_input_tokens ?? 0,
         stop_reason: finalMessage.stop_reason ?? null,
       });
+      // Checkpoint after each Anthropic call so a kill on the NEXT
+      // call still leaves a row pointing at the last completed one.
+      turnError = "(in_flight)";
+      await checkpointMetrics();
+      turnError = null;
       for (const block of finalMessage.content) {
         if (block.type === "text" || block.type === "tool_use") {
           collectedBlocks.push(block);
@@ -1671,9 +1697,18 @@ export async function* runAssistantTurn(args: {
       message: `Hit MAX_TURNS_PER_REPLY=${MAX_TURNS_PER_REPLY} without completing — stopping to avoid a tool-call loop.`,
     };
   } finally {
-    flushMetrics();
-    // Best-effort marker clear. Swallow errors so a DB hiccup at the
-    // end of a turn doesn't surface as a turn-level failure.
+    // Final synchronous flush so a turn that completed normally (or
+    // errored cleanly) overwrites the "in_flight" sentinel with the
+    // real outcome. Swallow errors so a DB hiccup at the end of a
+    // turn doesn't surface as a turn-level failure.
+    try {
+      await flushMetrics();
+    } catch (err) {
+      console.warn(
+        "[agent-chat] final flushMetrics failed:",
+        err instanceof Error ? err.message : String(err),
+      );
+    }
     try {
       await markActiveTurnEnded(args.conversation.id);
     } catch (err) {
