@@ -835,6 +835,26 @@ function isNodeVisibleInViewport(
  * predecessors. Cycle survivors (no zero-indegree entry point) fall
  * back to depth 0 and are sorted by created_at within their lane.
  */
+/**
+ * Synapse types that express **causal sequence flow** for BPMN layout.
+ * These are the only edges that move a neuron's horizontal column;
+ * every other synapse type (`serves`, `performed_by`, `gated_by`,
+ * `tests`, `consults`, `has_parent`, …) renders an arrow but doesn't
+ * push the target node to a later column.
+ *
+ * Direction note: all three sequence-flow synapses store the
+ * data-model link from the *successor* to the *predecessor* (e.g.
+ * `Action.follows=[B]` is stored as `{from: Action, to: B}`, meaning
+ * B happens before the Action). `computeDepths` reads `link.target`
+ * as the predecessor for these types so depth grows left → right in
+ * BPMN reading order.
+ */
+const SEQUENCE_FLOW_SYNAPSES: ReadonlySet<string> = new Set([
+  "follows", // A.follows=[B] → B is predecessor of A
+  "triggered_by", // Action.triggered_by=[B] → B is predecessor of A
+  "enacts", // Action.decision_ids=[D] → D is predecessor of A
+]);
+
 function computeDepths(
   nodes: readonly BpmnNode[],
   links: readonly OverviewGraphLink[],
@@ -845,7 +865,10 @@ function computeDepths(
   for (const id of nodeIds) predecessors.set(id, []);
   for (const link of links) {
     if (!nodeIds.has(link.source) || !nodeIds.has(link.target)) continue;
-    (predecessors.get(link.target) as string[]).push(link.source);
+    if (!SEQUENCE_FLOW_SYNAPSES.has(link.synapse_type)) continue;
+    // Sequence-flow synapses point successor → predecessor in our
+    // data; link.target is the predecessor of link.source.
+    (predecessors.get(link.source) as string[]).push(link.target);
   }
   // Memoized DFS — handles DAGs and is safe against cycles via the
   // `visiting` guard which treats a back-edge predecessor as depth 0.
