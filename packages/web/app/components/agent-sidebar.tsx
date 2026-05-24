@@ -6,7 +6,7 @@
 // re-uses React Router's useNavigate() to follow `navigate` tool
 // events from the agent.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router";
 import { DocoMark } from "~/components/doco-mark";
 import { cn } from "~/lib/cn";
@@ -348,6 +348,17 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
     const el = messageListRef.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [bootstrapped]);
+
+  // Every time the sidebar transitions from collapsed → expanded the
+  // chat column re-mounts and the user expects to land on the most
+  // recent message instantly, not scrolled to the top of the loaded
+  // window. useLayoutEffect runs after the chat column mounts but
+  // before the browser paints, so the jump-to-bottom is invisible.
+  useLayoutEffect(() => {
+    if (collapsed) return;
+    const el = messageListRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [collapsed]);
 
   const newestMessageId = messages[messages.length - 1]?.id ?? null;
   const autoScrollTrigger =
