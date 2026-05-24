@@ -972,9 +972,11 @@ export function EntityGraph({
       const pos = positions.get(n.id) ?? { x: 0, y: 0 };
       const lifecycle = nodeLifecycle(n);
       const accentColor = lifecycleColor(lifecycle);
-      const bg = n.is_center
-        ? "color-mix(in oklch, var(--color-accent) 30%, white)"
-        : "rgb(255,255,255)";
+      // White for every card. The "in focus" cue is the heavier 2px
+      // border plus the "in focus" + GPR labels inside the card —
+      // adding a tinted background on top was a third cue that read
+      // as "the card is bluish" rather than "the card is focused".
+      const bg = "rgb(255,255,255)";
       const title = n.name ?? n.summary;
       const cardHeight = nodeRenderHeight(n);
       const nodeOpacity = focalActive ? opacityForDepth(depthByNodeId.get(n.id)) : 1;
