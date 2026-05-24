@@ -1012,15 +1012,11 @@ function MessageBlock({
     // with the previous assistant turn (right-aligned + accent bubble)
     // instead of as a fresh "You: …" bubble.
     if (m.role === "user" && m.content.every((b) => b.type === "tool_result")) {
-      return (
-        <div className="mb-2 flex justify-end">
-          <div className="neu-bubble max-w-[90%] space-y-1 rounded-lg bg-primary/10 px-2 py-1.5">
-            {m.content.map((b) =>
-              b.type === "tool_result" ? <ToolResultRow key={blockKey(b)} result={b} /> : null,
-            )}
-          </div>
-        </div>
-      );
+      // Hide tool-result-only user messages from the main chat
+      // entirely. They're agent↔server bookkeeping; the canonical
+      // user-visible record is the next assistant turn's pasted
+      // footer-line. Detailed result rows live in the Thinking column.
+      return null;
     }
     return <SavedMessage message={m} />;
   }
@@ -1034,8 +1030,22 @@ function MessageBlock({
   );
 }
 
+/**
+ * Filter block list for the main chat. Tool-use chips are
+ * intermediate "agent is calling X" affordances that belong in the
+ * Thinking column, not the user-facing message stream. Text +
+ * attachments stay.
+ */
+function visibleChatBlocks(blocks: readonly AnyBlock[]): AnyBlock[] {
+  return blocks.filter((b) => b.type !== "tool_use" && b.type !== "tool_result");
+}
+
 function SavedMessage({ message }: { message: ChatMessage }) {
   const isAssistant = message.role === "assistant";
+  const visible = visibleChatBlocks(message.content);
+  // Whole message was tool-call noise → skip the bubble. Detailed
+  // tool activity is still in the Thinking column.
+  if (visible.length === 0) return null;
   return (
     <div className={cn("mb-3 flex flex-col", isAssistant ? "items-end" : "items-start")}>
       <div
@@ -1044,7 +1054,7 @@ function SavedMessage({ message }: { message: ChatMessage }) {
           isAssistant ? "bg-primary/10" : "neu-surface bg-card",
         )}
       >
-        {message.content.map((b) => (
+        {visible.map((b) => (
           <BlockView key={blockKey(b)} block={b} />
         ))}
       </div>
@@ -1066,22 +1076,17 @@ function InFlightMessageView({
   showThinking: boolean;
   onToggleThinking: () => void;
 }) {
+  // Same rule as SavedMessage: tool_use / tool_result chips live in
+  // the Thinking column, not the main chat. Stream the text deltas
+  // and attachments only.
+  const visible = visibleChatBlocks(msg.content);
   return (
     <div className="mb-3 flex flex-col items-end">
       <div className="neu-bubble max-w-[90%] space-y-1.5 rounded-lg bg-primary/10 px-2.5 py-1.5">
-        {msg.content.map((b) => {
-          if (b.type === "tool_use") {
-            const result = msg.toolResults.get(b.id);
-            return (
-              <div key={blockKey(b)} className="space-y-1">
-                <BlockView block={b} />
-                {result ? <ToolResultRow result={result} /> : null}
-              </div>
-            );
-          }
-          return <BlockView key={blockKey(b)} block={b} />;
-        })}
-        {msg.content.length === 0 ? (
+        {visible.map((b) => (
+          <BlockView key={blockKey(b)} block={b} />
+        ))}
+        {visible.length === 0 ? (
           <div className="text-muted-foreground">
             <span className="inline-block animate-pulse">…</span>
           </div>
