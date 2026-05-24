@@ -117,15 +117,11 @@ export function LifecycleBadge({ lifecycle, anchor = "right", className }: Badge
 }
 
 /**
- * Tag row centered over the TOP edge of a node — type pill followed by
- * lifecycle pill, both at the same z-level. Used by every perspective
- * that draws node cards (Graph, BPMN) so the top chrome reads the same
- * wherever a node is rendered.
- *
- * The reference number (`#N`) does NOT live in this row anymore — it
- * floats centered at the BOTTOM of the node via `ReferenceNumberBadge`
- * so the top is reserved for what the neuron IS (type + lifecycle) and
- * the bottom carries the optional in-graph numbering.
+ * Tag row centered over the BOTTOM edge of a node — type pill followed
+ * by lifecycle pill, both at the same z-level. Paired with
+ * `ReferenceNumberBadge` which floats at the TOP edge of the node:
+ * the in-graph numbering reads top, the neuron's identity (type +
+ * lifecycle) reads bottom.
  */
 interface NodeBadgeRowProps {
   entityType: string;
@@ -136,7 +132,7 @@ interface NodeBadgeRowProps {
 export function NodeBadgeRow({ entityType, lifecycle, className }: NodeBadgeRowProps) {
   const rowStyle: CSSProperties = {
     position: "absolute",
-    top: -10,
+    bottom: -10,
     left: "50%",
     transform: "translateX(-50%)",
     zIndex: 2,
@@ -154,10 +150,8 @@ export function NodeBadgeRow({ entityType, lifecycle, className }: NodeBadgeRowP
 }
 
 /**
- * Reference-number badge centered over the BOTTOM edge of a node.
- * Renders nothing when there's no number — the bottom-center anchor
- * means appearing/disappearing causes no horizontal layout shift in
- * sibling content (it's its own row).
+ * Reference-number badge centered over the TOP edge of a node.
+ * Renders nothing when there's no number.
  */
 interface ReferenceNumberBadgeProps {
   referenceNumber?: number | null;
@@ -179,7 +173,7 @@ export function ReferenceNumberBadge({
           : `Graph reference #${referenceNumber}`
       }
       className={`pointer-events-none absolute z-20 flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold leading-none text-primary-foreground shadow-sm${className ? ` ${className}` : ""}`}
-      style={{ bottom: -10, left: "50%", transform: "translateX(-50%)" }}
+      style={{ top: -10, left: "50%", transform: "translateX(-50%)" }}
       title={`Graph reference #${referenceNumber}`}
     >
       #{referenceNumber}
