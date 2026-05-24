@@ -610,6 +610,24 @@ describe("captureNeuronAuthoringPolicy — synapse_type validation", () => {
     );
     expect("error" in result).toBe(false);
   });
+
+  it("accepts a requires_synapse predicate when the field name IS the canonical type", async () => {
+    // `follows` (and a handful of others: `premise`, `born_from`,
+    // `superseded_by`) are identity-mapped in FIELD_TO_SYNAPSE_TYPE:
+    // the field on the neuron and the canonical synapse share the same
+    // name. The validator's field-name-vs-canonical check used to reject
+    // these outright, blocking BPMN templates from authoring a
+    // `requires_synapse: follows` policy via the API.
+    await seedDoco();
+    const result = await captureNeuronAuthoringPolicy(
+      "",
+      DOCO_ID,
+      "val-org",
+      "val-test",
+      draft({ kind: "requires_synapse", synapse_type: "follows" }),
+    );
+    expect("error" in result).toBe(false);
+  });
 });
 
 describe("upsertEntity — lifecycle column / data.lifecycle drift", () => {
