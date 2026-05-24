@@ -925,14 +925,23 @@ function layOutBpmn(
   const flowEdges: FlowEdge[] = links
     .filter((link) => nodeSet.has(link.source) && nodeSet.has(link.target))
     .map((link, index) => {
-      // `serves` is stored Action→Intent in the data (an Action serves
-      // an Intent), but in BPMN the Intent sits at the *origin* of the
-      // flow — start events (circles) point outward to the work that
-      // fulfils them. Flip the visual direction so the arrow reads
-      // "this Intent drives this Action" rather than "this Action
-      // points at its goal." Data model is unchanged; only the rendered
-      // edge is swapped.
-      const flip = link.synapse_type === "serves";
+      // Some synapses are stored downstream→upstream in the data but
+      // their BPMN sequence flow runs the other way:
+      //
+      // - `serves` is stored Action→Intent (Action serves Intent), but
+      //   the Intent is the start event at the origin of the flow —
+      //   arrows fan *out* from it.
+      // - `enacts` is stored Action→Decision (Action enacts a prior
+      //   Decision), but the Decision is the gateway and the Action is
+      //   the downstream branch — arrows go from the gateway *to* each
+      //   branch.
+      //
+      // For both, flip the visual edge so the arrowhead lands on the
+      // downstream side. The underlying synapse direction in the data
+      // is unchanged; only the rendered edge is swapped. (And these
+      // matches the depth-walk direction: gateways/start-events end up
+      // at the lower depth, branches/actions at the higher depth.)
+      const flip = link.synapse_type === "serves" || link.synapse_type === "enacts";
       const source = flip ? link.target : link.source;
       const target = flip ? link.source : link.target;
       const edgeOpacity = focalActive
