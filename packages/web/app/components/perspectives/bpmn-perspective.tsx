@@ -28,10 +28,7 @@ import {
   useState,
 } from "react";
 import { useNavigate } from "react-router";
-import {
-  LifecycleBadge as SharedLifecycleBadge,
-  TypeBadge as SharedTypeBadge,
-} from "~/components/neuron-badges";
+import { NodeBadgeRow } from "~/components/neuron-badges";
 import type { OverviewGraphLink } from "~/components/overview-graph";
 import type { BpmnLane, BpmnNode, BpmnShape } from "~/lib/bpmn-perspective.server";
 import {
@@ -1066,9 +1063,7 @@ function BpmnRectangleNode({ data }: { data: BpmnNodeData }) {
         boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
       }}
     >
-      <ReferenceBadge data={data} />
-      <TypeBadge node={data.node} />
-      <LifecycleBadge node={data.node} />
+      <BpmnBadgeRow data={data} />
       <ShapeLabel node={data.node} />
       {commonHandles()}
     </div>
@@ -1093,9 +1088,7 @@ function BpmnRoundedNode({ data }: { data: BpmnNodeData }) {
         boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
       }}
     >
-      <ReferenceBadge data={data} />
-      <TypeBadge node={data.node} />
-      <LifecycleBadge node={data.node} />
+      <BpmnBadgeRow data={data} />
       <ShapeLabel node={data.node} />
       {commonHandles()}
     </div>
@@ -1123,9 +1116,7 @@ function BpmnTaskNode({ data }: { data: BpmnNodeData }) {
         boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
       }}
     >
-      <ReferenceBadge data={data} />
-      <TypeBadge node={data.node} />
-      <LifecycleBadge node={data.node} />
+      <BpmnBadgeRow data={data} />
       <ShapeLabel node={data.node} />
       {commonHandles()}
     </div>
@@ -1156,7 +1147,7 @@ function BpmnMilestoneNode({ data }: { data: BpmnNodeData }) {
         boxSizing: "border-box",
       }}
     >
-      <ReferenceBadge data={data} />
+      <BpmnBadgeRow data={data} />
       <span
         className="pointer-events-none line-clamp-2 text-center text-[10px] font-semibold uppercase tracking-wide"
         style={{ color: "#1f1f1f", letterSpacing: 0.4 }}
@@ -1187,7 +1178,7 @@ function BpmnCircleNode({ data }: { data: BpmnNodeData }) {
         justifyContent: "center",
       }}
     >
-      <ReferenceBadge data={data} circular />
+      <BpmnBadgeRow data={data} circular />
       <div
         style={{
           width: "100%",
@@ -1202,8 +1193,6 @@ function BpmnCircleNode({ data }: { data: BpmnNodeData }) {
           boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
         }}
       >
-        <TypeBadge node={data.node} circular />
-        <LifecycleBadge node={data.node} circular />
         <ShapeLabel node={data.node} />
       </div>
       {commonHandles()}
@@ -1229,7 +1218,7 @@ function BpmnDiamondNode({ data }: { data: BpmnNodeData }) {
         justifyContent: "center",
       }}
     >
-      <ReferenceBadge data={data} />
+      <BpmnBadgeRow data={data} />
       <div
         style={{
           width: inner,
@@ -1253,8 +1242,6 @@ function BpmnDiamondNode({ data }: { data: BpmnNodeData }) {
       >
         <ShapeLabel node={data.node} />
       </div>
-      <TypeBadge node={data.node} />
-      <LifecycleBadge node={data.node} />
       {commonHandles()}
     </div>
   );
@@ -1277,7 +1264,7 @@ function BpmnDocumentNode({ data }: { data: BpmnNodeData }) {
         justifyContent: "center",
       }}
     >
-      <ReferenceBadge data={data} />
+      <BpmnBadgeRow data={data} />
       <svg
         viewBox="0 0 140 60"
         preserveAspectRatio="none"
@@ -1297,8 +1284,6 @@ function BpmnDocumentNode({ data }: { data: BpmnNodeData }) {
           strokeWidth={2}
         />
       </svg>
-      <TypeBadge node={data.node} />
-      <LifecycleBadge node={data.node} />
       <ShapeLabel node={data.node} />
       {commonHandles()}
     </div>
@@ -1499,45 +1484,28 @@ function graphReferenceAttributes(data: BpmnNodeData): Record<string, string | n
   };
 }
 
-function ReferenceBadge({ data, circular = false }: { data: BpmnNodeData; circular?: boolean }) {
-  if (!data.referenceNumber) return null;
-  return (
-    <span
-      aria-label={`Graph reference #${data.referenceNumber}: ${data.node.name ?? data.node.id}`}
-      className="pointer-events-none absolute z-30 flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold leading-none text-primary-foreground shadow-sm ring-2 ring-card"
-      style={circular ? { left: "calc(50% - 42px)", top: -10 } : { left: -10, top: -10 }}
-      title={`Graph reference #${data.referenceNumber}`}
-    >
-      #{data.referenceNumber}
-    </span>
-  );
-}
-
 /**
- * Shared style for both the type badge and the lifecycle badge —
- * they're two pills of the same lifecycle color, paired with the
- * shape stroke (also lifecycle color) to form a consistent color
- * triplet. Text identifies what the pill represents (type vs stage).
+ * Header row floated over the top edge of a BPMN shape: reference
+ * number, then type pill, then lifecycle pill — all inline at the same
+ * z-level. Reference-number slot stays reserved when there's no number
+ * so toggling the number on/off doesn't shift the pills.
  *
- * Implementation lives in `~/components/neuron-badges`; this perspective
- * just adapts the BpmnNode prop to the entityType/lifecycle pair the
- * shared component expects, plus the BPMN-only `circular` anchor swap.
+ * Shared with the Graph perspective via `~/components/neuron-badges`
+ * (the same NodeBadgeRow renders both). For round shapes (circles), the
+ * row anchors centered over the top so it doesn't sit outside the
+ * inscribed shape.
+ *
+ * Milestones suppress this row entirely; their compact phase-label band
+ * was deliberately styled without pills.
  */
-function TypeBadge({ node, circular = false }: { node: BpmnNode; circular?: boolean }) {
+function BpmnBadgeRow({ data, circular = false }: { data: BpmnNodeData; circular?: boolean }) {
   return (
-    <SharedTypeBadge
-      entityType={node.entity_type}
-      lifecycle={node.lifecycle}
+    <NodeBadgeRow
+      entityType={data.node.entity_type}
+      lifecycle={data.node.lifecycle}
+      referenceNumber={data.referenceNumber}
+      referenceLabel={data.node.name ?? data.node.id}
       anchor={circular ? "centered-top" : "left"}
-    />
-  );
-}
-
-function LifecycleBadge({ node, circular = false }: { node: BpmnNode; circular?: boolean }) {
-  return (
-    <SharedLifecycleBadge
-      lifecycle={node.lifecycle}
-      anchor={circular ? "centered-bottom" : "right"}
     />
   );
 }
