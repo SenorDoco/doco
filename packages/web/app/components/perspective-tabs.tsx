@@ -30,11 +30,11 @@ export function PerspectiveTabs({
   search,
 }: PerspectiveTabsProps) {
   return (
-    <div className="mb-2 flex flex-wrap items-start justify-between gap-3">
+    <div className="-mb-px flex flex-wrap items-end justify-between gap-3">
       <nav
         aria-label="Visualization perspectives"
         role="tablist"
-        className="-mb-px flex min-w-0 flex-wrap items-end"
+        className="flex min-w-0 flex-wrap items-end"
       >
         {perspectives.map((p, i) => (
           <PerspectiveTab
