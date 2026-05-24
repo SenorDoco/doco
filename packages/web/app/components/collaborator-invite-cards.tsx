@@ -197,7 +197,7 @@ function AgentPromptBlock({ body }: { body: string }) {
   return (
     <div className="space-y-2">
       <pre
-        className="neu-inset rounded-md bg-card p-3 text-[11px] whitespace-pre-wrap break-words"
+        className="neu-surface rounded-md bg-card p-3 text-[11px] whitespace-pre-wrap break-words"
         data-testid="invite-agent-prompt"
       >
         {body}
