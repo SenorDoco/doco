@@ -793,7 +793,7 @@ export default function DocoHome({
               {/* Search floats over the top-left of whichever perspective
                   is active. Absolute so it sits inside the canvas without
                   pushing it down — keeps the tab/canvas seam clean. */}
-              <div className="pointer-events-none absolute left-3 top-3 z-20 w-64 max-w-[calc(100%-2rem)]">
+              <div className="pointer-events-none absolute right-3 top-3 z-20 w-64 max-w-[calc(100%-2rem)]">
                 <div className="pointer-events-auto">
                   <SearchBoxWithHistory
                     handle={handle}

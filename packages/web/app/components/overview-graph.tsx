@@ -787,8 +787,8 @@ export function OverviewGraph({
               position="top-right"
               showInteractive={false}
               fitViewOptions={GRAPH_FIT_VIEW_OPTIONS}
-              // Pushed down so the Reorder-automatically toggle (also
-              // top-right) sits above without overlap.
+              // Search lives at top-right now; push the zoom controls
+              // down to clear it.
               style={{ top: 44 }}
             >
               {onToggleFullscreen ? (
@@ -822,14 +822,12 @@ export function OverviewGraph({
             Loading graph…
           </div>
         )}
-        {/* Reorder-automatically toggle. Floats in the top-RIGHT of the
-            canvas above the React Flow zoom controls (which are pushed
-            down via the .react-flow__controls.doco-controls-below-toggle
-            class in app.css so the toggle and the controls don't
-            overlap). z-index above the canvas but below the search
-            input that floats top-left at z-20 when present. */}
+        {/* Reorder-automatically toggle. Floats in the BOTTOM-LEFT of
+            the canvas, stacked just above the lifecycle filter row.
+            Search lives top-right now; zoom controls live top-right
+            without competing with the toggle. */}
         {visibleNodes.length > 0 && Flow ? (
-          <div className="pointer-events-none absolute right-3 top-3 z-10">
+          <div className="pointer-events-none absolute bottom-12 left-3 z-10">
             <div className="pointer-events-auto rounded-md border border-border bg-card/90 px-2 py-1 shadow-sm backdrop-blur">
               <label className="inline-flex cursor-pointer select-none items-center gap-1.5 text-[11px]">
                 <input
