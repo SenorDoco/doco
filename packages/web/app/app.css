@@ -40,6 +40,16 @@
   --neu-shadow: color-mix(in oklch, var(--color-foreground) 19%, transparent);
   --neu-shadow-soft: color-mix(in oklch, var(--color-foreground) 11%, transparent);
   --neu-border: color-mix(in oklch, var(--neu-highlight) 72%, var(--color-border));
+  /* The platform's etched-edge treatment: a 1px white inset highlight
+     on the top-left (the lit facet) paired with a 1px dark inset on
+     the bottom-right (the shaded facet). The diagonal pair draws the
+     whole edge without an outer shadow or a visible border line, and
+     reads consistently as "flat etched surface, lit from top-left".
+     Every box-shaped surface in the app pulls from this single token
+     so cards, sidebar tiles, badges, pre blocks, graph containers,
+     etc. all look identical. */
+  --neu-etched: inset 1px 1px 0 color-mix(in oklch, white 75%, transparent),
+    inset -1px -1px 0 color-mix(in oklch, var(--color-foreground) 22%, transparent);
   --neu-raised: 11px 11px 24px var(--neu-shadow), -9px -9px 20px var(--neu-highlight);
   --neu-raised-strong: 14px 14px 30px color-mix(in oklch, var(--color-foreground) 16%, transparent),
     -14px -14px 30px var(--neu-highlight);
@@ -194,14 +204,14 @@ button[class*="bg-primary"]:active {
   box-shadow: inset 1px 0 0 color-mix(in oklch, white 75%, transparent);
 }
 /* `border border-border` (1px on all four sides — e.g. the graph
-   canvas container). Add a top-left inset highlight so the box reads
-   as etched-with-light-from-top-left, matching `.neu-surface` cards.
-   The dark line is supplied by `border-border` itself.
-   Excluded: `.neu-surface` (and its strong/interactive variants) own
-   their own dual-inset + outer-drop-shadow; without this exclusion
-   this attribute selector (specificity 0,2,0) overrode the
-   `.neu-surface` class rule (0,1,0) on any Card that also carried
-   `border border-border`, swallowing the grounded outer shadow. */
+   canvas container, neuron-dialog lifecycle buttons, etc.). Apply
+   the platform-wide etched edge token so any 4-sided bordered box
+   matches `.neu-surface` cards by default.
+   Excluded: `.neu-button` and `bg-primary` carry their own raised
+   treatments; `.neu-surface*` and `.neu-floating` set the same
+   token explicitly inside @layer utilities and would double-paint
+   without the exclusion (their class rule has lower specificity than
+   this attribute selector). */
 [class~="border"][class~="border-border"]:not([class~="neu-button"]):not(
     [class~="neu-pressed"]
   ):not([class*="bg-primary"]):not([class~="border-b"]):not([class~="border-t"]):not(
@@ -209,37 +219,22 @@ button[class*="bg-primary"]:active {
   ):not([class~="border-r"]):not([class~="neu-surface"]):not(
     [class~="neu-surface-strong"]
   ):not([class~="neu-surface-interactive"]):not([class~="neu-floating"]) {
-  box-shadow: inset 1px 1px 0 color-mix(in oklch, white 75%, transparent);
+  box-shadow: var(--neu-etched);
 }
 
 @layer utilities {
   /* Non-button content surfaces (cards, badges, list rows, info
-     panels, table containers, clickable anchor-cards). The whole-
-     platform rule is: only actual buttons get raised. Everything else
-     gets a clean 1px outer ring in the same near-foreground tint —
-     uniform on all four sides (the earlier inset-top + inset-bottom
-     variant made the lateral edges read thinner than the top/bottom).
-     The same color sets `--color-border` below, so any `border-b` /
-     `divide-y` divider reads as a continuation of this ring, not a
-     harder solid line. */
-  /* Non-button content surfaces. Etched edge with directional shading
-     consistent with a top-left light source (matches the rest of the
-     platform's neu treatments):
-       - top + left inside: 1px white highlight (the lit facet)
-       - bottom + right inside: 1px dark shadow (in shadow)
-     The two diagonal insets together draw the whole edge — no need
-     for the separate outer ring; the dark edge at bottom-right reads
-     as the card's grounded shadow. */
+     panels, table containers, clickable anchor-cards). All pull from
+     the shared `--neu-etched` token so they match every other box on
+     the page (incl. 4-sided `border border-border` containers). The
+     border is forced transparent because the diagonal inset pair
+     already draws the edge — a visible border line on top would
+     double-paint. */
   .neu-surface,
   .neu-surface-strong,
   .neu-surface-interactive {
     border-color: transparent;
-    /* Etched edge only — 1px white inset on top-left, 1px dark inset
-       on bottom-right. No outer drop shadow: the cards should read as
-       flat etched surfaces, not raised. The bottom-right dark side
-       balances the top-left highlight on its own. */
-    box-shadow: inset 1px 1px 0 color-mix(in oklch, white 75%, transparent),
-      inset -1px -1px 0 color-mix(in oklch, var(--color-foreground) 22%, transparent);
+    box-shadow: var(--neu-etched);
   }
 
   /* Clickable variant — same edge at rest. Hover shifts the
