@@ -1085,6 +1085,10 @@ export function EntityGraph({
         const edgeOpacity = focalActive
           ? opacityForEdge(depthByNodeId.get(src), depthByNodeId.get(tgt))
           : 1;
+        // Synapse inherits its origin neuron's lifecycle colour so the
+        // arrow visually carries the state of its source.
+        const sourceLifecycle = visibleNodeById.get(src)?.lifecycle ?? "active";
+        const baseStroke = lifecycleColor(sourceLifecycle);
         return {
           id: `${src}-${tgt}-${l.synapse_type}-${i}`,
           source: src,
@@ -1111,12 +1115,13 @@ export function EntityGraph({
           focusable: false,
           interactionWidth: 0,
           style: {
-            stroke: `rgba(115, 115, 115, ${0.5 * edgeOpacity})`,
+            stroke: baseStroke,
+            strokeOpacity: 0.7 * edgeOpacity,
             pointerEvents: "none" as const,
           },
         };
       }),
-    [visible.links, depthByNodeId, focalActive],
+    [visible.links, depthByNodeId, focalActive, visibleNodeById],
   );
 
   const MiniMapNode = useMemo(

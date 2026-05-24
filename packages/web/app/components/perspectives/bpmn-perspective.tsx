@@ -730,12 +730,17 @@ function layOutBpmn(
   }
 
   const nodeSet = new Set(nodes.map((n) => n.id));
+  const nodeById = new Map(nodes.map((n) => [n.id, n]));
   const flowEdges: FlowEdge[] = links
     .filter((link) => nodeSet.has(link.source) && nodeSet.has(link.target))
     .map((link, index) => {
       const edgeOpacity = focalActive
         ? opacityForEdge(focalDepthByNode.get(link.source), focalDepthByNode.get(link.target))
         : 1;
+      // Synapse inherits the origin neuron's lifecycle color so an
+      // arrow visually "carries" the state of its source — drafted
+      // work flows in yellow, active work in black, retired in red.
+      const stroke = lifecycleColor(nodeById.get(link.source)?.lifecycle);
       return {
         id: `${link.source}-${link.target}-${index}`,
         source: link.source,
@@ -745,7 +750,7 @@ function layOutBpmn(
         focusable: false,
         interactionWidth: 0,
         style: {
-          stroke: "#262626",
+          stroke,
           strokeWidth: 1.75,
           opacity: edgeOpacity,
         },
@@ -753,7 +758,7 @@ function layOutBpmn(
           type: MarkerType.ArrowClosed,
           width: 18,
           height: 18,
-          color: "#262626",
+          color: stroke,
         },
       };
     });
