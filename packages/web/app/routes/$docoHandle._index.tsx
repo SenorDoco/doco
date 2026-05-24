@@ -726,12 +726,12 @@ export default function DocoHome({
   ];
 
   return (
-    <div>
+    <div className="flex h-full min-h-0 flex-col">
       <SiteHeader mode="host" me={me} />
-      <main className="px-6 pb-6 pt-6">
+      <main className="flex min-h-0 flex-1 flex-col px-6 pb-6 pt-6">
         {/* Title row — spans both columns so the action buttons sit beside the
             title rather than visually attached to the fishbone graph below. */}
-        <div className="mb-6 space-y-1">
+        <div className="mb-6 shrink-0 space-y-1">
           <Breadcrumb items={docoBreadcrumb({ ownerSlug, handle })} />
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h1 className="text-lg font-semibold tracking-tight">
@@ -759,11 +759,8 @@ export default function DocoHome({
           </div>
           {goal ? <p className="text-[11px] text-muted-foreground">{goal}</p> : null}
         </div>
-        <div className="grid grid-cols-1 gap-6 min-[1200px]:grid-cols-[minmax(0,1fr)_320px]">
-          <aside
-            ref={asideRef}
-            className="flex h-[calc(100vh-10rem)] min-h-[480px] min-w-0 flex-col bg-background min-[1200px]:sticky min-[1200px]:top-4 min-[1200px]:self-start"
-          >
+        <div className="grid min-h-0 flex-1 grid-cols-1 gap-6 min-[1200px]:grid-cols-[minmax(0,1fr)_320px]">
+          <aside ref={asideRef} className="flex min-h-0 min-w-0 flex-col bg-background">
             <PerspectiveTabs
               handle={handle}
               perspectives={perspectives}
@@ -847,7 +844,7 @@ export default function DocoHome({
             </div>
           </aside>
 
-          <div className="relative min-w-0 min-[1200px]:h-[calc(100vh-10rem)] min-[1200px]:min-h-[480px]">
+          <div className="relative min-h-0 min-w-0">
             <section className="hidden min-w-0 space-y-5 min-[1200px]:block min-[1200px]:h-full min-[1200px]:overflow-y-auto min-[1200px]:pr-1">
               <NeuronsOverviewCard
                 sections={sections}
@@ -896,7 +893,7 @@ export default function DocoHome({
               // ≥1200px: absolute, anchored to the right column's parent.
               // In fullscreen the dialog renders inside the aside instead —
               // the right column is outside the fullscreen tree.
-              <div className="fixed bottom-4 right-3 top-20 z-30 [left:calc(var(--senor-doco-rail-width,320px)+0.75rem)] min-[1200px]:absolute min-[1200px]:inset-x-0 min-[1200px]:bottom-auto min-[1200px]:top-0 min-[1200px]:h-[calc(100vh-10rem)] min-[1200px]:min-h-[480px]">
+              <div className="fixed bottom-4 right-3 top-20 z-30 [left:calc(var(--senor-doco-rail-width,320px)+0.75rem)] min-[1200px]:absolute min-[1200px]:inset-0">
                 <NeuronDialog
                   detail={neuronDialog.detail}
                   loading={neuronDialog.loading}
