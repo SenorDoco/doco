@@ -269,7 +269,7 @@ export function NeuronDialog({
                         <span className="text-foreground">{event.op}</span>
                       </div>
                       {event.before || event.after ? (
-                        <pre className="neu-inset mt-1 max-h-56 overflow-auto whitespace-pre-wrap break-words bg-card p-2 text-[11px] leading-snug">
+                        <pre className="neu-surface mt-1 max-h-56 overflow-auto whitespace-pre-wrap break-words rounded-md bg-card p-2 text-[11px] leading-snug">
                           {JSON.stringify({ before: event.before, after: event.after }, null, 2)}
                         </pre>
                       ) : null}
@@ -299,7 +299,7 @@ export function NeuronDialog({
                 <summary className="cursor-pointer text-xs font-medium text-muted-foreground hover:text-foreground">
                   Raw JSON
                 </summary>
-                <pre className="neu-inset mt-2 overflow-auto bg-card p-3 text-[11px] leading-snug">
+                <pre className="neu-surface mt-2 overflow-auto rounded-md bg-card p-3 text-[11px] leading-snug">
                   {detail.raw_json}
                 </pre>
               </details>
