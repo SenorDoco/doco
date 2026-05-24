@@ -74,6 +74,10 @@ export default [
   // Vercel-Cron-hit endpoint that POSTs an alert payload to
   // DOCO_HEALTH_WEBHOOK_URL whenever the snapshot is non-OK.
   route("admin/agent-health-cron", "routes/admin.agent-health-cron.tsx"),
+  // Raw-row dump for diagnosing specific failed/stuck turns.
+  // Returns the actual agent_turn_metrics / capture_timings rows
+  // behind the aggregated health signals.
+  route("admin/agent-debug.json", "routes/admin.agent-debug[.]json.tsx"),
   route("docos", "routes/docos._index.tsx"),
   // Auth
   route("sign-in", "routes/sign-in.tsx"),
