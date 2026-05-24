@@ -181,14 +181,7 @@ function AddAgentCard({
 
   return (
     <Card>
-      <CardHeader>
-        <CardTitle>Add an AI agent</CardTitle>
-        <CardDescription>
-          Invite an agent to walk through Doco's OAuth flow itself, or mint a long-lived API key for
-          a script / runtime you control.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-4 pt-6">
         <div
           role="tablist"
           aria-label="Onboarding mode"
@@ -287,21 +280,23 @@ function AgentPromptBlock({ body }: { body: string }) {
       >
         {body}
       </pre>
-      <button
-        type="button"
-        data-testid="invite-agent-copy"
-        onClick={() => {
-          if (typeof navigator !== "undefined" && navigator.clipboard) {
-            void navigator.clipboard.writeText(body).then(() => {
-              setCopied(true);
-              setTimeout(() => setCopied(false), 1500);
-            });
-          }
-        }}
-        className="neu-button rounded-md px-2 py-1 text-xs"
-      >
-        {copied ? "Copied!" : "Copy prompt"}
-      </button>
+      <div className="flex justify-end">
+        <button
+          type="button"
+          data-testid="invite-agent-copy"
+          onClick={() => {
+            if (typeof navigator !== "undefined" && navigator.clipboard) {
+              void navigator.clipboard.writeText(body).then(() => {
+                setCopied(true);
+                setTimeout(() => setCopied(false), 1500);
+              });
+            }
+          }}
+          className="neu-button bg-primary text-primary-foreground hover:opacity-90 rounded-md px-4 py-2 text-sm font-semibold"
+        >
+          {copied ? "Copied!" : "Copy prompt"}
+        </button>
+      </div>
     </div>
   );
 }
