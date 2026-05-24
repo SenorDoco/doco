@@ -31,7 +31,11 @@ export function PerspectiveTabs({
     <nav
       aria-label="Visualization perspectives"
       role="tablist"
-      className="-mb-px flex min-w-0 flex-wrap items-end"
+      // `relative` so the chevron's dropdown menu can position-absolute
+      // against this nav element. The chevron is now a direct child
+      // of the nav, dropping the wrapper that previously caused
+      // sub-pixel vertical misalignment with the Link tabs.
+      className="relative -mb-px flex min-w-0 flex-wrap items-end"
     >
       {perspectives.map((p, i) => (
         <PerspectiveTab
@@ -164,7 +168,13 @@ function PerspectiveSettingsMenu({
     // line-height contributes to the wrapper's CONTENT height, not
     // just leading inside text. Force `leading-none` (line-height:1)
     // on the wrapper so it shrinks to exactly the button's box.
-    <div ref={wrapperRef} className="relative inline-flex items-end leading-none align-bottom">
+    // `display: contents` so the wrapper is transparent to the nav's
+    // flex layout — the BUTTON becomes the direct flex child, aligning
+    // pixel-perfectly with the Link perspective tabs. The dropdown menu
+    // positions absolutely against the nav (which is now `relative`).
+    // `wrapperRef` still attaches here so the click-outside listener
+    // can detect clicks inside button OR menu.
+    <div ref={wrapperRef} style={{ display: "contents" }}>
       <button
         type="button"
         aria-label="Perspective settings"
@@ -184,7 +194,11 @@ function PerspectiveSettingsMenu({
       {open ? (
         <div
           aria-label="Perspectives"
-          className="neu-floating absolute left-0 top-full z-40 mt-1 w-80 rounded-md bg-card p-2"
+          // The wrapper above uses display:contents so this absolute
+          // positions against the nav (the next positioned ancestor).
+          // `right-0 top-full` anchors the menu to the bottom-right of
+          // the nav, directly under the chevron tab.
+          className="neu-floating absolute right-0 top-full z-40 mt-1 w-80 rounded-md bg-card p-2"
         >
           <p className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
             Attached
