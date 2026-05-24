@@ -1,4 +1,10 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "installCommand": "cd ../.. && rm -rf node_modules packages/*/node_modules && pnpm install --frozen-lockfile"
+  "installCommand": "cd ../.. && rm -rf node_modules packages/*/node_modules && pnpm install --frozen-lockfile",
+  "crons": [
+    {
+      "path": "/admin/agent-health-cron",
+      "schedule": "*/5 * * * *"
+    }
+  ]
 }

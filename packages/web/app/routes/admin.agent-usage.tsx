@@ -17,6 +17,7 @@ import { withClient } from "@doco/db";
 import { redirect } from "react-router";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
 import { SiteHeader } from "~/components/site-header";
+import { type HealthSnapshot, getAgentHealth } from "~/lib/agent-health.server";
 import { getCurrentPrincipal } from "~/lib/session.server";
 
 // Approximate USD cost per million tokens. Anthropic publishes these
@@ -89,6 +90,7 @@ interface UsageSnapshot {
   };
   recent_anthropic: RecentAnthropicRow[];
   recent_openai: RecentOpenAiRow[];
+  health: HealthSnapshot;
 }
 
 async function aggregateAnthropic(sinceClause: string): Promise<AnthropicBucket> {
@@ -167,56 +169,66 @@ export async function loader({ request }: { request: Request }) {
   const occurred24h = "occurred_at >= now() - INTERVAL '24 hours'";
   const occurred30d = "occurred_at >= now() - INTERVAL '30 days'";
 
-  const [anth1h, anth24h, anth30d, anthAll, oai1h, oai24h, oai30d, oaiAll, recentAnth, recentOai] =
-    await Promise.all([
-      aggregateAnthropic(since1h),
-      aggregateAnthropic(since24h),
-      aggregateAnthropic(since30d),
-      aggregateAnthropic(sinceAll),
-      aggregateOpenAi(occurred1h),
-      aggregateOpenAi(occurred24h),
-      aggregateOpenAi(occurred30d),
-      aggregateOpenAi("true"),
-      withClient(async (c) => {
-        const r = await c.query<
-          Omit<RecentAnthropicRow, "started_at"> & { started_at: Date | string }
-        >(
-          `SELECT id, started_at, collaborator_id, model, input_tokens, output_tokens,
+  const [
+    anth1h,
+    anth24h,
+    anth30d,
+    anthAll,
+    oai1h,
+    oai24h,
+    oai30d,
+    oaiAll,
+    recentAnth,
+    recentOai,
+    health,
+  ] = await Promise.all([
+    aggregateAnthropic(since1h),
+    aggregateAnthropic(since24h),
+    aggregateAnthropic(since30d),
+    aggregateAnthropic(sinceAll),
+    aggregateOpenAi(occurred1h),
+    aggregateOpenAi(occurred24h),
+    aggregateOpenAi(occurred30d),
+    aggregateOpenAi("true"),
+    withClient(async (c) => {
+      const r = await c.query<
+        Omit<RecentAnthropicRow, "started_at"> & { started_at: Date | string }
+      >(
+        `SELECT id, started_at, collaborator_id, model, input_tokens, output_tokens,
                 cache_read_tokens, cache_creation_tokens, total_ms, num_tool_calls, error
            FROM agent_turn_metrics
           ORDER BY started_at DESC
           LIMIT 25`,
-        );
-        return r.rows.map(
-          (row): RecentAnthropicRow => ({
-            ...row,
-            started_at:
-              row.started_at instanceof Date
-                ? row.started_at.toISOString()
-                : String(row.started_at),
-          }),
-        );
-      }),
-      withClient(async (c) => {
-        const r = await c.query<
-          Omit<RecentOpenAiRow, "occurred_at"> & { occurred_at: Date | string }
-        >(
-          `SELECT id, occurred_at, model, input_count, total_chars, request_ms, ok, error
+      );
+      return r.rows.map(
+        (row): RecentAnthropicRow => ({
+          ...row,
+          started_at:
+            row.started_at instanceof Date ? row.started_at.toISOString() : String(row.started_at),
+        }),
+      );
+    }),
+    withClient(async (c) => {
+      const r = await c.query<
+        Omit<RecentOpenAiRow, "occurred_at"> & { occurred_at: Date | string }
+      >(
+        `SELECT id, occurred_at, model, input_count, total_chars, request_ms, ok, error
            FROM openai_usage_log
           ORDER BY occurred_at DESC
           LIMIT 25`,
-        );
-        return r.rows.map(
-          (row): RecentOpenAiRow => ({
-            ...row,
-            occurred_at:
-              row.occurred_at instanceof Date
-                ? row.occurred_at.toISOString()
-                : String(row.occurred_at),
-          }),
-        );
-      }),
-    ]);
+      );
+      return r.rows.map(
+        (row): RecentOpenAiRow => ({
+          ...row,
+          occurred_at:
+            row.occurred_at instanceof Date
+              ? row.occurred_at.toISOString()
+              : String(row.occurred_at),
+        }),
+      );
+    }),
+    getAgentHealth(),
+  ]);
 
   const snapshot: UsageSnapshot = {
     generated_at: new Date().toISOString(),
@@ -224,6 +236,7 @@ export async function loader({ request }: { request: Request }) {
     openai: { last_hour: oai1h, last_day: oai24h, last_30d: oai30d, all_time: oaiAll },
     recent_anthropic: recentAnth,
     recent_openai: recentOai,
+    health,
   };
   return Response.json(snapshot, {
     headers: {
@@ -290,6 +303,8 @@ export default function AgentUsagePage({ loaderData }: { loaderData: UsageSnapsh
             </div>
           </div>
         </div>
+
+        <HealthPanel snapshot={s.health} />
 
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
           <Card>
@@ -455,6 +470,46 @@ export default function AgentUsagePage({ loaderData }: { loaderData: UsageSnapsh
             </CardContent>
           </Card>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function HealthPanel({ snapshot }: { snapshot: HealthSnapshot }) {
+  const overall = snapshot.status;
+  const overallTone =
+    overall === "critical"
+      ? "border-destructive bg-destructive/10 text-destructive"
+      : overall === "warning"
+        ? "border-warning bg-warning/10 text-warning-foreground"
+        : "border-success bg-success/10 text-success-foreground";
+  return (
+    <div className={`mb-4 rounded-lg border-2 px-3 py-2 ${overallTone}`}>
+      <div className="mb-2 flex items-center justify-between">
+        <div className="text-xs font-semibold uppercase tracking-wide">
+          Agent health · {overall}
+        </div>
+        <div className="text-[10px] text-muted-foreground">
+          updated {new Date(snapshot.generated_at).toLocaleTimeString()}
+        </div>
+      </div>
+      <div className="grid grid-cols-1 gap-1 md:grid-cols-2 lg:grid-cols-3">
+        {snapshot.signals.map((s) => {
+          const tone =
+            s.severity === "critical"
+              ? "text-destructive"
+              : s.severity === "warning"
+                ? "text-warning-foreground"
+                : "text-muted-foreground";
+          const dot = s.severity === "critical" ? "●" : s.severity === "warning" ? "◐" : "○";
+          return (
+            <div key={s.id} className={`flex gap-2 text-[11px] font-mono ${tone}`}>
+              <span aria-hidden>{dot}</span>
+              <span className="font-semibold">{s.label}:</span>
+              <span>{s.detail}</span>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
