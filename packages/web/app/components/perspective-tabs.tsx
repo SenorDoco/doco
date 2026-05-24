@@ -155,7 +155,12 @@ function PerspectiveSettingsMenu({
   const apiAction = `/${handle}/api/perspectives.json`;
 
   return (
-    <div ref={wrapperRef} className="relative">
+    // `flex items-end` so the button inside aligns to the bottom of
+    // this wrapper just like the perspective tabs align to the bottom
+    // of the nav. Without it, the wrapper's default block layout +
+    // inherited 1.55 line-height left the button sitting ~0.8px
+    // higher than the tabs — visible as a misaligned top edge.
+    <div ref={wrapperRef} className="relative flex items-end">
       <button
         type="button"
         aria-label="Perspective settings"
