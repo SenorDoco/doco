@@ -87,7 +87,11 @@ function PerspectiveTab({ handle, perspective, active, isFirst, isLast }: Perspe
         // canvas without a visible seam. border-b-background occludes
         // the canvas's top border at the tab's footprint.
         "z-10 border-b-background bg-background text-foreground"
-      : "bg-input/40 text-muted-foreground hover:bg-input/60 hover:text-foreground",
+      : // border-b-transparent on inactive tabs so the tab's bottom
+        // border (22%-alpha border-border) doesn't STACK on top of
+        // the canvas's top border (also 22% alpha) and render as a
+        // ~39%-alpha darker line where they overlap.
+        "border-b-transparent bg-input/40 text-muted-foreground hover:bg-input/60 hover:text-foreground",
   );
   const title = perspective.ownerHandle
     ? `${perspective.name} — by ${perspective.ownerHandle}`
