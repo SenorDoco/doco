@@ -234,15 +234,12 @@ button[class*="bg-primary"]:active {
   .neu-surface-strong,
   .neu-surface-interactive {
     border-color: transparent;
-    /* Etched insets (top-left light, bottom-right shade) draw the
-       card's edge; the outer drop shadow grounds it so the brightness
-       on the lit corner is balanced by a matching shadow falling away
-       to the bottom-right. Without the outer shadow the inset dark
-       line at 22% alpha reads as nearly invisible against the page
-       background, so cards looked unfinished on the right + bottom. */
+    /* Etched edge only — 1px white inset on top-left, 1px dark inset
+       on bottom-right. No outer drop shadow: the cards should read as
+       flat etched surfaces, not raised. The bottom-right dark side
+       balances the top-left highlight on its own. */
     box-shadow: inset 1px 1px 0 color-mix(in oklch, white 75%, transparent),
-      inset -1px -1px 0 color-mix(in oklch, var(--color-foreground) 22%, transparent),
-      2px 2px 6px color-mix(in oklch, var(--color-foreground) 7%, transparent);
+      inset -1px -1px 0 color-mix(in oklch, var(--color-foreground) 22%, transparent);
   }
 
   /* Clickable variant — same edge at rest. Hover shifts the
