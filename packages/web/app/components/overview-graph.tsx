@@ -721,6 +721,12 @@ export function OverviewGraph({
             ? "relative min-h-0 w-full flex-1 overflow-hidden rounded-md rounded-tl-none border border-border bg-background"
             : "relative h-[65vh] min-h-[480px] w-full overflow-hidden rounded-md rounded-tl-none border border-border bg-background"
         }
+        // Suppress the platform's etched-edge inset-highlight (app.css
+        // `[class~="border"][class~="border-border"]`). It paints a 1px
+        // white-75% line at the canvas's interior top edge, which shows
+        // as a white sliver immediately below inactive perspective tabs
+        // where the canvas's top 1px overlaps the tab's bottom.
+        style={{ boxShadow: "none" }}
       >
         {search ? (
           <div className="nodrag nopan absolute left-3 top-3 z-20 w-64 max-w-[calc(100%-9rem)]">
