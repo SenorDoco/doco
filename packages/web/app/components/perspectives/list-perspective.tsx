@@ -128,7 +128,12 @@ export function ListPerspective({ nodes, pageRanks, visibleLifecycles }: ListPer
   }, []);
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-3">
+    // pt-12 reserves room for the floating SearchBoxWithHistory that
+    // the parent route absolutely-positions at `top-3 left-3` over
+    // every perspective. The graph perspectives sit on an empty
+    // canvas where the search sails over harmlessly, but the list's
+    // first row would otherwise be covered by it.
+    <div className="flex h-full min-h-0 flex-col gap-3 pt-12">
       <div className="flex items-center justify-between gap-2">
         <p className="text-xs text-muted-foreground">
           {filtered.length} neuron{filtered.length === 1 ? "" : "s"}
