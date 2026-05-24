@@ -36,7 +36,7 @@
   --neu-shadow: color-mix(in oklch, var(--color-foreground) 19%, transparent);
   --neu-shadow-soft: color-mix(in oklch, var(--color-foreground) 11%, transparent);
   --neu-border: color-mix(in oklch, var(--neu-highlight) 72%, var(--color-border));
-  --neu-raised: 9px 9px 20px var(--neu-shadow-soft), -9px -9px 20px var(--neu-highlight);
+  --neu-raised: 11px 11px 24px var(--neu-shadow), -9px -9px 20px var(--neu-highlight);
   --neu-raised-strong: 14px 14px 30px color-mix(in oklch, var(--color-foreground) 16%, transparent),
     -14px -14px 30px var(--neu-highlight);
   --neu-inset: inset 4px 4px 9px color-mix(in oklch, var(--color-foreground) 13%, transparent),
