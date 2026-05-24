@@ -172,7 +172,7 @@ export function NodeBadgeRow({
               ? `Graph reference #${referenceNumber}: ${referenceLabel}`
               : `Graph reference #${referenceNumber}`
           }
-          className={`${REFERENCE_BADGE_BASE} bg-primary text-primary-foreground shadow-sm ring-2 ring-card`}
+          className={`${REFERENCE_BADGE_BASE} bg-primary text-primary-foreground shadow-sm`}
           title={`Graph reference #${referenceNumber}`}
         >
           #{referenceNumber}
