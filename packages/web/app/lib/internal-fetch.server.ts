@@ -116,8 +116,8 @@ const ROUTES: RouteEntry[] = [
     load: () => import("~/routes/$docoHandle.api.perspectives[.]json"),
   },
   {
-    pattern: "/:docoHandle/api/primitives.json",
-    load: () => import("~/routes/$docoHandle.api.primitives[.]json"),
+    pattern: "/:docoHandle/api/policies.json",
+    load: () => import("~/routes/$docoHandle.api.policies[.]json"),
   },
   // Per-type-id routes — one entry per type because each lives in
   // its own file with its own custom loader/action.
@@ -158,12 +158,12 @@ const ROUTES: RouteEntry[] = [
     load: () => import("~/routes/$docoHandle.api.references.$id[.]json"),
   },
   {
-    pattern: "/:docoHandle/api/guidance_primitives/:id.json",
-    load: () => import("~/routes/$docoHandle.api.guidance_primitives.$id[.]json"),
+    pattern: "/:docoHandle/api/guidance_policies/:id.json",
+    load: () => import("~/routes/$docoHandle.api.guidance_policies.$id[.]json"),
   },
   {
-    pattern: "/:docoHandle/api/neuron_authoring_primitives/:id.json",
-    load: () => import("~/routes/$docoHandle.api.neuron_authoring_primitives.$id[.]json"),
+    pattern: "/:docoHandle/api/neuron_authoring_policies/:id.json",
+    load: () => import("~/routes/$docoHandle.api.neuron_authoring_policies.$id[.]json"),
   },
   // Generic dispatchers — LAST so the more specific routes above win.
   {

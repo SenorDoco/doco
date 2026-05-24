@@ -108,8 +108,8 @@ for backwards compat.
   GET  ${baseUrl}/<handle>/api/<type>/<id>.json     # fetch one neuron
   PATCH ${baseUrl}/<handle>/api/<type>/<id>.json    # update fields (need 'author' role)
   GET  ${baseUrl}/<handle>/api/<type>.txt           # plain-text spec for capture-capable body shapes
-  GET  ${baseUrl}/<handle>/api/primitives.json      # list primitives (NOT neurons)
-  POST ${baseUrl}/<handle>/api/primitives.json      # capture a primitive
+  GET  ${baseUrl}/<handle>/api/policies.json      # list policies (NOT neurons)
+  POST ${baseUrl}/<handle>/api/policies.json      # capture a policy
   POST ${baseUrl}/api/v1/docos.json                 # create a Doco in one request
 
 Neuron types: \`decisions\`, \`ideas\`, \`rules\`, \`intents\`,
@@ -117,15 +117,15 @@ Neuron types: \`decisions\`, \`ideas\`, \`rules\`, \`intents\`,
 \`principals\`, \`invites\`, \`audit\`.
 
 Capture body specs exist for decisions, intents, actions, logs, rules,
-evals, references, states, ideas, primitives, settings, and principals.
+evals, references, states, ideas, policies, settings, and principals.
 Principals expose a smaller surface (create + retire only) — read the
 \`principals.txt\` spec rather than assuming the generic capture body.
 Invites and audit have dedicated route behavior; don't infer write
 bodies for them from the generic capture pattern.
 
-Primitives are not neurons. Primitives (guidance + neuron-authoring)
-live on \`/api/primitives.json\`. The generic \`/api/<type>.json\` route
-refuses primitive types.
+Policies are not neurons. Policies (guidance + neuron-authoring)
+live on \`/api/policies.json\`. The generic \`/api/<type>.json\` route
+refuses policy types.
 
 Before POST/PATCH, read \`GET /<handle>/api/<type>.txt\` for the
 exact request body when that spec exists. Principal references in
@@ -141,7 +141,7 @@ Common API-facing principal fields:
     stakeholders_principal_ids    # Intent stakeholders, array of principal ids
     actor_principal_id            # Action/Log actor; auth fills this
     decided_by_principal_id       # Decision maker; auth fills this
-    authored_by_principal_id      # Rule/Eval/Primitive author; auth fills this
+    authored_by_principal_id      # Rule/Eval/Policy author; auth fills this
     created_by_principal_id       # Creator override where supported
 
 Read responses may expose stored graph fields such as \`wanted_by\`,
@@ -187,8 +187,8 @@ Once you hold a Bearer token, hit:
     Authorization: Bearer doco_at_<token>
 
 You'll get the canonical instructions plus the union of every **org**
-and **Doco primitives set** you have read-or-above access to. Org
-primitives apply to every Doco the org owns, so an agent that
+and **Doco policies set** you have read-or-above access to. Org
+policies apply to every Doco the org owns, so an agent that
 bootstraps Doco (the tool) sees the full set of authoring rules
 governing its work across every project it can reach.
 

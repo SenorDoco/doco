@@ -77,11 +77,11 @@ function readMulti(params: URLSearchParams, key: string): string[] | null {
  * Doco-scoped neuron tables (PG plural names). Each carries a
  * `lifecycle` column directly and a typed `doco_id` column.
  *
- * Primitives (`guidance_primitives`, `neuron_authoring_primitives`)
+ * Policies (`guidance_policies`, `neuron_authoring_policies`)
  * are not neurons — they are Doco-level metadata with their own
- * surface (/<handle>/primitives and /<handle>/api/primitives.json)
+ * surface (/<handle>/policies and /<handle>/api/policies.json)
  * and are intentionally absent here. Anything iterating "neurons of
- * a Doco" must use this list, never a list that includes primitive
+ * a Doco" must use this list, never a list that includes policy
  * tables.
  */
 interface DocoNeuronTableFilterSpec {
@@ -105,9 +105,9 @@ const PG_DOCO_NOTE_TABLES_WITH_LIFECYCLE: DocoNeuronTableFilterSpec[] = [
 
 /**
  * Map from external entity_type (singular) → PG table (plural).
- * Primitives (`guidance_primitive`, `neuron_authoring_primitive`) are
+ * Policies (`guidance_policy`, `neuron_authoring_policy`) are
  * not neurons and are intentionally omitted — they are reachable
- * only via /<handle>/api/primitives.json and the primitives
+ * only via /<handle>/api/policies.json and the policies
  * surface.
  */
 const NEURON_TYPE_TO_TABLE: Record<string, DocoNeuronTableFilterSpec | null> = {
@@ -151,7 +151,7 @@ export async function resolveFilteredCandidates(
   let lifecycleIds: Set<string> | null = null;
   if (filters.lifecycle !== null) {
     lifecycleIds = new Set();
-    // Notes only — primitives are not neurons and never participate in
+    // Notes only — policies are not neurons and never participate in
     // neuron search results, even when their lifecycle matches.
     for (const spec of PG_DOCO_NOTE_TABLES_WITH_LIFECYCLE) {
       const r = await c.query<{ id: string }>(
@@ -201,10 +201,10 @@ export interface FilterFacets {
 }
 
 export async function computeFilterFacets(c: PoolClient, docoId: string): Promise<FilterFacets> {
-  // Facets describe the neuron records of a Doco. Primitives are
+  // Facets describe the neuron records of a Doco. Policies are
   // intentionally excluded — they have their own
   // surface and counting them as neurons makes a Doco with only a
-  // template primitives misread as having captured work. Principals
+  // template policies misread as having captured work. Principals
   // are included because role-personas are first-class neurons.
   const lifecycleFacets = new Map<string, { count: number; updatedAt: string | null }>();
   for (const spec of PG_DOCO_NOTE_TABLES_WITH_LIFECYCLE) {

@@ -42,12 +42,12 @@ export async function loader({
 /**
  * Per-table accessor for the status counts. `group` tells consumers
  * whether the table holds notes (domain neurons a Doco captures) or
- * primitives. Keeping the two apart in the
- * response prevents callers from summing primitives into a "neuron
- * total" — an empty Doco with only template primitives would
+ * policies. Keeping the two apart in the
+ * response prevents callers from summing policies into a "neuron
+ * total" — an empty Doco with only template policies would
  * otherwise misread as having captured work.
  */
-type StatusGroup = "note" | "primitive";
+type StatusGroup = "note" | "policy";
 const TYPE_MAP: { entityType: string; table: string; plural: string; group: StatusGroup }[] = [
   ...DOCO_NEURON_TABLE_SPECS.map((spec) => ({
     entityType: spec.entityType,
@@ -56,35 +56,35 @@ const TYPE_MAP: { entityType: string; table: string; plural: string; group: Stat
     group: "note" as const,
   })),
   {
-    entityType: "guidance_primitive",
-    table: "guidance_primitives",
-    plural: "guidance_primitives",
-    group: "primitive",
+    entityType: "guidance_policy",
+    table: "guidance_policies",
+    plural: "guidance_policies",
+    group: "policy",
   },
   {
-    entityType: "neuron_authoring_primitive",
-    table: "neuron_authoring_primitives",
-    plural: "neuron_authoring_primitives",
-    group: "primitive",
+    entityType: "neuron_authoring_policy",
+    table: "neuron_authoring_policies",
+    plural: "neuron_authoring_policies",
+    group: "policy",
   },
 ];
 
 interface StatusCounts {
   notes: Record<string, number>;
   notes_total: number;
-  primitives: Record<string, number>;
-  primitives_total: number;
+  policies: Record<string, number>;
+  policies_total: number;
   principals: number;
 }
 
 function emptyCounts(): StatusCounts {
   const notes: Record<string, number> = {};
-  const primitives: Record<string, number> = {};
+  const policies: Record<string, number> = {};
   for (const { plural, group } of TYPE_MAP) {
     if (group === "note") notes[plural] = 0;
-    else primitives[plural] = 0;
+    else policies[plural] = 0;
   }
-  return { notes, notes_total: 0, primitives, primitives_total: 0, principals: 0 };
+  return { notes, notes_total: 0, policies, policies_total: 0, principals: 0 };
 }
 
 async function readStatusFromPg(
@@ -104,8 +104,8 @@ async function readStatusFromPg(
           counts.notes[plural] = n;
           counts.notes_total += n;
         } else {
-          counts.primitives[plural] = n;
-          counts.primitives_total += n;
+          counts.policies[plural] = n;
+          counts.policies_total += n;
         }
         const ts = r.rows[0]?.c ?? null;
         if (ts && (latest === null || ts > latest)) latest = ts;

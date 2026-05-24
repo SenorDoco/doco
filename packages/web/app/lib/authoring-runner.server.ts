@@ -1,11 +1,11 @@
 /**
- * Orchestrator for the authoring-primitives evaluator. Loads the
+ * Orchestrator for the authoring-policies evaluator. Loads the
  * inputs the engine needs from Postgres, calls the pure evaluator
  * from `@doco/shared`, and returns categorized violations.
  *
  * Replaces the pre-v16 `runScopeRules` orchestrator (deleted in
  * commit 4974339) — see capture.server.ts:544-547 for the tombstone.
- * The replacement is simpler because v16 dropped scopes: primitives
+ * The replacement is simpler because v16 dropped scopes: policies
  * apply to the whole doco, no `gated_by` traversal, no parent-scope
  * inheritance, no `excluded_rules` opt-out.
  */
@@ -17,10 +17,10 @@ import {
   type CandidateFields,
   type EngineSynapse,
   type Lifecycle,
-  type LoadedPrimitive,
+  type LoadedPolicy,
   type PrincipalIndex,
   type Violation,
-  evaluatePrimitives,
+  evaluatePolicies,
 } from "@doco/shared";
 import type { Entity } from "@doco/shared";
 import { judgeProbabilisticPredicate } from "./llm-judge.server";
@@ -35,8 +35,8 @@ export interface AuthoringResult {
 }
 
 /**
- * Evaluate the doco's authoring primitives against a candidate
- * neuron / primitive. The caller passes the candidate's full
+ * Evaluate the doco's authoring policies against a candidate
+ * neuron / policy. The caller passes the candidate's full
  * frontmatter (as it would be persisted) AFTER any merge with an
  * existing row (for updates).
  *
@@ -44,7 +44,7 @@ export interface AuthoringResult {
  * the doco's existing synapses are loaded from the synapses table for
  * `graph-completeness` checks against other neurons.
  */
-export async function runAuthoringPrimitives(opts: {
+export async function runAuthoringPolicies(opts: {
   docoId: string;
   candidate: CandidateFields;
   /**
@@ -75,18 +75,16 @@ export async function runAuthoringPrimitives(opts: {
   );
 
   const run = async (c: PoolClient): Promise<AuthoringResult> => {
-    const primitives = await loadPrimitives(c, opts.docoId);
-    if (primitives.length === 0) {
+    const policies = await loadPolicies(c, opts.docoId);
+    if (policies.length === 0) {
       return { violations: [], blocking: null, warnings: [] };
     }
 
-    const incomingNeuronTypes = collectIncomingNeuronTypes(primitives);
-    const needsPrincipals = primitives.some(
+    const incomingNeuronTypes = collectIncomingNeuronTypes(policies);
+    const needsPrincipals = policies.some(
       (p) => p.predicate.kind === "requires_field_resolves_to_principal",
     );
-    const needsGraphCompleteness = primitives.some(
-      (p) => p.predicate.kind === "graph-completeness",
-    );
+    const needsGraphCompleteness = policies.some((p) => p.predicate.kind === "graph-completeness");
 
     // Sequential when sharing a transaction client (pg can't pipeline
     // statements on a single client); the perf cost is a few ms.
@@ -98,15 +96,15 @@ export async function runAuthoringPrimitives(opts: {
       ? await loadPopulation(c, opts.docoId, incomingNeuronTypes, opts.candidate.id)
       : [];
 
-    const rawViolations = evaluatePrimitives({
+    const rawViolations = evaluatePolicies({
       candidate: opts.candidate,
-      primitives,
+      policies,
       candidateSynapses,
       synapses,
       principals,
       population,
     });
-    const violations = await resolveProbabilistic(rawViolations, primitives, opts.candidate);
+    const violations = await resolveProbabilistic(rawViolations, policies, opts.candidate);
     const blocking = violations.find((v) => v.on_violation === "block") ?? null;
     const warnings = violations.filter((v) => v.on_violation === "warn");
     return { violations, blocking, warnings };
@@ -129,10 +127,10 @@ export async function runAuthoringPrimitives(opts: {
  */
 async function resolveProbabilistic(
   violations: Violation[],
-  primitives: LoadedPrimitive[],
+  policies: LoadedPolicy[],
   candidate: CandidateFields,
 ): Promise<Violation[]> {
-  const summaryById = new Map(primitives.map((p) => [p.primitive_id, p.summary]));
+  const summaryById = new Map(policies.map((p) => [p.policy_id, p.summary]));
   return (
     await Promise.all(
       violations.map(async (v) => {
@@ -152,7 +150,7 @@ async function resolveProbabilistic(
         if (judgment.ok) {
           return null; // Filtered out below.
         }
-        const summary = summaryById.get(v.primitive_id) ?? "";
+        const summary = summaryById.get(v.policy_id) ?? "";
         const reason = judgment.reason?.trim() || "judge rejected the candidate";
         return { ...v, reason: summary ? `${summary} — ${reason}` : reason };
       }),
@@ -160,9 +158,9 @@ async function resolveProbabilistic(
   ).filter((v): v is Violation => v !== null);
 }
 
-function collectIncomingNeuronTypes(primitives: LoadedPrimitive[]): Set<string> {
+function collectIncomingNeuronTypes(policies: LoadedPolicy[]): Set<string> {
   const set = new Set<string>();
-  for (const p of primitives) {
+  for (const p of policies) {
     if (p.predicate.kind === "graph-completeness") {
       set.add(p.predicate.incoming_neuron_type);
     }
@@ -175,7 +173,7 @@ type PgClient = Parameters<Parameters<typeof withClient>[0]>[0];
 /**
  * Normalize legacy predicate keys to their post-rename names.
  *
- * Primitives seeded before the vocab sweep (nodes → neurons, edges →
+ * Policies seeded before the vocab sweep (nodes → neurons, edges →
  * synapses) persisted predicate JSON with `when_node_type`,
  * `target_node_type`, and `incoming_node_type`. The engine reads the
  * post-rename keys (`when_neuron_type`, etc.); when the stored payload
@@ -199,44 +197,44 @@ function normalizePredicateKeys(predicate: unknown): unknown {
   return p;
 }
 
-async function loadPrimitives(c: PgClient, docoId: string): Promise<LoadedPrimitive[]> {
+async function loadPolicies(c: PgClient, docoId: string): Promise<LoadedPolicy[]> {
   // COALESCE so a NULL lifecycle column behaves as "active" — the rest of
   // the codebase treats NULL that way (search-filters, doco-stats,
-  // full-graph, bpmn-perspective, agent-chat). Without it, a primitive
+  // full-graph, bpmn-perspective, agent-chat). Without it, a policy
   // whose lifecycle column is NULL (e.g. seeded by a migration or
   // restored from backup) is silently invisible to the enforcer while
   // looking active everywhere else.
   const r = await c.query<{ id: string; summary: string; data: Record<string, unknown> | null }>(
     `SELECT id, summary, data
-       FROM neuron_authoring_primitives
+       FROM neuron_authoring_policies
        WHERE doco_id = $1 AND COALESCE(lifecycle, 'active') = 'active'`,
     [docoId],
   );
-  const out: LoadedPrimitive[] = [];
+  const out: LoadedPolicy[] = [];
   for (const row of r.rows) {
     const yaml = row.data;
     if (!yaml) {
       console.warn(
-        `[authoring-runner] dropping primitive ${row.id} from doco ${docoId}: row.data is null`,
+        `[authoring-runner] dropping policy ${row.id} from doco ${docoId}: row.data is null`,
       );
       continue;
     }
     const predicate = normalizePredicateKeys(yaml.predicate);
     if (!predicate || typeof predicate !== "object") {
       console.warn(
-        `[authoring-runner] dropping primitive ${row.id} from doco ${docoId}: predicate is missing or not an object`,
+        `[authoring-runner] dropping policy ${row.id} from doco ${docoId}: predicate is missing or not an object`,
       );
       continue;
     }
     const onViolation = yaml.on_violation;
     // Honor both the post-rename `fires_when_neuron_lifecycle` and the
-    // pre-rename `fires_when_node_lifecycle` — primitives seeded before
+    // pre-rename `fires_when_node_lifecycle` — policies seeded before
     // the vocab sweep persist the old key.
     const lifecycleFilter = yaml.fires_when_neuron_lifecycle ?? yaml.fires_when_node_lifecycle;
     out.push({
-      primitive_id: row.id,
+      policy_id: row.id,
       summary: row.summary ?? "",
-      predicate: predicate as LoadedPrimitive["predicate"],
+      predicate: predicate as LoadedPolicy["predicate"],
       ...(onViolation === "block" || onViolation === "warn" || onViolation === "log"
         ? { on_violation: onViolation }
         : {}),

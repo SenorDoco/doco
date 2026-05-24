@@ -21,8 +21,8 @@ export type ClaimNodeType =
   | "decision"
   | "intent"
   | "rule"
-  | "guidance_primitive"
-  | "neuron_authoring_primitive"
+  | "guidance_policy"
+  | "neuron_authoring_policy"
   | "action"
   | "log"
   | "eval"
@@ -34,8 +34,8 @@ const CLAIM_TYPES: ReadonlySet<string> = new Set<ClaimNodeType>([
   "decision",
   "intent",
   "rule",
-  "guidance_primitive",
-  "neuron_authoring_primitive",
+  "guidance_policy",
+  "neuron_authoring_policy",
   "action",
   "log",
   "eval",
@@ -52,8 +52,8 @@ const FROZEN_LIFECYCLES: Record<ClaimNodeType, ReadonlySet<string>> = {
   decision: new Set(["active", "retired"]),
   intent: new Set(["active", "retired"]),
   rule: new Set(["active", "retired"]),
-  guidance_primitive: new Set(["active", "retired"]),
-  neuron_authoring_primitive: new Set(["active", "retired"]),
+  guidance_policy: new Set(["active", "retired"]),
+  neuron_authoring_policy: new Set(["active", "retired"]),
   action: new Set(["active", "retired"]),
   eval: new Set(["active", "retired"]),
   // Log records a thing that happened — frozen from creation so the audit

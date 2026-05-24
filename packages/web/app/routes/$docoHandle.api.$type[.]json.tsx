@@ -67,7 +67,7 @@ function entry<TDraft>(
   };
 }
 
-// Neurons only — primitives use /<handle>/api/primitives.json so they
+// Neurons only — policies use /<handle>/api/policies.json so they
 // stay separate from domain captures.
 const CAPTURE_REGISTRY: Record<string, RegistryEntry> = {
   decisions: entry<DecisionDraft>("decisions", "decision", captureDecision, (draft, me) => {
@@ -104,10 +104,10 @@ const CAPTURE_REGISTRY: Record<string, RegistryEntry> = {
 };
 
 function notFound(type: string | undefined): Response {
-  if (type === "guidance_primitives" || type === "neuron_authoring_primitives") {
+  if (type === "guidance_policies" || type === "neuron_authoring_policies") {
     return Response.json(
       {
-        error: `${type} are primitives, not neurons. Use /api/primitives.json instead (GET to list, POST with "primitive_kind" to capture). See /api/primitives.txt for the body shape.`,
+        error: `${type} are policies, not neurons. Use /api/policies.json instead (GET to list, POST with "policy_kind" to capture). See /api/policies.txt for the body shape.`,
       },
       { status: 404 },
     );

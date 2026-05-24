@@ -14,7 +14,7 @@ export interface DocoMetadata {
   /**
    * Project-owner-authored sentence (or template-seeded default)
    * describing what this Doco is for. Surfaced under the title on
-   * the Doco home page and at the top of each Doco's primitive set
+   * the Doco home page and at the top of each Doco's policy set
    * in the agent-bootstrap manifest. Empty string when unset.
    */
   goal: string;

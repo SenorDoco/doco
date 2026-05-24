@@ -1,7 +1,7 @@
 // /admin/agent-usage — torrenegra-only token consumption dashboard.
 //
 // Surfaces the live cost burn from the two paid AI keys Doco holds:
-//   * Anthropic (Señor Doco + the authoring-primitive judge), pulled
+//   * Anthropic (Señor Doco + the authoring-policy judge), pulled
 //     from `agent_turn_metrics` (input/output/cache token totals per
 //     turn, captured by the telemetry that ships every chat reply).
 //   * OpenAI (text-embedding-3-small for vector search), pulled from

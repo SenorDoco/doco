@@ -45,9 +45,9 @@ function entitySpec(table: string, entityType: string): SearchTypeSpec {
   };
 }
 
-// Note types only — primitives are not neurons
-// and do not participate in neuron search/ranking. To fetch primitives,
-// hit /<handle>/api/primitives.json or read the bootstrap payload.
+// Note types only — policies are not neurons
+// and do not participate in neuron search/ranking. To fetch policies,
+// hit /<handle>/api/policies.json or read the bootstrap payload.
 export const SEARCH_TYPE_SPECS: SearchTypeSpec[] = [
   entitySpec("decisions", "decision"),
   entitySpec("intents", "intent"),

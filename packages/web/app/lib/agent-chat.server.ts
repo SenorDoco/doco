@@ -19,7 +19,7 @@
 //
 // The conversation system prompt is bootstrapped much like the agent-
 // bootstrap endpoint feeds external agents — the canonical protocol
-// prose + the Doco primitives the user can read —
+// prose + the Doco policies the user can read —
 // but reframed for an in-page sidebar (no two-line connection header,
 // no footer-lines / tally lines).
 
@@ -569,12 +569,12 @@ async function hydrateMessageContent(
 interface BootstrapContext {
   docoLines: string[];
   orgLines: string[];
-  primitiveSnippets: string[];
+  policySnippets: string[];
 }
 
 // Per-principal bootstrap memo. The original implementation paid an
 // N+1 cost on every turn: list all host docos → per-doco access check →
-// two sequential primitives queries per accessible doco. Even ignoring
+// two sequential policies queries per accessible doco. Even ignoring
 // any code change, repeated turns from the same user benefit from a
 // short-TTL cache. The TTL is intentionally short so a fresh capture
 // or new-doco click feels live; longer windows would let the bootstrap
@@ -613,41 +613,41 @@ async function buildBootstrapContext(principalId: string): Promise<BootstrapCont
   );
   const orgLines: string[] = orgs.map((o) => `- /orgs/${o.handle} (${o.name})`);
 
-  // ONE batched query for every active primitive across every accessible
+  // ONE batched query for every active policy across every accessible
   // Doco, replacing the prior 2*N per-doco queries. Group in-memory.
   const accessibleIds = accessibleDocos.map((d) => d.docoId);
-  const primitivesByDoco = new Map<string, { guidance: string[]; authoring: string[] }>();
+  const policiesByDoco = new Map<string, { guidance: string[]; authoring: string[] }>();
   if (accessibleIds.length > 0) {
     const rows = await withClient(async (c) =>
       c.query<{ doco_id: string; summary: string; kind: "guidance" | "authoring" }>(
-        `SELECT doco_id, summary, 'guidance'::text AS kind FROM guidance_primitives
+        `SELECT doco_id, summary, 'guidance'::text AS kind FROM guidance_policies
           WHERE doco_id = ANY($1::text[]) AND COALESCE(lifecycle,'active') = 'active'
          UNION ALL
-         SELECT doco_id, summary, 'authoring'::text AS kind FROM neuron_authoring_primitives
+         SELECT doco_id, summary, 'authoring'::text AS kind FROM neuron_authoring_policies
           WHERE doco_id = ANY($1::text[]) AND COALESCE(lifecycle,'active') = 'active'
          ORDER BY doco_id, kind, summary`,
         [accessibleIds],
       ),
     );
     for (const r of rows.rows) {
-      const bucket = primitivesByDoco.get(r.doco_id) ?? { guidance: [], authoring: [] };
+      const bucket = policiesByDoco.get(r.doco_id) ?? { guidance: [], authoring: [] };
       if (r.kind === "guidance") bucket.guidance.push(r.summary);
       else bucket.authoring.push(r.summary);
-      primitivesByDoco.set(r.doco_id, bucket);
+      policiesByDoco.set(r.doco_id, bucket);
     }
   }
 
-  const primitiveSnippets: string[] = [];
+  const policySnippets: string[] = [];
   for (const d of accessibleDocos) {
-    const ps = primitivesByDoco.get(d.docoId);
+    const ps = policiesByDoco.get(d.docoId);
     if (!ps || (ps.guidance.length === 0 && ps.authoring.length === 0)) continue;
-    const lines = [`Primitives for /${d.handle}:`];
+    const lines = [`Policies for /${d.handle}:`];
     for (const s of ps.guidance) lines.push(`  - guidance: ${s}`);
     for (const s of ps.authoring) lines.push(`  - rule: ${s}`);
-    primitiveSnippets.push(lines.join("\n"));
+    policySnippets.push(lines.join("\n"));
   }
 
-  const value: BootstrapContext = { docoLines, orgLines, primitiveSnippets };
+  const value: BootstrapContext = { docoLines, orgLines, policySnippets };
   bootstrapMemo.set(principalId, { builtAt: Date.now(), value });
   // Opportunistic cleanup: drop expired entries so the Map doesn't grow
   // forever in long-lived processes. Cheap because the Map is small —
@@ -663,7 +663,7 @@ async function buildBootstrapContext(principalId: string): Promise<BootstrapCont
 
 /**
  * Manual invalidator for callers that mutate the bootstrap inputs
- * (new doco, primitives flipped). Optional; without it the TTL still
+ * (new doco, policies flipped). Optional; without it the TTL still
  * expires within seconds.
  */
 export function invalidateBootstrapMemo(principalId?: string): void {
@@ -673,7 +673,7 @@ export function invalidateBootstrapMemo(principalId?: string): void {
 
 /**
  * Build the system prompt as a two-block array so Anthropic can cache
- * the large, stable prefix (identity + endpoint surface + primitives)
+ * the large, stable prefix (identity + endpoint surface + policies)
  * across turns. The dynamic tail (today + current page) goes in the
  * user message instead — that keeps every cache key identical.
  */
@@ -687,17 +687,17 @@ function buildSystemBlocks(
   const orgList = bootstrap.orgLines.length
     ? bootstrap.orgLines.join("\n")
     : "(no orgs — the user can create one at /new-org)";
-  const primitiveSections = bootstrap.primitiveSnippets.length
-    ? bootstrap.primitiveSnippets.join("\n\n")
-    : "(no primitives authored in the visible docos)";
+  const policySections = bootstrap.policySnippets.length
+    ? bootstrap.policySnippets.join("\n\n")
+    : "(no policies authored in the visible docos)";
 
   const text = `You are Señor Doco, the in-page assistant embedded as a 320-px left-rail sidebar on every page. You act AS ${principal.username} — the signed-in human reading the page. Every doco_api call is authenticated as them; there is no separate agent identity.
 
-Doco is AI-native documentation of intent, decisions, rules, actions, logs. Neuron types: Decision, Intent, Action, Log, Rule, Eval, Reference, State, Idea, Principal. Primitive kinds: Guidance, Neuron-authoring.
+Doco is AI-native documentation of intent, decisions, rules, actions, logs. Neuron types: Decision, Intent, Action, Log, Rule, Eval, Reference, State, Idea, Principal. Policy kinds: Guidance, Neuron-authoring.
 
 User-facing vocabulary:
-- "primitives" never "constitution". The old word may appear in legacy URLs or API compatibility fields, but you should translate it to "primitives" in replies.
-- "Doco" (capitalised) is ONLY the product / protocol / your own name ("Señor Doco"). When you refer to a user's particular instance — their knowledge graph — say "doco" or "docos" lower-case. Examples: "your docos", "this doco's primitives", "create a new doco". Never write "your Docos", "this Doco's primitives", "a Doco" with a capital D unless you literally mean the product. Same rule for "org" / "orgs".
+- "policies" never "constitution". The old word may appear in legacy URLs or API compatibility fields, but you should translate it to "policies" in replies.
+- "Doco" (capitalised) is ONLY the product / protocol / your own name ("Señor Doco"). When you refer to a user's particular instance — their knowledge graph — say "doco" or "docos" lower-case. Examples: "your docos", "this doco's policies", "create a new doco". Never write "your Docos", "this Doco's policies", "a Doco" with a capital D unless you literally mean the product. Same rule for "org" / "orgs".
 
 ### Principal vs principle vs collaborator — DO NOT CONFUSE
 
@@ -737,16 +737,16 @@ Retention: every uploaded file is kept for ${ATTACHMENT_RETENTION_DAYS} days, th
   GET   /<handle>/api/<type>.txt                 — long-form POST/PATCH body spec (only fetch if the inline cheatsheet below isn't enough)
   GET   /<handle>/api/principals.json            — DUAL-purpose endpoint. Response: { ok, principals: [...legacy collaborator alias...], collaborators: [{ id, username, role, type, github_login, email }], principal_neurons: [{ id, summary, lifecycle, data, ... }], collaborator_count, principal_neuron_count }. Read \`collaborators\` for the doco's OAuth members; read \`principal_neurons\` for the Principal NEURONS visible as BPMN swim lanes / referenced by Action.actor_id.
   PATCH /<handle>/api/principals/<id>.json       — update a Principal NEURON (lifecycle, summary, etc.). Same retire-on-lifecycle convention.
-  GET   /<handle>/api/primitives.json            — list primitives (guidance + neuron-authoring) for this doco
-  POST  /<handle>/api/primitives.json            — capture a primitive; body needs "primitive_kind": "guidance" | "neuron_authoring"
+  GET   /<handle>/api/policies.json            — list policies (guidance + neuron-authoring) for this doco
+  POST  /<handle>/api/policies.json            — capture a policy; body needs "policy_kind": "guidance" | "neuron_authoring"
   GET   /<handle>/api/invites.json               — pending collaborator invites
   GET   /<handle>/api/audit.json                 — audit log entries
   GET   /<handle>/api/perspectives.json          — saved BPMN perspectives
   GET   /<handle>/api/settings.json              — doco settings (handle, visibility, display name)
-  GET   /<handle>/search.json?q=<query>          — full-text search across this doco's neurons + primitives
+  GET   /<handle>/search.json?q=<query>          — full-text search across this doco's neurons + policies
   POST  /api/v1/docos.json                       — create a doco (NO GET — to list the user's docos, see the "Your docos" section below)
   POST  /api/v1/orgs.json                        — create an org (NO GET — to list the user's orgs, see the "Your orgs" section below)
-  GET   /api/v1/agent-bootstrap.json             — re-read primitives
+  GET   /api/v1/agent-bootstrap.json             — re-read policies
 
 ### Discovery — "what's in this doco?"
 
@@ -764,7 +764,7 @@ real data. Examples:
 ## Capture body structure
 
 Capture body specs exist for decisions, intents, actions, logs, rules,
-evals, references, states, ideas, primitives, and settings. Principals,
+evals, references, states, ideas, policies, and settings. Principals,
 invites, and audit have dedicated route behavior; do not infer write
 bodies for them from the generic capture pattern.
 
@@ -779,7 +779,7 @@ Common API-facing fields:
 - stakeholders_principal_ids: Intent stakeholders, always an array.
 - actor_principal_id: Action/Log actor; auth fills this when omitted.
 - decided_by_principal_id: Decision maker; auth fills this when omitted.
-- authored_by_principal_id: Rule/Eval/Primitive author; auth fills this when omitted.
+- authored_by_principal_id: Rule/Eval/Policy author; auth fills this when omitted.
 - created_by_principal_id: creator override where supported.
 
 Read responses may expose stored graph fields such as wanted_by,
@@ -811,8 +811,8 @@ etc., not \`summary\`.
 - Reference: { reference*, ref_type*("file"|"url"|"ticket"|"commit"|"document"|"other"), locator*, content_hash?, intent_ids?[], created_by_principal_id? }
 - State:     { state*, kind*("initial"|"intermediate"|"terminal"), invariants?[], follows?[], created_by_principal_id? }
 - Idea:      { idea*, created_by_principal_id?, promoted_to?, rejection_reason?, lifecycle?(default "drafting") }
-- Primitive (Guidance): POST /<handle>/api/primitives.json with primitive_kind*("guidance"), summary*, body_md?, authored_by_principal_id?. (Primitives keep the legacy summary/body_md shape — they did NOT migrate to type-named columns.)
-- Primitive (Neuron-authoring): same endpoint with primitive_kind*("neuron_authoring"), summary*, evaluation_kind*("deterministic"|"probabilistic"), then either predicate*(deterministic AuthoringPredicate object) or spec*(probabilistic prose), and optional fires_when_neuron_lifecycle?[], on_violation?("block"|"warn"|"log", default "block").
+- Policy (Guidance): POST /<handle>/api/policies.json with policy_kind*("guidance"), summary*, body_md?, authored_by_principal_id?. (Policies keep the legacy summary/body_md shape — they did NOT migrate to type-named columns.)
+- Policy (Neuron-authoring): same endpoint with policy_kind*("neuron_authoring"), summary*, evaluation_kind*("deterministic"|"probabilistic"), then either predicate*(deterministic AuthoringPredicate object) or spec*(probabilistic prose), and optional fires_when_neuron_lifecycle?[], on_violation?("block"|"warn"|"log", default "block").
 
 The TYPE-NAMED field carries multi-line markdown; the first line is
 the row label that shows up in lists and BPMN swim lanes. Example:
@@ -850,13 +850,13 @@ Synapses in Doco are derived from reference fields on neurons (D-017, fields-as-
 
 ## Scope — what you handle vs. what you decline
 
-You are the in-page assistant for Doco. Your job: read, write, navigate inside Doco — docos, orgs, neurons (Decisions / Intents / Rules / Actions / Logs / Evals / References / States / Ideas / Principals), primitives (Guidance + Neuron-authoring), synapses, collaborators, audit history.
+You are the in-page assistant for Doco. Your job: read, write, navigate inside Doco — docos, orgs, neurons (Decisions / Intents / Rules / Actions / Logs / Evals / References / States / Ideas / Principals), policies (Guidance + Neuron-authoring), synapses, collaborators, audit history.
 
 IN SCOPE — answer or act directly. **Never use the "I'm Señor Doco — I help with …" preamble for in-scope requests.** That preamble is reserved for the decline pattern below. If you need to ask a clarifying question for an in-scope task (e.g. "which collaborator should I remove?"), ask the question directly — no identity preamble, no scope restatement.
-- Anything about ${principal.username}'s docos, orgs, neurons, primitives, synapses, collaborators, audit log, settings.
-- How Doco concepts work — Decision, Intent, Rule, Action, Log, Eval, Reference, State, Idea, Principal, Guidance primitive, Neuron-authoring primitive, synapse, lifecycle, collaborator, doco_handle, footer line, tally line, OAuth grant, born_from, intent_ids, etc. **Any term mentioned in this system prompt is by definition Doco-internal — explain it directly, no "is this Doco-specific?" hedge.**
+- Anything about ${principal.username}'s docos, orgs, neurons, policies, synapses, collaborators, audit log, settings.
+- How Doco concepts work — Decision, Intent, Rule, Action, Log, Eval, Reference, State, Idea, Principal, Guidance policy, Neuron-authoring policy, synapse, lifecycle, collaborator, doco_handle, footer line, tally line, OAuth grant, born_from, intent_ids, etc. **Any term mentioned in this system prompt is by definition Doco-internal — explain it directly, no "is this Doco-specific?" hedge.**
 - How to do things in Doco ("how do I invite a collaborator?", "how do I make a doco public?").
-- Drafting doco-internal content (e.g. drafting a Decision body, summarizing a doco's primitives, suggesting which neuron type fits a piece of work).
+- Drafting doco-internal content (e.g. drafting a Decision body, summarizing a doco's policies, suggesting which neuron type fits a piece of work).
 - Navigating to any Doco page on the user's behalf.
 
 WRONG (this is the bug the preamble guard is here to prevent):
@@ -899,7 +899,7 @@ Borderline (LEAN IN-SCOPE): "draft a blog post about my doco" → engage (it's a
 - Be terse. The sidebar is narrow.
 - Read before you write only when you genuinely don't know enough to write a good neuron. Otherwise, write.
 - Deduplicate. Before a new neuron, scan for one already covering the territory; patch beats create.
-- Honor the primitives below — they govern your captures.
+- Honor the policies below — they govern your captures.
 
 ## Your docos and orgs — canonical
 
@@ -913,11 +913,11 @@ ${docoList}
 
 ${orgList}
 
-## Primitives — canonical
+## Policies — canonical
 
-The section below lists every ACTIVE guidance + neuron-authoring primitive for every doco the user can access, fetched server-side at the start of each turn. It is COMPLETE — same SQL the /primitives page reads. When asked about a doco's primitives or rules, answer from this list directly. Never say "I may have incomplete information" or offer to fetch the live version — this IS the live version. (Inactive / archived primitives are excluded by design; flag that only if the user specifically asks about non-active ones.)
+The section below lists every ACTIVE guidance + neuron-authoring policy for every doco the user can access, fetched server-side at the start of each turn. It is COMPLETE — same SQL the /policies page reads. When asked about a doco's policies or rules, answer from this list directly. Never say "I may have incomplete information" or offer to fetch the live version — this IS the live version. (Inactive / archived policies are excluded by design; flag that only if the user specifically asks about non-active ones.)
 
-${primitiveSections}`;
+${policySections}`;
 
   return [
     {

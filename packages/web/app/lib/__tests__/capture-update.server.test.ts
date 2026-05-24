@@ -23,7 +23,7 @@ vi.mock("../audit-log.server", () => ({
 }));
 
 vi.mock("../authoring-runner.server", () => ({
-  runAuthoringPrimitives: vi.fn(async () => ({
+  runAuthoringPolicies: vi.fn(async () => ({
     blocking: null,
     violations: [],
     warnings: [],

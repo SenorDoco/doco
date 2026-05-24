@@ -17,13 +17,13 @@ import { waitUntil } from "@vercel/functions";
 // Identifiers: every node has exactly one id — the ULID. URLs use the
 // ULID; agents/users read the readable field (`summary` for most nodes).
 import { appendAuditEvent } from "./audit-log.server";
-import { type AuthoringResult, runAuthoringPrimitives } from "./authoring-runner.server";
+import { type AuthoringResult, runAuthoringPolicies } from "./authoring-runner.server";
 import { validatePatch } from "./mutability.server";
 import { reindex, reindexEmbeddingsOnly } from "./redeem.server";
 import { recordPhase } from "./telemetry.server";
 
 /**
- * Run the doco's authoring primitives against a candidate's full
+ * Run the doco's authoring policies against a candidate's full
  * frontmatter. Centralized here so every captureX / updateEntity path
  * applies the same enforcement: blocking violations short-circuit
  * before persistEntity, warnings get attached to the result. Replaces
@@ -32,16 +32,16 @@ import { recordPhase } from "./telemetry.server";
  * When `client` is provided, the enforcer reads on that connection so
  * the load and the subsequent upsert share one DB snapshot.
  */
-async function enforceAuthoringPrimitives(
+async function enforceAuthoringPolicies(
   docoId: string,
   fm: Record<string, unknown>,
   client?: PoolClient,
 ): Promise<AuthoringResult> {
   const start = performance.now();
   try {
-    return await runAuthoringPrimitives({
+    return await runAuthoringPolicies({
       docoId,
-      candidate: fm as Parameters<typeof runAuthoringPrimitives>[0]["candidate"],
+      candidate: fm as Parameters<typeof runAuthoringPolicies>[0]["candidate"],
       ...(client ? { client } : {}),
     });
   } finally {
@@ -51,9 +51,9 @@ async function enforceAuthoringPrimitives(
 
 /**
  * Atomic enforce-then-persist: opens one transaction, evaluates the
- * doco's authoring primitives against `fm`, and — if nothing blocks —
+ * doco's authoring policies against `fm`, and — if nothing blocks —
  * upserts the entity on the same connection. Concurrent writers can no
- * longer slip a new active block primitive into the doco between the
+ * longer slip a new active block policy into the doco between the
  * check and the write, and the loader / persister see the same row
  * snapshot.
  *
@@ -69,7 +69,7 @@ async function enforceAndPersist(args: {
   body?: string;
 }): Promise<AuthoringResult> {
   return withTransaction(async (c) => {
-    const pred = await enforceAuthoringPrimitives(args.docoId, args.fm, c);
+    const pred = await enforceAuthoringPolicies(args.docoId, args.fm, c);
     if (pred.blocking) return pred;
     await persistEntity({
       entityType: args.entityType,
@@ -84,7 +84,7 @@ async function enforceAndPersist(args: {
 }
 
 /**
- * Render non-blocking authoring-primitive warnings as footer lines.
+ * Render non-blocking authoring-policy warnings as footer lines.
  * Appended after the operation lines so the agent sees them inline
  * with the capture result.
  */
@@ -170,7 +170,7 @@ async function persistEntity(args: {
  * neuron (`intent` for intent rows, `decision` for decision rows, …).
  * After PR #80 every captureX path populates `fm[entityType]` directly
  * with the full prose content; the value is whatever the caller stored
- * there. Non-migrated entities (primitives, principal) have no
+ * there. Non-migrated entities (policies, principal) have no
  * type-named column and the empty string is fine — `upsertEntity` only
  * binds this column when the table spec declares one.
  */
@@ -269,7 +269,7 @@ export interface CaptureResult {
    */
   duration_ms: number;
   /**
-   * Non-blocking authoring-primitive violations produced by the
+   * Non-blocking authoring-policy violations produced by the
    * evaluator (on_violation = "warn"). Empty when no warnings fired.
    * Blocking violations short-circuit before persistence and surface as
    * a CaptureError instead.
@@ -421,7 +421,7 @@ export async function renderOperationLines(opts: {
   /**
    * Readable label used as the link text on every op line. For migrated
    * neurons this is the first line of the type-named prose field
-   * (`firstLine(fm[entityType])`); for primitives/principals it is the
+   * (`firstLine(fm[entityType])`); for policies/principals it is the
    * legacy `summary`.
    */
   label: string;
@@ -505,11 +505,11 @@ export interface CaptureError {
   /** Human-readable hint pointing at the supersession affordance for frozen claims. */
   hint?: string;
   /**
-   * When the authoring-primitives evaluator blocks the capture, the
-   * id of the primitive whose predicate produced the violation. Lets
-   * the route surface a deep-link to the primitive.
+   * When the authoring-policies evaluator blocks the capture, the
+   * id of the policy whose predicate produced the violation. Lets
+   * the route surface a deep-link to the policy.
    */
-  primitive_id?: string;
+  policy_id?: string;
   /**
    * Any additional non-blocking warnings produced alongside the
    * blocking violation. Useful when an agent's request fails multiple
@@ -584,7 +584,7 @@ function emitAuditForUpdate(opts: {
  * Emit an entity.create audit event after a successful capture write.
  *
  * `label` is the short identifier — for migrated neurons it's the first
- * line of the type-named prose field, for primitives/principals it's
+ * line of the type-named prose field, for policies/principals it's
  * the legacy `summary`. The audit event records it under the type-named
  * key for migrated neurons and `summary` for non-migrated ones.
  */
@@ -725,7 +725,7 @@ function uniquePrincipalIds(value: unknown, field: string): string[] | CaptureEr
  * humans but they aren't interchangeable — agents that grab a
  * collaborator id from the principals endpoint and pass it into
  * `actor_id` ship a broken record (the BPMN renderer can't resolve
- * it; the `requires_field_resolves_to_principal` primitive can't
+ * it; the `requires_field_resolves_to_principal` policy can't
  * either). Catch it at the door rather than tolerate it downstream.
  */
 function assertNotCollaboratorId(value: string, field: string): CaptureError | null {
@@ -790,8 +790,8 @@ export async function captureDecision(
   const pred = await enforceAndPersist({ docoId, fm, entityType: "decision", id });
   if (pred.blocking) {
     return {
-      error: `Authoring primitive violation: ${pred.blocking.reason}`,
-      primitive_id: pred.blocking.primitive_id,
+      error: `Authoring policy violation: ${pred.blocking.reason}`,
+      policy_id: pred.blocking.policy_id,
       ...(pred.warnings.length > 0 ? { warnings: pred.warnings } : {}),
     };
   }
@@ -879,7 +879,7 @@ export async function updateDecision(
 
   // Snapshot pre-mutation values for the audit log; only the fields
   // that get mutated below are inspected later, so a shallow copy of
-  // primitives + reference grab for arrays is sufficient.
+  // policies + reference grab for arrays is sufficient.
   const beforeFm: Record<string, unknown> = { ...fm };
 
   const changed: string[] = [];
@@ -986,8 +986,8 @@ export async function updateDecision(
   const pred = await enforceAndPersist({ docoId, fm, entityType: "decision", id: decisionId });
   if (pred.blocking) {
     return {
-      error: `Authoring primitive violation: ${pred.blocking.reason}`,
-      primitive_id: pred.blocking.primitive_id,
+      error: `Authoring policy violation: ${pred.blocking.reason}`,
+      policy_id: pred.blocking.policy_id,
       ...(pred.warnings.length > 0 ? { warnings: pred.warnings } : {}),
     };
   }
@@ -1032,8 +1032,8 @@ export type NodeTypeName =
   | "decision"
   | "intent"
   | "rule"
-  | "guidance_primitive"
-  | "neuron_authoring_primitive"
+  | "guidance_policy"
+  | "neuron_authoring_policy"
   | "action"
   | "log"
   | "eval"
@@ -1081,8 +1081,8 @@ function normalizePrincipalIdPatchFields(
     case "eval":
     case "reference":
     case "state":
-    case "guidance_primitive":
-    case "neuron_authoring_primitive":
+    case "guidance_policy":
+    case "neuron_authoring_policy":
     case "idea":
       copy("created_by_principal_id", "created_by");
       break;
@@ -1124,13 +1124,13 @@ export async function updateEntity(opts: {
   const existingBody = existing.body;
   const normalizedPatch = normalizePrincipalIdPatchFields(entityType, patch);
   // Migration-022/023: 9 neuron types collapsed summary+body_md+extras
-  // into a single type-named prose column. Primitives + principal still
+  // into a single type-named prose column. Policies + principal still
   // ride the legacy summary+body_md shape — distinguished by whether
   // ALL_ENTITY_TABLES exposes a `typeNamedColumn`.
   const typeNamedColumn = ALL_ENTITY_TABLES[entityType]?.typeNamedColumn;
   // Types with a markdown body get body_md; `reference` is pure YAML
   // and ignores body operations. For migrated neurons body_md is gone
-  // entirely; only primitives/principal still carry it.
+  // entirely; only policies/principal still carry it.
   const isMd = !typeNamedColumn && entityType !== "reference";
 
   const gate = validatePatch(
@@ -1174,7 +1174,7 @@ export async function updateEntity(opts: {
     const v = normalizedPatch[typeNamedColumn];
     setScalar(typeNamedColumn, typeof v === "string" ? v.trim() : undefined);
   } else if (!typeNamedColumn && allowedFields.includes("summary")) {
-    // Primitive / principal still use summary.
+    // Policy / principal still use summary.
     setScalar(
       "summary",
       typeof normalizedPatch.summary === "string" ? normalizedPatch.summary.trim() : undefined,
@@ -1269,7 +1269,7 @@ export async function updateEntity(opts: {
     return { error: "No fields changed." };
   }
 
-  // Compute the new body for Postgres storage. Only primitives/principal
+  // Compute the new body for Postgres storage. Only policies/principal
   // still have a separate body_md column; the migrated neurons fold
   // prose into the type-named column above.
   let nextBody: string | undefined;
@@ -1293,8 +1293,8 @@ export async function updateEntity(opts: {
   });
   if (pred.blocking) {
     return {
-      error: `Authoring primitive violation: ${pred.blocking.reason}`,
-      primitive_id: pred.blocking.primitive_id,
+      error: `Authoring policy violation: ${pred.blocking.reason}`,
+      policy_id: pred.blocking.policy_id,
       ...(pred.warnings.length > 0 ? { warnings: pred.warnings } : {}),
     };
   }
@@ -1409,8 +1409,8 @@ export async function captureIntent(
   const pred = await enforceAndPersist({ docoId, fm, entityType: "intent", id });
   if (pred.blocking) {
     return {
-      error: `Authoring primitive violation: ${pred.blocking.reason}`,
-      primitive_id: pred.blocking.primitive_id,
+      error: `Authoring policy violation: ${pred.blocking.reason}`,
+      policy_id: pred.blocking.policy_id,
       ...(pred.warnings.length > 0 ? { warnings: pred.warnings } : {}),
     };
   }
@@ -1497,8 +1497,8 @@ export async function captureIdea(
   const pred = await enforceAndPersist({ docoId, fm, entityType: "idea", id });
   if (pred.blocking) {
     return {
-      error: `Authoring primitive violation: ${pred.blocking.reason}`,
-      primitive_id: pred.blocking.primitive_id,
+      error: `Authoring policy violation: ${pred.blocking.reason}`,
+      policy_id: pred.blocking.policy_id,
       ...(pred.warnings.length > 0 ? { warnings: pred.warnings } : {}),
     };
   }
@@ -1623,8 +1623,8 @@ export async function captureEval(
   const pred = await enforceAndPersist({ docoId, fm, entityType: "eval", id });
   if (pred.blocking) {
     return {
-      error: `Authoring primitive violation: ${pred.blocking.reason}`,
-      primitive_id: pred.blocking.primitive_id,
+      error: `Authoring policy violation: ${pred.blocking.reason}`,
+      policy_id: pred.blocking.policy_id,
       ...(pred.warnings.length > 0 ? { warnings: pred.warnings } : {}),
     };
   }
@@ -1747,8 +1747,8 @@ export async function captureAction(
   const pred = await enforceAndPersist({ docoId, fm, entityType: "action", id });
   if (pred.blocking) {
     return {
-      error: `Authoring primitive violation: ${pred.blocking.reason}`,
-      primitive_id: pred.blocking.primitive_id,
+      error: `Authoring policy violation: ${pred.blocking.reason}`,
+      policy_id: pred.blocking.policy_id,
       ...(pred.warnings.length > 0 ? { warnings: pred.warnings } : {}),
     };
   }
@@ -1882,8 +1882,8 @@ export async function captureLog(
   const pred = await enforceAndPersist({ docoId, fm, entityType: "log", id });
   if (pred.blocking) {
     return {
-      error: `Authoring primitive violation: ${pred.blocking.reason}`,
-      primitive_id: pred.blocking.primitive_id,
+      error: `Authoring policy violation: ${pred.blocking.reason}`,
+      policy_id: pred.blocking.policy_id,
       ...(pred.warnings.length > 0 ? { warnings: pred.warnings } : {}),
     };
   }
@@ -2019,8 +2019,8 @@ export async function captureRule(
   const pred = await enforceAndPersist({ docoId, fm, entityType: "rule", id });
   if (pred.blocking) {
     return {
-      error: `Authoring primitive violation: ${pred.blocking.reason}`,
-      primitive_id: pred.blocking.primitive_id,
+      error: `Authoring policy violation: ${pred.blocking.reason}`,
+      policy_id: pred.blocking.policy_id,
       ...(pred.warnings.length > 0 ? { warnings: pred.warnings } : {}),
     };
   }
@@ -2057,9 +2057,9 @@ export async function captureRule(
   };
 }
 
-// ─── Primitives ───────────────────────────────────────────────────────────
+// ─── Policies ───────────────────────────────────────────────────────────
 
-export interface GuidancePrimitiveDraft {
+export interface GuidancePolicyDraft {
   /** Required: one-line summary of the guidance. */
   summary: string;
   /** Optional markdown body. Defaults to the summary so the article is readable. */
@@ -2074,7 +2074,7 @@ export interface GuidancePrimitiveDraft {
   outcome?: "succeeded" | "failed";
 }
 
-export interface NeuronAuthoringPrimitiveDraft {
+export interface NeuronAuthoringPolicyDraft {
   /** Required: one-line summary of the capture-time check. */
   summary: string;
   /** Required: deterministic structural check or probabilistic LLM check. */
@@ -2099,7 +2099,7 @@ export interface NeuronAuthoringPrimitiveDraft {
   outcome?: "succeeded" | "failed";
 }
 
-async function resolvePrimitiveAuthor(draft: {
+async function resolvePolicyAuthor(draft: {
   authored_by_principal_id?: string;
   created_by_principal_id?: string;
 }): Promise<string | CaptureError> {
@@ -2121,7 +2121,7 @@ function parsePredicate(value: AuthoringPredicate | string | undefined): unknown
 }
 
 function normalizeNodeAuthoringPredicate(
-  draft: NeuronAuthoringPrimitiveDraft,
+  draft: NeuronAuthoringPolicyDraft,
 ): AuthoringPredicate | CaptureError {
   if (draft.evaluation_kind === "probabilistic") {
     const spec =
@@ -2132,21 +2132,21 @@ function normalizeNodeAuthoringPredicate(
             draft.predicate.kind === "probabilistic"
           ? draft.predicate.spec.trim()
           : "";
-    if (!spec) return { error: "spec is required for probabilistic neuron_authoring_primitives." };
+    if (!spec) return { error: "spec is required for probabilistic neuron_authoring_policies." };
     return { kind: "probabilistic", spec };
   }
 
   const parsed = parsePredicate(draft.predicate);
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
     return {
-      error: "predicate must be a JSON object for deterministic neuron_authoring_primitives.",
+      error: "predicate must be a JSON object for deterministic neuron_authoring_policies.",
     };
   }
   const predicate = parsed as AuthoringPredicate;
   if (predicate.kind === "probabilistic") {
     return {
       error:
-        "deterministic neuron_authoring_primitives cannot use a probabilistic predicate; choose probabilistic instead.",
+        "deterministic neuron_authoring_policies cannot use a probabilistic predicate; choose probabilistic instead.",
     };
   }
   if (typeof predicate.kind !== "string" || predicate.kind.length === 0) {
@@ -2190,13 +2190,13 @@ function validateSynapseTypeReference(predicate: AuthoringPredicate): CaptureErr
   return null;
 }
 
-export type PrimitiveCaptureExtras = Record<string, never>;
+export type PolicyCaptureExtras = Record<string, never>;
 
-type PrimitiveType = "guidance_primitive" | "neuron_authoring_primitive";
+type PolicyType = "guidance_policy" | "neuron_authoring_policy";
 
-interface PrimitivePayload {
+interface PolicyPayload {
   id: string;
-  entityType: PrimitiveType;
+  entityType: PolicyType;
   summary: string;
   lifecycle: string;
   fm: Record<string, unknown>;
@@ -2206,16 +2206,16 @@ interface PrimitivePayload {
   now: string;
 }
 
-async function buildGuidancePrimitivePayload(
+async function buildGuidancePolicyPayload(
   docoId: string,
-  draft: GuidancePrimitiveDraft,
-  _extras: PrimitiveCaptureExtras,
-): Promise<PrimitivePayload | CaptureError> {
+  draft: GuidancePolicyDraft,
+  _extras: PolicyCaptureExtras,
+): Promise<PolicyPayload | CaptureError> {
   if (!draft.summary?.trim()) return { error: "summary is required." };
-  const author = await resolvePrimitiveAuthor(draft);
+  const author = await resolvePolicyAuthor(draft);
   if (typeof author !== "string") return author;
 
-  const id = `guidance_primitive_${generateUlid()}`;
+  const id = `guidance_policy_${generateUlid()}`;
   const summary = draft.summary.trim();
   const now = new Date().toISOString();
   const status = lifecycleAttrs(draft, "active");
@@ -2225,7 +2225,7 @@ async function buildGuidancePrimitivePayload(
   const fm: Record<string, unknown> = {
     id,
     doco_id: docoId,
-    primitive_kind: "guidance",
+    policy_kind: "guidance",
     summary,
     created_at: now,
     created_by: createdById,
@@ -2234,7 +2234,7 @@ async function buildGuidancePrimitivePayload(
 
   return {
     id,
-    entityType: "guidance_primitive",
+    entityType: "guidance_policy",
     summary,
     lifecycle,
     fm,
@@ -2245,21 +2245,21 @@ async function buildGuidancePrimitivePayload(
   };
 }
 
-async function buildNeuronAuthoringPrimitivePayload(
+async function buildNeuronAuthoringPolicyPayload(
   docoId: string,
-  draft: NeuronAuthoringPrimitiveDraft,
-  _extras: PrimitiveCaptureExtras,
-): Promise<PrimitivePayload | CaptureError> {
+  draft: NeuronAuthoringPolicyDraft,
+  _extras: PolicyCaptureExtras,
+): Promise<PolicyPayload | CaptureError> {
   if (!draft.summary?.trim()) return { error: "summary is required." };
   if (draft.evaluation_kind !== "deterministic" && draft.evaluation_kind !== "probabilistic") {
     return { error: "evaluation_kind must be deterministic or probabilistic." };
   }
-  const author = await resolvePrimitiveAuthor(draft);
+  const author = await resolvePolicyAuthor(draft);
   if (typeof author !== "string") return author;
   const predicate = normalizeNodeAuthoringPredicate(draft);
   if ("error" in predicate) return predicate;
 
-  const id = `neuron_authoring_primitive_${generateUlid()}`;
+  const id = `neuron_authoring_policy_${generateUlid()}`;
   const summary = draft.summary.trim();
   const now = new Date().toISOString();
   const status = lifecycleAttrs(draft, "active");
@@ -2272,7 +2272,7 @@ async function buildNeuronAuthoringPrimitivePayload(
   const fm: Record<string, unknown> = {
     id,
     doco_id: docoId,
-    primitive_kind: "neuron_authoring",
+    policy_kind: "neuron_authoring",
     evaluation_kind: draft.evaluation_kind,
     summary,
     predicate,
@@ -2285,7 +2285,7 @@ async function buildNeuronAuthoringPrimitivePayload(
 
   return {
     id,
-    entityType: "neuron_authoring_primitive",
+    entityType: "neuron_authoring_policy",
     summary,
     lifecycle,
     fm,
@@ -2296,17 +2296,17 @@ async function buildNeuronAuthoringPrimitivePayload(
   };
 }
 
-export async function captureGuidancePrimitive(
+export async function captureGuidancePolicy(
   docoDir: string,
   docoId: string,
   ownerSlug: string,
   docoSlug: string,
-  draft: GuidancePrimitiveDraft,
+  draft: GuidancePolicyDraft,
   docoHost?: string,
-  extras: PrimitiveCaptureExtras = {},
+  extras: PolicyCaptureExtras = {},
 ): Promise<CaptureResult | CaptureError> {
   const startedAt = performance.now();
-  const payload = await buildGuidancePrimitivePayload(docoId, draft, extras);
+  const payload = await buildGuidancePolicyPayload(docoId, draft, extras);
   if ("error" in payload) return payload;
 
   const pred = await enforceAndPersist({
@@ -2318,8 +2318,8 @@ export async function captureGuidancePrimitive(
   });
   if (pred.blocking) {
     return {
-      error: `Authoring primitive violation: ${pred.blocking.reason}`,
-      primitive_id: pred.blocking.primitive_id,
+      error: `Authoring policy violation: ${pred.blocking.reason}`,
+      policy_id: pred.blocking.policy_id,
       ...(pred.warnings.length > 0 ? { warnings: pred.warnings } : {}),
     };
   }
@@ -2356,17 +2356,17 @@ export async function captureGuidancePrimitive(
   };
 }
 
-export async function captureNeuronAuthoringPrimitive(
+export async function captureNeuronAuthoringPolicy(
   docoDir: string,
   docoId: string,
   ownerSlug: string,
   docoSlug: string,
-  draft: NeuronAuthoringPrimitiveDraft,
+  draft: NeuronAuthoringPolicyDraft,
   docoHost?: string,
-  extras: PrimitiveCaptureExtras = {},
+  extras: PolicyCaptureExtras = {},
 ): Promise<CaptureResult | CaptureError> {
   const startedAt = performance.now();
-  const payload = await buildNeuronAuthoringPrimitivePayload(docoId, draft, extras);
+  const payload = await buildNeuronAuthoringPolicyPayload(docoId, draft, extras);
   if ("error" in payload) return payload;
 
   const pred = await enforceAndPersist({
@@ -2378,8 +2378,8 @@ export async function captureNeuronAuthoringPrimitive(
   });
   if (pred.blocking) {
     return {
-      error: `Authoring primitive violation: ${pred.blocking.reason}`,
-      primitive_id: pred.blocking.primitive_id,
+      error: `Authoring policy violation: ${pred.blocking.reason}`,
+      policy_id: pred.blocking.policy_id,
       ...(pred.warnings.length > 0 ? { warnings: pred.warnings } : {}),
     };
   }
@@ -2417,35 +2417,33 @@ export async function captureNeuronAuthoringPrimitive(
 }
 
 /**
- * Lifecycle transition for a Doco primitive. Writes the new
+ * Lifecycle transition for a Doco policy. Writes the new
  * lifecycle to the underlying table and emits a `lifecycle.transition`
  * audit event under the Doco scope.
  */
-export async function transitionPrimitiveLifecycle(opts: {
+export async function transitionPolicyLifecycle(opts: {
   scope: "doco";
   scopeId: string;
-  entityType: "guidance_primitive" | "neuron_authoring_primitive";
-  primitiveId: string;
+  entityType: "guidance_policy" | "neuron_authoring_policy";
+  policyId: string;
   newLifecycle: "active" | "retired";
   supersededBy?: string;
   actorId: string | null;
   reason?: string;
 }): Promise<{ ok: true } | CaptureError> {
   const table =
-    opts.entityType === "guidance_primitive"
-      ? "guidance_primitives"
-      : "neuron_authoring_primitives";
+    opts.entityType === "guidance_policy" ? "guidance_policies" : "neuron_authoring_policies";
   const scopeCol = "doco_id";
 
   const before = await withClient(async (c) => {
     const r = await c.query<{ lifecycle: string | null; data: Record<string, unknown> }>(
       `SELECT lifecycle, data FROM ${table} WHERE id = $1 AND ${scopeCol} = $2`,
-      [opts.primitiveId, opts.scopeId],
+      [opts.policyId, opts.scopeId],
     );
     return r.rows[0] ?? null;
   });
   if (!before) {
-    return { error: `Primitive ${opts.primitiveId} not found in scope.`, status: 404 };
+    return { error: `Policy ${opts.policyId} not found in scope.`, status: 404 };
   }
 
   const fm: Record<string, unknown> = { ...(before.data ?? {}) };
@@ -2466,7 +2464,7 @@ export async function transitionPrimitiveLifecycle(opts: {
         JSON.stringify(fm),
         updated_at,
         opts.actorId,
-        opts.primitiveId,
+        opts.policyId,
         opts.scopeId,
       ],
     );
@@ -2477,7 +2475,7 @@ export async function transitionPrimitiveLifecycle(opts: {
     docoId: opts.scopeId,
     by: opts.actorId,
     entity_type: opts.entityType,
-    entity_id: opts.primitiveId,
+    entity_id: opts.policyId,
     op: "lifecycle.transition",
     before: { lifecycle: before.lifecycle ?? "active" },
     after: {
@@ -2495,12 +2493,12 @@ export async function transitionPrimitiveLifecycle(opts: {
   return { ok: true };
 }
 
-/** Fetch a Doco primitive's persisted fields (for the edit page). */
-export async function loadPrimitiveForEdit(opts: {
+/** Fetch a Doco policy's persisted fields (for the edit page). */
+export async function loadPolicyForEdit(opts: {
   scope: "doco";
   scopeId: string;
-  entityType: "guidance_primitive" | "neuron_authoring_primitive";
-  primitiveId: string;
+  entityType: "guidance_policy" | "neuron_authoring_policy";
+  policyId: string;
 }): Promise<
   | {
       ok: true;
@@ -2512,9 +2510,7 @@ export async function loadPrimitiveForEdit(opts: {
   | CaptureError
 > {
   const table =
-    opts.entityType === "guidance_primitive"
-      ? "guidance_primitives"
-      : "neuron_authoring_primitives";
+    opts.entityType === "guidance_policy" ? "guidance_policies" : "neuron_authoring_policies";
   const scopeCol = "doco_id";
   const row = await withClient(async (c) => {
     const r = await c.query<{
@@ -2525,11 +2521,11 @@ export async function loadPrimitiveForEdit(opts: {
     }>(
       `SELECT summary, body_md, lifecycle, data FROM ${table}
         WHERE id = $1 AND ${scopeCol} = $2`,
-      [opts.primitiveId, opts.scopeId],
+      [opts.policyId, opts.scopeId],
     );
     return r.rows[0] ?? null;
   });
-  if (!row) return { error: `Primitive ${opts.primitiveId} not found.`, status: 404 };
+  if (!row) return { error: `Policy ${opts.policyId} not found.`, status: 404 };
   return {
     ok: true,
     summary: row.summary ?? "",
@@ -2597,8 +2593,8 @@ export async function captureReference(
   const pred = await enforceAndPersist({ docoId, fm, entityType: "reference", id });
   if (pred.blocking) {
     return {
-      error: `Authoring primitive violation: ${pred.blocking.reason}`,
-      primitive_id: pred.blocking.primitive_id,
+      error: `Authoring policy violation: ${pred.blocking.reason}`,
+      policy_id: pred.blocking.policy_id,
       ...(pred.warnings.length > 0 ? { warnings: pred.warnings } : {}),
     };
   }
@@ -2707,8 +2703,8 @@ export async function captureState(
   const pred = await enforceAndPersist({ docoId, fm, entityType: "state", id });
   if (pred.blocking) {
     return {
-      error: `Authoring primitive violation: ${pred.blocking.reason}`,
-      primitive_id: pred.blocking.primitive_id,
+      error: `Authoring policy violation: ${pred.blocking.reason}`,
+      policy_id: pred.blocking.policy_id,
       ...(pred.warnings.length > 0 ? { warnings: pred.warnings } : {}),
     };
   }
