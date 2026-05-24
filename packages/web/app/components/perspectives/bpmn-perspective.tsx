@@ -931,23 +931,23 @@ function layOutBpmn(
   const flowEdges: FlowEdge[] = links
     .filter((link) => nodeSet.has(link.source) && nodeSet.has(link.target))
     .map((link, index) => {
-      // Some synapses are stored downstream→upstream in the data but
-      // their BPMN sequence flow runs the other way:
+      // Every sequence-flow synapse is stored downstream→upstream:
       //
-      // - `serves` is stored Action→Intent (Action serves Intent), but
-      //   the Intent is the start event at the origin of the flow —
-      //   arrows fan *out* from it.
-      // - `enacts` is stored Action→Decision (Action enacts a prior
-      //   Decision), but the Decision is the gateway and the Action is
-      //   the downstream branch — arrows go from the gateway *to* each
-      //   branch.
+      // - `follows`       `A.follows=[B]`        — B precedes A
+      // - `triggered_by`  `A.triggered_by=[B]`   — B triggers A
+      // - `enacts`        `A.decision_ids=[D]`   — D is the gateway, A is
+      //                                            the downstream branch
       //
-      // For both, flip the visual edge so the arrowhead lands on the
-      // downstream side. The underlying synapse direction in the data
-      // is unchanged; only the rendered edge is swapped. (And these
-      // matches the depth-walk direction: gateways/start-events end up
-      // at the lower depth, branches/actions at the higher depth.)
-      const flip = link.synapse_type === "serves" || link.synapse_type === "enacts";
+      // …plus `serves`, which is stored Action→Intent but the Intent
+      // is the start event at the origin of the flow — arrows fan
+      // *out* from it.
+      //
+      // For all of these, flip the visual edge so the arrowhead lands
+      // on the downstream side. The underlying synapse direction in
+      // the data is unchanged; only the rendered edge is swapped.
+      // Matches `computeDepths`, which already treats `target` as the
+      // predecessor for every entry in `SEQUENCE_FLOW_SYNAPSES`.
+      const flip = VISUAL_FLIP_SYNAPSES.has(link.synapse_type);
       const source = flip ? link.target : link.source;
       const target = flip ? link.source : link.target;
       const edgeOpacity = focalActive
@@ -1051,6 +1051,18 @@ function isNodeVisibleInViewport(
  * which is the opposite direction.
  */
 const SEQUENCE_FLOW_SYNAPSES: ReadonlySet<string> = new Set(["follows", "triggered_by", "enacts"]);
+
+// Synapses whose stored direction is downstream→upstream. The
+// renderer swaps source/target on these so the arrowhead lands on
+// the downstream node, matching BPMN sequence-flow convention. All
+// three sequence-flow synapses qualify, plus `serves` (Action→Intent,
+// but the Intent is the start event the flow fans out from).
+const VISUAL_FLIP_SYNAPSES: ReadonlySet<string> = new Set([
+  "follows",
+  "triggered_by",
+  "enacts",
+  "serves",
+]);
 
 function computeDepths(
   nodes: readonly BpmnNode[],
