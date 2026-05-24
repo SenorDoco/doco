@@ -185,7 +185,7 @@ function AddAgentCard({
         <div
           role="tablist"
           aria-label="Onboarding mode"
-          className="inline-flex rounded-md border border-border bg-background p-0.5 text-xs"
+          className="inline-flex rounded-md border border-border bg-background p-0.5"
         >
           <ModeButton
             mode="invite"
@@ -244,8 +244,8 @@ function ModeButton({
       onClick={() => onSelect(mode)}
       className={
         active
-          ? "rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground"
-          : "rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground"
+          ? "rounded-md bg-primary px-3 py-1.5 text-base font-semibold text-primary-foreground"
+          : "rounded-md px-3 py-1.5 text-base font-semibold text-muted-foreground hover:text-foreground"
       }
     >
       {label}
