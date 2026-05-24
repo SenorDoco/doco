@@ -36,12 +36,14 @@ export function PerspectiveTabs({
         role="tablist"
         className="-mb-px flex min-w-0 flex-wrap items-end"
       >
-        {perspectives.map((p) => (
+        {perspectives.map((p, i) => (
           <PerspectiveTab
             key={p.id}
             handle={handle}
             perspective={p}
             active={p.slug === activeSlug}
+            isFirst={i === 0}
+            isLast={i === perspectives.length - 1}
           />
         ))}
         {canAdmin ? (
@@ -62,20 +64,34 @@ interface PerspectiveTabProps {
   handle: string;
   perspective: AttachedPerspective;
   active: boolean;
+  isFirst: boolean;
+  isLast: boolean;
 }
 
-function PerspectiveTab({ handle, perspective, active }: PerspectiveTabProps) {
+function PerspectiveTab({
+  handle,
+  perspective,
+  active,
+  isFirst,
+  isLast,
+}: PerspectiveTabProps) {
   const href = `/${handle}?perspective=${encodeURIComponent(perspective.slug)}`;
   // Real tab-strip styling:
   //   * Tabs sit edge-to-edge. `-ml-px first:ml-0` lets each tab's left
   //     border overlap the previous tab's right border so adjacent tabs
   //     share one 1px line instead of stacking two.
+  //   * Only the OUTER corners are rounded (first tab top-left, last
+  //     tab top-right). Inner corners stay square so adjacent tabs
+  //     don't create visible dips where their rounded tops curve away
+  //     from each other.
   //   * Active tab has z-10 so its borders win the overlap.
   //   * The row above is pulled down 1px (`-mb-px`) so the active tab's
   //     `border-b-transparent` lands exactly on top of the canvas's top
   //     border, dissolving the seam between the tab and the canvas.
   const tabClass = cn(
-    "relative -ml-px first:ml-0 inline-flex items-center gap-1.5 rounded-t-md border border-border px-3 py-1.5 text-xs font-medium",
+    "relative -ml-px first:ml-0 inline-flex items-center gap-1.5 border border-border px-3 py-1.5 text-xs font-medium",
+    isFirst && "rounded-tl-md",
+    isLast && "rounded-tr-md",
     active
       ? "z-10 border-b-transparent bg-white text-foreground"
       : "bg-input/40 text-muted-foreground hover:bg-input/60 hover:text-foreground",
