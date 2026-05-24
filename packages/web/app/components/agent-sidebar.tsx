@@ -291,7 +291,14 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
         const startedMs = Date.parse(data.active_turn_started_at);
         if (Number.isFinite(startedMs) && Date.now() - startedMs < ACTIVE_TURN_STALE_MS) {
           setRemoteInflight(true);
+        } else {
+          setRemoteInflight(false);
         }
+      } else {
+        // Turn has settled server-side — clear the placeholder. This
+        // is what closes the loop after the resume-poll detects
+        // completion.
+        setRemoteInflight(false);
       }
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : String(err));
@@ -304,6 +311,28 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
     void reload();
     return () => abortRef.current?.abort();
   }, [reload]);
+
+  // Resume-after-refresh: when the snapshot says a turn is in flight
+  // server-side but this tab isn't the one running the stream (no
+  // local `busy`), poll the snapshot every 1.5s so the UI catches the
+  // turn's eventual completion (or its message landing) without the
+  // user having to manually reload. Stops as soon as the server
+  // clears `active_turn_started_at` or the local tab takes over the
+  // stream. Capped at the stale-turn cutoff so a permanently-stuck
+  // marker doesn't poll forever (the stale-row cleanup will null it
+  // out on the next poll anyway).
+  useEffect(() => {
+    if (!remoteInflight || busy) return;
+    const startedAt = Date.now();
+    const id = window.setInterval(() => {
+      if (Date.now() - startedAt > ACTIVE_TURN_STALE_MS) {
+        window.clearInterval(id);
+        return;
+      }
+      void reload();
+    }, 1500);
+    return () => window.clearInterval(id);
+  }, [remoteInflight, busy, reload]);
 
   // Subscribe to cross-tab sync messages. SSR-guarded — BroadcastChannel
   // doesn't exist on the server, and older browsers without it just
