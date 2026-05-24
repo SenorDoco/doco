@@ -789,7 +789,6 @@ export function OverviewGraph({
               ) : null}
             </Flow.Controls>
             <Flow.MiniMap
-              position="top-left"
               pannable
               zoomable
               maskColor="rgba(0, 0, 0, 0.35)"
@@ -809,13 +808,14 @@ export function OverviewGraph({
             Loading graph…
           </div>
         )}
-        {/* Reorder-automatically toggle. Sits directly below the
-            minimap (which is top-left), so the user reads the
-            "graph-inside-the-graph" and its setting as one unit.
+        {/* Reorder-automatically toggle. Floats in the top-left of the
+            canvas (the minimap stays in its default bottom-right spot).
             z-index above the React Flow canvas but below the search
-            input that floats top-left at z-20. */}
+            input that floats top-left at z-20 when present. */}
         {visibleNodes.length > 0 && Flow ? (
-          <div className="pointer-events-none absolute left-3 top-[110px] z-10">
+          <div
+            className={`pointer-events-none absolute z-10 ${search ? "left-3 top-12" : "left-3 top-3"}`}
+          >
             <div className="pointer-events-auto rounded-md border border-border bg-card/90 px-2 py-1 shadow-sm backdrop-blur">
               <label className="inline-flex cursor-pointer select-none items-center gap-1.5 text-[11px]">
                 <input
