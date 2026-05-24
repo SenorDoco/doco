@@ -107,6 +107,38 @@ interface InFlightMessage {
 
 const COLLAPSE_KEY = "senor-doco:collapsed";
 const UNREAD_KEY = "senor-doco:unread";
+const SHOW_THINKING_KEY = "senor-doco:show-thinking";
+
+// Sidebar widths. Header collapsed → 32px rail. Default expanded
+// → 320px. With Show Thinking on → 640px so the thinking column
+// has room next to the chat column.
+const RAIL_COLLAPSED = "32px";
+const RAIL_DEFAULT = "320px";
+const RAIL_THINKING = "640px";
+
+/** One chronological entry in the per-turn thinking log. Populated as
+ *  SSE events arrive; cleared at the start of every new send. */
+type ThinkingEvent =
+  | { id: string; at_ms: number; kind: "tool_start"; tool_id: string; name: string }
+  | { id: string; at_ms: number; kind: "tool_input"; tool_id: string; input: unknown }
+  | {
+      id: string;
+      at_ms: number;
+      kind: "tool_result";
+      tool_id: string;
+      preview: string;
+      ok: boolean;
+    }
+  | { id: string; at_ms: number; kind: "text"; text: string }
+  | {
+      id: string;
+      at_ms: number;
+      kind: "usage";
+      input_tokens: number;
+      output_tokens: number;
+    }
+  | { id: string; at_ms: number; kind: "navigate"; url: string }
+  | { id: string; at_ms: number; kind: "error"; message: string };
 // Broadcast channel name shared across tabs in the same browser
 // origin. Same session → same conversation, so any change in one tab
 // pings the others to reload.
@@ -166,20 +198,38 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
   // client render hydrates from the stored value.
   const [collapsed, setCollapsed] = useState<boolean>(() => readBoolFlag(COLLAPSE_KEY));
   const [unread, setUnread] = useState<boolean>(() => readBoolFlag(UNREAD_KEY));
+  // Show Thinking toggle: when on, the sidebar widens from 320 to
+  // 640px and a "Thinking" column appears next to the chat showing
+  // the real-time event log of the current/last turn.
+  const [showThinking, setShowThinking] = useState<boolean>(() => readBoolFlag(SHOW_THINKING_KEY));
+  // Per-turn chronological log of every SSE event. Reset at the
+  // start of each send; retained between turns so the user can
+  // review the last completed turn without re-running it.
+  const [thinkingEvents, setThinkingEvents] = useState<ThinkingEvent[]>([]);
+  // Wall-clock anchor for at_ms timestamps on thinkingEvents — set
+  // when a turn starts; reads as `performance.now() - turnStartRef`.
+  const turnStartRef = useRef<number>(0);
   const collapsedRef = useRef(collapsed);
   useEffect(() => {
     collapsedRef.current = collapsed;
   }, [collapsed]);
   // Publish the rail's current width as a CSS variable so floating
   // overlays (the neuron-detail dialog, etc.) can avoid covering it on
-  // small screens. Expanded: 320px; collapsed: 32px.
+  // small screens. Three widths now: collapsed (32), default
+  // expanded (320), and Show-Thinking expanded (640).
+  const railWidth = collapsed ? RAIL_COLLAPSED : showThinking ? RAIL_THINKING : RAIL_DEFAULT;
   useEffect(() => {
     if (typeof document === "undefined") return;
-    document.documentElement.style.setProperty(
-      "--senor-doco-rail-width",
-      collapsed ? "32px" : "320px",
-    );
-  }, [collapsed]);
+    document.documentElement.style.setProperty("--senor-doco-rail-width", railWidth);
+  }, [railWidth]);
+
+  const toggleShowThinking = useCallback(() => {
+    setShowThinking((prev) => {
+      const next = !prev;
+      writeBoolFlag(SHOW_THINKING_KEY, next);
+      return next;
+    });
+  }, []);
   const navigate = useNavigate();
   const location = useLocation();
   const messageListRef = useRef<HTMLDivElement | null>(null);
@@ -402,6 +452,27 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
     setStaged((prev) => prev.filter((a) => a.id !== id));
   }, []);
 
+  // Append helper for the thinking event log. The id is monotonic
+  // within the React closure for stable list keys; at_ms is relative
+  // to turn start so the panel can render elapsed-time markers.
+  const appendThinking = useCallback(
+    (
+      ev:
+        | Omit<Extract<ThinkingEvent, { kind: "tool_start" }>, "id" | "at_ms">
+        | Omit<Extract<ThinkingEvent, { kind: "tool_input" }>, "id" | "at_ms">
+        | Omit<Extract<ThinkingEvent, { kind: "tool_result" }>, "id" | "at_ms">
+        | Omit<Extract<ThinkingEvent, { kind: "text" }>, "id" | "at_ms">
+        | Omit<Extract<ThinkingEvent, { kind: "usage" }>, "id" | "at_ms">
+        | Omit<Extract<ThinkingEvent, { kind: "navigate" }>, "id" | "at_ms">
+        | Omit<Extract<ThinkingEvent, { kind: "error" }>, "id" | "at_ms">,
+    ) => {
+      const at_ms = Math.round(performance.now() - turnStartRef.current);
+      const id = `t_${at_ms}_${Math.random().toString(36).slice(2, 7)}`;
+      setThinkingEvents((prev) => [...prev, { ...ev, id, at_ms } as ThinkingEvent]);
+    },
+    [],
+  );
+
   const send = useCallback(
     async (override?: { text: string; staged: StagedAttachment[] }) => {
       const text = (override?.text ?? inputText).trim();
@@ -429,6 +500,11 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
       }
       setUploadError(null);
       setBusy(true);
+      // Reset the thinking log so the panel reflects only the current
+      // turn. The last turn's events have already been retained long
+      // enough for the user to review them after settle.
+      turnStartRef.current = performance.now();
+      setThinkingEvents([]);
       // Tell other tabs that Señor Doco is busy — they'll show a
       // "replying somewhere else" placeholder until our stream ends.
       broadcastSync({ kind: "remote-inflight", busy: true });
@@ -521,6 +597,7 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
                 localContent.push({ type: "text", text: event.text });
               }
               bumpInFlight();
+              appendThinking({ kind: "text", text: event.text });
             } else if (event.kind === "tool_use_start") {
               localContent.push({
                 type: "tool_use",
@@ -529,6 +606,11 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
                 input: {},
               });
               bumpInFlight();
+              appendThinking({
+                kind: "tool_start",
+                tool_id: event.tool_use_id,
+                name: event.name,
+              });
             } else if (event.kind === "tool_use_input") {
               const b = localContent.find(
                 (x) => x.type === "tool_use" && (x as ContentBlockToolUse).id === event.tool_use_id,
@@ -537,6 +619,11 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
                 b.input = event.input;
                 bumpInFlight();
               }
+              appendThinking({
+                kind: "tool_input",
+                tool_id: event.tool_use_id,
+                input: event.input,
+              });
             } else if (event.kind === "tool_use_result") {
               localResults.set(event.tool_use_id, {
                 type: "tool_result",
@@ -545,8 +632,15 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
                 is_error: !event.ok,
               });
               bumpInFlight();
+              appendThinking({
+                kind: "tool_result",
+                tool_id: event.tool_use_id,
+                preview: event.preview,
+                ok: event.ok,
+              });
             } else if (event.kind === "navigate") {
               navigate(event.url);
+              appendThinking({ kind: "navigate", url: event.url });
             } else if (event.kind === "message_saved") {
               // Server just persisted a user or assistant message. Tell
               // other tabs so they re-fetch the canonical snapshot and
@@ -555,12 +649,18 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
             } else if (event.kind === "error") {
               localContent.push({ type: "text", text: `[error] ${event.message}` });
               bumpInFlight();
+              appendThinking({ kind: "error", message: event.message });
             } else if (event.kind === "usage_update") {
               setTurnUsage({
                 input_tokens: event.input_tokens,
                 output_tokens: event.output_tokens,
                 cache_read_tokens: event.cache_read_tokens,
                 cache_creation_tokens: event.cache_creation_tokens,
+              });
+              appendThinking({
+                kind: "usage",
+                input_tokens: event.input_tokens,
+                output_tokens: event.output_tokens,
               });
             } else if (event.kind === "done") {
               break streamLoop;
@@ -611,7 +711,16 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
         broadcastSync({ kind: "changed" });
       }
     },
-    [inputText, busy, staged, location.pathname, location.search, navigate, broadcastSync],
+    [
+      inputText,
+      busy,
+      staged,
+      location.pathname,
+      location.search,
+      navigate,
+      broadcastSync,
+      appendThinking,
+    ],
   );
 
   // Queue-drain: when Señor Doco settles AND a message is queued
@@ -689,7 +798,8 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
 
   return (
     <aside
-      className="neu-panel flex h-full w-[320px] shrink-0 flex-col border-r border-border bg-card"
+      className="neu-panel flex h-full shrink-0 flex-col border-r border-border bg-card"
+      style={{ width: railWidth, transition: "width 180ms ease-out" }}
       aria-busy={agentActive}
       aria-label={agentActive ? "Señor Doco, working" : "Señor Doco"}
     >
@@ -722,34 +832,47 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
         .
       </div>
 
-      <div
-        ref={messageListRef}
-        onScroll={onMessagesScroll}
-        className="flex-1 overflow-y-auto px-3 py-3 text-xs leading-relaxed"
-      >
-        {loadError ? (
-          <div className="rounded-md bg-destructive/10 px-2 py-1.5 text-[11px] text-destructive">
-            Couldn't load chat history: {loadError}
-          </div>
-        ) : null}
-        {hasMore ? (
-          <div className="mb-2 text-center text-[10px] text-muted-foreground">
-            {loadingOlder ? "Loading older messages…" : "Scroll up for older messages"}
-          </div>
-        ) : null}
-        {allMessages.length === 0 && !loadError && bootstrapped ? (
-          <div className="text-[11px] text-muted-foreground">
-            Ask me anything about your Docos — I can search, capture decisions, create new Docos or
-            orgs, invite collaborators, and take you to any page.
-          </div>
-        ) : null}
-        {allMessages.map((rm) => (
-          <MessageBlock
-            key={rm.kind === "saved" ? rm.message.id : "inflight"}
-            rm={rm}
-            usage={rm.kind === "inflight" ? turnUsage : null}
+      <div className="flex min-h-0 flex-1">
+        <div
+          ref={messageListRef}
+          onScroll={onMessagesScroll}
+          className={cn(
+            "min-h-0 overflow-y-auto px-3 py-3 text-xs leading-relaxed",
+            showThinking ? "w-[320px] shrink-0 border-r border-border" : "flex-1",
+          )}
+        >
+          {loadError ? (
+            <div className="rounded-md bg-destructive/10 px-2 py-1.5 text-[11px] text-destructive">
+              Couldn't load chat history: {loadError}
+            </div>
+          ) : null}
+          {hasMore ? (
+            <div className="mb-2 text-center text-[10px] text-muted-foreground">
+              {loadingOlder ? "Loading older messages…" : "Scroll up for older messages"}
+            </div>
+          ) : null}
+          {allMessages.length === 0 && !loadError && bootstrapped ? (
+            <div className="text-[11px] text-muted-foreground">
+              Ask me anything about your Docos — I can search, capture decisions, create new Docos
+              or orgs, invite collaborators, and take you to any page.
+            </div>
+          ) : null}
+          {allMessages.map((rm) => (
+            <MessageBlock
+              key={rm.kind === "saved" ? rm.message.id : "inflight"}
+              rm={rm}
+              usage={rm.kind === "inflight" ? turnUsage : null}
+              showThinking={showThinking}
+              onToggleThinking={toggleShowThinking}
+            />
+          ))}
+        </div>
+        {showThinking ? (
+          <ThinkingPanel
+            events={thinkingEvents}
+            active={busy || inFlight !== null || remoteInflight}
           />
-        ))}
+        ) : null}
       </div>
 
       <Composer
@@ -870,7 +993,17 @@ function formatTokenCount(n: number): string {
   return `${Math.round(n / 1000)}k`;
 }
 
-function MessageBlock({ rm, usage }: { rm: RenderableMessage; usage: TurnUsage | null }) {
+function MessageBlock({
+  rm,
+  usage,
+  showThinking,
+  onToggleThinking,
+}: {
+  rm: RenderableMessage;
+  usage: TurnUsage | null;
+  showThinking: boolean;
+  onToggleThinking: () => void;
+}) {
   if (rm.kind === "saved") {
     const m = rm.message;
     // A "user" role message that contains only tool_result blocks is
@@ -890,7 +1023,14 @@ function MessageBlock({ rm, usage }: { rm: RenderableMessage; usage: TurnUsage |
     }
     return <SavedMessage message={m} />;
   }
-  return <InFlightMessageView msg={rm.message} usage={usage} />;
+  return (
+    <InFlightMessageView
+      msg={rm.message}
+      usage={usage}
+      showThinking={showThinking}
+      onToggleThinking={onToggleThinking}
+    />
+  );
 }
 
 function SavedMessage({ message }: { message: ChatMessage }) {
@@ -914,7 +1054,17 @@ function SavedMessage({ message }: { message: ChatMessage }) {
   );
 }
 
-function InFlightMessageView({ msg, usage }: { msg: InFlightMessage; usage: TurnUsage | null }) {
+function InFlightMessageView({
+  msg,
+  usage,
+  showThinking,
+  onToggleThinking,
+}: {
+  msg: InFlightMessage;
+  usage: TurnUsage | null;
+  showThinking: boolean;
+  onToggleThinking: () => void;
+}) {
   return (
     <div className="mb-3 flex flex-col items-end">
       <div className="neu-bubble max-w-[90%] space-y-1.5 rounded-lg bg-primary/10 px-2.5 py-1.5">
@@ -953,8 +1103,107 @@ function InFlightMessageView({ msg, usage }: { msg: InFlightMessage; usage: Turn
           </span>
         ) : null}
       </div>
+      {/* Show-thinking toggle. Tap expands the sidebar from 320 to
+          640px and reveals a real-time event log of every tool call,
+          tool result, and text delta the agent is producing right
+          now. Tap again to collapse. */}
+      <button
+        type="button"
+        onClick={onToggleThinking}
+        className="mt-1 flex items-center gap-1 text-[10px] uppercase tracking-wide text-muted-foreground hover:text-primary"
+        aria-pressed={showThinking}
+        aria-label={showThinking ? "Hide thinking" : "Show thinking"}
+        title={showThinking ? "Hide the thinking column" : "Show the real-time thinking column"}
+      >
+        <span aria-hidden>{showThinking ? "▾" : "▴"}</span>
+        {showThinking ? "Hide thinking" : "Show thinking"}
+      </button>
     </div>
   );
+}
+
+function ThinkingPanel({ events, active }: { events: ThinkingEvent[]; active: boolean }) {
+  return (
+    <div className="flex min-h-0 flex-1 flex-col bg-card/50">
+      <div className="shrink-0 border-b border-border/70 px-3 py-1.5 text-[10px] uppercase tracking-wide text-muted-foreground">
+        Thinking {active ? <span className="ml-1 animate-pulse">●</span> : null}
+        <span className="ml-2 font-mono normal-case">{events.length} events</span>
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2 text-[11px] font-mono leading-snug">
+        {events.length === 0 ? (
+          <div className="px-1 py-2 text-muted-foreground">
+            {active
+              ? "(waiting for first event…)"
+              : "(no thinking yet — send a message to see what Señor Doco does)"}
+          </div>
+        ) : (
+          events.map((ev) => <ThinkingRow key={ev.id} ev={ev} />)
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ThinkingRow({ ev }: { ev: ThinkingEvent }) {
+  const elapsed = `+${(ev.at_ms / 1000).toFixed(1)}s`;
+  if (ev.kind === "text") {
+    return (
+      <div className="mb-1">
+        <span className="text-muted-foreground">{elapsed} text </span>
+        <span className="whitespace-pre-wrap break-words">{ev.text}</span>
+      </div>
+    );
+  }
+  if (ev.kind === "tool_start") {
+    return (
+      <div className="mb-1">
+        <span className="text-muted-foreground">{elapsed} tool </span>
+        <span className="font-semibold">{ev.name}</span>
+        <span className="text-muted-foreground"> ({ev.tool_id.slice(-6)})</span>
+      </div>
+    );
+  }
+  if (ev.kind === "tool_input") {
+    const json = JSON.stringify(ev.input);
+    return (
+      <div className="mb-1 break-all">
+        <span className="text-muted-foreground">{elapsed} input </span>
+        <span>{json.length > 200 ? `${json.slice(0, 200)}…` : json}</span>
+      </div>
+    );
+  }
+  if (ev.kind === "tool_result") {
+    return (
+      <div className={cn("mb-1 break-all", ev.ok ? "" : "text-destructive")}>
+        <span className="text-muted-foreground">{elapsed} result </span>
+        <span>{ev.preview}</span>
+      </div>
+    );
+  }
+  if (ev.kind === "navigate") {
+    return (
+      <div className="mb-1 text-primary">
+        <span className="text-muted-foreground">{elapsed} navigate </span>
+        <span>{ev.url}</span>
+      </div>
+    );
+  }
+  if (ev.kind === "usage") {
+    return (
+      <div className="mb-1 text-muted-foreground">
+        {elapsed} usage in={ev.input_tokens} out={ev.output_tokens}
+      </div>
+    );
+  }
+  if (ev.kind === "error") {
+    return (
+      <div className="mb-1 text-destructive">
+        <span className="text-muted-foreground">{elapsed} error </span>
+        <span>{ev.message}</span>
+      </div>
+    );
+  }
+  return null;
 }
 
 function BlockView({ block }: { block: AnyBlock }) {
