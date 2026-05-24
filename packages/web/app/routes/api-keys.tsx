@@ -267,6 +267,10 @@ function ScopeRow({
   onChange: (role: DocoRole | null) => void;
 }) {
   const checked = role !== null;
+  // Show the role dropdown always so the user can see (and tweak) the
+  // default before checking the box. The dropdown is disabled until the
+  // row is selected — changing it then auto-checks the row.
+  const effectiveRole = role ?? opt.myRole;
   return (
     <div className="flex items-center gap-3">
       <label className="flex flex-1 items-center gap-2 text-sm">
@@ -282,20 +286,19 @@ function ScopeRow({
         <span className="font-mono">{opt.label}</span>
         <span className="text-xs text-muted-foreground">(you: {opt.myRole})</span>
       </label>
-      {checked ? (
-        <select
-          value={role ?? opt.myRole}
-          data-testid={`scope-role-${opt.level}-${opt.id}`}
-          onChange={(e) => onChange(e.currentTarget.value as DocoRole)}
-          className="rounded-md px-2 py-1 text-xs"
-        >
-          {ALL_ROLES.filter((r) => rankOrZero(r) <= rankOrZero(opt.myRole)).map((r) => (
-            <option key={r} value={r}>
-              {r}
-            </option>
-          ))}
-        </select>
-      ) : null}
+      <select
+        value={effectiveRole}
+        disabled={!checked}
+        data-testid={`scope-role-${opt.level}-${opt.id}`}
+        onChange={(e) => onChange(e.currentTarget.value as DocoRole)}
+        className="rounded-md px-2 py-1 text-xs disabled:opacity-50"
+      >
+        {ALL_ROLES.filter((r) => rankOrZero(r) <= rankOrZero(opt.myRole)).map((r) => (
+          <option key={r} value={r}>
+            {r}
+          </option>
+        ))}
+      </select>
     </div>
   );
 }

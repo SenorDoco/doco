@@ -191,14 +191,13 @@ async function loadOrgHandles(ids: string[]): Promise<Map<string, string>> {
 
 export async function loadScopeOptions(principalId: string): Promise<ScopeOption[]> {
   const orgs = await listOrganizationsForCollaborator(principalId);
-  const orgOptions: ScopeOption[] = [];
+  const options: ScopeOption[] = [];
   for (const o of orgs) {
     const role = (await getOrgRole(o.id, principalId)) ?? "reader";
-    orgOptions.push({ level: "org", id: o.id, label: o.handle, myRole: role });
+    options.push({ level: "org", id: o.id, label: o.handle, myRole: role });
   }
 
   const docoIds = await listAccessibleDocoIdsForPrincipal(principalId);
-  const docoOptions: ScopeOption[] = [];
   for (const docoId of docoIds) {
     const docoRow = await withClient((c) =>
       c.query<{ handle: string; owner_id: string }>(
@@ -210,10 +209,13 @@ export async function loadScopeOptions(principalId: string): Promise<ScopeOption
     if (!row) continue;
     const role = await getDocoLevelRole({ ownerId: String(row.owner_id), docoId }, principalId);
     if (!role) continue;
-    docoOptions.push({ level: "doco", id: docoId, label: String(row.handle), myRole: role });
+    options.push({ level: "doco", id: docoId, label: String(row.handle), myRole: role });
   }
-  docoOptions.sort((a, b) => a.label.localeCompare(b.label));
-  return [...orgOptions, ...docoOptions];
+  // Sort by label across orgs + docos so the picker reads alphabetically
+  // (an org and its docos cluster naturally because the doco handles are
+  // prefixed with the org slug).
+  options.sort((a, b) => a.label.localeCompare(b.label));
+  return options;
 }
 
 export interface MintApiKeyInput {
