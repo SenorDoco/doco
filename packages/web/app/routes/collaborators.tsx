@@ -631,7 +631,11 @@ function AccessLine({
   }, [justSaved]);
 
   return (
-    <div className="flex items-center gap-1.5">
+    // pr-2 + pb-1 give the right-most / bottom-most .neu-button room
+    // for its 5px+12px shadow to render fully — without it, the X
+    // button at the row's end gets visually clipped against the
+    // table-cell edge (see `.neu-button` render contract in app.css).
+    <div className="flex items-center gap-2 pb-1 pr-2">
       <Link
         to={grant.target_link}
         className="neu-button inline-flex min-w-0 flex-1 items-center truncate rounded-full px-2 py-0.5 text-xs"

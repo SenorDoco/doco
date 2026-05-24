@@ -63,13 +63,7 @@ interface PerspectiveTabProps {
   isLast: boolean;
 }
 
-function PerspectiveTab({
-  handle,
-  perspective,
-  active,
-  isFirst,
-  isLast,
-}: PerspectiveTabProps) {
+function PerspectiveTab({ handle, perspective, active, isFirst, isLast }: PerspectiveTabProps) {
   const href = `/${handle}?perspective=${encodeURIComponent(perspective.slug)}`;
   // Real tab-strip styling:
   //   * Tabs sit edge-to-edge. `-ml-px first:ml-0` lets each tab's left
@@ -100,13 +94,7 @@ function PerspectiveTab({
     : perspective.name;
 
   return (
-    <Link
-      to={href}
-      role="tab"
-      aria-selected={active}
-      className={tabClass}
-      title={title}
-    >
+    <Link to={href} role="tab" aria-selected={active} className={tabClass} title={title}>
       {perspective.icon ? (
         <span aria-hidden className="text-sm leading-none">
           {perspective.icon}
