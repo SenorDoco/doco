@@ -2,6 +2,7 @@ import { Handle, type MiniMapNodeProps, Position } from "@xyflow/react";
 import { Maximize2, Minimize2 } from "lucide-react";
 import { type ComponentType, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
+import { LifecycleBadge, TypeBadge } from "~/components/neuron-badges";
 import { NeuronTypeIcon } from "~/components/neuron-type-icon";
 import {
   FAR_DEPTH,
@@ -142,8 +143,12 @@ const NODE_TYPE_ORDER = new Map(
   ].map((type, index) => [type, index]),
 );
 
-const OVERVIEW_NODE_WIDTH = 112;
-const OVERVIEW_NODE_HEIGHT = 34;
+// Card size — wide and tall enough to fit two badges (type / lifecycle)
+// at the top and several lines of title/summary below. Width was 112,
+// height was 34; the larger box matches the user's "200% wider, 300%
+// taller" ask so the graph reads as cards rather than pills.
+const OVERVIEW_NODE_WIDTH = 336;
+const OVERVIEW_NODE_HEIGHT = 136;
 const DETAIL_ZOOM = 0.95;
 const MAX_DETAIL_FETCH = 80;
 const GRAPH_MIN_ZOOM = 0.03;
@@ -373,13 +378,13 @@ function OverviewFlowNode({ data }: { data: OverviewNodeData }) {
   const lifecycle = nodeLifecycle(data.node);
   const detail = data.detail;
   const title = overviewNodeDisplayLabel(data.node, detail);
-  const subtitle = detail?.summary ?? data.node.name ?? data.node.id;
-  const showDetail = data.showDetail && Boolean(detail);
+  const summary = detail?.summary ?? null;
+  const hasSummary = Boolean(summary) && summary !== title;
 
   return (
     <div className="relative h-full w-full overflow-visible" style={{ opacity: data.opacity }}>
       <div
-        className={`neu-surface overview-graph-node nodrag nopan flex h-full w-full items-center gap-1.5 overflow-hidden rounded-[4px] border bg-card px-2 text-left shadow-sm${data.isNew ? " doco-new-node-glow" : ""}`}
+        className={`neu-surface overview-graph-node nodrag nopan relative flex h-full w-full flex-col justify-center gap-1.5 overflow-hidden rounded-md border bg-card px-3 py-2 pl-4 text-left shadow-sm${data.isNew ? " doco-new-node-glow" : ""}`}
         data-graph-reference-number={data.referenceNumber ?? undefined}
         data-neuron-href={detail?.href ?? data.node.href ?? undefined}
         data-neuron-id={data.node.id}
@@ -399,11 +404,17 @@ function OverviewFlowNode({ data }: { data: OverviewNodeData }) {
           style={HIDDEN_HANDLE_STYLE}
           isConnectable={false}
         />
-        <NeuronTypeIcon entityType={data.node.entity_type} className="!h-3.5 !w-3.5 shrink-0" />
-        <span className="min-w-0 flex-1 truncate font-mono text-[10px] font-semibold leading-none text-foreground">
-          {title}
-        </span>
-        {showDetail && title !== subtitle ? <span className="sr-only">{subtitle}</span> : null}
+        <TypeBadge entityType={data.node.entity_type} lifecycle={lifecycle} anchor="left" />
+        <LifecycleBadge lifecycle={lifecycle} anchor="right" />
+        <div className="flex items-center gap-2">
+          <NeuronTypeIcon entityType={data.node.entity_type} className="!h-4 !w-4 shrink-0" />
+          <span className="line-clamp-2 min-w-0 flex-1 font-mono text-xs font-semibold leading-snug text-foreground">
+            {title}
+          </span>
+        </div>
+        {hasSummary ? (
+          <p className="line-clamp-3 text-[11px] leading-snug text-muted-foreground">{summary}</p>
+        ) : null}
         <Handle
           type="source"
           position={Position.Right}

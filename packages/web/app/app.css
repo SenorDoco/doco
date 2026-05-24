@@ -160,16 +160,24 @@ button[class*="bg-primary"]:active {
    doesn't accidentally match `border-border` (which contains "border-b"
    as a substring). Excluded: `.neu-button` / `.neu-pressed` /
    `bg-primary` — those carry their own shadow treatments. */
-[class~="border-b"][class~="border-border"]:not([class~="neu-button"]):not([class~="neu-pressed"]):not([class*="bg-primary"]) {
+[class~="border-b"][class~="border-border"]:not([class~="neu-button"]):not(
+    [class~="neu-pressed"]
+  ):not([class*="bg-primary"]) {
   box-shadow: 0 1px 0 color-mix(in oklch, white 75%, transparent);
 }
-[class~="border-t"][class~="border-border"]:not([class~="neu-button"]):not([class~="neu-pressed"]):not([class*="bg-primary"]) {
+[class~="border-t"][class~="border-border"]:not([class~="neu-button"]):not(
+    [class~="neu-pressed"]
+  ):not([class*="bg-primary"]) {
   box-shadow: inset 0 1px 0 color-mix(in oklch, white 75%, transparent);
 }
-[class~="border-r"][class~="border-border"]:not([class~="neu-button"]):not([class~="neu-pressed"]):not([class*="bg-primary"]) {
+[class~="border-r"][class~="border-border"]:not([class~="neu-button"]):not(
+    [class~="neu-pressed"]
+  ):not([class*="bg-primary"]) {
   box-shadow: 1px 0 0 color-mix(in oklch, white 75%, transparent);
 }
-[class~="border-l"][class~="border-border"]:not([class~="neu-button"]):not([class~="neu-pressed"]):not([class*="bg-primary"]) {
+[class~="border-l"][class~="border-border"]:not([class~="neu-button"]):not(
+    [class~="neu-pressed"]
+  ):not([class*="bg-primary"]) {
   box-shadow: inset 1px 0 0 color-mix(in oklch, white 75%, transparent);
 }
 [class~="divide-y"] > * + * {
@@ -189,7 +197,11 @@ button[class*="bg-primary"]:active {
    canvas container). Add a top-left inset highlight so the box reads
    as etched-with-light-from-top-left, matching `.neu-surface` cards.
    The dark line is supplied by `border-border` itself. */
-[class~="border"][class~="border-border"]:not([class~="neu-button"]):not([class~="neu-pressed"]):not([class*="bg-primary"]):not([class~="border-b"]):not([class~="border-t"]):not([class~="border-l"]):not([class~="border-r"]) {
+[class~="border"][class~="border-border"]:not([class~="neu-button"]):not(
+    [class~="neu-pressed"]
+  ):not([class*="bg-primary"]):not([class~="border-b"]):not([class~="border-t"]):not(
+    [class~="border-l"]
+  ):not([class~="border-r"]) {
   box-shadow: inset 1px 1px 0 color-mix(in oklch, white 75%, transparent);
 }
 
@@ -215,18 +227,16 @@ button[class*="bg-primary"]:active {
   .neu-surface-strong,
   .neu-surface-interactive {
     border-color: transparent;
-    box-shadow:
-      inset 1px 1px 0 color-mix(in oklch, white 75%, transparent),
-      inset -1px -1px 0 color-mix(in oklch, var(--color-foreground) 22%, transparent);
+    box-shadow: inset 1px 1px 0 color-mix(in oklch, white 75%, transparent), inset -1px -1px 0
+      color-mix(in oklch, var(--color-foreground) 22%, transparent);
   }
 
   /* Clickable variant — same edge at rest. Hover shifts the
      bottom-right shadow to a primary tint so the affordance is
      color-only; depth and direction don't change. */
   .neu-surface-interactive:hover {
-    box-shadow:
-      inset 1px 1px 0 color-mix(in oklch, white 75%, transparent),
-      inset -1px -1px 0 color-mix(in oklch, var(--color-primary) 55%, transparent);
+    box-shadow: inset 1px 1px 0 color-mix(in oklch, white 75%, transparent), inset -1px -1px 0
+      color-mix(in oklch, var(--color-primary) 55%, transparent);
   }
 
   /* Floating element (dialog / drawer / dropdown / tooltip). These
@@ -280,9 +290,8 @@ button[class*="bg-primary"]:active {
 
   /* Chat message bubble — same directional etched edge as `.neu-surface`. */
   .neu-bubble {
-    box-shadow:
-      inset 1px 1px 0 color-mix(in oklch, white 75%, transparent),
-      inset -1px -1px 0 color-mix(in oklch, var(--color-foreground) 22%, transparent);
+    box-shadow: inset 1px 1px 0 color-mix(in oklch, white 75%, transparent), inset -1px -1px 0
+      color-mix(in oklch, var(--color-foreground) 22%, transparent);
   }
 
   .neu-shadow-sm {
@@ -418,5 +427,24 @@ button[class*="bg-primary"]:active {
   .doco-new-node-glow {
     animation-duration: 60s;
     animation-timing-function: linear;
+  }
+}
+
+/* Animate node position changes when the graph reorganizes — e.g. on
+   focal-node change with "Reorder automatically" on, or when a
+   lifecycle filter toggles in/out a chunk of nodes. React Flow paints
+   each node's position as a `transform: translate(...)` on the node
+   wrapper; transitioning only that property animates moves without
+   touching pan/zoom (those live on the .react-flow__viewport element,
+   which we explicitly opt out below). */
+.react-flow__node {
+  transition: transform 500ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+.react-flow__viewport {
+  transition: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .react-flow__node {
+    transition: none;
   }
 }
