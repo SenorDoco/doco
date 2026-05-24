@@ -240,7 +240,13 @@ export default function OrgsIndexPage({
               to="/collaborators"
               className="neu-button shrink-0 rounded-md px-3 py-1.5 text-sm font-semibold"
             >
-              Collaborator (people/agents)
+              Collaborators
+            </Link>
+            <Link
+              to="/api-keys"
+              className="neu-button shrink-0 rounded-md px-3 py-1.5 text-sm font-semibold"
+            >
+              API keys
             </Link>
           </div>
         </header>

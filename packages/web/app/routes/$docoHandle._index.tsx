@@ -18,7 +18,7 @@ import { ActivityFeedLine, type ActivityFeedLineItem } from "~/components/activi
 import { ActivityHeatmap } from "~/components/activity-heatmap";
 import { Breadcrumb, docoBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
-import { CollaboratorsLink } from "~/components/invite-collaborators-link";
+import { ApiKeysLink, CollaboratorsLink } from "~/components/invite-collaborators-link";
 import { LIFECYCLE_ORDER, initialVisibleLifecycles } from "~/components/lifecycle-filter";
 import { NeuronDialog } from "~/components/neuron-dialog";
 import { NeuronTypeIcon } from "~/components/neuron-type-icon";
@@ -761,6 +761,7 @@ export default function DocoHome({
             </h1>
             <div className="flex flex-wrap items-center gap-2">
               {canInviteCollaborators ? <CollaboratorsLink level="doco" targetId={docoId} /> : null}
+              {canInviteCollaborators ? <ApiKeysLink /> : null}
               <Link
                 to={`/${handle}/policies`}
                 className="neu-button shrink-0 rounded-md border border-border px-3 py-1.5 text-xs font-semibold hover:bg-input"

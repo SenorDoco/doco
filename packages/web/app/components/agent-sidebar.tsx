@@ -824,14 +824,11 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
 
       {/* Persistent "what this is" line, sitting right under the title so
           new collaborators immediately know what Señor Doco is and how to
-          invite their own agent. */}
+          mint a token for their own agent. */}
       <div className="shrink-0 border-b border-border/70 px-3 py-1.5 text-[10px] leading-snug text-muted-foreground">
         Señor Doco runs on Claude Haiku 4.5 inside Doco. Want to collaborate with your own agent?{" "}
-        <Link
-          to="/collaborators/invite"
-          className="font-semibold text-foreground hover:text-primary"
-        >
-          Invite them
+        <Link to="/api-keys" className="font-semibold text-foreground hover:text-primary">
+          Mint an API key
         </Link>
         .
       </div>

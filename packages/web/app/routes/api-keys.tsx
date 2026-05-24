@@ -1,0 +1,456 @@
+// /api-keys — host-level page for managing API keys.
+//
+// Lists every active OAuth refresh token bound to the signed-in user
+// (both agent-OAuth-flow tokens and personal-API-key tokens minted
+// from this page) and lets the user mint new personal API keys.
+//
+// Distinct from /collaborators: that page lists humans only. API keys
+// can be issued to agents OR for the user's own scripts / runtimes,
+// so they live on their own page with their own affordances.
+
+import type { DocoRole } from "@doco/db";
+import { useEffect, useMemo, useState } from "react";
+import { Form, Link, redirect, useFetcher, useNavigation } from "react-router";
+import { Breadcrumb, hostBreadcrumb } from "~/components/breadcrumb";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
+import { SingleColumnPageMain } from "~/components/page-main";
+import { SiteHeader } from "~/components/site-header";
+import {
+  type ApiKeyRow,
+  type ApiKeyScopeGrant,
+  type ApiKeysPageData,
+  type MintedApiKey,
+  type ScopeOption,
+  listApiKeysForCollaborator,
+  loadScopeOptions,
+  mintApiKey,
+  revokeApiKey,
+} from "~/lib/api-keys.server";
+import { ALL_ROLES } from "~/lib/collaborator-invite";
+import { getCurrentPrincipal } from "~/lib/session.server";
+
+export async function loader({ request }: { request: Request }): Promise<ApiKeysPageData> {
+  const me = await getCurrentPrincipal(request);
+  if (!me) {
+    const url = new URL(request.url);
+    throw redirect(`/sign-in?next=${encodeURIComponent(`${url.pathname}${url.search}`)}`);
+  }
+  const [keys, scopeOptions] = await Promise.all([
+    listApiKeysForCollaborator(me.id),
+    loadScopeOptions(me.id),
+  ]);
+  return { me, keys, scopeOptions, justMinted: null };
+}
+
+type ActionResult =
+  | { intent: "mint"; ok: true; minted: MintedApiKey }
+  | { intent: "revoke"; ok: true; client_id: string }
+  | { error: string };
+
+export async function action({ request }: { request: Request }): Promise<ActionResult> {
+  const me = await getCurrentPrincipal(request);
+  if (!me) return { error: "Sign in to manage API keys." };
+
+  const form = await request.formData();
+  const intent = String(form.get("intent") ?? "");
+
+  if (intent === "revoke") {
+    const clientId = String(form.get("client_id") ?? "").trim();
+    if (!clientId) return { error: "Missing client_id." };
+    const ok = await revokeApiKey({ collaborator_id: me.id, client_id: clientId });
+    if (!ok) return { error: "Token not found or already revoked." };
+    return { intent: "revoke", ok: true, client_id: clientId };
+  }
+
+  if (intent === "mint") {
+    const label = String(form.get("label") ?? "").trim();
+    const rawGrants = String(form.get("grants") ?? "").trim();
+    if (!rawGrants) return { error: "Pick at least one org or doco to scope this key to." };
+
+    // grants is a JSON-encoded array of { level, target_id, role }.
+    let grants: Array<{ level: "org" | "doco"; target_id: string; role: DocoRole }> = [];
+    try {
+      const parsed = JSON.parse(rawGrants);
+      if (!Array.isArray(parsed)) throw new Error("grants must be an array");
+      grants = parsed.map((g: { level?: unknown; target_id?: unknown; role?: unknown }) => {
+        const level = g.level === "org" || g.level === "doco" ? g.level : null;
+        const target_id = typeof g.target_id === "string" ? g.target_id : "";
+        const role = typeof g.role === "string" ? (g.role as DocoRole) : ("reader" as DocoRole);
+        if (!level || !target_id) throw new Error("invalid grant entry");
+        return { level, target_id, role };
+      });
+    } catch (err) {
+      return {
+        error: err instanceof Error ? err.message : "Malformed grants list.",
+      };
+    }
+
+    try {
+      const minted = await mintApiKey({ me, label, grants });
+      return { intent: "mint", ok: true, minted };
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : "Failed to mint API key." };
+    }
+  }
+
+  return { error: `Unknown intent: ${intent}` };
+}
+
+export function meta() {
+  return [{ title: "API keys · Doco" }];
+}
+
+export default function ApiKeysPage({
+  loaderData,
+  actionData,
+}: {
+  loaderData: ApiKeysPageData;
+  actionData?: ActionResult;
+}) {
+  const { me, keys, scopeOptions } = loaderData;
+  const minted =
+    actionData && "intent" in actionData && actionData.intent === "mint" ? actionData.minted : null;
+  const error = actionData && "error" in actionData ? actionData.error : null;
+
+  return (
+    <div className="min-h-screen flex flex-col bg-background text-foreground">
+      <SiteHeader mode="host" me={me} />
+      <SingleColumnPageMain className="py-8 space-y-6">
+        <Breadcrumb items={hostBreadcrumb({ pageLabel: "API keys" })} />
+        <header className="space-y-1">
+          <h1 className="text-2xl font-semibold">API keys</h1>
+          <p className="text-sm text-muted-foreground">
+            Long-lived Bearer tokens for programmatic access. Some keys were minted by AI agents via
+            OAuth; others are personal keys you generate here for your own scripts and runtimes.
+          </p>
+        </header>
+
+        <GenerateKeyCard scopeOptions={scopeOptions} error={error} minted={minted} />
+
+        <Card>
+          <CardHeader>
+            <CardTitle>All API keys</CardTitle>
+            <CardDescription>
+              {keys.length === 0
+                ? "No active keys yet."
+                : `${keys.length} active key${keys.length === 1 ? "" : "s"}.`}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {keys.map((key) => (
+              <KeyRow key={key.client_id} apiKey={key} />
+            ))}
+          </CardContent>
+        </Card>
+      </SingleColumnPageMain>
+    </div>
+  );
+}
+
+function GenerateKeyCard({
+  scopeOptions,
+  error,
+  minted,
+}: {
+  scopeOptions: ScopeOption[];
+  error: string | null;
+  minted: MintedApiKey | null;
+}) {
+  const navigation = useNavigation();
+  const submitting =
+    navigation.state === "submitting" && navigation.formData?.get("intent") === "mint";
+
+  const [label, setLabel] = useState("");
+  const [selected, setSelected] = useState<Record<string, DocoRole>>({});
+
+  // grants[] hidden input mirrors the selected map so the action gets
+  // a single payload to parse.
+  const grantsPayload = useMemo(() => {
+    return JSON.stringify(
+      Object.entries(selected).map(([key, role]) => {
+        const [level, target_id] = key.split(":");
+        return { level, target_id, role };
+      }),
+    );
+  }, [selected]);
+
+  const noScopes = scopeOptions.length === 0;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Generate API key</CardTitle>
+        <CardDescription>
+          Bound to your account. Pick which orgs / docos this key can reach and at what role — you
+          can't grant a role higher than the one you yourself hold.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <Form method="post" className="space-y-4" data-testid="generate-api-key-form">
+          <input type="hidden" name="intent" value="mint" />
+          <input type="hidden" name="grants" value={grantsPayload} />
+
+          <label className="block text-sm">
+            <span className="block text-xs uppercase tracking-wide text-muted-foreground mb-1">
+              Label
+            </span>
+            <input
+              type="text"
+              name="label"
+              value={label}
+              onChange={(e) => setLabel(e.currentTarget.value)}
+              placeholder="e.g. ci-pipeline, my-script, claude-code-laptop"
+              data-testid="api-key-label"
+              className="block w-full max-w-md rounded-md px-2 py-1 text-sm font-mono"
+            />
+          </label>
+
+          <div className="space-y-2">
+            <div className="text-xs uppercase tracking-wide text-muted-foreground">Scope</div>
+            {noScopes ? (
+              <p className="text-sm text-muted-foreground">
+                You aren't a member of any org or doco yet. Join or create one to mint a key.
+              </p>
+            ) : (
+              <div className="space-y-1.5">
+                {scopeOptions.map((opt) => (
+                  <ScopeRow
+                    key={`${opt.level}:${opt.id}`}
+                    opt={opt}
+                    role={selected[`${opt.level}:${opt.id}`] ?? null}
+                    onChange={(role) => {
+                      setSelected((prev) => {
+                        const key = `${opt.level}:${opt.id}`;
+                        if (role === null) {
+                          const next = { ...prev };
+                          delete next[key];
+                          return next;
+                        }
+                        return { ...prev, [key]: role };
+                      });
+                    }}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+
+          <button
+            type="submit"
+            data-testid="api-key-submit"
+            disabled={submitting || noScopes || !label.trim() || Object.keys(selected).length === 0}
+            className="neu-button bg-primary text-primary-foreground hover:opacity-90 rounded-md px-4 py-2 text-sm font-semibold disabled:opacity-50"
+          >
+            {submitting ? "Generating…" : "Generate API key"}
+          </button>
+        </Form>
+
+        {error ? (
+          <p className="text-sm text-destructive" data-testid="api-key-error">
+            {error}
+          </p>
+        ) : null}
+
+        {minted ? <MintedReveal minted={minted} /> : null}
+      </CardContent>
+    </Card>
+  );
+}
+
+function ScopeRow({
+  opt,
+  role,
+  onChange,
+}: {
+  opt: ScopeOption;
+  role: DocoRole | null;
+  onChange: (role: DocoRole | null) => void;
+}) {
+  const checked = role !== null;
+  return (
+    <div className="flex items-center gap-3">
+      <label className="flex flex-1 items-center gap-2 text-sm">
+        <input
+          type="checkbox"
+          checked={checked}
+          data-testid={`scope-${opt.level}-${opt.id}`}
+          onChange={(e) => onChange(e.currentTarget.checked ? opt.myRole : null)}
+        />
+        <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
+          {opt.level}
+        </span>
+        <span className="font-mono">{opt.label}</span>
+        <span className="text-xs text-muted-foreground">(you: {opt.myRole})</span>
+      </label>
+      {checked ? (
+        <select
+          value={role ?? opt.myRole}
+          data-testid={`scope-role-${opt.level}-${opt.id}`}
+          onChange={(e) => onChange(e.currentTarget.value as DocoRole)}
+          className="rounded-md px-2 py-1 text-xs"
+        >
+          {ALL_ROLES.filter((r) => rankOrZero(r) <= rankOrZero(opt.myRole)).map((r) => (
+            <option key={r} value={r}>
+              {r}
+            </option>
+          ))}
+        </select>
+      ) : null}
+    </div>
+  );
+}
+
+function rankOrZero(role: DocoRole): number {
+  return role === "owner" ? 3 : role === "approver" ? 2 : role === "author" ? 1 : 0;
+}
+
+function MintedReveal({ minted }: { minted: MintedApiKey }) {
+  const [copied, setCopied] = useState(false);
+  const expiresIn = formatExpiresIn(minted.expires_in);
+  return (
+    <div
+      className="mt-4 rounded-md border border-primary bg-primary/5 p-3 space-y-2"
+      data-testid="api-key-minted"
+    >
+      <p className="text-sm font-semibold">API key minted — copy it now</p>
+      <p className="text-xs text-muted-foreground">
+        This access token body is shown ONCE. Save it in your script's secret store; if you lose it,
+        revoke the key and mint a new one. Access token expires in {expiresIn} but rotates
+        automatically — use the refresh token below to mint a fresh one when it expires.
+      </p>
+      <div className="space-y-1">
+        <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+          Access token
+        </div>
+        <pre
+          className="overflow-x-auto rounded bg-background px-2 py-1 text-xs font-mono"
+          data-testid="api-key-access-token"
+        >
+          {minted.access_token}
+        </pre>
+      </div>
+      <div className="space-y-1">
+        <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+          Refresh token
+        </div>
+        <pre
+          className="overflow-x-auto rounded bg-background px-2 py-1 text-xs font-mono"
+          data-testid="api-key-refresh-token"
+        >
+          {minted.refresh_token}
+        </pre>
+      </div>
+      <button
+        type="button"
+        data-testid="api-key-copy"
+        onClick={async () => {
+          if (typeof navigator !== "undefined" && navigator.clipboard) {
+            await navigator.clipboard.writeText(minted.access_token);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 1500);
+          }
+        }}
+        className="neu-button rounded-md px-2 py-1 text-xs"
+      >
+        {copied ? "Copied!" : "Copy access token"}
+      </button>
+      <div className="text-xs text-muted-foreground">
+        Scope:{" "}
+        {minted.scope_grants.length === 0 ? (
+          <em>none</em>
+        ) : (
+          minted.scope_grants.map((g) => (
+            <span key={`${g.level}:${g.target_id}`} className="mr-2">
+              <strong>{g.target_label}</strong> ({g.level}, {g.role})
+            </span>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
+function formatExpiresIn(seconds: number): string {
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 48) return `${hours}h`;
+  const days = Math.round(hours / 24);
+  return `${days}d`;
+}
+
+function KeyRow({ apiKey }: { apiKey: ApiKeyRow }) {
+  const fetcher = useFetcher<ActionResult>();
+  const revoking = fetcher.state !== "idle";
+  return (
+    <div
+      data-testid={`key-row-${apiKey.client_id}`}
+      className="neu-surface flex flex-wrap items-start justify-between gap-3 rounded-md bg-card px-3 py-2 text-xs"
+    >
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="font-semibold">{apiKey.client_name}</span>
+          <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
+            {apiKey.source}
+          </span>
+        </div>
+        <div className="mt-1 flex flex-wrap items-center gap-2 text-muted-foreground">
+          <span>Granted {formatDate(apiKey.granted_at)}</span>
+          <span>·</span>
+          <span>
+            {apiKey.last_used_at ? `Last used ${formatDate(apiKey.last_used_at)}` : "Never used"}
+          </span>
+        </div>
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {apiKey.scope_grants.length === 0 ? (
+            <span className="text-muted-foreground">No active scopes</span>
+          ) : (
+            apiKey.scope_grants.map((g) => (
+              <ScopeChip key={`${g.level}:${g.target_id}`} grant={g} />
+            ))
+          )}
+        </div>
+      </div>
+      <fetcher.Form method="post">
+        <input type="hidden" name="intent" value="revoke" />
+        <input type="hidden" name="client_id" value={apiKey.client_id} />
+        <button
+          type="submit"
+          disabled={revoking}
+          data-testid={`revoke-${apiKey.client_id}`}
+          onClick={(e) => {
+            if (!confirm(`Revoke "${apiKey.client_name}"? This cannot be undone.`)) {
+              e.preventDefault();
+            }
+          }}
+          className="neu-button rounded-md px-2 py-1 text-xs text-destructive disabled:opacity-50"
+        >
+          {revoking ? "Revoking…" : "Revoke"}
+        </button>
+      </fetcher.Form>
+    </div>
+  );
+}
+
+function ScopeChip({ grant }: { grant: ApiKeyScopeGrant }) {
+  return (
+    <Link
+      to={grant.target_link}
+      className="neu-button inline-flex items-center rounded-full px-2 py-0.5 text-[11px]"
+      title={`${grant.target_label} — ${grant.role}`}
+    >
+      <span className="mr-1 text-[9px] uppercase tracking-wide text-muted-foreground">
+        {grant.level}
+      </span>
+      {grant.target_label}
+      <span className="ml-1 text-muted-foreground">· {grant.role}</span>
+    </Link>
+  );
+}
+
+function formatDate(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+}

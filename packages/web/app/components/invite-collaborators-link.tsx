@@ -20,7 +20,7 @@ export function CollaboratorsLink({
   level,
   targetId,
   className,
-  children = "Collaborator (people/agents)",
+  children = "Collaborators",
 }: {
   level: InviteCollaboratorLevel;
   targetId: string;
@@ -53,6 +53,30 @@ export function InviteCollaboratorsLink({
   return (
     <Link
       to={inviteCollaboratorsHref(level, targetId)}
+      className={["neu-button shrink-0 rounded-md px-3 py-1.5 text-xs font-semibold", className]
+        .filter(Boolean)
+        .join(" ")}
+    >
+      {children}
+    </Link>
+  );
+}
+
+/**
+ * Convenience link to the host-level /api-keys page. API keys are
+ * owned per-user, not per-org or per-doco, so there's no scope
+ * filter to set — clicking just goes to the user's full key list.
+ */
+export function ApiKeysLink({
+  className,
+  children = "API keys",
+}: {
+  className?: string;
+  children?: ReactNode;
+}) {
+  return (
+    <Link
+      to="/api-keys"
       className={["neu-button shrink-0 rounded-md px-3 py-1.5 text-xs font-semibold", className]
         .filter(Boolean)
         .join(" ")}

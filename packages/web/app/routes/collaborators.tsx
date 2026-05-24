@@ -1,8 +1,10 @@
 // /collaborators — global collaborator-management page (decision_01KS0JBJ5X0AZ4XJJFKEWE1R62).
 // Replaces the per-doco / per-org members pages. Top-level link in
 // the host nav. Shows every org/doco grant the signed-in principal
-// can see, lets owners edit roles inline (auto-save), and links to
-// the standalone collaborator-invite page.
+// can see — humans only, since the API-keys split. Owner-issued
+// agent grants (OAuth tokens) live on /api-keys. Lets owners edit
+// roles inline (auto-save), and links to the standalone
+// collaborator-invite page.
 
 import {
   type DocoRole,
@@ -12,7 +14,6 @@ import {
   removeOrgUser,
   upsertDocoUser,
   upsertOrgUser,
-  withClient,
 } from "@doco/db";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useFetcher, useSearchParams } from "react-router";
@@ -48,21 +49,6 @@ type ActionResult =
       level: InviteLevel;
       target_ids: string[];
       collaborator_id: string;
-    }
-  | {
-      intent: "oauth_update";
-      ok: true;
-      level: InviteLevel;
-      target_ids: string[];
-      client_id: string;
-      role: DocoRole;
-    }
-  | {
-      intent: "oauth_remove";
-      ok: true;
-      level: InviteLevel;
-      target_ids: string[];
-      client_id: string;
     }
   | { error: string };
 
@@ -134,96 +120,11 @@ export async function action({
     };
   }
 
-  if (intent === "oauth_update" || intent === "oauth_remove") {
-    const rawTargets = String(form.get("target_ids") ?? "").trim();
-    const targetIds = rawTargets
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean);
-    const clientId = String(form.get("client_id") ?? "").trim();
-    if (targetIds.length === 0) return { error: "target_ids missing." };
-    if (!clientId) return { error: "client_id missing." };
-    if (level !== "org" && level !== "doco") return { error: "Invalid level." };
-
-    // Auth: only owners on each target can manage agent grants on it.
-    for (const targetId of targetIds) {
-      if (level === "org") {
-        const role = await getOrgRole(targetId, me.id);
-        if (role !== "owner") return { error: "Only org owners can change agent grants." };
-      } else {
-        const doco = await getDocoById(targetId);
-        if (!doco) return { error: "Doco not found." };
-        const role = await getDocoLevelRole({ ownerId: doco.owner_id, docoId: doco.id }, me.id);
-        if (role !== "owner") return { error: "Only doco owners can change agent grants." };
-      }
-    }
-
-    const idsCol = level === "org" ? "granted_org_ids" : "granted_doco_ids";
-    const rolesCol = level === "org" ? "granted_org_roles" : "granted_doco_roles";
-
-    if (intent === "oauth_update") {
-      const role = String(form.get("role") ?? "") as DocoRole;
-      if (!ALL_ROLES.includes(role)) return { error: "Invalid role." };
-      for (const targetId of targetIds) {
-        await withClient(async (c) => {
-          await c.query(
-            `UPDATE oauth_access_tokens
-                SET ${rolesCol} = jsonb_set(${rolesCol}, ARRAY[$3], to_jsonb($4::text), true)
-              WHERE collaborator_id = $1 AND client_id = $2 AND revoked = false
-                AND $3 = ANY(${idsCol})`,
-            [me.id, clientId, targetId, role],
-          );
-          await c.query(
-            `UPDATE oauth_refresh_tokens
-                SET ${rolesCol} = jsonb_set(${rolesCol}, ARRAY[$3], to_jsonb($4::text), true)
-              WHERE collaborator_id = $1 AND client_id = $2 AND revoked = false
-                AND $3 = ANY(${idsCol})`,
-            [me.id, clientId, targetId, role],
-          );
-        });
-      }
-      return {
-        intent: "oauth_update",
-        ok: true,
-        level,
-        target_ids: targetIds,
-        client_id: clientId,
-        role,
-      };
-    }
-
-    for (const targetId of targetIds) {
-      await withClient(async (c) => {
-        await c.query(
-          `UPDATE oauth_access_tokens
-              SET ${idsCol}   = array_remove(${idsCol}, $3),
-                  ${rolesCol} = ${rolesCol} - $3
-            WHERE collaborator_id = $1 AND client_id = $2 AND revoked = false`,
-          [me.id, clientId, targetId],
-        );
-        await c.query(
-          `UPDATE oauth_refresh_tokens
-              SET ${idsCol}   = array_remove(${idsCol}, $3),
-                  ${rolesCol} = ${rolesCol} - $3
-            WHERE collaborator_id = $1 AND client_id = $2 AND revoked = false`,
-          [me.id, clientId, targetId],
-        );
-      });
-    }
-    return {
-      intent: "oauth_remove",
-      ok: true,
-      level,
-      target_ids: targetIds,
-      client_id: clientId,
-    };
-  }
-
   return { error: `Unknown intent: ${intent}` };
 }
 
 export function meta() {
-  return [{ title: "Collaborators (people/agents) · Doco" }];
+  return [{ title: "Collaborators · Doco" }];
 }
 
 interface AccessGrant {
@@ -349,8 +250,15 @@ export default function CollaboratorsPage({
       <SiteHeader mode="host" me={loaderData.me} />
       <SingleColumnPageMain className="py-8 space-y-6">
         <Breadcrumb items={hostBreadcrumb({ pageLabel: "Collaborators" })} />
-        <header>
-          <h1 className="text-2xl font-semibold">Collaborators (people/agents)</h1>
+        <header className="space-y-1">
+          <h1 className="text-2xl font-semibold">Collaborators</h1>
+          <p className="text-sm text-muted-foreground">
+            People you've invited to your orgs and docos. For agent access tokens, see{" "}
+            <Link to="/api-keys" className="font-semibold text-foreground hover:text-primary">
+              API keys
+            </Link>
+            .
+          </p>
         </header>
 
         <div className="flex flex-wrap items-end justify-between gap-3">
@@ -499,15 +407,6 @@ function formatDate(iso: string): string {
   return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
 }
 
-function parseAgentName(full: string): { primary: string; caption: string | null } {
-  const m = full.match(/^(.+?)\s*\((.+)\)\s*$/);
-  if (!m) return { primary: full, caption: null };
-  const primary = m[1].trim();
-  const inside = m[2].trim();
-  const first = inside.split(/,\s*/)[0]?.trim() ?? "";
-  return { primary, caption: first || null };
-}
-
 function UserRow({
   row,
   myPrincipalId,
@@ -515,19 +414,13 @@ function UserRow({
   row: GroupedRow;
   myPrincipalId: string;
 }) {
-  const isOauth = row.principal.source === "oauth";
-  const clientId = row.principal.client_id ?? "";
   const username = row.principal.username;
-  const parsed = isOauth ? parseAgentName(username) : null;
-  const primaryName = parsed?.primary ?? username;
-  const caption = parsed?.caption ?? null;
-  const isMe = !isOauth && row.principal.collaborator_id === myPrincipalId;
+  const isMe = row.principal.collaborator_id === myPrincipalId;
 
   const grantedAbs = formatDate(row.earliestJoinedAt);
   const grantedRel = formatRelative(row.earliestJoinedAt);
   const lastActive = formatRelative(row.principal.last_activity_at);
   const metaParts: string[] = [];
-  if (caption) metaParts.push(caption);
   metaParts.push(`Granted ${grantedRel}`);
   metaParts.push(`Active ${lastActive}`);
   const metaTooltip = `Granted ${grantedAbs}${row.principal.last_activity_at ? ` · Last active ${row.principal.last_activity_at}` : ""}`;
@@ -537,13 +430,8 @@ function UserRow({
       <td className="py-3 pr-3 align-top">
         <div className="flex items-center gap-1.5">
           <span className="truncate font-medium" title={username}>
-            {primaryName}
+            {username}
           </span>
-          {isOauth ? (
-            <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-              agent
-            </span>
-          ) : null}
           {isMe ? (
             <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
               you
@@ -561,9 +449,7 @@ function UserRow({
             <AccessLine
               key={g.target_id}
               level={row.level}
-              isOauth={isOauth}
               principalId={row.principal.collaborator_id}
-              clientId={clientId}
               username={username}
               grant={g}
             />
@@ -576,43 +462,31 @@ function UserRow({
 
 function AccessLine({
   level,
-  isOauth,
   principalId,
-  clientId,
   username,
   grant,
 }: {
   level: InviteLevel;
-  isOauth: boolean;
   principalId: string;
-  clientId: string;
   username: string;
   grant: AccessGrant;
 }) {
   const roleFetcher = useFetcher<ActionResult>();
   const removeFetcher = useFetcher<ActionResult>();
 
-  const updatePayload = (newRole: string): Record<string, string> => {
-    const base: Record<string, string> = {
-      intent: isOauth ? "oauth_update" : "update",
-      level,
-      target_ids: grant.target_id,
-      role: newRole,
-    };
-    if (isOauth) base.client_id = clientId;
-    else base.collaborator_id = principalId;
-    return base;
+  const updatePayload = (newRole: string): Record<string, string> => ({
+    intent: "update",
+    level,
+    target_ids: grant.target_id,
+    role: newRole,
+    collaborator_id: principalId,
+  });
+  const removePayload: Record<string, string> = {
+    intent: "remove",
+    level,
+    target_ids: grant.target_id,
+    collaborator_id: principalId,
   };
-  const removePayload: Record<string, string> = (() => {
-    const base: Record<string, string> = {
-      intent: isOauth ? "oauth_remove" : "remove",
-      level,
-      target_ids: grant.target_id,
-    };
-    if (isOauth) base.client_id = clientId;
-    else base.collaborator_id = principalId;
-    return base;
-  })();
 
   const error =
     roleFetcher.data && "error" in roleFetcher.data ? roleFetcher.data.error : undefined;
@@ -620,7 +494,7 @@ function AccessLine({
     roleFetcher.state === "idle" &&
     roleFetcher.data &&
     "intent" in roleFetcher.data &&
-    (roleFetcher.data.intent === "update" || roleFetcher.data.intent === "oauth_update");
+    roleFetcher.data.intent === "update";
   const [showSaved, setShowSaved] = useState(false);
   useEffect(() => {
     if (justSaved) {

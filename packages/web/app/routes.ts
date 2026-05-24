@@ -129,6 +129,11 @@ export default [
   route("orgs/:orgHandle/search", "routes/orgs.$orgHandle.search.tsx"),
   route("collaborators", "routes/collaborators.tsx"),
   route("collaborators/invite", "routes/collaborators.invite.tsx"),
+  // /api-keys — host-level page listing every active OAuth refresh
+  // token bound to the signed-in user (both agent-OAuth-flow tokens
+  // and personal API keys minted here). The matching JSON endpoint
+  // mints + lists + revokes keys for API consumers.
+  route("api-keys", "routes/api-keys.tsx"),
   // Onboarding (human paths only — agents authenticate via OAuth +
   // install the MCP connector at /mcp/<handle>, no recipe to walk
   // through). decision_01KS14CW9ZN23FF5CGG0Z7TH4G.
@@ -152,6 +157,11 @@ export default [
   // Per-user UI preferences (graph auto-reorder, future flags). Stored
   // on collaborators.data.preferences; auth-gated to the signed-in user.
   route("api/v1/me/preferences.json", "routes/api.v1.me.preferences[.]json.tsx"),
+  // Host-level human-invite + API-key endpoints. Splitting the two
+  // makes the "is this a human or an agent?" choice show up in the URL
+  // instead of being a body flag.
+  route("api/v1/collaborators/invite.json", "routes/api.v1.collaborators.invite[.]json.tsx"),
+  route("api/v1/api-keys.json", "routes/api.v1.api-keys[.]json.tsx"),
   // Agent bootstrap. Returns the canonical-instructions prose plus the
   // Doco policies the caller can read. Auth-aware: anonymous callers
   // get public-Doco policies only.
