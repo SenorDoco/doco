@@ -170,7 +170,7 @@ function PerspectiveSettingsMenu({
         // inactive-tab treatment.
         className="relative -ml-px inline-flex items-center gap-1.5 rounded-tr-md border border-border border-b-transparent bg-input/40 px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-input/60 hover:text-foreground"
       >
-        <ChevronDown className="h-3.5 w-3.5" />
+        <ChevronDown className="h-4 w-4" />
       </button>
       {open ? (
         <div
