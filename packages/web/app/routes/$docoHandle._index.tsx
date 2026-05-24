@@ -815,6 +815,7 @@ export default function DocoHome({
                   availableLifecycles={availableLifecycles}
                   onLifecycleToggle={toggleLifecycle}
                   centerId={graphState.centerId}
+                  onCenterChange={(id) => setGraphState((prev) => graphWithCenter(prev, id))}
                   isFullscreen={isPerspectiveFullscreen}
                   onToggleFullscreen={togglePerspectiveFullscreen}
                   onNeuronClick={(node) => {

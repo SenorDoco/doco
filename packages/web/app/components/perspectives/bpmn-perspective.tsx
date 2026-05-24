@@ -57,6 +57,14 @@ interface BpmnPerspectiveProps {
   links: OverviewGraphLink[];
   onNeuronClick?: (node: BpmnNode) => void;
   /**
+   * Lift focal-node state to the parent. Clicking a neuron on the
+   * canvas should re-center the graph on it so depth-based opacity
+   * recomputes from the new focal node; the parent owns the centerId
+   * state and this callback is how the canvas asks it to update.
+   * Same contract as OverviewGraph.onCenterChange.
+   */
+  onCenterChange?: (id: string) => void;
+  /**
    * Page-level lifecycle filter set. Nodes whose lifecycle isn't in
    * this set are excluded; lanes that end up empty after filtering
    * are dropped from the lane list. When omitted, every node is
@@ -161,6 +169,7 @@ export function BpmnPerspective({
   nodes,
   links,
   onNeuronClick,
+  onCenterChange,
   visibleLifecycles,
   availableLifecycles,
   onLifecycleToggle,
@@ -435,11 +444,15 @@ export function BpmnPerspective({
           onMove={(_event: unknown, next: FlowViewport) => updateViewport(next)}
           onNodeClick={(_e: unknown, node: { id: string }) => {
             const target = nodeById.get(node.id);
-            if (target && onNeuronClick) {
+            if (!target) return;
+            // Re-center first so depth opacity recomputes from the
+            // clicked node before the dialog opens / the route changes.
+            if (onCenterChange) onCenterChange(target.id);
+            if (onNeuronClick) {
               onNeuronClick(target);
               return;
             }
-            if (target?.href) navigate(target.href);
+            if (target.href) navigate(target.href);
           }}
           proOptions={{ hideAttribution: true }}
         >
