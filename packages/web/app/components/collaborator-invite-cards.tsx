@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useFetcher } from "react-router";
+import { Link, useFetcher } from "react-router";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { CollaborationInvitePrompt } from "~/components/collaboration-invite-prompt";
 import {
@@ -12,10 +12,8 @@ import {
 } from "~/lib/collaborator-invite";
 
 export function CollaboratorInviteCards({
-  host,
   invite,
 }: {
-  host: string;
   invite: CollaboratorInviteData;
 }) {
   return (
@@ -25,7 +23,7 @@ export function CollaboratorInviteCards({
         docos={invite.docos}
         defaultSelection={invite.defaultSelection}
       />
-      <InviteAgentCard host={host} />
+      <AgentRedirectCard />
     </div>
   );
 }
@@ -166,57 +164,25 @@ function InviteHumanCard({
   );
 }
 
-function InviteAgentCard({ host }: { host: string }) {
-  const recipeUrl = `${host}/protocol/agent-oauth-recipe`;
-  const deviceUrl = `${host}/device`;
-  const prompt = [
-    `Let's collaborate with Doco on this project. The host is ${host}.`,
-    "",
-    `To get programmatic access, follow the OAuth recipe at ${recipeUrl}. If you can bind a local TCP port and open a browser, use Recipe A (localhost-loopback). If you can't (chat-only / sandboxed runtimes), use Recipe B (RFC 8628 Device Authorization Grant) -- you'll show me a short code and I'll approve at ${deviceUrl}.`,
-    "",
-    "At the approve screen I'll pick which orgs and docos you can read/write and at what role (reader / author / approver / owner) per org or doco, so no scoping is needed up front.",
-  ].join("\n");
+function AgentRedirectCard() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Invite an AI agent</CardTitle>
+        <CardTitle>Looking to add an AI agent?</CardTitle>
         <CardDescription>
-          Agents authenticate via OAuth -- there's no per-invite scoping here because you pick which
-          Docos and what role at approve time.
+          Agents authenticate via OAuth and don't redeem an invite URL. Mint an API key on the API
+          keys page — it's bound to your account and you pick which orgs / docos it can reach.
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <AgentPromptBlock body={prompt} />
+        <Link
+          to="/api-keys"
+          data-testid="invite-agent-redirect"
+          className="neu-button bg-primary text-primary-foreground hover:opacity-90 inline-flex rounded-md px-3 py-1.5 text-xs font-semibold"
+        >
+          Go to API keys →
+        </Link>
       </CardContent>
     </Card>
-  );
-}
-
-function AgentPromptBlock({ body }: { body: string }) {
-  const [copied, setCopied] = useState(false);
-  return (
-    <div className="space-y-2">
-      <pre
-        className="neu-surface rounded-md bg-card p-3 text-[11px] whitespace-pre-wrap break-words"
-        data-testid="invite-agent-prompt"
-      >
-        {body}
-      </pre>
-      <button
-        type="button"
-        data-testid="invite-agent-copy"
-        onClick={() => {
-          if (typeof navigator !== "undefined" && navigator.clipboard) {
-            void navigator.clipboard.writeText(body).then(() => {
-              setCopied(true);
-              setTimeout(() => setCopied(false), 1500);
-            });
-          }
-        }}
-        className="neu-button rounded-md px-2 py-1 text-xs"
-      >
-        {copied ? "Copied!" : "Copy prompt"}
-      </button>
-    </div>
   );
 }

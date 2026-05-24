@@ -150,8 +150,12 @@ export default function Invites({
             <span className="text-muted-foreground"> · invites</span>
           </h1>
           <p className="text-sm text-muted-foreground">
-            Share an invite URL with a collaborator (person or agent). Each invite is single-use and
-            expires after the chosen window.
+            Share an invite URL with a person to grant them access to this Doco. Each invite is
+            single-use and expires after the chosen window. For agent access, mint an{" "}
+            <Link to="/api-keys" className="font-semibold text-foreground hover:text-primary">
+              API key
+            </Link>{" "}
+            instead.
           </p>
         </div>
 
@@ -206,9 +210,6 @@ export default function Invites({
                 <p className="mb-3 text-sm font-semibold">Fresh invite</p>
                 <CollaborationInvitePrompt
                   inviteUrl={actionData.invite_url}
-                  docoUrl={actionData.doco_url}
-                  recipeUrl={actionData.recipe_url}
-                  deviceUrl={actionData.device_url}
                   note={
                     <>Single-use, expires {new Date(actionData.expires_at).toLocaleString()}.</>
                   }

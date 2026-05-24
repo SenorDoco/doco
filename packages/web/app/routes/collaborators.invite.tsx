@@ -33,14 +33,15 @@ export default function InviteCollaboratorsPage({
         <Breadcrumb
           items={hostBreadcrumb({
             section: { label: "Collaborators", to: "/collaborators" },
-            pageLabel: "Invite collaborators",
+            pageLabel: "Invite a collaborator",
           })}
         />
         <header className="flex flex-wrap items-start justify-between gap-3">
           <div className="space-y-1">
-            <h1 className="text-2xl font-semibold">Invite collaborators</h1>
+            <h1 className="text-2xl font-semibold">Invite a collaborator</h1>
             <p className="text-sm text-muted-foreground">
-              Create invite links for people, or copy an OAuth setup prompt for agents.
+              Create a single-use invite link to share with a teammate. They open it, sign in with
+              GitHub, and land in your Doco with the role you pick.
             </p>
           </div>
           <Link
@@ -50,7 +51,7 @@ export default function InviteCollaboratorsPage({
             View collaborators
           </Link>
         </header>
-        <CollaboratorInviteCards host={loaderData.host} invite={loaderData.invite} />
+        <CollaboratorInviteCards invite={loaderData.invite} />
       </SingleColumnPageMain>
     </div>
   );
