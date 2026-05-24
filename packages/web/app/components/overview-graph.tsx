@@ -2,7 +2,7 @@ import { Handle, type MiniMapNodeProps, Position } from "@xyflow/react";
 import { Maximize2, Minimize2 } from "lucide-react";
 import { type ComponentType, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
-import { NodeBadgeRow } from "~/components/neuron-badges";
+import { NodeBadgeRow, ReferenceNumberBadge } from "~/components/neuron-badges";
 import { NeuronTypeIcon } from "~/components/neuron-type-icon";
 import {
   FAR_DEPTH,
@@ -404,12 +404,8 @@ function OverviewFlowNode({ data }: { data: OverviewNodeData }) {
           style={HIDDEN_HANDLE_STYLE}
           isConnectable={false}
         />
-        <NodeBadgeRow
-          entityType={data.node.entity_type}
-          lifecycle={lifecycle}
-          referenceNumber={data.referenceNumber}
-          referenceLabel={title}
-        />
+        <NodeBadgeRow entityType={data.node.entity_type} lifecycle={lifecycle} />
+        <ReferenceNumberBadge referenceNumber={data.referenceNumber} referenceLabel={title} />
         <div className="flex items-center gap-2">
           <NeuronTypeIcon entityType={data.node.entity_type} className="!h-4 !w-4 shrink-0" />
           <span className="line-clamp-2 min-w-0 flex-1 font-mono text-xs font-semibold leading-snug text-foreground">

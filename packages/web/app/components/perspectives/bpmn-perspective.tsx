@@ -28,7 +28,7 @@ import {
   useState,
 } from "react";
 import { useNavigate } from "react-router";
-import { NodeBadgeRow } from "~/components/neuron-badges";
+import { NodeBadgeRow, ReferenceNumberBadge } from "~/components/neuron-badges";
 import type { OverviewGraphLink } from "~/components/overview-graph";
 import type { BpmnLane, BpmnNode, BpmnShape } from "~/lib/bpmn-perspective.server";
 import {
@@ -1508,27 +1508,24 @@ function graphReferenceAttributes(data: BpmnNodeData): Record<string, string | n
 }
 
 /**
- * Header row floated over the top edge of a BPMN shape: reference
- * number, then type pill, then lifecycle pill — all inline at the same
- * z-level. Reference-number slot stays reserved when there's no number
- * so toggling the number on/off doesn't shift the pills.
+ * Tag row floated centered over the TOP edge of a BPMN shape (type
+ * pill + lifecycle pill) and reference-number badge centered over the
+ * BOTTOM edge. Shared with the Graph perspective via
+ * `~/components/neuron-badges` so both perspectives read the same.
  *
- * Shared with the Graph perspective via `~/components/neuron-badges`
- * (the same NodeBadgeRow renders both). For round shapes (circles), the
- * row anchors centered over the top so it doesn't sit outside the
- * inscribed shape.
- *
- * Milestones suppress this row entirely; their compact phase-label band
- * was deliberately styled without pills.
+ * `circular` is preserved as a no-op anchor hint — the new layout is
+ * already top-center for every shape, so circles don't need a special
+ * anchor — but kept on the prop so any caller that still passes it
+ * doesn't break.
  */
-function BpmnBadgeRow({ data, circular = false }: { data: BpmnNodeData; circular?: boolean }) {
+function BpmnBadgeRow({ data }: { data: BpmnNodeData; circular?: boolean }) {
   return (
-    <NodeBadgeRow
-      entityType={data.node.entity_type}
-      lifecycle={data.node.lifecycle}
-      referenceNumber={data.referenceNumber}
-      referenceLabel={data.node.name ?? data.node.id}
-      anchor={circular ? "centered-top" : "left"}
-    />
+    <>
+      <NodeBadgeRow entityType={data.node.entity_type} lifecycle={data.node.lifecycle} />
+      <ReferenceNumberBadge
+        referenceNumber={data.referenceNumber}
+        referenceLabel={data.node.name ?? data.node.id}
+      />
+    </>
   );
 }
