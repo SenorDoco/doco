@@ -79,9 +79,6 @@ export async function loader({ request }: { request: Request }) {
   // diagnose a stuck turn without needing to share session cookies.
   const me = await getCurrentPrincipalAsync(request);
   if (!me) {
-    // No credential at all → redirect interactive callers; API
-    // callers (Bearer-missing) just see the redirect status, which
-    // is the same auth-required signal.
     throw redirect(`/sign-in?next=${encodeURIComponent("/admin/agent-debug.json")}`);
   }
   if (me.username !== "torrenegra") {
