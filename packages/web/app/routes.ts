@@ -65,6 +65,9 @@ export default [
   route("api", "routes/agent-probes[.]ts.tsx", { id: "probe-api" }),
   route("api/docs", "routes/agent-probes[.]ts.tsx", { id: "probe-api-docs" }),
   route("dashboard", "routes/dashboard.tsx"),
+  // Admin / staff-only dashboards. Auth check is in the loader of
+  // each route file — the route table doesn't gate, it just lists.
+  route("admin/agent-usage", "routes/admin.agent-usage.tsx"),
   route("docos", "routes/docos._index.tsx"),
   // Auth
   route("sign-in", "routes/sign-in.tsx"),
