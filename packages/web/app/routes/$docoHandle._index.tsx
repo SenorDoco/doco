@@ -788,6 +788,7 @@ export default function DocoHome({
                 />
               ) : activePerspectiveKind === "bpmn" && bpmnGraph ? (
                 <BpmnPerspective
+                  pools={bpmnGraph.pools}
                   lanes={bpmnGraph.lanes}
                   nodes={bpmnGraph.nodes}
                   links={bpmnGraph.links}

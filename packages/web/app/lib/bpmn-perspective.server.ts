@@ -1,70 +1,49 @@
-// BPMN perspective server-side data loader. Augments the standard
-// overview graph with two things the default view doesn't carry:
+// BPMN perspective server-side data loader.
 //
-//   1. Lane assignment — three categories:
+// The canvas is partitioned into **pools** — one per Intent in the
+// Doco. A pool is a bordered horizontal section with its own internal
+// structure (milestone band on top, actor lanes in the middle,
+// artifacts band on the bottom). Pools stack vertically. An
+// "Unassigned" pool catches neurons that don't cite an Intent.
 //
-//      a) Actor lanes (one per Principal):
-//           Action   → actor_id
-//           Decision → decided_by   (Collaborator id post-rename; we
-//                                    walk Collaborator → github_login
-//                                    → matching Principal name. Falls
-//                                    to Unassigned when no Principal
-//                                    counterpart exists.)
-//           Intent   → actors[0] (first principal if multi-valued)
-//         Neurons without a lane-bearing field, or with a value that
-//         doesn't resolve, fall into Unassigned.
+// Inside each pool, lane assignment follows the same three-category
+// model as before:
+//   - Milestone band (top of the pool): States.
+//   - Actor lanes (middle): one per Principal who has work in this
+//     pool. Action.actor_id / Decision.decided_by / Intent.actors[0]
+//     drives the placement. Decisions whose decided_by is a
+//     `collaborator_*` id walk through the collaborator → github_login
+//     → matching Principal name path; rows that don't resolve land in
+//     Unassigned.
+//   - Artifacts band (bottom): References, Ideas, plus any Rule/Eval
+//     that didn't re-home onto an Action via `gated_by` / `target_ref`.
 //
-//      b) Milestone band — pinned to the TOP. States live here
-//         regardless of who's acting. In BPMN, milestones / phases
-//         are an axis perpendicular to the actor swim lanes; the
-//         process passes *through* a State rather than someone
-//         *performing* it.
+// Intents themselves are *not* rendered as flow nodes — they're pool
+// headers. The Intent's prose labels its pool.
 //
-//      c) Artifacts band — pinned to the BOTTOM. References, Ideas,
-//         and any Rule/Eval that doesn't have a flow-neuron host live
-//         here. BPMN puts these alongside the flow as data objects /
-//         annotations / business-rule tasks, not in the actor swim
-//         lanes. The artifacts band is the flat-list approximation
-//         until we can lay them out as floating elements with dashed
-//         associations (a later phase).
+// Pool selection for multi-intent neurons (Action/Decision/Log can
+// list multiple `intent_ids`) uses **PageRank**: the candidate intent
+// with the highest score on the doco's synapse graph wins. With no
+// focal neuron, this is plain global PageRank; the personalized variant
+// (teleport biased to a focal node) is computed client-side from
+// `centerId` so the same graph can re-pool around whichever neuron
+// the user clicked into.
 //
-//      The lane assignment runs in two passes so Rule and Eval
-//      neurons can be relocated *into* an actor's lane when they
-//      have a clear host:
+// Shape map (unchanged from prior phases):
+//   intent                  → (pool header, no shape)
+//   decision                → diamond     (BPMN gateway)
+//   action                  → task        (BPMN rounded-rect task)
+//   rule                    → rectangle   (policy box)
+//   state                   → milestone   (compact labeled box)
+//   eval, reference         → document    (BPMN data object)
+//   idea                    → rounded     (capsule)
 //
-//        - Rule: an Action whose `gated_by` includes this Rule is the
-//          host; the Rule renders inside that Action's actor lane as
-//          a BPMN business-rule-task neighbour. Rules with no
-//          `gated_by` host stay in the artifacts band.
-//        - Eval: `target_ref` is the host pointer; when the target
-//          lives in an actor lane (not a band or unassigned), the
-//          Eval moves into that same lane as a BPMN annotation
-//          neighbour. Otherwise it stays in the artifacts band.
-//
-//   2. BPMN shape — the visual policy a neuron renders as:
-//        intent                  → circle      (BPMN start event)
-//        decision                → diamond     (BPMN gateway)
-//        action                  → task        (BPMN rounded-rect task)
-//        rule                    → rectangle   (policy box)
-//        state                   → milestone   (compact labeled box in
-//                                               the milestone band)
-//        eval, reference         → document    (BPMN data object)
-//        idea                    → rounded     (capsule — distinct
-//                                               from Task so an Idea
-//                                               doesn't read as a
-//                                               flow step)
-//
-// Lifecycle color from neuron-colors.ts is preserved as an accent on
-// each shape — bordered/edge-tinted in the renderer.
-//
-// Not rendered in BPMN (per BPMN 2.0 + the business-processes template):
-//   - Log   — instances, not designs (template guidance: "Process
-//             *instances* (recorded runs) live in a separate Doco as
-//             Logs; surface them here only via References")
+// Not rendered: Log (instances, not designs).
 
 import { ALL_ENTITY_TABLES } from "@doco/db";
 import { parse as parseYaml } from "yaml";
 import type { OverviewGraphLink } from "~/components/overview-graph";
+import { highestRanked, pageRank } from "./pagerank";
 
 type QueryClient = {
   query<T>(sql: string, params?: unknown[]): Promise<{ rows: T[] }>;
@@ -79,9 +58,28 @@ export type BpmnShape =
   | "task"
   | "milestone";
 
+export type BpmnLaneKind = "milestone" | "actor" | "artifacts" | "unassigned" | "unresolved";
+
+export interface BpmnPool {
+  id: string; // "pool:<intent_id>" or POOL_UNASSIGNED_ID
+  intent_id: string | null; // null for the Unassigned pool
+  label: string; // Intent prose (first line), or "Unassigned"
+  /** Per-neuron PageRank score on the doco's synapse graph; drives
+   *  pool ordering and primary-intent picks for multi-intent neurons. */
+  pagerank: number;
+}
+
 export interface BpmnLane {
-  id: string; // principal id, or "__unassigned__"
-  label: string; // principal name, or "Unassigned"
+  /** Composite id: `${pool_id}::${base}`. Unique across the canvas. */
+  id: string;
+  pool_id: string;
+  /** `principal_<ulid>`, BAND_MILESTONE_BASE, BAND_ARTIFACTS_BASE, or
+   *  BAND_UNASSIGNED_BASE / `__unresolved__:<raw-ref>`. The bare base
+   *  (without the pool prefix) is recorded for renderer convenience —
+   *  e.g. to look up the Principal row for an actor lane. */
+  base_id: string;
+  label: string;
+  kind: BpmnLaneKind;
 }
 
 export interface BpmnNode {
@@ -93,16 +91,24 @@ export interface BpmnNode {
   href: string | null;
   shape: BpmnShape;
   laneId: string;
+  pool_id: string;
+  /** When this neuron has multi-valued `intent_ids`, the full list of
+   *  candidate intent ids (so the client can recompute the primary
+   *  intent under personalized PageRank without re-fetching). */
+  intent_ids?: string[];
 }
 
 export interface BpmnGraphData {
+  pools: BpmnPool[];
   lanes: BpmnLane[];
   nodes: BpmnNode[];
   links: OverviewGraphLink[];
+  /** Per-neuron global PageRank score, exposed so the client can
+   *  reuse the same graph to compute personalized PageRank from a
+   *  focal neuron without re-running queries. */
+  global_pagerank?: Record<string, number>;
 }
 
-// Tables included in the BPMN view. Logs (instances) are excluded —
-// see the file header.
 const BPMN_TABLES: { table: string; entityType: string }[] = [
   { table: "decisions", entityType: "decision" },
   { table: "intents", entityType: "intent" },
@@ -114,20 +120,20 @@ const BPMN_TABLES: { table: string; entityType: string }[] = [
   { table: "ideas", entityType: "idea" },
 ];
 
-const UNASSIGNED_LANE_ID = "__unassigned__";
-// Milestone band — pinned to the top of the canvas. States live here.
-export const MILESTONE_LANE_ID = "__milestones__";
-// Artifacts band — pinned to the bottom. References, Evals, Ideas,
-// and Rules live here (BPMN data objects / annotations / business-rule
-// tasks, flat-list approximation until phase 4 adds floating layout).
-export const ARTIFACTS_LANE_ID = "__artifacts__";
+// Lane id "bases" (the part after the `pool_id::` prefix). The same
+// base lives in every pool that uses it; the composite lane id ties
+// it to one specific pool.
+const BAND_MILESTONE_BASE = "__milestones__";
+const BAND_ARTIFACTS_BASE = "__artifacts__";
+const BAND_UNASSIGNED_BASE = "__unassigned__";
 
-// Non-actor neuron types: assigned by category, not by an actor field.
-// State → milestone band; the rest → artifacts band.
+export const POOL_UNASSIGNED_ID = "pool:unassigned";
+
+// Non-actor neuron types: their pool placement comes from a different
+// signal (the host they re-home onto, or the Unassigned pool).
 const ARTIFACT_TYPES = new Set(["reference", "eval", "idea", "rule"]);
 
 const SHAPE_BY_TYPE: Record<string, BpmnShape> = {
-  intent: "circle",
   state: "milestone",
   decision: "diamond",
   action: "task",
@@ -172,8 +178,6 @@ export async function loadBpmnGraph(
   opts: { handle?: string } = {},
 ): Promise<BpmnGraphData> {
   const neuronSql = BPMN_TABLES.map((entry) => {
-    // Migrated neurons use the type-named column's first line as the
-    // "summary" projected here so the BPMN node label fits the lane.
     const tnCol = ALL_ENTITY_TABLES[entry.entityType]?.typeNamedColumn;
     const summarySelect = tnCol ? `split_part(t.${tnCol}, E'\n', 1) AS summary` : "t.summary";
     return `SELECT t.id,
@@ -189,8 +193,6 @@ export async function loadBpmnGraph(
 
   const [neuronRows, principalRows, collaboratorRows] = await Promise.all([
     c.query<NeuronRow>(neuronSql, [docoId]),
-    // Principals are Doco-scoped (migration 020); filter by the typed
-    // column and drop retired role-personas.
     c.query<PrincipalRow>(
       `SELECT id, name
          FROM principals
@@ -198,10 +200,6 @@ export async function loadBpmnGraph(
           AND COALESCE(lifecycle, 'active') = 'active'`,
       [docoId],
     ),
-    // Collaborators who are members of this Doco. Decision.decided_by
-    // references a Collaborator (post-rename split); we translate that
-    // id to the Collaborator's github_login so the existing
-    // principal-by-name match can find an owning Principal.
     c.query<CollaboratorRow>(
       `SELECT c.id, c.github_login
          FROM collaborators c
@@ -219,122 +217,23 @@ export async function loadBpmnGraph(
     principalById.set(p.id, p);
   }
   const collaboratorById = new Map<string, CollaboratorRow>();
-  for (const c of collaboratorRows.rows) {
-    collaboratorById.set(c.id, c);
+  for (const cr of collaboratorRows.rows) {
+    collaboratorById.set(cr.id, cr);
   }
 
-  const lanesById = new Map<string, BpmnLane>();
-  const nodes: BpmnNode[] = [];
+  const allRows = neuronRows.rows;
 
-  // Pass 1 — compute each neuron's base laneId. Actor-type neurons
-  // register their lane immediately (so principals with neurons are
-  // visible); milestone / artifacts bands are registered lazily in the
-  // construction pass below, after Rule/Eval re-homing has run, so we
-  // don't add an empty Artifacts band when every Rule and Eval has
-  // moved into an actor lane.
-  const baseLaneIdByRowId = new Map<string, string>();
-  for (const row of neuronRows.rows) {
-    let laneId: string;
-    if (row.entity_type === "state") {
-      laneId = MILESTONE_LANE_ID;
-    } else if (ARTIFACT_TYPES.has(row.entity_type)) {
-      laneId = ARTIFACTS_LANE_ID;
-    } else {
-      const laneRef = laneReferenceFor(row.entity_type, row.data ?? {}, collaboratorById);
-      const lane = resolveLane(laneRef, principalById, principalByName);
-      if (!lanesById.has(lane.id)) lanesById.set(lane.id, lane);
-      laneId = lane.id;
-    }
-    baseLaneIdByRowId.set(row.id, laneId);
+  // Index of every Intent row by id — Intents define pools (and don't
+  // render as flow nodes themselves).
+  const intentsById = new Map<string, NeuronRow>();
+  for (const row of allRows) {
+    if (row.entity_type === "intent") intentsById.set(row.id, row);
   }
 
-  // Pass 2 — Rule re-homing. A Rule cited in any Action's `gated_by`
-  // lives in that Action's actor lane (BPMN business-rule-task
-  // semantics). First Action wins when a Rule is gated by multiple
-  // (cross-lane duplication ships in a later phase).
-  const ruleHostLaneByRuleId = new Map<string, string>();
-  for (const row of neuronRows.rows) {
-    if (row.entity_type !== "action") continue;
-    const data = row.data ?? {};
-    const gatedBy = toStringArray(data.gated_by);
-    if (gatedBy.length === 0) continue;
-    const actorLane = baseLaneIdByRowId.get(row.id);
-    if (!actorLane || actorLane === UNASSIGNED_LANE_ID || actorLane.startsWith("__unresolved__")) {
-      continue;
-    }
-    for (const ruleId of gatedBy) {
-      if (!ruleHostLaneByRuleId.has(ruleId)) {
-        ruleHostLaneByRuleId.set(ruleId, actorLane);
-      }
-    }
-  }
-
-  // Pass 3 — Eval re-homing. An Eval's `target_ref` points at the
-  // neuron whose claim it pins; when that neuron lives in an actor
-  // lane, the Eval moves alongside it as a BPMN annotation. Evals
-  // whose target lives in a band (milestone / artifacts) or whose
-  // target isn't in this graph stay in the artifacts band.
-  const evalHostLaneByEvalId = new Map<string, string>();
-  for (const row of neuronRows.rows) {
-    if (row.entity_type !== "eval") continue;
-    const targetRef = typeof row.data?.target_ref === "string" ? row.data.target_ref : null;
-    if (!targetRef) continue;
-    const targetLane = baseLaneIdByRowId.get(targetRef);
-    if (
-      !targetLane ||
-      targetLane === MILESTONE_LANE_ID ||
-      targetLane === ARTIFACTS_LANE_ID ||
-      targetLane === UNASSIGNED_LANE_ID ||
-      targetLane.startsWith("__unresolved__")
-    ) {
-      continue;
-    }
-    evalHostLaneByEvalId.set(row.id, targetLane);
-  }
-
-  // Pass 4 — construct nodes with the final laneId (base, or re-homed
-  // when a host was found). Register the milestone and artifacts bands
-  // lazily so they don't appear empty when every State/artifact moved.
-  for (const row of neuronRows.rows) {
-    let laneId = baseLaneIdByRowId.get(row.id) ?? UNASSIGNED_LANE_ID;
-    if (row.entity_type === "rule") {
-      const host = ruleHostLaneByRuleId.get(row.id);
-      if (host) laneId = host;
-    } else if (row.entity_type === "eval") {
-      const host = evalHostLaneByEvalId.get(row.id);
-      if (host) laneId = host;
-    }
-    if (laneId === MILESTONE_LANE_ID && !lanesById.has(MILESTONE_LANE_ID)) {
-      lanesById.set(MILESTONE_LANE_ID, { id: MILESTONE_LANE_ID, label: "Milestones" });
-    } else if (laneId === ARTIFACTS_LANE_ID && !lanesById.has(ARTIFACTS_LANE_ID)) {
-      lanesById.set(ARTIFACTS_LANE_ID, { id: ARTIFACTS_LANE_ID, label: "Artifacts" });
-    }
-    nodes.push({
-      id: row.id,
-      entity_type: row.entity_type,
-      name: row.summary,
-      lifecycle: row.lifecycle,
-      created_at: row.created_at,
-      href: opts.handle ? `/${opts.handle}/${row.entity_type}/${row.id}` : null,
-      shape: shapeForEntityType(row.entity_type),
-      laneId,
-    });
-  }
-
-  // Every Principal gets a lane, even when no neuron is assigned to it
-  // yet — gives authors a visible target to drag neurons onto and makes
-  // the swimlane structure of the doco explicit at a glance.
-  for (const p of principalRows.rows) {
-    if (!lanesById.has(p.id)) {
-      lanesById.set(p.id, { id: p.id, label: p.name });
-    }
-  }
-
-  // Synapses: only those whose endpoints are both in this node set.
-  const nodeIdSet = new Set(nodes.map((n) => n.id));
-  const ids = Array.from(nodeIdSet);
+  // Load synapses up front: we need them for PageRank below.
+  const nodeIdSet = new Set(allRows.map((r) => r.id));
   let links: OverviewGraphLink[] = [];
-  if (ids.length > 0) {
+  if (nodeIdSet.size > 0) {
     const synapseRows = await c.query<SynapseRow>(
       `SELECT from_id, to_id, synapse_type
          FROM synapses
@@ -342,7 +241,7 @@ export async function loadBpmnGraph(
           AND from_id = ANY($2::text[])
           AND to_id   = ANY($2::text[])
         LIMIT 5000`,
-      [docoId, ids],
+      [docoId, Array.from(nodeIdSet)],
     );
     links = synapseRows.rows.map((r) => ({
       source: r.from_id,
@@ -351,39 +250,235 @@ export async function loadBpmnGraph(
     }));
   }
 
-  // Lane order:
-  //   1. Milestone band (if present) — top, so phases read above the
-  //      work that crosses them.
-  //   2. Principal lanes — alphabetical for stable ordering.
-  //   3. Artifacts band (if present) — bottom-most of the work area,
-  //      below the actor lanes so the artifact cluster reads as
-  //      "alongside the flow" rather than "another actor".
-  //   4. Unassigned lane (if present) — very bottom; catchall for
-  //      actor-type neurons whose actor didn't resolve.
-  const lanes: BpmnLane[] = [];
-  if (lanesById.has(MILESTONE_LANE_ID)) {
-    lanes.push(lanesById.get(MILESTONE_LANE_ID) as BpmnLane);
-  }
-  const principalLanes: BpmnLane[] = [];
-  for (const lane of lanesById.values()) {
+  // ── Global PageRank over the synapse graph ────────────────────────
+  // Drives:
+  //   1. Pool order (most important Intent's pool first).
+  //   2. Primary-intent picks for multi-intent neurons.
+  // The personalized variant (teleport biased to a focal node) is the
+  // client's job — we just expose the raw global scores so it can
+  // recompute when the user clicks into a neuron.
+  const pr = pageRank(
+    allRows.map((r) => ({ id: r.id })),
+    links,
+  );
+
+  // ── Pool assignment per neuron ────────────────────────────────────
+  // 1. Intents themselves are pool headers, not nodes — they live in
+  //    their own pool ("pool:<intent_id>").
+  // 2. Actor-type neurons (Action / Decision / Log) with an intent_ids
+  //    list go in their primary intent's pool (PR-picked).
+  // 3. Actor-type neurons with no intent_ids → Unassigned.
+  // 4. Non-actor neurons (State / Reference / Idea / Rule / Eval) start
+  //    in Unassigned; Rules and Evals get re-homed below if they have
+  //    a host neuron whose pool is known.
+  const poolByNeuron = new Map<string, string>();
+  const intentIdsByNeuron = new Map<string, string[]>();
+
+  for (const row of allRows) {
+    if (row.entity_type === "intent") {
+      poolByNeuron.set(row.id, `pool:${row.id}`);
+      continue;
+    }
+    const data = row.data ?? {};
     if (
-      lane.id !== MILESTONE_LANE_ID &&
-      lane.id !== ARTIFACTS_LANE_ID &&
-      lane.id !== UNASSIGNED_LANE_ID
+      row.entity_type === "action" ||
+      row.entity_type === "decision" ||
+      row.entity_type === "log"
     ) {
-      principalLanes.push(lane);
+      const intentIds = toStringArray(data.intent_ids).filter((id) => intentsById.has(id));
+      if (intentIds.length > 0) intentIdsByNeuron.set(row.id, intentIds);
+      const primary = intentIds.length > 0 ? highestRanked(intentIds, pr) : null;
+      poolByNeuron.set(row.id, primary ? `pool:${primary}` : POOL_UNASSIGNED_ID);
+    } else {
+      poolByNeuron.set(row.id, POOL_UNASSIGNED_ID);
     }
   }
-  principalLanes.sort((a, b) => a.label.localeCompare(b.label));
-  lanes.push(...principalLanes);
-  if (lanesById.has(ARTIFACTS_LANE_ID)) {
-    lanes.push(lanesById.get(ARTIFACTS_LANE_ID) as BpmnLane);
-  }
-  if (lanesById.has(UNASSIGNED_LANE_ID)) {
-    lanes.push(lanesById.get(UNASSIGNED_LANE_ID) as BpmnLane);
+
+  // Re-home Rules into the pool of any Action whose `gated_by` cites
+  // them. First Action wins (cross-pool duplication is a later phase).
+  for (const row of allRows) {
+    if (row.entity_type !== "action") continue;
+    const data = row.data ?? {};
+    const gatedBy = toStringArray(data.gated_by);
+    if (gatedBy.length === 0) continue;
+    const actionPool = poolByNeuron.get(row.id);
+    if (!actionPool) continue;
+    for (const ruleId of gatedBy) {
+      const existing = poolByNeuron.get(ruleId);
+      if (existing === POOL_UNASSIGNED_ID && actionPool !== POOL_UNASSIGNED_ID) {
+        poolByNeuron.set(ruleId, actionPool);
+      }
+    }
   }
 
-  return { lanes, nodes, links };
+  // Re-home Evals to their `target_ref`'s pool when the target lives
+  // in a real Intent pool (not Unassigned).
+  for (const row of allRows) {
+    if (row.entity_type !== "eval") continue;
+    const targetRef = typeof row.data?.target_ref === "string" ? row.data.target_ref : null;
+    if (!targetRef) continue;
+    const targetPool = poolByNeuron.get(targetRef);
+    if (targetPool && targetPool !== POOL_UNASSIGNED_ID) {
+      poolByNeuron.set(row.id, targetPool);
+    }
+  }
+
+  // ── Lane assignment within each pool ──────────────────────────────
+  // A lane id is composite: `${pool_id}::${base}` — alice in pool 1
+  // and alice in pool 2 are different lanes with the same `base_id`
+  // (`principal_alice`) but different pool_id. The renderer keys off
+  // `id` and walks `pool_id` to group.
+  const lanesById = new Map<string, BpmnLane>();
+  const nodes: BpmnNode[] = [];
+
+  for (const row of allRows) {
+    if (row.entity_type === "intent") continue; // pool header, not a node
+    const poolId = poolByNeuron.get(row.id) ?? POOL_UNASSIGNED_ID;
+    const data = row.data ?? {};
+
+    let baseId: string;
+    let kind: BpmnLaneKind;
+    let label: string;
+
+    if (row.entity_type === "state") {
+      baseId = BAND_MILESTONE_BASE;
+      kind = "milestone";
+      label = "Milestones";
+    } else if (ARTIFACT_TYPES.has(row.entity_type)) {
+      // A Rule or Eval that re-homed onto an actor-type host
+      // (Action.gated_by / Eval.target_ref) lands in the host's
+      // *actor* lane, not the artifacts band. Others stay in artifacts.
+      const hostLane = resolveRehomeHostLane(
+        row,
+        allRows,
+        principalById,
+        principalByName,
+        collaboratorById,
+      );
+      if (hostLane) {
+        baseId = hostLane.id;
+        kind = hostLane.id.startsWith("principal_") ? "actor" : "unresolved";
+        label = hostLane.label;
+      } else {
+        baseId = BAND_ARTIFACTS_BASE;
+        kind = "artifacts";
+        label = "Artifacts";
+      }
+    } else {
+      // Action / Decision / Log: actor lane.
+      const ref = laneReferenceFor(row.entity_type, data, collaboratorById);
+      const resolved = resolveLane(ref, principalById, principalByName);
+      baseId = resolved.id;
+      kind = resolved.id.startsWith("principal_")
+        ? "actor"
+        : resolved.id === BAND_UNASSIGNED_BASE
+          ? "unassigned"
+          : "unresolved";
+      label = resolved.label;
+    }
+
+    const laneId = `${poolId}::${baseId}`;
+    if (!lanesById.has(laneId)) {
+      lanesById.set(laneId, { id: laneId, pool_id: poolId, base_id: baseId, label, kind });
+    }
+
+    const node: BpmnNode = {
+      id: row.id,
+      entity_type: row.entity_type,
+      name: row.summary,
+      lifecycle: row.lifecycle,
+      created_at: row.created_at,
+      href: opts.handle ? `/${opts.handle}/${row.entity_type}/${row.id}` : null,
+      shape: shapeForEntityType(row.entity_type),
+      laneId,
+      pool_id: poolId,
+    };
+    const intentIds = intentIdsByNeuron.get(row.id);
+    if (intentIds && intentIds.length > 0) node.intent_ids = intentIds;
+    nodes.push(node);
+  }
+
+  // ── Build pools[] ─────────────────────────────────────────────────
+  const pools: BpmnPool[] = [];
+  const usedPoolIds = new Set<string>();
+  for (const id of poolByNeuron.values()) usedPoolIds.add(id);
+  for (const intentId of intentsById.keys()) usedPoolIds.add(`pool:${intentId}`);
+
+  for (const id of usedPoolIds) {
+    if (id === POOL_UNASSIGNED_ID) {
+      pools.push({
+        id: POOL_UNASSIGNED_ID,
+        intent_id: null,
+        label: "Unassigned",
+        pagerank: 0,
+      });
+      continue;
+    }
+    const intentId = id.startsWith("pool:") ? id.slice("pool:".length) : null;
+    if (!intentId) continue;
+    const intentRow = intentsById.get(intentId);
+    const label = intentRow?.summary?.trim() || "(unnamed intent)";
+    pools.push({
+      id,
+      intent_id: intentId,
+      label,
+      pagerank: pr.get(intentId) ?? 0,
+    });
+  }
+
+  // Pool order: real Intent pools sorted by descending PageRank (most
+  // important process first), Unassigned pinned to the bottom.
+  pools.sort((a, b) => {
+    if (a.id === POOL_UNASSIGNED_ID) return 1;
+    if (b.id === POOL_UNASSIGNED_ID) return -1;
+    return b.pagerank - a.pagerank;
+  });
+
+  // Drop pools with no neurons assigned (a freshly-captured Intent
+  // gets a pool the moment any Action/Decision serves it; an Intent
+  // with zero serving neurons would otherwise show an empty pool).
+  // EXCEPTION: we keep an Intent's pool even when empty IF the
+  // intent_id is in usedPoolIds via the intentsById loop above —
+  // that's deliberately how authors see "I have a goal but no work
+  // serving it yet." So no additional filter here; the pools[] array
+  // already only contains pools we want to display.
+
+  // Within each pool, ensure principal lanes for every Principal who
+  // owns at least one node in that pool (already added above as nodes
+  // were emitted). We don't pre-populate empty principal lanes — at
+  // pool granularity that would be visually noisy.
+
+  const lanes = Array.from(lanesById.values());
+
+  // Lane order within a pool (the renderer will group by pool_id):
+  //   1. Milestone band
+  //   2. Actor lanes (principals, alphabetical by label)
+  //   3. Unresolved lanes (per-ref __unresolved__:* leaves)
+  //   4. Artifacts band
+  //   5. Unassigned catchall
+  // Sorting the flat list here lets the renderer iterate in display
+  // order without needing to re-sort per pool.
+  const KIND_ORDER: Record<BpmnLaneKind, number> = {
+    milestone: 0,
+    actor: 1,
+    unresolved: 2,
+    artifacts: 3,
+    unassigned: 4,
+  };
+  lanes.sort((a, b) => {
+    if (a.pool_id !== b.pool_id) return 0; // grouping is the renderer's job
+    const orderDiff = KIND_ORDER[a.kind] - KIND_ORDER[b.kind];
+    if (orderDiff !== 0) return orderDiff;
+    return a.label.localeCompare(b.label);
+  });
+
+  // Expose per-neuron PageRank scores so the client can compute
+  // personalized PageRank from a focal neuron without re-running the
+  // synapse query.
+  const globalPagerank: Record<string, number> = {};
+  for (const [id, score] of pr) globalPagerank[id] = score;
+
+  return { pools, lanes, nodes, links, global_pagerank: globalPagerank };
 }
 
 function parseRawYaml(rawYaml: string | null): Record<string, unknown> {
@@ -399,20 +494,6 @@ function parseRawYaml(rawYaml: string | null): Record<string, unknown> {
   return {};
 }
 
-/**
- * The field on this neuron type that names the responsible principal.
- * Returns a string the lane resolver can match against principals
- * (either a principal id or a bare role name), or null when the
- * neuron has no lane-bearing field or no resolvable value.
- *
- * Decisions: `decided_by` is a Principal id post migration 025 (the
- * FK now points at principals; the capture API only accepts
- * principal_* ids). The defensive `collaborator_` branch handles any
- * pre-migration row whose backfill couldn't resolve a matching
- * principal — it routes through the collaborator map to a
- * github_login that `resolveLane` then matches against Principal
- * `name`, falling to Unassigned when no Principal counterpart exists.
- */
 function laneReferenceFor(
   entityType: string,
   data: Record<string, unknown>,
@@ -420,6 +501,7 @@ function laneReferenceFor(
 ): string | null {
   switch (entityType) {
     case "action":
+    case "log":
       return firstString(data.actor_id) ?? firstString(data.actor);
     case "decision": {
       const ref = firstString(data.decided_by);
@@ -459,20 +541,50 @@ function resolveLane(
   ref: string | null,
   byId: Map<string, PrincipalRow>,
   byName: Map<string, PrincipalRow>,
-): BpmnLane {
-  if (!ref) return { id: UNASSIGNED_LANE_ID, label: "Unassigned" };
-  // Refs may be either a principal id (principal_<ulid>) or a bare
-  // role label depending on how the author wrote them. Try both.
+): { id: string; label: string } {
+  if (!ref) return { id: BAND_UNASSIGNED_BASE, label: "Unassigned" };
   const byIdMatch = byId.get(ref);
-  if (byIdMatch) {
-    return { id: byIdMatch.id, label: byIdMatch.name };
-  }
+  if (byIdMatch) return { id: byIdMatch.id, label: byIdMatch.name };
   const cleaned = ref.replace(/^principal_/, "").toLowerCase();
   const byNameMatch = byName.get(cleaned);
-  if (byNameMatch) {
-    return { id: byNameMatch.id, label: byNameMatch.name };
-  }
-  // Unknown principal — still give it its own lane so the author can
-  // see which value is unresolved, rather than dumping into Unassigned.
+  if (byNameMatch) return { id: byNameMatch.id, label: byNameMatch.name };
   return { id: `__unresolved__:${ref}`, label: ref };
+}
+
+/**
+ * Find the actor lane base for a Rule (via any Action's `gated_by`)
+ * or Eval (via `target_ref`) — used to relocate the artifact onto its
+ * host's lane instead of the artifacts band. Returns null when no
+ * host with a resolved actor lane exists.
+ */
+function resolveRehomeHostLane(
+  row: NeuronRow,
+  allRows: NeuronRow[],
+  principalById: Map<string, PrincipalRow>,
+  principalByName: Map<string, PrincipalRow>,
+  collaboratorById: Map<string, CollaboratorRow>,
+): { id: string; label: string } | null {
+  if (row.entity_type === "rule") {
+    for (const candidate of allRows) {
+      if (candidate.entity_type !== "action") continue;
+      const gatedBy = toStringArray(candidate.data?.gated_by);
+      if (!gatedBy.includes(row.id)) continue;
+      const ref = laneReferenceFor("action", candidate.data ?? {}, collaboratorById);
+      const resolved = resolveLane(ref, principalById, principalByName);
+      if (resolved.id.startsWith("principal_")) return resolved;
+      return null;
+    }
+    return null;
+  }
+  if (row.entity_type === "eval") {
+    const targetRef = typeof row.data?.target_ref === "string" ? row.data.target_ref : null;
+    if (!targetRef) return null;
+    const target = allRows.find((r) => r.id === targetRef);
+    if (!target) return null;
+    const ref = laneReferenceFor(target.entity_type, target.data ?? {}, collaboratorById);
+    const resolved = resolveLane(ref, principalById, principalByName);
+    if (resolved.id.startsWith("principal_")) return resolved;
+    return null;
+  }
+  return null;
 }

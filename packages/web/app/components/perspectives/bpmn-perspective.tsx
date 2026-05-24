@@ -29,7 +29,7 @@ import {
 } from "react";
 import { useNavigate } from "react-router";
 import type { OverviewGraphLink } from "~/components/overview-graph";
-import type { BpmnLane, BpmnNode, BpmnShape } from "~/lib/bpmn-perspective.server";
+import type { BpmnLane, BpmnNode, BpmnPool, BpmnShape } from "~/lib/bpmn-perspective.server";
 import {
   computeDepthFromCenter,
   hasFocalNode,
@@ -52,6 +52,19 @@ const MILESTONE_LANE_ID = "__milestones__";
 const ARTIFACTS_LANE_ID = "__artifacts__";
 
 interface BpmnPerspectiveProps {
+  /**
+   * One pool per Intent in the Doco (plus an "Unassigned" pool for
+   * neurons that don't cite an Intent). Pools are rendered in the
+   * order given — the server emits them sorted by descending global
+   * PageRank, with the Unassigned pool pinned to the bottom.
+   */
+  pools: BpmnPool[];
+  /**
+   * Flat list of lanes across all pools; each lane carries its
+   * `pool_id` so the renderer can group them. Lane ids are composite
+   * (`<pool_id>::<base>`) so the same Principal in two pools is two
+   * distinct lanes.
+   */
   lanes: BpmnLane[];
   nodes: BpmnNode[];
   links: OverviewGraphLink[];
@@ -163,6 +176,7 @@ interface FlowModule {
 }
 
 export function BpmnPerspective({
+  pools,
   lanes,
   nodes,
   links,
@@ -231,12 +245,13 @@ export function BpmnPerspective({
   }, []);
 
   const layout = useMemo(
-    () => layOutBpmn(filteredLanes, filteredNodes, links, centerId),
-    [filteredLanes, filteredNodes, links, centerId],
+    () => layOutBpmn(pools, filteredLanes, filteredNodes, links, centerId),
+    [pools, filteredLanes, filteredNodes, links, centerId],
   );
   const nodeTypes = useMemo(
     () => ({
       bpmnLane: BpmnLaneNode,
+      bpmnPoolHeader: BpmnPoolHeaderNode,
       bpmnCircle: BpmnCircleNode,
       bpmnDiamond: BpmnDiamondNode,
       bpmnRectangle: BpmnRectangleNode,
@@ -257,7 +272,7 @@ export function BpmnPerspective({
     // viewer can jump straight to the swimlane owner from the sidebar
     // before the per-shape numbers begin.
     const laneRefs: GraphReferenceItem[] = filteredLanes
-      .filter((lane) => isPrincipalLaneId(lane.id))
+      .filter((lane) => isActorLane(lane))
       .map((lane, index) => ({
         number: index + 1,
         id: lane.id,
@@ -582,14 +597,28 @@ interface BpmnLayout {
    */
   lanes: Array<{
     id: string;
+    pool_id: string;
     label: string;
     y: number;
     height: number;
-    kind: "principal" | "milestone" | "artifacts";
+    kind: "actor" | "milestone" | "artifacts" | "unassigned" | "unresolved";
+  }>;
+  /** Per-pool geometry — y, height, label — for any chrome the
+   *  renderer wants to draw around pool boundaries (header band,
+   *  sticky labels, focal-overlay framing, etc.). */
+  poolGeometry: Array<{
+    id: string;
+    label: string;
+    y: number;
+    height: number;
   }>;
 }
 
+const POOL_HEADER_HEIGHT = 32;
+const POOL_GAP = 16;
+
 function layOutBpmn(
+  pools: BpmnPool[],
   lanes: BpmnLane[],
   nodes: BpmnNode[],
   links: OverviewGraphLink[],
@@ -676,42 +705,87 @@ function layOutBpmn(
   const laneYById = new Map<string, number>();
   const laneHeightById = new Map<string, number>();
   const nodePositions = new Map<string, { x: number; y: number }>();
+  const poolGeometry: BpmnLayout["poolGeometry"] = [];
 
-  // Emit lane parent nodes first; child neurons reference parentId.
-  // Heights vary: milestone and artifacts bands are shorter than an
-  // actor lane, so we accumulate y instead of multiplying by index.
-  let cursorY = 0;
+  // Group lanes by pool so each pool can emit its header + its own
+  // lanes in display order, then accumulate height.
+  const lanesByPool = new Map<string, BpmnLane[]>();
+  for (const pool of pools) lanesByPool.set(pool.id, []);
   for (const lane of lanes) {
-    let laneHeight: number;
-    if (lane.id === MILESTONE_LANE_ID) {
-      laneHeight = MILESTONE_BAND_HEIGHT;
-    } else if (lane.id === ARTIFACTS_LANE_ID) {
-      laneHeight = ARTIFACTS_BAND_HEIGHT;
-    } else {
-      laneHeight = dynLaneHeight;
-    }
-    laneYById.set(lane.id, cursorY);
-    laneHeightById.set(lane.id, laneHeight);
+    const list = lanesByPool.get(lane.pool_id);
+    if (list) list.push(lane);
+  }
+
+  let cursorY = 0;
+  let poolIndex = 0;
+  for (const pool of pools) {
+    const poolLanes = lanesByPool.get(pool.id) ?? [];
+    if (poolLanes.length === 0) continue; // empty pool — server already drops these in practice
+    if (poolIndex > 0) cursorY += POOL_GAP;
+    poolIndex++;
+    const poolStartY = cursorY;
+
+    // Pool header band — labeled banner across the full canvas width.
     flowNodes.push({
-      id: laneNodeId(lane.id),
-      type: "bpmnLane",
+      id: `pool-header:${pool.id}`,
+      type: "bpmnPoolHeader",
       position: { x: LANE_LEFT_INSET, y: cursorY },
       data: {
-        lane,
-        height: laneHeight,
+        pool,
         width: laneWidth,
-        labelWidth: LANE_LABEL_WIDTH,
-        isMilestoneBand: lane.id === MILESTONE_LANE_ID,
-        isArtifactsBand: lane.id === ARTIFACTS_LANE_ID,
+        height: POOL_HEADER_HEIGHT,
       },
       draggable: false,
       selectable: false,
       connectable: false,
       initialWidth: laneWidth,
-      initialHeight: laneHeight,
-      style: { width: laneWidth, height: laneHeight, zIndex: 0, padding: 0 },
+      initialHeight: POOL_HEADER_HEIGHT,
+      style: {
+        width: laneWidth,
+        height: POOL_HEADER_HEIGHT,
+        zIndex: 0,
+        padding: 0,
+      },
     });
-    cursorY += laneHeight;
+    cursorY += POOL_HEADER_HEIGHT;
+
+    // Lanes inside this pool (sorted server-side by kind +
+    // alphabetical label; we just iterate).
+    for (const lane of poolLanes) {
+      let laneHeight: number;
+      if (lane.kind === "milestone") laneHeight = MILESTONE_BAND_HEIGHT;
+      else if (lane.kind === "artifacts") laneHeight = ARTIFACTS_BAND_HEIGHT;
+      else laneHeight = dynLaneHeight;
+
+      laneYById.set(lane.id, cursorY);
+      laneHeightById.set(lane.id, laneHeight);
+      flowNodes.push({
+        id: laneNodeId(lane.id),
+        type: "bpmnLane",
+        position: { x: LANE_LEFT_INSET, y: cursorY },
+        data: {
+          lane,
+          height: laneHeight,
+          width: laneWidth,
+          labelWidth: LANE_LABEL_WIDTH,
+          isMilestoneBand: lane.kind === "milestone",
+          isArtifactsBand: lane.kind === "artifacts",
+        },
+        draggable: false,
+        selectable: false,
+        connectable: false,
+        initialWidth: laneWidth,
+        initialHeight: laneHeight,
+        style: { width: laneWidth, height: laneHeight, zIndex: 0, padding: 0 },
+      });
+      cursorY += laneHeight;
+    }
+    poolGeometry.push({
+      id: pool.id,
+      label: pool.label,
+      y: poolStartY,
+      height: cursorY - poolStartY,
+    });
   }
 
   // Emit neuron nodes nested in their lane.
@@ -794,16 +868,10 @@ function layOutBpmn(
   const laneGeometry: BpmnLayout["lanes"] = lanes.map((lane) => {
     const y = laneYById.get(lane.id) ?? 0;
     const height = laneHeightById.get(lane.id) ?? dynLaneHeight;
-    const kind: "principal" | "milestone" | "artifacts" =
-      lane.id === MILESTONE_LANE_ID
-        ? "milestone"
-        : lane.id === ARTIFACTS_LANE_ID
-          ? "artifacts"
-          : "principal";
-    return { id: lane.id, label: lane.label, y, height, kind };
+    return { id: lane.id, pool_id: lane.pool_id, label: lane.label, y, height, kind: lane.kind };
   });
 
-  return { flowNodes, flowEdges, nodePositions, lanes: laneGeometry };
+  return { flowNodes, flowEdges, nodePositions, lanes: laneGeometry, poolGeometry };
 }
 
 function screenPosition(position: { x: number; y: number }, viewport: FlowViewport) {
@@ -917,18 +985,18 @@ function laneNodeId(laneId: string): string {
 
 // Used by the outer container sizing — keeps the band-height knowledge
 // in one place rather than scattering ternaries through the layout.
-function heightForLane(laneId: string): number {
-  if (laneId === MILESTONE_LANE_ID) return MILESTONE_BAND_HEIGHT;
-  if (laneId === ARTIFACTS_LANE_ID) return ARTIFACTS_BAND_HEIGHT;
+function heightForLane(lane: BpmnLane): number {
+  if (lane.kind === "milestone") return MILESTONE_BAND_HEIGHT;
+  if (lane.kind === "artifacts") return ARTIFACTS_BAND_HEIGHT;
   return LANE_HEIGHT;
 }
 
-// Lanes that map to a real Principal carry the principal_<ulid> id.
-// Synthetic lanes use the `__unassigned__` / `__unresolved__:<ref>`
-// sentinel; reference numbering and "keep on filter" treat the two
-// differently.
-function isPrincipalLaneId(laneId: string): boolean {
-  return laneId.startsWith("principal_");
+// Lanes that map to a real Principal carry `kind: "actor"` (their
+// base id is `principal_<ulid>`). Reference numbering and "keep on
+// filter" treat actor lanes differently from synthetic bands /
+// catchall lanes.
+function isActorLane(lane: BpmnLane): boolean {
+  return lane.kind === "actor";
 }
 
 // ─── Custom node components ────────────────────────────────────────
@@ -946,6 +1014,52 @@ interface BpmnLaneData {
   referenceNumber?: number;
   isMilestoneBand?: boolean;
   isArtifactsBand?: boolean;
+}
+
+interface BpmnPoolHeaderData {
+  pool: BpmnPool;
+  width: number;
+  height: number;
+}
+
+/**
+ * Pool header band. Renders the Intent's prose as a banner across the
+ * full canvas width above the pool's lanes. The Unassigned pool gets
+ * a quieter neutral header so it doesn't compete visually with the
+ * real Intent pools above it.
+ */
+function BpmnPoolHeaderNode({ data }: { data: BpmnPoolHeaderData }) {
+  const isUnassigned = data.pool.intent_id === null;
+  const bg = isUnassigned ? "rgba(0, 0, 0, 0.05)" : "rgba(40, 70, 160, 0.08)";
+  const borderColor = isUnassigned ? "var(--color-border)" : "rgba(40, 70, 160, 0.35)";
+  return (
+    <div
+      style={{
+        width: data.width,
+        height: data.height,
+        background: bg,
+        borderTop: `2px solid ${borderColor}`,
+        borderBottom: `1px solid ${borderColor}`,
+        display: "flex",
+        alignItems: "center",
+        padding: "0 14px",
+        boxSizing: "border-box",
+        fontSize: 12,
+        fontWeight: 700,
+        textTransform: "uppercase",
+        letterSpacing: 0.8,
+        color: isUnassigned ? "var(--color-muted-foreground, #525252)" : "#1f2937",
+      }}
+      title={data.pool.label}
+    >
+      <span
+        className="overflow-hidden text-ellipsis whitespace-nowrap"
+        style={{ maxWidth: "100%" }}
+      >
+        {data.pool.label}
+      </span>
+    </div>
+  );
 }
 
 function BpmnLaneNode({ data }: { data: BpmnLaneData }) {
