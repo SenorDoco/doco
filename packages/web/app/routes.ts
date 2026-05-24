@@ -193,6 +193,8 @@ export default [
   ),
   route(":docoHandle/invites", "routes/$docoHandle.invites.tsx"),
   route(":docoHandle/api/invites.json", "routes/$docoHandle.api.invites[.]json.tsx"),
+  route(":docoHandle/project-tokens", "routes/$docoHandle.project-tokens.tsx"),
+  route(":docoHandle/api/project-tokens.json", "routes/$docoHandle.api.project-tokens[.]json.tsx"),
   // Visualization perspectives — tabs above the overview body.
   // Picker page lists builtin + user-owned perspectives; the API
   // route handles attach/detach/set-default form posts. Both must
