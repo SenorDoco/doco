@@ -34,7 +34,7 @@ export function PerspectiveTabs({
       <nav
         aria-label="Visualization perspectives"
         role="tablist"
-        className="-mb-px flex min-w-0 flex-wrap items-end gap-px"
+        className="-mb-px flex min-w-0 flex-wrap items-end"
       >
         {perspectives.map((p) => (
           <PerspectiveTab
@@ -66,16 +66,18 @@ interface PerspectiveTabProps {
 
 function PerspectiveTab({ handle, perspective, active }: PerspectiveTabProps) {
   const href = `/${handle}?perspective=${encodeURIComponent(perspective.slug)}`;
-  // Real tab-strip styling: tabs sit flush above the canvas and the
-  // active tab merges with the canvas's top edge (no bottom border, same
-  // bg as the canvas). Inactive tabs keep their bottom border so they
-  // visually sit BELOW the canvas's top line. The container above pulls
-  // the row down by 1px (`-mb-px`) so the active tab's missing bottom
-  // border lands exactly on top of the canvas border.
+  // Real tab-strip styling:
+  //   * Tabs sit edge-to-edge. `-ml-px first:ml-0` lets each tab's left
+  //     border overlap the previous tab's right border so adjacent tabs
+  //     share one 1px line instead of stacking two.
+  //   * Active tab has z-10 so its borders win the overlap.
+  //   * The row above is pulled down 1px (`-mb-px`) so the active tab's
+  //     `border-b-transparent` lands exactly on top of the canvas's top
+  //     border, dissolving the seam between the tab and the canvas.
   const tabClass = cn(
-    "relative inline-flex items-center gap-1.5 rounded-t-md border border-border px-3 py-1.5 text-xs font-medium",
+    "relative -ml-px first:ml-0 inline-flex items-center gap-1.5 rounded-t-md border border-border px-3 py-1.5 text-xs font-medium",
     active
-      ? "border-b-transparent bg-white text-foreground"
+      ? "z-10 border-b-transparent bg-white text-foreground"
       : "bg-input/40 text-muted-foreground hover:bg-input/60 hover:text-foreground",
   );
   const title = perspective.ownerHandle
