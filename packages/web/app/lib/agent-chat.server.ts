@@ -122,6 +122,7 @@ export interface ChatConversationRow {
   archived: boolean;
   created_at: Date;
   updated_at: Date;
+  active_turn_started_at: Date | null;
 }
 
 export interface ChatMessageRow {
@@ -185,6 +186,16 @@ export type ChatStreamEvent =
   | { kind: "tool_use_result"; tool_use_id: string; ok: boolean; preview: string }
   | { kind: "navigate"; url: string }
   | { kind: "message_saved"; message_id: string; role: "user" | "assistant" }
+  | {
+      // Running token totals for THIS turn (not the session). The
+      // sidebar shows these next to the in-flight bubble so the user
+      // can see what their request is costing in real time.
+      kind: "usage_update";
+      input_tokens: number;
+      output_tokens: number;
+      cache_read_tokens: number;
+      cache_creation_tokens: number;
+    }
   | { kind: "done" }
   | { kind: "error"; message: string };
 
@@ -203,7 +214,7 @@ export type ChatStreamEvent =
 export async function loadOrCreateConversation(principalId: string): Promise<ChatConversationRow> {
   return await withClient(async (c) => {
     const existing = await c.query<ChatConversationRow>(
-      `SELECT id, collaborator_id, archived, created_at, updated_at
+      `SELECT id, collaborator_id, archived, created_at, updated_at, active_turn_started_at
          FROM chat_conversations
         WHERE collaborator_id = $1
         ORDER BY created_at ASC
@@ -215,12 +226,38 @@ export async function loadOrCreateConversation(principalId: string): Promise<Cha
     const fresh = await c.query<ChatConversationRow>(
       `INSERT INTO chat_conversations (id, collaborator_id)
        VALUES ($1, $2)
-       RETURNING id, collaborator_id, archived, created_at, updated_at`,
+       RETURNING id, collaborator_id, archived, created_at, updated_at, active_turn_started_at`,
       [id, principalId],
     );
     const row = fresh.rows[0];
     if (!row) throw new Error("failed to create conversation row");
     return row;
+  });
+}
+
+/**
+ * Mark the conversation as actively composing a reply. Called at the
+ * top of runAssistantTurn; the timestamp gives the client a "is this
+ * stale?" signal so a crashed/zombied turn doesn't display forever.
+ */
+async function markActiveTurnStarted(conversationId: string): Promise<void> {
+  await withClient(async (c) => {
+    await c.query("UPDATE chat_conversations SET active_turn_started_at = now() WHERE id = $1", [
+      conversationId,
+    ]);
+  });
+}
+
+/**
+ * Clear the active-turn marker. Called in runAssistantTurn's finally
+ * so a normal completion, an error, or even a thrown abort all reset
+ * the flag.
+ */
+async function markActiveTurnEnded(conversationId: string): Promise<void> {
+  await withClient(async (c) => {
+    await c.query("UPDATE chat_conversations SET active_turn_started_at = NULL WHERE id = $1", [
+      conversationId,
+    ]);
   });
 }
 
@@ -1257,6 +1294,11 @@ export async function* runAssistantTurn(args: {
   // Opportunistic cleanup at the top of every turn so retention is
   // enforced even without a separate cron.
   await purgeExpiredAttachments();
+  // Server-side "is Señor Doco mid-reply?" marker so a freshly-loaded
+  // page can show the placeholder bubble for a turn its tab didn't
+  // initiate. Cleared in the finally below — covers normal
+  // completion, errors, and aborts.
+  await markActiveTurnStarted(args.conversation.id);
 
   const histStart = performance.now();
   const allHistory = await loadMessages(args.conversation.id);
@@ -1418,6 +1460,15 @@ export async function* runAssistantTurn(args: {
       outputTokens += usage.output_tokens ?? 0;
       cacheReadTokens += usage.cache_read_input_tokens ?? 0;
       cacheCreationTokens += usage.cache_creation_input_tokens ?? 0;
+      // Tell the client the running totals for this turn so the
+      // sidebar can show "1,234 in · 56 out" while the user waits.
+      yield {
+        kind: "usage_update",
+        input_tokens: inputTokens,
+        output_tokens: outputTokens,
+        cache_read_tokens: cacheReadTokens,
+        cache_creation_tokens: cacheCreationTokens,
+      };
       anthropicCallStats.push({
         turn,
         elapsed_ms: Math.round(performance.now() - callStart),
@@ -1505,6 +1556,16 @@ export async function* runAssistantTurn(args: {
     };
   } finally {
     flushMetrics();
+    // Best-effort marker clear. Swallow errors so a DB hiccup at the
+    // end of a turn doesn't surface as a turn-level failure.
+    try {
+      await markActiveTurnEnded(args.conversation.id);
+    } catch (err) {
+      console.warn(
+        "[agent-chat] failed to clear active_turn_started_at:",
+        err instanceof Error ? err.message : String(err),
+      );
+    }
   }
 }
 
@@ -1521,6 +1582,14 @@ export interface ConversationSnapshot {
     created_at: string;
   }[];
   has_more: boolean;
+  /**
+   * ISO timestamp of when the active turn started, or null when the
+   * conversation is idle. Lets a freshly-loaded page show the
+   * "Señor Doco is replying…" placeholder for a turn that was started
+   * by a now-closed tab. Clients should treat values older than a few
+   * minutes as stale (the server might have crashed before clearing).
+   */
+  active_turn_started_at: string | null;
 }
 
 export async function loadSnapshotForPrincipal(
@@ -1541,5 +1610,6 @@ export async function loadSnapshotForPrincipal(
       created_at: r.created_at.toISOString(),
     })),
     has_more: hasMore,
+    active_turn_started_at: conv.active_turn_started_at?.toISOString() ?? null,
   };
 }

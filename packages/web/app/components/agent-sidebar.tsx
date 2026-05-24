@@ -77,7 +77,27 @@ interface ConversationSnapshot {
   conversation_id: string;
   messages: ChatMessage[];
   has_more: boolean;
+  /**
+   * ISO timestamp the server set when the current turn started; null
+   * when idle. Lets a freshly-loaded page show the in-flight bubble
+   * for a turn its tab didn't initiate.
+   */
+  active_turn_started_at: string | null;
 }
+
+/** Per-request token totals streamed from the server. Reset to null
+ *  whenever Señor Doco settles (no in-flight + no remote in-flight). */
+interface TurnUsage {
+  input_tokens: number;
+  output_tokens: number;
+  cache_read_tokens: number;
+  cache_creation_tokens: number;
+}
+
+// If the server's `active_turn_started_at` is older than this, treat
+// it as stale (lambda probably crashed before clearing the marker)
+// and ignore it rather than showing a never-ending placeholder.
+const ACTIVE_TURN_STALE_MS = 5 * 60 * 1000;
 
 // "In-flight" assistant message being assembled from a stream.
 interface InFlightMessage {
@@ -128,6 +148,20 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
   // to show a "Señor Doco is replying…" placeholder bubble in tabs
   // that didn't initiate the send.
   const [remoteInflight, setRemoteInflight] = useState(false);
+  // Per-request token usage for the in-flight turn. Updated as the
+  // server streams usage_update events; cleared on settle. Shown next
+  // to the in-flight bubble so the user sees what THIS request is
+  // costing in real time (not the session-wide total).
+  const [turnUsage, setTurnUsage] = useState<TurnUsage | null>(null);
+  // Queued send. When the user hits Send while Señor Doco is
+  // mid-reply, the typed text + staged attachments land here and
+  // auto-fire once the current turn settles. Lets the user keep
+  // typing without losing the message; respects the Anthropic
+  // user→assistant→user alternation by not racing a second turn.
+  const [queuedSend, setQueuedSend] = useState<{
+    text: string;
+    staged: StagedAttachment[];
+  } | null>(null);
   // Lazy initializers so SSR doesn't touch localStorage; the first
   // client render hydrates from the stored value.
   const [collapsed, setCollapsed] = useState<boolean>(() => readBoolFlag(COLLAPSE_KEY));
@@ -197,6 +231,17 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
       setHasMore(data.has_more);
       earliestRef.current = data.messages[0] ?? null;
       setLoadError(null);
+      // Server-side in-flight marker: a freshly-loaded page (e.g.
+      // after refresh) should show the "Señor Doco is replying…"
+      // placeholder if a turn is actually running on the server.
+      // Stale markers (lambda crashed before clearing) are filtered
+      // out by the freshness check.
+      if (data.active_turn_started_at) {
+        const startedMs = Date.parse(data.active_turn_started_at);
+        if (Number.isFinite(startedMs) && Date.now() - startedMs < ACTIVE_TURN_STALE_MS) {
+          setRemoteInflight(true);
+        }
+      }
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -357,188 +402,227 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
     setStaged((prev) => prev.filter((a) => a.id !== id));
   }, []);
 
-  const send = useCallback(async () => {
-    const text = inputText.trim();
-    const attachmentIds = staged.map((a) => a.id);
-    const graphReferenceGroups: GraphReferenceGroup[] = readGraphReferenceGroups();
-    if ((!text && attachmentIds.length === 0) || busy) return;
-    setInputText("");
-    const sentAttachments = staged;
-    setStaged([]);
-    setUploadError(null);
-    setBusy(true);
-    // Tell other tabs that Señor Doco is busy — they'll show a
-    // "replying somewhere else" placeholder until our stream ends.
-    broadcastSync({ kind: "remote-inflight", busy: true });
-
-    // Local accumulator — sole source of truth for what to commit at end
-    // of stream. React state lags async updates, so we can't read it from
-    // inside `finally`. We mirror every update into this object AND into
-    // React state, then commit `local*` once `done` fires.
-    const localContent: AnyBlock[] = [];
-    const localResults = new Map<string, ContentBlockToolResult>();
-    setInFlight({ content: localContent, toolResults: localResults });
-
-    const localUserBlocks: AnyBlock[] = [];
-    if (text) localUserBlocks.push({ type: "text", text });
-    for (const a of sentAttachments) {
-      localUserBlocks.push({
-        type: "attachment_ref",
-        attachment_id: a.id,
-        filename: a.filename,
-        mime_type: a.mime_type,
-        size_bytes: a.size_bytes,
-      });
-    }
-    const localUser: ChatMessage = {
-      id: `local_${Date.now()}`,
-      role: "user",
-      content: localUserBlocks,
-      created_at: new Date().toISOString(),
-    };
-    setMessages((prev) => [...prev, localUser]);
-
-    const controller = new AbortController();
-    abortRef.current = controller;
-
-    const bumpInFlight = () =>
-      setInFlight({
-        content: [...localContent],
-        toolResults: new Map(localResults),
-      });
-
-    try {
-      const res = await fetch("/api/v1/agent-chat/messages.json", {
-        method: "POST",
-        credentials: "same-origin",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          text,
-          current_path: location.pathname + location.search,
-          attachment_ids: attachmentIds,
-          graph_references: graphReferenceGroups,
-        }),
-        signal: controller.signal,
-      });
-      if (!res.ok || !res.body) {
-        const errBody = await res.text().catch(() => "");
-        localContent.push({
-          type: "text",
-          text: `[error] HTTP ${res.status}: ${errBody || "(no body)"}`,
-        });
-        bumpInFlight();
+  const send = useCallback(
+    async (override?: { text: string; staged: StagedAttachment[] }) => {
+      const text = (override?.text ?? inputText).trim();
+      const sentAttachments = override?.staged ?? staged;
+      const attachmentIds = sentAttachments.map((a) => a.id);
+      const graphReferenceGroups: GraphReferenceGroup[] = readGraphReferenceGroups();
+      if (!text && attachmentIds.length === 0) return;
+      // While Señor Doco is mid-reply, the Anthropic API can't accept
+      // another user message in the same conversation (the wire
+      // protocol requires user→assistant→user alternation, and the
+      // server-side runAssistantTurn mutates the message list as it
+      // goes). Rather than dropping the user's submit on the floor,
+      // stash it; the queue-drain effect auto-fires it once the
+      // current turn settles. `override` is set by that drain — we
+      // skip the re-queue path so the auto-fire doesn't loop.
+      if (busy && !override) {
+        setQueuedSend({ text, staged: sentAttachments });
+        setInputText("");
+        setStaged([]);
         return;
       }
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buf = "";
-      streamLoop: for (;;) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buf += decoder.decode(value, { stream: true });
-        // Parse SSE frames: separated by \n\n, each frame is `data: <json>`.
-        for (;;) {
-          const nlIdx = buf.indexOf("\n\n");
-          if (nlIdx < 0) break;
-          const frame = buf.slice(0, nlIdx);
-          buf = buf.slice(nlIdx + 2);
-          const line = frame.split("\n").find((l) => l.startsWith("data: "));
-          if (!line) continue;
-          const json = line.slice(6);
-          let event: StreamEvent;
-          try {
-            event = JSON.parse(json) as StreamEvent;
-          } catch {
-            continue;
-          }
-          if (event.kind === "text_delta") {
-            const last = localContent[localContent.length - 1];
-            if (last && last.type === "text") {
-              last.text += event.text;
-            } else {
-              localContent.push({ type: "text", text: event.text });
+      if (!override) {
+        setInputText("");
+        setStaged([]);
+      }
+      setUploadError(null);
+      setBusy(true);
+      // Tell other tabs that Señor Doco is busy — they'll show a
+      // "replying somewhere else" placeholder until our stream ends.
+      broadcastSync({ kind: "remote-inflight", busy: true });
+
+      // Local accumulator — sole source of truth for what to commit at end
+      // of stream. React state lags async updates, so we can't read it from
+      // inside `finally`. We mirror every update into this object AND into
+      // React state, then commit `local*` once `done` fires.
+      const localContent: AnyBlock[] = [];
+      const localResults = new Map<string, ContentBlockToolResult>();
+      setInFlight({ content: localContent, toolResults: localResults });
+
+      const localUserBlocks: AnyBlock[] = [];
+      if (text) localUserBlocks.push({ type: "text", text });
+      for (const a of sentAttachments) {
+        localUserBlocks.push({
+          type: "attachment_ref",
+          attachment_id: a.id,
+          filename: a.filename,
+          mime_type: a.mime_type,
+          size_bytes: a.size_bytes,
+        });
+      }
+      const localUser: ChatMessage = {
+        id: `local_${Date.now()}`,
+        role: "user",
+        content: localUserBlocks,
+        created_at: new Date().toISOString(),
+      };
+      setMessages((prev) => [...prev, localUser]);
+
+      const controller = new AbortController();
+      abortRef.current = controller;
+
+      const bumpInFlight = () =>
+        setInFlight({
+          content: [...localContent],
+          toolResults: new Map(localResults),
+        });
+
+      try {
+        const res = await fetch("/api/v1/agent-chat/messages.json", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            text,
+            current_path: location.pathname + location.search,
+            attachment_ids: attachmentIds,
+            graph_references: graphReferenceGroups,
+          }),
+          signal: controller.signal,
+        });
+        if (!res.ok || !res.body) {
+          const errBody = await res.text().catch(() => "");
+          localContent.push({
+            type: "text",
+            text: `[error] HTTP ${res.status}: ${errBody || "(no body)"}`,
+          });
+          bumpInFlight();
+          return;
+        }
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buf = "";
+        streamLoop: for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buf += decoder.decode(value, { stream: true });
+          // Parse SSE frames: separated by \n\n, each frame is `data: <json>`.
+          for (;;) {
+            const nlIdx = buf.indexOf("\n\n");
+            if (nlIdx < 0) break;
+            const frame = buf.slice(0, nlIdx);
+            buf = buf.slice(nlIdx + 2);
+            const line = frame.split("\n").find((l) => l.startsWith("data: "));
+            if (!line) continue;
+            const json = line.slice(6);
+            let event: StreamEvent;
+            try {
+              event = JSON.parse(json) as StreamEvent;
+            } catch {
+              continue;
             }
-            bumpInFlight();
-          } else if (event.kind === "tool_use_start") {
-            localContent.push({
-              type: "tool_use",
-              id: event.tool_use_id,
-              name: event.name,
-              input: {},
-            });
-            bumpInFlight();
-          } else if (event.kind === "tool_use_input") {
-            const b = localContent.find(
-              (x) => x.type === "tool_use" && (x as ContentBlockToolUse).id === event.tool_use_id,
-            ) as ContentBlockToolUse | undefined;
-            if (b) {
-              b.input = event.input;
+            if (event.kind === "text_delta") {
+              const last = localContent[localContent.length - 1];
+              if (last && last.type === "text") {
+                last.text += event.text;
+              } else {
+                localContent.push({ type: "text", text: event.text });
+              }
               bumpInFlight();
+            } else if (event.kind === "tool_use_start") {
+              localContent.push({
+                type: "tool_use",
+                id: event.tool_use_id,
+                name: event.name,
+                input: {},
+              });
+              bumpInFlight();
+            } else if (event.kind === "tool_use_input") {
+              const b = localContent.find(
+                (x) => x.type === "tool_use" && (x as ContentBlockToolUse).id === event.tool_use_id,
+              ) as ContentBlockToolUse | undefined;
+              if (b) {
+                b.input = event.input;
+                bumpInFlight();
+              }
+            } else if (event.kind === "tool_use_result") {
+              localResults.set(event.tool_use_id, {
+                type: "tool_result",
+                tool_use_id: event.tool_use_id,
+                content: event.preview,
+                is_error: !event.ok,
+              });
+              bumpInFlight();
+            } else if (event.kind === "navigate") {
+              navigate(event.url);
+            } else if (event.kind === "message_saved") {
+              // Server just persisted a user or assistant message. Tell
+              // other tabs so they re-fetch the canonical snapshot and
+              // see the message in real time.
+              broadcastSync({ kind: "changed" });
+            } else if (event.kind === "error") {
+              localContent.push({ type: "text", text: `[error] ${event.message}` });
+              bumpInFlight();
+            } else if (event.kind === "usage_update") {
+              setTurnUsage({
+                input_tokens: event.input_tokens,
+                output_tokens: event.output_tokens,
+                cache_read_tokens: event.cache_read_tokens,
+                cache_creation_tokens: event.cache_creation_tokens,
+              });
+            } else if (event.kind === "done") {
+              break streamLoop;
             }
-          } else if (event.kind === "tool_use_result") {
-            localResults.set(event.tool_use_id, {
-              type: "tool_result",
-              tool_use_id: event.tool_use_id,
-              content: event.preview,
-              is_error: !event.ok,
-            });
-            bumpInFlight();
-          } else if (event.kind === "navigate") {
-            navigate(event.url);
-          } else if (event.kind === "message_saved") {
-            // Server just persisted a user or assistant message. Tell
-            // other tabs so they re-fetch the canonical snapshot and
-            // see the message in real time.
-            broadcastSync({ kind: "changed" });
-          } else if (event.kind === "error") {
-            localContent.push({ type: "text", text: `[error] ${event.message}` });
-            bumpInFlight();
-          } else if (event.kind === "done") {
-            break streamLoop;
           }
         }
+      } catch (err) {
+        if ((err as { name?: string })?.name !== "AbortError") {
+          const msg = err instanceof Error ? err.message : String(err);
+          localContent.push({ type: "text", text: `[error] ${msg}` });
+          bumpInFlight();
+        }
+      } finally {
+        abortRef.current = null;
+        // Commit the in-flight content as saved messages. Canonical history
+        // (with server-assigned ids and timestamps) gets re-hydrated on the
+        // next mount via the conversation endpoint — we don't block here on
+        // a reload round-trip.
+        const committed: ChatMessage[] = [];
+        if (localContent.length > 0) {
+          committed.push({
+            id: `local_${Date.now() + 1}`,
+            role: "assistant",
+            content: localContent.slice(),
+            created_at: new Date().toISOString(),
+          });
+        }
+        if (localResults.size > 0) {
+          committed.push({
+            id: `local_${Date.now() + 2}`,
+            role: "user",
+            content: Array.from(localResults.values()),
+            created_at: new Date().toISOString(),
+          });
+        }
+        if (committed.length > 0) {
+          setMessages((prev) => [...prev, ...committed]);
+        }
+        setInFlight(null);
+        setBusy(false);
+        // Per-request token counter is only meaningful while the
+        // request is in flight; clear it once the turn settles.
+        setTurnUsage(null);
+        // Settled — tell other tabs to re-fetch the final state (covers
+        // the late-arriving assistant message) and that Señor Doco is
+        // no longer mid-reply.
+        broadcastSync({ kind: "remote-inflight", busy: false });
+        broadcastSync({ kind: "changed" });
       }
-    } catch (err) {
-      if ((err as { name?: string })?.name !== "AbortError") {
-        const msg = err instanceof Error ? err.message : String(err);
-        localContent.push({ type: "text", text: `[error] ${msg}` });
-        bumpInFlight();
-      }
-    } finally {
-      abortRef.current = null;
-      // Commit the in-flight content as saved messages. Canonical history
-      // (with server-assigned ids and timestamps) gets re-hydrated on the
-      // next mount via the conversation endpoint — we don't block here on
-      // a reload round-trip.
-      const committed: ChatMessage[] = [];
-      if (localContent.length > 0) {
-        committed.push({
-          id: `local_${Date.now() + 1}`,
-          role: "assistant",
-          content: localContent.slice(),
-          created_at: new Date().toISOString(),
-        });
-      }
-      if (localResults.size > 0) {
-        committed.push({
-          id: `local_${Date.now() + 2}`,
-          role: "user",
-          content: Array.from(localResults.values()),
-          created_at: new Date().toISOString(),
-        });
-      }
-      if (committed.length > 0) {
-        setMessages((prev) => [...prev, ...committed]);
-      }
-      setInFlight(null);
-      setBusy(false);
-      // Settled — tell other tabs to re-fetch the final state (covers
-      // the late-arriving assistant message) and that Señor Doco is
-      // no longer mid-reply.
-      broadcastSync({ kind: "remote-inflight", busy: false });
-      broadcastSync({ kind: "changed" });
-    }
-  }, [inputText, busy, staged, location.pathname, location.search, navigate, broadcastSync]);
+    },
+    [inputText, busy, staged, location.pathname, location.search, navigate, broadcastSync],
+  );
+
+  // Queue-drain: when Señor Doco settles AND a message is queued
+  // from a busy-send, auto-fire it. Passing the message as an
+  // `override` bypasses the re-queue check inside `send`.
+  useEffect(() => {
+    if (busy || !queuedSend) return;
+    const q = queuedSend;
+    setQueuedSend(null);
+    void send(q);
+  }, [busy, queuedSend, send]);
 
   const allMessages = useMemo<RenderableMessage[]>(() => {
     const out: RenderableMessage[] = messages.map((m) => ({ kind: "saved", message: m }));
@@ -646,7 +730,11 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
           </div>
         ) : null}
         {allMessages.map((rm) => (
-          <MessageBlock key={rm.kind === "saved" ? rm.message.id : "inflight"} rm={rm} />
+          <MessageBlock
+            key={rm.kind === "saved" ? rm.message.id : "inflight"}
+            rm={rm}
+            usage={rm.kind === "inflight" ? turnUsage : null}
+          />
         ))}
       </div>
 
@@ -762,7 +850,13 @@ function blockKey(block: AnyBlock): string {
   return `text-${hashText(block.text)}`;
 }
 
-function MessageBlock({ rm }: { rm: RenderableMessage }) {
+function formatTokenCount(n: number): string {
+  if (n < 1000) return String(n);
+  if (n < 10_000) return `${(n / 1000).toFixed(1)}k`;
+  return `${Math.round(n / 1000)}k`;
+}
+
+function MessageBlock({ rm, usage }: { rm: RenderableMessage; usage: TurnUsage | null }) {
   if (rm.kind === "saved") {
     const m = rm.message;
     // A "user" role message that contains only tool_result blocks is
@@ -782,7 +876,7 @@ function MessageBlock({ rm }: { rm: RenderableMessage }) {
     }
     return <SavedMessage message={m} />;
   }
-  return <InFlightMessageView msg={rm.message} />;
+  return <InFlightMessageView msg={rm.message} usage={usage} />;
 }
 
 function SavedMessage({ message }: { message: ChatMessage }) {
@@ -806,7 +900,7 @@ function SavedMessage({ message }: { message: ChatMessage }) {
   );
 }
 
-function InFlightMessageView({ msg }: { msg: InFlightMessage }) {
+function InFlightMessageView({ msg, usage }: { msg: InFlightMessage; usage: TurnUsage | null }) {
   return (
     <div className="mb-3 flex flex-col items-end">
       <div className="neu-bubble max-w-[90%] space-y-1.5 rounded-lg bg-primary/10 px-2.5 py-1.5">
@@ -835,6 +929,15 @@ function InFlightMessageView({ msg }: { msg: InFlightMessage }) {
       <div className="mt-1 flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-muted-foreground">
         <DocoMark height={14} variant="mark" active decorative />
         Señor Doco
+        {usage ? (
+          <span
+            className="font-mono normal-case tracking-normal"
+            title={`Tokens for this turn — input ${usage.input_tokens}, output ${usage.output_tokens}, cache read ${usage.cache_read_tokens}, cache create ${usage.cache_creation_tokens}`}
+          >
+            · {formatTokenCount(usage.input_tokens)} in · {formatTokenCount(usage.output_tokens)}{" "}
+            out
+          </span>
+        ) : null}
       </div>
     </div>
   );
@@ -1076,5 +1179,12 @@ type StreamEvent =
   | { kind: "tool_use_result"; tool_use_id: string; ok: boolean; preview: string }
   | { kind: "navigate"; url: string }
   | { kind: "message_saved"; message_id: string; role: "user" | "assistant" }
+  | {
+      kind: "usage_update";
+      input_tokens: number;
+      output_tokens: number;
+      cache_read_tokens: number;
+      cache_creation_tokens: number;
+    }
   | { kind: "done" }
   | { kind: "error"; message: string };
