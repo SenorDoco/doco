@@ -3,8 +3,9 @@
 // the host nav. Shows every org/doco grant the signed-in principal
 // can see — humans only, since the API-keys split. Owner-issued
 // agent grants (OAuth tokens) live on /api-keys. Lets owners edit
-// roles inline (auto-save), and links to the standalone
-// collaborator-invite page.
+// roles inline (auto-save) and mint invites in-place via the
+// CollaboratorInviteCards card at the top — the prior
+// /collaborators/invite standalone page is gone.
 
 import {
   type DocoRole,
@@ -19,12 +20,18 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useFetcher, useSearchParams } from "react-router";
 import { Breadcrumb, hostBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
+import { CollaboratorInviteCards } from "~/components/collaborator-invite-cards";
 import { SingleColumnPageMain } from "~/components/page-main";
 import { SiteHeader } from "~/components/site-header";
-import { ALL_ROLES, type InviteLevel } from "~/lib/collaborator-invite";
+import {
+  ALL_ROLES,
+  type CollaboratorInviteActionResult,
+  type InviteLevel,
+} from "~/lib/collaborator-invite";
 import {
   type CollaboratorsPageData,
   type GrantRow,
+  handleCollaboratorInviteAction,
   loadCollaboratorsPageData,
 } from "~/lib/collaborators.server";
 import { getDocoLevelRole } from "~/lib/doco-access.server";
@@ -50,6 +57,7 @@ type ActionResult =
       target_ids: string[];
       collaborator_id: string;
     }
+  | CollaboratorInviteActionResult
   | { error: string };
 
 export async function action({
@@ -63,6 +71,13 @@ export async function action({
   const form = await request.formData();
   const intent = String(form.get("intent") ?? "");
   const level = String(form.get("level") ?? "") as InviteLevel;
+
+  if (intent === "invite") {
+    // Delegate to the shared invite handler — same one /api/v1/collaborators/invite.json
+    // calls. The InviteHumanCard's useFetcher narrows on `intent === "invite"`
+    // so the role-edit cases below don't interfere with it.
+    return await handleCollaboratorInviteAction(request);
+  }
 
   if (intent === "update" || intent === "remove") {
     // target_ids is the canonical field — comma-separated when a grouped
@@ -261,6 +276,15 @@ export default function CollaboratorsPage({
           </p>
         </header>
 
+        <Card>
+          <CardHeader>
+            <CardTitle>Invite a collaborator</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <CollaboratorInviteCards invite={loaderData.invite} />
+          </CardContent>
+        </Card>
+
         <div className="flex flex-wrap items-end justify-between gap-3">
           <label className="flex flex-col gap-1 text-sm">
             <span className="text-xs uppercase tracking-wide text-muted-foreground">
@@ -293,14 +317,6 @@ export default function CollaboratorsPage({
               ) : null}
             </select>
           </label>
-
-          <Link
-            to="/collaborators/invite"
-            data-testid="invite-toggle"
-            className="neu-button bg-primary text-primary-foreground hover:opacity-90 rounded-md px-3 py-2 text-sm font-semibold"
-          >
-            + Invite collaborator
-          </Link>
         </div>
 
         {showOrgSection ? (
@@ -452,6 +468,7 @@ function UserRow({
               principalId={row.principal.collaborator_id}
               username={username}
               grant={g}
+              isMe={isMe}
             />
           ))}
         </div>
@@ -465,11 +482,13 @@ function AccessLine({
   principalId,
   username,
   grant,
+  isMe,
 }: {
   level: InviteLevel;
   principalId: string;
   username: string;
   grant: AccessGrant;
+  isMe: boolean;
 }) {
   const roleFetcher = useFetcher<ActionResult>();
   const removeFetcher = useFetcher<ActionResult>();
@@ -538,10 +557,34 @@ function AccessLine({
           disabled={removeFetcher.state !== "idle"}
           data-testid={`remove-${level}-${username}-${grant.target_id}`}
           onClick={() => {
-            if (!confirm(`Remove ${username} from ${grant.target_label}?`)) return;
+            if (isMe) {
+              // Removing yourself is destructive in a way removing other
+              // people isn't: it cuts your own access immediately, and
+              // you can't undo it from this UI — you'd need someone else
+              // with owner on the target to invite you back. Force a
+              // typed confirmation so it can't happen by reflex.
+              const warning = [
+                `⚠ You're about to remove YOURSELF from ${grant.target_label}.`,
+                "",
+                "Effect (immediate, no undo from this screen):",
+                `  • You lose your ${grant.role} grant on this ${level}.`,
+                `  • You may lose access to ${grant.target_label} entirely.`,
+                "  • Only another owner can invite you back.",
+                "",
+                `Type the ${level} handle (${grant.target_label}) to confirm:`,
+              ].join("\n");
+              const typed = prompt(warning, "");
+              if (typed?.trim() !== grant.target_label) return;
+            } else {
+              if (!confirm(`Remove ${username} from ${grant.target_label}?`)) return;
+            }
             removeFetcher.submit(removePayload, { method: "post" });
           }}
-          title={`Remove ${username} from ${grant.target_label}`}
+          title={
+            isMe
+              ? `Remove yourself from ${grant.target_label} (requires typed confirmation)`
+              : `Remove ${username} from ${grant.target_label}`
+          }
           className="neu-button shrink-0 rounded-md px-1.5 py-0.5 text-xs text-destructive disabled:opacity-50"
         >
           {removeFetcher.state !== "idle" ? "…" : "×"}

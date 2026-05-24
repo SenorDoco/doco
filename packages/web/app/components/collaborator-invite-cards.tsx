@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
 import { useFetcher } from "react-router";
-import { Card, CardContent } from "~/components/card";
 import { CollaborationInvitePrompt } from "~/components/collaboration-invite-prompt";
 import {
   ALL_ROLES,
@@ -88,84 +87,82 @@ function InviteHumanCard({
   const selected = combinedOptions.find((o) => o.key === selectedKey);
 
   return (
-    <Card>
-      <CardContent className="space-y-3">
-        <fetcher.Form method="post" className="flex flex-col gap-3">
-          <input type="hidden" name="intent" value="invite" />
-          <input type="hidden" name="level" value={selected?.level ?? ""} />
-          <input type="hidden" name="target_id" value={selected?.id ?? ""} />
-          <div className="flex flex-wrap items-end justify-start gap-3">
-            <label className="flex flex-col gap-1 text-sm">
-              <span className="text-xs uppercase tracking-wide text-muted-foreground">
-                Org / Doco
-              </span>
-              <select
-                value={selectedKey}
-                onChange={(e) => setSelectedKey(e.currentTarget.value)}
-                disabled={noTargets}
-                data-testid="invite-target"
-                className="rounded-md px-3 py-2 disabled:opacity-50"
-              >
-                {noTargets ? (
-                  <option value="">(no targets you can invite into)</option>
-                ) : (
-                  combinedOptions.map((opt) => (
-                    <option key={opt.key} value={opt.key}>
-                      [{opt.level}] {opt.label}
-                    </option>
-                  ))
-                )}
-              </select>
-            </label>
-            <label className="flex flex-col gap-1 text-sm">
-              <span className="text-xs uppercase tracking-wide text-muted-foreground">Role</span>
-              <select
-                name="role"
-                defaultValue="author"
-                data-testid="invite-role"
-                className="rounded-md px-3 py-2"
-              >
-                {ALL_ROLES.map((r) => (
-                  <option key={r} value={r}>
-                    {r}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-          <div className="flex justify-end">
-            <button
-              type="submit"
-              data-testid="invite-submit"
-              disabled={fetcher.state !== "idle" || noTargets}
-              className="neu-button bg-primary text-primary-foreground hover:opacity-90 rounded-md px-4 py-2 text-sm font-semibold disabled:opacity-50"
+    <div className="space-y-3">
+      <fetcher.Form method="post" className="flex flex-col gap-3">
+        <input type="hidden" name="intent" value="invite" />
+        <input type="hidden" name="level" value={selected?.level ?? ""} />
+        <input type="hidden" name="target_id" value={selected?.id ?? ""} />
+        <div className="flex flex-wrap items-end justify-start gap-3">
+          <label className="flex flex-col gap-1 text-sm">
+            <span className="text-xs uppercase tracking-wide text-muted-foreground">
+              Org / Doco
+            </span>
+            <select
+              value={selectedKey}
+              onChange={(e) => setSelectedKey(e.currentTarget.value)}
+              disabled={noTargets}
+              data-testid="invite-target"
+              className="rounded-md px-3 py-2 disabled:opacity-50"
             >
-              {fetcher.state !== "idle" ? "Generating..." : "Generate invite link"}
-            </button>
-          </div>
-        </fetcher.Form>
+              {noTargets ? (
+                <option value="">(no targets you can invite into)</option>
+              ) : (
+                combinedOptions.map((opt) => (
+                  <option key={opt.key} value={opt.key}>
+                    [{opt.level}] {opt.label}
+                  </option>
+                ))
+              )}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1 text-sm">
+            <span className="text-xs uppercase tracking-wide text-muted-foreground">Role</span>
+            <select
+              name="role"
+              defaultValue="author"
+              data-testid="invite-role"
+              className="rounded-md px-3 py-2"
+            >
+              {ALL_ROLES.map((r) => (
+                <option key={r} value={r}>
+                  {r}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+        <div className="flex justify-end">
+          <button
+            type="submit"
+            data-testid="invite-submit"
+            disabled={fetcher.state !== "idle" || noTargets}
+            className="neu-button bg-primary text-primary-foreground hover:opacity-90 rounded-md px-4 py-2 text-sm font-semibold disabled:opacity-50"
+          >
+            {fetcher.state !== "idle" ? "Generating..." : "Generate invite link"}
+          </button>
+        </div>
+      </fetcher.Form>
 
-        {error ? (
-          <p className="text-sm text-destructive" data-testid="invite-error">
-            {error}
-          </p>
-        ) : null}
+      {error ? (
+        <p className="text-sm text-destructive" data-testid="invite-error">
+          {error}
+        </p>
+      ) : null}
 
-        {inviteResult ? (
-          <CollaborationInvitePrompt
-            inviteUrl={inviteResult.invite_url}
-            testId="invite-result"
-            promptTestId="invite-url"
-            copyButtonTestId="invite-copy"
-            note={
-              <>
-                Single-use, expires in 72 hours. Grants <strong>{inviteResult.role}</strong> at the{" "}
-                {inviteResult.level} level.
-              </>
-            }
-          />
-        ) : null}
-      </CardContent>
-    </Card>
+      {inviteResult ? (
+        <CollaborationInvitePrompt
+          inviteUrl={inviteResult.invite_url}
+          testId="invite-result"
+          promptTestId="invite-url"
+          copyButtonTestId="invite-copy"
+          note={
+            <>
+              Single-use, expires in 72 hours. Grants <strong>{inviteResult.role}</strong> at the{" "}
+              {inviteResult.level} level.
+            </>
+          }
+        />
+      ) : null}
+    </div>
   );
 }
