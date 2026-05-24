@@ -11,7 +11,7 @@ const route = makeUpdateRoute({
     "slug",
     "verb",
     "outputs",
-    "follows",
+    "preceded_by",
     "decision_ids",
     "actor_id",
     "happened_at",

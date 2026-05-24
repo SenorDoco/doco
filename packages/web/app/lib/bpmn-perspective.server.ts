@@ -110,7 +110,7 @@ export interface BpmnNode {
    * (pool header), or State with kind=initial — over the full synapse
    * graph. Renderer uses MAX(sequence-flow depth, bfs_depth) as the
    * horizontal column so neurons connected to the flow get positioned
-   * even when no explicit `follows` / `triggered_by` / `enacts` synapse
+   * even when no explicit `preceded_by` / `triggered_by` / `enacts` synapse
    * exists between them. Falls back to 0 when unreachable.
    */
   bfs_depth?: number;
@@ -274,7 +274,7 @@ export async function loadBpmnGraph(
   // and every State with kind=initial), walked over the full synapse
   // graph. The renderer takes MAX(sequence-flow depth, bfs_depth) for
   // each neuron's horizontal column — so a node connected to the flow
-  // via *any* synapse (not just `follows` / `triggered_by` / `enacts`)
+  // via *any* synapse (not just `preceded_by` / `triggered_by` / `enacts`)
   // still gets positioned relative to the start. Without this, neurons
   // missing an explicit sequence-flow synapse fall to depth 0 and the
   // chronological tiebreaker decides — which has nothing to do with

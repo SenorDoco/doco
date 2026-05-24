@@ -853,12 +853,12 @@ etc., not \`summary\`.
 
 - Decision:  { decision*, question*, chosen*, alternatives?[{name, rejected_because}], intent_ids?[], born_from?, decided_by_principal_id?, lifecycle?, deprecated?, outcome?("succeeded"|"failed"), superseded_by? }
 - Intent:    { intent*, wanted_by_principal_id?, actors_principal_ids?[], stakeholders_principal_ids?[], lifecycle?, deprecated?, outcome? }
-- Action:    { action*, verb*, intent_ids?[], decision_ids?[], follows?[], gated_by?[], inputs?, outputs?, actor_principal_id?, lifecycle?(default "retired"), outcome?(default "succeeded") }
-- Log:       { log*, verb*, happened_at*(ISO8601), outputs*(non-empty obj), template_id?, intent_ids?[], decision_ids?[], follows?[], inputs?, actor_principal_id?, lifecycle?(default "retired"), outcome?(default "succeeded") }
+- Action:    { action*, verb*, intent_ids?[], decision_ids?[], preceded_by?[], gated_by?[], inputs?, outputs?, actor_principal_id?, lifecycle?(default "retired"), outcome?(default "succeeded") }
+- Log:       { log*, verb*, happened_at*(ISO8601), outputs*(non-empty obj), template_id?, intent_ids?[], decision_ids?[], preceded_by?[], inputs?, actor_principal_id?, lifecycle?(default "retired"), outcome?(default "succeeded") }
 - Rule:      { rule*, predicate*, intent_ids?[], enforced_by?("runtime"|"review"|"manual"), severity?("hard"|"soft"), born_from?, authored_by_principal_id? }
 - Eval:      { eval*, criterion*({kind:"exact"|"shape"|"llm-judge", spec}), kind?("unit"|"integration"|"eval"|"process"|"doc-consistency"), expected_status?("pass"|"fail"), target_ref?, intent_ids?[], authored_by_principal_id? }
 - Reference: { reference*, ref_type*("file"|"url"|"ticket"|"commit"|"document"|"other"), locator*, content_hash?, intent_ids?[], created_by_principal_id? }
-- State:     { state*, kind*("initial"|"intermediate"|"terminal"), invariants?[], follows?[], created_by_principal_id? }
+- State:     { state*, kind*("initial"|"intermediate"|"terminal"), invariants?[], preceded_by?[], created_by_principal_id? }
 - Idea:      { idea*, created_by_principal_id?, promoted_to?, rejection_reason?, lifecycle?(default "drafting") }
 - Policy (Guidance): POST /<handle>/api/policies.json with policy_kind*("guidance"), summary*, body_md?, authored_by_principal_id?. (Policies keep the legacy summary/body_md shape — they did NOT migrate to type-named columns.)
 - Policy (Neuron-authoring): same endpoint with policy_kind*("neuron_authoring"), summary*, evaluation_kind*("deterministic"|"probabilistic"), then either predicate*(deterministic AuthoringPredicate object) or spec*(probabilistic prose), and optional fires_when_neuron_lifecycle?[], on_violation?("block"|"warn"|"log", default "block").
@@ -897,7 +897,7 @@ Never paste the URL on a separate line — the footer-line's link covers it, and
 
 ## Adding a synapse
 
-Synapses in Doco are derived from reference fields on neurons (D-017, fields-as-synapses). To add a synapse from A to B with type T, PATCH the source neuron A to add B's id into the appropriate ref field. API input uses principal-id field names where applicable (stakeholders_principal_ids writes stored stakeholders; actor_principal_id writes stored actor_id). Map (mostly): intent_ids → serves · decision_ids → enacts · rules_consulted → consults · born_from → born_from · superseded_by → superseded_by · target_ref → tests · stakeholders → has_stakeholder · parent_intent_id → has_parent · owner_id → owned_by · member → member_of · follows → follows. There is no POST /<handle>/api/synapses.json — patch a neuron's ref field; the indexer materializes the synapse synchronously.
+Synapses in Doco are derived from reference fields on neurons (D-017, fields-as-synapses). To add a synapse from A to B with type T, PATCH the source neuron A to add B's id into the appropriate ref field. API input uses principal-id field names where applicable (stakeholders_principal_ids writes stored stakeholders; actor_principal_id writes stored actor_id). Map (mostly): intent_ids → serves · decision_ids → enacts · rules_consulted → consults · born_from → born_from · superseded_by → superseded_by · target_ref → tests · stakeholders → has_stakeholder · parent_intent_id → has_parent · owner_id → owned_by · member → member_of · preceded_by → preceded_by. There is no POST /<handle>/api/synapses.json — patch a neuron's ref field; the indexer materializes the synapse synchronously.
 
 ## Scope — what you handle vs. what you decline
 
