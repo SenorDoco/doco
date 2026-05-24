@@ -19,6 +19,7 @@ import { SiteHeader } from "~/components/site-header";
 import {
   auditSummaryFallback,
   capNodeType,
+  activityRowLifecycle,
   iconFromAuditOp,
   lifecycleTransitionText,
   shouldStrikeActivityTarget,
@@ -30,6 +31,7 @@ import { listDocoStats } from "~/lib/doco-stats.server";
 import { DOCO_TEMPLATES } from "~/lib/doco-templates-meta";
 import { pickGreetingVerb } from "~/lib/greeting";
 import { listAllDocos, listMyOrgs, loadHostConfig } from "~/lib/host.server";
+import { lifecycleColor } from "~/lib/neuron-colors";
 import { getCurrentPrincipal } from "~/lib/session.server";
 import { timeAgo } from "~/lib/time-ago";
 
@@ -375,6 +377,7 @@ function DashboardFeedLine({ event }: { event: FeedEvent }) {
   const summary = event.summary ?? auditSummaryFallback(event.entity_type, event.entity_id);
   const detail = lifecycleTransitionText(event);
   const strikeTarget = shouldStrikeActivityTarget(event);
+  const lifecycleHex = lifecycleColor(activityRowLifecycle(event));
   return (
     <div className="flex items-baseline gap-3 px-5 py-3 font-mono text-xs leading-relaxed text-foreground">
       <div className="min-w-0 flex-1">
@@ -385,10 +388,8 @@ function DashboardFeedLine({ event }: { event: FeedEvent }) {
         <span className="text-muted-foreground">: </span>
         <Link
           to={url}
-          className={cn(
-            "text-primary hover:underline",
-            strikeTarget && "line-through decoration-2",
-          )}
+          style={{ color: lifecycleHex }}
+          className={cn("hover:underline", strikeTarget && "line-through decoration-2")}
         >
           {summary}
         </Link>
