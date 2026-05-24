@@ -12,7 +12,7 @@
 
 import { withClient } from "@doco/db";
 
-export type PerspectiveKind = "graph" | "list" | "bpmn";
+export type PerspectiveKind = "graph" | "list" | "bpmn" | "org-tree";
 
 export interface Perspective {
   id: string;
