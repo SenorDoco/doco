@@ -131,7 +131,13 @@ function PerspectiveSettingsMenu({
   activeSlug,
 }: PerspectiveSettingsMenuProps) {
   const [open, setOpen] = useState(false);
-  const wrapperRef = useRef<HTMLDivElement>(null);
+  // Two refs (button + menu) instead of a wrapper ref. Any DOM
+  // wrapper around the button breaks pixel-perfect flex alignment
+  // with the Link tabs in Safari (display:contents in particular).
+  // Skipping the wrapper means the click-outside detector tests both
+  // button and menu separately.
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const fetcher = useFetcher();
   const navigate = useNavigate();
   const isPosting = fetcher.state === "submitting";
@@ -140,7 +146,9 @@ function PerspectiveSettingsMenu({
   useEffect(() => {
     if (!open) return;
     function onDocClick(e: MouseEvent) {
-      if (!wrapperRef.current?.contains(e.target as Node)) setOpen(false);
+      const target = e.target as Node;
+      if (btnRef.current?.contains(target) || menuRef.current?.contains(target)) return;
+      setOpen(false);
     }
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") setOpen(false);
@@ -159,23 +167,14 @@ function PerspectiveSettingsMenu({
   const apiAction = `/${handle}/api/perspectives.json`;
 
   return (
-    // The wrapper has to be `relative` so the dropdown menu can
-    // position-absolute against it. But as a flex child of the tab
-    // nav, the wrapper picked up the page's inherited 1.55 line-height
-    // and computed ~0.8px taller than the button inside, leaving the
-    // chevron's bottom 0.8px above the perspective tabs' bottoms.
-    // `flex items-end` alone didn't kill that gap — the inherited
-    // line-height contributes to the wrapper's CONTENT height, not
-    // just leading inside text. Force `leading-none` (line-height:1)
-    // on the wrapper so it shrinks to exactly the button's box.
-    // `display: contents` so the wrapper is transparent to the nav's
-    // flex layout — the BUTTON becomes the direct flex child, aligning
-    // pixel-perfectly with the Link perspective tabs. The dropdown menu
-    // positions absolutely against the nav (which is now `relative`).
-    // `wrapperRef` still attaches here so the click-outside listener
-    // can detect clicks inside button OR menu.
-    <div ref={wrapperRef} style={{ display: "contents" }}>
+    // No wrapper element. Any DOM wrapper around the button (even with
+    // display:contents) broke pixel-perfect flex alignment with the
+    // Link tabs in Safari. The button is the direct flex child of
+    // the nav, the menu is a sibling positioned absolute against the
+    // nav (which is `relative`).
+    <>
       <button
+        ref={btnRef}
         type="button"
         aria-label="Perspective settings"
         title="Perspective settings"
@@ -193,11 +192,11 @@ function PerspectiveSettingsMenu({
       </button>
       {open ? (
         <div
+          ref={menuRef}
           aria-label="Perspectives"
-          // The wrapper above uses display:contents so this absolute
-          // positions against the nav (the next positioned ancestor).
-          // `right-0 top-full` anchors the menu to the bottom-right of
-          // the nav, directly under the chevron tab.
+          // Absolute positions against the nav (its `relative`
+          // ancestor). right-0 top-full anchors bottom-right of the
+          // nav, directly under the chevron tab.
           className="neu-floating absolute right-0 top-full z-40 mt-1 w-80 rounded-md bg-card p-2"
         >
           <p className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
@@ -305,6 +304,6 @@ function PerspectiveSettingsMenu({
           ) : null}
         </div>
       ) : null}
-    </div>
+    </>
   );
 }
