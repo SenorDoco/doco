@@ -105,3 +105,24 @@ export function hasFocalNode(centerId: string | null | undefined, nodes: NodeLik
   if (!centerId) return false;
   return nodes.some((n) => n.id === centerId);
 }
+
+/**
+ * Treat any depth ≥ this as "far away" — collapsed into a single
+ * outermost ring. Matches the opacity ramp (4+ hops all render at 25%).
+ */
+export const FAR_DEPTH = 4;
+
+/**
+ * Bucket a node's BFS depth into a small set of "rings":
+ *   0 → focal node itself
+ *   1, 2, 3 → first/second/third-degree neighbours
+ *   FAR_DEPTH → everything 4+ hops away OR unreachable
+ *
+ * Callers use this to lay out concentric rings around the focal node:
+ * one ring per bucket, growing outward.
+ */
+export function depthBucket(depth: number | undefined): number {
+  if (depth === undefined) return FAR_DEPTH;
+  if (depth >= FAR_DEPTH) return FAR_DEPTH;
+  return depth;
+}
