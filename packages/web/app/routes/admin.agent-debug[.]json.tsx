@@ -96,6 +96,16 @@ export async function loader({ request }: { request: Request }) {
   const url = new URL(request.url);
   const limitRaw = Number(url.searchParams.get("limit") ?? "20");
   const limit = Number.isFinite(limitRaw) ? Math.max(1, Math.min(100, Math.round(limitRaw))) : 20;
+  // Optional: tail a specific conversation's messages. When set,
+  // returns the last `messages` rows from chat_messages for that
+  // conversation (defaults to 30). Lets an out-of-band agent read
+  // an active conversation without needing the user's session
+  // cookie.
+  const targetConv = url.searchParams.get("conversation");
+  const messagesRaw = Number(url.searchParams.get("messages") ?? "30");
+  const messageLimit = Number.isFinite(messagesRaw)
+    ? Math.max(1, Math.min(200, Math.round(messagesRaw)))
+    : 30;
 
   const data = await withClient(async (c) => {
     const [turns, stuck, captures, openai, stuckMsgs] = await Promise.all([
@@ -155,10 +165,24 @@ export async function loader({ request }: { request: Request }) {
       ),
     ]);
 
+    let convMessages: StuckMessage[] = [];
+    if (targetConv) {
+      const r = await c.query<StuckMessage>(
+        `SELECT id, conversation_id, role, content,
+                created_at::text AS created_at
+           FROM chat_messages
+          WHERE conversation_id = $1
+          ORDER BY created_at DESC
+          LIMIT $2`,
+        [targetConv, messageLimit],
+      );
+      convMessages = r.rows.reverse();
+    }
     return {
       recent_turns: turns.rows,
       stuck_conversations: stuck.rows,
       stuck_conversation_messages: stuckMsgs.rows,
+      conversation_messages: convMessages,
       recent_capture_errors: captures.rows,
       recent_openai_errors: openai.rows,
     };
