@@ -140,6 +140,36 @@ button[class*="bg-primary"]:active {
   transform: none !important;
 }
 
+/* Etched dividers: any element with a directional `border-{side}` +
+   `border-border` (or a `divide-y` / `divide-x` parent) gets a 1px
+   white highlight painted adjacent to the dark border via box-shadow.
+   Combined with the existing 1px border-border line, the divider
+   reads as a continuation of `.neu-surface`'s etched edge — dark +
+   highlight — instead of a single solid line. `[class~="…"]` uses
+   whitespace-token matching so `border-b` doesn't also match
+   `border-border` (which contains "border-b" as a substring).
+   Excluded: `.neu-button`, `.neu-pressed`, anything with `bg-primary`
+   — those have their own shadow treatment and we don't want to
+   add a stray highlight outside them. */
+[class~="border-b"][class~="border-border"]:not([class~="neu-button"]):not([class~="neu-pressed"]):not([class*="bg-primary"]) {
+  box-shadow: 0 1px 0 color-mix(in oklch, white 65%, transparent);
+}
+[class~="border-t"][class~="border-border"]:not([class~="neu-button"]):not([class~="neu-pressed"]):not([class*="bg-primary"]) {
+  box-shadow: 0 -1px 0 color-mix(in oklch, white 65%, transparent);
+}
+[class~="border-r"][class~="border-border"]:not([class~="neu-button"]):not([class~="neu-pressed"]):not([class*="bg-primary"]) {
+  box-shadow: 1px 0 0 color-mix(in oklch, white 65%, transparent);
+}
+[class~="border-l"][class~="border-border"]:not([class~="neu-button"]):not([class~="neu-pressed"]):not([class*="bg-primary"]) {
+  box-shadow: -1px 0 0 color-mix(in oklch, white 65%, transparent);
+}
+/* Tailwind `divide-y` puts a `border-t` on each non-first child via a
+   generated rule. Pair it with the same highlight so the row divider
+   reads etched. */
+[class~="divide-y"] > * + * {
+  box-shadow: 0 -1px 0 color-mix(in oklch, white 65%, transparent);
+}
+
 @layer utilities {
   /* Non-button content surfaces (cards, badges, list rows, info
      panels, table containers, clickable anchor-cards). The whole-
