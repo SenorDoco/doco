@@ -220,6 +220,7 @@ BODY (JSON)
   intent_ids          optional   ["intent_01...", ...]
   decision_ids        optional   ["decision_01...", ...]
   follows             optional   entity ids this action follows causally or chronologically
+  gated_by            optional   ["rule_01...", ...] rule ids that gate this action (BPMN-style policy guards)
   inputs              optional   verb-specific input object or value
   outputs             optional   verb-specific output object or value
   actor_principal_id  optional   principal id who performs the action; auth fills this

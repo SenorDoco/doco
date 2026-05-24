@@ -405,12 +405,13 @@ function parseRawYaml(rawYaml: string | null): Record<string, unknown> {
  * (either a principal id or a bare role name), or null when the
  * neuron has no lane-bearing field or no resolvable value.
  *
- * Decisions are special: `decided_by` is a Collaborator id post-rename
- * (entities.ts:290), not a Principal. We translate via the
- * collaborator map to a github_login, which `resolveLane` then matches
- * against Principal `name`. When the Collaborator has no Principal
- * counterpart, the Decision lands in Unassigned cleanly rather than
- * spawning a per-Collaborator unresolved lane.
+ * Decisions: `decided_by` is a Principal id post migration 025 (the
+ * FK now points at principals; the capture API only accepts
+ * principal_* ids). The defensive `collaborator_` branch handles any
+ * pre-migration row whose backfill couldn't resolve a matching
+ * principal — it routes through the collaborator map to a
+ * github_login that `resolveLane` then matches against Principal
+ * `name`, falling to Unassigned when no Principal counterpart exists.
  */
 function laneReferenceFor(
   entityType: string,
