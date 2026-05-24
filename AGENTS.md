@@ -257,6 +257,49 @@ do not commit it, and do not assume another clone or machine has it.
 
 ---
 
+## Persisting credentials across containers, clones, machines
+
+The repo-root `.env` shares credentials between agents **in the same
+checkout**. It does NOT solve the case where the user opens a new
+remote sandbox session (which gives them a fresh container) or
+clones the repo on a different machine — those see no `.env` and
+prompt for OAuth all over again.
+
+**After every successful OAuth completion, surface to the user ONCE
+that the auth dance repeats unless they persist the credential.**
+The two options the protocol supports:
+
+1. **`DOCO_ACCESS` as a runtime environment variable.** The user
+   sets it on the *remote execution environment* (Claude Code on
+   the Web environment vars, GitHub Codespaces secrets, Replit
+   secrets, etc.) — not in the repo. Fresh containers inherit it
+   without prompting; the MCP server reads `process.env.DOCO_ACCESS`
+   as a fallback when no `.env` value is set. Tell the user to copy
+   their token from `.env` into their runtime's environment-variable
+   configuration. The DOCO_ACCESS value is private; do not paste it
+   on the user's behalf.
+
+2. **Committable project tokens.** The Doco owner mints a read-only
+   token at `https://doco.to/<handle>/project-tokens` (owner-only;
+   the page requires an explicit confirmation that anyone with read
+   access to the repo will be able to read the Doco). The mint
+   response shows the token body **once** — copy it into
+   `.doco/project-tokens.json` as
+   `{"<handle>": "doco_pt_<token>"}`. Commit and push. Any agent
+   cloning the repo and running the bundled MCP server will read
+   this token automatically when no `DOCO_ACCESS` is set in `.env`.
+   Reader-only, indefinite TTL, revoke from the same page.
+
+Surface BOTH options once per successful OAuth — the user picks the
+one that fits their situation. After the first prompt, stay quiet
+on subsequent turns. Do not re-prompt.
+
+The `.doco/project-tokens.json` file IS committable; `.env` is NOT.
+Never commit `.env`, `DOCO_ACCESS` values, refresh tokens, OAuth
+client state, or any other credential.
+
+---
+
 ## Share this setup with other agents
 
 Your OAuth token is private; the repo's Doco files are not — they're
@@ -301,6 +344,7 @@ credential.
 ## File map
 
 - `.doco/connections.md` — list of Doco URLs this repo connects to.
+- `.doco/project-tokens.json` — optional, committable read-only project tokens (handle → `doco_pt_…`). Present only when the Doco owner has minted one and the contents are OK to be repo-readable.
 - `AGENTS.md` — this file. Read every turn.
 - `CLAUDE.md` — one-line shim `@./AGENTS.md`.
 - `.claude/bootstrap-fetch.sh` — SessionStart hook; fetches bootstrap, pre-builds the connection indicator. Bypassed where hooks don't fire.

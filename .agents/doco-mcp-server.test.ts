@@ -698,6 +698,305 @@ describe("doco-mcp-server", () => {
     }
   });
 
+  it("doco_search falls back to .doco/project-tokens.json when no DOCO_ACCESS is set", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "doco-mcp-pt-"));
+    const docoDir = join(projectDir, ".doco");
+    mkdirSync(docoDir);
+    writeFileSync(join(docoDir, "connections.md"), "https://doco.to/doco-bpms/\n");
+    writeFileSync(
+      join(docoDir, "project-tokens.json"),
+      JSON.stringify({ "doco-bpms": "doco_pt_committed_test_token" }, null, 2),
+    );
+
+    const seenAuth: string[] = [];
+    const searchServer = createServer((req, res) => {
+      if (req.method === "GET" && req.url?.startsWith("/doco-bpms/search.json")) {
+        seenAuth.push(String(req.headers.authorization || ""));
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ count: 0, duration_ms: 1, hits: [] }));
+        return;
+      }
+      res.writeHead(404, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "not_found" }));
+    });
+
+    await new Promise<void>((resolve) => {
+      searchServer.listen(0, "127.0.0.1", resolve);
+    });
+
+    const address = searchServer.address() as AddressInfo;
+    const host = `http://127.0.0.1:${address.port}`;
+    // Crucially: no .env in the project dir, and no DOCO_ACCESS in
+    // the inherited environment. The project token is the ONLY source.
+    writeFileSync(join(projectDir, ".env"), `DOCO_HOST=${host}\n`, { mode: 0o600 });
+
+    try {
+      const responses = await exchange(
+        [
+          INIT_MESSAGE,
+          INITIALIZED_NOTIFICATION,
+          {
+            jsonrpc: "2.0",
+            id: 2,
+            method: "tools/call",
+            params: { name: "doco_search", arguments: { query: "any query" } },
+          },
+        ],
+        2,
+        {
+          cwd: projectDir,
+          env: { DOCO_HOST: undefined, DOCO_ACCESS: undefined },
+        },
+      );
+      const callResp = responses.find((r) => r.id === 2);
+      const result = callResp?.result as {
+        isError?: boolean;
+        content: Array<{ type: string; text: string }>;
+      };
+      expect(result.isError).toBeFalsy();
+      expect(seenAuth).toEqual(["Bearer doco_pt_committed_test_token"]);
+    } finally {
+      await new Promise<void>((resolve) => {
+        searchServer.close(() => resolve());
+      });
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
+  it("doco_search prefers .env DOCO_ACCESS over a committed project token", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "doco-mcp-pt-precedence-"));
+    const docoDir = join(projectDir, ".doco");
+    mkdirSync(docoDir);
+    writeFileSync(join(docoDir, "connections.md"), "https://doco.to/doco-bpms/\n");
+    writeFileSync(
+      join(docoDir, "project-tokens.json"),
+      JSON.stringify({ "doco-bpms": "doco_pt_committed_token" }, null, 2),
+    );
+
+    const seenAuth: string[] = [];
+    const searchServer = createServer((req, res) => {
+      if (req.method === "GET" && req.url?.startsWith("/doco-bpms/search.json")) {
+        seenAuth.push(String(req.headers.authorization || ""));
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ count: 0, duration_ms: 1, hits: [] }));
+        return;
+      }
+      res.writeHead(404, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "not_found" }));
+    });
+
+    await new Promise<void>((resolve) => {
+      searchServer.listen(0, "127.0.0.1", resolve);
+    });
+
+    const address = searchServer.address() as AddressInfo;
+    const host = `http://127.0.0.1:${address.port}`;
+    // .env has DOCO_ACCESS — it must win over the committed project token.
+    writeFileSync(
+      join(projectDir, ".env"),
+      [`DOCO_HOST=${host}`, "DOCO_ACCESS=doco_at_personal_oauth_token", ""].join("\n"),
+      { mode: 0o600 },
+    );
+
+    try {
+      const responses = await exchange(
+        [
+          INIT_MESSAGE,
+          INITIALIZED_NOTIFICATION,
+          {
+            jsonrpc: "2.0",
+            id: 2,
+            method: "tools/call",
+            params: { name: "doco_search", arguments: { query: "any query" } },
+          },
+        ],
+        2,
+        {
+          cwd: projectDir,
+          env: { DOCO_HOST: undefined, DOCO_ACCESS: undefined },
+        },
+      );
+      const callResp = responses.find((r) => r.id === 2);
+      const result = callResp?.result as {
+        isError?: boolean;
+        content: Array<{ type: string; text: string }>;
+      };
+      expect(result.isError).toBeFalsy();
+      expect(seenAuth).toEqual(["Bearer doco_at_personal_oauth_token"]);
+    } finally {
+      await new Promise<void>((resolve) => {
+        searchServer.close(() => resolve());
+      });
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
+  it("doco_search ignores .doco/project-tokens.json entries with the wrong prefix", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "doco-mcp-pt-bad-prefix-"));
+    const docoDir = join(projectDir, ".doco");
+    mkdirSync(docoDir);
+    writeFileSync(join(docoDir, "connections.md"), "https://doco.to/doco-bpms/\n");
+    // A token without the doco_pt_ prefix must NOT be used — that
+    // would expose the user to accidentally pasting their personal
+    // OAuth token into a committed file.
+    writeFileSync(
+      join(docoDir, "project-tokens.json"),
+      JSON.stringify({ "doco-bpms": "doco_at_personal_token_in_wrong_place" }, null, 2),
+    );
+
+    const seenAuth: string[] = [];
+    const searchServer = createServer((req, res) => {
+      if (req.method === "GET" && req.url?.startsWith("/doco-bpms/search.json")) {
+        seenAuth.push(String(req.headers.authorization || ""));
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ count: 0, duration_ms: 1, hits: [] }));
+        return;
+      }
+      res.writeHead(404, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "not_found" }));
+    });
+
+    await new Promise<void>((resolve) => {
+      searchServer.listen(0, "127.0.0.1", resolve);
+    });
+
+    const address = searchServer.address() as AddressInfo;
+    const host = `http://127.0.0.1:${address.port}`;
+    writeFileSync(join(projectDir, ".env"), `DOCO_HOST=${host}\n`, { mode: 0o600 });
+
+    try {
+      const responses = await exchange(
+        [
+          INIT_MESSAGE,
+          INITIALIZED_NOTIFICATION,
+          {
+            jsonrpc: "2.0",
+            id: 2,
+            method: "tools/call",
+            params: { name: "doco_search", arguments: { query: "any query" } },
+          },
+        ],
+        2,
+        {
+          cwd: projectDir,
+          env: { DOCO_HOST: undefined, DOCO_ACCESS: undefined },
+        },
+      );
+      const callResp = responses.find((r) => r.id === 2);
+      const result = callResp?.result as {
+        isError?: boolean;
+        content: Array<{ type: string; text: string }>;
+      };
+      // No DOCO_ACCESS could be resolved → search hits the server
+      // anonymously, and the test server returns the same 200 either
+      // way. The important assertion is that the wrong-prefix token
+      // was NOT sent as the Bearer.
+      expect(result.isError).toBeFalsy();
+      expect(seenAuth).toEqual([""]);
+    } finally {
+      await new Promise<void>((resolve) => {
+        searchServer.close(() => resolve());
+      });
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
+  it("doco_complete_authentication's success message includes the persist-credentials hint", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "doco-mcp-success-hint-"));
+    const docoDir = join(projectDir, ".doco");
+    mkdirSync(docoDir);
+    writeFileSync(join(docoDir, "connections.md"), "https://doco.to/doco-bpms/\n");
+
+    const tokenServer = createServer((req, res) => {
+      if (req.method === "POST" && req.url === "/oauth/token") {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            access_token: "doco_at_hint_check",
+            refresh_token: "doco_rt_hint_check",
+          }),
+        );
+        return;
+      }
+      res.writeHead(404, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "not_found" }));
+    });
+
+    await new Promise<void>((resolve) => {
+      tokenServer.listen(0, "127.0.0.1", resolve);
+    });
+
+    const address = tokenServer.address() as AddressInfo;
+    const host = `http://127.0.0.1:${address.port}`;
+    const expiresAt = Math.floor(Date.now() / 1000) + 300;
+    writeFileSync(
+      join(projectDir, ".env"),
+      [
+        `DOCO_HOST=${host}`,
+        "DOCO_DEVICE_CLIENT_ID=doco_client_hint_check",
+        "DOCO_DEVICE_CODE=doco_dc_hint_check",
+        "DOCO_DEVICE_INTERVAL=1",
+        `DOCO_DEVICE_EXPIRES_AT=${expiresAt}`,
+        "DOCO_DEVICE_TARGET_HANDLE=doco-bpms",
+        "DOCO_DEVICE_REQUESTED_ROLE=reader",
+        "",
+      ].join("\n"),
+      { mode: 0o600 },
+    );
+
+    try {
+      const responses = await exchange(
+        [
+          INIT_MESSAGE,
+          INITIALIZED_NOTIFICATION,
+          {
+            jsonrpc: "2.0",
+            id: 2,
+            method: "tools/call",
+            params: {
+              name: "doco_complete_authentication",
+              arguments: { wait_seconds: 5 },
+            },
+          },
+        ],
+        2,
+        {
+          cwd: projectDir,
+          env: {
+            DOCO_HOST: undefined,
+            DOCO_ACCESS: undefined,
+            DOCO_DEVICE_CLIENT_ID: undefined,
+            DOCO_DEVICE_CODE: undefined,
+            DOCO_DEVICE_INTERVAL: undefined,
+            DOCO_DEVICE_EXPIRES_AT: undefined,
+            DOCO_DEVICE_TARGET_HANDLE: undefined,
+            DOCO_DEVICE_REQUESTED_ROLE: undefined,
+          },
+          timeoutMs: 10000,
+        },
+      );
+      const callResp = responses.find((r) => r.id === 2);
+      const result = callResp?.result as {
+        isError?: boolean;
+        content: Array<{ type: string; text: string }>;
+      };
+      expect(result.isError).toBeFalsy();
+      const text = result.content[0].text;
+      expect(text).toMatch(/Authenticated/);
+      // The two persistence options must both be surfaced.
+      expect(text).toMatch(/DOCO_ACCESS as a persistent environment variable/i);
+      expect(text).toMatch(/project token/i);
+      expect(text).toMatch(/project-tokens/);
+      // The agent must be told to surface this only once, not on every turn.
+      expect(text).toMatch(/once/i);
+    } finally {
+      await new Promise<void>((resolve) => {
+        tokenServer.close(() => resolve());
+      });
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
   it.skipIf(!process.env.DOCO_ACCESS)(
     "doco_search returns hits (or a clean empty-result message) when DOCO_ACCESS is available",
     async () => {
