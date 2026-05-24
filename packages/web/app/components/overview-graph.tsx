@@ -2,7 +2,7 @@ import { Handle, type MiniMapNodeProps, Position } from "@xyflow/react";
 import { Maximize2, Minimize2 } from "lucide-react";
 import { type ComponentType, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
-import { LifecycleBadge, TypeBadge } from "~/components/neuron-badges";
+import { NodeBadgeRow } from "~/components/neuron-badges";
 import { NeuronTypeIcon } from "~/components/neuron-type-icon";
 import {
   FAR_DEPTH,
@@ -404,8 +404,12 @@ function OverviewFlowNode({ data }: { data: OverviewNodeData }) {
           style={HIDDEN_HANDLE_STYLE}
           isConnectable={false}
         />
-        <TypeBadge entityType={data.node.entity_type} lifecycle={lifecycle} anchor="left" />
-        <LifecycleBadge lifecycle={lifecycle} anchor="right" />
+        <NodeBadgeRow
+          entityType={data.node.entity_type}
+          lifecycle={lifecycle}
+          referenceNumber={data.referenceNumber}
+          referenceLabel={title}
+        />
         <div className="flex items-center gap-2">
           <NeuronTypeIcon entityType={data.node.entity_type} className="!h-4 !w-4 shrink-0" />
           <span className="line-clamp-2 min-w-0 flex-1 font-mono text-xs font-semibold leading-snug text-foreground">
@@ -422,15 +426,6 @@ function OverviewFlowNode({ data }: { data: OverviewNodeData }) {
           isConnectable={false}
         />
       </div>
-      {data.referenceNumber ? (
-        <span
-          aria-label={`Graph reference #${data.referenceNumber}: ${title}`}
-          className="neu-button pointer-events-none absolute -left-2 -top-2 z-30 flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold leading-none text-primary-foreground shadow-sm ring-2 ring-card"
-          title={`Graph reference #${data.referenceNumber}`}
-        >
-          #{data.referenceNumber}
-        </span>
-      ) : null}
     </div>
   );
 }

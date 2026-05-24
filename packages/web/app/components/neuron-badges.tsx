@@ -115,3 +115,78 @@ export function LifecycleBadge({ lifecycle, anchor = "right", className }: Badge
     </span>
   );
 }
+
+/**
+ * Header row that floats over the top edge of a node: reference number
+ * (if any), then the type pill, then the lifecycle pill — all in a
+ * single inline flow at the same z-level. The reference-number slot is
+ * ALWAYS reserved even when there's no number, so toggling the number
+ * on/off doesn't shift the pills horizontally.
+ *
+ * Used by every perspective that draws node cards (Graph, BPMN) so the
+ * top-of-card chrome reads the same wherever a node is rendered.
+ *
+ * `anchor`:
+ *   - "left" (default): row hugs the top-left of the host box.
+ *   - "centered-top": row centers horizontally over the top edge —
+ *     for round / diamond BPMN shapes where a left-anchored row would
+ *     sit outside the inscribed shape.
+ */
+interface NodeBadgeRowProps {
+  entityType: string;
+  lifecycle: string | null | undefined;
+  referenceNumber?: number | null;
+  /** Used as the badge's accessible label / tooltip. */
+  referenceLabel?: string;
+  anchor?: "left" | "centered-top";
+  className?: string;
+}
+
+const REFERENCE_BADGE_BASE =
+  "flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full px-1 text-[10px] font-bold leading-none";
+
+export function NodeBadgeRow({
+  entityType,
+  lifecycle,
+  referenceNumber,
+  referenceLabel,
+  anchor = "left",
+  className,
+}: NodeBadgeRowProps) {
+  const rowStyle: CSSProperties = {
+    position: "absolute",
+    top: -10,
+    zIndex: 2,
+    pointerEvents: "none",
+    display: "flex",
+    alignItems: "center",
+    gap: 4,
+    ...(anchor === "centered-top" ? { left: "50%", transform: "translateX(-50%)" } : { left: 6 }),
+  };
+  return (
+    <div style={rowStyle} className={className}>
+      {referenceNumber ? (
+        <span
+          aria-label={
+            referenceLabel
+              ? `Graph reference #${referenceNumber}: ${referenceLabel}`
+              : `Graph reference #${referenceNumber}`
+          }
+          className={`${REFERENCE_BADGE_BASE} bg-primary text-primary-foreground shadow-sm ring-2 ring-card`}
+          title={`Graph reference #${referenceNumber}`}
+        >
+          #{referenceNumber}
+        </span>
+      ) : (
+        // Empty but space-reserving slot — keeps the type / lifecycle
+        // pills in the same horizontal position whether the node is
+        // numbered or not.
+        <span className={`${REFERENCE_BADGE_BASE} invisible`} aria-hidden="true">
+          #0
+        </span>
+      )}
+      <TypeBadge entityType={entityType} lifecycle={lifecycle} anchor="inline" />
+      <LifecycleBadge lifecycle={lifecycle} anchor="inline" />
+    </div>
+  );
+}
