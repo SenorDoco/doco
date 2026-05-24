@@ -33,7 +33,7 @@ For you, the agent, this means:
 - Before answering substantive questions, search the Doco. Prior
   decisions and rules likely shape the right answer.
 - When you make a non-trivial choice or finish load-bearing work,
-  follow this Doco's primitives to decide what, if anything, to
+  follow this Doco's policies to decide what, if anything, to
   capture. **Each Doco sets its own capture rules — the universal
   protocol does not mandate captures.**
 - Avoid contradicting Decisions and Rules already in the Doco.
@@ -42,7 +42,7 @@ Use Doco naturally as a verb when you talk with the project owner:
 "Want me to doco it?", "Doco this decision", "Doco this ADR", and
 "Doco the flow" are all normal client-facing phrases. When a project
 owner says "doco it", interpret that as a request to capture per
-this Doco's primitives.
+this Doco's policies.
 
 This document carries the **three invariants** every reply must follow.
 
@@ -152,22 +152,22 @@ the endpoint shapes are:
     GET   https://doco.to/<handle>/api/<type>/<id>.json     # one neuron
     PATCH https://doco.to/<handle>/api/<type>/<id>.json     # patch (needs author)
     GET   https://doco.to/<handle>/api/<type>.txt           # plain-text spec for capture-capable types
-    GET   https://doco.to/<handle>/api/primitives.json      # list primitives
-    POST  https://doco.to/<handle>/api/primitives.json      # capture a primitive (needs author)
+    GET   https://doco.to/<handle>/api/policies.json      # list policies
+    POST  https://doco.to/<handle>/api/policies.json      # capture a policy (needs author)
 
 Neuron types: decisions, ideas, rules, intents, actions, logs, evals,
 references, states, principals, invites, audit.
 
 Capture body specs exist for decisions, intents, actions, logs, rules,
-evals, references, states, ideas, primitives, settings, and principals.
+evals, references, states, ideas, policies, settings, and principals.
 Principals expose a smaller surface (create + retire only) — read the
 \`principals.txt\` spec rather than assuming the generic capture body.
 Invites and audit have dedicated route behavior; don't infer write
 bodies for them from the generic capture pattern.
 
-Primitives are NOT neurons. Primitives
-(\`guidance_primitive\`, \`neuron_authoring_primitive\`) live on the
-dedicated \`/api/primitives.json\` endpoint and inside the bootstrap
+Policies are NOT neurons. Policies
+(\`guidance_policy\`, \`neuron_authoring_policy\`) live on the
+dedicated \`/api/policies.json\` endpoint and inside the bootstrap
 payload — never on the generic \`/api/<type>.json\` route.
 
 ### Capture body structure
@@ -186,7 +186,7 @@ Common principal-id fields:
     stakeholders_principal_ids    # Intent stakeholders, array of principal ids
     actor_principal_id            # Action/Log actor; auth fills this
     decided_by_principal_id       # Decision maker; auth fills this
-    authored_by_principal_id      # Rule/Eval/Primitive author; auth fills this
+    authored_by_principal_id      # Rule/Eval/Policy author; auth fills this
     created_by_principal_id       # Creator override where supported
 
 Read responses may expose stored graph fields such as \`wanted_by\`,
@@ -217,26 +217,26 @@ Action capture example:
 Public Docos return 200 for unauthenticated reads; private Docos
 return 403 until you finish the OAuth recipe.
 
-## Bootstrap: read the primitives
+## Bootstrap: read the policies
 
-Every Doco has a set of **primitives** — short, project-owner-authored
+Every Doco has a set of **policies** — short, project-owner-authored
 statements that govern how you, the agent, author neurons inside it.
 Two kinds, both surfaced at bootstrap:
 
-  - **Guidance primitives** (\`guidance_primitive\`) — prose for
+  - **Guidance policies** (\`guidance_policy\`) — prose for
     context. No automated check. Read them and let them shape your
     judgement.
-  - **Neuron-authoring primitives** (\`neuron_authoring_primitive\`) —
+  - **Neuron-authoring policies** (\`neuron_authoring_policy\`) —
     rules evaluated when you capture a neuron. Either a deterministic
     predicate ("every Decision cites at least one Intent") or a
     probabilistic spec the host evaluates with an LLM. \`on_violation:
     block\` means the host will reject your capture.
 
-Primitives apply only to their Doco. Treat them as binding on your
+Policies apply only to their Doco. Treat them as binding on your
 authoring at all times.
 
-The project owner can **add, edit, or remove primitives any time**,
-at \`/<handle>/primitives\`. Re-bootstrap if you suspect they've
+The project owner can **add, edit, or remove policies any time**,
+at \`/<handle>/policies\`. Re-bootstrap if you suspect they've
 changed mid-session.
 
 Once you hold a Bearer token, hit:
@@ -244,9 +244,9 @@ Once you hold a Bearer token, hit:
     GET https://doco.to/api/v1/agent-bootstrap.json
     Authorization: Bearer doco_at_<token>
 
-The response carries the primitives for every Doco you have
-read-or-above access to, exposed as \`guidance_primitives[]\` and
-\`neuron_authoring_primitives[]\` arrays.
+The response carries the policies for every Doco you have
+read-or-above access to, exposed as \`guidance_policies[]\` and
+\`neuron_authoring_policies[]\` arrays.
 
 The three invariants below apply whichever path you took — the
 protocol is about how you reply, not about how you authenticated.
@@ -396,10 +396,10 @@ This is the deep reference the canonical
 (/protocol/canonical-instructions) points to. Fetch on demand, not
 preemptively.
 
-## The neuron + primitive model
+## The neuron + policy model
 
 Doco's data model is a graph of typed neurons, plus two kinds of
-primitives that govern how neurons are authored:
+policies that govern how neurons are authored:
 
 - **Intent** — what someone wants. Source of every downstream Decision.
 - **Decision** — a chosen resolution to a question, with alternatives
@@ -408,12 +408,12 @@ primitives that govern how neurons are authored:
 - **Log** — a recorded event that *did* happen (past-tense verb +
   \`happened_at\` + concrete outputs). Immutable once captured.
 - **Rule** — an ongoing domain constraint.
-- **Guidance primitive** — one kind of primitive. Contributors read
+- **Guidance policy** — one kind of policy. Contributors read
   it while working; no automated check.
-- **Neuron-authoring primitive** — the other kind. Evaluated when
+- **Neuron-authoring policy** — the other kind. Evaluated when
   neurons are captured; deterministic predicates or probabilistic
   specs. The project owner can edit either kind any time from
-  \`/<handle>/primitives\`.
+  \`/<handle>/policies\`.
 - **Eval** — a named, executable test pinning a load-bearing claim.
 - **Reference** — an external pointer (URL, file, doc) with a summary.
 - **State** — a neuron in a formal state machine.

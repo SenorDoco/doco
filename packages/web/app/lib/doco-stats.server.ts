@@ -3,8 +3,8 @@
 //
 // `neurons` counts domain neurons: decisions, intents, rules,
 // actions, evals, ideas, reference_entities, logs, states, and the
-// Doco's principals. Primitives are not neurons and are deliberately
-// excluded — they are surfaced via /<handle>/api/primitives.json.
+// Doco's principals. Policies are not neurons and are deliberately
+// excluded — they are surfaced via /<handle>/api/policies.json.
 // `synapses` reads the materialized `synapses` table.
 // `lastUpdatedAt` is the max `at` from `audit_events` — that captures
 // both inserts and updates and is cheap because audit_events is

@@ -41,7 +41,7 @@
 //          Eval moves into that same lane as a BPMN annotation
 //          neighbour. Otherwise it stays in the artifacts band.
 //
-//   2. BPMN shape — the visual primitive a neuron renders as:
+//   2. BPMN shape — the visual policy a neuron renders as:
 //        intent                  → circle      (BPMN start event)
 //        decision                → diamond     (BPMN gateway)
 //        action                  → task        (BPMN rounded-rect task)

@@ -5,7 +5,7 @@ import type { LifecycleStage, NeuronDialogDetail } from "~/lib/neuron-detail.ser
 
 // Per-entity-type prose-field-name lookup. Migrated neurons carry
 // their full prose under a key matching the entity type (intent,
-// decision, ...); non-migrated entities (principals, primitives) still
+// decision, ...); non-migrated entities (principals, policies) still
 // use the legacy summary/body_md pair. The dialog uses this to label
 // the prose section heading appropriately.
 const PROSE_FIELD_NAME: Record<string, string> = {
@@ -94,7 +94,7 @@ export function NeuronDialog({
   // "body" section heading — otherwise the first line shows twice
   // (once as the title, once as the start of the prose) and the type
   // label appears twice (once as the chip, once as the section
-  // heading). Non-migrated entities (principals, primitives) still
+  // heading). Non-migrated entities (principals, policies) still
   // have a distinct short name + long body, so they keep the legacy
   // title + body-section rendering.
   const isMigratedNeuron = Boolean(detail && PROSE_FIELD_NAME[detail.entity_type]);

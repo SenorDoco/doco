@@ -31,7 +31,7 @@ For you, the agent, this means:
 - **Before answering substantive questions**, search the Doco. Prior
   decisions and rules likely shape the right answer.
 - **When you make a non-trivial choice or finish load-bearing work**,
-  follow this Doco's primitives (fetched at bootstrap) to decide what,
+  follow this Doco's policies (fetched at bootstrap) to decide what,
   if anything, to capture. Each Doco sets its own capture rules — the
   universal protocol does not mandate captures.
 - **Avoid contradicting** Decisions and Rules already in the Doco.

@@ -26,10 +26,10 @@ interface OverviewGraphRow {
   created_at: string | null;
 }
 
-// Note tables only — primitives are not
-// neurons and are deliberately excluded from the graph. Primitives
-// have their own surface: /<handle>/primitives and
-// /<handle>/api/primitives.json.
+// Note tables only — policies are not
+// neurons and are deliberately excluded from the graph. Policies
+// have their own surface: /<handle>/policies and
+// /<handle>/api/policies.json.
 const GRAPH_TABLES = DOCO_NEURON_TABLE_SPECS;
 
 const OVERVIEW_GRAPH_SYNAPSE_LIMIT = 5000;

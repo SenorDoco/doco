@@ -4,14 +4,14 @@ import { Breadcrumb, docoBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { NeuronTypeIcon } from "~/components/neuron-type-icon";
 import { SiteHeader } from "~/components/site-header";
-import { canEditPrimitives, loadDocoRouteForRead } from "~/lib/doco-access.server";
+import { canEditPolicies, loadDocoRouteForRead } from "~/lib/doco-access.server";
 import { loadHostConfig } from "~/lib/host.server";
 import {
   AGENT_EXPOSURE_NOTE,
-  GUIDANCE_PRIMITIVE_EXPLAINER,
-  NEURON_AUTHORING_PRIMITIVE_EXPLAINER,
-  primitiveFullText,
-} from "~/lib/primitive-copy";
+  GUIDANCE_POLICY_EXPLAINER,
+  NEURON_AUTHORING_POLICY_EXPLAINER,
+  policyFullText,
+} from "~/lib/policy-copy";
 
 type ArticleKind = "deterministic" | "probabilistic";
 
@@ -44,13 +44,13 @@ export async function loader({
   request: Request;
   params: { docoId: string };
 }) {
-  redirectLegacyPrimitivePath(request);
+  redirectLegacyPolicyPath(request);
   const ctx = await loadDocoRouteForRead(request, params);
   const { ownerSlug, docoSlug, handle } = ctx;
   const [guidanceRows, nodeAuthoringRows] = await withClient(async (c) => {
     const guidance = await c.query<ArticleRow>(
       `SELECT id, summary, lifecycle, created_at, body_md, data
-         FROM guidance_primitives
+         FROM guidance_policies
         WHERE doco_id = $1
           AND COALESCE(lifecycle, 'active') = 'active'
         ORDER BY created_at DESC`,
@@ -58,7 +58,7 @@ export async function loader({
     );
     const nodeAuthoring = await c.query<ArticleRow>(
       `SELECT id, summary, lifecycle, created_at, body_md, data
-         FROM neuron_authoring_primitives
+         FROM neuron_authoring_policies
         WHERE doco_id = $1
           AND COALESCE(lifecycle, 'active') = 'active'
         ORDER BY created_at DESC`,
@@ -73,17 +73,17 @@ export async function loader({
     handle,
     me: ctx.me,
     host: await loadHostConfig(),
-    canEdit: await canEditPrimitives(ctx.meta, ctx.me?.id ?? null),
+    canEdit: await canEditPolicies(ctx.meta, ctx.me?.id ?? null),
     guidanceArticles: guidanceRows.map(toGuidanceArticle),
     nodeAuthoringArticles: nodeAuthoringRows.map(toNodeAuthoringArticle),
   };
 }
 
 export function meta({ params }: { params: { docoHandle?: string; docoId?: string } }) {
-  return [{ title: `Primitives · ${params.docoHandle ?? params.docoId ?? ""} · Doco` }];
+  return [{ title: `Policies · ${params.docoHandle ?? params.docoId ?? ""} · Doco` }];
 }
 
-export default function Primitives({
+export default function Policies({
   loaderData,
 }: {
   loaderData: Awaited<ReturnType<typeof loader>>;
@@ -100,46 +100,46 @@ export default function Primitives({
             items={docoBreadcrumb({
               ownerSlug,
               handle,
-              pageLabel: "Primitives",
+              pageLabel: "Policies",
             })}
             className="mb-1"
           />
-          <h1 className="text-2xl font-semibold">Primitives</h1>
+          <h1 className="text-2xl font-semibold">Policies</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             Rules that govern how neurons get added to this doco. {AGENT_EXPOSURE_NOTE}
           </p>
         </header>
 
         <ArticleSection
-          title="Guidance primitives"
-          entityType="guidance_primitive"
-          description={GUIDANCE_PRIMITIVE_EXPLAINER}
-          addHref={canEdit ? `/${handle}/primitives/guidance/new` : null}
-          editHrefBase={canEdit ? `/${handle}/primitives/guidance` : null}
+          title="Guidance policies"
+          entityType="guidance_policy"
+          description={GUIDANCE_POLICY_EXPLAINER}
+          addHref={canEdit ? `/${handle}/policies/guidance/new` : null}
+          editHrefBase={canEdit ? `/${handle}/policies/guidance` : null}
           items={guidanceArticles}
           handle={handle}
-          empty="No guidance primitives yet."
+          empty="No guidance policies yet."
         />
 
         <ArticleSection
-          title="Neuron-authoring primitives"
-          entityType="neuron_authoring_primitive"
-          description={NEURON_AUTHORING_PRIMITIVE_EXPLAINER}
-          addHref={canEdit ? `/${handle}/primitives/neuron-authoring/new` : null}
-          editHrefBase={canEdit ? `/${handle}/primitives/neuron-authoring` : null}
+          title="Neuron-authoring policies"
+          entityType="neuron_authoring_policy"
+          description={NEURON_AUTHORING_POLICY_EXPLAINER}
+          addHref={canEdit ? `/${handle}/policies/neuron-authoring/new` : null}
+          editHrefBase={canEdit ? `/${handle}/policies/neuron-authoring` : null}
           items={nodeAuthoringArticles}
           handle={handle}
-          empty="No neuron-authoring primitives yet."
+          empty="No neuron-authoring policies yet."
         />
       </main>
     </div>
   );
 }
 
-function redirectLegacyPrimitivePath(request: Request): void {
+function redirectLegacyPolicyPath(request: Request): void {
   const url = new URL(request.url);
   if (!url.pathname.includes("/constitution")) return;
-  url.pathname = url.pathname.replace("/constitution", "/primitives");
+  url.pathname = url.pathname.replace("/constitution", "/policies");
   throw redirect(`${url.pathname}${url.search}`);
 }
 
@@ -154,7 +154,7 @@ function ArticleSection({
   empty,
 }: {
   title: string;
-  entityType: "guidance_primitive" | "neuron_authoring_primitive";
+  entityType: "guidance_policy" | "neuron_authoring_policy";
   description: string;
   addHref: string | null;
   editHrefBase: string | null;
@@ -199,7 +199,7 @@ function ArticleSection({
                     className="min-w-0 flex-1 hover:text-primary"
                   >
                     <p className="whitespace-pre-wrap text-sm leading-6">
-                      {primitiveFullText({ summary: item.summary, body: item.body })}
+                      {policyFullText({ summary: item.summary, body: item.body })}
                     </p>
                     {"evaluationKind" in item ? (
                       <div className="mt-1 flex flex-wrap gap-2 font-mono text-[10px] text-muted-foreground">

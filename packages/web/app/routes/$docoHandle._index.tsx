@@ -79,8 +79,8 @@ const NEURON_TYPE_LABELS: Record<string, string> = {
   action: "Actions",
   intent: "Intents",
   rule: "Rules",
-  guidance_primitive: "Guidance primitives",
-  neuron_authoring_primitive: "Neuron-authoring primitives",
+  guidance_policy: "Guidance policies",
+  neuron_authoring_policy: "Neuron-authoring policies",
   eval: "Evals",
   reference: "References",
   idea: "Ideas",
@@ -126,7 +126,7 @@ export async function loader({
       after_json: Record<string, unknown> | null;
     };
     // Activity surfaces (feed, heatmap, contributors) reflect notes
-    // activity only — primitives are Doco-level metadata with their
+    // activity only — policies are Doco-level metadata with their
     // own surface, and counting their bulk-imported writes here makes
     // a fresh Doco look like work has been captured when none has.
     const rawItems = (
@@ -134,7 +134,7 @@ export async function loader({
         `SELECT event_id, at, entity_type, entity_id, op, before_json, after_json
            FROM audit_events
           WHERE doco_id = $1
-            AND entity_type NOT IN ('guidance_primitive', 'neuron_authoring_primitive')
+            AND entity_type NOT IN ('guidance_policy', 'neuron_authoring_policy')
           ORDER BY at DESC
           LIMIT $2`,
         [ctx.meta.docoId, FEED_LIMIT],
@@ -153,8 +153,8 @@ export async function loader({
          UNION ALL SELECT id, split_part(intent, E'\n', 1) AS label, lifecycle FROM intents WHERE doco_id = $1 AND id = ANY($2::text[])
          UNION ALL SELECT id, split_part(idea, E'\n', 1) AS label, lifecycle FROM ideas WHERE doco_id = $1 AND id = ANY($2::text[])
          UNION ALL SELECT id, split_part(rule, E'\n', 1) AS label, lifecycle FROM rules WHERE doco_id = $1 AND id = ANY($2::text[])
-         UNION ALL SELECT id, summary AS label, lifecycle FROM guidance_primitives WHERE doco_id = $1 AND id = ANY($2::text[])
-         UNION ALL SELECT id, summary AS label, lifecycle FROM neuron_authoring_primitives WHERE doco_id = $1 AND id = ANY($2::text[])
+         UNION ALL SELECT id, summary AS label, lifecycle FROM guidance_policies WHERE doco_id = $1 AND id = ANY($2::text[])
+         UNION ALL SELECT id, summary AS label, lifecycle FROM neuron_authoring_policies WHERE doco_id = $1 AND id = ANY($2::text[])
          UNION ALL SELECT id, split_part(action, E'\n', 1) AS label, lifecycle FROM actions WHERE doco_id = $1 AND id = ANY($2::text[])
          UNION ALL SELECT id, split_part(log, E'\n', 1) AS label, lifecycle FROM logs WHERE doco_id = $1 AND id = ANY($2::text[])
          UNION ALL SELECT id, split_part(eval, E'\n', 1) AS label, lifecycle FROM evals WHERE doco_id = $1 AND id = ANY($2::text[])
@@ -234,7 +234,7 @@ export async function loader({
            JOIN principals p ON p.id = ae.by_collaborator
           WHERE ae.doco_id = $1
             AND ae.by_collaborator IS NOT NULL
-            AND ae.entity_type NOT IN ('guidance_primitive', 'neuron_authoring_primitive')
+            AND ae.entity_type NOT IN ('guidance_policy', 'neuron_authoring_policy')
           GROUP BY ae.by_collaborator, p.name
           ORDER BY COUNT(*) DESC, MAX(ae.at) DESC
           LIMIT $2`,
@@ -293,17 +293,17 @@ export async function loader({
         ? await loadBpmnGraph(c, ctx.meta.docoId, { handle })
         : null;
 
-    // Primitive count — guidance + neuron-authoring primitives
+    // Policy count — guidance + neuron-authoring policies
     // attached to this Doco.
-    const primitiveRow = (
+    const policyRow = (
       await c.query<{ n: string }>(
         `SELECT
-           ((SELECT COUNT(*) FROM guidance_primitives WHERE doco_id = $1)
-          + (SELECT COUNT(*) FROM neuron_authoring_primitives WHERE doco_id = $1))::text AS n`,
+           ((SELECT COUNT(*) FROM guidance_policies WHERE doco_id = $1)
+          + (SELECT COUNT(*) FROM neuron_authoring_policies WHERE doco_id = $1))::text AS n`,
         [ctx.meta.docoId],
       )
     ).rows[0];
-    const primitiveCount = Number(primitiveRow?.n ?? 0);
+    const policyCount = Number(policyRow?.n ?? 0);
 
     // Per-user UI preferences (currently just the graph "Reorder
     // automatically" toggle). Anonymous viewers get the default-on
@@ -327,7 +327,7 @@ export async function loader({
       host: await loadHostConfig(),
       me,
       graph,
-      primitiveCount,
+      policyCount,
       perspectives,
       availablePerspectives,
       activePerspectiveSlug: activePerspective?.slug ?? null,
@@ -436,7 +436,7 @@ export default function DocoHome({
     canInviteCollaborators,
     me,
     graph,
-    primitiveCount,
+    policyCount,
     perspectives,
     availablePerspectives,
     activePerspectiveSlug,
@@ -742,10 +742,10 @@ export default function DocoHome({
             <div className="flex flex-wrap items-center gap-2">
               {canInviteCollaborators ? <CollaboratorsLink level="doco" targetId={docoId} /> : null}
               <Link
-                to={`/${handle}/primitives`}
+                to={`/${handle}/policies`}
                 className="shrink-0 rounded-md border border-border px-3 py-1.5 text-xs font-semibold hover:bg-input"
               >
-                Primitives ({primitiveCount})
+                Policies ({policyCount})
               </Link>
               {canInviteCollaborators ? (
                 <Link

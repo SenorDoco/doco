@@ -247,7 +247,7 @@ export async function listAccessibleDocoIdsForPrincipal(principalId: string): Pr
  * Same as `canAccessDoco` but for write/admin operations — the
  * owner-tier gate. Per decision_01KS0JBJ5X0AZ4XJJFKEWE1R62, owner-tier
  * is the only role that can add users, delete the doco, or edit
- * primitives. Approver-tier can approve lifecycle but cannot
+ * policies. Approver-tier can approve lifecycle but cannot
  * administer the doco; lower tiers can author or read only.
  */
 export async function canAdminDoco(
@@ -271,10 +271,10 @@ export async function canApproveDoco(
 }
 
 /**
- * Primitive-edit gate. Primitives accept edits only from doco-level
- * owners — author/approver grants do not promote to primitive editor.
+ * Policy-edit gate. Policies accept edits only from doco-level
+ * owners — author/approver grants do not promote to policy editor.
  */
-export async function canEditPrimitives(
+export async function canEditPolicies(
   meta: { ownerId: string; docoId?: string },
   principalId: string | null,
 ): Promise<boolean> {

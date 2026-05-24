@@ -60,8 +60,8 @@ export function Breadcrumb({
  * for both user-owned and org-owned docos. The doco short name points
  * to the doco home (`/<handle>`).
  *
- * Pass `parent` for subpages like `.../primitives/guidance/new`:
- * `parent: { label: "Primitives", to: "/<handle>/primitives" }`.
+ * Pass `parent` for subpages like `.../policies/guidance/new`:
+ * `parent: { label: "Policies", to: "/<handle>/policies" }`.
  */
 export function docoBreadcrumb({
   ownerSlug,

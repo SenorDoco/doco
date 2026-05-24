@@ -79,9 +79,9 @@ interface FeedItem {
   after: Record<string, unknown> | null;
 }
 
-// Note tables only — primitives are not neurons
+// Note tables only — policies are not neurons
 // and do not count toward "active neurons" per Doco. They are exposed
-// via /<handle>/primitives and /<handle>/api/primitives.json.
+// via /<handle>/policies and /<handle>/api/policies.json.
 const NEURON_TABLES_WITH_LIFECYCLE = [
   "intents",
   "ideas",
@@ -267,8 +267,8 @@ export async function loader({
            UNION ALL SELECT id, split_part(intent, E'\n', 1) AS label, lifecycle FROM intents WHERE id = ANY($1::text[])
            UNION ALL SELECT id, split_part(idea, E'\n', 1) AS label, lifecycle FROM ideas WHERE id = ANY($1::text[])
            UNION ALL SELECT id, split_part(rule, E'\n', 1) AS label, lifecycle FROM rules WHERE id = ANY($1::text[])
-           UNION ALL SELECT id, summary AS label, lifecycle FROM guidance_primitives WHERE id = ANY($1::text[])
-           UNION ALL SELECT id, summary AS label, lifecycle FROM neuron_authoring_primitives WHERE id = ANY($1::text[])
+           UNION ALL SELECT id, summary AS label, lifecycle FROM guidance_policies WHERE id = ANY($1::text[])
+           UNION ALL SELECT id, summary AS label, lifecycle FROM neuron_authoring_policies WHERE id = ANY($1::text[])
            UNION ALL SELECT id, split_part(action, E'\n', 1) AS label, lifecycle FROM actions WHERE id = ANY($1::text[])
            UNION ALL SELECT id, split_part(log, E'\n', 1) AS label, lifecycle FROM logs WHERE id = ANY($1::text[])
            UNION ALL SELECT id, split_part(eval, E'\n', 1) AS label, lifecycle FROM evals WHERE id = ANY($1::text[])

@@ -78,8 +78,8 @@ export async function loader({
            UNION ALL SELECT id, split_part(intent, E'\n', 1), lifecycle, created_at FROM intents                  WHERE doco_id = $1
            UNION ALL SELECT id, split_part(idea, E'\n', 1), lifecycle, created_at FROM ideas                    WHERE doco_id = $1
            UNION ALL SELECT id, split_part(rule, E'\n', 1), lifecycle, created_at FROM rules                    WHERE doco_id = $1
-           UNION ALL SELECT id, summary, lifecycle, created_at FROM guidance_primitives        WHERE doco_id = $1
-           UNION ALL SELECT id, summary, lifecycle, created_at FROM neuron_authoring_primitives  WHERE doco_id = $1
+           UNION ALL SELECT id, summary, lifecycle, created_at FROM guidance_policies        WHERE doco_id = $1
+           UNION ALL SELECT id, summary, lifecycle, created_at FROM neuron_authoring_policies  WHERE doco_id = $1
            UNION ALL SELECT id, split_part(action, E'\n', 1), lifecycle, created_at FROM actions                  WHERE doco_id = $1
            UNION ALL SELECT id, split_part(log, E'\n', 1), lifecycle, created_at FROM logs                     WHERE doco_id = $1
            UNION ALL SELECT id, split_part(eval, E'\n', 1), lifecycle, created_at FROM evals                    WHERE doco_id = $1
