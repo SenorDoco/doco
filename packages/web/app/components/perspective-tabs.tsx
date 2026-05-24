@@ -1,13 +1,13 @@
 // Perspective tabs row that sits above the active perspective body.
 //
-// Layout: tab pills on the left, a gear (settings) icon next to them
-// for admins, and the search box on the right. The settings popover
-// replaces the old "+" tab — owners/approvers add or remove
-// perspectives and pin the default one from inside the popover. The
-// tab pills themselves are now plain links with no inline controls.
+// The tabs are the ONLY thing in this row — nothing (search box, etc.)
+// is allowed inside, because anything that wraps to a second line would
+// push the canvas down and break the visual "tabs attached to canvas"
+// connection. Page-level chrome (search, action buttons) lives in the
+// title row above the perspective area.
 
 import { Pin, Settings } from "lucide-react";
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useFetcher, useNavigate } from "react-router";
 import { cn } from "~/lib/cn";
 import type { AttachedPerspective, Perspective } from "~/lib/perspectives.server";
@@ -18,7 +18,6 @@ interface PerspectiveTabsProps {
   availablePerspectives: Perspective[];
   activeSlug: string;
   canAdmin: boolean;
-  search?: ReactNode;
 }
 
 export function PerspectiveTabs({
@@ -27,34 +26,32 @@ export function PerspectiveTabs({
   availablePerspectives,
   activeSlug,
   canAdmin,
-  search,
 }: PerspectiveTabsProps) {
   return (
-    <div className="mb-2 flex flex-wrap items-start justify-between gap-3">
-      <nav
-        aria-label="Visualization perspectives"
-        role="tablist"
-        className="-mb-px flex min-w-0 flex-wrap items-end gap-px"
-      >
-        {perspectives.map((p) => (
-          <PerspectiveTab
-            key={p.id}
-            handle={handle}
-            perspective={p}
-            active={p.slug === activeSlug}
-          />
-        ))}
-        {canAdmin ? (
-          <PerspectiveSettingsMenu
-            handle={handle}
-            perspectives={perspectives}
-            availablePerspectives={availablePerspectives}
-            activeSlug={activeSlug}
-          />
-        ) : null}
-      </nav>
-      {search ? <div className="w-full sm:w-72 sm:flex-none">{search}</div> : null}
-    </div>
+    <nav
+      aria-label="Visualization perspectives"
+      role="tablist"
+      className="-mb-px flex min-w-0 flex-wrap items-end"
+    >
+      {perspectives.map((p, i) => (
+        <PerspectiveTab
+          key={p.id}
+          handle={handle}
+          perspective={p}
+          active={p.slug === activeSlug}
+          isFirst={i === 0}
+          isLast={i === perspectives.length - 1}
+        />
+      ))}
+      {canAdmin ? (
+        <PerspectiveSettingsMenu
+          handle={handle}
+          perspectives={perspectives}
+          availablePerspectives={availablePerspectives}
+          activeSlug={activeSlug}
+        />
+      ) : null}
+    </nav>
   );
 }
 
@@ -62,20 +59,34 @@ interface PerspectiveTabProps {
   handle: string;
   perspective: AttachedPerspective;
   active: boolean;
+  isFirst: boolean;
+  isLast: boolean;
 }
 
-function PerspectiveTab({ handle, perspective, active }: PerspectiveTabProps) {
+function PerspectiveTab({ handle, perspective, active, isFirst, isLast }: PerspectiveTabProps) {
   const href = `/${handle}?perspective=${encodeURIComponent(perspective.slug)}`;
-  // Real tab-strip styling: tabs sit flush above the canvas and the
-  // active tab merges with the canvas's top edge (no bottom border, same
-  // bg as the canvas). Inactive tabs keep their bottom border so they
-  // visually sit BELOW the canvas's top line. The container above pulls
-  // the row down by 1px (`-mb-px`) so the active tab's missing bottom
-  // border lands exactly on top of the canvas border.
+  // Real tab-strip styling:
+  //   * Tabs sit edge-to-edge. `-ml-px first:ml-0` lets each tab's left
+  //     border overlap the previous tab's right border so adjacent tabs
+  //     share one 1px line instead of stacking two.
+  //   * Only the OUTER corners are rounded (first tab top-left, last
+  //     tab top-right). Inner corners stay square so adjacent tabs
+  //     don't create visible dips where their rounded tops curve away
+  //     from each other.
+  //   * Active tab has z-10 so its borders win the overlap.
+  //   * The row above is pulled down 1px (`-mb-px`) so the active tab's
+  //     `border-b-transparent` lands exactly on top of the canvas's top
+  //     border, dissolving the seam between the tab and the canvas.
   const tabClass = cn(
-    "relative inline-flex items-center gap-1.5 rounded-t-md border border-border px-3 py-1.5 text-xs font-medium",
+    "relative -ml-px first:ml-0 inline-flex items-center gap-1.5 border border-border px-3 py-1.5 text-xs font-medium",
+    isFirst && "rounded-tl-md",
+    isLast && "rounded-tr-md",
     active
-      ? "border-b-transparent bg-white text-foreground"
+      ? // border-b-white (not transparent!) so the tab's bottom-border
+        // pixel OCCLUDES the canvas's top border at the tab's footprint.
+        // Transparent would let the canvas's border-border show through
+        // and produce a visible seam between the tab and the canvas.
+        "z-10 border-b-white bg-white text-foreground"
       : "bg-input/40 text-muted-foreground hover:bg-input/60 hover:text-foreground",
   );
   const title = perspective.ownerHandle
@@ -83,13 +94,7 @@ function PerspectiveTab({ handle, perspective, active }: PerspectiveTabProps) {
     : perspective.name;
 
   return (
-    <Link
-      to={href}
-      role="tab"
-      aria-selected={active}
-      className={tabClass}
-      title={title}
-    >
+    <Link to={href} role="tab" aria-selected={active} className={tabClass} title={title}>
       {perspective.icon ? (
         <span aria-hidden className="text-sm leading-none">
           {perspective.icon}

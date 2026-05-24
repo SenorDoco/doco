@@ -16,7 +16,7 @@ import { Form, Link, useRevalidator } from "react-router";
 import { ActivityHeatmap } from "~/components/activity-heatmap";
 import { Breadcrumb, orgBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
-import { CollaboratorsLink } from "~/components/invite-collaborators-link";
+import { ApiKeysLink, CollaboratorsLink } from "~/components/invite-collaborators-link";
 import { OverviewGraph } from "~/components/overview-graph";
 import { SiteHeader } from "~/components/site-header";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "~/components/table";
@@ -402,6 +402,7 @@ export default function OrgHome({
                 {canInviteCollaborators ? (
                   <CollaboratorsLink level="org" targetId={org.id} />
                 ) : null}
+                {canInviteCollaborators ? <ApiKeysLink /> : null}
                 {canInviteCollaborators ? (
                   <Link
                     to={`/orgs/${org.handle}/settings`}

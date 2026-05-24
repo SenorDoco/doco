@@ -67,6 +67,10 @@ export interface BpmnPool {
   /** Per-neuron PageRank score on the doco's synapse graph; drives
    *  pool ordering and primary-intent picks for multi-intent neurons. */
   pagerank: number;
+  /** Intent's lifecycle (drafting / proposed / active / retired). Null
+   *  for the Unassigned pool. Drives the lifecycle badge on the pool
+   *  header. */
+  lifecycle: string | null;
 }
 
 export interface BpmnLane {
@@ -80,6 +84,11 @@ export interface BpmnLane {
   base_id: string;
   label: string;
   kind: BpmnLaneKind;
+  /** Underlying entity's lifecycle when the lane represents a neuron
+   *  (actor lanes carry the Principal's lifecycle). Null for bands
+   *  and synthetic catch-all lanes — they have no single owning
+   *  neuron. */
+  lifecycle: string | null;
 }
 
 export interface BpmnNode {
@@ -96,6 +105,15 @@ export interface BpmnNode {
    *  candidate intent ids (so the client can recompute the primary
    *  intent under personalized PageRank without re-fetching). */
   intent_ids?: string[];
+  /**
+   * Undirected BFS distance from the nearest "start anchor" — Intent
+   * (pool header), or State with kind=initial — over the full synapse
+   * graph. Renderer uses MAX(sequence-flow depth, bfs_depth) as the
+   * horizontal column so neurons connected to the flow get positioned
+   * even when no explicit `follows` / `triggered_by` / `enacts` synapse
+   * exists between them. Falls back to 0 when unreachable.
+   */
+  bfs_depth?: number;
 }
 
 export interface BpmnGraphData {
@@ -134,7 +152,7 @@ export const POOL_UNASSIGNED_ID = "pool:unassigned";
 const ARTIFACT_TYPES = new Set(["reference", "eval", "idea", "rule"]);
 
 const SHAPE_BY_TYPE: Record<string, BpmnShape> = {
-  state: "milestone",
+  state: "task", // same glyph as Action — full-sized, readable, not a compact band label
   decision: "diamond",
   action: "task",
   rule: "rectangle",
@@ -159,6 +177,7 @@ interface NeuronRow {
 interface PrincipalRow {
   id: string;
   name: string;
+  lifecycle: string | null;
 }
 
 interface CollaboratorRow {
@@ -194,7 +213,7 @@ export async function loadBpmnGraph(
   const [neuronRows, principalRows, collaboratorRows] = await Promise.all([
     c.query<NeuronRow>(neuronSql, [docoId]),
     c.query<PrincipalRow>(
-      `SELECT id, name
+      `SELECT id, name, COALESCE(lifecycle, 'active') AS lifecycle
          FROM principals
         WHERE doco_id = $1
           AND COALESCE(lifecycle, 'active') = 'active'`,
@@ -249,6 +268,29 @@ export async function loadBpmnGraph(
       synapse_type: r.synapse_type,
     }));
   }
+
+  // ── BFS depth from start anchors ──────────────────────────────────
+  // Undirected BFS distance from the nearest start anchor (every Intent
+  // and every State with kind=initial), walked over the full synapse
+  // graph. The renderer takes MAX(sequence-flow depth, bfs_depth) for
+  // each neuron's horizontal column — so a node connected to the flow
+  // via *any* synapse (not just `follows` / `triggered_by` / `enacts`)
+  // still gets positioned relative to the start. Without this, neurons
+  // missing an explicit sequence-flow synapse fall to depth 0 and the
+  // chronological tiebreaker decides — which has nothing to do with
+  // process order.
+  const startAnchors: string[] = [];
+  for (const row of allRows) {
+    if (row.entity_type === "intent") startAnchors.push(row.id);
+    else if (row.entity_type === "state" && row.data?.kind === "initial") {
+      startAnchors.push(row.id);
+    }
+  }
+  const bfsDepthById = computeBfsDepths(
+    allRows.map((r) => r.id),
+    links,
+    startAnchors,
+  );
 
   // ── Global PageRank over the synapse graph ────────────────────────
   // Drives:
@@ -323,6 +365,33 @@ export async function loadBpmnGraph(
     }
   }
 
+  // ── No-Unassigned-pool policy ─────────────────────────────────────
+  // Every neuron lands in *some* Intent's pool. For neurons that the
+  // direct-host rules above didn't place (Action/Decision/Log with no
+  // intent_ids; State/Reference/Idea/leftover Rule/leftover Eval), run
+  // personalized PageRank from that neuron over the doco's synapse
+  // graph and pick the highest-scoring Intent as its home. Standalone
+  // neurons with no connection at all end up in the highest-global-PR
+  // Intent's pool — the de facto "default process" of the doco.
+  if (intentsById.size > 0) {
+    const intentIds = Array.from(intentsById.keys());
+    const homeless: NeuronRow[] = [];
+    for (const row of allRows) {
+      if (row.entity_type === "intent") continue;
+      if (poolByNeuron.get(row.id) === POOL_UNASSIGNED_ID) homeless.push(row);
+    }
+    if (homeless.length > 0) {
+      const pageRankNodes = allRows.map((r) => ({ id: r.id }));
+      for (const row of homeless) {
+        const personalized = pageRank(pageRankNodes, links, {
+          personalization: new Map([[row.id, 1]]),
+        });
+        const bestIntent = highestRanked(intentIds, personalized);
+        if (bestIntent) poolByNeuron.set(row.id, `pool:${bestIntent}`);
+      }
+    }
+  }
+
   // ── Lane assignment within each pool ──────────────────────────────
   // A lane id is composite: `${pool_id}::${base}` — alice in pool 1
   // and alice in pool 2 are different lanes with the same `base_id`
@@ -379,7 +448,19 @@ export async function loadBpmnGraph(
 
     const laneId = `${poolId}::${baseId}`;
     if (!lanesById.has(laneId)) {
-      lanesById.set(laneId, { id: laneId, pool_id: poolId, base_id: baseId, label, kind });
+      // Actor lanes carry the Principal's lifecycle so the lane header
+      // can render the same type/lifecycle badge stack a neuron does.
+      // Bands and synthetic catch-alls have no owning neuron — null.
+      const laneLifecycle: string | null =
+        kind === "actor" ? (principalById.get(baseId)?.lifecycle ?? null) : null;
+      lanesById.set(laneId, {
+        id: laneId,
+        pool_id: poolId,
+        base_id: baseId,
+        label,
+        kind,
+        lifecycle: laneLifecycle,
+      });
     }
 
     const node: BpmnNode = {
@@ -392,6 +473,7 @@ export async function loadBpmnGraph(
       shape: shapeForEntityType(row.entity_type),
       laneId,
       pool_id: poolId,
+      bfs_depth: bfsDepthById.get(row.id),
     };
     const intentIds = intentIdsByNeuron.get(row.id);
     if (intentIds && intentIds.length > 0) node.intent_ids = intentIds;
@@ -411,6 +493,7 @@ export async function loadBpmnGraph(
         intent_id: null,
         label: "Unassigned",
         pagerank: 0,
+        lifecycle: null,
       });
       continue;
     }
@@ -423,6 +506,7 @@ export async function loadBpmnGraph(
       intent_id: intentId,
       label,
       pagerank: pr.get(intentId) ?? 0,
+      lifecycle: intentRow?.lifecycle ?? null,
     });
   }
 
@@ -587,4 +671,46 @@ function resolveRehomeHostLane(
     return null;
   }
   return null;
+}
+
+/**
+ * Undirected BFS distance from the nearest `starts` anchor over the
+ * synapse graph induced by `links`. Returns a map of node id → BFS
+ * distance for every reachable node; unreachable nodes are absent
+ * from the map (callers default to 0 or treat as unknown). Anchors
+ * themselves get distance 0.
+ */
+function computeBfsDepths(
+  nodeIds: readonly string[],
+  links: readonly OverviewGraphLink[],
+  starts: readonly string[],
+): Map<string, number> {
+  const result = new Map<string, number>();
+  if (starts.length === 0 || nodeIds.length === 0) return result;
+  const nodeIdSet = new Set(nodeIds);
+  const adj = new Map<string, Set<string>>();
+  for (const id of nodeIds) adj.set(id, new Set());
+  for (const link of links) {
+    if (!nodeIdSet.has(link.source) || !nodeIdSet.has(link.target)) continue;
+    adj.get(link.source)?.add(link.target);
+    adj.get(link.target)?.add(link.source);
+  }
+  const queue: string[] = [];
+  for (const start of starts) {
+    if (!nodeIdSet.has(start) || result.has(start)) continue;
+    result.set(start, 0);
+    queue.push(start);
+  }
+  while (queue.length > 0) {
+    const current = queue.shift() as string;
+    const d = result.get(current) as number;
+    const neighbors = adj.get(current);
+    if (!neighbors) continue;
+    for (const neighbor of neighbors) {
+      if (result.has(neighbor)) continue;
+      result.set(neighbor, d + 1);
+      queue.push(neighbor);
+    }
+  }
+  return result;
 }

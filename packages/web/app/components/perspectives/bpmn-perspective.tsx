@@ -28,7 +28,12 @@ import {
   useState,
 } from "react";
 import { useNavigate } from "react-router";
-import { NodeBadgeRow, ReferenceNumberBadge } from "~/components/neuron-badges";
+import {
+  LifecycleBadge,
+  NodeBadgeRow,
+  ReferenceNumberBadge,
+  TypeBadge,
+} from "~/components/neuron-badges";
 import type { OverviewGraphLink } from "~/components/overview-graph";
 import type { BpmnLane, BpmnNode, BpmnPool, BpmnShape } from "~/lib/bpmn-perspective.server";
 import {
@@ -152,12 +157,6 @@ const MAX_GRAPH_REFERENCES = 120;
  * default size so existing layouts don't shift unexpectedly.
  */
 function sizeForNode(node: BpmnNode): { width: number; height: number } {
-  // Milestones are a compact label band, not a flow node — keep them
-  // small and uniform regardless of label length (the title still
-  // wraps inside via line-clamp).
-  if (node.shape === "milestone") {
-    return { width: MILESTONE_NODE_WIDTH, height: MILESTONE_NODE_HEIGHT };
-  }
   const label = node.name ?? "";
   const N = Math.max(label.length, 1);
   const CHAR_W = 5.5; // approx px per char at 10px font, leading-tight
@@ -276,6 +275,7 @@ export function BpmnPerspective({
         base_id: template.base_id,
         label: template.label,
         kind: template.kind,
+        lifecycle: template.lifecycle,
       });
       existingLaneIds.add(node.laneId);
     }
@@ -444,7 +444,7 @@ export function BpmnPerspective({
 
   if (filteredLanes.length === 0) {
     return (
-      <div className="flex h-full min-h-0 flex-1 items-center justify-center rounded-md border border-border bg-white text-center text-sm font-medium text-muted-foreground">
+      <div className="flex h-full min-h-0 flex-1 items-center justify-center rounded-md rounded-tl-none border border-border bg-white text-center text-sm font-medium text-muted-foreground">
         So empty
       </div>
     );
@@ -481,7 +481,7 @@ export function BpmnPerspective({
         const visibleBottom = Math.min(canvasHeight, laneBottom);
         const railHeight = Math.max(44, visibleBottom - visibleTop);
         const top = Math.min(Math.max(0, visibleTop), Math.max(0, canvasHeight - railHeight));
-        const isBand = lane.kind !== "principal";
+        const isBand = lane.kind !== "actor";
         const referenceNumber = referenceNumberByEntityId.get(lane.id);
         const labelFontPx = RAIL_LABEL_BASE_FONT * viewport.zoom;
         const badgeFontPx = RAIL_BADGE_BASE_FONT * viewport.zoom;
@@ -533,7 +533,7 @@ export function BpmnPerspective({
   return (
     <div
       ref={graphRef}
-      className="relative h-full min-h-0 w-full flex-1 overflow-hidden rounded-md border border-border bg-white"
+      className="relative h-full min-h-0 w-full flex-1 overflow-hidden rounded-md rounded-tl-none border border-border bg-white"
     >
       {Flow ? (
         <Flow.ReactFlow
@@ -576,7 +576,7 @@ export function BpmnPerspective({
           proOptions={{ hideAttribution: true }}
         >
           <Flow.Background gap={24} size={1} />
-          <Flow.Controls position="top-right" showInteractive={false}>
+          <Flow.Controls position="top-right" showInteractive={false} style={{ top: 44 }}>
             {onToggleFullscreen ? (
               <Flow.ControlButton
                 onClick={onToggleFullscreen}
@@ -793,7 +793,6 @@ function layOutBpmn(
   for (const node of nodes) {
     const size = sizeForNode(node);
     sizeByNode.set(node.id, size);
-    if (node.shape === "milestone") continue;
     if (size.width > maxNodeWidth) maxNodeWidth = size.width;
     if (size.height > maxNodeHeight) maxNodeHeight = size.height;
   }
@@ -852,10 +851,12 @@ function layOutBpmn(
     // Lanes inside this pool (sorted server-side by kind +
     // alphabetical label; we just iterate).
     for (const lane of poolLanes) {
-      let laneHeight: number;
-      if (lane.kind === "milestone") laneHeight = MILESTONE_BAND_HEIGHT;
-      else if (lane.kind === "artifacts") laneHeight = ARTIFACTS_BAND_HEIGHT;
-      else laneHeight = dynLaneHeight;
+      // All lanes (actor + milestone + artifacts band) now use the
+      // same dynamic height. States render as Task glyphs (same size
+      // as Actions), so the milestone band needs full lane height to
+      // fit them; the artifacts band follows the same rule for
+      // consistency.
+      const laneHeight = dynLaneHeight;
 
       laneYById.set(lane.id, cursorY);
       laneHeightById.set(lane.id, laneHeight);
@@ -925,14 +926,23 @@ function layOutBpmn(
   const flowEdges: FlowEdge[] = links
     .filter((link) => nodeSet.has(link.source) && nodeSet.has(link.target))
     .map((link, index) => {
-      // `serves` is stored Action→Intent in the data (an Action serves
-      // an Intent), but in BPMN the Intent sits at the *origin* of the
-      // flow — start events (circles) point outward to the work that
-      // fulfils them. Flip the visual direction so the arrow reads
-      // "this Intent drives this Action" rather than "this Action
-      // points at its goal." Data model is unchanged; only the rendered
-      // edge is swapped.
-      const flip = link.synapse_type === "serves";
+      // Some synapses are stored downstream→upstream in the data but
+      // their BPMN sequence flow runs the other way:
+      //
+      // - `serves` is stored Action→Intent (Action serves Intent), but
+      //   the Intent is the start event at the origin of the flow —
+      //   arrows fan *out* from it.
+      // - `enacts` is stored Action→Decision (Action enacts a prior
+      //   Decision), but the Decision is the gateway and the Action is
+      //   the downstream branch — arrows go from the gateway *to* each
+      //   branch.
+      //
+      // For both, flip the visual edge so the arrowhead lands on the
+      // downstream side. The underlying synapse direction in the data
+      // is unchanged; only the rendered edge is swapped. (And these
+      // matches the depth-walk direction: gateways/start-events end up
+      // at the lower depth, branches/actions at the higher depth.)
+      const flip = link.synapse_type === "serves" || link.synapse_type === "enacts";
       const source = flip ? link.target : link.source;
       const target = flip ? link.source : link.target;
       const edgeOpacity = focalActive
@@ -1015,18 +1025,27 @@ function isNodeVisibleInViewport(
  * `tests`, `consults`, `has_parent`, …) renders an arrow but doesn't
  * push the target node to a later column.
  *
- * Direction note: all three sequence-flow synapses store the
- * data-model link from the *successor* to the *predecessor* (e.g.
- * `Action.follows=[B]` is stored as `{from: Action, to: B}`, meaning
- * B happens before the Action). `computeDepths` reads `link.target`
- * as the predecessor for these types so depth grows left → right in
- * BPMN reading order.
+ * All three store the link successor → predecessor in the data:
+ *
+ * - `A.follows=[B]` is `{from: A, to: B}` meaning B happens before A.
+ * - `Action.triggered_by=[B]` is `{from: Action, to: B}` meaning B
+ *   happened first and triggered the Action.
+ * - `Action.decision_ids=[D]` is `{from: Action, to: D}` and semantically
+ *   means "the Action enacts a prior Decision" — i.e. the Decision is
+ *   a gateway the Action realizes a branch of, so the Decision came
+ *   first. Decision is the predecessor.
+ *
+ * Depth reads `link.target` as the predecessor for all three: this
+ * puts gateways LEFT of the branches that enact them and triggers
+ * LEFT of the work they triggered — both BPMN-correct.
+ *
+ * If you want an upstream Action to render LEFT of a gateway it
+ * leads to (not enacts), encode that in the data as
+ * `Decision.follows = [Action]`, not `Action.decision_ids =
+ * [Decision]` — the latter says "Action enacts a prior Decision"
+ * which is the opposite direction.
  */
-const SEQUENCE_FLOW_SYNAPSES: ReadonlySet<string> = new Set([
-  "follows", // A.follows=[B] → B is predecessor of A
-  "triggered_by", // Action.triggered_by=[B] → B is predecessor of A
-  "enacts", // Action.decision_ids=[D] → D is predecessor of A
-]);
+const SEQUENCE_FLOW_SYNAPSES: ReadonlySet<string> = new Set(["follows", "triggered_by", "enacts"]);
 
 function computeDepths(
   nodes: readonly BpmnNode[],
@@ -1039,8 +1058,6 @@ function computeDepths(
   for (const link of links) {
     if (!nodeIds.has(link.source) || !nodeIds.has(link.target)) continue;
     if (!SEQUENCE_FLOW_SYNAPSES.has(link.synapse_type)) continue;
-    // Sequence-flow synapses point successor → predecessor in our
-    // data; link.target is the predecessor of link.source.
     (predecessors.get(link.source) as string[]).push(link.target);
   }
   // Memoized DFS — handles DAGs and is safe against cycles via the
@@ -1062,6 +1079,19 @@ function computeDepths(
     return max;
   }
   for (const id of nodeIds) depthOf(id);
+  // BFS-from-start fallback. The server tags each node with
+  // `bfs_depth` — its undirected distance from the nearest start
+  // anchor (Intent / kind=initial State) over the full synapse graph.
+  // For neurons with no incoming sequence-flow synapse, this is the
+  // only signal that places them somewhere other than column 0. Take
+  // MAX(sequence-flow depth, bfs_depth) so explicit `follows` chains
+  // (which can produce deeper depths) still win when they exist.
+  for (const node of nodes) {
+    const bfs = node.bfs_depth;
+    if (bfs === undefined || bfs <= 0) continue;
+    const current = depth.get(node.id) ?? 0;
+    if (bfs > current) depth.set(node.id, bfs);
+  }
   return depth;
 }
 
@@ -1147,6 +1177,7 @@ function BpmnPoolHeaderNode({ data }: { data: BpmnPoolHeaderData }) {
         borderBottom: `1px solid ${borderColor}`,
         display: "flex",
         alignItems: "center",
+        gap: 8,
         padding: "0 14px",
         boxSizing: "border-box",
         fontSize: 12,
@@ -1157,6 +1188,12 @@ function BpmnPoolHeaderNode({ data }: { data: BpmnPoolHeaderData }) {
       }}
       title={data.pool.label}
     >
+      {!isUnassigned && data.pool.intent_id ? (
+        <span style={{ display: "inline-flex", gap: 4, flexShrink: 0 }}>
+          <TypeBadge entityType="intent" lifecycle={data.pool.lifecycle} anchor="inline" />
+          <LifecycleBadge lifecycle={data.pool.lifecycle} anchor="inline" />
+        </span>
+      ) : null}
       <span
         className="overflow-hidden text-ellipsis whitespace-nowrap"
         style={{ maxWidth: "100%" }}
@@ -1202,8 +1239,10 @@ function BpmnLaneNode({ data }: { data: BpmnLaneData }) {
           background: labelBg,
           borderRight: "1px solid var(--color-border)",
           display: "flex",
+          flexDirection: "column",
           alignItems: "center",
           justifyContent: "center",
+          gap: 6,
           fontSize: 11,
           fontWeight: 600,
           textAlign: "center",
@@ -1223,9 +1262,28 @@ function BpmnLaneNode({ data }: { data: BpmnLaneData }) {
             #{data.referenceNumber}
           </span>
         ) : null}
-        {data.lane.label}
+        <LaneBadgeRow lane={data.lane} />
+        <span>{data.lane.label}</span>
       </div>
     </div>
+  );
+}
+
+/**
+ * Type + lifecycle badges above a lane's label, matching the badge
+ * row at the top of every neuron card. Only actor lanes have a
+ * single owning neuron (the Principal), so they get the type +
+ * lifecycle pair. Bands (milestone / artifacts) are structural
+ * containers that hold a set of neurons — labelling the band itself
+ * with one of those neuron types is misleading, so we render nothing.
+ */
+function LaneBadgeRow({ lane }: { lane: BpmnLane }) {
+  if (lane.kind !== "actor") return null;
+  return (
+    <span style={{ display: "inline-flex", gap: 4 }}>
+      <TypeBadge entityType="principal" lifecycle={lane.lifecycle} anchor="inline" />
+      <LifecycleBadge lifecycle={lane.lifecycle} anchor="inline" />
+    </span>
   );
 }
 
