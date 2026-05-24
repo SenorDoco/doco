@@ -312,6 +312,13 @@ export async function loader({
     const prefs = (meRow?.data?.preferences ?? {}) as Record<string, unknown>;
     const graphAutoReorder = prefs.graph_auto_reorder !== false; // default true
 
+    // Per-user UI preferences (currently just the graph "Reorder
+    // automatically" toggle). Anonymous viewers get the default-on
+    // experience and any toggle change is dropped on the floor.
+    const meRow = me ? await getCollaboratorById(me.id) : null;
+    const prefs = (meRow?.data?.preferences ?? {}) as Record<string, unknown>;
+    const graphAutoReorder = prefs.graph_auto_reorder !== false; // default true
+
     return {
       items,
       facets,
