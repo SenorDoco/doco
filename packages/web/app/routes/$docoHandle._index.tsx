@@ -725,6 +725,26 @@ export default function DocoHome({
     },
   ];
 
+  // Shared NeuronDialog content. The dialog renders in one of two
+  // positioning wrappers (a fixed overlay below 1200px, an absolute
+  // overlay inside the right column at ≥ 1200px); both reuse this same
+  // element so the props aren't duplicated.
+  const neuronDialogPanel =
+    neuronDialog && !isPerspectiveFullscreen ? (
+      <NeuronDialog
+        detail={neuronDialog.detail}
+        loading={neuronDialog.loading}
+        error={neuronDialog.error}
+        lifecycleUpdating={lifecycleUpdating}
+        lifecycleError={lifecycleError}
+        onClose={closeNeuronDialog}
+        onLifecycleChange={handleLifecycleChange}
+        onOpenNeuron={(entityType, id, href) => {
+          void loadNeuronDialog(entityType, id, href);
+        }}
+      />
+    ) : null;
+
   return (
     <div className="flex h-full min-h-0 flex-col">
       <SiteHeader mode="host" me={me} />
@@ -759,7 +779,7 @@ export default function DocoHome({
           </div>
           {goal ? <p className="text-[11px] text-muted-foreground">{goal}</p> : null}
         </div>
-        <div className="grid min-h-0 flex-1 grid-cols-1 gap-6 [grid-template-rows:minmax(0,1fr)] min-[1200px]:grid-cols-[minmax(0,1fr)_320px]">
+        <div className="grid min-h-0 flex-1 grid-cols-1 gap-6 min-[1200px]:grid-cols-[minmax(0,1fr)_320px]">
           <aside ref={asideRef} className="flex min-h-0 min-w-0 flex-col bg-background">
             <PerspectiveTabs
               handle={handle}
@@ -788,13 +808,16 @@ export default function DocoHome({
                 />
               ) : activePerspectiveKind === "bpmn" && bpmnGraph ? (
                 <BpmnPerspective
+                  pools={bpmnGraph.pools}
                   lanes={bpmnGraph.lanes}
                   nodes={bpmnGraph.nodes}
                   links={bpmnGraph.links}
+                  globalPagerank={bpmnGraph.global_pagerank}
                   visibleLifecycles={visibleLifecycles}
                   availableLifecycles={availableLifecycles}
                   onLifecycleToggle={toggleLifecycle}
                   centerId={graphState.centerId}
+                  onCenterChange={(id) => setGraphState((prev) => graphWithCenter(prev, id))}
                   isFullscreen={isPerspectiveFullscreen}
                   onToggleFullscreen={togglePerspectiveFullscreen}
                   onNeuronClick={(node) => {
@@ -844,8 +867,12 @@ export default function DocoHome({
             </div>
           </aside>
 
-          <div className="relative min-h-0 min-w-0">
-            <section className="hidden min-w-0 space-y-5 min-[1200px]:block min-[1200px]:h-full min-[1200px]:overflow-y-auto min-[1200px]:pr-1">
+          {/* Right column: only renders ≥ 1200px. Below that breakpoint
+              the cards are out of layout AND we drop the wrapper div
+              entirely so it doesn't create a phantom grid row (auto +
+              gap-6) that left ~50px of unowned space below the graph. */}
+          <div className="relative hidden min-h-0 min-w-0 min-[1200px]:block">
+            <section className="h-full min-w-0 space-y-5 overflow-y-auto pr-1">
               <NeuronsOverviewCard
                 sections={sections}
                 empty={
@@ -885,31 +912,23 @@ export default function DocoHome({
                 </CardContent>
               </Card>
             </section>
+            {/* ≥1200px: dialog overlays the right column (covers the
+                cards while the user reads it). At < 1200px the wrapper
+                below this one renders the same dialog over the canvas. */}
             {neuronDialog && !isPerspectiveFullscreen ? (
-              // Small screens: float over the perspective canvas but leave
-              // the app bar (top-20) and the Señor Doco rail (variable
-              // left edge — set by AgentSidebar as a CSS var on
-              // documentElement so we don't have to thread state) visible.
-              // ≥1200px: absolute, anchored to the right column's parent.
-              // In fullscreen the dialog renders inside the aside instead —
-              // the right column is outside the fullscreen tree.
-              <div className="fixed bottom-4 right-3 top-20 z-30 [left:calc(var(--senor-doco-rail-width,320px)+0.75rem)] min-[1200px]:absolute min-[1200px]:inset-0">
-                <NeuronDialog
-                  detail={neuronDialog.detail}
-                  loading={neuronDialog.loading}
-                  error={neuronDialog.error}
-                  lifecycleUpdating={lifecycleUpdating}
-                  lifecycleError={lifecycleError}
-                  onClose={closeNeuronDialog}
-                  onLifecycleChange={handleLifecycleChange}
-                  onOpenNeuron={(entityType, id, href) => {
-                    void loadNeuronDialog(entityType, id, href);
-                  }}
-                />
-              </div>
+              <div className="absolute inset-0">{neuronDialogPanel}</div>
             ) : null}
           </div>
         </div>
+        {/* < 1200px: floating dialog over the canvas (the right column
+            isn't rendered at this breakpoint). The Señor Doco rail's
+            width is published as a CSS var by AgentSidebar so the
+            dialog never covers it. */}
+        {neuronDialog && !isPerspectiveFullscreen ? (
+          <div className="fixed bottom-4 right-3 top-20 z-30 [left:calc(var(--senor-doco-rail-width,320px)+0.75rem)] min-[1200px]:hidden">
+            {neuronDialogPanel}
+          </div>
+        ) : null}
       </main>
     </div>
   );

@@ -28,8 +28,9 @@ import {
   useState,
 } from "react";
 import { useNavigate } from "react-router";
+import { NodeBadgeRow, ReferenceNumberBadge } from "~/components/neuron-badges";
 import type { OverviewGraphLink } from "~/components/overview-graph";
-import type { BpmnLane, BpmnNode, BpmnShape } from "~/lib/bpmn-perspective.server";
+import type { BpmnLane, BpmnNode, BpmnPool, BpmnShape } from "~/lib/bpmn-perspective.server";
 import {
   computeDepthFromCenter,
   hasFocalNode,
@@ -41,7 +42,8 @@ import {
   clearGraphReferences,
   publishGraphReferences,
 } from "~/lib/graph-references";
-import { lifecycleColor, lifecycleLabel, textOnLifecycle } from "~/lib/neuron-colors";
+import { lifecycleColor, lifecycleLabel } from "~/lib/neuron-colors";
+import { highestRanked, pageRank } from "~/lib/pagerank";
 import "@xyflow/react/dist/style.css";
 
 // MUST stay in sync with the matching exports in
@@ -52,10 +54,40 @@ const MILESTONE_LANE_ID = "__milestones__";
 const ARTIFACTS_LANE_ID = "__artifacts__";
 
 interface BpmnPerspectiveProps {
+  /**
+   * One pool per Intent in the Doco (plus an "Unassigned" pool for
+   * neurons that don't cite an Intent). Pools are rendered in the
+   * order given — the server emits them sorted by descending global
+   * PageRank, with the Unassigned pool pinned to the bottom.
+   */
+  pools: BpmnPool[];
+  /**
+   * Flat list of lanes across all pools; each lane carries its
+   * `pool_id` so the renderer can group them. Lane ids are composite
+   * (`<pool_id>::<base>`) so the same Principal in two pools is two
+   * distinct lanes.
+   */
   lanes: BpmnLane[];
   nodes: BpmnNode[];
   links: OverviewGraphLink[];
+  /**
+   * Per-neuron global PageRank score on the doco's synapse graph,
+   * emitted by `loadBpmnGraph`. When `centerId` is set, the client
+   * re-runs PageRank with the teleport vector biased to that focal
+   * neuron, and re-picks the primary intent for each multi-intent
+   * node — so neurons can swap pools as the user clicks into the
+   * graph without a round-trip to the server.
+   */
+  globalPagerank?: Record<string, number>;
   onNeuronClick?: (node: BpmnNode) => void;
+  /**
+   * Lift focal-node state to the parent. Clicking a neuron on the
+   * canvas should re-center the graph on it so depth-based opacity
+   * recomputes from the new focal node; the parent owns the centerId
+   * state and this callback is how the canvas asks it to update.
+   * Same contract as OverviewGraph.onCenterChange.
+   */
+  onCenterChange?: (id: string) => void;
   /**
    * Page-level lifecycle filter set. Nodes whose lifecycle isn't in
    * this set are excluded; lanes that end up empty after filtering
@@ -163,10 +195,13 @@ interface FlowModule {
 }
 
 export function BpmnPerspective({
-  lanes,
-  nodes,
+  pools,
+  lanes: lanesRaw,
+  nodes: nodesRaw,
   links,
+  globalPagerank,
   onNeuronClick,
+  onCenterChange,
   visibleLifecycles,
   availableLifecycles,
   onLifecycleToggle,
@@ -174,6 +209,81 @@ export function BpmnPerspective({
   isFullscreen,
   onToggleFullscreen,
 }: BpmnPerspectiveProps) {
+  // ── Personalized PageRank re-pool ─────────────────────────────────
+  // The server picked each multi-intent neuron's primary intent using
+  // GLOBAL PageRank. When the user clicks into a focal neuron, we
+  // re-run PageRank with the teleport vector biased to that focal
+  // node and re-pick the primary intent for each multi-intent neuron;
+  // that may move them into a different pool. The pool list itself
+  // doesn't change order (server-emitted order is keyed to global PR,
+  // which is the most stable read), but a node migrating to a pool
+  // that didn't have its actor lane yet adds the lane on the fly.
+  const { lanes, nodes } = useMemo(() => {
+    const hasFocal = !!centerId && nodesRaw.some((n) => n.id === centerId);
+    const multiIntentNodes = nodesRaw.filter((n) => (n.intent_ids?.length ?? 0) > 1);
+    if (!hasFocal || multiIntentNodes.length === 0) {
+      return { lanes: lanesRaw, nodes: nodesRaw };
+    }
+
+    const personalized = pageRank(
+      nodesRaw.map((n) => ({ id: n.id })),
+      links,
+      { personalization: new Map([[centerId as string, 1]]) },
+    );
+
+    // Build new node list with adjusted pool_id / laneId for any
+    // multi-intent neuron whose primary intent changed under
+    // personalized PR. base_id (the part after "::") is preserved —
+    // the actor lane within the destination pool keeps the same
+    // Principal label, it just lives in a different pool.
+    const movedNodes = nodesRaw.map((node) => {
+      const candidates = node.intent_ids;
+      if (!candidates || candidates.length < 2) return node;
+      const newPrimary = highestRanked(candidates, personalized);
+      if (!newPrimary) return node;
+      const currentPoolIntent = node.pool_id.startsWith("pool:")
+        ? node.pool_id.slice("pool:".length)
+        : null;
+      if (newPrimary === currentPoolIntent) return node;
+      const newPoolId = `pool:${newPrimary}`;
+      const colonIdx = node.laneId.indexOf("::");
+      const base = colonIdx >= 0 ? node.laneId.slice(colonIdx + 2) : node.laneId;
+      const newLaneId = `${newPoolId}::${base}`;
+      return { ...node, pool_id: newPoolId, laneId: newLaneId };
+    });
+
+    // Synthesize any missing lanes. When a node moves to a destination
+    // pool that already had the same actor lane (e.g. alice already
+    // had work in the destination pool), no new lane needed. Otherwise
+    // clone the matching base lane from any pool that has it and
+    // re-prefix to the destination pool.
+    const existingLaneIds = new Set(lanesRaw.map((l) => l.id));
+    const lanesByBase = new Map<string, BpmnLane>();
+    for (const l of lanesRaw) {
+      if (!lanesByBase.has(l.base_id)) lanesByBase.set(l.base_id, l);
+    }
+    const synthesizedLanes: BpmnLane[] = [];
+    for (const node of movedNodes) {
+      if (existingLaneIds.has(node.laneId)) continue;
+      const colonIdx = node.laneId.indexOf("::");
+      if (colonIdx < 0) continue;
+      const base = node.laneId.slice(colonIdx + 2);
+      const template = lanesByBase.get(base);
+      if (!template) continue;
+      synthesizedLanes.push({
+        id: node.laneId,
+        pool_id: node.pool_id,
+        base_id: template.base_id,
+        label: template.label,
+        kind: template.kind,
+      });
+      existingLaneIds.add(node.laneId);
+    }
+    return {
+      lanes: synthesizedLanes.length > 0 ? [...lanesRaw, ...synthesizedLanes] : lanesRaw,
+      nodes: movedNodes,
+    };
+  }, [lanesRaw, nodesRaw, links, centerId]);
   const navigate = useNavigate();
   const graphRef = useRef<HTMLDivElement>(null);
   const graphReferenceIdRef = useRef(`bpmn-${Math.random().toString(36).slice(2)}`);
@@ -231,12 +341,13 @@ export function BpmnPerspective({
   }, []);
 
   const layout = useMemo(
-    () => layOutBpmn(filteredLanes, filteredNodes, links, centerId),
-    [filteredLanes, filteredNodes, links, centerId],
+    () => layOutBpmn(pools, filteredLanes, filteredNodes, links, centerId),
+    [pools, filteredLanes, filteredNodes, links, centerId],
   );
   const nodeTypes = useMemo(
     () => ({
       bpmnLane: BpmnLaneNode,
+      bpmnPoolHeader: BpmnPoolHeaderNode,
       bpmnCircle: BpmnCircleNode,
       bpmnDiamond: BpmnDiamondNode,
       bpmnRectangle: BpmnRectangleNode,
@@ -257,7 +368,7 @@ export function BpmnPerspective({
     // viewer can jump straight to the swimlane owner from the sidebar
     // before the per-shape numbers begin.
     const laneRefs: GraphReferenceItem[] = filteredLanes
-      .filter((lane) => isPrincipalLaneId(lane.id))
+      .filter((lane) => isActorLane(lane))
       .map((lane, index) => ({
         number: index + 1,
         id: lane.id,
@@ -333,7 +444,7 @@ export function BpmnPerspective({
 
   if (filteredLanes.length === 0) {
     return (
-      <div className="flex h-full min-h-0 flex-1 items-center justify-center rounded-md border border-border text-center text-sm font-medium text-muted-foreground">
+      <div className="flex h-full min-h-0 flex-1 items-center justify-center rounded-md border border-border bg-white text-center text-sm font-medium text-muted-foreground">
         So empty
       </div>
     );
@@ -422,7 +533,7 @@ export function BpmnPerspective({
   return (
     <div
       ref={graphRef}
-      className="relative h-full min-h-0 w-full flex-1 overflow-hidden rounded-md border border-border"
+      className="relative h-full min-h-0 w-full flex-1 overflow-hidden rounded-md border border-border bg-white"
     >
       {Flow ? (
         <Flow.ReactFlow
@@ -452,11 +563,15 @@ export function BpmnPerspective({
           onMove={(_event: unknown, next: FlowViewport) => updateViewport(next)}
           onNodeClick={(_e: unknown, node: { id: string }) => {
             const target = nodeById.get(node.id);
-            if (target && onNeuronClick) {
+            if (!target) return;
+            // Re-center first so depth opacity recomputes from the
+            // clicked node before the dialog opens / the route changes.
+            if (onCenterChange) onCenterChange(target.id);
+            if (onNeuronClick) {
               onNeuronClick(target);
               return;
             }
-            if (target?.href) navigate(target.href);
+            if (target.href) navigate(target.href);
           }}
           proOptions={{ hideAttribution: true }}
         >
@@ -582,14 +697,28 @@ interface BpmnLayout {
    */
   lanes: Array<{
     id: string;
+    pool_id: string;
     label: string;
     y: number;
     height: number;
-    kind: "principal" | "milestone" | "artifacts";
+    kind: "actor" | "milestone" | "artifacts" | "unassigned" | "unresolved";
+  }>;
+  /** Per-pool geometry — y, height, label — for any chrome the
+   *  renderer wants to draw around pool boundaries (header band,
+   *  sticky labels, focal-overlay framing, etc.). */
+  poolGeometry: Array<{
+    id: string;
+    label: string;
+    y: number;
+    height: number;
   }>;
 }
 
+const POOL_HEADER_HEIGHT = 32;
+const POOL_GAP = 16;
+
 function layOutBpmn(
+  pools: BpmnPool[],
   lanes: BpmnLane[],
   nodes: BpmnNode[],
   links: OverviewGraphLink[],
@@ -676,42 +805,87 @@ function layOutBpmn(
   const laneYById = new Map<string, number>();
   const laneHeightById = new Map<string, number>();
   const nodePositions = new Map<string, { x: number; y: number }>();
+  const poolGeometry: BpmnLayout["poolGeometry"] = [];
 
-  // Emit lane parent nodes first; child neurons reference parentId.
-  // Heights vary: milestone and artifacts bands are shorter than an
-  // actor lane, so we accumulate y instead of multiplying by index.
-  let cursorY = 0;
+  // Group lanes by pool so each pool can emit its header + its own
+  // lanes in display order, then accumulate height.
+  const lanesByPool = new Map<string, BpmnLane[]>();
+  for (const pool of pools) lanesByPool.set(pool.id, []);
   for (const lane of lanes) {
-    let laneHeight: number;
-    if (lane.id === MILESTONE_LANE_ID) {
-      laneHeight = MILESTONE_BAND_HEIGHT;
-    } else if (lane.id === ARTIFACTS_LANE_ID) {
-      laneHeight = ARTIFACTS_BAND_HEIGHT;
-    } else {
-      laneHeight = dynLaneHeight;
-    }
-    laneYById.set(lane.id, cursorY);
-    laneHeightById.set(lane.id, laneHeight);
+    const list = lanesByPool.get(lane.pool_id);
+    if (list) list.push(lane);
+  }
+
+  let cursorY = 0;
+  let poolIndex = 0;
+  for (const pool of pools) {
+    const poolLanes = lanesByPool.get(pool.id) ?? [];
+    if (poolLanes.length === 0) continue; // empty pool — server already drops these in practice
+    if (poolIndex > 0) cursorY += POOL_GAP;
+    poolIndex++;
+    const poolStartY = cursorY;
+
+    // Pool header band — labeled banner across the full canvas width.
     flowNodes.push({
-      id: laneNodeId(lane.id),
-      type: "bpmnLane",
+      id: `pool-header:${pool.id}`,
+      type: "bpmnPoolHeader",
       position: { x: LANE_LEFT_INSET, y: cursorY },
       data: {
-        lane,
-        height: laneHeight,
+        pool,
         width: laneWidth,
-        labelWidth: LANE_LABEL_WIDTH,
-        isMilestoneBand: lane.id === MILESTONE_LANE_ID,
-        isArtifactsBand: lane.id === ARTIFACTS_LANE_ID,
+        height: POOL_HEADER_HEIGHT,
       },
       draggable: false,
       selectable: false,
       connectable: false,
       initialWidth: laneWidth,
-      initialHeight: laneHeight,
-      style: { width: laneWidth, height: laneHeight, zIndex: 0, padding: 0 },
+      initialHeight: POOL_HEADER_HEIGHT,
+      style: {
+        width: laneWidth,
+        height: POOL_HEADER_HEIGHT,
+        zIndex: 0,
+        padding: 0,
+      },
     });
-    cursorY += laneHeight;
+    cursorY += POOL_HEADER_HEIGHT;
+
+    // Lanes inside this pool (sorted server-side by kind +
+    // alphabetical label; we just iterate).
+    for (const lane of poolLanes) {
+      let laneHeight: number;
+      if (lane.kind === "milestone") laneHeight = MILESTONE_BAND_HEIGHT;
+      else if (lane.kind === "artifacts") laneHeight = ARTIFACTS_BAND_HEIGHT;
+      else laneHeight = dynLaneHeight;
+
+      laneYById.set(lane.id, cursorY);
+      laneHeightById.set(lane.id, laneHeight);
+      flowNodes.push({
+        id: laneNodeId(lane.id),
+        type: "bpmnLane",
+        position: { x: LANE_LEFT_INSET, y: cursorY },
+        data: {
+          lane,
+          height: laneHeight,
+          width: laneWidth,
+          labelWidth: LANE_LABEL_WIDTH,
+          isMilestoneBand: lane.kind === "milestone",
+          isArtifactsBand: lane.kind === "artifacts",
+        },
+        draggable: false,
+        selectable: false,
+        connectable: false,
+        initialWidth: laneWidth,
+        initialHeight: laneHeight,
+        style: { width: laneWidth, height: laneHeight, zIndex: 0, padding: 0 },
+      });
+      cursorY += laneHeight;
+    }
+    poolGeometry.push({
+      id: pool.id,
+      label: pool.label,
+      y: poolStartY,
+      height: cursorY - poolStartY,
+    });
   }
 
   // Emit neuron nodes nested in their lane.
@@ -747,6 +921,7 @@ function layOutBpmn(
   }
 
   const nodeSet = new Set(nodes.map((n) => n.id));
+  const nodeById = new Map(nodes.map((n) => [n.id, n]));
   const flowEdges: FlowEdge[] = links
     .filter((link) => nodeSet.has(link.source) && nodeSet.has(link.target))
     .map((link, index) => {
@@ -763,6 +938,10 @@ function layOutBpmn(
       const edgeOpacity = focalActive
         ? opacityForEdge(focalDepthByNode.get(source), focalDepthByNode.get(target))
         : 1;
+      // Synapse inherits the origin neuron's lifecycle color so an
+      // arrow visually "carries" the state of its source — drafted
+      // work flows in yellow, active work in black, retired in red.
+      const stroke = lifecycleColor(nodeById.get(link.source)?.lifecycle);
       return {
         id: `${link.source}-${link.target}-${index}`,
         source,
@@ -778,7 +957,7 @@ function layOutBpmn(
         focusable: false,
         interactionWidth: 0,
         style: {
-          stroke: "#262626",
+          stroke,
           strokeWidth: 1.75,
           opacity: edgeOpacity,
         },
@@ -786,7 +965,7 @@ function layOutBpmn(
           type: MarkerType.ArrowClosed,
           width: 18,
           height: 18,
-          color: "#262626",
+          color: stroke,
         },
       };
     });
@@ -794,16 +973,10 @@ function layOutBpmn(
   const laneGeometry: BpmnLayout["lanes"] = lanes.map((lane) => {
     const y = laneYById.get(lane.id) ?? 0;
     const height = laneHeightById.get(lane.id) ?? dynLaneHeight;
-    const kind: "principal" | "milestone" | "artifacts" =
-      lane.id === MILESTONE_LANE_ID
-        ? "milestone"
-        : lane.id === ARTIFACTS_LANE_ID
-          ? "artifacts"
-          : "principal";
-    return { id: lane.id, label: lane.label, y, height, kind };
+    return { id: lane.id, pool_id: lane.pool_id, label: lane.label, y, height, kind: lane.kind };
   });
 
-  return { flowNodes, flowEdges, nodePositions, lanes: laneGeometry };
+  return { flowNodes, flowEdges, nodePositions, lanes: laneGeometry, poolGeometry };
 }
 
 function screenPosition(position: { x: number; y: number }, viewport: FlowViewport) {
@@ -835,6 +1008,26 @@ function isNodeVisibleInViewport(
  * predecessors. Cycle survivors (no zero-indegree entry point) fall
  * back to depth 0 and are sorted by created_at within their lane.
  */
+/**
+ * Synapse types that express **causal sequence flow** for BPMN layout.
+ * These are the only edges that move a neuron's horizontal column;
+ * every other synapse type (`serves`, `performed_by`, `gated_by`,
+ * `tests`, `consults`, `has_parent`, …) renders an arrow but doesn't
+ * push the target node to a later column.
+ *
+ * Direction note: all three sequence-flow synapses store the
+ * data-model link from the *successor* to the *predecessor* (e.g.
+ * `Action.follows=[B]` is stored as `{from: Action, to: B}`, meaning
+ * B happens before the Action). `computeDepths` reads `link.target`
+ * as the predecessor for these types so depth grows left → right in
+ * BPMN reading order.
+ */
+const SEQUENCE_FLOW_SYNAPSES: ReadonlySet<string> = new Set([
+  "follows", // A.follows=[B] → B is predecessor of A
+  "triggered_by", // Action.triggered_by=[B] → B is predecessor of A
+  "enacts", // Action.decision_ids=[D] → D is predecessor of A
+]);
+
 function computeDepths(
   nodes: readonly BpmnNode[],
   links: readonly OverviewGraphLink[],
@@ -845,7 +1038,10 @@ function computeDepths(
   for (const id of nodeIds) predecessors.set(id, []);
   for (const link of links) {
     if (!nodeIds.has(link.source) || !nodeIds.has(link.target)) continue;
-    (predecessors.get(link.target) as string[]).push(link.source);
+    if (!SEQUENCE_FLOW_SYNAPSES.has(link.synapse_type)) continue;
+    // Sequence-flow synapses point successor → predecessor in our
+    // data; link.target is the predecessor of link.source.
+    (predecessors.get(link.source) as string[]).push(link.target);
   }
   // Memoized DFS — handles DAGs and is safe against cycles via the
   // `visiting` guard which treats a back-edge predecessor as depth 0.
@@ -894,18 +1090,18 @@ function laneNodeId(laneId: string): string {
 
 // Used by the outer container sizing — keeps the band-height knowledge
 // in one place rather than scattering ternaries through the layout.
-function heightForLane(laneId: string): number {
-  if (laneId === MILESTONE_LANE_ID) return MILESTONE_BAND_HEIGHT;
-  if (laneId === ARTIFACTS_LANE_ID) return ARTIFACTS_BAND_HEIGHT;
+function heightForLane(lane: BpmnLane): number {
+  if (lane.kind === "milestone") return MILESTONE_BAND_HEIGHT;
+  if (lane.kind === "artifacts") return ARTIFACTS_BAND_HEIGHT;
   return LANE_HEIGHT;
 }
 
-// Lanes that map to a real Principal carry the principal_<ulid> id.
-// Synthetic lanes use the `__unassigned__` / `__unresolved__:<ref>`
-// sentinel; reference numbering and "keep on filter" treat the two
-// differently.
-function isPrincipalLaneId(laneId: string): boolean {
-  return laneId.startsWith("principal_");
+// Lanes that map to a real Principal carry `kind: "actor"` (their
+// base id is `principal_<ulid>`). Reference numbering and "keep on
+// filter" treat actor lanes differently from synthetic bands /
+// catchall lanes.
+function isActorLane(lane: BpmnLane): boolean {
+  return lane.kind === "actor";
 }
 
 // ─── Custom node components ────────────────────────────────────────
@@ -923,6 +1119,52 @@ interface BpmnLaneData {
   referenceNumber?: number;
   isMilestoneBand?: boolean;
   isArtifactsBand?: boolean;
+}
+
+interface BpmnPoolHeaderData {
+  pool: BpmnPool;
+  width: number;
+  height: number;
+}
+
+/**
+ * Pool header band. Renders the Intent's prose as a banner across the
+ * full canvas width above the pool's lanes. The Unassigned pool gets
+ * a quieter neutral header so it doesn't compete visually with the
+ * real Intent pools above it.
+ */
+function BpmnPoolHeaderNode({ data }: { data: BpmnPoolHeaderData }) {
+  const isUnassigned = data.pool.intent_id === null;
+  const bg = isUnassigned ? "rgba(0, 0, 0, 0.05)" : "rgba(40, 70, 160, 0.08)";
+  const borderColor = isUnassigned ? "var(--color-border)" : "rgba(40, 70, 160, 0.35)";
+  return (
+    <div
+      style={{
+        width: data.width,
+        height: data.height,
+        background: bg,
+        borderTop: `2px solid ${borderColor}`,
+        borderBottom: `1px solid ${borderColor}`,
+        display: "flex",
+        alignItems: "center",
+        padding: "0 14px",
+        boxSizing: "border-box",
+        fontSize: 12,
+        fontWeight: 700,
+        textTransform: "uppercase",
+        letterSpacing: 0.8,
+        color: isUnassigned ? "var(--color-muted-foreground, #525252)" : "#1f2937",
+      }}
+      title={data.pool.label}
+    >
+      <span
+        className="overflow-hidden text-ellipsis whitespace-nowrap"
+        style={{ maxWidth: "100%" }}
+      >
+        {data.pool.label}
+      </span>
+    </div>
+  );
 }
 
 function BpmnLaneNode({ data }: { data: BpmnLaneData }) {
@@ -1044,9 +1286,7 @@ function BpmnRectangleNode({ data }: { data: BpmnNodeData }) {
         boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
       }}
     >
-      <ReferenceBadge data={data} />
-      <TypeBadge node={data.node} />
-      <LifecycleBadge node={data.node} />
+      <BpmnBadgeRow data={data} />
       <ShapeLabel node={data.node} />
       {commonHandles()}
     </div>
@@ -1071,9 +1311,7 @@ function BpmnRoundedNode({ data }: { data: BpmnNodeData }) {
         boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
       }}
     >
-      <ReferenceBadge data={data} />
-      <TypeBadge node={data.node} />
-      <LifecycleBadge node={data.node} />
+      <BpmnBadgeRow data={data} />
       <ShapeLabel node={data.node} />
       {commonHandles()}
     </div>
@@ -1101,9 +1339,7 @@ function BpmnTaskNode({ data }: { data: BpmnNodeData }) {
         boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
       }}
     >
-      <ReferenceBadge data={data} />
-      <TypeBadge node={data.node} />
-      <LifecycleBadge node={data.node} />
+      <BpmnBadgeRow data={data} />
       <ShapeLabel node={data.node} />
       {commonHandles()}
     </div>
@@ -1134,7 +1370,7 @@ function BpmnMilestoneNode({ data }: { data: BpmnNodeData }) {
         boxSizing: "border-box",
       }}
     >
-      <ReferenceBadge data={data} />
+      <BpmnBadgeRow data={data} />
       <span
         className="pointer-events-none line-clamp-2 text-center text-[10px] font-semibold uppercase tracking-wide"
         style={{ color: "#1f1f1f", letterSpacing: 0.4 }}
@@ -1165,7 +1401,7 @@ function BpmnCircleNode({ data }: { data: BpmnNodeData }) {
         justifyContent: "center",
       }}
     >
-      <ReferenceBadge data={data} circular />
+      <BpmnBadgeRow data={data} circular />
       <div
         style={{
           width: "100%",
@@ -1180,8 +1416,6 @@ function BpmnCircleNode({ data }: { data: BpmnNodeData }) {
           boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
         }}
       >
-        <TypeBadge node={data.node} circular />
-        <LifecycleBadge node={data.node} circular />
         <ShapeLabel node={data.node} />
       </div>
       {commonHandles()}
@@ -1207,7 +1441,7 @@ function BpmnDiamondNode({ data }: { data: BpmnNodeData }) {
         justifyContent: "center",
       }}
     >
-      <ReferenceBadge data={data} />
+      <BpmnBadgeRow data={data} />
       <div
         style={{
           width: inner,
@@ -1231,8 +1465,6 @@ function BpmnDiamondNode({ data }: { data: BpmnNodeData }) {
       >
         <ShapeLabel node={data.node} />
       </div>
-      <TypeBadge node={data.node} />
-      <LifecycleBadge node={data.node} />
       {commonHandles()}
     </div>
   );
@@ -1255,7 +1487,7 @@ function BpmnDocumentNode({ data }: { data: BpmnNodeData }) {
         justifyContent: "center",
       }}
     >
-      <ReferenceBadge data={data} />
+      <BpmnBadgeRow data={data} />
       <svg
         viewBox="0 0 140 60"
         preserveAspectRatio="none"
@@ -1275,8 +1507,6 @@ function BpmnDocumentNode({ data }: { data: BpmnNodeData }) {
           strokeWidth={2}
         />
       </svg>
-      <TypeBadge node={data.node} />
-      <LifecycleBadge node={data.node} />
       <ShapeLabel node={data.node} />
       {commonHandles()}
     </div>
@@ -1477,96 +1707,25 @@ function graphReferenceAttributes(data: BpmnNodeData): Record<string, string | n
   };
 }
 
-function ReferenceBadge({ data, circular = false }: { data: BpmnNodeData; circular?: boolean }) {
-  if (!data.referenceNumber) return null;
-  return (
-    <span
-      aria-label={`Graph reference #${data.referenceNumber}: ${data.node.name ?? data.node.id}`}
-      className="pointer-events-none absolute z-30 flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold leading-none text-primary-foreground shadow-sm ring-2 ring-card"
-      style={circular ? { left: "calc(50% - 42px)", top: -10 } : { left: -10, top: -10 }}
-      title={`Graph reference #${data.referenceNumber}`}
-    >
-      #{data.referenceNumber}
-    </span>
-  );
-}
-
 /**
- * Shared style for both the type badge and the lifecycle badge —
- * they're two pills of the same lifecycle color, paired with the
- * shape stroke (also lifecycle color) to form a consistent color
- * triplet. Text identifies what the pill represents (type vs stage).
+ * Tag row floated centered over the TOP edge of a BPMN shape (type
+ * pill + lifecycle pill) and reference-number badge centered over the
+ * BOTTOM edge. Shared with the Graph perspective via
+ * `~/components/neuron-badges` so both perspectives read the same.
+ *
+ * `circular` is preserved as a no-op anchor hint — the new layout is
+ * already top-center for every shape, so circles don't need a special
+ * anchor — but kept on the prop so any caller that still passes it
+ * doesn't break.
  */
-function badgeStyle(
-  node: BpmnNode,
-  anchor: "left" | "right" | "centered-top" | "centered-bottom",
-): CSSProperties {
-  const bg = lifecycleColor(node.lifecycle);
-  const fg = textOnLifecycle(node.lifecycle);
-  const base: CSSProperties = {
-    position: "absolute",
-    background: bg,
-    color: fg,
-    fontSize: 9,
-    fontWeight: 700,
-    lineHeight: 1,
-    padding: "2px 5px",
-    borderRadius: 3,
-    letterSpacing: 0.3,
-    pointerEvents: "none",
-    textTransform: "uppercase",
-    zIndex: 2,
-    whiteSpace: "nowrap",
-  };
-  switch (anchor) {
-    case "left":
-      return { ...base, top: -7, left: 6 };
-    case "right":
-      return { ...base, top: -7, right: 6 };
-    case "centered-top":
-      return { ...base, top: -8, left: "50%", transform: "translateX(-50%)" };
-    case "centered-bottom":
-      return { ...base, bottom: -8, left: "50%", transform: "translateX(-50%)" };
-  }
-}
-
-function TypeBadge({ node, circular = false }: { node: BpmnNode; circular?: boolean }) {
+function BpmnBadgeRow({ data }: { data: BpmnNodeData; circular?: boolean }) {
   return (
-    <span style={badgeStyle(node, circular ? "centered-top" : "left")}>
-      {labelForType(node.entity_type)}
-    </span>
+    <>
+      <NodeBadgeRow entityType={data.node.entity_type} lifecycle={data.node.lifecycle} />
+      <ReferenceNumberBadge
+        referenceNumber={data.referenceNumber}
+        referenceLabel={data.node.name ?? data.node.id}
+      />
+    </>
   );
-}
-
-function LifecycleBadge({ node, circular = false }: { node: BpmnNode; circular?: boolean }) {
-  return (
-    <span style={badgeStyle(node, circular ? "centered-bottom" : "right")}>
-      {lifecycleLabel(node.lifecycle)}
-    </span>
-  );
-}
-
-function labelForType(type: string): string {
-  switch (type) {
-    case "intent":
-      return "Intent";
-    case "decision":
-      return "Decision";
-    case "action":
-      return "Action";
-    case "rule":
-      return "Rule";
-    case "state":
-      return "State";
-    case "log":
-      return "Log";
-    case "eval":
-      return "Eval";
-    case "reference":
-      return "Ref";
-    case "idea":
-      return "Idea";
-    default:
-      return type;
-  }
 }

@@ -972,9 +972,11 @@ export function EntityGraph({
       const pos = positions.get(n.id) ?? { x: 0, y: 0 };
       const lifecycle = nodeLifecycle(n);
       const accentColor = lifecycleColor(lifecycle);
-      const bg = n.is_center
-        ? "color-mix(in oklch, var(--color-accent) 30%, white)"
-        : "rgb(255,255,255)";
+      // White for every card. The "in focus" cue is the heavier 2px
+      // border plus the "in focus" + GPR labels inside the card —
+      // adding a tinted background on top was a third cue that read
+      // as "the card is bluish" rather than "the card is focused".
+      const bg = "rgb(255,255,255)";
       const title = n.name ?? n.summary;
       const cardHeight = nodeRenderHeight(n);
       const nodeOpacity = focalActive ? opacityForDepth(depthByNodeId.get(n.id)) : 1;
@@ -1085,6 +1087,10 @@ export function EntityGraph({
         const edgeOpacity = focalActive
           ? opacityForEdge(depthByNodeId.get(src), depthByNodeId.get(tgt))
           : 1;
+        // Synapse inherits its origin neuron's lifecycle colour so the
+        // arrow visually carries the state of its source.
+        const sourceLifecycle = visibleNodeById.get(src)?.lifecycle ?? "active";
+        const baseStroke = lifecycleColor(sourceLifecycle);
         return {
           id: `${src}-${tgt}-${l.synapse_type}-${i}`,
           source: src,
@@ -1111,12 +1117,13 @@ export function EntityGraph({
           focusable: false,
           interactionWidth: 0,
           style: {
-            stroke: `rgba(115, 115, 115, ${0.5 * edgeOpacity})`,
+            stroke: baseStroke,
+            strokeOpacity: 0.7 * edgeOpacity,
             pointerEvents: "none" as const,
           },
         };
       }),
-    [visible.links, depthByNodeId, focalActive],
+    [visible.links, depthByNodeId, focalActive, visibleNodeById],
   );
 
   const MiniMapNode = useMemo(
