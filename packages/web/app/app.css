@@ -12,12 +12,11 @@
   --color-muted-foreground: oklch(0.47 0.013 248);
   --color-card: oklch(0.94 0.012 245);
   --color-card-foreground: oklch(0.2 0.015 248);
-  /* Same near-foreground tint at ~9% alpha that `.neu-surface` paints
-     around the outside of every card. Using the same token here means
-     `border-b border-border` and `divide-y divide-border` lines read
-     as a continuation of the etched ring rather than a darker solid
-     line. */
-  --color-border: oklch(0.2 0.015 248 / 9%);
+  /* Same near-foreground tint used by `.neu-surface` for its etched
+     ring. Tuned so `border-b border-border` / `divide-y divide-border`
+     dividers paint at the same visual weight as the card outline —
+     they read as a continuation, not a stronger solid line. */
+  --color-border: oklch(0.2 0.015 248 / 18%);
   --color-input: oklch(0.91 0.013 248);
   --color-primary: oklch(0.54 0.17 324);
   --color-primary-foreground: oklch(0.99 0.003 245);
@@ -155,13 +154,13 @@ button[class*="bg-primary"]:active {
   .neu-surface-strong,
   .neu-surface-interactive {
     border-color: transparent;
-    box-shadow: 0 0 0 1px color-mix(in oklch, var(--color-foreground) 9%, transparent);
+    box-shadow: 0 0 0 1px color-mix(in oklch, var(--color-foreground) 18%, transparent);
   }
 
   /* Clickable variant — same etched ring at rest. Hover shifts the
      ring to a primary tint; no depth change. */
   .neu-surface-interactive:hover {
-    box-shadow: 0 0 0 1px color-mix(in oklch, var(--color-primary) 45%, transparent);
+    box-shadow: 0 0 0 1px color-mix(in oklch, var(--color-primary) 55%, transparent);
   }
 
   /* Floating element (dialog / drawer / dropdown / tooltip). These
