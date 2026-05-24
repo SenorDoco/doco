@@ -148,7 +148,7 @@ export function ListPerspective({ nodes, pageRanks, visibleLifecycles }: ListPer
           </select>
         </label>
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto rounded-b-md border border-border bg-input">
+      <div className="min-h-0 flex-1 overflow-y-auto rounded-md rounded-tl-none border border-border bg-input">
         {sorted.length === 0 ? (
           <p className="px-4 py-3 text-xs italic text-muted-foreground">
             This Doco has no neurons yet.
