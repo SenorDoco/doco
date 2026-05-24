@@ -164,7 +164,7 @@ function PerspectiveSettingsMenu({
     // line-height contributes to the wrapper's CONTENT height, not
     // just leading inside text. Force `leading-none` (line-height:1)
     // on the wrapper so it shrinks to exactly the button's box.
-    <div ref={wrapperRef} className="relative flex items-end leading-none">
+    <div ref={wrapperRef} className="relative inline-flex items-end leading-none align-bottom">
       <button
         type="button"
         aria-label="Perspective settings"
