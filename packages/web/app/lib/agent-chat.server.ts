@@ -55,6 +55,20 @@ ensureEnvLoaded();
 const MODEL = "claude-haiku-4-5";
 const MAX_TURNS_PER_REPLY = 12;
 const MAX_TOKENS = 2048;
+// Cap the tool-result body fed back to the model on each Anthropic
+// round trip. Without this cap a single `GET /api/intents.json` on a
+// busy doco can shove tens of KB into the next call's input tokens,
+// then again on every subsequent tool round-trip in the same turn,
+// then again on every future turn that replays the history. The cap
+// keeps individual responses small enough that the per-minute token
+// budget survives a multi-tool turn. The marker tells the model
+// where the cut happened so it knows to fetch by id for detail.
+const MAX_TOOL_RESULT_BYTES = 8 * 1024;
+// Rate-limit retry budget for the Anthropic stream call. Single retry
+// is enough to ride out a brief minute-bucket spike without bouncing
+// to the user; cap the sleep at 30s so a long retry-after doesn't
+// freeze the sidebar.
+const ANTHROPIC_429_MAX_RETRY_SLEEP_MS = 30_000;
 
 // Attachment policy — kept in one place so the UI notice, the system
 // prompt, and the migration's INTERVAL stay in sync. If you change
@@ -910,6 +924,110 @@ const TOOLS: Tool[] = [
   },
 ];
 
+/**
+ * Pull a recommended retry-delay (in ms) from an Anthropic 429 error.
+ * Anthropic sets `retry-after` (seconds) and the more specific
+ * `anthropic-ratelimit-*-reset` (ISO timestamp) headers; we try both
+ * and fall back to a 5s nudge if neither is present. Capped so a
+ * pathological `retry-after` doesn't freeze the sidebar.
+ */
+function parseAnthropicRetryAfterMs(err: unknown): number {
+  const headers = (err as { headers?: Record<string, string> }).headers ?? {};
+  const ra = headers["retry-after"] ?? headers["Retry-After"];
+  if (ra) {
+    const n = Number(ra);
+    if (Number.isFinite(n) && n >= 0) {
+      return Math.min(n * 1000, ANTHROPIC_429_MAX_RETRY_SLEEP_MS);
+    }
+  }
+  for (const key of [
+    "anthropic-ratelimit-input-tokens-reset",
+    "anthropic-ratelimit-tokens-reset",
+    "anthropic-ratelimit-requests-reset",
+  ]) {
+    const v = headers[key];
+    if (!v) continue;
+    const ms = Date.parse(v) - Date.now();
+    if (Number.isFinite(ms) && ms > 0) {
+      return Math.min(ms, ANTHROPIC_429_MAX_RETRY_SLEEP_MS);
+    }
+  }
+  return 5_000;
+}
+
+/**
+ * Translate an Anthropic SDK error into a sentence the user can act
+ * on. Raw error bodies (giant JSON dumps with type / request_id /
+ * message) read like noise in the chat bubble; this surfaces the
+ * actionable bit only.
+ */
+function friendlyAnthropicError(err: unknown): string {
+  const status = (err as { status?: number }).status;
+  const inner = (err as { error?: { error?: { message?: string; type?: string } } }).error?.error;
+  if (status === 429) {
+    const detail = inner?.message ? ` (${inner.message.split(".")[0]})` : "";
+    return `Señor Doco hit Anthropic's per-minute rate limit and one auto-retry didn't clear it. Try again in a minute.${detail}`;
+  }
+  if (status === 401 || status === 403) {
+    return `Señor Doco's Anthropic credentials aren't accepted (HTTP ${status}).${inner?.message ? ` ${inner.message}` : ""}`;
+  }
+  if (typeof status === "number" && status >= 500) {
+    return `Anthropic is having a problem on their end (HTTP ${status}). Try again shortly.`;
+  }
+  const msg = err instanceof Error ? err.message : String(err);
+  return `Anthropic stream error: ${msg}`;
+}
+
+/**
+ * Cap a tool-result JSON envelope so it doesn't pump the next
+ * Anthropic call's input-token count. Smart-truncation for list-
+ * shaped responses (`body.items` array) trims items first while
+ * keeping the metadata intact; everything else falls back to raw
+ * string truncation. Either way the model receives a clear marker
+ * telling it where the cut happened so it knows to fetch by id for
+ * detail rather than retry the same list call.
+ */
+function truncateToolResultEnvelope(
+  envelope: { status: number; ok: boolean; body: unknown },
+  maxBytes: number,
+): string {
+  const full = JSON.stringify(envelope);
+  if (full.length <= maxBytes) return full;
+
+  // Smart trim: list endpoints return `{ ok, type, doco_id, count,
+  // items: [...] }`. Drop items until the serialized envelope fits,
+  // leaving the rest of the metadata + a `truncated` marker.
+  const body = envelope.body as { items?: unknown[]; count?: number } | null;
+  if (body && Array.isArray(body.items)) {
+    const original = body.items.length;
+    let kept = original;
+    // Halving search until it fits. Cheap because items are small JSON.
+    while (kept > 0) {
+      const trimmed = {
+        ...envelope,
+        body: {
+          ...body,
+          items: body.items.slice(0, kept),
+          truncated: {
+            kept_items: kept,
+            total_items: original,
+            note: "Output capped — fetch /api/<type>/<id>.json for any item's detail.",
+          },
+        },
+      };
+      const s = JSON.stringify(trimmed);
+      if (s.length <= maxBytes) return s;
+      kept = Math.floor(kept / 2);
+    }
+  }
+
+  // Raw fallback: keep the leading slice of the JSON-stringified
+  // envelope and tack on a marker. Not parseable as JSON but the
+  // model can still read the prefix and act on what it sees.
+  const marker = `…[truncated ${full.length - maxBytes} bytes; fetch a specific id for detail]`;
+  return `${full.slice(0, maxBytes)}${marker}`;
+}
+
 interface ToolResult {
   result: ToolResultBlockParam;
   navigateUrl?: string;
@@ -1009,7 +1127,7 @@ async function runTool(block: ToolUseBlock, ctx: ChatStreamContext): Promise<Too
         result: {
           type: "tool_result",
           tool_use_id: block.id,
-          content: JSON.stringify(body),
+          content: truncateToolResultEnvelope(body, MAX_TOOL_RESULT_BYTES),
           is_error: !ok,
         },
         preview: `${method} ${path} → ${res.status} ${previewBody}`,
@@ -1212,14 +1330,34 @@ export async function* runAssistantTurn(args: {
     for (let turn = 0; turn < MAX_TURNS_PER_REPLY; turn++) {
       const callStart = performance.now();
       let ttfbMs: number | null = null;
+      // One retry per turn iteration when we hit a 429. Stream
+      // creation AND per-chunk reads can both throw the rate-limit
+      // error, so the flag is checked in the catch below.
+      let retriedThisTurn = false;
       numAnthropicCalls++;
-      const stream: MessageStream = client.messages.stream({
-        model: MODEL,
-        max_tokens: MAX_TOKENS,
-        system: systemBlocks,
-        tools: TOOLS,
-        messages,
-      });
+      let stream: MessageStream;
+      try {
+        stream = client.messages.stream({
+          model: MODEL,
+          max_tokens: MAX_TOKENS,
+          system: systemBlocks,
+          tools: TOOLS,
+          messages,
+        });
+      } catch (err) {
+        // Rare — most 429s surface from the async iteration below.
+        if ((err as { status?: number }).status === 429 && !retriedThisTurn) {
+          retriedThisTurn = true;
+          const waitMs = parseAnthropicRetryAfterMs(err);
+          await new Promise((resolve) => setTimeout(resolve, waitMs));
+          turn--;
+          continue;
+        }
+        const friendly = friendlyAnthropicError(err);
+        turnError = `anthropic stream: ${friendly}`;
+        yield { kind: "error", message: friendly };
+        return;
+      }
 
       const collectedBlocks: StoredAssistantBlock[] = [];
       let activeToolUse: { id: string; name: string; partialJson: string } | null = null;
@@ -1254,9 +1392,22 @@ export async function* runAssistantTurn(args: {
           }
         }
       } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        turnError = `anthropic stream: ${msg}`;
-        yield { kind: "error", message: `Anthropic stream error: ${msg}` };
+        if ((err as { status?: number }).status === 429 && !retriedThisTurn) {
+          retriedThisTurn = true;
+          const waitMs = parseAnthropicRetryAfterMs(err);
+          // Tell the user we're holding rather than going silent for a
+          // potentially-long sleep.
+          yield {
+            kind: "text_delta",
+            text: `\n_(Anthropic rate-limited; retrying in ${Math.round(waitMs / 1000)}s…)_\n`,
+          };
+          await new Promise((resolve) => setTimeout(resolve, waitMs));
+          turn--;
+          continue;
+        }
+        const friendly = friendlyAnthropicError(err);
+        turnError = `anthropic stream: ${friendly}`;
+        yield { kind: "error", message: friendly };
         return;
       }
 
