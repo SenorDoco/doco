@@ -190,7 +190,14 @@ function PerspectiveSettingsMenu({
         // is shared. `rounded-tr-md` because this is now the visually
         // last cell on the strip. `border-b-transparent` matches the
         // inactive-tab treatment.
-        className="relative -ml-px inline-flex items-center gap-1.5 rounded-tr-md border border-border border-b-transparent bg-input/40 px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-input/60 hover:text-foreground"
+        //
+        // h-[30px] locks the visual height to exactly what the Link
+        // perspective tabs measure to (30px in Chromium). Safari's
+        // user-agent default for <button> computes intrinsic
+        // min-height differently than for <a>, which previously made
+        // the chevron render at a different height despite the same
+        // padding/border/text classes. Explicit height defeats that.
+        className="relative -ml-px inline-flex h-[30px] items-center gap-1.5 rounded-tr-md border border-border border-b-transparent bg-input/40 px-3 text-xs font-medium text-muted-foreground hover:bg-input/60 hover:text-foreground"
       >
         <ChevronDown className="h-4 w-4" />
       </button>
