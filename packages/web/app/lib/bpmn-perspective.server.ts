@@ -323,6 +323,33 @@ export async function loadBpmnGraph(
     }
   }
 
+  // ── No-Unassigned-pool policy ─────────────────────────────────────
+  // Every neuron lands in *some* Intent's pool. For neurons that the
+  // direct-host rules above didn't place (Action/Decision/Log with no
+  // intent_ids; State/Reference/Idea/leftover Rule/leftover Eval), run
+  // personalized PageRank from that neuron over the doco's synapse
+  // graph and pick the highest-scoring Intent as its home. Standalone
+  // neurons with no connection at all end up in the highest-global-PR
+  // Intent's pool — the de facto "default process" of the doco.
+  if (intentsById.size > 0) {
+    const intentIds = Array.from(intentsById.keys());
+    const homeless: NeuronRow[] = [];
+    for (const row of allRows) {
+      if (row.entity_type === "intent") continue;
+      if (poolByNeuron.get(row.id) === POOL_UNASSIGNED_ID) homeless.push(row);
+    }
+    if (homeless.length > 0) {
+      const pageRankNodes = allRows.map((r) => ({ id: r.id }));
+      for (const row of homeless) {
+        const personalized = pageRank(pageRankNodes, links, {
+          personalization: new Map([[row.id, 1]]),
+        });
+        const bestIntent = highestRanked(intentIds, personalized);
+        if (bestIntent) poolByNeuron.set(row.id, `pool:${bestIntent}`);
+      }
+    }
+  }
+
   // ── Lane assignment within each pool ──────────────────────────────
   // A lane id is composite: `${pool_id}::${base}` — alice in pool 1
   // and alice in pool 2 are different lanes with the same `base_id`
