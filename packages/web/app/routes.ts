@@ -138,6 +138,9 @@ export default [
   // suffixed) handle.
   route("api/v1/orgs.json", "routes/api.v1.orgs[.]json.tsx"),
   route("api/v1/docos.json", "routes/api.v1.docos[.]json.tsx"),
+  // Per-user UI preferences (graph auto-reorder, future flags). Stored
+  // on collaborators.data.preferences; auth-gated to the signed-in user.
+  route("api/v1/me/preferences.json", "routes/api.v1.me.preferences[.]json.tsx"),
   // Agent bootstrap. Returns the canonical-instructions prose plus the
   // Doco primitives the caller can read. Auth-aware: anonymous callers
   // get public-Doco primitives only.

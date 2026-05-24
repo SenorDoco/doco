@@ -330,6 +330,46 @@ export function BpmnPerspective({
   const naturalCanvasHeight =
     filteredLanes.reduce((sum, lane) => sum + heightForLane(lane.id), 0) + 32;
 
+  // Sticky lane label rails — overlays anchored to the left edge of the
+  // canvas so the principal label + lane outline stay visible even when
+  // the user pans horizontally past the lane's natural x=0 origin.
+  // Mirrors the EntityGraph rail pattern (entity-graph.tsx ~1045).
+  const SWIM_RAIL_WIDTH = 32;
+  const laneRails = layout.lanes.map((lane) => {
+    const laneTop = lane.y * viewport.zoom + viewport.y;
+    const laneBottom = (lane.y + lane.height) * viewport.zoom + viewport.y;
+    const canvasHeight = graphSize.height || 480;
+    if (laneBottom <= 0 || laneTop >= canvasHeight) return null;
+    const visibleTop = Math.max(0, laneTop);
+    const visibleBottom = Math.min(canvasHeight, laneBottom);
+    const railHeight = Math.max(44, visibleBottom - visibleTop);
+    const top = Math.min(Math.max(0, visibleTop), Math.max(0, canvasHeight - railHeight));
+    const isBand = lane.kind !== "principal";
+    return (
+      <div
+        key={lane.id}
+        className={`absolute left-0 flex items-center justify-center border-r shadow-sm ${
+          isBand ? "border-border bg-card/85" : "border-border bg-card/90"
+        }`}
+        style={{ top, height: railHeight, width: SWIM_RAIL_WIDTH }}
+        data-bpmn-lane-rail={lane.id}
+        title={lane.label}
+      >
+        <span
+          className="block max-h-full overflow-hidden whitespace-nowrap px-1 text-[10px] font-semibold uppercase text-muted-foreground"
+          style={{
+            writingMode: "vertical-rl",
+            transform: "rotate(180deg)",
+            textOverflow: "ellipsis",
+            letterSpacing: isBand ? 0.8 : 0.4,
+          }}
+        >
+          {lane.label}
+        </span>
+      </div>
+    );
+  });
+
   return (
     <div
       ref={graphRef}
@@ -404,6 +444,15 @@ export function BpmnPerspective({
           Loading BPMN view…
         </div>
       )}
+      {Flow ? (
+        <div
+          className="pointer-events-none absolute inset-y-0 left-0 z-10 overflow-hidden"
+          style={{ width: SWIM_RAIL_WIDTH }}
+          aria-hidden="true"
+        >
+          {laneRails}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -442,6 +491,20 @@ interface BpmnLayout {
   flowNodes: FlowNode[];
   flowEdges: FlowEdge[];
   nodePositions: Map<string, { x: number; y: number }>;
+  /**
+   * Per-lane geometry used to render sticky lane label rails outside
+   * the React Flow canvas. Without these, the principal label (and
+   * lane outline) sits at x=0 inside the canvas content and pans out
+   * of view when the user scrolls right. The overlay rails anchor a
+   * thin label strip to the left edge regardless of viewport pan.
+   */
+  lanes: Array<{
+    id: string;
+    label: string;
+    y: number;
+    height: number;
+    kind: "principal" | "milestone" | "artifacts";
+  }>;
 }
 
 function layOutBpmn(
@@ -630,7 +693,19 @@ function layOutBpmn(
       };
     });
 
-  return { flowNodes, flowEdges, nodePositions };
+  const laneGeometry: BpmnLayout["lanes"] = lanes.map((lane) => {
+    const y = laneYById.get(lane.id) ?? 0;
+    const height = laneHeightById.get(lane.id) ?? dynLaneHeight;
+    const kind: "principal" | "milestone" | "artifacts" =
+      lane.id === MILESTONE_LANE_ID
+        ? "milestone"
+        : lane.id === ARTIFACTS_LANE_ID
+          ? "artifacts"
+          : "principal";
+    return { id: lane.id, label: lane.label, y, height, kind };
+  });
+
+  return { flowNodes, flowEdges, nodePositions, lanes: laneGeometry };
 }
 
 function screenPosition(position: { x: number; y: number }, viewport: FlowViewport) {

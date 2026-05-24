@@ -4,7 +4,9 @@ import { type ComponentType, type ReactNode, useEffect, useMemo, useRef, useStat
 import { useNavigate } from "react-router";
 import { NeuronTypeIcon } from "~/components/neuron-type-icon";
 import {
+  FAR_DEPTH,
   computeDepthFromCenter,
+  depthBucket,
   hasFocalNode,
   opacityForDepth,
   opacityForEdge,
@@ -58,13 +60,36 @@ interface OverviewGraphProps extends OverviewGraphData {
   onNeuronClick?: (node: OverviewGraphNode) => void;
   /**
    * Externally-controlled lifecycle visibility set. When provided, the
-   * graph uses it and DOES NOT render its own lifecycle filter row —
-   * the caller is expected to render `<LifecycleFilter>` somewhere
-   * else (typically the page bottom, shared across perspectives).
-   * When omitted, the graph manages lifecycle state internally for
-   * backwards compatibility (e.g. the org overview).
+   * graph uses it as the source of truth; otherwise it manages state
+   * internally. Either way, the filter UI itself renders inside the
+   * canvas as a floating overlay panel — no row above or below.
    */
   visibleLifecycles?: Set<string>;
+  /**
+   * Called when the user toggles a lifecycle stage. Required when
+   * `visibleLifecycles` is provided (controlled mode).
+   */
+  onLifecycleToggle?: (lifecycle: string) => void;
+  /**
+   * When the user clicks a neuron on the canvas, we want the graph
+   * to re-center on it: depth-based opacity recomputes from the new
+   * focal node and (if `autoReorder` is on) ordering re-runs so
+   * first-degree neighbours sit closest. The parent owns `centerId`
+   * state; this callback is how the canvas asks it to update.
+   */
+  onCenterChange?: (id: string) => void;
+  /**
+   * When true, layout places nodes in concentric rings by BFS depth
+   * from the focal node — 1st-degree closest, then 2nd, then 3rd,
+   * etc. When false, layout falls back to a single ring with
+   * type-then-id ordering (the legacy behaviour).
+   */
+  autoReorder?: boolean;
+  /**
+   * Called when the user flips the "Reorder automatically" checkbox.
+   * The parent owns the persisted value.
+   */
+  onAutoReorderChange?: (next: boolean) => void;
   /**
    * When provided, render a fourth React Flow control button (below
    * zoom +/-/fit) that calls this callback. The button shows
@@ -134,7 +159,40 @@ function nodeLifecycle(node: { lifecycle: string | null }): string {
   return node.lifecycle ?? "active";
 }
 
-function layoutNodes(nodes: OverviewGraphNode[], centerId: string): Map<string, Point> {
+/**
+ * Lay out `others` in a ring at `radius` around `center`, sorted by
+ * entity type then id so the placement is stable across renders.
+ */
+function placeRing(
+  positions: Map<string, Point>,
+  others: OverviewGraphNode[],
+  center: Point,
+  radius: number,
+  startAngle: number,
+) {
+  if (others.length === 0) return;
+  others.sort((a, b) => {
+    const ai = NODE_TYPE_ORDER.get(a.entity_type) ?? 999;
+    const bi = NODE_TYPE_ORDER.get(b.entity_type) ?? 999;
+    if (ai !== bi) return ai - bi;
+    return a.id.localeCompare(b.id);
+  });
+  others.forEach((node, index) => {
+    const angle = startAngle + (Math.PI * 2 * index) / others.length;
+    positions.set(node.id, {
+      x: center.x + Math.cos(angle) * radius,
+      y: center.y + Math.sin(angle) * radius,
+    });
+  });
+}
+
+/**
+ * Single-ring layout — every non-focal node goes on the same ring,
+ * sorted by type then id. Used when the user has disabled
+ * "Reorder automatically" so neighbours stop migrating between rings
+ * as they click around.
+ */
+function singleRingLayout(nodes: OverviewGraphNode[], centerId: string): Map<string, Point> {
   const positions = new Map<string, Point>();
   if (nodes.length === 0) return positions;
 
@@ -152,32 +210,84 @@ function layoutNodes(nodes: OverviewGraphNode[], centerId: string): Map<string, 
 
   if (others.length === 0) {
     if (!hasCenter) {
-      // No focal node in the visible set — place the first node at origin
-      // so the viewport has something to fit to.
       const first = nodes[0];
       if (first) positions.set(first.id, center);
     }
     return positions;
   }
 
-  others.sort((a, b) => {
-    const ai = NODE_TYPE_ORDER.get(a.entity_type) ?? 999;
-    const bi = NODE_TYPE_ORDER.get(b.entity_type) ?? 999;
-    if (ai !== bi) return ai - bi;
-    return a.id.localeCompare(b.id);
-  });
-
   const radius = Math.max(220, others.length * 18);
-  const start = -Math.PI / 2;
-  others.forEach((node, index) => {
-    const angle = start + (Math.PI * 2 * index) / others.length;
-    positions.set(node.id, {
-      x: center.x + Math.cos(angle) * radius,
-      y: center.y + Math.sin(angle) * radius,
-    });
-  });
+  placeRing(positions, others, center, radius, -Math.PI / 2);
+  return positions;
+}
+
+/**
+ * Depth-aware concentric-ring layout. Nodes are grouped into rings by
+ * their BFS depth from the focal node — first-degree neighbours go on
+ * the innermost ring, second-degree on the next, and so on. Anything
+ * 4+ hops or unreachable shares the outermost ring (matching the
+ * opacity ramp).
+ *
+ * Each ring's radius grows with both its depth and the count of nodes
+ * it has to hold, so dense rings don't crowd themselves.
+ */
+function depthRingLayout(
+  nodes: OverviewGraphNode[],
+  links: OverviewGraphLink[],
+  centerId: string,
+): Map<string, Point> {
+  const positions = new Map<string, Point>();
+  if (nodes.length === 0) return positions;
+
+  const center: Point = { x: 0, y: 0 };
+  let hasCenter = false;
+  for (const node of nodes) {
+    if (node.id === centerId) {
+      positions.set(node.id, center);
+      hasCenter = true;
+    }
+  }
+
+  if (!hasCenter) {
+    return singleRingLayout(nodes, centerId);
+  }
+
+  const depths = computeDepthFromCenter(nodes, links, centerId);
+  const byBucket = new Map<number, OverviewGraphNode[]>();
+  for (const node of nodes) {
+    if (node.id === centerId) continue;
+    const bucket = depthBucket(depths.get(node.id));
+    const list = byBucket.get(bucket) ?? [];
+    list.push(node);
+    byBucket.set(bucket, list);
+  }
+
+  // Inner ring sits at the same baseline radius the old single-ring
+  // layout used so the look of unfocused docos doesn't change.
+  const BASE_RADIUS = 220;
+  const RING_SPACING = 180;
+  for (let bucket = 1; bucket <= FAR_DEPTH; bucket++) {
+    const ring = byBucket.get(bucket);
+    if (!ring || ring.length === 0) continue;
+    const baseRadius = BASE_RADIUS + (bucket - 1) * RING_SPACING;
+    // Crowd-protect dense rings by stretching the radius outwards.
+    const radius = Math.max(baseRadius, ring.length * 18 + (bucket - 1) * RING_SPACING);
+    // Stagger the starting angle by bucket so neighbouring rings
+    // don't line up radially and edges read cleanly.
+    const startAngle = -Math.PI / 2 + (bucket % 2 === 0 ? Math.PI / ring.length : 0);
+    placeRing(positions, ring, center, radius, startAngle);
+  }
 
   return positions;
+}
+
+function layoutNodes(
+  nodes: OverviewGraphNode[],
+  links: OverviewGraphLink[],
+  centerId: string,
+  autoReorder: boolean,
+): Map<string, Point> {
+  return autoReorder ? depthRingLayout(nodes, links, centerId) : singleRingLayout(nodes, centerId);
 }
 
 function isVisibleInViewport(
@@ -323,6 +433,10 @@ export function OverviewGraph({
   search,
   onNeuronClick,
   visibleLifecycles: externalVisibleLifecycles,
+  onLifecycleToggle: externalLifecycleToggle,
+  onCenterChange,
+  autoReorder = true,
+  onAutoReorderChange,
   isFullscreen,
   onToggleFullscreen,
 }: OverviewGraphProps) {
@@ -393,7 +507,10 @@ export function OverviewGraph({
     () => links.filter((link) => visibleIds.has(link.source) && visibleIds.has(link.target)),
     [links, visibleIds],
   );
-  const positions = useMemo(() => layoutNodes(visibleNodes, centerId), [visibleNodes, centerId]);
+  const positions = useMemo(
+    () => layoutNodes(visibleNodes, visibleLinks, centerId, autoReorder),
+    [visibleNodes, visibleLinks, centerId, autoReorder],
+  );
   const nodeById = useMemo(
     () => new Map(visibleNodes.map((node) => [node.id, node])),
     [visibleNodes],
@@ -578,8 +695,21 @@ export function OverviewGraph({
 
   const nodeTypes = useMemo(() => ({ overviewNode: OverviewFlowNode }), []);
 
+  const handleLifecycleToggle = (lifecycle: string) => {
+    if (externalLifecycleToggle) {
+      externalLifecycleToggle(lifecycle);
+      return;
+    }
+    setVisibleLifecycles((prev) => {
+      const next = new Set(prev);
+      if (prev.has(lifecycle)) next.delete(lifecycle);
+      else next.add(lifecycle);
+      return next;
+    });
+  };
+
   return (
-    <div className={fillHeight ? "flex h-full min-h-0 flex-col gap-2" : "flex flex-col gap-2"}>
+    <div className={fillHeight ? "flex h-full min-h-0 flex-col" : "flex flex-col"}>
       <div
         ref={graphRef}
         className={
@@ -589,7 +719,7 @@ export function OverviewGraph({
         }
       >
         {search ? (
-          <div className="nodrag nopan absolute left-3 top-3 z-10 w-64 max-w-[calc(100%-9rem)]">
+          <div className="nodrag nopan absolute left-3 top-3 z-20 w-64 max-w-[calc(100%-9rem)]">
             {search}
           </div>
         ) : null}
@@ -628,6 +758,12 @@ export function OverviewGraph({
             onMove={(_event: unknown, next: FlowViewport) => updateViewport(next)}
             onNodeClick={(_event: unknown, node: { id: string }) => {
               const target = nodeById.get(node.id);
+              // Re-center the canvas on the clicked neuron so the
+              // depth-based fading + (optionally) the depth-aware
+              // layout both recompute from the new focal node. The
+              // dialog still opens via onNeuronClick below — those
+              // two behaviours are independent.
+              if (target && onCenterChange) onCenterChange(target.id);
               if (target && onNeuronClick) {
                 onNeuronClick(target);
                 return;
@@ -672,45 +808,63 @@ export function OverviewGraph({
             Loading graph…
           </div>
         )}
-      </div>
-
-      {controlledMode ? null : (
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-muted-foreground">Life cycle:</span>
-            {allLifecycles.map((lifecycle) => {
-              const checked = visibleLifecycles.has(lifecycle);
-              const color = lifecycleColor(lifecycle);
-              const label = lifecycleLabel(lifecycle);
-              return (
-                <label
-                  key={lifecycle}
-                  className="inline-flex cursor-pointer select-none items-center gap-1"
-                  title={label}
-                >
-                  <input
-                    type="checkbox"
-                    checked={checked}
-                    onChange={() => {
-                      setVisibleLifecycles((prev) => {
-                        const next = new Set(prev);
-                        if (checked) next.delete(lifecycle);
-                        else next.add(lifecycle);
-                        return next;
-                      });
-                    }}
-                    className="h-3 w-3"
-                    style={{ accentColor: color }}
-                  />
-                  <span className="capitalize" style={{ color }}>
-                    {label}
-                  </span>
-                </label>
-              );
-            })}
+        {/* Reorder-automatically toggle. Floats in the top-left of the
+            canvas (the minimap stays in its default bottom-right spot).
+            z-index above the React Flow canvas but below the search
+            input that floats top-left at z-20 when present. */}
+        {visibleNodes.length > 0 && Flow ? (
+          <div
+            className={`pointer-events-none absolute z-10 ${search ? "left-3 top-12" : "left-3 top-3"}`}
+          >
+            <div className="pointer-events-auto rounded-md border border-border bg-card/90 px-2 py-1 shadow-sm backdrop-blur">
+              <label className="inline-flex cursor-pointer select-none items-center gap-1.5 text-[11px]">
+                <input
+                  type="checkbox"
+                  checked={autoReorder}
+                  onChange={(e) => onAutoReorderChange?.(e.target.checked)}
+                  className="h-3 w-3"
+                />
+                <span className="text-muted-foreground">Reorder automatically</span>
+              </label>
+            </div>
           </div>
-        </div>
-      )}
+        ) : null}
+        {/* Lifecycle filter. Lives INSIDE the canvas as a floating
+            panel so the canvas can fill its container vertically — no
+            row above or below the graph eating space. Bottom-left
+            keeps it close to the minimap region without overlapping
+            the React Flow controls (top-right). */}
+        {visibleNodes.length > 0 && Flow ? (
+          <div className="pointer-events-none absolute bottom-3 left-3 z-10">
+            <div className="pointer-events-auto flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border border-border bg-card/90 px-2 py-1 text-xs shadow-sm backdrop-blur">
+              <span className="text-muted-foreground">Life cycle:</span>
+              {allLifecycles.map((lifecycle) => {
+                const checked = visibleLifecycles.has(lifecycle);
+                const color = lifecycleColor(lifecycle);
+                const label = lifecycleLabel(lifecycle);
+                return (
+                  <label
+                    key={lifecycle}
+                    className="inline-flex cursor-pointer select-none items-center gap-1"
+                    title={label}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => handleLifecycleToggle(lifecycle)}
+                      className="h-3 w-3"
+                      style={{ accentColor: color }}
+                    />
+                    <span className="capitalize" style={{ color }}>
+                      {label}
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }

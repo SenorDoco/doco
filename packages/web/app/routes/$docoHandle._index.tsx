@@ -1,4 +1,4 @@
-import { withClient } from "@doco/db";
+import { getCollaboratorById, withClient } from "@doco/db";
 // Per-Doco home — bare title up top, then the search input, neuron overview,
 // activity heatmap, and latest activity feed in a single content column.
 //
@@ -19,11 +19,7 @@ import { ActivityHeatmap } from "~/components/activity-heatmap";
 import { Breadcrumb, docoBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
 import { CollaboratorsLink } from "~/components/invite-collaborators-link";
-import {
-  LIFECYCLE_ORDER,
-  LifecycleFilter,
-  initialVisibleLifecycles,
-} from "~/components/lifecycle-filter";
+import { LIFECYCLE_ORDER, initialVisibleLifecycles } from "~/components/lifecycle-filter";
 import { NeuronDialog } from "~/components/neuron-dialog";
 import { NeuronTypeIcon } from "~/components/neuron-type-icon";
 import {
@@ -309,6 +305,13 @@ export async function loader({
     ).rows[0];
     const primitiveCount = Number(primitiveRow?.n ?? 0);
 
+    // Per-user UI preferences (currently just the graph "Reorder
+    // automatically" toggle). Anonymous viewers get the default-on
+    // experience and any toggle change is dropped on the floor.
+    const meRow = me ? await getCollaboratorById(me.id) : null;
+    const prefs = (meRow?.data?.preferences ?? {}) as Record<string, unknown>;
+    const graphAutoReorder = prefs.graph_auto_reorder !== false; // default true
+
     return {
       items,
       facets,
@@ -333,6 +336,7 @@ export async function loader({
       pageRanks,
       bpmnGraph,
       selectedNeuron,
+      graphAutoReorder,
     };
   });
 }
@@ -441,9 +445,22 @@ export default function DocoHome({
     pageRanks,
     bpmnGraph,
     selectedNeuron,
+    graphAutoReorder: initialAutoReorder,
   } = loaderData;
 
   const pageRanksMap = new Map(Object.entries(pageRanks));
+  const [autoReorder, setAutoReorder] = useState<boolean>(initialAutoReorder);
+  const handleAutoReorderChange = useCallback((next: boolean) => {
+    setAutoReorder(next);
+    // Best-effort fire-and-forget. If the request fails the user
+    // still sees the toggle reflect their click for the rest of the
+    // session — the worst case is the next reload reverts.
+    void fetch("/api/v1/me/preferences.json", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ preferences: { graph_auto_reorder: next } }),
+    }).catch(() => undefined);
+  }, []);
   const activeSlug = activePerspectiveSlug ?? "graph";
   const [graphState, setGraphState] = useState<OverviewGraphData>(() => graph);
   const [neuronDialog, setNeuronDialog] = useState<NeuronDialogState | null>(() =>
@@ -797,23 +814,15 @@ export default function DocoHome({
                   detailUrl={graphState.detailUrl}
                   fillHeight
                   visibleLifecycles={visibleLifecycles}
+                  onLifecycleToggle={toggleLifecycle}
+                  autoReorder={autoReorder}
+                  onAutoReorderChange={handleAutoReorderChange}
+                  onCenterChange={(id) => setGraphState((prev) => graphWithCenter(prev, id))}
                   isFullscreen={isPerspectiveFullscreen}
                   onToggleFullscreen={togglePerspectiveFullscreen}
                   onNeuronClick={handleGraphNeuronClick}
                 />
               )}
-              {/* Lifecycle filter floats inside the canvas, bottom-left,
-                  so the canvas itself fills the entire aside height —
-                  no separate filter row eating space underneath. */}
-              <div className="pointer-events-none absolute bottom-3 left-3 z-10">
-                <div className="pointer-events-auto rounded-md border border-border bg-card/90 px-2 py-1 shadow-sm backdrop-blur">
-                  <LifecycleFilter
-                    available={availableLifecycles}
-                    visible={visibleLifecycles}
-                    onToggle={toggleLifecycle}
-                  />
-                </div>
-              </div>
               {/* Fullscreen-only: render the neuron dialog inside the aside,
                   anchored to the right of the canvas. Outside fullscreen, the
                   same dialog renders in the right column (further down). */}
