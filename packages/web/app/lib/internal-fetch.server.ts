@@ -239,7 +239,18 @@ export async function internalFetch(input: InternalFetchInput): Promise<Response
     headers.set("Content-Type", "application/json");
     init.body = typeof input.body === "string" ? input.body : JSON.stringify(input.body);
   }
-  return handler({ request: new Request(url, init), params: matched.params });
+  // React Router loaders / actions throw Response objects to signal
+  // non-2xx outcomes (404, 401, redirects). Without this catch, the
+  // throw bubbles into the agent-chat catch block where
+  // `err instanceof Error` is false, producing the useless
+  // `fetch failed: [object Response]` toString. Mirror RR's own
+  // behavior — a thrown Response IS the response.
+  try {
+    return await handler({ request: new Request(url, init), params: matched.params });
+  } catch (err) {
+    if (err instanceof Response) return err;
+    throw err;
+  }
 }
 
 /** Exposed for tests / diagnostics — list every route the internal
