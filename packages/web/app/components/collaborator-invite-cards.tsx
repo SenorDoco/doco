@@ -132,6 +132,8 @@ function InviteHumanCard({
                 ))}
               </select>
             </label>
+          </div>
+          <div className="flex justify-end">
             <button
               type="submit"
               data-testid="invite-submit"
@@ -167,4 +169,3 @@ function InviteHumanCard({
     </Card>
   );
 }
-
