@@ -46,11 +46,12 @@ export interface CaptureRouteConfig<TDraft> {
   captureFn: CaptureFn<TDraft>;
   /**
    * Optional: fill any default fields on the draft from the authenticated
-   * principal. Called only when `me` is present and the draft doesn't
-   * already carry the field. Guards the orphan-file bug (capture endpoints
-   * used to write YAML missing the principal id when called by agents).
+   * principal. Async so it can resolve the collaborator → role-Principal
+   * neuron for this doco before stamping `*_principal_id` defaults.
+   * Called only when `me` is present and the draft doesn't already carry
+   * the field.
    */
-  fillFromAuth?: (draft: TDraft, me: MeLike) => void;
+  fillFromAuth?: (draft: TDraft, me: MeLike, docoId: string) => Promise<void> | void;
 }
 
 export function makeCaptureRoute<TDraft>(cfg: CaptureRouteConfig<TDraft>) {
@@ -126,7 +127,7 @@ export function makeCaptureRoute<TDraft>(cfg: CaptureRouteConfig<TDraft>) {
           }
 
           if (me && cfg.fillFromAuth) {
-            cfg.fillFromAuth(draft, { id: me.id, username: me.username });
+            await cfg.fillFromAuth(draft, { id: me.id, username: me.username }, meta.docoId);
           }
           const docoHost = new URL(request.url).origin;
           const start = performance.now();

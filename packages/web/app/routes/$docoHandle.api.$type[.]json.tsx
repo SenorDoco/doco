@@ -14,7 +14,7 @@
 // types so consumers can iterate without per-type branching:
 //   { ok: true, type: "<plural>", doco_id, count, items: [...] }
 
-import { listEntitiesByDoco } from "@doco/db";
+import { listEntitiesByDoco, listPrincipals } from "@doco/db";
 import { makeCaptureRoute } from "~/lib/api-capture-factory.server";
 import {
   type ActionDraft,
@@ -43,6 +43,51 @@ interface MeLike {
   username: string;
 }
 
+/**
+ * Resolve the authenticated collaborator to a Principal NEURON id in
+ * this doco. *_principal_id columns reference principals.id and
+ * actively reject collaborator_* values, so we can't just stamp
+ * `me.id` (which is a collaborator id) into them. Preference order:
+ *
+ *   1. A principal whose `data.created_by` is this collaborator OR
+ *      whose `data.owner_id` references them. Captures the case
+ *      where the user explicitly created a role-persona for
+ *      themselves.
+ *   2. The "user" role-principal in this doco (the well-known
+ *      generic role every signed-in human plays by default).
+ *   3. The "human" role-principal as a secondary fallback.
+ *
+ * Returns null when nothing matches — the validator downstream will
+ * then surface a clear "this field is required" error with a
+ * pointer to /api/principals.json.
+ *
+ * Cached per-(docoId, collaboratorId) for the lifetime of the
+ * process — principals are not added often, and any miss falls
+ * through to a fresh `listPrincipals` query.
+ */
+const principalForCollaboratorCache = new Map<string, string>();
+async function resolvePrincipalIdForCollaborator(
+  docoId: string,
+  collaboratorId: string,
+): Promise<string | null> {
+  const key = `${docoId}:${collaboratorId}`;
+  const cached = principalForCollaboratorCache.get(key);
+  if (cached) return cached;
+  const rows = await listPrincipals(docoId);
+  const own = rows.find((r) => {
+    const data = r.data ?? {};
+    return (
+      (typeof data.created_by === "string" && data.created_by === collaboratorId) ||
+      (typeof data.owner_id === "string" && data.owner_id === collaboratorId)
+    );
+  });
+  const role = rows.find((r) => r.name === "user") ?? rows.find((r) => r.name === "human") ?? null;
+  const pick = own ?? role;
+  if (!pick) return null;
+  principalForCollaboratorCache.set(key, pick.id);
+  return pick.id;
+}
+
 interface RegistryEntry {
   // biome-ignore lint/suspicious/noExplicitAny: registry erases the per-entity Draft type
   build: () => ReturnType<typeof makeCaptureRoute<any>>;
@@ -54,7 +99,7 @@ function entry<TDraft>(
   type: string,
   entityType: string,
   captureFn: Parameters<typeof makeCaptureRoute<TDraft>>[0]["captureFn"],
-  fillFromAuth?: (draft: TDraft, me: MeLike) => void,
+  fillFromAuth?: (draft: TDraft, me: MeLike, docoId: string) => Promise<void> | void,
 ): RegistryEntry {
   return {
     entityType,
@@ -69,37 +114,80 @@ function entry<TDraft>(
 
 // Neurons only — policies use /<handle>/api/policies.json so they
 // stay separate from domain captures.
+//
+// fillFromAuth helpers resolve the collaborator → principal NEURON
+// before stamping defaults. Without this resolution, the capture
+// validator (which checks for `principal_*` ids) rejects every
+// auto-filled write with "must be a principal id, not a
+// collaborator id".
 const CAPTURE_REGISTRY: Record<string, RegistryEntry> = {
-  decisions: entry<DecisionDraft>("decisions", "decision", captureDecision, (draft, me) => {
-    if (!draft.decided_by_principal_id && me.id) draft.decided_by_principal_id = me.id;
-    if (!draft.created_by_principal_id && me.id) draft.created_by_principal_id = me.id;
+  decisions: entry<DecisionDraft>(
+    "decisions",
+    "decision",
+    captureDecision,
+    async (draft, me, docoId) => {
+      if (!me.id) return;
+      const pid = await resolvePrincipalIdForCollaborator(docoId, me.id);
+      if (!pid) return;
+      if (!draft.decided_by_principal_id) draft.decided_by_principal_id = pid;
+      if (!draft.created_by_principal_id) draft.created_by_principal_id = pid;
+    },
+  ),
+  intents: entry<IntentDraft>("intents", "intent", captureIntent, async (draft, me, docoId) => {
+    if (!me.id) return;
+    const pid = await resolvePrincipalIdForCollaborator(docoId, me.id);
+    if (!pid) return;
+    if (!draft.wanted_by_principal_id) draft.wanted_by_principal_id = pid;
   }),
-  intents: entry<IntentDraft>("intents", "intent", captureIntent, (draft, me) => {
-    if (!draft.wanted_by_principal_id && me.id) draft.wanted_by_principal_id = me.id;
+  ideas: entry<IdeaDraft>("ideas", "idea", captureIdea, async (draft, me, docoId) => {
+    if (!me.id) return;
+    const pid = await resolvePrincipalIdForCollaborator(docoId, me.id);
+    if (!pid) return;
+    if (!draft.created_by_principal_id) draft.created_by_principal_id = pid;
   }),
-  ideas: entry<IdeaDraft>("ideas", "idea", captureIdea, (draft, me) => {
-    if (!draft.created_by_principal_id && me.id) draft.created_by_principal_id = me.id;
+  actions: entry<ActionDraft>("actions", "action", captureAction, async (draft, me, docoId) => {
+    if (!me.id) return;
+    const pid = await resolvePrincipalIdForCollaborator(docoId, me.id);
+    if (!pid) return;
+    if (!draft.actor_principal_id) draft.actor_principal_id = pid;
+    if (!draft.created_by_principal_id) draft.created_by_principal_id = pid;
   }),
-  actions: entry<ActionDraft>("actions", "action", captureAction, (draft, me) => {
-    if (!draft.actor_principal_id && me.id) draft.actor_principal_id = me.id;
-    if (!draft.created_by_principal_id && me.id) draft.created_by_principal_id = me.id;
+  references: entry<ReferenceDraft>(
+    "references",
+    "reference",
+    captureReference,
+    async (draft, me, docoId) => {
+      if (!me.id) return;
+      const pid = await resolvePrincipalIdForCollaborator(docoId, me.id);
+      if (!pid) return;
+      if (!draft.created_by_principal_id) draft.created_by_principal_id = pid;
+    },
+  ),
+  rules: entry<RuleDraft>("rules", "rule", captureRule, async (draft, me, docoId) => {
+    if (!me.id) return;
+    const pid = await resolvePrincipalIdForCollaborator(docoId, me.id);
+    if (!pid) return;
+    if (!draft.authored_by_principal_id) draft.authored_by_principal_id = pid;
+    if (!draft.created_by_principal_id) draft.created_by_principal_id = pid;
   }),
-  references: entry<ReferenceDraft>("references", "reference", captureReference, (draft, me) => {
-    if (!draft.created_by_principal_id && me.id) draft.created_by_principal_id = me.id;
+  logs: entry<LogDraft>("logs", "log", captureLog, async (draft, me, docoId) => {
+    if (!me.id) return;
+    const pid = await resolvePrincipalIdForCollaborator(docoId, me.id);
+    if (!pid) return;
+    if (!draft.actor_principal_id) draft.actor_principal_id = pid;
+    if (!draft.created_by_principal_id) draft.created_by_principal_id = pid;
   }),
-  rules: entry<RuleDraft>("rules", "rule", captureRule, (draft, me) => {
-    if (!draft.authored_by_principal_id && me.id) draft.authored_by_principal_id = me.id;
-    if (!draft.created_by_principal_id && me.id) draft.created_by_principal_id = me.id;
+  evals: entry<EvalDraft>("evals", "eval", captureEval, async (draft, me, docoId) => {
+    if (!me.id) return;
+    const pid = await resolvePrincipalIdForCollaborator(docoId, me.id);
+    if (!pid) return;
+    if (!draft.authored_by_principal_id) draft.authored_by_principal_id = pid;
   }),
-  logs: entry<LogDraft>("logs", "log", captureLog, (draft, me) => {
-    if (!draft.actor_principal_id && me.id) draft.actor_principal_id = me.id;
-    if (!draft.created_by_principal_id && me.id) draft.created_by_principal_id = me.id;
-  }),
-  evals: entry<EvalDraft>("evals", "eval", captureEval, (draft, me) => {
-    if (!draft.authored_by_principal_id && me.id) draft.authored_by_principal_id = me.id;
-  }),
-  states: entry<StateDraft>("states", "state", captureState, (draft, me) => {
-    if (!draft.created_by_principal_id && me.id) draft.created_by_principal_id = me.id;
+  states: entry<StateDraft>("states", "state", captureState, async (draft, me, docoId) => {
+    if (!me.id) return;
+    const pid = await resolvePrincipalIdForCollaborator(docoId, me.id);
+    if (!pid) return;
+    if (!draft.created_by_principal_id) draft.created_by_principal_id = pid;
   }),
 };
 
