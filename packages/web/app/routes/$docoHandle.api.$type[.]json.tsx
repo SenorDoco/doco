@@ -88,6 +88,60 @@ async function resolvePrincipalIdForCollaborator(
   return pick.id;
 }
 
+/**
+ * Self-healing reconciliation of every `*_principal_id` field on the
+ * draft. Two failure modes the validator otherwise rejects:
+ *
+ *   1. Field missing → fill with the calling user's resolved
+ *      principal (the same "auth defaults" PR #151 already did).
+ *
+ *   2. Field present but holds a `collaborator_*` id → resolve THAT
+ *      collaborator to its principal in this doco. Covers the case
+ *      where the agent (or any other API caller) reads its own
+ *      `me.id`, assumes "principal" and "collaborator" are
+ *      interchangeable, and stamps the collaborator value into the
+ *      field. Recorded as the leading capture-error pattern on prod
+ *      (e.g. `wanted_by_principal_id must be a principal id…`).
+ *
+ * Same treatment for the singular `*_principal_id` and the plural
+ * `*_principal_ids[]` fields. Values that already start with
+ * `principal_` pass through unchanged.
+ */
+async function reconcilePrincipalFields(
+  // biome-ignore lint/suspicious/noExplicitAny: draft is parameterized at the entry callsite
+  draft: any,
+  docoId: string,
+  me: MeLike,
+  singularFields: readonly string[],
+  listFields: readonly string[] = [],
+): Promise<void> {
+  if (!me.id) return;
+  const mePrincipalPromise = resolvePrincipalIdForCollaborator(docoId, me.id);
+
+  for (const field of singularFields) {
+    const v = draft[field];
+    if (v === undefined || v === null || v === "") {
+      const mePid = await mePrincipalPromise;
+      if (mePid) draft[field] = mePid;
+    } else if (typeof v === "string" && v.startsWith("collaborator_")) {
+      const pid = await resolvePrincipalIdForCollaborator(docoId, v);
+      if (pid) draft[field] = pid;
+    }
+  }
+
+  for (const field of listFields) {
+    const v = draft[field];
+    if (!Array.isArray(v)) continue;
+    for (let i = 0; i < v.length; i++) {
+      const id = v[i];
+      if (typeof id === "string" && id.startsWith("collaborator_")) {
+        const pid = await resolvePrincipalIdForCollaborator(docoId, id);
+        if (pid) v[i] = pid;
+      }
+    }
+  }
+}
+
 interface RegistryEntry {
   // biome-ignore lint/suspicious/noExplicitAny: registry erases the per-entity Draft type
   build: () => ReturnType<typeof makeCaptureRoute<any>>;
@@ -121,74 +175,54 @@ function entry<TDraft>(
 // auto-filled write with "must be a principal id, not a
 // collaborator id".
 const CAPTURE_REGISTRY: Record<string, RegistryEntry> = {
-  decisions: entry<DecisionDraft>(
-    "decisions",
-    "decision",
-    captureDecision,
-    async (draft, me, docoId) => {
-      if (!me.id) return;
-      const pid = await resolvePrincipalIdForCollaborator(docoId, me.id);
-      if (!pid) return;
-      if (!draft.decided_by_principal_id) draft.decided_by_principal_id = pid;
-      if (!draft.created_by_principal_id) draft.created_by_principal_id = pid;
-    },
+  decisions: entry<DecisionDraft>("decisions", "decision", captureDecision, (draft, me, docoId) =>
+    reconcilePrincipalFields(draft, docoId, me, [
+      "decided_by_principal_id",
+      "created_by_principal_id",
+    ]),
   ),
-  intents: entry<IntentDraft>("intents", "intent", captureIntent, async (draft, me, docoId) => {
-    if (!me.id) return;
-    const pid = await resolvePrincipalIdForCollaborator(docoId, me.id);
-    if (!pid) return;
-    if (!draft.wanted_by_principal_id) draft.wanted_by_principal_id = pid;
-  }),
-  ideas: entry<IdeaDraft>("ideas", "idea", captureIdea, async (draft, me, docoId) => {
-    if (!me.id) return;
-    const pid = await resolvePrincipalIdForCollaborator(docoId, me.id);
-    if (!pid) return;
-    if (!draft.created_by_principal_id) draft.created_by_principal_id = pid;
-  }),
-  actions: entry<ActionDraft>("actions", "action", captureAction, async (draft, me, docoId) => {
-    if (!me.id) return;
-    const pid = await resolvePrincipalIdForCollaborator(docoId, me.id);
-    if (!pid) return;
-    if (!draft.actor_principal_id) draft.actor_principal_id = pid;
-    if (!draft.created_by_principal_id) draft.created_by_principal_id = pid;
-  }),
+  intents: entry<IntentDraft>("intents", "intent", captureIntent, (draft, me, docoId) =>
+    reconcilePrincipalFields(
+      draft,
+      docoId,
+      me,
+      ["wanted_by_principal_id"],
+      ["actors_principal_ids", "stakeholders_principal_ids"],
+    ),
+  ),
+  ideas: entry<IdeaDraft>("ideas", "idea", captureIdea, (draft, me, docoId) =>
+    reconcilePrincipalFields(draft, docoId, me, ["created_by_principal_id"]),
+  ),
+  actions: entry<ActionDraft>("actions", "action", captureAction, (draft, me, docoId) =>
+    reconcilePrincipalFields(
+      draft,
+      docoId,
+      me,
+      ["actor_principal_id", "created_by_principal_id"],
+      ["actors_principal_ids"],
+    ),
+  ),
   references: entry<ReferenceDraft>(
     "references",
     "reference",
     captureReference,
-    async (draft, me, docoId) => {
-      if (!me.id) return;
-      const pid = await resolvePrincipalIdForCollaborator(docoId, me.id);
-      if (!pid) return;
-      if (!draft.created_by_principal_id) draft.created_by_principal_id = pid;
-    },
+    (draft, me, docoId) => reconcilePrincipalFields(draft, docoId, me, ["created_by_principal_id"]),
   ),
-  rules: entry<RuleDraft>("rules", "rule", captureRule, async (draft, me, docoId) => {
-    if (!me.id) return;
-    const pid = await resolvePrincipalIdForCollaborator(docoId, me.id);
-    if (!pid) return;
-    if (!draft.authored_by_principal_id) draft.authored_by_principal_id = pid;
-    if (!draft.created_by_principal_id) draft.created_by_principal_id = pid;
-  }),
-  logs: entry<LogDraft>("logs", "log", captureLog, async (draft, me, docoId) => {
-    if (!me.id) return;
-    const pid = await resolvePrincipalIdForCollaborator(docoId, me.id);
-    if (!pid) return;
-    if (!draft.actor_principal_id) draft.actor_principal_id = pid;
-    if (!draft.created_by_principal_id) draft.created_by_principal_id = pid;
-  }),
-  evals: entry<EvalDraft>("evals", "eval", captureEval, async (draft, me, docoId) => {
-    if (!me.id) return;
-    const pid = await resolvePrincipalIdForCollaborator(docoId, me.id);
-    if (!pid) return;
-    if (!draft.authored_by_principal_id) draft.authored_by_principal_id = pid;
-  }),
-  states: entry<StateDraft>("states", "state", captureState, async (draft, me, docoId) => {
-    if (!me.id) return;
-    const pid = await resolvePrincipalIdForCollaborator(docoId, me.id);
-    if (!pid) return;
-    if (!draft.created_by_principal_id) draft.created_by_principal_id = pid;
-  }),
+  rules: entry<RuleDraft>("rules", "rule", captureRule, (draft, me, docoId) =>
+    reconcilePrincipalFields(draft, docoId, me, [
+      "authored_by_principal_id",
+      "created_by_principal_id",
+    ]),
+  ),
+  logs: entry<LogDraft>("logs", "log", captureLog, (draft, me, docoId) =>
+    reconcilePrincipalFields(draft, docoId, me, ["actor_principal_id", "created_by_principal_id"]),
+  ),
+  evals: entry<EvalDraft>("evals", "eval", captureEval, (draft, me, docoId) =>
+    reconcilePrincipalFields(draft, docoId, me, ["authored_by_principal_id"]),
+  ),
+  states: entry<StateDraft>("states", "state", captureState, (draft, me, docoId) =>
+    reconcilePrincipalFields(draft, docoId, me, ["created_by_principal_id"]),
+  ),
 };
 
 function notFound(type: string | undefined): Response {
