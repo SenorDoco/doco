@@ -101,7 +101,7 @@ export function NeuronDialog({
 
   return (
     <aside
-      className="neu-floating relative z-30 flex h-full min-h-0 flex-col overflow-hidden rounded-lg border border-border bg-card"
+      className="neu-floating relative z-30 flex h-full min-h-0 flex-col overflow-hidden rounded-lg border border-border bg-white"
       aria-label="Neuron details"
     >
       <header className="px-4 py-3">
