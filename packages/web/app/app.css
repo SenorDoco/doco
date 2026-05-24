@@ -178,6 +178,13 @@ button[class*="bg-primary"]:active {
 [class~="divide-x"] > * + * {
   box-shadow: inset 1px 0 0 color-mix(in oklch, white 75%, transparent);
 }
+/* `border border-border` (1px on all four sides — e.g. the graph
+   canvas container). Add a top-left inset highlight so the box reads
+   as etched-with-light-from-top-left, matching `.neu-surface` cards.
+   The dark line is supplied by `border-border` itself. */
+[class~="border"][class~="border-border"]:not([class~="neu-button"]):not([class~="neu-pressed"]):not([class*="bg-primary"]):not([class~="border-b"]):not([class~="border-t"]):not([class~="border-l"]):not([class~="border-r"]) {
+  box-shadow: inset 1px 1px 0 color-mix(in oklch, white 75%, transparent);
+}
 
 @layer utilities {
   /* Non-button content surfaces (cards, badges, list rows, info
