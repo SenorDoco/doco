@@ -31,11 +31,15 @@ export function PerspectiveTabs({
     <nav
       aria-label="Visualization perspectives"
       role="tablist"
+      // `self-start` keeps the nav shrink-to-fit horizontally instead
+      // of stretching to fill the aside's width — so `right-0` on the
+      // chevron dropdown anchors to the chevron's right edge, not the
+      // aside's far-right edge.
       // `relative` so the chevron's dropdown menu can position-absolute
-      // against this nav element. The chevron is now a direct child
-      // of the nav, dropping the wrapper that previously caused
+      // against this nav element. The chevron is a direct child of
+      // the nav, dropping the wrapper that previously caused
       // sub-pixel vertical misalignment with the Link tabs.
-      className="relative -mb-px flex min-w-0 flex-wrap items-end"
+      className="relative -mb-px flex min-w-0 flex-wrap items-end self-start"
     >
       {perspectives.map((p, i) => (
         <PerspectiveTab
