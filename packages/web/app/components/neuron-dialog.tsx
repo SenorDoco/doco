@@ -183,7 +183,7 @@ export function NeuronDialog({
           <div className="space-y-5 text-xs">
             {isMigratedNeuron && detail.body_md ? (
               <section>
-                <div className="whitespace-pre-wrap break-words text-sm leading-6 text-foreground">
+                <div className="whitespace-pre-wrap break-words text-sm font-bold leading-6 text-foreground">
                   {detail.body_md}
                 </div>
               </section>

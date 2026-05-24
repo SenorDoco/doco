@@ -138,6 +138,9 @@ export default [
   // suffixed) handle.
   route("api/v1/orgs.json", "routes/api.v1.orgs[.]json.tsx"),
   route("api/v1/docos.json", "routes/api.v1.docos[.]json.tsx"),
+  // Per-user UI preferences (graph auto-reorder, future flags). Stored
+  // on collaborators.data.preferences; auth-gated to the signed-in user.
+  route("api/v1/me/preferences.json", "routes/api.v1.me.preferences[.]json.tsx"),
   // Agent bootstrap. Returns the canonical-instructions prose plus the
   // Doco primitives the caller can read. Auth-aware: anonymous callers
   // get public-Doco primitives only.
@@ -193,6 +196,8 @@ export default [
   ),
   route(":docoHandle/invites", "routes/$docoHandle.invites.tsx"),
   route(":docoHandle/api/invites.json", "routes/$docoHandle.api.invites[.]json.tsx"),
+  route(":docoHandle/project-tokens", "routes/$docoHandle.project-tokens.tsx"),
+  route(":docoHandle/api/project-tokens.json", "routes/$docoHandle.api.project-tokens[.]json.tsx"),
   // Visualization perspectives — tabs above the overview body.
   // Picker page lists builtin + user-owned perspectives; the API
   // route handles attach/detach/set-default form posts. Both must
@@ -221,6 +226,7 @@ export default [
   // Special-cased capture routes that need custom logic — listed BEFORE
   // the generic `:type.json` dispatcher so the static segment wins.
   route(":docoHandle/api/principals.json", "routes/$docoHandle.api.principals[.]json.tsx"),
+  route(":docoHandle/api/principals/:id.json", "routes/$docoHandle.api.principals.$id[.]json.tsx"),
   route(":docoHandle/api/settings.json", "routes/$docoHandle.api.settings[.]json.tsx"),
   route(":docoHandle/api/audit.json", "routes/$docoHandle.api.audit[.]json.tsx"),
   // Primitives are not neurons; they live on a

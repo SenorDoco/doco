@@ -440,7 +440,7 @@ function DevicePickerForm({
             Approving an organization grants access to every Doco it owns, including ones added
             later.
           </p>
-          <div className="neu-inset flex flex-wrap items-center gap-2 rounded-md bg-card px-3 py-2">
+          <div className="flex flex-wrap items-center gap-2 rounded-md px-3 py-2">
             <button
               type="button"
               onClick={() => setSelectedOrgs(new Set(orgs.map((o) => o.id)))}
@@ -535,7 +535,7 @@ function DevicePickerForm({
             <h3 className="text-sm font-semibold text-foreground">Docos</h3>
           ) : null}
           {!focused ? (
-            <div className="neu-inset flex flex-wrap items-center gap-2 rounded-md bg-card px-3 py-2">
+            <div className="flex flex-wrap items-center gap-2 rounded-md px-3 py-2">
               <button
                 type="button"
                 onClick={() => setSelected(new Set(docos.map((d) => d.id)))}

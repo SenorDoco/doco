@@ -9,9 +9,9 @@
 //
 // Sidebar (desktop): cross-Doco overview graph + Members card.
 
-import { type DocoRole, getOrgRole, withClient } from "@doco/db";
+import { type DocoRole, getCollaboratorById, getOrgRole, withClient } from "@doco/db";
 import { entityUrl } from "@doco/shared";
-import { useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Form, Link, useRevalidator } from "react-router";
 import { ActivityHeatmap } from "~/components/activity-heatmap";
 import { Breadcrumb, orgBreadcrumb } from "~/components/breadcrumb";
@@ -303,6 +303,10 @@ export async function loader({
       fallbackCenterId: org.id,
     });
 
+    const meRow = me ? await getCollaboratorById(me.id) : null;
+    const prefs = (meRow?.data?.preferences ?? {}) as Record<string, unknown>;
+    const graphAutoReorder = prefs.graph_auto_reorder !== false;
+
     return {
       org,
       me,
@@ -314,6 +318,7 @@ export async function loader({
       topContributors,
       items,
       graph,
+      graphAutoReorder,
     };
   });
 }
@@ -327,8 +332,28 @@ export default function OrgHome({
 }: {
   loaderData: Awaited<ReturnType<typeof loader>>;
 }) {
-  const { org, me, canInviteCollaborators, docos, members, byDay, topContributors, items, graph } =
-    loaderData;
+  const {
+    org,
+    me,
+    canInviteCollaborators,
+    docos,
+    members,
+    byDay,
+    topContributors,
+    items,
+    graph,
+    graphAutoReorder: initialAutoReorder,
+  } = loaderData;
+  const [autoReorder, setAutoReorder] = useState<boolean>(initialAutoReorder);
+  const [centerId, setCenterId] = useState<string>(graph.centerId);
+  const handleAutoReorderChange = useCallback((next: boolean) => {
+    setAutoReorder(next);
+    void fetch("/api/v1/me/preferences.json", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ preferences: { graph_auto_reorder: next } }),
+    }).catch(() => undefined);
+  }, []);
 
   const revalidator = useRevalidator();
   useEffect(() => {
@@ -362,8 +387,8 @@ export default function OrgHome({
   return (
     <div>
       <SiteHeader mode="host" me={me} />
-      <main className="mx-auto max-w-[1800px] px-6 py-6">
-        <div className="grid gap-6 md:grid-cols-[minmax(0,1fr)_320px] xl:grid-cols-[minmax(0,1fr)_400px]">
+      <main className="px-6 py-6">
+        <div className="grid gap-6 md:grid-cols-[minmax(0,1fr)_320px]">
           <section className="min-w-0 space-y-5">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="space-y-1">
@@ -523,13 +548,16 @@ export default function OrgHome({
                   {graph.nodes.length} neurons · {graph.links.length} synapses
                 </span>
               </div>
-              <div className="h-[55vh] min-h-[400px]">
+              <div className="h-[75vh] min-h-[480px]">
                 <OverviewGraph
-                  centerId={graph.centerId}
+                  centerId={centerId}
                   nodes={graph.nodes}
                   links={graph.links}
                   detailUrl={graph.detailUrl}
                   fillHeight
+                  autoReorder={autoReorder}
+                  onAutoReorderChange={handleAutoReorderChange}
+                  onCenterChange={(id) => setCenterId(id)}
                 />
               </div>
             </div>

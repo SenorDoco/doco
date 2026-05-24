@@ -661,7 +661,21 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
     }
   }, [inFlight, markUnread]);
 
-  if (collapsed) {
+  // Authorization / sign-in flows render in a single-tab focus mode —
+  // the Señor Doco chat is force-minimized so it doesn't distract from
+  // the consent decision (`/device`, `/oauth/authorize`, `/invite/<code>`)
+  // or the OAuth round-trip pages (`/auth/*`). The user can still
+  // expand the rail manually, but the default + every navigation back
+  // to an auth page snaps it back to collapsed.
+  const isAuthPage =
+    location.pathname === "/device" ||
+    location.pathname.startsWith("/oauth/authorize") ||
+    location.pathname.startsWith("/invite/") ||
+    location.pathname === "/sign-in" ||
+    location.pathname === "/sign-out" ||
+    location.pathname.startsWith("/auth/");
+
+  if (collapsed || isAuthPage) {
     return (
       <CollapsedRail
         label="Señor Doco"

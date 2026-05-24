@@ -19,6 +19,7 @@ import { docoPath } from "./db.server";
 import { type DocoMetadata, readDocoMetadata } from "./doco-metadata.server";
 import { type ValidAccessToken, validateAccessToken } from "./oauth-server.server";
 import { readCreatedDocoIdSearchParam } from "./post-create-doco-route";
+import { type ProjectToken, isProjectToken, validateProjectToken } from "./project-tokens.server";
 import { type CurrentPrincipal, extractBearer, getCurrentPrincipalAsync } from "./session.server";
 
 /**
@@ -388,6 +389,27 @@ export async function loadDocoForRead(
   const dir = docoPath(row.handle);
   const meta = await readDocoMetadata(dir);
   if (!meta) throw notFoundForAccessDenied(handleOrId, "");
+
+  // Project-token short-circuit. Project tokens are Doco-scoped, fixed
+  // at reader role, and do not carry a collaborator identity — so the
+  // standard "validate-bearer then check principal access" path does
+  // not apply. Resolve and gate them here before falling through to
+  // the OAuth/cookie path.
+  const projectTokenResult = await tryProjectTokenAccess(request, {
+    docoId: row.id,
+    minRole,
+  });
+  if (projectTokenResult.handled) {
+    return {
+      dir,
+      meta,
+      me: null,
+      canonicalOwnerSlug: row.owner_slug,
+      canonicalDocoSlug: row.handle,
+      canonicalHandle: row.handle,
+    };
+  }
+
   // Bearer-token validation BEFORE the access check. If the caller
   // presented an OAuth-shaped bearer that's invalid (revoked / expired
   // / unknown), we want 401 + WWW-Authenticate per RFC 6750 §3, so the
@@ -408,6 +430,70 @@ export async function loadDocoForRead(
     canonicalDocoSlug: row.handle,
     canonicalHandle: row.handle,
   };
+}
+
+/**
+ * Try to satisfy the request with a project token. Returns
+ * `{ handled: true }` when the bearer was a project token AND it
+ * granted the requested operation on this Doco — the caller can skip
+ * the rest of the access check.
+ *
+ * Throws a 401/403 Response when the bearer was a project token but
+ * the grant did not match (wrong Doco, revoked, or trying to write
+ * with a reader-only token). That short-circuits with the right
+ * RFC 6750 framing.
+ *
+ * Returns `{ handled: false }` when there is no project-token bearer
+ * present — the caller falls through to OAuth + cookie logic.
+ */
+async function tryProjectTokenAccess(
+  request: Request,
+  args: { docoId: string; minRole: DocoRole },
+): Promise<{ handled: boolean; token?: ProjectToken }> {
+  const bearer = extractBearer(request);
+  if (!bearer || !isProjectToken(bearer)) return { handled: false };
+
+  const token = await validateProjectToken(bearer);
+  if (!token) {
+    throw new Response(
+      JSON.stringify({
+        kind: "invalid_token",
+        error: "Project token is unknown or revoked.",
+      }),
+      {
+        status: 401,
+        headers: {
+          "Content-Type": "application/json",
+          "WWW-Authenticate": `Bearer error="invalid_token", error_description="The project token is unknown or revoked"`,
+        },
+      },
+    );
+  }
+  if (token.doco_id !== args.docoId) {
+    throw new Response(
+      JSON.stringify({
+        kind: "access_denied",
+        error: "Project token is scoped to a different Doco.",
+      }),
+      { status: 403, headers: { "Content-Type": "application/json" } },
+    );
+  }
+  if (!roleAtLeast("reader", args.minRole)) {
+    throw new Response(
+      JSON.stringify({
+        kind: "insufficient_scope",
+        error: `Project token grants 'reader' on this Doco; this operation requires '${args.minRole}'. Use an OAuth token with the required role.`,
+      }),
+      {
+        status: 403,
+        headers: {
+          "Content-Type": "application/json",
+          "WWW-Authenticate": `Bearer error="insufficient_scope", scope="doco"`,
+        },
+      },
+    );
+  }
+  return { handled: true, token };
 }
 
 export type LoadedDocoRoute = Awaited<ReturnType<typeof normalizeDocoParams>> &

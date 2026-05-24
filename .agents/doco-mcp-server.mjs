@@ -81,7 +81,9 @@ const SERVER_INSTRUCTIONS = [
   "",
   "HTTP API body structure: capture specs exist for decisions, intents,",
   "actions, logs, rules, evals, references, states, ideas, primitives,",
-  "and settings. Principals, invites, and audit have dedicated route",
+  "settings, and principals. Principals expose a smaller surface (create",
+  "+ retire only) — read the `principals.txt` spec rather than assuming",
+  "the generic capture body. Invites and audit have dedicated route",
   "behavior; do not infer write bodies for them from the generic capture",
   "pattern.",
   "",
@@ -134,6 +136,26 @@ const SERVER_INSTRUCTIONS = [
   "the spawning shell, and forwards it as a Bearer token. Successful device",
   "auth writes back to that same .env so other agents in this local checkout",
   "reuse the credential. Public Docos work without auth.",
+  "",
+  "Persisting credentials across containers and clones — surface to the user",
+  "ONCE after each successful auth (the doco_complete_authentication response",
+  "already includes the exact wording). The two options the protocol",
+  "supports:",
+  "",
+  "  1. DOCO_ACCESS as a runtime environment variable. The user sets it on",
+  "     the *remote execution environment* (Claude Code on the Web env vars,",
+  "     Codespaces secrets, etc.). Every fresh container inherits it; no",
+  "     re-auth needed. Private to the user; never commit.",
+  "",
+  "  2. Committable project tokens. The Doco owner mints a read-only token",
+  "     at <host>/<handle>/project-tokens and commits it to",
+  "     .doco/project-tokens.json. Any agent cloning the repo can read the",
+  "     Doco without auth. Only suitable when the Doco's contents are OK to",
+  "     be readable by anyone who can read the repo. This MCP server reads",
+  "     .doco/project-tokens.json automatically when no DOCO_ACCESS is set.",
+  "",
+  "Do NOT prompt for these on every auth — once per successful auth is the",
+  "limit. The user can act on the suggestion or move on.",
 ].join("\n");
 
 const SEARCH_TOOL = {
@@ -488,8 +510,9 @@ async function handleCompleteAuthenticate(message) {
     const poll = await pollTokenOnce(host, state.client_id, state.device_code);
     if (poll.kind === "approved") {
       const tokens = poll.tokens;
+      const accessToken = String(tokens.access_token || "");
       writeEnvUpdates({
-        DOCO_ACCESS: String(tokens.access_token || ""),
+        DOCO_ACCESS: accessToken,
         ...(tokens.refresh_token ? { DOCO_REFRESH: String(tokens.refresh_token) } : {}),
         DOCO_CLIENT_ID: state.client_id,
       });
@@ -503,7 +526,7 @@ async function handleCompleteAuthenticate(message) {
           content: [
             {
               type: "text",
-              text: `Authenticated. Wrote DOCO_ACCESS to ./.env (mode 0600). You now have ${role} access to Doco '${handle}'. Retry doco_search.`,
+              text: formatAuthSuccessText({ handle, role, accessToken, host }),
             },
           ],
         },
@@ -607,6 +630,33 @@ async function pollTokenOnce(host, clientId, deviceCode) {
       }
       return { kind: "error", error: r.error || errCode || `HTTP ${r.status}` };
   }
+}
+
+function formatAuthSuccessText({ handle, role, accessToken, host }) {
+  // After a successful device-flow auth, every fresh container or new
+  // clone has to repeat this dance — unless the user persists the
+  // credential somewhere durable. Surface the two options the protocol
+  // supports so the agent can tell the user once, right when the pain
+  // is fresh.
+  //
+  // Why both options every time: most agents can't reliably detect
+  // whether they're in an ephemeral sandbox or on a persistent local
+  // machine, and the project-token option depends on a per-Doco
+  // sensitivity judgement only the user can make. Cheaper to surface
+  // both and let the user pick than to guess wrong.
+  const tokenSuffix = accessToken ? accessToken.slice(-6) : "";
+  const tokenHint = tokenSuffix ? ` (token ending …${tokenSuffix})` : "";
+  return [
+    `Authenticated. Wrote DOCO_ACCESS to ./.env (mode 0600). You now have ${role} access to Doco '${handle}'${tokenHint}. Retry doco_search.`,
+    "",
+    "TELL THE USER ONCE, NOW: this auth dance repeats on every fresh container or new machine unless they persist the credential. The two options:",
+    "",
+    "1. Set DOCO_ACCESS as a persistent environment variable on the *remote execution environment* (not the repo) — fresh containers then inherit it without prompting. For Claude Code on the Web, the Environment configuration is at https://code.claude.com/docs/en/claude-code-on-the-web. Other sandboxes (Codespaces, Replit, etc.) expose a similar env-vars setting. The DOCO_ACCESS value is private to the user; do not paste it for them, just tell them to copy it from .env.",
+    "",
+    `2. If this Doco's contents are OK to be readable by anyone with read access to this repository, the Doco owner can mint a "project token" — a committable, read-only token stored in .doco/project-tokens.json. Any agent cloning the repo then reads the Doco without authenticating. Mint at ${host}/${handle}/project-tokens (owner-only, requires explicit confirmation that repo readers = acceptable Doco readers).`,
+    "",
+    "Both are optional. Surface them once and continue with the substantive answer; do not re-prompt on every turn.",
+  ].join("\n");
 }
 
 function formatHits(body, handle) {
@@ -738,7 +788,21 @@ function parseJson(text) {
 
 function readEnv(name) {
   const envFile = readEnvFile();
-  return envFile[name] || process.env[name] || "";
+  const fromEnvFile = envFile[name];
+  if (fromEnvFile) return fromEnvFile;
+  const fromProcess = process.env[name];
+  if (fromProcess) return fromProcess;
+  // Committable per-repo fallback for DOCO_ACCESS. The Doco owner can
+  // mint a read-only "project token" and commit it to
+  // .doco/project-tokens.json — any agent cloning the repo can then
+  // read the Doco without authenticating, as long as the Doco's
+  // contents are OK to be readable by anyone who can read the repo.
+  if (name === "DOCO_ACCESS") {
+    const handle = readDocoHandle();
+    const projectToken = readProjectToken(handle);
+    if (projectToken) return projectToken;
+  }
+  return "";
 }
 
 function readEnvFile() {
@@ -794,6 +858,24 @@ function unquote(value) {
     return value.slice(1, -1);
   }
   return value;
+}
+
+function readProjectToken(handle) {
+  if (!handle) return "";
+  const path = join(PROJECT_ROOT, ".doco", "project-tokens.json");
+  if (!existsSync(path)) return "";
+  let parsed;
+  try {
+    parsed = JSON.parse(readFileSync(path, "utf8"));
+  } catch {
+    return "";
+  }
+  if (!parsed || typeof parsed !== "object") return "";
+  const value = parsed[handle];
+  if (typeof value !== "string") return "";
+  const trimmed = value.trim();
+  if (!trimmed.startsWith("doco_pt_")) return "";
+  return trimmed;
 }
 
 function readDocoHandle() {

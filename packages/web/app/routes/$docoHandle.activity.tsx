@@ -9,11 +9,12 @@ import { NodeTypeBadge } from "~/components/badge";
 import { Breadcrumb, docoBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { SiteHeader } from "~/components/site-header";
-import { shouldStrikeActivityTarget } from "~/lib/activity-feed";
+import { activityRowLifecycle, shouldStrikeActivityTarget } from "~/lib/activity-feed";
 import { type AuditOp, readAuditEvents } from "~/lib/audit-log.server";
 import { cn } from "~/lib/cn";
 import { docoPath } from "~/lib/db.server";
 import { loadDocoRouteForRead } from "~/lib/doco-access.server";
+import { lifecycleColor } from "~/lib/neuron-colors";
 
 const VALID_OPS: ReadonlySet<string> = new Set([
   "entity.create",
@@ -122,8 +123,9 @@ export default function ActivityPage({
                           entityType: e.entity_type as never,
                           id: e.entity_id as EntityId<never>,
                         })}
+                        style={{ color: lifecycleColor(activityRowLifecycle(e)) }}
                         className={cn(
-                          "inline-flex items-center gap-1.5 text-primary hover:underline",
+                          "inline-flex items-center gap-1.5 hover:underline",
                           shouldStrikeActivityTarget(e) && "line-through decoration-2",
                         )}
                       >

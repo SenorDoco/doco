@@ -14,6 +14,12 @@ import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react"
 import { Link, useNavigate } from "react-router";
 import { NeuronTypeIcon } from "~/components/neuron-type-icon";
 import {
+  computeDepthFromCenter,
+  hasFocalNode,
+  opacityForDepth,
+  opacityForEdge,
+} from "~/lib/graph-depth";
+import {
   type GraphReferenceItem,
   clearGraphReferences,
   publishGraphReferences,
@@ -769,6 +775,21 @@ export function EntityGraph({
     if (layoutMode === "grid") return rankedGridLayout(visible.nodes);
     return dagreLayout(visible.nodes, visible.links, centerId);
   }, [visible.nodes, visible.links, centerId, layoutMode]);
+
+  // Per-node BFS depth from the focal neuron for the cross-perspective
+  // depth-fade rule (1st-degree solid, 2nd 75%, 3rd 50%, 4+ 25%).
+  // Edges fade with their deepest endpoint.
+  const depthByNodeId = useMemo(() => {
+    const simpleLinks = visible.links.map((l) => ({
+      source: typeof l.source === "string" ? l.source : (l.source as { id: string }).id,
+      target: typeof l.target === "string" ? l.target : (l.target as { id: string }).id,
+    }));
+    return computeDepthFromCenter(visible.nodes, simpleLinks, centerId);
+  }, [visible.nodes, visible.links, centerId]);
+  const focalActive = useMemo(
+    () => hasFocalNode(centerId, visible.nodes),
+    [centerId, visible.nodes],
+  );
   const positions = layout.positions;
   const visibleNodeById = useMemo(() => {
     const byId = new Map<string, GraphNode>();
@@ -956,6 +977,7 @@ export function EntityGraph({
         : "rgb(255,255,255)";
       const title = n.name ?? n.summary;
       const cardHeight = nodeRenderHeight(n);
+      const nodeOpacity = focalActive ? opacityForDepth(depthByNodeId.get(n.id)) : 1;
       // Make the card itself a real link. React Flow's node-level click
       // remains as a fallback, but the anchor gives expected browser affordances.
       const href = n.href ?? (hrefFor ? hrefFor(n.id, n.entity_type) : `/${n.entity_type}/${n.id}`);
@@ -1000,6 +1022,7 @@ export function EntityGraph({
           padding: 0,
           width: NODE_WIDTH,
           overflow: "visible",
+          opacity: nodeOpacity,
         },
         sourcePosition: "right" as const,
         targetPosition: "left" as const,
@@ -1015,6 +1038,8 @@ export function EntityGraph({
     showPersonalizedRank,
     referenceNumberByNodeId,
     newNodeIds,
+    depthByNodeId,
+    focalActive,
   ]);
 
   const laneLabelRails = useMemo(() => {
@@ -1057,6 +1082,9 @@ export function EntityGraph({
       visible.links.map((l, i) => {
         const src = typeof l.source === "string" ? l.source : (l.source as { id: string }).id;
         const tgt = typeof l.target === "string" ? l.target : (l.target as { id: string }).id;
+        const edgeOpacity = focalActive
+          ? opacityForEdge(depthByNodeId.get(src), depthByNodeId.get(tgt))
+          : 1;
         return {
           id: `${src}-${tgt}-${l.synapse_type}-${i}`,
           source: src,
@@ -1066,10 +1094,15 @@ export function EntityGraph({
             fontSize: 9,
             fill: "#737373",
             pointerEvents: "none" as const,
+            opacity: edgeOpacity,
           },
           labelBgPadding: [2, 4] as [number, number],
           labelBgBorderRadius: 4,
-          labelBgStyle: { fill: "#f5f5f5", fillOpacity: 0.9, pointerEvents: "none" as const },
+          labelBgStyle: {
+            fill: "#f5f5f5",
+            fillOpacity: 0.9 * edgeOpacity,
+            pointerEvents: "none" as const,
+          },
           // Edges are visual only — never the click target. Removing the
           // invisible hit zone and label pointer-events lets the pan handler
           // receive drag-mousedowns that happen to start on an edge line or
@@ -1077,10 +1110,13 @@ export function EntityGraph({
           selectable: false,
           focusable: false,
           interactionWidth: 0,
-          style: { stroke: "rgba(115, 115, 115, 0.5)", pointerEvents: "none" as const },
+          style: {
+            stroke: `rgba(115, 115, 115, ${0.5 * edgeOpacity})`,
+            pointerEvents: "none" as const,
+          },
         };
       }),
-    [visible.links],
+    [visible.links, depthByNodeId, focalActive],
   );
 
   const MiniMapNode = useMemo(
