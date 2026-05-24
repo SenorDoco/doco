@@ -60,10 +60,6 @@ export interface CollaboratorsPageData {
   me: CurrentPrincipal;
   orgSections: OrgSection[];
   docoSections: DocoSection[];
-}
-
-export interface CollaboratorInvitePageData {
-  me: CurrentPrincipal;
   invite: CollaboratorInviteData;
 }
 
@@ -224,7 +220,8 @@ export async function loadCollaboratorSections(principalId: string): Promise<{
 export async function loadCollaboratorsPageData(request: Request): Promise<CollaboratorsPageData> {
   const me = await requireCurrentPrincipal(request);
   const { orgSections, docoSections } = await loadCollaboratorSections(me.id);
-  return { me, orgSections, docoSections };
+  const invite = buildCollaboratorInviteData({ request, orgSections, docoSections });
+  return { me, orgSections, docoSections, invite };
 }
 
 function buildCollaboratorInviteData({
@@ -259,17 +256,6 @@ function buildCollaboratorInviteData({
       orgs: inviteOrgs,
       docos: inviteDocos,
     }),
-  };
-}
-
-export async function loadCollaboratorInvitePageData(
-  request: Request,
-): Promise<CollaboratorInvitePageData> {
-  const me = await requireCurrentPrincipal(request);
-  const { orgSections, docoSections } = await loadCollaboratorSections(me.id);
-  return {
-    me,
-    invite: buildCollaboratorInviteData({ request, orgSections, docoSections }),
   };
 }
 

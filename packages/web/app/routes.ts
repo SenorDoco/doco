@@ -128,7 +128,6 @@ export default [
   // Cross-Doco semantic search across every Doco the org owns.
   route("orgs/:orgHandle/search", "routes/orgs.$orgHandle.search.tsx"),
   route("collaborators", "routes/collaborators.tsx"),
-  route("collaborators/invite", "routes/collaborators.invite.tsx"),
   // /api-keys — host-level page listing every active OAuth refresh
   // token bound to the signed-in user (both agent-OAuth-flow tokens
   // and personal API keys minted here). The matching JSON endpoint
