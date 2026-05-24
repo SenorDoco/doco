@@ -228,6 +228,17 @@ export type ChatStreamEvent =
  * design; left in place because dropping it would require a migration
  * and the dead column is harmless.
  */
+/**
+ * Stale-turn cutoff. If `active_turn_started_at` is older than this,
+ * the lambda almost certainly crashed before its `finally` cleared
+ * the marker (Vercel function timeout, OOM, deploy window replacing
+ * the function mid-stream). A real turn never legitimately takes
+ * this long — Anthropic + tool round trips for one user message
+ * complete in single-digit minutes worst case. Clear on read so the
+ * in-flight bubble self-heals on the next snapshot load.
+ */
+const ACTIVE_TURN_STALE_MS = 5 * 60 * 1000;
+
 export async function loadOrCreateConversation(principalId: string): Promise<ChatConversationRow> {
   return await withClient(async (c) => {
     const existing = await c.query<ChatConversationRow>(
@@ -238,7 +249,19 @@ export async function loadOrCreateConversation(principalId: string): Promise<Cha
         LIMIT 1`,
       [principalId],
     );
-    if (existing.rows[0]) return existing.rows[0];
+    const row = existing.rows[0];
+    if (row) {
+      if (
+        row.active_turn_started_at &&
+        Date.now() - row.active_turn_started_at.getTime() > ACTIVE_TURN_STALE_MS
+      ) {
+        await c.query("UPDATE chat_conversations SET active_turn_started_at = NULL WHERE id = $1", [
+          row.id,
+        ]);
+        row.active_turn_started_at = null;
+      }
+      return row;
+    }
     const id = `conv_${generateUlid()}`;
     const fresh = await c.query<ChatConversationRow>(
       `INSERT INTO chat_conversations (id, collaborator_id)
@@ -246,9 +269,9 @@ export async function loadOrCreateConversation(principalId: string): Promise<Cha
        RETURNING id, collaborator_id, archived, created_at, updated_at, active_turn_started_at`,
       [id, principalId],
     );
-    const row = fresh.rows[0];
-    if (!row) throw new Error("failed to create conversation row");
-    return row;
+    const created = fresh.rows[0];
+    if (!created) throw new Error("failed to create conversation row");
+    return created;
   });
 }
 
