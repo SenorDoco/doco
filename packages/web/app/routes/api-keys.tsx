@@ -161,32 +161,56 @@ function GenerateKeyCard({
     navigation.state === "submitting" && navigation.formData?.get("intent") === "mint";
 
   const [label, setLabel] = useState("");
-  const [selected, setSelected] = useState<Record<string, DocoRole>>({});
 
-  // grants[] hidden input mirrors the selected map so the action gets
-  // a single payload to parse.
+  // Single combined Org / Doco dropdown, matching the collaborator
+  // invite UX (collaborator-invite-cards.tsx). Each option carries the
+  // user's role on that target so the Role dropdown can constrain its
+  // choices to roles at or below the user's own.
+  const combinedOptions = useMemo(
+    () =>
+      scopeOptions
+        .map((opt) => ({
+          key: `${opt.level}:${opt.id}`,
+          level: opt.level,
+          id: opt.id,
+          label: opt.label,
+          myRole: opt.myRole,
+        }))
+        .sort((a, b) => a.label.localeCompare(b.label)),
+    [scopeOptions],
+  );
+  const noScopes = combinedOptions.length === 0;
+  const [selectedKey, setSelectedKey] = useState<string>(combinedOptions[0]?.key ?? "");
+  useEffect(() => {
+    if (noScopes) {
+      if (selectedKey !== "") setSelectedKey("");
+      return;
+    }
+    if (!combinedOptions.some((opt) => opt.key === selectedKey)) {
+      setSelectedKey(combinedOptions[0]?.key ?? "");
+    }
+  }, [combinedOptions, noScopes, selectedKey]);
+  const selected = combinedOptions.find((o) => o.key === selectedKey) ?? null;
+  const maxRole = selected?.myRole ?? "reader";
+  const allowedRoles = ALL_ROLES.filter((r) => rankOrZero(r) <= rankOrZero(maxRole));
+  const [role, setRole] = useState<DocoRole>(maxRole);
+  useEffect(() => {
+    if (!allowedRoles.includes(role)) setRole(maxRole);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedKey]);
+
   const grantsPayload = useMemo(() => {
-    return JSON.stringify(
-      Object.entries(selected).map(([key, role]) => {
-        const [level, target_id] = key.split(":");
-        return { level, target_id, role };
-      }),
-    );
-  }, [selected]);
-
-  const noScopes = scopeOptions.length === 0;
+    if (!selected) return "[]";
+    return JSON.stringify([{ level: selected.level, target_id: selected.id, role }]);
+  }, [selected, role]);
 
   return (
     <Card>
       <CardHeader>
         <CardTitle>Generate API key</CardTitle>
-        <CardDescription>
-          Bound to your account. Pick which orgs / docos this key can reach and at what role — you
-          can't grant a role higher than the one you yourself hold.
-        </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
-        <Form method="post" className="space-y-4" data-testid="generate-api-key-form">
+        <Form method="post" className="flex flex-col gap-3" data-testid="generate-api-key-form">
           <input type="hidden" name="intent" value="mint" />
           <input type="hidden" name="grants" value={grantsPayload} />
 
@@ -205,44 +229,54 @@ function GenerateKeyCard({
             />
           </label>
 
-          <div className="space-y-2">
-            <div className="text-xs uppercase tracking-wide text-muted-foreground">Scope</div>
-            {noScopes ? (
-              <p className="text-sm text-muted-foreground">
-                You aren't a member of any org or doco yet. Join or create one to mint a key.
-              </p>
-            ) : (
-              <div className="space-y-1.5">
-                {scopeOptions.map((opt) => (
-                  <ScopeRow
-                    key={`${opt.level}:${opt.id}`}
-                    opt={opt}
-                    role={selected[`${opt.level}:${opt.id}`] ?? null}
-                    onChange={(role) => {
-                      setSelected((prev) => {
-                        const key = `${opt.level}:${opt.id}`;
-                        if (role === null) {
-                          const next = { ...prev };
-                          delete next[key];
-                          return next;
-                        }
-                        return { ...prev, [key]: role };
-                      });
-                    }}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
-
-          <button
-            type="submit"
-            data-testid="api-key-submit"
-            disabled={submitting || noScopes || !label.trim() || Object.keys(selected).length === 0}
-            className="neu-button bg-primary text-primary-foreground hover:opacity-90 rounded-md px-4 py-2 text-sm font-semibold disabled:opacity-50"
-          >
-            {submitting ? "Generating…" : "Generate API key"}
-          </button>
+          {noScopes ? (
+            <p className="text-sm text-muted-foreground">
+              You aren't a member of any org or doco yet. Join or create one to mint a key.
+            </p>
+          ) : (
+            <div className="flex flex-wrap items-end justify-start gap-3">
+              <label className="flex flex-col gap-1 text-sm">
+                <span className="text-xs uppercase tracking-wide text-muted-foreground">
+                  Org / Doco
+                </span>
+                <select
+                  value={selectedKey}
+                  onChange={(e) => setSelectedKey(e.currentTarget.value)}
+                  data-testid="api-key-target"
+                  className="rounded-md px-3 py-2"
+                >
+                  {combinedOptions.map((opt) => (
+                    <option key={opt.key} value={opt.key}>
+                      [{opt.level}] {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="flex flex-col gap-1 text-sm">
+                <span className="text-xs uppercase tracking-wide text-muted-foreground">Role</span>
+                <select
+                  value={role}
+                  onChange={(e) => setRole(e.currentTarget.value as DocoRole)}
+                  data-testid="api-key-role"
+                  className="rounded-md px-3 py-2"
+                >
+                  {allowedRoles.map((r) => (
+                    <option key={r} value={r}>
+                      {r}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button
+                type="submit"
+                data-testid="api-key-submit"
+                disabled={submitting || !label.trim() || !selected}
+                className="neu-button bg-primary text-primary-foreground hover:opacity-90 rounded-md px-4 py-2 text-sm font-semibold disabled:opacity-50"
+              >
+                {submitting ? "Generating…" : "Generate API key"}
+              </button>
+            </div>
+          )}
         </Form>
 
         {error ? (
@@ -254,52 +288,6 @@ function GenerateKeyCard({
         {minted ? <MintedReveal minted={minted} /> : null}
       </CardContent>
     </Card>
-  );
-}
-
-function ScopeRow({
-  opt,
-  role,
-  onChange,
-}: {
-  opt: ScopeOption;
-  role: DocoRole | null;
-  onChange: (role: DocoRole | null) => void;
-}) {
-  const checked = role !== null;
-  // Show the role dropdown always so the user can see (and tweak) the
-  // default before checking the box. The dropdown is disabled until the
-  // row is selected — changing it then auto-checks the row.
-  const effectiveRole = role ?? opt.myRole;
-  return (
-    <div className="flex items-center gap-3">
-      <label className="flex flex-1 items-center gap-2 text-sm">
-        <input
-          type="checkbox"
-          checked={checked}
-          data-testid={`scope-${opt.level}-${opt.id}`}
-          onChange={(e) => onChange(e.currentTarget.checked ? opt.myRole : null)}
-        />
-        <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
-          {opt.level}
-        </span>
-        <span className="font-mono">{opt.label}</span>
-        <span className="text-xs text-muted-foreground">(you: {opt.myRole})</span>
-      </label>
-      <select
-        value={effectiveRole}
-        disabled={!checked}
-        data-testid={`scope-role-${opt.level}-${opt.id}`}
-        onChange={(e) => onChange(e.currentTarget.value as DocoRole)}
-        className="rounded-md px-2 py-1 text-xs disabled:opacity-50"
-      >
-        {ALL_ROLES.filter((r) => rankOrZero(r) <= rankOrZero(opt.myRole)).map((r) => (
-          <option key={r} value={r}>
-            {r}
-          </option>
-        ))}
-      </select>
-    </div>
   );
 }
 
