@@ -27,7 +27,7 @@
 // accessible — no re-auth needed). Cookie callers see `oauth_grant:
 // null`.
 
-import { listAllDocos, withClient } from "@doco/db";
+import { getDocoByIdOrHandle, listAllDocos, withClient } from "@doco/db";
 import {
   canAccessDoco,
   getOauthTokenForRequest,
@@ -35,7 +35,12 @@ import {
 } from "~/lib/doco-access.server";
 import { CANONICAL_INSTRUCTIONS } from "~/lib/instructions.server";
 import type { ValidAccessToken } from "~/lib/oauth-server.server";
-import { getCurrentPrincipalAsync } from "~/lib/session.server";
+import {
+  type ProjectToken,
+  isProjectToken,
+  validateProjectToken,
+} from "~/lib/project-tokens.server";
+import { extractBearer, getCurrentPrincipalAsync } from "~/lib/session.server";
 
 interface ArticleSummary {
   id: string;
@@ -60,6 +65,30 @@ interface DocoPrimitiveSet {
 }
 
 export async function loader({ request }: { request: Request }) {
+  // Project-token bearers get a focused bootstrap: principal=null,
+  // oauth_grant=null, a project_token_grant marker, and primitives for
+  // the single Doco the token is scoped to. This is the read-only
+  // committed-credential path — distinct from the per-user OAuth flow.
+  const projectToken = await getProjectTokenFromRequest(request);
+  if (projectToken) {
+    const docoPrimitives = await loadDocoPrimitivesForProjectToken(projectToken);
+    return Response.json({
+      principal: null,
+      canonical_instructions_url: new URL(
+        "/protocol/canonical-instructions",
+        new URL(request.url).origin,
+      ).toString(),
+      canonical_instructions: CANONICAL_INSTRUCTIONS,
+      oauth_grant: null,
+      project_token_grant: {
+        doco_id: projectToken.doco_id,
+        role: "reader",
+      },
+      doco_primitives: docoPrimitives,
+      doco_constitutions: docoPrimitives,
+    });
+  }
+
   const me = await getCurrentPrincipalAsync(request);
   const oauthGrant = await getOauthTokenForRequest(request);
 
@@ -83,10 +112,55 @@ export async function loader({ request }: { request: Request }) {
           expires_at: oauthGrant.expires_at.toISOString(),
         }
       : null,
+    project_token_grant: null,
     doco_primitives: docoPrimitives,
     // Legacy alias for agents pinned to the old bootstrap field name.
     doco_constitutions: docoPrimitives,
   });
+}
+
+async function getProjectTokenFromRequest(request: Request): Promise<ProjectToken | null> {
+  const bearer = extractBearer(request);
+  if (!bearer || !isProjectToken(bearer)) return null;
+  return await validateProjectToken(bearer);
+}
+
+async function loadDocoPrimitivesForProjectToken(token: ProjectToken): Promise<DocoPrimitiveSet[]> {
+  const d = await getDocoByIdOrHandle(token.doco_id);
+  if (!d) return [];
+  const [guidance, nodeAuthoring] = await withClient((c) =>
+    Promise.all([
+      c.query<{ id: string; summary: string; lifecycle: string | null; body_md: string | null }>(
+        `SELECT id, summary, lifecycle, body_md
+           FROM guidance_primitives
+          WHERE doco_id = $1
+            AND COALESCE(lifecycle, 'active') = 'active'
+          ORDER BY created_at DESC`,
+        [d.id],
+      ),
+      c.query<{ id: string; summary: string; lifecycle: string | null; body_md: string | null }>(
+        `SELECT id, summary, lifecycle, body_md
+           FROM neuron_authoring_primitives
+          WHERE doco_id = $1
+            AND COALESCE(lifecycle, 'active') = 'active'
+          ORDER BY created_at DESC`,
+        [d.id],
+      ),
+    ]),
+  );
+  if (guidance.rows.length === 0 && nodeAuthoring.rows.length === 0 && d.goal.length === 0) {
+    return [];
+  }
+  return [
+    {
+      doco_id: d.id,
+      doco_handle: d.handle,
+      goal: d.goal,
+      owner_id: d.owner_id,
+      guidance_primitives: guidance.rows,
+      neuron_authoring_primitives: nodeAuthoring.rows,
+    },
+  ];
 }
 
 async function loadDocoPrimitivesForPrincipal(

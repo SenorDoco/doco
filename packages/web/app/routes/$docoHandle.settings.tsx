@@ -312,6 +312,21 @@ export default function DocoSettings({
 
         <Card>
           <CardHeader>
+            <CardTitle>Project tokens</CardTitle>
+            <CardDescription>
+              Mint a committable, read-only token so agents that clone the repo can read this Doco
+              without OAuth. Only suitable when repo-readers may also be Doco-readers.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Link to={`/${handle}/project-tokens`} className="text-sm text-primary hover:underline">
+              Manage project tokens →
+            </Link>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
             <CardTitle>Default perspective</CardTitle>
             <CardDescription>Choose the overview that opens first for this Doco.</CardDescription>
           </CardHeader>

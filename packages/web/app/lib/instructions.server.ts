@@ -116,6 +116,33 @@ just because this agent process did not start with credentials. First
 check the shared repo-root \`.env\`; if another same-checkout agent
 already authorized, reuse that token and continue.
 
+### Persisting credentials across containers, clones, machines
+
+After a successful OAuth completion, **surface to the user once** that
+the auth dance repeats on every fresh container or new clone unless
+they persist the credential. Two options the protocol supports:
+
+1. **DOCO_ACCESS as a runtime environment variable.** The user sets
+   it on the *remote execution environment* (Claude Code on the Web
+   environment vars, GitHub Codespaces secrets, Replit secrets, etc.).
+   Fresh containers inherit it without prompting; the MCP server
+   reads it from \`process.env\` when no \`.env\` value is present.
+   Private to the user; never commit.
+
+2. **Committable project tokens.** The Doco owner mints a read-only
+   token at \`/<handle>/project-tokens\` (owner-only) and commits it
+   to \`.doco/project-tokens.json\` as
+   \`{"<handle>": "doco_pt_<token>"}\`. The MCP server reads this file
+   automatically as a fallback for \`DOCO_ACCESS\`. Only suitable when
+   the Doco's contents are OK to be readable by anyone with read
+   access to the repo — minting requires an explicit confirmation in
+   the UI to that effect. Tokens are reader-only, indefinite TTL,
+   revoke from the same page.
+
+Both are optional. Surface them once, immediately after each
+successful auth, then continue with the substantive answer. Do not
+re-prompt on every turn.
+
 If the Doco is **public**, you can skip OAuth entirely. Either way,
 the endpoint shapes are:
 
