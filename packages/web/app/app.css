@@ -204,14 +204,20 @@ button[class*="bg-primary"]:active {
   box-shadow: inset 1px 0 0 color-mix(in oklch, white 75%, transparent);
 }
 /* `border border-border` (1px on all four sides — e.g. the graph
-   canvas container, neuron-dialog lifecycle buttons, etc.). Apply
-   the platform-wide etched edge token so any 4-sided bordered box
-   matches `.neu-surface` cards by default.
+   canvas container, neuron-dialog lifecycle buttons, perspective
+   tabs, etc.). The visible `border-border` line at 22% alpha already
+   draws the dark side of the edge on all four sides, so the etched
+   look only needs the top-left HIGHLIGHT on top of it. Painting the
+   full `--neu-etched` token here (both insets) stacks the dark inset
+   on bottom-right against the existing border line, reading as a
+   doubled-up thick edge on the right and bottom — visibly heavier
+   than `.neu-surface` cards where the border is transparent and the
+   inset IS the edge. It also broke the perspective tabs: each tab's
+   bottom-right dark inset painted over the next tab's left border,
+   turning the overlapping pill-stack into a row of separated buttons.
    Excluded: `.neu-button` and `bg-primary` carry their own raised
-   treatments; `.neu-surface*` and `.neu-floating` set the same
-   token explicitly inside @layer utilities and would double-paint
-   without the exclusion (their class rule has lower specificity than
-   this attribute selector). */
+   treatments; `.neu-surface*` and `.neu-floating` set their own
+   shadow in @layer utilities. */
 [class~="border"][class~="border-border"]:not([class~="neu-button"]):not(
     [class~="neu-pressed"]
   ):not([class*="bg-primary"]):not([class~="border-b"]):not([class~="border-t"]):not(
@@ -219,7 +225,7 @@ button[class*="bg-primary"]:active {
   ):not([class~="border-r"]):not([class~="neu-surface"]):not([class~="neu-surface-strong"]):not(
     [class~="neu-surface-interactive"]
   ):not([class~="neu-floating"]) {
-  box-shadow: var(--neu-etched);
+  box-shadow: inset 1px 1px 0 color-mix(in oklch, white 75%, transparent);
 }
 
 @layer utilities {
