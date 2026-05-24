@@ -234,48 +234,54 @@ function GenerateKeyCard({
               You aren't a member of any org or doco yet. Join or create one to mint a key.
             </p>
           ) : (
-            <div className="flex flex-wrap items-end justify-start gap-3">
-              <label className="flex flex-col gap-1 text-sm">
-                <span className="text-xs uppercase tracking-wide text-muted-foreground">
-                  Org / Doco
-                </span>
-                <select
-                  value={selectedKey}
-                  onChange={(e) => setSelectedKey(e.currentTarget.value)}
-                  data-testid="api-key-target"
-                  className="rounded-md px-3 py-2"
+            <>
+              <div className="flex flex-wrap items-end justify-start gap-3">
+                <label className="flex flex-col gap-1 text-sm">
+                  <span className="text-xs uppercase tracking-wide text-muted-foreground">
+                    Org / Doco
+                  </span>
+                  <select
+                    value={selectedKey}
+                    onChange={(e) => setSelectedKey(e.currentTarget.value)}
+                    data-testid="api-key-target"
+                    className="rounded-md px-3 py-2"
+                  >
+                    {combinedOptions.map((opt) => (
+                      <option key={opt.key} value={opt.key}>
+                        [{opt.level}] {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="flex flex-col gap-1 text-sm">
+                  <span className="text-xs uppercase tracking-wide text-muted-foreground">
+                    Role
+                  </span>
+                  <select
+                    value={role}
+                    onChange={(e) => setRole(e.currentTarget.value as DocoRole)}
+                    data-testid="api-key-role"
+                    className="rounded-md px-3 py-2"
+                  >
+                    {allowedRoles.map((r) => (
+                      <option key={r} value={r}>
+                        {r}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              <div className="flex justify-end">
+                <button
+                  type="submit"
+                  data-testid="api-key-submit"
+                  disabled={submitting || !label.trim() || !selected}
+                  className="neu-button bg-primary text-primary-foreground hover:opacity-90 rounded-md px-4 py-2 text-sm font-semibold disabled:opacity-50"
                 >
-                  {combinedOptions.map((opt) => (
-                    <option key={opt.key} value={opt.key}>
-                      [{opt.level}] {opt.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="flex flex-col gap-1 text-sm">
-                <span className="text-xs uppercase tracking-wide text-muted-foreground">Role</span>
-                <select
-                  value={role}
-                  onChange={(e) => setRole(e.currentTarget.value as DocoRole)}
-                  data-testid="api-key-role"
-                  className="rounded-md px-3 py-2"
-                >
-                  {allowedRoles.map((r) => (
-                    <option key={r} value={r}>
-                      {r}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <button
-                type="submit"
-                data-testid="api-key-submit"
-                disabled={submitting || !label.trim() || !selected}
-                className="neu-button bg-primary text-primary-foreground hover:opacity-90 rounded-md px-4 py-2 text-sm font-semibold disabled:opacity-50"
-              >
-                {submitting ? "Generating…" : "Generate API key"}
-              </button>
-            </div>
+                  {submitting ? "Generating…" : "Generate API key"}
+                </button>
+              </div>
+            </>
           )}
         </Form>
 
