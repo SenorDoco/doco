@@ -196,12 +196,19 @@ button[class*="bg-primary"]:active {
 /* `border border-border` (1px on all four sides — e.g. the graph
    canvas container). Add a top-left inset highlight so the box reads
    as etched-with-light-from-top-left, matching `.neu-surface` cards.
-   The dark line is supplied by `border-border` itself. */
+   The dark line is supplied by `border-border` itself.
+   Excluded: `.neu-surface` (and its strong/interactive variants) own
+   their own dual-inset + outer-drop-shadow; without this exclusion
+   this attribute selector (specificity 0,2,0) overrode the
+   `.neu-surface` class rule (0,1,0) on any Card that also carried
+   `border border-border`, swallowing the grounded outer shadow. */
 [class~="border"][class~="border-border"]:not([class~="neu-button"]):not(
     [class~="neu-pressed"]
   ):not([class*="bg-primary"]):not([class~="border-b"]):not([class~="border-t"]):not(
     [class~="border-l"]
-  ):not([class~="border-r"]) {
+  ):not([class~="border-r"]):not([class~="neu-surface"]):not(
+    [class~="neu-surface-strong"]
+  ):not([class~="neu-surface-interactive"]):not([class~="neu-floating"]) {
   box-shadow: inset 1px 1px 0 color-mix(in oklch, white 75%, transparent);
 }
 
@@ -227,8 +234,15 @@ button[class*="bg-primary"]:active {
   .neu-surface-strong,
   .neu-surface-interactive {
     border-color: transparent;
-    box-shadow: inset 1px 1px 0 color-mix(in oklch, white 75%, transparent), inset -1px -1px 0
-      color-mix(in oklch, var(--color-foreground) 22%, transparent);
+    /* Etched insets (top-left light, bottom-right shade) draw the
+       card's edge; the outer drop shadow grounds it so the brightness
+       on the lit corner is balanced by a matching shadow falling away
+       to the bottom-right. Without the outer shadow the inset dark
+       line at 22% alpha reads as nearly invisible against the page
+       background, so cards looked unfinished on the right + bottom. */
+    box-shadow: inset 1px 1px 0 color-mix(in oklch, white 75%, transparent),
+      inset -1px -1px 0 color-mix(in oklch, var(--color-foreground) 22%, transparent),
+      2px 2px 6px color-mix(in oklch, var(--color-foreground) 7%, transparent);
   }
 
   /* Clickable variant — same edge at rest. Hover shifts the
