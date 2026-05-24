@@ -262,8 +262,15 @@ export async function computeFilterFacets(c: PoolClient, docoId: string): Promis
     lifecycle: Array.from(lifecycleFacets.entries())
       .map(([value, facet]) => ({ value, count: facet.count, updatedAt: facet.updatedAt }))
       .sort((a, b) => {
-        if (a.value === "active") return -1;
-        if (b.value === "active") return 1;
+        // Canonical lifecycle progression — render in the same order
+        // everywhere so the stats card, the filter row, and the audit
+        // panel agree.
+        const order = ["drafting", "proposed", "active", "retired"];
+        const ai = order.indexOf(a.value);
+        const bi = order.indexOf(b.value);
+        if (ai !== -1 && bi !== -1) return ai - bi;
+        if (ai !== -1) return -1;
+        if (bi !== -1) return 1;
         return a.value.localeCompare(b.value);
       }),
     entityType: entityTypeCounts,

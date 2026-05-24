@@ -470,8 +470,10 @@ GET ${baseUrl}/<handle>/api/<type>.txt            # plain-text spec for capture-
 \`\`\`
 
 Capture body specs exist for decisions, intents, actions, logs, rules,
-evals, references, states, ideas, policies, and settings. Principals,
-invites, and audit have dedicated route behavior; don't infer write
+evals, references, states, ideas, policies, settings, and principals.
+Principals expose a smaller surface (create + retire only) — read the
+\`principals.txt\` spec rather than assuming the generic capture body.
+Invites and audit have dedicated route behavior; don't infer write
 bodies for them from the generic capture pattern.
 
 **Capture body convention:** request bodies identify principals by
@@ -522,6 +524,98 @@ error="insufficient_scope"\`. The operation→role table:
     requires \`approver\`
   - Admin (Doco settings, invites, role changes, granting agent
     access) requires \`owner\`
+
+## Project tokens — committable, read-only, no OAuth
+
+OAuth tokens are per-user secrets. Some Docos don't need per-user
+secrets: when the Doco's contents are OK to be readable by anyone
+who can read the repo, the Doco's **owner** can mint a "project
+token" and commit it to the repo. Any agent cloning the repo then
+reads the Doco without OAuth.
+
+### When to suggest this to the user
+
+After completing OAuth once, mention it as one of two options for
+avoiding the auth dance on every fresh container / new clone (the
+other is setting \`DOCO_ACCESS\` as a runtime environment variable;
+see the canonical instructions). Don't make the choice for the
+user — surface both, let them pick.
+
+### Mint flow (Doco owner only, requires explicit confirmation)
+
+1. Open \`${baseUrl}/<handle>/project-tokens\`.
+2. Check the "I understand that anyone with read access to a repo
+   where this token is committed will be able to read this Doco"
+   box. The mint button stays disabled until you do.
+3. Click "Mint project token". The full token body is shown
+   **once** — copy it now. The page never displays the body again.
+
+The API equivalent:
+
+\`\`\`
+POST ${baseUrl}/<handle>/api/project-tokens.json
+Authorization: Bearer doco_at_<owner's-oauth-token>
+Content-Type: application/json
+
+{ "confirm_repo_readable": true, "label": "optional label" }
+\`\`\`
+
+Response:
+
+\`\`\`
+{
+  "token":   "doco_pt_<base64url-32-bytes>",
+  "summary": { ... metadata, no token body ... },
+  "install_hint": "<markdown for the user>"
+}
+\`\`\`
+
+### Commit it
+
+Save the token at \`.doco/project-tokens.json\` in the repo root:
+
+\`\`\`json
+{
+  "<doco-handle>": "doco_pt_<token>"
+}
+\`\`\`
+
+Commit and push. Any agent that clones the repo and runs the
+bundled MCP server (\`.agents/doco-mcp-server.mjs\`) will use this
+token automatically when no \`DOCO_ACCESS\` is set in \`.env\`.
+
+### Use it
+
+\`\`\`
+GET ${baseUrl}/<handle>/search.json?q=<query>
+Authorization: Bearer doco_pt_<token>
+\`\`\`
+
+The token is fixed at **reader** role on exactly one Doco. Writes
+(POST/PATCH/DELETE) fail with HTTP 403 \`insufficient_scope\`. The
+canonical bootstrap (\`GET /api/v1/agent-bootstrap.json\`) returns
+the Doco's policies with \`principal: null\` and a
+\`project_token_grant: { doco_id, role: "reader" }\` marker so
+agents know which path they're on.
+
+### Revoke
+
+Same page or:
+
+\`\`\`
+DELETE ${baseUrl}/<handle>/api/project-tokens.json?id=<8-char-suffix>
+Authorization: Bearer doco_at_<owner's-oauth-token>
+\`\`\`
+
+Revoking takes effect immediately. The committed token in the repo
+becomes inert — remove or replace it in the next commit.
+
+### Don't conflate project tokens with OAuth
+
+\`doco_pt_…\` and \`doco_at_…\` are different credentials. Project
+tokens have no refresh, no expiry, no collaborator identity, no
+write scope. If your runtime needs to capture neurons or edit the
+Doco, OAuth is still the path — project tokens cannot widen.
 
 ## Refreshing
 

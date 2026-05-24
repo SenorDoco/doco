@@ -16,54 +16,49 @@
 // shortcut WITHOUT widening the credential surface — any other
 // name request is rejected.
 
-import { withClient } from "@doco/db";
+import { getCollaboratorByGithubLogin, withClient } from "@doco/db";
 import { Form, redirect } from "react-router";
 import { Breadcrumb } from "~/components/breadcrumb";
-import { findPrincipalByUsername, setSessionCookie } from "~/lib/session.server";
+import { setSessionCookie } from "~/lib/session.server";
 
 const TEST_USERNAMES = ["doco-test-harness", "doco-test-alice", "doco-test-bob"] as const;
 type TestUsername = (typeof TEST_USERNAMES)[number];
 const TEST_USERNAME = TEST_USERNAMES[0];
 
-async function ensureTestPrincipal(name: TestUsername): Promise<string> {
-  const existing = await findPrincipalByUsername(name);
-  if (existing) {
-    // Repair the `data` column if the row was minted by an older version
-    // of this route that omitted entity_type — the indexer NULL-checks
-    // entity_fts.entity_type, so a malformed principal blocks every
-    // future Doco-create rebuild on this host.
-    await withClient(async (c) => {
-      await c.query(
-        `UPDATE principals
-            SET data = jsonb_set(
-              COALESCE(data, '{}'::jsonb),
-              '{entity_type}',
-              '"principal"'::jsonb,
-              true
-            )
-          WHERE id = $1 AND (data ->> 'entity_type') IS DISTINCT FROM 'principal'`,
-        [existing.id],
-      );
-    });
-    return existing.id;
-  }
-  const id = `principal_${ulid()}`;
-  const data = JSON.stringify({
-    id,
-    neuron_type: "principal",
-    name,
-    note: "Lazy-created by /auth/dev-signin for testing. Has no doco_users grants by default.",
-  });
+/**
+ * Ensure a collaborator row exists for the test name and return its id.
+ *
+ * Post-migration-005 the session cookie holds a `collaborator_<ulid>`
+ * (per session.server.ts) — sign-in is identity, not principal-neuron.
+ * Earlier versions of this route inserted into `principals`, which
+ * silently broke when migration 020 made principals Doco-scoped (the
+ * NOT NULL doco_id FK rejects rows with no Doco). Inserting into
+ * `collaborators` is the right home for "the runtime that's holding
+ * this session," matching the GitHub OAuth path.
+ */
+async function ensureTestCollaborator(githubLogin: TestUsername): Promise<string> {
+  const existing = await getCollaboratorByGithubLogin(githubLogin);
+  if (existing) return existing.id;
+  const id = `collaborator_${ulid()}`;
   await withClient(async (c) => {
     await c.query(
-      `INSERT INTO principals (id, name, data)
-       VALUES ($1, $2, $3::jsonb)
-       ON CONFLICT (name) DO NOTHING`,
-      [id, name, data],
+      `INSERT INTO collaborators (id, kind, github_login, data)
+       VALUES ($1, 'person', $2, $3::jsonb)
+       ON CONFLICT (id) DO NOTHING`,
+      [
+        id,
+        githubLogin,
+        JSON.stringify({
+          id,
+          kind: "person",
+          github_login: githubLogin,
+          note: "Lazy-created by /auth/dev-signin for testing.",
+        }),
+      ],
     );
   });
-  const reloaded = await findPrincipalByUsername(name);
-  if (!reloaded) throw new Error("ensureTestPrincipal: post-insert lookup failed");
+  const reloaded = await getCollaboratorByGithubLogin(githubLogin);
+  if (!reloaded) throw new Error("ensureTestCollaborator: post-insert lookup failed");
   return reloaded.id;
 }
 
@@ -111,14 +106,14 @@ export async function action({ request }: { request: Request }) {
       { status: 403 },
     );
   }
-  const principalId = await ensureTestPrincipal(requested);
+  const collaboratorId = await ensureTestCollaborator(requested);
   const next = form.get("next");
   const target =
     typeof next === "string" && next.startsWith("/") && !next.startsWith("//")
       ? next
       : "/dashboard";
   return redirect(target, {
-    headers: { "Set-Cookie": setSessionCookie(principalId) },
+    headers: { "Set-Cookie": setSessionCookie(collaboratorId) },
   });
 }
 

@@ -1168,12 +1168,12 @@ export async function updateEntity(opts: {
     }
   };
 
-  if (typeNamedColumn) {
+  if (typeNamedColumn && allowedFields.includes(typeNamedColumn)) {
     // Migrated neuron: the type-named prose field replaces summary +
     // body_md (+ title on intent, name/description on eval).
     const v = normalizedPatch[typeNamedColumn];
     setScalar(typeNamedColumn, typeof v === "string" ? v.trim() : undefined);
-  } else {
+  } else if (!typeNamedColumn && allowedFields.includes("summary")) {
     // Policy / principal still use summary.
     setScalar(
       "summary",
@@ -1675,6 +1675,8 @@ export interface ActionDraft {
   decision_ids?: string[];
   /** Optional: entity ids this action follows (chronological / causal). */
   follows?: string[];
+  /** Optional: rule ids that gate this action (BPMN-style policy guards). */
+  gated_by?: string[];
   /** Optional: verb-specific inputs (any shape). */
   inputs?: unknown;
   /** Optional: verb-specific outputs (any shape). */
@@ -1711,6 +1713,9 @@ export async function captureAction(
   const intentIds: string[] = Array.isArray(draft.intent_ids) ? draft.intent_ids : [];
   const decisionIds: string[] = Array.isArray(draft.decision_ids) ? draft.decision_ids : [];
   const follows: string[] = Array.isArray(draft.follows) ? draft.follows : [];
+  const gatedBy: string[] = Array.isArray(draft.gated_by)
+    ? draft.gated_by.filter((r): r is string => typeof r === "string" && r.startsWith("rule_"))
+    : [];
 
   const id = `action_${generateUlid()}`;
   const actionText = draft.action.trim();
@@ -1730,6 +1735,7 @@ export async function captureAction(
     ...(intentIds.length > 0 ? { intent_ids: intentIds } : {}),
     ...(decisionIds.length > 0 ? { decision_ids: decisionIds } : {}),
     ...(follows.length > 0 ? { follows } : {}),
+    ...(gatedBy.length > 0 ? { gated_by: gatedBy } : {}),
     ...(draft.inputs !== undefined ? { inputs: draft.inputs } : {}),
     ...(draft.outputs !== undefined ? { outputs: draft.outputs } : {}),
     performed_at: now,

@@ -65,6 +65,9 @@ export default [
   route("api", "routes/agent-probes[.]ts.tsx", { id: "probe-api" }),
   route("api/docs", "routes/agent-probes[.]ts.tsx", { id: "probe-api-docs" }),
   route("dashboard", "routes/dashboard.tsx"),
+  // Admin / staff-only dashboards. Auth check is in the loader of
+  // each route file — the route table doesn't gate, it just lists.
+  route("admin/agent-usage", "routes/admin.agent-usage.tsx"),
   route("docos", "routes/docos._index.tsx"),
   // Auth
   route("sign-in", "routes/sign-in.tsx"),
@@ -138,6 +141,9 @@ export default [
   // suffixed) handle.
   route("api/v1/orgs.json", "routes/api.v1.orgs[.]json.tsx"),
   route("api/v1/docos.json", "routes/api.v1.docos[.]json.tsx"),
+  // Per-user UI preferences (graph auto-reorder, future flags). Stored
+  // on collaborators.data.preferences; auth-gated to the signed-in user.
+  route("api/v1/me/preferences.json", "routes/api.v1.me.preferences[.]json.tsx"),
   // Agent bootstrap. Returns the canonical-instructions prose plus the
   // Doco policies the caller can read. Auth-aware: anonymous callers
   // get public-Doco policies only.
@@ -193,6 +199,8 @@ export default [
   ),
   route(":docoHandle/invites", "routes/$docoHandle.invites.tsx"),
   route(":docoHandle/api/invites.json", "routes/$docoHandle.api.invites[.]json.tsx"),
+  route(":docoHandle/project-tokens", "routes/$docoHandle.project-tokens.tsx"),
+  route(":docoHandle/api/project-tokens.json", "routes/$docoHandle.api.project-tokens[.]json.tsx"),
   // Visualization perspectives — tabs above the overview body.
   // Picker page lists builtin + user-owned perspectives; the API
   // route handles attach/detach/set-default form posts. Both must
@@ -221,6 +229,7 @@ export default [
   // Special-cased capture routes that need custom logic — listed BEFORE
   // the generic `:type.json` dispatcher so the static segment wins.
   route(":docoHandle/api/principals.json", "routes/$docoHandle.api.principals[.]json.tsx"),
+  route(":docoHandle/api/principals/:id.json", "routes/$docoHandle.api.principals.$id[.]json.tsx"),
   route(":docoHandle/api/settings.json", "routes/$docoHandle.api.settings[.]json.tsx"),
   route(":docoHandle/api/audit.json", "routes/$docoHandle.api.audit[.]json.tsx"),
   // Policies are not neurons; they live on a

@@ -18,6 +18,7 @@
 // lane vertical offset.
 
 import { Handle, MarkerType, type MiniMapNodeProps, Position } from "@xyflow/react";
+import { Maximize2, Minimize2 } from "lucide-react";
 import {
   type CSSProperties,
   type ComponentType,
@@ -30,12 +31,25 @@ import { useNavigate } from "react-router";
 import type { OverviewGraphLink } from "~/components/overview-graph";
 import type { BpmnLane, BpmnNode, BpmnShape } from "~/lib/bpmn-perspective.server";
 import {
+  computeDepthFromCenter,
+  hasFocalNode,
+  opacityForDepth,
+  opacityForEdge,
+} from "~/lib/graph-depth";
+import {
   type GraphReferenceItem,
   clearGraphReferences,
   publishGraphReferences,
 } from "~/lib/graph-references";
 import { lifecycleColor, lifecycleLabel, textOnLifecycle } from "~/lib/neuron-colors";
 import "@xyflow/react/dist/style.css";
+
+// MUST stay in sync with the matching exports in
+// `~/lib/bpmn-perspective.server`. Can't import the values here —
+// `.server.ts` modules are stripped from the client bundle, so
+// value-imports from them fail the build.
+const MILESTONE_LANE_ID = "__milestones__";
+const ARTIFACTS_LANE_ID = "__artifacts__";
 
 interface BpmnPerspectiveProps {
   lanes: BpmnLane[];
@@ -49,9 +63,39 @@ interface BpmnPerspectiveProps {
    * shown.
    */
   visibleLifecycles?: Set<string>;
+  /**
+   * Lifecycles present in the underlying data. Drives which
+   * checkboxes appear in the in-canvas filter overlay. Required when
+   * `visibleLifecycles` is provided so the overlay can render the
+   * controls.
+   */
+  availableLifecycles?: Iterable<string>;
+  /** Called when the user toggles a lifecycle stage. */
+  onLifecycleToggle?: (lifecycle: string) => void;
+  /**
+   * When set, the BPMN canvas fades non-neighbours of this neuron
+   * based on BFS depth (1st-degree solid, 2nd 75%, 3rd 50%, 4+ 25%).
+   * Edges fade with their deepest endpoint. When null/undefined,
+   * every node and edge renders at full opacity.
+   */
+  centerId?: string | null;
+  isFullscreen?: boolean;
+  onToggleFullscreen?: () => void;
 }
 
 const LANE_HEIGHT = 140;
+// The milestone band runs perpendicular to the lanes in BPMN, so it
+// reads as a phase ribbon rather than a swim lane. Keep it compact so
+// it doesn't compete visually with the actor lanes below.
+const MILESTONE_BAND_HEIGHT = 90;
+const MILESTONE_NODE_HEIGHT = 44;
+const MILESTONE_NODE_WIDTH = 120;
+// The artifacts band sits below the actor lanes and holds References,
+// Evals, Ideas, and Rules — the BPMN data objects / annotations /
+// business-rule tasks that sit *alongside* the flow rather than in a
+// swim lane. Slightly taller than the milestone band so the documents
+// inside don't crowd, but still shorter than an actor lane.
+const ARTIFACTS_BAND_HEIGHT = 120;
 const LANE_LABEL_WIDTH = 140;
 const NODE_WIDTH = 140;
 const NODE_HEIGHT = 60;
@@ -70,6 +114,12 @@ const MAX_GRAPH_REFERENCES = 120;
  * default size so existing layouts don't shift unexpectedly.
  */
 function sizeForNode(node: BpmnNode): { width: number; height: number } {
+  // Milestones are a compact label band, not a flow node — keep them
+  // small and uniform regardless of label length (the title still
+  // wraps inside via line-clamp).
+  if (node.shape === "milestone") {
+    return { width: MILESTONE_NODE_WIDTH, height: MILESTONE_NODE_HEIGHT };
+  }
   const label = node.name ?? "";
   const N = Math.max(label.length, 1);
   const CHAR_W = 5.5; // approx px per char at 10px font, leading-tight
@@ -102,6 +152,7 @@ interface FlowModule {
   ReactFlow: typeof import("@xyflow/react").ReactFlow;
   Background: typeof import("@xyflow/react").Background;
   Controls: typeof import("@xyflow/react").Controls;
+  ControlButton: typeof import("@xyflow/react").ControlButton;
   MiniMap: typeof import("@xyflow/react").MiniMap;
 }
 
@@ -111,6 +162,11 @@ export function BpmnPerspective({
   links,
   onNeuronClick,
   visibleLifecycles,
+  availableLifecycles,
+  onLifecycleToggle,
+  centerId,
+  isFullscreen,
+  onToggleFullscreen,
 }: BpmnPerspectiveProps) {
   const navigate = useNavigate();
   const graphRef = useRef<HTMLDivElement>(null);
@@ -145,6 +201,7 @@ export function BpmnPerspective({
         ReactFlow: mod.ReactFlow,
         Background: mod.Background,
         Controls: mod.Controls,
+        ControlButton: mod.ControlButton,
         MiniMap: mod.MiniMap,
       });
     });
@@ -168,8 +225,8 @@ export function BpmnPerspective({
   }, []);
 
   const layout = useMemo(
-    () => layOutBpmn(filteredLanes, filteredNodes, links),
-    [filteredLanes, filteredNodes, links],
+    () => layOutBpmn(filteredLanes, filteredNodes, links, centerId),
+    [filteredLanes, filteredNodes, links, centerId],
   );
   const nodeTypes = useMemo(
     () => ({
@@ -179,6 +236,8 @@ export function BpmnPerspective({
       bpmnRectangle: BpmnRectangleNode,
       bpmnDocument: BpmnDocumentNode,
       bpmnRounded: BpmnRoundedNode,
+      bpmnTask: BpmnTaskNode,
+      bpmnMilestone: BpmnMilestoneNode,
     }),
     [],
   );
@@ -268,16 +327,85 @@ export function BpmnPerspective({
 
   if (filteredLanes.length === 0) {
     return (
-      <div className="flex h-full min-h-[420px] items-center justify-center rounded-md border border-border text-center text-sm font-medium text-muted-foreground">
+      <div className="flex h-full min-h-0 flex-1 items-center justify-center rounded-md border border-border text-center text-sm font-medium text-muted-foreground">
         So empty
       </div>
     );
   }
 
+  // Sticky lane label rails — overlays anchored to the left edge of the
+  // canvas so the principal label + lane outline stay visible even when
+  // the user pans horizontally past the lane's natural x=0 origin.
+  // Mirrors the EntityGraph rail pattern (entity-graph.tsx ~1045).
+  //
+  // Text + reference badge sizes scale with viewport.zoom so the sticky
+  // label visually matches the in-canvas BpmnLaneNode label (which lives
+  // inside React Flow's zoom transform). Font family/weight/case mirror
+  // the in-canvas styling so the two reads as the same label.
+  const SWIM_RAIL_WIDTH = 32;
+  const RAIL_LABEL_BASE_FONT = 11;
+  const RAIL_BADGE_BASE_FONT = 10;
+  const laneRails = layout.lanes.map((lane) => {
+    const laneTop = lane.y * viewport.zoom + viewport.y;
+    const laneBottom = (lane.y + lane.height) * viewport.zoom + viewport.y;
+    const canvasHeight = graphSize.height || 480;
+    if (laneBottom <= 0 || laneTop >= canvasHeight) return null;
+    const visibleTop = Math.max(0, laneTop);
+    const visibleBottom = Math.min(canvasHeight, laneBottom);
+    const railHeight = Math.max(44, visibleBottom - visibleTop);
+    const top = Math.min(Math.max(0, visibleTop), Math.max(0, canvasHeight - railHeight));
+    const isBand = lane.kind !== "principal";
+    const referenceNumber = referenceNumberByEntityId.get(lane.id);
+    const labelFontPx = RAIL_LABEL_BASE_FONT * viewport.zoom;
+    const badgeFontPx = RAIL_BADGE_BASE_FONT * viewport.zoom;
+    const badgeBox = badgeFontPx * 2;
+    return (
+      <div
+        key={lane.id}
+        className={`absolute left-0 flex items-center justify-center border-r shadow-sm ${
+          isBand ? "border-border bg-card/85" : "border-border bg-card/90"
+        }`}
+        style={{ top, height: railHeight, width: SWIM_RAIL_WIDTH }}
+        data-bpmn-lane-rail={lane.id}
+        title={lane.label}
+      >
+        {referenceNumber ? (
+          <span
+            aria-label={`Graph reference #${referenceNumber}: ${lane.label}`}
+            className="pointer-events-none absolute left-1/2 flex -translate-x-1/2 items-center justify-center rounded-full bg-primary font-bold leading-none text-primary-foreground shadow-sm ring-2 ring-card"
+            style={{
+              top: 4,
+              minWidth: badgeBox,
+              height: badgeBox,
+              padding: `0 ${Math.max(2, badgeFontPx * 0.4)}px`,
+              fontSize: badgeFontPx,
+            }}
+            title={`Graph reference #${referenceNumber}`}
+          >
+            #{referenceNumber}
+          </span>
+        ) : null}
+        <span
+          className="block max-h-full overflow-hidden whitespace-nowrap px-1 font-mono font-semibold text-foreground"
+          style={{
+            writingMode: "vertical-rl",
+            transform: "rotate(180deg)",
+            textOverflow: "ellipsis",
+            fontSize: labelFontPx,
+            textTransform: isBand ? "uppercase" : "none",
+            letterSpacing: isBand ? 0.6 : 0,
+          }}
+        >
+          {lane.label}
+        </span>
+      </div>
+    );
+  });
+
   return (
     <div
       ref={graphRef}
-      className="relative h-full min-h-[420px] w-full overflow-hidden rounded-md border border-border"
+      className="relative h-full min-h-0 w-full flex-1 overflow-hidden rounded-md border border-border"
     >
       {Flow ? (
         <Flow.ReactFlow
@@ -316,7 +444,17 @@ export function BpmnPerspective({
           proOptions={{ hideAttribution: true }}
         >
           <Flow.Background gap={24} size={1} />
-          <Flow.Controls position="top-right" showInteractive={false} />
+          <Flow.Controls position="top-right" showInteractive={false}>
+            {onToggleFullscreen ? (
+              <Flow.ControlButton
+                onClick={onToggleFullscreen}
+                title={isFullscreen ? "Exit full screen" : "Enter full screen"}
+                aria-label={isFullscreen ? "Exit full screen" : "Enter full screen"}
+              >
+                {isFullscreen ? <Minimize2 /> : <Maximize2 />}
+              </Flow.ControlButton>
+            ) : null}
+          </Flow.Controls>
           <Flow.MiniMap
             pannable
             zoomable
@@ -337,6 +475,49 @@ export function BpmnPerspective({
           Loading BPMN view…
         </div>
       )}
+      {Flow ? (
+        <div
+          className="pointer-events-none absolute inset-y-0 left-0 z-10 overflow-hidden"
+          style={{ width: SWIM_RAIL_WIDTH }}
+          aria-hidden="true"
+        >
+          {laneRails}
+        </div>
+      ) : null}
+      {/* Lifecycle filter overlay — lives inside the BPMN canvas so the
+          aside can fill its container vertically (no row above or below
+          the perspective eating space). Only renders when the parent
+          provides controlled lifecycle state + the toggle callback. */}
+      {visibleLifecycles && availableLifecycles && onLifecycleToggle && Flow ? (
+        <div className="pointer-events-none absolute bottom-3 left-3 z-10">
+          <div className="pointer-events-auto flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border border-border bg-card/90 px-2 py-1 text-xs shadow-sm backdrop-blur">
+            <span className="text-muted-foreground">Life cycle:</span>
+            {Array.from(availableLifecycles).map((lifecycle) => {
+              const checked = visibleLifecycles.has(lifecycle);
+              const color = lifecycleColor(lifecycle);
+              const label = lifecycleLabel(lifecycle);
+              return (
+                <label
+                  key={lifecycle}
+                  className="inline-flex cursor-pointer select-none items-center gap-1"
+                  title={label}
+                >
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={() => onLifecycleToggle(lifecycle)}
+                    className="h-3 w-3"
+                    style={{ accentColor: color }}
+                  />
+                  <span className="capitalize" style={{ color }}>
+                    {label}
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -375,9 +556,34 @@ interface BpmnLayout {
   flowNodes: FlowNode[];
   flowEdges: FlowEdge[];
   nodePositions: Map<string, { x: number; y: number }>;
+  /**
+   * Per-lane geometry used to render sticky lane label rails outside
+   * the React Flow canvas. Without these, the principal label (and
+   * lane outline) sits at x=0 inside the canvas content and pans out
+   * of view when the user scrolls right. The overlay rails anchor a
+   * thin label strip to the left edge regardless of viewport pan.
+   */
+  lanes: Array<{
+    id: string;
+    label: string;
+    y: number;
+    height: number;
+    kind: "principal" | "milestone" | "artifacts";
+  }>;
 }
 
-function layOutBpmn(lanes: BpmnLane[], nodes: BpmnNode[], links: OverviewGraphLink[]): BpmnLayout {
+function layOutBpmn(
+  lanes: BpmnLane[],
+  nodes: BpmnNode[],
+  links: OverviewGraphLink[],
+  centerId: string | null | undefined,
+): BpmnLayout {
+  // Per-node BFS depth from the focal neuron — used to fade non-
+  // neighbours. Separate from `computeDepths` below, which is the
+  // topological column position used for left-to-right layout.
+  const focalDepthByNode = computeDepthFromCenter(nodes, links, centerId);
+  const focalActive = hasFocalNode(centerId, nodes);
+
   const byLane = new Map<string, BpmnNode[]>();
   for (const lane of lanes) byLane.set(lane.id, []);
   for (const node of nodes) {
@@ -432,13 +638,16 @@ function layOutBpmn(lanes: BpmnLane[], nodes: BpmnNode[], links: OverviewGraphLi
 
   // Per-node sizes. Compute first so column step and lane height can
   // accommodate the widest / tallest node anywhere in the graph —
-  // keeps vertical alignment of columns across lanes.
+  // keeps vertical alignment of columns across lanes. Milestones use
+  // their own fixed compact size and don't count toward the lane-sizing
+  // max (they live in a shorter band of their own).
   const sizeByNode = new Map<string, { width: number; height: number }>();
   let maxNodeWidth = NODE_WIDTH;
   let maxNodeHeight = NODE_HEIGHT;
   for (const node of nodes) {
     const size = sizeForNode(node);
     sizeByNode.set(node.id, size);
+    if (node.shape === "milestone") continue;
     if (size.width > maxNodeWidth) maxNodeWidth = size.width;
     if (size.height > maxNodeHeight) maxNodeHeight = size.height;
   }
@@ -448,29 +657,50 @@ function layOutBpmn(lanes: BpmnLane[], nodes: BpmnNode[], links: OverviewGraphLi
 
   const flowNodes: FlowNode[] = [];
   const laneYById = new Map<string, number>();
+  const laneHeightById = new Map<string, number>();
   const nodePositions = new Map<string, { x: number; y: number }>();
 
   // Emit lane parent nodes first; child neurons reference parentId.
-  lanes.forEach((lane, laneIndex) => {
-    const laneY = laneIndex * dynLaneHeight;
-    laneYById.set(lane.id, laneY);
+  // Heights vary: milestone and artifacts bands are shorter than an
+  // actor lane, so we accumulate y instead of multiplying by index.
+  let cursorY = 0;
+  for (const lane of lanes) {
+    let laneHeight: number;
+    if (lane.id === MILESTONE_LANE_ID) {
+      laneHeight = MILESTONE_BAND_HEIGHT;
+    } else if (lane.id === ARTIFACTS_LANE_ID) {
+      laneHeight = ARTIFACTS_BAND_HEIGHT;
+    } else {
+      laneHeight = dynLaneHeight;
+    }
+    laneYById.set(lane.id, cursorY);
+    laneHeightById.set(lane.id, laneHeight);
     flowNodes.push({
       id: laneNodeId(lane.id),
       type: "bpmnLane",
-      position: { x: 0, y: laneY },
-      data: { lane, height: dynLaneHeight, width: laneWidth, labelWidth: LANE_LABEL_WIDTH },
+      position: { x: 0, y: cursorY },
+      data: {
+        lane,
+        height: laneHeight,
+        width: laneWidth,
+        labelWidth: LANE_LABEL_WIDTH,
+        isMilestoneBand: lane.id === MILESTONE_LANE_ID,
+        isArtifactsBand: lane.id === ARTIFACTS_LANE_ID,
+      },
       draggable: false,
       selectable: false,
       connectable: false,
       initialWidth: laneWidth,
-      initialHeight: dynLaneHeight,
-      style: { width: laneWidth, height: dynLaneHeight, zIndex: 0, padding: 0 },
+      initialHeight: laneHeight,
+      style: { width: laneWidth, height: laneHeight, zIndex: 0, padding: 0 },
     });
-  });
+    cursorY += laneHeight;
+  }
 
   // Emit neuron nodes nested in their lane.
   for (const lane of lanes) {
     const list = orderedByLane.get(lane.id) ?? [];
+    const containerHeight = laneHeightById.get(lane.id) ?? dynLaneHeight;
     for (const node of list) {
       const column = columnByNode.get(node.id) ?? 0;
       const size = sizeByNode.get(node.id) ?? { width: NODE_WIDTH, height: NODE_HEIGHT };
@@ -478,9 +708,10 @@ function layOutBpmn(lanes: BpmnLane[], nodes: BpmnNode[], links: OverviewGraphLi
       // nodes still line up by their middle on the same x axis.
       const slotX = LANE_LABEL_WIDTH + column * columnStep;
       const x = slotX + (maxNodeWidth - size.width) / 2;
-      const y = (dynLaneHeight - size.height) / 2;
+      const y = (containerHeight - size.height) / 2;
       const laneY = laneYById.get(node.laneId) ?? 0;
       nodePositions.set(node.id, { x, y: laneY + y });
+      const nodeOpacity = focalActive ? opacityForDepth(focalDepthByNode.get(node.id)) : 1;
       flowNodes.push({
         id: node.id,
         type: nodeTypeForShape(node.shape),
@@ -493,7 +724,7 @@ function layOutBpmn(lanes: BpmnLane[], nodes: BpmnNode[], links: OverviewGraphLi
         connectable: false,
         initialWidth: size.width,
         initialHeight: size.height,
-        style: { width: size.width, height: size.height, zIndex: 1 },
+        style: { width: size.width, height: size.height, zIndex: 1, opacity: nodeOpacity },
       });
     }
   }
@@ -502,6 +733,9 @@ function layOutBpmn(lanes: BpmnLane[], nodes: BpmnNode[], links: OverviewGraphLi
   const flowEdges: FlowEdge[] = links
     .filter((link) => nodeSet.has(link.source) && nodeSet.has(link.target))
     .map((link, index) => {
+      const edgeOpacity = focalActive
+        ? opacityForEdge(focalDepthByNode.get(link.source), focalDepthByNode.get(link.target))
+        : 1;
       return {
         id: `${link.source}-${link.target}-${index}`,
         source: link.source,
@@ -513,6 +747,7 @@ function layOutBpmn(lanes: BpmnLane[], nodes: BpmnNode[], links: OverviewGraphLi
         style: {
           stroke: "#262626",
           strokeWidth: 1.75,
+          opacity: edgeOpacity,
         },
         markerEnd: {
           type: MarkerType.ArrowClosed,
@@ -523,7 +758,19 @@ function layOutBpmn(lanes: BpmnLane[], nodes: BpmnNode[], links: OverviewGraphLi
       };
     });
 
-  return { flowNodes, flowEdges, nodePositions };
+  const laneGeometry: BpmnLayout["lanes"] = lanes.map((lane) => {
+    const y = laneYById.get(lane.id) ?? 0;
+    const height = laneHeightById.get(lane.id) ?? dynLaneHeight;
+    const kind: "principal" | "milestone" | "artifacts" =
+      lane.id === MILESTONE_LANE_ID
+        ? "milestone"
+        : lane.id === ARTIFACTS_LANE_ID
+          ? "artifacts"
+          : "principal";
+    return { id: lane.id, label: lane.label, y, height, kind };
+  });
+
+  return { flowNodes, flowEdges, nodePositions, lanes: laneGeometry };
 }
 
 function screenPosition(position: { x: number; y: number }, viewport: FlowViewport) {
@@ -599,6 +846,10 @@ function nodeTypeForShape(shape: BpmnShape): string {
       return "bpmnDocument";
     case "rounded":
       return "bpmnRounded";
+    case "task":
+      return "bpmnTask";
+    case "milestone":
+      return "bpmnMilestone";
     default:
       return "bpmnRectangle";
   }
@@ -606,6 +857,14 @@ function nodeTypeForShape(shape: BpmnShape): string {
 
 function laneNodeId(laneId: string): string {
   return `lane:${laneId}`;
+}
+
+// Used by the outer container sizing — keeps the band-height knowledge
+// in one place rather than scattering ternaries through the layout.
+function heightForLane(laneId: string): number {
+  if (laneId === MILESTONE_LANE_ID) return MILESTONE_BAND_HEIGHT;
+  if (laneId === ARTIFACTS_LANE_ID) return ARTIFACTS_BAND_HEIGHT;
+  return LANE_HEIGHT;
 }
 
 // Lanes that map to a real Principal carry the principal_<ulid> id.
@@ -629,17 +888,35 @@ interface BpmnLaneData {
   width: number;
   labelWidth: number;
   referenceNumber?: number;
+  isMilestoneBand?: boolean;
+  isArtifactsBand?: boolean;
 }
 
 function BpmnLaneNode({ data }: { data: BpmnLaneData }) {
+  // The milestone band and the artifacts band are both phase / data
+  // axes perpendicular to the actor lanes — render each with a
+  // distinct tint and solid edges so they read as structurally
+  // different from (and from each other) the swim lanes between them.
+  const isBand = data.isMilestoneBand || data.isArtifactsBand;
+  let bandBg = "rgba(0, 0, 0, 0.03)";
+  let labelBg = "rgba(0, 0, 0, 0.04)";
+  if (data.isMilestoneBand) {
+    bandBg = "rgba(80, 110, 200, 0.07)";
+    labelBg = "rgba(80, 110, 200, 0.12)";
+  } else if (data.isArtifactsBand) {
+    // Warm tint, distinct from the milestone band's cool blue.
+    bandBg = "rgba(180, 130, 60, 0.07)";
+    labelBg = "rgba(180, 130, 60, 0.13)";
+  }
+  const edge = isBand ? "1px solid var(--color-border)" : "1px dashed var(--color-border)";
   return (
     <div
       style={{
         width: data.width,
         height: data.height,
-        background: "rgba(0, 0, 0, 0.03)",
-        borderTop: "1px dashed var(--color-border)",
-        borderBottom: "1px dashed var(--color-border)",
+        background: bandBg,
+        borderTop: edge,
+        borderBottom: edge,
       }}
     >
       <div
@@ -647,7 +924,7 @@ function BpmnLaneNode({ data }: { data: BpmnLaneData }) {
         style={{
           width: data.labelWidth,
           height: "100%",
-          background: "rgba(0, 0, 0, 0.04)",
+          background: labelBg,
           borderRight: "1px solid var(--color-border)",
           display: "flex",
           alignItems: "center",
@@ -657,6 +934,8 @@ function BpmnLaneNode({ data }: { data: BpmnLaneData }) {
           textAlign: "center",
           padding: "0 8px",
           boxSizing: "border-box",
+          textTransform: isBand ? "uppercase" : "none",
+          letterSpacing: isBand ? 0.6 : 0,
         }}
         title={data.lane.label}
       >
@@ -763,6 +1042,73 @@ function BpmnRoundedNode({ data }: { data: BpmnNodeData }) {
       <TypeBadge node={data.node} />
       <LifecycleBadge node={data.node} />
       <ShapeLabel node={data.node} />
+      {commonHandles()}
+    </div>
+  );
+}
+
+// BPMN Task — rounded rectangle. Sits between the sharp Rectangle (a
+// policy box) and the fully-pill Rounded (an Idea capsule); the radius
+// matches the OMG BPMN 2.0 task glyph.
+function BpmnTaskNode({ data }: { data: BpmnNodeData }) {
+  const stroke = lifecycleColor(data.node.lifecycle);
+  return (
+    <div
+      {...graphReferenceAttributes(data)}
+      style={{
+        width: "100%",
+        height: "100%",
+        background: "#fff",
+        border: `2px solid ${stroke}`,
+        borderRadius: 12,
+        position: "relative",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
+      }}
+    >
+      <ReferenceBadge data={data} />
+      <TypeBadge node={data.node} />
+      <LifecycleBadge node={data.node} />
+      <ShapeLabel node={data.node} />
+      {commonHandles()}
+    </div>
+  );
+}
+
+// Milestone — compact labeled box. Lives in the milestone band above
+// the swim lanes; the band's tinted background does most of the visual
+// work, so the node itself is intentionally subdued (thin border,
+// uppercase compact label) so a row of milestones reads as a phase
+// timeline rather than a row of flow shapes.
+function BpmnMilestoneNode({ data }: { data: BpmnNodeData }) {
+  const stroke = lifecycleColor(data.node.lifecycle);
+  return (
+    <div
+      {...graphReferenceAttributes(data)}
+      style={{
+        width: "100%",
+        height: "100%",
+        background: "#fff",
+        border: `1px solid ${stroke}`,
+        borderRadius: 4,
+        position: "relative",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: "0 8px",
+        boxSizing: "border-box",
+      }}
+    >
+      <ReferenceBadge data={data} />
+      <span
+        className="pointer-events-none line-clamp-2 text-center text-[10px] font-semibold uppercase tracking-wide"
+        style={{ color: "#1f1f1f", letterSpacing: 0.4 }}
+        title={data.node.name ?? ""}
+      >
+        {data.node.name ?? <em>(unnamed)</em>}
+      </span>
       {commonHandles()}
     </div>
   );
@@ -1018,6 +1364,46 @@ function makeBpmnMiniMapNode(nodeById: Map<string, BpmnNode>): ComponentType<Min
               height={height}
               rx={r}
               ry={r}
+              fill={fill}
+              stroke={stroke}
+              strokeWidth={sw}
+              style={{ vectorEffect: "non-scaling-stroke" }}
+            />
+          </g>
+        );
+      }
+      case "task": {
+        // BPMN Task glyph — modest corner radius.
+        const r = Math.min(width, height) * 0.2;
+        return (
+          <g className={classes} shapeRendering={shapeRendering}>
+            <rect
+              x={x}
+              y={y}
+              width={width}
+              height={height}
+              rx={r}
+              ry={r}
+              fill={fill}
+              stroke={stroke}
+              strokeWidth={sw}
+              style={{ vectorEffect: "non-scaling-stroke" }}
+            />
+          </g>
+        );
+      }
+      case "milestone": {
+        // Compact rectangle with a thin stroke — milestones read as
+        // labels on the band, not as flow shapes.
+        return (
+          <g className={classes} shapeRendering={shapeRendering}>
+            <rect
+              x={x}
+              y={y}
+              width={width}
+              height={height}
+              rx={2}
+              ry={2}
               fill={fill}
               stroke={stroke}
               strokeWidth={sw}

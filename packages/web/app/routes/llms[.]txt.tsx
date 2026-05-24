@@ -117,8 +117,10 @@ Neuron types: \`decisions\`, \`ideas\`, \`rules\`, \`intents\`,
 \`principals\`, \`invites\`, \`audit\`.
 
 Capture body specs exist for decisions, intents, actions, logs, rules,
-evals, references, states, ideas, policies, and settings. Principals,
-invites, and audit have dedicated route behavior; don't infer write
+evals, references, states, ideas, policies, settings, and principals.
+Principals expose a smaller surface (create + retire only) — read the
+\`principals.txt\` spec rather than assuming the generic capture body.
+Invites and audit have dedicated route behavior; don't infer write
 bodies for them from the generic capture pattern.
 
 Policies are not neurons. Policies (guidance + neuron-authoring)

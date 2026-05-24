@@ -1,4 +1,4 @@
--- 024_rename_primitive_to_policy.sql
+-- 028_rename_primitive_to_policy.sql
 -- ============================================================
 -- Big vocabulary rename: "primitive" → "policy" across the whole
 -- Doco surface. Captures the "policy" framing more naturally — a

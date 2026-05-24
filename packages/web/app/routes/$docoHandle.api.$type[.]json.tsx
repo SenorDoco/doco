@@ -6,7 +6,15 @@
 // with ADR promotion, /api/principals with role-principal seeding,
 // /api/invites, /api/settings, /api/audit) keep their dedicated route
 // files and win the match by being more specific in routes.ts.
+//
+// GET behaviour: returns a list of every neuron of the named type
+// for this doco. Originally this loader returned a 405 telling the
+// caller to POST, but the agent (and external scripts) want a real
+// list endpoint per type. The list response shape is uniform across
+// types so consumers can iterate without per-type branching:
+//   { ok: true, type: "<plural>", doco_id, count, items: [...] }
 
+import { listEntitiesByDoco } from "@doco/db";
 import { makeCaptureRoute } from "~/lib/api-capture-factory.server";
 import {
   type ActionDraft,
@@ -28,7 +36,7 @@ import {
   captureRule,
   captureState,
 } from "~/lib/capture.server";
-import type { DocoRouteParams } from "~/lib/doco-access.server";
+import { type DocoRouteParams, loadDocoRouteForRead } from "~/lib/doco-access.server";
 
 interface MeLike {
   id: string | null;
@@ -38,14 +46,18 @@ interface MeLike {
 interface RegistryEntry {
   // biome-ignore lint/suspicious/noExplicitAny: registry erases the per-entity Draft type
   build: () => ReturnType<typeof makeCaptureRoute<any>>;
+  /** Singular entity_type used by the storage layer (e.g. "intent"). */
+  entityType: string;
 }
 
 function entry<TDraft>(
   type: string,
+  entityType: string,
   captureFn: Parameters<typeof makeCaptureRoute<TDraft>>[0]["captureFn"],
   fillFromAuth?: (draft: TDraft, me: MeLike) => void,
 ): RegistryEntry {
   return {
+    entityType,
     build: () =>
       makeCaptureRoute<TDraft>({
         type,
@@ -58,35 +70,35 @@ function entry<TDraft>(
 // Neurons only — policies use /<handle>/api/policies.json so they
 // stay separate from domain captures.
 const CAPTURE_REGISTRY: Record<string, RegistryEntry> = {
-  decisions: entry<DecisionDraft>("decisions", captureDecision, (draft, me) => {
+  decisions: entry<DecisionDraft>("decisions", "decision", captureDecision, (draft, me) => {
     if (!draft.decided_by_principal_id && me.id) draft.decided_by_principal_id = me.id;
     if (!draft.created_by_principal_id && me.id) draft.created_by_principal_id = me.id;
   }),
-  intents: entry<IntentDraft>("intents", captureIntent, (draft, me) => {
+  intents: entry<IntentDraft>("intents", "intent", captureIntent, (draft, me) => {
     if (!draft.wanted_by_principal_id && me.id) draft.wanted_by_principal_id = me.id;
   }),
-  ideas: entry<IdeaDraft>("ideas", captureIdea, (draft, me) => {
+  ideas: entry<IdeaDraft>("ideas", "idea", captureIdea, (draft, me) => {
     if (!draft.created_by_principal_id && me.id) draft.created_by_principal_id = me.id;
   }),
-  actions: entry<ActionDraft>("actions", captureAction, (draft, me) => {
+  actions: entry<ActionDraft>("actions", "action", captureAction, (draft, me) => {
     if (!draft.actor_principal_id && me.id) draft.actor_principal_id = me.id;
     if (!draft.created_by_principal_id && me.id) draft.created_by_principal_id = me.id;
   }),
-  references: entry<ReferenceDraft>("references", captureReference, (draft, me) => {
+  references: entry<ReferenceDraft>("references", "reference", captureReference, (draft, me) => {
     if (!draft.created_by_principal_id && me.id) draft.created_by_principal_id = me.id;
   }),
-  rules: entry<RuleDraft>("rules", captureRule, (draft, me) => {
+  rules: entry<RuleDraft>("rules", "rule", captureRule, (draft, me) => {
     if (!draft.authored_by_principal_id && me.id) draft.authored_by_principal_id = me.id;
     if (!draft.created_by_principal_id && me.id) draft.created_by_principal_id = me.id;
   }),
-  logs: entry<LogDraft>("logs", captureLog, (draft, me) => {
+  logs: entry<LogDraft>("logs", "log", captureLog, (draft, me) => {
     if (!draft.actor_principal_id && me.id) draft.actor_principal_id = me.id;
     if (!draft.created_by_principal_id && me.id) draft.created_by_principal_id = me.id;
   }),
-  evals: entry<EvalDraft>("evals", captureEval, (draft, me) => {
+  evals: entry<EvalDraft>("evals", "eval", captureEval, (draft, me) => {
     if (!draft.authored_by_principal_id && me.id) draft.authored_by_principal_id = me.id;
   }),
-  states: entry<StateDraft>("states", captureState, (draft, me) => {
+  states: entry<StateDraft>("states", "state", captureState, (draft, me) => {
     if (!draft.created_by_principal_id && me.id) draft.created_by_principal_id = me.id;
   }),
 };
@@ -112,7 +124,25 @@ export async function loader({
 }) {
   const cfg = CAPTURE_REGISTRY[params.type];
   if (!cfg) return notFound(params.type);
-  return cfg.build().loader({ request, params });
+  const { meta } = await loadDocoRouteForRead(request, params);
+  const rows = await listEntitiesByDoco(cfg.entityType, meta.docoId);
+  return Response.json({
+    ok: true,
+    type: params.type,
+    doco_id: meta.docoId,
+    count: rows.length,
+    items: rows.map((r) => ({
+      id: r.id,
+      summary: r.summary ?? null,
+      lifecycle: r.lifecycle ?? null,
+      created_at: r.created_at ?? null,
+      created_by: r.created_by ?? null,
+      updated_at: r.updated_at ?? null,
+      updated_by: r.updated_by ?? null,
+      data: r.data,
+      body_md: r.body_md ?? null,
+    })),
+  });
 }
 
 export async function action({

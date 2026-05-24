@@ -129,8 +129,8 @@ describe("business-processes template", () => {
       .filter((r) => r.kind === "guidance" && !r.predicate)
       .map((r) => r.summary);
 
-    it("State summary uniqueness within the process is documented", () => {
-      expect(guidanceSummaries.some((s) => /state.*summary.*unique/i.test(s))).toBe(true);
+    it("State uniqueness within the process is documented", () => {
+      expect(guidanceSummaries.some((s) => /\bstate\b.*\bunique\b/i.test(s))).toBe(true);
     });
     it("≥1 active initial State is documented", () => {
       expect(guidanceSummaries.some((s) => /\binitial\b/i.test(s) && /≥1|at least/i.test(s))).toBe(

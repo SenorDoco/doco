@@ -12,7 +12,12 @@
   --color-muted-foreground: oklch(0.47 0.013 248);
   --color-card: oklch(0.94 0.012 245);
   --color-card-foreground: oklch(0.2 0.015 248);
-  --color-border: oklch(0.83 0.014 248);
+  /* Same near-foreground tint at ~9% alpha that `.neu-surface` paints
+     around the outside of every card. Using the same token here means
+     `border-b border-border` and `divide-y divide-border` lines read
+     as a continuation of the etched ring rather than a darker solid
+     line. */
+  --color-border: oklch(0.2 0.015 248 / 9%);
   --color-input: oklch(0.91 0.013 248);
   --color-primary: oklch(0.54 0.17 324);
   --color-primary-foreground: oklch(0.99 0.003 245);
@@ -99,57 +104,36 @@ a:focus-visible {
   box-shadow: var(--neu-focus);
 }
 
-/* Auto-neumorphism for any button-like element matching one of:
-   - `bg-primary` (the brand-tinted primary CTA pattern)
-   - `border border-border` paired with `rounded-md|rounded-lg|rounded-full`
-   Applies the same dual-shadow + softened border color that `.neu-button`
-   gets explicitly, so an `<a>`/`<button>` styled inline matches one
-   styled with the utility class. Without the border-color override, the
-   raw `--color-border` token reads as a darker outline next to elements
-   that use `.neu-button` directly — that's the inconsistency users see. */
+/* Auto-raise ONLY primary CTAs (the `bg-primary` pattern). Anchors and
+   buttons styled inline with `border border-border + rounded-*` used to
+   auto-raise here too, but that wrongly lifted clickable cards and
+   content areas. Now: explicit `.neu-button` opts in; everything else
+   without `.neu-button` or `bg-primary` is a flat etched surface. */
 a[class*="bg-primary"],
-button[class*="bg-primary"],
-a[class*="rounded-md"][class*="border-border"],
-button[class*="rounded-md"][class*="border-border"],
-a[class*="rounded-lg"][class*="border-border"],
-button[class*="rounded-lg"][class*="border-border"],
-a[class*="rounded-full"][class*="border-border"],
-button[class*="rounded-full"][class*="border-border"] {
+button[class*="bg-primary"] {
   border-color: var(--neu-border);
   box-shadow: 5px 5px 12px var(--neu-shadow-soft), -5px -5px 12px var(--neu-highlight);
 }
 
 a[class*="bg-primary"]:hover,
-button[class*="bg-primary"]:hover,
-a[class*="rounded-md"][class*="border-border"]:hover,
-button[class*="rounded-md"][class*="border-border"]:hover,
-a[class*="rounded-lg"][class*="border-border"]:hover,
-button[class*="rounded-lg"][class*="border-border"]:hover,
-a[class*="rounded-full"][class*="border-border"]:hover,
-button[class*="rounded-full"][class*="border-border"]:hover {
+button[class*="bg-primary"]:hover {
   box-shadow: 7px 7px 16px var(--neu-shadow-soft), -7px -7px 16px var(--neu-highlight);
   transform: translateY(-1px);
 }
 
 a[class*="bg-primary"]:active,
-button[class*="bg-primary"]:active,
-a[class*="rounded-md"][class*="border-border"]:active,
-button[class*="rounded-md"][class*="border-border"]:active,
-a[class*="rounded-lg"][class*="border-border"]:active,
-button[class*="rounded-lg"][class*="border-border"]:active,
-a[class*="rounded-full"][class*="border-border"]:active,
-button[class*="rounded-full"][class*="border-border"]:active {
+button[class*="bg-primary"]:active {
   box-shadow: var(--neu-pressed);
   transform: translateY(0);
 }
 
-/* `.neu-pressed` is a state-override class — it has to beat the
-   auto-neumorphism selectors above (which use attribute selectors with
-   specificity 0,2,1 and would otherwise outrank a single class). The
-   `!important` is intentional: when an element opts into `.neu-pressed`,
-   no other rule in the file should be allowed to lift it. The :hover /
-   :active variants pin transform so an auto-CSS hover lift can't
-   briefly un-press the button mid-interaction. */
+/* `.neu-pressed` is a state-override class — it has to beat any auto-raise
+   above (those use attribute selectors with specificity 0,2,1 and would
+   otherwise outrank a single class). The `!important` is intentional:
+   when an element opts into `.neu-pressed`, no other rule in the file
+   should be allowed to lift it. The :hover / :active variants pin
+   transform so an auto-CSS hover lift can't briefly un-press the button
+   mid-interaction. */
 .neu-pressed,
 .neu-pressed:hover,
 .neu-pressed:active {
@@ -158,25 +142,40 @@ button[class*="rounded-full"][class*="border-border"]:active {
 }
 
 @layer utilities {
-  .neu-surface {
-    border-color: var(--neu-border);
-    box-shadow: var(--neu-raised);
-  }
-
-  .neu-surface-strong {
-    border-color: var(--neu-border);
-    box-shadow: var(--neu-raised-strong);
-  }
-
+  /* Non-button content surfaces (cards, badges, list rows, info
+     panels, table containers, clickable anchor-cards). The whole-
+     platform rule is: only actual buttons get raised. Everything else
+     gets a clean 1px outer ring in the same near-foreground tint —
+     uniform on all four sides (the earlier inset-top + inset-bottom
+     variant made the lateral edges read thinner than the top/bottom).
+     The same color sets `--color-border` below, so any `border-b` /
+     `divide-y` divider reads as a continuation of this ring, not a
+     harder solid line. */
+  .neu-surface,
+  .neu-surface-strong,
   .neu-surface-interactive {
-    border-color: var(--neu-border);
-    box-shadow: var(--neu-raised);
+    border-color: transparent;
+    box-shadow: 0 0 0 1px color-mix(in oklch, var(--color-foreground) 9%, transparent);
   }
 
+  /* Clickable variant — same etched ring at rest. Hover shifts the
+     ring to a primary tint; no depth change. */
   .neu-surface-interactive:hover {
-    border-color: color-mix(in oklch, var(--color-primary) 32%, var(--neu-border));
-    box-shadow: var(--neu-raised-strong);
-    transform: translateY(-1px);
+    box-shadow: 0 0 0 1px color-mix(in oklch, var(--color-primary) 45%, transparent);
+  }
+
+  /* Floating element (dialog / drawer / dropdown / tooltip). These
+     overlays live above page content and need to read as truly
+     elevated — not as a content surface contained within the page.
+     Asymmetric drop shadow (no light highlight, only darker shadow
+     pointing down and slightly to the side) communicates "above" and
+     drops the etched outline that `.neu-surface` paints. Border is
+     forced transparent so existing `border border-border` markup on
+     these wrappers doesn't draw an outline. */
+  .neu-floating {
+    border-color: transparent !important;
+    box-shadow: 0 18px 36px color-mix(in oklch, var(--color-foreground) 16%, transparent), 0 4px
+      10px color-mix(in oklch, var(--color-foreground) 10%, transparent) !important;
   }
 
   .neu-inset {

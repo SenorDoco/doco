@@ -60,7 +60,11 @@ interface UploadAcceptedMeta {
 
 const ATTACHMENT_RETENTION_NOTICE = "Attachments are stored for 30 days, then deleted.";
 const ATTACHMENT_ACCEPT =
-  "image/jpeg,image/png,image/gif,image/webp,application/pdf,text/plain,text/markdown,.md";
+  // The trailing extension hints (.md, .bpmn, .xml) cover formats
+  // browsers don't have a built-in MIME type for. The server
+  // normalizes octet-stream uploads with these extensions to
+  // application/xml so the upload survives the MIME allowlist.
+  "image/jpeg,image/png,image/gif,image/webp,application/pdf,text/plain,text/markdown,text/xml,application/xml,.md,.bpmn,.xml";
 
 interface ChatMessage {
   id: string;
@@ -73,7 +77,27 @@ interface ConversationSnapshot {
   conversation_id: string;
   messages: ChatMessage[];
   has_more: boolean;
+  /**
+   * ISO timestamp the server set when the current turn started; null
+   * when idle. Lets a freshly-loaded page show the in-flight bubble
+   * for a turn its tab didn't initiate.
+   */
+  active_turn_started_at: string | null;
 }
+
+/** Per-request token totals streamed from the server. Reset to null
+ *  whenever Señor Doco settles (no in-flight + no remote in-flight). */
+interface TurnUsage {
+  input_tokens: number;
+  output_tokens: number;
+  cache_read_tokens: number;
+  cache_creation_tokens: number;
+}
+
+// If the server's `active_turn_started_at` is older than this, treat
+// it as stale (lambda probably crashed before clearing the marker)
+// and ignore it rather than showing a never-ending placeholder.
+const ACTIVE_TURN_STALE_MS = 5 * 60 * 1000;
 
 // "In-flight" assistant message being assembled from a stream.
 interface InFlightMessage {
@@ -83,6 +107,44 @@ interface InFlightMessage {
 
 const COLLAPSE_KEY = "senor-doco:collapsed";
 const UNREAD_KEY = "senor-doco:unread";
+const SHOW_THINKING_KEY = "senor-doco:show-thinking";
+
+// Sidebar widths. Header collapsed → 32px rail. Default expanded
+// → 320px. With Show Thinking on → 640px so the thinking column
+// has room next to the chat column.
+const RAIL_COLLAPSED = "32px";
+const RAIL_DEFAULT = "320px";
+const RAIL_THINKING = "640px";
+
+/** One chronological entry in the per-turn thinking log. Populated as
+ *  SSE events arrive; cleared at the start of every new send. */
+type ThinkingEvent =
+  | { id: string; at_ms: number; kind: "tool_start"; tool_id: string; name: string }
+  | { id: string; at_ms: number; kind: "tool_input"; tool_id: string; input: unknown }
+  | {
+      id: string;
+      at_ms: number;
+      kind: "tool_result";
+      tool_id: string;
+      preview: string;
+      ok: boolean;
+    }
+  | { id: string; at_ms: number; kind: "text"; text: string }
+  | {
+      id: string;
+      at_ms: number;
+      kind: "usage";
+      input_tokens: number;
+      output_tokens: number;
+    }
+  | { id: string; at_ms: number; kind: "navigate"; url: string }
+  | { id: string; at_ms: number; kind: "error"; message: string };
+// Broadcast channel name shared across tabs in the same browser
+// origin. Same session → same conversation, so any change in one tab
+// pings the others to reload.
+const SYNC_CHANNEL = "doco:senor-doco-sync";
+
+type SyncMessage = { kind: "changed" } | { kind: "remote-inflight"; busy: boolean };
 
 function readBoolFlag(key: string): boolean {
   if (typeof window === "undefined") return false;
@@ -114,14 +176,60 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
   const [hasMore, setHasMore] = useState(false);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [bootstrapped, setBootstrapped] = useState(false);
+  // Another tab on this origin is currently streaming a reply. Used
+  // to show a "Señor Doco is replying…" placeholder bubble in tabs
+  // that didn't initiate the send.
+  const [remoteInflight, setRemoteInflight] = useState(false);
+  // Per-request token usage for the in-flight turn. Updated as the
+  // server streams usage_update events; cleared on settle. Shown next
+  // to the in-flight bubble so the user sees what THIS request is
+  // costing in real time (not the session-wide total).
+  const [turnUsage, setTurnUsage] = useState<TurnUsage | null>(null);
+  // Queued send. When the user hits Send while Señor Doco is
+  // mid-reply, the typed text + staged attachments land here and
+  // auto-fire once the current turn settles. Lets the user keep
+  // typing without losing the message; respects the Anthropic
+  // user→assistant→user alternation by not racing a second turn.
+  const [queuedSend, setQueuedSend] = useState<{
+    text: string;
+    staged: StagedAttachment[];
+  } | null>(null);
   // Lazy initializers so SSR doesn't touch localStorage; the first
   // client render hydrates from the stored value.
   const [collapsed, setCollapsed] = useState<boolean>(() => readBoolFlag(COLLAPSE_KEY));
   const [unread, setUnread] = useState<boolean>(() => readBoolFlag(UNREAD_KEY));
+  // Show Thinking toggle: when on, the sidebar widens from 320 to
+  // 640px and a "Thinking" column appears next to the chat showing
+  // the real-time event log of the current/last turn.
+  const [showThinking, setShowThinking] = useState<boolean>(() => readBoolFlag(SHOW_THINKING_KEY));
+  // Per-turn chronological log of every SSE event. Reset at the
+  // start of each send; retained between turns so the user can
+  // review the last completed turn without re-running it.
+  const [thinkingEvents, setThinkingEvents] = useState<ThinkingEvent[]>([]);
+  // Wall-clock anchor for at_ms timestamps on thinkingEvents — set
+  // when a turn starts; reads as `performance.now() - turnStartRef`.
+  const turnStartRef = useRef<number>(0);
   const collapsedRef = useRef(collapsed);
   useEffect(() => {
     collapsedRef.current = collapsed;
   }, [collapsed]);
+  // Publish the rail's current width as a CSS variable so floating
+  // overlays (the neuron-detail dialog, etc.) can avoid covering it on
+  // small screens. Three widths now: collapsed (32), default
+  // expanded (320), and Show-Thinking expanded (640).
+  const railWidth = collapsed ? RAIL_COLLAPSED : showThinking ? RAIL_THINKING : RAIL_DEFAULT;
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    document.documentElement.style.setProperty("--senor-doco-rail-width", railWidth);
+  }, [railWidth]);
+
+  const toggleShowThinking = useCallback(() => {
+    setShowThinking((prev) => {
+      const next = !prev;
+      writeBoolFlag(SHOW_THINKING_KEY, next);
+      return next;
+    });
+  }, []);
   const navigate = useNavigate();
   const location = useLocation();
   const messageListRef = useRef<HTMLDivElement | null>(null);
@@ -139,6 +247,20 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
   const markUnread = useCallback(() => {
     setUnread(true);
     writeBoolFlag(UNREAD_KEY, true);
+  }, []);
+  // Cross-tab sync — BroadcastChannel posts a message to every other
+  // tab on this origin (the sender doesn't receive its own posts).
+  // Same browser session → same conversation, so any change in one tab
+  // pings the others to re-fetch.
+  const syncChannelRef = useRef<BroadcastChannel | null>(null);
+  const broadcastSync = useCallback((msg: SyncMessage) => {
+    const ch = syncChannelRef.current;
+    if (!ch) return;
+    try {
+      ch.postMessage(msg);
+    } catch {
+      // BroadcastChannel can throw if the page is unloading — safe to ignore.
+    }
   }, []);
   // Tracks the earliest loaded message so concurrent state reads (the
   // scroll handler closes over stale `messages`) always page from the
@@ -159,6 +281,17 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
       setHasMore(data.has_more);
       earliestRef.current = data.messages[0] ?? null;
       setLoadError(null);
+      // Server-side in-flight marker: a freshly-loaded page (e.g.
+      // after refresh) should show the "Señor Doco is replying…"
+      // placeholder if a turn is actually running on the server.
+      // Stale markers (lambda crashed before clearing) are filtered
+      // out by the freshness check.
+      if (data.active_turn_started_at) {
+        const startedMs = Date.parse(data.active_turn_started_at);
+        if (Number.isFinite(startedMs) && Date.now() - startedMs < ACTIVE_TURN_STALE_MS) {
+          setRemoteInflight(true);
+        }
+      }
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -170,6 +303,40 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
     void reload();
     return () => abortRef.current?.abort();
   }, [reload]);
+
+  // Subscribe to cross-tab sync messages. SSR-guarded — BroadcastChannel
+  // doesn't exist on the server, and older browsers without it just
+  // skip the feature (the sidebar continues to work, just without
+  // cross-tab updates).
+  useEffect(() => {
+    if (typeof BroadcastChannel === "undefined") return;
+    const ch = new BroadcastChannel(SYNC_CHANNEL);
+    syncChannelRef.current = ch;
+    ch.onmessage = (event) => {
+      const msg = event.data as SyncMessage | undefined;
+      if (!msg) return;
+      if (msg.kind === "changed") {
+        // Another tab saved / received a message. Re-fetch the
+        // canonical conversation snapshot so this tab catches up.
+        void reload();
+        // Re-fetch implies the remote stream landed; clear any
+        // lingering "Señor Doco is replying somewhere else" indicator.
+        setRemoteInflight(false);
+        // If this tab is collapsed, surface the new content via the
+        // unread dot.
+        if (collapsedRef.current) markUnread();
+      } else if (msg.kind === "remote-inflight") {
+        // Only show the placeholder when THIS tab isn't already
+        // streaming locally; otherwise the local in-flight bubble
+        // covers it.
+        setRemoteInflight(msg.busy);
+      }
+    };
+    return () => {
+      ch.close();
+      syncChannelRef.current = null;
+    };
+  }, [reload, markUnread]);
 
   // After the first hydration completes, jump straight to the bottom so
   // the user sees the most recent turn. Runs once, after `messages` has
@@ -285,184 +452,304 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
     setStaged((prev) => prev.filter((a) => a.id !== id));
   }, []);
 
-  const send = useCallback(async () => {
-    const text = inputText.trim();
-    const attachmentIds = staged.map((a) => a.id);
-    const graphReferenceGroups: GraphReferenceGroup[] = readGraphReferenceGroups();
-    if ((!text && attachmentIds.length === 0) || busy) return;
-    setInputText("");
-    const sentAttachments = staged;
-    setStaged([]);
-    setUploadError(null);
-    setBusy(true);
+  // Append helper for the thinking event log. The id is monotonic
+  // within the React closure for stable list keys; at_ms is relative
+  // to turn start so the panel can render elapsed-time markers.
+  const appendThinking = useCallback(
+    (
+      ev:
+        | Omit<Extract<ThinkingEvent, { kind: "tool_start" }>, "id" | "at_ms">
+        | Omit<Extract<ThinkingEvent, { kind: "tool_input" }>, "id" | "at_ms">
+        | Omit<Extract<ThinkingEvent, { kind: "tool_result" }>, "id" | "at_ms">
+        | Omit<Extract<ThinkingEvent, { kind: "text" }>, "id" | "at_ms">
+        | Omit<Extract<ThinkingEvent, { kind: "usage" }>, "id" | "at_ms">
+        | Omit<Extract<ThinkingEvent, { kind: "navigate" }>, "id" | "at_ms">
+        | Omit<Extract<ThinkingEvent, { kind: "error" }>, "id" | "at_ms">,
+    ) => {
+      const at_ms = Math.round(performance.now() - turnStartRef.current);
+      const id = `t_${at_ms}_${Math.random().toString(36).slice(2, 7)}`;
+      setThinkingEvents((prev) => [...prev, { ...ev, id, at_ms } as ThinkingEvent]);
+    },
+    [],
+  );
 
-    // Local accumulator — sole source of truth for what to commit at end
-    // of stream. React state lags async updates, so we can't read it from
-    // inside `finally`. We mirror every update into this object AND into
-    // React state, then commit `local*` once `done` fires.
-    const localContent: AnyBlock[] = [];
-    const localResults = new Map<string, ContentBlockToolResult>();
-    setInFlight({ content: localContent, toolResults: localResults });
-
-    const localUserBlocks: AnyBlock[] = [];
-    if (text) localUserBlocks.push({ type: "text", text });
-    for (const a of sentAttachments) {
-      localUserBlocks.push({
-        type: "attachment_ref",
-        attachment_id: a.id,
-        filename: a.filename,
-        mime_type: a.mime_type,
-        size_bytes: a.size_bytes,
-      });
-    }
-    const localUser: ChatMessage = {
-      id: `local_${Date.now()}`,
-      role: "user",
-      content: localUserBlocks,
-      created_at: new Date().toISOString(),
-    };
-    setMessages((prev) => [...prev, localUser]);
-
-    const controller = new AbortController();
-    abortRef.current = controller;
-
-    const bumpInFlight = () =>
-      setInFlight({
-        content: [...localContent],
-        toolResults: new Map(localResults),
-      });
-
-    try {
-      const res = await fetch("/api/v1/agent-chat/messages.json", {
-        method: "POST",
-        credentials: "same-origin",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          text,
-          current_path: location.pathname + location.search,
-          attachment_ids: attachmentIds,
-          graph_references: graphReferenceGroups,
-        }),
-        signal: controller.signal,
-      });
-      if (!res.ok || !res.body) {
-        const errBody = await res.text().catch(() => "");
-        localContent.push({
-          type: "text",
-          text: `[error] HTTP ${res.status}: ${errBody || "(no body)"}`,
-        });
-        bumpInFlight();
+  const send = useCallback(
+    async (override?: { text: string; staged: StagedAttachment[] }) => {
+      const text = (override?.text ?? inputText).trim();
+      const sentAttachments = override?.staged ?? staged;
+      const attachmentIds = sentAttachments.map((a) => a.id);
+      const graphReferenceGroups: GraphReferenceGroup[] = readGraphReferenceGroups();
+      if (!text && attachmentIds.length === 0) return;
+      // While Señor Doco is mid-reply, the Anthropic API can't accept
+      // another user message in the same conversation (the wire
+      // protocol requires user→assistant→user alternation, and the
+      // server-side runAssistantTurn mutates the message list as it
+      // goes). Rather than dropping the user's submit on the floor,
+      // stash it; the queue-drain effect auto-fires it once the
+      // current turn settles. `override` is set by that drain — we
+      // skip the re-queue path so the auto-fire doesn't loop.
+      if (busy && !override) {
+        setQueuedSend({ text, staged: sentAttachments });
+        setInputText("");
+        setStaged([]);
         return;
       }
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buf = "";
-      streamLoop: for (;;) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buf += decoder.decode(value, { stream: true });
-        // Parse SSE frames: separated by \n\n, each frame is `data: <json>`.
-        for (;;) {
-          const nlIdx = buf.indexOf("\n\n");
-          if (nlIdx < 0) break;
-          const frame = buf.slice(0, nlIdx);
-          buf = buf.slice(nlIdx + 2);
-          const line = frame.split("\n").find((l) => l.startsWith("data: "));
-          if (!line) continue;
-          const json = line.slice(6);
-          let event: StreamEvent;
-          try {
-            event = JSON.parse(json) as StreamEvent;
-          } catch {
-            continue;
-          }
-          if (event.kind === "text_delta") {
-            const last = localContent[localContent.length - 1];
-            if (last && last.type === "text") {
-              last.text += event.text;
-            } else {
-              localContent.push({ type: "text", text: event.text });
+      if (!override) {
+        setInputText("");
+        setStaged([]);
+      }
+      setUploadError(null);
+      setBusy(true);
+      // Reset the thinking log so the panel reflects only the current
+      // turn. The last turn's events have already been retained long
+      // enough for the user to review them after settle.
+      turnStartRef.current = performance.now();
+      setThinkingEvents([]);
+      // Tell other tabs that Señor Doco is busy — they'll show a
+      // "replying somewhere else" placeholder until our stream ends.
+      broadcastSync({ kind: "remote-inflight", busy: true });
+
+      // Local accumulator — sole source of truth for what to commit at end
+      // of stream. React state lags async updates, so we can't read it from
+      // inside `finally`. We mirror every update into this object AND into
+      // React state, then commit `local*` once `done` fires.
+      const localContent: AnyBlock[] = [];
+      const localResults = new Map<string, ContentBlockToolResult>();
+      setInFlight({ content: localContent, toolResults: localResults });
+
+      const localUserBlocks: AnyBlock[] = [];
+      if (text) localUserBlocks.push({ type: "text", text });
+      for (const a of sentAttachments) {
+        localUserBlocks.push({
+          type: "attachment_ref",
+          attachment_id: a.id,
+          filename: a.filename,
+          mime_type: a.mime_type,
+          size_bytes: a.size_bytes,
+        });
+      }
+      const localUser: ChatMessage = {
+        id: `local_${Date.now()}`,
+        role: "user",
+        content: localUserBlocks,
+        created_at: new Date().toISOString(),
+      };
+      setMessages((prev) => [...prev, localUser]);
+
+      const controller = new AbortController();
+      abortRef.current = controller;
+
+      const bumpInFlight = () =>
+        setInFlight({
+          content: [...localContent],
+          toolResults: new Map(localResults),
+        });
+
+      try {
+        const res = await fetch("/api/v1/agent-chat/messages.json", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            text,
+            current_path: location.pathname + location.search,
+            attachment_ids: attachmentIds,
+            graph_references: graphReferenceGroups,
+          }),
+          signal: controller.signal,
+        });
+        if (!res.ok || !res.body) {
+          const errBody = await res.text().catch(() => "");
+          localContent.push({
+            type: "text",
+            text: `[error] HTTP ${res.status}: ${errBody || "(no body)"}`,
+          });
+          bumpInFlight();
+          return;
+        }
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buf = "";
+        streamLoop: for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buf += decoder.decode(value, { stream: true });
+          // Parse SSE frames: separated by \n\n, each frame is `data: <json>`.
+          for (;;) {
+            const nlIdx = buf.indexOf("\n\n");
+            if (nlIdx < 0) break;
+            const frame = buf.slice(0, nlIdx);
+            buf = buf.slice(nlIdx + 2);
+            const line = frame.split("\n").find((l) => l.startsWith("data: "));
+            if (!line) continue;
+            const json = line.slice(6);
+            let event: StreamEvent;
+            try {
+              event = JSON.parse(json) as StreamEvent;
+            } catch {
+              continue;
             }
-            bumpInFlight();
-          } else if (event.kind === "tool_use_start") {
-            localContent.push({
-              type: "tool_use",
-              id: event.tool_use_id,
-              name: event.name,
-              input: {},
-            });
-            bumpInFlight();
-          } else if (event.kind === "tool_use_input") {
-            const b = localContent.find(
-              (x) => x.type === "tool_use" && (x as ContentBlockToolUse).id === event.tool_use_id,
-            ) as ContentBlockToolUse | undefined;
-            if (b) {
-              b.input = event.input;
+            if (event.kind === "text_delta") {
+              const last = localContent[localContent.length - 1];
+              if (last && last.type === "text") {
+                last.text += event.text;
+              } else {
+                localContent.push({ type: "text", text: event.text });
+              }
               bumpInFlight();
+              appendThinking({ kind: "text", text: event.text });
+            } else if (event.kind === "tool_use_start") {
+              localContent.push({
+                type: "tool_use",
+                id: event.tool_use_id,
+                name: event.name,
+                input: {},
+              });
+              bumpInFlight();
+              appendThinking({
+                kind: "tool_start",
+                tool_id: event.tool_use_id,
+                name: event.name,
+              });
+            } else if (event.kind === "tool_use_input") {
+              const b = localContent.find(
+                (x) => x.type === "tool_use" && (x as ContentBlockToolUse).id === event.tool_use_id,
+              ) as ContentBlockToolUse | undefined;
+              if (b) {
+                b.input = event.input;
+                bumpInFlight();
+              }
+              appendThinking({
+                kind: "tool_input",
+                tool_id: event.tool_use_id,
+                input: event.input,
+              });
+            } else if (event.kind === "tool_use_result") {
+              localResults.set(event.tool_use_id, {
+                type: "tool_result",
+                tool_use_id: event.tool_use_id,
+                content: event.preview,
+                is_error: !event.ok,
+              });
+              bumpInFlight();
+              appendThinking({
+                kind: "tool_result",
+                tool_id: event.tool_use_id,
+                preview: event.preview,
+                ok: event.ok,
+              });
+            } else if (event.kind === "navigate") {
+              navigate(event.url);
+              appendThinking({ kind: "navigate", url: event.url });
+            } else if (event.kind === "message_saved") {
+              // Server just persisted a user or assistant message. Tell
+              // other tabs so they re-fetch the canonical snapshot and
+              // see the message in real time.
+              broadcastSync({ kind: "changed" });
+            } else if (event.kind === "error") {
+              localContent.push({ type: "text", text: `[error] ${event.message}` });
+              bumpInFlight();
+              appendThinking({ kind: "error", message: event.message });
+            } else if (event.kind === "usage_update") {
+              setTurnUsage({
+                input_tokens: event.input_tokens,
+                output_tokens: event.output_tokens,
+                cache_read_tokens: event.cache_read_tokens,
+                cache_creation_tokens: event.cache_creation_tokens,
+              });
+              appendThinking({
+                kind: "usage",
+                input_tokens: event.input_tokens,
+                output_tokens: event.output_tokens,
+              });
+            } else if (event.kind === "done") {
+              break streamLoop;
             }
-          } else if (event.kind === "tool_use_result") {
-            localResults.set(event.tool_use_id, {
-              type: "tool_result",
-              tool_use_id: event.tool_use_id,
-              content: event.preview,
-              is_error: !event.ok,
-            });
-            bumpInFlight();
-          } else if (event.kind === "navigate") {
-            navigate(event.url);
-          } else if (event.kind === "error") {
-            localContent.push({ type: "text", text: `[error] ${event.message}` });
-            bumpInFlight();
-          } else if (event.kind === "done") {
-            break streamLoop;
           }
         }
+      } catch (err) {
+        if ((err as { name?: string })?.name !== "AbortError") {
+          const msg = err instanceof Error ? err.message : String(err);
+          localContent.push({ type: "text", text: `[error] ${msg}` });
+          bumpInFlight();
+        }
+      } finally {
+        abortRef.current = null;
+        // Commit the in-flight content as saved messages. Canonical history
+        // (with server-assigned ids and timestamps) gets re-hydrated on the
+        // next mount via the conversation endpoint — we don't block here on
+        // a reload round-trip.
+        const committed: ChatMessage[] = [];
+        if (localContent.length > 0) {
+          committed.push({
+            id: `local_${Date.now() + 1}`,
+            role: "assistant",
+            content: localContent.slice(),
+            created_at: new Date().toISOString(),
+          });
+        }
+        if (localResults.size > 0) {
+          committed.push({
+            id: `local_${Date.now() + 2}`,
+            role: "user",
+            content: Array.from(localResults.values()),
+            created_at: new Date().toISOString(),
+          });
+        }
+        if (committed.length > 0) {
+          setMessages((prev) => [...prev, ...committed]);
+        }
+        setInFlight(null);
+        setBusy(false);
+        // Per-request token counter is only meaningful while the
+        // request is in flight; clear it once the turn settles.
+        setTurnUsage(null);
+        // Settled — tell other tabs to re-fetch the final state (covers
+        // the late-arriving assistant message) and that Señor Doco is
+        // no longer mid-reply.
+        broadcastSync({ kind: "remote-inflight", busy: false });
+        broadcastSync({ kind: "changed" });
       }
-    } catch (err) {
-      if ((err as { name?: string })?.name !== "AbortError") {
-        const msg = err instanceof Error ? err.message : String(err);
-        localContent.push({ type: "text", text: `[error] ${msg}` });
-        bumpInFlight();
-      }
-    } finally {
-      abortRef.current = null;
-      // Commit the in-flight content as saved messages. Canonical history
-      // (with server-assigned ids and timestamps) gets re-hydrated on the
-      // next mount via the conversation endpoint — we don't block here on
-      // a reload round-trip.
-      const committed: ChatMessage[] = [];
-      if (localContent.length > 0) {
-        committed.push({
-          id: `local_${Date.now() + 1}`,
-          role: "assistant",
-          content: localContent.slice(),
-          created_at: new Date().toISOString(),
-        });
-      }
-      if (localResults.size > 0) {
-        committed.push({
-          id: `local_${Date.now() + 2}`,
-          role: "user",
-          content: Array.from(localResults.values()),
-          created_at: new Date().toISOString(),
-        });
-      }
-      if (committed.length > 0) {
-        setMessages((prev) => [...prev, ...committed]);
-      }
-      setInFlight(null);
-      setBusy(false);
-    }
-  }, [inputText, busy, staged, location.pathname, location.search, navigate]);
+    },
+    [
+      inputText,
+      busy,
+      staged,
+      location.pathname,
+      location.search,
+      navigate,
+      broadcastSync,
+      appendThinking,
+    ],
+  );
+
+  // Queue-drain: when Señor Doco settles AND a message is queued
+  // from a busy-send, auto-fire it. Passing the message as an
+  // `override` bypasses the re-queue check inside `send`.
+  useEffect(() => {
+    if (busy || !queuedSend) return;
+    const q = queuedSend;
+    setQueuedSend(null);
+    void send(q);
+  }, [busy, queuedSend, send]);
 
   const allMessages = useMemo<RenderableMessage[]>(() => {
     const out: RenderableMessage[] = messages.map((m) => ({ kind: "saved", message: m }));
     if (inFlight) {
       out.push({ kind: "inflight", message: inFlight });
+    } else if (remoteInflight) {
+      // Another tab is mid-reply. Show an empty in-flight bubble so
+      // this tab tells the user something's happening; the content
+      // arrives via the `changed` broadcast once the remote stream
+      // settles and we re-fetch.
+      out.push({
+        kind: "inflight",
+        message: { content: [], toolResults: new Map() },
+      });
     }
     return out;
-  }, [messages, inFlight]);
-  const agentActive = busy || inFlight !== null;
+  }, [messages, inFlight, remoteInflight]);
+  const agentActive = busy || inFlight !== null || remoteInflight;
 
   // While collapsed, any new content from the server (a fresh message
   // saved, or an in-flight stream still landing) flips the unread flag.
@@ -483,7 +770,21 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
     }
   }, [inFlight, markUnread]);
 
-  if (collapsed) {
+  // Authorization / sign-in flows render in a single-tab focus mode —
+  // the Señor Doco chat is force-minimized so it doesn't distract from
+  // the consent decision (`/device`, `/oauth/authorize`, `/invite/<code>`)
+  // or the OAuth round-trip pages (`/auth/*`). The user can still
+  // expand the rail manually, but the default + every navigation back
+  // to an auth page snaps it back to collapsed.
+  const isAuthPage =
+    location.pathname === "/device" ||
+    location.pathname.startsWith("/oauth/authorize") ||
+    location.pathname.startsWith("/invite/") ||
+    location.pathname === "/sign-in" ||
+    location.pathname === "/sign-out" ||
+    location.pathname.startsWith("/auth/");
+
+  if (collapsed || isAuthPage) {
     return (
       <CollapsedRail
         label="Señor Doco"
@@ -497,7 +798,8 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
 
   return (
     <aside
-      className="neu-panel flex h-full w-[320px] shrink-0 flex-col border-r border-border bg-card"
+      className="neu-panel flex h-full shrink-0 flex-col border-r border-border bg-card"
+      style={{ width: railWidth, transition: "width 180ms ease-out" }}
       aria-busy={agentActive}
       aria-label={agentActive ? "Señor Doco, working" : "Señor Doco"}
     >
@@ -516,30 +818,61 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
         </button>
       </div>
 
-      <div
-        ref={messageListRef}
-        onScroll={onMessagesScroll}
-        className="flex-1 overflow-y-auto px-3 py-3 text-xs leading-relaxed"
-      >
-        {loadError ? (
-          <div className="rounded-md bg-destructive/10 px-2 py-1.5 text-[11px] text-destructive">
-            Couldn't load chat history: {loadError}
-          </div>
+      {/* Persistent "what this is" line, sitting right under the title so
+          new collaborators immediately know what Señor Doco is and how to
+          invite their own agent. */}
+      <div className="shrink-0 border-b border-border/70 px-3 py-1.5 text-[10px] leading-snug text-muted-foreground">
+        Señor Doco runs on Claude Haiku 4.5 inside Doco. Want to collaborate with your own agent?{" "}
+        <Link
+          to="/collaborators/invite"
+          className="font-semibold text-foreground hover:text-primary"
+        >
+          Invite them
+        </Link>
+        .
+      </div>
+
+      <div className="flex min-h-0 flex-1">
+        <div
+          ref={messageListRef}
+          onScroll={onMessagesScroll}
+          className={cn(
+            "min-h-0 overflow-y-auto px-3 py-3 text-xs leading-relaxed",
+            showThinking ? "w-[320px] shrink-0 border-r border-border" : "flex-1",
+          )}
+        >
+          {loadError ? (
+            <div className="rounded-md bg-destructive/10 px-2 py-1.5 text-[11px] text-destructive">
+              Couldn't load chat history: {loadError}
+            </div>
+          ) : null}
+          {hasMore ? (
+            <div className="mb-2 text-center text-[10px] text-muted-foreground">
+              {loadingOlder ? "Loading older messages…" : "Scroll up for older messages"}
+            </div>
+          ) : null}
+          {allMessages.length === 0 && !loadError && bootstrapped ? (
+            <div className="text-[11px] text-muted-foreground">
+              Ask me anything about your Docos — I can search, capture decisions, create new Docos
+              or orgs, invite collaborators, and take you to any page.
+            </div>
+          ) : null}
+          {allMessages.map((rm) => (
+            <MessageBlock
+              key={rm.kind === "saved" ? rm.message.id : "inflight"}
+              rm={rm}
+              usage={rm.kind === "inflight" ? turnUsage : null}
+              showThinking={showThinking}
+              onToggleThinking={toggleShowThinking}
+            />
+          ))}
+        </div>
+        {showThinking ? (
+          <ThinkingPanel
+            events={thinkingEvents}
+            active={busy || inFlight !== null || remoteInflight}
+          />
         ) : null}
-        {hasMore ? (
-          <div className="mb-2 text-center text-[10px] text-muted-foreground">
-            {loadingOlder ? "Loading older messages…" : "Scroll up for older messages"}
-          </div>
-        ) : null}
-        {allMessages.length === 0 && !loadError && bootstrapped ? (
-          <div className="text-[11px] text-muted-foreground">
-            Ask me anything about your Docos — I can search, capture decisions, create new Docos or
-            orgs, invite collaborators, and take you to any page.
-          </div>
-        ) : null}
-        {allMessages.map((rm) => (
-          <MessageBlock key={rm.kind === "saved" ? rm.message.id : "inflight"} rm={rm} />
-        ))}
       </div>
 
       <Composer
@@ -654,7 +987,23 @@ function blockKey(block: AnyBlock): string {
   return `text-${hashText(block.text)}`;
 }
 
-function MessageBlock({ rm }: { rm: RenderableMessage }) {
+function formatTokenCount(n: number): string {
+  if (n < 1000) return String(n);
+  if (n < 10_000) return `${(n / 1000).toFixed(1)}k`;
+  return `${Math.round(n / 1000)}k`;
+}
+
+function MessageBlock({
+  rm,
+  usage,
+  showThinking,
+  onToggleThinking,
+}: {
+  rm: RenderableMessage;
+  usage: TurnUsage | null;
+  showThinking: boolean;
+  onToggleThinking: () => void;
+}) {
   if (rm.kind === "saved") {
     const m = rm.message;
     // A "user" role message that contains only tool_result blocks is
@@ -674,16 +1023,20 @@ function MessageBlock({ rm }: { rm: RenderableMessage }) {
     }
     return <SavedMessage message={m} />;
   }
-  return <InFlightMessageView msg={rm.message} />;
+  return (
+    <InFlightMessageView
+      msg={rm.message}
+      usage={usage}
+      showThinking={showThinking}
+      onToggleThinking={onToggleThinking}
+    />
+  );
 }
 
 function SavedMessage({ message }: { message: ChatMessage }) {
   const isAssistant = message.role === "assistant";
   return (
     <div className={cn("mb-3 flex flex-col", isAssistant ? "items-end" : "items-start")}>
-      <div className="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground">
-        {isAssistant ? "Señor Doco" : "You"}
-      </div>
       <div
         className={cn(
           "neu-bubble max-w-[90%] space-y-1.5 rounded-lg px-2.5 py-1.5",
@@ -694,20 +1047,26 @@ function SavedMessage({ message }: { message: ChatMessage }) {
           <BlockView key={blockKey(b)} block={b} />
         ))}
       </div>
+      <div className="mt-1 text-[10px] uppercase tracking-wide text-muted-foreground">
+        {isAssistant ? "Señor Doco" : "You"}
+      </div>
     </div>
   );
 }
 
-function InFlightMessageView({ msg }: { msg: InFlightMessage }) {
+function InFlightMessageView({
+  msg,
+  usage,
+  showThinking,
+  onToggleThinking,
+}: {
+  msg: InFlightMessage;
+  usage: TurnUsage | null;
+  showThinking: boolean;
+  onToggleThinking: () => void;
+}) {
   return (
     <div className="mb-3 flex flex-col items-end">
-      {/* In-flight assistant messages render the animated doco mark next
-          to the label so the "Señor Doco is replying" cue lives with the
-          bubble itself, not the sidebar header. */}
-      <div className="mb-1 flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-muted-foreground">
-        <DocoMark height={14} variant="mark" active decorative />
-        Señor Doco
-      </div>
       <div className="neu-bubble max-w-[90%] space-y-1.5 rounded-lg bg-primary/10 px-2.5 py-1.5">
         {msg.content.map((b) => {
           if (b.type === "tool_use") {
@@ -727,8 +1086,124 @@ function InFlightMessageView({ msg }: { msg: InFlightMessage }) {
           </div>
         ) : null}
       </div>
+      {/* In-flight assistant messages render the animated doco mark next
+          to the label so the "Señor Doco is replying" cue lives with the
+          bubble itself. Label sits BELOW the bubble to match the saved
+          message layout. */}
+      <div className="mt-1 flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-muted-foreground">
+        <DocoMark height={14} variant="mark" active decorative />
+        Señor Doco
+        {usage ? (
+          <span
+            className="font-mono normal-case tracking-normal"
+            title={`Tokens for this turn — input ${usage.input_tokens}, output ${usage.output_tokens}, cache read ${usage.cache_read_tokens}, cache create ${usage.cache_creation_tokens}`}
+          >
+            · {formatTokenCount(usage.input_tokens)} in · {formatTokenCount(usage.output_tokens)}{" "}
+            out
+          </span>
+        ) : null}
+      </div>
+      {/* Show-thinking toggle. Tap expands the sidebar from 320 to
+          640px and reveals a real-time event log of every tool call,
+          tool result, and text delta the agent is producing right
+          now. Tap again to collapse. */}
+      <button
+        type="button"
+        onClick={onToggleThinking}
+        className="mt-1 flex items-center gap-1 text-[10px] uppercase tracking-wide text-muted-foreground hover:text-primary"
+        aria-pressed={showThinking}
+        aria-label={showThinking ? "Hide thinking" : "Show thinking"}
+        title={showThinking ? "Hide the thinking column" : "Show the real-time thinking column"}
+      >
+        <span aria-hidden>{showThinking ? "▾" : "▴"}</span>
+        {showThinking ? "Hide thinking" : "Show thinking"}
+      </button>
     </div>
   );
+}
+
+function ThinkingPanel({ events, active }: { events: ThinkingEvent[]; active: boolean }) {
+  return (
+    <div className="flex min-h-0 flex-1 flex-col bg-card/50">
+      <div className="shrink-0 border-b border-border/70 px-3 py-1.5 text-[10px] uppercase tracking-wide text-muted-foreground">
+        Thinking {active ? <span className="ml-1 animate-pulse">●</span> : null}
+        <span className="ml-2 font-mono normal-case">{events.length} events</span>
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2 text-[11px] font-mono leading-snug">
+        {events.length === 0 ? (
+          <div className="px-1 py-2 text-muted-foreground">
+            {active
+              ? "(waiting for first event…)"
+              : "(no thinking yet — send a message to see what Señor Doco does)"}
+          </div>
+        ) : (
+          events.map((ev) => <ThinkingRow key={ev.id} ev={ev} />)
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ThinkingRow({ ev }: { ev: ThinkingEvent }) {
+  const elapsed = `+${(ev.at_ms / 1000).toFixed(1)}s`;
+  if (ev.kind === "text") {
+    return (
+      <div className="mb-1">
+        <span className="text-muted-foreground">{elapsed} text </span>
+        <span className="whitespace-pre-wrap break-words">{ev.text}</span>
+      </div>
+    );
+  }
+  if (ev.kind === "tool_start") {
+    return (
+      <div className="mb-1">
+        <span className="text-muted-foreground">{elapsed} tool </span>
+        <span className="font-semibold">{ev.name}</span>
+        <span className="text-muted-foreground"> ({ev.tool_id.slice(-6)})</span>
+      </div>
+    );
+  }
+  if (ev.kind === "tool_input") {
+    const json = JSON.stringify(ev.input);
+    return (
+      <div className="mb-1 break-all">
+        <span className="text-muted-foreground">{elapsed} input </span>
+        <span>{json.length > 200 ? `${json.slice(0, 200)}…` : json}</span>
+      </div>
+    );
+  }
+  if (ev.kind === "tool_result") {
+    return (
+      <div className={cn("mb-1 break-all", ev.ok ? "" : "text-destructive")}>
+        <span className="text-muted-foreground">{elapsed} result </span>
+        <span>{ev.preview}</span>
+      </div>
+    );
+  }
+  if (ev.kind === "navigate") {
+    return (
+      <div className="mb-1 text-primary">
+        <span className="text-muted-foreground">{elapsed} navigate </span>
+        <span>{ev.url}</span>
+      </div>
+    );
+  }
+  if (ev.kind === "usage") {
+    return (
+      <div className="mb-1 text-muted-foreground">
+        {elapsed} usage in={ev.input_tokens} out={ev.output_tokens}
+      </div>
+    );
+  }
+  if (ev.kind === "error") {
+    return (
+      <div className="mb-1 text-destructive">
+        <span className="text-muted-foreground">{elapsed} error </span>
+        <span>{ev.message}</span>
+      </div>
+    );
+  }
+  return null;
 }
 
 function BlockView({ block }: { block: AnyBlock }) {
@@ -952,16 +1427,6 @@ function Composer({
           {busy ? "…" : "Send"}
         </button>
       </div>
-      <div className="mt-1.5 border-t border-border/70 pt-1.5 text-[10px] leading-snug text-muted-foreground">
-        Señor Doco runs on Claude Haiku 4.5 inside Doco. Want to collaborate with your own agent?{" "}
-        <Link
-          to="/collaborators/invite"
-          className="font-semibold text-foreground hover:text-primary"
-        >
-          Invite them
-        </Link>
-        .
-      </div>
     </div>
   );
 }
@@ -977,5 +1442,12 @@ type StreamEvent =
   | { kind: "tool_use_result"; tool_use_id: string; ok: boolean; preview: string }
   | { kind: "navigate"; url: string }
   | { kind: "message_saved"; message_id: string; role: "user" | "assistant" }
+  | {
+      kind: "usage_update";
+      input_tokens: number;
+      output_tokens: number;
+      cache_read_tokens: number;
+      cache_creation_tokens: number;
+    }
   | { kind: "done" }
   | { kind: "error"; message: string };

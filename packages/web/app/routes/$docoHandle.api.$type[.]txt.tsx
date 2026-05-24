@@ -220,6 +220,7 @@ BODY (JSON)
   intent_ids          optional   ["intent_01...", ...]
   decision_ids        optional   ["decision_01...", ...]
   follows             optional   entity ids this action follows causally or chronologically
+  gated_by            optional   ["rule_01...", ...] rule ids that gate this action (BPMN-style policy guards)
   inputs              optional   verb-specific input object or value
   outputs             optional   verb-specific output object or value
   actor_principal_id  optional   principal id who performs the action; auth fills this
@@ -532,6 +533,129 @@ UPDATE AN EXISTING STATE
   kind, invariants, and follows.
 `,
 
+  principals: (baseUrl, handle) => `# Doco — Principals (create + retire)
+
+Principals are the role-personas a Doco references via Action.actor_id,
+Intent.actors[], Decision.decided_by, etc. They have a smaller write
+surface than capture-type neurons: you can create one, you can retire
+one (a lifecycle state change, not a row delete), and that's it.
+Identity fields (name, display_name, …) are immutable — to "rename" a
+principal, create a new one and retire the old.
+
+CREATE
+  POST ${baseUrl}/${handle}/api/principals.json
+  Content-Type: application/json
+
+BODY (JSON)
+  name                required   lowercase, must match [a-z0-9][a-z0-9_-]*.
+                                  Server lowercases on receipt.
+  type                optional   "person" | "agent".
+                                  Some reserved names (user, human,
+                                  doco-host, github) have defaults.
+  summary             optional   one-line description; falls back to
+                                  a reserved-name default, then to
+                                  display_name, then to name.
+  display_name        optional   pretty-cased name.
+  description         optional   short description.
+  body_md             optional   markdown body.
+
+SUCCESS RESPONSE — create (HTTP 201, application/json)
+  {
+    "ok": true,
+    "id": "principal_<ULID>",
+    "name": "<name>",
+    "existed": false,
+    "footer_lines": ["[🔮 Doco] 👤 Principal added: <name> (<id>)"]
+  }
+
+SUCCESS RESPONSE — idempotent (HTTP 200)
+  If a principal with the same name already exists in this Doco, the
+  endpoint returns 200 with the existing id and "existed": true rather
+  than creating a duplicate.
+
+ERROR RESPONSES
+  HTTP 400  invalid name, invalid type, or missing name
+  HTTP 401  authentication required
+  HTTP 403  author role required
+
+EXAMPLE — create
+  curl -sS -X POST \\
+    -H "Content-Type: application/json" \\
+    -H "Authorization: Bearer $DOCO_ACCESS" \\
+    ${baseUrl}/${handle}/api/principals.json \\
+    -d '{
+      "name": "kitchen",
+      "type": "agent",
+      "summary": "Team-role principal representing the kitchen staff."
+    }'
+
+RETIRE
+  PATCH ${baseUrl}/${handle}/api/principals/<id>.json
+  Content-Type: application/json
+
+  Retirement is the ONLY PATCH operation supported. Identity fields stay
+  immutable; principals can never be renamed in place.
+
+BODY (JSON)
+  lifecycle           required   must be the literal string "retired".
+                                  No other field is accepted.
+
+SUCCESS RESPONSE — retire (HTTP 200, application/json)
+  {
+    "ok": true,
+    "id": "principal_<ULID>",
+    "lifecycle": "retired",
+    "footer_lines": ["[🔮 Doco] 👤 Principal retired: <name> (<id>)"]
+  }
+
+SUCCESS RESPONSE — already retired (HTTP 200, idempotent)
+  {
+    "ok": true,
+    "id": "principal_<ULID>",
+    "already_retired": true,
+    "footer_lines": ["[🔮 Doco] 👤 Principal already retired: <name> (<id>)"]
+  }
+
+ERROR RESPONSES
+  HTTP 400  body shape other than { "lifecycle": "retired" }
+  HTTP 401  authentication required
+  HTTP 403  author role required
+  HTTP 404  principal not found in this Doco
+  HTTP 409  active neurons still reference this principal — retire or
+            supersede those first. Response body:
+            {
+              "error": "Cannot retire principal: active neurons still reference it. …",
+              "active_references": [
+                { "id": "action_<ULID>", "neuron_type": "action",
+                  "summary": "…", "synapse_type": "performed_by" },
+                ...
+              ]
+            }
+
+EXAMPLE — retire
+  curl -sS -X PATCH \\
+    -H "Content-Type: application/json" \\
+    -H "Authorization: Bearer $DOCO_ACCESS" \\
+    ${baseUrl}/${handle}/api/principals/principal_01...json \\
+    -d '{ "lifecycle": "retired" }'
+
+LIST / READ
+  GET ${baseUrl}/${handle}/api/principals.json
+  GET ${baseUrl}/${handle}/api/principals/<id>.json
+
+  The list response returns two arrays:
+    - "principals" / "collaborators" — OAuth collaborators on this Doco
+      (humans + agents with a role grant). Legacy field name is
+      "principals"; "collaborators" is the clearer alias.
+    - "principal_neurons" — actual Principal neurons in this Doco
+      (what swim-lane / BPMN views render). Mutate these via the
+      create + retire endpoints above.
+
+RELATED
+  POST ${baseUrl}/${handle}/api/intents.json   actors_principal_ids points at principal ids
+  POST ${baseUrl}/${handle}/api/actions.json   actor_principal_id points at a principal id
+`,
+
   policies: (baseUrl, handle) => `# Doco — Policies
 
 Policies are **not neurons**. They govern how a Doco is authored,
@@ -652,7 +776,7 @@ EXAMPLE — neuron_authoring (probabilistic)
       "spec": "Pass when the Decision explains at least one alternative and why it was rejected."
     }'
 
-UPDATE A SPECIFIC POLICY
+UPDATE A SPECIFIC PRIMITIVE
   PATCH ${baseUrl}/${handle}/api/guidance_policies/<id>.json
   PATCH ${baseUrl}/${handle}/api/neuron_authoring_policies/<id>.json
   Content-Type: application/json

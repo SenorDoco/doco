@@ -1,6 +1,7 @@
 import { entityUrl } from "@doco/shared";
 import { Link } from "react-router";
 import {
+  activityRowLifecycle,
   auditSummaryFallback,
   capNodeType,
   iconFromAuditOp,
@@ -9,6 +10,7 @@ import {
   verbFromAuditOp,
 } from "~/lib/activity-feed";
 import { cn } from "~/lib/cn";
+import { lifecycleColor } from "~/lib/neuron-colors";
 
 export interface ActivityFeedLineItem {
   id: string;
@@ -51,10 +53,8 @@ export function ActivityFeedLine({
         <span className="text-muted-foreground">: </span>
         <Link
           to={url}
-          className={cn(
-            "text-primary hover:underline",
-            strikeTarget && "line-through decoration-2",
-          )}
+          style={{ color: lifecycleColor(activityRowLifecycle(item)) }}
+          className={cn("hover:underline", strikeTarget && "line-through decoration-2")}
         >
           {summary}
         </Link>

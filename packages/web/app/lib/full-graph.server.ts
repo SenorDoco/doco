@@ -21,6 +21,7 @@ interface OverviewGraphRow {
   id: string;
   entity_type: string;
   name: string | null;
+  label?: string | null;
   lifecycle: string | null;
   created_at: string | null;
 }
@@ -100,7 +101,7 @@ function overviewRowsSql(includeLabel = false): string {
 }
 
 async function loadOverviewRows(c: QueryClient, docoId: string): Promise<OverviewGraphRow[]> {
-  return (await c.query<OverviewGraphRow>(overviewRowsSql(), [docoId])).rows;
+  return (await c.query<OverviewGraphRow>(overviewRowsSql(true), [docoId])).rows;
 }
 
 async function loadOverviewLinks(
@@ -139,7 +140,7 @@ export async function loadOverviewGraph(
   const nodes: OverviewGraphNode[] = rows.map((row) => ({
     id: row.id,
     entity_type: row.entity_type,
-    name: row.name,
+    name: row.label ?? row.name,
     lifecycle: row.lifecycle ?? "active",
     created_at: toIso(row.created_at),
     href: overviewEntityHref(options.handle, row.entity_type, row.id),
@@ -206,19 +207,23 @@ export async function loadOverviewNodeDetails(
 // the right per-Doco entity URL.
 
 function overviewRowsSqlMulti(): string {
-  const neuronLegs = GRAPH_TABLES.map(
-    (entry) => `SELECT t.id,
+  const neuronLegs = GRAPH_TABLES.map((entry) => {
+    const tnCol = ALL_ENTITY_TABLES[entry.entityType]?.typeNamedColumn;
+    const labelExpr = entry.labelExpr ?? (tnCol ? `split_part(t.${tnCol}, E'\n', 1)` : "t.summary");
+    return `SELECT t.id,
                      '${entry.entityType}'::text AS entity_type,
                      NULL::text AS name,
+                     ${labelExpr} AS label,
                      COALESCE(t.lifecycle, 'active') AS lifecycle,
                      t.created_at::text AS created_at,
                      t.doco_id AS doco_id
                 FROM ${entry.table} t
-               WHERE t.doco_id = ANY($1::text[])`,
-  );
+               WHERE t.doco_id = ANY($1::text[])`;
+  });
   const principalLeg = `SELECT id,
                               'principal'::text AS entity_type,
                               name,
+                              COALESCE(summary, name) AS label,
                               COALESCE(lifecycle, 'active') AS lifecycle,
                               created_at::text AS created_at,
                               doco_id AS doco_id
@@ -270,7 +275,7 @@ export async function loadOrgOverviewGraph(
     return {
       id: row.id,
       entity_type: row.entity_type,
-      name: row.name,
+      name: row.label ?? row.name,
       lifecycle: row.lifecycle ?? "active",
       created_at: toIso(row.created_at),
       href: overviewEntityHref(handle, row.entity_type, row.id),

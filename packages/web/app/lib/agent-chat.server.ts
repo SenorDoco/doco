@@ -42,6 +42,7 @@ import { waitUntil } from "@vercel/functions";
 import { canAccessDoco } from "./doco-access.server";
 import { ensureEnvLoaded } from "./dotenv.server";
 import { listAllDocos } from "./host.server";
+import { internalFetch } from "./internal-fetch.server";
 import type { CurrentPrincipal } from "./session.server";
 import { recordAgentTurn } from "./telemetry.server";
 
@@ -54,6 +55,20 @@ ensureEnvLoaded();
 const MODEL = "claude-haiku-4-5";
 const MAX_TURNS_PER_REPLY = 12;
 const MAX_TOKENS = 2048;
+// Cap the tool-result body fed back to the model on each Anthropic
+// round trip. Without this cap a single `GET /api/intents.json` on a
+// busy doco can shove tens of KB into the next call's input tokens,
+// then again on every subsequent tool round-trip in the same turn,
+// then again on every future turn that replays the history. The cap
+// keeps individual responses small enough that the per-minute token
+// budget survives a multi-tool turn. The marker tells the model
+// where the cut happened so it knows to fetch by id for detail.
+const MAX_TOOL_RESULT_BYTES = 8 * 1024;
+// Rate-limit retry budget for the Anthropic stream call. Single retry
+// is enough to ride out a brief minute-bucket spike without bouncing
+// to the user; cap the sleep at 30s so a long retry-after doesn't
+// freeze the sidebar.
+const ANTHROPIC_429_MAX_RETRY_SLEEP_MS = 30_000;
 
 // Attachment policy — kept in one place so the UI notice, the system
 // prompt, and the migration's INTERVAL stay in sync. If you change
@@ -68,7 +83,27 @@ export const ATTACHMENT_ALLOWED_MIME = new Set<string>([
   "application/pdf",
   "text/plain",
   "text/markdown",
+  // XML-shaped formats (.bpmn, .xml). Browsers pick text/xml or
+  // application/xml depending on the platform; some pick
+  // application/octet-stream for less-known extensions like .bpmn —
+  // see normalizeUploadMime below for that fallback.
+  "text/xml",
+  "application/xml",
 ]);
+
+/**
+ * Some browsers ship .bpmn / .xml uploads as `application/octet-stream`
+ * because the extension isn't in their built-in MIME table. We trust
+ * the extension for the small allowlist of XML-ish formats we know
+ * are safe to read as text; everything else stays as the browser
+ * reported it (so an actual binary upload keeps failing the gate).
+ */
+export function normalizeUploadMime(filename: string, reportedMime: string): string {
+  if (reportedMime !== "application/octet-stream" && reportedMime !== "") return reportedMime;
+  const lower = filename.toLowerCase();
+  if (lower.endsWith(".bpmn") || lower.endsWith(".xml")) return "application/xml";
+  return reportedMime;
+}
 // Stable user-facing line. The sidebar shows this whenever a file is
 // staged; the system prompt also instructs the model to repeat it when
 // a message arrives with attachments.
@@ -87,6 +122,7 @@ export interface ChatConversationRow {
   archived: boolean;
   created_at: Date;
   updated_at: Date;
+  active_turn_started_at: Date | null;
 }
 
 export interface ChatMessageRow {
@@ -150,6 +186,16 @@ export type ChatStreamEvent =
   | { kind: "tool_use_result"; tool_use_id: string; ok: boolean; preview: string }
   | { kind: "navigate"; url: string }
   | { kind: "message_saved"; message_id: string; role: "user" | "assistant" }
+  | {
+      // Running token totals for THIS turn (not the session). The
+      // sidebar shows these next to the in-flight bubble so the user
+      // can see what their request is costing in real time.
+      kind: "usage_update";
+      input_tokens: number;
+      output_tokens: number;
+      cache_read_tokens: number;
+      cache_creation_tokens: number;
+    }
   | { kind: "done" }
   | { kind: "error"; message: string };
 
@@ -168,7 +214,7 @@ export type ChatStreamEvent =
 export async function loadOrCreateConversation(principalId: string): Promise<ChatConversationRow> {
   return await withClient(async (c) => {
     const existing = await c.query<ChatConversationRow>(
-      `SELECT id, collaborator_id, archived, created_at, updated_at
+      `SELECT id, collaborator_id, archived, created_at, updated_at, active_turn_started_at
          FROM chat_conversations
         WHERE collaborator_id = $1
         ORDER BY created_at ASC
@@ -180,12 +226,38 @@ export async function loadOrCreateConversation(principalId: string): Promise<Cha
     const fresh = await c.query<ChatConversationRow>(
       `INSERT INTO chat_conversations (id, collaborator_id)
        VALUES ($1, $2)
-       RETURNING id, collaborator_id, archived, created_at, updated_at`,
+       RETURNING id, collaborator_id, archived, created_at, updated_at, active_turn_started_at`,
       [id, principalId],
     );
     const row = fresh.rows[0];
     if (!row) throw new Error("failed to create conversation row");
     return row;
+  });
+}
+
+/**
+ * Mark the conversation as actively composing a reply. Called at the
+ * top of runAssistantTurn; the timestamp gives the client a "is this
+ * stale?" signal so a crashed/zombied turn doesn't display forever.
+ */
+async function markActiveTurnStarted(conversationId: string): Promise<void> {
+  await withClient(async (c) => {
+    await c.query("UPDATE chat_conversations SET active_turn_started_at = now() WHERE id = $1", [
+      conversationId,
+    ]);
+  });
+}
+
+/**
+ * Clear the active-turn marker. Called in runAssistantTurn's finally
+ * so a normal completion, an error, or even a thrown abort all reset
+ * the flag.
+ */
+async function markActiveTurnEnded(conversationId: string): Promise<void> {
+  await withClient(async (c) => {
+    await c.query("UPDATE chat_conversations SET active_turn_started_at = NULL WHERE id = $1", [
+      conversationId,
+    ]);
   });
 }
 
@@ -338,7 +410,8 @@ export async function saveAttachment(args: {
   mimeType: string;
   bytes: Buffer;
 }): Promise<ChatAttachmentMeta> {
-  if (!ATTACHMENT_ALLOWED_MIME.has(args.mimeType)) {
+  const mimeType = normalizeUploadMime(args.filename, args.mimeType);
+  if (!ATTACHMENT_ALLOWED_MIME.has(mimeType)) {
     throw new Error(`unsupported mime type: ${args.mimeType}`);
   }
   if (args.bytes.byteLength > ATTACHMENT_MAX_BYTES) {
@@ -359,7 +432,7 @@ export async function saveAttachment(args: {
         args.conversationId,
         args.principalId,
         args.filename,
-        args.mimeType,
+        mimeType,
         args.bytes.byteLength,
         args.bytes,
       ],
@@ -369,7 +442,7 @@ export async function saveAttachment(args: {
     return {
       id,
       filename: args.filename,
-      mime_type: args.mimeType,
+      mime_type: mimeType,
       size_bytes: args.bytes.byteLength,
       created_at: row.created_at.toISOString(),
       expires_at: row.expires_at.toISOString(),
@@ -626,6 +699,19 @@ User-facing vocabulary:
 - "policies" never "constitution". The old word may appear in legacy URLs or API compatibility fields, but you should translate it to "policies" in replies.
 - "Doco" (capitalised) is ONLY the product / protocol / your own name ("Señor Doco"). When you refer to a user's particular instance — their knowledge graph — say "doco" or "docos" lower-case. Examples: "your docos", "this doco's policies", "create a new doco". Never write "your Docos", "this Doco's policies", "a Doco" with a capital D unless you literally mean the product. Same rule for "org" / "orgs".
 
+### Principal vs principle vs collaborator — DO NOT CONFUSE
+
+Three distinct things share confusable names. Get this wrong and the agent's reply is useless.
+
+- **Principal (neuron type)** — role-personas in this doco. Shown as swim lanes on the BPMN perspective. Referenced by Action.actor_id, Intent.actors_principal_ids, etc. Ids start with \`principal_01…\`. Listed at \`GET /<handle>/api/principals.json\` → \`principal_neurons\` field. Mutate with \`PATCH /<handle>/api/principals/<id>.json\`.
+- **Collaborator** — a person or AI agent with OAuth access to this doco. Has a role (owner/approver/author/reader). Ids start with \`collaborator_01…\`. Listed at \`GET /<handle>/api/principals.json\` → \`collaborators\` field (also exposed under the legacy alias \`principals\` in the same response).
+- **"principle"** — the user almost certainly means "Principal" (the neuron). Common misspelling. If the user types "principle" or "principles", treat it as \`principal\` / \`principals\` and operate on Principal neurons unless the surrounding context makes "philosophical principle" the only sensible reading. Never treat "principles" as "collaborators".
+
+Disambiguation flow:
+1. User says "principal" / "principle" / "principals" / "principles" → start with \`GET /<handle>/api/principals.json\` to see both fields, then pick the operation based on what the user is asking for (almost always \`principal_neurons\`).
+2. User says "collaborator" / "team member" / "person" / "agent" → operate on \`collaborators\` from the same response.
+3. User says "owner" / "permission" / "role" → also \`collaborators\`; the \`role\` field carries owner/approver/author/reader.
+
 ## Tools
 
 - doco_api({method, path, body?}): HTTP request to the Doco host with the user's session. Path starts with /. Returns {status, ok, body}.
@@ -643,18 +729,37 @@ Retention: every uploaded file is kept for ${ATTACHMENT_RETENTION_DAYS} days, th
 
 ## Endpoint surface
 
-  GET   /<handle>/status.json
-  GET   /<handle>/api/<type>.json                — list (type ∈ decisions, intents, actions, rules, logs, evals, references, ideas, states, principals, invites, audit). Policies are NOT in this list.
+  GET   /<handle>/status.json                    — freshness + per-type counts
+  GET   /<handle>/api/<type>.json                — list every neuron of the named type in this doco. Response: { ok, type, doco_id, count, items: [{ id, summary, lifecycle, created_at, updated_at, data, body_md }] }. Valid <type>: decisions, intents, actions, rules, logs, evals, references, ideas, states. Use this BEFORE guessing — when the user mentions a count or wants to "remove all X" / "list all X" / "find an X", list first.
   POST  /<handle>/api/<type>.json                — capture; returns { id, footer_lines, duration_ms }
-  GET   /<handle>/api/<type>/<id>.json
-  PATCH /<handle>/api/<type>/<id>.json
-  GET   /<handle>/api/<type>.txt                 — plain-text POST/PATCH body spec for capture-capable types
-  GET   /<handle>/api/policies.json            — list policies (guidance + neuron-authoring) for this Doco
+  GET   /<handle>/api/<type>/<id>.json           — single neuron detail
+  PATCH /<handle>/api/<type>/<id>.json           — partial update; PATCH lifecycle = "retired" is the "delete" equivalent
+  GET   /<handle>/api/<type>.txt                 — long-form POST/PATCH body spec (only fetch if the inline cheatsheet below isn't enough)
+  GET   /<handle>/api/principals.json            — DUAL-purpose endpoint. Response: { ok, principals: [...legacy collaborator alias...], collaborators: [{ id, username, role, type, github_login, email }], principal_neurons: [{ id, summary, lifecycle, data, ... }], collaborator_count, principal_neuron_count }. Read \`collaborators\` for the doco's OAuth members; read \`principal_neurons\` for the Principal NEURONS visible as BPMN swim lanes / referenced by Action.actor_id.
+  PATCH /<handle>/api/principals/<id>.json       — update a Principal NEURON (lifecycle, summary, etc.). Same retire-on-lifecycle convention.
+  GET   /<handle>/api/policies.json            — list policies (guidance + neuron-authoring) for this doco
   POST  /<handle>/api/policies.json            — capture a policy; body needs "policy_kind": "guidance" | "neuron_authoring"
-  GET   /<handle>/search.json?q=<query>
+  GET   /<handle>/api/invites.json               — pending collaborator invites
+  GET   /<handle>/api/audit.json                 — audit log entries
+  GET   /<handle>/api/perspectives.json          — saved BPMN perspectives
+  GET   /<handle>/api/settings.json              — doco settings (handle, visibility, display name)
+  GET   /<handle>/search.json?q=<query>          — full-text search across this doco's neurons + policies
   POST  /api/v1/docos.json                       — create a doco (NO GET — to list the user's docos, see the "Your docos" section below)
   POST  /api/v1/orgs.json                        — create an org (NO GET — to list the user's orgs, see the "Your orgs" section below)
   GET   /api/v1/agent-bootstrap.json             — re-read policies
+
+### Discovery — "what's in this doco?"
+
+When the user asks about contents of a doco without giving you specific
+ids (e.g. "what decisions are here?", "remove all principles", "show me
+the active intents", "how many actions does this have?"), DON'T guess
+from the page URL — actually GET the list endpoint and answer from the
+real data. Examples:
+
+- "remove all principles/principals" → \`GET /<handle>/api/principals.json\`, read \`principal_neurons\`, then PATCH each one's lifecycle to "retired".
+- "list intents" / "what intents do I have?" → \`GET /<handle>/api/intents.json\`, read \`items\`.
+- "find the X about Y" → \`GET /<handle>/search.json?q=Y\`, scan results.
+- "how many decisions?" → \`GET /<handle>/status.json\` (counts only; cheaper than listing).
 
 ## Capture body structure
 
@@ -686,23 +791,40 @@ principal-id fields above.
 
 Required fields marked *; everything else is optional. lifecycle
 defaults to "active" except where noted. Auth fills the principal-id
-fields when you omit them. For every type, body_md adds a markdown
-body appended after the frontmatter.
+fields when you omit them.
 
-- Decision:  { question*, chosen*, alternatives* [{name, rejected_because}], summary?, intent_ids?[], born_from?, decided_by_principal_id?, lifecycle?, deprecated?, outcome?("succeeded"|"failed"), superseded_by? }
-- Intent:    { summary*, title?, wanted_by_principal_id?, actors_principal_ids?[], stakeholders_principal_ids?[], lifecycle?, deprecated?, outcome? }
-- Action:    { summary*, verb*, intent_ids?[], decision_ids?[], follows?[], inputs?, outputs?, actor_principal_id?, lifecycle?(default "retired"), outcome?(default "succeeded") }
-- Log:       { summary*, verb*, happened_at*(ISO8601), outputs*(non-empty obj), template_id?, intent_ids?[], decision_ids?[], follows?[], inputs?, actor_principal_id?, lifecycle?(default "retired"), outcome?(default "succeeded") }
-- Rule:      { summary*, predicate*, intent_ids?[], enforced_by?("runtime"|"review"|"manual"), severity?("hard"|"soft"), born_from?, authored_by_principal_id? }
-- Eval:      { name*, criterion*({kind:"exact"|"shape"|"llm-judge", spec}), summary?, kind?("unit"|"integration"|"eval"|"process"|"doc-consistency"), description?, expected_status?("pass"|"fail"), target_ref?, intent_ids?[], authored_by_principal_id? }
-- Reference: { ref_type*("file"|"url"|"ticket"|"commit"|"document"|"other"), locator*, summary?, content_hash?, intent_ids?[], created_by_principal_id? }
-- State:     { summary*, kind*("initial"|"intermediate"|"terminal"), invariants?[], follows?[], created_by_principal_id? }
-- Idea:      { summary*, created_by_principal_id?, promoted_to?, rejection_reason?, lifecycle?(default "drafting") }
-- Policy: POST /<handle>/api/policies.json with policy_kind*("guidance"|"neuron_authoring"). For neuron_authoring also evaluation_kind*("deterministic"|"probabilistic"), then either predicate* or spec*, and optional fires_when_neuron_lifecycle?[], on_violation?("block"|"warn"|"log", default "block").
+**Migration 022/023 prose-field rename.** Every neuron type now
+stores its full markdown body in a single TYPE-NAMED field — there
+is no separate \`summary\` / \`body_md\` / \`title\` / \`name\` /
+\`description\` field anymore. The first line of the prose IS the
+label shown in lists; the rest is the body. POSTs that send the old
+\`summary\` field will fail with \`<type> is required.\` because the
+required prose key is now \`intent\` / \`decision\` / \`action\` /
+etc., not \`summary\`.
 
-Examples (minimal):
-{ "summary": "Checkout can be completed without support.", "wanted_by_principal_id": "principal_01..." }            ← Intent
-{ "summary": "Implemented principal-id capture fields.", "verb": "implemented", "outputs": { "commit": "abc123" } }  ← Action
+- Decision:  { decision*, question*, chosen*, alternatives?[{name, rejected_because}], intent_ids?[], born_from?, decided_by_principal_id?, lifecycle?, deprecated?, outcome?("succeeded"|"failed"), superseded_by? }
+- Intent:    { intent*, wanted_by_principal_id?, actors_principal_ids?[], stakeholders_principal_ids?[], lifecycle?, deprecated?, outcome? }
+- Action:    { action*, verb*, intent_ids?[], decision_ids?[], follows?[], gated_by?[], inputs?, outputs?, actor_principal_id?, lifecycle?(default "retired"), outcome?(default "succeeded") }
+- Log:       { log*, verb*, happened_at*(ISO8601), outputs*(non-empty obj), template_id?, intent_ids?[], decision_ids?[], follows?[], inputs?, actor_principal_id?, lifecycle?(default "retired"), outcome?(default "succeeded") }
+- Rule:      { rule*, predicate*, intent_ids?[], enforced_by?("runtime"|"review"|"manual"), severity?("hard"|"soft"), born_from?, authored_by_principal_id? }
+- Eval:      { eval*, criterion*({kind:"exact"|"shape"|"llm-judge", spec}), kind?("unit"|"integration"|"eval"|"process"|"doc-consistency"), expected_status?("pass"|"fail"), target_ref?, intent_ids?[], authored_by_principal_id? }
+- Reference: { reference*, ref_type*("file"|"url"|"ticket"|"commit"|"document"|"other"), locator*, content_hash?, intent_ids?[], created_by_principal_id? }
+- State:     { state*, kind*("initial"|"intermediate"|"terminal"), invariants?[], follows?[], created_by_principal_id? }
+- Idea:      { idea*, created_by_principal_id?, promoted_to?, rejection_reason?, lifecycle?(default "drafting") }
+- Policy (Guidance): POST /<handle>/api/policies.json with policy_kind*("guidance"), summary*, body_md?, authored_by_principal_id?. (Policies keep the legacy summary/body_md shape — they did NOT migrate to type-named columns.)
+- Policy (Neuron-authoring): same endpoint with policy_kind*("neuron_authoring"), summary*, evaluation_kind*("deterministic"|"probabilistic"), then either predicate*(deterministic AuthoringPredicate object) or spec*(probabilistic prose), and optional fires_when_neuron_lifecycle?[], on_violation?("block"|"warn"|"log", default "block").
+
+The TYPE-NAMED field carries multi-line markdown; the first line is
+the row label that shows up in lists and BPMN swim lanes. Example:
+
+  POST /<handle>/api/intents.json
+  { "intent": "Talent seeker pays to activate Torre Reach\\n\\nThe buyer can complete the purchase without support intervention…",
+    "wanted_by_principal_id": "principal_01..." }
+
+More examples (minimal — first line of the type-named field is the label):
+{ "intent": "Checkout can be completed without support.\\n\\nBackground: support tickets averaged 3/week before this work.", "wanted_by_principal_id": "principal_01..." }   ← Intent
+{ "action": "Implement principal-id capture fields.\\n\\nReplaced the username-based path…", "verb": "implement", "outputs": { "commit": "abc123" } }                          ← Action
+{ "decision": "Use ULIDs for all entity ids.", "question": "What identifier scheme should every entity use?", "chosen": "ULID — time-sortable, URL-safe, no collisions in practice." } ← Decision
 
 Only call GET /<handle>/api/<type>.txt when you need detail beyond
 this cheatsheet (long-form error semantics, deep PATCH field list,
@@ -856,6 +978,110 @@ const TOOLS: Tool[] = [
   },
 ];
 
+/**
+ * Pull a recommended retry-delay (in ms) from an Anthropic 429 error.
+ * Anthropic sets `retry-after` (seconds) and the more specific
+ * `anthropic-ratelimit-*-reset` (ISO timestamp) headers; we try both
+ * and fall back to a 5s nudge if neither is present. Capped so a
+ * pathological `retry-after` doesn't freeze the sidebar.
+ */
+function parseAnthropicRetryAfterMs(err: unknown): number {
+  const headers = (err as { headers?: Record<string, string> }).headers ?? {};
+  const ra = headers["retry-after"] ?? headers["Retry-After"];
+  if (ra) {
+    const n = Number(ra);
+    if (Number.isFinite(n) && n >= 0) {
+      return Math.min(n * 1000, ANTHROPIC_429_MAX_RETRY_SLEEP_MS);
+    }
+  }
+  for (const key of [
+    "anthropic-ratelimit-input-tokens-reset",
+    "anthropic-ratelimit-tokens-reset",
+    "anthropic-ratelimit-requests-reset",
+  ]) {
+    const v = headers[key];
+    if (!v) continue;
+    const ms = Date.parse(v) - Date.now();
+    if (Number.isFinite(ms) && ms > 0) {
+      return Math.min(ms, ANTHROPIC_429_MAX_RETRY_SLEEP_MS);
+    }
+  }
+  return 5_000;
+}
+
+/**
+ * Translate an Anthropic SDK error into a sentence the user can act
+ * on. Raw error bodies (giant JSON dumps with type / request_id /
+ * message) read like noise in the chat bubble; this surfaces the
+ * actionable bit only.
+ */
+function friendlyAnthropicError(err: unknown): string {
+  const status = (err as { status?: number }).status;
+  const inner = (err as { error?: { error?: { message?: string; type?: string } } }).error?.error;
+  if (status === 429) {
+    const detail = inner?.message ? ` (${inner.message.split(".")[0]})` : "";
+    return `Señor Doco hit Anthropic's per-minute rate limit and one auto-retry didn't clear it. Try again in a minute.${detail}`;
+  }
+  if (status === 401 || status === 403) {
+    return `Señor Doco's Anthropic credentials aren't accepted (HTTP ${status}).${inner?.message ? ` ${inner.message}` : ""}`;
+  }
+  if (typeof status === "number" && status >= 500) {
+    return `Anthropic is having a problem on their end (HTTP ${status}). Try again shortly.`;
+  }
+  const msg = err instanceof Error ? err.message : String(err);
+  return `Anthropic stream error: ${msg}`;
+}
+
+/**
+ * Cap a tool-result JSON envelope so it doesn't pump the next
+ * Anthropic call's input-token count. Smart-truncation for list-
+ * shaped responses (`body.items` array) trims items first while
+ * keeping the metadata intact; everything else falls back to raw
+ * string truncation. Either way the model receives a clear marker
+ * telling it where the cut happened so it knows to fetch by id for
+ * detail rather than retry the same list call.
+ */
+function truncateToolResultEnvelope(
+  envelope: { status: number; ok: boolean; body: unknown },
+  maxBytes: number,
+): string {
+  const full = JSON.stringify(envelope);
+  if (full.length <= maxBytes) return full;
+
+  // Smart trim: list endpoints return `{ ok, type, doco_id, count,
+  // items: [...] }`. Drop items until the serialized envelope fits,
+  // leaving the rest of the metadata + a `truncated` marker.
+  const body = envelope.body as { items?: unknown[]; count?: number } | null;
+  if (body && Array.isArray(body.items)) {
+    const original = body.items.length;
+    let kept = original;
+    // Halving search until it fits. Cheap because items are small JSON.
+    while (kept > 0) {
+      const trimmed = {
+        ...envelope,
+        body: {
+          ...body,
+          items: body.items.slice(0, kept),
+          truncated: {
+            kept_items: kept,
+            total_items: original,
+            note: "Output capped — fetch /api/<type>/<id>.json for any item's detail.",
+          },
+        },
+      };
+      const s = JSON.stringify(trimmed);
+      if (s.length <= maxBytes) return s;
+      kept = Math.floor(kept / 2);
+    }
+  }
+
+  // Raw fallback: keep the leading slice of the JSON-stringified
+  // envelope and tack on a marker. Not parseable as JSON but the
+  // model can still read the prefix and act on what it sees.
+  const marker = `…[truncated ${full.length - maxBytes} bytes; fetch a specific id for detail]`;
+  return `${full.slice(0, maxBytes)}${marker}`;
+}
+
 interface ToolResult {
   result: ToolResultBlockParam;
   navigateUrl?: string;
@@ -908,19 +1134,34 @@ async function runTool(block: ToolUseBlock, ctx: ChatStreamContext): Promise<Too
     }
     const url = new URL(path, ctx.origin).toString();
     try {
-      const init: RequestInit = {
+      // Try the in-process router first. Calls the SAME loader/action
+      // module HTTP would reach — no logic duplication — but skips the
+      // socket / parse round-trip. Returns null when no registered route
+      // matches; we then fall back to a real fetch so unmapped routes
+      // (HTML pages, dynamic plugins, etc.) keep working.
+      let res = await internalFetch({
         method,
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json",
-          Cookie: ctx.cookieHeader,
-          "User-Agent": "Doco-In-Page-Assistant/1",
-        },
-      };
-      if (method !== "GET" && method !== "DELETE" && input?.body !== undefined) {
-        init.body = typeof input.body === "string" ? input.body : JSON.stringify(input.body);
+        path,
+        origin: ctx.origin,
+        cookieHeader: ctx.cookieHeader,
+        body: input?.body,
+        userAgent: "Doco-In-Page-Assistant/1",
+      });
+      if (!res) {
+        const init: RequestInit = {
+          method,
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+            Cookie: ctx.cookieHeader,
+            "User-Agent": "Doco-In-Page-Assistant/1",
+          },
+        };
+        if (method !== "GET" && method !== "DELETE" && input?.body !== undefined) {
+          init.body = typeof input.body === "string" ? input.body : JSON.stringify(input.body);
+        }
+        res = await fetch(url, init);
       }
-      const res = await fetch(url, init);
       const text = await res.text();
       let parsed: unknown = text;
       try {
@@ -940,7 +1181,7 @@ async function runTool(block: ToolUseBlock, ctx: ChatStreamContext): Promise<Too
         result: {
           type: "tool_result",
           tool_use_id: block.id,
-          content: JSON.stringify(body),
+          content: truncateToolResultEnvelope(body, MAX_TOOL_RESULT_BYTES),
           is_error: !ok,
         },
         preview: `${method} ${path} → ${res.status} ${previewBody}`,
@@ -1070,6 +1311,11 @@ export async function* runAssistantTurn(args: {
   // Opportunistic cleanup at the top of every turn so retention is
   // enforced even without a separate cron.
   await purgeExpiredAttachments();
+  // Server-side "is Señor Doco mid-reply?" marker so a freshly-loaded
+  // page can show the placeholder bubble for a turn its tab didn't
+  // initiate. Cleared in the finally below — covers normal
+  // completion, errors, and aborts.
+  await markActiveTurnStarted(args.conversation.id);
 
   const histStart = performance.now();
   const allHistory = await loadMessages(args.conversation.id);
@@ -1143,14 +1389,34 @@ export async function* runAssistantTurn(args: {
     for (let turn = 0; turn < MAX_TURNS_PER_REPLY; turn++) {
       const callStart = performance.now();
       let ttfbMs: number | null = null;
+      // One retry per turn iteration when we hit a 429. Stream
+      // creation AND per-chunk reads can both throw the rate-limit
+      // error, so the flag is checked in the catch below.
+      let retriedThisTurn = false;
       numAnthropicCalls++;
-      const stream: MessageStream = client.messages.stream({
-        model: MODEL,
-        max_tokens: MAX_TOKENS,
-        system: systemBlocks,
-        tools: TOOLS,
-        messages,
-      });
+      let stream: MessageStream;
+      try {
+        stream = client.messages.stream({
+          model: MODEL,
+          max_tokens: MAX_TOKENS,
+          system: systemBlocks,
+          tools: TOOLS,
+          messages,
+        });
+      } catch (err) {
+        // Rare — most 429s surface from the async iteration below.
+        if ((err as { status?: number }).status === 429 && !retriedThisTurn) {
+          retriedThisTurn = true;
+          const waitMs = parseAnthropicRetryAfterMs(err);
+          await new Promise((resolve) => setTimeout(resolve, waitMs));
+          turn--;
+          continue;
+        }
+        const friendly = friendlyAnthropicError(err);
+        turnError = `anthropic stream: ${friendly}`;
+        yield { kind: "error", message: friendly };
+        return;
+      }
 
       const collectedBlocks: StoredAssistantBlock[] = [];
       let activeToolUse: { id: string; name: string; partialJson: string } | null = null;
@@ -1185,9 +1451,22 @@ export async function* runAssistantTurn(args: {
           }
         }
       } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        turnError = `anthropic stream: ${msg}`;
-        yield { kind: "error", message: `Anthropic stream error: ${msg}` };
+        if ((err as { status?: number }).status === 429 && !retriedThisTurn) {
+          retriedThisTurn = true;
+          const waitMs = parseAnthropicRetryAfterMs(err);
+          // Tell the user we're holding rather than going silent for a
+          // potentially-long sleep.
+          yield {
+            kind: "text_delta",
+            text: `\n_(Anthropic rate-limited; retrying in ${Math.round(waitMs / 1000)}s…)_\n`,
+          };
+          await new Promise((resolve) => setTimeout(resolve, waitMs));
+          turn--;
+          continue;
+        }
+        const friendly = friendlyAnthropicError(err);
+        turnError = `anthropic stream: ${friendly}`;
+        yield { kind: "error", message: friendly };
         return;
       }
 
@@ -1198,6 +1477,15 @@ export async function* runAssistantTurn(args: {
       outputTokens += usage.output_tokens ?? 0;
       cacheReadTokens += usage.cache_read_input_tokens ?? 0;
       cacheCreationTokens += usage.cache_creation_input_tokens ?? 0;
+      // Tell the client the running totals for this turn so the
+      // sidebar can show "1,234 in · 56 out" while the user waits.
+      yield {
+        kind: "usage_update",
+        input_tokens: inputTokens,
+        output_tokens: outputTokens,
+        cache_read_tokens: cacheReadTokens,
+        cache_creation_tokens: cacheCreationTokens,
+      };
       anthropicCallStats.push({
         turn,
         elapsed_ms: Math.round(performance.now() - callStart),
@@ -1285,6 +1573,16 @@ export async function* runAssistantTurn(args: {
     };
   } finally {
     flushMetrics();
+    // Best-effort marker clear. Swallow errors so a DB hiccup at the
+    // end of a turn doesn't surface as a turn-level failure.
+    try {
+      await markActiveTurnEnded(args.conversation.id);
+    } catch (err) {
+      console.warn(
+        "[agent-chat] failed to clear active_turn_started_at:",
+        err instanceof Error ? err.message : String(err),
+      );
+    }
   }
 }
 
@@ -1301,6 +1599,14 @@ export interface ConversationSnapshot {
     created_at: string;
   }[];
   has_more: boolean;
+  /**
+   * ISO timestamp of when the active turn started, or null when the
+   * conversation is idle. Lets a freshly-loaded page show the
+   * "Señor Doco is replying…" placeholder for a turn that was started
+   * by a now-closed tab. Clients should treat values older than a few
+   * minutes as stale (the server might have crashed before clearing).
+   */
+  active_turn_started_at: string | null;
 }
 
 export async function loadSnapshotForPrincipal(
@@ -1321,5 +1627,6 @@ export async function loadSnapshotForPrincipal(
       created_at: r.created_at.toISOString(),
     })),
     has_more: hasMore,
+    active_turn_started_at: conv.active_turn_started_at?.toISOString() ?? null,
   };
 }

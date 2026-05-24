@@ -19,6 +19,7 @@ import {
   ATTACHMENT_RETENTION_DAYS,
   ATTACHMENT_RETENTION_NOTICE,
   loadOrCreateConversation,
+  normalizeUploadMime,
   saveAttachment,
 } from "~/lib/agent-chat.server";
 import { getCurrentPrincipal } from "~/lib/session.server";
@@ -52,7 +53,12 @@ export async function action({ request }: { request: Request }) {
   const rejected: Array<{ filename: string; reason: string }> = [];
 
   for (const f of files) {
-    const mime = f.type || "application/octet-stream";
+    // Normalize before the allowlist check so the .bpmn / .xml
+    // extension fallback (browsers often send application/octet-stream
+    // for those) gets a chance to land. Same call saveAttachment
+    // makes — keeping the two consistent so the route-level gate
+    // can't reject something the storage layer would have accepted.
+    const mime = normalizeUploadMime(f.name, f.type || "application/octet-stream");
     if (!ATTACHMENT_ALLOWED_MIME.has(mime)) {
       rejected.push({ filename: f.name, reason: `unsupported mime type ${mime}` });
       continue;
