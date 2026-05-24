@@ -55,6 +55,8 @@ export interface ApiKeysPageData {
   me: CurrentPrincipal;
   keys: ApiKeyRow[];
   scopeOptions: ScopeOption[];
+  /** Origin (protocol://host) used to build agent OAuth invite URLs. */
+  host: string;
   justMinted: MintedApiKey | null;
 }
 
