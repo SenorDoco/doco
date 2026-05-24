@@ -28,7 +28,12 @@ import {
   useState,
 } from "react";
 import { useNavigate } from "react-router";
-import { NodeBadgeRow, ReferenceNumberBadge } from "~/components/neuron-badges";
+import {
+  LifecycleBadge,
+  NodeBadgeRow,
+  ReferenceNumberBadge,
+  TypeBadge,
+} from "~/components/neuron-badges";
 import type { OverviewGraphLink } from "~/components/overview-graph";
 import type { BpmnLane, BpmnNode, BpmnPool, BpmnShape } from "~/lib/bpmn-perspective.server";
 import {
@@ -270,6 +275,7 @@ export function BpmnPerspective({
         base_id: template.base_id,
         label: template.label,
         kind: template.kind,
+        lifecycle: template.lifecycle,
       });
       existingLaneIds.add(node.laneId);
     }
@@ -1171,6 +1177,7 @@ function BpmnPoolHeaderNode({ data }: { data: BpmnPoolHeaderData }) {
         borderBottom: `1px solid ${borderColor}`,
         display: "flex",
         alignItems: "center",
+        gap: 8,
         padding: "0 14px",
         boxSizing: "border-box",
         fontSize: 12,
@@ -1181,6 +1188,12 @@ function BpmnPoolHeaderNode({ data }: { data: BpmnPoolHeaderData }) {
       }}
       title={data.pool.label}
     >
+      {!isUnassigned && data.pool.intent_id ? (
+        <span style={{ display: "inline-flex", gap: 4, flexShrink: 0 }}>
+          <TypeBadge entityType="intent" lifecycle={data.pool.lifecycle} anchor="inline" />
+          <LifecycleBadge lifecycle={data.pool.lifecycle} anchor="inline" />
+        </span>
+      ) : null}
       <span
         className="overflow-hidden text-ellipsis whitespace-nowrap"
         style={{ maxWidth: "100%" }}
@@ -1226,8 +1239,10 @@ function BpmnLaneNode({ data }: { data: BpmnLaneData }) {
           background: labelBg,
           borderRight: "1px solid var(--color-border)",
           display: "flex",
+          flexDirection: "column",
           alignItems: "center",
           justifyContent: "center",
+          gap: 6,
           fontSize: 11,
           fontWeight: 600,
           textAlign: "center",
@@ -1247,9 +1262,39 @@ function BpmnLaneNode({ data }: { data: BpmnLaneData }) {
             #{data.referenceNumber}
           </span>
         ) : null}
-        {data.lane.label}
+        <LaneBadgeRow lane={data.lane} />
+        <span>{data.lane.label}</span>
       </div>
     </div>
+  );
+}
+
+/**
+ * Type + lifecycle badges above a lane's label, matching the badge
+ * row that lives at the top of every neuron card. Bands don't have a
+ * single owning neuron, so they get just a type badge (no lifecycle)
+ * coloured by the lane's tint. Actor lanes get both — the Principal's
+ * type and the Principal's lifecycle.
+ */
+function LaneBadgeRow({ lane }: { lane: BpmnLane }) {
+  if (lane.kind === "unassigned" || lane.kind === "unresolved") return null;
+  if (lane.kind === "actor") {
+    return (
+      <span style={{ display: "inline-flex", gap: 4 }}>
+        <TypeBadge entityType="principal" lifecycle={lane.lifecycle} anchor="inline" />
+        <LifecycleBadge lifecycle={lane.lifecycle} anchor="inline" />
+      </span>
+    );
+  }
+  // Bands (milestone / artifacts): one type tag, no lifecycle pill.
+  // Milestone band holds States; the artifacts band is mixed, so we
+  // label it with the BPMN-standard "artifact" term rather than a
+  // single neuron type.
+  const entityType = lane.kind === "milestone" ? "state" : "reference";
+  return (
+    <span style={{ display: "inline-flex" }}>
+      <TypeBadge entityType={entityType} lifecycle={null} anchor="inline" />
+    </span>
   );
 }
 

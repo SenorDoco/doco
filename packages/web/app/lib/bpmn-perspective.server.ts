@@ -67,6 +67,10 @@ export interface BpmnPool {
   /** Per-neuron PageRank score on the doco's synapse graph; drives
    *  pool ordering and primary-intent picks for multi-intent neurons. */
   pagerank: number;
+  /** Intent's lifecycle (drafting / proposed / active / retired). Null
+   *  for the Unassigned pool. Drives the lifecycle badge on the pool
+   *  header. */
+  lifecycle: string | null;
 }
 
 export interface BpmnLane {
@@ -80,6 +84,11 @@ export interface BpmnLane {
   base_id: string;
   label: string;
   kind: BpmnLaneKind;
+  /** Underlying entity's lifecycle when the lane represents a neuron
+   *  (actor lanes carry the Principal's lifecycle). Null for bands
+   *  and synthetic catch-all lanes — they have no single owning
+   *  neuron. */
+  lifecycle: string | null;
 }
 
 export interface BpmnNode {
@@ -168,6 +177,7 @@ interface NeuronRow {
 interface PrincipalRow {
   id: string;
   name: string;
+  lifecycle: string | null;
 }
 
 interface CollaboratorRow {
@@ -203,7 +213,7 @@ export async function loadBpmnGraph(
   const [neuronRows, principalRows, collaboratorRows] = await Promise.all([
     c.query<NeuronRow>(neuronSql, [docoId]),
     c.query<PrincipalRow>(
-      `SELECT id, name
+      `SELECT id, name, COALESCE(lifecycle, 'active') AS lifecycle
          FROM principals
         WHERE doco_id = $1
           AND COALESCE(lifecycle, 'active') = 'active'`,
@@ -438,7 +448,19 @@ export async function loadBpmnGraph(
 
     const laneId = `${poolId}::${baseId}`;
     if (!lanesById.has(laneId)) {
-      lanesById.set(laneId, { id: laneId, pool_id: poolId, base_id: baseId, label, kind });
+      // Actor lanes carry the Principal's lifecycle so the lane header
+      // can render the same type/lifecycle badge stack a neuron does.
+      // Bands and synthetic catch-alls have no owning neuron — null.
+      const laneLifecycle: string | null =
+        kind === "actor" ? (principalById.get(baseId)?.lifecycle ?? null) : null;
+      lanesById.set(laneId, {
+        id: laneId,
+        pool_id: poolId,
+        base_id: baseId,
+        label,
+        kind,
+        lifecycle: laneLifecycle,
+      });
     }
 
     const node: BpmnNode = {
@@ -471,6 +493,7 @@ export async function loadBpmnGraph(
         intent_id: null,
         label: "Unassigned",
         pagerank: 0,
+        lifecycle: null,
       });
       continue;
     }
@@ -483,6 +506,7 @@ export async function loadBpmnGraph(
       intent_id: intentId,
       label,
       pagerank: pr.get(intentId) ?? 0,
+      lifecycle: intentRow?.lifecycle ?? null,
     });
   }
 
