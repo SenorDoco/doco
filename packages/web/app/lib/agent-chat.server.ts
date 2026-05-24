@@ -651,10 +651,15 @@ async function buildBootstrapContext(principalId: string): Promise<BootstrapCont
   );
   const accessibleDocos = accessChecks.filter((d): d is (typeof allDocos)[number] => d !== null);
 
+  // Listing `id=<doco_id>` next to the handle gives the agent a
+  // stable anchor — handles can be renamed at /settings, but the
+  // ULID-based id doesn't move. If a fetch under a guessed handle
+  // returns 404, the agent now has the canonical list to fall back
+  // on instead of hallucinating slugs.
   const docoLines: string[] = accessibleDocos.map(
-    (d) => `- /${d.handle} (visibility ${d.visibility})`,
+    (d) => `- /${d.handle} (id=${d.docoId}, visibility ${d.visibility})`,
   );
-  const orgLines: string[] = orgs.map((o) => `- /orgs/${o.handle} (${o.name})`);
+  const orgLines: string[] = orgs.map((o) => `- /orgs/${o.handle} (id=${o.id}, ${o.name})`);
 
   // ONE batched query for every active policy across every accessible
   // Doco, replacing the prior 2*N per-doco queries. Group in-memory.
