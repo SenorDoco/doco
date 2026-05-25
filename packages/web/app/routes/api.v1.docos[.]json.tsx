@@ -1,6 +1,13 @@
+// GET  /api/v1/docos.json — list Docos the caller can read or write.
 // POST /api/v1/docos.json — create a Doco in one step.
 //
-// Body (JSON):
+// GET response: { docos: [{ id, handle, name }] }. Empty array when
+// the caller has access to nothing. Sorted by handle ASC for stable
+// client rendering. The set matches the dashboard / OAuth-approve
+// "what can I see?" view: direct ownership ∪ org membership ∪
+// explicit `doco_users` grant.
+//
+// POST body (JSON):
 //   { template_handle?: string,        // "generic" | "user-flows" | ...
 //     org_id: string,                  // ULID of the owning organization
 //     name: string,                    // the part after `<org-handle>-`
@@ -17,12 +24,31 @@
 // auto-suffixed on collision. Returns 201 with `{ id, handle, name,
 // org_id, org_handle, visibility, goal }`.
 
+import { withClient } from "@doco/db";
+import { listAccessibleDocoIdsForPrincipal } from "~/lib/doco-access.server";
 import { isOrgMember } from "~/lib/org-helpers.server";
 import { createDocoInOrg } from "~/lib/redeem.server";
 import { getCurrentPrincipalAsync } from "~/lib/session.server";
 
-export async function loader() {
-  return Response.json({ error: "Use POST to create a Doco." }, { status: 405 });
+export async function loader({ request }: { request: Request }) {
+  const me = await getCurrentPrincipalAsync(request);
+  if (!me) {
+    return Response.json({ error: "Authentication required." }, { status: 401 });
+  }
+  const ids = await listAccessibleDocoIdsForPrincipal(me.id);
+  if (ids.length === 0) {
+    return Response.json({ docos: [] });
+  }
+  const rows = await withClient(async (c) => {
+    const r = await c.query<{ id: string; handle: string; name: string | null }>(
+      "SELECT id, handle, name FROM docos WHERE id = ANY($1::text[]) ORDER BY handle ASC",
+      [ids],
+    );
+    return r.rows;
+  });
+  return Response.json({
+    docos: rows.map((r) => ({ id: r.id, handle: r.handle, name: r.name })),
+  });
 }
 
 export async function action({ request }: { request: Request }) {
