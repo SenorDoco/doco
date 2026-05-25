@@ -83,6 +83,14 @@ interface ConversationSnapshot {
    * for a turn its tab didn't initiate.
    */
   active_turn_started_at: string | null;
+  /**
+   * Replay buffer for the in-flight turn's thinking events. Each
+   * entry is the SSE event the server yielded plus an `at_ms` offset.
+   * Empty when no turn is active or no events have been persisted
+   * yet. Lets a fresh tab hydrate the Thinking column for a turn
+   * already in progress.
+   */
+  active_turn_events?: Array<Record<string, unknown>>;
 }
 
 /** Per-request token totals streamed from the server. Reset to null
@@ -146,6 +154,72 @@ type ThinkingEvent =
 const SYNC_CHANNEL = "doco:senor-doco-sync";
 
 type SyncMessage = { kind: "changed" } | { kind: "remote-inflight"; busy: boolean };
+
+/**
+ * Convert a server-persisted thinking event (the raw SSE event +
+ * `at_ms`) into the ThinkingEvent shape the panel renders. Returns
+ * null for events the panel doesn't display (e.g. `message_saved`,
+ * `done`, `tool_use_input` is already covered by `tool_input`).
+ */
+function storedEventToThinkingEvent(raw: Record<string, unknown>): ThinkingEvent | null {
+  const at_ms = typeof raw.at_ms === "number" ? raw.at_ms : 0;
+  const id = `t_${at_ms}_${(raw.kind as string | undefined) ?? "x"}_${Math.random().toString(36).slice(2, 7)}`;
+  switch (raw.kind) {
+    case "text_delta":
+      return typeof raw.text === "string"
+        ? { id, at_ms, kind: "text", text: raw.text }
+        : null;
+    case "tool_use_start":
+      return typeof raw.tool_use_id === "string" && typeof raw.name === "string"
+        ? { id, at_ms, kind: "tool_start", tool_id: raw.tool_use_id, name: raw.name }
+        : null;
+    case "tool_use_input":
+      return typeof raw.tool_use_id === "string"
+        ? { id, at_ms, kind: "tool_input", tool_id: raw.tool_use_id, input: raw.input ?? null }
+        : null;
+    case "tool_use_result":
+      return typeof raw.tool_use_id === "string"
+        ? {
+            id,
+            at_ms,
+            kind: "tool_result",
+            tool_id: raw.tool_use_id,
+            preview: typeof raw.preview === "string" ? raw.preview : "",
+            ok: raw.ok === true,
+          }
+        : null;
+    case "navigate":
+      return typeof raw.url === "string"
+        ? { id, at_ms, kind: "navigate", url: raw.url }
+        : null;
+    case "error":
+      return typeof raw.message === "string"
+        ? { id, at_ms, kind: "error", message: raw.message }
+        : null;
+    case "usage_update":
+      return typeof raw.input_tokens === "number" && typeof raw.output_tokens === "number"
+        ? {
+            id,
+            at_ms,
+            kind: "usage",
+            input_tokens: raw.input_tokens,
+            output_tokens: raw.output_tokens,
+          }
+        : null;
+    case "status":
+      return typeof raw.phase === "string"
+        ? {
+            id,
+            at_ms,
+            kind: "status",
+            phase: raw.phase,
+            ...(typeof raw.detail === "string" ? { detail: raw.detail } : {}),
+          }
+        : null;
+    default:
+      return null;
+  }
+}
 
 function readBoolFlag(key: string): boolean {
   if (typeof window === "undefined") return false;
@@ -291,6 +365,18 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
         const startedMs = Date.parse(data.active_turn_started_at);
         if (Number.isFinite(startedMs) && Date.now() - startedMs < ACTIVE_TURN_STALE_MS) {
           setRemoteInflight(true);
+          // Replay the server-persisted thinking events so a freshly
+          // loaded tab mid-turn fills the Thinking column with
+          // everything that's already happened, instead of staring
+          // at "waiting for first event…". Only set when the local
+          // tab isn't already streaming — its own client-side events
+          // are richer than the server log.
+          if (!busy && Array.isArray(data.active_turn_events)) {
+            const hydrated = data.active_turn_events
+              .map((raw) => storedEventToThinkingEvent(raw))
+              .filter((ev): ev is ThinkingEvent => ev !== null);
+            setThinkingEvents(hydrated);
+          }
         } else {
           setRemoteInflight(false);
         }
@@ -305,7 +391,7 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
     } finally {
       setBootstrapped(true);
     }
-  }, []);
+  }, [busy]);
 
   useEffect(() => {
     void reload();
