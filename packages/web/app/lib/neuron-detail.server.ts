@@ -197,12 +197,13 @@ export async function loadNeuronDialogDetail(
   const cfg = GRAPH_NEURON_TABLES[options.entityType];
   if (!cfg) return null;
 
-  // Post-migration: migrated neurons store prose in a type-named
-  // column (intent/decision/...); non-migrated neurons still carry
-  // summary + body_md. Select whichever this entity type uses.
+  // Post-migration: the 9 migrated neurons store prose in a type-named
+  // column (intent/decision/...). Principal — the only remaining
+  // non-migrated entity in this map — carries `body_md` (the `summary`
+  // column was dropped by migration 037).
   const proseSelect = cfg.typeNamedColumn
     ? `${cfg.typeNamedColumn} AS prose, NULL::text AS body_md`
-    : `summary AS prose, ${cfg.hasBody ? "body_md" : "NULL::text AS body_md"}`;
+    : `body_md AS prose, ${cfg.hasBody ? "body_md" : "NULL::text AS body_md"}`;
   const row = (
     await c.query<{
       id: string;
