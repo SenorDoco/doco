@@ -72,11 +72,10 @@ export function SiteHeader({ me, shellOwner = false }: SiteHeaderProps) {
 }
 
 function NavButtons({ me, onNavigate }: { me: CurrentPrincipal; onNavigate?: () => void }) {
+  const navButtonClass =
+    "neu-button whitespace-nowrap rounded-md border border-border px-3 py-1.5 font-semibold";
   const linkClass = ({ isActive }: { isActive: boolean }) =>
-    cn(
-      "neu-button whitespace-nowrap rounded-md border border-border px-3 py-1.5 font-semibold",
-      isActive ? "text-primary" : "text-foreground hover:text-primary",
-    );
+    cn(navButtonClass, isActive ? "text-primary" : "text-foreground hover:text-primary");
   return (
     <>
       <NavLink to="/docos" className={linkClass} onClick={onNavigate}>
@@ -98,11 +97,8 @@ function NavButtons({ me, onNavigate }: { me: CurrentPrincipal; onNavigate?: () 
       >
         {me.username}
       </NavLink>
-      <Form method="post" action="/sign-out">
-        <button
-          type="submit"
-          className="text-muted-foreground transition-colors hover:text-foreground"
-        >
+      <Form method="post" action="/sign-out" className="contents">
+        <button type="submit" className={cn(navButtonClass, "text-foreground hover:text-primary")}>
           Sign out
         </button>
       </Form>
