@@ -293,9 +293,13 @@ export async function loadOrCreateConversation(principalId: string): Promise<Cha
  */
 async function markActiveTurnStarted(conversationId: string): Promise<void> {
   await withClient(async (c) => {
-    await c.query("UPDATE chat_conversations SET active_turn_started_at = now() WHERE id = $1", [
-      conversationId,
-    ]);
+    await c.query(
+      `UPDATE chat_conversations
+          SET active_turn_started_at = now(),
+              active_turn_events = '[]'::jsonb
+        WHERE id = $1`,
+      [conversationId],
+    );
   });
 }
 
@@ -306,10 +310,48 @@ async function markActiveTurnStarted(conversationId: string): Promise<void> {
  */
 async function markActiveTurnEnded(conversationId: string): Promise<void> {
   await withClient(async (c) => {
-    await c.query("UPDATE chat_conversations SET active_turn_started_at = NULL WHERE id = $1", [
-      conversationId,
-    ]);
+    await c.query(
+      `UPDATE chat_conversations
+          SET active_turn_started_at = NULL,
+              active_turn_events = '[]'::jsonb
+        WHERE id = $1`,
+      [conversationId],
+    );
   });
+}
+
+/**
+ * Append events to the active-turn event log. Batched per call so a
+ * single turn's worth of SSE deltas doesn't translate to 50 DB
+ * writes — runAssistantTurn buffers events locally and calls this on
+ * meaningful milestones (status changes, tool boundaries) at most
+ * every few hundred ms.
+ *
+ * The events column is JSONB; we append via `||` which is O(len)
+ * but with N < 100 typical events the cost is negligible. If size
+ * ever becomes a concern, switch to a side-table.
+ */
+async function appendActiveTurnEvents(
+  conversationId: string,
+  events: readonly Record<string, unknown>[],
+): Promise<void> {
+  if (events.length === 0) return;
+  try {
+    await withClient(async (c) => {
+      await c.query(
+        `UPDATE chat_conversations
+            SET active_turn_events = active_turn_events || $2::jsonb
+          WHERE id = $1`,
+        [conversationId, JSON.stringify(events)],
+      );
+    });
+  } catch (err) {
+    // Best-effort — losing thinking events shouldn't fail the turn.
+    console.warn(
+      "[agent-chat] appendActiveTurnEvents failed:",
+      err instanceof Error ? err.message : String(err),
+    );
+  }
 }
 
 export async function loadMessages(conversationId: string): Promise<ChatMessageRow[]> {
@@ -1386,7 +1428,63 @@ function formatVisibleGraphReferences(groups: VisibleGraphReferenceGroup[]): str
   ].join("\n");
 }
 
+/**
+ * Public entry point. Wraps the actual streamer so every yielded
+ * event is also pushed onto the conversation's `active_turn_events`
+ * column — that lets a freshly-loaded page mid-turn replay the
+ * Thinking column for everything that's happened so far on the
+ * still-running turn, instead of staring at "waiting for first
+ * event…" forever.
+ *
+ * Events flush to the DB every 500 ms (whatever's in the buffer at
+ * that tick), plus a final flush on milestone events so the lag
+ * between "Señor Doco just called a tool" and "the column shows it"
+ * is bounded. Best-effort: a failed write logs and continues; never
+ * fails the turn itself.
+ */
 export async function* runAssistantTurn(args: {
+  conversation: ChatConversationRow;
+  userText: string;
+  ctx: ChatStreamContext;
+}): AsyncGenerator<ChatStreamEvent> {
+  const turnStartMs = Date.now();
+  const buffer: Array<Record<string, unknown>> = [];
+  const flushBuffer = (): void => {
+    if (buffer.length === 0) return;
+    const batch = buffer.splice(0, buffer.length);
+    // Fire-and-forget — the snapshot poll the client runs will pick
+    // up the latest column state on the next tick.
+    void appendActiveTurnEvents(args.conversation.id, batch);
+  };
+  const flushTimer = setInterval(flushBuffer, 500);
+  // Milestone kinds: flush immediately so the user sees status
+  // changes the moment the lambda emits them, not 0-500ms later.
+  const MILESTONE_KINDS = new Set([
+    "status",
+    "tool_use_start",
+    "tool_use_result",
+    "navigate",
+    "error",
+    "done",
+    "message_saved",
+  ]);
+  try {
+    for await (const event of streamAssistantTurn(args)) {
+      buffer.push({ at_ms: Date.now() - turnStartMs, ...event });
+      if (MILESTONE_KINDS.has(event.kind)) flushBuffer();
+      yield event;
+    }
+  } finally {
+    clearInterval(flushTimer);
+    // `streamAssistantTurn`'s own `finally` calls markActiveTurnEnded
+    // which clears active_turn_events to '[]', so anything sitting in
+    // our local buffer at this point would race that clear if we
+    // wrote it. Drop the tail; the user has the final saved message
+    // anyway.
+  }
+}
+
+async function* streamAssistantTurn(args: {
   conversation: ChatConversationRow;
   userText: string;
   ctx: ChatStreamContext;
@@ -1823,6 +1921,14 @@ export interface ConversationSnapshot {
    * minutes as stale (the server might have crashed before clearing).
    */
   active_turn_started_at: string | null;
+  /**
+   * Replay buffer of thinking events for whatever turn is currently
+   * in flight. Each entry is the SSE event the agent yielded, with an
+   * `at_ms` offset from turn start. Empty (or absent) when no turn
+   * is active. Lets a freshly-loaded page hydrate the Thinking column
+   * mid-turn instead of starting from "waiting for first event…".
+   */
+  active_turn_events: Array<Record<string, unknown>>;
 }
 
 export async function loadSnapshotForPrincipal(
@@ -1830,10 +1936,13 @@ export async function loadSnapshotForPrincipal(
   opts: { before?: Date | null } = {},
 ): Promise<ConversationSnapshot> {
   const conv = await loadOrCreateConversation(principalId);
-  const { messages: rows, hasMore } = await loadMessagesPage(conv.id, {
-    before: opts.before ?? null,
-    limit: CHAT_MESSAGES_PAGE_SIZE,
-  });
+  const [{ messages: rows, hasMore }, events] = await Promise.all([
+    loadMessagesPage(conv.id, {
+      before: opts.before ?? null,
+      limit: CHAT_MESSAGES_PAGE_SIZE,
+    }),
+    loadActiveTurnEvents(conv.id),
+  ]);
   return {
     conversation_id: conv.id,
     messages: rows.map((r) => ({
@@ -1844,5 +1953,19 @@ export async function loadSnapshotForPrincipal(
     })),
     has_more: hasMore,
     active_turn_started_at: conv.active_turn_started_at?.toISOString() ?? null,
+    active_turn_events: events,
   };
+}
+
+async function loadActiveTurnEvents(
+  conversationId: string,
+): Promise<Array<Record<string, unknown>>> {
+  return await withClient(async (c) => {
+    const r = await c.query<{ events: Array<Record<string, unknown>> | null }>(
+      "SELECT active_turn_events AS events FROM chat_conversations WHERE id = $1",
+      [conversationId],
+    );
+    const events = r.rows[0]?.events;
+    return Array.isArray(events) ? events : [];
+  });
 }
