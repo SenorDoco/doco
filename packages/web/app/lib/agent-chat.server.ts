@@ -131,6 +131,7 @@ export interface ChatConversationRow {
   id: string;
   collaborator_id: string;
   archived: boolean;
+  title: string | null;
   created_at: Date;
   updated_at: Date;
   active_turn_started_at: Date | null;
@@ -250,40 +251,185 @@ export type ChatStreamEvent =
  */
 const ACTIVE_TURN_STALE_MS = 5 * 60 * 1000;
 
-export async function loadOrCreateConversation(principalId: string): Promise<ChatConversationRow> {
+const CONV_COLS =
+  "id, collaborator_id, archived, title, created_at, updated_at, active_turn_started_at";
+
+/**
+ * Sweep stale active-turn markers on a conversation row we just
+ * loaded. Lambda crashes can leave the marker set; treat anything
+ * older than ACTIVE_TURN_STALE_MS as stuck and clear it so the UI
+ * doesn't show a forever-replying bubble.
+ */
+async function clearStaleTurnMarker(row: ChatConversationRow): Promise<void> {
+  if (
+    !row.active_turn_started_at ||
+    Date.now() - row.active_turn_started_at.getTime() <= ACTIVE_TURN_STALE_MS
+  ) {
+    return;
+  }
+  await withClient(async (c) => {
+    await c.query("UPDATE chat_conversations SET active_turn_started_at = NULL WHERE id = $1", [
+      row.id,
+    ]);
+  });
+  row.active_turn_started_at = null;
+}
+
+/**
+ * Most-recently-touched non-archived conversation for the user, or
+ * `null` when they've never chatted. Used as the default thread on
+ * page load and as the auto-pick when `POST /messages.json` arrives
+ * without an explicit conversation_id.
+ */
+export async function loadActiveConversation(
+  principalId: string,
+): Promise<ChatConversationRow | null> {
   return await withClient(async (c) => {
-    const existing = await c.query<ChatConversationRow>(
-      `SELECT id, collaborator_id, archived, created_at, updated_at, active_turn_started_at
+    const r = await c.query<ChatConversationRow>(
+      `SELECT ${CONV_COLS}
          FROM chat_conversations
-        WHERE collaborator_id = $1
-        ORDER BY created_at ASC
+        WHERE collaborator_id = $1 AND archived = false
+        ORDER BY updated_at DESC
         LIMIT 1`,
       [principalId],
     );
-    const row = existing.rows[0];
-    if (row) {
-      if (
-        row.active_turn_started_at &&
-        Date.now() - row.active_turn_started_at.getTime() > ACTIVE_TURN_STALE_MS
-      ) {
-        await c.query("UPDATE chat_conversations SET active_turn_started_at = NULL WHERE id = $1", [
-          row.id,
-        ]);
-        row.active_turn_started_at = null;
-      }
-      return row;
-    }
-    const id = `conv_${generateUlid()}`;
-    const fresh = await c.query<ChatConversationRow>(
-      `INSERT INTO chat_conversations (id, collaborator_id)
-       VALUES ($1, $2)
-       RETURNING id, collaborator_id, archived, created_at, updated_at, active_turn_started_at`,
-      [id, principalId],
-    );
-    const created = fresh.rows[0];
-    if (!created) throw new Error("failed to create conversation row");
-    return created;
+    const row = r.rows[0];
+    if (!row) return null;
+    await clearStaleTurnMarker(row);
+    return row;
   });
+}
+
+/**
+ * Load a specific thread by id, scoped to the calling principal so
+ * a user can't read someone else's threads by guessing ids.
+ */
+export async function loadConversationByIdForPrincipal(
+  conversationId: string,
+  principalId: string,
+): Promise<ChatConversationRow | null> {
+  return await withClient(async (c) => {
+    const r = await c.query<ChatConversationRow>(
+      `SELECT ${CONV_COLS}
+         FROM chat_conversations
+        WHERE id = $1 AND collaborator_id = $2
+        LIMIT 1`,
+      [conversationId, principalId],
+    );
+    const row = r.rows[0];
+    if (!row) return null;
+    await clearStaleTurnMarker(row);
+    return row;
+  });
+}
+
+export async function createConversation(
+  principalId: string,
+  opts: { title?: string | null } = {},
+): Promise<ChatConversationRow> {
+  return await withClient(async (c) => {
+    const id = `conv_${generateUlid()}`;
+    const title = typeof opts.title === "string" && opts.title.trim() ? opts.title.trim() : null;
+    const r = await c.query<ChatConversationRow>(
+      `INSERT INTO chat_conversations (id, collaborator_id, title)
+       VALUES ($1, $2, $3)
+       RETURNING ${CONV_COLS}`,
+      [id, principalId, title],
+    );
+    const row = r.rows[0];
+    if (!row) throw new Error("failed to create conversation row");
+    return row;
+  });
+}
+
+export interface ConversationListItem {
+  id: string;
+  title: string | null;
+  archived: boolean;
+  message_count: number;
+  updated_at: string;
+  active_turn_started_at: string | null;
+}
+
+/**
+ * List the user's conversations, newest first. The sidebar dropdown
+ * + the API thread-list endpoint both use this. Includes a
+ * `message_count` so the UI can show "14 msgs" without a per-row
+ * round-trip. Archived rows excluded by default.
+ */
+export async function listConversationsForPrincipal(
+  principalId: string,
+  opts: { includeArchived?: boolean; limit?: number } = {},
+): Promise<ConversationListItem[]> {
+  const limit = Math.max(1, Math.min(200, opts.limit ?? 50));
+  return await withClient(async (c) => {
+    const r = await c.query<{
+      id: string;
+      title: string | null;
+      archived: boolean;
+      updated_at: Date;
+      active_turn_started_at: Date | null;
+      message_count: string;
+    }>(
+      `SELECT c.id, c.title, c.archived, c.updated_at, c.active_turn_started_at,
+              COALESCE((SELECT count(*) FROM chat_messages m WHERE m.conversation_id = c.id), 0)::text AS message_count
+         FROM chat_conversations c
+        WHERE c.collaborator_id = $1
+          ${opts.includeArchived ? "" : "AND c.archived = false"}
+        ORDER BY c.updated_at DESC
+        LIMIT $2`,
+      [principalId, limit],
+    );
+    return r.rows.map((row) => ({
+      id: row.id,
+      title: row.title,
+      archived: row.archived,
+      message_count: Number(row.message_count),
+      updated_at: row.updated_at.toISOString(),
+      active_turn_started_at: row.active_turn_started_at?.toISOString() ?? null,
+    }));
+  });
+}
+
+export async function patchConversation(
+  conversationId: string,
+  principalId: string,
+  patch: { title?: string | null; archived?: boolean },
+): Promise<ChatConversationRow | null> {
+  const sets: string[] = [];
+  const values: unknown[] = [conversationId, principalId];
+  if (Object.prototype.hasOwnProperty.call(patch, "title")) {
+    values.push(patch.title === null ? null : (patch.title ?? "").toString().trim() || null);
+    sets.push(`title = $${values.length}`);
+  }
+  if (typeof patch.archived === "boolean") {
+    values.push(patch.archived);
+    sets.push(`archived = $${values.length}`);
+  }
+  if (sets.length === 0) {
+    return await loadConversationByIdForPrincipal(conversationId, principalId);
+  }
+  return await withClient(async (c) => {
+    const r = await c.query<ChatConversationRow>(
+      `UPDATE chat_conversations
+          SET ${sets.join(", ")}, updated_at = now()
+        WHERE id = $1 AND collaborator_id = $2
+        RETURNING ${CONV_COLS}`,
+      values,
+    );
+    return r.rows[0] ?? null;
+  });
+}
+
+/**
+ * Legacy entry point — kept for back-compat with callers that still
+ * pass just a principal id. Returns the most-recent thread or mints
+ * a fresh one.
+ */
+export async function loadOrCreateConversation(principalId: string): Promise<ChatConversationRow> {
+  const active = await loadActiveConversation(principalId);
+  if (active) return active;
+  return await createConversation(principalId);
 }
 
 /**
@@ -445,6 +591,26 @@ export async function loadMessagesPage(
   });
 }
 
+/**
+ * First-user-message → thread title. Trim the text, collapse
+ * whitespace, take the first 6 words capped at 60 chars. Returns
+ * `null` when the message has no usable text (e.g. attachment-only),
+ * which leaves the column null so the client falls back to "New chat".
+ */
+function deriveTitleFromUserContent(content: PersistedContentBlock[]): string | null {
+  for (const block of content) {
+    if (block && typeof block === "object" && (block as { type?: unknown }).type === "text") {
+      const text = (block as { text?: unknown }).text;
+      if (typeof text !== "string") continue;
+      const clean = text.replace(/\s+/g, " ").trim();
+      if (!clean) continue;
+      const words = clean.split(" ").slice(0, 6).join(" ");
+      return words.length > 60 ? `${words.slice(0, 57)}…` : words;
+    }
+  }
+  return null;
+}
+
 async function appendMessage(
   conversationId: string,
   role: "user" | "assistant",
@@ -458,9 +624,18 @@ async function appendMessage(
        RETURNING id, conversation_id, role, content, created_at`,
       [id, conversationId, role, JSON.stringify(content)],
     );
-    await c.query("UPDATE chat_conversations SET updated_at = now() WHERE id = $1", [
-      conversationId,
-    ]);
+    // Bump updated_at on every append. For user messages, also fill
+    // in the auto-derived title when the row still has none — that's
+    // how "New chat" placeholders turn into something readable in the
+    // sidebar. COALESCE keeps any user-set title from being overwritten.
+    const derivedTitle = role === "user" ? deriveTitleFromUserContent(content) : null;
+    await c.query(
+      `UPDATE chat_conversations
+          SET updated_at = now(),
+              title = COALESCE(title, $2)
+        WHERE id = $1`,
+      [conversationId, derivedTitle],
+    );
     const row = r.rows[0];
     if (!row) throw new Error("failed to append chat message");
     return row;
@@ -1921,6 +2096,9 @@ async function* streamAssistantTurn(args: {
 
 export interface ConversationSnapshot {
   conversation_id: string;
+  /** User-visible thread name. Null until the first user message is sent. */
+  title: string | null;
+  archived: boolean;
   messages: {
     id: string;
     role: "user" | "assistant";
@@ -1946,11 +2124,28 @@ export interface ConversationSnapshot {
   active_turn_events: Array<Record<string, unknown>>;
 }
 
+/**
+ * Load a snapshot for a specific thread or the user's active thread.
+ *
+ * - `conversationId` omitted: most-recent non-archived thread, or a
+ *   fresh empty one when the user has never chatted. This matches the
+ *   pre-multi-thread behavior and is what the sidebar uses on first
+ *   open.
+ * - `conversationId` provided: that thread, scoped to the calling
+ *   principal. Returns `null` when the id doesn't exist or belongs
+ *   to a different user — callers should 404 in that case.
+ */
 export async function loadSnapshotForPrincipal(
   principalId: string,
-  opts: { before?: Date | null } = {},
-): Promise<ConversationSnapshot> {
-  const conv = await loadOrCreateConversation(principalId);
+  opts: { before?: Date | null; conversationId?: string | null } = {},
+): Promise<ConversationSnapshot | null> {
+  let conv: ChatConversationRow | null;
+  if (opts.conversationId) {
+    conv = await loadConversationByIdForPrincipal(opts.conversationId, principalId);
+    if (!conv) return null;
+  } else {
+    conv = await loadOrCreateConversation(principalId);
+  }
   const [{ messages: rows, hasMore }, events] = await Promise.all([
     loadMessagesPage(conv.id, {
       before: opts.before ?? null,
@@ -1960,6 +2155,8 @@ export async function loadSnapshotForPrincipal(
   ]);
   return {
     conversation_id: conv.id,
+    title: conv.title,
+    archived: conv.archived,
     messages: rows.map((r) => ({
       id: r.id,
       role: r.role,
