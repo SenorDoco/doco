@@ -767,6 +767,74 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
     [conversationId],
   );
 
+  // Mutate the active thread's attachment lists via the PATCH route.
+  // Optimistic update — apply the change locally, then issue the
+  // request. On error we re-fetch the snapshot so the chips agree
+  // with the server again.
+  const attachAttachment = useCallback(
+    async (kind: "doco" | "org", handle: string) => {
+      if (!conversationId || !handle) return;
+      const optimistic: AttachmentInfo = { handle, name: null };
+      if (kind === "doco") {
+        setAttachedDocos((prev) =>
+          prev.some((d) => d.handle === handle) ? prev : [...prev, optimistic],
+        );
+      } else {
+        setAttachedOrgs((prev) =>
+          prev.some((o) => o.handle === handle) ? prev : [...prev, optimistic],
+        );
+      }
+      try {
+        const body = kind === "doco" ? { attach_doco: handle } : { attach_org: handle };
+        const res = await fetch(
+          `/api/v1/agent-chat/conversation/${encodeURIComponent(conversationId)}.json`,
+          {
+            method: "PATCH",
+            credentials: "same-origin",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          },
+        );
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        // Reload the snapshot so the chip picks up the resolved name.
+        void reload();
+        void loadConversationsList();
+      } catch {
+        // Snap state back to whatever the server says.
+        void reload();
+      }
+    },
+    [conversationId, reload, loadConversationsList],
+  );
+
+  const detachAttachment = useCallback(
+    async (kind: "doco" | "org", handle: string) => {
+      if (!conversationId || !handle) return;
+      if (kind === "doco") {
+        setAttachedDocos((prev) => prev.filter((d) => d.handle !== handle));
+      } else {
+        setAttachedOrgs((prev) => prev.filter((o) => o.handle !== handle));
+      }
+      try {
+        const body = kind === "doco" ? { detach_doco: handle } : { detach_org: handle };
+        const res = await fetch(
+          `/api/v1/agent-chat/conversation/${encodeURIComponent(conversationId)}.json`,
+          {
+            method: "PATCH",
+            credentials: "same-origin",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          },
+        );
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        void loadConversationsList();
+      } catch {
+        void reload();
+      }
+    },
+    [conversationId, reload, loadConversationsList],
+  );
+
   const archiveThread = useCallback(
     async (id: string) => {
       try {
@@ -1671,30 +1739,15 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
               >
                 {displayThreadTitle(conversationTitle)}
               </div>
-              {attachedDocos.length + attachedOrgs.length > 0 ? (
-                <div className="flex flex-wrap items-center gap-1">
-                  {attachedDocos.map((d) => (
-                    <Link
-                      key={`doco-${d.handle}`}
-                      to={`/${d.handle}`}
-                      className="rounded-full border border-border bg-input/60 px-1.5 py-px text-[10px] text-muted-foreground hover:bg-primary/20 hover:text-foreground"
-                      title={d.name ?? d.handle}
-                    >
-                      {d.name ?? d.handle}
-                    </Link>
-                  ))}
-                  {attachedOrgs.map((o) => (
-                    <Link
-                      key={`org-${o.handle}`}
-                      to={`/orgs/${o.handle}`}
-                      className="rounded-full border border-border bg-input/60 px-1.5 py-px text-[10px] text-muted-foreground hover:bg-primary/20 hover:text-foreground"
-                      title={o.name ?? o.handle}
-                    >
-                      @{o.name ?? o.handle}
-                    </Link>
-                  ))}
-                </div>
-              ) : null}
+              <AttachmentsRow
+                docos={attachedDocos}
+                orgs={attachedOrgs}
+                onDetachDoco={(handle) => void detachAttachment("doco", handle)}
+                onDetachOrg={(handle) => void detachAttachment("org", handle)}
+                onAttachDoco={(handle) => void attachAttachment("doco", handle)}
+                onAttachOrg={(handle) => void attachAttachment("org", handle)}
+                conversationId={conversationId}
+              />
             </div>
           </div>
 
@@ -1856,6 +1909,188 @@ function DotsIcon() {
       <circle cx="8" cy="8" r="1.5" />
       <circle cx="13" cy="8" r="1.5" />
     </svg>
+  );
+}
+
+interface AttachmentsRowProps {
+  docos: AttachmentInfo[];
+  orgs: AttachmentInfo[];
+  conversationId: string | null;
+  onAttachDoco: (handle: string) => void;
+  onAttachOrg: (handle: string) => void;
+  onDetachDoco: (handle: string) => void;
+  onDetachOrg: (handle: string) => void;
+}
+
+interface AvailableLists {
+  docos: { handle: string; name: string | null }[];
+  orgs: { handle: string; name: string | null }[];
+}
+
+function AttachmentsRow({
+  docos,
+  orgs,
+  conversationId,
+  onAttachDoco,
+  onAttachOrg,
+  onDetachDoco,
+  onDetachOrg,
+}: AttachmentsRowProps) {
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [available, setAvailable] = useState<AvailableLists | null>(null);
+  const [loadingAvailable, setLoadingAvailable] = useState(false);
+  const pickerRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!pickerOpen) return;
+    const onDocClick = (e: MouseEvent) => {
+      if (!pickerRef.current) return;
+      if (e.target instanceof Node && pickerRef.current.contains(e.target)) return;
+      setPickerOpen(false);
+    };
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, [pickerOpen]);
+
+  // Lazy-load the user's accessible Docos / Orgs the first time the
+  // picker opens. Cheap query — listAccessibleDocoIdsForPrincipal +
+  // a single docos join — but no point pulling it on every chat
+  // bootstrap.
+  useEffect(() => {
+    if (!pickerOpen || available !== null) return;
+    setLoadingAvailable(true);
+    void Promise.all([
+      fetch("/api/v1/docos.json", { credentials: "same-origin" }).then((r) =>
+        r.ok ? r.json() : { docos: [] },
+      ),
+      fetch("/api/v1/orgs.json", { credentials: "same-origin" }).then((r) =>
+        r.ok ? r.json() : { orgs: [] },
+      ),
+    ])
+      .then(([d, o]) => {
+        setAvailable({
+          docos: Array.isArray(d.docos) ? d.docos : [],
+          orgs: Array.isArray(o.orgs) ? o.orgs : [],
+        });
+      })
+      .catch(() => setAvailable({ docos: [], orgs: [] }))
+      .finally(() => setLoadingAvailable(false));
+  }, [pickerOpen, available]);
+
+  const attachedDocoSet = new Set(docos.map((d) => d.handle));
+  const attachedOrgSet = new Set(orgs.map((o) => o.handle));
+  const docosToOffer = (available?.docos ?? []).filter((d) => !attachedDocoSet.has(d.handle));
+  const orgsToOffer = (available?.orgs ?? []).filter((o) => !attachedOrgSet.has(o.handle));
+
+  if (docos.length + orgs.length === 0 && !conversationId) {
+    return null;
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-1" ref={pickerRef}>
+      {docos.map((d) => (
+        <span
+          key={`doco-${d.handle}`}
+          className="group inline-flex items-center gap-0.5 rounded-full border border-border bg-input/60 pl-1.5 pr-0.5 text-[10px] text-muted-foreground hover:bg-primary/20 hover:text-foreground"
+          title={d.name ?? d.handle}
+        >
+          <Link to={`/${d.handle}`} className="py-px">
+            {d.name ?? d.handle}
+          </Link>
+          <button
+            type="button"
+            onClick={() => onDetachDoco(d.handle)}
+            aria-label={`Remove ${d.name ?? d.handle}`}
+            className="ml-0.5 rounded-full px-1 text-muted-foreground hover:bg-destructive/20 hover:text-destructive"
+          >
+            ×
+          </button>
+        </span>
+      ))}
+      {orgs.map((o) => (
+        <span
+          key={`org-${o.handle}`}
+          className="group inline-flex items-center gap-0.5 rounded-full border border-border bg-input/60 pl-1.5 pr-0.5 text-[10px] text-muted-foreground hover:bg-primary/20 hover:text-foreground"
+          title={o.name ?? o.handle}
+        >
+          <Link to={`/orgs/${o.handle}`} className="py-px">
+            @{o.name ?? o.handle}
+          </Link>
+          <button
+            type="button"
+            onClick={() => onDetachOrg(o.handle)}
+            aria-label={`Remove ${o.name ?? o.handle}`}
+            className="ml-0.5 rounded-full px-1 text-muted-foreground hover:bg-destructive/20 hover:text-destructive"
+          >
+            ×
+          </button>
+        </span>
+      ))}
+      <div className="relative">
+        <button
+          type="button"
+          onClick={() => setPickerOpen((p) => !p)}
+          aria-label="Attach a Doco or Org"
+          aria-expanded={pickerOpen}
+          className="rounded-full border border-border bg-input/40 px-1.5 py-px text-[10px] text-muted-foreground hover:bg-input hover:text-foreground"
+        >
+          +
+        </button>
+        {pickerOpen ? (
+          <div
+            role="menu"
+            className="neu-panel absolute left-0 top-full z-20 mt-1 max-h-72 min-w-[180px] overflow-y-auto rounded-md border border-border bg-card py-1 text-xs shadow"
+          >
+            {loadingAvailable ? (
+              <div className="px-3 py-1 text-[11px] text-muted-foreground">Loading…</div>
+            ) : null}
+            {!loadingAvailable && docosToOffer.length === 0 && orgsToOffer.length === 0 ? (
+              <div className="px-3 py-1 text-[11px] text-muted-foreground">
+                Nothing else to attach.
+              </div>
+            ) : null}
+            {docosToOffer.length > 0 ? (
+              <div className="px-2 pt-1 text-[10px] uppercase tracking-wide text-muted-foreground">
+                Docos
+              </div>
+            ) : null}
+            {docosToOffer.map((d) => (
+              <button
+                key={`d-${d.handle}`}
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setPickerOpen(false);
+                  onAttachDoco(d.handle);
+                }}
+                className="block w-full truncate px-3 py-1 text-left hover:bg-input"
+              >
+                {d.name ?? d.handle}
+              </button>
+            ))}
+            {orgsToOffer.length > 0 ? (
+              <div className="px-2 pt-1 text-[10px] uppercase tracking-wide text-muted-foreground">
+                Orgs
+              </div>
+            ) : null}
+            {orgsToOffer.map((o) => (
+              <button
+                key={`o-${o.handle}`}
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setPickerOpen(false);
+                  onAttachOrg(o.handle);
+                }}
+                className="block w-full truncate px-3 py-1 text-left hover:bg-input"
+              >
+                @{o.name ?? o.handle}
+              </button>
+            ))}
+          </div>
+        ) : null}
+      </div>
+    </div>
   );
 }
 

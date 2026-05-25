@@ -541,6 +541,60 @@ export async function attachOrgToConversation(
 }
 
 /**
+ * Owner-scoped mutate for the manual override flow. Accepts arbitrary
+ * attach/detach operations against a thread the caller owns. Returns
+ * the updated row or null when the conversation doesn't exist for
+ * this principal. Each handle is checked against `array_remove` /
+ * `array_append (unique)` so repeated requests stay idempotent.
+ */
+export async function mutateConversationAttachments(
+  conversationId: string,
+  principalId: string,
+  ops: {
+    attachDoco?: string;
+    detachDoco?: string;
+    attachOrg?: string;
+    detachOrg?: string;
+  },
+): Promise<ChatConversationRow | null> {
+  const updates: string[] = [];
+  const values: unknown[] = [conversationId, principalId];
+  if (ops.attachDoco) {
+    values.push(ops.attachDoco);
+    updates.push(
+      `attached_doco_handles = CASE WHEN $${values.length} = ANY(attached_doco_handles) THEN attached_doco_handles ELSE attached_doco_handles || ARRAY[$${values.length}::text] END`,
+    );
+  }
+  if (ops.detachDoco) {
+    values.push(ops.detachDoco);
+    updates.push(`attached_doco_handles = array_remove(attached_doco_handles, $${values.length})`);
+  }
+  if (ops.attachOrg) {
+    values.push(ops.attachOrg);
+    updates.push(
+      `attached_org_handles = CASE WHEN $${values.length} = ANY(attached_org_handles) THEN attached_org_handles ELSE attached_org_handles || ARRAY[$${values.length}::text] END`,
+    );
+  }
+  if (ops.detachOrg) {
+    values.push(ops.detachOrg);
+    updates.push(`attached_org_handles = array_remove(attached_org_handles, $${values.length})`);
+  }
+  if (updates.length === 0) {
+    return await loadConversationByIdForPrincipal(conversationId, principalId);
+  }
+  return await withClient(async (c) => {
+    const r = await c.query<ChatConversationRow>(
+      `UPDATE chat_conversations
+          SET ${updates.join(", ")}
+        WHERE id = $1 AND collaborator_id = $2
+        RETURNING ${CONV_COLS}`,
+      values,
+    );
+    return r.rows[0] ?? null;
+  });
+}
+
+/**
  * Legacy entry point — kept for back-compat with callers that still
  * pass just a principal id. Returns the most-recent thread or mints
  * a fresh one.
