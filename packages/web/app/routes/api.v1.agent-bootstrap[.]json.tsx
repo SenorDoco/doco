@@ -42,9 +42,11 @@ import {
 } from "~/lib/project-tokens.server";
 import { extractBearer, getCurrentPrincipalAsync } from "~/lib/session.server";
 
-interface ArticleSummary {
+interface PolicyArticle {
   id: string;
-  summary: string;
+  /** The one-line rule statement (column renamed from `summary` to
+   *  `policy` by migration 038). */
+  policy: string;
   lifecycle: string | null;
   body_md: string | null;
 }
@@ -60,8 +62,8 @@ interface DocoPolicySet {
    */
   goal: string;
   owner_id: string;
-  guidance_policies: ArticleSummary[];
-  neuron_authoring_policies: ArticleSummary[];
+  guidance_policies: PolicyArticle[];
+  neuron_authoring_policies: PolicyArticle[];
 }
 
 export async function loader({ request }: { request: Request }) {
@@ -127,16 +129,16 @@ async function loadDocoPoliciesForProjectToken(token: ProjectToken): Promise<Doc
   if (!d) return [];
   const [guidance, nodeAuthoring] = await withClient((c) =>
     Promise.all([
-      c.query<{ id: string; summary: string; lifecycle: string | null; body_md: string | null }>(
-        `SELECT id, summary, lifecycle, body_md
+      c.query<{ id: string; policy: string; lifecycle: string | null; body_md: string | null }>(
+        `SELECT id, policy, lifecycle, body_md
            FROM guidance_policies
           WHERE doco_id = $1
             AND COALESCE(lifecycle, 'active') = 'active'
           ORDER BY created_at DESC`,
         [d.id],
       ),
-      c.query<{ id: string; summary: string; lifecycle: string | null; body_md: string | null }>(
-        `SELECT id, summary, lifecycle, body_md
+      c.query<{ id: string; policy: string; lifecycle: string | null; body_md: string | null }>(
+        `SELECT id, policy, lifecycle, body_md
            FROM neuron_authoring_policies
           WHERE doco_id = $1
             AND COALESCE(lifecycle, 'active') = 'active'
@@ -175,16 +177,16 @@ async function loadDocoPoliciesForPrincipal(
     if (!(await canAccessDoco(meta, principalId))) continue;
     const [guidance, nodeAuthoring] = await withClient((c) =>
       Promise.all([
-        c.query<{ id: string; summary: string; lifecycle: string | null; body_md: string | null }>(
-          `SELECT id, summary, lifecycle, body_md
+        c.query<{ id: string; policy: string; lifecycle: string | null; body_md: string | null }>(
+          `SELECT id, policy, lifecycle, body_md
              FROM guidance_policies
             WHERE doco_id = $1
               AND COALESCE(lifecycle, 'active') = 'active'
             ORDER BY created_at DESC`,
           [d.id],
         ),
-        c.query<{ id: string; summary: string; lifecycle: string | null; body_md: string | null }>(
-          `SELECT id, summary, lifecycle, body_md
+        c.query<{ id: string; policy: string; lifecycle: string | null; body_md: string | null }>(
+          `SELECT id, policy, lifecycle, body_md
              FROM neuron_authoring_policies
             WHERE doco_id = $1
               AND COALESCE(lifecycle, 'active') = 'active'
