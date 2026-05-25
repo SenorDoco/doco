@@ -169,7 +169,6 @@ async function persistEntity(args: {
         entity_type: args.entityType,
         data: fm,
         body_md: args.body,
-        summary: typeof fm.summary === "string" ? fm.summary : null,
         lifecycle: typeof fm.lifecycle === "string" ? fm.lifecycle : null,
         name: typeof fm.name === "string" ? fm.name : null,
         type_named_value: computeTypeNamedValue(args.entityType, fm),
@@ -606,10 +605,10 @@ function emitAuditForUpdate(opts: {
 /**
  * Emit an entity.create audit event after a successful capture write.
  *
- * `label` is the short identifier — for migrated neurons it's the first
- * line of the type-named prose field, for policies/principals it's
- * the legacy `summary`. The audit event records it under the type-named
- * key for migrated neurons and `summary` for non-migrated ones.
+ * `label` is the short identifier — for migrated neurons it's the
+ * first line of the type-named prose field, for policies it's the
+ * one-line `policy` rule, for principals it's the slug `name`. The
+ * audit event records it under the right key per entity type.
  */
 function emitAuditForCreate(opts: {
   docoDir: string;
@@ -623,7 +622,12 @@ function emitAuditForCreate(opts: {
     let after: Record<string, unknown> | undefined;
     if (opts.label) {
       const typeNamedColumn = ALL_ENTITY_TABLES[opts.entity_type]?.typeNamedColumn;
-      after = typeNamedColumn ? { [typeNamedColumn]: opts.label } : { summary: opts.label };
+      const labelKey = typeNamedColumn
+        ? typeNamedColumn
+        : opts.entity_type === "principal"
+          ? "name"
+          : "policy";
+      after = { [labelKey]: opts.label };
     }
     appendAuditEvent({
       docoDir: opts.docoDir,
@@ -1143,9 +1147,10 @@ export async function updateEntity(opts: {
   const existingBody = existing.body;
   const normalizedPatch = normalizePrincipalIdPatchFields(entityType, patch);
   // Migration-022/023: 9 neuron types collapsed summary+body_md+extras
-  // into a single type-named prose column. Policies + principal still
-  // ride the legacy summary+body_md shape — distinguished by whether
-  // ALL_ENTITY_TABLES exposes a `typeNamedColumn`.
+  // into a single type-named prose column. Policies use the `policy`
+  // column (renamed from `summary` by 038) + body_md. Principals use
+  // `name` + `body_md` after 037 dropped the summary column.
+  // Distinguished by whether ALL_ENTITY_TABLES exposes a typeNamedColumn.
   const typeNamedColumn = ALL_ENTITY_TABLES[entityType]?.typeNamedColumn;
   // Types with a markdown body get body_md; `reference` is pure YAML
   // and ignores body operations. For migrated neurons body_md is gone
@@ -1192,11 +1197,13 @@ export async function updateEntity(opts: {
     // body_md (+ title on intent, name/description on eval).
     const v = normalizedPatch[typeNamedColumn];
     setScalar(typeNamedColumn, typeof v === "string" ? v.trim() : undefined);
-  } else if (!typeNamedColumn && "summary" in normalizedPatch) {
-    // Policy / principal still use summary.
+  } else if (!typeNamedColumn && "policy" in normalizedPatch) {
+    // Policies (the only non-typeNamedColumn entity reaching this
+    // PATCH path — NodeTypeName doesn't include "principal", which
+    // has its own dedicated route).
     setScalar(
-      "summary",
-      typeof normalizedPatch.summary === "string" ? normalizedPatch.summary.trim() : undefined,
+      "policy",
+      typeof normalizedPatch.policy === "string" ? normalizedPatch.policy.trim() : undefined,
     );
   }
   if (normalizedPatch.lifecycle !== undefined) {
@@ -1257,7 +1264,7 @@ export async function updateEntity(opts: {
     "intent_ids_remove",
     "body_md",
     "body_md_append",
-    "summary",
+    "policy",
     // Per migration 034 (remove-slugs PR), neurons no longer carry a
     // `slug` field in their data jsonb. Silently drop the key on
     // PATCH so callers that still send it (or stale clients holding
@@ -1358,7 +1365,7 @@ export async function updateEntity(opts: {
 
   const label = typeNamedColumn
     ? firstLine(typeof fm[typeNamedColumn] === "string" ? (fm[typeNamedColumn] as string) : id)
-    : String(fm.summary ?? fm.name ?? id);
+    : String(fm.policy ?? fm.name ?? id);
   const duration_ms = Math.round(performance.now() - startedAt);
   const footer_lines = await renderOperationLines({
     docoId,
