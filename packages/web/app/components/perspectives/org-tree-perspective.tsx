@@ -152,6 +152,13 @@ function layoutOrgTree(
       },
       draggable: false,
       selectable: false,
+      // Explicit dimensions on the node object (vs. only inside the
+      // custom component's inline style) so React Flow knows the
+      // bounds without waiting for ResizeObserver. The MiniMap reads
+      // these to render its silhouettes — without them the minimap
+      // shows only the viewport box on an empty canvas. Matches the
+      // Graph/BPMN pattern.
+      style: { width: NODE_W, height: NODE_H },
     }));
 
   // Muted, low-contrast connector — matches the visual weight of the
