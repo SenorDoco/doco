@@ -295,12 +295,25 @@ function OrgTreeInner({
   const containerRef = useRef<HTMLDivElement>(null);
   const flow = useReactFlow();
 
-  // Fit-to-view whenever the layout changes shape. The effect body
-  // doesn't reference rfNodes/rfEdges directly, but we DO want it to
-  // re-run when those change — otherwise the viewport stays zoomed
-  // to whatever the initial paint showed even as Principals are
-  // added or rewired.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: rfNodes/rfEdges are intentional triggers.
+  // Stable signature of the layout's *shape* — node ids + reports_to
+  // edges, in deterministic order. The dashboard re-fetches Principals
+  // every 5s for the live feed (ADR-089), so `nodes`/`filtered` get
+  // fresh array identity on every poll even when no Principal actually
+  // changed. Gating fitView on identity made the canvas zoom-reset on
+  // every poll; gating on this signature only fires when topology
+  // actually changes (added/removed/rewired Principal, lifecycle filter
+  // toggle).
+  const layoutSignature = useMemo(
+    () =>
+      filtered
+        .map((n) => `${n.id}>${n.reports_to ?? ""}`)
+        .sort()
+        .join("|"),
+    [filtered],
+  );
+
+  // Fit-to-view whenever the layout actually changes shape.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: layoutSignature is the intentional trigger.
   useEffect(() => {
     const id = requestAnimationFrame(() => {
       try {
@@ -311,7 +324,7 @@ function OrgTreeInner({
       }
     });
     return () => cancelAnimationFrame(id);
-  }, [flow, rfNodes, rfEdges]);
+  }, [flow, layoutSignature]);
 
   const handleNodeClick = useCallback(
     (_e: React.MouseEvent, node: Node<OrgTreeNodeData>) => {
