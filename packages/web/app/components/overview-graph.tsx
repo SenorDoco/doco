@@ -401,7 +401,12 @@ function OverviewFlowNode({ data }: { data: OverviewNodeData }) {
           against the outer wrapper's geometric box, not the inner
           padding-box (which is shifted right by the 6px left border —
           centers the badge ~3px right of the card's true middle). */}
-      <NodeBadgeRow entityType={data.node.entity_type} lifecycle={lifecycle} />
+      <NodeBadgeRow
+        entityType={data.node.entity_type}
+        lifecycle={lifecycle}
+        className="nodrag nopan"
+        interactive
+      />
       <ReferenceNumberBadge referenceNumber={data.referenceNumber} referenceLabel={title} />
     </div>
   );
