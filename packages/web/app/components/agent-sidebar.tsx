@@ -581,8 +581,21 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
 
   useEffect(() => {
     void reload();
-    return () => abortRef.current?.abort();
   }, [reload]);
+
+  // Abort any in-flight send when the sidebar unmounts. This used
+  // to live as the cleanup on the `[reload]` effect — but `reload`'s
+  // identity changes whenever `busy` flips, and `send()` stashes
+  // its AbortController in `abortRef.current` BEFORE React commits
+  // the busy→true render. The cleanup fires synchronously after
+  // commit and aborted the live send's controller, so the user saw
+  // their message disappear, no in-flight bubble, and "Señor Doco
+  // is silently working" while keepalive: true let the server
+  // finish anyway. Splitting the abort into a mount-only effect
+  // keeps the unmount-cleanup intent without nuking active sends.
+  useEffect(() => {
+    return () => abortRef.current?.abort();
+  }, []);
 
   const loadConversationsList = useCallback(async () => {
     setConversationsLoading(true);
