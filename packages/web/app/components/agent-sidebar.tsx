@@ -2724,6 +2724,30 @@ function InFlightMessageView({
 }
 
 function ThinkingPanel({ events, active }: { events: ThinkingEvent[]; active: boolean }) {
+  // `performance.now()` at the moment the last event arrived. Drives
+  // the "waiting +Xs" tail line below — anchoring on event arrival
+  // (instead of plumbing the turn start in) means the indicator
+  // resets cleanly each time a new event lands, even when the turn
+  // straddles a sidebar remount.
+  const [lastArrivalRT, setLastArrivalRT] = useState<number | null>(null);
+  useEffect(() => {
+    setLastArrivalRT(events.length > 0 ? performance.now() : null);
+  }, [events.length]);
+
+  // Force a re-render every 200ms while we're still waiting on the
+  // agent, so the seconds count visibly. Cleared when the turn ends
+  // or no events have arrived (the placeholder copy covers that case
+  // already, no need to also tick).
+  const [, forceTick] = useState(0);
+  useEffect(() => {
+    if (!active || lastArrivalRT == null) return;
+    const id = setInterval(() => forceTick((t) => t + 1), 200);
+    return () => clearInterval(id);
+  }, [active, lastArrivalRT]);
+
+  const idleSec =
+    active && lastArrivalRT != null ? (performance.now() - lastArrivalRT) / 1000 : 0;
+
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-card/50">
       <div className="shrink-0 border-b border-border/70 px-3 py-1.5 text-[10px] uppercase tracking-wide text-muted-foreground">
@@ -2738,7 +2762,16 @@ function ThinkingPanel({ events, active }: { events: ThinkingEvent[]; active: bo
               : "(no thinking yet — send a message to see what Señor Doco does)"}
           </div>
         ) : (
-          events.map((ev) => <ThinkingRow key={ev.id} ev={ev} />)
+          <>
+            {events.map((ev) => (
+              <ThinkingRow key={ev.id} ev={ev} />
+            ))}
+            {active && idleSec >= 1 ? (
+              <div className="mt-1 italic text-muted-foreground">
+                waiting +{idleSec.toFixed(1)}s
+              </div>
+            ) : null}
+          </>
         )}
       </div>
     </div>
