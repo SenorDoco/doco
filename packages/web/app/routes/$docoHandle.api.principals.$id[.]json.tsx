@@ -1,9 +1,36 @@
 import { getEntity, roleAtLeast, upsertEntity, withClient } from "@doco/db";
-import { nowIso } from "@doco/shared";
+import { type EntityId, nowIso } from "@doco/shared";
+import { runAuthoringPolicies } from "~/lib/authoring-runner.server";
+import { reindexAndScheduleAttach } from "~/lib/capture.server";
+import { docoPath } from "~/lib/db.server";
 import { getDocoLevelRole, loadDocoRouteForRead } from "~/lib/doco-access.server";
 
+// Principal is a Record per the "frozen claims, mutable records"
+// Decision (decision_01KRKEPRAMM9QSSEJ2X5FHPESJ). The only identity
+// field locked in place is `name` — it's the lookup slug other neurons
+// reference, like a URL path, so changing it would silently break
+// callers. Everything else is editable; lifecycle has a one-way path
+// to "retired" with an active-references guard.
+const PATCHABLE_KEYS = new Set([
+  "display_name",
+  "description",
+  "body_md",
+  "type",
+  "summary",
+  "reports_to",
+  "lifecycle",
+]);
+
 interface PrincipalPatch {
-  lifecycle?: string;
+  display_name?: string;
+  description?: string;
+  body_md?: string;
+  type?: "person" | "agent";
+  summary?: string;
+  /** `null` clears the synapse (Principal becomes top-of-chain). */
+  reports_to?: string | null;
+  /** Only `"retired"` is accepted; the lifecycle path is one-way. */
+  lifecycle?: "retired";
 }
 
 interface ActiveReference {
@@ -100,71 +127,174 @@ export async function action({
     );
   }
 
-  let patch: PrincipalPatch;
+  let rawPatch: Record<string, unknown>;
   try {
-    patch = (await request.json()) as PrincipalPatch;
+    rawPatch = (await request.json()) as Record<string, unknown>;
   } catch (e) {
     return Response.json({ error: `Invalid JSON body: ${(e as Error).message}` }, { status: 400 });
   }
+  if (!rawPatch || typeof rawPatch !== "object" || Array.isArray(rawPatch)) {
+    return Response.json({ error: "Body must be a JSON object." }, { status: 400 });
+  }
 
-  // Retirement is the only PATCH operation currently supported. Principal
-  // identity fields (name, display_name, …) stay immutable — if you
-  // need a different identity, create a new principal.
-  if (patch.lifecycle !== "retired") {
+  // Reject unknown keys up-front so typos don't silently no-op. `name`
+  // is intentionally absent from PATCHABLE_KEYS — it's the slug other
+  // neurons reference, so it stays immutable.
+  const unknown = Object.keys(rawPatch).filter((k) => !PATCHABLE_KEYS.has(k));
+  if (unknown.length > 0) {
     return Response.json(
-      { error: "Only { lifecycle: 'retired' } is supported on principal PATCH." },
+      {
+        error: `Unknown or immutable field(s) in patch: ${unknown.join(", ")}. Allowed: ${[...PATCHABLE_KEYS].join(", ")}.`,
+      },
       { status: 400 },
     );
+  }
+  if (Object.keys(rawPatch).length === 0) {
+    return Response.json(
+      { error: `Empty patch; supply at least one of: ${[...PATCHABLE_KEYS].join(", ")}.` },
+      { status: 400 },
+    );
+  }
+  const patch = rawPatch as PrincipalPatch;
+
+  if (patch.lifecycle !== undefined && patch.lifecycle !== "retired") {
+    return Response.json(
+      { error: 'lifecycle must be "retired" — the only lifecycle transition supported on PATCH.' },
+      { status: 400 },
+    );
+  }
+  if (patch.type !== undefined && patch.type !== "person" && patch.type !== "agent") {
+    return Response.json({ error: "type must be one of: person, agent." }, { status: 400 });
+  }
+  if (patch.reports_to !== undefined && patch.reports_to !== null) {
+    if (typeof patch.reports_to !== "string" || !patch.reports_to.startsWith("principal_")) {
+      return Response.json(
+        { error: "reports_to must be a principal id (principal_<ULID>) or null to clear." },
+        { status: 400 },
+      );
+    }
+    if (patch.reports_to === params.id) {
+      return Response.json(
+        { error: "reports_to cannot point at the Principal itself." },
+        { status: 400 },
+      );
+    }
+    const manager = await getEntity("principal", patch.reports_to as EntityId<"principal">);
+    if (!manager || manager.doco_id !== meta.docoId) {
+      return Response.json(
+        { error: `reports_to principal not found in this Doco: ${patch.reports_to}` },
+        { status: 400 },
+      );
+    }
   }
 
   const existing = await getEntity("principal", params.id);
   if (!existing || existing.doco_id !== meta.docoId) {
     return Response.json({ error: `principal not found: ${params.id}` }, { status: 404 });
   }
-
   const name = String(existing.data?.name ?? existing.id);
 
-  if (existing.lifecycle === "retired") {
-    return Response.json({
-      ok: true,
-      id: existing.id,
-      already_retired: true,
-      footer_lines: [`[🔮 Doco] 👤 Principal already retired: ${name} (${existing.id})`],
-    });
+  // Retirement path: lifecycle="retired" goes through the active-refs
+  // guard. Field edits in the same patch are applied alongside the
+  // lifecycle flip when the guard passes.
+  if (patch.lifecycle === "retired") {
+    if (existing.lifecycle === "retired") {
+      return Response.json({
+        ok: true,
+        id: existing.id,
+        already_retired: true,
+        footer_lines: [`[🔮 Doco] 👤 Principal already retired: ${name} (${existing.id})`],
+      });
+    }
+    const activeRefs = await findActiveReferencesToPrincipal(meta.docoId, params.id);
+    if (activeRefs.length > 0) {
+      return Response.json(
+        {
+          error:
+            "Cannot retire principal: active neurons still reference it. Retire or supersede those neurons first.",
+          active_references: activeRefs,
+        },
+        { status: 409 },
+      );
+    }
   }
 
-  const activeRefs = await findActiveReferencesToPrincipal(meta.docoId, params.id);
-  if (activeRefs.length > 0) {
+  // Build the merged data object. `reports_to: null` clears the synapse;
+  // `undefined` (key absent from patch) leaves the existing value alone.
+  const oldData = (existing.data ?? {}) as Record<string, unknown>;
+  const merged: Record<string, unknown> = { ...oldData };
+  if (patch.display_name !== undefined) merged.display_name = patch.display_name.trim();
+  if (patch.description !== undefined) merged.description = patch.description.trim();
+  if (patch.type !== undefined) merged.type = patch.type;
+  if (patch.summary !== undefined) merged.summary = patch.summary.trim();
+  if (patch.reports_to === null) {
+    // Remove the key entirely so `deriveSynapses` doesn't see it and
+    // doesn't emit a `reports_to` synapse — promotes the Principal
+    // back to top-of-chain.
+    // biome-ignore lint/performance/noDelete: removing the key (not setting undefined) keeps the data JSONB clean and lets downstream `toHaveProperty` assertions stay honest.
+    delete merged.reports_to;
+  } else if (patch.reports_to !== undefined) {
+    merged.reports_to = patch.reports_to;
+  }
+  const nextLifecycle = patch.lifecycle ?? (existing.lifecycle as string | undefined) ?? "active";
+  merged.lifecycle = nextLifecycle;
+
+  const nextBodyMd =
+    patch.body_md !== undefined ? (patch.body_md ?? "") : (existing.body_md ?? undefined);
+  const nextSummary =
+    patch.summary !== undefined ? (merged.summary as string) : (existing.summary ?? undefined);
+
+  // Run authoring policies against the merged candidate so org-chart
+  // templates can block transitions that would leave the Principal in
+  // an invalid state (e.g. activating without `type` set). Field
+  // updates use the same evaluator that the POST route runs.
+  const pred = await runAuthoringPolicies({
+    docoId: meta.docoId,
+    candidate: merged as Parameters<typeof runAuthoringPolicies>[0]["candidate"],
+  });
+  if (pred.blocking) {
     return Response.json(
       {
-        error:
-          "Cannot retire principal: active neurons still reference it. Retire or supersede those neurons first.",
-        active_references: activeRefs,
+        error: `Authoring policy violation: ${pred.blocking.reason}`,
+        policy_id: pred.blocking.policy_id,
+        ...(pred.warnings.length > 0 ? { warnings: pred.warnings } : {}),
       },
-      { status: 409 },
+      { status: 422 },
     );
   }
 
   const now = nowIso();
-  const newData = { ...existing.data, lifecycle: "retired" };
   await upsertEntity({
     id: existing.id,
     doco_id: existing.doco_id,
     entity_type: "principal",
-    data: newData,
-    summary: existing.summary ?? undefined,
-    body_md: existing.body_md ?? undefined,
-    lifecycle: "retired",
+    data: merged,
+    summary: nextSummary,
+    body_md: nextBodyMd,
+    lifecycle: nextLifecycle,
     created_at: existing.created_at ?? undefined,
     created_by: existing.created_by ?? undefined,
     updated_at: now,
     updated_by: me.id,
   });
 
+  await reindexAndScheduleAttach(docoPath(params.docoHandle), meta.docoId, existing.id);
+
+  const warningFooters = pred.warnings.map((w) => `[🔮 Doco] ⚠️ Authoring warning: ${w.reason}`);
+  if (patch.lifecycle === "retired") {
+    return Response.json({
+      ok: true,
+      id: existing.id,
+      lifecycle: "retired",
+      footer_lines: [`[🔮 Doco] 👤 Principal retired: ${name} (${existing.id})`, ...warningFooters],
+      ...(pred.warnings.length > 0 ? { warnings: pred.warnings } : {}),
+    });
+  }
   return Response.json({
     ok: true,
     id: existing.id,
-    lifecycle: "retired",
-    footer_lines: [`[🔮 Doco] 👤 Principal retired: ${name} (${existing.id})`],
+    lifecycle: nextLifecycle,
+    footer_lines: [`[🔮 Doco] 👤 Principal updated: ${name} (${existing.id})`, ...warningFooters],
+    ...(pred.warnings.length > 0 ? { warnings: pred.warnings } : {}),
   });
 }

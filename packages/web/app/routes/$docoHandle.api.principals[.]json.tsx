@@ -1,5 +1,6 @@
 import {
   getCollaboratorById,
+  getEntity,
   listDocoUsers,
   listEntitiesByDoco,
   roleAtLeast,
@@ -8,6 +9,8 @@ import {
 } from "@doco/db";
 import { type EntityId, generateUlid, makeEntityId, nowIso } from "@doco/shared";
 import { runAuthoringPolicies } from "~/lib/authoring-runner.server";
+import { reindexAndScheduleAttach } from "~/lib/capture.server";
+import { docoPath } from "~/lib/db.server";
 import { getDocoLevelRole, loadDocoRouteForRead } from "~/lib/doco-access.server";
 
 const ROLE_PRINCIPAL_NAMES = new Set(["user", "human", "doco-host", "github"]);
@@ -37,7 +40,7 @@ export async function action({
   params,
 }: {
   request: Request;
-  params: { docoId: string };
+  params: { docoHandle: string };
 }) {
   if (request.method !== "POST") {
     return Response.json({ error: "Use POST." }, { status: 405 });
@@ -66,6 +69,7 @@ export async function action({
     display_name?: string;
     description?: string;
     body_md?: string;
+    reports_to?: string;
   };
   const name = String(body.name ?? "")
     .trim()
@@ -84,6 +88,21 @@ export async function action({
   }
   if (body.type !== undefined && body.type !== "person" && body.type !== "agent") {
     return Response.json({ error: "type must be one of: person, agent." }, { status: 400 });
+  }
+  if (body.reports_to !== undefined) {
+    if (typeof body.reports_to !== "string" || !body.reports_to.startsWith("principal_")) {
+      return Response.json(
+        { error: "reports_to must be a principal id (principal_<ULID>)." },
+        { status: 400 },
+      );
+    }
+    const manager = await getEntity("principal", body.reports_to as EntityId<"principal">);
+    if (!manager || manager.doco_id !== meta.docoId) {
+      return Response.json(
+        { error: `reports_to principal not found in this Doco: ${body.reports_to}` },
+        { status: 400 },
+      );
+    }
   }
 
   const existing = await withClient(async (c) =>
@@ -119,6 +138,7 @@ export async function action({
     name,
     ...(displayName ? { display_name: displayName } : {}),
     ...(description ? { description } : {}),
+    ...(body.reports_to ? { reports_to: body.reports_to } : {}),
     ...(ROLE_PRINCIPAL_NAMES.has(name) ? { role_principal: true } : {}),
     created_at: now,
     created_by: me.id,
@@ -161,6 +181,12 @@ export async function action({
     updated_by: me.id,
   });
 
+  // Reindex so derived rows (synapses table for `reports_to`, FTS,
+  // embeddings) reflect the new Principal. Other capture routes do this
+  // via the generic capture factory; principals use a bespoke handler
+  // and need to call the helper directly.
+  await reindexAndScheduleAttach(docoPath(params.docoHandle), meta.docoId, id);
+
   const warningFooters = pred.warnings.map((w) => `[🔮 Doco] ⚠️ Authoring warning: ${w.reason}`);
   return Response.json(
     {
@@ -189,7 +215,7 @@ export async function loader({
   params,
 }: {
   request: Request;
-  params: { docoId: string };
+  params: { docoHandle: string };
 }) {
   const { meta } = await loadDocoRouteForRead(request, params);
   // Two distinct concepts share the URL for historical reasons:
