@@ -340,6 +340,31 @@ function formatRelativeTime(iso: string): string {
   return `${Math.floor(months / 12)}y ago`;
 }
 
+// Map a plural API segment to the kind slug used in the policies
+// edit URL (`/<handle>/policies/<kind>/<id>/edit`). Returns null
+// when the plural isn't a policy.
+function pluralToPolicyKindSlug(plural: string): string | null {
+  if (plural === "guidance_policies") return "guidance";
+  if (plural === "neuron_authoring_policies") return "neuron-authoring";
+  return null;
+}
+
+// Resolve the URL kind slug from a doco_api POST body for the shared
+// `/<handle>/api/policies.json` create endpoint. The body's
+// `policy_kind` field is either "guidance" or "neuron_authoring";
+// translate to the slug the policy edit route expects.
+function bodyToPolicyKindSlug(body: unknown): string | null {
+  if (!body || typeof body !== "object") return null;
+  const k = (body as { policy_kind?: unknown }).policy_kind;
+  if (k === "guidance") return "guidance";
+  if (k === "neuron_authoring") return "neuron-authoring";
+  return null;
+}
+
+type PendingCreate =
+  | { kind: "neuron"; handle: string; entityType: string }
+  | { kind: "policy"; handle: string; policyKindSlug: string };
+
 export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inFlight, setInFlight] = useState<InFlightMessage | null>(null);
@@ -1103,6 +1128,11 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
   // "don't yank them while they have unsent text to type", so guard
   // on the composer's *content* instead — handed in via a ref so the
   // callback doesn't re-bind on every keystroke.
+  //
+  // Policies aren't neurons, but the agent edits them the same way:
+  // PATCH /<handle>/api/{guidance,neuron_authoring}_policies/<id>.json.
+  // They get a different target URL — the policy edit page —
+  // instead of a perspective view.
   const maybeFollowToolToNeuron = useCallback(
     (toolName: string, input: unknown) => {
       if (toolName !== "doco_api") return;
@@ -1113,12 +1143,18 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
       const m = /^\/([^/]+)\/api\/([^/]+)\/([^/.]+)\.(?:json|txt)$/.exec(path);
       if (!m) return;
       const [, handle, plural, id] = m;
-      // Plurals are uniformly the entity-type + "s" across all
-      // neuron tables shipped today (decisions, intents, actions,
-      // logs, rules, evals, references, ideas, states, principals).
-      const entityType = plural.replace(/s$/, "");
-      if (entityType === "polic") return; // policies isn't a neuron
-      const target = `/${handle}/${entityType}/${id}`;
+      const policyKind = pluralToPolicyKindSlug(plural);
+      let target: string;
+      if (policyKind) {
+        target = `/${handle}/policies/${policyKind}/${id}/edit`;
+      } else {
+        // Plurals are uniformly the entity-type + "s" across all
+        // neuron tables shipped today (decisions, intents, actions,
+        // logs, rules, evals, references, ideas, states, principals).
+        const entityType = plural.replace(/s$/, "");
+        if (entityType === "polic") return; // policies isn't a neuron
+        target = `/${handle}/${entityType}/${id}`;
+      }
       const currentPath = location.pathname;
       if (currentPath === target) return;
       // Don't interrupt active composition — but only when there's
@@ -1135,15 +1171,21 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
   // server-side and returned in the response body). So track which
   // in-flight tool_use_ids are creates, then on tool_use_result pull
   // the id out of the preview and navigate.
-  const pendingCreatesRef = useRef<Map<string, { handle: string; entityType: string }>>(
-    new Map(),
-  );
+  //
+  // Two shapes:
+  //   - "neuron" creates go to /<handle>/<entity-type>/<id>
+  //   - "policy" creates go to /<handle>/policies/<kind-slug>/<id>/edit.
+  //     The plural endpoint is /<handle>/api/policies.json for both
+  //     guidance and neuron-authoring policies; the kind is in the
+  //     request body's `policy_kind` field, which we capture at
+  //     note-create time.
+  const pendingCreatesRef = useRef<Map<string, PendingCreate>>(new Map());
 
   const maybeNoteCreate = useCallback(
     (toolUseId: string, toolName: string, input: unknown) => {
       if (toolName !== "doco_api") return;
       if (!input || typeof input !== "object") return;
-      const inp = input as { path?: unknown; method?: unknown };
+      const inp = input as { path?: unknown; method?: unknown; body?: unknown };
       if (typeof inp.path !== "string") return;
       const method = typeof inp.method === "string" ? inp.method.toUpperCase() : "GET";
       if (method !== "POST") return;
@@ -1151,9 +1193,20 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
       const m = /^\/([^/]+)\/api\/([^/]+)\.(?:json|txt)$/.exec(inp.path);
       if (!m) return;
       const [, handle, plural] = m;
+      if (plural === "policies") {
+        // Policy create — kind comes from the request body, not the path.
+        const policyKindSlug = bodyToPolicyKindSlug(inp.body);
+        if (!policyKindSlug) return;
+        pendingCreatesRef.current.set(toolUseId, {
+          kind: "policy",
+          handle,
+          policyKindSlug,
+        });
+        return;
+      }
       const entityType = plural.replace(/s$/, "");
-      if (entityType === "polic") return; // policies isn't a neuron
-      pendingCreatesRef.current.set(toolUseId, { handle, entityType });
+      if (entityType === "polic") return;
+      pendingCreatesRef.current.set(toolUseId, { kind: "neuron", handle, entityType });
     },
     [],
   );
@@ -1180,7 +1233,10 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
         if (m) id = m[1];
       }
       if (!id) return;
-      const target = `/${pending.handle}/${pending.entityType}/${id}`;
+      const target =
+        pending.kind === "policy"
+          ? `/${pending.handle}/policies/${pending.policyKindSlug}/${id}/edit`
+          : `/${pending.handle}/${pending.entityType}/${id}`;
       if (location.pathname === target) return;
       if (composerHasTextRef.current) return;
       navigate(target);
