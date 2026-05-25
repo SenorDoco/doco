@@ -188,36 +188,17 @@ function layoutOrgTree(
 // thing that makes "alex" *that* alex, not "another alex") is the
 // big headline. The `display_name` sits beneath as the role title
 // ("CEO", "Head of Engineering"). The Person/Agent kind shows as a
-// solid pill in the bottom corner next to the lifecycle badge.
-// The pill's left edge lines up flush with the card padding so the
-// row reads as a horizontal band rather than a floating chip.
+// bare emoji icon in the bottom corner (👤 / 🤖) next to the
+// lifecycle badge — the dark text pill we used to render here read
+// too heavy alongside ACTIVE, and the emoji alone conveys the same
+// information with less ink.
 //
 // Sized via inline style (Tailwind's JIT can't see template-literal
 // class names).
 function OrgTreeCard({ data }: NodeProps<Node<OrgTreeNodeData>>) {
   const { org, isCenter, opacity } = data;
-  const kindLabel = org.type === "agent" ? "Agent" : org.type === "person" ? "Person" : null;
   const kindIcon = org.type === "agent" ? "🤖" : org.type === "person" ? "👤" : null;
-  // Match the dimensions of LifecycleBadge so the two pills line up
-  // visually (font, padding, radius, uppercase). Background is the
-  // foreground color so the pill reads as solid, like ACTIVE — only
-  // the emoji + label distinguishes Person from Agent.
-  const kindPillStyle: React.CSSProperties = {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 4,
-    background: "var(--color-foreground)",
-    color: "var(--color-background)",
-    fontSize: 9,
-    fontWeight: 700,
-    lineHeight: 1,
-    padding: "2px 5px",
-    borderRadius: 3,
-    letterSpacing: 0.3,
-    textTransform: "uppercase",
-    whiteSpace: "nowrap",
-    userSelect: "none",
-  };
+  const kindLabel = org.type === "agent" ? "agent" : org.type === "person" ? "person" : null;
   return (
     <div
       className={`flex flex-col justify-between rounded-md border bg-card px-3 py-2 shadow-sm transition ${
@@ -244,12 +225,13 @@ function OrgTreeCard({ data }: NodeProps<Node<OrgTreeNodeData>>) {
         ) : null}
       </div>
       <div className="flex items-center gap-1.5">
-        {kindLabel ? (
-          <span style={kindPillStyle} title={`Principal type: ${kindLabel.toLowerCase()}`}>
-            <span aria-hidden="true" style={{ fontSize: 11, lineHeight: 1 }}>
-              {kindIcon}
-            </span>
-            {kindLabel}
+        {kindIcon ? (
+          <span
+            aria-label={`Principal type: ${kindLabel}`}
+            title={`Principal type: ${kindLabel}`}
+            className="select-none text-sm leading-none"
+          >
+            {kindIcon}
           </span>
         ) : null}
         <LifecycleBadge lifecycle={org.lifecycle} />
