@@ -113,6 +113,32 @@ describe("principal API", () => {
     await expect(response.json()).resolves.toMatchObject({ ok: true, name: "visitor" });
   });
 
+  it("passes body_md to the authoring policy evaluator (regression — was missing on POST)", async () => {
+    // The org-chart template's "declare person-vs-agent in body_md"
+    // probabilistic gate reads `candidate.body_md`. The first cut of
+    // the POST handler built `raw` without `body_md` (it only wrote
+    // the column on upsertEntity), so the policy evaluator never saw
+    // the prose and rejected every Principal POST with valid prose.
+    // This regression test asserts body_md reaches the evaluator.
+    const response = await action({
+      request: principalRequest({
+        name: "gabriela",
+        body_md: "Human director of the Buenos Aires team. Operates under @alex.",
+      }),
+      params: { docoHandle: "acme" } as never,
+    });
+
+    expect(response.status).toBe(201);
+    expect(mocks.runAuthoringPolicies).toHaveBeenCalledWith(
+      expect.objectContaining({
+        candidate: expect.objectContaining({
+          name: "gabriela",
+          body_md: "Human director of the Buenos Aires team. Operates under @alex.",
+        }),
+      }),
+    );
+  });
+
   it("keeps the built-in role-principal defaults", async () => {
     const response = await action({
       request: principalRequest({ name: "human" }),

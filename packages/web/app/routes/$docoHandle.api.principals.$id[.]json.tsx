@@ -227,10 +227,18 @@ export async function action({
   const nextSummary =
     patch.summary !== undefined ? (merged.summary as string) : (existing.summary ?? undefined);
 
+  // Surface `body_md` to the policy evaluator. It lives on its own
+  // text column on principals (not inside the data jsonb), so the
+  // merged-from-data candidate would miss it — the org-chart
+  // template's "declare person-vs-agent in body_md" probabilistic
+  // gate would then reject every PATCH that didn't supply a fresh
+  // body_md, even when the existing body already declared it.
+  merged.body_md = nextBodyMd ?? "";
+
   // Run authoring policies against the merged candidate so org-chart
   // templates can block transitions that would leave the Principal in
-  // an invalid state (e.g. activating without `type` set). Field
-  // updates use the same evaluator that the POST route runs.
+  // an invalid state. Field updates use the same evaluator that the
+  // POST route runs.
   const pred = await runAuthoringPolicies({
     docoId: meta.docoId,
     candidate: merged as Parameters<typeof runAuthoringPolicies>[0]["candidate"],
