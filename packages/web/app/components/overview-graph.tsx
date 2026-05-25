@@ -12,13 +12,9 @@ import {
   opacityForDepth,
   opacityForEdge,
 } from "~/lib/graph-depth";
-import {
-  type GraphReferenceItem,
-  clearGraphReferences,
-  publishGraphReferences,
-} from "~/lib/graph-references";
 import { lifecycleColor } from "~/lib/neuron-colors";
 import { overviewNodeDisplayLabel } from "~/lib/overview-graph-labels";
+import { usePerspectiveReferences } from "~/lib/perspective-references";
 import { useNewNodeIds } from "~/lib/use-new-neuron-ids";
 import "@xyflow/react/dist/style.css";
 
@@ -132,19 +128,10 @@ const NODE_TYPE_ORDER = new Map(
 const OVERVIEW_NODE_WIDTH = 224;
 const OVERVIEW_NODE_HEIGHT = 91;
 const DETAIL_ZOOM = 0.95;
-// Zoom level at which #N reference-number badges start rendering on
-// neuron cards (and showing up in the sidebar references list). Stays
-// in sync with the BPMN perspective's BPMN_REFERENCE_ZOOM so the same
-// neuron gains/loses its #N at the same zoom regardless of which
-// perspective you're in. Set low enough that a fresh fit-view on a
-// many-neuron Doco still shows the numbers on first paint — 0.35 was
-// above the auto-fit zoom for medium+ Dococs, so they loaded blank.
-const OVERVIEW_REFERENCE_ZOOM = 0.1;
 const MAX_DETAIL_FETCH = 80;
 const GRAPH_MIN_ZOOM = 0.03;
 const GRAPH_MAX_ZOOM = 2.5;
 const GRAPH_FIT_VIEW_OPTIONS = { padding: 0.12, maxZoom: 1.2 };
-const MAX_GRAPH_REFERENCES = 120;
 
 function lifecycleLabel(lifecycle: string): string {
   return lifecycle.replaceAll("_", " ");
@@ -434,7 +421,6 @@ export function OverviewGraph({
 }: OverviewGraphProps) {
   const navigate = useNavigate();
   const graphRef = useRef<HTMLDivElement>(null);
-  const graphReferenceIdRef = useRef(`overview-${Math.random().toString(36).slice(2)}`);
   const hasFitRef = useRef(false);
   // Cached React Flow instance plus the centerId most recently zoomed to.
   // The instance is captured in onInit; the effect below uses it to
@@ -585,54 +571,36 @@ export function OverviewGraph({
       .filter((id) => !details.has(id));
   }, [visibleNodes, positions, viewport, size, details]);
 
-  const graphReferences = useMemo<GraphReferenceItem[]>(() => {
-    if (viewport.zoom < OVERVIEW_REFERENCE_ZOOM) return [];
-    return visibleNodes
-      .flatMap((node) => {
+  // Build reference candidates for the shared numbering hook. Each
+  // candidate is one visible node carrying enough info to be sorted
+  // (canvas-space position + dimensions) and labelled.
+  const referenceCandidates = useMemo(
+    () =>
+      visibleNodes.flatMap((node) => {
         const detail = details.get(node.id);
         const position = positions.get(node.id);
-        if (!detail || !position || !isVisibleInViewport(position, viewport, size)) return [];
+        if (!detail || !position) return [];
         return [
           {
-            node,
-            detail,
-            position: screenPosition(position, viewport),
+            id: node.id,
+            entity_type: node.entity_type,
             label: overviewNodeDisplayLabel(node, detail),
+            lifecycle: node.lifecycle,
+            href: detail.href ?? node.href ?? null,
+            position,
+            width: OVERVIEW_NODE_WIDTH,
+            height: OVERVIEW_NODE_HEIGHT,
           },
         ];
-      })
-      .sort((a, b) => {
-        const rowDiff = a.position.y - b.position.y;
-        if (Math.abs(rowDiff) > OVERVIEW_NODE_HEIGHT * viewport.zoom) return rowDiff;
-        const colDiff = a.position.x - b.position.x;
-        if (colDiff !== 0) return colDiff;
-        return a.node.id.localeCompare(b.node.id);
-      })
-      .slice(0, MAX_GRAPH_REFERENCES)
-      .map((entry, index) => ({
-        number: index + 1,
-        id: entry.node.id,
-        entity_type: entry.node.entity_type,
-        label: entry.label,
-        lifecycle: entry.node.lifecycle,
-        href: entry.detail.href ?? entry.node.href ?? null,
-      }));
-  }, [visibleNodes, details, positions, viewport, size]);
-
-  const referenceNumberByNodeId = useMemo(
-    () => new Map(graphReferences.map((reference) => [reference.id, reference.number])),
-    [graphReferences],
+      }),
+    [visibleNodes, details, positions],
   );
-
-  useEffect(() => {
-    const graphId = graphReferenceIdRef.current;
-    publishGraphReferences(graphId, "overview", graphReferences);
-  }, [graphReferences]);
-
-  useEffect(() => {
-    const graphId = graphReferenceIdRef.current;
-    return () => clearGraphReferences(graphId);
-  }, []);
+  const { numberById: referenceNumberByNodeId } = usePerspectiveReferences({
+    source: "overview",
+    viewport,
+    size,
+    candidates: referenceCandidates,
+  });
 
   useEffect(() => {
     if (!detailUrl || detailIds.length === 0) return;

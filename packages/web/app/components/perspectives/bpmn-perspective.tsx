@@ -42,13 +42,10 @@ import {
   opacityForDepth,
   opacityForEdge,
 } from "~/lib/graph-depth";
-import {
-  type GraphReferenceItem,
-  clearGraphReferences,
-  publishGraphReferences,
-} from "~/lib/graph-references";
+import type { GraphReferenceItem } from "~/lib/graph-references";
 import { lifecycleColor } from "~/lib/neuron-colors";
 import { highestRanked, pageRank } from "~/lib/pagerank";
+import { usePerspectiveReferences } from "~/lib/perspective-references";
 import "@xyflow/react/dist/style.css";
 
 // MUST stay in sync with the matching exports in
@@ -133,11 +130,6 @@ const NODE_WIDTH = 140;
 const NODE_HEIGHT = 60;
 const NODE_GAP_X = 60;
 const NODE_GAP_Y = 20; // padding above/below row inside the lane
-// Lowered from 0.35 → 0.1 to match OVERVIEW_REFERENCE_ZOOM: keeps
-// parity between BPMN and Graph perspectives AND ensures a fresh
-// fit-view on a many-shape Doco shows #N on first paint.
-const BPMN_REFERENCE_ZOOM = 0.1;
-const MAX_GRAPH_REFERENCES = 120;
 
 /**
  * Per-node box sizing — the label's character count drives how big
@@ -274,7 +266,6 @@ export function BpmnPerspective({
   }, [lanesRaw, nodesRaw, links, centerId]);
   const navigate = useNavigate();
   const graphRef = useRef<HTMLDivElement>(null);
-  const graphReferenceIdRef = useRef(`bpmn-${Math.random().toString(36).slice(2)}`);
   const [Flow, setFlow] = useState<FlowModule | null>(null);
   const [viewport, setViewport] = useState<FlowViewport>({ x: 0, y: 0, zoom: 1 });
   const [graphSize, setGraphSize] = useState<GraphSize>({ width: 1, height: 1 });
@@ -349,57 +340,52 @@ export function BpmnPerspective({
   const nodeById = useMemo(() => new Map(filteredNodes.map((n) => [n.id, n])), [filteredNodes]);
   const MiniMapNode = useMemo(() => makeBpmnMiniMapNode(nodeById), [nodeById]);
 
-  const graphReferences = useMemo<GraphReferenceItem[]>(() => {
-    if (viewport.zoom < BPMN_REFERENCE_ZOOM) return [];
-    // Lanes that map to a real principal are first-class references
-    // — number them ahead of the shapes, in lane display order, so a
-    // viewer can jump straight to the swimlane owner from the sidebar
-    // before the per-shape numbers begin.
-    const laneRefs: GraphReferenceItem[] = filteredLanes
-      .filter((lane) => isActorLane(lane))
-      .map((lane, index) => ({
-        number: index + 1,
-        id: lane.id,
-        entity_type: "principal",
-        label: lane.label,
-        lifecycle: "active",
-        href: null,
-      }));
-    const remaining = Math.max(0, MAX_GRAPH_REFERENCES - laneRefs.length);
-    const nodeRefs: GraphReferenceItem[] = filteredNodes
-      .flatMap((node) => {
+  // Principal-owned lanes are first-class references — they get
+  // numbers 1..N (in lane order) before any shape, so a viewer can
+  // jump from the sidebar straight to the swimlane owner. Passed to
+  // the shared hook as `priorityItems`; the hook handles every shape
+  // node's numbering (sort, viewport-cull, cap, registry publish).
+  const laneReferences = useMemo<GraphReferenceItem[]>(
+    () =>
+      filteredLanes
+        .filter((lane) => isActorLane(lane))
+        .map((lane, index) => ({
+          number: index + 1,
+          id: lane.id,
+          entity_type: "principal",
+          label: lane.label,
+          lifecycle: "active",
+          href: null,
+        })),
+    [filteredLanes],
+  );
+  const nodeReferenceCandidates = useMemo(
+    () =>
+      filteredNodes.flatMap((node) => {
         const position = layout.nodePositions.get(node.id);
-        if (!position || !isNodeVisibleInViewport(position, viewport, graphSize)) return [];
+        if (!position) return [];
         return [
           {
-            node,
-            position: screenPosition(position, viewport),
+            id: node.id,
+            entity_type: node.entity_type,
+            label: node.name ?? node.id,
+            lifecycle: node.lifecycle ?? "active",
+            href: node.href ?? null,
+            position,
+            width: NODE_WIDTH,
+            height: NODE_HEIGHT,
           },
         ];
-      })
-      .sort((a, b) => {
-        const rowDiff = a.position.y - b.position.y;
-        if (Math.abs(rowDiff) > NODE_HEIGHT * viewport.zoom) return rowDiff;
-        const colDiff = a.position.x - b.position.x;
-        if (colDiff !== 0) return colDiff;
-        return a.node.id.localeCompare(b.node.id);
-      })
-      .slice(0, remaining)
-      .map((entry, index) => ({
-        number: laneRefs.length + index + 1,
-        id: entry.node.id,
-        entity_type: entry.node.entity_type,
-        label: entry.node.name ?? entry.node.id,
-        lifecycle: entry.node.lifecycle ?? "active",
-        href: entry.node.href ?? null,
-      }));
-    return [...laneRefs, ...nodeRefs];
-  }, [filteredLanes, filteredNodes, layout.nodePositions, viewport, graphSize]);
-
-  const referenceNumberByEntityId = useMemo(
-    () => new Map(graphReferences.map((reference) => [reference.id, reference.number])),
-    [graphReferences],
+      }),
+    [filteredNodes, layout.nodePositions],
   );
+  const { numberById: referenceNumberByEntityId } = usePerspectiveReferences({
+    source: "bpmn",
+    viewport,
+    size: graphSize,
+    candidates: nodeReferenceCandidates,
+    priorityItems: laneReferences,
+  });
 
   const flowNodes = useMemo(
     () =>
@@ -419,16 +405,6 @@ export function BpmnPerspective({
       }),
     [layout.flowNodes, referenceNumberByEntityId, nodeById],
   );
-
-  useEffect(() => {
-    const graphId = graphReferenceIdRef.current;
-    publishGraphReferences(graphId, "bpmn", graphReferences);
-  }, [graphReferences]);
-
-  useEffect(() => {
-    const graphId = graphReferenceIdRef.current;
-    return () => clearGraphReferences(graphId);
-  }, []);
 
   if (filteredLanes.length === 0) {
     return (
@@ -1005,29 +981,6 @@ function layOutBpmn(
   });
 
   return { flowNodes, flowEdges, nodePositions, lanes: laneGeometry, poolGeometry };
-}
-
-function screenPosition(position: { x: number; y: number }, viewport: FlowViewport) {
-  return {
-    x: position.x * viewport.zoom + viewport.x,
-    y: position.y * viewport.zoom + viewport.y,
-  };
-}
-
-function isNodeVisibleInViewport(
-  position: { x: number; y: number },
-  viewport: FlowViewport,
-  size: GraphSize,
-): boolean {
-  const screen = screenPosition(position, viewport);
-  const scaledWidth = NODE_WIDTH * viewport.zoom;
-  const scaledHeight = NODE_HEIGHT * viewport.zoom;
-  return (
-    screen.x > -scaledWidth &&
-    screen.y > -scaledHeight &&
-    screen.x < size.width + scaledWidth &&
-    screen.y < size.height + scaledHeight
-  );
 }
 
 /**
