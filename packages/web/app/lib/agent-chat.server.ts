@@ -349,13 +349,42 @@ export interface ConversationListItem {
   message_count: number;
   updated_at: string;
   active_turn_started_at: string | null;
+  /** Plain-text preview of the latest message; null when the thread is empty. */
+  last_message_preview: string | null;
+  /** Who sent the latest message — informs the WhatsApp-style "You:" prefix. */
+  last_message_role: "user" | "assistant" | null;
 }
 
 /**
- * List the user's conversations, newest first. The sidebar dropdown
- * + the API thread-list endpoint both use this. Includes a
- * `message_count` so the UI can show "14 msgs" without a per-row
- * round-trip. Archived rows excluded by default.
+ * Plain-text preview of a persisted message's first text block. Used
+ * for the thread-list row's "last activity" line — image-only or
+ * attachment-only messages return null and the UI shows a fallback.
+ */
+function extractMessagePreview(content: unknown): string | null {
+  if (!Array.isArray(content)) return null;
+  for (const block of content) {
+    if (block && typeof block === "object" && (block as { type?: unknown }).type === "text") {
+      const text = (block as { text?: unknown }).text;
+      if (typeof text === "string" && text.trim()) {
+        const clean = text.replace(/\s+/g, " ").trim();
+        return clean.length > 140 ? `${clean.slice(0, 137)}…` : clean;
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * List the user's conversations, newest first. The sidebar list +
+ * the API thread-list endpoint both use this. Includes:
+ *
+ *   - `message_count` — total messages in the thread, so the UI
+ *     doesn't need a per-row round-trip
+ *   - `last_message_preview` + `last_message_role` — first text
+ *     block of the most recent message, for the WhatsApp-style
+ *     "title / preview / time" thread row
+ *
+ * Archived rows excluded by default.
  */
 export async function listConversationsForPrincipal(
   principalId: string,
@@ -370,9 +399,21 @@ export async function listConversationsForPrincipal(
       updated_at: Date;
       active_turn_started_at: Date | null;
       message_count: string;
+      last_message_content: unknown;
+      last_message_role: "user" | "assistant" | null;
     }>(
       `SELECT c.id, c.title, c.archived, c.updated_at, c.active_turn_started_at,
-              COALESCE((SELECT count(*) FROM chat_messages m WHERE m.conversation_id = c.id), 0)::text AS message_count
+              COALESCE((SELECT count(*) FROM chat_messages m WHERE m.conversation_id = c.id), 0)::text AS message_count,
+              (SELECT m.content
+                 FROM chat_messages m
+                WHERE m.conversation_id = c.id
+                ORDER BY m.created_at DESC
+                LIMIT 1) AS last_message_content,
+              (SELECT m.role
+                 FROM chat_messages m
+                WHERE m.conversation_id = c.id
+                ORDER BY m.created_at DESC
+                LIMIT 1) AS last_message_role
          FROM chat_conversations c
         WHERE c.collaborator_id = $1
           ${opts.includeArchived ? "" : "AND c.archived = false"}
@@ -387,6 +428,8 @@ export async function listConversationsForPrincipal(
       message_count: Number(row.message_count),
       updated_at: row.updated_at.toISOString(),
       active_turn_started_at: row.active_turn_started_at?.toISOString() ?? null,
+      last_message_preview: extractMessagePreview(row.last_message_content),
+      last_message_role: row.last_message_role,
     }));
   });
 }
