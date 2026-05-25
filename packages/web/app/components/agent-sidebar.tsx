@@ -749,6 +749,19 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
             graph_references: graphReferenceGroups,
           }),
           signal: controller.signal,
+          // keepalive: the request must survive a tab close / hard
+          // refresh fired BEFORE the network round-trip completes.
+          // Without this the user sees their optimistic bubble for
+          // a millisecond, hits Cmd+R, and the POST never leaves the
+          // network stack — which means the user's message never
+          // reaches `runAssistantTurn` and the localStorage replay
+          // path is the only recovery. With keepalive the request
+          // continues server-side independently of the tab; the
+          // user message gets persisted via PR #277's
+          // persist-first flow even if the page unloads mid-stream.
+          // Body size limit (~64KB) is way above the size of a
+          // realistic user message + current_path + attachment_ids.
+          keepalive: true,
         });
         if (!res.ok || !res.body) {
           const errBody = await res.text().catch(() => "");
