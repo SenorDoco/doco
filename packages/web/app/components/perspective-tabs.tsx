@@ -6,7 +6,7 @@
 // connection. Page-level chrome (search, action buttons) lives in the
 // title row above the perspective area.
 
-import { ChevronDown, Pin } from "lucide-react";
+import { Pin } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link, useFetcher, useNavigate } from "react-router";
 import { cn } from "~/lib/cn";
@@ -196,7 +196,7 @@ function PerspectiveSettingsMenu({
         // alignment matches pixel-for-pixel in every browser.
         className="relative -ml-px inline-flex cursor-pointer items-center gap-1.5 rounded-tr-md border border-border border-b-transparent bg-input/40 px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-input/60 hover:text-foreground"
       >
-        <ChevronDown className="h-3 w-3" />
+        <span aria-hidden className="leading-none">⌵</span>
       </a>
       {open ? (
         <div
