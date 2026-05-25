@@ -116,13 +116,6 @@ interface InFlightMessage {
 const COLLAPSE_KEY = "senor-doco:collapsed";
 const UNREAD_KEY = "senor-doco:unread";
 const SHOW_THINKING_KEY = "senor-doco:show-thinking";
-// Pending-send recovery. send() writes the user's text + attachment
-// ids here SYNCHRONOUSLY before the fetch. If the tab dies before
-// the server confirms persistence (a message_saved SSE event clears
-// this), the next page mount checks the snapshot and re-fires the
-// send if the message isn't there.
-const PENDING_SEND_KEY = "senor-doco:pending-send";
-const PENDING_SEND_MAX_AGE_MS = 60_000;
 
 // Sidebar widths. Collapsed → 32px rail. Default expanded → 320px
 // (chat only). When the user toggles "Show thinking" in the header,
@@ -448,60 +441,6 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
     return () => abortRef.current?.abort();
   }, [reload]);
 
-  // Pending-send recovery. Whenever `messages` changes (so we have a
-  // current view of what the server thinks is persisted), check
-  // localStorage for an unconfirmed send. If the text isn't in the
-  // recent messages and the entry is fresh enough, re-fire it. Once
-  // the SSE message_saved event clears the key the effect is a no-op.
-  useEffect(() => {
-    if (!bootstrapped || busy || typeof window === "undefined") return;
-    let raw: string | null = null;
-    try { raw = window.localStorage.getItem(PENDING_SEND_KEY); } catch { return; }
-    if (!raw) return;
-    let parsed: { text?: unknown; attachment_ids?: unknown; queued_at?: unknown } | null = null;
-    try { parsed = JSON.parse(raw); } catch {}
-    if (!parsed || typeof parsed.text !== "string" || !parsed.text) {
-      try { window.localStorage.removeItem(PENDING_SEND_KEY); } catch {}
-      return;
-    }
-    const queuedAt = typeof parsed.queued_at === "number" ? parsed.queued_at : 0;
-    if (!queuedAt || Date.now() - queuedAt > PENDING_SEND_MAX_AGE_MS) {
-      try { window.localStorage.removeItem(PENDING_SEND_KEY); } catch {}
-      return;
-    }
-    // Already persisted? Match by exact text (server stores the raw
-    // user text without our dynamic turn header).
-    const text = parsed.text;
-    const alreadyThere = messages.some(
-      (m) =>
-        m.role === "user" &&
-        m.content.some(
-          (b) => b.type === "text" && b.text === text,
-        ),
-    );
-    if (alreadyThere) {
-      try { window.localStorage.removeItem(PENDING_SEND_KEY); } catch {}
-      return;
-    }
-    // Not persisted yet → tab reload must have killed the in-flight
-    // fetch. Re-fire. send() will re-write the key (newer queued_at);
-    // a successful message_saved will clear it.
-    try { window.localStorage.removeItem(PENDING_SEND_KEY); } catch {}
-    const attachmentIdsRaw = Array.isArray(parsed.attachment_ids)
-      ? parsed.attachment_ids.filter((v) => typeof v === "string")
-      : [];
-    // attachment_ids without their UI metadata (filename, etc.) can't
-    // rebuild StagedAttachment objects; if the previous send included
-    // attachments, replay falls back to text-only. Better than losing
-    // the user's words.
-    const stagedReplay: StagedAttachment[] = [];
-    void send({ text, staged: stagedReplay });
-    // We ignore attachmentIdsRaw to keep send() honest about what
-    // it's actually re-sending — attachment refs would need to be
-    // re-hydrated from chat_attachments by id.
-    void attachmentIdsRaw;
-  }, [bootstrapped, busy, messages, send]);
-
   // Resume-after-refresh: when the snapshot says a turn is in flight
   // server-side but this tab isn't the one running the stream (no
   // local `busy`), poll the snapshot every 1.5s so the UI catches the
@@ -712,28 +651,6 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
       const attachmentIds = sentAttachments.map((a) => a.id);
       const graphReferenceGroups: GraphReferenceGroup[] = readGraphReferenceGroups();
       if (!text && attachmentIds.length === 0) return;
-      // Crash-safe pending-send record. The user reported sending a
-      // message, refreshing the tab within ~1s, and the message
-      // disappearing because the in-flight POST never reached the
-      // server. Write the pending text to localStorage SYNCHRONOUSLY
-      // before any await — if the tab dies / reloads / network drops
-      // before the SSE stream gets going, the bootstrap effect on
-      // next mount finds this entry and re-fires the send. Cleared
-      // when the SSE response confirms persistence (message_saved
-      // event) so a successful send isn't replayed.
-      if (typeof window !== "undefined") {
-        try {
-          window.localStorage.setItem(
-            PENDING_SEND_KEY,
-            JSON.stringify({ text, attachment_ids: attachmentIds, queued_at: Date.now() }),
-          );
-        } catch {
-          // localStorage may be blocked (private mode, quota). The
-          // optimistic local bubble is still added below; without
-          // the pending-send guard the user just loses recovery on
-          // refresh — same behavior as before this fix.
-        }
-      }
       // While Señor Doco is mid-reply, the Anthropic API can't accept
       // another user message in the same conversation (the wire
       // protocol requires user→assistant→user alternation, and the
@@ -900,14 +817,6 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
               // other tabs so they re-fetch the canonical snapshot and
               // see the message in real time.
               broadcastSync({ kind: "changed" });
-              // The user-message persistence (PR #277 made this the
-              // first thing runAssistantTurn does) means the send is
-              // now durable across a tab close/refresh. Drop the
-              // pending-send recovery record so we don't replay this
-              // message on next mount.
-              if (event.role === "user" && typeof window !== "undefined") {
-                try { window.localStorage.removeItem(PENDING_SEND_KEY); } catch {}
-              }
             } else if (event.kind === "error") {
               localContent.push({ type: "text", text: `[error] ${event.message}` });
               bumpInFlight();
