@@ -13,6 +13,20 @@ import { getDocoLevelRole, loadDocoRouteForRead } from "~/lib/doco-access.server
 // reports_to, lifecycle) is editable.
 const PATCHABLE_KEYS = new Set(["body_md", "summary", "reports_to", "lifecycle"]);
 
+// Mirror principalLine in /api/principals.json.tsx — wrap the name
+// in a markdown link to the principal's perspective view so the chat
+// surface gets a clickable jump instead of a raw 30-char ULID.
+function principalLine(
+  verb: string,
+  name: string,
+  id: string,
+  request: Request,
+  docoHandle: string,
+): string {
+  const url = `${new URL(request.url).origin}/${docoHandle}/principal/${id}`;
+  return `[🔮 Doco] 👤 Principal ${verb}: [${name}](${url})`;
+}
+
 interface PrincipalPatch {
   body_md?: string;
   summary?: string;
@@ -189,7 +203,7 @@ export async function action({
         ok: true,
         id: existing.id,
         already_retired: true,
-        footer_lines: [`[🔮 Doco] 👤 Principal already retired: ${name} (${existing.id})`],
+        footer_lines: [principalLine("already retired", name, existing.id, request, params.docoHandle)],
       });
     }
     const activeRefs = await findActiveReferencesToPrincipal(meta.docoId, params.id);
@@ -277,7 +291,10 @@ export async function action({
       ok: true,
       id: existing.id,
       lifecycle: "retired",
-      footer_lines: [`[🔮 Doco] 👤 Principal retired: ${name} (${existing.id})`, ...warningFooters],
+      footer_lines: [
+        principalLine("retired", name, existing.id, request, params.docoHandle),
+        ...warningFooters,
+      ],
       ...(pred.warnings.length > 0 ? { warnings: pred.warnings } : {}),
     });
   }
@@ -285,7 +302,10 @@ export async function action({
     ok: true,
     id: existing.id,
     lifecycle: nextLifecycle,
-    footer_lines: [`[🔮 Doco] 👤 Principal updated: ${name} (${existing.id})`, ...warningFooters],
+    footer_lines: [
+      principalLine("updated", name, existing.id, request, params.docoHandle),
+      ...warningFooters,
+    ],
     ...(pred.warnings.length > 0 ? { warnings: pred.warnings } : {}),
   });
 }

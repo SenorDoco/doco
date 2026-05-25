@@ -16,6 +16,25 @@ import { getDocoLevelRole, loadDocoRouteForRead } from "~/lib/doco-access.server
 const ROLE_PRINCIPAL_NAMES = new Set(["user", "human", "doco-host", "github"]);
 const PRINCIPAL_NAME_PATTERN = /^[a-z0-9][a-z0-9_-]*$/;
 
+// Footer-line helper: the Principal endpoints used to emit `name (id)`
+// as plain text, which the chat surface renders as an unclickable
+// 30-character ULID. Mirror what `renderOperationLines` does for
+// every other entity — wrap the name in a markdown link to the
+// principal's perspective view. The agent pastes the line verbatim,
+// the UI renders the markdown, and the user gets a one-click jump
+// instead of a raw id.
+function principalLine(
+  emoji: string,
+  verb: string,
+  name: string,
+  id: string,
+  request: Request,
+  docoHandle: string,
+): string {
+  const url = `${new URL(request.url).origin}/${docoHandle}/principal/${id}`;
+  return `[🔮 Doco] ${emoji} Principal ${verb}: [${name}](${url})`;
+}
+
 const DEFAULT_SUMMARIES: Record<string, string> = {
   user: "Role principal for any Doco user, whether person or AI agent.",
   human: "Role principal for the person-only subset of users.",
@@ -99,7 +118,9 @@ export async function action({
       id: existing.rows[0].id,
       name,
       existed: true,
-      footer_lines: [`[🔮 Doco] 👤 Principal already exists: ${name} (${existing.rows[0].id})`],
+      footer_lines: [
+        principalLine("👤", "already exists", name, existing.rows[0].id, request, params.docoHandle),
+      ],
     });
   }
 
@@ -175,7 +196,10 @@ export async function action({
       id,
       name,
       existed: false,
-      footer_lines: [`[🔮 Doco] 👤 Principal added: ${name} (${id})`, ...warningFooters],
+      footer_lines: [
+        principalLine("👤", "added", name, id, request, params.docoHandle),
+        ...warningFooters,
+      ],
       ...(pred.warnings.length > 0 ? { warnings: pred.warnings } : {}),
     },
     { status: 201 },

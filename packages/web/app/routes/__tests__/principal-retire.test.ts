@@ -95,7 +95,7 @@ describe("principal retire API", () => {
       ok: true,
       id: PRINCIPAL_ID,
       lifecycle: "retired",
-      footer_lines: [expect.stringContaining("Principal retired: visitor")],
+      footer_lines: [expect.stringContaining("Principal retired: [visitor]")],
     });
   });
 
@@ -248,7 +248,7 @@ describe("principal retire API", () => {
       ok: true,
       id: PRINCIPAL_ID,
       lifecycle: "active",
-      footer_lines: [expect.stringContaining("Principal updated: visitor")],
+      footer_lines: [expect.stringContaining("Principal updated: [visitor]")],
     });
   });
 

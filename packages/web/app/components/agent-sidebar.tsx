@@ -6,7 +6,15 @@
 // re-uses React Router's useNavigate() to follow `navigate` tool
 // events from the agent.
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { Link, useLocation, useNavigate } from "react-router";
 import { DocoMark } from "~/components/doco-mark";
 import { cn } from "~/lib/cn";
@@ -2803,9 +2811,67 @@ function ThinkingRow({ ev }: { ev: ThinkingEvent }) {
   return null;
 }
 
+// Render text blocks with inline `[label](url)` markdown links
+// elevated to anchors. The chat surface is otherwise plain text — no
+// full markdown — but footer lines emitted by capture endpoints carry
+// a markdown link to the affected entity (e.g.
+// `[🔮 Doco] 👤 Principal added: [juanfer](http://host/handle/principal/...)`).
+// Without this the user sees the brackets-and-parens literal instead
+// of a clickable jump.
+//
+// Same-origin URLs are routed through React Router's Link so the chat
+// state survives the navigation; foreign URLs fall back to a plain
+// anchor opened in a new tab.
+function renderInlineLinks(text: string): ReactNode[] {
+  const out: ReactNode[] = [];
+  const re = /\[([^\]\n]+)\]\(([^)\s]+)\)/g;
+  let last = 0;
+  let key = 0;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    if (m.index > last) out.push(text.slice(last, m.index));
+    const [, label, url] = m;
+    let toProp: string | null = null;
+    if (typeof window !== "undefined") {
+      try {
+        const u = new URL(url, window.location.origin);
+        if (u.origin === window.location.origin) {
+          toProp = u.pathname + u.search + u.hash;
+        }
+      } catch {
+        // Malformed URL — fall through to plain anchor.
+      }
+    }
+    if (toProp) {
+      out.push(
+        <Link key={key++} to={toProp} className="underline hover:text-primary">
+          {label}
+        </Link>,
+      );
+    } else {
+      out.push(
+        <a
+          key={key++}
+          href={url}
+          target="_blank"
+          rel="noreferrer"
+          className="underline hover:text-primary"
+        >
+          {label}
+        </a>,
+      );
+    }
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) out.push(text.slice(last));
+  return out;
+}
+
 function BlockView({ block }: { block: AnyBlock }) {
   if (block.type === "text") {
-    return <div className="whitespace-pre-wrap break-words">{block.text}</div>;
+    return (
+      <div className="whitespace-pre-wrap break-words">{renderInlineLinks(block.text)}</div>
+    );
   }
   if (block.type === "tool_use") {
     return (
