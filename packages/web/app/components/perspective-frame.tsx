@@ -68,6 +68,11 @@ export function PerspectiveFrame({
   return (
     <div
       className={`relative w-full overflow-hidden rounded-md rounded-tl-none border border-border bg-background ${sizeClass}`}
+      // Suppress the platform's etched-edge inset-highlight (app.css
+      // `[class~="border"][class~="border-border"]`). It paints a 1px
+      // white-75% line at the canvas's interior top edge, which shows
+      // as a white sliver immediately below the perspective tabs.
+      style={{ boxShadow: "none" }}
     >
       {children}
       {fullscreen ? (
@@ -83,8 +88,14 @@ export function PerspectiveFrame({
       ) : null}
       {autoReorder ? (
         <div className="pointer-events-none absolute bottom-12 left-3 z-10">
-          <div className="pointer-events-auto rounded-md border border-border bg-card/90 px-2 py-1 shadow-sm backdrop-blur">
-            <label className="inline-flex cursor-pointer select-none items-center gap-1.5 text-[11px]">
+          {/* Match the LifecycleFilterPanel's outer structure exactly
+              so the two floating panels render at identical height:
+              flex items-center + px-2 py-1 + text-xs. Diverging on any
+              of those (e.g. text-[11px] or no flex on outer) makes the
+              Reorder pill render a pixel or two taller than the filter
+              row immediately below it. */}
+          <div className="pointer-events-auto flex items-center rounded-md border border-border bg-card/90 px-2 py-1 text-xs shadow-sm backdrop-blur">
+            <label className="inline-flex cursor-pointer select-none items-center gap-1.5">
               <input
                 type="checkbox"
                 checked={autoReorder.value}
