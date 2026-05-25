@@ -571,7 +571,7 @@ SUCCESS RESPONSE — create (HTTP 201, application/json)
     "id": "principal_<ULID>",
     "name": "<name>",
     "existed": false,
-    "footer_lines": ["[🔮 Doco] 👤 Principal added: <name> (<id>)"]
+    "footer_lines": ["[🔮 Doco] 👤 Principal added: [<name>](<url>)"]
   }
 
 SUCCESS RESPONSE — idempotent (HTTP 200)
@@ -619,7 +619,7 @@ SUCCESS RESPONSE — edit (HTTP 200, application/json)
     "ok": true,
     "id": "principal_<ULID>",
     "lifecycle": "active",
-    "footer_lines": ["[🔮 Doco] 👤 Principal updated: <name> (<id>)"]
+    "footer_lines": ["[🔮 Doco] 👤 Principal updated: [<name>](<url>)"]
   }
 
 ERROR RESPONSES
@@ -656,7 +656,7 @@ SUCCESS RESPONSE — retire (HTTP 200, application/json)
     "ok": true,
     "id": "principal_<ULID>",
     "lifecycle": "retired",
-    "footer_lines": ["[🔮 Doco] 👤 Principal retired: <name> (<id>)"]
+    "footer_lines": ["[🔮 Doco] 👤 Principal retired: [<name>](<url>)"]
   }
 
 SUCCESS RESPONSE — already retired (HTTP 200, idempotent)
@@ -664,7 +664,7 @@ SUCCESS RESPONSE — already retired (HTTP 200, idempotent)
     "ok": true,
     "id": "principal_<ULID>",
     "already_retired": true,
-    "footer_lines": ["[🔮 Doco] 👤 Principal already retired: <name> (<id>)"]
+    "footer_lines": ["[🔮 Doco] 👤 Principal already retired: [<name>](<url>)"]
   }
 
 ERROR RESPONSES
