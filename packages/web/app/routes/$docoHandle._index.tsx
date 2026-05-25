@@ -914,7 +914,7 @@ export default function DocoHome({
               entirely so it doesn't create a phantom grid row (auto +
               gap-6) that left ~50px of unowned space below the graph. */}
           <div className="relative hidden min-h-0 min-w-0 min-[1200px]:block">
-            <section className="h-full min-w-0 space-y-5 overflow-y-auto pr-1">
+            <section className="h-full min-w-0 space-y-5 overflow-y-auto pb-4 pr-1">
               <NeuronsOverviewCard
                 sections={sections}
                 empty={
