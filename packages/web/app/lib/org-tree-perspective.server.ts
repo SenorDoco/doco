@@ -65,12 +65,23 @@ export async function loadOrgTreeData(
       typeof data.display_name === "string" && data.display_name.trim().length > 0
         ? data.display_name.trim()
         : r.name;
-    const description =
-      typeof data.description === "string" && data.description.trim().length > 0
-        ? data.description.trim()
-        : r.summary && r.summary !== r.name
-          ? r.summary
-          : null;
+    // Description: explicit `data.description` wins. Otherwise fall
+    // back to `summary` — but ONLY when the summary adds information
+    // beyond what `display_name` and `name` already show. The
+    // principals POST route defaults `summary` to display_name when
+    // no body was supplied; surfacing that as description would
+    // repeat the label, which looks like a bug.
+    const displayNameNorm = displayName.toLowerCase();
+    const nameNorm = r.name.toLowerCase();
+    let description: string | null = null;
+    if (typeof data.description === "string" && data.description.trim().length > 0) {
+      description = data.description.trim();
+    } else if (r.summary && r.summary.trim().length > 0) {
+      const summaryNorm = r.summary.trim().toLowerCase();
+      if (summaryNorm !== displayNameNorm && summaryNorm !== nameNorm) {
+        description = r.summary.trim();
+      }
+    }
     const type =
       data.type === "person" || data.type === "agent" ? (data.type as "person" | "agent") : null;
     const reports_to = typeof data.reports_to === "string" ? data.reports_to : null;
