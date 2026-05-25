@@ -107,12 +107,21 @@ export async function action({
   const now = nowIso();
   const summary = body.summary?.trim() || DEFAULT_SUMMARIES[name] || name;
   const bodyMd = body.body_md?.trim() ?? "";
+  // `body_md` is included in the candidate so the authoring-policy
+  // evaluator sees it. The org-chart template's "person-vs-agent must
+  // be declared in body_md" probabilistic gate reads the candidate's
+  // body_md field — leaving it off the candidate (as the first cut of
+  // this route did) made the gate fire even when the caller supplied
+  // valid prose, blocking every Principal POST after the policy
+  // landed. PATCH wasn't affected because the PATCH handler builds
+  // the candidate by merging the existing row's body_md with the patch.
   const raw = {
     id,
     doco_id: meta.docoId,
     neuron_type: "principal",
     summary,
     name,
+    body_md: bodyMd,
     ...(body.reports_to ? { reports_to: body.reports_to } : {}),
     ...(ROLE_PRINCIPAL_NAMES.has(name) ? { role_principal: true } : {}),
     created_at: now,

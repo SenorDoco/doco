@@ -321,6 +321,42 @@ describe("principal retire API", () => {
     });
   });
 
+  it("surfaces body_md to the authoring policy evaluator (regression — was merged-from-data)", async () => {
+    // body_md lives on its own text column on principals (not inside
+    // data jsonb). The first cut of this handler built the candidate
+    // by merging `existing.data` with the patch, so the candidate
+    // never carried body_md — the org-chart "declare person-vs-agent
+    // in body_md" probabilistic gate rejected every PATCH that didn't
+    // re-supply body_md, even when the existing prose already
+    // declared it.
+    mocks.getEntity.mockResolvedValue({
+      id: PRINCIPAL_ID,
+      doco_id: "doco_acme",
+      entity_type: "principal",
+      data: { neuron_type: "principal", name: "visitor" },
+      summary: "Visitor",
+      body_md: "Human walking the public site. Operates under @alex.",
+      lifecycle: "active",
+      created_at: "2026-01-01T00:00:00.000Z",
+      created_by: "collaborator_admin",
+    });
+
+    const response = await action({
+      request: retireRequest({ summary: "Updated summary." }),
+      params: { docoHandle: "acme", id: PRINCIPAL_ID } as never,
+    });
+
+    expect(response.status).toBe(200);
+    expect(mocks.runAuthoringPolicies).toHaveBeenCalledWith(
+      expect.objectContaining({
+        candidate: expect.objectContaining({
+          name: "visitor",
+          body_md: "Human walking the public site. Operates under @alex.",
+        }),
+      }),
+    );
+  });
+
   it("blocks an edit when an authoring policy is violating", async () => {
     mocks.runAuthoringPolicies.mockResolvedValue({
       blocking: {
