@@ -264,6 +264,14 @@ export async function loader({
     if (requestedNeuron && !selectedNeuron) {
       throw new Response(`Neuron not found: ${requestedNeuron.id}`, { status: 404 });
     }
+    // `?dialog=skip` lets the agent's auto-focus center the graph on
+    // a neuron without popping the detail overlay over the chat. The
+    // sidebar attaches it when the viewport is too narrow to show
+    // both chat and dialog side-by-side. We still load the detail
+    // above (the 404 check stays meaningful) and still center the
+    // graph on it below — only the dialog state stays empty.
+    const skipDialog = new URL(request.url).searchParams.get("dialog") === "skip";
+    const dialogNeuron = skipDialog ? null : selectedNeuron;
     const graph = await loadOverviewGraph(c, ctx.meta.docoId, {
       handle,
       ...(selectedNeuron ? { centerId: selectedNeuron.id } : {}),
@@ -346,7 +354,7 @@ export async function loader({
       pageRanks,
       bpmnGraph,
       orgTreeData,
-      selectedNeuron,
+      selectedNeuron: dialogNeuron,
       graphAutoReorder,
     };
   });
