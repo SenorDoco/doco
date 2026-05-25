@@ -1563,6 +1563,69 @@ async function* streamAssistantTurn(args: {
     await upsertAgentTurn(turnId, buildMetricsRow());
   };
 
+  // PERSIST THE USER'S MESSAGE FIRST. Before purgeExpiredAttachments,
+  // before markActiveTurnStarted, before history loading — any of which
+  // can hang for tens of seconds and leave the lambda vulnerable to a
+  // timeout-kill. Past incident: user typed "?", hit Send, lambda died
+  // during the load phase, and the user's "?" was never persisted →
+  // their message disappeared on refresh. The agent doesn't see the
+  // persisted row, it sees the in-memory `userContent` later, so saving
+  // it now is purely a durability win.
+  const attachmentRows = await loadAttachmentsByIds(
+    args.ctx.attachmentIds,
+    args.conversation.id,
+  );
+  const turnAttachmentBlocks: ContentBlockParam[] = [];
+  const turnAttachmentRefs: AttachmentRefBlock[] = [];
+  for (const id of args.ctx.attachmentIds) {
+    const row = attachmentRows.get(id);
+    if (!row) continue;
+    turnAttachmentBlocks.push(
+      refToAnthropicBlock(
+        {
+          type: "attachment_ref",
+          attachment_id: id,
+          filename: row.filename,
+          mime_type: row.mime_type,
+          size_bytes: row.size_bytes,
+        },
+        row,
+      ),
+    );
+    turnAttachmentRefs.push({
+      type: "attachment_ref",
+      attachment_id: id,
+      filename: row.filename,
+      mime_type: row.mime_type,
+      size_bytes: row.size_bytes,
+    });
+  }
+  // Per-turn dynamic context lives in the user message so the system
+  // prompt stays byte-identical across turns (cache-friendly).
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const pageLine = args.ctx.currentPath ? `Page: ${args.ctx.currentPath}` : "Page: (unknown)";
+  const attachmentLine =
+    turnAttachmentRefs.length > 0
+      ? `\nAttachments this turn: ${turnAttachmentRefs.length}. Begin your reply with: "${ATTACHMENT_RETENTION_NOTICE}"`
+      : "";
+  const graphReferenceText = formatVisibleGraphReferences(args.ctx.graphReferences);
+  const turnHeader = `[Today ${todayIso}. ${pageLine}.${attachmentLine}]\n\n${
+    graphReferenceText ? `${graphReferenceText}\n\n` : ""
+  }`;
+  const userContent: ContentBlockParam[] = [
+    { type: "text", text: `${turnHeader}${args.userText}` },
+    ...turnAttachmentBlocks,
+  ];
+  // Persist user's words + attachment refs (NOT the bytes — the bytes
+  // live in chat_attachments and hydrate on replay). The dynamic
+  // header is metadata for the model, not part of human history.
+  const persistedUserContent: PersistedContentBlock[] = [
+    { type: "text", text: args.userText },
+    ...turnAttachmentRefs,
+  ];
+  const userRow = await appendMessage(args.conversation.id, "user", persistedUserContent);
+  yield { kind: "message_saved", message_id: userRow.id, role: "user" };
+
   // Opportunistic cleanup at the top of every turn so retention is
   // enforced even without a separate cron.
   await purgeExpiredAttachments();
@@ -1588,66 +1651,18 @@ async function* streamAssistantTurn(args: {
   const histStart = performance.now();
   const allHistory = await loadMessages(args.conversation.id);
   const history = trimHistoryToWindow(allHistory);
+  // History now includes the user message we just persisted; drop
+  // the trailing user row so we don't double-add the same content
+  // when we push the `userContent` (with dynamic header) below.
+  if (history.length > 0 && history[history.length - 1].id === userRow.id) {
+    history.pop();
+  }
   const messages: MessageParam[] = await rowsToHistory(history);
   historyLoadMs = performance.now() - histStart;
   historyMessageCount = history.length;
 
   try {
-    // Hydrate attachments the user just uploaded for THIS turn into the
-    // outbound Anthropic message, and persist them as `attachment_ref`s.
-    const attachmentRows = await loadAttachmentsByIds(args.ctx.attachmentIds, args.conversation.id);
-    const turnAttachmentBlocks: ContentBlockParam[] = [];
-    const turnAttachmentRefs: AttachmentRefBlock[] = [];
-    for (const id of args.ctx.attachmentIds) {
-      const row = attachmentRows.get(id);
-      if (!row) continue;
-      turnAttachmentBlocks.push(
-        refToAnthropicBlock(
-          {
-            type: "attachment_ref",
-            attachment_id: id,
-            filename: row.filename,
-            mime_type: row.mime_type,
-            size_bytes: row.size_bytes,
-          },
-          row,
-        ),
-      );
-      turnAttachmentRefs.push({
-        type: "attachment_ref",
-        attachment_id: id,
-        filename: row.filename,
-        mime_type: row.mime_type,
-        size_bytes: row.size_bytes,
-      });
-    }
-
-    // Per-turn dynamic context lives in the user message so the system
-    // prompt stays byte-identical across turns (cache-friendly).
-    const todayIso = new Date().toISOString().slice(0, 10);
-    const pageLine = args.ctx.currentPath ? `Page: ${args.ctx.currentPath}` : "Page: (unknown)";
-    const attachmentLine =
-      turnAttachmentRefs.length > 0
-        ? `\nAttachments this turn: ${turnAttachmentRefs.length}. Begin your reply with: "${ATTACHMENT_RETENTION_NOTICE}"`
-        : "";
-    const graphReferenceText = formatVisibleGraphReferences(args.ctx.graphReferences);
-    const turnHeader = `[Today ${todayIso}. ${pageLine}.${attachmentLine}]\n\n${
-      graphReferenceText ? `${graphReferenceText}\n\n` : ""
-    }`;
-    const userContent: ContentBlockParam[] = [
-      { type: "text", text: `${turnHeader}${args.userText}` },
-      ...turnAttachmentBlocks,
-    ];
-    // Persist the user's words + attachment refs (NOT the bytes — the
-    // bytes live in chat_attachments and hydrate on replay). The dynamic
-    // header is metadata for the model, not part of human history.
-    const persistedUserContent: PersistedContentBlock[] = [
-      { type: "text", text: args.userText },
-      ...turnAttachmentRefs,
-    ];
-    const userRow = await appendMessage(args.conversation.id, "user", persistedUserContent);
     messages.push({ role: "user", content: userContent });
-    yield { kind: "message_saved", message_id: userRow.id, role: "user" };
 
     const bootstrapStart = performance.now();
     yield { kind: "status", phase: "loading_bootstrap" };
