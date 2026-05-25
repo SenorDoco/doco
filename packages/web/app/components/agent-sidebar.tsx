@@ -116,6 +116,11 @@ interface InFlightMessage {
 const COLLAPSE_KEY = "senor-doco:collapsed";
 const UNREAD_KEY = "senor-doco:unread";
 const SHOW_THINKING_KEY = "senor-doco:show-thinking";
+// Pending-send recovery key. send() stashes the user's text here
+// synchronously before the fetch. If the tab dies before the SSE
+// confirms persistence, a mount-time effect replays it.
+const PENDING_SEND_KEY = "senor-doco:pending-send";
+const PENDING_SEND_MAX_AGE_MS = 60_000;
 
 // Sidebar widths. Collapsed → 32px rail. Default expanded → 320px
 // (chat only). When the user toggles "Show thinking" in the header,
@@ -651,6 +656,22 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
       const attachmentIds = sentAttachments.map((a) => a.id);
       const graphReferenceGroups: GraphReferenceGroup[] = readGraphReferenceGroups();
       if (!text && attachmentIds.length === 0) return;
+      // Crash-safe pending-send. Write to localStorage SYNCHRONOUSLY
+      // before any await. If the tab dies (reload, network drop)
+      // before the SSE response confirms persistence, the recovery
+      // effect below replays this on next mount. Successful sends
+      // get this key cleared by the `message_saved` SSE event.
+      if (typeof window !== "undefined") {
+        try {
+          window.localStorage.setItem(
+            PENDING_SEND_KEY,
+            JSON.stringify({ text, queued_at: Date.now() }),
+          );
+        } catch {
+          // localStorage may be blocked; lose the recovery guard but
+          // not the send itself.
+        }
+      }
       // While Señor Doco is mid-reply, the Anthropic API can't accept
       // another user message in the same conversation (the wire
       // protocol requires user→assistant→user alternation, and the
@@ -817,6 +838,11 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
               // other tabs so they re-fetch the canonical snapshot and
               // see the message in real time.
               broadcastSync({ kind: "changed" });
+              // User-message persisted server-side — drop the
+              // pending-send recovery record so we don't replay it.
+              if (event.role === "user" && typeof window !== "undefined") {
+                try { window.localStorage.removeItem(PENDING_SEND_KEY); } catch {}
+              }
             } else if (event.kind === "error") {
               localContent.push({ type: "text", text: `[error] ${event.message}` });
               bumpInFlight();
@@ -895,6 +921,56 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
       appendThinking,
     ],
   );
+
+  // Pending-send recovery. send() writes the user's text to
+  // localStorage synchronously before its fetch; if the tab died
+  // before the SSE confirmed persistence, this effect finds the
+  // stale entry on mount and re-fires the send. Cleared either by
+  // the `message_saved` event in the SSE handler (success path) or
+  // by this effect detecting that the text is already in `messages`
+  // (someone else persisted it, e.g. another tab).
+  //
+  // IMPORTANT: this `useEffect` MUST be declared AFTER `send` —
+  // referencing `send` in a hook above its `useCallback` triggers
+  // a TDZ ReferenceError at render time, which crashes SSR. PR #278
+  // shipped that bug and took prod down for ~12 min.
+  useEffect(() => {
+    if (!bootstrapped || busy || typeof window === "undefined") return;
+    let raw: string | null = null;
+    try {
+      raw = window.localStorage.getItem(PENDING_SEND_KEY);
+    } catch {
+      return;
+    }
+    if (!raw) return;
+    let parsed: { text?: unknown; queued_at?: unknown } | null = null;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {}
+    if (!parsed || typeof parsed.text !== "string" || !parsed.text) {
+      try { window.localStorage.removeItem(PENDING_SEND_KEY); } catch {}
+      return;
+    }
+    const queuedAt = typeof parsed.queued_at === "number" ? parsed.queued_at : 0;
+    if (!queuedAt || Date.now() - queuedAt > PENDING_SEND_MAX_AGE_MS) {
+      try { window.localStorage.removeItem(PENDING_SEND_KEY); } catch {}
+      return;
+    }
+    const text = parsed.text;
+    const alreadyThere = messages.some(
+      (m) =>
+        m.role === "user" &&
+        m.content.some((b) => b.type === "text" && b.text === text),
+    );
+    if (alreadyThere) {
+      try { window.localStorage.removeItem(PENDING_SEND_KEY); } catch {}
+      return;
+    }
+    // Clear before replaying so a re-send failure doesn't loop the
+    // recovery. send() will re-write the key with a fresh queued_at.
+    try { window.localStorage.removeItem(PENDING_SEND_KEY); } catch {}
+    void send({ text, staged: [] });
+  }, [bootstrapped, busy, messages, send]);
 
   // Queue-drain: when Señor Doco settles AND a message is queued
   // from a busy-send, auto-fire it. Passing the message as an
