@@ -198,7 +198,7 @@ Intent capture example:
 
     POST https://doco.to/<handle>/api/intents.json
     {
-      "summary": "Checkout can be completed without support.",
+      "intent": "Checkout can be completed without support.",
       "wanted_by_principal_id": "principal_01...",
       "actors_principal_ids": ["principal_01..."],
       "stakeholders_principal_ids": ["principal_01..."]
@@ -208,7 +208,7 @@ Action capture example:
 
     POST https://doco.to/<handle>/api/actions.json
     {
-      "summary": "Implemented principal-id capture fields.",
+      "action": "Implemented principal-id capture fields.",
       "verb": "implemented",
       "actor_principal_id": "principal_01...",
       "outputs": { "commit": "abc123" }
