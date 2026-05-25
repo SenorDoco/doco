@@ -258,7 +258,7 @@ UPDATE AN EXISTING ACTION
     actor_principal_id -> stored actor_id
 
   Other patchable fields include action, lifecycle, deprecated,
-  outcome, superseded_by, intent_ids/add/remove, slug, verb,
+  outcome, superseded_by, intent_ids/add/remove, verb,
   outputs, preceded_by, decision_ids, and performed_at.
 `,
 
@@ -370,7 +370,7 @@ UPDATE AN EXISTING RULE
 
   Body fields are all optional. Patchable fields include rule,
   lifecycle, deprecated, outcome, superseded_by, intent_ids/add/remove,
-  slug, kind, predicate, modality, severity, phase, expected,
+  kind, predicate, modality, severity, phase, expected,
   on_violation, and applies_to.
 `,
 

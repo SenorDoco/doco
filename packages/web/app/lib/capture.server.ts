@@ -1258,6 +1258,11 @@ export async function updateEntity(opts: {
     "body_md",
     "body_md_append",
     "summary",
+    // Per migration 034 (remove-slugs PR), neurons no longer carry a
+    // `slug` field in their data jsonb. Silently drop the key on
+    // PATCH so callers that still send it (or stale clients holding
+    // old captures) don't repopulate it.
+    "slug",
     ...(typeNamedColumn ? [typeNamedColumn] : []),
   ]);
   for (const k of Object.keys(normalizedPatch)) {
