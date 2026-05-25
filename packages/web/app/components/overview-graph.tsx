@@ -154,8 +154,10 @@ const DETAIL_ZOOM = 0.95;
 // neuron cards (and showing up in the sidebar references list). Stays
 // in sync with the BPMN perspective's BPMN_REFERENCE_ZOOM so the same
 // neuron gains/loses its #N at the same zoom regardless of which
-// perspective you're in.
-const OVERVIEW_REFERENCE_ZOOM = 0.35;
+// perspective you're in. Set low enough that a fresh fit-view on a
+// many-neuron Doco still shows the numbers on first paint — 0.35 was
+// above the auto-fit zoom for medium+ Dococs, so they loaded blank.
+const OVERVIEW_REFERENCE_ZOOM = 0.1;
 const MAX_DETAIL_FETCH = 80;
 const GRAPH_MIN_ZOOM = 0.03;
 const GRAPH_MAX_ZOOM = 2.5;

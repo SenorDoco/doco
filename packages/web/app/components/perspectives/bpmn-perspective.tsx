@@ -144,7 +144,10 @@ const NODE_WIDTH = 140;
 const NODE_HEIGHT = 60;
 const NODE_GAP_X = 60;
 const NODE_GAP_Y = 20; // padding above/below row inside the lane
-const BPMN_REFERENCE_ZOOM = 0.35;
+// Lowered from 0.35 → 0.1 to match OVERVIEW_REFERENCE_ZOOM: keeps
+// parity between BPMN and Graph perspectives AND ensures a fresh
+// fit-view on a many-shape Doco shows #N on first paint.
+const BPMN_REFERENCE_ZOOM = 0.1;
 const MAX_GRAPH_REFERENCES = 120;
 
 /**
