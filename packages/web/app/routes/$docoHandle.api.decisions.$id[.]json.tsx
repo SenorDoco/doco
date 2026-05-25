@@ -18,7 +18,6 @@ export const loader = makeUpdateRoute({
   type: "decisions",
   entityType: "decision",
   pluralDir: "decisions",
-  allowedFields: [],
 }).loader;
 
 export async function action({

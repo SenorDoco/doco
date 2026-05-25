@@ -19,6 +19,29 @@ import { waitUntil } from "@vercel/functions";
 import { appendAuditEvent } from "./audit-log.server";
 import { type AuthoringResult, runAuthoringPolicies } from "./authoring-runner.server";
 import { validatePatch } from "./mutability.server";
+
+/**
+ * System-managed identity / audit columns that PATCH must never
+ * touch. Step B of the neuron shape sweep removed per-type field
+ * whitelists; every field except these is patchable subject to the
+ * frozen-claim gate. Inlined here (not imported from the factory)
+ * because capture.server.ts is imported BY the factory — a forward
+ * import would close a cycle.
+ */
+const SYSTEM_MANAGED_FIELDS: ReadonlySet<string> = new Set([
+  "id",
+  "doco_id",
+  "entity_type",
+  "neuron_type",
+  "created_at",
+  "created_by",
+  "updated_at",
+  "updated_by",
+]);
+
+function isSystemManagedField(key: string): boolean {
+  return SYSTEM_MANAGED_FIELDS.has(key);
+}
 import { reindex, reindexEmbeddingsOnly } from "./redeem.server";
 import { recordPhase } from "./telemetry.server";
 
@@ -1100,23 +1123,19 @@ export async function updateEntity(opts: {
   pluralDir: string;
   id: string;
   patch: EntityPatch;
-  allowedFields: string[];
+  /**
+   * Legacy per-route whitelist. Now ignored — Step B of the neuron
+   * shape sweep removed per-type field restrictions; every field
+   * except system-managed identity/audit columns is patchable subject
+   * to the frozen-claim gate. Kept as `undefined` in the type so the
+   * factory keeps compiling while we let stragglers fall away.
+   */
+  allowedFields?: undefined;
   docoHost?: string;
   actorId?: string | null;
 }): Promise<UpdateResult | CaptureError> {
   const startedAt = performance.now();
-  const {
-    docoDir,
-    docoId,
-    ownerSlug,
-    docoSlug,
-    entityType,
-    id,
-    patch,
-    allowedFields,
-    docoHost,
-    actorId,
-  } = opts;
+  const { docoDir, docoId, ownerSlug, docoSlug, entityType, id, patch, docoHost, actorId } = opts;
 
   const existing = await readEntityFromPostgres(entityType, id);
   if (!existing) return { error: `${entityType} not found: ${id}` };
@@ -1168,12 +1187,12 @@ export async function updateEntity(opts: {
     }
   };
 
-  if (typeNamedColumn && allowedFields.includes(typeNamedColumn)) {
+  if (typeNamedColumn && typeNamedColumn in normalizedPatch) {
     // Migrated neuron: the type-named prose field replaces summary +
     // body_md (+ title on intent, name/description on eval).
     const v = normalizedPatch[typeNamedColumn];
     setScalar(typeNamedColumn, typeof v === "string" ? v.trim() : undefined);
-  } else if (!typeNamedColumn && allowedFields.includes("summary")) {
+  } else if (!typeNamedColumn && "summary" in normalizedPatch) {
     // Policy / principal still use summary.
     setScalar(
       "summary",
@@ -1220,21 +1239,42 @@ export async function updateEntity(opts: {
     }
   }
 
-  for (const k of allowedFields) {
-    if (k === "summary" || k === typeNamedColumn) continue;
-    if (k in normalizedPatch && normalizedPatch[k] !== undefined) {
-      const v = normalizedPatch[k];
-      if (v === null || v === "") {
-        if (k in fm) {
-          delete fm[k];
-          changed.push(k);
-          ops.push({ kind: "cleared", field: k });
-        }
-      } else if (fm[k] !== v) {
-        fm[k] = v;
+  // Apply every other field in the patch to the entity's data jsonb.
+  // Step B of the neuron shape sweep dropped per-type whitelists: any
+  // user-supplied field that isn't system-managed (id/audit columns),
+  // isn't a special-cased scalar handled above (lifecycle, outcome,
+  // deprecated, born_from, superseded_by), isn't a list-op handled
+  // below (intent_ids and friends), and isn't a prose body operation
+  // (body_md / body_md_append) is written straight through.
+  const SPECIAL_CASED_KEYS = new Set<string>([
+    "lifecycle",
+    "outcome",
+    "deprecated",
+    "born_from",
+    "superseded_by",
+    "intent_ids",
+    "intent_ids_add",
+    "intent_ids_remove",
+    "body_md",
+    "body_md_append",
+    "summary",
+    ...(typeNamedColumn ? [typeNamedColumn] : []),
+  ]);
+  for (const k of Object.keys(normalizedPatch)) {
+    if (SPECIAL_CASED_KEYS.has(k)) continue;
+    if (isSystemManagedField(k)) continue;
+    const v = normalizedPatch[k];
+    if (v === undefined) continue;
+    if (v === null || v === "") {
+      if (k in fm) {
+        delete fm[k];
         changed.push(k);
-        ops.push({ kind: "set", field: k, value: typeof v === "string" ? v : JSON.stringify(v) });
+        ops.push({ kind: "cleared", field: k });
       }
+    } else if (fm[k] !== v) {
+      fm[k] = v;
+      changed.push(k);
+      ops.push({ kind: "set", field: k, value: typeof v === "string" ? v : JSON.stringify(v) });
     }
   }
 

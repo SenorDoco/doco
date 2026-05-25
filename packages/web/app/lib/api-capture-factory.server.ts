@@ -164,8 +164,6 @@ export interface UpdateRouteConfig {
   entityType: NodeTypeName;
   /** Plural directory name under docoDir (usually matches `type`). */
   pluralDir: string;
-  /** Fields the PATCH body is allowed to touch. */
-  allowedFields: readonly string[];
 }
 
 export function makeUpdateRoute(cfg: UpdateRouteConfig) {
@@ -283,7 +281,7 @@ export function makeUpdateRoute(cfg: UpdateRouteConfig) {
           pluralDir: cfg.pluralDir,
           id,
           patch,
-          allowedFields: [...cfg.allowedFields],
+          allowedFields: undefined,
           docoHost: new URL(request.url).origin,
           actorId: me?.id ?? null,
         }),

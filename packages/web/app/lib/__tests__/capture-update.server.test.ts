@@ -78,21 +78,24 @@ describe("updateEntity", () => {
         state: "Renamed state name",
         kind: "terminal",
       },
-      allowedFields: ["kind", "invariants", "preceded_by"],
       docoHost: "https://doco.test",
       actorId: null,
     });
 
     expect(result).toMatchObject({
       ok: true,
-      changed: ["kind"],
+      // Pre-Step-B: `state` (the type-named prose column) was silently
+      // ignored when the route's allowedFields whitelist didn't list
+      // it. After Step B removed whitelists, the prose column edit
+      // now lands alongside `kind`.
+      changed: ["state", "kind"],
     });
     expect(upsertEntity).toHaveBeenCalledWith(
       expect.objectContaining({
         summary: null,
-        type_named_value: "Original state name",
+        type_named_value: "Renamed state name",
         data: expect.objectContaining({
-          state: "Original state name",
+          state: "Renamed state name",
           kind: "terminal",
         }),
       }),
@@ -128,7 +131,6 @@ describe("updateEntity", () => {
       patch: {
         idea: "Renamed idea name",
       },
-      allowedFields: ["idea"],
       docoHost: "https://doco.test",
       actorId: null,
     });

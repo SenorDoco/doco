@@ -4,7 +4,6 @@ const route = makeUpdateRoute({
   type: "states",
   entityType: "state",
   pluralDir: "states",
-  allowedFields: ["kind", "invariants", "preceded_by"],
 });
 
 export const loader = route.loader;
