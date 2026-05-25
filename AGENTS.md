@@ -52,7 +52,9 @@ The test collaborator starts with **no Doco grants** — same shape
 as a brand-new GitHub sign-in. To get something to look at:
 
 - **Create a Doco of your own** via `POST /api/v1/docos.json`
-  (body: `{"name": "<suffix>", "template_handle": "generic"}`) and
+  (body: `{"name": "<suffix>", "org_id": "<org_01...>", "template_handle": "generic"}`).
+  Every Doco lives inside an Org — first list orgs you belong to
+  via `GET /api/v1/orgs.json`, pick one, and pass its `id`. Then
   navigate to `/<your-doco-handle>/...` to exercise the change.
 - **Or have an owner mint an invite** for `doco-test-harness` on
   an existing Doco, then `GET /invite/<code>` while signed in to
