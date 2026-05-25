@@ -550,15 +550,15 @@ CREATE
 BODY (JSON)
   name                required   lowercase, must match [a-z0-9][a-z0-9_-]*.
                                   Server lowercases on receipt.
-  type                optional   "person" | "agent".
-                                  Some reserved names (user, human,
-                                  doco-host, github) have defaults.
   summary             optional   one-line description; falls back to
-                                  a reserved-name default, then to
-                                  display_name, then to name.
-  display_name        optional   pretty-cased name.
-  description         optional   short description.
-  body_md             optional   markdown body.
+                                  a reserved-name default, then to name.
+  body_md             optional   markdown body. The org-chart template
+                                  expects person-vs-agent to be declared
+                                  here in prose ("Operates under: @alice",
+                                  "Autonomous research agent", "Human
+                                  director of …"). The org-tree
+                                  perspective infers the icon from these
+                                  signals.
   reports_to          optional   principal id (principal_<ULID>) of the
                                   manager. Materializes a \`reports_to\`
                                   synapse — used by the \`org-chart\`
@@ -580,12 +580,11 @@ SUCCESS RESPONSE — idempotent (HTTP 200)
   than creating a duplicate.
 
 ERROR RESPONSES
-  HTTP 400  invalid name, invalid type, invalid reports_to, or
-            missing name
+  HTTP 400  invalid name, invalid reports_to, or missing name
   HTTP 401  authentication required
   HTTP 403  author role required
   HTTP 422  authoring policy violation (e.g. org-chart template
-            requires \`type\`)
+            requires body_md to declare person vs agent)
 
 EXAMPLE — create
   curl -sS -X POST \\
@@ -594,8 +593,8 @@ EXAMPLE — create
     ${baseUrl}/${handle}/api/principals.json \\
     -d '{
       "name": "alice",
-      "type": "person",
-      "display_name": "Alice",
+      "summary": "Human director of engineering.",
+      "body_md": "Human director of engineering. Owns roadmap planning and hiring for the engineering org.",
       "reports_to": "principal_01HTOP..."
     }'
 
@@ -608,10 +607,7 @@ EDIT
   clear the manager (make this Principal top-of-chain).
 
 BODY (JSON) — at least one field required
-  display_name        optional   pretty-cased name.
-  description         optional   short description.
   body_md             optional   markdown body (e.g. top-of-chain note).
-  type                optional   "person" | "agent".
   summary             optional   one-line description.
   reports_to          optional   principal id, or \`null\` to clear.
                                   Must reference a Principal in this
@@ -640,7 +636,7 @@ EXAMPLE — edit
     -H "Content-Type: application/json" \\
     -H "Authorization: Bearer $DOCO_ACCESS" \\
     ${baseUrl}/${handle}/api/principals/principal_01...json \\
-    -d '{ "display_name": "Alice", "reports_to": "principal_01HTOP..." }'
+    -d '{ "body_md": "Updated bio prose.", "reports_to": "principal_01HTOP..." }'
 
 RETIRE
   PATCH ${baseUrl}/${handle}/api/principals/<id>.json

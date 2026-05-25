@@ -20,11 +20,14 @@ export interface OrgTreeNode {
   id: string;
   /** Lowercase slug — the immutable identity field. */
   name: string;
-  /** Pretty-cased label preferred for display; falls back to `name`. */
-  display_name: string;
-  /** Optional one-line description; rendered under the label. */
+  /** Optional one-line description; rendered under the slug. */
   description: string | null;
-  /** "person" | "agent" — drives the icon (👤 vs 🤖). null = unset. */
+  /**
+   * "person" | "agent" — drives the icon (👤 vs 🤖). Inferred from
+   * `body_md` prose, not from a structured field (the slim-down
+   * removed `type` from the Principal data shape). null = no
+   * confident inference; the perspective omits the icon for those.
+   */
   type: "person" | "agent" | null;
   lifecycle: string;
   /** Manager principal id; null for top-of-chain. */
@@ -41,7 +44,35 @@ interface OrgTreeRow {
   name: string;
   summary: string | null;
   lifecycle: string | null;
+  body_md: string | null;
   data: Record<string, unknown>;
+}
+
+/**
+ * Infer person-vs-agent from the Principal's prose. Cheap regex scan —
+ * the canonical phrases the org-chart guidance suggests ("AI agent",
+ * "Operates under:", "Autonomous agent", "Human director", "Person",
+ * etc.) light up the right bucket. When the prose is silent or
+ * mixes signals the function returns null so the perspective omits
+ * the icon — better than guessing wrong.
+ */
+function inferKindFromProse(body: string | null): "person" | "agent" | null {
+  if (!body) return null;
+  const text = body.toLowerCase();
+  const agentSignals = [
+    /\bai[\s-]?agent\b/,
+    /\bautonomous (agent|bot|role)\b/,
+    /\boperates under:\s*@/,
+    /\bdelegated[_ -]?by\b/,
+    /\b(?:triage|research|review|coding|qa|support)[\s-]?(?:bot|agent)\b/,
+    /\bbot\b/,
+  ];
+  const personSignals = [/\bhuman\b/, /\bperson\b/, /\bpeople\b/, /\bemployee\b/, /\bcontractor\b/];
+  const hasAgent = agentSignals.some((rx) => rx.test(text));
+  const hasPerson = personSignals.some((rx) => rx.test(text));
+  if (hasAgent && !hasPerson) return "agent";
+  if (hasPerson && !hasAgent) return "person";
+  return null;
 }
 
 export async function loadOrgTreeData(
@@ -51,7 +82,7 @@ export async function loadOrgTreeData(
 ): Promise<OrgTreeData> {
   const rows = (
     await c.query<OrgTreeRow>(
-      `SELECT id, name, summary, COALESCE(lifecycle, 'active') AS lifecycle, data
+      `SELECT id, name, summary, COALESCE(lifecycle, 'active') AS lifecycle, body_md, data
          FROM principals
         WHERE doco_id = $1
         ORDER BY created_at`,
@@ -61,34 +92,23 @@ export async function loadOrgTreeData(
 
   const nodes: OrgTreeNode[] = rows.map((r) => {
     const data = r.data ?? {};
-    const displayName =
-      typeof data.display_name === "string" && data.display_name.trim().length > 0
-        ? data.display_name.trim()
-        : r.name;
-    // Description: explicit `data.description` wins. Otherwise fall
-    // back to `summary` — but ONLY when the summary adds information
-    // beyond what `display_name` and `name` already show. The
-    // principals POST route defaults `summary` to display_name when
-    // no body was supplied; surfacing that as description would
-    // repeat the label, which looks like a bug.
-    const displayNameNorm = displayName.toLowerCase();
+    // Description: surface the summary when it actually adds context.
+    // The principals POST route defaults `summary` to the name when
+    // nothing else was supplied; surfacing that would just repeat the
+    // slug, which looks like a bug.
     const nameNorm = r.name.toLowerCase();
     let description: string | null = null;
-    if (typeof data.description === "string" && data.description.trim().length > 0) {
-      description = data.description.trim();
-    } else if (r.summary && r.summary.trim().length > 0) {
+    if (r.summary && r.summary.trim().length > 0) {
       const summaryNorm = r.summary.trim().toLowerCase();
-      if (summaryNorm !== displayNameNorm && summaryNorm !== nameNorm) {
+      if (summaryNorm !== nameNorm) {
         description = r.summary.trim();
       }
     }
-    const type =
-      data.type === "person" || data.type === "agent" ? (data.type as "person" | "agent") : null;
+    const type = inferKindFromProse(r.body_md);
     const reports_to = typeof data.reports_to === "string" ? data.reports_to : null;
     return {
       id: r.id,
       name: r.name,
-      display_name: displayName,
       description,
       type,
       lifecycle: r.lifecycle ?? "active",

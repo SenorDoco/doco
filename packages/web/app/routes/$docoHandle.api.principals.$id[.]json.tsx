@@ -7,25 +7,14 @@ import { getDocoLevelRole, loadDocoRouteForRead } from "~/lib/doco-access.server
 
 // Principal is a Record per the "frozen claims, mutable records"
 // Decision (decision_01KRKEPRAMM9QSSEJ2X5FHPESJ). The only identity
-// field locked in place is `name` — it's the lookup slug other neurons
-// reference, like a URL path, so changing it would silently break
-// callers. Everything else is editable; lifecycle has a one-way path
-// to "retired" with an active-references guard.
-const PATCHABLE_KEYS = new Set([
-  "display_name",
-  "description",
-  "body_md",
-  "type",
-  "summary",
-  "reports_to",
-  "lifecycle",
-]);
+// field locked in place is `name` — it's the lookup slug other
+// neurons and prose mention by hand, so changing it would silently
+// break callers. Everything else on the Record (summary, body_md,
+// reports_to, lifecycle) is editable.
+const PATCHABLE_KEYS = new Set(["body_md", "summary", "reports_to", "lifecycle"]);
 
 interface PrincipalPatch {
-  display_name?: string;
-  description?: string;
   body_md?: string;
-  type?: "person" | "agent";
   summary?: string;
   /** `null` clears the synapse (Principal becomes top-of-chain). */
   reports_to?: string | null;
@@ -163,9 +152,6 @@ export async function action({
       { status: 400 },
     );
   }
-  if (patch.type !== undefined && patch.type !== "person" && patch.type !== "agent") {
-    return Response.json({ error: "type must be one of: person, agent." }, { status: 400 });
-  }
   if (patch.reports_to !== undefined && patch.reports_to !== null) {
     if (typeof patch.reports_to !== "string" || !patch.reports_to.startsWith("principal_")) {
       return Response.json(
@@ -223,9 +209,6 @@ export async function action({
   // `undefined` (key absent from patch) leaves the existing value alone.
   const oldData = (existing.data ?? {}) as Record<string, unknown>;
   const merged: Record<string, unknown> = { ...oldData };
-  if (patch.display_name !== undefined) merged.display_name = patch.display_name.trim();
-  if (patch.description !== undefined) merged.description = patch.description.trim();
-  if (patch.type !== undefined) merged.type = patch.type;
   if (patch.summary !== undefined) merged.summary = patch.summary.trim();
   if (patch.reports_to === null) {
     // Remove the key entirely so `deriveSynapses` doesn't see it and

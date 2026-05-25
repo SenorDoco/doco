@@ -214,11 +214,11 @@ describe("principal retire API", () => {
     expect(mocks.upsertEntity).not.toHaveBeenCalled();
   });
 
-  it("updates a Principal's display_name + description without lifecycle change", async () => {
+  it("updates a Principal's summary + body_md without lifecycle change", async () => {
     const response = await action({
       request: retireRequest({
-        display_name: "Visitor (Renamed)",
-        description: "A visitor with a new label.",
+        summary: "A visitor with a new label.",
+        body_md: "Updated bio prose.",
       }),
       params: { docoHandle: "acme", id: PRINCIPAL_ID } as never,
     });
@@ -229,10 +229,11 @@ describe("principal retire API", () => {
         id: PRINCIPAL_ID,
         entity_type: "principal",
         lifecycle: "active",
+        body_md: "Updated bio prose.",
+        summary: "A visitor with a new label.",
         data: expect.objectContaining({
           name: "visitor",
-          display_name: "Visitor (Renamed)",
-          description: "A visitor with a new label.",
+          summary: "A visitor with a new label.",
           lifecycle: "active",
         }),
         updated_by: "collaborator_author",
@@ -322,12 +323,15 @@ describe("principal retire API", () => {
 
   it("blocks an edit when an authoring policy is violating", async () => {
     mocks.runAuthoringPolicies.mockResolvedValue({
-      blocking: { reason: "Principal must declare type", policy_id: "policy_xyz" },
+      blocking: {
+        reason: "Principal must declare person vs agent in body_md",
+        policy_id: "policy_xyz",
+      },
       warnings: [],
     });
 
     const response = await action({
-      request: retireRequest({ display_name: "Visitor v2" }),
+      request: retireRequest({ body_md: "Updated bio." }),
       params: { docoHandle: "acme", id: PRINCIPAL_ID } as never,
     });
 
