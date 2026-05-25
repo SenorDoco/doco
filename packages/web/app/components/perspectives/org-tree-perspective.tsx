@@ -140,6 +140,11 @@ function layoutOrgTree(
       selectable: false,
     }));
 
+  // Connector styling — full-opacity foreground stroke (the muted
+  // variant at 0.6 was visually lost against the dotted background).
+  // 2px stroke + a clearly-arrowed end so the reporting direction
+  // reads at a glance.
+  const edgeStroke = "var(--color-foreground)";
   const rfEdges: Edge[] = rawNodes
     .filter((n) => n.reports_to && byId.has(n.reports_to) && n.reports_to !== n.id)
     .map((n) => ({
@@ -148,8 +153,8 @@ function layoutOrgTree(
       target: n.id,
       type: "smoothstep",
       animated: false,
-      style: { stroke: "var(--color-muted-foreground)", strokeWidth: 1.5, opacity: 0.6 },
-      markerEnd: { type: MarkerType.ArrowClosed, color: "var(--color-muted-foreground)" },
+      style: { stroke: edgeStroke, strokeWidth: 2, opacity: 0.85 },
+      markerEnd: { type: MarkerType.ArrowClosed, color: edgeStroke, width: 18, height: 18 },
     }));
 
   return { nodes: rfNodes, edges: rfEdges };
