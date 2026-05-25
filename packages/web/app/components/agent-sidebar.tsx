@@ -814,16 +814,13 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
     }
   }, [inFlight, markUnread]);
 
-  // Authorization / sign-in flows render in a single-tab focus mode —
-  // the Señor Doco chat is force-minimized so it doesn't distract from
-  // the consent decision (`/device`, `/oauth/authorize`, `/invite/<code>`)
-  // or the OAuth round-trip pages (`/auth/*`). The user can still
-  // expand the rail manually, but the default + every navigation back
-  // to an auth page snaps it back to collapsed.
+  // Sign-in / sign-out / OAuth callbacks always force-collapse: no
+  // session yet (or being torn down), and Señor Doco would be empty
+  // chrome. /device + /oauth/authorize used to be in this list too,
+  // but those are consent pages for an *already signed-in* user — they
+  // should be able to keep using Señor Doco there. Same for the invite
+  // accept page; if they're signed in, the rail behaves normally.
   const isAuthPage =
-    location.pathname === "/device" ||
-    location.pathname.startsWith("/oauth/authorize") ||
-    location.pathname.startsWith("/invite/") ||
     location.pathname === "/sign-in" ||
     location.pathname === "/sign-out" ||
     location.pathname.startsWith("/auth/");
