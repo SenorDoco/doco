@@ -375,7 +375,7 @@ export default function NewDocoStep1({
                   placeholder=""
                   title={HANDLE_FORMAT_HELP}
                   aria-describedby="new-doco-suffix-help"
-                  className="w-[20ch] rounded-md px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
+                  className="w-[60ch] max-w-full rounded-md px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
                 />
                 <span
                   id="new-doco-suffix-help"
