@@ -574,19 +574,26 @@ export function OverviewGraph({
   // Build reference candidates for the shared numbering hook. Each
   // candidate is one visible node carrying enough info to be sorted
   // (canvas-space position + dimensions) and labelled.
+  //
+  // We DON'T gate on detail being loaded — detail-fetch is gated by
+  // DETAIL_ZOOM (0.95) and only fires when the user zooms in, so on
+  // fresh load of a many-neuron Doco no details exist and badges
+  // wouldn't appear until the user manually zoomed past 0.95.
+  // `overviewNodeDisplayLabel` falls back to `node.name ?? node.id`
+  // when detail is absent, and the href falls back to `node.href`.
   const referenceCandidates = useMemo(
     () =>
       visibleNodes.flatMap((node) => {
-        const detail = details.get(node.id);
         const position = positions.get(node.id);
-        if (!detail || !position) return [];
+        if (!position) return [];
+        const detail = details.get(node.id);
         return [
           {
             id: node.id,
             entity_type: node.entity_type,
             label: overviewNodeDisplayLabel(node, detail),
             lifecycle: node.lifecycle,
-            href: detail.href ?? node.href ?? null,
+            href: detail?.href ?? node.href ?? null,
             position,
             width: OVERVIEW_NODE_WIDTH,
             height: OVERVIEW_NODE_HEIGHT,
