@@ -31,6 +31,7 @@ import {
   type OverviewGraphData,
   type OverviewGraphNode,
 } from "~/components/overview-graph";
+import { PerspectiveFrame } from "~/components/perspective-frame";
 import { PerspectiveTabs } from "~/components/perspective-tabs";
 import { BpmnPerspective } from "~/components/perspectives/bpmn-perspective";
 import { ListPerspective } from "~/components/perspectives/list-perspective";
@@ -817,65 +818,67 @@ export default function DocoHome({
                   />
                 </div>
               </div>
-              {activePerspectiveKind === "list" ? (
-                <ListPerspective
-                  nodes={graphState.nodes}
-                  pageRanks={pageRanksMap}
-                  visibleLifecycles={visibleLifecycles}
-                />
-              ) : activePerspectiveKind === "org-tree" && orgTreeData ? (
-                <OrgTreePerspective
-                  nodes={orgTreeData.nodes}
-                  visibleLifecycles={visibleLifecycles}
-                  availableLifecycles={availableLifecycles}
-                  onLifecycleToggle={toggleLifecycle}
-                  centerId={graphState.centerId}
-                  onCenterChange={(id) => setGraphState((prev) => graphWithCenter(prev, id))}
-                  isFullscreen={isPerspectiveFullscreen}
-                  onToggleFullscreen={togglePerspectiveFullscreen}
-                  onNeuronClick={(node) => {
-                    void loadNeuronDialog("principal", node.id, node.href);
-                  }}
-                />
-              ) : activePerspectiveKind === "bpmn" && bpmnGraph ? (
-                <BpmnPerspective
-                  pools={bpmnGraph.pools}
-                  lanes={bpmnGraph.lanes}
-                  nodes={bpmnGraph.nodes}
-                  links={bpmnGraph.links}
-                  globalPagerank={bpmnGraph.global_pagerank}
-                  visibleLifecycles={visibleLifecycles}
-                  availableLifecycles={availableLifecycles}
-                  onLifecycleToggle={toggleLifecycle}
-                  centerId={graphState.centerId}
-                  onCenterChange={(id) => setGraphState((prev) => graphWithCenter(prev, id))}
-                  isFullscreen={isPerspectiveFullscreen}
-                  onToggleFullscreen={togglePerspectiveFullscreen}
-                  onNeuronClick={(node) => {
-                    void loadNeuronDialog(
-                      node.entity_type,
-                      node.id,
-                      node.href ?? `/${handle}/${node.entity_type}/${node.id}`,
-                    );
-                  }}
-                />
-              ) : (
-                <OverviewGraph
-                  centerId={graphState.centerId}
-                  nodes={graphState.nodes}
-                  links={graphState.links}
-                  detailUrl={graphState.detailUrl}
-                  fillHeight
-                  visibleLifecycles={visibleLifecycles}
-                  onLifecycleToggle={toggleLifecycle}
-                  autoReorder={autoReorder}
-                  onAutoReorderChange={handleAutoReorderChange}
-                  onCenterChange={(id) => setGraphState((prev) => graphWithCenter(prev, id))}
-                  isFullscreen={isPerspectiveFullscreen}
-                  onToggleFullscreen={togglePerspectiveFullscreen}
-                  onNeuronClick={handleGraphNeuronClick}
-                />
-              )}
+              <PerspectiveFrame fillHeight>
+                {activePerspectiveKind === "list" ? (
+                  <ListPerspective
+                    nodes={graphState.nodes}
+                    pageRanks={pageRanksMap}
+                    visibleLifecycles={visibleLifecycles}
+                  />
+                ) : activePerspectiveKind === "org-tree" && orgTreeData ? (
+                  <OrgTreePerspective
+                    nodes={orgTreeData.nodes}
+                    visibleLifecycles={visibleLifecycles}
+                    availableLifecycles={availableLifecycles}
+                    onLifecycleToggle={toggleLifecycle}
+                    centerId={graphState.centerId}
+                    onCenterChange={(id) => setGraphState((prev) => graphWithCenter(prev, id))}
+                    isFullscreen={isPerspectiveFullscreen}
+                    onToggleFullscreen={togglePerspectiveFullscreen}
+                    onNeuronClick={(node) => {
+                      void loadNeuronDialog("principal", node.id, node.href);
+                    }}
+                  />
+                ) : activePerspectiveKind === "bpmn" && bpmnGraph ? (
+                  <BpmnPerspective
+                    pools={bpmnGraph.pools}
+                    lanes={bpmnGraph.lanes}
+                    nodes={bpmnGraph.nodes}
+                    links={bpmnGraph.links}
+                    globalPagerank={bpmnGraph.global_pagerank}
+                    visibleLifecycles={visibleLifecycles}
+                    availableLifecycles={availableLifecycles}
+                    onLifecycleToggle={toggleLifecycle}
+                    centerId={graphState.centerId}
+                    onCenterChange={(id) => setGraphState((prev) => graphWithCenter(prev, id))}
+                    isFullscreen={isPerspectiveFullscreen}
+                    onToggleFullscreen={togglePerspectiveFullscreen}
+                    onNeuronClick={(node) => {
+                      void loadNeuronDialog(
+                        node.entity_type,
+                        node.id,
+                        node.href ?? `/${handle}/${node.entity_type}/${node.id}`,
+                      );
+                    }}
+                  />
+                ) : (
+                  <OverviewGraph
+                    centerId={graphState.centerId}
+                    nodes={graphState.nodes}
+                    links={graphState.links}
+                    detailUrl={graphState.detailUrl}
+                    fillHeight
+                    visibleLifecycles={visibleLifecycles}
+                    onLifecycleToggle={toggleLifecycle}
+                    autoReorder={autoReorder}
+                    onAutoReorderChange={handleAutoReorderChange}
+                    onCenterChange={(id) => setGraphState((prev) => graphWithCenter(prev, id))}
+                    isFullscreen={isPerspectiveFullscreen}
+                    onToggleFullscreen={togglePerspectiveFullscreen}
+                    onNeuronClick={handleGraphNeuronClick}
+                  />
+                )}
+              </PerspectiveFrame>
               {/* Fullscreen-only: render the neuron dialog inside the aside,
                   anchored to the right of the canvas. Outside fullscreen, the
                   same dialog renders in the right column (further down). */}

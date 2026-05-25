@@ -726,20 +726,7 @@ export function OverviewGraph({
 
   return (
     <div className={fillHeight ? "flex h-full min-h-0 flex-col" : "flex flex-col"}>
-      <div
-        ref={graphRef}
-        className={
-          fillHeight
-            ? "relative min-h-0 w-full flex-1 overflow-hidden rounded-md rounded-tl-none border border-border bg-background"
-            : "relative h-[65vh] min-h-[480px] w-full overflow-hidden rounded-md rounded-tl-none border border-border bg-background"
-        }
-        // Suppress the platform's etched-edge inset-highlight (app.css
-        // `[class~="border"][class~="border-border"]`). It paints a 1px
-        // white-75% line at the canvas's interior top edge, which shows
-        // as a white sliver immediately below inactive perspective tabs
-        // where the canvas's top 1px overlaps the tab's bottom.
-        style={{ boxShadow: "none" }}
-      >
+      <div ref={graphRef} className="relative min-h-0 w-full flex-1 overflow-hidden">
         {search ? (
           <div className="nodrag nopan absolute left-3 top-3 z-20 w-64 max-w-[calc(100%-9rem)]">
             {search}
