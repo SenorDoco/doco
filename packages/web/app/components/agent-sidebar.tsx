@@ -1763,17 +1763,17 @@ function ThreadListView({
     : conversations;
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex shrink-0 items-center justify-between border-b border-border px-3 py-1.5">
+      <div className="flex shrink-0 items-center justify-between px-3 py-1.5">
         <div className="text-xs font-semibold text-foreground">Chats</div>
         <button
           type="button"
           onClick={onNew}
-          className="neu-button rounded-md border border-border px-2 py-0.5 text-[11px] text-muted-foreground hover:bg-input hover:text-foreground"
+          className="neu-button rounded-md border border-primary bg-primary px-2 py-0.5 text-[11px] font-medium text-primary-foreground hover:bg-primary/90"
         >
           + New chat
         </button>
       </div>
-      <div className="shrink-0 border-b border-border/70 px-3 py-1.5">
+      <div className="shrink-0 px-3 py-1.5">
         <input
           type="search"
           value={searchQuery}
@@ -1894,9 +1894,10 @@ function ThreadRow({
     <li
       className={cn(
         "group relative flex items-stretch border-b border-border/40",
-        // Active thread highlight — solid bg + left accent strip, no
-        // chevron. Mirrors the way WhatsApp marks the selected chat.
-        isActive ? "bg-primary/10" : "hover:bg-input/40",
+        // No fill on the row itself — the active thread is denoted
+        // only by the primary-colored accent strip on the left edge.
+        // Hover keeps a subtle tint so rows still feel clickable.
+        isActive ? "" : "hover:bg-input/40",
       )}
     >
       {isActive ? (
