@@ -32,7 +32,7 @@ import type { OrgTreeNode } from "~/lib/org-tree-perspective.server";
 import "@xyflow/react/dist/style.css";
 
 const NODE_W = 240;
-const NODE_H = 96;
+const NODE_H = 108;
 const H_GAP = 40;
 const V_GAP = 60;
 const MAX_DEPTH = 50;
@@ -140,11 +140,9 @@ function layoutOrgTree(
       selectable: false,
     }));
 
-  // Connector styling — full-opacity foreground stroke (the muted
-  // variant at 0.6 was visually lost against the dotted background).
-  // 2px stroke + a clearly-arrowed end so the reporting direction
-  // reads at a glance.
-  const edgeStroke = "var(--color-foreground)";
+  // Muted, low-contrast connector — matches the visual weight of the
+  // other perspectives and stays out of the way of the cards.
+  const edgeStroke = "var(--color-muted-foreground)";
   const rfEdges: Edge[] = rawNodes
     .filter((n) => n.reports_to && byId.has(n.reports_to) && n.reports_to !== n.id)
     .map((n) => ({
@@ -153,19 +151,29 @@ function layoutOrgTree(
       target: n.id,
       type: "smoothstep",
       animated: false,
-      style: { stroke: edgeStroke, strokeWidth: 2, opacity: 0.85 },
-      markerEnd: { type: MarkerType.ArrowClosed, color: edgeStroke, width: 18, height: 18 },
+      style: { stroke: edgeStroke, strokeWidth: 1.5, opacity: 0.6 },
+      markerEnd: { type: MarkerType.ArrowClosed, color: edgeStroke },
     }));
 
   return { nodes: rfNodes, edges: rfEdges };
 }
 
-// Custom React Flow node — the principal card. Sized via inline
-// style (Tailwind's JIT can't see template-literal class names).
+// Custom React Flow node — the principal card.
+//
+// Visual hierarchy: the Principal's `name` (the identity slug — the
+// thing that makes "alex" *that* alex, not "another alex") is the
+// big headline. The `display_name` sits beneath as the role title
+// ("CEO", "Head of Engineering"). The Person/Agent kind shows as a
+// text pill in the bottom corner next to the lifecycle badge,
+// replacing the slug-pill we used to render there — the slug is now
+// the headline so a redundant copy below would be wasted ink.
+//
+// Sized via inline style (Tailwind's JIT can't see template-literal
+// class names).
 function OrgTreeCard({ data }: NodeProps<Node<OrgTreeNodeData>>) {
   const { org, isCenter } = data;
-  const icon = org.type === "agent" ? "🤖" : org.type === "person" ? "👤" : "○";
   const dimmed = org.lifecycle !== "active";
+  const kindLabel = org.type === "agent" ? "Agent" : org.type === "person" ? "Person" : null;
   return (
     <div
       className={`flex flex-col justify-between rounded-md border bg-card px-3 py-2 shadow-sm transition ${
@@ -178,27 +186,28 @@ function OrgTreeCard({ data }: NodeProps<Node<OrgTreeNodeData>>) {
         position={Position.Top}
         style={{ background: "transparent", border: "none", width: 1, height: 1 }}
       />
-      <div className="flex items-start gap-2">
-        <span
-          className="select-none text-lg leading-none"
-          aria-label={org.type ?? "principal"}
-          title={org.type ?? "principal (no type set)"}
-        >
-          {icon}
-        </span>
-        <div className="min-w-0 flex-1">
-          <div className="truncate font-mono text-sm font-semibold text-foreground">
-            {org.display_name}
-          </div>
-          {org.description ? (
-            <div className="truncate text-xs text-muted-foreground">{org.description}</div>
-          ) : null}
+      <div className="min-w-0">
+        <div className="truncate text-base font-semibold leading-tight text-foreground">
+          {org.name}
         </div>
+        <div className="truncate font-mono text-xs leading-snug text-muted-foreground">
+          {org.display_name}
+        </div>
+        {org.description ? (
+          <div className="truncate text-[11px] leading-snug text-muted-foreground">
+            {org.description}
+          </div>
+        ) : null}
       </div>
       <div className="flex items-center gap-1.5">
-        <span className="select-none rounded-sm bg-secondary px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-secondary-foreground">
-          {org.name}
-        </span>
+        {kindLabel ? (
+          <span
+            className="select-none rounded-sm bg-secondary px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-secondary-foreground"
+            title={`Principal type: ${kindLabel.toLowerCase()}`}
+          >
+            {kindLabel}
+          </span>
+        ) : null}
         <LifecycleBadge lifecycle={org.lifecycle} />
       </div>
       <Handle
