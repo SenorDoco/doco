@@ -1,5 +1,4 @@
 import { Handle, type MiniMapNodeProps, Position } from "@xyflow/react";
-import { Maximize2, Minimize2 } from "lucide-react";
 import { type ComponentType, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { NodeBadgeRow, ReferenceNumberBadge } from "~/components/neuron-badges";
@@ -62,15 +61,10 @@ interface OverviewGraphProps extends OverviewGraphData {
   /**
    * Externally-controlled lifecycle visibility set. When provided, the
    * graph uses it as the source of truth; otherwise it manages state
-   * internally. Either way, the filter UI itself renders inside the
-   * canvas as a floating overlay panel — no row above or below.
+   * internally. The filter UI itself lives on PerspectiveFrame; the
+   * graph just receives the set so it can hide non-visible nodes.
    */
   visibleLifecycles?: Set<string>;
-  /**
-   * Called when the user toggles a lifecycle stage. Required when
-   * `visibleLifecycles` is provided (controlled mode).
-   */
-  onLifecycleToggle?: (lifecycle: string) => void;
   /**
    * When the user clicks a neuron on the canvas, we want the graph
    * to re-center on it: depth-based opacity recomputes from the new
@@ -83,23 +77,10 @@ interface OverviewGraphProps extends OverviewGraphData {
    * When true, layout places nodes in concentric rings by BFS depth
    * from the focal node — 1st-degree closest, then 2nd, then 3rd,
    * etc. When false, layout falls back to a single ring with
-   * type-then-id ordering (the legacy behaviour).
+   * type-then-id ordering (the legacy behaviour). The "Reorder
+   * automatically" toggle lives on PerspectiveFrame.
    */
   autoReorder?: boolean;
-  /**
-   * Called when the user flips the "Reorder automatically" checkbox.
-   * The parent owns the persisted value.
-   */
-  onAutoReorderChange?: (next: boolean) => void;
-  /**
-   * When provided, render a fourth React Flow control button (below
-   * zoom +/-/fit) that calls this callback. The button shows
-   * Maximize2 when `isFullscreen` is false, Minimize2 when true.
-   * The caller owns the actual fullscreen request — the button is
-   * just the trigger inside the canvas controls.
-   */
-  isFullscreen?: boolean;
-  onToggleFullscreen?: () => void;
 }
 
 interface Point {
@@ -447,12 +428,8 @@ export function OverviewGraph({
   search,
   onNeuronClick,
   visibleLifecycles: externalVisibleLifecycles,
-  onLifecycleToggle: externalLifecycleToggle,
   onCenterChange,
   autoReorder = true,
-  onAutoReorderChange,
-  isFullscreen,
-  onToggleFullscreen,
 }: OverviewGraphProps) {
   const navigate = useNavigate();
   const graphRef = useRef<HTMLDivElement>(null);
@@ -711,19 +688,6 @@ export function OverviewGraph({
 
   const nodeTypes = useMemo(() => ({ overviewNode: OverviewFlowNode }), []);
 
-  const handleLifecycleToggle = (lifecycle: string) => {
-    if (externalLifecycleToggle) {
-      externalLifecycleToggle(lifecycle);
-      return;
-    }
-    setVisibleLifecycles((prev) => {
-      const next = new Set(prev);
-      if (prev.has(lifecycle)) next.delete(lifecycle);
-      else next.add(lifecycle);
-      return next;
-    });
-  };
-
   return (
     <div className={fillHeight ? "flex h-full min-h-0 flex-col" : "flex flex-col"}>
       <div ref={graphRef} className="relative min-h-0 w-full flex-1 overflow-hidden">
@@ -787,19 +751,10 @@ export function OverviewGraph({
               showInteractive={false}
               fitViewOptions={GRAPH_FIT_VIEW_OPTIONS}
               // Search lives at top-right now; push the zoom controls
-              // down to clear it.
+              // down to clear it. Fullscreen toggle lives on
+              // PerspectiveFrame at top-right (z-20).
               style={{ top: 44 }}
-            >
-              {onToggleFullscreen ? (
-                <Flow.ControlButton
-                  onClick={onToggleFullscreen}
-                  title={isFullscreen ? "Exit full screen" : "Enter full screen"}
-                  aria-label={isFullscreen ? "Exit full screen" : "Enter full screen"}
-                >
-                  {isFullscreen ? <Minimize2 /> : <Maximize2 />}
-                </Flow.ControlButton>
-              ) : null}
-            </Flow.Controls>
+            />
             <Flow.MiniMap
               pannable
               zoomable
@@ -821,60 +776,11 @@ export function OverviewGraph({
             Loading graph…
           </div>
         )}
-        {/* Reorder-automatically toggle. Floats in the BOTTOM-LEFT of
-            the canvas, stacked just above the lifecycle filter row.
-            Search lives top-right now; zoom controls live top-right
-            without competing with the toggle. */}
-        {visibleNodes.length > 0 && Flow ? (
-          <div className="pointer-events-none absolute bottom-12 left-3 z-10">
-            <div className="pointer-events-auto rounded-md border border-border bg-card/90 px-2 py-1 shadow-sm backdrop-blur">
-              <label className="inline-flex cursor-pointer select-none items-center gap-1.5 text-[11px]">
-                <input
-                  type="checkbox"
-                  checked={autoReorder}
-                  onChange={(e) => onAutoReorderChange?.(e.target.checked)}
-                  className="h-3 w-3"
-                />
-                <span className="text-muted-foreground">Reorder automatically</span>
-              </label>
-            </div>
-          </div>
-        ) : null}
-        {/* Lifecycle filter. Lives INSIDE the canvas as a floating
-            panel so the canvas can fill its container vertically — no
-            row above or below the graph eating space. Bottom-left
-            keeps it close to the minimap region without overlapping
-            the React Flow controls (top-right). */}
-        {visibleNodes.length > 0 && Flow ? (
-          <div className="pointer-events-none absolute bottom-3 left-3 z-10">
-            <div className="pointer-events-auto flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border border-border bg-card/90 px-2 py-1 text-xs shadow-sm backdrop-blur">
-              <span className="text-muted-foreground">Life cycle:</span>
-              {allLifecycles.map((lifecycle) => {
-                const checked = visibleLifecycles.has(lifecycle);
-                const color = lifecycleColor(lifecycle);
-                const label = lifecycleLabel(lifecycle);
-                return (
-                  <label
-                    key={lifecycle}
-                    className="inline-flex cursor-pointer select-none items-center gap-1"
-                    title={label}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      onChange={() => handleLifecycleToggle(lifecycle)}
-                      className="h-3 w-3"
-                      style={{ accentColor: color }}
-                    />
-                    <span className="capitalize" style={{ color }}>
-                      {label}
-                    </span>
-                  </label>
-                );
-              })}
-            </div>
-          </div>
-        ) : null}
+        {/* PerspectiveFrame owns the lifecycle filter, the
+            "Reorder automatically" toggle, and the fullscreen button.
+            They render at fixed positions across every perspective.
+            Graph just receives `autoReorder` + `visibleLifecycles` as
+            data and applies them to its layout / node filter. */}
       </div>
     </div>
   );

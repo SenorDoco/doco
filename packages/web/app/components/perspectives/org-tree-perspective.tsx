@@ -25,7 +25,6 @@ import {
   ReactFlowProvider,
   useReactFlow,
 } from "@xyflow/react";
-import { Maximize2, Minimize2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { LifecycleBadge } from "~/components/neuron-badges";
 import type { OrgTreeNode } from "~/lib/org-tree-perspective.server";
@@ -40,12 +39,8 @@ const MAX_DEPTH = 50;
 interface OrgTreePerspectiveProps {
   nodes: OrgTreeNode[];
   visibleLifecycles?: Set<string> | null;
-  availableLifecycles?: Iterable<string>;
-  onLifecycleToggle?: (lifecycle: string) => void;
   centerId?: string | null;
   onCenterChange?: (id: string) => void;
-  isFullscreen?: boolean;
-  onToggleFullscreen?: () => void;
   onNeuronClick?: (node: OrgTreeNode) => void;
 }
 
@@ -226,8 +221,6 @@ function OrgTreeInner({
   visibleLifecycles,
   centerId,
   onCenterChange,
-  isFullscreen,
-  onToggleFullscreen,
   onNeuronClick,
 }: OrgTreePerspectiveProps) {
   const filtered = useMemo(() => {
@@ -295,16 +288,7 @@ function OrgTreeInner({
         <Background gap={20} size={1} />
         <MiniMap pannable zoomable className="!bg-muted/40" />
       </ReactFlow>
-      {onToggleFullscreen ? (
-        <button
-          type="button"
-          onClick={onToggleFullscreen}
-          className="absolute right-2 top-2 z-10 rounded-md border bg-background p-1.5 shadow-sm hover:bg-muted"
-          title={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
-        >
-          {isFullscreen ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
-        </button>
-      ) : null}
+      {/* Fullscreen toggle lives on PerspectiveFrame. */}
     </div>
   );
 }

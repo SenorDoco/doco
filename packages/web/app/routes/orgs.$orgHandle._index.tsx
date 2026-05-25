@@ -18,6 +18,7 @@ import { Breadcrumb, orgBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
 import { ApiKeysLink, CollaboratorsLink } from "~/components/invite-collaborators-link";
 import { OverviewGraph } from "~/components/overview-graph";
+import { PerspectiveFrame } from "~/components/perspective-frame";
 import { SiteHeader } from "~/components/site-header";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "~/components/table";
 import {
@@ -552,16 +553,20 @@ export default function OrgHome({
                 </span>
               </div>
               <div className="h-[75vh] min-h-[480px]">
-                <OverviewGraph
-                  centerId={centerId}
-                  nodes={graph.nodes}
-                  links={graph.links}
-                  detailUrl={graph.detailUrl}
+                <PerspectiveFrame
                   fillHeight
-                  autoReorder={autoReorder}
-                  onAutoReorderChange={handleAutoReorderChange}
-                  onCenterChange={(id) => setCenterId(id)}
-                />
+                  autoReorder={{ value: autoReorder, onChange: handleAutoReorderChange }}
+                >
+                  <OverviewGraph
+                    centerId={centerId}
+                    nodes={graph.nodes}
+                    links={graph.links}
+                    detailUrl={graph.detailUrl}
+                    fillHeight
+                    autoReorder={autoReorder}
+                    onCenterChange={(id) => setCenterId(id)}
+                  />
+                </PerspectiveFrame>
               </div>
             </div>
 

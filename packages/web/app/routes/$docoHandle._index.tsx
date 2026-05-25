@@ -818,7 +818,19 @@ export default function DocoHome({
                   />
                 </div>
               </div>
-              <PerspectiveFrame fillHeight>
+              <PerspectiveFrame
+                fillHeight
+                lifecycleFilter={{
+                  visible: visibleLifecycles,
+                  available: availableLifecycles,
+                  onToggle: toggleLifecycle,
+                }}
+                autoReorder={{ value: autoReorder, onChange: handleAutoReorderChange }}
+                fullscreen={{
+                  isFullscreen: isPerspectiveFullscreen,
+                  onToggle: togglePerspectiveFullscreen,
+                }}
+              >
                 {activePerspectiveKind === "list" ? (
                   <ListPerspective
                     nodes={graphState.nodes}
@@ -829,12 +841,8 @@ export default function DocoHome({
                   <OrgTreePerspective
                     nodes={orgTreeData.nodes}
                     visibleLifecycles={visibleLifecycles}
-                    availableLifecycles={availableLifecycles}
-                    onLifecycleToggle={toggleLifecycle}
                     centerId={graphState.centerId}
                     onCenterChange={(id) => setGraphState((prev) => graphWithCenter(prev, id))}
-                    isFullscreen={isPerspectiveFullscreen}
-                    onToggleFullscreen={togglePerspectiveFullscreen}
                     onNeuronClick={(node) => {
                       void loadNeuronDialog("principal", node.id, node.href);
                     }}
@@ -847,12 +855,8 @@ export default function DocoHome({
                     links={bpmnGraph.links}
                     globalPagerank={bpmnGraph.global_pagerank}
                     visibleLifecycles={visibleLifecycles}
-                    availableLifecycles={availableLifecycles}
-                    onLifecycleToggle={toggleLifecycle}
                     centerId={graphState.centerId}
                     onCenterChange={(id) => setGraphState((prev) => graphWithCenter(prev, id))}
-                    isFullscreen={isPerspectiveFullscreen}
-                    onToggleFullscreen={togglePerspectiveFullscreen}
                     onNeuronClick={(node) => {
                       void loadNeuronDialog(
                         node.entity_type,
@@ -869,12 +873,8 @@ export default function DocoHome({
                     detailUrl={graphState.detailUrl}
                     fillHeight
                     visibleLifecycles={visibleLifecycles}
-                    onLifecycleToggle={toggleLifecycle}
                     autoReorder={autoReorder}
-                    onAutoReorderChange={handleAutoReorderChange}
                     onCenterChange={(id) => setGraphState((prev) => graphWithCenter(prev, id))}
-                    isFullscreen={isPerspectiveFullscreen}
-                    onToggleFullscreen={togglePerspectiveFullscreen}
                     onNeuronClick={handleGraphNeuronClick}
                   />
                 )}
