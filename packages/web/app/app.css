@@ -525,18 +525,20 @@ button[class*="bg-primary"]:active {
 }
 
 /* Morphic styling for React Flow's bottom-right MiniMap and the
-   top-right zoom-controls stack. The Controls panel is a SINGLE
-   raised "macro button" — all four buttons (+, -, fit-view,
-   fullscreen) live inside one rounded panel, separated by hairlines.
-   No per-button shadows — the panel itself is the raised
-   neumorphic surface; the buttons inside react with background +
-   color changes on hover/active. */
+   top-right zoom-controls stack. True neumorphism — the panel uses
+   the SAME colour as the page background and gets its "raised" feel
+   entirely from the shadow + highlight pair, not from being a
+   different-coloured card. !important defeats React Flow's defaults
+   (which paint a near-white `#fefefe` background and a tiny `0 0 2px`
+   shadow that drowns out the neumorphic look). */
 .react-flow__minimap,
 .react-flow__controls {
-  background: var(--color-card);
-  border: 1px solid var(--neu-border);
-  border-radius: var(--radius);
-  box-shadow: 5px 5px 12px var(--neu-shadow-soft), -5px -5px 12px var(--neu-highlight);
+  background: var(--color-background) !important;
+  border: 1px solid var(--neu-border) !important;
+  border-radius: var(--radius) !important;
+  box-shadow:
+    7px 7px 16px var(--neu-shadow),
+    -7px -7px 16px var(--neu-highlight) !important;
   overflow: hidden;
 }
 .react-flow__controls {
@@ -549,23 +551,23 @@ button[class*="bg-primary"]:active {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: transparent;
-  border: none;
-  /* Hairline divider between stacked buttons; suppressed on the
-     last one so the panel's rounded bottom edge stays clean. */
-  border-bottom: 1px solid color-mix(in oklch, var(--neu-border) 60%, transparent);
+  background: transparent !important;
+  border: none !important;
+  /* Hairline divider between stacked buttons; suppressed on the last
+     one so the panel's rounded bottom edge stays clean. */
+  border-bottom: 1px solid color-mix(in oklch, var(--neu-border) 60%, transparent) !important;
   color: var(--color-foreground);
   transition: background-color 120ms ease, color 120ms ease;
 }
 .react-flow__controls-button:last-child {
-  border-bottom: none;
+  border-bottom: none !important;
 }
 .react-flow__controls-button:hover {
-  background: color-mix(in oklch, var(--color-card) 92%, var(--color-foreground));
+  background: color-mix(in oklch, var(--color-background) 88%, var(--color-foreground)) !important;
   color: var(--color-primary);
 }
 .react-flow__controls-button:active {
-  background: color-mix(in oklch, var(--color-card) 84%, var(--color-foreground));
+  background: color-mix(in oklch, var(--color-background) 78%, var(--color-foreground)) !important;
   box-shadow: var(--neu-pressed);
 }
 .react-flow__controls-button svg {
