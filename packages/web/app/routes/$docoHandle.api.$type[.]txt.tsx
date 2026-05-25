@@ -550,15 +550,17 @@ CREATE
 BODY (JSON)
   name                required   lowercase, must match [a-z0-9][a-z0-9_-]*.
                                   Server lowercases on receipt.
-  summary             optional   one-line description; falls back to
-                                  a reserved-name default, then to name.
-  body_md             optional   markdown body. The org-chart template
-                                  expects person-vs-agent to be declared
-                                  here in prose ("Operates under: @alice",
-                                  "Autonomous research agent", "Human
-                                  director of …"). The org-tree
-                                  perspective infers the icon from these
-                                  signals.
+  body_md             optional   markdown body — the only narrative field
+                                  on a Principal post-migration 037
+                                  (\`summary\` was dropped). Defaults to a
+                                  reserved-role explainer for user / human
+                                  / doco-host / github, otherwise empty.
+                                  The org-chart template expects person-
+                                  vs-agent to be declared here in prose
+                                  ("Operates under: @alice", "Autonomous
+                                  research agent", "Human director of …");
+                                  the org-tree perspective infers the icon
+                                  from these signals.
   reports_to          optional   principal id (principal_<ULID>) of the
                                   manager. Materializes a \`reports_to\`
                                   synapse — used by the \`org-chart\`
@@ -593,7 +595,6 @@ EXAMPLE — create
     ${baseUrl}/${handle}/api/principals.json \\
     -d '{
       "name": "alice",
-      "summary": "Human director of engineering.",
       "body_md": "Human director of engineering. Owns roadmap planning and hiring for the engineering org.",
       "reports_to": "principal_01HTOP..."
     }'
@@ -607,8 +608,9 @@ EDIT
   clear the manager (make this Principal top-of-chain).
 
 BODY (JSON) — at least one field required
-  body_md             optional   markdown body (e.g. top-of-chain note).
-  summary             optional   one-line description.
+  body_md             optional   markdown body. Replaces \`summary\`
+                                  (dropped by migration 037) — the only
+                                  narrative field on a Principal.
   reports_to          optional   principal id, or \`null\` to clear.
                                   Must reference a Principal in this
                                   Doco; self-reference is rejected.
@@ -734,7 +736,7 @@ ENDPOINT (list)
       {
         "policy_kind": "guidance",
         "id": "guidance_policy_<ULID>",
-        "summary": "...",
+        "policy": "...",
         "lifecycle": "active",
         "body_md": "...",
         "created_at": "...",
@@ -755,7 +757,8 @@ ${PRINCIPAL_ID_CONVENTION}
 
 BODY — policy_kind = "guidance"
   policy_kind          required   "guidance"
-  summary               required   one-line policy summary
+  policy                required   one-line policy rule (renamed from
+                                    \`summary\` by migration 038)
   body_md               optional   markdown policy body
   authored_by_principal_id optional principal id; auth fills this
   created_by_principal_id  optional principal id; defaults to authored_by_principal_id
@@ -765,7 +768,8 @@ BODY — policy_kind = "guidance"
 
 BODY — policy_kind = "neuron_authoring"
   policy_kind          required   "neuron_authoring"
-  summary               required   one-line policy summary
+  policy                required   one-line policy rule (renamed from
+                                    \`summary\` by migration 038)
   evaluation_kind       required   "deterministic" | "probabilistic"
   predicate             required*  deterministic AuthoringPredicate object
                                   or JSON string. Must not have
@@ -795,7 +799,7 @@ EXAMPLE — guidance
     ${baseUrl}/${handle}/api/policies.json \\
     -d '{
       "policy_kind": "guidance",
-      "summary": "Prefer concrete examples over abstract prose."
+      "policy": "Prefer concrete examples over abstract prose."
     }'
 
 EXAMPLE — neuron_authoring (deterministic)
@@ -805,7 +809,7 @@ EXAMPLE — neuron_authoring (deterministic)
     ${baseUrl}/${handle}/api/policies.json \\
     -d '{
       "policy_kind": "neuron_authoring",
-      "summary": "Every Decision cites at least one Intent.",
+      "policy": "Every Decision cites at least one Intent.",
       "evaluation_kind": "deterministic",
       "predicate": {
         "kind": "requires_synapse",
@@ -822,7 +826,7 @@ EXAMPLE — neuron_authoring (probabilistic)
     ${baseUrl}/${handle}/api/policies.json \\
     -d '{
       "policy_kind": "neuron_authoring",
-      "summary": "Decision rationale names the rejected alternatives.",
+      "policy": "Decision rationale names the rejected alternatives.",
       "evaluation_kind": "probabilistic",
       "spec": "Pass when the Decision explains at least one alternative and why it was rejected."
     }'
