@@ -207,8 +207,10 @@ function PerspectiveSettingsMenu({
           aria-label="Perspectives"
           // Absolute positions against the nav (its `relative`
           // ancestor). right-0 top-full anchors bottom-right of the
-          // nav, directly under the chevron tab.
-          className="neu-floating absolute right-0 top-full z-40 mt-1 w-80 rounded-md bg-card p-2"
+          // nav, directly under the chevron tab. w-60 keeps the menu
+          // narrow enough to fit inside the aside even when the
+          // chevron sits at the right edge of a narrow nav.
+          className="neu-floating absolute right-0 top-full z-40 mt-1 w-60 rounded-md bg-card p-2"
         >
           <p className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
             Attached
