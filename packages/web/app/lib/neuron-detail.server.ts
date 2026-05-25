@@ -84,17 +84,30 @@ type GraphNeuronConfig = {
   updateSegment: string;
 };
 
-const GRAPH_NEURON_TABLES: Record<string, GraphNeuronConfig> = Object.fromEntries(
-  Object.entries(DOCO_NEURON_TABLE_BY_TYPE).map(([entityType, spec]) => [
-    entityType,
-    {
-      table: spec.table,
-      hasBody: spec.body,
-      typeNamedColumn: ALL_ENTITY_TABLES[entityType]?.typeNamedColumn ?? null,
-      updateSegment: UPDATE_SEGMENTS[entityType] ?? entityType,
-    },
-  ]),
-) as Record<string, GraphNeuronConfig>;
+const GRAPH_NEURON_TABLES: Record<string, GraphNeuronConfig> = {
+  ...(Object.fromEntries(
+    Object.entries(DOCO_NEURON_TABLE_BY_TYPE).map(([entityType, spec]) => [
+      entityType,
+      {
+        table: spec.table,
+        hasBody: spec.body,
+        typeNamedColumn: ALL_ENTITY_TABLES[entityType]?.typeNamedColumn ?? null,
+        updateSegment: UPDATE_SEGMENTS[entityType] ?? entityType,
+      },
+    ]),
+  ) as Record<string, GraphNeuronConfig>),
+  // Principal lives outside DOCO_NEURON_TABLE_SPECS (which is scoped to
+  // the 9 migrated neurons) but the Graph perspective DOES render
+  // Principal cards (full-graph.server.ts UNIONs a principal leg in).
+  // The detail dialog must know about it too, otherwise clicking a
+  // Principal card 404s with "Unknown neuron type".
+  principal: {
+    table: "principals",
+    hasBody: true,
+    typeNamedColumn: null,
+    updateSegment: "principals",
+  },
+};
 
 function parseFrontmatter(rawJson: string | null | undefined): Record<string, unknown> {
   if (!rawJson) return {};
