@@ -25,8 +25,13 @@ import {
   useReactFlow,
 } from "@xyflow/react";
 import { useCallback, useEffect, useMemo, useRef } from "react";
-import { LifecycleBadge } from "~/components/neuron-badges";
+import { LifecycleBadge, ReferenceNumberBadge } from "~/components/neuron-badges";
 import { StandardControls, StandardMiniMap } from "~/components/perspective-canvas-overlays";
+import {
+  type GraphReferenceItem,
+  clearGraphReferences,
+  publishGraphReferences,
+} from "~/lib/graph-references";
 import type { OrgTreeNode } from "~/lib/org-tree-perspective.server";
 import "@xyflow/react/dist/style.css";
 
@@ -47,15 +52,19 @@ interface OrgTreePerspectiveProps {
 interface OrgTreeNodeData extends Record<string, unknown> {
   org: OrgTreeNode;
   isCenter: boolean;
+  // Sequential reference number assigned in reading order (top-down,
+  // left-to-right). Mirrors the Graph perspective's numbered badges.
+  referenceNumber?: number;
 }
 
 // Tree-layout entry point. Returns positioned React Flow nodes + edges
-// in one pass so the component can pass them straight into <ReactFlow>.
+// in one pass so the component can pass them straight into <ReactFlow>,
+// plus the reading-order reference list (mirrors the Graph).
 function layoutOrgTree(
   rawNodes: OrgTreeNode[],
   centerId: string | null,
-): { nodes: Node<OrgTreeNodeData>[]; edges: Edge[] } {
-  if (rawNodes.length === 0) return { nodes: [], edges: [] };
+): { nodes: Node<OrgTreeNodeData>[]; edges: Edge[]; references: GraphReferenceItem[] } {
+  if (rawNodes.length === 0) return { nodes: [], edges: [], references: [] };
 
   const byId = new Map<string, OrgTreeNode>();
   for (const n of rawNodes) byId.set(n.id, n);
@@ -124,16 +133,47 @@ function layoutOrgTree(
     rootX += (subtreeWidth.get(rootId) ?? NODE_W) + H_GAP;
   }
 
-  const rfNodes: Node<OrgTreeNodeData>[] = rawNodes
-    .filter((n) => positions.has(n.id))
-    .map((n) => ({
-      id: n.id,
-      type: "orgTreeNode",
-      position: positions.get(n.id) as { x: number; y: number },
-      data: { org: n, isCenter: n.id === centerId },
-      draggable: false,
-      selectable: false,
-    }));
+  // Reference numbering — same idea the overview Graph uses: assign
+  // sequential numbers to visible nodes in reading order (top-to-bottom
+  // row, then left-to-right column). The tree layout already places
+  // managers above reports, so #1 lands on the top-of-chain Principal
+  // and numbers grow downward through the hierarchy. Ties broken by
+  // node id so the numbering is stable across renders.
+  const placedNodes = rawNodes.filter((n) => positions.has(n.id));
+  const ROW_TOLERANCE = NODE_H / 2;
+  const orderedForRefs = [...placedNodes].sort((a, b) => {
+    const pa = positions.get(a.id) as { x: number; y: number };
+    const pb = positions.get(b.id) as { x: number; y: number };
+    const dy = pa.y - pb.y;
+    if (Math.abs(dy) > ROW_TOLERANCE) return dy;
+    const dx = pa.x - pb.x;
+    if (dx !== 0) return dx;
+    return a.id.localeCompare(b.id);
+  });
+  const numberByNodeId = new Map<string, number>();
+  orderedForRefs.forEach((n, i) => numberByNodeId.set(n.id, i + 1));
+
+  const references: GraphReferenceItem[] = orderedForRefs.map((n, i) => ({
+    number: i + 1,
+    id: n.id,
+    entity_type: "principal",
+    label: n.display_name || n.name,
+    lifecycle: n.lifecycle,
+    href: n.href,
+  }));
+
+  const rfNodes: Node<OrgTreeNodeData>[] = placedNodes.map((n) => ({
+    id: n.id,
+    type: "orgTreeNode",
+    position: positions.get(n.id) as { x: number; y: number },
+    data: {
+      org: n,
+      isCenter: n.id === centerId,
+      referenceNumber: numberByNodeId.get(n.id),
+    },
+    draggable: false,
+    selectable: false,
+  }));
 
   // Muted, low-contrast connector — matches the visual weight of the
   // other perspectives and stays out of the way of the cards.
@@ -150,7 +190,7 @@ function layoutOrgTree(
       markerEnd: { type: MarkerType.ArrowClosed, color: edgeStroke },
     }));
 
-  return { nodes: rfNodes, edges: rfEdges };
+  return { nodes: rfNodes, edges: rfEdges, references };
 }
 
 // Custom React Flow node — the principal card.
@@ -167,16 +207,20 @@ function layoutOrgTree(
 // Sized via inline style (Tailwind's JIT can't see template-literal
 // class names).
 function OrgTreeCard({ data }: NodeProps<Node<OrgTreeNodeData>>) {
-  const { org, isCenter } = data;
+  const { org, isCenter, referenceNumber } = data;
   const kindIcon = org.type === "agent" ? "🤖" : org.type === "person" ? "👤" : null;
   const kindLabel = org.type === "agent" ? "agent" : org.type === "person" ? "person" : null;
   return (
     <div
-      className={`flex flex-col justify-between rounded-md border bg-card px-3 py-2 shadow-sm transition ${
+      className={`relative flex flex-col justify-between rounded-md border bg-white px-3 py-2 shadow-sm transition ${
         isCenter ? "border-2 border-foreground" : "border-border"
       }`}
       style={{ width: NODE_W, height: NODE_H }}
     >
+      <ReferenceNumberBadge
+        referenceNumber={referenceNumber}
+        referenceLabel={org.display_name || org.name}
+      />
       <Handle
         type="target"
         position={Position.Top}
@@ -230,10 +274,23 @@ function OrgTreeInner({
     return nodes.filter((n) => visibleLifecycles.has(n.lifecycle));
   }, [nodes, visibleLifecycles]);
 
-  const { nodes: rfNodes, edges: rfEdges } = useMemo(
-    () => layoutOrgTree(filtered, centerId ?? null),
-    [filtered, centerId],
-  );
+  const {
+    nodes: rfNodes,
+    edges: rfEdges,
+    references,
+  } = useMemo(() => layoutOrgTree(filtered, centerId ?? null), [filtered, centerId]);
+
+  // Publish references to the shared window store so other surfaces
+  // can pick them up. Mirrors overview-graph's publish-on-change /
+  // clear-on-unmount pattern.
+  const graphReferenceIdRef = useRef(`org-tree-${Math.random().toString(36).slice(2)}`);
+  useEffect(() => {
+    publishGraphReferences(graphReferenceIdRef.current, "org-tree", references);
+  }, [references]);
+  useEffect(() => {
+    const id = graphReferenceIdRef.current;
+    return () => clearGraphReferences(id);
+  }, []);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const flow = useReactFlow();
