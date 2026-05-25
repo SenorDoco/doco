@@ -29,7 +29,7 @@ import { withIdempotency } from "~/lib/idempotency.server";
 
 interface PolicyRow {
   id: string;
-  summary: string;
+  policy: string;
   lifecycle: string | null;
   body_md: string | null;
   created_at: string | null;
