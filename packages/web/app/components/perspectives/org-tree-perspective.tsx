@@ -27,13 +27,6 @@ import {
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { LifecycleBadge } from "~/components/neuron-badges";
 import { StandardControls, StandardMiniMap } from "~/components/perspective-canvas-overlays";
-import {
-  computeDepthFromCenter,
-  hasFocalNode,
-  opacityForDepth,
-  opacityForEdge,
-  withFocalAwareness,
-} from "~/lib/graph-depth";
 import type { OrgTreeNode } from "~/lib/org-tree-perspective.server";
 import "@xyflow/react/dist/style.css";
 
@@ -54,10 +47,6 @@ interface OrgTreePerspectiveProps {
 interface OrgTreeNodeData extends Record<string, unknown> {
   org: OrgTreeNode;
   isCenter: boolean;
-  // Depth-based opacity from the focal node (matches BPMN + Graph).
-  // 1 when no focal node is set; otherwise: focal + 1st degree = 1,
-  // 2nd = 0.75, 3rd = 0.5, 4+ / unreachable = 0.25.
-  opacity: number;
 }
 
 // Tree-layout entry point. Returns positioned React Flow nodes + edges
@@ -135,27 +124,13 @@ function layoutOrgTree(
     rootX += (subtreeWidth.get(rootId) ?? NODE_W) + H_GAP;
   }
 
-  // Depth-aware opacity — same contract every perspective uses.
-  // BFS over the reports_to relationships (undirected, like the other
-  // perspectives' graph-depth helper). Then opacityForDepth picks the
-  // ramp value per node, opacityForEdge per edge.
-  const orgLinks = rawNodes
-    .filter((n) => n.reports_to && byId.has(n.reports_to) && n.reports_to !== n.id)
-    .map((n) => ({ source: n.reports_to as string, target: n.id }));
-  const depthByNode = computeDepthFromCenter(rawNodes, orgLinks, centerId);
-  const focalActive = hasFocalNode(centerId, rawNodes);
-
   const rfNodes: Node<OrgTreeNodeData>[] = rawNodes
     .filter((n) => positions.has(n.id))
     .map((n) => ({
       id: n.id,
       type: "orgTreeNode",
       position: positions.get(n.id) as { x: number; y: number },
-      data: {
-        org: n,
-        isCenter: n.id === centerId,
-        opacity: focalActive ? opacityForDepth(depthByNode.get(n.id)) : 1,
-      },
+      data: { org: n, isCenter: n.id === centerId },
       draggable: false,
       selectable: false,
     }));
@@ -165,20 +140,15 @@ function layoutOrgTree(
   const edgeStroke = "var(--color-muted-foreground)";
   const rfEdges: Edge[] = rawNodes
     .filter((n) => n.reports_to && byId.has(n.reports_to) && n.reports_to !== n.id)
-    .map((n) => {
-      const edgeOpacity = focalActive
-        ? opacityForEdge(depthByNode.get(n.reports_to as string), depthByNode.get(n.id))
-        : 0.6;
-      return {
-        id: `${n.id}->${n.reports_to}`,
-        source: n.reports_to as string,
-        target: n.id,
-        type: "smoothstep",
-        animated: false,
-        style: { stroke: edgeStroke, strokeWidth: 1.5, opacity: edgeOpacity },
-        markerEnd: { type: MarkerType.ArrowClosed, color: edgeStroke },
-      };
-    });
+    .map((n) => ({
+      id: `${n.id}->${n.reports_to}`,
+      source: n.reports_to as string,
+      target: n.id,
+      type: "smoothstep",
+      animated: false,
+      style: { stroke: edgeStroke, strokeWidth: 1.5, opacity: 0.6 },
+      markerEnd: { type: MarkerType.ArrowClosed, color: edgeStroke },
+    }));
 
   return { nodes: rfNodes, edges: rfEdges };
 }
@@ -246,9 +216,7 @@ function OrgTreeCard({ data }: NodeProps<Node<OrgTreeNodeData>>) {
   );
 }
 
-// Wrap via withFocalAwareness so the engine enforces the
-// data.opacity contract and applies depth-based fading uniformly.
-const nodeTypes = { orgTreeNode: withFocalAwareness(OrgTreeCard) };
+const nodeTypes = { orgTreeNode: OrgTreeCard };
 
 function OrgTreeInner({
   nodes,
