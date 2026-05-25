@@ -1790,7 +1790,7 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
           {/* Chat header — back arrow + total-unread badge + thread
               name. WhatsApp-style: tapping the back arrow returns to
               the thread list. */}
-          <div className="flex shrink-0 items-center gap-2 border-b border-border px-2 py-1.5">
+          <div className="flex shrink-0 items-center gap-2 border-b border-border px-2 pb-2.5 pt-1.5">
             <button
               type="button"
               onClick={openThreadList}
@@ -1808,16 +1808,54 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
                 </span>
               ) : null}
             </button>
-            <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-              <div
-                className={cn(
-                  "min-w-0 truncate text-xs font-semibold",
-                  conversationTitle ? "text-foreground" : "text-muted-foreground",
-                )}
-                title={displayThreadTitle(conversationTitle)}
-              >
-                {displayThreadTitle(conversationTitle)}
-              </div>
+            <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+              {renamingId === conversationId && conversationId ? (
+                <input
+                  autoFocus
+                  type="text"
+                  value={renameDraft}
+                  onChange={(e) => setRenameDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      const next = renameDraft;
+                      setRenamingId(null);
+                      void renameThread(conversationId, next);
+                    } else if (e.key === "Escape") {
+                      e.preventDefault();
+                      setRenamingId(null);
+                    }
+                  }}
+                  onBlur={() => {
+                    const next = renameDraft;
+                    setRenamingId(null);
+                    void renameThread(conversationId, next);
+                  }}
+                  maxLength={120}
+                  className="min-w-0 flex-1 rounded-md border border-border bg-input/40 px-1.5 py-0.5 text-xs font-semibold text-foreground outline-none focus:bg-input"
+                />
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!conversationId) return;
+                    setRenameDraft(conversationTitle ?? "");
+                    setRenamingId(conversationId);
+                  }}
+                  title={
+                    conversationId
+                      ? `${displayThreadTitle(conversationTitle)} — click to rename`
+                      : displayThreadTitle(conversationTitle)
+                  }
+                  disabled={!conversationId}
+                  className={cn(
+                    "min-w-0 truncate rounded-md px-1 py-0.5 text-left text-xs font-semibold hover:bg-input/60 disabled:cursor-default disabled:hover:bg-transparent",
+                    conversationTitle ? "text-foreground" : "text-muted-foreground",
+                  )}
+                >
+                  {displayThreadTitle(conversationTitle)}
+                </button>
+              )}
               <AttachmentsRow
                 docos={attachedDocos}
                 orgs={attachedOrgs}
