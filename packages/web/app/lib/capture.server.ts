@@ -208,7 +208,7 @@ function computeTypeNamedValue(entityType: string, fm: Record<string, unknown>):
  *     hits work immediately. On non-Vercel runtimes `waitUntil` is a
  *     no-op shim that runs the promise like normal `void`.
  */
-async function reindexAndScheduleAttach(
+export async function reindexAndScheduleAttach(
   docoDir: string,
   docoId: string,
   changedEntityId: string,

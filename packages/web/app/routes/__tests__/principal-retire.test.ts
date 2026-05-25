@@ -7,6 +7,8 @@ const mocks = vi.hoisted(() => ({
   upsertEntity: vi.fn(),
   query: vi.fn(),
   withClient: vi.fn(),
+  runAuthoringPolicies: vi.fn(),
+  reindexAndScheduleAttach: vi.fn(),
 }));
 
 vi.mock("@doco/db", () => {
@@ -23,6 +25,18 @@ vi.mock("@doco/db", () => {
 vi.mock("~/lib/doco-access.server", () => ({
   getDocoLevelRole: mocks.getDocoLevelRole,
   loadDocoRouteForRead: mocks.loadDocoRouteForRead,
+}));
+
+vi.mock("~/lib/authoring-runner.server", () => ({
+  runAuthoringPolicies: mocks.runAuthoringPolicies,
+}));
+
+vi.mock("~/lib/capture.server", () => ({
+  reindexAndScheduleAttach: mocks.reindexAndScheduleAttach,
+}));
+
+vi.mock("~/lib/db.server", () => ({
+  docoPath: (handle: string) => `/tmp/docos/${handle}`,
 }));
 
 import { action } from "../$docoHandle.api.principals.$id[.]json";
@@ -57,6 +71,8 @@ describe("principal retire API", () => {
       created_at: "2026-01-01T00:00:00.000Z",
       created_by: "collaborator_admin",
     });
+    mocks.runAuthoringPolicies.mockResolvedValue({ blocking: null, warnings: [] });
+    mocks.reindexAndScheduleAttach.mockResolvedValue(undefined);
   });
 
   it("retires an unreferenced principal", async () => {
@@ -131,7 +147,7 @@ describe("principal retire API", () => {
     });
   });
 
-  it("rejects body patches other than lifecycle=retired", async () => {
+  it("rejects lifecycle values other than retired", async () => {
     const response = await action({
       request: retireRequest({ lifecycle: "active" }),
       params: { docoHandle: "acme", id: PRINCIPAL_ID } as never,
@@ -139,6 +155,32 @@ describe("principal retire API", () => {
 
     expect(response.status).toBe(400);
     expect(mocks.upsertEntity).not.toHaveBeenCalled();
+  });
+
+  it("rejects an attempt to patch the immutable name field", async () => {
+    const response = await action({
+      request: retireRequest({ name: "renamed" }),
+      params: { docoHandle: "acme", id: PRINCIPAL_ID } as never,
+    });
+
+    expect(response.status).toBe(400);
+    expect(mocks.upsertEntity).not.toHaveBeenCalled();
+    await expect(response.json()).resolves.toMatchObject({
+      error: expect.stringContaining("Unknown or immutable field(s)"),
+    });
+  });
+
+  it("rejects an empty patch body", async () => {
+    const response = await action({
+      request: retireRequest({}),
+      params: { docoHandle: "acme", id: PRINCIPAL_ID } as never,
+    });
+
+    expect(response.status).toBe(400);
+    expect(mocks.upsertEntity).not.toHaveBeenCalled();
+    await expect(response.json()).resolves.toMatchObject({
+      error: expect.stringContaining("Empty patch"),
+    });
   });
 
   it("requires author role", async () => {
@@ -170,5 +212,129 @@ describe("principal retire API", () => {
 
     expect(response.status).toBe(404);
     expect(mocks.upsertEntity).not.toHaveBeenCalled();
+  });
+
+  it("updates a Principal's display_name + description without lifecycle change", async () => {
+    const response = await action({
+      request: retireRequest({
+        display_name: "Visitor (Renamed)",
+        description: "A visitor with a new label.",
+      }),
+      params: { docoHandle: "acme", id: PRINCIPAL_ID } as never,
+    });
+
+    expect(response.status).toBe(200);
+    expect(mocks.upsertEntity).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: PRINCIPAL_ID,
+        entity_type: "principal",
+        lifecycle: "active",
+        data: expect.objectContaining({
+          name: "visitor",
+          display_name: "Visitor (Renamed)",
+          description: "A visitor with a new label.",
+          lifecycle: "active",
+        }),
+        updated_by: "collaborator_author",
+      }),
+    );
+    expect(mocks.reindexAndScheduleAttach).toHaveBeenCalledWith(
+      expect.stringContaining("acme"),
+      "doco_acme",
+      PRINCIPAL_ID,
+    );
+    await expect(response.json()).resolves.toMatchObject({
+      ok: true,
+      id: PRINCIPAL_ID,
+      lifecycle: "active",
+      footer_lines: [expect.stringContaining("Principal updated: visitor")],
+    });
+  });
+
+  it("wires reports_to to an existing Principal in the same Doco", async () => {
+    mocks.getEntity
+      .mockResolvedValueOnce({
+        id: "principal_manager",
+        doco_id: "doco_acme",
+        data: { neuron_type: "principal", name: "boss" },
+      })
+      .mockResolvedValueOnce({
+        id: PRINCIPAL_ID,
+        doco_id: "doco_acme",
+        entity_type: "principal",
+        data: { neuron_type: "principal", name: "visitor" },
+        summary: "Visitor",
+        lifecycle: "active",
+      });
+
+    const response = await action({
+      request: retireRequest({ reports_to: "principal_manager" }),
+      params: { docoHandle: "acme", id: PRINCIPAL_ID } as never,
+    });
+
+    expect(response.status).toBe(200);
+    expect(mocks.upsertEntity).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          name: "visitor",
+          reports_to: "principal_manager",
+        }),
+      }),
+    );
+  });
+
+  it("clears reports_to when null is passed (promotes to top-of-chain)", async () => {
+    mocks.getEntity.mockResolvedValueOnce({
+      id: PRINCIPAL_ID,
+      doco_id: "doco_acme",
+      entity_type: "principal",
+      data: {
+        neuron_type: "principal",
+        name: "visitor",
+        reports_to: "principal_old_manager",
+      },
+      summary: "Visitor",
+      lifecycle: "active",
+    });
+
+    const response = await action({
+      request: retireRequest({ reports_to: null }),
+      params: { docoHandle: "acme", id: PRINCIPAL_ID } as never,
+    });
+
+    expect(response.status).toBe(200);
+    const upsertCall = mocks.upsertEntity.mock.calls[0]?.[0];
+    expect(upsertCall.data).not.toHaveProperty("reports_to");
+  });
+
+  it("rejects a reports_to that points at the Principal itself", async () => {
+    const response = await action({
+      request: retireRequest({ reports_to: PRINCIPAL_ID }),
+      params: { docoHandle: "acme", id: PRINCIPAL_ID } as never,
+    });
+
+    expect(response.status).toBe(400);
+    expect(mocks.upsertEntity).not.toHaveBeenCalled();
+    await expect(response.json()).resolves.toMatchObject({
+      error: expect.stringContaining("cannot point at the Principal itself"),
+    });
+  });
+
+  it("blocks an edit when an authoring policy is violating", async () => {
+    mocks.runAuthoringPolicies.mockResolvedValue({
+      blocking: { reason: "Principal must declare type", policy_id: "policy_xyz" },
+      warnings: [],
+    });
+
+    const response = await action({
+      request: retireRequest({ display_name: "Visitor v2" }),
+      params: { docoHandle: "acme", id: PRINCIPAL_ID } as never,
+    });
+
+    expect(response.status).toBe(422);
+    expect(mocks.upsertEntity).not.toHaveBeenCalled();
+    await expect(response.json()).resolves.toMatchObject({
+      error: expect.stringContaining("Authoring policy violation"),
+    });
   });
 });

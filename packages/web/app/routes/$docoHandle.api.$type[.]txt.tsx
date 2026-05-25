@@ -533,14 +533,15 @@ UPDATE AN EXISTING STATE
   kind, invariants, and preceded_by.
 `,
 
-  principals: (baseUrl, handle) => `# Doco — Principals (create + retire)
+  principals: (baseUrl, handle) => `# Doco — Principals (create, edit, retire)
 
 Principals are the role-personas a Doco references via Action.actor_id,
-Intent.actors[], Decision.decided_by, etc. They have a smaller write
-surface than capture-type neurons: you can create one, you can retire
-one (a lifecycle state change, not a row delete), and that's it.
-Identity fields (name, display_name, …) are immutable — to "rename" a
-principal, create a new one and retire the old.
+Intent.actors[], Decision.decided_by, etc. Principals are *records*
+per the "frozen claims, mutable records" Decision — descriptive fields
+stay editable across the lifecycle. The one identity field that *is*
+locked is \`name\`: it's the slug other neurons reference, so renaming
+it would silently break callers. To rename, create a new Principal
+and retire the old.
 
 CREATE
   POST ${baseUrl}/${handle}/api/principals.json
@@ -558,6 +559,11 @@ BODY (JSON)
   display_name        optional   pretty-cased name.
   description         optional   short description.
   body_md             optional   markdown body.
+  reports_to          optional   principal id (principal_<ULID>) of the
+                                  manager. Materializes a \`reports_to\`
+                                  synapse — used by the \`org-chart\`
+                                  template to build the reporting tree.
+                                  Omit for top-of-chain Principals.
 
 SUCCESS RESPONSE — create (HTTP 201, application/json)
   {
@@ -574,9 +580,12 @@ SUCCESS RESPONSE — idempotent (HTTP 200)
   than creating a duplicate.
 
 ERROR RESPONSES
-  HTTP 400  invalid name, invalid type, or missing name
+  HTTP 400  invalid name, invalid type, invalid reports_to, or
+            missing name
   HTTP 401  authentication required
   HTTP 403  author role required
+  HTTP 422  authoring policy violation (e.g. org-chart template
+            requires \`type\`)
 
 EXAMPLE — create
   curl -sS -X POST \\
@@ -584,21 +593,67 @@ EXAMPLE — create
     -H "Authorization: Bearer $DOCO_ACCESS" \\
     ${baseUrl}/${handle}/api/principals.json \\
     -d '{
-      "name": "kitchen",
-      "type": "agent",
-      "summary": "Team-role principal representing the kitchen staff."
+      "name": "alice",
+      "type": "person",
+      "display_name": "Alice",
+      "reports_to": "principal_01HTOP..."
     }'
+
+EDIT
+  PATCH ${baseUrl}/${handle}/api/principals/<id>.json
+  Content-Type: application/json
+
+  Update descriptive fields and rewire reporting in place. \`name\` is
+  the only field that can't be patched. Pass \`reports_to: null\` to
+  clear the manager (make this Principal top-of-chain).
+
+BODY (JSON) — at least one field required
+  display_name        optional   pretty-cased name.
+  description         optional   short description.
+  body_md             optional   markdown body (e.g. top-of-chain note).
+  type                optional   "person" | "agent".
+  summary             optional   one-line description.
+  reports_to          optional   principal id, or \`null\` to clear.
+                                  Must reference a Principal in this
+                                  Doco; self-reference is rejected.
+  lifecycle           optional   only "retired" accepted; see RETIRE.
+
+SUCCESS RESPONSE — edit (HTTP 200, application/json)
+  {
+    "ok": true,
+    "id": "principal_<ULID>",
+    "lifecycle": "active",
+    "footer_lines": ["[🔮 Doco] 👤 Principal updated: <name> (<id>)"]
+  }
+
+ERROR RESPONSES
+  HTTP 400  empty body, unknown/immutable field (e.g. \`name\`),
+            invalid \`type\`, invalid \`reports_to\` shape, self-
+            reference, or missing manager Principal in this Doco
+  HTTP 401  authentication required
+  HTTP 403  author role required
+  HTTP 404  principal not found in this Doco
+  HTTP 422  authoring policy violation
+
+EXAMPLE — edit
+  curl -sS -X PATCH \\
+    -H "Content-Type: application/json" \\
+    -H "Authorization: Bearer $DOCO_ACCESS" \\
+    ${baseUrl}/${handle}/api/principals/principal_01...json \\
+    -d '{ "display_name": "Alice", "reports_to": "principal_01HTOP..." }'
 
 RETIRE
   PATCH ${baseUrl}/${handle}/api/principals/<id>.json
   Content-Type: application/json
 
-  Retirement is the ONLY PATCH operation supported. Identity fields stay
-  immutable; principals can never be renamed in place.
+  Retirement is a one-way lifecycle transition with an active-references
+  guard: a Principal still referenced by an active Action, Log, or
+  Intent can't be retired until those neurons are retired or superseded.
 
 BODY (JSON)
   lifecycle           required   must be the literal string "retired".
-                                  No other field is accepted.
+                                  Combine with other patchable fields
+                                  to edit + retire in one request.
 
 SUCCESS RESPONSE — retire (HTTP 200, application/json)
   {
@@ -617,7 +672,7 @@ SUCCESS RESPONSE — already retired (HTTP 200, idempotent)
   }
 
 ERROR RESPONSES
-  HTTP 400  body shape other than { "lifecycle": "retired" }
+  HTTP 400  lifecycle value other than "retired"
   HTTP 401  authentication required
   HTTP 403  author role required
   HTTP 404  principal not found in this Doco
@@ -648,8 +703,8 @@ LIST / READ
       (humans + agents with a role grant). Legacy field name is
       "principals"; "collaborators" is the clearer alias.
     - "principal_neurons" — actual Principal neurons in this Doco
-      (what swim-lane / BPMN views render). Mutate these via the
-      create + retire endpoints above.
+      (what swim-lane / BPMN / org-tree views render). Mutate these
+      via the create + edit + retire endpoints above.
 
 RELATED
   POST ${baseUrl}/${handle}/api/intents.json   actors_principal_ids points at principal ids

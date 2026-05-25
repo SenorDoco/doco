@@ -6,12 +6,16 @@ const mocks = vi.hoisted(() => ({
   query: vi.fn(),
   upsertEntity: vi.fn(),
   withClient: vi.fn(),
+  getEntity: vi.fn(),
+  runAuthoringPolicies: vi.fn(),
+  reindexAndScheduleAttach: vi.fn(),
 }));
 
 vi.mock("@doco/db", () => {
   const rank = { reader: 1, author: 2, approver: 3, owner: 4 } as const;
   return {
     getCollaboratorById: vi.fn(),
+    getEntity: mocks.getEntity,
     listDocoUsers: vi.fn(),
     roleAtLeast: (have: keyof typeof rank | null, want: keyof typeof rank) =>
       Boolean(have && rank[have] >= rank[want]),
@@ -23,6 +27,18 @@ vi.mock("@doco/db", () => {
 vi.mock("~/lib/doco-access.server", () => ({
   getDocoLevelRole: mocks.getDocoLevelRole,
   loadDocoRouteForRead: mocks.loadDocoRouteForRead,
+}));
+
+vi.mock("~/lib/authoring-runner.server", () => ({
+  runAuthoringPolicies: mocks.runAuthoringPolicies,
+}));
+
+vi.mock("~/lib/capture.server", () => ({
+  reindexAndScheduleAttach: mocks.reindexAndScheduleAttach,
+}));
+
+vi.mock("~/lib/db.server", () => ({
+  docoPath: (handle: string) => `/tmp/docos/${handle}`,
 }));
 
 import { action } from "../$docoHandle.api.principals[.]json";
@@ -45,6 +61,9 @@ describe("principal API", () => {
       meta: { ownerId: "organization_acme", docoId: "doco_acme" },
     });
     mocks.getDocoLevelRole.mockResolvedValue("author");
+    mocks.runAuthoringPolicies.mockResolvedValue({ blocking: null, warnings: [] });
+    mocks.reindexAndScheduleAttach.mockResolvedValue(undefined);
+    mocks.getEntity.mockResolvedValue(null);
   });
 
   it("allows an author to create an arbitrary role principal", async () => {
@@ -120,6 +139,80 @@ describe("principal API", () => {
     expect(mocks.upsertEntity).not.toHaveBeenCalled();
     await expect(response.json()).resolves.toMatchObject({
       error: "Forbidden: author role required to create a principal.",
+    });
+  });
+
+  it("accepts a reports_to manager principal and stores it in data", async () => {
+    mocks.getEntity.mockResolvedValue({
+      id: "principal_manager",
+      doco_id: "doco_acme",
+      data: { neuron_type: "principal", name: "boss" },
+    });
+
+    const response = await action({
+      request: principalRequest({
+        name: "alice",
+        type: "person",
+        reports_to: "principal_manager",
+      }),
+      params: { docoHandle: "acme" } as never,
+    });
+
+    expect(response.status).toBe(201);
+    expect(mocks.getEntity).toHaveBeenCalledWith("principal", "principal_manager");
+    expect(mocks.upsertEntity).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          name: "alice",
+          type: "person",
+          reports_to: "principal_manager",
+        }),
+      }),
+    );
+    expect(mocks.reindexAndScheduleAttach).toHaveBeenCalledWith(
+      expect.stringContaining("acme"),
+      "doco_acme",
+      expect.stringMatching(/^principal_/),
+    );
+  });
+
+  it("rejects reports_to that doesn't look like a principal id", async () => {
+    const response = await action({
+      request: principalRequest({
+        name: "alice",
+        type: "person",
+        reports_to: "decision_01ABC",
+      }),
+      params: { docoHandle: "acme" } as never,
+    });
+
+    expect(response.status).toBe(400);
+    expect(mocks.upsertEntity).not.toHaveBeenCalled();
+    await expect(response.json()).resolves.toMatchObject({
+      error: expect.stringContaining("reports_to must be a principal id"),
+    });
+  });
+
+  it("rejects reports_to that points at a principal in a different Doco", async () => {
+    mocks.getEntity.mockResolvedValue({
+      id: "principal_stranger",
+      doco_id: "doco_other",
+      data: { neuron_type: "principal", name: "stranger" },
+    });
+
+    const response = await action({
+      request: principalRequest({
+        name: "alice",
+        type: "person",
+        reports_to: "principal_stranger",
+      }),
+      params: { docoHandle: "acme" } as never,
+    });
+
+    expect(response.status).toBe(400);
+    expect(mocks.upsertEntity).not.toHaveBeenCalled();
+    await expect(response.json()).resolves.toMatchObject({
+      error: expect.stringContaining("reports_to principal not found"),
     });
   });
 });
