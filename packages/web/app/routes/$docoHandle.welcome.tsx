@@ -10,8 +10,10 @@ import { withCreatedDocoId } from "~/lib/post-create-doco-route";
  * /:handle/welcome — post-create Doco concepts page.
  *
  * Reached after Step 1 creates the doco. Introduces the core Doco
- * concepts before sending the user to bootstrap and collaboration
- * setup.
+ * concepts; the Continue button then drops the user straight on the
+ * Doco home page (the prior `/onboarding/agent` "Bootstrap and
+ * collaborate" step was removed since its affordances are reachable
+ * from the Doco page itself).
  */
 
 export async function loader({
@@ -39,9 +41,16 @@ export default function NewDocoStep4({
   loaderData: Awaited<ReturnType<typeof loader>>;
 }) {
   const { me, handle, ownerSlug, createdDocoId } = loaderData;
-  const onboardingPath = createdDocoId
-    ? withCreatedDocoId(`/${handle}/onboarding/agent`, createdDocoId)
-    : `/${handle}/onboarding/agent`;
+  // Continue lands the user on the Doco home. The old
+  // /:handle/onboarding/agent step ("Bootstrap and collaborate")
+  // duplicated affordances now reachable from the Doco page itself
+  // (collaborators link + API keys link), so it was removed from
+  // the post-create flow. createdDocoId stays in the URL so the
+  // Doco page can highlight the just-created Doco in any "recent"
+  // surfaces.
+  const docoHomePath = createdDocoId
+    ? withCreatedDocoId(`/${handle}`, createdDocoId)
+    : `/${handle}`;
   return (
     <div>
       <SiteHeader mode="host" me={me} />
@@ -73,10 +82,10 @@ export default function NewDocoStep4({
 
         <div className="flex items-center gap-2">
           <Link
-            to={onboardingPath}
+            to={docoHomePath}
             className="neu-button bg-primary text-primary-foreground hover:opacity-90 rounded-md px-4 py-2 text-sm font-semibold"
           >
-            Continue -&gt;
+            Open your Doco -&gt;
           </Link>
         </div>
       </SingleColumnPageMain>
