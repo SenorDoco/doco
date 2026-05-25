@@ -96,7 +96,7 @@ interface ConversationSnapshot {
   active_turn_events?: Array<Record<string, unknown>>;
 }
 
-/** Row in the thread-list dropdown. Matches the server's ConversationListItem. */
+/** Row in the thread-list. Matches the server's ConversationListItem. */
 interface ConversationListItem {
   id: string;
   title: string | null;
@@ -104,6 +104,8 @@ interface ConversationListItem {
   message_count: number;
   updated_at: string;
   active_turn_started_at: string | null;
+  last_message_preview: string | null;
+  last_message_role: "user" | "assistant" | null;
 }
 
 /** Per-request token totals streamed from the server. Reset to null
@@ -137,6 +139,12 @@ const PENDING_SEND_MAX_AGE_MS = 60_000;
 // Last opened thread id. Persisted so a refresh keeps the user in the
 // same thread instead of bouncing back to "most-recent".
 const ACTIVE_CONV_KEY = "senor-doco:active-conversation";
+// Per-thread last-seen message_count. Used to drive the unread badge —
+// when the list endpoint reports message_count > last-seen we know new
+// messages landed since the user last viewed that thread. Best-effort:
+// localStorage is per-browser, and there's no server-side tracking,
+// so the badge clears the next time the user opens the thread.
+const LAST_SEEN_PREFIX = "senor-doco:last-seen:";
 
 // Sidebar widths. Collapsed → 32px rail. Default expanded → 320px
 // (chat only). When the user toggles "Show thinking" in the header,
@@ -286,6 +294,27 @@ function displayThreadTitle(title: string | null | undefined): string {
   return title && title.trim() ? title : "New chat";
 }
 
+function readLastSeen(convId: string): number {
+  if (typeof window === "undefined") return 0;
+  try {
+    const raw = window.localStorage.getItem(LAST_SEEN_PREFIX + convId);
+    if (!raw) return 0;
+    const n = Number.parseInt(raw, 10);
+    return Number.isFinite(n) && n >= 0 ? n : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function writeLastSeen(convId: string, count: number): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(LAST_SEEN_PREFIX + convId, String(count));
+  } catch {
+    // localStorage blocked — silently degrade
+  }
+}
+
 function formatRelativeTime(iso: string): string {
   const t = Date.parse(iso);
   if (!Number.isFinite(t)) return "";
@@ -325,10 +354,17 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
     readStringFlag(ACTIVE_CONV_KEY),
   );
   const [conversationTitle, setConversationTitle] = useState<string | null>(null);
-  const [view, setView] = useState<"chat" | "list">("chat");
+  // WhatsApp-style default — when nothing's open, the user lands on
+  // the thread list. Picking a thread switches into chat view; the
+  // back button in the chat header returns here.
+  const [view, setView] = useState<"chat" | "list">("list");
   const [conversations, setConversations] = useState<ConversationListItem[]>([]);
   const [conversationsLoading, setConversationsLoading] = useState(false);
   const [conversationsError, setConversationsError] = useState<string | null>(null);
+  // Free-text filter applied to the thread list (title + last-message
+  // preview, case-insensitive). Lives in component state, not URL or
+  // localStorage — closing/reopening the sidebar resets it.
+  const [searchQuery, setSearchQuery] = useState("");
   // Inline rename state — keyed by conversation id. When non-null,
   // the row in the list shows an input instead of the title.
   const [renamingId, setRenamingId] = useState<string | null>(null);
@@ -565,13 +601,17 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
 
   const openThreadList = useCallback(() => {
     setView("list");
+    setSearchQuery("");
     void loadConversationsList();
   }, [loadConversationsList]);
 
-  const closeThreadList = useCallback(() => {
-    setView("chat");
-    setRenamingId(null);
-  }, []);
+  // Initial list fetch + refetch on conversation change. The list is
+  // the default view so we always want it populated on mount; we also
+  // refetch when the active thread changes so its updated_at / last
+  // message preview reflect the latest send.
+  useEffect(() => {
+    void loadConversationsList();
+  }, [loadConversationsList, conversationId]);
 
   // Switch to a different thread. Wipes the in-memory message list +
   // thinking events; the next reload() picks up the new thread's
@@ -1175,6 +1215,10 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
         // no longer mid-reply.
         broadcastSync({ kind: "remote-inflight", busy: false });
         broadcastSync({ kind: "changed" });
+        // Refresh the thread list so the active thread's preview /
+        // updated_at reflect the assistant's reply when the user
+        // navigates back to the list.
+        void loadConversationsList();
       }
     },
     [
@@ -1188,6 +1232,7 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
       appendThinking,
       conversationId,
       conversationTitle,
+      loadConversationsList,
     ],
   );
 
@@ -1250,6 +1295,67 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
     setQueuedSend(null);
     void send(q);
   }, [busy, queuedSend, send]);
+
+  // Per-thread unread counter derived from the list-endpoint's
+  // message_count vs. a per-thread last-seen value in localStorage.
+  // Falls back to 0 when the user has never seen the thread (we
+  // initialize last-seen on first sight, so genuinely unread state
+  // only appears for activity that happened while the user was
+  // looking elsewhere). Recomputed whenever the list refreshes.
+  const unreadByThread = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const c of conversations) {
+      const seen = readLastSeen(c.id);
+      const unread = Math.max(0, c.message_count - seen);
+      map.set(c.id, unread);
+    }
+    return map;
+  }, [conversations]);
+
+  // Total unread across every thread that ISN'T the one currently
+  // open. Shown next to the back arrow in the chat header so the
+  // user knows whether anything else needs attention.
+  const totalUnreadOthers = useMemo(() => {
+    let total = 0;
+    for (const c of conversations) {
+      if (c.id === conversationId) continue;
+      total += unreadByThread.get(c.id) ?? 0;
+    }
+    return total;
+  }, [conversations, conversationId, unreadByThread]);
+
+  // Total unread across every thread, including the active one.
+  // Drives the collapsed rail's badge — when the sidebar is closed
+  // we have no notion of "active thread," so the count covers
+  // everything the user might want to come back for.
+  const totalUnreadAll = useMemo(() => {
+    let total = 0;
+    for (const c of conversations) {
+      total += unreadByThread.get(c.id) ?? 0;
+    }
+    return total;
+  }, [conversations, unreadByThread]);
+
+  // When the user is viewing a thread (chat view), keep its
+  // last-seen count pinned to its current message_count so the
+  // unread badge stays at 0 for the active thread.
+  useEffect(() => {
+    if (view !== "chat" || !conversationId) return;
+    const conv = conversations.find((c) => c.id === conversationId);
+    if (!conv) return;
+    writeLastSeen(conv.id, conv.message_count);
+  }, [view, conversationId, conversations]);
+
+  // Initialize last-seen for any thread the user has never visited
+  // so existing threads (created before this UX shipped) don't all
+  // show fake unread counts on first list open.
+  useEffect(() => {
+    for (const c of conversations) {
+      if (typeof window === "undefined") return;
+      const raw = window.localStorage.getItem(LAST_SEEN_PREFIX + c.id);
+      if (raw === null) writeLastSeen(c.id, c.message_count);
+    }
+  }, [conversations]);
 
   const allMessages = useMemo<RenderableMessage[]>(() => {
     const out: RenderableMessage[] = messages.map((m) => ({ kind: "saved", message: m }));
@@ -1323,12 +1429,20 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
         >
           <CollapseIcon side="right" />
           <div
-            className="select-none text-[11px] font-semibold uppercase tracking-wider text-foreground"
+            className="select-none text-[12px] font-semibold text-foreground"
             style={{ writingMode: "vertical-rl", transform: "rotate(180deg)" }}
           >
             Señor Doco
           </div>
-          {unread ? (
+          {totalUnreadAll > 0 ? (
+            <span
+              aria-label={`${totalUnreadAll} unread message${totalUnreadAll === 1 ? "" : "s"}`}
+              className="rounded-full bg-primary px-1.5 text-[10px] font-semibold leading-4 text-primary-foreground"
+              style={{ boxShadow: "0 0 0 2px var(--color-card)" }}
+            >
+              {totalUnreadAll > 99 ? "99+" : totalUnreadAll}
+            </span>
+          ) : unread ? (
             <span
               aria-label="unread"
               className="h-2 w-2 rounded-full bg-primary"
@@ -1338,96 +1452,40 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
         </button>
       ) : (
         <>
-      {/* Two-line header. Top: brand wordmark (always visible — the
-          rail is anchored to this label so the user always knows what
-          they're looking at, regardless of which thread is loaded).
-          Bottom: thread title + dropdown chevron. Clicking the title
-          row toggles the thread list view inside the same column. */}
-      <div className="flex shrink-0 flex-col gap-1 border-b border-border px-3 py-2">
-        <div className="flex items-center justify-between gap-2">
-          <div className="select-none truncate text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-            Señor Doco
-          </div>
-          <div className="flex items-center gap-1.5">
-            {/* Show-thinking toggle. Pressed when on (neu-pressed),
-                raised when off — same treatment as platform buttons. */}
-            <button
-              type="button"
-              onClick={toggleShowThinking}
-              aria-pressed={showThinking}
-              aria-label={showThinking ? "Hide thinking column" : "Show thinking column"}
-              title={showThinking ? "Hide thinking column" : "Show thinking column"}
-              className={cn(
-                "rounded-md border border-border px-2 py-0.5 text-[10px] uppercase tracking-wide",
-                showThinking
-                  ? "neu-pressed bg-input text-foreground"
-                  : "neu-button text-muted-foreground hover:bg-input hover:text-foreground",
-              )}
-            >
-              {showThinking ? "Hide thinking" : "Show thinking"}
-            </button>
-            <button
-              type="button"
-              onClick={() => setCollapsedPersistent(true)}
-              className="neu-button rounded-md border border-border px-1.5 py-0.5 text-muted-foreground hover:bg-input hover:text-foreground"
-              aria-label="Collapse Señor Doco"
-              title="Collapse"
-            >
-              <CollapseIcon side="left" />
-            </button>
-          </div>
+      {/* Header — always visible. Single row: brand on the left,
+          Show thinking + collapse on the right. The brand sits at
+          text-sm with no uppercasing or letter-spacing so it reads
+          as a proper title, not a label. */}
+      <div className="flex shrink-0 items-center justify-between border-b border-border px-3 py-2">
+        <div className="select-none truncate text-sm font-semibold text-foreground">
+          Señor Doco
         </div>
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1.5">
           <button
             type="button"
-            onClick={view === "list" ? closeThreadList : openThreadList}
-            aria-expanded={view === "list"}
-            aria-label={
-              view === "list"
-                ? "Close thread list"
-                : `Open thread list (current: ${displayThreadTitle(conversationTitle)})`
-            }
-            className="group flex min-w-0 flex-1 items-center gap-1.5 rounded-md px-1.5 py-1 text-left text-xs hover:bg-input"
+            onClick={toggleShowThinking}
+            aria-pressed={showThinking}
+            aria-label={showThinking ? "Hide thinking column" : "Show thinking column"}
+            title={showThinking ? "Hide thinking column" : "Show thinking column"}
+            className={cn(
+              "rounded-md border border-border px-2 py-0.5 text-[11px]",
+              showThinking
+                ? "neu-pressed bg-input text-foreground"
+                : "neu-button text-muted-foreground hover:bg-input hover:text-foreground",
+            )}
           >
-            <span
-              className={cn(
-                "shrink-0 text-muted-foreground transition-transform",
-                view === "list" ? "rotate-180" : "",
-              )}
-              aria-hidden
-            >
-              <ChevronDown />
-            </span>
-            <span
-              className={cn(
-                "min-w-0 truncate font-semibold",
-                conversationTitle ? "text-foreground" : "text-muted-foreground",
-              )}
-            >
-              {displayThreadTitle(conversationTitle)}
-            </span>
+            {showThinking ? "Hide thinking" : "Show thinking"}
           </button>
           <button
             type="button"
-            onClick={() => void newThread()}
-            aria-label="New thread"
-            title="New chat"
-            className="neu-button shrink-0 rounded-md border border-border px-1.5 py-0.5 text-muted-foreground hover:bg-input hover:text-foreground"
+            onClick={() => setCollapsedPersistent(true)}
+            className="neu-button rounded-md border border-border px-1.5 py-0.5 text-muted-foreground hover:bg-input hover:text-foreground"
+            aria-label="Collapse Señor Doco"
+            title="Collapse"
           >
-            <PlusIcon />
+            <CollapseIcon side="left" />
           </button>
         </div>
-      </div>
-
-      {/* Persistent "what this is" line, sitting right under the title so
-          new collaborators immediately know what Señor Doco is and how to
-          mint a token for their own agent. */}
-      <div className="shrink-0 border-b border-border/70 px-3 py-1.5 text-[10px] leading-snug text-muted-foreground">
-        Señor Doco runs on Claude Haiku 4.5 inside Doco. Want to collaborate with your own agent?{" "}
-        <Link to="/api-keys" className="font-semibold text-foreground hover:text-primary">
-          Invite it
-        </Link>
-        .
       </div>
 
       {view === "list" ? (
@@ -1438,6 +1496,9 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
           activeId={conversationId}
           renamingId={renamingId}
           renameDraft={renameDraft}
+          searchQuery={searchQuery}
+          unreadByThread={unreadByThread}
+          onSearchChange={setSearchQuery}
           onSelect={switchThread}
           onNew={() => void newThread()}
           onStartRename={(id, current) => {
@@ -1455,6 +1516,38 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
         />
       ) : (
         <>
+          {/* Chat header — back arrow + total-unread badge + thread
+              name. WhatsApp-style: tapping the back arrow returns to
+              the thread list. */}
+          <div className="flex shrink-0 items-center gap-2 border-b border-border px-2 py-1.5">
+            <button
+              type="button"
+              onClick={openThreadList}
+              aria-label={
+                totalUnreadOthers > 0
+                  ? `Back to threads (${totalUnreadOthers} unread in other threads)`
+                  : "Back to threads"
+              }
+              className="flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-xs text-foreground hover:bg-input"
+            >
+              <CollapseIcon side="left" />
+              {totalUnreadOthers > 0 ? (
+                <span className="rounded-full bg-primary/15 px-1.5 text-[10px] font-semibold text-primary">
+                  {totalUnreadOthers}
+                </span>
+              ) : null}
+            </button>
+            <div
+              className={cn(
+                "min-w-0 flex-1 truncate text-xs font-semibold",
+                conversationTitle ? "text-foreground" : "text-muted-foreground",
+              )}
+              title={displayThreadTitle(conversationTitle)}
+            >
+              {displayThreadTitle(conversationTitle)}
+            </div>
+          </div>
+
           <div className="flex min-h-0 flex-1">
             <div
               ref={messageListRef}
@@ -1510,6 +1603,17 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
           />
         </>
       )}
+
+      {/* Footer pinned at the bottom — explains what Señor Doco is
+          and how a collaborator can mint their own agent token. Out
+          of the user's way during conversation but always reachable. */}
+      <div className="shrink-0 border-t border-border/70 px-3 py-1.5 text-[10px] leading-snug text-muted-foreground">
+        Señor Doco runs on Claude Haiku 4.5 inside Doco. Want to collaborate with your own agent?{" "}
+        <Link to="/api-keys" className="font-semibold text-foreground hover:text-primary">
+          Invite it
+        </Link>
+        .
+      </div>
         </>
       )}
     </aside>
@@ -1589,42 +1693,6 @@ function CollapseIcon({ side }: { side: "left" | "right" }) {
   );
 }
 
-function ChevronDown() {
-  return (
-    <svg
-      width="12"
-      height="12"
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <polyline points="4 6 8 11 12 6" />
-    </svg>
-  );
-}
-
-function PlusIcon() {
-  return (
-    <svg
-      width="12"
-      height="12"
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      aria-hidden="true"
-    >
-      <line x1="8" y1="3" x2="8" y2="13" />
-      <line x1="3" y1="8" x2="13" y2="8" />
-    </svg>
-  );
-}
-
 function DotsIcon() {
   return (
     <svg
@@ -1648,6 +1716,9 @@ interface ThreadListViewProps {
   activeId: string | null;
   renamingId: string | null;
   renameDraft: string;
+  searchQuery: string;
+  unreadByThread: Map<string, number>;
+  onSearchChange: (next: string) => void;
   onSelect: (id: string) => void;
   onNew: () => void;
   onStartRename: (id: string, current: string | null) => void;
@@ -1664,6 +1735,9 @@ function ThreadListView({
   activeId,
   renamingId,
   renameDraft,
+  searchQuery,
+  unreadByThread,
+  onSearchChange,
   onSelect,
   onNew,
   onStartRename,
@@ -1672,19 +1746,35 @@ function ThreadListView({
   onRenameDraftChange,
   onArchive,
 }: ThreadListViewProps) {
+  const q = searchQuery.trim().toLowerCase();
+  const filtered = q
+    ? conversations.filter((c) => {
+        const title = (c.title ?? "").toLowerCase();
+        const preview = (c.last_message_preview ?? "").toLowerCase();
+        return title.includes(q) || preview.includes(q);
+      })
+    : conversations;
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex shrink-0 items-center justify-between border-b border-border px-3 py-1.5">
-        <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-          Your threads
-        </div>
+        <div className="text-xs font-semibold text-foreground">Chats</div>
         <button
           type="button"
           onClick={onNew}
-          className="neu-button rounded-md border border-border px-2 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground hover:bg-input hover:text-foreground"
+          className="neu-button rounded-md border border-border px-2 py-0.5 text-[11px] text-muted-foreground hover:bg-input hover:text-foreground"
         >
-          + New
+          + New chat
         </button>
+      </div>
+      <div className="shrink-0 border-b border-border/70 px-3 py-1.5">
+        <input
+          type="search"
+          value={searchQuery}
+          onChange={(e) => onSearchChange(e.target.value)}
+          placeholder="Search"
+          aria-label="Search threads"
+          className="w-full rounded-md border border-border bg-input/60 px-2 py-1 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+        />
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto">
         {error ? (
@@ -1697,17 +1787,23 @@ function ThreadListView({
         ) : null}
         {!loading && conversations.length === 0 && !error ? (
           <div className="px-3 py-2 text-[11px] text-muted-foreground">
-            No threads yet — start chatting below or hit “+ New” to mint one.
+            No threads yet — hit “+ New chat” to start one.
+          </div>
+        ) : null}
+        {!loading && conversations.length > 0 && filtered.length === 0 && q ? (
+          <div className="px-3 py-2 text-[11px] text-muted-foreground">
+            No threads match “{searchQuery}”.
           </div>
         ) : null}
         <ul>
-          {conversations.map((c) => (
+          {filtered.map((c) => (
             <ThreadRow
               key={c.id}
               conv={c}
               isActive={c.id === activeId}
               isRenaming={c.id === renamingId}
               renameDraft={renameDraft}
+              unread={unreadByThread.get(c.id) ?? 0}
               onSelect={() => onSelect(c.id)}
               onStartRename={() => onStartRename(c.id, c.title)}
               onCancelRename={onCancelRename}
@@ -1727,6 +1823,7 @@ interface ThreadRowProps {
   isActive: boolean;
   isRenaming: boolean;
   renameDraft: string;
+  unread: number;
   onSelect: () => void;
   onStartRename: () => void;
   onCancelRename: () => void;
@@ -1740,6 +1837,7 @@ function ThreadRow({
   isActive,
   isRenaming,
   renameDraft,
+  unread,
   onSelect,
   onStartRename,
   onCancelRename,
@@ -1774,13 +1872,29 @@ function ThreadRow({
     el.select();
   }, [isRenaming]);
 
+  // WhatsApp-style "last message" line. Prefix with "You: " when
+  // the most recent message came from the user, so it's easy to tell
+  // at-a-glance whether the agent has replied. Falls back to a
+  // synthesized placeholder for image-only / attachment-only threads.
+  const previewLine = conv.last_message_preview
+    ? conv.last_message_role === "user"
+      ? `You: ${conv.last_message_preview}`
+      : conv.last_message_preview
+    : conv.message_count === 0
+      ? "No messages yet"
+      : "Attachment";
   return (
     <li
       className={cn(
         "group relative flex items-stretch border-b border-border/40",
-        isActive ? "bg-input/50" : "hover:bg-input/40",
+        // Active thread highlight — solid bg + left accent strip, no
+        // chevron. Mirrors the way WhatsApp marks the selected chat.
+        isActive ? "bg-primary/10" : "hover:bg-input/40",
       )}
     >
+      {isActive ? (
+        <span aria-hidden className="absolute inset-y-0 left-0 w-1 bg-primary" />
+      ) : null}
       {isRenaming ? (
         <div className="flex flex-1 items-center gap-1.5 px-3 py-1.5">
           <input
@@ -1807,19 +1921,39 @@ function ThreadRow({
           <button
             type="button"
             onClick={onSelect}
-            className="flex min-w-0 flex-1 flex-col gap-0.5 px-3 py-1.5 text-left"
+            className="flex min-w-0 flex-1 flex-col gap-0.5 px-3 py-2 text-left"
           >
-            <span
-              className={cn(
-                "truncate text-xs font-semibold",
-                conv.title ? "text-foreground" : "text-muted-foreground",
-              )}
-            >
-              {displayThreadTitle(conv.title)}
+            <span className="flex items-baseline justify-between gap-2">
+              <span
+                className={cn(
+                  "min-w-0 truncate text-xs font-semibold",
+                  conv.title ? "text-foreground" : "text-muted-foreground",
+                  unread > 0 ? "font-bold" : "",
+                )}
+              >
+                {displayThreadTitle(conv.title)}
+              </span>
+              <span className="shrink-0 text-[10px] text-muted-foreground">
+                {formatRelativeTime(conv.updated_at)}
+              </span>
             </span>
-            <span className="truncate text-[10px] text-muted-foreground">
-              {conv.message_count} msg{conv.message_count === 1 ? "" : "s"} ·{" "}
-              {formatRelativeTime(conv.updated_at)}
+            <span className="flex items-center justify-between gap-2">
+              <span
+                className={cn(
+                  "min-w-0 truncate text-[11px]",
+                  unread > 0 ? "text-foreground" : "text-muted-foreground",
+                )}
+              >
+                {previewLine}
+              </span>
+              {unread > 0 ? (
+                <span
+                  aria-label={`${unread} unread`}
+                  className="shrink-0 rounded-full bg-primary px-1.5 text-[10px] font-semibold leading-4 text-primary-foreground"
+                >
+                  {unread > 99 ? "99+" : unread}
+                </span>
+              ) : null}
             </span>
           </button>
           <div ref={menuRef} className="relative flex items-center pr-1.5">

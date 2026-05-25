@@ -64,6 +64,8 @@ export async function action({ request }: { request: Request }) {
       message_count: 0,
       updated_at: conv.updated_at.toISOString(),
       active_turn_started_at: conv.active_turn_started_at?.toISOString() ?? null,
+      last_message_preview: null,
+      last_message_role: null,
     },
   });
 }
