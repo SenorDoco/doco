@@ -59,7 +59,7 @@ async function seed(opts: SeedOpts = {}): Promise<void> {
         doco_id: DOCO_ID,
         neuron_type: "neuron_authoring_policy",
         policy_kind: "neuron_authoring",
-        summary: "Action.actor_id resolves to a Principal",
+        policy: "Action.actor_id resolves to a Principal",
         evaluation_kind: "deterministic",
         predicate: {
           kind: "requires_field_resolves_to_principal",
@@ -83,7 +83,7 @@ async function seed(opts: SeedOpts = {}): Promise<void> {
         doco_id: DOCO_ID,
         neuron_type: "neuron_authoring_policy",
         policy_kind: "neuron_authoring",
-        summary: "Action.actor_id is set",
+        policy: "Action.actor_id is set",
         evaluation_kind: "deterministic",
         predicate: {
           kind: "requires_field",
@@ -106,11 +106,11 @@ async function seed(opts: SeedOpts = {}): Promise<void> {
         doco_id: DOCO_ID,
         neuron_type: "neuron_authoring_policy",
         policy_kind: "neuron_authoring",
-        summary: "Action summary is atomic",
+        policy: "Action prose is atomic",
         evaluation_kind: "probabilistic",
         predicate: {
           kind: "probabilistic",
-          spec: "The Action's summary reads as an atomic business activity, not a vague umbrella phase.",
+          spec: "The Action's `action` field reads as an atomic business activity, not a vague umbrella phase.",
           when_neuron_type: ["action"],
         },
         on_violation: "block",
@@ -119,7 +119,7 @@ async function seed(opts: SeedOpts = {}): Promise<void> {
         `INSERT INTO neuron_authoring_policies
            (id, doco_id, policy, data, lifecycle, created_at, updated_at)
            VALUES ($1, $2, $3, $4::jsonb, 'active', now(), now())`,
-        [POLICY_ID_PROBABILISTIC, DOCO_ID, "Action summary is atomic", yaml],
+        [POLICY_ID_PROBABILISTIC, DOCO_ID, "Action prose is atomic", yaml],
       );
     }
   });
@@ -134,7 +134,7 @@ describe("authoring runner — integration", () => {
         id: "action_01TESTBAD000000000000000001",
         neuron_type: "action",
         doco_id: DOCO_ID,
-        summary: "send invoice",
+        action: "send invoice",
         verb: "send",
         actor_id: "principal_01GHOST000000000000000001",
       },
@@ -155,7 +155,7 @@ describe("authoring runner — integration", () => {
         id: "action_01TESTGOOD00000000000000001",
         neuron_type: "action",
         doco_id: DOCO_ID,
-        summary: "send invoice",
+        action: "send invoice",
         verb: "send",
         actor_id: PRINCIPAL_ALICE,
       },
@@ -174,7 +174,7 @@ describe("authoring runner — integration", () => {
         id: "action_01TESTNOACTOR00000000000001",
         neuron_type: "action",
         doco_id: DOCO_ID,
-        summary: "send invoice",
+        action: "send invoice",
         verb: "send",
         // actor_id intentionally omitted.
       },
@@ -193,7 +193,7 @@ describe("authoring runner — integration", () => {
         id: "action_01TESTDRAFTED00000000000001",
         neuron_type: "action",
         doco_id: DOCO_ID,
-        summary: "send invoice",
+        action: "send invoice",
         verb: "send",
         actor_id: "principal_01GHOST000000000000000001",
         lifecycle: "drafting",
@@ -212,7 +212,7 @@ describe("authoring runner — integration", () => {
         id: "action_01TESTNOPRIMS00000000000001",
         neuron_type: "action",
         doco_id: DOCO_ID,
-        summary: "send invoice",
+        action: "send invoice",
         verb: "send",
         actor_id: "principal_01GHOST000000000000000001",
       },
@@ -300,7 +300,7 @@ describe("authoring runner — integration", () => {
         id: "action_01TESTRETIRE00000000000001",
         neuron_type: "action",
         doco_id: DOCO_ID,
-        summary: "send invoice",
+        action: "send invoice",
         verb: "send",
         // Both rules above would fire on this candidate at active —
         // requires_field on missing actor_id, requires_field_resolves_to_principal
