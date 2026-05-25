@@ -214,10 +214,9 @@ describe("principal retire API", () => {
     expect(mocks.upsertEntity).not.toHaveBeenCalled();
   });
 
-  it("updates a Principal's summary + body_md without lifecycle change", async () => {
+  it("updates a Principal's body_md without lifecycle change", async () => {
     const response = await action({
       request: retireRequest({
-        summary: "A visitor with a new label.",
         body_md: "Updated bio prose.",
       }),
       params: { docoHandle: "acme", id: PRINCIPAL_ID } as never,
@@ -230,10 +229,8 @@ describe("principal retire API", () => {
         entity_type: "principal",
         lifecycle: "active",
         body_md: "Updated bio prose.",
-        summary: "A visitor with a new label.",
         data: expect.objectContaining({
           name: "visitor",
-          summary: "A visitor with a new label.",
           lifecycle: "active",
         }),
         updated_by: "collaborator_author",
@@ -334,15 +331,19 @@ describe("principal retire API", () => {
       doco_id: "doco_acme",
       entity_type: "principal",
       data: { neuron_type: "principal", name: "visitor" },
-      summary: "Visitor",
       body_md: "Human walking the public site. Operates under @alex.",
       lifecycle: "active",
       created_at: "2026-01-01T00:00:00.000Z",
       created_by: "collaborator_admin",
     });
 
+    // Trigger the PATCH with a non-body field (clearing reports_to)
+    // so the patch doesn't supply body_md. The handler must still
+    // surface the EXISTING body_md to the policy evaluator from the
+    // typed column, not silently drop it because it isn't in the
+    // patch object.
     const response = await action({
-      request: retireRequest({ summary: "Updated summary." }),
+      request: retireRequest({ reports_to: null }),
       params: { docoHandle: "acme", id: PRINCIPAL_ID } as never,
     });
 

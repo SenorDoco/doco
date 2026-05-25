@@ -2105,9 +2105,9 @@ export async function captureRule(
 // ─── Policies ───────────────────────────────────────────────────────────
 
 export interface GuidancePolicyDraft {
-  /** Required: one-line summary of the guidance. */
-  summary: string;
-  /** Optional markdown body. Defaults to the summary so the article is readable. */
+  /** Required: one-line rule statement. */
+  policy: string;
+  /** Optional markdown body. Defaults to the policy so the article is readable. */
   body_md?: string;
   /** Optional: principal id who authored the article. */
   authored_by_principal_id?: string;
@@ -2120,8 +2120,8 @@ export interface GuidancePolicyDraft {
 }
 
 export interface NeuronAuthoringPolicyDraft {
-  /** Required: one-line summary of the capture-time check. */
-  summary: string;
+  /** Required: one-line rule statement that describes the check. */
+  policy: string;
   /** Required: deterministic structural check or probabilistic LLM check. */
   evaluation_kind: "deterministic" | "probabilistic";
   /**
@@ -2242,7 +2242,7 @@ type PolicyType = "guidance_policy" | "neuron_authoring_policy";
 interface PolicyPayload {
   id: string;
   entityType: PolicyType;
-  summary: string;
+  policy: string;
   lifecycle: string;
   fm: Record<string, unknown>;
   body: string;
@@ -2256,12 +2256,12 @@ async function buildGuidancePolicyPayload(
   draft: GuidancePolicyDraft,
   _extras: PolicyCaptureExtras,
 ): Promise<PolicyPayload | CaptureError> {
-  if (!draft.summary?.trim()) return { error: "summary is required." };
+  if (!draft.policy?.trim()) return { error: "policy is required." };
   const author = await resolvePolicyAuthor(draft);
   if (typeof author !== "string") return author;
 
   const id = `guidance_policy_${generateUlid()}`;
-  const summary = draft.summary.trim();
+  const policy = draft.policy.trim();
   const now = new Date().toISOString();
   const status = lifecycleAttrs(draft, "active");
   if ("error" in status) return status;
@@ -2271,7 +2271,7 @@ async function buildGuidancePolicyPayload(
     id,
     doco_id: docoId,
     policy_kind: "guidance",
-    summary,
+    policy,
     created_at: now,
     created_by: createdById,
     ...status,
@@ -2280,10 +2280,10 @@ async function buildGuidancePolicyPayload(
   return {
     id,
     entityType: "guidance_policy",
-    summary,
+    policy,
     lifecycle,
     fm,
-    body: draft.body_md?.trim() || summary,
+    body: draft.body_md?.trim() || policy,
     authorId: author,
     createdById,
     now,
@@ -2295,7 +2295,7 @@ async function buildNeuronAuthoringPolicyPayload(
   draft: NeuronAuthoringPolicyDraft,
   _extras: PolicyCaptureExtras,
 ): Promise<PolicyPayload | CaptureError> {
-  if (!draft.summary?.trim()) return { error: "summary is required." };
+  if (!draft.policy?.trim()) return { error: "policy is required." };
   if (draft.evaluation_kind !== "deterministic" && draft.evaluation_kind !== "probabilistic") {
     return { error: "evaluation_kind must be deterministic or probabilistic." };
   }
@@ -2305,7 +2305,7 @@ async function buildNeuronAuthoringPolicyPayload(
   if ("error" in predicate) return predicate;
 
   const id = `neuron_authoring_policy_${generateUlid()}`;
-  const summary = draft.summary.trim();
+  const policy = draft.policy.trim();
   const now = new Date().toISOString();
   const status = lifecycleAttrs(draft, "active");
   if ("error" in status) return status;
@@ -2319,7 +2319,7 @@ async function buildNeuronAuthoringPolicyPayload(
     doco_id: docoId,
     policy_kind: "neuron_authoring",
     evaluation_kind: draft.evaluation_kind,
-    summary,
+    policy,
     predicate,
     ...(firesWhen.length > 0 ? { fires_when_neuron_lifecycle: firesWhen } : {}),
     on_violation: draft.on_violation ?? "block",
@@ -2331,7 +2331,7 @@ async function buildNeuronAuthoringPolicyPayload(
   return {
     id,
     entityType: "neuron_authoring_policy",
-    summary,
+    policy,
     lifecycle,
     fm,
     body: draft.body_md?.trim() ?? "",
@@ -2374,7 +2374,7 @@ export async function captureGuidancePolicy(
     actorId: payload.createdById,
     entity_type: payload.entityType,
     entity_id: payload.id,
-    label: payload.summary,
+    label: payload.policy,
   });
   await reindexAndScheduleAttach(docoDir, docoId, payload.id);
 
@@ -2385,9 +2385,9 @@ export async function captureGuidancePolicy(
     docoSlug,
     entityType: payload.entityType,
     id: payload.id,
-    label: payload.summary,
+    label: payload.policy,
     docoHost,
-    ops: [{ kind: "added", summary: payload.summary }],
+    ops: [{ kind: "added", summary: payload.policy }],
     duration_ms,
   });
   footer_lines.push(...renderAuthoringWarnings(pred.warnings));
@@ -2434,7 +2434,7 @@ export async function captureNeuronAuthoringPolicy(
     actorId: payload.createdById,
     entity_type: payload.entityType,
     entity_id: payload.id,
-    label: payload.summary,
+    label: payload.policy,
   });
   await reindexAndScheduleAttach(docoDir, docoId, payload.id);
 
@@ -2445,9 +2445,9 @@ export async function captureNeuronAuthoringPolicy(
     docoSlug,
     entityType: payload.entityType,
     id: payload.id,
-    label: payload.summary,
+    label: payload.policy,
     docoHost,
-    ops: [{ kind: "added", summary: payload.summary }],
+    ops: [{ kind: "added", summary: payload.policy }],
     duration_ms,
   });
   footer_lines.push(...renderAuthoringWarnings(pred.warnings));
@@ -2547,7 +2547,7 @@ export async function loadPolicyForEdit(opts: {
 }): Promise<
   | {
       ok: true;
-      summary: string;
+      policy: string;
       body_md: string;
       lifecycle: string;
       data: Record<string, unknown>;
@@ -2559,12 +2559,12 @@ export async function loadPolicyForEdit(opts: {
   const scopeCol = "doco_id";
   const row = await withClient(async (c) => {
     const r = await c.query<{
-      summary: string | null;
+      policy: string | null;
       body_md: string | null;
       lifecycle: string | null;
       data: Record<string, unknown> | null;
     }>(
-      `SELECT summary, body_md, lifecycle, data FROM ${table}
+      `SELECT policy, body_md, lifecycle, data FROM ${table}
         WHERE id = $1 AND ${scopeCol} = $2`,
       [opts.policyId, opts.scopeId],
     );
@@ -2573,7 +2573,7 @@ export async function loadPolicyForEdit(opts: {
   if (!row) return { error: `Policy ${opts.policyId} not found.`, status: 404 };
   return {
     ok: true,
-    summary: row.summary ?? "",
+    policy: row.policy ?? "",
     body_md: row.body_md ?? "",
     lifecycle: row.lifecycle ?? "active",
     data: row.data ?? {},

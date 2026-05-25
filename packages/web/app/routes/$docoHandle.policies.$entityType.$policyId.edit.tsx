@@ -101,8 +101,8 @@ export async function action({
 
   if (intent === "modify") {
     const body_md = String(form.get("body_md") ?? "").trim();
-    const summary = derivePolicySummary(body_md);
-    if (!summary) return Response.json({ error: "Policy is required." }, { status: 400 });
+    const policy = derivePolicySummary(body_md);
+    if (!policy) return Response.json({ error: "Policy is required." }, { status: 400 });
     const docoDir = ctx.dir;
     const docoHost = new URL(request.url).origin;
     let captured: Awaited<
@@ -115,7 +115,7 @@ export async function action({
         ownerSlug,
         docoSlug,
         {
-          summary,
+          policy,
           body_md,
           authored_by_principal_id: ctx.me?.id,
           created_by_principal_id: ctx.me?.id,
@@ -135,7 +135,7 @@ export async function action({
       const on_violation =
         onViolationRaw === "warn" || onViolationRaw === "log" ? onViolationRaw : "block";
       const draft: NeuronAuthoringPolicyDraft = {
-        summary,
+        policy,
         body_md,
         evaluation_kind: evaluationKind,
         on_violation,

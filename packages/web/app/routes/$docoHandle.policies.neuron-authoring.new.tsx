@@ -43,8 +43,8 @@ export async function action({
   const { dir: docoDir, docoSlug, handle, ownerSlug } = ctx;
   const form = await request.formData();
   const body_md = String(form.get("body_md") ?? "").trim();
-  const summary = derivePolicySummary(body_md);
-  if (!summary) return Response.json({ error: "Policy is required." }, { status: 400 });
+  const policy = derivePolicySummary(body_md);
+  if (!policy) return Response.json({ error: "Policy is required." }, { status: 400 });
   const evaluationKind =
     String(form.get("evaluation_kind") ?? "deterministic") === "probabilistic"
       ? "probabilistic"
@@ -57,7 +57,7 @@ export async function action({
   const on_violation =
     onViolationRaw === "warn" || onViolationRaw === "log" ? onViolationRaw : "block";
   const draft: NeuronAuthoringPolicyDraft = {
-    summary,
+    policy,
     body_md,
     evaluation_kind: evaluationKind,
     on_violation,

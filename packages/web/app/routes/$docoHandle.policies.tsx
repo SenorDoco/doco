@@ -17,7 +17,7 @@ type ArticleKind = "deterministic" | "probabilistic";
 
 interface ArticleRow {
   id: string;
-  summary: string;
+  policy: string;
   lifecycle: string | null;
   created_at: Date | string | null;
   body_md: string | null;
@@ -26,7 +26,7 @@ interface ArticleRow {
 
 interface GuidanceArticleItem {
   id: string;
-  summary: string;
+  policy: string;
   lifecycle: string | null;
   createdAt: string | null;
   body: string;
@@ -48,7 +48,7 @@ export async function loader({
   const { ownerSlug, docoSlug, handle } = ctx;
   const [guidanceRows, nodeAuthoringRows] = await withClient(async (c) => {
     const guidance = await c.query<ArticleRow>(
-      `SELECT id, summary, lifecycle, created_at, body_md, data
+      `SELECT id, policy, lifecycle, created_at, body_md, data
          FROM guidance_policies
         WHERE doco_id = $1
           AND COALESCE(lifecycle, 'active') = 'active'
@@ -56,7 +56,7 @@ export async function loader({
       [ctx.meta.docoId],
     );
     const nodeAuthoring = await c.query<ArticleRow>(
-      `SELECT id, summary, lifecycle, created_at, body_md, data
+      `SELECT id, policy, lifecycle, created_at, body_md, data
          FROM neuron_authoring_policies
         WHERE doco_id = $1
           AND COALESCE(lifecycle, 'active') = 'active'
@@ -191,7 +191,7 @@ function ArticleSection({
                     className="min-w-0 flex-1 hover:text-primary"
                   >
                     <p className="whitespace-pre-wrap text-sm leading-6">
-                      {policyFullText({ summary: item.summary, body: item.body })}
+                      {policyFullText({ policy: item.policy, body: item.body })}
                     </p>
                     {"evaluationKind" in item ? (
                       <div className="mt-1 flex flex-wrap gap-2 font-mono text-[10px] text-muted-foreground">
@@ -224,7 +224,7 @@ function ArticleSection({
 function toGuidanceArticle(row: ArticleRow): GuidanceArticleItem {
   return {
     id: row.id,
-    summary: row.summary,
+    policy: row.policy,
     lifecycle: row.lifecycle,
     createdAt: toIso(row.created_at),
     body: row.body_md ?? "",

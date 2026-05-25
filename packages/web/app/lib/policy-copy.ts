@@ -31,22 +31,22 @@ export function derivePolicySummary(body: string): string {
 }
 
 /**
- * Reconstruct the full article text from a row that may have been
- * written under the old (summary + body separate) shape or the new
- * (body contains the full article, summary is derived) shape. Lets
- * the display surfaces render one block without worrying which
- * vintage they're looking at.
+ * Reconstruct the full article text from a row. The `policy` field
+ * (renamed from `summary` in migration 038) is the one-line rule
+ * statement; `body` is the optional long-form rationale. When body
+ * is present the rendered text is `policy\n\nbody` unless body
+ * already opens with the policy line.
  */
 export function policyFullText(
-  row: { summary: string | null | undefined; body: string | null | undefined } | null,
+  row: { policy: string | null | undefined; body: string | null | undefined } | null,
 ): string {
   if (!row) return "";
-  const summary = (row.summary ?? "").trim();
+  const policy = (row.policy ?? "").trim();
   const body = (row.body ?? "").trim();
-  if (!body) return summary;
-  if (!summary) return body;
-  // New shape: body already opens with the summary line.
-  if (body.startsWith(summary)) return body;
-  // Old shape: summary + body were authored separately; stitch them.
-  return `${summary}\n\n${body}`;
+  if (!body) return policy;
+  if (!policy) return body;
+  // New shape: body already opens with the policy line.
+  if (body.startsWith(policy)) return body;
+  // Stitched shape: policy + body authored separately.
+  return `${policy}\n\n${body}`;
 }

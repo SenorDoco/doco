@@ -71,7 +71,7 @@ async function seed(opts: SeedOpts = {}): Promise<void> {
       });
       await c.query(
         `INSERT INTO neuron_authoring_policies
-           (id, doco_id, summary, data, lifecycle, created_at, updated_at)
+           (id, doco_id, policy, data, lifecycle, created_at, updated_at)
            VALUES ($1, $2, $3, $4::jsonb, 'active', now(), now())`,
         [POLICY_ID_PRINCIPAL, DOCO_ID, "Action.actor_id resolves to a Principal", yaml],
       );
@@ -94,7 +94,7 @@ async function seed(opts: SeedOpts = {}): Promise<void> {
       });
       await c.query(
         `INSERT INTO neuron_authoring_policies
-           (id, doco_id, summary, data, lifecycle, created_at, updated_at)
+           (id, doco_id, policy, data, lifecycle, created_at, updated_at)
            VALUES ($1, $2, $3, $4::jsonb, 'active', now(), now())`,
         [POLICY_ID_FIELD, DOCO_ID, "Action.actor_id is set", yaml],
       );
@@ -117,7 +117,7 @@ async function seed(opts: SeedOpts = {}): Promise<void> {
       });
       await c.query(
         `INSERT INTO neuron_authoring_policies
-           (id, doco_id, summary, data, lifecycle, created_at, updated_at)
+           (id, doco_id, policy, data, lifecycle, created_at, updated_at)
            VALUES ($1, $2, $3, $4::jsonb, 'active', now(), now())`,
         [POLICY_ID_PROBABILISTIC, DOCO_ID, "Action summary is atomic", yaml],
       );
@@ -340,7 +340,7 @@ describe("authoring runner — integration", () => {
       // the loader COALESCEs NULL → 'active'.
       await c.query(
         `INSERT INTO neuron_authoring_policies
-           (id, doco_id, summary, data, lifecycle, created_at, updated_at)
+           (id, doco_id, policy, data, lifecycle, created_at, updated_at)
            VALUES ($1, $2, $3, $4::jsonb, NULL, now(), now())`,
         [POLICY_ID_FIELD, DOCO_ID, "Action.actor_id is set", yaml],
       );
@@ -371,7 +371,7 @@ describe("authoring runner — integration", () => {
       await withClient(async (c) => {
         await c.query(
           `INSERT INTO neuron_authoring_policies
-             (id, doco_id, summary, data, lifecycle, created_at, updated_at)
+             (id, doco_id, policy, data, lifecycle, created_at, updated_at)
              VALUES ($1, $2, $3, $4::jsonb, 'active', now(), now())`,
           [
             malformedId,
@@ -443,7 +443,7 @@ describe("authoring runner — integration", () => {
       });
       await c.query(
         `INSERT INTO neuron_authoring_policies
-           (id, doco_id, summary, data, lifecycle, created_at, updated_at)
+           (id, doco_id, policy, data, lifecycle, created_at, updated_at)
            VALUES ($1, $2, $3, $4::jsonb, 'active', now(), now())`,
         [POLICY_ID_PRINCIPAL, DOCO_ID, "Intent.actors are covered by Actions", yaml],
       );
@@ -550,10 +550,10 @@ describe("captureNeuronAuthoringPolicy — synapse_type validation", () => {
 
   function draft(
     predicate: Record<string, unknown>,
-    summary = "test predicate",
+    policyText = "test predicate",
   ): NeuronAuthoringPolicyDraft {
     return {
-      summary,
+      policy: policyText,
       evaluation_kind: "deterministic",
       predicate: predicate as never,
       on_violation: "block",

@@ -38,8 +38,8 @@ export async function action({
   const { dir: docoDir, docoSlug, handle, ownerSlug } = ctx;
   const form = await request.formData();
   const body_md = String(form.get("body_md") ?? "").trim();
-  const summary = derivePolicySummary(body_md);
-  if (!summary) return Response.json({ error: "Policy is required." }, { status: 400 });
+  const policy = derivePolicySummary(body_md);
+  if (!policy) return Response.json({ error: "Policy is required." }, { status: 400 });
   const docoHost = new URL(request.url).origin;
 
   const result = await captureGuidancePolicy(
@@ -48,7 +48,7 @@ export async function action({
     ownerSlug,
     docoSlug,
     {
-      summary,
+      policy,
       body_md,
       authored_by_principal_id: ctx.me?.id,
       created_by_principal_id: ctx.me?.id,
