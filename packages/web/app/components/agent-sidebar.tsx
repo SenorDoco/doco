@@ -352,9 +352,52 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
         return;
       }
       const data = (await res.json()) as ConversationSnapshot;
-      setMessages(data.messages);
-      setHasMore(data.has_more);
-      earliestRef.current = data.messages[0] ?? null;
+      // Merge — don't overwrite. Two classes of message can sit
+      // outside the snapshot's window:
+      //
+      //   1. OLDER pages the user pulled in via `loadOlder` (scroll
+      //      up). Naive setMessages(data.messages) wiped these on
+      //      every poll → older messages flickered out.
+      //   2. NEWER local-only messages (id prefixed `local_`) that
+      //      the optimistic-send path appended but the server hasn't
+      //      persisted yet. Naive setMessages also wiped these →
+      //      you'd hit Send, the composer would clear, and your
+      //      bubble would vanish for ~1.5s until reload re-ran.
+      //
+      // Preserve both ends; only the middle (snapshot window) is
+      // authoritative on reload.
+      setMessages((prev) => {
+        const fresh = data.messages;
+        if (fresh.length === 0) return prev;
+        const freshIds = new Set(fresh.map((m) => m.id));
+        const freshOldest = fresh[0].created_at;
+        const freshNewest = fresh[fresh.length - 1].created_at;
+        const olderRetained: typeof prev = [];
+        const newerRetained: typeof prev = [];
+        for (const m of prev) {
+          if (freshIds.has(m.id)) continue;
+          if (m.created_at < freshOldest) olderRetained.push(m);
+          else if (m.created_at > freshNewest) newerRetained.push(m);
+          // Else: in the snapshot window but missing from fresh →
+          // server doesn't think it exists, drop it (covers
+          // local-only optimistic messages whose server-persisted
+          // twin has now arrived in `fresh` under a different id but
+          // with a created_at inside the window — the snapshot's
+          // version of truth wins for that timeframe).
+        }
+        return [...olderRetained, ...fresh, ...newerRetained];
+      });
+      // `hasMore` reflects whether the SERVER has older pages beyond
+      // what's currently loaded. The snapshot's `has_more` only
+      // describes its own window, so trust it AND preserve any older-
+      // page knowledge.
+      setHasMore((prev) => prev || data.has_more);
+      // earliestRef anchors the next `loadOlder` cursor. Use the
+      // earliest message we now hold (either retained or fresh).
+      const earliest = data.messages[0] ?? null;
+      if (earliest && (!earliestRef.current || earliest.created_at < earliestRef.current.created_at)) {
+        earliestRef.current = earliest;
+      }
       setLoadError(null);
       // Server-side in-flight marker: a freshly-loaded page (e.g.
       // after refresh) should show the "Señor Doco is replying…"
