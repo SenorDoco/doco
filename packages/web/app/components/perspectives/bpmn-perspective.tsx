@@ -355,7 +355,6 @@ export function BpmnPerspective({
       bpmnRounded: BpmnRoundedNode,
       bpmnTask: BpmnTaskNode,
       bpmnMilestone: BpmnMilestoneNode,
-      bpmnBadgeOverlay: BpmnBadgeOverlayNode,
     }),
     [],
   );
@@ -423,16 +422,6 @@ export function BpmnPerspective({
         const laneData = (node.data as { lane?: BpmnLane }).lane;
         if (laneData) {
           const referenceNumber = referenceNumberByEntityId.get(laneData.id);
-          if (!referenceNumber) return node;
-          return { ...node, data: { ...node.data, referenceNumber } };
-        }
-        // Badge-overlay nodes carry the original neuron id with the
-        // `badge:` prefix. Strip the prefix to look up the reference
-        // number from the same map the card uses, so both card and
-        // overlay agree on the #N to render.
-        if (node.type === "bpmnBadgeOverlay") {
-          const neuronId = node.id.startsWith("badge:") ? node.id.slice("badge:".length) : node.id;
-          const referenceNumber = referenceNumberByEntityId.get(neuronId);
           if (!referenceNumber) return node;
           return { ...node, data: { ...node.data, referenceNumber } };
         }
@@ -1021,35 +1010,6 @@ function layOutBpmn(
         initialHeight: size.height,
         style: { width: size.width, height: size.height, zIndex: 1, opacity: nodeOpacity },
       });
-      // Badge overlay node — a transparent twin emitted with a much
-      // higher zIndex so its `#N` reference badge (top) and
-      // type/lifecycle pills (bottom) paint above EVERY card body in
-      // the canvas. Without this, two cards that share screen space
-      // hide each other's badges because each card lives in its own
-      // CSS stacking context (React Flow wraps every node in a
-      // `transform: translate(...)` div). The overlay sits at the same
-      // canvas coordinates and has `pointerEvents: none` so clicks
-      // pass through to the underlying card.
-      flowNodes.push({
-        id: badgeOverlayNodeId(node.id),
-        type: "bpmnBadgeOverlay",
-        position: { x, y },
-        parentId: laneNodeId(node.laneId),
-        extent: "parent",
-        data: { node },
-        draggable: false,
-        selectable: false,
-        connectable: false,
-        initialWidth: size.width,
-        initialHeight: size.height,
-        style: {
-          width: size.width,
-          height: size.height,
-          zIndex: 100,
-          opacity: nodeOpacity,
-          pointerEvents: "none",
-        },
-      });
     }
   }
 
@@ -1264,10 +1224,6 @@ function nodeTypeForShape(shape: BpmnShape): string {
 
 function laneNodeId(laneId: string): string {
   return `lane:${laneId}`;
-}
-
-function badgeOverlayNodeId(neuronId: string): string {
-  return `badge:${neuronId}`;
 }
 
 // Used by the outer container sizing — keeps the band-height knowledge
@@ -1496,6 +1452,7 @@ function BpmnRectangleNode({ data }: { data: BpmnNodeData }) {
         boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
       }}
     >
+      <BpmnBadgeRow data={data} />
       <ShapeLabel node={data.node} />
       {commonHandles()}
     </div>
@@ -1520,6 +1477,7 @@ function BpmnRoundedNode({ data }: { data: BpmnNodeData }) {
         boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
       }}
     >
+      <BpmnBadgeRow data={data} />
       <ShapeLabel node={data.node} />
       {commonHandles()}
     </div>
@@ -1547,6 +1505,7 @@ function BpmnTaskNode({ data }: { data: BpmnNodeData }) {
         boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
       }}
     >
+      <BpmnBadgeRow data={data} />
       <ShapeLabel node={data.node} />
       {commonHandles()}
     </div>
@@ -1577,6 +1536,7 @@ function BpmnMilestoneNode({ data }: { data: BpmnNodeData }) {
         boxSizing: "border-box",
       }}
     >
+      <BpmnBadgeRow data={data} />
       <span
         className="pointer-events-none line-clamp-2 text-center text-[10px] font-semibold uppercase tracking-wide"
         style={{ color: "#1f1f1f", letterSpacing: 0.4 }}
@@ -1607,6 +1567,7 @@ function BpmnCircleNode({ data }: { data: BpmnNodeData }) {
         justifyContent: "center",
       }}
     >
+      <BpmnBadgeRow data={data} circular />
       <div
         style={{
           width: "100%",
@@ -1646,6 +1607,7 @@ function BpmnDiamondNode({ data }: { data: BpmnNodeData }) {
         justifyContent: "center",
       }}
     >
+      <BpmnBadgeRow data={data} />
       <svg
         aria-hidden="true"
         style={{
@@ -1695,6 +1657,7 @@ function BpmnDocumentNode({ data }: { data: BpmnNodeData }) {
         justifyContent: "center",
       }}
     >
+      <BpmnBadgeRow data={data} />
       <svg
         viewBox="0 0 140 60"
         preserveAspectRatio="none"
@@ -1915,34 +1878,24 @@ function graphReferenceAttributes(data: BpmnNodeData): Record<string, string | n
 }
 
 /**
- * Badge overlay node — paired 1:1 with every neuron node. The card
- * shape (BpmnTaskNode, BpmnCircleNode, …) draws the box; this overlay
- * draws the type/lifecycle pills (bottom) and `#N` reference badge
- * (top) in a SEPARATE React Flow node with `style.zIndex: 100`, so
- * the badges paint above every card body in the canvas — including
- * cards that visually overlap the underlying neuron.
+ * Tag row floated centered over the TOP edge of a BPMN shape (type
+ * pill + lifecycle pill) and reference-number badge centered over the
+ * BOTTOM edge. Shared with the Graph perspective via
+ * `~/components/neuron-badges` so both perspectives read the same.
  *
- * Why not just bump z-index on the badges inside the card? Each
- * React Flow node lives in its own CSS stacking context (React Flow
- * wraps every node in `transform: translate(…)`, which creates one).
- * A badge with `z-index: 9999` inside one node can never paint above
- * a SIBLING node's body — it's stuck inside its own context. The fix
- * is to put the badges in their own React Flow node with a higher
- * `style.zIndex`, which Tilemaps onto z-index in the parent
- * `.react-flow__nodes` container — so the overlay's badges land
- * above every zIndex-1 card in the canvas.
- *
- * `pointerEvents: none` on the wrapping React Flow node style lets
- * clicks fall through to the underlying card.
+ * `circular` is preserved as a no-op anchor hint — the new layout is
+ * already top-center for every shape, so circles don't need a special
+ * anchor — but kept on the prop so any caller that still passes it
+ * doesn't break.
  */
-function BpmnBadgeOverlayNode({ data }: { data: BpmnNodeData }) {
+function BpmnBadgeRow({ data }: { data: BpmnNodeData; circular?: boolean }) {
   return (
-    <div style={{ width: "100%", height: "100%", position: "relative" }}>
+    <>
       <NodeBadgeRow entityType={data.node.entity_type} lifecycle={data.node.lifecycle} />
       <ReferenceNumberBadge
         referenceNumber={data.referenceNumber}
         referenceLabel={data.node.name ?? data.node.id}
       />
-    </div>
+    </>
   );
 }
