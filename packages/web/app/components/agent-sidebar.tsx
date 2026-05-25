@@ -409,8 +409,13 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
   // Publish the rail's current width as a CSS variable so floating
   // overlays (the neuron-detail dialog, etc.) can avoid covering it on
   // small screens. Three widths now: collapsed (32), default
-  // expanded (320), and Show-Thinking expanded (640).
-  const railWidth = collapsed ? RAIL_COLLAPSED : showThinking ? RAIL_THINKING : RAIL_DEFAULT;
+  // expanded (320), and Show-Thinking expanded (640). Thinking is a
+  // chat-only feature so the rail narrows back to 320 whenever the
+  // user is in the list view, even if the toggle is on; flipping
+  // back to a chat restores the wider rail without the user having
+  // to toggle anything.
+  const thinkingActive = showThinking && view === "chat";
+  const railWidth = collapsed ? RAIL_COLLAPSED : thinkingActive ? RAIL_THINKING : RAIL_DEFAULT;
   useEffect(() => {
     if (typeof document === "undefined") return;
     document.documentElement.style.setProperty("--senor-doco-rail-width", railWidth);
@@ -1461,21 +1466,23 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
           Señor Doco
         </div>
         <div className="flex items-center gap-1.5">
-          <button
-            type="button"
-            onClick={toggleShowThinking}
-            aria-pressed={showThinking}
-            aria-label={showThinking ? "Hide thinking column" : "Show thinking column"}
-            title={showThinking ? "Hide thinking column" : "Show thinking column"}
-            className={cn(
-              "rounded-md border border-border px-2 py-0.5 text-[11px]",
-              showThinking
-                ? "neu-pressed bg-input text-foreground"
-                : "neu-button text-muted-foreground hover:bg-input hover:text-foreground",
-            )}
-          >
-            {showThinking ? "Hide thinking" : "Show thinking"}
-          </button>
+          {view === "chat" ? (
+            <button
+              type="button"
+              onClick={toggleShowThinking}
+              aria-pressed={showThinking}
+              aria-label={showThinking ? "Hide thinking column" : "Show thinking column"}
+              title={showThinking ? "Hide thinking column" : "Show thinking column"}
+              className={cn(
+                "rounded-md border border-border px-2 py-0.5 text-[11px]",
+                showThinking
+                  ? "neu-pressed bg-input text-foreground"
+                  : "neu-button text-muted-foreground hover:bg-input hover:text-foreground",
+              )}
+            >
+              {showThinking ? "Hide thinking" : "Show thinking"}
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={() => setCollapsedPersistent(true)}
