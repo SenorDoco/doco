@@ -410,8 +410,6 @@ function OverviewFlowNode({ data }: { data: OverviewNodeData }) {
           style={HIDDEN_HANDLE_STYLE}
           isConnectable={false}
         />
-        <NodeBadgeRow entityType={data.node.entity_type} lifecycle={lifecycle} />
-        <ReferenceNumberBadge referenceNumber={data.referenceNumber} referenceLabel={title} />
         <div className="flex items-center gap-2">
           <NeuronTypeIcon entityType={data.node.entity_type} className="!h-4 !w-4 shrink-0" />
           <span className="line-clamp-2 min-w-0 flex-1 font-mono text-xs font-semibold leading-snug text-foreground">
