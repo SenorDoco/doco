@@ -372,7 +372,14 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
   // WhatsApp-style default — when nothing's open, the user lands on
   // the thread list. Picking a thread switches into chat view; the
   // back button in the chat header returns here.
-  const [view, setView] = useState<"chat" | "list">("list");
+  //
+  // If the sticky `ACTIVE_CONV_KEY` is already in localStorage (the
+  // user was last in a thread), default to chat view so navigation
+  // or remounts don't bounce them back to the list. The list is the
+  // "nothing open" fallback, not the home page.
+  const [view, setView] = useState<"chat" | "list">(() =>
+    readStringFlag(ACTIVE_CONV_KEY) ? "chat" : "list",
+  );
   const [conversations, setConversations] = useState<ConversationListItem[]>([]);
   const [conversationsLoading, setConversationsLoading] = useState(false);
   const [conversationsError, setConversationsError] = useState<string | null>(null);
@@ -479,6 +486,15 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
   // scroll handler closes over stale `messages`) always page from the
   // true top of the loaded window.
   const earliestRef = useRef<ChatMessage | null>(null);
+
+  // Mirror of `inputText.trim().length > 0`, kept in a ref so callbacks
+  // that read it don't have to depend on (and re-bind every keystroke
+  // on) the `inputText` state. Used by `maybeFollowToolToNeuron` to
+  // skip auto-focus while the user has unsent text in the composer.
+  const composerHasTextRef = useRef(false);
+  useEffect(() => {
+    composerHasTextRef.current = inputText.trim().length > 0;
+  }, [inputText]);
 
   const reload = useCallback(async () => {
     try {
@@ -1079,9 +1095,14 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
   // see what Señor Doco is doing in real time. No-op when the user
   // is already at the target URL — React Router would treat the
   // navigate as a no-op anyway, but skipping avoids touching history.
-  // We honor the agent's intent over the user's idle position, but
-  // skip while the user is typing in the composer (their input has
-  // focus) so we don't yank the cursor mid-thought.
+  //
+  // Original guard checked `document.activeElement.tagName ===
+  // "TEXTAREA"` to "skip mid-keystroke", but that fires for the much
+  // more common case: the user just hit Send and is passively
+  // waiting (their composer still has focus). The real intent was
+  // "don't yank them while they have unsent text to type", so guard
+  // on the composer's *content* instead — handed in via a ref so the
+  // callback doesn't re-bind on every keystroke.
   const maybeFollowToolToNeuron = useCallback(
     (toolName: string, input: unknown) => {
       if (toolName !== "doco_api") return;
@@ -1100,17 +1121,10 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
       const target = `/${handle}/${entityType}/${id}`;
       const currentPath = location.pathname;
       if (currentPath === target) return;
-      // Don't grab focus mid-keystroke. The composer textarea is the
-      // common case; checking document.activeElement covers it.
-      if (typeof document !== "undefined") {
-        const active = document.activeElement;
-        if (
-          active instanceof HTMLElement &&
-          (active.tagName === "TEXTAREA" || active.tagName === "INPUT")
-        ) {
-          return;
-        }
-      }
+      // Don't interrupt active composition — but only when there's
+      // actually something half-written. Empty composer = user is
+      // waiting; navigate.
+      if (composerHasTextRef.current) return;
       navigate(target);
     },
     [navigate, location.pathname],
@@ -1991,17 +2005,17 @@ function AttachmentsRow({
       {docos.map((d) => (
         <span
           key={`doco-${d.handle}`}
-          className="group inline-flex items-center gap-0.5 rounded-full border border-border bg-input/60 pl-1.5 pr-0.5 text-[10px] text-muted-foreground hover:bg-primary/20 hover:text-foreground"
+          className="inline-flex h-5 items-center rounded-full border border-border bg-input/60 pl-2 pr-0.5 text-[10px] leading-none text-muted-foreground hover:bg-primary/20 hover:text-foreground"
           title={d.name ?? d.handle}
         >
-          <Link to={`/${d.handle}`} className="py-px">
+          <Link to={`/${d.handle}`} className="leading-none">
             {d.name ?? d.handle}
           </Link>
           <button
             type="button"
             onClick={() => onDetachDoco(d.handle)}
             aria-label={`Remove ${d.name ?? d.handle}`}
-            className="ml-0.5 rounded-full px-1 text-muted-foreground hover:bg-destructive/20 hover:text-destructive"
+            className="ml-1 inline-flex h-3.5 w-3.5 items-center justify-center rounded-full text-muted-foreground hover:bg-destructive/20 hover:text-destructive"
           >
             ×
           </button>
@@ -2010,17 +2024,17 @@ function AttachmentsRow({
       {orgs.map((o) => (
         <span
           key={`org-${o.handle}`}
-          className="group inline-flex items-center gap-0.5 rounded-full border border-border bg-input/60 pl-1.5 pr-0.5 text-[10px] text-muted-foreground hover:bg-primary/20 hover:text-foreground"
+          className="inline-flex h-5 items-center rounded-full border border-border bg-input/60 pl-2 pr-0.5 text-[10px] leading-none text-muted-foreground hover:bg-primary/20 hover:text-foreground"
           title={o.name ?? o.handle}
         >
-          <Link to={`/orgs/${o.handle}`} className="py-px">
+          <Link to={`/orgs/${o.handle}`} className="leading-none">
             @{o.name ?? o.handle}
           </Link>
           <button
             type="button"
             onClick={() => onDetachOrg(o.handle)}
             aria-label={`Remove ${o.name ?? o.handle}`}
-            className="ml-0.5 rounded-full px-1 text-muted-foreground hover:bg-destructive/20 hover:text-destructive"
+            className="ml-1 inline-flex h-3.5 w-3.5 items-center justify-center rounded-full text-muted-foreground hover:bg-destructive/20 hover:text-destructive"
           >
             ×
           </button>
@@ -2032,7 +2046,7 @@ function AttachmentsRow({
           onClick={() => setPickerOpen((p) => !p)}
           aria-label="Attach a Doco or Org"
           aria-expanded={pickerOpen}
-          className="rounded-full border border-border bg-input/40 px-1.5 py-px text-[10px] text-muted-foreground hover:bg-input hover:text-foreground"
+          className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-border bg-input/40 text-[10px] leading-none text-muted-foreground hover:bg-input hover:text-foreground"
         >
           +
         </button>
