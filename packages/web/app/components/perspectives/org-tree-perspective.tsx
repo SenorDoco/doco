@@ -32,6 +32,7 @@ import {
   hasFocalNode,
   opacityForDepth,
   opacityForEdge,
+  withFocalAwareness,
 } from "~/lib/graph-depth";
 import type { OrgTreeNode } from "~/lib/org-tree-perspective.server";
 import "@xyflow/react/dist/style.css";
@@ -196,7 +197,7 @@ function layoutOrgTree(
 // Sized via inline style (Tailwind's JIT can't see template-literal
 // class names).
 function OrgTreeCard({ data }: NodeProps<Node<OrgTreeNodeData>>) {
-  const { org, isCenter, opacity } = data;
+  const { org, isCenter } = data;
   const kindIcon = org.type === "agent" ? "🤖" : org.type === "person" ? "👤" : null;
   const kindLabel = org.type === "agent" ? "agent" : org.type === "person" ? "person" : null;
   return (
@@ -204,7 +205,7 @@ function OrgTreeCard({ data }: NodeProps<Node<OrgTreeNodeData>>) {
       className={`flex flex-col justify-between rounded-md border bg-card px-3 py-2 shadow-sm transition ${
         isCenter ? "border-2 border-foreground" : "border-border"
       }`}
-      style={{ width: NODE_W, height: NODE_H, opacity }}
+      style={{ width: NODE_W, height: NODE_H }}
     >
       <Handle
         type="target"
@@ -245,7 +246,9 @@ function OrgTreeCard({ data }: NodeProps<Node<OrgTreeNodeData>>) {
   );
 }
 
-const nodeTypes = { orgTreeNode: OrgTreeCard };
+// Wrap via withFocalAwareness so the engine enforces the
+// data.opacity contract and applies depth-based fading uniformly.
+const nodeTypes = { orgTreeNode: withFocalAwareness(OrgTreeCard) };
 
 function OrgTreeInner({
   nodes,

@@ -523,3 +523,44 @@ button[class*="bg-primary"]:active {
     transition: none;
   }
 }
+
+/* Morphic styling for React Flow's bottom-right MiniMap and the
+   top-right zoom-controls stack. Both render at fixed positions by
+   the perspective-canvas-overlays helper, so the visual treatment is
+   defined once here and applies to every perspective.
+
+   The look matches `.neu-button` / `.neu-surface` — soft raised
+   shadow on the panel + per-button hover lift — so the floating
+   panels read as part of the same neumorphic system as the rest of
+   the chrome (perspective tabs, primary CTAs). */
+.react-flow__controls,
+.react-flow__minimap {
+  background: var(--color-card);
+  border: 1px solid var(--neu-border);
+  border-radius: var(--radius);
+  box-shadow: 5px 5px 12px var(--neu-shadow-soft), -5px -5px 12px var(--neu-highlight);
+  overflow: hidden;
+}
+.react-flow__controls-button {
+  background: var(--color-card);
+  border: none;
+  border-bottom: 1px solid color-mix(in oklch, var(--neu-border) 60%, transparent);
+  color: var(--color-foreground);
+  transition: background-color 120ms ease, color 120ms ease;
+}
+.react-flow__controls-button:last-child {
+  border-bottom: none;
+}
+.react-flow__controls-button:hover {
+  background: color-mix(in oklch, var(--color-card) 90%, var(--color-foreground));
+  color: var(--color-primary);
+}
+.react-flow__controls-button:active {
+  background: color-mix(in oklch, var(--color-card) 80%, var(--color-foreground));
+  box-shadow: var(--neu-pressed);
+}
+.react-flow__controls-button svg {
+  fill: currentColor;
+  max-width: 14px;
+  max-height: 14px;
+}
