@@ -196,7 +196,7 @@ function PerspectiveSettingsMenu({
         // alignment matches pixel-for-pixel in every browser.
         className="relative -ml-px inline-flex cursor-pointer items-center gap-1.5 rounded-tr-md border border-border border-b-transparent bg-input/40 px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-input/60 hover:text-foreground"
       >
-        <ChevronDown className="h-4 w-4" />
+        <ChevronDown className="h-3 w-3" />
       </a>
       {open ? (
         <div
