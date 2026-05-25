@@ -18,7 +18,6 @@
 // lane vertical offset.
 
 import { Handle, MarkerType, type MiniMapNodeProps, Position } from "@xyflow/react";
-import { Maximize2, Minimize2 } from "lucide-react";
 import {
   type CSSProperties,
   type ComponentType,
@@ -47,7 +46,7 @@ import {
   clearGraphReferences,
   publishGraphReferences,
 } from "~/lib/graph-references";
-import { lifecycleColor, lifecycleLabel } from "~/lib/neuron-colors";
+import { lifecycleColor } from "~/lib/neuron-colors";
 import { highestRanked, pageRank } from "~/lib/pagerank";
 import "@xyflow/react/dist/style.css";
 
@@ -101,23 +100,12 @@ interface BpmnPerspectiveProps {
    */
   visibleLifecycles?: Set<string>;
   /**
-   * Lifecycles present in the underlying data. Drives which
-   * checkboxes appear in the in-canvas filter overlay. Required when
-   * `visibleLifecycles` is provided so the overlay can render the
-   * controls.
-   */
-  availableLifecycles?: Iterable<string>;
-  /** Called when the user toggles a lifecycle stage. */
-  onLifecycleToggle?: (lifecycle: string) => void;
-  /**
    * When set, the BPMN canvas fades non-neighbours of this neuron
    * based on BFS depth (1st-degree solid, 2nd 75%, 3rd 50%, 4+ 25%).
    * Edges fade with their deepest endpoint. When null/undefined,
    * every node and edge renders at full opacity.
    */
   centerId?: string | null;
-  isFullscreen?: boolean;
-  onToggleFullscreen?: () => void;
 }
 
 const LANE_HEIGHT = 140;
@@ -205,11 +193,7 @@ export function BpmnPerspective({
   onNeuronClick,
   onCenterChange,
   visibleLifecycles,
-  availableLifecycles,
-  onLifecycleToggle,
   centerId,
-  isFullscreen,
-  onToggleFullscreen,
 }: BpmnPerspectiveProps) {
   // ── Personalized PageRank re-pool ─────────────────────────────────
   // The server picked each multi-intent neuron's primary intent using
@@ -594,17 +578,7 @@ export function BpmnPerspective({
           proOptions={{ hideAttribution: true }}
         >
           <Flow.Background gap={24} size={1} />
-          <Flow.Controls position="top-right" showInteractive={false} style={{ top: 44 }}>
-            {onToggleFullscreen ? (
-              <Flow.ControlButton
-                onClick={onToggleFullscreen}
-                title={isFullscreen ? "Exit full screen" : "Enter full screen"}
-                aria-label={isFullscreen ? "Exit full screen" : "Enter full screen"}
-              >
-                {isFullscreen ? <Minimize2 /> : <Maximize2 />}
-              </Flow.ControlButton>
-            ) : null}
-          </Flow.Controls>
+          <Flow.Controls position="top-right" showInteractive={false} style={{ top: 44 }} />
           <Flow.MiniMap
             pannable
             zoomable
@@ -700,40 +674,9 @@ export function BpmnPerspective({
           })}
         </div>
       ) : null}
-      {/* Lifecycle filter overlay — lives inside the BPMN canvas so the
-          aside can fill its container vertically (no row above or below
-          the perspective eating space). Only renders when the parent
-          provides controlled lifecycle state + the toggle callback. */}
-      {visibleLifecycles && availableLifecycles && onLifecycleToggle && Flow ? (
-        <div className="pointer-events-none absolute bottom-3 left-3 z-10">
-          <div className="pointer-events-auto flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border border-border bg-card/90 px-2 py-1 text-xs shadow-sm backdrop-blur">
-            <span className="text-muted-foreground">Life cycle:</span>
-            {Array.from(availableLifecycles).map((lifecycle) => {
-              const checked = visibleLifecycles.has(lifecycle);
-              const color = lifecycleColor(lifecycle);
-              const label = lifecycleLabel(lifecycle);
-              return (
-                <label
-                  key={lifecycle}
-                  className="inline-flex cursor-pointer select-none items-center gap-1"
-                  title={label}
-                >
-                  <input
-                    type="checkbox"
-                    checked={checked}
-                    onChange={() => onLifecycleToggle(lifecycle)}
-                    className="h-3 w-3"
-                    style={{ accentColor: color }}
-                  />
-                  <span className="capitalize" style={{ color }}>
-                    {label}
-                  </span>
-                </label>
-              );
-            })}
-          </div>
-        </div>
-      ) : null}
+      {/* Lifecycle filter + Reorder-automatically + Fullscreen toggle
+          all live on PerspectiveFrame at fixed positions. BPMN just
+          receives `visibleLifecycles` and filters its data. */}
     </div>
   );
 }
