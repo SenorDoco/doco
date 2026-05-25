@@ -150,6 +150,12 @@ const NODE_TYPE_ORDER = new Map(
 const OVERVIEW_NODE_WIDTH = 224;
 const OVERVIEW_NODE_HEIGHT = 91;
 const DETAIL_ZOOM = 0.95;
+// Zoom level at which #N reference-number badges start rendering on
+// neuron cards (and showing up in the sidebar references list). Stays
+// in sync with the BPMN perspective's BPMN_REFERENCE_ZOOM so the same
+// neuron gains/loses its #N at the same zoom regardless of which
+// perspective you're in.
+const OVERVIEW_REFERENCE_ZOOM = 0.35;
 const MAX_DETAIL_FETCH = 80;
 const GRAPH_MIN_ZOOM = 0.03;
 const GRAPH_MAX_ZOOM = 2.5;
@@ -422,6 +428,12 @@ function OverviewFlowNode({ data }: { data: OverviewNodeData }) {
           isConnectable={false}
         />
       </div>
+      {/* Badges live OUTSIDE the bordered inner card div so they center
+          against the outer wrapper's geometric box, not the inner
+          padding-box (which is shifted right by the 6px left border —
+          centers the badge ~3px right of the card's true middle). */}
+      <NodeBadgeRow entityType={data.node.entity_type} lifecycle={lifecycle} />
+      <ReferenceNumberBadge referenceNumber={data.referenceNumber} referenceLabel={title} />
     </div>
   );
 }
@@ -555,7 +567,7 @@ export function OverviewGraph({
   }, [visibleNodes, positions, viewport, size, details]);
 
   const graphReferences = useMemo<GraphReferenceItem[]>(() => {
-    if (viewport.zoom < DETAIL_ZOOM) return [];
+    if (viewport.zoom < OVERVIEW_REFERENCE_ZOOM) return [];
     return visibleNodes
       .flatMap((node) => {
         const detail = details.get(node.id);
