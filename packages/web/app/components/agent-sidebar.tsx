@@ -909,7 +909,7 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
       <div className="shrink-0 border-b border-border/70 px-3 py-1.5 text-[10px] leading-snug text-muted-foreground">
         Señor Doco runs on Claude Haiku 4.5 inside Doco. Want to collaborate with your own agent?{" "}
         <Link to="/api-keys" className="font-semibold text-foreground hover:text-primary">
-          Mint an API key
+          Invite it
         </Link>
         .
       </div>
