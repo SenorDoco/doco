@@ -17,7 +17,6 @@ import {
   type Edge,
   Handle,
   MarkerType,
-  MiniMap,
   type Node,
   type NodeProps,
   Position,
@@ -27,6 +26,13 @@ import {
 } from "@xyflow/react";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { LifecycleBadge } from "~/components/neuron-badges";
+import { StandardControls, StandardMiniMap } from "~/components/perspective-canvas-overlays";
+import {
+  computeDepthFromCenter,
+  hasFocalNode,
+  opacityForDepth,
+  opacityForEdge,
+} from "~/lib/graph-depth";
 import type { OrgTreeNode } from "~/lib/org-tree-perspective.server";
 import "@xyflow/react/dist/style.css";
 
@@ -47,6 +53,10 @@ interface OrgTreePerspectiveProps {
 interface OrgTreeNodeData extends Record<string, unknown> {
   org: OrgTreeNode;
   isCenter: boolean;
+  // Depth-based opacity from the focal node (matches BPMN + Graph).
+  // 1 when no focal node is set; otherwise: focal + 1st degree = 1,
+  // 2nd = 0.75, 3rd = 0.5, 4+ / unreachable = 0.25.
+  opacity: number;
 }
 
 // Tree-layout entry point. Returns positioned React Flow nodes + edges
@@ -124,13 +134,27 @@ function layoutOrgTree(
     rootX += (subtreeWidth.get(rootId) ?? NODE_W) + H_GAP;
   }
 
+  // Depth-aware opacity — same contract every perspective uses.
+  // BFS over the reports_to relationships (undirected, like the other
+  // perspectives' graph-depth helper). Then opacityForDepth picks the
+  // ramp value per node, opacityForEdge per edge.
+  const orgLinks = rawNodes
+    .filter((n) => n.reports_to && byId.has(n.reports_to) && n.reports_to !== n.id)
+    .map((n) => ({ source: n.reports_to as string, target: n.id }));
+  const depthByNode = computeDepthFromCenter(rawNodes, orgLinks, centerId);
+  const focalActive = hasFocalNode(centerId, rawNodes);
+
   const rfNodes: Node<OrgTreeNodeData>[] = rawNodes
     .filter((n) => positions.has(n.id))
     .map((n) => ({
       id: n.id,
       type: "orgTreeNode",
       position: positions.get(n.id) as { x: number; y: number },
-      data: { org: n, isCenter: n.id === centerId },
+      data: {
+        org: n,
+        isCenter: n.id === centerId,
+        opacity: focalActive ? opacityForDepth(depthByNode.get(n.id)) : 1,
+      },
       draggable: false,
       selectable: false,
     }));
@@ -140,15 +164,20 @@ function layoutOrgTree(
   const edgeStroke = "var(--color-muted-foreground)";
   const rfEdges: Edge[] = rawNodes
     .filter((n) => n.reports_to && byId.has(n.reports_to) && n.reports_to !== n.id)
-    .map((n) => ({
-      id: `${n.id}->${n.reports_to}`,
-      source: n.reports_to as string,
-      target: n.id,
-      type: "smoothstep",
-      animated: false,
-      style: { stroke: edgeStroke, strokeWidth: 1.5, opacity: 0.6 },
-      markerEnd: { type: MarkerType.ArrowClosed, color: edgeStroke },
-    }));
+    .map((n) => {
+      const edgeOpacity = focalActive
+        ? opacityForEdge(depthByNode.get(n.reports_to as string), depthByNode.get(n.id))
+        : 0.6;
+      return {
+        id: `${n.id}->${n.reports_to}`,
+        source: n.reports_to as string,
+        target: n.id,
+        type: "smoothstep",
+        animated: false,
+        style: { stroke: edgeStroke, strokeWidth: 1.5, opacity: edgeOpacity },
+        markerEnd: { type: MarkerType.ArrowClosed, color: edgeStroke },
+      };
+    });
 
   return { nodes: rfNodes, edges: rfEdges };
 }
@@ -166,15 +195,14 @@ function layoutOrgTree(
 // Sized via inline style (Tailwind's JIT can't see template-literal
 // class names).
 function OrgTreeCard({ data }: NodeProps<Node<OrgTreeNodeData>>) {
-  const { org, isCenter } = data;
-  const dimmed = org.lifecycle !== "active";
+  const { org, isCenter, opacity } = data;
   const kindLabel = org.type === "agent" ? "Agent" : org.type === "person" ? "Person" : null;
   return (
     <div
       className={`flex flex-col justify-between rounded-md border bg-card px-3 py-2 shadow-sm transition ${
         isCenter ? "border-2 border-foreground" : "border-border"
-      } ${dimmed ? "opacity-60" : ""}`}
-      style={{ width: NODE_W, height: NODE_H }}
+      }`}
+      style={{ width: NODE_W, height: NODE_H, opacity }}
     >
       <Handle
         type="target"
@@ -286,7 +314,8 @@ function OrgTreeInner({
         proOptions={{ hideAttribution: true }}
       >
         <Background gap={20} size={1} />
-        <MiniMap pannable zoomable className="!bg-muted/40" />
+        <StandardControls fitViewOptions={{ padding: 0.2 }} />
+        <StandardMiniMap />
       </ReactFlow>
       {/* Fullscreen toggle lives on PerspectiveFrame. */}
     </div>

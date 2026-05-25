@@ -34,6 +34,7 @@ import {
   TypeBadge,
 } from "~/components/neuron-badges";
 import type { OverviewGraphLink } from "~/components/overview-graph";
+import { StandardControls, StandardMiniMap } from "~/components/perspective-canvas-overlays";
 import type { BpmnLane, BpmnNode, BpmnPool, BpmnShape } from "~/lib/bpmn-perspective.server";
 import {
   computeDepthFromCenter,
@@ -578,22 +579,8 @@ export function BpmnPerspective({
           proOptions={{ hideAttribution: true }}
         >
           <Flow.Background gap={24} size={1} />
-          <Flow.Controls position="top-right" showInteractive={false} style={{ top: 44 }} />
-          <Flow.MiniMap
-            pannable
-            zoomable
-            maskColor="rgba(0, 0, 0, 0.35)"
-            nodeComponent={MiniMapNode}
-            nodeStrokeWidth={1}
-            style={{
-              width: 140,
-              height: 100,
-              background: "var(--color-background)",
-              border: "1px solid var(--color-border)",
-              borderRadius: "var(--radius)",
-              overflow: "hidden",
-            }}
-          />
+          <StandardControls />
+          <StandardMiniMap nodeComponent={MiniMapNode} />
         </Flow.ReactFlow>
       ) : (
         <div className="flex h-full w-full items-center justify-center text-xs text-muted-foreground">

@@ -3,6 +3,7 @@ import { type ComponentType, type ReactNode, useEffect, useMemo, useRef, useStat
 import { useNavigate } from "react-router";
 import { NodeBadgeRow, ReferenceNumberBadge } from "~/components/neuron-badges";
 import { NeuronTypeIcon } from "~/components/neuron-type-icon";
+import { StandardControls, StandardMiniMap } from "~/components/perspective-canvas-overlays";
 import {
   FAR_DEPTH,
   computeDepthFromCenter,
@@ -746,30 +747,8 @@ export function OverviewGraph({
             proOptions={{ hideAttribution: true }}
           >
             <Flow.Background gap={20} size={1} />
-            <Flow.Controls
-              position="top-right"
-              showInteractive={false}
-              fitViewOptions={GRAPH_FIT_VIEW_OPTIONS}
-              // Search lives at top-right now; push the zoom controls
-              // down to clear it. Fullscreen toggle lives on
-              // PerspectiveFrame at top-right (z-20).
-              style={{ top: 44 }}
-            />
-            <Flow.MiniMap
-              pannable
-              zoomable
-              maskColor="rgba(0, 0, 0, 0.35)"
-              nodeComponent={MiniMapNode}
-              nodeStrokeWidth={1}
-              style={{
-                width: 120,
-                height: 90,
-                background: "var(--color-background)",
-                border: "1px solid var(--color-border)",
-                borderRadius: "var(--radius)",
-                overflow: "hidden",
-              }}
-            />
+            <StandardControls fitViewOptions={GRAPH_FIT_VIEW_OPTIONS} />
+            <StandardMiniMap nodeComponent={MiniMapNode} />
           </Flow.ReactFlow>
         ) : (
           <div className="flex h-full w-full items-center justify-center text-xs text-muted-foreground">
