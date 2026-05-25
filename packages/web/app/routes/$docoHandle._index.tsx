@@ -34,6 +34,7 @@ import {
 import { PerspectiveTabs } from "~/components/perspective-tabs";
 import { BpmnPerspective } from "~/components/perspectives/bpmn-perspective";
 import { ListPerspective } from "~/components/perspectives/list-perspective";
+import { OrgTreePerspective } from "~/components/perspectives/org-tree-perspective";
 import { SearchBoxWithHistory } from "~/components/search-box-with-history";
 import { SiteHeader } from "~/components/site-header";
 import { loadBpmnGraph } from "~/lib/bpmn-perspective.server";
@@ -48,6 +49,7 @@ import {
   isGraphNeuronType,
   loadNeuronDialogDetail,
 } from "~/lib/neuron-detail.server";
+import { loadOrgTreeData } from "~/lib/org-tree-perspective.server";
 import { computePageRank } from "~/lib/page-rank";
 import {
   ensureDefaultsAttached,
@@ -293,6 +295,13 @@ export async function loader({
         ? await loadBpmnGraph(c, ctx.meta.docoId, { handle })
         : null;
 
+    // Org-tree data is only needed when that perspective is active —
+    // skip the principals fetch otherwise.
+    const orgTreeData =
+      activePerspective?.kind === "org-tree"
+        ? await loadOrgTreeData(c, ctx.meta.docoId, handle)
+        : null;
+
     // Policy count — guidance + neuron-authoring policies
     // attached to this Doco.
     const policyRow = (
@@ -335,6 +344,7 @@ export async function loader({
       canAdminPerspectives,
       pageRanks,
       bpmnGraph,
+      orgTreeData,
       selectedNeuron,
       graphAutoReorder,
     };
@@ -444,6 +454,7 @@ export default function DocoHome({
     canAdminPerspectives,
     pageRanks,
     bpmnGraph,
+    orgTreeData,
     selectedNeuron,
     graphAutoReorder: initialAutoReorder,
   } = loaderData;
@@ -811,6 +822,20 @@ export default function DocoHome({
                   nodes={graphState.nodes}
                   pageRanks={pageRanksMap}
                   visibleLifecycles={visibleLifecycles}
+                />
+              ) : activePerspectiveKind === "org-tree" && orgTreeData ? (
+                <OrgTreePerspective
+                  nodes={orgTreeData.nodes}
+                  visibleLifecycles={visibleLifecycles}
+                  availableLifecycles={availableLifecycles}
+                  onLifecycleToggle={toggleLifecycle}
+                  centerId={graphState.centerId}
+                  onCenterChange={(id) => setGraphState((prev) => graphWithCenter(prev, id))}
+                  isFullscreen={isPerspectiveFullscreen}
+                  onToggleFullscreen={togglePerspectiveFullscreen}
+                  onNeuronClick={(node) => {
+                    void loadNeuronDialog("principal", node.id, node.href);
+                  }}
                 />
               ) : activePerspectiveKind === "bpmn" && bpmnGraph ? (
                 <BpmnPerspective
