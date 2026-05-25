@@ -223,7 +223,7 @@ function overviewRowsSqlMulti(): string {
   const principalLeg = `SELECT id,
                               'principal'::text AS entity_type,
                               name,
-                              COALESCE(summary, name) AS label,
+                              name AS label,
                               COALESCE(lifecycle, 'active') AS lifecycle,
                               created_at::text AS created_at,
                               doco_id AS doco_id
