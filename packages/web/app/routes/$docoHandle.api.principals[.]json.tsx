@@ -35,7 +35,12 @@ function principalLine(
   return `[🔮 Doco] ${emoji} Principal ${verb}: [${name}](${url})`;
 }
 
-const DEFAULT_SUMMARIES: Record<string, string> = {
+// Default body_md prose for the four reserved role-principal names.
+// The POST route writes this when the caller supplies no body_md so a
+// freshly-seeded role principal has *some* explainer text; an explicit
+// body_md from the caller always wins. Migration 037 dropped the
+// `summary` column on Principal — these strings used to seed it.
+const DEFAULT_BODY_MD: Record<string, string> = {
   user: "Role principal for any Doco user, whether person or AI agent.",
   human: "Role principal for the person-only subset of users.",
   "doco-host": "System principal for the Doco host service.",
@@ -71,7 +76,6 @@ export async function action({
 
   const body = (await request.json().catch(() => ({}))) as {
     name?: string;
-    summary?: string;
     body_md?: string;
     reports_to?: string;
   };
@@ -126,21 +130,19 @@ export async function action({
 
   const id = makeEntityId("principal", generateUlid()) as EntityId<"principal">;
   const now = nowIso();
-  const summary = body.summary?.trim() || DEFAULT_SUMMARIES[name] || name;
-  const bodyMd = body.body_md?.trim() ?? "";
+  // Migration 037 dropped `summary` from Principal — `body_md` is now
+  // the only narrative field. When no body is supplied we fall back to
+  // the reserved-role explainer (for user/human/doco-host/github) so a
+  // role principal still has *some* prose; otherwise it stays empty.
+  const bodyMd = body.body_md?.trim() || DEFAULT_BODY_MD[name] || "";
   // `body_md` is included in the candidate so the authoring-policy
   // evaluator sees it. The org-chart template's "person-vs-agent must
   // be declared in body_md" probabilistic gate reads the candidate's
-  // body_md field — leaving it off the candidate (as the first cut of
-  // this route did) made the gate fire even when the caller supplied
-  // valid prose, blocking every Principal POST after the policy
-  // landed. PATCH wasn't affected because the PATCH handler builds
-  // the candidate by merging the existing row's body_md with the patch.
+  // body_md field.
   const raw = {
     id,
     doco_id: meta.docoId,
     neuron_type: "principal",
-    summary,
     name,
     body_md: bodyMd,
     ...(body.reports_to ? { reports_to: body.reports_to } : {}),
@@ -174,7 +176,6 @@ export async function action({
     doco_id: meta.docoId,
     entity_type: "principal",
     data: raw,
-    summary,
     body_md: bodyMd,
     lifecycle: "active",
     created_at: now,
@@ -260,7 +261,6 @@ export async function loader({
   ).filter((p) => p !== null);
   const principal_neurons = neuronRows.map((r) => ({
     id: r.id,
-    summary: r.summary ?? null,
     lifecycle: r.lifecycle ?? null,
     created_at: r.created_at ?? null,
     updated_at: r.updated_at ?? null,

@@ -9,9 +9,10 @@ import { getDocoLevelRole, loadDocoRouteForRead } from "~/lib/doco-access.server
 // Decision (decision_01KRKEPRAMM9QSSEJ2X5FHPESJ). The only identity
 // field locked in place is `name` — it's the lookup slug other
 // neurons and prose mention by hand, so changing it would silently
-// break callers. Everything else on the Record (summary, body_md,
-// reports_to, lifecycle) is editable.
-const PATCHABLE_KEYS = new Set(["body_md", "summary", "reports_to", "lifecycle"]);
+// break callers. Everything else on the Record (body_md, reports_to,
+// lifecycle) is editable. The `summary` one-liner column was dropped
+// by migration 037 — body_md carries the entire narrative now.
+const PATCHABLE_KEYS = new Set(["body_md", "reports_to", "lifecycle"]);
 
 // Mirror principalLine in /api/principals.json.tsx — wrap the name
 // in a markdown link to the principal's perspective view so the chat
@@ -29,7 +30,6 @@ function principalLine(
 
 interface PrincipalPatch {
   body_md?: string;
-  summary?: string;
   /** `null` clears the synapse (Principal becomes top-of-chain). */
   reports_to?: string | null;
   /** Only `"retired"` is accepted; the lifecycle path is one-way. */
@@ -98,7 +98,7 @@ export async function loader({
       id: existing.id,
       doco_id: existing.doco_id,
       lifecycle: existing.lifecycle,
-      summary: existing.summary,
+      body_md: existing.body_md ?? null,
       ...existing.data,
     },
   });
@@ -223,7 +223,6 @@ export async function action({
   // `undefined` (key absent from patch) leaves the existing value alone.
   const oldData = (existing.data ?? {}) as Record<string, unknown>;
   const merged: Record<string, unknown> = { ...oldData };
-  if (patch.summary !== undefined) merged.summary = patch.summary.trim();
   if (patch.reports_to === null) {
     // Remove the key entirely so `deriveSynapses` doesn't see it and
     // doesn't emit a `reports_to` synapse — promotes the Principal
@@ -238,8 +237,6 @@ export async function action({
 
   const nextBodyMd =
     patch.body_md !== undefined ? (patch.body_md ?? "") : (existing.body_md ?? undefined);
-  const nextSummary =
-    patch.summary !== undefined ? (merged.summary as string) : (existing.summary ?? undefined);
 
   // Surface `body_md` to the policy evaluator. It lives on its own
   // text column on principals (not inside the data jsonb), so the
@@ -274,7 +271,6 @@ export async function action({
     doco_id: existing.doco_id,
     entity_type: "principal",
     data: merged,
-    summary: nextSummary,
     body_md: nextBodyMd,
     lifecycle: nextLifecycle,
     created_at: existing.created_at ?? undefined,

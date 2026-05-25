@@ -130,7 +130,7 @@ async function resolveProbabilistic(
   policies: LoadedPolicy[],
   candidate: CandidateFields,
 ): Promise<Violation[]> {
-  const summaryById = new Map(policies.map((p) => [p.policy_id, p.summary]));
+  const policyById = new Map(policies.map((p) => [p.policy_id, p.policy]));
   return (
     await Promise.all(
       violations.map(async (v) => {
@@ -150,9 +150,9 @@ async function resolveProbabilistic(
         if (judgment.ok) {
           return null; // Filtered out below.
         }
-        const summary = summaryById.get(v.policy_id) ?? "";
+        const policyText = policyById.get(v.policy_id) ?? "";
         const reason = judgment.reason?.trim() || "judge rejected the candidate";
-        return { ...v, reason: summary ? `${summary} — ${reason}` : reason };
+        return { ...v, reason: policyText ? `${policyText} — ${reason}` : reason };
       }),
     )
   ).filter((v): v is Violation => v !== null);
@@ -177,8 +177,8 @@ async function loadPolicies(c: PgClient, docoId: string): Promise<LoadedPolicy[]
   // whose lifecycle column is NULL (e.g. seeded by a migration or
   // restored from backup) is silently invisible to the enforcer while
   // looking active everywhere else.
-  const r = await c.query<{ id: string; summary: string; data: Record<string, unknown> | null }>(
-    `SELECT id, summary, data
+  const r = await c.query<{ id: string; policy: string; data: Record<string, unknown> | null }>(
+    `SELECT id, policy, data
        FROM neuron_authoring_policies
        WHERE doco_id = $1 AND COALESCE(lifecycle, 'active') = 'active'`,
     [docoId],
@@ -203,7 +203,7 @@ async function loadPolicies(c: PgClient, docoId: string): Promise<LoadedPolicy[]
     const lifecycleFilter = yaml.fires_when_neuron_lifecycle;
     out.push({
       policy_id: row.id,
-      summary: row.summary ?? "",
+      policy: row.policy ?? "",
       predicate: predicate as LoadedPolicy["predicate"],
       ...(onViolation === "block" || onViolation === "warn" || onViolation === "log"
         ? { on_violation: onViolation }

@@ -51,7 +51,7 @@ export async function loader({
   return withClient(async (c) => {
     const [guidance, neuronAuthoring] = await Promise.all([
       c.query<PolicyRow>(
-        `SELECT id, summary, lifecycle, body_md,
+        `SELECT id, policy, lifecycle, body_md,
                 created_at::text AS created_at,
                 updated_at::text AS updated_at
            FROM guidance_policies
@@ -60,7 +60,7 @@ export async function loader({
         [ctx.meta.docoId],
       ),
       c.query<PolicyRow>(
-        `SELECT id, summary, lifecycle, body_md,
+        `SELECT id, policy, lifecycle, body_md,
                 created_at::text AS created_at,
                 updated_at::text AS updated_at
            FROM neuron_authoring_policies

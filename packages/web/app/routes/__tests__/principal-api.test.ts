@@ -70,7 +70,6 @@ describe("principal API", () => {
     const response = await action({
       request: principalRequest({
         name: "Visitor",
-        summary: "Someone browsing the public site.",
         body_md: "Human site visitor — no Doco account required.",
       }),
       params: { docoHandle: "acme" } as never,
@@ -90,7 +89,6 @@ describe("principal API", () => {
       expect.objectContaining({
         doco_id: "doco_acme",
         entity_type: "principal",
-        summary: "Someone browsing the public site.",
         body_md: "Human site visitor — no Doco account required.",
         created_by: "collaborator_author",
         updated_by: "collaborator_author",
@@ -103,13 +101,19 @@ describe("principal API", () => {
         }),
       }),
     );
-    // The slim-down dropped display_name/description/type — confirm
-    // they no longer leak into data even when the caller sends them.
+    // The slim-down dropped display_name / description / type /
+    // summary — confirm they no longer leak into data even when the
+    // caller sends them.
     const persistedData = mocks.upsertEntity.mock.calls[0]?.[0].data as Record<string, unknown>;
     expect(persistedData).not.toHaveProperty("role_principal");
     expect(persistedData).not.toHaveProperty("display_name");
     expect(persistedData).not.toHaveProperty("description");
     expect(persistedData).not.toHaveProperty("type");
+    expect(persistedData).not.toHaveProperty("summary");
+    // upsertEntity is called WITHOUT a `summary` parameter — migration
+    // 037 dropped the column.
+    const upsertCall = mocks.upsertEntity.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(upsertCall).not.toHaveProperty("summary");
     await expect(response.json()).resolves.toMatchObject({ ok: true, name: "visitor" });
   });
 
@@ -148,16 +152,20 @@ describe("principal API", () => {
     expect(response.status).toBe(201);
     expect(mocks.upsertEntity).toHaveBeenCalledWith(
       expect.objectContaining({
-        summary: "Role principal for the person-only subset of users.",
+        // Default body_md is now the reserved-role explainer that used
+        // to seed `summary` — migration 037 removed the summary column.
+        body_md: "Role principal for the person-only subset of users.",
         data: expect.objectContaining({
           name: "human",
           role_principal: true,
+          body_md: "Role principal for the person-only subset of users.",
         }),
       }),
     );
     // Slim-down: no `type` field anymore even for reserved role names.
     const persistedData = mocks.upsertEntity.mock.calls[0]?.[0].data as Record<string, unknown>;
     expect(persistedData).not.toHaveProperty("type");
+    expect(persistedData).not.toHaveProperty("summary");
   });
 
   it("rejects collaborators below author even if they can read the Doco", async () => {
