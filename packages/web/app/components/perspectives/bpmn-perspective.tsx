@@ -41,6 +41,7 @@ import {
   hasFocalNode,
   opacityForDepth,
   opacityForEdge,
+  withFocalAwareness,
 } from "~/lib/graph-depth";
 import {
   type GraphReferenceItem,
@@ -332,17 +333,21 @@ export function BpmnPerspective({
     () => layOutBpmn(pools, filteredLanes, filteredNodes, links, centerId),
     [pools, filteredLanes, filteredNodes, links, centerId],
   );
+  // Lane + pool header are visual scaffolding (not neurons), so they
+  // skip the focal-awareness contract. Every other shape type renders
+  // a neuron and must go through withFocalAwareness — the HOC
+  // enforces the data.opacity contract at render time.
   const nodeTypes = useMemo(
     () => ({
       bpmnLane: BpmnLaneNode,
       bpmnPoolHeader: BpmnPoolHeaderNode,
-      bpmnCircle: BpmnCircleNode,
-      bpmnDiamond: BpmnDiamondNode,
-      bpmnRectangle: BpmnRectangleNode,
-      bpmnDocument: BpmnDocumentNode,
-      bpmnRounded: BpmnRoundedNode,
-      bpmnTask: BpmnTaskNode,
-      bpmnMilestone: BpmnMilestoneNode,
+      bpmnCircle: withFocalAwareness(BpmnCircleNode),
+      bpmnDiamond: withFocalAwareness(BpmnDiamondNode),
+      bpmnRectangle: withFocalAwareness(BpmnRectangleNode),
+      bpmnDocument: withFocalAwareness(BpmnDocumentNode),
+      bpmnRounded: withFocalAwareness(BpmnRoundedNode),
+      bpmnTask: withFocalAwareness(BpmnTaskNode),
+      bpmnMilestone: withFocalAwareness(BpmnMilestoneNode),
     }),
     [],
   );
@@ -928,13 +933,16 @@ function layOutBpmn(
         position: { x, y },
         parentId: laneNodeId(node.laneId),
         extent: "parent",
-        data: { node },
+        data: { node, opacity: nodeOpacity },
         draggable: false,
         selectable: false,
         connectable: false,
         initialWidth: size.width,
         initialHeight: size.height,
-        style: { width: size.width, height: size.height, zIndex: 1, opacity: nodeOpacity },
+        // Opacity moves to data.opacity per the rendering-engine
+        // contract; withFocalAwareness applies it from data on the
+        // node component's outer wrapper.
+        style: { width: size.width, height: size.height, zIndex: 1 },
       });
     }
   }
@@ -1173,6 +1181,10 @@ function isActorLane(lane: BpmnLane): boolean {
 interface BpmnNodeData {
   node: BpmnNode;
   referenceNumber?: number;
+  // Depth-based opacity from the focal node. Required for every
+  // perspective node to satisfy the rendering-engine contract (see
+  // withFocalAwareness in graph-depth.ts).
+  opacity: number;
 }
 
 interface BpmnLaneData {

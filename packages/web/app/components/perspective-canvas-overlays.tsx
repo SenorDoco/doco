@@ -1,5 +1,13 @@
-import { Controls, type FitViewOptions, MiniMap, type MiniMapNodeProps } from "@xyflow/react";
+import {
+  ControlButton,
+  Controls,
+  type FitViewOptions,
+  MiniMap,
+  type MiniMapNodeProps,
+} from "@xyflow/react";
+import { Maximize2, Minimize2 } from "lucide-react";
 import type { ComponentType } from "react";
+import { useFullscreenSpec } from "~/components/perspective-frame";
 
 const MINIMAP_STYLE = {
   width: 140,
@@ -47,12 +55,26 @@ export function StandardMiniMap({
  * Must be rendered INSIDE a `<ReactFlow>`.
  */
 export function StandardControls({ fitViewOptions }: { fitViewOptions?: FitViewOptions } = {}) {
+  // Fullscreen flows through context so every perspective gets the
+  // same 4th button sitting flush below the +/-/fit-view stack
+  // without each one threading the prop through manually.
+  const fullscreen = useFullscreenSpec();
   return (
     <Controls
       position="top-right"
       showInteractive={false}
       fitViewOptions={fitViewOptions}
       style={{ top: 44 }}
-    />
+    >
+      {fullscreen ? (
+        <ControlButton
+          onClick={fullscreen.onToggle}
+          title={fullscreen.isFullscreen ? "Exit full screen" : "Enter full screen"}
+          aria-label={fullscreen.isFullscreen ? "Exit full screen" : "Enter full screen"}
+        >
+          {fullscreen.isFullscreen ? <Minimize2 /> : <Maximize2 />}
+        </ControlButton>
+      ) : null}
+    </Controls>
   );
 }

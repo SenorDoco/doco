@@ -1,3 +1,5 @@
+import type { ComponentType } from "react";
+
 // Per-node BFS depth from a focused neuron, plus an opacity ramp that
 // fades nodes further from the focus. Used by every graph perspective
 // (overview, BPMN, entity-detail) so the rule stays the same wherever
@@ -125,4 +127,63 @@ export function depthBucket(depth: number | undefined): number {
   if (depth === undefined) return FAR_DEPTH;
   if (depth >= FAR_DEPTH) return FAR_DEPTH;
   return depth;
+}
+
+// ─── Engine-level enforcement ──────────────────────────────────────
+
+/**
+ * Node-data contract every focal-aware perspective node MUST satisfy.
+ * `withFocalAwareness` reads `opacity` off this shape and applies it
+ * on the node's outer wrapper. Perspectives populate `opacity` from
+ * `opacityForDepth(depthByNode.get(id))` at layout time.
+ */
+export interface FocalAwareData {
+  opacity: number;
+}
+
+/**
+ * HOC that wraps a React Flow node component to enforce + apply the
+ * depth-based opacity contract:
+ *
+ * - Reads `props.data.opacity` (a number in [0, 1]).
+ * - Throws at render time if `opacity` is missing or non-numeric, so
+ *   a non-compliant perspective fails loudly rather than silently
+ *   rendering at full opacity regardless of focal distance.
+ * - Applies the opacity on an outer `<div class="relative h-full
+ *   w-full">` wrapper, so the perspective's node component renders
+ *   inside a faded container without each component having to
+ *   remember to plumb opacity through its own style.
+ *
+ * Every neuron-rendering nodeType across every perspective must be
+ * wrapped via this HOC. Container-only node types (BPMN swimlanes,
+ * pool headers — visual scaffolding, not neurons) are exempt and
+ * should not be wrapped.
+ */
+// Loose props shape — React Flow's NodeTypes registry expects
+// components with the full NodeProps signature (id, type, draggable,
+// selected, etc.), but each perspective's components only declare the
+// data field they care about. Typing the HOC against the raw
+// ComponentType<any> sidesteps the friction; the runtime contract is
+// still enforced via the data.opacity check below.
+// biome-ignore lint/suspicious/noExplicitAny: see comment above
+export function withFocalAwareness<C extends ComponentType<any>>(Component: C): C {
+  const wrapped = (props: { data?: unknown; id?: string }) => {
+    const data = props.data as Partial<FocalAwareData> | null | undefined;
+    if (!data || typeof data.opacity !== "number" || Number.isNaN(data.opacity)) {
+      throw new Error(
+        `Perspective rendering contract violation: node "${props.id ?? "(no id)"}" data is missing the required \`opacity: number\` field. ` +
+          "Every focal-aware perspective node MUST populate node.data.opacity from `opacityForDepth(depthByNode.get(id))` at layout time — see graph-depth.ts for the helpers and the other perspectives for examples.",
+      );
+    }
+    // biome-ignore lint/suspicious/noExplicitAny: see comment above
+    const Inner = Component as ComponentType<any>;
+    return (
+      <div className="relative h-full w-full" style={{ opacity: data.opacity }}>
+        <Inner {...props} />
+      </div>
+    );
+  };
+  (wrapped as unknown as { displayName?: string }).displayName =
+    `withFocalAwareness(${Component.displayName ?? Component.name ?? "Component"})`;
+  return wrapped as unknown as C;
 }

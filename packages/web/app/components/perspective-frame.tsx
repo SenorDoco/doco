@@ -1,5 +1,4 @@
-import { Maximize2, Minimize2 } from "lucide-react";
-import type { ReactNode } from "react";
+import { type ReactNode, createContext, useContext } from "react";
 import { lifecycleColor } from "~/lib/neuron-colors";
 
 interface LifecycleFilterSpec {
@@ -13,9 +12,23 @@ interface AutoReorderSpec {
   onChange: (next: boolean) => void;
 }
 
-interface FullscreenSpec {
+export interface FullscreenSpec {
   isFullscreen: boolean;
   onToggle: () => void;
+}
+
+/**
+ * Carries the fullscreen toggle from PerspectiveFrame down into the
+ * perspective's React-Flow `<StandardControls>` (which renders the
+ * fullscreen ControlButton inline with the zoom +/−/fit-view stack).
+ * Kept as a context so each perspective doesn't have to re-thread the
+ * `isFullscreen` / `onToggle` props through to its zoom-controls
+ * helper.
+ */
+const FullscreenContext = createContext<FullscreenSpec | null>(null);
+
+export function useFullscreenSpec(): FullscreenSpec | null {
+  return useContext(FullscreenContext);
 }
 
 interface PerspectiveFrameProps {
@@ -36,9 +49,11 @@ interface PerspectiveFrameProps {
    */
   autoReorder?: AutoReorderSpec;
   /**
-   * Fullscreen toggle button. Renders at top-right of the frame.
-   * The caller owns the actual fullscreen request — the button is
-   * just the trigger.
+   * Fullscreen toggle. Surfaced as a 4th button in the perspective's
+   * React-Flow zoom-controls stack (top-right), so it sits next to
+   * +/−/fit-view inside the same morphic-styled panel — no overlap
+   * with the floating search box and no ad-hoc placement per
+   * perspective.
    */
   fullscreen?: FullscreenSpec;
   children: ReactNode;
@@ -66,49 +81,40 @@ export function PerspectiveFrame({
 }: PerspectiveFrameProps) {
   const sizeClass = fillHeight ? "min-h-0 flex-1" : "h-[65vh] min-h-[480px]";
   return (
-    <div
-      className={`relative w-full overflow-hidden rounded-md rounded-tl-none border border-border bg-background ${sizeClass}`}
-      // Suppress the platform's etched-edge inset-highlight (app.css
-      // `[class~="border"][class~="border-border"]`). It paints a 1px
-      // white-75% line at the canvas's interior top edge, which shows
-      // as a white sliver immediately below the perspective tabs.
-      style={{ boxShadow: "none" }}
-    >
-      {children}
-      {fullscreen ? (
-        <button
-          type="button"
-          onClick={fullscreen.onToggle}
-          className="absolute right-2 top-2 z-20 rounded-md border border-border bg-background/90 p-1.5 shadow-sm backdrop-blur hover:bg-muted"
-          title={fullscreen.isFullscreen ? "Exit full screen" : "Enter full screen"}
-          aria-label={fullscreen.isFullscreen ? "Exit full screen" : "Enter full screen"}
-        >
-          {fullscreen.isFullscreen ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
-        </button>
-      ) : null}
-      {autoReorder ? (
-        <div className="pointer-events-none absolute bottom-12 left-3 z-10">
-          {/* Match the LifecycleFilterPanel's outer structure exactly
+    <FullscreenContext.Provider value={fullscreen ?? null}>
+      <div
+        className={`relative w-full overflow-hidden rounded-md rounded-tl-none border border-border bg-background ${sizeClass}`}
+        // Suppress the platform's etched-edge inset-highlight (app.css
+        // `[class~="border"][class~="border-border"]`). It paints a 1px
+        // white-75% line at the canvas's interior top edge, which shows
+        // as a white sliver immediately below the perspective tabs.
+        style={{ boxShadow: "none" }}
+      >
+        {children}
+        {autoReorder ? (
+          <div className="pointer-events-none absolute bottom-12 left-3 z-10">
+            {/* Match the LifecycleFilterPanel's outer structure exactly
               so the two floating panels render at identical height:
               flex items-center + px-2 py-1 + text-xs. Diverging on any
               of those (e.g. text-[11px] or no flex on outer) makes the
               Reorder pill render a pixel or two taller than the filter
               row immediately below it. */}
-          <div className="pointer-events-auto flex items-center rounded-md border border-border bg-card/90 px-2 py-1 text-xs shadow-sm backdrop-blur">
-            <label className="inline-flex cursor-pointer select-none items-center gap-1.5">
-              <input
-                type="checkbox"
-                checked={autoReorder.value}
-                onChange={(e) => autoReorder.onChange(e.target.checked)}
-                className="h-3 w-3"
-              />
-              <span className="text-muted-foreground">Reorder automatically</span>
-            </label>
+            <div className="pointer-events-auto flex items-center rounded-md border border-border bg-card/90 px-2 py-1 text-xs shadow-sm backdrop-blur">
+              <label className="inline-flex cursor-pointer select-none items-center gap-1.5">
+                <input
+                  type="checkbox"
+                  checked={autoReorder.value}
+                  onChange={(e) => autoReorder.onChange(e.target.checked)}
+                  className="h-3 w-3"
+                />
+                <span className="text-muted-foreground">Reorder automatically</span>
+              </label>
+            </div>
           </div>
-        </div>
-      ) : null}
-      {lifecycleFilter ? <LifecycleFilterPanel spec={lifecycleFilter} /> : null}
-    </div>
+        ) : null}
+        {lifecycleFilter ? <LifecycleFilterPanel spec={lifecycleFilter} /> : null}
+      </div>
+    </FullscreenContext.Provider>
   );
 }
 
