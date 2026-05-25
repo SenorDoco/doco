@@ -188,10 +188,11 @@ export function makeUpdateRoute(cfg: UpdateRouteConfig) {
       if (!rec || rec.doco_id !== ctx.meta.docoId) {
         return Response.json({ error: `${cfg.entityType} not found: ${id}` }, { status: 404 });
       }
-      // Post-rename: migrated neurons expose their prose under a
-      // single key matching the entity type (intent/decision/rule/...);
-      // `summary` and `body_md` are gone. Non-migrated entities still
-      // ship the legacy pair.
+      // Post-rename: the 9 migrated neurons expose their prose under
+      // a single key matching the entity type (intent/decision/rule/...).
+      // Policies surface their one-line rule as `policy` (renamed from
+      // `summary` in 038) plus optional `body_md`. Principals don't
+      // route through this factory.
       const response: Record<string, unknown> = {
         id: rec.id,
         entity_type: rec.entity_type,
@@ -203,8 +204,8 @@ export function makeUpdateRoute(cfg: UpdateRouteConfig) {
       };
       if (rec.type_named_value !== undefined && rec.type_named_value !== null) {
         response[cfg.entityType] = rec.type_named_value;
-      } else if (rec.summary !== undefined || rec.body_md !== undefined) {
-        response.summary = rec.summary ?? null;
+      } else if (typeof rec.data.policy === "string") {
+        response.policy = rec.data.policy;
         response.body_md = rec.body_md ?? null;
       } else {
         response[cfg.entityType] = "";
