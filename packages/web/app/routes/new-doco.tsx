@@ -29,9 +29,12 @@ import { getCurrentPrincipal } from "~/lib/session.server";
  * post-create concepts page.
  *
  * Flow map:
- *   /new-doco                  Create the Doco
- *   /:handle/welcome           Key Doco concepts
- *   /:handle/onboarding/agent  Bootstrap and collaborate
+ *   /new-doco         Create the Doco
+ *   /:handle/welcome  Key Doco concepts (Continue -> Doco home)
+ *
+ * The prior `/:handle/onboarding/agent` "Bootstrap and collaborate"
+ * step was removed from the flow — its affordances (invite, API
+ * keys) are reachable from the Doco home page directly.
  */
 
 const DEFAULT_TEMPLATE_HANDLE = "generic";
