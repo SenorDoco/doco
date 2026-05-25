@@ -132,6 +132,8 @@ export interface ChatConversationRow {
   collaborator_id: string;
   archived: boolean;
   title: string | null;
+  attached_doco_handles: string[];
+  attached_org_handles: string[];
   created_at: Date;
   updated_at: Date;
   active_turn_started_at: Date | null;
@@ -175,6 +177,13 @@ export interface ChatStreamContext {
   currentPath: string | null;
   attachmentIds: string[];
   graphReferences: VisibleGraphReferenceGroup[];
+  /**
+   * Conversation id for the active turn. Lets `runTool` attribute
+   * tool calls back to the thread — currently used to back-fill the
+   * thread's attached Docos as the agent works (path-scoped
+   * doco_api calls → `attachDocoToConversation`).
+   */
+  conversationId: string;
 }
 
 export interface VisibleGraphReference {
@@ -252,7 +261,7 @@ export type ChatStreamEvent =
 const ACTIVE_TURN_STALE_MS = 5 * 60 * 1000;
 
 const CONV_COLS =
-  "id, collaborator_id, archived, title, created_at, updated_at, active_turn_started_at";
+  "id, collaborator_id, archived, title, attached_doco_handles, attached_org_handles, created_at, updated_at, active_turn_started_at";
 
 /**
  * Sweep stale active-turn markers on a conversation row we just
@@ -353,6 +362,14 @@ export interface ConversationListItem {
   last_message_preview: string | null;
   /** Who sent the latest message — informs the WhatsApp-style "You:" prefix. */
   last_message_role: "user" | "assistant" | null;
+  /**
+   * Handles only (not resolved to display names) so the client can
+   * decide what to do on row-click without a second snapshot fetch:
+   * exactly one attachment between docos + orgs → jump straight to
+   * that page; otherwise just open the chat.
+   */
+  attached_doco_handles: string[];
+  attached_org_handles: string[];
 }
 
 /**
@@ -401,8 +418,11 @@ export async function listConversationsForPrincipal(
       message_count: string;
       last_message_content: unknown;
       last_message_role: "user" | "assistant" | null;
+      attached_doco_handles: string[] | null;
+      attached_org_handles: string[] | null;
     }>(
       `SELECT c.id, c.title, c.archived, c.updated_at, c.active_turn_started_at,
+              c.attached_doco_handles, c.attached_org_handles,
               COALESCE((SELECT count(*) FROM chat_messages m WHERE m.conversation_id = c.id), 0)::text AS message_count,
               (SELECT m.content
                  FROM chat_messages m
@@ -430,6 +450,8 @@ export async function listConversationsForPrincipal(
       active_turn_started_at: row.active_turn_started_at?.toISOString() ?? null,
       last_message_preview: extractMessagePreview(row.last_message_content),
       last_message_role: row.last_message_role,
+      attached_doco_handles: row.attached_doco_handles ?? [],
+      attached_org_handles: row.attached_org_handles ?? [],
     }));
   });
 }
@@ -462,6 +484,60 @@ export async function patchConversation(
     );
     return r.rows[0] ?? null;
   });
+}
+
+/**
+ * Append a Doco handle to the thread's `attached_doco_handles`
+ * unless it's already there. Idempotent on repeat calls — the
+ * conversation accumulates every Doco it has touched. Caller is the
+ * doco_api tool dispatcher; this lets the chat sidebar render
+ * clickable chips for everywhere the agent has been so the user
+ * can jump back to that Doco's perspective view.
+ *
+ * Fails silently — attachment is a nice-to-have on top of the tool
+ * call; we don't want a transient DB error to break the assistant
+ * turn. Most failures are spurious (deadlocks under load) and the
+ * next tool call to the same Doco will retry.
+ */
+export async function attachDocoToConversation(
+  conversationId: string,
+  handle: string,
+): Promise<void> {
+  if (!conversationId || !handle) return;
+  try {
+    await withClient(async (c) => {
+      await c.query(
+        `UPDATE chat_conversations
+            SET attached_doco_handles = attached_doco_handles || ARRAY[$2::text]
+          WHERE id = $1
+            AND NOT ($2 = ANY(attached_doco_handles))`,
+        [conversationId, handle],
+      );
+    });
+  } catch {
+    // Best-effort — see docblock.
+  }
+}
+
+/** Same shape as attachDocoToConversation but targets `attached_org_handles`. */
+export async function attachOrgToConversation(
+  conversationId: string,
+  handle: string,
+): Promise<void> {
+  if (!conversationId || !handle) return;
+  try {
+    await withClient(async (c) => {
+      await c.query(
+        `UPDATE chat_conversations
+            SET attached_org_handles = attached_org_handles || ARRAY[$2::text]
+          WHERE id = $1
+            AND NOT ($2 = ANY(attached_org_handles))`,
+        [conversationId, handle],
+      );
+    });
+  } catch {
+    // Best-effort.
+  }
 }
 
 /**
@@ -1450,6 +1526,20 @@ async function runTool(block: ToolUseBlock, ctx: ChatStreamContext): Promise<Too
         ok: false,
       };
     }
+    // Auto-attach: when the agent hits a per-Doco URL, remember that
+    // Doco against the active conversation so the sidebar can render
+    // a clickable chip. Best-effort — failures are swallowed by the
+    // helper and never break the tool call.
+    const perDoco = /^\/([^/]+)\/api\//.exec(path);
+    if (perDoco) {
+      const handle = perDoco[1];
+      // Skip the platform-level API root — `/api/v1/...` matches the
+      // shape above with "api" as the would-be handle. Reserved
+      // prefixes never collide with real Doco handles by URL policy.
+      if (handle !== "api") {
+        void attachDocoToConversation(ctx.conversationId, handle);
+      }
+    }
     const url = new URL(path, ctx.origin).toString();
     try {
       // Try the in-process router first. Calls the SAME loader/action
@@ -2137,11 +2227,25 @@ async function* streamAssistantTurn(args: {
 // Public read API for the loader
 // ---------------------------------------------------------------------------
 
+/**
+ * Resolved attachment — handle + display name. The chip rendered in
+ * the sidebar links to `/<handle>` (Doco) or `/orgs/<handle>` (Org)
+ * and shows the display name when known, falling back to the handle.
+ */
+export interface AttachmentInfo {
+  handle: string;
+  name: string | null;
+}
+
 export interface ConversationSnapshot {
   conversation_id: string;
   /** User-visible thread name. Null until the first user message is sent. */
   title: string | null;
   archived: boolean;
+  /** Docos the agent has touched in this thread. Auto-populated by `doco_api`. */
+  attached_docos: AttachmentInfo[];
+  /** Orgs the agent has touched in this thread. Reserved; not yet populated. */
+  attached_orgs: AttachmentInfo[];
   messages: {
     id: string;
     role: "user" | "assistant";
@@ -2167,6 +2271,30 @@ export interface ConversationSnapshot {
   active_turn_events: Array<Record<string, unknown>>;
 }
 
+async function resolveDocoAttachments(handles: string[]): Promise<AttachmentInfo[]> {
+  if (handles.length === 0) return [];
+  return await withClient(async (c) => {
+    const r = await c.query<{ handle: string; name: string | null }>(
+      "SELECT handle, name FROM docos WHERE handle = ANY($1::text[])",
+      [handles],
+    );
+    const byHandle = new Map(r.rows.map((row) => [row.handle, row.name]));
+    return handles.map((h) => ({ handle: h, name: byHandle.get(h) ?? null }));
+  });
+}
+
+async function resolveOrgAttachments(handles: string[]): Promise<AttachmentInfo[]> {
+  if (handles.length === 0) return [];
+  return await withClient(async (c) => {
+    const r = await c.query<{ handle: string; name: string | null }>(
+      "SELECT handle, name FROM organizations WHERE handle = ANY($1::text[])",
+      [handles],
+    );
+    const byHandle = new Map(r.rows.map((row) => [row.handle, row.name]));
+    return handles.map((h) => ({ handle: h, name: byHandle.get(h) ?? null }));
+  });
+}
+
 /**
  * Load a snapshot for a specific thread or the user's active thread.
  *
@@ -2189,17 +2317,21 @@ export async function loadSnapshotForPrincipal(
   } else {
     conv = await loadOrCreateConversation(principalId);
   }
-  const [{ messages: rows, hasMore }, events] = await Promise.all([
+  const [{ messages: rows, hasMore }, events, attachedDocos, attachedOrgs] = await Promise.all([
     loadMessagesPage(conv.id, {
       before: opts.before ?? null,
       limit: CHAT_MESSAGES_PAGE_SIZE,
     }),
     loadActiveTurnEvents(conv.id),
+    resolveDocoAttachments(conv.attached_doco_handles ?? []),
+    resolveOrgAttachments(conv.attached_org_handles ?? []),
   ]);
   return {
     conversation_id: conv.id,
     title: conv.title,
     archived: conv.archived,
+    attached_docos: attachedDocos,
+    attached_orgs: attachedOrgs,
     messages: rows.map((r) => ({
       id: r.id,
       role: r.role,

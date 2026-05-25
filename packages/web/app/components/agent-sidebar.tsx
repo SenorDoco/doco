@@ -73,11 +73,18 @@ interface ChatMessage {
   created_at: string;
 }
 
+interface AttachmentInfo {
+  handle: string;
+  name: string | null;
+}
+
 interface ConversationSnapshot {
   conversation_id: string;
   /** User-visible thread name. Null until the first user message lands. */
   title: string | null;
   archived: boolean;
+  attached_docos: AttachmentInfo[];
+  attached_orgs: AttachmentInfo[];
   messages: ChatMessage[];
   has_more: boolean;
   /**
@@ -106,6 +113,8 @@ interface ConversationListItem {
   active_turn_started_at: string | null;
   last_message_preview: string | null;
   last_message_role: "user" | "assistant" | null;
+  attached_doco_handles: string[];
+  attached_org_handles: string[];
 }
 
 /** Per-request token totals streamed from the server. Reset to null
@@ -354,6 +363,12 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
     readStringFlag(ACTIVE_CONV_KEY),
   );
   const [conversationTitle, setConversationTitle] = useState<string | null>(null);
+  // Resolved {handle, name} for the Docos/Orgs the agent has touched
+  // in this thread. Rendered as clickable chips below the thread
+  // title in chat view. Populated from the snapshot endpoint each
+  // reload; the server-side auto-attach happens in runTool.
+  const [attachedDocos, setAttachedDocos] = useState<AttachmentInfo[]>([]);
+  const [attachedOrgs, setAttachedOrgs] = useState<AttachmentInfo[]>([]);
   // WhatsApp-style default — when nothing's open, the user lands on
   // the thread list. Picking a thread switches into chat view; the
   // back button in the chat header returns here.
@@ -495,6 +510,8 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
         writeStringFlag(ACTIVE_CONV_KEY, data.conversation_id);
       }
       setConversationTitle(data.title);
+      setAttachedDocos(Array.isArray(data.attached_docos) ? data.attached_docos : []);
+      setAttachedOrgs(Array.isArray(data.attached_orgs) ? data.attached_orgs : []);
       // Merge — don't overwrite. Two classes of message can sit
       // outside the snapshot's window:
       //
@@ -637,6 +654,42 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
   // dismissed cheaply.
   const switchThread = useCallback(
     (id: string) => {
+      // Single-attachment shortcut. The user said: "If there is only
+      // one, opening a thread should send the visitor to that page."
+      // Look the thread up in our cached list and, if it has exactly
+      // one attached entity (across docos + orgs), navigate directly
+      // there instead of opening the chat column. The chat column
+      // stays one click away — the thread title in the chat header
+      // still toggles back to it, and the back arrow returns to the
+      // thread list.
+      const conv = conversations.find((c) => c.id === id);
+      if (conv) {
+        const docos = conv.attached_doco_handles ?? [];
+        const orgs = conv.attached_org_handles ?? [];
+        if (docos.length + orgs.length === 1) {
+          const targetUrl = docos.length === 1 ? `/${docos[0]}` : `/orgs/${orgs[0]}`;
+          // Still mark this thread active so subsequent sends land
+          // here; if the user's already on the URL we skip navigate.
+          if (id !== conversationId) {
+            abortRef.current?.abort();
+            setBusy(false);
+            setInFlight(null);
+            setQueuedSend(null);
+            setTurnUsage(null);
+            setRemoteInflight(false);
+            setThinkingEvents([]);
+            setMessages([]);
+            setHasMore(false);
+            earliestRef.current = null;
+            setConversationId(id);
+            writeStringFlag(ACTIVE_CONV_KEY, id);
+          }
+          setView("chat");
+          setRenamingId(null);
+          if (location.pathname !== targetUrl) navigate(targetUrl);
+          return;
+        }
+      }
       if (id === conversationId) {
         setView("chat");
         return;
@@ -653,6 +706,8 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
       setRemoteInflight(false);
       setThinkingEvents([]);
       setMessages([]);
+      setAttachedDocos([]);
+      setAttachedOrgs([]);
       setHasMore(false);
       earliestRef.current = null;
       setConversationId(id);
@@ -660,7 +715,7 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
       setView("chat");
       setRenamingId(null);
     },
-    [conversationId],
+    [conversationId, conversations, location.pathname, navigate],
   );
 
   const newThread = useCallback(async () => {
@@ -1606,14 +1661,40 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
                 </span>
               ) : null}
             </button>
-            <div
-              className={cn(
-                "min-w-0 flex-1 truncate text-xs font-semibold",
-                conversationTitle ? "text-foreground" : "text-muted-foreground",
-              )}
-              title={displayThreadTitle(conversationTitle)}
-            >
-              {displayThreadTitle(conversationTitle)}
+            <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+              <div
+                className={cn(
+                  "min-w-0 truncate text-xs font-semibold",
+                  conversationTitle ? "text-foreground" : "text-muted-foreground",
+                )}
+                title={displayThreadTitle(conversationTitle)}
+              >
+                {displayThreadTitle(conversationTitle)}
+              </div>
+              {attachedDocos.length + attachedOrgs.length > 0 ? (
+                <div className="flex flex-wrap items-center gap-1">
+                  {attachedDocos.map((d) => (
+                    <Link
+                      key={`doco-${d.handle}`}
+                      to={`/${d.handle}`}
+                      className="rounded-full border border-border bg-input/60 px-1.5 py-px text-[10px] text-muted-foreground hover:bg-primary/20 hover:text-foreground"
+                      title={d.name ?? d.handle}
+                    >
+                      {d.name ?? d.handle}
+                    </Link>
+                  ))}
+                  {attachedOrgs.map((o) => (
+                    <Link
+                      key={`org-${o.handle}`}
+                      to={`/orgs/${o.handle}`}
+                      className="rounded-full border border-border bg-input/60 px-1.5 py-px text-[10px] text-muted-foreground hover:bg-primary/20 hover:text-foreground"
+                      title={o.name ?? o.handle}
+                    >
+                      @{o.name ?? o.handle}
+                    </Link>
+                  ))}
+                </div>
+              ) : null}
             </div>
           </div>
 

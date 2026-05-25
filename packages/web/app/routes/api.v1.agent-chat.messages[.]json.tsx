@@ -122,7 +122,15 @@ export async function action({ request }: { request: Request }) {
         for await (const event of runAssistantTurn({
           conversation,
           userText: text,
-          ctx: { origin, cookieHeader, principal: me, currentPath, attachmentIds, graphReferences },
+          ctx: {
+            origin,
+            cookieHeader,
+            principal: me,
+            currentPath,
+            attachmentIds,
+            graphReferences,
+            conversationId: conversation.id,
+          },
         })) {
           send(event);
           if (event.kind === "done" || event.kind === "error") break;
