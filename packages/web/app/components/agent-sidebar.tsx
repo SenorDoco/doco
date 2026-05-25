@@ -365,6 +365,20 @@ type PendingCreate =
   | { kind: "neuron"; handle: string; entityType: string }
   | { kind: "policy"; handle: string; policyKindSlug: string };
 
+// Below this viewport width, the neuron detail dialog overlays the
+// whole content area and there's no room for both the chat and the
+// dialog to coexist comfortably. When the agent drives the focus
+// (vs. an explicit user click), we still center the graph on the
+// neuron but suppress the dialog by appending `?dialog=skip`. The
+// route loader reads the param and leaves `selectedNeuron` null.
+const AUTO_FOCUS_DIALOG_MIN_WIDTH = 1280;
+
+function withDialogSkipIfCramped(target: string): string {
+  if (typeof window === "undefined") return target;
+  if (window.innerWidth >= AUTO_FOCUS_DIALOG_MIN_WIDTH) return target;
+  return target.includes("?") ? `${target}&dialog=skip` : `${target}?dialog=skip`;
+}
+
 export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inFlight, setInFlight] = useState<InFlightMessage | null>(null);
@@ -1161,7 +1175,7 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
       // actually something half-written. Empty composer = user is
       // waiting; navigate.
       if (composerHasTextRef.current) return;
-      navigate(target);
+      navigate(withDialogSkipIfCramped(target));
     },
     [navigate, location.pathname],
   );
@@ -1239,7 +1253,7 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
           : `/${pending.handle}/${pending.entityType}/${id}`;
       if (location.pathname === target) return;
       if (composerHasTextRef.current) return;
-      navigate(target);
+      navigate(withDialogSkipIfCramped(target));
     },
     [navigate, location.pathname],
   );
