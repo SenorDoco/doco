@@ -1065,20 +1065,20 @@ async function buildBootstrapContext(principalId: string): Promise<BootstrapCont
   const policiesByDoco = new Map<string, { guidance: string[]; authoring: string[] }>();
   if (accessibleIds.length > 0) {
     const rows = await withClient(async (c) =>
-      c.query<{ doco_id: string; summary: string; kind: "guidance" | "authoring" }>(
-        `SELECT doco_id, summary, 'guidance'::text AS kind FROM guidance_policies
+      c.query<{ doco_id: string; policy: string; kind: "guidance" | "authoring" }>(
+        `SELECT doco_id, policy, 'guidance'::text AS kind FROM guidance_policies
           WHERE doco_id = ANY($1::text[]) AND COALESCE(lifecycle,'active') = 'active'
          UNION ALL
-         SELECT doco_id, summary, 'authoring'::text AS kind FROM neuron_authoring_policies
+         SELECT doco_id, policy, 'authoring'::text AS kind FROM neuron_authoring_policies
           WHERE doco_id = ANY($1::text[]) AND COALESCE(lifecycle,'active') = 'active'
-         ORDER BY doco_id, kind, summary`,
+         ORDER BY doco_id, kind, policy`,
         [accessibleIds],
       ),
     );
     for (const r of rows.rows) {
       const bucket = policiesByDoco.get(r.doco_id) ?? { guidance: [], authoring: [] };
-      if (r.kind === "guidance") bucket.guidance.push(r.summary);
-      else bucket.authoring.push(r.summary);
+      if (r.kind === "guidance") bucket.guidance.push(r.policy);
+      else bucket.authoring.push(r.policy);
       policiesByDoco.set(r.doco_id, bucket);
     }
   }
@@ -1176,13 +1176,13 @@ Retention: every uploaded file is kept for ${ATTACHMENT_RETENTION_DAYS} days, th
 ## Endpoint surface
 
   GET   /<handle>/status.json                    — freshness + per-type counts
-  GET   /<handle>/api/<type>.json                — list every neuron of the named type in this doco. Response: { ok, type, doco_id, count, items: [{ id, summary, lifecycle, created_at, updated_at, data, body_md }] }. Valid <type>: decisions, intents, actions, rules, logs, evals, references, ideas, states. Use this BEFORE guessing — when the user mentions a count or wants to "remove all X" / "list all X" / "find an X", list first.
+  GET   /<handle>/api/<type>.json                — list every neuron of the named type in this doco. Response: { ok, type, doco_id, count, items: [{ id, <type>, lifecycle, created_at, updated_at, data }] } — the prose lives in the type-named field (\`decision\` for decisions, \`intent\` for intents, etc.); the first line is the row label. Valid <type>: decisions, intents, actions, rules, logs, evals, references, ideas, states. Use this BEFORE guessing — when the user mentions a count or wants to "remove all X" / "list all X" / "find an X", list first.
   POST  /<handle>/api/<type>.json                — capture; returns { id, footer_lines, duration_ms }
   GET   /<handle>/api/<type>/<id>.json           — single neuron detail
   PATCH /<handle>/api/<type>/<id>.json           — partial update; PATCH lifecycle = "retired" is the "delete" equivalent
   GET   /<handle>/api/<type>.txt                 — long-form POST/PATCH body spec (only fetch if the inline cheatsheet below isn't enough)
-  GET   /<handle>/api/principals.json            — DUAL-purpose endpoint. Response: { ok, principals: [...legacy collaborator alias...], collaborators: [{ id, username, role, type, github_login, email }], principal_neurons: [{ id, summary, lifecycle, data, ... }], collaborator_count, principal_neuron_count }. Read \`collaborators\` for the doco's OAuth members; read \`principal_neurons\` for the Principal NEURONS visible as BPMN swim lanes / referenced by Action.actor_id.
-  PATCH /<handle>/api/principals/<id>.json       — update a Principal NEURON (lifecycle, summary, etc.). Same retire-on-lifecycle convention.
+  GET   /<handle>/api/principals.json            — DUAL-purpose endpoint. Response: { ok, principals: [...legacy collaborator alias...], collaborators: [{ id, username, role, type, github_login, email }], principal_neurons: [{ id, name, body_md, lifecycle, data, ... }], collaborator_count, principal_neuron_count }. Read \`collaborators\` for the doco's OAuth members; read \`principal_neurons\` for the Principal NEURONS visible as BPMN swim lanes / referenced by Action.actor_id.
+  PATCH /<handle>/api/principals/<id>.json       — update a Principal NEURON (body_md, reports_to, lifecycle). Same retire-on-lifecycle convention. \`name\` (the slug) is immutable.
   GET   /<handle>/api/policies.json            — list policies (guidance + neuron-authoring) for this doco
   POST  /<handle>/api/policies.json            — capture a policy; body needs "policy_kind": "guidance" | "neuron_authoring"
   GET   /<handle>/api/invites.json               — pending collaborator invites
@@ -1257,8 +1257,8 @@ etc., not \`summary\`.
 - Reference: { reference*, ref_type*("file"|"url"|"ticket"|"commit"|"document"|"other"), locator*, content_hash?, intent_ids?[], created_by_principal_id? }
 - State:     { state*, kind*("initial"|"intermediate"|"terminal"), invariants?[], preceded_by?[], created_by_principal_id? }
 - Idea:      { idea*, created_by_principal_id?, promoted_to?, rejection_reason?, lifecycle?(default "drafting") }
-- Policy (Guidance): POST /<handle>/api/policies.json with policy_kind*("guidance"), summary*, body_md?, authored_by_principal_id?. (Policies keep the legacy summary/body_md shape — they did NOT migrate to type-named columns.)
-- Policy (Neuron-authoring): same endpoint with policy_kind*("neuron_authoring"), summary*, evaluation_kind*("deterministic"|"probabilistic"), then either predicate*(deterministic AuthoringPredicate object) or spec*(probabilistic prose), and optional fires_when_neuron_lifecycle?[], on_violation?("block"|"warn"|"log", default "block").
+- Policy (Guidance): POST /<handle>/api/policies.json with policy_kind*("guidance"), policy*(one-line rule), body_md?, authored_by_principal_id?. (\`policy\` was renamed from \`summary\` by migration 038; old clients sending \`summary\` will fail.)
+- Policy (Neuron-authoring): same endpoint with policy_kind*("neuron_authoring"), policy*(one-line rule), evaluation_kind*("deterministic"|"probabilistic"), then either predicate*(deterministic AuthoringPredicate object) or spec*(probabilistic prose), and optional fires_when_neuron_lifecycle?[], on_violation?("block"|"warn"|"log", default "block").
 
 The TYPE-NAMED field carries multi-line markdown; the first line is
 the row label that shows up in lists and BPMN swim lanes. Example:
@@ -1955,10 +1955,7 @@ async function* streamAssistantTurn(args: {
   // their message disappeared on refresh. The agent doesn't see the
   // persisted row, it sees the in-memory `userContent` later, so saving
   // it now is purely a durability win.
-  const attachmentRows = await loadAttachmentsByIds(
-    args.ctx.attachmentIds,
-    args.conversation.id,
-  );
+  const attachmentRows = await loadAttachmentsByIds(args.ctx.attachmentIds, args.conversation.id);
   const turnAttachmentBlocks: ContentBlockParam[] = [];
   const turnAttachmentRefs: AttachmentRefBlock[] = [];
   for (const id of args.ctx.attachmentIds) {

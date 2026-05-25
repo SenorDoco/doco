@@ -93,7 +93,7 @@ function overviewRowsSql(includeLabel = false): string {
                                 name,
                                 COALESCE(lifecycle, 'active') AS lifecycle,
                                 created_at::text AS created_at
-                                ${includeLabel ? ", COALESCE(summary, name) AS label" : ""}
+                                ${includeLabel ? ", name AS label" : ""}
                            FROM principals
                           WHERE doco_id = $1
                             AND COALESCE(lifecycle, 'active') = 'active'`;

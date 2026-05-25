@@ -42,7 +42,6 @@ export interface OrgTreeData {
 interface OrgTreeRow {
   id: string;
   name: string;
-  summary: string | null;
   lifecycle: string | null;
   body_md: string | null;
   data: Record<string, unknown>;
@@ -82,7 +81,10 @@ export async function loadOrgTreeData(
 ): Promise<OrgTreeData> {
   const rows = (
     await c.query<OrgTreeRow>(
-      `SELECT id, name, summary, COALESCE(lifecycle, 'active') AS lifecycle, body_md, data
+      // Migration 037 dropped `summary` from principals; the
+      // description shown under the slug is now the first non-blank
+      // line of `body_md`.
+      `SELECT id, name, COALESCE(lifecycle, 'active') AS lifecycle, body_md, data
          FROM principals
         WHERE doco_id = $1
         ORDER BY created_at`,
@@ -92,16 +94,17 @@ export async function loadOrgTreeData(
 
   const nodes: OrgTreeNode[] = rows.map((r) => {
     const data = r.data ?? {};
-    // Description: surface the summary when it actually adds context.
-    // The principals POST route defaults `summary` to the name when
-    // nothing else was supplied; surfacing that would just repeat the
-    // slug, which looks like a bug.
+    // Description: first non-blank line of body_md, when it isn't just
+    // a repetition of the name slug.
     const nameNorm = r.name.toLowerCase();
     let description: string | null = null;
-    if (r.summary && r.summary.trim().length > 0) {
-      const summaryNorm = r.summary.trim().toLowerCase();
-      if (summaryNorm !== nameNorm) {
-        description = r.summary.trim();
+    if (r.body_md) {
+      const firstLine = r.body_md
+        .split(/\r?\n/)
+        .map((l) => l.trim())
+        .find((l) => l.length > 0);
+      if (firstLine && firstLine.toLowerCase() !== nameNorm) {
+        description = firstLine.length > 120 ? `${firstLine.slice(0, 117)}…` : firstLine;
       }
     }
     const type = inferKindFromProse(r.body_md);
