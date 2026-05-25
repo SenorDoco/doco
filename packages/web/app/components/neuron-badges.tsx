@@ -132,7 +132,11 @@ interface NodeBadgeRowProps {
 export function NodeBadgeRow({ entityType, lifecycle, className }: NodeBadgeRowProps) {
   const rowStyle: CSSProperties = {
     position: "absolute",
-    bottom: -10,
+    // Badge is ~13px tall (9px text + 2px×2 padding); centering the row
+    // on the card's bottom edge requires bottom ≈ -height/2. -7 leaves
+    // half the pill above the line and half below across all
+    // perspectives (Graph cards, BPMN shapes).
+    bottom: -7,
     left: "50%",
     transform: "translateX(-50%)",
     zIndex: 2,
