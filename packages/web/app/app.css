@@ -525,58 +525,47 @@ button[class*="bg-primary"]:active {
 }
 
 /* Morphic styling for React Flow's bottom-right MiniMap and the
-   top-right zoom-controls stack. Both render at fixed positions by
-   the perspective-canvas-overlays helper, so the visual treatment is
-   defined once here and applies to every perspective. */
-/* Morphic styling for React Flow's top-right zoom-controls stack +
-   bottom-right minimap. The minimap stays as a single raised panel.
-   The control buttons are restyled so each button is its own
-   `.neu-button`-equivalent pill in a vertical stack with breathing
-   room between them — matching the rest of the platform's
-   neumorphic system (perspective tabs, primary CTAs, site-header
-   buttons) instead of React Flow's default flat-grey buttons. */
-.react-flow__minimap {
+   top-right zoom-controls stack. The Controls panel is a SINGLE
+   raised "macro button" — all four buttons (+, -, fit-view,
+   fullscreen) live inside one rounded panel, separated by hairlines.
+   No per-button shadows — the panel itself is the raised
+   neumorphic surface; the buttons inside react with background +
+   color changes on hover/active. */
+.react-flow__minimap,
+.react-flow__controls {
   background: var(--color-card);
   border: 1px solid var(--neu-border);
   border-radius: var(--radius);
   box-shadow: 5px 5px 12px var(--neu-shadow-soft), -5px -5px 12px var(--neu-highlight);
   overflow: hidden;
 }
-/* Container — strip React Flow's default panel chrome so each
-   button can float independently. */
 .react-flow__controls {
-  background: transparent;
-  border: none;
-  border-radius: 0;
-  box-shadow: none;
-  overflow: visible;
   display: flex;
   flex-direction: column;
-  gap: 10px;
 }
-/* Each control button matches the neu-button visual: raised pill
-   with the same shadow ramp, hover lift, and pressed inset as every
-   other neumorphic button in the app. */
 .react-flow__controls-button {
   width: 28px;
   height: 28px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--color-card);
-  border: 1px solid var(--neu-border);
-  border-radius: var(--radius);
+  background: transparent;
+  border: none;
+  /* Hairline divider between stacked buttons; suppressed on the
+     last one so the panel's rounded bottom edge stays clean. */
+  border-bottom: 1px solid color-mix(in oklch, var(--neu-border) 60%, transparent);
   color: var(--color-foreground);
-  box-shadow: 5px 5px 12px var(--neu-shadow-soft), -5px -5px 12px var(--neu-highlight);
-  transition: transform 120ms ease, box-shadow 120ms ease, color 120ms ease;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+.react-flow__controls-button:last-child {
+  border-bottom: none;
 }
 .react-flow__controls-button:hover {
-  transform: translateY(-1px);
-  box-shadow: 7px 7px 16px var(--neu-shadow-soft), -7px -7px 16px var(--neu-highlight);
+  background: color-mix(in oklch, var(--color-card) 92%, var(--color-foreground));
   color: var(--color-primary);
 }
 .react-flow__controls-button:active {
-  transform: translateY(0);
+  background: color-mix(in oklch, var(--color-card) 84%, var(--color-foreground));
   box-shadow: var(--neu-pressed);
 }
 .react-flow__controls-button svg {
