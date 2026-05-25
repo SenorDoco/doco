@@ -271,10 +271,7 @@ function OrgTreeInner({
   }
 
   return (
-    <div
-      ref={containerRef}
-      className="relative h-full min-h-[500px] w-full overflow-hidden rounded-md border bg-background"
-    >
+    <div ref={containerRef} className="relative h-full w-full">
       <ReactFlow
         nodes={rfNodes}
         edges={rfEdges}

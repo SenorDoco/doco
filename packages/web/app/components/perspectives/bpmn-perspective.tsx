@@ -144,7 +144,10 @@ const NODE_WIDTH = 140;
 const NODE_HEIGHT = 60;
 const NODE_GAP_X = 60;
 const NODE_GAP_Y = 20; // padding above/below row inside the lane
-const BPMN_REFERENCE_ZOOM = 0.35;
+// Lowered from 0.35 → 0.1 to match OVERVIEW_REFERENCE_ZOOM: keeps
+// parity between BPMN and Graph perspectives AND ensures a fresh
+// fit-view on a many-shape Doco shows #N on first paint.
+const BPMN_REFERENCE_ZOOM = 0.1;
 const MAX_GRAPH_REFERENCES = 120;
 
 /**
@@ -444,10 +447,7 @@ export function BpmnPerspective({
 
   if (filteredLanes.length === 0) {
     return (
-      <div
-        className="flex h-full min-h-0 flex-1 items-center justify-center rounded-md rounded-tl-none border border-border bg-background text-center text-sm font-medium text-muted-foreground"
-        style={{ boxShadow: "none" }}
-      >
+      <div className="flex h-full w-full items-center justify-center text-center text-sm font-medium text-muted-foreground">
         So empty
       </div>
     );
@@ -552,11 +552,7 @@ export function BpmnPerspective({
     .filter((p): p is NonNullable<typeof p> => p !== null);
 
   return (
-    <div
-      ref={graphRef}
-      className="relative h-full min-h-0 w-full flex-1 overflow-hidden rounded-md rounded-tl-none border border-border bg-background"
-      style={{ boxShadow: "none" }}
-    >
+    <div ref={graphRef} className="relative h-full w-full">
       {Flow ? (
         <Flow.ReactFlow
           nodes={flowNodes}
