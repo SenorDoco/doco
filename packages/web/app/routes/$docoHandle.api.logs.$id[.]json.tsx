@@ -7,16 +7,6 @@ const route = makeUpdateRoute({
   type: "logs",
   entityType: "log",
   pluralDir: "logs",
-  allowedFields: [
-    "slug",
-    "verb",
-    "outputs",
-    "preceded_by",
-    "decision_ids",
-    "actor_id",
-    "happened_at",
-    "template_id",
-  ],
 });
 
 export const loader = route.loader;

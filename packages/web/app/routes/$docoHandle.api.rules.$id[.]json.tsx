@@ -4,17 +4,6 @@ const route = makeUpdateRoute({
   type: "rules",
   entityType: "rule",
   pluralDir: "rules",
-  allowedFields: [
-    "slug",
-    "kind",
-    "predicate",
-    "modality",
-    "severity",
-    "phase",
-    "expected",
-    "on_violation",
-    "applies_to",
-  ],
 });
 
 export const loader = route.loader;
