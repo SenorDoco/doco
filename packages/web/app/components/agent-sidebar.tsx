@@ -1761,7 +1761,7 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
 
   return (
     <aside
-      className="neu-panel flex h-full shrink-0 flex-col overflow-hidden border-r border-border bg-card"
+      className="neu-panel flex h-full shrink-0 flex-row overflow-hidden border-r border-border bg-card"
       style={{ width: railWidth, transition: "width 180ms ease-out" }}
       aria-busy={agentActive}
       aria-label={agentActive ? "Señor Doco, working" : "Señor Doco"}
@@ -1799,42 +1799,32 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
         </button>
       ) : (
         <>
-      {/* Header — always visible. Single row: brand on the left,
-          Show thinking + collapse on the right. The brand sits at
-          text-sm with no uppercasing or letter-spacing so it reads
-          as a proper title, not a label. */}
+      <div className="flex min-w-0 flex-1 flex-col">
+      {/* Header — always visible. The collapse affordance lives on the
+          full-height tab at the right edge of the aside (rendered as a
+          sibling below), not in this row, so users don't mistake a tiny
+          button for "minimize" or hunt for it. */}
       <div className="flex shrink-0 items-center justify-between border-b border-border px-3 py-2">
         <div className="select-none truncate text-sm font-semibold text-foreground">
           Señor Doco
         </div>
-        <div className="flex items-center gap-1.5">
-          {view === "chat" ? (
-            <button
-              type="button"
-              onClick={toggleShowThinking}
-              aria-pressed={showThinking}
-              aria-label={showThinking ? "Hide thinking column" : "Show thinking column"}
-              title={showThinking ? "Hide thinking column" : "Show thinking column"}
-              className={cn(
-                "rounded-md border border-border px-2 py-0.5 text-[11px]",
-                showThinking
-                  ? "neu-pressed bg-input text-foreground"
-                  : "neu-button text-muted-foreground hover:bg-input hover:text-foreground",
-              )}
-            >
-              {showThinking ? "Hide thinking" : "Show thinking"}
-            </button>
-          ) : null}
+        {view === "chat" ? (
           <button
             type="button"
-            onClick={() => setCollapsedPersistent(true)}
-            className="neu-button rounded-md border border-border px-1.5 py-0.5 text-muted-foreground hover:bg-input hover:text-foreground"
-            aria-label="Collapse Señor Doco"
-            title="Collapse"
+            onClick={toggleShowThinking}
+            aria-pressed={showThinking}
+            aria-label={showThinking ? "Hide thinking column" : "Show thinking column"}
+            title={showThinking ? "Hide thinking column" : "Show thinking column"}
+            className={cn(
+              "rounded-md border border-border px-2 py-0.5 text-[11px]",
+              showThinking
+                ? "neu-pressed bg-input text-foreground"
+                : "neu-button text-muted-foreground hover:bg-input hover:text-foreground",
+            )}
           >
-            <CollapseIcon side="left" />
+            {showThinking ? "Hide thinking" : "Show thinking"}
           </button>
-        </div>
+        ) : null}
       </div>
 
       {view === "list" ? (
@@ -2012,6 +2002,20 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
         </Link>
         .
       </div>
+      </div>
+      {/* Full-height collapse tab — a thin column on the right edge
+          with the chevron centered vertically. Unmistakable affordance:
+          the entire vertical strip is one button, so users can't miss
+          it the way they did with the tiny header chevron. */}
+      <button
+        type="button"
+        onClick={() => setCollapsedPersistent(true)}
+        aria-label="Collapse Señor Doco"
+        title="Collapse"
+        className="flex h-full w-5 shrink-0 cursor-pointer items-center justify-center border-l border-border bg-card text-muted-foreground hover:bg-input hover:text-foreground"
+      >
+        <CollapseIcon side="left" />
+      </button>
         </>
       )}
     </aside>
