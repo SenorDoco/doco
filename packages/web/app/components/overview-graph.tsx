@@ -11,7 +11,6 @@ import {
   hasFocalNode,
   opacityForDepth,
   opacityForEdge,
-  withFocalAwareness,
 } from "~/lib/graph-depth";
 import {
   type GraphReferenceItem,
@@ -373,7 +372,7 @@ function OverviewFlowNode({ data }: { data: OverviewNodeData }) {
   const hasSummary = Boolean(summary) && summary !== title;
 
   return (
-    <div className="relative h-full w-full overflow-visible">
+    <div className="relative h-full w-full overflow-visible" style={{ opacity: data.opacity }}>
       <div
         className={`neu-surface overview-graph-node nodrag nopan relative flex h-full w-full flex-col justify-center gap-1.5 overflow-hidden rounded-md border bg-white px-3 py-2 pl-4 text-left shadow-sm${data.isNew ? " doco-new-node-glow" : ""}`}
         data-graph-reference-number={data.referenceNumber ?? undefined}
@@ -688,9 +687,7 @@ export function OverviewGraph({
     [visibleLinks, depthByNodeId, focalActive, nodeById],
   );
 
-  // Every neuron-rendering node MUST go through withFocalAwareness so
-  // the engine enforces the opacity contract — see graph-depth.ts.
-  const nodeTypes = useMemo(() => ({ overviewNode: withFocalAwareness(OverviewFlowNode) }), []);
+  const nodeTypes = useMemo(() => ({ overviewNode: OverviewFlowNode }), []);
 
   return (
     <div className={fillHeight ? "flex h-full min-h-0 flex-col" : "flex flex-col"}>
