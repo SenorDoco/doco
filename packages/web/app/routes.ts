@@ -166,10 +166,26 @@ export default [
   // get public-Doco policies only.
   route("api/v1/agent-bootstrap.json", "routes/api.v1.agent-bootstrap[.]json.tsx"),
   // In-page assistant — the left-rail sidebar visible to every signed-in
-  // user. One conversation per Principal, forever (no archive / new-chat
-  // affordance). The agent acts as the signed-in user (cookie-relayed
-  // fetches), no separate OAuth identity to authorize.
+  // user. Multiple Señor Doco threads per user; the sidebar header lists
+  // them in a dropdown. The agent acts as the signed-in user
+  // (cookie-relayed fetches), no separate OAuth identity to authorize.
+  // - GET /conversation.json: snapshot of the active thread; pass
+  //   ?id=<conv_id> to scope to a specific thread, ?before=<iso> to
+  //   paginate older messages.
+  // - GET/POST /conversations.json: list user's threads, or mint a new
+  //   one (POST body: { title?: string }).
+  // - PATCH /conversation/:id.json: rename / archive a thread.
+  // - POST /messages.json: send a user message; accepts conversation_id
+  //   to target a specific thread, otherwise picks the active one.
   route("api/v1/agent-chat/conversation.json", "routes/api.v1.agent-chat.conversation[.]json.tsx"),
+  route(
+    "api/v1/agent-chat/conversations.json",
+    "routes/api.v1.agent-chat.conversations[.]json.tsx",
+  ),
+  route(
+    "api/v1/agent-chat/conversation/:id.json",
+    "routes/api.v1.agent-chat.conversation.$id[.]json.tsx",
+  ),
   route("api/v1/agent-chat/messages.json", "routes/api.v1.agent-chat.messages[.]json.tsx"),
   // Attachments — composer uploads files here (POST), then renders
   // previews + sends a GET to /api/v1/agent-chat/attachments/:id for

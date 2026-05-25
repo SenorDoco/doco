@@ -1,12 +1,16 @@
 // POST /api/v1/agent-chat/messages.json
 //
 // Streams an agent reply. Request body:
-//   { text: string, current_path?: string }
+//   { text: string, current_path?: string, conversation_id?: string }
 //
 // Response: Server-Sent Events. One JSON event per line, framed
 // `data: <json>\n\n`. Event kinds match ChatStreamEvent in
 // agent-chat.server.ts — text_delta, tool_use_start, tool_use_input,
 // tool_use_result, navigate, message_saved, done, error.
+//
+// `conversation_id` targets a specific Señor Doco thread; when
+// omitted, falls back to the user's active thread (auto-created
+// the first time they chat). Mismatched ids return 404.
 //
 // The client consumes via fetch + ReadableStream (not EventSource —
 // EventSource doesn't support POST, and we need to send the user's
@@ -15,6 +19,7 @@
 import {
   type ChatStreamEvent,
   type VisibleGraphReferenceGroup,
+  loadConversationByIdForPrincipal,
   loadOrCreateConversation,
   runAssistantTurn,
 } from "~/lib/agent-chat.server";
@@ -25,6 +30,7 @@ interface Body {
   current_path?: unknown;
   attachment_ids?: unknown;
   graph_references?: unknown;
+  conversation_id?: unknown;
 }
 
 function cleanString(value: unknown, maxLength: number): string {
@@ -92,8 +98,17 @@ export async function action({ request }: { request: Request }) {
       ? parsed.current_path
       : null;
   const graphReferences = parseGraphReferences(parsed.graph_references);
+  const conversationId =
+    typeof parsed.conversation_id === "string" && parsed.conversation_id.length > 0
+      ? parsed.conversation_id
+      : null;
 
-  const conversation = await loadOrCreateConversation(me.id);
+  const conversation = conversationId
+    ? await loadConversationByIdForPrincipal(conversationId, me.id)
+    : await loadOrCreateConversation(me.id);
+  if (!conversation) {
+    return Response.json({ error: "conversation_not_found" }, { status: 404 });
+  }
   const cookieHeader = request.headers.get("cookie") ?? "";
   const origin = new URL(request.url).origin;
 

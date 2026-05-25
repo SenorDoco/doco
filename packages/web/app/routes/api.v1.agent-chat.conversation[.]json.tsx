@@ -1,12 +1,12 @@
 // GET /api/v1/agent-chat/conversation.json
 //
-// Returns the signed-in user's active rolling conversation. By default
-// returns the most recent page of messages (newest at the bottom) plus
-// a `has_more` flag; pass `?before=<iso8601>` to fetch the page of
-// messages strictly older than that timestamp — the sidebar uses this
-// for infinite scroll-up. Signed-out callers get a 401 — the sidebar
-// only renders when there's a session, so this should never be hit
-// anonymously in normal flow.
+// Returns a single Señor Doco thread's snapshot. With no query
+// params, returns the user's most-recent active thread (auto-created
+// when they've never chatted) — that's the legacy single-thread
+// behavior the sidebar still uses on first load. Pass `?id=<conv_id>`
+// to scope to a specific thread; 404 if it doesn't exist or belongs
+// to another user. `?before=<iso8601>` paginates older messages for
+// infinite scroll-up. Signed-out callers get 401.
 
 import { loadSnapshotForPrincipal } from "~/lib/agent-chat.server";
 import { getCurrentPrincipal } from "~/lib/session.server";
@@ -23,6 +23,13 @@ export async function loader({ request }: { request: Request }) {
     const d = new Date(beforeStr);
     if (!Number.isNaN(d.getTime())) before = d;
   }
-  const snapshot = await loadSnapshotForPrincipal(me.id, { before });
+  const conversationId = url.searchParams.get("id");
+  const snapshot = await loadSnapshotForPrincipal(me.id, {
+    before,
+    conversationId: conversationId || null,
+  });
+  if (!snapshot) {
+    return Response.json({ error: "not_found" }, { status: 404 });
+  }
   return Response.json(snapshot);
 }
