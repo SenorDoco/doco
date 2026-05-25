@@ -127,9 +127,15 @@ interface NodeBadgeRowProps {
   entityType: string;
   lifecycle: string | null | undefined;
   className?: string;
+  interactive?: boolean;
 }
 
-export function NodeBadgeRow({ entityType, lifecycle, className }: NodeBadgeRowProps) {
+export function NodeBadgeRow({
+  entityType,
+  lifecycle,
+  className,
+  interactive = false,
+}: NodeBadgeRowProps) {
   const rowStyle: CSSProperties = {
     position: "absolute",
     // Browser-rendered pill height measures ~15.6px (font metrics push it
@@ -139,7 +145,8 @@ export function NodeBadgeRow({ entityType, lifecycle, className }: NodeBadgeRowP
     left: "50%",
     transform: "translateX(-50%)",
     zIndex: 2,
-    pointerEvents: "none",
+    pointerEvents: interactive ? "auto" : "none",
+    cursor: interactive ? "pointer" : undefined,
     display: "flex",
     alignItems: "center",
     gap: 4,

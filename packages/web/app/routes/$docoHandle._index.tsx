@@ -872,6 +872,14 @@ export default function DocoHome({
                         node.href ?? `/${handle}/${node.entity_type}/${node.id}`,
                       );
                     }}
+                    onPoolClick={(pool) => {
+                      if (!pool.intent_id) return;
+                      void loadNeuronDialog(
+                        "intent",
+                        pool.intent_id,
+                        `/${handle}/intent/${pool.intent_id}`,
+                      );
+                    }}
                   />
                 ) : (
                   <OverviewGraph

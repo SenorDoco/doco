@@ -21,6 +21,7 @@ import { Handle, MarkerType, type MiniMapNodeProps, Position } from "@xyflow/rea
 import {
   type CSSProperties,
   type ComponentType,
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -82,6 +83,7 @@ interface BpmnPerspectiveProps {
    */
   globalPagerank?: Record<string, number>;
   onNeuronClick?: (node: BpmnNode) => void;
+  onPoolClick?: (pool: BpmnPool) => void;
   /**
    * Lift focal-node state to the parent. Clicking a neuron on the
    * canvas should re-center the graph on it so depth-based opacity
@@ -184,6 +186,7 @@ export function BpmnPerspective({
   links,
   globalPagerank,
   onNeuronClick,
+  onPoolClick,
   onCenterChange,
   visibleLifecycles,
   centerId,
@@ -338,7 +341,20 @@ export function BpmnPerspective({
     [],
   );
   const nodeById = useMemo(() => new Map(filteredNodes.map((n) => [n.id, n])), [filteredNodes]);
+  const poolById = useMemo(() => new Map(pools.map((pool) => [pool.id, pool])), [pools]);
+  const poolByHeaderId = useMemo(
+    () => new Map(pools.map((pool) => [`pool-header:${pool.id}`, pool])),
+    [pools],
+  );
   const MiniMapNode = useMemo(() => makeBpmnMiniMapNode(nodeById), [nodeById]);
+  const openPoolNeuron = useCallback(
+    (pool: BpmnPool) => {
+      if (!pool.intent_id) return;
+      if (onCenterChange) onCenterChange(pool.intent_id);
+      onPoolClick?.(pool);
+    },
+    [onCenterChange, onPoolClick],
+  );
 
   // Principal-owned lanes are first-class references — they get
   // numbers 1..N (in lane order) before any shape, so a viewer can
@@ -541,6 +557,11 @@ export function BpmnPerspective({
           }}
           onMove={(_event: unknown, next: FlowViewport) => updateViewport(next)}
           onNodeClick={(_e: unknown, node: { id: string }) => {
+            const pool = poolByHeaderId.get(node.id);
+            if (pool) {
+              openPoolNeuron(pool);
+              return;
+            }
             const target = nodeById.get(node.id);
             if (!target) return;
             // Re-center first so depth opacity recomputes from the
@@ -576,10 +597,11 @@ export function BpmnPerspective({
         <div
           className="pointer-events-none absolute left-0 right-0 top-0 z-10 flex flex-col"
           style={{ paddingLeft: SWIM_RAIL_WIDTH }}
-          aria-hidden="true"
         >
           {stickyPools.map((pool) => {
             const isUnassigned = pool.intent_id === null;
+            const sourcePool = poolById.get(pool.id);
+            const isClickablePool = !isUnassigned && Boolean(sourcePool?.intent_id);
             // Mirror the in-canvas BpmnPoolHeaderNode look: same overlay
             // color over an opaque card so the sticky band reads as a
             // pinned copy of the natural header (not a different chrome
@@ -594,7 +616,7 @@ export function BpmnPerspective({
             return (
               <div
                 key={pool.id}
-                className="flex items-center border-b shadow-sm"
+                className="flex items-center border-b shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 style={{
                   height: POOL_RAIL_HEIGHT,
                   backgroundColor: "var(--color-card)",
@@ -605,10 +627,25 @@ export function BpmnPerspective({
                   gap: gapPx,
                   fontSize: labelFontPx,
                   fontWeight: 700,
-                  textTransform: "uppercase",
-                  letterSpacing: 0.8 * viewport.zoom,
+                  letterSpacing: 0,
                   color: isUnassigned ? "var(--color-muted-foreground, #525252)" : "#1f2937",
+                  cursor: isClickablePool ? "pointer" : undefined,
+                  pointerEvents: isClickablePool ? "auto" : undefined,
                 }}
+                onClick={
+                  isClickablePool && sourcePool ? () => openPoolNeuron(sourcePool) : undefined
+                }
+                onKeyDown={
+                  isClickablePool && sourcePool
+                    ? (event) => {
+                        if (event.key !== "Enter" && event.key !== " ") return;
+                        event.preventDefault();
+                        openPoolNeuron(sourcePool);
+                      }
+                    : undefined
+                }
+                role={isClickablePool ? "button" : undefined}
+                tabIndex={isClickablePool ? 0 : undefined}
                 title={pool.label}
               >
                 {!isUnassigned && pool.intent_id ? (
@@ -1169,9 +1206,9 @@ function BpmnPoolHeaderNode({ data }: { data: BpmnPoolHeaderData }) {
         boxSizing: "border-box",
         fontSize: 12,
         fontWeight: 700,
-        textTransform: "uppercase",
-        letterSpacing: 0.8,
+        letterSpacing: 0,
         color: isUnassigned ? "var(--color-muted-foreground, #525252)" : "#1f2937",
+        cursor: !isUnassigned && data.pool.intent_id ? "pointer" : undefined,
       }}
       title={data.pool.label}
     >
@@ -1770,7 +1807,12 @@ function graphReferenceAttributes(data: BpmnNodeData): Record<string, string | n
 function BpmnBadgeRow({ data }: { data: BpmnNodeData; circular?: boolean }) {
   return (
     <>
-      <NodeBadgeRow entityType={data.node.entity_type} lifecycle={data.node.lifecycle} />
+      <NodeBadgeRow
+        entityType={data.node.entity_type}
+        lifecycle={data.node.lifecycle}
+        className="nodrag nopan"
+        interactive
+      />
       <ReferenceNumberBadge
         referenceNumber={data.referenceNumber}
         referenceLabel={data.node.name ?? data.node.id}
