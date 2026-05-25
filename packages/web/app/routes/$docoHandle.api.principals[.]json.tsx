@@ -123,7 +123,14 @@ export async function action({
       name,
       existed: true,
       footer_lines: [
-        principalLine("👤", "already exists", name, existing.rows[0].id, request, params.docoHandle),
+        principalLine(
+          "👤",
+          "already exists",
+          name,
+          existing.rows[0].id,
+          request,
+          params.docoHandle,
+        ),
       ],
     });
   }
@@ -261,6 +268,7 @@ export async function loader({
   ).filter((p) => p !== null);
   const principal_neurons = neuronRows.map((r) => ({
     id: r.id,
+    name: r.name ?? null,
     lifecycle: r.lifecycle ?? null,
     created_at: r.created_at ?? null,
     updated_at: r.updated_at ?? null,
