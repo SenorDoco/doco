@@ -374,6 +374,37 @@ const HIDDEN_HANDLE_STYLE = {
   opacity: 0,
 };
 
+/**
+ * Badge overlay node — paired 1:1 with every OverviewFlowNode card.
+ * The card draws the box; this overlay draws the `#N` reference badge
+ * (top) and type/lifecycle pills (bottom) in a SEPARATE React Flow
+ * node with `style.zIndex: 100`, so the badges paint above every card
+ * body in the canvas — including cards that visually overlap the
+ * underlying neuron.
+ *
+ * Bumping z-index on the badges inside the card doesn't work: each
+ * React Flow node lives in its own CSS stacking context (React Flow
+ * wraps every node in `transform: translate(…)`, which creates one).
+ * A badge stuck inside a stacking context can never paint above a
+ * sibling node's body — only above siblings inside the same context.
+ * Putting the badges in their own node with a higher `style.zIndex`
+ * lifts them into the parent `.react-flow__nodes` container so they
+ * land above every zIndex-1 card in the canvas.
+ *
+ * `pointerEvents: none` on the wrapping React Flow node style lets
+ * clicks fall through to the underlying card.
+ */
+function OverviewBadgeOverlayNode({ data }: { data: OverviewNodeData }) {
+  const lifecycle = nodeLifecycle(data.node);
+  const title = overviewNodeDisplayLabel(data.node, data.detail);
+  return (
+    <div className="relative h-full w-full">
+      <NodeBadgeRow entityType={data.node.entity_type} lifecycle={lifecycle} />
+      <ReferenceNumberBadge referenceNumber={data.referenceNumber} referenceLabel={title} />
+    </div>
+  );
+}
+
 function OverviewFlowNode({ data }: { data: OverviewNodeData }) {
   const lifecycle = nodeLifecycle(data.node);
   const detail = data.detail;
@@ -404,8 +435,6 @@ function OverviewFlowNode({ data }: { data: OverviewNodeData }) {
           style={HIDDEN_HANDLE_STYLE}
           isConnectable={false}
         />
-        <NodeBadgeRow entityType={data.node.entity_type} lifecycle={lifecycle} />
-        <ReferenceNumberBadge referenceNumber={data.referenceNumber} referenceLabel={title} />
         <div className="flex items-center gap-2">
           <NeuronTypeIcon entityType={data.node.entity_type} className="!h-4 !w-4 shrink-0" />
           <span className="line-clamp-2 min-w-0 flex-1 font-mono text-xs font-semibold leading-snug text-foreground">
@@ -628,23 +657,24 @@ export function OverviewGraph({
 
   const flowNodes = useMemo(
     () =>
-      visibleNodes.map((node) => {
+      visibleNodes.flatMap((node) => {
         const position = positions.get(node.id) ?? { x: 0, y: 0 };
         const opacity = focalActive ? opacityForDepth(depthByNodeId.get(node.id)) : 1;
-        return {
+        const data = {
+          node,
+          detail: details.get(node.id),
+          showDetail: viewport.zoom >= DETAIL_ZOOM,
+          referenceNumber: referenceNumberByNodeId.get(node.id),
+          isNew: newNodeIds.has(node.id),
+          opacity,
+        } satisfies OverviewNodeData;
+        const card = {
           id: node.id,
           type: "overviewNode",
           position,
           initialWidth: OVERVIEW_NODE_WIDTH,
           initialHeight: OVERVIEW_NODE_HEIGHT,
-          data: {
-            node,
-            detail: details.get(node.id),
-            showDetail: viewport.zoom >= DETAIL_ZOOM,
-            referenceNumber: referenceNumberByNodeId.get(node.id),
-            isNew: newNodeIds.has(node.id),
-            opacity,
-          } satisfies OverviewNodeData,
+          data,
           draggable: false,
           selectable: false,
           connectable: false,
@@ -654,8 +684,38 @@ export function OverviewGraph({
             padding: 0,
             background: "transparent",
             border: "none",
+            zIndex: 1,
           },
         };
+        // Badge overlay node — a transparent twin emitted with a much
+        // higher zIndex so its `#N` and type/lifecycle badges paint
+        // above every card body in the canvas. Without this twin, two
+        // overlapping cards hide each other's badges because each
+        // React Flow node lives in its own CSS stacking context (the
+        // wrapper has `transform: translate(...)`, which creates one).
+        // `pointerEvents: none` lets clicks fall through to the card.
+        const overlay = {
+          id: `badge:${node.id}`,
+          type: "overviewBadgeOverlay",
+          position,
+          initialWidth: OVERVIEW_NODE_WIDTH,
+          initialHeight: OVERVIEW_NODE_HEIGHT,
+          data,
+          draggable: false,
+          selectable: false,
+          connectable: false,
+          style: {
+            width: OVERVIEW_NODE_WIDTH,
+            height: OVERVIEW_NODE_HEIGHT,
+            padding: 0,
+            background: "transparent",
+            border: "none",
+            zIndex: 100,
+            pointerEvents: "none" as const,
+            opacity,
+          },
+        };
+        return [card, overlay];
       }),
     [
       visibleNodes,
@@ -697,7 +757,13 @@ export function OverviewGraph({
     [visibleLinks, depthByNodeId, focalActive, nodeById],
   );
 
-  const nodeTypes = useMemo(() => ({ overviewNode: OverviewFlowNode }), []);
+  const nodeTypes = useMemo(
+    () => ({
+      overviewNode: OverviewFlowNode,
+      overviewBadgeOverlay: OverviewBadgeOverlayNode,
+    }),
+    [],
+  );
 
   const handleLifecycleToggle = (lifecycle: string) => {
     if (externalLifecycleToggle) {
