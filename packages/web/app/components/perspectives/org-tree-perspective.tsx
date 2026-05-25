@@ -24,16 +24,18 @@ import {
   ReactFlowProvider,
   useReactFlow,
 } from "@xyflow/react";
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LifecycleBadge, ReferenceNumberBadge } from "~/components/neuron-badges";
 import { StandardControls, StandardMiniMap } from "~/components/perspective-canvas-overlays";
-import {
-  type GraphReferenceItem,
-  clearGraphReferences,
-  publishGraphReferences,
-} from "~/lib/graph-references";
 import type { OrgTreeNode } from "~/lib/org-tree-perspective.server";
+import { type ReferenceCandidate, usePerspectiveReferences } from "~/lib/perspective-references";
 import "@xyflow/react/dist/style.css";
+
+interface FlowViewport {
+  x: number;
+  y: number;
+  zoom: number;
+}
 
 const NODE_W = 240;
 const NODE_H = 108;
@@ -52,19 +54,22 @@ interface OrgTreePerspectiveProps {
 interface OrgTreeNodeData extends Record<string, unknown> {
   org: OrgTreeNode;
   isCenter: boolean;
-  // Sequential reference number assigned in reading order (top-down,
-  // left-to-right). Mirrors the Graph perspective's numbered badges.
+  // Reference number from the shared `usePerspectiveReferences`
+  // hook (same hook Graph + BPMN use). Viewport-driven, so the
+  // number can shift as the user pans/zooms — same contract as
+  // the other perspectives.
   referenceNumber?: number;
 }
 
 // Tree-layout entry point. Returns positioned React Flow nodes + edges
-// in one pass so the component can pass them straight into <ReactFlow>,
-// plus the reading-order reference list (mirrors the Graph).
+// in one pass so the component can pass them straight into <ReactFlow>.
+// Reference numbering is layered on top by `usePerspectiveReferences`
+// in OrgTreeInner — not threaded through here.
 function layoutOrgTree(
   rawNodes: OrgTreeNode[],
   centerId: string | null,
-): { nodes: Node<OrgTreeNodeData>[]; edges: Edge[]; references: GraphReferenceItem[] } {
-  if (rawNodes.length === 0) return { nodes: [], edges: [], references: [] };
+): { nodes: Node<OrgTreeNodeData>[]; edges: Edge[] } {
+  if (rawNodes.length === 0) return { nodes: [], edges: [] };
 
   const byId = new Map<string, OrgTreeNode>();
   for (const n of rawNodes) byId.set(n.id, n);
@@ -133,47 +138,19 @@ function layoutOrgTree(
     rootX += (subtreeWidth.get(rootId) ?? NODE_W) + H_GAP;
   }
 
-  // Reference numbering — same idea the overview Graph uses: assign
-  // sequential numbers to visible nodes in reading order (top-to-bottom
-  // row, then left-to-right column). The tree layout already places
-  // managers above reports, so #1 lands on the top-of-chain Principal
-  // and numbers grow downward through the hierarchy. Ties broken by
-  // node id so the numbering is stable across renders.
-  const placedNodes = rawNodes.filter((n) => positions.has(n.id));
-  const ROW_TOLERANCE = NODE_H / 2;
-  const orderedForRefs = [...placedNodes].sort((a, b) => {
-    const pa = positions.get(a.id) as { x: number; y: number };
-    const pb = positions.get(b.id) as { x: number; y: number };
-    const dy = pa.y - pb.y;
-    if (Math.abs(dy) > ROW_TOLERANCE) return dy;
-    const dx = pa.x - pb.x;
-    if (dx !== 0) return dx;
-    return a.id.localeCompare(b.id);
-  });
-  const numberByNodeId = new Map<string, number>();
-  orderedForRefs.forEach((n, i) => numberByNodeId.set(n.id, i + 1));
-
-  const references: GraphReferenceItem[] = orderedForRefs.map((n, i) => ({
-    number: i + 1,
-    id: n.id,
-    entity_type: "principal",
-    label: n.display_name || n.name,
-    lifecycle: n.lifecycle,
-    href: n.href,
-  }));
-
-  const rfNodes: Node<OrgTreeNodeData>[] = placedNodes.map((n) => ({
-    id: n.id,
-    type: "orgTreeNode",
-    position: positions.get(n.id) as { x: number; y: number },
-    data: {
-      org: n,
-      isCenter: n.id === centerId,
-      referenceNumber: numberByNodeId.get(n.id),
-    },
-    draggable: false,
-    selectable: false,
-  }));
+  const rfNodes: Node<OrgTreeNodeData>[] = rawNodes
+    .filter((n) => positions.has(n.id))
+    .map((n) => ({
+      id: n.id,
+      type: "orgTreeNode",
+      position: positions.get(n.id) as { x: number; y: number },
+      data: {
+        org: n,
+        isCenter: n.id === centerId,
+      },
+      draggable: false,
+      selectable: false,
+    }));
 
   // Muted, low-contrast connector — matches the visual weight of the
   // other perspectives and stays out of the way of the cards.
@@ -190,7 +167,7 @@ function layoutOrgTree(
       markerEnd: { type: MarkerType.ArrowClosed, color: edgeStroke },
     }));
 
-  return { nodes: rfNodes, edges: rfEdges, references };
+  return { nodes: rfNodes, edges: rfEdges };
 }
 
 // Custom React Flow node — the principal card.
@@ -274,26 +251,73 @@ function OrgTreeInner({
     return nodes.filter((n) => visibleLifecycles.has(n.lifecycle));
   }, [nodes, visibleLifecycles]);
 
-  const {
-    nodes: rfNodes,
-    edges: rfEdges,
-    references,
-  } = useMemo(() => layoutOrgTree(filtered, centerId ?? null), [filtered, centerId]);
-
-  // Publish references to the shared window store so other surfaces
-  // can pick them up. Mirrors overview-graph's publish-on-change /
-  // clear-on-unmount pattern.
-  const graphReferenceIdRef = useRef(`org-tree-${Math.random().toString(36).slice(2)}`);
-  useEffect(() => {
-    publishGraphReferences(graphReferenceIdRef.current, "org-tree", references);
-  }, [references]);
-  useEffect(() => {
-    const id = graphReferenceIdRef.current;
-    return () => clearGraphReferences(id);
-  }, []);
+  const { nodes: rawRfNodes, edges: rfEdges } = useMemo(
+    () => layoutOrgTree(filtered, centerId ?? null),
+    [filtered, centerId],
+  );
 
   const containerRef = useRef<HTMLDivElement>(null);
   const flow = useReactFlow();
+
+  // Viewport + size tracked the same way Graph/BPMN do it: ResizeObserver
+  // on the container for size, React Flow's `onMove` for the viewport.
+  // Both feed `usePerspectiveReferences`, which mirrors the Graph's
+  // viewport-driven numbering (re-rank when the user pans/zooms, hide
+  // when zoom < REFERENCE_ZOOM_THRESHOLD, cap at MAX_GRAPH_REFERENCES).
+  const [size, setSize] = useState({ width: 1, height: 1 });
+  const [viewport, setViewport] = useState<FlowViewport>({ x: 0, y: 0, zoom: 1 });
+  const updateViewport = useCallback((next: FlowViewport) => {
+    setViewport((prev) =>
+      prev.x === next.x && prev.y === next.y && prev.zoom === next.zoom ? prev : next,
+    );
+  }, []);
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const update = () =>
+      setSize({ width: Math.max(1, el.clientWidth), height: Math.max(1, el.clientHeight) });
+    update();
+    const obs = new ResizeObserver(update);
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, []);
+
+  // Candidates for the shared numbering hook. Canvas-space positions
+  // (already computed by `layoutOrgTree`) + node dimensions in canvas
+  // units; the hook handles screen projection + sort + cap.
+  const referenceCandidates = useMemo<ReferenceCandidate[]>(
+    () =>
+      rawRfNodes.map((n) => ({
+        id: n.id,
+        entity_type: "principal",
+        label: n.data.org.display_name || n.data.org.name,
+        lifecycle: n.data.org.lifecycle,
+        href: n.data.org.href ?? null,
+        position: { x: n.position.x, y: n.position.y },
+        width: NODE_W,
+        height: NODE_H,
+      })),
+    [rawRfNodes],
+  );
+  const { numberById: referenceNumberByNodeId } = usePerspectiveReferences({
+    source: "org-tree",
+    viewport,
+    size,
+    candidates: referenceCandidates,
+  });
+
+  // Splice the reference numbers into the node data without rebuilding
+  // the rest of the layout. Kept separate from `layoutOrgTree` so the
+  // tree-shape work doesn't re-run on every pan/zoom.
+  const rfNodes = useMemo<Node<OrgTreeNodeData>[]>(
+    () =>
+      rawRfNodes.map((n) => {
+        const referenceNumber = referenceNumberByNodeId.get(n.id);
+        if (!referenceNumber) return n;
+        return { ...n, data: { ...n.data, referenceNumber } };
+      }),
+    [rawRfNodes, referenceNumberByNodeId],
+  );
 
   // Stable signature of the layout's *shape* — node ids + reports_to
   // edges, in deterministic order. The dashboard re-fetches Principals
@@ -351,6 +375,7 @@ function OrgTreeInner({
         edges={rfEdges}
         nodeTypes={nodeTypes}
         onNodeClick={handleNodeClick}
+        onMove={(_event: unknown, next: FlowViewport) => updateViewport(next)}
         fitView
         fitViewOptions={{ padding: 0.2 }}
         minZoom={0.2}
