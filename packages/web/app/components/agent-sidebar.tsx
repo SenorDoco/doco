@@ -1130,6 +1130,64 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
     [navigate, location.pathname],
   );
 
+  // POST-to-create flow doesn't have the id in the request path
+  // (the path is /<handle>/api/<plural>.json — the id is generated
+  // server-side and returned in the response body). So track which
+  // in-flight tool_use_ids are creates, then on tool_use_result pull
+  // the id out of the preview and navigate.
+  const pendingCreatesRef = useRef<Map<string, { handle: string; entityType: string }>>(
+    new Map(),
+  );
+
+  const maybeNoteCreate = useCallback(
+    (toolUseId: string, toolName: string, input: unknown) => {
+      if (toolName !== "doco_api") return;
+      if (!input || typeof input !== "object") return;
+      const inp = input as { path?: unknown; method?: unknown };
+      if (typeof inp.path !== "string") return;
+      const method = typeof inp.method === "string" ? inp.method.toUpperCase() : "GET";
+      if (method !== "POST") return;
+      // /<handle>/api/<plural>.<ext> — no id segment.
+      const m = /^\/([^/]+)\/api\/([^/]+)\.(?:json|txt)$/.exec(inp.path);
+      if (!m) return;
+      const [, handle, plural] = m;
+      const entityType = plural.replace(/s$/, "");
+      if (entityType === "polic") return; // policies isn't a neuron
+      pendingCreatesRef.current.set(toolUseId, { handle, entityType });
+    },
+    [],
+  );
+
+  const maybeFollowCreateResult = useCallback(
+    (toolUseId: string, ok: boolean, preview: string) => {
+      const pending = pendingCreatesRef.current.get(toolUseId);
+      if (!pending) return;
+      pendingCreatesRef.current.delete(toolUseId);
+      if (!ok) return;
+      // Response shape varies (capture endpoints return { id, … },
+      // create endpoints return { id, handle, … }, etc.) but every
+      // one of them includes a top-level `id`. Try JSON parse first;
+      // fall back to a regex when the preview is truncated past the
+      // closing brace.
+      let id: string | null = null;
+      try {
+        const parsed = JSON.parse(preview);
+        if (parsed && typeof parsed === "object" && typeof parsed.id === "string") {
+          id = parsed.id;
+        }
+      } catch {
+        const m = /"id"\s*:\s*"([^"]+)"/.exec(preview);
+        if (m) id = m[1];
+      }
+      if (!id) return;
+      const target = `/${pending.handle}/${pending.entityType}/${id}`;
+      if (location.pathname === target) return;
+      if (composerHasTextRef.current) return;
+      navigate(target);
+    },
+    [navigate, location.pathname],
+  );
+
   const send = useCallback(
     async (override?: { text: string; staged: StagedAttachment[] }) => {
       const text = (override?.text ?? inputText).trim();
@@ -1320,6 +1378,9 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
                 // perspective view so they can watch what's happening.
                 // Skipped silently if the user is already there.
                 maybeFollowToolToNeuron(b.name, event.input);
+                // Record creates here so the matching tool_use_result
+                // (which carries the server-generated id) can navigate.
+                maybeNoteCreate(event.tool_use_id, b.name, event.input);
               }
               appendThinking({
                 kind: "tool_input",
@@ -1340,6 +1401,8 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
                 preview: event.preview,
                 ok: event.ok,
               });
+              // Create flow: navigate to the freshly-minted neuron.
+              maybeFollowCreateResult(event.tool_use_id, event.ok, event.preview);
             } else if (event.kind === "navigate") {
               navigate(event.url);
               appendThinking({ kind: "navigate", url: event.url });
@@ -1437,6 +1500,8 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
       conversationTitle,
       loadConversationsList,
       maybeFollowToolToNeuron,
+      maybeNoteCreate,
+      maybeFollowCreateResult,
     ],
   );
 
@@ -2001,21 +2066,24 @@ function AttachmentsRow({
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-1" ref={pickerRef}>
+    <div className="flex flex-wrap items-center gap-1.5" ref={pickerRef}>
       {docos.map((d) => (
         <span
           key={`doco-${d.handle}`}
-          className="inline-flex h-5 items-center rounded-full border border-border bg-input/60 pl-2 pr-0.5 text-[10px] leading-none text-muted-foreground hover:bg-primary/20 hover:text-foreground"
+          className="neu-button inline-flex h-5 items-center rounded-full border border-border pl-2 pr-0.5 text-[10px] leading-none text-muted-foreground"
           title={d.name ?? d.handle}
         >
-          <Link to={`/${d.handle}`} className="leading-none">
+          <Link
+            to={`/${d.handle}`}
+            className="inline-flex h-full items-center leading-none hover:text-foreground"
+          >
             {d.name ?? d.handle}
           </Link>
           <button
             type="button"
             onClick={() => onDetachDoco(d.handle)}
             aria-label={`Remove ${d.name ?? d.handle}`}
-            className="ml-1 inline-flex h-3.5 w-3.5 items-center justify-center rounded-full text-muted-foreground hover:bg-destructive/20 hover:text-destructive"
+            className="ml-1 inline-flex h-3.5 w-3.5 items-center justify-center rounded-full leading-none text-muted-foreground hover:bg-destructive/15 hover:text-destructive"
           >
             ×
           </button>
@@ -2024,29 +2092,32 @@ function AttachmentsRow({
       {orgs.map((o) => (
         <span
           key={`org-${o.handle}`}
-          className="inline-flex h-5 items-center rounded-full border border-border bg-input/60 pl-2 pr-0.5 text-[10px] leading-none text-muted-foreground hover:bg-primary/20 hover:text-foreground"
+          className="neu-button inline-flex h-5 items-center rounded-full border border-border pl-2 pr-0.5 text-[10px] leading-none text-muted-foreground"
           title={o.name ?? o.handle}
         >
-          <Link to={`/orgs/${o.handle}`} className="leading-none">
+          <Link
+            to={`/orgs/${o.handle}`}
+            className="inline-flex h-full items-center leading-none hover:text-foreground"
+          >
             @{o.name ?? o.handle}
           </Link>
           <button
             type="button"
             onClick={() => onDetachOrg(o.handle)}
             aria-label={`Remove ${o.name ?? o.handle}`}
-            className="ml-1 inline-flex h-3.5 w-3.5 items-center justify-center rounded-full text-muted-foreground hover:bg-destructive/20 hover:text-destructive"
+            className="ml-1 inline-flex h-3.5 w-3.5 items-center justify-center rounded-full leading-none text-muted-foreground hover:bg-destructive/15 hover:text-destructive"
           >
             ×
           </button>
         </span>
       ))}
-      <div className="relative">
+      <div className="relative inline-flex items-center">
         <button
           type="button"
           onClick={() => setPickerOpen((p) => !p)}
           aria-label="Attach a Doco or Org"
           aria-expanded={pickerOpen}
-          className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-border bg-input/40 text-[10px] leading-none text-muted-foreground hover:bg-input hover:text-foreground"
+          className="neu-button inline-flex h-5 w-5 items-center justify-center rounded-full border border-border text-[10px] leading-none text-muted-foreground hover:text-foreground"
         >
           +
         </button>
