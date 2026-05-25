@@ -45,8 +45,8 @@ export interface CommonFields {
   outcome?: Outcome;
   born_from?: EntityId;
   superseded_by?: EntityId | null;
-  /** Ordering / dependency. This entity comes after the listed ones. */
-  follows?: EntityId[];
+  /** Ordering / dependency. Each listed entity precedes this one. */
+  preceded_by?: EntityId[];
 }
 
 /** Common fields for readable claim entities that carry a one-line summary. */
@@ -115,6 +115,15 @@ export interface Principal extends SummarizedFields {
   name: string;
   display_name?: string;
   description?: string;
+  /**
+   * Optional person/agent distinction. Most Docos leave this unset —
+   * Principals are role-personas and the OAuth identity layer
+   * (Collaborator) carries the person/agent kind for accounts that
+   * sign in. The `org-chart` template REQUIRES this field via a
+   * neuron_authoring_policy, because an org chart's value is in
+   * knowing which seats are filled by humans and which by AI agents.
+   */
+  type?: "person" | "agent";
 }
 
 // ─── Doco (root entity) ───────────────────────────────────────────────────

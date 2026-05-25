@@ -4,7 +4,11 @@
     "allow": [
       "Bash(doco:*)",
       "Bash(node .agents/doco-agent-client.mjs:*)",
-      "WebFetch(domain:pepe.com)"
+      "WebFetch(domain:pepe.com)",
+      "mcp__doco__doco_search",
+      "mcp__github__pull_request_read",
+      "mcp__7087442d-26eb-4e3d-8452-02da344449d7__list_deployments",
+      "mcp__7087442d-26eb-4e3d-8452-02da344449d7__get_deployment"
     ]
   },
   "hooks": {

@@ -31,15 +31,16 @@ import { getCurrentPrincipal } from "~/lib/session.server";
 
 export async function loader({ request }: { request: Request }): Promise<ApiKeysPageData> {
   const me = await getCurrentPrincipal(request);
+  const url = new URL(request.url);
   if (!me) {
-    const url = new URL(request.url);
     throw redirect(`/sign-in?next=${encodeURIComponent(`${url.pathname}${url.search}`)}`);
   }
   const [keys, scopeOptions] = await Promise.all([
     listApiKeysForCollaborator(me.id),
     loadScopeOptions(me.id),
   ]);
-  return { me, keys, scopeOptions, justMinted: null };
+  const host = `${url.protocol}//${url.host}`;
+  return { me, keys, scopeOptions, host, justMinted: null };
 }
 
 type ActionResult =
@@ -120,12 +121,17 @@ export default function ApiKeysPage({
         <header className="space-y-1">
           <h1 className="text-2xl font-semibold">API keys</h1>
           <p className="text-sm text-muted-foreground">
-            Long-lived Bearer tokens for programmatic access. Some keys were minted by AI agents via
-            OAuth; others are personal keys you generate here for your own scripts and runtimes.
+            Long-lived Bearer tokens for programmatic access. Invite an AI agent to authenticate
+            via OAuth, or mint a key directly for a script you control.
           </p>
         </header>
 
-        <GenerateKeyCard scopeOptions={scopeOptions} error={error} minted={minted} />
+        <AddAgentCard
+          scopeOptions={scopeOptions}
+          host={loaderData.host}
+          error={error}
+          minted={minted}
+        />
 
         <Card>
           <CardHeader>
@@ -147,15 +153,155 @@ export default function ApiKeysPage({
   );
 }
 
-function GenerateKeyCard({
+type AddAgentMode = "invite" | "generate";
+
+function AddAgentCard({
   scopeOptions,
+  host,
   error,
   minted,
 }: {
   scopeOptions: ScopeOption[];
+  host: string;
   error: string | null;
   minted: MintedApiKey | null;
 }) {
+  // Two ways to onboard an agent:
+  //   - "invite":  copy a prompt that points the agent at /protocol/agent-oauth-recipe
+  //                and /device; the agent drives its own OAuth flow.
+  //   - "generate": pick scope + role and mint a Bearer token directly.
+  // Default to "invite" because the OAuth flow is what most agents land
+  // on (chat-only runtimes, MCP clients); the direct mint is the escape
+  // hatch for scripts and CI.
+  const [mode, setMode] = useState<AddAgentMode>("invite");
+  // Switching modes after a successful mint shouldn't keep the
+  // just-minted token visible under the wrong tab.
+  const showMinted = mode === "generate" && minted !== null;
+  const showError = error !== null && (mode === "generate" || mode === "invite");
+
+  return (
+    <Card>
+      <CardContent className="space-y-4 pt-6">
+        <div
+          role="tablist"
+          aria-label="Onboarding mode"
+          className="inline-flex rounded-md border border-border bg-background p-0.5"
+        >
+          <ModeButton
+            mode="invite"
+            current={mode}
+            onSelect={setMode}
+            label="Invite AI agent"
+            testid="add-agent-mode-invite"
+          />
+          <ModeButton
+            mode="generate"
+            current={mode}
+            onSelect={setMode}
+            label="Generate API key"
+            testid="add-agent-mode-generate"
+          />
+        </div>
+
+        {mode === "invite" ? (
+          <InviteAgentPanel host={host} />
+        ) : (
+          <GenerateKeyPanel scopeOptions={scopeOptions} />
+        )}
+
+        {showError ? (
+          <p className="text-sm text-destructive" data-testid="api-key-error">
+            {error}
+          </p>
+        ) : null}
+
+        {showMinted ? <MintedReveal minted={minted} /> : null}
+      </CardContent>
+    </Card>
+  );
+}
+
+function ModeButton({
+  mode,
+  current,
+  onSelect,
+  label,
+  testid,
+}: {
+  mode: AddAgentMode;
+  current: AddAgentMode;
+  onSelect: (m: AddAgentMode) => void;
+  label: string;
+  testid: string;
+}) {
+  const active = mode === current;
+  return (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={active}
+      data-testid={testid}
+      onClick={() => onSelect(mode)}
+      className={
+        active
+          ? "rounded-md bg-primary px-3 py-1.5 text-base font-semibold text-primary-foreground"
+          : "rounded-md px-3 py-1.5 text-base font-semibold text-muted-foreground hover:text-foreground"
+      }
+    >
+      {label}
+    </button>
+  );
+}
+
+function InviteAgentPanel({ host }: { host: string }) {
+  const recipeUrl = `${host}/protocol/agent-oauth-recipe`;
+  const deviceUrl = `${host}/device`;
+  const prompt = [
+    `Let's collaborate with Doco on this project. The host is ${host}.`,
+    "",
+    `To get programmatic access, follow the OAuth recipe at ${recipeUrl}. If you can bind a local TCP port and open a browser, use Recipe A (localhost-loopback). If you can't (chat-only / sandboxed runtimes), use Recipe B (RFC 8628 Device Authorization Grant) — you'll show me a short code and I'll approve at ${deviceUrl}.`,
+    "",
+    "At the approve screen I'll pick which orgs and docos you can read/write and at what role (reader / author / approver / owner) per org or doco, so no scoping is needed up front.",
+  ].join("\n");
+  return <AgentPromptBlock body={prompt} />;
+}
+
+function AgentPromptBlock({ body }: { body: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <div className="space-y-2">
+      <p className="text-xs text-muted-foreground">
+        Copy this prompt and paste it into your AI agent. The agent will drive the OAuth flow and
+        you'll approve at <code className="font-mono">/device</code> in your browser.
+      </p>
+      <pre
+        className="neu-surface rounded-md bg-card p-3 text-[11px] whitespace-pre-wrap break-words"
+        data-testid="invite-agent-prompt"
+      >
+        {body}
+      </pre>
+      <div className="flex justify-end">
+        <button
+          type="button"
+          data-testid="invite-agent-copy"
+          onClick={() => {
+            if (typeof navigator !== "undefined" && navigator.clipboard) {
+              void navigator.clipboard.writeText(body).then(() => {
+                setCopied(true);
+                setTimeout(() => setCopied(false), 1500);
+              });
+            }
+          }}
+          className="neu-button bg-primary text-primary-foreground hover:opacity-90 rounded-md px-4 py-2 text-sm font-semibold"
+        >
+          {copied ? "Copied!" : "Copy prompt"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function GenerateKeyPanel({ scopeOptions }: { scopeOptions: ScopeOption[] }) {
   const navigation = useNavigation();
   const submitting =
     navigation.state === "submitting" && navigation.formData?.get("intent") === "mint";
@@ -205,95 +351,78 @@ function GenerateKeyCard({
   }, [selected, role]);
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Generate API key</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        <Form method="post" className="flex flex-col gap-3" data-testid="generate-api-key-form">
-          <input type="hidden" name="intent" value="mint" />
-          <input type="hidden" name="grants" value={grantsPayload} />
+    <Form method="post" className="flex flex-col gap-3" data-testid="generate-api-key-form">
+      <input type="hidden" name="intent" value="mint" />
+      <input type="hidden" name="grants" value={grantsPayload} />
 
-          <label className="block text-sm">
-            <span className="block text-xs uppercase tracking-wide text-muted-foreground mb-1">
-              Label
-            </span>
-            <input
-              type="text"
-              name="label"
-              value={label}
-              onChange={(e) => setLabel(e.currentTarget.value)}
-              placeholder="e.g. ci-pipeline, my-script, claude-code-laptop"
-              data-testid="api-key-label"
-              className="block w-full max-w-md rounded-md px-2 py-1 text-sm font-mono"
-            />
-          </label>
+      <label className="block text-sm">
+        <span className="block text-xs uppercase tracking-wide text-muted-foreground mb-1">
+          Label
+        </span>
+        <input
+          type="text"
+          name="label"
+          value={label}
+          onChange={(e) => setLabel(e.currentTarget.value)}
+          placeholder="e.g. ci-pipeline, my-script, claude-code-laptop"
+          data-testid="api-key-label"
+          className="block w-full max-w-md rounded-md px-2 py-1 text-sm font-mono"
+        />
+      </label>
 
-          {noScopes ? (
-            <p className="text-sm text-muted-foreground">
-              You aren't a member of any org or doco yet. Join or create one to mint a key.
-            </p>
-          ) : (
-            <>
-              <div className="flex flex-wrap items-end justify-start gap-3">
-                <label className="flex flex-col gap-1 text-sm">
-                  <span className="text-xs uppercase tracking-wide text-muted-foreground">
-                    Org / Doco
-                  </span>
-                  <select
-                    value={selectedKey}
-                    onChange={(e) => setSelectedKey(e.currentTarget.value)}
-                    data-testid="api-key-target"
-                    className="rounded-md px-3 py-2"
-                  >
-                    {combinedOptions.map((opt) => (
-                      <option key={opt.key} value={opt.key}>
-                        [{opt.level}] {opt.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="flex flex-col gap-1 text-sm">
-                  <span className="text-xs uppercase tracking-wide text-muted-foreground">
-                    Role
-                  </span>
-                  <select
-                    value={role}
-                    onChange={(e) => setRole(e.currentTarget.value as DocoRole)}
-                    data-testid="api-key-role"
-                    className="rounded-md px-3 py-2"
-                  >
-                    {allowedRoles.map((r) => (
-                      <option key={r} value={r}>
-                        {r}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-              <div className="flex justify-end">
-                <button
-                  type="submit"
-                  data-testid="api-key-submit"
-                  disabled={submitting || !label.trim() || !selected}
-                  className="neu-button bg-primary text-primary-foreground hover:opacity-90 rounded-md px-4 py-2 text-sm font-semibold disabled:opacity-50"
-                >
-                  {submitting ? "Generating…" : "Generate API key"}
-                </button>
-              </div>
-            </>
-          )}
-        </Form>
-
-        {error ? (
-          <p className="text-sm text-destructive" data-testid="api-key-error">
-            {error}
-          </p>
-        ) : null}
-
-        {minted ? <MintedReveal minted={minted} /> : null}
-      </CardContent>
-    </Card>
+      {noScopes ? (
+        <p className="text-sm text-muted-foreground">
+          You aren't a member of any org or doco yet. Join or create one to mint a key.
+        </p>
+      ) : (
+        <>
+          <div className="flex flex-wrap items-end justify-start gap-3">
+            <label className="flex flex-col gap-1 text-sm">
+              <span className="text-xs uppercase tracking-wide text-muted-foreground">
+                Org / Doco
+              </span>
+              <select
+                value={selectedKey}
+                onChange={(e) => setSelectedKey(e.currentTarget.value)}
+                data-testid="api-key-target"
+                className="rounded-md px-3 py-2"
+              >
+                {combinedOptions.map((opt) => (
+                  <option key={opt.key} value={opt.key}>
+                    [{opt.level}] {opt.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="flex flex-col gap-1 text-sm">
+              <span className="text-xs uppercase tracking-wide text-muted-foreground">Role</span>
+              <select
+                value={role}
+                onChange={(e) => setRole(e.currentTarget.value as DocoRole)}
+                data-testid="api-key-role"
+                className="rounded-md px-3 py-2"
+              >
+                {allowedRoles.map((r) => (
+                  <option key={r} value={r}>
+                    {r}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <div className="flex justify-end">
+            <button
+              type="submit"
+              data-testid="api-key-submit"
+              disabled={submitting || !label.trim() || !selected}
+              className="neu-button bg-primary text-primary-foreground hover:opacity-90 rounded-md px-4 py-2 text-sm font-semibold disabled:opacity-50"
+            >
+              {submitting ? "Generating…" : "Generate API key"}
+            </button>
+          </div>
+        </>
+      )}
+    </Form>
   );
 }
 

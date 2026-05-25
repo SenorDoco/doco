@@ -7,6 +7,7 @@ import {
   withClient,
 } from "@doco/db";
 import { type EntityId, generateUlid, makeEntityId, nowIso } from "@doco/shared";
+import { runAuthoringPolicies } from "~/lib/authoring-runner.server";
 import { getDocoLevelRole, loadDocoRouteForRead } from "~/lib/doco-access.server";
 
 const ROLE_PRINCIPAL_NAMES = new Set(["user", "human", "doco-host", "github"]);
@@ -124,6 +125,28 @@ export async function action({
     lifecycle: "active",
   };
 
+  // Run the doco's authoring policies against the Principal before
+  // persisting. Templates like `org-chart` ship a `requires_field`
+  // policy that demands `type` ("person" | "agent") on every
+  // Principal — without this evaluation the policy would be inert,
+  // because principals had been a "non-migrated" identity-table
+  // entity outside the capture.server.ts orchestration. Reuses the
+  // same evaluator the generic capture routes call.
+  const pred = await runAuthoringPolicies({
+    docoId: meta.docoId,
+    candidate: raw as Parameters<typeof runAuthoringPolicies>[0]["candidate"],
+  });
+  if (pred.blocking) {
+    return Response.json(
+      {
+        error: `Authoring policy violation: ${pred.blocking.reason}`,
+        policy_id: pred.blocking.policy_id,
+        ...(pred.warnings.length > 0 ? { warnings: pred.warnings } : {}),
+      },
+      { status: 422 },
+    );
+  }
+
   await upsertEntity({
     id,
     doco_id: meta.docoId,
@@ -138,13 +161,15 @@ export async function action({
     updated_by: me.id,
   });
 
+  const warningFooters = pred.warnings.map((w) => `[🔮 Doco] ⚠️ Authoring warning: ${w.reason}`);
   return Response.json(
     {
       ok: true,
       id,
       name,
       existed: false,
-      footer_lines: [`[🔮 Doco] 👤 Principal added: ${name} (${id})`],
+      footer_lines: [`[🔮 Doco] 👤 Principal added: ${name} (${id})`, ...warningFooters],
+      ...(pred.warnings.length > 0 ? { warnings: pred.warnings } : {}),
     },
     { status: 201 },
   );

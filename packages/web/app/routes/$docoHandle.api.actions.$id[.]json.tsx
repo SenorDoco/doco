@@ -4,7 +4,15 @@ const route = makeUpdateRoute({
   type: "actions",
   entityType: "action",
   pluralDir: "actions",
-  allowedFields: ["slug", "verb", "outputs", "follows", "decision_ids", "actor_id", "performed_at"],
+  allowedFields: [
+    "slug",
+    "verb",
+    "outputs",
+    "preceded_by",
+    "decision_ids",
+    "actor_id",
+    "performed_at",
+  ],
 });
 
 export const loader = route.loader;

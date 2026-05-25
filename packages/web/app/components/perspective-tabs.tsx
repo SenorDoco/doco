@@ -31,7 +31,15 @@ export function PerspectiveTabs({
     <nav
       aria-label="Visualization perspectives"
       role="tablist"
-      className="-mb-px flex min-w-0 flex-wrap items-end"
+      // `self-start` keeps the nav shrink-to-fit horizontally instead
+      // of stretching to fill the aside's width — so `right-0` on the
+      // chevron dropdown anchors to the chevron's right edge, not the
+      // aside's far-right edge.
+      // `relative` so the chevron's dropdown menu can position-absolute
+      // against this nav element. The chevron is a direct child of
+      // the nav, dropping the wrapper that previously caused
+      // sub-pixel vertical misalignment with the Link tabs.
+      className="relative -mb-px flex min-w-0 flex-wrap items-end self-start"
     >
       {perspectives.map((p, i) => (
         <PerspectiveTab
@@ -127,7 +135,13 @@ function PerspectiveSettingsMenu({
   activeSlug,
 }: PerspectiveSettingsMenuProps) {
   const [open, setOpen] = useState(false);
-  const wrapperRef = useRef<HTMLDivElement>(null);
+  // Two refs (button + menu) instead of a wrapper ref. Any DOM
+  // wrapper around the button breaks pixel-perfect flex alignment
+  // with the Link tabs in Safari (display:contents in particular).
+  // Skipping the wrapper means the click-outside detector tests both
+  // button and menu separately.
+  const btnRef = useRef<HTMLAnchorElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const fetcher = useFetcher();
   const navigate = useNavigate();
   const isPosting = fetcher.state === "submitting";
@@ -136,7 +150,9 @@ function PerspectiveSettingsMenu({
   useEffect(() => {
     if (!open) return;
     function onDocClick(e: MouseEvent) {
-      if (!wrapperRef.current?.contains(e.target as Node)) setOpen(false);
+      const target = e.target as Node;
+      if (btnRef.current?.contains(target) || menuRef.current?.contains(target)) return;
+      setOpen(false);
     }
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") setOpen(false);
@@ -155,36 +171,43 @@ function PerspectiveSettingsMenu({
   const apiAction = `/${handle}/api/perspectives.json`;
 
   return (
-    // The wrapper has to be `relative` so the dropdown menu can
-    // position-absolute against it. But as a flex child of the tab
-    // nav, the wrapper picked up the page's inherited 1.55 line-height
-    // and computed ~0.8px taller than the button inside, leaving the
-    // chevron's bottom 0.8px above the perspective tabs' bottoms.
-    // `flex items-end` alone didn't kill that gap — the inherited
-    // line-height contributes to the wrapper's CONTENT height, not
-    // just leading inside text. Force `leading-none` (line-height:1)
-    // on the wrapper so it shrinks to exactly the button's box.
-    <div ref={wrapperRef} className="relative flex items-end leading-none">
-      <button
-        type="button"
+    // No wrapper element. The chevron is an `<a>` (the same element
+    // type as the perspective tabs, which render as `<Link>` =
+    // anchor) — so browsers (Safari especially) use the same
+    // intrinsic sizing for it as for the perspective tabs. With a
+    // `<button>` we kept hitting Safari-specific min-height quirks
+    // that left the chevron a fraction of a pixel above the others
+    // no matter what padding/height we set.
+    <>
+      <a
+        ref={btnRef}
+        href="#perspective-settings"
+        role="button"
         aria-label="Perspective settings"
         title="Perspective settings"
         aria-expanded={open}
-        onClick={() => setOpen((v) => !v)}
-        // Styled to match an inactive perspective tab so it reads as
-        // part of the tab strip — same padding / border / colours,
-        // left-border overlap (`-ml-px`) so the last tab's right edge
-        // is shared. `rounded-tr-md` because this is now the visually
-        // last cell on the strip. `border-b-transparent` matches the
-        // inactive-tab treatment.
-        className="relative -ml-px inline-flex items-center gap-1.5 rounded-tr-md border border-border border-b-transparent bg-input/40 px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-input/60 hover:text-foreground"
+        onClick={(e) => {
+          e.preventDefault();
+          setOpen((v) => !v);
+        }}
+        // EXACT same class shape as an inactive PerspectiveTab (see
+        // PerspectiveTab above). isLast=true → rounded-tr-md, never
+        // active. Keep the structure identical so flex baseline
+        // alignment matches pixel-for-pixel in every browser.
+        className="relative -ml-px inline-flex cursor-pointer items-center gap-1.5 rounded-tr-md border border-border border-b-transparent bg-input/40 px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-input/60 hover:text-foreground"
       >
         <ChevronDown className="h-4 w-4" />
-      </button>
+      </a>
       {open ? (
         <div
+          ref={menuRef}
           aria-label="Perspectives"
-          className="neu-floating absolute left-0 top-full z-40 mt-1 w-80 rounded-md bg-card p-2"
+          // Absolute positions against the nav (its `relative`
+          // ancestor). right-0 top-full anchors bottom-right of the
+          // nav, directly under the chevron tab. w-60 keeps the menu
+          // narrow enough to fit inside the aside even when the
+          // chevron sits at the right edge of a narrow nav.
+          className="neu-floating absolute right-0 top-full z-40 mt-1 w-60 rounded-md bg-card p-2"
         >
           <p className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
             Attached
@@ -291,6 +314,6 @@ function PerspectiveSettingsMenu({
           ) : null}
         </div>
       ) : null}
-    </div>
+    </>
   );
 }
