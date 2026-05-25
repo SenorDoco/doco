@@ -1,28 +1,47 @@
+// GET  /api/v1/orgs.json — list Organizations the caller belongs to.
 // POST /api/v1/orgs.json — create an Organization (v15).
 //
-// Body (JSON): { requested_id: string }
+// GET response: { orgs: [{ id, handle, name, member_count }] }.
+// Empty array when the caller is in no orgs. Sorted by handle ASC
+// for stable client rendering.
 //
-// Behavior: caller becomes `owner` in `org_users`; server normalizes
-// requested_id to kebab-case and silently appends `-2`, `-3`, … on
-// collision (API path uses `autoSuffix: true`). Returns 201 with
-// `{ id, handle }` — `id` is the internal ULID; `handle` is the
-// (possibly suffixed) public identifier.
+// POST body (JSON): { requested_id: string }
+//
+// POST behavior: caller becomes `owner` in `org_users`; server
+// normalizes requested_id to kebab-case and silently appends `-2`,
+// `-3`, … on collision (API path uses `autoSuffix: true`). Returns
+// 201 with `{ id, handle }` — `id` is the internal ULID; `handle`
+// is the (possibly suffixed) public identifier.
 //
 // Auth: requires a signed-in principal (cookie session or OAuth
 // bearer). Rate-limiting is out of scope.
 
+import { listOrganizationsForCollaborator } from "@doco/db";
 import { addOrganizationByHandle } from "~/lib/redeem.server";
-import { getCurrentPrincipal } from "~/lib/session.server";
+import { getCurrentPrincipalAsync } from "~/lib/session.server";
 
-export async function loader() {
-  return Response.json({ error: "Use POST to create an organization." }, { status: 405 });
+export async function loader({ request }: { request: Request }) {
+  const me = await getCurrentPrincipalAsync(request);
+  if (!me) {
+    return Response.json({ error: "Authentication required." }, { status: 401 });
+  }
+  const rows = await listOrganizationsForCollaborator(me.id);
+  rows.sort((a, b) => (a.handle < b.handle ? -1 : a.handle > b.handle ? 1 : 0));
+  return Response.json({
+    orgs: rows.map((r) => ({
+      id: r.id,
+      handle: r.handle,
+      name: r.name,
+      member_count: r.member_count,
+    })),
+  });
 }
 
 export async function action({ request }: { request: Request }) {
   if (request.method !== "POST") {
     return Response.json({ error: "Use POST." }, { status: 405 });
   }
-  const me = await getCurrentPrincipal(request);
+  const me = await getCurrentPrincipalAsync(request);
   if (!me) {
     return Response.json({ error: "Authentication required." }, { status: 401 });
   }
