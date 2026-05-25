@@ -75,6 +75,9 @@ interface ChatMessage {
 
 interface ConversationSnapshot {
   conversation_id: string;
+  /** User-visible thread name. Null until the first user message lands. */
+  title: string | null;
+  archived: boolean;
   messages: ChatMessage[];
   has_more: boolean;
   /**
@@ -91,6 +94,16 @@ interface ConversationSnapshot {
    * already in progress.
    */
   active_turn_events?: Array<Record<string, unknown>>;
+}
+
+/** Row in the thread-list dropdown. Matches the server's ConversationListItem. */
+interface ConversationListItem {
+  id: string;
+  title: string | null;
+  archived: boolean;
+  message_count: number;
+  updated_at: string;
+  active_turn_started_at: string | null;
 }
 
 /** Per-request token totals streamed from the server. Reset to null
@@ -121,6 +134,9 @@ const SHOW_THINKING_KEY = "senor-doco:show-thinking";
 // confirms persistence, a mount-time effect replays it.
 const PENDING_SEND_KEY = "senor-doco:pending-send";
 const PENDING_SEND_MAX_AGE_MS = 60_000;
+// Last opened thread id. Persisted so a refresh keeps the user in the
+// same thread instead of bouncing back to "most-recent".
+const ACTIVE_CONV_KEY = "senor-doco:active-conversation";
 
 // Sidebar widths. Collapsed → 32px rail. Default expanded → 320px
 // (chat only). When the user toggles "Show thinking" in the header,
@@ -243,6 +259,48 @@ function writeBoolFlag(key: string, value: boolean): void {
     // localStorage blocked (private mode, etc.) — silently degrade
   }
 }
+function readStringFlag(key: string): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+function writeStringFlag(key: string, value: string | null): void {
+  if (typeof window === "undefined") return;
+  try {
+    if (value) window.localStorage.setItem(key, value);
+    else window.localStorage.removeItem(key);
+  } catch {
+    // localStorage blocked (private mode, etc.) — silently degrade
+  }
+}
+
+/**
+ * Display name for a thread. Server returns null until the first user
+ * message is sent (and even then, attachment-only messages leave it
+ * null), so the client always has a fallback.
+ */
+function displayThreadTitle(title: string | null | undefined): string {
+  return title && title.trim() ? title : "New chat";
+}
+
+function formatRelativeTime(iso: string): string {
+  const t = Date.parse(iso);
+  if (!Number.isFinite(t)) return "";
+  const seconds = Math.floor((Date.now() - t) / 1000);
+  if (seconds < 60) return "just now";
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days}d ago`;
+  const months = Math.floor(days / 30);
+  if (months < 12) return `${months}mo ago`;
+  return `${Math.floor(months / 12)}y ago`;
+}
 
 export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -256,6 +314,25 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
   const [hasMore, setHasMore] = useState(false);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [bootstrapped, setBootstrapped] = useState(false);
+  // Multi-thread state. `conversationId` is the active thread (null
+  // until the snapshot first responds, then sticky across refreshes
+  // via localStorage). `conversationTitle` mirrors what the server has
+  // — null = "New chat" placeholder. `view` toggles the sidebar
+  // between the chat column and the thread list. `conversations` is
+  // the dropdown contents; loaded on demand when the user opens the
+  // list and refreshed when threads change.
+  const [conversationId, setConversationId] = useState<string | null>(() =>
+    readStringFlag(ACTIVE_CONV_KEY),
+  );
+  const [conversationTitle, setConversationTitle] = useState<string | null>(null);
+  const [view, setView] = useState<"chat" | "list">("chat");
+  const [conversations, setConversations] = useState<ConversationListItem[]>([]);
+  const [conversationsLoading, setConversationsLoading] = useState(false);
+  const [conversationsError, setConversationsError] = useState<string | null>(null);
+  // Inline rename state — keyed by conversation id. When non-null,
+  // the row in the list shows an input instead of the title.
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameDraft, setRenameDraft] = useState<string>("");
   // Another tab on this origin is currently streaming a reply. Used
   // to show a "Señor Doco is replying…" placeholder bubble in tabs
   // that didn't initiate the send.
@@ -349,14 +426,34 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
 
   const reload = useCallback(async () => {
     try {
-      const res = await fetch("/api/v1/agent-chat/conversation.json", {
-        credentials: "same-origin",
-      });
+      const url = conversationId
+        ? `/api/v1/agent-chat/conversation.json?id=${encodeURIComponent(conversationId)}`
+        : "/api/v1/agent-chat/conversation.json";
+      const res = await fetch(url, { credentials: "same-origin" });
+      if (res.status === 404 && conversationId) {
+        // The stored thread id no longer exists (archived elsewhere,
+        // or a different user signed in on the same device). Drop
+        // the stored id and re-bootstrap with the active thread.
+        setConversationId(null);
+        writeStringFlag(ACTIVE_CONV_KEY, null);
+        setMessages([]);
+        setLoadError(null);
+        return;
+      }
       if (!res.ok) {
         setLoadError(`HTTP ${res.status}`);
         return;
       }
       const data = (await res.json()) as ConversationSnapshot;
+      // Sticky thread id: snapshot fetched with no `?id=` lands the
+      // user in their most-recent thread; pin that id so subsequent
+      // reloads (cross-tab sync, polling) stay on the same one even
+      // if another tab opens a newer thread.
+      if (data.conversation_id !== conversationId) {
+        setConversationId(data.conversation_id);
+        writeStringFlag(ACTIVE_CONV_KEY, data.conversation_id);
+      }
+      setConversationTitle(data.title);
       // Merge — don't overwrite. Two classes of message can sit
       // outside the snapshot's window:
       //
@@ -439,12 +536,156 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
     } finally {
       setBootstrapped(true);
     }
-  }, [busy]);
+  }, [busy, conversationId]);
 
   useEffect(() => {
     void reload();
     return () => abortRef.current?.abort();
   }, [reload]);
+
+  const loadConversationsList = useCallback(async () => {
+    setConversationsLoading(true);
+    setConversationsError(null);
+    try {
+      const res = await fetch("/api/v1/agent-chat/conversations.json", {
+        credentials: "same-origin",
+      });
+      if (!res.ok) {
+        setConversationsError(`HTTP ${res.status}`);
+        return;
+      }
+      const data = (await res.json()) as { conversations: ConversationListItem[] };
+      setConversations(Array.isArray(data.conversations) ? data.conversations : []);
+    } catch (err) {
+      setConversationsError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setConversationsLoading(false);
+    }
+  }, []);
+
+  const openThreadList = useCallback(() => {
+    setView("list");
+    void loadConversationsList();
+  }, [loadConversationsList]);
+
+  const closeThreadList = useCallback(() => {
+    setView("chat");
+    setRenamingId(null);
+  }, []);
+
+  // Switch to a different thread. Wipes the in-memory message list +
+  // thinking events; the next reload() picks up the new thread's
+  // snapshot. Idempotent on no-op (same id) so the dropdown can be
+  // dismissed cheaply.
+  const switchThread = useCallback(
+    (id: string) => {
+      if (id === conversationId) {
+        setView("chat");
+        return;
+      }
+      // Cancel any in-flight stream on the old thread. The server-side
+      // turn keeps going (keepalive: true on the fetch) so we won't
+      // lose the reply; the user just won't see it in this column
+      // until they switch back.
+      abortRef.current?.abort();
+      setBusy(false);
+      setInFlight(null);
+      setQueuedSend(null);
+      setTurnUsage(null);
+      setRemoteInflight(false);
+      setThinkingEvents([]);
+      setMessages([]);
+      setHasMore(false);
+      earliestRef.current = null;
+      setConversationId(id);
+      writeStringFlag(ACTIVE_CONV_KEY, id);
+      setView("chat");
+      setRenamingId(null);
+    },
+    [conversationId],
+  );
+
+  const newThread = useCallback(async () => {
+    try {
+      const res = await fetch("/api/v1/agent-chat/conversations.json", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      if (!res.ok) {
+        setConversationsError(`HTTP ${res.status}`);
+        return;
+      }
+      const data = (await res.json()) as { conversation: ConversationListItem };
+      if (data.conversation?.id) {
+        switchThread(data.conversation.id);
+      }
+    } catch (err) {
+      setConversationsError(err instanceof Error ? err.message : String(err));
+    }
+  }, [switchThread]);
+
+  const renameThread = useCallback(
+    async (id: string, nextTitle: string) => {
+      const trimmed = nextTitle.trim().slice(0, 120);
+      try {
+        const res = await fetch(
+          `/api/v1/agent-chat/conversation/${encodeURIComponent(id)}.json`,
+          {
+            method: "PATCH",
+            credentials: "same-origin",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ title: trimmed || null }),
+          },
+        );
+        if (!res.ok) {
+          setConversationsError(`HTTP ${res.status}`);
+          return;
+        }
+        setConversations((prev) =>
+          prev.map((c) => (c.id === id ? { ...c, title: trimmed || null } : c)),
+        );
+        if (id === conversationId) setConversationTitle(trimmed || null);
+      } catch (err) {
+        setConversationsError(err instanceof Error ? err.message : String(err));
+      }
+    },
+    [conversationId],
+  );
+
+  const archiveThread = useCallback(
+    async (id: string) => {
+      try {
+        const res = await fetch(
+          `/api/v1/agent-chat/conversation/${encodeURIComponent(id)}.json`,
+          {
+            method: "PATCH",
+            credentials: "same-origin",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ archived: true }),
+          },
+        );
+        if (!res.ok) {
+          setConversationsError(`HTTP ${res.status}`);
+          return;
+        }
+        setConversations((prev) => prev.filter((c) => c.id !== id));
+        if (id === conversationId) {
+          // We just archived the active thread. Drop the pin and
+          // re-bootstrap into whichever thread is now most recent
+          // (or a fresh one if none remain).
+          setConversationId(null);
+          writeStringFlag(ACTIVE_CONV_KEY, null);
+          setMessages([]);
+          setView("chat");
+        }
+      } catch (err) {
+        setConversationsError(err instanceof Error ? err.message : String(err));
+      }
+    },
+    [conversationId],
+  );
 
   // Resume-after-refresh: when the snapshot says a turn is in flight
   // server-side but this tab isn't the one running the stream (no
@@ -545,7 +786,9 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
     const prevScrollHeight = el.scrollHeight;
     const prevScrollTop = el.scrollTop;
     try {
-      const url = `/api/v1/agent-chat/conversation.json?before=${encodeURIComponent(earliest.created_at)}`;
+      const params = new URLSearchParams({ before: earliest.created_at });
+      if (conversationId) params.set("id", conversationId);
+      const url = `/api/v1/agent-chat/conversation.json?${params.toString()}`;
       const res = await fetch(url, { credentials: "same-origin" });
       if (!res.ok) {
         setLoadError(`HTTP ${res.status}`);
@@ -573,7 +816,7 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
     } finally {
       setLoadingOlder(false);
     }
-  }, []);
+  }, [conversationId]);
 
   const onMessagesScroll = useCallback(() => {
     if (!hasMore || loadingOlder) return;
@@ -727,6 +970,16 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
         created_at: new Date().toISOString(),
       };
       setMessages((prev) => [...prev, localUser]);
+      // Optimistically backfill the thread title from the first user
+      // message so the header flips from "New chat" → "Hello…" the
+      // instant the user hits Send. The server runs the same
+      // derivation, so the next reload() agrees with what we just
+      // showed. Don't clobber an existing title (rename survives).
+      if (!conversationTitle && text) {
+        const derived = text.replace(/\s+/g, " ").trim().split(" ").slice(0, 6).join(" ");
+        const display = derived.length > 60 ? `${derived.slice(0, 57)}…` : derived;
+        setConversationTitle(display);
+      }
 
       const controller = new AbortController();
       abortRef.current = controller;
@@ -747,6 +1000,7 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
             current_path: location.pathname + location.search,
             attachment_ids: attachmentIds,
             graph_references: graphReferenceGroups,
+            ...(conversationId ? { conversation_id: conversationId } : {}),
           }),
           signal: controller.signal,
           // keepalive: the request must survive a tab close / hard
@@ -932,6 +1186,8 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
       navigate,
       broadcastSync,
       appendThinking,
+      conversationId,
+      conversationTitle,
     ],
   );
 
@@ -1082,38 +1338,83 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
         </button>
       ) : (
         <>
-      <div className="flex shrink-0 items-center justify-between border-b border-border px-3 py-2">
-        <div className="flex min-w-0 items-center gap-2">
-          <div className="truncate text-xs font-semibold">Señor Doco</div>
+      {/* Two-line header. Top: brand wordmark (always visible — the
+          rail is anchored to this label so the user always knows what
+          they're looking at, regardless of which thread is loaded).
+          Bottom: thread title + dropdown chevron. Clicking the title
+          row toggles the thread list view inside the same column. */}
+      <div className="flex shrink-0 flex-col gap-1 border-b border-border px-3 py-2">
+        <div className="flex items-center justify-between gap-2">
+          <div className="select-none truncate text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+            Señor Doco
+          </div>
+          <div className="flex items-center gap-1.5">
+            {/* Show-thinking toggle. Pressed when on (neu-pressed),
+                raised when off — same treatment as platform buttons. */}
+            <button
+              type="button"
+              onClick={toggleShowThinking}
+              aria-pressed={showThinking}
+              aria-label={showThinking ? "Hide thinking column" : "Show thinking column"}
+              title={showThinking ? "Hide thinking column" : "Show thinking column"}
+              className={cn(
+                "rounded-md border border-border px-2 py-0.5 text-[10px] uppercase tracking-wide",
+                showThinking
+                  ? "neu-pressed bg-input text-foreground"
+                  : "neu-button text-muted-foreground hover:bg-input hover:text-foreground",
+              )}
+            >
+              {showThinking ? "Hide thinking" : "Show thinking"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setCollapsedPersistent(true)}
+              className="neu-button rounded-md border border-border px-1.5 py-0.5 text-muted-foreground hover:bg-input hover:text-foreground"
+              aria-label="Collapse Señor Doco"
+              title="Collapse"
+            >
+              <CollapseIcon side="left" />
+            </button>
+          </div>
         </div>
-        <div className="flex items-center gap-1.5">
-          {/* Show-thinking toggle. Sits left of the collapse chevron;
-              pressed when on (neu-pressed), raised when off
-              (neu-button) — same depth treatment as the rest of the
-              platform's buttons. */}
+        <div className="flex items-center gap-1">
           <button
             type="button"
-            onClick={toggleShowThinking}
-            aria-pressed={showThinking}
-            aria-label={showThinking ? "Hide thinking column" : "Show thinking column"}
-            title={showThinking ? "Hide thinking column" : "Show thinking column"}
-            className={cn(
-              "rounded-md border border-border px-2 py-0.5 text-[10px] uppercase tracking-wide",
-              showThinking
-                ? "neu-pressed bg-input text-foreground"
-                : "neu-button text-muted-foreground hover:bg-input hover:text-foreground",
-            )}
+            onClick={view === "list" ? closeThreadList : openThreadList}
+            aria-expanded={view === "list"}
+            aria-label={
+              view === "list"
+                ? "Close thread list"
+                : `Open thread list (current: ${displayThreadTitle(conversationTitle)})`
+            }
+            className="group flex min-w-0 flex-1 items-center gap-1.5 rounded-md px-1.5 py-1 text-left text-xs hover:bg-input"
           >
-            {showThinking ? "Hide thinking" : "Show thinking"}
+            <span
+              className={cn(
+                "shrink-0 text-muted-foreground transition-transform",
+                view === "list" ? "rotate-180" : "",
+              )}
+              aria-hidden
+            >
+              <ChevronDown />
+            </span>
+            <span
+              className={cn(
+                "min-w-0 truncate font-semibold",
+                conversationTitle ? "text-foreground" : "text-muted-foreground",
+              )}
+            >
+              {displayThreadTitle(conversationTitle)}
+            </span>
           </button>
           <button
             type="button"
-            onClick={() => setCollapsedPersistent(true)}
-            className="neu-button rounded-md border border-border px-1.5 py-0.5 text-muted-foreground hover:bg-input hover:text-foreground"
-            aria-label="Collapse Señor Doco"
-            title="Collapse"
+            onClick={() => void newThread()}
+            aria-label="New thread"
+            title="New chat"
+            className="neu-button shrink-0 rounded-md border border-border px-1.5 py-0.5 text-muted-foreground hover:bg-input hover:text-foreground"
           >
-            <CollapseIcon side="left" />
+            <PlusIcon />
           </button>
         </div>
       </div>
@@ -1129,59 +1430,86 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
         .
       </div>
 
-      <div className="flex min-h-0 flex-1">
-        <div
-          ref={messageListRef}
-          onScroll={onMessagesScroll}
-          className={cn(
-            "min-h-0 overflow-y-auto px-3 py-3 text-xs leading-relaxed",
-            showThinking ? "w-[320px] shrink-0 border-r border-border" : "flex-1",
-          )}
-        >
-          {loadError ? (
-            <div className="rounded-md bg-destructive/10 px-2 py-1.5 text-[11px] text-destructive">
-              Couldn't load chat history: {loadError}
+      {view === "list" ? (
+        <ThreadListView
+          conversations={conversations}
+          loading={conversationsLoading}
+          error={conversationsError}
+          activeId={conversationId}
+          renamingId={renamingId}
+          renameDraft={renameDraft}
+          onSelect={switchThread}
+          onNew={() => void newThread()}
+          onStartRename={(id, current) => {
+            setRenamingId(id);
+            setRenameDraft(current ?? "");
+          }}
+          onCancelRename={() => setRenamingId(null)}
+          onCommitRename={(id) => {
+            const next = renameDraft;
+            setRenamingId(null);
+            void renameThread(id, next);
+          }}
+          onRenameDraftChange={setRenameDraft}
+          onArchive={(id) => void archiveThread(id)}
+        />
+      ) : (
+        <>
+          <div className="flex min-h-0 flex-1">
+            <div
+              ref={messageListRef}
+              onScroll={onMessagesScroll}
+              className={cn(
+                "min-h-0 overflow-y-auto px-3 py-3 text-xs leading-relaxed",
+                showThinking ? "w-[320px] shrink-0 border-r border-border" : "flex-1",
+              )}
+            >
+              {loadError ? (
+                <div className="rounded-md bg-destructive/10 px-2 py-1.5 text-[11px] text-destructive">
+                  Couldn't load chat history: {loadError}
+                </div>
+              ) : null}
+              {hasMore ? (
+                <div className="mb-2 text-center text-[10px] text-muted-foreground">
+                  {loadingOlder ? "Loading older messages…" : "Scroll up for older messages"}
+                </div>
+              ) : null}
+              {allMessages.length === 0 && !loadError && bootstrapped ? (
+                <div className="text-[11px] text-muted-foreground">
+                  Ask me anything about your Docos — I can search, capture decisions, create new
+                  Docos or orgs, invite collaborators, and take you to any page.
+                </div>
+              ) : null}
+              {allMessages.map((rm) => (
+                <MessageBlock
+                  key={rm.kind === "saved" ? rm.message.id : "inflight"}
+                  rm={rm}
+                  usage={rm.kind === "inflight" ? turnUsage : null}
+                />
+              ))}
             </div>
-          ) : null}
-          {hasMore ? (
-            <div className="mb-2 text-center text-[10px] text-muted-foreground">
-              {loadingOlder ? "Loading older messages…" : "Scroll up for older messages"}
-            </div>
-          ) : null}
-          {allMessages.length === 0 && !loadError && bootstrapped ? (
-            <div className="text-[11px] text-muted-foreground">
-              Ask me anything about your Docos — I can search, capture decisions, create new Docos
-              or orgs, invite collaborators, and take you to any page.
-            </div>
-          ) : null}
-          {allMessages.map((rm) => (
-            <MessageBlock
-              key={rm.kind === "saved" ? rm.message.id : "inflight"}
-              rm={rm}
-              usage={rm.kind === "inflight" ? turnUsage : null}
-            />
-          ))}
-        </div>
-        {showThinking ? (
-          <ThinkingPanel
-            events={thinkingEvents}
-            active={busy || inFlight !== null || remoteInflight}
-          />
-        ) : null}
-      </div>
+            {showThinking ? (
+              <ThinkingPanel
+                events={thinkingEvents}
+                active={busy || inFlight !== null || remoteInflight}
+              />
+            ) : null}
+          </div>
 
-      <Composer
-        value={inputText}
-        onChange={setInputText}
-        onSend={send}
-        busy={busy}
-        username={me.username}
-        staged={staged}
-        uploading={uploading}
-        uploadError={uploadError}
-        onUploadFiles={uploadFiles}
-        onRemoveStaged={removeStaged}
-      />
+          <Composer
+            value={inputText}
+            onChange={setInputText}
+            onSend={send}
+            busy={busy}
+            username={me.username}
+            staged={staged}
+            uploading={uploading}
+            uploadError={uploadError}
+            onUploadFiles={uploadFiles}
+            onRemoveStaged={removeStaged}
+          />
+        </>
+      )}
         </>
       )}
     </aside>
@@ -1258,6 +1586,286 @@ function CollapseIcon({ side }: { side: "left" | "right" }) {
     >
       {side === "left" ? <polyline points="10 4 5 8 10 12" /> : <polyline points="6 4 11 8 6 12" />}
     </svg>
+  );
+}
+
+function ChevronDown() {
+  return (
+    <svg
+      width="12"
+      height="12"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <polyline points="4 6 8 11 12 6" />
+    </svg>
+  );
+}
+
+function PlusIcon() {
+  return (
+    <svg
+      width="12"
+      height="12"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      aria-hidden="true"
+    >
+      <line x1="8" y1="3" x2="8" y2="13" />
+      <line x1="3" y1="8" x2="13" y2="8" />
+    </svg>
+  );
+}
+
+function DotsIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 16 16"
+      fill="currentColor"
+      aria-hidden="true"
+    >
+      <circle cx="3" cy="8" r="1.5" />
+      <circle cx="8" cy="8" r="1.5" />
+      <circle cx="13" cy="8" r="1.5" />
+    </svg>
+  );
+}
+
+interface ThreadListViewProps {
+  conversations: ConversationListItem[];
+  loading: boolean;
+  error: string | null;
+  activeId: string | null;
+  renamingId: string | null;
+  renameDraft: string;
+  onSelect: (id: string) => void;
+  onNew: () => void;
+  onStartRename: (id: string, current: string | null) => void;
+  onCancelRename: () => void;
+  onCommitRename: (id: string) => void;
+  onRenameDraftChange: (next: string) => void;
+  onArchive: (id: string) => void;
+}
+
+function ThreadListView({
+  conversations,
+  loading,
+  error,
+  activeId,
+  renamingId,
+  renameDraft,
+  onSelect,
+  onNew,
+  onStartRename,
+  onCancelRename,
+  onCommitRename,
+  onRenameDraftChange,
+  onArchive,
+}: ThreadListViewProps) {
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="flex shrink-0 items-center justify-between border-b border-border px-3 py-1.5">
+        <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+          Your threads
+        </div>
+        <button
+          type="button"
+          onClick={onNew}
+          className="neu-button rounded-md border border-border px-2 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground hover:bg-input hover:text-foreground"
+        >
+          + New
+        </button>
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        {error ? (
+          <div className="m-2 rounded-md bg-destructive/10 px-2 py-1.5 text-[11px] text-destructive">
+            Couldn't load threads: {error}
+          </div>
+        ) : null}
+        {loading && conversations.length === 0 ? (
+          <div className="px-3 py-2 text-[11px] text-muted-foreground">Loading threads…</div>
+        ) : null}
+        {!loading && conversations.length === 0 && !error ? (
+          <div className="px-3 py-2 text-[11px] text-muted-foreground">
+            No threads yet — start chatting below or hit “+ New” to mint one.
+          </div>
+        ) : null}
+        <ul>
+          {conversations.map((c) => (
+            <ThreadRow
+              key={c.id}
+              conv={c}
+              isActive={c.id === activeId}
+              isRenaming={c.id === renamingId}
+              renameDraft={renameDraft}
+              onSelect={() => onSelect(c.id)}
+              onStartRename={() => onStartRename(c.id, c.title)}
+              onCancelRename={onCancelRename}
+              onCommitRename={() => onCommitRename(c.id)}
+              onRenameDraftChange={onRenameDraftChange}
+              onArchive={() => onArchive(c.id)}
+            />
+          ))}
+        </ul>
+      </div>
+    </div>
+  );
+}
+
+interface ThreadRowProps {
+  conv: ConversationListItem;
+  isActive: boolean;
+  isRenaming: boolean;
+  renameDraft: string;
+  onSelect: () => void;
+  onStartRename: () => void;
+  onCancelRename: () => void;
+  onCommitRename: () => void;
+  onRenameDraftChange: (next: string) => void;
+  onArchive: () => void;
+}
+
+function ThreadRow({
+  conv,
+  isActive,
+  isRenaming,
+  renameDraft,
+  onSelect,
+  onStartRename,
+  onCancelRename,
+  onCommitRename,
+  onRenameDraftChange,
+  onArchive,
+}: ThreadRowProps) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  // Dismiss the per-row menu when the user clicks anywhere else on
+  // the page. Without this the menu stays open after the user picks
+  // an option, since we close it inside the callback.
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onDocClick = (e: MouseEvent) => {
+      if (!menuRef.current) return;
+      if (e.target instanceof Node && menuRef.current.contains(e.target)) return;
+      setMenuOpen(false);
+    };
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, [menuOpen]);
+
+  // Auto-focus + select the input when entering rename mode.
+  useEffect(() => {
+    if (!isRenaming) return;
+    const el = inputRef.current;
+    if (!el) return;
+    el.focus();
+    el.select();
+  }, [isRenaming]);
+
+  return (
+    <li
+      className={cn(
+        "group relative flex items-stretch border-b border-border/40",
+        isActive ? "bg-input/50" : "hover:bg-input/40",
+      )}
+    >
+      {isRenaming ? (
+        <div className="flex flex-1 items-center gap-1.5 px-3 py-1.5">
+          <input
+            ref={inputRef}
+            type="text"
+            value={renameDraft}
+            onChange={(e) => onRenameDraftChange(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                onCommitRename();
+              } else if (e.key === "Escape") {
+                e.preventDefault();
+                onCancelRename();
+              }
+            }}
+            onBlur={onCommitRename}
+            maxLength={120}
+            className="min-w-0 flex-1 rounded-md border border-border bg-card px-1.5 py-0.5 text-xs text-foreground"
+          />
+        </div>
+      ) : (
+        <>
+          <button
+            type="button"
+            onClick={onSelect}
+            className="flex min-w-0 flex-1 flex-col gap-0.5 px-3 py-1.5 text-left"
+          >
+            <span
+              className={cn(
+                "truncate text-xs font-semibold",
+                conv.title ? "text-foreground" : "text-muted-foreground",
+              )}
+            >
+              {displayThreadTitle(conv.title)}
+            </span>
+            <span className="truncate text-[10px] text-muted-foreground">
+              {conv.message_count} msg{conv.message_count === 1 ? "" : "s"} ·{" "}
+              {formatRelativeTime(conv.updated_at)}
+            </span>
+          </button>
+          <div ref={menuRef} className="relative flex items-center pr-1.5">
+            <button
+              type="button"
+              onClick={() => setMenuOpen((p) => !p)}
+              aria-haspopup="menu"
+              aria-expanded={menuOpen}
+              aria-label="Thread actions"
+              className="rounded-md p-1 text-muted-foreground opacity-0 hover:bg-input hover:text-foreground group-hover:opacity-100 aria-expanded:opacity-100"
+            >
+              <DotsIcon />
+            </button>
+            {menuOpen ? (
+              <div
+                role="menu"
+                className="neu-panel absolute right-0 top-full z-10 mt-1 min-w-[120px] rounded-md border border-border bg-card py-1 text-xs shadow"
+              >
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    onStartRename();
+                  }}
+                  className="block w-full px-3 py-1 text-left hover:bg-input"
+                >
+                  Rename
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    onArchive();
+                  }}
+                  className="block w-full px-3 py-1 text-left text-destructive hover:bg-destructive/10"
+                >
+                  Archive
+                </button>
+              </div>
+            ) : null}
+          </div>
+        </>
+      )}
+    </li>
   );
 }
 
