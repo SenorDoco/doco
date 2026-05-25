@@ -70,8 +70,8 @@ describe("principal API", () => {
     const response = await action({
       request: principalRequest({
         name: "Visitor",
-        display_name: "Visitor",
-        description: "Someone browsing the public site.",
+        summary: "Someone browsing the public site.",
+        body_md: "Human site visitor — no Doco account required.",
       }),
       params: { docoHandle: "acme" } as never,
     });
@@ -90,21 +90,26 @@ describe("principal API", () => {
       expect.objectContaining({
         doco_id: "doco_acme",
         entity_type: "principal",
-        summary: "Visitor",
+        summary: "Someone browsing the public site.",
+        body_md: "Human site visitor — no Doco account required.",
         created_by: "collaborator_author",
         updated_by: "collaborator_author",
         data: expect.objectContaining({
           doco_id: "doco_acme",
           neuron_type: "principal",
           name: "visitor",
-          display_name: "Visitor",
-          description: "Someone browsing the public site.",
           created_by: "collaborator_author",
           lifecycle: "active",
         }),
       }),
     );
-    expect(mocks.upsertEntity.mock.calls[0]?.[0].data).not.toHaveProperty("role_principal");
+    // The slim-down dropped display_name/description/type — confirm
+    // they no longer leak into data even when the caller sends them.
+    const persistedData = mocks.upsertEntity.mock.calls[0]?.[0].data as Record<string, unknown>;
+    expect(persistedData).not.toHaveProperty("role_principal");
+    expect(persistedData).not.toHaveProperty("display_name");
+    expect(persistedData).not.toHaveProperty("description");
+    expect(persistedData).not.toHaveProperty("type");
     await expect(response.json()).resolves.toMatchObject({ ok: true, name: "visitor" });
   });
 
@@ -121,10 +126,12 @@ describe("principal API", () => {
         data: expect.objectContaining({
           name: "human",
           role_principal: true,
-          type: "person",
         }),
       }),
     );
+    // Slim-down: no `type` field anymore even for reserved role names.
+    const persistedData = mocks.upsertEntity.mock.calls[0]?.[0].data as Record<string, unknown>;
+    expect(persistedData).not.toHaveProperty("type");
   });
 
   it("rejects collaborators below author even if they can read the Doco", async () => {
@@ -152,7 +159,6 @@ describe("principal API", () => {
     const response = await action({
       request: principalRequest({
         name: "alice",
-        type: "person",
         reports_to: "principal_manager",
       }),
       params: { docoHandle: "acme" } as never,
@@ -164,7 +170,6 @@ describe("principal API", () => {
       expect.objectContaining({
         data: expect.objectContaining({
           name: "alice",
-          type: "person",
           reports_to: "principal_manager",
         }),
       }),
@@ -180,7 +185,6 @@ describe("principal API", () => {
     const response = await action({
       request: principalRequest({
         name: "alice",
-        type: "person",
         reports_to: "decision_01ABC",
       }),
       params: { docoHandle: "acme" } as never,
@@ -203,7 +207,6 @@ describe("principal API", () => {
     const response = await action({
       request: principalRequest({
         name: "alice",
-        type: "person",
         reports_to: "principal_stranger",
       }),
       params: { docoHandle: "acme" } as never,

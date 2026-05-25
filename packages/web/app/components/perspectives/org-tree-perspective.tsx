@@ -176,12 +176,11 @@ function layoutOrgTree(
 //
 // Visual hierarchy: the Principal's `name` (the identity slug — the
 // thing that makes "alex" *that* alex, not "another alex") is the
-// big headline. The `display_name` sits beneath as the role title
-// ("CEO", "Head of Engineering"). The Person/Agent kind shows as a
-// bare emoji icon in the bottom corner (👤 / 🤖) next to the
-// lifecycle badge — the dark text pill we used to render here read
-// too heavy alongside ACTIVE, and the emoji alone conveys the same
-// information with less ink.
+// headline. An optional one-line description (from `summary`) sits
+// beneath. The Person/Agent kind shows as a bare emoji icon in the
+// bottom corner (👤 / 🤖) next to the lifecycle badge — inferred
+// from body_md prose (the slim-down moved the kind out of a
+// structured field). When the prose is silent the icon is omitted.
 //
 // Sized via inline style (Tailwind's JIT can't see template-literal
 // class names).
@@ -196,10 +195,7 @@ function OrgTreeCard({ data }: NodeProps<Node<OrgTreeNodeData>>) {
       }`}
       style={{ width: NODE_W, height: NODE_H }}
     >
-      <ReferenceNumberBadge
-        referenceNumber={referenceNumber}
-        referenceLabel={org.display_name || org.name}
-      />
+      <ReferenceNumberBadge referenceNumber={referenceNumber} referenceLabel={org.name} />
       <Handle
         type="target"
         position={Position.Top}
@@ -208,9 +204,6 @@ function OrgTreeCard({ data }: NodeProps<Node<OrgTreeNodeData>>) {
       <div className="min-w-0">
         <div className="truncate text-base font-semibold leading-tight text-foreground">
           {org.name}
-        </div>
-        <div className="truncate font-mono text-xs leading-snug text-muted-foreground">
-          {org.display_name}
         </div>
         {org.description ? (
           <div className="truncate text-[11px] leading-snug text-muted-foreground">
@@ -354,7 +347,7 @@ function OrgTreeInner({
       rawRfNodes.map((n) => ({
         id: n.id,
         entity_type: "principal",
-        label: n.data.org.display_name || n.data.org.name,
+        label: n.data.org.name,
         lifecycle: n.data.org.lifecycle,
         href: n.data.org.href ?? null,
         position: { x: n.position.x, y: n.position.y },

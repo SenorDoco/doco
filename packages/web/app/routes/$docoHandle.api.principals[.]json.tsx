@@ -16,23 +16,11 @@ import { getDocoLevelRole, loadDocoRouteForRead } from "~/lib/doco-access.server
 const ROLE_PRINCIPAL_NAMES = new Set(["user", "human", "doco-host", "github"]);
 const PRINCIPAL_NAME_PATTERN = /^[a-z0-9][a-z0-9_-]*$/;
 
-const DEFAULTS: Record<string, { type: "person" | "agent"; summary: string }> = {
-  user: {
-    type: "agent",
-    summary: "Role principal for any Doco user, whether person or AI agent.",
-  },
-  human: {
-    type: "person",
-    summary: "Role principal for the person-only subset of users.",
-  },
-  "doco-host": {
-    type: "agent",
-    summary: "System principal for the Doco host service.",
-  },
-  github: {
-    type: "agent",
-    summary: "External identity-provider principal for GitHub.",
-  },
+const DEFAULT_SUMMARIES: Record<string, string> = {
+  user: "Role principal for any Doco user, whether person or AI agent.",
+  human: "Role principal for the person-only subset of users.",
+  "doco-host": "System principal for the Doco host service.",
+  github: "External identity-provider principal for GitHub.",
 };
 
 export async function action({
@@ -64,10 +52,7 @@ export async function action({
 
   const body = (await request.json().catch(() => ({}))) as {
     name?: string;
-    type?: "person" | "agent";
     summary?: string;
-    display_name?: string;
-    description?: string;
     body_md?: string;
     reports_to?: string;
   };
@@ -85,9 +70,6 @@ export async function action({
       },
       { status: 400 },
     );
-  }
-  if (body.type !== undefined && body.type !== "person" && body.type !== "agent") {
-    return Response.json({ error: "type must be one of: person, agent." }, { status: 400 });
   }
   if (body.reports_to !== undefined) {
     if (typeof body.reports_to !== "string" || !body.reports_to.startsWith("principal_")) {
@@ -123,21 +105,14 @@ export async function action({
 
   const id = makeEntityId("principal", generateUlid()) as EntityId<"principal">;
   const now = nowIso();
-  const defaults = DEFAULTS[name];
-  const type = body.type ?? defaults?.type;
-  const displayName = body.display_name?.trim();
-  const description = body.description?.trim();
-  const summary = body.summary?.trim() || defaults?.summary || displayName || name;
+  const summary = body.summary?.trim() || DEFAULT_SUMMARIES[name] || name;
   const bodyMd = body.body_md?.trim() ?? "";
   const raw = {
     id,
     doco_id: meta.docoId,
     neuron_type: "principal",
     summary,
-    ...(type ? { type } : {}),
     name,
-    ...(displayName ? { display_name: displayName } : {}),
-    ...(description ? { description } : {}),
     ...(body.reports_to ? { reports_to: body.reports_to } : {}),
     ...(ROLE_PRINCIPAL_NAMES.has(name) ? { role_principal: true } : {}),
     created_at: now,
@@ -146,12 +121,9 @@ export async function action({
   };
 
   // Run the doco's authoring policies against the Principal before
-  // persisting. Templates like `org-chart` ship a `requires_field`
-  // policy that demands `type` ("person" | "agent") on every
-  // Principal — without this evaluation the policy would be inert,
-  // because principals had been a "non-migrated" identity-table
-  // entity outside the capture.server.ts orchestration. Reuses the
-  // same evaluator the generic capture routes call.
+  // persisting. Reuses the same evaluator the generic capture routes
+  // call, so per-template policies that target Principals (the
+  // `org-chart` template ships several) get a chance to block or warn.
   const pred = await runAuthoringPolicies({
     docoId: meta.docoId,
     candidate: raw as Parameters<typeof runAuthoringPolicies>[0]["candidate"],
