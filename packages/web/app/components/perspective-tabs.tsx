@@ -140,7 +140,7 @@ function PerspectiveSettingsMenu({
   // with the Link tabs in Safari (display:contents in particular).
   // Skipping the wrapper means the click-outside detector tests both
   // button and menu separately.
-  const btnRef = useRef<HTMLButtonElement>(null);
+  const btnRef = useRef<HTMLAnchorElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const fetcher = useFetcher();
   const navigate = useNavigate();
@@ -171,36 +171,33 @@ function PerspectiveSettingsMenu({
   const apiAction = `/${handle}/api/perspectives.json`;
 
   return (
-    // No wrapper element. Any DOM wrapper around the button (even with
-    // display:contents) broke pixel-perfect flex alignment with the
-    // Link tabs in Safari. The button is the direct flex child of
-    // the nav, the menu is a sibling positioned absolute against the
-    // nav (which is `relative`).
+    // No wrapper element. The chevron is an `<a>` (the same element
+    // type as the perspective tabs, which render as `<Link>` =
+    // anchor) — so browsers (Safari especially) use the same
+    // intrinsic sizing for it as for the perspective tabs. With a
+    // `<button>` we kept hitting Safari-specific min-height quirks
+    // that left the chevron a fraction of a pixel above the others
+    // no matter what padding/height we set.
     <>
-      <button
+      <a
         ref={btnRef}
-        type="button"
+        href="#perspective-settings"
+        role="button"
         aria-label="Perspective settings"
         title="Perspective settings"
         aria-expanded={open}
-        onClick={() => setOpen((v) => !v)}
-        // Styled to match an inactive perspective tab so it reads as
-        // part of the tab strip — same padding / border / colours,
-        // left-border overlap (`-ml-px`) so the last tab's right edge
-        // is shared. `rounded-tr-md` because this is now the visually
-        // last cell on the strip. `border-b-transparent` matches the
-        // inactive-tab treatment.
-        //
-        // h-[30px] locks the visual height to exactly what the Link
-        // perspective tabs measure to (30px in Chromium). Safari's
-        // user-agent default for <button> computes intrinsic
-        // min-height differently than for <a>, which previously made
-        // the chevron render at a different height despite the same
-        // padding/border/text classes. Explicit height defeats that.
-        className="relative -ml-px inline-flex h-[30px] items-center gap-1.5 rounded-tr-md border border-border border-b-transparent bg-input/40 px-3 text-xs font-medium text-muted-foreground hover:bg-input/60 hover:text-foreground"
+        onClick={(e) => {
+          e.preventDefault();
+          setOpen((v) => !v);
+        }}
+        // EXACT same class shape as an inactive PerspectiveTab (see
+        // PerspectiveTab above). isLast=true → rounded-tr-md, never
+        // active. Keep the structure identical so flex baseline
+        // alignment matches pixel-for-pixel in every browser.
+        className="relative -ml-px inline-flex cursor-pointer items-center gap-1.5 rounded-tr-md border border-border border-b-transparent bg-input/40 px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-input/60 hover:text-foreground"
       >
         <ChevronDown className="h-4 w-4" />
-      </button>
+      </a>
       {open ? (
         <div
           ref={menuRef}
