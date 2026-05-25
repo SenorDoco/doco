@@ -950,6 +950,49 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
     [],
   );
 
+  // Auto-focus: when the agent makes a doco_api tool call targeting
+  // a specific neuron (path matches /<handle>/api/<plural-type>/<id>.{json,txt}),
+  // pull the user into that neuron's perspective view so they can
+  // see what Señor Doco is doing in real time. No-op when the user
+  // is already at the target URL — React Router would treat the
+  // navigate as a no-op anyway, but skipping avoids touching history.
+  // We honor the agent's intent over the user's idle position, but
+  // skip while the user is typing in the composer (their input has
+  // focus) so we don't yank the cursor mid-thought.
+  const maybeFollowToolToNeuron = useCallback(
+    (toolName: string, input: unknown) => {
+      if (toolName !== "doco_api") return;
+      if (!input || typeof input !== "object") return;
+      const path = (input as { path?: unknown }).path;
+      if (typeof path !== "string" || !path.startsWith("/")) return;
+      // /<handle>/api/<plural-type>/<id>.<ext>
+      const m = /^\/([^/]+)\/api\/([^/]+)\/([^/.]+)\.(?:json|txt)$/.exec(path);
+      if (!m) return;
+      const [, handle, plural, id] = m;
+      // Plurals are uniformly the entity-type + "s" across all
+      // neuron tables shipped today (decisions, intents, actions,
+      // logs, rules, evals, references, ideas, states, principals).
+      const entityType = plural.replace(/s$/, "");
+      if (entityType === "polic") return; // policies isn't a neuron
+      const target = `/${handle}/${entityType}/${id}`;
+      const currentPath = location.pathname;
+      if (currentPath === target) return;
+      // Don't grab focus mid-keystroke. The composer textarea is the
+      // common case; checking document.activeElement covers it.
+      if (typeof document !== "undefined") {
+        const active = document.activeElement;
+        if (
+          active instanceof HTMLElement &&
+          (active.tagName === "TEXTAREA" || active.tagName === "INPUT")
+        ) {
+          return;
+        }
+      }
+      navigate(target);
+    },
+    [navigate, location.pathname],
+  );
+
   const send = useCallback(
     async (override?: { text: string; staged: StagedAttachment[] }) => {
       const text = (override?.text ?? inputText).trim();
@@ -1135,6 +1178,11 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
               if (b) {
                 b.input = event.input;
                 bumpInFlight();
+                // Auto-focus: when the agent reads/updates a specific
+                // neuron via doco_api, take the user to that neuron's
+                // perspective view so they can watch what's happening.
+                // Skipped silently if the user is already there.
+                maybeFollowToolToNeuron(b.name, event.input);
               }
               appendThinking({
                 kind: "tool_input",
@@ -1251,6 +1299,7 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
       conversationId,
       conversationTitle,
       loadConversationsList,
+      maybeFollowToolToNeuron,
     ],
   );
 
