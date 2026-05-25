@@ -436,6 +436,21 @@ export function OverviewGraph({
   const graphRef = useRef<HTMLDivElement>(null);
   const graphReferenceIdRef = useRef(`overview-${Math.random().toString(36).slice(2)}`);
   const hasFitRef = useRef(false);
+  // Cached React Flow instance plus the centerId most recently zoomed to.
+  // The instance is captured in onInit; the effect below uses it to
+  // animate the viewport when centerId changes — the singleRingLayout
+  // re-runs and places the new focal at (0, 0), but the viewport
+  // doesn't follow without this. Skipped on the first render because
+  // the initial fitView already centers the canvas on the focal.
+  type FlowFitView = (options?: {
+    nodes?: { id: string }[];
+    padding?: number;
+    duration?: number;
+    minZoom?: number;
+    maxZoom?: number;
+  }) => void;
+  const flowRef = useRef<{ fitView?: FlowFitView } | null>(null);
+  const lastZoomedCenterRef = useRef<string | null>(null);
   const [size, setSize] = useState({ width: 1, height: 1 });
   const [viewport, setViewport] = useState<FlowViewport>({ x: 0, y: 0, zoom: 1 });
   const [details, setDetails] = useState<Map<string, OverviewNodeDetail>>(() => new Map());
@@ -488,6 +503,32 @@ export function OverviewGraph({
     () => nodes.filter((node) => visibleLifecycles.has(nodeLifecycle(node))),
     [nodes, visibleLifecycles],
   );
+
+  // Auto-zoom: when centerId changes after the initial fit, animate the
+  // viewport so the new focal node lands in the middle of the canvas.
+  // Used by the agent's auto-focus flow (Señor Doco navigates to a
+  // neuron → camera glides to it) and by manual clicks on a graph node
+  // (which also bump centerId via onCenterChange). The rAF defers until
+  // after React Flow has applied the layout's new positions, otherwise
+  // fitView would target stale coordinates. No-op if React Flow hasn't
+  // mounted, if it's the same centerId we already zoomed to, or if no
+  // node with that id is present yet.
+  useEffect(() => {
+    if (!flowRef.current) return;
+    if (lastZoomedCenterRef.current === centerId) return;
+    if (!visibleNodes.some((n) => n.id === centerId)) return;
+    lastZoomedCenterRef.current = centerId;
+    const handle = requestAnimationFrame(() => {
+      flowRef.current?.fitView?.({
+        nodes: [{ id: centerId }],
+        padding: 2,
+        duration: 600,
+        minZoom: 0.6,
+        maxZoom: 1.4,
+      });
+    });
+    return () => cancelAnimationFrame(handle);
+  }, [centerId, visibleNodes]);
 
   // Diff against the full incoming `nodes` set, not `visibleNodes`, so
   // toggling a lifecycle filter back on doesn't glow nodes that have
@@ -719,12 +760,14 @@ export function OverviewGraph({
             zoomOnDoubleClick
             preventScrolling
             onInit={(instance: {
-              fitView?: (options?: typeof GRAPH_FIT_VIEW_OPTIONS) => void;
+              fitView?: FlowFitView;
               getViewport?: () => FlowViewport;
             }) => {
+              flowRef.current = instance;
               if (!hasFitRef.current) {
                 instance.fitView?.(GRAPH_FIT_VIEW_OPTIONS);
                 hasFitRef.current = true;
+                lastZoomedCenterRef.current = centerId;
               }
               const next = instance.getViewport?.();
               if (next) updateViewport(next);
