@@ -3,11 +3,12 @@ import { NeuronTypeIcon } from "~/components/neuron-type-icon";
 import { lifecycleColor } from "~/lib/neuron-colors";
 import type { LifecycleStage, NeuronDialogDetail } from "~/lib/neuron-detail.server";
 
-// Per-entity-type prose-field-name lookup. Migrated neurons carry
-// their full prose under a key matching the entity type (intent,
-// decision, ...); non-migrated entities (principals, policies) still
-// use the legacy summary/body_md pair. The dialog uses this to label
-// the prose section heading appropriately.
+// Per-entity-type prose-field-name lookup. The 9 migrated neurons
+// carry their full prose under a key matching the entity type
+// (intent, decision, ...). Principals carry it under `body_md`
+// post-migration 037 — labeled "about" in the dialog. Policies carry
+// the one-line rule under `policy` post-migration 038, with an
+// optional `body_md` rationale below.
 const PROSE_FIELD_NAME: Record<string, string> = {
   intent: "intent",
   decision: "decision",
@@ -18,11 +19,14 @@ const PROSE_FIELD_NAME: Record<string, string> = {
   reference: "reference",
   state: "state",
   idea: "idea",
+  principal: "about",
+  guidance_policy: "policy",
+  neuron_authoring_policy: "policy",
 };
 
 function proseFieldName(entityType: string | undefined): string {
-  if (!entityType) return "summary";
-  return PROSE_FIELD_NAME[entityType] ?? "summary";
+  if (!entityType) return "body";
+  return PROSE_FIELD_NAME[entityType] ?? "body";
 }
 
 interface NeuronDialogProps {

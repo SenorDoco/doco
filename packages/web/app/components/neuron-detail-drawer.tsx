@@ -37,9 +37,9 @@ export interface DrawerRelevantNode {
   /**
    * Human-readable one-line label. For migrated neurons this is the
    * first line of the type-named column (intent/decision/...); for
-   * non-migrated neurons (principals) this is the legacy summary. The
-   * route building the list is responsible for picking the right
-   * source — the drawer just renders it.
+   * principals it's the `name` slug (post-037). The route building
+   * the list is responsible for picking the right source — the
+   * drawer just renders it.
    */
   label: string;
   name: string | null;
