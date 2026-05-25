@@ -92,7 +92,6 @@ describe("updateEntity", () => {
     });
     expect(upsertEntity).toHaveBeenCalledWith(
       expect.objectContaining({
-        summary: null,
         type_named_value: "Renamed state name",
         data: expect.objectContaining({
           state: "Renamed state name",
@@ -141,7 +140,6 @@ describe("updateEntity", () => {
     });
     expect(upsertEntity).toHaveBeenCalledWith(
       expect.objectContaining({
-        summary: null,
         type_named_value: "Renamed idea name",
         data: expect.objectContaining({
           idea: "Renamed idea name",
