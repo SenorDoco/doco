@@ -631,10 +631,7 @@ export function BpmnPerspective({
         </div>
       ) : null}
       {Flow && stickyPools.length > 0 ? (
-        <div
-          className="pointer-events-none absolute left-0 right-0 top-0 z-10 flex flex-col"
-          style={{ paddingLeft: SWIM_RAIL_WIDTH }}
-        >
+        <div className="pointer-events-none absolute left-0 right-0 top-0 z-20 flex flex-col">
           {stickyPools.map((pool) => {
             const isUnassigned = pool.intent_id === null;
             const sourcePool = poolById.get(pool.id);
@@ -642,14 +639,13 @@ export function BpmnPerspective({
             // Mirror the in-canvas BpmnPoolHeaderNode look: same overlay
             // color over an opaque card so the sticky band reads as a
             // pinned copy of the natural header (not a different chrome
-            // element). Font, padding, badges, and letterSpacing all
-            // scale with viewport.zoom — like the swim-lane rails — so
-            // the sticky doesn't grow visually huge when zoomed out.
+            // element). Font and padding scale with viewport.zoom —
+            // like the swim-lane rails — so the sticky doesn't grow
+            // visually huge when zoomed out.
             const overlay = isUnassigned ? "rgba(0, 0, 0, 0.05)" : "rgba(40, 70, 160, 0.08)";
             const borderColor = isUnassigned ? "var(--color-border)" : "rgba(40, 70, 160, 0.35)";
             const labelFontPx = 12 * viewport.zoom;
             const padX = 14 * viewport.zoom;
-            const gapPx = 8 * viewport.zoom;
             return (
               <div
                 key={pool.id}
@@ -661,7 +657,6 @@ export function BpmnPerspective({
                   borderTop: `${2 * viewport.zoom}px solid ${borderColor}`,
                   borderBottomColor: borderColor,
                   padding: `0 ${padX}px`,
-                  gap: gapPx,
                   fontSize: labelFontPx,
                   fontWeight: 700,
                   letterSpacing: 0,
@@ -685,24 +680,6 @@ export function BpmnPerspective({
                 tabIndex={isClickablePool ? 0 : undefined}
                 title={pool.label}
               >
-                {!isUnassigned && pool.intent_id ? (
-                  <span
-                    style={{
-                      display: "inline-flex",
-                      gap: 4 * viewport.zoom,
-                      flexShrink: 0,
-                      transform: `scale(${viewport.zoom})`,
-                      transformOrigin: "left center",
-                      // Keep the badges' bounding box from claiming
-                      // their pre-scale width — the inline-flex above
-                      // shrinks proportionally with `transform`.
-                      width: 0,
-                    }}
-                  >
-                    <TypeBadge entityType="intent" lifecycle={pool.lifecycle} anchor="inline" />
-                    <LifecycleBadge lifecycle={pool.lifecycle} anchor="inline" />
-                  </span>
-                ) : null}
                 <span className="overflow-hidden text-ellipsis whitespace-nowrap">
                   {pool.label}
                 </span>
