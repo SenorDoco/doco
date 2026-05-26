@@ -746,6 +746,13 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
     const createdChatId = readCreatedDocoChatIdFromLocationSearch(location.search);
     if (!createdChatId) return;
 
+    setCollapsed(false);
+    writeBoolFlag(COLLAPSE_KEY, false);
+    setUnread(false);
+    writeBoolFlag(UNREAD_KEY, false);
+    setView("chat");
+    setRenamingId(null);
+
     if (createdChatId !== conversationId) {
       abortRef.current?.abort();
       setBusy(false);
@@ -761,8 +768,6 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
       earliestRef.current = null;
       setConversationId(createdChatId);
       writeStringFlag(ACTIVE_CONV_KEY, createdChatId);
-      setView("chat");
-      setRenamingId(null);
     } else {
       writeStringFlag(ACTIVE_CONV_KEY, createdChatId);
     }
