@@ -173,6 +173,7 @@ interface InFlightMessage {
 const COLLAPSE_KEY = "senor-doco:collapsed";
 const UNREAD_KEY = "senor-doco:unread";
 const SHOW_THINKING_KEY = "senor-doco:show-thinking";
+const CHAT_BOTTOM_STICKY_THRESHOLD_PX = 32;
 const THINKING_BOTTOM_STICKY_THRESHOLD_PX = 24;
 // Pending-send recovery key. send() stashes the user's text here
 // synchronously before the fetch. If the tab dies before the SSE
@@ -226,6 +227,10 @@ type ThinkingEvent =
 const SYNC_CHANNEL = "doco:senor-doco-sync";
 
 type SyncMessage = { kind: "changed" } | { kind: "remote-inflight"; busy: boolean };
+
+function isNearScrollBottom(el: HTMLElement, thresholdPx: number): boolean {
+  return el.scrollHeight - el.scrollTop - el.clientHeight <= thresholdPx;
+}
 
 /**
  * Convert a server-persisted thinking event (the raw SSE event +
@@ -538,6 +543,8 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
   const navigate = useNavigate();
   const location = useLocation();
   const messageListRef = useRef<HTMLDivElement | null>(null);
+  const messageListPinnedToBottomRef = useRef(true);
+  const messageListUserInteractingRef = useRef(false);
   const abortRef = useRef<AbortController | null>(null);
 
   const setCollapsedPersistent = useCallback((next: boolean) => {
@@ -1130,15 +1137,54 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
     };
   }, [reload, markUnread]);
 
+  const scrollMessageListToBottom = useCallback(() => {
+    const el = messageListRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+    messageListPinnedToBottomRef.current = true;
+  }, []);
+
+  const markMessageListInteracting = useCallback(() => {
+    messageListUserInteractingRef.current = true;
+  }, []);
+
+  const releaseMessageListInteraction = useCallback(() => {
+    messageListUserInteractingRef.current = false;
+    const el = messageListRef.current;
+    if (el) {
+      messageListPinnedToBottomRef.current = isNearScrollBottom(
+        el,
+        CHAT_BOTTOM_STICKY_THRESHOLD_PX,
+      );
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.addEventListener("pointerup", releaseMessageListInteraction);
+    window.addEventListener("pointercancel", releaseMessageListInteraction);
+    window.addEventListener("mouseup", releaseMessageListInteraction);
+    window.addEventListener("touchend", releaseMessageListInteraction);
+    window.addEventListener("touchcancel", releaseMessageListInteraction);
+    window.addEventListener("blur", releaseMessageListInteraction);
+    return () => {
+      window.removeEventListener("pointerup", releaseMessageListInteraction);
+      window.removeEventListener("pointercancel", releaseMessageListInteraction);
+      window.removeEventListener("mouseup", releaseMessageListInteraction);
+      window.removeEventListener("touchend", releaseMessageListInteraction);
+      window.removeEventListener("touchcancel", releaseMessageListInteraction);
+      window.removeEventListener("blur", releaseMessageListInteraction);
+    };
+  }, [releaseMessageListInteraction]);
+
   // After the first hydration completes, jump straight to the bottom so
   // the user sees the most recent turn. Runs once, after `messages` has
   // been populated by `reload()` (the empty-deps variant fired before
   // the fetch resolved and scrolled an empty list).
   useEffect(() => {
     if (!bootstrapped) return;
-    const el = messageListRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
-  }, [bootstrapped]);
+    scrollMessageListToBottom();
+  }, [bootstrapped, scrollMessageListToBottom]);
 
   // Every time the sidebar transitions from collapsed → expanded the
   // chat column re-mounts and the user expects to land on the most
@@ -1147,18 +1193,17 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
   // before the browser paints, so the jump-to-bottom is invisible.
   useLayoutEffect(() => {
     if (collapsed) return;
-    const el = messageListRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
-  }, [collapsed]);
+    scrollMessageListToBottom();
+  }, [collapsed, scrollMessageListToBottom]);
 
   const newestMessageId = messages[messages.length - 1]?.id ?? null;
 
   // Auto-scroll on new content.
   useEffect(() => {
     if (!newestMessageId && !inFlight) return;
-    const el = messageListRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
-  }, [newestMessageId, inFlight]);
+    if (messageListUserInteractingRef.current || !messageListPinnedToBottomRef.current) return;
+    scrollMessageListToBottom();
+  }, [newestMessageId, inFlight, scrollMessageListToBottom]);
 
   const loadOlder = useCallback(async () => {
     const earliest = earliestRef.current;
@@ -1202,9 +1247,10 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
   }, [conversationId]);
 
   const onMessagesScroll = useCallback(() => {
-    if (!hasMore || loadingOlder) return;
     const el = messageListRef.current;
     if (!el) return;
+    messageListPinnedToBottomRef.current = isNearScrollBottom(el, CHAT_BOTTOM_STICKY_THRESHOLD_PX);
+    if (!hasMore || loadingOlder) return;
     if (el.scrollTop < 80) void loadOlder();
   }, [hasMore, loadingOlder, loadOlder]);
 
@@ -2143,6 +2189,8 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
                   <div
                     ref={messageListRef}
                     onScroll={onMessagesScroll}
+                    onPointerDown={markMessageListInteracting}
+                    onMouseDown={markMessageListInteracting}
                     className={cn(
                       "flex min-h-0 flex-col overflow-y-auto px-3 py-3 text-xs leading-relaxed",
                       showThinking ? "w-[320px] shrink-0 border-r border-border" : "flex-1",
