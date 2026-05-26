@@ -22,7 +22,7 @@
 // Behavior: caller must have any role on the org. The full handle is
 // composed as `<org-handle>-<name>` and silently
 // auto-suffixed on collision. Returns 201 with `{ id, handle, name,
-// org_id, org_handle, visibility, goal }`.
+// org_id, org_handle, visibility, goal, chat_conversation_id }`.
 
 import { withClient } from "@doco/db";
 import { listAccessibleDocoIdsForPrincipal } from "~/lib/doco-access.server";
@@ -122,6 +122,7 @@ export async function action({ request }: { request: Request }) {
         org_handle: rec.orgHandle,
         visibility,
         goal: rec.goal,
+        chat_conversation_id: rec.companionChatId ?? null,
       },
       { status: 201 },
     );
