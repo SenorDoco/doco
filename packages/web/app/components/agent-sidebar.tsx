@@ -2833,6 +2833,28 @@ function MessageBlock({ rm, usage }: { rm: RenderableMessage; usage: TurnUsage |
   return <InFlightMessageView msg={rm.message} usage={usage} />;
 }
 
+function ThinkingDots({
+  className,
+  dotClassName,
+}: {
+  className?: string;
+  dotClassName?: string;
+}) {
+  return (
+    <span
+      className={cn(
+        "doco-thinking-dots inline-flex h-3 items-end gap-0.5 align-middle text-primary",
+        className,
+      )}
+      aria-hidden="true"
+    >
+      <span className={cn("doco-thinking-dot h-1.5 w-1.5 rounded-full bg-current", dotClassName)} />
+      <span className={cn("doco-thinking-dot h-1.5 w-1.5 rounded-full bg-current", dotClassName)} />
+      <span className={cn("doco-thinking-dot h-1.5 w-1.5 rounded-full bg-current", dotClassName)} />
+    </span>
+  );
+}
+
 /**
  * Filter block list for the main chat. Tool-use chips are
  * intermediate "agent is calling X" affordances that belong in the
@@ -2890,7 +2912,10 @@ function InFlightMessageView({
   if (visible.length === 0) {
     return (
       <div className="mb-3 flex justify-end pr-1">
-        <DocoMark height={28} variant="mark" active decorative />
+        <div className="flex items-end gap-1.5">
+          <DocoMark height={28} variant="mark" active decorative />
+          <ThinkingDots className="mb-1" />
+        </div>
       </div>
     );
   }
@@ -2912,6 +2937,7 @@ function InFlightMessageView({
       <div className="mt-1 flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-muted-foreground">
         <DocoMark height={14} variant="mark" active decorative />
         Señor Doco
+        <ThinkingDots className="ml-0.5" dotClassName="h-1 w-1" />
         {usage ? (
           <span
             className="font-mono normal-case tracking-normal"
@@ -2953,7 +2979,8 @@ function ThinkingPanel({ events, active }: { events: ThinkingEvent[]; active: bo
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-card/50">
       <div className="shrink-0 border-b border-border/70 px-3 py-1.5 text-[10px] uppercase tracking-wide text-muted-foreground">
-        Thinking {active ? <span className="ml-1 animate-pulse">●</span> : null}
+        Thinking{" "}
+        {active ? <ThinkingDots className="ml-1 inline-flex" dotClassName="h-1 w-1" /> : null}
         <span className="ml-2 font-mono normal-case">{events.length} events</span>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2 text-[11px] font-mono leading-snug">
