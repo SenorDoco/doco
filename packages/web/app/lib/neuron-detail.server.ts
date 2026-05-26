@@ -36,7 +36,6 @@ export interface NeuronDialogLifecycleChange {
 }
 
 export interface NeuronDialogDocoRef {
-  name: string;
   handle: string;
   href: string;
 }
@@ -206,7 +205,7 @@ export function isGraphNeuronType(
 
 export async function loadNeuronDialogDetail(
   c: QueryClient,
-  meta: { docoId: string; ownerId: string; displayName?: string },
+  meta: { docoId: string; ownerId: string },
   options: {
     handle: string;
     entityType: string;
@@ -384,7 +383,6 @@ export async function loadNeuronDialogDetail(
     updated_at: toIso(row.updated_at),
     body_md: bodyMdCompat,
     doco: {
-      name: meta.displayName || options.handle,
       handle: options.handle,
       href: `/${options.handle}`,
     },

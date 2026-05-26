@@ -364,7 +364,7 @@ function formatTemplateUpdatedAt(isoDate: string): string {
 }
 
 // Mirrors the per-Doco FeedLine shape so both surfaces read the same:
-//   <op-icon> <Type> <verb>: <summary> — <owner>/<doco> · <by>      Ns ago
+//   <op-icon> <Type> <verb>: <summary> — <doco-handle> · <by>      Ns ago
 // The Doco link gives cross-Doco context. The actor sits behind the
 // Doco link because dashboard cuts across principals; per-Doco implies
 // it.

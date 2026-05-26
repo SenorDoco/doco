@@ -22,8 +22,8 @@ type CreatedDocoInOrg = Awaited<ReturnType<typeof createHostDocoInOrg>> & {
   companionChatId?: string;
 };
 
-export function createdDocoChatTitle(docoName: string): string {
-  return `Chat for ${docoName}`;
+export function createdDocoChatTitle(docoHandle: string): string {
+  return `Chat for ${docoHandle}`;
 }
 
 export async function createDocoInOrg(opts: CreateDocoInOrgOptions): Promise<CreatedDocoInOrg> {

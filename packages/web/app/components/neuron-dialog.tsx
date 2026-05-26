@@ -62,9 +62,8 @@ function DocoSourceLine({ doco }: { doco: NeuronDialogDetail["doco"] | null | un
         to={doco.href}
         className="font-mono font-semibold text-foreground underline-offset-2 hover:text-primary hover:underline"
       >
-        {doco.name}
+        {doco.handle}
       </Link>
-      {doco.name !== doco.handle ? <span className="font-mono"> /{doco.handle}</span> : null}
     </p>
   );
 }

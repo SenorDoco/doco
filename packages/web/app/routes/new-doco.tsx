@@ -24,7 +24,7 @@ import { getCurrentPrincipal } from "~/lib/session.server";
 /**
  * /new-doco — doco creation form.
  *
- * Captures the template, org, doco name, and privacy settings in one
+ * Captures the template, org, Doco handle, and privacy settings in one
  * form. Submitting creates the Doco immediately, then redirects to the
  * post-create concepts page.
  *
@@ -139,7 +139,7 @@ export async function action({ request }: { request: Request }) {
     return { error: "Pick an organization or create a new one.", suggestedHandle: null, state };
   }
   if (!state.name) {
-    return { error: "Doco name is required.", suggestedHandle: null, state };
+    return { error: "Doco handle is required.", suggestedHandle: null, state };
   }
 
   let chosenOrgId: string;
@@ -202,7 +202,7 @@ export async function action({ request }: { request: Request }) {
       };
     }
     return {
-      error: friendlyHandleValidationError(message, "Doco name"),
+      error: friendlyHandleValidationError(message, "Doco handle"),
       suggestedHandle: null,
       state,
     };
@@ -386,7 +386,7 @@ export default function NewDocoStep1({
 
               <fieldset className="space-y-2">
                 <legend className="text-xs font-semibold uppercase text-muted-foreground">
-                  Doco name
+                  Doco handle
                 </legend>
                 <input
                   type="text"
@@ -400,7 +400,7 @@ export default function NewDocoStep1({
                   }}
                   onInvalid={(event) => {
                     event.currentTarget.setCustomValidity(
-                      handleValidityMessage(event.currentTarget.validity, "Doco name"),
+                      handleValidityMessage(event.currentTarget.validity, "Doco handle"),
                     );
                   }}
                   onInput={(event) => event.currentTarget.setCustomValidity("")}

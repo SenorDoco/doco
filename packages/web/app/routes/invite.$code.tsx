@@ -4,12 +4,12 @@
 // at /invite/<code>/agent.txt.
 //
 // The page loads the invite, shows the human what they're being
-// invited to (Doco name + expiration), and asks them to click
+// invited to (Doco handle + expiration), and asks them to click
 // "Accept" only after they are signed in:
 //
 //   - If signed in: the invite is redeemed, the human Principal is
 //     joined to the Doco or Organization. The success card is intentionally minimal —
-//     just a "Continue" button to /<owner>/<slug>/.
+//     just a "Continue" button to /<handle>/.
 //   - If not signed in: ask whether the visitor is human or agent. Humans
 //     sign in and come back here to accept; agents get the plain-text
 //     instructions for redeeming the same invite.

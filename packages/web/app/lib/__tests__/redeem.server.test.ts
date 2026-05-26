@@ -67,7 +67,7 @@ describe("createDocoInOrg", () => {
     });
   });
 
-  it("names companion chats from the Doco name", () => {
+  it("names companion chats from the Doco handle", () => {
     expect(createdDocoChatTitle("acme-onboarding")).toBe("Chat for acme-onboarding");
   });
 });
