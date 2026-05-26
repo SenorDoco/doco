@@ -859,16 +859,16 @@ BODY (JSON) — write
                             from current, the rename takes effect
                             immediately and the response carries the new
                             handle so you can update bookmarks.
-  display_name   optional   string. Empty string clears.
   visibility     optional   "private" or "public".
+  goal           optional   string.
 
 SUCCESS RESPONSE — write (HTTP 200, application/json)
   {
     "ok": true,
     "doco_id": "doco_...",
     "doco_handle": "<possibly-new-handle>",
-    "display_name": "...",
-    "visibility": "private" | "public"
+    "visibility": "private" | "public",
+    "goal": "..."
   }
 
 ERROR RESPONSE

@@ -158,7 +158,7 @@ Create a Doco with:
     {
       "template_handle": "generic",
       "org_id": "<organization-id>",
-      "name": "bpms",
+      "name": "acme-bpms",
       "privacy": "private"
     }
 

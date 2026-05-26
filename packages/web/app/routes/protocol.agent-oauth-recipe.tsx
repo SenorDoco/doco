@@ -378,8 +378,8 @@ Concretely: if a user asks you to work on a project that has no
 Doco yet, and \`oauth_grant.granted_org_ids\` already contains the
 org they'd create it under, the right move is:
 
-> "I'll wait while you create the Doco at ${baseUrl} (suggest
-> \`<org-handle>-<project-name>\` under \`<org-handle>\`). My existing
+> "I'll wait while you create the Doco at ${baseUrl} (the form starts
+> the name with \`<org-handle>-\`, but you can use any available handle). My existing
 > token has org-level access, so the new Doco will be reachable as
 > soon as you finish creating it — no re-authorization needed."
 
@@ -442,7 +442,7 @@ Authorization: Bearer doco_at_<your-access-token>
 {
   "template_handle": "generic",
   "org_id": "<organization-id>",
-  "name": "bpms",
+  "name": "acme-bpms",
   "privacy": "private"
 }
 \`\`\`

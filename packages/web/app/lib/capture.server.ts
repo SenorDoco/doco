@@ -423,11 +423,10 @@ export async function renderOperationLines(opts: {
   ownerSlug: string;
   docoSlug: string;
   /**
-   * Phase 2d+ canonical URL identifier (the human-readable handle).
+   * Canonical URL identifier.
    * When provided, the footer link uses `${docoHost}/${handle}/...`.
    * Optional — when omitted, the function looks it up by `docoId` (if
-   * provided) or falls back to `<owner>-<slug>` synthesis (correct for
-   * every migrated Doco).
+   * provided) or falls back to historical `<owner>-<slug>` synthesis.
    */
   handle?: string;
   /**
@@ -457,11 +456,9 @@ export async function renderOperationLines(opts: {
   duration_ms?: number;
 }): Promise<string[]> {
   const Type = capType(opts.entityType);
-  // Phase 2d of slug-removal: every Doco URL is `/<handle>/...`. Use
-  // the explicit handle when given; otherwise look it up by docoId;
-  // otherwise fall back to `<owner>-<slug>` synthesis (correct for
-  // every Doco minted from the slug-form web/CLI path AND every
-  // pre-phase-1 row the migration backfilled).
+  // Every Doco URL is `/<handle>/...`. Use the explicit handle when
+  // given; otherwise look it up by docoId; otherwise fall back to the
+  // historical `<owner>-<slug>` synthesis used by old call sites.
   let handle: string;
   if (opts.handle) {
     handle = opts.handle;

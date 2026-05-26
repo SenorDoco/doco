@@ -1,9 +1,8 @@
 // Host-level reads — Phase 3 Postgres-only
 // (rule_01KRKQDHWNWJAF4YKTMCB2A0D9 — alpha forbids back-compat).
 //
-// All filesystem walks of `<root>/host.yaml`, `<root>/principals/`,
-// `<root>/organizations/`, and `<root>/docos/<owner>/<slug>/doco.yaml`
-// have been replaced with Postgres queries via @doco/db.
+// All filesystem walks of host/principal/organization/Doco YAML have
+// been replaced with Postgres queries via @doco/db.
 
 import {
   listAllDocos as _dbListAllDocos,

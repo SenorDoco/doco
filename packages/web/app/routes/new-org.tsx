@@ -95,8 +95,7 @@ export default function NewOrg({
         <header className="space-y-1">
           <h1 className="text-2xl font-semibold">New organization</h1>
           <p className="text-xs text-muted-foreground">
-            You become the owner. The handle is the org's only public identifier — your Docos will
-            live at <code>/&lt;handle&gt;-&lt;doco-suffix&gt;/</code>.
+            You become the owner. The handle is the org's only public identifier.
           </p>
         </header>
         <Card>

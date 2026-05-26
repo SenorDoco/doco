@@ -47,7 +47,6 @@ interface LoaderData {
   docos: {
     id: string;
     handle: string;
-    name: string | null;
     my_role: DocoRole;
   }[];
   orgs: {
@@ -85,14 +84,14 @@ export async function loader({ request }: { request: Request }) {
   // via doco_users grant). The action below re-checks this on submit
   // (defense against form tampering).
   const candidateIds = await listAccessibleDocoIdsForPrincipal(principal.id);
-  type DocoRow = { id: string; handle: string; name: string | null; my_role: DocoRole };
+  type DocoRow = { id: string; handle: string; my_role: DocoRole };
   const candidates = await Promise.all(
     candidateIds.map(async (id): Promise<DocoRow | null> => {
       const d = await getDocoById(id);
       if (!d) return null;
       const my_role = await getDocoLevelRole({ ownerId: d.owner_id, docoId: d.id }, principal.id);
       if (my_role !== "owner") return null;
-      return { id: d.id, handle: d.handle, name: d.name, my_role };
+      return { id: d.id, handle: d.handle, my_role };
     }),
   );
   let docos = candidates
@@ -297,7 +296,7 @@ function DocoPickerForm({
   targetedMessage,
   focused,
 }: {
-  docos: { id: string; handle: string; name: string | null; my_role: DocoRole }[];
+  docos: { id: string; handle: string; my_role: DocoRole }[];
   orgs: { id: string; handle: string; display_name: string; my_role: DocoRole }[];
   requestedRole: DocoRole | null;
   targetedMessage: string | null;
@@ -505,9 +504,6 @@ function DocoPickerForm({
                   />
                   <span className="text-sm">
                     <strong className="font-semibold">{d.handle}</strong>
-                    {d.name && d.name !== d.handle ? (
-                      <span className="text-muted-foreground"> · {d.name}</span>
-                    ) : null}
                   </span>
                 </label>
                 <select

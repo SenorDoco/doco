@@ -13,7 +13,7 @@ export function handleValidityMessage(validity: ValidityState, label = "Handle")
 }
 
 export function friendlyHandleValidationError(message: string, label = "Handle"): string {
-  return /expected kebab-case|lowercase kebab-case/i.test(message)
+  return /expected kebab-case|lowercase kebab-case|URL-safe handle/i.test(message)
     ? handleFormatError(label)
     : message;
 }
