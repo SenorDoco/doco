@@ -59,6 +59,14 @@ export const DOCO_TEMPLATES: DocoTemplateMeta[] = [
     owner: TEMPLATE_OWNER,
   },
   {
+    handle: "glossaries",
+    label: "Glossaries",
+    description:
+      "Document product and domain terminology — canonical terms, definitions, aliases, deprecated wording, sources, and consistency checks.",
+    updatedAt: "2026-05-26",
+    owner: TEMPLATE_OWNER,
+  },
+  {
     handle: "org-chart",
     label: "Org Chart",
     description:
