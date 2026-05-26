@@ -74,10 +74,10 @@ export async function listPerspectivesForDoco(docoId: string): Promise<AttachedP
       `SELECT p.id, p.slug, p.kind, p.name, p.description, p.icon,
               p.owner_handle, p.is_builtin, p.config,
               dp.position, dp.is_default
-         FROM doco_perspectives dp
+        FROM doco_perspectives dp
          JOIN perspectives p ON p.id = dp.perspective_id
         WHERE dp.doco_id = $1
-        ORDER BY LOWER(p.name) ASC`,
+        ORDER BY dp.position ASC, LOWER(p.name) ASC`,
       [docoId],
     );
     return rows.map((r) => ({
