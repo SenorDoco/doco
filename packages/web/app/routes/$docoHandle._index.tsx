@@ -880,6 +880,14 @@ export default function DocoHome({
                         `/${handle}/intent/${pool.intent_id}`,
                       );
                     }}
+                    onLaneClick={(lane) => {
+                      if (lane.kind !== "actor" || !lane.base_id.startsWith("principal_")) return;
+                      void loadNeuronDialog(
+                        "principal",
+                        lane.base_id,
+                        `/${handle}/principal/${lane.base_id}`,
+                      );
+                    }}
                   />
                 ) : (
                   <OverviewGraph
