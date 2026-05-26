@@ -2353,17 +2353,20 @@ async function* streamAssistantTurn(args: {
         // mid-text or mid-tool-JSON). Without a visible signal the
         // user thinks the agent just stopped early. Surface a short
         // note so they know to ask me to continue.
+        const persistedAssistantBlocks = collectedBlocks as ContentBlockParam[];
         if (finalMessage.stop_reason === "max_tokens") {
+          const note = `\n\n_(hit the per-call output cap mid-reply — ask me to continue and I'll pick up where I left off)_`;
           yield {
             kind: "text_delta",
-            text: `\n\n_(hit the per-call output cap mid-reply — ask me to continue and I'll pick up where I left off)_`,
+            text: note,
           };
+          persistedAssistantBlocks.push({ type: "text", text: note });
         }
         // Save assistant turn (text-only) and finish.
         const saved = await appendMessage(
           args.conversation.id,
           "assistant",
-          collectedBlocks as ContentBlockParam[],
+          persistedAssistantBlocks,
         );
         yield { kind: "message_saved", message_id: saved.id, role: "assistant" };
         yield { kind: "done" };
@@ -2419,10 +2422,13 @@ async function* streamAssistantTurn(args: {
     }
 
     turnError = `hit MAX_TURNS_PER_REPLY=${MAX_TURNS_PER_REPLY}`;
-    yield {
-      kind: "error",
-      message: `Hit MAX_TURNS_PER_REPLY=${MAX_TURNS_PER_REPLY} without completing — stopping to avoid a tool-call loop.`,
-    };
+    const limitMessage = `I hit the per-turn work limit (${MAX_TURNS_PER_REPLY} Anthropic calls) while continuing this job, so I paused instead of risking a tool-call loop. The work so far is saved; send "continue" and I'll pick up from the latest tool results.`;
+    yield { kind: "text_delta", text: limitMessage };
+    const saved = await appendMessage(args.conversation.id, "assistant", [
+      { type: "text", text: limitMessage },
+    ]);
+    yield { kind: "message_saved", message_id: saved.id, role: "assistant" };
+    yield { kind: "done" };
   } finally {
     // Final synchronous flush so a turn that completed normally (or
     // errored cleanly) overwrites the "in_flight" sentinel with the
