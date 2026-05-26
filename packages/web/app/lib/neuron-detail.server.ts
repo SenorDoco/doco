@@ -54,6 +54,10 @@ export interface NeuronDialogDetail {
   entity_type: string;
   summary: string;
   name: string | null;
+  primary_field: string;
+  primary_text: string | null;
+  body_field: string | null;
+  body_text: string | null;
   lifecycle: string;
   created_at: string | null;
   updated_at: string | null;
@@ -86,8 +90,11 @@ const UPDATE_SEGMENTS: Record<string, string> = {
 
 type GraphNeuronConfig = {
   table: string;
-  hasBody: boolean;
   typeNamedColumn: string | null;
+  primaryColumn: string;
+  primaryField: string;
+  bodyColumn: string | null;
+  bodyField: string | null;
   updateSegment: string;
 };
 
@@ -97,8 +104,11 @@ const GRAPH_NEURON_TABLES: Record<string, GraphNeuronConfig> = {
       entityType,
       {
         table: spec.table,
-        hasBody: spec.body,
-        typeNamedColumn: ALL_ENTITY_TABLES[entityType]?.typeNamedColumn ?? null,
+        typeNamedColumn: ALL_ENTITY_TABLES[entityType]?.typeNamedColumn ?? entityType,
+        primaryColumn: ALL_ENTITY_TABLES[entityType]?.typeNamedColumn ?? entityType,
+        primaryField: ALL_ENTITY_TABLES[entityType]?.typeNamedColumn ?? entityType,
+        bodyColumn: null,
+        bodyField: null,
         updateSegment: UPDATE_SEGMENTS[entityType] ?? entityType,
       },
     ]),
@@ -110,8 +120,11 @@ const GRAPH_NEURON_TABLES: Record<string, GraphNeuronConfig> = {
   // Principal card 404s with "Unknown neuron type".
   principal: {
     table: "principals",
-    hasBody: true,
     typeNamedColumn: null,
+    primaryColumn: "name",
+    primaryField: "name",
+    bodyColumn: "body_md",
+    bodyField: "body_md",
     updateSegment: "principals",
   },
 };
@@ -204,25 +217,24 @@ export async function loadNeuronDialogDetail(
   const cfg = GRAPH_NEURON_TABLES[options.entityType];
   if (!cfg) return null;
 
-  // Post-migration: the 9 migrated neurons store prose in a type-named
-  // column (intent/decision/...). Principal — the only remaining
-  // non-migrated entity in this map — carries `body_md` (the `summary`
-  // column was dropped by migration 037).
-  const proseSelect = cfg.typeNamedColumn
-    ? `${cfg.typeNamedColumn} AS prose, NULL::text AS body_md`
-    : `body_md AS prose, ${cfg.hasBody ? "body_md" : "NULL::text AS body_md"}`;
+  // Post-migration: the 9 migrated neurons store their primary text in
+  // a type-named column (intent/decision/...). Principal keeps a real
+  // `name` display label plus optional `body_md`; keep those channels
+  // distinct so the dialog does not promote the body over the label.
+  const bodySelect = cfg.bodyColumn ? `${cfg.bodyColumn} AS body_text` : "NULL::text AS body_text";
   const row = (
     await c.query<{
       id: string;
-      prose: string | null;
+      primary_text: string | null;
+      body_text: string | null;
       lifecycle: string | null;
-      body_md: string | null;
       raw_json: string;
       created_at: Date | string | null;
       updated_at: Date | string | null;
     }>(
       `SELECT id,
-              ${proseSelect},
+              ${cfg.primaryColumn} AS primary_text,
+              ${bodySelect},
               COALESCE(lifecycle, 'active') AS lifecycle,
               data::text AS raw_json,
               created_at,
@@ -236,18 +248,20 @@ export async function loadNeuronDialogDetail(
 
   const frontmatter = parseFrontmatter(row.raw_json);
   const name =
+    (cfg.primaryField === "name" && row.primary_text ? row.primary_text : null) ??
     stringField(frontmatter, "name") ??
     stringField(frontmatter, "title") ??
     stringField(frontmatter, "locator");
-  // For migrated neurons, `prose` is the full type-named text — the
-  // "summary" surfaced here is the first line so headers and labels
-  // stay one-line. For non-migrated neurons it is the legacy summary.
-  const proseFirstLine = row.prose ? row.prose.split("\n")[0] || row.prose : null;
-  const summary = proseFirstLine ?? stringField(frontmatter, "summary") ?? name ?? row.id;
-  // The full prose body — surfaced as `body_md` on the detail object
-  // for backwards-compat with the renderer. For migrated neurons this
-  // is the type-named field; for non-migrated, the legacy body_md.
-  const fullProse = cfg.typeNamedColumn ? (row.prose ?? null) : row.body_md;
+  const primaryFirstLine = row.primary_text
+    ? row.primary_text.split("\n")[0] || row.primary_text
+    : null;
+  const bodyFirstLine = row.body_text ? row.body_text.split("\n")[0] || row.body_text : null;
+  const summary =
+    primaryFirstLine ?? stringField(frontmatter, "summary") ?? name ?? bodyFirstLine ?? row.id;
+  // Backwards-compatible field for older client code. For migrated
+  // neurons, this remains the type-named primary text; for Principal it
+  // remains the secondary markdown body.
+  const bodyMdCompat = cfg.typeNamedColumn ? (row.primary_text ?? null) : row.body_text;
 
   const outgoingRows = (
     await c.query<{
@@ -361,10 +375,14 @@ export async function loadNeuronDialogDetail(
     entity_type: options.entityType,
     summary,
     name,
+    primary_field: cfg.primaryField,
+    primary_text: row.primary_text,
+    body_field: cfg.bodyField,
+    body_text: row.body_text,
     lifecycle: row.lifecycle ?? "active",
     created_at: toIso(row.created_at),
     updated_at: toIso(row.updated_at),
-    body_md: fullProse,
+    body_md: bodyMdCompat,
     doco: {
       name: meta.displayName || options.handle,
       handle: options.handle,
