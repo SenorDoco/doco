@@ -75,4 +75,21 @@ describe("/integrations", () => {
     });
     expect(mocks.loadScopeOptions).toHaveBeenCalledWith("collaborator_alice");
   });
+
+  it("does not expose deployment environment variable names to the browser", async () => {
+    mocks.getCurrentPrincipal.mockResolvedValue({
+      id: "collaborator_alice",
+      username: "alice",
+    });
+    mocks.loadScopeOptions.mockResolvedValue([]);
+
+    const data = await loader({ request: new Request("https://doco.test/integrations") });
+
+    expect(data.providers[0]).toMatchObject({
+      id: "slack",
+      installHref: null,
+      setupSummary: "Create and approve a Slack app for this Doco deployment.",
+    });
+    expect(data.providers[0]).not.toHaveProperty("installEnv");
+  });
 });
