@@ -21,6 +21,7 @@ import {
 } from "~/lib/collaborator-invite";
 import { rootDir } from "~/lib/db.server";
 import { getDocoLevelRole } from "~/lib/doco-access.server";
+import { qualifiedDocoLabel } from "~/lib/doco-labels";
 import { InviteStore } from "~/lib/invite-store.server";
 import { getCurrentPrincipal } from "~/lib/session.server";
 
@@ -51,7 +52,7 @@ export interface OrgSection {
 }
 
 export interface DocoSection {
-  doco: { id: string; handle: string };
+  doco: { id: string; handle: string; ownerSlug: string; label: string };
   myRole: DocoRole;
   users: GrantRow[];
 }
@@ -161,7 +162,7 @@ export async function loadCollaboratorSections(principalId: string): Promise<{
   for (const id of myDocoUsersIds) accessibleDocoIds.add(id);
 
   const docoRoleRows: Array<{
-    doco: { id: string; handle: string; ownerId: string };
+    doco: { id: string; handle: string; ownerId: string; ownerSlug: string; label: string };
     myRole: DocoRole;
     rows: Array<{ collaborator_id: string; role: DocoRole; joined_at: string }>;
   }> = [];
@@ -176,8 +177,15 @@ export async function loadCollaboratorSections(principalId: string): Promise<{
     const myRole =
       (await getDocoLevelRole({ ownerId: doco.owner_id, docoId: doco.id }, principalId)) ??
       "reader";
+    const label = qualifiedDocoLabel({ ownerSlug: doco.owner_slug, handle: doco.handle });
     docoRoleRows.push({
-      doco: { id: doco.id, handle: doco.handle, ownerId: doco.owner_id },
+      doco: {
+        id: doco.id,
+        handle: doco.handle,
+        ownerId: doco.owner_id,
+        ownerSlug: doco.owner_slug,
+        label,
+      },
       myRole,
       rows,
     });
@@ -207,12 +215,17 @@ export async function loadCollaboratorSections(principalId: string): Promise<{
       })),
     );
     docoSections.push({
-      doco: { id: entry.doco.id, handle: entry.doco.handle },
+      doco: {
+        id: entry.doco.id,
+        handle: entry.doco.handle,
+        ownerSlug: entry.doco.ownerSlug,
+        label: entry.doco.label,
+      },
       myRole: entry.myRole,
       users,
     });
   }
-  docoSections.sort((a, b) => a.doco.handle.localeCompare(b.doco.handle));
+  docoSections.sort((a, b) => a.doco.label.localeCompare(b.doco.label));
 
   return { orgSections, docoSections };
 }
@@ -234,18 +247,16 @@ function buildCollaboratorInviteData({
   docoSections: DocoSection[];
 }): CollaboratorInviteData {
   const url = new URL(request.url);
-  const inviteOrgs = orgSections
-    .filter((s) => s.myRole === "owner")
-    .map((s) => ({
-      id: s.org.id,
-      label: s.org.handle,
-    }));
-  const inviteDocos = docoSections
-    .filter((s) => s.myRole === "owner")
-    .map((s) => ({
-      id: s.doco.id,
-      label: s.doco.handle,
-    }));
+  const inviteOrgs = orgSections.map((s) => ({
+    id: s.org.id,
+    label: s.org.handle,
+    maxRole: s.myRole,
+  }));
+  const inviteDocos = docoSections.map((s) => ({
+    id: s.doco.id,
+    label: s.doco.label,
+    maxRole: s.myRole,
+  }));
 
   return {
     orgs: inviteOrgs,
@@ -270,8 +281,8 @@ export async function handleCollaboratorInviteAction(
   if (intent !== "invite") return { error: `Unknown intent: ${intent}` };
 
   const level = String(form.get("level") ?? "") as InviteLevel;
-  const role = String(form.get("role") ?? "author") as DocoRole;
-  if (!ALL_ROLES.includes(role)) return { error: "Invalid role." };
+  const parsedRole = String(form.get("role") ?? "") as DocoRole;
+  if (parsedRole && !ALL_ROLES.includes(parsedRole)) return { error: "Invalid role." };
   const targetId = String(form.get("target_id") ?? "").trim();
   if (!targetId) return { error: "Pick a target to invite to." };
 
@@ -302,11 +313,8 @@ export async function handleCollaboratorInviteAction(
   if (!inviterRole) {
     return { error: "You don't have a role on this target." };
   }
-  if (inviterRole !== "owner") {
-    return {
-      error: `Only owners can grant access -- you hold '${inviterRole}' on this ${level}.`,
-    };
-  }
+  const role: DocoRole =
+    parsedRole || (rankOf(inviterRole) >= rankOf("author") ? "author" : inviterRole);
   if (rankOf(role) > rankOf(inviterRole)) {
     return {
       error: `Cannot mint a '${role}' invite -- you only hold '${inviterRole}' on this target.`,

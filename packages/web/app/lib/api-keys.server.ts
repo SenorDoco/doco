@@ -21,6 +21,7 @@
 import { type DocoRole, getOrgRole, listOrganizationsForCollaborator, withClient } from "@doco/db";
 import { ALL_ROLES, rankOf } from "~/lib/collaborator-invite";
 import { getDocoLevelRole, listAccessibleDocoIdsForPrincipal } from "~/lib/doco-access.server";
+import { qualifiedDocoLabel } from "~/lib/doco-labels";
 import { issueTokens, registerClient } from "~/lib/oauth-server.server";
 import type { CurrentPrincipal } from "~/lib/session.server";
 
@@ -112,7 +113,7 @@ export async function listApiKeysForCollaborator(principalId: string): Promise<A
     for (const id of row.granted_doco_ids ?? []) allDocoIds.add(id);
     for (const id of row.granted_org_ids ?? []) allOrgIds.add(id);
   }
-  const docoHandles = await loadDocoHandles([...allDocoIds]);
+  const docoLabels = await loadDocoLabels([...allDocoIds]);
   const orgHandles = await loadOrgHandles([...allOrgIds]);
 
   return result.rows.map((row) => {
@@ -130,14 +131,14 @@ export async function listApiKeysForCollaborator(principalId: string): Promise<A
       });
     }
     for (const docoId of row.granted_doco_ids ?? []) {
-      const handle = docoHandles.get(docoId);
-      if (!handle) continue;
+      const label = docoLabels.get(docoId);
+      if (!label) continue;
       const role = (row.granted_doco_roles?.[docoId] ?? "reader") as DocoRole;
       grants.push({
         level: "doco",
         target_id: docoId,
-        target_label: handle,
-        target_link: `/${handle}`,
+        target_label: label.label,
+        target_link: `/${label.handle}`,
         role,
       });
     }
@@ -166,15 +167,28 @@ export async function listApiKeysForCollaborator(principalId: string): Promise<A
   });
 }
 
-async function loadDocoHandles(ids: string[]): Promise<Map<string, string>> {
-  const out = new Map<string, string>();
+async function loadDocoLabels(
+  ids: string[],
+): Promise<Map<string, { handle: string; label: string }>> {
+  const out = new Map<string, { handle: string; label: string }>();
   if (ids.length === 0) return out;
   const rows = await withClient((c) =>
-    c.query<{ id: string; handle: string }>("SELECT id, handle FROM docos WHERE id = ANY($1)", [
-      ids,
-    ]),
+    c.query<{ id: string; handle: string; owner_slug: string }>(
+      `SELECT d.id, d.handle, COALESCE(o.handle, c.github_login, '') AS owner_slug
+         FROM docos d
+         LEFT JOIN organizations o ON o.id = d.owner_id
+         LEFT JOIN collaborators c ON c.id = d.owner_id
+        WHERE d.id = ANY($1)`,
+      [ids],
+    ),
   );
-  for (const r of rows.rows) out.set(String(r.id), String(r.handle));
+  for (const r of rows.rows) {
+    const handle = String(r.handle);
+    out.set(String(r.id), {
+      handle,
+      label: qualifiedDocoLabel({ ownerSlug: String(r.owner_slug ?? ""), handle }),
+    });
+  }
   return out;
 }
 
@@ -202,8 +216,12 @@ export async function loadScopeOptions(principalId: string): Promise<ScopeOption
   const docoIds = await listAccessibleDocoIdsForPrincipal(principalId);
   for (const docoId of docoIds) {
     const docoRow = await withClient((c) =>
-      c.query<{ handle: string; owner_id: string }>(
-        "SELECT handle, owner_id FROM docos WHERE id = $1",
+      c.query<{ handle: string; owner_id: string; owner_slug: string }>(
+        `SELECT d.handle, d.owner_id, COALESCE(o.handle, c.github_login, '') AS owner_slug
+           FROM docos d
+           LEFT JOIN organizations o ON o.id = d.owner_id
+           LEFT JOIN collaborators c ON c.id = d.owner_id
+          WHERE d.id = $1`,
         [docoId],
       ),
     );
@@ -211,7 +229,15 @@ export async function loadScopeOptions(principalId: string): Promise<ScopeOption
     if (!row) continue;
     const role = await getDocoLevelRole({ ownerId: String(row.owner_id), docoId }, principalId);
     if (!role) continue;
-    options.push({ level: "doco", id: docoId, label: String(row.handle), myRole: role });
+    options.push({
+      level: "doco",
+      id: docoId,
+      label: qualifiedDocoLabel({
+        ownerSlug: String(row.owner_slug ?? ""),
+        handle: String(row.handle),
+      }),
+      myRole: role,
+    });
   }
   // Sort by label across orgs + docos so the picker reads alphabetically.
   options.sort((a, b) => a.label.localeCompare(b.label));
@@ -265,7 +291,7 @@ export async function mintApiKey(input: MintApiKeyInput): Promise<MintedApiKey> 
   const granted_org_roles: Record<string, string> = {};
   const scopeGrants: ApiKeyScopeGrant[] = [];
 
-  const docoHandles = await loadDocoHandles(
+  const docoLabels = await loadDocoLabels(
     input.grants.filter((g) => g.level === "doco").map((g) => g.target_id),
   );
   const orgHandles = await loadOrgHandles(
@@ -287,11 +313,12 @@ export async function mintApiKey(input: MintApiKeyInput): Promise<MintedApiKey> 
     } else {
       granted_doco_ids.push(grant.target_id);
       granted_doco_roles[grant.target_id] = grant.role;
-      const handle = docoHandles.get(grant.target_id) ?? grant.target_id;
+      const label = docoLabels.get(grant.target_id);
+      const handle = label?.handle ?? grant.target_id;
       scopeGrants.push({
         level: "doco",
         target_id: grant.target_id,
-        target_label: handle,
+        target_label: label?.label ?? grant.target_id,
         target_link: `/${handle}`,
         role: grant.role,
       });

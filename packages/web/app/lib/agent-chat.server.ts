@@ -43,6 +43,7 @@ import type {
 import { listOrganizationsForCollaborator, withClient } from "@doco/db";
 import { generateUlid } from "@doco/shared";
 import { canAccessDoco } from "./doco-access.server";
+import { qualifiedDocoLabel } from "./doco-labels";
 import { ensureEnvLoaded } from "./dotenv.server";
 import { listAllDocos } from "./host.server";
 import { internalFetch } from "./internal-fetch.server";
@@ -1129,9 +1130,10 @@ async function buildBootstrapContext(principalId: string): Promise<BootstrapCont
   // ULID-based id doesn't move. If a fetch under a guessed handle
   // returns 404, the agent now has the canonical list to fall back
   // on instead of hallucinating handles.
-  const docoLines: string[] = accessibleDocos.map(
-    (d) => `- /${d.handle} (id=${d.docoId}, visibility ${d.visibility})`,
-  );
+  const docoLines: string[] = accessibleDocos.map((d) => {
+    const label = qualifiedDocoLabel({ ownerSlug: d.ownerUsername, handle: d.handle });
+    return `- ${label} (path=/${d.handle}, id=${d.docoId}, visibility ${d.visibility})`;
+  });
   const orgLines: string[] = orgs.map((o) => `- /orgs/${o.handle} (id=${o.id}, ${o.name})`);
 
   // ONE batched query for every active policy across every accessible
@@ -1162,7 +1164,8 @@ async function buildBootstrapContext(principalId: string): Promise<BootstrapCont
   for (const d of accessibleDocos) {
     const ps = policiesByDoco.get(d.docoId);
     if (!ps || (ps.guidance.length === 0 && ps.authoring.length === 0)) continue;
-    const lines = [`Policies for /${d.handle}:`];
+    const label = qualifiedDocoLabel({ ownerSlug: d.ownerUsername, handle: d.handle });
+    const lines = [`Policies for ${label} (path=/${d.handle}):`];
     for (const s of ps.guidance) lines.push(`  - guidance: ${s}`);
     for (const s of ps.authoring) lines.push(`  - rule: ${s}`);
     policySnippets.push(lines.join("\n"));
@@ -1259,13 +1262,14 @@ Retention: every uploaded file is kept for ${ATTACHMENT_RETENTION_DAYS} days, th
   GET   /<handle>/api/principals.json            — DUAL-purpose endpoint. Response: { ok, principals: [...legacy collaborator alias...], collaborators: [{ id, username, role, type, github_login, email }], principal_neurons: [{ id, name, body_md, lifecycle, data, ... }], collaborator_count, principal_neuron_count }. Read \`collaborators\` for the doco's OAuth members; read \`principal_neurons\` for the Principal NEURONS visible as BPMN swim lanes / referenced by Action.actor_id.
   PATCH /<handle>/api/principals/<id>.json       — update a Principal NEURON (body_md, reports_to, lifecycle). Same retire-on-lifecycle convention. \`name\` is immutable — to rename, create a new Principal and retire the old one.
   GET   /<handle>/api/policies.json            — list policies (guidance + neuron-authoring) for this doco
-  POST  /<handle>/api/policies.json            — capture a policy; body needs "policy_kind": "guidance" | "neuron_authoring"
+  POST  /<handle>/api/policies.json            — capture a policy; owner role required; body needs "policy_kind": "guidance" | "neuron_authoring"
   GET   /<handle>/api/invites.json               — pending collaborator invites
   GET   /<handle>/api/audit.json                 — audit log entries
   GET   /<handle>/api/perspectives.json          — saved BPMN perspectives
   GET   /<handle>/api/settings.json              — doco settings (handle, visibility, goal)
   GET   /<handle>/search.json?q=<query>          — full-text search across this doco's neurons + policies
-  POST  /api/v1/docos.json                       — create a doco (NO GET — to list the user's docos, see the "Your docos" section below)
+  GET   /api/v1/docos.json                       — list accessible docos with qualified_handle values like org/doco
+  POST  /api/v1/docos.json                       — create a doco; owner role on the target org required
   POST  /api/v1/orgs.json                        — create an org (NO GET — to list the user's orgs, see the "Your orgs" section below)
   GET   /api/v1/agent-bootstrap.json             — re-read policies
 
@@ -1332,8 +1336,8 @@ etc., not \`summary\`.
 - Reference: { reference*, ref_type*("file"|"url"|"ticket"|"commit"|"document"|"other"), locator*, content_hash?, intent_ids?[], created_by_principal_id? }
 - State:     { state*, kind*("initial"|"intermediate"|"terminal"), invariants?[], preceded_by?[], created_by_principal_id? }
 - Idea:      { idea*, created_by_principal_id?, promoted_to?, rejection_reason?, lifecycle?(default "drafting") }
-- Policy (Guidance): POST /<handle>/api/policies.json with policy_kind*("guidance"), policy*(one-line rule), body_md?, authored_by_principal_id?. (\`policy\` was renamed from \`summary\` by migration 038; old clients sending \`summary\` will fail.)
-- Policy (Neuron-authoring): same endpoint with policy_kind*("neuron_authoring"), policy*(one-line rule), evaluation_kind*("deterministic"|"probabilistic"), then either predicate*(deterministic AuthoringPredicate object) or spec*(probabilistic prose), and optional fires_when_neuron_lifecycle?[], on_violation?("block"|"warn"|"log", default "block").
+- Policy (Guidance, owner-only): POST /<handle>/api/policies.json with policy_kind*("guidance"), policy*(one-line rule), body_md?, authored_by_principal_id?. (\`policy\` was renamed from \`summary\` by migration 038; old clients sending \`summary\` will fail.)
+- Policy (Neuron-authoring, owner-only): same endpoint with policy_kind*("neuron_authoring"), policy*(one-line rule), evaluation_kind*("deterministic"|"probabilistic"), then either predicate*(deterministic AuthoringPredicate object) or spec*(probabilistic prose), and optional fires_when_neuron_lifecycle?[], on_violation?("block"|"warn"|"log", default "block").
 
 The TYPE-NAMED field carries multi-line markdown; the first line is
 the row label that shows up in lists and BPMN swim lanes. Example:
@@ -1449,6 +1453,8 @@ Avoid: emoji, exclamation parades, "Great question!" / "Absolutely!" / "Happy to
 ## Your docos and orgs — canonical
 
 The two lists below are computed server-side at the start of each turn from the same access-control checks ${principal.username} sees in the UI. They are COMPLETE and AUTHORITATIVE — every doco / org the user can read or write is here. When asked "how many docos do I have?" or "what's my org?", answer from these lists directly. Never hedge with "if there are others not visible…" — there aren't. Don't probe with HTTP GETs to discover docos/orgs; there is no listing endpoint for those.
+
+Doco labels in these lists are qualified as org/doco (for example, torre/bpms) to avoid ambiguity. Use the \`path=/...\` value when calling doco_api routes, because Doco's public route namespace is still the global doco handle.
 
 ### Your docos
 
@@ -2547,12 +2553,14 @@ async function* streamAssistantTurn(args: {
 // ---------------------------------------------------------------------------
 
 /**
- * Resolved Doco attachment. The handle is the Doco's only public
- * display name; `id` is kept for stable links/correlation.
+ * Resolved Doco attachment. The handle is the global route handle;
+ * label is the human-facing org/doco name used where ambiguity matters.
+ * `id` is kept for stable links/correlation.
  */
 export interface DocoAttachmentInfo {
   id?: string;
   handle: string;
+  label?: string;
 }
 
 export interface OrgAttachmentInfo {
@@ -2602,25 +2610,47 @@ async function resolveDocoAttachments(
   if (docoIds.length === 0 && legacyHandles.length === 0) return [];
   return await withClient(async (c) => {
     if (docoIds.length > 0) {
-      const r = await c.query<{ id: string; handle: string }>(
-        "SELECT id, handle FROM docos WHERE id = ANY($1::text[])",
+      const r = await c.query<{ id: string; handle: string; owner_slug: string }>(
+        `SELECT d.id, d.handle, COALESCE(o.handle, co.github_login, '') AS owner_slug
+           FROM docos d
+           LEFT JOIN organizations o ON o.id = d.owner_id
+           LEFT JOIN collaborators co ON co.id = d.owner_id
+          WHERE d.id = ANY($1::text[])`,
         [docoIds],
       );
       const byId = new Map(r.rows.map((row) => [row.id, row]));
       return docoIds.map((id) => {
         const row = byId.get(id);
-        return row ? { id: row.id, handle: row.handle } : { id, handle: id };
+        return row
+          ? {
+              id: row.id,
+              handle: row.handle,
+              label: qualifiedDocoLabel({ ownerSlug: row.owner_slug, handle: row.handle }),
+            }
+          : { id, handle: id };
       });
     }
     const handles = uniqueNonEmptyStrings(legacyHandles);
-    const r = await c.query<{ id: string; handle: string }>(
-      "SELECT id, handle FROM docos WHERE handle = ANY($1::text[])",
+    const r = await c.query<{ id: string; handle: string; owner_slug: string }>(
+      `SELECT d.id, d.handle, COALESCE(o.handle, co.github_login, '') AS owner_slug
+         FROM docos d
+         LEFT JOIN organizations o ON o.id = d.owner_id
+         LEFT JOIN collaborators co ON co.id = d.owner_id
+        WHERE d.handle = ANY($1::text[])`,
       [handles],
     );
     const byHandle = new Map(r.rows.map((row) => [row.handle, row]));
     return handles.flatMap((handle) => {
       const row = byHandle.get(handle);
-      return row ? [{ id: row.id, handle: row.handle }] : [];
+      return row
+        ? [
+            {
+              id: row.id,
+              handle: row.handle,
+              label: qualifiedDocoLabel({ ownerSlug: row.owner_slug, handle: row.handle }),
+            },
+          ]
+        : [];
     });
   });
 }

@@ -241,7 +241,7 @@ export default function CollaboratorsPage({
           grants: [
             {
               target_id: s.doco.id,
-              target_label: s.doco.handle,
+              target_label: s.doco.label,
               target_link: `/${s.doco.handle}`,
               joined_at: u.joined_at,
               role: u.role,
@@ -308,7 +308,7 @@ export default function CollaboratorsPage({
                 <optgroup label="By doco">
                   {loaderData.docoSections.map((s) => (
                     <option key={s.doco.id} value={`doco:${s.doco.id}`}>
-                      {s.doco.handle}
+                      {s.doco.label}
                     </option>
                   ))}
                 </optgroup>

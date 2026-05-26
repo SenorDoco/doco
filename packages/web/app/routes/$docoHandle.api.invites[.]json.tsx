@@ -87,22 +87,22 @@ export async function action({
     );
   }
 
-  // Inviting a user (granting/editing access on a Doco) is an
-  // owner-only action. Approvers can approve lifecycle changes but
-  // can't extend access — that's a permissions delegation that only
-  // the Doco owner gets to do.
-  const requestedRole: DocoRole = parseRole(body.role) ?? "author";
+  // Inviting a user grants access at or below the inviter's own role.
+  // A reader may invite another reader; an author may invite readers or
+  // authors; owners can grant the full set. The role cap keeps invites
+  // from widening authority beyond what the caller personally holds.
+  const parsedRole = parseRole(body.role);
   const inviterRole = await getDocoLevelRole({ ownerId: meta.ownerId, docoId: meta.docoId }, me.id);
-  if (inviterRole !== "owner") {
+  if (!inviterRole) {
     return Response.json(
       {
-        error: inviterRole
-          ? `Only doco owners can mint invites — you hold '${inviterRole}' on this Doco.`
-          : "Only doco owners can mint invites.",
+        error: "You do not hold a role on this doco.",
       },
       { status: 403 },
     );
   }
+  const requestedRole: DocoRole =
+    parsedRole ?? (ROLE_RANK[inviterRole] >= ROLE_RANK.author ? "author" : inviterRole);
   if (ROLE_RANK[requestedRole] > ROLE_RANK[inviterRole]) {
     return Response.json(
       {

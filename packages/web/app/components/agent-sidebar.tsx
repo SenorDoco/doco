@@ -93,6 +93,7 @@ interface ChatMessage {
 interface DocoAttachmentInfo {
   id?: string;
   handle: string;
+  label?: string;
 }
 
 interface OrgAttachmentInfo {
@@ -348,7 +349,7 @@ function removeCreatedDocoChatIdFromSearch(search: string): string {
  * null), so the client always has a fallback.
  */
 function displayThreadTitle(title: string | null | undefined): string {
-  return title && title.trim() ? title : "New chat";
+  return title?.trim() ? title : "New chat";
 }
 
 function readLastSeen(convId: string): number {
@@ -809,6 +810,7 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
   // the default view so we always want it populated on mount; we also
   // refetch when the active thread changes so its updated_at / last
   // message preview reflect the latest send.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: The stable loader must refetch when the active conversation changes.
   useEffect(() => {
     void loadConversationsList();
   }, [loadConversationsList, conversationId]);
@@ -945,7 +947,14 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
               (optimistic.id ? d.id === optimistic.id : false) || d.handle === optimistic.handle,
           )
             ? prev
-            : [...prev, { id: optimistic.id, handle: optimistic.handle }],
+            : [
+                ...prev,
+                {
+                  id: optimistic.id,
+                  handle: optimistic.handle,
+                  label: optimistic.qualified_handle ?? optimistic.handle,
+                },
+              ],
         );
       } else {
         const optimistic = attachment as AvailableOrg;
@@ -2076,6 +2085,7 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
                   <div className="flex min-w-0 flex-1 flex-col gap-1.5">
                     {renamingId === conversationId && conversationId ? (
                       <input
+                        // biome-ignore lint/a11y/noAutofocus: Inline rename should focus immediately when the user starts renaming.
                         autoFocus
                         type="text"
                         value={renameDraft}
@@ -2330,6 +2340,7 @@ interface AttachmentsRowProps {
 interface AvailableDoco {
   id: string;
   handle: string;
+  qualified_handle?: string;
 }
 
 interface AvailableOrg {
@@ -2410,18 +2421,18 @@ function AttachmentsRow({
         <span
           key={`doco-${d.id ?? d.handle}`}
           className="neu-button inline-flex h-5 items-center rounded-full border border-border pl-2 pr-0.5 text-[10px] leading-none text-muted-foreground"
-          title={d.handle}
+          title={d.label ?? d.handle}
         >
           <Link
             to={d.id ? `/by-id/${encodeURIComponent(d.id)}` : `/${d.handle}`}
             className="inline-flex h-full items-center leading-none hover:text-foreground"
           >
-            {d.handle}
+            {d.label ?? d.handle}
           </Link>
           <button
             type="button"
             onClick={() => onDetachDoco(d)}
-            aria-label={`Remove ${d.handle}`}
+            aria-label={`Remove ${d.label ?? d.handle}`}
             className="ml-1 inline-flex h-3.5 w-3.5 items-center justify-center rounded-full leading-none text-muted-foreground hover:bg-destructive/15 hover:text-destructive"
           >
             ×
@@ -2489,7 +2500,7 @@ function AttachmentsRow({
                 }}
                 className="block w-full truncate px-3 py-1 text-left hover:bg-input"
               >
-                {d.handle}
+                {d.qualified_handle ?? d.handle}
               </button>
             ))}
             {orgsToOffer.length > 0 ? (
@@ -3243,8 +3254,8 @@ function renderInlineLinks(text: string): ReactNode[] {
   const re = /\[([^\]\n]+)\]\(([^)\s]+)\)/g;
   let last = 0;
   let key = 0;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(text)) !== null) {
+  let m: RegExpExecArray | null = re.exec(text);
+  while (m !== null) {
     if (m.index > last) out.push(text.slice(last, m.index));
     const [, label, url] = m;
     let toProp: string | null = null;
@@ -3278,6 +3289,7 @@ function renderInlineLinks(text: string): ReactNode[] {
       );
     }
     last = m.index + m[0].length;
+    m = re.exec(text);
   }
   if (last < text.length) out.push(text.slice(last));
   return out;
