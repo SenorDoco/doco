@@ -2539,11 +2539,15 @@ async function* streamAssistantTurn(args: {
 // ---------------------------------------------------------------------------
 
 /**
- * Resolved attachment. Doco attachments carry an immutable `id` for
- * links/correlation plus the current handle/name for display.
+ * Resolved Doco attachment. The handle is the Doco's only public
+ * display name; `id` is kept for stable links/correlation.
  */
-export interface AttachmentInfo {
+export interface DocoAttachmentInfo {
   id?: string;
+  handle: string;
+}
+
+export interface OrgAttachmentInfo {
   handle: string;
   name: string | null;
 }
@@ -2554,9 +2558,9 @@ export interface ConversationSnapshot {
   title: string | null;
   archived: boolean;
   /** Docos the agent has touched in this thread. Auto-populated by `doco_api`. */
-  attached_docos: AttachmentInfo[];
+  attached_docos: DocoAttachmentInfo[];
   /** Orgs the agent has touched in this thread. Reserved; not yet populated. */
-  attached_orgs: AttachmentInfo[];
+  attached_orgs: OrgAttachmentInfo[];
   messages: {
     id: string;
     role: "user" | "assistant";
@@ -2585,7 +2589,7 @@ export interface ConversationSnapshot {
 async function resolveDocoAttachments(
   ids: string[],
   legacyHandles: string[] = [],
-): Promise<AttachmentInfo[]> {
+): Promise<DocoAttachmentInfo[]> {
   const docoIds = uniqueNonEmptyStrings(ids);
   if (docoIds.length === 0 && legacyHandles.length === 0) return [];
   return await withClient(async (c) => {
@@ -2597,9 +2601,7 @@ async function resolveDocoAttachments(
       const byId = new Map(r.rows.map((row) => [row.id, row]));
       return docoIds.map((id) => {
         const row = byId.get(id);
-        return row
-          ? { id: row.id, handle: row.handle, name: row.handle }
-          : { id, handle: id, name: null };
+        return row ? { id: row.id, handle: row.handle } : { id, handle: id };
       });
     }
     const handles = uniqueNonEmptyStrings(legacyHandles);
@@ -2610,12 +2612,12 @@ async function resolveDocoAttachments(
     const byHandle = new Map(r.rows.map((row) => [row.handle, row]));
     return handles.flatMap((handle) => {
       const row = byHandle.get(handle);
-      return row ? [{ id: row.id, handle: row.handle, name: row.handle }] : [];
+      return row ? [{ id: row.id, handle: row.handle }] : [];
     });
   });
 }
 
-async function resolveOrgAttachments(handles: string[]): Promise<AttachmentInfo[]> {
+async function resolveOrgAttachments(handles: string[]): Promise<OrgAttachmentInfo[]> {
   if (handles.length === 0) return [];
   return await withClient(async (c) => {
     const r = await c.query<{ handle: string; name: string | null }>(

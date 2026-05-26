@@ -90,8 +90,12 @@ interface ChatMessage {
   created_at: string;
 }
 
-interface AttachmentInfo {
+interface DocoAttachmentInfo {
   id?: string;
+  handle: string;
+}
+
+interface OrgAttachmentInfo {
   handle: string;
   name: string | null;
 }
@@ -101,8 +105,8 @@ interface ConversationSnapshot {
   /** User-visible thread name. Null until the first user message lands. */
   title: string | null;
   archived: boolean;
-  attached_docos: AttachmentInfo[];
-  attached_orgs: AttachmentInfo[];
+  attached_docos: DocoAttachmentInfo[];
+  attached_orgs: OrgAttachmentInfo[];
   messages: ChatMessage[];
   has_more: boolean;
   /**
@@ -449,8 +453,8 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
   // in this thread. Rendered as clickable chips below the thread
   // title in chat view. Populated from the snapshot endpoint each
   // reload; the server-side auto-attach happens in runTool.
-  const [attachedDocos, setAttachedDocos] = useState<AttachmentInfo[]>([]);
-  const [attachedOrgs, setAttachedOrgs] = useState<AttachmentInfo[]>([]);
+  const [attachedDocos, setAttachedDocos] = useState<DocoAttachmentInfo[]>([]);
+  const [attachedOrgs, setAttachedOrgs] = useState<OrgAttachmentInfo[]>([]);
   // WhatsApp-style default — when nothing's open, the user lands on
   // the thread list. Picking a thread switches into chat view; the
   // back button in the chat header returns here.
@@ -931,22 +935,20 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
   // request. On error we re-fetch the snapshot so the chips agree
   // with the server again.
   const attachAttachment = useCallback(
-    async (kind: "doco" | "org", attachment: AvailableDoco | { handle: string }) => {
+    async (kind: "doco" | "org", attachment: AvailableDoco | AvailableOrg) => {
       if (!conversationId || !attachment.handle) return;
-      const optimistic: AttachmentInfo =
-        kind === "doco" && "id" in attachment
-          ? { id: attachment.id, handle: attachment.handle, name: attachment.name }
-          : { handle: attachment.handle, name: null };
       if (kind === "doco") {
+        const optimistic = attachment as AvailableDoco;
         setAttachedDocos((prev) =>
           prev.some(
             (d) =>
               (optimistic.id ? d.id === optimistic.id : false) || d.handle === optimistic.handle,
           )
             ? prev
-            : [...prev, optimistic],
+            : [...prev, { id: optimistic.id, handle: optimistic.handle }],
         );
       } else {
+        const optimistic = attachment as AvailableOrg;
         setAttachedOrgs((prev) =>
           prev.some((o) => o.handle === attachment.handle) ? prev : [...prev, optimistic],
         );
@@ -980,24 +982,28 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
   );
 
   const detachAttachment = useCallback(
-    async (kind: "doco" | "org", attachment: AttachmentInfo) => {
+    async (kind: "doco" | "org", attachment: DocoAttachmentInfo | OrgAttachmentInfo) => {
       if (!conversationId || !attachment.handle) return;
       if (kind === "doco") {
+        const docoAttachment = attachment as DocoAttachmentInfo;
         setAttachedDocos((prev) =>
           prev.filter((d) =>
-            attachment.id ? d.id !== attachment.id : d.handle !== attachment.handle,
+            docoAttachment.id ? d.id !== docoAttachment.id : d.handle !== docoAttachment.handle,
           ),
         );
       } else {
         setAttachedOrgs((prev) => prev.filter((o) => o.handle !== attachment.handle));
       }
       try {
-        const body =
-          kind === "doco"
-            ? attachment.id
-              ? { detach_doco_id: attachment.id }
-              : { detach_doco: attachment.handle }
-            : { detach_org: attachment.handle };
+        const body = (() => {
+          if (kind === "doco") {
+            const docoAttachment = attachment as DocoAttachmentInfo;
+            return docoAttachment.id
+              ? { detach_doco_id: docoAttachment.id }
+              : { detach_doco: docoAttachment.handle };
+          }
+          return { detach_org: attachment.handle };
+        })();
         const res = await fetch(
           `/api/v1/agent-chat/conversation/${encodeURIComponent(conversationId)}.json`,
           {
@@ -2290,24 +2296,28 @@ function DotsIcon() {
 }
 
 interface AttachmentsRowProps {
-  docos: AttachmentInfo[];
-  orgs: AttachmentInfo[];
+  docos: DocoAttachmentInfo[];
+  orgs: OrgAttachmentInfo[];
   conversationId: string | null;
   onAttachDoco: (doco: AvailableDoco) => void;
-  onAttachOrg: (org: { handle: string }) => void;
-  onDetachDoco: (doco: AttachmentInfo) => void;
-  onDetachOrg: (org: AttachmentInfo) => void;
+  onAttachOrg: (org: AvailableOrg) => void;
+  onDetachDoco: (doco: DocoAttachmentInfo) => void;
+  onDetachOrg: (org: OrgAttachmentInfo) => void;
 }
 
 interface AvailableDoco {
   id: string;
+  handle: string;
+}
+
+interface AvailableOrg {
   handle: string;
   name: string | null;
 }
 
 interface AvailableLists {
   docos: AvailableDoco[];
-  orgs: { handle: string; name: string | null }[];
+  orgs: AvailableOrg[];
 }
 
 function AttachmentsRow({
@@ -2378,18 +2388,18 @@ function AttachmentsRow({
         <span
           key={`doco-${d.id ?? d.handle}`}
           className="neu-button inline-flex h-5 items-center rounded-full border border-border pl-2 pr-0.5 text-[10px] leading-none text-muted-foreground"
-          title={d.name ?? d.handle}
+          title={d.handle}
         >
           <Link
             to={d.id ? `/by-id/${encodeURIComponent(d.id)}` : `/${d.handle}`}
             className="inline-flex h-full items-center leading-none hover:text-foreground"
           >
-            {d.name ?? d.handle}
+            {d.handle}
           </Link>
           <button
             type="button"
             onClick={() => onDetachDoco(d)}
-            aria-label={`Remove ${d.name ?? d.handle}`}
+            aria-label={`Remove ${d.handle}`}
             className="ml-1 inline-flex h-3.5 w-3.5 items-center justify-center rounded-full leading-none text-muted-foreground hover:bg-destructive/15 hover:text-destructive"
           >
             ×
@@ -2457,7 +2467,7 @@ function AttachmentsRow({
                 }}
                 className="block w-full truncate px-3 py-1 text-left hover:bg-input"
               >
-                {d.name ?? d.handle}
+                {d.handle}
               </button>
             ))}
             {orgsToOffer.length > 0 ? (

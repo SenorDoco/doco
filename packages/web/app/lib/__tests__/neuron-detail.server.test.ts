@@ -22,7 +22,6 @@ vi.mock("~/lib/full-graph.server", () => ({
 const meta = {
   docoId: "doco_01TEST",
   ownerId: "principal_owner",
-  displayName: "Test Doco",
 };
 
 function clientWithRow(row: Record<string, unknown>) {
@@ -64,6 +63,7 @@ describe("loadNeuronDialogDetail", () => {
       body_field: "body_md",
       body_text: "Person. Head of Engineering. Reports to Alexander Torrenegra (CEO).",
       body_md: "Person. Head of Engineering. Reports to Alexander Torrenegra (CEO).",
+      doco: { handle: "test-doco", href: "/test-doco" },
     });
   });
 
