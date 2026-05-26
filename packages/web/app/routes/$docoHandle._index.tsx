@@ -669,9 +669,11 @@ export default function DocoHome({
           throw new Error(text || `Request failed with ${res.status}`);
         }
         const json = (await res.json()) as { neuron?: NeuronDialogDetail | null };
-        if (!json.neuron) throw new Error(`Neuron not found: ${id}`);
-        setNeuronDialog({ detail: json.neuron, loading: false, error: null });
-        setVisibleLifecycles((prev) => new Set([...prev, json.neuron?.lifecycle ?? "active"]));
+        const neuron = json.neuron;
+        if (!neuron) throw new Error(`Neuron not found: ${id}`);
+        setNeuronDialog({ detail: neuron, loading: false, error: null });
+        setGraphState((prev) => graphWithCenter(prev, neuron.id));
+        setVisibleLifecycles((prev) => new Set([...prev, neuron.lifecycle ?? "active"]));
       } catch (err) {
         setNeuronDialog((prev) => ({
           detail: options.keepDetail ? (prev?.detail ?? null) : null,
