@@ -38,7 +38,9 @@ async function transferDocoToOrganization(opts: {
     );
     const existing = current.rows[0]?.data;
     if (!existing) throw new Error("Doco not found.");
-    const yaml: Record<string, unknown> = { ...existing };
+    const yaml: Record<string, unknown> = Object.fromEntries(
+      Object.entries(existing).filter(([key]) => key !== "display_name" && key !== "name"),
+    );
     yaml.owner_id = opts.targetOrgId;
     yaml.org_id = opts.targetOrgId;
     await c.query(

@@ -41,8 +41,8 @@ async function seed(opts: SeedOpts = {}): Promise<void> {
 
     // Insert a doco — required for the FK on neuron_authoring_policies.
     await c.query(
-      `INSERT INTO docos (id, handle, name, owner_id, org_id, data, created_at, updated_at)
-         VALUES ($1, 'smoke-test', 'Smoke Test', $2, $2, '{}'::jsonb, now(), now())`,
+      `INSERT INTO docos (id, handle, owner_id, org_id, data, created_at, updated_at)
+         VALUES ($1, 'smoke-test', $2, $2, '{}'::jsonb, now(), now())`,
       [DOCO_ID, ORG_ID],
     );
 
@@ -326,8 +326,8 @@ describe("authoring runner — integration", () => {
         [ORG_ID],
       );
       await c.query(
-        `INSERT INTO docos (id, handle, name, owner_id, org_id, data, created_at, updated_at)
-           VALUES ($1, 'null-life', 'Null Life', $2, $2, '{}'::jsonb, now(), now())`,
+        `INSERT INTO docos (id, handle, owner_id, org_id, data, created_at, updated_at)
+           VALUES ($1, 'null-life', $2, $2, '{}'::jsonb, now(), now())`,
         [DOCO_ID, ORG_ID],
       );
       const yaml = JSON.stringify({
@@ -416,8 +416,8 @@ describe("authoring runner — integration", () => {
         [ORG_ID],
       );
       await c.query(
-        `INSERT INTO docos (id, handle, name, owner_id, org_id, data, created_at, updated_at)
-           VALUES ($1, 'gc-test', 'GC Test', $2, $2, '{}'::jsonb, now(), now())`,
+        `INSERT INTO docos (id, handle, owner_id, org_id, data, created_at, updated_at)
+           VALUES ($1, 'gc-test', $2, $2, '{}'::jsonb, now(), now())`,
         [DOCO_ID, ORG_ID],
       );
       await c.query(
@@ -536,8 +536,8 @@ describe("captureNeuronAuthoringPolicy — synapse_type validation", () => {
         [ORG_ID],
       );
       await c.query(
-        `INSERT INTO docos (id, handle, name, owner_id, org_id, data, created_at, updated_at)
-           VALUES ($1, 'val-test', 'Val Test', $2, $2, '{}'::jsonb, now(), now())`,
+        `INSERT INTO docos (id, handle, owner_id, org_id, data, created_at, updated_at)
+           VALUES ($1, 'val-test', $2, $2, '{}'::jsonb, now(), now())`,
         [DOCO_ID, ORG_ID],
       );
       await c.query(
@@ -644,8 +644,8 @@ describe("upsertEntity — lifecycle column / data.lifecycle drift", () => {
         [ORG_ID],
       );
       await c.query(
-        `INSERT INTO docos (id, handle, name, owner_id, org_id, data, created_at, updated_at)
-           VALUES ($1, 'drift-test', 'Drift Test', $2, $2, '{}'::jsonb, now(), now())`,
+        `INSERT INTO docos (id, handle, owner_id, org_id, data, created_at, updated_at)
+           VALUES ($1, 'drift-test', $2, $2, '{}'::jsonb, now(), now())`,
         [DOCO_ID, ORG_ID],
       );
     });

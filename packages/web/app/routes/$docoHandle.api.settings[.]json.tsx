@@ -5,7 +5,6 @@ import { reindex, renameDocoHandle, updateDocoMeta } from "~/lib/redeem.server";
 
 interface SettingsPatch {
   handle?: string;
-  display_name?: string | null;
   visibility?: "private" | "public";
   goal?: string;
 }
@@ -33,7 +32,6 @@ export async function loader({
   return Response.json({
     doco_id: meta.docoId,
     doco_handle: meta.handle,
-    display_name: meta.displayName,
     visibility: meta.visibility,
     goal: meta.goal,
   });
@@ -77,7 +75,6 @@ export async function action({
   try {
     await updateDocoMeta({
       handle: finalHandle,
-      ...(patch.display_name !== undefined ? { display_name: patch.display_name } : {}),
       ...(patch.visibility !== undefined ? { visibility: patch.visibility } : {}),
       ...(patch.goal !== undefined ? { goal: patch.goal } : {}),
     });
@@ -87,16 +84,11 @@ export async function action({
   await reindex(oldDir, meta.docoId);
 
   const row = await getDocoByHandle(finalHandle);
-  let display_name = row?.name ?? "";
-  if (row && !display_name && typeof row.data.display_name === "string") {
-    display_name = row.data.display_name;
-  }
   return Response.json(
     {
       ok: true,
       doco_id: row?.id ?? meta.docoId,
       doco_handle: finalHandle,
-      display_name,
       visibility: row?.visibility ?? "private",
       goal: row?.goal ?? "",
     },

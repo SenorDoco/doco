@@ -32,7 +32,6 @@ export async function loader({
     status: "ok" as const,
     doco_id: meta.docoId,
     doco_handle: meta.handle,
-    display_name: meta.displayName || meta.handle,
     visibility: meta.visibility,
     last_updated_at: latest,
     counts,

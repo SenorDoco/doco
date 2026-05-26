@@ -1,7 +1,7 @@
 // GET  /api/v1/docos.json — list Docos the caller can read or write.
 // POST /api/v1/docos.json — create a Doco in one step.
 //
-// GET response: { docos: [{ id, handle, name }] }. Empty array when
+// GET response: { docos: [{ id, handle }] }. Empty array when
 // the caller has access to nothing. Sorted by handle ASC for stable
 // client rendering. The set matches the dashboard / OAuth-approve
 // "what can I see?" view: direct ownership ∪ org membership ∪
@@ -10,18 +10,18 @@
 // POST body (JSON):
 //   { template_handle?: string,        // "generic" | "user-flows" | ...
 //     org_id: string,                  // ULID of the owning organization
-//     name: string,                    // the part after `<org-handle>-`
+//     name: string,                    // requested globally-unique handle
 //     privacy?: "private"|"public",    // alias: visibility
 //     goal?: string }                  // free-form sentence about what
 //                                      // the Doco is for; defaults to
 //                                      // the template's description
 //                                      // (or empty for no template)
 //
-// Back-compat: `requested_suffix` and `visibility` are still accepted.
+// Back-compat: `requested_suffix` and `visibility` are still accepted
+// as aliases for `name` and `privacy`.
 //
-// Behavior: caller must have any role on the org. The full handle is
-// composed as `<org-handle>-<name>` and silently
-// auto-suffixed on collision. Returns 201 with `{ id, handle, name,
+// Behavior: caller must have any role on the org. The requested handle
+// is silently auto-suffixed on collision. Returns 201 with `{ id, handle,
 // org_id, org_handle, visibility, goal, chat_conversation_id }`.
 
 import { withClient } from "@doco/db";
@@ -40,14 +40,14 @@ export async function loader({ request }: { request: Request }) {
     return Response.json({ docos: [] });
   }
   const rows = await withClient(async (c) => {
-    const r = await c.query<{ id: string; handle: string; name: string | null }>(
-      "SELECT id, handle, name FROM docos WHERE id = ANY($1::text[]) ORDER BY handle ASC",
+    const r = await c.query<{ id: string; handle: string }>(
+      "SELECT id, handle FROM docos WHERE id = ANY($1::text[]) ORDER BY handle ASC",
       [ids],
     );
     return r.rows;
   });
   return Response.json({
-    docos: rows.map((r) => ({ id: r.id, handle: r.handle, name: r.name })),
+    docos: rows.map((r) => ({ id: r.id, handle: r.handle })),
   });
 }
 
@@ -83,7 +83,7 @@ export async function action({ request }: { request: Request }) {
     (typeof body.name === "string" ? body.name.trim() : "") ||
     (typeof body.doco_name === "string" ? body.doco_name.trim() : "") ||
     (typeof body.requested_suffix === "string" ? body.requested_suffix.trim() : "");
-  const suffix = requestedName.toLowerCase();
+  const handle = requestedName.toLowerCase();
   const templateHandle =
     typeof body.template_handle === "string" ? body.template_handle.trim() : null;
   const privacy = body.privacy ?? body.visibility;
@@ -95,7 +95,7 @@ export async function action({ request }: { request: Request }) {
   const goal = typeof body.goal === "string" ? body.goal : undefined;
 
   if (!orgId) return Response.json({ error: "`org_id` is required." }, { status: 400 });
-  if (!suffix) return Response.json({ error: "`name` is required." }, { status: 400 });
+  if (!handle) return Response.json({ error: "`name` is required." }, { status: 400 });
 
   if (!(await isOrgMember(orgId, me.id))) {
     return Response.json({ error: "You are not a member of this organization." }, { status: 403 });
@@ -104,7 +104,7 @@ export async function action({ request }: { request: Request }) {
   try {
     const rec = await createDocoInOrg({
       orgId,
-      requestedSuffix: suffix,
+      requestedHandle: handle,
       createdByCollaboratorId: me.id,
       visibility,
       autoSuffix: true,
@@ -117,7 +117,6 @@ export async function action({ request }: { request: Request }) {
       {
         id: rec.docoId,
         handle: rec.handle,
-        name: suffix,
         org_id: rec.orgId,
         org_handle: rec.orgHandle,
         visibility,

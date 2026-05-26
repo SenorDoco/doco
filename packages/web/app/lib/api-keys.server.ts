@@ -213,9 +213,7 @@ export async function loadScopeOptions(principalId: string): Promise<ScopeOption
     if (!role) continue;
     options.push({ level: "doco", id: docoId, label: String(row.handle), myRole: role });
   }
-  // Sort by label across orgs + docos so the picker reads alphabetically
-  // (an org and its docos cluster naturally because the doco handles are
-  // prefixed with the org slug).
+  // Sort by label across orgs + docos so the picker reads alphabetically.
   options.sort((a, b) => a.label.localeCompare(b.label));
   return options;
 }

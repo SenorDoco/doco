@@ -1201,7 +1201,7 @@ Retention: every uploaded file is kept for ${ATTACHMENT_RETENTION_DAYS} days, th
   GET   /<handle>/api/invites.json               — pending collaborator invites
   GET   /<handle>/api/audit.json                 — audit log entries
   GET   /<handle>/api/perspectives.json          — saved BPMN perspectives
-  GET   /<handle>/api/settings.json              — doco settings (handle, visibility, display name)
+  GET   /<handle>/api/settings.json              — doco settings (handle, visibility, goal)
   GET   /<handle>/search.json?q=<query>          — full-text search across this doco's neurons + policies
   POST  /api/v1/docos.json                       — create a doco (NO GET — to list the user's docos, see the "Your docos" section below)
   POST  /api/v1/orgs.json                        — create an org (NO GET — to list the user's orgs, see the "Your orgs" section below)
@@ -2474,9 +2474,9 @@ async function* streamAssistantTurn(args: {
 // ---------------------------------------------------------------------------
 
 /**
- * Resolved attachment — handle + display name. The chip rendered in
+ * Resolved attachment — handle plus an optional label. The chip rendered in
  * the sidebar links to `/<handle>` (Doco) or `/orgs/<handle>` (Org)
- * and shows the display name when known, falling back to the handle.
+ * and falls back to the handle when no label is present.
  */
 export interface AttachmentInfo {
   handle: string;
@@ -2520,12 +2520,12 @@ export interface ConversationSnapshot {
 async function resolveDocoAttachments(handles: string[]): Promise<AttachmentInfo[]> {
   if (handles.length === 0) return [];
   return await withClient(async (c) => {
-    const r = await c.query<{ handle: string; name: string | null }>(
-      "SELECT handle, name FROM docos WHERE handle = ANY($1::text[])",
+    const r = await c.query<{ handle: string }>(
+      "SELECT handle FROM docos WHERE handle = ANY($1::text[])",
       [handles],
     );
-    const byHandle = new Map(r.rows.map((row) => [row.handle, row.name]));
-    return handles.map((h) => ({ handle: h, name: byHandle.get(h) ?? null }));
+    const found = new Set(r.rows.map((row) => row.handle));
+    return handles.map((h) => ({ handle: h, name: found.has(h) ? h : null }));
   });
 }
 

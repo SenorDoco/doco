@@ -1,8 +1,8 @@
 // GET /api/v1/docos/:docoId.json — resolve a Doco ULID to its current
-// canonical owner/slug. The Doco ID never changes; the slug can.
+// canonical handle. The Doco ID never changes; the handle can.
 // GitHub's `/repositories/{id}` plays the same role — agents that
 // want a stable identifier across renames/transfers record the ID
-// once and resolve it to the current slug as needed.
+// once and resolve it to the current handle as needed.
 //
 // Failure modes are de-conflated (matches /by-id/<id>/* + the
 // bootstrap endpoint): a missing id returns 404 with "no Doco with
@@ -23,8 +23,7 @@ export async function loader({
   params: { docoId: string };
 }) {
   const host = hostFromRequest(request);
-  // Phase 1 of slug-removal: the path param now accepts either the
-  // ULID (legacy) or the new handle (phase 2 canonical).
+  // The path param accepts either the ULID or the current handle.
   const row = await getDocoByIdOrHandle(params.docoId);
   if (!row) {
     return missingDocoResponse({

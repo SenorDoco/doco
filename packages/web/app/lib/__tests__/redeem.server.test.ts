@@ -43,7 +43,7 @@ describe("createDocoInOrg", () => {
   it("creates a companion chat attached to the new Doco", async () => {
     const rec = await createDocoInOrg({
       orgId: "org_01",
-      requestedSuffix: "onboarding",
+      requestedHandle: "acme-onboarding",
       createdByCollaboratorId: "collaborator_01",
       visibility: "private",
       templateHandle: null,
@@ -51,7 +51,7 @@ describe("createDocoInOrg", () => {
 
     expect(mocks.createHostDocoInOrg).toHaveBeenCalledWith({
       orgId: "org_01",
-      requestedSuffix: "onboarding",
+      requestedHandle: "acme-onboarding",
       createdByCollaboratorId: "collaborator_01",
       visibility: "private",
       templateHandle: null,

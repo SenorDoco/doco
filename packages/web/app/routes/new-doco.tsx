@@ -43,7 +43,7 @@ interface CreationState {
   templateHandle: string;
   orgId: string;
   newOrgHandle: string;
-  suffix: string;
+  name: string;
   visibility: "private" | "public";
   goal: string;
 }
@@ -66,8 +66,8 @@ function parseVisibility(value: unknown): "private" | "public" {
 
 function readDocoName(params: URLSearchParams): string {
   return (
-    params.get("suffix") ??
     params.get("name") ??
+    params.get("suffix") ??
     params.get("doco_name") ??
     params.get("requested_suffix") ??
     ""
@@ -83,6 +83,10 @@ function defaultGoalForTemplate(templateHandle: string): string {
   return DOCO_TEMPLATES.find((t) => t.handle === templateHandle)?.description ?? "";
 }
 
+function defaultDocoNameForOrg(orgHandle: string): string {
+  return orgHandle ? `${orgHandle}-` : "";
+}
+
 function parseFormState(form: FormData): CreationState {
   return {
     templateHandle: normalizeTemplateHandle(String(form.get("template_handle") ?? "").trim()),
@@ -90,7 +94,7 @@ function parseFormState(form: FormData): CreationState {
     newOrgHandle: String(form.get("new_org_handle") ?? "")
       .trim()
       .toLowerCase(),
-    suffix: String(form.get("suffix") ?? form.get("name") ?? "")
+    name: String(form.get("name") ?? form.get("suffix") ?? "")
       .trim()
       .toLowerCase(),
     visibility: parseVisibility(form.get("visibility")),
@@ -109,7 +113,7 @@ export async function loader({ request }: { request: Request }) {
     templateHandle: prefillTemplate,
     orgId: url.searchParams.get("org_id") ?? "",
     newOrgHandle: url.searchParams.get("new_org_handle") ?? "",
-    suffix: readDocoName(url.searchParams),
+    name: readDocoName(url.searchParams),
     visibility: parseVisibility(url.searchParams.get("visibility")),
     goal: url.searchParams.get("goal") ?? defaultGoalForTemplate(prefillTemplate),
   };
@@ -134,12 +138,11 @@ export async function action({ request }: { request: Request }) {
   if (!state.orgId && !state.newOrgHandle) {
     return { error: "Pick an organization or create a new one.", suggestedHandle: null, state };
   }
-  if (!state.suffix) {
+  if (!state.name) {
     return { error: "Doco name is required.", suggestedHandle: null, state };
   }
 
   let chosenOrgId: string;
-  let chosenOrgHandle: string;
   try {
     if (state.orgId) {
       if (!(await isOrgMember(state.orgId, me.id))) {
@@ -154,7 +157,6 @@ export async function action({ request }: { request: Request }) {
         return { error: "Organization not found.", suggestedHandle: null, state };
       }
       chosenOrgId = state.orgId;
-      chosenOrgHandle = handle;
     } else {
       const created = await addOrganizationByHandle({
         handle: state.newOrgHandle,
@@ -162,7 +164,6 @@ export async function action({ request }: { request: Request }) {
         autoSuffix: true,
       });
       chosenOrgId = created.id;
-      chosenOrgHandle = created.handle;
     }
   } catch (e) {
     return {
@@ -175,7 +176,7 @@ export async function action({ request }: { request: Request }) {
   try {
     const rec = await createDocoInOrg({
       orgId: chosenOrgId,
-      requestedSuffix: state.suffix,
+      requestedHandle: state.name,
       createdByCollaboratorId: me.id,
       visibility: state.visibility,
       templateHandle:
@@ -188,9 +189,9 @@ export async function action({ request }: { request: Request }) {
     if (e instanceof Response) throw e;
     const message = (e as Error).message;
     if (!accept && message.includes("already taken")) {
-      const suggestion = await findAvailableDocoHandle(chosenOrgHandle, state.suffix);
+      const suggestion = await findAvailableDocoHandle(state.name);
       return {
-        error: `Handle "${chosenOrgHandle}-${state.suffix}" is already taken. Suggested: "${suggestion}".`,
+        error: `Handle "${state.name}" is already taken. Suggested: "${suggestion}".`,
         suggestedHandle: suggestion,
         state,
       };
@@ -218,10 +219,15 @@ export default function NewDocoStep1({
   const formState = actionData?.state ?? prefill;
   const initialOrgId = formState.orgId || orgs[0]?.id || "";
   const initialTemplate = normalizeTemplateHandle(formState.templateHandle);
+  const initialOrgHandle =
+    initialOrgId === ""
+      ? formState.newOrgHandle
+      : (orgs.find((o) => o.id === initialOrgId)?.handle ?? "");
   const [templateHandle, setTemplateHandle] = useState(initialTemplate);
   const [orgId, setOrgId] = useState(initialOrgId);
   const [newOrgHandle, setNewOrgHandle] = useState(formState.newOrgHandle);
-  const [suffix, setSuffix] = useState(formState.suffix);
+  const [name, setName] = useState(formState.name || defaultDocoNameForOrg(initialOrgHandle));
+  const [nameEdited, setNameEdited] = useState(Boolean(formState.name));
   const [visibility, setVisibility] = useState(formState.visibility);
   // Goal is prefilled with the chosen template's description and
   // tracks template changes — unless the user has edited it, in which
@@ -238,9 +244,24 @@ export default function NewDocoStep1({
     }
   };
   const isCreateNewOrg = orgId === "";
-  const orgHandleDisplay = isCreateNewOrg
+  const selectedOrgHandle = isCreateNewOrg
     ? newOrgHandle || "<org>"
     : (orgs.find((o) => o.id === orgId)?.handle ?? "<org>");
+  const updateOrgId = (value: string) => {
+    setOrgId(value);
+    if (!nameEdited) {
+      const nextOrgHandle =
+        value === "" ? newOrgHandle : (orgs.find((o) => o.id === value)?.handle ?? "");
+      setName(defaultDocoNameForOrg(nextOrgHandle));
+    }
+  };
+  const updateNewOrgHandle = (value: string) => {
+    const next = value.toLowerCase();
+    setNewOrgHandle(next);
+    if (!nameEdited && orgId === "") {
+      setName(defaultDocoNameForOrg(next));
+    }
+  };
 
   return (
     <div>
@@ -314,7 +335,7 @@ export default function NewDocoStep1({
                 <select
                   name="org_id"
                   value={orgId}
-                  onChange={(e) => setOrgId(e.target.value)}
+                  onChange={(e) => updateOrgId(e.target.value)}
                   className="rounded-md px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
                 >
                   {orgs.map((o) => (
@@ -333,7 +354,7 @@ export default function NewDocoStep1({
                       required
                       pattern={HANDLE_INPUT_PATTERN}
                       value={newOrgHandle}
-                      onChange={(e) => setNewOrgHandle(e.target.value.toLowerCase())}
+                      onChange={(e) => updateNewOrgHandle(e.target.value)}
                       onInvalid={(event) => {
                         event.currentTarget.setCustomValidity(
                           handleValidityMessage(
@@ -364,33 +385,32 @@ export default function NewDocoStep1({
                 </legend>
                 <input
                   type="text"
-                  name="suffix"
+                  name="name"
                   required
                   pattern={HANDLE_INPUT_PATTERN}
-                  value={suffix}
-                  onChange={(e) => setSuffix(e.target.value.toLowerCase())}
+                  value={name}
+                  onChange={(e) => {
+                    setName(e.target.value.toLowerCase());
+                    setNameEdited(true);
+                  }}
                   onInvalid={(event) => {
                     event.currentTarget.setCustomValidity(
                       handleValidityMessage(event.currentTarget.validity, "Doco name"),
                     );
                   }}
                   onInput={(event) => event.currentTarget.setCustomValidity("")}
-                  placeholder=""
+                  placeholder={defaultDocoNameForOrg(
+                    selectedOrgHandle === "<org>" ? "" : selectedOrgHandle,
+                  )}
                   title={HANDLE_FORMAT_HELP}
-                  aria-describedby="new-doco-suffix-help"
+                  aria-describedby="new-doco-name-help"
                   className="w-[60ch] max-w-full rounded-md px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
                 />
                 <span
-                  id="new-doco-suffix-help"
+                  id="new-doco-name-help"
                   className="mt-1 block text-[11px] text-muted-foreground"
                 >
                   {HANDLE_FORMAT_HELP}
-                </span>
-                <span className="mt-1 block text-[11px] text-muted-foreground">
-                  Final handle:{" "}
-                  <code data-testid="handle-preview">
-                    {orgHandleDisplay}-{suffix || "<suffix>"}
-                  </code>
                 </span>
               </fieldset>
 
