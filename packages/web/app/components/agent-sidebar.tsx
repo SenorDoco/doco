@@ -2867,12 +2867,10 @@ function visibleMessageText(message: ChatMessage): string {
 function assistantMessageAsksQuestion(message: ChatMessage): boolean {
   const text = visibleMessageText(message);
   if (!text) return false;
-  const lastLine = text
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .at(-1);
-  return Boolean(lastLine && /[?？]\s*$/.test(lastLine));
+  const visibleText = text
+    .replace(/\[([^\]\n]+)\]\([^)]+\)/g, "$1")
+    .replace(/https?:\/\/\S+/g, (url) => url.replace(/[?？]/g, ""));
+  return /[?？]/.test(visibleText);
 }
 
 function formatTokenCount(n: number): string {
