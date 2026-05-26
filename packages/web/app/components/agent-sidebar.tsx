@@ -172,6 +172,7 @@ interface InFlightMessage {
 const COLLAPSE_KEY = "senor-doco:collapsed";
 const UNREAD_KEY = "senor-doco:unread";
 const SHOW_THINKING_KEY = "senor-doco:show-thinking";
+const THINKING_BOTTOM_STICKY_THRESHOLD_PX = 24;
 // Pending-send recovery key. send() stashes the user's text here
 // synchronously before the fetch. If the tab dies before the SSE
 // confirms persistence, a mount-time effect replays it.
@@ -3056,6 +3057,8 @@ function InFlightMessageView({
 }
 
 function ThinkingPanel({ events, active }: { events: ThinkingEvent[]; active: boolean }) {
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const pinnedToBottomRef = useRef(true);
   // `performance.now()` at the moment the last event arrived. Drives
   // the "waiting +Xs" tail line below — anchoring on event arrival
   // (instead of plumbing the turn start in) means the indicator
@@ -3078,6 +3081,24 @@ function ThinkingPanel({ events, active }: { events: ThinkingEvent[]; active: bo
   }, [active, lastArrivalRT]);
 
   const idleSec = active && lastArrivalRT != null ? (performance.now() - lastArrivalRT) / 1000 : 0;
+  const showWaitingLine = active && idleSec >= 1;
+
+  const updatePinnedToBottom = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    pinnedToBottomRef.current = distanceFromBottom <= THINKING_BOTTOM_STICKY_THRESHOLD_PX;
+  }, []);
+
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    if (events.length === 0) {
+      pinnedToBottomRef.current = true;
+    }
+    if (!pinnedToBottomRef.current) return;
+    el.scrollTop = el.scrollHeight;
+  });
 
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-card/50">
@@ -3086,7 +3107,11 @@ function ThinkingPanel({ events, active }: { events: ThinkingEvent[]; active: bo
         {active ? <ThinkingDots className="ml-1 inline-flex" dotClassName="h-1 w-1" /> : null}
         <span className="ml-2 font-mono normal-case">{events.length} events</span>
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2 text-[11px] font-mono leading-snug">
+      <div
+        ref={scrollRef}
+        onScroll={updatePinnedToBottom}
+        className="min-h-0 flex-1 overflow-y-auto px-2 py-2 text-[11px] font-mono leading-snug"
+      >
         {events.length === 0 ? (
           <div className="px-1 py-2 text-muted-foreground">
             {active
@@ -3098,7 +3123,7 @@ function ThinkingPanel({ events, active }: { events: ThinkingEvent[]; active: bo
             {events.map((ev) => (
               <ThinkingRow key={ev.id} ev={ev} />
             ))}
-            {active && idleSec >= 1 ? (
+            {showWaitingLine ? (
               <div className="mt-1 italic text-muted-foreground">
                 waiting +{idleSec.toFixed(1)}s
               </div>
