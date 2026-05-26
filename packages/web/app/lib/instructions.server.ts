@@ -55,7 +55,10 @@ There are two access channels — pick the one your runtime supports.
 \`.agents/doco-mcp-server.mjs\`. The server exposes three tools:
 
   - \`doco_search\` — query the project's Doco for relevant prior
-    context. Cheap; call before answering substantive questions.
+    context. Cheap; call before answering substantive questions. If
+    repo-root \`.env\` has \`DOCO_REFRESH\` + \`DOCO_CLIENT_ID\`,
+    it refreshes a missing or stale \`DOCO_ACCESS\` locally before
+    falling back to device flow.
   - \`doco_authenticate\` — start OAuth device flow when search
     returns 401/403. Returns a ready-to-render block with a
     clickable verification URL.
@@ -106,6 +109,10 @@ that **same local checkout**:
   \`process.env\` values, and reread it before each Doco call if your
   process is long-lived. Another local agent may have refreshed or
   created the credential moments ago.
+- If \`DOCO_ACCESS\` is missing or expired but \`.env\` has
+  \`DOCO_REFRESH\` and \`DOCO_CLIENT_ID\`, exchange the refresh token
+  at \`/oauth/token\`, write the rotated credential back to \`.env\`,
+  and retry the Doco call before asking the user to authorize again.
 - Never commit \`.env\` or token values. Separate clones, worktrees,
   machines, and remote sandboxes need their own local \`.env\` because
   credentials are secret; they share only the committed Doco bootstrap
@@ -114,7 +121,9 @@ that **same local checkout**:
 Do not ask the user to approve a new device/browser authorization
 just because this agent process did not start with credentials. First
 check the shared repo-root \`.env\`; if another same-checkout agent
-already authorized, reuse that token and continue.
+already authorized, reuse that token and continue. If the same-checkout
+\`.env\` holds a refresh credential, mint a fresh access token locally
+and continue.
 
 ### Persisting credentials across containers, clones, machines
 
@@ -289,17 +298,20 @@ Hunting for prior art... · Pinging the memory... · Cross-referencing... ·
 Checking what's known... · Tracing the trail... · Diving in... ·
 Polling the Doco... · Skimming the index... · Asking the oracle... · Searching...
 
-**Only render the verb if you have DOCO_ACCESS and expect the search
-to succeed.** If DOCO_ACCESS is empty, skip the search and go to the
-not-connected flow below — no verb. If your DOCO_ACCESS turns out
-invalid (401), it's fine that the verb appeared; follow up with the
-not-connected flow.
+**Only render the verb if you have DOCO_ACCESS, or a shared \`.env\`
+with DOCO_REFRESH + DOCO_CLIENT_ID, and expect the search to succeed.**
+If both DOCO_ACCESS and refresh credentials are missing, skip the
+search and go to the not-connected flow below — no verb. If your
+credential turns out invalid (401) and local refresh cannot recover
+it, it's fine that the verb appeared; follow up with the not-connected
+flow.
 
 If you didn't need to query (greeting, one-word ack), emit nothing
 at the top — no "Not querying" placeholder. Absence is the signal.
 
-**If Doco access isn't granted** (no DOCO_ACCESS after checking the
-shared repo-root \`.env\`, or \`doco_search\` returned 401/403, or the
+**If Doco access isn't granted** (no usable DOCO_ACCESS and no usable
+DOCO_REFRESH/DOCO_CLIENT_ID after checking the shared repo-root
+\`.env\`, or \`doco_search\` returned 401/403 after refresh, or the
 bootstrap couldn't reach Doco):
 
 1. Call \`doco_authenticate\` to get the verification URL.

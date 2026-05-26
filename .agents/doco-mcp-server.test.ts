@@ -9,7 +9,7 @@ import {
   unlinkSync,
   writeFileSync,
 } from "node:fs";
-import { createServer } from "node:http";
+import { type IncomingMessage, createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -260,6 +260,18 @@ function clearDeviceState() {
   }
 }
 
+function readRequestBody(req: IncomingMessage): Promise<string> {
+  return new Promise((resolve, reject) => {
+    let body = "";
+    req.setEncoding("utf8");
+    req.on("data", (chunk: string) => {
+      body += chunk;
+    });
+    req.on("end", () => resolve(body));
+    req.on("error", reject);
+  });
+}
+
 describe("doco-mcp-server", () => {
   beforeEach(() => {
     clearDeviceState();
@@ -287,6 +299,7 @@ describe("doco-mcp-server", () => {
     expect(result.instructions).toContain("doco_complete_authentication");
     expect(result.instructions).toContain("same local repository");
     expect(result.instructions).toContain("retry doco_search before");
+    expect(result.instructions).toContain("DOCO_REFRESH");
     expect(result.instructions).toContain("asking the user to approve again");
   });
 
@@ -313,6 +326,7 @@ describe("doco-mcp-server", () => {
     ]);
     const search = tools.find((t) => t.name === "doco_search");
     expect(search?.description).toMatch(/CALL THIS BEFORE/);
+    expect(search?.description).toMatch(/DOCO_REFRESH/);
     expect(search?.inputSchema.required).toContain("query");
     const authenticate = tools.find((t) => t.name === "doco_authenticate");
     expect(authenticate?.description).toMatch(/device-flow/);
@@ -613,6 +627,207 @@ describe("doco-mcp-server", () => {
       };
       expect(result.isError).toBeFalsy();
       expect(seenAuth).toEqual(["Bearer doco_at_file_token"]);
+    } finally {
+      await new Promise<void>((resolve) => {
+        searchServer.close(() => resolve());
+      });
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
+  it("doco_search refreshes from DOCO_REFRESH when DOCO_ACCESS is missing", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "doco-mcp-refresh-missing-access-"));
+    const docoDir = join(projectDir, ".doco");
+    mkdirSync(docoDir);
+    writeFileSync(join(docoDir, "connections.md"), "https://doco.to/doco-bpms/\n");
+
+    const tokenRequests: Array<Record<string, string>> = [];
+    const seenAuth: string[] = [];
+    const searchServer = createServer(async (req, res) => {
+      if (req.method === "POST" && req.url === "/oauth/token") {
+        tokenRequests.push(Object.fromEntries(new URLSearchParams(await readRequestBody(req))));
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            access_token: "doco_at_refreshed_access",
+            refresh_token: "doco_rt_rotated_refresh",
+          }),
+        );
+        return;
+      }
+      if (req.method === "GET" && req.url?.startsWith("/doco-bpms/search.json")) {
+        seenAuth.push(String(req.headers.authorization || ""));
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ count: 0, duration_ms: 1, hits: [] }));
+        return;
+      }
+      res.writeHead(404, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "not_found" }));
+    });
+
+    await new Promise<void>((resolve) => {
+      searchServer.listen(0, "127.0.0.1", resolve);
+    });
+
+    const address = searchServer.address() as AddressInfo;
+    const host = `http://127.0.0.1:${address.port}`;
+    writeFileSync(
+      join(projectDir, ".env"),
+      [
+        `DOCO_HOST=${host}`,
+        "DOCO_REFRESH=doco_rt_existing_refresh",
+        "DOCO_CLIENT_ID=doco_client_existing",
+        "",
+      ].join("\n"),
+      { mode: 0o600 },
+    );
+
+    try {
+      const responses = await exchange(
+        [
+          INIT_MESSAGE,
+          INITIALIZED_NOTIFICATION,
+          {
+            jsonrpc: "2.0",
+            id: 2,
+            method: "tools/call",
+            params: { name: "doco_search", arguments: { query: "refresh missing access" } },
+          },
+        ],
+        2,
+        {
+          cwd: projectDir,
+          env: {
+            DOCO_HOST: undefined,
+            DOCO_ACCESS: undefined,
+            DOCO_REFRESH: undefined,
+            DOCO_CLIENT_ID: undefined,
+          },
+        },
+      );
+
+      const callResp = responses.find((r) => r.id === 2);
+      const result = callResp?.result as {
+        isError?: boolean;
+        content: Array<{ type: string; text: string }>;
+      };
+      expect(result.isError).toBeFalsy();
+      expect(tokenRequests).toEqual([
+        {
+          grant_type: "refresh_token",
+          refresh_token: "doco_rt_existing_refresh",
+          client_id: "doco_client_existing",
+        },
+      ]);
+      expect(seenAuth).toEqual(["Bearer doco_at_refreshed_access"]);
+
+      const envText = readFileSync(join(projectDir, ".env"), "utf8");
+      expect(envText).toContain("DOCO_ACCESS=doco_at_refreshed_access");
+      expect(envText).toContain("DOCO_REFRESH=doco_rt_rotated_refresh");
+      expect(envText).toContain("DOCO_CLIENT_ID=doco_client_existing");
+    } finally {
+      await new Promise<void>((resolve) => {
+        searchServer.close(() => resolve());
+      });
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
+  it("doco_search refreshes and retries after stale DOCO_ACCESS returns 401", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "doco-mcp-refresh-stale-access-"));
+    const docoDir = join(projectDir, ".doco");
+    mkdirSync(docoDir);
+    writeFileSync(join(docoDir, "connections.md"), "https://doco.to/doco-bpms/\n");
+
+    const tokenRequests: Array<Record<string, string>> = [];
+    const seenAuth: string[] = [];
+    const searchServer = createServer(async (req, res) => {
+      if (req.method === "GET" && req.url?.startsWith("/doco-bpms/search.json")) {
+        seenAuth.push(String(req.headers.authorization || ""));
+        if (seenAuth.length === 1) {
+          res.writeHead(401, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "invalid_token" }));
+          return;
+        }
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ count: 0, duration_ms: 1, hits: [] }));
+        return;
+      }
+      if (req.method === "POST" && req.url === "/oauth/token") {
+        tokenRequests.push(Object.fromEntries(new URLSearchParams(await readRequestBody(req))));
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            access_token: "doco_at_retry_access",
+            refresh_token: "doco_rt_retry_refresh",
+          }),
+        );
+        return;
+      }
+      res.writeHead(404, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "not_found" }));
+    });
+
+    await new Promise<void>((resolve) => {
+      searchServer.listen(0, "127.0.0.1", resolve);
+    });
+
+    const address = searchServer.address() as AddressInfo;
+    const host = `http://127.0.0.1:${address.port}`;
+    writeFileSync(
+      join(projectDir, ".env"),
+      [
+        `DOCO_HOST=${host}`,
+        "DOCO_ACCESS=doco_at_stale_access",
+        "DOCO_REFRESH=doco_rt_stale_refresh",
+        "DOCO_CLIENT_ID=doco_client_stale",
+        "",
+      ].join("\n"),
+      { mode: 0o600 },
+    );
+
+    try {
+      const responses = await exchange(
+        [
+          INIT_MESSAGE,
+          INITIALIZED_NOTIFICATION,
+          {
+            jsonrpc: "2.0",
+            id: 2,
+            method: "tools/call",
+            params: { name: "doco_search", arguments: { query: "refresh stale access" } },
+          },
+        ],
+        2,
+        {
+          cwd: projectDir,
+          env: {
+            DOCO_HOST: undefined,
+            DOCO_ACCESS: undefined,
+            DOCO_REFRESH: undefined,
+            DOCO_CLIENT_ID: undefined,
+          },
+        },
+      );
+
+      const callResp = responses.find((r) => r.id === 2);
+      const result = callResp?.result as {
+        isError?: boolean;
+        content: Array<{ type: string; text: string }>;
+      };
+      expect(result.isError).toBeFalsy();
+      expect(tokenRequests).toEqual([
+        {
+          grant_type: "refresh_token",
+          refresh_token: "doco_rt_stale_refresh",
+          client_id: "doco_client_stale",
+        },
+      ]);
+      expect(seenAuth).toEqual(["Bearer doco_at_stale_access", "Bearer doco_at_retry_access"]);
+
+      const envText = readFileSync(join(projectDir, ".env"), "utf8");
+      expect(envText).toContain("DOCO_ACCESS=doco_at_retry_access");
+      expect(envText).toContain("DOCO_REFRESH=doco_rt_retry_refresh");
     } finally {
       await new Promise<void>((resolve) => {
         searchServer.close(() => resolve());
