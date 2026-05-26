@@ -57,6 +57,11 @@ interface StagedAttachment {
   size_bytes: number;
 }
 
+interface QueuedSend {
+  text: string;
+  staged: StagedAttachment[];
+}
+
 interface UploadAcceptedMeta {
   id: string;
   filename: string;
@@ -447,15 +452,12 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
   // to the in-flight bubble so the user sees what THIS request is
   // costing in real time (not the session-wide total).
   const [turnUsage, setTurnUsage] = useState<TurnUsage | null>(null);
-  // Queued send. When the user hits Send while Señor Doco is
+  // Queued sends. When the user hits Send while Señor Doco is
   // mid-reply, the typed text + staged attachments land here and
-  // auto-fire once the current turn settles. Lets the user keep
-  // typing without losing the message; respects the Anthropic
+  // auto-fire one at a time as turns settle. Lets the user keep
+  // typing without losing messages; respects the Anthropic
   // user→assistant→user alternation by not racing a second turn.
-  const [queuedSend, setQueuedSend] = useState<{
-    text: string;
-    staged: StagedAttachment[];
-  } | null>(null);
+  const [queuedSends, setQueuedSends] = useState<QueuedSend[]>([]);
   // Lazy initializers so SSR doesn't touch localStorage; the first
   // client render hydrates from the stored value.
   const [collapsed, setCollapsed] = useState<boolean>(() => readBoolFlag(COLLAPSE_KEY));
@@ -750,7 +752,7 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
             abortRef.current?.abort();
             setBusy(false);
             setInFlight(null);
-            setQueuedSend(null);
+            setQueuedSends([]);
             setTurnUsage(null);
             setRemoteInflight(false);
             setThinkingEvents([]);
@@ -777,7 +779,7 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
       abortRef.current?.abort();
       setBusy(false);
       setInFlight(null);
-      setQueuedSend(null);
+      setQueuedSends([]);
       setTurnUsage(null);
       setRemoteInflight(false);
       setThinkingEvents([]);
@@ -936,7 +938,7 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
           abortRef.current?.abort();
           setBusy(false);
           setInFlight(null);
-          setQueuedSend(null);
+          setQueuedSends([]);
           setTurnUsage(null);
           setRemoteInflight(false);
           setThinkingEvents([]);
@@ -1299,11 +1301,26 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
       const attachmentIds = sentAttachments.map((a) => a.id);
       const graphReferenceGroups: GraphReferenceGroup[] = readGraphReferenceGroups();
       if (!text && attachmentIds.length === 0) return;
+      // While Señor Doco is mid-reply, the Anthropic API can't accept
+      // another user message in the same conversation (the wire
+      // protocol requires user→assistant→user alternation, and the
+      // server-side runAssistantTurn mutates the message list as it
+      // goes). Rather than dropping the user's submit on the floor,
+      // stash it; the queue-drain effect auto-fires it once the
+      // current turn settles. `override` is set by that drain — we
+      // skip the re-queue path so the auto-fire doesn't loop.
+      if ((busy || remoteInflight) && !override) {
+        setQueuedSends((prev) => [...prev, { text, staged: sentAttachments }]);
+        setInputText("");
+        setStaged([]);
+        return;
+      }
       // Crash-safe pending-send. Write to localStorage SYNCHRONOUSLY
       // before any await. If the tab dies (reload, network drop)
       // before the SSE response confirms persistence, the recovery
       // effect below replays this on next mount. Successful sends
-      // get this key cleared by the `message_saved` SSE event.
+      // get this key cleared by the `message_saved` SSE event. Merely
+      // queued messages skip this until they become the active send.
       if (typeof window !== "undefined") {
         try {
           window.localStorage.setItem(
@@ -1314,20 +1331,6 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
           // localStorage may be blocked; lose the recovery guard but
           // not the send itself.
         }
-      }
-      // While Señor Doco is mid-reply, the Anthropic API can't accept
-      // another user message in the same conversation (the wire
-      // protocol requires user→assistant→user alternation, and the
-      // server-side runAssistantTurn mutates the message list as it
-      // goes). Rather than dropping the user's submit on the floor,
-      // stash it; the queue-drain effect auto-fires it once the
-      // current turn settles. `override` is set by that drain — we
-      // skip the re-queue path so the auto-fire doesn't loop.
-      if (busy && !override) {
-        setQueuedSend({ text, staged: sentAttachments });
-        setInputText("");
-        setStaged([]);
-        return;
       }
       if (!override) {
         setInputText("");
@@ -1594,6 +1597,7 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
     [
       inputText,
       busy,
+      remoteInflight,
       staged,
       location.pathname,
       location.search,
@@ -1622,7 +1626,7 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
   // a TDZ ReferenceError at render time, which crashes SSR. PR #278
   // shipped that bug and took prod down for ~12 min.
   useEffect(() => {
-    if (!bootstrapped || busy || typeof window === "undefined") return;
+    if (!bootstrapped || busy || remoteInflight || typeof window === "undefined") return;
     let raw: string | null = null;
     try {
       raw = window.localStorage.getItem(PENDING_SEND_KEY);
@@ -1657,17 +1661,18 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
     // recovery. send() will re-write the key with a fresh queued_at.
     try { window.localStorage.removeItem(PENDING_SEND_KEY); } catch {}
     void send({ text, staged: [] });
-  }, [bootstrapped, busy, messages, send]);
+  }, [bootstrapped, busy, remoteInflight, messages, send]);
 
-  // Queue-drain: when Señor Doco settles AND a message is queued
-  // from a busy-send, auto-fire it. Passing the message as an
-  // `override` bypasses the re-queue check inside `send`.
+  // Queue-drain: when Señor Doco settles AND messages are queued
+  // from busy-sends, auto-fire the oldest one. Passing the message as
+  // an `override` bypasses the re-queue check inside `send`.
   useEffect(() => {
-    if (busy || !queuedSend) return;
-    const q = queuedSend;
-    setQueuedSend(null);
+    if (busy || remoteInflight || queuedSends.length === 0) return;
+    const q = queuedSends[0];
+    if (!q) return;
+    setQueuedSends(queuedSends.slice(1));
     void send(q);
-  }, [busy, queuedSend, send]);
+  }, [busy, remoteInflight, queuedSends, send]);
 
   // Per-thread unread counter derived from the list-endpoint's
   // message_count vs. a per-thread last-seen value in localStorage.
@@ -2007,9 +2012,10 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
             value={inputText}
             onChange={setInputText}
             onSend={send}
-            busy={busy}
+            busy={busy || remoteInflight}
             username={me.username}
             staged={staged}
+            queuedCount={queuedSends.length}
             uploading={uploading}
             uploadError={uploadError}
             onUploadFiles={uploadFiles}
@@ -3144,6 +3150,7 @@ function Composer({
   busy,
   username,
   staged,
+  queuedCount,
   uploading,
   uploadError,
   onUploadFiles,
@@ -3155,6 +3162,7 @@ function Composer({
   busy: boolean;
   username: string;
   staged: StagedAttachment[];
+  queuedCount: number;
   uploading: boolean;
   uploadError: string | null;
   onUploadFiles: (files: File[]) => void;
@@ -3169,7 +3177,9 @@ function Composer({
     el.style.height = "auto";
     el.style.height = `${Math.min(160, el.scrollHeight)}px`;
   });
-  const canSend = !busy && (value.trim().length > 0 || staged.length > 0);
+  const canSend = value.trim().length > 0 || staged.length > 0;
+  const queuedLabel =
+    queuedCount === 0 ? null : `${queuedCount} queued`;
   return (
     <div
       className={cn(
@@ -3229,7 +3239,6 @@ function Composer({
             onSend();
           }
         }}
-        disabled={busy}
       />
       <input
         ref={fileInputRef}
@@ -3248,13 +3257,15 @@ function Composer({
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
-            disabled={busy || uploading}
+            disabled={uploading}
             className="neu-button rounded-md border border-border px-2 py-0.5 text-[10px] text-muted-foreground hover:bg-input/60 hover:text-foreground disabled:opacity-50"
             aria-label="Attach a file"
           >
             {uploading ? "Uploading…" : "📎 Attach"}
           </button>
-          <div className="text-[10px] text-muted-foreground">⏎ to send · ⇧⏎ for newline</div>
+          <div className="text-[10px] text-muted-foreground">
+            {queuedLabel ?? "⏎ to send · ⇧⏎ for newline"}
+          </div>
         </div>
         <button
           type="button"
@@ -3262,7 +3273,7 @@ function Composer({
           disabled={!canSend}
           className="neu-button rounded-md bg-primary px-3 py-1 text-[11px] font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
         >
-          {busy ? "…" : "Send"}
+          {busy ? "Queue" : "Send"}
         </button>
       </div>
     </div>
