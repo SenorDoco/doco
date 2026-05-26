@@ -65,7 +65,11 @@ import { useFullscreen } from "~/lib/use-fullscreen";
 const FEED_LIMIT = 20;
 const HEATMAP_WEEKS = 52;
 const TOP_CONTRIBUTORS_LIMIT = 10;
-const RIGHT_COLUMN_MIN_CONTENT_WIDTH = 1200;
+const RIGHT_COLUMN_MAIN_MIN_WIDTH = 768;
+const RIGHT_COLUMN_WIDTH = 320;
+const RIGHT_COLUMN_GRID_GAP = 24;
+const RIGHT_COLUMN_MIN_CONTENT_WIDTH =
+  RIGHT_COLUMN_MAIN_MIN_WIDTH + RIGHT_COLUMN_WIDTH + RIGHT_COLUMN_GRID_GAP;
 
 interface FeedItem extends ActivityFeedLineItem {
   event_id: string;
