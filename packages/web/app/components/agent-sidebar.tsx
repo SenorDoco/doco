@@ -608,12 +608,16 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
         const fresh = data.messages;
         if (fresh.length === 0) return prev;
         const freshIds = new Set(fresh.map((m) => m.id));
+        const freshLocalTwinKeys = new Set(fresh.map(messageLocalTwinKey));
         const freshOldest = fresh[0].created_at;
         const freshNewest = fresh[fresh.length - 1].created_at;
         const olderRetained: typeof prev = [];
         const newerRetained: typeof prev = [];
         for (const m of prev) {
           if (freshIds.has(m.id)) continue;
+          if (m.id.startsWith("local_") && freshLocalTwinKeys.has(messageLocalTwinKey(m))) {
+            continue;
+          }
           if (m.created_at < freshOldest) olderRetained.push(m);
           else if (m.created_at > freshNewest) newerRetained.push(m);
           // Else: in the snapshot window but missing from fresh →
@@ -1372,6 +1376,9 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
         content: localUserBlocks,
         created_at: new Date().toISOString(),
       };
+      let optimisticUserMessageId = localUser.id;
+      let persistedUserMessageId: string | null = null;
+      let persistedAssistantMessageId: string | null = null;
       setMessages((prev) => [...prev, localUser]);
       // Optimistically backfill the thread title from the first user
       // message so the header flips from "New chat" → "Hello…" the
@@ -1520,8 +1527,23 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
               broadcastSync({ kind: "changed" });
               // User-message persisted server-side — drop the
               // pending-send recovery record so we don't replay it.
-              if (event.role === "user" && typeof window !== "undefined") {
-                try { window.localStorage.removeItem(PENDING_SEND_KEY); } catch {}
+              if (event.role === "user") {
+                if (!persistedUserMessageId) {
+                  persistedUserMessageId = event.message_id;
+                  setMessages((prev) =>
+                    prev.map((m) =>
+                      m.id === optimisticUserMessageId ? { ...m, id: event.message_id } : m,
+                    ),
+                  );
+                  optimisticUserMessageId = event.message_id;
+                }
+                if (typeof window !== "undefined") {
+                  try {
+                    window.localStorage.removeItem(PENDING_SEND_KEY);
+                  } catch {}
+                }
+              } else {
+                persistedAssistantMessageId = event.message_id;
               }
             } else if (event.kind === "error") {
               localContent.push({ type: "text", text: `[error] ${event.message}` });
@@ -1561,7 +1583,7 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
         const committed: ChatMessage[] = [];
         if (localContent.length > 0) {
           committed.push({
-            id: `local_${Date.now() + 1}`,
+            id: persistedAssistantMessageId ?? `local_${Date.now() + 1}`,
             role: "assistant",
             content: localContent.slice(),
             created_at: new Date().toISOString(),
@@ -2647,6 +2669,19 @@ function blockKey(block: AnyBlock): string {
   if (block.type === "tool_result") return `tool-result-${block.tool_use_id}`;
   if (block.type === "attachment_ref") return `attachment-${block.attachment_id}`;
   return `text-${hashText(block.text)}`;
+}
+
+function blockLocalTwinKey(block: AnyBlock): string {
+  if (block.type === "attachment_ref") {
+    return `attachment:${block.attachment_id}:${block.filename}:${block.size_bytes}`;
+  }
+  if (block.type === "text") return `text:${block.text}`;
+  if (block.type === "tool_result") return `tool-result:${block.tool_use_id}:${block.content}`;
+  return `tool-use:${block.id}`;
+}
+
+function messageLocalTwinKey(message: ChatMessage): string {
+  return `${message.role}:${visibleChatBlocks(message.content).map(blockLocalTwinKey).join("|")}`;
 }
 
 function formatTokenCount(n: number): string {
