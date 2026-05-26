@@ -537,8 +537,8 @@ export function BpmnPerspective({
                 transform: "rotate(180deg)",
                 textOverflow: "ellipsis",
                 fontSize: labelFontPx,
-                textTransform: isBand ? "uppercase" : "none",
-                letterSpacing: isBand ? 0.6 : 0,
+                textTransform: "none",
+                letterSpacing: 0,
               }}
             >
               {lane.label}
@@ -1311,8 +1311,8 @@ function BpmnLaneNode({ data }: { data: BpmnLaneData }) {
           textAlign: "center",
           padding: "0 8px",
           boxSizing: "border-box",
-          textTransform: isBand ? "uppercase" : "none",
-          letterSpacing: isBand ? 0.6 : 0,
+          textTransform: "none",
+          letterSpacing: 0,
           cursor: isClickableLane ? "pointer" : undefined,
         }}
         onClick={
