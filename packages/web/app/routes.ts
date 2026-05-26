@@ -30,6 +30,7 @@ import { type RouteConfig, index, route } from "@react-router/dev/routes";
  *   /by-id/:docoId                 Stable Doco-id redirect to the current handle
  *   (agent self-service: install the per-Doco MCP connector at /mcp/:handle; OAuth dance kicks off automatically)
  *   /new-doco, /new-org            self-service create flows (ADR-067)
+ *   /integrations                  group-chat integrations and channel-default authorization
  *   /orgs/<org-handle>/settings    per-Org settings (owner only; danger-zone deletion)
  *   /<doco-handle>                 per-Doco recent + search input
  *   /<doco-handle>/<type>          per-Doco entity list (short form; ADR-120)
@@ -130,6 +131,7 @@ export default [
   // Cross-Doco semantic search across every Doco the org owns.
   route("orgs/:orgHandle/search", "routes/orgs.$orgHandle.search.tsx"),
   route("collaborators", "routes/collaborators.tsx"),
+  route("integrations", "routes/integrations.tsx"),
   route("users/:username", "routes/users.$username.tsx"),
   // /api-keys — host-level page listing every active OAuth refresh
   // token bound to the signed-in user (both agent-OAuth-flow tokens
