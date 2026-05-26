@@ -679,6 +679,17 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
         earliestRef.current = earliest;
       }
       setLoadError(null);
+      // Replay the server-persisted thinking events so a freshly
+      // loaded tab fills the Thinking column with the current or most
+      // recent turn, instead of losing the timeline on refresh. Only
+      // set when the local tab isn't already streaming — its own
+      // client-side events are richer than the server log.
+      if (!busy && Array.isArray(data.active_turn_events)) {
+        const hydrated = data.active_turn_events
+          .map((raw) => storedEventToThinkingEvent(raw))
+          .filter((ev): ev is ThinkingEvent => ev !== null);
+        setThinkingEvents(hydrated);
+      }
       // Server-side in-flight marker: a freshly-loaded page (e.g.
       // after refresh) should show the "Señor Doco is replying…"
       // placeholder if a turn is actually running on the server.
@@ -688,18 +699,6 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
         const startedMs = Date.parse(data.active_turn_started_at);
         if (Number.isFinite(startedMs) && Date.now() - startedMs < ACTIVE_TURN_STALE_MS) {
           setRemoteInflight(true);
-          // Replay the server-persisted thinking events so a freshly
-          // loaded tab mid-turn fills the Thinking column with
-          // everything that's already happened, instead of staring
-          // at "waiting for first event…". Only set when the local
-          // tab isn't already streaming — its own client-side events
-          // are richer than the server log.
-          if (!busy && Array.isArray(data.active_turn_events)) {
-            const hydrated = data.active_turn_events
-              .map((raw) => storedEventToThinkingEvent(raw))
-              .filter((ev): ev is ThinkingEvent => ev !== null);
-            setThinkingEvents(hydrated);
-          }
         } else {
           setRemoteInflight(false);
         }
