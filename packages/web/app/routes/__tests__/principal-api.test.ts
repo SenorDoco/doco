@@ -95,7 +95,7 @@ describe("principal API", () => {
         data: expect.objectContaining({
           doco_id: "doco_acme",
           neuron_type: "principal",
-          name: "visitor",
+          name: "Visitor",
           created_by: "collaborator_author",
           lifecycle: "active",
         }),
@@ -114,7 +114,35 @@ describe("principal API", () => {
     // 037 dropped the column.
     const upsertCall = mocks.upsertEntity.mock.calls[0]?.[0] as Record<string, unknown>;
     expect(upsertCall).not.toHaveProperty("summary");
-    await expect(response.json()).resolves.toMatchObject({ ok: true, name: "visitor" });
+    await expect(response.json()).resolves.toMatchObject({ ok: true, name: "Visitor" });
+  });
+
+  it("allows duplicate display names and non-slug-shaped names", async () => {
+    const response = await action({
+      request: principalRequest({
+        name: "Alex Smith / Finance",
+        body_md: "Human finance approver.",
+      }),
+      params: { docoHandle: "acme" } as never,
+    });
+
+    expect(response.status).toBe(201);
+    expect(mocks.query).not.toHaveBeenCalledWith(
+      expect.stringContaining("FROM principals WHERE name"),
+      expect.anything(),
+    );
+    expect(mocks.upsertEntity).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          name: "Alex Smith / Finance",
+        }),
+      }),
+    );
+    await expect(response.json()).resolves.toMatchObject({
+      ok: true,
+      name: "Alex Smith / Finance",
+      existed: false,
+    });
   });
 
   it("passes body_md to the authoring policy evaluator (regression — was missing on POST)", async () => {
@@ -143,7 +171,7 @@ describe("principal API", () => {
     );
   });
 
-  it("keeps the built-in role-principal defaults", async () => {
+  it("treats former reserved role-principal names as ordinary names", async () => {
     const response = await action({
       request: principalRequest({ name: "human" }),
       params: { docoHandle: "acme" } as never,
@@ -152,18 +180,17 @@ describe("principal API", () => {
     expect(response.status).toBe(201);
     expect(mocks.upsertEntity).toHaveBeenCalledWith(
       expect.objectContaining({
-        // Default body_md is now the reserved-role explainer that used
-        // to seed `summary` — migration 037 removed the summary column.
-        body_md: "Role principal for the person-only subset of users.",
+        body_md: "",
         data: expect.objectContaining({
           name: "human",
-          role_principal: true,
-          body_md: "Role principal for the person-only subset of users.",
+          body_md: "",
         }),
       }),
     );
-    // Slim-down: no `type` field anymore even for reserved role names.
+    // Slim-down: no `type` field anymore, and former reserved names no
+    // longer set the legacy role_principal flag.
     const persistedData = mocks.upsertEntity.mock.calls[0]?.[0].data as Record<string, unknown>;
+    expect(persistedData).not.toHaveProperty("role_principal");
     expect(persistedData).not.toHaveProperty("type");
     expect(persistedData).not.toHaveProperty("summary");
   });

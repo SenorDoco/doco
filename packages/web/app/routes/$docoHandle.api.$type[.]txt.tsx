@@ -538,23 +538,21 @@ UPDATE AN EXISTING STATE
 Principals are the role-personas a Doco references via Action.actor_id,
 Intent.actors[], Decision.decided_by, etc. Principals are *records*
 per the "frozen claims, mutable records" Decision — descriptive fields
-stay editable across the lifecycle. The one identity field that *is*
-locked is \`name\`: it's the identifier other neurons reference, so
-renaming it would silently break callers. To rename, create a new
-Principal and retire the old.
+stay editable across the lifecycle. \`name\` is a display label; other
+neurons reference Principals by id.
 
 CREATE
   POST ${baseUrl}/${handle}/api/principals.json
   Content-Type: application/json
 
 BODY (JSON)
-  name                required   lowercase, must match [a-z0-9][a-z0-9_-]*.
-                                  Server lowercases on receipt.
+  name                required   display name for the Principal. Stored
+                                  after trimming surrounding whitespace;
+                                  not required to be slug-shaped or unique.
   body_md             optional   markdown body — the only narrative field
                                   on a Principal post-migration 037
-                                  (\`summary\` was dropped). Defaults to a
-                                  reserved-role explainer for user / human
-                                  / doco-host / github, otherwise empty.
+                                  (\`summary\` was dropped). Defaults to
+                                  empty.
                                   The org-chart template expects person-
                                   vs-agent to be declared here in prose
                                   ("Operates under: @alice", "Autonomous
@@ -576,13 +574,8 @@ SUCCESS RESPONSE — create (HTTP 201, application/json)
     "footer_lines": ["[🔮 Doco] 👤 Principal added: [<name>](<url>)"]
   }
 
-SUCCESS RESPONSE — idempotent (HTTP 200)
-  If a principal with the same name already exists in this Doco, the
-  endpoint returns 200 with the existing id and "existed": true rather
-  than creating a duplicate.
-
 ERROR RESPONSES
-  HTTP 400  invalid name, invalid reports_to, or missing name
+  HTTP 400  missing name or invalid reports_to
   HTTP 401  authentication required
   HTTP 403  author role required
   HTTP 422  authoring policy violation (e.g. org-chart template

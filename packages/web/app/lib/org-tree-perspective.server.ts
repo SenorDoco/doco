@@ -18,9 +18,9 @@ type QueryClient = {
 
 export interface OrgTreeNode {
   id: string;
-  /** Lowercase slug — the immutable identity field. */
+  /** Display label for the Principal. */
   name: string;
-  /** Optional one-line description; rendered under the slug. */
+  /** Optional one-line description; rendered under the label. */
   description: string | null;
   /**
    * "person" | "agent" — drives the icon (👤 vs 🤖). Inferred from
@@ -82,7 +82,7 @@ export async function loadOrgTreeData(
   const rows = (
     await c.query<OrgTreeRow>(
       // Migration 037 dropped `summary` from principals; the
-      // description shown under the slug is now the first non-blank
+      // description shown under the label is now the first non-blank
       // line of `body_md`.
       `SELECT id, name, COALESCE(lifecycle, 'active') AS lifecycle, body_md, data
          FROM principals
@@ -95,7 +95,7 @@ export async function loadOrgTreeData(
   const nodes: OrgTreeNode[] = rows.map((r) => {
     const data = r.data ?? {};
     // Description: first non-blank line of body_md, when it isn't just
-    // a repetition of the name slug.
+    // a repetition of the name label.
     const nameNorm = r.name.toLowerCase();
     let description: string | null = null;
     if (r.body_md) {

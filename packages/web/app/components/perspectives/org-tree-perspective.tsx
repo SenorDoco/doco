@@ -182,13 +182,12 @@ function layoutOrgTree(
 
 // Custom React Flow node — the principal card.
 //
-// Visual hierarchy: the Principal's `name` (the identity slug — the
-// thing that makes "alex" *that* alex, not "another alex") is the
-// headline. An optional one-line description (from `summary`) sits
-// beneath. The Person/Agent kind shows as a bare emoji icon in the
-// bottom corner (👤 / 🤖) next to the lifecycle badge — inferred
-// from body_md prose (the slim-down moved the kind out of a
-// structured field). When the prose is silent the icon is omitted.
+// Visual hierarchy: the Principal's `name` is the headline. An optional
+// one-line description from body_md sits beneath. The Person/Agent kind
+// shows as a bare emoji icon in the bottom corner (👤 / 🤖) next to the
+// lifecycle badge — inferred from body_md prose (the slim-down moved the
+// kind out of a structured field). When the prose is silent the icon is
+// omitted.
 //
 // Sized via inline style (Tailwind's JIT can't see template-literal
 // class names).
