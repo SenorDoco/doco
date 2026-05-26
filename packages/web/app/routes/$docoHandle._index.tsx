@@ -229,20 +229,20 @@ export async function loader({
     const contributorRows = (
       await c.query<{
         collaborator_id: string;
-        principal_name: string;
+        collaborator_name: string;
         last_at: Date | string;
         event_count: string;
       }>(
         `SELECT ae.by_collaborator AS collaborator_id,
-                p.name AS principal_name,
+                COALESCE(c.github_login, c.email, c.id, ae.by_collaborator) AS collaborator_name,
                 MAX(ae.at) AS last_at,
                 COUNT(*)::text AS event_count
            FROM audit_events ae
-           JOIN principals p ON p.id = ae.by_collaborator
+           LEFT JOIN collaborators c ON c.id = ae.by_collaborator
           WHERE ae.doco_id = $1
             AND ae.by_collaborator IS NOT NULL
             AND ae.entity_type NOT IN ('guidance_policy', 'neuron_authoring_policy')
-          GROUP BY ae.by_collaborator, p.name
+          GROUP BY ae.by_collaborator, c.github_login, c.email, c.id
           ORDER BY COUNT(*) DESC, MAX(ae.at) DESC
           LIMIT $2`,
         [ctx.meta.docoId, TOP_CONTRIBUTORS_LIMIT],
@@ -250,7 +250,7 @@ export async function loader({
     ).rows;
     const topContributors: TopContributor[] = contributorRows.map((r) => ({
       principalId: r.collaborator_id,
-      username: r.principal_name,
+      username: r.collaborator_name,
       lastAt:
         r.last_at instanceof Date
           ? r.last_at.toISOString()
