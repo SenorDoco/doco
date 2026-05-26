@@ -5,16 +5,12 @@ import {
   listEntitiesByDoco,
   roleAtLeast,
   upsertEntity,
-  withClient,
 } from "@doco/db";
 import { type EntityId, generateUlid, makeEntityId, nowIso } from "@doco/shared";
 import { runAuthoringPolicies } from "~/lib/authoring-runner.server";
 import { reindexAndScheduleAttach } from "~/lib/capture.server";
 import { docoPath } from "~/lib/db.server";
 import { getDocoLevelRole, loadDocoRouteForRead } from "~/lib/doco-access.server";
-
-const ROLE_PRINCIPAL_NAMES = new Set(["user", "human", "doco-host", "github"]);
-const PRINCIPAL_NAME_PATTERN = /^[a-z0-9][a-z0-9_-]*$/;
 
 // Footer-line helper: the Principal endpoints used to emit `name (id)`
 // as plain text, which the chat surface renders as an unclickable
@@ -23,6 +19,10 @@ const PRINCIPAL_NAME_PATTERN = /^[a-z0-9][a-z0-9_-]*$/;
 // principal's perspective view. The agent pastes the line verbatim,
 // the UI renders the markdown, and the user gets a one-click jump
 // instead of a raw id.
+function principalLinkLabel(name: string): string {
+  return name.replace(/\\/g, "\\\\").replace(/\[/g, "\\[").replace(/\]/g, "\\]");
+}
+
 function principalLine(
   emoji: string,
   verb: string,
@@ -32,20 +32,8 @@ function principalLine(
   docoHandle: string,
 ): string {
   const url = `${new URL(request.url).origin}/${docoHandle}/principal/${id}`;
-  return `[🔮 Doco] ${emoji} Principal ${verb}: [${name}](${url})`;
+  return `[🔮 Doco] ${emoji} Principal ${verb}: [${principalLinkLabel(name)}](${url})`;
 }
-
-// Default body_md prose for the four reserved role-principal names.
-// The POST route writes this when the caller supplies no body_md so a
-// freshly-seeded role principal has *some* explainer text; an explicit
-// body_md from the caller always wins. Migration 037 dropped the
-// `summary` column on Principal — these strings used to seed it.
-const DEFAULT_BODY_MD: Record<string, string> = {
-  user: "Role principal for any Doco user, whether person or AI agent.",
-  human: "Role principal for the person-only subset of users.",
-  "doco-host": "System principal for the Doco host service.",
-  github: "External identity-provider principal for GitHub.",
-};
 
 export async function action({
   request,
@@ -79,20 +67,9 @@ export async function action({
     body_md?: string;
     reports_to?: string;
   };
-  const name = String(body.name ?? "")
-    .trim()
-    .toLowerCase();
+  const name = String(body.name ?? "").trim();
   if (!name) {
     return Response.json({ error: "name is required." }, { status: 400 });
-  }
-  if (!PRINCIPAL_NAME_PATTERN.test(name)) {
-    return Response.json(
-      {
-        error:
-          "Principal name can use lowercase letters, numbers, hyphens, or underscores, and must start with a letter or number.",
-      },
-      { status: 400 },
-    );
   }
   if (body.reports_to !== undefined) {
     if (typeof body.reports_to !== "string" || !body.reports_to.startsWith("principal_")) {
@@ -110,38 +87,11 @@ export async function action({
     }
   }
 
-  const existing = await withClient(async (c) =>
-    c.query<{ id: string; name: string }>(
-      "SELECT id, name FROM principals WHERE name = $1 AND doco_id = $2 LIMIT 1",
-      [name, meta.docoId],
-    ),
-  );
-  if (existing.rows[0]) {
-    return Response.json({
-      ok: true,
-      id: existing.rows[0].id,
-      name,
-      existed: true,
-      footer_lines: [
-        principalLine(
-          "👤",
-          "already exists",
-          name,
-          existing.rows[0].id,
-          request,
-          params.docoHandle,
-        ),
-      ],
-    });
-  }
-
   const id = makeEntityId("principal", generateUlid()) as EntityId<"principal">;
   const now = nowIso();
   // Migration 037 dropped `summary` from Principal — `body_md` is now
-  // the only narrative field. When no body is supplied we fall back to
-  // the reserved-role explainer (for user/human/doco-host/github) so a
-  // role principal still has *some* prose; otherwise it stays empty.
-  const bodyMd = body.body_md?.trim() || DEFAULT_BODY_MD[name] || "";
+  // the only narrative field. When no body is supplied it stays empty.
+  const bodyMd = body.body_md?.trim() || "";
   // `body_md` is included in the candidate so the authoring-policy
   // evaluator sees it. The org-chart template's "person-vs-agent must
   // be declared in body_md" probabilistic gate reads the candidate's
@@ -153,7 +103,6 @@ export async function action({
     name,
     body_md: bodyMd,
     ...(body.reports_to ? { reports_to: body.reports_to } : {}),
-    ...(ROLE_PRINCIPAL_NAMES.has(name) ? { role_principal: true } : {}),
     created_at: now,
     created_by: me.id,
     lifecycle: "active",
