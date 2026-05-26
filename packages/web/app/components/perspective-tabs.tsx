@@ -87,8 +87,8 @@ function PerspectiveTab({ handle, perspective, active, isFirst, isLast }: Perspe
   //     from each other.
   //   * Active tab has z-10 so its borders win the overlap.
   //   * The row above is pulled down 1px (`-mb-px`) so the active tab's
-  //     bottom edge lands exactly on top of the canvas's top border,
-  //     dissolving the seam between the tab and the canvas.
+  //     transparent bottom border lands exactly on top of the canvas's
+  //     top border, dissolving the seam between the tab and the canvas.
   const tabClass = cn(
     "relative -ml-px first:ml-0 inline-flex items-center gap-1.5 border border-border px-3 py-1.5 text-xs font-medium",
     isFirst && "rounded-tl-md",
@@ -96,10 +96,10 @@ function PerspectiveTab({ handle, perspective, active, isFirst, isLast }: Perspe
     active
       ? // The active tab's bg + bottom border match the perspective
         // canvas (bg-background) so the tab visually flows into the
-        // canvas without a visible seam. The pseudo strip covers the
-        // canvas's top border at the tab's footprint even when browser
-        // sub-pixel paint order would otherwise let a hairline through.
-        "z-10 border-b-background bg-background text-foreground after:pointer-events-none after:absolute after:-bottom-px after:-left-px after:-right-px after:h-[2px] after:bg-background after:content-['']"
+        // canvas without a visible seam. Keep the bottom border
+        // transparent: the tab background paints through that border
+        // area and covers the canvas border without clipping corners.
+        "z-10 border-b-transparent bg-background text-foreground"
       : // border-b-transparent on inactive tabs so the tab's bottom
         // border (22%-alpha border-border) doesn't STACK on top of
         // the canvas's top border (also 22% alpha) and render as a
