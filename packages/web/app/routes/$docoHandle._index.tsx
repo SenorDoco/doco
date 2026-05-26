@@ -16,7 +16,6 @@ import { Link, useRevalidator } from "react-router";
 import { parse as parseYaml } from "yaml";
 import { ActivityFeedLine, type ActivityFeedLineItem } from "~/components/activity-feed-line";
 import { ActivityHeatmap } from "~/components/activity-heatmap";
-import { Breadcrumb, docoBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
 import { ApiKeysLink, CollaboratorsLink } from "~/components/invite-collaborators-link";
 import { LIFECYCLE_ORDER, initialVisibleLifecycles } from "~/components/lifecycle-filter";
@@ -113,7 +112,7 @@ export async function loader({
   params: { docoHandle?: string; docoId?: string; type?: string; id?: string };
 }) {
   const ctx = await loadDocoRouteForRead(request, params);
-  const { ownerSlug, docoSlug, handle } = ctx;
+  const { handle } = ctx;
   const me = ctx.me;
   const dir = docoPath(handle);
   const requestedNeuron =
@@ -341,8 +340,6 @@ export async function loader({
       totalNodes,
       byDay,
       topContributors,
-      ownerSlug,
-      docoSlug,
       handle,
       docoId: ctx.meta.docoId,
       goal: ctx.meta.goal,
@@ -452,8 +449,6 @@ export default function DocoHome({
     totalNodes,
     byDay,
     topContributors,
-    ownerSlug,
-    docoSlug,
     handle,
     docoId,
     goal,
@@ -805,7 +800,6 @@ export default function DocoHome({
         {/* Title row — spans both columns so the action buttons sit beside the
             title rather than visually attached to the fishbone graph below. */}
         <div className="mb-6 shrink-0 space-y-1">
-          <Breadcrumb items={docoBreadcrumb({ ownerSlug, handle })} />
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h1 className="text-lg font-semibold tracking-tight">
               <Link to={allSearchHref} className="hover:text-primary">
