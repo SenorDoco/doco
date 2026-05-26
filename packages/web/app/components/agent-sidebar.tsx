@@ -1988,7 +1988,7 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
         </button>
       ) : (
         <>
-          <div className="flex min-w-0 flex-1 flex-col">
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col">
             {/* Header — always visible. Single row: title on the left,
           Thinking + collapse controls on the right. */}
             <div className="flex shrink-0 items-center justify-between border-b border-border px-3 py-2">
@@ -2134,7 +2134,7 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
                   </div>
                 </div>
 
-                <div className="flex min-h-0 flex-1">
+                <div className="flex min-h-0 flex-1 overflow-hidden">
                   <div
                     ref={messageListRef}
                     onScroll={onMessagesScroll}
