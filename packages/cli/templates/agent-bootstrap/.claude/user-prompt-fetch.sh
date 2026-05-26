@@ -15,6 +15,7 @@
 #
 # Env vars consumed (sourced from repo-root $PWD/.env if not in shell):
 #   DOCO_ACCESS  opaque Doco access credential
+#   DOCO_REFRESH + DOCO_CLIENT_ID refresh a missing/stale access token
 
 set -u
 
@@ -72,9 +73,7 @@ EOF
 # 4. Pre-fetch /search.json for the user's prompt.
 QUERY_BLOCK=""
 DISCONNECTED_REASON=""
-if [ -z "${DOCO_ACCESS:-}" ]; then
-  DISCONNECTED_REASON="missing DOCO_ACCESS — complete the Doco OAuth device flow for this checkout"
-elif [ -z "${DOCO_HANDLE:-}" ]; then
+if [ -z "${DOCO_HANDLE:-}" ]; then
   DISCONNECTED_REASON="missing .doco/connections.md Doco URL"
 elif ! command -v node >/dev/null 2>&1; then
   DISCONNECTED_REASON="node is not installed"
@@ -114,15 +113,15 @@ elif [ -n "$PROMPT" ]; then
   else
     REASON=""
     case "$SEARCH_CODE:$HTTP_STATUS" in
-      missing_access:*) REASON="missing DOCO_ACCESS — complete the Doco OAuth device flow for this checkout" ;;
+      missing_access:*) REASON="missing DOCO_ACCESS and no usable DOCO_REFRESH/DOCO_CLIENT_ID — complete the Doco OAuth device flow for this checkout" ;;
       missing_doco_handle:*) REASON="missing .doco/connections.md Doco URL" ;;
       network:*|timeout:*|*:000|*:0) REASON="doco.to unreachable" ;;
-      *:401) REASON="DOCO_ACCESS invalid or revoked — re-authenticate with the Doco OAuth device flow" ;;
+      *:401) REASON="DOCO_ACCESS invalid or revoked and local refresh did not recover it — re-authenticate with the Doco OAuth device flow" ;;
       *) REASON="${SEARCH_ERROR:-search failed with HTTP ${HTTP_STATUS}}" ;;
     esac
     case "$HTTP_STATUS" in
       000) REASON="doco.to unreachable" ;;
-      401) REASON="DOCO_ACCESS invalid or revoked — re-authenticate with the Doco OAuth device flow" ;;
+      401) REASON="DOCO_ACCESS invalid or revoked and local refresh did not recover it — re-authenticate with the Doco OAuth device flow" ;;
     esac
     GUIDANCE=""
     if [ -n "$RESP" ] && { [ "$HTTP_STATUS" = "403" ] || [ "$HTTP_STATUS" = "404" ]; }; then

@@ -66,7 +66,9 @@ filtered.
 
 Tools exposed:
 
-- `doco_search` — query the Doco for relevant prior context.
+- `doco_search` — query the Doco for relevant prior context. It
+  refreshes a missing or stale `DOCO_ACCESS` from `DOCO_REFRESH` +
+  `DOCO_CLIENT_ID` before falling back to device flow.
 - `doco_authenticate` — start OAuth device-flow auth (returns a URL
   immediately, does not block).
 - `doco_complete_authentication` — finalize after user approves
@@ -76,13 +78,17 @@ Agents working in the **same local repository checkout** share the
 repo-root `.env` credential. The MCP server rereads that file for each
 Doco call and writes successful auth back there, so if another agent in
 this checkout already authorized, retry `doco_search` before asking the
-user to approve again. Separate clones, worktrees, machines, or remote
-sandboxes need their own local `.env`; never commit credentials.
+user to approve again. If `.env` has `DOCO_REFRESH` and
+`DOCO_CLIENT_ID`, `doco_search` will mint a fresh `DOCO_ACCESS` locally
+and write the rotated credential back to `.env` before prompting the
+user. Separate clones, worktrees, machines, or remote sandboxes need
+their own local `.env`; never commit credentials.
 
 Call `doco_search` before answering substantive questions about this
 project's conventions, prior decisions, or architectural history. If
-it returns 401/403, call `doco_authenticate` → show the user the URL
-→ `doco_complete_authentication`. The per-turn search injection that
+it returns 401/403 after checking `.env` and trying refresh, call
+`doco_authenticate` → show the user the URL →
+`doco_complete_authentication`. The per-turn search injection that
 hooks used to deliver is now agent-initiated via these tools.
 
 ---
@@ -125,13 +131,15 @@ query is sent), then the N-found line AFTER the result returns:
 
 The verb is randomized — "Searching the lore...", "Polling the
 Doco...", "Peering into the orb..." etc. **Only render the verb if
-you have `DOCO_ACCESS` and expect the search to succeed.** If
-DOCO_ACCESS is empty, skip the search and go to the not-connected
-flow below — no verb.
+you have `DOCO_ACCESS`, or a shared `.env` with `DOCO_REFRESH` +
+`DOCO_CLIENT_ID`, and expect the search to succeed.** If both
+DOCO_ACCESS and refresh credentials are missing, skip the search and
+go to the not-connected flow below — no verb.
 
-**If you need the Doco but access isn't set up yet** (no DOCO_ACCESS
-after checking the shared repo-root `.env`, or `doco_search` returned
-401/403, or a `[🔮 Doco] Not connected yet:` block is in your context):
+**If you need the Doco but access isn't set up yet** (no usable
+DOCO_ACCESS and no usable DOCO_REFRESH/DOCO_CLIENT_ID after checking
+the shared repo-root `.env`, or `doco_search` returned 401/403 after
+refresh, or a `[🔮 Doco] Not connected yet:` block is in your context):
 
 1. Call `doco_authenticate` to get the verification URL.
 2. Render the block returned by `doco_authenticate` at the top of

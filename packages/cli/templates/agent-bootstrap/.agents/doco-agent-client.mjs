@@ -6,7 +6,7 @@
 // then sends the bearer credential from inside Node's fetch call. No
 // dependencies; requires Node 18+ for global fetch.
 
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 
 const DEFAULT_HOST = "https://doco.to";
@@ -32,16 +32,11 @@ try {
 }
 
 async function runBootstrap() {
-  const access = readAccess();
-  if (!access) return finish(fail("missing_access", "missing DOCO_ACCESS"), 2);
   const url = new URL("/api/v1/agent-bootstrap.json", host);
-  finish(await requestJson(url, access));
+  finish(await requestJsonWithAuth(url));
 }
 
 async function runSearch() {
-  const access = readAccess();
-  if (!access) return finish(fail("missing_access", "missing DOCO_ACCESS"), 2);
-
   const query = takeValue("--q") || takeValue("--query") || args.join(" ").trim();
   if (!query) return finish(fail("usage", "search requires --q <query>"), 2);
 
@@ -53,18 +48,77 @@ async function runSearch() {
   const url = new URL(`/${encodeURIComponent(handle)}/search.json`, host);
   url.searchParams.set("q", query);
   url.searchParams.set("limit", takeValue("--limit") || "10");
-  finish(await requestJson(url, access));
+  finish(await requestJsonWithAuth(url));
 }
 
-async function requestJson(url, access) {
+async function requestJsonWithAuth(url) {
+  let access = readAccess();
+  let refreshed = false;
+  if (!access) {
+    const refresh = await refreshStoredCredential();
+    if (refresh.ok) {
+      access = refresh.access;
+      refreshed = true;
+    }
+  }
+  if (!access) return fail("missing_access", "missing DOCO_ACCESS");
+
+  let result = await requestJson(url, { access });
+  if (result.status === 401 && access.startsWith("doco_at_")) {
+    const refresh = await refreshStoredCredential();
+    if (refresh.ok) {
+      result = await requestJson(url, { access: refresh.access });
+      refreshed = true;
+    } else {
+      result.refresh_error = refresh.error;
+    }
+  }
+  if (refreshed && result.ok) result.refreshed = true;
+  return result;
+}
+
+async function refreshStoredCredential() {
+  const refreshToken = readEnv("DOCO_REFRESH").trim();
+  const clientId = readEnv("DOCO_CLIENT_ID").trim();
+  if (!refreshToken || !clientId) {
+    return fail("missing_refresh", "missing DOCO_REFRESH or DOCO_CLIENT_ID");
+  }
+  const url = new URL("/oauth/token", host);
+  const params = new URLSearchParams({
+    grant_type: "refresh_token",
+    refresh_token: refreshToken,
+    client_id: clientId,
+  });
+  const result = await requestJson(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: params.toString(),
+  });
+  const access = String(result.body?.access_token || "").trim();
+  if (!result.ok || !access) {
+    return fail("refresh_failed", result.error || "refresh token exchange failed");
+  }
+  writeEnvUpdates({
+    DOCO_ACCESS: access,
+    ...(result.body?.refresh_token ? { DOCO_REFRESH: String(result.body.refresh_token) } : {}),
+    DOCO_CLIENT_ID: clientId,
+  });
+  return { ok: true, access };
+}
+
+async function requestJson(url, options = {}) {
   const controller = new AbortController();
   const timer = setTimeout(
     () => controller.abort(),
     Number.isFinite(timeoutMs) ? timeoutMs : DEFAULT_TIMEOUT_MS,
   );
   try {
+    const headers = { ...(options.headers || {}) };
+    if (options.access) headers.Authorization = `Bearer ${options.access}`;
     const response = await fetch(url, {
-      headers: { Authorization: `Bearer ${access}` },
+      method: options.method || "GET",
+      headers,
+      body: options.body,
       signal: controller.signal,
     });
     const text = await response.text();
@@ -175,6 +229,22 @@ function readEnvFile() {
     out[match[1]] = unquote(match[2].trim());
   }
   return out;
+}
+
+function writeEnvUpdates(updates) {
+  const path = join(PROJECT_ROOT, ".env");
+  const existing = existsSync(path) ? readFileSync(path, "utf8") : "";
+  const updateKeys = new Set(Object.keys(updates));
+  const keepLines = existing.split(/\r?\n/).filter((line) => {
+    const match = line.match(/^([A-Za-z_][A-Za-z0-9_]*)=/);
+    return !(match && updateKeys.has(match[1]));
+  });
+  while (keepLines.length > 0 && keepLines[keepLines.length - 1] === "") keepLines.pop();
+  for (const [key, value] of Object.entries(updates)) {
+    keepLines.push(`${key}=${value}`);
+  }
+  keepLines.push("");
+  writeFileSync(path, keepLines.join("\n"), { mode: 0o600 });
 }
 
 function unquote(value) {

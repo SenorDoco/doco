@@ -67,8 +67,11 @@ const SERVER_INSTRUCTIONS = [
   "the repo-root .env credential. This server rereads .env for every Doco",
   "call and prefers it over stale inherited environment variables, so if",
   "another agent in this checkout just authorized, retry doco_search before",
-  "asking the user to approve again. Separate clones or machines need their",
-  "own local .env because credentials are secret and must not be committed.",
+  "asking the user to approve again. If DOCO_ACCESS is missing or expired",
+  "but .env has DOCO_REFRESH and DOCO_CLIENT_ID, doco_search refreshes the",
+  "credential locally, writes the new token back to .env, and retries before",
+  "falling back to device flow. Separate clones or machines need their own",
+  "local .env because credentials are secret and must not be committed.",
   "",
   "When to call doco_search: before answering substantive questions about",
   "this project's conventions, prior decisions, or architectural history.",
@@ -79,6 +82,34 @@ const SERVER_INSTRUCTIONS = [
   "decide what — if anything — to capture. The universal protocol does NOT",
   "mandate captures; follow whatever the active Doco's policies say.",
   "",
+  "HTTP API body structure: capture specs exist for decisions, intents,",
+  "actions, logs, rules, evals, references, states, ideas, policies,",
+  "settings, and principals. Principals expose a smaller surface (create",
+  "+ retire only) — read the `principals.txt` spec rather than assuming",
+  "the generic capture body. Invites and audit have dedicated route",
+  "behavior; do not infer write bodies for them from the generic capture",
+  "pattern.",
+  "",
+  "Before POST/PATCH, read `GET /<handle>/api/<type>.txt` for the exact",
+  "request body when that spec exists. Principal references in request",
+  "bodies use principal ids only: `*_principal_id` for one principal and",
+  "`*_principal_ids` for arrays. Do not send principal names, `*_name`",
+  "fields, or comma-separated strings; there are no aliases.",
+  "",
+  "Common API-facing principal fields:",
+  "- `wanted_by_principal_id`: Intent owner; auth fills this when omitted.",
+  "- `actors_principal_ids`: Intent actors; always an array of principal ids.",
+  "- `stakeholders_principal_ids`: Intent stakeholders; always an array.",
+  "- `actor_principal_id`: Action/Log actor; auth fills this when omitted.",
+  "- `decided_by_principal_id`: Decision maker; auth fills this when omitted.",
+  "- `authored_by_principal_id`: Rule/Eval/Policy author; auth fills this.",
+  "- `created_by_principal_id`: creator override where supported.",
+  "",
+  "Read responses may expose stored graph fields such as `wanted_by`,",
+  "`actors`, `stakeholders`, `actor_id`, `decided_by`, and `created_by`.",
+  "Those are storage field names; write requests should use the",
+  "API-facing principal-id fields above.",
+  "",
   "Rendering order matters. Text between tool calls is shown to the user",
   "as those tool calls run, so render indicators AROUND tool calls, not all",
   "at the end:",
@@ -88,8 +119,8 @@ const SERVER_INSTRUCTIONS = [
   "  if you have DOCO_ACCESS and expect success — skip otherwise).",
   "- After doco_search succeeds, render `[🔮 Doco] N neurons found (X.Xs)`.",
   "",
-  "If doco_search returns 401/403 (or you have no DOCO_ACCESS after this",
-  "server has checked the shared repo .env):",
+  "If doco_search returns 401/403 (after this server has checked the shared",
+  "repo .env and tried DOCO_REFRESH when available):",
   "1. Call doco_authenticate. It returns a ready-to-render block with a",
   "   clickable verification URL in markdown-link form.",
   "2. Render that block at the top of your reply. The user clicks the link,",
@@ -105,9 +136,32 @@ const SERVER_INSTRUCTIONS = [
   "   that hasn't checked them risks contradicting them.",
   "",
   "Auth: this server reads DOCO_ACCESS from the repo-root .env first, then",
-  "the spawning shell, and forwards it as a Bearer token. Successful device",
-  "auth writes back to that same .env so other agents in this local checkout",
-  "reuse the credential. Public Docos work without auth.",
+  "the spawning shell, and forwards it as a Bearer token. If the access",
+  "token is missing or stale and DOCO_REFRESH + DOCO_CLIENT_ID are present,",
+  "doco_search exchanges the refresh token at /oauth/token and writes the",
+  "rotated credential back to .env. Successful device auth writes back to",
+  "that same .env so other agents in this local checkout reuse the",
+  "credential. Public Docos work without auth.",
+  "",
+  "Persisting credentials across containers and clones — surface to the user",
+  "ONCE after each successful auth (the doco_complete_authentication response",
+  "already includes the exact wording). The two options the protocol",
+  "supports:",
+  "",
+  "  1. DOCO_ACCESS as a runtime environment variable. The user sets it on",
+  "     the *remote execution environment* (Claude Code on the Web env vars,",
+  "     Codespaces secrets, etc.). Every fresh container inherits it; no",
+  "     re-auth needed. Private to the user; never commit.",
+  "",
+  "  2. Committable project tokens. The Doco owner mints a read-only token",
+  "     at <host>/<handle>/project-tokens and commits it to",
+  "     .doco/project-tokens.json. Any agent cloning the repo can read the",
+  "     Doco without auth. Only suitable when the Doco's contents are OK to",
+  "     be readable by anyone who can read the repo. This MCP server reads",
+  "     .doco/project-tokens.json automatically when no DOCO_ACCESS is set.",
+  "",
+  "Do NOT prompt for these on every auth — once per successful auth is the",
+  "limit. The user can act on the suggestion or move on.",
 ].join("\n");
 
 const SEARCH_TOOL = {
@@ -125,7 +179,10 @@ const SEARCH_TOOL = {
     "Skip only for greetings, off-topic chat, or questions clearly outside",
     "the project's scope.",
     "",
-    "On 401/403, call doco_authenticate to acquire credentials, then retry.",
+    "Before returning 401/403, this tool checks the shared repo .env and,",
+    "when DOCO_REFRESH + DOCO_CLIENT_ID are present, refreshes the local",
+    "credential and retries. If it still returns 401/403, call",
+    "doco_authenticate to acquire credentials, then retry.",
   ].join("\n"),
   inputSchema: {
     type: "object",
@@ -321,7 +378,6 @@ async function handleSearch(message) {
   }
   const limit = clampLimit(args.limit);
 
-  const access = readEnv("DOCO_ACCESS").trim();
   const handle = readEnv("DOCO_HANDLE") || readDocoHandle();
   if (!handle) {
     return errorResult(
@@ -335,9 +391,9 @@ async function handleSearch(message) {
   url.searchParams.set("q", query);
   url.searchParams.set("limit", String(limit));
 
-  const result = await requestJson(url, { access });
+  const result = await requestJsonWithStoredCredential(url, host);
   if (!result.ok) {
-    return errorResult(message.id, formatErrorForAgent(result, handle, access));
+    return errorResult(message.id, formatErrorForAgent(result, handle, result.hadAccess));
   }
 
   return send({
@@ -345,6 +401,79 @@ async function handleSearch(message) {
     id: message.id,
     result: { content: [{ type: "text", text: formatHits(result.body, handle) }] },
   });
+}
+
+async function requestJsonWithStoredCredential(url, host) {
+  let access = readEnv("DOCO_ACCESS").trim();
+  let hadAccess = Boolean(access);
+  let refreshError = "";
+
+  if (!access) {
+    const refresh = await refreshStoredCredential(host);
+    if (refresh.ok) {
+      access = refresh.access;
+      hadAccess = true;
+    } else if (refresh.code !== "missing_refresh") {
+      refreshError = refresh.error || refresh.code;
+    }
+  }
+
+  let result = await requestJson(url, { access });
+  if (result.status === 401 && access.startsWith("doco_at_")) {
+    const refresh = await refreshStoredCredential(host);
+    if (refresh.ok) {
+      access = refresh.access;
+      hadAccess = true;
+      result = await requestJson(url, { access });
+    } else {
+      refreshError = refresh.error || refresh.code;
+    }
+  }
+
+  result.hadAccess = hadAccess;
+  if (refreshError) result.refresh_error = refreshError;
+  return result;
+}
+
+async function refreshStoredCredential(host) {
+  const refreshToken = readEnv("DOCO_REFRESH").trim();
+  const clientId = readEnv("DOCO_CLIENT_ID").trim();
+  if (!refreshToken || !clientId) {
+    return {
+      ok: false,
+      status: 0,
+      code: "missing_refresh",
+      error: "missing DOCO_REFRESH or DOCO_CLIENT_ID",
+    };
+  }
+
+  const url = new URL(TOKEN_PATH, host);
+  const params = new URLSearchParams({
+    grant_type: "refresh_token",
+    refresh_token: refreshToken,
+    client_id: clientId,
+  });
+  const result = await requestJson(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: params.toString(),
+  });
+  const access = String(result.body?.access_token || "").trim();
+  if (!result.ok || !access) {
+    return {
+      ok: false,
+      status: result.status,
+      code: "refresh_failed",
+      error: result.error || "refresh token exchange failed",
+    };
+  }
+
+  writeEnvUpdates({
+    DOCO_ACCESS: access,
+    ...(result.body?.refresh_token ? { DOCO_REFRESH: String(result.body.refresh_token) } : {}),
+    DOCO_CLIENT_ID: clientId,
+  });
+  return { ok: true, access };
 }
 
 async function handleAuthenticate(message) {
@@ -462,8 +591,9 @@ async function handleCompleteAuthenticate(message) {
     const poll = await pollTokenOnce(host, state.client_id, state.device_code);
     if (poll.kind === "approved") {
       const tokens = poll.tokens;
+      const accessToken = String(tokens.access_token || "");
       writeEnvUpdates({
-        DOCO_ACCESS: String(tokens.access_token || ""),
+        DOCO_ACCESS: accessToken,
         ...(tokens.refresh_token ? { DOCO_REFRESH: String(tokens.refresh_token) } : {}),
         DOCO_CLIENT_ID: state.client_id,
       });
@@ -477,7 +607,7 @@ async function handleCompleteAuthenticate(message) {
           content: [
             {
               type: "text",
-              text: `Authenticated. Wrote DOCO_ACCESS to ./.env (mode 0600). You now have ${role} access to Doco '${handle}'. Retry doco_search.`,
+              text: formatAuthSuccessText({ handle, role, accessToken, host }),
             },
           ],
         },
@@ -583,6 +713,33 @@ async function pollTokenOnce(host, clientId, deviceCode) {
   }
 }
 
+function formatAuthSuccessText({ handle, role, accessToken, host }) {
+  // After a successful device-flow auth, every fresh container or new
+  // clone has to repeat this dance — unless the user persists the
+  // credential somewhere durable. Surface the two options the protocol
+  // supports so the agent can tell the user once, right when the pain
+  // is fresh.
+  //
+  // Why both options every time: most agents can't reliably detect
+  // whether they're in an ephemeral sandbox or on a persistent local
+  // machine, and the project-token option depends on a per-Doco
+  // sensitivity judgement only the user can make. Cheaper to surface
+  // both and let the user pick than to guess wrong.
+  const tokenSuffix = accessToken ? accessToken.slice(-6) : "";
+  const tokenHint = tokenSuffix ? ` (token ending …${tokenSuffix})` : "";
+  return [
+    `Authenticated. Wrote DOCO_ACCESS to ./.env (mode 0600). You now have ${role} access to Doco '${handle}'${tokenHint}. Retry doco_search.`,
+    "",
+    "TELL THE USER ONCE, NOW: this auth dance repeats on every fresh container or new machine unless they persist the credential. The two options:",
+    "",
+    "1. Set DOCO_ACCESS as a persistent environment variable on the *remote execution environment* (not the repo) — fresh containers then inherit it without prompting. For Claude Code on the Web, the Environment configuration is at https://code.claude.com/docs/en/claude-code-on-the-web. Other sandboxes (Codespaces, Replit, etc.) expose a similar env-vars setting. The DOCO_ACCESS value is private to the user; do not paste it for them, just tell them to copy it from .env.",
+    "",
+    `2. If this Doco's contents are OK to be readable by anyone with read access to this repository, the Doco owner can mint a "project token" — a committable, read-only token stored in .doco/project-tokens.json. Any agent cloning the repo then reads the Doco without authenticating. Mint at ${host}/${handle}/project-tokens (owner-only, requires explicit confirmation that repo readers = acceptable Doco readers).`,
+    "",
+    "Both are optional. Surface them once and continue with the substantive answer; do not re-prompt on every turn.",
+  ].join("\n");
+}
+
 function formatHits(body, handle) {
   if (!body || typeof body !== "object") {
     return `Doco search returned no parseable body for handle '${handle}'.`;
@@ -591,13 +748,17 @@ function formatHits(body, handle) {
   const ms = Number(body.duration_ms ?? 0);
   const secs = (ms / 1000).toFixed(1);
   const hits = Array.isArray(body.hits) ? body.hits : [];
+  // Doco-level goal description rides along on every search response so
+  // the agent sees what this Doco is for the moment it queries it.
+  const goal = String(body.doco_goal || "").trim();
+  const goalPrefix = goal ? `Doco goal: ${goal}\n\n` : "";
 
   if (count === 0) {
-    return `No matches in Doco '${handle}' (${secs}s). Either the project has no prior neurons covering this, or the query phrasing missed them — try synonyms.`;
+    return `${goalPrefix}No matches in Doco '${handle}' (${secs}s). Either the project has no prior neurons covering this, or the query phrasing missed them — try synonyms.`;
   }
 
   const lines = [
-    `Found ${count} neuron${count === 1 ? "" : "s"} in Doco '${handle}' (${secs}s):`,
+    `${goalPrefix}Found ${count} neuron${count === 1 ? "" : "s"} in Doco '${handle}' (${secs}s):`,
     "",
   ];
   for (const hit of hits) {
@@ -616,17 +777,23 @@ function formatErrorForAgent(result, handle, hadAccess) {
   const error = result.error || "request failed";
 
   if (status === 401) {
+    if (result.refresh_error) {
+      return `Doco search unauthorized (401) for handle '${handle}'. The stored refresh credential could not be exchanged (${result.refresh_error}) — call doco_authenticate to acquire a fresh credential.`;
+    }
     return `Doco search unauthorized (401) for handle '${handle}'. ${
       hadAccess
-        ? "Your DOCO_ACCESS is invalid or expired — call doco_authenticate to acquire a fresh credential."
-        : "No DOCO_ACCESS in the shared repo-root .env. Call doco_authenticate to start the OAuth device flow."
+        ? "Your DOCO_ACCESS is invalid or expired, and local refresh did not recover it — call doco_authenticate to acquire a fresh credential."
+        : "No usable DOCO_ACCESS or DOCO_REFRESH/DOCO_CLIENT_ID in the shared repo-root .env. Call doco_authenticate to start the OAuth device flow."
     }`;
   }
   if (status === 403) {
+    if (result.refresh_error) {
+      return `Doco search forbidden (403) for handle '${handle}'. The stored refresh credential could not be exchanged (${result.refresh_error}), and the Doco is private or this credential lacks access. Call doco_authenticate with target_doco_handle='${handle}' to request access.`;
+    }
     return `Doco search forbidden (403) for handle '${handle}'. ${
       hadAccess
         ? `The current credential lacks read access to this Doco. Call doco_authenticate with target_doco_handle='${handle}' to request access (a project owner will need to approve).`
-        : "No DOCO_ACCESS sent from the shared repo-root .env (and the Doco is private). Call doco_authenticate to start the OAuth device flow."
+        : "No usable DOCO_ACCESS or DOCO_REFRESH/DOCO_CLIENT_ID sent from the shared repo-root .env (and the Doco is private). Call doco_authenticate to start the OAuth device flow."
     }`;
   }
   if (status === 404) {
@@ -708,7 +875,21 @@ function parseJson(text) {
 
 function readEnv(name) {
   const envFile = readEnvFile();
-  return envFile[name] || process.env[name] || "";
+  const fromEnvFile = envFile[name];
+  if (fromEnvFile) return fromEnvFile;
+  const fromProcess = process.env[name];
+  if (fromProcess) return fromProcess;
+  // Committable per-repo fallback for DOCO_ACCESS. The Doco owner can
+  // mint a read-only "project token" and commit it to
+  // .doco/project-tokens.json — any agent cloning the repo can then
+  // read the Doco without authenticating, as long as the Doco's
+  // contents are OK to be readable by anyone who can read the repo.
+  if (name === "DOCO_ACCESS") {
+    const handle = readDocoHandle();
+    const projectToken = readProjectToken(handle);
+    if (projectToken) return projectToken;
+  }
+  return "";
 }
 
 function readEnvFile() {
@@ -764,6 +945,24 @@ function unquote(value) {
     return value.slice(1, -1);
   }
   return value;
+}
+
+function readProjectToken(handle) {
+  if (!handle) return "";
+  const path = join(PROJECT_ROOT, ".doco", "project-tokens.json");
+  if (!existsSync(path)) return "";
+  let parsed;
+  try {
+    parsed = JSON.parse(readFileSync(path, "utf8"));
+  } catch {
+    return "";
+  }
+  if (!parsed || typeof parsed !== "object") return "";
+  const value = parsed[handle];
+  if (typeof value !== "string") return "";
+  const trimmed = value.trim();
+  if (!trimmed.startsWith("doco_pt_")) return "";
+  return trimmed;
 }
 
 function readDocoHandle() {
