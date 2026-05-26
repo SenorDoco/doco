@@ -12,6 +12,14 @@ function tableRegex(prefix: string, table: string): RegExp {
   return new RegExp(String.raw`\b${prefix}\s+${table}\b`, "i");
 }
 
+function tableBlock(table: string): string {
+  const match = new RegExp(
+    String.raw`CREATE TABLE IF NOT EXISTS ${table}\s*\(([\s\S]*?)\n\);`,
+    "i",
+  ).exec(schemaSql);
+  return match?.[1] ?? "";
+}
+
 describe("dashboard doco stats entity tables", () => {
   it("only queries entity tables that schema.sql leaves available", () => {
     for (const table of ENTITY_TABLES) {
@@ -22,5 +30,11 @@ describe("dashboard doco stats entity tables", () => {
 
   it("counts Doco-authored role principals as neuron stats", () => {
     expect(ENTITY_TABLES).toContain("principals");
+  });
+
+  it("can fall back to entity updated_at for pre-audit content", () => {
+    for (const table of ENTITY_TABLES) {
+      expect(tableBlock(table)).toMatch(/\bupdated_at\s+timestamptz\b/i);
+    }
   });
 });
