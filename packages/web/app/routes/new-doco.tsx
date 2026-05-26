@@ -12,7 +12,7 @@ import {
   handleValidityMessage,
 } from "~/lib/handle-format";
 import { isOrgMember, listMyOrgs, lookupOrgHandle } from "~/lib/org-helpers.server";
-import { withCreatedDocoId } from "~/lib/post-create-doco-route";
+import { withCreatedDocoChatId, withCreatedDocoId } from "~/lib/post-create-doco-route";
 import {
   addOrganizationByHandle,
   createDocoInOrg,
@@ -184,7 +184,12 @@ export async function action({ request }: { request: Request }) {
       autoSuffix: accept,
       goal: state.goal,
     });
-    throw redirect(withCreatedDocoId(`/${rec.handle}/welcome`, rec.docoId));
+    throw redirect(
+      withCreatedDocoChatId(
+        withCreatedDocoId(`/${rec.handle}/welcome`, rec.docoId),
+        rec.companionChatId,
+      ),
+    );
   } catch (e) {
     if (e instanceof Response) throw e;
     const message = (e as Error).message;

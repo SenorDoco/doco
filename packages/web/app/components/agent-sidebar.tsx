@@ -19,6 +19,10 @@ import { Link, useLocation, useNavigate } from "react-router";
 import { DocoMark } from "~/components/doco-mark";
 import { cn } from "~/lib/cn";
 import { type GraphReferenceGroup, readGraphReferenceGroups } from "~/lib/graph-references";
+import {
+  CREATED_DOCO_CHAT_ID_SEARCH_PARAM,
+  readCreatedDocoChatIdSearchParams,
+} from "~/lib/post-create-doco-route";
 import type { CurrentPrincipal } from "~/lib/session.server";
 
 interface ContentBlockText {
@@ -307,6 +311,25 @@ function writeStringFlag(key: string, value: string | null): void {
   }
 }
 
+function readCreatedDocoChatIdFromLocationSearch(search: string): string | null {
+  return readCreatedDocoChatIdSearchParams(new URLSearchParams(search));
+}
+
+function readInitialConversationId(): string | null {
+  if (typeof window === "undefined") return readStringFlag(ACTIVE_CONV_KEY);
+  return (
+    readCreatedDocoChatIdFromLocationSearch(window.location.search) ??
+    readStringFlag(ACTIVE_CONV_KEY)
+  );
+}
+
+function removeCreatedDocoChatIdFromSearch(search: string): string {
+  const params = new URLSearchParams(search);
+  params.delete(CREATED_DOCO_CHAT_ID_SEARCH_PARAM);
+  const next = params.toString();
+  return next ? `?${next}` : "";
+}
+
 /**
  * Display name for a thread. Server returns null until the first user
  * message is sent (and even then, attachment-only messages leave it
@@ -412,7 +435,7 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
   // the dropdown contents; loaded on demand when the user opens the
   // list and refreshed when threads change.
   const [conversationId, setConversationId] = useState<string | null>(() =>
-    readStringFlag(ACTIVE_CONV_KEY),
+    readInitialConversationId(),
   );
   const [conversationTitle, setConversationTitle] = useState<string | null>(null);
   // Resolved {handle, name} for the Docos/Orgs the agent has touched
@@ -430,7 +453,7 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
   // or remounts don't bounce them back to the list. The list is the
   // "nothing open" fallback, not the home page.
   const [view, setView] = useState<"chat" | "list">(() =>
-    readStringFlag(ACTIVE_CONV_KEY) ? "chat" : "list",
+    readInitialConversationId() ? "chat" : "list",
   );
   const [conversations, setConversations] = useState<ConversationListItem[]>([]);
   const [conversationsLoading, setConversationsLoading] = useState(false);
@@ -718,6 +741,47 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
       setConversationsLoading(false);
     }
   }, []);
+
+  useEffect(() => {
+    const createdChatId = readCreatedDocoChatIdFromLocationSearch(location.search);
+    if (!createdChatId) return;
+
+    if (createdChatId !== conversationId) {
+      abortRef.current?.abort();
+      setBusy(false);
+      setInFlight(null);
+      setQueuedSends([]);
+      setTurnUsage(null);
+      setRemoteInflight(false);
+      setThinkingEvents([]);
+      setMessages([]);
+      setAttachedDocos([]);
+      setAttachedOrgs([]);
+      setHasMore(false);
+      earliestRef.current = null;
+      setConversationId(createdChatId);
+      writeStringFlag(ACTIVE_CONV_KEY, createdChatId);
+      setView("chat");
+      setRenamingId(null);
+    } else {
+      writeStringFlag(ACTIVE_CONV_KEY, createdChatId);
+    }
+
+    void loadConversationsList();
+    navigate(
+      `${location.pathname}${removeCreatedDocoChatIdFromSearch(location.search)}${location.hash}`,
+      {
+        replace: true,
+      },
+    );
+  }, [
+    conversationId,
+    loadConversationsList,
+    location.hash,
+    location.pathname,
+    location.search,
+    navigate,
+  ]);
 
   const openThreadList = useCallback(() => {
     setView("list");
