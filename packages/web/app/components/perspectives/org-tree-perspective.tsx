@@ -29,6 +29,7 @@ import { type ComponentType, useCallback, useEffect, useMemo, useRef, useState }
 import { LifecycleBadge, ReferenceNumberBadge } from "~/components/neuron-badges";
 import { StandardControls, StandardMiniMap } from "~/components/perspective-canvas-overlays";
 import { lifecycleColor } from "~/lib/neuron-colors";
+import { ORG_TREE_NODE_H, ORG_TREE_NODE_W, layoutOrgTree } from "~/lib/org-tree-layout";
 import type { OrgTreeNode } from "~/lib/org-tree-perspective.server";
 import { type ReferenceCandidate, usePerspectiveReferences } from "~/lib/perspective-references";
 import "@xyflow/react/dist/style.css";
@@ -38,12 +39,6 @@ interface FlowViewport {
   y: number;
   zoom: number;
 }
-
-const NODE_W = 240;
-const NODE_H = 108;
-const H_GAP = 40;
-const V_GAP = 60;
-const MAX_DEPTH = 50;
 
 interface OrgTreePerspectiveProps {
   nodes: OrgTreeNode[];
@@ -61,123 +56,6 @@ interface OrgTreeNodeData extends Record<string, unknown> {
   // number can shift as the user pans/zooms — same contract as
   // the other perspectives.
   referenceNumber?: number;
-}
-
-// Tree-layout entry point. Returns positioned React Flow nodes + edges
-// in one pass so the component can pass them straight into <ReactFlow>.
-// Reference numbering is layered on top by `usePerspectiveReferences`
-// in OrgTreeInner — not threaded through here.
-function layoutOrgTree(
-  rawNodes: OrgTreeNode[],
-  centerId: string | null,
-): { nodes: Node<OrgTreeNodeData>[]; edges: Edge[] } {
-  if (rawNodes.length === 0) return { nodes: [], edges: [] };
-
-  const byId = new Map<string, OrgTreeNode>();
-  for (const n of rawNodes) byId.set(n.id, n);
-
-  // manager_id → [report_ids]. Stable child order = creation order
-  // (rawNodes is sorted by created_at server-side).
-  const childrenOf = new Map<string, string[]>();
-  for (const n of rawNodes) {
-    if (n.reports_to && byId.has(n.reports_to) && n.reports_to !== n.id) {
-      const list = childrenOf.get(n.reports_to) ?? [];
-      list.push(n.id);
-      childrenOf.set(n.reports_to, list);
-    }
-  }
-
-  // Roots = Principals with no resolvable manager. Includes orphans
-  // whose reports_to points outside the active set (e.g. a retired
-  // manager) — they render as their own root rather than disappearing.
-  const roots = rawNodes
-    .filter((n) => !n.reports_to || !byId.has(n.reports_to) || n.reports_to === n.id)
-    .map((n) => n.id);
-
-  // Subtree widths, memoized + cycle-safe.
-  const subtreeWidth = new Map<string, number>();
-  const measureStack = new Set<string>();
-  function measure(id: string): number {
-    if (subtreeWidth.has(id)) return subtreeWidth.get(id) as number;
-    if (measureStack.has(id)) {
-      // Cycle — treat as leaf to break the recursion.
-      subtreeWidth.set(id, NODE_W);
-      return NODE_W;
-    }
-    measureStack.add(id);
-    const children = childrenOf.get(id) ?? [];
-    let width: number;
-    if (children.length === 0) {
-      width = NODE_W;
-    } else {
-      const total = children.reduce((sum, c, i) => sum + measure(c) + (i > 0 ? H_GAP : 0), 0);
-      width = Math.max(NODE_W, total);
-    }
-    measureStack.delete(id);
-    subtreeWidth.set(id, width);
-    return width;
-  }
-
-  const positions = new Map<string, { x: number; y: number }>();
-  const placedStack = new Set<string>();
-  function place(id: string, leftX: number, depth: number): void {
-    if (depth > MAX_DEPTH || placedStack.has(id)) return;
-    placedStack.add(id);
-    const width = subtreeWidth.get(id) ?? NODE_W;
-    const x = leftX + width / 2 - NODE_W / 2;
-    const y = depth * (NODE_H + V_GAP);
-    positions.set(id, { x, y });
-    let childX = leftX;
-    for (const c of childrenOf.get(id) ?? []) {
-      place(c, childX, depth + 1);
-      childX += (subtreeWidth.get(c) ?? NODE_W) + H_GAP;
-    }
-  }
-
-  let rootX = 0;
-  for (const rootId of roots) {
-    place(rootId, rootX, 0);
-    rootX += (subtreeWidth.get(rootId) ?? NODE_W) + H_GAP;
-  }
-
-  const rfNodes: Node<OrgTreeNodeData>[] = rawNodes
-    .filter((n) => positions.has(n.id))
-    .map((n) => ({
-      id: n.id,
-      type: "orgTreeNode",
-      position: positions.get(n.id) as { x: number; y: number },
-      // initialWidth/Height (NOT style.width/height) seed React Flow's
-      // `node.measured.{width,height}` before its ResizeObserver
-      // settles. The MiniMap reads `measured` to render silhouettes —
-      // without these the MiniMap stays blank because it can't size
-      // the per-node rect. Mirrors the Graph perspective.
-      initialWidth: NODE_W,
-      initialHeight: NODE_H,
-      data: {
-        org: n,
-        isCenter: n.id === centerId,
-      },
-      draggable: false,
-      selectable: false,
-      style: { width: NODE_W, height: NODE_H },
-    }));
-
-  // Muted, low-contrast connector — matches the visual weight of the
-  // other perspectives and stays out of the way of the cards.
-  const edgeStroke = "var(--color-muted-foreground)";
-  const rfEdges: Edge[] = rawNodes
-    .filter((n) => n.reports_to && byId.has(n.reports_to) && n.reports_to !== n.id)
-    .map((n) => ({
-      id: `${n.id}->${n.reports_to}`,
-      source: n.reports_to as string,
-      target: n.id,
-      type: "smoothstep",
-      animated: false,
-      style: { stroke: edgeStroke, strokeWidth: 1.5, opacity: 0.6 },
-      markerEnd: { type: MarkerType.ArrowClosed, color: edgeStroke },
-    }));
-
-  return { nodes: rfNodes, edges: rfEdges };
 }
 
 // Custom React Flow node — the principal card.
@@ -200,7 +78,7 @@ function OrgTreeCard({ data }: NodeProps<Node<OrgTreeNodeData>>) {
       className={`relative flex flex-col justify-between rounded-md border bg-white px-3 py-2 shadow-sm transition ${
         isCenter ? "border-2 border-foreground" : "border-border"
       }`}
-      style={{ width: NODE_W, height: NODE_H }}
+      style={{ width: ORG_TREE_NODE_W, height: ORG_TREE_NODE_H }}
     >
       <ReferenceNumberBadge referenceNumber={referenceNumber} referenceLabel={org.name} />
       <Handle
@@ -303,10 +181,39 @@ function OrgTreeInner({
     return nodes.filter((n) => visibleLifecycles.has(n.lifecycle));
   }, [nodes, visibleLifecycles]);
 
-  const { nodes: rawRfNodes, edges: rfEdges } = useMemo(
-    () => layoutOrgTree(filtered, centerId ?? null),
-    [filtered, centerId],
-  );
+  const { nodes: rawRfNodes, edges: rfEdges } = useMemo(() => {
+    const layout = layoutOrgTree(filtered, centerId ?? null);
+    const nodes: Node<OrgTreeNodeData>[] = layout.nodes.map((n) => ({
+      id: n.id,
+      type: "orgTreeNode",
+      position: n.position,
+      // initialWidth/Height (NOT style.width/height) seed React Flow's
+      // `node.measured.{width,height}` before its ResizeObserver
+      // settles. The MiniMap reads `measured` to render silhouettes —
+      // without these the MiniMap stays blank because it can't size
+      // the per-node rect. Mirrors the Graph perspective.
+      initialWidth: ORG_TREE_NODE_W,
+      initialHeight: ORG_TREE_NODE_H,
+      data: {
+        org: n.org,
+        isCenter: n.isCenter,
+      },
+      draggable: false,
+      selectable: false,
+      style: { width: ORG_TREE_NODE_W, height: ORG_TREE_NODE_H },
+    }));
+    // Muted, low-contrast connector — matches the visual weight of
+    // the other perspectives and stays out of the way of the cards.
+    const edgeStroke = "var(--color-muted-foreground)";
+    const edges: Edge[] = layout.edges.map((e) => ({
+      ...e,
+      type: "smoothstep",
+      animated: false,
+      style: { stroke: edgeStroke, strokeWidth: 1.5, opacity: 0.6 },
+      markerEnd: { type: MarkerType.ArrowClosed, color: edgeStroke },
+    }));
+    return { nodes, edges };
+  }, [filtered, centerId]);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const flow = useReactFlow();
@@ -358,8 +265,8 @@ function OrgTreeInner({
         lifecycle: n.data.org.lifecycle,
         href: n.data.org.href ?? null,
         position: { x: n.position.x, y: n.position.y },
-        width: NODE_W,
-        height: NODE_H,
+        width: ORG_TREE_NODE_W,
+        height: ORG_TREE_NODE_H,
       })),
     [rawRfNodes],
   );
