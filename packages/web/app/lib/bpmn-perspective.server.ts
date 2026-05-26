@@ -43,6 +43,7 @@
 import { ALL_ENTITY_TABLES } from "@doco/db";
 import { parse as parseYaml } from "yaml";
 import type { OverviewGraphLink } from "~/components/overview-graph";
+import { computeForwardSequenceDepths } from "./bpmn-sequence-depth";
 import { highestRanked, pageRank } from "./pagerank";
 
 type QueryClient = {
@@ -106,9 +107,9 @@ export interface BpmnNode {
    *  intent under personalized PageRank without re-fetching). */
   intent_ids?: string[];
   /**
-   * Undirected BFS distance from the nearest initial State over the
-   * explicit BPMN sequence-flow graph. Renderer uses this as a floor
-   * for horizontal sequence depth. Falls back to 0 when unreachable.
+   * Server-side sequence-flow depth. The renderer uses this as a floor
+   * for horizontal sequence layout so incoming flow targets stay to
+   * the right of their source.
    */
   bfs_depth?: number;
 }
@@ -147,8 +148,6 @@ export const POOL_UNASSIGNED_ID = "pool:unassigned";
 // Non-actor neuron types: their pool placement comes from a different
 // signal (the host they re-home onto, or the Unassigned pool).
 const ARTIFACT_TYPES = new Set(["reference", "eval", "idea", "rule"]);
-const SEQUENCE_FLOW_SYNAPSES: ReadonlySet<string> = new Set(["sequence_flow"]);
-
 const SHAPE_BY_TYPE: Record<string, BpmnShape> = {
   state: "task", // same glyph as Action — full-sized, readable, not a compact band label
   decision: "diamond",
@@ -266,22 +265,6 @@ export async function loadBpmnGraph(
       synapse_type: r.synapse_type,
     }));
   }
-
-  // ── BFS depth from explicit start anchors ─────────────────────────
-  // BPMN ordering is based on explicit forward sequence flow only.
-  // Association synapses such as `serves`, `enacts`, and `gated_by`
-  // should not move nodes horizontally.
-  const startAnchors: string[] = [];
-  for (const row of allRows) {
-    if (row.entity_type === "state" && row.data?.kind === "initial") {
-      startAnchors.push(row.id);
-    }
-  }
-  const bfsDepthById = computeBfsDepths(
-    allRows.map((r) => r.id),
-    links.filter((link) => SEQUENCE_FLOW_SYNAPSES.has(link.synapse_type)),
-    startAnchors,
-  );
 
   // ── Global PageRank over the synapse graph ────────────────────────
   // Drives:
@@ -465,11 +448,20 @@ export async function loadBpmnGraph(
       shape: shapeForEntityType(row.entity_type),
       laneId,
       pool_id: poolId,
-      bfs_depth: bfsDepthById.get(row.id),
     };
     const intentIds = intentIdsByNeuron.get(row.id);
     if (intentIds && intentIds.length > 0) node.intent_ids = intentIds;
     nodes.push(node);
+  }
+
+  // ── Forward sequence depth ────────────────────────────────────────
+  // BPMN ordering is based on explicit forward sequence flow only.
+  // Association synapses such as `serves`, `enacts`, and `gated_by`
+  // should not move nodes horizontally.
+  const sequenceDepthById = computeForwardSequenceDepths(nodes, links);
+  for (const node of nodes) {
+    const depth = sequenceDepthById.get(node.id);
+    if (depth !== undefined && depth > 0) node.bfs_depth = depth;
   }
 
   // ── Build pools[] ─────────────────────────────────────────────────
@@ -680,7 +672,7 @@ function computeLaneEntryOrder(
   nodes: readonly BpmnNode[],
   links: readonly OverviewGraphLink[],
 ): Map<string, LaneEntryOrder> {
-  const depthByNode = computeSequenceDepths(nodes, links);
+  const depthByNode = computeForwardSequenceDepths(nodes, links);
   const orderByLane = new Map<string, LaneEntryOrder>();
 
   for (const node of nodes) {
@@ -720,87 +712,4 @@ function compareLaneEntryOrder(
   const bCreated = b?.firstCreatedAt ?? Number.POSITIVE_INFINITY;
   if (aCreated !== bCreated) return aCreated - bCreated;
   return 0;
-}
-
-function computeSequenceDepths(
-  nodes: readonly BpmnNode[],
-  links: readonly OverviewGraphLink[],
-): Map<string, number> {
-  const depth = new Map<string, number>();
-  const depthFloor = new Map<string, number>();
-  const nodeIds = new Set(nodes.map((n) => n.id));
-  const predecessors = new Map<string, string[]>();
-
-  for (const node of nodes) {
-    if (node.bfs_depth !== undefined && node.bfs_depth > 0) {
-      depthFloor.set(node.id, node.bfs_depth);
-    }
-    predecessors.set(node.id, []);
-  }
-  for (const link of links) {
-    if (!nodeIds.has(link.source) || !nodeIds.has(link.target)) continue;
-    if (!SEQUENCE_FLOW_SYNAPSES.has(link.synapse_type)) continue;
-    predecessors.get(link.target)?.push(link.source);
-  }
-
-  const visiting = new Set<string>();
-  function depthOf(id: string): number {
-    const cached = depth.get(id);
-    if (cached !== undefined) return cached;
-    if (visiting.has(id)) return 0;
-    visiting.add(id);
-    let max = depthFloor.get(id) ?? 0;
-    for (const pred of predecessors.get(id) ?? []) {
-      const d = depthOf(pred) + 1;
-      if (d > max) max = d;
-    }
-    visiting.delete(id);
-    depth.set(id, max);
-    return max;
-  }
-
-  for (const id of nodeIds) depthOf(id);
-  return depth;
-}
-
-/**
- * Undirected BFS distance from the nearest `starts` anchor over the
- * synapse graph induced by `links`. Returns a map of node id → BFS
- * distance for every reachable node; unreachable nodes are absent
- * from the map (callers default to 0 or treat as unknown). Anchors
- * themselves get distance 0.
- */
-function computeBfsDepths(
-  nodeIds: readonly string[],
-  links: readonly OverviewGraphLink[],
-  starts: readonly string[],
-): Map<string, number> {
-  const result = new Map<string, number>();
-  if (starts.length === 0 || nodeIds.length === 0) return result;
-  const nodeIdSet = new Set(nodeIds);
-  const adj = new Map<string, Set<string>>();
-  for (const id of nodeIds) adj.set(id, new Set());
-  for (const link of links) {
-    if (!nodeIdSet.has(link.source) || !nodeIdSet.has(link.target)) continue;
-    adj.get(link.source)?.add(link.target);
-    adj.get(link.target)?.add(link.source);
-  }
-  const queue: string[] = [];
-  for (const start of starts) {
-    if (!nodeIdSet.has(start) || result.has(start)) continue;
-    result.set(start, 0);
-    queue.push(start);
-  }
-  while (queue.length > 0) {
-    const current = queue.shift() as string;
-    const d = result.get(current) as number;
-    const neighbors = adj.get(current);
-    if (!neighbors) continue;
-    for (const neighbor of neighbors) {
-      if (result.has(neighbor)) continue;
-      result.set(neighbor, d + 1);
-      queue.push(neighbor);
-    }
-  }
-  return result;
 }

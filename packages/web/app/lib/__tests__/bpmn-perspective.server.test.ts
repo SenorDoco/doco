@@ -172,4 +172,68 @@ describe("loadBpmnGraph", () => {
 
     expect(actorLabels).toEqual(["Talent seeker", "SuD"]);
   });
+
+  it("assigns later sequence targets a greater layout depth even when a loop points back", async () => {
+    const intentId = "intent_01PROCESS";
+    const decisionId = "decision_01ROUTE";
+    const checkoutId = "action_01CHECKOUT";
+
+    const { client } = makeQueryClient({
+      neurons: [
+        {
+          id: intentId,
+          entity_type: "intent",
+          summary: "Talent seeker pays to activate Torre Reach",
+          lifecycle: "active",
+          created_at: "2026-05-26T00:00:00.000Z",
+          data: {},
+        },
+        {
+          id: decisionId,
+          entity_type: "decision",
+          summary: "Are credits enough for the first day?",
+          lifecycle: "active",
+          created_at: "2026-05-26T00:07:00.000Z",
+          data: {
+            decided_by: "principal_system",
+            intent_ids: [intentId],
+          },
+        },
+        {
+          id: checkoutId,
+          entity_type: "action",
+          summary: "Talent seeker completes Stripe checkout for credits",
+          lifecycle: "active",
+          created_at: "2026-05-26T00:15:00.000Z",
+          data: {
+            actor_id: "principal_talent",
+            intent_ids: [intentId],
+          },
+        },
+      ],
+      principals: [
+        {
+          id: "principal_system",
+          name: "System",
+          lifecycle: "active",
+        },
+        {
+          id: "principal_talent",
+          name: "Talent seeker",
+          lifecycle: "active",
+        },
+      ],
+      collaborators: [],
+      synapses: [
+        { from_id: decisionId, to_id: checkoutId, synapse_type: "sequence_flow" },
+        { from_id: checkoutId, to_id: decisionId, synapse_type: "sequence_flow" },
+      ],
+    });
+
+    const graph = await loadBpmnGraph(client, "doco_01", { handle: "activation" });
+    const decision = graph.nodes.find((node) => node.id === decisionId);
+    const checkout = graph.nodes.find((node) => node.id === checkoutId);
+
+    expect(checkout?.bfs_depth).toBeGreaterThan(decision?.bfs_depth ?? 0);
+  });
 });
