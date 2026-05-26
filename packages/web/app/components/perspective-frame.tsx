@@ -84,7 +84,7 @@ export function PerspectiveFrame({
   return (
     <FullscreenContext.Provider value={fullscreen ?? null}>
       <div
-        className={`neu-surface relative -mt-px w-full overflow-hidden rounded-b-lg rounded-tl-none rounded-tr-lg border border-border bg-card text-card-foreground ${sizeClass}`}
+        className={`neu-surface relative z-0 -mt-px w-full overflow-hidden rounded-b-lg rounded-tl-none rounded-tr-lg border border-border bg-card text-card-foreground ${sizeClass}`}
       >
         {children}
         {autoReorder ? (

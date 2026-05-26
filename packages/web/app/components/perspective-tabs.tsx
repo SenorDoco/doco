@@ -39,7 +39,7 @@ export function PerspectiveTabs({
       // against this nav element. The chevron is a direct child of
       // the nav, dropping the wrapper that previously caused
       // sub-pixel vertical misalignment with the Link tabs.
-      className="relative flex min-w-0 flex-wrap items-end self-start"
+      className="relative z-10 flex min-w-0 flex-wrap items-end self-start"
     >
       {perspectives.map((p, i) => (
         <PerspectiveTab
