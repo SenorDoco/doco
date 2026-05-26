@@ -1,7 +1,7 @@
 // /orgs — host-level "Your orgs" listing. Mirrors /docos: the orgs
 // the signed-in principal belongs to, ordered by recent activity
-// (MAX(audit_events.at) across each org's docos), plus an activity
-// heatmap + latest-activity feed sidebar.
+// across each org's docos, plus an activity heatmap + latest-activity
+// feed sidebar.
 
 import { withClient } from "@doco/db";
 import { entityUrl } from "@doco/shared";
@@ -62,11 +62,14 @@ export async function loader({ request }: { request: Request }) {
   const orgsRaw = await listMyOrgs(me.id);
 
   // Per-org aggregates: last activity across owned docos and total node
-  // count summed across every entity table. Separate pooled queries avoid
+  // count summed across every entity table. Entity timestamps are the
+  // fallback for imported/pre-audit content. Separate pooled queries avoid
   // serializing work through a single PoolClient.
   const orgIds = orgsRaw.map((o) => o.id);
-  const nodesUnionSql = ENTITY_TABLES.map((t) => `SELECT doco_id FROM ${t}`).join(" UNION ALL ");
-  const [orgLastActivity, orgNodeCount] = await Promise.all([
+  const nodesUnionSql = ENTITY_TABLES.map((t) => `SELECT doco_id, updated_at FROM ${t}`).join(
+    " UNION ALL ",
+  );
+  const [orgLastActivity, orgNodeStats] = await Promise.all([
     withClient(async (c) => {
       if (orgIds.length === 0) return new Map<string, string | null>();
       const r = await c.query<{ owner_id: string; last_at: string | null }>(
@@ -82,17 +85,26 @@ export async function loader({ request }: { request: Request }) {
       return m;
     }),
     withClient(async (c) => {
-      if (orgIds.length === 0) return new Map<string, number>();
-      const r = await c.query<{ owner_id: string; n: string }>(
-        `SELECT d.owner_id, COUNT(*)::text AS n
+      if (orgIds.length === 0) {
+        return new Map<string, { nodeCount: number; lastUpdatedAt: string | null }>();
+      }
+      const r = await c.query<{ owner_id: string; n: string; last_entity_at: string | null }>(
+        `SELECT d.owner_id,
+                COUNT(*)::text AS n,
+                MAX(t.updated_at)::text AS last_entity_at
            FROM (${nodesUnionSql}) t
            JOIN docos d ON d.id = t.doco_id
           WHERE d.owner_id = ANY($1)
           GROUP BY d.owner_id`,
         [orgIds],
       );
-      const m = new Map<string, number>();
-      for (const row of r.rows) m.set(String(row.owner_id), Number(row.n));
+      const m = new Map<string, { nodeCount: number; lastUpdatedAt: string | null }>();
+      for (const row of r.rows) {
+        m.set(String(row.owner_id), {
+          nodeCount: Number(row.n),
+          lastUpdatedAt: row.last_entity_at,
+        });
+      }
       return m;
     }),
   ]);
@@ -101,8 +113,11 @@ export async function loader({ request }: { request: Request }) {
     await Promise.all(
       orgsRaw.map(async (o) => ({
         ...o,
-        lastUpdatedAt: orgLastActivity.get(o.id) ?? null,
-        nodeCount: orgNodeCount.get(o.id) ?? 0,
+        lastUpdatedAt: newestIso(
+          orgLastActivity.get(o.id) ?? null,
+          orgNodeStats.get(o.id)?.lastUpdatedAt ?? null,
+        ),
+        nodeCount: orgNodeStats.get(o.id)?.nodeCount ?? 0,
       })),
     )
   ).sort((a, b) => {
@@ -203,6 +218,12 @@ export async function loader({ request }: { request: Request }) {
   });
 
   return { me, orgs, byDay, feed };
+}
+
+function newestIso(a: string | null, b: string | null): string | null {
+  if (!a) return b;
+  if (!b) return a;
+  return a > b ? a : b;
 }
 
 export function meta() {

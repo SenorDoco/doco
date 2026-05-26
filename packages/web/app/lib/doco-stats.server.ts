@@ -6,9 +6,8 @@
 // Doco's principals. Policies are not neurons and are deliberately
 // excluded — they are surfaced via /<handle>/api/policies.json.
 // `synapses` reads the materialized `synapses` table.
-// `lastUpdatedAt` is the max `at` from `audit_events` — that captures
-// both inserts and updates and is cheap because audit_events is
-// already indexed by doco_id.
+// `lastUpdatedAt` prefers the max `at` from `audit_events`, and falls
+// back to entity `updated_at` for imported/pre-audit Docos.
 
 import { withClient } from "@doco/db";
 
@@ -44,13 +43,14 @@ export async function listDocoStats(docoIds: readonly string[]): Promise<Map<str
   return withClient(async (c) => {
     const neuronsSql = STATS_ENTITY_TABLE_SPECS.map(
       (spec) =>
-        `SELECT ${spec.docoIdSql} AS doco_id, lifecycle FROM ${spec.table} WHERE ${spec.docoWhereSql}`,
+        `SELECT ${spec.docoIdSql} AS doco_id, lifecycle, updated_at FROM ${spec.table} WHERE ${spec.docoWhereSql}`,
     ).join(" UNION ALL ");
     const [neuronsRows, synapsesRows, updatedRows] = await Promise.all([
-      c.query<{ doco_id: string; n: string; active_n: string }>(
+      c.query<{ doco_id: string; n: string; active_n: string; last_entity_at: string | null }>(
         `SELECT doco_id,
                 COUNT(*)::text AS n,
-                COUNT(*) FILTER (WHERE COALESCE(lifecycle, 'active') = 'active')::text AS active_n
+                COUNT(*) FILTER (WHERE COALESCE(lifecycle, 'active') = 'active')::text AS active_n,
+                MAX(updated_at)::text AS last_entity_at
            FROM (${neuronsSql}) t
           GROUP BY doco_id`,
         [ids],
@@ -71,6 +71,7 @@ export async function listDocoStats(docoIds: readonly string[]): Promise<Map<str
       if (s) {
         s.neurons = Number(r.n);
         s.activeNeurons = Number(r.active_n);
+        s.lastUpdatedAt = newestIso(s.lastUpdatedAt, r.last_entity_at);
       }
     }
     for (const r of synapsesRows.rows) {
@@ -79,8 +80,14 @@ export async function listDocoStats(docoIds: readonly string[]): Promise<Map<str
     }
     for (const r of updatedRows.rows) {
       const s = out.get(r.doco_id);
-      if (s) s.lastUpdatedAt = r.last_at;
+      if (s) s.lastUpdatedAt = newestIso(s.lastUpdatedAt, r.last_at);
     }
     return out;
   });
+}
+
+function newestIso(a: string | null, b: string | null): string | null {
+  if (!a) return b;
+  if (!b) return a;
+  return a > b ? a : b;
 }
