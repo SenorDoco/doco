@@ -529,6 +529,11 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
       // BroadcastChannel can throw if the page is unloading — safe to ignore.
     }
   }, []);
+  // `conversationId === null` normally means "load the most recent
+  // thread". When the user archives the active thread, though, it means
+  // "nothing is open"; skip exactly one default bootstrap so archiving
+  // doesn't immediately open the next row in the list.
+  const skipNextDefaultBootstrapRef = useRef(false);
   // Tracks the earliest loaded message so concurrent state reads (the
   // scroll handler closes over stale `messages`) always page from the
   // true top of the loaded window.
@@ -544,6 +549,14 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
   }, [inputText]);
 
   const reload = useCallback(async () => {
+    if (!conversationId && skipNextDefaultBootstrapRef.current) {
+      skipNextDefaultBootstrapRef.current = false;
+      setBootstrapped(true);
+      setLoadError(null);
+      setRemoteInflight(false);
+      setThinkingEvents([]);
+      return;
+    }
     try {
       const url = conversationId
         ? `/api/v1/agent-chat/conversation.json?id=${encodeURIComponent(conversationId)}`
@@ -916,13 +929,26 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
         }
         setConversations((prev) => prev.filter((c) => c.id !== id));
         if (id === conversationId) {
-          // We just archived the active thread. Drop the pin and
-          // re-bootstrap into whichever thread is now most recent
-          // (or a fresh one if none remain).
+          // We just archived the active thread. Drop the pin and leave
+          // the user in the thread list with nothing open; the next
+          // explicit selection or "New chat" creates the next active id.
+          skipNextDefaultBootstrapRef.current = true;
+          abortRef.current?.abort();
+          setBusy(false);
+          setInFlight(null);
+          setQueuedSend(null);
+          setTurnUsage(null);
+          setRemoteInflight(false);
+          setThinkingEvents([]);
           setConversationId(null);
+          setConversationTitle(null);
+          setAttachedDocos([]);
+          setAttachedOrgs([]);
+          setHasMore(false);
+          earliestRef.current = null;
           writeStringFlag(ACTIVE_CONV_KEY, null);
           setMessages([]);
-          setView("chat");
+          setView("list");
         }
       } catch (err) {
         setConversationsError(err instanceof Error ? err.message : String(err));
