@@ -36,11 +36,12 @@ interface ProviderDefinition {
   id: ProviderId;
   label: string;
   installEnv: string;
+  setupSummary: string;
   channelLabel: string;
   channelPlaceholder: string;
 }
 
-interface ProviderOption extends ProviderDefinition {
+interface ProviderOption extends Omit<ProviderDefinition, "installEnv"> {
   installHref: string | null;
 }
 
@@ -55,6 +56,7 @@ const PROVIDER_DEFINITIONS: ProviderDefinition[] = [
     id: "slack",
     label: "Slack",
     installEnv: "DOCO_SLACK_INSTALL_URL",
+    setupSummary: "Create and approve a Slack app for this Doco deployment.",
     channelLabel: "Slack channel",
     channelPlaceholder: "#product",
   },
@@ -62,6 +64,7 @@ const PROVIDER_DEFINITIONS: ProviderDefinition[] = [
     id: "google-chat",
     label: "Google Chat",
     installEnv: "DOCO_GOOGLE_CHAT_INSTALL_URL",
+    setupSummary: "Create and approve a Google Chat app for this Doco deployment.",
     channelLabel: "Space",
     channelPlaceholder: "Product room",
   },
@@ -69,6 +72,7 @@ const PROVIDER_DEFINITIONS: ProviderDefinition[] = [
     id: "discord",
     label: "Discord",
     installEnv: "DOCO_DISCORD_INSTALL_URL",
+    setupSummary: "Create and approve a Discord app for this Doco deployment.",
     channelLabel: "Discord channel",
     channelPlaceholder: "#product",
   },
@@ -76,6 +80,7 @@ const PROVIDER_DEFINITIONS: ProviderDefinition[] = [
     id: "other",
     label: "Other group chat",
     installEnv: "DOCO_GROUP_CHAT_INSTALL_URL",
+    setupSummary: "Configure a custom group-chat installation URL for this Doco deployment.",
     channelLabel: "Channel",
     channelPlaceholder: "Team channel",
   },
@@ -170,7 +175,7 @@ export default function IntegrationsPage({ loaderData }: { loaderData: Integrati
               <span>
                 <span className="block font-semibold">{option.label}</span>
                 <span className="mt-1 block text-xs text-muted-foreground">
-                  {option.installHref ? "Ready to install" : "Install URL not configured"}
+                  {option.installHref ? "Ready to install" : "Setup required"}
                 </span>
               </span>
             </button>
@@ -181,10 +186,15 @@ export default function IntegrationsPage({ loaderData }: { loaderData: Integrati
           <div className="space-y-4">
             <Card>
               <CardHeader>
-                <CardTitle>1. Install Señor Doco in {provider.label}</CardTitle>
+                <CardTitle>
+                  {provider.installHref
+                    ? `1. Install Señor Doco in ${provider.label}`
+                    : `${provider.label} is not available yet`}
+                </CardTitle>
                 <CardDescription>
-                  The chat platform must approve the app before Doco can see channels or receive
-                  messages.
+                  {provider.installHref
+                    ? "The chat platform must approve the app before Doco can see channels or receive messages."
+                    : "This Doco deployment does not have a group-chat app ready to install for this provider."}
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -202,7 +212,7 @@ export default function IntegrationsPage({ loaderData }: { loaderData: Integrati
                     disabled
                     className="neu-button inline-flex items-center gap-2 rounded-md bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground opacity-50"
                   >
-                    Install URL not configured
+                    Nothing to install yet
                   </button>
                 )}
                 <div className="grid gap-3 md:grid-cols-3">
@@ -223,10 +233,24 @@ export default function IntegrationsPage({ loaderData }: { loaderData: Integrati
                   />
                 </div>
                 {provider.installHref ? null : (
-                  <p className="rounded-md border border-border bg-background p-3 text-sm text-muted-foreground">
-                    This environment has no {provider.label} install link yet. A Doco operator must
-                    configure {provider.installEnv} before users can install the app.
-                  </p>
+                  <div className="space-y-3 rounded-md border border-border bg-background p-3 text-sm text-muted-foreground">
+                    <p>
+                      There is no {provider.label} app connected to this Doco deployment yet. There
+                      is nothing for a workspace admin to approve from this screen right now.
+                    </p>
+                    <details>
+                      <summary className="cursor-pointer font-semibold text-foreground">
+                        Deployment setup checklist
+                      </summary>
+                      <div className="mt-2 space-y-2 text-xs leading-relaxed">
+                        <p>{provider.setupSummary}</p>
+                        <p>
+                          After the chat app exists, add its install link to the deployment
+                          configuration. Then this page will show the install button to users.
+                        </p>
+                      </div>
+                    </details>
+                  </div>
                 )}
               </CardContent>
             </Card>
@@ -437,9 +461,9 @@ function chatTargetFromScope(
 }
 
 function loadProviders(): ProviderOption[] {
-  return PROVIDER_DEFINITIONS.map((provider) => ({
+  return PROVIDER_DEFINITIONS.map(({ installEnv, ...provider }) => ({
     ...provider,
-    installHref: sanitizeInstallHref(process.env[provider.installEnv]),
+    installHref: sanitizeInstallHref(process.env[installEnv]),
   }));
 }
 
