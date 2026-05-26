@@ -115,6 +115,45 @@ function renderAuthoringWarnings(warnings: AuthoringResult["warnings"]): string[
   return warnings.map((w) => `[🔮 Doco] ⚠️ Authoring warning: ${w.reason}`);
 }
 
+export function authoringPoliciesPassed(
+  result: Partial<Pick<AuthoringResult, "passed" | "evaluated" | "violations">>,
+): number {
+  if (typeof result.passed === "number" && Number.isFinite(result.passed)) {
+    return Math.max(0, result.passed);
+  }
+  const evaluated =
+    typeof result.evaluated === "number" && Number.isFinite(result.evaluated)
+      ? result.evaluated
+      : 0;
+  const violations = Array.isArray(result.violations) ? result.violations.length : 0;
+  return Math.max(0, evaluated - violations);
+}
+
+function renderOperationTiming(opts: {
+  duration_ms?: number;
+  authoringPoliciesPassed?: number;
+}): string | null {
+  if (typeof opts.duration_ms !== "number") return null;
+  const seconds = (opts.duration_ms / 1000).toFixed(1);
+  if (
+    typeof opts.authoringPoliciesPassed === "number" &&
+    Number.isFinite(opts.authoringPoliciesPassed)
+  ) {
+    const count = Math.max(0, Math.trunc(opts.authoringPoliciesPassed));
+    const noun = count === 1 ? "policy" : "policies";
+    return `✅ ${count} authoring ${noun} passed in ${seconds}s`;
+  }
+  return `${seconds}s`;
+}
+
+export function appendOperationTiming(
+  line: string,
+  opts: { duration_ms?: number; authoringPoliciesPassed?: number },
+): string {
+  const timing = renderOperationTiming(opts);
+  return timing ? `${line} (${timing})` : line;
+}
+
 /**
  * Synthetic "path" returned in CaptureResult.path. Postgres is the only
  * storage; there is no on-disk file. Callers (footer renderer, CLI)
@@ -288,8 +327,9 @@ export interface CaptureResult {
   footer_lines: string[];
   /**
    * Wall-clock duration of the whole capture/update batch (write +
-   * reindex), measured server-side via `performance.now()`. The
-   * renderer appends this as ` (X.Xs)` to the last footer line.
+   * reindex), measured server-side via `performance.now()`. The footer
+   * renderer combines this with the authoring-policy pass count on the
+   * last operation line.
    */
   duration_ms: number;
   /**
@@ -410,7 +450,9 @@ function firstLine(text: string): string {
  *     body anchor. Mutations append `.<field> <change>` after the link.
  *   - The URL is built from the entity's ULID id. Readers see the
  *     summary; the id lives in the URL.
- *   - Timing trailer ` (X.Xs)` is appended on the last line of a batch.
+ *   - Timing trailer is appended on the last line of a batch. Capture
+ *     endpoints that run authoring policies render
+ *     `(✅ X authoring policies passed in X.Xs)`.
  */
 
 function capType(t: string): string {
@@ -456,6 +498,7 @@ export async function renderOperationLines(opts: {
   docoHost?: string;
   ops: Op[];
   duration_ms?: number;
+  authoringPoliciesPassed?: number;
 }): Promise<string[]> {
   const Type = capType(opts.entityType);
   // Every Doco URL is `/<handle>/...`. Use the explicit handle when
@@ -510,9 +553,11 @@ export async function renderOperationLines(opts: {
         return `[🔮 Doco] 🗑️ ${Type} deleted: ${buildAnchor(opts.label)}`;
     }
   });
-  if (typeof opts.duration_ms === "number" && lines.length > 0) {
-    const seconds = (opts.duration_ms / 1000).toFixed(1);
-    lines[lines.length - 1] = `${lines[lines.length - 1]} (${seconds}s)`;
+  if (lines.length > 0) {
+    lines[lines.length - 1] = appendOperationTiming(lines[lines.length - 1], {
+      duration_ms: opts.duration_ms,
+      authoringPoliciesPassed: opts.authoringPoliciesPassed,
+    });
   }
   return lines;
 }
@@ -870,6 +915,7 @@ export async function captureDecision(
     docoHost,
     ops: [{ kind: "added", summary: label }],
     duration_ms,
+    authoringPoliciesPassed: authoringPoliciesPassed(pred),
   });
   footer_lines.push(...renderAuthoringWarnings(pred.warnings));
   return {
@@ -1069,6 +1115,7 @@ export async function updateDecision(
     docoHost,
     ops,
     duration_ms,
+    authoringPoliciesPassed: authoringPoliciesPassed(pred),
   });
   footer_lines.push(...renderAuthoringWarnings(pred.warnings));
   return {
@@ -1404,6 +1451,7 @@ export async function updateEntity(opts: {
     docoHost,
     ops,
     duration_ms,
+    authoringPoliciesPassed: authoringPoliciesPassed(pred),
   });
   footer_lines.push(...renderAuthoringWarnings(pred.warnings));
   return {
@@ -1513,6 +1561,7 @@ export async function captureIntent(
     docoHost,
     ops: [{ kind: "added", summary: label }],
     duration_ms,
+    authoringPoliciesPassed: authoringPoliciesPassed(pred),
   });
   footer_lines.push(...renderAuthoringWarnings(pred.warnings));
   return {
@@ -1601,6 +1650,7 @@ export async function captureIdea(
     docoHost,
     ops: [{ kind: "added", summary: label }],
     duration_ms,
+    authoringPoliciesPassed: authoringPoliciesPassed(pred),
   });
   footer_lines.push(...renderAuthoringWarnings(pred.warnings));
   return {
@@ -1741,6 +1791,7 @@ export async function captureEval(
     docoHost,
     ops: [{ kind: "added", summary: label }],
     duration_ms,
+    authoringPoliciesPassed: authoringPoliciesPassed(pred),
   });
   footer_lines.push(...renderAuthoringWarnings(pred.warnings));
   return {
@@ -1869,6 +1920,7 @@ export async function captureAction(
     docoHost,
     ops: [{ kind: "added", summary: label }],
     duration_ms,
+    authoringPoliciesPassed: authoringPoliciesPassed(pred),
   });
   footer_lines.push(...renderAuthoringWarnings(pred.warnings));
   return {
@@ -2004,6 +2056,7 @@ export async function captureLog(
     docoHost,
     ops: [{ kind: "added", summary: label }],
     duration_ms,
+    authoringPoliciesPassed: authoringPoliciesPassed(pred),
   });
   footer_lines.push(...renderAuthoringWarnings(pred.warnings));
   return {
@@ -2141,6 +2194,7 @@ export async function captureRule(
     docoHost,
     ops: [{ kind: "added", summary: label }],
     duration_ms,
+    authoringPoliciesPassed: authoringPoliciesPassed(pred),
   });
   footer_lines.push(...renderAuthoringWarnings(pred.warnings));
   return {
@@ -2440,6 +2494,7 @@ export async function captureGuidancePolicy(
     docoHost,
     ops: [{ kind: "added", summary: payload.policy }],
     duration_ms,
+    authoringPoliciesPassed: authoringPoliciesPassed(pred),
   });
   footer_lines.push(...renderAuthoringWarnings(pred.warnings));
   return {
@@ -2500,6 +2555,7 @@ export async function captureNeuronAuthoringPolicy(
     docoHost,
     ops: [{ kind: "added", summary: payload.policy }],
     duration_ms,
+    authoringPoliciesPassed: authoringPoliciesPassed(pred),
   });
   footer_lines.push(...renderAuthoringWarnings(pred.warnings));
   return {
@@ -2715,6 +2771,7 @@ export async function captureReference(
     docoHost,
     ops: [{ kind: "added", summary: label }],
     duration_ms,
+    authoringPoliciesPassed: authoringPoliciesPassed(pred),
   });
   footer_lines.push(...renderAuthoringWarnings(pred.warnings));
   return {
@@ -2832,6 +2889,7 @@ export async function captureState(
     docoHost,
     ops: [{ kind: "added", summary: label }],
     duration_ms,
+    authoringPoliciesPassed: authoringPoliciesPassed(pred),
   });
   footer_lines.push(...renderAuthoringWarnings(pred.warnings));
   return {

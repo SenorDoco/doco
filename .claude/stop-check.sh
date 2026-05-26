@@ -84,7 +84,7 @@ assistant_footer_lines = 0
 tool_footer_lines = 0
 
 FOOTER_RE = re.compile(
-    r'\[(?:🔮|✅) Doco\]\s*(?:✍️|📝|🧹|➕|➖|🔁|🏷️|🗑️)\s+'
+    r'\[(?:🔮|✅) Doco\]\s*(?:✍️|📝|🧹|➕|➖|🔁|🏷️|🗑️|👤)\s+'
 )
 
 def text_from(value):

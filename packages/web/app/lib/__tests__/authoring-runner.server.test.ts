@@ -172,6 +172,8 @@ describe("authoring runner — integration", () => {
     expect(result.blocking?.policy_id).toBe(POLICY_ID_PRINCIPAL);
     expect(result.blocking?.reason).toMatch(/principal_01GHOST/);
     expect(result.blocking?.reason).toMatch(/does not resolve/);
+    expect(result.evaluated).toBe(1);
+    expect(result.passed).toBe(0);
   });
 
   it("passes an Action whose actor_id resolves to a known Principal", async () => {
@@ -191,6 +193,8 @@ describe("authoring runner — integration", () => {
     expect(result.blocking).toBeNull();
     expect(result.violations).toEqual([]);
     expect(result.warnings).toEqual([]);
+    expect(result.evaluated).toBe(1);
+    expect(result.passed).toBe(1);
   });
 
   it("blocks an Action with no actor_id at all (requires_field)", async () => {
@@ -229,6 +233,8 @@ describe("authoring runner — integration", () => {
 
     expect(result.blocking).toBeNull();
     expect(result.violations).toEqual([]);
+    expect(result.evaluated).toBe(0);
+    expect(result.passed).toBe(0);
   });
 
   it("returns nothing when the doco has no active policies", async () => {
@@ -248,6 +254,8 @@ describe("authoring runner — integration", () => {
     expect(result.violations).toEqual([]);
     expect(result.blocking).toBeNull();
     expect(result.warnings).toEqual([]);
+    expect(result.evaluated).toBe(0);
+    expect(result.passed).toBe(0);
   });
 
   it("blocks an Action when the LLM judge rejects a probabilistic predicate", async () => {

@@ -21,11 +21,16 @@ import {
   type PrincipalIndex,
   type Violation,
   evaluatePolicies,
+  policyFiresFor,
 } from "@doco/shared";
 import type { Entity } from "@doco/shared";
 import { judgeProbabilisticPredicate } from "./llm-judge.server";
 
 export interface AuthoringResult {
+  /** Number of loaded policies that applied to this candidate. */
+  evaluated: number;
+  /** Number of applicable policies that passed after deterministic + probabilistic checks. */
+  passed: number;
   /** Every violation produced by the engine. */
   violations: Violation[];
   /** Convenience: first violation whose `on_violation` is "block", or null. */
@@ -55,6 +60,14 @@ export async function runAuthoringPolicies(opts: {
    */
   client?: PoolClient;
 }): Promise<AuthoringResult> {
+  const emptyResult = (): AuthoringResult => ({
+    evaluated: 0,
+    passed: 0,
+    violations: [],
+    blocking: null,
+    warnings: [],
+  });
+
   // Skip enforcement when the candidate is in a terminal lifecycle.
   // Retire is a winding-down operation: the content was valid when it
   // was active, and gating the transition behind content-quality rules
@@ -63,7 +76,7 @@ export async function runAuthoringPolicies(opts: {
   // passed validation already" — re-validating on the way out adds no
   // safety and a lot of friction.
   if (opts.candidate.lifecycle === "retired") {
-    return { violations: [], blocking: null, warnings: [] };
+    return emptyResult();
   }
 
   const candidateSynapses = deriveSynapses(opts.candidate as unknown as Entity).map(
@@ -77,14 +90,21 @@ export async function runAuthoringPolicies(opts: {
   const run = async (c: PoolClient): Promise<AuthoringResult> => {
     const policies = await loadPolicies(c, opts.docoId);
     if (policies.length === 0) {
-      return { violations: [], blocking: null, warnings: [] };
+      return emptyResult();
+    }
+    const applicablePolicies = policies.filter((p) => policyFiresFor(p, opts.candidate));
+    const evaluated = applicablePolicies.length;
+    if (evaluated === 0) {
+      return emptyResult();
     }
 
-    const populationNeuronTypes = collectPopulationNeuronTypes(policies);
-    const needsPrincipals = policies.some(
+    const populationNeuronTypes = collectPopulationNeuronTypes(applicablePolicies);
+    const needsPrincipals = applicablePolicies.some(
       (p) => p.predicate.kind === "requires_field_resolves_to_principal",
     );
-    const needsGraphCompleteness = policies.some((p) => p.predicate.kind === "graph-completeness");
+    const needsGraphCompleteness = applicablePolicies.some(
+      (p) => p.predicate.kind === "graph-completeness",
+    );
     const needsPopulation = populationNeuronTypes.size > 0;
 
     // Sequential when sharing a transaction client (pg can't pipeline
@@ -99,7 +119,7 @@ export async function runAuthoringPolicies(opts: {
 
     const rawViolations = evaluatePolicies({
       candidate: opts.candidate,
-      policies,
+      policies: applicablePolicies,
       candidateSynapses,
       synapses,
       principals,
@@ -108,7 +128,8 @@ export async function runAuthoringPolicies(opts: {
     const violations = await resolveProbabilistic(rawViolations, policies, opts.candidate);
     const blocking = violations.find((v) => v.on_violation === "block") ?? null;
     const warnings = violations.filter((v) => v.on_violation === "warn");
-    return { violations, blocking, warnings };
+    const passed = Math.max(0, evaluated - violations.length);
+    return { evaluated, passed, violations, blocking, warnings };
   };
 
   return opts.client ? run(opts.client) : withClient(run);

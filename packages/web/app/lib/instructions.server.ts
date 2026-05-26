@@ -356,7 +356,7 @@ endpoint. If they share those with you, paste them verbatim, one
 per line:
 
 \`\`\`
-[🔮 Doco] <op-icon> <Type> <verb>: <body>
+[🔮 Doco] <op-icon> <Type> <verb>: [<summary>](<url>) (✅ <n> authoring policies passed in <X.Xs>)
 \`\`\`
 
 Op icons: ✍️ added · 📝 updated · 🧹 cleared · ➕ added/appended ·

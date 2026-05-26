@@ -1352,7 +1352,7 @@ or a type not enumerated above). Routine captures POST directly.
 
 ## After every write — paste footer_lines verbatim, then navigate
 
-Every POST / PATCH / DELETE on a Doco endpoint returns a \`footer_lines: string[]\` in the response body. Paste every entry **verbatim**, one per line, as plain text in your reply — same canonical protocol every other agent on Doco follows. The lines already carry the entity name, an emoji marker, a markdown link to the new neuron, and the timing; they are the canonical user-visible record of what happened. Don't paraphrase them, don't summarize them, don't drop the link, don't add your own "Decision captured — see graph." line on top — the footer line is the line.
+Every POST / PATCH / DELETE on a Doco endpoint returns a \`footer_lines: string[]\` in the response body. Paste every entry **verbatim**, one per line, as plain text in your reply — same canonical protocol every other agent on Doco follows. The lines already carry the entity name, an emoji marker, a markdown link to the new neuron, and a parenthetical authoring-policy pass summary with timing; they are the canonical user-visible record of what happened. Don't paraphrase them, don't summarize them, don't drop the link, don't add your own "Decision captured — see graph." line on top — the footer line is the line.
 
 Then navigate to the page that visibly proves the change:
 

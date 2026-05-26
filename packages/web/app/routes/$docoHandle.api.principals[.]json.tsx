@@ -9,7 +9,11 @@ import {
 import { type EntityId, generateUlid, makeEntityId, nowIso } from "@doco/shared";
 import { appendAuditEvent } from "~/lib/audit-log.server";
 import { runAuthoringPolicies } from "~/lib/authoring-runner.server";
-import { reindexAndScheduleAttach } from "~/lib/capture.server";
+import {
+  appendOperationTiming,
+  authoringPoliciesPassed,
+  reindexAndScheduleAttach,
+} from "~/lib/capture.server";
 import { docoPath } from "~/lib/db.server";
 import { getDocoLevelRole, loadDocoRouteForRead } from "~/lib/doco-access.server";
 
@@ -46,6 +50,7 @@ export async function action({
   if (request.method !== "POST") {
     return Response.json({ error: "Use POST." }, { status: 405 });
   }
+  const startedAt = performance.now();
 
   const { me, meta } = await loadDocoRouteForRead(request, params, "author");
   if (!me) {
@@ -162,6 +167,7 @@ export async function action({
   });
 
   const warningFooters = pred.warnings.map((w) => `[🔮 Doco] ⚠️ Authoring warning: ${w.reason}`);
+  const duration_ms = Math.round(performance.now() - startedAt);
   return Response.json(
     {
       ok: true,
@@ -169,9 +175,13 @@ export async function action({
       name,
       existed: false,
       footer_lines: [
-        principalLine("👤", "added", name, id, request, params.docoHandle),
+        appendOperationTiming(principalLine("👤", "added", name, id, request, params.docoHandle), {
+          duration_ms,
+          authoringPoliciesPassed: authoringPoliciesPassed(pred),
+        }),
         ...warningFooters,
       ],
+      duration_ms,
       ...(pred.warnings.length > 0 ? { warnings: pred.warnings } : {}),
     },
     { status: 201 },
