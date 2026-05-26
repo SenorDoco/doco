@@ -699,14 +699,15 @@ async function markActiveTurnStarted(conversationId: string): Promise<void> {
 /**
  * Clear the active-turn marker. Called in runAssistantTurn's finally
  * so a normal completion, an error, or even a thrown abort all reset
- * the flag.
+ * the flag. Keep `active_turn_events` as the most recent turn's
+ * replay buffer so a page refresh after completion can still show the
+ * Thinking timeline; markActiveTurnStarted resets it for the next turn.
  */
 async function markActiveTurnEnded(conversationId: string): Promise<void> {
   await withClient(async (c) => {
     await c.query(
       `UPDATE chat_conversations
-          SET active_turn_started_at = NULL,
-              active_turn_events = '[]'::jsonb
+          SET active_turn_started_at = NULL
         WHERE id = $1`,
       [conversationId],
     );
@@ -1975,10 +1976,9 @@ function formatVisibleGraphReferences(groups: VisibleGraphReferenceGroup[]): str
 /**
  * Public entry point. Wraps the actual streamer so every yielded
  * event is also pushed onto the conversation's `active_turn_events`
- * column — that lets a freshly-loaded page mid-turn replay the
- * Thinking column for everything that's happened so far on the
- * still-running turn, instead of staring at "waiting for first
- * event…" forever.
+ * column — that lets a freshly-loaded page replay the Thinking column
+ * for everything that happened in the current or most recent turn,
+ * instead of staring at "no thinking yet" after a refresh.
  *
  * Events flush to the DB every 500 ms (whatever's in the buffer at
  * that tick), plus a final flush on milestone events so the lag
@@ -1993,14 +1993,20 @@ export async function* runAssistantTurn(args: {
 }): AsyncGenerator<ChatStreamEvent> {
   const turnStartMs = Date.now();
   const buffer: Array<Record<string, unknown>> = [];
-  const flushBuffer = (): void => {
-    if (buffer.length === 0) return;
+  const pendingFlushes = new Set<Promise<void>>();
+  const flushBuffer = (): Promise<void> => {
+    if (buffer.length === 0) return Promise.resolve();
     const batch = buffer.splice(0, buffer.length);
-    // Fire-and-forget — the snapshot poll the client runs will pick
-    // up the latest column state on the next tick.
-    void appendActiveTurnEvents(args.conversation.id, batch);
+    // Periodic and milestone callers may fire-and-forget; the final
+    // cleanup awaits pending flushes so refresh has the completed log.
+    const flush = appendActiveTurnEvents(args.conversation.id, batch);
+    pendingFlushes.add(flush);
+    flush.finally(() => pendingFlushes.delete(flush));
+    return flush;
   };
-  const flushTimer = setInterval(flushBuffer, 500);
+  const flushTimer = setInterval(() => {
+    void flushBuffer();
+  }, 500);
   // Milestone kinds: flush immediately so the user sees status
   // changes the moment the lambda emits them, not 0-500ms later.
   const MILESTONE_KINDS = new Set([
@@ -2015,16 +2021,18 @@ export async function* runAssistantTurn(args: {
   try {
     for await (const event of streamAssistantTurn(args)) {
       buffer.push({ at_ms: Date.now() - turnStartMs, ...event });
-      if (MILESTONE_KINDS.has(event.kind)) flushBuffer();
+      if (MILESTONE_KINDS.has(event.kind)) void flushBuffer();
       yield event;
     }
   } finally {
     clearInterval(flushTimer);
-    // `streamAssistantTurn`'s own `finally` calls markActiveTurnEnded
-    // which clears active_turn_events to '[]', so anything sitting in
-    // our local buffer at this point would race that clear if we
-    // wrote it. Drop the tail; the user has the final saved message
-    // anyway.
+    // Preserve the final tail as part of the last-turn replay buffer.
+    // markActiveTurnEnded now clears only the active marker; the next
+    // turn's markActiveTurnStarted resets the event buffer.
+    await flushBuffer();
+    if (pendingFlushes.size > 0) {
+      await Promise.allSettled(pendingFlushes);
+    }
   }
 }
 
@@ -2577,11 +2585,11 @@ export interface ConversationSnapshot {
    */
   active_turn_started_at: string | null;
   /**
-   * Replay buffer of thinking events for whatever turn is currently
-   * in flight. Each entry is the SSE event the agent yielded, with an
-   * `at_ms` offset from turn start. Empty (or absent) when no turn
-   * is active. Lets a freshly-loaded page hydrate the Thinking column
-   * mid-turn instead of starting from "waiting for first event…".
+   * Replay buffer of thinking events for the current or most recent
+   * turn. Each entry is the SSE event the agent yielded, with an
+   * `at_ms` offset from turn start. New turns reset the buffer; idle
+   * conversations keep the last completed turn so refresh preserves
+   * the Thinking column.
    */
   active_turn_events: Array<Record<string, unknown>>;
 }
