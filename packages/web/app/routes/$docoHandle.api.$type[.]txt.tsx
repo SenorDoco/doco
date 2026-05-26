@@ -819,6 +819,24 @@ EXAMPLE — neuron_authoring (deterministic)
       }
     }'
 
+EXAMPLE — neuron_authoring (unique field)
+  curl -sS -X POST \\
+    -H "Content-Type: application/json" \\
+    -H "Authorization: Bearer $DOCO_ACCESS" \\
+    ${baseUrl}/${handle}/api/policies.json \\
+    -d '{
+      "policy_kind": "neuron_authoring",
+      "policy": "No two active glossary terms use the same canonical term.",
+      "evaluation_kind": "deterministic",
+      "predicate": {
+        "kind": "unique_field",
+        "field": "chosen",
+        "case_fold": true,
+        "when_neuron_type": ["decision"]
+      },
+      "fires_when_neuron_lifecycle": ["active"]
+    }'
+
 EXAMPLE — neuron_authoring (probabilistic)
   curl -sS -X POST \\
     -H "Content-Type: application/json" \\
