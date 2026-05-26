@@ -39,7 +39,7 @@ export function PerspectiveTabs({
       // against this nav element. The chevron is a direct child of
       // the nav, dropping the wrapper that previously caused
       // sub-pixel vertical misalignment with the Link tabs.
-      className="relative z-20 flex min-w-0 flex-wrap items-end self-start"
+      className="relative z-30 flex min-w-0 flex-wrap items-end self-start"
     >
       {perspectives.map((p, i) => (
         <PerspectiveTab
@@ -86,11 +86,11 @@ function PerspectiveTab({ handle, perspective, active, isFirst, isLast }: Perspe
   //     don't create visible dips where their rounded tops curve away
   //     from each other.
   //   * Every tab gets the same open-bottom etched surface. The tabs
-  //     sit 2px lower and above the frame, so the shared tab border
+  //     sit 4px lower and above the frame, so the shared tab border
   //     covers the frame's top highlight while active/inactive still
   //     differs only by fill color.
   const tabClass = cn(
-    "neu-surface-open-bottom relative top-0.5 z-30 -ml-px first:ml-0 inline-flex items-center gap-1.5 border border-border px-3 py-1.5 text-xs font-medium text-foreground",
+    "neu-surface-open-bottom relative top-1 z-40 -ml-px first:ml-0 inline-flex items-center gap-1.5 border border-border px-3 py-1.5 text-xs font-medium text-foreground",
     isFirst && "rounded-tl-md",
     isLast && "rounded-tr-md",
     active ? "bg-card" : "bg-input/40 hover:bg-input/60",
@@ -189,7 +189,7 @@ function PerspectiveSettingsMenu({
         // perspective tabs' height, so Safari can't render us shorter
         // than them. Without this, `items-end` on the nav was
         // bottom-aligning a naturally-shorter chevron tab.
-        className="neu-surface-open-bottom relative top-0.5 z-30 -ml-px inline-flex cursor-pointer items-center justify-center self-stretch gap-1.5 rounded-tr-md border border-border bg-input/40 px-3 py-1.5 text-xs font-medium text-foreground hover:bg-input/60"
+        className="neu-surface-open-bottom relative top-1 z-40 -ml-px inline-flex cursor-pointer items-center justify-center self-stretch gap-1.5 rounded-tr-md border border-border bg-input/40 px-3 py-1.5 text-xs font-medium text-foreground hover:bg-input/60"
       >
         <span aria-hidden className="text-sm leading-none">
           ⌵
