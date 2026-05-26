@@ -1363,8 +1363,8 @@ Then navigate to the page that visibly proves the change:
 
 | Action | Navigate to |
 |---|---|
-| Captured a new neuron | /<handle>/<type>/<id> — entity-detail page with mini graph |
-| Added/changed a synapse (patched a ref field on a neuron) | /<handle>/<type>/<from-id> — source neuron's graph neighborhood now shows the synapse |
+| Captured a new neuron | /<handle>/<type>/<id>?dialog=skip — focus the graph/list on the neuron without opening the detail dialog |
+| Added/changed a synapse (patched a ref field on a neuron) | /<handle>/<type>/<from-id>?dialog=skip — focus the source neuron's graph neighborhood without opening the detail dialog |
 | Browsing synapses in general | /<handle>/synapses (list) or /<handle>/synapses/<synapse-key> (detail with two-neuron graph) |
 | Created a new doco / org | /<new-handle> |
 | User asked "show me X" | the page that lists or details X |
