@@ -48,6 +48,8 @@ BODY (JSON)
   chosen             required   chosen resolution (multi-line ok)
   alternatives       required   non-empty [{ "name": "...", "rejected_because": "..." }, ...]
   intent_ids         optional   ["intent_01...", ...]; ULID references to Intents
+  sequence_to        optional   BPMN forward flow targets: ["action_01..."] or
+                                  [{ "target": "action_01...", "label": "Yes" }]
   decided_by_principal_id optional  principal id who made the decision; auth fills this
   created_by_principal_id optional  principal id; defaults to decided_by
   born_from          optional   reference id (e.g. born_from a bugfix decision)
@@ -96,7 +98,7 @@ UPDATE AN EXISTING DECISION
   Body fields are all optional (only the keys you include are touched):
     decision / question / chosen / alternatives / lifecycle
     deprecated / outcome / superseded_by
-    intent_ids / intent_ids_add / intent_ids_remove
+    intent_ids / intent_ids_add / intent_ids_remove / sequence_to
     decided_by_principal_id / born_from
 
   Response is the same shape as the capture endpoint (ok, id, path,
@@ -220,6 +222,8 @@ BODY (JSON)
   intent_ids          optional   ["intent_01...", ...]
   decision_ids        optional   ["decision_01...", ...]
   preceded_by         optional   entity ids that precede this action (causally or chronologically)
+  sequence_to         optional   BPMN forward flow targets: ["action_01..."] or
+                                  [{ "target": "decision_01...", "label": "complete" }]
   gated_by            optional   ["rule_01...", ...] rule ids that gate this action (BPMN-style policy guards)
   inputs              optional   verb-specific input object or value
   outputs             optional   verb-specific output object or value
@@ -259,7 +263,7 @@ UPDATE AN EXISTING ACTION
 
   Other patchable fields include action, lifecycle, deprecated,
   outcome, superseded_by, intent_ids/add/remove, verb,
-  outputs, preceded_by, decision_ids, and performed_at.
+  outputs, preceded_by, sequence_to, decision_ids, and performed_at.
 `,
 
   logs: (baseUrl, handle) => `# Doco — Capture a Log (single call)
@@ -497,8 +501,11 @@ ${PRINCIPAL_ID_CONVENTION}
 BODY (JSON)
   state               required   full prose: state description, invariants explained
   kind                required   "initial" | "intermediate" | "terminal"
+  intent_ids          optional   ["intent_01...", ...]
   invariants          optional   ["condition true while in this state", ...]
   preceded_by         optional   entity ids that precede this state
+  sequence_to         optional   BPMN forward flow targets: ["action_01..."] or
+                                  [{ "target": "action_01...", "label": "start" }]
   created_by_principal_id optional principal id; auth fills this
   lifecycle           optional   one of "drafting" | "proposed" | "active" | "retired"; default "active"
   deprecated          optional   boolean warning label; lifecycle is unchanged
@@ -530,7 +537,7 @@ UPDATE AN EXISTING STATE
 
   Body fields are all optional. Patchable fields include state,
   lifecycle, deprecated, outcome, superseded_by, intent_ids/add/remove,
-  kind, invariants, and preceded_by.
+  kind, invariants, preceded_by, and sequence_to.
 `,
 
   principals: (baseUrl, handle) => `# Doco — Principals (create, edit, retire)

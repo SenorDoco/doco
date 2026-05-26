@@ -2,13 +2,12 @@
 // coloring. Owned by torrenegra per the seeded perspectives row.
 //
 // Layout strategy:
-//   • One horizontal lane per principal (plus an Unassigned lane).
+//   • One horizontal lane per principal (plus process bands).
 //   • Lanes are React Flow parent nodes; neurons set parentId to nest
 //     visually inside their lane.
-//   • Within each lane, neurons are placed in a topological sweep:
-//     incoming-edge predecessors land first, dangling nodes fall back
-//     to created_at order. This gives a left-to-right flow without
-//     pulling in a full ELK dependency for v1.
+//   • Within each lane, neurons are placed in a topological sweep over
+//     explicit `sequence_flow` edges. Stored source -> target direction
+//     is rendered directly; association synapses do not become arrows.
 //   • Lifecycle color renders as the shape's stroke; the type icon
 //     identifies the neuron type at a glance.
 //
@@ -985,26 +984,10 @@ function layOutBpmn(
   const nodeById = new Map(nodes.map((n) => [n.id, n]));
   const flowEdges: FlowEdge[] = links
     .filter((link) => nodeSet.has(link.source) && nodeSet.has(link.target))
+    .filter((link) => SEQUENCE_FLOW_SYNAPSES.has(link.synapse_type))
     .map((link, index) => {
-      // Every sequence-flow synapse is stored downstream→upstream:
-      //
-      // - `preceded_by`   `A.preceded_by=[B]`    — B precedes A
-      // - `triggered_by`  `A.triggered_by=[B]`   — B triggers A
-      // - `enacts`        `A.decision_ids=[D]`   — D is the gateway, A is
-      //                                            the downstream branch
-      //
-      // …plus `serves`, which is stored Action→Intent but the Intent
-      // is the start event at the origin of the flow — arrows fan
-      // *out* from it.
-      //
-      // For all of these, flip the visual edge so the arrowhead lands
-      // on the downstream side. The underlying synapse direction in
-      // the data is unchanged; only the rendered edge is swapped.
-      // Matches `computeDepths`, which already treats `target` as the
-      // predecessor for every entry in `SEQUENCE_FLOW_SYNAPSES`.
-      const flip = VISUAL_FLIP_SYNAPSES.has(link.synapse_type);
-      const source = flip ? link.target : link.source;
-      const target = flip ? link.source : link.target;
+      const source = link.source;
+      const target = link.target;
       const edgeOpacity = focalActive
         ? opacityForEdge(focalDepthByNode.get(source), focalDepthByNode.get(target))
         : 1;
@@ -1056,49 +1039,13 @@ function layOutBpmn(
  * back to depth 0 and are sorted by created_at within their lane.
  */
 /**
- * Synapse types that express **causal sequence flow** for BPMN layout.
- * These are the only edges that move a neuron's horizontal column;
- * every other synapse type (`serves`, `performed_by`, `gated_by`,
- * `tests`, `consults`, `has_parent`, …) renders an arrow but doesn't
- * push the target node to a later column.
- *
- * All three store the link successor → predecessor in the data:
- *
- * - `A.preceded_by=[B]` is `{from: A, to: B}` meaning B happens before A.
- * - `Action.triggered_by=[B]` is `{from: Action, to: B}` meaning B
- *   happened first and triggered the Action.
- * - `Action.decision_ids=[D]` is `{from: Action, to: D}` and semantically
- *   means "the Action enacts a prior Decision" — i.e. the Decision is
- *   a gateway the Action realizes a branch of, so the Decision came
- *   first. Decision is the predecessor.
- *
- * Depth reads `link.target` as the predecessor for all three: this
- * puts gateways LEFT of the branches that enact them and triggers
- * LEFT of the work they triggered — both BPMN-correct.
- *
- * If you want an upstream Action to render LEFT of a gateway it
- * leads to (not enacts), encode that in the data as
- * `Decision.preceded_by = [Action]`, not `Action.decision_ids =
- * [Decision]` — the latter says "Action enacts a prior Decision"
- * which is the opposite direction.
+ * Synapse types that express BPMN sequence flow for layout and arrows.
+ * `sequence_flow` is derived from the `sequence_to` field and is stored
+ * in the same direction it renders: source -> target. Association
+ * synapses (`serves`, `enacts`, `gated_by`, `tests`, …) remain visible
+ * in detail panes, but they do not draw process arrows on this canvas.
  */
-const SEQUENCE_FLOW_SYNAPSES: ReadonlySet<string> = new Set([
-  "preceded_by",
-  "triggered_by",
-  "enacts",
-]);
-
-// Synapses whose stored direction is downstream→upstream. The
-// renderer swaps source/target on these so the arrowhead lands on
-// the downstream node, matching BPMN sequence-flow convention. All
-// three sequence-flow synapses qualify, plus `serves` (Action→Intent,
-// but the Intent is the start event the flow fans out from).
-const VISUAL_FLIP_SYNAPSES: ReadonlySet<string> = new Set([
-  "preceded_by",
-  "triggered_by",
-  "enacts",
-  "serves",
-]);
+const SEQUENCE_FLOW_SYNAPSES: ReadonlySet<string> = new Set(["sequence_flow"]);
 
 function computeDepths(
   nodes: readonly BpmnNode[],
@@ -1119,7 +1066,7 @@ function computeDepths(
   for (const link of links) {
     if (!nodeIds.has(link.source) || !nodeIds.has(link.target)) continue;
     if (!SEQUENCE_FLOW_SYNAPSES.has(link.synapse_type)) continue;
-    (predecessors.get(link.source) as string[]).push(link.target);
+    (predecessors.get(link.target) as string[]).push(link.source);
   }
   // Memoized DFS — handles DAGs and is safe against cycles via the
   // `visiting` guard which treats a back-edge predecessor as depth 0.

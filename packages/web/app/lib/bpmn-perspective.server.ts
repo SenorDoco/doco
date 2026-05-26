@@ -21,7 +21,7 @@
 // Intents themselves are *not* rendered as flow nodes — they're pool
 // headers. The Intent's prose labels its pool.
 //
-// Pool selection for multi-intent neurons (Action/Decision/Log can
+// Pool selection for multi-intent flow nodes (Action/Decision/State/Log can
 // list multiple `intent_ids`) uses **PageRank**: the candidate intent
 // with the highest score on the doco's synapse graph wins. With no
 // focal neuron, this is plain global PageRank; the personalized variant
@@ -29,7 +29,7 @@
 // `centerId` so the same graph can re-pool around whichever neuron
 // the user clicked into.
 //
-// Shape map (unchanged from prior phases):
+// Shape map:
 //   intent                  → (pool header, no shape)
 //   decision                → diamond     (BPMN gateway)
 //   action                  → task        (BPMN rounded-rect task)
@@ -106,12 +106,9 @@ export interface BpmnNode {
    *  intent under personalized PageRank without re-fetching). */
   intent_ids?: string[];
   /**
-   * Undirected BFS distance from the nearest "start anchor" — Intent
-   * (pool header), or State with kind=initial — over the full synapse
-   * graph. Renderer uses MAX(sequence-flow depth, bfs_depth) as the
-   * horizontal column so neurons connected to the flow get positioned
-   * even when no explicit `preceded_by` / `triggered_by` / `enacts` synapse
-   * exists between them. Falls back to 0 when unreachable.
+   * Undirected BFS distance from the nearest initial State over the
+   * explicit BPMN sequence-flow graph. Renderer uses this as a floor
+   * for horizontal sequence depth. Falls back to 0 when unreachable.
    */
   bfs_depth?: number;
 }
@@ -150,11 +147,7 @@ export const POOL_UNASSIGNED_ID = "pool:unassigned";
 // Non-actor neuron types: their pool placement comes from a different
 // signal (the host they re-home onto, or the Unassigned pool).
 const ARTIFACT_TYPES = new Set(["reference", "eval", "idea", "rule"]);
-const SEQUENCE_FLOW_SYNAPSES: ReadonlySet<string> = new Set([
-  "preceded_by",
-  "triggered_by",
-  "enacts",
-]);
+const SEQUENCE_FLOW_SYNAPSES: ReadonlySet<string> = new Set(["sequence_flow"]);
 
 const SHAPE_BY_TYPE: Record<string, BpmnShape> = {
   state: "task", // same glyph as Action — full-sized, readable, not a compact band label
@@ -274,26 +267,19 @@ export async function loadBpmnGraph(
     }));
   }
 
-  // ── BFS depth from start anchors ──────────────────────────────────
-  // Undirected BFS distance from the nearest start anchor (every Intent
-  // and every State with kind=initial), walked over the full synapse
-  // graph. The renderer takes MAX(sequence-flow depth, bfs_depth) for
-  // each neuron's horizontal column — so a node connected to the flow
-  // via *any* synapse (not just `preceded_by` / `triggered_by` / `enacts`)
-  // still gets positioned relative to the start. Without this, neurons
-  // missing an explicit sequence-flow synapse fall to depth 0 and the
-  // chronological tiebreaker decides — which has nothing to do with
-  // process order.
+  // ── BFS depth from explicit start anchors ─────────────────────────
+  // BPMN ordering is based on explicit forward sequence flow only.
+  // Association synapses such as `serves`, `enacts`, and `gated_by`
+  // should not move nodes horizontally.
   const startAnchors: string[] = [];
   for (const row of allRows) {
-    if (row.entity_type === "intent") startAnchors.push(row.id);
-    else if (row.entity_type === "state" && row.data?.kind === "initial") {
+    if (row.entity_type === "state" && row.data?.kind === "initial") {
       startAnchors.push(row.id);
     }
   }
   const bfsDepthById = computeBfsDepths(
     allRows.map((r) => r.id),
-    links,
+    links.filter((link) => SEQUENCE_FLOW_SYNAPSES.has(link.synapse_type)),
     startAnchors,
   );
 
@@ -312,10 +298,10 @@ export async function loadBpmnGraph(
   // ── Pool assignment per neuron ────────────────────────────────────
   // 1. Intents themselves are pool headers, not nodes — they live in
   //    their own pool ("pool:<intent_id>").
-  // 2. Actor-type neurons (Action / Decision / Log) with an intent_ids
+  // 2. Flow nodes (Action / Decision / State / Log) with an intent_ids
   //    list go in their primary intent's pool (PR-picked).
-  // 3. Actor-type neurons with no intent_ids → Unassigned.
-  // 4. Non-actor neurons (State / Reference / Idea / Rule / Eval) start
+  // 3. Flow nodes with no intent_ids → Unassigned.
+  // 4. Non-actor neurons (Reference / Idea / Rule / Eval) start
   //    in Unassigned; Rules and Evals get re-homed below if they have
   //    a host neuron whose pool is known.
   const poolByNeuron = new Map<string, string>();
@@ -330,6 +316,7 @@ export async function loadBpmnGraph(
     if (
       row.entity_type === "action" ||
       row.entity_type === "decision" ||
+      row.entity_type === "state" ||
       row.entity_type === "log"
     ) {
       const intentIds = toStringArray(data.intent_ids).filter((id) => intentsById.has(id));
@@ -753,7 +740,7 @@ function computeSequenceDepths(
   for (const link of links) {
     if (!nodeIds.has(link.source) || !nodeIds.has(link.target)) continue;
     if (!SEQUENCE_FLOW_SYNAPSES.has(link.synapse_type)) continue;
-    predecessors.get(link.source)?.push(link.target);
+    predecessors.get(link.target)?.push(link.source);
   }
 
   const visiting = new Set<string>();
