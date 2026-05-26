@@ -9,6 +9,7 @@ export interface DocoMetadata {
   /** Public globally-unique URL identifier. */
   handle: string;
   ownerId: string;
+  orgId: string;
   displayName: string;
   visibility: "private" | "public";
   /**
@@ -38,6 +39,7 @@ export async function readDocoMetadata(docoDir: string): Promise<DocoMetadata | 
     docoId: row.id,
     handle: row.handle,
     ownerId: row.owner_id,
+    orgId: row.org_id,
     displayName,
     visibility: row.visibility,
     goal: row.goal,

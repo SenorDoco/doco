@@ -68,6 +68,7 @@ export async function loader({
     handle,
     docoId: meta.docoId,
     ownerId: meta.ownerId,
+    orgId: meta.orgId,
     visibility: meta.visibility,
     goal: meta.goal,
     perspectives,
@@ -157,7 +158,7 @@ export async function action({
     if (handleError) {
       return { error: friendlyHandleValidationError(handleError, "Doco handle") };
     }
-    if (newHandle === handle) return redirect(`/${handle}/settings`);
+    if (newHandle === handle) return redirect(`/${handle}`);
 
     try {
       await renameDocoHandle({ oldHandle: handle, newHandle });
@@ -165,7 +166,7 @@ export async function action({
     } catch (e) {
       return { error: (e as Error).message };
     }
-    return redirect(`/${newHandle}/settings`);
+    return redirect(`/${newHandle}`);
   }
 
   // ── Change owning organization (danger zone) ──────────────────────
@@ -183,7 +184,7 @@ export async function action({
     } catch (e) {
       return { error: `Failed to change organization: ${(e as Error).message}` };
     }
-    return redirect(`/${handle}/settings`);
+    return redirect(`/${handle}`);
   }
 
   return { error: `Unknown intent: ${intent}` };
@@ -207,13 +208,15 @@ export default function DocoSettings({
     goal,
     docoId,
     ownerId,
+    orgId,
     perspectives,
     availableOwnerOrgs,
     me,
   } = loaderData;
   const [searchParams] = useSearchParams();
   const isConfirmingDelete = searchParams.get("confirm") === "delete";
-  const currentOrgOptions = availableOwnerOrgs.filter((org) => org.id !== ownerId);
+  const currentOrgOptions = availableOwnerOrgs;
+  const currentOrgId = orgId || ownerId;
 
   return (
     <div>
@@ -435,6 +438,7 @@ export default function DocoSettings({
                   <span className="font-semibold text-foreground">Organization</span>
                   <select
                     name="target_org_id"
+                    defaultValue={currentOrgId}
                     className="w-auto max-w-full rounded-md border border-border bg-input px-3 py-2 text-xs text-foreground outline-none focus:border-destructive"
                   >
                     {currentOrgOptions.map((org) => (
