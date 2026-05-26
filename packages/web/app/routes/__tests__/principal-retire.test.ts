@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   withClient: vi.fn(),
   runAuthoringPolicies: vi.fn(),
   reindexAndScheduleAttach: vi.fn(),
+  appendAuditEvent: vi.fn(),
 }));
 
 vi.mock("@doco/db", () => {
@@ -29,6 +30,10 @@ vi.mock("~/lib/doco-access.server", () => ({
 
 vi.mock("~/lib/authoring-runner.server", () => ({
   runAuthoringPolicies: mocks.runAuthoringPolicies,
+}));
+
+vi.mock("~/lib/audit-log.server", () => ({
+  appendAuditEvent: mocks.appendAuditEvent,
 }));
 
 vi.mock("~/lib/capture.server", () => ({
@@ -97,6 +102,18 @@ describe("principal retire API", () => {
       lifecycle: "retired",
       footer_lines: [expect.stringContaining("Principal retired: [visitor]")],
     });
+    expect(mocks.appendAuditEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        docoDir: "/tmp/docos/acme",
+        docoId: "doco_acme",
+        by: "collaborator_author",
+        entity_type: "principal",
+        entity_id: PRINCIPAL_ID,
+        op: "lifecycle.transition",
+        before: expect.objectContaining({ lifecycle: "active" }),
+        after: expect.objectContaining({ lifecycle: "retired" }),
+      }),
+    );
   });
 
   it("returns 409 when an active neuron still references the principal", async () => {
@@ -247,6 +264,18 @@ describe("principal retire API", () => {
       lifecycle: "active",
       footer_lines: [expect.stringContaining("Principal updated: [visitor]")],
     });
+    expect(mocks.appendAuditEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        docoDir: "/tmp/docos/acme",
+        docoId: "doco_acme",
+        by: "collaborator_author",
+        entity_type: "principal",
+        entity_id: PRINCIPAL_ID,
+        op: "entity.update",
+        before: expect.objectContaining({ body_md: "" }),
+        after: expect.objectContaining({ body_md: "Updated bio prose." }),
+      }),
+    );
   });
 
   it("wires reports_to to an existing Principal in the same Doco", async () => {

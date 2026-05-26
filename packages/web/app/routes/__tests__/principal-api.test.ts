@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   getEntity: vi.fn(),
   runAuthoringPolicies: vi.fn(),
   reindexAndScheduleAttach: vi.fn(),
+  appendAuditEvent: vi.fn(),
 }));
 
 vi.mock("@doco/db", () => {
@@ -31,6 +32,10 @@ vi.mock("~/lib/doco-access.server", () => ({
 
 vi.mock("~/lib/authoring-runner.server", () => ({
   runAuthoringPolicies: mocks.runAuthoringPolicies,
+}));
+
+vi.mock("~/lib/audit-log.server", () => ({
+  appendAuditEvent: mocks.appendAuditEvent,
 }));
 
 vi.mock("~/lib/capture.server", () => ({
@@ -114,6 +119,21 @@ describe("principal API", () => {
     // 037 dropped the column.
     const upsertCall = mocks.upsertEntity.mock.calls[0]?.[0] as Record<string, unknown>;
     expect(upsertCall).not.toHaveProperty("summary");
+    expect(mocks.appendAuditEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        docoDir: "/tmp/docos/acme",
+        docoId: "doco_acme",
+        by: "collaborator_author",
+        entity_type: "principal",
+        entity_id: expect.stringMatching(/^principal_/),
+        op: "entity.create",
+        after: expect.objectContaining({
+          name: "Visitor",
+          body_md: "Human site visitor — no Doco account required.",
+          lifecycle: "active",
+        }),
+      }),
+    );
     await expect(response.json()).resolves.toMatchObject({ ok: true, name: "Visitor" });
   });
 

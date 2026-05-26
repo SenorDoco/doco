@@ -1,5 +1,6 @@
 import { getEntity, roleAtLeast, upsertEntity, withClient } from "@doco/db";
 import { type EntityId, nowIso } from "@doco/shared";
+import { appendAuditEvent } from "~/lib/audit-log.server";
 import { runAuthoringPolicies } from "~/lib/authoring-runner.server";
 import { reindexAndScheduleAttach } from "~/lib/capture.server";
 import { docoPath } from "~/lib/db.server";
@@ -203,7 +204,9 @@ export async function action({
         ok: true,
         id: existing.id,
         already_retired: true,
-        footer_lines: [principalLine("already retired", name, existing.id, request, params.docoHandle)],
+        footer_lines: [
+          principalLine("already retired", name, existing.id, request, params.docoHandle),
+        ],
       });
     }
     const activeRefs = await findActiveReferencesToPrincipal(meta.docoId, params.id);
@@ -280,6 +283,30 @@ export async function action({
   });
 
   await reindexAndScheduleAttach(docoPath(params.docoHandle), meta.docoId, existing.id);
+  const before: Record<string, unknown> = {};
+  const after: Record<string, unknown> = {};
+  if (patch.body_md !== undefined) {
+    before.body_md = existing.body_md ?? "";
+    after.body_md = nextBodyMd ?? "";
+  }
+  if (patch.reports_to !== undefined) {
+    before.reports_to = oldData.reports_to ?? null;
+    after.reports_to = patch.reports_to ?? null;
+  }
+  if (patch.lifecycle !== undefined && patch.lifecycle !== existing.lifecycle) {
+    before.lifecycle = existing.lifecycle ?? "active";
+    after.lifecycle = nextLifecycle;
+  }
+  appendAuditEvent({
+    docoDir: docoPath(params.docoHandle),
+    docoId: meta.docoId,
+    by: me.id,
+    entity_type: "principal",
+    entity_id: existing.id,
+    op: patch.lifecycle !== undefined ? "lifecycle.transition" : "entity.update",
+    before,
+    after,
+  });
 
   const warningFooters = pred.warnings.map((w) => `[🔮 Doco] ⚠️ Authoring warning: ${w.reason}`);
   if (patch.lifecycle === "retired") {
