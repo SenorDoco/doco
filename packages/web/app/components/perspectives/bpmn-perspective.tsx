@@ -36,6 +36,7 @@ import {
 import type { OverviewGraphLink } from "~/components/overview-graph";
 import { StandardControls, StandardMiniMap } from "~/components/perspective-canvas-overlays";
 import type { BpmnLane, BpmnNode, BpmnPool, BpmnShape } from "~/lib/bpmn-perspective.server";
+import { computeForwardSequenceDepths } from "~/lib/bpmn-sequence-depth";
 import {
   computeDepthFromCenter,
   hasFocalNode,
@@ -794,12 +795,11 @@ function layOutBpmn(
     if (list) list.push(node);
   }
 
-  // Compute one global column per node so that nodes in the same
-  // topological depth line up vertically across lanes — left-to-right
-  // flow reads cleanly even when a synapse crosses from alice's lane
-  // into bob's lane. depth(n) = 1 + max(depth(predecessors)) or 0 if
-  // none. Cycle survivors are placed at depth(0) so they still appear.
-  const depthByNode = computeDepths(nodes, links);
+  // Compute one global column per node so that sequence-flow targets
+  // sit to the right of their ordinary incoming source across lanes.
+  // Intentional feedback loops are treated as loopbacks instead of
+  // being allowed to pull earlier nodes backward.
+  const depthByNode = computeForwardSequenceDepths(nodes, links);
 
   // Within each lane, nodes are sorted by depth so they appear left to
   // right regardless of created_at. Then we pack rows: if two nodes
@@ -1033,12 +1033,6 @@ function layOutBpmn(
 }
 
 /**
- * Longest-path depth for each node. A node with no predecessors has
- * depth 0; otherwise it sits one beyond the max depth of its
- * predecessors. Cycle survivors (no zero-indegree entry point) fall
- * back to depth 0 and are sorted by created_at within their lane.
- */
-/**
  * Synapse types that express BPMN sequence flow for layout and arrows.
  * `sequence_flow` is derived from the `sequence_to` field and is stored
  * in the same direction it renders: source -> target. Association
@@ -1046,49 +1040,6 @@ function layOutBpmn(
  * in detail panes, but they do not draw process arrows on this canvas.
  */
 const SEQUENCE_FLOW_SYNAPSES: ReadonlySet<string> = new Set(["sequence_flow"]);
-
-function computeDepths(
-  nodes: readonly BpmnNode[],
-  links: readonly OverviewGraphLink[],
-): Map<string, number> {
-  const depth = new Map<string, number>();
-  const depthFloor = new Map<string, number>();
-  const nodeIds = new Set(nodes.map((n) => n.id));
-  const predecessors = new Map<string, string[]>();
-  // Server-provided BFS depth is a floor, not a post-pass override:
-  // successors need to inherit any rightward shift their predecessor
-  // earned from the Intent / initial-State start anchors.
-  for (const node of nodes) {
-    const bfs = node.bfs_depth;
-    if (bfs !== undefined && bfs > 0) depthFloor.set(node.id, bfs);
-  }
-  for (const id of nodeIds) predecessors.set(id, []);
-  for (const link of links) {
-    if (!nodeIds.has(link.source) || !nodeIds.has(link.target)) continue;
-    if (!SEQUENCE_FLOW_SYNAPSES.has(link.synapse_type)) continue;
-    (predecessors.get(link.target) as string[]).push(link.source);
-  }
-  // Memoized DFS — handles DAGs and is safe against cycles via the
-  // `visiting` guard which treats a back-edge predecessor as depth 0.
-  const visiting = new Set<string>();
-  function depthOf(id: string): number {
-    const cached = depth.get(id);
-    if (cached !== undefined) return cached;
-    if (visiting.has(id)) return 0;
-    visiting.add(id);
-    const preds = predecessors.get(id) ?? [];
-    let max = depthFloor.get(id) ?? 0;
-    for (const pred of preds) {
-      const d = depthOf(pred) + 1;
-      if (d > max) max = d;
-    }
-    visiting.delete(id);
-    depth.set(id, max);
-    return max;
-  }
-  for (const id of nodeIds) depthOf(id);
-  return depth;
-}
 
 function nodeTypeForShape(shape: BpmnShape): string {
   switch (shape) {
