@@ -32,11 +32,13 @@ import type {
   DocumentBlockParam,
   ImageBlockParam,
   MessageParam,
+  MessageStreamEvent,
   TextBlock,
   TextBlockParam,
   Tool,
   ToolResultBlockParam,
   ToolUseBlock,
+  Usage,
 } from "@anthropic-ai/sdk/resources/messages";
 import { listOrganizationsForCollaborator, withClient } from "@doco/db";
 import { generateUlid } from "@doco/shared";
@@ -1456,8 +1458,8 @@ const TOOLS: Tool[] = [
  * pathological `retry-after` doesn't freeze the sidebar.
  */
 function parseAnthropicRetryAfterMs(err: unknown): number {
-  const headers = (err as { headers?: Record<string, string> }).headers ?? {};
-  const ra = headers["retry-after"] ?? headers["Retry-After"];
+  const headers = (err as { headers?: unknown }).headers;
+  const ra = getHeaderValue(headers, "retry-after");
   if (ra) {
     const n = Number(ra);
     if (Number.isFinite(n) && n >= 0) {
@@ -1469,7 +1471,7 @@ function parseAnthropicRetryAfterMs(err: unknown): number {
     "anthropic-ratelimit-tokens-reset",
     "anthropic-ratelimit-requests-reset",
   ]) {
-    const v = headers[key];
+    const v = getHeaderValue(headers, key);
     if (!v) continue;
     const ms = Date.parse(v) - Date.now();
     if (Number.isFinite(ms) && ms > 0) {
@@ -1500,6 +1502,83 @@ function friendlyAnthropicError(err: unknown): string {
   }
   const msg = err instanceof Error ? err.message : String(err);
   return `Anthropic stream error: ${msg}`;
+}
+
+const ANTHROPIC_TELEMETRY_HEADERS = [
+  "request-id",
+  "retry-after",
+  "anthropic-ratelimit-requests-limit",
+  "anthropic-ratelimit-requests-remaining",
+  "anthropic-ratelimit-requests-reset",
+  "anthropic-ratelimit-input-tokens-limit",
+  "anthropic-ratelimit-input-tokens-remaining",
+  "anthropic-ratelimit-input-tokens-reset",
+  "anthropic-ratelimit-output-tokens-limit",
+  "anthropic-ratelimit-output-tokens-remaining",
+  "anthropic-ratelimit-output-tokens-reset",
+  "anthropic-ratelimit-tokens-limit",
+  "anthropic-ratelimit-tokens-remaining",
+  "anthropic-ratelimit-tokens-reset",
+  "cf-ray",
+] as const;
+
+function getHeaderValue(headers: unknown, name: string): string | null {
+  if (!headers) return null;
+  if (headers instanceof Headers) return headers.get(name);
+  if (typeof headers !== "object") return null;
+  const record = headers as Record<string, unknown>;
+  const exact = record[name] ?? record[name.toLowerCase()] ?? record[name.toUpperCase()];
+  if (typeof exact === "string") return exact;
+  const found = Object.entries(record).find(([key]) => key.toLowerCase() === name.toLowerCase());
+  return typeof found?.[1] === "string" ? found[1] : null;
+}
+
+function pickAnthropicHeaders(headers: unknown): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const name of ANTHROPIC_TELEMETRY_HEADERS) {
+    const value = getHeaderValue(headers, name);
+    if (value) out[name] = value;
+  }
+  return out;
+}
+
+function summarizeAnthropicError(err: unknown, waitMs?: number): Record<string, unknown> {
+  const shaped = err as {
+    status?: number;
+    requestID?: string;
+    request_id?: string;
+    headers?: unknown;
+    name?: string;
+    error?: { error?: { type?: string; message?: string } };
+  };
+  const summary: Record<string, unknown> = {
+    status: shaped.status ?? null,
+    name: shaped.name ?? (err instanceof Error ? err.name : null),
+    request_id:
+      shaped.requestID ?? shaped.request_id ?? getHeaderValue(shaped.headers, "request-id"),
+    headers: pickAnthropicHeaders(shaped.headers),
+  };
+  if (waitMs !== undefined) summary.retry_wait_ms = waitMs;
+  const inner = shaped.error?.error;
+  if (inner?.type) summary.error_type = inner.type;
+  if (inner?.message) summary.message = inner.message.slice(0, 500);
+  return summary;
+}
+
+function usageSnapshot(usage: Usage | null | undefined): Record<string, number> | null {
+  if (!usage || typeof usage !== "object") return null;
+  const raw = usage as unknown as Record<string, unknown>;
+  const out: Record<string, number> = {};
+  for (const key of [
+    "input_tokens",
+    "output_tokens",
+    "cache_read_input_tokens",
+    "cache_creation_input_tokens",
+  ]) {
+    const value = raw[key];
+    if (typeof value === "number") out[key] = value;
+  }
+  return Object.keys(out).length > 0 ? out : null;
 }
 
 /**
@@ -2054,6 +2133,16 @@ async function* streamAssistantTurn(args: {
     for (let turn = 0; turn < MAX_TURNS_PER_REPLY; turn++) {
       const callStart = performance.now();
       let ttfbMs: number | null = null;
+      let streamConstructedMs: number | null = null;
+      let streamConnectedMs: number | null = null;
+      let firstStreamEventMs: number | null = null;
+      let firstStreamEventType: MessageStreamEvent["type"] | null = null;
+      let messageStartMs: number | null = null;
+      let messageStartUsage: Record<string, number> | null = null;
+      let responseRequestId: string | null | undefined;
+      let responseHeaders: Record<string, string> = {};
+      let streamConnectError: Record<string, unknown> | null = null;
+      let responseTelemetryPromise: Promise<void> | null = null;
       // One retry per turn iteration when we hit a 429. Stream
       // creation AND per-chunk reads can both throw the rate-limit
       // error, so the flag is checked in the catch below.
@@ -2073,11 +2162,33 @@ async function* streamAssistantTurn(args: {
           tools: TOOLS,
           messages,
         });
+        streamConstructedMs = performance.now() - callStart;
+        responseTelemetryPromise = stream
+          .withResponse()
+          .then(({ response, request_id }) => {
+            streamConnectedMs = performance.now() - callStart;
+            responseRequestId = request_id;
+            responseHeaders = pickAnthropicHeaders(response.headers);
+          })
+          .catch((err) => {
+            streamConnectError = summarizeAnthropicError(err);
+          });
       } catch (err) {
         // Rare — most 429s surface from the async iteration below.
         if ((err as { status?: number }).status === 429 && !retriedThisTurn) {
           retriedThisTurn = true;
           const waitMs = parseAnthropicRetryAfterMs(err);
+          anthropicCallStats.push({
+            turn,
+            elapsed_ms: Math.round(performance.now() - callStart),
+            ttfb_ms: null,
+            stream_constructed_ms:
+              streamConstructedMs === null ? null : Math.round(streamConstructedMs),
+            stop_reason: "rate_limited_retry",
+            retry_wait_ms: waitMs,
+            error: summarizeAnthropicError(err, waitMs),
+          });
+          await checkpointMetrics();
           await new Promise((resolve) => setTimeout(resolve, waitMs));
           turn--;
           continue;
@@ -2093,6 +2204,14 @@ async function* streamAssistantTurn(args: {
 
       try {
         for await (const event of stream) {
+          if (firstStreamEventMs === null) {
+            firstStreamEventMs = performance.now() - callStart;
+            firstStreamEventType = event.type;
+          }
+          if (event.type === "message_start" && messageStartMs === null) {
+            messageStartMs = performance.now() - callStart;
+            messageStartUsage = usageSnapshot(event.message.usage);
+          }
           if (event.type === "content_block_start") {
             if (event.content_block.type === "tool_use") {
               activeToolUse = {
@@ -2124,6 +2243,26 @@ async function* streamAssistantTurn(args: {
         if ((err as { status?: number }).status === 429 && !retriedThisTurn) {
           retriedThisTurn = true;
           const waitMs = parseAnthropicRetryAfterMs(err);
+          if (responseTelemetryPromise) await responseTelemetryPromise;
+          anthropicCallStats.push({
+            turn,
+            elapsed_ms: Math.round(performance.now() - callStart),
+            ttfb_ms: ttfbMs === null ? null : Math.round(ttfbMs),
+            stream_constructed_ms:
+              streamConstructedMs === null ? null : Math.round(streamConstructedMs),
+            stream_connected_ms: streamConnectedMs === null ? null : Math.round(streamConnectedMs),
+            first_stream_event_ms:
+              firstStreamEventMs === null ? null : Math.round(firstStreamEventMs),
+            first_stream_event_type: firstStreamEventType,
+            message_start_ms: messageStartMs === null ? null : Math.round(messageStartMs),
+            message_start_usage: messageStartUsage,
+            request_id: responseRequestId ?? null,
+            response_headers: responseHeaders,
+            stop_reason: "rate_limited_retry",
+            retry_wait_ms: waitMs,
+            error: summarizeAnthropicError(err, waitMs),
+          });
+          await checkpointMetrics();
           yield {
             kind: "status",
             phase: "rate_limited_retrying",
@@ -2146,6 +2285,7 @@ async function* streamAssistantTurn(args: {
       }
 
       const finalMessage = await stream.finalMessage();
+      if (responseTelemetryPromise) await responseTelemetryPromise;
       yield {
         kind: "status",
         phase: "anthropic_returned",
@@ -2170,6 +2310,17 @@ async function* streamAssistantTurn(args: {
         turn,
         elapsed_ms: Math.round(performance.now() - callStart),
         ttfb_ms: ttfbMs === null ? null : Math.round(ttfbMs),
+        stream_constructed_ms:
+          streamConstructedMs === null ? null : Math.round(streamConstructedMs),
+        stream_connected_ms: streamConnectedMs === null ? null : Math.round(streamConnectedMs),
+        first_stream_event_ms: firstStreamEventMs === null ? null : Math.round(firstStreamEventMs),
+        first_stream_event_type: firstStreamEventType,
+        message_start_ms: messageStartMs === null ? null : Math.round(messageStartMs),
+        message_start_usage: messageStartUsage,
+        request_id: responseRequestId ?? null,
+        response_headers: responseHeaders,
+        stream_connect_error: streamConnectError,
+        message_id: finalMessage.id,
         input_tokens: usage.input_tokens ?? 0,
         output_tokens: usage.output_tokens ?? 0,
         cache_read_tokens: usage.cache_read_input_tokens ?? 0,
