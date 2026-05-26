@@ -3,7 +3,7 @@ import type { DocoRole } from "@doco/db";
 export const ALL_ROLES: DocoRole[] = ["owner", "approver", "author", "reader"];
 
 export type InviteLevel = "org" | "doco";
-export type InviteOption = { id: string; label: string };
+export type InviteOption = { id: string; label: string; maxRole: DocoRole };
 export type InviteDefaultSelection = { level: InviteLevel; targetId: string };
 
 export interface CollaboratorInviteData {

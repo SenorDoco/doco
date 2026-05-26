@@ -9,10 +9,11 @@ import type { EntityId } from "@doco/shared";
  */
 
 /**
- * Single-use invite to join a Doco. Any user with owner-level access on
- * the target can mint an Invite; redemption writes a membership row for
- * the signed-in human. Agents use OAuth instead of redeeming invite URLs.
- * The invite-code path component is itself the secret.
+ * Single-use invite to join a Doco. Any user with access on the target
+ * can mint an Invite at or below their own role; redemption writes a
+ * membership row for the signed-in human. Agents use OAuth instead of
+ * redeeming invite URLs. The invite-code path component is itself the
+ * secret.
  *
  * The first Invite a Doco ever has is the one returned by anonymous
  * `POST /api/v1/docos` — it gives the creator their first sharable

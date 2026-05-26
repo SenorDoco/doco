@@ -7,6 +7,7 @@ import {
   type CollaboratorInviteData,
   type InviteDefaultSelection,
   type InviteLevel,
+  rankOf,
 } from "~/lib/collaborator-invite";
 
 interface CombinedTargetOption {
@@ -14,11 +15,12 @@ interface CombinedTargetOption {
   level: InviteLevel;
   id: string;
   label: string;
+  maxRole: (typeof ALL_ROLES)[number];
 }
 
 function buildCombinedOptions(
-  orgs: { id: string; label: string }[],
-  docos: { id: string; label: string }[],
+  orgs: { id: string; label: string; maxRole: (typeof ALL_ROLES)[number] }[],
+  docos: { id: string; label: string; maxRole: (typeof ALL_ROLES)[number] }[],
 ): CombinedTargetOption[] {
   const out: CombinedTargetOption[] = [
     ...orgs.map<CombinedTargetOption>((o) => ({
@@ -26,12 +28,14 @@ function buildCombinedOptions(
       level: "org",
       id: o.id,
       label: o.label,
+      maxRole: o.maxRole,
     })),
     ...docos.map<CombinedTargetOption>((d) => ({
       key: `doco:${d.id}`,
       level: "doco",
       id: d.id,
       label: d.label,
+      maxRole: d.maxRole,
     })),
   ];
   out.sort((a, b) => a.label.localeCompare(b.label));
@@ -57,8 +61,8 @@ function InviteHumanCard({
   docos,
   defaultSelection,
 }: {
-  orgs: { id: string; label: string }[];
-  docos: { id: string; label: string }[];
+  orgs: { id: string; label: string; maxRole: (typeof ALL_ROLES)[number] }[];
+  docos: { id: string; label: string; maxRole: (typeof ALL_ROLES)[number] }[];
   defaultSelection: InviteDefaultSelection;
 }) {
   const fetcher = useFetcher<CollaboratorInviteActionResult>();
@@ -85,6 +89,11 @@ function InviteHumanCard({
   }, [combinedOptions, noTargets, selectedKey]);
 
   const selected = combinedOptions.find((o) => o.key === selectedKey);
+  const allowedRoles = selected
+    ? ALL_ROLES.filter((role) => rankOf(role) <= rankOf(selected.maxRole))
+    : [];
+  const defaultRole =
+    selected && rankOf(selected.maxRole) >= rankOf("author") ? "author" : selected?.maxRole;
 
   return (
     <div className="space-y-3">
@@ -119,11 +128,12 @@ function InviteHumanCard({
             <span className="text-xs uppercase tracking-wide text-muted-foreground">Role</span>
             <select
               name="role"
-              defaultValue="author"
+              defaultValue={defaultRole ?? ""}
+              key={selectedKey}
               data-testid="invite-role"
               className="rounded-md px-3 py-2"
             >
-              {ALL_ROLES.map((r) => (
+              {allowedRoles.map((r) => (
                 <option key={r} value={r}>
                   {r}
                 </option>

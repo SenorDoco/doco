@@ -80,9 +80,9 @@ describe("/api/v1/collaborators/invite.json", () => {
     expect(body.prompt).toContain("https://doco.test/invite/abc");
   });
 
-  it("returns 403 when caller is not an owner", async () => {
+  it("returns 403 when caller tries to grant above their own role", async () => {
     mocks.handleCollaboratorInviteAction.mockResolvedValue({
-      error: "Only owners can grant access -- you hold 'author' on this doco.",
+      error: "Cannot mint a 'owner' invite -- you only hold 'author' on this target.",
     });
     const response = await action({
       request: jsonRequest({ level: "doco", target_id: "doco_acme" }),

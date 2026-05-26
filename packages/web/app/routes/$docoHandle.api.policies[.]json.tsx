@@ -13,7 +13,7 @@
 //        Where `...draft` follows GuidancePolicyDraft or
 //        NeuronAuthoringPolicyDraft from capture.server.ts.
 
-import { roleAtLeast, withClient } from "@doco/db";
+import { withClient } from "@doco/db";
 import {
   type GuidancePolicyDraft,
   type NeuronAuthoringPolicyDraft,
@@ -100,7 +100,7 @@ export async function action({
   const { dir, docoSlug, me, meta, ownerSlug } = await loadDocoRouteForRead(
     request,
     params,
-    "author",
+    "owner",
   );
   if (!me) {
     return Response.json({ error: "Authentication required to write." }, { status: 401 });
@@ -136,8 +136,11 @@ export async function action({
     }
 
     const docoRole = await getDocoLevelRole({ ownerId: meta.ownerId, docoId: meta.docoId }, me.id);
-    if (!docoRole || !roleAtLeast(docoRole, "author")) {
-      return Response.json({ error: "Forbidden: author role required to write." }, { status: 403 });
+    if (docoRole !== "owner") {
+      return Response.json(
+        { error: "Forbidden: owner role required to write policies." },
+        { status: 403 },
+      );
     }
 
     const docoHost = new URL(request.url).origin;

@@ -17,7 +17,7 @@
 // Errors:
 //   401 — anonymous caller
 //   400 — invalid level / missing target_id
-//   403 — caller is not an owner of the org/doco, or tried to grant a
+//   403 — caller has no access to the org/doco, or tried to grant a
 //         role higher than their own
 
 import { buildHumanInvitePrompt } from "~/components/collaboration-invite-prompt";
@@ -78,7 +78,13 @@ export async function action({ request }: { request: Request }) {
   const result = await handleCollaboratorInviteAction(synthRequest);
 
   if ("error" in result) {
-    const status = result.error.toLowerCase().includes("only owners") ? 403 : 400;
+    const lower = result.error.toLowerCase();
+    const status =
+      lower.includes("don't have a role") ||
+      lower.includes("cannot mint") ||
+      lower.includes("cannot grant")
+        ? 403
+        : 400;
     return Response.json({ error: result.error }, { status });
   }
 

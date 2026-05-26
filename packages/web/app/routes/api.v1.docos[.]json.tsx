@@ -1,11 +1,12 @@
 // GET  /api/v1/docos.json — list Docos the caller can read or write.
 // POST /api/v1/docos.json — create a Doco in one step.
 //
-// GET response: { docos: [{ id, handle }] }. Empty array when
-// the caller has access to nothing. Sorted by handle ASC for stable
-// client rendering. The set matches the dashboard / OAuth-approve
-// "what can I see?" view: direct ownership ∪ org membership ∪
-// explicit `doco_users` grant.
+// GET response:
+//   { docos: [{ id, handle, org_id, org_handle, qualified_handle }] }
+// Empty array when the caller has access to nothing. Sorted by
+// `org_handle/handle` for stable client rendering. The set matches
+// the dashboard / OAuth-approve "what can I see?" view: direct
+// ownership ∪ org membership ∪ explicit `doco_users` grant.
 //
 // POST body (JSON):
 //   { template_handle?: string,        // "generic" | "user-flows" | ...
@@ -20,13 +21,14 @@
 // Back-compat: `requested_suffix` and `visibility` are still accepted
 // as aliases for `name` and `privacy`.
 //
-// Behavior: caller must have any role on the org. The requested handle
-// is silently auto-suffixed on collision. Returns 201 with `{ id, handle,
-// org_id, org_handle, visibility, goal, chat_conversation_id }`.
+// Behavior: caller must hold owner on the target org. The requested
+// handle is silently auto-suffixed on collision. Returns 201 with
+// `{ id, handle, org_id, org_handle, qualified_handle, visibility, goal,
+// chat_conversation_id }`.
 
-import { withClient } from "@doco/db";
+import { getOrgRole, roleAtLeast, withClient } from "@doco/db";
 import { listAccessibleDocoIdsForPrincipal } from "~/lib/doco-access.server";
-import { isOrgMember } from "~/lib/org-helpers.server";
+import { qualifiedDocoLabel } from "~/lib/doco-labels";
 import { createDocoInOrg } from "~/lib/redeem.server";
 import { getCurrentPrincipalAsync } from "~/lib/session.server";
 
@@ -40,14 +42,24 @@ export async function loader({ request }: { request: Request }) {
     return Response.json({ docos: [] });
   }
   const rows = await withClient(async (c) => {
-    const r = await c.query<{ id: string; handle: string }>(
-      "SELECT id, handle FROM docos WHERE id = ANY($1::text[]) ORDER BY handle ASC",
+    const r = await c.query<{ id: string; handle: string; org_id: string; org_handle: string }>(
+      `SELECT d.id, d.handle, d.org_id, o.handle AS org_handle
+         FROM docos d
+         JOIN organizations o ON o.id = d.org_id
+        WHERE d.id = ANY($1::text[])
+        ORDER BY o.handle ASC, d.handle ASC`,
       [ids],
     );
     return r.rows;
   });
   return Response.json({
-    docos: rows.map((r) => ({ id: r.id, handle: r.handle })),
+    docos: rows.map((r) => ({
+      id: r.id,
+      handle: r.handle,
+      org_id: r.org_id,
+      org_handle: r.org_handle,
+      qualified_handle: qualifiedDocoLabel({ ownerSlug: r.org_handle, handle: r.handle }),
+    })),
   });
 }
 
@@ -97,8 +109,16 @@ export async function action({ request }: { request: Request }) {
   if (!orgId) return Response.json({ error: "`org_id` is required." }, { status: 400 });
   if (!handle) return Response.json({ error: "`name` is required." }, { status: 400 });
 
-  if (!(await isOrgMember(orgId, me.id))) {
-    return Response.json({ error: "You are not a member of this organization." }, { status: 403 });
+  const orgRole = await getOrgRole(orgId, me.id);
+  if (!roleAtLeast(orgRole, "owner")) {
+    return Response.json(
+      {
+        error: orgRole
+          ? `Only org owners can create docos -- you hold '${orgRole}' on this org.`
+          : "Only org owners can create docos.",
+      },
+      { status: 403 },
+    );
   }
 
   try {
@@ -119,6 +139,7 @@ export async function action({ request }: { request: Request }) {
         handle: rec.handle,
         org_id: rec.orgId,
         org_handle: rec.orgHandle,
+        qualified_handle: qualifiedDocoLabel({ ownerSlug: rec.orgHandle, handle: rec.handle }),
         visibility,
         goal: rec.goal,
         chat_conversation_id: rec.companionChatId ?? null,
