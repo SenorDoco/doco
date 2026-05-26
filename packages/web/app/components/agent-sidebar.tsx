@@ -146,6 +146,13 @@ interface TurnUsage {
   cache_creation_tokens: number;
 }
 
+type ConversationStatusKind = "working" | "question" | "complete" | "attention" | "idle";
+
+interface ConversationStatus {
+  kind: ConversationStatusKind;
+  label: string;
+}
+
 // If the server's `active_turn_started_at` is older than this, treat
 // it as stale (lambda probably crashed before clearing the marker)
 // and ignore it rather than showing a never-ending placeholder.
@@ -1896,6 +1903,25 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
     }
   }, [inFlight, markUnread]);
 
+  const conversationStatus = useMemo<ConversationStatus>(() => {
+    if (loadError || uploadError) {
+      return { kind: "attention", label: "Needs attention" };
+    }
+    if (agentActive) {
+      return { kind: "working", label: "Señor Doco is working" };
+    }
+    const latest = latestVisibleChatMessage(messages);
+    if (!latest) {
+      return { kind: "idle", label: "Ready" };
+    }
+    if (latest.role === "assistant") {
+      return assistantMessageAsksQuestion(latest)
+        ? { kind: "question", label: "Waiting for your answer" }
+        : { kind: "complete", label: "Complete" };
+    }
+    return { kind: "idle", label: "Ready" };
+  }, [agentActive, loadError, messages, uploadError]);
+
   // Sign-in / sign-out / OAuth callbacks always force-collapse: no
   // session yet (or being torn down), and Señor Doco would be empty
   // chrome. /device + /oauth/authorize used to be in this list too,
@@ -2096,7 +2122,7 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
                     ref={messageListRef}
                     onScroll={onMessagesScroll}
                     className={cn(
-                      "min-h-0 overflow-y-auto px-3 py-3 text-xs leading-relaxed",
+                      "flex min-h-0 flex-col overflow-y-auto px-3 py-3 text-xs leading-relaxed",
                       showThinking ? "w-[320px] shrink-0 border-r border-border" : "flex-1",
                     )}
                   >
@@ -2123,6 +2149,7 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
                         usage={rm.kind === "inflight" ? turnUsage : null}
                       />
                     ))}
+                    <ConversationStatusIcon status={conversationStatus} />
                   </div>
                   {showThinking ? (
                     <ThinkingPanel
@@ -2788,6 +2815,35 @@ function messageLocalTwinKey(message: ChatMessage): string {
   return `${message.role}:${visibleChatBlocks(message.content).map(blockLocalTwinKey).join("|")}`;
 }
 
+function latestVisibleChatMessage(messages: readonly ChatMessage[]): ChatMessage | null {
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const message = messages[i];
+    if (!message) continue;
+    if (visibleChatBlocks(message.content).length > 0) return message;
+  }
+  return null;
+}
+
+function visibleMessageText(message: ChatMessage): string {
+  return visibleChatBlocks(message.content)
+    .filter((block): block is ContentBlockText => block.type === "text")
+    .map((block) => block.text.trim())
+    .filter(Boolean)
+    .join("\n")
+    .trim();
+}
+
+function assistantMessageAsksQuestion(message: ChatMessage): boolean {
+  const text = visibleMessageText(message);
+  if (!text) return false;
+  const lastLine = text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .at(-1);
+  return Boolean(lastLine && /[?？]\s*$/.test(lastLine));
+}
+
 function formatTokenCount(n: number): string {
   if (n < 1000) return String(n);
   if (n < 10_000) return `${(n / 1000).toFixed(1)}k`;
@@ -2852,6 +2908,43 @@ function ThinkingDots({
       <span className={cn("doco-thinking-dot h-1.5 w-1.5 rounded-full bg-current", dotClassName)} />
       <span className={cn("doco-thinking-dot h-1.5 w-1.5 rounded-full bg-current", dotClassName)} />
     </span>
+  );
+}
+
+function ConversationStatusIcon({ status }: { status: ConversationStatus }) {
+  const baseClass =
+    "inline-flex h-7 w-7 items-center justify-center rounded-full border border-border bg-card text-[15px] font-semibold leading-none shadow-sm";
+  const symbol =
+    status.kind === "question"
+      ? "?"
+      : status.kind === "complete"
+        ? "✓"
+        : status.kind === "attention"
+          ? "!"
+          : "•";
+  const toneClass =
+    status.kind === "question"
+      ? "text-primary"
+      : status.kind === "complete"
+        ? "text-emerald-600"
+        : status.kind === "attention"
+          ? "text-destructive"
+          : "text-muted-foreground";
+
+  return (
+    <output
+      className="mt-auto flex justify-end pb-1 pt-2 pr-1"
+      aria-label={status.label}
+      aria-live="polite"
+    >
+      {status.kind === "working" ? (
+        <DocoMark height={28} variant="mark" active ariaLabel={status.label} />
+      ) : (
+        <span className={cn(baseClass, toneClass)} title={status.label}>
+          {symbol}
+        </span>
+      )}
+    </output>
   );
 }
 
