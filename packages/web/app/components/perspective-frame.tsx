@@ -69,8 +69,9 @@ interface PerspectiveFrameProps {
  * positions so they're identical across Graph, BPMN, Org Tree, List,
  * and any future perspective.
  *
- * The top edge is intentionally omitted: the perspective tabs own it,
- * and the canvas should not draw a horizontal divider beneath them.
+ * The frame keeps the same etched border as other Doco sections, but
+ * overlaps the tab row by 1px so the active tab can cover the frame's
+ * top edge directly beneath itself.
  */
 export function PerspectiveFrame({
   fillHeight = false,
@@ -83,7 +84,7 @@ export function PerspectiveFrame({
   return (
     <FullscreenContext.Provider value={fullscreen ?? null}>
       <div
-        className={`neu-surface-open-top relative w-full overflow-hidden rounded-b-lg rounded-t-none border border-t-0 border-border bg-card text-card-foreground ${sizeClass}`}
+        className={`neu-surface relative -mt-px w-full overflow-hidden rounded-b-lg rounded-tl-none rounded-tr-lg border border-border bg-card text-card-foreground ${sizeClass}`}
       >
         {children}
         {autoReorder ? (

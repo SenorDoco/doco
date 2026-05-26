@@ -85,25 +85,17 @@ function PerspectiveTab({ handle, perspective, active, isFirst, isLast }: Perspe
   //     tab top-right). Inner corners stay square so adjacent tabs
   //     don't create visible dips where their rounded tops curve away
   //     from each other.
-  //   * Active tab has z-10 so its borders win the overlap.
-  //   * The perspective frame has no top border; the tabs own that top
-  //     edge. Keep tab bottom borders transparent so no horizontal rule
-  //     separates the tab strip from the content.
+  //   * The active tab has z-20 and an open-bottom etched surface; the
+  //     frame overlaps the tab row by 1px, so the active tab covers the
+  //     frame edge directly beneath itself and reads as attached to the
+  //     canvas rather than as a separate button.
   const tabClass = cn(
     "relative -ml-px first:ml-0 inline-flex items-center gap-1.5 border border-border px-3 py-1.5 text-xs font-medium",
     isFirst && "rounded-tl-md",
     isLast && "rounded-tr-md",
     active
-      ? // The active tab's bg + bottom border match the perspective
-        // canvas (bg-background) so the tab visually flows into the
-        // canvas without a visible seam. Keep the bottom border
-        // transparent so there is no divider between tab and content.
-        "z-10 border-b-transparent bg-background text-foreground"
-      : // border-b-transparent on inactive tabs so the tab's bottom
-        // border (22%-alpha border-border) doesn't STACK on top of
-        // the canvas's top border (also 22% alpha) and render as a
-        // ~39%-alpha darker line where they overlap.
-        "border-b-transparent bg-input/40 text-muted-foreground hover:bg-input/60 hover:text-foreground",
+      ? "neu-surface-open-bottom z-20 bg-card text-foreground"
+      : "bg-input/40 text-muted-foreground hover:bg-input/60 hover:text-foreground",
   );
   const title = perspective.ownerHandle
     ? `${perspective.name} — by ${perspective.ownerHandle}`
@@ -199,7 +191,7 @@ function PerspectiveSettingsMenu({
         // perspective tabs' height, so Safari can't render us shorter
         // than them. Without this, `items-end` on the nav was
         // bottom-aligning a naturally-shorter chevron tab.
-        className="relative -ml-px inline-flex cursor-pointer items-center justify-center self-stretch gap-1.5 rounded-tr-md border border-border border-b-transparent bg-input/40 px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-input/60 hover:text-foreground"
+        className="relative -ml-px inline-flex cursor-pointer items-center justify-center self-stretch gap-1.5 rounded-tr-md border border-border bg-input/40 px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-input/60 hover:text-foreground"
       >
         <span aria-hidden className="text-sm leading-none">
           ⌵
