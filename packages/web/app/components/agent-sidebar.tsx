@@ -1942,14 +1942,14 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
 
   // Single-element render: the aside is always present so its
   // width transition runs for BOTH the show-thinking expansion AND
-  // the chevron-click collapse. Content swaps based on `collapsedDisplay`,
+  // the panel-button collapse. Content swaps based on `collapsedDisplay`,
   // and `overflow-hidden` keeps the inner content from spilling while
   // the width animates.
   const collapsedDisplay = collapsed || isAuthPage;
 
   return (
     <aside
-      className="neu-panel flex h-full shrink-0 flex-row overflow-hidden border-r border-border bg-card"
+      className="neu-panel flex h-full shrink-0 flex-col overflow-hidden border-r border-border bg-card"
       style={{ width: railWidth, transition: "width 180ms ease-out" }}
       aria-busy={agentActive}
       aria-label={agentActive ? "Señor Doco, working" : "Señor Doco"}
@@ -1962,7 +1962,7 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
           aria-label={agentActive ? "Expand Señor Doco (working)" : "Expand Señor Doco"}
           className="group relative flex h-full w-full shrink-0 cursor-pointer flex-col items-center justify-center gap-2 py-3 hover:bg-input"
         >
-          <CollapseIcon side="right" />
+          <PanelToggleIcon side="left" open />
           <div
             className="select-none text-[12px] font-semibold text-foreground"
             style={{ writingMode: "vertical-rl", transform: "rotate(180deg)" }}
@@ -1988,31 +1988,40 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
       ) : (
         <>
           <div className="flex min-w-0 flex-1 flex-col">
-            {/* Header — always visible. The collapse affordance lives on the
-          full-height tab at the right edge of the aside (rendered as a
-          sibling below), not in this row, so users don't mistake a tiny
-          button for "minimize" or hunt for it. */}
+            {/* Header — always visible. Single row: title on the left,
+          Thinking + collapse controls on the right. */}
             <div className="flex shrink-0 items-center justify-between border-b border-border px-3 py-2">
               <div className="select-none truncate text-sm font-semibold text-foreground">
                 Señor Doco
               </div>
-              {view === "chat" ? (
+              <div className="flex items-center gap-1.5">
+                {view === "chat" ? (
+                  <button
+                    type="button"
+                    onClick={toggleShowThinking}
+                    aria-pressed={showThinking}
+                    aria-label={showThinking ? "Hide thinking column" : "Show thinking column"}
+                    title={showThinking ? "Hide thinking column" : "Show thinking column"}
+                    className={cn(
+                      "rounded-md border border-border px-2 py-0.5 text-[11px]",
+                      showThinking
+                        ? "neu-pressed bg-input text-foreground"
+                        : "neu-button text-muted-foreground hover:bg-input hover:text-foreground",
+                    )}
+                  >
+                    {showThinking ? "Hide thinking" : "Show thinking"}
+                  </button>
+                ) : null}
                 <button
                   type="button"
-                  onClick={toggleShowThinking}
-                  aria-pressed={showThinking}
-                  aria-label={showThinking ? "Hide thinking column" : "Show thinking column"}
-                  title={showThinking ? "Hide thinking column" : "Show thinking column"}
-                  className={cn(
-                    "rounded-md border border-border px-2 py-0.5 text-[11px]",
-                    showThinking
-                      ? "neu-pressed bg-input text-foreground"
-                      : "neu-button text-muted-foreground hover:bg-input hover:text-foreground",
-                  )}
+                  onClick={() => setCollapsedPersistent(true)}
+                  aria-label="Collapse Señor Doco"
+                  title="Collapse"
+                  className="neu-button inline-flex h-6 w-6 items-center justify-center rounded-md border border-border text-muted-foreground hover:bg-input hover:text-foreground"
                 >
-                  {showThinking ? "Hide thinking" : "Show thinking"}
+                  <PanelToggleIcon side="left" open={false} />
                 </button>
-              ) : null}
+              </div>
             </div>
 
             {view === "list" ? (
@@ -2194,19 +2203,6 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
               .
             </div>
           </div>
-          {/* Full-height collapse tab — a thin column on the right edge
-          with the chevron centered vertically. Unmistakable affordance:
-          the entire vertical strip is one button, so users can't miss
-          it the way they did with the tiny header chevron. */}
-          <button
-            type="button"
-            onClick={() => setCollapsedPersistent(true)}
-            aria-label="Collapse Señor Doco"
-            title="Collapse"
-            className="flex h-full w-5 shrink-0 cursor-pointer items-center justify-center border-l border-border bg-card text-muted-foreground hover:bg-input hover:text-foreground"
-          >
-            <CollapseIcon side="left" />
-          </button>
         </>
       )}
     </aside>
@@ -2246,7 +2242,7 @@ export function CollapsedRail({
         isLeft ? "border-r border-border" : "border-l border-border",
       )}
     >
-      <CollapseIcon side={isLeft ? "right" : "left"} />
+      <PanelToggleIcon side={side} open />
       <div
         className="select-none text-[11px] font-semibold uppercase tracking-wider text-foreground"
         style={{
@@ -2282,6 +2278,30 @@ function CollapseIcon({ side }: { side: "left" | "right" }) {
       aria-hidden="true"
     >
       {side === "left" ? <polyline points="10 4 5 8 10 12" /> : <polyline points="6 4 11 8 6 12" />}
+    </svg>
+  );
+}
+
+function PanelToggleIcon({ side, open }: { side: "left" | "right"; open: boolean }) {
+  const isLeftPanel = side === "left";
+  const separatorX = isLeftPanel ? 7 : 17;
+  const points = isLeftPanel === open ? "13 8 17 12 13 16" : "15 8 11 12 15 16";
+
+  return (
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <rect x="3.5" y="4" width="17" height="16" rx="1.5" />
+      <line x1={separatorX} y1="4" x2={separatorX} y2="20" />
+      <polygon points={points} fill="currentColor" stroke="none" />
     </svg>
   );
 }
