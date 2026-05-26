@@ -35,6 +35,12 @@ export interface NeuronDialogLifecycleChange {
   to: string;
 }
 
+export interface NeuronDialogDocoRef {
+  name: string;
+  handle: string;
+  href: string;
+}
+
 export interface NeuronLifecycleOption {
   value: LifecycleStage;
   label: string;
@@ -52,6 +58,7 @@ export interface NeuronDialogDetail {
   created_at: string | null;
   updated_at: string | null;
   body_md: string | null;
+  doco: NeuronDialogDocoRef;
   frontmatter: Record<string, unknown>;
   raw_json: string;
   href: string;
@@ -186,7 +193,7 @@ export function isGraphNeuronType(
 
 export async function loadNeuronDialogDetail(
   c: QueryClient,
-  meta: { docoId: string; ownerId: string },
+  meta: { docoId: string; ownerId: string; displayName?: string },
   options: {
     handle: string;
     entityType: string;
@@ -358,6 +365,11 @@ export async function loadNeuronDialogDetail(
     created_at: toIso(row.created_at),
     updated_at: toIso(row.updated_at),
     body_md: fullProse,
+    doco: {
+      name: meta.displayName || options.handle,
+      handle: options.handle,
+      href: `/${options.handle}`,
+    },
     frontmatter,
     raw_json: row.raw_json,
     href: `/${options.handle}/${options.entityType}/${row.id}`,

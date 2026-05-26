@@ -1,4 +1,5 @@
 import { Loader2, X } from "lucide-react";
+import { Link } from "react-router";
 import { NeuronTypeIcon } from "~/components/neuron-type-icon";
 import { lifecycleColor } from "~/lib/neuron-colors";
 import type { LifecycleStage, NeuronDialogDetail } from "~/lib/neuron-detail.server";
@@ -77,6 +78,22 @@ function lifecycleButtonClass(detail: NeuronDialogDetail, stage: LifecycleStage,
   return `${base} neu-button`;
 }
 
+function DocoSourceLine({ doco }: { doco: NeuronDialogDetail["doco"] | null | undefined }) {
+  if (!doco) return null;
+  return (
+    <p className="mt-2 text-[11px] leading-snug text-muted-foreground">
+      Doco{" "}
+      <Link
+        to={doco.href}
+        className="font-mono font-semibold text-foreground underline-offset-2 hover:text-primary hover:underline"
+      >
+        {doco.name}
+      </Link>
+      {doco.name !== doco.handle ? <span className="font-mono"> /{doco.handle}</span> : null}
+    </p>
+  );
+}
+
 export function NeuronDialog({
   detail,
   loading,
@@ -133,38 +150,38 @@ export function NeuronDialog({
                 <X className="h-4 w-4" aria-hidden="true" />
               </button>
             </div>
-            {detail ? (
-              <div className="mt-3 space-y-2">
-                <div className="flex flex-wrap gap-1.5" aria-label="Lifecycle stages">
-                  {detail.lifecycle_options.map((option) => {
-                    const color = lifecycleColor(option.value);
-                    const busy = lifecycleUpdating === option.value;
-                    return (
-                      <button
-                        key={option.value}
-                        type="button"
-                        disabled={option.disabled || busy || lifecycleUpdating !== null}
-                        onClick={() => onLifecycleChange(option.value)}
-                        title={option.reason ?? `Mark as ${option.value}`}
-                        className={lifecycleButtonClass(detail, option.value, option.current)}
-                        style={{ color }}
-                      >
-                        {busy ? <Loader2 className="mr-1.5 h-3 w-3 animate-spin" /> : null}
-                        {option.label}
-                      </button>
-                    );
-                  })}
-                </div>
-                {disabledReason ? (
-                  <p className="text-[11px] leading-snug text-muted-foreground">{disabledReason}</p>
-                ) : null}
-                {lifecycleError ? (
-                  <p className="text-[11px] leading-snug text-destructive">{lifecycleError}</p>
-                ) : null}
-              </div>
-            ) : null}
           </div>
         </div>
+        {detail ? (
+          <div className="mt-3 space-y-2">
+            <div className="flex flex-wrap gap-1.5" aria-label="Lifecycle stages">
+              {detail.lifecycle_options.map((option) => {
+                const color = lifecycleColor(option.value);
+                const busy = lifecycleUpdating === option.value;
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    disabled={option.disabled || busy || lifecycleUpdating !== null}
+                    onClick={() => onLifecycleChange(option.value)}
+                    title={option.reason ?? `Mark as ${option.value}`}
+                    className={lifecycleButtonClass(detail, option.value, option.current)}
+                    style={{ color }}
+                  >
+                    {busy ? <Loader2 className="mr-1.5 h-3 w-3 animate-spin" /> : null}
+                    {option.label}
+                  </button>
+                );
+              })}
+            </div>
+            {disabledReason ? (
+              <p className="text-[11px] leading-snug text-muted-foreground">{disabledReason}</p>
+            ) : null}
+            {lifecycleError ? (
+              <p className="text-[11px] leading-snug text-destructive">{lifecycleError}</p>
+            ) : null}
+          </div>
+        ) : null}
       </header>
 
       <div
@@ -189,6 +206,7 @@ export function NeuronDialog({
                 <div className="whitespace-pre-wrap break-words text-sm font-bold leading-6 text-foreground">
                   {detail.body_md}
                 </div>
+                <DocoSourceLine doco={detail.doco} />
               </section>
             ) : null}
 
@@ -215,6 +233,7 @@ export function NeuronDialog({
                   {proseFieldName(detail.entity_type)}
                 </h3>
                 <div className="whitespace-pre-wrap break-words leading-5">{detail.body_md}</div>
+                <DocoSourceLine doco={detail.doco} />
               </section>
             ) : null}
 
