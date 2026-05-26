@@ -148,6 +148,7 @@ const ACTIVE_TURN_STALE_MS = 5 * 60 * 1000;
 interface InFlightMessage {
   content: AnyBlock[];
   toolResults: Map<string, ContentBlockToolResult>;
+  created_at: string;
 }
 
 const COLLAPSE_KEY = "senor-doco:collapsed";
@@ -1357,7 +1358,12 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
       // React state, then commit `local*` once `done` fires.
       const localContent: AnyBlock[] = [];
       const localResults = new Map<string, ContentBlockToolResult>();
-      setInFlight({ content: localContent, toolResults: localResults });
+      const assistantStartedAt = new Date().toISOString();
+      setInFlight({
+        content: localContent,
+        toolResults: localResults,
+        created_at: assistantStartedAt,
+      });
 
       const localUserBlocks: AnyBlock[] = [];
       if (text) localUserBlocks.push({ type: "text", text });
@@ -1398,6 +1404,7 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
         setInFlight({
           content: [...localContent],
           toolResults: new Map(localResults),
+          created_at: assistantStartedAt,
         });
 
       try {
@@ -1768,7 +1775,11 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
       // settles and we re-fetch.
       out.push({
         kind: "inflight",
-        message: { content: [], toolResults: new Map() },
+        message: {
+          content: [],
+          toolResults: new Map(),
+          created_at: new Date().toISOString(),
+        },
       });
     }
     return out;
@@ -2690,6 +2701,29 @@ function formatTokenCount(n: number): string {
   return `${Math.round(n / 1000)}k`;
 }
 
+function formatMessageTime(createdAt: string): string {
+  const date = new Date(createdAt);
+  if (!Number.isFinite(date.getTime())) return "";
+  const hour = String(date.getHours()).padStart(2, "0");
+  const minute = String(date.getMinutes()).padStart(2, "0");
+  return `${hour}:${minute}`;
+}
+
+function MessageTime({ createdAt }: { createdAt: string }) {
+  const [label, setLabel] = useState("");
+  useEffect(() => {
+    setLabel(formatMessageTime(createdAt));
+  }, [createdAt]);
+  return (
+    <time
+      dateTime={createdAt}
+      className="mb-1 min-w-[2.5rem] shrink-0 select-none text-center font-mono text-[10px] leading-none text-muted-foreground/70"
+    >
+      {label}
+    </time>
+  );
+}
+
 function MessageBlock({ rm, usage }: { rm: RenderableMessage; usage: TurnUsage | null }) {
   if (rm.kind === "saved") {
     const m = rm.message;
@@ -2726,13 +2760,22 @@ function SavedMessage({ message }: { message: ChatMessage }) {
     <div className={cn("mb-3 flex flex-col", isAssistant ? "items-end" : "items-start")}>
       <div
         className={cn(
-          "neu-bubble max-w-[90%] space-y-1.5 rounded-lg px-2.5 py-1.5",
-          isAssistant ? "bg-primary/10" : "neu-surface bg-card",
+          "flex w-full items-end gap-2",
+          isAssistant ? "justify-end" : "justify-start",
         )}
       >
-        {visible.map((b) => (
-          <BlockView key={blockKey(b)} block={b} />
-        ))}
+        {isAssistant ? <MessageTime createdAt={message.created_at} /> : null}
+        <div
+          className={cn(
+            "neu-bubble max-w-[82%] space-y-1.5 rounded-lg px-2.5 py-1.5",
+            isAssistant ? "bg-primary/10" : "neu-surface bg-card",
+          )}
+        >
+          {visible.map((b) => (
+            <BlockView key={blockKey(b)} block={b} />
+          ))}
+        </div>
+        {!isAssistant ? <MessageTime createdAt={message.created_at} /> : null}
       </div>
       <div className="mt-1 text-[10px] uppercase tracking-wide text-muted-foreground">
         {isAssistant ? "Señor Doco" : "You"}
@@ -2768,10 +2811,13 @@ function InFlightMessageView({
   // call turn) still show the thinking cue.
   return (
     <div className="mb-3 flex flex-col items-end">
-      <div className="neu-bubble max-w-[90%] space-y-1.5 rounded-lg bg-primary/10 px-2.5 py-1.5">
-        {visible.map((b) => (
-          <BlockView key={blockKey(b)} block={b} />
-        ))}
+      <div className="flex w-full items-end justify-end gap-2">
+        <MessageTime createdAt={msg.created_at} />
+        <div className="neu-bubble max-w-[82%] space-y-1.5 rounded-lg bg-primary/10 px-2.5 py-1.5">
+          {visible.map((b) => (
+            <BlockView key={blockKey(b)} block={b} />
+          ))}
+        </div>
       </div>
       <div className="mt-1 flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-muted-foreground">
         <DocoMark height={14} variant="mark" active decorative />
