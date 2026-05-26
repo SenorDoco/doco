@@ -87,6 +87,9 @@ function NavButtons({ me, onNavigate }: { me: CurrentPrincipal; onNavigate?: () 
       <NavLink to="/collaborators" className={linkClass} onClick={onNavigate}>
         Collaborators
       </NavLink>
+      <NavLink to="/integrations" className={linkClass} onClick={onNavigate}>
+        Integrations
+      </NavLink>
       <NavLink to="/api-keys" className={linkClass} onClick={onNavigate}>
         API keys
       </NavLink>
