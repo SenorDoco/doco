@@ -332,9 +332,7 @@ function OrgTreeInner({
   if (filtered.length === 0) {
     return (
       <div className="flex h-full min-h-[400px] items-center justify-center text-sm text-muted-foreground">
-        No Principals to render. Capture one via
-        <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">POST /api/principals.json</code>
-        to get started.
+        No org yet, just vibes.
       </div>
     );
   }
