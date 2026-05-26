@@ -1631,6 +1631,12 @@ function truncateToolResultEnvelope(
   return `${full.slice(0, maxBytes)}${marker}`;
 }
 
+function truncateToolPreview(value: unknown, maxChars: number): string {
+  const full = typeof value === "string" ? value : (JSON.stringify(value) ?? String(value));
+  if (full.length <= maxChars) return full;
+  return `${full.slice(0, maxChars)}...`;
+}
+
 interface ToolResult {
   result: ToolResultBlockParam;
   navigateUrl?: string;
@@ -1738,8 +1744,7 @@ async function runTool(block: ToolUseBlock, ctx: ChatStreamContext): Promise<Too
         ok,
         body: parsed,
       };
-      const previewBody =
-        typeof parsed === "string" ? parsed.slice(0, 100) : JSON.stringify(parsed).slice(0, 100);
+      const previewBody = truncateToolPreview(parsed, 100);
       return {
         result: {
           type: "tool_result",
