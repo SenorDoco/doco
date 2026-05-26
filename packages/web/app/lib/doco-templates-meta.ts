@@ -47,7 +47,7 @@ export const DOCO_TEMPLATES: DocoTemplateMeta[] = [
     label: "Business Processes",
     description:
       "Document repeatable business processes — actors, gateways, milestones, outcomes. BPMN-inspired.",
-    updatedAt: "2026-05-08",
+    updatedAt: "2026-05-26",
     owner: TEMPLATE_OWNER,
   },
   {

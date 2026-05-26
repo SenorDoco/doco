@@ -74,12 +74,10 @@ interface BpmnPerspectiveProps {
   nodes: BpmnNode[];
   links: OverviewGraphLink[];
   /**
-   * Per-neuron global PageRank score on the doco's synapse graph,
-   * emitted by `loadBpmnGraph`. When `centerId` is set, the client
-   * re-runs PageRank with the teleport vector biased to that focal
-   * neuron, and re-picks the primary intent for each multi-intent
-   * node — so neurons can swap pools as the user clicks into the
-   * graph without a round-trip to the server.
+   * Per-neuron global PageRank score on the doco's synapse graph.
+   * The server emits this for diagnostics and stable pool ordering;
+   * the client recomputes personalized ranks from visible nodes plus
+   * Intent pool headers when `centerId` changes.
    */
   globalPagerank?: Record<string, number>;
   onNeuronClick?: (node: BpmnNode) => void;
@@ -185,7 +183,6 @@ export function BpmnPerspective({
   lanes: lanesRaw,
   nodes: nodesRaw,
   links,
-  globalPagerank,
   onNeuronClick,
   onPoolClick,
   onLaneClick,
@@ -203,17 +200,16 @@ export function BpmnPerspective({
   // which is the most stable read), but a node migrating to a pool
   // that didn't have its actor lane yet adds the lane on the fly.
   const { lanes, nodes } = useMemo(() => {
-    const hasFocal = !!centerId && nodesRaw.some((n) => n.id === centerId);
+    const pageRankNodes = bpmnGraphRankNodes(pools, nodesRaw);
+    const hasFocal = !!centerId && pageRankNodes.some((n) => n.id === centerId);
     const multiIntentNodes = nodesRaw.filter((n) => (n.intent_ids?.length ?? 0) > 1);
     if (!hasFocal || multiIntentNodes.length === 0) {
       return { lanes: lanesRaw, nodes: nodesRaw };
     }
 
-    const personalized = pageRank(
-      nodesRaw.map((n) => ({ id: n.id })),
-      links,
-      { personalization: new Map([[centerId as string, 1]]) },
-    );
+    const personalized = pageRank(pageRankNodes, links, {
+      personalization: new Map([[centerId as string, 1]]),
+    });
 
     // Build new node list with adjusted pool_id / laneId for any
     // multi-intent neuron whose primary intent changed under
@@ -268,7 +264,7 @@ export function BpmnPerspective({
       lanes: synthesizedLanes.length > 0 ? [...lanesRaw, ...synthesizedLanes] : lanesRaw,
       nodes: movedNodes,
     };
-  }, [lanesRaw, nodesRaw, links, centerId]);
+  }, [pools, lanesRaw, nodesRaw, links, centerId]);
   const navigate = useNavigate();
   const graphRef = useRef<HTMLDivElement>(null);
   const [Flow, setFlow] = useState<FlowModule | null>(null);
@@ -281,11 +277,9 @@ export function BpmnPerspective({
     );
   };
 
-  // Drop nodes whose lifecycle is filtered out. Lanes are NEVER
-  // dropped — every Principal lane stays visible regardless of which
-  // nodes are filtered in. Matches the server-side guarantee that
-  // loadBpmnGraph emits a lane for every Principal in the doco, even
-  // when zero neurons are assigned to them. Links are still filtered
+  // Drop nodes whose lifecycle is filtered out. Lanes are never
+  // dropped once the server emits them, so a filtered-out Action
+  // does not make its swim lane disappear. Links are still filtered
   // by the existing nodeSet check inside layOutBpmn.
   const { filteredNodes, filteredLanes } = useMemo(() => {
     if (!visibleLifecycles) return { filteredNodes: nodes, filteredLanes: lanes };
@@ -384,7 +378,7 @@ export function BpmnPerspective({
           id: lane.id,
           entity_type: "principal",
           label: lane.label,
-          lifecycle: "active",
+          lifecycle: lane.lifecycle ?? "active",
           href: null,
         })),
     [filteredLanes],
@@ -440,7 +434,7 @@ export function BpmnPerspective({
     [layout.flowNodes, referenceNumberByEntityId, nodeById, openLaneNeuron],
   );
 
-  if (filteredLanes.length === 0) {
+  if (filteredLanes.length === 0 && pools.length === 0) {
     return (
       <div className="flex h-full w-full items-center justify-center text-center text-sm font-medium text-muted-foreground">
         So empty
@@ -760,6 +754,22 @@ interface BpmnLayout {
 const POOL_HEADER_HEIGHT = 32;
 const POOL_GAP = 16;
 
+function bpmnGraphRankNodes(
+  pools: readonly BpmnPool[],
+  nodes: readonly BpmnNode[],
+): Array<{ id: string }> {
+  const seen = new Set<string>();
+  const out: Array<{ id: string }> = [];
+  const add = (id: string | null | undefined) => {
+    if (!id || seen.has(id)) return;
+    seen.add(id);
+    out.push({ id });
+  };
+  for (const node of nodes) add(node.id);
+  for (const pool of pools) add(pool.intent_id);
+  return out;
+}
+
 function layOutBpmn(
   pools: BpmnPool[],
   lanes: BpmnLane[],
@@ -770,8 +780,9 @@ function layOutBpmn(
   // Per-node BFS depth from the focal neuron — used to fade non-
   // neighbours. Separate from `computeDepths` below, which is the
   // topological column position used for left-to-right layout.
-  const focalDepthByNode = computeDepthFromCenter(nodes, links, centerId);
-  const focalActive = hasFocalNode(centerId, nodes);
+  const focusNodes = bpmnGraphRankNodes(pools, nodes);
+  const focalDepthByNode = computeDepthFromCenter(focusNodes, links, centerId);
+  const focalActive = hasFocalNode(centerId, focusNodes);
 
   const byLane = new Map<string, BpmnNode[]>();
   for (const lane of lanes) byLane.set(lane.id, []);
@@ -862,7 +873,6 @@ function layOutBpmn(
   let poolIndex = 0;
   for (const pool of pools) {
     const poolLanes = lanesByPool.get(pool.id) ?? [];
-    if (poolLanes.length === 0) continue; // empty pool — server already drops these in practice
     if (poolIndex > 0) cursorY += POOL_GAP;
     poolIndex++;
     const poolStartY = cursorY;
