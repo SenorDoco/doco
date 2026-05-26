@@ -60,7 +60,7 @@ ensureEnvLoaded();
 // was Haiku 4.5; flipped when prod 429s on the 10K-ITPM Haiku tier kept
 // surfacing as forever-stuck in-flight bubbles.
 const MODEL = "claude-sonnet-4-6";
-const MAX_TURNS_PER_REPLY = 12;
+const MAX_TURNS_PER_REPLY = 100;
 // Per-Anthropic-call output cap. 2048 was the old Haiku-era setting
 // and proved way too tight for Sonnet on multi-tool batches: a single
 // "create 8 actions in parallel" reply truncates mid-tool-JSON
