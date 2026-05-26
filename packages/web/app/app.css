@@ -573,29 +573,3 @@ button[class*="bg-primary"]:active {
   max-width: 14px;
   max-height: 14px;
 }
-
-.doco-page-shell {
-  container: doco-page / inline-size;
-}
-
-.doco-page-right-column {
-  display: none;
-}
-
-.doco-page-floating-dialog {
-  display: block;
-}
-
-@container doco-page (min-width: 1200px) {
-  .doco-page-grid {
-    grid-template-columns: minmax(0, 1fr) 320px;
-  }
-
-  .doco-page-right-column {
-    display: block;
-  }
-
-  .doco-page-floating-dialog {
-    display: none;
-  }
-}
