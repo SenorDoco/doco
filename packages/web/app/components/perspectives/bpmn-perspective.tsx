@@ -1105,8 +1105,16 @@ function computeDepths(
   links: readonly OverviewGraphLink[],
 ): Map<string, number> {
   const depth = new Map<string, number>();
+  const depthFloor = new Map<string, number>();
   const nodeIds = new Set(nodes.map((n) => n.id));
   const predecessors = new Map<string, string[]>();
+  // Server-provided BFS depth is a floor, not a post-pass override:
+  // successors need to inherit any rightward shift their predecessor
+  // earned from the Intent / initial-State start anchors.
+  for (const node of nodes) {
+    const bfs = node.bfs_depth;
+    if (bfs !== undefined && bfs > 0) depthFloor.set(node.id, bfs);
+  }
   for (const id of nodeIds) predecessors.set(id, []);
   for (const link of links) {
     if (!nodeIds.has(link.source) || !nodeIds.has(link.target)) continue;
@@ -1122,7 +1130,7 @@ function computeDepths(
     if (visiting.has(id)) return 0;
     visiting.add(id);
     const preds = predecessors.get(id) ?? [];
-    let max = 0;
+    let max = depthFloor.get(id) ?? 0;
     for (const pred of preds) {
       const d = depthOf(pred) + 1;
       if (d > max) max = d;
@@ -1132,19 +1140,6 @@ function computeDepths(
     return max;
   }
   for (const id of nodeIds) depthOf(id);
-  // BFS-from-start fallback. The server tags each node with
-  // `bfs_depth` — its undirected distance from the nearest start
-  // anchor (Intent / kind=initial State) over the full synapse graph.
-  // For neurons with no incoming sequence-flow synapse, this is the
-  // only signal that places them somewhere other than column 0. Take
-  // MAX(sequence-flow depth, bfs_depth) so explicit `preceded_by` chains
-  // (which can produce deeper depths) still win when they exist.
-  for (const node of nodes) {
-    const bfs = node.bfs_depth;
-    if (bfs === undefined || bfs <= 0) continue;
-    const current = depth.get(node.id) ?? 0;
-    if (bfs > current) depth.set(node.id, bfs);
-  }
   return depth;
 }
 
