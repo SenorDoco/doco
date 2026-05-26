@@ -419,18 +419,46 @@ type PendingCreate =
   | { kind: "neuron"; handle: string; entityType: string }
   | { kind: "policy"; handle: string; policyKindSlug: string };
 
-// Below this viewport width, the neuron detail dialog overlays the
-// whole content area and there's no room for both the chat and the
-// dialog to coexist comfortably. When the agent drives the focus
-// (vs. an explicit user click), we still center the graph on the
-// neuron but suppress the dialog by appending `?dialog=skip`. The
-// route loader reads the param and leaves `selectedNeuron` null.
-const AUTO_FOCUS_DIALOG_MIN_WIDTH = 1280;
+// When the agent drives focus (vs. an explicit user click), center
+// the graph on the neuron without opening the detail dialog. The
+// route loader reads `?dialog=skip` and leaves `selectedNeuron` null.
+const AGENT_FOCUS_NEURON_TYPES = new Set([
+  "decision",
+  "intent",
+  "action",
+  "log",
+  "rule",
+  "eval",
+  "reference",
+  "state",
+  "idea",
+  "principal",
+]);
 
-function withDialogSkipIfCramped(target: string): string {
-  if (typeof window === "undefined") return target;
-  if (window.innerWidth >= AUTO_FOCUS_DIALOG_MIN_WIDTH) return target;
-  return target.includes("?") ? `${target}&dialog=skip` : `${target}?dialog=skip`;
+function withDialogSkip(target: string): string {
+  if (!target.startsWith("/")) return target;
+  try {
+    const url = new URL(target, "https://doco.local");
+    url.searchParams.set("dialog", "skip");
+    return `${url.pathname}${url.search}${url.hash}`;
+  } catch {
+    return target.includes("?") ? `${target}&dialog=skip` : `${target}?dialog=skip`;
+  }
+}
+
+function withDialogSkipForNeuronTarget(target: string): string {
+  if (!target.startsWith("/")) return target;
+  try {
+    const url = new URL(target, "https://doco.local");
+    const segments = url.pathname.split("/").filter(Boolean);
+    const [, entityType, id] = segments;
+    if (segments.length !== 3 || !id || !AGENT_FOCUS_NEURON_TYPES.has(entityType)) {
+      return target;
+    }
+    return withDialogSkip(target);
+  } catch {
+    return target;
+  }
 }
 
 export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
@@ -1368,7 +1396,7 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
       // actually something half-written. Empty composer = user is
       // waiting; navigate.
       if (composerHasTextRef.current) return;
-      navigate(withDialogSkipIfCramped(target));
+      navigate(withDialogSkip(target));
     },
     [navigate, location.pathname],
   );
@@ -1443,7 +1471,7 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
           : `/${pending.handle}/${pending.entityType}/${id}`;
       if (location.pathname === target) return;
       if (composerHasTextRef.current) return;
-      navigate(withDialogSkipIfCramped(target));
+      navigate(withDialogSkip(target));
     },
     [navigate, location.pathname],
   );
@@ -1674,8 +1702,9 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
               // Create flow: navigate to the freshly-minted neuron.
               maybeFollowCreateResult(event.tool_use_id, event.ok, event.preview);
             } else if (event.kind === "navigate") {
-              navigate(event.url);
-              appendThinking({ kind: "navigate", url: event.url });
+              const targetUrl = withDialogSkipForNeuronTarget(event.url);
+              navigate(targetUrl);
+              appendThinking({ kind: "navigate", url: targetUrl });
             } else if (event.kind === "message_saved") {
               // Server just persisted a user or assistant message. Tell
               // other tabs so they re-fetch the canonical snapshot and
