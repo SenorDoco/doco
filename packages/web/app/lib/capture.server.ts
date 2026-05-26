@@ -266,6 +266,8 @@ export interface DecisionDraft {
   alternatives?: { name: string; rejected_because: string }[];
   /** Optional: intent ids to link via `intent_ids`. */
   intent_ids?: string[];
+  /** Optional: BPMN forward sequence-flow targets from this Decision. */
+  sequence_to?: SequenceToDraft[];
   /** Optional: principal id who made the decision. */
   decided_by_principal_id?: string;
   /** Optional: principal id who created this entry; defaults to decided_by. */
@@ -759,6 +761,32 @@ function assertNotCollaboratorId(value: string, field: string): CaptureError | n
   };
 }
 
+type SequenceToDraft =
+  | string
+  | {
+      target?: unknown;
+      label?: unknown;
+      condition?: unknown;
+      kind?: unknown;
+      [key: string]: unknown;
+    };
+
+function normalizeSequenceTo(value: unknown): (string | Record<string, unknown>)[] {
+  if (!Array.isArray(value)) return [];
+  const result: (string | Record<string, unknown>)[] = [];
+  for (const item of value) {
+    if (typeof item === "string" && item.length > 0) {
+      result.push(item);
+      continue;
+    }
+    if (!item || typeof item !== "object" || Array.isArray(item)) continue;
+    const target = (item as Record<string, unknown>).target;
+    if (typeof target !== "string" || target.length === 0) continue;
+    result.push({ ...(item as Record<string, unknown>), target });
+  }
+  return result;
+}
+
 export async function captureDecision(
   docoDir: string,
   docoId: string,
@@ -773,6 +801,7 @@ export async function captureDecision(
   if (!draft.chosen?.trim()) return { error: "chosen is required." };
 
   const intentIds: string[] = Array.isArray(draft.intent_ids) ? draft.intent_ids : [];
+  const sequenceTo = normalizeSequenceTo(draft.sequence_to);
 
   const decidedBy = requiredPrincipalId(
     draft.decided_by_principal_id,
@@ -799,6 +828,7 @@ export async function captureDecision(
     decision: decisionText,
     ...(draft.born_from ? { born_from: draft.born_from } : {}),
     ...(intentIds.length > 0 ? { intent_ids: intentIds } : {}),
+    ...(sequenceTo.length > 0 ? { sequence_to: sequenceTo } : {}),
     question: draft.question.trim(),
     chosen: draft.chosen.trim(),
     ...(Array.isArray(draft.alternatives) && draft.alternatives.length > 0
@@ -1724,6 +1754,8 @@ export interface ActionDraft {
   decision_ids?: string[];
   /** Optional: entity ids that precede this action (chronological / causal). */
   preceded_by?: string[];
+  /** Optional: BPMN forward sequence-flow targets from this Action. */
+  sequence_to?: SequenceToDraft[];
   /** Optional: rule ids that gate this action (BPMN-style policy guards). */
   gated_by?: string[];
   /** Optional: verb-specific inputs (any shape). */
@@ -1762,6 +1794,7 @@ export async function captureAction(
   const intentIds: string[] = Array.isArray(draft.intent_ids) ? draft.intent_ids : [];
   const decisionIds: string[] = Array.isArray(draft.decision_ids) ? draft.decision_ids : [];
   const precededBy: string[] = Array.isArray(draft.preceded_by) ? draft.preceded_by : [];
+  const sequenceTo = normalizeSequenceTo(draft.sequence_to);
   const gatedBy: string[] = Array.isArray(draft.gated_by)
     ? draft.gated_by.filter((r): r is string => typeof r === "string" && r.startsWith("rule_"))
     : [];
@@ -1784,6 +1817,7 @@ export async function captureAction(
     ...(intentIds.length > 0 ? { intent_ids: intentIds } : {}),
     ...(decisionIds.length > 0 ? { decision_ids: decisionIds } : {}),
     ...(precededBy.length > 0 ? { preceded_by: precededBy } : {}),
+    ...(sequenceTo.length > 0 ? { sequence_to: sequenceTo } : {}),
     ...(gatedBy.length > 0 ? { gated_by: gatedBy } : {}),
     ...(draft.inputs !== undefined ? { inputs: draft.inputs } : {}),
     ...(draft.outputs !== undefined ? { outputs: draft.outputs } : {}),
@@ -2683,9 +2717,8 @@ export async function captureReference(
 // ─── State (v7 — state-machine node) ──────────────────────────────────────
 // Per decision_01KRRR5BQ16ASY8HQEE0V499YG. A State is a node in a formal
 // state machine: a position the modeled entity occupies for some span of
-// time. Holds invariants while occupied; reached via Actions whose
-// `preceded_by` includes this State. Framework-general — nothing about
-// the shape is state-machines-specific.
+// time. Holds invariants while occupied. State machines can still use
+// `preceded_by`; BPMN processes should use forward `sequence_to`.
 
 export interface StateDraft {
   /** Required: the full State prose (first line = label / display name). */
@@ -2695,8 +2728,12 @@ export interface StateDraft {
 
   /** Optional: predicates true while in this State. Free-form prose. */
   invariants?: string[];
+  /** Optional: intent ids to link via `intent_ids`. */
+  intent_ids?: string[];
   /** Optional: entity ids that precede this state (typically a transition Action). */
   preceded_by?: string[];
+  /** Optional: BPMN forward sequence-flow targets from this State. */
+  sequence_to?: SequenceToDraft[];
   /** Optional: principal id who created this entry. */
   created_by_principal_id?: string;
   /** Optional: explicit lifecycle override. Defaults to "active". */
@@ -2731,7 +2768,9 @@ export async function captureState(
   const status = lifecycleAttrs(draft, "active");
   if ("error" in status) return status;
 
+  const intentIds: string[] = Array.isArray(draft.intent_ids) ? draft.intent_ids : [];
   const precededBy: string[] = Array.isArray(draft.preceded_by) ? draft.preceded_by : [];
+  const sequenceTo = normalizeSequenceTo(draft.sequence_to);
   const invariants: string[] = Array.isArray(draft.invariants)
     ? draft.invariants.filter((s): s is string => typeof s === "string" && s.length > 0)
     : [];
@@ -2742,8 +2781,10 @@ export async function captureState(
     neuron_type: "state",
     state: stateText,
     kind: draft.kind,
+    ...(intentIds.length > 0 ? { intent_ids: intentIds } : {}),
     ...(invariants.length > 0 ? { invariants } : {}),
     ...(precededBy.length > 0 ? { preceded_by: precededBy } : {}),
+    ...(sequenceTo.length > 0 ? { sequence_to: sequenceTo } : {}),
     created_at: now,
     ...(createdById ? { created_by: createdById } : {}),
     ...status,

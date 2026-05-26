@@ -117,7 +117,8 @@ describe("loadBpmnGraph", () => {
           created_at: "2026-05-26T00:02:00.000Z",
           data: {
             kind: "initial",
-            preceded_by: [intentId],
+            intent_ids: [intentId],
+            sequence_to: [requestId],
           },
         },
         {
@@ -129,7 +130,7 @@ describe("loadBpmnGraph", () => {
           data: {
             actor_id: "principal_talent",
             intent_ids: [intentId],
-            preceded_by: [stateId],
+            sequence_to: [presentId],
           },
         },
         {
@@ -141,7 +142,6 @@ describe("loadBpmnGraph", () => {
           data: {
             actor_id: "principal_sud",
             intent_ids: [intentId],
-            preceded_by: [requestId],
           },
         },
       ],
@@ -159,9 +159,8 @@ describe("loadBpmnGraph", () => {
       ],
       collaborators: [],
       synapses: [
-        { from_id: stateId, to_id: intentId, synapse_type: "preceded_by" },
-        { from_id: requestId, to_id: stateId, synapse_type: "preceded_by" },
-        { from_id: presentId, to_id: requestId, synapse_type: "preceded_by" },
+        { from_id: stateId, to_id: requestId, synapse_type: "sequence_flow" },
+        { from_id: requestId, to_id: presentId, synapse_type: "sequence_flow" },
       ],
     });
 
