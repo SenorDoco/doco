@@ -29,9 +29,9 @@ export default function UserProfile({
 }) {
   const { me } = loaderData;
   return (
-    <div>
+    <div className="flex min-h-full flex-col">
       <SiteHeader mode="host" me={me} />
-      <main className="mx-auto max-w-6xl px-6 py-10">
+      <main className="flex flex-1 items-center justify-center px-6 py-10 text-center">
         <p className="text-sm text-muted-foreground">Not much to do here, Señor(a) {me.username}</p>
       </main>
     </div>
