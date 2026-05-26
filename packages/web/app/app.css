@@ -444,32 +444,6 @@ button[class*="bg-primary"]:active {
   animation: doco-mark-mist-cw 2.8s linear infinite;
 }
 
-@keyframes doco-thinking-dot {
-  0%,
-  80%,
-  100% {
-    opacity: 0.35;
-    transform: translateY(0);
-  }
-
-  40% {
-    opacity: 1;
-    transform: translateY(-3px);
-  }
-}
-
-.doco-thinking-dot {
-  animation: doco-thinking-dot 1s ease-in-out infinite;
-}
-
-.doco-thinking-dot:nth-child(2) {
-  animation-delay: 120ms;
-}
-
-.doco-thinking-dot:nth-child(3) {
-  animation-delay: 240ms;
-}
-
 @media (prefers-reduced-motion: reduce) {
   /* No motion: drop the swirl, fall back to a static drop-shadow halo
      on the glyph so the working state is still distinguishable. */
@@ -481,11 +455,6 @@ button[class*="bg-primary"]:active {
 
   .doco-mark-active {
     filter: drop-shadow(0 0 7px color-mix(in oklch, var(--color-primary) 42%, transparent));
-  }
-
-  .doco-thinking-dot {
-    animation: none;
-    opacity: 0.8;
   }
 }
 

@@ -1946,6 +1946,7 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
   // and `overflow-hidden` keeps the inner content from spilling while
   // the width animates.
   const collapsedDisplay = collapsed || isAuthPage;
+  const statusAnchorIndex = lastVisibleMessageIndex(allMessages);
 
   return (
     <aside
@@ -2158,11 +2159,12 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
                         new Docos or orgs, invite collaborators, and take you to any page.
                       </div>
                     ) : null}
-                    {allMessages.map((rm) => (
+                    {allMessages.map((rm, index) => (
                       <MessageBlock
                         key={rm.kind === "saved" ? rm.message.id : "inflight"}
                         rm={rm}
                         usage={rm.kind === "inflight" ? turnUsage : null}
+                        compactAfter={index === statusAnchorIndex}
                       />
                     ))}
                     <ConversationStatusIcon status={conversationStatus} />
@@ -2902,7 +2904,32 @@ function MessageTime({ createdAt }: { createdAt: string }) {
   );
 }
 
-function MessageBlock({ rm, usage }: { rm: RenderableMessage; usage: TurnUsage | null }) {
+function lastVisibleMessageIndex(messages: readonly RenderableMessage[]): number {
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const rm = messages[i];
+    if (!rm) continue;
+    if (rm.kind === "saved") {
+      const message = rm.message;
+      if (message.role === "user" && message.content.every((b) => b.type === "tool_result")) {
+        continue;
+      }
+      if (visibleChatBlocks(message.content).length > 0) return i;
+    } else if (visibleChatBlocks(rm.message.content).length > 0) {
+      return i;
+    }
+  }
+  return -1;
+}
+
+function MessageBlock({
+  rm,
+  usage,
+  compactAfter,
+}: {
+  rm: RenderableMessage;
+  usage: TurnUsage | null;
+  compactAfter: boolean;
+}) {
   if (rm.kind === "saved") {
     const m = rm.message;
     // Tool-result-only user messages are Anthropic-contract bookkeeping
@@ -2913,31 +2940,9 @@ function MessageBlock({ rm, usage }: { rm: RenderableMessage; usage: TurnUsage |
     if (m.role === "user" && m.content.every((b) => b.type === "tool_result")) {
       return null;
     }
-    return <SavedMessage message={m} />;
+    return <SavedMessage message={m} compactAfter={compactAfter} />;
   }
-  return <InFlightMessageView msg={rm.message} usage={usage} />;
-}
-
-function ThinkingDots({
-  className,
-  dotClassName,
-}: {
-  className?: string;
-  dotClassName?: string;
-}) {
-  return (
-    <span
-      className={cn(
-        "doco-thinking-dots inline-flex h-3 items-end gap-0.5 align-middle text-primary",
-        className,
-      )}
-      aria-hidden="true"
-    >
-      <span className={cn("doco-thinking-dot h-1.5 w-1.5 rounded-full bg-current", dotClassName)} />
-      <span className={cn("doco-thinking-dot h-1.5 w-1.5 rounded-full bg-current", dotClassName)} />
-      <span className={cn("doco-thinking-dot h-1.5 w-1.5 rounded-full bg-current", dotClassName)} />
-    </span>
-  );
+  return <InFlightMessageView msg={rm.message} usage={usage} compactAfter={compactAfter} />;
 }
 
 function ConversationStatusIcon({ status }: { status: ConversationStatus }) {
@@ -2962,7 +2967,7 @@ function ConversationStatusIcon({ status }: { status: ConversationStatus }) {
 
   return (
     <output
-      className="mt-auto flex justify-end pb-1 pt-2 pr-1"
+      className="flex justify-end pb-3 pr-1 pt-1"
       aria-label={status.label}
       aria-live="polite"
     >
@@ -2987,14 +2992,26 @@ function visibleChatBlocks(blocks: readonly AnyBlock[]): AnyBlock[] {
   return blocks.filter((b) => b.type !== "tool_use" && b.type !== "tool_result");
 }
 
-function SavedMessage({ message }: { message: ChatMessage }) {
+function SavedMessage({
+  message,
+  compactAfter,
+}: {
+  message: ChatMessage;
+  compactAfter: boolean;
+}) {
   const isAssistant = message.role === "assistant";
   const visible = visibleChatBlocks(message.content);
   // Whole message was tool-call noise → skip the bubble. Detailed
   // tool activity is still in the Thinking column.
   if (visible.length === 0) return null;
   return (
-    <div className={cn("mb-3 flex flex-col", isAssistant ? "items-end" : "items-start")}>
+    <div
+      className={cn(
+        compactAfter ? "mb-1" : "mb-3",
+        "flex flex-col",
+        isAssistant ? "items-end" : "items-start",
+      )}
+    >
       <div
         className={cn("flex w-full items-end gap-2", isAssistant ? "justify-end" : "justify-start")}
       >
@@ -3021,33 +3038,25 @@ function SavedMessage({ message }: { message: ChatMessage }) {
 function InFlightMessageView({
   msg,
   usage,
+  compactAfter,
 }: {
   msg: InFlightMessage;
   usage: TurnUsage | null;
+  compactAfter: boolean;
 }) {
   // tool_use / tool_result chips live in the Thinking column; the
   // main chat only sees text + attachments.
   const visible = visibleChatBlocks(msg.content);
-  // Pre-text "thinking" state: no bubble, no pulsing dots, no label —
-  // just the doco mark at 2× normal size. Persists until the model
-  // emits the first text delta of the turn.
+  // Pre-text "thinking" state: the shared status icon below the
+  // current message stack carries the only working animation.
   if (visible.length === 0) {
-    return (
-      <div className="mb-3 flex justify-end pr-1">
-        <div className="flex items-end gap-1.5">
-          <DocoMark height={28} variant="mark" active decorative />
-          <ThinkingDots className="mb-1" />
-        </div>
-      </div>
-    );
+    return null;
   }
-  // Once text streams in, render the bubble normally AND keep the
-  // animated doco mark below it. The animation only disappears when
-  // the turn fully settles and the in-flight view unmounts — so
-  // mid-stream pauses (e.g. between tool round trips on a multi-
-  // call turn) still show the thinking cue.
+  // Once text streams in, render the bubble normally. The single
+  // animated working mark lives in ConversationStatusIcon immediately
+  // below this message's metadata row.
   return (
-    <div className="mb-3 flex flex-col items-end">
+    <div className={cn(compactAfter ? "mb-1" : "mb-3", "flex flex-col items-end")}>
       <div className="flex w-full items-end justify-end gap-2">
         <MessageTime createdAt={msg.created_at} />
         <div className="neu-bubble max-w-[82%] space-y-1.5 rounded-lg bg-primary/10 px-2.5 py-1.5">
@@ -3057,9 +3066,7 @@ function InFlightMessageView({
         </div>
       </div>
       <div className="mt-1 flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-muted-foreground">
-        <DocoMark height={14} variant="mark" active decorative />
         Señor Doco
-        <ThinkingDots className="ml-0.5" dotClassName="h-1 w-1" />
         {usage ? (
           <span
             className="font-mono normal-case tracking-normal"
@@ -3121,9 +3128,7 @@ function ThinkingPanel({ events, active }: { events: ThinkingEvent[]; active: bo
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-card/50">
       <div className="shrink-0 border-b border-border/70 px-3 py-1.5 text-[10px] uppercase tracking-wide text-muted-foreground">
-        Thinking{" "}
-        {active ? <ThinkingDots className="ml-1 inline-flex" dotClassName="h-1 w-1" /> : null}
-        <span className="ml-2 font-mono normal-case">{events.length} events</span>
+        Thinking <span className="ml-2 font-mono normal-case">{events.length} events</span>
       </div>
       <div
         ref={scrollRef}
