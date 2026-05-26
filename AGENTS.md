@@ -420,6 +420,16 @@ that line, append it. If it doesn't exist, write the one-liner.
 `doco install-agent-bootstrap` follows these rules automatically.
 If you're manipulating these files by hand, follow the same rules.
 
+**This repo also ships the default bootstrap templates.** The installed
+files (`AGENTS.md`, `.agents/doco-agent-client.mjs`,
+`.agents/doco-mcp-server.mjs`, `.claude/bootstrap-fetch.sh`, and
+`.claude/user-prompt-fetch.sh`) are snapshots used by this checkout.
+New Doco-connected repositories get their defaults from
+`packages/cli/templates/agent-bootstrap/`. Any change to bootstrap
+behavior, wording, auth flow, or hook semantics must update both the
+installed copy and the matching template file, or this repo will drift
+from what new agents receive by default.
+
 Before declaring setup done:
 
 ```sh
