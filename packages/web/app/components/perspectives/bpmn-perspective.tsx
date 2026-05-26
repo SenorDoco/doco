@@ -127,6 +127,10 @@ const MILESTONE_NODE_WIDTH = 120;
 // inside don't crowd, but still shorter than an actor lane.
 const ARTIFACTS_BAND_HEIGHT = 120;
 const LANE_LABEL_WIDTH = 140;
+// Keep the first neuron visually separated from the swim-lane label
+// divider. Without this, column-zero nodes can sit flush against the
+// label boundary when they are the widest shape in the graph.
+const LANE_CONTENT_LEFT_GUTTER = 32;
 const NODE_WIDTH = 140;
 const NODE_HEIGHT = 60;
 const NODE_GAP_X = 60;
@@ -852,7 +856,8 @@ function layOutBpmn(
   }
   const columnStep = maxNodeWidth + NODE_GAP_X;
   const dynLaneHeight = Math.max(LANE_HEIGHT, maxNodeHeight + NODE_GAP_Y * 2);
-  const laneWidth = LANE_LABEL_WIDTH + (maxColumn + 1) * columnStep + NODE_GAP_X;
+  const laneWidth =
+    LANE_LABEL_WIDTH + LANE_CONTENT_LEFT_GUTTER + (maxColumn + 1) * columnStep + NODE_GAP_X;
 
   const flowNodes: FlowNode[] = [];
   const laneYById = new Map<string, number>();
@@ -953,7 +958,7 @@ function layOutBpmn(
       const size = sizeByNode.get(node.id) ?? { width: NODE_WIDTH, height: NODE_HEIGHT };
       // Center the node within its column slot so wider/narrower
       // nodes still line up by their middle on the same x axis.
-      const slotX = LANE_LABEL_WIDTH + column * columnStep;
+      const slotX = LANE_LABEL_WIDTH + LANE_CONTENT_LEFT_GUTTER + column * columnStep;
       const x = slotX + (maxNodeWidth - size.width) / 2;
       const y = (containerHeight - size.height) / 2;
       const laneY = laneYById.get(node.laneId) ?? 0;
