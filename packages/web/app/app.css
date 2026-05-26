@@ -536,9 +536,7 @@ button[class*="bg-primary"]:active {
   background: var(--color-background) !important;
   border: 1px solid var(--neu-border) !important;
   border-radius: var(--radius) !important;
-  box-shadow:
-    7px 7px 16px var(--neu-shadow),
-    -7px -7px 16px var(--neu-highlight) !important;
+  box-shadow: 7px 7px 16px var(--neu-shadow), -7px -7px 16px var(--neu-highlight) !important;
   overflow: hidden;
 }
 .react-flow__controls {
@@ -574,4 +572,30 @@ button[class*="bg-primary"]:active {
   fill: currentColor;
   max-width: 14px;
   max-height: 14px;
+}
+
+.doco-page-shell {
+  container: doco-page / inline-size;
+}
+
+.doco-page-right-column {
+  display: none;
+}
+
+.doco-page-floating-dialog {
+  display: block;
+}
+
+@container doco-page (min-width: 1200px) {
+  .doco-page-grid {
+    grid-template-columns: minmax(0, 1fr) 320px;
+  }
+
+  .doco-page-right-column {
+    display: block;
+  }
+
+  .doco-page-floating-dialog {
+    display: none;
+  }
 }

@@ -768,7 +768,7 @@ export default function DocoHome({
   return (
     <div className="flex h-full min-h-0 flex-col">
       <SiteHeader mode="host" me={me} />
-      <main className="flex min-h-0 flex-1 flex-col px-6 pb-6 pt-6">
+      <main className="doco-page-shell flex min-h-0 flex-1 flex-col px-6 pb-6 pt-6">
         {/* Title row — spans both columns so the action buttons sit beside the
             title rather than visually attached to the fishbone graph below. */}
         <div className="mb-6 shrink-0 space-y-1">
@@ -800,7 +800,7 @@ export default function DocoHome({
           </div>
           {goal ? <p className="text-[11px] text-muted-foreground">{goal}</p> : null}
         </div>
-        <div className="grid min-h-0 flex-1 grid-cols-1 gap-6 min-[1200px]:grid-cols-[minmax(0,1fr)_320px]">
+        <div className="doco-page-grid grid min-h-0 flex-1 grid-cols-1 gap-6">
           <aside ref={asideRef} className="flex min-h-0 min-w-0 flex-col bg-background">
             <PerspectiveTabs
               handle={handle}
@@ -925,11 +925,11 @@ export default function DocoHome({
             </div>
           </aside>
 
-          {/* Right column: only renders ≥ 1200px. Below that breakpoint
-              the cards are out of layout AND we drop the wrapper div
-              entirely so it doesn't create a phantom grid row (auto +
-              gap-6) that left ~50px of unowned space below the graph. */}
-          <div className="relative hidden min-h-0 min-w-0 min-[1200px]:block">
+          {/* Right column: only appears when the Doco content pane has
+              enough inline room. A viewport breakpoint is not enough
+              because the Señor Doco rail can consume a large slice of
+              the browser width before this page gets laid out. */}
+          <div className="doco-page-right-column relative min-h-0 min-w-0">
             <section className="h-full min-w-0 space-y-5 overflow-y-auto pb-10 pr-1">
               <NeuronsOverviewCard
                 sections={sections}
@@ -970,20 +970,19 @@ export default function DocoHome({
                 </CardContent>
               </Card>
             </section>
-            {/* ≥1200px: dialog overlays the right column (covers the
-                cards while the user reads it). At < 1200px the wrapper
-                below this one renders the same dialog over the canvas. */}
+            {/* Wide content pane: dialog overlays the right column
+                while the user reads it. Narrow content pane: the fixed
+                wrapper below renders the same dialog over the canvas. */}
             {neuronDialog && !isPerspectiveFullscreen ? (
               <div className="absolute inset-0">{neuronDialogPanel}</div>
             ) : null}
           </div>
         </div>
-        {/* < 1200px: floating dialog over the canvas (the right column
-            isn't rendered at this breakpoint). The Señor Doco rail's
-            width is published as a CSS var by AgentSidebar so the
-            dialog never covers it. */}
+        {/* Narrow content pane: floating dialog over the canvas. The
+            Señor Doco rail's width is published as a CSS var by
+            AgentSidebar so the dialog never covers it. */}
         {neuronDialog && !isPerspectiveFullscreen ? (
-          <div className="fixed bottom-4 right-3 top-20 z-30 [left:calc(var(--senor-doco-rail-width,320px)+0.75rem)] min-[1200px]:hidden">
+          <div className="doco-page-floating-dialog fixed bottom-4 right-3 top-20 z-30 [left:calc(var(--senor-doco-rail-width,320px)+0.75rem)]">
             {neuronDialogPanel}
           </div>
         ) : null}
