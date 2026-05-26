@@ -10,7 +10,7 @@
 // lives outside the scroll so it's always visible. On mount we set
 // `scrollLeft = scrollWidth` so the most recent week is in view.
 
-import { useEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 
 interface ActivityHeatmapProps {
   /** Map of yyyy-mm-dd → count of neurons added that day. */
@@ -85,11 +85,20 @@ export function ActivityHeatmap({ byDay, weeks = 52 }: ActivityHeatmapProps) {
   }
 
   const scrollRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
+  useLayoutEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
-    // Default the view to the most recent week.
-    el.scrollLeft = el.scrollWidth;
+    const scrollToLatestWeek = () => {
+      el.scrollLeft = el.scrollWidth - el.clientWidth;
+    };
+    // Default the view to the most recent week. The right column can
+    // resize after first paint, so keep pinning the heatmap to the end
+    // whenever its own box changes.
+    scrollToLatestWeek();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(scrollToLatestWeek);
+    observer.observe(el);
+    return () => observer.disconnect();
   }, []);
 
   // Instant hover tooltip — replaces native `title` (which has a ~500ms

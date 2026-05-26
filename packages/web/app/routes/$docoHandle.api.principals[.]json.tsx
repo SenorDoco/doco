@@ -7,6 +7,7 @@ import {
   upsertEntity,
 } from "@doco/db";
 import { type EntityId, generateUlid, makeEntityId, nowIso } from "@doco/shared";
+import { appendAuditEvent } from "~/lib/audit-log.server";
 import { runAuthoringPolicies } from "~/lib/authoring-runner.server";
 import { reindexAndScheduleAttach } from "~/lib/capture.server";
 import { docoPath } from "~/lib/db.server";
@@ -145,6 +146,20 @@ export async function action({
   // via the generic capture factory; principals use a bespoke handler
   // and need to call the helper directly.
   await reindexAndScheduleAttach(docoPath(params.docoHandle), meta.docoId, id);
+  appendAuditEvent({
+    docoDir: docoPath(params.docoHandle),
+    docoId: meta.docoId,
+    by: me.id,
+    entity_type: "principal",
+    entity_id: id,
+    op: "entity.create",
+    after: {
+      name,
+      body_md: bodyMd,
+      lifecycle: "active",
+      ...(body.reports_to ? { reports_to: body.reports_to } : {}),
+    },
+  });
 
   const warningFooters = pred.warnings.map((w) => `[🔮 Doco] ⚠️ Authoring warning: ${w.reason}`);
   return Response.json(
