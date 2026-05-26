@@ -34,7 +34,7 @@
 //   decision                → diamond     (BPMN gateway)
 //   action                  → task        (BPMN rounded-rect task)
 //   rule                    → rectangle   (policy box)
-//   state                   → milestone   (compact labeled box)
+//   state                   → task        (milestone-band task)
 //   eval, reference         → document    (BPMN data object)
 //   idea                    → rounded     (capsule)
 //
@@ -216,7 +216,7 @@ export async function loadBpmnGraph(
       `SELECT id, name, COALESCE(lifecycle, 'active') AS lifecycle
          FROM principals
         WHERE doco_id = $1
-          AND COALESCE(lifecycle, 'active') = 'active'`,
+          AND COALESCE(lifecycle, 'active') <> 'retired'`,
       [docoId],
     ),
     c.query<CollaboratorRow>(
