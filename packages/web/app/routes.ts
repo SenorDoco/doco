@@ -23,6 +23,7 @@ import { type RouteConfig, index, route } from "@react-router/dev/routes";
  *
  *   /                              host home (anonymous landing; redirects signed-in to /dashboard)
  *   /dashboard                     signed-in host dashboard (docos / users / orgs)
+ *   /users/<username>              signed-in user's tiny profile placeholder
  *   /sign-in, /sign-out, /sign-up  auth (cookie locally; OAuth in prod per ADR-066, ADR-094)
  *   /onboarding/*                  first-run wizard (ADR-073). Agents POST /api/v1/docos.json directly; humans use the web flow.
  *   /invite/:code                  Human-only invite landing — signed-in humans accept (adds them to doco_users); signed-out humans bounce through GitHub. Agents read the sibling /invite/:code/agent.txt for the MCP-OAuth path instead.
@@ -129,6 +130,7 @@ export default [
   // Cross-Doco semantic search across every Doco the org owns.
   route("orgs/:orgHandle/search", "routes/orgs.$orgHandle.search.tsx"),
   route("collaborators", "routes/collaborators.tsx"),
+  route("users/:username", "routes/users.$username.tsx"),
   // /api-keys — host-level page listing every active OAuth refresh
   // token bound to the signed-in user (both agent-OAuth-flow tokens
   // and personal API keys minted here). The matching JSON endpoint
@@ -202,8 +204,8 @@ export default [
   ),
   // Per-Doco routes: every Doco lives at `/<doco-handle>/...`.
   // `normalizeDocoParams` resolves the public handle-shaped URL
-  // param to a row. There is no owner profile page; the dashboard
-  // is the single signed-in landing.
+  // param to a row. User profile placeholders live under /users/*
+  // so Doco handles remain the root catch-all.
   route(":docoHandle", "routes/$docoHandle._index.tsx"),
   route(":docoHandle/welcome", "routes/$docoHandle.welcome.tsx"),
   route(":docoHandle/status.json", "routes/$docoHandle.status[.]json.tsx"),
