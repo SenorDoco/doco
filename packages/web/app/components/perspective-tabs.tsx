@@ -87,8 +87,8 @@ function PerspectiveTab({ handle, perspective, active, isFirst, isLast }: Perspe
   //     from each other.
   //   * Active tab has z-10 so its borders win the overlap.
   //   * The row above is pulled down 1px (`-mb-px`) so the active tab's
-  //     `border-b-transparent` lands exactly on top of the canvas's top
-  //     border, dissolving the seam between the tab and the canvas.
+  //     bottom edge lands exactly on top of the canvas's top border,
+  //     dissolving the seam between the tab and the canvas.
   const tabClass = cn(
     "relative -ml-px first:ml-0 inline-flex items-center gap-1.5 border border-border px-3 py-1.5 text-xs font-medium",
     isFirst && "rounded-tl-md",
@@ -96,9 +96,10 @@ function PerspectiveTab({ handle, perspective, active, isFirst, isLast }: Perspe
     active
       ? // The active tab's bg + bottom border match the perspective
         // canvas (bg-background) so the tab visually flows into the
-        // canvas without a visible seam. border-b-background occludes
-        // the canvas's top border at the tab's footprint.
-        "z-10 border-b-background bg-background text-foreground"
+        // canvas without a visible seam. The pseudo strip covers the
+        // canvas's top border at the tab's footprint even when browser
+        // sub-pixel paint order would otherwise let a hairline through.
+        "z-10 border-b-background bg-background text-foreground after:pointer-events-none after:absolute after:-bottom-px after:-left-px after:-right-px after:h-[2px] after:bg-background after:content-['']"
       : // border-b-transparent on inactive tabs so the tab's bottom
         // border (22%-alpha border-border) doesn't STACK on top of
         // the canvas's top border (also 22% alpha) and render as a
@@ -179,10 +180,11 @@ function PerspectiveSettingsMenu({
     // that left the chevron a fraction of a pixel above the others
     // no matter what padding/height we set.
     <>
+      {/* biome-ignore lint/a11y/useAnchorContent: The chevron tab is named by aria-label; the glyph is decorative. */}
+      {/* biome-ignore lint/a11y/useValidAnchor: This intentionally uses an anchor to match Link tab sizing in Safari. */}
       <a
         ref={btnRef}
         href="#perspective-settings"
-        role="button"
         aria-label="Perspective settings"
         title="Perspective settings"
         aria-expanded={open}
@@ -200,7 +202,9 @@ function PerspectiveSettingsMenu({
         // bottom-aligning a naturally-shorter chevron tab.
         className="relative -ml-px inline-flex cursor-pointer items-center justify-center self-stretch gap-1.5 rounded-tr-md border border-border border-b-transparent bg-input/40 px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-input/60 hover:text-foreground"
       >
-        <span aria-hidden className="text-sm leading-none">⌵</span>
+        <span aria-hidden className="text-sm leading-none">
+          ⌵
+        </span>
       </a>
       {open ? (
         <div
