@@ -69,9 +69,8 @@ interface PerspectiveFrameProps {
  * positions so they're identical across Graph, BPMN, Org Tree, List,
  * and any future perspective.
  *
- * The top border is intentionally omitted: the perspective tabs own
- * the top edge, and the canvas should not draw a horizontal divider
- * beneath them.
+ * The top edge is intentionally omitted: the perspective tabs own it,
+ * and the canvas should not draw a horizontal divider beneath them.
  */
 export function PerspectiveFrame({
   fillHeight = false,
@@ -84,12 +83,7 @@ export function PerspectiveFrame({
   return (
     <FullscreenContext.Provider value={fullscreen ?? null}>
       <div
-        className={`relative w-full overflow-hidden rounded-b-md rounded-t-none border border-t-0 border-border bg-background ${sizeClass}`}
-        // Suppress the platform's etched-edge inset-highlight (app.css
-        // `[class~="border"][class~="border-border"]`). It paints a 1px
-        // white-75% line at the canvas's interior top edge, which shows
-        // as a white sliver immediately below the perspective tabs.
-        style={{ boxShadow: "none" }}
+        className={`neu-surface-open-top relative w-full overflow-hidden rounded-b-lg rounded-t-none border border-t-0 border-border bg-card text-card-foreground ${sizeClass}`}
       >
         {children}
         {autoReorder ? (
