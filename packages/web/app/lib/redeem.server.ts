@@ -30,7 +30,7 @@ export async function createDocoInOrg(opts: CreateDocoInOrgOptions): Promise<Cre
   const rec = await createHostDocoInOrg(opts);
   const conversation = await createConversation(opts.createdByCollaboratorId, {
     title: createdDocoChatTitle(rec.handle),
-    attachedDocoHandles: [rec.handle],
+    attachedDocoIds: [rec.docoId],
   });
   return { ...rec, companionChatId: conversation.id };
 }

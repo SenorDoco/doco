@@ -87,6 +87,7 @@ interface ChatMessage {
 }
 
 interface AttachmentInfo {
+  id?: string;
   handle: string;
   name: string | null;
 }
@@ -126,6 +127,8 @@ interface ConversationListItem {
   active_turn_started_at: string | null;
   last_message_preview: string | null;
   last_message_role: "user" | "assistant" | null;
+  attached_doco_ids: string[];
+  /** Legacy/display fallback; navigation uses attached_doco_ids. */
   attached_doco_handles: string[];
   attached_org_handles: string[];
 }
@@ -218,9 +221,7 @@ function storedEventToThinkingEvent(raw: Record<string, unknown>): ThinkingEvent
   const id = `t_${at_ms}_${(raw.kind as string | undefined) ?? "x"}_${Math.random().toString(36).slice(2, 7)}`;
   switch (raw.kind) {
     case "text_delta":
-      return typeof raw.text === "string"
-        ? { id, at_ms, kind: "text", text: raw.text }
-        : null;
+      return typeof raw.text === "string" ? { id, at_ms, kind: "text", text: raw.text } : null;
     case "tool_use_start":
       return typeof raw.tool_use_id === "string" && typeof raw.name === "string"
         ? { id, at_ms, kind: "tool_start", tool_id: raw.tool_use_id, name: raw.name }
@@ -241,9 +242,7 @@ function storedEventToThinkingEvent(raw: Record<string, unknown>): ThinkingEvent
           }
         : null;
     case "navigate":
-      return typeof raw.url === "string"
-        ? { id, at_ms, kind: "navigate", url: raw.url }
-        : null;
+      return typeof raw.url === "string" ? { id, at_ms, kind: "navigate", url: raw.url } : null;
     case "error":
       return typeof raw.message === "string"
         ? { id, at_ms, kind: "error", message: raw.message }
@@ -638,7 +637,10 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
       // earliestRef anchors the next `loadOlder` cursor. Use the
       // earliest message we now hold (either retained or fresh).
       const earliest = data.messages[0] ?? null;
-      if (earliest && (!earliestRef.current || earliest.created_at < earliestRef.current.created_at)) {
+      if (
+        earliest &&
+        (!earliestRef.current || earliest.created_at < earliestRef.current.created_at)
+      ) {
         earliestRef.current = earliest;
       }
       setLoadError(null);
@@ -747,10 +749,11 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
       // thread list.
       const conv = conversations.find((c) => c.id === id);
       if (conv) {
-        const docos = conv.attached_doco_handles ?? [];
+        const docos = conv.attached_doco_ids ?? [];
         const orgs = conv.attached_org_handles ?? [];
         if (docos.length + orgs.length === 1) {
-          const targetUrl = docos.length === 1 ? `/${docos[0]}` : `/orgs/${orgs[0]}`;
+          const targetUrl =
+            docos.length === 1 ? `/by-id/${encodeURIComponent(docos[0])}` : `/orgs/${orgs[0]}`;
           // Still mark this thread active so subsequent sends land
           // here; if the user's already on the URL we skip navigate.
           if (id !== conversationId) {
@@ -826,15 +829,12 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
     async (id: string, nextTitle: string) => {
       const trimmed = nextTitle.trim().slice(0, 120);
       try {
-        const res = await fetch(
-          `/api/v1/agent-chat/conversation/${encodeURIComponent(id)}.json`,
-          {
-            method: "PATCH",
-            credentials: "same-origin",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ title: trimmed || null }),
-          },
-        );
+        const res = await fetch(`/api/v1/agent-chat/conversation/${encodeURIComponent(id)}.json`, {
+          method: "PATCH",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ title: trimmed || null }),
+        });
         if (!res.ok) {
           setConversationsError(`HTTP ${res.status}`);
           return;
@@ -855,20 +855,33 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
   // request. On error we re-fetch the snapshot so the chips agree
   // with the server again.
   const attachAttachment = useCallback(
-    async (kind: "doco" | "org", handle: string) => {
-      if (!conversationId || !handle) return;
-      const optimistic: AttachmentInfo = { handle, name: null };
+    async (kind: "doco" | "org", attachment: AvailableDoco | { handle: string }) => {
+      if (!conversationId || !attachment.handle) return;
+      const optimistic: AttachmentInfo =
+        kind === "doco" && "id" in attachment
+          ? { id: attachment.id, handle: attachment.handle, name: attachment.name }
+          : { handle: attachment.handle, name: null };
       if (kind === "doco") {
         setAttachedDocos((prev) =>
-          prev.some((d) => d.handle === handle) ? prev : [...prev, optimistic],
+          prev.some(
+            (d) =>
+              (optimistic.id ? d.id === optimistic.id : false) || d.handle === optimistic.handle,
+          )
+            ? prev
+            : [...prev, optimistic],
         );
       } else {
         setAttachedOrgs((prev) =>
-          prev.some((o) => o.handle === handle) ? prev : [...prev, optimistic],
+          prev.some((o) => o.handle === attachment.handle) ? prev : [...prev, optimistic],
         );
       }
       try {
-        const body = kind === "doco" ? { attach_doco: handle } : { attach_org: handle };
+        const body =
+          kind === "doco"
+            ? "id" in attachment
+              ? { attach_doco_id: attachment.id }
+              : { attach_doco: attachment.handle }
+            : { attach_org: attachment.handle };
         const res = await fetch(
           `/api/v1/agent-chat/conversation/${encodeURIComponent(conversationId)}.json`,
           {
@@ -891,15 +904,24 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
   );
 
   const detachAttachment = useCallback(
-    async (kind: "doco" | "org", handle: string) => {
-      if (!conversationId || !handle) return;
+    async (kind: "doco" | "org", attachment: AttachmentInfo) => {
+      if (!conversationId || !attachment.handle) return;
       if (kind === "doco") {
-        setAttachedDocos((prev) => prev.filter((d) => d.handle !== handle));
+        setAttachedDocos((prev) =>
+          prev.filter((d) =>
+            attachment.id ? d.id !== attachment.id : d.handle !== attachment.handle,
+          ),
+        );
       } else {
-        setAttachedOrgs((prev) => prev.filter((o) => o.handle !== handle));
+        setAttachedOrgs((prev) => prev.filter((o) => o.handle !== attachment.handle));
       }
       try {
-        const body = kind === "doco" ? { detach_doco: handle } : { detach_org: handle };
+        const body =
+          kind === "doco"
+            ? attachment.id
+              ? { detach_doco_id: attachment.id }
+              : { detach_doco: attachment.handle }
+            : { detach_org: attachment.handle };
         const res = await fetch(
           `/api/v1/agent-chat/conversation/${encodeURIComponent(conversationId)}.json`,
           {
@@ -921,15 +943,12 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
   const archiveThread = useCallback(
     async (id: string) => {
       try {
-        const res = await fetch(
-          `/api/v1/agent-chat/conversation/${encodeURIComponent(id)}.json`,
-          {
-            method: "PATCH",
-            credentials: "same-origin",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ archived: true }),
-          },
-        );
+        const res = await fetch(`/api/v1/agent-chat/conversation/${encodeURIComponent(id)}.json`, {
+          method: "PATCH",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ archived: true }),
+        });
         if (!res.ok) {
           setConversationsError(`HTTP ${res.status}`);
           return;
@@ -1236,35 +1255,32 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
   //     note-create time.
   const pendingCreatesRef = useRef<Map<string, PendingCreate>>(new Map());
 
-  const maybeNoteCreate = useCallback(
-    (toolUseId: string, toolName: string, input: unknown) => {
-      if (toolName !== "doco_api") return;
-      if (!input || typeof input !== "object") return;
-      const inp = input as { path?: unknown; method?: unknown; body?: unknown };
-      if (typeof inp.path !== "string") return;
-      const method = typeof inp.method === "string" ? inp.method.toUpperCase() : "GET";
-      if (method !== "POST") return;
-      // /<handle>/api/<plural>.<ext> — no id segment.
-      const m = /^\/([^/]+)\/api\/([^/]+)\.(?:json|txt)$/.exec(inp.path);
-      if (!m) return;
-      const [, handle, plural] = m;
-      if (plural === "policies") {
-        // Policy create — kind comes from the request body, not the path.
-        const policyKindSlug = bodyToPolicyKindSlug(inp.body);
-        if (!policyKindSlug) return;
-        pendingCreatesRef.current.set(toolUseId, {
-          kind: "policy",
-          handle,
-          policyKindSlug,
-        });
-        return;
-      }
-      const entityType = plural.replace(/s$/, "");
-      if (entityType === "polic") return;
-      pendingCreatesRef.current.set(toolUseId, { kind: "neuron", handle, entityType });
-    },
-    [],
-  );
+  const maybeNoteCreate = useCallback((toolUseId: string, toolName: string, input: unknown) => {
+    if (toolName !== "doco_api") return;
+    if (!input || typeof input !== "object") return;
+    const inp = input as { path?: unknown; method?: unknown; body?: unknown };
+    if (typeof inp.path !== "string") return;
+    const method = typeof inp.method === "string" ? inp.method.toUpperCase() : "GET";
+    if (method !== "POST") return;
+    // /<handle>/api/<plural>.<ext> — no id segment.
+    const m = /^\/([^/]+)\/api\/([^/]+)\.(?:json|txt)$/.exec(inp.path);
+    if (!m) return;
+    const [, handle, plural] = m;
+    if (plural === "policies") {
+      // Policy create — kind comes from the request body, not the path.
+      const policyKindSlug = bodyToPolicyKindSlug(inp.body);
+      if (!policyKindSlug) return;
+      pendingCreatesRef.current.set(toolUseId, {
+        kind: "policy",
+        handle,
+        policyKindSlug,
+      });
+      return;
+    }
+    const entityType = plural.replace(/s$/, "");
+    if (entityType === "polic") return;
+    pendingCreatesRef.current.set(toolUseId, { kind: "neuron", handle, entityType });
+  }, []);
 
   const maybeFollowCreateResult = useCallback(
     (toolUseId: string, ok: boolean, preview: string) => {
@@ -1668,27 +1684,33 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
       parsed = JSON.parse(raw);
     } catch {}
     if (!parsed || typeof parsed.text !== "string" || !parsed.text) {
-      try { window.localStorage.removeItem(PENDING_SEND_KEY); } catch {}
+      try {
+        window.localStorage.removeItem(PENDING_SEND_KEY);
+      } catch {}
       return;
     }
     const queuedAt = typeof parsed.queued_at === "number" ? parsed.queued_at : 0;
     if (!queuedAt || Date.now() - queuedAt > PENDING_SEND_MAX_AGE_MS) {
-      try { window.localStorage.removeItem(PENDING_SEND_KEY); } catch {}
+      try {
+        window.localStorage.removeItem(PENDING_SEND_KEY);
+      } catch {}
       return;
     }
     const text = parsed.text;
     const alreadyThere = messages.some(
-      (m) =>
-        m.role === "user" &&
-        m.content.some((b) => b.type === "text" && b.text === text),
+      (m) => m.role === "user" && m.content.some((b) => b.type === "text" && b.text === text),
     );
     if (alreadyThere) {
-      try { window.localStorage.removeItem(PENDING_SEND_KEY); } catch {}
+      try {
+        window.localStorage.removeItem(PENDING_SEND_KEY);
+      } catch {}
       return;
     }
     // Clear before replaying so a re-send failure doesn't loop the
     // recovery. send() will re-write the key with a fresh queued_at.
-    try { window.localStorage.removeItem(PENDING_SEND_KEY); } catch {}
+    try {
+      window.localStorage.removeItem(PENDING_SEND_KEY);
+    } catch {}
     void send({ text, staged: [] });
   }, [bootstrapped, busy, remoteInflight, messages, send]);
 
@@ -1863,224 +1885,225 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
         </button>
       ) : (
         <>
-      <div className="flex min-w-0 flex-1 flex-col">
-      {/* Header — always visible. The collapse affordance lives on the
+          <div className="flex min-w-0 flex-1 flex-col">
+            {/* Header — always visible. The collapse affordance lives on the
           full-height tab at the right edge of the aside (rendered as a
           sibling below), not in this row, so users don't mistake a tiny
           button for "minimize" or hunt for it. */}
-      <div className="flex shrink-0 items-center justify-between border-b border-border px-3 py-2">
-        <div className="select-none truncate text-sm font-semibold text-foreground">
-          Señor Doco
-        </div>
-        {view === "chat" ? (
-          <button
-            type="button"
-            onClick={toggleShowThinking}
-            aria-pressed={showThinking}
-            aria-label={showThinking ? "Hide thinking column" : "Show thinking column"}
-            title={showThinking ? "Hide thinking column" : "Show thinking column"}
-            className={cn(
-              "rounded-md border border-border px-2 py-0.5 text-[11px]",
-              showThinking
-                ? "neu-pressed bg-input text-foreground"
-                : "neu-button text-muted-foreground hover:bg-input hover:text-foreground",
-            )}
-          >
-            {showThinking ? "Hide thinking" : "Show thinking"}
-          </button>
-        ) : null}
-      </div>
-
-      {view === "list" ? (
-        <ThreadListView
-          conversations={conversations}
-          loading={conversationsLoading}
-          error={conversationsError}
-          activeId={conversationId}
-          renamingId={renamingId}
-          renameDraft={renameDraft}
-          searchQuery={searchQuery}
-          unreadByThread={unreadByThread}
-          onSearchChange={setSearchQuery}
-          onSelect={switchThread}
-          onNew={() => void newThread()}
-          onStartRename={(id, current) => {
-            setRenamingId(id);
-            setRenameDraft(current ?? "");
-          }}
-          onCancelRename={() => setRenamingId(null)}
-          onCommitRename={(id) => {
-            const next = renameDraft;
-            setRenamingId(null);
-            void renameThread(id, next);
-          }}
-          onRenameDraftChange={setRenameDraft}
-          onArchive={(id) => void archiveThread(id)}
-        />
-      ) : (
-        <>
-          {/* Chat header — back arrow + total-unread badge + thread
-              name. WhatsApp-style: tapping the back arrow returns to
-              the thread list. */}
-          <div className="flex shrink-0 items-center gap-2 border-b border-border px-2 pb-2.5 pt-1.5">
-            <button
-              type="button"
-              onClick={openThreadList}
-              aria-label={
-                totalUnreadOthers > 0
-                  ? `Back to threads (${totalUnreadOthers} unread in other threads)`
-                  : "Back to threads"
-              }
-              className="flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-xs text-foreground hover:bg-input"
-            >
-              <CollapseIcon side="left" />
-              {totalUnreadOthers > 0 ? (
-                <span className="rounded-full bg-primary/15 px-1.5 text-[10px] font-semibold text-primary">
-                  {totalUnreadOthers}
-                </span>
-              ) : null}
-            </button>
-            <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-              {renamingId === conversationId && conversationId ? (
-                <input
-                  autoFocus
-                  type="text"
-                  value={renameDraft}
-                  onChange={(e) => setRenameDraft(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      const next = renameDraft;
-                      setRenamingId(null);
-                      void renameThread(conversationId, next);
-                    } else if (e.key === "Escape") {
-                      e.preventDefault();
-                      setRenamingId(null);
-                    }
-                  }}
-                  onBlur={() => {
-                    const next = renameDraft;
-                    setRenamingId(null);
-                    void renameThread(conversationId, next);
-                  }}
-                  maxLength={120}
-                  className="min-w-0 flex-1 rounded-md border border-border bg-input/40 px-1.5 py-0.5 text-xs font-semibold text-foreground outline-none focus:bg-input"
-                />
-              ) : (
+            <div className="flex shrink-0 items-center justify-between border-b border-border px-3 py-2">
+              <div className="select-none truncate text-sm font-semibold text-foreground">
+                Señor Doco
+              </div>
+              {view === "chat" ? (
                 <button
                   type="button"
-                  onClick={() => {
-                    if (!conversationId) return;
-                    setRenameDraft(conversationTitle ?? "");
-                    setRenamingId(conversationId);
-                  }}
-                  title={
-                    conversationId
-                      ? `${displayThreadTitle(conversationTitle)} — click to rename`
-                      : displayThreadTitle(conversationTitle)
-                  }
-                  disabled={!conversationId}
+                  onClick={toggleShowThinking}
+                  aria-pressed={showThinking}
+                  aria-label={showThinking ? "Hide thinking column" : "Show thinking column"}
+                  title={showThinking ? "Hide thinking column" : "Show thinking column"}
                   className={cn(
-                    "min-w-0 truncate rounded-md px-1 py-0.5 text-left text-xs font-semibold hover:bg-input/60 disabled:cursor-default disabled:hover:bg-transparent",
-                    conversationTitle ? "text-foreground" : "text-muted-foreground",
+                    "rounded-md border border-border px-2 py-0.5 text-[11px]",
+                    showThinking
+                      ? "neu-pressed bg-input text-foreground"
+                      : "neu-button text-muted-foreground hover:bg-input hover:text-foreground",
                   )}
                 >
-                  {displayThreadTitle(conversationTitle)}
+                  {showThinking ? "Hide thinking" : "Show thinking"}
                 </button>
-              )}
-              <AttachmentsRow
-                docos={attachedDocos}
-                orgs={attachedOrgs}
-                onDetachDoco={(handle) => void detachAttachment("doco", handle)}
-                onDetachOrg={(handle) => void detachAttachment("org", handle)}
-                onAttachDoco={(handle) => void attachAttachment("doco", handle)}
-                onAttachOrg={(handle) => void attachAttachment("org", handle)}
-                conversationId={conversationId}
-              />
+              ) : null}
             </div>
-          </div>
 
-          <div className="flex min-h-0 flex-1">
-            <div
-              ref={messageListRef}
-              onScroll={onMessagesScroll}
-              className={cn(
-                "min-h-0 overflow-y-auto px-3 py-3 text-xs leading-relaxed",
-                showThinking ? "w-[320px] shrink-0 border-r border-border" : "flex-1",
-              )}
-            >
-              {loadError ? (
-                <div className="rounded-md bg-destructive/10 px-2 py-1.5 text-[11px] text-destructive">
-                  Couldn't load chat history: {loadError}
+            {view === "list" ? (
+              <ThreadListView
+                conversations={conversations}
+                loading={conversationsLoading}
+                error={conversationsError}
+                activeId={conversationId}
+                renamingId={renamingId}
+                renameDraft={renameDraft}
+                searchQuery={searchQuery}
+                unreadByThread={unreadByThread}
+                onSearchChange={setSearchQuery}
+                onSelect={switchThread}
+                onNew={() => void newThread()}
+                onStartRename={(id, current) => {
+                  setRenamingId(id);
+                  setRenameDraft(current ?? "");
+                }}
+                onCancelRename={() => setRenamingId(null)}
+                onCommitRename={(id) => {
+                  const next = renameDraft;
+                  setRenamingId(null);
+                  void renameThread(id, next);
+                }}
+                onRenameDraftChange={setRenameDraft}
+                onArchive={(id) => void archiveThread(id)}
+              />
+            ) : (
+              <>
+                {/* Chat header — back arrow + total-unread badge + thread
+              name. WhatsApp-style: tapping the back arrow returns to
+              the thread list. */}
+                <div className="flex shrink-0 items-center gap-2 border-b border-border px-2 pb-2.5 pt-1.5">
+                  <button
+                    type="button"
+                    onClick={openThreadList}
+                    aria-label={
+                      totalUnreadOthers > 0
+                        ? `Back to threads (${totalUnreadOthers} unread in other threads)`
+                        : "Back to threads"
+                    }
+                    className="flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-xs text-foreground hover:bg-input"
+                  >
+                    <CollapseIcon side="left" />
+                    {totalUnreadOthers > 0 ? (
+                      <span className="rounded-full bg-primary/15 px-1.5 text-[10px] font-semibold text-primary">
+                        {totalUnreadOthers}
+                      </span>
+                    ) : null}
+                  </button>
+                  <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+                    {renamingId === conversationId && conversationId ? (
+                      <input
+                        autoFocus
+                        type="text"
+                        value={renameDraft}
+                        onChange={(e) => setRenameDraft(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            const next = renameDraft;
+                            setRenamingId(null);
+                            void renameThread(conversationId, next);
+                          } else if (e.key === "Escape") {
+                            e.preventDefault();
+                            setRenamingId(null);
+                          }
+                        }}
+                        onBlur={() => {
+                          const next = renameDraft;
+                          setRenamingId(null);
+                          void renameThread(conversationId, next);
+                        }}
+                        maxLength={120}
+                        className="min-w-0 flex-1 rounded-md border border-border bg-input/40 px-1.5 py-0.5 text-xs font-semibold text-foreground outline-none focus:bg-input"
+                      />
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!conversationId) return;
+                          setRenameDraft(conversationTitle ?? "");
+                          setRenamingId(conversationId);
+                        }}
+                        title={
+                          conversationId
+                            ? `${displayThreadTitle(conversationTitle)} — click to rename`
+                            : displayThreadTitle(conversationTitle)
+                        }
+                        disabled={!conversationId}
+                        className={cn(
+                          "min-w-0 truncate rounded-md px-1 py-0.5 text-left text-xs font-semibold hover:bg-input/60 disabled:cursor-default disabled:hover:bg-transparent",
+                          conversationTitle ? "text-foreground" : "text-muted-foreground",
+                        )}
+                      >
+                        {displayThreadTitle(conversationTitle)}
+                      </button>
+                    )}
+                    <AttachmentsRow
+                      docos={attachedDocos}
+                      orgs={attachedOrgs}
+                      onDetachDoco={(doco) => void detachAttachment("doco", doco)}
+                      onDetachOrg={(org) => void detachAttachment("org", org)}
+                      onAttachDoco={(doco) => void attachAttachment("doco", doco)}
+                      onAttachOrg={(org) => void attachAttachment("org", org)}
+                      conversationId={conversationId}
+                    />
+                  </div>
                 </div>
-              ) : null}
-              {hasMore ? (
-                <div className="mb-2 text-center text-[10px] text-muted-foreground">
-                  {loadingOlder ? "Loading older messages…" : "Scroll up for older messages"}
+
+                <div className="flex min-h-0 flex-1">
+                  <div
+                    ref={messageListRef}
+                    onScroll={onMessagesScroll}
+                    className={cn(
+                      "min-h-0 overflow-y-auto px-3 py-3 text-xs leading-relaxed",
+                      showThinking ? "w-[320px] shrink-0 border-r border-border" : "flex-1",
+                    )}
+                  >
+                    {loadError ? (
+                      <div className="rounded-md bg-destructive/10 px-2 py-1.5 text-[11px] text-destructive">
+                        Couldn't load chat history: {loadError}
+                      </div>
+                    ) : null}
+                    {hasMore ? (
+                      <div className="mb-2 text-center text-[10px] text-muted-foreground">
+                        {loadingOlder ? "Loading older messages…" : "Scroll up for older messages"}
+                      </div>
+                    ) : null}
+                    {allMessages.length === 0 && !loadError && bootstrapped ? (
+                      <div className="text-[11px] text-muted-foreground">
+                        Ask me anything about your Docos — I can search, capture decisions, create
+                        new Docos or orgs, invite collaborators, and take you to any page.
+                      </div>
+                    ) : null}
+                    {allMessages.map((rm) => (
+                      <MessageBlock
+                        key={rm.kind === "saved" ? rm.message.id : "inflight"}
+                        rm={rm}
+                        usage={rm.kind === "inflight" ? turnUsage : null}
+                      />
+                    ))}
+                  </div>
+                  {showThinking ? (
+                    <ThinkingPanel
+                      events={thinkingEvents}
+                      active={busy || inFlight !== null || remoteInflight}
+                    />
+                  ) : null}
                 </div>
-              ) : null}
-              {allMessages.length === 0 && !loadError && bootstrapped ? (
-                <div className="text-[11px] text-muted-foreground">
-                  Ask me anything about your Docos — I can search, capture decisions, create new
-                  Docos or orgs, invite collaborators, and take you to any page.
-                </div>
-              ) : null}
-              {allMessages.map((rm) => (
-                <MessageBlock
-                  key={rm.kind === "saved" ? rm.message.id : "inflight"}
-                  rm={rm}
-                  usage={rm.kind === "inflight" ? turnUsage : null}
+
+                <Composer
+                  value={inputText}
+                  onChange={setInputText}
+                  onSend={send}
+                  busy={busy || remoteInflight}
+                  username={me.username}
+                  staged={staged}
+                  queuedCount={queuedSends.length}
+                  uploading={uploading}
+                  uploadError={uploadError}
+                  onUploadFiles={uploadFiles}
+                  onRemoveStaged={removeStaged}
                 />
-              ))}
-            </div>
-            {showThinking ? (
-              <ThinkingPanel
-                events={thinkingEvents}
-                active={busy || inFlight !== null || remoteInflight}
-              />
-            ) : null}
-          </div>
+              </>
+            )}
 
-          <Composer
-            value={inputText}
-            onChange={setInputText}
-            onSend={send}
-            busy={busy || remoteInflight}
-            username={me.username}
-            staged={staged}
-            queuedCount={queuedSends.length}
-            uploading={uploading}
-            uploadError={uploadError}
-            onUploadFiles={uploadFiles}
-            onRemoveStaged={removeStaged}
-          />
-        </>
-      )}
-
-      {/* Footer pinned at the bottom — explains what Señor Doco is
+            {/* Footer pinned at the bottom — explains what Señor Doco is
           and how a collaborator can mint their own agent token. Out
           of the user's way during conversation but always reachable. */}
-      <div className="shrink-0 border-t border-border/70 px-3 py-1.5 text-[10px] leading-snug text-muted-foreground">
-        Señor Doco runs on Claude Haiku 4.5 inside Doco. Want to collaborate with your own agent?{" "}
-        <Link to="/api-keys" className="font-semibold text-foreground hover:text-primary">
-          Invite it
-        </Link>
-        .
-      </div>
-      </div>
-      {/* Full-height collapse tab — a thin column on the right edge
+            <div className="shrink-0 border-t border-border/70 px-3 py-1.5 text-[10px] leading-snug text-muted-foreground">
+              Señor Doco runs on Claude Haiku 4.5 inside Doco. Want to collaborate with your own
+              agent?{" "}
+              <Link to="/api-keys" className="font-semibold text-foreground hover:text-primary">
+                Invite it
+              </Link>
+              .
+            </div>
+          </div>
+          {/* Full-height collapse tab — a thin column on the right edge
           with the chevron centered vertically. Unmistakable affordance:
           the entire vertical strip is one button, so users can't miss
           it the way they did with the tiny header chevron. */}
-      <button
-        type="button"
-        onClick={() => setCollapsedPersistent(true)}
-        aria-label="Collapse Señor Doco"
-        title="Collapse"
-        className="flex h-full w-5 shrink-0 cursor-pointer items-center justify-center border-l border-border bg-card text-muted-foreground hover:bg-input hover:text-foreground"
-      >
-        <CollapseIcon side="left" />
-      </button>
+          <button
+            type="button"
+            onClick={() => setCollapsedPersistent(true)}
+            aria-label="Collapse Señor Doco"
+            title="Collapse"
+            className="flex h-full w-5 shrink-0 cursor-pointer items-center justify-center border-l border-border bg-card text-muted-foreground hover:bg-input hover:text-foreground"
+          >
+            <CollapseIcon side="left" />
+          </button>
         </>
       )}
     </aside>
@@ -2162,13 +2185,7 @@ function CollapseIcon({ side }: { side: "left" | "right" }) {
 
 function DotsIcon() {
   return (
-    <svg
-      width="14"
-      height="14"
-      viewBox="0 0 16 16"
-      fill="currentColor"
-      aria-hidden="true"
-    >
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
       <circle cx="3" cy="8" r="1.5" />
       <circle cx="8" cy="8" r="1.5" />
       <circle cx="13" cy="8" r="1.5" />
@@ -2180,14 +2197,20 @@ interface AttachmentsRowProps {
   docos: AttachmentInfo[];
   orgs: AttachmentInfo[];
   conversationId: string | null;
-  onAttachDoco: (handle: string) => void;
-  onAttachOrg: (handle: string) => void;
-  onDetachDoco: (handle: string) => void;
-  onDetachOrg: (handle: string) => void;
+  onAttachDoco: (doco: AvailableDoco) => void;
+  onAttachOrg: (org: { handle: string }) => void;
+  onDetachDoco: (doco: AttachmentInfo) => void;
+  onDetachOrg: (org: AttachmentInfo) => void;
+}
+
+interface AvailableDoco {
+  id: string;
+  handle: string;
+  name: string | null;
 }
 
 interface AvailableLists {
-  docos: { handle: string; name: string | null }[];
+  docos: AvailableDoco[];
   orgs: { handle: string; name: string | null }[];
 }
 
@@ -2241,9 +2264,12 @@ function AttachmentsRow({
       .finally(() => setLoadingAvailable(false));
   }, [pickerOpen, available]);
 
-  const attachedDocoSet = new Set(docos.map((d) => d.handle));
+  const attachedDocoIdSet = new Set(docos.map((d) => d.id).filter(Boolean));
+  const attachedDocoHandleSet = new Set(docos.map((d) => d.handle));
   const attachedOrgSet = new Set(orgs.map((o) => o.handle));
-  const docosToOffer = (available?.docos ?? []).filter((d) => !attachedDocoSet.has(d.handle));
+  const docosToOffer = (available?.docos ?? []).filter(
+    (d) => !attachedDocoIdSet.has(d.id) && !attachedDocoHandleSet.has(d.handle),
+  );
   const orgsToOffer = (available?.orgs ?? []).filter((o) => !attachedOrgSet.has(o.handle));
 
   if (docos.length + orgs.length === 0 && !conversationId) {
@@ -2254,19 +2280,19 @@ function AttachmentsRow({
     <div className="flex flex-wrap items-center gap-1.5" ref={pickerRef}>
       {docos.map((d) => (
         <span
-          key={`doco-${d.handle}`}
+          key={`doco-${d.id ?? d.handle}`}
           className="neu-button inline-flex h-5 items-center rounded-full border border-border pl-2 pr-0.5 text-[10px] leading-none text-muted-foreground"
           title={d.name ?? d.handle}
         >
           <Link
-            to={`/${d.handle}`}
+            to={d.id ? `/by-id/${encodeURIComponent(d.id)}` : `/${d.handle}`}
             className="inline-flex h-full items-center leading-none hover:text-foreground"
           >
             {d.name ?? d.handle}
           </Link>
           <button
             type="button"
-            onClick={() => onDetachDoco(d.handle)}
+            onClick={() => onDetachDoco(d)}
             aria-label={`Remove ${d.name ?? d.handle}`}
             className="ml-1 inline-flex h-3.5 w-3.5 items-center justify-center rounded-full leading-none text-muted-foreground hover:bg-destructive/15 hover:text-destructive"
           >
@@ -2288,7 +2314,7 @@ function AttachmentsRow({
           </Link>
           <button
             type="button"
-            onClick={() => onDetachOrg(o.handle)}
+            onClick={() => onDetachOrg(o)}
             aria-label={`Remove ${o.name ?? o.handle}`}
             className="ml-1 inline-flex h-3.5 w-3.5 items-center justify-center rounded-full leading-none text-muted-foreground hover:bg-destructive/15 hover:text-destructive"
           >
@@ -2331,7 +2357,7 @@ function AttachmentsRow({
                 role="menuitem"
                 onClick={() => {
                   setPickerOpen(false);
-                  onAttachDoco(d.handle);
+                  onAttachDoco(d);
                 }}
                 className="block w-full truncate px-3 py-1 text-left hover:bg-input"
               >
@@ -2350,7 +2376,7 @@ function AttachmentsRow({
                 role="menuitem"
                 onClick={() => {
                   setPickerOpen(false);
-                  onAttachOrg(o.handle);
+                  onAttachOrg(o);
                 }}
                 className="block w-full truncate px-3 py-1 text-left hover:bg-input"
               >
@@ -2548,9 +2574,7 @@ function ThreadRow({
         isActive ? "" : "hover:bg-input/40",
       )}
     >
-      {isActive ? (
-        <span aria-hidden className="absolute inset-y-0 left-0 w-1 bg-primary" />
-      ) : null}
+      {isActive ? <span aria-hidden className="absolute inset-y-0 left-0 w-1 bg-primary" /> : null}
       {isRenaming ? (
         <div className="flex flex-1 items-center gap-1.5 px-3 py-1.5">
           <input
@@ -2759,10 +2783,7 @@ function SavedMessage({ message }: { message: ChatMessage }) {
   return (
     <div className={cn("mb-3 flex flex-col", isAssistant ? "items-end" : "items-start")}>
       <div
-        className={cn(
-          "flex w-full items-end gap-2",
-          isAssistant ? "justify-end" : "justify-start",
-        )}
+        className={cn("flex w-full items-end gap-2", isAssistant ? "justify-end" : "justify-start")}
       >
         {isAssistant ? <MessageTime createdAt={message.created_at} /> : null}
         <div
@@ -2858,8 +2879,7 @@ function ThinkingPanel({ events, active }: { events: ThinkingEvent[]; active: bo
     return () => clearInterval(id);
   }, [active, lastArrivalRT]);
 
-  const idleSec =
-    active && lastArrivalRT != null ? (performance.now() - lastArrivalRT) / 1000 : 0;
+  const idleSec = active && lastArrivalRT != null ? (performance.now() - lastArrivalRT) / 1000 : 0;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-card/50">
@@ -3019,9 +3039,7 @@ function renderInlineLinks(text: string): ReactNode[] {
 
 function BlockView({ block }: { block: AnyBlock }) {
   if (block.type === "text") {
-    return (
-      <div className="whitespace-pre-wrap break-words">{renderInlineLinks(block.text)}</div>
-    );
+    return <div className="whitespace-pre-wrap break-words">{renderInlineLinks(block.text)}</div>;
   }
   if (block.type === "tool_use") {
     return (
@@ -3259,8 +3277,7 @@ function Composer({
     el.style.height = `${Math.min(160, el.scrollHeight)}px`;
   });
   const canSend = value.trim().length > 0 || staged.length > 0;
-  const queuedLabel =
-    queuedCount === 0 ? null : `${queuedCount} queued`;
+  const queuedLabel = queuedCount === 0 ? null : `${queuedCount} queued`;
   return (
     <div
       className={cn(
