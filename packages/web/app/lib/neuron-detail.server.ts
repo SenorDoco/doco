@@ -1,7 +1,6 @@
 import { ALL_ENTITY_TABLES, DOCO_NEURON_TABLE_BY_TYPE, type DocoRole, roleAtLeast } from "@doco/db";
 import { parse as parseYaml } from "yaml";
 import { getDocoLevelRole } from "~/lib/doco-access.server";
-import { loadOverviewNodeDetails } from "~/lib/full-graph.server";
 
 type QueryClient = {
   query<T>(sql: string, params?: unknown[]): Promise<{ rows: T[] }>;
@@ -17,6 +16,7 @@ export interface NeuronDialogEdge {
   other_neuron_type: string;
   other_summary: string | null;
   other_name: string | null;
+  other_lifecycle: string;
   href: string | null;
 }
 
@@ -203,6 +203,59 @@ export function isGraphNeuronType(
   return Boolean(type && GRAPH_NEURON_TABLES[type]);
 }
 
+interface DialogRelatedNeuronDetail {
+  id: string;
+  entity_type: string;
+  summary: string;
+  name: string | null;
+  lifecycle: string;
+  href: string;
+}
+
+function relatedDetailsSql(): string {
+  return Object.entries(GRAPH_NEURON_TABLES)
+    .map(([entityType, cfg]) => {
+      const nameExpr =
+        cfg.primaryField === "name" ? `${cfg.primaryColumn}::text AS name` : "NULL::text AS name";
+      return `SELECT id,
+                     '${entityType}'::text AS entity_type,
+                     NULLIF(split_part(${cfg.primaryColumn}::text, E'\n', 1), '') AS summary,
+                     ${nameExpr},
+                     COALESCE(lifecycle, 'active') AS lifecycle
+                FROM ${cfg.table}
+               WHERE doco_id = $1
+                 AND id = ANY($2::text[])`;
+    })
+    .join(" UNION ALL ");
+}
+
+async function loadDialogRelatedDetails(
+  c: QueryClient,
+  docoId: string,
+  ids: string[],
+  handle: string,
+): Promise<DialogRelatedNeuronDetail[]> {
+  const requested = Array.from(new Set(ids.filter(Boolean)));
+  if (requested.length === 0) return [];
+  const rows = (
+    await c.query<{
+      id: string;
+      entity_type: string;
+      summary: string | null;
+      name: string | null;
+      lifecycle: string | null;
+    }>(relatedDetailsSql(), [docoId, requested])
+  ).rows;
+  return rows.map((row) => ({
+    id: row.id,
+    entity_type: row.entity_type,
+    summary: row.summary ?? row.name ?? row.id,
+    name: row.name,
+    lifecycle: row.lifecycle ?? "active",
+    href: `/${handle}/${row.entity_type}/${row.id}`,
+  }));
+}
+
 export async function loadNeuronDialogDetail(
   c: QueryClient,
   meta: { docoId: string; ownerId: string },
@@ -295,7 +348,7 @@ export async function loadNeuronDialogDetail(
       ...incomingRows.map((edge) => edge.from_id),
     ]),
   );
-  const relatedDetails = await loadOverviewNodeDetails(c, meta.docoId, relatedIds, options.handle);
+  const relatedDetails = await loadDialogRelatedDetails(c, meta.docoId, relatedIds, options.handle);
   const relatedById = new Map(relatedDetails.map((detail) => [detail.id, detail]));
   const outgoing: NeuronDialogEdge[] = outgoingRows.map((edge) => {
     const detail = relatedById.get(edge.to_id);
@@ -305,6 +358,7 @@ export async function loadNeuronDialogDetail(
       other_neuron_type: edge.to_neuron_type,
       other_summary: detail?.summary ?? null,
       other_name: detail?.name ?? null,
+      other_lifecycle: detail?.lifecycle ?? "active",
       href: detail?.href ?? `/${options.handle}/${edge.to_neuron_type}/${edge.to_id}`,
     };
   });
@@ -316,6 +370,7 @@ export async function loadNeuronDialogDetail(
       other_neuron_type: edge.from_neuron_type,
       other_summary: detail?.summary ?? null,
       other_name: detail?.name ?? null,
+      other_lifecycle: detail?.lifecycle ?? "active",
       href: detail?.href ?? `/${options.handle}/${edge.from_neuron_type}/${edge.from_id}`,
     };
   });
