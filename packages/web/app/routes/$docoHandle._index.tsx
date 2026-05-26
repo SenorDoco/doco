@@ -65,6 +65,7 @@ import { useFullscreen } from "~/lib/use-fullscreen";
 const FEED_LIMIT = 20;
 const HEATMAP_WEEKS = 52;
 const TOP_CONTRIBUTORS_LIMIT = 10;
+const RIGHT_COLUMN_MIN_CONTENT_WIDTH = 1200;
 
 interface FeedItem extends ActivityFeedLineItem {
   event_id: string;
@@ -574,9 +575,35 @@ export default function DocoHome({
   // browser convention. The neuron dialog also moves inside the aside
   // when fullscreen so it stays visible on top of the graph (the right
   // column is outside the fullscreen tree and not rendered).
+  const pageShellRef = useRef<HTMLElement>(null);
   const asideRef = useRef<HTMLElement>(null);
+  const [showRightColumn, setShowRightColumn] = useState(false);
   const { isFullscreen: isPerspectiveFullscreen, toggle: togglePerspectiveFullscreen } =
     useFullscreen(asideRef);
+
+  useEffect(() => {
+    const shell = pageShellRef.current;
+    if (!shell) return;
+
+    const update = (width: number) => {
+      const next = width >= RIGHT_COLUMN_MIN_CONTENT_WIDTH;
+      setShowRightColumn((prev) => (prev === next ? prev : next));
+    };
+    const measure = () => update(shell.getBoundingClientRect().width);
+
+    measure();
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", measure);
+      return () => window.removeEventListener("resize", measure);
+    }
+
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      update(entry?.contentRect.width ?? shell.getBoundingClientRect().width);
+    });
+    observer.observe(shell);
+    return () => observer.disconnect();
+  }, []);
 
   // Live feed polling (ADR-089).
   const revalidator = useRevalidator();
@@ -768,7 +795,7 @@ export default function DocoHome({
   return (
     <div className="flex h-full min-h-0 flex-col">
       <SiteHeader mode="host" me={me} />
-      <main className="doco-page-shell flex min-h-0 flex-1 flex-col px-6 pb-6 pt-6">
+      <main ref={pageShellRef} className="flex min-h-0 flex-1 flex-col px-6 pb-6 pt-6">
         {/* Title row — spans both columns so the action buttons sit beside the
             title rather than visually attached to the fishbone graph below. */}
         <div className="mb-6 shrink-0 space-y-1">
@@ -800,7 +827,11 @@ export default function DocoHome({
           </div>
           {goal ? <p className="text-[11px] text-muted-foreground">{goal}</p> : null}
         </div>
-        <div className="doco-page-grid grid min-h-0 flex-1 grid-cols-1 gap-6">
+        <div
+          className={`grid min-h-0 flex-1 gap-6 ${
+            showRightColumn ? "grid-cols-[minmax(0,1fr)_320px]" : "grid-cols-1"
+          }`}
+        >
           <aside ref={asideRef} className="flex min-h-0 min-w-0 flex-col bg-background">
             <PerspectiveTabs
               handle={handle}
@@ -929,7 +960,7 @@ export default function DocoHome({
               enough inline room. A viewport breakpoint is not enough
               because the Señor Doco rail can consume a large slice of
               the browser width before this page gets laid out. */}
-          <div className="doco-page-right-column relative min-h-0 min-w-0">
+          <div className={`relative min-h-0 min-w-0 ${showRightColumn ? "block" : "hidden"}`}>
             <section className="h-full min-w-0 space-y-5 overflow-y-auto pb-10 pr-1">
               <NeuronsOverviewCard
                 sections={sections}
@@ -982,7 +1013,11 @@ export default function DocoHome({
             Señor Doco rail's width is published as a CSS var by
             AgentSidebar so the dialog never covers it. */}
         {neuronDialog && !isPerspectiveFullscreen ? (
-          <div className="doco-page-floating-dialog fixed bottom-4 right-3 top-20 z-30 [left:calc(var(--senor-doco-rail-width,320px)+0.75rem)]">
+          <div
+            className={`fixed bottom-4 right-3 top-20 z-30 [left:calc(var(--senor-doco-rail-width,320px)+0.75rem)] ${
+              showRightColumn ? "hidden" : "block"
+            }`}
+          >
             {neuronDialogPanel}
           </div>
         ) : null}
