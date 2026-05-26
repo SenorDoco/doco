@@ -67,6 +67,14 @@ export const DOCO_TEMPLATES: DocoTemplateMeta[] = [
     owner: TEMPLATE_OWNER,
   },
   {
+    handle: "slas",
+    label: "SLAs",
+    description:
+      "Document service-level agreements — commitments, owners, measurement rules, evidence links, exclusions, remedies, and review history.",
+    updatedAt: "2026-05-26",
+    owner: TEMPLATE_OWNER,
+  },
+  {
     handle: "org-chart",
     label: "Org Chart",
     description:

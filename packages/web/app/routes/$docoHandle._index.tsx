@@ -35,6 +35,7 @@ import { PerspectiveTabs } from "~/components/perspective-tabs";
 import { BpmnPerspective } from "~/components/perspectives/bpmn-perspective";
 import { ListPerspective } from "~/components/perspectives/list-perspective";
 import { OrgTreePerspective } from "~/components/perspectives/org-tree-perspective";
+import { SlaPerspective } from "~/components/perspectives/sla-perspective";
 import { SearchBoxWithHistory } from "~/components/search-box-with-history";
 import { SiteHeader } from "~/components/site-header";
 import { loadBpmnGraph } from "~/lib/bpmn-perspective.server";
@@ -58,6 +59,7 @@ import {
   resolveActivePerspective,
 } from "~/lib/perspectives.server";
 import { computeFilterFacets } from "~/lib/search-filters.server";
+import { loadSlaPerspectiveData } from "~/lib/sla-perspective.server";
 import { timeAgo } from "~/lib/time-ago";
 import { useFullscreen } from "~/lib/use-fullscreen";
 
@@ -315,6 +317,11 @@ export async function loader({
         ? await loadOrgTreeData(c, ctx.meta.docoId, handle)
         : null;
 
+    const slaData =
+      activePerspective?.kind === "sla"
+        ? await loadSlaPerspectiveData(c, ctx.meta.docoId, handle)
+        : null;
+
     // Policy count — guidance + neuron-authoring policies
     // attached to this Doco.
     const policyRow = (
@@ -356,6 +363,7 @@ export async function loader({
       pageRanks,
       bpmnGraph,
       orgTreeData,
+      slaData,
       selectedNeuron: dialogNeuron,
       graphAutoReorder,
     };
@@ -464,6 +472,7 @@ export default function DocoHome({
     pageRanks,
     bpmnGraph,
     orgTreeData,
+    slaData,
     selectedNeuron,
     graphAutoReorder: initialAutoReorder,
   } = loaderData;
@@ -876,6 +885,8 @@ export default function DocoHome({
                     pageRanks={pageRanksMap}
                     visibleLifecycles={visibleLifecycles}
                   />
+                ) : activePerspectiveKind === "sla" && slaData ? (
+                  <SlaPerspective data={slaData} visibleLifecycles={visibleLifecycles} />
                 ) : activePerspectiveKind === "org-tree" && orgTreeData ? (
                   <OrgTreePerspective
                     nodes={orgTreeData.nodes}
