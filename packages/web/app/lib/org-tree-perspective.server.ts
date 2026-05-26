@@ -20,8 +20,8 @@ export interface OrgTreeNode {
   id: string;
   /** Display label for the Principal. */
   name: string;
-  /** Optional one-line description; rendered under the label. */
-  description: string | null;
+  /** Optional short role label rendered under the name. */
+  role: string | null;
   /**
    * "person" | "agent" — drives the icon (👤 vs 🤖). Inferred from
    * `body_md` prose, not from a structured field (the slim-down
@@ -74,6 +74,30 @@ function inferKindFromProse(body: string | null): "person" | "agent" | null {
   return null;
 }
 
+function roleFromProse(
+  body: string | null,
+  name: string,
+  type: "person" | "agent" | null,
+): string | null {
+  if (!body) return null;
+  const firstLine = body
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .find((l) => l.length > 0);
+  if (!firstLine || firstLine.toLowerCase() === name.toLowerCase()) return null;
+
+  const withoutKind =
+    type === "agent"
+      ? firstLine.replace(
+          /^(?:ai[\s-]?agent|autonomous\s+(?:agent|bot|role)|agent|bot)\b\s*[:.;,-]?\s*/i,
+          "",
+        )
+      : firstLine.replace(/^(?:human|person|people|employee|contractor)\b\s*[:.;,-]?\s*/i, "");
+  const role = withoutKind.trim();
+  if (!role) return null;
+  return role.length > 72 ? `${role.slice(0, 69)}...` : role;
+}
+
 export async function loadOrgTreeData(
   c: QueryClient,
   docoId: string,
@@ -94,25 +118,13 @@ export async function loadOrgTreeData(
 
   const nodes: OrgTreeNode[] = rows.map((r) => {
     const data = r.data ?? {};
-    // Description: first non-blank line of body_md, when it isn't just
-    // a repetition of the name label.
-    const nameNorm = r.name.toLowerCase();
-    let description: string | null = null;
-    if (r.body_md) {
-      const firstLine = r.body_md
-        .split(/\r?\n/)
-        .map((l) => l.trim())
-        .find((l) => l.length > 0);
-      if (firstLine && firstLine.toLowerCase() !== nameNorm) {
-        description = firstLine.length > 120 ? `${firstLine.slice(0, 117)}…` : firstLine;
-      }
-    }
     const type = inferKindFromProse(r.body_md);
+    const role = roleFromProse(r.body_md, r.name, type);
     const reports_to = typeof data.reports_to === "string" ? data.reports_to : null;
     return {
       id: r.id,
       name: r.name,
-      description,
+      role,
       type,
       lifecycle: r.lifecycle ?? "active",
       reports_to,

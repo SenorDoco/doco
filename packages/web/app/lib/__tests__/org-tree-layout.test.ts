@@ -11,7 +11,7 @@ function principal(id: string, reportsTo: string | null = null): OrgTreeNode {
   return {
     id,
     name: id,
-    description: null,
+    role: null,
     type: "person",
     lifecycle: "active",
     reports_to: reportsTo,

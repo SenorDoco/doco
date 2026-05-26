@@ -1,7 +1,7 @@
 import type { OrgTreeNode } from "./org-tree-perspective.server";
 
 export const ORG_TREE_NODE_W = 240;
-export const ORG_TREE_NODE_H = 108;
+export const ORG_TREE_NODE_H = 76;
 export const ORG_TREE_H_GAP = 40;
 export const ORG_TREE_V_GAP = 60;
 const MAX_DEPTH = 50;
