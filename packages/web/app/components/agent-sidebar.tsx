@@ -1152,17 +1152,13 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
   }, [collapsed]);
 
   const newestMessageId = messages[messages.length - 1]?.id ?? null;
-  const autoScrollTrigger =
-    newestMessageId || inFlight
-      ? `${newestMessageId ?? "none"}:${inFlight?.content.length ?? 0}:${inFlight?.toolResults.size ?? 0}`
-      : null;
 
   // Auto-scroll on new content.
   useEffect(() => {
-    if (!autoScrollTrigger) return;
+    if (!newestMessageId && !inFlight) return;
     const el = messageListRef.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [autoScrollTrigger]);
+  }, [newestMessageId, inFlight]);
 
   const loadOlder = useCallback(async () => {
     const earliest = earliestRef.current;
