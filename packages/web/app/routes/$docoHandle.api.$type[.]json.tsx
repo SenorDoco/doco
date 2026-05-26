@@ -142,6 +142,16 @@ async function reconcilePrincipalFields(
   }
 }
 
+async function fillEvalAuthorFromAuth(draft: EvalDraft, me: MeLike, docoId: string): Promise<void> {
+  if (!me.id || draft.authored_by_principal_id) return;
+  const authorPrincipalId = await resolvePrincipalIdForCollaborator(docoId, me.id);
+  if (authorPrincipalId) {
+    draft.authored_by_principal_id = authorPrincipalId;
+    return;
+  }
+  draft.created_by_collaborator_id = me.id;
+}
+
 interface RegistryEntry {
   // biome-ignore lint/suspicious/noExplicitAny: registry erases the per-entity Draft type
   build: () => ReturnType<typeof makeCaptureRoute<any>>;
@@ -217,9 +227,7 @@ const CAPTURE_REGISTRY: Record<string, RegistryEntry> = {
   logs: entry<LogDraft>("logs", "log", captureLog, (draft, me, docoId) =>
     reconcilePrincipalFields(draft, docoId, me, ["actor_principal_id", "created_by_principal_id"]),
   ),
-  evals: entry<EvalDraft>("evals", "eval", captureEval, (draft, me, docoId) =>
-    reconcilePrincipalFields(draft, docoId, me, ["authored_by_principal_id"]),
-  ),
+  evals: entry<EvalDraft>("evals", "eval", captureEval, fillEvalAuthorFromAuth),
   states: entry<StateDraft>("states", "state", captureState, (draft, me, docoId) =>
     reconcilePrincipalFields(draft, docoId, me, ["created_by_principal_id"]),
   ),

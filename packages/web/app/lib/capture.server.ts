@@ -1634,6 +1634,8 @@ export interface EvalDraft {
   intent_ids?: string[];
   /** Optional: principal id who authored the Eval. */
   authored_by_principal_id?: string;
+  /** Internal route-filled fallback for test docos without Principal neurons. */
+  created_by_collaborator_id?: string;
   /** Optional default: lifecycle = "active". */
   lifecycle?: string;
   deprecated?: boolean;
@@ -1663,13 +1665,24 @@ export async function captureEval(
   if (draft.expected_status !== undefined && !["pass", "fail"].includes(draft.expected_status)) {
     return { error: `Unknown expected_status: ${draft.expected_status}` };
   }
-  const authoredBy = requiredPrincipalId(
-    draft.authored_by_principal_id,
-    "authored_by_principal_id",
-    "or pass an authenticated request; the route fills it from `me.id`",
-  );
-  if (typeof authoredBy !== "string") return authoredBy;
-  const authoredById = authoredBy;
+  const explicitAuthor = draft.authored_by_principal_id?.trim();
+  const collaboratorAuthor = draft.created_by_collaborator_id?.trim();
+  let authoredById: string;
+  if (explicitAuthor) {
+    const bad = assertNotCollaboratorId(explicitAuthor, "authored_by_principal_id");
+    if (bad) return bad;
+    authoredById = explicitAuthor;
+  } else if (collaboratorAuthor) {
+    if (!collaboratorAuthor.startsWith("collaborator_")) {
+      return { error: "created_by_collaborator_id must be a collaborator id." };
+    }
+    authoredById = collaboratorAuthor;
+  } else {
+    return {
+      error:
+        "authored_by_principal_id is required (or pass an authenticated request; the route fills `created_by` from the session).",
+    };
+  }
 
   const intentIds: string[] = Array.isArray(draft.intent_ids) ? draft.intent_ids : [];
 
