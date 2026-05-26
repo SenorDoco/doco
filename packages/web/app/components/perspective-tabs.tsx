@@ -39,7 +39,7 @@ export function PerspectiveTabs({
       // against this nav element. The chevron is a direct child of
       // the nav, dropping the wrapper that previously caused
       // sub-pixel vertical misalignment with the Link tabs.
-      className="relative -mb-px flex min-w-0 flex-wrap items-end self-start"
+      className="relative flex min-w-0 flex-wrap items-end self-start"
     >
       {perspectives.map((p, i) => (
         <PerspectiveTab
@@ -86,9 +86,9 @@ function PerspectiveTab({ handle, perspective, active, isFirst, isLast }: Perspe
   //     don't create visible dips where their rounded tops curve away
   //     from each other.
   //   * Active tab has z-10 so its borders win the overlap.
-  //   * The row above is pulled down 1px (`-mb-px`) so the active tab's
-  //     transparent bottom border lands exactly on top of the canvas's
-  //     top border, dissolving the seam between the tab and the canvas.
+  //   * The perspective frame has no top border; the tabs own that top
+  //     edge. Keep tab bottom borders transparent so no horizontal rule
+  //     separates the tab strip from the content.
   const tabClass = cn(
     "relative -ml-px first:ml-0 inline-flex items-center gap-1.5 border border-border px-3 py-1.5 text-xs font-medium",
     isFirst && "rounded-tl-md",
@@ -97,8 +97,7 @@ function PerspectiveTab({ handle, perspective, active, isFirst, isLast }: Perspe
       ? // The active tab's bg + bottom border match the perspective
         // canvas (bg-background) so the tab visually flows into the
         // canvas without a visible seam. Keep the bottom border
-        // transparent: the tab background paints through that border
-        // area and covers the canvas border without clipping corners.
+        // transparent so there is no divider between tab and content.
         "z-10 border-b-transparent bg-background text-foreground"
       : // border-b-transparent on inactive tabs so the tab's bottom
         // border (22%-alpha border-border) doesn't STACK on top of
