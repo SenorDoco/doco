@@ -3,8 +3,10 @@
 // Mutate a single Señor Doco thread. Body fields (all optional):
 //   { title?: string | null,
 //     archived?: boolean,
-//     attach_doco?: string,
-//     detach_doco?: string,
+//     attach_doco_id?: string,
+//     detach_doco_id?: string,
+//     attach_doco?: string,      // legacy handle fallback
+//     detach_doco?: string,      // legacy handle fallback
 //     attach_org?: string,
 //     detach_org?: string }
 //
@@ -17,15 +19,14 @@
 // around so the agent can still reference it. Hard delete is
 // admin-only.
 
-import {
-  mutateConversationAttachments,
-  patchConversation,
-} from "~/lib/agent-chat.server";
+import { mutateConversationAttachments, patchConversation } from "~/lib/agent-chat.server";
 import { getCurrentPrincipal } from "~/lib/session.server";
 
 interface PatchBody {
   title?: unknown;
   archived?: unknown;
+  attach_doco_id?: unknown;
+  detach_doco_id?: unknown;
   attach_doco?: unknown;
   detach_doco?: unknown;
   attach_org?: unknown;
@@ -76,13 +77,20 @@ export async function action({
     patch.archived = body.archived;
   }
   const ops = {
-    attachDoco: cleanHandle(body.attach_doco),
-    detachDoco: cleanHandle(body.detach_doco),
+    attachDocoId: cleanHandle(body.attach_doco_id),
+    detachDocoId: cleanHandle(body.detach_doco_id),
+    attachDocoHandle: cleanHandle(body.attach_doco),
+    detachDocoHandle: cleanHandle(body.detach_doco),
     attachOrg: cleanHandle(body.attach_org),
     detachOrg: cleanHandle(body.detach_org),
   };
   const hasAttachmentOp =
-    ops.attachDoco || ops.detachDoco || ops.attachOrg || ops.detachOrg;
+    ops.attachDocoId ||
+    ops.detachDocoId ||
+    ops.attachDocoHandle ||
+    ops.detachDocoHandle ||
+    ops.attachOrg ||
+    ops.detachOrg;
   const hasPatch = Object.keys(patch).length > 0;
   // Run patch first (title/archived), then attachments. Both return
   // the updated row; we take the last non-null and bail with 404
@@ -111,6 +119,7 @@ export async function action({
       archived: row.archived,
       updated_at: row.updated_at.toISOString(),
       active_turn_started_at: row.active_turn_started_at?.toISOString() ?? null,
+      attached_doco_ids: row.attached_doco_ids ?? [],
       attached_doco_handles: row.attached_doco_handles ?? [],
       attached_org_handles: row.attached_org_handles ?? [],
     },

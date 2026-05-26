@@ -58,7 +58,7 @@ describe("createDocoInOrg", () => {
     });
     expect(mocks.createConversation).toHaveBeenCalledWith("collaborator_01", {
       title: "Chat for acme-onboarding",
-      attachedDocoHandles: ["acme-onboarding"],
+      attachedDocoIds: ["doco_01"],
     });
     expect(rec).toMatchObject({
       docoId: "doco_01",

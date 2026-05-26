@@ -134,6 +134,8 @@ export interface ChatConversationRow {
   collaborator_id: string;
   archived: boolean;
   title: string | null;
+  attached_doco_ids: string[];
+  /** Legacy handle storage retained only as a fallback for old rows. */
   attached_doco_handles: string[];
   attached_org_handles: string[];
   created_at: Date;
@@ -263,7 +265,7 @@ export type ChatStreamEvent =
 const ACTIVE_TURN_STALE_MS = 5 * 60 * 1000;
 
 const CONV_COLS =
-  "id, collaborator_id, archived, title, attached_doco_handles, attached_org_handles, created_at, updated_at, active_turn_started_at";
+  "id, collaborator_id, archived, title, attached_doco_ids, attached_doco_handles, attached_org_handles, created_at, updated_at, active_turn_started_at";
 
 /**
  * Sweep stale active-turn markers on a conversation row we just
@@ -338,21 +340,21 @@ export async function createConversation(
   principalId: string,
   opts: {
     title?: string | null;
-    attachedDocoHandles?: string[];
+    attachedDocoIds?: string[];
     attachedOrgHandles?: string[];
   } = {},
 ): Promise<ChatConversationRow> {
   return await withClient(async (c) => {
     const id = `conv_${generateUlid()}`;
     const title = typeof opts.title === "string" && opts.title.trim() ? opts.title.trim() : null;
-    const attachedDocoHandles = uniqueNonEmptyStrings(opts.attachedDocoHandles ?? []);
+    const attachedDocoIds = uniqueNonEmptyStrings(opts.attachedDocoIds ?? []);
     const attachedOrgHandles = uniqueNonEmptyStrings(opts.attachedOrgHandles ?? []);
     const r = await c.query<ChatConversationRow>(
       `INSERT INTO chat_conversations
-         (id, collaborator_id, title, attached_doco_handles, attached_org_handles)
+         (id, collaborator_id, title, attached_doco_ids, attached_org_handles)
        VALUES ($1, $2, $3, $4, $5)
        RETURNING ${CONV_COLS}`,
-      [id, principalId, title, attachedDocoHandles, attachedOrgHandles],
+      [id, principalId, title, attachedDocoIds, attachedOrgHandles],
     );
     const row = r.rows[0];
     if (!row) throw new Error("failed to create conversation row");
@@ -376,11 +378,13 @@ export interface ConversationListItem {
   /** Who sent the latest message — informs the WhatsApp-style "You:" prefix. */
   last_message_role: "user" | "assistant" | null;
   /**
-   * Handles only (not resolved to display names) so the client can
-   * decide what to do on row-click without a second snapshot fetch:
+   * Stable Doco ids so the client can decide what to do on row-click
+   * without a second snapshot fetch:
    * exactly one attachment between docos + orgs → jump straight to
-   * that page; otherwise just open the chat.
+   * that page; otherwise just open the chat. Handles are included for
+   * older clients only and are resolved from ids when possible.
    */
+  attached_doco_ids: string[];
   attached_doco_handles: string[];
   attached_org_handles: string[];
 }
@@ -431,11 +435,23 @@ export async function listConversationsForPrincipal(
       message_count: string;
       last_message_content: unknown;
       last_message_role: "user" | "assistant" | null;
+      attached_doco_ids: string[] | null;
       attached_doco_handles: string[] | null;
       attached_org_handles: string[] | null;
     }>(
       `SELECT c.id, c.title, c.archived, c.updated_at, c.active_turn_started_at,
-              c.attached_doco_handles, c.attached_org_handles,
+              c.attached_doco_ids,
+              CASE
+                WHEN array_length(c.attached_doco_ids, 1) IS NOT NULL THEN
+                  ARRAY(
+                    SELECT d.handle
+                      FROM unnest(c.attached_doco_ids) WITH ORDINALITY AS x(id, ord)
+                      JOIN docos d ON d.id = x.id
+                     ORDER BY x.ord
+                  )
+                ELSE c.attached_doco_handles
+              END AS attached_doco_handles,
+              c.attached_org_handles,
               COALESCE((SELECT count(*) FROM chat_messages m WHERE m.conversation_id = c.id), 0)::text AS message_count,
               (SELECT m.content
                  FROM chat_messages m
@@ -463,6 +479,7 @@ export async function listConversationsForPrincipal(
       active_turn_started_at: row.active_turn_started_at?.toISOString() ?? null,
       last_message_preview: extractMessagePreview(row.last_message_content),
       last_message_role: row.last_message_role,
+      attached_doco_ids: row.attached_doco_ids ?? [],
       attached_doco_handles: row.attached_doco_handles ?? [],
       attached_org_handles: row.attached_org_handles ?? [],
     }));
@@ -499,18 +516,45 @@ export async function patchConversation(
   });
 }
 
+function appendUniqueSql(column: string, paramIndex: number): string {
+  return `${column} = CASE WHEN $${paramIndex} = ANY(${column}) THEN ${column} ELSE ${column} || ARRAY[$${paramIndex}::text] END`;
+}
+
 /**
- * Append a Doco handle to the thread's `attached_doco_handles`
- * unless it's already there. Idempotent on repeat calls — the
- * conversation accumulates every Doco it has touched. Caller is the
- * doco_api tool dispatcher; this lets the chat sidebar render
- * clickable chips for everywhere the agent has been so the user
- * can jump back to that Doco's perspective view.
+ * Append a stable Doco id to the thread's `attached_doco_ids` unless
+ * it's already there. Idempotent on repeat calls — the conversation
+ * accumulates every Doco it has touched. Caller is the doco_api tool
+ * dispatcher; this lets the chat sidebar render clickable chips for
+ * everywhere the agent has been so the user can jump back to that
+ * Doco's perspective view even after a handle rename.
  *
  * Fails silently — attachment is a nice-to-have on top of the tool
  * call; we don't want a transient DB error to break the assistant
  * turn. Most failures are spurious (deadlocks under load) and the
  * next tool call to the same Doco will retry.
+ */
+export async function attachDocoIdToConversation(
+  conversationId: string,
+  docoId: string,
+): Promise<void> {
+  if (!conversationId || !docoId) return;
+  try {
+    await withClient(async (c) => {
+      await c.query(
+        `UPDATE chat_conversations
+            SET ${appendUniqueSql("attached_doco_ids", 2)}
+          WHERE id = $1`,
+        [conversationId, docoId],
+      );
+    });
+  } catch {
+    // Best-effort — see docblock.
+  }
+}
+
+/**
+ * Resolve a mutable handle at the edge, then store the immutable Doco
+ * id. Kept for `doco_api` paths, which still arrive as /<handle>/api.
  */
 export async function attachDocoToConversation(
   conversationId: string,
@@ -519,12 +563,16 @@ export async function attachDocoToConversation(
   if (!conversationId || !handle) return;
   try {
     await withClient(async (c) => {
+      const doco = await c.query<{ id: string }>("SELECT id FROM docos WHERE handle = $1", [
+        handle,
+      ]);
+      const docoId = doco.rows[0]?.id;
+      if (!docoId) return;
       await c.query(
         `UPDATE chat_conversations
-            SET attached_doco_handles = attached_doco_handles || ARRAY[$2::text]
-          WHERE id = $1
-            AND NOT ($2 = ANY(attached_doco_handles))`,
-        [conversationId, handle],
+            SET ${appendUniqueSql("attached_doco_ids", 2)}
+          WHERE id = $1`,
+        [conversationId, docoId],
       );
     });
   } catch {
@@ -564,38 +612,51 @@ export async function mutateConversationAttachments(
   conversationId: string,
   principalId: string,
   ops: {
-    attachDoco?: string;
-    detachDoco?: string;
+    attachDocoId?: string;
+    detachDocoId?: string;
+    attachDocoHandle?: string;
+    detachDocoHandle?: string;
     attachOrg?: string;
     detachOrg?: string;
   },
 ): Promise<ChatConversationRow | null> {
-  const updates: string[] = [];
-  const values: unknown[] = [conversationId, principalId];
-  if (ops.attachDoco) {
-    values.push(ops.attachDoco);
-    updates.push(
-      `attached_doco_handles = CASE WHEN $${values.length} = ANY(attached_doco_handles) THEN attached_doco_handles ELSE attached_doco_handles || ARRAY[$${values.length}::text] END`,
-    );
-  }
-  if (ops.detachDoco) {
-    values.push(ops.detachDoco);
-    updates.push(`attached_doco_handles = array_remove(attached_doco_handles, $${values.length})`);
-  }
-  if (ops.attachOrg) {
-    values.push(ops.attachOrg);
-    updates.push(
-      `attached_org_handles = CASE WHEN $${values.length} = ANY(attached_org_handles) THEN attached_org_handles ELSE attached_org_handles || ARRAY[$${values.length}::text] END`,
-    );
-  }
-  if (ops.detachOrg) {
-    values.push(ops.detachOrg);
-    updates.push(`attached_org_handles = array_remove(attached_org_handles, $${values.length})`);
-  }
-  if (updates.length === 0) {
-    return await loadConversationByIdForPrincipal(conversationId, principalId);
-  }
   return await withClient(async (c) => {
+    let attachDocoId = ops.attachDocoId;
+    if (!attachDocoId && ops.attachDocoHandle) {
+      const r = await c.query<{ id: string }>("SELECT id FROM docos WHERE handle = $1", [
+        ops.attachDocoHandle,
+      ]);
+      attachDocoId = r.rows[0]?.id;
+    }
+    let detachDocoId = ops.detachDocoId;
+    if (!detachDocoId && ops.detachDocoHandle) {
+      const r = await c.query<{ id: string }>("SELECT id FROM docos WHERE handle = $1", [
+        ops.detachDocoHandle,
+      ]);
+      detachDocoId = r.rows[0]?.id;
+    }
+
+    const updates: string[] = [];
+    const values: unknown[] = [conversationId, principalId];
+    if (attachDocoId) {
+      values.push(attachDocoId);
+      updates.push(appendUniqueSql("attached_doco_ids", values.length));
+    }
+    if (detachDocoId) {
+      values.push(detachDocoId);
+      updates.push(`attached_doco_ids = array_remove(attached_doco_ids, $${values.length})`);
+    }
+    if (ops.attachOrg) {
+      values.push(ops.attachOrg);
+      updates.push(appendUniqueSql("attached_org_handles", values.length));
+    }
+    if (ops.detachOrg) {
+      values.push(ops.detachOrg);
+      updates.push(`attached_org_handles = array_remove(attached_org_handles, $${values.length})`);
+    }
+    if (updates.length === 0) {
+      return await loadConversationByIdForPrincipal(conversationId, principalId);
+    }
     const r = await c.query<ChatConversationRow>(
       `UPDATE chat_conversations
           SET ${updates.join(", ")}
@@ -1699,16 +1760,20 @@ async function runTool(block: ToolUseBlock, ctx: ChatStreamContext): Promise<Too
       };
     }
     // Auto-attach: when the agent hits a per-Doco URL, remember that
-    // Doco against the active conversation so the sidebar can render
-    // a clickable chip. Best-effort — failures are swallowed by the
-    // helper and never break the tool call.
-    const perDoco = /^\/([^/]+)\/api\//.exec(path);
-    if (perDoco) {
-      const handle = perDoco[1];
+    // Doco against the active conversation by stable id so the sidebar
+    // can render a clickable chip that survives handle renames.
+    // Best-effort — failures are swallowed by the helper and never
+    // break the tool call.
+    const perDocoById = /^\/by-id\/([^/]+)\/api\//.exec(path);
+    if (perDocoById) {
+      void attachDocoIdToConversation(ctx.conversationId, perDocoById[1]);
+    } else {
+      const perDoco = /^\/([^/]+)\/api\//.exec(path);
+      const handle = perDoco?.[1];
       // Skip the platform-level API root — `/api/v1/...` matches the
       // shape above with "api" as the would-be handle. Reserved
       // prefixes never collide with real Doco handles by URL policy.
-      if (handle !== "api") {
+      if (handle && handle !== "api") {
         void attachDocoToConversation(ctx.conversationId, handle);
       }
     }
@@ -2474,11 +2539,11 @@ async function* streamAssistantTurn(args: {
 // ---------------------------------------------------------------------------
 
 /**
- * Resolved attachment — handle plus an optional label. The chip rendered in
- * the sidebar links to `/<handle>` (Doco) or `/orgs/<handle>` (Org)
- * and falls back to the handle when no label is present.
+ * Resolved attachment. Doco attachments carry an immutable `id` for
+ * links/correlation plus the current handle/name for display.
  */
 export interface AttachmentInfo {
+  id?: string;
   handle: string;
   name: string | null;
 }
@@ -2517,15 +2582,36 @@ export interface ConversationSnapshot {
   active_turn_events: Array<Record<string, unknown>>;
 }
 
-async function resolveDocoAttachments(handles: string[]): Promise<AttachmentInfo[]> {
-  if (handles.length === 0) return [];
+async function resolveDocoAttachments(
+  ids: string[],
+  legacyHandles: string[] = [],
+): Promise<AttachmentInfo[]> {
+  const docoIds = uniqueNonEmptyStrings(ids);
+  if (docoIds.length === 0 && legacyHandles.length === 0) return [];
   return await withClient(async (c) => {
-    const r = await c.query<{ handle: string }>(
-      "SELECT handle FROM docos WHERE handle = ANY($1::text[])",
+    if (docoIds.length > 0) {
+      const r = await c.query<{ id: string; handle: string; name: string | null }>(
+        "SELECT id, handle, name FROM docos WHERE id = ANY($1::text[])",
+        [docoIds],
+      );
+      const byId = new Map(r.rows.map((row) => [row.id, row]));
+      return docoIds.map((id) => {
+        const row = byId.get(id);
+        return row
+          ? { id: row.id, handle: row.handle, name: row.name }
+          : { id, handle: id, name: null };
+      });
+    }
+    const handles = uniqueNonEmptyStrings(legacyHandles);
+    const r = await c.query<{ id: string; handle: string; name: string | null }>(
+      "SELECT id, handle, name FROM docos WHERE handle = ANY($1::text[])",
       [handles],
     );
-    const found = new Set(r.rows.map((row) => row.handle));
-    return handles.map((h) => ({ handle: h, name: found.has(h) ? h : null }));
+    const byHandle = new Map(r.rows.map((row) => [row.handle, row]));
+    return handles.flatMap((handle) => {
+      const row = byHandle.get(handle);
+      return row ? [{ id: row.id, handle: row.handle, name: row.name }] : [];
+    });
   });
 }
 
@@ -2569,7 +2655,7 @@ export async function loadSnapshotForPrincipal(
       limit: CHAT_MESSAGES_PAGE_SIZE,
     }),
     loadActiveTurnEvents(conv.id),
-    resolveDocoAttachments(conv.attached_doco_handles ?? []),
+    resolveDocoAttachments(conv.attached_doco_ids ?? [], conv.attached_doco_handles ?? []),
     resolveOrgAttachments(conv.attached_org_handles ?? []),
   ]);
   return {
