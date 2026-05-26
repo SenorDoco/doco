@@ -336,21 +336,32 @@ export async function loadConversationByIdForPrincipal(
 
 export async function createConversation(
   principalId: string,
-  opts: { title?: string | null } = {},
+  opts: {
+    title?: string | null;
+    attachedDocoHandles?: string[];
+    attachedOrgHandles?: string[];
+  } = {},
 ): Promise<ChatConversationRow> {
   return await withClient(async (c) => {
     const id = `conv_${generateUlid()}`;
     const title = typeof opts.title === "string" && opts.title.trim() ? opts.title.trim() : null;
+    const attachedDocoHandles = uniqueNonEmptyStrings(opts.attachedDocoHandles ?? []);
+    const attachedOrgHandles = uniqueNonEmptyStrings(opts.attachedOrgHandles ?? []);
     const r = await c.query<ChatConversationRow>(
-      `INSERT INTO chat_conversations (id, collaborator_id, title)
-       VALUES ($1, $2, $3)
+      `INSERT INTO chat_conversations
+         (id, collaborator_id, title, attached_doco_handles, attached_org_handles)
+       VALUES ($1, $2, $3, $4, $5)
        RETURNING ${CONV_COLS}`,
-      [id, principalId, title],
+      [id, principalId, title, attachedDocoHandles, attachedOrgHandles],
     );
     const row = r.rows[0];
     if (!row) throw new Error("failed to create conversation row");
     return row;
   });
+}
+
+function uniqueNonEmptyStrings(values: string[]): string[] {
+  return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean)));
 }
 
 export interface ConversationListItem {
