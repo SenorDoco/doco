@@ -85,17 +85,15 @@ function PerspectiveTab({ handle, perspective, active, isFirst, isLast }: Perspe
   //     tab top-right). Inner corners stay square so adjacent tabs
   //     don't create visible dips where their rounded tops curve away
   //     from each other.
-  //   * The active tab has z-20 and an open-bottom etched surface; the
-  //     frame overlaps the tab row by 1px, so the active tab covers the
-  //     frame edge directly beneath itself and reads as attached to the
-  //     canvas rather than as a separate button.
+  //   * Every tab gets the same open-bottom etched surface. The frame
+  //     overlaps the tab row by 1px, so the shared tab border covers
+  //     the frame edge and the active/inactive distinction is only the
+  //     fill color.
   const tabClass = cn(
-    "relative -ml-px first:ml-0 inline-flex items-center gap-1.5 border border-border px-3 py-1.5 text-xs font-medium",
+    "neu-surface-open-bottom relative z-20 -ml-px first:ml-0 inline-flex items-center gap-1.5 border border-border px-3 py-1.5 text-xs font-medium text-foreground",
     isFirst && "rounded-tl-md",
     isLast && "rounded-tr-md",
-    active
-      ? "neu-surface-open-bottom z-20 bg-card text-foreground"
-      : "bg-input/40 text-muted-foreground hover:bg-input/60 hover:text-foreground",
+    active ? "bg-card" : "bg-input/40 hover:bg-input/60",
   );
   const title = perspective.ownerHandle
     ? `${perspective.name} — by ${perspective.ownerHandle}`
@@ -191,7 +189,7 @@ function PerspectiveSettingsMenu({
         // perspective tabs' height, so Safari can't render us shorter
         // than them. Without this, `items-end` on the nav was
         // bottom-aligning a naturally-shorter chevron tab.
-        className="relative -ml-px inline-flex cursor-pointer items-center justify-center self-stretch gap-1.5 rounded-tr-md border border-border bg-input/40 px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-input/60 hover:text-foreground"
+        className="neu-surface-open-bottom relative z-20 -ml-px inline-flex cursor-pointer items-center justify-center self-stretch gap-1.5 rounded-tr-md border border-border bg-input/40 px-3 py-1.5 text-xs font-medium text-foreground hover:bg-input/60"
       >
         <span aria-hidden className="text-sm leading-none">
           ⌵
