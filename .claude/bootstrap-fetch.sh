@@ -83,11 +83,6 @@ if [ ! -f "$CLIENT" ]; then
   exit 0
 fi
 
-if [ -z "${DOCO_ACCESS:-}" ]; then
-  emit_disconnected "missing DOCO_ACCESS — complete the Doco OAuth device flow for this checkout" default
-  exit 0
-fi
-
 if ! command -v jq >/dev/null 2>&1; then
   emit_disconnected "jq is not installed" tool
   exit 0
@@ -108,7 +103,7 @@ BOOT_CODE=$(printf '%s' "$BOOT_META" | jq -r '.code // empty' 2>/dev/null)
 BOOT_ERROR=$(printf '%s' "$BOOT_META" | jq -r '.error // empty' 2>/dev/null)
 RESP=$(printf '%s' "$BOOT_META" | jq -c '.body // empty' 2>/dev/null)
 if [ "$BOOT_CODE" = "missing_access" ]; then
-  emit_disconnected "missing DOCO_ACCESS — complete the Doco OAuth device flow for this checkout" default
+  emit_disconnected "missing DOCO_ACCESS and no usable DOCO_REFRESH/DOCO_CLIENT_ID — complete the Doco OAuth device flow for this checkout" default
   exit 0
 fi
 if [ "$BOOT_CODE" = "network" ] || [ "$BOOT_CODE" = "timeout" ] || [ "$HTTP_STATUS" = "0" ]; then

@@ -67,8 +67,11 @@ const SERVER_INSTRUCTIONS = [
   "the repo-root .env credential. This server rereads .env for every Doco",
   "call and prefers it over stale inherited environment variables, so if",
   "another agent in this checkout just authorized, retry doco_search before",
-  "asking the user to approve again. Separate clones or machines need their",
-  "own local .env because credentials are secret and must not be committed.",
+  "asking the user to approve again. If DOCO_ACCESS is missing or expired",
+  "but .env has DOCO_REFRESH and DOCO_CLIENT_ID, doco_search refreshes the",
+  "credential locally, writes the new token back to .env, and retries before",
+  "falling back to device flow. Separate clones or machines need their own",
+  "local .env because credentials are secret and must not be committed.",
   "",
   "When to call doco_search: before answering substantive questions about",
   "this project's conventions, prior decisions, or architectural history.",
@@ -116,8 +119,8 @@ const SERVER_INSTRUCTIONS = [
   "  if you have DOCO_ACCESS and expect success — skip otherwise).",
   "- After doco_search succeeds, render `[🔮 Doco] N neurons found (X.Xs)`.",
   "",
-  "If doco_search returns 401/403 (or you have no DOCO_ACCESS after this",
-  "server has checked the shared repo .env):",
+  "If doco_search returns 401/403 (after this server has checked the shared",
+  "repo .env and tried DOCO_REFRESH when available):",
   "1. Call doco_authenticate. It returns a ready-to-render block with a",
   "   clickable verification URL in markdown-link form.",
   "2. Render that block at the top of your reply. The user clicks the link,",
@@ -133,9 +136,12 @@ const SERVER_INSTRUCTIONS = [
   "   that hasn't checked them risks contradicting them.",
   "",
   "Auth: this server reads DOCO_ACCESS from the repo-root .env first, then",
-  "the spawning shell, and forwards it as a Bearer token. Successful device",
-  "auth writes back to that same .env so other agents in this local checkout",
-  "reuse the credential. Public Docos work without auth.",
+  "the spawning shell, and forwards it as a Bearer token. If the access",
+  "token is missing or stale and DOCO_REFRESH + DOCO_CLIENT_ID are present,",
+  "doco_search exchanges the refresh token at /oauth/token and writes the",
+  "rotated credential back to .env. Successful device auth writes back to",
+  "that same .env so other agents in this local checkout reuse the",
+  "credential. Public Docos work without auth.",
   "",
   "Persisting credentials across containers and clones — surface to the user",
   "ONCE after each successful auth (the doco_complete_authentication response",
@@ -173,7 +179,10 @@ const SEARCH_TOOL = {
     "Skip only for greetings, off-topic chat, or questions clearly outside",
     "the project's scope.",
     "",
-    "On 401/403, call doco_authenticate to acquire credentials, then retry.",
+    "Before returning 401/403, this tool checks the shared repo .env and,",
+    "when DOCO_REFRESH + DOCO_CLIENT_ID are present, refreshes the local",
+    "credential and retries. If it still returns 401/403, call",
+    "doco_authenticate to acquire credentials, then retry.",
   ].join("\n"),
   inputSchema: {
     type: "object",
@@ -369,7 +378,6 @@ async function handleSearch(message) {
   }
   const limit = clampLimit(args.limit);
 
-  const access = readEnv("DOCO_ACCESS").trim();
   const handle = readEnv("DOCO_HANDLE") || readDocoHandle();
   if (!handle) {
     return errorResult(
@@ -383,9 +391,9 @@ async function handleSearch(message) {
   url.searchParams.set("q", query);
   url.searchParams.set("limit", String(limit));
 
-  const result = await requestJson(url, { access });
+  const result = await requestJsonWithStoredCredential(url, host);
   if (!result.ok) {
-    return errorResult(message.id, formatErrorForAgent(result, handle, access));
+    return errorResult(message.id, formatErrorForAgent(result, handle, result.hadAccess));
   }
 
   return send({
@@ -393,6 +401,79 @@ async function handleSearch(message) {
     id: message.id,
     result: { content: [{ type: "text", text: formatHits(result.body, handle) }] },
   });
+}
+
+async function requestJsonWithStoredCredential(url, host) {
+  let access = readEnv("DOCO_ACCESS").trim();
+  let hadAccess = Boolean(access);
+  let refreshError = "";
+
+  if (!access) {
+    const refresh = await refreshStoredCredential(host);
+    if (refresh.ok) {
+      access = refresh.access;
+      hadAccess = true;
+    } else if (refresh.code !== "missing_refresh") {
+      refreshError = refresh.error || refresh.code;
+    }
+  }
+
+  let result = await requestJson(url, { access });
+  if (result.status === 401 && access.startsWith("doco_at_")) {
+    const refresh = await refreshStoredCredential(host);
+    if (refresh.ok) {
+      access = refresh.access;
+      hadAccess = true;
+      result = await requestJson(url, { access });
+    } else {
+      refreshError = refresh.error || refresh.code;
+    }
+  }
+
+  result.hadAccess = hadAccess;
+  if (refreshError) result.refresh_error = refreshError;
+  return result;
+}
+
+async function refreshStoredCredential(host) {
+  const refreshToken = readEnv("DOCO_REFRESH").trim();
+  const clientId = readEnv("DOCO_CLIENT_ID").trim();
+  if (!refreshToken || !clientId) {
+    return {
+      ok: false,
+      status: 0,
+      code: "missing_refresh",
+      error: "missing DOCO_REFRESH or DOCO_CLIENT_ID",
+    };
+  }
+
+  const url = new URL(TOKEN_PATH, host);
+  const params = new URLSearchParams({
+    grant_type: "refresh_token",
+    refresh_token: refreshToken,
+    client_id: clientId,
+  });
+  const result = await requestJson(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: params.toString(),
+  });
+  const access = String(result.body?.access_token || "").trim();
+  if (!result.ok || !access) {
+    return {
+      ok: false,
+      status: result.status,
+      code: "refresh_failed",
+      error: result.error || "refresh token exchange failed",
+    };
+  }
+
+  writeEnvUpdates({
+    DOCO_ACCESS: access,
+    ...(result.body?.refresh_token ? { DOCO_REFRESH: String(result.body.refresh_token) } : {}),
+    DOCO_CLIENT_ID: clientId,
+  });
+  return { ok: true, access };
 }
 
 async function handleAuthenticate(message) {
@@ -696,17 +777,23 @@ function formatErrorForAgent(result, handle, hadAccess) {
   const error = result.error || "request failed";
 
   if (status === 401) {
+    if (result.refresh_error) {
+      return `Doco search unauthorized (401) for handle '${handle}'. The stored refresh credential could not be exchanged (${result.refresh_error}) — call doco_authenticate to acquire a fresh credential.`;
+    }
     return `Doco search unauthorized (401) for handle '${handle}'. ${
       hadAccess
-        ? "Your DOCO_ACCESS is invalid or expired — call doco_authenticate to acquire a fresh credential."
-        : "No DOCO_ACCESS in the shared repo-root .env. Call doco_authenticate to start the OAuth device flow."
+        ? "Your DOCO_ACCESS is invalid or expired, and local refresh did not recover it — call doco_authenticate to acquire a fresh credential."
+        : "No usable DOCO_ACCESS or DOCO_REFRESH/DOCO_CLIENT_ID in the shared repo-root .env. Call doco_authenticate to start the OAuth device flow."
     }`;
   }
   if (status === 403) {
+    if (result.refresh_error) {
+      return `Doco search forbidden (403) for handle '${handle}'. The stored refresh credential could not be exchanged (${result.refresh_error}), and the Doco is private or this credential lacks access. Call doco_authenticate with target_doco_handle='${handle}' to request access.`;
+    }
     return `Doco search forbidden (403) for handle '${handle}'. ${
       hadAccess
         ? `The current credential lacks read access to this Doco. Call doco_authenticate with target_doco_handle='${handle}' to request access (a project owner will need to approve).`
-        : "No DOCO_ACCESS sent from the shared repo-root .env (and the Doco is private). Call doco_authenticate to start the OAuth device flow."
+        : "No usable DOCO_ACCESS or DOCO_REFRESH/DOCO_CLIENT_ID sent from the shared repo-root .env (and the Doco is private). Call doco_authenticate to start the OAuth device flow."
     }`;
   }
   if (status === 404) {
