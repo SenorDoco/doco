@@ -81,4 +81,96 @@ describe("loadBpmnGraph", () => {
       }),
     );
   });
+
+  it("orders actor lanes by when their Actions enter the flow", async () => {
+    const intentId = "intent_01PROCESS";
+    const stateId = "state_01START";
+    const requestId = "action_01REQUEST";
+    const presentId = "action_01PRESENT";
+
+    const { client } = makeQueryClient({
+      neurons: [
+        {
+          id: intentId,
+          entity_type: "intent",
+          summary: "Talent seeker pays to activate Torre Reach",
+          lifecycle: "drafting",
+          created_at: "2026-05-26T00:00:00.000Z",
+          data: {},
+        },
+        {
+          id: "decision_01CREDITS",
+          entity_type: "decision",
+          summary: "Does the user have Reach credits?",
+          lifecycle: "drafting",
+          created_at: "2026-05-26T00:01:00.000Z",
+          data: {
+            decided_by: "principal_sud",
+            intent_ids: [intentId],
+          },
+        },
+        {
+          id: stateId,
+          entity_type: "state",
+          summary: "Process started",
+          lifecycle: "active",
+          created_at: "2026-05-26T00:02:00.000Z",
+          data: {
+            kind: "initial",
+            preceded_by: [intentId],
+          },
+        },
+        {
+          id: requestId,
+          entity_type: "action",
+          summary: "Requests to activate Torre Reach",
+          lifecycle: "active",
+          created_at: "2026-05-26T00:03:00.000Z",
+          data: {
+            actor_id: "principal_talent",
+            intent_ids: [intentId],
+            preceded_by: [stateId],
+          },
+        },
+        {
+          id: presentId,
+          entity_type: "action",
+          summary: "Presents payment options",
+          lifecycle: "active",
+          created_at: "2026-05-26T00:04:00.000Z",
+          data: {
+            actor_id: "principal_sud",
+            intent_ids: [intentId],
+            preceded_by: [requestId],
+          },
+        },
+      ],
+      principals: [
+        {
+          id: "principal_sud",
+          name: "SuD",
+          lifecycle: "active",
+        },
+        {
+          id: "principal_talent",
+          name: "Talent seeker",
+          lifecycle: "active",
+        },
+      ],
+      collaborators: [],
+      synapses: [
+        { from_id: stateId, to_id: intentId, synapse_type: "preceded_by" },
+        { from_id: requestId, to_id: stateId, synapse_type: "preceded_by" },
+        { from_id: presentId, to_id: requestId, synapse_type: "preceded_by" },
+      ],
+    });
+
+    const graph = await loadBpmnGraph(client, "doco_01", { handle: "activation" });
+
+    const actorLabels = graph.lanes
+      .filter((lane) => lane.pool_id === `pool:${intentId}` && lane.kind === "actor")
+      .map((lane) => lane.label);
+
+    expect(actorLabels).toEqual(["Talent seeker", "SuD"]);
+  });
 });

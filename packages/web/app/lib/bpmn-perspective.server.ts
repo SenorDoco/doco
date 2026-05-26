@@ -150,6 +150,11 @@ export const POOL_UNASSIGNED_ID = "pool:unassigned";
 // Non-actor neuron types: their pool placement comes from a different
 // signal (the host they re-home onto, or the Unassigned pool).
 const ARTIFACT_TYPES = new Set(["reference", "eval", "idea", "rule"]);
+const SEQUENCE_FLOW_SYNAPSES: ReadonlySet<string> = new Set([
+  "preceded_by",
+  "triggered_by",
+  "enacts",
+]);
 
 const SHAPE_BY_TYPE: Record<string, BpmnShape> = {
   state: "task", // same glyph as Action — full-sized, readable, not a compact band label
@@ -533,10 +538,11 @@ export async function loadBpmnGraph(
   // pool granularity that would be visually noisy.
 
   const lanes = Array.from(lanesById.values());
+  const laneEntryOrder = computeLaneEntryOrder(nodes, links);
 
   // Lane order within a pool (the renderer will group by pool_id):
   //   1. Milestone band
-  //   2. Actor lanes (principals, alphabetical by label)
+  //   2. Actor lanes in the order they first enter the flow
   //   3. Unresolved lanes (per-ref __unresolved__:* leaves)
   //   4. Artifacts band
   //   5. Unassigned catchall
@@ -553,6 +559,10 @@ export async function loadBpmnGraph(
     if (a.pool_id !== b.pool_id) return 0; // grouping is the renderer's job
     const orderDiff = KIND_ORDER[a.kind] - KIND_ORDER[b.kind];
     if (orderDiff !== 0) return orderDiff;
+    if (a.kind === "actor" && b.kind === "actor") {
+      const entryDiff = compareLaneEntryOrder(laneEntryOrder.get(a.id), laneEntryOrder.get(b.id));
+      if (entryDiff !== 0) return entryDiff;
+    }
     return a.label.localeCompare(b.label);
   });
 
@@ -671,6 +681,99 @@ function resolveRehomeHostLane(
     return null;
   }
   return null;
+}
+
+interface LaneEntryOrder {
+  firstActionDepth: number;
+  firstAnyDepth: number;
+  firstCreatedAt: number;
+}
+
+function computeLaneEntryOrder(
+  nodes: readonly BpmnNode[],
+  links: readonly OverviewGraphLink[],
+): Map<string, LaneEntryOrder> {
+  const depthByNode = computeSequenceDepths(nodes, links);
+  const orderByLane = new Map<string, LaneEntryOrder>();
+
+  for (const node of nodes) {
+    const entry = orderByLane.get(node.laneId) ?? {
+      firstActionDepth: Number.POSITIVE_INFINITY,
+      firstAnyDepth: Number.POSITIVE_INFINITY,
+      firstCreatedAt: Number.POSITIVE_INFINITY,
+    };
+    const depth = depthByNode.get(node.id) ?? 0;
+    if (depth < entry.firstAnyDepth) entry.firstAnyDepth = depth;
+    if (node.entity_type === "action" && depth < entry.firstActionDepth) {
+      entry.firstActionDepth = depth;
+    }
+    const createdAt = node.created_at ? Date.parse(node.created_at) : Number.POSITIVE_INFINITY;
+    if (Number.isFinite(createdAt) && createdAt < entry.firstCreatedAt) {
+      entry.firstCreatedAt = createdAt;
+    }
+    orderByLane.set(node.laneId, entry);
+  }
+
+  return orderByLane;
+}
+
+function compareLaneEntryOrder(
+  a: LaneEntryOrder | undefined,
+  b: LaneEntryOrder | undefined,
+): number {
+  const aAction = a?.firstActionDepth ?? Number.POSITIVE_INFINITY;
+  const bAction = b?.firstActionDepth ?? Number.POSITIVE_INFINITY;
+  if (aAction !== bAction) return aAction - bAction;
+
+  const aAny = a?.firstAnyDepth ?? Number.POSITIVE_INFINITY;
+  const bAny = b?.firstAnyDepth ?? Number.POSITIVE_INFINITY;
+  if (aAny !== bAny) return aAny - bAny;
+
+  const aCreated = a?.firstCreatedAt ?? Number.POSITIVE_INFINITY;
+  const bCreated = b?.firstCreatedAt ?? Number.POSITIVE_INFINITY;
+  if (aCreated !== bCreated) return aCreated - bCreated;
+  return 0;
+}
+
+function computeSequenceDepths(
+  nodes: readonly BpmnNode[],
+  links: readonly OverviewGraphLink[],
+): Map<string, number> {
+  const depth = new Map<string, number>();
+  const depthFloor = new Map<string, number>();
+  const nodeIds = new Set(nodes.map((n) => n.id));
+  const predecessors = new Map<string, string[]>();
+
+  for (const node of nodes) {
+    if (node.bfs_depth !== undefined && node.bfs_depth > 0) {
+      depthFloor.set(node.id, node.bfs_depth);
+    }
+    predecessors.set(node.id, []);
+  }
+  for (const link of links) {
+    if (!nodeIds.has(link.source) || !nodeIds.has(link.target)) continue;
+    if (!SEQUENCE_FLOW_SYNAPSES.has(link.synapse_type)) continue;
+    predecessors.get(link.source)?.push(link.target);
+  }
+
+  const visiting = new Set<string>();
+  function depthOf(id: string): number {
+    const cached = depth.get(id);
+    if (cached !== undefined) return cached;
+    if (visiting.has(id)) return 0;
+    visiting.add(id);
+    let max = depthFloor.get(id) ?? 0;
+    for (const pred of predecessors.get(id) ?? []) {
+      const d = depthOf(pred) + 1;
+      if (d > max) max = d;
+    }
+    visiting.delete(id);
+    depth.set(id, max);
+    return max;
+  }
+
+  for (const id of nodeIds) depthOf(id);
+  return depth;
 }
 
 /**
