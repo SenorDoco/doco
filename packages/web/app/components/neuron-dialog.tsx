@@ -1,5 +1,6 @@
 import { Loader2, X } from "lucide-react";
 import { Link } from "react-router";
+import { LifecycleBadge, TypeBadge } from "~/components/neuron-badges";
 import { NeuronTypeIcon } from "~/components/neuron-type-icon";
 import { lifecycleColor } from "~/lib/neuron-colors";
 import type { LifecycleStage, NeuronDialogDetail } from "~/lib/neuron-detail.server";
@@ -321,11 +322,12 @@ function EdgeList({
         <ul className="neu-surface divide-y divide-border">
           {edges.map((edge) => {
             const edgeTitle = edge.other_name ?? edge.other_summary ?? edge.other_id;
+            const retired = edge.other_lifecycle === "retired";
             return (
               <li key={`${label}-${edge.synapse_type}-${edge.other_id}`}>
                 <button
                   type="button"
-                  className="block w-full px-3 py-2 text-left"
+                  className="block w-full px-3 py-2 text-left hover:bg-input/30"
                   onClick={() =>
                     onOpenNeuron(
                       edge.other_neuron_type,
@@ -334,12 +336,24 @@ function EdgeList({
                     )
                   }
                 >
-                  <div className="flex flex-wrap items-center gap-1.5 text-[10px] uppercase text-muted-foreground">
-                    <NeuronTypeIcon entityType={edge.other_neuron_type} className="!h-3 !w-3" />
-                    <span>{edge.other_neuron_type}</span>
-                    <span className="font-mono normal-case">{edge.synapse_type}</span>
+                  <div className="flex flex-wrap items-center gap-1.5 text-[10px] text-muted-foreground">
+                    <span className="inline-flex items-center gap-1" aria-label="Related neuron">
+                      <TypeBadge
+                        entityType={edge.other_neuron_type}
+                        lifecycle={edge.other_lifecycle}
+                        anchor="inline"
+                      />
+                      <LifecycleBadge lifecycle={edge.other_lifecycle} anchor="inline" />
+                    </span>
+                    <span className="font-mono">{edge.synapse_type}</span>
                   </div>
-                  <p className="mt-0.5 break-words text-xs text-foreground">{edgeTitle}</p>
+                  <p
+                    className={`mt-1 break-words text-xs text-foreground ${
+                      retired ? "text-muted-foreground line-through decoration-2" : ""
+                    }`}
+                  >
+                    {edgeTitle}
+                  </p>
                 </button>
               </li>
             );
