@@ -2590,27 +2590,27 @@ async function resolveDocoAttachments(
   if (docoIds.length === 0 && legacyHandles.length === 0) return [];
   return await withClient(async (c) => {
     if (docoIds.length > 0) {
-      const r = await c.query<{ id: string; handle: string; name: string | null }>(
-        "SELECT id, handle, name FROM docos WHERE id = ANY($1::text[])",
+      const r = await c.query<{ id: string; handle: string }>(
+        "SELECT id, handle FROM docos WHERE id = ANY($1::text[])",
         [docoIds],
       );
       const byId = new Map(r.rows.map((row) => [row.id, row]));
       return docoIds.map((id) => {
         const row = byId.get(id);
         return row
-          ? { id: row.id, handle: row.handle, name: row.name }
+          ? { id: row.id, handle: row.handle, name: row.handle }
           : { id, handle: id, name: null };
       });
     }
     const handles = uniqueNonEmptyStrings(legacyHandles);
-    const r = await c.query<{ id: string; handle: string; name: string | null }>(
-      "SELECT id, handle, name FROM docos WHERE handle = ANY($1::text[])",
+    const r = await c.query<{ id: string; handle: string }>(
+      "SELECT id, handle FROM docos WHERE handle = ANY($1::text[])",
       [handles],
     );
     const byHandle = new Map(r.rows.map((row) => [row.handle, row]));
     return handles.flatMap((handle) => {
       const row = byHandle.get(handle);
-      return row ? [{ id: row.id, handle: row.handle, name: row.name }] : [];
+      return row ? [{ id: row.id, handle: row.handle, name: row.handle }] : [];
     });
   });
 }
