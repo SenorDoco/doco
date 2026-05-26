@@ -1053,7 +1053,7 @@ async function buildBootstrapContext(principalId: string): Promise<BootstrapCont
   // stable anchor — handles can be renamed at /settings, but the
   // ULID-based id doesn't move. If a fetch under a guessed handle
   // returns 404, the agent now has the canonical list to fall back
-  // on instead of hallucinating slugs.
+  // on instead of hallucinating handles.
   const docoLines: string[] = accessibleDocos.map(
     (d) => `- /${d.handle} (id=${d.docoId}, visibility ${d.visibility})`,
   );
@@ -1182,7 +1182,7 @@ Retention: every uploaded file is kept for ${ATTACHMENT_RETENTION_DAYS} days, th
   PATCH /<handle>/api/<type>/<id>.json           — partial update; PATCH lifecycle = "retired" is the "delete" equivalent
   GET   /<handle>/api/<type>.txt                 — long-form POST/PATCH body spec (only fetch if the inline cheatsheet below isn't enough)
   GET   /<handle>/api/principals.json            — DUAL-purpose endpoint. Response: { ok, principals: [...legacy collaborator alias...], collaborators: [{ id, username, role, type, github_login, email }], principal_neurons: [{ id, name, body_md, lifecycle, data, ... }], collaborator_count, principal_neuron_count }. Read \`collaborators\` for the doco's OAuth members; read \`principal_neurons\` for the Principal NEURONS visible as BPMN swim lanes / referenced by Action.actor_id.
-  PATCH /<handle>/api/principals/<id>.json       — update a Principal NEURON (body_md, reports_to, lifecycle). Same retire-on-lifecycle convention. \`name\` (the slug) is immutable.
+  PATCH /<handle>/api/principals/<id>.json       — update a Principal NEURON (body_md, reports_to, lifecycle). Same retire-on-lifecycle convention. \`name\` is immutable — to rename, create a new Principal and retire the old one.
   GET   /<handle>/api/policies.json            — list policies (guidance + neuron-authoring) for this doco
   POST  /<handle>/api/policies.json            — capture a policy; body needs "policy_kind": "guidance" | "neuron_authoring"
   GET   /<handle>/api/invites.json               — pending collaborator invites
