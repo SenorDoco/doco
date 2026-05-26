@@ -80,11 +80,12 @@ export async function runAuthoringPolicies(opts: {
       return { violations: [], blocking: null, warnings: [] };
     }
 
-    const incomingNeuronTypes = collectIncomingNeuronTypes(policies);
+    const populationNeuronTypes = collectPopulationNeuronTypes(policies);
     const needsPrincipals = policies.some(
       (p) => p.predicate.kind === "requires_field_resolves_to_principal",
     );
     const needsGraphCompleteness = policies.some((p) => p.predicate.kind === "graph-completeness");
+    const needsPopulation = populationNeuronTypes.size > 0;
 
     // Sequential when sharing a transaction client (pg can't pipeline
     // statements on a single client); the perf cost is a few ms.
@@ -92,8 +93,8 @@ export async function runAuthoringPolicies(opts: {
       ? await loadPrincipals(c, opts.docoId)
       : (new Set() as PrincipalIndex);
     const synapses = needsGraphCompleteness ? await loadSynapses(c, opts.docoId) : [];
-    const population = needsGraphCompleteness
-      ? await loadPopulation(c, opts.docoId, incomingNeuronTypes, opts.candidate.id)
+    const population = needsPopulation
+      ? await loadPopulation(c, opts.docoId, populationNeuronTypes, opts.candidate.id)
       : [];
 
     const rawViolations = evaluatePolicies({
@@ -158,11 +159,19 @@ async function resolveProbabilistic(
   ).filter((v): v is Violation => v !== null);
 }
 
-function collectIncomingNeuronTypes(policies: LoadedPolicy[]): Set<string> {
+function collectPopulationNeuronTypes(policies: LoadedPolicy[]): Set<string> {
   const set = new Set<string>();
   for (const p of policies) {
     if (p.predicate.kind === "graph-completeness") {
       set.add(p.predicate.incoming_neuron_type);
+    }
+    if (p.predicate.kind === "unique_field") {
+      const when = p.predicate.when_neuron_type;
+      if (when && when.length > 0) {
+        for (const neuronType of when) set.add(neuronType);
+      } else {
+        for (const neuronType of Object.keys(NEURON_TABLES)) set.add(neuronType);
+      }
     }
   }
   return set;

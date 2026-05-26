@@ -22,11 +22,13 @@ const PRINCIPAL_ALICE = "principal_01TESTALICE0000000000001";
 const POLICY_ID_PRINCIPAL = "neuron_authoring_policy_01TESTPRINCIPAL000000001";
 const POLICY_ID_FIELD = "neuron_authoring_policy_01TESTFIELD000000000001";
 const POLICY_ID_PROBABILISTIC = "neuron_authoring_policy_01TESTPROB0000000000001";
+const POLICY_ID_UNIQUE = "neuron_authoring_policy_01TESTUNIQUE00000000001";
 
 interface SeedOpts {
   withPrincipalRule?: boolean;
   withRequiredFieldRule?: boolean;
   withProbabilisticRule?: boolean;
+  withUniqueFieldRule?: boolean;
   firesOnActive?: boolean;
 }
 
@@ -120,6 +122,31 @@ async function seed(opts: SeedOpts = {}): Promise<void> {
            (id, doco_id, policy, data, lifecycle, created_at, updated_at)
            VALUES ($1, $2, $3, $4::jsonb, 'active', now(), now())`,
         [POLICY_ID_PROBABILISTIC, DOCO_ID, "Action prose is atomic", yaml],
+      );
+    }
+
+    if (opts.withUniqueFieldRule) {
+      const yaml = JSON.stringify({
+        id: POLICY_ID_UNIQUE,
+        doco_id: DOCO_ID,
+        neuron_type: "neuron_authoring_policy",
+        policy_kind: "neuron_authoring",
+        policy: "Decision.chosen is unique",
+        evaluation_kind: "deterministic",
+        predicate: {
+          kind: "unique_field",
+          field: "chosen",
+          case_fold: true,
+          when_neuron_type: ["decision"],
+        },
+        fires_when_neuron_lifecycle: ["active"],
+        on_violation: "block",
+      });
+      await c.query(
+        `INSERT INTO neuron_authoring_policies
+           (id, doco_id, policy, data, lifecycle, created_at, updated_at)
+           VALUES ($1, $2, $3, $4::jsonb, 'active', now(), now())`,
+        [POLICY_ID_UNIQUE, DOCO_ID, "Decision.chosen is unique", yaml],
       );
     }
   });
@@ -312,6 +339,46 @@ describe("authoring runner — integration", () => {
     expect(result.blocking).toBeNull();
     expect(result.violations).toEqual([]);
     expect(result.warnings).toEqual([]);
+  });
+
+  it("blocks a unique_field duplicate by loading the active population", async () => {
+    await seed({ withUniqueFieldRule: true });
+    const existingId = "decision_01TESTTERMEXISTING000000001";
+    await upsertEntity({
+      id: existingId,
+      doco_id: DOCO_ID,
+      entity_type: "decision",
+      data: {
+        id: existingId,
+        neuron_type: "decision",
+        doco_id: DOCO_ID,
+        decision: "Activation key means the code used to activate an account.",
+        question: "What does activation key mean?",
+        chosen: "Activation key",
+        decided_by: PRINCIPAL_ALICE,
+        decided_at: new Date().toISOString(),
+        lifecycle: "active",
+      },
+    });
+
+    const result = await runAuthoringPolicies({
+      docoId: DOCO_ID,
+      candidate: {
+        id: "decision_01TESTTERMDUPLICATE0000001",
+        neuron_type: "decision",
+        doco_id: DOCO_ID,
+        decision: "Duplicate glossary term.",
+        question: "What does activation key mean?",
+        chosen: " activation KEY ",
+        decided_by: PRINCIPAL_ALICE,
+        lifecycle: "active",
+      },
+    });
+
+    expect(result.blocking).not.toBeNull();
+    expect(result.blocking?.predicate_kind).toBe("unique_field");
+    expect(result.blocking?.policy_id).toBe(POLICY_ID_UNIQUE);
+    expect(result.blocking?.reason).toMatch(existingId);
   });
 
   it("loads policies whose lifecycle column is NULL (treated as active)", async () => {
