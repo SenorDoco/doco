@@ -245,7 +245,7 @@ button[class*="bg-primary"]:active {
    bottom-right dark inset painted over the next tab's left border,
    turning the overlapping pill-stack into a row of separated buttons.
    Excluded: `.neu-button` and `bg-primary` carry their own raised
-   treatments; `.neu-surface*`, `.neu-surface-open-top`, and `.neu-floating` set their own
+   treatments; `.neu-surface*`, `.neu-surface-open-bottom`, and `.neu-floating` set their own
    shadow in @layer utilities. */
 [class~="border"][class~="border-border"]:not([class~="neu-button"]):not(
     [class~="neu-pressed"]
@@ -253,7 +253,7 @@ button[class*="bg-primary"]:active {
     [class~="border-l"]
   ):not([class~="border-r"]):not([class~="neu-surface"]):not([class~="neu-surface-strong"]):not(
     [class~="neu-surface-interactive"]
-  ):not([class~="neu-surface-open-top"]):not([class~="neu-floating"]) {
+  ):not([class~="neu-surface-open-bottom"]):not([class~="neu-floating"]) {
   box-shadow: inset 1px 1px 0 color-mix(in oklch, white 75%, transparent);
 }
 
@@ -280,13 +280,14 @@ button[class*="bg-primary"]:active {
       color-mix(in oklch, var(--color-primary) 55%, transparent);
   }
 
-  /* Same etched content surface as `.neu-surface`, but with the top
-     facet intentionally open. Perspective tabs own that edge, so the
-     canvas frame should match Doco cards on its left/right/bottom
-     borders without painting a divider directly beneath the active tab. */
-  .neu-surface-open-top {
+  /* Same etched content surface as `.neu-surface`, but with the
+     bottom facet intentionally open. The active perspective tab uses
+     this treatment while overlapping the frame's top edge by 1px, so
+     the tab reads as the top lip of the canvas rather than a separate
+     button sitting above it. */
+  .neu-surface-open-bottom {
     border-color: transparent;
-    box-shadow: inset 1px 0 0 color-mix(in oklch, white 75%, transparent), inset -1px -1px 0
+    box-shadow: inset 1px 1px 0 color-mix(in oklch, white 75%, transparent), inset -1px 0 0
       color-mix(in oklch, var(--color-foreground) 22%, transparent);
   }
 
