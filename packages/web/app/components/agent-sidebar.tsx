@@ -1772,7 +1772,7 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
           onClick={() => setCollapsedPersistent(false)}
           aria-busy={agentActive}
           aria-label={agentActive ? "Expand Señor Doco (working)" : "Expand Señor Doco"}
-          className="group relative flex h-full w-full shrink-0 cursor-pointer flex-col items-center gap-2 py-3 hover:bg-input"
+          className="group relative flex h-full w-full shrink-0 cursor-pointer flex-col items-center justify-center gap-2 py-3 hover:bg-input"
         >
           <CollapseIcon side="right" />
           <div
