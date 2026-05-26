@@ -84,6 +84,7 @@ interface BpmnPerspectiveProps {
   globalPagerank?: Record<string, number>;
   onNeuronClick?: (node: BpmnNode) => void;
   onPoolClick?: (pool: BpmnPool) => void;
+  onLaneClick?: (lane: BpmnLane) => void;
   /**
    * Lift focal-node state to the parent. Clicking a neuron on the
    * canvas should re-center the graph on it so depth-based opacity
@@ -187,6 +188,7 @@ export function BpmnPerspective({
   globalPagerank,
   onNeuronClick,
   onPoolClick,
+  onLaneClick,
   onCenterChange,
   visibleLifecycles,
   centerId,
@@ -341,6 +343,10 @@ export function BpmnPerspective({
     [],
   );
   const nodeById = useMemo(() => new Map(filteredNodes.map((n) => [n.id, n])), [filteredNodes]);
+  const laneById = useMemo(
+    () => new Map(filteredLanes.map((lane) => [lane.id, lane])),
+    [filteredLanes],
+  );
   const poolById = useMemo(() => new Map(pools.map((pool) => [pool.id, pool])), [pools]);
   const poolByHeaderId = useMemo(
     () => new Map(pools.map((pool) => [`pool-header:${pool.id}`, pool])),
@@ -354,6 +360,14 @@ export function BpmnPerspective({
       onPoolClick?.(pool);
     },
     [onCenterChange, onPoolClick],
+  );
+  const openLaneNeuron = useCallback(
+    (lane: BpmnLane) => {
+      if (!isActorLane(lane) || !lane.base_id.startsWith("principal_")) return;
+      if (onCenterChange) onCenterChange(lane.base_id);
+      onLaneClick?.(lane);
+    },
+    [onCenterChange, onLaneClick],
   );
 
   // Principal-owned lanes are first-class references — they get
@@ -412,14 +426,18 @@ export function BpmnPerspective({
         const laneData = (node.data as { lane?: BpmnLane }).lane;
         if (laneData) {
           const referenceNumber = referenceNumberByEntityId.get(laneData.id);
-          if (!referenceNumber) return node;
-          return { ...node, data: { ...node.data, referenceNumber } };
+          const data = {
+            ...node.data,
+            onLaneClick: isActorLane(laneData) ? openLaneNeuron : undefined,
+          };
+          if (!referenceNumber) return { ...node, data };
+          return { ...node, data: { ...data, referenceNumber } };
         }
         const referenceNumber = referenceNumberByEntityId.get(node.id);
         if (!referenceNumber || !nodeById.has(node.id)) return node;
         return { ...node, data: { ...node.data, referenceNumber } };
       }),
-    [layout.flowNodes, referenceNumberByEntityId, nodeById],
+    [layout.flowNodes, referenceNumberByEntityId, nodeById, openLaneNeuron],
   );
 
   if (filteredLanes.length === 0) {
@@ -462,6 +480,8 @@ export function BpmnPerspective({
         const railHeight = Math.max(44, visibleBottom - visibleTop);
         const top = Math.min(Math.max(0, visibleTop), Math.max(0, canvasHeight - railHeight));
         const isBand = lane.kind !== "actor";
+        const sourceLane = laneById.get(lane.id);
+        const isClickableLane = Boolean(sourceLane && isActorLane(sourceLane));
         const referenceNumber = referenceNumberByEntityId.get(lane.id);
         const labelFontPx = RAIL_LABEL_BASE_FONT * viewport.zoom;
         const badgeFontPx = RAIL_BADGE_BASE_FONT * viewport.zoom;
@@ -472,8 +492,26 @@ export function BpmnPerspective({
             className={`absolute left-0 flex items-center justify-center border-r shadow-sm ${
               isBand ? "border-border bg-card/85" : "border-border bg-card/90"
             }`}
-            style={{ top, height: railHeight, width: SWIM_RAIL_WIDTH }}
+            style={{
+              top,
+              height: railHeight,
+              width: SWIM_RAIL_WIDTH,
+              cursor: isClickableLane ? "pointer" : undefined,
+              pointerEvents: isClickableLane ? "auto" : undefined,
+            }}
             data-bpmn-lane-rail={lane.id}
+            onClick={isClickableLane && sourceLane ? () => openLaneNeuron(sourceLane) : undefined}
+            onKeyDown={
+              isClickableLane && sourceLane
+                ? (event) => {
+                    if (event.key !== "Enter" && event.key !== " ") return;
+                    event.preventDefault();
+                    openLaneNeuron(sourceLane);
+                  }
+                : undefined
+            }
+            role={isClickableLane ? "button" : undefined}
+            tabIndex={isClickableLane ? 0 : undefined}
             title={lane.label}
           >
             {referenceNumber ? (
@@ -588,7 +626,6 @@ export function BpmnPerspective({
         <div
           className="pointer-events-none absolute inset-y-0 left-0 z-10 overflow-hidden"
           style={{ width: SWIM_RAIL_WIDTH }}
-          aria-hidden="true"
         >
           {laneRails}
         </div>
@@ -1173,6 +1210,7 @@ interface BpmnLaneData {
   referenceNumber?: number;
   isMilestoneBand?: boolean;
   isArtifactsBand?: boolean;
+  onLaneClick?: (lane: BpmnLane) => void;
 }
 
 interface BpmnPoolHeaderData {
@@ -1244,6 +1282,7 @@ function BpmnLaneNode({ data }: { data: BpmnLaneData }) {
     bandBg = "rgba(180, 130, 60, 0.07)";
     labelBg = "rgba(180, 130, 60, 0.13)";
   }
+  const isClickableLane = isActorLane(data.lane) && Boolean(data.onLaneClick);
   const edge = isBand ? "1px solid var(--color-border)" : "1px dashed var(--color-border)";
   return (
     <div
@@ -1256,7 +1295,7 @@ function BpmnLaneNode({ data }: { data: BpmnLaneData }) {
       }}
     >
       <div
-        className="relative"
+        className="relative focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         style={{
           width: data.labelWidth,
           height: "100%",
@@ -1274,7 +1313,28 @@ function BpmnLaneNode({ data }: { data: BpmnLaneData }) {
           boxSizing: "border-box",
           textTransform: isBand ? "uppercase" : "none",
           letterSpacing: isBand ? 0.6 : 0,
+          cursor: isClickableLane ? "pointer" : undefined,
         }}
+        onClick={
+          isClickableLane
+            ? (event) => {
+                event.stopPropagation();
+                data.onLaneClick?.(data.lane);
+              }
+            : undefined
+        }
+        onKeyDown={
+          isClickableLane
+            ? (event) => {
+                if (event.key !== "Enter" && event.key !== " ") return;
+                event.preventDefault();
+                event.stopPropagation();
+                data.onLaneClick?.(data.lane);
+              }
+            : undefined
+        }
+        role={isClickableLane ? "button" : undefined}
+        tabIndex={isClickableLane ? 0 : undefined}
         title={data.lane.label}
       >
         {data.referenceNumber ? (
