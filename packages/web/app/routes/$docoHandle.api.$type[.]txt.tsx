@@ -539,9 +539,9 @@ Principals are the role-personas a Doco references via Action.actor_id,
 Intent.actors[], Decision.decided_by, etc. Principals are *records*
 per the "frozen claims, mutable records" Decision — descriptive fields
 stay editable across the lifecycle. The one identity field that *is*
-locked is \`name\`: it's the slug other neurons reference, so renaming
-it would silently break callers. To rename, create a new Principal
-and retire the old.
+locked is \`name\`: it's the identifier other neurons reference, so
+renaming it would silently break callers. To rename, create a new
+Principal and retire the old.
 
 CREATE
   POST ${baseUrl}/${handle}/api/principals.json
