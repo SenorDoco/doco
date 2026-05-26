@@ -2,7 +2,11 @@ import { getEntity, roleAtLeast, upsertEntity, withClient } from "@doco/db";
 import { type EntityId, nowIso } from "@doco/shared";
 import { appendAuditEvent } from "~/lib/audit-log.server";
 import { runAuthoringPolicies } from "~/lib/authoring-runner.server";
-import { reindexAndScheduleAttach } from "~/lib/capture.server";
+import {
+  appendOperationTiming,
+  authoringPoliciesPassed,
+  reindexAndScheduleAttach,
+} from "~/lib/capture.server";
 import { docoPath } from "~/lib/db.server";
 import { getDocoLevelRole, loadDocoRouteForRead } from "~/lib/doco-access.server";
 
@@ -115,6 +119,7 @@ export async function action({
   if (request.method !== "PATCH" && request.method !== "POST") {
     return Response.json({ error: "Use PATCH or POST." }, { status: 405 });
   }
+  const startedAt = performance.now();
   const ct = (request.headers.get("content-type") ?? "").toLowerCase();
   if (!ct.includes("application/json")) {
     return Response.json({ error: "Content-Type must be application/json." }, { status: 400 });
@@ -200,13 +205,21 @@ export async function action({
   // lifecycle flip when the guard passes.
   if (patch.lifecycle === "retired") {
     if (existing.lifecycle === "retired") {
+      const duration_ms = Math.round(performance.now() - startedAt);
       return Response.json({
         ok: true,
         id: existing.id,
         already_retired: true,
         footer_lines: [
-          principalLine("already retired", name, existing.id, request, params.docoHandle),
+          appendOperationTiming(
+            principalLine("already retired", name, existing.id, request, params.docoHandle),
+            {
+              duration_ms,
+              authoringPoliciesPassed: 0,
+            },
+          ),
         ],
+        duration_ms,
       });
     }
     const activeRefs = await findActiveReferencesToPrincipal(meta.docoId, params.id);
@@ -309,15 +322,23 @@ export async function action({
   });
 
   const warningFooters = pred.warnings.map((w) => `[🔮 Doco] ⚠️ Authoring warning: ${w.reason}`);
+  const duration_ms = Math.round(performance.now() - startedAt);
   if (patch.lifecycle === "retired") {
     return Response.json({
       ok: true,
       id: existing.id,
       lifecycle: "retired",
       footer_lines: [
-        principalLine("retired", name, existing.id, request, params.docoHandle),
+        appendOperationTiming(
+          principalLine("retired", name, existing.id, request, params.docoHandle),
+          {
+            duration_ms,
+            authoringPoliciesPassed: authoringPoliciesPassed(pred),
+          },
+        ),
         ...warningFooters,
       ],
+      duration_ms,
       ...(pred.warnings.length > 0 ? { warnings: pred.warnings } : {}),
     });
   }
@@ -326,9 +347,16 @@ export async function action({
     id: existing.id,
     lifecycle: nextLifecycle,
     footer_lines: [
-      principalLine("updated", name, existing.id, request, params.docoHandle),
+      appendOperationTiming(
+        principalLine("updated", name, existing.id, request, params.docoHandle),
+        {
+          duration_ms,
+          authoringPoliciesPassed: authoringPoliciesPassed(pred),
+        },
+      ),
       ...warningFooters,
     ],
+    duration_ms,
     ...(pred.warnings.length > 0 ? { warnings: pred.warnings } : {}),
   });
 }

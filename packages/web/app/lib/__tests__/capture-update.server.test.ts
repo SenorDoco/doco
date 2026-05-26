@@ -1,6 +1,6 @@
 import { getDocoById, getEntity, upsertEntity } from "@doco/db";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { updateEntity } from "../capture.server";
+import { renderOperationLines, updateEntity } from "../capture.server";
 
 vi.mock("@doco/db", () => ({
   ALL_ENTITY_TABLES: {
@@ -24,6 +24,8 @@ vi.mock("../audit-log.server", () => ({
 
 vi.mock("../authoring-runner.server", () => ({
   runAuthoringPolicies: vi.fn(async () => ({
+    evaluated: 0,
+    passed: 0,
     blocking: null,
     violations: [],
     warnings: [],
@@ -146,6 +148,45 @@ describe("updateEntity", () => {
         }),
       }),
       expect.anything(),
+    );
+  });
+});
+
+describe("renderOperationLines", () => {
+  it("adds the authoring-policy pass summary to the final operation line", async () => {
+    const lines = await renderOperationLines({
+      ownerSlug: "acme",
+      docoSlug: "ops",
+      handle: "acme-ops",
+      entityType: "decision",
+      id: "decision_01TEST0000000000000000001",
+      label: "Use checked footers",
+      docoHost: "https://doco.test",
+      ops: [{ kind: "added", summary: "Use checked footers" }],
+      duration_ms: 1234,
+      authoringPoliciesPassed: 3,
+    });
+
+    expect(lines).toEqual([
+      "[🔮 Doco] ✍️ Decision added: [Use checked footers](https://doco.test/acme-ops/decision/decision_01TEST0000000000000000001) (✅ 3 authoring policies passed in 1.2s)",
+    ]);
+  });
+
+  it("uses singular grammar for one passed authoring policy", async () => {
+    const lines = await renderOperationLines({
+      ownerSlug: "acme",
+      docoSlug: "ops",
+      handle: "acme-ops",
+      entityType: "decision",
+      id: "decision_01TEST0000000000000000001",
+      label: "Use checked footers",
+      ops: [{ kind: "added", summary: "Use checked footers" }],
+      duration_ms: 1000,
+      authoringPoliciesPassed: 1,
+    });
+
+    expect(lines.at(0)).toBe(
+      "[🔮 Doco] ✍️ Decision added: Use checked footers (✅ 1 authoring policy passed in 1.0s)",
     );
   });
 });

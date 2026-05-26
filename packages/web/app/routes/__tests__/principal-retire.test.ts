@@ -37,6 +37,14 @@ vi.mock("~/lib/audit-log.server", () => ({
 }));
 
 vi.mock("~/lib/capture.server", () => ({
+  appendOperationTiming: (
+    line: string,
+    opts: { duration_ms?: number; authoringPoliciesPassed?: number },
+  ) =>
+    typeof opts.duration_ms === "number"
+      ? `${line} (✅ ${opts.authoringPoliciesPassed ?? 0} authoring policies passed in ${(opts.duration_ms / 1000).toFixed(1)}s)`
+      : line,
+  authoringPoliciesPassed: (result: { passed?: number }) => result.passed ?? 0,
   reindexAndScheduleAttach: mocks.reindexAndScheduleAttach,
 }));
 
@@ -76,7 +84,13 @@ describe("principal retire API", () => {
       created_at: "2026-01-01T00:00:00.000Z",
       created_by: "collaborator_admin",
     });
-    mocks.runAuthoringPolicies.mockResolvedValue({ blocking: null, warnings: [] });
+    mocks.runAuthoringPolicies.mockResolvedValue({
+      evaluated: 0,
+      passed: 0,
+      blocking: null,
+      warnings: [],
+      violations: [],
+    });
     mocks.reindexAndScheduleAttach.mockResolvedValue(undefined);
   });
 
@@ -389,10 +403,13 @@ describe("principal retire API", () => {
 
   it("blocks an edit when an authoring policy is violating", async () => {
     mocks.runAuthoringPolicies.mockResolvedValue({
+      evaluated: 1,
+      passed: 0,
       blocking: {
         reason: "Principal must declare person vs agent in body_md",
         policy_id: "policy_xyz",
       },
+      violations: [],
       warnings: [],
     });
 

@@ -66,7 +66,7 @@ SUCCESS RESPONSE (HTTP 201, application/json)
     "ok": true,
     "id": "decision_<ULID>",
     "path": "docos/<doco-handle>/decisions/decision_<ULID>.md",
-    "footer_lines": ["[🔮 Doco] ..."],
+    "footer_lines": ["[🔮 Doco] <icon> <action>: [<Neuron>](<url>) (✅ <n> authoring policies passed in <X.Xs>)"],
     "duration_ms": 432
   }
 
@@ -135,7 +135,7 @@ SUCCESS RESPONSE (HTTP 201, application/json)
     "ok": true,
     "id": "idea_<ULID>",
     "path": "<postgres>:ideas/idea_<ULID>",
-    "footer_lines": ["[🔮 Doco] ✍️ Idea added: [<first-line-of-idea>](<url>)"]
+    "footer_lines": ["[🔮 Doco] ✍️ Idea added: [<first-line-of-idea>](<url>) (✅ <n> authoring policies passed in <X.Xs>)"]
   }
 
 UPDATE AN EXISTING IDEA
@@ -173,7 +173,7 @@ SUCCESS RESPONSE (HTTP 201, application/json)
     "ok": true,
     "id": "intent_<ULID>",
     "path": "docos/<doco-handle>/intents/intent_<ULID>.md",
-    "footer_lines": ["[🔮 Doco] ✍️ Intent added: [<first-line-of-intent>](<url>)"]
+    "footer_lines": ["[🔮 Doco] ✍️ Intent added: [<first-line-of-intent>](<url>) (✅ <n> authoring policies passed in <X.Xs>)"]
   }
 
   Emit each entry of \`footer_lines\` verbatim, one per line.
@@ -238,7 +238,7 @@ SUCCESS RESPONSE (HTTP 201, application/json)
     "ok": true,
     "id": "action_<ULID>",
     "path": "docos/<doco-handle>/actions/action_<ULID>.md",
-    "footer_lines": ["[🔮 Doco] ✍️ Action added: [<first-line-of-action>](<url>)"]
+    "footer_lines": ["[🔮 Doco] ✍️ Action added: [<first-line-of-action>](<url>) (✅ <n> authoring policies passed in <X.Xs>)"]
   }
 
 EXAMPLE
@@ -299,7 +299,7 @@ SUCCESS RESPONSE (HTTP 201, application/json)
     "ok": true,
     "id": "log_<ULID>",
     "path": "docos/<doco-handle>/logs/log_<ULID>.md",
-    "footer_lines": ["[🔮 Doco] ✍️ Log added: [<first-line-of-log>](<url>)"]
+    "footer_lines": ["[🔮 Doco] ✍️ Log added: [<first-line-of-log>](<url>) (✅ <n> authoring policies passed in <X.Xs>)"]
   }
 
 EXAMPLE
@@ -352,7 +352,7 @@ SUCCESS RESPONSE (HTTP 201, application/json)
     "ok": true,
     "id": "rule_<ULID>",
     "path": "docos/<doco-handle>/rules/rule_<ULID>.md",
-    "footer_lines": ["[🔮 Doco] ✍️ Rule added: [<first-line-of-rule>](<url>)"]
+    "footer_lines": ["[🔮 Doco] ✍️ Rule added: [<first-line-of-rule>](<url>) (✅ <n> authoring policies passed in <X.Xs>)"]
   }
 
 EXAMPLE
@@ -409,7 +409,7 @@ SUCCESS RESPONSE (HTTP 201, application/json)
     "ok": true,
     "id": "eval_<ULID>",
     "path": "docos/<doco-handle>/evals/eval_<ULID>.md",
-    "footer_lines": ["[🔮 Doco] ✍️ Eval added: [<first-line-of-eval>](<url>)"]
+    "footer_lines": ["[🔮 Doco] ✍️ Eval added: [<first-line-of-eval>](<url>) (✅ <n> authoring policies passed in <X.Xs>)"]
   }
 
 EXAMPLE
@@ -463,7 +463,7 @@ SUCCESS RESPONSE (HTTP 201, application/json)
     "ok": true,
     "id": "reference_<ULID>",
     "path": "docos/<doco-handle>/references/reference_<ULID>.md",
-    "footer_lines": ["[🔮 Doco] ✍️ Reference added: [<first-line-of-reference>](<url>)"]
+    "footer_lines": ["[🔮 Doco] ✍️ Reference added: [<first-line-of-reference>](<url>) (✅ <n> authoring policies passed in <X.Xs>)"]
   }
 
 EXAMPLE
@@ -516,7 +516,7 @@ SUCCESS RESPONSE (HTTP 201, application/json)
     "ok": true,
     "id": "state_<ULID>",
     "path": "docos/<doco-handle>/states/state_<ULID>.md",
-    "footer_lines": ["[🔮 Doco] ✍️ State added: [<first-line-of-state>](<url>)"]
+    "footer_lines": ["[🔮 Doco] ✍️ State added: [<first-line-of-state>](<url>) (✅ <n> authoring policies passed in <X.Xs>)"]
   }
 
 EXAMPLE
@@ -578,7 +578,7 @@ SUCCESS RESPONSE — create (HTTP 201, application/json)
     "id": "principal_<ULID>",
     "name": "<name>",
     "existed": false,
-    "footer_lines": ["[🔮 Doco] 👤 Principal added: [<name>](<url>)"]
+    "footer_lines": ["[🔮 Doco] 👤 Principal added: [<name>](<url>) (✅ <n> authoring policies passed in <X.Xs>)"]
   }
 
 ERROR RESPONSES
@@ -621,7 +621,7 @@ SUCCESS RESPONSE — edit (HTTP 200, application/json)
     "ok": true,
     "id": "principal_<ULID>",
     "lifecycle": "active",
-    "footer_lines": ["[🔮 Doco] 👤 Principal updated: [<name>](<url>)"]
+    "footer_lines": ["[🔮 Doco] 👤 Principal updated: [<name>](<url>) (✅ <n> authoring policies passed in <X.Xs>)"]
   }
 
 ERROR RESPONSES
@@ -658,7 +658,7 @@ SUCCESS RESPONSE — retire (HTTP 200, application/json)
     "ok": true,
     "id": "principal_<ULID>",
     "lifecycle": "retired",
-    "footer_lines": ["[🔮 Doco] 👤 Principal retired: [<name>](<url>)"]
+    "footer_lines": ["[🔮 Doco] 👤 Principal retired: [<name>](<url>) (✅ <n> authoring policies passed in <X.Xs>)"]
   }
 
 SUCCESS RESPONSE — already retired (HTTP 200, idempotent)
@@ -666,7 +666,7 @@ SUCCESS RESPONSE — already retired (HTTP 200, idempotent)
     "ok": true,
     "id": "principal_<ULID>",
     "already_retired": true,
-    "footer_lines": ["[🔮 Doco] 👤 Principal already retired: [<name>](<url>)"]
+    "footer_lines": ["[🔮 Doco] 👤 Principal already retired: [<name>](<url>) (✅ <n> authoring policies passed in <X.Xs>)"]
   }
 
 ERROR RESPONSES
@@ -789,7 +789,7 @@ SUCCESS RESPONSE (HTTP 201)
   {
     "ok": true,
     "id": "guidance_policy_<ULID>" | "neuron_authoring_policy_<ULID>",
-    "footer_lines": ["[🔮 Doco] ✍️ ... Policy added: ..."]
+    "footer_lines": ["[🔮 Doco] ✍️ ... Policy added: ... (✅ <n> authoring policies passed in <X.Xs>)"]
   }
 
 EXAMPLE — guidance

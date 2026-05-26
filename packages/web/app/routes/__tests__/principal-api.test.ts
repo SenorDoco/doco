@@ -39,6 +39,14 @@ vi.mock("~/lib/audit-log.server", () => ({
 }));
 
 vi.mock("~/lib/capture.server", () => ({
+  appendOperationTiming: (
+    line: string,
+    opts: { duration_ms?: number; authoringPoliciesPassed?: number },
+  ) =>
+    typeof opts.duration_ms === "number"
+      ? `${line} (✅ ${opts.authoringPoliciesPassed ?? 0} authoring policies passed in ${(opts.duration_ms / 1000).toFixed(1)}s)`
+      : line,
+  authoringPoliciesPassed: (result: { passed?: number }) => result.passed ?? 0,
   reindexAndScheduleAttach: mocks.reindexAndScheduleAttach,
 }));
 
@@ -66,7 +74,13 @@ describe("principal API", () => {
       meta: { ownerId: "organization_acme", docoId: "doco_acme" },
     });
     mocks.getDocoLevelRole.mockResolvedValue("author");
-    mocks.runAuthoringPolicies.mockResolvedValue({ blocking: null, warnings: [] });
+    mocks.runAuthoringPolicies.mockResolvedValue({
+      evaluated: 0,
+      passed: 0,
+      blocking: null,
+      warnings: [],
+      violations: [],
+    });
     mocks.reindexAndScheduleAttach.mockResolvedValue(undefined);
     mocks.getEntity.mockResolvedValue(null);
   });

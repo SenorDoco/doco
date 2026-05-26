@@ -101,7 +101,7 @@ const twoFooterToolResult = {
       {
         type: "tool_result",
         content:
-          "[🔮 Doco] ✍️ Intent added: [Agents must keep capture feedback visible.](https://doco.to/intent) — ⚙️ framework\n[🔮 Doco] ✍️ Decision added: [Compare Doco write footer_lines against assistant text before Stop.](https://doco.to/decision) — ⚙️ framework (0.2s)",
+          "[🔮 Doco] ✍️ Intent added: [Agents must keep capture feedback visible.](https://doco.to/intent) (✅ 2 authoring policies passed in 0.2s)\n[🔮 Doco] ✍️ Decision added: [Compare Doco write footer_lines against assistant text before Stop.](https://doco.to/decision) (✅ 2 authoring policies passed in 0.2s)",
       },
     ],
   },
@@ -143,7 +143,7 @@ describe("agent bootstrap Stop hook", () => {
           content: [
             {
               type: "text",
-              text: "[🔮 Doco] ✍️ Intent added: [Agents must keep capture feedback visible.](https://doco.to/intent) — ⚙️ framework\n\n[🔮 Doco] doco_abc: **2** neurons added/updated",
+              text: "[🔮 Doco] ✍️ Intent added: [Agents must keep capture feedback visible.](https://doco.to/intent) (✅ 2 authoring policies passed in 0.2s)\n\n[🔮 Doco] doco_abc: **2** neurons added/updated",
             },
           ],
         },
@@ -166,7 +166,7 @@ describe("agent bootstrap Stop hook", () => {
           content: [
             {
               type: "text",
-              text: "[🔮 Doco] ✍️ Intent added: [Agents must keep capture feedback visible.](https://doco.to/intent) — ⚙️ framework\n[🔮 Doco] ✍️ Decision added: [Compare Doco write footer_lines against assistant text before Stop.](https://doco.to/decision) — ⚙️ framework (0.2s)\n\n[🔮 Doco] doco_abc: **2** neurons added/updated",
+              text: "[🔮 Doco] ✍️ Intent added: [Agents must keep capture feedback visible.](https://doco.to/intent) (✅ 2 authoring policies passed in 0.2s)\n[🔮 Doco] ✍️ Decision added: [Compare Doco write footer_lines against assistant text before Stop.](https://doco.to/decision) (✅ 2 authoring policies passed in 0.2s)\n\n[🔮 Doco] doco_abc: **2** neurons added/updated",
             },
           ],
         },
