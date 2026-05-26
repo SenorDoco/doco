@@ -26,7 +26,6 @@ import {
   useReactFlow,
 } from "@xyflow/react";
 import { type ComponentType, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { LifecycleBadge, ReferenceNumberBadge } from "~/components/neuron-badges";
 import { StandardControls, StandardMiniMap } from "~/components/perspective-canvas-overlays";
 import { lifecycleColor } from "~/lib/neuron-colors";
 import { ORG_TREE_NODE_H, ORG_TREE_NODE_W, layoutOrgTree } from "~/lib/org-tree-layout";
@@ -51,26 +50,18 @@ interface OrgTreePerspectiveProps {
 interface OrgTreeNodeData extends Record<string, unknown> {
   org: OrgTreeNode;
   isCenter: boolean;
-  // Reference number from the shared `usePerspectiveReferences`
-  // hook (same hook Graph + BPMN use). Viewport-driven, so the
-  // number can shift as the user pans/zooms — same contract as
-  // the other perspectives.
-  referenceNumber?: number;
 }
 
 // Custom React Flow node — the principal card.
 //
-// Visual hierarchy: the Principal's `name` is the headline. An optional
-// one-line description from body_md sits beneath. The Person/Agent kind
-// shows as a bare emoji icon in the bottom corner (👤 / 🤖) next to the
-// lifecycle badge — inferred from body_md prose (the slim-down moved the
-// kind out of a structured field). When the prose is silent the icon is
-// omitted.
+// Visual hierarchy: icon, Principal name, and a compact role label
+// derived from the first body_md line. Lifecycle and reference badges
+// stay out of the card so the org chart reads like an org chart.
 //
 // Sized via inline style (Tailwind's JIT can't see template-literal
 // class names).
 function OrgTreeCard({ data }: NodeProps<Node<OrgTreeNodeData>>) {
-  const { org, isCenter, referenceNumber } = data;
+  const { org, isCenter } = data;
   const kindIcon = org.type === "agent" ? "🤖" : org.type === "person" ? "👤" : null;
   const kindLabel = org.type === "agent" ? "agent" : org.type === "person" ? "person" : null;
   return (
@@ -80,33 +71,31 @@ function OrgTreeCard({ data }: NodeProps<Node<OrgTreeNodeData>>) {
       }`}
       style={{ width: ORG_TREE_NODE_W, height: ORG_TREE_NODE_H }}
     >
-      <ReferenceNumberBadge referenceNumber={referenceNumber} referenceLabel={org.name} />
       <Handle
         type="target"
         position={Position.Top}
         style={{ background: "transparent", border: "none", width: 1, height: 1 }}
       />
-      <div className="min-w-0">
-        <div className="truncate text-base font-semibold leading-tight text-foreground">
-          {org.name}
-        </div>
-        {org.description ? (
-          <div className="truncate text-[11px] leading-snug text-muted-foreground">
-            {org.description}
-          </div>
-        ) : null}
-      </div>
-      <div className="flex items-center gap-1.5">
+      <div className="flex min-w-0 items-center gap-2">
         {kindIcon ? (
           <span
             aria-label={`Principal type: ${kindLabel}`}
             title={`Principal type: ${kindLabel}`}
-            className="select-none text-sm leading-none"
+            className="shrink-0 select-none text-base leading-none"
           >
             {kindIcon}
           </span>
         ) : null}
-        <LifecycleBadge lifecycle={org.lifecycle} />
+        <div className="min-w-0">
+          <div className="truncate text-sm font-semibold leading-tight text-foreground">
+            {org.name}
+          </div>
+          {org.role ? (
+            <div className="truncate text-[11px] leading-snug text-muted-foreground">
+              {org.role}
+            </div>
+          ) : null}
+        </div>
       </div>
       <Handle
         type="source"
@@ -270,25 +259,12 @@ function OrgTreeInner({
       })),
     [rawRfNodes],
   );
-  const { numberById: referenceNumberByNodeId } = usePerspectiveReferences({
+  usePerspectiveReferences({
     source: "org-tree",
     viewport,
     size,
     candidates: referenceCandidates,
   });
-
-  // Splice the reference numbers into the node data without rebuilding
-  // the rest of the layout. Kept separate from `layoutOrgTree` so the
-  // tree-shape work doesn't re-run on every pan/zoom.
-  const rfNodes = useMemo<Node<OrgTreeNodeData>[]>(
-    () =>
-      rawRfNodes.map((n) => {
-        const referenceNumber = referenceNumberByNodeId.get(n.id);
-        if (!referenceNumber) return n;
-        return { ...n, data: { ...n.data, referenceNumber } };
-      }),
-    [rawRfNodes, referenceNumberByNodeId],
-  );
 
   // Stable signature of the layout's *shape* — node ids + reports_to
   // edges, in deterministic order. The dashboard re-fetches Principals
@@ -340,7 +316,7 @@ function OrgTreeInner({
   return (
     <div ref={containerRef} className="relative h-full w-full">
       <ReactFlow
-        nodes={rfNodes}
+        nodes={rawRfNodes}
         edges={rfEdges}
         nodeTypes={nodeTypes}
         onNodeClick={handleNodeClick}
