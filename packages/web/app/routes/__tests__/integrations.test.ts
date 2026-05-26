@@ -18,6 +18,7 @@ import { loader } from "../integrations";
 describe("/integrations", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    process.env.DOCO_SLACK_INSTALL_URL = undefined;
   });
 
   it("redirects anonymous users to sign in", async () => {
@@ -32,6 +33,7 @@ describe("/integrations", () => {
   });
 
   it("loads the signed-in user's accessible integration targets", async () => {
+    process.env.DOCO_SLACK_INSTALL_URL = "https://slack.example/install";
     mocks.getCurrentPrincipal.mockResolvedValue({
       id: "collaborator_alice",
       username: "alice",
@@ -52,6 +54,16 @@ describe("/integrations", () => {
         id: "collaborator_alice",
         username: "alice",
       },
+      providers: expect.arrayContaining([
+        expect.objectContaining({
+          id: "slack",
+          installHref: "https://slack.example/install",
+        }),
+        expect.objectContaining({
+          id: "google-chat",
+          installHref: null,
+        }),
+      ]),
       scopeOptions: [
         {
           level: "doco",
