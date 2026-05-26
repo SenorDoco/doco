@@ -54,8 +54,8 @@ export const DOCO_TEMPLATES: DocoTemplateMeta[] = [
     handle: "test",
     label: "Tests",
     description:
-      "Executable tests inspired by TDD and AI evals. Each Eval pins one checkable claim about a decision, policy, or action.",
-    updatedAt: "2026-05-12",
+      "Executable tests and AI evals. Each Eval pins one checkable claim about a decision, policy, or action.",
+    updatedAt: "2026-05-26",
     owner: TEMPLATE_OWNER,
   },
   {
