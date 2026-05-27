@@ -13,6 +13,9 @@ export async function action({ request }: { request: Request }) {
   if (!(await verifySlackRequest(request, rawBody))) {
     return Response.json({ error: "invalid_slack_signature" }, { status: 401 });
   }
+  if (isSlackRetryRequest(request)) {
+    return Response.json({ ok: true });
+  }
 
   let payload: {
     type?: string;
@@ -80,4 +83,8 @@ export function shouldReplyToSlackEvent(event: SlackEventPayload | undefined): b
 export function shouldFetchSlackConversationContext(event: SlackEventPayload | undefined): boolean {
   if (!event) return false;
   return event.channel_type === "im" || event.channel_type === "app_home";
+}
+
+export function isSlackRetryRequest(request: Request): boolean {
+  return request.headers.has("x-slack-retry-num");
 }
