@@ -45,7 +45,7 @@ function AgentPromptBlock({
   const [copied, setCopied] = useState(false);
   return (
     <div className="space-y-2">
-      <p className="max-w-5xl text-lg font-semibold leading-relaxed text-foreground">
+      <p className="max-w-5xl text-sm font-semibold leading-6 text-foreground">
         {AGENT_INVITE_HELP_TEXT}
       </p>
       <pre
