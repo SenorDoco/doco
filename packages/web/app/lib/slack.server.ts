@@ -1068,6 +1068,7 @@ export async function generateSlackDocoLlmAnswer(
       },
     ];
     let lastMessage: Message | null = null;
+    const footerLines: string[] = [];
     for (let turn = 0; turn < SLACK_LLM_MAX_TOOL_TURNS; turn++) {
       const message = await createMessage({
         max_tokens: SLACK_LLM_MAX_TOKENS,
@@ -1083,6 +1084,7 @@ export async function generateSlackDocoLlmAnswer(
       messages.push({ role: "assistant", content: assistantContent });
       if (message.stop_reason !== "tool_use") {
         return cleanSlackLlmAnswer(slackMessageText(message), {
+          footerLines,
           repairText: input.repairText,
         });
       }
@@ -1091,13 +1093,17 @@ export async function generateSlackDocoLlmAnswer(
       );
       if (toolUseBlocks.length === 0) break;
       const toolResults = await Promise.all(toolUseBlocks.map((block) => runTool(block, input)));
+      footerLines.push(...extractSlackDocoFooterLines(toolResults));
       messages.push({
         role: "user",
         content: toolResults.map((toolResult) => toolResult.result),
       });
     }
     return lastMessage
-      ? cleanSlackLlmAnswer(slackMessageText(lastMessage), { repairText: input.repairText })
+      ? cleanSlackLlmAnswer(slackMessageText(lastMessage), {
+          footerLines,
+          repairText: input.repairText,
+        })
       : null;
   } catch (error) {
     console.error(
@@ -2224,27 +2230,100 @@ function formatSlackLlmHit(hit: SlackDocoAnswerHit, index: number): string {
 
 function cleanSlackLlmAnswer(
   text: string,
-  options: { repairText?: string | null } = {},
+  options: { footerLines?: string[]; repairText?: string | null } = {},
 ): string | null {
   const cleaned = cleanSlackLlmOutputText(text)
     .replace(/^["“]|["”]$/g, "")
     .trim();
-  if (!cleaned) return null;
+  if (!cleaned && (!options.footerLines || options.footerLines.length === 0)) return null;
   const formatted = options.repairText
     ? formatSlackLineBreakRepairOutput(cleaned, options.repairText)
     : cleaned;
-  return truncateSlackAnswerText(formatted, 1800);
+  return truncateSlackAnswerText(prependSlackDocoFooterLines(formatted, options.footerLines), 1800);
 }
 
 function cleanSlackLlmOutputText(text: string): string {
   return text
     .replace(/`{1,3}/g, "")
-    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, (_match, label: string, url: string) =>
+      formatSlackLink(url, label),
+    )
     .split("\n")
     .map((line) => line.replace(/[ \t]+/g, " ").trim())
     .join("\n")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
+}
+
+function extractSlackDocoFooterLines(toolResults: DocoApiToolResult[]): string[] {
+  const lines: string[] = [];
+  for (const toolResult of toolResults) {
+    const content = toolResult.result.content;
+    if (typeof content !== "string") continue;
+    try {
+      const parsed = JSON.parse(content) as DocoApiToolEnvelope;
+      lines.push(...collectDocoFooterLines(parsed.body));
+    } catch {
+      // Ignore non-JSON or truncated tool output; the LLM still sees the raw result.
+    }
+  }
+  return lines;
+}
+
+function collectDocoFooterLines(value: unknown): string[] {
+  if (!value || typeof value !== "object") return [];
+  if (Array.isArray(value)) return value.flatMap(collectDocoFooterLines);
+
+  const record = value as Record<string, unknown>;
+  const directLines = Array.isArray(record.footer_lines)
+    ? record.footer_lines.filter((line): line is string => typeof line === "string")
+    : [];
+  return [
+    ...directLines,
+    ...Object.entries(record)
+      .filter(([key]) => key !== "footer_lines")
+      .flatMap(([, child]) => collectDocoFooterLines(child)),
+  ];
+}
+
+function prependSlackDocoFooterLines(
+  text: string,
+  footerLines: string[] | null | undefined,
+): string {
+  const formattedFooterLines = uniqueStrings(
+    (footerLines ?? []).map(formatSlackDocoFooterLine).filter(Boolean),
+  );
+  if (formattedFooterLines.length === 0) return text;
+
+  const nonFooterText = text
+    .split("\n")
+    .filter((line) => !line.trim().startsWith("[🔮 Doco]"))
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+  return [formattedFooterLines.join("\n"), nonFooterText].filter(Boolean).join("\n\n");
+}
+
+function formatSlackDocoFooterLine(line: string): string {
+  return line.replace(
+    /\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g,
+    (_match, label: string, url: string) => formatSlackLink(url, label),
+  );
+}
+
+function formatSlackLink(url: string, label: string): string {
+  const cleanUrl = url.trim();
+  const cleanLabel = label.replace(/[<>|]/g, "").trim();
+  return `<${cleanUrl}|${cleanLabel || cleanUrl}>`;
+}
+
+function uniqueStrings(values: string[]): string[] {
+  const seen = new Set<string>();
+  return values.filter((value) => {
+    if (seen.has(value)) return false;
+    seen.add(value);
+    return true;
+  });
 }
 
 function formatSlackLineBreakRepairOutput(text: string, repairText: string): string {
