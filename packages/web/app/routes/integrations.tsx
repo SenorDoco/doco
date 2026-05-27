@@ -1,4 +1,4 @@
-import { ExternalLink, MessageSquare, Settings } from "lucide-react";
+import { ArrowLeft, CheckCircle2, ExternalLink, MessageSquare, Settings } from "lucide-react";
 import { redirect } from "react-router";
 import { Breadcrumb, hostBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
@@ -14,8 +14,13 @@ import {
 interface IntegrationsPageData {
   me: CurrentPrincipal;
   notice: string | null;
+  slackConfirmation: SlackConfirmation | null;
   slackInstallHref: string | null;
   slackInstallations: SlackInstallationSummary[];
+}
+
+interface SlackConfirmation {
+  workspaceName: string;
 }
 
 export async function loader({ request }: { request: Request }): Promise<IntegrationsPageData> {
@@ -27,6 +32,7 @@ export async function loader({ request }: { request: Request }): Promise<Integra
 
   return {
     me,
+    slackConfirmation: readSlackConfirmation(url),
     notice: readNotice(url),
     slackInstallHref: getSlackConfig().configured ? "/integrations/slack/install" : null,
     slackInstallations: await listSlackInstallations(),
@@ -38,7 +44,36 @@ export function meta() {
 }
 
 export default function IntegrationsPage({ loaderData }: { loaderData: IntegrationsPageData }) {
-  const { me, notice, slackInstallHref, slackInstallations } = loaderData;
+  const { me, notice, slackConfirmation, slackInstallHref, slackInstallations } = loaderData;
+
+  if (slackConfirmation) {
+    return (
+      <div className="flex min-h-screen flex-col bg-background text-foreground">
+        <SiteHeader mode="host" me={me} />
+        <SingleColumnPageMain className="space-y-8 py-8">
+          <Breadcrumb items={hostBreadcrumb({ pageLabel: "Integrations" })} />
+          <section className="max-w-2xl space-y-5">
+            <CheckCircle2 className="h-8 w-8 text-primary" aria-hidden="true" />
+            <div className="space-y-2">
+              <h1 className="text-2xl font-semibold">Señor Doco is ready in Slack</h1>
+              <p className="text-sm leading-relaxed text-muted-foreground">
+                You&apos;re done here. Default permissions are saved for{" "}
+                {slackConfirmation.workspaceName}. Open Slack and say hello to Señor Doco from
+                anywhere.
+              </p>
+            </div>
+            <a
+              href="/integrations"
+              className="neu-button inline-flex items-center gap-2 rounded-md bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground"
+            >
+              <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+              Back to integrations
+            </a>
+          </section>
+        </SingleColumnPageMain>
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-screen flex-col bg-background text-foreground">
@@ -157,11 +192,13 @@ function formatDate(value: string): string {
   return date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 }
 
-function readNotice(url: URL): string | null {
+function readSlackConfirmation(url: URL): SlackConfirmation | null {
   const connected = url.searchParams.get("slack_connected");
-  if (connected) {
-    return `Saved the Slack default permissions for ${connected}.`;
-  }
+  if (!connected) return null;
+  return { workspaceName: connected };
+}
+
+function readNotice(url: URL): string | null {
   const installed = url.searchParams.get("slack_installed");
   if (installed) {
     return `Slack workspace connected: ${installed}. Choose default permissions next.`;
