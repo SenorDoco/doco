@@ -27,7 +27,6 @@ import {
   summarizeExternalConnections,
 } from "~/lib/focused-render-selection";
 import {
-  FAR_DEPTH,
   computeDepthFromCenter,
   depthBucket,
   hasFocalNode,
@@ -36,6 +35,7 @@ import {
 } from "~/lib/graph-depth";
 import { lifecycleColor } from "~/lib/neuron-colors";
 import { overviewNodeDisplayLabel } from "~/lib/overview-graph-labels";
+import { type Point, layoutOverviewGraphNodes } from "~/lib/overview-graph-layout";
 import { usePerspectiveReferences } from "~/lib/perspective-references";
 import { useBufferedRenderedIds } from "~/lib/use-buffered-rendered-ids";
 import { useNewNodeIds } from "~/lib/use-new-neuron-ids";
@@ -102,18 +102,13 @@ interface OverviewGraphProps extends OverviewGraphData {
    */
   onCenterChange?: (id: string) => void;
   /**
-   * When true, layout places nodes in concentric rings by BFS depth
-   * from the focal node — 1st-degree closest, then 2nd, then 3rd,
-   * etc. When false, layout falls back to a single ring with
-   * type-then-id ordering (the legacy behaviour). The "Reorder
-   * automatically" toggle lives on PerspectiveFrame.
+   * When true, layout uses a weighted clustered solver so linked
+   * neurons can settle near each other without collapsing into depth
+   * rings. When false, layout falls back to a single stable ring with
+   * type-then-id ordering. The "Reorder automatically" toggle lives
+   * on PerspectiveFrame.
    */
   autoReorder?: boolean;
-}
-
-interface Point {
-  x: number;
-  y: number;
 }
 
 interface FlowViewport {
@@ -135,22 +130,6 @@ interface OverviewNodeData {
 // order.
 const LIFECYCLE_ORDER = ["drafting", "proposed", "active", "retired"];
 const HIDDEN_LIFECYCLES_BY_DEFAULT = new Set(["retired"]);
-const NODE_TYPE_ORDER = new Map(
-  [
-    "principal",
-    "intent",
-    "decision",
-    "action",
-    "rule",
-    "guidance_policy",
-    "neuron_authoring_policy",
-    "log",
-    "eval",
-    "reference",
-    "idea",
-    "state",
-  ].map((type, index) => [type, index]),
-);
 
 // Card size — wide and tall enough to fit the badge row plus a few
 // lines of title/summary. 336x136 (the previous bump) felt oversized,
@@ -173,137 +152,6 @@ function lifecycleLabel(lifecycle: string): string {
 
 function nodeLifecycle(node: { lifecycle: string | null }): string {
   return node.lifecycle ?? "active";
-}
-
-/**
- * Lay out `others` in a ring at `radius` around `center`, sorted by
- * entity type then id so the placement is stable across renders.
- */
-function placeRing(
-  positions: Map<string, Point>,
-  others: OverviewGraphNode[],
-  center: Point,
-  radius: number,
-  startAngle: number,
-) {
-  if (others.length === 0) return;
-  others.sort((a, b) => {
-    const ai = NODE_TYPE_ORDER.get(a.entity_type) ?? 999;
-    const bi = NODE_TYPE_ORDER.get(b.entity_type) ?? 999;
-    if (ai !== bi) return ai - bi;
-    return a.id.localeCompare(b.id);
-  });
-  others.forEach((node, index) => {
-    const angle = startAngle + (Math.PI * 2 * index) / others.length;
-    positions.set(node.id, {
-      x: center.x + Math.cos(angle) * radius,
-      y: center.y + Math.sin(angle) * radius,
-    });
-  });
-}
-
-/**
- * Single-ring layout — every non-focal node goes on the same ring,
- * sorted by type then id. Used when the user has disabled
- * "Reorder automatically" so neighbours stop migrating between rings
- * as they click around.
- */
-function singleRingLayout(nodes: OverviewGraphNode[], centerId: string): Map<string, Point> {
-  const positions = new Map<string, Point>();
-  if (nodes.length === 0) return positions;
-
-  const center: Point = { x: 0, y: 0 };
-  const others: OverviewGraphNode[] = [];
-  let hasCenter = false;
-  for (const node of nodes) {
-    if (node.id === centerId) {
-      positions.set(node.id, center);
-      hasCenter = true;
-    } else {
-      others.push(node);
-    }
-  }
-
-  if (others.length === 0) {
-    if (!hasCenter) {
-      const first = nodes[0];
-      if (first) positions.set(first.id, center);
-    }
-    return positions;
-  }
-
-  const radius = Math.max(220, others.length * 18);
-  placeRing(positions, others, center, radius, -Math.PI / 2);
-  return positions;
-}
-
-/**
- * Depth-aware concentric-ring layout. Nodes are grouped into rings by
- * their BFS depth from the focal node — first-degree neighbours go on
- * the innermost ring, second-degree on the next, and so on. Anything
- * 4+ hops or unreachable shares the outermost ring (matching the
- * opacity ramp).
- *
- * Each ring's radius grows with both its depth and the count of nodes
- * it has to hold, so dense rings don't crowd themselves.
- */
-function depthRingLayout(
-  nodes: OverviewGraphNode[],
-  links: OverviewGraphLink[],
-  centerId: string,
-): Map<string, Point> {
-  const positions = new Map<string, Point>();
-  if (nodes.length === 0) return positions;
-
-  const center: Point = { x: 0, y: 0 };
-  let hasCenter = false;
-  for (const node of nodes) {
-    if (node.id === centerId) {
-      positions.set(node.id, center);
-      hasCenter = true;
-    }
-  }
-
-  if (!hasCenter) {
-    return singleRingLayout(nodes, centerId);
-  }
-
-  const depths = computeDepthFromCenter(nodes, links, centerId);
-  const byBucket = new Map<number, OverviewGraphNode[]>();
-  for (const node of nodes) {
-    if (node.id === centerId) continue;
-    const bucket = depthBucket(depths.get(node.id));
-    const list = byBucket.get(bucket) ?? [];
-    list.push(node);
-    byBucket.set(bucket, list);
-  }
-
-  // Inner ring sits at the same baseline radius the old single-ring
-  // layout used so the look of unfocused docos doesn't change.
-  const BASE_RADIUS = 220;
-  const RING_SPACING = 180;
-  for (let bucket = 1; bucket <= FAR_DEPTH; bucket++) {
-    const ring = byBucket.get(bucket);
-    if (!ring || ring.length === 0) continue;
-    const baseRadius = BASE_RADIUS + (bucket - 1) * RING_SPACING;
-    // Crowd-protect dense rings by stretching the radius outwards.
-    const radius = Math.max(baseRadius, ring.length * 18 + (bucket - 1) * RING_SPACING);
-    // Stagger the starting angle by bucket so neighbouring rings
-    // don't line up radially and edges read cleanly.
-    const startAngle = -Math.PI / 2 + (bucket % 2 === 0 ? Math.PI / ring.length : 0);
-    placeRing(positions, ring, center, radius, startAngle);
-  }
-
-  return positions;
-}
-
-function layoutNodes(
-  nodes: OverviewGraphNode[],
-  links: OverviewGraphLink[],
-  centerId: string,
-  autoReorder: boolean,
-): Map<string, Point> {
-  return autoReorder ? depthRingLayout(nodes, links, centerId) : singleRingLayout(nodes, centerId);
 }
 
 function isVisibleInViewport(
@@ -623,7 +471,12 @@ export function OverviewGraph({
     positionCacheKeyRef.current = autoReorder;
   }
   const positions = useMemo(() => {
-    const computed = layoutNodes(renderedNodes, renderedLinks, effectiveCenterId, autoReorder);
+    const computed = layoutOverviewGraphNodes(
+      renderedNodes,
+      renderedLinks,
+      effectiveCenterId,
+      autoReorder,
+    );
     const cache = positionCacheRef.current;
     const computedFocus = effectiveCenterId ? computed.get(effectiveCenterId) : undefined;
     const cachedFocus = effectiveCenterId ? cache.get(effectiveCenterId) : undefined;
