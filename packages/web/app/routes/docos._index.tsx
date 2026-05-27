@@ -39,6 +39,7 @@ const FEED_LIMIT = 10;
 
 interface DocoRow {
   docoId: string;
+  ownerHandle: string;
   handle: string;
   neurons: number;
   lastUpdatedAt: string | null;
@@ -76,6 +77,7 @@ export async function loader({ request }: { request: Request }) {
       const s = stats.get(d.docoId) ?? { neurons: 0, lastUpdatedAt: null };
       return {
         docoId: d.docoId,
+        ownerHandle: d.ownerUsername,
         handle: d.handle,
         neurons: s.neurons,
         lastUpdatedAt: s.lastUpdatedAt,
@@ -190,8 +192,9 @@ export default function DocosIndexPage({
   const docoItems: AccessListItem[] = docos.map((d) => ({
     id: d.docoId,
     href: `/${d.handle}`,
-    label: d.handle,
+    label: `${d.ownerHandle} / ${d.handle}`,
     count: d.neurons,
+    countLabel: `${d.neurons} nodes`,
     lastUpdatedAt: d.lastUpdatedAt,
   }));
   return (
@@ -214,7 +217,6 @@ export default function DocosIndexPage({
         <div className="grid grid-cols-1 gap-6 min-[840px]:grid-cols-[minmax(0,1fr)_320px]">
           <section className="space-y-4">
             <AccessListCard
-              title="Your docos"
               items={docoItems}
               empty={
                 <>
