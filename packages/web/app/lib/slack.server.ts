@@ -1,10 +1,32 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
-import { ALL_ENTITY_TABLES, DOCO_NEURON_TABLE_SPECS, withClient } from "@doco/db";
+import type {
+  ContentBlockParam,
+  Message,
+  MessageParam,
+  ToolUseBlock,
+} from "@anthropic-ai/sdk/resources/messages";
+import type { EntityRecord } from "@doco/db";
+import {
+  ALL_ENTITY_TABLES,
+  DOCO_NEURON_TABLE_SPECS,
+  getCollaboratorById,
+  getEntity,
+  listDocoUsers,
+  listEntitiesByDoco,
+  withClient,
+} from "@doco/db";
 import { generateUlid } from "@doco/shared";
 import {
   createSenorDocoMessage,
   missingSenorDocoAnthropicMessage,
 } from "./assistant-runtime.server";
+import {
+  DOCO_API_TOOL,
+  type DocoApiToolEnvelope,
+  type DocoApiToolRequest,
+  type DocoApiToolResult,
+  runDocoApiToolRequest,
+} from "./doco-api-tool.server";
 import { ensureEnvLoaded } from "./dotenv.server";
 import { buildSenorDocoCorePrompt } from "./senor-doco-prompt.server";
 
@@ -26,6 +48,7 @@ const STATE_TTL_MS = 15 * 60 * 1000;
 const SIGNATURE_TOLERANCE_SECONDS = 5 * 60;
 const SLACK_DOCO_ANSWER_LIMIT = 8;
 const SLACK_LLM_MAX_TOKENS = 600;
+const SLACK_LLM_MAX_TOOL_TURNS = 6;
 
 export interface SlackConfig {
   appId: string | null;
@@ -87,6 +110,11 @@ export interface SlackLlmAnswerInput {
   hits: SlackDocoAnswerHit[];
   overview: boolean;
   repair: boolean;
+}
+
+export interface SlackLlmAnswerDeps {
+  createMessage?: typeof createSenorDocoMessage;
+  runTool?: (block: ToolUseBlock, input: SlackLlmAnswerInput) => Promise<DocoApiToolResult>;
 }
 
 export interface SlackCommandPayload {
@@ -180,6 +208,22 @@ interface SlackConnectionCounts {
   docoLabels: string[];
   counts: Record<SlackCountKind, number>;
 }
+
+interface SlackAccessibleDoco {
+  id: string;
+  handle: string;
+  orgId: string;
+  orgHandle: string;
+  qualifiedHandle: string;
+  role: string;
+}
+
+const SLACK_ROLE_RANK: Record<string, number> = {
+  reader: 1,
+  author: 2,
+  approver: 3,
+  owner: 4,
+};
 
 const SLACK_COUNT_SPECS: readonly SlackCountSpec[] = [
   ...DOCO_NEURON_TABLE_SPECS.map((spec) => ({
@@ -526,18 +570,19 @@ export async function buildSlackAppMentionResponse(args: {
       0,
       SLACK_DOCO_ANSWER_LIMIT,
     );
+    const llmAnswer = await (args.answerGenerator ?? generateSlackDocoLlmAnswer)({
+      questionText: answerQuery.questionText,
+      recentMessages: args.recentMessages ?? [],
+      connections,
+      hits,
+      overview: answerQuery.overview,
+      repair: answerQuery.repair,
+    });
+    if (llmAnswer) return llmAnswer;
     if (hits.length > 0) {
-      const llmAnswer = await (args.answerGenerator ?? generateSlackDocoLlmAnswer)({
-        questionText: answerQuery.questionText,
-        recentMessages: args.recentMessages ?? [],
-        connections,
-        hits,
-        overview: answerQuery.overview,
-        repair: answerQuery.repair,
-      });
-      if (llmAnswer) return llmAnswer;
       return formatSlackDocoAnswerResponse(hits, { overview: answerQuery.overview });
     }
+    return "I couldn’t find matching Doco entries in the default Slack permissions.";
   }
 
   return formatSlackDefaultResponse(connections, cleanText);
@@ -704,26 +749,49 @@ export function formatSlackDocoAnswerResponse(
 
 export async function generateSlackDocoLlmAnswer(
   input: SlackLlmAnswerInput,
+  deps: SlackLlmAnswerDeps = {},
 ): Promise<string | null> {
   ensureEnvLoaded();
-  if (missingSenorDocoAnthropicMessage("Señor Doco for Slack")) return null;
+  if (!deps.createMessage && missingSenorDocoAnthropicMessage("Señor Doco for Slack")) {
+    return null;
+  }
+  const createMessage = deps.createMessage ?? createSenorDocoMessage;
+  const runTool = deps.runTool ?? runSlackDocoApiTool;
   try {
-    const message = await createSenorDocoMessage({
-      max_tokens: SLACK_LLM_MAX_TOKENS,
-      temperature: 0.2,
-      system: slackLlmSystemPrompt(),
-      messages: [
-        {
-          role: "user",
-          content: buildSlackLlmUserPrompt(input),
-        },
-      ],
-    });
-    const text = message.content
-      .map((block) => (block.type === "text" ? block.text : ""))
-      .join("\n")
-      .trim();
-    return cleanSlackLlmAnswer(text);
+    const messages: MessageParam[] = [
+      {
+        role: "user",
+        content: buildSlackLlmUserPrompt(input),
+      },
+    ];
+    let lastMessage: Message | null = null;
+    for (let turn = 0; turn < SLACK_LLM_MAX_TOOL_TURNS; turn++) {
+      const message = await createMessage({
+        max_tokens: SLACK_LLM_MAX_TOKENS,
+        temperature: 0.2,
+        system: slackLlmSystemPrompt(),
+        tools: [DOCO_API_TOOL],
+        messages,
+      });
+      lastMessage = message;
+      const assistantContent = message.content.filter(
+        (block) => block.type === "text" || block.type === "tool_use",
+      ) as ContentBlockParam[];
+      messages.push({ role: "assistant", content: assistantContent });
+      if (message.stop_reason !== "tool_use") {
+        return cleanSlackLlmAnswer(slackMessageText(message));
+      }
+      const toolUseBlocks = assistantContent.filter(
+        (block): block is ToolUseBlock => block.type === "tool_use",
+      );
+      if (toolUseBlocks.length === 0) break;
+      const toolResults = await Promise.all(toolUseBlocks.map((block) => runTool(block, input)));
+      messages.push({
+        role: "user",
+        content: toolResults.map((toolResult) => toolResult.result),
+      });
+    }
+    return lastMessage ? cleanSlackLlmAnswer(slackMessageText(lastMessage)) : null;
   } catch (error) {
     console.error(
       "[slack] Doco LLM answer failed:",
@@ -747,8 +815,17 @@ export function buildSlackLlmUserPrompt(input: SlackLlmAnswerInput): string {
     "Doco context excerpts:",
     ...input.hits.map(formatSlackLlmHit),
     "",
+    "Use doco_api when you need exact counts, lists, item detail, or a second look beyond these excerpts. Use API results as the source of truth.",
+    "",
     "Answer the current message. If it is a repair/follow-up, answer the prior unanswered question from the Slack context.",
   ].join("\n");
+}
+
+function slackMessageText(message: Message): string {
+  return message.content
+    .map((block) => (block.type === "text" ? block.text : ""))
+    .join("\n")
+    .trim();
 }
 
 export async function fetchSlackConversationContext(args: {
@@ -780,6 +857,479 @@ export async function fetchSlackConversationContext(args: {
       botId: message.bot_id ?? null,
     }))
     .reverse();
+}
+
+export async function runSlackDocoApiTool(
+  block: ToolUseBlock,
+  input: SlackLlmAnswerInput,
+): Promise<DocoApiToolResult> {
+  return runDocoApiToolRequest({
+    toolUseId: block.id,
+    input: block.input,
+    execute: (request) => executeSlackDocoApiRequest(input.connections, request),
+  });
+}
+
+async function executeSlackDocoApiRequest(
+  connections: SlackChannelConnectionSummary[],
+  request: DocoApiToolRequest,
+): Promise<DocoApiToolEnvelope> {
+  if (request.method !== "GET") {
+    return slackToolEnvelope(403, {
+      error:
+        "Slack doco_api currently supports read-only GET requests. Writes require a linked Doco collaborator identity or an audited Slack service-author flow.",
+    });
+  }
+
+  const url = new URL(request.path, "https://slack.doco.local");
+  if (url.pathname === "/api/v1/docos.json") {
+    const docos = await listSlackAccessibleDocos(connections);
+    return slackToolEnvelope(200, {
+      docos: docos.map((doco) => ({
+        id: doco.id,
+        handle: doco.handle,
+        org_id: doco.orgId,
+        org_handle: doco.orgHandle,
+        qualified_handle: doco.qualifiedHandle,
+        slack_default_role: doco.role,
+      })),
+    });
+  }
+
+  const parsed = parseSlackPerDocoPath(url.pathname);
+  if (!parsed) {
+    return slackToolEnvelope(404, {
+      error:
+        "Unsupported Slack doco_api path. Supported reads: /api/v1/docos.json, /<handle>/status.json, /<handle>/search.json?q=..., /<handle>/api/<type>.json, /<handle>/api/<type>/<id>.json, /<handle>/api/principals.json, /<handle>/api/policies.json, /<handle>/api/settings.json.",
+    });
+  }
+
+  const doco = await resolveSlackAccessibleDoco(connections, parsed.docoHandle);
+  if (!doco) {
+    return slackToolEnvelope(404, {
+      error: `Doco is not available through this Slack workspace default: ${parsed.docoHandle}`,
+    });
+  }
+
+  const [head, ...tail] = parsed.routeSegments;
+  if (head === "status.json" && tail.length === 0) {
+    return slackToolEnvelope(200, await readSlackDocoApiStatus(doco));
+  }
+  if (head === "search.json" && tail.length === 0) {
+    const q = (url.searchParams.get("q") ?? "").trim();
+    return slackToolEnvelope(200, await readSlackDocoApiSearch(doco, q));
+  }
+  if (head !== "api" || tail.length === 0) {
+    return slackToolEnvelope(404, { error: `Unsupported Doco API path: ${url.pathname}` });
+  }
+
+  const [typePart, idPart] = tail;
+  const type = typePart?.replace(/\.json$/i, "") ?? "";
+  const id = idPart?.replace(/\.json$/i, "");
+  if (tail.length === 1 && typePart?.endsWith(".json")) {
+    return slackToolEnvelope(200, await readSlackDocoApiCollection(doco, type));
+  }
+  if (tail.length === 2 && idPart?.endsWith(".json")) {
+    return slackToolEnvelope(200, await readSlackDocoApiDetail(doco, type, id));
+  }
+  return slackToolEnvelope(404, { error: `Unsupported Doco API path: ${url.pathname}` });
+}
+
+async function listSlackAccessibleDocos(
+  connections: SlackChannelConnectionSummary[],
+): Promise<SlackAccessibleDoco[]> {
+  const groups = await Promise.all(connections.map(listSlackConnectionAccessibleDocos));
+  return dedupeSlackAccessibleDocos(groups.flat()).sort((a, b) =>
+    a.qualifiedHandle.localeCompare(b.qualifiedHandle),
+  );
+}
+
+async function listSlackConnectionAccessibleDocos(
+  connection: SlackChannelConnectionSummary,
+): Promise<SlackAccessibleDoco[]> {
+  const where = connection.targetLevel === "org" ? "d.org_id = $1" : "d.id = $1";
+  const result = await withClient((c) =>
+    c.query<{ id: string; handle: string; org_id: string; org_handle: string }>(
+      `SELECT d.id, d.handle, d.org_id, o.handle AS org_handle
+         FROM docos d
+         JOIN organizations o ON o.id = d.org_id
+        WHERE ${where}
+        ORDER BY o.handle ASC, d.handle ASC`,
+      [connection.targetId],
+    ),
+  );
+  return result.rows.map((row) => ({
+    id: row.id,
+    handle: row.handle,
+    orgId: row.org_id,
+    orgHandle: row.org_handle,
+    qualifiedHandle: `${row.org_handle}/${row.handle}`,
+    role: connection.role,
+  }));
+}
+
+function dedupeSlackAccessibleDocos(docos: SlackAccessibleDoco[]): SlackAccessibleDoco[] {
+  const byId = new Map<string, SlackAccessibleDoco>();
+  for (const doco of docos) {
+    const existing = byId.get(doco.id);
+    if (!existing || slackRoleRank(doco.role) > slackRoleRank(existing.role)) {
+      byId.set(doco.id, doco);
+    }
+  }
+  return [...byId.values()];
+}
+
+async function resolveSlackAccessibleDoco(
+  connections: SlackChannelConnectionSummary[],
+  routeHandle: string,
+): Promise<SlackAccessibleDoco | null> {
+  const normalized = routeHandle.trim().toLowerCase();
+  const docos = await listSlackAccessibleDocos(connections);
+  return (
+    docos.find(
+      (doco) =>
+        doco.handle.toLowerCase() === normalized ||
+        doco.qualifiedHandle.toLowerCase() === normalized,
+    ) ?? null
+  );
+}
+
+function parseSlackPerDocoPath(
+  pathname: string,
+): { docoHandle: string; routeSegments: string[] } | null {
+  const segments = pathname.split("/").filter(Boolean).map(decodeURIComponent);
+  if (segments.length < 2) return null;
+  const routeIndex = isSlackDocoRouteStart(segments[1])
+    ? 1
+    : segments.length >= 3 && isSlackDocoRouteStart(segments[2])
+      ? 2
+      : -1;
+  if (routeIndex < 1) return null;
+  return {
+    docoHandle: segments.slice(0, routeIndex).join("/"),
+    routeSegments: segments.slice(routeIndex),
+  };
+}
+
+function isSlackDocoRouteStart(segment: string): boolean {
+  return segment === "status.json" || segment === "search.json" || segment === "api";
+}
+
+async function readSlackDocoApiStatus(doco: SlackAccessibleDoco): Promise<Record<string, unknown>> {
+  const typeMap = [
+    ...DOCO_NEURON_TABLE_SPECS.map((spec) => ({
+      table: spec.table,
+      plural: spec.entityType === "reference" ? "references" : `${spec.table}`,
+      group: "note" as const,
+    })),
+    { table: "guidance_policies", plural: "guidance_policies", group: "policy" as const },
+    {
+      table: "neuron_authoring_policies",
+      plural: "neuron_authoring_policies",
+      group: "policy" as const,
+    },
+  ];
+  const counts: {
+    notes: Record<string, number>;
+    notes_total: number;
+    policies: Record<string, number>;
+    policies_total: number;
+    principals: number;
+  } = { notes: {}, notes_total: 0, policies: {}, policies_total: 0, principals: 0 };
+  let latest: string | null = null;
+  await withClient(async (c) => {
+    for (const spec of typeMap) {
+      const result = await c.query<{ n: string; c: string | null }>(
+        `SELECT COUNT(*)::text AS n, MAX(created_at)::text AS c FROM ${spec.table} WHERE doco_id = $1`,
+        [doco.id],
+      );
+      const n = Number(result.rows[0]?.n ?? 0);
+      if (spec.group === "note") {
+        counts.notes[spec.plural] = n;
+        counts.notes_total += n;
+      } else {
+        counts.policies[spec.plural] = n;
+        counts.policies_total += n;
+      }
+      const ts = result.rows[0]?.c ?? null;
+      if (ts && (latest === null || ts > latest)) latest = ts;
+    }
+    const principals = await c.query<{ n: string }>(
+      "SELECT COUNT(*)::text AS n FROM principals WHERE doco_id = $1",
+      [doco.id],
+    );
+    counts.principals = Number(principals.rows[0]?.n ?? 0);
+  });
+  return {
+    status: "ok",
+    doco_id: doco.id,
+    doco_handle: doco.handle,
+    qualified_handle: doco.qualifiedHandle,
+    slack_default_role: doco.role,
+    last_updated_at: latest,
+    counts,
+  };
+}
+
+async function readSlackDocoApiSearch(
+  doco: SlackAccessibleDoco,
+  q: string,
+): Promise<Record<string, unknown>> {
+  if (!q) {
+    return {
+      query: "",
+      count: 0,
+      hits: [],
+    };
+  }
+  const hits = await readSlackConnectionSearchHits(slackDocoConnection(doco), q);
+  return {
+    query: q,
+    count: hits.length,
+    hits: hits.map((hit) => ({
+      id: hit.entityId,
+      entity_type: hit.neuronType,
+      doco_label: hit.docoLabel,
+      name: hit.summary,
+      summary: hit.body ?? hit.summary,
+      rank: hit.rank,
+    })),
+  };
+}
+
+async function readSlackDocoApiCollection(
+  doco: SlackAccessibleDoco,
+  type: string,
+): Promise<Record<string, unknown>> {
+  if (type === "principals") return readSlackDocoApiPrincipals(doco);
+  if (type === "policies") return readSlackDocoApiPolicies(doco);
+  if (type === "settings") return readSlackDocoApiSettings(doco);
+  const entityType = slackApiEntityType(type);
+  if (!entityType) {
+    return {
+      error: `Unknown or unsupported Slack read endpoint: /api/${type}.json`,
+      supported_types: slackSupportedApiTypes(),
+    };
+  }
+  const rows = await listEntitiesByDoco(entityType, doco.id);
+  return {
+    ok: true,
+    type,
+    doco_id: doco.id,
+    qualified_handle: doco.qualifiedHandle,
+    count: rows.length,
+    items: rows.map(slackEntityRecordToApiItem),
+  };
+}
+
+async function readSlackDocoApiDetail(
+  doco: SlackAccessibleDoco,
+  type: string,
+  id: string | undefined,
+): Promise<Record<string, unknown>> {
+  if (!id) return { error: "Entity id is required." };
+  const entityType = slackApiEntityType(type);
+  if (!entityType && type !== "principals") {
+    return {
+      error: `Unknown or unsupported Slack read endpoint: /api/${type}/${id}.json`,
+      supported_types: slackSupportedApiTypes(),
+    };
+  }
+  const row = await getEntity(entityType ?? "principal", id);
+  if (!row || row.doco_id !== doco.id) {
+    return { error: `Entity not found in ${doco.qualifiedHandle}: ${id}` };
+  }
+  return {
+    ok: true,
+    type,
+    doco_id: doco.id,
+    qualified_handle: doco.qualifiedHandle,
+    item: slackEntityRecordToApiItem(row),
+  };
+}
+
+async function readSlackDocoApiPrincipals(
+  doco: SlackAccessibleDoco,
+): Promise<Record<string, unknown>> {
+  const [docoUsers, neuronRows] = await Promise.all([
+    listDocoUsers(doco.id),
+    listEntitiesByDoco("principal", doco.id),
+  ]);
+  const collaborators = (
+    await Promise.all(
+      docoUsers.map(async (user) => {
+        const collaborator = await getCollaboratorById(user.collaborator_id);
+        return collaborator
+          ? {
+              id: collaborator.id,
+              username: slackCollaboratorDisplayName(collaborator),
+              type: collaborator.kind,
+              role: user.role,
+              github_login: collaborator.github_login,
+              email: collaborator.email,
+            }
+          : null;
+      }),
+    )
+  ).filter((entry) => entry !== null);
+  return {
+    ok: true,
+    doco_id: doco.id,
+    qualified_handle: doco.qualifiedHandle,
+    principals: collaborators,
+    collaborators,
+    principal_neurons: neuronRows.map(slackEntityRecordToApiItem),
+    collaborator_count: collaborators.length,
+    principal_neuron_count: neuronRows.length,
+  };
+}
+
+async function readSlackDocoApiPolicies(
+  doco: SlackAccessibleDoco,
+): Promise<Record<string, unknown>> {
+  const result = await withClient((c) =>
+    Promise.all([
+      c.query<{
+        id: string;
+        policy: string;
+        lifecycle: string | null;
+        body_md: string | null;
+        created_at: string | null;
+        updated_at: string | null;
+      }>(
+        `SELECT id, policy, lifecycle, body_md, created_at::text AS created_at, updated_at::text AS updated_at
+           FROM guidance_policies
+          WHERE doco_id = $1
+          ORDER BY created_at DESC`,
+        [doco.id],
+      ),
+      c.query<{
+        id: string;
+        policy: string;
+        lifecycle: string | null;
+        body_md: string | null;
+        created_at: string | null;
+        updated_at: string | null;
+      }>(
+        `SELECT id, policy, lifecycle, body_md, created_at::text AS created_at, updated_at::text AS updated_at
+           FROM neuron_authoring_policies
+          WHERE doco_id = $1
+          ORDER BY created_at DESC`,
+        [doco.id],
+      ),
+    ]),
+  );
+  const [guidance, neuronAuthoring] = result;
+  const items = [
+    ...guidance.rows.map((row) => ({ ...row, policy_kind: "guidance" as const })),
+    ...neuronAuthoring.rows.map((row) => ({ ...row, policy_kind: "neuron_authoring" as const })),
+  ];
+  return {
+    doco_id: doco.id,
+    doco_handle: doco.handle,
+    qualified_handle: doco.qualifiedHandle,
+    count: items.length,
+    guidance_count: guidance.rows.length,
+    neuron_authoring_count: neuronAuthoring.rows.length,
+    items,
+  };
+}
+
+async function readSlackDocoApiSettings(
+  doco: SlackAccessibleDoco,
+): Promise<Record<string, unknown>> {
+  const result = await withClient((c) =>
+    c.query<{
+      visibility: string | null;
+      goal: string | null;
+      created_at: string | null;
+      updated_at: string | null;
+    }>(
+      `SELECT visibility, data->>'goal' AS goal, created_at::text AS created_at, updated_at::text AS updated_at
+         FROM docos
+        WHERE id = $1`,
+      [doco.id],
+    ),
+  );
+  const row = result.rows[0] ?? {};
+  return {
+    ok: true,
+    id: doco.id,
+    handle: doco.handle,
+    org_id: doco.orgId,
+    org_handle: doco.orgHandle,
+    qualified_handle: doco.qualifiedHandle,
+    visibility: row.visibility ?? null,
+    goal: row.goal ?? null,
+    created_at: row.created_at ?? null,
+    updated_at: row.updated_at ?? null,
+  };
+}
+
+function slackEntityRecordToApiItem(row: EntityRecord): Record<string, unknown> {
+  return {
+    id: row.id,
+    summary: row.summary ?? row.type_named_value ?? row.name ?? null,
+    lifecycle: row.lifecycle ?? null,
+    created_at: row.created_at ?? null,
+    created_by: row.created_by ?? null,
+    updated_at: row.updated_at ?? null,
+    updated_by: row.updated_by ?? null,
+    data: row.data,
+    body_md: row.body_md ?? null,
+  };
+}
+
+function slackApiEntityType(type: string): string | null {
+  const normalized = type.toLowerCase();
+  for (const spec of DOCO_NEURON_TABLE_SPECS) {
+    const plural = spec.entityType === "reference" ? "references" : spec.table;
+    if (normalized === plural) return spec.entityType;
+  }
+  return null;
+}
+
+function slackSupportedApiTypes(): string[] {
+  return [
+    ...DOCO_NEURON_TABLE_SPECS.map((spec) =>
+      spec.entityType === "reference" ? "references" : spec.table,
+    ),
+    "principals",
+    "policies",
+    "settings",
+  ];
+}
+
+function slackDocoConnection(doco: SlackAccessibleDoco): SlackChannelConnectionSummary {
+  return {
+    channelId: "*",
+    channelName: "workspace",
+    targetLevel: "doco",
+    targetId: doco.id,
+    targetLabel: doco.qualifiedHandle,
+    role: doco.role,
+  };
+}
+
+function slackToolEnvelope(status: number, body: unknown): DocoApiToolEnvelope {
+  return {
+    status,
+    ok: status >= 200 && status < 300 && !(body && typeof body === "object" && "error" in body),
+    body,
+  };
+}
+
+function slackRoleRank(role: string): number {
+  return SLACK_ROLE_RANK[role] ?? 0;
+}
+
+function slackCollaboratorDisplayName(
+  collaborator: Awaited<ReturnType<typeof getCollaboratorById>>,
+): string {
+  if (!collaborator) return "";
+  const named = collaborator.data.name ?? collaborator.data.display_name;
+  if (typeof named === "string" && named.trim()) return named.trim();
+  return collaborator.github_login ?? collaborator.id;
 }
 
 async function readSlackConnectionCounts(
@@ -1089,15 +1639,17 @@ export function slackLlmSystemPrompt(): string {
       accessDescription:
         "You answer from Slack using the workspace default Doco access and any Slack context explicitly provided to you. Do not imply you have the signed-in website user's browser session.",
       capabilityDescription:
-        "answer questions about Doco using only the provided Doco excerpts, default Slack access, and Slack context.",
+        "answer questions about Doco using doco_api reads authorized by the Slack default access, provided Doco excerpts, and Slack context.",
       inScopePrefix: "the Slack-accessible",
       surfaceLimits: [
-        "Slack cannot use the in-page doco_api tool, navigate the website, inspect the visible graph, or read file attachments from the Doco sidebar.",
-        "Slack cannot create, patch, retire, or invite unless that Slack action is explicitly implemented. For now, answer from the provided excerpts and explain when the website is needed.",
+        "Slack can use doco_api for read-only Doco endpoints authorized by the Slack workspace default. It cannot use the signed-in website user's browser session.",
+        "Slack cannot navigate the website, inspect the visible graph, or read file attachments from the Doco sidebar.",
+        "Slack cannot create, patch, retire, or invite unless that Slack action is explicitly implemented with linked Doco collaborator identity and audit attribution.",
         "Do not claim access beyond the listed default Doco access. People may link personal Doco access later, but you only know the access included in this prompt.",
       ],
     }),
-    "Answer with a concise, natural Slack message using only the provided Doco excerpts and Slack context.",
+    "Available Slack doco_api reads: GET /api/v1/docos.json; GET /<handle>/status.json; GET /<handle>/search.json?q=...; GET /<handle>/api/<type>.json; GET /<handle>/api/<type>/<id>.json; GET /<handle>/api/principals.json; GET /<handle>/api/policies.json; GET /<handle>/api/settings.json. Valid <type>: decisions, intents, actions, logs, rules, evals, references, ideas, states. Keep qualified org/doco labels in prose, but use the route handle from /api/v1/docos.json for API paths.",
+    "Answer with a concise, natural Slack message using doco_api results, provided Doco excerpts, and Slack context.",
     "Do not return the generic setup or access prompt. Do not merely list raw excerpts unless the user asks for a list.",
     "If the user says you did not answer, answer the most recent substantive unanswered user question in the Slack context.",
     "For questions like what the docos explain, synthesize the main themes and cite the doco labels naturally.",

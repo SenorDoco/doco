@@ -48,6 +48,11 @@ import {
   streamSenorDocoMessage,
 } from "./assistant-runtime.server";
 import { canAccessDoco } from "./doco-access.server";
+import {
+  DOCO_API_TOOL,
+  type DocoApiToolResult,
+  runDocoApiToolRequest,
+} from "./doco-api-tool.server";
 import { qualifiedDocoLabel } from "./doco-labels";
 import { ensureEnvLoaded } from "./dotenv.server";
 import { listAllDocos } from "./host.server";
@@ -67,15 +72,6 @@ const MAX_TURNS_PER_REPLY = 100;
 // 8192 matches Sonnet 4.6's default budget and comfortably covers
 // the largest parallel tool batches we issue in one round-trip.
 const MAX_TOKENS = SENOR_DOCO_DEFAULT_MAX_TOKENS;
-// Cap the tool-result body fed back to the model on each Anthropic
-// round trip. Without this cap a single `GET /api/intents.json` on a
-// busy doco can shove tens of KB into the next call's input tokens,
-// then again on every subsequent tool round-trip in the same turn,
-// then again on every future turn that replays the history. The cap
-// keeps individual responses small enough that the per-minute token
-// budget survives a multi-tool turn. The marker tells the model
-// where the cut happened so it knows to fetch by id for detail.
-const MAX_TOOL_RESULT_BYTES = 8 * 1024;
 // Rate-limit retry budget for the Anthropic stream call. Single retry
 // is enough to ride out a brief minute-bucket spike without bouncing
 // to the user; cap the sleep at 30s so a long retry-after doesn't
@@ -1441,31 +1437,7 @@ ${policySections}`;
 // ---------------------------------------------------------------------------
 
 const TOOLS: Tool[] = [
-  {
-    name: "doco_api",
-    description:
-      "Make an HTTP request to the Doco host as the signed-in user. Returns the response body (JSON parsed when possible, otherwise text), plus the HTTP status.",
-    input_schema: {
-      type: "object",
-      properties: {
-        method: {
-          type: "string",
-          enum: ["GET", "POST", "PATCH", "DELETE"],
-          description: "HTTP method.",
-        },
-        path: {
-          type: "string",
-          description:
-            "Relative path starting with /. E.g. '/myhandle/api/decisions.json' or '/api/v1/docos.json'.",
-        },
-        body: {
-          description:
-            "JSON body. Required for POST/PATCH on capture endpoints; omit for GET. Pass an object — the tool stringifies it. Principal references must use principal-id fields such as wanted_by_principal_id, actors_principal_ids, actor_principal_id, decided_by_principal_id, authored_by_principal_id, and created_by_principal_id; do not send principal names.",
-        },
-      },
-      required: ["method", "path"],
-    },
-  },
+  DOCO_API_TOOL,
   {
     name: "navigate",
     description:
@@ -1614,68 +1586,7 @@ function usageSnapshot(usage: Usage | null | undefined): Record<string, number> 
   return Object.keys(out).length > 0 ? out : null;
 }
 
-/**
- * Cap a tool-result JSON envelope so it doesn't pump the next
- * Anthropic call's input-token count. Smart-truncation for list-
- * shaped responses (`body.items` array) trims items first while
- * keeping the metadata intact; everything else falls back to raw
- * string truncation. Either way the model receives a clear marker
- * telling it where the cut happened so it knows to fetch by id for
- * detail rather than retry the same list call.
- */
-function truncateToolResultEnvelope(
-  envelope: { status: number; ok: boolean; body: unknown },
-  maxBytes: number,
-): string {
-  const full = JSON.stringify(envelope);
-  if (full.length <= maxBytes) return full;
-
-  // Smart trim: list endpoints return `{ ok, type, doco_id, count,
-  // items: [...] }`. Drop items until the serialized envelope fits,
-  // leaving the rest of the metadata + a `truncated` marker.
-  const body = envelope.body as { items?: unknown[]; count?: number } | null;
-  if (body && Array.isArray(body.items)) {
-    const original = body.items.length;
-    let kept = original;
-    // Halving search until it fits. Cheap because items are small JSON.
-    while (kept > 0) {
-      const trimmed = {
-        ...envelope,
-        body: {
-          ...body,
-          items: body.items.slice(0, kept),
-          truncated: {
-            kept_items: kept,
-            total_items: original,
-            note: "Output capped — fetch /api/<type>/<id>.json for any item's detail.",
-          },
-        },
-      };
-      const s = JSON.stringify(trimmed);
-      if (s.length <= maxBytes) return s;
-      kept = Math.floor(kept / 2);
-    }
-  }
-
-  // Raw fallback: keep the leading slice of the JSON-stringified
-  // envelope and tack on a marker. Not parseable as JSON but the
-  // model can still read the prefix and act on what it sees.
-  const marker = `…[truncated ${full.length - maxBytes} bytes; fetch a specific id for detail]`;
-  return `${full.slice(0, maxBytes)}${marker}`;
-}
-
-function truncateToolPreview(value: unknown, maxChars: number): string {
-  const full = typeof value === "string" ? value : (JSON.stringify(value) ?? String(value));
-  if (full.length <= maxChars) return full;
-  return `${full.slice(0, maxChars)}...`;
-}
-
-interface ToolResult {
-  result: ToolResultBlockParam;
-  navigateUrl?: string;
-  preview: string;
-  ok: boolean;
-}
+type ToolResult = DocoApiToolResult & { navigateUrl?: string };
 
 async function runTool(block: ToolUseBlock, ctx: ChatStreamContext): Promise<ToolResult> {
   if (block.name === "navigate") {
@@ -1706,20 +1617,7 @@ async function runTool(block: ToolUseBlock, ctx: ChatStreamContext): Promise<Too
   }
   if (block.name === "doco_api") {
     const input = block.input as { method?: unknown; path?: unknown; body?: unknown };
-    const method = typeof input?.method === "string" ? input.method.toUpperCase() : "GET";
     const path = typeof input?.path === "string" ? input.path : "";
-    if (!path.startsWith("/")) {
-      return {
-        result: {
-          type: "tool_result",
-          tool_use_id: block.id,
-          content: `error: path must start with "/" (got: ${JSON.stringify(path)})`,
-          is_error: true,
-        },
-        preview: `${method} ${path} — refused (path must start with /)`,
-        ok: false,
-      };
-    }
     // Auto-attach: when the agent hits a per-Doco URL, remember that
     // Doco against the active conversation by stable id so the sidebar
     // can render a clickable chip that survives handle renames.
@@ -1738,73 +1636,53 @@ async function runTool(block: ToolUseBlock, ctx: ChatStreamContext): Promise<Too
         void attachDocoToConversation(ctx.conversationId, handle);
       }
     }
-    const url = new URL(path, ctx.origin).toString();
-    try {
-      // Try the in-process router first. Calls the SAME loader/action
-      // module HTTP would reach — no logic duplication — but skips the
-      // socket / parse round-trip. Returns null when no registered route
-      // matches; we then fall back to a real fetch so unmapped routes
-      // (HTML pages, dynamic plugins, etc.) keep working.
-      let res = await internalFetch({
-        method,
-        path,
-        origin: ctx.origin,
-        cookieHeader: ctx.cookieHeader,
-        body: input?.body,
-        userAgent: "Doco-In-Page-Assistant/1",
-      });
-      if (!res) {
-        const init: RequestInit = {
+    return runDocoApiToolRequest({
+      toolUseId: block.id,
+      input: block.input,
+      execute: async ({ method, path, body }) => {
+        const url = new URL(path, ctx.origin).toString();
+        // Try the in-process router first. Calls the SAME loader/action
+        // module HTTP would reach — no logic duplication — but skips the
+        // socket / parse round-trip. Returns null when no registered route
+        // matches; we then fall back to a real fetch so unmapped routes
+        // (HTML pages, dynamic plugins, etc.) keep working.
+        let res = await internalFetch({
           method,
-          headers: {
-            "Content-Type": "application/json",
-            Accept: "application/json",
-            Cookie: ctx.cookieHeader,
-            "User-Agent": "Doco-In-Page-Assistant/1",
-          },
-        };
-        if (method !== "GET" && method !== "DELETE" && input?.body !== undefined) {
-          init.body = typeof input.body === "string" ? input.body : JSON.stringify(input.body);
+          path,
+          origin: ctx.origin,
+          cookieHeader: ctx.cookieHeader,
+          body,
+          userAgent: "Doco-In-Page-Assistant/1",
+        });
+        if (!res) {
+          const init: RequestInit = {
+            method,
+            headers: {
+              "Content-Type": "application/json",
+              Accept: "application/json",
+              Cookie: ctx.cookieHeader,
+              "User-Agent": "Doco-In-Page-Assistant/1",
+            },
+          };
+          if (method !== "GET" && method !== "DELETE" && body !== undefined) {
+            init.body = typeof body === "string" ? body : JSON.stringify(body);
+          }
+          res = await fetch(url, init);
         }
-        res = await fetch(url, init);
-      }
-      const text = await res.text();
-      let parsed: unknown = text;
-      try {
-        parsed = JSON.parse(text);
-      } catch {
-        // not JSON — pass through as text
-      }
-      const ok = res.ok;
-      const body = {
-        status: res.status,
-        ok,
-        body: parsed,
-      };
-      const previewBody = truncateToolPreview(parsed, 100);
-      return {
-        result: {
-          type: "tool_result",
-          tool_use_id: block.id,
-          content: truncateToolResultEnvelope(body, MAX_TOOL_RESULT_BYTES),
-          is_error: !ok,
-        },
-        preview: `${method} ${path} → ${res.status} ${previewBody}`,
-        ok,
-      };
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      return {
-        result: {
-          type: "tool_result",
-          tool_use_id: block.id,
-          content: `fetch failed: ${msg}`,
-          is_error: true,
-        },
-        preview: `${method} ${path} — fetch failed: ${msg}`,
-        ok: false,
-      };
-    }
+        const text = await res.text();
+        let parsed: unknown = text;
+        try {
+          parsed = JSON.parse(text);
+        } catch {
+          // not JSON — pass through as text
+        }
+        return {
+          status: res.status,
+          ok: res.ok,
+          body: parsed,
+        };
+      },
+    });
   }
   return {
     result: {
