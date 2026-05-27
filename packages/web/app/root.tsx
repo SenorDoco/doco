@@ -12,6 +12,7 @@ import {
 
 import { AccessDeniedView, isAccessDeniedData } from "~/components/access-denied-view";
 import { AgentSidebar } from "~/components/agent-sidebar";
+import { FeedbackReporter } from "~/components/feedback-reporter";
 import { SiteHeader, SiteHeaderSuppressionProvider } from "~/components/site-header";
 import { type CurrentPrincipal, getCurrentPrincipal } from "~/lib/session.server";
 import "./app.css";
@@ -94,6 +95,7 @@ export default function App() {
             <Outlet />
           </SiteHeaderSuppressionProvider>
         </main>
+        <FeedbackReporter />
       </div>
     </div>
   );

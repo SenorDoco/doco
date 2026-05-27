@@ -93,6 +93,11 @@ function NavButtons({ me, onNavigate }: { me: CurrentPrincipal; onNavigate?: () 
       <NavLink to="/api-keys" className={linkClass} onClick={onNavigate}>
         API keys
       </NavLink>
+      {me.username === "torrenegra" ? (
+        <NavLink to="/mentor/feedback" className={linkClass} onClick={onNavigate}>
+          Feedback
+        </NavLink>
+      ) : null}
       <NavLink
         to={`/users/${me.username}`}
         className="neu-button whitespace-nowrap rounded-full border border-border px-3 py-1.5 font-semibold text-foreground hover:text-primary"
