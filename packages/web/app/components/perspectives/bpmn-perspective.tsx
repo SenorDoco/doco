@@ -137,7 +137,6 @@ const NODE_GAP_Y = 40; // padding above/below stacked rows inside the lane
 const BPMN_RENDER_NODE_BUDGET = 700;
 const BPMN_RENDER_EDGE_BUDGET = 1200;
 const BPMN_RENDER_OVERSCAN_PX = 700;
-const BPMN_BOUNDS_NODE_ID = "__bpmn-layout-bounds__";
 
 /**
  * Per-node box sizing — the label's character count drives how big
@@ -318,7 +317,6 @@ export function BpmnPerspective({
     () => filteredNodes.filter((node) => renderedNodeIds.has(node.id)),
     [filteredNodes, renderedNodeIds],
   );
-  const layoutBoundsNode = useMemo(() => bpmnLayoutBounds(layout.flowNodes), [layout.flowNodes]);
   const openPoolNeuron = useCallback(
     (pool: BpmnPool) => {
       if (!pool.intent_id) return;
@@ -412,34 +410,9 @@ export function BpmnPerspective({
         if (!referenceNumber || !nodeById.has(node.id)) return node;
         return { ...node, data: { ...node.data, referenceNumber } };
       });
-    if (!layoutBoundsNode) return windowed;
-    return [
-      {
-        id: BPMN_BOUNDS_NODE_ID,
-        type: "default",
-        position: { x: layoutBoundsNode.x, y: layoutBoundsNode.y },
-        data: { label: null },
-        draggable: false,
-        selectable: false,
-        connectable: false,
-        initialWidth: layoutBoundsNode.width,
-        initialHeight: layoutBoundsNode.height,
-        style: {
-          width: layoutBoundsNode.width,
-          height: layoutBoundsNode.height,
-          opacity: 0,
-          pointerEvents: "none" as const,
-          background: "transparent",
-          border: "none",
-          padding: 0,
-          zIndex: -1,
-        },
-      },
-      ...windowed,
-    ];
+    return windowed;
   }, [
     layout.flowNodes,
-    layoutBoundsNode,
     renderedNodes,
     renderedNodeIds,
     renderWindow.overscanRect,
@@ -770,35 +743,6 @@ function flowNodeRect(
       typeof node.style?.height === "number"
         ? node.style.height
         : (node.initialHeight ?? NODE_HEIGHT),
-  };
-}
-
-function bpmnLayoutBounds(flowNodes: readonly FlowNode[]): {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-} | null {
-  if (flowNodes.length === 0) return null;
-  let minX = Number.POSITIVE_INFINITY;
-  let minY = Number.POSITIVE_INFINITY;
-  let maxX = Number.NEGATIVE_INFINITY;
-  let maxY = Number.NEGATIVE_INFINITY;
-  for (const node of flowNodes) {
-    if (node.parentId) continue;
-    const rect = flowNodeRect(node);
-    minX = Math.min(minX, rect.x);
-    minY = Math.min(minY, rect.y);
-    maxX = Math.max(maxX, rect.x + rect.width);
-    maxY = Math.max(maxY, rect.y + rect.height);
-  }
-  if (!Number.isFinite(minX + minY + maxX + maxY)) return null;
-  const pad = 120;
-  return {
-    x: minX - pad,
-    y: minY - pad,
-    width: Math.max(1, maxX - minX + pad * 2),
-    height: Math.max(1, maxY - minY + pad * 2),
   };
 }
 

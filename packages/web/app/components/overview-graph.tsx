@@ -136,7 +136,6 @@ const GRAPH_FIT_VIEW_OPTIONS = { padding: 0.12, maxZoom: 1.2 };
 const OVERVIEW_RENDER_NODE_BUDGET = 600;
 const OVERVIEW_RENDER_EDGE_BUDGET = 1200;
 const OVERVIEW_RENDER_OVERSCAN_PX = 700;
-const OVERVIEW_BOUNDS_NODE_ID = "__overview-layout-bounds__";
 
 function lifecycleLabel(lifecycle: string): string {
   return lifecycle.replaceAll("_", " ");
@@ -312,32 +311,6 @@ function lifecycleWindowRank(lifecycle: string | null): number {
     default:
       return 4;
   }
-}
-
-function layoutBounds(positions: Map<string, Point>): {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-} | null {
-  if (positions.size === 0) return null;
-  let minX = Number.POSITIVE_INFINITY;
-  let minY = Number.POSITIVE_INFINITY;
-  let maxX = Number.NEGATIVE_INFINITY;
-  let maxY = Number.NEGATIVE_INFINITY;
-  for (const position of positions.values()) {
-    minX = Math.min(minX, position.x);
-    minY = Math.min(minY, position.y);
-    maxX = Math.max(maxX, position.x + OVERVIEW_NODE_WIDTH);
-    maxY = Math.max(maxY, position.y + OVERVIEW_NODE_HEIGHT);
-  }
-  const pad = Math.max(OVERVIEW_NODE_WIDTH, OVERVIEW_NODE_HEIGHT);
-  return {
-    x: minX - pad,
-    y: minY - pad,
-    width: Math.max(1, maxX - minX + pad * 2),
-    height: Math.max(1, maxY - minY + pad * 2),
-  };
 }
 
 // MiniMap node component — mirrors the rounded-rectangle nodes drawn on
@@ -648,7 +621,6 @@ export function OverviewGraph({
       });
     return candidates.slice(0, OVERVIEW_RENDER_EDGE_BUDGET).map((entry) => entry.link);
   }, [visibleLinks, renderedNodeIds, depthByNodeId, centerId]);
-  const boundsNode = useMemo(() => layoutBounds(positions), [positions]);
 
   // Dynamic import — React Flow touches the DOM during module init.
   const [Flow, setFlow] = useState<null | typeof import("@xyflow/react")>(null);
@@ -740,71 +712,48 @@ export function OverviewGraph({
     return () => window.clearTimeout(timeout);
   }, [detailUrl, detailIds]);
 
-  const flowNodes = useMemo(() => {
-    const rendered = renderedNodes.map((node) => {
-      const position = positions.get(node.id) ?? { x: 0, y: 0 };
-      const opacity = focalActive ? opacityForDepth(depthByNodeId.get(node.id)) : 1;
-      return {
-        id: node.id,
-        type: "overviewNode",
-        position,
-        initialWidth: OVERVIEW_NODE_WIDTH,
-        initialHeight: OVERVIEW_NODE_HEIGHT,
-        data: {
-          node,
-          detail: details.get(node.id),
-          showDetail: viewport.zoom >= DETAIL_ZOOM,
-          referenceNumber: referenceNumberByNodeId.get(node.id),
-          isNew: newNodeIds.has(node.id),
-          opacity,
-        } satisfies OverviewNodeData,
-        draggable: false,
-        selectable: false,
-        connectable: false,
-        style: {
-          width: OVERVIEW_NODE_WIDTH,
-          height: OVERVIEW_NODE_HEIGHT,
-          padding: 0,
-          background: "transparent",
-          border: "none",
-        },
-      };
-    });
-    if (!boundsNode) return rendered;
-    return [
-      {
-        id: OVERVIEW_BOUNDS_NODE_ID,
-        position: { x: boundsNode.x, y: boundsNode.y },
-        initialWidth: boundsNode.width,
-        initialHeight: boundsNode.height,
-        data: { label: null },
-        draggable: false,
-        selectable: false,
-        connectable: false,
-        focusable: false,
-        style: {
-          width: boundsNode.width,
-          height: boundsNode.height,
-          opacity: 0,
-          pointerEvents: "none" as const,
-          background: "transparent",
-          border: "none",
-          padding: 0,
-        },
-      },
-      ...rendered,
-    ];
-  }, [
-    renderedNodes,
-    positions,
-    details,
-    viewport.zoom,
-    referenceNumberByNodeId,
-    newNodeIds,
-    depthByNodeId,
-    focalActive,
-    boundsNode,
-  ]);
+  const flowNodes = useMemo(
+    () =>
+      renderedNodes.map((node) => {
+        const position = positions.get(node.id) ?? { x: 0, y: 0 };
+        const opacity = focalActive ? opacityForDepth(depthByNodeId.get(node.id)) : 1;
+        return {
+          id: node.id,
+          type: "overviewNode",
+          position,
+          initialWidth: OVERVIEW_NODE_WIDTH,
+          initialHeight: OVERVIEW_NODE_HEIGHT,
+          data: {
+            node,
+            detail: details.get(node.id),
+            showDetail: viewport.zoom >= DETAIL_ZOOM,
+            referenceNumber: referenceNumberByNodeId.get(node.id),
+            isNew: newNodeIds.has(node.id),
+            opacity,
+          } satisfies OverviewNodeData,
+          draggable: false,
+          selectable: false,
+          connectable: false,
+          style: {
+            width: OVERVIEW_NODE_WIDTH,
+            height: OVERVIEW_NODE_HEIGHT,
+            padding: 0,
+            background: "transparent",
+            border: "none",
+          },
+        };
+      }),
+    [
+      renderedNodes,
+      positions,
+      details,
+      viewport.zoom,
+      referenceNumberByNodeId,
+      newNodeIds,
+      depthByNodeId,
+      focalActive,
+    ],
+  );
 
   const flowEdges = useMemo(
     () =>
