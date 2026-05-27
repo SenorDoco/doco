@@ -1,5 +1,5 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
-import { DOCO_NEURON_TABLE_SPECS, withClient } from "@doco/db";
+import { ALL_ENTITY_TABLES, DOCO_NEURON_TABLE_SPECS, withClient } from "@doco/db";
 import { generateUlid } from "@doco/shared";
 import { ensureEnvLoaded } from "./dotenv.server";
 
@@ -16,8 +16,10 @@ export const SLACK_BOT_SCOPES = [
 const SLACK_AUTHORIZE_URL = "https://slack.com/oauth/v2/authorize";
 const SLACK_OAUTH_ACCESS_URL = "https://slack.com/api/oauth.v2.access";
 const SLACK_CHAT_POST_MESSAGE_URL = "https://slack.com/api/chat.postMessage";
+const SLACK_CONVERSATIONS_HISTORY_URL = "https://slack.com/api/conversations.history";
 const STATE_TTL_MS = 15 * 60 * 1000;
 const SIGNATURE_TOLERANCE_SECONDS = 5 * 60;
+const SLACK_DOCO_ANSWER_LIMIT = 5;
 
 export interface SlackConfig {
   appId: string | null;
@@ -49,6 +51,27 @@ export interface SlackChannelConnectionSummary {
   role: string;
 }
 
+export interface SlackRecentMessage {
+  text: string;
+  ts: string | null;
+  userId: string | null;
+  botId: string | null;
+}
+
+export interface SlackDocoAnswerHit {
+  entityId: string;
+  docoLabel: string;
+  neuronType: string;
+  summary: string | null;
+  body: string | null;
+  rank: number;
+}
+
+export interface SlackDocoAnswerQuery {
+  text: string;
+  overview: boolean;
+}
+
 export interface SlackCommandPayload {
   team_id: string;
   team_domain?: string;
@@ -77,6 +100,19 @@ interface SlackApiResponse {
   ok?: boolean;
   error?: string;
   warning?: string;
+}
+
+interface SlackConversationHistoryResponse extends SlackApiResponse {
+  messages?: SlackConversationHistoryMessage[];
+}
+
+interface SlackConversationHistoryMessage {
+  type?: string;
+  user?: string;
+  bot_id?: string;
+  text?: string;
+  ts?: string;
+  subtype?: string;
 }
 
 interface SlackInstallationInput {
@@ -432,6 +468,7 @@ export async function buildSlackAppMentionResponse(args: {
   workspaceId: string;
   channelId: string;
   messageText: string;
+  recentMessages?: SlackRecentMessage[];
 }): Promise<string> {
   const connections = await listSlackChannelConnections({
     workspaceId: args.workspaceId,
@@ -446,6 +483,10 @@ export async function buildSlackAppMentionResponse(args: {
     return formatSlackAccessResponse(connections);
   }
 
+  if (isSlackGreeting(cleanText)) {
+    return formatSlackDefaultResponse(connections, cleanText);
+  }
+
   const wantsInventory = detectSlackInventoryQuestion(cleanText);
   const countKind = detectSlackCountKind(cleanText);
   if (wantsInventory || countKind) {
@@ -454,6 +495,16 @@ export async function buildSlackAppMentionResponse(args: {
     );
     if (wantsInventory) return formatSlackInventoryResponse(counts);
     if (countKind) return formatSlackCountResponse(counts, countKind);
+  }
+
+  const answerQuery = buildSlackDocoAnswerQuery(cleanText, args.recentMessages);
+  if (answerQuery) {
+    const hits = answerQuery.overview
+      ? await readSlackDocoOverviewHits(connections)
+      : await readSlackDocoSearchHits(connections, answerQuery.text);
+    if (hits.length > 0) {
+      return formatSlackDocoAnswerResponse(hits, { overview: answerQuery.overview });
+    }
   }
 
   return formatSlackDefaultResponse(connections, cleanText);
@@ -518,6 +569,45 @@ function isSlackGreeting(text: string): boolean {
   return /^(hi|hello|hey|hola|buenas|yo|sup)[\s!.,?]*$/i.test(text);
 }
 
+export function buildSlackDocoAnswerQuery(
+  cleanText: string,
+  recentMessages: SlackRecentMessage[] = [],
+): SlackDocoAnswerQuery | null {
+  const text = cleanText.trim();
+  if (!text || isSlackGreeting(text)) return null;
+  const recentContext = formatRecentSlackContext(recentMessages);
+  const overview = detectSlackDocoOverviewQuestion(text, recentMessages);
+  const searchParts = overview
+    ? [
+        text,
+        recentContext,
+        "Doco intent decision rule action log reference state explains documents purpose architecture",
+      ]
+    : [text, recentContext];
+  const query = searchParts.filter(Boolean).join(" ").trim();
+  return query ? { text: query, overview } : null;
+}
+
+export function detectSlackDocoOverviewQuestion(
+  text: string,
+  recentMessages: SlackRecentMessage[] = [],
+): boolean {
+  const lower = text.toLowerCase();
+  if (
+    /\bwhat\s+(do|does)\s+(we\s+)?document\b/.test(lower) ||
+    /\bwhat\s+(does|do)\s+(doco|docos?|it|they)\s+(explain|document|contain|cover)\b/.test(lower) ||
+    /\bwhat\s+do\s+they\s+explain\b/.test(lower) ||
+    /\bwhat\s+does\s+that\s+explain\b/.test(lower) ||
+    /\bsummarize\s+(it|that|those|the\s+docos?)\b/.test(lower)
+  ) {
+    return true;
+  }
+  if (!/\b(they|those|that|it)\b/.test(lower)) return false;
+  return recentMessages.some((message) =>
+    /\b(doco|docos|neurons?|decisions?|rules?|actions?|logs?|references?)\b/i.test(message.text),
+  );
+}
+
 export function formatSlackAccessResponse(connections: SlackChannelConnectionSummary[]): string {
   const defaultTargets = formatSlackConnectionRoleList(connections);
   const defaultScope = slackDefaultScopeLabel(connections);
@@ -539,6 +629,57 @@ export function formatSlackDefaultResponse(
   }
 
   return `I’m here. By default, I can answer questions accessing ${defaultTargets}. Try “what docos do we have?” for a quick check.`;
+}
+
+export function formatSlackDocoAnswerResponse(
+  hits: SlackDocoAnswerHit[],
+  options: { overview?: boolean } = {},
+): string {
+  const uniqueHits = uniqueSlackDocoAnswerHits(hits).slice(0, SLACK_DOCO_ANSWER_LIMIT);
+  if (uniqueHits.length === 0) {
+    return "I couldn’t find matching Doco entries in the default Slack permissions.";
+  }
+  const intro = options.overview
+    ? "Here’s what the accessible Docos explain:"
+    : "Here’s what I found in the accessible Docos:";
+  return [
+    intro,
+    ...uniqueHits.map(
+      (hit) =>
+        `• ${capitalize(hit.neuronType)} in ${hit.docoLabel}: ${formatSlackDocoHitText(hit)}`,
+    ),
+  ].join("\n");
+}
+
+export async function fetchSlackConversationContext(args: {
+  workspaceId: string;
+  channelId: string;
+  latestTs?: string | null;
+  limit?: number;
+}): Promise<SlackRecentMessage[]> {
+  const token = await getSlackBotToken(args.workspaceId);
+  if (!token) return [];
+  const url = new URL(SLACK_CONVERSATIONS_HISTORY_URL);
+  url.searchParams.set("channel", args.channelId);
+  url.searchParams.set("limit", String(args.limit ?? 8));
+  if (args.latestTs) {
+    url.searchParams.set("latest", args.latestTs);
+    url.searchParams.set("inclusive", "false");
+  }
+  const response = await fetch(url, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const body = (await response.json().catch(() => null)) as SlackConversationHistoryResponse | null;
+  if (!response.ok || body?.ok === false) return [];
+  return (body?.messages ?? [])
+    .filter((message) => typeof message.text === "string" && message.text.trim().length > 0)
+    .map((message) => ({
+      text: cleanSlackMentionText(message.text ?? ""),
+      ts: message.ts ?? null,
+      userId: message.user ?? null,
+      botId: message.bot_id ?? null,
+    }))
+    .reverse();
 }
 
 async function readSlackConnectionCounts(
@@ -686,6 +827,202 @@ function formatCountList(entries: { label: string; value: number }[]): string {
 function formatCount(value: number, singular: string): string {
   const label = value === 1 ? singular : singular === "Doco" ? "Docos" : `${singular}s`;
   return `${value.toLocaleString()} ${label}`;
+}
+
+async function readSlackDocoSearchHits(
+  connections: SlackChannelConnectionSummary[],
+  queryText: string,
+): Promise<SlackDocoAnswerHit[]> {
+  const groups = await Promise.all(
+    connections.map((connection) => readSlackConnectionSearchHits(connection, queryText)),
+  );
+  return sortSlackDocoAnswerHits(groups.flat()).slice(0, SLACK_DOCO_ANSWER_LIMIT);
+}
+
+async function readSlackConnectionSearchHits(
+  connection: SlackChannelConnectionSummary,
+  queryText: string,
+): Promise<SlackDocoAnswerHit[]> {
+  const where = connection.targetLevel === "org" ? "d.org_id = $1" : "d.id = $1";
+  const result = await withClient((c) =>
+    c.query<{
+      entity_id: string;
+      doco_label: string;
+      neuron_type: string;
+      summary: string | null;
+      body: string | null;
+      rank: string | number;
+    }>(
+      `WITH scoped_docos AS (
+         SELECT d.id, COALESCE(o.handle, '') || '/' || d.handle AS doco_label
+           FROM docos d
+           LEFT JOIN organizations o ON o.id = d.org_id
+          WHERE ${where}
+       ),
+       query AS (
+         SELECT websearch_to_tsquery('english', $2) AS q
+       )
+       SELECT f.entity_id,
+              sd.doco_label,
+              f.neuron_type,
+              f.summary,
+              f.body,
+              ts_rank_cd(f.search_tsv, query.q) AS rank
+         FROM entity_fts_neurons f
+         JOIN scoped_docos sd ON sd.id = f.doco_id
+         CROSS JOIN query
+        WHERE f.search_tsv @@ query.q
+        ORDER BY rank DESC, f.entity_id
+        LIMIT $3`,
+      [connection.targetId, queryText, SLACK_DOCO_ANSWER_LIMIT],
+    ),
+  );
+  return result.rows.map((row) => ({
+    entityId: row.entity_id,
+    docoLabel: row.doco_label,
+    neuronType: row.neuron_type,
+    summary: row.summary,
+    body: row.body,
+    rank: Number(row.rank ?? 0),
+  }));
+}
+
+async function readSlackDocoOverviewHits(
+  connections: SlackChannelConnectionSummary[],
+): Promise<SlackDocoAnswerHit[]> {
+  const groups = await Promise.all(
+    connections.map((connection) => readSlackConnectionOverviewHits(connection)),
+  );
+  return sortSlackDocoAnswerHits(groups.flat()).slice(0, SLACK_DOCO_ANSWER_LIMIT);
+}
+
+async function readSlackConnectionOverviewHits(
+  connection: SlackChannelConnectionSummary,
+): Promise<SlackDocoAnswerHit[]> {
+  const where = connection.targetLevel === "org" ? "d.org_id = $1" : "d.id = $1";
+  const result = await withClient((c) =>
+    c.query<{
+      entity_id: string;
+      doco_label: string;
+      neuron_type: string;
+      summary: string | null;
+      body: string | null;
+      priority: string | number;
+      created_at: string | null;
+    }>(
+      `WITH scoped_docos AS (
+         SELECT d.id, COALESCE(o.handle, '') || '/' || d.handle AS doco_label
+           FROM docos d
+           LEFT JOIN organizations o ON o.id = d.org_id
+          WHERE ${where}
+       ),
+       all_neurons AS (
+         ${slackOverviewUnionSql()}
+       )
+       SELECT n.entity_id,
+              sd.doco_label,
+              n.neuron_type,
+              n.summary,
+              n.body,
+              CASE n.neuron_type
+                WHEN 'intent' THEN 5
+                WHEN 'decision' THEN 4
+                WHEN 'rule' THEN 3
+                WHEN 'state' THEN 2
+                ELSE 1
+              END AS priority,
+              n.created_at::text AS created_at
+         FROM all_neurons n
+         JOIN scoped_docos sd ON sd.id = n.doco_id
+        WHERE NULLIF(trim(COALESCE(n.summary, '')), '') IS NOT NULL
+        ORDER BY priority DESC, n.created_at DESC NULLS LAST, n.entity_id
+        LIMIT $2`,
+      [connection.targetId, SLACK_DOCO_ANSWER_LIMIT],
+    ),
+  );
+  return result.rows.map((row) => ({
+    entityId: row.entity_id,
+    docoLabel: row.doco_label,
+    neuronType: row.neuron_type,
+    summary: row.summary,
+    body: row.body,
+    rank: Number(row.priority ?? 0),
+  }));
+}
+
+function slackOverviewUnionSql(): string {
+  return DOCO_NEURON_TABLE_SPECS.map((spec) => {
+    const tnCol = ALL_ENTITY_TABLES[spec.entityType]?.typeNamedColumn ?? "summary";
+    return `SELECT id AS entity_id,
+                   doco_id,
+                   ${sqlString(spec.entityType)} AS neuron_type,
+                   split_part(${tnCol}, E'\\n', 1) AS summary,
+                   ${tnCol} AS body,
+                   created_at
+              FROM ${spec.table}`;
+  }).join("\nUNION ALL\n");
+}
+
+function formatRecentSlackContext(recentMessages: SlackRecentMessage[]): string {
+  const cleaned = recentMessages
+    .map((message) => cleanSlackMentionText(message.text))
+    .filter((text) => text && !isSlackGreeting(text))
+    .slice(-4);
+  return cleaned.join(" ");
+}
+
+function sortSlackDocoAnswerHits(hits: SlackDocoAnswerHit[]): SlackDocoAnswerHit[] {
+  return uniqueSlackDocoAnswerHits(hits).sort((a, b) => {
+    const byRank = b.rank - a.rank;
+    if (byRank !== 0) return byRank;
+    return a.entityId.localeCompare(b.entityId);
+  });
+}
+
+function uniqueSlackDocoAnswerHits(hits: SlackDocoAnswerHit[]): SlackDocoAnswerHit[] {
+  const seen = new Set<string>();
+  const unique: SlackDocoAnswerHit[] = [];
+  for (const hit of hits) {
+    if (seen.has(hit.entityId)) continue;
+    seen.add(hit.entityId);
+    unique.push(hit);
+  }
+  return unique;
+}
+
+function formatSlackDocoHitText(hit: SlackDocoAnswerHit): string {
+  const text = cleanSlackAnswerText(hit.summary || firstParagraph(hit.body) || "No summary yet.");
+  return truncateSlackAnswerText(text, 220);
+}
+
+function firstParagraph(text: string | null): string {
+  return (
+    (text ?? "")
+      .split(/\n\s*\n/)
+      .map((part) => part.trim())
+      .find(Boolean) ?? ""
+  );
+}
+
+function cleanSlackAnswerText(text: string): string {
+  return text
+    .replace(/`{1,3}/g, "")
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function truncateSlackAnswerText(text: string, maxLength: number): string {
+  if (text.length <= maxLength) return text;
+  return `${text.slice(0, maxLength - 1).trimEnd()}…`;
+}
+
+function capitalize(text: string): string {
+  return text ? `${text[0]?.toUpperCase()}${text.slice(1)}` : text;
+}
+
+function sqlString(value: string): string {
+  return `'${value.replace(/'/g, "''")}'`;
 }
 
 export async function getSlackBotToken(workspaceId: string): Promise<string | null> {

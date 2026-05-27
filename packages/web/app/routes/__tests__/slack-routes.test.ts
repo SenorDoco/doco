@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   parseSlackCommandPayload: vi.fn(),
   buildSlackConnectCommandResponse: vi.fn(),
   buildSlackAppMentionResponse: vi.fn(),
+  fetchSlackConversationContext: vi.fn(),
   postSlackMessage: vi.fn(),
 }));
 
@@ -28,12 +29,17 @@ vi.mock("~/lib/slack.server", () => ({
   parseSlackCommandPayload: mocks.parseSlackCommandPayload,
   buildSlackConnectCommandResponse: mocks.buildSlackConnectCommandResponse,
   buildSlackAppMentionResponse: mocks.buildSlackAppMentionResponse,
+  fetchSlackConversationContext: mocks.fetchSlackConversationContext,
   postSlackMessage: mocks.postSlackMessage,
 }));
 
 import { loader as callbackLoader } from "../integrations.slack.callback";
 import { action as commandsAction } from "../integrations.slack.commands";
-import { action as eventsAction, shouldReplyToSlackEvent } from "../integrations.slack.events";
+import {
+  action as eventsAction,
+  shouldFetchSlackConversationContext,
+  shouldReplyToSlackEvent,
+} from "../integrations.slack.events";
 import { loader as installLoader } from "../integrations.slack.install";
 
 describe("Slack integration routes", () => {
@@ -41,6 +47,7 @@ describe("Slack integration routes", () => {
     vi.clearAllMocks();
     mocks.getSlackConfig.mockReturnValue({ signingSecret: "secret", configured: true });
     mocks.verifySlackRequest.mockResolvedValue(true);
+    mocks.fetchSlackConversationContext.mockResolvedValue([]);
   });
 
   it("redirects a signed-in user to Slack OAuth installation", async () => {
@@ -136,8 +143,10 @@ describe("Slack integration routes", () => {
           event: {
             type: "app_mention",
             channel: "C123",
+            channel_type: "channel",
             user: "U123",
             text: "How many neurons do we have, <@U999>?",
+            ts: "1700000000.000100",
           },
         }),
       }),
@@ -148,7 +157,9 @@ describe("Slack integration routes", () => {
       workspaceId: "T123",
       channelId: "C123",
       messageText: "How many neurons do we have, <@U999>?",
+      recentMessages: [],
     });
+    expect(mocks.fetchSlackConversationContext).not.toHaveBeenCalled();
     expect(mocks.postSlackMessage).toHaveBeenCalledWith({
       workspaceId: "T123",
       channelId: "C123",
@@ -158,8 +169,16 @@ describe("Slack integration routes", () => {
 
   it("posts a direct-message answer from Slack message.im events", async () => {
     mocks.buildSlackAppMentionResponse.mockResolvedValue(
-      "I’m here. By default, I can answer questions accessing all doco's docos.",
+      "Here’s what the accessible Docos explain:\n• Decision in doco/bpms: Slack works.",
     );
+    mocks.fetchSlackConversationContext.mockResolvedValue([
+      {
+        text: "What do we have in Doco?",
+        ts: "1700000000.000100",
+        userId: "U123",
+        botId: null,
+      },
+    ]);
 
     const response = await eventsAction({
       request: new Request("https://doco.test/integrations/slack/events", {
@@ -172,22 +191,36 @@ describe("Slack integration routes", () => {
             channel_type: "im",
             channel: "D123",
             user: "U123",
-            text: "What do we document?",
+            text: "And what do they explain?",
+            ts: "1700000001.000100",
           },
         }),
       }),
     });
 
     expect(response.status).toBe(200);
+    expect(mocks.fetchSlackConversationContext).toHaveBeenCalledWith({
+      workspaceId: "T123",
+      channelId: "D123",
+      latestTs: "1700000001.000100",
+    });
     expect(mocks.buildSlackAppMentionResponse).toHaveBeenCalledWith({
       workspaceId: "T123",
       channelId: "D123",
-      messageText: "What do we document?",
+      messageText: "And what do they explain?",
+      recentMessages: [
+        {
+          text: "What do we have in Doco?",
+          ts: "1700000000.000100",
+          userId: "U123",
+          botId: null,
+        },
+      ],
     });
     expect(mocks.postSlackMessage).toHaveBeenCalledWith({
       workspaceId: "T123",
       channelId: "D123",
-      text: "I’m here. By default, I can answer questions accessing all doco's docos.",
+      text: "Here’s what the accessible Docos explain:\n• Decision in doco/bpms: Slack works.",
     });
   });
 
@@ -216,6 +249,7 @@ describe("Slack integration routes", () => {
       workspaceId: "T123",
       channelId: "D123",
       messageText: "Hi",
+      recentMessages: [],
     });
     expect(mocks.postSlackMessage).toHaveBeenCalledWith({
       workspaceId: "T123",
@@ -252,5 +286,15 @@ describe("Slack integration routes", () => {
     expect(shouldReplyToSlackEvent({ type: "message", channel_type: "im" })).toBe(true);
     expect(shouldReplyToSlackEvent({ type: "message", channel_type: "app_home" })).toBe(true);
     expect(shouldReplyToSlackEvent({ type: "message", channel_type: "channel" })).toBe(false);
+  });
+
+  it("fetches recent Slack context only where the installed scopes support it", () => {
+    expect(shouldFetchSlackConversationContext({ type: "message", channel_type: "im" })).toBe(true);
+    expect(shouldFetchSlackConversationContext({ type: "message", channel_type: "app_home" })).toBe(
+      true,
+    );
+    expect(
+      shouldFetchSlackConversationContext({ type: "app_mention", channel_type: "channel" }),
+    ).toBe(false);
   });
 });
