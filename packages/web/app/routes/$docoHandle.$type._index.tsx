@@ -1,5 +1,5 @@
 import { ALL_ENTITY_TABLES, DOCO_NEURON_TABLE_SPECS, withClient } from "@doco/db";
-import { entityUrl, isEntityType } from "@doco/shared";
+import { entityUrl, normalizeNeuronType } from "@doco/shared";
 // Per-Doco entity list at the short URL `/<doco-handle>/<type>`.
 //
 // Note: this route IS the catch-all for any unknown `<type>` segment
@@ -27,8 +27,8 @@ export async function loader({
   params: { docoId: string; type: string };
   request: Request;
 }) {
-  const { type } = params;
-  if (!KNOWN.has(type)) {
+  const type = normalizeNeuronType(params.type);
+  if (!type || !KNOWN.has(type)) {
     throw new Response("Unknown type", { status: 404 });
   }
   const ctx = await loadDocoRouteForRead(request, params);
@@ -73,7 +73,8 @@ export function meta({
 }: {
   params: { docoHandle?: string; docoId?: string; type: string };
 }) {
-  return [{ title: `${params.type}s · ${params.docoHandle ?? params.docoId ?? ""} · Doco` }];
+  const type = normalizeNeuronType(params.type) ?? params.type;
+  return [{ title: `${capitalize(type)}s · ${params.docoHandle ?? params.docoId ?? ""} · Doco` }];
 }
 
 export default function ListByTypeInDoco({
@@ -137,5 +138,3 @@ function capitalize(s: string): string {
     .map((p, i) => (i === 0 ? p.charAt(0).toUpperCase() + p.slice(1) : p))
     .join(" ");
 }
-
-export { isEntityType };

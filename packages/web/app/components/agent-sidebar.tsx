@@ -6,6 +6,7 @@
 // re-uses React Router's useNavigate() to follow `navigate` tool
 // events from the agent.
 
+import { normalizeNeuronType } from "@doco/shared";
 import {
   type ReactNode,
   useCallback,
@@ -422,19 +423,6 @@ type PendingCreate =
 // When the agent drives focus (vs. an explicit user click), center
 // the graph on the neuron without opening the detail dialog. The
 // route loader reads `?dialog=skip` and leaves `selectedNeuron` null.
-const AGENT_FOCUS_NEURON_TYPES = new Set([
-  "decision",
-  "intent",
-  "action",
-  "log",
-  "rule",
-  "eval",
-  "reference",
-  "state",
-  "idea",
-  "principal",
-]);
-
 function withDialogSkip(target: string): string {
   if (!target.startsWith("/")) return target;
   try {
@@ -451,11 +439,13 @@ function withDialogSkipForNeuronTarget(target: string): string {
   try {
     const url = new URL(target, "https://doco.local");
     const segments = url.pathname.split("/").filter(Boolean);
-    const [, entityType, id] = segments;
-    if (segments.length !== 3 || !id || !AGENT_FOCUS_NEURON_TYPES.has(entityType)) {
+    const [handle, entityType, id] = segments;
+    const canonicalType = normalizeNeuronType(entityType);
+    if (segments.length !== 3 || !handle || !id || !canonicalType) {
       return target;
     }
-    return withDialogSkip(target);
+    url.pathname = `/${handle}/${canonicalType}/${id}`;
+    return withDialogSkip(`${url.pathname}${url.search}${url.hash}`);
   } catch {
     return target;
   }
@@ -1386,8 +1376,8 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
         // Plurals are uniformly the entity-type + "s" across all
         // neuron tables shipped today (decisions, intents, actions,
         // logs, rules, evals, references, ideas, states, principals).
-        const entityType = plural.replace(/s$/, "");
-        if (entityType === "polic") return; // policies isn't a neuron
+        const entityType = normalizeNeuronType(plural);
+        if (!entityType) return;
         target = `/${handle}/${entityType}/${id}`;
       }
       const currentPath = location.pathname;
@@ -1438,8 +1428,8 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
       });
       return;
     }
-    const entityType = plural.replace(/s$/, "");
-    if (entityType === "polic") return;
+    const entityType = normalizeNeuronType(plural);
+    if (!entityType) return;
     pendingCreatesRef.current.set(toolUseId, { kind: "neuron", handle, entityType });
   }, []);
 

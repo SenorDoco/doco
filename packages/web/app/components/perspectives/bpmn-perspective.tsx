@@ -132,7 +132,7 @@ const LANE_CONTENT_LEFT_GUTTER = 32;
 const NODE_WIDTH = 140;
 const NODE_HEIGHT = 60;
 const NODE_GAP_X = 60;
-const NODE_GAP_Y = 20; // padding above/below row inside the lane
+const NODE_GAP_Y = 40; // padding above/below stacked rows inside the lane
 
 /**
  * Per-node box sizing — the label's character count drives how big
