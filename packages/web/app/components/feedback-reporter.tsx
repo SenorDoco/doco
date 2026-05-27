@@ -91,10 +91,7 @@ export function FeedbackReporter() {
   const fetcher = useFetcher<{ ok?: boolean; error?: string }>();
   const [open, setOpen] = useState(false);
   const [reportType, setReportType] = useState<ReportType>("bug");
-  const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
-  const [expected, setExpected] = useState("");
-  const [actual, setActual] = useState("");
   const [severity, setSeverity] = useState("medium");
   const [state, setState] = useState<SubmitState>("idle");
   const [error, setError] = useState("");
@@ -103,10 +100,7 @@ export function FeedbackReporter() {
     if (fetcher.state !== "idle" || !fetcher.data) return;
     if (fetcher.data.ok) {
       setState("sent");
-      setTitle("");
       setBody("");
-      setExpected("");
-      setActual("");
       return;
     }
     if (fetcher.data.error) {
@@ -122,10 +116,10 @@ export function FeedbackReporter() {
     const clientContext = getClientContext();
     const formData = new FormData();
     formData.set("report_type", reportType);
-    formData.set("title", title);
+    formData.set("title", "");
     formData.set("body", body);
-    formData.set("expected", expected);
-    formData.set("actual", actual);
+    formData.set("expected", "");
+    formData.set("actual", "");
     formData.set("severity", severity);
     formData.set("page_url", window.location.href);
     formData.set("route_path", `${window.location.pathname}${window.location.search}`);
@@ -215,22 +209,11 @@ export function FeedbackReporter() {
                 </div>
 
                 <label className="block text-sm">
-                  <span className="font-semibold">Short title</span>
-                  <input
-                    value={title}
-                    onChange={(e) => setTitle(e.currentTarget.value)}
-                    maxLength={240}
-                    className="mt-1 w-full rounded-md px-3 py-2"
-                    placeholder={isBug ? "Something broke when..." : "It would be useful if..."}
-                  />
-                </label>
-
-                <label className="block text-sm">
                   <span className="font-semibold">{isBug ? "What happened" : "The idea"}</span>
                   <textarea
                     value={body}
                     onChange={(e) => setBody(e.currentTarget.value)}
-                    required={!title.trim()}
+                    required
                     rows={5}
                     className="mt-1 w-full rounded-md px-3 py-2"
                     placeholder={
@@ -240,27 +223,6 @@ export function FeedbackReporter() {
                     }
                   />
                 </label>
-
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <label className="block text-sm">
-                    <span className="font-semibold">{isBug ? "Expected" : "Why it matters"}</span>
-                    <textarea
-                      value={expected}
-                      onChange={(e) => setExpected(e.currentTarget.value)}
-                      rows={3}
-                      className="mt-1 w-full rounded-md px-3 py-2"
-                    />
-                  </label>
-                  <label className="block text-sm">
-                    <span className="font-semibold">{isBug ? "Actual" : "Where it belongs"}</span>
-                    <textarea
-                      value={actual}
-                      onChange={(e) => setActual(e.currentTarget.value)}
-                      rows={3}
-                      className="mt-1 w-full rounded-md px-3 py-2"
-                    />
-                  </label>
-                </div>
 
                 <label className="flex flex-col gap-1 text-sm">
                   <span className="font-semibold">Weight</span>
