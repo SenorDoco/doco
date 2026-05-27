@@ -1,26 +1,22 @@
-// /orgs/:orgHandle — per-Org home. Mirrors the Doco home page
-// structure but at the org level. Main column carries:
+// /orgs/:orgHandle — per-Org home. Mirrors the host Docos/Orgs
+// two-column layout at org scope. Left column carries:
 //   - Header (org handle + ULID, +Agent/Collaborator on desktop)
 //   - Search box (submits to /orgs/:orgHandle/search)
 //   - Docos in this org (with a +Doco button)
 //   - Top contributors across the org's Docos
+// Right column carries:
 //   - Activity heatmap (52w)
 //   - Latest activity feed (20 events, with per-row Doco context)
-//
-// Sidebar (desktop): cross-Doco overview graph + Members card.
 
-import { type DocoRole, getCollaboratorById, getOrgRole, withClient } from "@doco/db";
+import { getOrgRole, withClient } from "@doco/db";
 import { entityUrl } from "@doco/shared";
-import { useCallback, useEffect, useState } from "react";
-import { Form, Link, useRevalidator } from "react-router";
+import { Form, Link } from "react-router";
 import { ActivityHeatmap } from "~/components/activity-heatmap";
 import { Breadcrumb, orgBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
+import { DocoListCard, type DocoListEntry } from "~/components/doco-list-card";
 import { ApiKeysLink, CollaboratorsLink } from "~/components/invite-collaborators-link";
-import { OverviewGraph } from "~/components/overview-graph";
-import { PerspectiveFrame } from "~/components/perspective-frame";
 import { SiteHeader } from "~/components/site-header";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "~/components/table";
 import {
   activityRowLifecycle,
   auditSummaryFallback,
@@ -32,7 +28,6 @@ import {
 } from "~/lib/activity-feed";
 import { cn } from "~/lib/cn";
 import { listDocoStats } from "~/lib/doco-stats.server";
-import { loadOrgOverviewGraph } from "~/lib/full-graph.server";
 import { lifecycleColor } from "~/lib/neuron-colors";
 import { resolveOrgByHandle } from "~/lib/org-helpers.server";
 import { getCurrentPrincipal } from "~/lib/session.server";
@@ -45,18 +40,8 @@ const TOP_CONTRIBUTORS_LIMIT = 10;
 interface OrgDoco {
   docoId: string;
   handle: string;
-  visibility: "private" | "public";
   neurons: number;
-  synapses: number;
-  activeNeurons: number;
   lastUpdatedAt: string | null;
-}
-
-interface MemberRow {
-  collaboratorId: string;
-  username: string;
-  role: DocoRole;
-  joinedAt: string;
 }
 
 interface TopContributor {
@@ -80,21 +65,6 @@ interface FeedItem {
   after: Record<string, unknown> | null;
 }
 
-// Note tables only — policies are not neurons
-// and do not count toward "active neurons" per Doco. They are exposed
-// via /<handle>/policies and /<handle>/api/policies.json.
-const NEURON_TABLES_WITH_LIFECYCLE = [
-  "intents",
-  "ideas",
-  "rules",
-  "decisions",
-  "actions",
-  "logs",
-  "evals",
-  "reference_entities",
-  "states",
-] as const;
-
 export async function loader({
   request,
   params,
@@ -113,44 +83,22 @@ export async function loader({
   return withClient(async (c) => {
     // Docos owned by this org.
     const docoRows = (
-      await c.query<{ id: string; handle: string; visibility: string }>(
-        "SELECT id, handle, visibility FROM docos WHERE org_id = $1 ORDER BY handle",
+      await c.query<{ id: string; handle: string }>(
+        "SELECT id, handle FROM docos WHERE org_id = $1 ORDER BY handle",
         [org.id],
       )
     ).rows;
     const docoIds = docoRows.map((r) => String(r.id));
     const statsByDocoId = await listDocoStats(docoIds);
 
-    // Active-node counts per doco, for the "active/total" display.
-    const activeByDocoId = new Map<string, number>();
-    if (docoIds.length > 0) {
-      for (const t of NEURON_TABLES_WITH_LIFECYCLE) {
-        const r = await c.query<{ doco_id: string; n: string }>(
-          `SELECT doco_id, COUNT(*)::text AS n FROM ${t}
-            WHERE doco_id = ANY($1::text[]) AND COALESCE(lifecycle, 'active') = 'active'
-            GROUP BY doco_id`,
-          [docoIds],
-        );
-        for (const row of r.rows) {
-          activeByDocoId.set(
-            String(row.doco_id),
-            (activeByDocoId.get(String(row.doco_id)) ?? 0) + Number(row.n),
-          );
-        }
-      }
-    }
-
     const docos: OrgDoco[] = docoRows
       .map((r): OrgDoco => {
         const id = String(r.id);
-        const stats = statsByDocoId.get(id) ?? { neurons: 0, synapses: 0, lastUpdatedAt: null };
+        const stats = statsByDocoId.get(id) ?? { neurons: 0, lastUpdatedAt: null };
         return {
           docoId: id,
           handle: String(r.handle),
-          visibility: r.visibility === "public" ? "public" : "private",
           neurons: stats.neurons,
-          synapses: stats.synapses,
-          activeNeurons: activeByDocoId.get(id) ?? 0,
           lastUpdatedAt: stats.lastUpdatedAt,
         };
       })
@@ -161,32 +109,6 @@ export async function loader({
         if (b.lastUpdatedAt) return 1;
         return a.handle.localeCompare(b.handle);
       });
-
-    // Members.
-    const memberRows = (
-      await c.query<{
-        collaborator_id: string;
-        collaborator_name: string;
-        role: string;
-        joined_at: Date | string;
-      }>(
-        `SELECT m.collaborator_id,
-                COALESCE(c.github_login, c.email, c.id) AS collaborator_name,
-                m.role,
-                m.joined_at
-           FROM org_users m
-           JOIN collaborators c ON c.id = m.collaborator_id
-          WHERE m.org_id = $1
-          ORDER BY m.joined_at`,
-        [org.id],
-      )
-    ).rows;
-    const members: MemberRow[] = memberRows.map((r) => ({
-      collaboratorId: String(r.collaborator_id),
-      username: String(r.collaborator_name),
-      role: (r.role as DocoRole) ?? "reader",
-      joinedAt: r.joined_at instanceof Date ? r.joined_at.toISOString() : String(r.joined_at),
-    }));
 
     const byDay: Record<string, number> = {};
     let topContributors: TopContributor[] = [];
@@ -305,27 +227,14 @@ export async function loader({
       });
     }
 
-    const docoHandleById = new Map(docos.map((d) => [d.docoId, d.handle]));
-    const graph = await loadOrgOverviewGraph(c, docoIds, docoHandleById, {
-      fallbackCenterId: org.id,
-    });
-
-    const meRow = me ? await getCollaboratorById(me.id) : null;
-    const prefs = (meRow?.data?.preferences ?? {}) as Record<string, unknown>;
-    const graphAutoReorder = prefs.graph_auto_reorder !== false;
-
     return {
       org,
       me,
-      myRole,
       canInviteCollaborators,
       docos,
-      members,
       byDay,
       topContributors,
       items,
-      graph,
-      graphAutoReorder,
     };
   });
 }
@@ -339,91 +248,47 @@ export default function OrgHome({
 }: {
   loaderData: Awaited<ReturnType<typeof loader>>;
 }) {
-  const {
-    org,
-    me,
-    canInviteCollaborators,
-    docos,
-    members,
-    byDay,
-    topContributors,
-    items,
-    graph,
-    graphAutoReorder: initialAutoReorder,
-  } = loaderData;
-  const [autoReorder, setAutoReorder] = useState<boolean>(initialAutoReorder);
-  const [centerId, setCenterId] = useState<string>(graph.centerId);
-  const handleAutoReorderChange = useCallback((next: boolean) => {
-    setAutoReorder(next);
-    void fetch("/api/v1/me/preferences.json", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ preferences: { graph_auto_reorder: next } }),
-    }).catch(() => undefined);
-  }, []);
-
-  const revalidator = useRevalidator();
-  useEffect(() => {
-    let tick: ReturnType<typeof setInterval> | null = null;
-    const start = () => {
-      if (tick !== null) return;
-      tick = setInterval(() => {
-        if (document.visibilityState === "visible" && revalidator.state === "idle") {
-          revalidator.revalidate();
-        }
-      }, 5000);
-    };
-    const stop = () => {
-      if (tick !== null) {
-        clearInterval(tick);
-        tick = null;
-      }
-    };
-    start();
-    const onVisibility = () => {
-      if (document.visibilityState === "visible") start();
-      else stop();
-    };
-    document.addEventListener("visibilitychange", onVisibility);
-    return () => {
-      stop();
-      document.removeEventListener("visibilitychange", onVisibility);
-    };
-  }, [revalidator]);
+  const { org, me, canInviteCollaborators, docos, byDay, topContributors, items } = loaderData;
+  const docoItems: DocoListEntry[] = docos.map((d) => ({
+    id: d.docoId,
+    href: `/${d.handle}`,
+    handle: d.handle,
+    ownerHandle: org.handle,
+    nodeCount: d.neurons,
+    lastUpdatedAt: d.lastUpdatedAt,
+  }));
 
   return (
     <div>
       <SiteHeader mode="host" me={me} />
-      <main className="px-6 py-6">
-        <div className="grid gap-6 md:grid-cols-[minmax(0,1fr)_320px]">
-          <section className="min-w-0 space-y-5">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div className="space-y-1">
-                <Breadcrumb items={orgBreadcrumb({ orgSlug: org.handle })} />
-                <h1 className="text-lg font-semibold tracking-tight">{org.handle}</h1>
-                <p className="font-mono text-sm text-muted-foreground">{org.id}</p>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                {canInviteCollaborators ? (
-                  <CollaboratorsLink level="org" targetId={org.id} />
-                ) : null}
-                {canInviteCollaborators ? <ApiKeysLink /> : null}
-                {canInviteCollaborators ? (
-                  <Link
-                    to={`/orgs/${org.handle}/settings`}
-                    className="neu-button shrink-0 rounded-md px-3 py-1.5 text-xs font-semibold"
-                  >
-                    Settings
-                  </Link>
-                ) : null}
-              </div>
-            </div>
+      <main className="mx-auto max-w-6xl space-y-6 px-6 py-6">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="space-y-1">
+            <Breadcrumb items={orgBreadcrumb({ orgSlug: org.handle })} />
+            <h1 className="text-2xl font-semibold">{org.handle}</h1>
+            <p className="font-mono text-xs text-muted-foreground">{org.id}</p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {canInviteCollaborators ? <CollaboratorsLink level="org" targetId={org.id} /> : null}
+            {canInviteCollaborators ? <ApiKeysLink /> : null}
+            {canInviteCollaborators ? (
+              <Link
+                to={`/orgs/${org.handle}/settings`}
+                className="neu-button shrink-0 rounded-md px-3 py-1.5 text-xs font-semibold"
+              >
+                Settings
+              </Link>
+            ) : null}
+          </div>
+        </div>
 
+        <div className="grid grid-cols-1 gap-6 min-[840px]:grid-cols-[minmax(0,1fr)_320px]">
+          <section className="min-w-0 space-y-4">
             <Form method="get" action={`/orgs/${org.handle}/search`} className="flex gap-2">
               <input
                 name="q"
                 type="search"
-                placeholder={`Search across ${docos.length} doco${docos.length === 1 ? "" : "s"}…`}
+                placeholder={`Search across ${docos.length} doco${docos.length === 1 ? "" : "s"}...`}
                 className="w-full rounded-md px-4 py-2.5 text-sm text-foreground outline-none focus:border-primary"
               />
               <button
@@ -434,53 +299,23 @@ export default function OrgHome({
               </button>
             </Form>
 
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between gap-3 px-4 py-3">
-                <CardTitle className="text-sm">Docos in this org</CardTitle>
+            <DocoListCard
+              title="Docos in this org"
+              headerAction={
                 <Link
                   to={`/new-doco?org_id=${encodeURIComponent(org.id)}`}
-                  className="neu-button bg-primary text-primary-foreground hover:opacity-90 rounded-md px-3 py-1 text-xs font-semibold"
+                  className="neu-button rounded-md bg-primary px-3 py-1 text-xs font-semibold text-primary-foreground hover:opacity-90"
                 >
                   + Doco
                 </Link>
-              </CardHeader>
-              <CardContent className="p-0">
-                {docos.length === 0 ? (
-                  <p className="px-5 pb-5 text-xs italic text-muted-foreground">
-                    This org doesn't own any Docos yet.
-                  </p>
-                ) : (
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>handle</TableHead>
-                        <TableHead className="text-right">active/neurons</TableHead>
-                        <TableHead className="text-right">synapses</TableHead>
-                        <TableHead className="text-right">last updated</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {docos.map((d) => (
-                        <TableRow key={d.docoId}>
-                          <TableCell>
-                            <Link to={`/${d.handle}`} className="text-primary hover:underline">
-                              {d.handle}
-                            </Link>
-                          </TableCell>
-                          <TableCell className="text-right font-mono">
-                            {d.activeNeurons}/{d.neurons}
-                          </TableCell>
-                          <TableCell className="text-right font-mono">{d.synapses}</TableCell>
-                          <TableCell className="text-right text-muted-foreground">
-                            {timeAgo(d.lastUpdatedAt)}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                )}
-              </CardContent>
-            </Card>
+              }
+              docos={docoItems}
+              empty={
+                <p className="text-xs italic text-muted-foreground">
+                  This org doesn't own any Docos yet.
+                </p>
+              }
+            />
 
             <Card>
               <CardHeader className="px-4 py-3">
@@ -518,7 +353,9 @@ export default function OrgHome({
                 )}
               </CardContent>
             </Card>
+          </section>
 
+          <aside className="space-y-4">
             <Card>
               <CardHeader className="px-4 py-3">
                 <CardTitle className="text-sm">Activity</CardTitle>
@@ -543,58 +380,6 @@ export default function OrgHome({
                       <OrgFeedLine key={it.event_id} event={it} />
                     ))}
                   </div>
-                )}
-              </CardContent>
-            </Card>
-          </section>
-
-          <aside className="min-w-0 space-y-5">
-            <div className="space-y-2">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <h2 className="text-sm font-semibold tracking-tight">Org graph</h2>
-                <span className="font-mono text-xs text-muted-foreground">
-                  {graph.nodes.length} neurons · {graph.links.length} synapses
-                </span>
-              </div>
-              <div className="h-[75vh] min-h-[480px]">
-                <PerspectiveFrame
-                  fillHeight
-                  autoReorder={{ value: autoReorder, onChange: handleAutoReorderChange }}
-                >
-                  <OverviewGraph
-                    centerId={centerId}
-                    nodes={graph.nodes}
-                    links={graph.links}
-                    detailUrl={graph.detailUrl}
-                    fillHeight
-                    autoReorder={autoReorder}
-                    onCenterChange={(id) => setCenterId(id)}
-                  />
-                </PerspectiveFrame>
-              </div>
-            </div>
-
-            <Card>
-              <CardHeader className="px-4 py-3">
-                <CardTitle className="text-sm">Members</CardTitle>
-              </CardHeader>
-              <CardContent className="p-0">
-                {members.length === 0 ? (
-                  <p className="px-5 pb-5 text-xs italic text-muted-foreground">No members yet.</p>
-                ) : (
-                  <ul className="divide-y divide-border">
-                    {members.map((m) => (
-                      <li
-                        key={m.collaboratorId}
-                        className="flex items-center justify-between gap-3 px-5 py-2 text-xs"
-                      >
-                        <span className="truncate font-medium">{m.username}</span>
-                        <span className="font-mono text-[10px] uppercase text-muted-foreground">
-                          {m.role}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
                 )}
               </CardContent>
             </Card>

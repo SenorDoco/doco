@@ -16,23 +16,27 @@ export interface AccessListItem {
 
 export function AccessListCard({
   title,
+  headerAction,
   items,
   empty,
   emptyChildrenLabel = "No docos yet.",
 }: {
   title?: string;
+  headerAction?: ReactNode;
   items: AccessListItem[];
   empty: ReactNode;
   emptyChildrenLabel?: string;
 }) {
+  const hasHeader = Boolean(title || headerAction);
   return (
     <Card>
-      {title ? (
-        <div className="px-4 pb-2 pt-3">
-          <CardTitle className="text-sm">{title}</CardTitle>
+      {hasHeader ? (
+        <div className="flex items-center justify-between gap-3 px-4 pb-2 pt-3">
+          {title ? <CardTitle className="text-sm">{title}</CardTitle> : <span />}
+          {headerAction ? <div className="shrink-0">{headerAction}</div> : null}
         </div>
       ) : null}
-      <div className={cn("px-4 pb-3", title ? "pt-1" : "pt-3")}>
+      <div className={cn("px-4 pb-3", hasHeader ? "pt-1" : "pt-3")}>
         {items.length === 0 ? (
           <div className="text-xs text-muted-foreground">{empty}</div>
         ) : (
