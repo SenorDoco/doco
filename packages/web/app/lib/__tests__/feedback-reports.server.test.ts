@@ -12,7 +12,18 @@ describe("parseFeedbackReportInput", () => {
       severity: "high",
       page_url: "https://doco.test/collaborators",
       route_path: "/collaborators",
-      client_context: { viewport: { width: 1440, height: 900 } },
+      client_context: {
+        viewport: { width: 1440, height: 900 },
+        activity: {
+          recent: [
+            {
+              kind: "click",
+              target: { tag: "button", text: "Generate invite link" },
+              page: { pathname: "/collaborators" },
+            },
+          ],
+        },
+      },
       data: { form_version: 1 },
     });
 
@@ -21,7 +32,18 @@ describe("parseFeedbackReportInput", () => {
       title: "Invite button exploded",
       severity: "high",
       route_path: "/collaborators",
-      client_context: { viewport: { width: 1440, height: 900 } },
+      client_context: {
+        viewport: { width: 1440, height: 900 },
+        activity: {
+          recent: [
+            {
+              kind: "click",
+              target: { tag: "button", text: "Generate invite link" },
+              page: { pathname: "/collaborators" },
+            },
+          ],
+        },
+      },
     });
   });
 

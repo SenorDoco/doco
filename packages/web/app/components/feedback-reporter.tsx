@@ -1,10 +1,132 @@
 import { Bug, Lightbulb, Loader2, Send, X } from "lucide-react";
 import type { FormEvent } from "react";
 import { useEffect, useState } from "react";
-import { useFetcher } from "react-router";
+import { useFetcher, useLocation } from "react-router";
 
 type ReportType = "bug" | "idea";
 type SubmitState = "idle" | "submitting" | "sent" | "error";
+type ActivityTarget = {
+  tag: string;
+  role?: string;
+  label?: string;
+  text?: string;
+  aria_label?: string;
+  name?: string;
+  id?: string;
+  href?: string;
+  type?: string;
+  placeholder?: string;
+};
+type ActivityEntry = {
+  kind: string;
+  at: string;
+  page: {
+    href: string;
+    pathname: string;
+    search: string;
+    hash: string;
+    title: string;
+  };
+  target?: ActivityTarget;
+  pointer?: { x: number; y: number };
+  value_length?: number;
+  checked?: boolean;
+};
+
+const MAX_ACTIVITY_ENTRIES = 40;
+const activityTrail: ActivityEntry[] = [];
+
+function shortText(value: string | null | undefined, max = 160): string | undefined {
+  const trimmed = value?.replace(/\s+/g, " ").trim();
+  return trimmed ? trimmed.slice(0, max) : undefined;
+}
+
+function pageSnapshot() {
+  return {
+    href: window.location.href,
+    pathname: window.location.pathname,
+    search: window.location.search,
+    hash: window.location.hash,
+    title: document.title,
+  };
+}
+
+function elementLabel(element: Element): string | undefined {
+  if (
+    element instanceof HTMLInputElement ||
+    element instanceof HTMLTextAreaElement ||
+    element instanceof HTMLSelectElement
+  ) {
+    const labels = Array.from(element.labels ?? [])
+      .map((label) => shortText(label.textContent, 80))
+      .filter(Boolean);
+    return labels[0] ?? undefined;
+  }
+  return undefined;
+}
+
+function summarizeElement(target: Element | null): ActivityTarget | undefined {
+  const element =
+    target?.closest(
+      "button,a,input,textarea,select,summary,[role='button'],[role='link'],[role='menuitem'],[role='tab']",
+    ) ?? target;
+  if (!element) return undefined;
+
+  const summary: ActivityTarget = { tag: element.tagName.toLowerCase() };
+  const role = shortText(element.getAttribute("role"), 60);
+  const ariaLabel = shortText(element.getAttribute("aria-label"), 120);
+  const name = shortText(element.getAttribute("name"), 80);
+  const id = shortText(element.id, 80);
+  const href = element instanceof HTMLAnchorElement ? shortText(element.href, 500) : undefined;
+  const type =
+    element instanceof HTMLButtonElement || element instanceof HTMLInputElement
+      ? shortText(element.type, 40)
+      : undefined;
+  const placeholder =
+    element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement
+      ? shortText(element.placeholder, 160)
+      : undefined;
+  const label = elementLabel(element);
+  const text =
+    element instanceof HTMLInputElement ||
+    element instanceof HTMLTextAreaElement ||
+    element instanceof HTMLSelectElement
+      ? undefined
+      : shortText(element.textContent, 160);
+
+  if (role) summary.role = role;
+  if (label) summary.label = label;
+  if (text) summary.text = text;
+  if (ariaLabel) summary.aria_label = ariaLabel;
+  if (name) summary.name = name;
+  if (id) summary.id = id;
+  if (href) summary.href = href;
+  if (type) summary.type = type;
+  if (placeholder) summary.placeholder = placeholder;
+  return summary;
+}
+
+function pushActivity(entry: Omit<ActivityEntry, "at" | "page">) {
+  activityTrail.push({
+    at: new Date().toISOString(),
+    page: pageSnapshot(),
+    ...entry,
+  });
+  if (activityTrail.length > MAX_ACTIVITY_ENTRIES) {
+    activityTrail.splice(0, activityTrail.length - MAX_ACTIVITY_ENTRIES);
+  }
+}
+
+function inputValueLength(element: Element | null): number | undefined {
+  if (
+    element instanceof HTMLInputElement ||
+    element instanceof HTMLTextAreaElement ||
+    element instanceof HTMLSelectElement
+  ) {
+    return element.value.length;
+  }
+  return undefined;
+}
 
 function getClientContext(): Record<string, unknown> {
   const nav = navigator as Navigator & {
@@ -19,6 +141,7 @@ function getClientContext(): Record<string, unknown> {
   const perf = performance.getEntriesByType("navigation")[0] as
     | PerformanceNavigationTiming
     | undefined;
+  const scrollHeight = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
   return {
     href: window.location.href,
     origin: window.location.origin,
@@ -28,6 +151,17 @@ function getClientContext(): Record<string, unknown> {
     title: document.title,
     referrer: document.referrer,
     selected_text: window.getSelection()?.toString().slice(0, 2_000) ?? "",
+    scroll: {
+      x: Math.round(window.scrollX),
+      y: Math.round(window.scrollY),
+      max_y: Math.max(0, scrollHeight - window.innerHeight),
+    },
+    focus: summarizeElement(document.activeElement),
+    activity: {
+      current_page: pageSnapshot(),
+      recent: activityTrail.slice(-MAX_ACTIVITY_ENTRIES),
+      last: activityTrail.at(-1) ?? null,
+    },
     viewport: {
       width: window.innerWidth,
       height: window.innerHeight,
@@ -89,6 +223,8 @@ function buttonClass(active: boolean) {
 
 export function FeedbackReporter() {
   const fetcher = useFetcher<{ ok?: boolean; error?: string }>();
+  const location = useLocation();
+  const locationKey = `${location.pathname}${location.search}${location.hash}`;
   const [open, setOpen] = useState(false);
   const [reportType, setReportType] = useState<ReportType>("bug");
   const [body, setBody] = useState("");
@@ -108,6 +244,47 @@ export function FeedbackReporter() {
       setState("error");
     }
   }, [fetcher.data, fetcher.state]);
+
+  useEffect(() => {
+    if (!locationKey) return;
+    pushActivity({ kind: "page_view" });
+  }, [locationKey]);
+
+  useEffect(() => {
+    function onClick(event: MouseEvent) {
+      pushActivity({
+        kind: "click",
+        target: summarizeElement(event.target instanceof Element ? event.target : null),
+        pointer: { x: event.clientX, y: event.clientY },
+      });
+    }
+
+    function onSubmit(event: SubmitEvent) {
+      pushActivity({
+        kind: "form_submit",
+        target: summarizeElement(event.target instanceof Element ? event.target : null),
+      });
+    }
+
+    function onChange(event: Event) {
+      const target = event.target instanceof Element ? event.target : null;
+      pushActivity({
+        kind: "field_change",
+        target: summarizeElement(target),
+        value_length: inputValueLength(target),
+        checked: target instanceof HTMLInputElement ? target.checked : undefined,
+      });
+    }
+
+    document.addEventListener("click", onClick, true);
+    document.addEventListener("submit", onSubmit, true);
+    document.addEventListener("change", onChange, true);
+    return () => {
+      document.removeEventListener("click", onClick, true);
+      document.removeEventListener("submit", onSubmit, true);
+      document.removeEventListener("change", onChange, true);
+    };
+  }, []);
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
