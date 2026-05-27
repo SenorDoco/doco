@@ -58,6 +58,7 @@ describe("/integrations", () => {
         username: "alice",
       },
       notice: null,
+      slackConfirmation: null,
       slackInstallHref: "/integrations/slack/install",
       slackInstallations: [
         {
@@ -79,11 +80,12 @@ describe("/integrations", () => {
     const data = await loader({ request: new Request("https://doco.test/integrations") });
 
     expect(data.slackInstallHref).toBeNull();
+    expect(data.slackConfirmation).toBeNull();
     expect(JSON.stringify(data)).not.toContain("SLACK_CLIENT_SECRET");
     expect(JSON.stringify(data)).not.toContain("DOCO_SLACK_INSTALL_URL");
   });
 
-  it("shows a workspace-default saved notice", async () => {
+  it("shows a workspace-default confirmation", async () => {
     mocks.getCurrentPrincipal.mockResolvedValue({
       id: "collaborator_alice",
       username: "alice",
@@ -93,6 +95,7 @@ describe("/integrations", () => {
       request: new Request("https://doco.test/integrations?slack_connected=Doco"),
     });
 
-    expect(data.notice).toBe("Saved the Slack default permissions for Doco.");
+    expect(data.notice).toBeNull();
+    expect(data.slackConfirmation).toEqual({ workspaceName: "Doco" });
   });
 });
