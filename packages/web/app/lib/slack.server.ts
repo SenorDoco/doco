@@ -32,10 +32,13 @@ import { buildSenorDocoCorePrompt } from "./senor-doco-prompt.server";
 
 export const SLACK_BOT_SCOPES = [
   "app_mentions:read",
+  "channels:history",
   "chat:write",
   "commands",
+  "groups:history",
   "im:history",
   "im:write",
+  "mpim:history",
   "team:read",
   "users:read",
 ] as const;

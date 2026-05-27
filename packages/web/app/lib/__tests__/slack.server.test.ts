@@ -144,8 +144,11 @@ describe("slack.server", () => {
     );
   });
 
-  it("requests the scope Slack requires for direct-message events", () => {
+  it("requests the scopes Slack requires for direct-message and channel context", () => {
+    expect(SLACK_BOT_SCOPES).toContain("channels:history");
+    expect(SLACK_BOT_SCOPES).toContain("groups:history");
     expect(SLACK_BOT_SCOPES).toContain("im:history");
+    expect(SLACK_BOT_SCOPES).toContain("mpim:history");
   });
 
   it("cleans Slack app mentions out of message text", () => {

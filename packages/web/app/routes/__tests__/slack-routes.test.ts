@@ -134,6 +134,14 @@ describe("Slack integration routes", () => {
 
   it("posts an app mention answer instead of repeating default permissions", async () => {
     mocks.buildSlackAppMentionResponse.mockResolvedValue("doco has 42 neurons.");
+    mocks.fetchSlackConversationContext.mockResolvedValue([
+      {
+        text: "User A: how many neurons are in Doco?",
+        ts: "1700000000.000050",
+        userId: "U456",
+        botId: null,
+      },
+    ]);
 
     const response = await eventsAction({
       request: new Request("https://doco.test/integrations/slack/events", {
@@ -159,9 +167,20 @@ describe("Slack integration routes", () => {
       channelId: "C123",
       chatUserId: "U123",
       messageText: "How many neurons do we have, <@U999>?",
-      recentMessages: [],
+      recentMessages: [
+        {
+          text: "User A: how many neurons are in Doco?",
+          ts: "1700000000.000050",
+          userId: "U456",
+          botId: null,
+        },
+      ],
     });
-    expect(mocks.fetchSlackConversationContext).not.toHaveBeenCalled();
+    expect(mocks.fetchSlackConversationContext).toHaveBeenCalledWith({
+      workspaceId: "T123",
+      channelId: "C123",
+      latestTs: "1700000000.000100",
+    });
     expect(mocks.postSlackMessage).toHaveBeenCalledWith({
       workspaceId: "T123",
       channelId: "C123",
@@ -329,6 +348,12 @@ describe("Slack integration routes", () => {
     );
     expect(
       shouldFetchSlackConversationContext({ type: "app_mention", channel_type: "channel" }),
-    ).toBe(false);
+    ).toBe(true);
+    expect(
+      shouldFetchSlackConversationContext({ type: "app_mention", channel_type: "group" }),
+    ).toBe(true);
+    expect(shouldFetchSlackConversationContext({ type: "message", channel_type: "channel" })).toBe(
+      false,
+    );
   });
 });
