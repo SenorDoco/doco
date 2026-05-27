@@ -18,6 +18,7 @@ interface PerspectiveTabsProps {
   availablePerspectives: Perspective[];
   activeSlug: string;
   canAdmin: boolean;
+  proposedCount?: number;
 }
 
 export function PerspectiveTabs({
@@ -26,6 +27,7 @@ export function PerspectiveTabs({
   availablePerspectives,
   activeSlug,
   canAdmin,
+  proposedCount = 0,
 }: PerspectiveTabsProps) {
   return (
     <nav
@@ -46,6 +48,7 @@ export function PerspectiveTabs({
           key={p.id}
           handle={handle}
           perspective={p}
+          proposedCount={proposedCount}
           active={p.slug === activeSlug}
           isFirst={i === 0}
           // Last perspective tab only rounds its top-right when the
@@ -70,12 +73,20 @@ export function PerspectiveTabs({
 interface PerspectiveTabProps {
   handle: string;
   perspective: AttachedPerspective;
+  proposedCount: number;
   active: boolean;
   isFirst: boolean;
   isLast: boolean;
 }
 
-function PerspectiveTab({ handle, perspective, active, isFirst, isLast }: PerspectiveTabProps) {
+function PerspectiveTab({
+  handle,
+  perspective,
+  proposedCount,
+  active,
+  isFirst,
+  isLast,
+}: PerspectiveTabProps) {
   const href = `/${handle}?perspective=${encodeURIComponent(perspective.slug)}`;
   // Real tab-strip styling:
   //   * Tabs sit edge-to-edge. `-ml-px first:ml-0` lets each tab's left
@@ -98,6 +109,8 @@ function PerspectiveTab({ handle, perspective, active, isFirst, isLast }: Perspe
   const title = perspective.ownerHandle
     ? `${perspective.name} — by ${perspective.ownerHandle}`
     : perspective.name;
+  const label =
+    perspective.kind === "approval" ? `${perspective.name} (${proposedCount})` : perspective.name;
 
   return (
     <Link to={href} role="tab" aria-selected={active} className={tabClass} title={title}>
@@ -106,7 +119,7 @@ function PerspectiveTab({ handle, perspective, active, isFirst, isLast }: Perspe
           {perspective.icon}
         </span>
       ) : null}
-      <span>{perspective.name}</span>
+      <span>{label}</span>
     </Link>
   );
 }

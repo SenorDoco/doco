@@ -9,7 +9,11 @@ vi.mock("@doco/db", () => ({
   withClient: mocks.withClient,
 }));
 
-import { listPerspectivesForDoco, resolveActivePerspective } from "../perspectives.server";
+import {
+  ensureDefaultsAttached,
+  listPerspectivesForDoco,
+  resolveActivePerspective,
+} from "../perspectives.server";
 
 describe("perspectives.server", () => {
   beforeEach(() => {
@@ -102,5 +106,21 @@ describe("perspectives.server", () => {
     );
 
     expect(active?.slug).toBe("org-tree");
+  });
+
+  it("attaches graph, list, and approval when a Doco has no perspectives yet", async () => {
+    mocks.query.mockResolvedValueOnce({ rows: [{ n: "0" }] });
+    mocks.query.mockResolvedValue({ rows: [] });
+
+    await ensureDefaultsAttached("doco_acme");
+
+    const inserts = mocks.query.mock.calls
+      .map((call) => String(call[0]))
+      .filter((sql) => /INSERT INTO doco_perspectives/i.test(sql));
+
+    expect(inserts).toHaveLength(3);
+    expect(inserts[0]).toContain("'perspective_graph'");
+    expect(inserts[1]).toContain("'perspective_list'");
+    expect(inserts[2]).toContain("'perspective_approval'");
   });
 });
