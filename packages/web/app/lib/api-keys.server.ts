@@ -1,17 +1,17 @@
 // API keys are OAuth refresh tokens minted on behalf of a signed-in
 // user. Two paths into this table:
 //
-//   1. Agent OAuth flow (existing). An MCP runtime registers a client,
-//      drives /oauth/authorize, the user approves at /device, and a
-//      refresh token gets minted bound to that client + the user.
+//   1. Agent OAuth flow. An MCP runtime registers a client, drives
+//      /oauth/authorize or /device, the user names the agent + approves
+//      scopes, and a refresh token gets minted for that agent collaborator.
 //
 //   2. Personal API keys (new). The user clicks "Generate API key" on
 //      /api-keys, picks a scope, and we register a synthetic OAuth
 //      client + mint tokens directly — no PKCE, no redirect dance.
 //
 // Both shapes land in the same `oauth_refresh_tokens` row format, so
-// this file lists / revokes them uniformly and the UI labels them by
-// the client_name only.
+// this file lists / revokes them uniformly. Agent OAuth rows are shown
+// to the approving owner through collaborators.owner_id.
 //
 // Distinguishing personal from agent: personal-API-key clients carry
 // the OOB redirect URI sentinel (`urn:ietf:wg:oauth:2.0:oob`) — that
@@ -74,6 +74,10 @@ export async function listApiKeysForCollaborator(principalId: string): Promise<A
     c.query<{
       client_id: string;
       client_name: string | null;
+      collaborator_id: string;
+      collaborator_kind: "person" | "agent";
+      collaborator_login: string | null;
+      collaborator_data: Record<string, unknown> | null;
       redirect_uris: string[];
       granted_doco_ids: string[] | null;
       granted_doco_roles: Record<string, string> | null;
@@ -86,6 +90,10 @@ export async function listApiKeysForCollaborator(principalId: string): Promise<A
       `SELECT DISTINCT ON (rt.client_id)
               rt.client_id,
               c.client_name,
+              rt.collaborator_id,
+              subject.kind AS collaborator_kind,
+              subject.github_login AS collaborator_login,
+              subject.data AS collaborator_data,
               c.redirect_uris,
               rt.granted_doco_ids,
               rt.granted_doco_roles,
@@ -99,7 +107,8 @@ export async function listApiKeysForCollaborator(principalId: string): Promise<A
                   AND at.collaborator_id = rt.collaborator_id) AS last_seen_at
          FROM oauth_refresh_tokens rt
          JOIN oauth_clients c ON c.client_id = rt.client_id
-        WHERE rt.collaborator_id = $1
+         JOIN collaborators subject ON subject.id = rt.collaborator_id
+        WHERE (rt.collaborator_id = $1 OR subject.owner_id = $1)
           AND rt.revoked = false
           AND rt.expires_at > now()
         ORDER BY rt.client_id, rt.created_at DESC`,
@@ -155,9 +164,15 @@ export async function listApiKeysForCollaborator(principalId: string): Promise<A
         : String(row.last_seen_at)
       : null;
 
+    const subjectName = collaboratorDisplayName({
+      id: row.collaborator_id,
+      github_login: row.collaborator_login,
+      data: row.collaborator_data,
+    });
+    const clientName = row.client_name ?? row.client_id;
     return {
       client_id: row.client_id,
-      client_name: row.client_name ?? row.client_id,
+      client_name: !isPersonal && row.collaborator_kind === "agent" ? subjectName : clientName,
       source: isPersonal ? "personal" : "agent",
       granted_at: grantedAt,
       last_used_at: lastSeenAt,
@@ -165,6 +180,17 @@ export async function listApiKeysForCollaborator(principalId: string): Promise<A
       scope_grants: grants,
     };
   });
+}
+
+function collaboratorDisplayName(row: {
+  id: string;
+  github_login: string | null;
+  data: Record<string, unknown> | null;
+}): string {
+  const data = row.data && typeof row.data === "object" ? row.data : {};
+  const named = data.name ?? data.display_name;
+  if (typeof named === "string" && named.trim()) return named.trim();
+  return row.github_login ?? row.id;
 }
 
 async function loadDocoLabels(
@@ -364,13 +390,21 @@ export async function revokeApiKey(args: {
     const accessResult = await c.query(
       `UPDATE oauth_access_tokens
           SET revoked = true
-        WHERE client_id = $1 AND collaborator_id = $2 AND revoked = false`,
+         FROM collaborators subject
+        WHERE oauth_access_tokens.collaborator_id = subject.id
+          AND oauth_access_tokens.client_id = $1
+          AND (oauth_access_tokens.collaborator_id = $2 OR subject.owner_id = $2)
+          AND oauth_access_tokens.revoked = false`,
       [args.client_id, args.collaborator_id],
     );
     const refreshResult = await c.query(
       `UPDATE oauth_refresh_tokens
           SET revoked = true
-        WHERE client_id = $1 AND collaborator_id = $2 AND revoked = false`,
+         FROM collaborators subject
+        WHERE oauth_refresh_tokens.collaborator_id = subject.id
+          AND oauth_refresh_tokens.client_id = $1
+          AND (oauth_refresh_tokens.collaborator_id = $2 OR subject.owner_id = $2)
+          AND oauth_refresh_tokens.revoked = false`,
       [args.client_id, args.collaborator_id],
     );
     return (accessResult.rowCount ?? 0) + (refreshResult.rowCount ?? 0) > 0;

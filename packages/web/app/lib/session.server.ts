@@ -43,9 +43,11 @@ export interface CurrentPrincipal {
 function rowToPrincipal(row: CollaboratorRow): CurrentPrincipal {
   const type: "person" | "agent" = row.kind === "agent" ? "agent" : "person";
   const isHuman = row.kind === "person" || Boolean(row.github_login);
+  const named = row.data.name ?? row.data.display_name;
+  const agentName = typeof named === "string" && named.trim() ? named.trim() : null;
   const out: CurrentPrincipal = {
     id: row.id,
-    username: row.github_login ?? row.id,
+    username: agentName ?? row.github_login ?? row.id,
     type,
     isHuman,
   };
