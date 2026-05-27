@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   highestRankedNodeId,
   selectFocusedNodeIds,
+  selectPersonalizedNodeIds,
   summarizeExternalConnections,
 } from "../focused-render-selection";
 
@@ -33,6 +34,29 @@ describe("focused render selection", () => {
 
   it("keeps the requested focus and fills by graph distance then rank", () => {
     expect(Array.from(selectFocusedNodeIds(nodes, links, "a", ranks, 3))).toEqual(["a", "e", "b"]);
+  });
+
+  it("fills the focused window by personalized PageRank from the focus", () => {
+    const personalNodes = [
+      { id: "focus", lifecycle: "active", created_at: "2026-01-01T00:00:00Z" },
+      { id: "near", lifecycle: "active", created_at: "2026-01-02T00:00:00Z" },
+      { id: "far", lifecycle: "active", created_at: "2026-01-03T00:00:00Z" },
+      { id: "global", lifecycle: "active", created_at: "2026-01-04T00:00:00Z" },
+    ];
+    const personalLinks = [
+      { source: "focus", target: "near" },
+      { source: "near", target: "far" },
+    ];
+    const globalRanks = new Map([
+      ["global", 10],
+      ["far", 1],
+      ["near", 0.5],
+      ["focus", 0.1],
+    ]);
+
+    expect(
+      Array.from(selectPersonalizedNodeIds(personalNodes, personalLinks, "focus", globalRanks, 3)),
+    ).toEqual(["focus", "near", "far"]);
   });
 
   it("summarizes links that leave the rendered working set", () => {

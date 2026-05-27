@@ -42,7 +42,7 @@ import type { BpmnLane, BpmnNode, BpmnPool, BpmnShape } from "~/lib/bpmn-perspec
 import { computeForwardSequenceDepths } from "~/lib/bpmn-sequence-depth";
 import {
   highestRankedNodeId,
-  selectFocusedNodeIds,
+  selectPersonalizedNodeIds,
   summarizeExternalConnections,
 } from "~/lib/focused-render-selection";
 import {
@@ -54,6 +54,7 @@ import {
 import type { GraphReferenceItem } from "~/lib/graph-references";
 import { lifecycleColor } from "~/lib/neuron-colors";
 import { usePerspectiveReferences } from "~/lib/perspective-references";
+import { useBufferedRenderedIds } from "~/lib/use-buffered-rendered-ids";
 import "@xyflow/react/dist/style.css";
 
 // MUST stay in sync with the matching exports in
@@ -140,7 +141,7 @@ const NODE_WIDTH = 140;
 const NODE_HEIGHT = 60;
 const NODE_GAP_X = 60;
 const NODE_GAP_Y = 40; // padding above/below stacked rows inside the lane
-const BPMN_RENDER_NODE_BUDGET = 250;
+const BPMN_RENDER_NODE_BUDGET = 20;
 const BPMN_RENDER_EDGE_BUDGET = 700;
 const BPMN_PLACEHOLDER_STUB_BUDGET = 120;
 
@@ -299,40 +300,18 @@ export function BpmnPerspective({
       poolFromIntent ?? (effectiveCenterId ? nodeByFullId.get(effectiveCenterId)?.pool_id : null)
     );
   }, [pools, effectiveCenterId, nodeByFullId]);
-  const renderedNodeIds = useMemo(() => {
-    const selected = new Set<string>();
-    const add = (id: string | null | undefined) => {
-      if (!id || selected.size >= BPMN_RENDER_NODE_BUDGET) return;
-      if (nodeByFullId.has(id)) selected.add(id);
-    };
-    const byRank = [...filteredNodes].sort((a, b) => {
-      const aIsFocus = a.id === effectiveCenterId ? 1 : 0;
-      const bIsFocus = b.id === effectiveCenterId ? 1 : 0;
-      if (aIsFocus !== bIsFocus) return bIsFocus - aIsFocus;
-      const rankDiff = (pageRankMap.get(b.id) ?? 0) - (pageRankMap.get(a.id) ?? 0);
-      if (rankDiff !== 0) return rankDiff;
-      const lifecycleDiff =
-        bpmnWindowLifecycleRank(a.lifecycle) - bpmnWindowLifecycleRank(b.lifecycle);
-      if (lifecycleDiff !== 0) return lifecycleDiff;
-      return a.id.localeCompare(b.id);
-    });
-    if (focusPoolId) {
-      for (const node of byRank) {
-        if (node.pool_id === focusPoolId) add(node.id);
-      }
-    }
-    for (const id of selectFocusedNodeIds(
-      filteredNodes,
-      links,
-      effectiveCenterId,
-      pageRankMap,
-      BPMN_RENDER_NODE_BUDGET,
-    )) {
-      add(id);
-    }
-    for (const node of byRank) add(node.id);
-    return selected;
-  }, [filteredNodes, links, effectiveCenterId, pageRankMap, focusPoolId, nodeByFullId]);
+  const targetRenderedNodeIds = useMemo(
+    () =>
+      selectPersonalizedNodeIds(
+        filteredNodes,
+        links,
+        effectiveCenterId,
+        pageRankMap,
+        BPMN_RENDER_NODE_BUDGET,
+      ),
+    [filteredNodes, links, effectiveCenterId, pageRankMap],
+  );
+  const renderedNodeIds = useBufferedRenderedIds(targetRenderedNodeIds, filteredNodeIds);
   const renderedNodes = useMemo(
     () => filteredNodes.filter((node) => renderedNodeIds.has(node.id)),
     [filteredNodes, renderedNodeIds],
@@ -879,21 +858,6 @@ interface FlowEdge {
   style?: CSSProperties;
   animated?: boolean;
   markerEnd?: { type: MarkerType; width?: number; height?: number; color?: string };
-}
-
-function bpmnWindowLifecycleRank(lifecycle: string | null | undefined): number {
-  switch (lifecycle ?? "active") {
-    case "active":
-      return 0;
-    case "proposed":
-      return 1;
-    case "drafting":
-      return 2;
-    case "retired":
-      return 3;
-    default:
-      return 4;
-  }
 }
 
 interface BpmnLayout {
