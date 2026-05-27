@@ -175,6 +175,7 @@ describe("Slack integration routes", () => {
           botId: null,
         },
       ],
+      origin: "https://doco.test",
     });
     expect(mocks.fetchSlackConversationContext).toHaveBeenCalledWith({
       workspaceId: "T123",
@@ -238,6 +239,7 @@ describe("Slack integration routes", () => {
           botId: null,
         },
       ],
+      origin: "https://doco.test",
     });
     expect(mocks.postSlackMessage).toHaveBeenCalledWith({
       workspaceId: "T123",
@@ -297,6 +299,7 @@ describe("Slack integration routes", () => {
           botId: null,
         },
       ],
+      origin: "https://doco.test",
     });
     expect(mocks.postSlackMessage).toHaveBeenCalledWith({
       workspaceId: "T123",
@@ -362,6 +365,7 @@ describe("Slack integration routes", () => {
       chatUserId: "U123",
       messageText: "Hi",
       recentMessages: [],
+      origin: "https://doco.test",
     });
     expect(mocks.postSlackMessage).toHaveBeenCalledWith({
       workspaceId: "T123",

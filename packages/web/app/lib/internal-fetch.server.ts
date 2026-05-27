@@ -100,6 +100,10 @@ const ROUTES: RouteEntry[] = [
     load: () => import("~/routes/$docoHandle.api.principals[.]json"),
   },
   {
+    pattern: "/:docoHandle/api/principals/:id.json",
+    load: () => import("~/routes/$docoHandle.api.principals.$id[.]json"),
+  },
+  {
     pattern: "/:docoHandle/api/settings.json",
     load: () => import("~/routes/$docoHandle.api.settings[.]json"),
   },
