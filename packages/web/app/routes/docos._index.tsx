@@ -12,10 +12,10 @@
 import { withClient } from "@doco/db";
 import { entityUrl } from "@doco/shared";
 import { Link, redirect } from "react-router";
-import { AccessListCard, type AccessListItem } from "~/components/access-list-card";
 import { ActivityHeatmap } from "~/components/activity-heatmap";
 import { Breadcrumb, hostBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
+import { DocoListCard, type DocoListEntry } from "~/components/doco-list-card";
 import { SiteHeader } from "~/components/site-header";
 import {
   activityRowLifecycle,
@@ -189,12 +189,12 @@ export default function DocosIndexPage({
   loaderData: Awaited<ReturnType<typeof loader>>;
 }) {
   const { me, docos, byDay, feed } = loaderData;
-  const docoItems: AccessListItem[] = docos.map((d) => ({
+  const docoItems: DocoListEntry[] = docos.map((d) => ({
     id: d.docoId,
     href: `/${d.handle}`,
-    label: `${d.ownerHandle} / ${d.handle}`,
-    count: d.neurons,
-    countLabel: `${d.neurons} nodes`,
+    handle: d.handle,
+    ownerHandle: d.ownerHandle,
+    nodeCount: d.neurons,
     lastUpdatedAt: d.lastUpdatedAt,
   }));
   return (
@@ -216,8 +216,8 @@ export default function DocosIndexPage({
 
         <div className="grid grid-cols-1 gap-6 min-[840px]:grid-cols-[minmax(0,1fr)_320px]">
           <section className="space-y-4">
-            <AccessListCard
-              items={docoItems}
+            <DocoListCard
+              docos={docoItems}
               empty={
                 <>
                   You haven't created or joined any docos yet.{" "}
