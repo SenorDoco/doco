@@ -919,7 +919,6 @@ export function OverviewGraph({
             nodesDraggable={false}
             nodesConnectable={false}
             onlyRenderVisibleElements
-            fitView
             fitViewOptions={GRAPH_FIT_VIEW_OPTIONS}
             minZoom={GRAPH_MIN_ZOOM}
             maxZoom={GRAPH_MAX_ZOOM}
@@ -942,11 +941,10 @@ export function OverviewGraph({
             onMove={(_event: unknown, next: FlowViewport) => updateViewport(next)}
             onNodeClick={(_event: unknown, node: { id: string }) => {
               const target = nodeById.get(node.id);
-              // Re-center the canvas on the clicked neuron so the
-              // depth-based fading + (optionally) the depth-aware
-              // layout both recompute from the new focal node. The
-              // dialog still opens via onNeuronClick below — those
-              // two behaviours are independent.
+              // Change focus without asking React Flow to refit the
+              // viewport. Existing node coordinates stay pinned by
+              // positionCacheRef; the render window may add/remove
+              // nodes around the new focus.
               if (target && onCenterChange) onCenterChange(target.id);
               if (target && onNeuronClick) {
                 onNeuronClick(target);
