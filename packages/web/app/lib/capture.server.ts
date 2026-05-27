@@ -936,6 +936,7 @@ export interface DecisionPatch {
   intent_ids?: string[];
   intent_ids_add?: string[];
   intent_ids_remove?: string[];
+  sequence_to?: SequenceToDraft[];
   decided_by_principal_id?: string;
   born_from?: string | null;
   superseded_by?: string | null;
@@ -1067,6 +1068,15 @@ export async function updateDecision(
   if (intentResult.changed) {
     if (!changed.includes("intent_ids")) changed.push("intent_ids");
     ops.push(...intentResult.ops);
+  }
+
+  if (patch.sequence_to !== undefined) {
+    const sequenceTo = normalizeSequenceTo(patch.sequence_to);
+    if (JSON.stringify(fm.sequence_to ?? []) !== JSON.stringify(sequenceTo)) {
+      fm.sequence_to = sequenceTo;
+      changed.push("sequence_to");
+      ops.push({ kind: "set", field: "sequence_to", value: JSON.stringify(sequenceTo) });
+    }
   }
 
   if (patch.decided_by_principal_id !== undefined) {

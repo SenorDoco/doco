@@ -1266,6 +1266,8 @@ Retention: every uploaded file is kept for ${ATTACHMENT_RETENTION_DAYS} days, th
   GET   /<handle>/api/invites.json               — pending collaborator invites
   GET   /<handle>/api/audit.json                 — audit log entries
   GET   /<handle>/api/perspectives.json          — saved BPMN perspectives
+  GET   /<handle>/api/authoring-contract.json    — agent contract: valid entity types, relation kinds, perspective constraints, and changeset examples
+  POST  /<handle>/api/changesets.json            — generic graph-authoring batch: create neurons and add relations in one request; prefer this for BPMN/process/org-tree style structures
   GET   /<handle>/api/settings.json              — doco settings (handle, visibility, goal)
   GET   /<handle>/search.json?q=<query>          — full-text search across this doco's neurons + policies
   GET   /api/v1/docos.json                       — list accessible docos with qualified_handle values like org/doco
@@ -1327,14 +1329,14 @@ label shown in lists; the rest is the body. POSTs that send the old
 required prose key is now \`intent\` / \`decision\` / \`action\` /
 etc., not \`summary\`.
 
-- Decision:  { decision*, question*, chosen*, alternatives?[{name, rejected_because}], intent_ids?[], born_from?, decided_by_principal_id?, lifecycle?, deprecated?, outcome?("succeeded"|"failed"), superseded_by? }
+- Decision:  { decision*, question*, chosen*, alternatives?[{name, rejected_because}], intent_ids?[], sequence_to?[], born_from?, decided_by_principal_id?, lifecycle?, deprecated?, outcome?("succeeded"|"failed"), superseded_by? }
 - Intent:    { intent*, wanted_by_principal_id?, actors_principal_ids?[], stakeholders_principal_ids?[], lifecycle?, deprecated?, outcome? }
-- Action:    { action*, verb*, intent_ids?[], decision_ids?[], preceded_by?[], gated_by?[], inputs?, outputs?, actor_principal_id?, lifecycle?(default "retired"), outcome?(default "succeeded") }
+- Action:    { action*, verb*, intent_ids?[], decision_ids?[], preceded_by?[], sequence_to?[], gated_by?[], inputs?, outputs?, actor_principal_id?, lifecycle?(default "retired"), outcome?(default "succeeded") }
 - Log:       { log*, verb*, happened_at*(ISO8601), outputs*(non-empty obj), template_id?, intent_ids?[], decision_ids?[], preceded_by?[], inputs?, actor_principal_id?, lifecycle?(default "retired"), outcome?(default "succeeded") }
 - Rule:      { rule*, predicate*, intent_ids?[], enforced_by?("runtime"|"review"|"manual"), severity?("hard"|"soft"), born_from?, authored_by_principal_id? }
 - Eval:      { eval*, criterion*({kind:"exact"|"shape"|"llm-judge", spec}), kind?("unit"|"integration"|"eval"|"process"|"doc-consistency"), expected_status?("pass"|"fail"), target_ref?, intent_ids?[], authored_by_principal_id? }
 - Reference: { reference*, ref_type*("file"|"url"|"ticket"|"commit"|"document"|"other"), locator*, content_hash?, intent_ids?[], created_by_principal_id? }
-- State:     { state*, kind*("initial"|"intermediate"|"terminal"), invariants?[], preceded_by?[], created_by_principal_id? }
+- State:     { state*, kind*("initial"|"intermediate"|"terminal"), invariants?[], preceded_by?[], sequence_to?[], created_by_principal_id? }
 - Idea:      { idea*, created_by_principal_id?, promoted_to?, rejection_reason?, lifecycle?(default "drafting") }
 - Policy (Guidance, owner-only): POST /<handle>/api/policies.json with policy_kind*("guidance"), policy*(one-line rule), body_md?, authored_by_principal_id?. (\`policy\` was renamed from \`summary\` by migration 038; old clients sending \`summary\` will fail.)
 - Policy (Neuron-authoring, owner-only): same endpoint with policy_kind*("neuron_authoring"), policy*(one-line rule), evaluation_kind*("deterministic"|"probabilistic"), then either predicate*(deterministic AuthoringPredicate object) or spec*(probabilistic prose), and optional fires_when_neuron_lifecycle?[], on_violation?("block"|"warn"|"log", default "block").
@@ -1373,7 +1375,32 @@ Never paste the URL on a separate line — the footer-line's link covers it, and
 
 ## Adding a synapse
 
-Synapses in Doco are derived from reference fields on neurons (D-017, fields-as-synapses). To add a synapse from A to B with type T, PATCH the source neuron A to add B's id into the appropriate ref field. API input uses principal-id field names where applicable (stakeholders_principal_ids writes stored stakeholders; actor_principal_id writes stored actor_id). Map (mostly): intent_ids → serves · decision_ids → enacts · rules_consulted → consults · born_from → born_from · superseded_by → superseded_by · target_ref → tests · stakeholders → has_stakeholder · parent_intent_id → has_parent · owner_id → owned_by · member → member_of · preceded_by → preceded_by. There is no POST /<handle>/api/synapses.json — patch a neuron's ref field; the indexer materializes the synapse synchronously.
+Synapses in Doco are derived from reference fields on neurons (D-017, fields-as-synapses). For one-off edits, PATCH the owning field on the neuron. For structured work where the relation matters to rendering (BPMN, org charts, dependency maps), prefer POST /<handle>/api/changesets.json so creation and relation happen together and the response returns integrity/frontier feedback.
+
+Changeset example for BPMN-style ordered flow:
+
+  POST /<handle>/api/changesets.json
+  {
+    "validate_against": "bpmn",
+    "operations": [
+      {
+        "op": "append",
+        "relation_kind": "sequence_flow",
+        "after": "decision_01...",
+        "label": "Yes",
+        "entity_type": "action",
+        "alias": "charge_card",
+        "body": {
+          "action": "SuD charges the authorized card",
+          "verb": "charge",
+          "actor_principal_id": "principal_01...",
+          "lifecycle": "drafting"
+        }
+      }
+    ]
+  }
+
+Common relation kinds: sequence_flow → sequence_to (source -> target, edge labels allowed) · preceded_by → preceded_by (stored on later neuron) · serves → intent_ids · enacts → decision_ids · gated_by → gated_by · tests → target_ref · born_from → born_from · superseded_by → superseded_by · reports_to → reports_to. There is no POST /<handle>/api/synapses.json — use changesets or patch reference fields; the indexer materializes the synapse synchronously.
 
 ## Scope — what you handle vs. what you decline
 

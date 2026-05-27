@@ -119,6 +119,14 @@ const ROUTES: RouteEntry[] = [
     pattern: "/:docoHandle/api/policies.json",
     load: () => import("~/routes/$docoHandle.api.policies[.]json"),
   },
+  {
+    pattern: "/:docoHandle/api/authoring-contract.json",
+    load: () => import("~/routes/$docoHandle.api.authoring-contract[.]json"),
+  },
+  {
+    pattern: "/:docoHandle/api/changesets.json",
+    load: () => import("~/routes/$docoHandle.api.changesets[.]json"),
+  },
   // Per-type-id routes — one entry per type because each lives in
   // its own file with its own custom loader/action.
   {
