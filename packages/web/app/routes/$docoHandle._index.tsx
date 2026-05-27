@@ -1,4 +1,4 @@
-import { getCollaboratorById, withClient } from "@doco/db";
+import { withClient } from "@doco/db";
 import { normalizeNeuronType } from "@doco/shared";
 // Per-Doco home — bare title up top, then the search input, neuron overview,
 // activity heatmap, and latest activity feed in a single content column.
@@ -351,13 +351,6 @@ export async function loader({
     ).rows[0];
     const policyCount = Number(policyRow?.n ?? 0);
 
-    // Per-user UI preferences (currently just the graph "Reorder
-    // automatically" toggle). Anonymous viewers get the default-on
-    // experience and any toggle change is dropped on the floor.
-    const meRow = me ? await getCollaboratorById(me.id) : null;
-    const prefs = (meRow?.data?.preferences ?? {}) as Record<string, unknown>;
-    const graphAutoReorder = prefs.graph_auto_reorder !== false; // default true
-
     return {
       items,
       facets,
@@ -385,7 +378,6 @@ export async function loader({
       approvalData,
       focusedNeuronId: selectedNeuron?.id ?? null,
       selectedNeuron: dialogNeuron,
-      graphAutoReorder,
     };
   });
 }
@@ -496,7 +488,6 @@ export default function DocoHome({
     approvalData,
     focusedNeuronId,
     selectedNeuron,
-    graphAutoReorder: initialAutoReorder,
   } = loaderData;
 
   const pageRanksMap = useMemo(() => new Map(Object.entries(pageRanks)), [pageRanks]);
@@ -514,18 +505,6 @@ export default function DocoHome({
     };
     return graphWithCenter({ ...base, pageRanks: pageRanksMap }, defaultFocusId);
   }, [graph, defaultFocusId, pageRanksMap]);
-  const [autoReorder, setAutoReorder] = useState<boolean>(initialAutoReorder);
-  const handleAutoReorderChange = useCallback((next: boolean) => {
-    setAutoReorder(next);
-    // Best-effort fire-and-forget. If the request fails the user
-    // still sees the toggle reflect their click for the rest of the
-    // session — the worst case is the next reload reverts.
-    void fetch("/api/v1/me/preferences.json", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ preferences: { graph_auto_reorder: next } }),
-    }).catch(() => undefined);
-  }, []);
   const activeSlug = activePerspectiveSlug ?? "graph";
   const effectivePerspectiveKind = activePerspectiveKind ?? "graph";
   const routeFocusId = focusedNeuronId;
@@ -964,11 +943,6 @@ export default function DocoHome({
                         onToggle: toggleLifecycle,
                       }
                 }
-                autoReorder={
-                  effectivePerspectiveKind === "approval"
-                    ? undefined
-                    : { value: autoReorder, onChange: handleAutoReorderChange }
-                }
                 fullscreen={{
                   isFullscreen: isPerspectiveFullscreen,
                   onToggle: togglePerspectiveFullscreen,
@@ -1048,7 +1022,6 @@ export default function DocoHome({
                     pageRanks={pageRanksMap}
                     fillHeight
                     visibleLifecycles={visibleLifecycles}
-                    autoReorder={autoReorder}
                     initialFocusId={routeFocusId}
                     onCenterChange={(id) => setGraphState((prev) => graphWithCenter(prev, id))}
                     onNeuronClick={handleGraphNeuronClick}

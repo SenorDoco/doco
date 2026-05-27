@@ -97,19 +97,11 @@ interface OverviewGraphProps extends OverviewGraphData {
   /**
    * When the user clicks a neuron on the canvas, we want the graph
    * to re-center on it: depth-based opacity recomputes from the new
-   * focal node and (if `autoReorder` is on) ordering re-runs so
-   * first-degree neighbours sit closest. The parent owns `centerId`
-   * state; this callback is how the canvas asks it to update.
+   * focal node and the clustered layout re-runs so relevant neighbours
+   * settle near each other. The parent owns `centerId` state; this
+   * callback is how the canvas asks it to update.
    */
   onCenterChange?: (id: string) => void;
-  /**
-   * When true, layout uses a weighted clustered solver so linked
-   * neurons can settle near each other without collapsing into depth
-   * rings. When false, layout falls back to a single stable ring with
-   * type-then-id ordering. The "Reorder automatically" toggle lives
-   * on PerspectiveFrame.
-   */
-  autoReorder?: boolean;
 }
 
 interface FlowViewport {
@@ -325,7 +317,6 @@ export function OverviewGraph({
   onNeuronClick,
   visibleLifecycles: externalVisibleLifecycles,
   onCenterChange,
-  autoReorder = true,
 }: OverviewGraphProps) {
   const navigate = useNavigate();
   const graphRef = useRef<HTMLDivElement>(null);
@@ -342,7 +333,6 @@ export function OverviewGraph({
     getViewport?: () => FlowViewport;
   };
   const positionCacheRef = useRef<Map<string, Point>>(new Map());
-  const positionCacheKeyRef = useRef(autoReorder);
   const flowInstanceRef = useRef<FlowInstance | null>(null);
   const initialFocusAppliedRef = useRef<string | null>(null);
   const [size, setSize] = useState({ width: 1, height: 1 });
@@ -474,17 +464,8 @@ export function OverviewGraph({
       });
     return candidates.slice(0, OVERVIEW_RENDER_EDGE_BUDGET).map((entry) => entry.link);
   }, [visibleLinks, renderedNodeIds, visibleDepthByNodeId, effectiveCenterId, pageRanks]);
-  if (positionCacheKeyRef.current !== autoReorder) {
-    positionCacheRef.current = new Map();
-    positionCacheKeyRef.current = autoReorder;
-  }
   const positions = useMemo(() => {
-    const computed = layoutOverviewGraphNodes(
-      renderedNodes,
-      renderedLinks,
-      effectiveCenterId,
-      autoReorder,
-    );
+    const computed = layoutOverviewGraphNodes(renderedNodes, renderedLinks, effectiveCenterId);
     const cache = positionCacheRef.current;
     const computedFocus = effectiveCenterId ? computed.get(effectiveCenterId) : undefined;
     const cachedFocus = effectiveCenterId ? cache.get(effectiveCenterId) : undefined;
@@ -505,7 +486,7 @@ export function OverviewGraph({
       visiblePositions.set(node.id, shifted);
     }
     return visiblePositions;
-  }, [renderedNodes, renderedLinks, effectiveCenterId, autoReorder]);
+  }, [renderedNodes, renderedLinks, effectiveCenterId]);
   const nodeById = useMemo(
     () => new Map(renderedNodes.map((node) => [node.id, node])),
     [renderedNodes],
@@ -884,11 +865,10 @@ export function OverviewGraph({
             Loading graph…
           </div>
         )}
-        {/* PerspectiveFrame owns the lifecycle filter, the
-            "Reorder automatically" toggle, and the fullscreen button.
-            They render at fixed positions across every perspective.
-            Graph just receives `autoReorder` + `visibleLifecycles` as
-            data and applies them to its layout / node filter. */}
+        {/* PerspectiveFrame owns the lifecycle filter and fullscreen
+            button. They render at fixed positions across every
+            perspective. Graph receives `visibleLifecycles` as data and
+            applies it to its node filter. */}
       </div>
     </div>
   );

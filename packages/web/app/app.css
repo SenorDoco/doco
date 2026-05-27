@@ -508,8 +508,8 @@ button[class*="bg-primary"]:active {
 }
 
 /* Animate node position changes when the graph reorganizes — e.g. on
-   focal-node change with "Reorder automatically" on, or when a
-   lifecycle filter toggles in/out a chunk of nodes. React Flow paints
+   focal-node change or when a lifecycle filter toggles in/out a chunk
+   of nodes. React Flow paints
    each node's position as a `transform: translate(...)` on the node
    wrapper; transitioning only that property animates moves without
    touching pan/zoom (those live on the .react-flow__viewport element,
