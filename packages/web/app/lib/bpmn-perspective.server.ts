@@ -186,6 +186,7 @@ interface SynapseRow {
   from_id: string;
   to_id: string;
   synapse_type: string;
+  synapse_props_json: Record<string, unknown> | null;
 }
 
 export async function loadBpmnGraph(
@@ -251,7 +252,7 @@ export async function loadBpmnGraph(
   let links: OverviewGraphLink[] = [];
   if (nodeIdSet.size > 0) {
     const synapseRows = await c.query<SynapseRow>(
-      `SELECT from_id, to_id, synapse_type
+      `SELECT from_id, to_id, synapse_type, synapse_props_json
          FROM synapses
         WHERE doco_id = $1
           AND from_id = ANY($2::text[])
@@ -263,6 +264,7 @@ export async function loadBpmnGraph(
       source: r.from_id,
       target: r.to_id,
       synapse_type: r.synapse_type,
+      label: r.synapse_type === "sequence_flow" ? sequenceFlowLabel(r.synapse_props_json) : null,
     }));
   }
 
@@ -637,6 +639,15 @@ function lifecycleRank(lifecycle: string | null | undefined): number {
     default:
       return 4;
   }
+}
+
+function sequenceFlowLabel(props: Record<string, unknown> | null): string | null {
+  if (!props) return null;
+  const raw = props.label ?? props.condition;
+  if (typeof raw !== "string") return null;
+  const compact = raw.trim().replace(/\s+/g, " ");
+  if (!compact) return null;
+  return compact.length > 32 ? `${compact.slice(0, 29)}...` : compact;
 }
 
 export function computeNearestIntentByNode(

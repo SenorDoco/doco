@@ -45,6 +45,7 @@ export interface OverviewGraphLink {
   source: string;
   target: string;
   synapse_type: string;
+  label?: string | null;
 }
 
 export interface OverviewGraphData {
