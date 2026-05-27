@@ -19,6 +19,7 @@ import {
   parseSlackCommandPayload,
   signSlackState,
   slackConnectUrl,
+  slackLlmSystemPrompt,
   verifySlackRequestSignature,
   verifySlackState,
 } from "../slack.server";
@@ -279,6 +280,17 @@ describe("slack.server", () => {
     expect(prompt).toContain("all doco's docos as reader");
     expect(prompt).toContain("User: What do the docos we have explain?");
     expect(prompt).toContain("Intent in doco/doco-bpms: Doco core work loop");
+  });
+
+  it("uses the shared Señor Doco persona with Slack-only limits", () => {
+    const prompt = slackLlmSystemPrompt();
+
+    expect(prompt).toContain("You are Señor Doco");
+    expect(prompt).toContain('policies" never "constitution');
+    expect(prompt).toContain("Principal vs principle vs collaborator");
+    expect(prompt).toContain("Voice — dry, cerebral wit");
+    expect(prompt).toContain("Slack cannot use the in-page doco_api tool");
+    expect(prompt).toContain("Keep the answer under 900 characters");
   });
 
   it("formats Doco answer hits instead of the default permission prompt", () => {

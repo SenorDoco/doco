@@ -2269,8 +2269,7 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
           and how a collaborator can mint their own agent token. Out
           of the user's way during conversation but always reachable. */}
             <div className="shrink-0 border-t border-border/70 px-3 py-1.5 text-[10px] leading-snug text-muted-foreground">
-              Señor Doco runs on Claude Haiku 4.5 inside Doco. Want to collaborate with your own
-              agent?{" "}
+              Señor Doco runs inside Doco. Want to collaborate with your own agent?{" "}
               <Link to="/api-keys" className="font-semibold text-foreground hover:text-primary">
                 Invite it
               </Link>
