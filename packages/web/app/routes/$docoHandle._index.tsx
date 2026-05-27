@@ -77,7 +77,7 @@ interface FeedItem extends ActivityFeedLineItem {
 }
 
 interface TopContributor {
-  principalId: string;
+  collaboratorId: string;
   username: string;
   lastAt: string;
   eventCount: number;
@@ -236,13 +236,12 @@ export async function loader({
         event_count: string;
       }>(
         `SELECT ae.by_collaborator AS collaborator_id,
-                COALESCE(c.github_login, c.email, c.id, ae.by_collaborator) AS collaborator_name,
+                COALESCE(c.github_login, c.email, c.id) AS collaborator_name,
                 MAX(ae.at) AS last_at,
                 COUNT(*)::text AS event_count
            FROM audit_events ae
-           LEFT JOIN collaborators c ON c.id = ae.by_collaborator
+           JOIN collaborators c ON c.id = ae.by_collaborator
           WHERE ae.doco_id = $1
-            AND ae.by_collaborator IS NOT NULL
             AND ae.entity_type NOT IN ('guidance_policy', 'neuron_authoring_policy')
           GROUP BY ae.by_collaborator, c.github_login, c.email, c.id
           ORDER BY COUNT(*) DESC, MAX(ae.at) DESC
@@ -251,7 +250,7 @@ export async function loader({
       )
     ).rows;
     const topContributors: TopContributor[] = contributorRows.map((r) => ({
-      principalId: r.collaborator_id,
+      collaboratorId: r.collaborator_id,
       username: r.collaborator_name,
       lastAt:
         r.last_at instanceof Date
@@ -1059,7 +1058,7 @@ function TopContributorsList({ contributors }: { contributors: TopContributor[] 
       ) : (
         contributors.map((c) => (
           <div
-            key={c.principalId}
+            key={c.collaboratorId}
             className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3"
           >
             <span className="truncate text-xs" title={c.username}>

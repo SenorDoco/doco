@@ -53,14 +53,14 @@ interface OrgDoco {
 }
 
 interface MemberRow {
-  principalId: string;
+  collaboratorId: string;
   username: string;
   role: DocoRole;
   joinedAt: string;
 }
 
 interface TopContributor {
-  principalId: string;
+  collaboratorId: string;
   username: string;
   lastAt: string;
   eventCount: number;
@@ -166,21 +166,24 @@ export async function loader({
     const memberRows = (
       await c.query<{
         collaborator_id: string;
-        principal_name: string;
+        collaborator_name: string;
         role: string;
         joined_at: Date | string;
       }>(
-        `SELECT m.collaborator_id, p.name AS principal_name, m.role, m.joined_at
+        `SELECT m.collaborator_id,
+                COALESCE(c.github_login, c.email, c.id) AS collaborator_name,
+                m.role,
+                m.joined_at
            FROM org_users m
-           JOIN principals p ON p.id = m.collaborator_id
+           JOIN collaborators c ON c.id = m.collaborator_id
           WHERE m.org_id = $1
           ORDER BY m.joined_at`,
         [org.id],
       )
     ).rows;
     const members: MemberRow[] = memberRows.map((r) => ({
-      principalId: String(r.collaborator_id),
-      username: String(r.principal_name),
+      collaboratorId: String(r.collaborator_id),
+      username: String(r.collaborator_name),
       role: (r.role as DocoRole) ?? "reader",
       joinedAt: r.joined_at instanceof Date ? r.joined_at.toISOString() : String(r.joined_at),
     }));
@@ -207,26 +210,26 @@ export async function loader({
       const contributorRows = (
         await c.query<{
           collaborator_id: string;
-          principal_name: string;
+          collaborator_name: string;
           last_at: Date | string;
           event_count: string;
         }>(
           `SELECT ae.by_collaborator AS collaborator_id,
-                  p.name AS principal_name,
+                  COALESCE(c.github_login, c.email, c.id) AS collaborator_name,
                   MAX(ae.at) AS last_at,
                   COUNT(*)::text AS event_count
              FROM audit_events ae
-             JOIN principals p ON p.id = ae.by_collaborator
-            WHERE ae.doco_id = ANY($1::text[]) AND ae.by_collaborator IS NOT NULL
-            GROUP BY ae.by_collaborator, p.name
+             JOIN collaborators c ON c.id = ae.by_collaborator
+            WHERE ae.doco_id = ANY($1::text[])
+            GROUP BY ae.by_collaborator, c.github_login, c.email, c.id
             ORDER BY COUNT(*) DESC, MAX(ae.at) DESC
             LIMIT $2`,
           [docoIds, TOP_CONTRIBUTORS_LIMIT],
         )
       ).rows;
       topContributors = contributorRows.map((r) => ({
-        principalId: String(r.collaborator_id),
-        username: String(r.principal_name),
+        collaboratorId: String(r.collaborator_id),
+        username: String(r.collaborator_name),
         lastAt:
           r.last_at instanceof Date
             ? r.last_at.toISOString()
@@ -244,12 +247,13 @@ export async function loader({
           op: string;
           before_json: Record<string, unknown> | null;
           after_json: Record<string, unknown> | null;
-          principal_name: string | null;
+          collaborator_name: string | null;
         }>(
           `SELECT a.event_id, a.at, a.doco_id, a.entity_type, a.entity_id, a.op,
-                  a.before_json, a.after_json, p.name AS principal_name
+                  a.before_json, a.after_json,
+                  COALESCE(c.github_login, c.email, c.id) AS collaborator_name
              FROM audit_events a
-             LEFT JOIN principals p ON p.id = a.by_collaborator
+             LEFT JOIN collaborators c ON c.id = a.by_collaborator
             WHERE a.doco_id = ANY($1::text[])
             ORDER BY a.at DESC
             LIMIT $2`,
@@ -288,7 +292,7 @@ export async function loader({
         return {
           event_id: String(r.event_id),
           at: r.at instanceof Date ? r.at.toISOString() : new Date(String(r.at)).toISOString(),
-          byUsername: r.principal_name ? String(r.principal_name) : null,
+          byUsername: r.collaborator_name ? String(r.collaborator_name) : null,
           handle: d?.handle ?? "?",
           entity_type: String(r.entity_type),
           entity_id: String(r.entity_id),
@@ -491,7 +495,7 @@ export default function OrgHome({
                   <ul className="space-y-1">
                     {topContributors.map((c) => (
                       <li
-                        key={c.principalId}
+                        key={c.collaboratorId}
                         className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 text-xs"
                       >
                         <span className="truncate" title={c.username}>
@@ -581,7 +585,7 @@ export default function OrgHome({
                   <ul className="divide-y divide-border">
                     {members.map((m) => (
                       <li
-                        key={m.principalId}
+                        key={m.collaboratorId}
                         className="flex items-center justify-between gap-3 px-5 py-2 text-xs"
                       >
                         <span className="truncate font-medium">{m.username}</span>
