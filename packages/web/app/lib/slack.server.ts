@@ -6,6 +6,7 @@ import {
   missingSenorDocoAnthropicMessage,
 } from "./assistant-runtime.server";
 import { ensureEnvLoaded } from "./dotenv.server";
+import { buildSenorDocoCorePrompt } from "./senor-doco-prompt.server";
 
 export const SLACK_BOT_SCOPES = [
   "app_mentions:read",
@@ -1081,14 +1082,26 @@ function formatRecentSlackContext(recentMessages: SlackRecentMessage[]): string 
   return cleaned.join(" ");
 }
 
-function slackLlmSystemPrompt(): string {
+export function slackLlmSystemPrompt(): string {
   return [
-    "You are Señor Doco inside Slack.",
+    buildSenorDocoCorePrompt({
+      surfaceDescription: "the Slack assistant for group chats and direct messages",
+      accessDescription:
+        "You answer from Slack using the workspace default Doco access and any Slack context explicitly provided to you. Do not imply you have the signed-in website user's browser session.",
+      capabilityDescription:
+        "answer questions about Doco using only the provided Doco excerpts, default Slack access, and Slack context.",
+      inScopePrefix: "the Slack-accessible",
+      surfaceLimits: [
+        "Slack cannot use the in-page doco_api tool, navigate the website, inspect the visible graph, or read file attachments from the Doco sidebar.",
+        "Slack cannot create, patch, retire, or invite unless that Slack action is explicitly implemented. For now, answer from the provided excerpts and explain when the website is needed.",
+        "Do not claim access beyond the listed default Doco access. People may link personal Doco access later, but you only know the access included in this prompt.",
+      ],
+    }),
     "Answer with a concise, natural Slack message using only the provided Doco excerpts and Slack context.",
     "Do not return the generic setup or access prompt. Do not merely list raw excerpts unless the user asks for a list.",
     "If the user says you did not answer, answer the most recent substantive unanswered user question in the Slack context.",
-    "For questions like what the Docos explain, synthesize the main themes and cite the Doco labels naturally.",
-    "Do not claim access beyond the listed default Doco access. If the excerpts are insufficient, say exactly what is missing.",
+    "For questions like what the docos explain, synthesize the main themes and cite the doco labels naturally.",
+    "If the excerpts are insufficient, say exactly what is missing.",
     "Keep the answer under 900 characters unless the user asks for detail.",
   ].join(" ");
 }
