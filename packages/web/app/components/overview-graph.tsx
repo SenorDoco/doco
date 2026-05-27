@@ -8,6 +8,7 @@ import {
 } from "@xyflow/react";
 import { type ComponentType, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
+import { FadingPlaceholderEdge } from "~/components/fading-placeholder-edge";
 import { NodeBadgeRow, ReferenceNumberBadge } from "~/components/neuron-badges";
 import { NeuronTypeIcon } from "~/components/neuron-type-icon";
 import { StandardControls, StandardMiniMap } from "~/components/perspective-canvas-overlays";
@@ -632,6 +633,10 @@ export function OverviewGraph({
     () => new Map(renderedNodes.map((node) => [node.id, node])),
     [renderedNodes],
   );
+  const visibleNodeById = useMemo(
+    () => new Map(visibleNodes.map((node) => [node.id, node])),
+    [visibleNodes],
+  );
   const MiniMapNode = useMemo(() => makeOverviewMiniMapNode(nodeById), [nodeById]);
   const depthByNodeId = useMemo(
     () => computeDepthFromCenter(renderedNodes, renderedLinks, effectiveCenterId),
@@ -734,18 +739,24 @@ export function OverviewGraph({
         x: anchor.x + OVERVIEW_NODE_WIDTH / 2,
         y: anchor.y + OVERVIEW_NODE_HEIGHT / 2,
       };
-      const radial =
-        Math.hypot(anchorCenter.x, anchorCenter.y) > 20
-          ? Math.atan2(anchorCenter.y, anchorCenter.x)
-          : -Math.PI / 2 + summaryIndex * 2.399963229728653;
-      const angle = radial + (direction === "incoming" ? -0.42 : 0.42);
-      const distance = 260 + (summaryIndex % 5) * 18;
+      const verticalSign = summaryIndex % 2 === 0 ? -1 : 1;
+      const xJitter = ((summaryIndex % 5) - 2) * 16 + (direction === "incoming" ? -12 : 12);
+      const distance = 106 + (summaryIndex % 3) * 12;
       const id = `overview-placeholder:${direction}:${anchorId}`;
       const position = {
-        x: anchorCenter.x + Math.cos(angle) * distance,
-        y: anchorCenter.y + Math.sin(angle) * distance,
+        x: anchorCenter.x + xJitter,
+        y: anchorCenter.y + verticalSign * distance,
       };
-      const opacity = Math.max(0.18, Math.min(0.42, 0.16 + Math.log10(count + 1) * 0.16));
+      const matchingLink = visibleLinks.find((link) =>
+        direction === "incoming"
+          ? link.target === anchorId && !renderedNodeIds.has(link.source)
+          : link.source === anchorId && !renderedNodeIds.has(link.target),
+      );
+      const colorNode =
+        direction === "incoming"
+          ? visibleNodeById.get(matchingLink?.source ?? "")
+          : visibleNodeById.get(anchorId);
+      const stroke = lifecycleColor(colorNode ? nodeLifecycle(colorNode) : "active");
 
       nodes.push({
         id,
@@ -769,22 +780,28 @@ export function OverviewGraph({
         id: `overview-placeholder-edge:${direction}:${anchorId}`,
         source: direction === "incoming" ? id : anchorId,
         target: direction === "incoming" ? anchorId : id,
-        type: "default",
+        type: "fadingPlaceholder",
+        data: {
+          color: stroke,
+          direction,
+          fadePx: 100,
+          opacity: 0.5,
+        },
         selectable: false,
         focusable: false,
         interactionWidth: 0,
         style: {
-          stroke: "#737373",
-          strokeOpacity: opacity,
-          strokeDasharray: "7 9",
           pointerEvents: "none" as const,
         },
-        markerEnd: {
-          type: MarkerType.ArrowClosed,
-          width: 16,
-          height: 16,
-          color: "#737373",
-        },
+        markerEnd:
+          direction === "incoming"
+            ? {
+                type: MarkerType.ArrowClosed,
+                width: 10,
+                height: 10,
+                color: stroke,
+              }
+            : undefined,
       });
       stubIndex++;
     };
@@ -795,7 +812,7 @@ export function OverviewGraph({
     });
 
     return { nodes, edges };
-  }, [visibleLinks, renderedNodeIds, positions]);
+  }, [visibleLinks, renderedNodeIds, positions, visibleNodeById]);
 
   useEffect(() => {
     if (!detailUrl || detailIds.length === 0) return;
@@ -885,6 +902,7 @@ export function OverviewGraph({
   }, [renderedLinks, depthByNodeId, focalActive, nodeById, externalEdgeStubs.edges]);
 
   const nodeTypes = useMemo(() => ({ overviewNode: OverviewFlowNode, edgeStub: EdgeStubNode }), []);
+  const edgeTypes = useMemo(() => ({ fadingPlaceholder: FadingPlaceholderEdge }), []);
 
   return (
     <div className={fillHeight ? "flex h-full min-h-0 flex-col" : "flex flex-col"}>
@@ -903,6 +921,7 @@ export function OverviewGraph({
             nodes={flowNodes}
             edges={flowEdges}
             nodeTypes={nodeTypes}
+            edgeTypes={edgeTypes}
             nodesDraggable={false}
             nodesConnectable={false}
             onlyRenderVisibleElements
