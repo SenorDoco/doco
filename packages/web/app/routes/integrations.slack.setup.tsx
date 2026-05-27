@@ -1,6 +1,6 @@
 import type { DocoRole } from "@doco/db";
-import { CheckCircle2, ShieldCheck } from "lucide-react";
-import { useMemo, useState } from "react";
+import { CheckCircle2 } from "lucide-react";
+import { useState } from "react";
 import { Form, redirect } from "react-router";
 import { Breadcrumb, hostBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
@@ -133,11 +133,6 @@ export default function SlackSetupPage({ loaderData }: { loaderData: SlackSetupP
   const [orgState, setOrgState] = useState<Record<string, DraftOrgState>>(() =>
     Object.fromEntries(orgGroups.map((group) => [group.key, initialOrgState(group)])),
   );
-  const selectedSummary = useMemo(
-    () => summarizeDefaults(orgGroups, orgState),
-    [orgGroups, orgState],
-  );
-  const canSubmit = selectedSummary.length > 0;
 
   function updateOrg(key: string, patch: Partial<DraftOrgState>) {
     setOrgState((current) => ({
@@ -179,7 +174,7 @@ export default function SlackSetupPage({ loaderData }: { loaderData: SlackSetupP
           </p>
         </header>
 
-        <Form method="post" className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
+        <Form method="post" className="max-w-3xl">
           <input type="hidden" name="workspace_id" value={installation.workspaceId} />
 
           <Card>
@@ -321,38 +316,12 @@ export default function SlackSetupPage({ loaderData }: { loaderData: SlackSetupP
 
               <button
                 type="submit"
-                disabled={!canSubmit}
+                disabled={orgGroups.length === 0}
                 className="neu-button inline-flex items-center gap-2 rounded-md bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
                 Save default permissions
               </button>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <ShieldCheck className="h-5 w-5 text-primary" aria-hidden="true" />
-                Default access
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4 text-sm leading-relaxed">
-              <p>Everyone in {installation.workspaceName} will get these shared defaults:</p>
-              {selectedSummary.length > 0 ? (
-                <ul className="space-y-1 font-semibold text-foreground">
-                  {selectedSummary.map((item) => (
-                    <li key={item}>{item}</li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="text-muted-foreground">Select an organization to set defaults.</p>
-              )}
-              <p>
-                Owner-only actions, including creating Docos and changing policies, require that
-                individual person to be an owner in Doco. Workspace defaults do not grant owner-only
-                actions.
-              </p>
             </CardContent>
           </Card>
         </Form>
@@ -419,7 +388,8 @@ function collectGrantsFromForm(form: FormData, groups: OrgPermissionGroup[]): Sl
     if (!selectedOrgKeys.has(group.key)) continue;
     const mode = form.get(`org_mode:${group.key}`) === "specific" ? "specific" : "all";
     if (mode === "all" && group.orgOption) {
-      const role = parseDefaultRole(form.get(`org_role:${group.key}`));
+      const roleField = `org_role:${group.key}`;
+      const role = form.has(roleField) ? parseDefaultRole(form.get(roleField)) : "reader";
       if (!role) continue;
       grants.push({ targetLevel: "org", targetId: group.orgOption.id, role });
       continue;
@@ -448,27 +418,6 @@ function validateGrants(grants: SlackGrantInput[], options: ScopeOption[]): stri
     if (!capability.ok) return capability.error ?? "role_not_allowed";
   }
   return null;
-}
-
-function summarizeDefaults(
-  groups: OrgPermissionGroup[],
-  state: Record<string, DraftOrgState>,
-): string[] {
-  const summary: string[] = [];
-  for (const group of groups) {
-    const draft = state[group.key] ?? initialOrgState(group);
-    if (!draft.selected) continue;
-    if (draft.mode === "all" && group.orgOption) {
-      summary.push(`${group.handle}/* · ${roleLabel(draft.orgRole)}`);
-      continue;
-    }
-    for (const doco of group.docos) {
-      const role = draft.docoRoles[doco.id];
-      if (!role || role === "none") continue;
-      summary.push(`${doco.label} · ${roleLabel(role)}`);
-    }
-  }
-  return summary;
 }
 
 function rolesFor(personalRole: DocoRole | undefined): DocoRole[] {

@@ -148,6 +148,34 @@ describe("/integrations/slack/setup", () => {
     });
   });
 
+  it("defaults a selected organization to reader if the role control did not submit", async () => {
+    const body = new URLSearchParams({
+      workspace_id: "T123",
+      org_key: "torre",
+    });
+
+    const response = (await action({
+      request: new Request("https://doco.test/integrations/slack/setup", {
+        method: "POST",
+        body,
+      }),
+    }).catch((error: Response) => error)) as Response;
+
+    expect(response.status).toBe(302);
+    expect(mocks.replaceSlackChannelConnections).toHaveBeenCalledWith(
+      expect.objectContaining({
+        channelId: "*",
+        grants: [
+          {
+            targetLevel: "org",
+            targetId: "org_torre",
+            role: "reader",
+          },
+        ],
+      }),
+    );
+  });
+
   it("saves specific Doco defaults while leaving no-access Docos out", async () => {
     const body = new URLSearchParams({
       workspace_id: "T123",
