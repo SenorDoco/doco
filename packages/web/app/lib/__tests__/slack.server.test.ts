@@ -3,13 +3,16 @@ import { describe, expect, it } from "vitest";
 import {
   SLACK_BOT_SCOPES,
   buildSlackConnectCommandResponse,
+  buildSlackDocoAnswerQuery,
   cleanSlackMentionText,
   detectSlackAccessQuestion,
   detectSlackCountKind,
+  detectSlackDocoOverviewQuestion,
   detectSlackInventoryQuestion,
   formatSlackAccessResponse,
   formatSlackCountResponse,
   formatSlackDefaultResponse,
+  formatSlackDocoAnswerResponse,
   formatSlackInventoryResponse,
   parseSlackCommandPayload,
   signSlackState,
@@ -187,6 +190,56 @@ describe("slack.server", () => {
       ]),
     ).toBe(
       "all doco's docos as approver: 1 Doco (doco/bpms). It contains 7 neurons: 2 decisions, 1 intent, 3 actions, and 1 rule.",
+    );
+  });
+
+  it("builds a Doco overview query for vague Slack follow-ups", () => {
+    const query = buildSlackDocoAnswerQuery("And what do they explain?", [
+      {
+        text: "all doco's docos as reader: 1 Doco (doco/doco-bpms). It contains 94 neurons.",
+        ts: "123.456",
+        userId: null,
+        botId: "B123",
+      },
+    ]);
+
+    expect(query).toMatchObject({
+      overview: true,
+    });
+    expect(query?.text).toContain("what do they explain");
+    expect(query?.text).toContain("94 neurons");
+    expect(detectSlackDocoOverviewQuestion("What do we document?")).toBe(true);
+  });
+
+  it("formats Doco answer hits instead of the default permission prompt", () => {
+    expect(
+      formatSlackDocoAnswerResponse(
+        [
+          {
+            entityId: "decision_01",
+            docoLabel: "doco/doco-bpms",
+            neuronType: "decision",
+            summary: "Slack follow-up questions should search Doco content.",
+            body: null,
+            rank: 1,
+          },
+          {
+            entityId: "rule_01",
+            docoLabel: "doco/doco-bpms",
+            neuronType: "rule",
+            summary: "Default Slack access is shared, while linked users can use higher access.",
+            body: null,
+            rank: 0.8,
+          },
+        ],
+        { overview: true },
+      ),
+    ).toBe(
+      [
+        "Here’s what the accessible Docos explain:",
+        "• Decision in doco/doco-bpms: Slack follow-up questions should search Doco content.",
+        "• Rule in doco/doco-bpms: Default Slack access is shared, while linked users can use higher access.",
+      ].join("\n"),
     );
   });
 

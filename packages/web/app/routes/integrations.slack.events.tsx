@@ -1,5 +1,6 @@
 import {
   buildSlackAppMentionResponse,
+  fetchSlackConversationContext,
   postSlackMessage,
   verifySlackRequest,
 } from "~/lib/slack.server";
@@ -35,10 +36,18 @@ export async function action({ request }: { request: Request }) {
     const teamId = payload.team_id;
     const channelId = event?.channel;
     if (teamId && channelId && !event?.bot_id && !event?.subtype) {
+      const recentMessages = shouldFetchSlackConversationContext(event)
+        ? await fetchSlackConversationContext({
+            workspaceId: teamId,
+            channelId,
+            latestTs: event.ts,
+          })
+        : [];
       const text = await buildSlackAppMentionResponse({
         workspaceId: teamId,
         channelId,
         messageText: event?.text ?? "",
+        recentMessages,
       });
       await postSlackMessage({ workspaceId: teamId, channelId, text });
     }
@@ -57,6 +66,7 @@ interface SlackEventPayload {
   channel_type?: string;
   user?: string;
   text?: string;
+  ts?: string;
   bot_id?: string;
   subtype?: string;
 }
@@ -64,5 +74,10 @@ interface SlackEventPayload {
 export function shouldReplyToSlackEvent(event: SlackEventPayload | undefined): boolean {
   if (event?.type === "app_mention") return true;
   if (event?.type !== "message") return false;
+  return event.channel_type === "im" || event.channel_type === "app_home";
+}
+
+export function shouldFetchSlackConversationContext(event: SlackEventPayload | undefined): boolean {
+  if (!event) return false;
   return event.channel_type === "im" || event.channel_type === "app_home";
 }
