@@ -777,7 +777,7 @@ export function EntityGraph({
   }, [visible.nodes, visible.links, centerId, layoutMode]);
 
   // Per-node BFS depth from the focal neuron for the cross-perspective
-  // depth-fade rule (1st-degree solid, 2nd 75%, 3rd 50%, 4+ 25%).
+  // depth-fade rule (focused 100%, 1st-degree 75%, 2nd 50%, 3rd+ 25%).
   // Edges fade with their deepest endpoint.
   const depthByNodeId = useMemo(() => {
     const simpleLinks = visible.links.map((l) => ({
