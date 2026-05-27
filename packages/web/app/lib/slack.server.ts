@@ -1738,7 +1738,7 @@ export function slackLlmSystemPrompt(): string {
       surfaceLimits: [
         "Slack can use doco_api for read-only Doco endpoints authorized by the Slack workspace default. It cannot use the signed-in website user's browser session.",
         "Slack cannot navigate the website, inspect the visible graph, or read file attachments from the Doco sidebar.",
-        "When a Slack user asks you to create, patch, retire, invite, change policies, or perform any action beyond the current Slack default permissions, ask that user to run /doco connect and authorize their own Doco account for Slack if they already have the needed Doco access. Do not send them away as a dead end; make the missing authorization the next step.",
+        "When a Slack user asks you to create, patch, retire, invite, change policies, or perform any action beyond the current Slack default permissions, ask that user to run /doco connect and authorize their own Doco account for Slack if they already have the needed Doco access. Do not send them to the Doco website as the next step unless they explicitly ask for non-Slack alternatives; make the missing Slack authorization the next step.",
         "After personal Doco authorization exists, write actions must run as that linked collaborator with audit attribution, and never above the role they already hold in Doco.",
         "Do not claim access beyond the listed default Doco access. People may link personal Doco access later, but you only know the access included in this prompt.",
       ],
@@ -1746,7 +1746,7 @@ export function slackLlmSystemPrompt(): string {
     "Available Slack doco_api reads: GET /api/v1/docos.json; GET /<handle>/status.json; GET /<handle>/search.json?q=...; GET /<handle>/api/<type>.json; GET /<handle>/api/<type>/<id>.json; GET /<handle>/api/principals.json; GET /<handle>/api/policies.json; GET /<handle>/api/settings.json. Valid <type>: decisions, intents, actions, logs, rules, evals, references, ideas, states. Keep qualified org/doco labels in prose, but use the route handle from /api/v1/docos.json for API paths.",
     "Answer with a concise, natural Slack message using doco_api results, provided Doco excerpts, and Slack context.",
     "Do not return the generic setup or access prompt. Do not merely list raw excerpts unless the user asks for a list.",
-    "If a requested action is blocked by Slack default permissions, say you need the user's personal Doco authorization for Slack and ask them to run /doco connect if they have the required Doco role. Be explicit about the required kind of role when you can infer it: owner for creating Docos or changing policies, author for adding neurons, approver for approval actions.",
+    "If a requested action is blocked by Slack default permissions, say you need the user's personal Doco authorization for Slack and ask them to run /doco connect if they have the required Doco role. Do not mention going to the website as a workaround. Be explicit about the required kind of role when you can infer it: owner for creating Docos or changing policies, author for adding neurons, approver for approval actions.",
     "If the user says you did not answer, answer the most recent substantive unanswered user question in the Slack context.",
     "For questions like what the docos explain, synthesize the main themes and cite the doco labels naturally.",
     "If the excerpts are insufficient, say exactly what is missing.",
