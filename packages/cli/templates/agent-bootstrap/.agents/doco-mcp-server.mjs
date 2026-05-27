@@ -27,7 +27,7 @@ import { setTimeout as delay } from "node:timers/promises";
 
 const PROTOCOL_VERSION = "2024-11-05";
 const SERVER_NAME = "doco";
-const SERVER_VERSION = "0.2.0";
+const SERVER_VERSION = "0.2.1";
 const DEFAULT_HOST = "https://doco.to";
 const DEFAULT_TIMEOUT_MS = 8000;
 
@@ -95,6 +95,22 @@ const SERVER_INSTRUCTIONS = [
   "bodies use principal ids only: `*_principal_id` for one principal and",
   "`*_principal_ids` for arrays. Do not send principal names, `*_name`",
   "fields, or comma-separated strings; there are no aliases.",
+  "",
+  "For structured graph authoring, first read",
+  "`GET /<handle>/api/authoring-contract.json`. It lists entity types,",
+  "relation kinds, attached perspective constraints, and examples. Prefer",
+  "`POST /<handle>/api/changesets.json` when creating ordered structures",
+  "such as BPMN/process flows, org trees, dependency maps, or any graph",
+  "where a node and its relation must be authored together.",
+  "",
+  "Changesets accept `create`, `relate`, `append`, and `relate_many`",
+  "operations. Use `append` to create a node immediately after an existing",
+  "source via a typed relation. Use `relate_many` when sibling relations",
+  "must become valid together, such as exhaustive gateway branches or tree",
+  "siblings; adding one edge at a time can create invalid intermediate",
+  "states. For BPMN, use `relation_kind: \"sequence_flow\"`, which stores",
+  "forward flow on the source node's `sequence_to`; do not use",
+  "`preceded_by` as BPMN control flow.",
   "",
   "Common API-facing principal fields:",
   "- `wanted_by_principal_id`: Intent owner; auth fills this when omitted.",
