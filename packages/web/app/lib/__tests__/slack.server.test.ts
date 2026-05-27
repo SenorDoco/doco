@@ -4,11 +4,13 @@ import {
   SLACK_BOT_SCOPES,
   buildSlackConnectCommandResponse,
   buildSlackDocoAnswerQuery,
+  buildSlackLlmUserPrompt,
   cleanSlackMentionText,
   detectSlackAccessQuestion,
   detectSlackCountKind,
   detectSlackDocoOverviewQuestion,
   detectSlackInventoryQuestion,
+  detectSlackRepairMessage,
   formatSlackAccessResponse,
   formatSlackCountResponse,
   formatSlackDefaultResponse,
@@ -109,6 +111,7 @@ describe("slack.server", () => {
     expect(detectSlackCountKind("How many nodes do we have?")).toBe("neurons");
     expect(detectSlackCountKind("how many docos do we have?")).toBe("docos");
     expect(detectSlackCountKind("count decisions")).toBe("decisions");
+    expect(detectSlackCountKind("What do the docos we have explain?")).toBeNull();
     expect(detectSlackCountKind("hola")).toBeNull();
   });
 
@@ -209,6 +212,73 @@ describe("slack.server", () => {
     expect(query?.text).toContain("what do they explain");
     expect(query?.text).toContain("94 neurons");
     expect(detectSlackDocoOverviewQuestion("What do we document?")).toBe(true);
+    expect(detectSlackDocoOverviewQuestion("What do the docos we have explain?")).toBe(true);
+  });
+
+  it("turns Slack repair messages into the prior unanswered question", () => {
+    const query = buildSlackDocoAnswerQuery("You didn't answer my question", [
+      {
+        text: "What do the docos we have explain?",
+        ts: "123.100",
+        userId: "U123",
+        botId: null,
+      },
+      {
+        text: "doco has 1 Doco available by default.",
+        ts: "123.200",
+        userId: null,
+        botId: "B123",
+      },
+    ]);
+
+    expect(detectSlackRepairMessage("You didn't answer my question")).toBe(true);
+    expect(query).toMatchObject({
+      questionText: "What do the docos we have explain?",
+      overview: true,
+      repair: true,
+    });
+    expect(query?.text).toContain("You didn't answer my question");
+  });
+
+  it("builds an LLM prompt with Slack context and Doco excerpts", () => {
+    const prompt = buildSlackLlmUserPrompt({
+      questionText: "What do the docos we have explain?",
+      overview: true,
+      repair: false,
+      connections: [
+        {
+          channelId: "*",
+          channelName: "workspace",
+          targetLevel: "org",
+          targetId: "organization_doco",
+          targetLabel: "doco",
+          role: "reader",
+        },
+      ],
+      recentMessages: [
+        {
+          text: "What do the docos we have explain?",
+          ts: "123.100",
+          userId: "U123",
+          botId: null,
+        },
+      ],
+      hits: [
+        {
+          entityId: "intent_01",
+          docoLabel: "doco/doco-bpms",
+          neuronType: "intent",
+          summary: "Doco core work loop",
+          body: "Doco captures software project memory as typed neurons.",
+          rank: 1,
+        },
+      ],
+    });
+
+    expect(prompt).toContain("Default Doco access");
+    expect(prompt).toContain("all doco's docos as reader");
+    expect(prompt).toContain("User: What do the docos we have explain?");
+    expect(prompt).toContain("Intent in doco/doco-bpms: Doco core work loop");
   });
 
   it("formats Doco answer hits instead of the default permission prompt", () => {

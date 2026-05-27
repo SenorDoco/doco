@@ -1,4 +1,5 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import Anthropic from "@anthropic-ai/sdk";
 import { ALL_ENTITY_TABLES, DOCO_NEURON_TABLE_SPECS, withClient } from "@doco/db";
 import { generateUlid } from "@doco/shared";
 import { ensureEnvLoaded } from "./dotenv.server";
@@ -19,7 +20,9 @@ const SLACK_CHAT_POST_MESSAGE_URL = "https://slack.com/api/chat.postMessage";
 const SLACK_CONVERSATIONS_HISTORY_URL = "https://slack.com/api/conversations.history";
 const STATE_TTL_MS = 15 * 60 * 1000;
 const SIGNATURE_TOLERANCE_SECONDS = 5 * 60;
-const SLACK_DOCO_ANSWER_LIMIT = 5;
+const SLACK_DOCO_ANSWER_LIMIT = 8;
+const SLACK_ANTHROPIC_MODEL = process.env.SLACK_ANTHROPIC_MODEL ?? "claude-sonnet-4-6";
+const SLACK_LLM_MAX_TOKENS = 600;
 
 export interface SlackConfig {
   appId: string | null;
@@ -69,7 +72,18 @@ export interface SlackDocoAnswerHit {
 
 export interface SlackDocoAnswerQuery {
   text: string;
+  questionText: string;
   overview: boolean;
+  repair: boolean;
+}
+
+export interface SlackLlmAnswerInput {
+  questionText: string;
+  recentMessages: SlackRecentMessage[];
+  connections: SlackChannelConnectionSummary[];
+  hits: SlackDocoAnswerHit[];
+  overview: boolean;
+  repair: boolean;
 }
 
 export interface SlackCommandPayload {
@@ -469,6 +483,7 @@ export async function buildSlackAppMentionResponse(args: {
   channelId: string;
   messageText: string;
   recentMessages?: SlackRecentMessage[];
+  answerGenerator?: (input: SlackLlmAnswerInput) => Promise<string | null>;
 }): Promise<string> {
   const connections = await listSlackChannelConnections({
     workspaceId: args.workspaceId,
@@ -499,10 +514,25 @@ export async function buildSlackAppMentionResponse(args: {
 
   const answerQuery = buildSlackDocoAnswerQuery(cleanText, args.recentMessages);
   if (answerQuery) {
-    const hits = answerQuery.overview
-      ? await readSlackDocoOverviewHits(connections)
-      : await readSlackDocoSearchHits(connections, answerQuery.text);
+    const searchHits = await readSlackDocoSearchHits(connections, answerQuery.text);
+    const overviewHits =
+      answerQuery.overview || searchHits.length === 0
+        ? await readSlackDocoOverviewHits(connections)
+        : [];
+    const hits = sortSlackDocoAnswerHits([...searchHits, ...overviewHits]).slice(
+      0,
+      SLACK_DOCO_ANSWER_LIMIT,
+    );
     if (hits.length > 0) {
+      const llmAnswer = await (args.answerGenerator ?? generateSlackDocoLlmAnswer)({
+        questionText: answerQuery.questionText,
+        recentMessages: args.recentMessages ?? [],
+        connections,
+        hits,
+        overview: answerQuery.overview,
+        repair: answerQuery.repair,
+      });
+      if (llmAnswer) return llmAnswer;
       return formatSlackDocoAnswerResponse(hits, { overview: answerQuery.overview });
     }
   }
@@ -524,7 +554,10 @@ export function detectSlackCountKind(text: string): SlackCountKind | null {
   const lower = text.toLowerCase();
   const looksLikeCountQuestion =
     /\b(how many|count|number of|cu[aá]nt[ao]s?)\b/.test(lower) ||
-    /\b(nodes?|neurons?|docos?|decisions?|intents?|actions?|logs?|rules?|evals?|evaluations?|references?|ideas?|states?|principals?)\b.*\b(have|exist|are there)\b/.test(
+    /\b(do\s+we\s+have|are\s+there)\s+(any\s+)?(nodes?|neurons?|docos?|decisions?|intents?|actions?|logs?|rules?|evals?|evaluations?|references?|ideas?|states?|principals?)\b/.test(
+      lower,
+    ) ||
+    /\b(nodes?|neurons?|docos?|decisions?|intents?|actions?|logs?|rules?|evals?|evaluations?|references?|ideas?|states?|principals?)\s+do\s+we\s+have\b/.test(
       lower,
     );
   if (!looksLikeCountQuestion) return null;
@@ -575,17 +608,21 @@ export function buildSlackDocoAnswerQuery(
 ): SlackDocoAnswerQuery | null {
   const text = cleanText.trim();
   if (!text || isSlackGreeting(text)) return null;
+  const repair = detectSlackRepairMessage(text);
+  const repairedQuestion = repair ? latestHumanSlackQuestion(recentMessages) : null;
+  const questionText = repairedQuestion ?? text;
   const recentContext = formatRecentSlackContext(recentMessages);
-  const overview = detectSlackDocoOverviewQuestion(text, recentMessages);
+  const overview = detectSlackDocoOverviewQuestion(questionText, recentMessages) || repair;
   const searchParts = overview
     ? [
-        text,
+        questionText,
+        repair ? text : "",
         recentContext,
         "Doco intent decision rule action log reference state explains documents purpose architecture",
       ]
-    : [text, recentContext];
+    : [questionText, recentContext];
   const query = searchParts.filter(Boolean).join(" ").trim();
-  return query ? { text: query, overview } : null;
+  return query ? { text: query, questionText, overview, repair } : null;
 }
 
 export function detectSlackDocoOverviewQuestion(
@@ -596,6 +633,7 @@ export function detectSlackDocoOverviewQuestion(
   if (
     /\bwhat\s+(do|does)\s+(we\s+)?document\b/.test(lower) ||
     /\bwhat\s+(does|do)\s+(doco|docos?|it|they)\s+(explain|document|contain|cover)\b/.test(lower) ||
+    /\bwhat\s+do\s+the\s+docos?\s+we\s+have\s+(explain|document|contain|cover)\b/.test(lower) ||
     /\bwhat\s+do\s+they\s+explain\b/.test(lower) ||
     /\bwhat\s+does\s+that\s+explain\b/.test(lower) ||
     /\bsummarize\s+(it|that|those|the\s+docos?)\b/.test(lower)
@@ -605,6 +643,16 @@ export function detectSlackDocoOverviewQuestion(
   if (!/\b(they|those|that|it)\b/.test(lower)) return false;
   return recentMessages.some((message) =>
     /\b(doco|docos|neurons?|decisions?|rules?|actions?|logs?|references?)\b/i.test(message.text),
+  );
+}
+
+export function detectSlackRepairMessage(text: string): boolean {
+  const lower = text.toLowerCase();
+  return (
+    /\byou\s+(didn'?t|did not|haven'?t|have not)\s+(answer|respond)\b/.test(lower) ||
+    /\bthat\s+(didn'?t|did not)\s+answer\b/.test(lower) ||
+    /\bnot\s+what\s+i\s+asked\b/.test(lower) ||
+    /\banswer\s+my\s+(question|previous\s+question)\b/.test(lower)
   );
 }
 
@@ -648,6 +696,58 @@ export function formatSlackDocoAnswerResponse(
       (hit) =>
         `• ${capitalize(hit.neuronType)} in ${hit.docoLabel}: ${formatSlackDocoHitText(hit)}`,
     ),
+  ].join("\n");
+}
+
+export async function generateSlackDocoLlmAnswer(
+  input: SlackLlmAnswerInput,
+): Promise<string | null> {
+  ensureEnvLoaded();
+  const apiKey = process.env.ANTHROPIC_API_KEY?.trim();
+  if (!apiKey) return null;
+  try {
+    const client = new Anthropic({ apiKey });
+    const message = await client.messages.create({
+      model: process.env.SLACK_ANTHROPIC_MODEL ?? SLACK_ANTHROPIC_MODEL,
+      max_tokens: SLACK_LLM_MAX_TOKENS,
+      temperature: 0.2,
+      system: slackLlmSystemPrompt(),
+      messages: [
+        {
+          role: "user",
+          content: buildSlackLlmUserPrompt(input),
+        },
+      ],
+    });
+    const text = message.content
+      .map((block) => (block.type === "text" ? block.text : ""))
+      .join("\n")
+      .trim();
+    return cleanSlackLlmAnswer(text);
+  } catch (error) {
+    console.error(
+      "[slack] Doco LLM answer failed:",
+      error instanceof Error ? error.message : error,
+    );
+    return null;
+  }
+}
+
+export function buildSlackLlmUserPrompt(input: SlackLlmAnswerInput): string {
+  return [
+    `Current Slack message: ${input.questionText}`,
+    `Question type: ${input.repair ? "repair/follow-up" : input.overview ? "overview" : "question"}`,
+    "",
+    "Default Doco access in this Slack surface:",
+    ...input.connections.map((connection) => `- ${slackConnectionAccessLabelWithRole(connection)}`),
+    "",
+    "Recent Slack context, oldest to newest:",
+    ...formatSlackLlmRecentMessages(input.recentMessages),
+    "",
+    "Doco context excerpts:",
+    ...input.hits.map(formatSlackLlmHit),
+    "",
+    "Answer the current message. If it is a repair/follow-up, answer the prior unanswered question from the Slack context.",
   ].join("\n");
 }
 
@@ -950,6 +1050,17 @@ async function readSlackConnectionOverviewHits(
   }));
 }
 
+function latestHumanSlackQuestion(recentMessages: SlackRecentMessage[]): string | null {
+  for (const message of [...recentMessages].reverse()) {
+    const text = cleanSlackMentionText(message.text);
+    if (!text || message.botId || isSlackGreeting(text)) continue;
+    if (/[?？]\s*$/.test(text) || detectSlackDocoOverviewQuestion(text, recentMessages)) {
+      return text;
+    }
+  }
+  return null;
+}
+
 function slackOverviewUnionSql(): string {
   return DOCO_NEURON_TABLE_SPECS.map((spec) => {
     const tnCol = ALL_ENTITY_TABLES[spec.entityType]?.typeNamedColumn ?? "summary";
@@ -969,6 +1080,47 @@ function formatRecentSlackContext(recentMessages: SlackRecentMessage[]): string 
     .filter((text) => text && !isSlackGreeting(text))
     .slice(-4);
   return cleaned.join(" ");
+}
+
+function slackLlmSystemPrompt(): string {
+  return [
+    "You are Señor Doco inside Slack.",
+    "Answer with a concise, natural Slack message using only the provided Doco excerpts and Slack context.",
+    "Do not return the generic setup or access prompt. Do not merely list raw excerpts unless the user asks for a list.",
+    "If the user says you did not answer, answer the most recent substantive unanswered user question in the Slack context.",
+    "For questions like what the Docos explain, synthesize the main themes and cite the Doco labels naturally.",
+    "Do not claim access beyond the listed default Doco access. If the excerpts are insufficient, say exactly what is missing.",
+    "Keep the answer under 900 characters unless the user asks for detail.",
+  ].join(" ");
+}
+
+function formatSlackLlmRecentMessages(recentMessages: SlackRecentMessage[]): string[] {
+  const lines = recentMessages
+    .map((message) => {
+      const text = cleanSlackAnswerText(cleanSlackMentionText(message.text));
+      if (!text) return null;
+      const speaker = message.botId ? "Señor Doco" : "User";
+      return `- ${speaker}: ${truncateSlackAnswerText(text, 500)}`;
+    })
+    .filter((line): line is string => Boolean(line))
+    .slice(-8);
+  return lines.length > 0 ? lines : ["- None"];
+}
+
+function formatSlackLlmHit(hit: SlackDocoAnswerHit, index: number): string {
+  const summary = cleanSlackAnswerText(hit.summary ?? "");
+  const body = cleanSlackAnswerText(hit.body ?? "");
+  const bodyText =
+    body && body !== summary ? `\n  Detail: ${truncateSlackAnswerText(body, 900)}` : "";
+  return `[${index + 1}] ${capitalize(hit.neuronType)} in ${hit.docoLabel}: ${summary || "No summary."}${bodyText}`;
+}
+
+function cleanSlackLlmAnswer(text: string): string | null {
+  const cleaned = cleanSlackAnswerText(text)
+    .replace(/^["“]|["”]$/g, "")
+    .trim();
+  if (!cleaned) return null;
+  return truncateSlackAnswerText(cleaned, 1800);
 }
 
 function sortSlackDocoAnswerHits(hits: SlackDocoAnswerHit[]): SlackDocoAnswerHit[] {
