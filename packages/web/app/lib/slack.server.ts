@@ -1704,9 +1704,7 @@ function latestHumanSlackQuestion(recentMessages: SlackRecentMessage[]): string 
   for (const message of [...recentMessages].reverse()) {
     const text = cleanSlackMentionText(message.text);
     if (!text || message.botId || isSlackGreeting(text)) continue;
-    if (/[?？]\s*$/.test(text) || detectSlackDocoOverviewQuestion(text, recentMessages)) {
-      return text;
-    }
+    return text;
   }
   return null;
 }

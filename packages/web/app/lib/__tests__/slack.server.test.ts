@@ -311,7 +311,7 @@ describe("slack.server", () => {
     expect(detectSlackRepairMessage("not looking nice")).toBe(true);
     expect(detectSlackRepairMessage("this formatting is messy")).toBe(true);
     expect(query).toMatchObject({
-      questionText: "not looking nice",
+      questionText: "Show the org chart",
       overview: true,
       repair: true,
     });
