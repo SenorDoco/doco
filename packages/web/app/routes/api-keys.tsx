@@ -120,10 +120,6 @@ export default function ApiKeysPage({
         <Breadcrumb items={hostBreadcrumb({ pageLabel: "API keys" })} />
         <header className="space-y-1">
           <h1 className="text-2xl font-semibold">API keys</h1>
-          <p className="text-sm text-muted-foreground">
-            Long-lived Bearer tokens for programmatic access. Invite an AI agent to authenticate
-            via OAuth, or mint a key directly for a script you control.
-          </p>
         </header>
 
         <AddAgentCard
