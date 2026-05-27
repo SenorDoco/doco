@@ -551,8 +551,8 @@ export function BpmnPerspective({
           direction === "incoming"
             ? {
                 type: MarkerType.ArrowClosed,
-                width: 10,
-                height: 10,
+                width: 14,
+                height: 14,
                 color: stroke,
               }
             : undefined,
@@ -1267,8 +1267,8 @@ function layOutBpmn(
         },
         markerEnd: {
           type: MarkerType.ArrowClosed,
-          width: 18,
-          height: 18,
+          width: 14,
+          height: 14,
           color: stroke,
         },
       };

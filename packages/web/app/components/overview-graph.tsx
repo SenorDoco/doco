@@ -669,8 +669,8 @@ export function OverviewGraph({
           direction === "incoming"
             ? {
                 type: MarkerType.ArrowClosed,
-                width: 10,
-                height: 10,
+                width: 14,
+                height: 14,
                 color: stroke,
               }
             : undefined,
