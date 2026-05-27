@@ -154,20 +154,22 @@ export function FeedbackReporter() {
           setState("idle");
           setError("");
         }}
-        className="neu-floating fixed bottom-5 right-5 z-50 inline-flex items-center gap-2 rounded-full border border-border bg-card px-4 py-3 text-sm font-semibold text-foreground hover:text-primary"
+        className="neu-floating fixed bottom-5 right-5 z-[60] inline-flex h-12 w-16 items-center justify-center gap-1.5 rounded-full border border-border bg-card text-foreground hover:text-primary"
         aria-label="Report a bug or idea"
         title="No bugs? An idea?"
       >
         <Bug className="h-4 w-4" aria-hidden="true" />
         <Lightbulb className="h-4 w-4" aria-hidden="true" />
-        <span className="hidden sm:inline">Bug or idea</span>
       </button>
 
       {open ? (
-        <div className="fixed inset-0 z-50 flex items-end justify-end bg-foreground/12 p-4 sm:p-6">
-          <dialog
-            open
+        <div className="fixed inset-0 z-[70] flex items-end justify-end bg-foreground/12 p-4 sm:p-6">
+          {/* biome-ignore lint/a11y/useSemanticElements: Native dialog positioning/top-layer behavior is inconsistent for this floating reporter. */}
+          <div
+            role="dialog"
+            aria-modal="true"
             aria-labelledby="feedback-dialog-title"
+            tabIndex={-1}
             className="neu-floating flex max-h-[min(760px,calc(100vh-2rem))] w-full max-w-xl flex-col overflow-hidden rounded-lg border border-border bg-card"
           >
             <header className="flex items-start justify-between gap-4 px-5 py-4">
@@ -308,7 +310,7 @@ export function FeedbackReporter() {
                 </button>
               </footer>
             </form>
-          </dialog>
+          </div>
         </div>
       ) : null}
     </>
