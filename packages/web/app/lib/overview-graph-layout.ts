@@ -82,9 +82,8 @@ function placeRing(
 
 /**
  * Single-ring layout — every non-focal node goes on the same ring,
- * sorted by type then id. Used when the user has disabled
- * "Reorder automatically" so neighbours stop migrating as they click
- * around.
+ * sorted by type then id. Retained for tiny/linkless fallback paths
+ * where a force layout cannot express relevance.
  */
 export function singleRingLayout(
   nodes: readonly OverviewLayoutNode[],
@@ -450,9 +449,6 @@ export function layoutOverviewGraphNodes(
   nodes: readonly OverviewLayoutNode[],
   links: readonly OverviewLayoutLink[],
   centerId: string,
-  autoReorder: boolean,
 ): Map<string, Point> {
-  return autoReorder
-    ? clusteredForceLayout(nodes, links, centerId)
-    : singleRingLayout(nodes, centerId);
+  return clusteredForceLayout(nodes, links, centerId);
 }

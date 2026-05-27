@@ -41,17 +41,33 @@ describe("overview graph layout", () => {
     expect(otherCommunity).toBeLessThan(crossCommunity * 0.55);
   });
 
-  it("preserves the stable single-ring fallback when auto reorder is off", () => {
+  it("routes overview graph layout through the clustered relevance layout", () => {
     const positions = layoutOverviewGraphNodes(
-      nodes.slice(0, 4),
-      [link("focus", "a")],
+      nodes,
+      [
+        link("focus", "a"),
+        link("a", "b"),
+        link("b", "focus"),
+        link("c", "d"),
+        link("d", "e"),
+        link("e", "f"),
+        link("f", "c"),
+      ],
       "focus",
-      false,
     );
+
+    const focusCommunity = (distance(positions, "focus", "a") + distance(positions, "a", "b")) / 2;
+    const otherCommunity = (distance(positions, "c", "d") + distance(positions, "e", "f")) / 2;
+    const crossCommunity = (distance(positions, "a", "c") + distance(positions, "b", "d")) / 2;
+
+    expect(focusCommunity).toBeLessThan(crossCommunity * 0.55);
+    expect(otherCommunity).toBeLessThan(crossCommunity * 0.55);
+  });
+
+  it("keeps a deterministic ring fallback for tiny render windows", () => {
+    const positions = layoutOverviewGraphNodes(nodes.slice(0, 2), [link("focus", "a")], "focus");
 
     expect(positions.get("focus")).toEqual({ x: 0, y: 0 });
     expect(Math.round(distance(positions, "focus", "a"))).toBe(220);
-    expect(Math.round(distance(positions, "focus", "b"))).toBe(220);
-    expect(Math.round(distance(positions, "focus", "c"))).toBe(220);
   });
 });

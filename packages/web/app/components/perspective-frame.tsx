@@ -8,11 +8,6 @@ interface LifecycleFilterSpec {
   onToggle: (lifecycle: string) => void;
 }
 
-interface AutoReorderSpec {
-  value: boolean;
-  onChange: (next: boolean) => void;
-}
-
 export interface FullscreenSpec {
   isFullscreen: boolean;
   onToggle: () => void;
@@ -47,14 +42,6 @@ interface PerspectiveFrameProps {
    */
   lifecycleFilter?: LifecycleFilterSpec;
   /**
-   * "Reorder automatically" toggle. Renders a checkbox in the same
-   * bottom-left stack, just above the lifecycle row. The perspective
-   * still receives `autoReorder` if it cares about it (Graph re-runs
-   * its ring layout; other perspectives may ignore it). The toggle is
-   * present on every perspective for consistency.
-   */
-  autoReorder?: AutoReorderSpec;
-  /**
    * Fullscreen toggle. Surfaced as a 4th button in the perspective's
    * React-Flow zoom-controls stack (top-right), so it sits next to
    * +/−/fit-view inside the same morphic-styled panel — no overlap
@@ -70,10 +57,10 @@ interface PerspectiveFrameProps {
  * frame is owned by the perspective HOST, not the perspectives
  * themselves — perspectives are content INSIDE the frame and must not
  * draw their own border, background, or rounded corners. They also
- * must not render their own lifecycle filter, autoreorder toggle, or
- * fullscreen button — those overlays live on the frame at fixed
- * positions so they're identical across Graph, BPMN, Org Tree, List,
- * and any future perspective.
+ * must not render their own lifecycle filter or fullscreen button —
+ * those overlays live on the frame at fixed positions so they're
+ * identical across Graph, BPMN, Org Tree, List, and any future
+ * perspective.
  *
  * The frame keeps the same etched border as other Doco sections. Tabs
  * overlap its top edge: inactive tabs sit underneath the frame border,
@@ -83,7 +70,6 @@ export function PerspectiveFrame({
   fillHeight = false,
   rightTabAttached = false,
   lifecycleFilter,
-  autoReorder,
   fullscreen,
   children,
 }: PerspectiveFrameProps) {
@@ -99,27 +85,6 @@ export function PerspectiveFrame({
         style={rightTabAttached ? { borderTopRightRadius: 0 } : undefined}
       >
         {children}
-        {autoReorder ? (
-          <div className="pointer-events-none absolute bottom-12 left-3 z-10">
-            {/* Match the LifecycleFilterPanel's outer structure exactly
-              so the two floating panels render at identical height:
-              flex items-center + px-2 py-1 + text-xs. Diverging on any
-              of those (e.g. text-[11px] or no flex on outer) makes the
-              Reorder pill render a pixel or two taller than the filter
-              row immediately below it. */}
-            <div className="pointer-events-auto flex items-center rounded-md border border-border bg-card/90 px-2 py-1 text-xs shadow-sm backdrop-blur">
-              <label className="inline-flex cursor-pointer select-none items-center gap-1.5">
-                <input
-                  type="checkbox"
-                  checked={autoReorder.value}
-                  onChange={(e) => autoReorder.onChange(e.target.checked)}
-                  className="h-3 w-3"
-                />
-                <span className="text-muted-foreground">Reorder automatically</span>
-              </label>
-            </div>
-          </div>
-        ) : null}
         {lifecycleFilter ? <LifecycleFilterPanel spec={lifecycleFilter} /> : null}
       </div>
     </FullscreenContext.Provider>
