@@ -93,9 +93,10 @@ export function PerspectiveFrame({
       <div
         className={cn(
           "neu-surface relative z-0 -mt-px w-full overflow-hidden rounded-b-lg rounded-tl-none border border-border bg-card text-card-foreground",
-          rightTabAttached ? "rounded-tr-none" : "rounded-tr-lg",
+          rightTabAttached ? "!rounded-tr-none" : "rounded-tr-lg",
           sizeClass,
         )}
+        style={rightTabAttached ? { borderTopRightRadius: 0 } : undefined}
       >
         {children}
         {autoReorder ? (
