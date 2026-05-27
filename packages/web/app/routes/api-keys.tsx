@@ -187,7 +187,7 @@ function AddAgentCard({
             mode="invite"
             current={mode}
             onSelect={setMode}
-            label="Invite AI agent"
+            label="Invite AI agent (recommended)"
             testid="add-agent-mode-invite"
           />
           <ModeButton
