@@ -265,12 +265,8 @@ export default function CollaboratorsPage({
       <SiteHeader mode="host" me={loaderData.me} />
       <SingleColumnPageMain className="py-8 space-y-6">
         <Breadcrumb items={hostBreadcrumb({ pageLabel: "Collaborators" })} />
-        <header className="space-y-1">
-          <h1 className="text-2xl font-semibold">Collaborators</h1>
-          <p className="text-sm text-muted-foreground">
-            People you've invited to your orgs and docos. Invite a person or share the agent OAuth
-            prompt from here.
-          </p>
+        <header>
+          <h1 className="text-base font-semibold">Collaborators</h1>
         </header>
 
         <Card>

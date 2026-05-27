@@ -42,11 +42,6 @@ function AgentPromptBlock({
   const [copied, setCopied] = useState(false);
   return (
     <div className="space-y-2">
-      <p className="text-base font-semibold leading-6 text-foreground">
-        Doco will teach your agent how to use doco consistently. Copy this prompt and paste it into
-        your AI agent in the project/folder/repo you want to collaborate on. The agent will drive
-        the OAuth flow, and you'll approve in your browser.
-      </p>
       <pre
         className="neu-surface rounded-md bg-card p-3 text-[11px] whitespace-pre-wrap break-words"
         data-testid={promptTestId}
