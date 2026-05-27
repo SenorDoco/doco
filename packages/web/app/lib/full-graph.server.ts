@@ -100,8 +100,37 @@ function overviewRowsSql(includeLabel = false): string {
   return [...neuronLegs, principalLeg].join(" UNION ALL ");
 }
 
-async function loadOverviewRows(c: QueryClient, docoId: string): Promise<OverviewGraphRow[]> {
-  return (await c.query<OverviewGraphRow>(overviewRowsSql(true), [docoId])).rows;
+async function loadOverviewRows(
+  c: QueryClient,
+  docoId: string,
+  options: { centerId?: string; limit?: number } = {},
+): Promise<OverviewGraphRow[]> {
+  const limit = options.limit ? Math.max(1, Math.floor(options.limit)) : null;
+  const params: unknown[] = [docoId];
+  let limitSql = "";
+  if (limit !== null) {
+    params.push(limit, options.centerId ?? "");
+    limitSql = "LIMIT $2";
+  }
+  return (
+    await c.query<OverviewGraphRow>(
+      `SELECT *
+         FROM (${overviewRowsSql(true)}) nodes
+        ORDER BY
+          ${limit !== null ? "id = $3 DESC," : ""}
+          CASE COALESCE(lifecycle, 'active')
+            WHEN 'active' THEN 0
+            WHEN 'proposed' THEN 1
+            WHEN 'drafting' THEN 2
+            WHEN 'retired' THEN 3
+            ELSE 4
+          END,
+          created_at DESC NULLS LAST,
+          id
+        ${limitSql}`,
+      params,
+    )
+  ).rows;
 }
 
 async function loadOverviewLinks(
@@ -132,9 +161,12 @@ async function loadOverviewLinks(
 export async function loadOverviewGraph(
   c: QueryClient,
   docoId: string,
-  options: { centerId?: string; handle?: string } = {},
+  options: { centerId?: string; handle?: string; limit?: number } = {},
 ): Promise<OverviewGraphData> {
-  const rows = await loadOverviewRows(c, docoId);
+  const rows = await loadOverviewRows(c, docoId, {
+    centerId: options.centerId,
+    limit: options.limit,
+  });
   const nodeIds = rows.map((row) => row.id);
   const links = await loadOverviewLinks(c, docoId, nodeIds);
   const nodes: OverviewGraphNode[] = rows.map((row) => ({

@@ -191,7 +191,7 @@ interface SynapseRow {
 export async function loadBpmnGraph(
   c: QueryClient,
   docoId: string,
-  opts: { handle?: string } = {},
+  opts: { focusId?: string; handle?: string; nodeLimit?: number } = {},
 ): Promise<BpmnGraphData> {
   const neuronSql = BPMN_TABLES.map((entry) => {
     const tnCol = ALL_ENTITY_TABLES[entry.entityType]?.typeNamedColumn;
@@ -548,7 +548,95 @@ export async function loadBpmnGraph(
   const globalPagerank: Record<string, number> = {};
   for (const [id, score] of pr) globalPagerank[id] = score;
 
+  return limitBpmnGraph(
+    { pools, lanes, nodes, links, global_pagerank: globalPagerank },
+    opts.nodeLimit,
+    opts.focusId,
+  );
+}
+
+function limitBpmnGraph(
+  graph: BpmnGraphData,
+  nodeLimit: number | undefined,
+  focusId: string | undefined,
+): BpmnGraphData {
+  if (!nodeLimit || graph.nodes.length <= nodeLimit) return graph;
+
+  const limit = Math.max(1, Math.floor(nodeLimit));
+  const selected = selectBpmnNodeIds(graph.nodes, graph.links, limit, focusId);
+  const nodes = graph.nodes.filter((node) => selected.has(node.id));
+  const nodeIds = new Set(nodes.map((node) => node.id));
+  const links = graph.links.filter((link) => nodeIds.has(link.source) && nodeIds.has(link.target));
+  const laneIds = new Set(nodes.map((node) => node.laneId));
+  const poolIds = new Set(nodes.map((node) => node.pool_id));
+  const lanes = graph.lanes.filter((lane) => laneIds.has(lane.id));
+  const pools = graph.pools.filter((pool) => poolIds.has(pool.id));
+  const globalPagerank = Object.fromEntries(
+    Object.entries(graph.global_pagerank ?? {}).filter(
+      ([id]) => nodeIds.has(id) || poolIds.has(`pool:${id}`),
+    ),
+  );
   return { pools, lanes, nodes, links, global_pagerank: globalPagerank };
+}
+
+function selectBpmnNodeIds(
+  nodes: readonly BpmnNode[],
+  links: readonly OverviewGraphLink[],
+  limit: number,
+  focusId: string | undefined,
+): Set<string> {
+  const selected = new Set<string>();
+  const nodeById = new Map(nodes.map((node) => [node.id, node]));
+  const add = (id: string | null | undefined) => {
+    if (!id || selected.size >= limit) return;
+    if (nodeById.has(id)) selected.add(id);
+  };
+
+  add(focusId);
+  if (focusId) {
+    const focusPoolId = focusId.startsWith("intent_")
+      ? `pool:${focusId}`
+      : nodeById.get(focusId)?.pool_id;
+    for (const node of nodes) {
+      if (selected.size >= limit) break;
+      if (node.pool_id === focusPoolId) add(node.id);
+    }
+    for (const link of links) {
+      if (selected.size >= limit) break;
+      if (link.source === focusId) add(link.target);
+      else if (link.target === focusId) add(link.source);
+    }
+  }
+
+  const ordered = [...nodes].sort(compareBpmnNodesForLargeDoco);
+  for (const node of ordered) {
+    add(node.id);
+    if (selected.size >= limit) break;
+  }
+  return selected;
+}
+
+function compareBpmnNodesForLargeDoco(a: BpmnNode, b: BpmnNode): number {
+  const lifecycleDiff = lifecycleRank(a.lifecycle) - lifecycleRank(b.lifecycle);
+  if (lifecycleDiff !== 0) return lifecycleDiff;
+  const dateDiff = Date.parse(b.created_at ?? "") - Date.parse(a.created_at ?? "");
+  if (Number.isFinite(dateDiff) && dateDiff !== 0) return dateDiff;
+  return a.id.localeCompare(b.id);
+}
+
+function lifecycleRank(lifecycle: string | null | undefined): number {
+  switch (lifecycle ?? "active") {
+    case "active":
+      return 0;
+    case "proposed":
+      return 1;
+    case "drafting":
+      return 2;
+    case "retired":
+      return 3;
+    default:
+      return 4;
+  }
 }
 
 export function computeNearestIntentByNode(

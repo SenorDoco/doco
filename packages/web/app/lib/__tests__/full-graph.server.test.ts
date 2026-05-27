@@ -109,4 +109,31 @@ describe("loadOverviewGraph", () => {
       }),
     ]);
   });
+
+  it("can request a bounded graph slice for large Docos", async () => {
+    const { client, captured } = makeQueryClient({
+      entities: [
+        {
+          id: "decision_focus",
+          entity_type: "decision",
+          name: null,
+          label: "Focused decision",
+          lifecycle: "drafting",
+          created_at: "2026-05-01T00:00:00.000Z",
+        },
+      ],
+      synapses: [],
+    });
+
+    await loadOverviewGraph(client, "doco_large", {
+      centerId: "decision_focus",
+      handle: "large",
+      limit: 750,
+    });
+
+    const entityQuery = captured.find((c) => /FROM principals/i.test(c.sql));
+    expect(entityQuery?.sql).toMatch(/id = \$3 DESC/);
+    expect(entityQuery?.sql).toMatch(/LIMIT \$2/);
+    expect(entityQuery?.params).toEqual(["doco_large", 750, "decision_focus"]);
+  });
 });

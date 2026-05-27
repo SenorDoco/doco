@@ -72,8 +72,8 @@ const RIGHT_COLUMN_WIDTH = 320;
 const RIGHT_COLUMN_GRID_GAP = 24;
 const RIGHT_COLUMN_MIN_CONTENT_WIDTH =
   RIGHT_COLUMN_MAIN_MIN_WIDTH + RIGHT_COLUMN_WIDTH + RIGHT_COLUMN_GRID_GAP;
-const PERSPECTIVE_RENDER_NODE_LIMIT = 750;
-const CAPPED_PERSPECTIVE_KINDS = new Set(["graph", "list", "bpmn", "org-tree"]);
+const LARGE_PERSPECTIVE_THRESHOLD = 750;
+const LARGE_PERSPECTIVE_NODE_LIMIT = 750;
 
 interface FeedItem extends ActivityFeedLineItem {
   event_id: string;
@@ -297,21 +297,15 @@ export async function loader({
     const activePerspective = resolveActivePerspective(perspectives, requestedSlug);
     const activeKind = activePerspective?.kind ?? "graph";
     const canAdminPerspectives = await canApproveDoco(ctx.meta, me?.id ?? null);
-    const perspectiveTooLarge =
-      totalNodes > PERSPECTIVE_RENDER_NODE_LIMIT && CAPPED_PERSPECTIVE_KINDS.has(activeKind)
-        ? {
-            kind: activeKind,
-            totalNodes,
-            limit: PERSPECTIVE_RENDER_NODE_LIMIT,
-          }
-        : null;
+    const perspectiveNodeLimit =
+      totalNodes > LARGE_PERSPECTIVE_THRESHOLD ? LARGE_PERSPECTIVE_NODE_LIMIT : undefined;
 
-    const shouldLoadOverviewGraph =
-      !perspectiveTooLarge && (activeKind === "graph" || activeKind === "list");
+    const shouldLoadOverviewGraph = activeKind === "graph" || activeKind === "list";
     const graph = shouldLoadOverviewGraph
       ? await loadOverviewGraph(c, ctx.meta.docoId, {
           handle,
           ...(selectedNeuron ? { centerId: selectedNeuron.id } : {}),
+          limit: perspectiveNodeLimit,
         })
       : null;
 
@@ -325,16 +319,18 @@ export async function loader({
     // BPMN data is only needed when the active perspective is bpmn —
     // skip the principal+data join otherwise.
     const bpmnGraph =
-      activeKind === "bpmn" && !perspectiveTooLarge
-        ? await loadBpmnGraph(c, ctx.meta.docoId, { handle })
+      activeKind === "bpmn"
+        ? await loadBpmnGraph(c, ctx.meta.docoId, {
+            focusId: selectedNeuron?.id,
+            handle,
+            nodeLimit: perspectiveNodeLimit,
+          })
         : null;
 
     // Org-tree data is only needed when that perspective is active —
     // skip the principals fetch otherwise.
     const orgTreeData =
-      activeKind === "org-tree" && !perspectiveTooLarge
-        ? await loadOrgTreeData(c, ctx.meta.docoId, handle)
-        : null;
+      activeKind === "org-tree" ? await loadOrgTreeData(c, ctx.meta.docoId, handle) : null;
 
     const slaData =
       activeKind === "sla" ? await loadSlaPerspectiveData(c, ctx.meta.docoId, handle) : null;
@@ -377,7 +373,6 @@ export async function loader({
       activePerspectiveSlug: activePerspective?.slug ?? null,
       activePerspectiveKind: activePerspective?.kind ?? null,
       canAdminPerspectives,
-      perspectiveTooLarge,
       pageRanks,
       bpmnGraph,
       orgTreeData,
@@ -487,7 +482,6 @@ export default function DocoHome({
     activePerspectiveSlug,
     activePerspectiveKind,
     canAdminPerspectives,
-    perspectiveTooLarge,
     pageRanks,
     bpmnGraph,
     orgTreeData,
@@ -911,14 +905,7 @@ export default function DocoHome({
                   onToggle: togglePerspectiveFullscreen,
                 }}
               >
-                {perspectiveTooLarge ? (
-                  <PerspectiveLimitNotice
-                    handle={handle}
-                    perspective={perspectiveTooLarge.kind}
-                    totalNodes={perspectiveTooLarge.totalNodes}
-                    limit={perspectiveTooLarge.limit}
-                  />
-                ) : effectivePerspectiveKind === "list" ? (
+                {effectivePerspectiveKind === "list" ? (
                   <ListPerspective
                     nodes={graphState.nodes}
                     pageRanks={pageRanksMap}
@@ -1074,52 +1061,6 @@ export default function DocoHome({
       </main>
     </div>
   );
-}
-
-function PerspectiveLimitNotice({
-  handle,
-  perspective,
-  totalNodes,
-  limit,
-}: {
-  handle: string;
-  perspective: string;
-  totalNodes: number;
-  limit: number;
-}) {
-  return (
-    <div className="flex h-full min-h-0 items-center justify-center px-6 text-center">
-      <div className="max-w-md space-y-3">
-        <h2 className="text-sm font-semibold text-foreground">
-          {perspectiveLabel(perspective)} paused at this size
-        </h2>
-        <p className="text-xs leading-5 text-muted-foreground">
-          This Doco has {totalNodes.toLocaleString()} neurons. Canvas perspectives render up to{" "}
-          {limit.toLocaleString()} neurons while indexed, viewport-loaded perspectives are being
-          built.
-        </p>
-        <Link
-          to={allNodesSearchPath(handle)}
-          className="neu-button inline-flex rounded-md border border-border px-3 py-1.5 text-xs font-semibold text-foreground hover:text-primary"
-        >
-          Search neurons
-        </Link>
-      </div>
-    </div>
-  );
-}
-
-function perspectiveLabel(kind: string): string {
-  switch (kind) {
-    case "bpmn":
-      return "BPMN";
-    case "org-tree":
-      return "Org Tree";
-    case "list":
-      return "List";
-    default:
-      return "Graph";
-  }
 }
 
 function stringField(

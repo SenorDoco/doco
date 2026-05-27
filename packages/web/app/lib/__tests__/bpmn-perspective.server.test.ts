@@ -236,6 +236,69 @@ describe("loadBpmnGraph", () => {
 
     expect(checkout?.bfs_depth).toBeGreaterThan(decision?.bfs_depth ?? 0);
   });
+
+  it("renders a bounded active-first slice for large Docos", async () => {
+    const { client } = makeQueryClient({
+      neurons: [
+        {
+          id: "intent_active",
+          entity_type: "intent",
+          summary: "Active process",
+          lifecycle: "active",
+          created_at: "2026-05-26T00:00:00.000Z",
+          data: {},
+        },
+        {
+          id: "intent_drafting",
+          entity_type: "intent",
+          summary: "Drafting process",
+          lifecycle: "drafting",
+          created_at: "2026-05-26T00:00:00.000Z",
+          data: {},
+        },
+        {
+          id: "action_active",
+          entity_type: "action",
+          summary: "Active work",
+          lifecycle: "active",
+          created_at: "2026-05-26T00:10:00.000Z",
+          data: {
+            actor_id: "principal_owner",
+            intent_ids: ["intent_active"],
+          },
+        },
+        {
+          id: "action_drafting",
+          entity_type: "action",
+          summary: "Drafting work",
+          lifecycle: "drafting",
+          created_at: "2026-05-26T00:20:00.000Z",
+          data: {
+            actor_id: "principal_owner",
+            intent_ids: ["intent_drafting"],
+          },
+        },
+      ],
+      principals: [
+        {
+          id: "principal_owner",
+          name: "Owner",
+          lifecycle: "active",
+        },
+      ],
+      collaborators: [],
+      synapses: [],
+    });
+
+    const graph = await loadBpmnGraph(client, "doco_01", {
+      handle: "large",
+      nodeLimit: 1,
+    });
+
+    expect(graph.nodes.map((node) => node.id)).toEqual(["action_active"]);
+    expect(graph.pools.map((pool) => pool.id)).toEqual(["pool:intent_active"]);
+    expect(graph.lanes).toHaveLength(1);
+  });
 });
 
 describe("computeNearestIntentByNode", () => {
