@@ -83,16 +83,16 @@ describe("/integrations", () => {
     expect(JSON.stringify(data)).not.toContain("DOCO_SLACK_INSTALL_URL");
   });
 
-  it("shows a channel-default saved notice", async () => {
+  it("shows a workspace-default saved notice", async () => {
     mocks.getCurrentPrincipal.mockResolvedValue({
       id: "collaborator_alice",
       username: "alice",
     });
 
     const data = await loader({
-      request: new Request("https://doco.test/integrations?slack_connected=all-doco"),
+      request: new Request("https://doco.test/integrations?slack_connected=Doco"),
     });
 
-    expect(data.notice).toBe("Saved the Slack channel default for #all-doco.");
+    expect(data.notice).toBe("Saved the Slack default permissions for Doco.");
   });
 });

@@ -54,7 +54,7 @@ export function chatTargetLabel(target: ChatAccessTarget): string {
 }
 
 export function grantSourceLabel(source: ChatGrantSource): string {
-  return source === "personal" ? "your Doco account" : "channel default";
+  return source === "personal" ? "your Doco account" : "shared default";
 }
 
 export function canCreateDocoFromChat(orgRole: DocoRole | null | undefined): boolean {
@@ -75,7 +75,7 @@ export function canSetChannelDefaultAccess(args: {
   if (ROLE_RANK[args.requestedRole] > ROLE_RANK[args.personalRole]) {
     return {
       ok: false,
-      error: `Cannot set channel default '${args.requestedRole}' because your access is '${args.personalRole}'.`,
+      error: `Cannot set default permissions '${args.requestedRole}' because your access is '${args.personalRole}'.`,
     };
   }
   return { ok: true };
@@ -123,7 +123,7 @@ export function formatChatAccessSummary(args: {
   linkedAs?: string | null;
 }): string {
   const lines = [`Señor Doco is connected to ${args.channelName}.`, ""];
-  lines.push("Channel default access:");
+  lines.push("Shared default access:");
   lines.push(...formatAccessBullets(args.channelDefaults));
 
   const personal = args.personalTargets ?? [];
@@ -146,13 +146,13 @@ export function formatConnectionAuthorizationPreview(args: {
   defaultTargets: ChatAccessTarget[];
 }): string {
   return [
-    `Connect Señor Doco to ${args.channelName}?`,
+    "Set the default permissions for Señor Doco?",
     "",
-    "This will become the channel default access:",
+    "This will become the shared default access:",
     ...formatAccessBullets(args.defaultTargets),
     "",
     `Requested by: ${args.requesterLabel}`,
-    "This is the channel default for Señor Doco. Everyone in this chat can use it.",
+    "This is the default for Señor Doco. Everyone in this chat can use it.",
     "Each person can also link their own Doco account. If they already have higher access in Doco, Señor Doco may use that higher personal access, but never more than the access they already hold.",
     "Owner-only actions, including creating Docos and changing policies, require that individual person to be an owner in Doco.",
     "Collaborator invites are sent by direct message and cannot grant above the inviter's role.",
