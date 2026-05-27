@@ -443,12 +443,7 @@ export async function buildSlackAppMentionResponse(args: {
     return formatSlackCountResponse(counts, countKind);
   }
 
-  const defaultTargets = formatSlackConnectionList(connections);
-  if (isSlackGreeting(cleanText)) {
-    return `Hola. I’m ready to work with ${defaultTargets} by default. Ask me things like “how many neurons do we have?” or tell me what to doco.`;
-  }
-
-  return `I’m here. I can answer Doco questions using ${defaultTargets} by default. Try “how many neurons do we have?” for a quick check.`;
+  return formatSlackDefaultResponse(connections, cleanText);
 }
 
 export function cleanSlackMentionText(text: string): string {
@@ -487,6 +482,18 @@ export function detectSlackCountKind(text: string): SlackCountKind | null {
 
 function isSlackGreeting(text: string): boolean {
   return /^(hi|hello|hey|hola|buenas|yo|sup)[\s!.,?]*$/i.test(text);
+}
+
+export function formatSlackDefaultResponse(
+  connections: SlackChannelConnectionSummary[],
+  cleanText: string,
+): string {
+  const defaultTargets = formatSlackConnectionList(connections);
+  if (isSlackGreeting(cleanText)) {
+    return `Hola. By default, I can answer questions accessing ${defaultTargets}. Try “what docos do we have?” or tell me what to doco.`;
+  }
+
+  return `I’m here. By default, I can answer questions accessing ${defaultTargets}. Try “what docos do we have?” for a quick check.`;
 }
 
 async function readSlackConnectionCounts(
@@ -562,7 +569,7 @@ function formatSlackConnectionList(connections: SlackChannelConnectionSummary[])
 
 function slackConnectionAccessLabel(connection: SlackChannelConnectionSummary): string {
   return connection.targetLevel === "org"
-    ? `all Docos in ${connection.targetLabel}`
+    ? `all ${connection.targetLabel}'s docos`
     : connection.targetLabel;
 }
 
