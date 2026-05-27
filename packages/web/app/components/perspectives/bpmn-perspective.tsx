@@ -858,6 +858,7 @@ interface FlowEdge {
   source: string;
   target: string;
   type: string;
+  zIndex?: number;
   data?: Record<string, unknown>;
   selectable: boolean;
   focusable: boolean;
@@ -1143,10 +1144,12 @@ function layOutBpmn(
         // They may pass behind intervening neurons in dense diagrams,
         // but they read better than the heavier lane-gutter router.
         type: "stableLabeledBezier",
+        zIndex: 0,
         data: label
           ? {
               label,
               labelOpacity: edgeOpacity,
+              labelZIndex: 1,
               labelBoxStyle: {
                 display: "inline-flex",
                 alignItems: "center",
