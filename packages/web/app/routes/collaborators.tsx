@@ -68,7 +68,7 @@ export async function action({
   const me = await getCurrentPrincipal(request);
   if (!me) return { error: "Sign in to manage collaborators." };
 
-  const form = await request.formData();
+  const form = await request.clone().formData();
   const intent = String(form.get("intent") ?? "");
   const level = String(form.get("level") ?? "") as InviteLevel;
 
