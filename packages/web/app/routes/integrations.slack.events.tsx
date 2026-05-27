@@ -49,7 +49,7 @@ export async function action({ request }: { request: Request }) {
           ? `This channel is connected to ${connections
               .map((connection) => `${connection.targetLabel} as ${connection.role}`)
               .join(", ")}. Personal account linking comes next.`
-          : "I’m installed here. Run `/doco connect` in this channel to choose the Doco and default access.";
+          : "I’m installed here. Open Doco Integrations to choose the channel default access, or use `/doco connect` as a shortcut.";
       await postSlackMessage({ workspaceId: teamId, channelId, text });
     }
   }

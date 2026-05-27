@@ -103,9 +103,11 @@ describe("group-chat UX helpers", () => {
     expect(text).toContain("This will become the channel default access:");
     expect(text).toContain("• torre/bpms · author");
     expect(text).toContain(
-      "Señor Doco may then use their higher personal access, but only up to the access they already have in Doco.",
+      "If they already have higher access in Doco, Señor Doco may use that higher personal access, but never more than the access they already hold.",
     );
-    expect(text).toContain("Creating Docos and changing policies still require owner access.");
+    expect(text).toContain(
+      "Owner-only actions, including creating Docos and changing policies, require that individual person to be an owner in Doco.",
+    );
   });
 
   it("formats access summaries with channel defaults and personal grants", () => {

@@ -80,9 +80,7 @@ describe("Slack integration routes", () => {
     }).catch((error: Response) => error)) as Response;
 
     expect(response.status).toBe(302);
-    expect(response.headers.get("Location")).toBe(
-      "/integrations?provider=slack&slack_installed=Acme",
-    );
+    expect(response.headers.get("Location")).toBe("/integrations/slack/setup?team_id=T123");
     expect(mocks.upsertSlackInstallation).toHaveBeenCalledWith({
       response: expect.objectContaining({ team: { id: "T123", name: "Acme" } }),
       installedByCollaboratorId: "collaborator_alice",

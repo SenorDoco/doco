@@ -10,14 +10,14 @@ export async function loader({ request }: { request: Request }) {
   const url = new URL(request.url);
   const error = url.searchParams.get("error");
   if (error) {
-    throw redirect(`/integrations?provider=slack&slack_error=${encodeURIComponent(error)}`);
+    throw redirect(`/integrations?slack_error=${encodeURIComponent(error)}`);
   }
 
   const code = url.searchParams.get("code");
   const state = url.searchParams.get("state");
   const config = getSlackConfig();
   if (!code || !state || !config.signingSecret) {
-    throw redirect("/integrations?provider=slack&slack_error=missing_oauth_response");
+    throw redirect("/integrations?slack_error=missing_oauth_response");
   }
 
   try {
@@ -27,10 +27,12 @@ export async function loader({ request }: { request: Request }) {
       response,
       installedByCollaboratorId: parsedState.installerId,
     });
-    const teamName = response.team?.name ?? response.team?.id ?? "workspace";
-    throw redirect(`/integrations?provider=slack&slack_installed=${encodeURIComponent(teamName)}`);
+    const teamId = response.team?.id;
+    if (!teamId) throw new Error("Slack OAuth response did not include a team id.");
+    const params = new URLSearchParams({ team_id: teamId });
+    throw redirect(`/integrations/slack/setup?${params.toString()}`);
   } catch (err) {
     if (err instanceof Response) throw err;
-    throw redirect("/integrations?provider=slack&slack_error=install_failed");
+    throw redirect("/integrations?slack_error=install_failed");
   }
 }
