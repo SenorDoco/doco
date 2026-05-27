@@ -59,6 +59,7 @@ export interface DocoSection {
 
 export interface CollaboratorsPageData {
   me: CurrentPrincipal;
+  host: string;
   orgSections: OrgSection[];
   docoSections: DocoSection[];
   invite: CollaboratorInviteData;
@@ -232,9 +233,10 @@ export async function loadCollaboratorSections(principalId: string): Promise<{
 
 export async function loadCollaboratorsPageData(request: Request): Promise<CollaboratorsPageData> {
   const me = await requireCurrentPrincipal(request);
+  const url = new URL(request.url);
   const { orgSections, docoSections } = await loadCollaboratorSections(me.id);
   const invite = buildCollaboratorInviteData({ request, orgSections, docoSections });
-  return { me, orgSections, docoSections, invite };
+  return { me, host: `${url.protocol}//${url.host}`, orgSections, docoSections, invite };
 }
 
 function buildCollaboratorInviteData({
