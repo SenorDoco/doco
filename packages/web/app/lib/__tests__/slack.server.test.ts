@@ -6,6 +6,7 @@ import {
   cleanSlackMentionText,
   detectSlackCountKind,
   formatSlackCountResponse,
+  formatSlackDefaultResponse,
   parseSlackCommandPayload,
   signSlackState,
   slackConnectUrl,
@@ -99,8 +100,29 @@ describe("slack.server", () => {
   it("detects count questions from Slack mentions", () => {
     expect(detectSlackCountKind("How many neurons do we have?")).toBe("neurons");
     expect(detectSlackCountKind("How many nodes do we have?")).toBe("neurons");
+    expect(detectSlackCountKind("what docos do we have?")).toBe("docos");
     expect(detectSlackCountKind("count decisions")).toBe("decisions");
     expect(detectSlackCountKind("hola")).toBeNull();
+  });
+
+  it("formats the default Slack fallback with the quick Doco check", () => {
+    expect(
+      formatSlackDefaultResponse(
+        [
+          {
+            channelId: "*",
+            channelName: "workspace",
+            targetLevel: "org",
+            targetId: "organization_doco",
+            targetLabel: "doco",
+            role: "approver",
+          },
+        ],
+        "Do you doco?",
+      ),
+    ).toBe(
+      "I’m here. By default, I can answer questions accessing all doco's docos. Try “what docos do we have?” for a quick check.",
+    );
   });
 
   it("formats Slack count answers with qualified Doco labels", () => {
