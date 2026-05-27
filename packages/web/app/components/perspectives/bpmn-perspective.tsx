@@ -872,6 +872,11 @@ interface FlowEdge {
   source: string;
   target: string;
   type: string;
+  label?: string;
+  labelStyle?: CSSProperties;
+  labelBgPadding?: [number, number];
+  labelBgBorderRadius?: number;
+  labelBgStyle?: CSSProperties;
   data?: Record<string, unknown>;
   selectable: boolean;
   focusable: boolean;
@@ -1163,10 +1168,32 @@ function layOutBpmn(
       // arrow visually "carries" the state of its source — drafted
       // work flows in yellow, active work in black, retired in red.
       const stroke = lifecycleColor(nodeById.get(link.source)?.lifecycle);
+      const label = link.label?.trim() || "";
       return {
         id: `${link.source}-${link.target}-${index}`,
         source,
         target,
+        ...(label
+          ? {
+              label,
+              labelStyle: {
+                fontSize: 9,
+                fontWeight: 700,
+                fill: "#202020",
+                pointerEvents: "none" as const,
+                opacity: edgeOpacity,
+              },
+              labelBgPadding: [3, 6] as [number, number],
+              labelBgBorderRadius: 4,
+              labelBgStyle: {
+                fill: "#ffffff",
+                fillOpacity: 0.96 * edgeOpacity,
+                stroke,
+                strokeOpacity: 0.32 * edgeOpacity,
+                pointerEvents: "none" as const,
+              },
+            }
+          : {}),
         // Bezier curves keep process arrows compact and visually soft.
         // They may pass behind intervening neurons in dense diagrams,
         // but they read better than the heavier lane-gutter router.

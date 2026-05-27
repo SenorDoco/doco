@@ -173,6 +173,102 @@ describe("loadBpmnGraph", () => {
     expect(actorLabels).toEqual(["Talent seeker", "SuD"]);
   });
 
+  it("preserves sequence flow labels for BPMN edge tags", async () => {
+    const intentId = "intent_01PROCESS";
+    const decisionId = "decision_01ROUTE";
+    const yesId = "action_01YES";
+    const noId = "action_01NO";
+
+    const { client, captured } = makeQueryClient({
+      neurons: [
+        {
+          id: intentId,
+          entity_type: "intent",
+          summary: "Route yes/no process",
+          lifecycle: "active",
+          created_at: "2026-05-26T00:00:00.000Z",
+          data: {},
+        },
+        {
+          id: decisionId,
+          entity_type: "decision",
+          summary: "Does the user qualify?",
+          lifecycle: "active",
+          created_at: "2026-05-26T00:01:00.000Z",
+          data: {
+            decided_by: "principal_system",
+            intent_ids: [intentId],
+          },
+        },
+        {
+          id: yesId,
+          entity_type: "action",
+          summary: "Approve request",
+          lifecycle: "active",
+          created_at: "2026-05-26T00:02:00.000Z",
+          data: {
+            actor_id: "principal_system",
+            intent_ids: [intentId],
+          },
+        },
+        {
+          id: noId,
+          entity_type: "action",
+          summary: "Reject request",
+          lifecycle: "active",
+          created_at: "2026-05-26T00:03:00.000Z",
+          data: {
+            actor_id: "principal_system",
+            intent_ids: [intentId],
+          },
+        },
+      ],
+      principals: [
+        {
+          id: "principal_system",
+          name: "System",
+          lifecycle: "active",
+        },
+      ],
+      collaborators: [],
+      synapses: [
+        {
+          from_id: decisionId,
+          to_id: yesId,
+          synapse_type: "sequence_flow",
+          synapse_props_json: { label: "Yes" },
+        },
+        {
+          from_id: decisionId,
+          to_id: noId,
+          synapse_type: "sequence_flow",
+          synapse_props_json: { condition: "No" },
+        },
+      ],
+    });
+
+    const graph = await loadBpmnGraph(client, "doco_01", { handle: "activation" });
+    const synapseQuery = captured.find((q) => /FROM synapses/i.test(q.sql));
+
+    expect(synapseQuery?.sql).toMatch(/synapse_props_json/);
+    expect(graph.links).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          source: decisionId,
+          target: yesId,
+          synapse_type: "sequence_flow",
+          label: "Yes",
+        }),
+        expect.objectContaining({
+          source: decisionId,
+          target: noId,
+          synapse_type: "sequence_flow",
+          label: "No",
+        }),
+      ]),
+    );
+  });
+
   it("assigns later sequence targets a greater layout depth even when a loop points back", async () => {
     const intentId = "intent_01PROCESS";
     const decisionId = "decision_01ROUTE";
