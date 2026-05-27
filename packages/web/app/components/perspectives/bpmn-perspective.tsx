@@ -16,14 +16,7 @@
 // sit on left/right edges so synapses connect cleanly regardless of
 // lane vertical offset.
 
-import {
-  BaseEdge,
-  type EdgeProps,
-  Handle,
-  MarkerType,
-  type MiniMapNodeProps,
-  Position,
-} from "@xyflow/react";
+import { Handle, MarkerType, type MiniMapNodeProps, Position } from "@xyflow/react";
 import {
   type CSSProperties,
   type ComponentType,
@@ -42,13 +35,6 @@ import {
 } from "~/components/neuron-badges";
 import type { OverviewGraphLink } from "~/components/overview-graph";
 import { StandardControls, StandardMiniMap } from "~/components/perspective-canvas-overlays";
-import {
-  type BpmnEdgeBox,
-  type BpmnEdgePoint,
-  type BpmnLaneBand,
-  bpmnEdgePath,
-  routeBpmnSequenceEdge,
-} from "~/lib/bpmn-edge-routing";
 import { bpmnLaneColumnKey, packBpmnLaneColumns } from "~/lib/bpmn-lane-packing";
 import type { BpmnLane, BpmnNode, BpmnPool, BpmnShape } from "~/lib/bpmn-perspective.server";
 import { computeForwardSequenceDepths } from "~/lib/bpmn-sequence-depth";
@@ -147,7 +133,6 @@ const NODE_WIDTH = 140;
 const NODE_HEIGHT = 60;
 const NODE_GAP_X = 60;
 const NODE_GAP_Y = 20; // padding above/below row inside the lane
-const OBSTACLE_ROUTING_NODE_LIMIT = 250;
 
 /**
  * Per-node box sizing — the label's character count drives how big
@@ -280,7 +265,6 @@ export function BpmnPerspective({
     }),
     [],
   );
-  const edgeTypes = useMemo(() => ({ bpmnSequence: BpmnSequenceEdge }), []);
   const nodeById = useMemo(() => new Map(filteredNodes.map((n) => [n.id, n])), [filteredNodes]);
   const laneById = useMemo(
     () => new Map(filteredLanes.map((lane) => [lane.id, lane])),
@@ -512,7 +496,6 @@ export function BpmnPerspective({
           nodes={flowNodes}
           edges={layout.flowEdges}
           nodeTypes={nodeTypes}
-          edgeTypes={edgeTypes}
           nodesDraggable={false}
           nodesConnectable={false}
           fitView
@@ -661,9 +644,6 @@ interface FlowEdge {
   focusable: boolean;
   interactionWidth: number;
   style?: CSSProperties;
-  data?: {
-    points?: BpmnEdgePoint[];
-  };
   animated?: boolean;
   markerEnd?: { type: MarkerType; width?: number; height?: number; color?: string };
 }
@@ -798,7 +778,6 @@ function layOutBpmn(
   const flowNodes: FlowNode[] = [];
   const laneYById = new Map<string, number>();
   const nodePositions = new Map<string, { x: number; y: number }>();
-  const nodeBoxes = new Map<string, BpmnEdgeBox>();
   const poolGeometry: BpmnLayout["poolGeometry"] = [];
 
   // Group lanes by pool so each pool can emit its header + its own
@@ -902,14 +881,6 @@ function layOutBpmn(
       }
       const laneY = laneYById.get(node.laneId) ?? 0;
       nodePositions.set(node.id, { x, y: laneY + y });
-      nodeBoxes.set(node.id, {
-        id: node.id,
-        laneId: node.laneId,
-        left: LANE_LEFT_INSET + x,
-        right: LANE_LEFT_INSET + x + size.width,
-        top: laneY + y,
-        bottom: laneY + y + size.height,
-      });
       const nodeOpacity = focalActive ? opacityForDepth(focalDepthByNode.get(node.id)) : 1;
       flowNodes.push({
         id: node.id,
@@ -930,32 +901,12 @@ function layOutBpmn(
 
   const nodeSet = new Set(nodes.map((n) => n.id));
   const nodeById = new Map(nodes.map((n) => [n.id, n]));
-  const routeAroundObstacles = nodes.length <= OBSTACLE_ROUTING_NODE_LIMIT;
-  const obstacles = routeAroundObstacles ? Array.from(nodeBoxes.values()) : [];
-  const laneBands = new Map<string, BpmnLaneBand>();
-  for (const lane of lanes) {
-    const y = laneYById.get(lane.id) ?? 0;
-    const height = laneHeightById.get(lane.id) ?? baseLaneHeight;
-    laneBands.set(lane.id, { id: lane.id, top: y, bottom: y + height });
-  }
   const flowEdges: FlowEdge[] = links
     .filter((link) => nodeSet.has(link.source) && nodeSet.has(link.target))
     .filter((link) => SEQUENCE_FLOW_SYNAPSES.has(link.synapse_type))
     .map((link, index) => {
       const source = link.source;
       const target = link.target;
-      const sourceBox = nodeBoxes.get(source);
-      const targetBox = nodeBoxes.get(target);
-      const routePoints =
-        routeAroundObstacles && sourceBox && targetBox
-          ? routeBpmnSequenceEdge({
-              source: sourceBox,
-              target: targetBox,
-              obstacles,
-              lanes: laneBands,
-              edgeIndex: index,
-            })
-          : undefined;
       const edgeOpacity = focalActive
         ? opacityForEdge(focalDepthByNode.get(source), focalDepthByNode.get(target))
         : 1;
@@ -967,11 +918,13 @@ function layOutBpmn(
         id: `${link.source}-${link.target}-${index}`,
         source,
         target,
-        type: "bpmnSequence",
+        // Bezier curves keep process arrows compact and visually soft.
+        // They may pass behind intervening neurons in dense diagrams,
+        // but they read better than the heavier lane-gutter router.
+        type: "bezier",
         selectable: false,
         focusable: false,
         interactionWidth: 0,
-        ...(routePoints ? { data: { points: routePoints } } : {}),
         style: {
           stroke,
           strokeWidth: 1.75,
@@ -1021,35 +974,6 @@ function nodeTypeForShape(shape: BpmnShape): string {
     default:
       return "bpmnRectangle";
   }
-}
-
-function BpmnSequenceEdge({
-  id,
-  sourceX,
-  sourceY,
-  targetX,
-  targetY,
-  data,
-  style,
-  markerEnd,
-  interactionWidth,
-}: EdgeProps & { data?: { points?: BpmnEdgePoint[] } }) {
-  const points =
-    data?.points && data.points.length >= 2
-      ? data.points
-      : [
-          { x: sourceX, y: sourceY },
-          { x: targetX, y: targetY },
-        ];
-  return (
-    <BaseEdge
-      id={id}
-      path={bpmnEdgePath(points)}
-      markerEnd={markerEnd}
-      style={style}
-      interactionWidth={interactionWidth ?? 0}
-    />
-  );
 }
 
 function laneNodeId(laneId: string): string {
