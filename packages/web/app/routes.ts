@@ -132,6 +132,11 @@ export default [
   route("orgs/:orgHandle/search", "routes/orgs.$orgHandle.search.tsx"),
   route("collaborators", "routes/collaborators.tsx"),
   route("integrations", "routes/integrations.tsx"),
+  route("integrations/slack/install", "routes/integrations.slack.install.tsx"),
+  route("integrations/slack/callback", "routes/integrations.slack.callback.tsx"),
+  route("integrations/slack/events", "routes/integrations.slack.events.tsx"),
+  route("integrations/slack/commands", "routes/integrations.slack.commands.tsx"),
+  route("integrations/slack/interactions", "routes/integrations.slack.interactions.tsx"),
   route("users/:username", "routes/users.$username.tsx"),
   // /api-keys — host-level page listing every active OAuth refresh
   // token bound to the signed-in user (both agent-OAuth-flow tokens
