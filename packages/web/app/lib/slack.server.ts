@@ -64,6 +64,13 @@ export interface SlackOAuthState {
   issuedAt: number;
 }
 
+export interface SlackPersonalAuthorizationState {
+  workspaceId: string;
+  chatUserId: string;
+  nonce: string;
+  issuedAt: number;
+}
+
 export interface SlackInstallationSummary {
   workspaceId: string;
   workspaceName: string;
@@ -110,6 +117,7 @@ export interface SlackLlmAnswerInput {
   hits: SlackDocoAnswerHit[];
   overview: boolean;
   repair: boolean;
+  personalAuthorizationCommand?: string | null;
 }
 
 export interface SlackLlmAnswerDeps {
@@ -279,6 +287,26 @@ export function buildSlackInstallUrl(request: Request, installerId: string): str
   return url.toString();
 }
 
+export function buildSlackPersonalAuthorizationUrl(
+  request: Request,
+  args: { workspaceId: string; chatUserId: string },
+): string | null {
+  const config = getSlackConfig();
+  if (!config.signingSecret || !args.workspaceId || !args.chatUserId) return null;
+  const state = signSlackPersonalAuthorizationState(
+    {
+      workspaceId: args.workspaceId,
+      chatUserId: args.chatUserId,
+      nonce: randomBytes(16).toString("base64url"),
+      issuedAt: Date.now(),
+    },
+    config.signingSecret,
+  );
+  const url = new URL("/integrations/slack/link", request.url);
+  url.searchParams.set("state", state);
+  return url.toString();
+}
+
 export function signSlackState(state: SlackOAuthState, secret: string): string {
   const payload = Buffer.from(JSON.stringify(state), "utf8").toString("base64url");
   const signature = hmacHex(secret, payload);
@@ -307,6 +335,48 @@ export function verifySlackState(
   }
   if (nowMs - parsed.issuedAt > STATE_TTL_MS || parsed.issuedAt - nowMs > 60_000) {
     throw new Error("Expired Slack OAuth state.");
+  }
+  return parsed;
+}
+
+export function signSlackPersonalAuthorizationState(
+  state: SlackPersonalAuthorizationState,
+  secret: string,
+): string {
+  const payload = Buffer.from(JSON.stringify(state), "utf8").toString("base64url");
+  const signature = hmacHex(secret, payload);
+  return `${payload}.${signature}`;
+}
+
+export function verifySlackPersonalAuthorizationState(
+  value: string,
+  secret: string,
+  nowMs = Date.now(),
+): SlackPersonalAuthorizationState {
+  const [payload, signature] = value.split(".");
+  if (!payload || !signature) throw new Error("Invalid Slack personal authorization state.");
+  const expected = hmacHex(secret, payload);
+  if (!timingSafeStringEqual(signature, expected)) {
+    throw new Error("Invalid Slack personal authorization state signature.");
+  }
+  let parsed: SlackPersonalAuthorizationState;
+  try {
+    parsed = JSON.parse(
+      Buffer.from(payload, "base64url").toString("utf8"),
+    ) as SlackPersonalAuthorizationState;
+  } catch {
+    throw new Error("Invalid Slack personal authorization state payload.");
+  }
+  if (
+    !parsed.workspaceId ||
+    !parsed.chatUserId ||
+    !parsed.nonce ||
+    typeof parsed.issuedAt !== "number"
+  ) {
+    throw new Error("Invalid Slack personal authorization state payload.");
+  }
+  if (nowMs - parsed.issuedAt > STATE_TTL_MS || parsed.issuedAt - nowMs > 60_000) {
+    throw new Error("Expired Slack personal authorization state.");
   }
   return parsed;
 }
@@ -475,6 +545,23 @@ export async function replaceSlackChannelConnections(input: {
   });
 }
 
+export async function upsertSlackUserLink(input: {
+  workspaceId: string;
+  chatUserId: string;
+  collaboratorId: string;
+}): Promise<void> {
+  await withClient((c) =>
+    c.query(
+      `INSERT INTO group_chat_user_links
+         (id, provider, workspace_id, chat_user_id, collaborator_id, data, created_at, updated_at)
+       VALUES ($1, 'slack', $2, $3, $4, '{}'::jsonb, now(), now())
+       ON CONFLICT (provider, workspace_id, chat_user_id, collaborator_id)
+       DO UPDATE SET updated_at = now()`,
+      [`gcul_${generateUlid()}`, input.workspaceId, input.chatUserId, input.collaboratorId],
+    ),
+  );
+}
+
 export async function listSlackChannelConnections(args: {
   workspaceId: string;
   channelId: string;
@@ -528,8 +615,10 @@ export async function listSlackChannelConnections(args: {
 export async function buildSlackAppMentionResponse(args: {
   workspaceId: string;
   channelId: string;
+  chatUserId?: string | null;
   messageText: string;
   recentMessages?: SlackRecentMessage[];
+  personalAuthorizationCommand?: string | null;
   answerGenerator?: (input: SlackLlmAnswerInput) => Promise<string | null>;
 }): Promise<string> {
   const connections = await listSlackChannelConnections({
@@ -577,6 +666,7 @@ export async function buildSlackAppMentionResponse(args: {
       hits,
       overview: answerQuery.overview,
       repair: answerQuery.repair,
+      personalAuthorizationCommand: args.personalAuthorizationCommand ?? "/doco connect",
     });
     if (llmAnswer) return llmAnswer;
     if (hits.length > 0) {
@@ -710,7 +800,7 @@ export function formatSlackAccessResponse(connections: SlackChannelConnectionSum
   return [
     `I’m Señor Doco, Doco’s Slack assistant. By default in this ${defaultScope}, I can use ${defaultTargets}.`,
     "That shared default applies to everyone here.",
-    "People can still link their own Doco account for higher personal access they already hold, but I never get more than their Doco permissions.",
+    "People can run /doco connect to link their own Doco account for higher personal access they already hold, but I never get more than their Doco permissions.",
     "Owner-only actions, like creating Docos or changing policies, still require that person to be an owner in Doco.",
   ].join(" ");
 }
@@ -815,6 +905,8 @@ export function buildSlackLlmUserPrompt(input: SlackLlmAnswerInput): string {
     "Doco context excerpts:",
     ...input.hits.map(formatSlackLlmHit),
     "",
+    `Personal authorization command: ${input.personalAuthorizationCommand ?? "/doco connect"}`,
+    "",
     "Use doco_api when you need exact counts, lists, item detail, or a second look beyond these excerpts. Use API results as the source of truth.",
     "",
     "Answer the current message. If it is a repair/follow-up, answer the prior unanswered question from the Slack context.",
@@ -866,24 +958,26 @@ export async function runSlackDocoApiTool(
   return runDocoApiToolRequest({
     toolUseId: block.id,
     input: block.input,
-    execute: (request) => executeSlackDocoApiRequest(input.connections, request),
+    execute: (request) => executeSlackDocoApiRequest(input, request),
   });
 }
 
 async function executeSlackDocoApiRequest(
-  connections: SlackChannelConnectionSummary[],
+  input: SlackLlmAnswerInput,
   request: DocoApiToolRequest,
 ): Promise<DocoApiToolEnvelope> {
   if (request.method !== "GET") {
     return slackToolEnvelope(403, {
       error:
-        "Slack doco_api currently supports read-only GET requests. Writes require a linked Doco collaborator identity or an audited Slack service-author flow.",
+        "Slack doco_api cannot write with the shared workspace default alone. Ask this Slack user to run /doco connect and authorize their own Doco account for Slack if they already have the needed Doco access, then retry the request as that user. Never claim you can exceed the access that user already holds in Doco.",
+      needs_personal_doco_authorization: true,
+      personal_authorization_command: input.personalAuthorizationCommand ?? "/doco connect",
     });
   }
 
   const url = new URL(request.path, "https://slack.doco.local");
   if (url.pathname === "/api/v1/docos.json") {
-    const docos = await listSlackAccessibleDocos(connections);
+    const docos = await listSlackAccessibleDocos(input.connections);
     return slackToolEnvelope(200, {
       docos: docos.map((doco) => ({
         id: doco.id,
@@ -904,7 +998,7 @@ async function executeSlackDocoApiRequest(
     });
   }
 
-  const doco = await resolveSlackAccessibleDoco(connections, parsed.docoHandle);
+  const doco = await resolveSlackAccessibleDoco(input.connections, parsed.docoHandle);
   if (!doco) {
     return slackToolEnvelope(404, {
       error: `Doco is not available through this Slack workspace default: ${parsed.docoHandle}`,
@@ -1644,13 +1738,15 @@ export function slackLlmSystemPrompt(): string {
       surfaceLimits: [
         "Slack can use doco_api for read-only Doco endpoints authorized by the Slack workspace default. It cannot use the signed-in website user's browser session.",
         "Slack cannot navigate the website, inspect the visible graph, or read file attachments from the Doco sidebar.",
-        "Slack cannot create, patch, retire, or invite unless that Slack action is explicitly implemented with linked Doco collaborator identity and audit attribution.",
+        "When a Slack user asks you to create, patch, retire, invite, change policies, or perform any action beyond the current Slack default permissions, ask that user to run /doco connect and authorize their own Doco account for Slack if they already have the needed Doco access. Do not send them away as a dead end; make the missing authorization the next step.",
+        "After personal Doco authorization exists, write actions must run as that linked collaborator with audit attribution, and never above the role they already hold in Doco.",
         "Do not claim access beyond the listed default Doco access. People may link personal Doco access later, but you only know the access included in this prompt.",
       ],
     }),
     "Available Slack doco_api reads: GET /api/v1/docos.json; GET /<handle>/status.json; GET /<handle>/search.json?q=...; GET /<handle>/api/<type>.json; GET /<handle>/api/<type>/<id>.json; GET /<handle>/api/principals.json; GET /<handle>/api/policies.json; GET /<handle>/api/settings.json. Valid <type>: decisions, intents, actions, logs, rules, evals, references, ideas, states. Keep qualified org/doco labels in prose, but use the route handle from /api/v1/docos.json for API paths.",
     "Answer with a concise, natural Slack message using doco_api results, provided Doco excerpts, and Slack context.",
     "Do not return the generic setup or access prompt. Do not merely list raw excerpts unless the user asks for a list.",
+    "If a requested action is blocked by Slack default permissions, say you need the user's personal Doco authorization for Slack and ask them to run /doco connect if they have the required Doco role. Be explicit about the required kind of role when you can infer it: owner for creating Docos or changing policies, author for adding neurons, approver for approval actions.",
     "If the user says you did not answer, answer the most recent substantive unanswered user question in the Slack context.",
     "For questions like what the docos explain, synthesize the main themes and cite the doco labels naturally.",
     "If the excerpts are insufficient, say exactly what is missing.",
@@ -1803,27 +1899,42 @@ export function slackConnectUrl(request: Request, payload: SlackCommandPayload):
 
 export function buildSlackConnectCommandResponse(request: Request, payload: SlackCommandPayload) {
   const connectUrl = slackConnectUrl(request, payload);
+  const personalAuthorizationUrl = payload.user_id
+    ? buildSlackPersonalAuthorizationUrl(request, {
+        workspaceId: payload.team_id,
+        chatUserId: payload.user_id,
+      })
+    : null;
+  const elements = [
+    personalAuthorizationUrl
+      ? {
+          type: "button",
+          text: { type: "plain_text", text: "Authorize my Doco account" },
+          url: personalAuthorizationUrl,
+          action_id: "authorize_doco_account_for_slack",
+        }
+      : null,
+    {
+      type: "button",
+      text: { type: "plain_text", text: "Manage workspace defaults" },
+      url: connectUrl,
+      action_id: "open_doco_channel_connection",
+    },
+  ].filter(Boolean);
   return {
     response_type: "ephemeral",
-    text: "Open Doco to choose Señor Doco's default permissions for this Slack workspace.",
+    text: "Connect your Doco account to Slack, or manage Señor Doco's shared workspace defaults.",
     blocks: [
       {
         type: "section",
         text: {
           type: "mrkdwn",
-          text: "Open Doco to choose Señor Doco's default permissions for this Slack workspace.",
+          text: "Connect your Doco account to Slack for personal access, or manage Señor Doco's shared workspace defaults.",
         },
       },
       {
         type: "actions",
-        elements: [
-          {
-            type: "button",
-            text: { type: "plain_text", text: "Open Doco" },
-            url: connectUrl,
-            action_id: "open_doco_channel_connection",
-          },
-        ],
+        elements,
       },
     ],
   };
