@@ -23,7 +23,7 @@ import { StandardControls, StandardMiniMap } from "~/components/perspective-canv
 import { StreetBezierEdge } from "~/components/stable-labeled-edge";
 import {
   highestRankedNodeId,
-  selectPersonalizedNodeIds,
+  selectMeasuredPersonalizedNodeIds,
   summarizeExternalConnections,
 } from "~/lib/focused-render-selection";
 import {
@@ -77,6 +77,7 @@ export interface OverviewNodeDetail {
 }
 
 interface OverviewGraphProps extends OverviewGraphData {
+  docoHandle?: string | null;
   fillHeight?: boolean;
   search?: ReactNode;
   /**
@@ -312,6 +313,7 @@ function OverviewFlowNode({ data }: { data: OverviewNodeData }) {
 }
 
 export function OverviewGraph({
+  docoHandle,
   centerId,
   nodes,
   links,
@@ -422,14 +424,15 @@ export function OverviewGraph({
   );
   const targetRenderedNodeIds = useMemo(
     () =>
-      selectPersonalizedNodeIds(
+      selectMeasuredPersonalizedNodeIds(
         visibleNodes,
         visibleLinks,
         effectiveCenterId,
         pageRanks,
         OVERVIEW_RENDER_NODE_BUDGET,
+        { docoHandle, perspective: "graph" },
       ),
-    [visibleNodes, visibleLinks, effectiveCenterId, pageRanks],
+    [visibleNodes, visibleLinks, effectiveCenterId, pageRanks, docoHandle],
   );
   const renderedNodeIds = useBufferedRenderedIds(targetRenderedNodeIds, visibleIds);
   const renderedNodes = useMemo(

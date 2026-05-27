@@ -1004,6 +1004,7 @@ export default function DocoHome({
                   />
                 ) : effectivePerspectiveKind === "bpmn" && bpmnGraph ? (
                   <BpmnPerspective
+                    docoHandle={handle}
                     pools={bpmnGraph.pools}
                     lanes={bpmnGraph.lanes}
                     nodes={bpmnGraph.nodes}
@@ -1039,6 +1040,7 @@ export default function DocoHome({
                   />
                 ) : (
                   <OverviewGraph
+                    docoHandle={handle}
                     centerId={graphState.centerId}
                     nodes={graphState.nodes}
                     links={graphState.links}

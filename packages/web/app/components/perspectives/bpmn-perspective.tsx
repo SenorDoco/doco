@@ -43,7 +43,7 @@ import type { BpmnLane, BpmnNode, BpmnPool, BpmnShape } from "~/lib/bpmn-perspec
 import { computeForwardSequenceDepths } from "~/lib/bpmn-sequence-depth";
 import {
   highestRankedNodeId,
-  selectPersonalizedNodeIds,
+  selectMeasuredPersonalizedNodeIds,
   summarizeExternalConnections,
 } from "~/lib/focused-render-selection";
 import {
@@ -66,6 +66,7 @@ const MILESTONE_LANE_ID = "__milestones__";
 const ARTIFACTS_LANE_ID = "__artifacts__";
 
 interface BpmnPerspectiveProps {
+  docoHandle?: string | null;
   /**
    * One pool per Intent in the Doco (plus an "Unassigned" pool for
    * neurons that don't cite an Intent). Pools are rendered in the
@@ -198,6 +199,7 @@ interface FlowModule {
 }
 
 export function BpmnPerspective({
+  docoHandle,
   pools,
   lanes: lanesRaw,
   nodes: nodesRaw,
@@ -322,14 +324,15 @@ export function BpmnPerspective({
   }, [pools, effectiveCenterId, nodeByFullId]);
   const targetRenderedNodeIds = useMemo(
     () =>
-      selectPersonalizedNodeIds(
+      selectMeasuredPersonalizedNodeIds(
         filteredNodes,
         links,
         effectiveCenterId,
         pageRankMap,
         BPMN_RENDER_NODE_BUDGET,
+        { docoHandle, perspective: "bpmn" },
       ),
-    [filteredNodes, links, effectiveCenterId, pageRankMap],
+    [filteredNodes, links, effectiveCenterId, pageRankMap, docoHandle],
   );
   const renderedNodeIds = useBufferedRenderedIds(targetRenderedNodeIds, filteredNodeIds);
   const renderedNodes = useMemo(
