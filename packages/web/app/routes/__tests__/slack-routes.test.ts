@@ -33,7 +33,7 @@ vi.mock("~/lib/slack.server", () => ({
 
 import { loader as callbackLoader } from "../integrations.slack.callback";
 import { action as commandsAction } from "../integrations.slack.commands";
-import { action as eventsAction } from "../integrations.slack.events";
+import { action as eventsAction, shouldReplyToSlackEvent } from "../integrations.slack.events";
 import { loader as installLoader } from "../integrations.slack.install";
 
 describe("Slack integration routes", () => {
@@ -158,7 +158,7 @@ describe("Slack integration routes", () => {
 
   it("posts a direct-message answer from Slack message.im events", async () => {
     mocks.buildSlackAppMentionResponse.mockResolvedValue(
-      "I’m here. I can answer Doco questions using all Docos in doco by default.",
+      "I’m here. By default, I can answer questions accessing all doco's docos.",
     );
 
     const response = await eventsAction({
@@ -187,7 +187,40 @@ describe("Slack integration routes", () => {
     expect(mocks.postSlackMessage).toHaveBeenCalledWith({
       workspaceId: "T123",
       channelId: "D123",
-      text: "I’m here. I can answer Doco questions using all Docos in doco by default.",
+      text: "I’m here. By default, I can answer questions accessing all doco's docos.",
+    });
+  });
+
+  it("posts an app-home message answer from Slack Messages tab events", async () => {
+    mocks.buildSlackAppMentionResponse.mockResolvedValue("Hola. I can hear you from Slack.");
+
+    const response = await eventsAction({
+      request: new Request("https://doco.test/integrations/slack/events", {
+        method: "POST",
+        body: JSON.stringify({
+          type: "event_callback",
+          team_id: "T123",
+          event: {
+            type: "message",
+            channel_type: "app_home",
+            channel: "D123",
+            user: "U123",
+            text: "Hi",
+          },
+        }),
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(mocks.buildSlackAppMentionResponse).toHaveBeenCalledWith({
+      workspaceId: "T123",
+      channelId: "D123",
+      messageText: "Hi",
+    });
+    expect(mocks.postSlackMessage).toHaveBeenCalledWith({
+      workspaceId: "T123",
+      channelId: "D123",
+      text: "Hola. I can hear you from Slack.",
     });
   });
 
@@ -212,5 +245,12 @@ describe("Slack integration routes", () => {
     expect(response.status).toBe(200);
     expect(mocks.buildSlackAppMentionResponse).not.toHaveBeenCalled();
     expect(mocks.postSlackMessage).not.toHaveBeenCalled();
+  });
+
+  it("identifies Slack events that should receive replies", () => {
+    expect(shouldReplyToSlackEvent({ type: "app_mention" })).toBe(true);
+    expect(shouldReplyToSlackEvent({ type: "message", channel_type: "im" })).toBe(true);
+    expect(shouldReplyToSlackEvent({ type: "message", channel_type: "app_home" })).toBe(true);
+    expect(shouldReplyToSlackEvent({ type: "message", channel_type: "channel" })).toBe(false);
   });
 });
