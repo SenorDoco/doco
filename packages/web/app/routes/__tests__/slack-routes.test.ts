@@ -37,6 +37,7 @@ import { loader as callbackLoader } from "../integrations.slack.callback";
 import { action as commandsAction } from "../integrations.slack.commands";
 import {
   action as eventsAction,
+  isSlackRetryRequest,
   shouldFetchSlackConversationContext,
   shouldReplyToSlackEvent,
 } from "../integrations.slack.events";
@@ -222,6 +223,36 @@ describe("Slack integration routes", () => {
       channelId: "D123",
       text: "Here’s what the accessible Docos explain:\n• Decision in doco/bpms: Slack works.",
     });
+  });
+
+  it("acknowledges Slack retries without posting duplicate answers", async () => {
+    const request = new Request("https://doco.test/integrations/slack/events", {
+      method: "POST",
+      headers: {
+        "x-slack-retry-num": "1",
+        "x-slack-retry-reason": "http_timeout",
+      },
+      body: JSON.stringify({
+        type: "event_callback",
+        team_id: "T123",
+        event: {
+          type: "message",
+          channel_type: "im",
+          channel: "D123",
+          user: "U123",
+          text: "What do we document?",
+          ts: "1700000001.000100",
+        },
+      }),
+    });
+
+    const response = await eventsAction({ request });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ ok: true });
+    expect(isSlackRetryRequest(request)).toBe(true);
+    expect(mocks.buildSlackAppMentionResponse).not.toHaveBeenCalled();
+    expect(mocks.postSlackMessage).not.toHaveBeenCalled();
   });
 
   it("posts an app-home message answer from Slack Messages tab events", async () => {
