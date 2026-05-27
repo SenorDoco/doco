@@ -730,6 +730,7 @@ export function BpmnPerspective({
           edges={flowEdges}
           nodeTypes={nodeTypes}
           edgeTypes={edgeTypes}
+          zIndexMode="manual"
           nodesDraggable={false}
           nodesConnectable={false}
           onlyRenderVisibleElements
