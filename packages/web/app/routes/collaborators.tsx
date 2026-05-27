@@ -1,10 +1,10 @@
 // /collaborators — global collaborator-management page (decision_01KS0JBJ5X0AZ4XJJFKEWE1R62).
 // Replaces the per-doco / per-org members pages. Top-level link in
 // the host nav. Shows every org/doco grant the signed-in principal
-// can see — humans only, since the API-keys split. Owner-issued
-// agent grants (OAuth tokens) live on /api-keys. Lets owners edit
-// roles inline (auto-save) and mint invites in-place via the
-// CollaboratorInviteCards card at the top — the prior
+// can see. Issued agent grants (OAuth tokens) live on /api-keys, but
+// the invite card also lets owners copy the agent OAuth prompt in-place.
+// Lets owners edit roles inline (auto-save) and mint invites in-place
+// via the CollaboratorInviteCards card at the top — the prior
 // /collaborators/invite standalone page is gone.
 
 import {
@@ -268,11 +268,8 @@ export default function CollaboratorsPage({
         <header className="space-y-1">
           <h1 className="text-2xl font-semibold">Collaborators</h1>
           <p className="text-sm text-muted-foreground">
-            People you've invited to your orgs and docos. For agent access tokens, see{" "}
-            <Link to="/api-keys" className="font-semibold text-foreground hover:text-primary">
-              API keys
-            </Link>
-            .
+            People you've invited to your orgs and docos. Invite a person or share the agent OAuth
+            prompt from here.
           </p>
         </header>
 
@@ -281,7 +278,7 @@ export default function CollaboratorsPage({
             <CardTitle>Invite a collaborator</CardTitle>
           </CardHeader>
           <CardContent>
-            <CollaboratorInviteCards invite={loaderData.invite} />
+            <CollaboratorInviteCards invite={loaderData.invite} host={loaderData.host} />
           </CardContent>
         </Card>
 

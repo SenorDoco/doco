@@ -1,5 +1,7 @@
+import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { useFetcher } from "react-router";
+import { AgentInvitePrompt } from "~/components/agent-invite-prompt";
 import { CollaborationInvitePrompt } from "~/components/collaboration-invite-prompt";
 import {
   ALL_ROLES,
@@ -44,15 +46,70 @@ function buildCombinedOptions(
 
 export function CollaboratorInviteCards({
   invite,
+  host,
 }: {
   invite: CollaboratorInviteData;
+  host: string;
 }) {
+  const [mode, setMode] = useState<"person" | "agent">("person");
   return (
-    <InviteHumanCard
-      orgs={invite.orgs}
-      docos={invite.docos}
-      defaultSelection={invite.defaultSelection}
-    />
+    <div className="space-y-4">
+      <div
+        role="tablist"
+        aria-label="Collaborator invite type"
+        className="inline-flex rounded-md border border-border bg-background p-0.5"
+      >
+        <InviteModeButton mode="person" current={mode} onSelect={setMode}>
+          Invite a person
+        </InviteModeButton>
+        <InviteModeButton mode="agent" current={mode} onSelect={setMode}>
+          Invite an agent
+        </InviteModeButton>
+      </div>
+
+      {mode === "person" ? (
+        <InviteHumanCard
+          orgs={invite.orgs}
+          docos={invite.docos}
+          defaultSelection={invite.defaultSelection}
+        />
+      ) : (
+        <AgentInvitePrompt
+          host={host}
+          promptTestId="collaborators-invite-agent-prompt"
+          copyButtonTestId="collaborators-invite-agent-copy"
+        />
+      )}
+    </div>
+  );
+}
+
+function InviteModeButton({
+  mode,
+  current,
+  onSelect,
+  children,
+}: {
+  mode: "person" | "agent";
+  current: "person" | "agent";
+  onSelect: (mode: "person" | "agent") => void;
+  children: ReactNode;
+}) {
+  const active = mode === current;
+  return (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={active}
+      onClick={() => onSelect(mode)}
+      className={
+        active
+          ? "rounded-md bg-primary px-3 py-1.5 text-base font-semibold text-primary-foreground"
+          : "rounded-md px-3 py-1.5 text-base font-semibold text-muted-foreground hover:text-foreground"
+      }
+    >
+      {children}
+    </button>
   );
 }
 

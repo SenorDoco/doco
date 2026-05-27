@@ -4,13 +4,15 @@
 // (both agent-OAuth-flow tokens and personal-API-key tokens minted
 // from this page) and lets the user mint new personal API keys.
 //
-// Distinct from /collaborators: that page lists humans only. API keys
-// can be issued to agents OR for the user's own scripts / runtimes,
-// so they live on their own page with their own affordances.
+// Distinct from /collaborators: that page lists people and offers the
+// agent OAuth prompt. API keys can be issued to agents OR for the
+// user's own scripts / runtimes, so they live on their own page with
+// their own affordances.
 
 import type { DocoRole } from "@doco/db";
 import { useEffect, useMemo, useState } from "react";
 import { Form, Link, redirect, useFetcher, useNavigation } from "react-router";
+import { AgentInvitePrompt } from "~/components/agent-invite-prompt";
 import { Breadcrumb, hostBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { SingleColumnPageMain } from "~/components/page-main";
@@ -200,7 +202,7 @@ function AddAgentCard({
         </div>
 
         {mode === "invite" ? (
-          <InviteAgentPanel host={host} />
+          <AgentInvitePrompt host={host} />
         ) : (
           <GenerateKeyPanel scopeOptions={scopeOptions} />
         )}
@@ -249,55 +251,6 @@ function ModeButton({
   );
 }
 
-function InviteAgentPanel({ host }: { host: string }) {
-  const recipeUrl = `${host}/protocol/agent-oauth-recipe`;
-  const deviceUrl = `${host}/device`;
-  const prompt = [
-    `Let's collaborate with Doco on this project. The host is ${host}.`,
-    "",
-    `To get programmatic access, follow the OAuth recipe at ${recipeUrl}. If you can bind a local TCP port and open a browser, use Recipe A (localhost-loopback). If you can't (chat-only / sandboxed runtimes), use Recipe B (RFC 8628 Device Authorization Grant) — you'll show me a short code and I'll approve at ${deviceUrl}.`,
-    "",
-    "At the approve screen I'll pick which orgs and docos you can read/write and at what role (reader / author / approver / owner) per org or doco, so no scoping is needed up front.",
-  ].join("\n");
-  return <AgentPromptBlock body={prompt} />;
-}
-
-function AgentPromptBlock({ body }: { body: string }) {
-  const [copied, setCopied] = useState(false);
-  return (
-    <div className="space-y-2">
-      <p className="text-base font-semibold leading-6 text-foreground">
-        Doco will teach your agent how to use doco consistently. Copy this prompt and paste it into
-        your AI agent in the project/folder/repo you want to collaborate on. The agent will drive
-        the OAuth flow, and you'll approve in your browser.
-      </p>
-      <pre
-        className="neu-surface rounded-md bg-card p-3 text-[11px] whitespace-pre-wrap break-words"
-        data-testid="invite-agent-prompt"
-      >
-        {body}
-      </pre>
-      <div className="flex justify-end">
-        <button
-          type="button"
-          data-testid="invite-agent-copy"
-          onClick={() => {
-            if (typeof navigator !== "undefined" && navigator.clipboard) {
-              void navigator.clipboard.writeText(body).then(() => {
-                setCopied(true);
-                setTimeout(() => setCopied(false), 1500);
-              });
-            }
-          }}
-          className="neu-button bg-primary text-primary-foreground hover:opacity-90 rounded-md px-4 py-2 text-sm font-semibold"
-        >
-          {copied ? "Copied!" : "Copy prompt"}
-        </button>
-      </div>
-    </div>
-  );
-}
-
 function GenerateKeyPanel({ scopeOptions }: { scopeOptions: ScopeOption[] }) {
   const navigation = useNavigation();
   const submitting =
@@ -335,12 +288,14 @@ function GenerateKeyPanel({ scopeOptions }: { scopeOptions: ScopeOption[] }) {
   }, [combinedOptions, noScopes, selectedKey]);
   const selected = combinedOptions.find((o) => o.key === selectedKey) ?? null;
   const maxRole = selected?.myRole ?? "reader";
-  const allowedRoles = ALL_ROLES.filter((r) => rankOrZero(r) <= rankOrZero(maxRole));
+  const allowedRoles = useMemo(
+    () => ALL_ROLES.filter((r) => rankOrZero(r) <= rankOrZero(maxRole)),
+    [maxRole],
+  );
   const [role, setRole] = useState<DocoRole>(maxRole);
   useEffect(() => {
-    if (!allowedRoles.includes(role)) setRole(maxRole);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedKey]);
+    setRole((current) => (allowedRoles.includes(current) ? current : maxRole));
+  }, [allowedRoles, maxRole]);
 
   const grantsPayload = useMemo(() => {
     if (!selected) return "[]";
