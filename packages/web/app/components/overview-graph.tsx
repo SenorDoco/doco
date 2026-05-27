@@ -1,11 +1,21 @@
-import { Handle, Position } from "@xyflow/react";
-import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type Edge,
+  Handle,
+  MarkerType,
+  type MiniMapNodeProps,
+  type Node,
+  Position,
+} from "@xyflow/react";
+import { type ComponentType, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
-import { FullLayoutMiniMap } from "~/components/full-layout-minimap";
 import { NodeBadgeRow, ReferenceNumberBadge } from "~/components/neuron-badges";
 import { NeuronTypeIcon } from "~/components/neuron-type-icon";
-import { StandardControls } from "~/components/perspective-canvas-overlays";
-import type { FullLayoutMiniMapItem } from "~/lib/full-layout-minimap";
+import { StandardControls, StandardMiniMap } from "~/components/perspective-canvas-overlays";
+import {
+  highestRankedNodeId,
+  selectFocusedNodeIds,
+  summarizeExternalConnections,
+} from "~/lib/focused-render-selection";
 import {
   FAR_DEPTH,
   computeDepthFromCenter,
@@ -18,7 +28,6 @@ import { lifecycleColor } from "~/lib/neuron-colors";
 import { overviewNodeDisplayLabel } from "~/lib/overview-graph-labels";
 import { usePerspectiveReferences } from "~/lib/perspective-references";
 import { useNewNodeIds } from "~/lib/use-new-neuron-ids";
-import { selectRenderWindow } from "~/lib/viewport-render-window";
 import "@xyflow/react/dist/style.css";
 
 export interface OverviewGraphNode {
@@ -42,6 +51,7 @@ export interface OverviewGraphData {
   nodes: OverviewGraphNode[];
   links: OverviewGraphLink[];
   detailUrl: string | null;
+  pageRanks?: Map<string, number>;
 }
 
 export interface OverviewNodeDetail {
@@ -135,9 +145,9 @@ const MAX_DETAIL_FETCH = 80;
 const GRAPH_MIN_ZOOM = 0.03;
 const GRAPH_MAX_ZOOM = 2.5;
 const GRAPH_FIT_VIEW_OPTIONS = { padding: 0.12, maxZoom: 1.2 };
-const OVERVIEW_RENDER_NODE_BUDGET = 600;
-const OVERVIEW_RENDER_EDGE_BUDGET = 1200;
-const OVERVIEW_RENDER_OVERSCAN_PX = 700;
+const OVERVIEW_RENDER_NODE_BUDGET = 250;
+const OVERVIEW_RENDER_EDGE_BUDGET = 700;
+const OVERVIEW_PLACEHOLDER_STUB_BUDGET = 120;
 
 function lifecycleLabel(lifecycle: string): string {
   return lifecycle.replaceAll("_", " ");
@@ -293,26 +303,50 @@ function isVisibleInViewport(
   );
 }
 
-function screenPosition(position: Point, viewport: FlowViewport): Point {
-  return {
-    x: position.x * viewport.zoom + viewport.x,
-    y: position.y * viewport.zoom + viewport.y,
+// MiniMap node component — mirrors the rounded-rectangle nodes drawn on
+// the canvas, filled with the node's lifecycle color so the minimap is
+// a true scaled silhouette rather than a uniform grid of beige boxes.
+function makeOverviewMiniMapNode(
+  nodeById: Map<string, OverviewGraphNode>,
+): ComponentType<MiniMapNodeProps> {
+  return function OverviewMiniMapNode({
+    id,
+    x,
+    y,
+    width,
+    height,
+    strokeColor,
+    strokeWidth,
+    className,
+    selected,
+    shapeRendering,
+  }: MiniMapNodeProps) {
+    const graphNode = nodeById.get(id);
+    if (!graphNode) return null;
+    const fill = lifecycleColor(nodeLifecycle(graphNode));
+    const stroke = strokeColor ?? "rgba(0,0,0,0.5)";
+    const sw = (strokeWidth ?? 1) * (graphNode.is_center ? 2 : 1);
+    const radius = Math.min(width, height) / 3;
+    const classes = ["react-flow__minimap-node", selected ? "selected" : "", className]
+      .filter(Boolean)
+      .join(" ");
+    return (
+      <g className={classes} shapeRendering={shapeRendering}>
+        <rect
+          x={x}
+          y={y}
+          width={width}
+          height={height}
+          rx={radius}
+          ry={radius}
+          fill={fill}
+          stroke={stroke}
+          strokeWidth={sw}
+          style={{ vectorEffect: "non-scaling-stroke" }}
+        />
+      </g>
+    );
   };
-}
-
-function lifecycleWindowRank(lifecycle: string | null): number {
-  switch (lifecycle ?? "active") {
-    case "active":
-      return 0;
-    case "proposed":
-      return 1;
-    case "drafting":
-      return 2;
-    case "retired":
-      return 3;
-    default:
-      return 4;
-  }
 }
 
 const HIDDEN_HANDLE_STYLE = {
@@ -325,6 +359,25 @@ const HIDDEN_HANDLE_STYLE = {
   pointerEvents: "none" as const,
   opacity: 0,
 };
+
+function EdgeStubNode() {
+  return (
+    <div style={{ width: 1, height: 1, opacity: 0 }}>
+      <Handle
+        type="target"
+        position={Position.Left}
+        style={HIDDEN_HANDLE_STYLE}
+        isConnectable={false}
+      />
+      <Handle
+        type="source"
+        position={Position.Right}
+        style={HIDDEN_HANDLE_STYLE}
+        isConnectable={false}
+      />
+    </div>
+  );
+}
 
 function OverviewFlowNode({ data }: { data: OverviewNodeData }) {
   const lifecycle = nodeLifecycle(data.node);
@@ -392,6 +445,7 @@ export function OverviewGraph({
   nodes,
   links,
   detailUrl,
+  pageRanks,
   fillHeight = false,
   search,
   onNeuronClick,
@@ -415,17 +469,16 @@ export function OverviewGraph({
     minZoom?: number;
     maxZoom?: number;
   }) => void;
-  type FlowSetViewport = (viewport: FlowViewport, options?: { duration?: number }) => void;
-  const flowRef = useRef<{ fitView?: FlowFitView; setViewport?: FlowSetViewport } | null>(null);
+  const flowRef = useRef<{ fitView?: FlowFitView } | null>(null);
   const lastZoomedCenterRef = useRef<string | null>(null);
   const [size, setSize] = useState({ width: 1, height: 1 });
   const [viewport, setViewport] = useState<FlowViewport>({ x: 0, y: 0, zoom: 1 });
   const [details, setDetails] = useState<Map<string, OverviewNodeDetail>>(() => new Map());
-  const updateViewport = useCallback((next: FlowViewport) => {
+  const updateViewport = (next: FlowViewport) => {
     setViewport((prev) =>
       prev.x === next.x && prev.y === next.y && prev.zoom === next.zoom ? prev : next,
     );
-  }, []);
+  };
 
   const allLifecycles = useMemo(() => {
     const set = new Set<string>(["active"]);
@@ -471,6 +524,16 @@ export function OverviewGraph({
     [nodes, visibleLifecycles],
   );
 
+  const effectiveCenterId = useMemo(() => {
+    if (visibleNodes.some((node) => node.id === centerId)) return centerId;
+    return highestRankedNodeId(visibleNodes, pageRanks) ?? centerId;
+  }, [visibleNodes, centerId, pageRanks]);
+
+  useEffect(() => {
+    if (!effectiveCenterId || effectiveCenterId === centerId) return;
+    onCenterChange?.(effectiveCenterId);
+  }, [effectiveCenterId, centerId, onCenterChange]);
+
   // Auto-zoom: when centerId changes after the initial fit, animate the
   // viewport so the new focal node lands in the middle of the canvas.
   // Used by the agent's auto-focus flow (Señor Doco navigates to a
@@ -482,12 +545,12 @@ export function OverviewGraph({
   // node with that id is present yet.
   useEffect(() => {
     if (!flowRef.current) return;
-    if (lastZoomedCenterRef.current === centerId) return;
-    if (!visibleNodes.some((n) => n.id === centerId)) return;
-    lastZoomedCenterRef.current = centerId;
+    if (lastZoomedCenterRef.current === effectiveCenterId) return;
+    if (!visibleNodes.some((n) => n.id === effectiveCenterId)) return;
+    lastZoomedCenterRef.current = effectiveCenterId;
     const handle = requestAnimationFrame(() => {
       flowRef.current?.fitView?.({
-        nodes: [{ id: centerId }],
+        nodes: [{ id: effectiveCenterId }],
         padding: 2,
         duration: 600,
         minZoom: 0.6,
@@ -495,7 +558,7 @@ export function OverviewGraph({
       });
     });
     return () => cancelAnimationFrame(handle);
-  }, [centerId, visibleNodes]);
+  }, [effectiveCenterId, visibleNodes]);
 
   // Diff against the full incoming `nodes` set, not `visibleNodes`, so
   // toggling a lifecycle filter back on doesn't glow nodes that have
@@ -507,81 +570,27 @@ export function OverviewGraph({
     () => links.filter((link) => visibleIds.has(link.source) && visibleIds.has(link.target)),
     [links, visibleIds],
   );
-  const positions = useMemo(
-    () => layoutNodes(visibleNodes, visibleLinks, centerId, autoReorder),
-    [visibleNodes, visibleLinks, centerId, autoReorder],
+  const visibleDepthByNodeId = useMemo(
+    () => computeDepthFromCenter(visibleNodes, visibleLinks, effectiveCenterId),
+    [visibleNodes, visibleLinks, effectiveCenterId],
   );
-  const nodeById = useMemo(
-    () => new Map(visibleNodes.map((node) => [node.id, node])),
-    [visibleNodes],
-  );
-  const minimapItems = useMemo<FullLayoutMiniMapItem[]>(
+  const renderedNodeIds = useMemo(
     () =>
-      visibleNodes.flatMap((node) => {
-        const position = positions.get(node.id);
-        if (!position) return [];
-        return [
-          {
-            id: node.id,
-            x: position.x,
-            y: position.y,
-            width: OVERVIEW_NODE_WIDTH,
-            height: OVERVIEW_NODE_HEIGHT,
-            color: lifecycleColor(nodeLifecycle(node)),
-            kind: "node",
-            shape: "rounded",
-          },
-        ];
-      }),
-    [visibleNodes, positions],
-  );
-  const depthByNodeId = useMemo(
-    () => computeDepthFromCenter(visibleNodes, visibleLinks, centerId),
-    [visibleNodes, visibleLinks, centerId],
-  );
-  const focalActive = useMemo(() => hasFocalNode(centerId, visibleNodes), [centerId, visibleNodes]);
-  const renderWindowViewport = hasFitRef.current
-    ? viewport
-    : {
-        x: size.width / 2 - OVERVIEW_NODE_WIDTH / 2,
-        y: size.height / 2 - OVERVIEW_NODE_HEIGHT / 2,
-        zoom: 1,
-      };
-  const renderWindow = useMemo(
-    () =>
-      selectRenderWindow(
-        visibleNodes.flatMap((node) => {
-          const position = positions.get(node.id);
-          if (!position) return [];
-          const bucket = depthBucket(depthByNodeId.get(node.id));
-          return [
-            {
-              id: node.id,
-              x: position.x,
-              y: position.y,
-              width: OVERVIEW_NODE_WIDTH,
-              height: OVERVIEW_NODE_HEIGHT,
-              priority:
-                node.id === centerId
-                  ? 0
-                  : bucket * 10 + lifecycleWindowRank(node.lifecycle) + (node.is_center ? 0 : 1),
-            },
-          ];
-        }),
-        {
-          viewport: renderWindowViewport,
-          size,
-          maxItems: OVERVIEW_RENDER_NODE_BUDGET,
-          overscanPx: OVERVIEW_RENDER_OVERSCAN_PX,
-          mustIncludeIds: [centerId],
-        },
+      selectFocusedNodeIds(
+        visibleNodes,
+        visibleLinks,
+        effectiveCenterId,
+        pageRanks,
+        OVERVIEW_RENDER_NODE_BUDGET,
       ),
-    [visibleNodes, positions, depthByNodeId, centerId, renderWindowViewport, size],
+    [visibleNodes, visibleLinks, effectiveCenterId, pageRanks],
   );
-  const renderedNodeIds = renderWindow.ids;
   const renderedNodes = useMemo(
-    () => visibleNodes.filter((node) => renderedNodeIds.has(node.id)),
-    [visibleNodes, renderedNodeIds],
+    () =>
+      visibleNodes
+        .filter((node) => renderedNodeIds.has(node.id))
+        .map((node) => ({ ...node, is_center: node.id === effectiveCenterId })),
+    [visibleNodes, renderedNodeIds, effectiveCenterId],
   );
   const renderedLinks = useMemo(() => {
     const candidates = visibleLinks
@@ -589,21 +598,49 @@ export function OverviewGraph({
       .map((link, index) => ({ link, index }))
       .sort((a, b) => {
         const aDepth = Math.max(
-          depthBucket(depthByNodeId.get(a.link.source)),
-          depthBucket(depthByNodeId.get(a.link.target)),
+          depthBucket(visibleDepthByNodeId.get(a.link.source)),
+          depthBucket(visibleDepthByNodeId.get(a.link.target)),
         );
         const bDepth = Math.max(
-          depthBucket(depthByNodeId.get(b.link.source)),
-          depthBucket(depthByNodeId.get(b.link.target)),
+          depthBucket(visibleDepthByNodeId.get(b.link.source)),
+          depthBucket(visibleDepthByNodeId.get(b.link.target)),
         );
         if (aDepth !== bDepth) return aDepth - bDepth;
-        const aTouchesCenter = a.link.source === centerId || a.link.target === centerId;
-        const bTouchesCenter = b.link.source === centerId || b.link.target === centerId;
+        const aTouchesCenter =
+          a.link.source === effectiveCenterId || a.link.target === effectiveCenterId;
+        const bTouchesCenter =
+          b.link.source === effectiveCenterId || b.link.target === effectiveCenterId;
         if (aTouchesCenter !== bTouchesCenter) return aTouchesCenter ? -1 : 1;
+        const aRank = Math.max(
+          pageRanks?.get(a.link.source) ?? 0,
+          pageRanks?.get(a.link.target) ?? 0,
+        );
+        const bRank = Math.max(
+          pageRanks?.get(b.link.source) ?? 0,
+          pageRanks?.get(b.link.target) ?? 0,
+        );
+        if (aRank !== bRank) return bRank - aRank;
         return a.index - b.index;
       });
     return candidates.slice(0, OVERVIEW_RENDER_EDGE_BUDGET).map((entry) => entry.link);
-  }, [visibleLinks, renderedNodeIds, depthByNodeId, centerId]);
+  }, [visibleLinks, renderedNodeIds, visibleDepthByNodeId, effectiveCenterId, pageRanks]);
+  const positions = useMemo(
+    () => layoutNodes(renderedNodes, renderedLinks, effectiveCenterId, autoReorder),
+    [renderedNodes, renderedLinks, effectiveCenterId, autoReorder],
+  );
+  const nodeById = useMemo(
+    () => new Map(renderedNodes.map((node) => [node.id, node])),
+    [renderedNodes],
+  );
+  const MiniMapNode = useMemo(() => makeOverviewMiniMapNode(nodeById), [nodeById]);
+  const depthByNodeId = useMemo(
+    () => computeDepthFromCenter(renderedNodes, renderedLinks, effectiveCenterId),
+    [renderedNodes, renderedLinks, effectiveCenterId],
+  );
+  const focalActive = useMemo(
+    () => hasFocalNode(effectiveCenterId, renderedNodes),
+    [effectiveCenterId, renderedNodes],
+  );
 
   // Dynamic import — React Flow touches the DOM during module init.
   const [Flow, setFlow] = useState<null | typeof import("@xyflow/react")>(null);
@@ -678,6 +715,88 @@ export function OverviewGraph({
     candidates: referenceCandidates,
   });
 
+  const externalEdgeStubs = useMemo(() => {
+    const summaries = summarizeExternalConnections(visibleLinks, renderedNodeIds);
+    const nodes: Node[] = [];
+    const edges: Edge[] = [];
+    let stubIndex = 0;
+
+    const addStub = (
+      anchorId: string,
+      direction: "incoming" | "outgoing",
+      count: number,
+      summaryIndex: number,
+    ) => {
+      if (stubIndex >= OVERVIEW_PLACEHOLDER_STUB_BUDGET) return;
+      const anchor = positions.get(anchorId);
+      if (!anchor) return;
+      const anchorCenter = {
+        x: anchor.x + OVERVIEW_NODE_WIDTH / 2,
+        y: anchor.y + OVERVIEW_NODE_HEIGHT / 2,
+      };
+      const radial =
+        Math.hypot(anchorCenter.x, anchorCenter.y) > 20
+          ? Math.atan2(anchorCenter.y, anchorCenter.x)
+          : -Math.PI / 2 + summaryIndex * 2.399963229728653;
+      const angle = radial + (direction === "incoming" ? -0.42 : 0.42);
+      const distance = 260 + (summaryIndex % 5) * 18;
+      const id = `overview-placeholder:${direction}:${anchorId}`;
+      const position = {
+        x: anchorCenter.x + Math.cos(angle) * distance,
+        y: anchorCenter.y + Math.sin(angle) * distance,
+      };
+      const opacity = Math.max(0.18, Math.min(0.42, 0.16 + Math.log10(count + 1) * 0.16));
+
+      nodes.push({
+        id,
+        type: "edgeStub",
+        position,
+        data: {},
+        draggable: false,
+        selectable: false,
+        connectable: false,
+        initialWidth: 1,
+        initialHeight: 1,
+        style: {
+          width: 1,
+          height: 1,
+          opacity: 0,
+          padding: 0,
+          pointerEvents: "none" as const,
+        },
+      });
+      edges.push({
+        id: `overview-placeholder-edge:${direction}:${anchorId}`,
+        source: direction === "incoming" ? id : anchorId,
+        target: direction === "incoming" ? anchorId : id,
+        type: "default",
+        selectable: false,
+        focusable: false,
+        interactionWidth: 0,
+        style: {
+          stroke: "#737373",
+          strokeOpacity: opacity,
+          strokeDasharray: "7 9",
+          pointerEvents: "none" as const,
+        },
+        markerEnd: {
+          type: MarkerType.ArrowClosed,
+          width: 16,
+          height: 16,
+          color: "#737373",
+        },
+      });
+      stubIndex++;
+    };
+
+    summaries.forEach((summary, index) => {
+      if (summary.outgoing > 0) addStub(summary.id, "outgoing", summary.outgoing, index);
+      if (summary.incoming > 0) addStub(summary.id, "incoming", summary.incoming, index);
+    });
+
+    return { nodes, edges };
+  }, [visibleLinks, renderedNodeIds, positions]);
+
   useEffect(() => {
     if (!detailUrl || detailIds.length === 0) return;
     const timeout = window.setTimeout(async () => {
@@ -695,91 +814,77 @@ export function OverviewGraph({
     return () => window.clearTimeout(timeout);
   }, [detailUrl, detailIds]);
 
-  const flowNodes = useMemo(
-    () =>
-      renderedNodes.map((node) => {
-        const position = positions.get(node.id) ?? { x: 0, y: 0 };
-        const opacity = focalActive ? opacityForDepth(depthByNodeId.get(node.id)) : 1;
-        return {
-          id: node.id,
-          type: "overviewNode",
-          position,
-          initialWidth: OVERVIEW_NODE_WIDTH,
-          initialHeight: OVERVIEW_NODE_HEIGHT,
-          data: {
-            node,
-            detail: details.get(node.id),
-            showDetail: viewport.zoom >= DETAIL_ZOOM,
-            referenceNumber: referenceNumberByNodeId.get(node.id),
-            isNew: newNodeIds.has(node.id),
-            opacity,
-          } satisfies OverviewNodeData,
-          draggable: false,
-          selectable: false,
-          connectable: false,
-          style: {
-            width: OVERVIEW_NODE_WIDTH,
-            height: OVERVIEW_NODE_HEIGHT,
-            padding: 0,
-            background: "transparent",
-            border: "none",
-          },
-        };
-      }),
-    [
-      renderedNodes,
-      positions,
-      details,
-      viewport.zoom,
-      referenceNumberByNodeId,
-      newNodeIds,
-      depthByNodeId,
-      focalActive,
-    ],
-  );
-
-  const flowEdges = useMemo(
-    () =>
-      renderedLinks.map((link, index) => {
-        const edgeOpacity = focalActive
-          ? opacityForEdge(depthByNodeId.get(link.source), depthByNodeId.get(link.target))
-          : 1;
-        // Synapse inherits the origin neuron's lifecycle colour. 0.5 is
-        // the baseline stroke alpha so coloured lines stay readable on
-        // the pale canvas without competing with the node strokes.
-        const sourceLifecycle = nodeById.get(link.source)?.lifecycle ?? "active";
-        return {
-          id: `${link.source}-${link.target}-${index}`,
-          source: link.source,
-          target: link.target,
-          type: "default",
-          selectable: false,
-          focusable: false,
-          interactionWidth: 0,
-          style: {
-            stroke: lifecycleColor(sourceLifecycle),
-            strokeOpacity: 0.5 * edgeOpacity,
-            pointerEvents: "none" as const,
-          },
-        };
-      }),
-    [renderedLinks, depthByNodeId, focalActive, nodeById],
-  );
-
-  const nodeTypes = useMemo(() => ({ overviewNode: OverviewFlowNode }), []);
-  const panToMiniMapPoint = useCallback(
-    (point: { x: number; y: number }) => {
-      const zoom = viewport.zoom;
-      const next = {
-        x: size.width / 2 - point.x * zoom,
-        y: size.height / 2 - point.y * zoom,
-        zoom,
+  const flowNodes = useMemo(() => {
+    const neuronNodes = renderedNodes.map((node) => {
+      const position = positions.get(node.id) ?? { x: 0, y: 0 };
+      const opacity = focalActive ? opacityForDepth(depthByNodeId.get(node.id)) : 1;
+      return {
+        id: node.id,
+        type: "overviewNode",
+        position,
+        initialWidth: OVERVIEW_NODE_WIDTH,
+        initialHeight: OVERVIEW_NODE_HEIGHT,
+        data: {
+          node,
+          detail: details.get(node.id),
+          showDetail: viewport.zoom >= DETAIL_ZOOM,
+          referenceNumber: referenceNumberByNodeId.get(node.id),
+          isNew: newNodeIds.has(node.id),
+          opacity,
+        } satisfies OverviewNodeData,
+        draggable: false,
+        selectable: false,
+        connectable: false,
+        style: {
+          width: OVERVIEW_NODE_WIDTH,
+          height: OVERVIEW_NODE_HEIGHT,
+          padding: 0,
+          background: "transparent",
+          border: "none",
+        },
       };
-      flowRef.current?.setViewport?.(next, { duration: 120 });
-      updateViewport(next);
-    },
-    [size.height, size.width, updateViewport, viewport.zoom],
-  );
+    });
+    return [...neuronNodes, ...externalEdgeStubs.nodes];
+  }, [
+    renderedNodes,
+    positions,
+    details,
+    viewport.zoom,
+    referenceNumberByNodeId,
+    newNodeIds,
+    depthByNodeId,
+    focalActive,
+    externalEdgeStubs.nodes,
+  ]);
+
+  const flowEdges = useMemo(() => {
+    const neuronEdges = renderedLinks.map((link, index) => {
+      const edgeOpacity = focalActive
+        ? opacityForEdge(depthByNodeId.get(link.source), depthByNodeId.get(link.target))
+        : 1;
+      // Synapse inherits the origin neuron's lifecycle colour. 0.5 is
+      // the baseline stroke alpha so coloured lines stay readable on
+      // the pale canvas without competing with the node strokes.
+      const sourceLifecycle = nodeById.get(link.source)?.lifecycle ?? "active";
+      return {
+        id: `${link.source}-${link.target}-${index}`,
+        source: link.source,
+        target: link.target,
+        type: "default",
+        selectable: false,
+        focusable: false,
+        interactionWidth: 0,
+        style: {
+          stroke: lifecycleColor(sourceLifecycle),
+          strokeOpacity: 0.5 * edgeOpacity,
+          pointerEvents: "none" as const,
+        },
+      };
+    });
+    return [...neuronEdges, ...externalEdgeStubs.edges];
+  }, [renderedLinks, depthByNodeId, focalActive, nodeById, externalEdgeStubs.edges]);
+
+  const nodeTypes = useMemo(() => ({ overviewNode: OverviewFlowNode, edgeStub: EdgeStubNode }), []);
 
   return (
     <div className={fillHeight ? "flex h-full min-h-0 flex-col" : "flex flex-col"}>
@@ -812,14 +917,13 @@ export function OverviewGraph({
             preventScrolling
             onInit={(instance: {
               fitView?: FlowFitView;
-              setViewport?: FlowSetViewport;
               getViewport?: () => FlowViewport;
             }) => {
               flowRef.current = instance;
               if (!hasFitRef.current) {
                 instance.fitView?.(GRAPH_FIT_VIEW_OPTIONS);
                 hasFitRef.current = true;
-                lastZoomedCenterRef.current = centerId;
+                lastZoomedCenterRef.current = effectiveCenterId;
               }
               const next = instance.getViewport?.();
               if (next) updateViewport(next);
@@ -843,20 +947,13 @@ export function OverviewGraph({
           >
             <Flow.Background gap={20} size={1} />
             <StandardControls fitViewOptions={GRAPH_FIT_VIEW_OPTIONS} />
+            <StandardMiniMap nodeComponent={MiniMapNode} />
           </Flow.ReactFlow>
         ) : (
           <div className="flex h-full w-full items-center justify-center text-xs text-muted-foreground">
             Loading graph…
           </div>
         )}
-        {Flow ? (
-          <FullLayoutMiniMap
-            items={minimapItems}
-            viewport={viewport}
-            size={size}
-            onPanTo={panToMiniMapPoint}
-          />
-        ) : null}
         {/* PerspectiveFrame owns the lifecycle filter, the
             "Reorder automatically" toggle, and the fullscreen button.
             They render at fixed positions across every perspective.

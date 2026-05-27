@@ -42,6 +42,7 @@ import { SiteHeader } from "~/components/site-header";
 import { loadBpmnGraph } from "~/lib/bpmn-perspective.server";
 import { docoPath } from "~/lib/db.server";
 import { canAdminDoco, canApproveDoco, loadDocoRouteForRead } from "~/lib/doco-access.server";
+import { highestRankedNodeId } from "~/lib/focused-render-selection";
 import { loadOverviewGraph } from "~/lib/full-graph.server";
 import { loadHostConfig } from "~/lib/host.server";
 import { lifecycleColor } from "~/lib/neuron-colors";
@@ -484,17 +485,21 @@ export default function DocoHome({
     graphAutoReorder: initialAutoReorder,
   } = loaderData;
 
-  const pageRanksMap = new Map(Object.entries(pageRanks));
-  const graphData = useMemo<OverviewGraphData>(
+  const pageRanksMap = useMemo(() => new Map(Object.entries(pageRanks)), [pageRanks]);
+  const defaultFocusId = useMemo(
     () =>
-      graph ?? {
-        centerId: focusedNeuronId ?? docoId,
-        nodes: [],
-        links: [],
-        detailUrl: null,
-      },
-    [graph, focusedNeuronId, docoId],
+      focusedNeuronId ?? (graph ? highestRankedNodeId(graph.nodes, pageRanksMap) : null) ?? docoId,
+    [focusedNeuronId, graph, pageRanksMap, docoId],
   );
+  const graphData = useMemo<OverviewGraphData>(() => {
+    const base = graph ?? {
+      centerId: defaultFocusId,
+      nodes: [],
+      links: [],
+      detailUrl: null,
+    };
+    return graphWithCenter({ ...base, pageRanks: pageRanksMap }, defaultFocusId);
+  }, [graph, defaultFocusId, pageRanksMap]);
   const [autoReorder, setAutoReorder] = useState<boolean>(initialAutoReorder);
   const handleAutoReorderChange = useCallback((next: boolean) => {
     setAutoReorder(next);
@@ -956,6 +961,7 @@ export default function DocoHome({
                     nodes={graphState.nodes}
                     links={graphState.links}
                     detailUrl={graphState.detailUrl}
+                    pageRanks={pageRanksMap}
                     fillHeight
                     visibleLifecycles={visibleLifecycles}
                     autoReorder={autoReorder}

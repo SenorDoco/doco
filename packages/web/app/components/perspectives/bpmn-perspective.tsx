@@ -16,10 +16,17 @@
 // sit on left/right edges so synapses connect cleanly regardless of
 // lane vertical offset.
 
-import { Handle, MarkerType, Position } from "@xyflow/react";
-import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Handle, MarkerType, type MiniMapNodeProps, Position } from "@xyflow/react";
+import {
+  type CSSProperties,
+  type ComponentType,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useNavigate } from "react-router";
-import { FullLayoutMiniMap } from "~/components/full-layout-minimap";
 import {
   LifecycleBadge,
   NodeBadgeRow,
@@ -27,11 +34,15 @@ import {
   TypeBadge,
 } from "~/components/neuron-badges";
 import type { OverviewGraphLink } from "~/components/overview-graph";
-import { StandardControls } from "~/components/perspective-canvas-overlays";
+import { StandardControls, StandardMiniMap } from "~/components/perspective-canvas-overlays";
 import { bpmnLaneColumnKey, packBpmnLaneColumns } from "~/lib/bpmn-lane-packing";
 import type { BpmnLane, BpmnNode, BpmnPool, BpmnShape } from "~/lib/bpmn-perspective.server";
 import { computeForwardSequenceDepths } from "~/lib/bpmn-sequence-depth";
-import type { FullLayoutMiniMapItem, FullLayoutMiniMapShape } from "~/lib/full-layout-minimap";
+import {
+  highestRankedNodeId,
+  selectFocusedNodeIds,
+  summarizeExternalConnections,
+} from "~/lib/focused-render-selection";
 import {
   computeDepthFromCenter,
   hasFocalNode,
@@ -41,7 +52,6 @@ import {
 import type { GraphReferenceItem } from "~/lib/graph-references";
 import { lifecycleColor } from "~/lib/neuron-colors";
 import { usePerspectiveReferences } from "~/lib/perspective-references";
-import { rectForCandidate, rectsIntersect, selectRenderWindow } from "~/lib/viewport-render-window";
 import "@xyflow/react/dist/style.css";
 
 // MUST stay in sync with the matching exports in
@@ -128,9 +138,9 @@ const NODE_WIDTH = 140;
 const NODE_HEIGHT = 60;
 const NODE_GAP_X = 60;
 const NODE_GAP_Y = 40; // padding above/below stacked rows inside the lane
-const BPMN_RENDER_NODE_BUDGET = 700;
-const BPMN_RENDER_EDGE_BUDGET = 1200;
-const BPMN_RENDER_OVERSCAN_PX = 700;
+const BPMN_RENDER_NODE_BUDGET = 250;
+const BPMN_RENDER_EDGE_BUDGET = 700;
+const BPMN_PLACEHOLDER_STUB_BUDGET = 120;
 
 /**
  * Per-node box sizing — the label's character count drives how big
@@ -175,6 +185,7 @@ interface FlowModule {
   Background: typeof import("@xyflow/react").Background;
   Controls: typeof import("@xyflow/react").Controls;
   ControlButton: typeof import("@xyflow/react").ControlButton;
+  MiniMap: typeof import("@xyflow/react").MiniMap;
 }
 
 export function BpmnPerspective({
@@ -182,6 +193,7 @@ export function BpmnPerspective({
   lanes: lanesRaw,
   nodes: nodesRaw,
   links,
+  globalPagerank,
   onNeuronClick,
   onPoolClick,
   onLaneClick,
@@ -197,13 +209,11 @@ export function BpmnPerspective({
   const [viewport, setViewport] = useState<FlowViewport>({ x: 0, y: 0, zoom: 1 });
   const [graphSize, setGraphSize] = useState<GraphSize>({ width: 1, height: 1 });
   const hasFitRef = useRef(false);
-  type FlowSetViewport = (viewport: FlowViewport, options?: { duration?: number }) => void;
-  const flowRef = useRef<{ setViewport?: FlowSetViewport } | null>(null);
-  const updateViewport = useCallback((next: FlowViewport) => {
+  const updateViewport = (next: FlowViewport) => {
     setViewport((prev) =>
       prev.x === next.x && prev.y === next.y && prev.zoom === next.zoom ? prev : next,
     );
-  }, []);
+  };
 
   // Drop nodes whose lifecycle is filtered out. Lanes are never
   // dropped once the server emits them, so a filtered-out Action
@@ -224,6 +234,7 @@ export function BpmnPerspective({
         Background: mod.Background,
         Controls: mod.Controls,
         ControlButton: mod.ControlButton,
+        MiniMap: mod.MiniMap,
       });
     });
     return () => {
@@ -245,9 +256,113 @@ export function BpmnPerspective({
     return () => obs.disconnect();
   }, []);
 
+  const pageRankMap = useMemo(
+    () => new Map(Object.entries(globalPagerank ?? {})),
+    [globalPagerank],
+  );
+  const nodeByFullId = useMemo(
+    () => new Map(filteredNodes.map((node) => [node.id, node])),
+    [filteredNodes],
+  );
+  const focusCandidates = useMemo(
+    () => [
+      ...filteredNodes,
+      ...pools.flatMap((pool) =>
+        pool.intent_id ? [{ id: pool.intent_id, lifecycle: pool.lifecycle, created_at: null }] : [],
+      ),
+    ],
+    [filteredNodes, pools],
+  );
+  const effectiveCenterId = useMemo(() => {
+    if (
+      centerId &&
+      (nodeByFullId.has(centerId) || pools.some((pool) => pool.intent_id === centerId))
+    ) {
+      return centerId;
+    }
+    return highestRankedNodeId(focusCandidates, pageRankMap) ?? centerId ?? null;
+  }, [centerId, nodeByFullId, pools, focusCandidates, pageRankMap]);
+  useEffect(() => {
+    if (!effectiveCenterId || effectiveCenterId === centerId) return;
+    onCenterChange?.(effectiveCenterId);
+  }, [effectiveCenterId, centerId, onCenterChange]);
+
+  const focusPoolId = useMemo(() => {
+    const poolFromIntent = pools.find((pool) => pool.intent_id === effectiveCenterId)?.id;
+    return (
+      poolFromIntent ?? (effectiveCenterId ? nodeByFullId.get(effectiveCenterId)?.pool_id : null)
+    );
+  }, [pools, effectiveCenterId, nodeByFullId]);
+  const renderedNodeIds = useMemo(() => {
+    const selected = new Set<string>();
+    const add = (id: string | null | undefined) => {
+      if (!id || selected.size >= BPMN_RENDER_NODE_BUDGET) return;
+      if (nodeByFullId.has(id)) selected.add(id);
+    };
+    const byRank = [...filteredNodes].sort((a, b) => {
+      const aIsFocus = a.id === effectiveCenterId ? 1 : 0;
+      const bIsFocus = b.id === effectiveCenterId ? 1 : 0;
+      if (aIsFocus !== bIsFocus) return bIsFocus - aIsFocus;
+      const rankDiff = (pageRankMap.get(b.id) ?? 0) - (pageRankMap.get(a.id) ?? 0);
+      if (rankDiff !== 0) return rankDiff;
+      const lifecycleDiff =
+        bpmnWindowLifecycleRank(a.lifecycle) - bpmnWindowLifecycleRank(b.lifecycle);
+      if (lifecycleDiff !== 0) return lifecycleDiff;
+      return a.id.localeCompare(b.id);
+    });
+    if (focusPoolId) {
+      for (const node of byRank) {
+        if (node.pool_id === focusPoolId) add(node.id);
+      }
+    }
+    for (const id of selectFocusedNodeIds(
+      filteredNodes,
+      links,
+      effectiveCenterId,
+      pageRankMap,
+      BPMN_RENDER_NODE_BUDGET,
+    )) {
+      add(id);
+    }
+    for (const node of byRank) add(node.id);
+    return selected;
+  }, [filteredNodes, links, effectiveCenterId, pageRankMap, focusPoolId, nodeByFullId]);
+  const renderedNodes = useMemo(
+    () => filteredNodes.filter((node) => renderedNodeIds.has(node.id)),
+    [filteredNodes, renderedNodeIds],
+  );
+  const renderedLaneIds = useMemo(
+    () => new Set(renderedNodes.map((node) => node.laneId)),
+    [renderedNodes],
+  );
+  const renderedPoolIds = useMemo(() => {
+    const ids = new Set(renderedNodes.map((node) => node.pool_id));
+    if (focusPoolId) ids.add(focusPoolId);
+    return ids;
+  }, [renderedNodes, focusPoolId]);
+  const renderedLanes = useMemo(
+    () => filteredLanes.filter((lane) => renderedLaneIds.has(lane.id)),
+    [filteredLanes, renderedLaneIds],
+  );
+  const renderedPools = useMemo(
+    () => pools.filter((pool) => renderedPoolIds.has(pool.id)),
+    [pools, renderedPoolIds],
+  );
+  const renderedLinksForLayout = useMemo(
+    () =>
+      links.filter((link) => renderedNodeIds.has(link.source) && renderedNodeIds.has(link.target)),
+    [links, renderedNodeIds],
+  );
   const layout = useMemo(
-    () => layOutBpmn(pools, filteredLanes, filteredNodes, links, centerId),
-    [pools, filteredLanes, filteredNodes, links, centerId],
+    () =>
+      layOutBpmn(
+        renderedPools,
+        renderedLanes,
+        renderedNodes,
+        renderedLinksForLayout,
+        effectiveCenterId,
+      ),
+    [renderedPools, renderedLanes, renderedNodes, renderedLinksForLayout, effectiveCenterId],
   );
   const nodeTypes = useMemo(
     () => ({
@@ -260,113 +375,24 @@ export function BpmnPerspective({
       bpmnRounded: BpmnRoundedNode,
       bpmnTask: BpmnTaskNode,
       bpmnMilestone: BpmnMilestoneNode,
+      bpmnEdgeStub: BpmnEdgeStubNode,
     }),
     [],
   );
-  const nodeById = useMemo(() => new Map(filteredNodes.map((n) => [n.id, n])), [filteredNodes]);
+  const nodeById = useMemo(() => new Map(renderedNodes.map((n) => [n.id, n])), [renderedNodes]);
   const laneById = useMemo(
-    () => new Map(filteredLanes.map((lane) => [lane.id, lane])),
-    [filteredLanes],
+    () => new Map(renderedLanes.map((lane) => [lane.id, lane])),
+    [renderedLanes],
   );
-  const poolById = useMemo(() => new Map(pools.map((pool) => [pool.id, pool])), [pools]);
+  const poolById = useMemo(
+    () => new Map(renderedPools.map((pool) => [pool.id, pool])),
+    [renderedPools],
+  );
   const poolByHeaderId = useMemo(
-    () => new Map(pools.map((pool) => [`pool-header:${pool.id}`, pool])),
-    [pools],
+    () => new Map(renderedPools.map((pool) => [`pool-header:${pool.id}`, pool])),
+    [renderedPools],
   );
-  const minimapItems = useMemo<FullLayoutMiniMapItem[]>(() => {
-    const items: FullLayoutMiniMapItem[] = [];
-    for (const node of layout.flowNodes) {
-      const nodeData = (node.data as { node?: BpmnNode }).node;
-      const nodePosition = layout.nodePositions.get(node.id);
-      const rect = flowNodeRect(
-        node,
-        nodeData && nodePosition
-          ? { x: LANE_LEFT_INSET + nodePosition.x, y: nodePosition.y }
-          : nodePosition,
-      );
-      if (nodeData) {
-        items.push({
-          id: node.id,
-          x: rect.x,
-          y: rect.y,
-          width: rect.width,
-          height: rect.height,
-          color: lifecycleColor(nodeData.lifecycle),
-          kind: "node",
-          shape: miniMapShapeForBpmn(nodeData.shape),
-          opacity: typeof node.style?.opacity === "number" ? node.style.opacity : 1,
-        });
-        continue;
-      }
-      const laneData = (node.data as { lane?: BpmnLane }).lane;
-      if (laneData) {
-        items.push({
-          id: node.id,
-          x: rect.x,
-          y: rect.y,
-          width: rect.width,
-          height: rect.height,
-          color: laneData.kind === "milestone" ? "rgba(40, 70, 160, 0.14)" : "rgba(0, 0, 0, 0.05)",
-          kind: "lane",
-          shape: "rect",
-          opacity: 1,
-        });
-        continue;
-      }
-      const poolData = (node.data as { pool?: BpmnPool }).pool;
-      if (poolData) {
-        items.push({
-          id: node.id,
-          x: rect.x,
-          y: rect.y,
-          width: rect.width,
-          height: rect.height,
-          color: poolData.intent_id ? "rgba(40, 70, 160, 0.18)" : "rgba(0, 0, 0, 0.06)",
-          kind: "pool",
-          shape: "rect",
-          opacity: 1,
-        });
-      }
-    }
-    return items;
-  }, [layout.flowNodes, layout.nodePositions]);
-  const renderWindow = useMemo(
-    () =>
-      selectRenderWindow(
-        filteredNodes.flatMap((node) => {
-          const position = layout.nodePositions.get(node.id);
-          if (!position) return [];
-          const size = sizeForNode(node);
-          return [
-            {
-              id: node.id,
-              x: position.x,
-              y: position.y,
-              width: size.width,
-              height: size.height,
-              priority:
-                node.id === centerId
-                  ? 0
-                  : bpmnWindowLifecycleRank(node.lifecycle) +
-                    (node.entity_type === "action" ? 4 : 8),
-            },
-          ];
-        }),
-        {
-          viewport,
-          size: graphSize,
-          maxItems: BPMN_RENDER_NODE_BUDGET,
-          overscanPx: BPMN_RENDER_OVERSCAN_PX,
-          mustIncludeIds: [centerId],
-        },
-      ),
-    [filteredNodes, layout.nodePositions, centerId, viewport, graphSize],
-  );
-  const renderedNodeIds = renderWindow.ids;
-  const renderedNodes = useMemo(
-    () => filteredNodes.filter((node) => renderedNodeIds.has(node.id)),
-    [filteredNodes, renderedNodeIds],
-  );
+  const MiniMapNode = useMemo(() => makeBpmnMiniMapNode(nodeById), [nodeById]);
   const openPoolNeuron = useCallback(
     (pool: BpmnPool) => {
       if (!pool.intent_id) return;
@@ -391,7 +417,7 @@ export function BpmnPerspective({
   // node's numbering (sort, viewport-cull, cap, registry publish).
   const laneReferences = useMemo<GraphReferenceItem[]>(
     () =>
-      filteredLanes
+      renderedLanes
         .filter((lane) => isActorLane(lane))
         .map((lane, index) => ({
           number: index + 1,
@@ -401,7 +427,7 @@ export function BpmnPerspective({
           lifecycle: lane.lifecycle ?? "active",
           href: null,
         })),
-    [filteredLanes],
+    [renderedLanes],
   );
   const nodeReferenceCandidates = useMemo(
     () =>
@@ -432,63 +458,117 @@ export function BpmnPerspective({
     priorityItems: laneReferences,
   });
 
-  const flowNodes = useMemo(() => {
-    const requiredLaneNodeIds = new Set(renderedNodes.map((node) => laneNodeId(node.laneId)));
-    const windowed = layout.flowNodes
-      .filter((node) => {
-        const nodeData = (node.data as { node?: BpmnNode }).node;
-        if (nodeData) return renderedNodeIds.has(nodeData.id);
-        if (requiredLaneNodeIds.has(node.id)) return true;
-        const rect = rectForCandidate(flowNodeRect(node));
-        return rectsIntersect(rect, renderWindow.overscanRect);
-      })
-      .map((node) => {
-        // Lane FlowNodes carry data.lane; shape FlowNodes carry data.node.
-        // Each pulls its reference number from the unified map by the
-        // underlying entity id (principal_<ulid> or neuron id).
-        const laneData = (node.data as { lane?: BpmnLane }).lane;
-        if (laneData) {
-          const referenceNumber = referenceNumberByEntityId.get(laneData.id);
-          const data = {
-            ...node.data,
-            onLaneClick: isActorLane(laneData) ? openLaneNeuron : undefined,
-          };
-          if (!referenceNumber) return { ...node, data };
-          return { ...node, data: { ...data, referenceNumber } };
-        }
-        const referenceNumber = referenceNumberByEntityId.get(node.id);
-        if (!referenceNumber || !nodeById.has(node.id)) return node;
-        return { ...node, data: { ...node.data, referenceNumber } };
+  const externalEdgeStubs = useMemo(() => {
+    const summaries = summarizeExternalConnections(links, renderedNodeIds);
+    const nodes: FlowNode[] = [];
+    const edges: FlowEdge[] = [];
+    let stubIndex = 0;
+
+    const addStub = (
+      anchorNode: BpmnNode,
+      direction: "incoming" | "outgoing",
+      count: number,
+      summaryIndex: number,
+    ) => {
+      if (stubIndex >= BPMN_PLACEHOLDER_STUB_BUDGET) return;
+      const position = layout.nodePositions.get(anchorNode.id);
+      if (!position) return;
+      const size = sizeForNode(anchorNode);
+      const id = `bpmn-placeholder:${direction}:${anchorNode.id}`;
+      const y = position.y + size.height / 2 + ((summaryIndex % 3) - 1) * 18;
+      const x =
+        direction === "incoming"
+          ? Math.max(0, LANE_LEFT_INSET + position.x - 240 - (summaryIndex % 4) * 18)
+          : LANE_LEFT_INSET + position.x + size.width + 240 + (summaryIndex % 4) * 18;
+      const opacity = Math.max(0.16, Math.min(0.4, 0.14 + Math.log10(count + 1) * 0.16));
+
+      nodes.push({
+        id,
+        type: "bpmnEdgeStub",
+        position: { x, y },
+        data: {},
+        draggable: false,
+        selectable: false,
+        connectable: false,
+        initialWidth: 1,
+        initialHeight: 1,
+        style: {
+          width: 1,
+          height: 1,
+          opacity: 0,
+          padding: 0,
+          pointerEvents: "none" as const,
+        },
       });
-    return windowed;
+      edges.push({
+        id: `bpmn-placeholder-edge:${direction}:${anchorNode.id}`,
+        source: direction === "incoming" ? id : anchorNode.id,
+        target: direction === "incoming" ? anchorNode.id : id,
+        type: "bezier",
+        selectable: false,
+        focusable: false,
+        interactionWidth: 0,
+        style: {
+          stroke: "#737373",
+          strokeOpacity: opacity,
+          strokeDasharray: "7 9",
+          pointerEvents: "none" as const,
+        },
+        markerEnd: {
+          type: MarkerType.ArrowClosed,
+          width: 16,
+          height: 16,
+          color: "#737373",
+        },
+      });
+      stubIndex++;
+    };
+
+    summaries.forEach((summary, index) => {
+      const anchor = nodeById.get(summary.id);
+      if (!anchor) return;
+      if (summary.outgoing > 0) addStub(anchor, "outgoing", summary.outgoing, index);
+      if (summary.incoming > 0) addStub(anchor, "incoming", summary.incoming, index);
+    });
+
+    return { nodes, edges };
+  }, [links, renderedNodeIds, layout.nodePositions, nodeById]);
+
+  const flowNodes = useMemo(() => {
+    const windowed = layout.flowNodes.map((node) => {
+      // Lane FlowNodes carry data.lane; shape FlowNodes carry data.node.
+      // Each pulls its reference number from the unified map by the
+      // underlying entity id (principal_<ulid> or neuron id).
+      const laneData = (node.data as { lane?: BpmnLane }).lane;
+      if (laneData) {
+        const referenceNumber = referenceNumberByEntityId.get(laneData.id);
+        const data = {
+          ...node.data,
+          onLaneClick: isActorLane(laneData) ? openLaneNeuron : undefined,
+        };
+        if (!referenceNumber) return { ...node, data };
+        return { ...node, data: { ...data, referenceNumber } };
+      }
+      const referenceNumber = referenceNumberByEntityId.get(node.id);
+      if (!referenceNumber || !nodeById.has(node.id)) return node;
+      return { ...node, data: { ...node.data, referenceNumber } };
+    });
+    return [...windowed, ...externalEdgeStubs.nodes];
   }, [
     layout.flowNodes,
-    renderedNodes,
-    renderedNodeIds,
-    renderWindow.overscanRect,
     referenceNumberByEntityId,
     nodeById,
     openLaneNeuron,
+    externalEdgeStubs.nodes,
   ]);
   const flowEdges = useMemo(
-    () =>
-      layout.flowEdges
+    () => [
+      ...layout.flowEdges
         .filter((edge) => renderedNodeIds.has(edge.source) && renderedNodeIds.has(edge.target))
         .slice(0, BPMN_RENDER_EDGE_BUDGET),
-    [layout.flowEdges, renderedNodeIds],
-  );
-  const panToMiniMapPoint = useCallback(
-    (point: { x: number; y: number }) => {
-      const zoom = viewport.zoom;
-      const next = {
-        x: graphSize.width / 2 - point.x * zoom,
-        y: graphSize.height / 2 - point.y * zoom,
-        zoom,
-      };
-      flowRef.current?.setViewport?.(next, { duration: 120 });
-      updateViewport(next);
-    },
-    [graphSize.height, graphSize.width, updateViewport, viewport.zoom],
+      ...externalEdgeStubs.edges,
+    ],
+    [layout.flowEdges, renderedNodeIds, externalEdgeStubs.edges],
   );
 
   if (filteredLanes.length === 0 && pools.length === 0) {
@@ -636,10 +716,8 @@ export function BpmnPerspective({
           preventScrolling
           onInit={(instance: {
             fitView?: (options?: { padding?: number }) => void;
-            setViewport?: FlowSetViewport;
             getViewport?: () => FlowViewport;
           }) => {
-            flowRef.current = instance;
             if (!hasFitRef.current) {
               instance.fitView?.({ padding: 0.18 });
               hasFitRef.current = true;
@@ -669,20 +747,13 @@ export function BpmnPerspective({
         >
           <Flow.Background gap={24} size={1} />
           <StandardControls />
+          <StandardMiniMap nodeComponent={MiniMapNode} />
         </Flow.ReactFlow>
       ) : (
         <div className="flex h-full w-full items-center justify-center text-xs text-muted-foreground">
           Loading BPMN view…
         </div>
       )}
-      {Flow ? (
-        <FullLayoutMiniMap
-          items={minimapItems}
-          viewport={viewport}
-          size={graphSize}
-          onPanTo={panToMiniMapPoint}
-        />
-      ) : null}
       {Flow ? (
         <div
           className="pointer-events-none absolute inset-y-0 left-0 z-10 overflow-hidden"
@@ -799,23 +870,6 @@ function bpmnWindowLifecycleRank(lifecycle: string | null | undefined): number {
     default:
       return 4;
   }
-}
-
-function flowNodeRect(
-  node: FlowNode,
-  absolutePosition?: { x: number; y: number },
-): { id: string; x: number; y: number; width: number; height: number } {
-  return {
-    id: node.id,
-    x: absolutePosition?.x ?? node.position.x,
-    y: absolutePosition?.y ?? node.position.y,
-    width:
-      typeof node.style?.width === "number" ? node.style.width : (node.initialWidth ?? NODE_WIDTH),
-    height:
-      typeof node.style?.height === "number"
-        ? node.style.height
-        : (node.initialHeight ?? NODE_HEIGHT),
-  };
 }
 
 interface BpmnLayout {
@@ -1146,22 +1200,6 @@ function nodeTypeForShape(shape: BpmnShape): string {
   }
 }
 
-function miniMapShapeForBpmn(shape: BpmnShape): FullLayoutMiniMapShape {
-  switch (shape) {
-    case "circle":
-    case "diamond":
-    case "document":
-    case "rounded":
-      return shape;
-    case "rectangle":
-    case "task":
-    case "milestone":
-      return "rect";
-    default:
-      return "rect";
-  }
-}
-
 function laneNodeId(laneId: string): string {
   return `lane:${laneId}`;
 }
@@ -1204,6 +1242,25 @@ interface BpmnPoolHeaderData {
   pool: BpmnPool;
   width: number;
   height: number;
+}
+
+function BpmnEdgeStubNode() {
+  const style = {
+    width: 1,
+    height: 1,
+    minWidth: 0,
+    minHeight: 0,
+    background: "transparent",
+    border: "none",
+    pointerEvents: "none" as const,
+    opacity: 0,
+  };
+  return (
+    <div style={style}>
+      <Handle type="target" position={Position.Left} style={style} isConnectable={false} />
+      <Handle type="source" position={Position.Right} style={style} isConnectable={false} />
+    </div>
+  );
 }
 
 /**
@@ -1644,6 +1701,189 @@ function BpmnDocumentNode({ data }: { data: BpmnNodeData }) {
       {commonHandles()}
     </div>
   );
+}
+
+// MiniMap node component — renders each canvas node in its actual BPMN
+// shape so the minimap is a true scaled-down silhouette of the
+// perspective, not a grid of identical rectangles. Lane parents render
+// as faint horizontal bands to suggest the swimlane structure without
+// dominating the SVG.
+function makeBpmnMiniMapNode(nodeById: Map<string, BpmnNode>): ComponentType<MiniMapNodeProps> {
+  return function BpmnMiniMapNode({
+    id,
+    x,
+    y,
+    width,
+    height,
+    strokeColor,
+    strokeWidth,
+    className,
+    selected,
+    shapeRendering,
+  }: MiniMapNodeProps) {
+    const classes = ["react-flow__minimap-node", selected ? "selected" : "", className]
+      .filter(Boolean)
+      .join(" ");
+    if (id.startsWith("lane:")) {
+      return (
+        <g className={classes} shapeRendering={shapeRendering}>
+          <rect
+            x={x}
+            y={y}
+            width={width}
+            height={height}
+            fill="rgba(0,0,0,0.04)"
+            stroke="rgba(0,0,0,0.08)"
+            strokeWidth={strokeWidth ?? 1}
+            style={{ vectorEffect: "non-scaling-stroke" }}
+          />
+        </g>
+      );
+    }
+    const node = nodeById.get(id);
+    if (!node) return null;
+    const fill = lifecycleColor(node.lifecycle);
+    const stroke = strokeColor ?? "rgba(0,0,0,0.5)";
+    const sw = strokeWidth ?? 1;
+    const cx = x + width / 2;
+    const cy = y + height / 2;
+    switch (node.shape) {
+      case "circle": {
+        const r = Math.min(width, height) / 2;
+        return (
+          <g className={classes} shapeRendering={shapeRendering}>
+            <circle
+              cx={cx}
+              cy={cy}
+              r={r}
+              fill={fill}
+              stroke={stroke}
+              strokeWidth={sw}
+              style={{ vectorEffect: "non-scaling-stroke" }}
+            />
+          </g>
+        );
+      }
+      case "diamond": {
+        const points = `${cx},${y} ${x + width},${cy} ${cx},${y + height} ${x},${cy}`;
+        return (
+          <g className={classes} shapeRendering={shapeRendering}>
+            <polygon
+              points={points}
+              fill={fill}
+              stroke={stroke}
+              strokeWidth={sw}
+              style={{ vectorEffect: "non-scaling-stroke" }}
+            />
+          </g>
+        );
+      }
+      case "document": {
+        // Rectangle with a wavy bottom edge — matches BpmnDocumentNode's
+        // canvas silhouette, simplified for the minimap's small footprint.
+        const dipDepth = Math.min(height * 0.18, 6);
+        const baselineY = y + height - dipDepth;
+        const midY = y + height - dipDepth / 2;
+        const q1x = x + width * 0.25;
+        const q2x = x + width * 0.75;
+        const path = [
+          `M${x},${y}`,
+          `H${x + width}`,
+          `V${baselineY}`,
+          `Q${q2x},${y + height} ${cx},${midY}`,
+          `Q${q1x},${y + height - dipDepth * 1.5} ${x},${baselineY}`,
+          "Z",
+        ].join(" ");
+        return (
+          <g className={classes} shapeRendering={shapeRendering}>
+            <path
+              d={path}
+              fill={fill}
+              stroke={stroke}
+              strokeWidth={sw}
+              style={{ vectorEffect: "non-scaling-stroke" }}
+            />
+          </g>
+        );
+      }
+      case "rounded": {
+        const r = Math.min(width, height) / 2;
+        return (
+          <g className={classes} shapeRendering={shapeRendering}>
+            <rect
+              x={x}
+              y={y}
+              width={width}
+              height={height}
+              rx={r}
+              ry={r}
+              fill={fill}
+              stroke={stroke}
+              strokeWidth={sw}
+              style={{ vectorEffect: "non-scaling-stroke" }}
+            />
+          </g>
+        );
+      }
+      case "task": {
+        // BPMN Task glyph — modest corner radius.
+        const r = Math.min(width, height) * 0.2;
+        return (
+          <g className={classes} shapeRendering={shapeRendering}>
+            <rect
+              x={x}
+              y={y}
+              width={width}
+              height={height}
+              rx={r}
+              ry={r}
+              fill={fill}
+              stroke={stroke}
+              strokeWidth={sw}
+              style={{ vectorEffect: "non-scaling-stroke" }}
+            />
+          </g>
+        );
+      }
+      case "milestone": {
+        // Compact rectangle with a thin stroke — milestones read as
+        // labels on the band, not as flow shapes.
+        return (
+          <g className={classes} shapeRendering={shapeRendering}>
+            <rect
+              x={x}
+              y={y}
+              width={width}
+              height={height}
+              rx={2}
+              ry={2}
+              fill={fill}
+              stroke={stroke}
+              strokeWidth={sw}
+              style={{ vectorEffect: "non-scaling-stroke" }}
+            />
+          </g>
+        );
+      }
+      default:
+        return (
+          <g className={classes} shapeRendering={shapeRendering}>
+            <rect
+              x={x}
+              y={y}
+              width={width}
+              height={height}
+              rx={2}
+              ry={2}
+              fill={fill}
+              stroke={stroke}
+              strokeWidth={sw}
+              style={{ vectorEffect: "non-scaling-stroke" }}
+            />
+          </g>
+        );
+    }
+  };
 }
 
 function graphReferenceAttributes(data: BpmnNodeData): Record<string, string | number | undefined> {
