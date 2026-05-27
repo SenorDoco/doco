@@ -49,6 +49,7 @@ export async function action({ request }: { request: Request }) {
       const text = await buildSlackAppMentionResponse({
         workspaceId: teamId,
         channelId,
+        chatUserId: event?.user ?? null,
         messageText: event?.text ?? "",
         recentMessages,
       });

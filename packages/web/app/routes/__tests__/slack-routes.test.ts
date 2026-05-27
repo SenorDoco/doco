@@ -157,6 +157,7 @@ describe("Slack integration routes", () => {
     expect(mocks.buildSlackAppMentionResponse).toHaveBeenCalledWith({
       workspaceId: "T123",
       channelId: "C123",
+      chatUserId: "U123",
       messageText: "How many neurons do we have, <@U999>?",
       recentMessages: [],
     });
@@ -208,6 +209,7 @@ describe("Slack integration routes", () => {
     expect(mocks.buildSlackAppMentionResponse).toHaveBeenCalledWith({
       workspaceId: "T123",
       channelId: "D123",
+      chatUserId: "U123",
       messageText: "And what do they explain?",
       recentMessages: [
         {
@@ -279,6 +281,7 @@ describe("Slack integration routes", () => {
     expect(mocks.buildSlackAppMentionResponse).toHaveBeenCalledWith({
       workspaceId: "T123",
       channelId: "D123",
+      chatUserId: "U123",
       messageText: "Hi",
       recentMessages: [],
     });

@@ -18,9 +18,12 @@ import {
   formatSlackInventoryResponse,
   generateSlackDocoLlmAnswer,
   parseSlackCommandPayload,
+  runSlackDocoApiTool,
+  signSlackPersonalAuthorizationState,
   signSlackState,
   slackConnectUrl,
   slackLlmSystemPrompt,
+  verifySlackPersonalAuthorizationState,
   verifySlackRequestSignature,
   verifySlackState,
 } from "../slack.server";
@@ -93,8 +96,52 @@ describe("slack.server", () => {
     );
     expect(buildSlackConnectCommandResponse(request, payload)).toMatchObject({
       response_type: "ephemeral",
-      text: "Open Doco to choose Señor Doco's default permissions for this Slack workspace.",
+      text: "Connect your Doco account to Slack, or manage Señor Doco's shared workspace defaults.",
     });
+  });
+
+  it("includes a private personal authorization button in /doco connect", () => {
+    const originalSecret = process.env.SLACK_SIGNING_SECRET;
+    process.env.SLACK_SIGNING_SECRET = "secret";
+    try {
+      const payload = parseSlackCommandPayload(
+        "team_id=T123&team_domain=acme&channel_id=C123&channel_name=product&user_id=U123&text=connect",
+      );
+      const request = new Request("https://doco.test/integrations/slack/commands", {
+        method: "POST",
+      });
+
+      const response = buildSlackConnectCommandResponse(request, payload);
+      const buttons = response.blocks[1]?.elements ?? [];
+
+      expect(JSON.stringify(buttons)).toContain("Authorize my Doco account");
+      expect(JSON.stringify(buttons)).toContain("/integrations/slack/link?state=");
+      expect(JSON.stringify(buttons)).toContain("Manage workspace defaults");
+    } finally {
+      if (originalSecret === undefined) {
+        process.env.SLACK_SIGNING_SECRET = undefined;
+      } else {
+        process.env.SLACK_SIGNING_SECRET = originalSecret;
+      }
+    }
+  });
+
+  it("signs and verifies Slack personal authorization state", () => {
+    const state = {
+      workspaceId: "T123",
+      chatUserId: "U123",
+      nonce: "nonce",
+      issuedAt: 1_000,
+    };
+    const encoded = signSlackPersonalAuthorizationState(state, "secret");
+
+    expect(verifySlackPersonalAuthorizationState(encoded, "secret", 1_500)).toEqual(state);
+    expect(() => verifySlackPersonalAuthorizationState(encoded, "wrong-secret", 1_500)).toThrow(
+      "Invalid Slack personal authorization state signature.",
+    );
+    expect(() => verifySlackPersonalAuthorizationState(encoded, "secret", 16 * 60 * 1000)).toThrow(
+      "Expired Slack personal authorization state.",
+    );
   });
 
   it("requests the scope Slack requires for direct-message events", () => {
@@ -139,7 +186,7 @@ describe("slack.server", () => {
         },
       ]),
     ).toBe(
-      "I’m Señor Doco, Doco’s Slack assistant. By default in this Slack workspace, I can use all doco's docos as approver. That shared default applies to everyone here. People can still link their own Doco account for higher personal access they already hold, but I never get more than their Doco permissions. Owner-only actions, like creating Docos or changing policies, still require that person to be an owner in Doco.",
+      "I’m Señor Doco, Doco’s Slack assistant. By default in this Slack workspace, I can use all doco's docos as approver. That shared default applies to everyone here. People can run /doco connect to link their own Doco account for higher personal access they already hold, but I never get more than their Doco permissions. Owner-only actions, like creating Docos or changing policies, still require that person to be an owner in Doco.",
     );
   });
 
@@ -291,6 +338,8 @@ describe("slack.server", () => {
     expect(prompt).toContain("Principal vs principle vs collaborator");
     expect(prompt).toContain("Voice — dry, cerebral wit");
     expect(prompt).toContain("Slack can use doco_api for read-only Doco endpoints");
+    expect(prompt).toContain("run /doco connect and authorize their own Doco account for Slack");
+    expect(prompt).toContain("owner for creating Docos or changing policies");
     expect(prompt).toContain("GET /api/v1/docos.json");
     expect(prompt).toContain("Keep the answer under 900 characters");
   });
@@ -434,5 +483,43 @@ describe("slack.server", () => {
         }),
       ]),
     );
+  });
+
+  it("asks for personal Doco authorization when Slack doco_api writes are blocked", async () => {
+    const result = await runSlackDocoApiTool(
+      {
+        type: "tool_use",
+        id: "toolu_write",
+        name: "doco_api",
+        input: {
+          method: "POST",
+          path: "/api/v1/docos.json",
+          body: { name: "use-slack" },
+        },
+      } as never,
+      {
+        questionText: "Create a doco for me",
+        overview: false,
+        repair: false,
+        personalAuthorizationCommand: "/doco connect",
+        connections: [
+          {
+            channelId: "*",
+            channelName: "workspace",
+            targetLevel: "org",
+            targetId: "organization_doco",
+            targetLabel: "doco",
+            role: "reader",
+          },
+        ],
+        recentMessages: [],
+        hits: [],
+      },
+    );
+
+    const content = String(result.result.content);
+    expect(result.ok).toBe(false);
+    expect(content).toContain("run /doco connect and authorize their own Doco account for Slack");
+    expect(content).toContain("needs_personal_doco_authorization");
   });
 });
