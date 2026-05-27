@@ -73,7 +73,7 @@ describe("slack.server", () => {
     });
 
     expect(slackConnectUrl(request, payload)).toBe(
-      "https://doco.test/integrations?provider=slack&team_id=T123&team_name=acme&channel_id=C123&channel_name=product",
+      "https://doco.test/integrations/slack/setup?team_id=T123&team_name=acme&channel_id=C123&channel_name=product",
     );
     expect(buildSlackConnectCommandResponse(request, payload)).toMatchObject({
       response_type: "ephemeral",

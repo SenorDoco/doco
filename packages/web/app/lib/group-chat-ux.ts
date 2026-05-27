@@ -152,9 +152,10 @@ export function formatConnectionAuthorizationPreview(args: {
     ...formatAccessBullets(args.defaultTargets),
     "",
     `Requested by: ${args.requesterLabel}`,
-    "Everyone in this chat can use the channel default access.",
-    "Each person can also link their own Doco account; Señor Doco may then use their higher personal access, but only up to the access they already have in Doco.",
-    "Creating Docos and changing policies still require owner access. Collaborator invites are sent by direct message and cannot grant above the inviter's role.",
+    "This is the channel default for Señor Doco. Everyone in this chat can use it.",
+    "Each person can also link their own Doco account. If they already have higher access in Doco, Señor Doco may use that higher personal access, but never more than the access they already hold.",
+    "Owner-only actions, including creating Docos and changing policies, require that individual person to be an owner in Doco.",
+    "Collaborator invites are sent by direct message and cannot grant above the inviter's role.",
   ].join("\n");
 }
 

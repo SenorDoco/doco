@@ -11,7 +11,7 @@ export async function loader({ request }: { request: Request }) {
 
   const installUrl = buildSlackInstallUrl(request, me.id);
   if (!installUrl) {
-    throw redirect("/integrations?provider=slack&slack_unavailable=1");
+    throw redirect("/integrations?slack_unavailable=1");
   }
   throw redirect(installUrl);
 }

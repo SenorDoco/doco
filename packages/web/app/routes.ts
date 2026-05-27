@@ -134,6 +134,7 @@ export default [
   route("integrations", "routes/integrations.tsx"),
   route("integrations/slack/install", "routes/integrations.slack.install.tsx"),
   route("integrations/slack/callback", "routes/integrations.slack.callback.tsx"),
+  route("integrations/slack/setup", "routes/integrations.slack.setup.tsx"),
   route("integrations/slack/events", "routes/integrations.slack.events.tsx"),
   route("integrations/slack/commands", "routes/integrations.slack.commands.tsx"),
   route("integrations/slack/interactions", "routes/integrations.slack.interactions.tsx"),

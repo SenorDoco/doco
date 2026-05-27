@@ -17,6 +17,7 @@ export const SLACK_BOT_SCOPES = [
 const SLACK_AUTHORIZE_URL = "https://slack.com/oauth/v2/authorize";
 const SLACK_OAUTH_ACCESS_URL = "https://slack.com/api/oauth.v2.access";
 const SLACK_CHAT_POST_MESSAGE_URL = "https://slack.com/api/chat.postMessage";
+const SLACK_CONVERSATIONS_LIST_URL = "https://slack.com/api/conversations.list";
 const STATE_TTL_MS = 15 * 60 * 1000;
 const SIGNATURE_TOLERANCE_SECONDS = 5 * 60;
 
@@ -39,6 +40,12 @@ export interface SlackInstallationSummary {
   workspaceName: string;
   botUserId: string | null;
   installedAt: string;
+}
+
+export interface SlackChannelOption {
+  id: string;
+  name: string;
+  isPrivate: boolean;
 }
 
 export interface SlackChannelConnectionSummary {
@@ -87,6 +94,19 @@ interface SlackConnectionInput {
   targetId: string;
   role: string;
   createdByCollaboratorId: string;
+}
+
+interface SlackConversationsListResponse {
+  ok: boolean;
+  error?: string;
+  channels?: Array<{
+    id?: string;
+    name?: string;
+    is_private?: boolean;
+  }>;
+  response_metadata?: {
+    next_cursor?: string;
+  };
 }
 
 export function getSlackConfig(): SlackConfig {
@@ -343,6 +363,48 @@ export async function getSlackBotToken(workspaceId: string): Promise<string | nu
   return result.rows[0]?.bot_access_token ?? null;
 }
 
+export async function listSlackChannels(workspaceId: string): Promise<SlackChannelOption[]> {
+  const token = await getSlackBotToken(workspaceId);
+  if (!token) return [];
+
+  const channels: SlackChannelOption[] = [];
+  let cursor = "";
+  for (let page = 0; page < 20; page += 1) {
+    const url = new URL(SLACK_CONVERSATIONS_LIST_URL);
+    url.searchParams.set("types", "public_channel,private_channel");
+    url.searchParams.set("exclude_archived", "true");
+    url.searchParams.set("limit", "200");
+    url.searchParams.set("team_id", workspaceId);
+    if (cursor) url.searchParams.set("cursor", cursor);
+
+    const response = await fetch(url, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const json = (await response.json()) as SlackConversationsListResponse;
+    if (!response.ok || !json.ok) {
+      throw new Error(
+        json.error ? `Slack channel list failed: ${json.error}` : "Slack channel list failed.",
+      );
+    }
+
+    for (const channel of json.channels ?? []) {
+      const id = channel.id?.trim();
+      const name = channel.name?.trim();
+      if (!id || !name) continue;
+      channels.push({
+        id,
+        name,
+        isPrivate: Boolean(channel.is_private),
+      });
+    }
+
+    cursor = json.response_metadata?.next_cursor?.trim() ?? "";
+    if (!cursor) break;
+  }
+
+  return channels.sort((a, b) => a.name.localeCompare(b.name));
+}
+
 export function verifySlackRequestSignature(args: {
   rawBody: string;
   timestamp: string | null;
@@ -385,8 +447,7 @@ export function parseSlackCommandPayload(rawBody: string): SlackCommandPayload {
 }
 
 export function slackConnectUrl(request: Request, payload: SlackCommandPayload): string {
-  const url = new URL("/integrations", request.url);
-  url.searchParams.set("provider", "slack");
+  const url = new URL("/integrations/slack/setup", request.url);
   url.searchParams.set("team_id", payload.team_id);
   if (payload.team_domain) url.searchParams.set("team_name", payload.team_domain);
   url.searchParams.set("channel_id", payload.channel_id);
@@ -405,7 +466,7 @@ export function buildSlackConnectCommandResponse(request: Request, payload: Slac
         type: "section",
         text: {
           type: "mrkdwn",
-          text: `Connect Señor Doco to *${channel}* by choosing the Doco and channel-default role in Doco.`,
+          text: `Connect Señor Doco to *${channel}* by choosing the channel default access in Doco.`,
         },
       },
       {
