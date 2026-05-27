@@ -53,6 +53,7 @@ const SLACK_AUTHORIZE_URL = "https://slack.com/oauth/v2/authorize";
 const SLACK_OAUTH_ACCESS_URL = "https://slack.com/api/oauth.v2.access";
 const SLACK_CHAT_POST_MESSAGE_URL = "https://slack.com/api/chat.postMessage";
 const SLACK_CONVERSATIONS_HISTORY_URL = "https://slack.com/api/conversations.history";
+const SLACK_CONVERSATIONS_REPLIES_URL = "https://slack.com/api/conversations.replies";
 const STATE_TTL_MS = 15 * 60 * 1000;
 const SIGNATURE_TOLERANCE_SECONDS = 5 * 60;
 const SLACK_DOCO_ANSWER_LIMIT = 8;
@@ -964,13 +965,19 @@ export async function fetchSlackConversationContext(args: {
   workspaceId: string;
   channelId: string;
   latestTs?: string | null;
+  threadTs?: string | null;
   limit?: number;
 }): Promise<SlackRecentMessage[]> {
   const token = await getSlackBotToken(args.workspaceId);
   if (!token) return [];
-  const url = new URL(SLACK_CONVERSATIONS_HISTORY_URL);
+  const url = new URL(
+    args.threadTs ? SLACK_CONVERSATIONS_REPLIES_URL : SLACK_CONVERSATIONS_HISTORY_URL,
+  );
   url.searchParams.set("channel", args.channelId);
   url.searchParams.set("limit", String(args.limit ?? 8));
+  if (args.threadTs) {
+    url.searchParams.set("ts", args.threadTs);
+  }
   if (args.latestTs) {
     url.searchParams.set("latest", args.latestTs);
     url.searchParams.set("inclusive", "false");
@@ -2135,6 +2142,7 @@ export async function postSlackMessage(args: {
   workspaceId: string;
   channelId: string;
   text: string;
+  threadTs?: string | null;
 }): Promise<void> {
   const token = await getSlackBotToken(args.workspaceId);
   if (!token) {
@@ -2149,6 +2157,7 @@ export async function postSlackMessage(args: {
     body: JSON.stringify({
       channel: args.channelId,
       text: args.text,
+      ...(args.threadTs ? { thread_ts: args.threadTs } : {}),
     }),
   });
   const body = (await response.json().catch(() => null)) as SlackApiResponse | null;
