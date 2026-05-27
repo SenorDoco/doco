@@ -1,5 +1,8 @@
 import { useState } from "react";
 
+const AGENT_INVITE_HELP_TEXT =
+  "Doco will teach your agent how to use doco consistently. Copy this prompt and paste it into your AI agent in the project/folder/repo you want to collaborate on. The agent will drive the OAuth flow, and you'll approve in your browser.";
+
 export function buildAgentOAuthPrompt(host: string): string {
   const recipeUrl = `${host}/protocol/agent-oauth-recipe`;
   const deviceUrl = `${host}/device`;
@@ -42,6 +45,9 @@ function AgentPromptBlock({
   const [copied, setCopied] = useState(false);
   return (
     <div className="space-y-2">
+      <p className="max-w-5xl text-lg font-semibold leading-relaxed text-foreground">
+        {AGENT_INVITE_HELP_TEXT}
+      </p>
       <pre
         className="neu-surface rounded-md bg-card p-3 text-[11px] whitespace-pre-wrap break-words"
         data-testid={promptTestId}
