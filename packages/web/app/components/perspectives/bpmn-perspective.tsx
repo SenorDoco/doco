@@ -498,6 +498,7 @@ export function BpmnPerspective({
           nodeTypes={nodeTypes}
           nodesDraggable={false}
           nodesConnectable={false}
+          onlyRenderVisibleElements
           fitView
           minZoom={0.1}
           maxZoom={2.0}

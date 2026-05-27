@@ -321,6 +321,7 @@ function OrgTreeInner({
         nodeTypes={nodeTypes}
         onNodeClick={handleNodeClick}
         onMove={(_event: unknown, next: FlowViewport) => updateViewport(next)}
+        onlyRenderVisibleElements
         fitView
         fitViewOptions={{ padding: 0.2 }}
         minZoom={0.2}
