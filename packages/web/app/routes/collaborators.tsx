@@ -1,10 +1,11 @@
 // /collaborators — global collaborator-management page (decision_01KS0JBJ5X0AZ4XJJFKEWE1R62).
 // Replaces the per-doco / per-org members pages. Top-level link in
 // the host nav. Shows every org/doco grant the signed-in principal
-// can see. Issued agent grants (OAuth tokens) live on /api-keys, but
-// the invite card also lets owners copy the agent OAuth prompt in-place.
-// Lets owners edit roles inline (auto-save) and mint invites in-place
-// via the CollaboratorInviteCards card at the top — the prior
+// can see — humans and authorized agents. Agent credentials still
+// live on /api-keys, but the invite card also lets owners copy the
+// agent OAuth prompt in-place. Lets owners edit roles inline
+// (auto-save) and mint invites in-place via the CollaboratorInviteCards
+// card at the top — the prior
 // /collaborators/invite standalone page is gone.
 
 import {
@@ -268,8 +269,11 @@ export default function CollaboratorsPage({
         <header className="space-y-1">
           <h1 className="text-2xl font-semibold">Collaborators</h1>
           <p className="text-sm text-muted-foreground">
-            People you've invited to your orgs and docos. Invite a person or share the agent OAuth
-            prompt from here.
+            People and agents with access to your orgs and docos. Agent credentials are managed in{" "}
+            <Link to="/api-keys" className="font-semibold text-foreground hover:text-primary">
+              API keys
+            </Link>
+            .
           </p>
         </header>
 
@@ -446,6 +450,11 @@ function UserRow({
           {isMe ? (
             <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
               you
+            </span>
+          ) : null}
+          {row.principal.kind === "agent" ? (
+            <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+              agent
             </span>
           ) : null}
         </div>

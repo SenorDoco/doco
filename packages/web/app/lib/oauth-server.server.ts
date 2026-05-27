@@ -22,6 +22,7 @@
 
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { withClient, withTransaction } from "@doco/db";
+import { generateUlid } from "@doco/shared";
 
 // ---------------------------------------------------------------------------
 // Token formats & TTLs.
@@ -38,6 +39,14 @@ const CLIENT_ID_PREFIX = "doco_client_";
 const AUTH_CODE_TTL_SECONDS = 60;
 const ACCESS_TOKEN_TTL_SECONDS = 60 * 60; // 1h
 const REFRESH_TOKEN_TTL_SECONDS = 60 * 24 * 60 * 60; // 60d
+const DOCO_ROLES = ["reader", "author", "approver", "owner"] as const;
+
+type QueryClient = {
+  query: (
+    sql: string,
+    values?: unknown[],
+  ) => Promise<{ rowCount?: number | null; rows: unknown[] }>;
+};
 
 // 32 random bytes → 43-char base64url. That's 256 bits of entropy —
 // over the OAuth 2.1 recommended floor of 128 bits.
@@ -47,6 +56,26 @@ function mintOpaque(prefix: string): string {
 
 export function isOauthAccessToken(value: string): boolean {
   return value.startsWith(ACCESS_TOKEN_PREFIX);
+}
+
+export function normalizeAgentName(value: string): string {
+  const name = value.trim().replace(/\s+/g, " ");
+  if (!name) {
+    throw new OauthError("invalid_request", "agent_name required");
+  }
+  if (name.length > 120) {
+    throw new OauthError("invalid_request", "agent_name must be 120 characters or less");
+  }
+  return name;
+}
+
+function isDocoRole(value: string | undefined): value is (typeof DOCO_ROLES)[number] {
+  return value !== undefined && (DOCO_ROLES as readonly string[]).includes(value);
+}
+
+function roleForGrant(grants: Record<string, string> | undefined, id: string): string {
+  const role = grants?.[id];
+  return isDocoRole(role) ? role : "owner";
 }
 
 // ---------------------------------------------------------------------------
@@ -152,7 +181,8 @@ function isValidRedirectUri(uri: string): boolean {
 
 export interface IssueAuthCodeInput {
   client_id: string;
-  collaborator_id: string;
+  approver_collaborator_id: string;
+  agent_name: string;
   redirect_uri: string;
   code_challenge: string;
   granted_doco_ids: string[];
@@ -176,12 +206,74 @@ export interface IssueAuthCodeInput {
   scope?: string;
 }
 
+async function createAuthorizedAgentCollaborator(
+  c: QueryClient,
+  input: {
+    owner_id: string;
+    client_id: string;
+    agent_name: string;
+    granted_doco_ids: string[];
+    granted_doco_roles?: Record<string, string>;
+    granted_org_ids?: string[];
+    granted_org_roles?: Record<string, string>;
+  },
+): Promise<string> {
+  const agentName = normalizeAgentName(input.agent_name);
+  const agentId = `collaborator_${generateUlid()}`;
+  const createdAt = new Date().toISOString();
+  await c.query(
+    `INSERT INTO collaborators (id, kind, github_login, owner_id, data)
+     VALUES ($1, 'agent', NULL, $2, $3::jsonb)`,
+    [
+      agentId,
+      input.owner_id,
+      JSON.stringify({
+        id: agentId,
+        kind: "agent",
+        name: agentName,
+        owner_id: input.owner_id,
+        oauth_client_id: input.client_id,
+        created_at: createdAt,
+      }),
+    ],
+  );
+
+  for (const docoId of input.granted_doco_ids) {
+    await c.query(
+      `INSERT INTO doco_users (doco_id, collaborator_id, role)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (doco_id, collaborator_id) DO UPDATE SET role = EXCLUDED.role`,
+      [docoId, agentId, roleForGrant(input.granted_doco_roles, docoId)],
+    );
+  }
+
+  for (const orgId of input.granted_org_ids ?? []) {
+    await c.query(
+      `INSERT INTO org_users (org_id, collaborator_id, role)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (org_id, collaborator_id) DO UPDATE SET role = EXCLUDED.role`,
+      [orgId, agentId, roleForGrant(input.granted_org_roles, orgId)],
+    );
+  }
+
+  return agentId;
+}
+
 export async function issueAuthorizationCode(
   input: IssueAuthCodeInput,
 ): Promise<{ code: string; expires_at: Date }> {
   const code = mintOpaque(CODE_PREFIX);
   const expires_at = new Date(Date.now() + AUTH_CODE_TTL_SECONDS * 1000);
-  await withClient(async (c) => {
+  await withTransaction(async (c) => {
+    const agent_collaborator_id = await createAuthorizedAgentCollaborator(c, {
+      owner_id: input.approver_collaborator_id,
+      client_id: input.client_id,
+      agent_name: input.agent_name,
+      granted_doco_ids: input.granted_doco_ids,
+      granted_doco_roles: input.granted_doco_roles,
+      granted_org_ids: input.granted_org_ids,
+      granted_org_roles: input.granted_org_roles,
+    });
     await c.query(
       `INSERT INTO oauth_authorization_codes
          (code, client_id, collaborator_id, redirect_uri,
@@ -192,7 +284,7 @@ export async function issueAuthorizationCode(
       [
         code,
         input.client_id,
-        input.collaborator_id,
+        agent_collaborator_id,
         input.redirect_uri,
         input.code_challenge,
         input.granted_doco_ids,
@@ -719,14 +811,42 @@ export async function getDeviceAuthorizationByUserCode(
  */
 export async function approveDeviceAuthorization(args: {
   device_code: string;
-  collaborator_id: string;
+  approver_collaborator_id: string;
+  agent_name: string;
   granted_doco_ids: string[];
   granted_doco_roles?: Record<string, string>;
   granted_org_ids?: string[];
   granted_org_roles?: Record<string, string>;
 }): Promise<void> {
-  await withClient(async (c) => {
-    const r = await c.query(
+  await withTransaction(async (c) => {
+    const pending = await c.query<{ client_id: string }>(
+      `SELECT client_id
+         FROM oauth_device_authorizations
+        WHERE device_code = $1
+          AND status = 'pending'
+          AND expires_at > now()
+        FOR UPDATE`,
+      [args.device_code],
+    );
+    const row = pending.rows[0];
+    if (!row) {
+      throw new OauthError(
+        "invalid_grant",
+        "device authorization not found, already resolved, or expired",
+      );
+    }
+
+    const agent_collaborator_id = await createAuthorizedAgentCollaborator(c, {
+      owner_id: args.approver_collaborator_id,
+      client_id: row.client_id,
+      agent_name: args.agent_name,
+      granted_doco_ids: args.granted_doco_ids,
+      granted_doco_roles: args.granted_doco_roles,
+      granted_org_ids: args.granted_org_ids,
+      granted_org_roles: args.granted_org_roles,
+    });
+
+    await c.query(
       `UPDATE oauth_device_authorizations
           SET status = 'approved',
               collaborator_id = $2,
@@ -739,19 +859,13 @@ export async function approveDeviceAuthorization(args: {
           AND expires_at > now()`,
       [
         args.device_code,
-        args.collaborator_id,
+        agent_collaborator_id,
         args.granted_doco_ids,
         JSON.stringify(args.granted_doco_roles ?? {}),
         args.granted_org_ids ?? [],
         JSON.stringify(args.granted_org_roles ?? {}),
       ],
     );
-    if ((r.rowCount ?? 0) === 0) {
-      throw new OauthError(
-        "invalid_grant",
-        "device authorization not found, already resolved, or expired",
-      );
-    }
   });
 }
 

@@ -230,7 +230,7 @@ export async function loader({
         return c
           ? {
               id: c.id,
-              username: c.github_login ?? c.id,
+              username: collaboratorDisplayName(c),
               type: c.kind,
               role: u.role,
               github_login: c.github_login,
@@ -257,4 +257,11 @@ export async function loader({
     collaborator_count: collaborators.length,
     principal_neuron_count: principal_neurons.length,
   });
+}
+
+function collaboratorDisplayName(c: Awaited<ReturnType<typeof getCollaboratorById>>): string {
+  if (!c) return "";
+  const named = c.data.name ?? c.data.display_name;
+  if (typeof named === "string" && named.trim()) return named.trim();
+  return c.github_login ?? c.id;
 }

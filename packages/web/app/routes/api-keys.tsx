@@ -1,13 +1,11 @@
 // /api-keys — host-level page for managing API keys.
 //
 // Lists every active OAuth refresh token bound to the signed-in user
-// (both agent-OAuth-flow tokens and personal-API-key tokens minted
-// from this page) and lets the user mint new personal API keys.
+// or one of their named agent collaborators, plus personal API keys
+// minted from this page.
 //
-// Distinct from /collaborators: that page lists people and offers the
-// agent OAuth prompt. API keys can be issued to agents OR for the
-// user's own scripts / runtimes, so they live on their own page with
-// their own affordances.
+// Distinct from /collaborators: that page lists who has access; this
+// page manages the credentials behind those agents/scripts.
 
 import type { DocoRole } from "@doco/db";
 import { useEffect, useMemo, useState } from "react";

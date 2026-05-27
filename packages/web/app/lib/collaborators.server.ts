@@ -27,10 +27,6 @@ import { getCurrentPrincipal } from "~/lib/session.server";
 
 export type CurrentPrincipal = NonNullable<Awaited<ReturnType<typeof getCurrentPrincipal>>>;
 
-// Post-split (api-keys page now hosts agent OAuth grants): the
-// /collaborators page lists humans only. The `kind` field stays on
-// the row so external callers can still read it but it's always
-// "person" — agent grants live on /api-keys.
 export type PrincipalKind = "person" | "agent";
 
 export interface UserCell {
@@ -72,10 +68,20 @@ async function enrichPrincipal(id: string, lastActivity: Map<string, string>): P
   const kind: PrincipalKind = c?.kind === "agent" ? "agent" : "person";
   return {
     collaborator_id: id,
-    username: c?.github_login ?? id,
+    username: collaboratorDisplayName(c, id),
     kind,
     last_activity_at: lastActivity.get(id) ?? null,
   };
+}
+
+function collaboratorDisplayName(
+  c: Awaited<ReturnType<typeof getCollaboratorById>>,
+  fallback: string,
+): string {
+  if (!c) return fallback;
+  const named = c.data.name ?? c.data.display_name;
+  if (typeof named === "string" && named.trim()) return named.trim();
+  return c.github_login ?? c.id;
 }
 
 async function loadLastActivity(principalIds: string[]): Promise<Map<string, string>> {

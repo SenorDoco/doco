@@ -164,6 +164,9 @@ export async function action({ request }: { request: Request }) {
     return redirect(redirectWith(params, { error: "access_denied" }));
   }
 
+  const agentName = String(form.get("agent_name") ?? "").trim();
+  if (!agentName) throw errorResponse("agent_name required", 400);
+
   const selected = form.getAll("doco_id").map((v) => String(v));
   const selectedOrgs = form.getAll("org_id").map((v) => String(v));
   if (selected.length === 0 && selectedOrgs.length === 0) {
@@ -218,7 +221,8 @@ export async function action({ request }: { request: Request }) {
 
   const { code } = await issueAuthorizationCode({
     client_id: params.client_id,
-    collaborator_id: principal.id,
+    approver_collaborator_id: principal.id,
+    agent_name: agentName,
     redirect_uri: params.redirect_uri,
     code_challenge: params.code_challenge,
     granted_doco_ids: selected,
@@ -256,8 +260,8 @@ export default function AuthorizePage() {
           <CardHeader>
             <CardTitle>Approve access</CardTitle>
             <CardDescription>
-              <strong>{data.client_name}</strong> wants access to your docos. Only orgs and docos
-              you own are shown.
+              <strong>{data.client_name}</strong> wants access to your docos. Name the agent, then
+              pick orgs and docos you own.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -318,17 +322,35 @@ function DocoPickerForm({
   const [orgRoles, setOrgRoles] = useState<Record<string, DocoRole>>(() =>
     Object.fromEntries(orgs.map((o) => [o.id, defaultRole(o)])),
   );
+  const [agentName, setAgentName] = useState("");
 
   const allDocosSelected = docos.length > 0 && selected.size === docos.length;
   const noneDocosSelected = selected.size === 0;
   const allOrgsSelected = orgs.length > 0 && selectedOrgs.size === orgs.length;
   const noneOrgsSelected = selectedOrgs.size === 0;
   const nothingSelected = selected.size === 0 && selectedOrgs.size === 0;
+  const missingAgentName = agentName.trim().length === 0;
   return (
     // reloadDocument: the action returns a 302 to the runtime's
     // localhost callback. Client-side fetch can't follow cross-origin
     // redirects; a native document POST + browser-followed 302 can.
     <Form method="post" reloadDocument className="space-y-4">
+      <label className="block text-sm">
+        <span className="block text-xs uppercase tracking-wide text-muted-foreground mb-1">
+          Agent name
+        </span>
+        <input
+          type="text"
+          name="agent_name"
+          value={agentName}
+          onChange={(e) => setAgentName(e.currentTarget.value)}
+          required
+          maxLength={120}
+          placeholder="e.g. Claude Code in repo"
+          className="block w-full max-w-md rounded-md px-3 py-2 text-sm"
+        />
+      </label>
+
       {targetedMessage ? (
         <p className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
           {targetedMessage}
@@ -553,7 +575,7 @@ function DocoPickerForm({
           type="submit"
           name="decision"
           value="approve"
-          disabled={nothingSelected}
+          disabled={nothingSelected || missingAgentName}
           className="neu-button bg-primary text-primary-foreground hover:opacity-90 rounded-md px-4 py-2 text-sm font-semibold disabled:opacity-50"
         >
           Approve

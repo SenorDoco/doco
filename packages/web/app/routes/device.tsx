@@ -213,6 +213,10 @@ export async function action({ request }: { request: Request }) {
   }
 
   if (decision === "approve") {
+    const agentName = String(form.get("agent_name") ?? "").trim();
+    if (!agentName) {
+      throw new Response("agent_name required", { status: 400 });
+    }
     const selected = form.getAll("doco_id").map((v) => String(v));
     const selectedOrgs = form.getAll("org_id").map((v) => String(v));
     if (selected.length === 0 && selectedOrgs.length === 0) {
@@ -264,7 +268,8 @@ export async function action({ request }: { request: Request }) {
     }
     await approveDeviceAuthorization({
       device_code: row.device_code,
-      collaborator_id: principal.id,
+      approver_collaborator_id: principal.id,
+      agent_name: agentName,
       granted_doco_ids: selected,
       granted_doco_roles,
       granted_org_ids: selectedOrgs,
@@ -333,8 +338,8 @@ function renderStage(data: LoaderData) {
         <CardHeader>
           <CardTitle>Authorize agent access</CardTitle>
           <CardDescription>
-            <strong>{data.client_name}</strong> wants access to your Docos. Pick individual Docos or
-            grant access to an entire organization — code{" "}
+            <strong>{data.client_name}</strong> wants access to your Docos. Name the agent, then
+            pick individual Docos or grant access to an entire organization — code{" "}
             <code className="rounded bg-input px-1 py-0.5 text-xs">{data.user_code}</code>.
           </CardDescription>
         </CardHeader>
@@ -413,14 +418,32 @@ function DevicePickerForm({
   const [orgRoles, setOrgRoles] = useState<Record<string, DocoRole>>(() =>
     Object.fromEntries(orgs.map((o) => [o.id, defaultRole(o)])),
   );
+  const [agentName, setAgentName] = useState("");
   const allDocosSelected = docos.length > 0 && selected.size === docos.length;
   const noneDocosSelected = selected.size === 0;
   const allOrgsSelected = orgs.length > 0 && selectedOrgs.size === orgs.length;
   const noneOrgsSelected = selectedOrgs.size === 0;
   const nothingSelected = selected.size === 0 && selectedOrgs.size === 0;
+  const missingAgentName = agentName.trim().length === 0;
   return (
     <Form method="post" className="space-y-4">
       <input type="hidden" name="user_code" value={userCode} />
+
+      <label className="block text-sm">
+        <span className="block text-xs uppercase tracking-wide text-muted-foreground mb-1">
+          Agent name
+        </span>
+        <input
+          type="text"
+          name="agent_name"
+          value={agentName}
+          onChange={(e) => setAgentName(e.currentTarget.value)}
+          required
+          maxLength={120}
+          placeholder="e.g. Codex in Doco repo"
+          className="block w-full max-w-md rounded-md px-3 py-2 text-sm"
+        />
+      </label>
 
       {targetedMessage ? (
         <p className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
@@ -647,7 +670,7 @@ function DevicePickerForm({
           type="submit"
           name="decision"
           value="approve"
-          disabled={nothingSelected}
+          disabled={nothingSelected || missingAgentName}
           className="neu-button bg-primary text-primary-foreground hover:opacity-90 rounded-md px-4 py-2 text-sm font-semibold disabled:opacity-50"
         >
           Approve

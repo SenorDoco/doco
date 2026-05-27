@@ -4,6 +4,7 @@
 import {
   type DocoRole,
   isOrgUser as dbIsOrgMember,
+  getCollaboratorById,
   getDocoByIdOrHandle,
   getDocoUserRole,
   getOrgRole,
@@ -150,14 +151,27 @@ async function isHostBootstrapOwned(ownerId: string): Promise<boolean> {
   return p?.name === "host-bootstrap";
 }
 
-/** Read the `owner_id` field of a Principal record. */
+/** Read the owner_id field for either a collaborator identity or Principal neuron. */
 async function getPrincipalOwnerId(principalId: string): Promise<string | null> {
+  if (principalId.startsWith("collaborator_")) {
+    const c = await getCollaboratorById(principalId);
+    const ownerId = c?.owner_id ?? c?.data.owner_id;
+    if (typeof ownerId !== "string") return null;
+    if (!ownerId.startsWith("collaborator_") && !ownerId.startsWith("organization_")) {
+      return null;
+    }
+    return ownerId;
+  }
   if (!principalId.startsWith("principal_")) return null;
   const p = await getPrincipalById(principalId);
   if (!p) return null;
   const ownerId = p.data.owner_id;
   if (typeof ownerId !== "string") return null;
-  if (!ownerId.startsWith("principal_") && !ownerId.startsWith("organization_")) {
+  if (
+    !ownerId.startsWith("principal_") &&
+    !ownerId.startsWith("collaborator_") &&
+    !ownerId.startsWith("organization_")
+  ) {
     return null;
   }
   return ownerId;
