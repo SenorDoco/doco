@@ -564,6 +564,13 @@ export function OverviewGraph({
     [visibleNodes, visibleLinks, centerId],
   );
   const focalActive = useMemo(() => hasFocalNode(centerId, visibleNodes), [centerId, visibleNodes]);
+  const renderWindowViewport = hasFitRef.current
+    ? viewport
+    : {
+        x: size.width / 2 - OVERVIEW_NODE_WIDTH / 2,
+        y: size.height / 2 - OVERVIEW_NODE_HEIGHT / 2,
+        zoom: 1,
+      };
   const renderWindow = useMemo(
     () =>
       selectRenderWindow(
@@ -586,14 +593,14 @@ export function OverviewGraph({
           ];
         }),
         {
-          viewport,
+          viewport: renderWindowViewport,
           size,
           maxItems: OVERVIEW_RENDER_NODE_BUDGET,
           overscanPx: OVERVIEW_RENDER_OVERSCAN_PX,
           mustIncludeIds: [centerId],
         },
       ),
-    [visibleNodes, positions, depthByNodeId, centerId, viewport, size],
+    [visibleNodes, positions, depthByNodeId, centerId, renderWindowViewport, size],
   );
   const renderedNodeIds = renderWindow.ids;
   const renderedNodes = useMemo(
