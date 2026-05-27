@@ -1,9 +1,11 @@
-import { Handle, type MiniMapNodeProps, Position } from "@xyflow/react";
-import { type ComponentType, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { Handle, Position } from "@xyflow/react";
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
+import { FullLayoutMiniMap } from "~/components/full-layout-minimap";
 import { NodeBadgeRow, ReferenceNumberBadge } from "~/components/neuron-badges";
 import { NeuronTypeIcon } from "~/components/neuron-type-icon";
-import { StandardControls, StandardMiniMap } from "~/components/perspective-canvas-overlays";
+import { StandardControls } from "~/components/perspective-canvas-overlays";
+import type { FullLayoutMiniMapItem } from "~/lib/full-layout-minimap";
 import {
   FAR_DEPTH,
   computeDepthFromCenter,
@@ -313,52 +315,6 @@ function lifecycleWindowRank(lifecycle: string | null): number {
   }
 }
 
-// MiniMap node component — mirrors the rounded-rectangle nodes drawn on
-// the canvas, filled with the node's lifecycle color so the minimap is
-// a true scaled silhouette rather than a uniform grid of beige boxes.
-function makeOverviewMiniMapNode(
-  nodeById: Map<string, OverviewGraphNode>,
-): ComponentType<MiniMapNodeProps> {
-  return function OverviewMiniMapNode({
-    id,
-    x,
-    y,
-    width,
-    height,
-    strokeColor,
-    strokeWidth,
-    className,
-    selected,
-    shapeRendering,
-  }: MiniMapNodeProps) {
-    const graphNode = nodeById.get(id);
-    if (!graphNode) return null;
-    const fill = lifecycleColor(nodeLifecycle(graphNode));
-    const stroke = strokeColor ?? "rgba(0,0,0,0.5)";
-    const sw = (strokeWidth ?? 1) * (graphNode.is_center ? 2 : 1);
-    const radius = Math.min(width, height) / 3;
-    const classes = ["react-flow__minimap-node", selected ? "selected" : "", className]
-      .filter(Boolean)
-      .join(" ");
-    return (
-      <g className={classes} shapeRendering={shapeRendering}>
-        <rect
-          x={x}
-          y={y}
-          width={width}
-          height={height}
-          rx={radius}
-          ry={radius}
-          fill={fill}
-          stroke={stroke}
-          strokeWidth={sw}
-          style={{ vectorEffect: "non-scaling-stroke" }}
-        />
-      </g>
-    );
-  };
-}
-
 const HIDDEN_HANDLE_STYLE = {
   width: 1,
   height: 1,
@@ -459,16 +415,17 @@ export function OverviewGraph({
     minZoom?: number;
     maxZoom?: number;
   }) => void;
-  const flowRef = useRef<{ fitView?: FlowFitView } | null>(null);
+  type FlowSetViewport = (viewport: FlowViewport, options?: { duration?: number }) => void;
+  const flowRef = useRef<{ fitView?: FlowFitView; setViewport?: FlowSetViewport } | null>(null);
   const lastZoomedCenterRef = useRef<string | null>(null);
   const [size, setSize] = useState({ width: 1, height: 1 });
   const [viewport, setViewport] = useState<FlowViewport>({ x: 0, y: 0, zoom: 1 });
   const [details, setDetails] = useState<Map<string, OverviewNodeDetail>>(() => new Map());
-  const updateViewport = (next: FlowViewport) => {
+  const updateViewport = useCallback((next: FlowViewport) => {
     setViewport((prev) =>
       prev.x === next.x && prev.y === next.y && prev.zoom === next.zoom ? prev : next,
     );
-  };
+  }, []);
 
   const allLifecycles = useMemo(() => {
     const set = new Set<string>(["active"]);
@@ -558,7 +515,26 @@ export function OverviewGraph({
     () => new Map(visibleNodes.map((node) => [node.id, node])),
     [visibleNodes],
   );
-  const MiniMapNode = useMemo(() => makeOverviewMiniMapNode(nodeById), [nodeById]);
+  const minimapItems = useMemo<FullLayoutMiniMapItem[]>(
+    () =>
+      visibleNodes.flatMap((node) => {
+        const position = positions.get(node.id);
+        if (!position) return [];
+        return [
+          {
+            id: node.id,
+            x: position.x,
+            y: position.y,
+            width: OVERVIEW_NODE_WIDTH,
+            height: OVERVIEW_NODE_HEIGHT,
+            color: lifecycleColor(nodeLifecycle(node)),
+            kind: "node",
+            shape: "rounded",
+          },
+        ];
+      }),
+    [visibleNodes, positions],
+  );
   const depthByNodeId = useMemo(
     () => computeDepthFromCenter(visibleNodes, visibleLinks, centerId),
     [visibleNodes, visibleLinks, centerId],
@@ -791,6 +767,19 @@ export function OverviewGraph({
   );
 
   const nodeTypes = useMemo(() => ({ overviewNode: OverviewFlowNode }), []);
+  const panToMiniMapPoint = useCallback(
+    (point: { x: number; y: number }) => {
+      const zoom = viewport.zoom;
+      const next = {
+        x: size.width / 2 - point.x * zoom,
+        y: size.height / 2 - point.y * zoom,
+        zoom,
+      };
+      flowRef.current?.setViewport?.(next, { duration: 120 });
+      updateViewport(next);
+    },
+    [size.height, size.width, updateViewport, viewport.zoom],
+  );
 
   return (
     <div className={fillHeight ? "flex h-full min-h-0 flex-col" : "flex flex-col"}>
@@ -823,6 +812,7 @@ export function OverviewGraph({
             preventScrolling
             onInit={(instance: {
               fitView?: FlowFitView;
+              setViewport?: FlowSetViewport;
               getViewport?: () => FlowViewport;
             }) => {
               flowRef.current = instance;
@@ -853,13 +843,20 @@ export function OverviewGraph({
           >
             <Flow.Background gap={20} size={1} />
             <StandardControls fitViewOptions={GRAPH_FIT_VIEW_OPTIONS} />
-            <StandardMiniMap nodeComponent={MiniMapNode} />
           </Flow.ReactFlow>
         ) : (
           <div className="flex h-full w-full items-center justify-center text-xs text-muted-foreground">
             Loading graph…
           </div>
         )}
+        {Flow ? (
+          <FullLayoutMiniMap
+            items={minimapItems}
+            viewport={viewport}
+            size={size}
+            onPanTo={panToMiniMapPoint}
+          />
+        ) : null}
         {/* PerspectiveFrame owns the lifecycle filter, the
             "Reorder automatically" toggle, and the fullscreen button.
             They render at fixed positions across every perspective.
