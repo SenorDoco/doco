@@ -49,6 +49,7 @@ import {
   bpmnEdgePath,
   routeBpmnSequenceEdge,
 } from "~/lib/bpmn-edge-routing";
+import { bpmnLaneColumnKey, packBpmnLaneColumns } from "~/lib/bpmn-lane-packing";
 import type { BpmnLane, BpmnNode, BpmnPool, BpmnShape } from "~/lib/bpmn-perspective.server";
 import { computeForwardSequenceDepths } from "~/lib/bpmn-sequence-depth";
 import {
@@ -820,43 +821,16 @@ function layOutBpmn(
   // being allowed to pull earlier nodes backward.
   const depthByNode = computeForwardSequenceDepths(nodes, links);
 
-  // Within each lane, nodes are sorted by depth so they appear left to
-  // right regardless of created_at. Then we pack rows: if two nodes
-  // in the same lane share a depth (unlikely but possible), we shove
-  // the second one one column to the right.
-  const orderedByLane = new Map<string, BpmnNode[]>();
-  for (const lane of lanes) orderedByLane.set(lane.id, []);
-  for (const node of nodes) {
-    const list = orderedByLane.get(node.laneId);
-    if (list) list.push(node);
-  }
-  for (const list of orderedByLane.values()) {
-    list.sort((a, b) => {
-      const da = depthByNode.get(a.id) ?? 0;
-      const db = depthByNode.get(b.id) ?? 0;
-      if (da !== db) return da - db;
-      const at = a.created_at ? Date.parse(a.created_at) : 0;
-      const bt = b.created_at ? Date.parse(b.created_at) : 0;
-      if (at !== bt) return at - bt;
-      return a.id.localeCompare(b.id);
-    });
-  }
-
-  // For each node, the absolute column position is its depth — but if
-  // two nodes in the same lane share a depth, the later one bumps
-  // right by one column to avoid overlap.
-  const columnByNode = new Map<string, number>();
-  for (const list of orderedByLane.values()) {
-    let lastColumn = -1;
-    for (const node of list) {
-      const wanted = depthByNode.get(node.id) ?? 0;
-      const column = Math.max(wanted, lastColumn + 1);
-      columnByNode.set(node.id, column);
-      lastColumn = column;
-    }
-  }
-
-  const maxColumn = Math.max(0, ...Array.from(columnByNode.values()));
+  // Within each lane, sequence depth remains the x column. Nodes that
+  // share a lane and a depth stack top-to-bottom instead of stealing
+  // extra horizontal columns; linear sequence chains still advance
+  // rightward because their depths differ.
+  const { orderedByLane, columnByNode, stackIndexByNode, laneColumnStacks, maxColumn } =
+    packBpmnLaneColumns(
+      lanes.map((lane) => lane.id),
+      nodes,
+      depthByNode,
+    );
 
   // Per-node sizes. Compute first so column step and lane height can
   // accommodate the widest / tallest node anywhere in the graph —
@@ -873,13 +847,31 @@ function layOutBpmn(
     if (size.height > maxNodeHeight) maxNodeHeight = size.height;
   }
   const columnStep = maxNodeWidth + NODE_GAP_X;
-  const dynLaneHeight = Math.max(LANE_HEIGHT, maxNodeHeight + NODE_GAP_Y * 2);
+  const baseLaneHeight = Math.max(LANE_HEIGHT, maxNodeHeight + NODE_GAP_Y * 2);
   const laneWidth =
     LANE_LABEL_WIDTH + LANE_CONTENT_LEFT_GUTTER + (maxColumn + 1) * columnStep + NODE_GAP_X;
+  const stackHeightByLaneColumn = new Map<string, number>();
+  const maxStackHeightByLane = new Map<string, number>();
+  for (const [key, stack] of laneColumnStacks.entries()) {
+    const stackHeight = stack.reduce((sum, node, index) => {
+      const size = sizeByNode.get(node.id) ?? { width: NODE_WIDTH, height: NODE_HEIGHT };
+      return sum + size.height + (index > 0 ? NODE_GAP_Y : 0);
+    }, 0);
+    const laneId = key.split("\u0000")[0] ?? "";
+    stackHeightByLaneColumn.set(key, stackHeight);
+    maxStackHeightByLane.set(laneId, Math.max(maxStackHeightByLane.get(laneId) ?? 0, stackHeight));
+  }
+  const laneHeightById = new Map<string, number>();
+  for (const lane of lanes) {
+    const stackHeight = maxStackHeightByLane.get(lane.id) ?? 0;
+    laneHeightById.set(
+      lane.id,
+      Math.max(heightForLane(lane), baseLaneHeight, stackHeight + NODE_GAP_Y * 2),
+    );
+  }
 
   const flowNodes: FlowNode[] = [];
   const laneYById = new Map<string, number>();
-  const laneHeightById = new Map<string, number>();
   const nodePositions = new Map<string, { x: number; y: number }>();
   const nodeBoxes = new Map<string, BpmnEdgeBox>();
   const poolGeometry: BpmnLayout["poolGeometry"] = [];
@@ -928,12 +920,7 @@ function layOutBpmn(
     // Lanes inside this pool (sorted server-side by kind +
     // alphabetical label; we just iterate).
     for (const lane of poolLanes) {
-      // All lanes (actor + milestone + artifacts band) now use the
-      // same dynamic height. States render as Task glyphs (same size
-      // as Actions), so the milestone band needs full lane height to
-      // fit them; the artifacts band follows the same rule for
-      // consistency.
-      const laneHeight = dynLaneHeight;
+      const laneHeight = laneHeightById.get(lane.id) ?? baseLaneHeight;
 
       laneYById.set(lane.id, cursorY);
       laneHeightById.set(lane.id, laneHeight);
@@ -971,15 +958,23 @@ function layOutBpmn(
   // Emit neuron nodes nested in their lane.
   for (const lane of lanes) {
     const list = orderedByLane.get(lane.id) ?? [];
-    const containerHeight = laneHeightById.get(lane.id) ?? dynLaneHeight;
+    const containerHeight = laneHeightById.get(lane.id) ?? baseLaneHeight;
     for (const node of list) {
       const column = columnByNode.get(node.id) ?? 0;
       const size = sizeByNode.get(node.id) ?? { width: NODE_WIDTH, height: NODE_HEIGHT };
+      const stackKey = bpmnLaneColumnKey(lane.id, column);
+      const stack = laneColumnStacks.get(stackKey) ?? [node];
+      const stackHeight = stackHeightByLaneColumn.get(stackKey) ?? size.height;
+      const stackIndex = stackIndexByNode.get(node.id) ?? 0;
       // Center the node within its column slot so wider/narrower
       // nodes still line up by their middle on the same x axis.
       const slotX = LANE_LABEL_WIDTH + LANE_CONTENT_LEFT_GUTTER + column * columnStep;
       const x = slotX + (maxNodeWidth - size.width) / 2;
-      const y = (containerHeight - size.height) / 2;
+      let y = (containerHeight - stackHeight) / 2;
+      for (let i = 0; i < Math.max(0, stackIndex); i++) {
+        const prev = sizeByNode.get(stack[i].id) ?? { width: NODE_WIDTH, height: NODE_HEIGHT };
+        y += prev.height + NODE_GAP_Y;
+      }
       const laneY = laneYById.get(node.laneId) ?? 0;
       nodePositions.set(node.id, { x, y: laneY + y });
       nodeBoxes.set(node.id, {
@@ -1014,7 +1009,7 @@ function layOutBpmn(
   const laneBands = new Map<string, BpmnLaneBand>();
   for (const lane of lanes) {
     const y = laneYById.get(lane.id) ?? 0;
-    const height = laneHeightById.get(lane.id) ?? dynLaneHeight;
+    const height = laneHeightById.get(lane.id) ?? baseLaneHeight;
     laneBands.set(lane.id, { id: lane.id, top: y, bottom: y + height });
   }
   const flowEdges: FlowEdge[] = links
@@ -1067,7 +1062,7 @@ function layOutBpmn(
 
   const laneGeometry: BpmnLayout["lanes"] = lanes.map((lane) => {
     const y = laneYById.get(lane.id) ?? 0;
-    const height = laneHeightById.get(lane.id) ?? dynLaneHeight;
+    const height = laneHeightById.get(lane.id) ?? baseLaneHeight;
     return { id: lane.id, pool_id: lane.pool_id, label: lane.label, y, height, kind: lane.kind };
   });
 
