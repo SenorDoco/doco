@@ -18,9 +18,9 @@ import {
   type DocoRole,
   getCollaboratorById,
   getDocoById,
-  getPrincipalById,
   upsertDocoUser,
   upsertOrgUser,
+  withClient,
 } from "@doco/db";
 import type { EntityId } from "@doco/shared";
 import { Form, Link, redirect } from "react-router";
@@ -38,16 +38,28 @@ type LoaderError =
   | { error: "expired" }
   | { error: "consumed" }
   | { error: "revoked" }
-  | { error: "doco_not_found" };
+  | { error: "doco_not_found" }
+  | { error: "org_not_found" };
 
 type LoaderOk = {
   ok: true;
   code: string;
-  doco: { id: string; handle: string };
+  target: { level: "doco" | "org"; label: string };
   inviter: { username: string } | null;
   expires_at: string;
   signedIn: { id: string; username: string } | null;
 };
+
+async function getOrganizationById(id: string): Promise<{ id: string; handle: string } | null> {
+  const result = await withClient(async (c) =>
+    c.query<{ id: string; handle: string }>(
+      "SELECT id, handle FROM organizations WHERE id = $1 LIMIT 1",
+      [id],
+    ),
+  );
+  const row = result.rows[0];
+  return row ? { id: String(row.id), handle: String(row.handle) } : null;
+}
 
 export async function loader({ request, params }: { request: Request; params: { code: string } }) {
   const code = (params.code ?? "").trim();
@@ -60,8 +72,18 @@ export async function loader({ request, params }: { request: Request; params: { 
   if (invite.status === "consumed") return { error: "consumed" } satisfies LoaderError;
   if (invite.status === "revoked") return { error: "revoked" } satisfies LoaderError;
 
-  const doco = await getDocoById(invite.doco_id);
-  if (!doco) return { error: "doco_not_found" } satisfies LoaderError;
+  const inviteLevel = invite.level ?? "doco";
+  let target: LoaderOk["target"];
+  if (inviteLevel === "org" && invite.org_id) {
+    const org = await getOrganizationById(invite.org_id);
+    if (!org) return { error: "org_not_found" } satisfies LoaderError;
+    target = { level: "org", label: org.handle };
+  } else {
+    if (!invite.doco_id) return { error: "doco_not_found" } satisfies LoaderError;
+    const doco = await getDocoById(invite.doco_id);
+    if (!doco) return { error: "doco_not_found" } satisfies LoaderError;
+    target = { level: "doco", label: doco.handle };
+  }
 
   const inviter = invite.minted_by_collaborator_id
     ? await getCollaboratorById(invite.minted_by_collaborator_id)
@@ -70,7 +92,7 @@ export async function loader({ request, params }: { request: Request; params: { 
   return {
     ok: true,
     code,
-    doco: { id: doco.id, handle: doco.handle },
+    target,
     inviter: inviter ? { username: inviter.github_login ?? inviter.id } : null,
     expires_at: invite.expires_at,
     signedIn: principal ? { id: principal.id, username: principal.username } : null,
@@ -81,8 +103,8 @@ type ActionResult =
   | { error: string }
   | {
       ok: true;
-      doco_url: string;
-      doco_handle: string;
+      continue_to: string;
+      target_label: string;
     };
 
 export async function action({
@@ -108,8 +130,21 @@ export async function action({
   if (invite.status === "consumed") return { error: "This invite was already redeemed." };
   if (invite.status === "revoked") return { error: "This invite has been revoked." };
 
-  const doco = await getDocoById(invite.doco_id);
-  if (!doco) return { error: "The Doco this invite points at no longer exists." };
+  const inviteLevel = invite.level ?? "doco";
+  let continueTo: string;
+  let targetLabel: string;
+  if (inviteLevel === "org" && invite.org_id) {
+    const org = await getOrganizationById(invite.org_id);
+    if (!org) return { error: "The organization this invite points at no longer exists." };
+    continueTo = `/orgs/${org.handle}`;
+    targetLabel = org.handle;
+  } else {
+    if (!invite.doco_id) return { error: "The Doco this invite points at no longer exists." };
+    const doco = await getDocoById(invite.doco_id);
+    if (!doco) return { error: "The Doco this invite points at no longer exists." };
+    continueTo = `/${doco.handle}`;
+    targetLabel = doco.handle;
+  }
 
   const consumed = await store.consumeInvite(code, principal.id as EntityId<"principal">);
   if (!consumed) {
@@ -123,14 +158,15 @@ export async function action({
   // invite targets. Pre-cutover invites (no role/level) default to
   // doco-level `owner` to preserve prior behavior.
   const grantedRole: DocoRole = (consumed.role as DocoRole | undefined) ?? "owner";
-  const inviteLevel = consumed.level ?? "doco";
-  if (inviteLevel === "org" && consumed.org_id) {
+  const consumedLevel = consumed.level ?? "doco";
+  if (consumedLevel === "org" && consumed.org_id) {
     await upsertOrgUser({
       org_id: consumed.org_id,
       collaborator_id: principal.id,
       role: grantedRole,
     });
   } else {
+    if (!invite.doco_id) return { error: "The Doco this invite points at no longer exists." };
     await upsertDocoUser({
       doco_id: invite.doco_id,
       collaborator_id: principal.id,
@@ -138,13 +174,10 @@ export async function action({
     });
   }
 
-  const url = new URL(request.url);
-  const origin = `${url.protocol}//${url.host}`;
-  const handle = doco.handle;
   return {
     ok: true,
-    doco_url: `${origin}/${handle}/`,
-    doco_handle: handle,
+    continue_to: continueTo,
+    target_label: targetLabel,
   };
 }
 
@@ -168,7 +201,7 @@ export default function InviteLanding({
           </CardHeader>
           <CardContent>
             <Link
-              to={`/${actionData.doco_handle}`}
+              to={actionData.continue_to}
               className="neu-button bg-primary text-primary-foreground hover:opacity-90 inline-flex items-center rounded-md px-4 py-2 text-sm font-semibold"
             >
               Continue
@@ -197,7 +230,8 @@ export default function InviteLanding({
       <Card>
         <CardHeader>
           <CardTitle>
-            You've been invited to doco <em>{loaderData.doco.handle}</em>
+            You've been invited to {loaderData.target.level === "org" ? "organization" : "doco"}{" "}
+            <em>{loaderData.target.label}</em>
             {loaderData.inviter ? (
               <>
                 {" "}
@@ -270,6 +304,7 @@ function errorTitle(err: LoaderError["error"]): string {
   if (err === "expired") return "Invite expired";
   if (err === "consumed") return "Invite already redeemed";
   if (err === "revoked") return "Invite revoked";
+  if (err === "org_not_found") return "The organization this invite pointed at no longer exists";
   return "The Doco this invite pointed at no longer exists";
 }
 
@@ -280,6 +315,7 @@ function errorDescription(err: LoaderError["error"]): string {
   if (err === "consumed")
     return "This invite was used. Each invite URL is single-use; ask for a new one.";
   if (err === "revoked") return "The minter revoked this invite. Ask them for a fresh one.";
+  if (err === "org_not_found") return "The organization it pointed at has been deleted.";
   return "The Doco it pointed at has been deleted.";
 }
 

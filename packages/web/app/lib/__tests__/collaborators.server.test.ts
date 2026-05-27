@@ -123,4 +123,36 @@ describe("handleCollaboratorInviteAction", () => {
       level: "doco",
     });
   });
+
+  it("mints org invites even when the org has no doco anchor yet", async () => {
+    mocks.getOrgRole.mockResolvedValue("author");
+    mocks.withClient.mockImplementation(async (callback) =>
+      callback({
+        query: vi.fn().mockResolvedValue({
+          rows: [{ id: "organization_torre", handle: "torre", doco_id: null }],
+        }),
+      }),
+    );
+
+    const result = await handleCollaboratorInviteAction(
+      formRequest({
+        intent: "invite",
+        level: "org",
+        target_id: "organization_torre",
+        role: "author",
+      }),
+    );
+
+    expect(result).toMatchObject({
+      ok: true,
+      invite_url: "https://doco.test/invite/invite_code",
+      doco_url: "https://doco.test/orgs/torre/",
+      level: "org",
+      role: "author",
+    });
+    expect(mocks.issueInvite).toHaveBeenCalledWith(null, "collaborator_alice", 3, "author", {
+      level: "org",
+      org_id: "organization_torre",
+    });
+  });
 });

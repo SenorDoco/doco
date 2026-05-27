@@ -31,10 +31,8 @@ export interface Invite {
    * Pre-existing invites without this field are treated as "doco".
    */
   level?: "org" | "doco";
-  /** Doco this invite is anchored to. Always set — org invites still
-   * carry the doco the inviter was looking at when they minted (used
-   * for back-links and audit). */
-  doco_id: EntityId<"doco">;
+  /** Doco this invite is anchored to. Org-only invites can omit it. */
+  doco_id?: EntityId<"doco">;
   /** Org targeted by org-level invites. Required when level === "org". */
   org_id?: EntityId<"organization">;
   /** Principal that minted this invite (null for anonymous-creation seed). */
@@ -123,7 +121,7 @@ export class InviteStore {
    * @param ttlDays             Days until the invite expires (default 7).
    */
   async issueInvite(
-    docoId: EntityId<"doco">,
+    docoId: EntityId<"doco"> | null,
     mintedByCollaboratorId: EntityId<"principal"> | null,
     ttlDays = 7,
     role: "owner" | "approver" | "author" | "reader" = "author",
@@ -136,11 +134,14 @@ export class InviteStore {
     const now = new Date();
     const expires = new Date(now.getTime() + Math.max(1, Math.min(365, ttlDays)) * 86400 * 1000);
     const level = opts.level ?? "doco";
+    if (!docoId && level !== "org") {
+      throw new Error("docoId is required for doco-level invites.");
+    }
     const invite: Invite = {
       kind: "invite",
       code: randomBytes(INVITE_CODE_BYTES).toString("hex"),
       level,
-      doco_id: docoId,
+      ...(docoId ? { doco_id: docoId } : {}),
       ...(opts.org_id ? { org_id: opts.org_id } : {}),
       minted_by_collaborator_id: mintedByCollaboratorId,
       role,
