@@ -41,4 +41,15 @@ describe("focused render selection", () => {
       { id: "d", incoming: 1, outgoing: 0 },
     ]);
   });
+
+  it("ignores links to nodes that are not renderable in the perspective", () => {
+    const perspectiveLinks = [
+      { source: "b", target: "intent-pool-header" },
+      { source: "b", target: "c" },
+    ];
+
+    expect(
+      summarizeExternalConnections(perspectiveLinks, new Set(["b"]), new Set(["b", "c"])),
+    ).toEqual([{ id: "b", incoming: 0, outgoing: 1 }]);
+  });
 });

@@ -266,6 +266,10 @@ export function BpmnPerspective({
     () => new Map(filteredNodes.map((node) => [node.id, node])),
     [filteredNodes],
   );
+  const filteredNodeIds = useMemo(
+    () => new Set(filteredNodes.map((node) => node.id)),
+    [filteredNodes],
+  );
   const focusCandidates = useMemo(
     () => [
       ...filteredNodes,
@@ -462,7 +466,7 @@ export function BpmnPerspective({
   });
 
   const externalEdgeStubs = useMemo(() => {
-    const summaries = summarizeExternalConnections(links, renderedNodeIds);
+    const summaries = summarizeExternalConnections(links, renderedNodeIds, filteredNodeIds);
     const nodes: FlowNode[] = [];
     const edges: FlowEdge[] = [];
     let stubIndex = 0;
@@ -482,10 +486,13 @@ export function BpmnPerspective({
       const xJitter = ((summaryIndex % 5) - 2) * 18 + (direction === "incoming" ? -12 : 12);
       const y = position.y + size.height / 2 + verticalSign * (108 + (summaryIndex % 3) * 12);
       const x = LANE_LEFT_INSET + position.x + size.width / 2 + xJitter;
-      const matchingLink = links.find((link) =>
-        direction === "incoming"
-          ? link.target === anchorNode.id && !renderedNodeIds.has(link.source)
-          : link.source === anchorNode.id && !renderedNodeIds.has(link.target),
+      const matchingLink = links.find(
+        (link) =>
+          filteredNodeIds.has(link.source) &&
+          filteredNodeIds.has(link.target) &&
+          (direction === "incoming"
+            ? link.target === anchorNode.id && !renderedNodeIds.has(link.source)
+            : link.source === anchorNode.id && !renderedNodeIds.has(link.target)),
       );
       const colorNode =
         direction === "incoming" ? nodeByFullId.get(matchingLink?.source ?? "") : anchorNode;
@@ -547,7 +554,7 @@ export function BpmnPerspective({
     });
 
     return { nodes, edges };
-  }, [links, renderedNodeIds, layout.nodePositions, nodeById, nodeByFullId]);
+  }, [links, renderedNodeIds, filteredNodeIds, layout.nodePositions, nodeById, nodeByFullId]);
 
   const flowNodes = useMemo(() => {
     const windowed = layout.flowNodes.map((node) => {
