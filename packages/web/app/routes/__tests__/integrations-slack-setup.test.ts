@@ -100,7 +100,7 @@ describe("/integrations/slack/setup", () => {
     expect(data.targetOptions).toEqual([
       expect.objectContaining({
         value: "org:org_torre",
-        displayLabel: "torre/* - all Docos in torre",
+        displayLabel: "torre/*",
         grantLabel: "torre/*",
       }),
       expect.objectContaining({

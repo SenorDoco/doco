@@ -39,7 +39,6 @@ export function meta() {
 
 export default function IntegrationsPage({ loaderData }: { loaderData: IntegrationsPageData }) {
   const { me, notice, slackInstallHref, slackInstallations } = loaderData;
-  const firstInstallation = slackInstallations[0] ?? null;
 
   return (
     <div className="flex min-h-screen flex-col bg-background text-foreground">
@@ -104,15 +103,6 @@ export default function IntegrationsPage({ loaderData }: { loaderData: Integrati
                       />
                     ))}
                   </div>
-                  {firstInstallation ? (
-                    <a
-                      href={slackSetupHref(firstInstallation)}
-                      className="neu-button inline-flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm font-semibold text-foreground hover:text-primary"
-                    >
-                      <Settings className="h-4 w-4" aria-hidden="true" />
-                      Set up a Slack channel
-                    </a>
-                  ) : null}
                 </div>
               ) : (
                 <p className="text-sm leading-relaxed text-muted-foreground">
