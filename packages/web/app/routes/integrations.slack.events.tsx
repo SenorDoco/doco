@@ -20,6 +20,7 @@ export async function action({ request }: { request: Request }) {
     event?: {
       type?: string;
       channel?: string;
+      channel_type?: string;
       user?: string;
       text?: string;
       bot_id?: string;
@@ -36,14 +37,18 @@ export async function action({ request }: { request: Request }) {
     return Response.json({ challenge: payload.challenge ?? "" });
   }
 
-  if (payload.type === "event_callback" && payload.event?.type === "app_mention") {
+  const event = payload.event;
+  const shouldReply =
+    event?.type === "app_mention" || (event?.type === "message" && event.channel_type === "im");
+
+  if (payload.type === "event_callback" && shouldReply) {
     const teamId = payload.team_id;
-    const channelId = payload.event.channel;
-    if (teamId && channelId && !payload.event.bot_id && !payload.event.subtype) {
+    const channelId = event?.channel;
+    if (teamId && channelId && !event?.bot_id && !event?.subtype) {
       const text = await buildSlackAppMentionResponse({
         workspaceId: teamId,
         channelId,
-        messageText: payload.event.text ?? "",
+        messageText: event?.text ?? "",
       });
       await postSlackMessage({ workspaceId: teamId, channelId, text });
     }

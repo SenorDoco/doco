@@ -7,6 +7,7 @@ export const SLACK_BOT_SCOPES = [
   "app_mentions:read",
   "chat:write",
   "commands",
+  "im:history",
   "im:write",
   "team:read",
   "users:read",
