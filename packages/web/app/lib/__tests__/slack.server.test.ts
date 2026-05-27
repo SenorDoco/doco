@@ -1,5 +1,5 @@
 import { createHmac } from "node:crypto";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   SLACK_BOT_SCOPES,
   buildSlackConnectCommandResponse,
@@ -16,6 +16,7 @@ import {
   formatSlackDefaultResponse,
   formatSlackDocoAnswerResponse,
   formatSlackInventoryResponse,
+  generateSlackDocoLlmAnswer,
   parseSlackCommandPayload,
   signSlackState,
   slackConnectUrl,
@@ -289,7 +290,8 @@ describe("slack.server", () => {
     expect(prompt).toContain('policies" never "constitution');
     expect(prompt).toContain("Principal vs principle vs collaborator");
     expect(prompt).toContain("Voice — dry, cerebral wit");
-    expect(prompt).toContain("Slack cannot use the in-page doco_api tool");
+    expect(prompt).toContain("Slack can use doco_api for read-only Doco endpoints");
+    expect(prompt).toContain("GET /api/v1/docos.json");
     expect(prompt).toContain("Keep the answer under 900 characters");
   });
 
@@ -359,5 +361,78 @@ describe("slack.server", () => {
         "neurons",
       ),
     ).toBe("doco has 42 neurons across 3 Docos.");
+  });
+
+  it("lets the Slack LLM call doco_api before answering", async () => {
+    const createMessage = vi
+      .fn()
+      .mockResolvedValueOnce({
+        content: [
+          {
+            type: "tool_use",
+            id: "toolu_1",
+            name: "doco_api",
+            input: { method: "GET", path: "/api/v1/docos.json" },
+          },
+        ],
+        stop_reason: "tool_use",
+      })
+      .mockResolvedValueOnce({
+        content: [{ type: "text", text: "I can see doco/doco-bpms." }],
+        stop_reason: "end_turn",
+      });
+    const runTool = vi.fn(async (block) => ({
+      result: {
+        type: "tool_result" as const,
+        tool_use_id: block.id,
+        content: JSON.stringify({
+          status: 200,
+          ok: true,
+          body: { docos: [{ qualified_handle: "doco/doco-bpms" }] },
+        }),
+      },
+      preview: "GET /api/v1/docos.json -> 200",
+      ok: true,
+    }));
+
+    const answer = await generateSlackDocoLlmAnswer(
+      {
+        questionText: "What docos do we have?",
+        overview: true,
+        repair: false,
+        connections: [
+          {
+            channelId: "*",
+            channelName: "workspace",
+            targetLevel: "org",
+            targetId: "organization_doco",
+            targetLabel: "doco",
+            role: "reader",
+          },
+        ],
+        recentMessages: [],
+        hits: [],
+      },
+      {
+        createMessage: createMessage as never,
+        runTool,
+      },
+    );
+
+    expect(answer).toBe("I can see doco/doco-bpms.");
+    expect(runTool).toHaveBeenCalledTimes(1);
+    expect(createMessage).toHaveBeenCalledTimes(2);
+    const secondCall = createMessage.mock.calls[1]?.[0];
+    expect(secondCall?.tools).toEqual(
+      expect.arrayContaining([expect.objectContaining({ name: "doco_api" })]),
+    );
+    expect(secondCall?.messages).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          role: "user",
+          content: [expect.objectContaining({ type: "tool_result", tool_use_id: "toolu_1" })],
+        }),
+      ]),
+    );
   });
 });
