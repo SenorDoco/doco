@@ -127,9 +127,8 @@ function PerspectiveTab({
   //     don't create visible dips where their rounded tops curve away
   //     from each other.
   //   * Every tab gets the same open-bottom etched surface. The tabs
-  //     sit 1px lower and above the frame, so the shared tab border
-  //     covers the frame's top highlight while active/inactive still
-  //     differs only by fill color.
+  //     sit 1px lower, so the frame's raised top border can cover the
+  //     shared join while active/inactive still differs only by fill color.
   const tabClass = cn(
     "neu-surface-open-bottom relative top-px z-50 inline-flex items-center gap-1.5 border px-3 py-1.5 text-xs font-medium",
     isProposedTab
