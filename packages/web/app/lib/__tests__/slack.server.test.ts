@@ -556,6 +556,44 @@ describe("slack.server", () => {
     );
   });
 
+  it("preserves Slack LLM line breaks and repairs inline bullets", async () => {
+    const createMessage = vi.fn().mockResolvedValueOnce({
+      content: [
+        {
+          type: "text",
+          text: "This workspace has one doco: - 7 decisions - 1 intent",
+        },
+      ],
+      stop_reason: "end_turn",
+    });
+
+    const answer = await generateSlackDocoLlmAnswer(
+      {
+        questionText: "What docos do we have?",
+        repairText: "add line breaks",
+        overview: true,
+        repair: true,
+        connections: [
+          {
+            channelId: "*",
+            channelName: "workspace",
+            targetLevel: "org",
+            targetId: "organization_doco",
+            targetLabel: "doco",
+            role: "reader",
+          },
+        ],
+        recentMessages: [],
+        hits: [],
+      },
+      {
+        createMessage: createMessage as never,
+      },
+    );
+
+    expect(answer).toBe("This workspace has one doco:\n- 7 decisions\n- 1 intent");
+  });
+
   it("asks for personal Doco authorization when Slack doco_api writes are blocked", async () => {
     const result = await runSlackDocoApiTool(
       {
