@@ -34,7 +34,7 @@ export function PerspectiveTabs({
   const approvalPerspectives = perspectives.filter((p) => p.kind === "approval");
 
   return (
-    <div className="relative z-40 flex min-w-0 items-end justify-between gap-3">
+    <div className="relative flex min-w-0 items-end justify-between gap-3">
       <nav
         aria-label="Visualization perspectives"
         role="tablist"
@@ -127,10 +127,11 @@ function PerspectiveTab({
   //     don't create visible dips where their rounded tops curve away
   //     from each other.
   //   * Every tab gets the same open-bottom etched surface. The tabs
-  //     sit 1px lower, so the frame's raised top border can cover the
-  //     shared join while active/inactive still differs only by fill color.
+  //     sit 2px lower; inactive tabs remain under the raised frame
+  //     border, while the active tab rises above it to own the join.
   const tabClass = cn(
-    "neu-surface-open-bottom relative top-px z-50 inline-flex items-center gap-1.5 border px-3 py-1.5 text-xs font-medium",
+    "neu-surface-open-bottom relative top-[2px] inline-flex items-center gap-1.5 border px-3 py-1.5 text-xs font-medium",
+    active ? "z-[60]" : "z-40",
     isProposedTab
       ? active
         ? "rounded-t-md border-border bg-card"
@@ -247,7 +248,7 @@ function PerspectiveSettingsMenu({
         // perspective tabs' height, so Safari can't render us shorter
         // than them. Without this, `items-end` on the nav was
         // bottom-aligning a naturally-shorter chevron tab.
-        className="neu-surface-open-bottom relative top-px z-50 -ml-px inline-flex cursor-pointer items-center justify-center self-stretch gap-1.5 rounded-tr-md border border-border bg-input/40 px-3 py-1.5 text-xs font-medium text-foreground hover:bg-input/60"
+        className="neu-surface-open-bottom relative top-[2px] z-40 -ml-px inline-flex cursor-pointer items-center justify-center self-stretch gap-1.5 rounded-tr-md border border-border bg-input/40 px-3 py-1.5 text-xs font-medium text-foreground hover:bg-input/60"
       >
         <span aria-hidden className="text-sm leading-none">
           ⌵
@@ -262,7 +263,7 @@ function PerspectiveSettingsMenu({
           // nav, directly under the chevron tab. w-60 keeps the menu
           // narrow enough to fit inside the aside even when the
           // chevron sits at the right edge of a narrow nav.
-          className="neu-floating absolute right-0 top-full z-50 mt-1 w-60 rounded-md bg-card p-2"
+          className="neu-floating absolute right-0 top-full z-[70] mt-1 w-60 rounded-md bg-card p-2"
         >
           <p className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
             Attached

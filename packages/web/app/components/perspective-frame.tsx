@@ -75,9 +75,9 @@ interface PerspectiveFrameProps {
  * positions so they're identical across Graph, BPMN, Org Tree, List,
  * and any future perspective.
  *
- * The frame keeps the same etched border as other Doco sections, and
- * overlaps the tab row by 1px so the frame's top edge can render above
- * the tab edge at the join.
+ * The frame keeps the same etched border as other Doco sections. Tabs
+ * overlap its top edge: inactive tabs sit underneath the frame border,
+ * while the active tab renders above the border to own the selected join.
  */
 export function PerspectiveFrame({
   fillHeight = false,
