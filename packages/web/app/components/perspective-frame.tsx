@@ -75,9 +75,9 @@ interface PerspectiveFrameProps {
  * positions so they're identical across Graph, BPMN, Org Tree, List,
  * and any future perspective.
  *
- * The frame keeps the same etched border as other Doco sections, but
- * overlaps the tab row by 1px so the active tab can cover the frame's
- * top edge directly beneath itself.
+ * The frame keeps the same etched border as other Doco sections, and
+ * overlaps the tab row by 1px so the frame's top edge can render above
+ * the tab edge at the join.
  */
 export function PerspectiveFrame({
   fillHeight = false,
@@ -92,7 +92,7 @@ export function PerspectiveFrame({
     <FullscreenContext.Provider value={fullscreen ?? null}>
       <div
         className={cn(
-          "neu-surface relative z-0 -mt-px w-full overflow-hidden rounded-b-lg rounded-tl-none border border-border bg-card text-card-foreground",
+          "neu-surface relative z-50 -mt-px w-full overflow-hidden rounded-b-lg rounded-tl-none border border-border bg-card text-card-foreground",
           rightTabAttached ? "!rounded-tr-none" : "rounded-tr-lg",
           sizeClass,
         )}
