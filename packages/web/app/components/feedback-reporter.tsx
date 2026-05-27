@@ -1,6 +1,7 @@
 import { Bug, Lightbulb, Loader2, Send, X } from "lucide-react";
 import type { FormEvent } from "react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useFetcher } from "react-router";
 
 type ReportType = "bug" | "idea";
 type SubmitState = "idle" | "submitting" | "sent" | "error";
@@ -87,6 +88,7 @@ function buttonClass(active: boolean) {
 }
 
 export function FeedbackReporter() {
+  const fetcher = useFetcher<{ ok?: boolean; error?: string }>();
   const [open, setOpen] = useState(false);
   const [reportType, setReportType] = useState<ReportType>("bug");
   const [title, setTitle] = useState("");
@@ -97,41 +99,48 @@ export function FeedbackReporter() {
   const [state, setState] = useState<SubmitState>("idle");
   const [error, setError] = useState("");
 
-  async function submit(event: FormEvent<HTMLFormElement>) {
+  useEffect(() => {
+    if (fetcher.state !== "idle" || !fetcher.data) return;
+    if (fetcher.data.ok) {
+      setState("sent");
+      setTitle("");
+      setBody("");
+      setExpected("");
+      setActual("");
+      return;
+    }
+    if (fetcher.data.error) {
+      setError(fetcher.data.error);
+      setState("error");
+    }
+  }, [fetcher.data, fetcher.state]);
+
+  function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setState("submitting");
     setError("");
     const clientContext = getClientContext();
-    const response = await fetch("/api/v1/feedback-reports.json", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        report_type: reportType,
-        title,
-        body,
-        expected,
-        actual,
-        severity,
-        page_url: window.location.href,
-        route_path: `${window.location.pathname}${window.location.search}`,
-        client_context: clientContext,
-        data: {
-          form_version: 1,
-          submitted_from: "floating_reporter",
-        },
+    const formData = new FormData();
+    formData.set("report_type", reportType);
+    formData.set("title", title);
+    formData.set("body", body);
+    formData.set("expected", expected);
+    formData.set("actual", actual);
+    formData.set("severity", severity);
+    formData.set("page_url", window.location.href);
+    formData.set("route_path", `${window.location.pathname}${window.location.search}`);
+    formData.set("client_context", JSON.stringify(clientContext));
+    formData.set(
+      "data",
+      JSON.stringify({
+        form_version: 1,
+        submitted_from: "floating_reporter",
       }),
+    );
+    fetcher.submit(formData, {
+      method: "post",
+      action: "/api/v1/feedback-reports.json",
     });
-    const json = (await response.json().catch(() => ({}))) as { error?: string };
-    if (!response.ok) {
-      setError(json.error ?? "Could not send this yet.");
-      setState("error");
-      return;
-    }
-    setState("sent");
-    setTitle("");
-    setBody("");
-    setExpected("");
-    setActual("");
   }
 
   const isBug = reportType === "bug";
@@ -287,7 +296,7 @@ export function FeedbackReporter() {
                 </button>
                 <button
                   type="submit"
-                  disabled={state === "submitting"}
+                  disabled={state === "submitting" || fetcher.state !== "idle"}
                   className="neu-button inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-55"
                 >
                   {state === "submitting" ? (
