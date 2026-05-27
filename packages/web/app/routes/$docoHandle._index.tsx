@@ -73,7 +73,10 @@ const RIGHT_COLUMN_GRID_GAP = 24;
 const RIGHT_COLUMN_MIN_CONTENT_WIDTH =
   RIGHT_COLUMN_MAIN_MIN_WIDTH + RIGHT_COLUMN_WIDTH + RIGHT_COLUMN_GRID_GAP;
 const LARGE_PERSPECTIVE_THRESHOLD = 750;
-const LARGE_PERSPECTIVE_NODE_LIMIT = 750;
+// Keep the temporary large-Doco fallback comfortably below React Flow's
+// "noticeably sluggish" range. The indexed/viewport-loaded renderer is
+// the real scale path; this slice exists to keep production usable now.
+const LARGE_PERSPECTIVE_NODE_LIMIT = 250;
 
 interface FeedItem extends ActivityFeedLineItem {
   event_id: string;
