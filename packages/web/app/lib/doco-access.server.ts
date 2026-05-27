@@ -155,7 +155,7 @@ async function isHostBootstrapOwned(ownerId: string): Promise<boolean> {
 async function getPrincipalOwnerId(principalId: string): Promise<string | null> {
   if (principalId.startsWith("collaborator_")) {
     const c = await getCollaboratorById(principalId);
-    const ownerId = c?.owner_id ?? c?.data.owner_id;
+    const ownerId = c?.data.owner_id;
     if (typeof ownerId !== "string") return null;
     if (!ownerId.startsWith("collaborator_") && !ownerId.startsWith("organization_")) {
       return null;
