@@ -244,7 +244,7 @@ export default function SlackSetupPage({ loaderData }: { loaderData: SlackSetupP
                 <p className="text-sm text-muted-foreground">{channelLoadError}</p>
               ) : null}
 
-              <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_180px]">
+              <div className="grid gap-3 md:grid-cols-2">
                 <label className="grid min-w-0 gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                   Doco access
                   <select
