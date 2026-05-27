@@ -71,15 +71,6 @@ body {
   accent-color: var(--color-primary);
 }
 
-body {
-  background: linear-gradient(
-    145deg,
-    color-mix(in oklch, white 20%, var(--color-background)),
-    var(--color-background) 42%,
-    color-mix(in oklch, var(--color-accent) 7%, var(--color-background))
-  );
-}
-
 ::selection {
   background-color: color-mix(in oklch, var(--color-primary) 25%, transparent);
 }
