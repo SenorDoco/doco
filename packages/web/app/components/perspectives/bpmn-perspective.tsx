@@ -410,7 +410,10 @@ export function BpmnPerspective({
     () => new Map(renderedPools.map((pool) => [`pool-header:${pool.id}`, pool])),
     [renderedPools],
   );
-  const MiniMapNode = useMemo(() => makeBpmnMiniMapNode(nodeById), [nodeById]);
+  const MiniMapNode = useMemo(
+    () => makeBpmnMiniMapNode(nodeById, effectiveCenterId),
+    [nodeById, effectiveCenterId],
+  );
   const openPoolNeuron = useCallback(
     (pool: BpmnPool) => {
       if (!pool.intent_id) return;
@@ -1109,6 +1112,7 @@ function layOutBpmn(
         pool,
         width: laneWidth,
         height: POOL_HEADER_HEIGHT,
+        isCenter: pool.intent_id === centerId,
       },
       draggable: false,
       selectable: false,
@@ -1142,6 +1146,7 @@ function layOutBpmn(
           labelWidth: LANE_LABEL_WIDTH,
           isMilestoneBand: lane.kind === "milestone",
           isArtifactsBand: lane.kind === "artifacts",
+          isCenter: isActorLane(lane) && lane.base_id === centerId,
         },
         draggable: false,
         selectable: false,
@@ -1191,7 +1196,7 @@ function layOutBpmn(
         position: { x, y },
         parentId: laneNodeId(node.laneId),
         extent: "parent",
-        data: { node },
+        data: { node, isCenter: node.id === centerId },
         draggable: false,
         selectable: false,
         connectable: false,
@@ -1331,6 +1336,7 @@ function isActorLane(lane: BpmnLane): boolean {
 interface BpmnNodeData {
   node: BpmnNode;
   referenceNumber?: number;
+  isCenter?: boolean;
 }
 
 interface BpmnLaneData {
@@ -1339,6 +1345,7 @@ interface BpmnLaneData {
   width: number;
   labelWidth: number;
   referenceNumber?: number;
+  isCenter?: boolean;
   isMilestoneBand?: boolean;
   isArtifactsBand?: boolean;
   onLaneClick?: (lane: BpmnLane) => void;
@@ -1348,6 +1355,7 @@ interface BpmnPoolHeaderData {
   pool: BpmnPool;
   width: number;
   height: number;
+  isCenter?: boolean;
 }
 
 function BpmnEdgeStubNode() {
@@ -1379,14 +1387,16 @@ function BpmnPoolHeaderNode({ data }: { data: BpmnPoolHeaderData }) {
   const isUnassigned = data.pool.intent_id === null;
   const bg = isUnassigned ? "rgba(0, 0, 0, 0.05)" : "rgba(40, 70, 160, 0.08)";
   const borderColor = isUnassigned ? "var(--color-border)" : "rgba(40, 70, 160, 0.35)";
+  const topBorderWidth = data.isCenter ? 4 : 2;
+  const bottomBorderWidth = data.isCenter ? 2 : 1;
   return (
     <div
       style={{
         width: data.width,
         height: data.height,
         background: bg,
-        borderTop: `2px solid ${borderColor}`,
-        borderBottom: `1px solid ${borderColor}`,
+        borderTop: `${topBorderWidth}px solid ${borderColor}`,
+        borderBottom: `${bottomBorderWidth}px solid ${borderColor}`,
         display: "flex",
         alignItems: "center",
         gap: 8,
@@ -1433,6 +1443,7 @@ function BpmnLaneNode({ data }: { data: BpmnLaneData }) {
     labelBg = "rgba(180, 130, 60, 0.13)";
   }
   const isClickableLane = isActorLane(data.lane) && Boolean(data.onLaneClick);
+  const focusBorder = data.isCenter ? `4px solid ${lifecycleColor(data.lane.lifecycle)}` : null;
   const edge = isBand ? "1px solid var(--color-border)" : "1px dashed var(--color-border)";
   return (
     <div
@@ -1450,7 +1461,8 @@ function BpmnLaneNode({ data }: { data: BpmnLaneData }) {
           width: data.labelWidth,
           height: "100%",
           background: labelBg,
-          borderRight: "1px solid var(--color-border)",
+          border: focusBorder ?? undefined,
+          borderRight: focusBorder ?? "1px solid var(--color-border)",
           display: "flex",
           flexDirection: "column",
           alignItems: "center",
@@ -1560,6 +1572,14 @@ function commonHandles() {
   );
 }
 
+function bpmnStrokeWidth(data: BpmnNodeData, baseWidth = 2): number {
+  return data.isCenter ? baseWidth * 2 : baseWidth;
+}
+
+function bpmnBorder(data: BpmnNodeData, stroke: string, baseWidth = 2): string {
+  return `${bpmnStrokeWidth(data, baseWidth)}px solid ${stroke}`;
+}
+
 function BpmnRectangleNode({ data }: { data: BpmnNodeData }) {
   const stroke = lifecycleColor(data.node.lifecycle);
   return (
@@ -1569,7 +1589,7 @@ function BpmnRectangleNode({ data }: { data: BpmnNodeData }) {
         width: "100%",
         height: "100%",
         background: "#fff",
-        border: `2px solid ${stroke}`,
+        border: bpmnBorder(data, stroke),
         borderRadius: 4,
         position: "relative",
         display: "flex",
@@ -1594,7 +1614,7 @@ function BpmnRoundedNode({ data }: { data: BpmnNodeData }) {
         width: "100%",
         height: "100%",
         background: "#fff",
-        border: `2px solid ${stroke}`,
+        border: bpmnBorder(data, stroke),
         borderRadius: 28,
         position: "relative",
         display: "flex",
@@ -1622,7 +1642,7 @@ function BpmnTaskNode({ data }: { data: BpmnNodeData }) {
         width: "100%",
         height: "100%",
         background: "#fff",
-        border: `2px solid ${stroke}`,
+        border: bpmnBorder(data, stroke),
         borderRadius: 12,
         position: "relative",
         display: "flex",
@@ -1652,7 +1672,7 @@ function BpmnMilestoneNode({ data }: { data: BpmnNodeData }) {
         width: "100%",
         height: "100%",
         background: "#fff",
-        border: `1px solid ${stroke}`,
+        border: bpmnBorder(data, stroke, 1),
         borderRadius: 4,
         position: "relative",
         display: "flex",
@@ -1699,7 +1719,7 @@ function BpmnCircleNode({ data }: { data: BpmnNodeData }) {
           width: "100%",
           height: "100%",
           background: "#fff",
-          border: `2px solid ${stroke}`,
+          border: bpmnBorder(data, stroke),
           borderRadius: "50%",
           position: "relative",
           display: "flex",
@@ -1747,7 +1767,12 @@ function BpmnDiamondNode({ data }: { data: BpmnNodeData }) {
         preserveAspectRatio="none"
         viewBox="0 0 100 100"
       >
-        <polygon points="50,2 98,50 50,98 2,50" fill="#fff" stroke={stroke} strokeWidth={2} />
+        <polygon
+          points="50,2 98,50 50,98 2,50"
+          fill="#fff"
+          stroke={stroke}
+          strokeWidth={bpmnStrokeWidth(data)}
+        />
       </svg>
       <div
         style={{
@@ -1800,7 +1825,7 @@ function BpmnDocumentNode({ data }: { data: BpmnNodeData }) {
           d="M2,2 H138 V48 Q120,62 100,50 Q80,38 60,50 Q40,62 20,50 Q10,44 2,48 Z"
           fill="#fff"
           stroke={stroke}
-          strokeWidth={2}
+          strokeWidth={bpmnStrokeWidth(data)}
         />
       </svg>
       <ShapeLabel node={data.node} />
@@ -1814,7 +1839,10 @@ function BpmnDocumentNode({ data }: { data: BpmnNodeData }) {
 // perspective, not a grid of identical rectangles. Lane parents render
 // as faint horizontal bands to suggest the swimlane structure without
 // dominating the SVG.
-function makeBpmnMiniMapNode(nodeById: Map<string, BpmnNode>): ComponentType<MiniMapNodeProps> {
+function makeBpmnMiniMapNode(
+  nodeById: Map<string, BpmnNode>,
+  centerId: string | null,
+): ComponentType<MiniMapNodeProps> {
   return function BpmnMiniMapNode({
     id,
     x,
@@ -1850,7 +1878,7 @@ function makeBpmnMiniMapNode(nodeById: Map<string, BpmnNode>): ComponentType<Min
     if (!node) return null;
     const fill = lifecycleColor(node.lifecycle);
     const stroke = strokeColor ?? "rgba(0,0,0,0.5)";
-    const sw = strokeWidth ?? 1;
+    const sw = id === centerId ? (strokeWidth ?? 1) * 2 : (strokeWidth ?? 1);
     const cx = x + width / 2;
     const cy = y + height / 2;
     switch (node.shape) {
