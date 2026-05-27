@@ -14,6 +14,7 @@ export interface StableLabeledEdgeData extends Record<string, unknown> {
   labelBoxClassName?: string;
   labelBoxStyle?: CSSProperties;
   labelOpacity?: number;
+  labelZIndex?: number;
 }
 
 export type StableLabeledEdgeModel = Edge<StableLabeledEdgeData>;
@@ -63,6 +64,7 @@ export function StableLabeledBezierEdge({
             style={{
               position: "absolute",
               transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
+              zIndex: data?.labelZIndex ?? 0,
               pointerEvents: "none",
               opacity: data?.labelOpacity ?? 1,
               ...data?.labelBoxStyle,
