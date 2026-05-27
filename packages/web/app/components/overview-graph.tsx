@@ -145,6 +145,8 @@ const GRAPH_FIT_VIEW_OPTIONS = { padding: 0.12, maxZoom: 1.2 };
 const OVERVIEW_RENDER_NODE_BUDGET = 20;
 const OVERVIEW_RENDER_EDGE_BUDGET = 700;
 const OVERVIEW_PLACEHOLDER_STUB_BUDGET = 120;
+// Target handles sit just inside the 6px lifecycle strip; add 2px of air.
+const OVERVIEW_INCOMING_MARKER_CLEARANCE_PX = 8;
 
 function lifecycleLabel(lifecycle: string): string {
   return lifecycle.replaceAll("_", " ");
@@ -654,7 +656,7 @@ export function OverviewGraph({
           color: stroke,
           direction,
           fadePx: 100,
-          markerClearancePx: 2,
+          markerClearancePx: OVERVIEW_INCOMING_MARKER_CLEARANCE_PX,
           opacity: 0.5,
         },
         selectable: false,
