@@ -25,7 +25,6 @@
 // internal API route via the doco_api tool, so his fetches skip the
 // HTTP round-trip.
 
-import Anthropic from "@anthropic-ai/sdk";
 import type { MessageStream } from "@anthropic-ai/sdk/lib/MessageStream";
 import type {
   ContentBlockParam,
@@ -42,6 +41,12 @@ import type {
 } from "@anthropic-ai/sdk/resources/messages";
 import { listOrganizationsForCollaborator, withClient } from "@doco/db";
 import { generateUlid } from "@doco/shared";
+import {
+  SENOR_DOCO_DEFAULT_MAX_TOKENS,
+  getSenorDocoModel,
+  missingSenorDocoAnthropicMessage,
+  streamSenorDocoMessage,
+} from "./assistant-runtime.server";
 import { canAccessDoco } from "./doco-access.server";
 import { qualifiedDocoLabel } from "./doco-labels";
 import { ensureEnvLoaded } from "./dotenv.server";
@@ -52,14 +57,6 @@ import { upsertAgentTurn } from "./telemetry.server";
 
 ensureEnvLoaded();
 
-// Sonnet 4.6 over Haiku — per-tier ITPM on Sonnet is roughly 3-5x the
-// per-tier ITPM on Haiku at the same Anthropic-org tier, so multi-tool
-// turns (which compound the input token usage) survive a much lower
-// account tier before tripping rate-limit retry loops. Trade-off: ~1-2s
-// slower first-token latency and ~5x cost per token. Previous setting
-// was Haiku 4.5; flipped when prod 429s on the 10K-ITPM Haiku tier kept
-// surfacing as forever-stuck in-flight bubbles.
-const MODEL = "claude-sonnet-4-6";
 const MAX_TURNS_PER_REPLY = 100;
 // Per-Anthropic-call output cap. 2048 was the old Haiku-era setting
 // and proved way too tight for Sonnet on multi-tool batches: a single
@@ -68,7 +65,7 @@ const MAX_TURNS_PER_REPLY = 100;
 // because runAssistantTurn only loops on stop_reason === "tool_use".
 // 8192 matches Sonnet 4.6's default budget and comfortably covers
 // the largest parallel tool batches we issue in one round-trip.
-const MAX_TOKENS = 8192;
+const MAX_TOKENS = SENOR_DOCO_DEFAULT_MAX_TOKENS;
 // Cap the tool-result body fed back to the model on each Anthropic
 // round trip. Without this cap a single `GET /api/intents.json` on a
 // busy doco can shove tens of KB into the next call's input tokens,
@@ -2076,17 +2073,16 @@ async function* streamAssistantTurn(args: {
   userText: string;
   ctx: ChatStreamContext;
 }): AsyncGenerator<ChatStreamEvent> {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
+  const missingAnthropic = missingSenorDocoAnthropicMessage("the in-page assistant");
+  if (missingAnthropic) {
     yield {
       kind: "error",
-      message:
-        "ANTHROPIC_API_KEY is not configured on the server. Add it to .env to enable the in-page assistant.",
+      message: missingAnthropic,
     };
     return;
   }
 
-  const client = new Anthropic({ apiKey });
+  const model = getSenorDocoModel();
   const turnStart = performance.now();
   // Stable id so the same row can be progressively filled in via
   // upsertAgentTurn — survives Vercel SIGKILL because every milestone
@@ -2113,7 +2109,7 @@ async function* streamAssistantTurn(args: {
   const buildMetricsRow = () => ({
     conversation_id: args.conversation.id,
     collaborator_id: args.conversation.collaborator_id,
-    model: MODEL,
+    model,
     total_ms: Math.round(performance.now() - turnStart),
     bootstrap_ms: Math.round(bootstrapMs),
     history_load_ms: Math.round(historyLoadMs),
@@ -2279,8 +2275,8 @@ async function* streamAssistantTurn(args: {
       };
       let stream: MessageStream;
       try {
-        stream = client.messages.stream({
-          model: MODEL,
+        stream = streamSenorDocoMessage({
+          model,
           max_tokens: MAX_TOKENS,
           system: systemBlocks,
           tools: TOOLS,

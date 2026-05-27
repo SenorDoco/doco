@@ -1,7 +1,10 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
-import Anthropic from "@anthropic-ai/sdk";
 import { ALL_ENTITY_TABLES, DOCO_NEURON_TABLE_SPECS, withClient } from "@doco/db";
 import { generateUlid } from "@doco/shared";
+import {
+  createSenorDocoMessage,
+  missingSenorDocoAnthropicMessage,
+} from "./assistant-runtime.server";
 import { ensureEnvLoaded } from "./dotenv.server";
 
 export const SLACK_BOT_SCOPES = [
@@ -21,7 +24,6 @@ const SLACK_CONVERSATIONS_HISTORY_URL = "https://slack.com/api/conversations.his
 const STATE_TTL_MS = 15 * 60 * 1000;
 const SIGNATURE_TOLERANCE_SECONDS = 5 * 60;
 const SLACK_DOCO_ANSWER_LIMIT = 8;
-const SLACK_ANTHROPIC_MODEL = process.env.SLACK_ANTHROPIC_MODEL ?? "claude-sonnet-4-6";
 const SLACK_LLM_MAX_TOKENS = 600;
 
 export interface SlackConfig {
@@ -703,12 +705,9 @@ export async function generateSlackDocoLlmAnswer(
   input: SlackLlmAnswerInput,
 ): Promise<string | null> {
   ensureEnvLoaded();
-  const apiKey = process.env.ANTHROPIC_API_KEY?.trim();
-  if (!apiKey) return null;
+  if (missingSenorDocoAnthropicMessage("Señor Doco for Slack")) return null;
   try {
-    const client = new Anthropic({ apiKey });
-    const message = await client.messages.create({
-      model: process.env.SLACK_ANTHROPIC_MODEL ?? SLACK_ANTHROPIC_MODEL,
+    const message = await createSenorDocoMessage({
       max_tokens: SLACK_LLM_MAX_TOKENS,
       temperature: 0.2,
       system: slackLlmSystemPrompt(),
