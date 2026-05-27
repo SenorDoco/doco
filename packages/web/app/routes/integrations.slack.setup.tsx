@@ -51,6 +51,7 @@ interface SlackGrantInput {
 const WORKSPACE_DEFAULT_CHANNEL_ID = "*";
 const WORKSPACE_DEFAULT_CHANNEL_NAME = "workspace";
 const DEFAULT_ROLES: DocoRole[] = ["reader", "author", "approver"];
+const ROLE_SELECT_CLASS = "rounded-md px-3 py-2 text-sm font-semibold";
 
 export async function loader({ request }: { request: Request }): Promise<SlackSetupPageData> {
   const me = await getCurrentPrincipal(request);
@@ -260,7 +261,7 @@ export default function SlackSetupPage({ loaderData }: { loaderData: SlackSetupP
                               onChange={(event) =>
                                 updateOrg(group.key, { orgRole: event.target.value as DocoRole })
                               }
-                              className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
+                              className={ROLE_SELECT_CLASS}
                             >
                               {rolesFor(group.orgOption?.myRole).map((role) => (
                                 <option key={role} value={role}>
@@ -299,7 +300,7 @@ export default function SlackSetupPage({ loaderData }: { loaderData: SlackSetupP
                                       event.target.value as DocoRole | "none",
                                     )
                                   }
-                                  className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
+                                  className={ROLE_SELECT_CLASS}
                                 >
                                   <option value="none">No access</option>
                                   {rolesFor(doco.myRole).map((role) => (
@@ -339,20 +340,13 @@ export default function SlackSetupPage({ loaderData }: { loaderData: SlackSetupP
             <CardContent className="space-y-4 text-sm leading-relaxed">
               <p>Everyone in {installation.workspaceName} will get these shared defaults:</p>
               {selectedSummary.length > 0 ? (
-                <ul className="space-y-2">
+                <ul className="space-y-1 font-semibold text-foreground">
                   {selectedSummary.map((item) => (
-                    <li
-                      key={item}
-                      className="rounded-md border border-border bg-background p-3 font-semibold text-foreground"
-                    >
-                      {item}
-                    </li>
+                    <li key={item}>{item}</li>
                   ))}
                 </ul>
               ) : (
-                <div className="rounded-md border border-border bg-background p-3 text-muted-foreground">
-                  Select an organization to set defaults.
-                </div>
+                <p className="text-muted-foreground">Select an organization to set defaults.</p>
               )}
               <p>
                 Owner-only actions, including creating Docos and changing policies, require that
