@@ -134,19 +134,19 @@ function PerspectiveTab({
     active ? "z-[60]" : "z-40",
     isProposedTab
       ? active
-        ? "rounded-t-md border-border bg-card"
+        ? "rounded-t-md border-border bg-card text-foreground"
         : "rounded-t-md border-border bg-input/60 hover:bg-input/80"
       : "-ml-px first:ml-0 border-border text-foreground",
     !isProposedTab && isFirst && "rounded-tl-md",
     !isProposedTab && isLast && "rounded-tr-md",
     !isProposedTab && (active ? "bg-card" : "bg-input/60 hover:bg-input/80"),
   );
-  const tabStyle = isProposedTab
-    ? {
-        color: active ? "#ffffff" : proposedBlue,
-        ...(active ? { backgroundColor: proposedBlue } : {}),
-      }
-    : undefined;
+  const tabStyle =
+    isProposedTab && !active
+      ? {
+          color: proposedBlue,
+        }
+      : undefined;
   const name = isProposedTab ? "Proposed" : perspective.name;
   const title = perspective.ownerHandle ? `${name} — by ${perspective.ownerHandle}` : name;
   const label = perspective.kind === "approval" ? `${name} (${proposedCount})` : name;
