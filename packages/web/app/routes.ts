@@ -287,6 +287,7 @@ export default [
     ":docoHandle/graph-neuron-details.json",
     "routes/$docoHandle.graph-neuron-details[.]json.tsx",
   ),
+  route(":docoHandle/graph-layout.json", "routes/$docoHandle.graph-layout[.]json.tsx"),
   route(":docoHandle/search", "routes/$docoHandle.search.tsx"),
   route(":docoHandle/search.json", "routes/$docoHandle.search[.]json.tsx"),
   route(":docoHandle/onboarding/agent", "routes/$docoHandle.onboarding.agent.tsx"),
