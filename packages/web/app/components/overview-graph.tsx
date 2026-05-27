@@ -145,6 +145,9 @@ const GRAPH_FIT_VIEW_OPTIONS = { padding: 0.12, maxZoom: 1.2 };
 const OVERVIEW_RENDER_NODE_BUDGET = 20;
 const OVERVIEW_RENDER_EDGE_BUDGET = 700;
 const OVERVIEW_PLACEHOLDER_STUB_BUDGET = 120;
+const OVERVIEW_PLACEHOLDER_STUB_DISTANCE_PX = 252;
+const OVERVIEW_PLACEHOLDER_STUB_DISTANCE_JITTER_PX = 24;
+const OVERVIEW_PLACEHOLDER_EDGE_FADE_PX = 200;
 const OVERVIEW_INCOMING_MARKER_CLEARANCE_PX = 2;
 
 function lifecycleLabel(lifecycle: string): string {
@@ -611,7 +614,9 @@ export function OverviewGraph({
         y: anchor.y + OVERVIEW_NODE_HEIGHT / 2,
       };
       const directionSign = direction === "incoming" ? -1 : 1;
-      const distance = 126 + (summaryIndex % 3) * 12;
+      const distance =
+        OVERVIEW_PLACEHOLDER_STUB_DISTANCE_PX +
+        (summaryIndex % 3) * OVERVIEW_PLACEHOLDER_STUB_DISTANCE_JITTER_PX;
       const id = `overview-placeholder:${direction}:${anchorId}`;
       const position = {
         x: anchorCenter.x + directionSign * distance,
@@ -654,7 +659,7 @@ export function OverviewGraph({
         data: {
           color: stroke,
           direction,
-          fadePx: 100,
+          fadePx: OVERVIEW_PLACEHOLDER_EDGE_FADE_PX,
           markerClearancePx: OVERVIEW_INCOMING_MARKER_CLEARANCE_PX,
           opacity: 0.5,
         },
