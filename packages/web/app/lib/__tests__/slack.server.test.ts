@@ -86,13 +86,14 @@ describe("slack.server", () => {
 
   it("cleans Slack app mentions out of message text", () => {
     expect(cleanSlackMentionText("Hola, <@U999>")).toBe("Hola,");
-    expect(cleanSlackMentionText("<@U999> How many nodes do we have?")).toBe(
-      "How many nodes do we have?",
+    expect(cleanSlackMentionText("<@U999> How many neurons do we have?")).toBe(
+      "How many neurons do we have?",
     );
   });
 
   it("detects count questions from Slack mentions", () => {
-    expect(detectSlackCountKind("How many nodes do we have?")).toBe("nodes");
+    expect(detectSlackCountKind("How many neurons do we have?")).toBe("neurons");
+    expect(detectSlackCountKind("How many nodes do we have?")).toBe("neurons");
     expect(detectSlackCountKind("count decisions")).toBe("decisions");
     expect(detectSlackCountKind("hola")).toBeNull();
   });
@@ -112,7 +113,7 @@ describe("slack.server", () => {
             },
             docoCount: 3,
             counts: {
-              nodes: 42,
+              neurons: 42,
               docos: 3,
               decisions: 4,
               intents: 5,
@@ -127,8 +128,8 @@ describe("slack.server", () => {
             },
           },
         ],
-        "nodes",
+        "neurons",
       ),
-    ).toBe("doco/* has 42 nodes across 3 Docos.");
+    ).toBe("doco has 42 neurons across 3 Docos.");
   });
 });

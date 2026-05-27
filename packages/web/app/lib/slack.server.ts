@@ -94,7 +94,7 @@ interface SlackConnectionGrantInput {
 }
 
 type SlackCountKind =
-  | "nodes"
+  | "neurons"
   | "docos"
   | "decisions"
   | "intents"
@@ -444,10 +444,10 @@ export async function buildSlackAppMentionResponse(args: {
 
   const defaultTargets = formatSlackConnectionList(connections);
   if (isSlackGreeting(cleanText)) {
-    return `Hola. I’m ready to work with ${defaultTargets} by default. Ask me things like “how many nodes do we have?” or tell me what to doco.`;
+    return `Hola. I’m ready to work with ${defaultTargets} by default. Ask me things like “how many neurons do we have?” or tell me what to doco.`;
   }
 
-  return `I’m here. I can answer Doco questions using ${defaultTargets} by default. Try “how many nodes do we have?” for a quick check.`;
+  return `I’m here. I can answer Doco questions using ${defaultTargets} by default. Try “how many neurons do we have?” for a quick check.`;
 }
 
 export function cleanSlackMentionText(text: string): string {
@@ -480,7 +480,7 @@ export function detectSlackCountKind(text: string): SlackCountKind | null {
   if (/\bideas?\b/.test(lower)) return "ideas";
   if (/\bstates?\b/.test(lower)) return "states";
   if (/\bprincipals?\b/.test(lower)) return "principals";
-  if (/\b(nodes?|neurons?)\b/.test(lower)) return "nodes";
+  if (/\b(nodes?|neurons?)\b/.test(lower)) return "neurons";
   return null;
 }
 
@@ -513,7 +513,7 @@ async function readSlackConnectionCounts(
     SLACK_COUNT_SPECS.map((spec) => [spec.kind, Number(row[spec.alias] ?? 0)]),
   ) as Record<SlackCountKind, number>;
   counts.docos = Number(row.docos ?? 0);
-  counts.nodes = SLACK_COUNT_SPECS.reduce((total, spec) => total + counts[spec.kind], 0);
+  counts.neurons = SLACK_COUNT_SPECS.reduce((total, spec) => total + counts[spec.kind], 0);
   return { connection, docoCount: counts.docos, counts };
 }
 
@@ -531,14 +531,22 @@ export function formatSlackCountResponse(
 }
 
 function formatSlackCountLine(summary: SlackConnectionCounts, kind: SlackCountKind): string {
-  const label = slackConnectionAccessLabel(summary.connection);
+  const label = summary.connection.targetLabel;
   if (kind === "docos") {
-    return `${label} covers ${formatCount(summary.docoCount, "Doco")}.`;
+    if (summary.connection.targetLevel === "org") {
+      return `${label} has ${formatCount(summary.docoCount, "Doco")} available by default.`;
+    }
+    return `${label} is 1 Doco.`;
   }
   const value = summary.counts[kind] ?? 0;
-  const unit = kind === "nodes" ? "node" : (countSpecForKind(kind)?.singular ?? kind);
-  const scope = summary.docoCount === 1 ? "" : ` across ${formatCount(summary.docoCount, "Doco")}`;
-  return `${label} has ${formatCount(value, unit)}${scope}.`;
+  const unit = kind === "neurons" ? "neuron" : (countSpecForKind(kind)?.singular ?? kind);
+  if (summary.connection.targetLevel === "org") {
+    return `${label} has ${formatCount(value, unit)} across ${formatCount(
+      summary.docoCount,
+      "Doco",
+    )}.`;
+  }
+  return `${label} has ${formatCount(value, unit)}.`;
 }
 
 function countSpecForKind(kind: SlackCountKind): SlackCountSpec | null {
@@ -552,7 +560,9 @@ function formatSlackConnectionList(connections: SlackChannelConnectionSummary[])
 }
 
 function slackConnectionAccessLabel(connection: SlackChannelConnectionSummary): string {
-  return connection.targetLevel === "org" ? `${connection.targetLabel}/*` : connection.targetLabel;
+  return connection.targetLevel === "org"
+    ? `all Docos in ${connection.targetLabel}`
+    : connection.targetLabel;
 }
 
 function formatCount(value: number, singular: string): string {

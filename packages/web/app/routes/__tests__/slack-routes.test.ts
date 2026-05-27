@@ -125,7 +125,7 @@ describe("Slack integration routes", () => {
   });
 
   it("posts an app mention answer instead of repeating default permissions", async () => {
-    mocks.buildSlackAppMentionResponse.mockResolvedValue("doco/* has 42 nodes.");
+    mocks.buildSlackAppMentionResponse.mockResolvedValue("doco has 42 neurons.");
 
     const response = await eventsAction({
       request: new Request("https://doco.test/integrations/slack/events", {
@@ -137,7 +137,7 @@ describe("Slack integration routes", () => {
             type: "app_mention",
             channel: "C123",
             user: "U123",
-            text: "How many nodes do we have, <@U999>?",
+            text: "How many neurons do we have, <@U999>?",
           },
         }),
       }),
@@ -147,12 +147,12 @@ describe("Slack integration routes", () => {
     expect(mocks.buildSlackAppMentionResponse).toHaveBeenCalledWith({
       workspaceId: "T123",
       channelId: "C123",
-      messageText: "How many nodes do we have, <@U999>?",
+      messageText: "How many neurons do we have, <@U999>?",
     });
     expect(mocks.postSlackMessage).toHaveBeenCalledWith({
       workspaceId: "T123",
       channelId: "C123",
-      text: "doco/* has 42 nodes.",
+      text: "doco has 42 neurons.",
     });
   });
 });
