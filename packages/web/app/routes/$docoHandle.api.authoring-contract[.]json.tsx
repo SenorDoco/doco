@@ -42,6 +42,20 @@ export async function loader({
         },
         note: "Adds a typed relation by patching whichever field owns that relation kind.",
       },
+      relate_many: {
+        shape: {
+          op: "relate_many",
+          relations: [
+            {
+              relation_kind: "sequence_flow",
+              from: "source_or_$alias",
+              to: "target_or_$alias",
+              label: "optional edge label",
+            },
+          ],
+        },
+        note: "Adds multiple typed relations in one owner patch where possible. Use this when sibling edges must be valid together.",
+      },
       append: {
         shape: {
           op: "append",
@@ -74,6 +88,53 @@ export async function loader({
                 lifecycle: "drafting",
                 actor_principal_id: "principal_01...",
               },
+            },
+          ],
+        },
+      },
+      {
+        purpose: "Create an exhaustive gateway branch set without an invalid intermediate state",
+        body: {
+          validate_against: "bpmn",
+          operations: [
+            {
+              op: "create",
+              entity_type: "action",
+              alias: "charge_card",
+              body: {
+                action: "Charge the authorized card",
+                verb: "charge",
+                lifecycle: "drafting",
+                actor_principal_id: "principal_01...",
+              },
+            },
+            {
+              op: "create",
+              entity_type: "action",
+              alias: "manual_review",
+              body: {
+                action: "Send payment request to manual review",
+                verb: "send",
+                lifecycle: "drafting",
+                actor_principal_id: "principal_01...",
+              },
+            },
+            {
+              op: "relate_many",
+              relations: [
+                {
+                  relation_kind: "sequence_flow",
+                  from: "decision_01...",
+                  to: "$charge_card",
+                  label: "Yes",
+                },
+                {
+                  relation_kind: "sequence_flow",
+                  from: "decision_01...",
+                  to: "$manual_review",
+                  label: "No",
+                },
+              ],
             },
           ],
         },
