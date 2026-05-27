@@ -654,6 +654,7 @@ export function OverviewGraph({
           color: stroke,
           direction,
           fadePx: 100,
+          markerClearancePx: 2,
           opacity: 0.5,
         },
         selectable: false,

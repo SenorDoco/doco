@@ -1,4 +1,4 @@
-import { BaseEdge, type Edge, type EdgeProps } from "@xyflow/react";
+import { BaseEdge, type Edge, type EdgeProps, useViewport } from "@xyflow/react";
 import { getFadingPlaceholderGeometry } from "./fading-placeholder-edge-geometry";
 
 export interface FadingPlaceholderEdgeData extends Record<string, unknown> {
@@ -6,6 +6,7 @@ export interface FadingPlaceholderEdgeData extends Record<string, unknown> {
   direction: "incoming" | "outgoing";
   opacity?: number;
   fadePx?: number;
+  markerClearancePx?: number;
 }
 
 export type FadingPlaceholderEdgeModel = Edge<FadingPlaceholderEdgeData>;
@@ -25,6 +26,9 @@ export function FadingPlaceholderEdge({
   data,
   style,
 }: EdgeProps<FadingPlaceholderEdgeModel>) {
+  const { zoom } = useViewport();
+  const markerClearance =
+    data?.markerClearancePx && zoom > 0 ? Math.max(0, data.markerClearancePx) / zoom : 0;
   const geometry = getFadingPlaceholderGeometry({
     sourceX,
     sourceY,
@@ -32,6 +36,7 @@ export function FadingPlaceholderEdge({
     targetY,
     direction: data?.direction,
     hasMarkerEnd: Boolean(markerEnd),
+    markerClearance,
   });
   const color = data?.color ?? "#737373";
   const opacity = data?.opacity ?? 0.5;
