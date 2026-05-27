@@ -334,21 +334,27 @@ export function BpmnPerspective({
     () => pools.filter((pool) => renderedPoolIds.has(pool.id)),
     [pools, renderedPoolIds],
   );
-  const renderedLinksForLayout = useMemo(
-    () =>
-      links.filter((link) => renderedNodeIds.has(link.source) && renderedNodeIds.has(link.target)),
-    [links, renderedNodeIds],
+  const layoutPoolIds = useMemo(() => {
+    const ids = new Set(filteredLanes.map((lane) => lane.pool_id));
+    if (focusPoolId) ids.add(focusPoolId);
+    return ids;
+  }, [filteredLanes, focusPoolId]);
+  const layoutPools = useMemo(
+    () => pools.filter((pool) => layoutPoolIds.has(pool.id)),
+    [pools, layoutPoolIds],
   );
-  const layout = useMemo(
+  const layoutLinks = useMemo(
     () =>
-      layOutBpmn(
-        renderedPools,
-        renderedLanes,
-        renderedNodes,
-        renderedLinksForLayout,
-        effectiveCenterId,
-      ),
-    [renderedPools, renderedLanes, renderedNodes, renderedLinksForLayout, effectiveCenterId],
+      links.filter((link) => filteredNodeIds.has(link.source) && filteredNodeIds.has(link.target)),
+    [links, filteredNodeIds],
+  );
+  // Solve BPMN geometry from the stable visible graph, not from the
+  // transient 20-node render window. React Flow still mounts only the
+  // buffered render window below, but coordinates for surviving nodes
+  // remain anchored as focus changes.
+  const layout = useMemo(
+    () => layOutBpmn(layoutPools, filteredLanes, filteredNodes, layoutLinks, effectiveCenterId),
+    [layoutPools, filteredLanes, filteredNodes, layoutLinks, effectiveCenterId],
   );
   const nodeTypes = useMemo(
     () => ({
@@ -543,29 +549,38 @@ export function BpmnPerspective({
   }, [links, renderedNodeIds, filteredNodeIds, layout.nodePositions, nodeById, nodeByFullId]);
 
   const flowNodes = useMemo(() => {
-    const windowed = layout.flowNodes.map((node) => {
+    const windowed = layout.flowNodes.flatMap((node) => {
+      const laneData = (node.data as { lane?: BpmnLane; pool?: BpmnPool }).lane;
+      const poolData = (node.data as { lane?: BpmnLane; pool?: BpmnPool }).pool;
+      const isRendered =
+        (laneData && renderedLaneIds.has(laneData.id)) ||
+        (poolData && renderedPoolIds.has(poolData.id)) ||
+        (!laneData && !poolData && renderedNodeIds.has(node.id));
+      if (!isRendered) return [];
       // Lane FlowNodes carry data.lane; shape FlowNodes carry data.node.
       // Each pulls its reference number from the unified map by the
       // underlying entity id (principal_<ulid> or neuron id).
-      const laneData = (node.data as { lane?: BpmnLane }).lane;
       if (laneData) {
         const referenceNumber = referenceNumberByEntityId.get(laneData.id);
         const data = {
           ...node.data,
           onLaneClick: isActorLane(laneData) ? openLaneNeuron : undefined,
         };
-        if (!referenceNumber) return { ...node, data };
-        return { ...node, data: { ...data, referenceNumber } };
+        if (!referenceNumber) return [{ ...node, data }];
+        return [{ ...node, data: { ...data, referenceNumber } }];
       }
       const referenceNumber = referenceNumberByEntityId.get(node.id);
-      if (!referenceNumber || !nodeById.has(node.id)) return node;
-      return { ...node, data: { ...node.data, referenceNumber } };
+      if (!referenceNumber || !nodeById.has(node.id)) return [node];
+      return [{ ...node, data: { ...node.data, referenceNumber } }];
     });
     return [...windowed, ...externalEdgeStubs.nodes];
   }, [
     layout.flowNodes,
     referenceNumberByEntityId,
     nodeById,
+    renderedLaneIds,
+    renderedPoolIds,
+    renderedNodeIds,
     openLaneNeuron,
     externalEdgeStubs.nodes,
   ]);
@@ -610,6 +625,7 @@ export function BpmnPerspective({
   const showRailLabels = inCanvasLabelRightEdge <= SWIM_RAIL_WIDTH;
   const laneRails = showRailLabels
     ? layout.lanes.map((lane) => {
+        if (!renderedLaneIds.has(lane.id)) return null;
         const laneTop = lane.y * viewport.zoom + viewport.y;
         const laneBottom = (lane.y + lane.height) * viewport.zoom + viewport.y;
         const canvasHeight = graphSize.height || 480;
@@ -695,6 +711,7 @@ export function BpmnPerspective({
   const POOL_RAIL_HEIGHT = Math.max(28, POOL_HEADER_HEIGHT * viewport.zoom);
   const stickyPools = layout.poolGeometry
     .map((pool) => {
+      if (!renderedPoolIds.has(pool.id)) return null;
       const poolTopScreen = pool.y * viewport.zoom + viewport.y;
       const poolBottomScreen = (pool.y + pool.height) * viewport.zoom + viewport.y;
       const canvasHeight = graphSize.height || 480;
@@ -716,7 +733,6 @@ export function BpmnPerspective({
           nodesDraggable={false}
           nodesConnectable={false}
           onlyRenderVisibleElements
-          fitView
           minZoom={0.1}
           maxZoom={2.0}
           panOnDrag
@@ -743,8 +759,9 @@ export function BpmnPerspective({
             }
             const target = nodeById.get(node.id);
             if (!target) return;
-            // Re-center first so depth opacity recomputes from the
-            // clicked node before the dialog opens / the route changes.
+            // Change the focus window without refitting or rebuilding
+            // geometry from that small window. The stable BPMN layout
+            // above keeps already-rendered nodes anchored.
             if (onCenterChange) onCenterChange(target.id);
             if (onNeuronClick) {
               onNeuronClick(target);
