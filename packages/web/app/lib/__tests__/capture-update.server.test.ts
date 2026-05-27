@@ -153,13 +153,13 @@ describe("updateEntity", () => {
     );
   });
 
-  it("patches Decision sequence_to so BPMN flow edges can be repaired", async () => {
+  it("patches active Decision sequence_to so BPMN flow edges can be authored after capture", async () => {
     vi.mocked(getEntity).mockResolvedValue({
       id: DECISION_ID,
       entity_type: "decision",
       doco_id: DOCO_ID,
       summary: null,
-      lifecycle: "drafting",
+      lifecycle: "active",
       body_md: "",
       data: {
         id: DECISION_ID,
@@ -168,7 +168,7 @@ describe("updateEntity", () => {
         decision: "Choose payment path",
         question: "Which payment path?",
         chosen: "Route to the selected path.",
-        lifecycle: "drafting",
+        lifecycle: "active",
       },
     } as Awaited<ReturnType<typeof getEntity>>);
 
