@@ -1,7 +1,7 @@
 import { BaseEdge, type Edge, EdgeLabelRenderer, type EdgeProps, Position } from "@xyflow/react";
 import type { CSSProperties } from "react";
 
-const EDGE_STREET_PX = 20;
+const EDGE_STREET_PX = 14;
 const EDGE_MIN_CONTROL_PX = 20;
 const EDGE_MAX_CONTROL_PX = 180;
 
