@@ -271,10 +271,7 @@ export default function CollaboratorsPage({
         </header>
 
         <Card>
-          <CardHeader>
-            <CardTitle>Invite a collaborator</CardTitle>
-          </CardHeader>
-          <CardContent>
+          <CardContent className="pt-4">
             <CollaboratorInviteCards invite={loaderData.invite} host={loaderData.host} />
           </CardContent>
         </Card>
