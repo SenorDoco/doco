@@ -267,7 +267,7 @@ export default function CollaboratorsPage({
       <SingleColumnPageMain className="py-8 space-y-6">
         <Breadcrumb items={hostBreadcrumb({ pageLabel: "Collaborators" })} />
         <header>
-          <h1 className="text-base font-semibold">Collaborators</h1>
+          <h1 className="text-2xl font-semibold">Collaborators</h1>
         </header>
 
         <Card>
