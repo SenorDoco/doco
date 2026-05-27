@@ -412,6 +412,9 @@ describe("slack.server", () => {
     expect(prompt).toContain("Do not mix bold Markdown with ASCII tree glyphs");
     expect(prompt).toContain("owner for creating Docos or changing policies");
     expect(prompt).toContain("GET /api/v1/docos.json");
+    expect(prompt).toContain("GET /<handle>/api/audit.json");
+    expect(prompt).toContain("GET /<handle>/api/perspectives.json");
+    expect(prompt).toContain("GET /<handle>/api/authoring-contract.json");
     expect(prompt).toContain("Keep the answer under 900 characters");
   });
 
