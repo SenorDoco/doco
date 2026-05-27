@@ -73,6 +73,56 @@ function contextValue(report: FeedbackReportRow, key: string): string {
   return "";
 }
 
+function asArray(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : [];
+}
+
+function stringValue(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  return "";
+}
+
+function displayActivityTime(value: unknown): string {
+  const raw = stringValue(value);
+  if (!raw) return "";
+  const d = new Date(raw);
+  if (Number.isNaN(d.getTime())) return raw;
+  return d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit", second: "2-digit" });
+}
+
+function activityTargetLabel(target: Record<string, unknown>): string {
+  return (
+    stringValue(target.label) ||
+    stringValue(target.aria_label) ||
+    stringValue(target.text) ||
+    stringValue(target.placeholder) ||
+    stringValue(target.name) ||
+    stringValue(target.id) ||
+    stringValue(target.href) ||
+    stringValue(target.tag) ||
+    "page"
+  );
+}
+
+function activitySummary(value: unknown): string {
+  const activity = asRecord(value);
+  const page = asRecord(activity.page);
+  const target = asRecord(activity.target);
+  const kind = stringValue(activity.kind).replace(/_/g, " ") || "activity";
+  const pagePath =
+    [stringValue(page.pathname), stringValue(page.search), stringValue(page.hash)]
+      .filter(Boolean)
+      .join("") || stringValue(page.href);
+  const details = [
+    displayActivityTime(activity.at),
+    kind,
+    activityTargetLabel(target),
+    pagePath ? `on ${pagePath}` : "",
+  ].filter(Boolean);
+  return details.join(" - ");
+}
+
 export default function MentorFeedbackPage({ loaderData }: { loaderData: LoaderData }) {
   const { reports, counts, me } = loaderData;
   return (
@@ -108,6 +158,9 @@ function ReportCard({ report }: { report: FeedbackReportRow }) {
   const browser = asRecord(client.browser);
   const viewport = asRecord(client.viewport);
   const app = asRecord(client.app);
+  const activity = asRecord(client.activity);
+  const currentPage = asRecord(activity.current_page);
+  const recentActivity = asArray(activity.recent).slice(-10).reverse();
   const server = asRecord(report.server_context);
   const title = report.title || (report.report_type === "bug" ? "Untitled bug" : "Untitled idea");
 
@@ -162,6 +215,18 @@ function ReportCard({ report }: { report: FeedbackReportRow }) {
 
         <dl className="grid gap-2 text-xs md:grid-cols-2">
           <div>
+            <dt className="font-semibold text-muted-foreground">Page title</dt>
+            <dd className="break-words font-mono">
+              {stringValue(currentPage.title) || contextValue(report, "title") || "-"}
+            </dd>
+          </div>
+          <div>
+            <dt className="font-semibold text-muted-foreground">Page URL</dt>
+            <dd className="break-all font-mono">
+              {report.page_url || stringValue(currentPage.href) || "-"}
+            </dd>
+          </div>
+          <div>
             <dt className="font-semibold text-muted-foreground">Route</dt>
             <dd className="break-all font-mono">{report.route_path || "-"}</dd>
           </div>
@@ -201,6 +266,19 @@ function ReportCard({ report }: { report: FeedbackReportRow }) {
             </dd>
           </div>
         </dl>
+
+        {recentActivity.length > 0 ? (
+          <div>
+            <p className="text-xs font-semibold uppercase text-muted-foreground">Recent activity</p>
+            <ol className="mt-2 space-y-1 text-xs">
+              {recentActivity.map((entry, index) => (
+                <li key={`${report.id}-activity-${index}`} className="break-words font-mono">
+                  {activitySummary(entry)}
+                </li>
+              ))}
+            </ol>
+          </div>
+        ) : null}
 
         <details className="text-xs">
           <summary className="cursor-pointer font-semibold text-muted-foreground">
