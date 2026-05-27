@@ -109,12 +109,14 @@ export interface SlackDocoAnswerHit {
 export interface SlackDocoAnswerQuery {
   text: string;
   questionText: string;
+  repairText: string | null;
   overview: boolean;
   repair: boolean;
 }
 
 export interface SlackLlmAnswerInput {
   questionText: string;
+  repairText?: string | null;
   recentMessages: SlackRecentMessage[];
   connections: SlackChannelConnectionSummary[];
   hits: SlackDocoAnswerHit[];
@@ -664,6 +666,7 @@ export async function buildSlackAppMentionResponse(args: {
     );
     const llmAnswer = await (args.answerGenerator ?? generateSlackDocoLlmAnswer)({
       questionText: answerQuery.questionText,
+      repairText: answerQuery.repairText,
       recentMessages: args.recentMessages ?? [],
       connections,
       hits,
@@ -763,7 +766,15 @@ export function buildSlackDocoAnswerQuery(
       ]
     : [questionText, recentContext];
   const query = searchParts.filter(Boolean).join(" ").trim();
-  return query ? { text: query, questionText, overview, repair } : null;
+  return query
+    ? {
+        text: query,
+        questionText,
+        repairText: repair ? text : null,
+        overview,
+        repair,
+      }
+    : null;
 }
 
 export function detectSlackDocoOverviewQuestion(
@@ -794,6 +805,13 @@ export function detectSlackRepairMessage(text: string): boolean {
     /\bthat\s+(didn'?t|did not)\s+answer\b/.test(lower) ||
     /\bnot\s+what\s+i\s+asked\b/.test(lower) ||
     /\banswer\s+my\s+(question|previous\s+question)\b/.test(lower) ||
+    /\b(add|use|insert|put)\s+(some\s+)?line\s+breaks?\b/.test(lower) ||
+    /\b(line\s+breaks?|break\s+(it\s+)?into\s+lines?|split\s+(it\s+)?into\s+lines?)\b/.test(
+      lower,
+    ) ||
+    /\b(format\s+(it\s+)?as\s+(bullets?|a\s+list)|make\s+(it\s+)?(readable|scannable))\b/.test(
+      lower,
+    ) ||
     /\b(not\s+looking\s+(nice|good)|looks?\s+(bad|ugly|messy)|hard\s+to\s+read|format(?:ting)?\s+(is\s+)?(bad|broken|messy))\b/.test(
       lower,
     )
@@ -900,6 +918,7 @@ export async function generateSlackDocoLlmAnswer(
 export function buildSlackLlmUserPrompt(input: SlackLlmAnswerInput): string {
   return [
     `Current Slack message: ${input.questionText}`,
+    ...(input.repairText ? [`Repair requested: ${input.repairText}`] : []),
     `Question type: ${input.repair ? "repair/follow-up" : input.overview ? "overview" : "question"}`,
     "",
     "Default Doco access in this Slack surface:",
@@ -1753,7 +1772,8 @@ export function slackLlmSystemPrompt(): string {
     "If a requested action is blocked by Slack default permissions, say you need the user's personal Doco authorization for Slack and ask them to run /doco connect if they have the required Doco role. Do not mention going to the website as a workaround. Be explicit about the required kind of role when you can infer it: owner for creating Docos or changing policies, author for adding neurons, approver for approval actions.",
     "Do not say you can create, edit, approve, or invite from Slack after authorization unless the matching Slack write path is actually available in this conversation.",
     "If the user says you did not answer, answer the most recent substantive unanswered user question in the Slack context.",
-    "If the user complains that a prior answer is ugly, messy, hard to read, or not looking nice, treat it as a formatting repair: reformat the most recent relevant Señor Doco answer from Slack context instead of repeating the same shape.",
+    "If the user asks for line breaks, bullets, better formatting, or complains that a prior answer is ugly, messy, hard to read, or not looking nice, treat it as a formatting repair: reformat the most recent relevant Señor Doco answer from Slack context instead of repeating the same shape.",
+    "For line-break repair requests, preserve the content but split it into short Slack-friendly lines or bullets. Do not return the same single wrapped paragraph with extra words.",
     "Slack uses proportional fonts. For org charts, trees, reporting lines, and nested hierarchies, prefer short grouped bullets such as 'Manager — role' followed by indented report bullets. Do not mix bold Markdown with ASCII tree glyphs. If the user explicitly asks for a tree diagram, put the entire diagram in a fenced code block with plain text only.",
     "For questions like what the docos explain, synthesize the main themes and cite the doco labels naturally.",
     "If the excerpts are insufficient, say exactly what is missing.",
