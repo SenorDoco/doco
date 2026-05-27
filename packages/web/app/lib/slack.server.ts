@@ -20,6 +20,7 @@ import {
   createSenorDocoMessage,
   missingSenorDocoAnthropicMessage,
 } from "./assistant-runtime.server";
+import { type AuditOp, readAuditEvents } from "./audit-log.server";
 import {
   DOCO_API_TOOL,
   type DocoApiToolEnvelope,
@@ -28,6 +29,11 @@ import {
   runDocoApiToolRequest,
 } from "./doco-api-tool.server";
 import { ensureEnvLoaded } from "./dotenv.server";
+import {
+  contractForAttachedPerspectives,
+  relationKindList,
+} from "./graph-authoring-contract.server";
+import { listAvailablePerspectives, listPerspectivesForDoco } from "./perspectives.server";
 import { buildSenorDocoCorePrompt } from "./senor-doco-prompt.server";
 
 export const SLACK_BOT_SCOPES = [
@@ -1027,8 +1033,7 @@ async function executeSlackDocoApiRequest(
   const parsed = parseSlackPerDocoPath(url.pathname);
   if (!parsed) {
     return slackToolEnvelope(404, {
-      error:
-        "Unsupported Slack doco_api path. Supported reads: /api/v1/docos.json, /<handle>/status.json, /<handle>/search.json?q=..., /<handle>/api/<type>.json, /<handle>/api/<type>/<id>.json, /<handle>/api/principals.json, /<handle>/api/policies.json, /<handle>/api/settings.json.",
+      error: `Unsupported Slack doco_api path. Supported reads: ${slackSupportedApiPathSummary()}.`,
     });
   }
 
@@ -1055,7 +1060,7 @@ async function executeSlackDocoApiRequest(
   const type = typePart?.replace(/\.json$/i, "") ?? "";
   const id = idPart?.replace(/\.json$/i, "");
   if (tail.length === 1 && typePart?.endsWith(".json")) {
-    return slackToolEnvelope(200, await readSlackDocoApiCollection(doco, type));
+    return slackToolEnvelope(200, await readSlackDocoApiCollection(doco, type, url.searchParams));
   }
   if (tail.length === 2 && idPart?.endsWith(".json")) {
     return slackToolEnvelope(200, await readSlackDocoApiDetail(doco, type, id));
@@ -1228,10 +1233,14 @@ async function readSlackDocoApiSearch(
 async function readSlackDocoApiCollection(
   doco: SlackAccessibleDoco,
   type: string,
+  searchParams: URLSearchParams,
 ): Promise<Record<string, unknown>> {
   if (type === "principals") return readSlackDocoApiPrincipals(doco);
   if (type === "policies") return readSlackDocoApiPolicies(doco);
   if (type === "settings") return readSlackDocoApiSettings(doco);
+  if (type === "audit") return readSlackDocoApiAudit(doco, searchParams);
+  if (type === "perspectives") return readSlackDocoApiPerspectives(doco);
+  if (type === "authoring-contract") return readSlackDocoApiAuthoringContract(doco);
   const entityType = slackApiEntityType(type);
   if (!entityType) {
     return {
@@ -1394,6 +1403,107 @@ async function readSlackDocoApiSettings(
   };
 }
 
+const SLACK_AUDIT_OPS: ReadonlySet<AuditOp> = new Set([
+  "entity.create",
+  "entity.update",
+  "entity.delete",
+  "lifecycle.transition",
+  "synapse.add",
+]);
+
+async function readSlackDocoApiAudit(
+  doco: SlackAccessibleDoco,
+  searchParams: URLSearchParams,
+): Promise<Record<string, unknown>> {
+  const opParam = searchParams.get("op");
+  let op: AuditOp[] | undefined;
+  if (opParam) {
+    const parts = opParam
+      .split(",")
+      .map((part) => part.trim())
+      .filter(Boolean);
+    const invalid = parts.filter((part) => !SLACK_AUDIT_OPS.has(part as AuditOp));
+    if (invalid.length > 0) {
+      return {
+        error: `Invalid op value(s): ${invalid.join(", ")}. Allowed: ${[...SLACK_AUDIT_OPS].join(
+          ", ",
+        )}.`,
+      };
+    }
+    op = parts as AuditOp[];
+  }
+
+  const limitRaw = searchParams.get("limit");
+  let limit = 200;
+  if (limitRaw) {
+    const parsed = Number.parseInt(limitRaw, 10);
+    if (!Number.isFinite(parsed) || parsed < 1) {
+      return { error: "limit must be a positive integer." };
+    }
+    limit = Math.min(parsed, 1000);
+  }
+
+  const events = await readAuditEvents(
+    "",
+    {
+      entity_id: searchParams.get("entity_id") ?? undefined,
+      entity_type: searchParams.get("entity_type") ?? undefined,
+      by: searchParams.get("by") ?? undefined,
+      since: searchParams.get("since") ?? undefined,
+      until: searchParams.get("until") ?? undefined,
+      op,
+      limit,
+    },
+    doco.id,
+  );
+
+  return {
+    ok: true,
+    doco_id: doco.id,
+    qualified_handle: doco.qualifiedHandle,
+    count: events.length,
+    events,
+  };
+}
+
+async function readSlackDocoApiPerspectives(
+  doco: SlackAccessibleDoco,
+): Promise<Record<string, unknown>> {
+  const [attached, available] = await Promise.all([
+    listPerspectivesForDoco(doco.id),
+    listAvailablePerspectives(),
+  ]);
+  return {
+    ok: true,
+    doco_id: doco.id,
+    qualified_handle: doco.qualifiedHandle,
+    attached,
+    available,
+    can_admin: slackRoleRank(doco.role) >= slackRoleRank("approver"),
+  };
+}
+
+async function readSlackDocoApiAuthoringContract(
+  doco: SlackAccessibleDoco,
+): Promise<Record<string, unknown>> {
+  const attached = await listPerspectivesForDoco(doco.id);
+  return {
+    ok: true,
+    doco_id: doco.id,
+    qualified_handle: doco.qualifiedHandle,
+    entity_types: DOCO_NEURON_TABLE_SPECS.map((spec) => ({
+      entity_type: spec.entityType,
+      collection: spec.table,
+      capture_endpoint: `/${doco.handle}/api/${spec.table}.json`,
+    })),
+    relation_kinds: relationKindList(),
+    perspective_contracts: contractForAttachedPerspectives(attached),
+    changeset_endpoint: `/${doco.handle}/api/changesets.json`,
+    slack_write_limit:
+      "Slack exposes this contract for planning, but shared workspace defaults cannot write. Ask the user to run /doco connect when a write action needs their personal Doco role.",
+  };
+}
+
 function slackEntityRecordToApiItem(row: EntityRecord): Record<string, unknown> {
   return {
     id: row.id,
@@ -1425,7 +1535,26 @@ function slackSupportedApiTypes(): string[] {
     "principals",
     "policies",
     "settings",
+    "audit",
+    "perspectives",
+    "authoring-contract",
   ];
+}
+
+function slackSupportedApiPathSummary(): string {
+  return [
+    "/api/v1/docos.json",
+    "/<handle>/status.json",
+    "/<handle>/search.json?q=...",
+    "/<handle>/api/<type>.json",
+    "/<handle>/api/<type>/<id>.json",
+    "/<handle>/api/principals.json",
+    "/<handle>/api/policies.json",
+    "/<handle>/api/settings.json",
+    "/<handle>/api/audit.json",
+    "/<handle>/api/perspectives.json",
+    "/<handle>/api/authoring-contract.json",
+  ].join(", ");
 }
 
 function slackDocoConnection(doco: SlackAccessibleDoco): SlackChannelConnectionSummary {
@@ -1775,7 +1904,7 @@ export function slackLlmSystemPrompt(): string {
         "Do not claim access beyond the listed default Doco access. People may link personal Doco access later, but you only know the access included in this prompt.",
       ],
     }),
-    "Available Slack doco_api reads: GET /api/v1/docos.json; GET /<handle>/status.json; GET /<handle>/search.json?q=...; GET /<handle>/api/<type>.json; GET /<handle>/api/<type>/<id>.json; GET /<handle>/api/principals.json; GET /<handle>/api/policies.json; GET /<handle>/api/settings.json. Valid <type>: decisions, intents, actions, logs, rules, evals, references, ideas, states. Keep qualified org/doco labels in prose, but use the route handle from /api/v1/docos.json for API paths.",
+    "Available Slack doco_api reads: GET /api/v1/docos.json; GET /<handle>/status.json; GET /<handle>/search.json?q=...; GET /<handle>/api/<type>.json; GET /<handle>/api/<type>/<id>.json; GET /<handle>/api/principals.json; GET /<handle>/api/policies.json; GET /<handle>/api/settings.json; GET /<handle>/api/audit.json; GET /<handle>/api/perspectives.json; GET /<handle>/api/authoring-contract.json. Valid <type>: decisions, intents, actions, logs, rules, evals, references, ideas, states. Keep qualified org/doco labels in prose, but use the route handle from /api/v1/docos.json for API paths.",
     "Answer with a concise, natural Slack message using doco_api results, provided Doco excerpts, and Slack context.",
     "Do not return the generic setup or access prompt. Do not merely list raw excerpts unless the user asks for a list.",
     "If a requested action is blocked by Slack default permissions, say you need the user's personal Doco authorization for Slack and ask them to run /doco connect if they have the required Doco role. Do not mention going to the website as a workaround. Be explicit about the required kind of role when you can infer it: owner for creating Docos or changing policies, author for adding neurons, approver for approval actions.",
