@@ -83,6 +83,7 @@ export function shouldReplyToSlackEvent(event: SlackEventPayload | undefined): b
 
 export function shouldFetchSlackConversationContext(event: SlackEventPayload | undefined): boolean {
   if (!event) return false;
+  if (event.type === "app_mention") return true;
   return event.channel_type === "im" || event.channel_type === "app_home";
 }
 
