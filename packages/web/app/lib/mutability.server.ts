@@ -84,6 +84,9 @@ const ALLOWED_ON_FROZEN: ReadonlySet<string> = new Set([
   "outcome",
   "superseded_by",
   "intent_ids_add",
+  // Graph/perspective relations may be attached after a claim is activated.
+  // The claim text stays frozen; the flow edge is authored separately.
+  "sequence_to",
 ]);
 
 export interface PatchValidation {
