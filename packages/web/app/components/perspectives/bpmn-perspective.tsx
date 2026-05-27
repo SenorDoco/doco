@@ -35,6 +35,7 @@ import {
 } from "~/components/neuron-badges";
 import type { OverviewGraphLink } from "~/components/overview-graph";
 import { StandardControls, StandardMiniMap } from "~/components/perspective-canvas-overlays";
+import { linksWithFocusedPoolMembership } from "~/lib/bpmn-focused-pool-links";
 import { bpmnLaneColumnKey, packBpmnLaneColumns } from "~/lib/bpmn-lane-packing";
 import type { BpmnLane, BpmnNode, BpmnPool, BpmnShape } from "~/lib/bpmn-perspective.server";
 import { computeForwardSequenceDepths } from "~/lib/bpmn-sequence-depth";
@@ -934,7 +935,8 @@ function layOutBpmn(
   // neighbours. Separate from `computeDepths` below, which is the
   // topological column position used for left-to-right layout.
   const focusNodes = bpmnGraphRankNodes(pools, nodes);
-  const focalDepthByNode = computeDepthFromCenter(focusNodes, links, centerId);
+  const focusLinks = linksWithFocusedPoolMembership(pools, nodes, links, centerId);
+  const focalDepthByNode = computeDepthFromCenter(focusNodes, focusLinks, centerId);
   const focalActive = hasFocalNode(centerId, focusNodes);
 
   const byLane = new Map<string, BpmnNode[]>();
