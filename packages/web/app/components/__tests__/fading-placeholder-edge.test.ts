@@ -10,12 +10,12 @@ describe("getFadingPlaceholderGeometry", () => {
       targetY: 20,
       direction: "incoming",
       hasMarkerEnd: true,
-      markerClearance: 2,
+      markerClearance: 8,
     });
 
-    expect(geometry.endX).toBe(98);
+    expect(geometry.endX).toBe(92);
     expect(geometry.endY).toBe(20);
-    expect(geometry.path).toContain("98,20");
+    expect(geometry.path).toContain("92,20");
   });
 
   it("leaves incoming marker edges pinned without an explicit clearance", () => {
