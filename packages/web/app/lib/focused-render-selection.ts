@@ -103,6 +103,7 @@ export function selectFocusedNodeIds(
 export function summarizeExternalConnections(
   links: readonly FocusSelectableLink[],
   renderedIds: ReadonlySet<string>,
+  renderableIds?: ReadonlySet<string>,
 ): ExternalConnectionSummary[] {
   const summaries = new Map<string, ExternalConnectionSummary>();
   const ensure = (id: string) => {
@@ -115,6 +116,9 @@ export function summarizeExternalConnections(
   };
 
   for (const link of links) {
+    if (renderableIds && (!renderableIds.has(link.source) || !renderableIds.has(link.target))) {
+      continue;
+    }
     const sourceRendered = renderedIds.has(link.source);
     const targetRendered = renderedIds.has(link.target);
     if (sourceRendered === targetRendered) continue;

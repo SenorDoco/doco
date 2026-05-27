@@ -721,7 +721,7 @@ export function OverviewGraph({
   });
 
   const externalEdgeStubs = useMemo(() => {
-    const summaries = summarizeExternalConnections(visibleLinks, renderedNodeIds);
+    const summaries = summarizeExternalConnections(visibleLinks, renderedNodeIds, visibleIds);
     const nodes: Node[] = [];
     const edges: Edge[] = [];
     let stubIndex = 0;
@@ -812,7 +812,7 @@ export function OverviewGraph({
     });
 
     return { nodes, edges };
-  }, [visibleLinks, renderedNodeIds, positions, visibleNodeById]);
+  }, [visibleLinks, renderedNodeIds, visibleIds, positions, visibleNodeById]);
 
   useEffect(() => {
     if (!detailUrl || detailIds.length === 0) return;
