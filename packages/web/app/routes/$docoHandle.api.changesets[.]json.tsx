@@ -21,7 +21,7 @@ import {
 } from "~/lib/graph-authoring-contract.server";
 import { CAPTURE_REGISTRY_BY_ENTITY_TYPE, type MeLike } from "~/lib/neuron-capture-registry.server";
 
-type Operation = CreateOperation | RelateOperation | AppendOperation;
+type Operation = CreateOperation | RelateOperation | RelateManyOperation | AppendOperation;
 
 interface CreateOperation {
   op: "create";
@@ -30,8 +30,7 @@ interface CreateOperation {
   body: Record<string, unknown>;
 }
 
-interface RelateOperation {
-  op: "relate";
+interface RelationInput {
   relation_kind?: string;
   kind?: string;
   from: string;
@@ -39,6 +38,15 @@ interface RelateOperation {
   label?: string;
   condition?: string;
   relation_props?: Record<string, unknown>;
+}
+
+interface RelateOperation extends RelationInput {
+  op: "relate";
+}
+
+interface RelateManyOperation {
+  op: "relate_many";
+  relations: RelationInput[];
 }
 
 interface AppendOperation {
@@ -82,6 +90,13 @@ interface OperationResult {
     stored_on: string;
     field: string;
   };
+  relations?: {
+    kind: string;
+    from: string;
+    to: string;
+    stored_on: string;
+    field: string;
+  }[];
   skipped?: boolean;
   error?: string;
   footer_lines?: string[];
@@ -207,6 +222,9 @@ async function applyOperation(
   if (op.op === "relate") {
     return relateNeurons(op, index, ctx, aliases);
   }
+  if (op.op === "relate_many") {
+    return relateMany(op, index, ctx, aliases);
+  }
   if (op.op === "append") {
     const created = await createNeuron(
       { op: "create", entity_type: op.entity_type, alias: op.alias, body: op.body },
@@ -288,6 +306,145 @@ async function createNeuron(
     id: result.id,
     ...(op.alias ? { alias: cleanAlias(op.alias) } : {}),
     footer_lines: result.footer_lines,
+  };
+}
+
+async function relateMany(
+  op: RelateManyOperation,
+  index: number,
+  ctx: ChangesetContext,
+  aliases: Map<string, string>,
+): Promise<OperationResult> {
+  if (!Array.isArray(op.relations) || op.relations.length === 0) {
+    return {
+      op_index: index,
+      op: "relate_many",
+      ok: false,
+      error: "relate_many.relations must be a non-empty array.",
+    };
+  }
+  if (op.relations.length > 50) {
+    return {
+      op_index: index,
+      op: "relate_many",
+      ok: false,
+      error: "relate_many accepts at most 50 relations.",
+    };
+  }
+
+  const owners = new Map<
+    string,
+    {
+      ownerType: string;
+      data: Record<string, unknown>;
+      patch: EntityPatch;
+      relations: NonNullable<OperationResult["relations"]>;
+    }
+  >();
+
+  for (const relation of op.relations) {
+    const kind = relation.relation_kind ?? relation.kind ?? "";
+    const spec = relationKind(kind);
+    if (!spec) {
+      return {
+        op_index: index,
+        op: "relate_many",
+        ok: false,
+        error: `Unknown relation_kind "${kind}".`,
+      };
+    }
+    const from = resolveRef(relation.from, aliases);
+    const to = resolveRef(relation.to, aliases);
+    if (!from || !to) {
+      return {
+        op_index: index,
+        op: "relate_many",
+        ok: false,
+        error: `Could not resolve relation endpoints from="${relation.from}" to="${relation.to}".`,
+      };
+    }
+
+    const props = relationProps(spec, relation);
+    const ownerId = spec.owner === "from" ? from : to;
+    const valueId = spec.value === "from" ? from : to;
+    const ownerType = entityTypeFromId(ownerId);
+    if (!ownerType) {
+      return {
+        op_index: index,
+        op: "relate_many",
+        ok: false,
+        error: `Invalid relation owner id: ${ownerId}.`,
+      };
+    }
+
+    let ownerDraft = owners.get(ownerId);
+    if (!ownerDraft) {
+      const owner = await getEntity(ownerType, ownerId);
+      if (!owner || owner.doco_id !== ctx.docoId) {
+        return {
+          op_index: index,
+          op: "relate_many",
+          ok: false,
+          error: `Relation owner not found in this doco: ${ownerId}.`,
+        };
+      }
+      ownerDraft = {
+        ownerType,
+        data: { ...(owner.data ?? {}) },
+        patch: {},
+        relations: [],
+      };
+      owners.set(ownerId, ownerDraft);
+    }
+
+    const target = await getEntity(entityTypeFromId(valueId) ?? "", valueId);
+    if (!target || target.doco_id !== ctx.docoId) {
+      return {
+        op_index: index,
+        op: "relate_many",
+        ok: false,
+        error: `Relation target not found in this doco: ${valueId}.`,
+      };
+    }
+
+    const patch = buildRelationPatch(ownerDraft.data, spec, valueId, props);
+    if (patch) {
+      Object.assign(ownerDraft.data, patch);
+      Object.assign(ownerDraft.patch, patch);
+    }
+    ownerDraft.relations.push({
+      kind: spec.kind,
+      from,
+      to,
+      stored_on: ownerId,
+      field: spec.field,
+    });
+  }
+
+  const footerLines: string[] = [];
+  const relations: NonNullable<OperationResult["relations"]> = [];
+  for (const [ownerId, ownerDraft] of owners) {
+    relations.push(...ownerDraft.relations);
+    if (Object.keys(ownerDraft.patch).length === 0) continue;
+    const patched = await patchRelationOwner(ctx, ownerDraft.ownerType, ownerId, ownerDraft.patch);
+    if ("error" in patched) {
+      return {
+        op_index: index,
+        op: "relate_many",
+        ok: false,
+        error: patched.error,
+      };
+    }
+    footerLines.push(...patched.footer_lines);
+  }
+
+  return {
+    op_index: index,
+    op: "relate_many",
+    ok: true,
+    relations,
+    ...(footerLines.length === 0 ? { skipped: true } : {}),
+    footer_lines: footerLines,
   };
 }
 
