@@ -474,10 +474,10 @@ export function BpmnPerspective({
       if (!position) return;
       const size = sizeForNode(anchorNode);
       const id = `bpmn-placeholder:${direction}:${anchorNode.id}`;
-      const verticalSign = summaryIndex % 2 === 0 ? -1 : 1;
-      const xJitter = ((summaryIndex % 5) - 2) * 18 + (direction === "incoming" ? -12 : 12);
-      const y = position.y + size.height / 2 + verticalSign * (108 + (summaryIndex % 3) * 12);
-      const x = LANE_LEFT_INSET + position.x + size.width / 2 + xJitter;
+      const directionSign = direction === "incoming" ? -1 : 1;
+      const distance = 132 + (summaryIndex % 3) * 12;
+      const y = position.y + size.height / 2;
+      const x = LANE_LEFT_INSET + position.x + size.width / 2 + directionSign * distance;
       const matchingLink = links.find(
         (link) =>
           filteredNodeIds.has(link.source) &&
