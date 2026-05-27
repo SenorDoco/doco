@@ -133,11 +133,13 @@ function PerspectiveTab({
   const tabClass = cn(
     "neu-surface-open-bottom relative top-0.5 z-40 inline-flex items-center gap-1.5 border px-3 py-1.5 text-xs font-medium",
     isProposedTab
-      ? "rounded-t-md border-border bg-card hover:bg-input/40"
+      ? active
+        ? "rounded-t-md border-border bg-card"
+        : "rounded-t-md border-border bg-input/60 hover:bg-input/80"
       : "-ml-px first:ml-0 border-border text-foreground",
     !isProposedTab && isFirst && "rounded-tl-md",
     !isProposedTab && isLast && "rounded-tr-md",
-    !isProposedTab && (active ? "bg-card" : "bg-input/40 hover:bg-input/60"),
+    !isProposedTab && (active ? "bg-card" : "bg-input/60 hover:bg-input/80"),
   );
   const tabStyle = isProposedTab
     ? {
