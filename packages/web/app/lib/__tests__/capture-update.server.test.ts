@@ -1,9 +1,10 @@
 import { getDocoById, getEntity, upsertEntity } from "@doco/db";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { renderOperationLines, updateEntity } from "../capture.server";
+import { renderOperationLines, updateDecision, updateEntity } from "../capture.server";
 
 vi.mock("@doco/db", () => ({
   ALL_ENTITY_TABLES: {
+    decision: { table: "decisions", body: false, typeNamedColumn: "decision" },
     idea: { table: "ideas", body: false, typeNamedColumn: "idea" },
     state: { table: "states", body: false, typeNamedColumn: "state" },
   },
@@ -38,6 +39,7 @@ vi.mock("../redeem.server", () => ({
 }));
 
 const DOCO_ID = "doco_01TEST00000000000000000001";
+const DECISION_ID = "decision_01TEST000000000000000001";
 const STATE_ID = "state_01TEST0000000000000000001";
 const IDEA_ID = "idea_01TEST00000000000000000001";
 
@@ -145,6 +147,52 @@ describe("updateEntity", () => {
         type_named_value: "Renamed idea name",
         data: expect.objectContaining({
           idea: "Renamed idea name",
+        }),
+      }),
+      expect.anything(),
+    );
+  });
+
+  it("patches Decision sequence_to so BPMN flow edges can be repaired", async () => {
+    vi.mocked(getEntity).mockResolvedValue({
+      id: DECISION_ID,
+      entity_type: "decision",
+      doco_id: DOCO_ID,
+      summary: null,
+      lifecycle: "drafting",
+      body_md: "",
+      data: {
+        id: DECISION_ID,
+        doco_id: DOCO_ID,
+        neuron_type: "decision",
+        decision: "Choose payment path",
+        question: "Which payment path?",
+        chosen: "Route to the selected path.",
+        lifecycle: "drafting",
+      },
+    } as Awaited<ReturnType<typeof getEntity>>);
+
+    const result = await updateDecision(
+      "/tmp/doco",
+      DOCO_ID,
+      "test",
+      "doco",
+      DECISION_ID,
+      {
+        sequence_to: [{ target: "action_01TEST000000000000000001", label: "Card" }],
+      },
+      "https://doco.test",
+      null,
+    );
+
+    expect(result).toMatchObject({
+      ok: true,
+      changed: ["sequence_to"],
+    });
+    expect(upsertEntity).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          sequence_to: [{ target: "action_01TEST000000000000000001", label: "Card" }],
         }),
       }),
       expect.anything(),

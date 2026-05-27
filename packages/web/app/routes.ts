@@ -257,6 +257,11 @@ export default [
   route(":docoHandle/api/principals/:id.json", "routes/$docoHandle.api.principals.$id[.]json.tsx"),
   route(":docoHandle/api/settings.json", "routes/$docoHandle.api.settings[.]json.tsx"),
   route(":docoHandle/api/audit.json", "routes/$docoHandle.api.audit[.]json.tsx"),
+  route(
+    ":docoHandle/api/authoring-contract.json",
+    "routes/$docoHandle.api.authoring-contract[.]json.tsx",
+  ),
+  route(":docoHandle/api/changesets.json", "routes/$docoHandle.api.changesets[.]json.tsx"),
   // Policies are not neurons; they live on a
   // dedicated endpoint and are intentionally absent from the generic
   // capture dispatcher below.
