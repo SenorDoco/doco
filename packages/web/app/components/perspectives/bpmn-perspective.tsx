@@ -112,6 +112,11 @@ interface BpmnPerspectiveProps {
    * every node and edge renders at full opacity.
    */
   centerId?: string | null;
+  /**
+   * One-shot viewport instruction for direct neuron URLs. Centers the
+   * matching BPMN node, pool header, or actor lane at 100% zoom.
+   */
+  initialFocusId?: string | null;
 }
 
 const LANE_HEIGHT = 140;
@@ -204,6 +209,7 @@ export function BpmnPerspective({
   onCenterChange,
   visibleLifecycles,
   centerId,
+  initialFocusId,
 }: BpmnPerspectiveProps) {
   const lanes = lanesRaw;
   const nodes = nodesRaw;
@@ -213,11 +219,24 @@ export function BpmnPerspective({
   const [viewport, setViewport] = useState<FlowViewport>({ x: 0, y: 0, zoom: 1 });
   const [graphSize, setGraphSize] = useState<GraphSize>({ width: 1, height: 1 });
   const hasFitRef = useRef(false);
-  const updateViewport = (next: FlowViewport) => {
+  type FlowFitView = (options?: {
+    nodes?: { id: string }[];
+    padding?: number;
+    duration?: number;
+    minZoom?: number;
+    maxZoom?: number;
+  }) => void;
+  type FlowInstance = {
+    fitView?: FlowFitView;
+    getViewport?: () => FlowViewport;
+  };
+  const flowInstanceRef = useRef<FlowInstance | null>(null);
+  const initialFocusAppliedRef = useRef<string | null>(null);
+  const updateViewport = useCallback((next: FlowViewport) => {
     setViewport((prev) =>
       prev.x === next.x && prev.y === next.y && prev.zoom === next.zoom ? prev : next,
     );
-  };
+  }, []);
 
   // Drop nodes whose lifecycle is filtered out. Lanes are never
   // dropped once the server emits them, so a filtered-out Action
@@ -593,6 +612,42 @@ export function BpmnPerspective({
     ],
     [layout.flowEdges, renderedNodeIds, externalEdgeStubs.edges],
   );
+  const initialFocusFlowNodeId = useMemo(() => {
+    if (!initialFocusId) return null;
+    const flowNodeIds = new Set(flowNodes.map((node) => node.id));
+    if (flowNodeIds.has(initialFocusId)) return initialFocusId;
+    const pool = pools.find((candidate) => candidate.intent_id === initialFocusId);
+    if (pool) {
+      const poolHeaderId = `pool-header:${pool.id}`;
+      if (flowNodeIds.has(poolHeaderId)) return poolHeaderId;
+    }
+    const lane = renderedLanes.find((candidate) => candidate.base_id === initialFocusId);
+    if (lane) {
+      const id = laneNodeId(lane.id);
+      if (flowNodeIds.has(id)) return id;
+    }
+    return null;
+  }, [flowNodes, initialFocusId, pools, renderedLanes]);
+
+  useEffect(() => {
+    if (!initialFocusFlowNodeId) return;
+    if (initialFocusAppliedRef.current === initialFocusFlowNodeId) return;
+    const instance = flowInstanceRef.current;
+    if (!instance?.fitView) return;
+    const frame = requestAnimationFrame(() => {
+      instance.fitView?.({
+        nodes: [{ id: initialFocusFlowNodeId }],
+        padding: 0,
+        minZoom: 1,
+        maxZoom: 1,
+        duration: 0,
+      });
+      const current = instance.getViewport?.();
+      if (current) updateViewport(current);
+      initialFocusAppliedRef.current = initialFocusFlowNodeId;
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [initialFocusFlowNodeId, updateViewport]);
 
   if (filteredLanes.length === 0 && pools.length === 0) {
     return (
@@ -740,12 +795,21 @@ export function BpmnPerspective({
           zoomOnScroll
           zoomOnPinch
           preventScrolling
-          onInit={(instance: {
-            fitView?: (options?: { padding?: number }) => void;
-            getViewport?: () => FlowViewport;
-          }) => {
+          onInit={(instance: FlowInstance) => {
+            flowInstanceRef.current = instance;
             if (!hasFitRef.current) {
-              instance.fitView?.({ padding: 0.18 });
+              if (initialFocusFlowNodeId) {
+                instance.fitView?.({
+                  nodes: [{ id: initialFocusFlowNodeId }],
+                  padding: 0,
+                  minZoom: 1,
+                  maxZoom: 1,
+                  duration: 0,
+                });
+                initialFocusAppliedRef.current = initialFocusFlowNodeId;
+              } else {
+                instance.fitView?.({ padding: 0.18 });
+              }
               hasFitRef.current = true;
             }
             const current = instance.getViewport?.();

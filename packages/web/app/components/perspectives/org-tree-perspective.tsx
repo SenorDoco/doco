@@ -43,6 +43,7 @@ interface OrgTreePerspectiveProps {
   nodes: OrgTreeNode[];
   visibleLifecycles?: Set<string> | null;
   centerId?: string | null;
+  initialFocusId?: string | null;
   onCenterChange?: (id: string) => void;
   onNeuronClick?: (node: OrgTreeNode) => void;
 }
@@ -162,6 +163,7 @@ function OrgTreeInner({
   nodes,
   visibleLifecycles,
   centerId,
+  initialFocusId,
   onCenterChange,
   onNeuronClick,
 }: OrgTreePerspectiveProps) {
@@ -207,6 +209,7 @@ function OrgTreeInner({
 
   const containerRef = useRef<HTMLDivElement>(null);
   const flow = useReactFlow();
+  const initialFocusAppliedRef = useRef<string | null>(null);
 
   // Viewport + size tracked the same way Graph/BPMN do it: ResizeObserver
   // on the container for size, React Flow's `onMove` for the viewport.
@@ -283,10 +286,35 @@ function OrgTreeInner({
         .join("|"),
     [filtered],
   );
+  const initialFocusFlowNodeId = useMemo(() => {
+    if (!initialFocusId) return null;
+    return rawRfNodes.some((node) => node.id === initialFocusId) ? initialFocusId : null;
+  }, [initialFocusId, rawRfNodes]);
+
+  useEffect(() => {
+    if (!initialFocusFlowNodeId) return;
+    if (initialFocusAppliedRef.current === initialFocusFlowNodeId) return;
+    const frame = requestAnimationFrame(() => {
+      try {
+        flow.fitView({
+          nodes: [{ id: initialFocusFlowNodeId }],
+          padding: 0,
+          minZoom: 1,
+          maxZoom: 1,
+          duration: 0,
+        });
+        initialFocusAppliedRef.current = initialFocusFlowNodeId;
+      } catch {
+        // React Flow may not be ready on the very first paint.
+      }
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [flow, initialFocusFlowNodeId]);
 
   // Fit-to-view whenever the layout actually changes shape.
   // biome-ignore lint/correctness/useExhaustiveDependencies: layoutSignature is the intentional trigger.
   useEffect(() => {
+    if (initialFocusId) return;
     const id = requestAnimationFrame(() => {
       try {
         flow.fitView({ padding: 0.2, duration: 250 });
@@ -323,7 +351,7 @@ function OrgTreeInner({
         onNodeClick={handleNodeClick}
         onMove={(_event: unknown, next: FlowViewport) => updateViewport(next)}
         onlyRenderVisibleElements
-        fitView
+        fitView={!initialFocusFlowNodeId}
         fitViewOptions={{ padding: 0.2 }}
         minZoom={0.2}
         maxZoom={1.5}

@@ -528,6 +528,7 @@ export default function DocoHome({
   }, []);
   const activeSlug = activePerspectiveSlug ?? "graph";
   const effectivePerspectiveKind = activePerspectiveKind ?? "graph";
+  const routeFocusId = focusedNeuronId;
   const [graphState, setGraphState] = useState<OverviewGraphData>(() => graphData);
   const [neuronDialog, setNeuronDialog] = useState<NeuronDialogState | null>(() =>
     selectedNeuron ? { detail: selectedNeuron, loading: false, error: null } : null,
@@ -994,6 +995,7 @@ export default function DocoHome({
                     nodes={orgTreeData.nodes}
                     visibleLifecycles={visibleLifecycles}
                     centerId={graphState.centerId}
+                    initialFocusId={routeFocusId}
                     onCenterChange={(id) => setGraphState((prev) => graphWithCenter(prev, id))}
                     onNeuronClick={(node) => {
                       void loadNeuronDialog("principal", node.id, node.href);
@@ -1008,6 +1010,7 @@ export default function DocoHome({
                     globalPagerank={bpmnGraph.global_pagerank}
                     visibleLifecycles={visibleLifecycles}
                     centerId={graphState.centerId}
+                    initialFocusId={routeFocusId}
                     onCenterChange={(id) => setGraphState((prev) => graphWithCenter(prev, id))}
                     onNeuronClick={(node) => {
                       void loadNeuronDialog(
@@ -1043,6 +1046,7 @@ export default function DocoHome({
                     fillHeight
                     visibleLifecycles={visibleLifecycles}
                     autoReorder={autoReorder}
+                    initialFocusId={routeFocusId}
                     onCenterChange={(id) => setGraphState((prev) => graphWithCenter(prev, id))}
                     onNeuronClick={handleGraphNeuronClick}
                   />
