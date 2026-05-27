@@ -1,4 +1,5 @@
 import { getCollaboratorById, withClient } from "@doco/db";
+import { normalizeNeuronType } from "@doco/shared";
 // Per-Doco home — bare title up top, then the search input, neuron overview,
 // activity heatmap, and latest activity feed in a single content column.
 //
@@ -119,11 +120,16 @@ export async function loader({
   const { handle } = ctx;
   const me = ctx.me;
   const dir = docoPath(handle);
+  const requestedEntityType =
+    typeof params.type === "string" ? normalizeNeuronType(params.type) : null;
   const requestedNeuron =
-    typeof params.type === "string" && typeof params.id === "string"
-      ? { entityType: params.type, id: params.id }
+    requestedEntityType && typeof params.id === "string"
+      ? { entityType: requestedEntityType, id: params.id }
       : null;
   if (requestedNeuron && !isGraphNeuronType(requestedNeuron.entityType)) {
+    throw new Response("Unknown neuron type", { status: 404 });
+  }
+  if (typeof params.type === "string" && typeof params.id === "string" && !requestedNeuron) {
     throw new Response("Unknown neuron type", { status: 404 });
   }
   return withClient(async (c) => {
@@ -376,6 +382,7 @@ export async function loader({
       bpmnGraph,
       orgTreeData,
       slaData,
+      focusedNeuronId: selectedNeuron?.id ?? null,
       selectedNeuron: dialogNeuron,
       graphAutoReorder,
     };
@@ -485,6 +492,7 @@ export default function DocoHome({
     bpmnGraph,
     orgTreeData,
     slaData,
+    focusedNeuronId,
     selectedNeuron,
     graphAutoReorder: initialAutoReorder,
   } = loaderData;
@@ -493,12 +501,12 @@ export default function DocoHome({
   const graphData = useMemo<OverviewGraphData>(
     () =>
       graph ?? {
-        centerId: selectedNeuron?.id ?? docoId,
+        centerId: focusedNeuronId ?? docoId,
         nodes: [],
         links: [],
         detailUrl: null,
       },
-    [graph, selectedNeuron?.id, docoId],
+    [graph, focusedNeuronId, docoId],
   );
   const [autoReorder, setAutoReorder] = useState<boolean>(initialAutoReorder);
   const handleAutoReorderChange = useCallback((next: boolean) => {
