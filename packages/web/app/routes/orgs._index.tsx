@@ -161,12 +161,13 @@ export async function loader({ request }: { request: Request }) {
         op: string;
         before_json: Record<string, unknown> | null;
         after_json: Record<string, unknown> | null;
-        principal_name: string | null;
+        collaborator_name: string | null;
       }>(
         `SELECT a.event_id, a.at, a.doco_id, a.entity_type, a.entity_id, a.op,
-                a.before_json, a.after_json, p.name AS principal_name
+                a.before_json, a.after_json,
+                COALESCE(c.github_login, c.email, c.id) AS collaborator_name
            FROM audit_events a
-           LEFT JOIN principals p ON p.id = a.by_collaborator
+           LEFT JOIN collaborators c ON c.id = a.by_collaborator
           WHERE a.doco_id = ANY($1)
             AND a.entity_type NOT IN ('guidance_policy', 'neuron_authoring_policy')
           ORDER BY a.at DESC
@@ -202,7 +203,7 @@ export async function loader({ request }: { request: Request }) {
         return {
           event_id: r.event_id,
           at: r.at instanceof Date ? r.at.toISOString() : String(r.at),
-          byUsername: r.principal_name,
+          byUsername: r.collaborator_name,
           handle: d?.handle ?? "?",
           entity_type: r.entity_type,
           entity_id: r.entity_id,
