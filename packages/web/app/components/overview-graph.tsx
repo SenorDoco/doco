@@ -191,7 +191,7 @@ function makeOverviewMiniMapNode(
     if (!graphNode) return null;
     const fill = lifecycleColor(nodeLifecycle(graphNode));
     const stroke = strokeColor ?? "rgba(0,0,0,0.5)";
-    const sw = (strokeWidth ?? 1) * (graphNode.is_center ? 2 : 1);
+    const sw = graphNode.is_center ? (strokeWidth ?? 1) * 2 : (strokeWidth ?? 1);
     const radius = Math.min(width, height) / 3;
     const classes = ["react-flow__minimap-node", selected ? "selected" : "", className]
       .filter(Boolean)
@@ -265,6 +265,7 @@ function OverviewFlowNode({ data }: { data: OverviewNodeData }) {
         data-overview-node-new={data.isNew ? "true" : undefined}
         style={{
           borderColor: data.node.is_center ? "var(--color-foreground)" : "var(--color-border)",
+          borderWidth: data.node.is_center ? 2 : 1,
           borderLeft: `6px solid ${lifecycleColor(lifecycle)}`,
         }}
         title={title}

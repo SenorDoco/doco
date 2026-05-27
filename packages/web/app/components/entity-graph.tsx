@@ -612,7 +612,7 @@ function EntityNodeCard({
         width: NODE_WIDTH,
         minHeight: cardHeight,
         background,
-        border: isCenter ? "2px solid var(--color-border)" : "1px solid var(--color-border)",
+        border: isCenter ? "4px solid var(--color-border)" : "1px solid var(--color-border)",
         borderRadius: 8,
         boxShadow: `inset -${NODE_STRIPE_WIDTH}px 0 0 ${accentColor}`,
       }}
@@ -972,7 +972,7 @@ export function EntityGraph({
       const pos = positions.get(n.id) ?? { x: 0, y: 0 };
       const lifecycle = nodeLifecycle(n);
       const accentColor = lifecycleColor(lifecycle);
-      // White for every card. The "in focus" cue is the heavier 2px
+      // White for every card. The "in focus" cue is the heavier
       // border plus the "in focus" + GPR labels inside the card —
       // adding a tinted background on top was a third cue that read
       // as "the card is bluish" rather than "the card is focused".
@@ -1181,7 +1181,7 @@ export function EntityGraph({
               style={{
                 fill,
                 stroke: strokeColor ?? "var(--color-border)",
-                strokeWidth: graphNode?.is_center ? 2 : 1,
+                strokeWidth: graphNode?.is_center ? 4 : 1,
                 vectorEffect: "non-scaling-stroke",
               }}
             />

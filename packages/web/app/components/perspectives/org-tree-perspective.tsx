@@ -68,7 +68,7 @@ function OrgTreeCard({ data }: NodeProps<Node<OrgTreeNodeData>>) {
   return (
     <div
       className={`relative flex flex-col justify-between rounded-md border bg-white px-3 py-2 shadow-sm transition ${
-        isCenter ? "border-2 border-foreground" : "border-border"
+        isCenter ? "border-4 border-foreground" : "border-border"
       }`}
       style={{ width: ORG_TREE_NODE_W, height: ORG_TREE_NODE_H }}
     >
@@ -135,7 +135,7 @@ function makeOrgTreeMiniMapNode(
     if (!principal) return null;
     const fill = lifecycleColor(principal.lifecycle);
     const stroke = strokeColor ?? "rgba(0,0,0,0.5)";
-    const sw = (strokeWidth ?? 1) * (id === centerId ? 2 : 1);
+    const sw = id === centerId ? (strokeWidth ?? 1) * 2 : (strokeWidth ?? 1);
     const radius = Math.min(width, height) / 3;
     const classes = ["react-flow__minimap-node", selected ? "selected" : "", className]
       .filter(Boolean)
