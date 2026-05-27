@@ -83,6 +83,7 @@ export function getStreetBezierPath({
   const controlDistance = Math.min(
     EDGE_MAX_CONTROL_PX,
     Math.max(EDGE_MIN_CONTROL_PX, middleDistance * 0.45),
+    Math.max(0, middleDistance / 2),
   );
   const controlSource = pointAt(sourceStreet.x, sourceStreet.y, sourceDirection, controlDistance);
   const controlTarget = pointAt(targetStreet.x, targetStreet.y, targetDirection, controlDistance);
