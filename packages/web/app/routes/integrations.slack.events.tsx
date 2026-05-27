@@ -39,11 +39,13 @@ export async function action({ request }: { request: Request }) {
     const teamId = payload.team_id;
     const channelId = event?.channel;
     if (teamId && channelId && !event?.bot_id && !event?.subtype) {
+      const threadTs = slackReplyThreadTs(event);
       const recentMessages = shouldFetchSlackConversationContext(event)
         ? await fetchSlackConversationContext({
             workspaceId: teamId,
             channelId,
             latestTs: event.ts,
+            ...(threadTs ? { threadTs } : {}),
           })
         : [];
       const text = await buildSlackAppMentionResponse({
@@ -53,7 +55,12 @@ export async function action({ request }: { request: Request }) {
         messageText: event?.text ?? "",
         recentMessages,
       });
-      await postSlackMessage({ workspaceId: teamId, channelId, text });
+      await postSlackMessage({
+        workspaceId: teamId,
+        channelId,
+        text,
+        ...(threadTs ? { threadTs } : {}),
+      });
     }
   }
 
@@ -71,8 +78,14 @@ interface SlackEventPayload {
   user?: string;
   text?: string;
   ts?: string;
+  thread_ts?: string;
   bot_id?: string;
   subtype?: string;
+}
+
+function slackReplyThreadTs(event: SlackEventPayload | undefined): string | null {
+  if (!event?.thread_ts || event.thread_ts === event.ts) return null;
+  return event.thread_ts;
 }
 
 export function shouldReplyToSlackEvent(event: SlackEventPayload | undefined): boolean {

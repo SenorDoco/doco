@@ -188,6 +188,65 @@ describe("Slack integration routes", () => {
     });
   });
 
+  it("posts threaded app mention answers back into the Slack thread", async () => {
+    mocks.buildSlackAppMentionResponse.mockResolvedValue("Francisco is there.");
+    mocks.fetchSlackConversationContext.mockResolvedValue([
+      {
+        text: "Am I there?",
+        ts: "1700000000.000050",
+        userId: "U456",
+        botId: null,
+      },
+    ]);
+
+    const response = await eventsAction({
+      request: new Request("https://doco.test/integrations/slack/events", {
+        method: "POST",
+        body: JSON.stringify({
+          type: "event_callback",
+          team_id: "T123",
+          event: {
+            type: "app_mention",
+            channel: "C123",
+            channel_type: "channel",
+            user: "U123",
+            text: "Will you respond if I don't directly tag you? <@U999>",
+            ts: "1700000001.000100",
+            thread_ts: "1700000000.000000",
+          },
+        }),
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(mocks.fetchSlackConversationContext).toHaveBeenCalledWith({
+      workspaceId: "T123",
+      channelId: "C123",
+      latestTs: "1700000001.000100",
+      threadTs: "1700000000.000000",
+    });
+    expect(mocks.buildSlackAppMentionResponse).toHaveBeenCalledWith({
+      workspaceId: "T123",
+      channelId: "C123",
+      chatUserId: "U123",
+      messageText: "Will you respond if I don't directly tag you? <@U999>",
+      recentMessages: [
+        {
+          text: "Am I there?",
+          ts: "1700000000.000050",
+          userId: "U456",
+          botId: null,
+        },
+      ],
+    });
+    expect(mocks.postSlackMessage).toHaveBeenCalledWith({
+      workspaceId: "T123",
+      channelId: "C123",
+      text: "Francisco is there.",
+      threadTs: "1700000000.000000",
+    });
+  });
+
   it("posts a direct-message answer from Slack message.im events", async () => {
     mocks.buildSlackAppMentionResponse.mockResolvedValue(
       "Here’s what the accessible Docos explain:\n• Decision in doco/bpms: Slack works.",
