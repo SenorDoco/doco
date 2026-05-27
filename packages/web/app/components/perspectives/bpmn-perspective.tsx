@@ -334,7 +334,8 @@ export function BpmnPerspective({
       ),
     [filteredNodes, links, effectiveCenterId, pageRankMap, docoHandle],
   );
-  const renderedNodeIds = useBufferedRenderedIds(targetRenderedNodeIds, filteredNodeIds);
+  const { renderedIds: renderedNodeIds, opacityById: renderWindowOpacityById } =
+    useBufferedRenderedIds(targetRenderedNodeIds, filteredNodeIds);
   const renderedNodes = useMemo(
     () => filteredNodes.filter((node) => renderedNodeIds.has(node.id)),
     [filteredNodes, renderedNodeIds],
@@ -573,8 +574,8 @@ export function BpmnPerspective({
     return { nodes, edges };
   }, [links, renderedNodeIds, filteredNodeIds, layout.nodePositions, nodeById, nodeByFullId]);
 
-  const flowNodes = useMemo(() => {
-    const windowed = layout.flowNodes.flatMap((node) => {
+  const flowNodes = useMemo<FlowNode[]>(() => {
+    const windowed = layout.flowNodes.flatMap<FlowNode>((node) => {
       const laneData = (node.data as { lane?: BpmnLane; pool?: BpmnPool }).lane;
       const poolData = (node.data as { lane?: BpmnLane; pool?: BpmnPool }).pool;
       const isRendered =
@@ -595,8 +596,16 @@ export function BpmnPerspective({
         return [{ ...node, data: { ...data, referenceNumber } }];
       }
       const referenceNumber = referenceNumberByEntityId.get(node.id);
-      if (!referenceNumber || !nodeById.has(node.id)) return [node];
-      return [{ ...node, data: { ...node.data, referenceNumber } }];
+      const baseOpacity =
+        typeof node.style?.opacity === "number" ? node.style.opacity : Number(node.style?.opacity);
+      const transitionOpacity = renderWindowOpacityById.get(node.id) ?? 1;
+      const style = {
+        ...node.style,
+        opacity: (Number.isFinite(baseOpacity) ? baseOpacity : 1) * transitionOpacity,
+        transition: "opacity 500ms ease",
+      };
+      if (!referenceNumber || !nodeById.has(node.id)) return [{ ...node, style }];
+      return [{ ...node, data: { ...node.data, referenceNumber }, style }];
     });
     return [...windowed, ...externalEdgeStubs.nodes];
   }, [
@@ -606,17 +615,56 @@ export function BpmnPerspective({
     renderedLaneIds,
     renderedPoolIds,
     renderedNodeIds,
+    renderWindowOpacityById,
     openLaneNeuron,
     externalEdgeStubs.nodes,
   ]);
-  const flowEdges = useMemo(
+  const flowEdges = useMemo<FlowEdge[]>(
     () => [
       ...layout.flowEdges
         .filter((edge) => renderedNodeIds.has(edge.source) && renderedNodeIds.has(edge.target))
-        .slice(0, BPMN_RENDER_EDGE_BUDGET),
+        .slice(0, BPMN_RENDER_EDGE_BUDGET)
+        .map((edge) => {
+          const transitionOpacity = Math.min(
+            renderWindowOpacityById.get(edge.source) ?? 1,
+            renderWindowOpacityById.get(edge.target) ?? 1,
+          );
+          const baseOpacity =
+            typeof edge.style?.opacity === "number"
+              ? edge.style.opacity
+              : Number(edge.style?.opacity);
+          const edgeData = edge.data as
+            | (Record<string, unknown> & {
+                labelBoxStyle?: CSSProperties;
+                labelOpacity?: number;
+              })
+            | undefined;
+          const labelOpacity =
+            typeof edgeData?.labelOpacity === "number" ? edgeData.labelOpacity : 1;
+          const data =
+            edgeData && "labelOpacity" in edgeData
+              ? {
+                  ...edgeData,
+                  labelOpacity: labelOpacity * transitionOpacity,
+                  labelBoxStyle: {
+                    ...edgeData.labelBoxStyle,
+                    transition: "opacity 500ms ease",
+                  },
+                }
+              : edgeData;
+          return {
+            ...edge,
+            data,
+            style: {
+              ...edge.style,
+              opacity: (Number.isFinite(baseOpacity) ? baseOpacity : 1) * transitionOpacity,
+              transition: "opacity 500ms ease, stroke-opacity 500ms ease",
+            },
+          };
+        }),
       ...externalEdgeStubs.edges,
     ],
-    [layout.flowEdges, renderedNodeIds, externalEdgeStubs.edges],
+    [layout.flowEdges, renderedNodeIds, renderWindowOpacityById, externalEdgeStubs.edges],
   );
   const initialFocusFlowNodeId = useMemo(() => {
     if (!initialFocusId) return null;

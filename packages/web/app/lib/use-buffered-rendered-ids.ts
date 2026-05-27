@@ -1,12 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
-function sameSet(a: ReadonlySet<string>, b: ReadonlySet<string>): boolean {
-  if (a.size !== b.size) return false;
-  for (const id of a) {
-    if (!b.has(id)) return false;
-  }
-  return true;
+export interface BufferedRenderedIds {
+  renderedIds: Set<string>;
+  opacityById: Map<string, number>;
 }
+
+const RENDER_WINDOW_FADE_MS = 500;
 
 function filteredSet(ids: ReadonlySet<string>, renderableIds: ReadonlySet<string>): Set<string> {
   const next = new Set<string>();
@@ -16,36 +15,68 @@ function filteredSet(ids: ReadonlySet<string>, renderableIds: ReadonlySet<string
   return next;
 }
 
+function sameOpacityMap(a: ReadonlyMap<string, number>, b: ReadonlyMap<string, number>): boolean {
+  if (a.size !== b.size) return false;
+  for (const [id, opacity] of a) {
+    if (b.get(id) !== opacity) return false;
+  }
+  return true;
+}
+
+function idsFromOpacityMap(opacityById: ReadonlyMap<string, number>): Set<string> {
+  return new Set(opacityById.keys());
+}
+
 export function useBufferedRenderedIds(
   targetIds: ReadonlySet<string>,
   renderableIds: ReadonlySet<string>,
-): Set<string> {
-  const [renderedIds, setRenderedIds] = useState<Set<string>>(() =>
-    filteredSet(targetIds, renderableIds),
+): BufferedRenderedIds {
+  const [opacityById, setOpacityById] = useState<Map<string, number>>(
+    () => new Map(Array.from(filteredSet(targetIds, renderableIds), (id) => [id, 1])),
   );
 
   useEffect(() => {
     const target = filteredSet(targetIds, renderableIds);
-    setRenderedIds((previous) => {
-      const next = new Set(target);
-      for (const id of previous) {
-        if (renderableIds.has(id)) next.add(id);
+    setOpacityById((previous) => {
+      const next = new Map<string, number>();
+      for (const id of target) {
+        next.set(id, previous.has(id) ? 1 : 0);
       }
-      return sameSet(previous, next) ? previous : next;
+      for (const id of previous.keys()) {
+        if (!target.has(id) && renderableIds.has(id)) next.set(id, 0);
+      }
+      return sameOpacityMap(previous, next) ? previous : next;
     });
 
-    let secondFrame = 0;
     const firstFrame = window.requestAnimationFrame(() => {
-      secondFrame = window.requestAnimationFrame(() => {
-        setRenderedIds((previous) => (sameSet(previous, target) ? previous : target));
+      setOpacityById((previous) => {
+        const next = new Map<string, number>();
+        for (const [id, opacity] of previous) {
+          if (target.has(id)) next.set(id, 1);
+          else next.set(id, opacity);
+        }
+        return sameOpacityMap(previous, next) ? previous : next;
       });
     });
+    const cleanup = window.setTimeout(() => {
+      setOpacityById((previous) => {
+        const next = new Map<string, number>();
+        for (const id of target) next.set(id, 1);
+        return sameOpacityMap(previous, next) ? previous : next;
+      });
+    }, RENDER_WINDOW_FADE_MS);
 
     return () => {
       window.cancelAnimationFrame(firstFrame);
-      if (secondFrame) window.cancelAnimationFrame(secondFrame);
+      window.clearTimeout(cleanup);
     };
   }, [targetIds, renderableIds]);
 
-  return renderedIds;
+  return useMemo(
+    () => ({
+      renderedIds: idsFromOpacityMap(opacityById),
+      opacityById,
+    }),
+    [opacityById],
+  );
 }

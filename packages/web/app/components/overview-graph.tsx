@@ -258,7 +258,10 @@ function OverviewFlowNode({ data }: { data: OverviewNodeData }) {
   const hasSummary = Boolean(summary) && summary !== title;
 
   return (
-    <div className="relative h-full w-full overflow-visible" style={{ opacity: data.opacity }}>
+    <div
+      className="relative h-full w-full overflow-visible"
+      style={{ opacity: data.opacity, transition: "opacity 500ms ease" }}
+    >
       <Handle
         type="target"
         position={Position.Left}
@@ -434,7 +437,8 @@ export function OverviewGraph({
       ),
     [visibleNodes, visibleLinks, effectiveCenterId, pageRanks, docoHandle],
   );
-  const renderedNodeIds = useBufferedRenderedIds(targetRenderedNodeIds, visibleIds);
+  const { renderedIds: renderedNodeIds, opacityById: renderWindowOpacityById } =
+    useBufferedRenderedIds(targetRenderedNodeIds, visibleIds);
   const renderedNodes = useMemo(
     () =>
       visibleNodes
@@ -713,7 +717,9 @@ export function OverviewGraph({
   const flowNodes = useMemo(() => {
     const neuronNodes = renderedNodes.map((node) => {
       const position = positions.get(node.id) ?? { x: 0, y: 0 };
-      const opacity = focalActive ? opacityForDepth(depthByNodeId.get(node.id)) : 1;
+      const depthOpacity = focalActive ? opacityForDepth(depthByNodeId.get(node.id)) : 1;
+      const transitionOpacity = renderWindowOpacityById.get(node.id) ?? 1;
+      const opacity = depthOpacity * transitionOpacity;
       return {
         id: node.id,
         type: "overviewNode",
@@ -750,6 +756,7 @@ export function OverviewGraph({
     newNodeIds,
     depthByNodeId,
     focalActive,
+    renderWindowOpacityById,
     externalEdgeStubs.nodes,
   ]);
 
@@ -758,6 +765,10 @@ export function OverviewGraph({
       const edgeOpacity = focalActive
         ? opacityForEdge(depthByNodeId.get(link.source), depthByNodeId.get(link.target))
         : 1;
+      const transitionOpacity = Math.min(
+        renderWindowOpacityById.get(link.source) ?? 1,
+        renderWindowOpacityById.get(link.target) ?? 1,
+      );
       // Synapse inherits the origin neuron's lifecycle colour. 0.5 is
       // the baseline stroke alpha so coloured lines stay readable on
       // the pale canvas without competing with the node strokes.
@@ -772,13 +783,21 @@ export function OverviewGraph({
         interactionWidth: 0,
         style: {
           stroke: lifecycleColor(sourceLifecycle),
-          strokeOpacity: 0.5 * edgeOpacity,
+          strokeOpacity: 0.5 * edgeOpacity * transitionOpacity,
+          transition: "stroke-opacity 500ms ease, opacity 500ms ease",
           pointerEvents: "none" as const,
         },
       };
     });
     return [...neuronEdges, ...externalEdgeStubs.edges];
-  }, [renderedLinks, depthByNodeId, focalActive, nodeById, externalEdgeStubs.edges]);
+  }, [
+    renderedLinks,
+    depthByNodeId,
+    focalActive,
+    nodeById,
+    renderWindowOpacityById,
+    externalEdgeStubs.edges,
+  ]);
 
   const nodeTypes = useMemo(() => ({ overviewNode: OverviewFlowNode, edgeStub: EdgeStubNode }), []);
   const edgeTypes = useMemo(
