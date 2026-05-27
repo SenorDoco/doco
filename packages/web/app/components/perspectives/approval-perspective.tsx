@@ -1,5 +1,5 @@
-import { Check, Loader2, Search, X, ZoomIn } from "lucide-react";
-import { useMemo, useState } from "react";
+import { Check, Loader2, X, ZoomIn } from "lucide-react";
+import { type FormEvent, useMemo, useState } from "react";
 import { Link } from "react-router";
 import { NeuronTypeIcon } from "~/components/neuron-type-icon";
 import type { ApprovalPerspectiveNode } from "~/lib/approval-perspective.server";
@@ -50,6 +50,7 @@ export function ApprovalPerspective({
   onLifecycleTransition,
 }: ApprovalPerspectiveProps) {
   const [query, setQuery] = useState("");
+  const [searchDraft, setSearchDraft] = useState("");
   const [sort, setSort] = useState<ApprovalSortKey>("proposed_desc");
   const [pending, setPending] = useState<string | null>(null);
   const [hiddenIds, setHiddenIds] = useState<Set<string>>(() => new Set());
@@ -86,22 +87,47 @@ export function ApprovalPerspective({
     }
   };
 
+  const submitSearch = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setQuery(searchDraft.trim());
+  };
+
   return (
-    <div className="flex h-full min-h-0 flex-col gap-3 px-3 py-3">
+    <div className="flex h-full min-h-0 flex-col gap-3 px-3 pb-3 pt-12">
+      <div className="pointer-events-none absolute right-3 top-3 z-20 w-64 max-w-[calc(100%-2rem)]">
+        <form
+          aria-label="Search approval queue"
+          className="pointer-events-auto flex gap-2"
+          onSubmit={submitSearch}
+        >
+          <div className="relative flex-1">
+            <input
+              type="search"
+              value={searchDraft}
+              onChange={(event) => {
+                const next = event.target.value;
+                setSearchDraft(next);
+                if (next.trim().length === 0) setQuery("");
+              }}
+              placeholder="Search approval queue..."
+              autoComplete="off"
+              spellCheck={false}
+              className="neu-inset w-full rounded-md bg-background px-3 py-1.5 text-xs text-foreground outline-none"
+            />
+          </div>
+          <button
+            type="submit"
+            className="neu-button cursor-pointer rounded-md bg-background px-3 py-1.5 text-xs font-semibold text-foreground"
+          >
+            Search
+          </button>
+        </form>
+      </div>
+
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <label className="relative min-w-56 flex-1 text-xs">
-          <span className="sr-only">Search approval queue</span>
-          <Search
-            className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground"
-            aria-hidden="true"
-          />
-          <input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search approval queue..."
-            className="w-full rounded-md border border-border bg-background py-1.5 pl-7 pr-2 text-xs outline-none focus:border-primary"
-          />
-        </label>
+        <p className="text-xs text-muted-foreground">
+          {visible.length} of {nodes.length} proposed neuron{nodes.length === 1 ? "" : "s"}
+        </p>
         <label className="inline-flex items-center gap-2 text-xs">
           <span className="text-muted-foreground">Sort by</span>
           <select
@@ -118,12 +144,9 @@ export function ApprovalPerspective({
         </label>
       </div>
 
-      <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
-        <p>
-          {visible.length} of {nodes.length} proposed neuron{nodes.length === 1 ? "" : "s"}
-        </p>
-        {canChangeLifecycle ? null : <p>Approver or owner role required to approve.</p>}
-      </div>
+      {canChangeLifecycle ? null : (
+        <p className="text-xs text-muted-foreground">Approver or owner role required to approve.</p>
+      )}
 
       {error ? (
         <p className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
@@ -152,7 +175,7 @@ export function ApprovalPerspective({
                   <button
                     type="button"
                     onClick={() => onOpenNeuron(node)}
-                    className="min-w-0 text-left"
+                    className="w-full min-w-0 cursor-pointer text-left"
                     data-neuron-href={node.href}
                     data-neuron-id={node.id}
                     data-neuron-label={node.name ?? node.id}
@@ -192,7 +215,7 @@ export function ApprovalPerspective({
                       title={
                         canChangeLifecycle ? "Approve neuron" : "Approver or owner role required"
                       }
-                      className="neu-button inline-flex h-8 items-center gap-1 whitespace-nowrap rounded-md px-2 text-[11px] font-semibold text-primary disabled:cursor-not-allowed disabled:opacity-50"
+                      className="neu-button inline-flex h-8 cursor-pointer items-center gap-1 whitespace-nowrap rounded-md px-2 text-[11px] font-semibold text-primary disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       {pending === approveKey ? (
                         <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
@@ -210,7 +233,7 @@ export function ApprovalPerspective({
                           ? "Reject back to drafting"
                           : "Approver or owner role required"
                       }
-                      className="neu-button inline-flex h-8 items-center gap-1 whitespace-nowrap rounded-md px-2 text-[11px] font-semibold text-destructive disabled:cursor-not-allowed disabled:opacity-50"
+                      className="neu-button inline-flex h-8 cursor-pointer items-center gap-1 whitespace-nowrap rounded-md px-2 text-[11px] font-semibold text-destructive disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       {pending === rejectKey ? (
                         <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
@@ -222,7 +245,7 @@ export function ApprovalPerspective({
                     <Link
                       to={node.zoom_href}
                       title="Zoom in on the default perspective"
-                      className="neu-button inline-flex h-8 items-center gap-1 whitespace-nowrap rounded-md px-2 text-[11px] font-semibold text-foreground"
+                      className="neu-button inline-flex h-8 cursor-pointer items-center gap-1 whitespace-nowrap rounded-md px-2 text-[11px] font-semibold text-foreground"
                     >
                       <ZoomIn className="h-3.5 w-3.5" aria-hidden="true" />
                       Zoom in
