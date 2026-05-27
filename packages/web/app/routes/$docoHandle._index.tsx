@@ -33,12 +33,17 @@ import {
 } from "~/components/overview-graph";
 import { PerspectiveFrame } from "~/components/perspective-frame";
 import { PerspectiveTabs } from "~/components/perspective-tabs";
+import { ApprovalPerspective } from "~/components/perspectives/approval-perspective";
 import { BpmnPerspective } from "~/components/perspectives/bpmn-perspective";
 import { ListPerspective } from "~/components/perspectives/list-perspective";
 import { OrgTreePerspective } from "~/components/perspectives/org-tree-perspective";
 import { SlaPerspective } from "~/components/perspectives/sla-perspective";
 import { SearchBoxWithHistory } from "~/components/search-box-with-history";
 import { SiteHeader } from "~/components/site-header";
+import {
+  type ApprovalPerspectiveNode,
+  loadApprovalPerspectiveData,
+} from "~/lib/approval-perspective.server";
 import { loadBpmnGraph } from "~/lib/bpmn-perspective.server";
 import { docoPath } from "~/lib/db.server";
 import { canAdminDoco, canApproveDoco, loadDocoRouteForRead } from "~/lib/doco-access.server";
@@ -210,6 +215,7 @@ export async function loader({
 
     const facets = await computeFilterFacets(c, ctx.meta.docoId);
     const totalNodes = facets.entityType.reduce((sum, t) => sum + t.count, 0);
+    const proposedCount = facets.lifecycle.find((facet) => facet.value === "proposed")?.count ?? 0;
 
     const since = new Date();
     since.setDate(since.getDate() - HEATMAP_WEEKS * 7);
@@ -285,7 +291,7 @@ export async function loader({
     const dialogNeuron = skipDialog ? null : selectedNeuron;
     // Visualization perspectives — tabs above the graph body. Existing
     // Docos created before migration 007 may have no perspectives
-    // attached; ensureDefaultsAttached backfills graph + list on first
+    // attached; ensureDefaultsAttached backfills built-ins on first
     // load so the UI always has at least one tab.
     await ensureDefaultsAttached(ctx.meta.docoId);
     const [perspectives, availablePerspectives] = await Promise.all([
@@ -328,6 +334,10 @@ export async function loader({
 
     const slaData =
       activeKind === "sla" ? await loadSlaPerspectiveData(c, ctx.meta.docoId, handle) : null;
+    const approvalData =
+      activeKind === "approval"
+        ? await loadApprovalPerspectiveData(c, ctx.meta.docoId, handle)
+        : null;
 
     // Policy count — guidance + neuron-authoring policies
     // attached to this Doco.
@@ -352,6 +362,7 @@ export async function loader({
       items,
       facets,
       totalNodes,
+      proposedCount,
       byDay,
       topContributors,
       handle,
@@ -371,6 +382,7 @@ export async function loader({
       bpmnGraph,
       orgTreeData,
       slaData,
+      approvalData,
       focusedNeuronId: selectedNeuron?.id ?? null,
       selectedNeuron: dialogNeuron,
       graphAutoReorder,
@@ -462,6 +474,7 @@ export default function DocoHome({
     items,
     facets,
     totalNodes,
+    proposedCount,
     byDay,
     topContributors,
     handle,
@@ -480,6 +493,7 @@ export default function DocoHome({
     bpmnGraph,
     orgTreeData,
     slaData,
+    approvalData,
     focusedNeuronId,
     selectedNeuron,
     graphAutoReorder: initialAutoReorder,
@@ -776,6 +790,50 @@ export default function DocoHome({
     [loadNeuronDialog, neuronDialog],
   );
 
+  const handleApprovalLifecycleTransition = useCallback(
+    async (
+      node: ApprovalPerspectiveNode,
+      stage: Extract<LifecycleStage, "active" | "drafting">,
+    ) => {
+      if (!node.update_url) {
+        throw new Error("Lifecycle updates are not available for this neuron type.");
+      }
+      const res = await fetch(node.update_url, {
+        method: "PATCH",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ lifecycle: stage }),
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(body?.error ?? `Lifecycle update failed with ${res.status}`);
+      }
+      setGraphState((prev) => graphWithNeuronLifecycle(prev, node.id, stage));
+      setNeuronDialog((prev) =>
+        prev?.detail?.id === node.id
+          ? {
+              ...prev,
+              detail: {
+                ...prev.detail,
+                lifecycle: stage,
+              },
+            }
+          : prev,
+      );
+      setVisibleLifecycles((prev) => new Set([...prev, stage]));
+      if (neuronDialog?.detail?.id === node.id) {
+        await loadNeuronDialog(node.entity_type, node.id, node.href, {
+          pushUrl: false,
+          keepDetail: true,
+        });
+      }
+      revalidator.revalidate();
+    },
+    [loadNeuronDialog, neuronDialog?.detail?.id, revalidator],
+  );
+
   const allSearchHref = allNodesSearchPath(handle);
 
   const sections: NeuronsOverviewSection[] = [
@@ -872,38 +930,58 @@ export default function DocoHome({
               availablePerspectives={availablePerspectives}
               activeSlug={activeSlug}
               canAdmin={canAdminPerspectives}
+              proposedCount={proposedCount}
             />
             <div className="relative flex min-h-0 flex-1 flex-col">
               {/* Search floats over the top-left of whichever perspective
                   is active. Absolute so it sits inside the canvas without
                   pushing it down — keeps the tab/canvas seam clean. */}
-              <div className="pointer-events-none absolute right-3 top-3 z-20 w-64 max-w-[calc(100%-2rem)]">
-                <div className="pointer-events-auto">
-                  <SearchBoxWithHistory
-                    handle={handle}
-                    placeholder={
-                      totalNodes > 0
-                        ? `Search ${totalNodes} neuron${totalNodes === 1 ? "" : "s"}…`
-                        : "Search neurons…"
-                    }
-                    compact
-                  />
+              {effectivePerspectiveKind === "approval" ? null : (
+                <div className="pointer-events-none absolute right-3 top-3 z-20 w-64 max-w-[calc(100%-2rem)]">
+                  <div className="pointer-events-auto">
+                    <SearchBoxWithHistory
+                      handle={handle}
+                      placeholder={
+                        totalNodes > 0
+                          ? `Search ${totalNodes} neuron${totalNodes === 1 ? "" : "s"}…`
+                          : "Search neurons…"
+                      }
+                      compact
+                    />
+                  </div>
                 </div>
-              </div>
+              )}
               <PerspectiveFrame
                 fillHeight
-                lifecycleFilter={{
-                  visible: visibleLifecycles,
-                  available: availableLifecycles,
-                  onToggle: toggleLifecycle,
-                }}
-                autoReorder={{ value: autoReorder, onChange: handleAutoReorderChange }}
+                lifecycleFilter={
+                  effectivePerspectiveKind === "approval"
+                    ? undefined
+                    : {
+                        visible: visibleLifecycles,
+                        available: availableLifecycles,
+                        onToggle: toggleLifecycle,
+                      }
+                }
+                autoReorder={
+                  effectivePerspectiveKind === "approval"
+                    ? undefined
+                    : { value: autoReorder, onChange: handleAutoReorderChange }
+                }
                 fullscreen={{
                   isFullscreen: isPerspectiveFullscreen,
                   onToggle: togglePerspectiveFullscreen,
                 }}
               >
-                {effectivePerspectiveKind === "list" ? (
+                {effectivePerspectiveKind === "approval" && approvalData ? (
+                  <ApprovalPerspective
+                    nodes={approvalData.nodes}
+                    canChangeLifecycle={canAdminPerspectives}
+                    onOpenNeuron={(node) => {
+                      void loadNeuronDialog(node.entity_type, node.id, node.href);
+                    }}
+                    onLifecycleTransition={handleApprovalLifecycleTransition}
+                  />
+                ) : effectivePerspectiveKind === "list" ? (
                   <ListPerspective
                     nodes={graphState.nodes}
                     pageRanks={pageRanksMap}
