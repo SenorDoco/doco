@@ -1,4 +1,5 @@
-import { BaseEdge, type Edge, type EdgeProps, getStraightPath } from "@xyflow/react";
+import { BaseEdge, type Edge, type EdgeProps } from "@xyflow/react";
+import { getFadingPlaceholderGeometry } from "./fading-placeholder-edge-geometry";
 
 export interface FadingPlaceholderEdgeData extends Record<string, unknown> {
   color: string;
@@ -24,12 +25,18 @@ export function FadingPlaceholderEdge({
   data,
   style,
 }: EdgeProps<FadingPlaceholderEdgeModel>) {
-  const [path] = getStraightPath({ sourceX, sourceY, targetX, targetY });
+  const geometry = getFadingPlaceholderGeometry({
+    sourceX,
+    sourceY,
+    targetX,
+    targetY,
+    direction: data?.direction,
+    hasMarkerEnd: Boolean(markerEnd),
+  });
   const color = data?.color ?? "#737373";
   const opacity = data?.opacity ?? 0.5;
   const fadePx = data?.fadePx ?? 100;
-  const length = Math.max(1, Math.hypot(targetX - sourceX, targetY - sourceY));
-  const fadePercent = Math.min(96, Math.max(8, (fadePx / length) * 100));
+  const fadePercent = Math.min(96, Math.max(8, (fadePx / geometry.length) * 100));
   const gradientId = gradientIdFor(id);
   const isOutgoing = data?.direction !== "incoming";
   const stops = isOutgoing
@@ -52,8 +59,8 @@ export function FadingPlaceholderEdge({
           gradientUnits="userSpaceOnUse"
           x1={sourceX}
           y1={sourceY}
-          x2={targetX}
-          y2={targetY}
+          x2={geometry.endX}
+          y2={geometry.endY}
         >
           {stops.map((stop) => (
             <stop
@@ -67,7 +74,7 @@ export function FadingPlaceholderEdge({
       </defs>
       <BaseEdge
         id={id}
-        path={path}
+        path={geometry.path}
         markerEnd={markerEnd}
         interactionWidth={interactionWidth ?? 0}
         style={{
