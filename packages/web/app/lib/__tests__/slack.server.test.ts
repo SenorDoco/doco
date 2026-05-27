@@ -4,9 +4,13 @@ import {
   SLACK_BOT_SCOPES,
   buildSlackConnectCommandResponse,
   cleanSlackMentionText,
+  detectSlackAccessQuestion,
   detectSlackCountKind,
+  detectSlackInventoryQuestion,
+  formatSlackAccessResponse,
   formatSlackCountResponse,
   formatSlackDefaultResponse,
+  formatSlackInventoryResponse,
   parseSlackCommandPayload,
   signSlackState,
   slackConnectUrl,
@@ -100,9 +104,35 @@ describe("slack.server", () => {
   it("detects count questions from Slack mentions", () => {
     expect(detectSlackCountKind("How many neurons do we have?")).toBe("neurons");
     expect(detectSlackCountKind("How many nodes do we have?")).toBe("neurons");
-    expect(detectSlackCountKind("what docos do we have?")).toBe("docos");
+    expect(detectSlackCountKind("how many docos do we have?")).toBe("docos");
     expect(detectSlackCountKind("count decisions")).toBe("decisions");
     expect(detectSlackCountKind("hola")).toBeNull();
+  });
+
+  it("detects inventory and access questions from Slack messages", () => {
+    expect(detectSlackInventoryQuestion("what docos do we have?")).toBe(true);
+    expect(detectSlackInventoryQuestion("What do we have in Doco?")).toBe(true);
+    expect(detectSlackInventoryQuestion("how many docos do we have?")).toBe(false);
+    expect(detectSlackAccessQuestion("Who are you?")).toBe(true);
+    expect(detectSlackAccessQuestion("Who are you? What do you have access to?")).toBe(true);
+    expect(detectSlackAccessQuestion("What do we have in Doco?")).toBe(false);
+  });
+
+  it("formats Slack access answers with the default role and limits", () => {
+    expect(
+      formatSlackAccessResponse([
+        {
+          channelId: "*",
+          channelName: "workspace",
+          targetLevel: "org",
+          targetId: "organization_doco",
+          targetLabel: "doco",
+          role: "approver",
+        },
+      ]),
+    ).toBe(
+      "I’m Señor Doco, Doco’s Slack assistant. By default in this Slack workspace, I can use all doco's docos as approver. That shared default applies to everyone here. People can still link their own Doco account for higher personal access they already hold, but I never get more than their Doco permissions. Owner-only actions, like creating Docos or changing policies, still require that person to be an owner in Doco.",
+    );
   });
 
   it("formats the default Slack fallback with the quick Doco check", () => {
@@ -125,6 +155,41 @@ describe("slack.server", () => {
     );
   });
 
+  it("formats Slack inventory answers with qualified Doco labels and counts", () => {
+    expect(
+      formatSlackInventoryResponse([
+        {
+          connection: {
+            channelId: "*",
+            channelName: "workspace",
+            targetLevel: "org",
+            targetId: "organization_doco",
+            targetLabel: "doco",
+            role: "approver",
+          },
+          docoCount: 1,
+          docoLabels: ["doco/bpms"],
+          counts: {
+            neurons: 7,
+            docos: 1,
+            decisions: 2,
+            intents: 1,
+            actions: 3,
+            logs: 0,
+            rules: 1,
+            evals: 0,
+            references: 0,
+            ideas: 0,
+            states: 0,
+            principals: 0,
+          },
+        },
+      ]),
+    ).toBe(
+      "all doco's docos as approver: 1 Doco (doco/bpms). It contains 7 neurons: 2 decisions, 1 intent, 3 actions, and 1 rule.",
+    );
+  });
+
   it("formats Slack count answers with qualified Doco labels", () => {
     expect(
       formatSlackCountResponse(
@@ -139,6 +204,7 @@ describe("slack.server", () => {
               role: "approver",
             },
             docoCount: 3,
+            docoLabels: ["doco/bpms", "doco/product", "doco/team"],
             counts: {
               neurons: 42,
               docos: 3,
