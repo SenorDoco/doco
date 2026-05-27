@@ -198,7 +198,7 @@ export default function SlackSetupPage({ loaderData }: { loaderData: SlackSetupP
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid gap-3 md:grid-cols-2">
-                <label className="grid gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                <label className="grid min-w-0 gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                   Workspace
                   <select
                     value={installation.workspaceId}
@@ -206,7 +206,7 @@ export default function SlackSetupPage({ loaderData }: { loaderData: SlackSetupP
                       const params = new URLSearchParams({ team_id: event.target.value });
                       window.location.href = `/integrations/slack/setup?${params.toString()}`;
                     }}
-                    className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
+                    className="w-full min-w-0 rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
                   >
                     {installations.map((item) => (
                       <option key={item.workspaceId} value={item.workspaceId}>
@@ -216,7 +216,7 @@ export default function SlackSetupPage({ loaderData }: { loaderData: SlackSetupP
                   </select>
                 </label>
 
-                <label className="grid gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                <label className="grid min-w-0 gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                   Channel
                   <span className="relative">
                     <Hash
@@ -245,14 +245,14 @@ export default function SlackSetupPage({ loaderData }: { loaderData: SlackSetupP
               ) : null}
 
               <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_180px]">
-                <label className="grid gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                <label className="grid min-w-0 gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                   Doco access
                   <select
                     name="target"
                     value={selectedTargetValue}
                     disabled={targetOptions.length === 0}
                     onChange={(event) => selectTarget(event.target.value)}
-                    className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground disabled:opacity-60"
+                    className="w-full min-w-0 rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground disabled:opacity-60"
                   >
                     {targetOptions.map((option) => (
                       <option key={option.value} value={option.value}>
@@ -262,14 +262,14 @@ export default function SlackSetupPage({ loaderData }: { loaderData: SlackSetupP
                   </select>
                 </label>
 
-                <label className="grid gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                <label className="grid min-w-0 gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                   Default role
                   <select
                     name="role"
                     value={effectiveRole}
                     disabled={allowedRoles.length === 0}
                     onChange={(event) => setSelectedRole(event.target.value as DocoRole)}
-                    className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground disabled:opacity-60"
+                    className="w-full min-w-0 rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground disabled:opacity-60"
                   >
                     {allowedRoles.map((role) => (
                       <option key={role} value={role}>
