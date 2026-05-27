@@ -10,7 +10,7 @@ const mocks = vi.hoisted(() => ({
   verifySlackRequest: vi.fn(),
   parseSlackCommandPayload: vi.fn(),
   buildSlackConnectCommandResponse: vi.fn(),
-  listSlackChannelConnections: vi.fn(),
+  buildSlackAppMentionResponse: vi.fn(),
   postSlackMessage: vi.fn(),
 }));
 
@@ -27,7 +27,7 @@ vi.mock("~/lib/slack.server", () => ({
   verifySlackRequest: mocks.verifySlackRequest,
   parseSlackCommandPayload: mocks.parseSlackCommandPayload,
   buildSlackConnectCommandResponse: mocks.buildSlackConnectCommandResponse,
-  listSlackChannelConnections: mocks.listSlackChannelConnections,
+  buildSlackAppMentionResponse: mocks.buildSlackAppMentionResponse,
   postSlackMessage: mocks.postSlackMessage,
 }));
 
@@ -122,5 +122,37 @@ describe("Slack integration routes", () => {
 
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ challenge: "challenge-code" });
+  });
+
+  it("posts an app mention answer instead of repeating default permissions", async () => {
+    mocks.buildSlackAppMentionResponse.mockResolvedValue("doco/* has 42 nodes.");
+
+    const response = await eventsAction({
+      request: new Request("https://doco.test/integrations/slack/events", {
+        method: "POST",
+        body: JSON.stringify({
+          type: "event_callback",
+          team_id: "T123",
+          event: {
+            type: "app_mention",
+            channel: "C123",
+            user: "U123",
+            text: "How many nodes do we have, <@U999>?",
+          },
+        }),
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(mocks.buildSlackAppMentionResponse).toHaveBeenCalledWith({
+      workspaceId: "T123",
+      channelId: "C123",
+      messageText: "How many nodes do we have, <@U999>?",
+    });
+    expect(mocks.postSlackMessage).toHaveBeenCalledWith({
+      workspaceId: "T123",
+      channelId: "C123",
+      text: "doco/* has 42 nodes.",
+    });
   });
 });

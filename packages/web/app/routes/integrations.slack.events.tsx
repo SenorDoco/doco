@@ -1,5 +1,5 @@
 import {
-  listSlackChannelConnections,
+  buildSlackAppMentionResponse,
   postSlackMessage,
   verifySlackRequest,
 } from "~/lib/slack.server";
@@ -40,18 +40,11 @@ export async function action({ request }: { request: Request }) {
     const teamId = payload.team_id;
     const channelId = payload.event.channel;
     if (teamId && channelId && !payload.event.bot_id && !payload.event.subtype) {
-      const connections = await listSlackChannelConnections({
+      const text = await buildSlackAppMentionResponse({
         workspaceId: teamId,
         channelId,
+        messageText: payload.event.text ?? "",
       });
-      const text =
-        connections.length > 0
-          ? `Señor Doco's shared default permissions for this Slack workspace are ${connections
-              .map((connection) => `${connection.targetLabel} as ${connection.role}`)
-              .join(
-                ", ",
-              )}. People can still link their own Doco account for higher personal access they already hold.`
-          : "I’m installed here. Open Doco Integrations to choose default permissions, or use `/doco connect` as a shortcut.";
       await postSlackMessage({ workspaceId: teamId, channelId, text });
     }
   }

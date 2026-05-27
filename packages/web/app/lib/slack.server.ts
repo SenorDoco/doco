@@ -1,5 +1,5 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
-import { withClient } from "@doco/db";
+import { DOCO_NEURON_TABLE_SPECS, withClient } from "@doco/db";
 import { generateUlid } from "@doco/shared";
 import { ensureEnvLoaded } from "./dotenv.server";
 
@@ -92,6 +92,48 @@ interface SlackConnectionGrantInput {
   targetId: string;
   role: string;
 }
+
+type SlackCountKind =
+  | "nodes"
+  | "docos"
+  | "decisions"
+  | "intents"
+  | "actions"
+  | "logs"
+  | "rules"
+  | "evals"
+  | "references"
+  | "ideas"
+  | "states"
+  | "principals";
+
+interface SlackCountSpec {
+  kind: SlackCountKind;
+  alias: string;
+  table: string;
+  singular: string;
+}
+
+interface SlackConnectionCounts {
+  connection: SlackChannelConnectionSummary;
+  docoCount: number;
+  counts: Record<SlackCountKind, number>;
+}
+
+const SLACK_COUNT_SPECS: readonly SlackCountSpec[] = [
+  ...DOCO_NEURON_TABLE_SPECS.map((spec) => ({
+    kind: (spec.entityType === "reference" ? "references" : `${spec.table}`) as SlackCountKind,
+    alias: spec.table,
+    table: spec.table,
+    singular: spec.entityType === "reference" ? "reference" : spec.entityType,
+  })),
+  {
+    kind: "principals",
+    alias: "principals",
+    table: "principals",
+    singular: "principal",
+  },
+] as const;
 
 export function getSlackConfig(): SlackConfig {
   ensureEnvLoaded();
@@ -376,6 +418,146 @@ export async function listSlackChannelConnections(args: {
     targetLabel: row.target_label ?? row.target_id,
     role: row.role,
   }));
+}
+
+export async function buildSlackAppMentionResponse(args: {
+  workspaceId: string;
+  channelId: string;
+  messageText: string;
+}): Promise<string> {
+  const connections = await listSlackChannelConnections({
+    workspaceId: args.workspaceId,
+    channelId: args.channelId,
+  });
+  if (connections.length === 0) {
+    return "I’m installed here, but I don’t have default Doco permissions yet. Open Doco Integrations to choose them, or use `/doco connect`.";
+  }
+
+  const cleanText = cleanSlackMentionText(args.messageText);
+  const countKind = detectSlackCountKind(cleanText);
+  if (countKind) {
+    const counts = await Promise.all(
+      connections.map((connection) => readSlackConnectionCounts(connection)),
+    );
+    return formatSlackCountResponse(counts, countKind);
+  }
+
+  const defaultTargets = formatSlackConnectionList(connections);
+  if (isSlackGreeting(cleanText)) {
+    return `Hola. I’m ready to work with ${defaultTargets} by default. Ask me things like “how many nodes do we have?” or tell me what to doco.`;
+  }
+
+  return `I’m here. I can answer Doco questions using ${defaultTargets} by default. Try “how many nodes do we have?” for a quick check.`;
+}
+
+export function cleanSlackMentionText(text: string): string {
+  return text
+    .replace(/<@[A-Z0-9]+>/gi, "")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+export function detectSlackCountKind(text: string): SlackCountKind | null {
+  const lower = text.toLowerCase();
+  const looksLikeCountQuestion =
+    /\b(how many|count|number of|cu[aá]nt[ao]s?)\b/.test(lower) ||
+    /\b(nodes?|neurons?|docos?|decisions?|intents?|actions?|logs?|rules?|evals?|evaluations?|references?|ideas?|states?|principals?)\b.*\b(have|exist|are there)\b/.test(
+      lower,
+    );
+  if (!looksLikeCountQuestion) return null;
+
+  if (/\bdocos?\b/.test(lower)) return "docos";
+  if (/\bdecisions?\b/.test(lower)) return "decisions";
+  if (/\bintents?\b/.test(lower)) return "intents";
+  if (/\bactions?\b/.test(lower)) return "actions";
+  if (/\blogs?\b/.test(lower)) return "logs";
+  if (/\brules?\b/.test(lower)) return "rules";
+  if (/\b(evals?|evaluations?)\b/.test(lower)) return "evals";
+  if (/\breferences?\b/.test(lower)) return "references";
+  if (/\bideas?\b/.test(lower)) return "ideas";
+  if (/\bstates?\b/.test(lower)) return "states";
+  if (/\bprincipals?\b/.test(lower)) return "principals";
+  if (/\b(nodes?|neurons?)\b/.test(lower)) return "nodes";
+  return null;
+}
+
+function isSlackGreeting(text: string): boolean {
+  return /^(hi|hello|hey|hola|buenas|yo|sup)[\s!.,?]*$/i.test(text);
+}
+
+async function readSlackConnectionCounts(
+  connection: SlackChannelConnectionSummary,
+): Promise<SlackConnectionCounts> {
+  const where = connection.targetLevel === "org" ? "d.org_id = $1" : "d.id = $1";
+  const countSelects = SLACK_COUNT_SPECS.map(
+    (spec) =>
+      `(SELECT COUNT(*)::text FROM ${spec.table} WHERE doco_id IN (SELECT id FROM scoped_docos)) AS ${spec.alias}`,
+  ).join(",\n              ");
+  const result = await withClient((c) =>
+    c.query<Record<string, string>>(
+      `WITH scoped_docos AS (
+         SELECT d.id
+           FROM docos d
+          WHERE ${where}
+       )
+       SELECT (SELECT COUNT(*)::text FROM scoped_docos) AS docos,
+              ${countSelects}`,
+      [connection.targetId],
+    ),
+  );
+  const row = result.rows[0] ?? {};
+  const counts = Object.fromEntries(
+    SLACK_COUNT_SPECS.map((spec) => [spec.kind, Number(row[spec.alias] ?? 0)]),
+  ) as Record<SlackCountKind, number>;
+  counts.docos = Number(row.docos ?? 0);
+  counts.nodes = SLACK_COUNT_SPECS.reduce((total, spec) => total + counts[spec.kind], 0);
+  return { connection, docoCount: counts.docos, counts };
+}
+
+export function formatSlackCountResponse(
+  summaries: SlackConnectionCounts[],
+  kind: SlackCountKind,
+): string {
+  if (summaries.length === 0) return "I don’t have any default Doco permissions here yet.";
+  const lines = summaries.map((summary) => formatSlackCountLine(summary, kind));
+  if (lines.length === 1) return lines[0];
+  return [
+    "Here’s what I found using the Slack workspace default:",
+    ...lines.map((line) => `• ${line}`),
+  ].join("\n");
+}
+
+function formatSlackCountLine(summary: SlackConnectionCounts, kind: SlackCountKind): string {
+  const label = slackConnectionAccessLabel(summary.connection);
+  if (kind === "docos") {
+    return `${label} covers ${formatCount(summary.docoCount, "Doco")}.`;
+  }
+  const value = summary.counts[kind] ?? 0;
+  const unit = kind === "nodes" ? "node" : (countSpecForKind(kind)?.singular ?? kind);
+  const scope = summary.docoCount === 1 ? "" : ` across ${formatCount(summary.docoCount, "Doco")}`;
+  return `${label} has ${formatCount(value, unit)}${scope}.`;
+}
+
+function countSpecForKind(kind: SlackCountKind): SlackCountSpec | null {
+  return SLACK_COUNT_SPECS.find((spec) => spec.kind === kind) ?? null;
+}
+
+function formatSlackConnectionList(connections: SlackChannelConnectionSummary[]): string {
+  const labels = connections.map(slackConnectionAccessLabel);
+  if (labels.length <= 2) return labels.join(" and ");
+  return `${labels.slice(0, 2).join(", ")}, and ${labels.length - 2} more`;
+}
+
+function slackConnectionAccessLabel(connection: SlackChannelConnectionSummary): string {
+  return connection.targetLevel === "org" ? `${connection.targetLabel}/*` : connection.targetLabel;
+}
+
+function formatCount(value: number, singular: string): string {
+  const label = value === 1 ? singular : singular === "Doco" ? "Docos" : `${singular}s`;
+  return `${value.toLocaleString()} ${label}`;
 }
 
 export async function getSlackBotToken(workspaceId: string): Promise<string | null> {
